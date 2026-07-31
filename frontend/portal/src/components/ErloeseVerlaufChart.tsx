@@ -3,8 +3,13 @@ import { bucketAxisLabel, bucketTooltipLabel } from '../anlage';
 import { chartTheme } from '../chartTheme';
 import { eurAmount } from '../format';
 import { geldVerlauf, type GeldReihe } from '../erloesKomposition';
+import { angleichen, type UeberlagerungLegende } from '../historieVergleich';
 import { useEChart } from '../useEChart';
 import { ChartInsight, ChartLegend, ChartSubtitle } from './ChartExplain';
+import { UeberlagerungLegendeZeile } from './HistorieWelt';
+
+/** Wie blass die Vergleichsperiode liegt (F8) — wie im `HistoryChart`. */
+const VERGLEICH_OPACITY = 0.38;
 
 /**
  * **Karte 2 der Erlöse-Welt · „Geld im Verlauf"** — die drei Teile des
@@ -24,11 +29,23 @@ import { ChartInsight, ChartLegend, ChartSubtitle } from './ChartExplain';
 export function ErloeseVerlaufChart({
   series,
   range,
+  vergleich,
+  legende,
 }: {
   series: SiteEarningsBucket[];
   range: SiteEarningsRange;
+  /**
+   * **F8 · die Überlagerung**: die Balken der Vergleichsperiode werden NICHT
+   * gestapelt (zwei Stapel übereinander sind unlesbar), sondern als blasse,
+   * gestrichelte Linien in DERSELBEN Farbe je Größe gezeichnet — plus die
+   * kumulierte Linie, die die Aussage der Karte trägt. Ohne Werte ist das
+   * Diagramm zeichengleich zu vorher.
+   */
+  vergleich?: SiteEarningsBucket[] | null;
+  legende?: UeberlagerungLegende | null;
 }) {
   const view = geldVerlauf(series, range);
+  const vglView = vergleich && vergleich.length > 0 ? geldVerlauf(vergleich, range) : null;
   // Die Beschriftungs-Helfer der Geld-Ansicht kennen Tag/Monat/„sonst"; eine
   // Woche wird wie ein Monat beschriftet (Tage), „Gesamt" wie ein Jahr (Monate).
   const labelRange: EarningsRange =
@@ -43,6 +60,7 @@ export function ErloeseVerlaufChart({
         eigenverbrauchswert: t.charge,
         stromkosten: t.discharge,
       };
+      const vglName = legende?.vergleich ?? 'Vergleich';
 
       chart.setOption(
         {
@@ -58,6 +76,16 @@ export function ErloeseVerlaufChart({
                 .filter((r) => Math.abs(r.data[i]) >= 0.005)
                 .map((r) => `${r.label}: <b>${eurAmount(r.data[i])}</b>`);
               lines.push(`kumuliert: <b>${eurAmount(view.kumuliert[i])}</b>`);
+              // F8: beide Zeiträume in EINEM Tooltip - der Vergleich ist erst
+              // eine Aussage, wenn beide Zahlen nebeneinander stehen.
+              if (vglView && !vglView.leer) {
+                const k = vglView.kumuliert[i];
+                lines.push(
+                  k == null
+                    ? `<span style="opacity:.7">${vglName}: keine Daten</span>`
+                    : `<span style="opacity:.7">${vglName} kumuliert: ${eurAmount(k)}</span>`,
+                );
+              }
               return `${bucketTooltipLabel(view.starts[i], labelRange)}<br/>${lines.join('<br/>')}`;
             },
           },
@@ -78,6 +106,43 @@ export function ErloeseVerlaufChart({
             splitLine: { lineStyle: { color: t.grid } },
           },
           series: [
+            // Zuerst die Vergleichsperiode: blass, gestrichelt, hinter allem.
+            ...(vglView && !vglView.leer
+              ? [
+                  ...vglView.reihen.map((r) => ({
+                    name: `${r.label} · ${vglName}`,
+                    type: 'line' as const,
+                    smooth: true,
+                    symbol: 'none',
+                    silent: true,
+                    z: 0,
+                    data: angleichen(r.data, view.starts.length),
+                    lineStyle: {
+                      color: hue[r.id],
+                      width: 1.6,
+                      type: 'dashed' as const,
+                      opacity: VERGLEICH_OPACITY,
+                    },
+                    itemStyle: { color: hue[r.id], opacity: VERGLEICH_OPACITY },
+                  })),
+                  {
+                    name: `kumuliert · ${vglName}`,
+                    type: 'line' as const,
+                    smooth: true,
+                    symbol: 'none',
+                    silent: true,
+                    z: 0,
+                    data: angleichen(vglView.kumuliert, view.starts.length),
+                    lineStyle: {
+                      color: t.plan,
+                      width: 1.6,
+                      type: 'dashed' as const,
+                      opacity: VERGLEICH_OPACITY,
+                    },
+                    itemStyle: { color: t.plan, opacity: VERGLEICH_OPACITY },
+                  },
+                ]
+              : []),
             ...view.reihen.map((r) => ({
               name: r.label,
               type: 'bar',
@@ -108,7 +173,7 @@ export function ErloeseVerlaufChart({
         true,
       );
     },
-    [series, range],
+    [series, range, vergleich, legende],
   );
 
   if (view.leer) {
@@ -135,6 +200,7 @@ export function ErloeseVerlaufChart({
           { label: 'kumuliert', color: t.plan, unit: '€', shape: 'line' },
         ]}
       />
+      {vglView && !vglView.leer && <UeberlagerungLegendeZeile legende={legende ?? null} />}
       <div
         className="vp-chart compact"
         ref={ref}

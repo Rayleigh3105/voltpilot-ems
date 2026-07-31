@@ -34,7 +34,12 @@ import {
   streifenSlots,
   zeigtStreifen,
 } from '../historieZeit';
-import type { DeltaView } from '../historieVergleich';
+import {
+  vergleichsOptionen,
+  type DeltaView,
+  type UeberlagerungLegende,
+  type VergleichsModus,
+} from '../historieVergleich';
 import { PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { MonthStrip } from './MoneyView';
 
@@ -251,6 +256,77 @@ function AbdeckungZeile({
 }
 
 /**
+ * **F8 · der „Vergleichen"-Umschalter.** Er steht in der Zeit-Leiste, weil er
+ * eine Frage AN DEN ZEITRAUM ist („und wie war es davor?") — dieselbe Stelle,
+ * dieselbe Geste. Er rendert nichts, wenn die Welt ihn nicht anbietet.
+ *
+ * Die Ehrlichkeit steckt im `hinweis`: trägt die gewählte Vergleichsperiode
+ * keine Zahlen, sagt der Umschalter das (statt eine leere Reihe zu zeichnen,
+ * die sich wie gemessene Nullen läse).
+ */
+function VergleichsSchalter({
+  range,
+  anchor,
+  coverage,
+  modus,
+  onModus,
+  hinweis,
+}: {
+  range: HistoryRange;
+  anchor: Date;
+  coverage?: HistoryCoverage | null;
+  modus: VergleichsModus;
+  onModus: (m: VergleichsModus) => void;
+  hinweis?: string | null;
+}) {
+  const optionen = vergleichsOptionen(anchor, range, coverage);
+  return (
+    <div className="vp-zl-vgl">
+      <span className="vp-zl-vgl-label" id="vp-zl-vgl-label">
+        Vergleichen
+      </span>
+      <div className="vp-seg vp-seg-compact" role="group" aria-labelledby="vp-zl-vgl-label">
+        {optionen.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            title={o.titel}
+            aria-pressed={modus === o.id}
+            className={modus === o.id ? 'active' : ''}
+            onClick={() => onModus(o.id)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      {hinweis && (
+        <span className="vp-zl-vgl-hinweis" role="status">
+          {hinweis}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Die Legenden-Zeile der Überlagerung (F8) — sie NENNT beide Zeiträume, damit
+ * „durchgezogen" und „blass" nie geraten werden müssen.
+ */
+export function UeberlagerungLegendeZeile({
+  legende,
+}: {
+  legende: UeberlagerungLegende | null;
+}) {
+  if (!legende) return null;
+  return (
+    <p className="vp-vgl-legende">
+      <span className="vp-vgl-jetzt">{legende.aktuell}</span>
+      <span className="vp-vgl-vorher">{legende.vergleich}</span>
+    </p>
+  );
+}
+
+/**
  * Die klebende Zeit-Leiste — [Tag|Woche|Monat|Jahr] ‹ Anker › Heute 📅, darunter
  * der Monatsstreifen (Tag/Monat) und die Datenlage.
  *
@@ -271,6 +347,9 @@ export function ZeitLeiste({
   onAnchor,
   coverage,
   stale,
+  vergleich,
+  onVergleich,
+  vergleichHinweis,
   now = new Date(),
 }: {
   range: HistoryRange;
@@ -281,6 +360,11 @@ export function ZeitLeiste({
   coverage?: HistoryCoverage | null;
   /** Die Abdeckung gehört noch zur vorherigen Periode (P5: gedimmt). */
   stale?: boolean;
+  /** F8: der gewählte Vergleichs-Modus — ohne `onVergleich` gibt es keinen Schalter. */
+  vergleich?: VergleichsModus;
+  onVergleich?: (m: VergleichsModus) => void;
+  /** Die ehrliche Zeile, wenn die Vergleichsperiode nichts trägt. */
+  vergleichHinweis?: string | null;
   now?: Date;
 }) {
   const nextDisabled = shiftAnchor(anchor, range, 1) > now;
@@ -342,6 +426,16 @@ export function ZeitLeiste({
             const d = streifenAnker(monthIso, range, now);
             if (d) onAnchor(d);
           }}
+        />
+      )}
+      {onVergleich && (
+        <VergleichsSchalter
+          range={range}
+          anchor={anchor}
+          coverage={coverage}
+          modus={vergleich ?? 'aus'}
+          onModus={onVergleich}
+          hinweis={vergleichHinweis}
         />
       )}
       <AbdeckungZeile coverage={coverage} stale={stale} />

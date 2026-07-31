@@ -23,6 +23,7 @@
 import type { HistoryCoverage, HistoryRange } from './api';
 import { isoDate, isoWeek } from './periodNav';
 import type { StripSlot } from './anlage';
+import type { VergleichsModus } from './historieVergleich';
 
 // --- F2: der Zeitraum-Sprung -------------------------------------------------
 
@@ -299,4 +300,35 @@ export function abdeckungView(coverage?: HistoryCoverage | null): AbdeckungView 
     (luecken ? `, verteilt auf ${luecken}` : '') +
     (abText ? `. ${abText}.` : '.');
   return { abText, balkenPct: pct, satz, luecken, titel };
+}
+
+// --- F8: der Vergleichs-Zustand reist in der Adresse -------------------------
+
+/**
+ * Der Vergleichs-Modus (F8) im Hash — `v=vorperiode|vorjahr`, weggelassen für
+ * „Aus". Bewusst hier statt im Link-Bauer der Welten: er ist ein Zustand der
+ * ZEIT-Leiste, genau wie Zeitraum und Anker, und beide Welten teilen ihn sich
+ * damit über denselben Parameter (der Welt-Wechsel nimmt ihn mit).
+ */
+export const VERGLEICH_PARAM = 'v';
+
+function queryTeil(hashOrQuery: string): string {
+  const q = hashOrQuery.indexOf('?');
+  return q >= 0 ? hashOrQuery.slice(q + 1) : '';
+}
+
+/** Der Modus aus einer Adresse — unbekannte/fehlende Werte sind „Aus". */
+export function parseVergleichModus(hashOrQuery: string): VergleichsModus {
+  const v = new URLSearchParams(queryTeil(hashOrQuery)).get(VERGLEICH_PARAM);
+  return v === 'vorperiode' || v === 'vorjahr' ? v : 'aus';
+}
+
+/**
+ * Denselben Link mit Vergleichs-Modus — hängt sich an das bestehende
+ * `?z=…&at=…`-Vokabular an, statt ein zweites zu erfinden. „Aus" schreibt
+ * nichts, damit ein Link ohne Vergleich zeichengleich zu vorher bleibt.
+ */
+export function mitVergleich(hash: string, modus: VergleichsModus): string {
+  if (modus === 'aus') return hash;
+  return `${hash}${hash.includes('?') ? '&' : '?'}${VERGLEICH_PARAM}=${modus}`;
 }

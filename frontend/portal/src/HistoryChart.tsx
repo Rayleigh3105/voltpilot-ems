@@ -15,9 +15,11 @@ import {
   tagesSprung,
   type EreignisSpurView,
 } from './historieEreignisse';
+import { angleichen, type UeberlagerungLegende } from './historieVergleich';
 import { useEChart } from './useEChart';
 import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
 import { EreignisSpur, ereignisFarbe } from './components/EreignisSpur';
+import { UeberlagerungLegendeZeile } from './components/HistorieWelt';
 
 import './components/Historie.css';
 
@@ -28,6 +30,13 @@ import './components/Historie.css';
  * mit den Reihen, die es erklären soll.
  */
 const BAND_OPACITY = 0.2;
+
+/**
+ * Wie blass die Vergleichsreihe liegt (F8). Gleiche Farbe je Größe — die
+ * Wiedererkennung ist der Punkt —, aber deutlich zurückgenommen, damit die
+ * aktuelle Periode vorne bleibt.
+ */
+const VERGLEICH_OPACITY = 0.38;
 
 /**
  * Die Ereignis-Bänder als ECharts-`markArea` (F6): je Ereignis eine
@@ -145,6 +154,8 @@ function num(v: number, digits = 2): string {
 export function HistoryEnergieChart({
   history,
   onTagOeffnen,
+  vergleich,
+  legende,
 }: {
   history: History;
   /**
@@ -153,6 +164,15 @@ export function HistoryEnergieChart({
    * Tages-Zeitraum gibt es ohnehin nichts Feineres zu öffnen.
    */
   onTagOeffnen?: (at: string) => void;
+  /**
+   * **F8 · die Überlagerung**: die Antwort der Vergleichsperiode. Sie wird als
+   * blasse, gestrichelte Reihe HINTER der aktuellen gezeichnet — gleiche Farbe
+   * je Größe, damit man sie wiedererkennt, ohne sie zu verwechseln. Ohne Werte
+   * (`null`) ist das Diagramm zeichengleich zu vorher.
+   */
+  vergleich?: History | null;
+  /** Wer oben/unten liegt, in Worten — kommt aus `historieVergleich`. */
+  legende?: UeberlagerungLegende | null;
 }) {
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const t = chartTheme();
@@ -161,6 +181,13 @@ export function HistoryEnergieChart({
   const vorhanden = diagramm.serien.filter((s) => !s.leer);
   const fehlend = diagramm.serien.filter((s) => s.leer);
   const sichtbar = vorhanden.filter((s) => !hidden.has(s.label));
+  // Die Vergleichsreihen entstehen aus DEMSELBEN `energieDiagramm` - eine
+  // zweite Ableitung könnte auseinanderlaufen. Zugeordnet wird über den
+  // Reihen-SCHLÜSSEL (nie über die Reihenfolge), am Index ausgerichtet.
+  const vglDiagramm = vergleich ? energieDiagramm(vergleich) : null;
+  const vglSerien = new Map(
+    (vglDiagramm?.serien ?? []).filter((s) => !s.leer).map((s) => [s.key, s]),
+  );
   const spur = ereignisSpur(history);
   const sprungHinweis = onTagOeffnen ? drilldownHinweis(history.range) : null;
 
@@ -202,6 +229,14 @@ export function HistoryEnergieChart({
       const weekNarrow = narrow && history.range === 'week';
       const { zeiten, einheit, jetztIndex } = diagramm;
       const brauchtSoc = sichtbar.some((s) => s.zweiteAchse);
+      const vglName = legende?.vergleich ?? 'Vergleich';
+      // Nur zu SICHTBAREN Reihen gibt es eine Vergleichsreihe: die Legende ist
+      // die Bedienung, und was ausgeblendet ist, bleibt es in beiden Zeiträumen.
+      const vglReihen = sichtbar
+        .map((s) => ({ s, v: vglSerien.get(s.key) }))
+        .filter((x): x is { s: EnergieSerie; v: EnergieSerie } => x.v != null);
+      const nameOf = (s: EnergieSerie) => `${s.label} · ${vglName}`;
+      const vglLookup = new Map(vglReihen.map((x) => [nameOf(x.s), x.s]));
 
       const serieOption = (s: EnergieSerie, isFirst: boolean) => {
         const color = farbe(t, s.farbe);
@@ -292,11 +327,18 @@ export function HistoryEnergieChart({
               const lines = [head];
               for (const p of params) {
                 if (p.value == null) continue;
-                const s = sichtbar.find((x) => x.label === p.seriesName);
+                const vgl = vglLookup.get(p.seriesName);
+                const s = vgl ?? sichtbar.find((x) => x.label === p.seriesName);
                 if (!s) continue;
                 const v = Number(p.value);
                 const label = s.signed ? vorzeichenLabel(s.key, v) : s.label;
-                lines.push(`${p.marker} ${label}: ${num(anzeigeWert(s, v))} ${s.unit}`);
+                // Beide Werte stehen im selben Tooltip - die Vergleichszeile
+                // trägt ihren Zeitraum, damit nie geraten werden muss, welche
+                // Zahl zu welcher Periode gehört.
+                const suffix = vgl ? ` <span style="opacity:.7">(${vglName})</span>` : '';
+                lines.push(
+                  `${p.marker} ${label}${suffix}: ${num(anzeigeWert(s, v))} ${s.unit}`,
+                );
               }
               // Die Geste sichtbar machen, wo es sie gibt (F5) - dieselbe
               // Klick-Zeile wie im Optimizer-Diagramm.
@@ -375,12 +417,34 @@ export function HistoryEnergieChart({
                   textStyle: { color: t.axis },
                 },
               ],
-          series: sichtbar.map((s, i) => serieOption(s, i === 0)),
+          series: [
+            // Die Vergleichsreihen ZUERST: sie liegen damit hinter den
+            // aktuellen, so wie ihre Deckkraft es verspricht.
+            ...vglReihen.map(({ s, v }) => ({
+              name: nameOf(s),
+              type: 'line' as const,
+              yAxisIndex: s.zweiteAchse ? 1 : 0,
+              data: angleichen(v.werte, zeiten.length),
+              smooth: true,
+              showSymbol: false,
+              connectNulls: false,
+              z: 0,
+              silent: true,
+              lineStyle: {
+                color: farbe(t, s.farbe),
+                width: 1.6,
+                type: 'dashed' as const,
+                opacity: VERGLEICH_OPACITY,
+              },
+              itemStyle: { color: farbe(t, s.farbe), opacity: VERGLEICH_OPACITY },
+            })),
+            ...sichtbar.map((s, i) => serieOption(s, i === 0)),
+          ],
         },
         true,
       );
     },
-    [history, diagramm, sichtbar, t],
+    [history, diagramm, sichtbar, vergleich, legende, t],
   );
 
   const legend: LegendItem[] = vorhanden.map((s) => ({
@@ -397,6 +461,7 @@ export function HistoryEnergieChart({
         hidden={hidden}
         onToggle={(label) => setHidden((prev) => toggleSerie(prev, label, vorhanden.length))}
       />
+      {vglSerien.size > 0 && <UeberlagerungLegendeZeile legende={legende ?? null} />}
       {sichtbar.some((s) => s.signed) && (
         <p className="vp-energie-nulllinie">
           <span>↑ über der Nulllinie: Bezug · Laden</span>

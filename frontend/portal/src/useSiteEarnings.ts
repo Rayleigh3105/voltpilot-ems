@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, type SiteEarnings, type SiteEarningsRange } from './api';
-import { vergleichsAnker } from './historieVergleich';
+import { vergleichsAnkerFor, type VergleichsModus } from './historieVergleich';
 import { isoDate } from './periodNav';
 import type { HistoryRange } from './api';
 
@@ -165,8 +165,10 @@ export function useVergleichsErloese(
   range: HistoryRange,
   anchor: Date,
   aktiv: boolean,
+  /** F8: gegen welche Periode — Standard ist die Vorperiode (wie vor F8). */
+  modus: VergleichsModus = 'vorperiode',
 ): SiteEarnings | null {
-  const at = isoDate(vergleichsAnker(anchor, range));
+  const at = isoDate(vergleichsAnkerFor(anchor, range, modus));
   const { money, stale } = useSiteEarnings(siteId, range, at, aktiv);
   return aktiv && !stale ? money : null;
 }

@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, type History, type HistoryRange } from './api';
 import { historyCacheKey, readHistoryCache, writeHistoryCache } from './historyCache';
-import { vergleichsAnker } from './historieVergleich';
+import { vergleichsAnkerFor, type VergleichsModus } from './historieVergleich';
 import { isoDate } from './periodNav';
 
 export interface HistoryPeriod {
@@ -123,8 +123,15 @@ export function useVergleichsPeriode(
   range: HistoryRange,
   anchor: Date,
   aktiv: boolean,
+  /**
+   * F8: gegen WELCHE Periode verglichen wird. Der Standard ist die Vorperiode
+   * (das Verhalten vor F8, zeichengleich); „Vorjahr" verschiebt nur den Anker —
+   * derselbe Endpunkt, derselbe Cache. Δ-Zeile und Überlagerung lesen damit
+   * dieselbe Antwort und können sich nicht widersprechen.
+   */
+  modus: VergleichsModus = 'vorperiode',
 ): History | null {
-  const at = isoDate(vergleichsAnker(anchor, range));
+  const at = isoDate(vergleichsAnkerFor(anchor, range, modus));
   const { history, stale } = useHistoryPeriod(siteId, range, at, aktiv);
   return aktiv && !stale ? history : null;
 }

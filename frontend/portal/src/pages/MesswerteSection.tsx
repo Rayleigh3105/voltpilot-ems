@@ -16,9 +16,15 @@ import {
 import {
   delta,
   ENERGIE_WERTUNG,
+  keineVergleichsDatenText,
   laufendHinweis,
+  normalisiereModus,
+  ueberlagerungAktiv,
+  ueberlagerungLegende,
   vergleichsKopf,
   vergleichsName,
+  wirksamerModus,
+  type VergleichsModus,
 } from '../historieVergleich';
 import { chartTheme } from '../chartTheme';
 import {
@@ -28,7 +34,7 @@ import {
   WELTEN,
   type WeltId,
 } from '../historieWelten';
-import { ankerAusWert } from '../historieZeit';
+import { ankerAusWert, mitVergleich, parseVergleichModus } from '../historieZeit';
 import { useHistoryPeriod, useVergleichsPeriode } from '../useHistoryPeriod';
 import type { AnlageSurface } from '../surface';
 
@@ -126,6 +132,7 @@ function EnergieKarten({
   vorher,
   range,
   anchor,
+  modus,
   onTagOeffnen,
 }: {
   history: History;
@@ -133,6 +140,8 @@ function EnergieKarten({
   vorher: History | null;
   range: HistoryRange;
   anchor: Date;
+  /** F8: der gewählte Vergleich — er regiert Δ-Namen UND Überlagerung. */
+  modus: VergleichsModus;
   /** Der Tagesdrilldown (F5) — im Tages-Zeitraum gibt es nichts zu öffnen. */
   onTagOeffnen?: (at: string) => void;
 }) {
@@ -140,9 +149,13 @@ function EnergieKarten({
   const now = new Date();
   const hinweis = zeitraumHinweis(anchor, range, now);
   const isDay = range === 'day';
-  const vergleichName = vergleichsName(anchor, range);
+  const vergleichName = vergleichsName(anchor, range, modus);
   const vorherSummen = vorher ? energieBilanz(vorher).summen : null;
-  const laufend = vorher ? laufendHinweis(anchor, range, now) : null;
+  const laufend = vorher ? laufendHinweis(anchor, range, now, modus) : null;
+  // F8: überlagert wird nur, was auch Zahlen trägt - eine leere Reihe läse sich
+  // wie gemessene Nullen.
+  const ueberlagern =
+    ueberlagerungAktiv(modus) && vorher != null && vorher.buckets.length > 0 ? vorher : null;
 
   if (history.buckets.length === 0 || bilanz.empty) {
     return (
@@ -167,7 +180,9 @@ function EnergieKarten({
             art="gemessen"
             extra={
               vorherSummen ? (
-                <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range)}</span>
+                <span className="vp-karten-vergleich">
+                  {vergleichsKopf(anchor, range, modus)}
+                </span>
               ) : undefined
             }
           />
@@ -223,7 +238,12 @@ function EnergieKarten({
               ? 'Der Tagesverlauf Ihrer Anlage in einem Bild: PV-Erzeugung, Hausverbrauch, Netz und Speicher - dazu der Ladestand.'
               : 'Erzeugung, Verbrauch, Netz und Speicher je Abschnitt im gewählten Zeitraum - als Energiemengen in Kilowattstunden, dazu der Ladestand.'}
           </ChartSubtitle>
-          <HistoryEnergieChart history={history} onTagOeffnen={onTagOeffnen} />
+          <HistoryEnergieChart
+            history={history}
+            onTagOeffnen={onTagOeffnen}
+            vergleich={ueberlagern}
+            legende={ueberlagerungLegende(anchor, range, modus)}
+          />
         </Card>
       </section>
     </>
@@ -248,16 +268,43 @@ export function MesswerteSection({
   // Der Explorer ist ein Abschnitt dieser Welt; ein Deep-Link auf einen
   // Messwert öffnet ihn direkt aufgeklappt (bestehende Links bleiben gültig).
   const [explorerOpen, setExplorerOpen] = useState(init.target != null);
+  // F8: der Vergleichs-Zustand reist in der Adresse (`v=`), damit ein Link ihn
+  // mitbringt und der Welt-Wechsel ihn behält.
+  const [modusWahl, setModusWahl] = useState<VergleichsModus>(() =>
+    parseVergleichModus(window.location.hash),
+  );
 
   const at = isoDate(anchor);
   const { history, loading, stale, err, retry } = useHistoryPeriod(site.id, range, at);
-  // F3: der zweite Abruf mit verschobenem Anker - erst, wenn der gezeigte
-  // Zeitraum überhaupt Zahlen trägt.
+  // Ein per Lesezeichen mitgebrachtes „Vorjahr" auf einem Tages-Zeitraum fällt
+  // auf die Vorperiode zurück - der Umschalter bietet dort nichts anderes an.
+  const modus = normalisiereModus(modusWahl, anchor, range, history?.coverage);
+  // F3+F8: der zweite Abruf mit verschobenem Anker - EINE Antwort speist Δ-Zeile
+  // und Überlagerung, sie können sich deshalb nicht widersprechen. Er startet
+  // erst, wenn der gezeigte Zeitraum überhaupt Zahlen trägt.
   const vorher = useVergleichsPeriode(
     site.id,
     range,
     anchor,
     !stale && (history?.buckets.length ?? 0) > 0,
+    wirksamerModus(modus),
+  );
+  // Ehrlich statt leer: eine Vergleichsperiode ohne Zahlen wird GESAGT.
+  const vergleichHinweis =
+    ueberlagerungAktiv(modus) && vorher != null && vorher.buckets.length === 0
+      ? keineVergleichsDatenText(anchor, range, modus)
+      : null;
+
+  const setModus = useCallback(
+    (m: VergleichsModus) => {
+      setModusWahl(m);
+      window.history.replaceState(
+        null,
+        '',
+        mitVergleich(historieHash(site.id, 'messwerte', range, at), m),
+      );
+    },
+    [site.id, range, at],
   );
 
   // Ein Cockpit-Sprung (oder Zurück/Vorwärts) ändert den Deep-Link, während
@@ -269,6 +316,7 @@ export function MesswerteSection({
       const p = parseVerlaufParams(window.location.hash);
       if (!p.target) return;
       setExplorerOpen(true);
+      setModusWahl(parseVergleichModus(window.location.hash));
       setRange(p.range);
       setAnchor(p.at ? new Date(`${p.at}T12:00:00`) : new Date());
     };
@@ -302,10 +350,10 @@ export function MesswerteSection({
             window.history.replaceState(
               null,
               '',
-              historieHash(site.id, 'messwerte', 'day', at),
+              mitVergleich(historieHash(site.id, 'messwerte', 'day', at), modus),
             );
           },
-    [range, site.id],
+    [range, site.id, modus],
   );
 
   const toggleExplorer = useCallback(() => {
@@ -313,18 +361,22 @@ export function MesswerteSection({
       // Beim Zuklappen die Messwert-Parameter aus der Adresse nehmen, damit ein
       // Neuladen die Welt so zeigt, wie sie gerade aussieht.
       if (open) {
-        window.history.replaceState(null, '', historieHash(site.id, 'messwerte', range, at));
+        window.history.replaceState(
+          null,
+          '',
+          mitVergleich(historieHash(site.id, 'messwerte', range, at), modus),
+        );
       }
       return !open;
     });
-  }, [site.id, range, at]);
+  }, [site.id, range, at, modus]);
 
   return (
     <>
       <WeltKopf
         welt={welt}
         cards={weltSwitchCards('messwerte', available)}
-        hrefFor={(c) => historieHash(site.id, c.welt.id, range, at)}
+        hrefFor={(c) => mitVergleich(historieHash(site.id, c.welt.id, range, at), modus)}
         onOpen={(c) => onOpenWelt(c.welt.id)}
       />
       <ZeitLeiste
@@ -334,6 +386,9 @@ export function MesswerteSection({
         onAnchor={setAnchor}
         coverage={history?.coverage}
         stale={stale}
+        vergleich={modus}
+        onVergleich={setModus}
+        vergleichHinweis={vergleichHinweis}
       />
 
       <div className={stale ? 'vp-welt-body vp-welt-stale' : 'vp-welt-body'}>
@@ -358,6 +413,7 @@ export function MesswerteSection({
               vorher={vorher}
               range={range}
               anchor={anchor}
+              modus={modus}
               onTagOeffnen={oeffneTag}
             />
           </>

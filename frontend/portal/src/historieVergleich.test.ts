@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  angleichen,
   delta,
   ENERGIE_WERTUNG,
+  keineVergleichsDatenText,
   laufendHinweis,
+  normalisiereModus,
+  ueberlagerungAktiv,
+  ueberlagerungLegende,
   vergleichsAnker,
+  vergleichsAnkerFor,
   vergleichsKopf,
   vergleichsName,
+  vergleichsOptionen,
+  vorjahrVerfuegbar,
+  wirksamerModus,
 } from './historieVergleich';
 
 const JULI = new Date(2026, 6, 15, 12); // Mi, 15.07.2026
@@ -108,5 +117,96 @@ describe('F3 · das Δ selbst', () => {
     expect(ENERGIE_WERTUNG.verbraucht).toBeNull();
     expect(ENERGIE_WERTUNG.geladen).toBeNull();
     expect(ENERGIE_WERTUNG.entladen).toBeNull();
+  });
+});
+
+/**
+ * **F8 — zwei Zeiträume überlagern.** Der zweite Abruf ist technisch derselbe
+ * wie das Δ (F3); neu ist nur, WELCHE Periode gewählt werden kann und dass
+ * beide Flächen dieselbe Wahl lesen.
+ */
+describe('F8 · gegen welchen Zeitraum überlagert wird', () => {
+  const cov = (firstDataAt: string | null) => ({
+    firstDataAt,
+    lastDataAt: '2026-07-30T11:45:00Z',
+    expectedFrom: '',
+    expectedTo: '',
+    expectedBuckets: 100,
+    measuredBuckets: 100,
+    gaps: 0,
+    resolutionMinutes: 15,
+  });
+
+  it('verschiebt den Anker je nach Wahl - Vorperiode oder Vorjahr', () => {
+    expect(vergleichsAnkerFor(JULI, 'month', 'vorperiode').getMonth()).toBe(5);
+    const vj = vergleichsAnkerFor(JULI, 'month', 'vorjahr');
+    expect([vj.getFullYear(), vj.getMonth(), vj.getDate()]).toEqual([2025, 6, 1]);
+  });
+
+  it('lässt „Aus" das Δ NICHT verstummen - es bleibt die Vorperiode', () => {
+    // Sonst könnten Δ-Zeile und Überlagerung sich widersprechen, weil jede ihre
+    // eigene Vorperiode wählte. Es gibt genau diese eine Quelle.
+    expect(wirksamerModus('aus')).toBe('vorperiode');
+    expect(ueberlagerungAktiv('aus')).toBe(false);
+    expect(ueberlagerungAktiv('vorperiode')).toBe(true);
+    expect(vergleichsAnkerFor(JULI, 'month', 'aus').getMonth()).toBe(5);
+  });
+
+  it('benennt den Vorjahres-Zeitraum mit seinem Jahr', () => {
+    expect(vergleichsName(JULI, 'month', 'vorjahr')).toBe('Juli 2025');
+    expect(vergleichsKopf(JULI, 'month', 'vorjahr')).toBe('Vergleich: Juli 2025');
+    // Ohne Modus-Angabe bleibt alles wie vor F8.
+    expect(vergleichsName(JULI, 'month')).toBe('Juni');
+  });
+
+  it('bietet das Vorjahr NUR beim Monat an - und nur, wo Daten liegen können', () => {
+    expect(vorjahrVerfuegbar(JULI, 'month', cov('2024-01-01T12:00:00Z'))).toBe(true);
+    // Die Anlage misst erst seit Juni 2026 - Juli 2025 gibt es nicht.
+    expect(vorjahrVerfuegbar(JULI, 'month', cov('2026-06-19T12:00:00Z'))).toBe(false);
+    expect(vorjahrVerfuegbar(JULI, 'day', cov('2024-01-01T12:00:00Z'))).toBe(false);
+    expect(vorjahrVerfuegbar(JULI, 'year', cov('2024-01-01T12:00:00Z'))).toBe(false);
+    // Ohne Abdeckungsdaten wird nichts behauptet - die Wahl bleibt offen.
+    expect(vorjahrVerfuegbar(JULI, 'month', null)).toBe(true);
+    expect(vorjahrVerfuegbar(JULI, 'month', cov(null))).toBe(true);
+  });
+
+  it('nennt die Wahlmöglichkeiten beim Namen des Zeitraums', () => {
+    const o = vergleichsOptionen(JULI, 'month', cov('2024-01-01T12:00:00Z'));
+    expect(o.map((x) => x.id)).toEqual(['aus', 'vorperiode', 'vorjahr']);
+    expect(o.map((x) => x.label)).toEqual(['Aus', 'Juni 2026', 'Juli 2025']);
+    // Ein Tages-Zeitraum hat keine Vorjahres-Wahl.
+    expect(vergleichsOptionen(JULI, 'day', null).map((x) => x.id)).toEqual(['aus', 'vorperiode']);
+  });
+
+  it('lässt ein mitgebrachtes „Vorjahr" auf die Vorperiode zurückfallen, wo es das nicht gibt', () => {
+    expect(normalisiereModus('vorjahr', JULI, 'day', null)).toBe('vorperiode');
+    expect(normalisiereModus('vorjahr', JULI, 'month', cov('2026-06-19T12:00:00Z'))).toBe(
+      'vorperiode',
+    );
+    expect(normalisiereModus('vorjahr', JULI, 'month', null)).toBe('vorjahr');
+    expect(normalisiereModus('aus', JULI, 'day', null)).toBe('aus');
+  });
+
+  it('sagt in der Legende, welcher Zeitraum durchgezogen und welcher blass liegt', () => {
+    expect(ueberlagerungLegende(JULI, 'month', 'aus')).toBeNull();
+    const l = ueberlagerungLegende(JULI, 'month', 'vorjahr')!;
+    expect(l.aktuell).toBe('Juli 2026');
+    expect(l.vergleich).toBe('Juli 2025');
+    expect(l.satz).toBe('Durchgezogen: Juli 2026 · blass gestrichelt: Juli 2025');
+  });
+
+  it('sagt eine datenlose Vergleichsperiode, statt sie zu zeichnen', () => {
+    expect(keineVergleichsDatenText(JULI, 'month', 'vorjahr')).toBe(
+      'Keine Daten für Juli 2025 — es gibt nichts zu überlagern.',
+    );
+  });
+
+  it('richtet ungleich lange Zeiträume am INDEX aus - Lücke statt gestrecktem Wert', () => {
+    // 28 Tage gegen 31: der Rest ist ehrlich leer, nichts wird gedehnt.
+    expect(angleichen([1, 2], 4)).toEqual([1, 2, null, null]);
+    // Und der Überhang wird abgeschnitten, nie in den Nachbarabschnitt gemalt.
+    expect(angleichen([1, 2, 3, 4], 2)).toEqual([1, 2]);
+    expect(angleichen([1, null, 3], 3)).toEqual([1, null, 3]);
+    expect(angleichen(null, 2)).toEqual([null, null]);
   });
 });

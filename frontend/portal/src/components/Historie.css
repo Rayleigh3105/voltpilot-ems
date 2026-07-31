@@ -667,3 +667,84 @@
     white-space: normal;
   }
 }
+
+/* --- F8: zwei Zeiträume überlagern ---------------------------------------- */
+
+/* Der „Vergleichen"-Umschalter steht in der Zeit-Leiste, weil er eine Frage AN
+   DEN ZEITRAUM ist. `flex-wrap` ist load-bearing: die Leiste ist eine SPALTE
+   mit `nowrap`, ihre Kinder müssen also selbst umbrechen, sonst misst die
+   Bedienzeile am Telefon breiter als die Karte (der dokumentierte Befund). */
+.vp-zl-vgl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.vp-zl-vgl-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--vp-text-muted, #6c757d);
+  white-space: nowrap;
+}
+
+/* Doppelklasse: die kompakte Segment-Variante muss unabhängig von der
+   Ladereihenfolge über die `.vp-seg`-Regeln aus `index.css` gewinnen. */
+.vp-zl-vgl .vp-seg.vp-seg-compact {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.vp-zl-vgl .vp-seg.vp-seg-compact button {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  min-height: 36px;
+}
+
+.vp-zl-vgl-hinweis {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 0.74rem;
+  color: var(--vp-warn-ink, #92400e);
+  overflow-wrap: anywhere;
+}
+
+/* Die Legende der Überlagerung: sie NENNT beide Zeiträume, damit
+   „durchgezogen" und „blass" nie geraten werden müssen. */
+.vp-vgl-legende {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 2px 0 8px;
+  font-size: 0.76rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-vgl-legende > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-vgl-legende > span::before {
+  content: '';
+  width: 18px;
+  height: 0;
+  border-top: 2px solid currentColor;
+}
+
+.vp-vgl-jetzt {
+  color: var(--vp-text, #1f2933);
+  font-weight: 600;
+}
+
+.vp-vgl-vorher {
+  opacity: 0.62;
+}
+
+.vp-vgl-vorher::before {
+  border-top-style: dashed !important;
+}
