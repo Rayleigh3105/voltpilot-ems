@@ -62,6 +62,7 @@ import {
   supplyPriceFormValues,
   type SupplyPriceFormValues,
 } from '../supplyPrice';
+import type { PriceMode } from '../tariffInput';
 
 /**
  * THE register-first "Anlage anlegen" flow (captain 2026-07-09): instead of
@@ -368,7 +369,11 @@ function AnlageStep({
   const [supply, setSupply] = useState<SupplyPriceFormValues>(() =>
     supplyPriceFormValues(null),
   );
-  const [supplyTouched, setSupplyTouched] = useState(false);
+  // E2/D3: die ausdrückliche Wahl statt eines stillen „berührt"-Flags. Ein
+  // Anlege-Vorgang startet auf „Schnell" - die Vorschlagswerte bleiben ein
+  // Prefill und werden erst zum gepflegten Preisblatt, wenn der Betreiber
+  // „Genau" WÄHLT.
+  const [priceMode, setPriceMode] = useState<PriceMode>('schnell');
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -421,11 +426,11 @@ function AnlageStep({
       setErr('Bitte geben Sie die maximale Einspeiseleistung als Zahl in kW an, z. B. 75.');
       return;
     }
-    // Only persist the supply-price sheet when the operator engaged with it and
-    // the Tarif-Art uses it (dynamisch/ohne) - untouched suggestions stay a
+    // Only persist the supply-price sheet when the operator CHOSE „Genau" and
+    // the Tarif-Art uses it (dynamisch/ohne) - the prefilled suggestions stay a
     // prefill, never an auto-activated sheet.
     let supplyPatch: SupplyPriceUpdate | null = null;
-    if (supplyTouched && showSupplyPriceFields(tarifArt)) {
+    if (priceMode === 'genau' && showSupplyPriceFields(tarifArt)) {
       const built = buildSupplyPricePatch(supply);
       if ('error' in built) {
         setErr(built.error);
@@ -585,10 +590,9 @@ function AnlageStep({
               onParam={setTarifParam}
               idPrefix="flow-site"
               supplyValues={supply}
-              onSupplyChange={(field, value) => {
-                setSupplyTouched(true);
-                setSupply((s) => ({ ...s, [field]: value }));
-              }}
+              onSupplyChange={(field, value) => setSupply((s) => ({ ...s, [field]: value }))}
+              priceMode={priceMode}
+              onPriceMode={setPriceMode}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <label htmlFor="flow-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>

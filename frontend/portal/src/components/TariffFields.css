@@ -1,0 +1,124 @@
+/* Die Tarif-Eingabe (E2 „Bedeutungsfalle" + D3 „Schnell / Genau").
+ *
+ * Komponenten-lokal (das v3-Muster): `index.css` bleibt unangetastet. Die
+ * Komponente steht auf drei Flächen (Einstellungs-Seite, Anlege-Assistent,
+ * Admin-Drawer), also gehört ihr Aussehen zu ihr und nicht zu einer Seite.
+ * Jedes Kind traegt `min-width: 0`, damit ein langer Satz die 375-px-Karte nie
+ * horizontal aufreisst. */
+
+.vp-tarif-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.vp-tarif-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-text-dark, #1a365d);
+}
+
+/* Die Warnung: bernstein, NIE rot — sie sperrt nichts, sie fragt nach.
+ * (Rot ist im Portal die Farbe echter Kosten/Fehler.) */
+.vp-tarif-warn {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--vp-radius-sm, 8px);
+  background: #fff4e5;
+  color: #8a5300;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Der Satz, der einen Bedeutungswechsel ANSAGT statt ihn stumm zu vollziehen. */
+.vp-tarif-switchnote {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--vp-action, #2c5282);
+  background: rgba(44, 82, 130, 0.06);
+  color: var(--vp-text, #223);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Der read-only Spiegel des jeweils ANDEREN Wegs — „verlustfrei sichtbar". */
+.vp-tarif-mirror {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Die ausdrueckliche Wahl Schnell / Genau. */
+.vp-pricemode {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.vp-pricemode > legend {
+  padding: 0;
+  margin-bottom: 0.1rem;
+}
+
+.vp-pricemode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+@media (max-width: 460px) {
+  .vp-pricemode-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.vp-pricemode-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-pricemode-card.selected {
+  border-color: var(--vp-action, #2c5282);
+  background: rgba(44, 82, 130, 0.06);
+}
+
+.vp-pricemode-card > input {
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+
+.vp-pricemode-card > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-pricemode-card b {
+  font-size: 0.9rem;
+  color: var(--vp-text-dark, #1a365d);
+}
+
+.vp-pricemode-card small {
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #667);
+  overflow-wrap: anywhere;
+}

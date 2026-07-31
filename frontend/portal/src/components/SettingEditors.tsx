@@ -42,9 +42,15 @@ import type { ModeSettingDef } from '../modeSettings';
 import { presetOf, speicherschonungLabel, type SpeicherschonungPreset } from '../speicherschonung';
 import {
   buildSupplyPricePatch,
+  showSupplyPriceFields,
   supplyPriceFormValues,
   type SupplyPriceFormValues,
 } from '../supplyPrice';
+import {
+  clearSupplyPricePatch,
+  initialPriceMode,
+  type PriceMode,
+} from '../tariffInput';
 import { AnzulegenderWertField } from './AnzulegenderWertField';
 import { NetzladenBadge } from './NetzladenBadge';
 import { NetzladenField } from './NetzladenField';
@@ -425,6 +431,12 @@ function StromtarifEditor({
   // until fetched; the form prefills the researched suggestions for a site
   // without a maintained sheet.
   const [supply, setSupply] = useState<SupplyPriceFormValues | null>(null);
+  // E2/D3: „Schnell" (eine Zahl) oder „Genau" (Preisblatt) — serverseitig ein
+  // Entweder/Oder, also hier eine ausdrückliche Wahl. `stored` ist der Weg, in
+  // dem die Anlage GESPEICHERT ist; er entscheidet, ob ein Wechsel auf
+  // „Schnell" beim Speichern ein Preisblatt entwertet.
+  const [storedMode, setStoredMode] = useState<PriceMode>('schnell');
+  const [mode, setMode] = useState<PriceMode>('schnell');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -432,7 +444,12 @@ function StromtarifEditor({
     let alive = true;
     api
       .supplyPrice(site.id)
-      .then((sheet) => alive && setSupply(supplyPriceFormValues(sheet)))
+      .then((sheet) => {
+        if (!alive) return;
+        setSupply(supplyPriceFormValues(sheet));
+        setStoredMode(initialPriceMode(sheet));
+        setMode(initialPriceMode(sheet));
+      })
       .catch(() => alive && setSupply(supplyPriceFormValues(null)));
     return () => {
       alive = false;
@@ -453,14 +470,22 @@ function StromtarifEditor({
       );
       return;
     }
+    // Eine Preis-Wahrheit (D3): „Genau" schreibt das Preisblatt, „Schnell"
+    // ENTFERNT ein zuvor gepflegtes - sonst gewänne es serverseitig weiter
+    // (pricing.py: das Preisblatt ersetzt den Sammelaufschlag) und die
+    // Oberfläche würde behaupten, die eingetippte Zahl zähle.
     let supplyPatch: SupplyPriceUpdate | null = null;
-    if (supply) {
-      const built = buildSupplyPricePatch(supply);
-      if ('error' in built) {
-        setError(built.error);
-        return;
+    if (supply && showSupplyPriceFields(tarifArt)) {
+      if (mode === 'genau') {
+        const built = buildSupplyPricePatch(supply);
+        if ('error' in built) {
+          setError(built.error);
+          return;
+        }
+        supplyPatch = built.patch;
+      } else if (storedMode === 'genau') {
+        supplyPatch = clearSupplyPricePatch();
       }
-      supplyPatch = built.patch;
     }
     setBusy(true);
     setError(null);
@@ -493,6 +518,9 @@ function StromtarifEditor({
           idPrefix="setting-tarif"
           supplyValues={supply ?? undefined}
           onSupplyChange={changeSupply}
+          priceMode={mode}
+          onPriceMode={setMode}
+          storedPriceMode={storedMode}
         />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
