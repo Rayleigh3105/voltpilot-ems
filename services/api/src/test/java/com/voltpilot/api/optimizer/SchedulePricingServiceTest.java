@@ -42,7 +42,7 @@ class SchedulePricingServiceTest {
         return new ScheduleSlotDto(SLOT, new BigDecimal("-4.332"), new BigDecimal("2.8"),
                 new BigDecimal("77"), spotEurMwh, null, null, null, null, new BigDecimal("4.33"),
                 "eigenverbrauch", List.of(), new BigDecimal("21.5"), null, null,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 
     private static SchedulePricingService serviceReturning(SlotEconomics economics) {

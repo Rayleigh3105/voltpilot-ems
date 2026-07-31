@@ -10,8 +10,10 @@ import {
   horizonHint,
   LOAD_FORECAST_LABEL,
   MEASURED_LOAD_LABEL,
+  MEASURED_PV_LABEL,
   measuredLoadLine,
-  measuredLoadNote,
+  measuredNote,
+  measuredPvLine,
   needsPointMarkers,
   planCoversNow,
   planHourBars,
@@ -804,15 +806,108 @@ describe('measuredLoadLine / needsPointMarkers / measuredLoadNote', () => {
   });
 
   it('names the reason when past slots carry no measurement, and stays silent otherwise', () => {
-    const past = [{ start: at('19:00') }, { start: at('19:15') }];
-    expect(measuredLoadNote(past, NOW)).toContain('keine Messwerte');
+    const past = [
+      { start: at('19:00'), loadKw: 4.33 },
+      { start: at('19:15'), loadKw: 4.33 },
+    ];
+    expect(measuredNote(past, NOW)).toContain('keine Messwerte des Verbrauchs');
     // Present line -> nothing to explain.
     expect(
-      measuredLoadNote([{ start: at('19:00'), measuredLoadKw: 7.1 }], NOW),
+      measuredNote([{ start: at('19:00'), loadKw: 4.33, measuredLoadKw: 7.1 }], NOW),
     ).toBeNull();
     // A plan entirely ahead has nothing to compare yet - claiming a gap there
     // would be noise, not honesty.
-    expect(measuredLoadNote([{ start: at('19:30') }, { start: at('19:45') }], NOW)).toBeNull();
-    expect(measuredLoadNote([], NOW)).toBeNull();
+    expect(
+      measuredNote(
+        [
+          { start: at('19:30'), loadKw: 4.33 },
+          { start: at('19:45'), loadKw: 4.33 },
+        ],
+        NOW,
+      ),
+    ).toBeNull();
+    expect(measuredNote([], NOW)).toBeNull();
+  });
+
+  it('never claims a missing measurement for a channel the plan does not forecast', () => {
+    // A plan without a PV-Prognose (PV-less plant / pre-feature run) must not
+    // be told its PV measurements are missing - there is no line to pair with.
+    const loadOnly = [{ start: at('19:00'), loadKw: 4.33 }];
+    expect(measuredNote(loadOnly, NOW)).toBe(
+      'Für die bereits vergangenen Viertelstunden liegen keine Messwerte des Verbrauchs vor.',
+    );
+    // A run carrying neither forecast says nothing at all.
+    expect(measuredNote([{ start: at('19:00') }], NOW)).toBeNull();
+  });
+});
+
+// ---- The Ist-PV mirror: measured PV next to its PV-Prognose -----------------
+
+describe('measuredPvLine / measuredNote (PV)', () => {
+  const NOW = new Date('2026-07-30T19:22:48Z');
+  const at = (iso: string) => `2026-07-30T${iso}:00Z`;
+
+  it('builds the measured PV series slot-aligned with the plan', () => {
+    const line = measuredPvLine([
+      { measuredPvKw: 15.3 },
+      { measuredPvKw: 11.02 },
+      { measuredPvKw: null },
+    ]);
+    expect(line.label).toBe(MEASURED_PV_LABEL);
+    expect(line.values).toEqual([15.3, 11.02, null]);
+    expect(line.present).toBe(true);
+    expect(line.count).toBe(2);
+    expect(line.maxKw).toBe(15.3);
+  });
+
+  it('keeps an unmeasured slot ABSENT (a gap), never a fabricated 0', () => {
+    // A device without a PV channel must not read as "die Sonne schien nicht".
+    const line = measuredPvLine([{ measuredPvKw: null }, {}, { measuredPvKw: undefined }]);
+    expect(line.values).toEqual([null, null, null]);
+    expect(line.present).toBe(false);
+    expect(line.count).toBe(0);
+    expect(line.maxKw).toBeNull();
+  });
+
+  it('is independent of the measured load - one channel may be there without the other', () => {
+    const slots = [
+      { measuredLoadKw: 5.851, measuredPvKw: null },
+      { measuredLoadKw: null, measuredPvKw: 15.3 },
+    ];
+    expect(measuredLoadLine(slots).values).toEqual([5.851, null]);
+    expect(measuredPvLine(slots).values).toEqual([null, 15.3]);
+  });
+
+  it('lifts the kW axis and is switchable like every other line', () => {
+    const f = forecastLines([{ pvKw: 12, loadKw: 4.33 }]);
+    const istPv = measuredPvLine([{ measuredPvKw: 26 }]);
+    expect(powerAxisMax(15, [f.pv, f.load, istPv], new Set())).toBe(26);
+    expect(powerAxisMax(15, [f.pv, f.load, istPv], new Set([MEASURED_PV_LABEL]))).toBe(15);
+    expect([...toggleSeries(new Set(), MEASURED_PV_LABEL)]).toEqual([MEASURED_PV_LABEL]);
+  });
+
+  it('asks for point markers while only a slot or two lies in the past', () => {
+    expect(needsPointMarkers(measuredPvLine([{ measuredPvKw: 15.3 }]))).toBe(true);
+    const many = Array.from({ length: 9 }, () => ({ measuredPvKw: 3 }));
+    expect(needsPointMarkers(measuredPvLine(many))).toBe(false);
+  });
+
+  it('names both channels in ONE sentence when both measurements are missing', () => {
+    const past = [{ start: at('19:00'), pvKw: 12, loadKw: 4.33 }];
+    expect(measuredNote(past, NOW)).toBe(
+      'Für die bereits vergangenen Viertelstunden liegen keine Messwerte '
+        + 'von Verbrauch und PV-Erzeugung vor.',
+    );
+    // Only the PV twin missing -> only the PV is named.
+    expect(
+      measuredNote([{ start: at('19:00'), pvKw: 12, loadKw: 4.33, measuredLoadKw: 7.1 }], NOW),
+    ).toBe('Für die bereits vergangenen Viertelstunden liegen keine Messwerte der PV-Erzeugung vor.');
+    // Both twins there -> silence.
+    expect(
+      measuredNote(
+        [{ start: at('19:00'), pvKw: 12, loadKw: 4.33, measuredLoadKw: 7.1, measuredPvKw: 15.3 }],
+        NOW,
+      ),
+    ).toBeNull();
   });
 });

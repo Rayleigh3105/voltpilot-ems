@@ -1095,18 +1095,20 @@ class PortalApiTest {
     }
 
     /**
-     * P3 "Ist-Last sichtbar" (report vp-netzbezug-nacht-s3 §6): the plan carries
-     * the MEASURED house consumption of every slot that already happened - the
-     * quarter-hour MEAN of {@code telemetry.load_kw}, the same quantity
-     * {@code loadKw} forecasts - so the portal can draw the forecast error that
-     * made this plant draw from the grid at night.
+     * P3 "Ist-Last sichtbar" (report vp-netzbezug-nacht-s3 §6) AND its Ist-PV
+     * mirror: the plan carries the MEASURED house consumption and the MEASURED
+     * PV production of every slot that already happened - the quarter-hour MEANs
+     * of {@code telemetry.load_kw} / {@code telemetry.pv_power_kw}, the same
+     * quantities {@code loadKw} / {@code pvKw} forecast - so the portal can draw
+     * the forecast error that made this plant draw from the grid at night, and
+     * the solar-charging rule ("Laden &lt;= gemessene PV") becomes checkable.
      *
      * <p>Runs on its OWN site and cleans up after itself: a stray site with a
      * plan + telemetry would move the hand-computed fleet/earnings numbers of
      * the other tests on tenant A.
      */
     @Test
-    void scheduleCarriesTheMeasuredLoadOfSlotsThatAlreadyHappened() {
+    void scheduleCarriesTheMeasuredLoadAndPvOfSlotsThatAlreadyHappened() {
         final String site = "0000000a-0000-0000-0000-0000000000f3";
         final String device = "0000000a-0000-0000-0000-0000000000e3";
         final String tenant = "00000000-0000-0000-0000-000000000001";
@@ -1115,10 +1117,12 @@ class PortalApiTest {
         try {
             // Four 15-min slots anchored on the RUNNING quarter hour: two are
             // over, one is running, one is still ahead.
-            //   q-2 : two samples -> mean 3.0 kW   (measured)
-            //   q-1 : no telemetry                 (must stay null)
-            //   q   : running, one sample 7.117 kW (the Pilsting constellation)
-            //   q+1 : future                       (must stay null)
+            //   q-2 : two samples, LOAD only -> mean 3.0 kW, PV stays null
+            //         (a device that reports no PV channel at all)
+            //   q-1 : no telemetry                 (both must stay null)
+            //   q   : running, one sample 7.117 kW load + 15.3 kW PV
+            //         (the Pilsting constellation)
+            //   q+1 : future                       (both must stay null)
             String q = "time_bucket('15 minutes', now())";
             exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
                     + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, "
@@ -1128,12 +1132,14 @@ class PortalApiTest {
                     + ", " + slotRow(q, site, tenant, device)
                     + ", " + slotRow(q + " + interval '15 minutes'", site, tenant, device)
                     + " ON CONFLICT DO NOTHING");
-            exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, load_kw) VALUES "
+            exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, load_kw, pv_power_kw) "
+                    + "VALUES "
                     + "(" + q + " - interval '30 minutes', '" + tenant + "', '" + site + "', '"
-                    + device + "', 2.0), "
+                    + device + "', 2.0, NULL), "
                     + "(" + q + " - interval '25 minutes', '" + tenant + "', '" + site + "', '"
-                    + device + "', 4.0), "
-                    + "(" + q + ", '" + tenant + "', '" + site + "', '" + device + "', 7.117)");
+                    + device + "', 4.0, NULL), "
+                    + "(" + q + ", '" + tenant + "', '" + site + "', '" + device
+                    + "', 7.117, 15.3)");
 
             ResponseEntity<Map<String, Object>> res = rest.exchange(
                     url("/api/v1/sites/" + site + "/schedule"), HttpMethod.GET,
@@ -1154,10 +1160,24 @@ class PortalApiTest {
             assertThat(measured.get(1)).isNull();
             assertThat(measured.get(2)).isEqualTo(7.117);
             assertThat(measured.get(3)).isNull();
-            // The forecast input is untouched next to it - the gap between the
-            // two IS the defect P3 makes visible.
+            // The PV mirror rides the SAME window/aggregation but is independent
+            // per channel: the load-only slot carries NO measured PV (never a
+            // fabricated 0 claiming the sun did not shine), the running slot
+            // carries both, future/sample-less slots neither.
+            List<Double> measuredPv = slots.stream()
+                    .map(s -> ((Map<?, ?>) s).get("measuredPvKw"))
+                    .map(v -> v == null ? null : ((Number) v).doubleValue())
+                    .toList();
+            assertThat(measuredPv.get(0)).isNull();
+            assertThat(measuredPv.get(1)).isNull();
+            assertThat(measuredPv.get(2)).isEqualTo(15.3);
+            assertThat(measuredPv.get(3)).isNull();
+            // The forecast inputs are untouched next to them - the gap between
+            // plan and measurement IS what these lines make visible.
             assertThat(((Number) ((Map<?, ?>) slots.get(2)).get("loadKw")).doubleValue())
                     .isEqualTo(4.33);
+            assertThat(((Number) ((Map<?, ?>) slots.get(2)).get("pvKw")).doubleValue())
+                    .isEqualTo(12.0);
 
             // RLS: the measured load is read through the tenant-scoped app role,
             // so another tenant cannot reach it at all.
@@ -1171,11 +1191,15 @@ class PortalApiTest {
         }
     }
 
-    /** One schedule row of the P3 fixture (load forecast 4.33 kW, like Pilsting). */
+    /**
+     * One schedule row of the P3 fixture (load forecast 4.33 kW like Pilsting,
+     * PV forecast 12 kW against a measured 15,3 kW - the PV forecast error the
+     * Ist-PV line makes visible).
+     */
     private static String slotRow(String timeExpr, String site, String tenant, String device) {
         return "(" + timeExpr + ", '" + tenant + "', '" + site + "', '" + device + "', "
                 + "'aaaaaaaa-0000-0000-0000-0000000000f3'"
-                + ", now(), -4.332, 2.8, 77.0, 4.33, 0.0, 212.0, 0.0, 0.0)";
+                + ", now(), -4.332, 2.8, 77.0, 4.33, 12.0, 212.0, 0.0, 0.0)";
     }
 
     // ---- Prognosequalität: model states + accuracy series, RLS-scoped ---------

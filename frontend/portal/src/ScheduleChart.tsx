@@ -7,8 +7,10 @@ import {
   hasGridCharge,
   LOAD_FORECAST_LABEL,
   MEASURED_LOAD_LABEL,
+  MEASURED_PV_LABEL,
   measuredLoadLine,
-  measuredLoadNote,
+  measuredNote,
+  measuredPvLine,
   needsPointMarkers,
   planInsightParts,
   powerAxisMax,
@@ -34,10 +36,13 @@ import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartEx
  * two dotted FORECAST lines the plan was computed from (PV-Prognose orange,
  * Verbrauchsprognose blau, same kW axis as the bars) - they explain the plan
  * ("warum hält er abends? da liegt die Nachtlast") and are switchable via the
- * legend, visible by default. Next to the Verbrauchsprognose runs its MEASURED
- * twin (P3 "Ist-Last", solid, same colour) for the slots that already happened,
- * so the forecast error - the one that made a plant draw from the grid at night
- * - is visible instead of only computable. A "Jetzt"-marker and a shaded past region separate what already
+ * legend, visible by default. Next to EACH of them runs its MEASURED twin
+ * (solid, same colour - gepunktet = Prognose, durchgezogen = gemessen) for the
+ * slots that already happened: "Verbrauch (gemessen)" makes the load forecast
+ * error visible - the one that made a plant draw from the grid at night - and
+ * "PV (gemessen)" does the same for the PV forecast while making the
+ * Solarladen-Regel checkable (a charge bar may never exceed the measured PV
+ * line). A "Jetzt"-marker and a shaded past region separate what already
  * happened from what is still planned; a dashed line splits today from morgen.
  * The colour swatches + one-line takeaway below the canvas explain the diagram
  * in plain German (captain: the diagrams should be understandable instantly).
@@ -77,9 +82,10 @@ export function ScheduleChart({
   // self-explaining; the legend rows switch them off for a clean bar read.
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>());
   const forecast = forecastLines(plan.slots);
-  // P3 "Ist-Last": the measured twin of the Verbrauchsprognose, for the slots
-  // that already happened - the gap between the two is the forecast error.
+  // The measured twins of the two forecasts, for the slots that already
+  // happened - the gap to their dotted counterpart is the forecast error.
   const ist = measuredLoadLine(plan.slots);
+  const istPv = measuredPvLine(plan.slots);
 
   const ref = useEChart((chart, width) => {
     const narrow = width < 480;
@@ -122,7 +128,9 @@ export function ScheduleChart({
     const showPvLine = forecast.pv.present && !hidden.has(PV_FORECAST_LABEL);
     const showLoadLine = forecast.load.present && !hidden.has(LOAD_FORECAST_LABEL);
     const showIstLine = ist.present && !hidden.has(MEASURED_LOAD_LABEL);
-    const axisMax = powerAxisMax(kwMax, [forecast.pv, forecast.load, ist], hidden, target);
+    const showIstPvLine = istPv.present && !hidden.has(MEASURED_PV_LABEL);
+    const axisMax = powerAxisMax(
+      kwMax, [forecast.pv, forecast.load, ist, istPv], hidden, target);
 
     // The plan's DATE belongs on the axis (audit F2): a plan from yesterday
     // rendered a pure 10:15 … 23:45 time axis and read as today. The first
@@ -234,7 +242,8 @@ export function ScheduleChart({
               } else if (
                 p.seriesName === PV_FORECAST_LABEL ||
                 p.seriesName === LOAD_FORECAST_LABEL ||
-                p.seriesName === MEASURED_LOAD_LABEL
+                p.seriesName === MEASURED_LOAD_LABEL ||
+                p.seriesName === MEASURED_PV_LABEL
               ) {
                 lines.push(
                   `${p.marker} ${p.seriesName}: ${v.toLocaleString('de-DE', {
@@ -402,6 +411,29 @@ export function ScheduleChart({
                 },
               ]
             : []),
+          // The MEASURED PV - same colour as its forecast (same quantity) but
+          // SOLID, so the pair reads as "geplant vs. wirklich". Drawn UNDER the
+          // measured consumption (lower z) but over the bars, so a charge bar
+          // exceeding the measured PV stays visible - that is the
+          // Solarladen-Regel made checkable.
+          ...(showIstPvLine
+            ? [
+                {
+                  name: MEASURED_PV_LABEL,
+                  type: 'line',
+                  yAxisIndex: 0,
+                  data: istPv.values,
+                  smooth: false,
+                  symbol: 'circle',
+                  symbolSize: 5,
+                  showSymbol: needsPointMarkers(istPv),
+                  connectNulls: false,
+                  z: 5,
+                  lineStyle: { color: t.pv, width: 2 },
+                  itemStyle: { color: t.pv },
+                },
+              ]
+            : []),
           // P3: the MEASURED consumption - same colour as its forecast (same
           // quantity) but SOLID and a touch thicker, so the pair reads as
           // "geplant vs. wirklich" and the gap between them is the message.
@@ -474,18 +506,23 @@ export function ScheduleChart({
     ...(forecast.pv.present
       ? [{ color: t.pv, label: PV_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: true } as LegendItem]
       : []),
+    // ...each directly followed by its measured twin, so the pairing
+    // (gepunktet = Prognose, durchgezogen = gemessen) is obvious in the legend.
+    ...(istPv.present
+      ? [{ color: t.pv, label: MEASURED_PV_LABEL, unit: 'kW', shape: 'line', toggleable: true } as LegendItem]
+      : []),
     ...(forecast.load.present
       ? [{ color: t.load, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: true } as LegendItem]
       : []),
-    // P3: the measured twin - a solid row right under the dotted forecast, so
-    // the pairing is obvious. Absent when nothing was measured yet.
     ...(ist.present
       ? [{ color: t.load, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: true } as LegendItem]
       : []),
   ];
-  // ...and when it is absent although the plan already has past slots, say WHY
-  // instead of leaving a silent gap (never a 0-line).
-  const istNote = measuredLoadNote(plan.slots, new Date(), plan.slotMinutes || 15);
+  // ...and when a measured twin is absent although the plan already has past
+  // slots AND draws that forecast, say WHY instead of leaving a silent gap
+  // (never a 0-line, and never a claim about a channel the plan has no
+  // forecast for).
+  const istNote = measuredNote(plan.slots, new Date(), plan.slotMinutes || 15);
 
   return (
     <div>

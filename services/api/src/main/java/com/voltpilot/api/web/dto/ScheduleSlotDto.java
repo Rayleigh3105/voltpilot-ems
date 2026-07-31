@@ -72,6 +72,19 @@ import java.util.List;
  * night - becomes visible. Null for future slots, for slots without telemetry
  * and on sites that report no load channel: the line is then simply absent,
  * never a fabricated 0.
+ *
+ * <p><b>Ist-PV</b> (the mirror of the Ist-Last line, captain 2026-07-31):
+ * {@code measuredPvKw} is the MEASURED PV production of this slot - the
+ * quarter-hour MEAN of {@code telemetry.pv_power_kw}, aggregated in the same
+ * pass and with the same window as the measured load. It makes two things
+ * checkable that were previously only computable: the PV FORECAST ERROR
+ * ({@code pvKw} planned vs. measured), and the EEG solar-charging rule
+ * ("charge &lt;= gemessene PV", the on-device twin of the solver's
+ * {@code charge &lt;= pv - curtail} constraint) - with the measured PV drawn
+ * over the battery bars, an over-shooting charge is visible in the chart.
+ * Null wherever it is honestly unknown, exactly like the measured load: future
+ * slots, slots without telemetry, and sites whose device reports no PV channel
+ * (a battery-only or generation-less installation).
  */
 public record ScheduleSlotDto(
         Instant start,
@@ -92,7 +105,8 @@ public record ScheduleSlotDto(
         BigDecimal importPriceCtKwh,
         BigDecimal exportValueCtKwh,
         String importPriceSource,
-        BigDecimal measuredLoadKw) {
+        BigDecimal measuredLoadKw,
+        BigDecimal measuredPvKw) {
 
     /** The same slot with its decision prices filled in (P0 Textwahrheit). */
     public ScheduleSlotDto withPrices(
@@ -100,14 +114,20 @@ public record ScheduleSlotDto(
         return new ScheduleSlotDto(start, batteryKw, gridKw, socPct, priceEurMwh, costEur,
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
-                importPriceCtKwh, exportValueCtKwh, importPriceSource, measuredLoadKw);
+                importPriceCtKwh, exportValueCtKwh, importPriceSource,
+                measuredLoadKw, measuredPvKw);
     }
 
-    /** The same slot with its MEASURED load filled in (P3 Ist-Last). */
-    public ScheduleSlotDto withMeasuredLoadKw(BigDecimal measuredLoadKw) {
+    /**
+     * The same slot with its MEASURED channels filled in (P3 Ist-Last plus its
+     * Ist-PV mirror). Either argument may be {@code null} - a bucket that only
+     * measured one of the two fills only that one, never a fabricated 0.
+     */
+    public ScheduleSlotDto withMeasured(BigDecimal measuredLoadKw, BigDecimal measuredPvKw) {
         return new ScheduleSlotDto(start, batteryKw, gridKw, socPct, priceEurMwh, costEur,
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
-                importPriceCtKwh, exportValueCtKwh, importPriceSource, measuredLoadKw);
+                importPriceCtKwh, exportValueCtKwh, importPriceSource,
+                measuredLoadKw, measuredPvKw);
     }
 }
