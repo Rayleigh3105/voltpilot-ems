@@ -117,3 +117,105 @@
   padding-top: var(--vp-space-3, 12px);
   border-top: 1px solid var(--vp-border, #e2e8f0);
 }
+
+/* --- E4 · das Abzeichen der Autoritäts-Stufe ------------------------------
+ * ① Sie stellen ein · ② Von VoltPilot eingerichtet. Bewusst klein und ruhig:
+ * es ordnet die Zeile ein, es konkurriert nicht mit ihrem Wert. Stufe ③ ist
+ * keine Zeile, sondern der Schutz-Streifen am Seitenfuß (Einstellungen.css). */
+.vp-authority {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.vp-authority-1 {
+  background: #eef4ff;
+  color: #2c5282;
+}
+
+.vp-authority-2 {
+  background: #f1f3f5;
+  color: #4b5563;
+}
+
+/* Das Wort bleibt AUCH am Telefon stehen: die Zeichen ①/② unterscheiden sich
+ * bei 0,7 rem kaum, und eine Unterscheidung allein über die Farbe wäre für
+ * jemanden mit Farbsehschwäche gar keine. Die Zeile bricht stattdessen um. */
+.vp-authority-lbl {
+  min-width: 0;
+}
+
+/* --- E5 · Wirkungs- und Ehrlichkeits-Chips -------------------------------- */
+.vp-setting-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-setting-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f6f8fb);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  font-size: 0.72rem;
+  color: var(--vp-text-muted, #667);
+  white-space: nowrap;
+}
+
+/* Die Ehrlichkeits-Töne sind die der Historie (dieselbe Disziplin, dieselbe
+ * Farbe) — eigene Klassennamen, weil `Historie.css` komponenten-lokal ist und
+ * auf dieser Seite gar nicht geladen wird. */
+.vp-setting-prov {
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.vp-setting-prov-gemessen {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.vp-setting-prov-bewertet {
+  background: #edf2fa;
+  color: #1e3a5f;
+}
+
+.vp-setting-prov-geplant {
+  background: #eef1f5;
+  color: #4b5563;
+}
+
+/* --- E5 · die lebende Bezugspreis-Vorschau -------------------------------- */
+.vp-setting-preview {
+  display: block;
+  padding: 8px 10px;
+  border-left: 3px solid var(--vp-action, #2c5282);
+  border-radius: 0 var(--vp-radius-md, 10px) var(--vp-radius-md, 10px) 0;
+  background: #fbfdff;
+  font-size: 0.82rem;
+  color: var(--vp-text, #223);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-setting-preview.muted {
+  border-left-color: var(--vp-border, #e2e8f0);
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-setting-preview b {
+  color: var(--vp-navy, #1a365d);
+}

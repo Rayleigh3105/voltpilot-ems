@@ -5,6 +5,7 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { ApiError, type CreateSiteInput, type PlantKind, type Site, type TarifArt } from '../api';
+import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
 import { parsePremiumInput } from '../fleet';
 import { LocationMap } from './LocationMap';
 import { TariffFields } from './TariffFields';
@@ -67,7 +68,7 @@ export function CreateSiteDrawer({
       setError(
         tarifArt === 'dynamisch'
           ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
-          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
+          : 'Bitte geben Sie Ihren Arbeitspreis als Zahl in ct/kWh an, z. B. 32,5.',
       );
       return;
     }
@@ -145,7 +146,7 @@ export function CreateSiteDrawer({
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="site-plant-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Anlagentyp
+            {VERAEUSSERUNGSFORM_LABEL}
           </label>
           <select
             id="site-plant-kind"
@@ -157,8 +158,8 @@ export function CreateSiteDrawer({
             <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
           </select>
           <p className="vp-note" style={{ margin: 0 }}>
-            Bestimmt, wie Ihr Vorteil erzählt wird: „gespart" beim Eigenverbrauch,
-            „mehr verdient" bei der Direktvermarktung.
+            {VERAEUSSERUNGSFORM_FRAGE} Sie bestimmt auch, wie Ihr Vorteil erzählt wird:
+            „gespart" beim Eigenverbrauch, „mehr verdient" bei der Direktvermarktung.
           </p>
         </div>
         {plantKind === 'direktvermarktung' && (

@@ -225,11 +225,50 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
 // auf JEDER Anlage erreichbar, unabhängig von Anlagentyp und aktivem Modus.
 // ---------------------------------------------------------------------------
 
+/**
+ * Ein Fahrplan-Lauf, der die laufende Viertelstunde abdeckt — die Quelle der
+ * E5-Bezugspreis-Vorschau. `null` = die Anlage hat (noch) keinen Plan.
+ */
+function planWithPrice(over: Partial<Record<string, unknown>> = {}) {
+  const start = new Date(Math.floor(Date.now() / 900_000) * 900_000).toISOString();
+  return {
+    planId: 'p-1',
+    deviceId: 'd-1',
+    generatedAt: start,
+    slotMinutes: 15,
+    savingsEur: null,
+    bankedValueEur: null,
+    socStartPct: null,
+    socEndPct: null,
+    peakTargetKw: null,
+    slots: [
+      {
+        start,
+        batteryKw: null,
+        gridKw: null,
+        socPct: null,
+        priceEurMwh: 124,
+        costEur: null,
+        baselineCostEur: null,
+        curtailKw: null,
+        pvKw: null,
+        loadKw: null,
+        slotRole: null,
+        slotFlags: null,
+        importPriceCtKwh: 32.5,
+        importPriceSource: 'preisblatt',
+        ...over,
+      },
+    ],
+  } as never;
+}
+
 /** Rendert die ganze Einstellungs-Seite einer gewöhnlichen PV+Speicher-Anlage. */
 async function renderEinstellungen(
   over: Partial<Site> = {},
   batteryOver: Partial<SiteAsset> = {},
   supplySheet: SupplyPrice | null = null,
+  plan: unknown = null,
 ) {
   const s: Site = { ...eegSite, ...over };
   const assets = vi
@@ -237,6 +276,11 @@ async function renderEinstellungen(
     .mockResolvedValue([battery({ deviceId: 'd-1', ...batteryOver })]);
   const preview = vi.spyOn(api, 'siteDeletionPreview').mockRejectedValue(new Error('n/a'));
   const supply = vi.spyOn(api, 'supplyPrice').mockResolvedValue(supplySheet as never);
+  // Die E5-Vorschau liest den Fahrplan; ohne Lauf sagt sie das ehrlich.
+  const schedule =
+    plan == null
+      ? vi.spyOn(api, 'schedule').mockRejectedValue(new Error('kein Plan'))
+      : vi.spyOn(api, 'schedule').mockResolvedValue(plan as never);
   const onSiteSaved = vi.fn();
   render(
     <TechnikSection
@@ -250,7 +294,10 @@ async function renderEinstellungen(
   );
   // Auf den Asset-Abruf warten, sonst steht die Speicher-Karte noch im Skeleton.
   await screen.findByText('Kapazität');
-  return { onSiteSaved, restore: () => [assets, preview, supply].forEach((m) => m.mockRestore()) };
+  return {
+    onSiteSaved,
+    restore: () => [assets, preview, supply, schedule].forEach((m) => m.mockRestore()),
+  };
 }
 
 describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
@@ -291,7 +338,7 @@ describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
     const row = screen.getByText('Stromtarif').closest('li') as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
     fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
-    fireEvent.change(screen.getByLabelText('Ihr Strompreis (ct/kWh)'), { target: { value: '32,5' } });
+    fireEvent.change(screen.getByLabelText('Arbeitspreis (all-in, brutto) (ct/kWh)'), { target: { value: '32,5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
 
     await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
@@ -351,15 +398,15 @@ describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
 
     const row = screen.getByText('Stromtarif').closest('li') as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
-    expect(screen.getByLabelText('Aufschlag auf den Börsenpreis (ct/kWh)')).toHaveValue('18');
+    expect(screen.getByLabelText('Aufschlag auf den Börsenpreis (gesamt, ct/kWh)')).toHaveValue('18');
 
     fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
-    // Vor E2 stand hier „18" unter dem Namen „Ihr Strompreis" - der Bezugspreis,
+    // Vor E2 stand hier „18" unter dem Namen des Arbeitspreises - der Bezugspreis,
     // mit dem der Optimierer PLANT, wäre damit still verstellt worden.
-    expect(screen.getByLabelText('Ihr Strompreis (ct/kWh)')).toHaveValue('');
+    expect(screen.getByLabelText('Arbeitspreis (all-in, brutto) (ct/kWh)')).toHaveValue('');
     expect(screen.getByRole('status').textContent).toContain('Andere Bedeutung');
 
-    fireEvent.change(screen.getByLabelText('Ihr Strompreis (ct/kWh)'), {
+    fireEvent.change(screen.getByLabelText('Arbeitspreis (all-in, brutto) (ct/kWh)'), {
       target: { value: '32,5' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
@@ -404,7 +451,7 @@ describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
     fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
     // Gespeichert ist „Genau": das Preisblatt steht offen, die Schnell-Zahl nicht.
     await screen.findByText('Bezugspreis-Komponenten');
-    expect(screen.queryByLabelText('Aufschlag auf den Börsenpreis (ct/kWh)')).toBeNull();
+    expect(screen.queryByLabelText('Aufschlag auf den Börsenpreis (gesamt, ct/kWh)')).toBeNull();
 
     fireEvent.click(screen.getByRole('radio', { name: /Schnell/ }));
     // Erst die Ansage …
@@ -480,6 +527,211 @@ describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
     // Die angesprungene Gruppe existiert wirklich unter dieser Adresse.
     expect(document.getElementById('technik-geld')).not.toBeNull();
     window.location.hash = '';
+    restore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E4-E7 · Autoritäts-Stufen · Wirkung & Vorschau · Suche & Wording · Box
+// ---------------------------------------------------------------------------
+
+/** Eine Anlage MIT eingerichteter Lastspitzenkappung (die Stufe-②-Werte). */
+const peakSite: Partial<Site> = {
+  leistungspreisEurKw: 128.5,
+  abrechnungLeistung: 'jahr',
+  peakReserveSocPct: 25,
+};
+
+describe('Einstellungen · E4 · die drei Autoritäts-Stufen sind sichtbar', () => {
+  it('jede Kunden-Zeile trägt das Abzeichen ① und ihren Bearbeiten-Knopf', async () => {
+    const { restore } = await renderEinstellungen();
+    for (const label of ['Stromtarif', 'Netzladen des Speichers', 'Umgang mit dem Speicher']) {
+      const row = screen.getByText(label).closest('li') as HTMLElement;
+      expect(row.querySelector('.vp-authority-1')).not.toBeNull();
+      expect(within(row).getByRole('button', { name: /Bearbeiten/ })).toBeInTheDocument();
+    }
+    restore();
+  });
+
+  it('D4: die Vertragswerte der Lastspitzenkappung sind für den KUNDEN sichtbar - read-only', async () => {
+    // Befund B4: bis E4 existierten diese Werte im Kunden-UI gar nicht. Jetzt
+    // stehen sie mit Abzeichen ② da - mit ihrem Wert, ohne Aktionsknopf.
+    const { restore } = await renderEinstellungen(peakSite);
+
+    const lp = screen.getByText('Leistungspreis').closest('li') as HTMLElement;
+    expect(within(lp).getByText(/128,50/)).toBeInTheDocument();
+    expect(lp.querySelector('.vp-authority-2')).not.toBeNull();
+    expect(within(lp).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+    expect(within(lp).getByText(/Sprechen Sie uns an/)).toBeInTheDocument();
+
+    // Die Abrechnungsperiode steht daneben, die Reserve beim Speicher.
+    expect(screen.getByText('Abrechnungsperiode')).toBeInTheDocument();
+    const reserve = screen.getByText('Lastspitzen-Reserve').closest('li') as HTMLElement;
+    expect(document.getElementById('technik-speicher')?.contains(reserve)).toBe(true);
+    expect(within(reserve).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+
+    // Editierbar bleiben sie ausschließlich auf der Plattform-Seite „Optimizer"
+    // (Admin) - diese Fläche bietet dafür nirgends ein Formular an.
+    restore();
+  });
+
+  it('erfindet auf einer Hausanlage ohne Lastspitzenkappung keine ②-Zeile', async () => {
+    const { restore } = await renderEinstellungen();
+    expect(screen.queryByText('Leistungspreis')).toBeNull();
+    expect(screen.queryByText('Lastspitzen-Reserve')).toBeNull();
+    expect(document.querySelector('.vp-authority-2')).toBeNull();
+    restore();
+  });
+
+  it('③ zieht als Schutz-Streifen mit um - und behauptet „nur Solarladen" nur, wenn es gilt', async () => {
+    const { restore } = await renderEinstellungen();
+    const streifen = document.querySelector('.vp-set-schutz') as HTMLElement;
+    expect(streifen).not.toBeNull();
+    expect(within(streifen).getByText('§ 14a-Schutz')).toBeInTheDocument();
+    expect(within(streifen).getByText('Negativpreis-Abregelung')).toBeInTheDocument();
+    // netzladenErlaubt === false auf der Fixture-Anlage -> die Zeile gilt.
+    expect(within(streifen).getByText('EEG: nur Solarladen')).toBeInTheDocument();
+    restore();
+  });
+
+  it('… und lässt „nur Solarladen" weg, sobald das Netzladen erlaubt ist', async () => {
+    const { restore } = await renderEinstellungen({ netzladenErlaubt: true });
+    const streifen = document.querySelector('.vp-set-schutz') as HTMLElement;
+    expect(within(streifen).getByText('§ 14a-Schutz')).toBeInTheDocument();
+    expect(within(streifen).queryByText('EEG: nur Solarladen')).toBeNull();
+    restore();
+  });
+
+  it('die Legende erklärt alle drei Stufen', async () => {
+    const { restore } = await renderEinstellungen();
+    const legende = document.querySelector('.vp-set-legend') as HTMLElement;
+    expect(within(legende).getByText('Sie stellen ein')).toBeInTheDocument();
+    expect(within(legende).getByText('Von VoltPilot eingerichtet')).toBeInTheDocument();
+    expect(within(legende).getByText('Läuft automatisch')).toBeInTheDocument();
+    restore();
+  });
+});
+
+describe('Einstellungen · E5 · Wirkung & Vorschau', () => {
+  it('jede Zeile sagt, worauf sie wirkt und welche Art Zahl sie ändert', async () => {
+    const { restore } = await renderEinstellungen();
+    const tarif = screen.getByText('Stromtarif').closest('li') as HTMLElement;
+    expect(within(tarif).getByText('Wirkt auf: Fahrplan')).toBeInTheDocument();
+    expect(within(tarif).getByText('Wirkt auf: Erlöse')).toBeInTheDocument();
+    expect(within(tarif).getByText('Bewertet')).toBeInTheDocument();
+
+    const netzladen = screen.getByText('Netzladen des Speichers').closest('li') as HTMLElement;
+    expect(within(netzladen).getByText('Wirkt auf: Ihr Speicher')).toBeInTheDocument();
+    expect(within(netzladen).getByText('Geplant')).toBeInTheDocument();
+    expect(within(netzladen).queryByText('Wirkt auf: Erlöse')).toBeNull();
+    restore();
+  });
+
+  it('zeigt den LEBENDEN Bezugspreis aus dem Fahrplan - dieselbe eine Preis-Wahrheit', async () => {
+    const { restore } = await renderEinstellungen(
+      { tarifArt: 'dynamisch', tarifParamCtKwh: 18 },
+      {},
+      null,
+      planWithPrice(),
+    );
+    const tarif = screen.getByText('Stromtarif').closest('li') as HTMLElement;
+    const preview = await waitFor(() => {
+      const el = tarif.querySelector('.vp-setting-preview');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(preview.textContent).toContain('Ihr Bezugspreis gerade');
+    expect(preview.textContent).toContain('32,5 ct/kWh');
+    // 124 EUR/MWh = 12,4 ct Börse; der Rest ist die Aufschlüsselung des Servers.
+    expect(preview.textContent).toContain('Börsenpreis 12,4');
+    expect(preview.textContent).toContain('Netzentgelte/Abgaben 20,1');
+    restore();
+  });
+
+  it('ohne Fahrplan wird KEINE Zahl erfunden - die Zeile sagt, was fehlt', async () => {
+    const { restore } = await renderEinstellungen({ tarifArt: 'dynamisch', tarifParamCtKwh: 18 });
+    const tarif = screen.getByText('Stromtarif').closest('li') as HTMLElement;
+    const preview = await waitFor(() => {
+      const el = tarif.querySelector('.vp-setting-preview');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(preview.textContent).toContain('sobald der nächste Fahrplan gerechnet ist');
+    expect(preview.textContent).not.toMatch(/\d,\d ct/);
+    restore();
+  });
+
+  it('ohne Tarifangabe sagt sie, dass gar nicht in Euro gerechnet wird', async () => {
+    const { restore } = await renderEinstellungen({ tarifArt: 'ohne' }, {}, null, planWithPrice());
+    const tarif = screen.getByText('Stromtarif').closest('li') as HTMLElement;
+    // Der Lauf trägt zwar einen Preis, die Anlage aber keinen Tarif: dann darf
+    // die Vorschau ihn nicht als „Ihren" Bezugspreis ausgeben.
+    await waitFor(() => expect(tarif.querySelector('.vp-setting-preview')).not.toBeNull());
+    restore();
+  });
+});
+
+describe('Einstellungen · E6 · Suche & Wording', () => {
+  it('findet den Strompreis und springt in seine Gruppe', async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      value: scrollIntoView,
+      configurable: true,
+      writable: true,
+    });
+    const { restore } = await renderEinstellungen();
+    const feld = screen.getByLabelText('Einstellung suchen');
+    fireEvent.change(feld, { target: { value: 'Strompreis' } });
+    const treffer = await screen.findByRole('button', { name: /Stromtarif/ });
+    scrollIntoView.mockClear();
+    fireEvent.click(treffer);
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    // Die Adresse zeigt danach auf die Gruppe (Neuladen landet wieder dort).
+    expect(window.location.hash).toContain('abschnitt=geld');
+    window.location.hash = '';
+    restore();
+  });
+
+  it('findet dieselbe Zeile auch unter einem Synonym und unter dem ALTEN Namen', async () => {
+    const { restore } = await renderEinstellungen();
+    const feld = screen.getByLabelText('Einstellung suchen');
+    fireEvent.change(feld, { target: { value: 'Arbeitspreis' } });
+    expect(await screen.findByRole('button', { name: /Stromtarif/ })).toBeInTheDocument();
+    fireEvent.change(feld, { target: { value: 'Anlagentyp' } });
+    expect(await screen.findByRole('button', { name: /Veräußerungsform/ })).toBeInTheDocument();
+    restore();
+  });
+
+  it('sagt bei keinem Treffer, wo man stattdessen schaut', async () => {
+    const { restore } = await renderEinstellungen();
+    fireEvent.change(screen.getByLabelText('Einstellung suchen'), {
+      target: { value: 'quantencomputer' },
+    });
+    expect(await screen.findByText(/sechs Gruppen/)).toBeInTheDocument();
+    restore();
+  });
+
+  it('D6: das Feld heißt Veräußerungsform, nicht mehr Anlagentyp', async () => {
+    const { restore } = await renderEinstellungen();
+    const anlage = document.getElementById('technik-anlage') as HTMLElement;
+    expect(within(anlage).getByText('Veräußerungsform')).toBeInTheDocument();
+    expect(within(anlage).queryByText('Anlagentyp')).toBeNull();
+    expect(within(anlage).getByText(/Wie wird Ihr Strom vergütet/)).toBeInTheDocument();
+    restore();
+  });
+});
+
+describe('Einstellungen · E7 · die Grenze zur Box (D5)', () => {
+  it('spricht die Zuständigkeit beidseitig aus und nennt den Weg zur Geräteseite', async () => {
+    const { restore } = await renderEinstellungen();
+    const geraet = document.getElementById('technik-geraet') as HTMLElement;
+    const box = geraet.querySelector('.vp-set-box') as HTMLElement;
+    expect(box).not.toBeNull();
+    expect(box.textContent).toContain('WOMIT');
+    expect(box.textContent).toContain('WOFÜR');
+    expect(box.textContent).toContain('8484');
+    // Kein erfundener Link ins Heimnetz des Kunden.
+    expect(box.querySelector('a')).toBeNull();
     restore();
   });
 });

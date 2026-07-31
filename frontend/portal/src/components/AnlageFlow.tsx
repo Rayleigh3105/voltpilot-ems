@@ -16,6 +16,7 @@ import {
   type SupplyPriceUpdate,
   type TarifArt,
 } from '../api';
+import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
 import { isPlatformAdmin } from '../auth';
 import { entitiesApi, type AutoStartOutcome, type EntityTypeDef } from '../entitiesApi';
 import {
@@ -417,7 +418,7 @@ function AnlageStep({
       setErr(
         tarifArt === 'dynamisch'
           ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
-          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
+          : 'Bitte geben Sie Ihren Arbeitspreis als Zahl in ct/kWh an, z. B. 32,5.',
       );
       return;
     }
@@ -523,7 +524,7 @@ function AnlageStep({
         />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="flow-plant-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Anlagentyp
+            {VERAEUSSERUNGSFORM_LABEL}
           </label>
           <select
             id="flow-plant-kind"
@@ -535,8 +536,8 @@ function AnlageStep({
             <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
           </select>
           <p className="vp-note" style={{ margin: 0 }}>
-            Bestimmt, wie Ihr Vorteil erzählt wird: „gespart" beim Eigenverbrauch,
-            „mehr verdient" bei der Direktvermarktung.
+            {VERAEUSSERUNGSFORM_FRAGE} Sie bestimmt auch, wie Ihr Vorteil erzählt wird:
+            „gespart" beim Eigenverbrauch, „mehr verdient" bei der Direktvermarktung.
           </p>
         </div>
         <div>

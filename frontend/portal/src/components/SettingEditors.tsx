@@ -51,6 +51,16 @@ import {
   initialPriceMode,
   type PriceMode,
 } from '../tariffInput';
+import { PROVENIENZ } from '../historieWelten';
+import {
+  AUTHORITY,
+  authorityOf,
+  effectChips,
+  honestyNote,
+  honestyOf,
+  VOLTPILOT_ROW_NOTE,
+  type RowAuthority,
+} from '../settingsSurface';
 import { AnzulegenderWertField } from './AnzulegenderWertField';
 import { NetzladenBadge } from './NetzladenBadge';
 import { NetzladenField } from './NetzladenField';
@@ -136,9 +146,32 @@ export type SettingRowAction =
   | { kind: 'link'; href: string; label: string };
 
 /**
+ * Das Abzeichen der Autoritäts-Stufe (E4) — ① Sie · ② VoltPilot. Stufe ③ ist
+ * keine Einstellung, sondern der Schutz-Streifen am Seitenfuß.
+ */
+export function AuthorityBadge({ level }: { level: RowAuthority }) {
+  const info = AUTHORITY[level];
+  return (
+    <span className={`vp-authority vp-authority-${level}`} title={info.note}>
+      <span aria-hidden="true">{info.mark}</span>
+      <span className="vp-authority-lbl">{info.badge}</span>
+      <span className="vp-visually-hidden">
+        {' '}
+        (Stufe {level}: {info.label})
+      </span>
+    </span>
+  );
+}
+
+/**
  * Eine Einstellungs-Zeile: Label + Lese-Wert + Aktion; das Formular klappt
  * inline auf (das AnlageTechnik-Muster). Von-VoltPilot-Einstellungen
  * (`editability: 'voltpilot'`) bleiben read-only mit ihrer Notiz.
+ *
+ * Mit `enriched` (nur die Einstellungs-Seite setzt es) trägt die Zeile
+ * zusätzlich die E4/E5-Schicht: das Abzeichen der Autoritäts-Stufe, die
+ * Wirkungs-Chips („Wirkt auf: Fahrplan") und das Ehrlichkeits-Abzeichen. Der
+ * Modus-Spiegel bleibt bewusst ohne — dort erklärt der Modus den Zusammenhang.
  */
 export function SettingRow({
   setting,
@@ -146,6 +179,8 @@ export function SettingRow({
   battery,
   action,
   hint,
+  enriched = false,
+  preview,
   onSiteSaved,
   onBatterySaved,
 }: {
@@ -155,6 +190,10 @@ export function SettingRow({
   action: SettingRowAction;
   /** Eine ruhige Erklärzeile unter Label · Wert (die Einstellungs-Seite nutzt sie). */
   hint?: ReactNode;
+  /** E4/E5: Autoritäts-Abzeichen + Wirkungs-/Ehrlichkeits-Chips zeigen. */
+  enriched?: boolean;
+  /** E5: die lebende Vorschau unter der Zeile (heute nur der Stromtarif). */
+  preview?: ReactNode;
   onSiteSaved: (updated: Site) => void;
   onBatterySaved: (assets: SiteAsset[]) => void;
 }) {
@@ -164,11 +203,15 @@ export function SettingRow({
   // Eine von-VoltPilot-eingerichtete Einstellung zeigt ihren WERT (read-only,
   // fail-soft „—") plus die Notiz — der Kunde SIEHT sie, bearbeitet sie nicht.
   const readonlyByVoltpilot = setting.editability === 'voltpilot';
+  const level = authorityOf(setting);
+  const chips = enriched ? effectChips(setting.id) : [];
+  const honesty = enriched ? honestyOf(setting.id) : null;
 
   return (
     <li className={`vp-setting${editing ? ' editing' : ''}`}>
       <div className="vp-setting-top">
         <span className="vp-setting-label">{setting.label}</span>
+        {enriched ? <AuthorityBadge level={level} /> : null}
         {editing ? null : (
           <span className="vp-setting-val">{settingReadValue(setting.id, site, battery)}</span>
         )}
@@ -187,8 +230,29 @@ export function SettingRow({
       </div>
       {hint && !editing ? <span className="vp-setting-hint">{hint}</span> : null}
       {readonlyByVoltpilot && !editing ? (
-        <span className="vp-setting-hint">Von VoltPilot eingerichtet</span>
+        <span className="vp-setting-hint">
+          {enriched ? VOLTPILOT_ROW_NOTE : 'Von VoltPilot eingerichtet'}
+        </span>
       ) : null}
+      {/* E5: worauf die Einstellung wirkt + welche Art Zahl sie verändert. */}
+      {!editing && (chips.length > 0 || honesty) ? (
+        <ul className="vp-setting-chips">
+          {chips.map((c) => (
+            <li key={c} className="vp-setting-chip">
+              {c}
+            </li>
+          ))}
+          {honesty ? (
+            <li
+              className={`vp-setting-chip vp-setting-prov vp-setting-prov-${honesty}`}
+              title={honestyNote(honesty)}
+            >
+              {PROVENIENZ[honesty].label}
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+      {!editing && preview ? preview : null}
       {editing ? (
         <SettingEditForm
           setting={setting}
@@ -466,7 +530,7 @@ function StromtarifEditor({
       setError(
         tarifArt === 'dynamisch'
           ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
-          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
+          : 'Bitte geben Sie Ihren Arbeitspreis als Zahl in ct/kWh an, z. B. 32,5.',
       );
       return;
     }

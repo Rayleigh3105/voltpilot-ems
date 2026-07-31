@@ -47,8 +47,8 @@ function Host({
   );
 }
 
-const AUFSCHLAG = 'Aufschlag auf den Börsenpreis (ct/kWh)';
-const FESTPREIS = 'Ihr Strompreis (ct/kWh)';
+const AUFSCHLAG = 'Aufschlag auf den Börsenpreis (gesamt, ct/kWh)';
+const FESTPREIS = 'Arbeitspreis (all-in, brutto) (ct/kWh)';
 
 describe('TariffFields · ein Wert je Tarifart (E2, Wunde 1)', () => {
   it('DIE Falle ist zu: der Aufschlag 18 steht nach dem Wechsel NICHT als Strompreis da', () => {
