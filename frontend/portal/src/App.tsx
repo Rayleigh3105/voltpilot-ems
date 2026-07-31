@@ -26,12 +26,14 @@ import {
   anlageRoute,
   canonicalAnlageHash,
   hashForRoute,
+  isPortfolioPage,
   pageRoute,
   PLATFORM_PAGES,
   routeFromHash,
   type PageId,
   type Route,
 } from './nav';
+import { hatGeldWelt } from './portfolioHistorie';
 import { showAddAnlageButton } from './addAnlage';
 import { activeAreaKey, activeKeyForPage, anlageSidebar, resolveAnlage } from './anlageNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
@@ -42,6 +44,8 @@ import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
 import { OnboardingWizard } from './Onboarding';
 import { UebersichtPage } from './pages/UebersichtPage';
 import { PortfolioPage } from './pages/PortfolioPage';
+import { PortfolioMesswerte } from './pages/PortfolioMesswerte';
+import { PortfolioErloese } from './pages/PortfolioErloese';
 import { AnlagenPage } from './pages/AnlagenPage';
 import { MarktpreisePage } from './pages/DataPages';
 import { PrognosePage } from './pages/PrognosePage';
@@ -566,7 +570,9 @@ function UnifiedPortal() {
       }
       return;
     }
-    if (route.page === 'portfolio' && loaded && tenantReady) {
+    // Das gilt für die ganze Portfolio-EBENE - auch für ihre zwei Welten
+    // (PR G): wer keinen Betreiber-Rahmen hat, landet dort nie.
+    if (isPortfolioPage(route.page) && loaded && tenantReady) {
       window.location.replace(hashForRoute(pageRoute('uebersicht')));
       setRoute(pageRoute('uebersicht'));
       return;
@@ -756,6 +762,9 @@ function UnifiedPortal() {
         betriebsart,
         siteCount: sites.length,
       })}
+      // PR G: die Erlöse-Welt des Portfolios gibt es nur, wenn mindestens eine
+      // Anlage einen Geld-Modus hat (dieselbe Regel wie auf der Anlage).
+      showPortfolioErloese={hatGeldWelt(sites)}
       showAddAnlage={showAddAnlage}
       onAddAnlage={() => setAddAnlageOpen(true)}
       counts={{
@@ -815,6 +824,10 @@ function UnifiedPortal() {
               isAdmin={isAdmin}
             />
           )}
+          {/* PR G: die zwei Historie-Welten des Portfolios. Sie leben auf der
+              Portfolio-EBENE, tragen also dieselben Anlagen wie die Landung. */}
+          {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}
+          {page === 'portfolio-erloese' && <PortfolioErloese sites={sites} />}
           {page === 'uebersicht' && (
             <UebersichtPage
               {...customerProps}

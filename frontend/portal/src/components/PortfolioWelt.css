@@ -1,0 +1,156 @@
+/* ==========================================================================
+ * Die zwei Welten EINE EBENE HÖHER — Portfolio-Messwerte / Portfolio-Erlöse
+ * (PR G, Konzept `data/vp-historie-konzept-t4` §4.3).
+ *
+ * Komponenten-lokal (das `Erloese.css`/`Steuerung.css`-Muster): `index.css`
+ * bleibt unangetastet. Alles, was schon existiert — Welt-Kopf, Zeit-Leiste,
+ * Kartenpaar, Fußkarte, `.vp-table.responsive` — kommt aus `Historie.css` bzw.
+ * `index.css`; hier steht NUR, was die Portfolio-Ebene zusätzlich braucht.
+ * ========================================================================== */
+
+/* Das Ebenen-Etikett neben dem Welt-Namen: „Messwerte · Portfolio". */
+.vp-pf-ebene {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-welt-soft, #eef2f7);
+  color: var(--vp-welt-ink, #1e3a5f);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vp-pf-kontext {
+  display: inline-block;
+  color: var(--vp-welt-ink, #1e3a5f);
+  font-weight: 600;
+}
+
+/* --- Die Portfolio-Summe -------------------------------------------------- */
+
+.vp-pf-summe {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--vp-welt-ink, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
+.vp-pf-summe-l {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* Die Zurechnung UNTER der Zahl — nie ein weiterer Summand. */
+.vp-pf-zurechnung {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  color: var(--vp-flow-batt-ink, #166534);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Die zwei Teile, aus denen die große Zahl besteht. */
+.vp-pf-teile {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: var(--vp-space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-pf-teile li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vp-pf-teil-l {
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.85rem;
+}
+
+.vp-pf-teil-v {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Abdeckung („3 von 4 Anlagen mit Daten") ------------------------------ */
+
+.vp-pf-abdeckung {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin: var(--vp-space-3) 0 0;
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.8rem;
+}
+
+/* --- Die Anlagen-Tabelle -------------------------------------------------- */
+
+.vp-pf-table td,
+.vp-pf-table th {
+  min-width: 0;
+}
+
+.vp-pf-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Der WERT bricht nie um; das Etikett schon. */
+.vp-pf-v {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* LOAD-BEARING (bei 375 px im echten Browser gemessen): unter 720 px klappt
+   `.vp-table.responsive` die Zelle zu einer Flex-Zeile aus `::before`-Etikett
+   und Wert. Bleibt dort `white-space: nowrap` auf der ZELLE stehen, kann das
+   Etikett nicht umbrechen - eine lange Spaltenüberschrift („Durch Steuerung")
+   schob die Zeile dann 26 px über den Bildschirmrand. Der Wert behält seine
+   eigene nowrap-Regel, bricht also trotzdem nie mitten im Betrag. */
+@media (max-width: 720px) {
+  .vp-pf-table td.num {
+    white-space: normal;
+  }
+}
+
+.vp-pf-row-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.78rem;
+}
+
+.vp-pf-spark {
+  display: block;
+  overflow: visible;
+}
+
+/* --- Die Fußkarte trägt ihr Abzeichen noch einmal ------------------------- */
+
+.vp-pf-fuss-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-top: var(--vp-space-3) !important;
+}

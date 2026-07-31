@@ -11,6 +11,7 @@ import {
   MAIN_PAGES,
   PLATFORM_PAGES,
   PORTFOLIO_PAGE,
+  PORTFOLIO_WELT_PAGES,
   pageLabel,
   type PageId,
 } from '../nav';
@@ -73,6 +74,7 @@ export function AppShell({
   isAdmin,
   showOverview,
   showPortfolio,
+  showPortfolioErloese = false,
   showAddAnlage,
   onAddAnlage,
   counts,
@@ -92,6 +94,13 @@ export function AppShell({
    * "Übersicht" for a betreiber frame (showOverview is then false).
    */
   showPortfolio: boolean;
+  /**
+   * Show the "Erlöse" entry of the Portfolio-Historie group (PR G): only when
+   * at least one Anlage has a money mode - a purely private fleet gets no
+   * Erlöse page instead of one that explains nothing. Ignored while
+   * `showPortfolio` is false.
+   */
+  showPortfolioErloese?: boolean;
   /**
    * Show the always-visible "＋ Anlage hinzufügen" header action. Scoped to a
    * single-Anlage customer (see `showAddAnlageButton`) - their only obvious way
@@ -292,6 +301,29 @@ export function AppShell({
             active={page === PORTFOLIO_PAGE.id}
             onClick={() => navigate(PORTFOLIO_PAGE.id)}
           />
+        )}
+        {showPortfolio && (
+          // PR G: die zwei Historie-Welten EINE EBENE HÖHER. Sie stehen als
+          // eigene Gruppe unter der Portfolio-Landung, damit „Messwerte" hier
+          // nie mit der gleichnamigen Ansicht EINER Anlage verwechselt wird -
+          // die Gruppenüberschrift sagt, worüber sie sprechen.
+          <div className="vp-navgroup">
+            <div className="vp-nav-group-label">
+              <span className="vp-nav-lbl">Alle Anlagen</span>
+            </div>
+            {PORTFOLIO_WELT_PAGES.filter(
+              (p) => p.id !== 'portfolio-erloese' || showPortfolioErloese,
+            ).map((p) => (
+              <NavItem
+                key={p.id}
+                icon={<Icon name={p.icon} size={18} />}
+                label={<span className="vp-nav-lbl">{p.label}</span>}
+                title={p.label}
+                active={page === p.id}
+                onClick={() => navigate(p.id)}
+              />
+            ))}
+          </div>
         )}
         {MAIN_PAGES.filter((p) => p.id !== 'uebersicht' || showOverview).map((p) => (
           <NavItem

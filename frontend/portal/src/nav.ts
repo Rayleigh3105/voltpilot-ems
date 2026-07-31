@@ -19,6 +19,8 @@ import type { IconName } from '../designsystem/components/core/Icon';
 
 export type PageId =
   | 'portfolio'
+  | 'portfolio-messwerte'
+  | 'portfolio-erloese'
   | 'uebersicht'
   | 'anlagen'
   | 'marktpreise'
@@ -121,6 +123,28 @@ export const MODE_PAGES: PageDef[] = [
  */
 export const PORTFOLIO_PAGE: PageDef = { id: 'portfolio', label: 'Portfolio', icon: 'building' };
 
+/**
+ * Die zwei Welten der Historie EINE EBENE HÖHER (PR G des Historie-Konzepts,
+ * §4.3 Betreiber-Schale): `#/portfolio/messwerte` · `#/portfolio/erloese`.
+ * Sie hängen an derselben Bedingung wie die Portfolio-Landung (Betreiber-Rahmen)
+ * und stehen in der Schale als eigene Gruppe unter „Portfolio"; die Erlöse-Welt
+ * erscheint nur, wenn mindestens eine Anlage einen Geld-Modus hat
+ * (`portfolioHistorie.hatGeldWelt`) — sonst gibt es dort nichts zu erzählen.
+ *
+ * Die Adresse ist bewusst ZWEISTUFIG (`portfolio/…`), damit sie sagt, auf
+ * welcher Ebene man steht; die `PageId` bleibt flach, damit der Router
+ * unverändert eine Seite je Id kennt.
+ */
+export const PORTFOLIO_WELT_PAGES: PageDef[] = [
+  { id: 'portfolio-messwerte', label: 'Messwerte', icon: 'activity' },
+  { id: 'portfolio-erloese', label: 'Erlöse', icon: 'euro' },
+];
+
+/** Ist das eine Seite der Portfolio-Ebene (Landung oder eine ihrer Welten)? */
+export function isPortfolioPage(page: PageId): boolean {
+  return page === 'portfolio' || PORTFOLIO_WELT_PAGES.some((p) => p.id === page);
+}
+
 export const PLATFORM_PAGES: PageDef[] = [
   { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
@@ -137,6 +161,7 @@ export function anlagenLabel(siteCount: number | null): string {
 /** Every page def, wherever it is rendered (main nav, mode group, Plattform). */
 export const ALL_PAGES: PageDef[] = [
   PORTFOLIO_PAGE,
+  ...PORTFOLIO_WELT_PAGES,
   ...MAIN_PAGES,
   ...MODE_PAGES,
   ...PLATFORM_PAGES,
@@ -197,6 +222,13 @@ export function parseRoute(hash: string): Route {
       : null;
     return { page: 'anlagen', siteId: segments[1], sub };
   }
+  // Die Portfolio-Ebene ist zweistufig: `#/portfolio` (Landung) und
+  // `#/portfolio/{welt}`. Ein unbekannter zweiter Abschnitt landet auf der
+  // Landung, statt ins Leere zu zeigen.
+  if (head === 'portfolio') {
+    const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
+    return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
+  }
   if (head in LEGACY_ROUTES) {
     return { page: 'anlagen', siteId: null, sub: LEGACY_ROUTES[head] };
   }
@@ -242,6 +274,10 @@ export function hashForRoute(route: Route): string {
       : `#/anlage/${route.siteId}`;
   }
   if (route.page === 'anlagen') return '#/anlagen';
+  // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
+  if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}`;
+  }
   return `#/${route.page}`;
 }
 
