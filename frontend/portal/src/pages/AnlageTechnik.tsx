@@ -24,19 +24,39 @@ import { buildSitePayload } from '../anlage';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { settingsPageSettings } from '../modeSettings';
 import {
+  einstellungenHash,
   geldGroupSummary,
   parseSettingsAnchor,
   SETTING_HINT,
   settingsGroupFor,
   type SettingsGroupId,
 } from '../settingsNav';
+import {
+  AUTHORITY,
+  AUTHORITY_ORDER,
+  BOX_ADDRESS_NOTE,
+  BOX_RULE,
+  PROTECTION_SETTINGS_INTRO,
+  voltpilotRows,
+  ZUSTAENDIG_BOX,
+  ZUSTAENDIG_PORTAL,
+} from '../settingsSurface';
+import {
+  VERAEUSSERUNGSFORM_FRAGE,
+  VERAEUSSERUNGSFORM_LABEL,
+  VERAEUSSERUNGSFORM_TIP,
+} from '../glossar';
+import { protectionItems } from '../steuerungArea';
 import { LocationMap } from '../components/LocationMap';
+import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
 import { InfoTip } from '../components/InfoTip';
 import { MastrDrawer } from '../components/MastrDrawer';
 import { SettingRow } from '../components/SettingEditors';
+import { SettingsSearch } from '../components/SettingsSearch';
 import { ErrorState, TextSkeleton } from '../components/States';
+import './Einstellungen.css';
 
 /**
  * "Einstellungen" (Captain-Entscheid D2) - the gear subpage of the Anlage, the
@@ -59,6 +79,22 @@ import { ErrorState, TextSkeleton } from '../components/States';
  * Geld-Gruppe, der „Umgang mit dem Speicher" zu „Mein Speicher" - er ist eine
  * Verhaltens-, keine Geld-Einstellung. Die Formulare selbst leben EINMAL in
  * `components/SettingEditors.tsx`.
+ *
+ * **E4-E7 (Settings-UX, 31.07.2026) sind der eigentliche UX-Gewinn darauf:**
+ *  - **E4** macht die drei Autoritäts-Stufen sichtbar (① Sie · ② VoltPilot ·
+ *    ③ automatisch). Captain-Entscheid **D4**: die von VoltPilot eingerichteten
+ *    Vertragswerte der Lastspitzenkappung sind für Kunden jetzt read-only
+ *    SICHTBAR mit Abzeichen statt unsichtbar (Befund B4) - und der Schutz-
+ *    Streifen ③ zieht als Seitenfuß mit um.
+ *  - **E5** sagt an jeder Zeile, worauf sie wirkt, und zeigt unter dem Tarif den
+ *    LEBENDEN Bezugspreis aus derselben einen Preis-Wahrheit, mit der der
+ *    Optimierer plant (`BezugspreisPreview` - keine zweite Preisrechnung).
+ *  - **E6** gibt der Seite ein Suchfeld über Label UND Synonym (`glossar.ts`)
+ *    und benennt um (D6): Anlagentyp -> Veräußerungsform, „Ihr Strompreis" ->
+ *    Arbeitspreis.
+ *  - **E7** spricht die Grenze zur Geräteseite beidseitig aus (D5: die Box
+ *    bleibt eine eigene Seite).
+ * Alle Regeln liegen rein in `settingsSurface.ts` + `glossar.ts`.
  */
 
 /** The six sections, in the concept's order; ids double as scroll anchors. */
@@ -322,6 +358,20 @@ export function TechnikSection({
     !isPhone,
   );
   const anchored = useSettingsAnchor();
+  // E6: der Sprung aus der Suche. Er benutzt dieselbe Maschine wie der
+  // Deep-Link (scrollen + am Telefon aufklappen) und schreibt die Adresse
+  // kanonisch mit (`replaceState`, kein Verlaufseintrag pro Tastendruck), damit
+  // ein Neuladen an derselben Gruppe landet.
+  const [jumped, setJumped] = useState<SettingsGroupId | null>(null);
+  const [jumpTick, setJumpTick] = useState(0);
+
+  function jumpToGroup(group: SettingsGroupId) {
+    setJumped(group);
+    setJumpTick((t) => t + 1);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', einstellungenHash(site.id, group));
+    }
+  }
 
   // Ein Deep-Link aus einem Modus-Container scrollt seine Gruppe in den Blick
   // (am Telefon klappt die Karte zusätzlich von selbst auf, siehe `TechCard`).
@@ -330,6 +380,14 @@ export function TechnikSection({
     const el = document.getElementById(anchorId(anchored));
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [anchored, site.id]);
+
+  useEffect(() => {
+    if (!jumped) return;
+    document.getElementById(anchorId(jumped))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [jumped, jumpTick]);
+
+  /** Ist diese Gruppe gerade angesprungen (Deep-Link ODER Suche)? */
+  const opened = (key: SectionKey): boolean => anchored === key || jumped === key;
 
   const siteDevices = devices.filter((d) => d.siteId === site.id);
   const deviceDetail = siteDevices.find((d) => d.id === deviceDetailId) ?? null;
@@ -420,8 +478,8 @@ export function TechnikSection({
     <TechCard
       key="anlage"
       section={sectionOf('anlage')}
-      deepLinked={anchored === 'anlage'}
-      explain="Die Grunddaten Ihrer Anlage - Name, Standort, Anlagentyp und Netzanschluss."
+      deepLinked={opened('anlage')}
+      explain="Die Grunddaten Ihrer Anlage - Name, Standort, Veräußerungsform und Netzanschluss."
       summary={site.name}
       action={anlageEditing ? undefined : <EditPencil onClick={() => setEditSection('anlage')} />}
     >
@@ -452,8 +510,15 @@ export function TechnikSection({
                 {zoneLabel(site.biddingZone)}
               </dd>
             </div>
+            {/* E6/D6: „Anlagentyp" hieß ein Vertragsfakt nach einem Technik-
+                Wort. Der Kunde liest die Frage, der InfoTip nennt den
+                kanonischen Begriff (Zwei-Register-Modell des Begriffs-Audits). */}
             <div className="vp-kv-row">
-              <dt className="vp-kv-k">Anlagentyp</dt>
+              <dt className="vp-kv-k">
+                {VERAEUSSERUNGSFORM_LABEL}
+                <InfoTip title={VERAEUSSERUNGSFORM_LABEL}>{VERAEUSSERUNGSFORM_TIP}</InfoTip>
+                <small className="vp-note">{VERAEUSSERUNGSFORM_FRAGE}</small>
+              </dt>
               <dd className="vp-kv-v">{plantKindLabel(site.plantKind)}</dd>
             </div>
             <div className="vp-kv-row">
@@ -498,11 +563,13 @@ export function TechnikSection({
   const geldSettings = settingsPageSettings({ plantKind: site.plantKind }).filter(
     (s) => settingsGroupFor(s.id) === 'geld',
   );
+  // E4/D4: die Stufe-②-Werte dieser Gruppe (Leistungspreis + Abrechnungsperiode).
+  const geldVoltpilot = voltpilotRows('geld', site);
   const geldCard = (
     <TechCard
       key="geld"
       section={sectionOf('geld')}
-      deepLinked={anchored === 'geld'}
+      deepLinked={opened('geld')}
       explain="Womit VoltPilot für Sie rechnet: Ihr Strompreis, Ihre Vergütung und ob der Speicher aus dem Netz laden darf."
       summary={geldGroupSummary({
         tarifLabel: tarifArtLabel(site.tarifArt, site.tarifParamCtKwh),
@@ -524,6 +591,30 @@ export function TechnikSection({
             battery={batteryAsset}
             action={{ kind: 'edit' }}
             hint={SETTING_HINT[s.id]}
+            enriched
+            // E5: die lebende Vorschau steht dort, wo Geld eingegeben wird -
+            // ein falsch getippter Preis wird SOFORT sichtbar.
+            preview={
+              s.id === 'stromtarif' ? (
+                <BezugspreisPreview siteId={site.id} tarifArt={site.tarifArt} />
+              ) : undefined
+            }
+            onSiteSaved={onSiteSaved}
+            onBatterySaved={(a) => setAssets(a)}
+          />
+        ))}
+        {/* E4/D4: die von VoltPilot eingerichteten Vertragswerte - read-only
+            SICHTBAR mit Abzeichen ②, ohne Aktionsknopf (der Vertrieb läuft
+            persönlich). Sie erscheinen nur, wenn die Anlage sie wirklich
+            trägt; eine Hausanlage ohne Lastspitzenkappung zeigt hier nichts. */}
+        {geldVoltpilot.map((s) => (
+          <SettingRow
+            key={s.id}
+            setting={s}
+            site={site}
+            battery={batteryAsset}
+            action={{ kind: 'edit' }}
+            enriched
             onSiteSaved={onSiteSaved}
             onBatterySaved={(a) => setAssets(a)}
           />
@@ -545,7 +636,7 @@ export function TechnikSection({
     <TechCard
       key="geraet"
       section={sectionOf('geraet')}
-      deepLinked={anchored === 'geraet'}
+      deepLinked={opened('geraet')}
       explain="Der Wechselrichter, der Ihre Anlage steuert und Messwerte sendet."
       summary={geraetSummary}
     >
@@ -616,6 +707,19 @@ export function TechnikSection({
           automatisch, sobald Ihr Gerät sie meldet.
         </p>
       </div>
+      {/* E7 (D5): die Box bleibt eine eigene Seite - also wird die Grenze
+          beidseitig ausgesprochen. Bewusst OHNE Link: die Geräteseite steht im
+          Heimnetz des Kunden, ihre Adresse kennt das Portal nicht. */}
+      <div className="vp-set-box">
+        <span className="vp-set-box-h">
+          <Icon name="cpu" size={16} />
+          Ihre VoltPilot-Box
+        </span>
+        <p>{ZUSTAENDIG_BOX}</p>
+        <p>{ZUSTAENDIG_PORTAL}</p>
+        <p>{BOX_ADDRESS_NOTE}</p>
+        <p>{BOX_RULE}</p>
+      </div>
     </TechCard>
   );
 
@@ -627,11 +731,14 @@ export function TechnikSection({
   const speicherSettings = settingsPageSettings({ plantKind: site.plantKind }).filter(
     (s) => settingsGroupFor(s.id) === 'speicher',
   );
+  // E4/D4: die Lastspitzen-Reserve ist eine Speicher-Reservierung, die
+  // VoltPilot einrichtet - sichtbar, sobald sie gesetzt ist.
+  const speicherVoltpilot = voltpilotRows('speicher', site);
   const speicherCard = (
     <TechCard
       key="speicher"
       section={sectionOf('speicher')}
-      deepLinked={anchored === 'speicher'}
+      deepLinked={opened('speicher')}
       explain="Ihr Batteriespeicher - so lädt und entlädt ihn der Fahrplan optimal."
       summary={
         batteryNeedsDevice ? (
@@ -674,9 +781,9 @@ export function TechnikSection({
               Geld-Einstellung. Ohne hinterlegten Speicher gibt es nichts zu
               schonen; dann führt die Karte oben zuerst zum „Speicher
               hinzufügen", statt hier eine wirkungslose Zeile zu zeigen. */}
-          {speicherSettings.length > 0 && batteryAsset != null ? (
+          {(speicherSettings.length > 0 && batteryAsset != null) || speicherVoltpilot.length > 0 ? (
             <ul className="vp-setting-list vp-tech-settings">
-              {speicherSettings.map((s) => (
+              {(batteryAsset != null ? speicherSettings : []).map((s) => (
                 <SettingRow
                   key={s.id}
                   setting={s}
@@ -684,6 +791,19 @@ export function TechnikSection({
                   battery={batteryAsset}
                   action={{ kind: 'edit' }}
                   hint={SETTING_HINT[s.id]}
+                  enriched
+                  onSiteSaved={onSiteSaved}
+                  onBatterySaved={(a) => setAssets(a)}
+                />
+              ))}
+              {speicherVoltpilot.map((s) => (
+                <SettingRow
+                  key={s.id}
+                  setting={s}
+                  site={site}
+                  battery={batteryAsset}
+                  action={{ kind: 'edit' }}
+                  enriched
                   onSiteSaved={onSiteSaved}
                   onBatterySaved={(a) => setAssets(a)}
                 />
@@ -700,7 +820,7 @@ export function TechnikSection({
     <TechCard
       key="registrierung"
       section={sectionOf('registrierung')}
-      deepLinked={anchored === 'registrierung'}
+      deepLinked={opened('registrierung')}
       explain="Die offizielle Registrierung Ihrer Anlage - brauchen Sie nur selten."
       summary={linkedAssets.length > 0 ? 'MaStR verknüpft' : 'Nicht verknüpft'}
     >
@@ -781,7 +901,7 @@ export function TechnikSection({
     <TechCard
       key="loeschen"
       section={sectionOf('loeschen')}
-      deepLinked={anchored === 'loeschen'}
+      deepLinked={opened('loeschen')}
       explain="Entfernt die Anlage und alle ihre Daten unwiderruflich."
       summary="Unwiderruflich"
     >
@@ -806,12 +926,42 @@ export function TechnikSection({
     <div className="vp-technik">
       <JumpNav active={activeSection} />
       <div className="vp-technik-sections">
+        {/* E6: das Suchfeld über allen Gruppen - „Wo stelle ich meinen
+            Strompreis ein?" ist damit in einer Geste beantwortet. */}
+        <SettingsSearch onJump={jumpToGroup} />
+        {/* E4: die Legende der drei Stufen, damit die Abzeichen an den Zeilen
+            lesbar sind. */}
+        <ul className="vp-set-legend" aria-label="Wer stellt was ein">
+          {AUTHORITY_ORDER.map((level) => (
+            <li key={level} title={AUTHORITY[level].note}>
+              <i aria-hidden="true">{AUTHORITY[level].mark}</i>
+              {AUTHORITY[level].label}
+            </li>
+          ))}
+        </ul>
         {anlageCard}
         {geldCard}
         {geraetCard}
         {speicherCard}
         {registrierungCard}
         {loeschenCard}
+        {/* E4 · Stufe ③: was ganz ohne Einstellung mitläuft. Derselbe
+            Schutz-Streifen wie auf der Steuerung, aus derselben einen
+            Ableitung (`steuerungArea.protectionItems`) - „EEG: nur
+            Solarladen" erscheint nur, wenn es wirklich gilt. */}
+        <div className="vp-set-schutz">
+          <span className="vp-set-schutz-h">
+            <i aria-hidden="true">{AUTHORITY[3].mark}</i>
+            {PROTECTION_SETTINGS_INTRO}
+          </span>
+          <ul className="vp-set-schutz-items">
+            {protectionItems(site).map((p) => (
+              <li key={p.key} title={p.tip}>
+                {p.label}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       <MastrDrawer
@@ -922,7 +1072,7 @@ export function StammdatenEditForm({
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="edit-site-plant-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Anlagentyp
+            {VERAEUSSERUNGSFORM_LABEL}
           </label>
           <select
             id="edit-site-plant-kind"
@@ -933,6 +1083,9 @@ export function StammdatenEditForm({
             <option value="eigenverbrauch">Eigenverbrauch (Haushalt/Gewerbe)</option>
             <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
           </select>
+          <p className="vp-note" style={{ margin: 0 }}>
+            {VERAEUSSERUNGSFORM_FRAGE} {VERAEUSSERUNGSFORM_TIP}
+          </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>

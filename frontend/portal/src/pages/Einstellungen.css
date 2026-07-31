@@ -1,0 +1,225 @@
+/* Die Einstellungs-Seite: Suchfeld (E6), Autoritäts-Legende (E4),
+ * Zuständigkeits-Grenze zur Box (E7) und der Schutz-Streifen ③ am Fuß.
+ *
+ * Komponenten-lokal (das v3-Muster): `index.css` bleibt unangetastet — dort
+ * lebt weiter das `.vp-technik*`-Grundgerüst dieser Seite. Alle Regeln hier
+ * tragen NEUE Klassennamen, kollidieren also nicht mit der Basis und sind
+ * unabhängig von der Ladereihenfolge. */
+
+/* --- E6 · Suche ----------------------------------------------------------- */
+
+.vp-set-search {
+  position: relative;
+  min-width: 0;
+  margin-bottom: var(--vp-space-4, 16px);
+}
+
+.vp-set-search-box {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+  padding: 0 12px;
+  min-height: 44px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: #fff;
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-set-search-box:focus-within {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 3px rgba(44, 82, 130, 0.12);
+}
+
+.vp-set-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--vp-text, #223);
+}
+
+/* Die Trefferliste hängt UNTER dem Feld im Fluss (kein Overlay): die Seite ist
+ * eine lange Liste von Karten, ein schwebendes Panel müsste dort gegen jeden
+ * Kartenrand ankämpfen. */
+.vp-set-search-res {
+  margin-top: 6px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: #fff;
+  overflow: hidden;
+}
+
+.vp-set-search-none {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-set-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vp-set-search-hit {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--vp-text, #223);
+  cursor: pointer;
+}
+
+.vp-set-search-list > li:first-child .vp-set-search-hit {
+  border-top: 0;
+}
+
+.vp-set-search-hit:hover,
+.vp-set-search-hit:focus-visible {
+  background: rgba(44, 82, 130, 0.06);
+}
+
+.vp-set-search-lbl {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-set-search-lbl small {
+  font-size: 0.74rem;
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-set-search-grp {
+  flex: 0 0 auto;
+  font-size: 0.76rem;
+  color: var(--vp-text-muted, #667);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .vp-set-search-grp {
+    display: none;
+  }
+}
+
+/* --- E4 · die Legende der drei Stufen ------------------------------------- */
+
+.vp-set-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--vp-space-3, 12px);
+  margin: 0 0 var(--vp-space-4, 16px);
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+}
+
+.vp-set-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.vp-set-legend i {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--vp-navy, #1a365d);
+}
+
+/* --- E7 · die Grenze zur Box ---------------------------------------------- */
+
+.vp-set-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin-top: var(--vp-space-3, 12px);
+  padding: 12px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-2, #f6f8fb);
+}
+
+.vp-set-box-h {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--vp-navy, #1a365d);
+  min-width: 0;
+}
+
+.vp-set-box p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- ③ · der Schutz-Streifen am Seitenfuß --------------------------------- */
+
+.vp-set-schutz {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px var(--vp-space-2, 8px);
+  min-width: 0;
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-set-schutz-h {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+  color: var(--vp-navy, #1a365d);
+}
+
+.vp-set-schutz-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.vp-set-schutz-items li {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8f5e9;
+  color: #166534;
+  font-weight: 600;
+  white-space: nowrap;
+}

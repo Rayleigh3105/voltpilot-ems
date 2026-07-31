@@ -77,16 +77,24 @@ export interface TarifParamField {
  */
 export const TARIF_PARAM_FIELDS: Record<TarifArtWithParam, TarifParamField> = {
   dynamisch: {
-    label: 'Aufschlag auf den Börsenpreis (ct/kWh)',
+    // E6/D6: der Audit (Teil 3, Zeile 5) wollte hier „Vertriebsaufschlag" -
+    // dieselbe Größe wie im Preisblatt. Das stimmt im Code NICHT (E2 hat es
+    // belegt): DIESER Aufschlag ist der SAMMEL-Aufschlag und ersetzt das ganze
+    // Preisblatt, der `vertriebsaufschlagCt` dort ist nur die Marge. Beide
+    // gleich zu benennen wäre der Selbstwiderspruch, den die Umbenennung
+    // beenden soll - also trägt das Feld jetzt ausdrücklich „gesamt" und die
+    // Suche (`glossar.ts`) führt beide Wörter zusammen.
+    label: 'Aufschlag auf den Börsenpreis (gesamt, ct/kWh)',
     placeholder: 'z. B. 18',
-    help: 'Netzentgelte, Abgaben & Marge zusammen - steht auf Ihrer Stromrechnung.',
+    help: 'Netzentgelte, Abgaben & Marge zusammen - steht auf Ihrer Stromrechnung. Nicht nur der Vertriebsaufschlag.',
     range: { min: 5, max: 30, typical: '15–25 ct/kWh' },
-    meaning: 'ein Aufschlag auf den Börsenpreis',
+    meaning: 'der gesamte Aufschlag auf den Börsenpreis',
   },
   fest: {
-    label: 'Ihr Strompreis (ct/kWh)',
+    // E6/D6, Audit Zeile 6: „Strompreis" ist mehrdeutig (mit/ohne Grundpreis).
+    label: 'Arbeitspreis (all-in, brutto) (ct/kWh)',
     placeholder: 'z. B. 32,5',
-    help: 'Ihr fester Arbeitspreis - siehe Stromrechnung.',
+    help: 'Ihr fester Arbeitspreis je kWh - siehe Stromrechnung (ohne Grundpreis).',
     range: { min: 20, max: 60, typical: '25–45 ct/kWh' },
     meaning: 'Ihr gesamter Arbeitspreis',
   },

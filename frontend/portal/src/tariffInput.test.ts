@@ -75,7 +75,7 @@ describe('tarifSwitchNote — der Bedeutungswechsel wird ANGESAGT', () => {
     const sw = switchTarifArt(initialDrafts('dynamisch', '18'), 'dynamisch', '18', 'fest');
     const note = tarifSwitchNote(sw, 'dynamisch', 'fest');
     expect(note).toContain('Andere Bedeutung');
-    expect(note).toContain('ein Aufschlag auf den Börsenpreis');
+    expect(note).toContain('der gesamte Aufschlag auf den Börsenpreis');
     expect(note).toContain('zählt Ihr gesamter Arbeitspreis');
     expect(note).toContain('bleibt gemerkt');
   });
@@ -83,7 +83,7 @@ describe('tarifSwitchNote — der Bedeutungswechsel wird ANGESAGT', () => {
   it('trägt grammatisch auch in der Gegenrichtung', () => {
     const sw = switchTarifArt(initialDrafts('fest', '32,5'), 'fest', '32,5', 'dynamisch');
     expect(tarifSwitchNote(sw, 'fest', 'dynamisch')).toContain(
-      'bisher stand hier Ihr gesamter Arbeitspreis. Für „Dynamisch" zählt ein Aufschlag auf den Börsenpreis',
+      'bisher stand hier Ihr gesamter Arbeitspreis. Für „Dynamisch" zählt der gesamte Aufschlag auf den Börsenpreis',
     );
   });
 
