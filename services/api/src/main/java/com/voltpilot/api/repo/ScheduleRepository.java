@@ -75,11 +75,11 @@ public class ScheduleRepository {
                         // recomposed from spot + master data by SlotEconomics and
                         // filled in downstream (SchedulePricingService).
                         null, null, null,
-                        // The MEASURED load is a separate aggregation (P3), see
-                        // measuredLoadPerSlot below.
-                        null),
+                        // The MEASURED load and PV are a separate aggregation
+                        // (P3 + its mirror), see measuredPerSlot below.
+                        null, null),
                 siteId, Timestamp.from(generatedAt));
-        slots = MeasuredLoad.assign(slots, measuredLoadPerSlot(siteId, slots, 15));
+        slots = MeasuredSlots.assign(slots, measuredPerSlot(siteId, slots, 15));
         List<Object[]> meta = jdbc.query(
                 "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, "
                         + "fallback_14a FROM schedule "
@@ -107,44 +107,60 @@ public class ScheduleRepository {
     }
 
     /**
-     * The MEASURED house consumption per plan slot (P3 "Ist-Last sichtbar",
-     * report vp-netzbezug-nacht-s3 §6): the quarter-hour MEAN of
-     * {@code telemetry.load_kw}, i.e. the SAME quantity the forecaster predicts
-     * since P2 - so the portal's solid Ist line and its dotted Prognose line are
-     * comparable by construction.
+     * The MEASURED house consumption AND PV production per plan slot (P3
+     * "Ist-Last sichtbar", report vp-netzbezug-nacht-s3 §6, plus its Ist-PV
+     * mirror): the quarter-hour MEANs of {@code telemetry.load_kw} and
+     * {@code telemetry.pv_power_kw}, i.e. the SAME two quantities the forecaster
+     * predicts since P2 - so the portal's solid Ist lines and its dotted
+     * Prognose lines are comparable by construction.
+     *
+     * <p>Both channels ride ONE query over ONE window: they come from the same
+     * rows, so a second scan would only cost time and could drift apart.
+     * {@code avg()} ignores NULLs per column, so a bucket that carries only one
+     * of the two channels yields exactly that one - and a device that reports no
+     * PV at all yields none, which the portal shows as an ABSENT line, never a
+     * 0-line claiming the sun did not shine.
      *
      * <p>Read straight from RAW telemetry (the plan window is at most 24 h, and
      * the 15-min rollups lag their refresh by up to a quarter hour - the running
      * slot, where the forecast error actually shows, would be missing). The
      * query is RLS-scoped exactly like every other read here; the window ends at
      * {@code now}, so a future slot can never receive a value, and a slot with
-     * no samples simply gets no row - null, never a fabricated 0.
+     * no samples simply gets no row.
      */
-    private Map<Instant, BigDecimal> measuredLoadPerSlot(
+    private Map<Instant, MeasuredSlots.Measured> measuredPerSlot(
             UUID siteId, List<ScheduleSlotDto> slots, int slotMinutes) {
-        MeasuredLoad.Window window = MeasuredLoad.window(
+        MeasuredSlots.Window window = MeasuredSlots.window(
                 slots.stream().map(ScheduleSlotDto::start).toList(), slotMinutes, Instant.now());
         if (window == null) {
             return Map.of();
         }
         List<Object[]> rows = jdbc.query(
-                "SELECT time_bucket('15 minutes', time) AS bucket, avg(load_kw) AS load_kw "
+                "SELECT time_bucket('15 minutes', time) AS bucket, avg(load_kw) AS load_kw, "
+                        + "avg(pv_power_kw) AS pv_kw "
                         + "FROM telemetry "
-                        + "WHERE site_id = ? AND time >= ? AND time < ? AND load_kw IS NOT NULL "
+                        + "WHERE site_id = ? AND time >= ? AND time < ? "
+                        + "AND (load_kw IS NOT NULL OR pv_power_kw IS NOT NULL) "
                         + "GROUP BY 1",
                 (rs, i) -> new Object[] {
                         rs.getTimestamp("bucket").toInstant(),
-                        rs.getBigDecimal("load_kw")
+                        rs.getBigDecimal("load_kw"),
+                        rs.getBigDecimal("pv_kw")
                 },
                 siteId, Timestamp.from(window.from()), Timestamp.from(window.to()));
-        Map<Instant, BigDecimal> byBucket = new HashMap<>();
+        Map<Instant, MeasuredSlots.Measured> byBucket = new HashMap<>();
         for (Object[] row : rows) {
-            BigDecimal value = (BigDecimal) row[1];
-            if (value != null) {
-                byBucket.put((Instant) row[0], value.setScale(3, RoundingMode.HALF_UP));
+            BigDecimal load = scaled((BigDecimal) row[1]);
+            BigDecimal pv = scaled((BigDecimal) row[2]);
+            if (load != null || pv != null) {
+                byBucket.put((Instant) row[0], new MeasuredSlots.Measured(load, pv));
             }
         }
         return byBucket;
+    }
+
+    private static BigDecimal scaled(BigDecimal value) {
+        return value == null ? null : value.setScale(3, RoundingMode.HALF_UP);
     }
 
     /**

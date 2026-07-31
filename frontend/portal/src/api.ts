@@ -276,6 +276,17 @@ export interface ScheduleSlot {
    */
   measuredLoadKw?: number | null;
   /**
+   * The mirror of `measuredLoadKw`: the MEASURED PV production of this slot
+   * (kW) - the quarter-hour mean of `telemetry.pv_power_kw`, i.e. the same
+   * quantity `pvKw` forecasts, aggregated in the same pass. It makes the PV
+   * forecast error visible and the Solarladen-Regel ("Laden <= gemessene PV")
+   * checkable in the chart. Null for future slots, slots without telemetry and
+   * sites whose device reports no PV channel - the solid PV-Ist line is then
+   * absent, never a fabricated 0. Optional so an older backend simply yields
+   * no line.
+   */
+  measuredPvKw?: number | null;
+  /**
    * The slot's role in the plan (the "Warum"-layer, design report
    * vp-fahrplan-why-design §5.1/§6): abregeln | reserve_halten | warten |
    * pv_speichern | guenstig_laden | spitze_kappen | verkaufen |

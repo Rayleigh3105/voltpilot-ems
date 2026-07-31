@@ -195,6 +195,16 @@ export const LOAD_FORECAST_LABEL = 'Verbrauchsprognose';
  */
 export const MEASURED_LOAD_LABEL = 'Verbrauch (gemessen)';
 
+/**
+ * The mirror of the Ist-Last line for the OTHER forecast the plan runs on: the
+ * MEASURED PV production next to its dotted PV-Prognose. Same convention -
+ * gepunktet = Prognose, durchgezogen = gemessen, gleiche Farbe je Größe - so
+ * two things become checkable instead of merely computable: the PV forecast
+ * error, and the Solarladen-Regel "Laden <= gemessene PV" (an EEG plant's
+ * charge bar may never exceed this line).
+ */
+export const MEASURED_PV_LABEL = 'PV (gemessen)';
+
 export interface PlanLine {
   /** The series/legend name (see the label constants). */
   label: string;
@@ -259,6 +269,19 @@ export function measuredLoadLine(slots: { measuredLoadKw?: number | null }[]): P
 }
 
 /**
+ * The MEASURED PV line - `schedule.measuredPvKw`, the quarter-hour mean of the
+ * metered PV production, slot-aligned with the bars and built exactly like its
+ * load twin.
+ *
+ * Honesty, identical: an absent measurement stays absent (`null` -> gap), never
+ * a fabricated 0 - a site whose device reports no PV channel simply has no
+ * line, which must not read as "die Sonne schien nicht".
+ */
+export function measuredPvLine(slots: { measuredPvKw?: number | null }[]): PlanLine {
+  return forecastLine(MEASURED_PV_LABEL, slots.map((s) => s.measuredPvKw));
+}
+
+/**
  * True when the measured line is so short that a plain stroke would be
  * invisible (the normal case: an MPC plan starts at the running quarter hour,
  * so only one or two slots are in the past). The chart then draws point markers
@@ -269,21 +292,46 @@ export function needsPointMarkers(line: PlanLine): boolean {
 }
 
 /**
- * Why the measured line is missing, in one plain-German sentence - shown only
- * when the plan HAS slots in the past (before that there is nothing to compare
- * yet, and claiming a gap would be noise). Null = the line is present, or the
- * plan is still entirely ahead.
+ * Why a measured line is missing, in ONE plain-German sentence covering both
+ * channels - shown only when there is genuinely something to explain:
+ *
+ * - the plan must HAVE slots in the past (before that there is nothing to
+ *   compare yet, and claiming a gap would be noise), and
+ * - the channel must carry a FORECAST on this plan. The note explains the
+ *   missing twin of a drawn Prognose line; a plant whose plan has no
+ *   PV-Prognose (no PV at all, or a pre-feature run) is never told its PV
+ *   measurements are missing.
+ *
+ * Null = every drawn forecast has its measured twin, or there is nothing to
+ * compare yet.
  */
-export function measuredLoadNote(
-  slots: { start: string; measuredLoadKw?: number | null }[],
+export function measuredNote(
+  slots: {
+    start: string;
+    pvKw?: number | null;
+    loadKw?: number | null;
+    measuredLoadKw?: number | null;
+    measuredPvKw?: number | null;
+  }[],
   now: Date,
   slotMinutes = 15,
 ): string | null {
-  if (measuredLoadLine(slots).present) return null;
   const cutoff = now.getTime() - slotMinutes * 60_000;
   const elapsed = slots.some((s) => new Date(s.start).getTime() <= cutoff);
   if (!elapsed) return null;
-  return 'Für die bereits vergangenen Viertelstunden liegen keine Messwerte des Verbrauchs vor.';
+  const forecast = forecastLines(slots);
+  const loadMissing = forecast.load.present && !measuredLoadLine(slots).present;
+  const pvMissing = forecast.pv.present && !measuredPvLine(slots).present;
+  const what =
+    loadMissing && pvMissing
+      ? 'von Verbrauch und PV-Erzeugung'
+      : loadMissing
+        ? 'des Verbrauchs'
+        : pvMissing
+          ? 'der PV-Erzeugung'
+          : null;
+  if (!what) return null;
+  return `Für die bereits vergangenen Viertelstunden liegen keine Messwerte ${what} vor.`;
 }
 
 /**

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ScheduleChart } from './ScheduleChart';
-import { LOAD_FORECAST_LABEL, MEASURED_LOAD_LABEL, PV_FORECAST_LABEL } from './schedule';
+import {
+  LOAD_FORECAST_LABEL,
+  MEASURED_LOAD_LABEL,
+  MEASURED_PV_LABEL,
+  PV_FORECAST_LABEL,
+} from './schedule';
 import type { SchedulePlan, ScheduleSlot } from './api';
 
 /**
@@ -127,5 +132,54 @@ describe('ScheduleChart Ist-Last line', () => {
   it('renders exactly today’s legend when the backend serves no measured field', () => {
     render(<ScheduleChart plan={plan([slot({ pvKw: 4, loadKw: 1.5 })])} />);
     expect(screen.queryByText(MEASURED_LOAD_LABEL)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The Ist-PV mirror: same convention as its load twin (gepunktet = Prognose,
+ * durchgezogen = gemessen), its own toggle, and honest about being absent.
+ */
+describe('ScheduleChart PV (gemessen) line', () => {
+  const past = () => new Date(Date.now() - 3600_000).toISOString();
+
+  it('offers the measured PV as its own toggle, on by default', () => {
+    render(<ScheduleChart plan={plan([slot({ pvKw: 12, measuredPvKw: 15.3 })])} />);
+    const ist = screen.getByRole('button', { name: /PV \(gemessen\)/ });
+    expect(ist).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(ist);
+    expect(ist).toHaveAttribute('aria-pressed', 'false');
+    // The PV forecast row stays its own, independent toggle - the pair is the point.
+    expect(screen.getByRole('button', { name: new RegExp(PV_FORECAST_LABEL) })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('shows the two measured lines independently of each other', () => {
+    render(
+      <ScheduleChart
+        plan={plan([slot({ pvKw: 12, loadKw: 4.33, measuredPvKw: 15.3 })])}
+      />,
+    );
+    expect(screen.getByText(MEASURED_PV_LABEL)).toBeInTheDocument();
+    // No measured load on this run -> no row for it, and the note names only it.
+    expect(screen.queryByText(MEASURED_LOAD_LABEL)).not.toBeInTheDocument();
+  });
+
+  it('names the reason instead of drawing a 0-line when past slots were not measured', () => {
+    render(<ScheduleChart plan={plan([slot({ start: past(), pvKw: 12, loadKw: 4.33 })])} />);
+    expect(screen.queryByText(MEASURED_PV_LABEL)).not.toBeInTheDocument();
+    expect(screen.getByText(/keine Messwerte von Verbrauch und PV-Erzeugung/)).toBeInTheDocument();
+  });
+
+  it('never claims a missing PV measurement on a plan without a PV-Prognose', () => {
+    render(<ScheduleChart plan={plan([slot({ start: past(), loadKw: 4.33 })])} />);
+    expect(screen.getByText(/keine Messwerte des Verbrauchs/)).toBeInTheDocument();
+    expect(screen.queryByText(/PV-Erzeugung/)).not.toBeInTheDocument();
+  });
+
+  it('renders exactly today’s legend when the backend serves no measured field', () => {
+    render(<ScheduleChart plan={plan([slot({ pvKw: 12, loadKw: 1.5 })])} />);
+    expect(screen.queryByText(MEASURED_PV_LABEL)).not.toBeInTheDocument();
   });
 });
