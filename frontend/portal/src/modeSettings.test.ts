@@ -13,6 +13,7 @@ import {
   orphanedSettings,
   settingDef,
   settingsForMode,
+  settingsPageSettings,
   SETTING_DEFS,
 } from './modeSettings';
 
@@ -245,42 +246,99 @@ describe('settingsForMode — Anzeige je aktivem Modus', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3 · orphanedSettings + die Partition-Invariante (Waisen-Regel ohne Teaser)
+// 3 · Die HEIMAT (E1): settingsPageSettings + die geschrumpfte Waisen-Regel
 // ---------------------------------------------------------------------------
 
-describe('orphanedSettings — unbeanspruchte Einstellungen', () => {
-  it('ohne aktiven Modus ruhen ALLE Einstellungen', () => {
-    expect(ids(orphanedSettings([]))).toEqual(ids(ALL_SETTINGS));
-    expect(ids(orphanedSettings(null))).toEqual(ids(ALL_SETTINGS));
-    expect(ids(orphanedSettings(undefined))).toEqual(ids(ALL_SETTINGS));
-  });
-
-  it('lässt nur die Einstellungen ruhen, deren Claimer alle aus sind', () => {
-    // Nur Lastspitzenkappung aktiv -> die vier Geld-Einstellungen ruhen.
-    expect(ids(orphanedSettings(activeModes(PEAK_ONLY)))).toEqual([
+describe('settingsPageSettings — die Heimat der Kunden-Einstellungen (E1)', () => {
+  it('die Einstellungs-Seite besitzt genau die vier kunden-gestellten Werte', () => {
+    // Die „fünf" des Auftrags sind vier IDs: die Bezugspreis-Komponenten sind
+    // Teil des Stromtarif-Formulars (`SupplyPriceFields` in `TariffFields`).
+    expect(ids(settingsPageSettings())).toEqual([
       'speicherschonung',
       'netzladen',
       'anzulegender-wert',
       'stromtarif',
     ]);
-    // Eine reine PV+Speicher-Anlage aktiviert keinen Modus (Eigenverbrauch ist
-    // Grundverhalten, report §3.3) -> ALLE Einstellungen ruhen.
-    expect(ids(orphanedSettings(activeModes(EV_ONLY)))).toEqual(ids(ALL_SETTINGS));
-    // Volle Anlage -> jede Einstellung hat einen aktiven Claimer.
+    // Und genau diese vier tragen `home: 'einstellungen'`.
+    for (const def of ALL_SETTINGS) {
+      expect(def.home).toBe(def.editability === 'customer' ? 'einstellungen' : 'modus');
+    }
+  });
+
+  it('DAS E1-Ergebnis: eine reine PV+Speicher-Anlage ERREICHT sie alle — ohne Modus', () => {
+    const modes = activeModes(EV_ONLY);
+    // Der Ausgangsbefund: diese Anlage aktiviert KEINEN Modus (Eigenverbrauch
+    // ist Grundverhalten, report §3.3) …
+    expect(modes).toEqual([]);
+    // … und genau deshalb ruhten früher ALLE Einstellungen. Jetzt hat jede
+    // kunden-gestellte Einstellung eine modus-unabhängige Heimat.
+    expect(ids(settingsPageSettings({ plantKind: 'eigenverbrauch' }))).toEqual([
+      'speicherschonung',
+      'netzladen',
+      'stromtarif',
+    ]);
+    // Nichts davon ist noch verwaist — die §3-Sackgasse ist geschlossen.
+    for (const id of ['speicherschonung', 'netzladen', 'stromtarif', 'anzulegender-wert']) {
+      expect(ids(orphanedSettings(modes))).not.toContain(id);
+    }
+  });
+
+  it('die Sichtbarkeitsregel bleibt: der anzulegende Wert ist ein DV-Fakt', () => {
+    // Auf einer Direktvermarktungs-Anlage steht er, auf einer Eigenverbrauchs-
+    // Anlage wäre er eine wirkungslose Eingabe — unverändert zu vorher.
+    expect(ids(settingsPageSettings({ plantKind: 'direktvermarktung' }))).toContain(
+      'anzulegender-wert',
+    );
+    expect(ids(settingsPageSettings({ plantKind: 'eigenverbrauch' }))).not.toContain(
+      'anzulegender-wert',
+    );
+    // Ohne Kontext (ein Aufrufer ohne Anlagen-Daten) wird NICHTS gefiltert.
+    expect(ids(settingsPageSettings())).toContain('anzulegender-wert');
+  });
+
+  it('ist von jedem Modus unabhängig — dieselbe Liste, egal was läuft', () => {
+    const baseline = ids(settingsPageSettings({ plantKind: 'eigenverbrauch' }));
+    for (const input of [PEAK_ONLY, EV_ONLY, MARKT_AND_EV, ATYP_ONLY, AUTOMATION_ONLY, FULL, {}]) {
+      // Das Argument ist bewusst kein Modus: die Heimat hängt nicht daran.
+      void activeModes(input as AnlageSurfaceInput);
+      expect(ids(settingsPageSettings({ plantKind: 'eigenverbrauch' }))).toEqual(baseline);
+    }
+  });
+});
+
+describe('orphanedSettings — was WIRKLICH keine Heimat hat (E1)', () => {
+  it('eine Einstellung mit Heimat kann nie verwaisen', () => {
+    for (const modes of [[], activeModes(EV_ONLY), activeModes(PEAK_ONLY), activeModes(FULL)]) {
+      for (const def of orphanedSettings(modes)) expect(def.home).toBe('modus');
+    }
+  });
+
+  it('ohne aktiven Modus ruhen nur noch die drei von-VoltPilot-Werte', () => {
+    const rest = ['leistungspreis', 'abrechnung-leistung', 'lastspitzen-reserve'];
+    expect(ids(orphanedSettings([]))).toEqual(rest);
+    expect(ids(orphanedSettings(null))).toEqual(rest);
+    expect(ids(orphanedSettings(undefined))).toEqual(rest);
+    // Auch auf der Anlage, die früher der Beweis der Sackgasse war.
+    expect(ids(orphanedSettings(activeModes(EV_ONLY)))).toEqual(rest);
+  });
+
+  it('mit aktiver Lastspitzenkappung ruht gar nichts mehr', () => {
+    expect(orphanedSettings(activeModes(PEAK_ONLY))).toEqual([]);
     expect(orphanedSettings(activeModes(FULL))).toEqual([]);
   });
 
-  it('Partition: jede Einstellung ist entweder GENAU EINMAL gezeigt oder verwaist', () => {
+  it('Partition: jede Einstellung ist ERREICHBAR oder verwaist, nie beides', () => {
     for (const input of [PEAK_ONLY, EV_ONLY, MARKT_ONLY, MARKT_AND_EV, ATYP_ONLY, AUTOMATION_ONLY, FULL, {}]) {
       const modes = activeModes(input as AnlageSurfaceInput);
+      // Der Container zeigt weiterhin duplikatfrei (jetzt als Spiegel) …
       const shown = modes.flatMap((m) => ids(settingsForMode(m, modes)));
-      const orphan = ids(orphanedSettings(modes));
-      // duplikatfrei gezeigt
       expect(new Set(shown).size).toBe(shown.length);
-      // disjunkt
-      for (const id of shown) expect(orphan).not.toContain(id);
-      // gezeigt ∪ verwaist == alle
-      expect(new Set([...shown, ...orphan])).toEqual(new Set(ids(ALL_SETTINGS)));
+      // … und die Einstellungs-Seite ist die zweite Fläche. Erreichbar heißt:
+      // auf mindestens einer von beiden.
+      const reachable = new Set([...ids(settingsPageSettings()), ...shown]);
+      const orphan = ids(orphanedSettings(modes));
+      for (const id of orphan) expect(reachable.has(id)).toBe(false);
+      expect(new Set([...reachable, ...orphan])).toEqual(new Set(ids(ALL_SETTINGS)));
     }
   });
 });

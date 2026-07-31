@@ -1,12 +1,35 @@
 /**
  * v3.1-M1 — die Einstellungs-Registry des „Modus-Containers".
  *
- * v3.1 macht jeden Modus zu einem CONTAINER: einschalten heißt konfigurieren
- * dürfen, und die thematisch zugehörigen Einstellungen leben IM Modus statt
+ * v3.1 machte jeden Modus zu einem CONTAINER: einschalten heißt konfigurieren
+ * dürfen, und die thematisch zugehörigen Einstellungen lebten IM Modus statt
  * verstreut in der Technik-Seite (report `data/vp-portal-v31-design/report.md`
  * §1/§2). Dieses reine Modul ist die WAHRHEIT darüber, WELCHE Einstellung von
  * WELCHEN Modi beansprucht wird — die Container-UI (v3.1-M2/M3) rendert daraus,
  * dieses Modul rendert NICHTS.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * **E1 (Settings-UX, Captain-Entscheid D1 vom 31.07.2026) — die HEIMAT eines
+ * Werts hängt nie davon ab, ob ein Modus an ist.**
+ *
+ * Der Befund, der das erzwang (Konzept `data/vp-settings-ux-konzept/report.md`
+ * §3): seit „Eigenverbrauch ist kein Modus mehr" beanspruchten ALLE vier
+ * Kunden-Einstellungen nur noch `marktvermarktung` — und `settingsForMode`
+ * liefert nichts, solange der Modus aus ist. Auf einer gewöhnlichen
+ * PV-+-Speicher-Hausanlage war damit der Stromtarif **über keine Fläche
+ * erreichbar**, obwohl der Optimierer mit ihm plant und jede Euro-Zahl mit ihm
+ * bewertet wird. Die Sackgasse schloss sich, weil der Markt-Modus seinerseits
+ * einen dynamischen Tarif voraussetzt.
+ *
+ * Seit E1 gilt deshalb `home`: die vier Kunden-Einstellungen WOHNEN auf der
+ * Einstellungs-Seite der Anlage (`settingsPageSettings`) und werden dort
+ * bearbeitet — auf JEDER Anlage, unabhängig von Anlagentyp und aktivem Modus.
+ * `claimedBy` beantwortet ab jetzt „welcher Modus BRAUCHT diesen Wert" (der
+ * Container SPIEGELT ihn read-only mit Deep-Link), nicht mehr „wo darf man ihn
+ * ändern". `orphanedSettings` schrumpft damit auf das, was wirklich keine
+ * Heimat hat — die drei von-VoltPilot-Werte der Lastspitzenkappung (E4 gibt
+ * ihnen ihre sichtbare Autoritäts-Stufe).
+ * ─────────────────────────────────────────────────────────────────────────────
  *
  * Der Split ist der verbindliche §2-Audit (inkl. der Owner-Korrekturen):
  *  - „Umgang mit dem Speicher" (Speicherschonung) → Marktvermarktung UND
@@ -41,13 +64,16 @@
  * Container-UI (v3.1-M2/M3) datengetrieben:
  *   1. `surface.ts`: eine neue `ModeKind` + `ModeSettingId`, ein `manifestFor`-
  *      Zweig mit `settings: ['vpn']` und die Aktivierungsregel in `activeModes`.
- *   2. HIER: ein `SETTING_DEFS`-Eintrag `vpn`, der die Heimat des Werts festlegt —
- *      `claimedBy: ['fernzugriff']`, und die WICHTIGE Weiche `editability`:
- *      `'customer'` (mit `editForm`) für einen selbst-schaltbaren Wert ODER
- *      `'voltpilot'` (`editForm: null`) für einen read-only „Von VoltPilot
- *      eingerichtet"-Wert — exakt das Muster der drei Lastspitzen-Werte (v3.1-M4).
- *   3. `ModusContainer.tsx`: eine `settingReadValue`-Zeile (und, nur bei
- *      `'customer'`, ein Inline-Formular) für die neue Id.
+ *   2. HIER: ein `SETTING_DEFS`-Eintrag `vpn` mit `claimedBy: ['fernzugriff']`
+ *      und den zwei WICHTIGEN Weichen — `home` (wo der Wert WOHNT:
+ *      `'einstellungen'` für alles, was der Kunde selbst stellt, `'modus'` nur
+ *      für einen Wert, der ohne seinen Modus sinnlos wäre) und `editability`
+ *      (`'customer'` mit `editForm` ODER `'voltpilot'` mit `editForm: null` für
+ *      einen read-only „Von VoltPilot eingerichtet"-Wert — das Muster der drei
+ *      Lastspitzen-Werte, v3.1-M4).
+ *   3. `components/SettingEditors.tsx`: eine `settingReadValue`-Zeile (und, nur
+ *      bei `'customer'`, ein Inline-Formular) für die neue Id. Beide Flächen —
+ *      Einstellungs-Seite und Modus-Container-Spiegel — rendern daraus.
  * Dedupe/Waisen/Verstecken-bei-aus/Voll-Repräsentations-Save gelten dann
  * automatisch — der neue Modus ist ein Container wie jeder andere.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +83,17 @@ import { MODE_RANK, type ActiveMode, type ModeKind, type ModeSettingId } from '.
 
 /** Wer die Einstellung bearbeiten darf: der Kunde selbst oder nur VoltPilot. */
 export type SettingEditability = 'customer' | 'voltpilot';
+
+/**
+ * Die HEIMAT eines Werts (E1, Captain-Entscheid D1) — der Ort, der ihn BESITZT
+ * und an dem er bearbeitet wird:
+ *  - `'einstellungen'` = die Einstellungs-Seite der Anlage. Sie zeigt ihn auf
+ *    JEDER Anlage, unabhängig davon, ob irgendein Modus läuft; ein Modus-
+ *    Container SPIEGELT ihn nur read-only mit Deep-Link hierher.
+ *  - `'modus'` = der Wert lebt weiterhin ausschließlich im Container seines
+ *    Modus (heute nur die drei von VoltPilot eingerichteten Lastspitzen-Werte).
+ */
+export type SettingHome = 'einstellungen' | 'modus';
 
 /**
  * Eine Einstellung des §2-Audits, mit ihren Modus-Claims + UI-Handles. `readView`
@@ -80,6 +117,12 @@ export interface ModeSettingDef {
    */
   claimedBy: ModeKind[];
   editability: SettingEditability;
+  /**
+   * Die Heimat des Werts (E1). `'einstellungen'` heißt: die Einstellungs-Seite
+   * besitzt ihn, der Container spiegelt ihn read-only — genau das schafft die
+   * Waisen-Klasse strukturell ab.
+   */
+  home: SettingHome;
   /** Handle für die Lese-Zeile im Container (v3.1-M3 verdrahtet sie). */
   readView: ModeSettingId;
   /** Handle für das Bearbeiten-Formular; null = read-only (von VoltPilot). */
@@ -98,6 +141,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     // wird nur noch vom Markt-Modus beansprucht.
     claimedBy: ['marktvermarktung'],
     editability: 'customer',
+    home: 'einstellungen',
     readView: 'speicherschonung',
     editForm: 'speicherschonung',
   },
@@ -106,6 +150,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     label: 'Netzladen des Speichers',
     claimedBy: ['marktvermarktung'],
     editability: 'customer',
+    home: 'einstellungen',
     readView: 'netzladen',
     editForm: 'netzladen',
   },
@@ -114,6 +159,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     label: 'Anzulegender Wert',
     claimedBy: ['marktvermarktung'],
     editability: 'customer',
+    home: 'einstellungen',
     readView: 'anzulegender-wert',
     editForm: 'anzulegender-wert',
   },
@@ -121,9 +167,11 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     id: 'stromtarif',
     label: 'Stromtarif',
     // Der Stromtarif wird vom Markt-Modus beansprucht (Eigenverbrauch ist kein
-    // Modus mehr, report §3.3).
+    // Modus mehr, report §3.3) — seit E1 WOHNT er aber auf der Einstellungs-
+    // Seite, sonst wäre er auf einer Eigenverbrauchs-Anlage unerreichbar.
     claimedBy: ['marktvermarktung'],
     editability: 'customer',
+    home: 'einstellungen',
     readView: 'stromtarif',
     editForm: 'stromtarif',
   },
@@ -132,6 +180,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     label: 'Leistungspreis',
     claimedBy: ['lastspitzenkappung'],
     editability: 'voltpilot',
+    home: 'modus',
     readView: 'leistungspreis',
     editForm: null,
   },
@@ -140,6 +189,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     label: 'Abrechnungsperiode',
     claimedBy: ['lastspitzenkappung'],
     editability: 'voltpilot',
+    home: 'modus',
     readView: 'abrechnung-leistung',
     editForm: null,
   },
@@ -148,6 +198,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     label: 'Lastspitzen-Reserve',
     claimedBy: ['lastspitzenkappung'],
     editability: 'voltpilot',
+    home: 'modus',
     readView: 'lastspitzen-reserve',
     editForm: null,
   },
@@ -228,13 +279,37 @@ export function settingsForMode(
 }
 
 /**
- * Die Einstellungen, die gerade KEIN aktiver Modus beansprucht — sie ruhen (der
- * gespeicherte Wert bleibt erhalten), sind aber über keinen Container erreichbar.
- * Die Waisen-Regel als reine Auskunft, ohne Teaser-Copy (Owner-Korrektur).
+ * Die Einstellungen, die die **Einstellungs-Seite der Anlage** besitzt (E1) —
+ * in kanonischer Reihenfolge und gefiltert auf das, was für DIESE Anlage
+ * wirksam ist (`settingRelevant`; der anzulegende Wert bleibt ein
+ * Direktvermarktungs-Fakt).
+ *
+ * Bewusst OHNE Modus-Argument: genau das ist die E1-Zusage — diese Werte sind
+ * unabhängig von jedem Modus erreichbar, auch auf einer Anlage, auf der gar
+ * kein Modus läuft.
+ */
+export function settingsPageSettings(ctx?: SettingContext | null): ModeSettingDef[] {
+  return ALL_SETTINGS.filter((def) => def.home === 'einstellungen').filter((def) =>
+    settingRelevant(def, ctx),
+  );
+}
+
+/**
+ * Die Einstellungen, die gerade KEIN aktiver Modus beansprucht **und** die auch
+ * keine modus-unabhängige Heimat haben — sie ruhen (der gespeicherte Wert
+ * bleibt erhalten), sind aber über keine Fläche erreichbar. Reine Auskunft,
+ * ohne Teaser-Copy (Owner-Korrektur).
+ *
+ * Seit E1 kann eine Einstellung mit `home: 'einstellungen'` NIE verwaisen — sie
+ * steht auf der Einstellungs-Seite, ob ein Modus läuft oder nicht. Übrig bleiben
+ * die von VoltPilot eingerichteten Lastspitzen-Werte, die nur ihr Container
+ * zeigt; ihre sichtbare Autoritäts-Stufe ist E4.
  */
 export function orphanedSettings(
   activeModes: ActiveMode[] | null | undefined,
 ): ModeSettingDef[] {
   const activeKinds = activeKindsOf(activeModes);
-  return ALL_SETTINGS.filter((def) => !def.claimedBy.some((kind) => activeKinds.has(kind)));
+  return ALL_SETTINGS.filter((def) => def.home !== 'einstellungen').filter(
+    (def) => !def.claimedBy.some((kind) => activeKinds.has(kind)),
+  );
 }

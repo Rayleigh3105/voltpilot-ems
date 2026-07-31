@@ -555,7 +555,7 @@ function AnlageStep({
           {!advanced && (
             <p className="vp-note" style={{ margin: '4px 0 0' }}>
               Stromtarif, Vergütung, Netzladen und Einspeisegrenze - jetzt oder
-              später unter „Technik &amp; Einstellungen".
+              später unter „Einstellungen".
             </p>
           )}
         </div>

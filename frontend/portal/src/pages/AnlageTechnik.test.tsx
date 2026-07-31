@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BatteryControlSection, StammdatenEditForm } from './AnlageTechnik';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
 import { api, type Device, type Site, type SiteAsset } from '../api';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
@@ -217,5 +217,134 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
     expect(screen.queryByText('Umgang mit dem Speicher')).toBeNull();
     // Kapazität stays as the read-first battery figure.
     expect(screen.getByText('Kapazität')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E1 · „Gruppe B bekommt ihren Ort" — die Geld-/Verhaltens-Einstellungen sind
+// auf JEDER Anlage erreichbar, unabhängig von Anlagentyp und aktivem Modus.
+// ---------------------------------------------------------------------------
+
+/** Rendert die ganze Einstellungs-Seite einer gewöhnlichen PV+Speicher-Anlage. */
+async function renderEinstellungen(over: Partial<Site> = {}, batteryOver: Partial<SiteAsset> = {}) {
+  const s: Site = { ...eegSite, ...over };
+  const assets = vi
+    .spyOn(api, 'siteAssets')
+    .mockResolvedValue([battery({ deviceId: 'd-1', ...batteryOver })]);
+  const preview = vi.spyOn(api, 'siteDeletionPreview').mockRejectedValue(new Error('n/a'));
+  const supply = vi.spyOn(api, 'supplyPrice').mockResolvedValue(null as never);
+  const onSiteSaved = vi.fn();
+  render(
+    <TechnikSection
+      site={s}
+      devices={[device({ id: 'd-1' })]}
+      sites={[s]}
+      onReload={() => {}}
+      onSiteSaved={onSiteSaved}
+      onSiteDeleted={() => {}}
+    />,
+  );
+  // Auf den Asset-Abruf warten, sonst steht die Speicher-Karte noch im Skeleton.
+  await screen.findByText('Kapazität');
+  return { onSiteSaved, restore: () => [assets, preview, supply].forEach((m) => m.mockRestore()) };
+}
+
+describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
+  it('DER Befund, geschlossen: eine Eigenverbrauchs-Anlage ohne aktiven Modus erreicht alle Werte', async () => {
+    // Genau die Anlage aus dem Konzept §3: `plantKind: eigenverbrauch`, kein
+    // Modus aktiv. Vor E1 war hier KEINER dieser Werte erreichbar.
+    const { restore } = await renderEinstellungen();
+
+    // Die Gruppe steht als eigener Abschnitt (Sprungmarke + Sprung-Navigation).
+    const geld = document.getElementById('technik-geld');
+    expect(geld).not.toBeNull();
+    expect(within(geld as HTMLElement).getByText('Strompreis & Vergütung')).toBeInTheDocument();
+    for (const label of ['Stromtarif', 'Netzladen des Speichers', 'Umgang mit dem Speicher']) {
+      const row = screen.getByText(label).closest('li') as HTMLElement;
+      expect(within(row).getByRole('button', { name: /Bearbeiten/ })).toBeInTheDocument();
+    }
+    // Die Sichtbarkeitsregel bleibt: der anzulegende Wert ist ein DV-Fakt.
+    expect(screen.queryByText('Anzulegender Wert')).toBeNull();
+    restore();
+  });
+
+  it('zeigt den anzulegenden Wert auf einer Direktvermarktungs-Anlage', async () => {
+    const { restore } = await renderEinstellungen({
+      plantKind: 'direktvermarktung',
+      anzulegenderWertCtKwh: 8.11,
+    });
+    const row = screen.getByText('Anzulegender Wert').closest('li') as HTMLElement;
+    expect(within(row).getByRole('button', { name: /Bearbeiten/ })).toBeInTheDocument();
+    restore();
+  });
+
+  it('speichert den Stromtarif als VOLL-Repräsentation (blankt kein Nachbarfeld)', async () => {
+    const updateSite = vi
+      .spyOn(api, 'updateSite')
+      .mockResolvedValue({ ...eegSite, tarifArt: 'fest', tarifParamCtKwh: 32.5 });
+    const { onSiteSaved, restore } = await renderEinstellungen({ maxFeedInKw: 75 });
+
+    const row = screen.getByText('Stromtarif').closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
+    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
+    fireEvent.change(screen.getByLabelText('Ihr Strompreis (ct/kWh)'), { target: { value: '32,5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
+    // Die Regressionsfalle, die mit den Formularen umgezogen ist: Name, Zone,
+    // Koordinaten und die maximale Einspeiseleistung reisen unverändert mit.
+    expect(updateSite).toHaveBeenCalledWith('s-1', {
+      name: 'Hof Sonnenfeld',
+      biddingZone: 'DE-LU',
+      latitude: null,
+      longitude: null,
+      plantKind: 'eigenverbrauch',
+      anzulegenderWertCtKwh: null,
+      tarifArt: 'fest',
+      tarifParamCtKwh: 32.5,
+      netzladenErlaubt: false,
+      maxFeedInKw: 75,
+    });
+    updateSite.mockRestore();
+    restore();
+  });
+
+  it('speichert den Umgang mit dem Speicher über die volle Speicher-Repräsentation', async () => {
+    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
+    const { restore } = await renderEinstellungen();
+
+    const row = screen.getByText('Umgang mit dem Speicher').closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /Schonend/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() => expect(saveBattery).toHaveBeenCalled());
+    expect(saveBattery).toHaveBeenCalledWith('s-1', {
+      capacityKwh: 10,
+      maxChargeKw: 5,
+      maxDischargeKw: 5,
+      roundtripEfficiencyPct: null,
+      deviceId: 'd-1',
+      speicherschonung: 'schonend',
+    });
+    saveBattery.mockRestore();
+    restore();
+  });
+
+  it('der Deep-Link aus dem Modus-Container landet auf der Gruppe (kein toter Link)', async () => {
+    window.location.hash = '#/anlage/s-1/technik?abschnitt=geld';
+    const scrollIntoView = vi.fn();
+    // jsdom kennt scrollIntoView nicht - der Aufruf IST hier die Zusicherung.
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      value: scrollIntoView,
+      configurable: true,
+      writable: true,
+    });
+    const { restore } = await renderEinstellungen();
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    // Die angesprungene Gruppe existiert wirklich unter dieser Adresse.
+    expect(document.getElementById('technik-geld')).not.toBeNull();
+    window.location.hash = '';
+    restore();
   });
 });

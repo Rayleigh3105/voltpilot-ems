@@ -294,7 +294,7 @@ export function eigenverbrauchProvenance(money: EarningsSite): string | null {
   if (money.tarifArt === 'ohne' || money.eigenverbrauchsWertEur == null) {
     return (
       `${menge} - direkt im Haus genutzter Solarstrom. Für einen Euro-Wert hinterlegen Sie ` +
-      `Ihren Stromtarif unter „Technik & Einstellungen".`
+      `Ihren Stromtarif unter „Einstellungen".`
     );
   }
   const gespart = ' So viel teuren Netzstrom haben Sie sich gespart.';

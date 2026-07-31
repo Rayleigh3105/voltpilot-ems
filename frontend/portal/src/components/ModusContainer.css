@@ -105,7 +105,6 @@
 /* --- Beitrag ------------------------------------------------------------- */
 
 .vp-modus-contrib,
-.vp-modus-settings,
 .vp-modus-views {
   list-style: none;
   margin: 0;
@@ -156,96 +155,10 @@
 
 /* --- Einstellungen (Lese-zuerst + Bearbeiten-Inline-Formular, v3.1-M3) ---- */
 
-.vp-modus-setting {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2, 8px);
-  padding: 10px 0;
-  border-top: 1px solid var(--vp-border, #e2e8f0);
-  min-width: 0;
-}
-
-.vp-modus-settings > .vp-modus-setting:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-/* Die Lese-Zeile: Label · Wert · Bearbeiten. Bricht am Telefon um, damit ein
- * langer Wert + Knopf die Seite nie horizontal aufreißt (375). */
-.vp-modus-settingtop {
-  display: flex;
-  align-items: baseline;
-  gap: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.vp-modus-settinglabel {
-  font-size: 0.92rem;
-  color: var(--vp-navy, #1a365d);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-modus-settingval {
-  margin-left: auto;
-  font-size: 0.9rem;
-  color: var(--vp-text, #223);
-  text-align: right;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-/* v3.1-M4: die „Von VoltPilot eingerichtet"-Notiz einer read-only Lastspitzen-
- * Einstellung — eine ruhige Kaption UNTER Label · Wert, damit klar ist, dass der
- * Wert sichtbar, aber nicht kunden-editierbar ist (kein Bearbeiten-Knopf). */
-.vp-modus-settinghint {
-  font-size: 0.78rem;
-  color: var(--vp-text-muted, #667);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-modus-editbtn {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 10px);
-  background: none;
-  color: var(--vp-action, #2c5282);
-  font: inherit;
-  font-size: 0.84rem;
-  cursor: pointer;
-}
-
-.vp-modus-editbtn:hover {
-  border-color: var(--vp-action, #2c5282);
-  background: rgba(44, 82, 130, 0.06);
-}
-
-/* Ein aufgeklapptes Bearbeiten-Formular hat keinen rechtsbündigen Wert. */
-.vp-modus-setting.editing .vp-modus-settingtop {
-  align-items: center;
-}
-
-.vp-modus-editform {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-3, 12px);
-  min-width: 0;
-}
-
-.vp-modus-editactions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--vp-space-2, 8px);
-  flex-wrap: wrap;
-  min-width: 0;
-}
+/* Die Einstellungs-ZEILEN des Containers leben seit E1 in
+ * `SettingEditors.css` (`.vp-setting-*`): der Container SPIEGELT sie nur noch
+ * read-only, die Einstellungs-Seite besitzt und bearbeitet sie — eine Zeile,
+ * ein Stylesheet. */
 
 /* --- Ansichten ----------------------------------------------------------- */
 
