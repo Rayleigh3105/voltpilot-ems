@@ -330,8 +330,12 @@ const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>
     subtitle: 'Die Vorhersage am Standort Ihrer Anlage - Grundlage der PV-Prognose.',
   },
   technik: {
-    title: 'Technik & Einstellungen',
-    subtitle: 'Wechselrichter, Speicher, Anlagentyp, Stromtarif und der Standort Ihrer Anlage.',
+    // D2 (Captain, 31.07.2026): die Seite heisst „Einstellungen". Der Untertitel
+    // nennt seit E1 wieder das, was dort auch WIRKLICH steht - Stromtarif und
+    // Vergütung sind zurueck (Konzept `vp-settings-ux-konzept` §3.4).
+    title: 'Einstellungen',
+    subtitle:
+      'Stromtarif, Vergütung, Speicher, Wechselrichter und der Standort Ihrer Anlage - an einem Ort.',
   },
   modell: {
     title: 'Anlagen-Modell',
@@ -986,8 +990,8 @@ export function AnlageSeite({
             type="button"
             className="vp-gear-btn"
             onClick={() => onOpenSub('technik')}
-            aria-label="Technik & Einstellungen"
-            title="Technik & Einstellungen"
+            aria-label="Einstellungen"
+            title="Einstellungen"
           >
             <Icon name="settings" size={18} />
           </button>
@@ -1316,8 +1320,8 @@ export function AnlageSeite({
             <DetailCard
               icon="settings"
               category="industry"
-              title="Technik & Einstellungen"
-              line="Wechselrichter, Speicher, Tarif und Standort."
+              title="Einstellungen"
+              line="Stromtarif, Vergütung, Speicher, Wechselrichter und Standort."
               onOpen={() => onOpenSub('technik')}
             />
             <DetailCard

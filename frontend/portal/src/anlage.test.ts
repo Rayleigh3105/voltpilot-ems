@@ -212,7 +212,9 @@ describe('eigenverbrauchProvenance (dynamic tariff, decision 1+3)', () => {
   });
   it('ohne: the honest "hinterlegen Sie Ihren Tarif" note, no fabricated euro', () => {
     const t = eigenverbrauchProvenance(makeMoney({ tarifArt: 'ohne', eigenverbrauchsWertEur: null }));
-    expect(t).toContain('Technik & Einstellungen');
+    // D2 (Captain, 31.07.2026): die Seite heißt „Einstellungen" — und seit E1
+    // steht der Stromtarif dort auch wirklich, der Verweis führt also irgendwohin.
+    expect(t).toContain('Einstellungen');
     expect(t).not.toContain('ct/kWh');
   });
 });

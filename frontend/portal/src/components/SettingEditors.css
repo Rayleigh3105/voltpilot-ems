@@ -1,0 +1,119 @@
+/* Die Zeile + das Inline-Formular EINER Geld-/Verhaltens-Einstellung (E1).
+ *
+ * Aus `ModusContainer.css` hierher gezogen, weil die Zeile seit E1 auf ZWEI
+ * Flächen steht: der Einstellungs-Seite (die sie besitzt und bearbeitet) und dem
+ * Modus-Container (der sie read-only spiegelt). Eine Zeile, ein Stylesheet —
+ * sonst laufen die beiden Darstellungen desselben Werts auseinander.
+ *
+ * Komponenten-lokal (das v3-Muster): `index.css` bleibt unangetastet. */
+
+.vp-setting-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vp-setting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  padding: 10px 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-setting-list > .vp-setting:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* Die Lese-Zeile: Label · Wert · Aktion. Bricht am Telefon um, damit ein
+ * langer Wert + Knopf die Seite nie horizontal aufreißt (375). */
+.vp-setting-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vp-setting-label {
+  font-size: 0.92rem;
+  color: var(--vp-navy, #1a365d);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-setting-val {
+  margin-left: auto;
+  font-size: 0.9rem;
+  color: var(--vp-text, #223);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Die ruhige Kaption UNTER Label · Wert: die Erklärzeile der Einstellungs-Seite
+ * ODER die „Von VoltPilot eingerichtet"-Notiz einer read-only Einstellung. */
+.vp-setting-hint {
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Ein Knopf (Bearbeiten) und ein Link (Spiegel → Heimat) sehen gleich aus:
+ * dieselbe Aktion an derselben Stelle, nur mit verschiedener Wirkung. */
+.vp-setting-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: none;
+  color: var(--vp-action, #2c5282);
+  font: inherit;
+  font-size: 0.84rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vp-setting-btn:hover {
+  border-color: var(--vp-action, #2c5282);
+  background: rgba(44, 82, 130, 0.06);
+}
+
+/* Ein aufgeklapptes Bearbeiten-Formular hat keinen rechtsbündigen Wert. */
+.vp-setting.editing .vp-setting-top {
+  align-items: center;
+}
+
+.vp-setting-editform {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-setting-editactions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--vp-space-2, 8px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* Auf der Einstellungs-Seite folgt die Liste dem Lese-Block ihrer Gruppe (die
+ * Speicher-Karte trägt erst ihre Kapazität, dann den Umgang mit dem Speicher). */
+.vp-setting-list.vp-tech-settings {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}

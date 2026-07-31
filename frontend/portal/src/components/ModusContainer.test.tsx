@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ModusContainer } from './ModusContainer';
 import { activeModes, type ActiveMode } from '../surface';
 import type { SiteProfile } from '../profiles';
-import { api, type Site, type SiteAsset } from '../api';
+import { type Site, type SiteAsset } from '../api';
 
 /** The market mode (masterdata-driven), with its four claimed settings + views. */
 function marktMode(): ActiveMode {
@@ -282,94 +282,13 @@ describe('ModusContainer Gewerbe read-only settings (v3.1-M4)', () => {
   });
 });
 
-describe('ModusContainer settings editing (v3.1-M3)', () => {
-  /** Opens the inline editor of the setting row whose label matches `label`. */
-  function openEditor(label: string): HTMLElement {
-    const row = screen.getByText(label).closest('li') as HTMLElement;
-    fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
-    return row;
+describe('ModusContainer Einstellungs-SPIEGEL (E1)', () => {
+  /** Die Zeile einer Einstellung. */
+  function settingRow(label: string): HTMLElement {
+    return screen.getByText(label).closest('li') as HTMLElement;
   }
 
-  it('edits Netzladen and saves the FULL site payload (never blanks a Technik field)', async () => {
-    const s = site({ netzladenErlaubt: false });
-    const updateSite = vi.spyOn(api, 'updateSite').mockResolvedValue({ ...s, netzladenErlaubt: true });
-    const onSiteSaved = vi.fn();
-    const mode = marktMode();
-    render(
-      <ModusContainer
-        profile={profile({ id: 'marktvermarktung', label: 'Marktvermarktung', active: true })}
-        mode={mode}
-        activeModes={[mode]}
-        site={s}
-        battery={battery()}
-        earnings={null}
-        busy={false}
-        {...NOOP}
-        onSiteSaved={onSiteSaved}
-      />,
-    );
-
-    openEditor('Netzladen des Speichers');
-    fireEvent.change(screen.getByLabelText('Netzladen des Speichers'), {
-      target: { value: 'erlaubt' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
-
-    await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
-    // THE regression guard: the container save is a FULL representation, so a
-    // focused tariff-field save carries EVERY Technik field through unchanged -
-    // name, coords, plant kind AND the maximale Einspeiseleistung are not blanked.
-    expect(updateSite).toHaveBeenCalledWith('s-1', {
-      name: 'Solarpark Dachau',
-      biddingZone: 'DE-LU',
-      latitude: 48.26,
-      longitude: 11.43,
-      plantKind: 'direktvermarktung',
-      anzulegenderWertCtKwh: 8.11,
-      tarifArt: 'dynamisch',
-      tarifParamCtKwh: 18,
-      netzladenErlaubt: true,
-      maxFeedInKw: 75,
-    });
-    updateSite.mockRestore();
-  });
-
-  it('edits the anzulegender Wert and saves the full payload', async () => {
-    const s = site({ anzulegenderWertCtKwh: 8.11 });
-    const updateSite = vi.spyOn(api, 'updateSite').mockResolvedValue(s);
-    const onSiteSaved = vi.fn();
-    const mode = marktMode();
-    render(
-      <ModusContainer
-        profile={profile({ id: 'marktvermarktung', label: 'Marktvermarktung', active: true })}
-        mode={mode}
-        activeModes={[mode]}
-        site={s}
-        battery={battery()}
-        earnings={null}
-        busy={false}
-        {...NOOP}
-        onSiteSaved={onSiteSaved}
-      />,
-    );
-
-    openEditor('Anzulegender Wert');
-    fireEvent.change(screen.getByLabelText('Anzulegender Wert (ct/kWh)'), {
-      target: { value: '9,25' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
-
-    await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
-    expect(updateSite).toHaveBeenCalledWith(
-      's-1',
-      expect.objectContaining({ anzulegenderWertCtKwh: 9.25, name: 'Solarpark Dachau', maxFeedInKw: 75 }),
-    );
-    updateSite.mockRestore();
-  });
-
-  it('edits the Speicherschonung and saves the full battery params + changed preset', async () => {
-    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
-    const onBatterySaved = vi.fn();
+  it('zeigt die Werte read-only und verweist auf ihre Heimat statt sie zu bearbeiten', () => {
     const mode = marktMode();
     render(
       <ModusContainer
@@ -377,72 +296,39 @@ describe('ModusContainer settings editing (v3.1-M3)', () => {
         mode={mode}
         activeModes={[mode]}
         site={site()}
-        battery={battery({ speicherschonung: 'ausgewogen' })}
+        battery={battery()}
         earnings={null}
         busy={false}
         {...NOOP}
-        onBatterySaved={onBatterySaved}
       />,
     );
 
-    // Read-first: the effective preset is shown before editing.
+    // Lesen ja - die Werte erklären, WOMIT dieser Modus rechnet.
+    expect(within(settingRow('Stromtarif')).getByText(/Dynamisch/)).toBeInTheDocument();
     expect(screen.getByText('Ausgewogen (empfohlen)')).toBeInTheDocument();
 
-    openEditor('Umgang mit dem Speicher');
-    const ausgewogen = screen.getByRole('radio', { name: /Ausgewogen/ }) as HTMLInputElement;
-    expect(ausgewogen.checked).toBe(true);
-    fireEvent.click(screen.getByRole('radio', { name: /Schonend/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    // Bearbeiten NEIN - es gibt hier keinen einzigen Bearbeiten-Knopf mehr
+    // (genau die Doppel-Editierbarkeit, die E1 ausschließt).
+    const list = screen.getByLabelText('Einstellungen');
+    expect(within(list).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
 
-    await waitFor(() => expect(onBatterySaved).toHaveBeenCalled());
-    // saveBattery is a full-representation upsert of the battery params, so the
-    // container carries capacity/charge/discharge/device through and adds the
-    // changed preset.
-    expect(saveBattery).toHaveBeenCalledWith('s-1', {
-      capacityKwh: 10,
-      maxChargeKw: 5,
-      maxDischargeKw: 5,
-      roundtripEfficiencyPct: null,
-      deviceId: 'd-1',
-      speicherschonung: 'schonend',
+    // Stattdessen der Deep-Link in die Gruppe, in der der Wert WOHNT.
+    const tarifLink = within(settingRow('Stromtarif')).getByRole('link', {
+      name: /In den Einstellungen ändern/,
     });
-    saveBattery.mockRestore();
-  });
-
-  it('an untouched Speicherschonung save never sends the preset (keeps a custom value)', async () => {
-    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
-    const onBatterySaved = vi.fn();
-    const mode = marktMode();
-    render(
-      <ModusContainer
-        profile={profile({ id: 'marktvermarktung', label: 'Marktvermarktung', active: true })}
-        mode={mode}
-        activeModes={[mode]}
-        site={site()}
-        battery={battery({ speicherschonung: 'individuell' })}
-        earnings={null}
-        busy={false}
-        {...NOOP}
-        onBatterySaved={onBatterySaved}
-      />,
-    );
-
-    openEditor('Umgang mit dem Speicher');
-    // Nothing pre-selected; the honest note explains a pick replaces the value.
+    expect(tarifLink).toHaveAttribute('href', '#/anlage/s-1/technik?abschnitt=geld');
+    // Der „Umgang mit dem Speicher" wohnt in der Speicher-Gruppe, nicht im Geld.
     expect(
-      (screen.getAllByRole('radio') as HTMLInputElement[]).filter((r) => r.checked),
-    ).toHaveLength(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+      within(settingRow('Umgang mit dem Speicher')).getByRole('link', {
+        name: /In den Einstellungen ändern/,
+      }),
+    ).toHaveAttribute('href', '#/anlage/s-1/technik?abschnitt=speicher');
 
-    await waitFor(() => expect(onBatterySaved).toHaveBeenCalled());
-    expect(saveBattery).toHaveBeenCalledWith(
-      's-1',
-      expect.not.objectContaining({ speicherschonung: expect.anything() }),
-    );
-    saveBattery.mockRestore();
+    // Und der Container sagt in einem Satz, warum hier nichts zu tippen ist.
+    expect(screen.getByText(/in den Einstellungen gepflegt/)).toBeInTheDocument();
   });
 
-  it('the Speicherschonung row is read-only when no battery is configured', () => {
+  it('verspricht keinen Link, wo es nichts zu ändern gäbe (kein Speicher)', () => {
     const mode = marktMode();
     render(
       <ModusContainer
@@ -456,8 +342,32 @@ describe('ModusContainer settings editing (v3.1-M3)', () => {
         {...NOOP}
       />,
     );
-    const row = screen.getByText('Umgang mit dem Speicher').closest('li') as HTMLElement;
-    expect(within(row).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+    const row = settingRow('Umgang mit dem Speicher');
     expect(within(row).getByText('Kein Speicher hinterlegt')).toBeInTheDocument();
+    expect(within(row).queryByRole('link')).toBeNull();
+    expect(within(row).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+  });
+
+  it('die von-VoltPilot-Werte bleiben ohne Link — sie wohnen weiter im Modus', () => {
+    const mode = activeModes({ signals: { hasLeistungspreis: true } }).find(
+      (m) => m.kind === 'lastspitzenkappung',
+    )!;
+    render(
+      <ModusContainer
+        profile={profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true })}
+        mode={mode}
+        activeModes={[mode]}
+        site={site({ leistungspreisEurKw: 120, abrechnungLeistung: 'jahr', peakReserveSocPct: 20 })}
+        battery={battery()}
+        earnings={null}
+        busy={false}
+        {...NOOP}
+      />,
+    );
+    const row = settingRow('Leistungspreis');
+    expect(within(row).getByText('Von VoltPilot eingerichtet')).toBeInTheDocument();
+    expect(within(row).queryByRole('link')).toBeNull();
+    // Ohne kunden-gestellten Wert entfällt auch die Spiegel-Notiz.
+    expect(screen.queryByText(/in den Einstellungen gepflegt/)).toBeNull();
   });
 });

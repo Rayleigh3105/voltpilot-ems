@@ -13,37 +13,58 @@ import {
   type SiteAsset,
   type SiteDeletionPreview,
 } from '../api';
-import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, premiumInputText } from '../fleet';
+import {
+  BATTERY_NO_DEVICE_WARNING,
+  netzladenBadge,
+  parseFeedInCapInput,
+  premiumInputText,
+  tarifArtLabel,
+} from '../fleet';
 import { buildSitePayload } from '../anlage';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
+import { settingsPageSettings } from '../modeSettings';
+import {
+  geldGroupSummary,
+  parseSettingsAnchor,
+  SETTING_HINT,
+  settingsGroupFor,
+  type SettingsGroupId,
+} from '../settingsNav';
 import { LocationMap } from '../components/LocationMap';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
 import { InfoTip } from '../components/InfoTip';
 import { MastrDrawer } from '../components/MastrDrawer';
+import { SettingRow } from '../components/SettingEditors';
 import { ErrorState, TextSkeleton } from '../components/States';
 
 /**
- * "Technik & Einstellungen" - the gear subpage of the Anlage, the calm,
- * editorial page of what the plant *is*: a slim left jump-navigation and five
- * explained sections on the right (Meine Anlage / Mein Gerät / Mein Speicher /
- * Registrierung / Anlage löschen). Four principles drive it: group by meaning
- * (not DB table), read first + edit on demand, collapse the installer jargon
- * behind "Technische Details", and explain every section in plain German with
- * an info-tooltip per Fachbegriff.
+ * "Einstellungen" (Captain-Entscheid D2) - the gear subpage of the Anlage, the
+ * calm, editorial page of what the plant *is* and how it should behave: a slim
+ * left jump-navigation and six explained sections on the right. Four principles
+ * drive it: group by meaning (not DB table), read first + edit on demand,
+ * collapse the installer jargon behind "Technische Details", and explain every
+ * section in plain German with an info-tooltip per Fachbegriff.
  *
- * v3.1-M3 moved the MODE settings out of here into their mode containers
- * (Steuerung): "Umgang mit dem Speicher" (Speicherschonung), Netzladen,
- * anzulegender Wert and the Stromtarif now live in Marktoptimierung /
- * Eigenverbrauch. What stays general is the plant's identity, its hardware and
- * the official/administrative pieces - plus the maximale Einspeiseleistung, a
- * Netzanschluss fact that moved up into "Meine Anlage". The former "Vergütung &
- * Tarif" section is therefore retired.
+ * **E1 (Settings-UX, Captain-Entscheid D1 vom 31.07.2026) gab der Gruppe
+ * „Strompreis & Vergütung" ihren Ort.** v3.1-M3 hatte die Geld-Einstellungen in
+ * die Modus-Container verschoben, und weil seither ALLE vier nur noch vom
+ * Markt-Modus beansprucht werden, waren sie auf einer gewöhnlichen
+ * PV-+-Speicher-Hausanlage über KEINE Fläche mehr erreichbar (Konzept
+ * `data/vp-settings-ux-konzept/report.md` §3 - inklusive der Sackgasse, dass der
+ * Markt-Modus seinerseits einen dynamischen Tarif voraussetzt). Seit E1 wohnen
+ * sie wieder hier, auf JEDER Anlage, unabhängig vom Anlagentyp und von jedem
+ * Modus; der Modus-Container spiegelt sie read-only mit einem Deep-Link hierher.
+ * Verteilt nach dem Entwurf (§7 P4): Stromtarif/Vergütung/Netzladen in die neue
+ * Geld-Gruppe, der „Umgang mit dem Speicher" zu „Mein Speicher" - er ist eine
+ * Verhaltens-, keine Geld-Einstellung. Die Formulare selbst leben EINMAL in
+ * `components/SettingEditors.tsx`.
  */
 
-/** The five sections, in the captain-approved order; ids double as scroll anchors. */
+/** The six sections, in the concept's order; ids double as scroll anchors. */
 const SECTIONS = [
   { key: 'anlage', icon: 'home' as IconName, label: 'Meine Anlage' },
+  { key: 'geld', icon: 'euro' as IconName, label: 'Strompreis & Vergütung' },
   { key: 'geraet', icon: 'cpu' as IconName, label: 'Mein Gerät' },
   { key: 'speicher', icon: 'battery' as IconName, label: 'Mein Speicher' },
   { key: 'registrierung', icon: 'file-text' as IconName, label: 'Registrierung' },
@@ -53,6 +74,32 @@ const SECTIONS = [
 type SectionKey = (typeof SECTIONS)[number]['key'];
 
 const anchorId = (key: SectionKey) => `technik-${key}`;
+
+/** Der Abschnitt zu einem Schlüssel - robuster als ein Index in `SECTIONS`. */
+function sectionOf(key: SectionKey): (typeof SECTIONS)[number] {
+  const s = SECTIONS.find((x) => x.key === key);
+  if (!s) throw new Error(`Unbekannter Abschnitt ${key}`);
+  return s;
+}
+
+/**
+ * Die per Deep-Link angesprungene Gruppe (E1). Der Modus-Container spiegelt die
+ * Geld-/Verhaltens-Werte read-only und verlinkt hierher; ohne das Ziel wäre der
+ * Spiegel eine Sackgasse. Gelesen beim Aufbau UND bei jedem Hash-Wechsel, damit
+ * ein Klick aus einer bereits offenen Anlage heraus auch wirkt.
+ */
+function useSettingsAnchor(): SettingsGroupId | null {
+  const [group, setGroup] = useState<SettingsGroupId | null>(() =>
+    typeof window === 'undefined' ? null : parseSettingsAnchor(window.location.hash),
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onHash = () => setGroup(parseSettingsAnchor(window.location.hash));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  return group;
+}
 
 /** Matches the phone breakpoint where sections turn into collapsible cards. */
 function useIsPhone(): boolean {
@@ -138,6 +185,7 @@ function TechCard({
   summary,
   action,
   alwaysVisible,
+  deepLinked = false,
   children,
 }: {
   section: (typeof SECTIONS)[number];
@@ -147,10 +195,19 @@ function TechCard({
   /** Desktop: rendered in the header (e.g. the edit pencil). Phone: in the body. */
   action?: ReactNode;
   alwaysVisible?: ReactNode;
+  /**
+   * Diese Gruppe wurde per Deep-Link angesprungen (E1): am Telefon klappt sie
+   * dann von selbst auf - sonst landete der Spiegel-Link auf einer zugeklappten
+   * Karte und der Kunde stünde wieder vor einer verschlossenen Tür.
+   */
+  deepLinked?: boolean;
   children: ReactNode;
 }) {
   const isPhone = useIsPhone();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(deepLinked);
+  useEffect(() => {
+    if (deepLinked) setOpen(true);
+  }, [deepLinked]);
   const danger = 'danger' in section && section.danger;
   const showBody = !isPhone || open;
 
@@ -264,6 +321,15 @@ export function TechnikSection({
     SECTIONS.map((s) => s.key),
     !isPhone,
   );
+  const anchored = useSettingsAnchor();
+
+  // Ein Deep-Link aus einem Modus-Container scrollt seine Gruppe in den Blick
+  // (am Telefon klappt die Karte zusätzlich von selbst auf, siehe `TechCard`).
+  useEffect(() => {
+    if (!anchored) return;
+    const el = document.getElementById(anchorId(anchored));
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [anchored, site.id]);
 
   const siteDevices = devices.filter((d) => d.siteId === site.id);
   const deviceDetail = siteDevices.find((d) => d.id === deviceDetailId) ?? null;
@@ -353,7 +419,8 @@ export function TechnikSection({
   const anlageCard = (
     <TechCard
       key="anlage"
-      section={SECTIONS[0]}
+      section={sectionOf('anlage')}
+      deepLinked={anchored === 'anlage'}
       explain="Die Grunddaten Ihrer Anlage - Name, Standort, Anlagentyp und Netzanschluss."
       summary={site.name}
       action={anlageEditing ? undefined : <EditPencil onClick={() => setEditSection('anlage')} />}
@@ -422,6 +489,49 @@ export function TechnikSection({
     </TechCard>
   );
 
+  // --- Section: Strompreis & Vergütung (E1, „Gruppe B bekommt ihren Ort") --
+  // Die vier Einstellungen, die der Kunde selbst stellt, WOHNEN hier - auf
+  // jeder Anlage, unabhängig von Anlagentyp und aktivem Modus. Die Registry
+  // (`settingsPageSettings`) ist die eine Wahrheit darüber, welche das sind;
+  // die Sichtbarkeitsregel bleibt unverändert, dass der anzulegende Wert ein
+  // Direktvermarktungs-Fakt ist (`settingRelevant`).
+  const geldSettings = settingsPageSettings({ plantKind: site.plantKind }).filter(
+    (s) => settingsGroupFor(s.id) === 'geld',
+  );
+  const geldCard = (
+    <TechCard
+      key="geld"
+      section={sectionOf('geld')}
+      deepLinked={anchored === 'geld'}
+      explain="Womit VoltPilot für Sie rechnet: Ihr Strompreis, Ihre Vergütung und ob der Speicher aus dem Netz laden darf."
+      summary={geldGroupSummary({
+        tarifLabel: tarifArtLabel(site.tarifArt, site.tarifParamCtKwh),
+        netzladenLabel: netzladenBadge(site.netzladenErlaubt).label,
+        anzulegenderWertLabel:
+          site.plantKind === 'direktvermarktung' && site.anzulegenderWertCtKwh != null
+            ? fmtNum(site.anzulegenderWertCtKwh, 'ct/kWh', 2)
+            : null,
+      })}
+    >
+      {/* Diese Werte hängen alle an der ANLAGE, nicht an ihren Assets - ein
+          fehlgeschlagener Asset-Abruf darf den Stromtarif nie verstecken. */}
+      <ul className="vp-setting-list">
+        {geldSettings.map((s) => (
+          <SettingRow
+            key={s.id}
+            setting={s}
+            site={site}
+            battery={batteryAsset}
+            action={{ kind: 'edit' }}
+            hint={SETTING_HINT[s.id]}
+            onSiteSaved={onSiteSaved}
+            onBatterySaved={(a) => setAssets(a)}
+          />
+        ))}
+      </ul>
+    </TechCard>
+  );
+
   // --- Section: Mein Gerät (Wechselrichter) -------------------------------
   const geraetSummary =
     siteDevices.length === 0 ? (
@@ -434,7 +544,8 @@ export function TechnikSection({
   const geraetCard = (
     <TechCard
       key="geraet"
-      section={SECTIONS[1]}
+      section={sectionOf('geraet')}
+      deepLinked={anchored === 'geraet'}
       explain="Der Wechselrichter, der Ihre Anlage steuert und Messwerte sendet."
       summary={geraetSummary}
     >
@@ -513,10 +624,14 @@ export function TechnikSection({
   // the card's always-visible slot (shown even on a collapsed phone card),
   // NOT buried in the collapsible body.
   const batteryNeedsDevice = batteryAsset != null && batteryAsset.deviceId == null;
+  const speicherSettings = settingsPageSettings({ plantKind: site.plantKind }).filter(
+    (s) => settingsGroupFor(s.id) === 'speicher',
+  );
   const speicherCard = (
     <TechCard
       key="speicher"
-      section={SECTIONS[2]}
+      section={sectionOf('speicher')}
+      deepLinked={anchored === 'speicher'}
       explain="Ihr Batteriespeicher - so lädt und entlädt ihn der Fahrplan optimal."
       summary={
         batteryNeedsDevice ? (
@@ -546,13 +661,36 @@ export function TechnikSection({
       ) : assets === null ? (
         <TextSkeleton lines={3} />
       ) : (
-        <BatteryControlSection
-          siteId={site.id}
-          battery={batteryAsset}
-          devices={siteDevices}
-          onSaved={(a) => setAssets(a)}
-          hideWarning
-        />
+        <>
+          <BatteryControlSection
+            siteId={site.id}
+            battery={batteryAsset}
+            devices={siteDevices}
+            onSaved={(a) => setAssets(a)}
+            hideWarning
+          />
+          {/* E1: „Umgang mit dem Speicher" wohnt hier, nicht im Modus-Container
+              (Entwurf §7 P4, Gruppe C) - es ist eine Verhaltens-, keine
+              Geld-Einstellung. Ohne hinterlegten Speicher gibt es nichts zu
+              schonen; dann führt die Karte oben zuerst zum „Speicher
+              hinzufügen", statt hier eine wirkungslose Zeile zu zeigen. */}
+          {speicherSettings.length > 0 && batteryAsset != null ? (
+            <ul className="vp-setting-list vp-tech-settings">
+              {speicherSettings.map((s) => (
+                <SettingRow
+                  key={s.id}
+                  setting={s}
+                  site={site}
+                  battery={batteryAsset}
+                  action={{ kind: 'edit' }}
+                  hint={SETTING_HINT[s.id]}
+                  onSiteSaved={onSiteSaved}
+                  onBatterySaved={(a) => setAssets(a)}
+                />
+              ))}
+            </ul>
+          ) : null}
+        </>
       )}
     </TechCard>
   );
@@ -561,7 +699,8 @@ export function TechnikSection({
   const registrierungCard = (
     <TechCard
       key="registrierung"
-      section={SECTIONS[3]}
+      section={sectionOf('registrierung')}
+      deepLinked={anchored === 'registrierung'}
       explain="Die offizielle Registrierung Ihrer Anlage - brauchen Sie nur selten."
       summary={linkedAssets.length > 0 ? 'MaStR verknüpft' : 'Nicht verknüpft'}
     >
@@ -641,7 +780,8 @@ export function TechnikSection({
   const loeschenCard = (
     <TechCard
       key="loeschen"
-      section={SECTIONS[4]}
+      section={sectionOf('loeschen')}
+      deepLinked={anchored === 'loeschen'}
       explain="Entfernt die Anlage und alle ihre Daten unwiderruflich."
       summary="Unwiderruflich"
     >
@@ -667,6 +807,7 @@ export function TechnikSection({
       <JumpNav active={activeSection} />
       <div className="vp-technik-sections">
         {anlageCard}
+        {geldCard}
         {geraetCard}
         {speicherCard}
         {registrierungCard}
