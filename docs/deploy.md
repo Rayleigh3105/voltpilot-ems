@@ -141,6 +141,22 @@ The compose file carries both `image:` (registry name) and `build:` (local conte
 The first build takes a while (Maven + npm inside Docker); subsequent builds are cached.
 To update later: `git pull && docker compose -f docker-compose.prod.yml build && docker compose -f docker-compose.prod.yml up -d`.
 If the Keycloak login theme changed, add `docker compose -f docker-compose.prod.yml up -d --force-recreate keycloak`: in `start` mode Keycloak caches themes at boot AND pre-gzips served resources onto the container filesystem, so a plain `restart` keeps serving the old CSS to browsers.
+(That recreate is only needed on the bind-mount path - the project Keycloak image below bakes the theme in and is replaced rather than restarted, so its cache cannot go stale.)
+
+#### Optional: the project Keycloak image
+
+`keycloak` is the one service whose compose default is still an upstream image (`quay.io/keycloak/keycloak`) with the realm import and the login theme bind-mounted.
+CI also builds a **project image that bakes both in** (`git.tecmaxx.de/mamotec/voltpilot-ems/keycloak:{latest,<sha>}`, from `deploy/keycloak/Dockerfile`) - that is what the Kubernetes deployment pulls, since a cluster cannot supply an 8-file theme directory as a mount.
+To run that same image here, put a full reference into `.env` and recreate the one service:
+
+```bash
+echo 'KEYCLOAK_IMAGE=git.tecmaxx.de/mamotec/voltpilot-ems/keycloak:latest' >> .env
+docker compose -f docker-compose.prod.yml up -d keycloak
+```
+
+Leaving `KEYCLOAK_IMAGE` unset keeps today's behaviour exactly.
+The bind-mounts may stay (they overlay byte-identical files from the same commit); note that `KEYCLOAK_IMAGE` is a complete reference and is **not** pinned by `IMAGE_TAG` - write a SHA literally if you want one.
+Background and the version-lockstep rule: [`deploy/keycloak/README.md`](../deploy/keycloak/README.md).
 
 ### 5. Create the NPM Proxy Host
 

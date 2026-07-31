@@ -167,6 +167,16 @@ jobs:
           - component: flowc
             context: ./edge-app/nodered/flowc
             build_args: ""
+          # Repo-root context like the optimizer: the image bakes the realm
+          # import (infra/prod/keycloak) AND the login theme
+          # (deploy/keycloak/themes), which live in different directories.
+          # Compose still defaults to the upstream image; the k8s Deployment
+          # pulls this one (deploy/keycloak/README.md). Kept in lockstep with
+          # deploy-fast.yaml so both pipelines publish the same nine images.
+          - component: keycloak
+            context: .
+            dockerfile: ./deploy/keycloak/Dockerfile
+            build_args: ""
           # The SPA bakes its config at build time. VITE_API_BASE empty => the SPA
           # calls same-origin /api/... (nginx proxies it); Keycloak is served under
           # https://${DOMAIN}/auth behind the external proxy. VITE_KEYCLOAK_URL is

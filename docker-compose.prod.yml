@@ -90,8 +90,18 @@ services:
   # ${...} placeholders (redirect URIs, web origins, confidential secret).
   # ---------------------------------------------------------------------------
   keycloak:
-    image: quay.io/keycloak/keycloak:26.0.5
+    # Default = the STOCK upstream image with realm + theme bind-mounted below
+    # (unchanged behaviour). Set KEYCLOAK_IMAGE in .env to the project image
+    # that BAKES both in - git.tecmaxx.de/mamotec/voltpilot-ems/keycloak:latest,
+    # built by the `keycloak` CI matrix entry - to preview what the Kubernetes
+    # deployment runs; the mounts then just overlay byte-identical files and may
+    # be dropped after the move. Keep the pinned version here and the
+    # ARG KEYCLOAK_VERSION in deploy/keycloak/Dockerfile in lockstep.
+    # Details + the IMAGE_TAG caveat: deploy/keycloak/README.md.
+    image: ${KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.0.5}
     restart: unless-stopped
+    # Deliberately NOT `--optimized`: correct for BOTH images (the project image
+    # bakes the identical build options, so Keycloak does not re-augment).
     command: ["start", "--import-realm"]
     environment:
       KC_DB: postgres
