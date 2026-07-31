@@ -57,6 +57,16 @@ func (a *Agent) controlCertified(family string) bool {
 	return a.calCert[strings.ToLower(strings.TrimSpace(family))]
 }
 
+// deviceCertified reports ONLY the per-device First-Light grant, without the
+// fleet-wide env allowlist. That is the half a sign/scale correction and
+// "Freigabe zurücknehmen" actually remove, so it is what the surface must
+// announce as a consequence (see calibration.Snapshot.DeviceCertified).
+func (a *Agent) deviceCertified(family string) bool {
+	a.calMu.Lock()
+	defer a.calMu.Unlock()
+	return a.calCert[strings.ToLower(strings.TrimSpace(family))]
+}
+
 // certifiedControlPath returns the control surface the family's First-Light grant
 // was proven on ("remote"/"tou"), or "" when unknown (env-allowlisted family, or a
 // pre-path grant that has not been backfilled yet). Published on edge/setpoint as
@@ -290,6 +300,7 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 		snap.Available = true
 		snap.Family = sel.Family
 		snap.Certified = a.controlCertified(sel.Family)
+		snap.DeviceCertified = a.deviceCertified(sel.Family)
 		snap.InvertControlSign = sel.Connection.InvertControlSign
 		snap.PowerScale = sel.Connection.PowerScale
 		snap.InvertBattSign = sel.Connection.InvertBattSign

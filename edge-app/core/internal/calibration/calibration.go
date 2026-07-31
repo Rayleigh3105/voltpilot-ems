@@ -715,6 +715,15 @@ type Snapshot struct {
 	ControlEnabled bool    `json:"control_enabled"` // global kill-switch on (agent-set)
 	Family         string  `json:"family"`          // register-map family (agent-set)
 	Certified      bool    `json:"certified"`       // already certified (agent-set)
+	// DeviceCertified reports whether the release was granted ON THIS DEVICE by
+	// First-Light (the persisted per-device grant), as opposed to the fleet-wide
+	// VP_CONTROL_CERTIFIED_FAMILIES allowlist. Certified is the MERGE of both
+	// (agent.controlCertified), but a sign/scale correction and "Freigabe
+	// zurücknehmen" only ever remove the per-device half - so a surface that
+	// announces "die Freigabe wird zurückgenommen" must key on THIS flag, or it
+	// promises a consequence that does not happen on an env-allowlisted family
+	// (`sunspec` is allowlisted by default and IS calibration-available).
+	DeviceCertified bool `json:"device_certified"` // agent-set
 	// The current WRITE-path sign / power scale on the inverter connection (agent-set),
 	// so the correction UI shows what is set. PowerScale 0 = auto-detect.
 	InvertControlSign bool    `json:"invert_control_sign"`

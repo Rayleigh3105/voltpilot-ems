@@ -72,6 +72,7 @@ function load(files, opts) {
     isSecureContext: false
   };
   win.window = win;
+  Object.assign(win, opts.extra || {});
   const ctx = vm.createContext(win);
   for (const f of files) {
     vm.runInContext(fs.readFileSync(path.join(STATIC, f), "utf8"), ctx, { filename: f });
@@ -851,4 +852,370 @@ test("curtail: released units read calm, a blocked unit surfaces its reason", ()
   });
   assert.strictEqual(blocked.tone, "warn");
   assert.match(blocked.text, /Gateway nicht erreichbar/);
+});
+
+/* ============ consequences.js: die Nebenwirkungs-Regel (E3) ============ */
+//
+// Die Regel: eine Aktion, die ANDERSWO einen freigegebenen/bestätigten/
+// aufgezeichneten Zustand entwertet, nennt diese Folge VORHER. Getestet wird
+// deshalb beides - dass die Folge genannt wird, UND dass ohne Folge kein
+// Dialog entsteht (ein Dialog ohne Wirkung wäre Lärm, einer mit erfundener
+// Wirkung eine Lüge).
+
+function consequences() {
+  return load(["consequences.js"]).VPConsequences;
+}
+
+// Der Zustand eines freigegebenen, frisch bewiesenen Wechselrichters -
+// genau die Lage, in der die Korrektur am meisten wegnimmt.
+const CAL_CERTIFIED = {
+  family: "hybrid_3p",
+  certified: true,
+  device_certified: true,
+  sign_confirmed: true,
+  scale_confirmed: true,
+  write_readback_ok: true,
+  evidence_valid: true,
+};
+
+test("E3: eine Kalibrier-Korrektur nennt die Rücknahme der Freigabe VORHER", () => {
+  const C = consequences();
+  const msg = C.calibrationCorrection(CAL_CERTIFIED, "Steuer-Vorzeichen umkehren");
+
+  assert.ok(msg, "eine entwertende Korrektur muss eine Rückfrage bauen");
+  // Die Aktion wird beim Namen genannt ...
+  assert.match(msg, /Steuer-Vorzeichen umkehren/);
+  // ... die konkrete Folge ausgesprochen ...
+  assert.match(msg, /Steuerungs-Freigabe .* wird zurückgenommen/);
+  // ... und was das für die ANLAGE heißt (das war der teure Teil von Wunde 2).
+  assert.match(msg, /Fahrplan steuert diesen Wechselrichter dann nicht mehr/);
+  // ... plus der Weg zurück und die eigentliche Frage.
+  assert.match(msg, /erneut bestätigen und freigeben/);
+  assert.match(msg, /Fortfahren\?/);
+});
+
+test("E3: die Korrektur nennt ALLE drei Folgen, die der Server wirklich auslöst", () => {
+  const C = consequences();
+  const keys = C.calibrationCorrectionEffects(CAL_CERTIFIED).map((e) => e.key);
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(keys)),
+    ["freigabe", "bestaetigungen", "testergebnis"]);
+});
+
+test("E3: ohne Freigabe wird KEINE Rücknahme behauptet - nur was wirklich passiert", () => {
+  const C = consequences();
+  // Bestätigt, aber nie freigegeben: die Haken fallen, die Freigabe nicht.
+  const msg = C.calibrationCorrection(
+    { sign_confirmed: true, evidence_valid: true }, "Mess-Vorzeichen der Batterie umkehren");
+  assert.ok(msg);
+  assert.match(msg, /Bestätigungen für Vorzeichen und Skala werden zurückgesetzt/);
+  assert.match(msg, /Ergebnis des letzten Testlaufs wird verworfen/);
+  assert.doesNotMatch(msg, /Freigabe/, "eine nie erteilte Freigabe darf nicht genannt werden");
+});
+
+test("E3: entwertet die Korrektur nichts, gibt es KEINE Rückfrage", () => {
+  const C = consequences();
+  // Frisch scharfgeschaltet: nichts freigegeben, nichts bestätigt, kein
+  // gültiges Ergebnis -> die Korrektur speichert nur einen Verbindungswert.
+  assert.strictEqual(C.calibrationCorrection({ armed: true }, "Leistungsskalierung ×10 (HV)"), null);
+  assert.strictEqual(C.calibrationCorrection(null, "x"), null);
+});
+
+test("E3: ask() führt nur aus, wenn bestätigt wird - Abbrechen ändert nichts", () => {
+  const win = load(["consequences.js"]);
+  const C = win.VPConsequences;
+
+  win.confirm = () => false;
+  assert.strictEqual(C.ask("Fortfahren?"), false, "Abbrechen muss die Aktion stoppen");
+
+  win.confirm = () => true;
+  assert.strictEqual(C.ask("Fortfahren?"), true);
+
+  // Ohne Text (nichts wird entwertet) wird gar nicht erst gefragt ...
+  let asked = 0;
+  win.confirm = () => { asked++; return false; };
+  assert.strictEqual(C.ask(null), true, "ohne Folge läuft die Aktion unverändert durch");
+  assert.strictEqual(asked, 0);
+
+  // ... und ohne verfügbares confirm wird nie blockiert (Kiosk/Test).
+  delete win.confirm;
+  assert.strictEqual(C.ask("Fortfahren?"), true);
+});
+
+test("E3: 'Freigabe zurücknehmen' nennt die Folge für die Anlage, nicht nur sich selbst", () => {
+  const C = consequences();
+  const msg = C.calibrationDecertify(CAL_CERTIFIED);
+  assert.ok(msg);
+  assert.match(msg, /nur-lesend/);
+  assert.match(msg, /Fahrplan steuert diesen Wechselrichter dann nicht mehr/);
+  // Ehrlich: die Bestätigungen überleben diese Aktion (anders als bei der Korrektur).
+  assert.match(msg, /Bestätigungen bleiben erhalten/);
+  // Nicht freigegeben -> nichts zu nehmen -> keine Rückfrage.
+  assert.strictEqual(C.calibrationDecertify({ certified: false }), null);
+});
+
+test("E3: die Abregelungs-Rücknahme sagt, dass der Fahrplan dann nicht mehr abregelt", () => {
+  const C = consequences();
+  const msg = C.curtailDecertify({ source_id: "src-1", label: "Fronius WR1", certified: true });
+  assert.ok(msg);
+  assert.match(msg, /Fronius WR1/);
+  assert.match(msg, /nicht mehr abregeln/);
+  assert.match(msg, /negativen Strompreisen/);
+  assert.strictEqual(C.curtailDecertify({ source_id: "src-1", certified: false }), null);
+});
+
+test("E3: eine Quelle mit Abregelungs-Freigabe nennt beim Entfernen BEIDE Folgen", () => {
+  const C = consequences();
+  const src = { id: "src-1", label: "Fronius WR1", role: "pv-generation" };
+  const units = [{ source_id: "src-1", certified: true }];
+
+  const withRelease = C.sourceRemoval(src, units);
+  assert.match(withRelease, /Gesamt-PV/, "die Rollen-Folge bleibt erhalten");
+  assert.match(withRelease, /Abregelungs-Freigabe .* verfällt/);
+
+  // Ohne Freigabe bleibt es beim reinen Rollen-Satz - nichts wird erfunden.
+  const plain = C.sourceRemoval(src, [{ source_id: "src-1", certified: false }]);
+  assert.match(plain, /Gesamt-PV/);
+  assert.doesNotMatch(plain, /Abregelungs-Freigabe/);
+  // Auch ohne Abregel-Modul (units unbekannt) darf nichts behauptet werden.
+  assert.doesNotMatch(C.sourceRemoval(src, undefined), /Abregelungs-Freigabe/);
+
+  // Die anderen Rollen behalten ihre eigene, wahre Folge.
+  assert.match(C.sourceRemoval({ id: "g", role: "grid-meter" }, []), /Speicher-Wechselrichter gemessen/);
+  assert.match(C.sourceRemoval({ id: "c", role: "consumer" }, []), /nicht mehr mitgemessen/);
+});
+
+test("E3: ein Modellwechsel sagt, dass die Freigabe nicht mitwandert", () => {
+  const C = consequences();
+  const msg = C.inverterChange(
+    CAL_CERTIFIED,
+    { family: "hybrid_3p", connection: { power_scale: 10 } },
+    { family: "hybrid_1p", connection: { power_scale: 10 } }
+  );
+  assert.ok(msg);
+  assert.match(msg, /Für das neue Modell besteht hier noch keine Freigabe/);
+  assert.match(msg, /Fahrplan steuert diesen Wechselrichter dann nicht mehr/);
+  // Es wird NICHT behauptet, die alte Freigabe würde gelöscht - sie gilt weiter
+  // für das bisherige Modell.
+  assert.doesNotMatch(msg, /zurückgenommen/);
+});
+
+test("E3: geänderte Steuerwerte sagen ehrlich 'Freigabe bleibt, Nachweis veraltet'", () => {
+  const C = consequences();
+  const msg = C.inverterChange(
+    CAL_CERTIFIED,
+    { family: "hybrid_3p", connection: { power_scale: 1, invert_control_sign: false } },
+    { family: "hybrid_3p", connection: { power_scale: 10, invert_control_sign: false } }
+  );
+  assert.ok(msg);
+  assert.match(msg, /Freigabe bleibt bestehen/);
+  assert.match(msg, /nicht mehr belegt/);
+  assert.match(msg, /erneut testen/);
+  assert.doesNotMatch(msg, /wird zurückgenommen/, "der Server nimmt hier nichts zurück");
+});
+
+test("E3: ohne Freigabe und ohne Steuerwert-Änderung fragt das Formular nicht", () => {
+  const C = consequences();
+  const same = { family: "hybrid_3p", connection: { power_scale: 10, ip: "192.168.0.28" } };
+  // (a) nicht freigegeben -> nie eine Rückfrage, egal was sich ändert.
+  assert.strictEqual(
+    C.inverterChange({ certified: false }, same, { family: "hybrid_1p", connection: {} }), null);
+  // (b) freigegeben, aber nur ein NICHT steuerrelevantes Feld geändert.
+  assert.strictEqual(
+    C.inverterChange(CAL_CERTIFIED, same,
+      { family: "hybrid_3p", connection: { power_scale: 10, ip: "192.168.0.99" } }), null);
+  // (c) freigegeben und nichts geändert.
+  assert.strictEqual(C.inverterChange(CAL_CERTIFIED, same, same), null);
+});
+
+test("E3: leer und fehlend sind derselbe Wert - ein Select erzeugt keine Geister-Rückfrage", () => {
+  const C = consequences();
+  // Der Server liefert Zahlen, die Selects Strings; "" und undefined heißen
+  // beide "nicht gesetzt". Keiner der Fälle ist eine Änderung.
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(C.changedControlKeys({ power_scale: 10 }, { power_scale: "10" }))), []);
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(C.changedControlKeys({ control_write_fc: "" }, {}))), []);
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(C.changedControlKeys({ invert_control_sign: false }, {}))), []);
+  // Eine echte Änderung wird erkannt.
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(C.changedControlKeys({ invert_control_sign: false }, { invert_control_sign: true }))),
+    ["invert_control_sign"]);
+});
+
+/* ====== calibration.js: die Regel ist VERDRAHTET, nicht nur formuliert ====== */
+//
+// Wunde 2 saß in der VERDRAHTUNG, nicht im Text: der Knopf POSTete sofort.
+// Diese Tests fahren deshalb den echten calibration.js-Klickpfad gegen ein
+// DOM-Stub und prüfen die drei Zusicherungen des Inkrements:
+//   Dialog erscheint mit Folgen-Text · Abbrechen ändert nichts · Bestätigen führt aus.
+
+// Ein generisches Element - reicht für alles, was render()/init() anfassen.
+function el(id) {
+  const handlers = {};
+  return {
+    id,
+    hidden: false, checked: false, disabled: false, value: "",
+    textContent: "", innerHTML: "",
+    style: {}, dataset: {},
+    classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+    appendChild() {}, scrollIntoView() {}, focus() {},
+    querySelector() { return el(id + "-child"); },
+    addEventListener(type, fn) { (handlers[type] = handlers[type] || []).push(fn); },
+    fire(type) { (handlers[type] || []).forEach((fn) => fn.call(this, {})); },
+    _handlers: handlers,
+  };
+}
+
+// Drives the REAL calibration.js: returns the window plus the recorded POSTs.
+function calibrationCard(cal, confirmAnswer) {
+  const nodes = new Map();
+  const get = (id) => {
+    if (!nodes.has(id)) nodes.set(id, el(id));
+    return nodes.get(id);
+  };
+  const scale1 = el("scale1"); scale1.dataset.scale = "1"; scale1.textContent = "×1 (LV)";
+  const scale10 = el("scale10"); scale10.dataset.scale = "10"; scale10.textContent = "×10 (HV)";
+
+  const posts = [];
+  const doc = {
+    readyState: "complete",
+    documentElement: { classList: { toggle() {}, contains() { return false; } } },
+    getElementById: get,
+    createElement: () => el("new"),
+    querySelectorAll: (sel) => (sel === ".cal-scale-btn" ? [scale1, scale10] : []),
+    querySelector: () => null,
+    addEventListener() {},
+  };
+  const confirms = [];
+  const win = load(["consequences.js", "calibration.js"], {
+    document: doc,
+    extra: {
+      setInterval() {},
+      confirm(msg) { confirms.push(msg); return confirmAnswer; },
+      fetch(url, init) {
+        if (init && init.method === "POST") posts.push({ url, body: JSON.parse(init.body || "{}") });
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve({ calibration: cal }),
+        });
+      },
+    },
+  });
+  return { win, posts, confirms, get, scale10 };
+}
+
+// Let the init-time GET /api/calibration land so lastCal is the real snapshot.
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+test("E3 verdrahtet: Abbrechen an einer Kalibrier-Korrektur ändert NICHTS", async () => {
+  const c = calibrationCard(CAL_CERTIFIED, false);
+  await settle();
+  const before = c.posts.length;
+
+  c.get("calInvert").fire("click");
+  c.get("calBattInvert").fire("click");
+  c.scale10.fire("click");
+  await settle();
+
+  assert.strictEqual(c.posts.length, before, "kein einziger POST nach Abbrechen");
+  assert.strictEqual(c.confirms.length, 3, "jede der drei Korrekturen fragt nach");
+  // Und jede Rückfrage nennt wirklich die Folge - nicht bloß "Sicher?".
+  for (const msg of c.confirms) {
+    assert.match(msg, /Steuerungs-Freigabe .* wird zurückgenommen/);
+    assert.match(msg, /Fahrplan steuert diesen Wechselrichter dann nicht mehr/);
+  }
+  // Die Rückfrage nennt die Aktion beim Namen, auch die Skalierungs-Knöpfe.
+  assert.match(c.confirms[2], /×10 \(HV\)/);
+});
+
+test("E3 verdrahtet: Bestätigen führt die Korrektur unverändert aus", async () => {
+  const c = calibrationCard(CAL_CERTIFIED, true);
+  await settle();
+  const before = c.posts.length;
+
+  c.get("calInvert").fire("click");
+  c.scale10.fire("click");
+  await settle();
+
+  const done = c.posts.slice(before);
+  assert.strictEqual(done.length, 2);
+  assert.strictEqual(done[0].url, "/api/calibration/correction");
+  assert.strictEqual(done[0].body.invert_control_sign, true, "der bisherige Wert wird gekippt");
+  assert.strictEqual(done[1].body.power_scale, 10);
+});
+
+test("E3 verdrahtet: ohne Freigabe/Beweis läuft die Korrektur ohne Rückfrage durch", async () => {
+  // Frisch scharfgeschaltet: die Korrektur entwertet nachweislich nichts.
+  const c = calibrationCard({ family: "hybrid_3p", armed: true, available: true }, false);
+  await settle();
+  const before = c.posts.length;
+
+  c.get("calInvert").fire("click");
+  await settle();
+
+  assert.strictEqual(c.confirms.length, 0, "ein Dialog ohne Folge wäre Lärm");
+  assert.strictEqual(c.posts.length - before, 1, "die Aktion läuft unverändert durch");
+});
+
+test("E3 verdrahtet: 'Freigabe zurücknehmen' fragt vorher und respektiert Abbrechen", async () => {
+  const no = calibrationCard(CAL_CERTIFIED, false);
+  await settle();
+  let before = no.posts.length;
+  no.get("calDecertify").fire("click");
+  await settle();
+  assert.strictEqual(no.posts.length, before, "Abbrechen nimmt keine Freigabe zurück");
+  assert.match(no.confirms[0], /nur-lesend/);
+
+  const yes = calibrationCard(CAL_CERTIFIED, true);
+  await settle();
+  before = yes.posts.length;
+  yes.get("calDecertify").fire("click");
+  await settle();
+  assert.strictEqual(yes.posts[before].url, "/api/calibration/decertify");
+});
+
+test("E3 verdrahtet: die NICHT entwertenden Bedienelemente fragen nie", async () => {
+  const c = calibrationCard(CAL_CERTIFIED, false);
+  await settle();
+  const before = c.posts.length;
+
+  c.get("calArm").fire("change");     // scharfschalten
+  c.get("calCharge").fire("click");   // Test starten
+  c.get("calAbort").fire("click");    // Test abbrechen
+  c.get("calSign").fire("change");    // Haken setzen
+  c.get("calCertify").fire("click");  // freigeben
+  await settle();
+
+  assert.strictEqual(c.confirms.length, 0, "nur entwertende Aktionen fragen nach");
+  assert.strictEqual(c.posts.length - before, 5, "alle fünf laufen unverändert durch");
+});
+
+test("E3: eine Freigabe aus der VoltPilot-Konfiguration wird NICHT als Rücknahme behauptet", () => {
+  const C = consequences();
+  // `certified` ist die VEREINIGUNG aus flottenweiter Allowlist und der auf
+  // diesem Gerät erteilten First-Light-Freigabe. Die Korrektur entfernt nur die
+  // zweite Hälfte - live nachgemessen: mit VP_CONTROL_CERTIFIED_FAMILIES blieb
+  // `certified` nach der Korrektur wahr. Ein Dialog, der hier die Rücknahme
+  // verspricht, wäre also schlicht falsch.
+  const envOnly = { family: "sunspec", certified: true, device_certified: false, sign_confirmed: true };
+
+  const msg = C.calibrationCorrection(envOnly, "Steuer-Vorzeichen umkehren");
+  assert.ok(msg, "die Bestätigungen fallen weiterhin - das wird gesagt");
+  assert.match(msg, /Bestätigungen für Vorzeichen und Skala/);
+  assert.doesNotMatch(msg, /Freigabe/, "keine Rücknahme behaupten, die nicht eintritt");
+
+  // "Freigabe zurücknehmen" kann eine Allowlist-Freigabe nicht zurücknehmen -
+  // der Dialog sagt genau das, statt eine ausbleibende Wirkung zu versprechen.
+  const dec = C.calibrationDecertify(envOnly);
+  assert.ok(dec);
+  assert.match(dec, /nicht von diesem Gerät/);
+  assert.match(dec, /bleibt steuerbar/);
+  assert.doesNotMatch(dec, /nur-lesend/);
+
+  // Und das Wechselrichter-Formular behauptet über eine Allowlist-Freigabe
+  // nichts - ob sie das neue Modell abdeckt, ist von hier aus nicht entscheidbar.
+  assert.strictEqual(
+    C.inverterChange(envOnly, { family: "sunspec", connection: {} },
+      { family: "hybrid_3p", connection: {} }), null);
 });

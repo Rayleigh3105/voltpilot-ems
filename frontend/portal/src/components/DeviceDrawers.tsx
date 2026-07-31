@@ -241,6 +241,22 @@ export function AddDeviceDrawer({
 }
 
 /**
+ * What removing a device actually takes away - ONE list, used by BOTH unclaim
+ * entry points (the danger zone at the foot of the drawer AND the shortcut in
+ * the "waiting too long" alert). The E3 Nebenwirkungs-Regel: an action that
+ * devalues something else names the consequence BEFORE it runs, so the two
+ * paths must never be able to promise different things.
+ */
+export function unclaimConsequences(device: Device): string[] {
+  const name = device.name || device.externalRef;
+  return [
+    `Das Gerät „${name}" wird von Ihrem Konto getrennt`,
+    'Alle aufgezeichneten Messdaten dieses Geräts werden gelöscht',
+    'Das physische Gerät verliert seinen Fahrplan und fällt in den sicheren Standardbetrieb zurück',
+  ];
+}
+
+/**
  * Device detail drawer (row click): reference, site, status, last data - plus
  * "Bearbeiten" (type + label; the reference is the immutable identity) and the
  * unclaim delete with an explicit consequence list.
@@ -396,22 +412,21 @@ export function DeviceDetailDrawer({
               </ul>
               Bei einer vertippten ID entfernen Sie das Gerät und verbinden es mit der
               korrekten ID neu.
-              <div style={{ marginTop: 'var(--vp-space-3)' }}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  iconLeft={<Icon name="trash" size={16} />}
-                  onClick={() => void unclaim(device)}
-                  disabled={deleteBusy}
-                >
-                  {deleteBusy ? 'Wird entfernt…' : 'Gerät entfernen und neu verbinden'}
-                </Button>
-              </div>
-              {deleteError && (
-                <div className="vp-alert vp-alert-err" style={{ marginTop: 'var(--vp-space-2)' }}>
-                  {deleteError}
-                </div>
-              )}
+              {/*
+                This shortcut removes the device just like the danger zone below,
+                so it goes through the SAME consequence list and confirm step -
+                before it used to unclaim on a single click, which silently
+                deleted every recorded measurement of that device.
+              */}
+              <DangerZone
+                variant="inline"
+                actionLabel="Gerät entfernen und neu verbinden"
+                consequences={unclaimConsequences(device)}
+                confirmLabel="Gerät endgültig entfernen"
+                busy={deleteBusy}
+                error={deleteError}
+                onConfirm={() => void unclaim(device)}
+              />
             </div>
           )}
           {status === 'stale' && (
@@ -452,11 +467,7 @@ export function DeviceDetailDrawer({
           <DangerZone
             actionLabel="Gerät entfernen"
             description="Falsches Gerät verbunden? Entfernen macht die Geräte-ID wieder frei - sie kann danach erneut (auch von einem anderen Konto) verbunden werden."
-            consequences={[
-              `Das Gerät „${device.name || device.externalRef}" wird von Ihrem Konto getrennt`,
-              'Alle aufgezeichneten Messdaten dieses Geräts werden gelöscht',
-              'Das physische Gerät verliert seinen Fahrplan und fällt in den sicheren Standardbetrieb zurück',
-            ]}
+            consequences={unclaimConsequences(device)}
             confirmLabel="Gerät endgültig entfernen"
             busy={deleteBusy}
             error={deleteError}

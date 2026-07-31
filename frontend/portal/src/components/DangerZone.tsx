@@ -19,14 +19,20 @@ export function DangerZone({
   confirmLabel,
   typeToConfirm,
   disabledReason,
+  variant = 'section',
   busy,
   error,
   onConfirm,
 }: {
   /** The collapsed button text, e.g. "Standort löschen". */
   actionLabel: string;
-  /** One German sentence saying what this does. */
-  description: string;
+  /**
+   * One German sentence saying what this does. Omit it in the `inline`
+   * variant when the surrounding text already says it - repeating it there
+   * reads as noise, and the consequence list is the part that must not be
+   * skipped.
+   */
+  description?: string;
   /** The explicit list of consequences shown before confirming. */
   consequences: string[];
   /** The final confirm button text, e.g. "Endgültig löschen". */
@@ -35,6 +41,13 @@ export function DangerZone({
   typeToConfirm?: string;
   /** When set, the action is blocked and this explains why (no button shown). */
   disabledReason?: string | null;
+  /**
+   * `section` (default) is the drawer-footer block with its own separator.
+   * `inline` drops the separator + top margin so the SAME confirm flow can sit
+   * inside an alert or a row - one consequence component, never a second
+   * hand-rolled one next to it (the E3 Nebenwirkungs-Regel).
+   */
+  variant?: 'section' | 'inline';
   busy?: boolean;
   error?: string | null;
   onConfirm: () => void;
@@ -43,16 +56,21 @@ export function DangerZone({
   const [typed, setTyped] = useState('');
 
   const confirmBlocked = typeToConfirm != null && typed.trim() !== typeToConfirm;
+  const inline = variant === 'inline';
 
   return (
     <div
-      style={{
-        marginTop: 'var(--vp-space-6)',
-        borderTop: '1px solid var(--vp-border)',
-        paddingTop: 'var(--vp-space-4)',
-      }}
+      style={
+        inline
+          ? { marginTop: 'var(--vp-space-3)' }
+          : {
+              marginTop: 'var(--vp-space-6)',
+              borderTop: '1px solid var(--vp-border)',
+              paddingTop: 'var(--vp-space-4)',
+            }
+      }
     >
-      <p className="vp-note" style={{ marginTop: 0 }}>{description}</p>
+      {description && <p className="vp-note" style={{ marginTop: 0 }}>{description}</p>}
 
       {disabledReason ? (
         <div className="vp-alert vp-alert-info" style={{ marginTop: 'var(--vp-space-3)' }}>
