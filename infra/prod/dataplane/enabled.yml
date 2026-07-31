@@ -1,0 +1,54 @@
+# =============================================================================
+# Datenebene AN - die vier Ports, die der k3s-Cluster braucht.
+#
+# Aktiviert durch DATA_PLANE=enabled in /srv/docker/voltpilot/.env; ohne das
+# zieht docker-compose.prod.yml die No-op-Datei disabled.yml und veroeffentlicht
+# wie bisher nichts. Diese Datei wird per `include:` als BASIS gemergt - die
+# `ports:`-Listen werden ADDIERT, die vorhandenen Eintraege von
+# docker-compose.prod.yml (emqx 8883 + die beiden Loopback-Binds) bleiben also
+# unveraendert bestehen.
+#
+# Vertrag: die Portnummern hier MUESSEN zu den ExternalName-Services im
+# gitops-Repo passen (apps/voltpilot/base/external/, siehe dessen README):
+#
+#   timescaledb   5432   Anwendungs-DB
+#   keycloak-db   5433   eigene Postgres-INSTANZ -> eigener Host-Port noetig,
+#                        weil 5432 auf derselben Host-IP schon vergeben ist.
+#                        Der Cluster braucht dafuer KC_DB_URL mit :5433
+#                        (ExternalName kann Ports nicht umbiegen).
+#   emqx          1883   Backbone (ingest subscribed, api/optimizer publishen)
+#   emqx         18083   Management-REST-API fuer den Authz-Reload des api
+#   redpanda     29092   Kafka-API (Host-Port 29092 -> Container 29093, dem
+#                        EXTERNAL-Listener; INTERNAL bleibt auf 29092 fuer die
+#                        Compose-Dienste). Details im redpanda-Block der
+#                        docker-compose.prod.yml.
+#
+# SICHERHEIT: jeder Bind haengt an ${DATA_PLANE_HOST} - der LAN-Adresse dieser
+# VM, NICHT 0.0.0.0. Die Variable ist mit `:?` als Pflichtfeld markiert, damit
+# ein aktivierter Datenebenen-Overlay ohne gesetzte Adresse LAUT abbricht statt
+# still auf allen Interfaces zu lauschen. Die Ports sind damit zwar im LAN
+# sichtbar, aber unauthentifiziert bzw. nur passwortgeschuetzt - die Firewall
+# ist die eigentliche Zusage: nur die drei k3s-Nodes duerfen ran
+# (ufw-Abschnitt in docs/deploy.md).
+# =============================================================================
+services:
+  timescaledb:
+    ports:
+      - "${DATA_PLANE_HOST:?set DATA_PLANE_HOST in .env (LAN-IP dieser VM) wenn DATA_PLANE=enabled}:${DATA_PLANE_TIMESCALE_PORT:-5432}:5432"
+
+  keycloak-db:
+    ports:
+      # Zweite Postgres-INSTANZ auf derselben Host-IP -> abweichender Host-Port.
+      - "${DATA_PLANE_HOST:?set DATA_PLANE_HOST in .env (LAN-IP dieser VM) wenn DATA_PLANE=enabled}:${DATA_PLANE_KEYCLOAK_DB_PORT:-5433}:5432"
+
+  emqx:
+    ports:
+      - "${DATA_PLANE_HOST:?set DATA_PLANE_HOST in .env (LAN-IP dieser VM) wenn DATA_PLANE=enabled}:${DATA_PLANE_MQTT_PORT:-1883}:1883"
+      - "${DATA_PLANE_HOST:?set DATA_PLANE_HOST in .env (LAN-IP dieser VM) wenn DATA_PLANE=enabled}:${DATA_PLANE_EMQX_API_PORT:-18083}:18083"
+
+  redpanda:
+    ports:
+      # Host-Port 29092 -> Container 29093: der EXTERNAL-Listener. Der
+      # INTERNAL-Listener bleibt unveroeffentlicht auf 29092, damit die
+      # Compose-Dienste weiter ueber redpanda:29092 sprechen.
+      - "${DATA_PLANE_HOST:?set DATA_PLANE_HOST in .env (LAN-IP dieser VM) wenn DATA_PLANE=enabled}:${DATA_PLANE_REDPANDA_PORT:-29092}:29093"

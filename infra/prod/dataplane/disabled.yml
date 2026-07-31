@@ -1,0 +1,13 @@
+# =============================================================================
+# Datenebene AUS - der Standard.
+#
+# docker-compose.prod.yml zieht diese Datei ueber `include:`, solange DATA_PLANE
+# in der .env leer/ungesetzt ist. Sie ist mit Absicht ein No-op: sie definiert
+# KEINEN Port, keinen Dienst und keine Ueberschreibung, damit ein Stack ohne
+# gesetztes DATA_PLANE sich byte-identisch zu einem Stack ohne dieses Feature
+# verhaelt (nachgewiesen per `docker compose config`-Diff, siehe docs/deploy.md).
+#
+# Das Gegenstueck ist enabled.yml - dort stehen die veroeffentlichten Ports.
+# NICHT loeschen: fehlt diese Datei, bricht jedes Deployment ohne DATA_PLANE ab.
+# =============================================================================
+services: {}
