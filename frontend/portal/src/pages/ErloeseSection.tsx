@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
@@ -8,10 +8,17 @@ import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
 import {
   delta,
+  keineVergleichsDatenText,
   laufendHinweis,
+  normalisiereModus,
+  ueberlagerungAktiv,
+  ueberlagerungLegende,
   vergleichsKopf,
   vergleichsName,
+  wirksamerModus,
+  type VergleichsModus,
 } from '../historieVergleich';
+import { mitVergleich, parseVergleichModus } from '../historieZeit';
 import {
   DASH,
   erloesErgebnis,
@@ -124,6 +131,12 @@ export function ErloeseSection({
     init.at ? new Date(`${init.at}T12:00:00`) : new Date(),
   );
 
+  // F8: der Vergleichs-Zustand reist in der Adresse (`v=`) - derselbe Parameter
+  // wie in der Messwerte-Welt, also nimmt der Welt-Wechsel ihn mit.
+  const [modusWahl, setModusWahl] = useState<VergleichsModus>(() =>
+    parseVergleichModus(window.location.hash),
+  );
+
   const at = isoDate(anchor);
   // Das Geld dieser Anlage - ein Abruf, eine Anlage, ein Zeitraum (P3).
   const { money, loading, stale, err, retry } = useSiteEarnings(site.id, range, at);
@@ -132,17 +145,40 @@ export function ErloeseSection({
   const { history } = useHistoryPeriod(site.id, range, at);
   // F3: der zweite Abruf mit verschobenem Anker - erst, wenn der gezeigte
   // Zeitraum überhaupt Zahlen trägt.
+  const modus = normalisiereModus(modusWahl, anchor, range, history?.coverage);
   const vorher = useVergleichsErloese(
     site.id,
     range,
     anchor,
     !stale && money?.nettoErgebnisEur != null,
+    wirksamerModus(modus),
+  );
+  // Ehrlich statt leer: eine Vergleichsperiode ohne bewertete Viertelstunden
+  // wird GESAGT, nicht als Null-Linie gezeichnet.
+  const vergleichSerie =
+    ueberlagerungAktiv(modus) && (vorher?.series.length ?? 0) > 0 ? vorher!.series : null;
+  const vergleichHinweis =
+    ueberlagerungAktiv(modus) && vorher != null && vorher.series.length === 0
+      ? keineVergleichsDatenText(anchor, range, modus)
+      : null;
+
+  const setModus = useCallback(
+    (m: VergleichsModus) => {
+      setModusWahl(m);
+      window.history.replaceState(
+        null,
+        '',
+        mitVergleich(historieHash(site.id, 'erloese', range, at), m),
+      );
+    },
+    [site.id, range, at],
   );
 
   // Zurück/Vorwärts oder ein Sprung mit Zeitraum: die Periode neu übernehmen.
   useEffect(() => {
     const onHash = () => {
       const p = parseVerlaufParams(window.location.hash);
+      setModusWahl(parseVergleichModus(window.location.hash));
       setRange(p.range);
       setAnchor(p.at ? new Date(`${p.at}T12:00:00`) : new Date());
     };
@@ -158,11 +194,11 @@ export function ErloeseSection({
 
   const ergebnis = erloesErgebnis({ money, periodLabel: label });
   const preise = preisTreiber({ money, netzladenErlaubt: site.netzladenErlaubt });
-  const vergleichName = vergleichsName(anchor, range);
+  const vergleichName = vergleichsName(anchor, range, modus);
   const kopfVergleich = vorher ? (
-    <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range)}</span>
+    <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range, modus)}</span>
   ) : undefined;
-  const laufend = vorher ? laufendHinweis(anchor, range, now) : null;
+  const laufend = vorher ? laufendHinweis(anchor, range, now, modus) : null;
   // Mehr Ergebnis ist eindeutig besser; die GEPLANTE Ersparnis ist eine
   // Plan-Aussage und wird deshalb nicht als Erfolg gewertet.
   const nettoDelta = delta(
@@ -177,7 +213,7 @@ export function ErloeseSection({
       <WeltKopf
         welt={welt}
         cards={weltSwitchCards('erloese', available)}
-        hrefFor={(c) => historieHash(site.id, c.welt.id, range, at)}
+        hrefFor={(c) => mitVergleich(historieHash(site.id, c.welt.id, range, at), modus)}
         onOpen={(c) => onOpenWelt(c.welt.id)}
       />
       <ZeitLeiste
@@ -187,6 +223,9 @@ export function ErloeseSection({
         onAnchor={setAnchor}
         coverage={history?.coverage}
         stale={stale}
+        vergleich={modus}
+        onVergleich={setModus}
+        vergleichHinweis={vergleichHinweis}
       />
 
       <div className={stale ? 'vp-welt-body vp-welt-stale' : 'vp-welt-body'}>
@@ -275,7 +314,12 @@ export function ErloeseSection({
                   titel={`Geld im Verlauf · ${label}`}
                   art="bewertet"
                 />
-                <ErloeseVerlaufChart series={money.series} range={range} />
+                <ErloeseVerlaufChart
+                  series={money.series}
+                  range={range}
+                  vergleich={vergleichSerie}
+                  legende={ueberlagerungLegende(anchor, range, modus)}
+                />
               </Card>
             </section>
 

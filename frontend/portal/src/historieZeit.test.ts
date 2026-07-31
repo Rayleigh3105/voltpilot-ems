@@ -6,6 +6,8 @@ import {
   ankerAusWert,
   isoMonth,
   isoWeekValue,
+  mitVergleich,
+  parseVergleichModus,
   sprungFeld,
   sprungGrenzen,
   sprungJahre,
@@ -192,5 +194,40 @@ describe('F4 · Datenabdeckung', () => {
     expect(v.abText).toBe('Daten ab 19.06.2026');
     expect(v.balkenPct).toBeNull();
     expect(v.satz).toBeNull();
+  });
+});
+
+/**
+ * **F8 — der Vergleichs-Zustand reist in der Adresse.** Er gehört zur
+ * Zeit-Leiste wie Zeitraum und Anker, also teilt er sich deren Vokabular: EIN
+ * Parameter, den beide Welten lesen (der Welt-Wechsel nimmt ihn mit).
+ */
+describe('F8 · der Vergleich im Hash', () => {
+  it('liest den Modus aus der Adresse - unbekanntes ist „Aus"', () => {
+    expect(parseVergleichModus('#/anlage/s-1/messwerte?z=monat&v=vorjahr')).toBe('vorjahr');
+    expect(parseVergleichModus('#/anlage/s-1/erloese?v=vorperiode')).toBe('vorperiode');
+    expect(parseVergleichModus('#/anlage/s-1/messwerte?z=monat')).toBe('aus');
+    expect(parseVergleichModus('#/anlage/s-1/messwerte?v=quatsch')).toBe('aus');
+    expect(parseVergleichModus('')).toBe('aus');
+  });
+
+  it('hängt sich an das bestehende Vokabular an, statt ein zweites zu erfinden', () => {
+    expect(mitVergleich('#/anlage/s-1/messwerte?z=monat&at=2026-07-01', 'vorjahr')).toBe(
+      '#/anlage/s-1/messwerte?z=monat&at=2026-07-01&v=vorjahr',
+    );
+    expect(mitVergleich('#/anlage/s-1/erloese', 'vorperiode')).toBe(
+      '#/anlage/s-1/erloese?v=vorperiode',
+    );
+  });
+
+  it('schreibt für „Aus" NICHTS - ein Link ohne Vergleich bleibt zeichengleich', () => {
+    const ohne = '#/anlage/s-1/messwerte?z=monat';
+    expect(mitVergleich(ohne, 'aus')).toBe(ohne);
+  });
+
+  it('ist mit sich selbst konsistent (Bauen -> Lesen)', () => {
+    for (const m of ['aus', 'vorperiode', 'vorjahr'] as const) {
+      expect(parseVergleichModus(mitVergleich('#/anlage/s-1/messwerte?z=tag', m))).toBe(m);
+    }
   });
 });

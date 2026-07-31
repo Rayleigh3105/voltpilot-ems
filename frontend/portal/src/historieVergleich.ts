@@ -26,10 +26,10 @@
  *
  * Kein React, kein Netz (das `fleet.ts`/`schedule.ts`-Muster).
  */
-import type { HistoryRange } from './api';
+import type { HistoryCoverage, HistoryRange } from './api';
 import type { EnergieSummeKey } from './energieBilanz';
 import { isCurrentPeriod } from './energieBilanz';
-import { periodLabel, shiftAnchor } from './periodNav';
+import { isoWeek, periodLabel, shiftAnchor } from './periodNav';
 
 /** Unter dieser Änderung sagt die Seite „etwa wie" statt einer Richtung. */
 export const FLACH_PCT = 3;
@@ -64,14 +64,62 @@ export function vergleichsAnker(anchor: Date, range: HistoryRange): Date {
 }
 
 /**
+ * **F8 · welche Periode überlagert wird.** `'aus'` blendet die Überlagerung ab,
+ * lässt das Δ (F3) aber unverändert gegen die Vorperiode laufen — es ist die
+ * Einordnung, die es immer gibt. `'vorjahr'` ist die zweite Wahl beim Monat
+ * (Juli 2026 gegen Juli 2025 ist die Frage, die ein Betreiber wirklich stellt;
+ * Juni ist ein anderer Sonnenstand).
+ */
+export type VergleichsModus = 'aus' | 'vorperiode' | 'vorjahr';
+
+/**
+ * Gegen WAS gerechnet wird. `'aus'` schaltet nur die Überlagerung ab, nicht den
+ * Vergleich — sonst könnten Δ-Zeile und Überlagerung sich widersprechen, weil
+ * jede ihre eigene Vorperiode wählte. Es gibt genau diese eine Quelle.
+ */
+export function wirksamerModus(modus: VergleichsModus): 'vorperiode' | 'vorjahr' {
+  return modus === 'vorjahr' ? 'vorjahr' : 'vorperiode';
+}
+
+/** Wird die zweite Reihe gezeichnet? */
+export function ueberlagerungAktiv(modus: VergleichsModus): boolean {
+  return modus !== 'aus';
+}
+
+/**
+ * Der Anker der Vergleichsperiode. Vorperiode = die bestehende Blätter-Geste;
+ * Vorjahr = derselbe Zeitraum ein Jahr früher (beim Monat der 1., damit keine
+ * Monatslänge den Anker in den Nachbarmonat kippt).
+ */
+export function vergleichsAnkerFor(
+  anchor: Date,
+  range: HistoryRange,
+  modus: VergleichsModus,
+): Date {
+  if (wirksamerModus(modus) === 'vorperiode') return vergleichsAnker(anchor, range);
+  const d = new Date(anchor);
+  if (range === 'month') {
+    d.setFullYear(d.getFullYear() - 1, d.getMonth(), 1);
+    return d;
+  }
+  d.setFullYear(d.getFullYear() - 1);
+  return d;
+}
+
+/**
  * Der Name der Vorperiode, wie ihn ein Mensch sagt: „Juni", „2025",
  * „der Vorwoche", „dem Vortag". Bei einem Monat aus einem anderen Jahr steht
  * das Jahr dabei — „Dezember 2025" ist eine andere Aussage als „Dezember".
  */
-export function vergleichsName(anchor: Date, range: HistoryRange): string {
-  const vorher = vergleichsAnker(anchor, range);
-  if (range === 'day') return 'dem Vortag';
-  if (range === 'week') return 'der Vorwoche';
+export function vergleichsName(
+  anchor: Date,
+  range: HistoryRange,
+  modus: VergleichsModus = 'vorperiode',
+): string {
+  const vorher = vergleichsAnkerFor(anchor, range, modus);
+  const vorjahr = wirksamerModus(modus) === 'vorjahr';
+  if (range === 'day') return vorjahr ? datumName(vorher) : 'dem Vortag';
+  if (range === 'week') return vorjahr ? `KW ${isoWeek(vorher)} ${vorher.getFullYear()}` : 'der Vorwoche';
   if (range === 'year') return String(vorher.getFullYear());
   const monat = vorher.toLocaleDateString('de-DE', { month: 'long' });
   return vorher.getFullYear() === anchor.getFullYear()
@@ -79,9 +127,17 @@ export function vergleichsName(anchor: Date, range: HistoryRange): string {
     : `${monat} ${vorher.getFullYear()}`;
 }
 
+function datumName(d: Date): string {
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 /** Die Kopfzeile der Karte: „Vergleich: Juni 2026". */
-export function vergleichsKopf(anchor: Date, range: HistoryRange): string {
-  return `Vergleich: ${periodLabel(vergleichsAnker(anchor, range), range)}`;
+export function vergleichsKopf(
+  anchor: Date,
+  range: HistoryRange,
+  modus: VergleichsModus = 'vorperiode',
+): string {
+  return `Vergleich: ${periodLabel(vergleichsAnkerFor(anchor, range, modus), range)}`;
 }
 
 /**
@@ -93,10 +149,11 @@ export function laufendHinweis(
   anchor: Date,
   range: HistoryRange,
   now: Date,
+  modus: VergleichsModus = 'vorperiode',
 ): string | null {
   if (!isCurrentPeriod(anchor, range, now)) return null;
   const jetzt = periodLabel(anchor, range);
-  const vorher = periodLabel(vergleichsAnker(anchor, range), range);
+  const vorher = periodLabel(vergleichsAnkerFor(anchor, range, modus), range);
   return `${jetzt} läuft noch — verglichen wird mit dem vollständigen Zeitraum ${vorher}.`;
 }
 
@@ -166,4 +223,133 @@ function praep(name: string): string {
 
 function fmt(v: number): string {
   return v.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+}
+
+// --- F8: zwei Zeiträume überlagern ------------------------------------------
+
+/** Eine Wahl des „Vergleichen"-Umschalters. */
+export interface VergleichsOption {
+  id: VergleichsModus;
+  /** Der Knopftext („Aus" · „Vorperiode" · „Juli 2025"). */
+  label: string;
+  /** Der Titel, der die Wahl in einem Satz erklärt. */
+  titel: string;
+}
+
+/**
+ * Ob der VORJAHRES-Zeitraum überhaupt zur Wahl steht: nur beim **Monat**
+ * (Captain-Vorgabe) und nur, wenn dort Daten liegen KÖNNEN — also die erste
+ * gemessene Viertelstunde vor dem Ende jenes Monats liegt. Ohne Abdeckungsdaten
+ * wird nichts behauptet und die Wahl bleibt offen (die Karte sagt dann selbst,
+ * wenn nichts kam).
+ */
+export function vorjahrVerfuegbar(
+  anchor: Date,
+  range: HistoryRange,
+  coverage?: HistoryCoverage | null,
+): boolean {
+  if (range !== 'month') return false;
+  const ab = coverage?.firstDataAt ? new Date(coverage.firstDataAt) : null;
+  if (!ab || Number.isNaN(ab.getTime())) return true;
+  const vorjahr = vergleichsAnkerFor(anchor, range, 'vorjahr');
+  // Ende jenes Monats: erster Tag des Folgemonats.
+  const ende = new Date(vorjahr.getFullYear(), vorjahr.getMonth() + 1, 1);
+  return ab.getTime() < ende.getTime();
+}
+
+/** Die Wahlmöglichkeiten des Umschalters — „Vorjahr" nur, wo es sie gibt. */
+export function vergleichsOptionen(
+  anchor: Date,
+  range: HistoryRange,
+  coverage?: HistoryCoverage | null,
+): VergleichsOption[] {
+  const optionen: VergleichsOption[] = [
+    { id: 'aus', label: 'Aus', titel: 'Nur den gewählten Zeitraum zeigen' },
+    {
+      id: 'vorperiode',
+      label: periodLabel(vergleichsAnkerFor(anchor, range, 'vorperiode'), range),
+      titel: `Den vorherigen Zeitraum darüberlegen (${periodLabel(
+        vergleichsAnkerFor(anchor, range, 'vorperiode'),
+        range,
+      )})`,
+    },
+  ];
+  if (vorjahrVerfuegbar(anchor, range, coverage)) {
+    const vorjahr = periodLabel(vergleichsAnkerFor(anchor, range, 'vorjahr'), range);
+    optionen.push({
+      id: 'vorjahr',
+      label: vorjahr,
+      titel: `Denselben Monat des Vorjahres darüberlegen (${vorjahr})`,
+    });
+  }
+  return optionen;
+}
+
+/**
+ * Ein per Lesezeichen mitgebrachter Modus, der hier gar nicht zur Wahl steht
+ * („Vorjahr" auf einem Tages-Zeitraum), fällt auf die Vorperiode zurück statt
+ * einen Zeitraum zu überlagern, den der Umschalter nicht anbietet.
+ */
+export function normalisiereModus(
+  modus: VergleichsModus,
+  anchor: Date,
+  range: HistoryRange,
+  coverage?: HistoryCoverage | null,
+): VergleichsModus {
+  if (modus === 'vorjahr' && !vorjahrVerfuegbar(anchor, range, coverage)) return 'vorperiode';
+  return modus;
+}
+
+/** Die Beschriftung der Überlagerung: welche zwei Zeiträume liegen übereinander. */
+export interface UeberlagerungLegende {
+  /** „Juli 2026" — der gewählte Zeitraum (durchgezogen). */
+  aktuell: string;
+  /** „Juni 2026" — die Vergleichsperiode (blass/gestrichelt). */
+  vergleich: string;
+  /** Der eine Satz unter der Legende. */
+  satz: string;
+}
+
+export function ueberlagerungLegende(
+  anchor: Date,
+  range: HistoryRange,
+  modus: VergleichsModus,
+): UeberlagerungLegende | null {
+  if (!ueberlagerungAktiv(modus)) return null;
+  const aktuell = periodLabel(anchor, range);
+  const vergleich = periodLabel(vergleichsAnkerFor(anchor, range, modus), range);
+  return {
+    aktuell,
+    vergleich,
+    satz: `Durchgezogen: ${aktuell} · blass gestrichelt: ${vergleich}`,
+  };
+}
+
+/**
+ * Was die Seite sagt, wenn die gewählte Vergleichsperiode NICHTS trägt: es wird
+ * gesagt, nicht gezeichnet — eine leere Reihe läse sich wie gemessene Nullen.
+ */
+export function keineVergleichsDatenText(
+  anchor: Date,
+  range: HistoryRange,
+  modus: VergleichsModus,
+): string {
+  const vergleich = periodLabel(vergleichsAnkerFor(anchor, range, modus), range);
+  return `Keine Daten für ${vergleich} — es gibt nichts zu überlagern.`;
+}
+
+/**
+ * Zwei Zeiträume haben selten gleich viele Abschnitte (28 gegen 31 Tage, eine
+ * Sommerzeit-Nacht). Die Überlagerung richtet sie deshalb am INDEX aus — der
+ * erste Abschnitt liegt auf dem ersten — und schneidet bzw. füllt den Rest mit
+ * `null`: eine Lücke ist ehrlich, ein gestreckter Wert wäre erfunden.
+ */
+export function angleichen(
+  werte: readonly (number | null)[] | null | undefined,
+  laenge: number,
+): (number | null)[] {
+  const quelle = werte ?? [];
+  const out: (number | null)[] = [];
+  for (let i = 0; i < laenge; i++) out.push(quelle[i] ?? null);
+  return out;
 }
