@@ -347,6 +347,41 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(screen.getByRole('button', { name: /Ferienhaus/ })).toBeInTheDocument();
   });
 
+  // E2/D3: das Preisblatt wird erst zur Wahrheit, wenn der Betreiber „Genau"
+  // WÄHLT - die Vorschlagswerte bleiben sonst ein Prefill (frühere Fassung:
+  // ein stilles „berührt"-Flag).
+  it('legt ohne die Wahl „Genau" kein Preisblatt an', async () => {
+    const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
+    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.click(screen.getByText(/Feineinstellungen/));
+    // Der Tarif steht auf „Ohne Angabe", die Wahl auf „Schnell" - beides unberührt.
+    expect(screen.getByRole('radio', { name: /Schnell/ })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(createSite).toHaveBeenCalled());
+    expect(updateSupply).not.toHaveBeenCalled();
+    createSite.mockRestore();
+    updateSupply.mockRestore();
+  });
+
+  it('legt das Preisblatt an, sobald „Genau" gewählt ist', async () => {
+    const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
+    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.click(screen.getByText(/Feineinstellungen/));
+    fireEvent.click(screen.getByRole('radio', { name: /Genau/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(updateSupply).toHaveBeenCalled());
+    expect(updateSupply).toHaveBeenCalledWith(
+      's-1',
+      expect.objectContaining({ netzentgeltArbeitspreisCt: 7.6, vertriebsaufschlagCt: 1.5 }),
+    );
+    createSite.mockRestore();
+    updateSupply.mockRestore();
+  });
+
   it('speaks "Anlage", never "Standort", as the entity name (wording decision 3)', () => {
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
     expect(screen.getByLabelText('Name der Anlage')).toBeInTheDocument();

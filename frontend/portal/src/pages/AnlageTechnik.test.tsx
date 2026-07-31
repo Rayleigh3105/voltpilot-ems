@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
-import { api, type Device, type Site, type SiteAsset } from '../api';
+import { api, type Device, type Site, type SiteAsset, type SupplyPrice } from '../api';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
 // mock it like LocationMap.test.tsx does; the map itself is not under test.
@@ -226,13 +226,17 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
 // ---------------------------------------------------------------------------
 
 /** Rendert die ganze Einstellungs-Seite einer gewöhnlichen PV+Speicher-Anlage. */
-async function renderEinstellungen(over: Partial<Site> = {}, batteryOver: Partial<SiteAsset> = {}) {
+async function renderEinstellungen(
+  over: Partial<Site> = {},
+  batteryOver: Partial<SiteAsset> = {},
+  supplySheet: SupplyPrice | null = null,
+) {
   const s: Site = { ...eegSite, ...over };
   const assets = vi
     .spyOn(api, 'siteAssets')
     .mockResolvedValue([battery({ deviceId: 'd-1', ...batteryOver })]);
   const preview = vi.spyOn(api, 'siteDeletionPreview').mockRejectedValue(new Error('n/a'));
-  const supply = vi.spyOn(api, 'supplyPrice').mockResolvedValue(null as never);
+  const supply = vi.spyOn(api, 'supplyPrice').mockResolvedValue(supplySheet as never);
   const onSiteSaved = vi.fn();
   render(
     <TechnikSection
@@ -328,6 +332,137 @@ describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
       speicherschonung: 'schonend',
     });
     saveBattery.mockRestore();
+    restore();
+  });
+
+  // -------------------------------------------------------------------------
+  // E2 · „Bedeutungsfalle" — auf der echten Einstellungs-Seite
+  // -------------------------------------------------------------------------
+
+  it('E2: der Tarifart-Wechsel deutet die Zahl nie um - und speichert die richtige', async () => {
+    // Wunde 1 live: eine Anlage mit dynamischem Tarif und 18 ct Aufschlag.
+    const updateSite = vi
+      .spyOn(api, 'updateSite')
+      .mockResolvedValue({ ...eegSite, tarifArt: 'fest', tarifParamCtKwh: 32.5 });
+    const { onSiteSaved, restore } = await renderEinstellungen({
+      tarifArt: 'dynamisch',
+      tarifParamCtKwh: 18,
+    });
+
+    const row = screen.getByText('Stromtarif').closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
+    expect(screen.getByLabelText('Aufschlag auf den Börsenpreis (ct/kWh)')).toHaveValue('18');
+
+    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
+    // Vor E2 stand hier „18" unter dem Namen „Ihr Strompreis" - der Bezugspreis,
+    // mit dem der Optimierer PLANT, wäre damit still verstellt worden.
+    expect(screen.getByLabelText('Ihr Strompreis (ct/kWh)')).toHaveValue('');
+    expect(screen.getByRole('status').textContent).toContain('Andere Bedeutung');
+
+    fireEvent.change(screen.getByLabelText('Ihr Strompreis (ct/kWh)'), {
+      target: { value: '32,5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
+    expect(updateSite).toHaveBeenCalledWith(
+      's-1',
+      expect.objectContaining({ tarifArt: 'fest', tarifParamCtKwh: 32.5 }),
+    );
+    updateSite.mockRestore();
+    restore();
+  });
+
+  it('E2/D3: „Schnell" statt „Genau" ENTFERNT das Preisblatt - angekündigt, dann getan', async () => {
+    // Eine Anlage MIT gepflegtem Preisblatt: der Server rechnet damit und
+    // ignoriert den Aufschlag. Wer auf „Schnell" wechselt, muss es also
+    // wirklich loswerden, sonst behauptet die Oberfläche etwas Falsches.
+    const maintained: SupplyPrice = {
+      present: true,
+      hasComponents: true,
+      netzentgeltArbeitspreisCt: 7.6,
+      stromsteuerCt: 2.05,
+      konzessionsabgabeCt: 1.59,
+      umlagenCt: 2.946,
+      vertriebsaufschlagCt: 1.5,
+      ustPct: 19,
+      komponentenStand: null,
+      updatedAt: null,
+    };
+    const updateSite = vi
+      .spyOn(api, 'updateSite')
+      .mockResolvedValue({ ...eegSite, tarifArt: 'dynamisch', tarifParamCtKwh: 18 });
+    const updateSupply = vi
+      .spyOn(api, 'updateSupplyPrice')
+      .mockResolvedValue({ ...maintained, hasComponents: false } as never);
+    const { onSiteSaved, restore } = await renderEinstellungen(
+      { tarifArt: 'dynamisch', tarifParamCtKwh: 18 },
+      {},
+      maintained,
+    );
+
+    const row = screen.getByText('Stromtarif').closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
+    // Gespeichert ist „Genau": das Preisblatt steht offen, die Schnell-Zahl nicht.
+    await screen.findByText('Bezugspreis-Komponenten');
+    expect(screen.queryByLabelText('Aufschlag auf den Börsenpreis (ct/kWh)')).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: /Schnell/ }));
+    // Erst die Ansage …
+    expect(screen.getByText(/Bezugspreis-Komponenten entfernt/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
+    // … dann die Tat: jede Komponente geleert, der USt-Satz unangetastet.
+    expect(updateSupply).toHaveBeenCalledWith('s-1', {
+      komponentenStand: null,
+      netzentgeltArbeitspreisCt: null,
+      stromsteuerCt: null,
+      konzessionsabgabeCt: null,
+      umlagenCt: null,
+      vertriebsaufschlagCt: null,
+    });
+    updateSite.mockRestore();
+    updateSupply.mockRestore();
+    restore();
+  });
+
+  it('E2/D3: ohne Wechsel bleibt „Genau" gepflegt - nichts wird still entwertet', async () => {
+    const maintained: SupplyPrice = {
+      present: true,
+      hasComponents: true,
+      netzentgeltArbeitspreisCt: 7.6,
+      stromsteuerCt: 2.05,
+      konzessionsabgabeCt: 1.59,
+      umlagenCt: 2.946,
+      vertriebsaufschlagCt: 1.5,
+      ustPct: 19,
+      komponentenStand: null,
+      updatedAt: null,
+    };
+    const updateSite = vi
+      .spyOn(api, 'updateSite')
+      .mockResolvedValue({ ...eegSite, tarifArt: 'dynamisch', tarifParamCtKwh: 18 });
+    const updateSupply = vi
+      .spyOn(api, 'updateSupplyPrice')
+      .mockResolvedValue(maintained as never);
+    const { onSiteSaved, restore } = await renderEinstellungen(
+      { tarifArt: 'dynamisch', tarifParamCtKwh: 18 },
+      {},
+      maintained,
+    );
+
+    const row = screen.getByText('Stromtarif').closest('li') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
+    await screen.findByText('Bezugspreis-Komponenten');
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+
+    await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
+    expect(updateSupply).toHaveBeenCalledWith(
+      's-1',
+      expect.objectContaining({ netzentgeltArbeitspreisCt: 7.6, vertriebsaufschlagCt: 1.5 }),
+    );
+    updateSite.mockRestore();
+    updateSupply.mockRestore();
     restore();
   });
 

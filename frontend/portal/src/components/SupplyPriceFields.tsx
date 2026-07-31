@@ -8,6 +8,8 @@ import {
   supplyPriceComponentsSumCt,
   type SupplyPriceFormValues,
 } from '../supplyPrice';
+import { supplyComponentWarning } from '../tariffInput';
+import './TariffFields.css';
 
 /**
  * The structured Bezugspreis components behind the Tarif-Art select (report
@@ -50,18 +52,26 @@ export function SupplyPriceFields({
           Börsenpreis. {SUPPLY_PRICE_SOURCE_NOTE}
         </p>
       </div>
-      {SUPPLY_PRICE_FIELDS.map((f) => (
-        <Input
-          key={f.key}
-          id={`${idPrefix}-${f.key}`}
-          label={f.label}
-          hint={f.help}
-          inputMode="decimal"
-          placeholder={String(f.suggestion)}
-          value={values[f.key]}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(f.key, e.target.value)}
-        />
-      ))}
+      {SUPPLY_PRICE_FIELDS.map((f) => {
+        // E2: dieselbe Plausibilitäts-WARNUNG wie bei der Schnell-Zahl - der
+        // „Vertriebsaufschlag" heißt fast wie der Sammelaufschlag eine Maske
+        // höher und meint doch nur die Marge.
+        const warn = supplyComponentWarning(f.key, values[f.key]);
+        return (
+          <div key={f.key} className="vp-tarif-field">
+            <Input
+              id={`${idPrefix}-${f.key}`}
+              label={f.label}
+              hint={f.help}
+              inputMode="decimal"
+              placeholder={String(f.suggestion)}
+              value={values[f.key]}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(f.key, e.target.value)}
+            />
+            {warn && <p className="vp-tarif-warn">{warn}</p>}
+          </div>
+        );
+      })}
       <Input
         id={`${idPrefix}-ustPct`}
         label="Umsatzsteuer (%)"
