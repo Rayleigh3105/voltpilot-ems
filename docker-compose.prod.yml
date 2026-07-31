@@ -34,8 +34,43 @@
 # the ${VAR:?...} entries abort the deploy if a secret is missing. Changing
 # DOMAIN also requires rebuilding the frontend image with a matching
 # VITE_KEYCLOAK_URL (the SPA bakes it in - see the deploy workflow).
+#
+# -----------------------------------------------------------------------------
+# OPTIONALE DRITTE ENTRY-GRUPPE: die DATENEBENE fuer den k3s-Cluster.
+# Standardmaessig AUS - dann veroeffentlicht dieser Stack exakt die zwei Ports
+# oben und sonst nichts, genau wie vor Einfuehrung dieses Blocks.
+#
+# Beim k8s-Umzug (Stufe 1) laufen timescaledb / keycloak-db / emqx / redpanda
+# bewusst WEITER auf dieser VM, waehrend die zustandslosen Dienste in den
+# Cluster ziehen (Scout-Report vp-zielinfra-k6 §3.6). Die Cluster-Pods
+# erreichen sie ueber ExternalName-Services, deren Ports das gitops-Repo
+# festlegt (apps/voltpilot/base/external/README.md) - dieser Stack muss sie
+# also im LAN veroeffentlichen.
+#
+# Einschalten: in der .env BEIDE Variablen setzen (siehe .env.prod.example)
+#   DATA_PLANE=enabled
+#   DATA_PLANE_HOST=192.168.178.128      # LAN-Adresse DIESER VM
+#
+# DATA_PLANE ist der EINE Schalter: er waehlt unten die include-Datei
+# (infra/prod/dataplane/{disabled,enabled}.yml -> die veroeffentlichten Ports)
+# UND schaltet im redpanda-Block den EXTERNAL-Kafka-Listener frei. Ein Tippfehler
+# im Wert laesst das include ins Leere laufen und bricht laut ab, statt die
+# Datenebene halb zu konfigurieren.
+#
+# SICHERHEIT: alle Datenebenen-Ports binden an ${DATA_PLANE_HOST}, NICHT an
+# 0.0.0.0 - und die Variable ist Pflicht, sobald der Overlay an ist. Die Ports
+# selbst sind unauthentifiziert bzw. nur passwortgeschuetzt; die eigentliche
+# Zusage ist die Firewall: nur die drei k3s-Nodes duerfen ran. Die ufw-Regeln
+# stehen in docs/deploy.md ("Datenebene fuer den k3s-Cluster freigeben").
 # =============================================================================
 name: voltpilot
+
+# Datenebenen-Ports. Ohne DATA_PLANE zieht das die No-op-Datei disabled.yml,
+# die nichts definiert - der aufgeloeste Stack ist dann byte-identisch zu einem
+# ohne diesen Block. Das include wird als BASIS gemergt, `ports:`-Listen werden
+# also ADDIERT (die emqx-Eintraege unten bleiben unberuehrt).
+include:
+  - path: ./infra/prod/dataplane/${DATA_PLANE:-disabled}.yml
 
 services:
   # ---------------------------------------------------------------------------
@@ -146,9 +181,23 @@ services:
       retries: 40
 
   # ---------------------------------------------------------------------------
-  # Redpanda: single-broker Kafka-API event log. INTERNAL ONLY in prod - only
+  # Redpanda: single-broker Kafka-API event log. INTERNAL ONLY by default - only
   # the in-cluster listener is advertised (redpanda:29092) and no host port is
   # published, so it is never reachable from outside the compose network.
+  #
+  # Mit DATA_PLANE=enabled kommt ein ZWEITER, externer Listener dazu. Das ist
+  # kein Umbiegen des vorhandenen: ein Kafka-Listener kann genau EINE Adresse
+  # annoncieren, und die Compose-Dienste brauchen weiterhin `redpanda:29092`,
+  # waehrend der Cluster die LAN-Adresse dieser VM braucht. Also:
+  #   INTERNAL  Container 29092, annonciert redpanda:29092  (unveroeffentlicht)
+  #   EXTERNAL  Container 29093, annonciert ${DATA_PLANE_HOST}:29092
+  # und infra/prod/dataplane/enabled.yml veroeffentlicht Host-29092 auf
+  # Container-29093. Der Cluster bootstrappt also gegen Host-Port 29092 und
+  # bekommt als Broker-Adresse dieselbe Adresse zurueck - Kafka-Clients
+  # verbinden sich nach dem Bootstrap zur annoncierten Adresse neu, weshalb
+  # diese fuer die Nodes aufloesbar und erreichbar sein MUSS.
+  # DATA_PLANE_ADVERTISED_HOST ueberschreibt die annoncierte Adresse, falls der
+  # Cluster die VM ueber einen DNS-Namen statt der IP erreichen soll.
   # ---------------------------------------------------------------------------
   redpanda:
     image: redpandadata/redpanda:v24.2.7
@@ -162,9 +211,9 @@ services:
       - --overprovisioned
       - --node-id=0
       - --check=false
-      # Only the in-cluster listener - no external/host listener in prod.
-      - --kafka-addr=INTERNAL://0.0.0.0:29092
-      - --advertise-kafka-addr=INTERNAL://redpanda:29092
+      # Ohne DATA_PLANE bleibt es beim reinen in-cluster Listener (wie bisher).
+      - --kafka-addr=INTERNAL://0.0.0.0:29092${DATA_PLANE:+,EXTERNAL://0.0.0.0:29093}
+      - --advertise-kafka-addr=INTERNAL://redpanda:29092${DATA_PLANE:+,EXTERNAL://${DATA_PLANE_ADVERTISED_HOST:-${DATA_PLANE_HOST}}:${DATA_PLANE_REDPANDA_PORT:-29092}}
     volumes:
       - redpanda-data:/var/lib/redpanda/data
     healthcheck:
@@ -259,6 +308,8 @@ services:
     # Expose ONLY 8883 to the internet. Keep the dashboard, WebSocket and the
     # plaintext listener on loopback so they are reachable only on the host
     # (put a firewall in front regardless - see the hardening checklist).
+    # Mit DATA_PLANE=enabled kommen 1883 + 18083 ZUSAETZLICH auf der LAN-Adresse
+    # dazu (infra/prod/dataplane/enabled.yml); diese Loopback-Binds bleiben.
     ports:
       - "8883:8883"                 # mTLS device ingress (public)
       - "127.0.0.1:1883:1883"       # plaintext, INTERNAL ingest only (loopback)
@@ -844,7 +895,9 @@ services:
 networks:
   # A single private bridge network for all services. Only the two published
   # ports above (frontend APP_PORT, emqx 8883) cross it to the host; everything
-  # else talks over this internal network by compose service name.
+  # else talks over this internal network by compose service name - es sei denn,
+  # die optionale Datenebene ist an (DATA_PLANE=enabled), dann kommen die vier
+  # LAN-gebundenen Cluster-Ports dazu (siehe Kopf dieser Datei).
   default:
     name: voltpilot-prod
 

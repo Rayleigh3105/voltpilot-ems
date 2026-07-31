@@ -192,6 +192,69 @@ PY
   else bad "keycloak image lockstep broken (see above) - fix before the k8s cutover"; fi
 fi
 
+echo "== 5. Datenebene (DATA_PLANE): aus = nichts veroeffentlicht, an = die Cluster-Ports =="
+# The k8s cutover needs timescaledb/keycloak-db/emqx/redpanda reachable from the
+# three k3s nodes, but a stack WITHOUT DATA_PLANE must stay byte-identical to
+# the pre-feature one. Both halves are pinned here because a regression in
+# either direction is invisible until it is either a broken cluster or an
+# unfirewalled database on the LAN.
+for f in infra/prod/dataplane/disabled.yml infra/prod/dataplane/enabled.yml; do
+  if [ -f "$f" ]; then pass "overlay present: $f"; else bad "overlay MISSING: $f (include would abort every deploy)"; fi
+done
+# Both overlays must ride along to the VM, or the include path dangles there.
+for wf in .forgejo/workflows/deploy.yaml .forgejo/workflows/deploy-fast.yaml; do
+  if grep -q 'infra/prod/\*\*' "$wf"; then pass "$wf ships infra/prod/** (carries the overlays)"
+  else bad "$wf no longer ships infra/prod/** - the data-plane include would dangle on the VM"; fi
+done
+
+DP_OFF="$(docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE" config 2>/dev/null || true)"
+if [ -n "$DP_OFF" ]; then
+  # OFF: exactly the two historical entry points (frontend APP_PORT, emqx 8883)
+  # plus the two emqx loopback binds = 4 published ports, and no LAN bind.
+  off_ports="$(grep -c 'published:' <<<"$DP_OFF" || true)"
+  if [ "$off_ports" -eq 4 ]; then pass "DATA_PLANE unset: still exactly 4 published ports"
+  else bad "DATA_PLANE unset: expected 4 published ports, got $off_ports (a data-plane port leaked into the default)"; fi
+  if grep -q 'EXTERNAL://' <<<"$DP_OFF"; then
+    bad "DATA_PLANE unset: redpanda already carries an EXTERNAL listener"
+  else pass "DATA_PLANE unset: redpanda keeps only the INTERNAL listener"; fi
+fi
+
+DP_ENV="$(mktemp)"; trap 'rm -f "$ENV_FILE" "$DP_ENV"' EXIT
+{ cat "$ENV_FILE"; echo "DATA_PLANE=enabled"; echo "DATA_PLANE_HOST=10.9.8.7"; } > "$DP_ENV"
+if DP_ON="$(docker compose -f docker-compose.prod.yml --env-file "$DP_ENV" config 2>/dev/null)"; then
+  pass "DATA_PLANE=enabled resolves"
+  # The five ports the gitops ExternalName services expect (see that repo's
+  # apps/voltpilot/base/external/README.md). keycloak-db is 5433 on purpose:
+  # a second Postgres INSTANCE cannot share 5432 on the same host IP.
+  for spec in '5432:timescaledb' '5433:keycloak-db' '1883:emqx-backbone' '18083:emqx-mgmt' '29092:redpanda'; do
+    port="${spec%%:*}"; what="${spec##*:}"
+    if grep -qE "published: \"$port\"" <<<"$DP_ON"; then pass "publishes $port ($what)"
+    else bad "data plane does not publish $port ($what) - gitops ExternalName contract broken"; fi
+  done
+  # SECURITY: every data-plane port must bind the LAN address, never 0.0.0.0.
+  # The one legitimate 0.0.0.0 is the pre-existing frontend APP_PORT.
+  bindall="$(grep -c 'host_ip: 0.0.0.0' <<<"$DP_ON" || true)"
+  if [ "$bindall" -le 1 ]; then pass "no data-plane port binds 0.0.0.0 (only the pre-existing frontend port)"
+  else bad "$bindall ports bind 0.0.0.0 - a data-plane port is exposed on every interface"; fi
+  if grep -q 'EXTERNAL://10.9.8.7:29092' <<<"$DP_ON"; then
+    pass "redpanda advertises the external listener at the data-plane host"
+  else bad "redpanda EXTERNAL listener not advertised at DATA_PLANE_HOST (cluster clients would reconnect to a wrong address)"; fi
+else
+  bad "DATA_PLANE=enabled did NOT resolve"
+fi
+# Enabling the overlay without an address must abort loudly, never bind 0.0.0.0.
+{ cat "$ENV_FILE"; echo "DATA_PLANE=enabled"; } > "$DP_ENV"
+if docker compose -f docker-compose.prod.yml --env-file "$DP_ENV" config -q >/dev/null 2>&1; then
+  bad "DATA_PLANE=enabled without DATA_PLANE_HOST resolved - it must abort instead of binding 0.0.0.0"
+else
+  pass "DATA_PLANE=enabled without DATA_PLANE_HOST aborts loudly"
+fi
+if grep -q 'DATA_PLANE_HOST' .env.prod.example && grep -q 'DATA_PLANE=' .env.prod.example; then
+  pass ".env.prod.example documents the data-plane switch"
+else
+  bad ".env.prod.example missing the DATA_PLANE delta"
+fi
+
 echo
 if [ "$fail" -ne 0 ]; then
   echo "DEPLOY CHECKS FAILED"

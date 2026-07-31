@@ -230,7 +230,7 @@ On the VM (example: `ufw`):
 - **Allow `${APP_PORT}/tcp` only from the NPM host** - it is plain HTTP; nothing else should reach it.
 - **Allow `8883/tcp` from the internal network** (or wherever devices live).
 - **Allow SSH** from your admin network.
-- **Block everything else** inbound; the compose file publishes nothing else (`1883`/`18083` are loopback-only).
+- **Block everything else** inbound; the compose file publishes nothing else (`1883`/`18083` are loopback-only) - solange die optionale Datenebene aus ist, siehe den nächsten Abschnitt.
 
 ```bash
 sudo ufw allow from <NPM-IP> to any port ${APP_PORT:-8080} proto tcp
@@ -238,6 +238,73 @@ sudo ufw allow from <internal-net-CIDR> to any port 8883 proto tcp
 sudo ufw allow OpenSSH
 sudo ufw enable
 ```
+
+## Datenebene für den k3s-Cluster freigeben (optional, Standard aus)
+
+Beim k8s-Umzug (Stufe 1) bleiben **timescaledb, keycloak-db, emqx und redpanda bewusst auf dieser VM**, während die zustandslosen Dienste in den Cluster ziehen (Scout-Report `vp-zielinfra-k6` §3.6). Die Cluster-Pods erreichen sie über `ExternalName`-Services; deren Portnummern legt das gitops-Repo fest (`apps/voltpilot/base/external/README.md`). Dieser Stack muss sie also im LAN veröffentlichen - **standardmäßig tut er das nicht**.
+
+### Einschalten
+
+In `/srv/docker/voltpilot/.env`:
+
+```bash
+DATA_PLANE=enabled
+DATA_PLANE_HOST=192.168.178.128     # LAN-Adresse DIESER VM
+```
+
+`DATA_PLANE` ist der eine Schalter: er wählt die Port-Overlay-Datei (`infra/prod/dataplane/{disabled,enabled}.yml`) **und** schaltet den externen Kafka-Listener von redpanda frei. Danach `docker compose -f docker-compose.prod.yml up -d` - nur `redpanda` wird neu erstellt (geänderte Kommandozeile), die übrigen drei bekommen lediglich Port-Mappings.
+
+Prüfen, **bevor** man deployt:
+
+```bash
+docker compose -f docker-compose.prod.yml config | grep -A4 'published: "5432"'
+```
+
+Jeder Datenebenen-Port muss ein `host_ip: <DATA_PLANE_HOST>` tragen. Steht dort `0.0.0.0`, lauscht der Dienst auf allen Interfaces - dann stimmt etwas nicht. Ist `DATA_PLANE` gesetzt, aber `DATA_PLANE_HOST` leer, bricht `config` mit einer klaren Meldung ab, statt still auf 0.0.0.0 zu binden.
+
+### Die vier Ports (Vertrag mit dem gitops-Repo)
+
+| Host-Port | Container | Dienst | Wofür der Cluster ihn braucht |
+|---|---|---|---|
+| `5432` | 5432 | timescaledb | Anwendungs-DB (api, writer, Collectors) |
+| `5433` | 5432 | keycloak-db | **eigene** Postgres-Instanz → eigener Host-Port, weil 5432 auf derselben Host-IP vergeben ist |
+| `1883` | 1883 | emqx | Backbone: ingest subscribed, api/optimizer publishen |
+| `18083` | 18083 | emqx | Management-REST-API für den Authz-Reload des api |
+| `29092` | 29093 | redpanda | Kafka-API (EXTERNAL-Listener, siehe unten) |
+
+> **`keycloak-db` läuft auf 5433.** `ExternalName` kann keine Ports umbiegen, also muss `KC_DB_URL` im Cluster diesen Port tragen: `jdbc:postgresql://keycloak-db:5433/keycloak` (gitops: `apps/voltpilot/base/keycloak/keycloak.env`). Ohne das verbindet Keycloak im Cluster gegen die *Anwendungs*-DB.
+
+### Warum redpanda einen zweiten Listener bekommt
+
+Ein Kafka-Listener kann genau **eine** Adresse annoncieren. Die Compose-Dienste brauchen weiterhin `redpanda:29092`, der Cluster braucht die LAN-Adresse dieser VM - das geht nicht mit einem Listener. Deshalb:
+
+- `INTERNAL` — Container 29092, annonciert `redpanda:29092`, **unveröffentlicht** (unverändert)
+- `EXTERNAL` — Container 29093, annonciert `${DATA_PLANE_HOST}:29092`, veröffentlicht auf Host-29092
+
+Kafka-Clients verbinden sich nach dem Bootstrap zur **annoncierten** Adresse neu. Sie muss von den k3s-Nodes also auflösbar und erreichbar sein. Erreichen die Nodes die VM nur über einen DNS-Namen, setzt man zusätzlich `DATA_PLANE_ADVERTISED_HOST=prod01.intern.tecmaxx.de`.
+
+### Firewall: nur die drei k3s-Nodes
+
+Die Ports sind unauthentifiziert bzw. nur passwortgeschützt - **die Firewall ist die eigentliche Zusage.** Die Bindung an `DATA_PLANE_HOST` hält sie schon vom Internet fern, aber nicht vom restlichen LAN. Regeln ergänzen (k3s-VMs `.241/.242/.243`, Prod-VM `.128` im selben `/24`):
+
+```bash
+# Kubernetes-Nodes, die auf die Datenebene dieser VM zugreifen dürfen
+for NODE in 192.168.178.241 192.168.178.242 192.168.178.243; do
+  sudo ufw allow from $NODE to any port 5432  proto tcp comment 'k3s -> timescaledb'
+  sudo ufw allow from $NODE to any port 5433  proto tcp comment 'k3s -> keycloak-db'
+  sudo ufw allow from $NODE to any port 1883  proto tcp comment 'k3s -> emqx backbone'
+  sudo ufw allow from $NODE to any port 18083 proto tcp comment 'k3s -> emqx mgmt api'
+  sudo ufw allow from $NODE to any port 29092 proto tcp comment 'k3s -> redpanda kafka'
+done
+sudo ufw reload
+sudo ufw status numbered      # kontrollieren: KEIN "Anywhere" auf diesen fünf Ports
+```
+
+Der öffentliche mTLS-Geräte-Port `8883` läuft weiterhin direkt auf diese VM und **nicht** durch den Cluster.
+
+### Zurücknehmen
+
+`DATA_PLANE` in der `.env` leeren und `docker compose -f docker-compose.prod.yml up -d`. Der aufgelöste Stack ist dann wieder byte-identisch zu dem vor Einführung des Features (nachgewiesen per `config`-Diff); die ufw-Regeln kann man mit `sudo ufw status numbered` + `sudo ufw delete <n>` entfernen.
 
 ## Topology
 
@@ -262,6 +329,8 @@ Only **two** ports are published from the server:
 
 Everything else (api, keycloak, keycloak-db, timescaledb, redpanda, ingest, writer, collectors) stays on the internal compose network `voltpilot-prod`.
 The plaintext MQTT `1883` and the EMQX dashboard `18083` are bound to loopback for on-host/tunnel use only.
+
+Ausnahme: ist die optionale **Datenebene** eingeschaltet (`DATA_PLANE=enabled`, siehe oben), kommen fünf weitere Ports dazu - aber ausschließlich an `DATA_PLANE_HOST` gebunden und per Firewall auf die drei k3s-Nodes begrenzt.
 
 ## What you provide
 
