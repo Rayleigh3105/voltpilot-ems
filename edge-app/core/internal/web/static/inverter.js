@@ -26,6 +26,10 @@
   var lastTelemetryMs = 0;  // when it was read (epoch ms)
   var stateNowMs = 0;       // device clock at fetch time (honest "vor X")
 
+  // The last /api/calibration snapshot, ONLY so a save can name what it does to
+  // an existing Steuerungs-Freigabe (E3). Best-effort: null = say nothing.
+  var lastCal = null;
+
   var chosenModel = null;  // picked model id for the current brand (or null)
   var visible = [];        // models currently rendered, in list order (keyboard nav)
   var activeIdx = -1;      // keyboard cursor into `visible`
@@ -455,6 +459,7 @@
     $("formOk").hidden = true;
     $("formError").hidden = true;
     window.VP.clearVerify($("invVerify"));
+    loadCalibration();
     $("form").scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
@@ -462,6 +467,15 @@
     $("form").hidden = true;
     window.VP.clearVerify($("invVerify"));
     renderSummary();
+  }
+
+  // The release state is read fresh whenever the form opens, so the save-time
+  // question is about what is true NOW - never a stale claim.
+  function loadCalibration() {
+    fetch("/api/calibration", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { lastCal = (j && j.calibration) || null; })
+      .catch(function () { /* best-effort: without it the save just stays silent */ });
   }
 
   function loadStatus() {
@@ -493,6 +507,35 @@
       });
   }
 
+  // familyOf resolves the register-map family of a picked model from the
+  // catalog - the form POSTs only {brand, model, connection}, the family is
+  // what the CERTIFICATION is keyed on (agent.controlCertified).
+  function familyOf(brandID, modelID) {
+    var b = brandById(brandID);
+    if (!b) return "";
+    var out = "";
+    (b.models || []).forEach(function (m) { if (m.id === modelID) out = m.family || ""; });
+    return out;
+  }
+
+  // Nebenwirkungs-Regel (E3, Audit): dieses Formular ist der ZWEITE Weg an
+  // genau die Werte, die die Kalibrier-Korrektur schützt (Vorzeichen,
+  // Leistungsskalierung, Schreib-Funktionscode, Fernsteuerung) - nur setzt der
+  // Server hier nichts zurück. Ein anderes Modell nimmt der Anlage faktisch die
+  // Steuerung (die Freigabe hängt an der bisherigen Familie); geänderte
+  // Steuerwerte bei gleicher Familie lassen die Freigabe bestehen, machen ihren
+  // Nachweis aber veraltet. consequences.js sagt beides getrennt und ehrlich -
+  // und schweigt, solange nichts freigegeben ist (der Normalfall).
+  function askInverterChange(next) {
+    var C = window.VPConsequences;
+    if (!C || !lastCal) return true;
+    var current = {
+      family: selection ? selection.family : "",
+      connection: (selection && selection.connection) || {},
+    };
+    return C.ask(C.inverterChange(lastCal, current, next));
+  }
+
   function submit(e) {
     e.preventDefault();
     $("formError").hidden = true;
@@ -505,13 +548,17 @@
       $("modelSearch").focus({ preventScroll: true });
       return;
     }
+    var payload = collect();
+    payload.family = familyOf(payload.brand, payload.model);
+    if (!askInverterChange(payload)) return;
+    delete payload.family; // derived client-side only; the server owns it
     var btn = $("saveBtn");
     btn.disabled = true;
     btn.textContent = "Speichern…";
     fetch("/api/inverter", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(collect())
+      body: JSON.stringify(payload)
     })
       .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
       .then(function (res) {

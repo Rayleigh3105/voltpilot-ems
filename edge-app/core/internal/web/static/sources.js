@@ -496,19 +496,24 @@
     });
   }
 
+  // Nebenwirkungs-Regel (E3): der Rollen-Satz stand hier schon, die
+  // ABREGELUNGS-Freigabe fehlte - eine freigegebene Fronius-Quelle zu
+  // entfernen beendet still ihre Abregelung (ohne Quelle gibt es nichts mehr
+  // zu begrenzen). Die Freigabe-Lage kommt frisch von /api/curtail; schlägt
+  // der Abruf fehl, gilt die zuletzt bekannte Liste, und ohne das
+  // Abregel-Modul bleibt es beim reinen Rollen-Satz.
   function removeSource(s) {
-    var msg;
-    if (s.role === ROLE_NETZ) {
-      msg = "Diesen Netz-Zähler entfernen? Der Netzbezug wird dann wieder vom Speicher-Wechselrichter gemessen.";
-    } else if (s.role === ROLE_CONSUMER) {
-      msg = "Diesen Verbraucher entfernen? Sein Verbrauch wird dann nicht mehr mitgemessen.";
-    } else {
-      msg = "Diese Energiequelle entfernen? Ihre Erzeugung fließt dann nicht mehr in die Gesamt-PV ein.";
-    }
-    if (!window.confirm(msg)) return;
-    fetch("/api/sources/" + encodeURIComponent(s.id), { method: "DELETE" })
-      .then(function () { load(); })
-      .catch(function () { /* leave the list; a reload will re-sync */ });
+    var C = window.VPConsequences;
+    var cur = window.VPCurtail;
+    var fresh = cur && cur.refresh ? Promise.resolve(cur.refresh()).catch(function () {}) : Promise.resolve();
+    fresh.then(function () {
+      var units = cur && cur.units ? cur.units() : [];
+      var msg = C ? C.sourceRemoval(s, units) : "Diese Energiequelle entfernen?";
+      if (C ? !C.ask(msg) : !window.confirm(msg)) return;
+      fetch("/api/sources/" + encodeURIComponent(s.id), { method: "DELETE" })
+        .then(function () { load(); })
+        .catch(function () { /* leave the list; a reload will re-sync */ });
+    });
   }
 
   /* ---------------- load ---------------- */

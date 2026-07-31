@@ -125,7 +125,14 @@
       if (a === "test") act("/api/curtail/test", { source_id: u.source_id });
       else if (a === "abort") act("/api/curtail/abort");
       else if (a === "certify") act("/api/curtail/certify", { source_id: u.source_id });
-      else if (a === "decertify") act("/api/curtail/decertify", { source_id: u.source_id });
+      else if (a === "decertify") {
+        // Nebenwirkungs-Regel (E3): die Rücknahme nennt vorher, was sie für
+        // die Anlage bedeutet - der Fahrplan kann diesen Wechselrichter dann
+        // nicht mehr abregeln, auch nicht bei negativen Preisen.
+        var C = global.VPConsequences;
+        if (C && !C.ask(C.curtailDecertify(u))) return;
+        act("/api/curtail/decertify", { source_id: u.source_id });
+      }
     });
     return div;
   }
@@ -154,9 +161,19 @@
     for (var i = 0; i < v.units.length; i++) wrap.appendChild(renderUnit(v, v.units[i]));
   }
 
+  // The last fetched unit list, so another surface can ask "is this source
+  // curtailment-certified?" without owning a second /api/curtail caller
+  // (sources.js needs it to name the consequence of deleting the source).
+  var lastUnits = [];
+
+  // refresh returns its promise so a caller can await a FRESH answer before
+  // asking a consequence question; it never rejects (a transient failure keeps
+  // the previous list rather than claiming there are no units).
   function refresh() {
-    fetch("/api/curtail").then(function (r) { return r.json(); }).then(function (j) {
-      render(j && j.curtail);
+    return fetch("/api/curtail").then(function (r) { return r.json(); }).then(function (j) {
+      var v = j && j.curtail;
+      lastUnits = (v && v.units) || [];
+      render(v);
     }).catch(function () { /* transient - next poll */ });
   }
 
@@ -165,5 +182,5 @@
     global.setInterval(refresh, 3000);
   }
 
-  global.VPCurtail = { refresh: refresh, render: render };
+  global.VPCurtail = { refresh: refresh, render: render, units: function () { return lastUnits; } };
 })(window);

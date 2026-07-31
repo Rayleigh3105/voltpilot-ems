@@ -301,6 +301,20 @@
           : "Bestätigen Sie Vorzeichen UND Skala – die Kästchen werden aktiv, sobald sich die Batterie messbar bewegt hat.";
   }
 
+  // Die Nebenwirkungs-Regel an den Kalibrier-Korrekturen (Settings-Inkrement
+  // E3, Wunde 2): eine Vorzeichen-/Skalierungs-Korrektur nimmt die
+  // Steuerungs-Freigabe dieses Geräts zurück und verwirft Bestätigungen +
+  // Testergebnis (agent/calibration.go CalibrationCorrection). Der Knopf sagt
+  // das jetzt VORHER und fragt nach; entwertet die Korrektur nachweislich
+  // nichts (nichts freigegeben, nichts bestätigt, kein gültiges Ergebnis),
+  // baut consequences.js keinen Text und der Knopf läuft unverändert durch.
+  function askCorrection(btn, label) {
+    var C = global.VPConsequences;
+    if (!C) return true; // ohne das Modul lieber bedienbar als blockiert
+    var name = label || (btn && (btn.textContent || "").trim());
+    return C.ask(C.calibrationCorrection(lastCal, name));
+  }
+
   function startTest(dir) {
     var kw = Number($("calMag").value) || 0.3;
     showErr("");
@@ -335,14 +349,17 @@
     });
     $("calBattInvert").addEventListener("click", function () {
       var cur = lastCal && lastCal.invert_batt_sign;
+      if (!askCorrection(this)) return;
       post("/api/calibration/correction", { invert_batt_sign: !cur }).then(applyResp).catch(swallow);
     });
     $("calInvert").addEventListener("click", function () {
       var cur = lastCal && lastCal.invert_control_sign;
+      if (!askCorrection(this)) return;
       post("/api/calibration/correction", { invert_control_sign: !cur }).then(applyResp).catch(swallow);
     });
     Array.prototype.forEach.call(document.querySelectorAll(".cal-scale-btn"), function (b) {
       b.addEventListener("click", function () {
+        if (!askCorrection(b, "Leistungsskalierung " + (b.textContent || "").trim())) return;
         post("/api/calibration/correction", { power_scale: Number(b.dataset.scale) }).then(applyResp).catch(swallow);
       });
     });
@@ -356,6 +373,8 @@
       post("/api/calibration/certify").then(applyResp).catch(swallow);
     });
     $("calDecertify").addEventListener("click", function () {
+      var C = global.VPConsequences;
+      if (C && !C.ask(C.calibrationDecertify(lastCal))) return;
       post("/api/calibration/decertify").then(applyResp).catch(swallow);
     });
     fetchCal();

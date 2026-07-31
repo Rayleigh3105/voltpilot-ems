@@ -2922,3 +2922,75 @@ func TestCurtailEndpoints(t *testing.T) {
 		t.Fatalf("token-carrying mutation must run: %d, aborts=%d", resp.StatusCode, fc.curtailAborts)
 	}
 }
+
+// TestDevaluingActionsAskBeforeActing pins the E3 "Nebenwirkungs-Regel" at the
+// //go:embed + call-site level: the shared consequence layer must SHIP with the
+// page, and every control that devalues a released/confirmed/recorded state
+// must route through it instead of POSTing straight away.
+//
+// The behaviour itself (dialog text, cancel changes nothing, confirm executes)
+// is proven at click level in jstest/ui.test.js; this test is the structural
+// guard that a future edit cannot quietly drop the gate again - which is
+// exactly how the calibration corrections silently revoked the control release
+// (Wunde 2: agent/calibration.go CalibrationCorrection resets the confirmations
+// AND deletes the per-device certification, while the button only said
+// "umkehren").
+func TestDevaluingActionsAskBeforeActing(t *testing.T) {
+	srv, _ := newServer(t)
+
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	// The page loads the shared layer, and it loads it BEFORE its consumers.
+	page := get("/einrichten.html")
+	if !strings.Contains(page, `src="consequences.js"`) {
+		t.Fatal("einrichten.html: does not load consequences.js - every consequence question would silently vanish")
+	}
+	for _, consumer := range []string{"calibration.js", "curtail.js", "sources.js", "inverter.js"} {
+		if strings.Index(page, `src="consequences.js"`) > strings.Index(page, `src="`+consumer+`"`) {
+			t.Errorf("einrichten.html: consequences.js must load before %s", consumer)
+		}
+	}
+
+	// The layer itself ships and states the consequence that matters most: an
+	// unreleased inverter is no longer steered by the plan.
+	cons := get("/consequences.js")
+	for _, want := range []string{
+		"calibrationCorrection", "calibrationDecertify", "curtailDecertify",
+		"sourceRemoval", "inverterChange",
+		"Steuerungs-Freigabe", "Fahrplan steuert diesen Wechselrichter dann nicht mehr",
+	} {
+		if !strings.Contains(cons, want) {
+			t.Errorf("consequences.js: missing %s", want)
+		}
+	}
+
+	// Every devaluing call site asks first. Checked as "the ask is wired",
+	// not as an exact spelling, so the tests stay readable when the call sites
+	// are refactored.
+	for _, c := range []struct{ file, marker string }{
+		{"/calibration.js", "askCorrection"},                  // the three sign/scale corrections
+		{"/calibration.js", "C.calibrationDecertify(lastCal)"}, // "Freigabe zurücknehmen"
+		{"/curtail.js", "C.curtailDecertify(u)"},               // per-unit curtailment release
+		{"/sources.js", "C.sourceRemoval(s, units)"},           // removing a source
+		{"/inverter.js", "askInverterChange"},                  // the second path to the control values
+	} {
+		if js := get(c.file); !strings.Contains(js, c.marker) {
+			t.Errorf("%s: devaluing action no longer asks first (missing %s)", c.file, c.marker)
+		}
+	}
+}
