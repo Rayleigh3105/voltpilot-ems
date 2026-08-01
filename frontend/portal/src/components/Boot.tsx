@@ -20,9 +20,25 @@ export function BootSplash() {
 }
 
 /**
+ * Removes the inline first-paint skeleton from index.html (Sofort-Skelett gegen
+ * Chromes Paint-Holding). Called from componentDidMount, i.e. AFTER React wrote
+ * its first DOM but BEFORE the browser paints that frame - so the swap happens
+ * within one frame and never flickers. Idempotent + jsdom-safe.
+ */
+export function removeBootSkeleton(): void {
+  if (typeof document === 'undefined') return;
+  document.getElementById('vp-boot-skeleton')?.remove();
+}
+
+/**
  * Top-level error boundary for the whole SPA: any render/boot exception lands
  * on a German recovery card instead of a blank page. Deliberately minimal -
  * it must render even when app state is broken.
+ *
+ * It also owns the ONE removal of the inline boot skeleton: it wraps every
+ * render() in main.tsx and stays mounted across boot states, so its
+ * componentDidMount fires exactly once - at React's first committed frame,
+ * whichever boot outcome that is.
  */
 export class BootErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -32,6 +48,10 @@ export class BootErrorBoundary extends React.Component<
 
   static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true };
+  }
+
+  componentDidMount(): void {
+    removeBootSkeleton();
   }
 
   componentDidCatch(error: unknown): void {
