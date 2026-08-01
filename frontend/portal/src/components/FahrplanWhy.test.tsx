@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-// jsdom has no ResizeObserver (PhaseBand measures itself for label fitting).
+// jsdom has no ResizeObserver (some design-system pieces measure themselves).
 vi.stubGlobal(
   'ResizeObserver',
   class {
@@ -10,7 +10,7 @@ vi.stubGlobal(
     disconnect() {}
   },
 );
-import { FahrplanWhyPanel, PhaseBand, roleColor } from './FahrplanWhy';
+import { FahrplanWhyPanel, roleColor } from './FahrplanWhy';
 import { chartTheme } from '../chartTheme';
 import { phases, type WhySlot } from '../fahrplanWhy';
 
@@ -56,31 +56,6 @@ describe('roleColor (the ONE colour language, Konzept §6.6)', () => {
     // Idle roles are the neutral grey, not a chart hue.
     expect(roleColor('warten', t)).not.toBe(t.discharge);
     expect(roleColor('reserve_halten', t)).toBe(roleColor('warten', t));
-  });
-});
-
-describe('PhaseBand', () => {
-  it('renders one tappable segment per phase and reports the tapped index', () => {
-    const slots = mkSlots();
-    const ph = phases(slots);
-    const onSelect = vi.fn();
-    render(
-      <PhaseBand phases={ph} plantKind="eigenverbrauch" selected={null} onSelect={onSelect} />,
-    );
-    const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(3);
-    // Identity never rides on color alone: every segment carries its label.
-    expect(buttons[1]).toHaveAccessibleName(/PV-Überschuss speichern/);
-    fireEvent.click(buttons[2]);
-    expect(onSelect).toHaveBeenCalledWith(2);
-  });
-
-  it('marks the selected phase', () => {
-    const ph = phases(mkSlots());
-    render(<PhaseBand phases={ph} plantKind="eigenverbrauch" selected={1} onSelect={() => {}} />);
-    const buttons = screen.getAllByRole('button');
-    expect(buttons[1].className).toContain('sel');
-    expect(buttons[1]).toHaveAttribute('aria-pressed', 'true');
   });
 });
 

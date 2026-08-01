@@ -8,7 +8,8 @@ import {
   todaySlots,
   type ChargeKind,
 } from '../schedule';
-import { phaseArcSentence, phases } from '../fahrplanWhy';
+import { phases } from '../fahrplanWhy';
+import { filmKurzfassung, filmRows } from '../fahrplanFilm';
 import { energyLabel } from '../anlage';
 import { ScheduleChart } from '../ScheduleChart';
 import { useContainerWidth } from '../useContainerWidth';
@@ -54,12 +55,19 @@ export function FahrplanBand({
   const [ref, width] = useContainerWidth();
   const slots = plan?.slots ?? [];
   const hasPlan = slots.length > 0;
-  // Day-story arc (why-layer, D4: the cockpit band stays calm - arc sentence
-  // only, no phase band here). Plans without persisted slot roles fall back
-  // to the classic planSentence - byte-identical to before.
-  const whyPhases = phases(todaySlots(slots, now), plan?.slotMinutes ?? 15);
-  const arc = whyPhases.length > 0 ? phaseArcSentence(whyPhases, plantKind) : null;
-  const sentence = arc ?? planSentence(slots, plantKind, now);
+  // Die KURZFASSUNG des Films (Fahrplan-Neubau, Konzept §6.2) statt der
+  // früheren →-Kette: die war eine Techniker-Kompression mit Wiederholungen
+  // („morgens … → morgens wieder …"), weil der Horizont zwei Abende überspannt.
+  // Es ist DIESELBE Ableitung wie auf der Fahrplan-Seite - Band und Seite
+  // können sich damit nicht widersprechen. Ohne persistierte Rollen bleibt der
+  // klassische planSentence - zeichengleich zu vorher.
+  const daySlots = todaySlots(slots, now);
+  const whyPhases = phases(daySlots, plan?.slotMinutes ?? 15);
+  const kurz =
+    whyPhases.length > 0
+      ? filmKurzfassung(filmRows(whyPhases, daySlots, plantKind, now))
+      : null;
+  const sentence = kurz ?? planSentence(slots, plantKind, now);
   const saved = savingsTodayEur(slots, now);
   const curtail = curtailmentToday(slots, now);
 

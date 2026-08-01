@@ -43,6 +43,24 @@ describe('controlStrip', () => {
     expect(v.agoNote).toContain('geprüft');
   });
 
+  it('nennt den Wert das, was er ist - was das GERÄT regelt, nie „Fahrplan-Sollwert"', () => {
+    // Der gemeldete Widerspruch (Konzept vp-fahrplan-kunde-konzept K2): seit den
+    // Nachführungs-Pflichten weicht `commandedKw` bewusst vom Plan-Watt ab, stand
+    // aber unter demselben Wort wie der Fahrplan-Balken - zwei verschiedene Zahlen
+    // unter „Fahrplan" auf EINEM Bildschirm.
+    for (const v of [
+      controlStrip(status({}), NOW)!,
+      controlStrip(status({ allMatch: false, confirmedKw: -1.2 }), NOW)!,
+      controlStrip(
+        status({ checkedAt: new Date(NOW.getTime() - 6 * 60 * 1000).toISOString() }),
+        NOW,
+      )!,
+    ]) {
+      expect(v.sentence).not.toContain('Fahrplan-Sollwert');
+    }
+    expect(controlStrip(status({}), NOW)!.sentence).toContain('regelt gerade auf');
+  });
+
   it('flags a mismatch when the read-back differs from the command', () => {
     const v = controlStrip(status({ allMatch: false, confirmedKw: -1.2, mismatchRoles: 'battery_power' }), NOW)!;
     expect(v.state).toBe('mismatch');

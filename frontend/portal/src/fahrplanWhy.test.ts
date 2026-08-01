@@ -4,12 +4,10 @@ import {
   FALLBACK_14A_NOTE,
   FORECAST_FOOTNOTE,
   KNOWN_ROLES,
-  bandLabel,
   bindingChips,
   dayAvgPriceCt,
   driverLabel,
   hasWhyLayer,
-  phaseArcSentence,
   phaseEurAmount,
   phaseEurLine,
   phaseEurNote,
@@ -213,65 +211,6 @@ describe('phases: mode driver (§7)', () => {
     expect(driverLabel('lastspitze')).toBe('Lastspitzenkappung');
     expect(driverLabel('notstrom')).toBe('Notstrom');
     expect(driverLabel(null)).toBeNull();
-  });
-});
-
-describe('phaseArcSentence (the day story)', () => {
-  it('tells the arc chronologically with dayparts and "wieder" on repeats', () => {
-    // 00-07 warten · 07-09 eigenverbrauch · 09-11 warten · 11-15 pv_speichern ·
-    // 15-18 warten · 18-21 eigenverbrauch · 21-24 warten
-    const roles = [
-      ...rep('warten', 28),
-      ...rep('eigenverbrauch', 8),
-      ...rep('warten', 8),
-      ...rep('pv_speichern', 16),
-      ...rep('warten', 12),
-      ...rep('eigenverbrauch', 12),
-      ...rep('warten', 12),
-    ];
-    const arc = phaseArcSentence(phases(mkSlots(roles)), 'eigenverbrauch');
-    expect(arc).toBe(
-      'Morgens den Verbrauch aus dem Speicher decken → mittags PV-Überschuss speichern → abends wieder den Verbrauch aus dem Speicher decken.',
-    );
-  });
-
-  it('words verkaufen per plant kind', () => {
-    // 44 slots idle then selling 11:00-15:00.
-    const roles = [...rep('warten', 44), ...rep('verkaufen', 16), ...rep('warten', 36)];
-    expect(phaseArcSentence(phases(mkSlots(roles)), 'direktvermarktung')).toBe(
-      'Mittags zum Spitzenpreis verkaufen.',
-    );
-    expect(phaseArcSentence(phases(mkSlots(roles)), 'eigenverbrauch')).toBe('Mittags einspeisen.');
-  });
-
-  it('caps the sentence at 4 segments (the longest phases win)', () => {
-    const roles = [
-      ...rep('eigenverbrauch', 8), // 00:00 · 8 slots
-      ...rep('guenstig_laden', 4), // 02:00 · 4 slots (shortest - dropped)
-      ...rep('pv_speichern', 16), // 03:00
-      ...rep('abregeln', 12), // 07:00
-      ...rep('verkaufen', 20), // 10:00
-      ...rep('warten', 36),
-    ];
-    const arc = phaseArcSentence(phases(mkSlots(roles)), 'direktvermarktung')!;
-    expect(arc).not.toContain('günstig aus dem Netz laden');
-    expect(arc.split('→')).toHaveLength(4);
-  });
-
-  it('an all-idle plan says the battery holds (reserve-aware)', () => {
-    expect(phaseArcSentence(phases(mkSlots(rep('warten', 96))), 'eigenverbrauch')).toBe(
-      'Der Speicher hält heute seine Ladung.',
-    );
-    expect(
-      phaseArcSentence(
-        phases(mkSlots([...rep('warten', 48), ...rep('reserve_halten', 48)])),
-        'eigenverbrauch',
-      ),
-    ).toBe('Der Speicher hält seine Ladung als Reserve zurück.');
-  });
-
-  it('is null without phases', () => {
-    expect(phaseArcSentence([], 'eigenverbrauch')).toBeNull();
   });
 });
 
@@ -584,7 +523,7 @@ describe('phaseEurLine + phaseRange + labels', () => {
     );
   });
 
-  it('roleLabel + bandLabel carry the §6 customer vocabulary', () => {
+  it('roleLabel carries the §6 customer vocabulary', () => {
     expect(roleLabel('abregeln', 'eigenverbrauch')).toBe('Einspeisung pausiert (Negativpreis)');
     expect(roleLabel('verkaufen', 'direktvermarktung')).toBe('Zum Spitzenpreis verkaufen');
     expect(roleLabel('verkaufen', 'eigenverbrauch')).toBe('Einspeisen');
@@ -594,9 +533,6 @@ describe('phaseEurLine + phaseRange + labels', () => {
     expect(roleLabel('reserve_halten', 'eigenverbrauch', ['reserve_peak'])).toBe(
       'Reserve halten (Lastspitze)',
     );
-    expect(bandLabel('warten', 'eigenverbrauch')).toBe('');
-    expect(bandLabel('pv_speichern', 'eigenverbrauch')).toBe('PV speichern');
-    expect(bandLabel('verkaufen', 'eigenverbrauch')).toBe('Einspeisen');
   });
 
   it('the honesty copy never names solver internals', () => {

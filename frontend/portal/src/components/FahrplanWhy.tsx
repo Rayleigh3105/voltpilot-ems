@@ -1,20 +1,24 @@
 /**
  * Render-only pieces of the Fahrplan "Warum"-layer (design report
- * vp-fahrplan-why-design §8): the day-story PHASE BAND over the schedule
- * chart, the PHASE CARD (Zeitraum, was, why, phase-€) and the SLOT PANEL
+ * vp-fahrplan-why-design §8): the PHASE CARD (Zeitraum, was, why, phase-€) and
+ * the SLOT PANEL
  * (role + why-sentence + context + binding chips) on tap. All derivation is
  * the pure src/fahrplanWhy.ts - these components only render it. Role colors
  * come from the shipped chartTheme() tokens (green solar / cyan grid / BLUE
  * discharge / grey idle / orange curtail), so band and chart always agree -
  * red stays reserved for costs/warnings and never marks a discharge.
  * On phones the panel renders as a bottom sheet (CSS), tap targets ≥ 44 px.
+ *
+ * The former unlabeled PHASE BAND is gone: at 375 px it was colour confetti
+ * with no words, and the colour validator shows Grün↔Türkis can never carry
+ * identity alone. The named film list (`components/FahrplanJetzt.tsx`
+ * `TagesFilm`) replaced it.
  */
 
 import { chartTheme, type ChartTheme } from '../chartTheme';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { PlanWordingKind } from '../schedule';
 import {
-  bandLabel,
   bindingChips,
   driverLabel,
   phaseEurAmount,
@@ -29,7 +33,6 @@ import {
   type SlotRole,
   type WhySlot,
 } from '../fahrplanWhy';
-import { useContainerWidth } from '../useContainerWidth';
 import './FahrplanWhy.css';
 
 /** Neutral idle fill (warten/reserve) - dim like the concept, never a chart hue. */
@@ -54,59 +57,6 @@ export function roleColor(role: SlotRole, t: ChartTheme): string {
     default:
       return IDLE_BG;
   }
-}
-
-/** Rough px per label character (0.7rem bold) + segment padding, for fitting. */
-const BAND_LABEL_CHAR_PX = 6.5;
-const BAND_LABEL_PAD_PX = 14;
-
-/**
- * The tappable day-story band: one flex segment per phase, width ∝ duration,
- * role-colored; idle phases render dim. Identity never rides on color alone -
- * a segment carries its label only when it truly FITS (measured against the
- * container width - a truncated "V…" helps nobody), every segment always
- * carries the full label via title/aria-label, and the tapped card names it.
- */
-export function PhaseBand({
-  phases,
-  plantKind,
-  selected,
-  onSelect,
-}: {
-  phases: PlanPhase[];
-  plantKind: PlanWordingKind;
-  selected: number | null;
-  onSelect: (index: number) => void;
-}) {
-  const t = chartTheme();
-  const [ref, width] = useContainerWidth();
-  const totalSlots = phases.reduce((s, p) => s + p.slotCount, 0) || 1;
-  return (
-    <div ref={ref} className="vp-fw-band" aria-label="Tagesphasen des Fahrplans">
-      {phases.map((p, i) => {
-        const dim = p.kind === 'idle';
-        const full = roleLabel(p.role, plantKind);
-        const short = bandLabel(p.role, plantKind);
-        const segPx = width > 0 ? (p.slotCount / totalSlots) * width : 0;
-        const lbl =
-          short && segPx >= short.length * BAND_LABEL_CHAR_PX + BAND_LABEL_PAD_PX ? short : '';
-        return (
-          <button
-            key={`${p.startIdx}`}
-            type="button"
-            className={`vp-fw-ph${dim ? ' dim' : ''}${selected === i ? ' sel' : ''}`}
-            style={{ flex: `${p.slotCount} 1 0px`, background: dim ? IDLE_BG : roleColor(p.role, t) }}
-            title={`${full} · ${phaseRange(p)}`}
-            aria-label={`${full}, ${phaseRange(p)}`}
-            aria-pressed={selected === i}
-            onClick={() => onSelect(i)}
-          >
-            <span>{lbl}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 function CloseButton({ onClose }: { onClose: () => void }) {

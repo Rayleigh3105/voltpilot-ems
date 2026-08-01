@@ -1,0 +1,449 @@
+/*
+ * Die Fahrplan-Seite: JETZT-Held, Film des Tages und die Schicht-Schalter des
+ * Diagramms (Konzept `vp-fahrplan-kunde-konzept` §6). Komponenten-lokal wie
+ * `FahrplanWhy.css` — `index.css` bleibt unangetastet.
+ *
+ * MOBILE-FIRST: das 375er-Mockup ist das Leitbild, die Desktop-Regeln stehen
+ * als Erweiterung unten. Jeder Flex-/Grid-Kasten trägt `min-width: 0`, sonst
+ * sprengt EIN langer Satz (die Warum-Zeile) die Spalte — die dokumentierte
+ * Überlauf-Falle des Portals.
+ */
+
+/* ---- Block 1 · der JETZT-Held ------------------------------------------- */
+
+.vp-jetzt {
+  min-width: 0;
+  margin-bottom: var(--vp-space-4);
+}
+
+.vp-jetzt-kick {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-jetzt-ago {
+  font-size: 0.75rem;
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-jetzt-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 var(--vp-space-3);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.45;
+  min-width: 0;
+}
+
+.vp-jetzt-status i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--vp-gray, #9aa3ad);
+}
+
+/* Grün kommt aus den BESTEHENDEN Tokens - nie ein zweites „Alles ok"-Grün. */
+.vp-jetzt-status.is-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-jetzt-status.is-ok i {
+  background: var(--vp-flow-batt, #16a34a);
+  box-shadow: 0 0 0 3px var(--vp-flow-batt-soft, #e7f6ec);
+}
+.vp-jetzt-status.is-warn {
+  color: #8a5200;
+}
+.vp-jetzt-status.is-warn i {
+  background: var(--vp-flow-pv, #f59e0b);
+}
+
+.vp-jetzt-body {
+  display: block;
+  min-width: 0;
+}
+.vp-jetzt-main,
+.vp-jetzt-side {
+  min-width: 0;
+}
+
+.vp-jetzt-lead {
+  margin: 0 0 2px;
+  font-size: 1.02rem;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.vp-jetzt-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-jetzt-value b {
+  font-family: var(--vp-font-heading, inherit);
+  font-size: clamp(1.9rem, 8vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--vp-stat-ink, #1e3a5f);
+}
+
+.vp-jetzt-value b.vp-jetzt-dash {
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-jetzt-value span {
+  font-size: 0.85rem;
+  color: var(--vp-muted, #6c757d);
+  min-width: 0;
+}
+
+/* Eine bewusste Nachführung ist NIE ein Fehler: neutraler Kasten, kein Rot. */
+.vp-jetzt-adjust {
+  margin: 0 0 var(--vp-space-2);
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-left: 3px solid var(--vp-chart-battdischarge, #2c5282);
+  background: var(--vp-bg-subtle, #f1f3f5);
+  border-radius: 0 var(--vp-radius-md) var(--vp-radius-md) 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.vp-jetzt-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--vp-space-3);
+  font-size: 0.8rem;
+  color: var(--vp-flow-batt-ink, #166534);
+  min-width: 0;
+}
+.vp-jetzt-confirm svg {
+  flex: none;
+}
+
+.vp-jetzt-why {
+  margin: 0 0 var(--vp-space-3);
+  padding-top: var(--vp-space-3);
+  border-top: 1px solid var(--vp-border);
+  font-size: 0.87rem;
+  line-height: 1.55;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-jetzt-why .k {
+  font-weight: 700;
+}
+
+.vp-jetzt-next {
+  margin: 0 0 var(--vp-space-3);
+  font-size: 0.85rem;
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-jetzt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-jetzt-chip {
+  font-size: 0.75rem;
+  color: var(--vp-muted, #6c757d);
+  background: var(--vp-bg-subtle, #f1f3f5);
+  border: 1px solid var(--vp-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.vp-jetzt-chip b {
+  color: var(--vp-ink, #1a1a1a);
+}
+
+/* ---- Block 2 · der Film des Tages --------------------------------------- */
+
+.vp-film {
+  min-width: 0;
+}
+
+.vp-film-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.vp-film-li {
+  min-width: 0;
+  border-bottom: 1px solid var(--vp-border);
+}
+.vp-film-li:last-child {
+  border-bottom: none;
+}
+
+.vp-film-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--vp-space-2) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-film-row:hover .vp-film-was {
+  text-decoration: underline;
+}
+
+.vp-film-row:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-md);
+}
+
+.vp-film-dot {
+  flex: none;
+  width: 10px;
+  height: 26px;
+  border-radius: 3px;
+}
+
+.vp-film-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vp-film-was {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-film-meta {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--vp-muted, #6c757d);
+  line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-film-now {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--vp-flow-batt-soft, #e7f6ec);
+  color: var(--vp-flow-batt-ink, #166534);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.vp-film-done {
+  display: inline-flex;
+  margin-right: 5px;
+  color: var(--vp-muted, #6c757d);
+  vertical-align: -1px;
+}
+
+.vp-film-li.is-done .vp-film-was,
+.vp-film-li.is-done .vp-film-meta {
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-film-eur {
+  flex: none;
+  text-align: right;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--vp-chart-charge, #2e9e5b);
+  white-space: nowrap;
+}
+
+.vp-film-eur.buy {
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-film-eur i {
+  display: block;
+  font-style: normal;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-film-empty {
+  margin: var(--vp-space-2) 0 0;
+}
+
+.vp-film-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: var(--vp-space-1);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--vp-action);
+  cursor: pointer;
+}
+
+.vp-film-more svg {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.vp-film-more.is-open svg {
+  transform: rotate(0deg);
+}
+.vp-film-more:hover {
+  text-decoration: underline;
+}
+
+/* ---- Block 4 · die Schicht-Schalter des Diagramms ----------------------- */
+
+.vp-sched-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-sched-layer {
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--vp-border);
+  border-radius: 999px;
+  background: var(--vp-surface, #fff);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--vp-muted, #6c757d);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vp-sched-layer.on {
+  border-color: var(--vp-action);
+  background: var(--vp-action);
+  color: #fff;
+}
+
+.vp-sched-layer:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+}
+
+/* ---- Block 4 · die Aufklapp-Ebene des Diagramms ------------------------- */
+
+.vp-fp-fold-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-fp-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--vp-navy-2, #2c5282);
+  cursor: pointer;
+}
+
+.vp-fp-fold-toggle svg {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.vp-fp-fold-toggle.is-open svg {
+  transform: rotate(0deg);
+}
+.vp-fp-fold-toggle:hover {
+  text-decoration: underline;
+}
+
+/* ---- Block 3 · die Euro-Zeile ------------------------------------------- */
+
+.vp-fp-euro {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-fp-euro b {
+  font-family: var(--vp-font-heading, inherit);
+  font-size: clamp(1.4rem, 6vw, 1.75rem);
+  font-weight: 800;
+  color: var(--vp-stat-ink, #1e3a5f);
+}
+
+.vp-fp-euro .sub {
+  font-size: 0.85rem;
+  color: var(--vp-muted, #6c757d);
+  min-width: 0;
+}
+
+.vp-fp-euro-note {
+  margin: var(--vp-space-1) 0 0;
+  font-size: 0.82rem;
+  color: var(--vp-muted, #6c757d);
+}
+
+/* ---- Desktop: dieselbe Ordnung, mehr Luft (Konzept §6.5) ---------------- */
+
+@media (min-width: 1024px) {
+  .vp-jetzt-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: var(--vp-space-5);
+    align-items: start;
+  }
+  .vp-jetzt-side {
+    padding-left: var(--vp-space-5);
+    border-left: 1px solid var(--vp-border);
+  }
+  .vp-jetzt-why {
+    padding-top: 0;
+    border-top: none;
+  }
+}

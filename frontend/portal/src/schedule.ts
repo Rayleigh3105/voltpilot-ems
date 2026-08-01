@@ -344,6 +344,69 @@ export function toggleSeries(hidden: ReadonlySet<string>, label: string): Set<st
   return next;
 }
 
+// ---- Die drei Serien-GRUPPEN des Fahrplan-Diagramms (Captain-Entscheid D4) --
+
+/**
+ * Der Kern des Diagramms — Balken + Preis + Jetzt — ist immer da. Alles
+ * Weitere ist eine bewusst zugeschaltete SCHICHT statt einer Dauerlast:
+ * sieben Reihen gleichzeitig (darunter DREI blaue Linien) waren nur für den
+ * Autor lesbar, und neun Einzel-Pills kosteten am Telefon allein 339 px.
+ */
+export type SeriesGroup = 'prognosen' | 'gemessen' | 'ladestand';
+
+export interface SeriesGroupDef {
+  id: SeriesGroup;
+  /** Die Beschriftung des Schalters. */
+  label: string;
+  /** Die Serien-/Legenden-Schlüssel dieser Gruppe (die echarts-Namen). */
+  members: readonly string[];
+}
+
+/** Das Ladestand-Label ist zugleich der echarts-Seriennamen der SoC-Linie. */
+export const SOC_LABEL = 'Ladestand';
+
+/**
+ * Die drei Gruppen in Anzeigereihenfolge. Die `members` SIND die
+ * Legenden-/Serien-Schlüssel, also braucht der Umschalter keine zweite
+ * Zuordnungstabelle (dieselbe Disziplin wie bei den Prognose-Labels).
+ */
+export const SERIES_GROUPS: readonly SeriesGroupDef[] = [
+  { id: 'prognosen', label: 'Prognosen', members: [PV_FORECAST_LABEL, LOAD_FORECAST_LABEL] },
+  { id: 'gemessen', label: 'Gemessen', members: [MEASURED_PV_LABEL, MEASURED_LOAD_LABEL] },
+  { id: 'ladestand', label: 'Ladestand', members: [SOC_LABEL] },
+];
+
+/**
+ * Der ruhige Standard: KEINE Gruppe an. Wer vergleichen will, schaltet
+ * bewusst eine Schicht dazu (§6.4) - die Kollision dreier blauer Linien
+ * verschwindet damit aus dem Normalbild.
+ */
+export function defaultHiddenGroups(): Set<SeriesGroup> {
+  return new Set<SeriesGroup>(SERIES_GROUPS.map((g) => g.id));
+}
+
+/** Eine Gruppe ein-/ausschalten; liefert ein NEUES Set (ehrliche Zustände). */
+export function toggleGroup(
+  hidden: ReadonlySet<SeriesGroup>,
+  group: SeriesGroup,
+): Set<SeriesGroup> {
+  const next = new Set(hidden);
+  if (!next.delete(group)) next.add(group);
+  return next;
+}
+
+/**
+ * Die versteckten SERIEN-Schlüssel zu einem Gruppen-Zustand - die Brücke zu
+ * allem, was weiterhin über Labels arbeitet (`powerAxisMax`, die Legende).
+ */
+export function hiddenLabels(hidden: ReadonlySet<SeriesGroup>): Set<string> {
+  const out = new Set<string>();
+  for (const g of SERIES_GROUPS) {
+    if (hidden.has(g.id)) for (const m of g.members) out.add(m);
+  }
+  return out;
+}
+
 /**
  * Upper bound of the chart's kW axis: the battery peak, plus whatever VISIBLE
  * line reaches higher (a 60-kW PV forecast - or a measured load spike - must

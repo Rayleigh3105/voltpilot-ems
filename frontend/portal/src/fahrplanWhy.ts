@@ -18,7 +18,7 @@
  */
 
 import { eurAmount } from './format';
-import { daypart, type PlanWordingKind } from './schedule';
+import type { PlanWordingKind } from './schedule';
 
 // ---- The slot-role vocabulary (report §6) ---------------------------------
 
@@ -261,28 +261,6 @@ export function roleLabel(role: SlotRole, kind: PlanWordingKind, flags?: string[
   }
 }
 
-/** Short label for the phase band (empty = renders as a calm unlabeled segment). */
-export function bandLabel(role: SlotRole, kind: PlanWordingKind): string {
-  switch (role) {
-    case 'abregeln':
-      return 'Abregeln';
-    case 'reserve_halten':
-      return 'Reserve';
-    case 'warten':
-      return '';
-    case 'pv_speichern':
-      return 'PV speichern';
-    case 'guenstig_laden':
-      return 'Günstig laden';
-    case 'spitze_kappen':
-      return 'Spitze kappen';
-    case 'verkaufen':
-      return kind === 'direktvermarktung' ? 'Verkaufen' : 'Einspeisen';
-    case 'eigenverbrauch':
-      return 'Verbrauch decken';
-  }
-}
-
 /** ONE plain-German sentence summarizing a phase (the phase card body). */
 export function phaseWhy(phase: PlanPhase, kind: PlanWordingKind): string {
   switch (phase.role) {
@@ -347,69 +325,6 @@ export function phaseRange(phase: PlanPhase): string {
   const hm = (iso: string) =>
     new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   return `${hm(phase.from)}–${hm(phase.to)} Uhr`;
-}
-
-// ---- The day-arc sentence (extends planSentence) --------------------------
-
-/** Arc verb phrase per role (lower-case, mid-sentence German). */
-function arcPhrase(role: SlotRole, kind: PlanWordingKind): string {
-  switch (role) {
-    case 'pv_speichern':
-      return 'PV-Überschuss speichern';
-    case 'guenstig_laden':
-      return 'günstig aus dem Netz laden';
-    case 'eigenverbrauch':
-      return 'den Verbrauch aus dem Speicher decken';
-    case 'verkaufen':
-      return kind === 'direktvermarktung' ? 'zum Spitzenpreis verkaufen' : 'einspeisen';
-    case 'spitze_kappen':
-      return 'die Lastspitze kappen';
-    case 'abregeln':
-      return 'die Einspeisung pausieren';
-    case 'reserve_halten':
-      return 'Reserve halten';
-    case 'warten':
-      return '';
-  }
-}
-
-/** How many arc segments the sentence carries at most (stays one calm line). */
-const ARC_MAX_SEGMENTS = 4;
-
-/**
- * The day story in ONE sentence ("Morgens den Verbrauch aus dem Speicher
- * decken → mittags PV-Überschuss speichern → abends wieder den Verbrauch aus
- * dem Speicher decken."). Built from the non-idle phases, chronologically,
- * capped at 4 segments (the longest win); a repeated action later in the day
- * reads "wieder". Null without phases; an all-idle plan says the battery
- * holds (with the reserve wording when the hold IS a reserve).
- */
-export function phaseArcSentence(list: PlanPhase[], kind: PlanWordingKind): string | null {
-  if (list.length === 0) return null;
-  const active = list.filter((p) => p.kind !== 'idle');
-  if (active.length === 0) {
-    return list.some((p) => p.role === 'reserve_halten')
-      ? 'Der Speicher hält seine Ladung als Reserve zurück.'
-      : 'Der Speicher hält heute seine Ladung.';
-  }
-  const top = [...active]
-    .sort((a, b) => b.slotCount - a.slotCount)
-    .slice(0, ARC_MAX_SEGMENTS)
-    .sort((a, b) => a.startIdx - b.startIdx);
-
-  const seen = new Set<string>();
-  const segments = top.map((p) => {
-    const mid = new Date(
-      (new Date(p.from).getTime() + new Date(p.to).getTime()) / 2,
-    );
-    const part = daypart(mid.getHours() + mid.getMinutes() / 60);
-    const phrase = arcPhrase(p.role, kind);
-    const again = seen.has(phrase);
-    seen.add(phrase);
-    return `${part}${again ? ' wieder' : ''} ${phrase}`;
-  });
-  const joined = segments.join(' → ');
-  return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`;
 }
 
 // ---- Per-slot why ---------------------------------------------------------
@@ -640,7 +555,3 @@ export const FORECAST_FOOTNOTE =
  */
 export const FALLBACK_14A_NOTE =
   'Die Netzgrenze (§14a) konnte nicht vollständig eingeplant werden – Ihr Gerät begrenzt zusätzlich.';
-
-/** The tap-discoverability hint under the phase band. */
-export const WHY_TAP_HINT =
-  'Phase oder Viertelstunde antippen, um zu sehen, warum der Speicher das tut.';

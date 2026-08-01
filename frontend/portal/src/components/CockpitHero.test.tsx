@@ -156,7 +156,7 @@ describe('Der Bühnenfuß', () => {
           view={{
             state: 'healthy',
             tone: 'ok',
-            sentence: 'Fahrplan-Sollwert 2,1 kW → Wechselrichter bestätigt 2,1 kW',
+            sentence: 'Ihr Gerät regelt gerade auf 2,1 kW → Wechselrichter bestätigt 2,1 kW',
             agoNote: 'geprüft vor 12 s',
             reason: 'Mittags-PV wird gespeichert und am Abend verkauft.',
           }}
@@ -170,7 +170,7 @@ describe('Der Bühnenfuß', () => {
     expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
     expect(container.querySelector('.vp-hero-side .vp-stage-foot')).toBeNull();
     // Sollwert → Bestätigung → Grund, ohne eigenen Kartenrahmen (P5).
-    expect(foot?.textContent).toContain('Fahrplan-Sollwert');
+    expect(foot?.textContent).toContain('regelt gerade auf');
     expect(foot?.querySelector('.vp-control-reason')?.textContent).toContain('Abend verkauft');
     expect(foot?.querySelector('.vp-card')).toBeNull();
   });

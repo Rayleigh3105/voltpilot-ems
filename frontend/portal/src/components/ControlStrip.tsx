@@ -1,5 +1,5 @@
 // The calm "Steuerung" strip on the Anlagen-Seite (captain decision 4): one
-// plain-German line "Fahrplan-Sollwert X -> Wechselrichter bestätigt Y" with a
+// plain-German line "Ihr Gerät regelt gerade auf X -> Wechselrichter bestätigt Y" with a
 // healthy | mismatch | stale | off | pending dot and a "geprüft vor X" note -
 // PLUS, since 2026-07-30, the plan's own reason for that setpoint underneath.
 // Without the reason the line read like a stubborn order (the owner's Pilsting

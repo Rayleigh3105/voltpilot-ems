@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { SchedulePlan } from './api';
 import { chartTheme } from './chartTheme';
 import {
   chargeKind,
   CURTAIL_LEGEND_LABEL,
+  defaultHiddenGroups,
   forecastLines,
   hasCurtailment,
   hasGridCharge,
+  hiddenLabels,
   LOAD_FORECAST_LABEL,
   MEASURED_LOAD_LABEL,
   MEASURED_PV_LABEL,
@@ -17,12 +19,16 @@ import {
   planInsightParts,
   powerAxisMax,
   PV_FORECAST_LABEL,
+  SERIES_GROUPS,
   slotBarColor,
+  SOC_LABEL,
   socRangeLine,
-  toggleSeries,
+  toggleGroup,
+  type SeriesGroup,
 } from './schedule';
 import { useEChart } from './useEChart';
 import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
+import './components/Fahrplan.css';
 
 /**
  * The optimizer plan for the day, made obvious at a glance: planned battery
@@ -37,8 +43,7 @@ import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartEx
  * chart itself is the proof that only solar is stored. Over the bars run the
  * two dotted FORECAST lines the plan was computed from (PV-Prognose orange,
  * Verbrauchsprognose blau, same kW axis as the bars) - they explain the plan
- * ("warum hält er abends? da liegt die Nachtlast") and are switchable via the
- * legend, visible by default. Next to EACH of them runs its MEASURED twin
+ * ("warum hält er abends? da liegt die Nachtlast"). Next to EACH of them runs its MEASURED twin
  * (solid, same colour - gepunktet = Prognose, durchgezogen = gemessen) for the
  * slots that already happened: "Verbrauch (gemessen)" makes the load forecast
  * error visible - the one that made a plant draw from the grid at night - and
@@ -48,6 +53,13 @@ import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartEx
  * happened from what is still planned; a dashed line splits today from morgen.
  * The colour swatches + one-line takeaway below the canvas explain the diagram
  * in plain German (captain: the diagrams should be understandable instantly).
+ *
+ * SINCE THE FAHRPLAN REBUILD (Konzept vp-fahrplan-kunde-konzept §6.4, D4) the
+ * DEFAULT is deliberately quiet: bars + price + Jetzt carry the core statement
+ * („günstig laden, teuer entladen"), and the forecast/measured/SoC lines are
+ * THREE layer switches instead of nine legend pills - seven series at once
+ * (three of them blue) were only legible to their author, and the pills alone
+ * cost 339 px on a phone. A layer the run cannot fill gets no switch at all.
  */
 
 function ct(v: number | null): string {
@@ -80,14 +92,26 @@ export function ScheduleChart({
   selectedIndex?: number | null;
 }) {
   const t = chartTheme();
-  // Forecast lines are ON by default - they are what makes the plan
-  // self-explaining; the legend rows switch them off for a clean bar read.
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>());
+  // D4: DREI Gruppen-Schalter statt neun Einzel-Pills, und der Default ist
+  // ruhig - Balken + Preis + Jetzt tragen die Kernaussage „günstig laden,
+  // teuer entladen"; Prognosen/Gemessen/Ladestand sind bewusste Schichten.
+  const [hiddenGroups, setHiddenGroups] = useState<ReadonlySet<SeriesGroup>>(defaultHiddenGroups);
+  // Memoised: `useEChart` depends on it, and a fresh Set per render would
+  // re-draw the canvas on every render.
+  const hidden = useMemo(() => hiddenLabels(hiddenGroups), [hiddenGroups]);
   const forecast = forecastLines(plan.slots);
   // The measured twins of the two forecasts, for the slots that already
   // happened - the gap to their dotted counterpart is the forecast error.
   const ist = measuredLoadLine(plan.slots);
   const istPv = measuredPvLine(plan.slots);
+
+  // Which series are actually drawn = present in the run AND their layer is on.
+  // Computed once so canvas, legend and axis can never disagree.
+  const showPv = forecast.pv.present && !hidden.has(PV_FORECAST_LABEL);
+  const showLoad = forecast.load.present && !hidden.has(LOAD_FORECAST_LABEL);
+  const showIst = ist.present && !hidden.has(MEASURED_LOAD_LABEL);
+  const showIstPv = istPv.present && !hidden.has(MEASURED_PV_LABEL);
+  const showSoc = plan.slots.some((s) => s.socPct != null) && !hidden.has(SOC_LABEL);
 
   const ref = useEChart((chart, width) => {
     const narrow = width < 480;
@@ -127,10 +151,10 @@ export function ScheduleChart({
     // The forecast lines share the kW axis, so a 60-kW PV forecast must lift
     // the axis top - otherwise it would be clipped by a 15-kW battery scale.
     // Only VISIBLE lines count, so hiding one re-tightens the scale.
-    const showPvLine = forecast.pv.present && !hidden.has(PV_FORECAST_LABEL);
-    const showLoadLine = forecast.load.present && !hidden.has(LOAD_FORECAST_LABEL);
-    const showIstLine = ist.present && !hidden.has(MEASURED_LOAD_LABEL);
-    const showIstPvLine = istPv.present && !hidden.has(MEASURED_PV_LABEL);
+    const showPvLine = showPv;
+    const showLoadLine = showLoad;
+    const showIstLine = showIst;
+    const showIstPvLine = showIstPv;
     const axisMax = powerAxisMax(
       kwMax, [forecast.pv, forecast.load, ist, istPv], hidden, target);
 
@@ -147,8 +171,9 @@ export function ScheduleChart({
       }
     });
 
-    // The SoC line only gets an axis when the plan actually carries SoC.
-    const hasSoc = soc.some((v) => v != null);
+    // The SoC line only gets an axis when the plan actually carries SoC AND
+    // the customer switched the "Ladestand" layer on (D4).
+    const hasSoc = showSoc;
 
     const markLineData: any[] = [];
     if (boundaryIdx > 0)
@@ -459,17 +484,21 @@ export function ScheduleChart({
                 },
               ]
             : []),
-          {
-            name: 'Ladestand',
-            type: 'line',
-            yAxisIndex: 2,
-            data: soc,
-            smooth: true,
-            symbol: 'none',
-            z: 1,
-            lineStyle: { color: t.soc, width: 1.5, type: 'dashed' },
-            itemStyle: { color: t.soc },
-          },
+          ...(hasSoc
+            ? [
+                {
+                  name: SOC_LABEL,
+                  type: 'line',
+                  yAxisIndex: 2,
+                  data: soc,
+                  smooth: true,
+                  symbol: 'none',
+                  z: 1,
+                  lineStyle: { color: t.soc, width: 1.5, type: 'dashed' },
+                  itemStyle: { color: t.soc },
+                },
+              ]
+            : []),
         ],
       },
       true,
@@ -492,9 +521,10 @@ export function ScheduleChart({
   // Same discipline for the orange curtailment colour of the phase band above
   // the chart: it gets a legend row only when the plan really holds PV back.
   const curtailing = hasCurtailment(plan.slots);
+  // The DEFAULT legend is one calm line: the bar colours + the price. Nothing
+  // here is a toggle - the bar entries are per-slot STATES of ONE series, and
+  // the layers are switched by the three group buttons above (D4).
   const legend: LegendItem[] = [
-    // Everything but the two forecast lines is a plain label: the bar colours
-    // are per-slot STATES of one series, and price/SoC carry the plan's story.
     { color: t.charge, label: 'Laden aus Solarstrom', unit: 'kW', shape: 'bar', toggleable: false },
     ...(gridCharging
       ? [{ color: t.gridCharge, label: 'Laden aus dem Netz (günstig)', unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
@@ -504,41 +534,70 @@ export function ScheduleChart({
       ? [{ color: t.pv, label: CURTAIL_LEGEND_LABEL, unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
       : []),
     { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line', toggleable: false },
-    { color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed', toggleable: false },
     ...(peakTargetKw != null && peakTargetKw > 0
       ? [{ color: t.discharge, label: 'Ziel Netzbezug (Lastspitze)', unit: 'kW', shape: 'dashed', toggleable: false } as LegendItem]
       : []),
-    // The two forecast inputs - the ONLY toggleable rows (the bar entries all
-    // belong to one per-slot-coloured series, so toggling them is meaningless).
-    // A line the run does not carry gets no entry at all.
-    ...(forecast.pv.present
-      ? [{ color: t.pv, label: PV_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: true } as LegendItem]
+    // ...plus exactly the rows of the layers that are switched ON, so the
+    // legend never advertises a line the chart does not draw.
+    ...(showPv
+      ? [{ color: t.pv, label: PV_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
       : []),
-    // ...each directly followed by its measured twin, so the pairing
-    // (gepunktet = Prognose, durchgezogen = gemessen) is obvious in the legend.
-    ...(istPv.present
-      ? [{ color: t.pv, label: MEASURED_PV_LABEL, unit: 'kW', shape: 'line', toggleable: true } as LegendItem]
+    ...(showLoad
+      ? [{ color: t.load, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
       : []),
-    ...(forecast.load.present
-      ? [{ color: t.load, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: true } as LegendItem]
+    // The measured twins sit next to their forecast (gepunktet = Prognose,
+    // durchgezogen = gemessen), so the pairing is obvious.
+    ...(showIstPv
+      ? [{ color: t.pv, label: MEASURED_PV_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
       : []),
-    ...(ist.present
-      ? [{ color: t.load, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: true } as LegendItem]
+    ...(showIst
+      ? [{ color: t.load, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
+      : []),
+    ...(showSoc
+      ? [{ color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed', toggleable: false } as LegendItem]
       : []),
   ];
+
+  // The three layer switches. A group whose series the plan does not carry is
+  // NOT offered - a switch that can only ever show nothing is worse than none.
+  const gemessenAvailable = ist.present || istPv.present;
+  const groupAvailable: Record<SeriesGroup, boolean> = {
+    prognosen: forecast.pv.present || forecast.load.present,
+    gemessen: gemessenAvailable,
+    ladestand: plan.slots.some((s) => s.socPct != null),
+  };
   // ...and when a measured twin is absent although the plan already has past
   // slots AND draws that forecast, say WHY instead of leaving a silent gap
   // (never a 0-line, and never a claim about a channel the plan has no
   // forecast for).
-  const istNote = measuredNote(plan.slots, new Date(), plan.slotMinutes || 15);
+  // ...but only where the absence is really news: while the layer is ON (a
+  // twin is missing next to a drawn one), or when there is NOTHING measured at
+  // all - then the missing SWITCH is what needs explaining. Silent in between:
+  // a line nobody asked to see is not a gap worth a sentence.
+  const istNote =
+    hiddenGroups.has('gemessen') && gemessenAvailable
+      ? null
+      : measuredNote(plan.slots, new Date(), plan.slotMinutes || 15);
 
   return (
     <div>
-      <ChartLegend
-        items={legend}
-        hidden={hidden}
-        onToggle={(label) => setHidden((cur) => toggleSeries(cur, label))}
-      />
+      <div className="vp-sched-layers" role="group" aria-label="Zusätzliche Schichten">
+        {SERIES_GROUPS.filter((g) => groupAvailable[g.id]).map((g) => {
+          const on = !hiddenGroups.has(g.id);
+          return (
+            <button
+              key={g.id}
+              type="button"
+              className={`vp-sched-layer${on ? ' on' : ''}`}
+              aria-pressed={on}
+              onClick={() => setHiddenGroups((cur) => toggleGroup(cur, g.id))}
+            >
+              {on ? g.label : `+ ${g.label}`}
+            </button>
+          );
+        })}
+      </div>
+      <ChartLegend items={legend} />
       <div ref={ref} className="vp-chart tall" />
       {istNote && (
         <p className="vp-note vp-plan-ist" style={{ margin: 'var(--vp-space-2) 0 0' }}>

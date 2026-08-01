@@ -7,7 +7,7 @@ function view(over: Partial<ControlStripView> = {}): ControlStripView {
   return {
     state: 'healthy',
     tone: 'ok',
-    sentence: 'Fahrplan-Sollwert 10,8 kW → Wechselrichter bestätigt 10,8 kW',
+    sentence: 'Ihr Gerät regelt gerade auf 10,8 kW → Wechselrichter bestätigt 10,8 kW',
     agoNote: 'geprüft vor 3 s',
     reason: null,
     ...over,
@@ -26,7 +26,7 @@ describe('ControlStrip', () => {
   it('renders nothing extra without a reason (the pre-2026-07-30 card)', () => {
     const { container } = render(<ControlStrip view={view()} />);
     expect(container.querySelector('.vp-control-reason')).toBeNull();
-    expect(screen.getByText(/Fahrplan-Sollwert/)).toBeInTheDocument();
+    expect(screen.getByText(/regelt gerade auf/)).toBeInTheDocument();
   });
 
   describe('Bühnenfuß (variant="bare")', () => {
@@ -40,7 +40,7 @@ describe('ControlStrip', () => {
       expect(container.querySelector('.vp-section')).toBeNull();
       // Alle drei Teile stehen weiterhin da - nur ohne Rahmen.
       expect(foot?.textContent).toContain('Steuerung');
-      expect(foot?.textContent).toContain('Fahrplan-Sollwert');
+      expect(foot?.textContent).toContain('regelt gerade auf');
       expect(foot?.textContent).toContain('geprüft vor 3 s');
       expect(container.querySelector('.vp-control-reason')?.textContent).toBe(reason);
       expect(container.querySelector('.vp-control-dot.tone-ok')).not.toBeNull();

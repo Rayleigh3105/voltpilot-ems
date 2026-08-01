@@ -702,7 +702,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     const foot = container.querySelector('.vp-stage-foot')!;
     // Sollwert → Bestätigung, über die volle Breite und ohne Karte-in-Karte.
     expect(foot.querySelector('.vp-control-foot')).toBeTruthy();
-    expect(foot.textContent).toContain('Fahrplan-Sollwert');
+    expect(foot.textContent).toContain('regelt gerade auf');
     expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
     // Verzahnung: die Bestätigung ist AM Diagramm ablesbar.
     await waitFor(() => expect(container.querySelector('.vp-flow-confirm')).toBeTruthy());

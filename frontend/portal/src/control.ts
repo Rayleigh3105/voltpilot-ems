@@ -1,5 +1,5 @@
 // Pure derivation for the Anlagen-Seite "Steuerung" strip (captain decision 4):
-// "Fahrplan-Sollwert X -> Wechselrichter bestätigt Y", healthy | mismatch |
+// "Ihr Gerät regelt gerade auf X -> Wechselrichter bestätigt Y", healthy | mismatch |
 // stale, plus "geprüft vor X". No React, no side effects - unit-tested in
 // control.test.ts, rendered by components/MoneyView.tsx ControlStrip.
 //
@@ -22,7 +22,19 @@ export type ControlState = 'healthy' | 'mismatch' | 'stale' | 'off' | 'pending' 
 
 export interface ControlStripView {
   state: ControlState;
-  /** The plain-German sentence, e.g. "Fahrplan-Sollwert −4,0 kW → Wechselrichter bestätigt −4,0 kW". */
+  /**
+   * The plain-German sentence, e.g. "Ihr Gerät regelt gerade auf −4,0 kW →
+   * Wechselrichter bestätigt −4,0 kW".
+   *
+   * It deliberately does NOT say "Fahrplan-Sollwert": since the in-slot
+   * following duties the box may knowingly deviate from the plan's watt value,
+   * so `commandedKw` is what the DEVICE regulates - not what the Fahrplan
+   * planned. Both numbers under one word ("Fahrplan") on one screen was the
+   * reported contradiction (Konzept vp-fahrplan-kunde-konzept K2): the plan bar
+   * read −4,3 kW while this line read −6,1 kW. The plan value keeps its own
+   * home - the Fahrplan page's Jetzt-Held names Plan and execution side by
+   * side (`fahrplanJetzt.ts`).
+   */
   sentence: string;
   /** The freshness note, e.g. "geprüft vor 3 s" (empty for off/pending). */
   agoNote: string;
@@ -118,7 +130,7 @@ export function controlStrip(
     return {
       state: 'stale',
       tone: 'off',
-      sentence: `Fahrplan-Sollwert ${commanded} - zuletzt bestätigt ${confirmed}`,
+      sentence: `Zuletzt geregelt auf ${commanded} - bestätigt ${confirmed}`,
       agoNote: `zuletzt geprüft ${ago}`,
       reason,
     };
@@ -128,7 +140,7 @@ export function controlStrip(
     return {
       state: 'mismatch',
       tone: 'warn',
-      sentence: `Fahrplan-Sollwert ${commanded} → Wechselrichter meldet ${confirmed}`,
+      sentence: `Ihr Gerät regelt gerade auf ${commanded} → Wechselrichter meldet ${confirmed}`,
       agoNote: `Abweichung · geprüft ${ago}`,
       reason,
     };
@@ -137,7 +149,7 @@ export function controlStrip(
   return {
     state: 'healthy',
     tone: 'ok',
-    sentence: `Fahrplan-Sollwert ${commanded} → Wechselrichter bestätigt ${confirmed}`,
+    sentence: `Ihr Gerät regelt gerade auf ${commanded} → Wechselrichter bestätigt ${confirmed}`,
     agoNote: `geprüft ${ago}`,
     reason,
   };
