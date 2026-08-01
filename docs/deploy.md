@@ -345,6 +345,8 @@ They are placeholders in the pipeline today; fill them with the real values.
 | `DEPLOY_HOST` | The VPS hostname/IP the pipeline SSHes into. |
 | `DEPLOY_USER` / `DEPLOY_PASSWORD` | SSH user + password on the VPS. `root` works directly (no `sudo` needed on the host); a non-root user needs `sudo`, or - on a host without `sudo` - must own `/srv/docker/voltpilot` and be in the `docker` group. |
 | `DOMAIN` | Public FQDN, e.g. `ems.example.com`. Baked into the SPA build (`VITE_KEYCLOAK_URL=https://${DOMAIN}/auth`). |
+| `GITOPS_PUSH_TOKEN` | **Optional, für den CI-Zielpfad.** Eigenes CI-Token mit `repository: write` **nur** auf `mamotec/gitops`. Fehlt es, überspringt der Tag-Bump-Job sauber (grün) - siehe [gitops-Tag-Bump (CI-Zielpfad)](#gitops-tag-bump-ci-zielpfad). |
+| `GITOPS_PUSH_USER` | Optional. Benutzername für den Token-Push; Default `ci`. Forgejo authentifiziert über das Token im Passwortfeld, der Name ist normalerweise egal. |
 
 ### 2. The VPS `.env`
 
@@ -416,6 +418,7 @@ The later path, once the Forgejo runner + Actions secrets are set up (the manual
    For a quick rollout that skips the test gate, use **Build & Deploy (fast)** (`deploy-fast.yaml`).
 5. **Point Caddy at the VPS** (next section) and browse to `https://${DOMAIN}`.
 6. **Onboard devices** against `8883` per [`connect-a-device.md`](connect-a-device.md).
+7. **Optional, für den Cluster**: `GITOPS_PUSH_TOKEN` setzen - dann schreibt derselbe Lauf den Bild-Stand auch ins gitops-Repo fort, siehe [gitops-Tag-Bump (CI-Zielpfad)](#gitops-tag-bump-ci-zielpfad). Ohne das Secret ändert sich nichts am bisherigen Ablauf.
 
 Manual roll-out (no CI) does the same thing:
 
@@ -425,6 +428,48 @@ export IMAGE_TAG=latest        # or a specific commit SHA
 echo "$FORGEJO_PASSWORD" | docker login git.tecmaxx.de -u "$FORGEJO_USERNAME" --password-stdin
 docker compose pull
 docker compose up -d --remove-orphans
+```
+
+## gitops-Tag-Bump (CI-Zielpfad)
+
+**Der Deploy in den k3s-Cluster ist ein Commit.** Nach grünen Image-Builds schreibt die Pipeline den frischen Bild-Stand selbst in das gitops-Repo fort: der Job **`gitops-tag-bump`** (in `deploy.yaml` *und* `deploy-fast.yaml`, wortgleich) setzt den `images:`-Block in `apps/voltpilot/overlays/prod/kustomization.yaml` auf den gerade gebauten `${GITHUB_SHA}` und committet ihn als `ci(images): voltpilot-ems@<sha>`.
+Bewusst **ohne `:latest`** und ohne Argo-CD-Image-Updater (kein Registry-Polling, kein zusätzlicher Controller) - Begründung im gitops-README, Abschnitt „CI/CD-Zielpfad".
+**Rollback** = `git revert` des Bump-Commits (oder Argos „History → Rollback").
+
+Drei Dinge, die man dazu wissen muss:
+
+- **Der Bump landet nur im Git.** Alle Argo-Applications außer der Root-App stehen in der Probe-Phase auf **manuellem Sync**; der Cluster zieht den Stand also erst beim nächsten, menschlich ausgelösten Sync. Das ist gewollt, solange Cluster und VM parallel laufen.
+- **Der VM-Deploy bleibt unverändert.** `gitops-tag-bump` hängt an `needs: build`, *nicht* am VM-Job: beide sind unabhängige Abnehmer derselben Images. Ein Husten auf der VM blockiert den Git-Bump nicht und umgekehrt. Der VM-Job fällt erst beim Cutover weg.
+- **Er ist idempotent.** Steht in `gitops/main` schon derselbe sha, wird kein Leer-Commit erzeugt (der Job protokolliert „nichts zu tun" und endet grün).
+
+### Das Token anlegen
+
+1. In Forgejo ein **eigenes CI-Konto/Token** erzeugen (Benutzer → *Einstellungen* → *Anwendungen* → *Zugriffstoken*) mit dem Recht **`repository: write`**, im Auswahlfeld **nur `mamotec/gitops`**. Niemals ein persönliches Token des Captains und nie ein Token mit Zugriff auf weitere Repos - der Job darf genau eine Datei in genau einem Repo ändern.
+2. Im Repo **voltpilot-ems** → *Settings* → *Actions* → *Secrets* → `GITOPS_PUSH_TOKEN` = dieser Token.
+3. Nur falls die Forgejo-Instanz einen passenden Benutzernamen verlangt, zusätzlich `GITOPS_PUSH_USER` setzen (Default ist `ci`).
+
+**Ohne das Secret bricht nichts.** Der Job prüft es als erstes und beendet sich dann *grün* mit der Logzeile „`GITOPS_PUSH_TOKEN ist nicht gesetzt - der gitops-Tag-Bump wird UEBERSPRUNGEN.`" und einem entsprechenden Hinweis in der Job-Zusammenfassung; es wird nichts geklont, nichts committet, nichts gepusht. Bis das Token gesetzt ist, wird der Overlay-Block wie bisher von Hand gepflegt.
+
+### Sicherheitsnetze im Job
+
+- Geändert werden **ausschließlich die `newTag:`-Zeilen** des `images:`-Blocks. `tools/deploy/gitops-image-bump.sh` liest seine eigene Ausgabe zurück und **verweigert**, sobald eine andere Zeile abweichen würde; danach prüft der Job zusätzlich, dass `git status` genau diese eine Datei zeigt. (Warum kein `kustomize edit set image`: das formatiert die ganze Datei um und löst die Kommentare von dem ab, was sie erklären - aus neun Zeilen Diff werden 85. Die Begründung samt Messung steht im Skriptkopf.)
+- **Kein Raten bei Form-Änderungen:** ein Eintrag ohne `newTag`, ein zweiter `images:`-Schlüssel oder ein Tag, der kein Hex-sha ist, lässt den Job rot werden, *bevor* etwas gepusht wird.
+- **Rennen paralleler Läufe:** der Push wird bis zu dreimal versucht und dabei jedes Mal vom frischen `origin/main` neu abgeleitet (kein `rebase` - beide Läufe fassen exakt dieselben Zeilen an). `main` zeigt anschließend auf den sha des zuletzt fertig gewordenen Laufs.
+- **Das Token** landet weder in der Remote-URL noch in einer Kommandozeile: es geht über eine 0600-Credential-Datei im Job-Tempverzeichnis, die mit dem Job stirbt; die globale git-Konfiguration des Runners wird nicht angefasst.
+
+Nachziehen von Hand (falls der Job einmal ausfällt), aus einem gitops-Checkout heraus:
+
+```bash
+sh /pfad/zu/voltpilot-ems/tools/deploy/gitops-image-bump.sh \
+   apps/voltpilot/overlays/prod/kustomization.yaml <sha>
+git commit -am "ci(images): voltpilot-ems@<sha>" && git push
+```
+
+Beide Docker-freien Selbstchecks laufen offline in Sekunden (und im Test-Gate von `deploy.yaml`):
+
+```bash
+bash tools/deploy/test-gitops-image-bump.sh     # Edit gegen eine Kopie des echten Overlays
+bash tools/deploy/test-gitops-bump-workflow.sh  # der echte Job-Schritt gegen ein lokales Repo
 ```
 
 ## External Caddy (alternative to NPM)

@@ -8,6 +8,8 @@ name: Build & Deploy (fast, no tests)
 # Same Forgejo Actions secrets as deploy.yaml:
 #   FORGEJO_USERNAME / FORGEJO_PASSWORD, DEPLOY_HOST / DEPLOY_USER /
 #   DEPLOY_PASSWORD, DOMAIN. See docs/deploy.md.
+#   GITOPS_PUSH_TOKEN (optional) - der gitops-Tag-Bump am Ende dieser Datei;
+#   ohne das Secret ueberspringt der Job sauber.
 
 on:
   workflow_dispatch:
@@ -239,3 +241,157 @@ jobs:
             EMQX_EXEC="docker compose exec -T emqx" sh tools/pki/reload-broker-authz.sh \
               || echo "warn: broker authz reload failed - ACL changes apply at the next broker (re)start"
             docker image prune -f
+
+  # ---------------------------------------------------------------------------
+  # CI-Zielpfad (Captain-Go 01.08.2026): DER DEPLOY IST EIN COMMIT.
+  #
+  # Nach gruenen Image-Builds schreibt die Pipeline den frischen Bild-Stand
+  # selbst in das gitops-Repo fort: der `images:`-Block in
+  # apps/voltpilot/overlays/prod/kustomization.yaml wird auf ${GITHUB_SHA}
+  # gesetzt und committet. Damit ist jederzeit per `git log` beantwortbar, was
+  # im Cluster laufen soll, und ein Rollback ist ein `git revert`.
+  # Bewusst OHNE `:latest` und ohne Argo-CD-Image-Updater (kein Registry-
+  # Polling, kein weiterer Controller; Begruendung im gitops-README,
+  # "CI/CD-Zielpfad").
+  #
+  # Der Bump landet NUR IM GIT. Alle Argo-Applications ausser der Root-App
+  # stehen in der Probe-Phase auf MANUELLEM Sync - der Cluster zieht den neuen
+  # Stand also erst beim naechsten (menschlich ausgeloesten) Sync. Das ist so
+  # gewollt: waehrend Cluster und VM parallel laufen, entscheidet ein Mensch,
+  # wann der Cluster nachzieht (gitops README, "Sync-Policy: heute manuell").
+  #
+  # `needs: build` - NICHT der VM-Deploy: beide sind unabhaengige Abnehmer
+  # derselben Images, und ein Huster auf der VM darf den Git-Bump nicht
+  # blockieren (und umgekehrt). Der VM-Deploy bleibt unveraendert und faellt
+  # erst beim Cutover weg; bis dahin bleiben beide Welten aktuell.
+  # ---------------------------------------------------------------------------
+  gitops-tag-bump:
+    name: Bump gitops image tags
+    needs: build
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 10
+
+    env:
+      # Host = wofuer die Zugangsdaten gelten, REMOTE = was geklont wird.
+      # Getrennt, damit das Skript unveraendert gegen ein lokales Repo laufen
+      # kann - genau das tut tools/deploy/test-gitops-bump-workflow.sh.
+      GITOPS_HOST: git.tecmaxx.de
+      GITOPS_REMOTE: https://git.tecmaxx.de/mamotec/gitops.git
+      GITOPS_BRANCH: main
+      # Die EINE Datei, die dieser Job anfassen darf.
+      OVERLAY: apps/voltpilot/overlays/prod/kustomization.yaml
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Bump gitops prod overlay and push
+        env:
+          # Eigenes CI-Token mit repository:write NUR auf das gitops-Repo -
+          # niemals ein persoenliches Token. Anlegen: siehe docs/deploy.md,
+          # "gitops-Tag-Bump (CI-Zielpfad)". Ist das Secret nicht gesetzt,
+          # UEBERSPRINGT dieser Schritt sauber (gruen) statt die Pipeline rot
+          # zu faerben - so kann der Zielpfad vor dem Secret gemerged werden.
+          GITOPS_PUSH_TOKEN: ${{ secrets.GITOPS_PUSH_TOKEN }}
+          # Optional. Forgejo authentifiziert ueber das Token (Passwortfeld);
+          # der Benutzername ist dabei egal, deshalb reicht der Default.
+          GITOPS_PUSH_USER: ${{ secrets.GITOPS_PUSH_USER }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GITOPS_PUSH_TOKEN:-}" ]; then
+            echo "GITOPS_PUSH_TOKEN ist nicht gesetzt - der gitops-Tag-Bump wird UEBERSPRUNGEN."
+            echo "Es wurde nichts geklont, nichts committet, nichts gepusht."
+            echo "Anlegen: Forgejo -> voltpilot-ems -> Settings -> Actions -> Secrets (docs/deploy.md)."
+            {
+              echo "### gitops-Tag-Bump uebersprungen"
+              echo ""
+              echo "\`GITOPS_PUSH_TOKEN\` ist nicht gesetzt - das gitops-Repo wurde NICHT veraendert."
+              echo "Der prod-Overlay muss bis dahin von Hand auf \`${SHA}\` gesetzt werden."
+            } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            exit 0
+          fi
+
+          BUMP="$PWD/tools/deploy/gitops-image-bump.sh"
+          WORK="$(mktemp -d)"
+          CREDS="$WORK/.git-credentials"
+          trap 'rm -rf "$WORK"' EXIT
+
+          # Das Token landet WEDER in der Remote-URL (die bliebe in .git/config
+          # und in jeder Fehlermeldung stehen) NOCH in einer Kommandozeile: es
+          # geht ueber eine 0600-Credential-Datei, die mit $WORK stirbt. Der
+          # Helper wird nur fuer den clone mitgegeben und danach LOKAL im
+          # Checkout gesetzt - die globale git-Konfiguration des Runners bleibt
+          # unberuehrt.
+          ( umask 077; printf 'https://%s:%s@%s\n' \
+              "${GITOPS_PUSH_USER:-ci}" "$GITOPS_PUSH_TOKEN" "$GITOPS_HOST" > "$CREDS" )
+
+          git -c "credential.helper=store --file=$CREDS" \
+            clone --depth 1 --branch "$GITOPS_BRANCH" "$GITOPS_REMOTE" "$WORK/gitops"
+          cd "$WORK/gitops"
+          git config "credential.helper" "store --file=$CREDS"
+          git config user.name  "VoltPilot CI"
+          git config user.email "ci@voltpilot.de"
+
+          # Push-Schleife gegen das Rennen zweier parallel fertig werdender
+          # Laeufe. Bewusst NICHT `pull --rebase`: beide Laeufe fassen exakt
+          # dieselben newTag-Zeilen an, ein Rebase kollidiert also genau dort.
+          # Stattdessen wird bei jedem Versuch vom FRISCHEN origin/main neu
+          # abgeleitet - der Edit ist idempotent, also ist das konfliktfrei
+          # per Konstruktion und endet an derselben Stelle: main zeigt auf den
+          # sha des zuletzt fertig gewordenen Laufs.
+          attempt=1
+          while [ "$attempt" -le 3 ]; do
+            git fetch --depth 1 origin "$GITOPS_BRANCH"
+            git reset --hard "origin/$GITOPS_BRANCH"
+
+            set +e
+            sh "$BUMP" "$OVERLAY" "$SHA"
+            rc=$?
+            set -e
+            case "$rc" in
+              0) ;;
+              2) echo "gitops/$GITOPS_BRANCH steht bereits auf $SHA - kein Leer-Commit."
+                 echo "### gitops-Tag-Bump: nichts zu tun (bereits \`${SHA}\`)" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+                 exit 0 ;;
+              *) echo "FATAL: der Tag-Bump wurde verweigert (siehe Meldung oben) - gitops bleibt unveraendert." >&2
+                 exit 1 ;;
+            esac
+
+            # Sicherheitsnetz: NUR der Overlay darf sich geaendert haben.
+            dirty="$(git status --porcelain)"
+            touched="$(printf '%s\n' "$dirty" | awk 'NF {print $NF}')"
+            if [ "$touched" != "$OVERLAY" ]; then
+              echo "FATAL: unerwartete Aenderungen im gitops-Checkout - es wird nichts gepusht:" >&2
+              printf '%s\n' "$dirty" >&2
+              exit 1
+            fi
+
+            git add "$OVERLAY"
+            git commit -q \
+              -m "ci(images): voltpilot-ems@$SHA" \
+              -m "Alle Images aus dem Build von $WORKFLOW tragen denselben sha." \
+              -m "Lauf: $RUN_URL"
+
+            if git push origin "HEAD:$GITOPS_BRANCH"; then
+              echo "gitops/$GITOPS_BRANCH auf $SHA gepinnt."
+              {
+                echo "### gitops-Tag-Bump"
+                echo ""
+                echo "prod-Overlay auf \`${SHA}\` gepinnt (Versuch ${attempt})."
+                echo "Argo CD steht auf manuellem Sync - der Cluster zieht beim naechsten Sync nach."
+              } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              exit 0
+            fi
+
+            echo "Push abgelehnt (paralleler Lauf?) - Versuch $attempt von 3, neu ableiten." >&2
+            attempt=$((attempt + 1))
+            sleep $((attempt * 3))
+          done
+
+          echo "FATAL: gitops-Push nach 3 Versuchen fehlgeschlagen. Die Images sind gebaut und" >&2
+          echo "gepusht; nachziehen von Hand: tools/deploy/gitops-image-bump.sh <overlay> $SHA" >&2
+          exit 1
