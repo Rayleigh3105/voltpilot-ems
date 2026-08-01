@@ -1,0 +1,103 @@
+# VoltPilot EMS — production overlay.
+#
+# This is the ONLY place that knows about production: the namespace, the
+# domain, the addresses of the out-of-cluster systems, the storage class and —
+# most importantly — the image tags.
+#
+# THE RELEASE MECHANISM IS THE `images:` BLOCK BELOW. Forgejo CI builds and
+# pushes the images tagged with the commit SHA, then runs
+#
+#   kustomize edit set image git.tecmaxx.de/mamotec/voltpilot-ems/api=…:<sha> …
+#
+# in this directory and commits. Argo CD picks the commit up and rolls it out.
+# Rollback = `git revert` of that bump commit (or Argo's History → Rollback).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: voltpilot-prod
+
+resources:
+  - namespace.yaml
+  - ../../base
+  - ingress.yaml
+  # The four out-of-cluster systems are reachable by IP only, so the base's
+  # ExternalName services are converted to the selectorless form and get their
+  # address from these hand-maintained slices. Rationale in both files.
+  - external-endpointslices.yaml
+
+labels:
+  - includeSelectors: false
+    includeTemplates: true
+    pairs:
+      app.kubernetes.io/instance: voltpilot-prod
+      voltpilot.tecmaxx.de/env: prod
+
+patches:
+  - path: patches/external-endpoints.yaml
+  - path: patches/storage-class.yaml
+  # TEMPORARY — stage 2 only. Holds the six computing/writing services at
+  # `replicas: 0` while their compose twins keep running on the prod VM.
+  # THE CUTOVER FLIP (stage 4) IS THIS LINE PLUS THAT FILE, DELETED IN THE
+  # SAME MOVE THAT STOPS THE TWINS. Reasoning per service in the file,
+  # on/off table and flip recipe in README.md, "Probe-Doppel-Zustand".
+  - path: patches/probe-double-replicas-0.yaml
+
+configMapGenerator:
+  # behavior: merge — only the keys listed in the overlay file are replaced,
+  # everything else stays as the base defined it.
+  - name: voltpilot-site
+    behavior: merge
+    envs: [config/site.env]
+
+images:
+  # ---------------------------------------------------------------------
+  # DIESER BLOCK IST DIE STELLE, DIE DER KÜNFTIGE CI-TAG-BUMP
+  # (vp-ci-zielpfad-gitops) AUTOMATISCH FORTSCHREIBT. Solange dieser
+  # Zielpfad noch nicht gebaut ist, wird er bei Bedarf VON HAND auf den
+  # sha des letzten grünen `deploy-fast`-Laufs gesetzt — aktuell
+  # `23ac1009…` (voltpilot-ems main, Deploy-Lauf 153).
+  #
+  # NIE `:latest` und nie einen anderen beweglichen Tag: Deploy = Commit,
+  # und nur dann ist auditierbar (und per `git revert` rückholbar), was im
+  # Cluster läuft.
+  #
+  # Die Basis (`apps/voltpilot/base/kustomization.yaml`) steht weiterhin auf
+  # `PLACEHOLDER-set-by-ci` — ein absichtlich unziehbarer Tag, damit ein
+  # Overlay ohne eigenen Pin laut scheitert statt still etwas Unbekanntes
+  # zu ziehen.
+  #
+  # All nine images come from the same Forgejo build matrix in voltpilot-ems
+  # and carry the same ${sha} — including `keycloak` since PR #295. Keeping
+  # them on ONE tag is what makes "the cluster runs bit-identical images to
+  # the old VM" checkable, and it is how the report's cutover procedure reads
+  # the value (report §4.7):
+  #
+  #   SHA=$(ssh prod-vm "grep '^IMAGE_TAG=' /srv/docker/voltpilot/.env | cut -d= -f2")
+  #   cd apps/voltpilot/overlays/prod
+  #   for c in api frontend keycloak ingest timescale-writer market-data \
+  #            forecast optimization flowc; do
+  #     kustomize edit set image \
+  #       "git.tecmaxx.de/mamotec/voltpilot-ems/$c=git.tecmaxx.de/mamotec/voltpilot-ems/$c:$SHA"
+  #   done
+  #
+  # `keycloak` also publishes `:latest`. Do not put it here — a mutable tag
+  # makes "roll back to what ran yesterday" unanswerable.
+  # ---------------------------------------------------------------------
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/api
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/frontend
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/keycloak
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/ingest
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/timescale-writer
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/market-data
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/forecast
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/optimization
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
+  - name: git.tecmaxx.de/mamotec/voltpilot-ems/flowc
+    newTag: 23ac1009720ca92ac519cf496472eac4be7f7bfe
