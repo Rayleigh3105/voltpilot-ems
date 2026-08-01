@@ -5,6 +5,8 @@ import {
   curtailmentToday,
   forecastLines,
   daypart,
+  CURTAIL_DEADBAND_KW,
+  hasCurtailment,
   hasGridCharge,
   HORIZON_HINT,
   horizonHint,
@@ -144,6 +146,20 @@ describe('hasGridCharge (legend gate)', () => {
         { batteryKw: 5.0, gridKw: 4.5, pvKw: 1.0 },
       ]),
     ).toBe(true);
+  });
+});
+
+describe('hasCurtailment (legend gate for the orange Abregeln entry)', () => {
+  it('true as soon as one slot really holds PV back', () => {
+    expect(hasCurtailment([{ curtailKw: null }, { curtailKw: 4.2 }])).toBe(true);
+  });
+
+  it('false for a plan that never curtails - the legend must not advertise it', () => {
+    expect(hasCurtailment([{ curtailKw: null }, { curtailKw: 0 }, {}])).toBe(false);
+  });
+
+  it('ignores solver noise below the deadband', () => {
+    expect(hasCurtailment([{ curtailKw: CURTAIL_DEADBAND_KW }])).toBe(false);
   });
 });
 

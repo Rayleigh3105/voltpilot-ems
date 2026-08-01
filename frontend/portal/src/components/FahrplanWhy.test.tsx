@@ -10,7 +10,8 @@ vi.stubGlobal(
     disconnect() {}
   },
 );
-import { FahrplanWhyPanel, PhaseBand } from './FahrplanWhy';
+import { FahrplanWhyPanel, PhaseBand, roleColor } from './FahrplanWhy';
+import { chartTheme } from '../chartTheme';
 import { phases, type WhySlot } from '../fahrplanWhy';
 
 /** A small why-carrying plan: 8 warten · 8 pv_speichern · 8 eigenverbrauch. */
@@ -36,6 +37,27 @@ function mkSlots(): WhySlot[] {
     peakPressureEurKw: null,
   }));
 }
+
+describe('roleColor (the ONE colour language, Konzept §6.6)', () => {
+  const t = chartTheme();
+
+  it('paints every discharge role in the battery-discharge BLUE, never red', () => {
+    for (const role of ['eigenverbrauch', 'verkaufen', 'spitze_kappen'] as const) {
+      expect(roleColor(role, t)).toBe(t.battDischarge);
+      // Red is reserved for costs/warnings - a discharge must never wear it.
+      expect(roleColor(role, t)).not.toBe(t.discharge);
+    }
+  });
+
+  it('keeps the remaining roles on their shipped hues', () => {
+    expect(roleColor('pv_speichern', t)).toBe(t.charge);
+    expect(roleColor('guenstig_laden', t)).toBe(t.gridCharge);
+    expect(roleColor('abregeln', t)).toBe(t.pv);
+    // Idle roles are the neutral grey, not a chart hue.
+    expect(roleColor('warten', t)).not.toBe(t.discharge);
+    expect(roleColor('reserve_halten', t)).toBe(roleColor('warten', t));
+  });
+});
 
 describe('PhaseBand', () => {
   it('renders one tappable segment per phase and reports the tapped index', () => {

@@ -4,8 +4,9 @@
  * chart, the PHASE CARD (Zeitraum, was, why, phase-€) and the SLOT PANEL
  * (role + why-sentence + context + binding chips) on tap. All derivation is
  * the pure src/fahrplanWhy.ts - these components only render it. Role colors
- * come from the shipped chartTheme() tokens (green solar / cyan grid / red
- * discharge / grey idle / orange curtail), so band and chart always agree.
+ * come from the shipped chartTheme() tokens (green solar / cyan grid / BLUE
+ * discharge / grey idle / orange curtail), so band and chart always agree -
+ * red stays reserved for costs/warnings and never marks a discharge.
  * On phones the panel renders as a bottom sheet (CSS), tap targets ≥ 44 px.
  */
 
@@ -44,7 +45,10 @@ export function roleColor(role: SlotRole, t: ChartTheme): string {
     case 'eigenverbrauch':
     case 'verkaufen':
     case 'spitze_kappen':
-      return t.discharge;
+      // ONE colour for ONE action: discharging is BLUE everywhere (bars, band,
+      // phase card, KPI). Red is reserved for costs/warnings, and a battery
+      // that earns money must never read as a fault.
+      return t.battDischarge;
     case 'abregeln':
       return t.pv;
     default:

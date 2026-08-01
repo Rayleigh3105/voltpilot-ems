@@ -3,7 +3,9 @@ import type { SchedulePlan } from './api';
 import { chartTheme } from './chartTheme';
 import {
   chargeKind,
+  CURTAIL_LEGEND_LABEL,
   forecastLines,
+  hasCurtailment,
   hasGridCharge,
   LOAD_FORECAST_LABEL,
   MEASURED_LOAD_LABEL,
@@ -487,6 +489,9 @@ export function ScheduleChart({
   // grid: on an EEG site ("Nur Solarladen") the color never occurs, and the
   // legend must not advertise it - no türkis = provably no Netzstrom stored.
   const gridCharging = hasGridCharge(plan.slots);
+  // Same discipline for the orange curtailment colour of the phase band above
+  // the chart: it gets a legend row only when the plan really holds PV back.
+  const curtailing = hasCurtailment(plan.slots);
   const legend: LegendItem[] = [
     // Everything but the two forecast lines is a plain label: the bar colours
     // are per-slot STATES of one series, and price/SoC carry the plan's story.
@@ -495,6 +500,9 @@ export function ScheduleChart({
       ? [{ color: t.gridCharge, label: 'Laden aus dem Netz (günstig)', unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
       : []),
     { color: t.battDischarge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'bar', toggleable: false },
+    ...(curtailing
+      ? [{ color: t.pv, label: CURTAIL_LEGEND_LABEL, unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
+      : []),
     { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line', toggleable: false },
     { color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed', toggleable: false },
     ...(peakTargetKw != null && peakTargetKw > 0

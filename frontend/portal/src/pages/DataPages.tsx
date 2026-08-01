@@ -496,16 +496,19 @@ export function FahrplanSection({ site }: { site: Site }) {
             }
             title="Gegenüber einem Betrieb ganz ohne Batteriespeicher"
           />
+          {/* ONE colour language (Konzept §6.6): Laden is the charge GREEN,
+              Entladen the battery-discharge navy - never the red `industry`
+              tile, which is the ink of costs and warnings. */}
           <KpiCard
-            icon={<Icon name="arrow-down" size={20} />}
-            category="battery"
+            icon={<Icon name="battery-charging" size={20} />}
+            category="ev"
             value={fmtNum(chargeKwh, 'kWh')}
             label="Geplantes Laden"
             title="Summe der geplanten Ladeenergie über den Planungszeitraum"
           />
           <KpiCard
-            icon={<Icon name="arrow-up" size={20} />}
-            category="industry"
+            icon={<Icon name="battery" size={20} />}
+            category="home"
             value={fmtNum(dischargeKwh, 'kWh')}
             label="Geplantes Entladen"
             title="Summe der geplanten Entladeenergie über den Planungszeitraum"

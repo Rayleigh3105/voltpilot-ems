@@ -695,6 +695,21 @@ export function horizonHint(
 export const CURTAIL_DEADBAND_KW = 0.01;
 
 /**
+ * Legend label of the orange curtailment colour - the same word the phase
+ * band / phase card use for the `abregeln` role, so band and legend agree.
+ */
+export const CURTAIL_LEGEND_LABEL = 'Abregeln (Einspeisung begrenzt)';
+
+/**
+ * Whether the plan actually curtails PV somewhere (drives the orange
+ * "Abregeln" legend entry - the hasGridCharge discipline: a colour the plan
+ * never shows must not be advertised in the legend).
+ */
+export function hasCurtailment(slots: { curtailKw?: number | null }[]): boolean {
+  return slots.some((s) => s.curtailKw != null && Number(s.curtailKw) > CURTAIL_DEADBAND_KW);
+}
+
+/**
  * Today's PV curtailment result: how much energy the optimizer held back and
  * the negative-price loss that avoided (report N2, "heute X kWh abgeregelt,
  * Y € Verlust vermieden"). At negative day-ahead prices exporting COSTS money,
