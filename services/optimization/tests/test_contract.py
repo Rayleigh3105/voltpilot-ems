@@ -229,6 +229,7 @@ def test_committed_fixtures_match_the_schema_both_ways():
         "mqtt-schedule.valid.plain.json",
         "mqtt-schedule.valid.surplus-only-charge.json",
         "mqtt-schedule.valid.cover-load.json",
+        "mqtt-schedule.valid.absorb-surplus.json",
     ):
         payload = json.loads((EXAMPLES / name).read_text())
         errors = list(validator.iter_errors(payload))
@@ -237,6 +238,10 @@ def test_committed_fixtures_match_the_schema_both_ways():
     for name, field in (
         ("mqtt-schedule.invalid.surplus-only-not-boolean.json", "charge_from_surplus_only"),
         ("mqtt-schedule.invalid.cover-load-not-boolean.json", "cover_load_from_battery"),
+        (
+            "mqtt-schedule.invalid.absorb-surplus-not-boolean.json",
+            "charge_surplus_to_battery",
+        ),
     ):
         bad = json.loads((EXAMPLES / name).read_text())
         messages = [e.message for e in validator.iter_errors(bad)]
@@ -332,3 +337,50 @@ def test_both_in_slot_duties_can_ride_the_same_payload():
     assert list(validator.iter_errors(payload)) == []
     assert payload["slots"][0]["charge_from_surplus_only"] is True
     assert payload["slots"][0]["cover_load_from_battery"] is True
+
+
+def test_the_absorb_surplus_fixture_is_what_the_publisher_actually_emits():
+    """Fixture-vs-producer for the charge-side counterpart that RAISES: the
+    committed absorption fixture is not hand-fiction - the publisher builds the
+    same slot shape from a curtailing plan slot carrying the duty (the Pilsting
+    2026-08-02 morning: the plan curtails on paper and commands 0,0 kW while a
+    measured surplus is exported at a negative price)."""
+    import dataclasses
+
+    fixture = json.loads((EXAMPLES / "mqtt-schedule.valid.absorb-surplus.json").read_text())
+    plan = make_plan(slots=1)
+    slot = dataclasses.replace(
+        plan.slots[0],
+        battery_kw=0.0,
+        pv_kw=12.0,
+        curtail_kw=12.0,  # fully curtailed -> pv_limit_kw 0.0, like the fixture
+        charge_surplus_to_battery=True,
+    )
+    emitted = build_schedule_payload(dataclasses.replace(plan, slots=[slot]))["slots"][0]
+    assert set(emitted) == set(fixture["slots"][0])
+    assert emitted["battery_setpoint_kw"] == fixture["slots"][0]["battery_setpoint_kw"]
+    assert emitted["pv_limit_kw"] == fixture["slots"][0]["pv_limit_kw"]
+    assert emitted["charge_surplus_to_battery"] is True
+
+
+def test_the_absorb_surplus_flag_is_omitted_unless_true_and_validates():
+    """Same omit-unless-true discipline as its two siblings: False and None are
+    the same duty (none) and must both keep the payload byte-identical to before,
+    because the contract makes an absent field FAIL-OPEN on the edge."""
+    import dataclasses
+
+    validator = load_validator()
+    plan = make_plan(slots=3)
+    absorbing = dataclasses.replace(
+        plan.slots[0], battery_kw=0.0, charge_surplus_to_battery=True, curtail_kw=0.0
+    )
+    explicit_false = dataclasses.replace(plan.slots[1], charge_surplus_to_battery=False)
+    payload = build_schedule_payload(
+        dataclasses.replace(plan, slots=[absorbing, explicit_false, plan.slots[2]])
+    )
+    assert list(validator.iter_errors(payload)) == []
+
+    first, second, third = payload["slots"]
+    assert first["charge_surplus_to_battery"] is True
+    assert "charge_surplus_to_battery" not in second
+    assert "charge_surplus_to_battery" not in third

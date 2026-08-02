@@ -303,6 +303,35 @@ def load_follow_enabled(env=None) -> bool:
     raise ValueError(f"{LOAD_FOLLOW_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Instant off-switch for publishing the per-slot ``charge_surplus_to_battery``
+#: flag - the in-slot duty that RAISES a commanded charge to the measured PV
+#: surplus (2026-08-02, the Pilsting Negativpreis-Vormittag). ITS OWN LEVER for
+#: the same reason :data:`LOAD_FOLLOW_ENABLED_ENV` is one: the three in-slot
+#: duties move the setpoint in different directions on a safety-relevant control
+#: path (this one is the only one that RAISES a charge), so an operator must be
+#: able to stop exactly one. Default ON; off = byte-identical payloads to before
+#: and every edge behaves exactly as it did (the field is FAIL-OPEN on the edge
+#: by contract). The margin is shared - it is the same marginal test.
+SURPLUS_CHARGE_ENABLED_ENV = "OPTIMIZER_SURPLUS_CHARGE_ENABLED"
+
+
+def surplus_charge_enabled(env=None) -> bool:
+    """Whether the optimizer marks slots where storing one more kWh beats
+    selling it (the edge then charges the MEASURED surplus instead of executing
+    a forecast-derived watt value that never saw it). Default ON; garbage values
+    raise loudly, exactly like :func:`slot_trim_enabled`."""
+    env = os.environ if env is None else env
+    raw = env.get(SURPLUS_CHARGE_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{SURPLUS_CHARGE_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
 #: Researched default supply-price components as the Bezugspreis fallback for
 #: ``dynamisch``-without-Aufschlag and ``ohne`` sites WITHOUT a maintained
 #: ``site_supply_price`` row (report vp-nacht-bezug-e7 Teil 2: household

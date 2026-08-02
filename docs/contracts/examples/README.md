@@ -28,3 +28,10 @@ would make a fixture invalid for the wrong reason):
   value it follows comes from the device, never from the payload. A number there
   would read like a cloud-supplied load setpoint - which is exactly the rigid
   forecast watt value this flag exists to stop being executed.
+- `mqtt-schedule.invalid.absorb-surplus-not-boolean.json` - and once more for the
+  charge-side counterpart `charge_surplus_to_battery`: it is a BOOLEAN duty
+  ("raise the commanded charge to the MEASURED surplus in this slot"). A number
+  there would read like a cloud-supplied charge setpoint - i.e. exactly the
+  forecast-derived watt value whose blindness to the real surplus this flag
+  exists to correct - and it would be the one place a payload could RAISE a
+  charge past what the plan itself committed.

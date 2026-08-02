@@ -535,6 +535,7 @@ def _with_explanation(
             explain_enabled,
             load_follow_enabled,
             slot_trim_enabled,
+            surplus_charge_enabled,
         )
 
         if not explain_enabled():
@@ -544,6 +545,7 @@ def _with_explanation(
         whys = explain(model, inp, fallback_14a=fallback_14a)
         trim = slot_trim_enabled()
         follow = load_follow_enabled()
+        absorb = surplus_charge_enabled()
         slots = [
             replace(
                 slot,
@@ -566,6 +568,14 @@ def _with_explanation(
                 # push the setpoint in opposite directions.
                 cover_load_from_battery=(
                     _cover_load_from_battery(inp, t, slot, why) if follow else None
+                ),
+                # The CHARGE-side counterpart that RAISES (2026-08-02): storing
+                # one more kWh beats selling it here, so the edge may charge the
+                # MEASURED surplus the 15-min PV forecast never saw. Same lambda
+                # again; its own kill-switch because it is the only one of the
+                # three duties that raises a charge.
+                charge_surplus_to_battery=(
+                    _charge_surplus_to_battery(inp, t, slot, why) if absorb else None
                 ),
             )
             for t, (slot, why) in enumerate(zip(plan.slots, whys))
@@ -630,6 +640,42 @@ def _cover_load_from_battery(inp: OptimizationInput, t: int, slot, why) -> bool:
         # EUR/MWh -> ct/kWh: the asymmetric IMPORT price (bare spot only when the
         # site carries no tariff), i.e. what the avoided grid kWh really costs.
         import_price_ct_kwh=inp.import_prices[t] / 10.0,
+        stored_value_ct_kwh=why.stored_value_ct_kwh,
+        wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
+        one_way_efficiency=p.one_way_efficiency,
+    )
+
+
+def _charge_surplus_to_battery(inp: OptimizationInput, t: int, slot, why) -> bool:
+    """The slot's in-slot surplus-absorption duty (the
+    ``charge_surplus_to_battery`` contract flag), from the plan's own numbers +
+    the persisted lambda.
+
+    Like its two siblings everything but the export value comes off the
+    EXTRACTED slot (grid/curtail/SoC) and its why-record (lambda), so the verdict
+    can never describe a different slot than the one it is stamped on.
+    """
+    from voltpilot_optimization.slot_trim import charge_surplus_to_battery
+
+    p = inp.battery
+    return charge_surplus_to_battery(
+        # The SOLVED grid power + curtailment of the slot: a planned EXPORT is a
+        # deliberate sale and is excluded (the P1b discipline), unless the slot
+        # curtails - which already prefers not to export, so storing beats
+        # discarding. A planned IMPORT is deliberately NOT excluded: the duty
+        # only ever RAISES a charge up to the measured surplus (predicted grid
+        # 0), so it can never touch a deliberate purchase - see
+        # slot_trim.charge_surplus_to_battery for the full argument.
+        grid_kw=slot.grid_kw,
+        curtail_kw=slot.curtail_kw,
+        # The plan's own SoC trajectory (slot END) against the usable ceiling:
+        # an unfulfillable duty is never published.
+        soc_kwh=slot.soc_kwh,
+        soc_max_kwh=p.soc_max_kwh,
+        # EUR/MWh -> ct/kWh: the asymmetric EXPORT value (bare spot only when the
+        # site carries no remuneration), i.e. what feeding this kWh in really
+        # fetches - negative when feeding in COSTS money.
+        export_value_ct_kwh=inp.export_values[t] / 10.0,
         stored_value_ct_kwh=why.stored_value_ct_kwh,
         wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
         one_way_efficiency=p.one_way_efficiency,

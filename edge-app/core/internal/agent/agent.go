@@ -82,7 +82,14 @@ type Agent struct {
 	// the MEASURED house deficit, so an under-forecast quarter hour is no longer
 	// covered from the grid (guards.LoadFollower - the discharge-side mirror of
 	// trim; the edge enforces, the cloud priced).
-	follow         *guards.LoadFollower
+	follow *guards.LoadFollower
+	// absorb holds the hysteresis of the in-slot surplus absorption: in a slot the
+	// cloud marked charge_surplus_to_battery the commanded CHARGE is RAISED to the
+	// MEASURED PV surplus, so a surplus the 15-min forecast never saw is stored
+	// instead of exported - at a negative price, paid away (guards.SurplusCharger -
+	// the charge-side counterpart of trim, which only ever lowers; the edge
+	// enforces, the cloud priced).
+	absorb         *guards.SurplusCharger
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
@@ -381,6 +388,7 @@ func New(cfg config.Config) (*Agent, error) {
 		peak:         guards.NewPeakTracker(),
 		trim:         guards.NewPriceTrimmer(),
 		follow:       guards.NewLoadFollower(),
+		absorb:       guards.NewSurplusCharger(),
 		despikeStore: ds,
 		cal:          calibration.NewSession(calibration.Config{MaxKw: cfg.CalibrationMaxKw, TTL: cfg.CalibrationTTL}),
 		calCert:      map[string]bool{},
@@ -1453,6 +1461,7 @@ const (
 	execModePlan     = "plan"
 	execModeFollow   = "follow"
 	execModeTrim     = "trim"
+	execModeAbsorb   = "absorb"
 	execModeFallback = "fallback"
 )
 
@@ -1461,12 +1470,22 @@ const (
 // name WHY the commanded value deviates from the plan's watt value instead of
 // stating a bare "the device adjusted it" (the concept's PR-3 gap).
 //
-// The two corrections are mutually exclusive by construction (one acts on
-// charge, the other on discharge), but the order is fixed anyway so the block
-// is deterministic. A device without a fresh plan reports "fallback" - the
-// truth the top-level control_source carries too, repeated here so ONE block
-// answers the question. Values are COPIED out of the snapshot, never aliased.
+// The corrections are disjoint by construction (the trim lowers a charge, the
+// follower acts on a discharge, the absorber raises a non-negative command up to
+// the surplus), but the order is fixed anyway so the block is deterministic -
+// and the ABSORPTION is checked FIRST because it runs LAST in the setpoint
+// chain, so where it bit, its value is the one that was published. A device
+// without a fresh plan reports "fallback" - the truth the top-level
+// control_source carries too, repeated here so ONE block answers the question.
+// Values are COPIED out of the snapshot, never aliased.
 func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
+	if a := snap.Absorb; a != nil && a.Active {
+		return &cloud.ExecutionSummary{
+			Mode:      execModeAbsorb,
+			PlannedKw: copyFloat(&a.PlannedKw),
+			SurplusKw: copyFloat(a.SurplusKw),
+		}
+	}
 	if f := snap.Follow; f != nil && f.Active {
 		return &cloud.ExecutionSummary{
 			Mode:      execModeFollow,
@@ -1925,13 +1944,16 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.PeakReserveSocPct = peakReserve
 			s.PeakGuardActive = false
 			s.PeakQuarterMeanKw = nil
-			// Without a reading neither economic correction can regulate (never
-			// blind), so any previous claim is cleared rather than left stale.
+			// Without a reading none of the economic corrections can regulate
+			// (never blind), so any previous claim is cleared rather than left
+			// stale.
 			s.Trim = nil
 			s.Follow = nil
+			s.Absorb = nil
 		})
 		a.trim.Release()
 		a.follow.Release()
+		a.absorb.Release()
 		return
 	}
 
@@ -2012,6 +2034,31 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// as "setpoint not adopted".
 	followed := a.follow.Apply(now, kw, p.ActiveCoverLoadFromBattery(now), limits, peakReserve, r)
 	kw = followed.Kw
+
+	// In-slot SURPLUS ABSORPTION (2026-08-02, the charge-side counterpart that
+	// RAISES - firstmate scout vp-pilsting-abregeln §5b): in a slot the CLOUD
+	// marked charge_surplus_to_battery (storing one more kWh beats selling it -
+	// eta*lambda - wear above the slot's export value), RAISE the commanded
+	// CHARGE to the MEASURED PV surplus instead of leaving a surplus the 15-min
+	// forecast never saw to be exported. Measured live at Pilsting on
+	// 2026-08-02: PV 23,9 kW, house 4,3 kW, battery at 7 % SoC, and 16,6 kW
+	// leaving the site at a NEGATIVE price for hours, because the solver charges
+	// only the FORECAST surplus and no nowcast corrects the running slot.
+	//
+	// This is the ONLY guard in the chain that RAISES a setpoint, so it is
+	// deliberately the LAST of the three in-slot duties and its target is re-run
+	// through the SAME guards.Clamp the command came from (rated band, SoC
+	// ceiling, EEG solar-only charge, §14a envelope all still bind - it can never
+	// write past a guard). It only ever raises a NON-NEGATIVE command, so it is
+	// disjoint from the load following above; bounded by the measured surplus it
+	// lands at predicted grid <= 0, i.e. it can never create or raise an IMPORT
+	// (the §14a import bound and the peak target below are untouched) and only
+	// ever moves an export TOWARD zero. See guards/surpluscharge.go for the full
+	// argument. NOTE the setpoint published below is the RAISED value: the
+	// register readback therefore matches it and the confirmation logic never
+	// reads a deliberate correction as "setpoint not adopted".
+	absorbed := a.absorb.Apply(now, kw, p.ActiveChargeSurplusToBattery(now), limits, r)
+	kw = absorbed.Kw
 
 	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
 	// wall-clock quarter hour's projected mean import threatens the target,
@@ -2119,6 +2166,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// retired; without a pushed registry neither path publishes anything.
 	trimInfo := trimSnapshot(trimmed)
 	followInfo := followSnapshot(followed)
+	absorbInfo := absorbSnapshot(absorbed)
 	a.State.Update(func(s *state.Snapshot) {
 		s.Mode = mode
 		s.SetpointKw = kw
@@ -2131,6 +2179,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.PeakQuarterMeanKw = quarterMean
 		s.Trim = trimInfo
 		s.Follow = followInfo
+		s.Absorb = absorbInfo
 	})
 }
 
@@ -2169,6 +2218,26 @@ func followSnapshot(f guards.FollowResult) *state.FollowInfo {
 	if !math.IsNaN(f.DeficitKw) {
 		v := math.Round(f.DeficitKw*1000) / 1000
 		info.DeficitKw = &v
+	}
+	return info
+}
+
+// absorbSnapshot turns one surplus-absorption evaluation into the UI-facing
+// block, or nil when nothing was raised (a device that is not absorbing carries
+// no absorb key at all - the :8484 card renders exactly as before). Like its two
+// siblings it carries the PLAN's own value: a setpoint far ABOVE the Fahrplan
+// number with no reason next to it reads as a defect.
+func absorbSnapshot(a guards.AbsorbResult) *state.AbsorbInfo {
+	if !a.Active {
+		return nil
+	}
+	info := &state.AbsorbInfo{
+		Active:    true,
+		PlannedKw: math.Round(a.CommandedKw*1000) / 1000,
+	}
+	if !math.IsNaN(a.SurplusKw) {
+		v := math.Round(a.SurplusKw*1000) / 1000
+		info.SurplusKw = &v
 	}
 	return info
 }

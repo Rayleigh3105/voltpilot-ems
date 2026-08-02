@@ -503,7 +503,13 @@ type ExecutionSummary struct {
 	//	"plan"     - the fresh cloud plan's own value, uncorrected
 	//	"follow"   - in-slot load following (guards.LoadFollower)
 	//	"trim"     - price-aware in-slot trim (guards.PriceTrimmer)
+	//	"absorb"   - in-slot surplus absorption (guards.SurplusCharger): the
+	//	             commanded CHARGE was RAISED to the measured PV surplus
 	//	"fallback" - no fresh plan: the built-in self-consumption rule
+	//
+	// A cloud that does not know a mode DROPS it (the strict filter in the api's
+	// ControlStatusListener), so an older portal degrades to its generic wording
+	// instead of rendering a word it cannot explain.
 	Mode string `json:"mode"`
 	// Direction is guards.FollowDeepen ("deepen", the discharge was RAISED to
 	// cover the house) or guards.FollowReduce ("reduce", it was LIMITED to what
@@ -517,8 +523,8 @@ type ExecutionSummary struct {
 	// discharge tracks; absent when unknown (the correction is inactive then -
 	// never regulate blind).
 	DeficitKw *float64 `json:"deficit_kw,omitempty"`
-	// SurplusKw is the measured PV surplus a "trim" charge is held at; absent
-	// when unknown, same rule as DeficitKw.
+	// SurplusKw is the measured PV surplus a charge is held at ("trim") or
+	// raised to ("absorb"); absent when unknown, same rule as DeficitKw.
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 }
 
