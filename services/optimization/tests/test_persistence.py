@@ -7,6 +7,11 @@ days - so every slot row of a run carries
 ``schedule.terminal_value_eur_per_kwh`` (api migration V20260716010000, same
 value on all slots of the run). Plans without the field (pre-FK2) write NULL,
 never a fabricated number.
+
+The same upsert grew two later additive families on the same discipline: the
+Fahrplan-Warum slot facts (V20260723030000) and the two IN-SLOT DUTIES
+(V20260802010000) that let the portal preview "folgt dem gemessenen Verbrauch"
+/ "lädt nur den Solar-Überschuss" in the plan.
 """
 
 from __future__ import annotations
@@ -112,6 +117,43 @@ def test_why_fields_are_persisted_per_slot_with_flags_as_csv():
     for col in ("slot_role", "slot_flags", "stored_value_ct_kwh",
                 "grid_value_ct_kwh", "peak_pressure_eur_kw", "fallback_14a"):
         assert re.search(rf"{col}\s+= EXCLUDED\.{col}", _UPSERT_SQL), col
+
+
+def test_in_slot_duties_are_persisted_per_slot_as_a_tri_state():
+    # Duty-Vorschau (api migration V20260802010000): the two per-slot duties
+    # ride the SAME upsert as the why-fields, and they stay TRI-STATE - True =
+    # duty, False = evaluated-and-no-duty, None = not evaluated at all. The
+    # portal marks a phase only on an explicit True, so False and None both
+    # render exactly today's view.
+    from dataclasses import replace
+
+    plan = make_plan(0.18)
+    slots = [
+        replace(plan.slots[0], cover_load_from_battery=True, charge_from_surplus_only=False),
+        replace(plan.slots[1], cover_load_from_battery=False, charge_from_surplus_only=True),
+    ]
+    plan = replace(plan, slots=slots)
+    rows = plan_rows(plan)
+    cols = upsert_columns()
+    cover = cols.index("cover_load_from_battery")
+    surplus = cols.index("charge_from_surplus_only")
+    assert rows[0][cover] is True and rows[0][surplus] is False
+    assert rows[1][cover] is False and rows[1][surplus] is True
+    # One parameter per column, and a re-run of the same slot updates them.
+    assert all(len(row) == len(cols) for row in rows)
+    assert _UPSERT_SQL.count("%s") == len(cols)
+    for col in ("cover_load_from_battery", "charge_from_surplus_only"):
+        assert re.search(rf"{col} = EXCLUDED\.{col}", _UPSERT_SQL), col
+
+
+def test_plan_without_duties_writes_them_null_never_false():
+    # A run with the duty evaluation off (or a pre-feature plan) must not claim
+    # "no duty" - the columns stay NULL so the portal cannot mark anything.
+    rows = plan_rows(make_plan(0.18))
+    cols = upsert_columns()
+    for row in rows:
+        assert row[cols.index("cover_load_from_battery")] is None
+        assert row[cols.index("charge_from_surplus_only")] is None
 
 
 def test_plan_without_explanation_writes_all_why_columns_null():

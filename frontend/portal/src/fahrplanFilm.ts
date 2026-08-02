@@ -14,6 +14,12 @@
  * die spätere Ganztages-Slotliste (Tages-Splice über mehrere Läufe) ohne Umbau
  * hineinpasst: sie füllt dann nur `past` mit abgehakten Phasen.
  *
+ * Seit PR 4 trägt eine Zeile zusätzlich die DUTY-VORSCHAU: die zwei
+ * In-Slot-Pflichten, die der Optimierer mit dem Plan persistiert, machen schon
+ * VOR dem Abend sichtbar, dass der Watt-Wert dieser Phase eine Vorhersage ist
+ * und kein fester Befehl („folgt dem gemessenen Verbrauch"). Die Worte dafür
+ * stehen einmal in `schedule.ts` — Film und Diagramm-Tooltip teilen sie.
+ *
  * Rein, ohne React/Netz. Es wird NICHTS neu gerechnet: Phasen, €-Beiträge und
  * Zeiträume kommen aus dem bestehenden `fahrplanWhy.ts`; dieses Modul ordnet
  * sie nur zu Zeilen. Ehrlichkeit: ein Zusatz erscheint nur, wenn der Plan die
@@ -30,7 +36,28 @@ import {
   type SlotRole,
   type WhySlot,
 } from './fahrplanWhy';
-import type { PlanWordingKind } from './schedule';
+import {
+  dutyLabel,
+  DUTY_HINT,
+  slotDuty,
+  type PlanWordingKind,
+  type SlotDuty,
+} from './schedule';
+
+/**
+ * Die Pflicht-Vorschau einer Phase (PR 4): „folgt dem gemessenen Verbrauch" /
+ * „lädt nur den Solar-Überschuss". Sie sagt VOR dem Slot, dass der Watt-Wert
+ * dort eine Vorhersage ist und kein fester Befehl.
+ */
+export interface DutyNote {
+  kind: SlotDuty;
+  /** Das kurze Wort für die Zeile (mit „zeitweise", wenn nur ein Teil). */
+  text: string;
+  /** Der ausführliche Satz für den Tipp/`title`. */
+  hint: string;
+  /** true = nur ein TEIL der Viertelstunden der Phase trägt die Pflicht. */
+  partial: boolean;
+}
 
 /** Eine Zeile des Films — genau eine Phase des Plans. */
 export interface FilmRow {
@@ -55,6 +82,8 @@ export interface FilmRow {
   eur: string | null;
   /** true, wenn der Betrag ein EINKAUF ist (die Zeile sagt das Wort dazu). */
   einkauf: boolean;
+  /** Die In-Slot-Pflicht dieser Phase; null = keine (oder nicht bewertet). */
+  duty: DutyNote | null;
 }
 
 export interface FilmView {
@@ -140,6 +169,34 @@ function rowSub(phase: PlanPhase, slots: WhySlot[], running: boolean): string | 
   return null;
 }
 
+/**
+ * Die In-Slot-Pflicht einer PHASE, aus den Pflichten ihrer Viertelstunden.
+ *
+ * Der Optimierer setzt die Pflicht je Slot und nur dort, wo der Plan keinen
+ * Netzhandel vorsieht — eine Phase trägt sie also typischerweise NICHT
+ * durchgehend. Deshalb zählt diese Ableitung und sagt „zeitweise", statt für
+ * die ganze Phase zu sprechen (`partial`). Null, wenn KEIN Slot sie
+ * ausdrücklich trägt (ältere Zeilen → null → keine Markierung, nie geraten);
+ * bei einem Gleichstand zweier verschiedener Pflichten ebenfalls null.
+ */
+export function phaseDuty(phase: PlanPhase, slots: WhySlot[]): DutyNote | null {
+  const own = slots.slice(phase.startIdx, phase.endIdx + 1);
+  if (own.length === 0) return null;
+  let folgen = 0;
+  let ueberschuss = 0;
+  for (const s of own) {
+    const kind = slotDuty(s);
+    if (kind === 'verbrauch-folgen') folgen++;
+    else if (kind === 'ueberschuss-laden') ueberschuss++;
+  }
+  if (folgen === 0 && ueberschuss === 0) return null;
+  if (folgen === ueberschuss) return null; // widersprüchlich → lieber schweigen
+  const kind: SlotDuty = folgen > ueberschuss ? 'verbrauch-folgen' : 'ueberschuss-laden';
+  const count = Math.max(folgen, ueberschuss);
+  const partial = count < own.length;
+  return { kind, text: dutyLabel(kind, partial), hint: DUTY_HINT[kind], partial };
+}
+
 function lastNumber(values: (number | null | undefined)[]): number | null {
   for (let i = values.length - 1; i >= 0; i--) {
     const v = values[i];
@@ -194,6 +251,7 @@ export function filmRows(
       sub: rowSub(phase, slots, running),
       eur,
       einkauf: phase.kind === 'charge' && (phase.eur ?? 0) < 0,
+      duty: phaseDuty(phase, slots),
     };
     if (done) past.push(row);
     else if (running || sameDay(from, now)) today.push(row);

@@ -276,6 +276,26 @@
   color: var(--vp-muted, #6c757d);
 }
 
+/* Duty-Vorschau (PR 4): eine ruhige zweite Meta-Zeile, kein Alarm - eine
+   bewusste Nachführung ist NIE ein Fehler. Bewusst kein Farb-Träger: das WORT
+   trägt die Aussage (Grün↔Türkis liegt unter dem Normalsicht-Schwellwert). */
+.vp-film-duty {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  max-width: 100%;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--vp-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-film-duty svg {
+  flex: none;
+  opacity: 0.7;
+}
+
 .vp-film-eur {
   flex: none;
   text-align: right;

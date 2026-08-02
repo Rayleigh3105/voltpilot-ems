@@ -80,6 +80,14 @@ export interface WhySlot {
    * which matches the page's existing "Heute geplant gespart" framing.
    */
   wearCostEur?: number | null;
+  /**
+   * Duty-Vorschau (PR 4): true = das Gerät führt in diesem Slot den GEMESSENEN
+   * Hausverbrauch nach, der Watt-Wert ist also eine Vorhersage. Dreiwertig -
+   * siehe `schedule.ts slotDuty` (nur ein ausdrückliches true markiert).
+   */
+  coverLoadFromBattery?: boolean | null;
+  /** Der Ladeseiten-Spiegel: nur den gemessenen Solar-Überschuss laden. */
+  chargeFromSurplusOnly?: boolean | null;
 }
 
 export type PhaseKind = 'charge' | 'discharge' | 'idle' | 'curtail';

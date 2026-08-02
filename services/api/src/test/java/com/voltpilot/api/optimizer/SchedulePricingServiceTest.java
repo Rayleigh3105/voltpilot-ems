@@ -42,7 +42,7 @@ class SchedulePricingServiceTest {
         return new ScheduleSlotDto(SLOT, new BigDecimal("-4.332"), new BigDecimal("2.8"),
                 new BigDecimal("77"), spotEurMwh, null, null, null, null, new BigDecimal("4.33"),
                 "eigenverbrauch", List.of(), new BigDecimal("21.5"), null, null,
-                null, null, null, null, null);
+                null, null, null, null, null, Boolean.TRUE, Boolean.FALSE);
     }
 
     private static SchedulePricingService serviceReturning(SlotEconomics economics) {
@@ -75,6 +75,10 @@ class SchedulePricingServiceTest {
         assertThat(s.loadKw()).isEqualByComparingTo("4.33");
         assertThat(s.slotRole()).isEqualTo("eigenverbrauch");
         assertThat(s.storedValueCtKwh()).isEqualByComparingTo("21.5");
+        // ... including the Duty-Vorschau, tri-state intact: an explicit false
+        // must never arrive as null (that would read as "not evaluated").
+        assertThat(s.coverLoadFromBattery()).isTrue();
+        assertThat(s.chargeFromSurplusOnly()).isFalse();
         // The decision the portal may now state, contradiction-free.
         assertThat(s.importPriceCtKwh().doubleValue())
                 .isGreaterThan(s.storedValueCtKwh().doubleValue());

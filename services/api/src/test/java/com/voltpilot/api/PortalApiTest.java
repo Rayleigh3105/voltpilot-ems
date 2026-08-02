@@ -975,14 +975,14 @@ class PortalApiTest {
         // on the plan so the portal's Peak-Band knows the "Ziel" grid-import limit.
         exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
                 + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur, "
-                + "curtail_kw, peak_target_kw) "
+                + "curtail_kw, peak_target_kw, cover_load_from_battery, charge_from_surplus_only) "
                 + "VALUES "
                 + "(now(), '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
-                + "now(), 5.0, 8.0, 62.5, 3.0, 2.0, 80.0, 0.02, 0.10, 0.0, 180.0), "
+                + "now(), 5.0, 8.0, 62.5, 3.0, 2.0, 80.0, 0.02, 0.10, 0.0, 180.0, TRUE, FALSE), "
                 + "(now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
-                + "now(), -5.0, -2.0, 50.0, 3.0, 0.0, 200.0, 0.03, 0.05, 1.5, 180.0) "
+                + "now(), -5.0, -2.0, 50.0, 3.0, 0.0, 200.0, 0.03, 0.05, 1.5, 180.0, NULL, TRUE) "
                 + "ON CONFLICT DO NOTHING");
 
         ResponseEntity<Map<String, Object>> res = rest.exchange(
@@ -1035,6 +1035,15 @@ class PortalApiTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> second = (Map<String, Object>) slots.get(1);
         assertThat(((Number) second.get("curtailKw")).doubleValue()).isEqualTo(1.5);
+        // Duty-Vorschau (V20260802010000): the two in-slot duties reach the
+        // portal TRI-STATE, so the Fahrplan can preview "folgt dem gemessenen
+        // Verbrauch" BEFORE the slot runs. An explicit FALSE must stay false
+        // (evaluated, no duty) and a NULL must stay null (not evaluated) - the
+        // portal marks a phase only on an explicit true.
+        assertThat(first.get("coverLoadFromBattery")).isEqualTo(Boolean.TRUE);
+        assertThat(first.get("chargeFromSurplusOnly")).isEqualTo(Boolean.FALSE);
+        assertThat(second.get("coverLoadFromBattery")).isNull();
+        assertThat(second.get("chargeFromSurplusOnly")).isEqualTo(Boolean.TRUE);
 
         // FK2 banked value, graceful degradation first: the run above predates
         // the terminal-value column (NULL), so the euro line is null while the

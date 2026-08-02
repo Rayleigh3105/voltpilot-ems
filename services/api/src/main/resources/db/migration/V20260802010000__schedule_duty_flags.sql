@@ -1,0 +1,33 @@
+-- =============================================================================
+-- V20260802010000 - Duty-Vorschau: persist the two IN-SLOT DUTIES with the plan
+-- (Fahrplan-Konzept vp-fahrplan-kunde-konzept §5/§8 "PR 4").
+-- -----------------------------------------------------------------------------
+-- Since the in-slot duties (2026-07-30) a marked slot's watt value is a
+-- FORECAST, not a command: the box tracks the MEASURED house (discharge side)
+-- or the MEASURED solar surplus (charge side) inside the quarter hour. Today
+-- the customer only learns that WHILE the slot runs (the execution block on
+-- the heartbeat); the optimizer knew it when it planned. Persisting the two
+-- flags lets the Fahrplan say it in the PLAN - "in dieser Phase folgt die
+-- Batterie dem gemessenen Verbrauch".
+--
+--   cover_load_from_battery  - discharge side: track the measured deficit
+--                              max(load - pv, 0), i.e. steer the slot toward
+--                              grid ~ 0 in BOTH directions
+--   charge_from_surplus_only - charge side: clamp the commanded charge to the
+--                              measured surplus max(pv - load, 0)
+--
+-- These are the SAME per-slot booleans the frozen MQTT schedule contract
+-- carries (docs/contracts/mqtt-schedule.schema.json) - the contract is
+-- UNTOUCHED here; this is purely the optimizer -> schedule -> api read path.
+--
+-- Deliberately TRI-STATE nullable: NULL = the duty was not evaluated at all
+-- (pre-feature row, or the OPTIMIZER_SLOT_TRIM_ENABLED / _LOAD_FOLLOW_ENABLED
+-- / explain switch off), FALSE = evaluated and no duty. The portal marks a
+-- phase only on an explicit TRUE, so both non-true states render exactly
+-- today's view - never a guessed marking. No RLS change: the existing schedule
+-- policies + the column-agnostic SELECT grant (V20260701020000) cover new
+-- columns. Bootstrap mirror: infra/local/timescale/04-schedule.sql.
+-- =============================================================================
+
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS cover_load_from_battery BOOLEAN;
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS charge_from_surplus_only BOOLEAN;

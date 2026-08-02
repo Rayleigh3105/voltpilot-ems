@@ -3,6 +3,9 @@ import {
   bankedValueLine,
   chargeKind,
   curtailmentToday,
+  DUTY_HINT,
+  dutyLabel,
+  dutyTooltip,
   forecastLines,
   daypart,
   CURTAIL_DEADBAND_KW,
@@ -29,6 +32,7 @@ import {
   savingsTodayEur,
   SLOT_DEADBAND_KW,
   slotBarColor,
+  slotDuty,
   socRange,
   socRangeLine,
   todaySlots,
@@ -925,5 +929,41 @@ describe('measuredPvLine / measuredNote (PV)', () => {
         NOW,
       ),
     ).toBeNull();
+  });
+});
+
+describe('slotDuty / dutyLabel / dutyTooltip (Duty-Vorschau)', () => {
+  it('erkennt beide Pflichten - und die Entladeseite gewinnt einen Widerspruch', () => {
+    expect(slotDuty({ coverLoadFromBattery: true })).toBe('verbrauch-folgen');
+    expect(slotDuty({ chargeFromSurplusOnly: true })).toBe('ueberschuss-laden');
+    // Physikalisch unmöglich (Entladen vs. Laden); käme es doch an, wird nicht
+    // geraten, sondern deterministisch die Entladeseite genommen.
+    expect(slotDuty({ coverLoadFromBattery: true, chargeFromSurplusOnly: true })).toBe(
+      'verbrauch-folgen',
+    );
+  });
+
+  it('markiert NUR bei einem ausdrücklichen true (die Spalten sind dreiwertig)', () => {
+    // false = bewertet, keine Pflicht. null/undefined = gar nicht bewertet
+    // (älterer Lauf, Schalter aus, älteres Backend). Beides markiert nichts.
+    expect(slotDuty({ coverLoadFromBattery: false, chargeFromSurplusOnly: false })).toBeNull();
+    expect(slotDuty({ coverLoadFromBattery: null, chargeFromSurplusOnly: null })).toBeNull();
+    expect(slotDuty({})).toBeNull();
+  });
+
+  it('hält die Worte an EINER Stelle - Film und Tooltip teilen sie', () => {
+    expect(dutyLabel('verbrauch-folgen')).toBe('folgt dem gemessenen Verbrauch');
+    expect(dutyLabel('ueberschuss-laden')).toBe('lädt nur den Solar-Überschuss');
+    expect(dutyLabel('verbrauch-folgen', true)).toBe('folgt zeitweise dem gemessenen Verbrauch');
+    expect(dutyLabel('ueberschuss-laden', true)).toBe('lädt zeitweise nur den Solar-Überschuss');
+    // Der Tooltip sagt zuerst, WAS der Balken ist, dann was passiert.
+    expect(dutyTooltip('verbrauch-folgen')).toBe(
+      'Vorhersage, kein fester Befehl — folgt dem gemessenen Verbrauch',
+    );
+    // Der ausführliche Satz nennt keine internen Begriffe (Duty/Slot/Trim).
+    for (const hint of Object.values(DUTY_HINT)) {
+      expect(hint).toContain('Vorhersage');
+      expect(hint).not.toMatch(/Duty|Slot|Trim|Setpoint/i);
+    }
   });
 });

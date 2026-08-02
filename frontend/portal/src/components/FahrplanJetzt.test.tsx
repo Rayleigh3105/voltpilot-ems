@@ -45,6 +45,7 @@ function row(over: Partial<FilmRow> & { phaseIndex: number }): FilmRow {
     sub: null,
     eur: null,
     einkauf: false,
+    duty: null,
     ...over,
   };
 }
@@ -133,6 +134,34 @@ describe('TagesFilm', () => {
     const rows = container.querySelectorAll('.vp-film-li');
     expect(rows[0].querySelector('.panel')).toBeNull();
     expect(rows[1].querySelector('.panel')).toBeTruthy();
+  });
+
+  it('zeigt die Duty-Vorschau an der Phase - mit dem ausführlichen Satz als Tipp', () => {
+    const { container } = render(
+      <TagesFilm
+        view={view({
+          today: [
+            row({
+              phaseIndex: 0,
+              duty: {
+                kind: 'verbrauch-folgen',
+                text: 'folgt dem gemessenen Verbrauch',
+                hint: 'Der Wert dieser Phase ist eine Vorhersage: …',
+                partial: false,
+              },
+            }),
+            row({ phaseIndex: 1, label: 'Ruhe', role: 'warten', kind: 'idle' }),
+          ],
+        })}
+        selected={null}
+        onSelect={() => {}}
+      />,
+    );
+    const notes = container.querySelectorAll('.vp-film-duty');
+    // Nur die Pflicht-Phase trägt die Zeile - eine Phase ohne Pflicht schweigt.
+    expect(notes).toHaveLength(1);
+    expect(notes[0].textContent).toContain('folgt dem gemessenen Verbrauch');
+    expect(notes[0].getAttribute('title')).toContain('Vorhersage');
   });
 
   it('sagt es, wenn für heute nichts mehr ansteht', () => {

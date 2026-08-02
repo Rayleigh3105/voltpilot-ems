@@ -62,9 +62,10 @@ INSERT INTO schedule
      price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw, wear_cost_eur,
      terminal_value_eur_per_kwh, peak_target_kw,
      slot_role, slot_flags, stored_value_ct_kwh, grid_value_ct_kwh,
-     peak_pressure_eur_kw, fallback_14a)
+     peak_pressure_eur_kw, fallback_14a,
+     cover_load_from_battery, charge_from_surplus_only)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s)
+        %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -86,7 +87,9 @@ DO UPDATE SET
     stored_value_ct_kwh = EXCLUDED.stored_value_ct_kwh,
     grid_value_ct_kwh = EXCLUDED.grid_value_ct_kwh,
     peak_pressure_eur_kw = EXCLUDED.peak_pressure_eur_kw,
-    fallback_14a      = EXCLUDED.fallback_14a;
+    fallback_14a      = EXCLUDED.fallback_14a,
+    cover_load_from_battery = EXCLUDED.cover_load_from_battery,
+    charge_from_surplus_only = EXCLUDED.charge_from_surplus_only;
 """
 
 
@@ -107,6 +110,17 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
     failed - the api/portal then degrade to today's view, never a fabricated
     explanation. An EMPTY flags tuple also persists as NULL ("keine Bindung
     erfasst", data contract §5.1).
+
+    The two IN-SLOT DUTIES (``cover_load_from_battery`` /
+    ``charge_from_surplus_only``, api migration V20260802010000) ride along so
+    the portal can preview the duty IN THE PLAN - today the customer only
+    learns inside the running slot that the box follows the measured house.
+    They are the SAME per-slot booleans the MQTT payload carries (see
+    :mod:`voltpilot_optimization.slot_trim`); persistence keeps them TRI-STATE
+    on purpose: ``None`` = not evaluated (the duty/explain switch is off, or a
+    pre-feature run) and ``False`` = evaluated, no duty. The portal marks a
+    phase only on an explicit ``True``, so both non-true states render exactly
+    today's view.
     """
     return [
         (
@@ -134,6 +148,8 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             slot.grid_value_ct_kwh,
             slot.peak_pressure_eur_kw,
             plan.fallback_14a,
+            slot.cover_load_from_battery,
+            slot.charge_from_surplus_only,
         )
         for slot in plan.slots
     ]

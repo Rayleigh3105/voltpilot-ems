@@ -344,6 +344,24 @@ export interface ScheduleSlot {
    * "Börsenpreis X + Netzentgelte/Abgaben Y".
    */
   importPriceSource: string | null;
+  /**
+   * Duty-Vorschau (PR 4 des Fahrplan-Konzepts): true = in DIESEM Slot führt
+   * das Gerät den GEMESSENEN Hausverbrauch nach (Ziel Netz ≈ 0), der Plan-Wert
+   * `batteryKw` ist hier also eine Vorhersage und kein fester Befehl.
+   * DREIWERTIG: null/absent = gar nicht bewertet (älterer Lauf, Pflicht-
+   * Schalter aus), false = bewertet und keine Pflicht. Der Film markiert eine
+   * Phase nur bei einem ausdrücklichen true - beide Nicht-true-Zustände zeigen
+   * exakt die heutige Ansicht. Optional, damit ein älteres Backend nichts
+   * markiert.
+   */
+  coverLoadFromBattery?: boolean | null;
+  /**
+   * Der Ladeseiten-Spiegel: true = das Gerät begrenzt die Ladung auf den
+   * GEMESSENEN Solar-Überschuss, weil Zukauf in dieser Viertelstunde
+   * unwirtschaftlich wäre. Dieselbe Dreiwertigkeit wie
+   * `coverLoadFromBattery`.
+   */
+  chargeFromSurplusOnly?: boolean | null;
 }
 
 export interface SchedulePlan {

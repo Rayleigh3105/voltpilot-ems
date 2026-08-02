@@ -52,7 +52,8 @@ public class ScheduleRepository {
         List<ScheduleSlotDto> slots = jdbc.query(
                 "SELECT time, battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur, "
                         + "curtail_kw, pv_kw, load_kw, slot_role, slot_flags, stored_value_ct_kwh, "
-                        + "grid_value_ct_kwh, peak_pressure_eur_kw "
+                        + "grid_value_ct_kwh, peak_pressure_eur_kw, "
+                        + "cover_load_from_battery, charge_from_surplus_only "
                         + "FROM schedule WHERE site_id = ? AND generated_at = ? "
                         + "ORDER BY time ASC",
                 (rs, i) -> new ScheduleSlotDto(
@@ -77,7 +78,12 @@ public class ScheduleRepository {
                         null, null, null,
                         // The MEASURED load and PV are a separate aggregation
                         // (P3 + its mirror), see measuredPerSlot below.
-                        null, null),
+                        null, null,
+                        // Duty-Vorschau (V20260802010000): tri-state, so read
+                        // them as nullable Booleans - getBoolean() would turn
+                        // "not evaluated" into a claimed false.
+                        rs.getObject("cover_load_from_battery", Boolean.class),
+                        rs.getObject("charge_from_surplus_only", Boolean.class)),
                 siteId, Timestamp.from(generatedAt));
         slots = MeasuredSlots.assign(slots, measuredPerSlot(siteId, slots, 15));
         List<Object[]> meta = jdbc.query(

@@ -5,6 +5,7 @@ import {
   chargeKind,
   CURTAIL_LEGEND_LABEL,
   defaultHiddenGroups,
+  dutyTooltip,
   forecastLines,
   hasCurtailment,
   hasGridCharge,
@@ -21,6 +22,7 @@ import {
   PV_FORECAST_LABEL,
   SERIES_GROUPS,
   slotBarColor,
+  slotDuty,
   SOC_LABEL,
   socRangeLine,
   toggleGroup,
@@ -49,7 +51,12 @@ import './components/Fahrplan.css';
  * error visible - the one that made a plant draw from the grid at night - and
  * "PV (gemessen)" does the same for the PV forecast while making the
  * Solarladen-Regel checkable (a charge bar may never exceed the measured PV
- * line). A "Jetzt"-marker and a shaded past region separate what already
+ * line). A slot the optimizer marked with an IN-SLOT DUTY says so in its
+ * tooltip ("Vorhersage, kein fester Befehl - folgt dem gemessenen Verbrauch"):
+ * the bar is what the plan expects, while the device tracks the measured house
+ * resp. the measured surplus inside the quarter hour. Without a duty (or on an
+ * older run) the tooltip stays silent - never a guessed marking.
+ * A "Jetzt"-marker and a shaded past region separate what already
  * happened from what is still planned; a dashed line splits today from morgen.
  * The colour swatches + one-line takeaway below the canvas explain the diagram
  * in plain German (captain: the diagrams should be understandable instantly).
@@ -297,6 +304,16 @@ export function ScheduleChart({
                     : 'Deckt den Verbrauch aus dem Speicher'
                 }</span>`,
               );
+            }
+            // Duty-Vorschau (PR 4): in einem markierten Slot ist der Balken
+            // eine Vorhersage - das Gerät folgt dort dem gemessenen Verbrauch
+            // bzw. lädt nur den gemessenen Überschuss. Ohne Pflicht (oder auf
+            // einem älteren Lauf) steht hier nichts - nie eine geratene
+            // Markierung. Der Text ist eine Konstante aus schedule.ts: in
+            // diesen HTML-Formatter darf nie ein dynamischer String.
+            const duty = slotDuty(slots[params[0]?.dataIndex] ?? {});
+            if (duty) {
+              lines.push(`<span style="color:${t.axis}">${dutyTooltip(duty)}</span>`);
             }
             return lines.join('<br/>');
           },

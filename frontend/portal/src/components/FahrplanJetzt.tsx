@@ -139,6 +139,14 @@ export function TagesFilm({
             {row.time}
             {row.sub && <> · {row.sub}</>}
           </span>
+          {/* Duty-Vorschau (PR 4): der Watt-Wert dieser Phase ist eine
+              Vorhersage - das steht hier, bevor die Phase läuft. */}
+          {row.duty && (
+            <span className="vp-film-duty" title={row.duty.hint}>
+              <Icon name="activity" size={12} />
+              {row.duty.text}
+            </span>
+          )}
         </span>
         {row.eur && (
           <span className={`vp-film-eur${row.einkauf ? ' buy' : ''}`}>

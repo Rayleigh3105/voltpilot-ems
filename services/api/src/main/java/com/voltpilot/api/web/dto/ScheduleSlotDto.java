@@ -85,6 +85,19 @@ import java.util.List;
  * Null wherever it is honestly unknown, exactly like the measured load: future
  * slots, slots without telemetry, and sites whose device reports no PV channel
  * (a battery-only or generation-less installation).
+ *
+ * <p><b>Duty-Vorschau</b> (migration V20260802010000, Fahrplan-Konzept
+ * vp-fahrplan-kunde-konzept §5/§8 "PR 4"): {@code coverLoadFromBattery} and
+ * {@code chargeFromSurplusOnly} are the optimizer's two IN-SLOT DUTIES for the
+ * slot - true means its watt value is a FORECAST, not a command, because the
+ * device tracks the MEASURED house consumption (discharge side) resp. clamps
+ * the charge to the MEASURED solar surplus inside the quarter hour. They are
+ * the same booleans the frozen MQTT schedule contract carries; here they only
+ * travel optimizer -&gt; schedule -&gt; portal so the Fahrplan can say it BEFORE
+ * the slot runs instead of only while it runs. Deliberately TRI-STATE: null =
+ * not evaluated (pre-feature run, duty switch off), false = evaluated and no
+ * duty - the portal marks a phase only on an explicit true, so both non-true
+ * states render exactly today's view.
  */
 public record ScheduleSlotDto(
         Instant start,
@@ -106,7 +119,9 @@ public record ScheduleSlotDto(
         BigDecimal exportValueCtKwh,
         String importPriceSource,
         BigDecimal measuredLoadKw,
-        BigDecimal measuredPvKw) {
+        BigDecimal measuredPvKw,
+        Boolean coverLoadFromBattery,
+        Boolean chargeFromSurplusOnly) {
 
     /** The same slot with its decision prices filled in (P0 Textwahrheit). */
     public ScheduleSlotDto withPrices(
@@ -115,7 +130,7 @@ public record ScheduleSlotDto(
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
                 importPriceCtKwh, exportValueCtKwh, importPriceSource,
-                measuredLoadKw, measuredPvKw);
+                measuredLoadKw, measuredPvKw, coverLoadFromBattery, chargeFromSurplusOnly);
     }
 
     /**
@@ -128,6 +143,6 @@ public record ScheduleSlotDto(
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
                 importPriceCtKwh, exportValueCtKwh, importPriceSource,
-                measuredLoadKw, measuredPvKw);
+                measuredLoadKw, measuredPvKw, coverLoadFromBattery, chargeFromSurplusOnly);
     }
 }

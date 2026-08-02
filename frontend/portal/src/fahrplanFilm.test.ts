@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { filmKurzfassung, filmLabel, filmRows, naechsterEinsatz } from './fahrplanFilm';
+import { filmKurzfassung, filmLabel, filmRows, naechsterEinsatz, phaseDuty } from './fahrplanFilm';
 import { phases, type WhySlot } from './fahrplanWhy';
+import { DUTY_HINT, dutyTooltip } from './schedule';
 
 /**
  * Der Film des Tages: die Phasen als ERZÄHLTE LISTE mit Jetzt-Anker. Was hier
@@ -167,6 +168,78 @@ describe('filmRows · Zusätze nur aus dem, was der Lauf trägt', () => {
       run('eigenverbrauch', 0, 4, { costEur: null, baselineCostEur: null }),
     );
     expect(filmRows(ph, slots, 'eigenverbrauch', NOW).today[0].eur).toBeNull();
+  });
+});
+
+describe('Duty-Vorschau · die Pflicht steht im PLAN, nicht erst im Slot', () => {
+  it('markiert eine durchgehende Pflicht-Phase mit ihrem Wort', () => {
+    const { slots, phases: ph } = build([
+      ...run('eigenverbrauch', -0.5, 8, { coverLoadFromBattery: true }),
+      ...run('warten', 1.5, 4, { batteryKw: 0 }),
+    ]);
+    const row = filmRows(ph, slots, 'eigenverbrauch', NOW).today[0];
+    expect(row.duty).toEqual({
+      kind: 'verbrauch-folgen',
+      text: 'folgt dem gemessenen Verbrauch',
+      hint: expect.stringContaining('Vorhersage'),
+      partial: false,
+    });
+    // Die Ruhe-Phase daneben trägt keine - Pflichten sind slot-genau.
+    expect(filmRows(ph, slots, 'eigenverbrauch', NOW).today[1].duty).toBeNull();
+  });
+
+  it('sagt „zeitweise", wenn nur ein Teil der Viertelstunden sie trägt', () => {
+    // Der Normalfall: der Optimierer setzt die Pflicht nur auf Slots ohne
+    // geplanten Netzhandel - eine Phase trägt sie selten durchgehend.
+    const slots = [
+      ...run('eigenverbrauch', -0.5, 5, { coverLoadFromBattery: true }),
+      ...run('eigenverbrauch', 0.75, 3, { coverLoadFromBattery: false }),
+    ];
+    const row = filmRows(phases(slots, 15), slots, 'eigenverbrauch', NOW).today[0];
+    expect(row.duty?.partial).toBe(true);
+    expect(row.duty?.text).toBe('folgt zeitweise dem gemessenen Verbrauch');
+  });
+
+  it('markiert die Ladeseite mit ihrem eigenen Wort', () => {
+    const { slots, phases: ph } = build([
+      ...run('pv_speichern', 0.5, 6, { batteryKw: 6, chargeFromSurplusOnly: true }),
+    ]);
+    const row = filmRows(ph, slots, 'eigenverbrauch', NOW).today[0];
+    expect(row.duty?.kind).toBe('ueberschuss-laden');
+    expect(row.duty?.text).toBe('lädt nur den Solar-Überschuss');
+  });
+
+  it('markiert NICHTS ohne ausdrückliche Pflicht - alte Zeilen wie ein Nein', () => {
+    // Drei Zustände, EIN Ergebnis: nicht bewertet (älterer Lauf / Schalter
+    // aus), ausdrücklich keine Pflicht, und gemischt-widersprüchlich.
+    const alt = build([...run('eigenverbrauch', -0.5, 8)]);
+    expect(filmRows(alt.phases, alt.slots, 'eigenverbrauch', NOW).today[0].duty).toBeNull();
+
+    const nein = build([
+      ...run('eigenverbrauch', -0.5, 8, {
+        coverLoadFromBattery: false,
+        chargeFromSurplusOnly: false,
+      }),
+    ]);
+    expect(filmRows(nein.phases, nein.slots, 'eigenverbrauch', NOW).today[0].duty).toBeNull();
+
+    const patt = [
+      ...run('eigenverbrauch', -0.5, 2, { coverLoadFromBattery: true }),
+      ...run('eigenverbrauch', 0, 2, { chargeFromSurplusOnly: true }),
+    ];
+    expect(
+      filmRows(phases(patt, 15), patt, 'eigenverbrauch', NOW).today[0].duty,
+    ).toBeNull();
+  });
+
+  it('nennt in phaseDuty denselben Satz, den die Zeile als Tipp trägt', () => {
+    const { slots, phases: ph } = build([
+      ...run('eigenverbrauch', -0.5, 4, { coverLoadFromBattery: true }),
+    ]);
+    const note = phaseDuty(ph[0], slots)!;
+    expect(note.hint).toBe(DUTY_HINT['verbrauch-folgen']);
+    // Und der Tooltip des Diagramms nutzt dieselbe Vokabel-Quelle.
+    expect(dutyTooltip('verbrauch-folgen')).toContain('folgt dem gemessenen Verbrauch');
   });
 });
 

@@ -74,6 +74,11 @@ class MeasuredSlotsTest {
         // 12,0 planned PV vs 15,3 measured).
         assertThat(filled.get(1).loadKw()).isEqualByComparingTo("4.33");
         assertThat(filled.get(1).pvKw()).isEqualByComparingTo("12.0");
+        // ... and so is the Duty-Vorschau, incl. its tri-state: the measured
+        // pass may neither drop the true nor turn the unevaluated one into a
+        // claimed false.
+        assertThat(filled.get(1).coverLoadFromBattery()).isTrue();
+        assertThat(filled.get(1).chargeFromSurplusOnly()).isNull();
     }
 
     @Test
@@ -109,6 +114,6 @@ class MeasuredSlotsTest {
         return new ScheduleSlotDto(start, new BigDecimal("-4.332"), new BigDecimal("2.8"),
                 new BigDecimal("77"), new BigDecimal("21.2"), null, null, null,
                 new BigDecimal("12.0"), new BigDecimal("4.33"), "eigenverbrauch", List.of(),
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, Boolean.TRUE, null);
     }
 }

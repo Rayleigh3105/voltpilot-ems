@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS schedule (
     grid_value_ct_kwh NUMERIC(12, 4),           -- pi: effective grid-point energy value (V20260723030000)
     peak_pressure_eur_kw NUMERIC(12, 4),        -- mu: Leistungspreis allocation on the slot (V20260723030000)
     fallback_14a      BOOLEAN,                  -- run is the advisory no-§14a build (V20260723030000)
+    cover_load_from_battery  BOOLEAN,           -- in-slot duty: follow the measured house (V20260802010000)
+    charge_from_surplus_only BOOLEAN,           -- in-slot duty: charge only the measured surplus (V20260802010000)
     PRIMARY KEY (site_id, generated_at, time)
 );
 

@@ -334,6 +334,79 @@ export function measuredNote(
   return `Für die bereits vergangenen Viertelstunden liegen keine Messwerte ${what} vor.`;
 }
 
+/* -------------------------------------------------------------------------
+ * Duty-Vorschau: die zwei IN-SLOT-PFLICHTEN im PLAN (Konzept
+ * `vp-fahrplan-kunde-konzept` §5/§8 „PR 4").
+ *
+ * Seit den In-Slot-Pflichten ist der Watt-Wert eines markierten Slots eine
+ * VORHERSAGE, kein Befehl: die Box führt in der Viertelstunde den GEMESSENEN
+ * Hausverbrauch nach (Entladeseite) bzw. lädt nur den GEMESSENEN
+ * Solar-Überschuss (Ladeseite). Bisher erfuhr der Kunde das erst IM Slot (aus
+ * dem Ausführungs-Block des Herzschlags); jetzt steht es schon im Plan.
+ *
+ * Hier liegen die WORTE dafür - EINMAL, geteilt von Film und Diagramm-Tooltip,
+ * damit dieselbe Pflicht nie zwei Namen bekommt.
+ * ---------------------------------------------------------------------- */
+
+/** Welche der beiden Pflichten ein Slot trägt. */
+export type SlotDuty = 'verbrauch-folgen' | 'ueberschuss-laden';
+
+/** Das Minimum, das eine Pflicht-Ableitung von einem Slot braucht. */
+export interface DutySlotLike {
+  coverLoadFromBattery?: boolean | null;
+  chargeFromSurplusOnly?: boolean | null;
+}
+
+const DUTY_LABEL: Record<SlotDuty, string> = {
+  'verbrauch-folgen': 'folgt dem gemessenen Verbrauch',
+  'ueberschuss-laden': 'lädt nur den Solar-Überschuss',
+};
+
+const DUTY_LABEL_PARTIAL: Record<SlotDuty, string> = {
+  'verbrauch-folgen': 'folgt zeitweise dem gemessenen Verbrauch',
+  'ueberschuss-laden': 'lädt zeitweise nur den Solar-Überschuss',
+};
+
+/** Der ausführliche Satz (Tipp/`title`) - warum der Watt-Wert nicht fix ist. */
+export const DUTY_HINT: Record<SlotDuty, string> = {
+  'verbrauch-folgen':
+    'Der Wert dieser Phase ist eine Vorhersage: Ihre Batterie deckt in der ' +
+    'Viertelstunde genau den gemessenen Verbrauch, damit kein Netzstrom nötig wird.',
+  'ueberschuss-laden':
+    'Der Wert dieser Phase ist eine Vorhersage: Ihre Batterie lädt in der ' +
+    'Viertelstunde nur den gemessenen Solar-Überschuss, statt Strom dazuzukaufen.',
+};
+
+/**
+ * Das Wort der Pflicht. `partial` = nur ein TEIL der Viertelstunden einer
+ * Phase trägt sie (das ist der Normalfall, weil der Optimierer die Pflicht nur
+ * auf Slots ohne geplanten Netzhandel setzt) - dann sagt die Zeile „zeitweise"
+ * statt pauschal für die ganze Phase zu sprechen.
+ */
+export function dutyLabel(kind: SlotDuty, partial = false): string {
+  return (partial ? DUTY_LABEL_PARTIAL : DUTY_LABEL)[kind];
+}
+
+/** Die eine Zeile für den Diagramm-Tooltip einer Viertelstunde. */
+export function dutyTooltip(kind: SlotDuty): string {
+  return `Vorhersage, kein fester Befehl — ${DUTY_LABEL[kind]}`;
+}
+
+/**
+ * Die Pflicht EINES Slots, oder null.
+ *
+ * Streng auf `=== true`: die Spalten sind DREIWERTIG - `null`/`undefined` =
+ * gar nicht bewertet (älterer Lauf, Schalter aus), `false` = bewertet und
+ * keine Pflicht. Beides darf nichts markieren, sonst wäre die Vorschau
+ * geraten. Die zwei Pflichten schließen sich physikalisch aus (Entladen vs.
+ * Laden); käme je beides an, gewinnt die Entladeseite, statt zu raten.
+ */
+export function slotDuty(slot: DutySlotLike): SlotDuty | null {
+  if (slot.coverLoadFromBattery === true) return 'verbrauch-folgen';
+  if (slot.chargeFromSurplusOnly === true) return 'ueberschuss-laden';
+  return null;
+}
+
 /**
  * Toggle one series in the hidden set (the legend rows are toggle buttons).
  * Returns a NEW set so React state updates are honest.
