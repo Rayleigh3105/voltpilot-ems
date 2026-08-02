@@ -4,6 +4,7 @@ import { ScheduleChart } from './ScheduleChart';
 import {
   LOAD_FORECAST_LABEL,
   MEASURED_LOAD_LABEL,
+  CURTAIL_LEGEND_LABEL,
   MEASURED_PV_LABEL,
   PV_FORECAST_LABEL,
 } from './schedule';
@@ -17,10 +18,35 @@ import type { SchedulePlan, ScheduleSlot } from './api';
  * pills, and the default is deliberately quiet: bars + price + Jetzt only.
  * The series/axis maths live in the pure `schedule.ts` derivations
  * (`forecastLines`/`powerAxisMax`/`hiddenLabels`), tested there.
+ *
+ * Der Mock RECHNET die Render-Closure trotzdem AUS und fängt ihr
+ * `setOption`-Objekt ab (`lastOption`): genau die Divergenz „Legende bewirbt
+ * eine Farbe, die das Canvas nie zeichnet" (Scout `vp-pilsting-abregeln`
+ * Frage 4) ist sonst unbeobachtbar.
  */
+let lastOption: any = null;
 vi.mock('./useEChart', () => ({
-  useEChart: () => ({ current: null }),
+  useEChart: (render: (chart: any, width: number) => void) => {
+    lastOption = null;
+    render(
+      {
+        getZr: () => ({ on: () => {}, off: () => {} }),
+        containPixel: () => false,
+        convertFromPixel: () => 0,
+        setOption: (opt: any) => {
+          lastOption = opt;
+        },
+      },
+      900,
+    );
+    return { current: null };
+  },
 }));
+
+/** Die Serie mit diesem Namen aus der zuletzt gerenderten Canvas-Option. */
+function series(name: string): any {
+  return (lastOption?.series ?? []).find((s: any) => s?.name === name);
+}
 
 function slot(over: Partial<ScheduleSlot>): ScheduleSlot {
   return {
@@ -224,5 +250,66 @@ describe('ScheduleChart PV (gemessen) line', () => {
     render(<ScheduleChart plan={plan([slot({ pvKw: 12, loadKw: 1.5 })])} />);
     expect(screen.queryByRole('button', { name: /Gemessen/ })).toBeNull();
     expect(screen.queryByText(MEASURED_PV_LABEL)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Fix 2 der Pilsting-Analyse (Scout `vp-pilsting-abregeln` Frage 4): die
+ * Legende bewarb Orange, das Canvas zeigte es nie. Band, Sockel-Ticks, Fläche
+ * und Legenden-Zeile hängen jetzt an DEMSELBEN `hasCurtailment`-Gate - die
+ * Canvas-Geometrie ist in `schedule.ts` unit-getestet, hier steht die Zeile,
+ * die der Kunde sieht.
+ */
+describe('ScheduleChart Abregeln-Legende', () => {
+  it('bewirbt Orange nur, wenn der Plan wirklich abregelt', () => {
+    render(<ScheduleChart plan={plan([slot({ curtailKw: 4.2, pvKw: 12 })])} />);
+    expect(screen.getByText(CURTAIL_LEGEND_LABEL)).toBeInTheDocument();
+  });
+
+  it('zeigt die Zeile nicht auf einem Plan ohne Abregelung', () => {
+    render(<ScheduleChart plan={plan([slot({ curtailKw: null, pvKw: 12 })])} />);
+    expect(screen.queryByText(CURTAIL_LEGEND_LABEL)).not.toBeInTheDocument();
+  });
+
+  it('spricht im Plan-Wortlaut und behauptet keine Ausführung', () => {
+    render(<ScheduleChart plan={plan([slot({ curtailKw: 4.2, pvKw: 12 })])} />);
+    const row = screen.getByText(CURTAIL_LEGEND_LABEL);
+    expect(row.textContent).toContain('geplant');
+    // Die Farbe steht als Band/Fläche am Canvas, nicht als Balken.
+    expect(row.parentElement?.querySelector('.vp-swatch-area')).not.toBeNull();
+    expect(row.parentElement?.querySelector('.vp-swatch-bar')).toBeNull();
+  });
+
+  it('zeichnet Band UND Sockel-Tick auf dem Canvas - nicht nur in der Legende', () => {
+    render(
+      <ScheduleChart
+        plan={plan([
+          slot({ curtailKw: null, pvKw: 12 }),
+          slot({ curtailKw: 4.2, pvKw: 12, batteryKw: 0 }),
+        ])}
+      />,
+    );
+    // Das Band reitet auf der Preis-Reihe (die Batterie-Reihe trägt schon die
+    // Vergangenheits-markArea) und ist auf den Nachbarn verbreitert, weil eine
+    // Ein-Slot-Spanne auf der Kategorie-Achse null Pixel breit wäre.
+    expect(series('Börsenpreis').markArea.data).toEqual([[{ xAxis: 0 }, { xAxis: 1 }]]);
+    // Der Tick markiert GENAU den abregelnden Slot - und der Balken daneben ist
+    // 0 kW hoch, trägt die Aussage also nicht.
+    expect(series('Abregeln').data).toEqual([null, 0]);
+  });
+
+  it('zeichnet gar kein Orange, wenn der Plan nicht abregelt', () => {
+    render(<ScheduleChart plan={plan([slot({ curtailKw: null, pvKw: 12 })])} />);
+    expect(series('Börsenpreis').markArea).toBeUndefined();
+    expect(series('Abregeln')).toBeUndefined();
+    expect(series('Gedrosselte Menge')).toBeUndefined();
+  });
+
+  it('zeigt die gedrosselte Menge erst in der zugeschalteten Prognosen-Ebene', () => {
+    render(<ScheduleChart plan={plan([slot({ curtailKw: 4, pvKw: 10 })])} />);
+    expect(series('Gedrosselte Menge')).toBeUndefined();
+    fireEvent.click(screen.getByRole('button', { name: /Prognosen/ }));
+    expect(series('Einspeise-Cap').data).toEqual([6]);
+    expect(series('Gedrosselte Menge').data).toEqual([4]);
   });
 });

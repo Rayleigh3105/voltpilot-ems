@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   bankedValueLine,
   chargeKind,
+  curtailArea,
   curtailmentPlannedLine,
   curtailmentToday,
+  curtailSpans,
+  curtailTickData,
+  curtailTooltip,
+  CURTAIL_LEGEND_LABEL,
   DUTY_HINT,
   dutyLabel,
   dutyTooltip,
@@ -165,6 +170,100 @@ describe('hasCurtailment (legend gate for the orange Abregeln entry)', () => {
 
   it('ignores solver noise below the deadband', () => {
     expect(hasCurtailment([{ curtailKw: CURTAIL_DEADBAND_KW }])).toBe(false);
+  });
+
+  it('spricht im PLAN-Wortlaut - die Cloud kennt keinen Ausführungs-Beleg', () => {
+    expect(CURTAIL_LEGEND_LABEL).toContain('geplant');
+  });
+});
+
+// ---- Abregeln SICHTBAR machen (Scout vp-pilsting-abregeln Frage 4) ---------
+
+describe('curtailSpans (das orange Band)', () => {
+  it('fasst zusammenhängende Abregel-Slots zu EINEM Block zusammen', () => {
+    expect(
+      curtailSpans([
+        { curtailKw: null },
+        { curtailKw: 4 },
+        { curtailKw: 3 },
+        { curtailKw: 0 },
+        { curtailKw: 2 },
+        { curtailKw: 1 },
+      ]),
+    ).toEqual([
+      { from: 1, to: 2 },
+      { from: 4, to: 5 },
+    ]);
+  });
+
+  it('verbreitert einen Ein-Slot-Block, weil er auf der Kategorie-Achse sonst null Pixel breit wäre', () => {
+    expect(curtailSpans([{ curtailKw: null }, { curtailKw: 4 }, { curtailKw: null }])).toEqual([
+      { from: 1, to: 2 },
+    ]);
+    // Am Ende der Reihe gibt es keinen Nachbarn rechts - dann nach links.
+    expect(curtailSpans([{ curtailKw: null }, { curtailKw: 4 }])).toEqual([{ from: 0, to: 1 }]);
+  });
+
+  it('liefert nichts für einen Plan, der nie abregelt (auch nicht bei Rauschen)', () => {
+    expect(curtailSpans([{ curtailKw: null }, { curtailKw: 0 }, {}])).toEqual([]);
+    expect(curtailSpans([{ curtailKw: CURTAIL_DEADBAND_KW }])).toEqual([]);
+  });
+});
+
+describe('curtailTickData (die exakte Slot-Wahrheit am Nullpunkt)', () => {
+  it('markiert GENAU die abregelnden Slots mit der Null, sonst Lücke', () => {
+    expect(
+      curtailTickData([{ curtailKw: null }, { curtailKw: 4 }, { curtailKw: 0 }, {}]),
+    ).toEqual([null, 0, null, null]);
+  });
+
+  it('behauptet keine Leistung - der Wert ist immer die Null (Höhe kommt in Pixeln)', () => {
+    expect(curtailTickData([{ curtailKw: 42 }])).toEqual([0]);
+  });
+});
+
+describe('curtailArea (die gedrosselte Menge in der Prognosen-Ebene)', () => {
+  it('spannt zwischen Einspeise-Cap und PV-Prognose, Cap + Höhe = PV exakt', () => {
+    const area = curtailArea([{ pvKw: 10, curtailKw: 4 }]);
+    expect(area.cap).toEqual([6]);
+    expect(area.delta).toEqual([4]);
+    expect(area.cap[0]! + area.delta[0]!).toBe(10);
+    expect(area.present).toBe(true);
+  });
+
+  it('lässt einen Slot ohne PV-Wert LEER statt eine 0 zu erfinden', () => {
+    const area = curtailArea([{ pvKw: null, curtailKw: 4 }, { curtailKw: 3 }]);
+    expect(area).toEqual({ cap: [null, null], delta: [null, null], present: false });
+  });
+
+  it('lässt nicht abregelnde Slots leer und klemmt einen negativen Cap auf 0', () => {
+    const area = curtailArea([
+      { pvKw: 9, curtailKw: null },
+      { pvKw: 2, curtailKw: 5 },
+    ]);
+    expect(area.cap).toEqual([null, 0]);
+    expect(area.delta).toEqual([null, 2]);
+  });
+});
+
+describe('curtailTooltip (die Menge im Tooltip)', () => {
+  it('nennt Menge und Einspeise-Cap', () => {
+    expect(curtailTooltip({ curtailKw: 4.25, pvKw: 10 })).toBe(
+      'Abregeln geplant: 4,25 kW (Einspeise-Cap 5,75 kW)',
+    );
+  });
+
+  it('lässt den Cap weg, wenn der Lauf keine PV-Prognose trägt', () => {
+    expect(curtailTooltip({ curtailKw: 3, pvKw: null })).toBe('Abregeln geplant: 3 kW');
+  });
+
+  it('schweigt in einem Slot ohne Abregelung', () => {
+    expect(curtailTooltip({ curtailKw: null, pvKw: 10 })).toBeNull();
+    expect(curtailTooltip({ curtailKw: CURTAIL_DEADBAND_KW, pvKw: 10 })).toBeNull();
+  });
+
+  it('besteht nur aus Konstanten + Zahlen (XSS-Regel der Chart-Formatter)', () => {
+    expect(curtailTooltip({ curtailKw: 4, pvKw: 10 })).not.toMatch(/[<>]/);
   });
 });
 

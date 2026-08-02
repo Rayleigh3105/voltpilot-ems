@@ -831,18 +831,144 @@ export function horizonHint(
 export const CURTAIL_DEADBAND_KW = 0.01;
 
 /**
- * Legend label of the orange curtailment colour - the same word the phase
- * band / phase card use for the `abregeln` role, so band and legend agree.
+ * Legend label of the orange curtailment colour. Der Wortlaut folgt dem
+ * PLAN-Wortlaut der Abregelung (Fix 1, `fahrplanWhy.PLANNED_TAG`): die Cloud
+ * kennt heute keinen Ausführungs-Beleg, also verspricht auch die Legende nur
+ * die Planung.
  */
-export const CURTAIL_LEGEND_LABEL = 'Abregeln (Einspeisung begrenzt)';
+export const CURTAIL_LEGEND_LABEL = 'Abregeln — geplant';
 
 /**
- * Whether the plan actually curtails PV somewhere (drives the orange
- * "Abregeln" legend entry - the hasGridCharge discipline: a colour the plan
- * never shows must not be advertised in the legend).
+ * Whether the plan actually curtails PV somewhere. DAS EINE GATE für alles
+ * Orange am Fahrplan-Diagramm: Band, Sockel-Ticks, gedrosselte Fläche UND die
+ * Legenden-Zeile hängen daran (Scout `vp-pilsting-abregeln` Frage 4). Vorher
+ * prüfte es nur die DATEN und schaltete allein die Legende frei - das Canvas
+ * zeigte die beworbene Farbe nie, weil ihr Träger der Batterie-Balken war und
+ * der im Abregeln-Slot 0 kW hoch ist.
  */
 export function hasCurtailment(slots: { curtailKw?: number | null }[]): boolean {
   return slots.some((s) => s.curtailKw != null && Number(s.curtailKw) > CURTAIL_DEADBAND_KW);
+}
+
+/** True wenn dieser Slot wirklich abregelt (über dem Totband). */
+function curtails(slot: { curtailKw?: number | null }): boolean {
+  return slot.curtailKw != null && Number(slot.curtailKw) > CURTAIL_DEADBAND_KW;
+}
+
+/** Ein zusammenhängender Abregel-Block als Slot-Indexspanne (beide inklusiv). */
+export interface CurtailSpan {
+  from: number;
+  to: number;
+}
+
+/**
+ * Die zusammenhängenden Abregel-Blöcke eines Plans - die Geometrie des orangen
+ * Bands (`markArea`, das Muster der Vergangenheits-Schattierung im selben
+ * Chart).
+ *
+ * Eine Spanne von einem Index auf sich selbst wäre auf der KATEGORIE-Achse
+ * null Pixel breit (dieselbe Falle wie bei der Historie-Ereignis-Spur), deshalb
+ * wird ein Ein-Slot-Block auf einen Nachbarn verbreitert. Die exakte
+ * Slot-Wahrheit trägt der Sockel-Tick ({@link curtailTickData}), das Band ist
+ * die weiche Hinterlegung.
+ */
+export function curtailSpans(slots: { curtailKw?: number | null }[]): CurtailSpan[] {
+  const spans: CurtailSpan[] = [];
+  let start = -1;
+  for (let i = 0; i < slots.length; i++) {
+    if (curtails(slots[i])) {
+      if (start < 0) start = i;
+    } else if (start >= 0) {
+      spans.push({ from: start, to: i - 1 });
+      start = -1;
+    }
+  }
+  if (start >= 0) spans.push({ from: start, to: slots.length - 1 });
+  const last = slots.length - 1;
+  return spans.map(({ from, to }) => {
+    if (from !== to) return { from, to };
+    if (to < last) return { from, to: to + 1 };
+    if (from > 0) return { from: from - 1, to };
+    return { from, to };
+  });
+}
+
+/**
+ * Die Sockel-Ticks am Nullpunkt: `0` genau in den abregelnden Slots, sonst
+ * `null` (das `:8484`-Ticks-Muster). Der Wert ist bewusst die Null - der Tick
+ * bekommt seine Höhe in PIXELN vom Symbol, ist damit unabhängig von der
+ * kW-Skala und kann nie eine Leistung behaupten, die er nicht misst.
+ */
+export function curtailTickData(slots: { curtailKw?: number | null }[]): (number | null)[] {
+  return slots.map((s) => (curtails(s) ? 0 : null));
+}
+
+/** Das Label der zuschaltbaren Abregel-Fläche (zugleich echarts-Serienname). */
+export const CURTAIL_AREA_LABEL = 'Gedrosselte Menge';
+
+/**
+ * Die gedrosselte Menge als Fläche zwischen Einspeise-Cap und PV-Prognose -
+ * gestapelt aus zwei Reihen (die übliche echarts-Band-Technik):
+ *
+ * - `cap`   = untere Kante = `pvKw - curtailKw` (der Cap, den der Plan sendet),
+ * - `delta` = die Höhe darüber, sodass `cap + delta === pvKw` exakt gilt.
+ *
+ * Sie erklärt, WARUM die PV-Prognose über dem Cap liegt. Ehrlichkeit wie bei
+ * allen Plan-Linien: ohne PV-Wert oder ohne Abregelung bleibt der Slot `null`
+ * (Lücke), nie eine erfundene 0; ein negativer Cap wird auf 0 geklemmt.
+ */
+export interface CurtailArea {
+  cap: (number | null)[];
+  delta: (number | null)[];
+  /** True sobald mindestens ein Slot die Fläche füllen kann. */
+  present: boolean;
+}
+
+export function curtailArea(
+  slots: { pvKw?: number | null; curtailKw?: number | null }[],
+): CurtailArea {
+  const cap: (number | null)[] = [];
+  const delta: (number | null)[] = [];
+  let present = false;
+  for (const s of slots) {
+    const pv = s.pvKw == null ? null : Number(s.pvKw);
+    if (!curtails(s) || pv == null || !Number.isFinite(pv)) {
+      cap.push(null);
+      delta.push(null);
+      continue;
+    }
+    const lower = Math.max(pv - Number(s.curtailKw), 0);
+    cap.push(lower);
+    delta.push(pv - lower);
+    present = true;
+  }
+  return { cap, delta, present };
+}
+
+/** Zahlenformat der Abregel-Tooltip-Zeile (nur Ziffern + Trennzeichen). */
+function curtailKwText(v: number): string {
+  return v.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+}
+
+/**
+ * Die EINE Tooltip-Zeile des Abregeln-Slots: "Abregeln geplant: X kW
+ * (Einspeise-Cap Y kW)". Null, wenn der Slot nicht abregelt.
+ *
+ * XSS-Regel der Chart-Formatter: der Rückgabewert landet per innerHTML im
+ * Tooltip, deshalb besteht er ausschließlich aus KONSTANTEN plus
+ * `toLocaleString`-Zahlen - nie aus einem API-/kundenkontrollierten String.
+ * Der Cap-Teil entfällt ohne PV-Wert, statt eine 0 zu behaupten.
+ */
+export function curtailTooltip(slot: {
+  curtailKw?: number | null;
+  pvKw?: number | null;
+}): string | null {
+  if (!curtails(slot)) return null;
+  const head = `Abregeln geplant: ${curtailKwText(Number(slot.curtailKw))} kW`;
+  const pv = slot.pvKw == null ? null : Number(slot.pvKw);
+  if (pv == null || !Number.isFinite(pv)) return head;
+  const capKw = Math.max(pv - Number(slot.curtailKw), 0);
+  return `${head} (Einspeise-Cap ${curtailKwText(capKw)} kW)`;
 }
 
 /**
