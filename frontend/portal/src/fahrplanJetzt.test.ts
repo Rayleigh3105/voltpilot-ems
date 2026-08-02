@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { actionPhrase, jetztHeld, measurementChips, type JetztInput } from './fahrplanJetzt';
-import type { ControlStatus } from './api';
+import type { ControlStatus, CurtailmentStatus } from './api';
+import { curtailTruth } from './curtailment';
 import type { LiveSnapshot } from './live';
 import type { WhySlot } from './fahrplanWhy';
 
@@ -279,6 +280,93 @@ describe('Abregeln · Plan-Wortlaut + der ehrliche Widerspruch (Pilsting 02.08.)
     const v = jetztHeld(abregelnInput({ control: null, expectControl: false }));
     expect(v.state).toBe('nur_plan');
     expect(v.lead).toBe('Geplant ist gerade: Einspeisung pausieren (Negativpreis)');
+  });
+
+  // ---- PR 3: die zwei weiteren Stufen, sobald der Beleg da ist ------------
+
+  const truth = (over: Partial<CurtailmentStatus> = {}) =>
+    curtailTruth(
+      {
+        deviceId: 'd1',
+        units: 2,
+        certifiedUnits: 2,
+        controlEnabled: true,
+        active: true,
+        appliedCapKw: 12.5,
+        allMatch: true,
+        possibleOverride: false,
+        checkedAt: new Date(NOW.getTime() - 9000).toISOString(),
+        ...over,
+      },
+      NOW,
+    );
+
+  it('Stufe 2: nennt statt der Vermutung die ECHTE Ursache', () => {
+    const v = jetztHeld(
+      abregelnInput({
+        snapshot: snap({ gridKw: -16.6 }),
+        curtail: truth({ certifiedUnits: 0, active: false, allMatch: null, appliedCapKw: null }),
+      }),
+    );
+    expect(v.conflict).toBe(
+      `Ihre Anlage speist gerade 16,6${NBSP}kW ein – sie setzt die Drosselung noch nicht um ` +
+        '(0 von 2 Wechselrichtern freigegeben).',
+    );
+    // Es bleibt bei „soll" - Stufe 2 ist keine Ausführung.
+    expect(v.lead).toBe('Ihre Batterie soll gerade die Einspeisung pausieren');
+    // Und die gute Nachricht gibt es hier nicht.
+    expect(v.curtailment).toBeNull();
+  });
+
+  it('Stufe 3: erst mit Bestätigung Gegenwart - und die Warnung schweigt', () => {
+    const v = jetztHeld(
+      abregelnInput({ snapshot: snap({ gridKw: -4.2 }), curtail: truth() }),
+    );
+    expect(v.lead).toBe('Ihre Batterie pausiert gerade die Einspeisung');
+    expect(v.curtailment).toBe(
+      `Die Einspeisung ist auf 12,5${NBSP}kW begrenzt — vom Wechselrichter bestätigt.`,
+    );
+    // Eine Begrenzung ist ein Deckel, keine Null: die Rest-Einspeisung ist
+    // kein Widerspruch mehr.
+    expect(v.conflict).toBeNull();
+    expect(v.why).toContain('die PV wird deshalb gedrosselt');
+  });
+
+  it('Übersteuerung: benennt sie, statt sie als Bestätigung zu verkaufen', () => {
+    const v = jetztHeld(
+      abregelnInput({
+        snapshot: snap({ gridKw: -16.6 }),
+        curtail: truth({ possibleOverride: true }),
+      }),
+    );
+    expect(v.conflict).toContain('hält die Begrenzung aber nicht');
+    expect(v.curtailment).toBeNull();
+    expect(v.lead).toBe('Ihre Batterie soll gerade die Einspeisung pausieren');
+  });
+
+  it('lässt einen Beleg NICHT auf eine andere Rolle oder einen toten Plan abfärben', () => {
+    // Andere Rolle: der Beleg gilt für die Abregelung, nicht für den Verkauf.
+    const other = jetztHeld(
+      input({ slot: slot({ slotRole: 'verkaufen' }), curtail: truth() }),
+    );
+    expect(other.curtailment).toBeNull();
+    expect(other.lead).not.toContain('Einspeisung pausiert');
+    // Toter Plan: er sagt über das Jetzt nichts - auch keine Bestätigung.
+    expect(jetztHeld(abregelnInput({ curtail: truth(), planStale: true })).curtailment).toBeNull();
+  });
+
+  it('bleibt mit einem VERALTETEN Beleg exakt bei Stufe 1', () => {
+    const v = jetztHeld(
+      abregelnInput({
+        snapshot: snap({ gridKw: -16.6 }),
+        curtail: truth({ checkedAt: new Date(NOW.getTime() - 20 * 60_000).toISOString() }),
+      }),
+    );
+    expect(v.lead).toBe('Ihre Batterie soll gerade die Einspeisung pausieren');
+    expect(v.conflict).toBe(
+      `Ihre Anlage speist gerade 16,6${NBSP}kW ein – die Drosselung ist auf dieser Anlage ` +
+        'noch nicht freigegeben oder nicht bestätigt.',
+    );
   });
 });
 

@@ -315,6 +315,10 @@ services:
       # Inverter-control confirmation: ingest the additive `control` block of the
       # status heartbeat into device_control_status (portal "Steuerung" strip).
       VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
+      # Feed-in curtailment ("Abregeln"): ingest the additive `curtailment` block
+      # into device_curtailment_status, so the portal can tell a planned Abregeln
+      # slot that IS executed from one the plant cannot execute yet.
+      VOLTPILOT_CURTAILMENT_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Portal v3 M5: deployment acks + the feature-flagged per-node flow states.

@@ -16,6 +16,12 @@
  */
 
 import { chartTheme, type ChartTheme } from '../chartTheme';
+import {
+  CURTAIL_PLAN,
+  curtailExecutionNote,
+  curtailTruthForSlot,
+  type CurtailTruth,
+} from '../curtailment';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { PlanWordingKind } from '../schedule';
 import {
@@ -71,10 +77,18 @@ function CloseButton({ onClose }: { onClose: () => void }) {
 export function PhaseCard({
   phase,
   plantKind,
+  curtail = CURTAIL_PLAN,
   onClose,
 }: {
   phase: PlanPhase;
   plantKind: PlanWordingKind;
+  /**
+   * Die Abregel-Beleg-Lage - vom Aufrufer bereits darauf gefiltert, dass diese
+   * Phase die LAUFENDE ist. Ein Beleg von jetzt sagt nichts über eine Phase am
+   * Vormittag oder am Abend, und „vom Wechselrichter bestätigt" an einer
+   * künftigen Phase wäre eine Behauptung über die Zukunft.
+   */
+  curtail?: CurtailTruth;
   onClose: () => void;
 }) {
   const t = chartTheme();
@@ -89,10 +103,14 @@ export function PhaseCard({
       </div>
       <div className="vp-fw-role">
         <i style={{ background: phase.kind === 'idle' ? IDLE_BG : roleColor(phase.role, t) }} />
-        {roleLabel(phase.role, plantKind)}
+        {roleLabel(phase.role, plantKind, null, false, curtail)}
         {mode && <span className="vp-fw-mode">{mode}</span>}
       </div>
-      <p className="vp-fw-why">{phaseWhy(phase, plantKind)}</p>
+      <p className="vp-fw-why">{phaseWhy(phase, plantKind, curtail)}</p>
+      {/* Die Ausführungs-Wahrheit der Abregelung - nur mit Beleg. */}
+      {curtailExecutionNote(curtail) && (
+        <p className="vp-fw-exec">{curtailExecutionNote(curtail)}</p>
+      )}
       {eur && (
         <p className="vp-fw-eur">
           Beitrag dieser Phase:{' '}
@@ -115,6 +133,7 @@ export function SlotCard({
   phases,
   plantKind,
   slotMinutes,
+  curtail = CURTAIL_PLAN,
   onClose,
 }: {
   slot: WhySlot;
@@ -123,13 +142,15 @@ export function SlotCard({
   phases: PlanPhase[];
   plantKind: PlanWordingKind;
   slotMinutes: number;
+  /** Wie bei {@link PhaseCard}: nur für die LAUFENDE Viertelstunde gesetzt. */
+  curtail?: CurtailTruth;
   onClose: () => void;
 }) {
   const t = chartTheme();
   const role = slot.slotRole as SlotRole;
-  const why = slotWhy(slot, plantKind);
+  const why = slotWhy(slot, plantKind, curtail);
   const rows = slotContextRows(slot, slots);
-  const chips = bindingChips(slot.slotFlags);
+  const chips = bindingChips(slot.slotFlags, curtail);
   const phase = phases.find((p) => index >= p.startIdx && index <= p.endIdx) ?? null;
   const phaseEur = phase ? phaseEurLine(phase) : null;
   const from = new Date(slot.start);
@@ -148,9 +169,13 @@ export function SlotCard({
               role === 'warten' || role === 'reserve_halten' ? IDLE_BG : roleColor(role, t),
           }}
         />
-        {roleLabel(role, plantKind, slot.slotFlags)}
+        {roleLabel(role, plantKind, slot.slotFlags, false, curtail)}
       </div>
       {why && <p className="vp-fw-why">{why}</p>}
+      {/* Die Ausführungs-Wahrheit der Abregelung - nur mit Beleg. */}
+      {curtailExecutionNote(curtail) && (
+        <p className="vp-fw-exec">{curtailExecutionNote(curtail)}</p>
+      )}
       {rows.length > 0 && (
         <dl className="vp-fw-kv">
           {rows.map((r) => (
@@ -192,6 +217,8 @@ export function FahrplanWhyPanel({
   slotMinutes,
   selectedPhase,
   selectedSlot,
+  curtail,
+  currentSlotIndex = -1,
   onClose,
 }: {
   phases: PlanPhase[];
@@ -200,20 +227,39 @@ export function FahrplanWhyPanel({
   slotMinutes: number;
   selectedPhase: number | null;
   selectedSlot: number | null;
+  /** Die Abregel-Beleg-Lage des Geräts; ohne sie bleibt alles Plan-Wortlaut. */
+  curtail?: CurtailTruth | null;
+  /**
+   * Index der LAUFENDEN Viertelstunde in `slots` (-1 = keine). Er ist der
+   * Filter, der den Beleg auf das Jetzt begrenzt: eine angetippte Phase vom
+   * Vormittag darf nicht mit dem bestätigen, was das Gerät gerade tut.
+   */
+  currentSlotIndex?: number;
   onClose: () => void;
 }) {
   if (selectedPhase != null && selectedPhase >= 0 && selectedPhase < phases.length) {
-    return <PhaseCard phase={phases[selectedPhase]} plantKind={plantKind} onClose={onClose} />;
+    const phase = phases[selectedPhase];
+    const isCurrent = currentSlotIndex >= phase.startIdx && currentSlotIndex <= phase.endIdx;
+    return (
+      <PhaseCard
+        phase={phase}
+        plantKind={plantKind}
+        curtail={curtailTruthForSlot(curtail, phase.role, isCurrent)}
+        onClose={onClose}
+      />
+    );
   }
   if (selectedSlot != null && selectedSlot >= 0 && selectedSlot < slots.length) {
+    const slot = slots[selectedSlot];
     return (
       <SlotCard
-        slot={slots[selectedSlot]}
+        slot={slot}
         index={selectedSlot}
         slots={slots}
         phases={phases}
         plantKind={plantKind}
         slotMinutes={slotMinutes}
+        curtail={curtailTruthForSlot(curtail, slot.slotRole, selectedSlot === currentSlotIndex)}
         onClose={onClose}
       />
     );

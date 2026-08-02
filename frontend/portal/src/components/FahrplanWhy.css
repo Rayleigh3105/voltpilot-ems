@@ -73,6 +73,20 @@
   line-height: 1.55;
 }
 
+/*
+ * Die Ausführungs-Wahrheit der Abregelung (PR 3): eine ruhige zweite Zeile
+ * unter dem Warum, gedämpft wie eine Fußnote - sie erklärt nicht, WARUM
+ * gedrosselt wird, sondern OB die Anlage es umsetzt. Bewusst KEIN Warnton:
+ * eine fehlende Freigabe ist kein Defekt (die Warnung dazu gehört dem
+ * Jetzt-Helden, wo sie neben dem Messwert steht).
+ */
+.vp-fw-exec {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--vp-muted, #6c757d);
+}
+
 .vp-fw-kv {
   display: grid;
   grid-template-columns: auto 1fr;

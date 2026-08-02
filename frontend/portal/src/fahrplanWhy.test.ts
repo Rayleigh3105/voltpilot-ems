@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { curtailTruth } from './curtailment';
 import { NBSP } from './format';
 import {
   FALLBACK_14A_NOTE,
@@ -551,6 +552,47 @@ describe('phaseEurLine + phaseRange + labels', () => {
     expect(roleLabel('reserve_halten', 'eigenverbrauch', ['reserve_peak'])).toBe(
       'Reserve halten (Lastspitze)',
     );
+  });
+
+  it('schaltet mit BELEG auf Gegenwart um - und nur die Abregelung (PR 3)', () => {
+    // Der Beleg kommt IMMER durch `curtailTruthForSlot`, also nur für den
+    // laufenden Abregel-Slot; hier steht er direkt, um den Wortlaut zu pinnen.
+    const done = curtailTruth(
+      {
+        deviceId: 'd1',
+        units: 2,
+        certifiedUnits: 2,
+        controlEnabled: true,
+        active: true,
+        appliedCapKw: 12.5,
+        allMatch: true,
+        possibleOverride: false,
+        checkedAt: new Date(Date.now() - 5000).toISOString(),
+      },
+      new Date(),
+    );
+    expect(roleLabel('abregeln', 'eigenverbrauch', null, false, done)).toBe(
+      'Einspeisung pausiert (Negativpreis)',
+    );
+    expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch', done)).toContain(
+      'die PV wird deshalb gedrosselt',
+    );
+    const curtailSlot: WhySlot = {
+      start: new Date(2026, 6, 23, 12, 0).toISOString(),
+      batteryKw: 0,
+      priceEurMwh: -21,
+      costEur: null,
+      baselineCostEur: null,
+      slotFlags: null,
+      slotRole: 'abregeln',
+    };
+    expect(slotWhy(curtailSlot, 'eigenverbrauch', done)).toBe(
+      'Einspeisen würde beim negativen Börsenpreis (-2,1 ct/kWh) Geld kosten – die PV wird deshalb gedrosselt.',
+    );
+    expect(bindingChips(['curtailing'], done)).toEqual(['Drosselung aktiv']);
+    // Ohne Beleg ist ALLES zeichengleich zu Fix 1 - der Regressionsschutz.
+    expect(bindingChips(['curtailing'])).toEqual(['Drosselung geplant']);
+    expect(roleLabel('abregeln', 'eigenverbrauch')).toContain('— geplant');
   });
 
   it('the honesty copy never names solver internals', () => {

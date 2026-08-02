@@ -687,6 +687,31 @@ paths:
         "204": { description: No control readback reported yet for this site. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/curtailment-status:
+    get:
+      tags: [schedules]
+      summary: Latest feed-in curtailment ("Abregeln") truth for a site.
+      description: >
+        Does the plant actually throttle its PV in a planned "Abregeln" slot, or
+        is the plan a plan because the curtailment actor is not released yet?
+        Ingested from the additive `curtailment` block of the device status
+        heartbeat. Deliberately its OWN read next to `control-status` rather than
+        extra fields there: the two heartbeat blocks arrive independently (a
+        device may report either alone) and each carries its own freshness
+        anchor. RLS-scoped by tenant. 204 (no body) until a device has reported
+        the block - the portal then keeps its plan wording, which is exactly the
+        honest fallback.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's latest curtailment truth.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CurtailmentStatus" }
+        "204": { description: No curtailment block reported yet for this site. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/sources:
     get:
       tags: [sites]
@@ -4437,6 +4462,26 @@ components:
         executionDirection: { type: string, nullable: true, enum: [deepen, reduce], description: "Only for executionMode `follow`: the discharge was RAISED to cover the house (`deepen`) or LIMITED to what it needs (`reduce`). Both are deliberate; an unnamed correction reads as a defect. Null otherwise." }
         executionPlannedKw: { type: number, nullable: true, description: "The setpoint BEFORE the correction, so plan and execution can stand side by side instead of being two contradicting numbers under one word. Only for follow/trim." }
         executionTargetKw: { type: number, nullable: true, description: "The MEASURED value the correction tracks - the house deficit for `follow`, the PV surplus for `trim`; which one follows unambiguously from executionMode. Null when the device could not measure it (it never regulates blind, and never reports blind either) - never a fabricated 0." }
+    CurtailmentStatus:
+      type: object
+      description: >
+        Latest FEED-IN CURTAILMENT truth a site's device(s) reported (the
+        additive `curtailment` heartbeat block). It is what turns the Fahrplan's
+        "Abregeln" slot from a claim into a verifiable statement: the optimizer
+        plans the PV cap, but whether the plant throttles depends on a manual
+        per-unit release of the curtailment actor. Absent (204) = an older edge
+        or a plant without a curtailment actor - consumers keep their PLAN
+        wording then, never a fabricated execution claim.
+      properties:
+        deviceId: { type: string, format: uuid }
+        units: { type: integer, description: "Curtailment-capable units the device has configured." }
+        certifiedUnits: { type: integer, description: "Units carrying a per-unit First-Light release. certifiedUnits < units is THE actionable cause the portal names (\"0 von 2 Wechselrichtern freigegeben\")." }
+        controlEnabled: { type: boolean, description: "The device's control kill-switch." }
+        active: { type: boolean, description: "At least one unit currently APPLIES a cap." }
+        appliedCapKw: { type: number, nullable: true, description: "Summed applied caps; null = none applied (never a fabricated 0)." }
+        allMatch: { type: boolean, nullable: true, description: "Over the APPLYING units' readbacks; null = nothing applied. Only true is a confirmation - null must never be read as a disagreement." }
+        possibleOverride: { type: boolean, description: "A unit's MEASURED power exceeds its cap after the settle window, so a foreign controller may be overriding the limit (Modbus has the lowest priority on Fronius)." }
+        checkedAt: { type: string, format: date-time, description: "Newest per-unit readback timestamp - the freshness anchor. A stale block is NO evidence; the portal falls back to its plan wording." }
     SiteSource:
       type: object
       description: >

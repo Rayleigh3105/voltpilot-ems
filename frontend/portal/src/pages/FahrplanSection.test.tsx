@@ -17,6 +17,7 @@ vi.mock('../ScheduleChart', () => ({
 }));
 
 const controlStatus = vi.fn();
+const curtailmentStatus = vi.fn();
 const schedule = vi.fn();
 const telemetry = vi.fn();
 
@@ -27,6 +28,7 @@ vi.mock('../api', async (importOriginal) => {
     api: {
       schedule: (...a: unknown[]) => schedule(...a),
       controlStatus: (...a: unknown[]) => controlStatus(...a),
+      curtailmentStatus: (...a: unknown[]) => curtailmentStatus(...a),
       telemetry: (...a: unknown[]) => telemetry(...a),
     },
   };
@@ -129,6 +131,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   schedule.mockResolvedValue(plan());
   controlStatus.mockResolvedValue(CONTROL);
+  // Ohne Abregel-Beleg (204) - die Fläche bleibt beim Plan-Wortlaut.
+  curtailmentStatus.mockResolvedValue(null);
   telemetry.mockResolvedValue(POINTS);
 });
 
@@ -189,6 +193,7 @@ describe('FahrplanSection · die vier Blöcke', () => {
 
   it('überlebt einen Ausfall der beiden Live-Abrufe (fail-soft)', async () => {
     controlStatus.mockRejectedValue(new Error('down'));
+    curtailmentStatus.mockRejectedValue(new Error('down'));
     telemetry.mockRejectedValue(new Error('down'));
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-jetzt')).toBeTruthy());
@@ -201,6 +206,77 @@ describe('FahrplanSection · die vier Blöcke', () => {
  * abgehakt und ehrlich als PLAN, nie als Ist. Fällt die neue Lesart aus, steht
  * exakt die Rest-des-Tages-Fassung da.
  */
+describe('FahrplanSection · die Abregel-Wahrheit erreicht die Fläche (PR 3)', () => {
+  /** Der laufende Slot regelt ab, die Anlage speist messbar 16,6 kW ein. */
+  function abregelnPlan(): SchedulePlan {
+    const base = plan();
+    return {
+      ...base,
+      slots: base.slots.map((s, i) =>
+        i === 0 ? { ...s, slotRole: 'abregeln', batteryKw: 0, curtailKw: 12, priceEurMwh: -21 } : s,
+      ),
+    };
+  }
+  const EXPORTING: TelemetryPoint[] = [
+    { ts: new Date().toISOString(), powerKw: -16.6, socPct: 78, pvPowerKw: 23.9, loadKw: 4.3, gridLimitKw: null },
+  ];
+
+  beforeEach(() => {
+    schedule.mockResolvedValue(abregelnPlan());
+    controlStatus.mockResolvedValue({ ...CONTROL, commandedKw: 0, confirmedKw: 0 });
+    telemetry.mockResolvedValue(EXPORTING);
+  });
+
+  it('nennt ohne Block die zwei Möglichkeiten (Stufe 1 - älteres Backend/Edge)', async () => {
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-jetzt-conflict')).toBeTruthy());
+    expect(container.querySelector('.vp-jetzt-conflict')!.textContent).toContain(
+      'noch nicht freigegeben oder nicht bestätigt',
+    );
+  });
+
+  it('nennt mit Block die ECHTE Ursache (Stufe 2 - die Pilsting-Lage)', async () => {
+    curtailmentStatus.mockResolvedValue({
+      deviceId: 'dev-1',
+      units: 2,
+      certifiedUnits: 0,
+      controlEnabled: true,
+      active: false,
+      appliedCapKw: null,
+      allMatch: null,
+      possibleOverride: false,
+      checkedAt: new Date().toISOString(),
+    });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() =>
+      expect(container.querySelector('.vp-jetzt-conflict')?.textContent).toContain(
+        '0 von 2 Wechselrichtern freigegeben',
+      ),
+    );
+  });
+
+  it('bestätigt mit Block die Ausführung (Stufe 3) - und warnt dann nicht mehr', async () => {
+    curtailmentStatus.mockResolvedValue({
+      deviceId: 'dev-1',
+      units: 2,
+      certifiedUnits: 2,
+      controlEnabled: true,
+      active: true,
+      appliedCapKw: 12.5,
+      allMatch: true,
+      possibleOverride: false,
+      checkedAt: new Date().toISOString(),
+    });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    // Bewusst auf die BEGRENZUNG geprüft: „vom Wechselrichter bestätigt" sagt
+    // auch die Rücklese-Zeile des Batterie-Sollwerts - die Zahl unterscheidet.
+    await waitFor(() => expect(container.textContent).toContain('Die Einspeisung ist auf 12,5'));
+    expect(container.querySelector('.vp-jetzt-conflict')).toBeNull();
+    // Und die Leitzeile darf jetzt Gegenwart sagen.
+    expect(container.textContent).toContain('pausiert gerade die Einspeisung');
+  });
+});
+
 describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
   beforeEach(() => {
     schedule.mockImplementation((_id: unknown, mode?: unknown) =>

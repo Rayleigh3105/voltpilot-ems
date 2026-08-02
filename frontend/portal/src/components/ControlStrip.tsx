@@ -34,6 +34,9 @@ export function ControlStrip({
         {view.agoNote && <span className="vp-note vp-control-ago">{view.agoNote}</span>}
         {/* Was das GERÄT selbst geändert hat (PR 3) - nur wenn es das meldete. */}
         {view.execution && <p className="vp-control-reason">{view.execution}</p>}
+        {/* Die EINSPEISE-Begrenzung ist ein anderer Steuerpfad als der
+            Batterie-Sollwert oben - nur mit Beleg, nie behauptet. */}
+        {view.curtailment && <p className="vp-control-reason">{view.curtailment}</p>}
         {/* The WHY - only present when the plan actually recorded one. */}
         {view.reason && <p className="vp-control-reason">{view.reason}</p>}
       </section>
@@ -50,6 +53,9 @@ export function ControlStrip({
         </div>
         {/* Was das GERÄT selbst geändert hat (PR 3) - nur wenn es das meldete. */}
         {view.execution && <p className="vp-control-reason">{view.execution}</p>}
+        {/* Die EINSPEISE-Begrenzung ist ein anderer Steuerpfad als der
+            Batterie-Sollwert oben - nur mit Beleg, nie behauptet. */}
+        {view.curtailment && <p className="vp-control-reason">{view.curtailment}</p>}
         {/* The WHY - only present when the plan actually recorded one. */}
         {view.reason && <p className="vp-control-reason">{view.reason}</p>}
       </Card>

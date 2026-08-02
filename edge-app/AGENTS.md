@@ -1093,7 +1093,10 @@ Operator-Doku: `nodered/FRONIUS.md` par.6b + `nodered/CONTROL-BENCH.md`
   Faehigkeit (Einheiten/freigegeben/Kill-Switch aus dem KERN) + die
   Beobachtungen (aktiv/bestaetigt/Override) - so unterscheidet die Cloud
   "geplant und ausgefuehrt" von "geplant, Anlage kann es (noch) nicht".
-  Portal-Rendering des Blocks ist dokumentierter Follow-up.
+  Die Cloud LIEST ihn seit PR 3 der Pilsting-Analyse (api-Listener
+  `CurtailmentStatusListener` -> `device_curtailment_status` ->
+  `GET /sites/{id}/curtailment-status`, Portal-Drei-Stufen-Wortlaut);
+  Edge-seitig aendert das NICHTS - der Block ist unveraendert.
 - **Socket-Disziplin im Quellen-Tab = die BEGRENZTE Schreib-Lease**
   (`nodered/sunspec/curtail-lease.js`, von Poll UND Executor eingebettet;
   Live-Vorfall Pilsting 2026-07-28: der unbegrenzte Vorgaenger - Anspruch auf

@@ -7,6 +7,7 @@ import { IconTile, type IconCategory } from '../../designsystem/components/core/
 import {
   api,
   type ControlStatus,
+  type CurtailmentStatus,
   type Device,
   type Earnings,
   type EarningsRange,
@@ -30,6 +31,7 @@ import { DEFAULT_EARNINGS_RANGE, periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, type AnlagenSub, type Route } from '../nav';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip } from '../control';
+import { curtailTruth, curtailTruthForSlot } from '../curtailment';
 import { todaySlots } from '../schedule';
 import { slotWhy } from '../fahrplanWhy';
 import { planTrafZu, type PlanTrafZu } from '../planAccuracy';
@@ -469,6 +471,10 @@ export function AnlageSeite({
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
   const [weatherWhyText, setWeatherWhyText] = useState<string | null>(null);
   const [controlStatus, setControlStatus] = useState<ControlStatus | null>(null);
+  // Die Abregel-Wahrheit (PR 3): setzt die Anlage eine geplante Drosselung
+  // wirklich um? Eigener Abruf (der Herzschlag-Block kommt unabhängig vom
+  // Rücklese-Block), fail-soft - null = kein Beleg = Plan-Wortlaut.
+  const [curtailStatus, setCurtailStatus] = useState<CurtailmentStatus | null>(null);
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [planFailed, setPlanFailed] = useState(false);
@@ -547,6 +553,14 @@ export function AnlageSeite({
       },
       () => {
         if (active) setControlStatus(null);
+      },
+    );
+    api.curtailmentStatus(site.id).then(
+      (c) => {
+        if (active) setCurtailStatus(c);
+      },
+      () => {
+        if (active) setCurtailStatus(null);
       },
     );
     return () => {
@@ -649,6 +663,10 @@ export function AnlageSeite({
         );
         api.controlStatus(site.id).then(
           (c) => setControlStatus(c),
+          () => {},
+        );
+        api.curtailmentStatus(site.id).then(
+          (c) => setCurtailStatus(c),
           () => {},
         );
         api.schedule(site.id).then(
@@ -811,13 +829,27 @@ export function AnlageSeite({
   // logic here. Null outside the horizon or on a plan from before the why-layer
   // - the strip then claims no cause (the idleReason discipline).
   const activePlanSlot = controlReasonSlot(planSlots, now, plan?.slotMinutes ?? 15);
+  // Die Abregel-Beleg-Lage gilt NUR für die laufende Viertelstunde und nur,
+  // wenn dort abgeregelt werden soll - `curtailTruthForSlot` ist der Filter,
+  // sonst behauptete die Karte etwas über eine Stunde, die noch kommt.
+  const controlCurtail = curtailTruthForSlot(
+    curtailTruth(curtailStatus, now),
+    activePlanSlot?.slotRole,
+  );
   const controlReason = activePlanSlot
     ? slotWhy(
         activePlanSlot,
         site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+        controlCurtail,
       )
     : null;
-  const controlView = controlStrip(controlStatus, now, batteryLinked, controlReason);
+  const controlView = controlStrip(
+    controlStatus,
+    now,
+    batteryLinked,
+    controlReason,
+    controlCurtail,
+  );
 
   // The Gesundheits-Checklist — rendered on BOTH cockpit paths (the projected
   // one lists it as its "Zustand" card, so a migrated plant has the surface the
