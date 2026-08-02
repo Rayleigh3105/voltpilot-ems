@@ -305,6 +305,34 @@
   }
 
   /* ------------------------------------------------------------------
+     The CHARGE-side counterpart that RAISES: in-slot surplus absorption.
+
+     "Fahrplan-Sollwert 0,0 kW -> bestätigt 0,0 kW" while 23,9 kW of PV meets a
+     4,3-kW-Haus and 16,6 kW leaves the site at a NEGATIVE price - with the
+     battery at 7 % SoC - is the morning half of the same defect (Pilsting,
+     2026-08-02). Where the cloud marked storing worth more than selling, the
+     device RAISES the charge to the measured surplus. A setpoint far ABOVE the
+     Fahrplan value with no reason next to it reads as a defect just like a
+     limitation does, so the card names it. Disjoint from the other two by
+     construction (it only ever raises a non-negative command, up to the
+     surplus).
+     ------------------------------------------------------------------ */
+  function deriveAbsorb(s) {
+    var a = s && s.absorb;
+    if (!a || !a.active) return null;
+    var stored = a.surplus_kw != null ? " (" + nf1.format(a.surplus_kw) + " kW)" : "";
+    var planned = a.planned_kw != null
+      ? " – der Fahrplan hatte " + nf1.format(a.planned_kw) + " kW vorgesehen"
+      : "";
+    var text =
+      "Lädt den gemessenen Solarüberschuss" + stored + " – Ladung angehoben: " +
+      "die gespeicherte Energie ist mehr wert als die Einspeisung in dieser " +
+      "Viertelstunde einbringt" + planned +
+      ". Das ist eine bewusste Nachführung, kein Fehler des Wechselrichters.";
+    return { text: text };
+  }
+
+  /* ------------------------------------------------------------------
      trackStateSince - the stable "seit <Uhrzeit>" behind the card's ONE truth.
 
      The underlying readback re-fires every ~10 s tick, so any timestamp taken
@@ -625,7 +653,11 @@
     // it explains (a limitation that is not named reads as a defect).
     var reasonEl = $("ctrlReason");
     if (reasonEl) {
-      var reason = d.showNow ? (deriveTrim(s) || deriveFollow(s)) : null;
+      // Order mirrors the setpoint chain, last correction first: the
+      // absorption runs last, so where it bit its value is the published one.
+      var reason = d.showNow
+        ? (deriveAbsorb(s) || deriveTrim(s) || deriveFollow(s))
+        : null;
       show(reasonEl, !!reason);
       if (reason) reasonEl.textContent = reason.text;
     }
@@ -647,6 +679,7 @@
     deriveState: deriveState,
     deriveTrim: deriveTrim,
     deriveFollow: deriveFollow,
+    deriveAbsorb: deriveAbsorb,
     deriveCurtail: deriveCurtail,
     trackStateSince: trackStateSince,
     ROLE_LABEL: ROLE_LABEL,

@@ -89,6 +89,12 @@ def _slot_payload(slot) -> dict:
     # absence is fail-OPEN on the edge for the same reason.
     if slot.cover_load_from_battery:
         payload["cover_load_from_battery"] = True
+    # OPTIONAL per the contract (in-slot surplus absorption, 2026-08-02): the
+    # charge-side counterpart that RAISES, present only on slots where storing
+    # the measured surplus beats selling it. Same omit-unless-true discipline,
+    # and absence is fail-OPEN on the edge for the same reason.
+    if slot.charge_surplus_to_battery:
+        payload["charge_surplus_to_battery"] = True
     return payload
 
 

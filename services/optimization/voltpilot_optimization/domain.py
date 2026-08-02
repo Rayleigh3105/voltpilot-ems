@@ -514,6 +514,18 @@ class PlanSlot:
     # MQTT payload (as the optional per-slot ``cover_load_from_battery``): it is
     # an executor duty, not presentation. None/False = pre-feature behavior.
     cover_load_from_battery: bool | None = None
+    # ---- In-slot surplus absorption (2026-08-02) ------------------------------
+    # True = storing one more kWh beats selling it in THIS slot (eta*lambda -
+    # wear above the slot's export value), so the edge may RAISE the commanded
+    # CHARGE to the MEASURED surplus max(pv - load, 0) instead of leaving an
+    # unforecast surplus to be exported - at a negative price, paid away. The
+    # charge-side counterpart that RAISES, completing the pair with
+    # charge_from_surplus_only (which only ever LOWERS); same persisted lambda,
+    # see :mod:`voltpilot_optimization.slot_trim`. Like its two siblings it DOES
+    # reach the MQTT payload (as the optional per-slot
+    # ``charge_surplus_to_battery``): an executor duty, not presentation.
+    # None/False = pre-feature behavior.
+    charge_surplus_to_battery: bool | None = None
 
     @property
     def pv_limit_kw(self) -> float | None:

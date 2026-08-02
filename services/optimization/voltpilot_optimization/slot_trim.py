@@ -92,6 +92,34 @@ directions is what leaves the price arbitrage alone: a planned import is a
 deliberate cheap-hour purchase (role ``warten``), and a planned export is a
 deliberate sale that the edge - whose enforcement is BIDIRECTIONAL since P1b -
 would otherwise cut back to zero grid.
+
+THE CHARGE SIDE, RAISING: in-slot surplus absorption (2026-08-02, Pilsting)
+--------------------------------------------------------------------------
+The trim above only ever LOWERS a charge, and the load follower only ever acts
+on a discharge - so nothing could put an unforecast PV surplus INTO the battery.
+That is where the real money of the negative-price morning was: the solver
+charges only the FORECAST surplus (``charge <= pv_forecast - curtail``), so an
+under-forecast morning plans 0.0 kW and every 15-min re-plan repeats it, because
+there is no nowcast of the running slot. Measured at Pilsting on 2026-08-02:
+7 % SoC, ~19,6 kW of measured surplus, plan 0,0 kW charge, and 16,6 kW exported
+into a NEGATIVE price for hours - roughly 2-10 EUR given away in one morning,
+against ~0,1-0,7 EUR for the curtailment that was displayed but not executed.
+
+The naive answer is again the WRONG one, and this module's header already says
+why: "just charge the surplus" IS the price-blind self-consumption logic. So the
+duty follows the same architecture - the CLOUD prices it, the EDGE enforces it -
+and is emitted only where the slot's OWN economics prefer storing to selling:
+
+    storing beats selling in t  <=>  eta * lambda_t - wear > export_value_t + margin
+
+i.e. the marginal value of one more stored kWh against what feeding it in
+fetches. At a negative export value this is satisfied as soon as the water value
+covers the wear, which is exactly the morning it exists for; where the solver
+holds for an HONEST economic reason (a stored kWh worth less than the feed-in it
+displaces) it is not satisfied and nothing is marked. Published as the additive
+per-slot ``charge_surplus_to_battery``, FAIL-OPEN on absence like its two
+siblings, with its own kill switch (``OPTIMIZER_SURPLUS_CHARGE_ENABLED``)
+because it is the only one of the three that RAISES a charge.
 """
 
 from __future__ import annotations
@@ -118,6 +146,18 @@ PLANNED_GRID_EXCHANGE_DEADBAND_KW = 0.05
 #: Deprecated alias of :data:`PLANNED_GRID_EXCHANGE_DEADBAND_KW`, kept so an
 #: external reader of the old one-sided name keeps working.
 PLANNED_GRID_IMPORT_DEADBAND_KW = PLANNED_GRID_EXCHANGE_DEADBAND_KW
+
+#: Above this a slot really curtails (kW) - the same deadband the explain
+#: layer's ``abregeln`` role uses (``explain.CURTAIL_DEADBAND_KW``), so "the
+#: slot the portal calls Abregeln" and "the slot that may absorb its surplus"
+#: are the same set of slots.
+PLANNED_CURTAIL_DEADBAND_KW = 0.01
+
+#: How much room below the usable SoC ceiling the plan's own trajectory must
+#: still leave for an absorption duty to be publishable (kWh). Below it the duty
+#: would be unfulfillable, and a duty a device cannot honour must never be sent.
+#: 0.1 kWh is well under one slot's worth of charge at any meaningful power.
+SOC_HEADROOM_DEADBAND_KWH = 0.1
 
 
 def willingness_to_pay_ct_kwh(
@@ -347,6 +387,149 @@ def cover_load_from_battery(
         return False
     return cover_load_economic(
         import_price_ct_kwh=import_price_ct_kwh,
+        stored_value_ct_kwh=stored_value_ct_kwh,
+        one_way_efficiency=one_way_efficiency,
+        wear_ct_per_kwh_each_way=wear_ct_per_kwh_each_way,
+        margin_ct_per_kwh=margin_ct_per_kwh,
+    )
+
+
+# ---- the charge side, RAISING: in-slot surplus absorption --------------------
+
+
+def marginal_storage_value_ct_kwh(
+    *,
+    stored_value_ct_kwh: float,
+    one_way_efficiency: float,
+    wear_ct_per_kwh_each_way: float,
+) -> float:
+    """What one more AC kWh charged into the battery is worth, UNCLAMPED
+    (ct/kWh): ``eta * lambda - wear``.
+
+    The same expression :func:`willingness_to_pay_ct_kwh` computes, WITHOUT its
+    floor at zero - and the difference is load-bearing for
+    :func:`storing_beats_selling`. That floor encodes "a stored kWh cannot be
+    worth less than nothing, the objective would simply not charge", which is
+    true when the alternative to charging is free. It is NOT true against a
+    NEGATIVE export value, where the floor would compare 0 against a negative
+    number and declare storing worthwhile even when the wear it spends exceeds
+    the giveaway it avoids. Comparing the raw marginal value is the conservative
+    reading, and it is the one the report's formula states.
+    """
+    return one_way_efficiency * stored_value_ct_kwh - wear_ct_per_kwh_each_way
+
+
+def storing_beats_selling(
+    *,
+    export_value_ct_kwh: float,
+    stored_value_ct_kwh: float | None,
+    one_way_efficiency: float,
+    wear_ct_per_kwh_each_way: float,
+    margin_ct_per_kwh: float = SLOT_TRIM_MARGIN_CT_PER_KWH,
+) -> bool:
+    """Whether keeping one more marginal kWh of PV in the battery earns more
+    than feeding it in right now.
+
+    ``eta * lambda - wear > export_value + margin``: the value of the stored kWh
+    over the rest of the horizon against what selling it fetches here. At a
+    NEGATIVE export value (feeding in COSTS money) the test is satisfied as soon
+    as the water value covers the wear, which is exactly the negative-price
+    morning this duty exists for.
+
+    ``stored_value_ct_kwh`` is the persisted lambda; ``None`` (no why-layer)
+    yields ``False`` - no claim, no duty. Non-finite inputs likewise yield
+    ``False``: a duty the edge enforces against measured values must never rest
+    on a NaN. Same discipline as :func:`grid_charge_uneconomic`.
+    """
+    if stored_value_ct_kwh is None:
+        return False
+    values = (
+        export_value_ct_kwh,
+        stored_value_ct_kwh,
+        one_way_efficiency,
+        wear_ct_per_kwh_each_way,
+        margin_ct_per_kwh,
+    )
+    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in values):
+        return False
+    value = marginal_storage_value_ct_kwh(
+        stored_value_ct_kwh=stored_value_ct_kwh,
+        one_way_efficiency=one_way_efficiency,
+        wear_ct_per_kwh_each_way=wear_ct_per_kwh_each_way,
+    )
+    return value > export_value_ct_kwh + margin_ct_per_kwh
+
+
+def charge_surplus_to_battery(
+    *,
+    grid_kw: float,
+    curtail_kw: float,
+    soc_kwh: float,
+    soc_max_kwh: float,
+    export_value_ct_kwh: float,
+    stored_value_ct_kwh: float | None,
+    one_way_efficiency: float,
+    wear_ct_per_kwh_each_way: float,
+    margin_ct_per_kwh: float = SLOT_TRIM_MARGIN_CT_PER_KWH,
+) -> bool:
+    """The per-slot contract flag: may the edge RAISE this slot's commanded
+    charge to the MEASURED PV surplus?
+
+    Three conditions, all of them (report ``vp-pilsting-abregeln`` §5b):
+
+    1. **Storing beats selling** per :func:`storing_beats_selling` - the ONLY
+       economic content, and the reason this is not the price-blind
+       "just charge the surplus" rule this module's header rejects.
+    2. **The plan intends no deliberate SALE**: its own grid power is not an
+       export worth the name (``grid_kw >= -PLANNED_GRID_EXCHANGE_DEADBAND_KW``)
+       - or the slot CURTAILS, which by definition prefers not to export, so
+       absorbing beats throwing the energy away. A planned export is a
+       deliberate sale (role ``verkaufen``) that a duty enforced against
+       measured values must never reshape - the P1b protection
+       :func:`cover_load_from_battery` applies on that side.
+
+       DELIBERATE DEVIATION from the report's literal formula (which copied
+       P1b's two-sided ``|grid_kw| ~ 0`` exclusion): a planned IMPORT is NOT
+       excluded, for two reasons.
+
+       * It is structurally safe. This duty is UNIDIRECTIONAL - the edge only
+         ever RAISES a charge, and only up to the MEASURED surplus, which lands
+         the predicted grid power at exactly 0. So it bites ONLY where reality
+         is EXPORTING, it can never create or raise an import, and it can never
+         lower a planned charge: a deliberate cheap-hour purchase (role
+         ``warten``) charges MORE than the surplus by construction, so the duty
+         does not bite there at all. That is the asymmetry to P1b, whose
+         enforcement is bidirectional and therefore genuinely could undo a
+         purchase.
+       * Excluding it would kill the money case. Under FK3 PV-bus semantics an
+         EEG plant legitimately plans "battery takes the PV, house takes its
+         load from the grid", so a perfectly ordinary charging slot plans
+         ``grid_kw = +load``. That is the H1 shape of the Pilsting morning
+         (measured: plan 6 kW against 25 kW of real PV, ~4,7 EUR/h at stake in
+         a single slot) - the very slot the duty exists for.
+
+    3. **The plan's own SoC trajectory still has headroom** (slot-END SoC below
+       ``soc_max_kwh``): a duty the device cannot fulfil must not be published.
+       Using the END SoC is the conservative reading - a slot the plan already
+       fills to the ceiling needs no help absorbing more.
+
+    Deliberately NOT conditioned on the plan commanding a charge: the whole
+    point is the slot where the plan charges 0.0 kW because its PV forecast
+    never saw the surplus (Pilsting, 2026-08-02: 7 % SoC, ~19,6 kW surplus,
+    plan 0,0 kW, hours of negative-price export).
+    """
+    numeric = (grid_kw, curtail_kw, soc_kwh, soc_max_kwh)
+    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in numeric):
+        return False
+    if not (
+        grid_kw >= -PLANNED_GRID_EXCHANGE_DEADBAND_KW
+        or curtail_kw > PLANNED_CURTAIL_DEADBAND_KW
+    ):
+        return False
+    if soc_kwh >= soc_max_kwh - SOC_HEADROOM_DEADBAND_KWH:
+        return False
+    return storing_beats_selling(
+        export_value_ct_kwh=export_value_ct_kwh,
         stored_value_ct_kwh=stored_value_ct_kwh,
         one_way_efficiency=one_way_efficiency,
         wear_ct_per_kwh_each_way=wear_ct_per_kwh_each_way,

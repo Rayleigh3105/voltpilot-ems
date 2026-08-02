@@ -508,6 +508,59 @@ func TestParseAndActivateCoverLoadFromBattery(t *testing.T) {
 	}
 }
 
+// The surplus-absorption duty follows the SAME rules as its two siblings: only
+// an EXPLICIT true carries it, it follows the ACTIVE slot, and a stale plan drops
+// it (the self-consumption fallback already charges the measured surplus).
+func TestParseAndActivateChargeSurplusToBattery(t *testing.T) {
+	payload := `{
+      "schema_version": "1.0",
+      "plan_id": "11111111-2222-3333-4444-555555555555",
+      "generated_at": "2026-08-02T08:25:00Z",
+      "slot_minutes": 15,
+      "slots": [
+        { "start": "2026-08-02T08:30:00Z", "battery_setpoint_kw": 0.0, "charge_surplus_to_battery": true },
+        { "start": "2026-08-02T08:45:00Z", "battery_setpoint_kw": 3.0, "charge_surplus_to_battery": false },
+        { "start": "2026-08-02T09:00:00Z", "battery_setpoint_kw": 12.0 }
+      ]
+    }`
+	rx := time.Date(2026, 8, 2, 8, 31, 0, 0, time.UTC)
+	p, err := Parse([]byte(payload), rx)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := []bool{true, false, false}
+	for i, w := range want {
+		if p.Slots[i].ChargeSurplusToBattery != w {
+			t.Fatalf("slot %d duty = %v, want %v", i, p.Slots[i].ChargeSurplusToBattery, w)
+		}
+	}
+	if !p.ActiveChargeSurplusToBattery(rx) {
+		t.Fatal("the active first slot must carry the duty")
+	}
+	if p.ActiveChargeSurplusToBattery(time.Date(2026, 8, 2, 8, 46, 0, 0, time.UTC)) {
+		t.Fatal("an explicit false slot carries no duty")
+	}
+	// Stale plan / no active slot -> no duty.
+	stale := &Plan{SlotMinutes: 15, ReceivedAt: rx.Add(-30 * time.Minute), Slots: p.Slots}
+	if stale.ActiveChargeSurplusToBattery(rx) {
+		t.Fatal("a stale plan must carry no duty")
+	}
+	if p.ActiveChargeSurplusToBattery(rx.Add(4 * time.Hour)) {
+		t.Fatal("outside every slot there is no duty")
+	}
+	// A legacy payload (no field anywhere) is byte-for-byte the old behavior.
+	legacy := mustParse(t, rx)
+	for i := range legacy.Slots {
+		if legacy.Slots[i].ChargeSurplusToBattery {
+			t.Fatalf("legacy slot %d must carry no duty", i)
+		}
+	}
+	// The three duties are INDEPENDENT: no flag ever implies another.
+	if p.Slots[0].ChargeFromSurplusOnly || p.Slots[0].CoverLoadFromBattery {
+		t.Fatal("charge_surplus_to_battery must not imply either sibling duty")
+	}
+}
+
 // The COMMITTED contract fixtures are what the device really parses: the same
 // bytes the cloud publishes and the Python contract test validates
 // (docs/contracts/examples/, read by path on purpose - moving a fixture must
@@ -582,5 +635,52 @@ func TestCommittedContractFixturesParse(t *testing.T) {
 	// The plain fixture carries neither.
 	if pp.ActiveCoverLoadFromBattery(rx) {
 		t.Fatal("the plain fixture carries no load-following duty")
+	}
+
+	// The charge-side ABSORPTION fixture (the Pilsting morning shape: a fully
+	// curtailed slot commanding 0,0 kW while the real surplus is exported).
+	absorbing, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.absorb-surplus.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mornRx := time.Date(2026, 8, 2, 8, 31, 0, 0, time.UTC)
+	ap, err := Parse(absorbing, mornRx)
+	if err != nil {
+		t.Fatalf("absorb-surplus fixture: %v", err)
+	}
+	if !ap.ActiveChargeSurplusToBattery(mornRx) {
+		t.Fatal("the absorb-surplus fixture's active slot must carry the duty")
+	}
+	if kw, _, ok := ap.ActiveSetpoint(mornRx); !ok || kw != 0.0 {
+		t.Fatalf("absorb-surplus fixture setpoint = %v ok=%v, want 0.0", kw, ok)
+	}
+	// Its first slot is fully curtailed (cap 0 kW) - the Fahrplan "Abregeln"
+	// shape the observed morning showed.
+	if ap.Slots[0].PvLimitKw == nil || *ap.Slots[0].PvLimitKw != 0.0 {
+		t.Fatalf("absorb-surplus fixture slot 0 pv_limit = %v, want 0.0", ap.Slots[0].PvLimitKw)
+	}
+	// Its last two slots (a plain charge and a discharge) carry no duty, and NO
+	// slot of it carries either sibling duty.
+	if ap.Slots[2].ChargeSurplusToBattery || ap.Slots[3].ChargeSurplusToBattery {
+		t.Fatal("only the marked slots carry the duty")
+	}
+	for i := range ap.Slots {
+		if ap.Slots[i].ChargeFromSurplusOnly || ap.Slots[i].CoverLoadFromBattery {
+			t.Fatalf("absorb-surplus fixture slot %d must carry no sibling duty", i)
+		}
+	}
+	// ...and the other three fixtures carry no absorption duty.
+	if pp.ActiveChargeSurplusToBattery(rx) {
+		t.Fatal("the plain fixture carries no absorption duty")
+	}
+	for i := range tp.Slots {
+		if tp.Slots[i].ChargeSurplusToBattery {
+			t.Fatalf("surplus-only fixture slot %d must carry no absorption duty", i)
+		}
+	}
+	for i := range cp.Slots {
+		if cp.Slots[i].ChargeSurplusToBattery {
+			t.Fatalf("cover-load fixture slot %d must carry no absorption duty", i)
+		}
 	}
 }

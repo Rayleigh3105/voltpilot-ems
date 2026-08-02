@@ -414,6 +414,57 @@ test("control: a followed setpoint keeps the healthy CONFIRMED state", () => {
   }
 });
 
+// --- the REASON line, charge side RAISING (surplus absorption, 2026-08-02) ---
+//
+// The morning half of the same defect: "0,0 kW angeordnet, 0,0 kW bestätigt"
+// while 23,9 kW of PV meets a 4,3-kW-Haus and 16,6 kW leaves the site at a
+// NEGATIVE price, with the battery at 7 % SoC. When the device raises the charge
+// to the measured surplus, the card must SAY so - a setpoint far ABOVE the
+// Fahrplan value with no reason next to it reads as a defect too.
+function absorbFor(state) {
+  return load(["control.js"]).VPControl.deriveAbsorb(state);
+}
+
+test("control: an active absorption names the deliberate correction with both numbers", () => {
+  const d = absorbFor({ absorb: { active: true, planned_kw: 0, surplus_kw: 19.6 } });
+  assert.ok(d, "an active correction must produce a reason line");
+  assert.match(d.text, /19,6 kW/, "it names what is being stored: " + d.text);
+  assert.match(d.text, /0,0 kW/, "and what the Fahrplan had planned: " + d.text);
+  assert.match(d.text, /Ladung angehoben/, "and WHICH WAY it corrected: " + d.text);
+  assert.match(d.text, /bewusste Nachf\u00fchrung/, "and that it is deliberate: " + d.text);
+  assert.ok(!/nicht \u00fcbernommen|Abweichung/.test(d.text),
+    "a correction must never read as a failed write: " + d.text);
+});
+
+test("control: no absorption -> no reason line (the card reads exactly as before)", () => {
+  assert.strictEqual(absorbFor({}), null);
+  assert.strictEqual(absorbFor({ absorb: null }), null);
+  assert.strictEqual(absorbFor({ absorb: { active: false } }), null,
+    "an inactive correction claims nothing");
+});
+
+test("control: an absorption without a known surplus still names the cause", () => {
+  const d = absorbFor({ absorb: { active: true, planned_kw: 0 } });
+  assert.ok(d);
+  assert.match(d.text, /mehr wert/, "the cause is always stated: " + d.text);
+  assert.ok(!/undefined|NaN/.test(d.text), "and never a broken number: " + d.text);
+});
+
+test("control: an absorbed setpoint keeps the healthy CONFIRMED state", () => {
+  // The raised value is what gets written, so the readback matches it - the
+  // state must stay healthy, with the reason underneath.
+  const regs = [{ role: "battery_power", commanded_raw: 1960, commanded_kw: 19.6, actual_raw: 1960, actual_kw: 19.6, match: true, verdict: "held" }];
+  const state = {
+    inverter: { configured: true }, control_certified: true, control_enabled: true,
+    control: { confirm: "held", all_match: true, registers: regs, source: "schedule" },
+    absorb: { active: true, planned_kw: 0, surplus_kw: 19.6 },
+  };
+  const d = controlFor(state);
+  assert.strictEqual(d.chip.tone, "ok");
+  assert.strictEqual(d.showNow, true, "the reason is only shown where a setpoint is shown");
+  assert.ok(absorbFor(state), "and the reason line is there");
+});
+
 test("status hero: an unanswered readback says 'keine Bestätigung', a confirmed refusal says 'übernimmt nicht'", () => {
   const regs = [{ role: "remote_mode", commanded_raw: 1, actual_raw: null, match: false, verdict: "unread" }];
   const silent = statusFor({ ...HEALTHY, control: { confirm: "no_answer", all_match: null, registers: regs } });

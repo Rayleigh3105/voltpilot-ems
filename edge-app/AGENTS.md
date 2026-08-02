@@ -1229,9 +1229,13 @@ wurde. `agent.executionSummary(snap)` faltet sie als additiven `execution`-Block
 `control`-Struktur des Heartbeats (Präzedenz: die `sources`/`flows`-Blöcke; `schema_version` bleibt
 "1.0", MQTT-Kontrakte unberührt):
 
-- `mode` = `plan` | `follow` | `trim` | `fallback`, dazu `direction` (`deepen`/`reduce`, NUR bei
-  `follow`), `planned_kw` (der Sollwert VOR der Korrektur) und der GEMESSENE Wert, dem gefolgt wird
-  (`deficit_kw` bei follow, `surplus_kw` bei trim).
+- `mode` = `plan` | `follow` | `trim` | `absorb` | `fallback`, dazu `direction` (`deepen`/`reduce`,
+  NUR bei `follow`), `planned_kw` (der Sollwert VOR der Korrektur) und der GEMESSENE Wert, dem
+  gefolgt wird (`deficit_kw` bei follow, `surplus_kw` bei trim UND absorb). Die Reihenfolge der
+  Prüfung ist die UMGEKEHRTE Kette: `absorb` zuerst, weil es zuletzt läuft — wo es gegriffen hat,
+  ist sein Wert der veröffentlichte. Ein Modus, den die Wolke nicht kennt, wird dort verworfen
+  (der strikte Filter im `ControlStatusListener`), ein älteres Portal fällt also sauber auf seine
+  generische Formulierung zurück.
 - **Ein Modus, der nicht sauber auf das Vokabular passt, macht GAR KEINE Aussage:** nur
   `ModeSchedule` → `plan` und `ModeSelfConsume` → `fallback`; ein v2-Wunsch auf der Batterie
   (`ModeDesired`), eine Kalibrierung oder ein Gerät ohne Messwerte lassen den Block weg statt sich
@@ -1243,6 +1247,41 @@ wurde. `agent.executionSummary(snap)` faltet sie als additiven `execution`-Block
   23:12, Trim, plan-vs-fallback, unmapped-Modus ohne Aussage, `omitempty`-Drahtform).
   Cloud-Seite: api-Migration `V20260802000000` + `ControlStatusListener` + `ControlStatusDto`
   (siehe Root-`AGENTS.md` „Inverter control"), Portal: `control.ts executionNote`.
+
+**Die LADESEITE, die ANHEBT = `guards.SurplusCharger` (`guards/surpluscharge.go`, Report
+`firstmate/data/vp-pilsting-abregeln` §5b, 02.08.2026).** Trim senkt nur eine Ladung, der Follower
+wirkt nur auf eine Entladung — einen NICHT PROGNOSTIZIERTEN PV-Überschuss konnte deshalb nichts in
+den Speicher bringen. Genau das war das Geld des Vormittags in Pilsting: PV 23,9 · Haus 4,3 ·
+**16,6 kW EINSPEISUNG bei negativem Preis**, stundenlang, bei **7 % SoC** — weil der Solver nur den
+PROGNOSTIZIERTEN Überschuss lädt (`charge ≤ pv_forecast − curtail`) und es keinen Nowcast gibt, der
+den laufenden Slot korrigiert. Per-Slot-Flag **`charge_surplus_to_battery`**, Regel in
+`slot_trim.py` (`η·λ − wear > export_value + margin`), eigener Kill-Switch
+`OPTIMIZER_SURPLUS_CHARGE_ENABLED`. Was hier gilt:
+
+- **Es ist der EINZIGE Guard der Kette, der einen Sollwert ANHEBT** — und genau deshalb läuft sein
+  Ziel noch einmal durch das autoritative `guards.Clamp` (Nennband, SoC-Decke, EEG-Solar-Clamp,
+  §14a-Hülle), statt eigene Schranken nachzubauen (dieselbe Technik wie die ANHEBE-Hälfte des
+  Followers, die `PeakShave` ruft). Er kann damit strukturell nicht an einem Guard vorbeischreiben
+  und keinen aufweichen; er schlägt nur Werte vor, die die Kette schon akzeptiert hat.
+- **Sicherheit per Algebra:** begrenzt auf den GEMESSENEN Überschuss ist die vorhergesagte
+  Netzleistung `load + min(kw, Überschuss) − pv ≤ 0` — es entsteht also NIE ein zusätzlicher Import
+  (§14a-Import und das Peak-Viertelstundenziel bleiben unberührt), und ein Export wird immer nur
+  Richtung 0 verkleinert (§14a-Export und Einspeisedeckel erst recht erfüllt).
+- **Nur ein NICHT-NEGATIVES Kommando wird angehoben** — nie ein Richtungswechsel aus einer Entladung
+  heraus. Das ist zugleich, was ihn per Konstruktion vom Follower trennt.
+- Unbekanntes pv/load ⇒ INAKTIV; der Eigenverbrauchs-Rückfall lädt ohnehin pv − load, dort ist er
+  ein No-op. Hysterese gespiegelt zum Trim (sofort eingreifen, `AbsorbReleaseDwell` zum Loslassen;
+  ein SCHRUMPFENDER Überschuss wird sofort, ein wachsender in `AbsorbStepKw`-Schritten gefolgt).
+- Anzeige: `state.AbsorbInfo` → `control.js VPControl.deriveAbsorb` → dieselbe `#ctrlReason`-Zeile
+  („Lädt den gemessenen Solarüberschuss … – Ladung angehoben"). Ein ANGEHOBENER Sollwert ist eine
+  bewusste Nachführung: veröffentlicht wird der angehobene Wert, der Readback passt dazu.
+- Beweise: `guards/surpluscharge_test.go` (Überschuss laden, nie ein Import, kein Richtungswechsel,
+  SoC-Decke/Nennband/EEG-Clamp/§14a binden auf dem ANGEHOBENEN Wert, blind=inaktiv, Hysterese,
+  Komposition mit dem Peak-Guard), `agent/surplus_charge_test.go` (die Live-Konstellation und die
+  EINGECHECKTEN Contract-Bytes), `plan/plan_test.go`, `web/jstest/ui.test.js`,
+  `services/optimization/tests/test_surplus_charge.py`. Die argumentierte Abweichung von der
+  Report-Formel (ein geplanter IMPORT wird NICHT ausgeschlossen) steht in der Root-`AGENTS.md`
+  „In-slot surplus absorption" und in der Docstring der Regel.
 
 ## Wer etwas ANDERES entwertet, nennt die Folge VORHER (`static/consequences.js`)
 

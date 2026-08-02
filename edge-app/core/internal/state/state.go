@@ -74,6 +74,14 @@ type Snapshot struct {
 	// construction - one acts on charge, the other on discharge.
 	Follow *FollowInfo `json:"follow,omitempty"`
 
+	// Absorb is the in-slot surplus absorption (2026-08-02), non-nil ONLY while
+	// it is actually RAISING the commanded charge to the measured PV surplus.
+	// Same reason as Trim and Follow: without it the customer would see a
+	// confirmed setpoint far ABOVE the Fahrplan value and no reason for it. It is
+	// disjoint from both by construction - it only ever raises a NON-NEGATIVE
+	// command, and only up to the surplus.
+	Absorb *AbsorbInfo `json:"absorb,omitempty"`
+
 	InverterLink     string    `json:"inverter_link"` // "up" | "down" | "" (unknown)
 	InverterLinkSeen time.Time `json:"inverter_link_seen,omitzero"`
 
@@ -178,6 +186,23 @@ type FollowInfo struct {
 	// follows; nil when unknown (then the correction would be inactive anyway -
 	// never regulate blind).
 	DeficitKw *float64 `json:"deficit_kw,omitempty"`
+}
+
+// AbsorbInfo is the UI-facing state of the in-slot surplus absorption: the cloud
+// marked this slot's stored kWh worth more than the feed-in it would fetch, so
+// the commanded CHARGE is being RAISED to the MEASURED PV surplus instead of
+// leaving a surplus the forecast never saw to be exported. The charge-side
+// counterpart of TrimInfo (which only ever lowers), and read-only display of a
+// decision already taken - the correction itself lives in guards.SurplusCharger.
+type AbsorbInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// PlannedKw is the setpoint BEFORE the correction - what the Fahrplan/holder
+	// asked for, so the card can say "der Fahrplan wollte X kW".
+	PlannedKw float64 `json:"planned_kw"`
+	// SurplusKw is the measured surplus the charge is raised to; nil when unknown
+	// (then the correction would be inactive anyway - never regulate blind).
+	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 }
 
 // ControlInfo is the UI-facing per-register control readback: what the schedule
