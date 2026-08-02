@@ -54,7 +54,17 @@ public class SecurityConfig {
                 // anonymous caller's 400/409 would be masked as 401 by the /error
                 // forward (relevant for the public registration endpoint).
                 .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                .requestMatchers("/health", "/info", "/actuator/**").permitAll()
+                // /health alone does NOT cover the probe groups: the management
+                // base-path is the root (application.yml), so Spring serves the
+                // Kubernetes probes at /health/liveness and /health/readiness -
+                // both fell through to .anyRequest().authenticated() and answered
+                // 401, which restart-looped every api pod in the cluster (the
+                // compose healthcheck asks for the bare /health, so the VM never
+                // showed it). Listed EXPLICITLY rather than as /health/**: these
+                // two expose only UP/DOWN, while a wildcard would also hand out
+                // whatever per-component paths a future show-details setting adds.
+                .requestMatchers("/health", "/health/liveness", "/health/readiness",
+                        "/info", "/actuator/**").permitAll()
                 // Self-service registration is the front door - it must work
                 // before the caller has any token (the controller can be turned
                 // off via voltpilot.registration.enabled).
