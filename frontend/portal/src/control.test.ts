@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlStatus } from './api';
-import { controlReasonSlot, controlStrip } from './control';
+import { controlReasonSlot, controlStrip, directionLabel, executionNote } from './control';
 import { slotWhy } from './fahrplanWhy';
 
 const NOW = new Date('2026-07-08T12:00:10Z');
@@ -185,5 +185,127 @@ describe('controlReasonSlot', () => {
     expect(controlReasonSlot(slots, new Date('2026-07-30T14:00:00Z'))).toBeNull();
     expect(controlReasonSlot(slots, new Date('2026-07-30T11:00:00Z'))).toBeNull();
     expect(controlReasonSlot([], NOW)).toBeNull();
+  });
+});
+
+// --- the EXECUTION line (PR 3 des Fahrplan-Konzepts, 2026-08-02) -------------
+//
+// Seit den In-Slot-Pflichten trägt `commandedKw` den KORRIGIERTEN Wert, aber
+// nichts sagte warum: der Plan-Balken zeigte -4,3 kW, die Steuerungs-Karte
+// -6,1 kW, beide ohne Erklärung. Der Heartbeat trägt die Richtung jetzt mit,
+// und eine unbenannte Korrektur liest sich als Defekt.
+describe('executionNote', () => {
+  it('names the RAISED discharge with plan and measured house demand', () => {
+    // Die Live-Konstellation vom 30.07., 21:22 (Anlage Pilsting).
+    const note = executionNote(
+      status({
+        commandedKw: -7.087,
+        confirmedKw: -7.087,
+        executionMode: 'follow',
+        executionDirection: 'deepen',
+        executionPlannedKw: -4.332,
+        executionTargetKw: 7.087,
+      }),
+    )!;
+    expect(note).toContain('4,3');
+    expect(note).toContain('7,1');
+    expect(note).toContain('angehoben');
+    // Die Richtung ist ein WORT - nie ein Minuszeichen am Betrag.
+    expect(note).not.toContain('−4,3');
+    expect(note).not.toContain('-4,3');
+  });
+
+  it('names the LIMITED discharge as its own deliberate correction', () => {
+    // Der Spiegel (23:12): der Plan entlud tiefer, als das Haus brauchte.
+    const note = executionNote(
+      status({
+        executionMode: 'follow',
+        executionDirection: 'reduce',
+        executionPlannedKw: -6.7,
+        executionTargetKw: 5.1,
+      }),
+    )!;
+    expect(note).toContain('begrenzt');
+    expect(note).toContain('5,1');
+    expect(note).not.toContain('angehoben');
+  });
+
+  it('names the price-aware trim on the charge side', () => {
+    const note = executionNote(
+      status({
+        executionMode: 'trim',
+        executionPlannedKw: 11.1,
+        executionTargetKw: 3.1,
+      }),
+    )!;
+    expect(note).toContain('Solar-Überschuss');
+    expect(note).toContain('3,1');
+    // Eine Ladung hat keine Nachführungs-Richtung - sie darf keine erfinden.
+    expect(note).not.toContain('angehoben');
+    expect(note).not.toContain('begrenzt');
+  });
+
+  it('names the built-in rule when no plan drives the device', () => {
+    const note = executionNote(status({ executionMode: 'fallback' }))!;
+    expect(note).toContain('Sicherung');
+    expect(note).toContain('kein aktueller Fahrplan');
+  });
+
+  it('claims nothing for an uncorrected slot or an older edge', () => {
+    expect(executionNote(status({ executionMode: 'plan' }))).toBeNull();
+    expect(executionNote(status({}))).toBeNull();
+    expect(executionNote(null)).toBeNull();
+  });
+
+  it('drops the measured half instead of inventing a 0', () => {
+    const note = executionNote(
+      status({ executionMode: 'follow', executionDirection: 'deepen', executionPlannedKw: -4 }),
+    )!;
+    expect(note).toContain('angehoben');
+    expect(note).not.toContain('0,0 kW');
+  });
+
+  it('names a correction without a reported direction, but invents none', () => {
+    const note = executionNote(status({ executionMode: 'follow', executionTargetKw: 5 }))!;
+    expect(note).toContain('gemessenen Verbrauch');
+    expect(note).not.toContain('angehoben');
+    expect(note).not.toContain('begrenzt');
+  });
+
+  it('speaks the direction as a customer word', () => {
+    expect(directionLabel('deepen')).toBe('angehoben');
+    expect(directionLabel('reduce')).toBe('begrenzt');
+    expect(directionLabel(null)).toBeNull();
+  });
+});
+
+describe('controlStrip execution', () => {
+  const followed = {
+    executionMode: 'follow' as const,
+    executionDirection: 'deepen' as const,
+    executionPlannedKw: -4.332,
+    executionTargetKw: 7.087,
+  };
+
+  it('rides on the states that show a setpoint', () => {
+    const old = new Date(NOW.getTime() - 6 * 60 * 1000).toISOString();
+    expect(controlStrip(status(followed), NOW)!.execution).toContain('angehoben');
+    expect(controlStrip(status({ ...followed, allMatch: false }), NOW)!.execution).toContain('angehoben');
+    expect(controlStrip(status({ ...followed, checkedAt: old }), NOW)!.execution).toContain('angehoben');
+  });
+
+  it('never explains a correction while nothing is being executed', () => {
+    expect(controlStrip(status({ ...followed, controlEnabled: false }), NOW)!.execution).toBeNull();
+    expect(controlStrip(status({ ...followed, certified: false }), NOW)!.execution).toBeNull();
+    expect(controlStrip(null, NOW, true)!.execution).toBeNull();
+  });
+
+  it('stays exactly as before for an older edge', () => {
+    expect(controlStrip(status({}), NOW)!.execution).toBeNull();
+  });
+
+  it('keeps the customer voice (no register/Modbus vocabulary)', () => {
+    const v = controlStrip(status(followed), NOW)!;
+    expect(v.execution!).not.toMatch(/register|modbus|setpoint|guard|trim|follow/i);
   });
 });

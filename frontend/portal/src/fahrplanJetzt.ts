@@ -23,13 +23,20 @@
  * können sich damit nie widersprechen.
  *
  * Ehrlichkeit (§7 Regel 4): ohne Rücklesen gibt es KEINEN Ausführungs-Wert
- * („—" mit Grund, nie eine erfundene Zahl), ohne aufgezeichneten Grund keinen
- * Warum-Satz, und ohne die Ausführungs-Daten aus dem Heartbeat (PR 3) wird die
- * Nachführung nur GENERISCH benannt — ohne Richtung, ohne Modus-Behauptung.
+ * („—" mit Grund, nie eine erfundene Zahl) und ohne aufgezeichneten Grund
+ * keinen Warum-Satz.
+ *
+ * **Seit PR 3 reisen die Ausführungs-Daten im Heartbeat**, also benennt der
+ * Held die Nachführung mit ihrer echten Richtung („angehoben"/„begrenzt"),
+ * ihrem Modus und dem gemessenen Wert, dem gefolgt wird — über denselben
+ * `control.executionNote`, den die Cockpit-Karte rendert. Eine ÄLTERE
+ * Edge-Version sendet die Felder nicht; dann bleibt es exakt beim vorherigen
+ * Verhalten: die Anpassung wird generisch benannt, ohne Richtung und ohne
+ * Modus-Behauptung.
  */
 
 import type { ControlStatus } from './api';
-import { controlStrip } from './control';
+import { controlStrip, executionNote } from './control';
 import { roleLabel, slotWhy, type SlotRole, type WhySlot } from './fahrplanWhy';
 import { fmtNum, fmtRelative } from './format';
 import { PROVENIENZ } from './historieWelten';
@@ -56,6 +63,8 @@ export type JetztState =
   | 'planmaessig'
   /** Die Box weicht bewusst vom Plan-Watt ab (Nachführung) — grün, kein Fehler. */
   | 'angepasst'
+  /** Kein Fahrplan auf dem Gerät: es regelt nach seiner eingebauten Sicherung. */
+  | 'sicherung'
   /** Geplante Ruhe. */
   | 'ruhe'
   /** Echter Bruch: der Wechselrichter meldet etwas anderes. */
@@ -105,10 +114,11 @@ export interface JetztHeldView {
   /** Warum keine Zahl dasteht — „—" bekommt immer einen Grund. */
   valueMissing: string | null;
   /**
-   * Die Nachführungs-Zeile, NIE als Fehler formuliert: sie nennt den
-   * Plan-Wert (nichts wird versteckt) und sagt generisch, dass das Gerät
-   * innerhalb der Viertelstunde angepasst hat. Ohne die Ausführungs-Daten aus
-   * dem Heartbeat wird KEINE Richtung und KEIN Modus behauptet.
+   * Die Nachführungs-Zeile, NIE als Fehler formuliert: sie nennt den Plan-Wert
+   * (nichts wird versteckt) und — seit die Ausführungs-Daten im Heartbeat
+   * reisen (PR 3) — die ECHTE Richtung („angehoben"/„begrenzt"), den Modus und
+   * den gemessenen Wert, dem gefolgt wird. Ohne diese Daten (ältere
+   * Edge-Version) bleibt sie generisch und behauptet KEINE Richtung.
    */
   adjust: string | null;
   /** „vom Wechselrichter bestätigt · geprüft vor 8 Sek."; null = nichts bestätigt. */
@@ -150,6 +160,9 @@ const SHOWS_VALUE: ReadonlySet<JetztState> = new Set<JetztState>([
   'angepasst',
   'ruhe',
   'abweichung',
+  // Auch die eingebaute Sicherung REGELT - der Wert ist echt, nur nicht vom
+  // Fahrplan. Ihn zu verschweigen wäre unehrlicher als ihn zu zeigen.
+  'sicherung',
 ]);
 
 /**
@@ -177,7 +190,13 @@ const GREEN: ReadonlySet<JetztState> = new Set<JetztState>([
 ]);
 
 /** Die Zustände, die als echtes Problem gelesen werden dürfen. */
-const AMBER: ReadonlySet<JetztState> = new Set<JetztState>(['abweichung', 'veraltet']);
+const AMBER: ReadonlySet<JetztState> = new Set<JetztState>([
+  'abweichung',
+  'veraltet',
+  // Kein Fehler des Geräts, aber der Fahrplan erreicht es nicht - das gehört
+  // in den Blick des Betreibers (Konzept §6.1 Zustandsmatrix: amber).
+  'sicherung',
+]);
 
 function num(v: number | null | undefined): number | null {
   return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
@@ -297,14 +316,9 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
     valueNote:
       dir == null ? null : dir === 'laden' ? 'in den Speicher' : dir === 'entladen' ? 'aus dem Speicher' : 'der Speicher hält',
     valueMissing: showValue ? null : valueMissingReason(state),
-    adjust:
-      state === 'angepasst' && planKw != null
-        ? `Der Fahrplan sah ${kw(planKw)} vor — Ihr Gerät hat den Wert innerhalb der ` +
-          'Viertelstunde angepasst: es regelt auf den gemessenen Verbrauch bzw. eine ' +
-          'Schutzgrenze. Das ist so vorgesehen.'
-        : null,
+    adjust: adjustLine(state, status, planKw),
     confirm:
-      (state === 'planmaessig' || state === 'angepasst' || state === 'ruhe') && status
+      SHOWS_VALUE.has(state) && state !== 'abweichung' && status
         ? `vom Wechselrichter bestätigt · geprüft ${fmtRelative(status.checkedAt, now)}`
         : null,
     // Ein toter Plan erklärt nichts über das Jetzt - sein Grund bleibt weg.
@@ -333,6 +347,19 @@ function resolveState(
   if (stripState === 'mismatch') return 'abweichung';
   if (stripState === 'stale') return 'unbestaetigt';
   if (executedKw == null) return 'wird_vorbereitet';
+  // Seit PR 3 sagt das GERÄT selbst, warum sein Wert so ist. Das schlägt jede
+  // Ableitung aus der Differenz: eine Nachführung, die zufällig innerhalb des
+  // Totbands landet, ist trotzdem eine Nachführung - und ein Gerät ohne
+  // Fahrplan führt keinen aus, egal wie gut der Wert zum Plan passt.
+  const mode = input.control?.executionMode ?? null;
+  if (mode === 'fallback') return 'sicherung';
+  if (mode === 'follow' || mode === 'trim') return 'angepasst';
+  // Ohne den präzisen Modus (ältere Edge-Version) bleibt die GROBE Wahrheit:
+  // das Gerät sagt, dass kein Fahrplan es steuert. Das reicht, um „läuft wie
+  // vorgesehen" NICHT zu behaupten — aber NICHT, um die Ursache zu benennen
+  // (`default` fasst Sicherung, einen v2-Wunsch auf der Batterie und
+  // Kalibrierung zusammen), also bleibt die Erklär-Zeile dann leer.
+  if (input.control?.controlSource === 'default') return 'sicherung';
   if (planKw != null && Math.abs(executedKw - planKw) > ADJUST_DEADBAND_KW) return 'angepasst';
   if (direction(executedKw) === 'ruhe') return 'ruhe';
   return 'planmaessig';
@@ -354,7 +381,10 @@ function leadLine(
   kind: PlanWordingKind,
 ): string {
   if (SHOWS_VALUE.has(state)) {
-    return `Ihre Batterie ${actionPhrase(role, executedKw, kind)}`;
+    // Die eingebaute Sicherung folgt NICHT dem Plan, also darf sie sich seine
+    // Rolle auch nicht ausleihen - sie bekommt die neutrale Verbalphrase aus
+    // der tatsächlich gemessenen Richtung.
+    return `Ihre Batterie ${actionPhrase(state === 'sicherung' ? null : role, executedKw, kind)}`;
   }
   if (state === 'veraltet') return 'Ihre Batterie regelt gerade eigenständig weiter';
   if (state === 'aus' || state === 'nicht_freigegeben') {
@@ -378,6 +408,8 @@ function statusLine(
       return 'Läuft wie vorgesehen — nichts zu tun';
     case 'ruhe':
       return 'Ruhe — so geplant, nichts zu tun';
+    case 'sicherung':
+      return 'Ihr Gerät regelt gerade ohne Fahrplan — bitte im Blick behalten';
     case 'abweichung':
       return executedKw != null && confirmedKw != null
         ? `Der Wechselrichter meldet ${kw(confirmedKw)} statt ${kw(executedKw)} — bitte im Blick behalten`
@@ -391,6 +423,36 @@ function statusLine(
       // bestehenden ehrlichen Sätze der Steuerungs-Ableitung, unverändert.
       return stripSentence ?? 'Zur Steuerung liegt gerade keine Rückmeldung vor';
   }
+}
+
+/**
+ * Die Zeile über die bewusste Abweichung — PRÄZISE, sobald das Gerät sie
+ * meldet, sonst generisch.
+ *
+ * Die präzise Fassung kommt aus `control.executionNote` (derselbe Satz, den
+ * die Cockpit-Karte zeigt — es gibt keine zweite Formulierung); erst wenn die
+ * Edge-Version die Felder nicht sendet, bleibt es bei der Aussage, DASS
+ * angepasst wurde — ohne Richtung, ohne Modus (§7 Regel 4).
+ */
+function adjustLine(
+  state: JetztState,
+  status: ControlStatus | null,
+  planKw: number | null,
+): string | null {
+  // Nur wo wirklich ein Sollwert ausgeführt wird: eine Korrektur zu erklären,
+  // während die Steuerung aus oder der Plan tot ist, wäre eine Aussage über
+  // etwas, das gerade nicht passiert (dieselbe Regel wie beim Warum-Satz).
+  if (!SHOWS_VALUE.has(state)) return null;
+  const precise = executionNote(status);
+  if (precise) return precise;
+  if (state === 'angepasst' && planKw != null) {
+    return (
+      `Der Fahrplan sah ${kw(planKw)} vor — Ihr Gerät hat den Wert innerhalb der ` +
+      'Viertelstunde angepasst: es regelt auf den gemessenen Verbrauch bzw. eine ' +
+      'Schutzgrenze. Das ist so vorgesehen.'
+    );
+  }
+  return null;
 }
 
 function valueMissingReason(state: JetztState): string | null {

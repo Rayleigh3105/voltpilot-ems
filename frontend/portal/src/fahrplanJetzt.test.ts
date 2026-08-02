@@ -241,3 +241,161 @@ describe('measurementChips · Vorzeichen als Wort, nie eine erfundene 0', () => 
     expect(measurementChips(null)).toEqual([]);
   });
 });
+
+/**
+ * PR 3 des Konzepts: die Ausführungs-Daten reisen jetzt im Heartbeat, also
+ * BENENNT der Held die Nachführung statt sie zu umschreiben. Der Vertrag
+ * daneben ist die Kompatibilität — eine ältere Edge-Version sendet die Felder
+ * nicht, und dann muss alles exakt beim Stufe-2-Verhalten bleiben.
+ */
+describe('jetztHeld · die echte Richtung der Nachführung (PR 3)', () => {
+  const deepened = {
+    commandedKw: -7.087,
+    confirmedKw: -7.087,
+    executionMode: 'follow' as const,
+    executionDirection: 'deepen' as const,
+    executionPlannedKw: -4.332,
+    executionTargetKw: 7.087,
+  };
+
+  it('sagt ANGEHOBEN statt „irgendwie angepasst" - und bleibt grün', () => {
+    // Die Live-Konstellation vom 30.07., 21:22 (Anlage Pilsting).
+    const v = jetztHeld(input({ control: status(deepened) }));
+    expect(v.state).toBe('angepasst');
+    expect(v.tone).toBe('ok');
+    expect(v.status).toContain('nichts zu tun');
+    expect(v.adjust).toContain('angehoben');
+    expect(v.adjust).toContain(`4,3${NBSP}kW`); // der Plan bleibt sichtbar
+    expect(v.adjust).toContain(`7,1${NBSP}kW`); // der gemessene Hausbedarf
+    // Die generische Stufe-2-Formulierung ist damit ersetzt, nicht ergänzt.
+    expect(v.adjust).not.toContain('bzw. eine Schutzgrenze');
+  });
+
+  it('sagt BEGRENZT auf der anderen Seite derselben Pflicht', () => {
+    const v = jetztHeld(
+      input({
+        slot: slot({ batteryKw: -6.7 }),
+        control: status({
+          commandedKw: -5.1,
+          confirmedKw: -5.1,
+          executionMode: 'follow',
+          executionDirection: 'reduce',
+          executionPlannedKw: -6.7,
+          executionTargetKw: 5.1,
+        }),
+      }),
+    );
+    expect(v.state).toBe('angepasst');
+    expect(v.adjust).toContain('begrenzt');
+    expect(v.adjust).not.toContain('angehoben');
+  });
+
+  it('nennt die preisbewusste Begrenzung als Lade-Fall', () => {
+    const v = jetztHeld(
+      input({
+        slot: slot({ batteryKw: 11.1, slotRole: 'pv_speichern' }),
+        control: status({
+          commandedKw: 3.1,
+          confirmedKw: 3.1,
+          executionMode: 'trim',
+          executionPlannedKw: 11.1,
+          executionTargetKw: 3.1,
+        }),
+      }),
+    );
+    expect(v.state).toBe('angepasst');
+    expect(v.valueNote).toBe('in den Speicher');
+    expect(v.adjust).toContain('Solar-Überschuss');
+  });
+
+  it('erkennt eine Nachführung auch INNERHALB des Totbands', () => {
+    // Der Wert deckt sich zufällig fast mit dem Plan - gemeldet ist sie
+    // trotzdem, also wird sie auch so benannt (das Gerät weiß es besser als
+    // eine Differenz-Heuristik).
+    const v = jetztHeld(
+      input({
+        slot: slot({ batteryKw: -6.15 }),
+        control: status({
+          executionMode: 'follow',
+          executionDirection: 'deepen',
+          executionPlannedKw: -6.15,
+          executionTargetKw: 6.1,
+        }),
+      }),
+    );
+    expect(v.state).toBe('angepasst');
+    expect(v.adjust).toContain('angehoben');
+  });
+
+  it('nennt die eingebaute Sicherung, wenn kein Fahrplan das Gerät steuert', () => {
+    const v = jetztHeld(
+      input({
+        control: status({ controlSource: 'default', executionMode: 'fallback' }),
+      }),
+    );
+    expect(v.state).toBe('sicherung');
+    expect(v.tone).toBe('warn');
+    expect(v.status).toContain('ohne Fahrplan');
+    expect(v.adjust).toContain('Sicherung');
+    // Der Wert ist echt und wird gezeigt - aber die Rolle des Plans wird NICHT
+    // ausgeliehen (das Gerät folgt ihm ja gerade nicht).
+    expect(v.value).toBe(`6,1${NBSP}kW`);
+    expect(v.lead).toBe('Ihre Batterie entlädt gerade');
+    expect(v.lead).not.toContain('deckt gerade den Verbrauch');
+    // Und der Grund des Plans erklärt einen Fallback nicht.
+    expect(v.why).toBeNull();
+  });
+
+  it('behauptet ohne präzisen Modus nur, DASS kein Fahrplan steuert', () => {
+    // Eine ältere Edge-Version sendet nur das grobe `control_source`. Das
+    // reicht, um „läuft wie vorgesehen" nicht zu behaupten - aber nicht, um
+    // die Ursache zu benennen (`default` fasst Sicherung, einen v2-Wunsch auf
+    // der Batterie und Kalibrierung zusammen).
+    const v = jetztHeld(input({ control: status({ controlSource: 'default' }) }));
+    expect(v.state).toBe('sicherung');
+    expect(v.status).toContain('ohne Fahrplan');
+    expect(v.adjust).toBeNull();
+    expect(v.why).toBeNull();
+    // Ein Gerät, das den Fahrplan ausführt, ist davon unberührt.
+    expect(jetztHeld(input({ control: status({ controlSource: 'schedule' }) })).state).toBe(
+      'angepasst',
+    );
+  });
+
+  it('lässt einen echten Bruch schwerer wiegen als jede Nachführung', () => {
+    const v = jetztHeld(
+      input({ control: status({ ...deepened, allMatch: false, confirmedKw: -2 }) }),
+    );
+    expect(v.state).toBe('abweichung');
+    expect(v.tone).toBe('warn');
+  });
+
+  it('behauptet über einem toten Plan weiterhin nichts', () => {
+    const v = jetztHeld(input({ control: status(deepened), planStale: true }));
+    expect(v.state).toBe('veraltet');
+    expect(v.adjust).toBeNull();
+  });
+
+  it('bleibt bei einer ÄLTEREN Edge-Version exakt beim Stufe-2-Verhalten', () => {
+    // Kein execution-Block, kein control_source: dieselbe generische Aussage
+    // wie vor PR 3 - und keine erfundene Richtung.
+    const v = jetztHeld(input());
+    expect(v.state).toBe('angepasst');
+    expect(v.adjust).toContain('angepasst');
+    expect(v.adjust).not.toMatch(/angehoben|begrenzt|Sicherung|Solar-Überschuss/);
+  });
+
+  it('erfindet ohne gemessenen Wert keine 0', () => {
+    const v = jetztHeld(
+      input({
+        control: status({
+          executionMode: 'follow',
+          executionDirection: 'deepen',
+          executionPlannedKw: -4.332,
+        }),
+      }),
+    );
+    expect(v.adjust).toContain('angehoben');
+    expect(v.adjust).not.toContain(`0,0${NBSP}kW`);
+  });
+});

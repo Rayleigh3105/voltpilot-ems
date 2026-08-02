@@ -4487,6 +4487,78 @@ class PortalApiTest {
     }
 
     /**
+     * The in-slot EXECUTION truth reaches the portal (Fahrplan concept
+     * vp-fahrplan-kunde-konzept §5, PR 3). Since the in-slot duties the box
+     * knowingly deviates from the plan's watt value, so {@code commandedKw}
+     * alone left the portal stating a bare number next to a Fahrplan bar
+     * showing a different one - it could name no direction and no cause. The
+     * heartbeat's additive {@code control.execution} block plus the top-level
+     * {@code control_source} now travel end to end, and an older edge (no
+     * block) provably still lands with NULLs, so nothing claims a direction it
+     * was not told.
+     */
+    @Test
+    void controlStatusCarriesTheInSlotExecutionTruthAndDegradesForAnOlderEdge() {
+        var listener = new com.voltpilot.api.control.ControlStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, controlStatusRepo);
+        String topic = "ems/00000000-0000-0000-0000-000000000001/"
+                + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
+        String head = "{\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\",";
+
+        // The captain's live constellation (30.07., 21:22): the plan discharged
+        // -4,332 kW into a 7,117 kW house, so the box RAISED the discharge.
+        listener.handle(topic, (head
+                + "\"control_source\":\"schedule\","
+                + "\"control\":{\"commanded_kw\":-7.087,\"confirmed_kw\":-7.087,\"all_match\":true,"
+                + "\"control_enabled\":true,\"certified\":true,"
+                + "\"checked_at\":\"2026-07-30T21:22:03Z\","
+                + "\"execution\":{\"mode\":\"follow\",\"direction\":\"deepen\","
+                + "\"planned_kw\":-4.332,\"deficit_kw\":7.087}}}").getBytes(StandardCharsets.UTF_8));
+
+        ResponseEntity<Map> followed = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), Map.class);
+        assertThat(followed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(followed.getBody().get("controlSource")).isEqualTo("schedule");
+        assertThat(followed.getBody().get("executionMode")).isEqualTo("follow");
+        assertThat(followed.getBody().get("executionDirection")).isEqualTo("deepen");
+        assertThat(followed.getBody().get("executionPlannedKw")).isEqualTo(-4.332);
+        assertThat(followed.getBody().get("executionTargetKw")).isEqualTo(7.087);
+
+        // The correction ENDS: the whole row is replaced, so no stale direction
+        // may survive as a claim about what the device is doing now.
+        listener.handle(topic, (head
+                + "\"control_source\":\"schedule\","
+                + "\"control\":{\"commanded_kw\":-4.0,\"confirmed_kw\":-4.0,\"all_match\":true,"
+                + "\"control_enabled\":true,\"certified\":true,"
+                + "\"checked_at\":\"2026-07-30T21:40:00Z\","
+                + "\"execution\":{\"mode\":\"plan\"}}}").getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> planned = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), Map.class);
+        assertThat(planned.getBody().get("executionMode")).isEqualTo("plan");
+        assertThat(planned.getBody().get("executionDirection")).isNull();
+        assertThat(planned.getBody().get("executionPlannedKw")).isNull();
+        assertThat(planned.getBody().get("executionTargetKw")).isNull();
+
+        // An OLDER edge sends no execution block: the coarse source lands, the
+        // precise fields stay NULL - the portal keeps its generic wording.
+        listener.handle(topic, (head
+                + "\"control_source\":\"default\","
+                + "\"control\":{\"commanded_kw\":-2.0,\"confirmed_kw\":-2.0,\"all_match\":true,"
+                + "\"control_enabled\":true,\"certified\":true,"
+                + "\"checked_at\":\"2026-07-30T21:55:00Z\"}}").getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> legacy = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), Map.class);
+        assertThat(legacy.getBody().get("controlSource")).isEqualTo("default");
+        assertThat(legacy.getBody().get("executionMode")).isNull();
+        assertThat(legacy.getBody().get("executionDirection")).isNull();
+    }
+
+    /**
      * The per-source PV breakdown (#524): a multi-inverter site's composite PV
      * was ONE opaque number in the portal, so the parts (Deye 8,3 + Fronius 21,3
      * + Fronius WR 2 9,3) were visible only on the edge's own :8484 page. The

@@ -5,7 +5,7 @@
 //
 // Deliberately free of internal vocabulary (no register/Modbus/kill-switch
 // jargon) - that detail lives on the technician's :8484 card.
-import type { ControlStatus } from './api';
+import type { ControlStatus, ExecutionDirection, ExecutionMode } from './api';
 import { fmtNum, fmtRelative } from './format';
 
 /**
@@ -54,6 +54,16 @@ export interface ControlStripView {
    * exactly as before, never with an invented cause.
    */
   reason: string | null;
+  /**
+   * WAS das Gerät gerade selbst am Sollwert geändert hat, in einem Satz -
+   * `executionNote()` über die Ausführungs-Felder des Heartbeats (PR 3).
+   *
+   * Der Unterschied zu `reason`: `reason` ist die Begründung des OPTIMIERERS
+   * für den Slot, `execution` die des GERÄTS für die Abweichung vom
+   * Plan-Watt-Wert. Null, solange die Edge-Version die Felder nicht sendet
+   * oder gar nichts korrigiert wurde - dann wird keine Richtung behauptet.
+   */
+  execution: string | null;
 }
 
 // A confirmation older than this reads as "stale" - kept in sync with the
@@ -62,6 +72,88 @@ export const CONTROL_STALE_MS = 5 * 60 * 1000;
 
 function kw(v: number | null): string {
   return v == null ? '–' : fmtNum(v, 'kW', 1);
+}
+
+/** „6,1 kW" ohne Vorzeichen — die Richtung ist ein Wort, nie ein Minus. */
+function absKw(v: number): string {
+  return fmtNum(Math.abs(v), 'kW', 1);
+}
+
+/**
+ * Die Richtung einer Nachführung als WORT. Beide sind bewusste Korrekturen -
+ * eine unbenannte Korrektur liest sich als Defekt (genau der gemeldete
+ * Eindruck, als die Steuerungs-Karte nur zwei verschiedene Zahlen zeigte).
+ */
+export function directionLabel(direction: ExecutionDirection | null | undefined): string | null {
+  if (direction === 'deepen') return 'angehoben';
+  if (direction === 'reduce') return 'begrenzt';
+  return null;
+}
+
+/** Die deutschen Namen der vier Ausführungs-Modi (Anzeige, nie Fachjargon). */
+export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
+  plan: 'Fahrplan',
+  follow: 'Nachführung',
+  trim: 'Solar-Überschuss',
+  fallback: 'Eingebaute Sicherung',
+};
+
+/**
+ * executionNote - der EINE deutsche Satz, der die bewusste Abweichung des
+ * Geräts vom Plan-Watt-Wert benennt.
+ *
+ * Das ist die Lücke, die PR 3 schließt: `commandedKw` trägt seit den
+ * In-Slot-Pflichten den KORRIGIERTEN Wert, aber nichts sagte, warum - also
+ * standen zwei verschiedene Zahlen (Plan-Balken vs. geregelter Wert) ohne
+ * Erklärung nebeneinander. Der Satz nennt die Richtung, den Plan-Wert und den
+ * gemessenen Wert, dem gefolgt wird.
+ *
+ * **Nie eine Behauptung ohne Daten** (§7 Regel 4): ohne Ausführungs-Felder
+ * (ältere Edge-Version) und bei `plan` gibt es KEINEN Satz - der Aufrufer
+ * bleibt dann bei seiner generischen Formulierung. Ein fehlender Messwert
+ * lässt seinen Halbsatz weg statt eine 0 zu erfinden.
+ */
+export function executionNote(status: ControlStatus | null): string | null {
+  const mode = status?.executionMode ?? null;
+  if (!status || mode == null || mode === 'plan') return null;
+
+  const planned = num(status.executionPlannedKw);
+  const target = num(status.executionTargetKw);
+  const plannedPart = planned == null ? '' : `Der Fahrplan sah ${absKw(planned)} vor — `;
+
+  if (mode === 'fallback') {
+    return (
+      'Auf Ihrem Gerät liegt kein aktueller Fahrplan — es regelt selbstständig auf ' +
+      'Eigenverbrauch (die eingebaute Sicherung).'
+    );
+  }
+  if (mode === 'trim') {
+    const surplus = target == null ? '' : ` (${absKw(target)})`;
+    return (
+      `${plannedPart}geladen wird nur der gemessene Solar-Überschuss${surplus}: ` +
+      'Netzstrom wäre in dieser Viertelstunde teurer als der spätere Nutzen.'
+    );
+  }
+  // follow
+  const measured = target == null ? '' : ` (${absKw(target)})`;
+  if (status.executionDirection === 'reduce') {
+    return (
+      `${plannedPart}Ihr Haus braucht gerade weniger. Die Entladung wurde auf den ` +
+      `gemessenen Verbrauch${measured} begrenzt, damit kein Strom unnötig ins Netz geht.`
+    );
+  }
+  if (status.executionDirection === 'deepen') {
+    return (
+      `${plannedPart}Ihr Haus braucht gerade mehr. Die Entladung wurde auf den ` +
+      `gemessenen Verbrauch${measured} angehoben, damit kein Netzstrom nötig ist.`
+    );
+  }
+  // Nachführung ohne gemeldete Richtung: benennen, aber keine erfinden.
+  return `${plannedPart}Ihr Gerät folgt gerade dem gemessenen Verbrauch${measured}.`;
+}
+
+function num(v: number | null | undefined): number | null {
+  return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
 }
 
 /**
@@ -95,6 +187,7 @@ export function controlStrip(
         'Die Steuerung wird vorbereitet - sobald Ihr Wechselrichter den ersten Sollwert bestätigt, sehen Sie es hier.',
       agoNote: '',
       reason: null,
+      execution: null,
     };
   }
 
@@ -106,11 +199,16 @@ export function controlStrip(
       sentence: 'Die Steuerung ist für dieses Modell noch nicht freigegeben - die Anlage wird nur ausgelesen.',
       agoNote: '',
       reason: null,
+      execution: null,
     };
   }
 
   const commanded = kw(status.commandedKw);
   const confirmed = kw(status.confirmedKw);
+  // Die Selbst-Erklärung des GERÄTS (PR 3) - nur dort angehängt, wo auch ein
+  // Sollwert gezeigt wird; sie erklärt eine Abweichung, die ohne Sollwert gar
+  // nicht sichtbar wäre. Null ohne Ausführungs-Felder (ältere Edge-Version).
+  const note = executionNote(status);
   const ago = fmtRelative(status.checkedAt, now);
   const ageMs = now.getTime() - new Date(status.checkedAt).getTime();
   const stale = !isNaN(ageMs) && ageMs > CONTROL_STALE_MS;
@@ -123,6 +221,7 @@ export function controlStrip(
       sentence: 'Die Wechselrichter-Steuerung ist ausgeschaltet. VoltPilot liest die Anlage aus, steuert sie aber nicht.',
       agoNote: '',
       reason: null,
+      execution: null,
     };
   }
 
@@ -133,6 +232,7 @@ export function controlStrip(
       sentence: `Zuletzt geregelt auf ${commanded} - bestätigt ${confirmed}`,
       agoNote: `zuletzt geprüft ${ago}`,
       reason,
+      execution: note,
     };
   }
 
@@ -143,6 +243,7 @@ export function controlStrip(
       sentence: `Ihr Gerät regelt gerade auf ${commanded} → Wechselrichter meldet ${confirmed}`,
       agoNote: `Abweichung · geprüft ${ago}`,
       reason,
+      execution: note,
     };
   }
 
@@ -152,6 +253,7 @@ export function controlStrip(
     sentence: `Ihr Gerät regelt gerade auf ${commanded} → Wechselrichter bestätigt ${confirmed}`,
     agoNote: `geprüft ${ago}`,
     reason,
+    execution: note,
   };
 }
 

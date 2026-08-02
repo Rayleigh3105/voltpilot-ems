@@ -1444,7 +1444,68 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 			break
 		}
 	}
+	sum.Execution = executionSummary(snap)
 	return sum
+}
+
+// The `execution.mode` vocabulary - see cloud.ExecutionSummary.
+const (
+	execModePlan     = "plan"
+	execModeFollow   = "follow"
+	execModeTrim     = "trim"
+	execModeFallback = "fallback"
+)
+
+// executionSummary folds the in-slot corrections (snap.Follow / snap.Trim) plus
+// the plan-vs-fallback mode into the additive heartbeat block, so the cloud can
+// name WHY the commanded value deviates from the plan's watt value instead of
+// stating a bare "the device adjusted it" (the concept's PR-3 gap).
+//
+// The two corrections are mutually exclusive by construction (one acts on
+// charge, the other on discharge), but the order is fixed anyway so the block
+// is deterministic. A device without a fresh plan reports "fallback" - the
+// truth the top-level control_source carries too, repeated here so ONE block
+// answers the question. Values are COPIED out of the snapshot, never aliased.
+func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
+	if f := snap.Follow; f != nil && f.Active {
+		return &cloud.ExecutionSummary{
+			Mode:      execModeFollow,
+			Direction: f.Direction,
+			PlannedKw: copyFloat(&f.PlannedKw),
+			DeficitKw: copyFloat(f.DeficitKw),
+		}
+	}
+	if t := snap.Trim; t != nil && t.Active {
+		return &cloud.ExecutionSummary{
+			Mode:      execModeTrim,
+			PlannedKw: copyFloat(&t.PlannedKw),
+			SurplusKw: copyFloat(t.SurplusKw),
+		}
+	}
+	// Only the two modes that map CLEANLY onto the vocabulary make a claim. A
+	// desired-held battery (v2 flow/override), a calibration run or a device
+	// without readings is none of "plan"/"fallback" - the block is then omitted
+	// entirely rather than mislabelled, and the cloud keeps its coarse wording
+	// (the top-level control_source collapses all of these into "default",
+	// which is exactly why it cannot be the precise signal).
+	switch snap.Mode {
+	case state.ModeSchedule:
+		return &cloud.ExecutionSummary{Mode: execModePlan}
+	case state.ModeSelfConsume:
+		return &cloud.ExecutionSummary{Mode: execModeFallback}
+	default:
+		return nil
+	}
+}
+
+// copyFloat returns an independent copy so the heartbeat block never aliases
+// snapshot memory (a pointer into a struct the next Update replaces).
+func copyFloat(v *float64) *float64 {
+	if v == nil {
+		return nil
+	}
+	out := *v
+	return &out
 }
 
 // The confirmation state machine behind the :8484 warning (the flap fix,

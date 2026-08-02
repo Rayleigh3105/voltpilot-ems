@@ -4393,7 +4393,7 @@ components:
       description: Latest inverter-control confirmation for a site (report §5).
       properties:
         deviceId: { type: string, format: uuid }
-        commandedKw: { type: number, nullable: true, description: "Commanded battery setpoint (Fahrplan-Sollwert)." }
+        commandedKw: { type: number, nullable: true, description: "What the DEVICE regulates on. Since the in-slot duties this is the CORRECTED value, not the plan's watt value - executionMode/-Direction say why it differs." }
         confirmedKw: { type: number, nullable: true, description: "Setpoint the inverter read back." }
         allMatch: { type: boolean, description: "True when every controlled register confirmed its commanded value." }
         controlEnabled: { type: boolean, description: "Whether the device's control kill-switch is on." }
@@ -4401,6 +4401,11 @@ components:
         mismatchRoles: { type: string, nullable: true, description: "Comma-separated roles that did not confirm (e.g. \"battery_power\")." }
         slotStart: { type: string, format: date-time, nullable: true }
         checkedAt: { type: string, format: date-time, description: "When the readback was taken (\"geprüft vor X\")." }
+        controlSource: { type: string, nullable: true, enum: [schedule, default], description: "The device's COARSE truth: is a fresh plan driving it at all. It collapses every non-schedule mode (self-consumption fallback, a v2 desired holding the battery, calibration) into `default`, so it must never be rendered as \"the built-in safety rule is running\" - executionMode is the precise signal. Null for a pre-PR-3 row." }
+        executionMode: { type: string, nullable: true, enum: [plan, follow, trim, fallback], description: "WHY the commanded value is what it is: `plan` = the plan's own value, `follow` = in-slot load following (discharge tracks the measured house deficit), `trim` = price-aware in-slot trim (charge held at the measured PV surplus), `fallback` = no fresh plan, the built-in self-consumption rule. Null for an older edge, or for a mode that maps onto none of them (the edge omits the block rather than mislabel it)." }
+        executionDirection: { type: string, nullable: true, enum: [deepen, reduce], description: "Only for executionMode `follow`: the discharge was RAISED to cover the house (`deepen`) or LIMITED to what it needs (`reduce`). Both are deliberate; an unnamed correction reads as a defect. Null otherwise." }
+        executionPlannedKw: { type: number, nullable: true, description: "The setpoint BEFORE the correction, so plan and execution can stand side by side instead of being two contradicting numbers under one word. Only for follow/trim." }
+        executionTargetKw: { type: number, nullable: true, description: "The MEASURED value the correction tracks - the house deficit for `follow`, the PV surplus for `trim`; which one follows unambiguously from executionMode. Null when the device could not measure it (it never regulates blind, and never reports blind either) - never a fabricated 0." }
     SiteSource:
       type: object
       description: >

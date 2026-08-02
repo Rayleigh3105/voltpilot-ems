@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
@@ -51,6 +52,10 @@ public class ControlStatusListener {
 
     private static final Logger log = LoggerFactory.getLogger(ControlStatusListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
+    /** The four execution modes the edge may report - anything else is ignored. */
+    private static final Set<String> EXECUTION_MODES = Set.of("plan", "follow", "trim", "fallback");
+    /** The two follow directions - only meaningful for mode {@code follow}. */
+    private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
 
     private final String brokerUrl;
     private final String username;
@@ -181,10 +186,61 @@ public class ControlStatusListener {
                     control.path("control_enabled").asBoolean(false),
                     control.path("certified").asBoolean(false),
                     joinRoles(control.get("mismatch_roles")),
-                    optInstant(control, "slot_start"), checkedAt(control));
+                    optInstant(control, "slot_start"), checkedAt(control),
+                    execution(json, control));
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * The in-slot EXECUTION truth of this heartbeat: the top-level
+     * {@code control_source} (sent by every edge for ages, ignored until now)
+     * plus the additive {@code control.execution} block (PR 3).
+     *
+     * <p>Strict on purpose - an unknown mode or direction is DROPPED rather
+     * than stored, because every consumer turns these into a sentence about
+     * what the device is doing, and a word we do not understand must not
+     * become a claim. The measured target is whichever of
+     * {@code deficit_kw}/{@code surplus_kw} the mode implies; both absent (the
+     * device could not measure it) stays null, never 0.
+     */
+    private static ControlStatusRepository.Execution execution(JsonNode json, JsonNode control) {
+        String source = optText(json, "control_source");
+        JsonNode ex = control.get("execution");
+        if (ex == null || !ex.isObject()) {
+            // An older edge: the coarse source is all we know, and it is stored
+            // as exactly that - no mode, no direction, no invented detail.
+            return new ControlStatusRepository.Execution(source, null, null, null, null);
+        }
+        String mode = optText(ex, "mode");
+        if (mode != null && !EXECUTION_MODES.contains(mode)) {
+            log.warn("unknown control execution mode '{}' ignored", mode);
+            mode = null;
+        }
+        String direction = "follow".equals(mode) ? optText(ex, "direction") : null;
+        if (direction != null && !FOLLOW_DIRECTIONS.contains(direction)) {
+            log.warn("unknown control follow direction '{}' ignored", direction);
+            direction = null;
+        }
+        // WHICH measurement the target is only follows from the mode, so a
+        // dropped/absent mode leaves it out too - an uninterpretable number is
+        // worse than none.
+        Double target = mode == null
+                ? null
+                : "trim".equals(mode) ? optDouble(ex, "surplus_kw") : optDouble(ex, "deficit_kw");
+        return new ControlStatusRepository.Execution(
+                source, mode, direction, optDouble(ex, "planned_kw"), target);
+    }
+
+    /** A non-blank text field, or null. */
+    private static String optText(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        if (v == null || v.isNull() || !v.isTextual()) {
+            return null;
+        }
+        String s = v.asText().trim();
+        return s.isEmpty() ? null : s;
     }
 
     private static Double optDouble(JsonNode node, String field) {

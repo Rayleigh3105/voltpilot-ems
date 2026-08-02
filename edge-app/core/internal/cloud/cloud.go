@@ -476,6 +476,50 @@ type ControlSummary struct {
 	// the cloud (additive; report §9 #6). True = a commanded register is not held
 	// while actively controlling -> a second controller may be steering the inverter.
 	PossibleConflict bool `json:"possible_conflict,omitempty"`
+	// Execution is WHY the commanded value is what it is - see ExecutionSummary.
+	// Additive; absent on an older core, and the cloud then keeps its generic
+	// "the device adjusted the value" wording.
+	Execution *ExecutionSummary `json:"execution,omitempty"`
+}
+
+// ExecutionSummary is the additive `execution` block inside ControlSummary
+// (Fahrplan-Konzept vp-fahrplan-kunde-konzept §5, PR 3): the in-slot correction
+// the box applied, so the cloud can name it instead of guessing.
+//
+// The reported problem it closes: since the in-slot duties (2026-07-30) the box
+// DELIBERATELY deviates from the plan's watt value - it tracks the measured
+// house deficit (load following) or holds a charge at the measured PV surplus
+// (price-aware trim). CommandedKw already carries the CORRECTED value, but the
+// heartbeat carried no trace of the correction, so the portal could only state
+// that "something was adjusted" - without direction, without cause. The
+// direction is the load-bearing half: raising and limiting a discharge are both
+// deliberate, and an unnamed correction reads as a defect.
+//
+// Every field except Mode is optional, and each one is only present when the
+// device actually measured it - an absent value is never coerced to 0.
+type ExecutionSummary struct {
+	// Mode is what drives the commanded setpoint right now:
+	//
+	//	"plan"     - the fresh cloud plan's own value, uncorrected
+	//	"follow"   - in-slot load following (guards.LoadFollower)
+	//	"trim"     - price-aware in-slot trim (guards.PriceTrimmer)
+	//	"fallback" - no fresh plan: the built-in self-consumption rule
+	Mode string `json:"mode"`
+	// Direction is guards.FollowDeepen ("deepen", the discharge was RAISED to
+	// cover the house) or guards.FollowReduce ("reduce", it was LIMITED to what
+	// the house needs). Only set for mode "follow".
+	Direction string `json:"direction,omitempty"`
+	// PlannedKw is the setpoint BEFORE the correction - what the plan/holder
+	// asked for, so the portal can show plan and execution side by side instead
+	// of two contradicting numbers under one word. Only set for follow/trim.
+	PlannedKw *float64 `json:"planned_kw,omitempty"`
+	// DeficitKw is the measured house deficit max(load - pv, 0) a "follow"
+	// discharge tracks; absent when unknown (the correction is inactive then -
+	// never regulate blind).
+	DeficitKw *float64 `json:"deficit_kw,omitempty"`
+	// SurplusKw is the measured PV surplus a "trim" charge is held at; absent
+	// when unknown, same rule as DeficitKw.
+	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 }
 
 // CurtailmentSummary is the additive `curtailment` heartbeat block: the

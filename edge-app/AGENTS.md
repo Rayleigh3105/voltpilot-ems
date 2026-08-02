@@ -1218,6 +1218,29 @@ Plan zu wenig entlädt, begrenzen, wenn er zu viel entlädt. Was zusätzlich zum
   bewusst NICHT vakuum: er belegt, dass genau diese `verkaufen`-Slots ökonomisch markiert WORDEN
   WÄREN, Setpoints byte-identisch).
 
+**Und die Korrektur reist jetzt in die CLOUD (`cloud.ExecutionSummary`, Fahrplan-Konzept
+`vp-fahrplan-kunde-konzept` §5, PR 3, 2026-08-02).** `FollowInfo`/`TrimInfo` lebten NUR auf der Box,
+der Heartbeat trug sie nicht — das Portal sah also `commanded_kw` (den KORRIGIERTEN Wert) neben
+einem Fahrplan-Balken mit einer anderen Zahl und konnte nur sagen, dass „irgendetwas angepasst"
+wurde. `agent.executionSummary(snap)` faltet sie als additiven `execution`-Block IN die
+`control`-Struktur des Heartbeats (Präzedenz: die `sources`/`flows`-Blöcke; `schema_version` bleibt
+"1.0", MQTT-Kontrakte unberührt):
+
+- `mode` = `plan` | `follow` | `trim` | `fallback`, dazu `direction` (`deepen`/`reduce`, NUR bei
+  `follow`), `planned_kw` (der Sollwert VOR der Korrektur) und der GEMESSENE Wert, dem gefolgt wird
+  (`deficit_kw` bei follow, `surplus_kw` bei trim).
+- **Ein Modus, der nicht sauber auf das Vokabular passt, macht GAR KEINE Aussage:** nur
+  `ModeSchedule` → `plan` und `ModeSelfConsume` → `fallback`; ein v2-Wunsch auf der Batterie
+  (`ModeDesired`), eine Kalibrierung oder ein Gerät ohne Messwerte lassen den Block weg statt sich
+  falsch zu etikettieren. Genau deshalb ist das top-level `control_source` NICHT das präzise Signal
+  — es fasst all das zu `default` zusammen.
+- Ein nicht gemessener Wert bleibt ABWESEND (nie eine erfundene 0); ohne Readback gibt es weiterhin
+  gar keinen `control`-Block, der Vertrag für ein Gerät, das nichts bestätigt, ist byte-gleich.
+- Beweise: `agent/execution_summary_test.go` (beide Richtungen mit den Live-Konstellationen 21:22 /
+  23:12, Trim, plan-vs-fallback, unmapped-Modus ohne Aussage, `omitempty`-Drahtform).
+  Cloud-Seite: api-Migration `V20260802000000` + `ControlStatusListener` + `ControlStatusDto`
+  (siehe Root-`AGENTS.md` „Inverter control"), Portal: `control.ts executionNote`.
+
 ## Wer etwas ANDERES entwertet, nennt die Folge VORHER (`static/consequences.js`)
 
 Die Nebenwirkungs-Regel des Settings-Umbaus (E3; Ist-Analyse

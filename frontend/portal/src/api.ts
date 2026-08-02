@@ -1115,8 +1115,27 @@ export interface Overview {
  * the "Steuerung" strip turns into "geprüft vor X". `controlEnabled` /
  * `certified` distinguish "confirmed", "control off" and "not yet released".
  */
+/**
+ * WHY the commanded setpoint is what it is (PR 3 des Fahrplan-Konzepts).
+ *
+ *   plan     - der Plan-Wert selbst, unkorrigiert
+ *   follow   - Nachführung: die Entladung folgt dem GEMESSENEN Hausbedarf
+ *   trim     - preisbewusste Begrenzung: die Ladung hält beim gemessenen
+ *              PV-Überschuss
+ *   fallback - kein aktueller Fahrplan: die eingebaute Eigenverbrauchs-Regel
+ */
+export type ExecutionMode = 'plan' | 'follow' | 'trim' | 'fallback';
+
+/** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */
+export type ExecutionDirection = 'deepen' | 'reduce';
+
 export interface ControlStatus {
   deviceId: string;
+  /**
+   * Worauf das GERÄT regelt. Seit den Nachführungs-Pflichten ist das der
+   * KORRIGIERTE Wert, nicht der Plan-Wert — `executionMode`/`-Direction`
+   * sagen, warum er abweicht.
+   */
   commandedKw: number | null;
   confirmedKw: number | null;
   allMatch: boolean;
@@ -1125,6 +1144,26 @@ export interface ControlStatus {
   mismatchRoles: string | null;
   slotStart: string | null;
   checkedAt: string;
+  /**
+   * Die GROBE Wahrheit des Geräts: steuert überhaupt ein aktueller Fahrplan?
+   * Sie fasst jeden Nicht-Fahrplan-Modus (eingebaute Sicherung, ein v2-Wunsch
+   * auf der Batterie, Kalibrierung) zu `default` zusammen — deshalb darf sie
+   * NIE als „die eingebaute Sicherung läuft" gelesen werden; das präzise
+   * Signal ist `executionMode`. Null/absent bei einer älteren Zeile.
+   */
+  controlSource?: 'schedule' | 'default' | null;
+  /** Der präzise Grund; null/absent bei einer älteren Edge-Version. */
+  executionMode?: ExecutionMode | null;
+  /** Nur bei `follow`: angehoben (`deepen`) oder begrenzt (`reduce`). */
+  executionDirection?: ExecutionDirection | null;
+  /** Der Sollwert VOR der Korrektur (nur follow/trim). */
+  executionPlannedKw?: number | null;
+  /**
+   * Der GEMESSENE Wert, dem die Korrektur folgt — Hausbedarf bei `follow`,
+   * PV-Überschuss bei `trim`. Null, wenn das Gerät ihn nicht messen konnte
+   * (es regelt nie blind und meldet nie blind) — nie eine erfundene 0.
+   */
+  executionTargetKw?: number | null;
 }
 
 // ---- Per-source breakdown (GET /api/v1/sites/{id}/sources) ------------------

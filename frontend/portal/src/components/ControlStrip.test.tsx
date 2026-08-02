@@ -10,6 +10,7 @@ function view(over: Partial<ControlStripView> = {}): ControlStripView {
     sentence: 'Ihr Gerät regelt gerade auf 10,8 kW → Wechselrichter bestätigt 10,8 kW',
     agoNote: 'geprüft vor 3 s',
     reason: null,
+    execution: null,
     ...over,
   };
 }
@@ -27,6 +28,23 @@ describe('ControlStrip', () => {
     const { container } = render(<ControlStrip view={view()} />);
     expect(container.querySelector('.vp-control-reason')).toBeNull();
     expect(screen.getByText(/regelt gerade auf/)).toBeInTheDocument();
+  });
+
+  it('nennt die vom Gerät gemeldete Korrektur - in BEIDEN Varianten (PR 3)', () => {
+    const execution =
+      'Der Fahrplan sah 4,3 kW vor — Ihr Haus braucht gerade mehr. Die Entladung wurde auf ' +
+      'den gemessenen Verbrauch (7,1 kW) angehoben, damit kein Netzstrom nötig ist.';
+    for (const variant of ['card', 'bare'] as const) {
+      const { container, unmount } = render(<ControlStrip view={view({ execution })} variant={variant} />);
+      expect(container.textContent).toContain('angehoben');
+      unmount();
+    }
+  });
+
+  it('behauptet ohne gemeldete Korrektur keine (ältere Edge-Version)', () => {
+    const { container } = render(<ControlStrip view={view()} />);
+    expect(container.textContent).not.toContain('angehoben');
+    expect(container.querySelector('.vp-control-reason')).toBeNull();
   });
 
   describe('Bühnenfuß (variant="bare")', () => {
