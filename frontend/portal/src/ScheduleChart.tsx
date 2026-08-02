@@ -3,7 +3,12 @@ import type { SchedulePlan } from './api';
 import { chartTheme } from './chartTheme';
 import {
   chargeKind,
+  curtailArea,
+  CURTAIL_AREA_LABEL,
   CURTAIL_LEGEND_LABEL,
+  curtailSpans,
+  curtailTickData,
+  curtailTooltip,
   defaultHiddenGroups,
   dutyTooltip,
   forecastLines,
@@ -120,6 +125,20 @@ export function ScheduleChart({
   const showIstPv = istPv.present && !hidden.has(MEASURED_PV_LABEL);
   const showSoc = plan.slots.some((s) => s.socPct != null) && !hidden.has(SOC_LABEL);
 
+  // The türkis entry appears only when the plan actually charges from the
+  // grid: on an EEG site ("Nur Solarladen") the color never occurs, and the
+  // legend must not advertise it - no türkis = provably no Netzstrom stored.
+  const gridCharging = hasGridCharge(plan.slots);
+  // DASSELBE Gate trägt ALLES Orange: Band, Sockel-Ticks, die gedrosselte
+  // Fläche und die Legenden-Zeile (Scout `vp-pilsting-abregeln` Frage 4).
+  // Es wird EINMAL hier berechnet und in die Canvas-Closure hineingereicht -
+  // Legende und Canvas können damit nicht wieder auseinanderlaufen.
+  const curtailing = hasCurtailment(plan.slots);
+  // Die gedrosselte Menge gehört in die zuschaltbare Prognosen-Ebene: sie
+  // erklärt, warum die PV-Prognose über dem Einspeise-Cap liegt.
+  const curtail = curtailArea(plan.slots);
+  const showCurtailArea = curtailing && curtail.present && !hidden.has(PV_FORECAST_LABEL);
+
   const ref = useEChart((chart, width) => {
     const narrow = width < 480;
     const slots = plan.slots;
@@ -129,6 +148,12 @@ export function ScheduleChart({
     // Price shown in ct/kWh (the unit on the customer's bill), not EUR/MWh.
     const pricesCt = slots.map((s) => (s.priceEurMwh == null ? null : Number(s.priceEurMwh) / 10));
     const soc = slots.map((s) => (s.socPct == null ? null : Number(s.socPct)));
+    // Die Abregel-Geometrie kommt aus DEMSELBEN Gate wie die Legenden-Zeile
+    // (`curtailing`, oben einmal berechnet) - ohne Abregelung entsteht hier
+    // nichts, mit Abregelung entsteht Band UND Tick UND (in der
+    // Prognosen-Ebene) Fläche.
+    const curtailBands = curtailing ? curtailSpans(slots) : [];
+    const curtailTicks = curtailing ? curtailTickData(slots) : [];
 
     // today/tomorrow divider: first slot on the local "tomorrow".
     const tomorrow = new Date();
@@ -315,6 +340,14 @@ export function ScheduleChart({
             if (duty) {
               lines.push(`<span style="color:${t.axis}">${dutyTooltip(duty)}</span>`);
             }
+            // Abregeln nennt seine MENGE und den Cap - sonst bliebe der orange
+            // Slot eine Farbe ohne Zahl. `curtailTooltip` setzt den Satz aus
+            // Konstanten + formatierten Zahlen zusammen (XSS-Regel der
+            // Chart-Formatter); null = dieser Slot regelt nicht ab.
+            const curtailLine = curtailTooltip(slots[params[0]?.dataIndex] ?? {});
+            if (curtailLine) {
+              lines.push(`<span style="color:${t.pv}">${curtailLine}</span>`);
+            }
             return lines.join('<br/>');
           },
         },
@@ -418,7 +451,39 @@ export function ScheduleChart({
             z: 2,
             lineStyle: { color: t.price, width: 2 },
             itemStyle: { color: t.price },
+            // Das orange Abregeln-BAND (Basis-Ebene, immer sichtbar): es reitet
+            // auf der Preis-Reihe, weil die Batterie-Reihe ihre markArea schon
+            // für die Vergangenheits-Schattierung trägt (eine Reihe, eine
+            // markArea). Niedrige Opacity - es hinterlegt, es überdeckt nicht.
+            markArea: curtailBands.length
+              ? {
+                  silent: true,
+                  itemStyle: { color: t.pv, opacity: 0.16 },
+                  data: curtailBands.map((s) => [{ xAxis: s.from }, { xAxis: s.to }]),
+                }
+              : undefined,
           },
+          // Der schmale orange Sockel-Tick am Nullpunkt je abregelndem Slot -
+          // die EXAKTE Slot-Wahrheit neben dem weichen Band (das Muster des
+          // `:8484`-Plan-Charts). Als Scatter mit Rechteck-Symbol bekommt er
+          // seine Höhe in PIXELN und hängt damit nicht an der kW-Skala.
+          ...(curtailing
+            ? [
+                {
+                  name: 'Abregeln',
+                  type: 'scatter',
+                  yAxisIndex: 0,
+                  data: curtailTicks,
+                  symbol: 'rect',
+                  symbolSize: [7, 6],
+                  symbolOffset: [0, -3],
+                  silent: true,
+                  z: 6,
+                  itemStyle: { color: t.pv },
+                  tooltip: { show: false },
+                },
+              ]
+            : []),
           // The two forecast INPUTS of the plan, on the SAME kW axis as the
           // bars: dotted + thin so they read as context, never as measured
           // values, and so they stay distinguishable from the solid price line
@@ -436,6 +501,44 @@ export function ScheduleChart({
                   z: 4,
                   lineStyle: { color: t.pv, width: 1.5, type: 'dotted' },
                   itemStyle: { color: t.pv },
+                },
+              ]
+            : []),
+          // Die gedrosselte Menge als halbtransparente orange Fläche zwischen
+          // Einspeise-Cap (`pvKw - curtailKw`) und PV-Prognose - die
+          // Prognosen-Ebene erklärt damit, WARUM der Forecast über dem Cap
+          // liegt. Zwei gestapelte Reihen: die untere trägt den Cap unsichtbar,
+          // die obere die Differenz mit der Füllung.
+          ...(showCurtailArea
+            ? [
+                {
+                  name: 'Einspeise-Cap',
+                  type: 'line',
+                  yAxisIndex: 0,
+                  data: curtail.cap,
+                  stack: 'vp-curtail',
+                  symbol: 'none',
+                  connectNulls: false,
+                  silent: true,
+                  z: 3,
+                  lineStyle: { opacity: 0 },
+                  itemStyle: { color: t.pv },
+                  tooltip: { show: false },
+                },
+                {
+                  name: CURTAIL_AREA_LABEL,
+                  type: 'line',
+                  yAxisIndex: 0,
+                  data: curtail.delta,
+                  stack: 'vp-curtail',
+                  symbol: 'none',
+                  connectNulls: false,
+                  silent: true,
+                  z: 3,
+                  lineStyle: { color: t.pv, width: 1, type: 'dashed' },
+                  itemStyle: { color: t.pv },
+                  areaStyle: { color: t.pv, opacity: 0.22 },
+                  tooltip: { show: false },
                 },
               ]
             : []),
@@ -520,7 +623,8 @@ export function ScheduleChart({
       },
       true,
     );
-    // `forecast`/`ist` are derived from `plan`, so `plan` covers them.
+    // `forecast`/`ist`/`curtail`/`curtailing` are derived from `plan`, so
+    // `plan` covers them.
   }, [plan, t, peakTargetKw, onSlotClick, selectedIndex, hidden]);
 
   // Insight: charge cheap, discharge expensive, and today's saving - composed
@@ -531,13 +635,6 @@ export function ScheduleChart({
   // axis has no room (phones) and the touch-friendly answer to "how full?".
   const socLine = socRangeLine(plan.slots);
 
-  // The türkis entry appears only when the plan actually charges from the
-  // grid: on an EEG site ("Nur Solarladen") the color never occurs, and the
-  // legend must not advertise it - no türkis = provably no Netzstrom stored.
-  const gridCharging = hasGridCharge(plan.slots);
-  // Same discipline for the orange curtailment colour of the phase band above
-  // the chart: it gets a legend row only when the plan really holds PV back.
-  const curtailing = hasCurtailment(plan.slots);
   // The DEFAULT legend is one calm line: the bar colours + the price. Nothing
   // here is a toggle - the bar entries are per-slot STATES of ONE series, and
   // the layers are switched by the three group buttons above (D4).
@@ -547,8 +644,12 @@ export function ScheduleChart({
       ? [{ color: t.gridCharge, label: 'Laden aus dem Netz (günstig)', unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
       : []),
     { color: t.battDischarge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'bar', toggleable: false },
+    // Orange steht am Canvas als BAND + Sockel-Tick (und in der
+    // Prognosen-Ebene als Fläche), also trägt die Legende die Flächen-Form -
+    // nicht mehr 'bar', dessen Träger der im Abregeln-Slot 0 kW hohe
+    // Batterie-Balken war. Gate = dasselbe `curtailing` wie das Canvas.
     ...(curtailing
-      ? [{ color: t.pv, label: CURTAIL_LEGEND_LABEL, unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
+      ? [{ color: t.pv, label: CURTAIL_LEGEND_LABEL, unit: 'kW', shape: 'area', toggleable: false } as LegendItem]
       : []),
     { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line', toggleable: false },
     ...(peakTargetKw != null && peakTargetKw > 0
