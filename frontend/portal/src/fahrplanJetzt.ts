@@ -123,6 +123,12 @@ export interface JetztHeldView {
   adjust: string | null;
   /** „vom Wechselrichter bestätigt · geprüft vor 8 Sek."; null = nichts bestätigt. */
   confirm: string | null;
+  /**
+   * Die Widerspruchs-Zeile der Abregelung (bernstein, KEIN Fehler): der Plan
+   * will die Einspeisung pausieren, die Messung daneben zeigt eine laufende
+   * Einspeisung. Null, wo es keinen belegten Widerspruch gibt.
+   */
+  conflict: string | null;
   /** Der Warum-Satz des laufenden Slots; null = kein Grund aufgezeichnet. */
   why: string | null;
   /** Die Mess-Wahrheit als Chips; leer, wenn nichts Frisches gemessen wurde. */
@@ -240,7 +246,10 @@ export function actionPhrase(
       case 'guenstig_laden':
         return 'lädt gerade günstig aus dem Netz';
       case 'abregeln':
-        return 'pausiert gerade die Einspeisung';
+        // KEINE Tatsache: die Drosselung ist geplant, ihre Ausführung ist
+        // cloud-seitig nicht belegt (siehe `fahrplanWhy` PLANNED_TAG). Wo die
+        // Messung dagegen spricht, sagt `curtailConflictLine` es zusätzlich.
+        return 'soll gerade die Einspeisung pausieren';
       case 'reserve_halten':
         return 'hält gerade Ladung als Reserve';
       case 'warten':
@@ -321,6 +330,9 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
       SHOWS_VALUE.has(state) && state !== 'abweichung' && status
         ? `vom Wechselrichter bestätigt · geprüft ${fmtRelative(status.checkedAt, now)}`
         : null,
+    conflict: SHOWS_WHY.has(state)
+      ? curtailConflictLine(role, input.snapshotFresh ? input.snapshot : null)
+      : null,
     // Ein toter Plan erklärt nichts über das Jetzt - sein Grund bleibt weg.
     why: SHOWS_WHY.has(state) ? reason : null,
     chips,
@@ -393,7 +405,9 @@ function leadLine(
   // nur_plan / wird_vorbereitet / unbestaetigt: es gibt einen aktuellen Plan,
   // aber keine bestätigte Ausführung - also wird er als PLAN benannt.
   if (role == null) return 'Für die laufende Viertelstunde liegt kein Fahrplan vor';
-  return `Geplant ist gerade: ${roleLabel(role, kind, flags)}`;
+  // `framed`: der Satz sagt schon „Geplant ist gerade" - der Plan-Zusatz des
+  // Rollen-Labels würde das Wort ein zweites Mal in dieselbe Zeile setzen.
+  return `Geplant ist gerade: ${roleLabel(role, kind, flags, true)}`;
 }
 
 function statusLine(
@@ -471,6 +485,40 @@ function valueMissingReason(state: JetztState): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * Ab dieser gemessenen Einspeisung widerspricht die Messung einem geplanten
+ * Abregeln DEUTLICH. Bewusst zehnmal über dem 0,05-kW-Anzeige-Totband
+ * (`DEADBAND_KW`): eine gedrosselte Anlage darf ein paar Zehntel schwanken,
+ * und eine Warnung über Rauschen wäre selbst eine Unwahrheit.
+ */
+export const CURTAIL_CONFLICT_EXPORT_KW = 0.5;
+
+/**
+ * Der ehrliche Widerspruch zur geplanten Abregelung — aus dem Messwert, der
+ * ohnehin als Chip danebensteht (Scout `vp-pilsting-abregeln` Frage 3):
+ * der Plan will die Einspeisung pausieren, das Netz meldet Einspeisung.
+ *
+ * BERNSTEIN, nicht rot: das ist kein Gerätefehler. Die Ursache ist heute
+ * cloud-seitig nicht entscheidbar (der Abregel-Aktor braucht je Einheit eine
+ * Freigabe, und der Bestätigungs-Block des Herzschlags wird noch nicht
+ * gelesen), also nennt der Satz BEIDE Möglichkeiten und behauptet keine.
+ * Null, wo nichts belegt ist: andere Rolle, kein frischer Schnappschuss,
+ * kein Netzwert, oder eine Einspeisung im Rauschband.
+ */
+export function curtailConflictLine(
+  role: SlotRole | null,
+  snap: LiveSnapshot | null,
+): string | null {
+  if (role !== 'abregeln' || !snap || snap.gridKw == null) return null;
+  const g = Number(snap.gridKw);
+  // Negativ = Einspeisung (die Vorzeichen-Konvention aus `live.ts`).
+  if (!Number.isFinite(g) || -g <= CURTAIL_CONFLICT_EXPORT_KW) return null;
+  return (
+    `Ihre Anlage speist gerade ${fmtNum(-g, 'kW', 1)} ein – die Drosselung ist auf dieser ` +
+    'Anlage noch nicht freigegeben oder nicht bestätigt.'
+  );
 }
 
 /**

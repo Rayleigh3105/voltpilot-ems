@@ -120,6 +120,27 @@
   min-width: 0;
 }
 
+/* Widerspruch zwischen geplanter Abregelung und gemessener Einspeisung:
+   bernstein wie jede Hinweis-Fläche, NIE rot - es ist kein Gerätefehler. */
+.vp-jetzt-conflict {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 var(--vp-space-2);
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-left: 3px solid var(--vp-flow-pv, #f59e0b);
+  background: var(--vp-flow-pv-soft, #fff7ed);
+  border-radius: 0 var(--vp-radius-md) var(--vp-radius-md) 0;
+  color: #8a5200;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  min-width: 0;
+}
+.vp-jetzt-conflict svg {
+  flex: none;
+  margin-top: 2px;
+}
+
 .vp-jetzt-confirm {
   display: flex;
   align-items: center;

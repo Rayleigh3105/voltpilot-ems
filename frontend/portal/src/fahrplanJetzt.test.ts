@@ -223,6 +223,65 @@ describe('actionPhrase · die Ausführung schlägt eine widersprechende Rolle', 
   });
 });
 
+describe('Abregeln · Plan-Wortlaut + der ehrliche Widerspruch (Pilsting 02.08.)', () => {
+  /** Der laufende Slot plant Abregeln, die Batterie steht still (0,0 kW). */
+  const abregelnInput = (over: Partial<JetztInput> = {}) =>
+    input({
+      slot: slot({ slotRole: 'abregeln', batteryKw: 0, priceEurMwh: -1 }),
+      control: status({ commandedKw: 0, confirmedKw: 0 }),
+      ...over,
+    });
+
+  it('sagt „soll", nicht „pausiert" - die Ausführung ist nicht belegt', () => {
+    expect(actionPhrase('abregeln', 0, 'eigenverbrauch')).toBe(
+      'soll gerade die Einspeisung pausieren',
+    );
+    expect(jetztHeld(abregelnInput()).lead).toBe(
+      'Ihre Batterie soll gerade die Einspeisung pausieren',
+    );
+  });
+
+  it('nennt den Widerspruch, wenn die Anlage messbar einspeist - bernstein, kein Fehler', () => {
+    // Die Konstellation des Captains: Abregeln geplant, 16,6 kW Einspeisung.
+    const v = jetztHeld(abregelnInput({ snapshot: snap({ gridKw: -16.6 }) }));
+    expect(v.conflict).toBe(
+      `Ihre Anlage speist gerade 16,6${NBSP}kW ein – die Drosselung ist auf dieser Anlage ` +
+        'noch nicht freigegeben oder nicht bestätigt.',
+    );
+    // Es ist kein Gerätefehler: der Zustand bleibt, was die Batterie tut.
+    expect(v.state).not.toBe('abweichung');
+    // Und der Mess-Chip daneben zeigt dieselbe Zahl - eine Wahrheit.
+    expect(v.chips).toContainEqual({ label: 'Einspeisung', value: `16,6${NBSP}kW` });
+  });
+
+  it('behauptet keinen Widerspruch ohne Beleg', () => {
+    // Netz im Rauschband / Bezug statt Einspeisung.
+    expect(jetztHeld(abregelnInput({ snapshot: snap({ gridKw: -0.2 }) })).conflict).toBeNull();
+    expect(jetztHeld(abregelnInput({ snapshot: snap({ gridKw: 4 }) })).conflict).toBeNull();
+    // Kein Netzwert gemessen.
+    expect(jetztHeld(abregelnInput({ snapshot: snap({ gridKw: null }) })).conflict).toBeNull();
+    // Schnappschuss veraltet - eine alte Messung widerlegt das Jetzt nicht.
+    expect(
+      jetztHeld(abregelnInput({ snapshot: snap({ gridKw: -16.6 }), snapshotFresh: false })).conflict,
+    ).toBeNull();
+    // Andere Rolle: die Einspeisung ist dann genau das, was geplant war.
+    expect(
+      jetztHeld(input({ slot: slot({ slotRole: 'verkaufen' }), snapshot: snap({ gridKw: -16.6 }) }))
+        .conflict,
+    ).toBeNull();
+    // Toter Plan: er sagt über das Jetzt nichts mehr, also auch keinen Bruch.
+    expect(
+      jetztHeld(abregelnInput({ snapshot: snap({ gridKw: -16.6 }), planStale: true })).conflict,
+    ).toBeNull();
+  });
+
+  it('formuliert auch die reine Plan-Leitzeile als Plan - und sagt „geplant" nur einmal', () => {
+    const v = jetztHeld(abregelnInput({ control: null, expectControl: false }));
+    expect(v.state).toBe('nur_plan');
+    expect(v.lead).toBe('Geplant ist gerade: Einspeisung pausieren (Negativpreis)');
+  });
+});
+
 describe('measurementChips · Vorzeichen als Wort, nie eine erfundene 0', () => {
   it('benennt Bezug und Einspeisung, statt ein Minus zu zeigen', () => {
     expect(measurementChips(snap({ gridKw: 3.2 }))[2]).toEqual({

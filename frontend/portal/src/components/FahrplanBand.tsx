@@ -1,6 +1,7 @@
 import type { PlantKind, SchedulePlan } from '../api';
 import { eurAmount } from '../format';
 import {
+  curtailmentPlannedLine,
   curtailmentToday,
   planHourBars,
   planSentence,
@@ -110,12 +111,12 @@ export function FahrplanBand({
               </>
             )}
           </p>
+          {/* PLAN, kein Ergebnis: die Ausführung der Abregelung ist
+              cloud-seitig nicht belegt (siehe `curtailmentPlannedLine`). */}
           {curtail && (
             <p className="vp-fp-curtail">
-              <Icon name="sun" size={13} /> Heute {energyLabel(curtail.curtailedKwh)} abgeregelt
-              {curtail.avoidedLossEur > 0.005
-                ? ` - rund ${eurAmount(curtail.avoidedLossEur)} Verlust bei negativen Preisen vermieden.`
-                : '.'}
+              <Icon name="sun" size={13} />{' '}
+              {curtailmentPlannedLine(curtail, energyLabel, eurAmount)}
             </p>
           )}
         </>

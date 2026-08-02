@@ -369,13 +369,20 @@ describe('slotWhy (per-slot customer sentence)', () => {
     ).toBe('Der Speicher hält Ladung als Reserve für die Lastspitzenkappung zurück.');
   });
 
-  it('abregeln names the negative price when present', () => {
+  it('abregeln names the negative price when present - als PLAN, nie als Tatsache', () => {
     expect(slotWhy({ ...base, slotRole: 'abregeln', priceEurMwh: -21 }, 'eigenverbrauch')).toBe(
-      'Einspeisen würde beim negativen Börsenpreis (-2,1 ct/kWh) Geld kosten – die PV wird gedrosselt, statt draufzuzahlen.',
+      'Einspeisen würde beim negativen Börsenpreis (-2,1 ct/kWh) Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.',
     );
     expect(slotWhy({ ...base, slotRole: 'abregeln', priceEurMwh: null }, 'eigenverbrauch')).toBe(
-      'Einspeisen würde bei negativen Preisen Geld kosten – die PV wird gedrosselt, statt draufzuzahlen.',
+      'Einspeisen würde bei negativen Preisen Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.',
     );
+  });
+
+  it('behauptet die Drosselung nirgends im Indikativ (Ausführung ist unbelegt)', () => {
+    for (const price of [-21, null]) {
+      const s = slotWhy({ ...base, slotRole: 'abregeln', priceEurMwh: price }, 'eigenverbrauch')!;
+      expect(s).not.toMatch(/wird gedrosselt|wird abgeregelt|pausiert gerade/);
+    }
   });
 
   it('spitze_kappen explains the peak target', () => {
@@ -428,7 +435,7 @@ describe('bindingChips', () => {
       'Notstrom-Reserve',
       'Reserve für Lastspitze',
       'Bestimmt die Lastspitze',
-      'Einspeisung gedrosselt',
+      'Drosselung geplant',
       'Einspeisegrenze',
       'Speicher am Minimum',
     ]);
@@ -519,12 +526,23 @@ describe('phaseEurLine + phaseRange + labels', () => {
       'kein Einsatz',
     );
     expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch')).toContain(
-      'gedrosselt',
+      'der Plan sieht vor, die PV zu drosseln',
+    );
+    expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch')).not.toContain(
+      'wird gedrosselt',
     );
   });
 
   it('roleLabel carries the §6 customer vocabulary', () => {
-    expect(roleLabel('abregeln', 'eigenverbrauch')).toBe('Einspeisung pausiert (Negativpreis)');
+    expect(roleLabel('abregeln', 'eigenverbrauch')).toBe(
+      'Einspeisung pausieren (Negativpreis) — geplant',
+    );
+    // Wo der Satz schon „Geplant ist gerade" sagt, entfällt der Zusatz.
+    expect(roleLabel('abregeln', 'eigenverbrauch', null, true)).toBe(
+      'Einspeisung pausieren (Negativpreis)',
+    );
+    // Der Zusatz ist NUR die Abregelung - ausgeführte Rollen sind unberührt.
+    expect(roleLabel('eigenverbrauch', 'eigenverbrauch')).not.toContain('geplant');
     expect(roleLabel('verkaufen', 'direktvermarktung')).toBe('Zum Spitzenpreis verkaufen');
     expect(roleLabel('verkaufen', 'eigenverbrauch')).toBe('Einspeisen');
     expect(roleLabel('reserve_halten', 'eigenverbrauch', ['reserve_backup'])).toBe(

@@ -129,7 +129,10 @@ export function filmLabel(
     case 'eigenverbrauch':
       return 'Verbrauch decken';
     case 'abregeln':
-      return 'Einspeisung pausiert';
+      // Infinitiv wie die anderen Listenformen: der Film ist eine PLAN-Liste
+      // (die Karte trägt das Abzeichen „Geplant" für alle Zeilen), also darf
+      // die Zeile die Drosselung nicht im Indikativ behaupten.
+      return 'Einspeisung pausieren';
     default:
       return roleLabel(role, kind, flags);
   }

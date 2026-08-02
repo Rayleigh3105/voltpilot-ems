@@ -157,7 +157,7 @@ describe('filmRows · Zusätze nur aus dem, was der Lauf trägt', () => {
       ...run('abregeln', 1, 4, { batteryKw: 0, priceEurMwh: -40 }),
     ]);
     const view = filmRows(ph, slots, 'eigenverbrauch', NOW);
-    expect(view.today[1].label).toBe('Einspeisung pausiert');
+    expect(view.today[1].label).toBe('Einspeisung pausieren');
     expect(view.today[1].sub).toContain('Negativpreis');
   });
 
@@ -371,7 +371,7 @@ describe('filmLabel · das listen-taugliche Vokabular', () => {
     expect(filmLabel('warten', 'eigenverbrauch')).toBe('Ruhe');
     expect(filmLabel('pv_speichern', 'eigenverbrauch')).toBe('Sonne speichern');
     expect(filmLabel('eigenverbrauch', 'eigenverbrauch')).toBe('Verbrauch decken');
-    expect(filmLabel('abregeln', 'eigenverbrauch')).toBe('Einspeisung pausiert');
+    expect(filmLabel('abregeln', 'eigenverbrauch')).toBe('Einspeisung pausieren');
   });
 
   it('bleibt sonst das geteilte Rollen-Vokabular, inklusive der Reserve-Art', () => {

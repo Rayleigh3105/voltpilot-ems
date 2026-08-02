@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bankedValueLine,
   chargeKind,
+  curtailmentPlannedLine,
   curtailmentToday,
   DUTY_HINT,
   dutyLabel,
@@ -396,6 +397,29 @@ describe('curtailmentToday', () => {
     // Only today's 6 kW slot counts: 1.5 kWh, avoided 1.5*0.08 = 0.12 €.
     expect(r.curtailedKwh).toBeCloseTo(1.5, 6);
     expect(r.avoidedLossEur).toBeCloseTo(0.12, 6);
+  });
+});
+
+describe('curtailmentPlannedLine · Plan, nie ein realisiertes Euro-Verb', () => {
+  const energy = (kwh: number) => `${kwh} kWh`;
+  const eur = (v: number) => `${v} €`;
+
+  it('sagt „geplant" und stellt den vermiedenen Verlust in den Konjunktiv', () => {
+    expect(curtailmentPlannedLine({ curtailedKwh: 3, avoidedLossEur: 0.12 }, energy, eur)).toBe(
+      'Heute geplant: 3 kWh abregeln (würde rund 0.12 € Verlust bei negativen Preisen vermeiden).',
+    );
+  });
+
+  it('behauptet nirgends eine ausgeführte Abregelung', () => {
+    const s = curtailmentPlannedLine({ curtailedKwh: 3, avoidedLossEur: 0.12 }, energy, eur);
+    expect(s).not.toMatch(/abgeregelt|vermieden\b(?! )/);
+    expect(s).not.toContain('vermieden.');
+  });
+
+  it('lässt den Euro-Teil unter dem Totband weg statt „0,00 €" zu zeigen', () => {
+    expect(curtailmentPlannedLine({ curtailedKwh: 1.5, avoidedLossEur: 0 }, energy, eur)).toBe(
+      'Heute geplant: 1.5 kWh abregeln.',
+    );
   });
 });
 

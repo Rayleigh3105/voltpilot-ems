@@ -62,6 +62,16 @@ export function JetztHeld({ view }: { view: JetztHeldView }) {
 
           {view.adjust && <p className="vp-jetzt-adjust">{view.adjust}</p>}
 
+          {/* Bernstein, nicht rot: die Messung widerspricht der geplanten
+              Abregelung - das ist kein Gerätefehler, aber es darf nicht
+              unter einer Plan-Aussage verschwinden. */}
+          {view.conflict && (
+            <p className="vp-jetzt-conflict">
+              <Icon name="alert-triangle" size={14} />
+              {view.conflict}
+            </p>
+          )}
+
           {view.confirm && (
             <p className="vp-jetzt-confirm">
               <Icon name="check" size={14} />

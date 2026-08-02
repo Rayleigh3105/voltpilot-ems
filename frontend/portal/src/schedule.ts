@@ -846,18 +846,42 @@ export function hasCurtailment(slots: { curtailKw?: number | null }[]): boolean 
 }
 
 /**
- * Today's PV curtailment result: how much energy the optimizer held back and
- * the negative-price loss that avoided (report N2, "heute X kWh abgeregelt,
- * Y € Verlust vermieden"). At negative day-ahead prices exporting COSTS money,
- * so each curtailed kWh in a negative-price slot avoids paying |price| for it.
- * Null when today has no curtailing slot - the line then stays hidden, never a
- * fake "0 kWh abgeregelt".
+ * Today's PLANNED PV curtailment: how much energy the optimizer plans to hold
+ * back and the negative-price loss that WOULD avoid. At negative day-ahead
+ * prices exporting COSTS money, so each curtailed kWh in a negative-price slot
+ * avoids paying |price| for it. Null when today has no curtailing slot - the
+ * line then stays hidden, never a fake "0 kWh abgeregelt".
+ *
+ * **Beides ist Plan, nicht Ergebnis** (Scout `vp-pilsting-abregeln` Frage 3):
+ * `schedule.curtail_kw` ist die Entscheidung des Optimierers, und ob die
+ * Anlage sie ausführt, weiß die Cloud heute nicht. Deshalb formuliert
+ * `curtailmentPlannedLine` im Konjunktiv und benutzt KEIN realisiertes
+ * Euro-Verb ("vermieden") - das käme erst mit einem Ausführungs-Beleg.
  */
 export interface CurtailmentToday {
   /** Total curtailed energy today (kWh). */
   curtailedKwh: number;
-  /** Euro loss avoided by not exporting in negative-price slots (>= 0). */
+  /** Euro loss the plan would avoid by not exporting in negative-price slots (>= 0). */
   avoidedLossEur: number;
+}
+
+/** Ab hier lohnt es, den vermiedenen Verlust überhaupt zu beziffern. */
+const CURTAIL_EUR_DEADBAND = 0.005;
+
+/**
+ * Die EINE Formulierung der geplanten Abregelung ("Heute geplant: X kWh
+ * abregeln (würde rund Y € Verlust vermeiden)"). Der Euro-Teil entfällt
+ * unter dem Totband - nie ein aufgerundetes "0,00 €".
+ */
+export function curtailmentPlannedLine(
+  curtail: CurtailmentToday,
+  energy: (kwh: number) => string,
+  eur: (v: number) => string,
+): string {
+  const head = `Heute geplant: ${energy(curtail.curtailedKwh)} abregeln`;
+  return curtail.avoidedLossEur > CURTAIL_EUR_DEADBAND
+    ? `${head} (würde rund ${eur(curtail.avoidedLossEur)} Verlust bei negativen Preisen vermeiden).`
+    : `${head}.`;
 }
 
 export function curtailmentToday(

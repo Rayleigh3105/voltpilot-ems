@@ -243,11 +243,37 @@ export function driverLabel(driver: ModeDriver): string | null {
 
 // ---- Labels + copy per role (report §6, D3 vocabulary) --------------------
 
-/** Full customer label of a role (the panel headline). */
-export function roleLabel(role: SlotRole, kind: PlanWordingKind, flags?: string[] | null): string {
+/**
+ * Der Ehrlichkeits-Zusatz der Abregelung (Scout `vp-pilsting-abregeln` Frage 3,
+ * Stufe 1). Die Abregelung ist heute eine reine PLAN-Größe: der Optimierer
+ * plant `curtail_kw`, aber die Cloud liest den `curtailment`-Block des
+ * Herzschlags noch nicht — sie kann also nicht wissen, ob die Anlage die
+ * Drosselung überhaupt ausführt (auf einer Anlage ohne freigegebenen
+ * Abregel-Aktor führt sie sie nachweislich NICHT aus). Solange dieser Beleg
+ * fehlt, sagt jede Fläche „geplant" statt einer Tatsache.
+ *
+ * Die Formulierungen sind bewusst so gebaut, dass eine spätere BESTÄTIGTE
+ * Ausführung (Stufe 2/3, sobald der Block ingestiert ist) darüber gelegt
+ * werden kann — nichts hier schließt sie aus.
+ */
+const PLANNED_TAG = ' — geplant';
+
+/**
+ * Full customer label of a role (the panel headline).
+ *
+ * `framed` = der umgebende Satz sagt bereits „Geplant ist gerade: …", dann
+ * entfällt der `PLANNED_TAG` (sonst stünde „geplant" zweimal in einer Zeile).
+ */
+export function roleLabel(
+  role: SlotRole,
+  kind: PlanWordingKind,
+  flags?: string[] | null,
+  framed = false,
+): string {
   switch (role) {
     case 'abregeln':
-      return 'Einspeisung pausiert (Negativpreis)';
+      // KEINE Tatsachenbehauptung: die Drosselung ist geplant, nicht belegt.
+      return `Einspeisung pausieren (Negativpreis)${framed ? '' : PLANNED_TAG}`;
     case 'reserve_halten': {
       const f = flags ?? [];
       if (f.includes('reserve_backup')) return 'Reserve halten (Notstrom)';
@@ -295,7 +321,7 @@ export function phaseWhy(phase: PlanPhase, kind: PlanWordingKind): string {
     case 'warten':
       return 'Der Speicher wartet – kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.';
     case 'abregeln':
-      return 'Einspeisen würde bei negativen Preisen Geld kosten – die PV wird gedrosselt, statt draufzuzahlen.';
+      return 'Einspeisen würde bei negativen Preisen Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
   }
 }
 
@@ -469,9 +495,11 @@ export function slotWhy(slot: WhySlot, kind: PlanWordingKind): string | null {
         return 'Der Speicher ist am Minimum und wartet auf PV-Überschuss oder günstigen Strom.';
       return 'Der Speicher wartet – kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.';
     case 'abregeln':
+      // Plan-Formulierung, keine Tatsache (siehe PLANNED_TAG): ob die Anlage
+      // die Drosselung wirklich ausführt, weiß die Cloud heute nicht.
       return price != null && price < 0
-        ? `Einspeisen würde beim negativen Börsenpreis (${ctFmt(price)}) Geld kosten – die PV wird gedrosselt, statt draufzuzahlen.`
-        : 'Einspeisen würde bei negativen Preisen Geld kosten – die PV wird gedrosselt, statt draufzuzahlen.';
+        ? `Einspeisen würde beim negativen Börsenpreis (${ctFmt(price)}) Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.`
+        : 'Einspeisen würde bei negativen Preisen Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
   }
   return null;
 }
@@ -533,7 +561,9 @@ const CHIP_LABELS: Record<string, string> = {
   grid_limit_14a: 'Netzgrenze §14a',
   feed_in_cap: 'Einspeisegrenze',
   peak_defining: 'Bestimmt die Lastspitze',
-  curtailing: 'Einspeisung gedrosselt',
+  // Plan-Wortlaut wie überall bei der Abregelung: der Chip benennt eine
+  // Bindung des PLANS, keine belegte Ausführung.
+  curtailing: 'Drosselung geplant',
 };
 
 /**

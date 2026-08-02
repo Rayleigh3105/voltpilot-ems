@@ -244,8 +244,9 @@ export interface ScheduleSlot {
   /**
    * Planned PV curtailment for the slot (kW held back, always >= 0). At
    * negative prices the optimizer curtails feed-in so the plant does not pay
-   * to export; the Anlage page surfaces "heute X kWh abgeregelt, Y € Verlust
-   * vermieden". Null on runs that predate the curtailment column.
+   * to export; the Anlage page surfaces it as a PLAN ("Heute geplant: X kWh
+   * abregeln") - whether the plant executes the curtailment is not visible to
+   * the cloud today. Null on runs that predate the curtailment column.
    */
   curtailKw: number | null;
   /**
