@@ -17,6 +17,12 @@
  * is called "Wert gespeicherter Energie" (the established admin German).
  */
 
+import {
+  CURTAIL_PLAN,
+  curtailChipLabel,
+  curtailRoleLabel,
+  type CurtailTruth,
+} from './curtailment';
 import { eurAmount } from './format';
 import type { PlanWordingKind } from './schedule';
 
@@ -244,36 +250,27 @@ export function driverLabel(driver: ModeDriver): string | null {
 // ---- Labels + copy per role (report §6, D3 vocabulary) --------------------
 
 /**
- * Der Ehrlichkeits-Zusatz der Abregelung (Scout `vp-pilsting-abregeln` Frage 3,
- * Stufe 1). Die Abregelung ist heute eine reine PLAN-Größe: der Optimierer
- * plant `curtail_kw`, aber die Cloud liest den `curtailment`-Block des
- * Herzschlags noch nicht — sie kann also nicht wissen, ob die Anlage die
- * Drosselung überhaupt ausführt (auf einer Anlage ohne freigegebenen
- * Abregel-Aktor führt sie sie nachweislich NICHT aus). Solange dieser Beleg
- * fehlt, sagt jede Fläche „geplant" statt einer Tatsache.
- *
- * Die Formulierungen sind bewusst so gebaut, dass eine spätere BESTÄTIGTE
- * Ausführung (Stufe 2/3, sobald der Block ingestiert ist) darüber gelegt
- * werden kann — nichts hier schließt sie aus.
- */
-const PLANNED_TAG = ' — geplant';
-
-/**
  * Full customer label of a role (the panel headline).
  *
  * `framed` = der umgebende Satz sagt bereits „Geplant ist gerade: …", dann
- * entfällt der `PLANNED_TAG` (sonst stünde „geplant" zweimal in einer Zeile).
+ * entfällt der „— geplant"-Zusatz (sonst stünde es zweimal in einer Zeile).
+ *
+ * `curtail` ist die Beleg-Lage der Abregelung (PR 3). Sie ändert NUR die Rolle
+ * `abregeln` und nur, wenn der Aufrufer sie durch `curtailTruthForSlot`
+ * geschickt hat — ohne Beleg (Standard) ist die Ausgabe zeichengleich zu
+ * Fix 1, also zum PLAN-Wortlaut.
  */
 export function roleLabel(
   role: SlotRole,
   kind: PlanWordingKind,
   flags?: string[] | null,
   framed = false,
+  curtail: CurtailTruth = CURTAIL_PLAN,
 ): string {
   switch (role) {
     case 'abregeln':
-      // KEINE Tatsachenbehauptung: die Drosselung ist geplant, nicht belegt.
-      return `Einspeisung pausieren (Negativpreis)${framed ? '' : PLANNED_TAG}`;
+      // Gegenwart NUR mit Beleg - sonst der Plan-Wortlaut aus Fix 1.
+      return curtailRoleLabel(curtail, framed);
     case 'reserve_halten': {
       const f = flags ?? [];
       if (f.includes('reserve_backup')) return 'Reserve halten (Notstrom)';
@@ -295,8 +292,17 @@ export function roleLabel(
   }
 }
 
-/** ONE plain-German sentence summarizing a phase (the phase card body). */
-export function phaseWhy(phase: PlanPhase, kind: PlanWordingKind): string {
+/**
+ * ONE plain-German sentence summarizing a phase (the phase card body).
+ *
+ * `curtail` wie bei {@link roleLabel}: ohne Beleg (Standard) exakt der
+ * Plan-Wortlaut aus Fix 1.
+ */
+export function phaseWhy(
+  phase: PlanPhase,
+  kind: PlanWordingKind,
+  curtail: CurtailTruth = CURTAIL_PLAN,
+): string {
   switch (phase.role) {
     case 'pv_speichern':
       return 'Überschüssiger Solarstrom wandert in den Speicher statt in die Einspeisung – für die teuren Stunden.';
@@ -321,7 +327,9 @@ export function phaseWhy(phase: PlanPhase, kind: PlanWordingKind): string {
     case 'warten':
       return 'Der Speicher wartet – kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.';
     case 'abregeln':
-      return 'Einspeisen würde bei negativen Preisen Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
+      return curtail.stufe === 'ausgefuehrt'
+        ? 'Einspeisen würde bei negativen Preisen Geld kosten – die PV wird deshalb gedrosselt.'
+        : 'Einspeisen würde bei negativen Preisen Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
   }
 }
 
@@ -439,8 +447,15 @@ export function dayAvgPriceCt(slots: WhySlot[]): number | null {
  * "Wert gespeicherter Energie"; missing numbers degrade the sentence to a
  * number-free form, never an invented value. Null when the slot carries no
  * known role (the why-layer is then absent anyway).
+ *
+ * `curtail` wie bei {@link roleLabel}: ohne Beleg (Standard) exakt der
+ * Plan-Wortlaut aus Fix 1.
  */
-export function slotWhy(slot: WhySlot, kind: PlanWordingKind): string | null {
+export function slotWhy(
+  slot: WhySlot,
+  kind: PlanWordingKind,
+  curtail: CurtailTruth = CURTAIL_PLAN,
+): string | null {
   const role = slot.slotRole;
   if (role == null || !ROLE_SET.has(role)) return null;
   const price = spotCt(slot);
@@ -494,12 +509,17 @@ export function slotWhy(slot: WhySlot, kind: PlanWordingKind): string | null {
       if (flags.includes('soc_floor'))
         return 'Der Speicher ist am Minimum und wartet auf PV-Überschuss oder günstigen Strom.';
       return 'Der Speicher wartet – kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.';
-    case 'abregeln':
-      // Plan-Formulierung, keine Tatsache (siehe PLANNED_TAG): ob die Anlage
-      // die Drosselung wirklich ausführt, weiß die Cloud heute nicht.
+    case 'abregeln': {
+      // Gegenwart NUR mit Ausführungs-Beleg (PR 3); ohne ihn der
+      // Plan-Wortlaut aus Fix 1, unverändert.
+      const done = curtail.stufe === 'ausgefuehrt';
+      const tail = done
+        ? 'die PV wird deshalb gedrosselt.'
+        : 'der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
       return price != null && price < 0
-        ? `Einspeisen würde beim negativen Börsenpreis (${ctFmt(price)}) Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.`
-        : 'Einspeisen würde bei negativen Preisen Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
+        ? `Einspeisen würde beim negativen Börsenpreis (${ctFmt(price)}) Geld kosten – ${tail}`
+        : `Einspeisen würde bei negativen Preisen Geld kosten – ${tail}`;
+    }
   }
   return null;
 }
@@ -561,8 +581,8 @@ const CHIP_LABELS: Record<string, string> = {
   grid_limit_14a: 'Netzgrenze §14a',
   feed_in_cap: 'Einspeisegrenze',
   peak_defining: 'Bestimmt die Lastspitze',
-  // Plan-Wortlaut wie überall bei der Abregelung: der Chip benennt eine
-  // Bindung des PLANS, keine belegte Ausführung.
+  // Ohne Beleg der Plan-Wortlaut wie überall bei der Abregelung; mit Beleg
+  // ersetzt `bindingChips` ihn durch „Drosselung aktiv".
   curtailing: 'Drosselung geplant',
 };
 
@@ -571,11 +591,14 @@ const CHIP_LABELS: Record<string, string> = {
  * dropped (the vocabulary is additive), duplicates collapse (charge_cap +
  * discharge_cap → one "Maximale Leistung").
  */
-export function bindingChips(flags: string[] | null | undefined): string[] {
+export function bindingChips(
+  flags: string[] | null | undefined,
+  curtail: CurtailTruth = CURTAIL_PLAN,
+): string[] {
   if (!flags) return [];
   const out: string[] = [];
   for (const f of flags) {
-    const label = CHIP_LABELS[f];
+    const label = f === 'curtailing' ? curtailChipLabel(curtail) : CHIP_LABELS[f];
     if (label && !out.includes(label)) out.push(label);
   }
   return out;

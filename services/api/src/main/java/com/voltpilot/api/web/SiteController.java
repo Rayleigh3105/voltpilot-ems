@@ -8,6 +8,7 @@ import com.voltpilot.api.repo.DeviceSourceStatusRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
+import com.voltpilot.api.repo.CurtailmentStatusRepository;
 import com.voltpilot.api.repo.ScheduleRepository;
 import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -21,6 +22,7 @@ import com.voltpilot.api.web.dto.PriceHistoryDto;
 import com.voltpilot.api.web.dto.PricePointDto;
 import com.voltpilot.api.web.dto.PriceSeriesDto;
 import com.voltpilot.api.web.dto.ControlStatusDto;
+import com.voltpilot.api.web.dto.CurtailmentStatusDto;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
 import com.voltpilot.api.web.dto.SiteDeletionPreviewDto;
 import com.voltpilot.api.web.dto.SiteDto;
@@ -73,6 +75,7 @@ public class SiteController {
     private final HistoryService history;
     private final ForecastQualityRepository forecastQuality;
     private final ControlStatusRepository controlStatus;
+    private final CurtailmentStatusRepository curtailmentStatus;
     private final DeviceSourceStatusRepository sourceStatus;
     private final SchedulePricingService schedulePricing;
     private final String activeLoadModel;
@@ -89,6 +92,7 @@ public class SiteController {
             HistoryService history,
             ForecastQualityRepository forecastQuality,
             ControlStatusRepository controlStatus,
+            CurtailmentStatusRepository curtailmentStatus,
             DeviceSourceStatusRepository sourceStatus,
             SchedulePricingService schedulePricing,
             @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
@@ -103,6 +107,7 @@ public class SiteController {
         this.history = history;
         this.forecastQuality = forecastQuality;
         this.controlStatus = controlStatus;
+        this.curtailmentStatus = curtailmentStatus;
         this.sourceStatus = sourceStatus;
         this.schedulePricing = schedulePricing;
         this.activeLoadModel = activeLoadModel;
@@ -408,6 +413,28 @@ public class SiteController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
         return controlStatus.latestForSite(siteId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /**
+     * The latest FEED-IN CURTAILMENT truth this site's device(s) reported: does
+     * the plant actually throttle its PV in an "Abregeln" slot, or is the plan
+     * a plan because the curtailment actor is not released yet?
+     *
+     * <p>Deliberately its OWN read next to {@code control-status} rather than
+     * extra fields there - the two heartbeat blocks arrive independently and
+     * each carries its own freshness (see {@link CurtailmentStatusDto}).
+     * 204 (no body) while no device has reported the block - the portal then
+     * keeps its plan wording, which is exactly the honest fallback.
+     * Foreign site -&gt; 404 (RLS).
+     */
+    @GetMapping("/{siteId}/curtailment-status")
+    public ResponseEntity<CurtailmentStatusDto> curtailmentStatus(@PathVariable UUID siteId) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        return curtailmentStatus.latestForSite(siteId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }

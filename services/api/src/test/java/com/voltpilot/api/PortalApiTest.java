@@ -110,6 +110,9 @@ class PortalApiTest {
     com.voltpilot.api.repo.ControlStatusRepository controlStatusRepo;
 
     @Autowired
+    com.voltpilot.api.repo.CurtailmentStatusRepository curtailmentStatusRepo;
+
+    @Autowired
     com.voltpilot.api.repo.DeviceSourceStatusRepository sourceStatusRepo;
 
     @Autowired
@@ -4634,6 +4637,93 @@ class PortalApiTest {
                 url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo", "demo"))), Map.class);
         assertThat(still.getBody().get("allMatch")).isEqualTo(false); // spoof ignored, mismatch stays
+    }
+
+    /**
+     * The FEED-IN CURTAILMENT truth reaches the portal (scout
+     * {@code vp-pilsting-abregeln} Frage 2/3, PR 3 of 4). The edge has been
+     * folding this block into its heartbeat since it was built - precisely so
+     * the cloud could tell "geplant und ausgeführt" from "geplant, Anlage kann
+     * es (noch) nicht" - and nothing read it, so the portal claimed "die PV
+     * wird gedrosselt" next to a measured 16,6 kW feed-in.
+     *
+     * <p>The journey walks the captain's real constellation and its two
+     * resolutions, and pins the honest fallback: a heartbeat WITHOUT the block
+     * (an older edge, or a plant with no curtailment actor) leaves the read at
+     * 204, so every surface keeps its plan wording.
+     */
+    @Test
+    void curtailmentStatusIsIngestedFromHeartbeatAndTenantScoped() {
+        var listener = new com.voltpilot.api.curtailment.CurtailmentStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, curtailmentStatusRepo);
+        String topic = "ems/00000000-0000-0000-0000-000000000001/"
+                + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
+        String head = "{\"schema_version\":\"1.0\","
+                + "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"online\":true,";
+        String curtailUrl = url("/api/v1/sites/" + BERLIN_SITE + "/curtailment-status");
+        HttpEntity<Void> demo = new HttpEntity<>(bearer(token("demo", "demo")));
+
+        // A heartbeat WITHOUT the block changes nothing: no evidence, no claim.
+        listener.handle(topic, (head + "\"control\":{\"commanded_kw\":0,\"confirmed_kw\":0,"
+                + "\"all_match\":true,\"control_enabled\":true,\"certified\":true,"
+                + "\"checked_at\":\"2026-08-02T10:40:00Z\"}}").getBytes(StandardCharsets.UTF_8));
+        assertThat(rest.exchange(curtailUrl, HttpMethod.GET, demo, String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+
+        // Pilsting, 02.08. ~10:41: two Fronius units, kill-switch ON, NEITHER
+        // released -> nothing applied. The cause the portal names.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":0,"
+                + "\"control_enabled\":true,\"active\":false,"
+                + "\"checked_at\":\"2026-08-02T10:41:07Z\"}}").getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> unreleased = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        assertThat(unreleased.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(unreleased.getBody().get("units")).isEqualTo(2);
+        assertThat(unreleased.getBody().get("certifiedUnits")).isEqualTo(0);
+        assertThat(unreleased.getBody().get("active")).isEqualTo(false);
+        // Nothing applied is NOT a disagreeing readback - it must stay null.
+        assertThat(unreleased.getBody().get("allMatch")).isNull();
+        assertThat(unreleased.getBody().get("appliedCapKw")).isNull();
+        assertThat(unreleased.getBody().get("possibleOverride")).isEqualTo(false);
+
+        // Tenant B cannot even see the site -> RLS 404.
+        assertThat(rest.exchange(curtailUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // After the operator releases both units the cap is applied + confirmed:
+        // the ONLY shape that is evidence of execution.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":2,"
+                + "\"control_enabled\":true,\"active\":true,\"applied_cap_kw\":12.5,"
+                + "\"all_match\":true,\"checked_at\":\"2026-08-02T11:00:00Z\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> confirmed = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        assertThat(confirmed.getBody().get("certifiedUnits")).isEqualTo(2);
+        assertThat(confirmed.getBody().get("active")).isEqualTo(true);
+        assertThat(confirmed.getBody().get("allMatch")).isEqualTo(true);
+        assertThat(((Number) confirmed.getBody().get("appliedCapKw")).doubleValue()).isEqualTo(12.5);
+
+        // A foreign controller holding the inverter (Modbus has the lowest
+        // priority on Fronius) is reported and must survive the round trip.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":2,"
+                + "\"control_enabled\":true,\"active\":true,\"applied_cap_kw\":0.0,"
+                + "\"all_match\":true,\"possible_override\":true,"
+                + "\"checked_at\":\"2026-08-02T11:05:00Z\"}}").getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> override = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        assertThat(override.getBody().get("possibleOverride")).isEqualTo(true);
+        assertThat(((Number) override.getBody().get("appliedCapKw")).doubleValue()).isEqualTo(0.0);
+
+        // A SPOOFED payload identity is ignored: the row is unchanged.
+        listener.handle(topic, ("{\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"99999999-9999-9999-9999-999999999999\","
+                + "\"curtailment\":{\"units\":9,\"certified_units\":9,\"control_enabled\":false,"
+                + "\"active\":false,\"checked_at\":\"2026-08-02T11:09:00Z\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> still = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        assertThat(still.getBody().get("units")).isEqualTo(2);
+        assertThat(still.getBody().get("possibleOverride")).isEqualTo(true);
     }
 
     /**

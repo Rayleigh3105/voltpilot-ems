@@ -6,6 +6,7 @@
 // Deliberately free of internal vocabulary (no register/Modbus/kill-switch
 // jargon) - that detail lives on the technician's :8484 card.
 import type { ControlStatus, ExecutionDirection, ExecutionMode } from './api';
+import { CURTAIL_PLAN, curtailExecutionNote, type CurtailTruth } from './curtailment';
 import { fmtNum, fmtRelative } from './format';
 
 /**
@@ -64,6 +65,19 @@ export interface ControlStripView {
    * oder gar nichts korrigiert wurde - dann wird keine Richtung behauptet.
    */
   execution: string | null;
+  /**
+   * Die Abregel-Wahrheit, falls in der laufenden Viertelstunde überhaupt
+   * gedrosselt werden soll (PR 3 von 4, Scout `vp-pilsting-abregeln`): „Ihre
+   * Anlage setzt das noch nicht um (0 von 2 Wechselrichtern freigegeben)." bzw.
+   * „Die Einspeisung ist auf 12,5 kW begrenzt — vom Wechselrichter bestätigt."
+   *
+   * Der Unterschied zu `execution`: dort geht es um den BATTERIE-Sollwert, hier
+   * um die EINSPEISE-Begrenzung — zwei verschiedene Steuerpfade, die die
+   * Steuerzeile bis PR 3 unter einer Bestätigung vermischte („bestätigt 0,0 kW"
+   * deckte nur die Batterie). Null ohne Beleg oder ohne Abregel-Slot: dann sagt
+   * die Karte über die Abregelung nichts, statt etwas zu behaupten.
+   */
+  curtailment: string | null;
 }
 
 // A confirmation older than this reads as "stale" - kept in sync with the
@@ -177,6 +191,7 @@ export function controlStrip(
   now: Date = new Date(),
   expectControl = false,
   reason: string | null = null,
+  curtail: CurtailTruth = CURTAIL_PLAN,
 ): ControlStripView | null {
   if (!status) {
     if (!expectControl) return null;
@@ -188,6 +203,7 @@ export function controlStrip(
       agoNote: '',
       reason: null,
       execution: null,
+      curtailment: null,
     };
   }
 
@@ -200,6 +216,7 @@ export function controlStrip(
       agoNote: '',
       reason: null,
       execution: null,
+      curtailment: null,
     };
   }
 
@@ -209,6 +226,11 @@ export function controlStrip(
   // Sollwert gezeigt wird; sie erklärt eine Abweichung, die ohne Sollwert gar
   // nicht sichtbar wäre. Null ohne Ausführungs-Felder (ältere Edge-Version).
   const note = executionNote(status);
+  // Die Abregel-Wahrheit steht nur dort, wo auch ein Sollwert gezeigt wird -
+  // aus demselben Grund wie `note`: eine Aussage über eine Ausführung, die
+  // gerade gar nicht stattfindet, wäre eine Behauptung. Der Aufrufer hat sie
+  // bereits auf den laufenden Slot gefiltert (`curtailTruthForSlot`).
+  const curtailNote = curtailExecutionNote(curtail);
   const ago = fmtRelative(status.checkedAt, now);
   const ageMs = now.getTime() - new Date(status.checkedAt).getTime();
   const stale = !isNaN(ageMs) && ageMs > CONTROL_STALE_MS;
@@ -222,6 +244,7 @@ export function controlStrip(
       agoNote: '',
       reason: null,
       execution: null,
+      curtailment: null,
     };
   }
 
@@ -233,6 +256,7 @@ export function controlStrip(
       agoNote: `zuletzt geprüft ${ago}`,
       reason,
       execution: note,
+      curtailment: curtailNote,
     };
   }
 
@@ -244,6 +268,7 @@ export function controlStrip(
       agoNote: `Abweichung · geprüft ${ago}`,
       reason,
       execution: note,
+      curtailment: curtailNote,
     };
   }
 
@@ -254,6 +279,7 @@ export function controlStrip(
     agoNote: `geprüft ${ago}`,
     reason,
     execution: note,
+    curtailment: curtailNote,
   };
 }
 

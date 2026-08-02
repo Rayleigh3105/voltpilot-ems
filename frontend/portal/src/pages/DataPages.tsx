@@ -10,6 +10,7 @@ import {
   ApiError,
   ONLINE_WINDOW_MS,
   type ControlStatus,
+  type CurtailmentStatus,
   type HistoryRange,
   type PriceHistory,
   type SchedulePlan,
@@ -34,6 +35,7 @@ import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
 import { jetztHeld } from '../fahrplanJetzt';
 import { JetztHeld, TagesFilm } from '../components/FahrplanJetzt';
 import { controlReasonSlot } from '../control';
+import { curtailTruth } from '../curtailment';
 import { buildSnapshot } from '../live';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { ProvBadge } from '../components/HistorieWelt';
@@ -469,6 +471,10 @@ export function FahrplanSection({ site }: { site: Site }) {
   // Geräts (Ausführung) und die Live-Telemetrie (Messung). Beide werden
   // FAIL-SOFT geholt - fehlt eine, sagt der Held das ehrlich, statt zu raten.
   const [control, setControl] = useState<ControlStatus | null>(null);
+  // ... und - seit PR 3 - die Abregel-Wahrheit: setzt die Anlage eine geplante
+  // Drosselung überhaupt um? Ein eigener Abruf, weil der Herzschlag-Block
+  // unabhängig vom Rücklese-Block kommt; 204/Fehler => null => Plan-Wortlaut.
+  const [curtailStatus, setCurtailStatus] = useState<CurtailmentStatus | null>(null);
   const [points, setPoints] = useState<TelemetryPoint[]>([]);
   const [now, setNow] = useState<Date>(() => new Date());
   const [chartOpen, setChartOpen] = useState<boolean>(chartOpenByDefault);
@@ -485,6 +491,10 @@ export function FahrplanSection({ site }: { site: Site }) {
       .then((c) => setControl(c))
       .catch(() => undefined);
     api
+      .curtailmentStatus(siteId)
+      .then((c) => setCurtailStatus(c))
+      .catch(() => undefined);
+    api
       .telemetry(siteId, new Date(Date.now() - LIVE_WINDOW_MS).toISOString())
       .then((p) => setPoints(p))
       .catch(() => undefined);
@@ -492,6 +502,7 @@ export function FahrplanSection({ site }: { site: Site }) {
 
   useEffect(() => {
     setControl(null);
+    setCurtailStatus(null);
     setPoints([]);
     loadLive();
   }, [loadLive]);
@@ -560,6 +571,17 @@ export function FahrplanSection({ site }: { site: Site }) {
   const newestTs = points.length > 0 ? points[points.length - 1].ts : null;
   const snapshotFresh =
     newestTs != null && now.getTime() - new Date(newestTs).getTime() <= ONLINE_WINDOW_MS;
+  // Die Beleg-Lage der Abregelung, EINMAL abgeleitet und an alle drei Flächen
+  // gereicht (Held, Slot-Panel, Phasen-Panel) - so können sie sich nicht
+  // widersprechen. Sie gilt nur für den laufenden Slot: die Panels filtern
+  // darauf über den Index (`curtailTruthForSlot`).
+  const curtail = useMemo(() => curtailTruth(curtailStatus, now), [curtailStatus, now]);
+  const activeSlot = controlReasonSlot(slots, now, slotMinutes);
+  // `controlReasonSlot` liefert ein Element DIESES Arrays zurück, `indexOf` ist
+  // also exakt - und es gibt keine zweite „welcher Slot läuft"-Regel.
+  const activeSlotIdx = activeSlot ? slots.indexOf(activeSlot) : -1;
+  const activeFilmSlot = controlReasonSlot(filmSlots, now, slotMinutes);
+  const activeFilmIdx = activeFilmSlot ? filmSlots.indexOf(activeFilmSlot) : -1;
   const held = useMemo(
     () =>
       jetztHeld({
@@ -572,10 +594,11 @@ export function FahrplanSection({ site }: { site: Site }) {
         snapshotFresh,
         planStale: staleNote != null,
         nextPhase: naechsterEinsatz(film),
+        curtail,
         plantKind: site.plantKind,
         now,
       }),
-    [slots, slotMinutes, control, plan?.deviceId, snapshot, snapshotFresh, staleNote, film, site.plantKind, now],
+    [slots, slotMinutes, control, curtail, plan?.deviceId, snapshot, snapshotFresh, staleNote, film, site.plantKind, now],
   );
 
   const closePanel = () => {
@@ -594,6 +617,8 @@ export function FahrplanSection({ site }: { site: Site }) {
       slotMinutes={slotMinutes}
       selectedPhase={selPhase}
       selectedSlot={null}
+      curtail={curtail}
+      currentSlotIndex={activeFilmIdx}
       onClose={closePanel}
     />
   ) : null;
@@ -605,6 +630,8 @@ export function FahrplanSection({ site }: { site: Site }) {
       slotMinutes={slotMinutes}
       selectedPhase={null}
       selectedSlot={selSlot}
+      curtail={curtail}
+      currentSlotIndex={activeSlotIdx}
       onClose={closePanel}
     />
   ) : null;

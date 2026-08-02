@@ -1200,6 +1200,51 @@ export interface ControlStatus {
   executionTargetKw?: number | null;
 }
 
+// ---- Abregel-Wahrheit (GET /api/v1/sites/{id}/curtailment-status) -----------
+
+/**
+ * Was die Anlage aus einem geplanten „Abregeln"-Slot WIRKLICH macht.
+ *
+ * Der Optimierer plant die Einspeise-Begrenzung, aber ob die Anlage sie
+ * ausführt, hängt an einer manuellen Freigabe JE Wechselrichter — solange die
+ * fehlt, bleibt die Drosselung ein Plan. Genau diesen Unterschied konnte das
+ * Portal bis hierher nicht sehen (es behauptete „die PV wird gedrosselt" neben
+ * einem gemessenen 16,6-kW-Einspeise-Chip).
+ *
+ * **Ein eigener Abruf neben `controlStatus`, kein Feld darin:** die beiden
+ * Herzschlag-Blöcke kommen unabhängig (ein Gerät kann den einen ohne den
+ * anderen senden) und jeder trägt seine EIGENE Frische.
+ *
+ * `null` (204) = ältere Edge-Version oder eine Anlage ohne Abregel-Aktor —
+ * dann bleibt jede Fläche beim Plan-Wortlaut, nie bei einer erfundenen
+ * Ausführung.
+ */
+export interface CurtailmentStatus {
+  deviceId: string;
+  /** Abregel-fähige Einheiten, die das Gerät kennt. */
+  units: number;
+  /** Davon freigegeben. `certifiedUnits < units` ist DER nennbare Grund. */
+  certifiedUnits: number;
+  /** Der Not-Aus der Wechselrichter-Steuerung. */
+  controlEnabled: boolean;
+  /** Mindestens eine Einheit wendet gerade eine Begrenzung an. */
+  active: boolean;
+  /** Summe der angewandten Begrenzungen; null = keine (nie eine erfundene 0). */
+  appliedCapKw: number | null;
+  /**
+   * Über die ANWENDENDEN Einheiten; null = nichts angewandt. Nur `true` ist
+   * eine Bestätigung — `null` darf nie als Widerspruch gelesen werden.
+   */
+  allMatch: boolean | null;
+  /**
+   * Die gemessene Leistung einer Einheit liegt nach der Einschwingzeit über
+   * ihrer Begrenzung: möglicherweise übersteuert sie etwas anderes.
+   */
+  possibleOverride: boolean;
+  /** Der jüngste Rücklese-Zeitpunkt — der Frische-Anker. */
+  checkedAt: string;
+}
+
 // ---- Per-source breakdown (GET /api/v1/sites/{id}/sources) ------------------
 
 /**
@@ -1627,6 +1672,15 @@ export const api = {
   controlStatus: (siteId: string) =>
     request<ControlStatus | undefined>(
       `/api/v1/sites/${siteId}/control-status`,
+    ).then((v) => v ?? null),
+  /**
+   * Die Abregel-Wahrheit der Anlage (204 → null = kein Beleg → Plan-Wortlaut).
+   * Bewusst ein eigener Abruf: die zwei Herzschlag-Blöcke kommen unabhängig
+   * und jeder trägt seine eigene Frische.
+   */
+  curtailmentStatus: (siteId: string) =>
+    request<CurtailmentStatus | undefined>(
+      `/api/v1/sites/${siteId}/curtailment-status`,
     ).then((v) => v ?? null),
   /**
    * The caller's tenant context (U0 login bootstrap): tenant name/segment +

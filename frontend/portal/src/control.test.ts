@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlStatus } from './api';
 import { controlReasonSlot, controlStrip, directionLabel, executionNote } from './control';
+import { CURTAIL_PLAN, curtailTruth } from './curtailment';
 import { slotWhy } from './fahrplanWhy';
 
 const NOW = new Date('2026-07-08T12:00:10Z');
@@ -307,5 +308,59 @@ describe('controlStrip execution', () => {
   it('keeps the customer voice (no register/Modbus vocabulary)', () => {
     const v = controlStrip(status(followed), NOW)!;
     expect(v.execution!).not.toMatch(/register|modbus|setpoint|guard|trim|follow/i);
+  });
+});
+
+describe('controlStrip · die Abregel-Wahrheit (PR 3)', () => {
+  /**
+   * Die EINSPEISE-Begrenzung ist ein anderer Steuerpfad als der
+   * Batterie-Sollwert. Genau das verbarg die Karte bis PR 3: „bestätigt
+   * 0,0 kW" deckte nur die Batterie, während die Anlage sichtbar einspeiste.
+   */
+  const truth = (over: Partial<Parameters<typeof curtailTruth>[0] & object> = {}) =>
+    curtailTruth(
+      {
+        deviceId: 'd1',
+        units: 2,
+        certifiedUnits: 2,
+        controlEnabled: true,
+        active: true,
+        appliedCapKw: 12.5,
+        allMatch: true,
+        possibleOverride: false,
+        checkedAt: '2026-07-08T12:00:05Z',
+        ...over,
+      },
+      NOW,
+    );
+
+  it('bleibt ohne Beleg exakt wie vorher - keine Zeile, keine Behauptung', () => {
+    expect(controlStrip(status({}), NOW)!.curtailment).toBeNull();
+    expect(controlStrip(status({}), NOW, false, null, CURTAIL_PLAN)!.curtailment).toBeNull();
+  });
+
+  it('nennt mit Beleg die Ursache bzw. die Bestätigung', () => {
+    expect(
+      controlStrip(status({}), NOW, false, null, truth({ certifiedUnits: 0, active: false, allMatch: null }))!
+        .curtailment,
+    ).toBe('Ihre Anlage setzt das noch nicht um (0 von 2 Wechselrichtern freigegeben).');
+    expect(controlStrip(status({}), NOW, false, null, truth())!.curtailment).toContain(
+      'vom Wechselrichter bestätigt',
+    );
+  });
+
+  it('erklärt nie eine Abregelung, während gar nicht gesteuert wird', () => {
+    // Dieselbe Regel wie bei `execution`: eine Aussage über eine Ausführung,
+    // die nicht stattfindet, wäre eine Behauptung.
+    expect(
+      controlStrip(status({ controlEnabled: false }), NOW, false, null, truth())!.curtailment,
+    ).toBeNull();
+    expect(controlStrip(status({ certified: false }), NOW, false, null, truth())!.curtailment).toBeNull();
+    expect(controlStrip(null, NOW, true, null, truth())!.curtailment).toBeNull();
+  });
+
+  it('bleibt in der Kundensprache (kein Register-/Modbus-Vokabular)', () => {
+    const v = controlStrip(status({}), NOW, false, null, truth())!;
+    expect(v.curtailment!).not.toMatch(/register|modbus|setpoint|guard|sunspec|curtail/i);
   });
 });

@@ -37,6 +37,14 @@
 
 import type { ControlStatus } from './api';
 import { controlStrip, executionNote } from './control';
+import {
+  CURTAIL_PLAN,
+  curtailActionPhrase,
+  curtailExecutionNote,
+  curtailTruthForSlot,
+  curtailWarnLine,
+  type CurtailTruth,
+} from './curtailment';
 import { roleLabel, slotWhy, type SlotRole, type WhySlot } from './fahrplanWhy';
 import { fmtNum, fmtRelative } from './format';
 import { PROVENIENZ } from './historieWelten';
@@ -124,11 +132,20 @@ export interface JetztHeldView {
   /** „vom Wechselrichter bestätigt · geprüft vor 8 Sek."; null = nichts bestätigt. */
   confirm: string | null;
   /**
-   * Die Widerspruchs-Zeile der Abregelung (bernstein, KEIN Fehler): der Plan
-   * will die Einspeisung pausieren, die Messung daneben zeigt eine laufende
-   * Einspeisung. Null, wo es keinen belegten Widerspruch gibt.
+   * Die WARN-Zeile der Abregelung (bernstein, KEIN Fehler). Ohne
+   * Ausführungs-Beleg ist es der Fix-1-Widerspruch (der Plan will pausieren,
+   * die Messung daneben zeigt Einspeisung); MIT Beleg (PR 3) nennt sie die
+   * echte Ursache („0 von 2 Wechselrichtern freigegeben") bzw. die
+   * Übersteuerung. Null, wo nichts zu warnen ist.
    */
   conflict: string | null;
+  /**
+   * Die BESTÄTIGUNG der Abregelung (neutral, gute Nachricht): „Die Einspeisung
+   * ist auf 12,5 kW begrenzt — vom Wechselrichter bestätigt." Nur bei belegter,
+   * sauberer Ausführung; sonst null — dann trägt `conflict` die Aussage oder es
+   * gibt gar keine.
+   */
+  curtailment: string | null;
   /** Der Warum-Satz des laufenden Slots; null = kein Grund aufgezeichnet. */
   why: string | null;
   /** Die Mess-Wahrheit als Chips; leer, wenn nichts Frisches gemessen wurde. */
@@ -153,6 +170,12 @@ export interface JetztInput {
   planStale: boolean;
   /** Die nächste geplante Phase (aus dem Film) für den Ruhe-Ausblick. */
   nextPhase?: { label: string; at: string } | null;
+  /**
+   * Die Abregel-Beleg-Lage des Geräts (PR 3). Sie wird HIER auf den laufenden
+   * Slot gefiltert (`curtailTruthForSlot`) - ohne sie (ältere Edge/Backend)
+   * bleibt jede Formulierung beim Plan-Wortlaut aus Fix 1.
+   */
+  curtail?: CurtailTruth | null;
   plantKind: PlanWordingKind;
   now: Date;
 }
@@ -227,6 +250,7 @@ export function actionPhrase(
   role: SlotRole | null,
   executedKw: number | null,
   kind: PlanWordingKind,
+  curtail: CurtailTruth = CURTAIL_PLAN,
 ): string {
   const dir = executedKw == null ? null : direction(executedKw);
   const roleDir = role == null ? null : roleDirection(role);
@@ -246,10 +270,10 @@ export function actionPhrase(
       case 'guenstig_laden':
         return 'lädt gerade günstig aus dem Netz';
       case 'abregeln':
-        // KEINE Tatsache: die Drosselung ist geplant, ihre Ausführung ist
-        // cloud-seitig nicht belegt (siehe `fahrplanWhy` PLANNED_TAG). Wo die
-        // Messung dagegen spricht, sagt `curtailConflictLine` es zusätzlich.
-        return 'soll gerade die Einspeisung pausieren';
+        // Gegenwart NUR mit Ausführungs-Beleg (PR 3); ohne ihn der Konjunktiv
+        // aus Fix 1. Wo die Messung dagegen spricht, sagt `curtailWarnLine`
+        // es zusätzlich.
+        return curtailActionPhrase(curtail);
       case 'reserve_halten':
         return 'hält gerade Ladung als Reserve';
       case 'warten':
@@ -292,7 +316,10 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
   const slot = input.slot;
   const role = (slot?.slotRole ?? null) as SlotRole | null;
   // Der Grund kommt aus dem BESTEHENDEN Warum-Layer - keine zweite Erklär-Logik.
-  const reason = slot ? slotWhy(slot, plantKind) : null;
+  // Die Beleg-Lage gilt NUR für den laufenden Slot und NUR, wenn dort
+  // abgeregelt werden soll - sonst ist sie CURTAIL_PLAN, also Fix-1-Verhalten.
+  const curtail = curtailTruthForSlot(input.curtail, role);
+  const reason = slot ? slotWhy(slot, plantKind, curtail) : null;
   // ... und der Steuerungs-Zustand aus der BESTEHENDEN Ableitung der Karte.
   const strip = controlStrip(input.control, now, input.expectControl, reason);
 
@@ -320,7 +347,14 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
     badgeArt: measured ? 'gemessen' : 'geplant',
     badgeNote: measured && status ? fmtRelative(status.checkedAt, now) : null,
     status: statusLine(state, strip?.sentence ?? null, executedKw, confirmedKw),
-    lead: leadLine(state, role, showValue ? executedKw : null, slot?.slotFlags ?? null, plantKind),
+    lead: leadLine(
+      state,
+      role,
+      showValue ? executedKw : null,
+      slot?.slotFlags ?? null,
+      plantKind,
+      curtail,
+    ),
     value: showValue ? kw(executedKw as number) : null,
     valueNote:
       dir == null ? null : dir === 'laden' ? 'in den Speicher' : dir === 'entladen' ? 'aus dem Speicher' : 'der Speicher hält',
@@ -331,8 +365,15 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
         ? `vom Wechselrichter bestätigt · geprüft ${fmtRelative(status.checkedAt, now)}`
         : null,
     conflict: SHOWS_WHY.has(state)
-      ? curtailConflictLine(role, input.snapshotFresh ? input.snapshot : null)
+      ? curtailConflictLine(role, input.snapshotFresh ? input.snapshot : null, curtail)
       : null,
+    // Die gute Nachricht steht nie im Warn-Slot: sie erscheint nur bei
+    // belegter, sauberer Ausführung (und nur, wo der Plan überhaupt erklärt
+    // wird - eine Bestätigung über einem toten Plan wäre eine Behauptung).
+    curtailment:
+      SHOWS_WHY.has(state) && curtail.stufe === 'ausgefuehrt'
+        ? curtailExecutionNote(curtail)
+        : null,
     // Ein toter Plan erklärt nichts über das Jetzt - sein Grund bleibt weg.
     why: SHOWS_WHY.has(state) ? reason : null,
     chips,
@@ -391,12 +432,18 @@ function leadLine(
   executedKw: number | null,
   flags: string[] | null,
   kind: PlanWordingKind,
+  curtail: CurtailTruth,
 ): string {
   if (SHOWS_VALUE.has(state)) {
     // Die eingebaute Sicherung folgt NICHT dem Plan, also darf sie sich seine
     // Rolle auch nicht ausleihen - sie bekommt die neutrale Verbalphrase aus
     // der tatsächlich gemessenen Richtung.
-    return `Ihre Batterie ${actionPhrase(state === 'sicherung' ? null : role, executedKw, kind)}`;
+    return `Ihre Batterie ${actionPhrase(
+      state === 'sicherung' ? null : role,
+      executedKw,
+      kind,
+      curtail,
+    )}`;
   }
   if (state === 'veraltet') return 'Ihre Batterie regelt gerade eigenständig weiter';
   if (state === 'aus' || state === 'nicht_freigegeben') {
@@ -407,7 +454,7 @@ function leadLine(
   if (role == null) return 'Für die laufende Viertelstunde liegt kein Fahrplan vor';
   // `framed`: der Satz sagt schon „Geplant ist gerade" - der Plan-Zusatz des
   // Rollen-Labels würde das Wort ein zweites Mal in dieselbe Zeile setzen.
-  return `Geplant ist gerade: ${roleLabel(role, kind, flags, true)}`;
+  return `Geplant ist gerade: ${roleLabel(role, kind, flags, true, curtail)}`;
 }
 
 function statusLine(
@@ -496,29 +543,37 @@ function valueMissingReason(state: JetztState): string | null {
 export const CURTAIL_CONFLICT_EXPORT_KW = 0.5;
 
 /**
- * Der ehrliche Widerspruch zur geplanten Abregelung — aus dem Messwert, der
- * ohnehin als Chip danebensteht (Scout `vp-pilsting-abregeln` Frage 3):
- * der Plan will die Einspeisung pausieren, das Netz meldet Einspeisung.
+ * Die WARN-Zeile der Abregelung — BERNSTEIN, nicht rot: das ist kein
+ * Gerätefehler.
  *
- * BERNSTEIN, nicht rot: das ist kein Gerätefehler. Die Ursache ist heute
- * cloud-seitig nicht entscheidbar (der Abregel-Aktor braucht je Einheit eine
- * Freigabe, und der Bestätigungs-Block des Herzschlags wird noch nicht
- * gelesen), also nennt der Satz BEIDE Möglichkeiten und behauptet keine.
- * Null, wo nichts belegt ist: andere Rolle, kein frischer Schnappschuss,
- * kein Netzwert, oder eine Einspeisung im Rauschband.
+ * OHNE Ausführungs-Beleg (Fix 1, unverändert) entsteht sie aus dem Messwert,
+ * der ohnehin als Chip danebensteht: der Plan will die Einspeisung pausieren,
+ * das Netz meldet Einspeisung — und weil die Ursache dann cloud-seitig nicht
+ * entscheidbar ist, nennt der Satz BEIDE Möglichkeiten und behauptet keine.
+ *
+ * MIT Beleg (PR 3) nennt sie die echte Ursache („0 von 2 Wechselrichtern
+ * freigegeben") und braucht die Messung nicht mehr als Indiz — sie schärft den
+ * Satz nur noch. Bei belegter, sauberer Ausführung schweigt sie: eine
+ * Begrenzung ist ein Deckel, keine Null (und der nicht abregelbare Anteil der
+ * Anlage speist weiter ein), eine Rest-Einspeisung ist dort also kein
+ * Widerspruch — die Aussage trägt dann `JetztHeldView.curtailment`.
+ *
+ * Null, wo nichts zu sagen ist: andere Rolle, oder Stufe 1 ohne messbaren
+ * Widerspruch (kein frischer Schnappschuss, kein Netzwert, Einspeisung im
+ * Rauschband).
  */
 export function curtailConflictLine(
   role: SlotRole | null,
   snap: LiveSnapshot | null,
+  curtail: CurtailTruth = CURTAIL_PLAN,
 ): string | null {
-  if (role !== 'abregeln' || !snap || snap.gridKw == null) return null;
-  const g = Number(snap.gridKw);
-  // Negativ = Einspeisung (die Vorzeichen-Konvention aus `live.ts`).
-  if (!Number.isFinite(g) || -g <= CURTAIL_CONFLICT_EXPORT_KW) return null;
-  return (
-    `Ihre Anlage speist gerade ${fmtNum(-g, 'kW', 1)} ein – die Drosselung ist auf dieser ` +
-    'Anlage noch nicht freigegeben oder nicht bestätigt.'
-  );
+  if (role !== 'abregeln') return null;
+  const g = snap == null || snap.gridKw == null ? null : Number(snap.gridKw);
+  // Negativ = Einspeisung (die Vorzeichen-Konvention aus `live.ts`); unterhalb
+  // des Rauschbands zählt sie nicht als Widerspruch.
+  const exportKw =
+    g != null && Number.isFinite(g) && -g > CURTAIL_CONFLICT_EXPORT_KW ? -g : null;
+  return curtailWarnLine(curtail, exportKw);
 }
 
 /**
