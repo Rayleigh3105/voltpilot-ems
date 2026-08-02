@@ -365,12 +365,30 @@ public class SiteController {
                 forecastQuality.planAccuracySeries(siteId, since));
     }
 
+    /**
+     * The site's Fahrplan in one of two readings ({@link ScheduleMode}):
+     * {@code mode=latest} (default, unchanged) is the newest run - what the
+     * device executes right now; {@code mode=day} is the Tages-Splice "wie der
+     * Tag geplant war" that lets the Film des Tages tick off the elapsed
+     * morning phases. Both are RLS-scoped (foreign site 404) and both run
+     * through the SAME price recomposition, so a past phase explains itself
+     * with the price the optimizer decided with.
+     */
     @GetMapping("/{siteId}/schedule")
-    public SchedulePlanDto schedule(@PathVariable UUID siteId) {
+    public SchedulePlanDto schedule(
+            @PathVariable UUID siteId,
+            @RequestParam(defaultValue = "latest") String mode) {
+        ScheduleMode parsed = ScheduleMode.parse(mode);
+        if (parsed == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "mode must be one of latest|day");
+        }
         if (!sites.existsForCurrentTenant(siteId)) {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
         }
-        SchedulePlanDto plan = schedules.latestForSite(siteId);
+        SchedulePlanDto plan = parsed == ScheduleMode.DAY
+                ? schedules.dayAsPlanned(siteId, ScheduleMode.dayStart(Instant.now()))
+                : schedules.latestForSite(siteId);
         // P0 Textwahrheit: the persisted price is bare SPOT - fill in the price
         // the optimizer actually decided with, so the portal's why-sentence can
         // name it instead of contradicting itself (report vp-netzbezug-nacht-s3

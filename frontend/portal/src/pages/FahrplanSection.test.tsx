@@ -77,6 +77,31 @@ function plan(over: Partial<SchedulePlan> = {}): SchedulePlan {
   };
 }
 
+/**
+ * Was `api.schedule(id, 'day')` liefert: der GANZE Tag - vier schon gelaufene
+ * Viertelstunden „Sonne speichern" vor dem jüngsten Lauf.
+ */
+function dayPlan(): SchedulePlan {
+  const base = plan();
+  const t0 = new Date(base.slots[0].start).getTime();
+  const morgens = Array.from({ length: 4 }, (_, i) =>
+    slot({
+      start: new Date(t0 - (4 - i) * 15 * 60_000).toISOString(),
+      slotRole: 'pv_speichern',
+      batteryKw: 6,
+    }),
+  );
+  return {
+    ...base,
+    // Die lauf-bezogenen Felder beschreiben EINEN Lauf - der Splice trägt sie
+    // nicht (die api liefert sie in dieser Lesart null).
+    planId: null,
+    peakTargetKw: null,
+    fallback14a: null,
+    slots: [...morgens, ...base.slots],
+  };
+}
+
 const CONTROL: ControlStatus = {
   deviceId: 'dev-1',
   commandedKw: -6.1,
@@ -168,5 +193,92 @@ describe('FahrplanSection · die vier Blöcke', () => {
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-jetzt')).toBeTruthy());
     expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Der Tages-Splice: der Film erzählt den GANZEN Tag - die gelaufenen Phasen
+ * abgehakt und ehrlich als PLAN, nie als Ist. Fällt die neue Lesart aus, steht
+ * exakt die Rest-des-Tages-Fassung da.
+ */
+describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
+  beforeEach(() => {
+    schedule.mockImplementation((_id: unknown, mode?: unknown) =>
+      Promise.resolve(mode === 'day' ? dayPlan() : plan()),
+    );
+  });
+
+  it('holt den ganzen Tag und hakt die gelaufenen Phasen ab', async () => {
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(1));
+    // Der Film führt weiterhin mit „jetzt", der Vormittag steht abgehakt davor.
+    expect(container.querySelector('.vp-film-now')?.textContent).toBe('Jetzt');
+    expect(screen.getByText('Sonne speichern')).toBeInTheDocument();
+    // Die zweite Lesart wurde wirklich angefragt - und die alte daneben auch.
+    expect(schedule).toHaveBeenCalledWith('s1', 'day');
+    expect(schedule).toHaveBeenCalledWith('s1');
+  });
+
+  it('sagt, dass die abgehakten Phasen der PLAN sind - und verweist auf die Messwerte', async () => {
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-film-pastnote')).toBeTruthy());
+    expect(container.querySelector('.vp-film-pastnote')?.textContent).toContain(
+      'so war es geplant',
+    );
+    // Ein Abzeichen für die ganze Karte: hier stehen nur geplante Zahlen.
+    expect(screen.getByText('Der ganze Tag')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Messwerte' })).toHaveAttribute(
+      'href',
+      '#/anlage/s1/messwerte',
+    );
+  });
+
+  it('öffnet das Erklär-Panel einer VERGANGENEN Phase an ihrer Zeile', async () => {
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(1));
+    const done = container.querySelector('.vp-film-li.is-done .vp-film-row') as HTMLElement;
+    fireEvent.click(done);
+    // Das Panel gehört zur GANZTAGES-Liste (sonst zeigte der Index in die
+    // Slots des jüngsten Laufs und erklärte die falsche Phase).
+    const panel = container.querySelector('.vp-film-li.is-done .vp-fw-panel');
+    expect(panel).toBeTruthy();
+    // Das Panel spricht das volle Vokabular (die Liste die Kurzform) - und es
+    // beschreibt die VIER Vormittags-Viertelstunden, die nur in der
+    // Ganztages-Liste stehen.
+    expect(panel?.textContent).toContain('PV-Überschuss speichern');
+    expect(panel?.textContent).toContain('4 Viertelstunden');
+  });
+
+  it('fällt ohne die neue Lesart exakt auf den Rest des Tages zurück', async () => {
+    // Eine ältere api kennt `mode` nicht und antwortet mit 400.
+    schedule.mockImplementation((_id: unknown, mode?: unknown) =>
+      mode === 'day' ? Promise.reject(new Error('400')) : Promise.resolve(plan()),
+    );
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-film')).toBeTruthy());
+    expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(0);
+    expect(container.querySelector('.vp-film-pastnote')).toBeNull();
+    expect(screen.getByText('Heute noch')).toBeInTheDocument();
+    // Der Rest der Seite ist davon unberührt.
+    expect(container.querySelector('.vp-film-now')?.textContent).toBe('Jetzt');
+    expect(screen.getByText(/Heute geplant:/)).toBeInTheDocument();
+  });
+
+  it('nutzt den Splice nur, wenn er die Warum-Ebene vollständig trägt', async () => {
+    // Ein Vormittags-Slot ohne Rolle (älterer Lauf) macht die Ganztages-Liste
+    // unerklärbar - dann lieber die geprüfte Rest-des-Tages-Fassung als eine
+    // halbe Erzählung.
+    schedule.mockImplementation((_id: unknown, mode?: unknown) => {
+      if (mode !== 'day') return Promise.resolve(plan());
+      const d = dayPlan();
+      return Promise.resolve({
+        ...d,
+        slots: d.slots.map((s, i) => (i === 0 ? { ...s, slotRole: null } : s)),
+      });
+    });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-film')).toBeTruthy());
+    expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(0);
+    expect(screen.getByText('Heute noch')).toBeInTheDocument();
   });
 });

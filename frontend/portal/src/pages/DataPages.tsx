@@ -30,7 +30,7 @@ import { ScheduleChart } from '../ScheduleChart';
 import { bankedValueLine, horizonHint, planStaleNote, savingsTodayEur } from '../schedule';
 import { FALLBACK_14A_NOTE, FORECAST_FOOTNOTE, phases } from '../fahrplanWhy';
 import { FahrplanWhyPanel } from '../components/FahrplanWhy';
-import { filmRows, naechsterEinsatz } from '../fahrplanFilm';
+import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
 import { jetztHeld } from '../fahrplanJetzt';
 import { JetztHeld, TagesFilm } from '../components/FahrplanJetzt';
 import { controlReasonSlot } from '../control';
@@ -445,7 +445,8 @@ function chartOpenByDefault(): boolean {
  *   1 JETZT-Held      „Was macht meine Batterie gerade — und läuft das
  *                      richtig?" (+ „muss ich etwas tun?" + das Warum)
  *   2 Film des Tages   „Was passiert als Nächstes?" — die Phasen als erzählte
- *                      Liste mit Jetzt-Anker, „Morgen" eingeklappt
+ *                      Liste mit Jetzt-Anker; der GANZE Tag (die gelaufenen
+ *                      Phasen abgehakt), „Morgen" eingeklappt
  *   3 Euro-Zeile       „Was bringt mir das?" — EINE Zeile mit dem Abzeichen
  *                      „Geplant" (die gemessene Ersparnis wohnt in den Erlösen)
  *   4 Diagramm         die Vertiefung: am Telefon eingeklappt, am Rechner
@@ -471,6 +472,10 @@ export function FahrplanSection({ site }: { site: Site }) {
   const [points, setPoints] = useState<TelemetryPoint[]>([]);
   const [now, setNow] = useState<Date>(() => new Date());
   const [chartOpen, setChartOpen] = useState<boolean>(chartOpenByDefault);
+  // Der GANZE Tag für den Film (Tages-Splice, „wie der Tag geplant war") -
+  // ebenfalls FAIL-SOFT: eine api ohne diese Lesart antwortet mit 400, dann
+  // bleibt der Film exakt bei der Rest-des-Tages-Fassung des jüngsten Laufs.
+  const [dayPlan, setDayPlan] = useState<SchedulePlan | null>(null);
 
   const siteId = site.id;
   const loadLive = useCallback(() => {
@@ -491,6 +496,18 @@ export function FahrplanSection({ site }: { site: Site }) {
     loadLive();
   }, [loadLive]);
   useFreshnessPoll(loadLive, LIVE_POLL_MS);
+
+  useEffect(() => {
+    let active = true;
+    setDayPlan(null);
+    api
+      .schedule(siteId, 'day')
+      .then((p) => active && setDayPlan(p))
+      .catch(() => active && setDayPlan(null));
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
 
   const slots = plan?.slots ?? [];
   const slotMinutes = plan?.slotMinutes ?? 15;
@@ -521,10 +538,22 @@ export function FahrplanSection({ site }: { site: Site }) {
   const banked = bankedValueLine(plan?.bankedValueEur);
   const horizonNote = horizonHint(slots, now, slotMinutes);
 
-  // Block 2 + der Ausblick des Helden - eine Ableitung, zwei Verbraucher.
+  // Block 2 - der GANZE Tag, wenn der Splice ihn trägt. Die Warum-Ebene ist
+  // per Konstruktion alles-oder-nichts (`phases()` liefert [] sobald EIN Slot
+  // keine Rolle trägt), also ist eine nicht-leere Phasenliste zugleich der
+  // Fail-soft-Schalter: ohne sie (ältere api, Splice ohne Warum-Spalten) rendert
+  // der Film zeichengleich den jüngsten Lauf, also den Rest des Tages.
+  const daySlots = dayPlan?.slots ?? [];
+  const dayPhases = useMemo(() => phases(daySlots, slotMinutes), [dayPlan, slotMinutes]); // eslint-disable-line react-hooks/exhaustive-deps
+  const wholeDay = dayPhases.length > 0;
+  const filmSlots = wholeDay ? daySlots : slots;
+  const filmPhases = wholeDay ? dayPhases : whyPhases;
+  const hasFilm = filmPhases.length > 0;
+  // Der Ausblick des Helden liest dieselbe Ableitung - eine Quelle, zwei
+  // Verbraucher.
   const film = useMemo(
-    () => filmRows(whyPhases, slots, site.plantKind, now),
-    [whyPhases, slots, site.plantKind, now],
+    () => filmRows(filmPhases, filmSlots, site.plantKind, now),
+    [filmPhases, filmSlots, site.plantKind, now],
   );
   // Block 1 - die drei Wahrheiten im Jetzt.
   const snapshot = useMemo(() => buildSnapshot(points), [points]);
@@ -549,18 +578,34 @@ export function FahrplanSection({ site }: { site: Site }) {
     [slots, slotMinutes, control, plan?.deviceId, snapshot, snapshotFresh, staleNote, film, site.plantKind, now],
   );
 
-  const whyPanel = hasWhy ? (
+  const closePanel = () => {
+    setSelPhase(null);
+    setSelSlot(null);
+  };
+  // ZWEI Panels, weil zwei Listen: die Filmzeile zeigt auf die Phasen des
+  // GANZEN Tages, die angetippte Viertelstunde im Diagramm auf die Slots des
+  // jüngsten Laufs. Ein geteiltes Panel würde bei aktivem Splice in die
+  // falsche Liste greifen.
+  const phasePanel = hasFilm ? (
+    <FahrplanWhyPanel
+      phases={filmPhases}
+      slots={filmSlots}
+      plantKind={site.plantKind}
+      slotMinutes={slotMinutes}
+      selectedPhase={selPhase}
+      selectedSlot={null}
+      onClose={closePanel}
+    />
+  ) : null;
+  const slotPanel = hasWhy ? (
     <FahrplanWhyPanel
       phases={whyPhases}
       slots={slots}
       plantKind={site.plantKind}
       slotMinutes={slotMinutes}
-      selectedPhase={selPhase}
+      selectedPhase={null}
       selectedSlot={selSlot}
-      onClose={() => {
-        setSelPhase(null);
-        setSelSlot(null);
-      }}
+      onClose={closePanel}
     />
   ) : null;
 
@@ -605,10 +650,13 @@ export function FahrplanSection({ site }: { site: Site }) {
       )}
 
       {/* ---- Block 2: der Film des Tages (F3) ---- */}
-      {hasWhy && (
+      {hasFilm && (
         <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-4)' }}>
           <div className="vp-jetzt-kick">
-            <span className="vp-card-label">Heute noch</span>
+            {/* „Der ganze Tag", sobald der Splice die Vormittags-Phasen trägt -
+                sonst die bisherige Beschriftung. EIN Abzeichen für die ganze
+                Karte: hier stehen nur geplante Zahlen, auch in der Vergangenheit. */}
+            <span className="vp-card-label">{filmKicker(film)}</span>
             <ProvBadge art="geplant" />
           </div>
           <TagesFilm
@@ -618,11 +666,11 @@ export function FahrplanSection({ site }: { site: Site }) {
               setSelPhase((cur) => (cur === i ? null : i));
               setSelSlot(null);
             }}
-            panel={selPhase != null ? whyPanel : null}
+            panel={selPhase != null ? phasePanel : null}
           />
           <p className="vp-note" style={{ margin: 'var(--vp-space-3) 0 0' }}>
             Phase antippen: warum der Speicher das tut, mit den Zahlen dahinter.
-            Was heute bereits passiert ist, steht unter{' '}
+            Was heute wirklich passiert ist, steht unter{' '}
             <a href={`#/anlage/${site.id}/messwerte`}>Messwerte</a>.
           </p>
         </Card>
@@ -705,7 +753,7 @@ export function FahrplanSection({ site }: { site: Site }) {
               }
               selectedIndex={hasWhy ? selSlot : undefined}
             />
-            {selSlot != null && whyPanel}
+            {selSlot != null && slotPanel}
             {/* Die Energiesummen sind Diagramm-KONTEXT, kein Seiten-Einstieg -
                 deshalb stehen sie hier unten und nicht mehr als KPI-Reihe oben. */}
             <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>

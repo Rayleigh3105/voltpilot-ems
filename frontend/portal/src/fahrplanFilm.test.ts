@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { filmKurzfassung, filmLabel, filmRows, naechsterEinsatz, phaseDuty } from './fahrplanFilm';
+import {
+  filmKicker,
+  filmKurzfassung,
+  filmLabel,
+  filmPastNote,
+  filmRows,
+  naechsterEinsatz,
+  phaseDuty,
+} from './fahrplanFilm';
 import { phases, type WhySlot } from './fahrplanWhy';
 import { DUTY_HINT, dutyTooltip } from './schedule';
 
@@ -240,6 +248,92 @@ describe('Duty-Vorschau · die Pflicht steht im PLAN, nicht erst im Slot', () =>
     expect(note.hint).toBe(DUTY_HINT['verbrauch-folgen']);
     // Und der Tooltip des Diagramms nutzt dieselbe Vokabel-Quelle.
     expect(dutyTooltip('verbrauch-folgen')).toContain('folgt dem gemessenen Verbrauch');
+  });
+});
+
+describe('Der GANZE Tag: abgehakte Vergangenheit, ehrlich als PLAN', () => {
+  /**
+   * Die Ganztages-Slotliste des Tages-Splice: Vormittag (schon gelaufen),
+   * laufende Phase, Rest des Tages, Morgen. Genau das, was
+   * `api.schedule(id, 'day')` liefert.
+   */
+  const ganzerTag = () =>
+    build([
+      ...run('guenstig_laden', -17, 8, { batteryKw: 5, importPriceCtKwh: 3.4 }),
+      ...run('pv_speichern', -13, 12, { batteryKw: 6 }),
+      ...run('eigenverbrauch', -0.5, 8, { coverLoadFromBattery: true }),
+      ...run('warten', 1.5, 8),
+      ...run('guenstig_laden', 8.5, 4, { batteryKw: 5 }),
+    ]);
+
+  it('hakt die gelaufenen Phasen ab und lässt „jetzt" trotzdem führen', () => {
+    const { slots, phases: ph } = ganzerTag();
+    const view = filmRows(ph, slots, 'eigenverbrauch', NOW);
+    // Der Vormittag steht als eigene, abgeschlossene Gruppe.
+    expect(view.past.map((r) => r.label)).toEqual([
+      'Günstig aus dem Netz laden',
+      'Sonne speichern',
+    ]);
+    expect(view.past.every((r) => r.done)).toBe(true);
+    expect(view.past.some((r) => r.now)).toBe(false);
+    // ...und „heute" beginnt weiterhin mit der laufenden Phase.
+    expect(view.today[0].now).toBe(true);
+    expect(view.today[0].done).toBe(false);
+    expect(view.today[0].sub).toMatch(/^läuft · noch bis/);
+    // Morgen bleibt eingeklappt.
+    expect(view.tomorrow).toHaveLength(1);
+    expect(view.empty).toBeNull();
+  });
+
+  it('behält Farbsprache und Pflicht-Markierung auch in der Vergangenheit', () => {
+    // Eine schon gelaufene Phase, die die Pflicht „Verbrauch folgen" trug.
+    const { slots, phases: ph } = build([
+      ...run('eigenverbrauch', -4, 8, { coverLoadFromBattery: true }),
+      ...run('warten', 1.5, 4),
+    ]);
+    const done = filmRows(ph, slots, 'eigenverbrauch', NOW).past[0];
+    expect(done.done).toBe(true);
+    // Die Rolle (= die Farbe, die `roleColor` daraus macht) bleibt erhalten -
+    // nichts wird für die Vergangenheit entfärbt oder umbenannt.
+    expect(done.role).toBe('eigenverbrauch');
+    expect(done.label).toBe('Verbrauch decken');
+    expect(done.duty?.kind).toBe('verbrauch-folgen');
+  });
+
+  it('nennt den ganzen Tag beim Namen und weist ihn als GEPLANT aus', () => {
+    const { slots, phases: ph } = ganzerTag();
+    const view = filmRows(ph, slots, 'eigenverbrauch', NOW);
+    expect(filmKicker(view)).toBe('Der ganze Tag');
+    // Abgehakt heißt „so war es geplant" - nie „so ist es gelaufen".
+    expect(filmPastNote(view)).toBe(
+      'Bereits gelaufen — so war es geplant, nicht wie es gelaufen ist.',
+    );
+    expect(filmPastNote(view)).not.toMatch(/gemessen|tatsächlich|wirklich/);
+  });
+
+  it('bleibt ohne Vergangenheit exakt die Rest-des-Tages-Fassung (fail-soft)', () => {
+    // Genau das, was eine ältere api liefert: nur der jüngste Lauf.
+    const { slots, phases: ph } = build([
+      ...run('eigenverbrauch', -0.5, 8),
+      ...run('warten', 1.5, 8),
+    ]);
+    const view = filmRows(ph, slots, 'eigenverbrauch', NOW);
+    expect(view.past).toEqual([]);
+    expect(filmKicker(view)).toBe('Heute noch');
+    expect(filmPastNote(view)).toBeNull();
+  });
+
+  it('zeigt einen Tag ohne frühe Läufe ehrlich erst ab dem ersten Lauf', () => {
+    // Der Optimierer lief erst mittags - der Vormittag hat schlicht keine
+    // Slots. Der Film beginnt dort, wo geplant wurde, statt etwas zu erfinden.
+    const { slots, phases: ph } = build([
+      ...run('pv_speichern', -3, 8, { batteryKw: 6 }),
+      ...run('eigenverbrauch', -0.5, 8),
+    ]);
+    const view = filmRows(ph, slots, 'eigenverbrauch', NOW);
+    expect(view.past).toHaveLength(1);
+    expect(view.past[0].label).toBe('Sonne speichern');
+    expect(new Date(view.past[0].from).getHours()).toBe(16); // 19:20 - 3 h
   });
 });
 

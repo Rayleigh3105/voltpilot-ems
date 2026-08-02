@@ -8,11 +8,20 @@
  * Farb-Validators — Identität darf also nie allein an der Farbe hängen. Jede
  * Zeile trägt deshalb ihr WORT; die Farbe verstärkt nur.
  *
- * Richtung v1 (Captain-Entscheid D2): der Film zeigt den REST DES HEUTIGEN
- * TAGES voll und „Morgen" eingeklappt — ohne API-Änderung. **Die Vergangenheit
- * ist im Datenmodell aber schon vorgesehen** (`past` + `FilmRow.done`), damit
- * die spätere Ganztages-Slotliste (Tages-Splice über mehrere Läufe) ohne Umbau
- * hineinpasst: sie füllt dann nur `past` mit abgehakten Phasen.
+ * Richtung (Captain-Entscheid D2, seit dem TAGES-SPLICE): der Film zeigt als
+ * Standard den GANZEN Tag — auch die schon vergangenen Vormittags-Phasen,
+ * abgehakt — und „Morgen" eingeklappt. Dieses Modul ändert sich dafür NICHT in
+ * seiner Mechanik: es bekam die Vergangenheit von Anfang an mitgedacht (`past`
+ * + `FilmRow.done`), und die api liefert sie jetzt (`api.schedule(id, 'day')`,
+ * je Viertelstunde der Wert aus dem Lauf, der VOR ihrem Beginn galt). Ohne
+ * diese Lesart (ältere api, oder ein Splice ohne vollständige Warum-Ebene)
+ * bekommt `filmRows` weiter nur den jüngsten Lauf — dann ist `past` leer und
+ * die Ansicht ist zeichengleich zur Rest-des-Tages-Fassung.
+ *
+ * EHRLICHKEIT der Vergangenheit: eine abgehakte Zeile sagt „so war es
+ * GEPLANT", nie „so ist es gelaufen" — der Film trägt durchgehend das
+ * Abzeichen „Geplant", es wird kein Ist-Wert erfunden, und der Verweis auf die
+ * Messwerte bleibt (`filmPastNote`).
  *
  * Seit PR 4 trägt eine Zeile zusätzlich die DUTY-VORSCHAU: die zwei
  * In-Slot-Pflichten, die der Optimierer mit dem Plan persistiert, machen schon
@@ -87,7 +96,10 @@ export interface FilmRow {
 }
 
 export interface FilmView {
-  /** Abgeschlossene Phasen (Ganztages-Film; in v1 leer). */
+  /**
+   * Abgeschlossene Phasen des Tages — abgehakt, nie als Ist behauptet. Leer,
+   * solange nur der jüngste Lauf vorliegt (dann beginnt der Film bei „jetzt").
+   */
   past: FilmRow[];
   /** Der Rest des heutigen Tages, laufende Phase zuerst. */
   today: FilmRow[];
@@ -276,6 +288,29 @@ export function filmRows(
           ? 'Für heute stehen keine weiteren Phasen an.'
           : 'Für den Rest des Tages ist derzeit nichts weiter geplant.',
   };
+}
+
+/**
+ * Die Überschrift des Films: sobald abgehakte Phasen dabei sind, erzählt er
+ * den GANZEN Tag — sonst bleibt es bei der Rest-des-Tages-Fassung (und damit
+ * bei der bisherigen Beschriftung, damit eine ältere api nichts verspricht,
+ * was sie nicht liefert).
+ */
+export function filmKicker(view: FilmView): string {
+  return view.past.length > 0 ? 'Der ganze Tag' : 'Heute noch';
+}
+
+/**
+ * Der Ehrlichkeits-Satz über den abgehakten Phasen: sie sagen, wie die
+ * Viertelstunde GEPLANT war — nicht, wie sie gelaufen ist. Der Film hat keine
+ * Ist-Werte und erfindet auch keine; was wirklich passiert ist, steht in den
+ * Messwerten (der Verweis dazu lebt in der Fußzeile der Karte). Null ohne
+ * Vergangenheit — dann gibt es nichts zu erklären.
+ */
+export function filmPastNote(view: FilmView): string | null {
+  return view.past.length > 0
+    ? 'Bereits gelaufen — so war es geplant, nicht wie es gelaufen ist.'
+    : null;
 }
 
 /**

@@ -276,6 +276,24 @@
   color: var(--vp-muted, #6c757d);
 }
 
+/* Tages-Splice: die schon gelaufenen Phasen sind visuell RUHIG, behalten aber
+   ihre Farbe - die Farbsprache (Solar grün · Netz türkis · Entladen navy ·
+   Abregeln orange) gilt für die Vergangenheit genauso. Gedämpft, nicht
+   entfärbt: sonst hinge die Identität wieder am Wort allein. */
+.vp-film-li.is-done .vp-film-dot,
+.vp-film-li.is-done .vp-film-eur {
+  opacity: 0.55;
+}
+
+/* Der Ehrlichkeits-Satz über den abgehakten Zeilen: sie sind PLAN, nicht Ist. */
+.vp-film-pastnote {
+  margin: 0 0 var(--vp-space-1);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--vp-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
 /* Duty-Vorschau (PR 4): eine ruhige zweite Meta-Zeile, kein Alarm - eine
    bewusste Nachführung ist NIE ein Fehler. Bewusst kein Farb-Träger: das WORT
    trägt die Aussage (Grün↔Türkis liegt unter dem Normalsicht-Schwellwert). */

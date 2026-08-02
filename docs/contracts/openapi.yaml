@@ -620,20 +620,49 @@ paths:
       tags: [schedules]
       summary: Current 24h optimization schedule (15-min slots) for a site.
       description: >
-        The latest optimizer run from the schedule hypertable (written by
-        services/optimization): per-slot planned battery power (+charge /
+        Two readings of the same hypertable, selected by `mode`.
+
+
+        `mode=latest` (DEFAULT, unchanged): the latest optimizer run - what the
+        device is executing right now. Per-slot planned battery power (+charge /
         -discharge), projected grid power and SoC, the day-ahead price and the
         projected cost vs. the no-battery baseline, plus the headline savingsEur
-        over the horizon. RLS-scoped by tenant. Empty slots array (null
-        metadata) when no plan has been produced yet.
+        over the horizon. Empty slots array (null metadata) when no plan has
+        been produced yet.
+
+
+        `mode=day` ("wie der Tag geplant war", Tages-Splice): per 15-min slot of
+        the Europe/Berlin day the value from the NEWEST run that planned the
+        slot BEFORE it began - the plan that was in force when the quarter hour
+        started. The per-slot winner uses the same DISTINCT-ON splice the
+        savings math has always used. Slots that had not started yet resolve to
+        the newest run, so the tail of the response IS the current plan
+        (including its slots on the following day). A slot no run planned
+        ex-ante simply has no row, so a day whose optimizer only started at noon
+        honestly begins at noon. Run-level facts describe ONE run and are
+        therefore null on a spliced day (planId, bankedValueEur, socStartPct,
+        socEndPct, peakTargetKw, fallback14a); generatedAt/deviceId name the
+        newest run that contributed a slot, and savingsEur sums the spliced
+        slots. Feeds the portal's "Film des Tages", which ticks off the elapsed
+        phases as PLANNED (never as measured).
+
+
+        Both modes are RLS-scoped by tenant and carry the recomposed decision
+        prices (importPriceCtKwh / exportValueCtKwh / importPriceSource).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: mode
+          in: query
+          required: false
+          description: Which reading of the plan; unknown values are rejected (400).
+          schema: { type: string, enum: [latest, day], default: latest }
       responses:
         "200":
           description: The site's current plan (empty slots array if none yet).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Schedule" }
+        "400": { description: Unknown mode. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/control-status:

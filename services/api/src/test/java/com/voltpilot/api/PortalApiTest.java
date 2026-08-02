@@ -8,6 +8,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -1101,6 +1104,144 @@ class PortalApiTest {
                 url("/api/v1/sites/" + BERLIN_SITE + "/schedule"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * "Wie der Tag geplant war" - the TAGES-SPLICE ({@code mode=day}, Konzept
+     * vp-fahrplan-kunde-konzept §8 "PR 5", Captain-Entscheid D2): per slot the
+     * value from the NEWEST run that planned it BEFORE it began, so the Film des
+     * Tages can tick off the elapsed morning phases as PLANNED.
+     *
+     * <p>The fixture is anchored on the Europe/Berlin day (never on {@code now}),
+     * so it proves the same thing at any time of day: yesterday's late run owns
+     * the early morning, a re-plan that landed INSIDE a quarter hour does not
+     * retroactively change how that quarter hour was planned, the slot after the
+     * re-plan follows the newer run, and the newest run's slots on the following
+     * day still ride along (the film keeps its "Morgen" collapsed).
+     *
+     * <p>Runs on its OWN site and cleans up after itself: a stray site with a
+     * plan would move the hand-computed fleet/earnings numbers of the other
+     * tests on tenant A.
+     */
+    @Test
+    void scheduleDayModeSplicesTheDayFromTheRunsInForce() {
+        final String site = "0000000a-0000-0000-0000-0000000000f5";
+        final String device = "0000000a-0000-0000-0000-0000000000e5";
+        final String tenant = "00000000-0000-0000-0000-000000000001";
+        final String planZ = "aaaaaaaa-0000-0000-0000-0000000000f5";
+        final String planA = "aaaaaaaa-0000-0000-0000-0000000000f6";
+        final String planB = "aaaaaaaa-0000-0000-0000-0000000000f7";
+        ZoneId berlin = ZoneId.of("Europe/Berlin");
+        ZonedDateTime day0 = LocalDate.now(berlin).atStartOfDay(berlin);
+        // The three runs: yesterday's late one, an early-morning one, and the
+        // re-plan that lands INSIDE the 03:15 quarter hour.
+        String genZ = iso(day0.minusMinutes(30));
+        String genA = iso(day0.plusHours(2).plusMinutes(45));
+        String genB = iso(day0.plusHours(3).plusMinutes(20));
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES ('" + site + "', '"
+                + tenant + "', 'PR5 Tages-Splice', 'DE-LU') ON CONFLICT DO NOTHING");
+        try {
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                    + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, "
+                    + "baseline_cost_eur, peak_target_kw, terminal_value_eur_per_kwh, fallback_14a) VALUES "
+                    // Yesterday 23:30 - owns the early morning of today.
+                    + spliceRow(iso(day0), genZ, planZ, site, tenant, device, 9.0, 0.01, 0.03) + ", "
+                    + spliceRow(iso(day0.plusHours(3)), genZ, planZ, site, tenant, device, 7.0, 0.01, 0.03) + ", "
+                    // 02:45 run.
+                    + spliceRow(iso(day0.plusHours(3)), genA, planA, site, tenant, device, 1.0, 0.02, 0.10) + ", "
+                    + spliceRow(iso(day0.plusHours(3).plusMinutes(15)), genA, planA, site, tenant, device, 2.0, 0.02, 0.10) + ", "
+                    + spliceRow(iso(day0.plusHours(3).plusMinutes(30)), genA, planA, site, tenant, device, 3.0, 0.02, 0.10) + ", "
+                    // 03:20 re-plan.
+                    + spliceRow(iso(day0.plusHours(3).plusMinutes(15)), genB, planB, site, tenant, device, 20.0, 0.05, 0.20) + ", "
+                    + spliceRow(iso(day0.plusHours(3).plusMinutes(30)), genB, planB, site, tenant, device, 30.0, 0.05, 0.20) + ", "
+                    + spliceRow(iso(day0.plusHours(3).plusMinutes(45)), genB, planB, site, tenant, device, 40.0, 0.05, 0.20) + ", "
+                    + spliceRow(iso(day0.plusDays(1).plusHours(3)), genB, planB, site, tenant, device, 50.0, 0.05, 0.20)
+                    + " ON CONFLICT DO NOTHING");
+
+            ResponseEntity<Map<String, Object>> day = rest.exchange(
+                    url("/api/v1/sites/" + site + "/schedule?mode=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo", "demo"))),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(day.getStatusCode()).isEqualTo(HttpStatus.OK);
+            List<?> slots = (List<?>) day.getBody().get("slots");
+            // 00:00 (Z) · 03:00 (A beats Z) · 03:15 (A, NOT the 03:20 re-plan)
+            // · 03:30 (B) · 03:45 (B) · tomorrow 03:00 (B).
+            assertThat(slots).hasSize(6);
+            assertThat(slots.stream()
+                    .map(s -> ((Number) ((Map<?, ?>) s).get("batteryKw")).doubleValue()).toList())
+                    .containsExactly(9.0, 1.0, 2.0, 30.0, 40.0, 50.0);
+            assertThat(Instant.parse((String) ((Map<?, ?>) slots.get(0)).get("start")))
+                    .isEqualTo(day0.toInstant());
+            assertThat(Instant.parse((String) ((Map<?, ?>) slots.get(5)).get("start")))
+                    .isEqualTo(day0.plusDays(1).plusHours(3).toInstant());
+            // savingsEur sums the SPLICED slots: 0.02 + 4x0.08 ... per run above.
+            assertThat(((Number) day.getBody().get("savingsEur")).doubleValue())
+                    .isCloseTo(0.02 + 0.08 + 0.08 + 0.15 + 0.15 + 0.15, within(1e-9));
+            // Run-level facts describe ONE run, so a spliced day carries none of
+            // them - never a value borrowed from an arbitrary contributing run.
+            assertThat(day.getBody().get("planId")).isNull();
+            assertThat(day.getBody().get("bankedValueEur")).isNull();
+            assertThat(day.getBody().get("socStartPct")).isNull();
+            assertThat(day.getBody().get("socEndPct")).isNull();
+            assertThat(day.getBody().get("peakTargetKw")).isNull();
+            assertThat(day.getBody().get("fallback14a")).isNull();
+            // ...but generatedAt/deviceId name the NEWEST contributing run.
+            assertThat(Instant.parse((String) day.getBody().get("generatedAt")))
+                    .isEqualTo(Instant.parse(genB));
+            assertThat(day.getBody()).containsEntry("deviceId", device);
+            // The recomposed decision price runs on the spliced slots too, so a
+            // PAST phase explains itself with the price the optimizer used.
+            assertThat(((Map<?, ?>) slots.get(0)).get("importPriceSource")).isEqualTo("spot");
+
+            // The default reading is UNCHANGED: the newest run only.
+            ResponseEntity<Map<String, Object>> latest = rest.exchange(
+                    url("/api/v1/sites/" + site + "/schedule"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo", "demo"))),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(latest.getBody()).containsEntry("planId", planB);
+            assertThat(((List<?>) latest.getBody().get("slots")).stream()
+                    .map(s -> ((Number) ((Map<?, ?>) s).get("batteryKw")).doubleValue()).toList())
+                    .containsExactly(20.0, 30.0, 40.0, 50.0);
+
+            // A day whose runs only start at 02:45 begins HONESTLY at 03:00 -
+            // the uncovered early morning is absent, never invented.
+            exec("DELETE FROM schedule WHERE plan_id = '" + planZ + "'");
+            ResponseEntity<Map<String, Object>> late = rest.exchange(
+                    url("/api/v1/sites/" + site + "/schedule?mode=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo", "demo"))),
+                    new ParameterizedTypeReference<>() {});
+            List<?> lateSlots = (List<?>) late.getBody().get("slots");
+            assertThat(lateSlots).hasSize(5);
+            assertThat(Instant.parse((String) ((Map<?, ?>) lateSlots.get(0)).get("start")))
+                    .isEqualTo(day0.plusHours(3).toInstant());
+
+            // An unknown mode is a 400 - never a silent fallback to the other
+            // reading (the two answer different questions).
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/schedule?mode=tag"),
+                    HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+            // RLS fences the new mode exactly like the old one.
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/schedule?mode=day"),
+                    HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
+    /** One schedule row of the Tages-Splice fixture. */
+    private static String spliceRow(String time, String generatedAt, String planId, String site,
+            String tenant, String device, double batteryKw, double costEur, double baselineEur) {
+        return "('" + time + "'::timestamptz, '" + tenant + "', '" + site + "', '" + device + "', '"
+                + planId + "', '" + generatedAt + "'::timestamptz, " + batteryKw
+                + ", 0, 50.0, 3.0, 2.0, 100.0, " + costEur + ", " + baselineEur
+                + ", 180.0, 0.18, FALSE)";
+    }
+
+    private static String iso(ZonedDateTime at) {
+        return at.toInstant().toString();
     }
 
     /**

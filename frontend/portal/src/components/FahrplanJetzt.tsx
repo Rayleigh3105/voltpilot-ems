@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { chartTheme } from '../chartTheme';
-import type { FilmRow, FilmView } from '../fahrplanFilm';
+import { filmPastNote, type FilmRow, type FilmView } from '../fahrplanFilm';
 import type { JetztHeldView } from '../fahrplanJetzt';
 import { ProvBadge } from './HistorieWelt';
 import { roleColor } from './FahrplanWhy';
@@ -99,6 +99,11 @@ export function JetztHeld({ view }: { view: JetztHeldView }) {
  * Zeile trägt ihr WORT (Identität hängt nie an der Farbe allein), ein Tipp
  * klappt das bestehende Erklär-Panel DIREKT AN DER ZEILE aus (am Telefon
  * rendert dasselbe Panel als Bottom-Sheet).
+ *
+ * Mit dem Tages-Splice führt der Film den GANZEN Tag: die schon gelaufenen
+ * Phasen stehen abgehakt und ruhig oben, mit dem Satz, der sie als PLAN
+ * ausweist (`filmPastNote`) — Farbsprache und Pflicht-Markierungen gelten dort
+ * genauso wie im Rest des Tages, nur gedämpft.
  */
 export function TagesFilm({
   view,
@@ -115,6 +120,7 @@ export function TagesFilm({
 }) {
   const [tomorrowOpen, setTomorrowOpen] = useState(false);
   const t = chartTheme();
+  const pastNote = filmPastNote(view);
 
   const zeile = (row: FilmRow) => (
     <li key={row.phaseIndex} className={`vp-film-li${row.now ? ' is-now' : ''}${row.done ? ' is-done' : ''}`}>
@@ -161,7 +167,14 @@ export function TagesFilm({
 
   return (
     <div className="vp-film">
-      {view.past.length > 0 && <ol className="vp-film-list">{view.past.map(zeile)}</ol>}
+      {view.past.length > 0 && (
+        <>
+          {/* Abgehakt heißt GEPLANT, nicht gelaufen - das steht bei den Zeilen,
+              nicht in einer Fußnote weit darunter. */}
+          {pastNote && <p className="vp-film-pastnote">{pastNote}</p>}
+          <ol className="vp-film-list">{view.past.map(zeile)}</ol>
+        </>
+      )}
       {view.today.length > 0 ? (
         <ol className="vp-film-list">{view.today.map(zeile)}</ol>
       ) : (

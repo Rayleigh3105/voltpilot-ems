@@ -401,6 +401,21 @@ export interface SchedulePlan {
   slots: ScheduleSlot[];
 }
 
+/**
+ * Welche LESART des Fahrplans geholt wird (Konzept vp-fahrplan-kunde-konzept
+ * §8 „PR 5"):
+ *
+ * - `latest` (Standard, unverändert): DER Plan — der jüngste Lauf, also das,
+ *   was das Gerät gerade ausführt. Jetzt-Held und Diagramm lesen ihn weiter.
+ * - `day`: der TAGES-SPLICE „wie der Tag geplant war" — je Viertelstunde des
+ *   Berliner Tages der Wert aus dem jüngsten Lauf, der den Slot noch VOR
+ *   seinem Beginn geplant hat. Damit kann der Film des Tages die schon
+ *   gelaufenen Vormittags-Phasen abhaken. Die lauf-bezogenen Felder (planId,
+ *   bankedValueEur, socStartPct/socEndPct, peakTargetKw, fallback14a)
+ *   beschreiben EINEN Lauf und sind in dieser Lesart null.
+ */
+export type ScheduleMode = 'latest' | 'day';
+
 export type HistoryRange = 'day' | 'week' | 'month' | 'year';
 
 export interface HistoryBucket {
@@ -1773,7 +1788,16 @@ export const api = {
   priceHistory: (siteId: string, range: HistoryRange, at: string) =>
     request<PriceHistory>(`/api/v1/sites/${siteId}/price-history?range=${range}&at=${at}`),
   weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
-  schedule: (siteId: string) => request<SchedulePlan>(`/api/v1/sites/${siteId}/schedule`),
+  /**
+   * Ohne `mode` byte-gleich wie bisher (der jüngste Lauf); `mode: 'day'` holt
+   * den Tages-Splice — siehe {@link ScheduleMode}. Ein Backend ohne den
+   * Parameter beantwortet `mode=day` mit einem 400, der Aufrufer fällt dann
+   * fail-soft auf die Standard-Lesart zurück.
+   */
+  schedule: (siteId: string, mode?: ScheduleMode) =>
+    request<SchedulePlan>(
+      `/api/v1/sites/${siteId}/schedule${mode && mode !== 'latest' ? `?mode=${mode}` : ''}`,
+    ),
   forecastQuality: (siteId: string, days = 30) =>
     request<ForecastQuality>(`/api/v1/sites/${siteId}/forecast-quality?days=${days}`),
   /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */

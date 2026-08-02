@@ -4,6 +4,8 @@ import com.voltpilot.api.web.dto.SchedulePlanDto;
 import com.voltpilot.api.web.dto.ScheduleSlotDto;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HashMap;
@@ -18,10 +20,27 @@ import org.springframework.stereotype.Repository;
  * hypertable carries {@code tenant_id} and is RLS-scoped (migration
  * V20260701020000), so - like telemetry/weather - every query is transparently
  * narrowed to the caller's tenant. Written by services/optimization (one row
- * per plan slot); the api only reads the latest run per site.
+ * per plan slot).
+ *
+ * <p>Two READ MODES, deliberately separate (Konzept vp-fahrplan-kunde-konzept
+ * §8 "PR 5"): {@link #latestForSite} is THE plan (one run - what the device is
+ * executing right now), {@link #dayAsPlanned} is the TAGES-SPLICE ("wie der Tag
+ * geplant war") across the runs of the day. The Jetzt-Held and the chart keep
+ * reading the latest run; only the Film des Tages consumes the splice.
  */
 @Repository
 public class ScheduleRepository {
+
+    /**
+     * The slot columns both read modes select - one list, so the two row
+     * mappers can never drift apart. The day splice prefixes its own
+     * {@code generated_at, device_id} (the run a spliced slot came from).
+     */
+    private static final String SLOT_COLUMNS =
+            "time, battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur, "
+                    + "curtail_kw, pv_kw, load_kw, slot_role, slot_flags, stored_value_ct_kwh, "
+                    + "grid_value_ct_kwh, peak_pressure_eur_kw, "
+                    + "cover_load_from_battery, charge_from_surplus_only";
 
     /**
      * The optimizer's default AC round-trip efficiency when the asset carries
@@ -50,40 +69,9 @@ public class ScheduleRepository {
             return null;
         }
         List<ScheduleSlotDto> slots = jdbc.query(
-                "SELECT time, battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur, "
-                        + "curtail_kw, pv_kw, load_kw, slot_role, slot_flags, stored_value_ct_kwh, "
-                        + "grid_value_ct_kwh, peak_pressure_eur_kw, "
-                        + "cover_load_from_battery, charge_from_surplus_only "
-                        + "FROM schedule WHERE site_id = ? AND generated_at = ? "
-                        + "ORDER BY time ASC",
-                (rs, i) -> new ScheduleSlotDto(
-                        rs.getTimestamp("time").toInstant(),
-                        rs.getBigDecimal("battery_kw"),
-                        rs.getBigDecimal("grid_kw"),
-                        rs.getBigDecimal("soc_pct"),
-                        rs.getBigDecimal("price_eur_mwh"),
-                        rs.getBigDecimal("cost_eur"),
-                        rs.getBigDecimal("baseline_cost_eur"),
-                        rs.getBigDecimal("curtail_kw"),
-                        rs.getBigDecimal("pv_kw"),
-                        rs.getBigDecimal("load_kw"),
-                        rs.getString("slot_role"),
-                        splitFlags(rs.getString("slot_flags")),
-                        rs.getBigDecimal("stored_value_ct_kwh"),
-                        rs.getBigDecimal("grid_value_ct_kwh"),
-                        rs.getBigDecimal("peak_pressure_eur_kw"),
-                        // The decision prices are not persisted columns - they are
-                        // recomposed from spot + master data by SlotEconomics and
-                        // filled in downstream (SchedulePricingService).
-                        null, null, null,
-                        // The MEASURED load and PV are a separate aggregation
-                        // (P3 + its mirror), see measuredPerSlot below.
-                        null, null,
-                        // Duty-Vorschau (V20260802010000): tri-state, so read
-                        // them as nullable Booleans - getBoolean() would turn
-                        // "not evaluated" into a claimed false.
-                        rs.getObject("cover_load_from_battery", Boolean.class),
-                        rs.getObject("charge_from_surplus_only", Boolean.class)),
+                "SELECT " + SLOT_COLUMNS + " FROM schedule "
+                        + "WHERE site_id = ? AND generated_at = ? ORDER BY time ASC",
+                (rs, i) -> mapSlot(rs),
                 siteId, Timestamp.from(generatedAt));
         slots = MeasuredSlots.assign(slots, measuredPerSlot(siteId, slots, 15));
         List<Object[]> meta = jdbc.query(
@@ -110,6 +98,111 @@ public class ScheduleRepository {
         return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings,
                 banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw,
                 fallback14a, slots);
+    }
+
+    /**
+     * "Wie der Tag geplant war" - the TAGES-SPLICE over the runs of the day
+     * (Konzept vp-fahrplan-kunde-konzept §8 "PR 5", Captain-Entscheid D2: the
+     * Film des Tages shows the WHOLE day, the already-elapsed morning phases
+     * ticked off, not only the rest of the day).
+     *
+     * <p>Per 15-min slot it returns the value from the NEWEST run that planned
+     * the slot BEFORE it began ({@code generated_at <= time}) - i.e. the plan
+     * that was in force when the quarter hour started, which is what the device
+     * executed. The per-slot winner is picked with EXACTLY the splice the
+     * savings math has used all along ({@code HistoryRepository.savings}:
+     * {@code DISTINCT ON (time) ... ORDER BY time, generated_at DESC}), so the
+     * two can never tell different stories about the same day; the added
+     * {@code generated_at <= time} predicate is what makes it EX-ANTE. For a
+     * slot that has not started yet every stored run is older than it, so the
+     * newest run wins - the future half of the splice IS the current plan. Only
+     * the RUNNING slot can differ from {@link #latestForSite}: a re-plan landing
+     * inside the quarter hour does not retroactively become "how it was
+     * planned".
+     *
+     * <p>The window deliberately has NO upper bound: rows only exist up to the
+     * newest run's horizon, so {@code time >= dayStart} is self-bounding and
+     * still carries the plan's tomorrow (which the film keeps collapsed).
+     *
+     * <p>Honesty: a slot NO run planned before it began simply has no row - a
+     * day whose optimizer only started at noon therefore begins at noon instead
+     * of inventing a morning. Run-level facts (plan id, banked value, SoC
+     * bounds, peak target, §14a fallback) describe ONE run and are therefore
+     * null on a spliced day; {@code generatedAt}/{@code deviceId} name the
+     * NEWEST run that contributed a slot. Returns {@code null} when the day
+     * carries no planned slot at all.
+     *
+     * <p>The MEASURED channels ride along exactly as in the latest reading (the
+     * window ends at {@code now}, so only the elapsed part of the day can carry
+     * them) - the customer surface that consumes this mode does not render them,
+     * but a spliced slot must not claim less than the same slot in the other
+     * reading.
+     */
+    public SchedulePlanDto dayAsPlanned(UUID siteId, Instant dayStart) {
+        // The newest contributing run - captured while mapping, so the splice
+        // stays ONE query.
+        Instant[] newestRun = {null};
+        UUID[] runDevice = {null};
+        // The table is ALIASED so the ex-ante predicate can qualify its right
+        // side (`s.generated_at <= s.time`): `time` is a col_name_keyword, and
+        // a BARE `time` to the right of a comparison flirts with the
+        // typed-literal grammar. Everywhere else in this repo it only ever
+        // appears on the left, where that question does not arise.
+        List<ScheduleSlotDto> slots = jdbc.query(
+                "SELECT DISTINCT ON (s.time) s.generated_at, s.device_id, " + SLOT_COLUMNS
+                        + " FROM schedule s "
+                        + "WHERE s.site_id = ? AND s.time >= ? AND s.generated_at <= s.time "
+                        + "ORDER BY s.time, s.generated_at DESC",
+                (rs, i) -> {
+                    Instant generatedAt = rs.getTimestamp("generated_at").toInstant();
+                    if (newestRun[0] == null || generatedAt.isAfter(newestRun[0])) {
+                        newestRun[0] = generatedAt;
+                        runDevice[0] = rs.getObject("device_id", UUID.class);
+                    }
+                    return mapSlot(rs);
+                },
+                siteId, Timestamp.from(dayStart));
+        if (slots.isEmpty()) {
+            return null;
+        }
+        slots = MeasuredSlots.assign(slots, measuredPerSlot(siteId, slots, 15));
+        BigDecimal savings = slots.stream()
+                .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new SchedulePlanDto(null, runDevice[0], newestRun[0], 15, savings,
+                null, null, null, null, null, slots);
+    }
+
+    /** One row of the {@link #SLOT_COLUMNS} projection as a slot DTO. */
+    private static ScheduleSlotDto mapSlot(ResultSet rs) throws SQLException {
+        return new ScheduleSlotDto(
+                rs.getTimestamp("time").toInstant(),
+                rs.getBigDecimal("battery_kw"),
+                rs.getBigDecimal("grid_kw"),
+                rs.getBigDecimal("soc_pct"),
+                rs.getBigDecimal("price_eur_mwh"),
+                rs.getBigDecimal("cost_eur"),
+                rs.getBigDecimal("baseline_cost_eur"),
+                rs.getBigDecimal("curtail_kw"),
+                rs.getBigDecimal("pv_kw"),
+                rs.getBigDecimal("load_kw"),
+                rs.getString("slot_role"),
+                splitFlags(rs.getString("slot_flags")),
+                rs.getBigDecimal("stored_value_ct_kwh"),
+                rs.getBigDecimal("grid_value_ct_kwh"),
+                rs.getBigDecimal("peak_pressure_eur_kw"),
+                // The decision prices are not persisted columns - they are
+                // recomposed from spot + master data by SlotEconomics and
+                // filled in downstream (SchedulePricingService).
+                null, null, null,
+                // The MEASURED load and PV are a separate aggregation
+                // (P3 + its mirror), see measuredPerSlot below.
+                null, null,
+                // Duty-Vorschau (V20260802010000): tri-state, so read them as
+                // nullable Booleans - getBoolean() would turn "not evaluated"
+                // into a claimed false.
+                rs.getObject("cover_load_from_battery", Boolean.class),
+                rs.getObject("charge_from_surplus_only", Boolean.class));
     }
 
     /**
