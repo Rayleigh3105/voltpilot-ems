@@ -396,8 +396,13 @@ die die ganze Kette gebaut ist.
 4. **Wurzel bestätigen:** ein Testpaket nach Abschnitt 5 ablegen und prüfen,
    dass `ota_reason` **verifiziert** meldet. Meldet es „kein Vertrauensanker",
    trägt das Image die Wurzel nicht — dann stimmt der Digest nicht.
-5. **Notieren, dass diese Box gekreuzt hat** (Datum, Digest, wer). Bis Stufe 2
-   ist diese Liste die einzige Stelle, an der das steht.
+5. **Der Crossover-Stand steht seit Stufe 4 im PORTAL** — jedes Gerät meldet
+   seine Vertrauens-Identität im Herzschlag, und unter **Plattform →
+   Edge-Updates** trägt die Flotten-Matrix je Gerät eine Spalte *Vertrauen*
+   (`gekreuzt ✓` / `Crossover offen` / `unbekannt`) plus die ruhige Zeile
+   „Crossover offen: n Geräte". Die handgeführte Liste ist damit nur noch
+   Beiwerk. **`unbekannt` heißt „älterer Stand", nie „nicht gekreuzt"** — ein
+   Gerät, das die Identität gar nicht meldet, ist kein Befund.
 6. **Bei Problemen zurück:** auf den in Schritt 1 notierten Digest pinnen und
    erneut `update.sh`.
 
@@ -447,26 +452,88 @@ bestätigt wurde.
 
 ## 7. Schlüsselverlust und Rotation
 
-### 7.1 Release-Schlüssel kompromittiert oder verloren
+### 7.1 Release-Schlüssel ablösen — der vollständige Drill
 
-Der günstige Fall — die Wurzel löst ihn ab:
+Der günstige Fall: die kalte Wurzel löst den Release-Schlüssel ab. Der Drill
+hat **fünf Schritte**, und Schritt 2 und 5 sind die, die ihn von „gut gemeint"
+unterscheiden.
+
+**Schritt 1 — neues Set erzeugen (offline, beim Owner):**
 
 ```bash
 vp-ota keygen --id rel-2026-b --role release --out .
-vp-ota trust-set --key rel-2026-b.pub --out trust-set.json      # der alte fehlt jetzt
-vp-ota sign --key root-2026-a.key --domain trust-set --in trust-set.json
+vp-ota trust-set --key rel-2026-b.pub --out trust-set-neu.json   # der alte fehlt jetzt
+vp-ota sign --key root-2026-a.key --domain trust-set --in trust-set-neu.json
 ```
 
-Das neue Trust-Set wird mit dem nächsten Release-Paket ausgeliefert. Ab dem
-Moment, in dem ein Gerät es gesehen hat, ist der alte Schlüssel **wertlos** —
-uhrunabhängig, ohne Ablaufdatum, ohne Sperrliste.
+**Schritt 2 — GEGENPRÜFEN, bevor irgendetwas hinausgeht.** `vp-ota trust`
+prüft das Set ALLEIN gegen die eingebackene Wurzel — es braucht dafür kein
+Release, und genau deshalb gibt es diesen Unterbefehl: bis Stufe 4 hätte man
+ein Manifest erfinden müssen, um seinen eigenen Widerruf zu prüfen.
 
-Anschließend `--key-id rel-2026-b` in `vp-ota manifest` und in der Repo-Variable
-`EDGE_SIGNING_KEY_ID` nachziehen.
+```bash
+vp-ota trust --root baked --trust-set trust-set-neu.json
+```
 
-> **Wichtig:** ein Gerät, das das neue Trust-Set noch **nicht** gesehen hat,
-> vertraut dem alten Schlüssel weiter. Deshalb gehört das neue Trust-Set in
-> **jedes** Release-Paket, nicht nur ins erste nach der Rotation.
+Es druckt genau die Zeichenkette, die ein Gerät danach meldet
+(`trust_set_key_ids`, `trust_set_generated_at`) — dieselbe, die im Portal in
+der Spalte **Vertrauen** steht. **Erscheint der alte Schlüssel hier noch, ist
+der Widerruf nicht passiert.**
+
+**Schritt 3 — je Box ausliefern.** Das Trust-Set kommt **nicht** über den
+Downlink (§6, „Das Trust-Set bleibt out-of-band"), sondern wird je Box ins
+Datenverzeichnis gelegt — derselbe beaufsichtigte Weg wie beim Crossover:
+
+```bash
+# auf der Box, im Datenverzeichnis des Cores (Volume vp-edge-data)
+cp trust-set-neu.json      /data/ota/trust-set.json
+cp trust-set-neu.json.sig  /data/ota/trust-set.json.sig
+curl -s http://127.0.0.1:8484/health | jq '{ota_state, ota_reason}'
+```
+
+**Eine Box nach der anderen, mit Abstand** — genau wie beim Crossover. Eine
+Box, die das neue Set noch nicht hat, vertraut dem alten Schlüssel weiter; das
+ist kein Fehler, sondern der Grund für Schritt 5.
+
+**Schritt 4 — nachziehen:** `--key-id rel-2026-b` in `vp-ota manifest` und die
+Repo-Variable `EDGE_SIGNING_KEY_ID`.
+
+**Schritt 5 — den Fortschritt VERFOLGEN, statt ihn zu glauben.** Seit Stufe 4
+meldet jedes Gerät seine Vertrauens-Identität im Herzschlag; im Portal unter
+**Plattform → Edge-Updates** steht je Gerät, welches Set es fährt (Spalte
+*Vertrauen*, Details im Geräte-Ausklapp). Der Drill ist **fertig, wenn jede
+Box den neuen Stempel zeigt** — bis dahin ist der alte Schlüssel auf den
+übrigen Boxen weiterhin gültig.
+
+> Ein Gerät, das die Identität gar nicht meldet, steht auf **unbekannt**. Das
+> heißt „älterer Stand", nicht „nicht gekreuzt" — es ist kein Befund und wird
+> auch nicht als einer dargestellt.
+
+### 7.1b Eine missglückte Rotation zurücknehmen
+
+Der Rückweg ist billig, **solange die alten Dateien noch existieren** — sie
+sind unverändert gültig signiert, ein Trust-Set läuft nicht ab:
+
+```bash
+# auf der betroffenen Box
+cp trust-set-alt.json      /data/ota/trust-set.json
+cp trust-set-alt.json.sig  /data/ota/trust-set.json.sig
+curl -s http://127.0.0.1:8484/health | jq '{ota_state, ota_reason}'
+```
+
+Daraus folgen zwei Regeln für den Drill:
+
+1. **Das alte Trust-Set NIE löschen, bevor jede Box gekreuzt ist.** Es ist der
+   einzige Rückweg — und die Wurzel kann es jederzeit neu unterschreiben,
+   solange sie existiert.
+2. **Der alte Release-SCHLÜSSEL ist damit wieder gültig.** Wenn die Rotation
+   erfolgte, WEIL er kompromittiert war, ist ein Rollback ein bewusstes
+   Wiederöffnen: dann lieber vorwärts (ein drittes, frisch unterschriebenes
+   Set) als zurück.
+
+Ein Rollback der Manifest-Seite braucht es nicht: ein Release, das unter dem
+neuen Set nicht mehr verifiziert, wird vom Gerät schlicht abgelehnt und nie
+angewandt.
 
 ### 7.2 Kalte Wurzel verloren (kein Backup mehr)
 

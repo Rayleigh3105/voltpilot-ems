@@ -387,7 +387,234 @@ class OtaRolloutApiTest {
         assertThat(dup.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * OTA Stufe 4 „Politur": die Wellen-AUTOMATIK als Option - und die
+     * Ehrlichkeit, dass sie nichts lockert.
+     *
+     * <p>Der Beweis besteht aus drei Teilen, die zusammen die Zusage tragen:
+     * (a) sie gibt erst frei, wenn dasselbe Bake-Kriterium erfüllt ist, das die
+     * Hand-Freigabe erfüllen müsste; (b) ein Auto-Halt schlägt sie - eine
+     * angehaltene Verteilung kann nie von selbst weiterlaufen; und (c) OHNE den
+     * Schalter verhält sich alles zeichengleich wie nach Stufe 3.
+     */
+    @Test
+    @Order(4)
+    void theWaveAutomationAdvancesOnlyOnTheSameBakeAndNeverPastAHalt() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        registerRelease(admin, "edge-2026.11.0", 50, MANIFEST.replace("edge-2026.08.0",
+                "edge-2026.11.0").replace(":12", ":50"), SIGNATURE);
+
+        UUID w1 = claim(customer, "ota-a1-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID w2 = claim(customer, "ota-a2-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID w3 = claim(customer, "ota-a3-" + UUID.randomUUID().toString().substring(0, 8));
+
+        ResponseEntity<Map<String, Object>> created = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 50, "autoAdvance", true, "waves", List.of(
+                        Map.of("name", "Canary", "devices", List.of(w1.toString())),
+                        Map.of("name", "Welle 2", "devices", List.of(w2.toString())),
+                        Map.of("name", "Welle 3", "devices", List.of(w3.toString())))));
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String rolloutId = (String) created.getBody().get("rolloutId");
+
+        JsonNode page = readModel(admin);
+        assertThat(page.get("activeRollout").get("autoAdvance").asBoolean()).isTrue();
+        assertThat(page.get("activeRollout").get("advanceNote").asText())
+                .as("die Fläche sagt, in welchem Modus der Rollout läuft")
+                .contains("Automatischer Vorschub");
+
+        // ── (a) Das Bake-Kriterium gilt UNVERÄNDERT ───────────────────────
+        // Der Canary hat gerade erst bestätigt: 24 h sind nicht um, also passiert
+        // beim Wächter-Durchlauf NICHTS.
+        reportRunning(w1, "edge-2026.11.0", "succeeded", "ok", Instant.now());
+        rollouts.reconcile(Instant.now());
+        page = readModel(admin);
+        assertThat(page.get("activeRollout").get("currentWave").asInt())
+                .as("die Automatik überspringt das Bake-Fenster nicht").isEqualTo(1);
+        assertThat(page.get("activeRollout").get("advanceNote").asText()).contains("Offen:");
+        assertThat(sollOf(page, w2)).as("Welle 2 hat noch nichts bekommen").isNull();
+
+        // 26 h später gibt derselbe Wächter-Durchlauf frei - ohne eine Hand.
+        backdateSince(UUID.fromString(rolloutId), w1, Duration.ofHours(26));
+        rollouts.reconcile(Instant.now());
+        page = readModel(admin);
+        assertThat(page.get("activeRollout").get("currentWave").asInt()).isEqualTo(2);
+        assertThat(sollOf(page, w2)).isEqualTo("edge-2026.11.0");
+        // Und die Papier-Spur nennt den Wächter als Urheber, nie einen Menschen.
+        assertThat(eventActors(page.get("journal"), "wave_auto_released"))
+                .containsExactly("system");
+        assertThat(eventActors(page.get("journal"), "wave_released"))
+                .as("auch die Freigabe selbst kommt vom System").contains("system");
+
+        // ── (b) Ein Auto-Halt schlägt die Automatik ───────────────────────
+        reportRunning(w2, "edge-2026.11.0", "failed", "ok", Instant.now());
+        rollouts.reconcile(Instant.now());
+        page = readModel(admin);
+        assertThat(page.get("activeRollout").get("state").asText()).isEqualTo("halted");
+        assertThat(page.get("activeRollout").get("advanceNote").asText())
+                .contains("Eingefroren");
+
+        // Selbst wenn die angehaltene Welle ihr Bake nachträglich erfüllt:
+        // eine eingefrorene Verteilung läuft NIE von selbst weiter.
+        reportRunning(w2, "edge-2026.11.0", "succeeded", "ok", Instant.now());
+        backdateSince(UUID.fromString(rolloutId), w2, Duration.ofHours(26));
+        rollouts.reconcile(Instant.now());
+        page = readModel(admin);
+        assertThat(page.get("activeRollout").get("currentWave").asInt())
+                .as("nach dem Not-Aus gibt es keinen automatischen Vorschub mehr")
+                .isEqualTo(2);
+        assertThat(sollOf(page, w3)).isNull();
+    }
+
+    /**
+     * Der Schalter ist nachträglich umlegbar - UND ohne ihn verhält sich alles
+     * zeichengleich wie nach Stufe 3.
+     */
+    @Test
+    @Order(5)
+    void handAdvanceStaysTheDefaultAndTheSwitchIsReversible() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        registerRelease(admin, "edge-2026.12.0", 60, MANIFEST.replace("edge-2026.08.0",
+                "edge-2026.12.0").replace(":12", ":60"), SIGNATURE);
+        UUID a = claim(customer, "ota-b1-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID b = claim(customer, "ota-b2-" + UUID.randomUUID().toString().substring(0, 8));
+
+        // KEIN autoAdvance im Rumpf - der Vorgabefall (D4).
+        ResponseEntity<Map<String, Object>> created = post("/api/v1/admin/rollouts", admin,
+                Map.of("releaseSeq", 60, "waves", List.of(
+                        Map.of("name", "W1", "devices", List.of(a.toString())),
+                        Map.of("name", "W2", "devices", List.of(b.toString())))));
+        String rolloutId = (String) created.getBody().get("rolloutId");
+        assertThat(readModel(admin).get("activeRollout").get("autoAdvance").asBoolean())
+                .as("Hand-Vorschub bleibt die Vorgabe").isFalse();
+
+        // Bake erfüllt - und trotzdem passiert ohne Hand nichts.
+        reportRunning(a, "edge-2026.12.0", "succeeded", "ok", Instant.now());
+        rollouts.reconcile(Instant.now());
+        backdateSince(UUID.fromString(rolloutId), a, Duration.ofHours(26));
+        rollouts.reconcile(Instant.now());
+        JsonNode page = readModel(admin);
+        assertThat(page.get("activeRollout").get("currentWave").asInt()).isEqualTo(1);
+        assertThat(page.get("activeRollout").get("canPromote").asBoolean()).isTrue();
+        assertThat(page.get("activeRollout").get("advanceNote").asText())
+                .contains("Hand-Vorschub");
+
+        // Umschalten - und derselbe Durchlauf gibt frei.
+        assertThat(post("/api/v1/admin/rollouts/" + rolloutId + "/auto-advance", admin,
+                Map.of("enabled", true)).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        rollouts.reconcile(Instant.now());
+        page = readModel(admin);
+        assertThat(page.get("activeRollout").get("currentWave").asInt()).isEqualTo(2);
+        assertThat(eventActors(page.get("journal"), "auto_advance_on")).hasSize(1);
+        assertThat(eventActors(page.get("journal"), "auto_advance_on").get(0))
+                .as("das Umlegen ist eine MENSCHLICHE Entscheidung").isNotEqualTo("system");
+
+        // Und zurück - ein eingefrorener Rollout lässt sich nicht umschalten.
+        assertThat(post("/api/v1/admin/rollouts/" + rolloutId + "/auto-advance", admin,
+                Map.of("enabled", false)).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        halt(admin, rolloutId);
+        assertThat(post("/api/v1/admin/rollouts/" + rolloutId + "/auto-advance", admin,
+                Map.of("enabled", true)).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    /**
+     * OTA Stufe 4: die VERTRAUENS-IDENTITÄT erreicht die Flotten-Matrix - und
+     * die drei Zustände bleiben unterscheidbar.
+     */
+    @Test
+    @Order(6)
+    void theTrustIdentityReachesTheFleetMatrixAndAbsenceIsNeverAFinding() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        UUID gekreuzt = claim(customer, "ota-t1-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID offen = claim(customer, "ota-t2-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID alt = claim(customer, "ota-t3-" + UUID.randomUUID().toString().substring(0, 8));
+
+        reportTrust(gekreuzt, "root-2026-a", "rel-2026-a", "2026-09-01T10:00:00Z", null);
+        reportTrust(offen, "", "", null, "Diesem Stand ist kein Vertrauensanker eingebacken.");
+        // `alt` meldet nur seine Version - ein älterer Edge-Stand.
+        reportRunning(alt, "665d59b80000", "idle", null, Instant.now());
+
+        JsonNode page = readModel(admin);
+        JsonNode t1 = trustOf(page, gekreuzt);
+        assertThat(t1.get("rootKeyIds").get(0).asText()).isEqualTo("root-2026-a");
+        assertThat(t1.get("trustSetKeyIds").get(0).asText()).isEqualTo("rel-2026-a");
+        assertThat(t1.get("trustSetGeneratedAt").asText()).isEqualTo("2026-09-01T10:00:00Z");
+
+        // Ein Image OHNE Wurzel ist ein BELEGTER Befund (Crossover offen) -
+        // eine leere Liste, kein fehlender Block.
+        JsonNode t2 = trustOf(page, offen);
+        assertThat(t2.get("rootKeyIds").isArray()).isTrue();
+        assertThat(t2.get("rootKeyIds")).isEmpty();
+        assertThat(t2.get("trustSetError").asText()).contains("Vertrauensanker");
+
+        // Ein ÄLTERER Stand meldet nichts - und das bleibt „unbekannt", nie
+        // „nicht gekreuzt". Genau diese Unterscheidung trägt die Verfolgung.
+        assertThat(trustOf(page, alt)).isNull();
+    }
+
+    /**
+     * Der dokumentarische gitops-Spiegel (D2): ein EXPORT, kein Deploy - und
+     * er bleibt hinter derselben Rollen-Grenze wie alles andere hier.
+     */
+    @Test
+    @Order(7)
+    void theJournalIsExportableAsMarkdownAndStaysRoleGated() {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+
+        ResponseEntity<String> md = rest.exchange(url("/api/v1/admin/rollout-journal.md"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class);
+        assertThat(md.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(md.getBody()).contains("# VoltPilot Edge-Rollouts - Audit-Journal");
+        assertThat(md.getBody())
+                .as("die Datei sagt selbst, dass sie NICHT die Autorität ist")
+                .contains("Die Autorität ist die Portal-DB, nicht diese Datei");
+        assertThat(md.getBody()).contains("Rollout gestartet");
+
+        // Deterministisch: ein wiederholter Spiegel-Lauf erzeugt keinen Commit.
+        assertThat(rest.exchange(url("/api/v1/admin/rollout-journal.md"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getBody())
+                .isEqualTo(md.getBody());
+
+        assertThat(rest.exchange(url("/api/v1/admin/rollout-journal.md"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(url("/api/v1/admin/rollout-journal.md"), HttpMethod.GET,
+                HttpEntity.EMPTY, String.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
     // ── Helfer ───────────────────────────────────────────────────────────
+
+    /** Die gemeldete Vertrauens-Identität eines Geräts direkt setzen. */
+    private void reportTrust(UUID deviceId, String rootKeyIds, String trustSetKeyIds,
+            String generatedAt, String error) throws Exception {
+        reportRunning(deviceId, "edge-2026.08.0", "idle", null, Instant.now());
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("""
+                    UPDATE device_update_status SET root_key_ids = %s, trust_set_key_ids = %s,
+                            trust_set_generated_at = %s, trust_set_error = %s
+                     WHERE device_id = '%s'
+                    """.formatted(sql(rootKeyIds), sql(trustSetKeyIds), sql(generatedAt),
+                    sql(error), deviceId));
+        }
+    }
+
+    private static String sql(String v) {
+        return v == null ? "NULL" : "'" + v.replace("'", "''") + "'";
+    }
+
+    private static JsonNode trustOf(JsonNode page, UUID deviceId) {
+        for (JsonNode row : page.get("fleet")) {
+            if (row.get("deviceId").asText().equals(deviceId.toString())) {
+                JsonNode t = row.get("trust");
+                return t == null || t.isNull() ? null : t;
+            }
+        }
+        throw new AssertionError("Gerät " + deviceId + " fehlt in der Flotten-Matrix");
+    }
 
     private void halt(String admin, String rolloutId) {
         post("/api/v1/admin/rollouts/" + rolloutId + "/halt", admin,

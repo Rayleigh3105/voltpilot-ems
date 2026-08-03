@@ -592,6 +592,65 @@ Zusätzlich pro Anlage: gated Strategie-Bausteine (Markt, Lastspitzenkappung, at
 bleiben freischaltpflichtig - der Kunde öffnet sie über den Modus-Profil-Schalter (M3), der
 serverseitig genau die Bausteine dieses Profils freigibt; die Aktivierung prüft das erneut.
 
+## Edge-Rollouts: Wellen-Vorschub + der optionale Audit-Spiegel
+
+Beides gehört zur OTA-Stufe 4 („Politur") und ist **optional** — eine Flotte,
+die nichts davon anfasst, verhält sich exakt wie vorher.
+
+### Wellen automatisch weiterschalten (Vorgabe: AUS)
+
+Ein Rollout kann die nächste Welle selbst freigeben, sobald das Bake-Kriterium
+erfüllt ist. **Es ändert sich nur, WER „Nächste Welle" drückt** — dasselbe
+Kriterium (24 h gesund UND ein bestätigter Steuerzyklus, wo VoltPilot steuert),
+derselbe automatische Halt bei jedem `failed`/`rolled_back`/„im Update
+verstummt", derselbe endgültige Not-Aus.
+
+* **Beim Start:** das Häkchen „Automatisch weiter, wenn das Bake-Kriterium
+  erfüllt ist" im Rollout-Dialog (Plattform → Edge-Updates → *Rollout starten*).
+* **Später:** der Knopf neben dem Modus-Abzeichen am aktiven Rollout — in beide
+  Richtungen, solange der Rollout läuft oder pausiert ist. Ein **eingefrorener**
+  Rollout lässt sich nicht umschalten (Weitermachen ist ein neuer Rollout).
+* **Was gerade passiert**, steht als Satz unter dem Knopf („Automatischer
+  Vorschub: … Offen: Noch 21 Std. gesunder Betrieb.").
+* **Im Journal** erscheint jede automatische Freigabe als
+  `Welle automatisch freigegeben` mit dem Urheber `automatisch` — nie unter
+  einem menschlichen Namen.
+
+Bei ≤ 10 Geräten ist Hand-Vorschub weiterhin die richtige Vorgabe (Entscheid
+D4); die Automatik lohnt sich, sobald mehrere Wellen über Tage laufen.
+
+### Audit-Spiegel ins gitops (optional, rein dokumentarisch)
+
+Die **Autorität** über den Soll-Zustand ist die Portal-DB plus die retained
+MQTT-Nachricht — nicht das gitops-Repo (Entscheid D2). Wer trotzdem die eine
+Git-Zeitachse will, spiegelt das Audit-Journal dorthin:
+
+```bash
+export VP_PORTAL_URL=https://portal.voltpilot.de
+export VP_ADMIN_TOKEN="…"          # ein platform-admin-Zugangstoken
+export GITOPS_DIR=/srv/gitops      # ein Klon mit Push-Recht
+tools/deploy/mirror-rollout-journal.sh
+```
+
+Drei Eigenschaften machen das unbedenklich:
+
+* **Die api hält kein gitops-Token.** Sie stellt nur
+  `GET /api/v1/admin/rollout-journal.md` bereit (platform-admin); committet wird
+  außerhalb, mit den Zugangsdaten des Betreibers. Ein Schreib-Token in der api
+  wäre eine neue Zugangsdaten-Fläche für etwas, das laut D2 gar nicht im
+  Wirkpfad liegen darf.
+* **Die Ausgabe ist deterministisch** — derselbe Zustand ergibt dieselben Bytes,
+  ein wiederholter Lauf also keinen Commit. Deshalb ist ein Cron hier harmlos:
+
+  ```cron
+  0 3 * * * VP_PORTAL_URL=… VP_ADMIN_TOKEN=… GITOPS_DIR=… \
+            /srv/docker/voltpilot/tools/deploy/mirror-rollout-journal.sh >>/var/log/vp-mirror.log 2>&1
+  ```
+* **Es fließt nichts zurück.** Es gibt keinen Import, keinen Abgleich, keine
+  Ableitung aus dem Spiegel — fällt er aus, ändert das an keinem Rollout etwas.
+
+---
+
 ## Going to a real production launch
 
 Before serving real customers (on a VM that was demoed with `local`, or a fresh one):

@@ -96,6 +96,20 @@ public class UpdateStatusListener {
      */
     private static final int MAX_TEXT = 200;
 
+    /**
+     * Die Form einer {@code key_id} im Signatur-Kontrakt
+     * ({@code otaverify.keyIDRe}). Sie enthält per Konstruktion KEIN Komma -
+     * genau deshalb darf die Liste komma-getrennt gespeichert werden, und
+     * genau deshalb wird hier gefiltert statt escaped: ein Wert, der nicht
+     * dieser Form entspricht, ist keine Schlüssel-Kennung und wird verworfen
+     * (dieselbe Disziplin wie beim unbekannten Zustand).
+     */
+    private static final java.util.regex.Pattern KEY_ID =
+            java.util.regex.Pattern.compile("^[a-z0-9][a-z0-9._-]{0,63}$");
+
+    /** Ein Vertrauens-Set dieser Flotte hat eine Handvoll Schlüssel, nie hundert. */
+    private static final int MAX_KEY_IDS = 16;
+
     private final String brokerUrl;
     private final String username;
     private final String password;
@@ -229,6 +243,8 @@ public class UpdateStatusListener {
                         tenantId);
                 return;
             }
+            JsonNode trust = hasUpdate ? update.get("trust") : null;
+            boolean hasTrust = trust != null && trust.isObject();
             updateStatus.upsert(deviceId, siteId, version,
                     hasUpdate ? text(update.get("backend")) : null,
                     hasUpdate ? text(update.get("current")) : null,
@@ -240,6 +256,17 @@ public class UpdateStatusListener {
                     hasUpdate ? text(update.get("reason")) : null,
                     hasUpdate ? text(update.get("last_known_good")) : null,
                     hasUpdate ? verdict(update.get("target_verdict")) : null,
+                    // ⚠ Die DREI Zustände von root_key_ids sind hier zu Hause:
+                    // kein trust-Block => null (ein älterer Stand, „unbekannt");
+                    // ein Block mit leerer Liste => "" (Image OHNE Wurzel, also
+                    // Crossover offen); sonst die sortierte Liste. Ein
+                    // `keyIds(...)` ohne die hasTrust-Fallunterscheidung würde
+                    // aus „nie gemeldet" stillschweigend „kein Schlüssel" machen.
+                    hasTrust ? keyIds(trust.get("root_key_ids")) : null,
+                    hasTrust ? keyIds(trust.get("trust_set_key_ids")) : null,
+                    hasTrust ? text(trust.get("trust_set_generated_at")) : null,
+                    hasTrust ? text(trust.get("trust_set_signed_by")) : null,
+                    hasTrust ? text(trust.get("trust_set_error")) : null,
                     reportedAt);
         } finally {
             TenantContext.clear();
@@ -274,6 +301,42 @@ public class UpdateStatusListener {
             return null;
         }
         return raw;
+    }
+
+    /**
+     * Eine Liste von Schlüssel-Kennungen zu EINEM Feld verdichten.
+     *
+     * <p>Sortiert (zwei Boxen mit demselben Set müssen denselben String
+     * ergeben - die Oberfläche vergleicht sie), gedeckelt, und jeder Eintrag
+     * muss der Kontrakt-Form entsprechen. Ein Eintrag, der es nicht tut, wird
+     * VERWORFEN statt gespeichert: das ist dieselbe Regel wie beim unbekannten
+     * Zustand, und sie ist hier zusätzlich die Zusicherung, dass kein Komma in
+     * die komma-getrennte Ablage gerät.
+     *
+     * <p>Rückgabe {@code ""} für eine leere/fehlende Liste INNERHALB eines
+     * vorhandenen trust-Blocks - das ist die Aussage „Image ohne Wurzel", nicht
+     * „nichts gemeldet".
+     */
+    private static String keyIds(JsonNode node) {
+        if (node == null || node.isNull() || !node.isArray()) {
+            return "";
+        }
+        java.util.TreeSet<String> ids = new java.util.TreeSet<>();
+        for (JsonNode n : node) {
+            if (ids.size() >= MAX_KEY_IDS) {
+                break;
+            }
+            String raw = text(n);
+            if (raw == null) {
+                continue;
+            }
+            if (!KEY_ID.matcher(raw).matches()) {
+                log.warn("malformed OTA key id '{}' reported - dropped instead of stored", raw);
+                continue;
+            }
+            ids.add(raw);
+        }
+        return String.join(",", ids);
     }
 
     private static String text(JsonNode node) {

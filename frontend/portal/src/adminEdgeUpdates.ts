@@ -65,7 +65,25 @@ export interface ActiveRollout {
   createdAt: string;
   canPromote: boolean;
   promoteBlockedReason: string | null;
+  /** OTA Stufe 4: läuft dieser Rollout mit automatischem Wellen-Vorschub? */
+  autoAdvance?: boolean;
+  /** Der Server-Satz, WARUM die nächste Welle gerade (nicht) kommt. */
+  advanceNote?: string | null;
   waves: Wave[];
+}
+
+/**
+ * Die vom Gerät GEPRÜFT gemeldete Vertrauens-Identität (OTA Stufe 4).
+ *
+ * `undefined`/`null` = ein älterer Edge-Stand meldet sie nicht → „unbekannt".
+ * Ein Block MIT leerem `rootKeyIds` ist dagegen ein belegter Befund: das Image
+ * trägt keine Wurzel, der TOFU-Crossover steht also aus.
+ */
+export interface DeviceTrust {
+  rootKeyIds: string[];
+  trustSetKeyIds: string[];
+  trustSetGeneratedAt: string | null;
+  trustSetError: string | null;
 }
 
 export interface FleetRow {
@@ -85,6 +103,7 @@ export interface FleetRow {
   since: string | null;
   reportedAt: string | null;
   rolloutId: string | null;
+  trust?: DeviceTrust | null;
 }
 
 export interface JournalEntry {
@@ -223,6 +242,158 @@ export function promoteHint(rollout: ActiveRollout | null): string | null {
   return rollout.promoteBlockedReason ?? 'Die nächste Welle ist gerade nicht freigegeben.';
 }
 
+// ── OTA Stufe 4: Wellen-Automatik + TOFU-Abschluss ─────────────────────────
+
+/**
+ * In welchem Modus läuft dieser Rollout - und was passiert als Nächstes.
+ *
+ * Ohne diese Zeile wäre die Automatik ein UNSICHTBARER Zustand, und ein
+ * Betreiber müsste raten, ob gerade auf ihn oder auf das Bake-Fenster gewartet
+ * wird. Der SATZ kommt vom Server (`advanceNote`, dieselbe Quelle wie die
+ * Bake-Begründung); erfunden wird hier nichts - ein älterer Server ohne das
+ * Feld bekommt nur das Etikett und keine Behauptung darüber, was folgt.
+ */
+export function advanceMode(rollout: ActiveRollout | null): {
+  label: string;
+  tone: UpdateTone;
+  note: string | null;
+} | null {
+  if (!rollout) return null;
+  const auto = rollout.autoAdvance === true;
+  return {
+    label: auto ? 'Automatischer Wellen-Vorschub' : 'Wellen von Hand',
+    // Bewusst kein Warn-Ton: die Automatik ist eine gewählte Betriebsart,
+    // kein Befund. `busy` sagt „hier bewegt sich etwas von selbst".
+    tone: auto ? 'busy' : 'off',
+    note: rollout.advanceNote ?? null,
+  };
+}
+
+/** Der TOFU-Stand EINES Geräts. */
+export type CrossoverState = 'gekreuzt' | 'offen' | 'unbekannt' | 'fehler';
+
+/**
+ * Trägt dieses Gerät schon ein schlüsseltragendes Image?
+ *
+ * **Abwesenheit ist NIE ein Befund.** Ein älterer Edge-Stand meldet die
+ * Vertrauens-Identität gar nicht - das ist „unbekannt" und wird ruhig
+ * dargestellt, nie als Fehler und nie als „nicht gekreuzt". Ein Gerät MIT
+ * Block und LEERER Wurzel-Liste ist dagegen ein belegter, dokumentierter
+ * Zustand: der Crossover steht aus (`docs/ota-signing.md` §6) - auch das ist
+ * kein Fehler, sondern eine offene Aufgabe.
+ *
+ * Rot wird es nur bei `fehler`: ein Gerät, das eine Wurzel trägt, aber ein
+ * Vertrauens-Set abgelehnt hat - das ist ein Vorfall, keine offene Aufgabe.
+ */
+export function crossoverState(trust: DeviceTrust | null | undefined): {
+  state: CrossoverState;
+  label: string;
+  tone: UpdateTone;
+  detail: string | null;
+} {
+  if (!trust || !Array.isArray(trust.rootKeyIds)) {
+    return {
+      state: 'unbekannt',
+      label: 'unbekannt',
+      tone: 'off',
+      detail: 'Dieser Stand meldet seinen Vertrauensanker noch nicht.',
+    };
+  }
+  if (trust.rootKeyIds.length === 0) {
+    return {
+      state: 'offen',
+      label: 'Crossover offen',
+      tone: 'off',
+      detail: 'Dieses Gerät fährt ein Image ohne eingebackenen Vertrauensanker. '
+        + 'Der beaufsichtigte Crossover je Box steht noch aus.',
+    };
+  }
+  if (trust.trustSetKeyIds.length === 0) {
+    return {
+      state: 'fehler',
+      label: 'ohne Vertrauens-Set',
+      tone: 'warn',
+      detail: trust.trustSetError
+        ?? 'Auf diesem Gerät liegt kein gültiges, root-signiertes Vertrauens-Set.',
+    };
+  }
+  const stand = trust.trustSetGeneratedAt
+    ? ` · Vertrauens-Set vom ${formatTrustStamp(trust.trustSetGeneratedAt)}`
+    : '';
+  return {
+    state: 'gekreuzt',
+    label: 'gekreuzt ✓',
+    tone: 'ok',
+    detail: `Wurzel: ${trust.rootKeyIds.join(', ')}${stand}`,
+  };
+}
+
+/**
+ * Die eine ruhige Zeile über der Flotte: „Crossover offen: n Geräte".
+ *
+ * Sie zählt NUR die belegt offenen (Block vorhanden, Wurzel leer) - ein Gerät,
+ * das nichts meldet, ist unbekannt und wird getrennt genannt, weil man daraus
+ * keine Aufgabe ableiten kann.
+ */
+export function crossoverHint(fleet: FleetRow[]): string | null {
+  let offen = 0;
+  let unbekannt = 0;
+  let fehler = 0;
+  for (const row of fleet) {
+    const s = crossoverState(row.trust).state;
+    if (s === 'offen') offen += 1;
+    else if (s === 'unbekannt') unbekannt += 1;
+    else if (s === 'fehler') fehler += 1;
+  }
+  const parts: string[] = [];
+  if (offen > 0) {
+    parts.push(offen === 1
+      ? 'Crossover offen: 1 Gerät fährt noch ein Image ohne Vertrauensanker'
+      : `Crossover offen: ${offen} Geräte fahren noch ein Image ohne Vertrauensanker`);
+  }
+  if (fehler > 0) {
+    parts.push(fehler === 1
+      ? '1 Gerät hat kein gültiges Vertrauens-Set'
+      : `${fehler} Geräte haben kein gültiges Vertrauens-Set`);
+  }
+  if (unbekannt > 0) {
+    parts.push(unbekannt === 1
+      ? '1 Gerät meldet seinen Vertrauensanker nicht (unbekannt)'
+      : `${unbekannt} Geräte melden ihren Vertrauensanker nicht (unbekannt)`);
+  }
+  return parts.length > 0 ? `${parts.join(' · ')}.` : null;
+}
+
+/**
+ * Welche Vertrauens-Sets fährt die Flotte gerade - der Blick, den ein
+ * Rotations-Drill braucht („haben alle Boxen das neue Set gesehen?").
+ *
+ * Gezählt werden nur Geräte mit einem GEPRÜFTEN Set; „unbekannt"/„offen"
+ * erscheinen hier nicht, weil sie kein Set haben, über das sich reden ließe -
+ * die trägt `crossoverHint`.
+ */
+export function trustSetSpread(fleet: FleetRow[]): { stamp: string; devices: number }[] {
+  const counts = new Map<string, number>();
+  for (const row of fleet) {
+    const t = row.trust;
+    if (!t || t.trustSetKeyIds.length === 0) continue;
+    const key = t.trustSetGeneratedAt ?? 'ohne Stempel';
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([stamp, devices]) => ({ stamp, devices }))
+    // Neueste zuerst; „ohne Stempel" ans Ende, weil es sich nicht einordnen lässt.
+    .sort((a, b) => (a.stamp === 'ohne Stempel' ? 1 : b.stamp === 'ohne Stempel' ? -1
+      : b.stamp.localeCompare(a.stamp)));
+}
+
+/** Ein RFC-3339-Stempel als deutsches Datum - unlesbar bleibt unverändert. */
+export function formatTrustStamp(raw: string): string {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 /** Das Bake-Urteil eines Geräts als eine Zeile - oder null (nichts zu sagen). */
 export function bakeLine(device: WaveDevice): string | null {
   if (!device.bakeCycle) return null;
@@ -261,6 +432,9 @@ export function formatMinutes(minutes: number): string {
 const EVENT_LABELS: Record<string, string> = {
   rollout_created: 'Rollout gestartet',
   wave_released: 'Welle freigegeben',
+  wave_auto_released: 'Welle automatisch freigegeben',
+  auto_advance_on: 'Wellen-Automatik eingeschaltet',
+  auto_advance_off: 'Wellen-Automatik ausgeschaltet',
   rollout_paused: 'Rollout pausiert',
   rollout_resumed: 'Rollout fortgesetzt',
   rollout_halted: 'Rollout eingefroren',

@@ -14,7 +14,7 @@
 //
 //	go run ./cmd/vp-ota <befehl> [optionen]
 //
-// Befehle: keygen · trust-set · manifest · sign · verify · register
+// Befehle: keygen · trust-set · trust · manifest · sign · verify · register
 package main
 
 import (
@@ -33,6 +33,8 @@ func main() {
 		err = cmdKeygen(os.Args[2:])
 	case "trust-set":
 		err = cmdTrustSet(os.Args[2:])
+	case "trust":
+		err = cmdTrust(os.Args[2:])
 	case "manifest":
 		err = cmdManifest(os.Args[2:])
 	case "sign":
@@ -60,6 +62,7 @@ func usage() {
 
   keygen     Ed25519-Schluesselpaar erzeugen (Root ODER Release)
   trust-set  Trust-Set aus Release-Oeffentlichschluesseln bauen
+  trust      Ein Trust-Set ALLEIN pruefen (Rotations-Drill, ohne Manifest)
   manifest   Unsigniertes release.json erzeugen
   sign       Abgetrennte Signatur erzeugen (Domain release | trust-set)
   verify     Vollstaendige Kette pruefen (Wurzel -> Trust-Set -> Manifest)

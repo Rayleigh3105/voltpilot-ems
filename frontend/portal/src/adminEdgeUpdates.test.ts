@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   actorLabel,
+  advanceMode,
   bakeLine,
   canRollOut,
+  crossoverHint,
+  crossoverState,
   eventLabel,
   isLoud,
   kpiText,
@@ -14,8 +17,10 @@ import {
   signatureLabel,
   sortFleet,
   stateLabel,
+  trustSetSpread,
   visibleJournal,
   type ActiveRollout,
+  type DeviceTrust,
   type EdgeUpdatesRelease,
   type FleetRow,
   type JournalEntry,
@@ -223,5 +228,124 @@ describe('Sortierung + Register', () => {
     expect(canRollOut(rel(false))).toBe(false);
     expect(signatureLabel(rel(true)).label).toContain('rel-2026-a');
     expect(signatureLabel(rel(false))).toEqual({ label: 'nicht signiert', tone: 'off' });
+  });
+});
+
+// ── OTA Stufe 4 „Politur" ──────────────────────────────────────────────────
+
+const rollout = (over: Partial<ActiveRollout> = {}): ActiveRollout => ({
+  id: 'r1',
+  releaseVersion: 'edge-2026.08.0',
+  releaseSeq: 12,
+  channel: 'stable',
+  state: 'active',
+  currentWave: 1,
+  waveCount: 3,
+  haltedReason: null,
+  createdBy: 'admin',
+  createdAt: '2026-08-05T08:00:00Z',
+  canPromote: false,
+  promoteBlockedReason: 'Noch 4 Std. gesunder Betrieb bis zur Freigabe.',
+  waves: [],
+  ...over,
+});
+
+describe('Wellen-Automatik (Stufe 4)', () => {
+  it('benennt den Modus, in dem ein Rollout läuft', () => {
+    expect(advanceMode(rollout({ autoAdvance: true, advanceNote: 'Automatischer Vorschub: …' })))
+      .toEqual({
+        label: 'Automatischer Wellen-Vorschub',
+        tone: 'busy',
+        note: 'Automatischer Vorschub: …',
+      });
+    expect(advanceMode(rollout({ advanceNote: 'Hand-Vorschub: …' })))
+      .toEqual({ label: 'Wellen von Hand', tone: 'off', note: 'Hand-Vorschub: …' });
+  });
+
+  it('ist ohne Rollout still und behauptet ohne Server-Satz nichts', () => {
+    expect(advanceMode(null)).toBeNull();
+    // Ein ÄLTERER Server kennt die Felder nicht: dann gibt es das Etikett
+    // „von Hand" (die Vorgabe) und KEINE Behauptung über das, was folgt.
+    const alt = advanceMode(rollout({ autoAdvance: undefined, advanceNote: undefined }));
+    expect(alt?.label).toBe('Wellen von Hand');
+    expect(alt?.note).toBeNull();
+  });
+
+  it('färbt die Automatik nicht als Warnung - sie ist eine gewählte Betriebsart', () => {
+    expect(advanceMode(rollout({ autoAdvance: true }))?.tone).not.toBe('warn');
+  });
+});
+
+describe('TOFU-Abschluss (Stufe 4)', () => {
+  const trust = (over: Partial<DeviceTrust> = {}): DeviceTrust => ({
+    rootKeyIds: ['root-2026-a'],
+    trustSetKeyIds: ['rel-2026-a'],
+    trustSetGeneratedAt: '2026-09-01T10:00:00Z',
+    trustSetError: null,
+    ...over,
+  });
+
+  it('nennt ein gekreuztes Gerät gekreuzt - mit Wurzel und Set-Stand', () => {
+    const got = crossoverState(trust());
+    expect(got.state).toBe('gekreuzt');
+    expect(got.tone).toBe('ok');
+    expect(got.detail).toContain('root-2026-a');
+    expect(got.detail).toContain('01.09.2026');
+  });
+
+  it('rendert ABWESENHEIT nie als Befund - ein älterer Stand ist „unbekannt"', () => {
+    for (const t of [null, undefined]) {
+      const got = crossoverState(t);
+      expect(got.state).toBe('unbekannt');
+      expect(got.tone).toBe('off');
+      // Nie „nicht gekreuzt", nie ein Warnton: wir wissen es schlicht nicht.
+      expect(got.label).toBe('unbekannt');
+      expect(got.detail).not.toContain('Crossover offen');
+    }
+  });
+
+  it('nennt ein schlüsselloses Image als OFFENE Aufgabe, nicht als Fehler', () => {
+    const got = crossoverState(trust({ rootKeyIds: [], trustSetKeyIds: [] }));
+    expect(got.state).toBe('offen');
+    expect(got.tone).toBe('off');
+    expect(got.detail).toContain('Crossover');
+  });
+
+  it('ist nur dort laut, wo es ein Vorfall ist: Wurzel da, Set abgelehnt', () => {
+    const got = crossoverState(trust({ trustSetKeyIds: [], trustSetError: 'nicht root-signiert' }));
+    expect(got.state).toBe('fehler');
+    expect(got.tone).toBe('warn');
+    expect(got.detail).toContain('nicht root-signiert');
+  });
+
+  it('zählt für den Hinweis nur BELEGT offene und nennt Unbekanntes getrennt', () => {
+    const hint = crossoverHint([
+      row({ deviceId: '1', trust: trust() }),
+      row({ deviceId: '2', trust: trust({ rootKeyIds: [], trustSetKeyIds: [] }) }),
+      row({ deviceId: '3', trust: trust({ rootKeyIds: [], trustSetKeyIds: [] }) }),
+      row({ deviceId: '4' }),
+    ]);
+    expect(hint).toContain('Crossover offen: 2 Geräte');
+    expect(hint).toContain('1 Gerät meldet seinen Vertrauensanker nicht');
+  });
+
+  it('schweigt, wenn die ganze Flotte gekreuzt ist', () => {
+    expect(crossoverHint([row({ deviceId: '1', trust: trust() })])).toBeNull();
+    expect(crossoverHint([])).toBeNull();
+  });
+
+  it('zeigt für den Rotations-Drill, welche Sets die Flotte fährt', () => {
+    const spread = trustSetSpread([
+      row({ deviceId: '1', trust: trust({ trustSetGeneratedAt: '2026-09-01T10:00:00Z' }) }),
+      row({ deviceId: '2', trust: trust({ trustSetGeneratedAt: '2026-08-01T10:00:00Z' }) }),
+      row({ deviceId: '3', trust: trust({ trustSetGeneratedAt: '2026-09-01T10:00:00Z' }) }),
+      // Ohne Set gibt es nichts einzuordnen - es taucht hier nicht auf.
+      row({ deviceId: '4', trust: trust({ rootKeyIds: [], trustSetKeyIds: [] }) }),
+      row({ deviceId: '5' }),
+    ]);
+    expect(spread).toEqual([
+      { stamp: '2026-09-01T10:00:00Z', devices: 2 },
+      { stamp: '2026-08-01T10:00:00Z', devices: 1 },
+    ]);
   });
 });

@@ -24,6 +24,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otatarget"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
@@ -171,9 +172,13 @@ type CalibrationController interface {
 // tells the operator's `update.sh --from-target` WHAT the portal assigned and
 // records afterwards WHAT was actually applied.
 //
-// There is deliberately no Apply method: applying stays a human action at the
-// device in this stage (an autonomous apply path is Stufe 3, with a self-test,
-// a watchdog and a rollback target - none of which exists yet).
+// Since Stufe 4 it also carries the SUPERVISED apply: „Jetzt anwenden" on the
+// device page, behind the same per-install password as the calibration
+// mutations. That is NOT autonomy - it opens the sidecar's FIRST gate for
+// exactly one operation and one release, while every other gate (independent
+// signature check, anti-rollback floor, disk guard, neutral-time rule,
+// interlock, self-test, watchdog, rollback) applies unchanged. See
+// agent/ota_apply.go for the full argument.
 type OtaController interface {
 	// OtaTarget describes the assignment. The digest-pinned image refs are
 	// only present when THIS device verified the signature chain - that is the
@@ -185,6 +190,12 @@ type OtaController interface {
 	OtaRecordApplied(release string, releaseSeq int64) (otatarget.View, error)
 	// IsOtaRejection tells a refusal (400 + German reason) from a real failure.
 	IsOtaRejection(err error) bool
+	// OtaApplyState answers „can this box apply its assigned release now - and
+	// if not, why not". Every „no" carries its German reason.
+	OtaApplyState() otaapply.ApplyView
+	// OtaRequestApply places the ONE-SHOT approval. It only writes a file; the
+	// applying is done by another process that verifies everything itself.
+	OtaRequestApply(by string) (otaapply.ApplyView, error)
 }
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
@@ -884,6 +895,36 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		writeJSON(w, http.StatusOK, view)
 	})
+
+	// ── OTA Stufe 4: „Jetzt anwenden" (beaufsichtigt) ─────────────────────
+	//
+	// GET liefert den Zustand samt GRUND, warum gerade (nicht) angewandt
+	// werden kann - lesend und deshalb ungeschuetzt wie die uebrigen Ansichten.
+	mux.HandleFunc("GET /api/ota/apply", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, ota.OtaApplyState())
+	})
+
+	// POST legt die EINMALIGE Freigabe ab - hinter DEMSELBEN Betreiber-Passwort
+	// wie die Kalibrier-Eingriffe (calGuard). Es ist der einzige Schreibpfad
+	// dieser Stufe, und er entscheidet selbst nichts: der Aktualisierer prueft
+	// beim naechsten Takt alles erneut und kann die Freigabe folgenlos
+	// verwerfen.
+	mux.HandleFunc("POST /api/ota/apply", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			By string `json:"by"`
+		}
+		readBody(r, &req) // ein leerer Rumpf ist erlaubt - „by" ist Diagnose
+		view, err := ota.OtaRequestApply(req.By)
+		if err != nil {
+			status := http.StatusInternalServerError
+			if ota.IsOtaRejection(err) {
+				status = http.StatusBadRequest
+			}
+			writeJSON(w, status, map[string]any{"error": err.Error(), "apply": view})
+			return
+		}
+		writeJSON(w, http.StatusOK, view)
+	}))
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		snap := st.Get()

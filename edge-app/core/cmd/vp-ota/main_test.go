@@ -282,3 +282,67 @@ func must(t *testing.T, err error) {
 		t.Fatalf("unerwarteter Fehler: %v", err)
 	}
 }
+
+// ── OTA Stufe 4: der Rotations-Drill ────────────────────────────────────────
+
+// Der vollstaendige Drill aus docs/ota-signing.md §7.1, gegen die ECHTEN
+// Unterbefehle: die kalte Wurzel loest einen Release-Schluessel ab, und danach
+// ist der alte NACHWEISLICH wertlos - uhrunabhaengig, ohne Sperrliste.
+func TestKeyRotationDrillRevokesTheOldReleaseKey(t *testing.T) {
+	dir := ceremony(t)
+	p := func(n string) string { return filepath.Join(dir, n) }
+
+	// 1. Neuer Release-Schluessel, neues Trust-Set OHNE den alten, root-signiert.
+	must(t, cmdKeygen([]string{"--id", "rel-2026-b", "--role", "release", "--out", dir}))
+	must(t, cmdTrustSet([]string{"--key", p("rel-2026-b.pub"), "--out", p("trust-set-neu.json")}))
+	must(t, cmdSign([]string{"--key", p("root-2026-a.key"), "--domain", "trust-set",
+		"--in", p("trust-set-neu.json")}))
+
+	// 2. Das neue Set ist ALLEIN pruefbar - ohne dass ein Release existiert.
+	//    Genau das konnte `verify` nicht, und genau das ist der erste Schritt
+	//    eines Drills.
+	must(t, cmdTrust([]string{"--root", p("root-2026-a.pub"),
+		"--trust-set", p("trust-set-neu.json")}))
+
+	// 3. Ein mit dem ALTEN Schluessel signiertes Release ist unter dem neuen
+	//    Set wertlos - der belastbare Widerruf.
+	if err := cmdVerify([]string{"--root", p("root-2026-a.pub"),
+		"--trust-set", p("trust-set-neu.json"), "--manifest", p("release.json")}); err == nil {
+		t.Fatal("der abgeloeste Schluessel gilt noch - der Widerruf hat nicht gewirkt")
+	}
+
+	// 4. Ein mit dem NEUEN Schluessel signiertes Release gilt.
+	must(t, cmdManifest([]string{
+		"--release", "edge-2026.09.0", "--seq", "13", "--commit", "aabbccddeeff",
+		"--artifact", "core=" + coreRef, "--artifact", "nodered=" + noderedRef,
+		"--min-from-seq", "9", "--state-schema", "3", "--key-id", "rel-2026-b",
+		"--out", p("release-neu.json"),
+	}))
+	must(t, cmdSign([]string{"--key", p("rel-2026-b.key"), "--domain", "release",
+		"--in", p("release-neu.json")}))
+	must(t, cmdVerify([]string{"--root", p("root-2026-a.pub"),
+		"--trust-set", p("trust-set-neu.json"), "--manifest", p("release-neu.json")}))
+
+	// 5. Der ROLLBACK eines missglueckten Drills: das ALTE Set liegt noch und
+	//    ist unveraendert gueltig - deshalb ist „die alte Datei zurueckkopieren"
+	//    ein echter Rueckweg und keine Hoffnung.
+	must(t, cmdVerify([]string{"--root", p("root-2026-a.pub"),
+		"--trust-set", p("trust-set.json"), "--manifest", p("release.json")}))
+}
+
+// Ein Trust-Set, das die Wurzel nicht unterschrieben hat, wird abgelehnt -
+// sonst waere der Drill-Pruefschritt wertlos.
+func TestTrustRefusesASetTheRootDidNotSign(t *testing.T) {
+	dir := ceremony(t)
+	p := func(n string) string { return filepath.Join(dir, n) }
+
+	must(t, cmdKeygen([]string{"--id", "root-fremd", "--role", "root", "--out", dir}))
+	must(t, cmdTrustSet([]string{"--key", p("rel-2026-a.pub"), "--out", p("ts-fremd.json")}))
+	must(t, cmdSign([]string{"--key", p("root-fremd.key"), "--domain", "trust-set",
+		"--in", p("ts-fremd.json")}))
+
+	if err := cmdTrust([]string{"--root", p("root-2026-a.pub"),
+		"--trust-set", p("ts-fremd.json")}); err == nil {
+		t.Fatal("ein fremd signiertes Vertrauens-Set wurde akzeptiert")
+	}
+}

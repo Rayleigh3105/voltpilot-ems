@@ -17,6 +17,7 @@ package agent
 // bleibt am Gerät.
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 	"strconv"
@@ -326,9 +327,18 @@ func (e *otaAppliedError) Error() string { return e.msg }
 
 // IsOtaRejection sagt der Web-Schicht, dass eine Ablehnung eine 400 ist und
 // keine 500 (das ValidationError-Muster der Kalibrierung).
+//
+// Es gibt bewusst GENAU EINE solche Regel fuer den ganzen OTA-Pfad: das
+// Aufzeichnen eines angewandten Standes (Stufe 2) und die Freigabe am Geraet
+// (Stufe 4) sind fachlich dieselbe Sorte Antwort - „nein, und hier ist der
+// deutsche Grund".
 func (a *Agent) IsOtaRejection(err error) bool {
-	_, ok := err.(*otaAppliedError)
-	return ok
+	var applied *otaAppliedError
+	if errors.As(err, &applied) {
+		return true
+	}
+	var rej *otaApplyRejection
+	return errors.As(err, &rej)
 }
 
 func readFileOrNil(dir, name string) []byte {

@@ -458,6 +458,46 @@ type UpdateSummary struct {
 	// device" are both State=deferred - only this field separates them
 	// machine-readably, so no surface has to grep the German reason.
 	TargetVerdict string `json:"target_verdict,omitempty"`
+	// Trust is the device's VERTRAUENS-IDENTITAET (OTA Stufe 4 „Politur"):
+	// against which baked root does this build check, and which release keys
+	// does it currently accept? nil = an older edge that does not report it.
+	//
+	// It is what finally makes the TOFU crossover and a key rotation
+	// OBSERVABLE fleet-wide instead of a hand-kept list: „does this box carry
+	// a key-bearing image at all" is `root_key_ids` non-empty, and „has this
+	// box seen the new trust set yet" is `trust_set_generated_at`/
+	// `trust_set_key_ids`.
+	//
+	// ABSENT and EMPTY mean different things on purpose - see TrustSummary.
+	Trust *TrustSummary `json:"trust,omitempty"`
+}
+
+// TrustSummary is the reported trust identity (OTA Stufe 4).
+//
+// **The absent/empty distinction is the whole point.** A device that does not
+// send the block at all is an OLDER build: the cloud says „unbekannt" and never
+// „veraltet". A device that sends the block with an EMPTY `root_key_ids` is a
+// build that carries the verifier but no anchor - the documented PRE-CEREMONY /
+// pre-crossover state, which is honest information, not an error.
+//
+// The keys are reported only after the trust set VERIFIED against the baked
+// root (otaverify.InspectTrust). Reporting an unverified set would let anyone
+// who can write /data tell the fleet a key set no device would ever accept.
+type TrustSummary struct {
+	// RootKeyIDs are the key_ids of this image's BAKED root, sorted. An empty
+	// (but present) array = key-less image, i.e. the crossover is still open.
+	RootKeyIDs []string `json:"root_key_ids"`
+	// TrustSetKeyIDs are the key_ids of the verified trust set, sorted.
+	TrustSetKeyIDs []string `json:"trust_set_key_ids,omitempty"`
+	// TrustSetGeneratedAt is that set's `generated_at` - the stamp a rotation
+	// drill compares across the fleet.
+	TrustSetGeneratedAt string `json:"trust_set_generated_at,omitempty"`
+	// TrustSetSignedBy is the root key_id that actually signed it.
+	TrustSetSignedBy string `json:"trust_set_signed_by,omitempty"`
+	// TrustSetError is the German reason why no valid trust set is present.
+	// „none placed" and „present but not ours" trigger different actions - the
+	// first is an open crossover, the second an incident.
+	TrustSetError string `json:"trust_set_error,omitempty"`
 }
 
 // FlowsSummary is the additive status-heartbeat block acknowledging the

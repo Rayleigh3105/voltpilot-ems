@@ -588,6 +588,26 @@
           </div>
         </section>
 
+        <!-- OTA Stufe 4: der beaufsichtigte „Jetzt anwenden"-Knopf. Er steht
+             hier, weil eine Aktualisierung eine seltene, bewusste Handlung ist -
+             und weil sie hinter dasselbe Betreiber-Passwort gehoert wie die
+             Kalibrierung. Ohne zugewiesenes Release oder ohne laufenden
+             Aktualisierer rendert die Karte GAR NICHT (ota.js) - eine Karte,
+             die nur sagen kann „geht hier nicht", ist Laerm. -->
+        <section class="card set-card" id="otaCard" hidden>
+          <div class="set-card-head">
+            <h2 class="set-title">Software-Aktualisierung</h2>
+            <p class="set-desc" id="otaDesc"></p>
+          </div>
+          <dl class="kv" id="otaKv"></dl>
+          <p class="set-desc" id="otaReason" hidden></p>
+          <div class="set-actions" id="otaActions" hidden>
+            <button type="button" class="btn-primary" id="otaApplyBtn">Jetzt anwenden</button>
+          </div>
+          <p class="form-ok set-flash" id="otaFlash" hidden></p>
+          <p class="form-error set-flash" id="otaErr" hidden></p>
+        </section>
+
         <div class="area-title">
           Unumkehrbar
           <span class="area-flag">nicht rückgängig zu machen</span>
@@ -733,6 +753,7 @@
   <script src="control.js"></script>
   <script src="calibration.js"></script>
   <script src="curtail.js"></script>
+  <script src="ota.js"></script>
   <script src="einrichten.js"></script>
 </body>
 </html>

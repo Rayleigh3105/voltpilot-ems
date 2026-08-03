@@ -83,6 +83,12 @@ const MaxCoreSignalAge = 60 * time.Second
 type DecisionInput struct {
 	// Autonomous ist der Schalter (Datei ODER Not-Ein-Umgebungsvariable).
 	Autonomous bool
+	// Request ist eine EINMALIGE, von einem Menschen ausgeloeste Freigabe
+	// ([ApplyRequest], OTA Stufe 4). nil = keine.
+	Request *ApplyRequest
+	// AppliedRequestToken ist der zuletzt vom Sidecar ausgefuehrte Token -
+	// damit dieselbe Freigabe nie zweimal wirkt.
+	AppliedRequestToken string
 	// HasTarget: liegt ueberhaupt eine Zuweisung vor?
 	HasTarget bool
 	// Verdict ist das Urteil des EIGENEN Verifizierers des Sidecars.
@@ -107,7 +113,14 @@ type DecisionInput struct {
 // Decide laeuft die Tore ab.
 func Decide(in DecisionInput) Decision {
 	// --- 1. Darf ueberhaupt jemand? ---------------------------------------
-	if !in.Autonomous {
+	//
+	// ZWEI Wege durch dieses eine Tor, und nur durch dieses: der Schalter
+	// (Autonomie) oder eine EINMALIGE Freigabe durch einen Menschen am Geraet
+	// (`:8484` „Jetzt anwenden", OTA Stufe 4). Jedes weitere Tor unten gilt
+	// fuer beide UNVERAENDERT - die Freigabe verkuerzt keinen Pruefschritt,
+	// sie ersetzt nur die Frage „wann".
+	manual := in.ManualApproval()
+	if !in.Autonomous && !manual {
 		// Kein Grund noetig: „ausgeschaltet" ist kein Befund ueber ein Release.
 		// Die Oberflaeche liest das aus UpdaterState.Autonomous.
 		return Decision{Action: ActionIdle, State: StateIdle}
@@ -220,9 +233,37 @@ func Decide(in DecisionInput) Decision {
 		}
 	}
 
-	return Decision{Action: ActionApply, State: StateDownloading,
-		Reason:   "Release " + m.Release + " ist geprueft und wird angewandt.",
+	// Die Freigabe gilt fuer GENAU DAS Release, das der Mensch gesehen hat.
+	// Steht inzwischen ein anderes Ziel da, ist das keine Freigabe mehr - eine
+	// Zustimmung zu „edge-2026.08.0" ist keine zu dem, was zwei Minuten spaeter
+	// zugewiesen wurde. Diese Pruefung steht bewusst HIER unten, nach dem
+	// Verifizieren: vorher gibt es kein vertrauenswuerdiges Release, mit dem
+	// sich vergleichen liesse.
+	if !in.Autonomous && manual && in.Request.Release != "" && in.Request.Release != m.Release {
+		return Decision{Action: ActionIdle, State: StateDeferred,
+			Reason: "Die Freigabe galt fuer Release " + in.Request.Release + ", zugewiesen ist " +
+				"inzwischen " + m.Release + " - es wird nichts angewandt."}
+	}
+
+	reason := "Release " + m.Release + " ist geprueft und wird angewandt."
+	if !in.Autonomous {
+		reason = "Release " + m.Release + " ist geprueft und wurde am Geraet freigegeben - " +
+			"es wird jetzt angewandt."
+	}
+	return Decision{Action: ActionApply, State: StateDownloading, Reason: reason,
 		Deadline: WatchdogDeadline(in.Neutral, in.Signal.ControlActive, in.ConfiguredDeadline)}
+}
+
+// ManualApproval sagt, ob eine gueltige, noch nicht ausgefuehrte Freigabe
+// vorliegt.
+//
+// Drei Bedingungen, jede fuer sich noetig: sie existiert, sie ist FRISCH
+// ([ApplyRequestWindow] - eine vergessene Freigabe darf nicht Tage spaeter
+// zuschlagen), und ihr Token wurde noch nicht ausgefuehrt - genau das macht sie
+// EINMALIG und verhindert die Tausch-Schleife, gegen die es auch `failed.json`
+// gibt.
+func (in DecisionInput) ManualApproval() bool {
+	return in.Request.Fresh(in.Now) && in.Request.Token != in.AppliedRequestToken
 }
 
 // ApplyingAckDecision sagt, ob der Sidecar auf den durablen `applying`-Bericht

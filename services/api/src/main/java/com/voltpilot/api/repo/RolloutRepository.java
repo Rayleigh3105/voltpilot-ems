@@ -102,13 +102,13 @@ public class RolloutRepository {
     // ── Rollouts ─────────────────────────────────────────────────────────
 
     public record RolloutRow(UUID id, long releaseSeq, String releaseVersion, String channel,
-            String state, String wavesJson, int currentWave, String haltedReason, String createdBy,
-            Instant createdAt, Instant updatedAt) {
+            String state, String wavesJson, int currentWave, boolean autoAdvance,
+            String haltedReason, String createdBy, Instant createdAt, Instant updatedAt) {
     }
 
     private static final String ROLLOUT_SELECT = """
             SELECT id, release_seq, release_version, channel, state, waves::text AS waves,
-                   current_wave, halted_reason, created_by, created_at, updated_at
+                   current_wave, auto_advance, halted_reason, created_by, created_at, updated_at
               FROM rollout
             """;
 
@@ -148,12 +148,26 @@ public class RolloutRepository {
     }
 
     public void insertRollout(UUID id, long releaseSeq, String releaseVersion, String channel,
-            String wavesJson, String createdBy) {
+            String wavesJson, boolean autoAdvance, String createdBy) {
         jdbc.update("""
                 INSERT INTO rollout (id, release_seq, release_version, channel, state, waves,
-                        current_wave, created_by)
-                VALUES (?, ?, ?, ?, 'active', ?::jsonb, 0, ?)
-                """, id, releaseSeq, releaseVersion, channel, wavesJson, createdBy);
+                        current_wave, auto_advance, created_by)
+                VALUES (?, ?, ?, ?, 'active', ?::jsonb, 0, ?, ?)
+                """, id, releaseSeq, releaseVersion, channel, wavesJson, autoAdvance, createdBy);
+    }
+
+    /**
+     * Die Wellen-Automatik eines laufenden Rollouts umschalten.
+     *
+     * <p>Bewusst nachträglich schaltbar: ein Betreiber, der die erste Welle von
+     * Hand begleitet hat und dann Vertrauen gefasst hat, soll den Rest nicht
+     * abbrechen und neu starten müssen - und umgekehrt muss er eine laufende
+     * Automatik anhalten können, ohne den Not-Aus (der endgültig ist) zu
+     * benutzen.
+     */
+    public void setAutoAdvance(UUID id, boolean autoAdvance) {
+        jdbc.update("UPDATE rollout SET auto_advance = ?, updated_at = now() WHERE id = ?",
+                autoAdvance, id);
     }
 
     public void setRolloutState(UUID id, String state, String haltedReason) {
@@ -245,7 +259,8 @@ public class RolloutRepository {
             String reportedVersion, String reportedCurrent, String reportedTarget,
             String reportedState, String reportedVerdict, String reportedReason,
             Instant reportedAt, Instant lastSeenAt, Instant controlCheckedAt,
-            Boolean controlConfirmed, Boolean controlCertified) {
+            Boolean controlConfirmed, Boolean controlCertified, String rootKeyIds,
+            String trustSetKeyIds, String trustSetGeneratedAt, String trustSetError) {
     }
 
     /**
@@ -259,6 +274,8 @@ public class RolloutRepository {
                        d.site_id, s.name AS site_name, s.tenant_id, t.name AS tenant_name,
                        u.version, u.current_version, u.target_version, u.state, u.target_verdict,
                        u.reason, u.reported_at,
+                       u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
+                       u.trust_set_error,
                        ls.last_seen,
                        c.checked_at AS control_checked_at, c.all_match AS control_confirmed,
                        c.certified AS control_certified
@@ -288,7 +305,15 @@ public class RolloutRepository {
                         instant(rs, "last_seen"),
                         instant(rs, "control_checked_at"),
                         (Boolean) rs.getObject("control_confirmed"),
-                        (Boolean) rs.getObject("control_certified")));
+                        (Boolean) rs.getObject("control_certified"),
+                        // ⚠ getString, NICHT getObject-mit-Default: die Spalte
+                        // ist DREIWERTIG (null = nie gemeldet, "" = Image ohne
+                        // Wurzel, sonst die Liste), und ein Default machte aus
+                        // „unbekannt" ein behauptetes „kein Schlüssel".
+                        rs.getString("root_key_ids"),
+                        rs.getString("trust_set_key_ids"),
+                        rs.getString("trust_set_generated_at"),
+                        rs.getString("trust_set_error")));
     }
 
     /** Prüft, ob eine Geräte-Id überhaupt existiert (bevor sie ein Ziel bekommt). */
@@ -325,6 +350,7 @@ public class RolloutRepository {
                 rs.getString("state"),
                 rs.getString("waves"),
                 rs.getInt("current_wave"),
+                rs.getBoolean("auto_advance"),
                 rs.getString("halted_reason"),
                 rs.getString("created_by"),
                 instant(rs, "created_at"),

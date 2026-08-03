@@ -220,6 +220,11 @@ export const adminApi = {
     releaseSeq: number;
     channel?: string;
     waves: { name: string; devices: string[] }[];
+    /**
+     * OTA Stufe 4: die Wellen-AUTOMATIK. ABSENT = Hand-Vorschub, und das
+     * bleibt die Vorgabe (D4) - der Server liest ein fehlendes Feld genauso.
+     */
+    autoAdvance?: boolean;
   }) =>
     request<{ rolloutId: string }>('/api/v1/admin/rollouts', {
       method: 'POST',
@@ -229,6 +234,16 @@ export const adminApi = {
   /** Nächste Welle - der Server verweigert sie (409), solange das Bake offen ist. */
   promoteRollout: (rolloutId: string) =>
     request<void>(`/api/v1/admin/rollouts/${rolloutId}/promote`, { method: 'POST' }),
+
+  /**
+   * Den Wellen-Vorschub umschalten (Stufe 4). Lockert nichts: dasselbe
+   * Bake-Kriterium, derselbe Auto-Halt, derselbe endgültige Not-Aus.
+   */
+  setAutoAdvance: (rolloutId: string, enabled: boolean) =>
+    request<void>(`/api/v1/admin/rollouts/${rolloutId}/auto-advance`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
 
   pauseRollout: (rolloutId: string) =>
     request<void>(`/api/v1/admin/rollouts/${rolloutId}/pause`, { method: 'POST' }),

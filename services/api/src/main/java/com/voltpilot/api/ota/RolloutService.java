@@ -153,7 +153,7 @@ public class RolloutService {
      * alle weiteren sind hand-advanced (D4).
      */
     public UUID createRollout(long releaseSeq, String channel, List<WaveSpec> waves,
-            String actor) {
+            boolean autoAdvance, String actor) {
         EdgeReleaseDto release = signedRelease(releaseSeq);
         if (waves == null || waves.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -183,7 +183,8 @@ public class RolloutService {
         }
 
         UUID id = UUID.randomUUID();
-        rollouts.insertRollout(id, releaseSeq, release.version(), channel, wavesJson(waves), actor);
+        rollouts.insertRollout(id, releaseSeq, release.version(), channel, wavesJson(waves),
+                autoAdvance, actor);
         for (int i = 0; i < waves.size(); i++) {
             for (UUID d : waves.get(i).devices()) {
                 rollouts.insertRolloutDevice(id, d, i + 1, RolloutStates.AUSSTEHEND, null);
@@ -191,7 +192,8 @@ public class RolloutService {
         }
         rollouts.appendEvent(actor, "rollout_created", id, null,
                 release.version() + " → " + channel + ", " + waves.size() + " Welle"
-                        + (waves.size() == 1 ? "" : "n") + ", " + seen.size() + " Geräte");
+                        + (waves.size() == 1 ? "" : "n") + ", " + seen.size() + " Geräte, "
+                        + (autoAdvance ? "automatischer" : "hand-geführter") + " Wellen-Vorschub");
         releaseWave(id, 1, waves.get(0).devices(), release, channel, actor);
         return id;
     }
@@ -222,6 +224,36 @@ public class RolloutService {
             rollouts.appendEvent(actor, "rollout_last_wave", rolloutId, null,
                     "Letzte Welle freigegeben.");
         }
+    }
+
+    /**
+     * Den Wellen-Vorschub umschalten (OTA Stufe 4 „Politur").
+     *
+     * <p><b>Hand-Vorschub bleibt die Vorgabe</b> (D4: „Wellen hand-advanced -
+     * bei ≤10 Geräten richtig"); dies ist eine bewusst gewählte OPTION. Sie
+     * erleichtert genau EINEN Schritt - das Drücken von „Nächste Welle", wenn
+     * das Bake-Kriterium ohnehin erfüllt ist - und lockert keine einzige Regel:
+     * dasselbe {@link BakeGate}, derselbe Auto-Halt, derselbe endgültige
+     * Not-Aus. Sie ist nachträglich schaltbar, damit ein Betreiber die erste
+     * Welle von Hand begleiten und danach umstellen kann, ohne den Rollout
+     * abzubrechen.
+     */
+    public void setAutoAdvance(UUID rolloutId, boolean enabled, String actor) {
+        RolloutRepository.RolloutRow r = requireRollout(rolloutId);
+        if ("halted".equals(r.state()) || "done".equals(r.state())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Dieser Rollout ist " + stateLabel(r.state())
+                            + " - der Wellen-Vorschub ändert daran nichts.");
+        }
+        if (r.autoAdvance() == enabled) {
+            return; // idempotent
+        }
+        rollouts.setAutoAdvance(rolloutId, enabled);
+        rollouts.appendEvent(actor, enabled ? "auto_advance_on" : "auto_advance_off", rolloutId,
+                null, enabled
+                        ? "Wellen werden automatisch freigegeben, sobald das Bake-Kriterium "
+                                + "erfüllt ist."
+                        : "Wellen werden wieder von Hand freigegeben.");
     }
 
     /** Pause: reversibel, es wird nichts weiter zugewiesen. */
@@ -317,6 +349,28 @@ public class RolloutService {
                 rollouts.setRolloutState(r.id(), "done", null);
                 rollouts.appendEvent(SYSTEM_ACTOR, "rollout_done", r.id(), null,
                         "Alle Wellen bestätigt.");
+            } else if (r.autoAdvance() && "active".equals(r.state())
+                    && r.currentWave() >= 1 && r.currentWave() < waves.size()) {
+                // Die WELLEN-AUTOMATIK (Stufe 4). Sie steht bewusst im ELSE-Zweig
+                // des Auto-Halts: ein Rollout, der gerade angehalten hat, kann
+                // hier nie weiterlaufen - und zwar nicht, weil jemand daran
+                // gedacht hat, sondern weil der Halt vorher zurückschreibt und
+                // dieser Zweig dann nicht erreicht wird. „paused" fällt aus
+                // demselben Grund heraus (state != active).
+                BakeGate.WaveBake bake = bakeOfWave(r, r.currentWave());
+                if (bake.passed()) {
+                    int next = r.currentWave() + 1;
+                    EdgeReleaseDto release = signedRelease(r.releaseSeq());
+                    rollouts.appendEvent(SYSTEM_ACTOR, "wave_auto_released", r.id(), null,
+                            "Welle " + r.currentWave() + " hat das Bake-Kriterium erfüllt - "
+                                    + "Welle " + next + " wird automatisch freigegeben.");
+                    releaseWave(r.id(), next, waves.get(next - 1).devices(), release, r.channel(),
+                            SYSTEM_ACTOR);
+                    if (next >= waves.size()) {
+                        rollouts.appendEvent(SYSTEM_ACTOR, "rollout_last_wave", r.id(), null,
+                                "Letzte Welle freigegeben.");
+                    }
+                }
             }
         }
 
@@ -343,6 +397,20 @@ public class RolloutService {
                         t.deviceId(), t.releaseVersion());
             }
         }
+    }
+
+    /**
+     * Das Audit-Journal als Markdown (der optionale gitops-Spiegel, D2).
+     *
+     * <p>Rein dokumentarisch: es fließt nichts zurück, und die api hält KEIN
+     * Schreib-Token für ein zweites Repo - siehe {@link RolloutJournal}.
+     */
+    public String journalMarkdown(int limit) {
+        Map<UUID, String> labels = new HashMap<>();
+        for (RolloutRepository.FleetDeviceRow d : rollouts.fleetDevices()) {
+            labels.put(d.deviceId(), label(d) + " (" + d.siteName() + ")");
+        }
+        return RolloutJournal.render(rollouts.recentEvents(limit), labels);
     }
 
     // ── Lesemodell ───────────────────────────────────────────────────────
@@ -402,7 +470,7 @@ public class RolloutService {
                     t == null ? null : t.releaseSeq(), t == null ? null : t.channel(),
                     t != null && t.pinned(), v.state(), v.reason(),
                     rd == null ? null : rd.since(), d.reportedAt(),
-                    rd == null ? null : rd.rolloutId()));
+                    rd == null ? null : rd.rolloutId(), trustDto(d)));
 
             if (RolloutStates.UNBEKANNT.equals(v.state())) {
                 unknown++;
@@ -489,7 +557,69 @@ public class RolloutService {
         }
         return new EdgeUpdatesDto.RolloutDto(r.id(), r.releaseVersion(), r.releaseSeq(),
                 r.channel(), r.state(), r.currentWave(), specs.size(), r.haltedReason(),
-                r.createdBy(), r.createdAt(), canPromote, blocked, waveDtos);
+                r.createdBy(), r.createdAt(), canPromote, blocked, r.autoAdvance(),
+                advanceNote(r, specs.size(), bake, more), waveDtos);
+    }
+
+    /**
+     * Der eine Satz, der sagt, WARUM die nächste Welle gerade (nicht) kommt.
+     *
+     * <p>Er ist die Antwort auf „in welchem Modus läuft dieser Rollout, und was
+     * passiert als Nächstes" - ohne ihn wäre die Automatik ein unsichtbarer
+     * Zustand, und ein Betreiber müsste raten, ob gerade auf ihn oder auf das
+     * Bake-Fenster gewartet wird.
+     */
+    private static String advanceNote(RolloutRepository.RolloutRow r, int waveCount,
+            BakeGate.WaveBake bake, boolean more) {
+        if ("halted".equals(r.state())) {
+            return "Eingefroren - es wird nichts weiter freigegeben. Weitermachen ist ein neuer, "
+                    + "bewusst gestarteter Rollout.";
+        }
+        if ("done".equals(r.state())) {
+            return "Abgeschlossen.";
+        }
+        if (!more) {
+            return "Alle " + waveCount + " Wellen sind freigegeben.";
+        }
+        if ("paused".equals(r.state())) {
+            return r.autoAdvance()
+                    ? "Pausiert - der automatische Vorschub ruht, bis der Rollout fortgesetzt wird."
+                    : "Pausiert - es wird nichts freigegeben.";
+        }
+        if (r.autoAdvance()) {
+            return bake.passed()
+                    ? "Automatischer Vorschub: die nächste Welle wird beim nächsten Durchlauf "
+                            + "freigegeben."
+                    : "Automatischer Vorschub: die nächste Welle wird freigegeben, sobald das "
+                            + "Bake-Kriterium erfüllt ist. Offen: " + bake.reason();
+        }
+        return bake.passed()
+                ? "Hand-Vorschub: die nächste Welle ist frei und wartet auf Ihre Freigabe."
+                : "Hand-Vorschub: " + bake.reason();
+    }
+
+    /**
+     * Die gemeldete Vertrauens-Identität, so wie sie in der Zeile steht.
+     *
+     * <p><b>Die Abwesenheits-Regel ist hier zu Hause:</b> {@code null} bleibt
+     * {@code null} (ein älterer Edge-Stand meldet nichts → „unbekannt"), ein
+     * LEERER String wird zur LEEREN Liste (ein Image ohne eingebackene Wurzel →
+     * der Crossover steht aus). Beides sind verschiedene Aussagen, und keine
+     * davon ist ein Fehler.
+     */
+    private static EdgeUpdatesDto.TrustDto trustDto(RolloutRepository.FleetDeviceRow d) {
+        if (d.rootKeyIds() == null) {
+            return null;
+        }
+        return new EdgeUpdatesDto.TrustDto(splitKeyIds(d.rootKeyIds()),
+                splitKeyIds(d.trustSetKeyIds()), d.trustSetGeneratedAt(), d.trustSetError());
+    }
+
+    private static List<String> splitKeyIds(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return List.of(raw.split(","));
     }
 
     // ── Interna ──────────────────────────────────────────────────────────

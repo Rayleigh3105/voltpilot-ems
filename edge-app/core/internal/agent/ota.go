@@ -94,6 +94,14 @@ type otaCurrent struct {
 type otaState struct {
 	mu sync.Mutex
 	v  otaVerdict
+	// trust ist die zwischengespeicherte Vertrauens-Identitaet (Stufe 4). Sie
+	// haengt bewusst NICHT an otaVerdict: das Urteil wird in mehreren Pfaden
+	// vollstaendig ersetzt (Ziel, Datei, „nichts abgelegt"), die Identitaet
+	// aber gilt unabhaengig davon - eine Box ohne Release hat trotzdem eine.
+	trust *cloud.TrustSummary
+	// trustStamp ist der ModTime+Groessen-Stempel des Trust-Sets, damit die
+	// Ed25519-Pruefung nicht bei jedem 30-s-Takt erneut laeuft.
+	trustStamp string
 }
 
 // otaCheckLoop prueft periodisch, ob ein Release abgelegt wurde, und haelt das
@@ -121,6 +129,12 @@ func (a *Agent) otaCheckLoop(ctx context.Context) {
 // es darf nur EIN Urteil im Herzschlag stehen, und das der Zuweisung ist das,
 // gegen das der Rollout im Portal misst.
 func (a *Agent) otaCheckOnce() {
+	// Die Vertrauens-Identitaet zuerst und UNABHAENGIG von allem Weiteren: sie
+	// ist die Aussage „gegen welche Wurzel prueft diese Box, und welche
+	// Release-Schluessel gelten hier" - sie gilt auch ohne jede Zuweisung und
+	// ohne jedes abgelegte Release, und genau dann braucht der Betreiber sie
+	// (offener TOFU-Crossover, laufende Schluessel-Rotation).
+	a.otaRefreshTrust()
 	if v, ok := a.otaCheckTarget(); ok {
 		a.setOtaVerdict(v)
 		return
@@ -231,6 +245,66 @@ func (a *Agent) otaVerify(dir string) otaVerdict {
 // otaDir ist das Ablageverzeichnis (<data_dir>/ota).
 func (a *Agent) otaDir() string {
 	return filepath.Join(a.Cfg.DataDir, otaDir)
+}
+
+// otaRefreshTrust ermittelt die Vertrauens-Identitaet und legt sie ab.
+//
+// Sie wird bei JEDEM Takt gebildet, aber nur dann wirklich neu VERIFIZIERT,
+// wenn sich das abgelegte Trust-Set geaendert hat (Stempel aus ModTime+Groesse
+// wie beim Release) - die gebackene Wurzel selbst kann sich zur Laufzeit nicht
+// aendern, sie ist ins Binaer eingebacken.
+func (a *Agent) otaRefreshTrust() {
+	dir := a.otaDir()
+	stamp := "none"
+	if fi, err := os.Stat(filepath.Join(dir, otaTrustSetFile)); err == nil {
+		stamp = fi.ModTime().UTC().Format(time.RFC3339Nano) + ":" +
+			strconv.FormatInt(fi.Size(), 10)
+	}
+	a.ota.mu.Lock()
+	unchanged := a.ota.trust != nil && a.ota.trustStamp == stamp
+	a.ota.mu.Unlock()
+	if unchanged {
+		return
+	}
+
+	roots := a.otaRoots
+	if roots == nil {
+		// Ein unlesbares gebackenes Set ist NICHT dasselbe wie ein leeres: das
+		// eine ist ein kaputtes Image, das andere der dokumentierte
+		// Vor-Zeremonie-Zustand. Ein Fehler hier faellt deshalb auf „keine
+		// Wurzel" zurueck und InspectTrust nennt den Grund.
+		roots, _ = otaverify.BakedRoots()
+	}
+	read := func(name string) []byte {
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil
+		}
+		return raw
+	}
+	info := otaverify.InspectTrust(roots, read(otaTrustSetFile),
+		read(otaTrustSetFile+otaSigSuffix), time.Now())
+	sum := &cloud.TrustSummary{
+		// Nie nil: eine leere LISTE heisst „Image ohne Wurzel", ein fehlender
+		// Block heisst „aelterer Stand". Die Cloud muss beides unterscheiden
+		// koennen, also darf das JSON hier nie `null` werden.
+		RootKeyIDs:          append([]string{}, info.RootKeyIDs...),
+		TrustSetKeyIDs:      info.TrustSetKeyIDs,
+		TrustSetGeneratedAt: info.TrustSetGeneratedAt,
+		TrustSetSignedBy:    info.TrustSetSignedBy,
+		TrustSetError:       info.TrustSetError,
+	}
+	a.ota.mu.Lock()
+	a.ota.trust = sum
+	a.ota.trustStamp = stamp
+	a.ota.mu.Unlock()
+}
+
+// otaTrust liefert die zwischengespeicherte Vertrauens-Identitaet.
+func (a *Agent) otaTrust() *cloud.TrustSummary {
+	a.ota.mu.Lock()
+	defer a.ota.mu.Unlock()
+	return a.ota.trust
 }
 
 // otaForceRecheck verwirft den Stempel, sodass der naechste Durchlauf wirklich
@@ -360,6 +434,7 @@ func (a *Agent) updateSummary() *cloud.UpdateSummary {
 		Target:        v.target,
 		Channel:       v.channel,
 		TargetVerdict: v.targetVerdict,
+		Trust:         a.otaTrust(),
 	}
 	if v.targetSeq > 0 {
 		seq := v.targetSeq

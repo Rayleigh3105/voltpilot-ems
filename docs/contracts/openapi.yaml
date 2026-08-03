@@ -1986,7 +1986,9 @@ paths:
         manifest bytes a device has nothing to check against its baked-in root,
         and the downlink would be an instruction without evidence.
         The FIRST wave is assigned immediately; every further wave is
-        hand-advanced (decision D4). At most ONE rollout may be live (active or
+        hand-advanced (decision D4) unless `autoAdvance` is true (OTA Stufe 4) -
+        which changes only WHO presses "next wave": the same bake criterion, the
+        same automatic halt on any failure, the same final emergency stop. At most ONE rollout may be live (active or
         paused) - two concurrent distributions could assign the same device two
         targets, and an auto-halt would no longer be attributable.
         Assigning publishes the signed manifest RETAINED on
@@ -2003,6 +2005,13 @@ paths:
               properties:
                 releaseSeq: { type: integer, format: int64 }
                 channel: { type: string, enum: [canary, stable] }
+                autoAdvance:
+                  type: boolean
+                  default: false
+                  description: >
+                    OTA Stufe 4: release the next wave automatically once the
+                    bake criterion is met. ABSENT = hand-advanced, which stays
+                    the default (D4).
                 waves:
                   type: array
                   items:
@@ -2041,6 +2050,62 @@ paths:
         "204": { description: The next wave is assigned. }
         "404": { description: Rollout not found. }
         "409": { description: Bake criterion still open, all waves released, or the rollout is not active. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/rollouts/{rolloutId}/auto-advance:
+    post:
+      tags: [admin]
+      summary: Switch the wave advance between automatic and by hand (OTA Stufe 4).
+      description: >
+        Loosens NOTHING - the same bake criterion, the same automatic halt, the
+        same final emergency stop; it only replaces the click on "next wave"
+        once the criterion is met anyway. Reversible while the rollout is active
+        or paused; a HALTED or DONE rollout refuses (409) because continuing is
+        a new, deliberate rollout.
+      parameters:
+        - name: rolloutId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "204": { description: Switched (idempotent). }
+        "404": { description: Rollout not found. }
+        "409": { description: The rollout is halted or done. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/rollout-journal.md:
+    get:
+      tags: [admin]
+      summary: The append-only audit journal as Markdown (OTA Stufe 4, optional gitops mirror).
+      description: >
+        An EXPORT, not a deploy. The api holds no gitops write token; committing
+        the file is done outside by an operator or cron
+        (`tools/deploy/mirror-rollout-journal.sh`, see docs/deploy.md) - a write
+        credential in the api would be a new attack surface for something that,
+        per decision D2, must not be in the acting path at all. The authority
+        over the fleet's desired state remains the portal DB plus the retained
+        MQTT message; nothing is ever read back from the mirror.
+        The output is DETERMINISTIC - the same state yields the same bytes, so a
+        repeated mirror run produces no commit.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 1000, maximum: 5000 }
+      responses:
+        "200":
+          description: The journal.
+          content:
+            text/markdown:
+              schema: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/rollouts/{rolloutId}/pause:

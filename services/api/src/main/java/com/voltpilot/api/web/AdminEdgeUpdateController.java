@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -59,6 +60,26 @@ public class AdminEdgeUpdateController {
         return rollouts.readModel(Instant.now());
     }
 
+    /**
+     * Das Audit-Journal als Markdown - der optionale gitops-Spiegel (D2).
+     *
+     * <p><b>Ein EXPORT, kein Deploy.</b> Die api schreibt nirgendwo hin; das
+     * Committen ins gitops-Repo macht ein Mensch oder ein Cron außerhalb
+     * ({@code tools/deploy/mirror-rollout-journal.sh}). Ein gitops-Schreib-Token
+     * in der api wäre eine neue Zugangsdaten-Fläche für etwas, das laut
+     * Entscheid D2 ausdrücklich NICHT im Wirkpfad liegen darf.
+     *
+     * <p>Die Ausgabe ist deterministisch: derselbe Zustand ergibt dieselben
+     * Bytes, ein wiederholter Lauf also keinen Commit.
+     */
+    @GetMapping(value = "/rollout-journal.md", produces = "text/markdown; charset=UTF-8")
+    public String rolloutJournal(
+            @RequestParam(name = "limit", defaultValue = "1000") int limit) {
+        // Gedeckelt, weil das Journal append-only wächst und ein unbegrenzter
+        // Export irgendwann die ganze Historie in eine Antwort legen würde.
+        return rollouts.journalMarkdown(Math.max(1, Math.min(limit, 5000)));
+    }
+
     // ── Rollouts ─────────────────────────────────────────────────────────
 
     /** Eine Welle: Name + die Geräte, die sie erfasst. */
@@ -75,7 +96,7 @@ public class AdminEdgeUpdateController {
      */
     public record CreateRolloutRequest(@NotNull Long releaseSeq,
             @Pattern(regexp = "canary|stable") String channel,
-            @NotEmpty List<WaveRequest> waves) {
+            @NotEmpty List<WaveRequest> waves, Boolean autoAdvance) {
     }
 
     @PostMapping("/rollouts")
@@ -88,8 +109,28 @@ public class AdminEdgeUpdateController {
                     w.devices()));
         }
         UUID id = rollouts.createRollout(req.releaseSeq(),
-                req.channel() == null ? "stable" : req.channel(), waves, actor(caller));
+                req.channel() == null ? "stable" : req.channel(), waves,
+                // ABSENT = Hand-Vorschub (D4). Ein älterer Aufrufer, der das
+                // Feld nicht kennt, bekommt damit exakt das bisherige Verhalten.
+                Boolean.TRUE.equals(req.autoAdvance()), actor(caller));
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("rolloutId", id.toString()));
+    }
+
+    public record AutoAdvanceRequest(@NotNull Boolean enabled) {
+    }
+
+    /**
+     * Den Wellen-Vorschub umschalten - die OPTION der Stufe 4.
+     *
+     * <p>Sie lockert nichts: dasselbe Bake-Kriterium, derselbe Auto-Halt,
+     * derselbe endgültige Not-Aus. Sie ersetzt nur den Klick auf „Nächste
+     * Welle", wenn das Kriterium ohnehin erfüllt ist.
+     */
+    @PostMapping("/rollouts/{rolloutId}/auto-advance")
+    public ResponseEntity<Void> autoAdvance(@PathVariable UUID rolloutId,
+            @Valid @RequestBody AutoAdvanceRequest req, @AuthenticationPrincipal Jwt caller) {
+        rollouts.setAutoAdvance(rolloutId, req.enabled(), actor(caller));
+        return ResponseEntity.noContent().build();
     }
 
     /** Die nächste Welle - server-seitig verweigert, solange das Bake offen ist. */
