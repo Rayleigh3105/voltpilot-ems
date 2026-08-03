@@ -5,8 +5,10 @@ import type {
   AdminFleetForecast,
   AdminFleetKwp,
   AdminFleetPflege,
+  AdminFleetRelease,
   AdminFleetSite,
   AdminFleetSources,
+  AdminFleetUpdate,
 } from './admin/fleetApi';
 import { CONTROL_STALE_MS, EXECUTION_MODE_LABEL } from './control';
 import { curtailTruth, releaseNote, type CurtailTruth } from './curtailment';
@@ -66,15 +68,40 @@ export interface FleetSignal {
  */
 export type PflegeItem = AdminFleetPflege;
 
-/** Der Edge-Stand einer Zeile. */
+/**
+ * Der Edge-Stand einer Zeile - seit OTA Stufe 0 ein SOLL-GEGEN-IST.
+ *
+ * `status` ist die eigentliche Aussage, und sie hat bewusst FÜNF Werte statt
+ * eines Ja/Nein:
+ *
+ * - `unbekannt` - das Gerät hat gar nichts gemeldet. **Nie „veraltet".**
+ * - `aktuell` - der gemeldete Stand IST der Soll-Stand.
+ * - `veraltet` - der gemeldete Stand steht im Register UND liegt davor.
+ * - `nicht_registriert` - der gemeldete Stand steht NICHT im Register (eine
+ *   Bestands-Edge trägt eine nackte Commit-SHA). Das ist eine Lücke im
+ *   Register, keine Aussage über das Alter des Geräts - deshalb ist es
+ *   ausdrücklich kein „veraltet" und trägt keinen Warnton.
+ * - `kein_massstab` - das Register ist leer. Ohne Maßstab wird nichts
+ *   behauptet (der Zustand am Deploy-Tag, bevor ein Release eingetragen ist).
+ */
+export type EdgeStandStatus =
+  | 'unbekannt'
+  | 'aktuell'
+  | 'veraltet'
+  | 'nicht_registriert'
+  | 'kein_massstab';
+
 export interface EdgeStand {
-  /** Die Kernversion, oder null wenn nichts gemeldet wurde. */
+  /** Die gemeldete Kernversion, oder null wenn nichts gemeldet wurde. */
   coreVersion: string | null;
   paletteVersion: string | null;
+  status: EdgeStandStatus;
   text: string;
   tone: Tone;
-  /** True nur, wenn eine GEMELDETE Version hinter der neuesten bekannten liegt. */
+  /** True NUR bei `veraltet` - also nur, wenn das Register es belegt. */
   outdated: boolean;
+  /** Die Begründung des Zustands; sie reist als `title` am Text mit. */
+  title: string;
 }
 
 /** Eine Zeile des Pulses = eine Anlage. */
@@ -142,66 +169,106 @@ export function sourceHealth(counts: AdminFleetSources | null): SourceHealth | n
 }
 
 /**
- * Der Edge-Stand einer Anlage aus dem gemeldeten Geräte-Stand.
- *
- * **Kein Eintrag heißt „unbekannt", nie „veraltet".** Die Edge baut den
- * Herzschlag-Block, in dem die Versionen reisen, erst nach ihrem ersten
- * Flow-Deployment - ein Gerät ohne ausgerollte Automation meldet also gar
- * nichts, und daraus eine Alters-Aussage zu machen wäre eine Behauptung.
- *
- * `newest` ist die neueste ÜBER DIE FLOTTE bekannte Version - der einzige
- * Vergleichsmaßstab, den die Cloud hat (es gibt kein Release-Register).
+ * Der SOLL-Stand der Flotte: der neueste Eintrag des Release-Registers, oder
+ * `null` bei leerem Register. Der Endpunkt liefert das Register schon nach
+ * `releaseSeq` absteigend - hier steht die Regel trotzdem EINMAL explizit, denn
+ * sie ist die ganze Ordnung: `releaseSeq` ist eine monotone Ganzzahl, nie ein
+ * String- oder SHA-Vergleich.
  */
-export function edgeStand(edge: AdminFleetEdge | null, newest: string | null): EdgeStand {
-  if (!edge || !edge.coreVersion) {
-    return {
-      coreVersion: null,
-      paletteVersion: edge?.paletteVersion ?? null,
-      text: 'unbekannt',
-      tone: 'off',
-      outdated: false,
-    };
-  }
-  const outdated = newest != null && compareVersions(edge.coreVersion, newest) < 0;
-  return {
-    coreVersion: edge.coreVersion,
-    paletteVersion: edge.paletteVersion,
-    text: outdated ? `${edge.coreVersion} · veraltet` : edge.coreVersion,
-    tone: outdated ? 'warn' : 'ok',
-    outdated,
-  };
-}
-
-/**
- * Die neueste über die ganze Flotte GEMELDETE Kernversion - der Maßstab für
- * „veraltet". Null, solange nichts gemeldet wurde: ohne Maßstab wird nie eine
- * Anlage als veraltet markiert.
- */
-export function newestCoreVersion(sites: AdminFleetSite[]): string | null {
-  let newest: string | null = null;
-  for (const s of sites) {
-    const core = s.edge?.coreVersion;
-    if (!core) continue;
-    if (newest == null || compareVersions(core, newest) > 0) newest = core;
+export function sollRelease(releases: AdminFleetRelease[]): AdminFleetRelease | null {
+  let newest: AdminFleetRelease | null = null;
+  for (const r of releases) {
+    if (newest == null || r.releaseSeq > newest.releaseSeq) newest = r;
   }
   return newest;
 }
 
 /**
- * Vergleich zweier Versionsstrings, Zahlenblock für Zahlenblock (1.10.0 > 1.9.3
- * - ein Stringvergleich läge hier falsch). Ein nicht-numerischer Rest
- * (`1.4.2-rc1`) wird ignoriert statt geraten; sind alle Blöcke gleich, sind die
- * Versionen für uns gleich.
+ * Der Edge-Stand einer Anlage als SOLL-GEGEN-IST (OTA Stufe 0).
+ *
+ * Drei Ehrlichkeitsregeln, jede gegen einen konkreten früheren Fehlgriff:
+ *
+ * 1. **Kein gemeldeter Stand heißt „unbekannt", nie „veraltet".** Ein Gerät
+ *    kann schweigen, weil es neu ist oder weil nie eine Automation ausgerollt
+ *    wurde - daraus eine Alters-Aussage zu machen wäre eine Behauptung.
+ * 2. **Die Ordnung ist das Register, nicht der Versionsstring.** Der Vorgänger
+ *    verglich Zahlenblöcke, gestempelt werden aber 12-stellige Hex-SHAs -
+ *    `parseInt("665d59b8…")` = 665 gegen `parseInt("3bf8c038…")` = 3 ist eine
+ *    ZUFALLSORDNUNG. Verglichen wird jetzt ausschließlich `releaseSeq`.
+ * 3. **Ein Stand, den das Register nicht kennt, ist „nicht registriert".** Das
+ *    ist eine Lücke im Register (genau der Zustand einer Bestands-Edge mit
+ *    nackter SHA), keine Aussage über das Gerät - also kein Warnton und
+ *    ausdrücklich kein „veraltet".
+ *
+ * Der IST-Stand kommt bevorzugt aus dem OTA-Block (er reist top-level im
+ * Herzschlag und deckt auch Geräte ohne Flow-Deployment ab) und fällt sonst auf
+ * den flows-getragenen `coreVersion` zurück - so bleibt eine ältere Edge
+ * genauso sichtbar wie bisher.
  */
-export function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map((p) => parseInt(p, 10));
-  const pb = b.split('.').map((p) => parseInt(p, 10));
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = Number.isFinite(pa[i]) ? pa[i] : 0;
-    const y = Number.isFinite(pb[i]) ? pb[i] : 0;
-    if (x !== y) return x < y ? -1 : 1;
+export function edgeStand(
+  edge: AdminFleetEdge | null,
+  update: AdminFleetUpdate | null,
+  releases: AdminFleetRelease[],
+): EdgeStand {
+  const ist = update?.version ?? edge?.coreVersion ?? null;
+  const paletteVersion = edge?.paletteVersion ?? null;
+  if (!ist) {
+    return {
+      coreVersion: null,
+      paletteVersion,
+      status: 'unbekannt',
+      text: 'unbekannt',
+      tone: 'off',
+      outdated: false,
+      title: 'Das Gerät hat noch keinen Software-Stand gemeldet.',
+    };
   }
-  return 0;
+  const soll = sollRelease(releases);
+  if (!soll) {
+    return {
+      coreVersion: ist,
+      paletteVersion,
+      status: 'kein_massstab',
+      text: ist,
+      tone: 'off',
+      outdated: false,
+      title: 'Kein Release im Register - ohne Maßstab wird kein Stand als veraltet bewertet.',
+    };
+  }
+  const entry = releases.find((r) => r.version === ist);
+  if (!entry) {
+    return {
+      coreVersion: ist,
+      paletteVersion,
+      status: 'nicht_registriert',
+      text: `${ist} · nicht registriert`,
+      tone: 'off',
+      outdated: false,
+      title:
+        `Dieser Stand steht nicht im Release-Register (Soll: ${soll.version}). ` +
+        'Ob er älter oder neuer ist, lässt sich daraus nicht sagen.',
+    };
+  }
+  if (entry.releaseSeq >= soll.releaseSeq) {
+    return {
+      coreVersion: ist,
+      paletteVersion,
+      status: 'aktuell',
+      text: `${ist} ✓`,
+      tone: 'ok',
+      outdated: false,
+      title: 'Das Gerät fährt den aktuellen Stand des Release-Registers.',
+    };
+  }
+  return {
+    coreVersion: ist,
+    paletteVersion,
+    status: 'veraltet',
+    text: `${ist} → ${soll.version}`,
+    tone: 'warn',
+    outdated: true,
+    title: `Das Gerät fährt ${ist}; im Register steht ${soll.version} als neuester Stand.`,
+  };
 }
 
 /**
@@ -209,12 +276,19 @@ export function compareVersions(a: string, b: string): number {
  *
  * `now` ist die ANTWORTZEIT des Servers, nicht die Wanduhr - siehe die
  * Lebendigkeits-Lehre im Kopf dieser Datei.
+ *
+ * `releases` ist das Release-Register aus derselben Antwort - der Maßstab für
+ * „veraltet". Leer (oder weggelassen, etwa gegen einen älteren Backend-Stand)
+ * heißt: kein Maßstab, also wird nichts als veraltet behauptet.
  */
-export function fleetRows(sites: AdminFleetSite[], now: Date = new Date()): FleetRow[] {
-  const newest = newestCoreVersion(sites);
+export function fleetRows(
+  sites: AdminFleetSite[],
+  now: Date = new Date(),
+  releases: AdminFleetRelease[] = [],
+): FleetRow[] {
   const rows: FleetRow[] = sites.map((site) => {
     const sources = sourceHealth(site.sources);
-    const edge = edgeStand(site.edge, newest);
+    const edge = edgeStand(site.edge, site.update, releases);
     const live = liveCell(site, now);
     const plan = planCell(site.lastPlanGeneratedAt, now);
     const devices = deviceCell(site);
@@ -333,7 +407,9 @@ export function rowSignals(
     });
   }
   if (edge.outdated) {
-    out.push({ id: 'edge-alt', label: 'Edge veraltet', tone: 'warn' });
+    // Der Chip trägt seine Begründung mit - sie benennt den Soll-Stand aus dem
+    // Register, also WORAUFHIN das Gerät veraltet ist.
+    out.push({ id: 'edge-alt', label: 'Edge veraltet', tone: 'warn', title: edge.title });
   }
   for (const p of pflege) {
     out.push({

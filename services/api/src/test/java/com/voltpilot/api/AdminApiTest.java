@@ -2652,6 +2652,158 @@ class AdminApiTest {
                 .extracting(r -> r.get("name")).doesNotContain("Puls Nord", "Puls Sued");
     }
 
+    // ---- OTA Stufe 0 „Sehen" (Scout vp-ota-rollout-h4) ----------------------
+
+    /**
+     * Der Ingest des TOP-LEVEL-{@code version}-Feldes samt {@code update}-Block,
+     * das Release-Register und der Soll-gegen-Ist-Stoff im Flotten-Endpunkt.
+     *
+     * <p>Bewiesen werden die drei Löcher, die Stufe 0 schließt (§2.3):
+     * <ol>
+     *   <li>ein Gerät OHNE Flow-Deployment meldet trotzdem seinen Stand - der
+     *       alte Ingest hing am {@code flows}-Block, den so ein Gerät nie
+     *       baut;</li>
+     *   <li>es GIBT jetzt einen Soll: das Register reist als Ordnung mit, und
+     *       ohne Register wird nichts als veraltet behauptet;</li>
+     *   <li>die Ordnung ist {@code release_seq} - eine monotone Ganzzahl statt
+     *       eines SHA-Vergleichs; das Register erzwingt sie serverseitig.</li>
+     * </ol>
+     * Dazu die Rollen-Grenze der Registerroute (Kunde 403, anonym 401).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void otaUpdateStatusIsIngestedAndTheFleetCarriesTheRegisterSoll() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "OTA Flotte GmbH", "CI").get("id");
+
+        UUID mitFlow = UUID.randomUUID();
+        UUID ohneFlow = UUID.randomUUID();
+        UUID stumm = UUID.randomUUID();
+        seedSite(mitFlow, UUID.fromString(tenantId), "OTA Mit Automation");
+        seedSite(ohneFlow, UUID.fromString(tenantId), "OTA Ohne Automation");
+        seedSite(stumm, UUID.fromString(tenantId), "OTA Stumm");
+
+        UUID devA = UUID.randomUUID();
+        UUID devB = UUID.randomUUID();
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind) VALUES ('"
+                + devA + "', '" + tenantId + "', '" + mitFlow + "', 'ota-a-01', 'inverter')");
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind) VALUES ('"
+                + devB + "', '" + tenantId + "', '" + ohneFlow + "', 'ota-b-01', 'inverter')");
+
+        // (1) Anlage MIT Automation: beide Wege melden - der alte flows-Block
+        // UND der neue OTA-Block. Sie leben in getrennten Zeilen mit eigenem
+        // Frische-Anker.
+        exec("INSERT INTO device_edge_version (device_id, tenant_id, site_id, core_version, "
+                + "palette_version, reported_at) VALUES ('" + devA + "', '" + tenantId + "', '"
+                + mitFlow + "', 'edge-2026.08.0', '0.3.0', now())");
+        exec("INSERT INTO device_update_status (device_id, tenant_id, site_id, version, backend, "
+                + "current_version, state, reported_at) VALUES ('" + devA + "', '" + tenantId
+                + "', '" + mitFlow + "', 'edge-2026.08.0', 'compose', 'edge-2026.08.0', 'idle', "
+                + "now())");
+        // (2) Anlage OHNE Automation: NUR der OTA-Block - genau das Gerät, das
+        // vorher gar keine Version meldete.
+        exec("INSERT INTO device_update_status (device_id, tenant_id, site_id, version, backend, "
+                + "current_version, state, reported_at) VALUES ('" + devB + "', '" + tenantId
+                + "', '" + ohneFlow + "', 'edge-2026.07.2', 'compose', 'edge-2026.07.2', 'idle', "
+                + "now())");
+
+        // (3) Das Register: OHNE Eintrag gibt es keinen Maßstab. Erst prüfen,
+        // dass der Endpunkt genau das sagt (der Zustand am Deploy-Tag).
+        Map<String, Object> before = fleetBody(admin);
+        List<Map<String, Object>> registerBefore =
+                (List<Map<String, Object>>) before.get("releases");
+        assertThat(registerBefore).as("das Register reist mit, auch leer").isNotNull();
+
+        Map<String, Map<String, Object>> bySite = new java.util.HashMap<>();
+        for (Map<String, Object> row : (List<Map<String, Object>>) before.get("sites")) {
+            bySite.put((String) row.get("siteName"), row);
+        }
+
+        Map<String, Object> a = bySite.get("OTA Mit Automation");
+        assertThat((Map<String, Object>) a.get("edge")).containsEntry("coreVersion",
+                "edge-2026.08.0");
+        assertThat((Map<String, Object>) a.get("update"))
+                .containsEntry("version", "edge-2026.08.0")
+                .containsEntry("backend", "compose").containsEntry("state", "idle");
+
+        Map<String, Object> b = bySite.get("OTA Ohne Automation");
+        assertThat(b.get("edge")).as("ohne Flow-Deployment gibt es keinen flows-Block").isNull();
+        assertThat((Map<String, Object>) b.get("update"))
+                .as("der OTA-Block sieht dieses Gerät trotzdem - das ist der ganze Punkt")
+                .containsEntry("version", "edge-2026.07.2");
+
+        Map<String, Object> c = bySite.get("OTA Stumm");
+        assertThat(c.get("update")).as("nie gemeldet heißt unbekannt, nicht veraltet").isNull();
+        assertThat(c.get("edge")).isNull();
+
+        // (4) Register anlegen: die Sequenz setzt sich von selbst fort.
+        Map<String, Object> r1 = createRelease(admin,
+                Map.of("version", "edge-2026.07.2", "targetCommit", "665d59b8"));
+        Map<String, Object> r2 = createRelease(admin,
+                Map.of("version", "edge-2026.08.0", "targetCommit", "3bf8c038",
+                        "notes", "Puls Soll-gegen-Ist"));
+        long seq1 = ((Number) r1.get("releaseSeq")).longValue();
+        long seq2 = ((Number) r2.get("releaseSeq")).longValue();
+        assertThat(seq2).as("die Ordnung ist monoton").isGreaterThan(seq1);
+        assertThat(r2).containsEntry("targetCommit", "3bf8c038");
+        assertThat(r2.get("createdAt")).isNotNull();
+
+        // (5) Die Ordnung wird SERVERSEITIG erzwungen - eine Nummer, die nicht
+        // strikt wächst, wäre genau der Zufallsvergleich, den das Register
+        // ablöst. Und ein doppeltes Release ist 409, kein stilles No-op.
+        assertThat(postRelease(admin,
+                Map.of("version", "edge-2026.09.0", "releaseSeq", seq1)).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", "edge-2026.08.0")).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        // Ein nackter Commit-SHA ist im REGISTER kein gültiger Stand (ein GERÄT
+        // darf ihn melden - dort heißt er dann „nicht registriert").
+        assertThat(postRelease(admin, Map.of("version", "3bf8c0380000")).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // (6) Jetzt trägt der Flotten-Endpunkt den Soll - neueste zuerst.
+        List<Map<String, Object>> register =
+                (List<Map<String, Object>>) fleetBody(admin).get("releases");
+        assertThat(register).isNotEmpty();
+        assertThat(((Number) register.get(0).get("releaseSeq")).longValue())
+                .as("neueste zuerst - der erste Eintrag IST der Soll-Stand")
+                .isEqualTo(seq2);
+        assertThat(register.get(0)).containsEntry("version", "edge-2026.08.0");
+        assertThat(register).extracting(x -> x.get("version"))
+                .contains("edge-2026.07.2", "edge-2026.08.0");
+
+        // (7) Die Rollen-Grenze der Registerroute.
+        String customer = token("demo", "demo");
+        assertThat(rest.exchange(url("/api/v1/admin/edge-releases"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(url("/api/v1/admin/edge-releases"), HttpMethod.GET,
+                new HttpEntity<>(new HttpHeaders()), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(postRelease(customer, Map.of("version", "edge-2026.10.0")).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    private ResponseEntity<Map<String, Object>> postRelease(String token, Map<String, ?> body) {
+        return rest.exchange(url("/api/v1/admin/edge-releases"), HttpMethod.POST,
+                new HttpEntity<>(body, bearer(token)), new ParameterizedTypeReference<>() {});
+    }
+
+    private Map<String, Object> createRelease(String adminToken, Map<String, ?> body) {
+        ResponseEntity<Map<String, Object>> res = postRelease(adminToken, body);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return res.getBody();
+    }
+
+    /** Die ganze Flotten-Antwort (Zeilen PLUS Release-Register). */
+    private Map<String, Object> fleetBody(String adminToken) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/admin/fleet"), HttpMethod.GET, new HttpEntity<>(bearer(adminToken)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
     /** Der Flotten-Puls, als Liste von Zeilen. */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> fleet(String adminToken) {

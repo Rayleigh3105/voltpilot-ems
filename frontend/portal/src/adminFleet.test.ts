@@ -2,13 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { ControlStatus, CurtailmentStatus } from './api';
 import type { AdminFleetSite } from './admin/fleetApi';
 import {
-  compareVersions,
   controlMatrixInputs,
   controlMatrixRows,
   edgeStand,
   fleetPulse,
   fleetRows,
-  newestCoreVersion,
+  sollRelease,
   sourceHealth,
 } from './adminFleet';
 
@@ -38,6 +37,7 @@ function site(over: Partial<AdminFleetSite> = {}): AdminFleetSite {
     batteryWithoutDevice: false,
     sources: null,
     edge: null,
+    update: null,
     control: null,
     curtailment: null,
     kwp: { configuredKwp: null, observedPeakKw: null, buckets: 0, verdict: 'unbekannt', reason: 'x' },
@@ -144,6 +144,40 @@ describe('fleetRows', () => {
     expect(row.kwp.verdict).toBe('zu_hoch');
     expect(row.forecast[0].outlier).toBe(true);
   });
+
+  /**
+   * Der „Edge veraltet"-Chip darf NUR aus dem Register kommen - und er trägt
+   * seinen Grund, damit eine rote Zeile sagen kann, WORAUFHIN sie rot ist.
+   */
+  it('raises the outdated signal ONLY from the release register, with its reason', () => {
+    const reported = {
+      version: 'edge-2026.07.2',
+      backend: 'compose',
+      current: 'edge-2026.07.2',
+      target: null,
+      state: 'idle',
+      reason: null,
+      lastKnownGood: null,
+      reportedAt: ago(15_000),
+    };
+    const register = [
+      { releaseSeq: 12, version: 'edge-2026.08.0' },
+      { releaseSeq: 11, version: 'edge-2026.07.2' },
+    ];
+
+    const [withRegister] = fleetRows([site({ update: reported })], NOW, register);
+    const chip = withRegister.signals.find((s) => s.id === 'edge-alt');
+    expect(chip?.label).toBe('Edge veraltet');
+    expect(chip?.title).toContain('edge-2026.08.0');
+    expect(withRegister.edge.outdated).toBe(true);
+
+    // Ohne Register (leer ODER weggelassen - ein älteres Backend) gibt es
+    // keinen Maßstab, also auch kein Signal.
+    expect(fleetRows([site({ update: reported })], NOW, [])[0].signals.map((s) => s.id))
+      .not.toContain('edge-alt');
+    expect(fleetRows([site({ update: reported })], NOW)[0].signals.map((s) => s.id))
+      .not.toContain('edge-alt');
+  });
 });
 
 describe('fleetPulse', () => {
@@ -188,55 +222,113 @@ describe('sourceHealth', () => {
   });
 });
 
+/**
+ * Der Edge-Stand als SOLL-GEGEN-IST (OTA Stufe 0).
+ *
+ * Der Vorgänger verglich den gemeldeten Stand gegen das FLOTTEN-MAXIMUM und
+ * ordnete Versionen als Zahlenblöcke - gestempelt werden aber 12-stellige
+ * Hex-SHAs, worauf das eine Zufallsordnung ist. Diese Fälle nageln die neue
+ * Ordnung UND die drei Zustände fest, die ausdrücklich KEIN „veraltet" sind.
+ */
 describe('edgeStand', () => {
   const edge = (core: string | null) => ({
     coreVersion: core,
     paletteVersion: '0.3.0',
     reportedAt: ago(60_000),
   });
+  const update = (version: string | null) => ({
+    version,
+    backend: 'compose',
+    current: version,
+    target: null,
+    state: 'idle',
+    reason: null,
+    lastKnownGood: null,
+    reportedAt: ago(15_000),
+  });
+  // Das Register, wie der Endpunkt es liefert: neueste zuerst.
+  const REGISTER = [
+    { releaseSeq: 12, version: 'edge-2026.08.0' },
+    { releaseSeq: 11, version: 'edge-2026.07.2' },
+  ];
 
   it('a device that never reported is UNKNOWN, never outdated', () => {
-    const stand = edgeStand(null, '1.5.0');
+    const stand = edgeStand(null, null, REGISTER);
+    expect(stand.status).toBe('unbekannt');
     expect(stand.text).toBe('unbekannt');
     expect(stand.outdated).toBe(false);
     expect(stand.tone).toBe('off');
-    // Auch ein Block ohne Kernversion behauptet kein Alter.
-    expect(edgeStand(edge(null), '1.5.0').text).toBe('unbekannt');
+    expect(stand.title).toContain('noch keinen Software-Stand gemeldet');
+    // Auch ein flows-Block ohne Kernversion behauptet kein Alter.
+    expect(edgeStand(edge(null), null, REGISTER).status).toBe('unbekannt');
   });
 
-  it('marks a reported version behind the newest known one', () => {
-    expect(edgeStand(edge('1.4.2'), '1.5.0').outdated).toBe(true);
-    expect(edgeStand(edge('1.5.0'), '1.5.0').outdated).toBe(false);
+  it('reads the version from the OTA block even without any flows block', () => {
+    // Das Loch, das Stufe 0 schließt: ein Gerät ohne ausgerollte Automation
+    // baut den flows-Block nie, meldet seine Version aber top-level.
+    const stand = edgeStand(null, update('edge-2026.07.2'), REGISTER);
+    expect(stand.coreVersion).toBe('edge-2026.07.2');
+    expect(stand.status).toBe('veraltet');
   });
 
-  it('without a yardstick nothing is outdated', () => {
-    const stand = edgeStand(edge('1.4.2'), null);
+  it('shows the Soll with a check when the reported version IS the newest', () => {
+    const stand = edgeStand(edge('edge-2026.08.0'), null, REGISTER);
+    expect(stand.status).toBe('aktuell');
+    expect(stand.text).toBe('edge-2026.08.0 ✓');
+    expect(stand.tone).toBe('ok');
     expect(stand.outdated).toBe(false);
-    expect(stand.text).toBe('1.4.2');
   });
 
-  it('newestCoreVersion ignores what nobody reported', () => {
-    expect(newestCoreVersion([site()])).toBeNull();
-    expect(
-      newestCoreVersion([
-        site({ edge: edge('1.4.2') }),
-        site({ siteId: 's2', edge: edge(null) }),
-        site({ siteId: 's3', edge: edge('1.10.0') }),
-      ]),
-    ).toBe('1.10.0');
-  });
-});
-
-describe('compareVersions', () => {
-  it('compares number blocks, not strings (1.10.0 > 1.9.3)', () => {
-    expect(compareVersions('1.10.0', '1.9.3')).toBe(1);
-    expect(compareVersions('1.9.3', '1.10.0')).toBe(-1);
-    expect(compareVersions('1.4.2', '1.4.2')).toBe(0);
-    expect(compareVersions('2.0', '2.0.0')).toBe(0);
+  it('shows Ist → Soll when the register places the version BEHIND', () => {
+    const stand = edgeStand(edge('edge-2026.07.2'), null, REGISTER);
+    expect(stand.text).toBe('edge-2026.07.2 → edge-2026.08.0');
+    expect(stand.tone).toBe('warn');
+    expect(stand.outdated).toBe(true);
+    expect(stand.title).toContain('edge-2026.08.0');
   });
 
-  it('ignores a non-numeric suffix instead of guessing', () => {
-    expect(compareVersions('1.4.2-rc1', '1.4.2')).toBe(0);
+  it('orders by releaseSeq, NEVER by the version string', () => {
+    // Genau der Fall, an dem der Zahlenblock-Vergleich scheiterte: nackte
+    // Commit-SHAs im Register. parseInt("665d59b8…") = 665 gegen
+    // parseInt("3bf8c038…") = 3 hätte hier „veraltet" behauptet.
+    const shaRegister = [
+      { releaseSeq: 2, version: '3bf8c0380000' },
+      { releaseSeq: 1, version: '665d59b80000' },
+    ];
+    expect(edgeStand(edge('3bf8c0380000'), null, shaRegister).status).toBe('aktuell');
+    expect(edgeStand(edge('665d59b80000'), null, shaRegister).status).toBe('veraltet');
+  });
+
+  it('a version the register does not know is NOT registered - and NOT outdated', () => {
+    const stand = edgeStand(edge('665d59b80000'), null, REGISTER);
+    expect(stand.status).toBe('nicht_registriert');
+    expect(stand.text).toBe('665d59b80000 · nicht registriert');
+    expect(stand.outdated).toBe(false);
+    // Kein Warnton: das ist eine Lücke im Register, keine Alters-Aussage.
+    expect(stand.tone).toBe('off');
+    expect(stand.title).toContain('nicht im Release-Register');
+  });
+
+  it('without a register nothing is claimed at all', () => {
+    const stand = edgeStand(edge('edge-2026.07.2'), null, []);
+    expect(stand.status).toBe('kein_massstab');
+    expect(stand.text).toBe('edge-2026.07.2');
+    expect(stand.outdated).toBe(false);
+    expect(stand.title).toContain('Kein Release im Register');
+  });
+
+  it('sollRelease picks the highest releaseSeq, null on an empty register', () => {
+    expect(sollRelease([])).toBeNull();
+    // Auch wenn die Liste unsortiert ankäme.
+    expect(sollRelease([REGISTER[1], REGISTER[0]])?.version).toBe('edge-2026.08.0');
+  });
+
+  it('the OTA version WINS over the flows-carried one (same value, two paths)', () => {
+    const stand = edgeStand(edge('edge-2026.07.2'), update('edge-2026.08.0'), REGISTER);
+    expect(stand.coreVersion).toBe('edge-2026.08.0');
+    expect(stand.status).toBe('aktuell');
+    // Die Palette-Version reist weiter im flows-Block.
+    expect(stand.paletteVersion).toBe('0.3.0');
   });
 });
 

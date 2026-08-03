@@ -29,6 +29,7 @@ function site(id: string, name: string, extra: Partial<AdminFleetSite> = {}): Ad
     batteryWithoutDevice: false,
     sources: null,
     edge: null,
+    update: null,
     control: null,
     curtailment: null,
     kwp: { configuredKwp: null, observedPeakKw: null, buckets: 0, verdict: 'unbekannt', reason: '-' },
@@ -143,5 +144,73 @@ describe('PlattformUebersichtPage', () => {
     render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
     const chip = await screen.findByText('kWp unplausibel');
     expect(chip.closest('[title]')?.getAttribute('title')).toContain('420,0 kW');
+  });
+
+  /**
+   * Die Edge-Stand-Spalte ist Soll-gegen-Ist (OTA Stufe 0). Sie darf ein
+   * Gerät nur „veraltet" nennen, wenn das Register es BELEGT - alles andere
+   * bleibt ruhig, mit seinem Grund am `title`.
+   */
+  it('renders the Edge-Stand as Soll-gegen-Ist from the register', async () => {
+    const ota = (version: string) => ({
+      version,
+      backend: 'compose',
+      current: version,
+      target: null,
+      state: 'idle',
+      reason: null,
+      lastKnownGood: null,
+      reportedAt: new Date().toISOString(),
+    });
+    fleet.mockResolvedValue({
+      sites: [
+        site('s1', 'Aktuell', { update: ota('edge-2026.08.0') }),
+        site('s2', 'Hinterher', { update: ota('edge-2026.07.2') }),
+        // Nur eine SHA gemeldet: nicht im Register - und deshalb ausdrücklich
+        // nicht veraltet.
+        site('s3', 'Bestandsbau', { update: ota('665d59b80000') }),
+        // Nie gemeldet.
+        site('s4', 'Stumm'),
+      ],
+      releases: [
+        { releaseSeq: 12, version: 'edge-2026.08.0' },
+        { releaseSeq: 11, version: 'edge-2026.07.2' },
+      ],
+    });
+    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
+
+    expect(await screen.findByText('edge-2026.08.0 ✓')).toBeInTheDocument();
+    expect(screen.getByText('edge-2026.07.2 → edge-2026.08.0')).toBeInTheDocument();
+    expect(screen.getByText('665d59b80000 · nicht registriert')).toBeInTheDocument();
+    expect(screen.getByText('unbekannt')).toBeInTheDocument();
+
+    // Genau EINE Zeile ist veraltet - der SHA-Stand und das stumme Gerät nicht.
+    expect(screen.getAllByText('Edge veraltet')).toHaveLength(1);
+    expect(
+      screen.getByText('665d59b80000 · nicht registriert').getAttribute('title'),
+    ).toContain('nicht im Release-Register');
+  });
+
+  it('claims nothing while the release register is empty', async () => {
+    fleet.mockResolvedValue({
+      sites: [
+        site('s1', 'Anlage A', {
+          update: {
+            version: 'edge-2026.07.2',
+            backend: 'compose',
+            current: 'edge-2026.07.2',
+            target: null,
+            state: 'idle',
+            reason: null,
+            lastKnownGood: null,
+            reportedAt: new Date().toISOString(),
+          },
+        }),
+      ],
+      releases: [],
+    });
+    render(<PlattformUebersichtPage onJumpToTenant={vi.fn()} />);
+    expect(await screen.findByText('edge-2026.07.2')).toBeInTheDocument();
+    expect(screen.queryByText('Edge veraltet')).toBeNull();
   });
 });

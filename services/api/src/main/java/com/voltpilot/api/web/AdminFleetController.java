@@ -4,17 +4,20 @@ import com.voltpilot.api.fleet.FleetPflege;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.AdminFleetRepository;
 import com.voltpilot.api.repo.AdminFleetRepository.DeviceStats;
+import com.voltpilot.api.repo.AdminFleetRepository.EdgeReleaseRow;
 import com.voltpilot.api.repo.AdminFleetRepository.EdgeVersionRow;
 import com.voltpilot.api.repo.AdminFleetRepository.FleetSiteRow;
 import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
 import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
 import com.voltpilot.api.repo.AdminFleetRepository.SourceCounts;
+import com.voltpilot.api.repo.AdminFleetRepository.UpdateStatusRow;
 import com.voltpilot.api.web.dto.AdminFleetDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetEdgeDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetForecastDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetKwpDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetSiteDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetSourcesDto;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetUpdateDto;
 import com.voltpilot.api.web.dto.ControlStatusDto;
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
 import java.math.BigDecimal;
@@ -103,6 +106,8 @@ public class AdminFleetController {
         Map<UUID, ControlStatusDto> control = fleet.controlPerSite();
         Map<UUID, CurtailmentStatusDto> curtailment = fleet.curtailmentPerSite();
         Map<UUID, EdgeVersionRow> edge = fleet.edgeVersionPerSite();
+        Map<UUID, UpdateStatusRow> update = fleet.updateStatusPerSite();
+        List<EdgeReleaseRow> releases = fleet.releases();
         Map<UUID, SourceCounts> sources = fleet.sourceCountsPerSite();
         Set<UUID> unlinkedBattery = fleet.sitesWithUnlinkedBattery();
         Set<UUID> withBattery = fleet.sitesWithBattery();
@@ -128,6 +133,7 @@ public class AdminFleetController {
 
             SourceCounts counts = sources.get(id);
             EdgeVersionRow version = edge.get(id);
+            UpdateStatusRow ota = update.get(id);
 
             out.add(new FleetSiteDto(
                     id,
@@ -149,13 +155,22 @@ public class AdminFleetController {
                             counts.total(), counts.ok(), counts.stale(), counts.never()),
                     version == null ? null : new FleetEdgeDto(
                             version.coreVersion(), version.paletteVersion(), version.reportedAt()),
+                    ota == null ? null : new FleetUpdateDto(
+                            ota.version(), ota.backend(), ota.currentVersion(), ota.targetVersion(),
+                            ota.state(), ota.reason(), ota.lastKnownGood(), ota.reportedAt()),
                     control.get(id),
                     curtailment.get(id),
                     kwp,
                     siteForecast,
                     FleetPflege.flags(site.tarifArt(), batteryWithoutDevice, kwp, siteForecast)));
         }
-        return new AdminFleetDto(out);
+        // Das Register reist als Ganzes mit (es ist klein und wird ohnehin je
+        // Zeile GEBRAUCHT): der erste Eintrag ist der Soll-Stand, und ein
+        // gemeldeter Stand lässt sich nur DARIN einordnen. Leer = kein Maßstab.
+        List<AdminFleetDto.FleetReleaseDto> register = releases.stream()
+                .map(r -> new AdminFleetDto.FleetReleaseDto(r.releaseSeq(), r.version()))
+                .toList();
+        return new AdminFleetDto(out, register);
     }
 
     /**

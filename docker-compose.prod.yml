@@ -455,6 +455,12 @@ services:
       # acks + the feature-flagged per-node states) - read-only, feeds the
       # editor's "Läuft auf dem Gerät" badge.
       VOLTPILOT_FLOWS_MQTT_LISTENER_ENABLED: "true"
+      # OTA Stufe 0 „Sehen": the top-level `version` + the additive `update`
+      # block into device_update_status - read-only, no write path to any
+      # device. It is its own listener because the version ingest above rides
+      # the `flows` block, which a box without a rolled-out automation never
+      # sends.
+      VOLTPILOT_OTA_MQTT_LISTENER_ENABLED: "true"
       # Ersparnis-Simulation: the internal simulation service (see the
       # `simulation` service below); the api proxies async jobs there.
       VOLTPILOT_SIMULATION_BASE_URL: ${VOLTPILOT_SIMULATION_BASE_URL:-http://simulation:8095}
