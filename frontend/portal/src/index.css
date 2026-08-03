@@ -5686,3 +5686,67 @@ button.vp-tech-card-h.toggle {
     min-height: 44px;
   }
 }
+
+/* ── Edge-Updates (OTA Stufe 2, Plattform-Seite) ─────────────────────────
+   Bewusst schmal: die Seite lebt von den bestehenden Karten/Tabellen/Badges.
+   Was hier steht, sind die vier Hilfsklassen, die es sonst noch nicht gibt. */
+.vp-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+}
+.vp-row-gap {
+  display: flex;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: var(--vp-space-4);
+}
+.vp-plain-list {
+  list-style: none;
+  margin: var(--vp-space-2) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--vp-space-2);
+}
+.vp-wave-device {
+  padding-left: var(--vp-space-3);
+  border-left: 2px solid var(--vp-color-border, rgba(0, 0, 0, 0.08));
+}
+.vp-check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-2) 0;
+  min-height: 44px;
+}
+.vp-text-sm {
+  font-size: var(--vp-text-sm);
+}
+
+/* Der Puls-Sprung zur Edge-Updates-Seite: die KpiCard bleibt die Karte, der
+   Knopf gibt ihr nur die Klick-Semantik (keine zweite Kartenoptik). */
+.vp-kpi-link {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: inherit;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.vp-kpi-link:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-md);
+}
+
+.vp-row-click {
+  cursor: pointer;
+}
+.vp-row-click:hover {
+  background: var(--vp-surface-2, rgba(0, 0, 0, 0.02));
+}

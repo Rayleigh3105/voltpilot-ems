@@ -53,6 +53,7 @@ import { MandantenPage } from './pages/admin/MandantenPage';
 import { PlattformUebersichtPage } from './pages/admin/PlattformUebersichtPage';
 import { BenutzerPage } from './pages/admin/BenutzerPage';
 import { GeraeteRegistryPage } from './pages/admin/GeraeteRegistryPage';
+import { EdgeUpdatesPage } from './pages/admin/EdgeUpdatesPage';
 import { OptimizerPage } from './pages/admin/OptimizerPage';
 import { FlowsPage } from './pages/admin/FlowsPage';
 
@@ -860,7 +861,7 @@ function UnifiedPortal() {
             <PrognosePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
           )}
           {page === 'plattform-uebersicht' && isAdmin && (
-            <PlattformUebersichtPage onJumpToTenant={jumpToTenant} />
+            <PlattformUebersichtPage onJumpToTenant={jumpToTenant} onNavigate={navigate} />
           )}
           {page === 'mandanten' && isAdmin && (
             <MandantenPage
@@ -873,6 +874,7 @@ function UnifiedPortal() {
             <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
           )}
           {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
+          {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'flows' && isAdmin && <FlowsPage tenants={tenants} />}
         </>
