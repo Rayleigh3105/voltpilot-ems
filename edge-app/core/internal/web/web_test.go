@@ -347,6 +347,40 @@ func TestStateEnvelopeCarriesBuildVersion(t *testing.T) {
 	}
 }
 
+// TestHealthCarriesBuildVersion (OTA Stufe 0): /health is the ungated,
+// machine-readable endpoint install.sh/update.sh already poll, so "which build
+// is on this box" must be answerable there - without a cloud link, without a
+// browser, and independent of any flow deployment.
+func TestHealthCarriesBuildVersion(t *testing.T) {
+	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
+	srv := httptest.NewServer(Handler(state.New("edge-ver", "edge-2026.08.0+3bf8c0380000"), fi,
+		&fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{},
+		&fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var health struct {
+		Status  string `json:"status"`
+		Ref     string `json:"ref"`
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		t.Fatal(err)
+	}
+	if health.Version != "edge-2026.08.0+3bf8c0380000" {
+		t.Fatalf("/health version = %q, want the build stamp", health.Version)
+	}
+	// The pre-existing fields stay - an installer parsing the old shape is
+	// unaffected.
+	if health.Status != "UP" || health.Ref != "edge-ver" {
+		t.Fatalf("/health changed shape: %+v", health)
+	}
+}
+
 func TestGetInverterReturnsCatalogAndNilSelection(t *testing.T) {
 	srv, _ := newServer(t)
 	resp, err := http.Get(srv.URL + "/api/inverter")

@@ -3907,6 +3907,13 @@ button.vp-tech-card-h.toggle {
 .vp-fleetpuls td {
   vertical-align: top;
 }
+/* Edge-Stand (OTA Stufe 0): nur ein durch das Release-Register BELEGTES
+   „veraltet" bekommt die Warnfarbe (dasselbe Amber wie Badge variant="warn").
+   „unbekannt" und „nicht registriert" bleiben ruhig gedämpft - sie sind
+   Lücken, keine Alters-Aussagen. */
+.vp-edge-stand-warn {
+  color: #b45309;
+}
 
 /* ============================================================================
    Betreiber PORTFOLIO shell (U5, pages/PortfolioPage)

@@ -884,7 +884,10 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		CAPath:      caPath,
 		DevURL:      a.Cfg.DevCloudURL,
 		DevInsecure: a.Cfg.DevInsecure,
-		OnSchedule:  a.onSchedule,
+		// The build stamp rides EVERY heartbeat as the top-level `version`
+		// (OTA Stufe 0) - see cloud.Options.Version.
+		Version:    Version,
+		OnSchedule: a.onSchedule,
 		OnCommand:   a.onPurgeCommand,
 		OnEntities:  a.onEntityRegistryPush,
 		OnPlanV2:    a.onPlanV2,
@@ -951,7 +954,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.logControlGateDivergence(snap)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
-					a.curtailmentSummary()); err != nil {
+					a.curtailmentSummary(), a.updateSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():

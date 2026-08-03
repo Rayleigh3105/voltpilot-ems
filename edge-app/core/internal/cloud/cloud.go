@@ -27,6 +27,11 @@ import (
 type Link struct {
 	client   pahomqtt.Client
 	identity enroll.Identity
+	// version is the BUILD stamp (agent.Version). It is a link-level field on
+	// purpose: OTA Stufe 0 requires the top-level `version` to ride EVERY
+	// heartbeat, so it must not be a per-call argument a future caller could
+	// forget or condition on something.
+	version string
 
 	onSchedule func(payload []byte)
 	onCommand  func(payload []byte)
@@ -68,6 +73,12 @@ type Options struct {
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
 	DevClientID string
+	// Version is the ldflags-stamped build version (agent.Version). It rides
+	// EVERY status heartbeat as the top-level `version` field (OTA Stufe 0) -
+	// independent of the `flows` ack block, which only exists once the device
+	// has seen a flow deployment. Empty = omit the field (never a fabricated
+	// empty version).
+	Version string
 }
 
 func (o Options) brokerURL() string {
@@ -79,9 +90,9 @@ func (o Options) brokerURL() string {
 
 // New builds (but does not connect) the link.
 func New(o Options) (*Link, error) {
-	l := &Link{identity: o.Identity, onSchedule: o.OnSchedule, onCommand: o.OnCommand,
-		onEntities: o.OnEntities, onPlanV2: o.OnPlanV2, onFlows: o.OnFlows,
-		onConnect: o.OnConnect}
+	l := &Link{identity: o.Identity, version: o.Version, onSchedule: o.OnSchedule,
+		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
+		onFlows: o.OnFlows, onConnect: o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -368,6 +379,55 @@ type EntityArbitration struct {
 	AllMatch *bool `json:"all_match,omitempty"`
 }
 
+// The OTA update states (scout vp-ota-rollout-h4 §5). Stufe 0 only ever
+// reports Idle - the rest is the vocabulary the later stages fill in, declared
+// here so cloud and edge speak ONE language from the first heartbeat on.
+const (
+	UpdateStateIdle        = "idle"
+	UpdateStateVerifying   = "verifying"
+	UpdateStateDeferred    = "deferred"
+	UpdateStateDownloading = "downloading"
+	UpdateStateApplying    = "applying"
+	UpdateStateSelfTest    = "self_test"
+	UpdateStateSucceeded   = "succeeded"
+	UpdateStateFailed      = "failed"
+	UpdateStateRolledBack  = "rolled_back"
+)
+
+// UpdateBackendCompose is the apply backend of today's fleet: docker compose
+// (the boxes are updated by update.sh). The field exists from Stufe 0 on
+// because the contract is deliberately runtime-agnostic - a podman/quadlet or
+// Mender box reports its own backend and nothing above it changes.
+const UpdateBackendCompose = "compose"
+
+// UpdateSummary is the additive `update` block of the status heartbeat (scout
+// vp-ota-rollout-h4 §5), the device's own answer to "what am I running and
+// what am I doing about it".
+//
+// **Honesty over completeness.** Stufe 0 fills only what the box can actually
+// know: the backend, the version it is running (verbatim as stamped), and
+// state=idle. Everything else stays ABSENT rather than invented:
+//
+//   - CurrentSeq/TargetSeq/Target/Channel need the cloud's release register and
+//     a target assignment - neither exists on the device before Stufe 2.
+//   - LastKnownGood needs an update to have been applied and committed once;
+//     a box that never updated has no last-known-good, and claiming the
+//     current version as one would fabricate a rollback target.
+//
+// Reason is MANDATORY (German) for deferred/failed/rolled_back once those
+// states exist - a red state that cannot say why is only an alarm.
+type UpdateSummary struct {
+	Backend       string `json:"backend"`
+	Current       string `json:"current,omitempty"`
+	CurrentSeq    *int64 `json:"current_seq,omitempty"`
+	Target        string `json:"target,omitempty"`
+	TargetSeq     *int64 `json:"target_seq,omitempty"`
+	Channel       string `json:"channel,omitempty"`
+	State         string `json:"state"`
+	Reason        string `json:"reason,omitempty"`
+	LastKnownGood string `json:"last_known_good,omitempty"`
+}
+
 // FlowsSummary is the additive status-heartbeat block acknowledging the
 // applied flow deployment set (flow-artifact.md §5). nil = flow deployment
 // not wired / nothing ever deployed (block omitted).
@@ -561,11 +621,19 @@ type CurtailmentSummary struct {
 // errors are returned but the caller does not retry status. `control` is the
 // optional control confirmation, `entities` the optional v2 entity-registry
 // ack, `flows` the optional flow-deployment ack, `sources` the optional
-// per-measurement-point Ist (nil = omit the block - all additive,
-// schema_version stays "1.0").
+// per-measurement-point Ist, `update` the optional OTA block (nil = omit the
+// block - all additive, schema_version stays "1.0").
+//
+// The top-level `version` is NOT optional in that sense: it rides every
+// heartbeat from the link's build stamp (OTA Stufe 0, scout
+// vp-ota-rollout-h4 §2.3 hole 1). Before this, the core version travelled
+// ONLY inside the `flows` ack block, which the edge does not build until it
+// has seen its first flow deployment - so a box without a rolled-out
+// automation reported no version at all and the fleet view was blind to it.
 func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary,
 	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary,
-	flowNodes *FlowNodeStatusSummary, curtail *CurtailmentSummary) error {
+	flowNodes *FlowNodeStatusSummary, curtail *CurtailmentSummary,
+	update *UpdateSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -575,6 +643,12 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 		"online":         true,
 		"control_source": controlSource,
 		"soc_pct":        socPct,
+	}
+	if l.version != "" {
+		payload["version"] = l.version
+	}
+	if update != nil {
+		payload["update"] = update
 	}
 	if control != nil {
 		payload["control"] = control
@@ -607,6 +681,50 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	tok := l.client.Publish(l.topic("status"), 1, false, raw)
 	if !tok.WaitTimeout(10 * time.Second) {
 		return fmt.Errorf("status publish timed out")
+	}
+	return tok.Error()
+}
+
+// updateStateAckTimeout bounds the durable state publish. It is deliberately
+// LONGER than the fire-and-forget status timeout: this call exists to be the
+// last thing a device does before it stops itself, so waiting a little longer
+// for the broker's ack is exactly the point.
+const updateStateAckTimeout = 30 * time.Second
+
+// PublishUpdateState durably reports ONE update-state transition and waits for
+// the QoS1 ack before returning.
+//
+// **GROUNDWORK - nothing calls it in Stufe 0.** It exists now because the
+// transition it is built for cannot be retrofitted later without the same
+// blind spot it removes: an updater must report `applying` as its LAST act
+// BEFORE stopping the stack (scout vp-ota-rollout-h4 §5, Reconcile-Rail D2),
+// and only a CONFIRMED publish makes "im Update verstummt" a state of its own
+// instead of indistinguishable from "the box is simply gone". The regular
+// 15-s heartbeat cannot carry it: the process is about to disappear.
+//
+// It sends the same status shape minus the live measurement blocks - identity,
+// the build version, and the update block - so an ingest that already
+// understands the heartbeat understands this too, with no second parser.
+func (l *Link) PublishUpdateState(u UpdateSummary) error {
+	payload := map[string]any{
+		"schema_version": "1.0",
+		"tenant_id":      l.identity.TenantID,
+		"site_id":        l.identity.SiteID,
+		"device_id":      l.identity.DeviceID,
+		"ts":             time.Now().UTC().Format(time.RFC3339Nano),
+		"online":         true,
+		"update":         u,
+	}
+	if l.version != "" {
+		payload["version"] = l.version
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	tok := l.client.Publish(l.topic("status"), 1, false, raw)
+	if !tok.WaitTimeout(updateStateAckTimeout) {
+		return fmt.Errorf("update state publish timed out")
 	}
 	return tok.Error()
 }

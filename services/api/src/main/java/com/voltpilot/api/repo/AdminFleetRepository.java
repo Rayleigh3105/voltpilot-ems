@@ -69,6 +69,16 @@ public class AdminFleetRepository {
     public record EdgeVersionRow(String coreVersion, String paletteVersion, Instant reportedAt) {
     }
 
+    /** Der gemeldete OTA-Stand des zuletzt meldenden Geräts einer Anlage. */
+    public record UpdateStatusRow(String version, String backend, String currentVersion,
+            String targetVersion, String state, String reason, String lastKnownGood,
+            Instant reportedAt) {
+    }
+
+    /** Ein Eintrag des Release-Registers - {@code releaseSeq} ist DIE Ordnung. */
+    public record EdgeReleaseRow(long releaseSeq, String version) {
+    }
+
     /** Die vom Gerät gemeldete Quellen-Gesundheit, gezählt. */
     public record SourceCounts(int total, int ok, int stale, int never) {
     }
@@ -230,6 +240,49 @@ public class AdminFleetRepository {
                             rs.getTimestamp("reported_at").toInstant()));
                 });
         return out;
+    }
+
+    /**
+     * Der zuletzt gemeldete OTA-Stand je Anlage (Stufe 0). Er steht NEBEN
+     * {@link #edgeVersionPerSite()}, nicht darin: die Version reist hier
+     * TOP-LEVEL im Herzschlag und damit unabhängig vom {@code flows}-Block -
+     * genau deshalb sieht diese Abfrage auch die Geräte, auf denen nie eine
+     * Automation ausgerollt wurde (das Loch, das Stufe 0 schließt). Beide
+     * Blöcke haben ihren eigenen Frische-Anker, und keine Zeile heißt
+     * weiterhin „unbekannt", nie „veraltet".
+     */
+    public Map<UUID, UpdateStatusRow> updateStatusPerSite() {
+        Map<UUID, UpdateStatusRow> out = new HashMap<>();
+        jdbc.query(
+                "SELECT DISTINCT ON (site_id) site_id, version, backend, current_version, "
+                        + "target_version, state, reason, last_known_good, reported_at "
+                        + "FROM device_update_status ORDER BY site_id, reported_at DESC",
+                rs -> {
+                    out.put(rs.getObject("site_id", UUID.class), new UpdateStatusRow(
+                            rs.getString("version"),
+                            rs.getString("backend"),
+                            rs.getString("current_version"),
+                            rs.getString("target_version"),
+                            rs.getString("state"),
+                            rs.getString("reason"),
+                            rs.getString("last_known_good"),
+                            rs.getTimestamp("reported_at").toInstant()));
+                });
+        return out;
+    }
+
+    /**
+     * Das Release-Register, NEUESTE zuerst - der Maßstab der ganzen Flotte.
+     * Der ERSTE Eintrag ist der Soll-Stand; die Liste selbst wird gebraucht,
+     * um einen gemeldeten Versionsstring überhaupt EINORDNEN zu können (ein
+     * Stand, den das Register nicht kennt, ist „nicht registriert" und
+     * ausdrücklich nicht „veraltet"). Leeres Register = kein Maßstab = es wird
+     * nichts als veraltet behauptet.
+     */
+    public List<EdgeReleaseRow> releases() {
+        return jdbc.query(
+                "SELECT release_seq, version FROM edge_release ORDER BY release_seq DESC",
+                (rs, i) -> new EdgeReleaseRow(rs.getLong("release_seq"), rs.getString("version")));
     }
 
     /**

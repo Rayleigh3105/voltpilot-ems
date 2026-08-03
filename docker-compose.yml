@@ -323,6 +323,10 @@ services:
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Portal v3 M5: deployment acks + the feature-flagged per-node flow states.
       VOLTPILOT_FLOWS_MQTT_LISTENER_ENABLED: "true"
+      # OTA Stufe 0: the top-level `version` + the additive `update` block -
+      # which build every box runs, INCLUDING those without a flow deployment
+      # (they never send the `flows` block the version ingest above hangs on).
+      VOLTPILOT_OTA_MQTT_LISTENER_ENABLED: "true"
       # Ersparnis-Simulation: the internal simulation service (optimize profile).
       # The api proxies async jobs there; without the service running, starting
       # a simulation returns a friendly 502.

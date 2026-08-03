@@ -830,8 +830,13 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		snap := st.Get()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":          "UP",
-			"ref":             snap.Ref,
+			"status": "UP",
+			"ref":    snap.Ref,
+			// The build stamp (OTA Stufe 0): /health is the machine-readable
+			// endpoint install.sh/update.sh already poll, so the running
+			// version belongs here - "which build is on this box" must be
+			// answerable without a cloud link and without a browser.
+			"version":         snap.Version,
 			"pairing_state":   snap.PairingState,
 			"cloud_connected": snap.CloudConnected,
 			"uptime_seconds":  int(time.Since(snap.StartedAt).Seconds()),

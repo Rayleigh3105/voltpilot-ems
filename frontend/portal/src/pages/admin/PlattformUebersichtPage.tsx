@@ -4,7 +4,7 @@ import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
-import { fleetApi, type AdminFleetSite } from '../../admin/fleetApi';
+import { fleetApi, type AdminFleetRelease, type AdminFleetSite } from '../../admin/fleetApi';
 import {
   controlMatrixInputs,
   controlMatrixRows,
@@ -41,6 +41,9 @@ export function PlattformUebersichtPage({
   onJumpToTenant: (tenantId: string, target: Route) => void;
 }) {
   const [sites, setSites] = useState<AdminFleetSite[] | null>(null);
+  // Das Release-Register aus derselben Antwort - der Maßstab für „veraltet".
+  // Leer heißt kein Maßstab, und dann wird nichts als veraltet behauptet.
+  const [releases, setReleases] = useState<AdminFleetRelease[]>([]);
   // Der Bezugszeitpunkt der Daten - jedes Alter wird DAGEGEN gerechnet, nie
   // gegen eine Uhr über einem stehenden Schnappschuss (die Lebendigkeits-Lehre).
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
@@ -50,6 +53,7 @@ export function PlattformUebersichtPage({
     try {
       const fleet = await fleetApi.fleet();
       setSites(fleet.sites);
+      setReleases(fleet.releases ?? []);
       setFetchedAt(Date.now());
       setLoadError(null);
     } catch {
@@ -70,8 +74,8 @@ export function PlattformUebersichtPage({
   useFreshnessPoll(() => void load(), 30_000, true);
 
   const rows = useMemo(
-    () => (sites ? fleetRows(sites, new Date(fetchedAt)) : null),
-    [sites, fetchedAt],
+    () => (sites ? fleetRows(sites, new Date(fetchedAt), releases) : null),
+    [sites, fetchedAt, releases],
   );
 
   const pulse = rows ? fleetPulse(rows) : null;
@@ -229,9 +233,20 @@ function FleetTableRow({
         <span className={row.planTone === 'ok' ? undefined : 'vp-muted'}>{row.planText}</span>
       </td>
       <td data-label="Edge-Stand">
+        {/*
+          Soll-gegen-Ist (OTA Stufe 0): `<soll> ✓` wenn der gemeldete Stand DER
+          Soll-Stand ist, `<ist> → <soll>` wenn er im Register davor liegt.
+          „unbekannt" und „nicht registriert" sind eigene, ruhige Zustände - sie
+          werden nie als veraltet gefärbt. Die Begründung reist als `title` mit;
+          die Palette-Version bleibt daneben stehen, wo es eine gibt.
+        */}
         <span
-          className={row.edge.tone === 'ok' ? 'vp-mono' : 'vp-mono vp-muted'}
-          title={row.edge.paletteVersion ? `Palette ${row.edge.paletteVersion}` : undefined}
+          className={row.edge.tone === 'warn' ? 'vp-mono vp-edge-stand-warn' : 'vp-mono vp-muted'}
+          title={
+            row.edge.paletteVersion
+              ? `${row.edge.title} · Palette ${row.edge.paletteVersion}`
+              : row.edge.title
+          }
         >
           {row.edge.text}
         </span>

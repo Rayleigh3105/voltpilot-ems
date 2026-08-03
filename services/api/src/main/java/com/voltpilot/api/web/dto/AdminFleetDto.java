@@ -19,8 +19,16 @@ import java.util.UUID;
  * hat, ist {@code null} und trägt seinen Grund ({@code reason}) - nie eine
  * erfundene Null und nie ein geratener Zustand. Wer eine Zahl zeigt, muss sagen
  * können, woher sie kommt.
+ *
+ * <p>{@code releases} ist das Release-Register (OTA Stufe 0), NEUESTE zuerst -
+ * der flottenweite SOLL-Stand ist sein erster Eintrag. Es reist mit, weil
+ * „veraltet" nur gegen diese Ordnung eine Aussage ist: der gemeldete Stand
+ * einer Anlage wird darin GESUCHT, und ein Stand, den das Register nicht kennt
+ * (eine Bestands-Edge trägt eine nackte Commit-SHA), ist „nicht registriert" -
+ * ausdrücklich nicht „veraltet". Leere Liste = kein Maßstab, also wird nichts
+ * als veraltet behauptet.
  */
-public record AdminFleetDto(List<FleetSiteDto> sites) {
+public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> releases) {
 
     /**
      * Eine Anlage der Flotte.
@@ -60,6 +68,7 @@ public record AdminFleetDto(List<FleetSiteDto> sites) {
             boolean batteryWithoutDevice,
             FleetSourcesDto sources,
             FleetEdgeDto edge,
+            FleetUpdateDto update,
             ControlStatusDto control,
             CurtailmentStatusDto curtailment,
             FleetKwpDto kwp,
@@ -81,6 +90,36 @@ public record AdminFleetDto(List<FleetSiteDto> sites) {
      * beide Versionsfelder können einzeln fehlen.
      */
     public record FleetEdgeDto(String coreVersion, String paletteVersion, Instant reportedAt) {
+    }
+
+    /**
+     * Der gemeldete OTA-Stand (Stufe 0) - {@code null} heißt UNBEKANNT, nie
+     * „veraltet".
+     *
+     * <p>Er steht bewusst NEBEN {@link FleetEdgeDto} statt darin: die Version
+     * reist hier TOP-LEVEL im Herzschlag, also unabhängig vom {@code flows}
+     * -Block, den eine Edge erst nach ihrem ersten Flow-Deployment baut - genau
+     * deshalb füllt dieser Block auch die Geräte, über die {@code edge} nichts
+     * weiß. Beide tragen ihren EIGENEN {@code reportedAt}: ein Gerät, das den
+     * einen Block einstellt, während der andere weiterläuft, darf keine alte
+     * Aussage am Leben halten.
+     *
+     * <p>{@code version} ist der Stempel VERBATIM (eine Bestands-Edge meldet
+     * eine nackte Commit-SHA - die Oberfläche zeigt sie dann als „nicht
+     * registriert", nie als veraltet). {@code target}/{@code lastKnownGood}
+     * bleiben in Stufe 0 leer: es gibt weder Soll-Zuweisung noch angewandtes
+     * Update auf dem Gerät. {@code state} ist ein Wort des Vertrags-Vokabulars
+     * oder {@code null} - ein unbekanntes wird beim Ingest verworfen.
+     */
+    public record FleetUpdateDto(String version, String backend, String current, String target,
+            String state, String reason, String lastKnownGood, Instant reportedAt) {
+    }
+
+    /**
+     * Ein Eintrag des Release-Registers. {@code releaseSeq} ist DIE Ordnung -
+     * eine monotone Ganzzahl, nie ein String- oder SHA-Vergleich (D5).
+     */
+    public record FleetReleaseDto(long releaseSeq, String version) {
     }
 
     /**

@@ -36,6 +36,39 @@ export interface AdminFleetEdge {
   reportedAt: string;
 }
 
+/**
+ * Der gemeldete OTA-Stand (Stufe 0). `null` an der Anlage = UNBEKANNT, nie
+ * „veraltet".
+ *
+ * Er steht NEBEN `edge`, nicht darin: `version` reist TOP-LEVEL im Herzschlag
+ * und damit unabhängig vom `flows`-Block, den eine Edge erst nach ihrem ersten
+ * Flow-Deployment baut - genau deshalb füllt dieser Block auch die Geräte,
+ * über die `edge` nichts weiß. Beide tragen ihren EIGENEN `reportedAt`.
+ *
+ * `version` ist der Stempel VERBATIM: eine Bestands-Edge meldet eine nackte
+ * Commit-SHA, die im Register schlicht nicht steht.
+ */
+export interface AdminFleetUpdate {
+  version: string | null;
+  backend: string | null;
+  current: string | null;
+  /** In Stufe 0 immer leer - es gibt keine Soll-Zuweisung auf dem Gerät. */
+  target: string | null;
+  state: string | null;
+  reason: string | null;
+  lastKnownGood: string | null;
+  reportedAt: string;
+}
+
+/**
+ * Ein Eintrag des Release-Registers. `releaseSeq` ist DIE Ordnung - eine
+ * monotone Ganzzahl, nie ein String- oder SHA-Vergleich (Entscheid D5).
+ */
+export interface AdminFleetRelease {
+  releaseSeq: number;
+  version: string;
+}
+
 /** Die kWp-Plausibilität (B4a) - `unbekannt` ist ein vollwertiges Urteil. */
 export interface AdminFleetKwp {
   configuredKwp: number | null;
@@ -82,6 +115,7 @@ export interface AdminFleetSite {
   batteryWithoutDevice: boolean;
   sources: AdminFleetSources | null;
   edge: AdminFleetEdge | null;
+  update: AdminFleetUpdate | null;
   control: ControlStatus | null;
   curtailment: CurtailmentStatus | null;
   kwp: AdminFleetKwp;
@@ -91,6 +125,14 @@ export interface AdminFleetSite {
 
 export interface AdminFleet {
   sites: AdminFleetSite[];
+  /**
+   * Das Release-Register, NEUESTE zuerst - der erste Eintrag ist der
+   * flottenweite SOLL-Stand. Es reist mit, weil „veraltet" nur gegen diese
+   * Ordnung eine Aussage ist: ein gemeldeter Stand wird DARIN gesucht, und was
+   * das Register nicht kennt, ist „nicht registriert" - ausdrücklich nicht
+   * „veraltet". Leer = kein Maßstab, also wird nichts behauptet.
+   */
+  releases: AdminFleetRelease[];
 }
 
 export const fleetApi = {

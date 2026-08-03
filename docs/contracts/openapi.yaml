@@ -1896,6 +1896,58 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant not found. }
         "409": { description: A user with that username or email already exists. }
+  /api/v1/admin/edge-releases:
+    get:
+      tags: [admin]
+      summary: The edge release register (OTA Stufe 0).
+      description: >
+        Every registered edge release, NEWEST FIRST. `releaseSeq` is THE
+        ordering - a monotonic integer, never a string or SHA comparison
+        (decision D5). Without this register "outdated" was not well-defined:
+        the fleet view compared a reported version against the fleet MAXIMUM
+        (so "all equally old" read as "all current") and compared 12-char hex
+        SHAs as number blocks, which is a random ordering on SHAs.
+        Platform-admin only; read-only from the customer side. In Stufe 0 the
+        register is maintained by hand and there is NO write path towards any
+        device.
+      responses:
+        "200":
+          description: The register, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EdgeRelease" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      summary: Register an edge release.
+      description: >
+        `version` must follow the release tag schema `edge-YYYY.MM.N`
+        (edge-images already stamps `<tag>-<sha>`); a bare commit SHA is
+        refused because it is exactly the uncomparable value the register
+        replaces. `releaseSeq` may be omitted - it then continues the register
+        (max + 1); passing it explicitly requires it to be strictly greater
+        than every existing entry, so the ordering stays monotonic by
+        construction. Registering an existing version is a 409, not a silent
+        no-op: a release is created once, by hand, and the register is the
+        paper trail.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEdgeReleaseRequest" }
+      responses:
+        "201":
+          description: Release registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EdgeRelease" }
+        "400": { description: Version does not match edge-YYYY.MM.N, or releaseSeq is not strictly increasing. }
+        "409": { description: This version is already registered. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/provisioned-devices:
     get:
       tags: [admin]
@@ -3705,6 +3757,17 @@ components:
         sites:
           type: array
           items: { $ref: "#/components/schemas/AdminFleetSite" }
+        releases:
+          type: array
+          description: >
+            The edge release register, NEWEST FIRST - the first entry is the
+            fleet-wide TARGET (Soll). It rides along because "outdated" is only
+            a statement against this ordering: a site's reported version is
+            LOOKED UP here, and a version the register does not know (an
+            existing build is stamped with a bare commit SHA) is "not
+            registered" - explicitly NOT "outdated". Empty = no yardstick, so
+            nothing is claimed outdated.
+          items: { $ref: "#/components/schemas/AdminFleetRelease" }
     AdminFleetSite:
       type: object
       description: >
@@ -3751,6 +3814,17 @@ components:
             only builds the heartbeat's flows block after its first deployment
             set), never "outdated".
           allOf: [{ $ref: "#/components/schemas/AdminFleetEdge" }]
+        update:
+          nullable: true
+          description: >
+            The reported OTA state (Stufe 0); null means UNKNOWN, never
+            "outdated". It sits NEXT TO `edge`, not inside it: the version
+            rides TOP-LEVEL in the heartbeat and is therefore independent of
+            the `flows` block an edge only builds after its first flow
+            deployment - which is exactly why this block also covers the
+            devices `edge` knows nothing about. Both carry their OWN
+            reportedAt.
+          allOf: [{ $ref: "#/components/schemas/AdminFleetUpdate" }]
         control:
           nullable: true
           description: Latest control evidence; null = the device never read back.
@@ -3786,6 +3860,53 @@ components:
         coreVersion: { type: string, nullable: true }
         paletteVersion: { type: string, nullable: true }
         reportedAt: { type: string, format: date-time }
+    AdminFleetUpdate:
+      type: object
+      description: >
+        What the device says about the build it runs and what it is doing about
+        it (OTA Stufe 0). Everything the box cannot honestly know stays null -
+        in Stufe 0 there is no release register and no target on the device, so
+        target/lastKnownGood are empty and a sequence number is never guessed.
+      properties:
+        version:
+          type: string
+          nullable: true
+          description: >
+            The build stamp VERBATIM as reported. An existing build carries a
+            bare 12-char commit SHA; the portal then renders it honestly as
+            "not registered", never as outdated.
+        backend:
+          type: string
+          nullable: true
+          description: "The apply backend, e.g. compose. The contract is runtime-agnostic."
+        current: { type: string, nullable: true }
+        target:
+          type: string
+          nullable: true
+          description: "Empty in Stufe 0 - there is no target assignment on the device yet."
+        state:
+          type: string
+          nullable: true
+          enum: [idle, verifying, deferred, downloading, applying, self_test, succeeded, failed, rolled_back]
+          description: >
+            null = the device reported a version but no update block. A state
+            outside this vocabulary is DROPPED on ingest rather than stored - a
+            word the cloud does not understand must not become a portal
+            sentence.
+        reason:
+          type: string
+          nullable: true
+          description: "German; mandatory on the device side for deferred/failed/rolled_back."
+        lastKnownGood: { type: string, nullable: true }
+        reportedAt: { type: string, format: date-time }
+    AdminFleetRelease:
+      type: object
+      description: >
+        One entry of the edge release register. releaseSeq is THE ordering - a
+        monotonic integer, never a string or SHA comparison (decision D5).
+      properties:
+        releaseSeq: { type: integer, format: int64 }
+        version: { type: string, description: "The release tag edge-YYYY.MM.N." }
     AdminFleetKwp:
       type: object
       description: >
@@ -4514,6 +4635,37 @@ components:
           example: VP-1234-ABCD
         kind: { type: string, description: "Device kind; defaults to 'inverter'.", example: inverter }
         note: { type: string, nullable: true, description: Free-form operator note (e.g. manufacturing batch). }
+    EdgeRelease:
+      type: object
+      description: >
+        One entry of the edge release register (OTA Stufe 0, decision D5).
+        Signature fields (signing key, signature, artifacts, min_from_seq)
+        arrive additively in Stufe 1 - releaseSeq and version are exactly the
+        parts a signed manifest carries over unchanged.
+      properties:
+        releaseSeq:
+          type: integer
+          format: int64
+          description: THE ordering - a monotonic integer, never a string/SHA comparison.
+        version: { type: string, example: edge-2026.08.0 }
+        targetCommit: { type: string, nullable: true, description: The commit it was built from - the paper trail into the repo. }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string, nullable: true, description: The registering platform-admin's subject. }
+    CreateEdgeReleaseRequest:
+      type: object
+      required: [version]
+      properties:
+        version: { type: string, example: edge-2026.08.0, description: "Must match edge-YYYY.MM.N." }
+        releaseSeq:
+          type: integer
+          format: int64
+          nullable: true
+          description: >
+            Omit to continue the register (max + 1). If given, it must be
+            strictly greater than every existing entry.
+        targetCommit: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
     ProvisionedDevice:
       type: object
       properties:
