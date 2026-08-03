@@ -327,6 +327,11 @@ services:
       # which build every box runs, INCLUDING those without a flow deployment
       # (they never send the `flows` block the version ingest above hangs on).
       VOLTPILOT_OTA_MQTT_LISTENER_ENABLED: "true"
+      # OTA Stufe 2: derselbe Schalter traegt den Rollout-Waechter (Zustaende
+      # fortschreiben, Auto-Halt, Drift-Republish) - ohne den Status-Ingest
+      # gaebe es kein gemeldetes IST, gegen das er urteilen koennte. Der
+      # RETAINED Verteilweg selbst reitet auf voltpilot.provisioning.* (derselbe
+      # Broker wie Provisionierung und Entity-Push), also kein neuer Knopf.
       # Ersparnis-Simulation: the internal simulation service (optimize profile).
       # The api proxies async jobs there; without the service running, starting
       # a simulation returns a friendly 502.

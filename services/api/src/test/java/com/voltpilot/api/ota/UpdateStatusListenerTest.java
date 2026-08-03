@@ -56,7 +56,7 @@ class UpdateStatusListenerTest {
     /** One heartbeat in; the captured upsert arguments out. */
     private record Row(String version, String backend, String current, Long currentSeq,
             String target, Long targetSeq, String channel, String state, String reason,
-            String lastKnownGood) {
+            String lastKnownGood, String targetVerdict) {
     }
 
     private Row ingest(String bodyFields) {
@@ -73,19 +73,23 @@ class UpdateStatusListenerTest {
         ArgumentCaptor<String> state = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> lkg = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> verdict = ArgumentCaptor.forClass(String.class);
         verify(store).upsert(eq(DEVICE), eq(SITE), version.capture(), backend.capture(),
                 current.capture(), currentSeq.capture(), target.capture(), targetSeq.capture(),
-                channel.capture(), state.capture(), reason.capture(), lkg.capture(), any());
+                channel.capture(), state.capture(), reason.capture(), lkg.capture(),
+                verdict.capture(), any());
         return new Row(version.getValue(), backend.getValue(), current.getValue(),
                 currentSeq.getValue(), target.getValue(), targetSeq.getValue(),
-                channel.getValue(), state.getValue(), reason.getValue(), lkg.getValue());
+                channel.getValue(), state.getValue(), reason.getValue(), lkg.getValue(),
+                verdict.getValue());
     }
 
     private void assertNothingStored() {
         verify(store, never()).upsert(any(), any(), anyString(), anyString(), anyString(), any(),
-                anyString(), any(), anyString(), anyString(), anyString(), anyString(), any());
+                anyString(), any(), anyString(), anyString(), anyString(), anyString(),
+                anyString(), any());
         verify(store, never()).upsert(any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any());
     }
 
     /**

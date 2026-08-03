@@ -401,6 +401,44 @@ Zwischen zwei Boxen liegt bewusst ein Abstand (mindestens ein voller Tageslauf
 auf der ersten Box, Canary = Pilsting), damit ein Fehler nicht die ganze Flotte
 erwischt.
 
+### Das Trust-Set bleibt out-of-band — auch in Stufe 2
+
+Seit Stufe 2 kommt das **Release** über den Downlink (retained auf
+`ems/{t}/{s}/{d}/v2/update`). Das **root-signierte Trust-Set** kommt weiterhin
+NICHT über diesen Weg, sondern liegt beim Crossover je Box im Datenverzeichnis:
+es ist der Widerrufs-Anker, und den Widerruf über denselben Kanal zu verteilen,
+über den auch die widerrufenen Sachen kamen, ist eine Kreisabhängigkeit. Ein
+Gerät ohne Trust-Set lehnt eine Zuweisung deshalb **fail-closed** ab und sagt
+das als Grund — sichtbar in der Flotten-Matrix, nie stillschweigend.
+
+---
+
+## 6b. Ein zugewiesenes Release anwenden (Stufe 2, beaufsichtigt)
+
+Ab Stufe 2 entscheidet das **Portal**, welches Release eine Box bekommt; die
+Box prüft es selbst und legt es ab. **Angewandt wird weiterhin von Hand am
+Gerät** — ein autonomer Apply-Pfad ist Stufe 3.
+
+```bash
+# 1. Was hat das Portal dieser Box zugewiesen, und hat sie es selbst geprüft?
+curl -s http://127.0.0.1:8484/api/ota/target | jq
+
+# 2. Genau das anwenden (die Digests kommen aus der GEPRÜFTEN Zuweisung,
+#    niemals aus einer Zwischenablage):
+./update.sh --from-target
+```
+
+`--from-target` bricht ab, wenn es keine Zuweisung gibt oder ihre Kette nicht
+geprüft ist (`verdict != ok`) — die Artefakt-Digests gibt der Core dann gar
+nicht erst heraus. Nach einem erfolgreichen Lauf meldet die Box den angewandten
+Stand zurück (`POST /api/ota/applied`); dieser Aufruf kann ausschließlich
+bestätigen, was nachweislich läuft, und hebt den Anti-Rollback-Boden nur je an.
+
+Im Portal steht die Box danach unter Plattform → Edge-Updates auf
+**bestätigt ✓**; der Rollout gibt die nächste Welle erst frei, wenn sie 24 h
+gesund läuft und (wo VoltPilot steuert) mindestens ein echter Steuerzyklus
+bestätigt wurde.
+
 ---
 
 ## 7. Schlüsselverlust und Rotation

@@ -83,6 +83,14 @@ public class UpdateStatusListener {
             "downloading", "applying", "self_test", "succeeded", "failed", "rolled_back");
 
     /**
+     * Das Urteil der GERÄTE-EIGENEN Signaturprüfung (OTA Stufe 2). Es steht
+     * neben {@code state}, weil beide verschiedene Fragen beantworten - siehe
+     * die Spalten-Doku in Migration V20260805000000. Ein unbekanntes Wort wird
+     * wie ein unbekannter Zustand VERWORFEN.
+     */
+    private static final Set<String> KNOWN_VERDICTS = Set.of("ok", "deferred", "rejected");
+
+    /**
      * A sanity bound on the free-text fields. They reach an operator surface,
      * and a device is not the authority on how long our columns are.
      */
@@ -231,6 +239,7 @@ public class UpdateStatusListener {
                     hasUpdate ? state(update.get("state")) : null,
                     hasUpdate ? text(update.get("reason")) : null,
                     hasUpdate ? text(update.get("last_known_good")) : null,
+                    hasUpdate ? verdict(update.get("target_verdict")) : null,
                     reportedAt);
         } finally {
             TenantContext.clear();
@@ -250,6 +259,18 @@ public class UpdateStatusListener {
         }
         if (!KNOWN_STATES.contains(raw)) {
             log.warn("unknown update state '{}' reported - dropped instead of stored", raw);
+            return null;
+        }
+        return raw;
+    }
+
+    private static String verdict(JsonNode node) {
+        String raw = text(node);
+        if (raw == null) {
+            return null;
+        }
+        if (!KNOWN_VERDICTS.contains(raw)) {
+            log.warn("unknown target verdict '{}' reported - dropped instead of stored", raw);
             return null;
         }
         return raw;

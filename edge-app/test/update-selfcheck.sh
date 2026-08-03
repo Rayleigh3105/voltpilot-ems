@@ -214,6 +214,51 @@ grep -q 'VP_EDGE_CORE_IMAGE' "$d/.env" && fail "released pin key still present"
 grep -qx 'VP_NODERED_PASSWORD=streng-geheim' "$d/.env" || fail "release dropped the secret"
 pass "env_set_pin: replaces only its key, keeps every other line + mode 600, release removes it"
 
+# --- 4b. --from-target (OTA Stufe 2): the assignment comes from the DEVICE. ---
+#
+# The property under test is the safety one: the digests that end up in a pin
+# come from the box's own VERIFIED assignment, and a non-ok verdict applies
+# NOTHING. The whole path is exercised offline against a canned /api/ota/target
+# body - no docker, no core, no network.
+bash "$UPDATE" --help 2>&1 | grep -q -- '--from-target' \
+  || fail "--help does not document --from-target"
+if bash "$UPDATE" --from-target --tag abc >/dev/null 2>&1; then
+  fail "--from-target must exclude --tag (two sources for one question)"
+fi
+if bash "$UPDATE" --from-target --latest >/dev/null 2>&1; then
+  fail "--from-target must exclude --latest"
+fi
+
+d="$tmp_root/fromtarget"; mkdir -p "$d"; cp "$INSTALL" "$UPDATE" "$d/"
+ok_json='{"has_target":true,"verdict":"ok","release":"edge-2026.08.0","release_seq":12,"running":false,"images":{"core":"reg.example/edge-app-core@sha256:aaaa","nodered":"reg.example/edge-app-nodered@sha256:bbbb"}}'
+got="$(cd "$d" && bash -c ". ./update.sh; target_image_ref '$ok_json' core")"
+[ "$got" = "reg.example/edge-app-core@sha256:aaaa" ] \
+  || fail "target_image_ref picked the wrong core digest: $got"
+got="$(cd "$d" && bash -c ". ./update.sh; target_image_ref '$ok_json' nodered")"
+[ "$got" = "reg.example/edge-app-nodered@sha256:bbbb" ] \
+  || fail "target_image_ref picked the wrong nodered digest: $got"
+# A key that is not in the images object must yield nothing (never a neighbour).
+got="$(cd "$d" && bash -c ". ./update.sh; target_image_ref '$ok_json' sidecar")"
+[ -z "$got" ] || fail "target_image_ref invented a ref for an absent artifact: $got"
+
+# A REJECTED assignment must abort before anything is pinned; a stubbed curl
+# stands in for the device.
+mkdir -p "$d/bin"
+cat > "$d/bin/curl" <<'STUB'
+#!/bin/sh
+echo '{"has_target":true,"verdict":"rejected","reason":"Kette gebrochen","release":"edge-2026.08.0"}'
+STUB
+chmod +x "$d/bin/curl"
+out="$(cd "$d" && PATH="$d/bin:$PATH" bash -c '. ./update.sh
+  FROM_TARGET=1; ACTIVE_WEB_PORT=8484
+  resolve_target_pin
+  echo "PIN=${PIN_CORE_IMAGE:-none}"' 2>&1 || true)"
+printf '%s\n' "$out" | grep -q 'nicht anwendbar' \
+  || fail "a rejected assignment must be refused loudly: $out"
+printf '%s\n' "$out" | grep -q 'PIN=' \
+  && fail "a rejected assignment must abort BEFORE anything is pinned"
+pass "--from-target: digests come from the device's verified assignment; a non-ok verdict applies nothing"
+
 # --- 5. docker compose validity of the merged templates (docker-gated). ---
 if docker compose version >/dev/null 2>&1; then
   d="$tmp_root/merge"; mkdir -p "$d"

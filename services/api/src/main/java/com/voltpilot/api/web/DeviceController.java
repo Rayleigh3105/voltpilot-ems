@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
+import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
 import com.voltpilot.api.purge.DevicePurgeService;
@@ -57,6 +58,7 @@ public class DeviceController {
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final ObjectProvider<EnrollmentService> enrollment;
     private final ObjectProvider<EntityRegistryPublisher> entityRegistry;
+    private final ObjectProvider<RolloutService> rollouts;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, AssetRepository assets,
@@ -64,7 +66,8 @@ public class DeviceController {
             DevicePurgeService purge,
             ObjectProvider<ProvisioningPublisher> provisioning,
             ObjectProvider<EnrollmentService> enrollment,
-            ObjectProvider<EntityRegistryPublisher> entityRegistry) {
+            ObjectProvider<EntityRegistryPublisher> entityRegistry,
+            ObjectProvider<RolloutService> rollouts) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
@@ -74,6 +77,7 @@ public class DeviceController {
         this.provisioning = provisioning;
         this.enrollment = enrollment;
         this.entityRegistry = entityRegistry;
+        this.rollouts = rollouts;
     }
 
     @GetMapping
@@ -224,6 +228,11 @@ public class DeviceController {
         // so an issued mTLS certificate loses topic access (best-effort; CRL
         // revocation stays the operator-run cryptographic backstop).
         enrollment.ifAvailable(e -> e.onDeviceUnclaimed(device.id()));
+        // OTA Stufe 2: die Update-Zuweisung stirbt mit dem Gerät. Ohne das
+        // wartete auf dem Broker eine retained Anweisung an eine Identität,
+        // die es nicht mehr gibt - dieselbe Hygiene wie beim retained
+        // Provisionierungs-Config und beim Entity-Push, best-effort.
+        rollouts.ifAvailable(r -> r.onDeviceUnclaimed(tenantId, device.siteId(), device.id()));
         return ResponseEntity.noContent().build();
     }
 

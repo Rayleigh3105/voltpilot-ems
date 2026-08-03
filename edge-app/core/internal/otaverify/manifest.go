@@ -124,11 +124,20 @@ func (m *Manifest) SupportsBackend(backend string) bool {
 // gehoert damit zu KEINEM Release - das ist die ehrliche Antwort, nicht ein
 // geratenes „ist wohl aktuell".
 func (m *Manifest) IsRunning(stamped string) bool {
+	return ReleaseIsRunning(m.Release, stamped)
+}
+
+// ReleaseIsRunning ist [Manifest.IsRunning] ohne Manifest - fuer die Stellen,
+// die nur einen NAMEN gegen die Build-Stempelung halten (der Nachweis, dass ein
+// beaufsichtigt angewandtes Release wirklich hier laeuft, bevor es als eigener
+// Stand aufgezeichnet wird). Eine zweite Kopie dieser Regel waere genau die
+// Sorte Drift, die „ist aktuell" irgendwann verschieden beantwortet.
+func ReleaseIsRunning(release, stamped string) bool {
 	stamped = strings.TrimSpace(stamped)
-	if stamped == "" || m.Release == "" {
+	if stamped == "" || release == "" {
 		return false
 	}
-	return stamped == m.Release || strings.HasPrefix(stamped, m.Release+"-")
+	return stamped == release || strings.HasPrefix(stamped, release+"-")
 }
 
 // ParseManifest liest ein Manifest und prueft seine STRUKTUR.

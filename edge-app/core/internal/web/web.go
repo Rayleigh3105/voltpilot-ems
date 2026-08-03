@@ -24,6 +24,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otatarget"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -166,6 +167,26 @@ type CalibrationController interface {
 	CurtailDecertify(sourceID string) (curtailcal.View, error)
 }
 
+// OtaController is the supervised half of OTA Stufe 2 „Verteilen": the box
+// tells the operator's `update.sh --from-target` WHAT the portal assigned and
+// records afterwards WHAT was actually applied.
+//
+// There is deliberately no Apply method: applying stays a human action at the
+// device in this stage (an autonomous apply path is Stufe 3, with a self-test,
+// a watchdog and a rollback target - none of which exists yet).
+type OtaController interface {
+	// OtaTarget describes the assignment. The digest-pinned image refs are
+	// only present when THIS device verified the signature chain - that is the
+	// point: the supervised run can never apply something unverified.
+	OtaTarget() otatarget.View
+	// OtaRecordApplied records a supervised apply. It only ever confirms what
+	// is demonstrably running (the release must match this build's stamp) and
+	// only ever raises the anti-rollback floor.
+	OtaRecordApplied(release string, releaseSeq int64) (otatarget.View, error)
+	// IsOtaRejection tells a refusal (400 + German reason) from a real failure.
+	IsOtaRejection(err error) bool
+}
+
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
 // its own clock drifts from the edge device's, plus the derived onboarding-gate
@@ -261,7 +282,7 @@ func envelope(st *state.Store, topo TopologyController, ac ActiveControlControll
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	despike DespikeController, hist *history.Ring, pl PlanController,
 	src SourcesController, topo TopologyController, ac ActiveControlController,
-	cal CalibrationController, mir MirrorController) http.Handler {
+	cal CalibrationController, mir MirrorController, ota OtaController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -826,8 +847,47 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		curtailResult(w, v, err)
 	}))
 
+	// ── OTA Stufe 2 „Verteilen" ───────────────────────────────────────────
+	//
+	// GET /api/ota/target - was hat das Portal dieser Box zugewiesen, und hat
+	// die Box es selbst verifiziert? `update.sh --from-target` liest genau
+	// hier die Artefakt-Digests, die es anwenden darf; sie sind NUR bei
+	// bestandener Signaturkette vorhanden, sodass der beaufsichtigte Lauf nie
+	// etwas Ungeprueftes anwenden kann.
+	mux.HandleFunc("GET /api/ota/target", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, ota.OtaTarget())
+	})
+
+	// POST /api/ota/applied - der beaufsichtigte Lauf meldet zurueck, WAS
+	// tatsaechlich angewandt wurde. Der Aufruf kann nur bestaetigen, was
+	// nachweislich laeuft (der Release muss zur Build-Stempelung dieses
+	// Prozesses passen), und hebt den Anti-Rollback-Boden nur je an - deshalb
+	// braucht er keine eigene Berechtigung: mehr als die Wahrheit
+	// aufzuschreiben kann er nicht.
+	mux.HandleFunc("POST /api/ota/applied", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Release    string `json:"release"`
+			ReleaseSeq int64  `json:"release_seq"`
+		}
+		if !readBody(r, &req) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungueltige Anfrage."})
+			return
+		}
+		view, err := ota.OtaRecordApplied(req.Release, req.ReleaseSeq)
+		if err != nil {
+			status := http.StatusInternalServerError
+			if ota.IsOtaRejection(err) {
+				status = http.StatusBadRequest
+			}
+			writeJSON(w, status, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, view)
+	})
+
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		snap := st.Get()
+		otaView := ota.OtaTarget()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"status": "UP",
@@ -846,6 +906,12 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			// verification only, nothing is ever applied.
 			"ota_state":  snap.OtaState,
 			"ota_reason": snap.OtaReason,
+			// Das ZUGEWIESENE Release (OTA Stufe 2) - so sieht ein Mensch an
+			// der Box ohne Portal, was ihr aufgetragen wurde und ob sie es
+			// selbst verifiziert hat. Leer = keine Zuweisung.
+			"ota_target":         otaView.Release,
+			"ota_target_seq":     otaView.ReleaseSeq,
+			"ota_target_verdict": otaView.Verdict,
 		})
 	})
 

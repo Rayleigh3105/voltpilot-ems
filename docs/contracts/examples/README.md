@@ -10,6 +10,7 @@ fixtures cover, and the fixtures are read by REAL test code - never decoration:
 |---|---|---|
 | `mqtt-schedule.*` | `../mqtt-schedule.schema.json` | `services/optimization/tests/test_contract.py` (jsonschema, both directions) and `edge-app/core/internal/plan/plan_test.go` (the Go executor parses the same bytes) |
 | `ota-release-manifest.*` | `../ota-release-manifest.schema.json` | `edge-app/core/internal/otaverify/verify_test.go` (`TestContractExamplesParseAsSpecified` - the REAL device-side parser reads the same bytes) |
+| `mqtt-ota-target.*` | `../mqtt-ota-target.schema.json` | `edge-app/core/internal/agent/ota_target_test.go` (`TestContractExampleEnvelopeIsParsedAsSpecified` - the REAL device-side envelope parser reads the same bytes) |
 
 Moving or renaming a fixture breaks those tests deliberately: the file path is
 part of the contract check.
@@ -42,3 +43,10 @@ would make a fixture invalid for the wrong reason):
   down the bytes (a tampered layer then fails the pull itself). A manifest that
   says "run whatever `:latest` points at today" would be a signed statement
   about mutable content - the one thing the signature is supposed to prevent.
+- `mqtt-ota-target.invalid.manifest-without-signature.json` - the envelope
+  carries `manifest_b64` but no `signature_b64`. Bytes without their detached
+  signature are a release that merely CALLS itself signed: the device would
+  have nothing to verify them against, and the whole point of the downlink is
+  that the box - not the cloud - decides whether to trust what it was handed.
+  Both fields are therefore required together (the same all-or-nothing rule the
+  register enforces in SQL, `edge_release_signed_pair`).

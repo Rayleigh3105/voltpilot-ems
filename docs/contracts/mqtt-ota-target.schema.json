@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/mqtt-ota-target.schema.json",
+  "title": "Cloud -> Edge Update-Ziel (OTA Stufe 2 „Verteilen“)",
+  "description": "Das der Anlage ZUGEWIESENE Release, RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/update. Additiv: ein Gerät ohne diese Stufe abonniert das Topic nicht und die Nachricht liegt ungelesen auf dem Broker.\n\nDIE EINE REGEL: das signierte Manifest reist BYTE-FÜR-BYTE unverändert. Es steht deshalb base64-kodiert in manifest_b64 (und die abgetrennte Signaturdatei in signature_b64) - eine JSON-Einbettung als Objekt würde beim Serialisieren Schlüsselreihenfolge, Leerraum und Zahlenformat normalisieren und die Signatur lautlos unprüfbar machen. Jede Station auf dem Weg (Register-Spalte `text`, dieser Umschlag, die Datei auf dem Gerät) reicht dieselben Bytes durch.\n\nDIE ZWEITE REGEL: der Umschlag ist ROUTING, keine Autorität. release/release_seq/channel/rollout_id dienen der Zuordnung und der Diagnose; JEDE Entscheidung des Geräts (welches Release, welche Ordnung, welche Artefakte, Anti-Rollback-Boden, Backend-Verträglichkeit) wird ausschließlich aus dem VERIFIZIERTEN Manifest gelesen. Widerspricht der Umschlag dem Manifest, gewinnt das Manifest - der Umschlag ist unsigniert.\n\nDas root-signierte Trust-Set reist in dieser Stufe bewusst NICHT mit: es ist der Widerrufs-Anker und wird beim TOFU-Crossover je Box abgelegt (docs/ota-signing.md §6). Ein Gerät ohne Trust-Set lehnt fail-closed ab und nennt das als Grund.\n\nEs gibt in dieser Stufe KEINEN autonomen Anwendungspfad auf dem Gerät: das Gerät verifiziert, legt das Ziel ab und meldet es. Angewandt wird beaufsichtigt (update.sh --from-target).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "type",
+    "tenant_id",
+    "site_id",
+    "device_id",
+    "release",
+    "release_seq",
+    "manifest_b64",
+    "signature_b64"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "type": {
+      "const": "update_target"
+    },
+    "tenant_id": {
+      "$ref": "#/$defs/uuid",
+      "description": "MUSS dem Topic entsprechen - das Gerät verwirft eine Zuweisung, deren Identität nicht auf sein eigenes Topic passt (dieselbe Regel wie bei Telemetrie und purge_data)."
+    },
+    "site_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "device_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "release": {
+      "type": "string",
+      "pattern": "^edge-\\d{4}\\.\\d{2}\\.\\d+$",
+      "description": "Nur zur Anzeige/Zuordnung. Der wirksame Wert steht im signierten Manifest."
+    },
+    "release_seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Nur zur Anzeige/Zuordnung. Die wirksame Ordnung steht im signierten Manifest."
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["canary", "stable"],
+      "description": "Der Ring, aus dem die Zuweisung stammt - reine Diagnose, das Gerät leitet daraus nichts ab."
+    },
+    "rollout_id": {
+      "$ref": "#/$defs/uuid",
+      "description": "Der Rollout, aus dem die Zuweisung stammt; fehlt bei einer Einzelgerät-Zuweisung."
+    },
+    "assigned_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "manifest_b64": {
+      "type": "string",
+      "minLength": 4,
+      "contentEncoding": "base64",
+      "description": "Base64 der EXAKTEN Bytes der release.json, so wie sie unterschrieben wurden. Niemals neu serialisieren, niemals umformatieren."
+    },
+    "signature_b64": {
+      "type": "string",
+      "minLength": 4,
+      "contentEncoding": "base64",
+      "description": "Base64 der EXAKTEN Bytes der abgetrennten release.json.sig."
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    }
+  },
+  "x-topics": {
+    "target": "ems/{tenant_id}/{site_id}/{device_id}/v2/update",
+    "retained": true,
+    "qos": 1,
+    "clear": "Eine LEERE retained Nachricht auf demselben Topic nimmt die Zuweisung zurück (MQTT 3.1.1 §3.3.1.3). Sie wird beim Unclaim eines Geräts und beim Zurücknehmen einer Zuweisung gesendet."
+  },
+  "x-failsafe": {
+    "no_trust_set": "Ohne root-signiertes Trust-Set auf dem Gerät ist die Kette nicht prüfbar - die Zuweisung wird ABGELEHNT und der Grund gemeldet, nie stillschweigend übernommen.",
+    "rejected": "Eine gebrochene Signaturkette ist ein Sicherheitsereignis: das Manifest wird nicht weitergereicht und das Gerät bleibt auf seinem Stand.",
+    "deferred": "Gültig signiert, gilt aber nicht für dieses Gerät (Backend, Anti-Rollback-Boden, Rückschritt) - eine Politik-Entscheidung mit deutschem Grund, kein Vorfall.",
+    "retained": "Ein Gerät, das offline war, erhält die Zuweisung beim nächsten Verbindungsaufbau - der Pull-Kanal ist der Broker, es gibt keinen Push."
+  }
+}

@@ -907,6 +907,10 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnEntities: a.onEntityRegistryPush,
 		OnPlanV2:   a.onPlanV2,
 		OnFlows:    a.onFlows,
+		// OTA Stufe 2: das zugewiesene Release kommt retained ueber denselben
+		// Link. Es wird geprueft, abgelegt und gemeldet - angewandt wird es
+		// beaufsichtigt (update.sh --from-target).
+		OnUpdateTarget: a.onUpdateTarget,
 		OnConnect: func(connected bool) {
 			a.State.Update(func(s *state.Snapshot) {
 				s.CloudConnected = connected

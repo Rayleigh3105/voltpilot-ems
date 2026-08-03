@@ -33,12 +33,13 @@ type Link struct {
 	// forget or condition on something.
 	version string
 
-	onSchedule func(payload []byte)
-	onCommand  func(payload []byte)
-	onEntities func(payload []byte)
-	onPlanV2   func(payload []byte)
-	onFlows    func(payload []byte)
-	onConnect  func(connected bool)
+	onSchedule     func(payload []byte)
+	onCommand      func(payload []byte)
+	onEntities     func(payload []byte)
+	onPlanV2       func(payload []byte)
+	onFlows        func(payload []byte)
+	onUpdateTarget func(payload []byte)
+	onConnect      func(connected bool)
 }
 
 // Options configure the link.
@@ -69,6 +70,15 @@ type Options struct {
 	// (docs/contracts/v2/flow-artifact.md §3). Empty payload = retained
 	// clear (every artifact tab removed). nil = flow deployment not wired.
 	OnFlows func(payload []byte)
+	// OnUpdateTarget receives the retained OTA update assignment on
+	// .../v2/update (docs/contracts/mqtt-ota-target.schema.json, OTA Stufe 2).
+	// An EMPTY payload IS forwarded - it withdraws the assignment
+	// (retained-clear, e.g. on unclaim). nil = the OTA downlink is not wired.
+	//
+	// This delivers the SIGNED manifest bytes; it does NOT authorize anything.
+	// The device verifies against its own baked root before the assignment
+	// means a thing, and applying stays supervised in this stage.
+	OnUpdateTarget func(payload []byte)
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -92,7 +102,7 @@ func (o Options) brokerURL() string {
 func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, version: o.Version, onSchedule: o.OnSchedule,
 		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
-		onFlows: o.OnFlows, onConnect: o.OnConnect}
+		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget, onConnect: o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -171,6 +181,19 @@ func New(o Options) (*Link, error) {
 				l.onFlows(msg.Payload())
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 flows subscribe failed", "topic", flowsTopic, "err", tok.Error())
+			}
+		}
+		// The retained OTA update assignment (OTA Stufe 2), in the same v2/#
+		// subtree the per-device ACL already covers (D-2). Retained delivery is
+		// the whole distribution mechanism: a box that was offline when the
+		// rollout started picks its assignment up right here on reconnect -
+		// there is no push, and there never can be one behind NAT.
+		if l.onUpdateTarget != nil {
+			updTopic := l.topic("v2/update")
+			if tok := c.Subscribe(updTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				l.onUpdateTarget(msg.Payload())
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 update subscribe failed", "topic", updTopic, "err", tok.Error())
 			}
 		}
 		if l.onConnect != nil {
@@ -426,6 +449,15 @@ type UpdateSummary struct {
 	State         string `json:"state"`
 	Reason        string `json:"reason,omitempty"`
 	LastKnownGood string `json:"last_known_good,omitempty"`
+	// TargetVerdict is the VERIFIER's own verdict on the assigned release
+	// (ok | deferred | rejected), added in OTA Stufe 2. Absent = no assignment.
+	//
+	// It stands NEXT TO State because they answer different questions: State
+	// is the state of the APPLICATION, TargetVerdict the state of the CHECK.
+	// In this stage "verified, waiting for a human" and "valid but not for this
+	// device" are both State=deferred - only this field separates them
+	// machine-readably, so no surface has to grep the German reason.
+	TargetVerdict string `json:"target_verdict,omitempty"`
 }
 
 // FlowsSummary is the additive status-heartbeat block acknowledging the

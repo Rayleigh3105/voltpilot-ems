@@ -54,7 +54,21 @@ type otaVerdict struct {
 	// release/seq sind nur bei bestandener Signaturpruefung gesetzt.
 	release string
 	seq     int64
-	// stamp ist der ModTime+Groessen-Stempel der Manifestdatei - eine
+	// target/targetSeq/channel beschreiben die CLOUD-Zuweisung (Stufe 2) und
+	// sind leer, solange keine vorliegt. Sobald ein Manifest geprueft ist,
+	// stammen sie aus DIESEM, nicht aus dem unsignierten Umschlag.
+	target    string
+	targetSeq int64
+	channel   string
+	// targetVerdict ist das Urteil des Verifizierers ueber die Zuweisung
+	// (ok | deferred | rejected), leer ohne Zuweisung. Es steht NEBEN state,
+	// weil beide verschiedene Fragen beantworten: state ist der Zustand der
+	// Anwendung, targetVerdict der der PRUEFUNG. In dieser Stufe ist
+	// „verifiziert, wartet auf den Menschen" und „gilt hier nicht" beides
+	// state=deferred - nur targetVerdict trennt sie maschinenlesbar, damit
+	// keine Oberflaeche den deutschen Grund nach Stichworten durchsuchen muss.
+	targetVerdict string
+	// stamp ist der ModTime+Groessen-Stempel der geprueften Quelle - eine
 	// unveraenderte Datei wird nicht bei jedem Tick neu verifiziert.
 	stamp string
 }
@@ -100,8 +114,18 @@ func (a *Agent) otaCheckLoop(ctx context.Context) {
 }
 
 // otaCheckOnce liest die abgelegten Dateien und verifiziert sie EINMAL.
+//
+// PRAEZEDENZ (Stufe 2): eine CLOUD-Zuweisung gewinnt vor dem beaufsichtigten
+// Dateipfad der Stufe 1. Beide koennen gleichzeitig existieren - der Dateipfad
+// bleibt der Weg fuer den TOFU-Test und fuer eine Box ohne Cloud-Link -, aber
+// es darf nur EIN Urteil im Herzschlag stehen, und das der Zuweisung ist das,
+// gegen das der Rollout im Portal misst.
 func (a *Agent) otaCheckOnce() {
-	dir := filepath.Join(a.Cfg.DataDir, otaDir)
+	if v, ok := a.otaCheckTarget(); ok {
+		a.setOtaVerdict(v)
+		return
+	}
+	dir := a.otaDir()
 	fi, err := os.Stat(filepath.Join(dir, otaManifestFile))
 	if err != nil {
 		// Kein abgelegtes Release ist der NORMALFALL, kein Fehler: idle, ohne
@@ -204,6 +228,41 @@ func (a *Agent) otaVerify(dir string) otaVerdict {
 	return out
 }
 
+// otaDir ist das Ablageverzeichnis (<data_dir>/ota).
+func (a *Agent) otaDir() string {
+	return filepath.Join(a.Cfg.DataDir, otaDir)
+}
+
+// otaForceRecheck verwirft den Stempel, sodass der naechste Durchlauf wirklich
+// neu verifiziert (nach einem aufgezeichneten Anwenden hat sich der
+// Anti-Rollback-Boden geaendert, die Datei aber nicht).
+func (a *Agent) otaForceRecheck() {
+	a.ota.mu.Lock()
+	a.ota.v.stamp = ""
+	a.ota.mu.Unlock()
+	a.otaCheckOnce()
+}
+
+// otaWriteCurrent schreibt den eigenen Stand atomar (tmp + rename).
+//
+// Bis Stufe 2 schrieb ihn NICHTS - erst ein beaufsichtigt angewandtes Update
+// darf ihn setzen, und nur je nach OBEN (siehe Agent.OtaRecordApplied).
+func (a *Agent) otaWriteCurrent(dir string, c otaCurrent) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, otaCurrentFile)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(raw, '\n'), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 func (a *Agent) otaReadCurrent(dir string) *otaCurrent {
 	raw, err := os.ReadFile(filepath.Join(dir, otaCurrentFile))
 	if err != nil {
@@ -238,13 +297,19 @@ func (a *Agent) setOtaVerdict(v otaVerdict) {
 
 // OtaVerdict liefert Zustand + Grund fuer die lokalen Oberflaechen (/health).
 func (a *Agent) OtaVerdict() (state, reason string) {
+	v := a.otaSnapshot()
+	return v.state, v.reason
+}
+
+// otaSnapshot liefert das aktuelle Urteil mit aufgefuelltem Vorgabe-Zustand.
+func (a *Agent) otaSnapshot() otaVerdict {
 	a.ota.mu.Lock()
 	defer a.ota.mu.Unlock()
-	st := a.ota.v.state
-	if st == "" {
-		st = cloud.UpdateStateIdle
+	v := a.ota.v
+	if v.state == "" {
+		v.state = cloud.UpdateStateIdle
 	}
-	return st, a.ota.v.reason
+	return v
 }
 
 // updateSummary builds the additive `update` heartbeat block.
@@ -270,12 +335,40 @@ func (a *Agent) OtaVerdict() (state, reason string) {
 // TRANSIENT (it describes the check while it runs), and reporting it afterwards
 // would claim an ongoing activity that does not exist - the same discipline
 // that keeps the block free of a fabricated target.
+// Seit Stufe 2 ist ein Teil davon FUELLBAR - aber jedes Feld nur aus einer
+// Quelle, die es wirklich belegt:
+//
+//   - Target/TargetSeq/Channel stehen NUR, wenn eine Cloud-Zuweisung vorliegt,
+//     und stammen dann aus dem VERIFIZIERTEN Manifest (der Umschlag ist
+//     unsigniert; wo die Pruefung scheiterte, bleibt sein Wert stehen, aber
+//     TargetVerdict sagt „rejected" dazu).
+//   - CurrentSeq kommt aus dem aufgezeichneten eigenen Stand - und AUCH dann
+//     nur, wenn dieser Stand die Build-Stempelung DIESES Prozesses benennt.
+//     Damit ist er kein geglaubter Eintrag mehr, sondern eine Aussage ueber
+//     das, was nachweislich laeuft: eine von Hand hingelegte current.json
+//     eines fremden Standes faerbt die Flottensicht nicht ein.
+//   - LastKnownGood bleibt weiterhin LEER: es gibt in dieser Stufe keinen
+//     Rollback-Mechanismus, und die laufende Version als „last known good"
+//     auszugeben, erfaende ein Rueckfallziel.
 func (a *Agent) updateSummary() *cloud.UpdateSummary {
-	st, reason := a.OtaVerdict()
-	return &cloud.UpdateSummary{
-		Backend: cloud.UpdateBackendCompose,
-		Current: Version,
-		State:   st,
-		Reason:  reason,
+	v := a.otaSnapshot()
+	sum := &cloud.UpdateSummary{
+		Backend:       cloud.UpdateBackendCompose,
+		Current:       Version,
+		State:         v.state,
+		Reason:        v.reason,
+		Target:        v.target,
+		Channel:       v.channel,
+		TargetVerdict: v.targetVerdict,
 	}
+	if v.targetSeq > 0 {
+		seq := v.targetSeq
+		sum.TargetSeq = &seq
+	}
+	if cur := a.otaReadCurrent(a.otaDir()); cur != nil &&
+		otaverify.ReleaseIsRunning(cur.Release, Version) {
+		seq := cur.ReleaseSeq
+		sum.CurrentSeq = &seq
+	}
+	return sum
 }
