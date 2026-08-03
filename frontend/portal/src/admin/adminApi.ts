@@ -1,4 +1,5 @@
 import { request, type CreateSiteInput, type Site } from '../api';
+import type { EdgeUpdates } from '../adminEdgeUpdates';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -203,5 +204,59 @@ export const adminApi = {
   deleteProvisionedDevice: (externalRef: string) =>
     request<void>(`/api/v1/admin/provisioned-devices/${encodeURIComponent(externalRef)}`, {
       method: 'DELETE',
+    }),
+
+  // ── OTA Stufe 2 „Verteilen" ─────────────────────────────────────────────
+  //
+  // Alle Schreibwege sind platform-admin-gefenced; die Ehrlichkeits- und
+  // Freigabe-REGELN stehen server-seitig (RolloutStates/BakeGate) - das Portal
+  // rendert sie, es entscheidet nichts nach.
+
+  /** Alles, was die Seite „Edge-Updates" zeigt, in EINEM Aufruf. */
+  edgeUpdates: () => request<EdgeUpdates>('/api/v1/admin/edge-updates'),
+
+  /** Rollout aus einem SIGNIERTEN Register-Eintrag starten (409 sonst). */
+  createRollout: (input: {
+    releaseSeq: number;
+    channel?: string;
+    waves: { name: string; devices: string[] }[];
+  }) =>
+    request<{ rolloutId: string }>('/api/v1/admin/rollouts', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /** Nächste Welle - der Server verweigert sie (409), solange das Bake offen ist. */
+  promoteRollout: (rolloutId: string) =>
+    request<void>(`/api/v1/admin/rollouts/${rolloutId}/promote`, { method: 'POST' }),
+
+  pauseRollout: (rolloutId: string) =>
+    request<void>(`/api/v1/admin/rollouts/${rolloutId}/pause`, { method: 'POST' }),
+
+  resumeRollout: (rolloutId: string) =>
+    request<void>(`/api/v1/admin/rollouts/${rolloutId}/resume`, { method: 'POST' }),
+
+  /** Not-Aus. Endgültig: „weitermachen" ist ein neuer, bewusster Rollout. */
+  haltRollout: (rolloutId: string, reason?: string) =>
+    request<void>(`/api/v1/admin/rollouts/${rolloutId}/halt`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason ?? 'Von Hand eingefroren.' }),
+    }),
+
+  /** Einzelgerät: Release + Kanal + Pin setzen. */
+  setUpdateTarget: (deviceId: string, input: {
+    releaseSeq: number;
+    channel?: string;
+    pinned?: boolean;
+  }) =>
+    request<void>(`/api/v1/admin/devices/${deviceId}/update-target`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /** Zuweisung zurücknehmen (Zeile UND retained Nachricht). */
+  revertUpdateTarget: (deviceId: string) =>
+    request<void>(`/api/v1/admin/devices/${deviceId}/update-target/revert`, {
+      method: 'POST',
     }),
 };

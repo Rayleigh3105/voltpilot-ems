@@ -29,6 +29,7 @@ export type PageId =
   | 'mandanten'
   | 'benutzer'
   | 'geraete-registry'
+  | 'edge-updates'
   | 'optimizer'
   | 'flows';
 
@@ -162,6 +163,9 @@ export const PLATFORM_PAGES: PageDef[] = [
   { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
   { id: 'geraete-registry', label: 'Geräte-Registry', icon: 'list', adminOnly: true },
+  // OTA Stufe 2: Releases, der laufende Rollout, die Flotten-Matrix und das
+  // Audit-Journal - die EINE neue Seite dieser Stufe (Scout §7.1).
+  { id: 'edge-updates', label: 'Edge-Updates', icon: 'refresh-cw', adminOnly: true },
   { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
   { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
 ];
