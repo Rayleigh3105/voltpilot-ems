@@ -44,3 +44,8 @@ infra/local/data/
 
 # Local-only Maven settings to bypass a corporate mirror (see AGENTS.md build notes)
 .mvn-central-settings.xml
+
+# OTA-Fehlerinjektions-Matrix: Wegwerf-Arbeitsstand (Quellkopie, Schluessel,
+# Belege). Hier entstehen private Wegwerf-Schluessel - sie gehoeren NIE ins Git.
+edge-app/test/ota-soak/.work/
+edge-app/test/ota-soak/last-failure/

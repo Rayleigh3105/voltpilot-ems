@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+# VoltPilot Edge-App: der Apply-Sidecar `vp-edge-updater` (OTA Stufe 3).
+#
+# Er besitzt `/var/run/docker.sock` und ist der EINZIGE, der die Container der
+# Edge-App tauscht. Bewusst KEIN Netz, KEIN Host-Port, KEINE Identitaet - der
+# einzige Weg nach draussen ist der Docker-Socket (und dahinter zieht der
+# DAEMON die Images, nicht dieser Container).
+#
+# Warum die docker-CLI mit an Bord ist: der Tausch benutzt genau den Hebel, den
+# der beaufsichtigte Weg seit jeher benutzt (`.env`-Pin + `docker compose up -d
+# <dienst>`, siehe update.sh apply_image_pin). Ein nachgebauter Aufruf der
+# Engine-API waere ein zweiter, abweichender Tausch-Mechanismus - und damit
+# genau die Drift, die eine Ruecknahme im Ernstfall unbrauchbar macht.
+#
+# Gebaut wird aus DEMSELBEN Modul wie der Kern, damit Sidecar und Kern
+# `internal/otaverify` und `internal/otaapply` woertlich teilen: „unabhaengig
+# verifizieren" heisst zwei Prozesse, nicht zwei Implementierungen derselben
+# Regel.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS TARGETARCH
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath \
+      -ldflags "-s -w -X main.Version=$VERSION" \
+      -o /out/vp-edge-updater ./cmd/vp-edge-updater
+
+FROM alpine:3.20
+# docker-cli + das compose-Plugin: der Sidecar spricht ueber den gemounteten
+# Socket mit dem Daemon des HOSTS. ca-certificates braucht die CLI fuer den
+# Registry-Zugriff des Daemons nicht - sie schickt nur den Auth-Header -, aber
+# ohne sie meldet sich jeder TLS-Pfad unklar.
+RUN apk add --no-cache docker-cli docker-cli-compose ca-certificates
+COPY --from=build /out/vp-edge-updater /usr/local/bin/vp-edge-updater
+# BEWUSST als root: der Socket gehoert auf dem Host root:docker, und eine
+# gid-Angleichung je Geraet waere ein Einrichtungsschritt, der beim ersten
+# abweichenden Host still bricht. Die Angriffsflaeche wird stattdessen dort
+# klein gehalten, wo sie wirklich zaehlt: kein Netz, kein Port, kein Zuhoerer,
+# und gehandelt wird nur auf selbst signaturgepruefte Eingaben.
+VOLUME /data
+ENTRYPOINT ["vp-edge-updater"]

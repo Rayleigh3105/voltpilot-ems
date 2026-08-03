@@ -475,6 +475,35 @@ func TestContractExamplesParseAsSpecified(t *testing.T) {
 	}
 }
 
+// Das ADDITIVE Eil-Feld der Stufe 3 (schema_version bleibt 1.0): es reist
+// innerhalb der signierten Bytes, weil nur der Owner ein Release fuer eilig
+// erklaeren darf - der unsignierte Umschlag koennte es sonst behaupten.
+func TestTheUrgentFlagRidesInsideTheSignedManifestAndDefaultsToFalse(t *testing.T) {
+	m := validManifest()
+	if m.Urgent {
+		t.Fatal("ohne Angabe ist ein Release NICHT eilig - der geduldige Weg ist die Vorgabe")
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// omitempty: ein gewoehnliches Release traegt das Feld gar nicht, also
+	// bleiben die Bytes eines Stufe-1/2-Manifests zeichengleich.
+	if strings.Contains(string(raw), "urgent") {
+		t.Fatalf("ein nicht eiliges Release darf das Feld nicht tragen: %s", raw)
+	}
+
+	m.Urgent = true
+	raw, _ = json.Marshal(m)
+	back, err := ParseManifest(raw)
+	if err != nil {
+		t.Fatalf("ein eiliges Manifest muss lesbar sein: %v", err)
+	}
+	if !back.Urgent {
+		t.Fatal("das Eil-Feld ist auf dem Weg verloren gegangen")
+	}
+}
+
 func hasNote(v Verdict, substr string) bool {
 	for _, n := range v.Notes {
 		if strings.Contains(n, substr) {

@@ -82,6 +82,11 @@ readonly HOSTNET_MARKER="# @voltpilot-edge-install: generated docker-compose.hos
 # DRY_RUN / PRINT_COMPOSE are initialized by the sourced install.sh).
 PRINT_HOSTNET=0
 FORCE_HOSTNET=0
+# OTA_ACTIVE: der Apply-Sidecar (Profil "ota") laeuft bzw. soll einbezogen
+# werden. FORCE_OTA ist der Schalter fuer den Fall, dass die Container gerade
+# gestoppt sind und die Erkennung deshalb nichts sieht.
+OTA_ACTIVE=0
+FORCE_OTA=0
 DOCKER_AVAILABLE=0
 MODEL=""                 # installer | repo | foreign
 HOSTNET_ACTIVE=0
@@ -170,6 +175,8 @@ das Gerät folgt ':latest'):
       --latest         Alle Pins lösen: zurück auf ':latest' (Standard).
 
 ${C_BOLD}Portal-Zuweisung anwenden${C_RESET} (OTA Stufe 2 - Verteilen):
+      --ota            Das OTA-Profil einbeziehen, auch wenn der Sidecar gerade
+                       nicht läuft (sonst wird es automatisch erkannt).
       --from-target    Genau das Release anwenden, das das Portal DIESEM Gerät
                        zugewiesen hat. Die Artefakt-Digests kommen aus
                        /api/ota/target - und ausschließlich dann, wenn das
@@ -237,6 +244,7 @@ parse_args() {
         PIN_REQUESTED=1 ;;
       --latest) PIN_RELEASE=1; PIN_REQUESTED=1 ;;
       --from-target) FROM_TARGET=1; PIN_REQUESTED=1 ;;
+      --ota) FORCE_OTA=1 ;;
       *) err "Unbekannte Option: $1"; echo; usage; exit 2 ;;
     esac
     shift
@@ -494,6 +502,29 @@ detect_hostnet() {
   esac
 }
 
+# Laeuft der OTA-Apply-Sidecar auf dieser Box (Profil "ota")?
+#
+# TRAGEND, nicht Komfort: `up -d --remove-orphans` unten wuerde einen laufenden
+# Container, dessen Profil gerade nicht aktiv ist, als "Waise" ENTFERNEN. Ohne
+# diese Erkennung nimmt ein gewoehnliches Update einer Box, auf der die
+# Autonomie eingerichtet ist, genau die Autonomie wieder weg - stillschweigend.
+detect_ota_profile() {
+  OTA_ACTIVE=0
+  if [ "$FORCE_OTA" -eq 1 ]; then
+    OTA_ACTIVE=1
+    ok "OTA-Sidecar wird einbezogen (--ota)."
+    return
+  fi
+  [ "$DOCKER_AVAILABLE" -eq 1 ] || return 0
+  local cid
+  cid="$(docker compose --project-directory "$TARGET_DIR" -f "$COMPOSE_FILE" --profile ota \
+         ps -q updater 2>/dev/null | head -n1 || true)"
+  if [ -n "$cid" ]; then
+    OTA_ACTIVE=1
+    ok "OTA-Apply-Sidecar laeuft auf dieser Box - das Profil wird einbezogen."
+  fi
+}
+
 detect_deployment() {
   step "2/5  Bestehendes Deployment erkennen"
   if [ ! -f "$COMPOSE_FILE" ]; then
@@ -532,6 +563,11 @@ detect_deployment() {
   COMPOSE_ARGS=(-f "$COMPOSE_FILE")
   if [ "$HOSTNET_ACTIVE" -eq 1 ]; then
     COMPOSE_ARGS+=(-f "$HOSTNET_FILE")
+  fi
+
+  detect_ota_profile
+  if [ "$OTA_ACTIVE" -eq 1 ]; then
+    COMPOSE_ARGS+=(--profile ota)
   fi
 }
 
@@ -793,7 +829,9 @@ update_containers() {
       fi
     fi
     info "Ziehe die aktuellen Registry-Images ..."
-    if ! dcu pull core nodered; then
+    local pull_services=(core nodered)
+    [ "$OTA_ACTIVE" -eq 1 ] && pull_services+=(updater)
+    if ! dcu pull "${pull_services[@]}"; then
       err "Das Ziehen der Images ist fehlgeschlagen."
       info "Häufige Ursachen: nicht an ${REGISTRY} angemeldet, keine Netzverbindung."
       info "Die laufenden Container sind unverändert - es wurde nichts gestoppt."

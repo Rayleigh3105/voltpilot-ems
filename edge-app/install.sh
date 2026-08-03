@@ -39,6 +39,7 @@ readonly PORTAL_URL="https://portal.voltpilot.de"
 # (that is how a digest pin - the clean per-device rollback - is expressed).
 readonly CORE_REPO="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core"
 readonly NODERED_REPO="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered"
+readonly UPDATER_REPO="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-updater"
 readonly DEF_VP_EDGE_IMAGE_TAG="latest"
 # Marker on the first line of a compose file WE generated, so a re-run can tell
 # our file apart from a hand-edited one and never clobbers a foreign file.
@@ -417,6 +418,32 @@ services:
       # Node-RED editor (LAN, behind adminAuth): the VoltPilot service
       # access for per-customer flow wiring. NOT for customers.
       - "\${VP_NODERED_PORT:-1881}:1880"
+
+  # --- Profil "ota": der Apply-Sidecar (OTA Stufe 3 "Autonom") ------------
+  # ZWEI unabhaengige Tore, und beide sind zu:
+  #   1. Das Profil - ohne "--profile ota" laeuft dieser Container gar nicht,
+  #      und die Box verhaelt sich zeichengleich wie eine ohne ihn.
+  #   2. Der Schalter je Geraet (/data/ota/autonomy.json bzw.
+  #      VP_OTA_AUTONOMOUS) - Vorgabe AUS. Ohne ihn beobachtet und meldet der
+  #      Sidecar nur; er fuehrt kein einziges veraenderndes docker-Kommando aus.
+  # Er besitzt den Docker-Socket und hat deshalb BEWUSST kein Netz und keinen
+  # Host-Port. Betreiber-Anleitung: docs/ota-autonomie.md
+  updater:
+    profiles: [ota]
+    image: \${VP_EDGE_UPDATER_IMAGE:-${UPDATER_REPO}:\${VP_EDGE_IMAGE_TAG:-latest}}
+    pull_policy: always
+    restart: unless-stopped
+    network_mode: none
+    environment:
+      VP_OTA_AUTONOMOUS: \${VP_OTA_AUTONOMOUS:-false}
+      VP_OTA_NEUTRAL_VERIFIED: \${VP_OTA_NEUTRAL_VERIFIED:-}
+      VP_OTA_WATCHDOG_SECONDS: \${VP_OTA_WATCHDOG_SECONDS:-600}
+      VP_OTA_DISK_GUARD_MB: \${VP_OTA_DISK_GUARD_MB:-2048}
+      VP_OTA_COMPOSE_FILES: \${VP_OTA_COMPOSE_FILES:-docker-compose.yml}
+    volumes:
+      - vp-edge-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/deploy
 
 volumes:
   vp-edge-data:

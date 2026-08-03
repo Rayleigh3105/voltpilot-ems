@@ -45,8 +45,21 @@ jobs:
         include:
           - component: edge-app-core
             context: ./edge-app/core
+            dockerfile: ./edge-app/core/Dockerfile
           - component: edge-app-nodered
             context: ./edge-app/nodered
+            dockerfile: ./edge-app/nodered/Dockerfile
+          # Der OTA-Apply-Sidecar (Stufe 3). Er teilt sich den Build-Kontext mit
+          # dem Kern, weil er aus DEMSELBEN Go-Modul stammt: nur so teilen
+          # Sidecar und Kern `internal/otaverify` und `internal/otaapply`
+          # woertlich - „unabhaengig verifizieren" heisst zwei Prozesse, nicht
+          # zwei Implementierungen derselben Regel.
+          #
+          # Er steht bewusst NICHT in der Artefakt-Liste eines Releases (siehe
+          # den manifest-Job unten): der Sidecar tauscht sich nie selbst.
+          - component: edge-app-updater
+            context: ./edge-app/core
+            dockerfile: ./edge-app/core/Dockerfile.updater
 
     steps:
       - name: Checkout Repository
@@ -84,7 +97,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
@@ -103,6 +116,12 @@ jobs:
   # was unter diesem Tag tatsaechlich liegt, und der Weg spart die
   # Artefakt-Verdrahtung ueber eine Matrix hinweg. Gepinnt wird der Digest der
   # MANIFEST-LISTE (multi-arch), also genau das, was ein Geraet zieht.
+  #
+  # ⚠ Der `edge-app-updater` steht mit ABSICHT NICHT im Manifest. Ein Release
+  # beschreibt, was der Sidecar ANWENDET - und er wendet sich nie selbst an
+  # (otaapply.UpdaterComponent laesst ihn aus der Artefakt-Liste heraus, laut
+  # protokolliert). Seine eigenen Aktualisierungen sind selten, beaufsichtigt
+  # und out-of-band: `docker compose --profile ota up -d updater`.
   manifest:
     name: Unsigniertes Release-Manifest
     needs: build

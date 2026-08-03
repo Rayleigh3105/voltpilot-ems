@@ -22,6 +22,8 @@ func cmdManifest(args []string) error {
 	validUntil := fs.String("valid-until", "", "advisory (RFC 3339), nie ein Ablehnungsgrund")
 	allowDowngrade := fs.Bool("allow-downgrade", false, "bewusster Tief-Rollback freigeben")
 	notes := fs.String("notes", "", "Release-Notiz fuer Register und Oberflaeche")
+	urgent := fs.Bool("urgent", false,
+		"Eil-Release: der autonome Tausch verschiebt nicht, sondern stellt die Anlage zuerst bewusst neutral")
 	out := fs.String("out", "release.json", "Zieldatei")
 	var artifacts stringList
 	fs.Var(&artifacts, "artifact", "name=ref@sha256:… (mehrfach angebbar, Pflicht)")
@@ -74,6 +76,7 @@ Beispiel:
 		Compat:         otaverify.Compat{Backends: backends},
 		SigningKeyID:   *keyID,
 		Notes:          *notes,
+		Urgent:         *urgent,
 	}
 	for _, a := range artifacts {
 		name, ref, ok := strings.Cut(a, "=")

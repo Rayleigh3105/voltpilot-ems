@@ -780,6 +780,83 @@ Betreiber-Ablauf: `docs/ota-signing.md` §6b. Was hier gelten muss:
   Digests, Boden = `deferred`, fremde Identitaet verworfen, Ruecknahme,
   Aufzeichnen nur des nachweislich Laufenden), Kontrakt-Beispiele PER PFAD.
 
+## OTA Stufe 3: das Geraet wendet SELBST an - gebaut, nirgends eingeschaltet
+
+`internal/otaapply` (rein) + `internal/otaupdater` (Docker) + `cmd/vp-edge-updater`
+(der Sidecar) + `agent/ota_autonomy.go` (die Kern-Haelfte). Vollstaendiges Bild
+inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
+[`docs/ota-autonomie.md`](../docs/ota-autonomie.md). Was HIER gelten muss:
+
+- **ZWEI unabhaengige Tore, beide zu.** Das Compose-Profil `ota` (ohne
+  `--profile ota` laeuft der Container gar nicht) UND der Schalter je Geraet
+  (`<data>/ota/autonomy.json`, Vorgabe AUS; `VP_OTA_AUTONOMOUS` ist der Not-Ein
+  fuer den Laborstand). Ohne beides ist die Box zeichengleich wie vorher -
+  `TestWithAutonomyOffNotASingleDockerCommandRuns` und der Matrix-Fall
+  `autonomy_off` nageln das fest.
+- **Der Sidecar glaubt dem Kern NICHTS.** Er liest die Manifest-Bytes selbst
+  und verifiziert gegen SEINE eingebackene Wurzel und SEINEN Boden. Die EINE
+  Stelle, die beide aufrufen, ist `otaapply.VerifyManifest` - „unabhaengig
+  verifizieren" heisst zwei PROZESSE, nicht zwei Implementierungen derselben
+  Regel. **Es gibt keinen env-/Pfad-Schalter fuer die Wurzel** (genau die
+  Uebernahme, gegen die die kalt/heiss-Trennung gebaut ist); `Options.Roots` ist
+  ausschliesslich die Test-Naht, nil laedt die eingebackene.
+- **Nur der KERN darf bezeugen, was laeuft** - deshalb schreibt nur er
+  `current.json`, und zwar nur gegen seine eigene Build-Stempelung. Der Sidecar
+  hat Container getauscht; ob danach der richtige Stand LAEUFT, kann er nicht
+  wissen.
+- **Das Protokoll ist ein DATEI-Kanal in `/data/ota`, jede Datei mit GENAU EINEM
+  Schreiber** (Kern: `target.json`/`current.json`/`self-test.json`/`core-signal.json`;
+  Sidecar: `updater-state.json`/`pending-confirm.json`/`lkg.json`/`failed.json`;
+  Betreiber: `autonomy.json`). Alles tmp+rename. Der Sidecar hat kein Netz und
+  keinen Port - er KANN den Kern nicht anrufen.
+- **Sequenziert, nie beide Failsafe-Kopien zugleich weg:** getauscht wird nur,
+  was sich UNTERSCHEIDET, und immer nur EINE Komponente je Durchlauf (`core`,
+  dann `nodered`). Gepinnt wird ueber denselben `.env`-Hebel wie
+  `update.sh apply_image_pin`, gestartet mit `--pull never` (die Images sind
+  vorher geholt UND gegen ihren Digest geprueft; beim ZURUECKNEHMEN waere ein
+  Pull sogar ein Fehler - ein Rueckfall muss ohne Registry gehen).
+- **Das Rueckfallziel ist DREIFACH gesichert:** `:lkg`-Tag, ein GESTOPPTER
+  Halter-Container (`docker create`, nie gestartet - genau das verschont ein
+  `docker system prune -a`, ein blosser Tag NICHT; die Matrix belegt die Regel
+  mit einem label-gefilterten echten `prune -a`) und ein `docker save`-Archiv.
+  **⚠ Ein Archiv kann keinen Registry-Digest zurueckbringen** (live
+  nachgemessen: `docker load` legt das Image ohne RepoDigest ab) - nach einem
+  echten Aufraeumen wird deshalb auf den lokalen `:lkg`-TAG gepinnt, und der
+  Grund sagt das.
+- **⚠ Der Plattenwaechter rechnet mit `f_frsize`, nicht mit `f_bsize`**
+  (`otaupdater/disk_linux.go`): `f_bavail` zaehlt in `f_frsize`-Einheiten. Auf
+  ext4 sind beide 4096, auf einem virtiofs-Mount meldet `f_bsize` 256 KiB - der
+  Waechter sah dort 9,5 TiB statt 38 GiB freien Platz.
+- **Der Selbsttest ist nie vakuum:** `agent.otaSyntheticControlDryRun` faehrt
+  die ECHTE `guards.Clamp`-Kette dieses NEUEN Binaers gegen ihre tragenden
+  Zusagen (Nennband, SoC-Decke/-Boden, EEG-Solar-Klemme, §14a-Huelle) - immer,
+  auch nachts und im Leerlauf. **⚠ `guards.Reading`s Nullwert
+  `GridLimitKw: 0` heisst „§14a-Grenze 0 kW", nicht „unbekannt"** (unbekannt ist
+  `guards.Unknown()`); eine mit `{}` gebaute Messung laesst den Envelope-Guard
+  gegen eine Null-Grenze rechnen - im Trockenlauf genau so aufgefallen.
+- **Der Interlock + `state.ModeOtaNeutral`:** solange ein von neutral
+  abweichender Sollwert laeuft, wird verschoben; ein EILIGES Release
+  (`urgent` im SIGNIERTEN Manifest) laesst den Kern die Anlage zuerst bewusst
+  neutral stellen. `otaNeutralOverride` sitzt in `applySetpoint` NACH der
+  Kalibrierung (ein First-Light-Test gewinnt) und hat einen harten Deckel von
+  10 min plus eine 60-s-TTL auf die Bitte - ein verschwundener Sidecar parkt die
+  Anlage nie.
+- **Was einmal zurueckgerollt wurde, laeuft NIE wieder von selbst an**
+  (`failed.json`). Ohne das begann der naechste Takt denselben Tausch von vorn -
+  die Zuweisung liegt ja noch. In der Fehlerinjektions-Matrix aufgefallen.
+- **`update.sh` muss das `ota`-Profil kennen:** `up -d --remove-orphans` wuerde
+  den Sidecar sonst als Waise ENTFERNEN und einer eingerichteten Box
+  stillschweigend die Autonomie nehmen. `detect_ota_profile` erkennt ihn,
+  `--ota` erzwingt es bei gestoppten Containern.
+- **Der Sidecar tauscht sich NIE selbst** (`otaapply.TargetRefs` laesst
+  `updater` aus, `ReleaseNamesUpdater` protokolliert es laut); seine eigenen
+  Updates sind beaufsichtigt und out-of-band.
+- Beweise: `internal/otaapply` (die Tore + Wiederaufnahme + Sequenz + Snapshot +
+  Schalter), `internal/otaupdater` (die Orchestrierung gegen eine geschriebene
+  docker-Welt), `agent/ota_autonomy_test.go`, `internal/web/jstest/ui.test.js`
+  (die Neutral-Aussage) und die Matrix `test/ota-soak/run.sh` (10 Faelle gegen
+  echten Docker, echte Signaturkette, echte Registry).
+
 ## Per-source status in the heartbeat (#524)
 
 `agent.sourcesSummary()` (`internal/agent/entities.go`) folds an additive

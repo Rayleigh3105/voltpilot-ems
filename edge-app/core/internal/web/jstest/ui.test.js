@@ -189,6 +189,42 @@ function controlFor(state) {
   return load(["control.js"]).VPControl.deriveState(state);
 }
 
+// OTA Stufe 3, Eil-Pfad: eine bewusst neutral gestellte Anlage ist ein eigener
+// Zustand. Ohne diesen Zweig laese sich die Stille wie ein Defekt - und der
+// Modus gewinnt vor JEDER anderen Aussage, weil keine von ihnen beschreibt, was
+// gerade wirklich passiert.
+test("control: a deliberate OTA neutral window is named, and it wins over every other verdict", () => {
+  const base = {
+    mode: "ota_neutral",
+    inverter: { configured: true, label: "Deye" },
+    control_certified: true,
+    control_enabled: true
+  };
+  const d = controlFor(base);
+  assert.strictEqual(d.stateKey, "ota-neutral");
+  assert.match(d.title, /Aktualisierung/);
+  assert.match(d.text, /neutral/i);
+  assert.strictEqual(d.showTable, false);
+
+  // Auch dort, wo sonst „nicht freigegeben" bzw. „ausgeschaltet" stuende.
+  const uncertified = controlFor(Object.assign({}, base, { control_certified: false }));
+  assert.strictEqual(uncertified.stateKey, "ota-neutral");
+  const off = controlFor(Object.assign({}, base, { control_enabled: false }));
+  assert.strictEqual(off.stateKey, "ota-neutral");
+
+  // Ohne den Modus bleibt alles wie vorher.
+  const normal = controlFor(Object.assign({}, base, { mode: "fahrplan" }));
+  assert.notStrictEqual(normal.stateKey, "ota-neutral");
+});
+
+// Ein Geraet ohne Wechselrichter kennt keinen Steuerpfad - diese Aussage steht
+// bewusst VOR dem Neutral-Fenster (sie beschreibt eine fehlende Einrichtung,
+// nicht einen laufenden Vorgang).
+test("control: no inverter still wins over the OTA neutral window", () => {
+  const d = controlFor({ mode: "ota_neutral", inverter: { configured: false } });
+  assert.strictEqual(d.stateKey, "no-inverter");
+});
+
 test("control: a blocked plan states its reason and shows NO register table", () => {
   const d = controlFor({
     inverter: { configured: true, label: "Deye" },
