@@ -9,11 +9,15 @@
 #        - carries the generated marker, name voltpilot-edge, both registry
 #          images (core + nodered), both named volumes, pull_policy: always;
 #        - contains NO build:/context: (a device never builds) and NO
-#          sim/edge-sim/profiles (real mode only).
+#          sim/edge-sim (real mode only). The ONLY profile it may carry is
+#          `ota` on the `updater` service - the OTA-Stufe-3 apply sidecar,
+#          which is opt-in per device and does nothing until its own switch
+#          is set (docs/ota-autonomie.md).
 #   2. If `docker compose` (v2) is available: the emitted compose passes
-#        `docker compose -f - config` (valid), and its resolved real-mode
-#        service definition is byte-identical to the repo compose's default
-#        (no-sim) config - so a pulled stack behaves like a repo `up -d`.
+#        `docker compose -f - config` (valid), and its resolved service
+#        definition is byte-identical to the repo compose's - BOTH in the
+#        default (no-sim, no-ota) resolution AND with `--profile ota`, so
+#        neither the everyday stack nor the sidecar can drift.
 #   3. shellcheck is clean (if installed).
 #
 # Docker-free by default (steps 1 + 3 always run); the equivalence proof
@@ -53,13 +57,35 @@ grep_has 'vp-nodered-data'
 grep_none 'build:'
 grep_none 'context:'
 grep_none 'edge-sim'
-grep_none 'profiles:'
 # "sim" as a standalone token (the profile / service) must be absent; the
 # substring in "Simulator" comments does not appear (there are none).
 if printf '%s\n' "$COMPOSE" | grep -qiE '(^|[^a-z])sim([^a-z]|$)'; then
   fail "generated compose references the simulator"
 fi
-pass "structural: marker, images, volumes, pull_policy; no build/context/sim/profiles"
+# The ONLY profile a device compose may carry is `ota` (the apply sidecar).
+# Asserted PRECISELY rather than banned outright: the ban existed to keep the
+# simulator off a customer device, and that intent is preserved - while a
+# blanket ban would have made the sidecar unreachable on an installer-built
+# box, i.e. exactly the drift the lockstep exists to prevent.
+profiles="$(printf '%s\n' "$COMPOSE" | grep -E '^[[:space:]]*profiles:' || true)"
+if [ -n "$profiles" ]; then
+  if [ "$(printf '%s\n' "$profiles" | wc -l | tr -d ' ')" != "1" ]; then
+    fail "generated compose carries more than one profile block: $profiles"
+  fi
+  printf '%s\n' "$profiles" | grep -qE '^[[:space:]]*profiles:[[:space:]]*\[ota\][[:space:]]*$' \
+    || fail "the only allowed profile is [ota], got: $profiles"
+fi
+# shellcheck disable=SC2016
+grep_has 'image: ${VP_EDGE_UPDATER_IMAGE:-git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-updater:${VP_EDGE_IMAGE_TAG:-latest}}'
+# The sidecar's two structural safety properties, pinned in the file itself:
+# it owns the docker socket, so it must have NO network of its own.
+grep_has '/var/run/docker.sock:/var/run/docker.sock'
+grep_has 'network_mode: none'
+# Autonomy is OFF unless the operator says otherwise - in the compose default
+# AND (independently) in the per-device switch file.
+# shellcheck disable=SC2016
+grep_has 'VP_OTA_AUTONOMOUS: ${VP_OTA_AUTONOMOUS:-false}'
+pass "structural: marker, images, volumes, pull_policy; no build/context/sim; ota profile fenced"
 
 # --- 2. docker compose validity + equivalence to the repo real-mode config.
 if docker compose version >/dev/null 2>&1; then
@@ -82,6 +108,21 @@ if docker compose version >/dev/null 2>&1; then
     printf '%s\n' "--- diff (repo <  | generated >) ---" >&2
     diff <(printf '%s\n' "$repo") <(printf '%s\n' "$gen") >&2 || true
     fail "generated compose drifted from the repo real-mode compose"
+  fi
+
+  # The SAME equivalence with the ota profile on: the apply sidecar must not
+  # drift between the repo compose and the one a device generates either.
+  emptyd="$(mktemp -d)"
+  repo_ota="$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" docker compose --project-directory "$emptyd" --profile ota -f docker-compose.yml config 2>/dev/null \
+            | grep -vE '^[[:space:]]*(build:|context:|dockerfile:)')"
+  gen_ota="$(printf '%s\n' "$COMPOSE" | env -i PATH="$PATH" HOME="${HOME:-/tmp}" docker compose --project-directory "$emptyd" --profile ota -f - config 2>/dev/null)"
+  rmdir "$emptyd" 2>/dev/null || true
+  if [ "$repo_ota" = "$gen_ota" ]; then
+    pass "generated compose == repo 'docker compose --profile ota config' (minus build:)"
+  else
+    printf '%s\n' "--- diff --profile ota (repo <  | generated >) ---" >&2
+    diff <(printf '%s\n' "$repo_ota") <(printf '%s\n' "$gen_ota") >&2 || true
+    fail "the OTA sidecar drifted between the repo compose and the generated one"
   fi
 
   # Image-version lever: unset = today's :latest (no behaviour change);

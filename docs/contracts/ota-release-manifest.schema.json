@@ -110,6 +110,11 @@
     "notes": {
       "type": "string",
       "description": "Freitext fuer das Register/die Oberflaeche (Release-Notiz)."
+    },
+    "urgent": {
+      "type": "boolean",
+      "default": false,
+      "description": "ADDITIV (Stufe 3, schema_version bleibt 1.0). Der Eil-Pfad: der 'nicht mitten im Schreiben'-Interlock verschiebt einen autonomen Tausch, solange ein von neutral abweichender Sollwert ausgefuehrt wird - auf einer dauerhaft arbitrierenden Anlage hiesse das 'nie'. Ein eiliges Release verschiebt nicht, sondern laesst die Anlage ZUERST bewusst neutral stellen und tauscht in diesem Fenster. Weil das eine Anweisung an eine laufende Kundenanlage ist, wohnt der Schalter im SIGNIERTEN Manifest und nicht im unsignierten Umschlag. Fehlt das Feld, gilt der gewoehnliche geduldige Weg - ein aelterer Geraetestand ignoriert es und verschiebt weiter (die sichere Richtung)."
     }
   }
 }

@@ -91,6 +91,22 @@ type Manifest struct {
 	Compat         Compat     `json:"compat"`
 	SigningKeyID   string     `json:"signing_key_id"`
 	Notes          string     `json:"notes,omitempty"`
+	// Urgent ist der EIL-Pfad der Stufe 3 (Vorentwurf §3, Befund C1): der
+	// „nicht mitten im Schreiben"-Interlock verschiebt einen Tausch, solange
+	// ein von neutral abweichender Sollwert ausgefuehrt wird. Auf einer Anlage
+	// im Dauer-Arbitragebetrieb hiesse das „nie" - fuer einen Sicherheits-
+	// Patch die falsche Antwort.
+	//
+	// Ein eiliges Release verschiebt deshalb nicht, sondern stellt die Anlage
+	// ZUERST bewusst neutral und tauscht in diesem selbst geschaffenen
+	// Fenster. Genau weil das eine Anweisung an eine laufende Kundenanlage
+	// ist, wohnt sie im SIGNIERTEN Manifest und nicht im unsignierten
+	// Umschlag: nur der Owner darf ein Release fuer eilig erklaeren.
+	//
+	// Absent = false = der gewoehnliche, geduldige Weg (additiv,
+	// schema_version bleibt 1.0; ein aelterer Stand ignoriert das Feld und
+	// verschiebt weiter - die sichere Richtung).
+	Urgent bool `json:"urgent,omitempty"`
 }
 
 // Artifact ist EIN Bestandteil des Releases, typisiert.

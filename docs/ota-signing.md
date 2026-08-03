@@ -1,5 +1,9 @@
 # OTA-Signaturkette: Zeremonie, Release, Verlust, TOFU
 
+> **Stufe 3 „Autonom" (das Anwenden ohne Menschen am Gerät) hat ein eigenes
+> Betreiber-Handbuch: [`ota-autonomie.md`](ota-autonomie.md).** Es ist gebaut
+> und im Labor geprüft - und nirgendwo eingeschaltet.
+
 Betreiber-Handbuch zu **OTA Stufe 1 „Vertrauen"** (Scout `vp-ota-rollout-h4` §5/§8/§9,
 Captain-Entscheide D1–D6). Es beschreibt genau eine Sache: **wie ein Edge-Release
 unterschrieben wird und wie ein Gerät diese Unterschrift prüft.**

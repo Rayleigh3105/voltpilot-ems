@@ -97,6 +97,43 @@ services:
       # access for per-customer flow wiring. NOT for customers.
       - "${VP_NODERED_PORT:-1881}:1880"
 
+  # --- ota profile: der Apply-Sidecar (OTA Stufe 3 „Autonom") -------------
+  # ZWEI unabhaengige Tore, und beide sind zu:
+  #   1. Das Profil `ota` - ohne `--profile ota` laeuft dieser Container gar
+  #      nicht, und die Box verhaelt sich zeichengleich wie eine ohne ihn.
+  #   2. Der Schalter je Geraet (<data>/ota/autonomy.json bzw.
+  #      VP_OTA_AUTONOMOUS) - Vorgabe AUS. Ohne ihn beobachtet und meldet der
+  #      Sidecar nur; er fuehrt kein einziges veraenderndes docker-Kommando aus.
+  # Er besitzt den Docker-Socket und hat deshalb BEWUSST kein Netz und keinen
+  # Host-Port. Der Deploy-Ordner ist eingehaengt, weil der Tausch genau den
+  # Hebel benutzt, den auch update.sh benutzt (.env-Pin + compose up).
+  # Betreiber-Anleitung: docs/ota-autonomie.md
+  updater:
+    profiles: [ota]
+    build:
+      context: ./core
+      dockerfile: Dockerfile.updater
+    image: ${VP_EDGE_UPDATER_IMAGE:-git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-updater:${VP_EDGE_IMAGE_TAG:-latest}}
+    pull_policy: always
+    restart: unless-stopped
+    network_mode: none
+    environment:
+      # Der Not-Ein fuer den Laborstand. Auf einem Kundengeraet bleibt er leer;
+      # der eigentliche Schalter ist die Datei unter /data/ota/autonomy.json.
+      VP_OTA_AUTONOMOUS: ${VP_OTA_AUTONOMOUS:-false}
+      # Die am Pruefstand BELEGTEN Inverter-Neutral-Zeiten (familie:sekunden).
+      # Leer = keine belegt = eine steuernde Anlage wird nicht autonom
+      # aktualisiert. Siehe docs/ota-autonomie.md.
+      VP_OTA_NEUTRAL_VERIFIED: ${VP_OTA_NEUTRAL_VERIFIED:-}
+      VP_OTA_WATCHDOG_SECONDS: ${VP_OTA_WATCHDOG_SECONDS:-600}
+      VP_OTA_DISK_GUARD_MB: ${VP_OTA_DISK_GUARD_MB:-2048}
+      # Eine Box mit Host-Netz-Overlay muss beide Dateien nennen.
+      VP_OTA_COMPOSE_FILES: ${VP_OTA_COMPOSE_FILES:-docker-compose.yml}
+    volumes:
+      - vp-edge-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/deploy
+
   # --- sim profile: hardware-free end-to-end mode -------------------------
   # Starts the SunSpec Modbus TCP simulator (the repo's edge/sim source) so
   # `docker compose --profile sim up -d --build` runs the FULL edge app with

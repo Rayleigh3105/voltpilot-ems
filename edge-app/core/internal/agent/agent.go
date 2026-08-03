@@ -100,6 +100,19 @@ type Agent struct {
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
 
+	// OTA Stufe 3 „Autonom" (agent/ota_autonomy.go): der Kern tauscht nichts,
+	// er BEZEUGT. otaNeutralReq/-Since tragen den Eil-Pfad (die bewusste
+	// Neutralstellung waehrend eines eiligen Tausches), otaAcked*/otaAckFailed*
+	// merken sich, fuer welchen Vorgang der DURABLE `applying`-Bericht schon
+	// abgesetzt (bzw. nachweislich nicht absetzbar) war - er darf nicht bei
+	// jedem 2-s-Takt erneut gesendet werden.
+	otaMu             sync.Mutex
+	otaNeutralReq     time.Time
+	otaNeutralSince   time.Time
+	otaAckedToken     string
+	otaAckedAt        string
+	otaAckFailedToken string
+
 	// First-Light calibration (agent/calibration.go): the bounded, armed,
 	// TTL-limited procedure that proves a battery inverter's control sign + scale
 	// on the REAL hardware BEFORE the family is certified. cal is the pure state
@@ -597,6 +610,14 @@ func (a *Agent) Start(ctx context.Context) error {
 	// this loop only ever reads files and forms an opinion.
 	a.done.Add(1)
 	go a.otaCheckLoop(ctx)
+
+	// OTA Stufe 3: der Zustandskanal zum Sidecar und der Selbsttest eines
+	// frisch getauschten Standes. Beide sind harmlos ohne Sidecar - der eine
+	// schreibt eine kleine Datei, der andere kehrt ohne Brotkrume sofort
+	// zurueck.
+	a.done.Add(2)
+	go a.otaSignalLoop(ctx)
+	go a.otaSelfTestOnBoot(ctx)
 
 	a.done.Add(2)
 	go a.setpointLoop(ctx)
@@ -1920,6 +1941,16 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// bypasses the certification allowlist so the first real write can prove
 	// sign/scale. Returns true when it handled the tick.
 	if a.calibrationOverride(now, r, limits) {
+		return
+	}
+
+	// OTA Stufe 3, Eil-Pfad: waehrend einer angeforderten Neutralstellung
+	// publiziert der Kern die Rueckgabe statt des Plan-/Arbiter-Wertes, damit
+	// ein eiliger Tausch in einem BEWUSST geschaffenen neutralen Fenster
+	// stattfindet statt mitten in einem laufenden Sollwert. Steht keine Bitte
+	// an (der Normalfall, und ohne Sidecar immer), kehrt er sofort zurueck und
+	// der Pfad ist zeichengleich wie vorher.
+	if a.otaNeutralOverride(now) {
 		return
 	}
 

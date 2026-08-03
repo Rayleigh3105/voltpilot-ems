@@ -370,5 +370,10 @@ func (a *Agent) updateSummary() *cloud.UpdateSummary {
 		seq := cur.ReleaseSeq
 		sum.CurrentSeq = &seq
 	}
+	// Seit Stufe 3 kann ein SIDECAR gerade wirklich anwenden. Dann ist SEIN
+	// Zustand die Wahrheit ueber die Anwendung (das Urteil des Kerns bleibt
+	// die Wahrheit ueber die PRUEFUNG, target_verdict). Ohne Sidecar bzw. bei
+	// `idle` ist der Block zeichengleich der der Stufe 2.
+	a.otaUpdaterOverlay(sum)
 	return sum
 }
