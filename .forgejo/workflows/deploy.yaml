@@ -1,13 +1,19 @@
 name: Build & Deploy
 
-# Gated push-to-deploy for the single-VPS prod stack (docker-compose.prod.yml),
-# modeled on saalo's pipeline: test -> build+push every image to the Forgejo
-# registry -> SSH/SCP roll-out on the VPS. Manual trigger (workflow_dispatch);
-# wire it to `push` on your release branch once the runner + secrets are set.
+# Gated pipeline: test -> build+push every image to the Forgejo registry ->
+# bump the image tags in the gitops repo (Argo CD deploys from there). Manual
+# trigger (workflow_dispatch); wire it to `push` on your release branch once
+# the runner + secrets are set.
+#
+# Der SSH/SCP-Deploy auf die Prod-VM ist mit dem Cutover VM -> k3s-Cluster
+# (03.08.2026) ENTFERNT: die Compose-Zwillinge auf der VM sind gestoppt, NPM
+# zeigt auf den Cluster, und Argo CD deployt aus dem gitops-Repo. Ein Lauf
+# haette die gestoppten VM-Dienste sonst wiederbelebt - mit einem zweiten
+# Optimierer gegen dieselben Live-Anlagen. Die VM-Anleitung in docs/deploy.md
+# bleibt als historische/Notfall-Referenz von Hand ausfuehrbar.
 #
 # Required Forgejo Actions secrets (Repo -> Settings -> Actions -> Secrets):
 #   FORGEJO_USERNAME / FORGEJO_PASSWORD  - registry login (git.tecmaxx.de)
-#   DEPLOY_HOST / DEPLOY_USER / DEPLOY_PASSWORD  - the VPS SSH target
 #   DOMAIN                               - public FQDN (bakes into the SPA + realm)
 #   GITOPS_PUSH_TOKEN                    - OPTIONAL: repository:write nur auf
 #     mamotec/gitops, fuer den Tag-Bump-Job (CI-Zielpfad). Ohne das Secret
@@ -156,8 +162,9 @@ jobs:
           bash tools/deploy/test-gitops-image-bump.sh
           bash tools/deploy/test-gitops-bump-workflow.sh
 
-  # Build + push every deployed image in parallel. The deploy job waits for the
-  # whole matrix. Tags: :latest and :${{ github.sha }} (the rollout pins the SHA).
+  # Build + push every deployed image in parallel. The tag-bump job waits for
+  # the whole matrix. Tags: :latest and :${{ github.sha }} (the gitops overlay
+  # pins the SHA).
   build:
     name: Build & Push ${{ matrix.component }}
     needs: test
@@ -264,153 +271,6 @@ jobs:
             git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:latest
             git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:${{ github.sha }}
 
-  # Optional smoke gate: voltpilot has no browser e2e suite yet, so it is
-  # deferred (the Testcontainers integration tests in the `test` job already
-  # exercise the ingest pipe + RLS + OIDC end to end). When a Playwright smoke
-  # suite lands, add a `smoke` job here between `build` and `deploy` that brings
-  # up the just-built images and runs it, mirroring saalo's deploy.yaml.
-
-  deploy:
-    name: Deploy on VPS
-    needs: build
-    runs-on: ubuntu-latest-mo
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      # Ship the compose file + the infra the stack bind-mounts (prod Keycloak
-      # realm, prod TimescaleDB init, the MQTT ACL, the Keycloak login theme).
-      # Device certs are NOT shipped - they are staged on the VPS out of band
-      # (see docs/connect-a-device.md).
-      - name: Copy compose + infra to VPS
-        uses: https://github.com/appleboy/scp-action@master
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          password: ${{ secrets.DEPLOY_PASSWORD }}
-          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl/acl.conf,tools/pki/merge-acl-grants.sh,tools/pki/reload-broker-authz.sh,deploy/keycloak/themes/voltpilot/**"
-          target: /tmp/voltpilot-deploy
-          overwrite: true
-
-      - name: Deploy via SSH
-        uses: https://github.com/appleboy/ssh-action@master
-        env:
-          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          password: ${{ secrets.DEPLOY_PASSWORD }}
-          command_timeout: 15m
-          script_stop: true
-          # DEPLOY_PASSWORD reaches the remote shell via `envs:` (the action
-          # exports the step env vars there), so the secret never interpolates
-          # into the script text and special characters can't break quoting.
-          envs: DEPLOY_PASSWORD
-          script: |
-            set -euo pipefail
-
-            DEPLOY_DIR=/srv/docker/voltpilot
-
-            # Privilege helper: a root deploy user runs commands directly
-            # (hosts without sudo installed); a non-root user goes through
-            # `sudo -S` with the password on stdin, as before.
-            priv() { if [ "$(id -u)" -eq 0 ]; then "$@"; else printf '%s\n' "$DEPLOY_PASSWORD" | sudo -S "$@"; fi; }
-
-            # scp-action preserves the source paths under the target directory.
-            priv mkdir -p "$DEPLOY_DIR/infra/prod" "$DEPLOY_DIR/infra/mqtt/acl" "$DEPLOY_DIR/tools/pki"
-            priv cp /tmp/voltpilot-deploy/docker-compose.prod.yml "$DEPLOY_DIR/docker-compose.yml"
-            priv cp -r /tmp/voltpilot-deploy/infra/prod/. "$DEPLOY_DIR/infra/prod/"
-            priv cp /tmp/voltpilot-deploy/tools/pki/merge-acl-grants.sh /tmp/voltpilot-deploy/tools/pki/reload-broker-authz.sh "$DEPLOY_DIR/tools/pki/"
-            # MQTT ACL: MERGE, never overwrite - the grants between the anchors
-            # are runtime state (api enrollment issuance / voltpilot-ca.sh) and
-            # a plain copy would revoke every enrolled device. Deploys before
-            # the acl/ directory mount kept the file one level up - migrate its
-            # grants on the first run.
-            DEPLOYED_ACL="$DEPLOY_DIR/infra/mqtt/acl/acl.conf"
-            [ -f "$DEPLOYED_ACL" ] || DEPLOYED_ACL="$DEPLOY_DIR/infra/mqtt/acl.conf"
-            priv sh "$DEPLOY_DIR/tools/pki/merge-acl-grants.sh" \
-              /tmp/voltpilot-deploy/infra/mqtt/acl/acl.conf "$DEPLOYED_ACL" /tmp/voltpilot-deploy/acl.merged
-            priv cp /tmp/voltpilot-deploy/acl.merged "$DEPLOY_DIR/infra/mqtt/acl/acl.conf"
-            # The broker reads the ACL as a different non-root uid: a root
-            # umask (or a stray restrictive mode) must never leave the dir or
-            # file unreadable, or EMQX fails boot-time config validation.
-            priv chmod 755 "$DEPLOY_DIR/infra/mqtt/acl"
-            priv chmod 644 "$DEPLOY_DIR/infra/mqtt/acl/acl.conf"
-            # Broker cert/key permissions. The certs are staged out of band
-            # (below), but scp/cp preserve their source mode, so server.key
-            # commonly lands 0600 owned by the deploy user - unreadable by the
-            # emqx process (a NON-root uid inside the container), which then
-            # fails boot with "cannot read keyfile" (live incident 2026-07-03).
-            # Enforce emqx-readable perms on every deploy so a re-staged key is
-            # never hand-fixed live again (see docs/deploy.md step 3).
-            if [ -d "$DEPLOY_DIR/infra/mqtt/certs" ]; then
-              priv chmod 755 "$DEPLOY_DIR/infra/mqtt/certs"
-              priv find "$DEPLOY_DIR/infra/mqtt/certs" -type f \
-                \( -name '*.crt' -o -name '*.pem' -o -name '*.key' \) -exec chmod 644 {} +
-            fi
-            # VoltPilot Keycloak login theme to the compose bind-mount path
-            # (./deploy/keycloak/themes/voltpilot in docker-compose.prod.yml).
-            priv mkdir -p "$DEPLOY_DIR/deploy/keycloak/themes"
-            priv rm -rf "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
-            priv cp -r /tmp/voltpilot-deploy/deploy/keycloak/themes/voltpilot "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
-            rm -rf /tmp/voltpilot-deploy
-
-            echo "${{ secrets.FORGEJO_PASSWORD }}" | docker login git.tecmaxx.de -u "${{ secrets.FORGEJO_USERNAME }}" --password-stdin
-
-            cd "$DEPLOY_DIR"
-            # Preflight: MQTT_DOMAIN is REQUIRED when device enrollment is on
-            # (the proxied/domain-based production model). Devices are told to
-            # dial ${MQTT_DOMAIN} for mTLS MQTT, and that name must match the
-            # broker server-cert SAN. An unset value silently fell back to
-            # mqtt.${DOMAIN} and handed devices the wrong host live (2026-07-03),
-            # so abort here with a clear message instead. A non-enrollment
-            # deployment (VOLTPILOT_ENROLLMENT_ENABLED=false) is exempt.
-            envval() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | sed 's/^["'"'"']//; s/["'"'"']$//'; }
-            enroll="$(envval VOLTPILOT_ENROLLMENT_ENABLED)"
-            case "${enroll:-true}" in
-              ''|true|TRUE|True|1|yes|on)
-                if [ -z "$(envval MQTT_DOMAIN)" ]; then
-                  echo "FATAL: device enrollment is enabled but MQTT_DOMAIN is unset in $DEPLOY_DIR/.env." >&2
-                  echo "Set MQTT_DOMAIN to the FQDN devices dial for MQTT (must match the broker server-cert SAN); see docs/deploy.md and .env.prod.example." >&2
-                  exit 1
-                fi ;;
-            esac
-            # Pin this rollout to the exact images this run built; secrets and all
-            # other settings come from $DEPLOY_DIR/.env (provisioned out of band,
-            # see .env.prod.example). The mTLS device certs must already be staged
-            # under $DEPLOY_DIR/infra/mqtt/certs/ (docs/connect-a-device.md).
-            export IMAGE_TAG="${{ github.sha }}"
-            # Persist the pinned tag into .env (in place, idempotent) so a later
-            # manual `docker compose up --force-recreate` on the VM recreates with
-            # THESE images, not the stale :latest the .env default would otherwise
-            # roll every service back to (footgun that bit the operator 2026-07-02).
-            # A commit SHA has no sed-special chars; replace an existing line,
-            # append only if the key is absent (matches ^IMAGE_TAG= exactly).
-            if grep -qE '^IMAGE_TAG=' .env 2>/dev/null; then
-              priv sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" .env
-            else
-              printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" | priv tee -a .env >/dev/null
-            fi
-            docker compose pull
-            docker compose up -d --remove-orphans
-            # Keycloak keeps image + config, so `up -d` does not recreate it. In
-            # `start` mode themes are cached at boot, AND served theme resources
-            # are pre-gzipped into /opt/keycloak/data/tmp/kc-gzip-cache on the
-            # CONTAINER filesystem - which survives a plain `restart`. So a
-            # restart still serves the OLD theme css to browsers (they accept
-            # gzip; only curl without Accept-Encoding sees the new file).
-            # Recreating the container drops that cache. Verified on KC 26.0.5.
-            docker compose up -d --force-recreate keycloak
-            # Make ACL changes effective: the file authorizer compiles its rules
-            # at source init and a running broker never re-reads acl.conf on its
-            # own (emqx ctl conf reload does NOT do it - verified on 5.8.3).
-            # Non-fatal: a still-booting broker reads the fresh file anyway.
-            EMQX_EXEC="docker compose exec -T emqx" sh tools/pki/reload-broker-authz.sh \
-              || echo "warn: broker authz reload failed - ACL changes apply at the next broker (re)start"
-            docker image prune -f
-
   # ---------------------------------------------------------------------------
   # CI-Zielpfad (Captain-Go 01.08.2026): DER DEPLOY IST EIN COMMIT.
   #
@@ -424,15 +284,13 @@ jobs:
   # "CI/CD-Zielpfad").
   #
   # Der Bump landet NUR IM GIT. Alle Argo-Applications ausser der Root-App
-  # stehen in der Probe-Phase auf MANUELLEM Sync - der Cluster zieht den neuen
-  # Stand also erst beim naechsten (menschlich ausgeloesten) Sync. Das ist so
-  # gewollt: waehrend Cluster und VM parallel laufen, entscheidet ein Mensch,
-  # wann der Cluster nachzieht (gitops README, "Sync-Policy: heute manuell").
+  # stehen auf MANUELLEM Sync - der Cluster zieht den neuen Stand also erst
+  # beim naechsten (menschlich ausgeloesten) Sync (gitops README,
+  # "Sync-Policy: heute manuell").
   #
-  # `needs: build` - NICHT der VM-Deploy: beide sind unabhaengige Abnehmer
-  # derselben Images, und ein Huster auf der VM darf den Git-Bump nicht
-  # blockieren (und umgekehrt). Der VM-Deploy bleibt unveraendert und faellt
-  # erst beim Cutover weg; bis dahin bleiben beide Welten aktuell.
+  # Seit dem Cutover (03.08.2026) ist dieser Job der EINZIGE Abnehmer der
+  # Builds: der VM-Deploy-Job ist entfernt, weil er die gestoppten
+  # Compose-Zwillinge auf der Prod-VM wiederbelebt haette.
   # ---------------------------------------------------------------------------
   gitops-tag-bump:
     name: Bump gitops image tags
@@ -569,7 +427,7 @@ jobs:
   # commit status check); this makes the failing stage explicit in the summary.
   notify-failure:
     name: Notify on red gate
-    needs: [test, build, deploy]
+    needs: [test, build, gitops-tag-bump]
     if: failure()
     runs-on: ubuntu-latest-mo
     timeout-minutes: 10
@@ -582,11 +440,11 @@ jobs:
             echo ""
             echo "| Job | Result |"
             echo "| --- | --- |"
-            echo "| test   | ${{ needs.test.result }} |"
-            echo "| build  | ${{ needs.build.result }} |"
-            echo "| deploy | ${{ needs.deploy.result }} |"
+            echo "| test            | ${{ needs.test.result }} |"
+            echo "| build           | ${{ needs.build.result }} |"
+            echo "| gitops-tag-bump | ${{ needs['gitops-tag-bump'].result }} |"
             echo ""
-            echo "Commit \`${{ github.sha }}\` was NOT deployed."
+            echo "Commit \`${{ github.sha }}\` was NOT rolled out (gitops overlay unchanged)."
           } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
           echo "Deploy gate failed for ${{ github.sha }} - see job results above." >&2
           exit 1

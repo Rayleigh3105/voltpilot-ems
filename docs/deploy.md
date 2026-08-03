@@ -1,16 +1,21 @@
 # Production deployment (single VM/VPS)
 
-How VoltPilot-EMS is deployed for the MVP: one Linux server (an internal Ubuntu VM or a VPS) running the whole server-side stack from `docker-compose.prod.yml`, TLS terminated by an **external** reverse proxy on another host (Nginx Proxy Manager or Caddy), and - once CI secrets are set - push-to-deploy from Forgejo.
-This mirrors the proven saalo recipe (single server + external TLS proxy + Forgejo registry + SSH roll-out).
+How VoltPilot-EMS was deployed for the MVP: one Linux server (an internal Ubuntu VM or a VPS) running the whole server-side stack from `docker-compose.prod.yml`, TLS terminated by an **external** reverse proxy on another host (Nginx Proxy Manager or Caddy).
+This mirrored the proven saalo recipe (single server + external TLS proxy + Forgejo registry + SSH roll-out); see the note below for what replaced the automatic roll-out.
 
 This is deliberately the smallest thing that works.
 It is escalatable later (managed Postgres, Kubernetes, a Hetzner/GitOps setup) without changing the application - see [Escalating beyond one VPS](#escalating-beyond-one-vps).
 The per-service operating contract a Kubernetes manifest may rely on (probe path + port, SIGTERM behaviour + recommended grace period, required env, scalability incl. the api singleton blockers) is [`docs/k8s-readiness.md`](k8s-readiness.md).
 
-There are two ways to deploy, both against the same compose file:
+> **Seit dem Cutover VM → k3s-Cluster (03.08.2026) ist dieses Kapitel historisch.**
+> Die Compose-Zwillinge auf der Prod-VM sind gestoppt, der Reverse-Proxy zeigt auf den Cluster, und der laufende Betrieb wird von **Argo CD aus dem gitops-Repo** deployt - siehe [gitops-Tag-Bump (CI-Zielpfad)](#gitops-tag-bump-ci-zielpfad).
+> Der frühere **SSH/SCP-Roll-out der Forgejo-Workflows auf die VM ist entfernt** (er hätte die gestoppten VM-Dienste wiederbelebt und einen zweiten Optimierer gegen dieselben Live-Anlagen gefahren); `deploy.yaml` / `deploy-fast.yaml` bauen nur noch Images und schreiben den Bild-Stand ins gitops-Repo fort.
+> Die folgende VM-Anleitung bleibt gültig als **manuell ausführbare Referenz** (Notfall-/Ersatzbetrieb, Nachschlagen der Compose-Konfiguration) - sie passiert nur nicht mehr automatisch.
 
-- **(a) Manual, no CI** - clone the repo on the server, build the images there, `up -d`. The path for the FIRST deployment (next section).
-- **(b) CI push-to-deploy** - the Forgejo workflow builds/pushes images and rolls the server out over SSH. Needs the Actions secrets; see [First deploy via CI](#first-deploy-via-ci).
+There is one way to deploy the VM stack, plus the cluster path that superseded it:
+
+- **(a) Manual, no CI** - clone the repo on the server, build the images there, `up -d` (next section). Historisch der FIRST-deployment-Pfad, heute die Hand-Referenz.
+- **(b) Cluster über CI** - die Forgejo-Workflows bauen/pushen die Images und pinnen sie im gitops-Repo; Argo CD rollt aus. Siehe [Deploy via CI](#deploy-via-ci) und [gitops-Tag-Bump](#gitops-tag-bump-ci-zielpfad).
 
 ## Erstes Deployment (interne Ubuntu-VM)
 
@@ -394,8 +399,8 @@ scp tools/pki/out/server/{server.crt,server.key,device-ca.crt} \
 # optional CRL for revocation:
 scp tools/pki/out/ca/crl.pem ${DEPLOY_USER}@${DEPLOY_HOST}:/srv/docker/voltpilot/infra/mqtt/certs/
 # scp preserves the source 0600 on server.key; emqx (uid 1000 in the container)
-# must be able to read it or the broker fails boot (see step 3). The CI deploy
-# workflows chmod this automatically; when staging by hand, do it too:
+# must be able to read it or the broker fails boot (see step 3). Der frühere
+# CI-VM-Deploy tat das automatisch - seit dem Cutover immer selbst setzen:
 ssh ${DEPLOY_USER}@${DEPLOY_HOST} \
     'chmod 0755 /srv/docker/voltpilot/infra/mqtt/certs && \
      chmod 0644 /srv/docker/voltpilot/infra/mqtt/certs/*.crt \
@@ -403,24 +408,23 @@ ssh ${DEPLOY_USER}@${DEPLOY_HOST} \
                 /srv/docker/voltpilot/infra/mqtt/certs/server.key'
 ```
 
-The deploy workflow ships the committed `infra/mqtt/acl/acl.conf` and the `infra/prod/**` bootstrap for you; only the private certs are manual.
-It never plainly overwrites the deployed ACL: the base rules come from the repo, while the per-device grant blocks between the anchors are runtime state (api enrollment issuance, `voltpilot-ca.sh issue`) and are preserved by `tools/pki/merge-acl-grants.sh`; afterwards it reloads the broker authorizer so the merged rules apply.
+Historisch schickte der VM-Deploy-Job der Workflows die committete `infra/mqtt/acl/acl.conf` und den `infra/prod/**`-Bootstrap mit; **seit dem Cutover (03.08.2026) gibt es diesen Job nicht mehr** - auf der VM macht man das von Hand (`tools/pki/merge-acl-grants.sh` + `tools/pki/reload-broker-authz.sh`, siehe unten), im Cluster kommt beides aus dem gitops-Repo bzw. dem Keycloak-Image.
+Der ACL-Merge darf die deployte Datei nie einfach überschreiben: the base rules come from the repo, while the per-device grant blocks between the anchors are runtime state (api enrollment issuance, `voltpilot-ca.sh issue`) and are preserved by `tools/pki/merge-acl-grants.sh`; afterwards `tools/pki/reload-broker-authz.sh` reloads the broker authorizer so the merged rules apply.
 
-## First deploy via CI
+## Deploy via CI
 
-The later path, once the Forgejo runner + Actions secrets are set up (the manual VM path above needs none of this).
+Was ein Lauf der Forgejo-Workflows **seit dem Cutover (03.08.2026)** tut - und was er bewusst *nicht* mehr tut:
 
-1. **Provision the VPS**: install Docker Engine + the compose plugin, create `/srv/docker/voltpilot/`, and put `.env` there (step 2 above).
-2. **Stage the device certs** into `/srv/docker/voltpilot/infra/mqtt/certs/` (step 3 above).
-3. **Set the Forgejo secrets** (step 1 above).
-4. **Run the pipeline**: trigger the **Build & Deploy** workflow (`.forgejo/workflows/deploy.yaml`) from the Forgejo Actions tab.
-   It runs the test gate, builds + pushes every image to `git.tecmaxx.de/mamotec/voltpilot-ems/<svc>:<sha>`, then SSHes to the VPS, copies `docker-compose.prod.yml` → `/srv/docker/voltpilot/docker-compose.yml`, and runs `docker compose pull && up -d --remove-orphans` pinned to that SHA.
-   For a quick rollout that skips the test gate, use **Build & Deploy (fast)** (`deploy-fast.yaml`).
-5. **Point Caddy at the VPS** (next section) and browse to `https://${DOMAIN}`.
-6. **Onboard devices** against `8883` per [`connect-a-device.md`](connect-a-device.md).
-7. **Optional, für den Cluster**: `GITOPS_PUSH_TOKEN` setzen - dann schreibt derselbe Lauf den Bild-Stand auch ins gitops-Repo fort, siehe [gitops-Tag-Bump (CI-Zielpfad)](#gitops-tag-bump-ci-zielpfad). Ohne das Secret ändert sich nichts am bisherigen Ablauf.
+1. **Set the Forgejo secrets** (step 1 above): `FORGEJO_USERNAME`/`FORGEJO_PASSWORD`, `DOMAIN`, `GITOPS_PUSH_TOKEN`. Die früheren `DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_PASSWORD` werden nicht mehr gelesen.
+2. **Run the pipeline**: trigger the **Build & Deploy** workflow (`.forgejo/workflows/deploy.yaml`) from the Forgejo Actions tab.
+   It runs the test gate, builds + pushes every image to `git.tecmaxx.de/mamotec/voltpilot-ems/<svc>:<sha>`, and pins that SHA in the gitops repo (job `gitops-tag-bump`).
+   For a quick rollout that skips the test gate, use **Build & Deploy (fast)** (`deploy-fast.yaml`) - it does the same thing without the test gate.
+3. **Argo CD synchronisieren** (manueller Sync, siehe unten) - erst dann zieht der Cluster die neuen Images.
+4. **Onboard devices** against `8883` per [`connect-a-device.md`](connect-a-device.md).
 
-Manual roll-out (no CI) does the same thing:
+**Kein Job fasst die Prod-VM mehr an.** Der SSH/SCP-Roll-out ist entfernt: die VM-Zwillinge sind gestoppt, und ein Lauf hätte sie sonst wiederbelebt (Doppel-Optimierer gegen dieselben Live-Anlagen). Wer die VM bewusst wieder fahren will, tut das von Hand - historische Schritte oben, plus:
+
+Manual roll-out on the VM (historisch, von Hand):
 
 ```bash
 cd /srv/docker/voltpilot
@@ -438,8 +442,8 @@ Bewusst **ohne `:latest`** und ohne Argo-CD-Image-Updater (kein Registry-Polling
 
 Drei Dinge, die man dazu wissen muss:
 
-- **Der Bump landet nur im Git.** Alle Argo-Applications außer der Root-App stehen in der Probe-Phase auf **manuellem Sync**; der Cluster zieht den Stand also erst beim nächsten, menschlich ausgelösten Sync. Das ist gewollt, solange Cluster und VM parallel laufen.
-- **Der VM-Deploy bleibt unverändert.** `gitops-tag-bump` hängt an `needs: build`, *nicht* am VM-Job: beide sind unabhängige Abnehmer derselben Images. Ein Husten auf der VM blockiert den Git-Bump nicht und umgekehrt. Der VM-Job fällt erst beim Cutover weg.
+- **Der Bump landet nur im Git.** Alle Argo-Applications außer der Root-App stehen auf **manuellem Sync**; der Cluster zieht den Stand also erst beim nächsten, menschlich ausgelösten Sync.
+- **Er ist seit dem Cutover (03.08.2026) der einzige Abnehmer der Builds.** Der frühere VM-Deploy-Job hing parallel am selben `needs: build` und ist entfernt - er hätte die gestoppten Compose-Zwillinge auf der Prod-VM wiederbelebt.
 - **Er ist idempotent.** Steht in `gitops/main` schon derselbe sha, wird kein Leer-Commit erzeugt (der Job protokolliert „nichts zu tun" und endet grün).
 
 ### Das Token anlegen
