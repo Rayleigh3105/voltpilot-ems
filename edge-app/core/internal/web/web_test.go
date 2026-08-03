@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,12 +13,13 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otatarget"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
@@ -156,12 +158,12 @@ type fakeCalibration struct {
 	armErr  error
 	testErr error
 
-	lastArmed     *bool
-	lastTestDir   string
-	lastTestKw    float64
-	aborts        int
-	lastSign      *bool
-	lastScale     *bool
+	lastArmed      *bool
+	lastTestDir    string
+	lastTestKw     float64
+	aborts         int
+	lastSign       *bool
+	lastScale      *bool
 	lastInvertSig  *bool
 	lastPowScale   *float64
 	lastInvertBatt *bool
@@ -196,7 +198,7 @@ func (f *fakeCalibration) CurtailDecertify(sourceID string) (curtailcal.View, er
 	f.lastCurtailDecertify = sourceID
 	return f.curtailView, f.curtailErr
 }
-func (f *fakeCalibration) CalibrationAdminSecret() string            { return f.adminSecret }
+func (f *fakeCalibration) CalibrationAdminSecret() string { return f.adminSecret }
 func (f *fakeCalibration) CalibrationArm(armed bool) (calibration.Snapshot, error) {
 	f.lastArmed = &armed
 	return f.snap, f.armErr
@@ -247,9 +249,24 @@ type fakeOta struct {
 		seq     int64
 	}
 	err error
+	// OTA Stufe 4: der beaufsichtigte „Jetzt anwenden"-Pfad.
+	apply       otaapply.ApplyView
+	applyErr    error
+	applyCalls  int
+	applyLastBy string
 }
 
-func (f *fakeOta) OtaTarget() otatarget.View { return f.view }
+func (f *fakeOta) OtaTarget() otatarget.View         { return f.view }
+func (f *fakeOta) OtaApplyState() otaapply.ApplyView { return f.apply }
+func (f *fakeOta) OtaRequestApply(by string) (otaapply.ApplyView, error) {
+	f.applyCalls++
+	f.applyLastBy = by
+	if f.applyErr != nil {
+		return f.apply, f.applyErr
+	}
+	f.apply.Requested = true
+	return f.apply, nil
+}
 func (f *fakeOta) OtaRecordApplied(release string, seq int64) (otatarget.View, error) {
 	if f.err != nil {
 		return f.view, f.err
@@ -3042,7 +3059,7 @@ func TestDevaluingActionsAskBeforeActing(t *testing.T) {
 	// not as an exact spelling, so the tests stay readable when the call sites
 	// are refactored.
 	for _, c := range []struct{ file, marker string }{
-		{"/calibration.js", "askCorrection"},                  // the three sign/scale corrections
+		{"/calibration.js", "askCorrection"},                   // the three sign/scale corrections
 		{"/calibration.js", "C.calibrationDecertify(lastCal)"}, // "Freigabe zurücknehmen"
 		{"/curtail.js", "C.curtailDecertify(u)"},               // per-unit curtailment release
 		{"/sources.js", "C.sourceRemoval(s, units)"},           // removing a source
@@ -3053,3 +3070,143 @@ func TestDevaluingActionsAskBeforeActing(t *testing.T) {
 		}
 	}
 }
+
+// ── OTA Stufe 4: der beaufsichtigte „Jetzt anwenden"-Knopf ──────────────────
+
+// TestOtaApplyIsGatedByTheOperatorPassword: der EINE Schreibpfad dieser Stufe
+// liegt hinter demselben Betreiber-Passwort wie die Kalibrier-Eingriffe,
+// waehrend die Ansicht offen bleibt. Ein Anwenden ohne Passwort waere ein
+// Schreibzugriff auf eine Kundenanlage aus dem Heimnetz.
+func TestOtaApplyIsGatedByTheOperatorPassword(t *testing.T) {
+	const secret = "geheim-123"
+	fo := &fakeOta{apply: otaapply.ApplyView{CanApply: true, Release: "edge-2026.08.0",
+		UpdaterPresent: true}}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{},
+		&fakeCalibration{adminSecret: secret}, &fakeMirror{}, fo))
+	t.Cleanup(srv.Close)
+
+	// Die Ansicht bleibt offen - sie erklaert nur.
+	r, err := http.Get(srv.URL + "/api/ota/apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/ota/apply muss offen bleiben, got %d", r.StatusCode)
+	}
+
+	post := func(tok string) int {
+		req, _ := http.NewRequest("POST", srv.URL+"/api/ota/apply", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		if tok != "" {
+			req.Header.Set("X-VP-Calibration-Token", tok)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if got := post(""); got != http.StatusUnauthorized {
+		t.Fatalf("ohne Passwort muss 401 kommen, got %d", got)
+	}
+	if got := post("falsch"); got != http.StatusUnauthorized {
+		t.Fatalf("mit falschem Passwort muss 401 kommen, got %d", got)
+	}
+	if fo.applyCalls != 0 {
+		t.Fatal("eine abgewiesene Anfrage darf den Kern nie erreichen")
+	}
+	if got := post(secret); got != http.StatusOK {
+		t.Fatalf("mit Passwort muss es gehen, got %d", got)
+	}
+	if fo.applyCalls != 1 {
+		t.Fatalf("die Freigabe wurde %d-mal ausgeloest", fo.applyCalls)
+	}
+}
+
+// Eine ABLEHNUNG ist eine 400 mit deutschem Grund, kein 500 - und der Zustand
+// reist mit, damit die Karte sofort ehrlich wird.
+func TestOtaApplyRefusalIsA400WithItsReason(t *testing.T) {
+	fo := &fakeOta{
+		apply: otaapply.ApplyView{Release: "edge-2026.08.0",
+			Reason: "Auf dieser Box laeuft kein Aktualisierer."},
+		applyErr: errApplyRefused,
+	}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{},
+		&fakeCalibration{}, &fakeMirror{}, fo))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Post(srv.URL+"/api/ota/apply", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("eine Ablehnung ist eine 400, got %d", resp.StatusCode)
+	}
+	var body struct {
+		Error string             `json:"error"`
+		Apply otaapply.ApplyView `json:"apply"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error == "" {
+		t.Error("eine Ablehnung traegt ihren Grund")
+	}
+	if body.Apply.Reason == "" {
+		t.Error("der Zustand reist mit, damit die Karte sofort ehrlich wird")
+	}
+}
+
+// Die Karte + ihr Modul werden wirklich AUSGELIEFERT (der //go:embed-Vertrag).
+func TestOtaApplyCardIsServed(t *testing.T) {
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{},
+		&fakeCalibration{}, &fakeMirror{}, &fakeOta{}))
+	t.Cleanup(srv.Close)
+
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	page := get("/einrichten.html")
+	for _, want := range []string{"otaCard", "otaApplyBtn", "ota.js", "Software-Aktualisierung"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("einrichten.html traegt %q nicht", want)
+		}
+	}
+	js := get("/ota.js")
+	if !strings.Contains(js, "/api/ota/apply") {
+		t.Error("ota.js spricht den Endpunkt nicht an")
+	}
+	// Die Rueckfrage sagt VORHER, was passiert - ein Tausch nimmt der Anlage
+	// fuer Sekunden die Steuerung.
+	if !strings.Contains(js, "confirm") || !strings.Contains(js, "steuert für einige Sekunden nicht") {
+		t.Error("der Knopf muss VORHER sagen, was er tut")
+	}
+}
+
+// errApplyRefused steht fuer eine ABLEHNUNG (400), nicht fuer einen Fehler -
+// der fakeOta bildet damit die IsOtaRejection-Regel des Agenten nach.
+var errApplyRefused = errors.New("Auf dieser Box laeuft kein Aktualisierer.")

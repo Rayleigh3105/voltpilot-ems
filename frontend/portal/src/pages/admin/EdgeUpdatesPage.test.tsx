@@ -6,6 +6,7 @@ const edgeUpdates = vi.fn();
 const promoteRollout = vi.fn();
 const haltRollout = vi.fn();
 const setUpdateTarget = vi.fn();
+const setAutoAdvance = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -16,6 +17,7 @@ vi.mock('../../admin/adminApi', () => ({
     resumeRollout: vi.fn(),
     createRollout: vi.fn(),
     setUpdateTarget: (...a: unknown[]) => setUpdateTarget(...a),
+    setAutoAdvance: (...a: unknown[]) => setAutoAdvance(...a),
     revertUpdateTarget: vi.fn(),
   },
 }));
@@ -183,5 +185,85 @@ describe('EdgeUpdatesPage', () => {
     render(<EdgeUpdatesPage />);
     fireEvent.click(await screen.findByRole('button', { name: /Nächste Welle/ }));
     expect(await screen.findByText(/noch nicht bestätigt/)).toBeInTheDocument();
+  });
+});
+
+// ── OTA Stufe 4 „Politur" ──────────────────────────────────────────────────
+
+describe('Wellen-Automatik + TOFU-Abschluss auf der Seite', () => {
+  it('sagt, in welchem Modus der Rollout läuft - und warum die Welle wartet', async () => {
+    edgeUpdates.mockResolvedValue(data({
+      activeRollout: {
+        ...data().activeRollout!,
+        autoAdvance: true,
+        advanceNote: 'Automatischer Vorschub: die nächste Welle wird freigegeben, sobald das '
+          + 'Bake-Kriterium erfüllt ist. Offen: Noch 21 Std. gesunder Betrieb.',
+      },
+    }));
+    render(<EdgeUpdatesPage />);
+
+    await waitFor(() => expect(screen.getByTestId('advance-mode')).toBeInTheDocument());
+    expect(screen.getByTestId('advance-mode')).toHaveTextContent('Automatischer Wellen-Vorschub');
+    expect(screen.getByTestId('advance-note')).toHaveTextContent('Offen:');
+  });
+
+  it('schaltet den Vorschub um - und fragt VORHER, was sich dabei ändert', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    edgeUpdates.mockResolvedValue(data());
+    setAutoAdvance.mockResolvedValue(undefined);
+    render(<EdgeUpdatesPage />);
+
+    await waitFor(() => expect(screen.getByTestId('advance-mode')).toBeInTheDocument());
+    expect(screen.getByTestId('advance-mode')).toHaveTextContent('Wellen von Hand');
+    fireEvent.click(screen.getByRole('button', { name: /Automatisch weiterschalten/ }));
+
+    await waitFor(() => expect(setAutoAdvance).toHaveBeenCalledWith('r1', true));
+    // Die Rückfrage nennt, was GLEICH bleibt - sonst liest sich das Umlegen
+    // wie ein Lockern der Regeln.
+    expect(confirmSpy.mock.calls[0][0]).toContain('Bake-Kriterium');
+    confirmSpy.mockRestore();
+  });
+
+  it('zeigt den Vertrauens-Stand je Gerät und nennt Abwesenheit „unbekannt"', async () => {
+    const base = data();
+    edgeUpdates.mockResolvedValue({
+      ...base,
+      fleet: [
+        {
+          ...base.fleet[0],
+          trust: {
+            rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
+            trustSetGeneratedAt: '2026-09-01T10:00:00Z', trustSetError: null,
+          },
+        },
+        {
+          ...base.fleet[1],
+          trust: {
+            rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null,
+            trustSetError: 'Diesem Stand ist kein Vertrauensanker eingebacken.',
+          },
+        },
+      ],
+    });
+    render(<EdgeUpdatesPage />);
+
+    await waitFor(() => expect(screen.getByTestId('fleet')).toBeInTheDocument());
+    expect(screen.getByText('gekreuzt ✓')).toBeInTheDocument();
+    expect(screen.getByText('Crossover offen')).toBeInTheDocument();
+    // Der ruhige Hinweis über der Flotte zählt nur die BELEGT offenen.
+    expect(screen.getByTestId('crossover-hint'))
+      .toHaveTextContent('Crossover offen: 1 Gerät');
+  });
+
+  it('schweigt über den Crossover, solange kein Gerät ihn meldet', async () => {
+    edgeUpdates.mockResolvedValue(data());
+    render(<EdgeUpdatesPage />);
+
+    await waitFor(() => expect(screen.getByTestId('fleet')).toBeInTheDocument());
+    // Zwei Geräte OHNE trust-Block: das ist „unbekannt" und wird als solches
+    // genannt - nie als „Crossover offen".
+    expect(screen.getByTestId('crossover-hint'))
+      .toHaveTextContent('melden ihren Vertrauensanker nicht');
+    expect(screen.getByTestId('crossover-hint')).not.toHaveTextContent('Crossover offen');
   });
 });

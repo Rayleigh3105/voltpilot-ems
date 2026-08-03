@@ -40,7 +40,7 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
     public record RolloutDto(UUID id, String releaseVersion, long releaseSeq, String channel,
             String state, int currentWave, int waveCount, String haltedReason, String createdBy,
             Instant createdAt, boolean canPromote, String promoteBlockedReason,
-            List<WaveDto> waves) {
+            boolean autoAdvance, String advanceNote, List<WaveDto> waves) {
     }
 
     /** Eine Welle: ihre Geräte und ob sie vollständig bestätigt ist. */
@@ -72,7 +72,23 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
     public record FleetRowDto(UUID deviceId, String label, UUID siteId, String siteName,
             UUID tenantId, String tenantName, String ist, String soll, Long sollSeq,
             String channel, boolean pinned, String state, String reason, Instant since,
-            Instant reportedAt, UUID rolloutId) {
+            Instant reportedAt, UUID rolloutId, TrustDto trust) {
+    }
+
+    /**
+     * Die VERTRAUENS-IDENTITÄT eines Geräts (OTA Stufe 4): TOFU-Abschluss und
+     * Rotations-Stand, so wie das Gerät sie GEPRÜFT gemeldet hat.
+     *
+     * <p><b>{@code null} heißt „unbekannt", nie „nicht gekreuzt".</b> Ein
+     * älterer Edge-Stand meldet den Block gar nicht - und Abwesenheit als
+     * Befund zu rendern wäre genau die Sorte Behauptung, gegen die die ganze
+     * Fläche gebaut ist. Ein Gerät MIT Block, dessen {@code rootKeyIds} LEER
+     * ist, ist dagegen ein belegter Befund: das Image trägt (noch) keine
+     * Wurzel, der Crossover steht also aus - der dokumentierte Vor-TOFU-
+     * Zustand, kein Fehler.
+     */
+    public record TrustDto(List<String> rootKeyIds, List<String> trustSetKeyIds,
+            String trustSetGeneratedAt, String trustSetError) {
     }
 
     /** Ein Eintrag des Audit-Journals. */

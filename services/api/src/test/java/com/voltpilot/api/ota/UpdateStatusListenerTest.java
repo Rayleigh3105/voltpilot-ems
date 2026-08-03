@@ -2,10 +2,10 @@ package com.voltpilot.api.ota;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -56,7 +56,8 @@ class UpdateStatusListenerTest {
     /** One heartbeat in; the captured upsert arguments out. */
     private record Row(String version, String backend, String current, Long currentSeq,
             String target, Long targetSeq, String channel, String state, String reason,
-            String lastKnownGood, String targetVerdict) {
+            String lastKnownGood, String targetVerdict, String rootKeyIds, String trustSetKeyIds,
+            String trustSetGeneratedAt, String trustSetSignedBy, String trustSetError) {
     }
 
     private Row ingest(String bodyFields) {
@@ -74,22 +75,26 @@ class UpdateStatusListenerTest {
         ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> lkg = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> verdict = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> roots = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> trustKeys = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> trustGen = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> trustBy = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> trustErr = ArgumentCaptor.forClass(String.class);
         verify(store).upsert(eq(DEVICE), eq(SITE), version.capture(), backend.capture(),
                 current.capture(), currentSeq.capture(), target.capture(), targetSeq.capture(),
                 channel.capture(), state.capture(), reason.capture(), lkg.capture(),
-                verdict.capture(), any());
+                verdict.capture(), roots.capture(), trustKeys.capture(), trustGen.capture(),
+                trustBy.capture(), trustErr.capture(), any());
         return new Row(version.getValue(), backend.getValue(), current.getValue(),
                 currentSeq.getValue(), target.getValue(), targetSeq.getValue(),
                 channel.getValue(), state.getValue(), reason.getValue(), lkg.getValue(),
-                verdict.getValue());
+                verdict.getValue(), roots.getValue(), trustKeys.getValue(), trustGen.getValue(),
+                trustBy.getValue(), trustErr.getValue());
     }
 
     private void assertNothingStored() {
-        verify(store, never()).upsert(any(), any(), anyString(), anyString(), anyString(), any(),
-                anyString(), any(), anyString(), anyString(), anyString(), anyString(),
-                anyString(), any());
         verify(store, never()).upsert(any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     /**
@@ -215,6 +220,63 @@ class UpdateStatusListenerTest {
                 + "\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-2026.08.0\"}";
         listener.handle(TOPIC, payload.getBytes(StandardCharsets.UTF_8));
         assertNothingStored();
+    }
+
+    // ── OTA Stufe 4: die Vertrauens-Identität ────────────────────────────
+
+    /**
+     * Eine gekreuzte Box meldet ihre geprüfte Vertrauens-Identität; die
+     * Schlüssel-Listen werden SORTIERT abgelegt, damit zwei Boxen mit demselben
+     * Set denselben String ergeben - die Oberfläche vergleicht sie.
+     */
+    @Test
+    void theTrustIdentityIsIngestedAndItsKeyListsAreSorted() {
+        Row r = ingest("\"version\":\"edge-2026.08.0\",\"update\":{\"backend\":\"compose\","
+                + "\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\"],"
+                + "\"trust_set_key_ids\":[\"rel-2026-c\",\"rel-2026-a\"],"
+                + "\"trust_set_generated_at\":\"2026-09-01T10:00:00Z\","
+                + "\"trust_set_signed_by\":\"root-2026-a\"}}");
+
+        assertThat(r.rootKeyIds()).isEqualTo("root-2026-a");
+        assertThat(r.trustSetKeyIds()).isEqualTo("rel-2026-a,rel-2026-c");
+        assertThat(r.trustSetGeneratedAt()).isEqualTo("2026-09-01T10:00:00Z");
+        assertThat(r.trustSetSignedBy()).isEqualTo("root-2026-a");
+    }
+
+    /**
+     * DIE Unterscheidung, an der die ganze TOFU-Verfolgung hängt: ein älterer
+     * Edge-Stand meldet den Block GAR NICHT → {@code null} („unbekannt"), ein
+     * schlüsselloses Image meldet ihn mit LEERER Liste → {@code ""} („Crossover
+     * offen"). Beides als dasselbe zu speichern hieße, aus einer Wissenslücke
+     * einen Befund zu machen.
+     */
+    @Test
+    void anOlderEdgeIsUnknownWhileAKeylessImageIsAnOpenCrossover() {
+        Row alt = ingest("\"version\":\"3bf8c038a1b2\",\"update\":{\"backend\":\"compose\","
+                + "\"state\":\"idle\"}}".replace("}}", "}"));
+        assertThat(alt.rootKeyIds()).isNull();
+        assertThat(alt.trustSetError()).isNull();
+
+        reset(store);
+        Row leer = ingest("\"version\":\"3bf8c038a1b2\",\"update\":{\"backend\":\"compose\","
+                + "\"state\":\"idle\",\"trust\":{\"root_key_ids\":[],"
+                + "\"trust_set_error\":\"Diesem Stand ist kein Vertrauensanker eingebacken.\"}}");
+        assertThat(leer.rootKeyIds()).isEqualTo("");
+        assertThat(leer.trustSetError()).contains("Vertrauensanker");
+    }
+
+    /**
+     * Eine Kennung, die nicht der Kontrakt-Form entspricht, wird VERWORFEN -
+     * dieselbe Regel wie beim unbekannten Zustand. Sie ist hier zusätzlich die
+     * Zusicherung, dass kein Komma in die komma-getrennte Ablage gerät.
+     */
+    @Test
+    void aMalformedKeyIdIsDroppedInsteadOfStored() {
+        Row r = ingest("\"version\":\"edge-2026.08.0\",\"update\":{\"backend\":\"compose\","
+                + "\"state\":\"idle\",\"trust\":{\"root_key_ids\":[\"root-2026-a\",\"a,b\","
+                + "\"UPPER\",\"\"]}}");
+
+        assertThat(r.rootKeyIds()).isEqualTo("root-2026-a");
     }
 
     /** Garbage on the topic never throws and never stores. */

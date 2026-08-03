@@ -149,6 +149,12 @@ func (e *Engine) Tick(ctx context.Context) error {
 
 	autonomous := e.o.ForceAutonomous || otaapply.ReadAutonomy(e.o.DataDir).Enabled
 	sig, _ := otaapply.ReadJSON[otaapply.CoreSignal](e.o.DataDir, otaapply.FileCoreSignal)
+	// Die EINMALIGE Freigabe eines Menschen am Geraet (`:8484` „Jetzt
+	// anwenden", OTA Stufe 4). Sie oeffnet ausschliesslich das erste Tor; der
+	// zuletzt ausgefuehrte Token steht in UNSEREM Zustand, damit dieselbe
+	// Anfrage nie zweimal wirkt (und jede Datei genau einen Schreiber hat).
+	req, _ := otaapply.ReadJSON[otaapply.ApplyRequest](e.o.DataDir, otaapply.FileApplyRequest)
+	appliedToken := e.appliedRequestToken()
 
 	env, err := otaapply.LoadTarget(e.o.DataDir)
 	hasTarget := err == nil
@@ -178,7 +184,9 @@ func (e *Engine) Tick(ctx context.Context) error {
 		family = sig.InverterFamily
 	}
 	dec := otaapply.Decide(otaapply.DecisionInput{
-		Autonomous:         autonomous,
+		Autonomous:          autonomous,
+		Request:             req,
+		AppliedRequestToken: appliedToken,
 		HasTarget:          hasTarget,
 		Verdict:            verdict,
 		StateSchemaOnDisk:  e.stateSchemaOnDisk(),
@@ -192,10 +200,20 @@ func (e *Engine) Tick(ctx context.Context) error {
 	})
 
 	st := otaapply.UpdaterState{
-		State:         dec.State,
-		Reason:        dec.Reason,
-		Autonomous:    autonomous,
-		LastKnownGood: e.lastKnownGood(),
+		State:               dec.State,
+		Reason:              dec.Reason,
+		Autonomous:          autonomous,
+		LastKnownGood:       e.lastKnownGood(),
+		AppliedRequestToken: appliedToken,
+	}
+	if dec.Action == otaapply.ActionApply && !autonomous && req != nil {
+		// QUITTIEREN, BEVOR getauscht wird. Ein Absturz mitten im Tausch darf
+		// niemals dazu fuehren, dass dieselbe Freigabe beim Neustart einen
+		// ZWEITEN Tausch ausloest - die Wiederaufnahme laeuft ueber die
+		// Brotkrume, nicht ueber die Freigabe.
+		st.AppliedRequestToken = req.Token
+		e.o.Log.Info("OTA: am Geraet freigegebene Anwendung", "release", st.Release,
+			"freigegeben_von", req.RequestedBy)
 	}
 	if verdict.Manifest != nil {
 		st.Release = verdict.Manifest.Release
@@ -757,6 +775,18 @@ func (e *Engine) lastKnownGood() string {
 		return ""
 	}
 	return lkg.Release
+}
+
+// appliedRequestToken ist die Quittung ueber die zuletzt ausgefuehrte
+// einmalige Freigabe. Sie lebt in UNSEREM Zustand (nicht in einer Loeschung
+// der Anfrage-Datei), damit jede Datei des Protokolls genau EINEN Schreiber
+// hat - dieselbe Regel, aus der `current.json` nur der Kern schreibt.
+func (e *Engine) appliedRequestToken() string {
+	st, err := otaapply.ReadJSON[otaapply.UpdaterState](e.o.DataDir, otaapply.FileUpdaterState)
+	if err != nil || st == nil {
+		return ""
+	}
+	return st.AppliedRequestToken
 }
 
 func (e *Engine) envPath() string { return filepath.Join(e.o.DeployDir, ".env") }

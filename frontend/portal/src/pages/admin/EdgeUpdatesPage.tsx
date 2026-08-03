@@ -13,6 +13,10 @@ import {
   actorLabel,
   bakeLine,
   eventLabel,
+  advanceMode,
+  crossoverHint,
+  crossoverState,
+  formatTrustStamp,
   loudBanner,
   promoteHint,
   rolloutStateLabel,
@@ -89,6 +93,11 @@ export function EdgeUpdatesPage() {
   const banner = useMemo(() => loudBanner(data?.fleet ?? []), [data]);
   const journal = useMemo(() => visibleJournal(data?.journal ?? []), [data]);
   const hint = promoteHint(rollout);
+  const mode = advanceMode(rollout);
+  // OTA Stufe 4: der ruhige TOFU-Hinweis über der Flotte. Er zählt nur BELEGT
+  // offene Crossover; ein Gerät, das nichts meldet, wird getrennt genannt -
+  // aus „unbekannt" lässt sich keine Aufgabe ableiten.
+  const crossover = useMemo(() => crossoverHint(data?.fleet ?? []), [data]);
 
   return (
     <>
@@ -300,6 +309,39 @@ export function EdgeUpdatesPage() {
                     Nächste Welle ▸
                   </Button>
                 </div>
+                {/* In welchem Modus läuft dieser Rollout - und was passiert als
+                    Nächstes. Ohne diese Zeile wäre die Automatik ein
+                    unsichtbarer Zustand. */}
+                {mode && (
+                  <div className="vp-row-gap" style={{ marginTop: 'var(--vp-space-3)' }}
+                       data-testid="advance-mode">
+                    <Badge variant={toneVariant(mode.tone)} dot>{mode.label}</Badge>
+                    {(rollout.state === 'active' || rollout.state === 'paused') && (
+                      <Button
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => {
+                          const on = rollout.autoAdvance !== true;
+                          if (on && !window.confirm(
+                            'Wellen automatisch weiterschalten?\n\nEs ändert sich NUR, wer '
+                              + '„Nächste Welle" drückt: dasselbe Bake-Kriterium (24 h gesund '
+                              + 'und ein echter Steuerzyklus), derselbe automatische Halt bei '
+                              + 'jedem Fehlschlag, derselbe endgültige Not-Aus.',
+                          )) {
+                            return;
+                          }
+                          void act(() => adminApi.setAutoAdvance(rollout.id, on));
+                        }}
+                      >
+                        {rollout.autoAdvance ? 'Auf Hand-Vorschub umstellen'
+                          : 'Automatisch weiterschalten'}
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {mode?.note && (
+                  <p className="vp-muted vp-text-sm" data-testid="advance-note">{mode.note}</p>
+                )}
                 {/* WARUM der Knopf gesperrt ist - ein deaktivierter Knopf ohne
                     Begründung ist eine Sackgasse. */}
                 {hint && (
@@ -314,6 +356,11 @@ export function EdgeUpdatesPage() {
           {/* ── 3. Flotten-Matrix ───────────────────────────────────────── */}
           <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-6)' }}>
             <h3 style={{ marginTop: 0 }}>Flotten-Matrix</h3>
+            {/* Der TOFU-Abschluss-Stand der Flotte: eine offene Aufgabe, kein
+                Alarm - deshalb eine ruhige Zeile und kein Warn-Banner. */}
+            {crossover && (
+              <p className="vp-muted vp-text-sm" data-testid="crossover-hint">{crossover}</p>
+            )}
             {fleet.length === 0 ? (
               <EmptyState title="Keine Geräte" description="Es ist kein Gerät verbunden." />
             ) : (
@@ -325,6 +372,7 @@ export function EdgeUpdatesPage() {
                     <th>Ist</th>
                     <th>Soll</th>
                     <th>Zustand</th>
+                    <th>Vertrauen</th>
                     <th>seit</th>
                     <th>Grund</th>
                   </tr>
@@ -391,12 +439,13 @@ export function EdgeUpdatesPage() {
           release={rolloutFor}
           fleet={data.fleet}
           onClose={() => setRolloutFor(null)}
-          onStart={async (waves, channel) => {
+          onStart={async (waves, channel, autoAdvance) => {
             await act(() =>
               adminApi.createRollout({
                 releaseSeq: rolloutFor.releaseSeq,
                 channel,
                 waves,
+                autoAdvance,
               }),
             );
             setRolloutFor(null);
@@ -409,6 +458,7 @@ export function EdgeUpdatesPage() {
 
 function FleetTableRow({ row, onOpen }: { row: FleetRow; onOpen: () => void }) {
   const st = stateLabel(row.state);
+  const cross = crossoverState(row.trust);
   return (
     <tr className="vp-row-click" onClick={onOpen} title="Zuweisung dieses Geräts">
       <td data-label="Anlage">
@@ -429,6 +479,13 @@ function FleetTableRow({ row, onOpen }: { row: FleetRow; onOpen: () => void }) {
       <td data-label="Zustand">
         <Badge variant={toneVariant(st.tone)} dot>
           {st.label}
+        </Badge>
+      </td>
+      {/* OTA Stufe 4: trägt diese Box schon ein schlüsseltragendes Image?
+          „unbekannt" ist hier ruhig und heißt NIE „nicht gekreuzt". */}
+      <td data-label="Vertrauen">
+        <Badge variant={toneVariant(cross.tone)} dot title={cross.detail ?? undefined}>
+          {cross.label}
         </Badge>
       </td>
       <td data-label="seit" className="vp-muted">
@@ -484,7 +541,30 @@ function DeviceTargetDrawer({
         <dd>{row.soll ?? '–'}</dd>
         <dt>Zustand</dt>
         <dd>{stateLabel(row.state).label}</dd>
+        {/* Die Vertrauens-Identität dieses Geräts (OTA Stufe 4): trägt es ein
+            schlüsseltragendes Image, und WELCHES Vertrauens-Set fährt es? Das
+            zweite ist der Blick, den ein Rotations-Drill je Box braucht. */}
+        <dt>Vertrauen</dt>
+        <dd>{crossoverState(row.trust).label}</dd>
+        {row.trust && row.trust.trustSetKeyIds.length > 0 && (
+          <>
+            <dt>Vertrauens-Set</dt>
+            <dd>
+              {row.trust.trustSetKeyIds.join(', ')}
+              {row.trust.trustSetGeneratedAt
+                && ` (vom ${formatTrustStamp(row.trust.trustSetGeneratedAt)})`}
+            </dd>
+          </>
+        )}
       </dl>
+      {/* Der Grund steht IMMER dabei - „Crossover offen" ohne die Erklärung,
+          dass das der dokumentierte Vor-TOFU-Zustand ist, läse sich wie ein
+          Defekt. */}
+      {crossoverState(row.trust).detail && (
+        <p className="vp-muted vp-text-sm" data-testid="trust-detail">
+          {crossoverState(row.trust).detail}
+        </p>
+      )}
       {row.reason && <p className="vp-muted vp-text-sm">{row.reason}</p>}
 
       {signed.length === 0 ? (
@@ -577,9 +657,16 @@ function StartRolloutDrawer({
   release: EdgeUpdatesRelease;
   fleet: FleetRow[];
   onClose: () => void;
-  onStart: (waves: { name: string; devices: string[] }[], channel: string) => Promise<void>;
+  onStart: (
+    waves: { name: string; devices: string[] }[],
+    channel: string,
+    autoAdvance: boolean,
+  ) => Promise<void>;
 }) {
   const [canary, setCanary] = useState<string[]>([]);
+  // OTA Stufe 4: die Automatik ist eine OPTION und startet AUS - Hand-Vorschub
+  // ist bei dieser Flottengröße die richtige Vorgabe (D4).
+  const [autoAdvance, setAutoAdvance] = useState(false);
   const candidates = useMemo(() => sortFleet(fleet), [fleet]);
   const rest = candidates.filter((d) => !canary.includes(d.deviceId));
 
@@ -622,10 +709,25 @@ function StartRolloutDrawer({
           ? 'Alle Geräte stehen in Welle 1.'
           : `Welle 2 „Flotte“: ${rest.length} Gerät${rest.length === 1 ? '' : 'e'}.`}
       </p>
+      <label className="vp-check-row" style={{ marginTop: 'var(--vp-space-3)' }}>
+        <input
+          type="checkbox"
+          checked={autoAdvance}
+          onChange={(e) => setAutoAdvance(e.target.checked)}
+        />{' '}
+        Automatisch weiter, wenn das Bake-Kriterium erfüllt ist
+      </label>
+      <p className="vp-muted vp-text-sm">
+        {autoAdvance
+          ? 'Es ändert sich nur, WER „Nächste Welle“ drückt. Dasselbe Bake-Kriterium, '
+            + 'derselbe automatische Halt bei jedem Fehlschlag, derselbe endgültige Not-Aus.'
+          : 'Vorgabe: jede weitere Welle geben Sie von Hand frei. Umstellen geht auch '
+            + 'später, während der Rollout läuft.'}
+      </p>
       <Button
         variant="primary"
         disabled={waves.length === 0}
-        onClick={() => void onStart(waves, canary.length > 0 ? 'canary' : 'stable')}
+        onClick={() => void onStart(waves, canary.length > 0 ? 'canary' : 'stable', autoAdvance)}
       >
         Rollout starten
       </Button>

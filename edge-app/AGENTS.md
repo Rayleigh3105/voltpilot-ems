@@ -857,6 +857,47 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
   (die Neutral-Aussage) und die Matrix `test/ota-soak/run.sh` (10 Faelle gegen
   echten Docker, echte Signaturkette, echte Registry).
 
+## OTA Stufe 4: das Vertrauen wird MELDBAR - und ein Knopf ersetzt SSH
+
+Zwei additive Dinge, beide ohne jeden neuen Wirkpfad zum Wechselrichter. Cloud-
+Seite + Portal: root `AGENTS.md` „OTA Stufe 4"; Rotations-Drill:
+[`docs/ota-signing.md`](../docs/ota-signing.md) §7.1.
+
+- **Der Herzschlag traegt die VERTRAUENS-IDENTITAET** (`cloud.TrustSummary` im
+  `update`-Block, gebaut in `agent/ota.go otaRefreshTrust`, zwischengespeichert
+  mit eigenem mtime-Stempel - die Ed25519-Pruefung laeuft nur bei geaendertem
+  Trust-Set). Sie beantwortet „traegt diese Box ein schluesseltragendes Image?"
+  (TOFU) und „hat sie das neue Trust-Set schon gesehen?" (Rotation), und sie
+  gilt UNABHAENGIG von einem Release - genau die Box ohne Zuweisung ist die,
+  deren Crossover-Stand der Betreiber wissen muss.
+  - **`otaverify.InspectTrust` ist die EINE Quelle** und faehrt die ersten zwei
+    Schritte von `Verify`: ein Trust-Set, das die eingebackene Wurzel NICHT
+    unterschrieben hat, wird NICHT berichtet. Werkzeug (`vp-ota trust`) und
+    Geraet rufen dieselbe Funktion - zwei Quellen fuer „welches Set faehrt
+    diese Box" waeren zwei Wahrheiten.
+  - **⚠ ABWESEND und LEER sind verschiedene Aussagen.** Ein aelterer Stand
+    sendet den Block gar nicht („unbekannt"); ein Image OHNE Wurzel sendet ihn
+    mit LEERER `root_key_ids` (`[]`, nie `null` - deshalb das explizite
+    `append([]string{}, ...)`), und das heisst „Crossover offen" - der
+    dokumentierte Vor-TOFU-Zustand, kein Fehler.
+- **`:8484` „Jetzt anwenden"** (`agent/ota_apply.go`, `static/ota.js`, Karte in
+  ④ Erweitert): der Kern legt hinter dem BESTEHENDEN Betreiber-Passwort
+  (`calGuard`, `X-VP-Calibration-Token`) eine EINMALIGE Freigabe ab
+  (`otaapply.ApplyRequest`); angewandt wird sie vom Stufe-3-Sidecar.
+  - **Es ist KEINE Autonomie.** Sie oeffnet ausschliesslich das ERSTE Tor von
+    `otaapply.Decide` - fuer GENAU EINEN Vorgang (Token, quittiert in
+    `UpdaterState.AppliedRequestToken`, damit jede Datei GENAU EINEN Schreiber
+    behaelt) und GENAU EIN Release (die Freigabe gilt dem Stand, den der Mensch
+    SAH; eine inzwischen eingetroffene Zuweisung ist nicht mitfreigegeben) -
+    und sie verfaellt nach `ApplyRequestWindow` (15 min). Jedes weitere Tor
+    gilt unveraendert; `TestAnApprovalNeverSkipsAnyLaterGate` vergleicht dafuer
+    freigegeben gegen autonom Fall fuer Fall. `autonomy.json` bleibt unberuehrt
+    AUS.
+  - **Ohne laufenden Sidecar rendert die Karte NICHT** und der Endpunkt lehnt
+    mit dem ehrlichen Grund ab (dann bleibt `update.sh --from-target` der Weg) -
+    eine Karte, die nur sagen kann „geht hier nicht", ist Laerm.
+  - `static/*` ist `//go:embed`-ed - Kern nach jeder Aenderung neu bauen.
+
 ## Per-source status in the heartbeat (#524)
 
 `agent.sourcesSummary()` (`internal/agent/entities.go`) folds an additive

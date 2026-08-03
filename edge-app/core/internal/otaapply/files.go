@@ -30,6 +30,7 @@ const (
 	FileSelfTest       = "self-test.json"
 	FileLKG            = "lkg.json"
 	FileFailed         = "failed.json"
+	FileApplyRequest   = "apply-request.json"
 	// SubdirLKG haelt die `docker save`-Archive der steuerungskritischen
 	// Images - das Rueckfallziel, das auch `docker system prune -a` ueberlebt.
 	SubdirLKG = "lkg"
@@ -51,6 +52,69 @@ type Autonomy struct {
 	Enabled   bool   `json:"enabled"`
 	Note      string `json:"note,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// ApplyRequest ist die EINMALIGE, von einem MENSCHEN ausgeloeste Anwendung
+// (OTA Stufe 4 „Politur"): der Knopf „Jetzt anwenden" auf `:8484`.
+//
+// **Sie ist NICHT Autonomie.** Autonomie heisst „die Box entscheidet selbst,
+// WANN sie anwendet"; das hier heisst „ein Betreiber hat sich diese eine
+// Anwendung angesehen und sie ausgeloest". Beide gehen durch DIESELBE
+// Torkette ([Decide]) und dieselbe Orchestrierung - was diese Anfrage oeffnet,
+// ist ausschliesslich das ERSTE Tor, und zwar fuer GENAU EINEN Vorgang.
+//
+// Damit ist der beaufsichtigte Pfad nicht schwaecher als vorher, sondern
+// STAERKER: `update.sh --from-target` tauscht die Container roh, waehrend
+// dieser Weg dieselbe Sicherung bekommt wie der autonome (Digest-Gegenprobe,
+// dreifach gesichertes Rueckfallziel, Brotkrume, sequenzierter Tausch,
+// Selbsttest, Wachhund, Ruecknahme).
+//
+// Zwei Felder tragen die Sicherheit:
+//
+//   - **Release** ist der Stand, den der Mensch GESEHEN hat. Aendert sich die
+//     Zuweisung zwischen Klick und Takt, passt sie nicht mehr und es wird
+//     NICHTS angewandt - eine Freigabe gilt fuer das, was auf dem Schirm
+//     stand, nicht fuer das, was inzwischen da liegt.
+//   - **Token** macht sie EINMALIG: der Sidecar merkt sich den zuletzt
+//     ausgefuehrten Token in seinem eigenen Zustand, also kann dieselbe Datei
+//     nie zweimal einen Tausch ausloesen (das waere die Schleife, gegen die es
+//     `failed.json` gibt).
+//
+// Sie verfaellt zusaetzlich nach [ApplyRequestWindow] - eine vergessene
+// Freigabe darf nicht Tage spaeter zuschlagen.
+//
+// SCHREIBER: der Kern (er hat die Bedien-Oberflaeche und das Passwort). Der
+// Sidecar liest sie nur; QUITTIERT wird ueber sein eigenes
+// [UpdaterState.AppliedRequestToken], damit die Einzelschreiber-Regel je Datei
+// gilt.
+type ApplyRequest struct {
+	Token       string `json:"token"`
+	Release     string `json:"release"`
+	RequestedAt string `json:"requested_at"`
+	RequestedBy string `json:"requested_by,omitempty"`
+}
+
+// ApplyRequestWindow ist die Gueltigkeit einer Freigabe.
+//
+// Grosszuegig genug fuer eine Box, deren Sidecar gerade neu startet (der Takt
+// ist 30 s), kurz genug, dass eine vergessene Freigabe nicht am naechsten Tag
+// wirkt.
+const ApplyRequestWindow = 15 * time.Minute
+
+// Fresh sagt, ob die Freigabe noch gilt. Ein unlesbarer Stempel gilt NICHT -
+// im Zweifel wird nichts angewandt.
+func (r *ApplyRequest) Fresh(now time.Time) bool {
+	if r == nil || r.Token == "" {
+		return false
+	}
+	t, err := time.Parse(TimeFormat, r.RequestedAt)
+	if err != nil {
+		return false
+	}
+	if now.Before(t) {
+		return true // Uhr-Sprung: gerade eben (siehe CoreSignal.Age)
+	}
+	return now.Sub(t) <= ApplyRequestWindow
 }
 
 // CoreSignal ist, was der KERN dem Sidecar ueber den Zustand der Anlage sagt.
@@ -131,6 +195,10 @@ type UpdaterState struct {
 	AckToken        string `json:"ack_token,omitempty"`
 	// NeedNeutral bittet den Kern, die Anlage neutral zu parken (Eil-Pfad).
 	NeedNeutral bool `json:"need_neutral,omitempty"`
+	// AppliedRequestToken quittiert eine einmalige Freigabe ([ApplyRequest]).
+	// Sie ist DAS, was sie einmalig macht - und sie steht hier statt in einer
+	// Loeschung der Anfrage-Datei, damit jede Datei GENAU EINEN Schreiber hat.
+	AppliedRequestToken string `json:"applied_request_token,omitempty"`
 	// DeadlineAt ist die Wachhund-Frist des laufenden Vorgangs.
 	DeadlineAt string `json:"deadline_at,omitempty"`
 }
@@ -314,4 +382,29 @@ func ReadAutonomy(dataDir string) Autonomy {
 		return Autonomy{}
 	}
 	return *a
+}
+
+// ApplyView ist, was `:8484` ueber die Anwendbarkeit weiss.
+//
+// Jedes „nein" traegt seinen GRUND - ein ausgegrauter Knopf ohne Begruendung
+// ist eine Sackgasse (die Haus-Disziplin des Flotten-Puls, hier auf dem
+// Geraet).
+type ApplyView struct {
+	// CanApply: es gibt ein geprueftes Ziel UND einen laufenden Aktualisierer.
+	CanApply bool `json:"can_apply"`
+	// Reason ist der deutsche Grund, wenn NICHT angewandt werden kann.
+	Reason string `json:"reason,omitempty"`
+	// Release ist der Stand, um den es geht (leer ohne Zuweisung).
+	Release string `json:"release,omitempty"`
+	// UpdaterPresent sagt, ob ueberhaupt ein Aktualisierer laeuft. false =
+	// das Compose-Profil `ota` ist nicht aktiv; dann bleibt `update.sh
+	// --from-target` der Weg, und die Oberflaeche sagt genau das.
+	UpdaterPresent bool `json:"updater_present"`
+	// Autonomous spiegelt den Geraete-Schalter - so unterscheidet die
+	// Oberflaeche „wartet auf Sie" von „macht es ohnehin selbst".
+	Autonomous bool `json:"autonomous"`
+	// Requested/RequestedAt: eine Freigabe liegt und wartet auf den naechsten
+	// Takt des Aktualisierers.
+	Requested   bool   `json:"requested"`
+	RequestedAt string `json:"requested_at,omitempty"`
 }
