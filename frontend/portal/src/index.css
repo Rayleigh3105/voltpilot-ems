@@ -4324,11 +4324,106 @@ button.vp-tech-card-h.toggle {
   font-weight: 600;
 }
 
-/* what-if placeholder */
+/* What-if re-optimize (design §4.3): the knob form, the FLUECHTIG banner and
+   the delta table. The comparison chart reuses .vp-chart + ChartLegend. */
 .vp-optim-whatif {
   display: flex;
   gap: var(--vp-space-4);
   align-items: flex-start;
+  color: var(--vp-text-muted);
+}
+/* The "nothing is sent to the plant" promise - always visible, never a
+   dismissible toast: it is the reason this panel is safe to use. */
+.vp-optim-ephemeral {
+  display: flex;
+  gap: var(--vp-space-2);
+  align-items: flex-start;
+  margin-bottom: var(--vp-space-4);
+}
+.vp-optim-ephemeral svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.vp-optim-whatif-form {
+  margin-bottom: var(--vp-space-4);
+}
+.vp-optim-knobs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--vp-space-3);
+}
+.vp-optim-knob {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.vp-optim-knob label {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--vp-text-body);
+}
+.vp-optim-knob label .unit {
+  font-weight: 400;
+  color: var(--vp-text-muted);
+}
+.vp-optim-knob .hint {
+  font-size: 0.76rem;
+  color: var(--vp-text-muted);
+}
+.vp-optim-knob .vp-optim-num,
+.vp-optim-knob .vp-select {
+  width: 100%;
+}
+.vp-optim-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+  margin-top: var(--vp-space-3);
+}
+.vp-optim-presets-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--vp-text-body);
+}
+.vp-chip.is-on {
+  background: var(--vp-action);
+  border-color: var(--vp-action);
+  color: #fff;
+}
+.vp-optim-whatif-head {
+  margin-bottom: var(--vp-space-3);
+}
+.vp-optim-whatif-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-1, 0.25rem);
+  margin-bottom: var(--vp-space-2);
+}
+.vp-optim-whatif-verdict {
+  margin: 0;
+  font-weight: 600;
+  color: var(--vp-text-body);
+}
+.vp-optim-whatif-note {
+  margin: 4px 0 0;
+  font-size: 0.83rem;
+  color: var(--vp-text-muted);
+}
+/* Delta tone codes the DIRECTION of a value judgement only - a row whose
+   direction is not a judgement (throughput, cycles) stays neutral. */
+.vp-delta-better {
+  color: #166534;
+}
+.vp-delta-worse {
+  color: #B71C1C;
+}
+.vp-delta-flat,
+.vp-delta-unknown {
   color: var(--vp-text-muted);
 }
 

@@ -14,34 +14,47 @@ import {
   optimizerApi,
   type OptimizerConfig,
   type OptimizerDiagnostics,
+  type WhatIfResult,
 } from '../../optimizerApi';
 import {
   buildConfigRequest,
+  buildWhatIfRequest,
   configFormFromOverrides,
   decisionLabelText,
   defaultSlotIndex,
+  EMPTY_WHAT_IF_FORM,
   fmtCt,
   fmtEur,
   modeBadge,
   notableSlots,
   objectiveTotals,
+  overrideChips,
+  presetForWear,
   runDateLabel,
   runLabel,
   slotTimeLabel,
   slotWaterfall,
+  SPEICHERSCHONUNG_PRESETS,
   verdict,
+  whatIfDeltaRows,
+  whatIfFallbackNote,
+  whatIfFormFromEffective,
+  whatIfVerdict,
   type ConfigFormState,
+  type WhatIfFormState,
 } from '../../optimizer';
 import { OptimizerPlanChart } from './OptimizerPlanChart';
+import { WhatIfCompareChart } from './WhatIfCompareChart';
 
 /**
  * Plattform → Optimizer: the admin diagnostic + tune surface (design
  * vp-admin-optimizer-ui-design, backend PR #125). One scrollable page: pick a
  * Mandant → Anlage → run, then read WHAT the optimizer did and WHY (verdict,
  * inputs, the plan chart, explain-a-slot, objective breakdown) and tune its
- * per-site/per-asset knobs. The what-if re-optimize is a deferred separate
- * increment (shown disabled). Everything honours the backend's null discipline:
- * a value that is not honestly computable shows "—", never a fabricated 0.
+ * per-site/per-asset knobs, and preview a knob change before saving it
+ * (Was-wäre-wenn, design §4.3 - two fresh solves, nothing committed).
+ * Everything honours the backend's null discipline: a value that is not
+ * honestly computable shows "—", never a fabricated 0.
  */
 export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -302,7 +315,14 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
               }}
             />
           )}
-          <WhatIfPlaceholder />
+          {tenantId && siteId && (
+            <WhatIfPanel
+              key={`whatif-${siteId}`}
+              tenantId={tenantId}
+              siteId={siteId}
+              config={config}
+            />
+          )}
         </div>
       ) : null}
     </>
@@ -980,23 +1000,330 @@ function ReadonlyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ---- what-if (deferred) ------------------------------------------------------
+// ---- what-if re-optimize (design §4.3) ---------------------------------------
 
-function WhatIfPlaceholder() {
+/**
+ * Move a knob, re-solve, compare - without touching the plant.
+ *
+ * Three honesty rules are carried by the markup, not just the copy:
+ *
+ * 1. The persisted run above stays the one that GILT. What this panel shows
+ *    are two SIMULATIONS, both computed just now, and it says so in a banner
+ *    that never disappears - the "FLÜCHTIG" promise.
+ * 2. The delta is variant vs. a FRESH baseline (the site as configured), not
+ *    vs. the stored run: those cover different horizons and price vintages,
+ *    so a delta against them would blame the knob for the passage of time.
+ * 3. A failed run shows the failure. It never falls back to the previous
+ *    result, and it never invents a comparison.
+ */
+function WhatIfPanel({
+  tenantId,
+  siteId,
+  config,
+}: {
+  tenantId: string;
+  siteId: string;
+  config: OptimizerConfig | null;
+}) {
+  const [form, setForm] = useState<WhatIfFormState>(EMPTY_WHAT_IF_FORM);
+  const [result, setResult] = useState<WhatIfResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>('');
+
+  const set = (k: keyof WhatIfFormState) => (value: string) => {
+    setForm((f) => ({ ...f, [k]: value }) as WhatIfFormState);
+    setError('');
+  };
+
+  const run = () => {
+    const built = buildWhatIfRequest(form);
+    if (!built.ok || !built.body) {
+      setError(built.error ?? 'Ungültige Eingabe.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    optimizerApi
+      .whatIf(tenantId, siteId, built.body)
+      .then(setResult)
+      .catch((e) => {
+        // The stale result would silently answer the NEW question with the
+        // OLD numbers - drop it and show the failure instead.
+        setResult(null);
+        setError(e instanceof ApiError ? e.message : 'Die Neuberechnung ist fehlgeschlagen.');
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const preset = presetForWear(form.wearCostCtPerKwh);
+  const hasBattery = config?.hasBattery !== false;
+  const fallbackNote = result ? whatIfFallbackNote(result) : null;
+
   return (
     <section className="vp-optim-section">
       <h2>Was-wäre-wenn-Vorschau</h2>
-      <Card className="vp-optim-whatif">
-        <Icon name="settings" size={22} />
-        <div>
-          <h4 style={{ margin: 0 }}>Bald verfügbar</h4>
-          <p className="vp-muted" style={{ margin: '4px 0 0' }}>
-            Regler ändern → Plan für diese Anlage einmalig neu rechnen → Seite an Seite
-            vergleichen. Braucht einen synchronen Re-Optimize-Endpoint, der noch nicht existiert -
-            gespeicherte Einstellungen oben wirken bereits beim nächsten regulären Lauf.
-          </p>
-        </div>
-      </Card>
+      <p className="vp-chart-sub">
+        Regler verstellen → diese Anlage einmalig neu rechnen → mit dem Lauf ohne Änderung
+        vergleichen. Ein leeres Feld heißt <em>unverändert</em>; gerechnet wird immer beides,
+        damit der Unterschied wirklich am Regler liegt.
+      </p>
+
+      <div className="vp-alert vp-alert-info vp-optim-ephemeral">
+        <Icon name="info" size={16} />
+        <span>
+          <b>Simulation - es wird nichts an die Anlage gesendet.</b> Kein Fahrplan wird
+          gespeichert, kein Sollwert veröffentlicht, keine Einstellung geändert. Der oben
+          gezeigte Lauf gilt unverändert weiter.
+        </span>
+      </div>
+
+      {!hasBattery ? (
+        <Card padding="lg" radius="lg">
+          <EmptyState
+            icon="battery"
+            category="primary"
+            title="Kein Speicher"
+            description="Diese Anlage hat keinen Batteriespeicher - der Optimizer plant sie nicht, es gibt also nichts neu zu rechnen."
+          />
+        </Card>
+      ) : (
+        <>
+          <Card className="vp-optim-whatif-form">
+            <div className="vp-optim-knobs">
+              <KnobField
+                label="Verschleißkosten"
+                unit="ct/kWh"
+                hint={
+                  config?.effective.wearCostCtPerKwh != null
+                    ? `aktuell ${fmtNum(config.effective.wearCostCtPerKwh, 'ct/kWh', 1)}`
+                    : 'aktuell Plattform-Standard'
+                }
+                value={form.wearCostCtPerKwh}
+                onChange={set('wearCostCtPerKwh')}
+              />
+              <KnobField
+                label="Backup-Reserve"
+                unit="%"
+                hint={
+                  config?.effective.backupReserveSocPct != null
+                    ? `aktuell ${fmtNum(Number(config.effective.backupReserveSocPct), '%', 0)} · 0 = keine`
+                    : 'aktuell kein Boden · 0 = keine'
+                }
+                value={form.backupReserveSocPct}
+                onChange={set('backupReserveSocPct')}
+              />
+              <KnobField
+                label="SoC-Untergrenze"
+                unit="%"
+                hint={
+                  config?.effective.socMinPct != null
+                    ? `aktuell ${fmtNum(config.effective.socMinPct, '%', 0)}`
+                    : 'aktuell Standard'
+                }
+                value={form.socMinPct}
+                onChange={set('socMinPct')}
+              />
+              <KnobField
+                label="SoC-Obergrenze"
+                unit="%"
+                hint={
+                  config?.effective.socMaxPct != null
+                    ? `aktuell ${fmtNum(config.effective.socMaxPct, '%', 0)}`
+                    : 'aktuell Standard'
+                }
+                value={form.socMaxPct}
+                onChange={set('socMaxPct')}
+              />
+              <div className="vp-optim-knob">
+                <label htmlFor="whatif-netzladen">Netzladen</label>
+                <select
+                  id="whatif-netzladen"
+                  className="vp-select"
+                  aria-label="Vorschau: Netzladen"
+                  value={form.netzladen}
+                  onChange={(e) => set('netzladen')(e.target.value)}
+                >
+                  <option value="">unverändert</option>
+                  <option value="ja">erlaubt (Merchant)</option>
+                  <option value="nein">gesperrt (EEG)</option>
+                </select>
+                <span className="hint">
+                  aktuell {config?.site.netzladenErlaubt ? 'erlaubt' : 'gesperrt (EEG)'}
+                </span>
+              </div>
+            </div>
+
+            <div className="vp-optim-presets">
+              <span className="vp-optim-presets-label">
+                Speicherschonung
+                <InfoTip label="Was ist Speicherschonung?">
+                  Die drei Voreinstellungen, die ein Kunde selbst wählen kann - sie setzen
+                  genau die Verschleißkosten oben. Je höher, desto seltener zyklisiert der
+                  Speicher.
+                </InfoTip>
+              </span>
+              {SPEICHERSCHONUNG_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`vp-chip${preset === p.id ? ' is-on' : ''}`}
+                  aria-pressed={preset === p.id}
+                  onClick={() => set('wearCostCtPerKwh')(String(p.wearCt))}
+                  title={`${p.note} · ${p.wearCt} ct/kWh`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="vp-optim-cfg-actions">
+              <Button variant="primary" disabled={busy} onClick={run}>
+                {busy ? 'Rechnet…' : 'Neu rechnen'}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setForm(EMPTY_WHAT_IF_FORM);
+                  setResult(null);
+                  setError('');
+                }}
+              >
+                Regler zurücksetzen
+              </Button>
+              {config && (
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() =>
+                    setForm(
+                      whatIfFormFromEffective(config.effective, config.site.netzladenErlaubt),
+                    )
+                  }
+                >
+                  Mit den aktuellen Werten füllen
+                </Button>
+              )}
+              {error && <span className="vp-optim-cfg-err">{error}</span>}
+            </div>
+          </Card>
+
+          {busy && !result && (
+            <Card>
+              <TextSkeleton lines={4} />
+            </Card>
+          )}
+
+          {result && <WhatIfResultView result={result} fallbackNote={fallbackNote} />}
+        </>
+      )}
     </section>
+  );
+}
+
+function KnobField({
+  label,
+  unit,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  unit: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const id = `whatif-${label.replace(/\W+/g, '-').toLowerCase()}`;
+  return (
+    <div className="vp-optim-knob">
+      <label htmlFor={id}>
+        {label} <span className="unit">({unit})</span>
+      </label>
+      <input
+        id={id}
+        type="text"
+        inputMode="decimal"
+        className="vp-optim-num"
+        placeholder="unverändert"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        // The config panel above owns the same four words; a distinct
+        // accessible name keeps the two forms tellable apart by screen
+        // readers (and by tests).
+        aria-label={`Vorschau: ${label} in ${unit}`}
+      />
+      <span className="hint">{hint}</span>
+    </div>
+  );
+}
+
+function WhatIfResultView({
+  result,
+  fallbackNote,
+}: {
+  result: WhatIfResult;
+  fallbackNote: string | null;
+}) {
+  const rows = whatIfDeltaRows(result);
+  const chips = overrideChips(result.appliedOverrides);
+  return (
+    <>
+      <div className="vp-optim-whatif-head">
+        <div className="vp-optim-whatif-chips">
+          {chips.length === 0 ? (
+            <span className="vp-chip-static">nichts verändert</span>
+          ) : (
+            chips.map((c) => (
+              <span key={c} className="vp-chip-static">
+                {c}
+              </span>
+            ))
+          )}
+        </div>
+        <p className="vp-optim-whatif-verdict">{whatIfVerdict(result)}</p>
+        {fallbackNote && <p className="vp-optim-whatif-note">{fallbackNote}</p>}
+      </div>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <table className="vp-table responsive vp-optim-cfg">
+          <thead>
+            <tr>
+              <th>Kennzahl</th>
+              <th>Aktuelle Einstellungen</th>
+              <th>Ihre Regler</th>
+              <th>Unterschied</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td data-label="Kennzahl">
+                  <div className="lever">{r.label}</div>
+                </td>
+                <td data-label="Aktuelle Einstellungen" className="vp-mono">
+                  {r.baseline}
+                </td>
+                <td data-label="Ihre Regler" className="vp-mono">
+                  {r.variant}
+                </td>
+                <td data-label="Unterschied" className={`vp-mono vp-delta-${r.tone}`}>
+                  {r.delta}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card>
+        <h3 style={{ margin: '0 0 4px' }}>Beide Fahrpläne übereinander</h3>
+        <p className="vp-chart-sub">
+          Gefüllte Balken = Ihre Regler, blasser Umriss = die aktuellen Einstellungen. Beide
+          über denselben Horizont, mit denselben Preisen und Prognosen gerechnet.
+        </p>
+        <WhatIfCompareChart result={result} />
+      </Card>
+    </>
   );
 }

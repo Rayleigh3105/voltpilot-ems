@@ -831,6 +831,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       SIM_MAX_WORKERS: ${SIM_MAX_WORKERS:-3}
+      # Concurrent SYNCHRONOUS admin what-if re-optimizes (design §4.3).
+      # A what-if solves in the request thread, so it is bounded: excess
+      # calls get 429 instead of starving the simulation jobs' CPU budget.
+      WHATIF_MAX_CONCURRENT: ${WHATIF_MAX_CONCURRENT:-2}
       POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}
       # Same pricing layer as the optimizer - keep the ONE price truth
       # (default-supply-components defaults ON platform-wide, opt out with false).

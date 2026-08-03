@@ -119,6 +119,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("SIM_MAX_WORKERS", "3")),
         help="parallel solver processes per job (default SIM_MAX_WORKERS, else 3)",
     )
+    sim.add_argument(
+        "--max-what-if",
+        type=int,
+        default=int(os.environ.get("WHATIF_MAX_CONCURRENT", "2")),
+        help="concurrent synchronous what-if re-optimizes (default "
+        "WHATIF_MAX_CONCURRENT, else 2; excess calls get 429)",
+    )
     sim.add_argument("--log-level", default="INFO", help="logging level (default INFO)")
 
     convert = sub.add_parser(
@@ -184,6 +191,42 @@ def _run_one(args, env: dict[str, str]) -> None:
     print(summary.line())
 
 
+def _what_if_handler(dsn: str, max_concurrent: int):
+    """The synchronous admin re-optimize route's handler (§4.3).
+
+    Bounded on purpose: a what-if is a real MILP solve in the REQUEST thread,
+    so an admin leaning on the button (or several admins at once) must never
+    starve the simulation jobs sharing this container's CPU budget. Excess
+    calls are refused immediately with the job store's TooBusyError, which the
+    server maps to 429 - never queued behind a minutes-long year chain.
+    """
+    from voltpilot_optimization.inputs import gather_inputs, load_battery_sites
+    from voltpilot_optimization.simulation.jobs import TooBusyError
+    from voltpilot_optimization.whatif import WhatIfDeps, parse_request, run_what_if
+
+    gate = threading.Semaphore(max(max_concurrent, 1))
+
+    def load_site(site_id):
+        sites = load_battery_sites(dsn, site_id)
+        return sites[0] if sites else None
+
+    deps = WhatIfDeps(
+        load_site=load_site,
+        gather=lambda site, now, slots: gather_inputs(dsn, site, now, slots),
+    )
+
+    def handle(doc: dict) -> dict:
+        request = parse_request(doc)  # validate BEFORE taking a slot
+        if not gate.acquire(blocking=False):
+            raise TooBusyError("busy")
+        try:
+            return run_what_if(request, deps)
+        finally:
+            gate.release()
+
+    return handle
+
+
 def _simulate_serve(args, env: dict[str, str]) -> int:
     """Assemble + run the Ersparnis-Simulation service (design report §2):
     DB-backed prices/market values, keyless Open-Meteo archive weather, the
@@ -205,7 +248,7 @@ def _simulate_serve(args, env: dict[str, str]) -> int:
         max_workers=max(args.max_workers, 1),
     )
     store = JobStore(lambda request, publish: run_simulation(request, deps, publish))
-    httpd = serve(store, args.port)
+    httpd = serve(store, args.port, what_if=_what_if_handler(dsn, args.max_what_if))
     # SIGTERM handling (docs/k8s-readiness.md): a Python PID 1 without an
     # explicit handler IGNORES SIGTERM, so the container would always be
     # SIGKILLed after the full grace period. shutdown() lets serve_forever

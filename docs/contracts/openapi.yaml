@@ -2979,8 +2979,8 @@ paths:
         fields (wear cost, SoC band) require a battery asset (409 otherwise);
         the EFFECTIVE SoC band (override ?? default per side) must stay a real
         window (400). Changes apply on the optimizer's next 15-min cycle - no
-        re-solve is triggered here (the what-if endpoint is a deferred later
-        increment, design §4.3).
+        re-solve is triggered here; use POST optimizer-what-if (design §4.3)
+        to preview a knob change before saving it.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -2999,6 +2999,60 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Site not visible for the selected tenant. }
         "409": { description: Battery override on a site without a battery asset. }
+
+  /api/v1/admin/sites/{siteId}/optimizer-what-if:
+    post:
+      tags: [admin]
+      summary: Preview a knob change - solve this site twice, persist nothing.
+      description: >
+        The on-demand what-if re-optimize (design vp-admin-optimizer-ui-design
+        §4.3). The api resolves the site through the RLS-scoped datasource
+        (X-Tenant-Id switcher; a site the selected tenant cannot see is 404 and
+        is never forwarded) and then asks the optimization service's internal
+        synchronous solve surface to gather ONE fresh set of inputs
+        (prices/forecasts/SoC/§14a/tariff of the real plant) and solve it
+        TWICE: `baseline` as the site is configured, `variant` with the posted
+        knobs. The delta is variant minus baseline.
+
+
+        EPHEMERAL BY CONSTRUCTION: no plan is persisted to `schedule`, no MQTT
+        schedule is published, the site's stored settings are untouched and the
+        run currently in force stays in force. The comparison deliberately does
+        NOT use the site's persisted run - that was generated at another time
+        over another horizon with another price vintage, so a delta against it
+        would attribute the passage of time to the knob.
+
+
+        Every override field is OPTIONAL; absent means "leave as configured"
+        (never zero), so an empty body simply re-solves the site as it stands.
+        `backupReserveSocPct: 0` IS "no reserve" - a 0 % floor and no floor are
+        the same constraint. Solves take well under a second, hence a plain
+        synchronous response and no job id; concurrent runs are bounded, so a
+        saturated service answers 429.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WhatIfRequest" }
+      responses:
+        "200":
+          description: Both freshly solved plans plus their delta. Nothing was committed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WhatIfResult" }
+        "400":
+          description: >
+            Invalid knobs (range, inverted SoC band) or a site that honestly
+            cannot be planned right now (no price coverage). Body carries a
+            German `message`.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not visible for the selected tenant. }
+        "409": { description: The site has no battery asset - nothing to re-plan. }
+        "429": { description: Too many concurrent re-optimizes; retry shortly. }
+        "502": { description: The solve service is unreachable; the stored plan is unchanged. }
 components:
   securitySchemes:
     bearerAuth:
@@ -5435,3 +5489,106 @@ components:
           minimum: 0
           maximum: 100
           description: PS-2 peak-shaving SoC reserve; null clears it.
+
+    WhatIfRequest:
+      type: object
+      description: >
+        The admin what-if knobs (§2.8/§4.3). Every field is OPTIONAL and absent
+        means "leave this as the site has it" - never zero, which is what makes
+        an empty body the meaningful "solve it as configured" baseline.
+        `backupReserveSocPct: 0` IS "no reserve". Prices, forecasts, tariff,
+        §14a and the feed-in cap are deliberately NOT overridable: they come
+        from the real site, so a preview can never become a fantasy plant.
+      properties:
+        wearCostCtPerKwh: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        backupReserveSocPct: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        socMinPct: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        socMaxPct: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        netzladenErlaubt:
+          type: boolean
+          nullable: true
+          description: Grid-charging posture to preview (EEG vs. merchant).
+        horizonSlots:
+          type: integer
+          nullable: true
+          minimum: 4
+          maximum: 192
+          description: Planning horizon in 15-min slots; absent = 96 (24 h).
+
+    WhatIfResult:
+      type: object
+      description: >
+        Two plans solved over ONE freshly gathered set of inputs, plus their
+        delta. Nothing here was persisted or published.
+      properties:
+        siteId: { type: string, format: uuid }
+        computedAt: { type: string, format: date-time }
+        horizonSlots: { type: integer }
+        slotMinutes: { type: integer, example: 15 }
+        appliedOverrides:
+          type: object
+          description: Echo of the knobs that actually differed (untouched ones are absent).
+          additionalProperties: true
+        baseline: { $ref: "#/components/schemas/WhatIfPlan" }
+        variant: { $ref: "#/components/schemas/WhatIfPlan" }
+        delta:
+          type: object
+          description: >
+            variant minus baseline per headline figure. A figure that is null
+            on either side stays null - never read as a zero difference.
+          additionalProperties: { type: number, nullable: true }
+
+    WhatIfPlan:
+      type: object
+      description: >
+        One ephemeral solve. Money follows the persisted schedule's discipline:
+        savingsEur is GROSS of wear, wearCostEur is separate, netSavingsEur is
+        the honest difference, and bankedValueEur prices what the plan carries
+        into the next day at its own terminal value.
+      properties:
+        slotMinutes: { type: integer }
+        costEur: { type: number, nullable: true }
+        baselineCostEur: { type: number, nullable: true }
+        savingsEur: { type: number, nullable: true }
+        wearCostEur: { type: number, nullable: true }
+        netSavingsEur: { type: number, nullable: true }
+        terminalValueEurPerKwh: { type: number, nullable: true }
+        bankedValueEur: { type: number, nullable: true }
+        chargedKwh: { type: number, nullable: true }
+        dischargedKwh: { type: number, nullable: true }
+        gridImportKwh: { type: number, nullable: true }
+        gridExportKwh: { type: number, nullable: true }
+        curtailedKwh: { type: number, nullable: true }
+        cycles: { type: number, nullable: true, description: Throughput / (2 x capacity). }
+        socStartPct: { type: number, nullable: true }
+        socEndPct: { type: number, nullable: true }
+        peakTargetKw: { type: number, nullable: true }
+        fallback14a:
+          type: boolean
+          description: True when the §14a cap had to be dropped as infeasible (advisory plan).
+        knobs:
+          type: object
+          description: The knob values this solve actually used.
+          properties:
+            wearCostCtPerKwh: { type: number }
+            backupReserveSocPct: { type: number, nullable: true }
+            socMinPct: { type: number }
+            socMaxPct: { type: number }
+            netzladenErlaubt: { type: boolean }
+        slots:
+          type: array
+          items:
+            type: object
+            properties:
+              time: { type: string, format: date-time }
+              batteryKw: { type: number, nullable: true, description: "+ charge / - discharge" }
+              gridKw: { type: number, nullable: true, description: "+ import / - export" }
+              socPct: { type: number, nullable: true }
+              pvKw: { type: number, nullable: true }
+              loadKw: { type: number, nullable: true }
+              curtailKw: { type: number, nullable: true }
+              priceEurMwh: { type: number, nullable: true }
+              costEur: { type: number, nullable: true }
+              baselineCostEur: { type: number, nullable: true }
+              wearCostEur: { type: number, nullable: true }
+              slotRole: { type: string, nullable: true }
