@@ -1,87 +1,59 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  ControlStatus,
-  CurtailmentStatus,
-  EdgeVersion,
-  Overview,
-  OverviewSite,
-  Site,
-  SiteSource,
-} from './api';
+import type { ControlStatus, CurtailmentStatus } from './api';
+import type { AdminFleetSite } from './admin/fleetApi';
 import {
   compareVersions,
+  controlMatrixInputs,
   controlMatrixRows,
   edgeStand,
-  fleetLoadNote,
   fleetPulse,
   fleetRows,
   newestCoreVersion,
-  pflegeItems,
   sourceHealth,
-  type FleetTenantData,
 } from './adminFleet';
 
 const NOW = new Date('2026-08-03T12:00:00Z');
 const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
 
-function site(over: Partial<OverviewSite> = {}): OverviewSite {
+/**
+ * Eine Zeile, wie sie der EINE Flotten-Endpunkt liefert. Die Pflege-Punkte sind
+ * server-abgeleitet - dieses Modul rendert sie, es leitet sie nicht ab.
+ */
+function site(over: Partial<AdminFleetSite> = {}): AdminFleetSite {
   return {
-    id: 's1',
-    name: 'Anlage A',
+    siteId: 's1',
+    siteName: 'Anlage A',
+    tenantId: 't1',
+    tenantName: 'Demo C&I',
     plantKind: 'eigenverbrauch',
     netzladenErlaubt: false,
-    batteryWithoutDevice: false,
+    tarifArt: 'fest',
     deviceCount: 1,
     onlineCount: 1,
     waitingCount: 0,
     worstStatus: 'online',
     lastSeenAt: ago(10_000),
-    live: null,
-    plannedSavingsTodayEur: 1,
     lastPlanGeneratedAt: ago(7 * 60_000),
-    ...over,
-  } as OverviewSite;
-}
-
-function overview(sites: OverviewSite[]): Overview {
-  return {
-    sites,
-    totals: {
-      sites: sites.length,
-      devices: 0,
-      online: 0,
-      plannedSavingsTodayEur: null,
-      liveSitesCovered: 0,
-    },
-    dailySavings: [],
-  };
-}
-
-function tenantData(over: Partial<FleetTenantData> = {}): FleetTenantData {
-  return {
-    tenant: { id: 't1', name: 'Demo C&I' },
-    overview: overview([site()]),
-    sites: null,
-    edgeVersions: null,
+    hasStorage: false,
+    batteryWithoutDevice: false,
+    sources: null,
+    edge: null,
+    control: null,
+    curtailment: null,
+    kwp: { configuredKwp: null, observedPeakKw: null, buckets: 0, verdict: 'unbekannt', reason: 'x' },
+    forecast: [],
+    pflege: [],
     ...over,
   };
-}
-
-function masterSite(over: Partial<Site> = {}): Site {
-  return { id: 's1', name: 'Anlage A', tarifArt: 'fest', ...over } as Site;
 }
 
 describe('fleetRows', () => {
   it('reads one row per site across ALL tenants', () => {
     const rows = fleetRows(
       [
-        tenantData(),
-        tenantData({
-          tenant: { id: 't2', name: 'Nordwind' },
-          overview: overview([site({ id: 's2', name: 'Anlage B' })]),
-        }),
+        site(),
+        site({ siteId: 's2', siteName: 'Anlage B', tenantId: 't2', tenantName: 'Nordwind' }),
       ],
-      {},
       NOW,
     );
     expect(rows).toHaveLength(2);
@@ -91,82 +63,86 @@ describe('fleetRows', () => {
   it('sorts attention first - a silent device beats a healthy plant', () => {
     const rows = fleetRows(
       [
-        tenantData({
-          overview: overview([
-            site({ id: 'ok', name: 'Gesund' }),
-            site({
-              id: 'still',
-              name: 'Still',
-              worstStatus: 'stale',
-              onlineCount: 0,
-              lastSeenAt: ago(3 * 3600_000),
-            }),
-            site({ id: 'planalt', name: 'Planalt', lastPlanGeneratedAt: ago(5 * 3600_000) }),
-          ]),
+        site({ siteId: 'ok', siteName: 'Gesund' }),
+        site({
+          siteId: 'still',
+          siteName: 'Still',
+          worstStatus: 'stale',
+          onlineCount: 0,
+          lastSeenAt: ago(3 * 3600_000),
         }),
+        site({ siteId: 'planalt', siteName: 'Planalt', lastPlanGeneratedAt: ago(5 * 3600_000) }),
       ],
-      {},
       NOW,
     );
     expect(rows.map((r) => r.siteName)).toEqual(['Still', 'Planalt', 'Gesund']);
   });
 
-  it('a dead tenant does not empty the pulse - the others still render', () => {
-    const rows = fleetRows(
-      [
-        tenantData({ tenant: { id: 't1', name: 'Kaputt' }, overview: null }),
-        tenantData({
-          tenant: { id: 't2', name: 'Heil' },
-          overview: overview([site({ id: 's9', name: 'Läuft' })]),
-        }),
-      ],
-      {},
-      NOW,
-    );
-    expect(rows.map((r) => r.siteName)).toEqual(['Läuft']);
-  });
-
   it('states a missing measurement as a gap, never as a zero', () => {
     const [row] = fleetRows(
-      [
-        tenantData({
-          overview: overview([
-            site({ deviceCount: 0, onlineCount: 0, lastSeenAt: null, lastPlanGeneratedAt: null }),
-          ]),
-        }),
-      ],
-      {},
+      [site({ deviceCount: 0, onlineCount: 0, lastSeenAt: null, lastPlanGeneratedAt: null })],
       NOW,
     );
     expect(row.liveText).toBe('—');
     expect(row.deviceText).toBe('kein Gerät');
     expect(row.planText).toBe('kein aktueller Plan');
-    // Quellen + Pflege wurden nicht geladen -> unbekannt, nicht "gesund"/"leer".
+    // Nichts gemeldet -> unbekannt, nie "0 gesund".
     expect(row.sources).toBeNull();
-    expect(row.pflege).toBeNull();
+    expect(row.edge.text).toBe('unbekannt');
   });
 
   it('a healthy row still SAYS so instead of leaving an empty cell', () => {
-    const [row] = fleetRows([tenantData({ sites: [masterSite()] })], {}, NOW);
+    const [row] = fleetRows([site()], NOW);
     expect(row.signals.map((s) => s.id)).toEqual(['ok']);
     expect(row.signals[0].label).toBe('Alles in Ordnung');
     expect(row.pflege).toEqual([]);
   });
 
-  it('carries the Pflege findings as chips once the master data is loaded', () => {
+  it('renders the SERVER-derived Pflege findings as chips, reason and all', () => {
     const [row] = fleetRows(
       [
-        tenantData({
-          overview: overview([site({ batteryWithoutDevice: true })]),
-          sites: [masterSite({ tarifArt: 'ohne' })],
+        site({
+          pflege: [
+            { code: 'tarif-fehlt', label: 'Stromtarif fehlt', detail: null },
+            {
+              code: 'kwp-unplausibel',
+              label: 'kWp unplausibel',
+              detail: 'Gemessene PV-Spitze 420,0 kW über 30,0 kWp installiert.',
+            },
+          ],
         }),
       ],
-      {},
       NOW,
     );
-    expect(row.pflege?.map((p) => p.id)).toEqual(['tarif', 'speicher-ohne-geraet']);
-    expect(row.signals.map((s) => s.label)).toContain('Stromtarif fehlt');
-    expect(row.signals.map((s) => s.label)).toContain('Speicher ohne Gerät');
+    expect(row.pflege.map((p) => p.code)).toEqual(['tarif-fehlt', 'kwp-unplausibel']);
+    const chips = row.signals.map((s) => s.label);
+    expect(chips).toContain('Stromtarif fehlt');
+    expect(chips).toContain('kWp unplausibel');
+    // Die Begründung reist am Chip mit - ein Signal ohne Grund wäre nur Alarm.
+    expect(row.signals.find((s) => s.id === 'pflege-kwp-unplausibel')?.title).toContain('420,0 kW');
+    expect(row.signals.find((s) => s.id === 'pflege-tarif-fehlt')?.title).toBeUndefined();
+  });
+
+  it('carries the B4 verdicts through untouched (they are the server’s truth)', () => {
+    const [row] = fleetRows(
+      [
+        site({
+          kwp: {
+            configuredKwp: 30,
+            observedPeakKw: 420,
+            buckets: 2000,
+            verdict: 'zu_hoch',
+            reason: 'Gemessene PV-Spitze 420,0 kW über 30,0 kWp installiert.',
+          },
+          forecast: [
+            { kind: 'load', nmaePct: 60, days: 14, fleetMedianPct: 13, outlier: true, reason: 'r' },
+          ],
+        }),
+      ],
+      NOW,
+    );
+    expect(row.kwp.verdict).toBe('zu_hoch');
+    expect(row.forecast[0].outlier).toBe(true);
   });
 });
 
@@ -174,17 +150,14 @@ describe('fleetPulse', () => {
   it('counts what the rows say, nothing else', () => {
     const rows = fleetRows(
       [
-        tenantData({
-          overview: overview([
-            site({ id: 'a', worstStatus: 'stale', onlineCount: 0, lastSeenAt: ago(3 * 3600_000) }),
-            site({ id: 'b', lastPlanGeneratedAt: ago(5 * 3600_000) }),
-            site({ id: 'c', deviceCount: 1, onlineCount: 0, waitingCount: 1, worstStatus: 'waiting' }),
-            site({ id: 'd' }),
-          ]),
-          sites: [masterSite({ id: 'd', tarifArt: 'ohne' })],
+        site({ siteId: 'a', worstStatus: 'stale', onlineCount: 0, lastSeenAt: ago(3 * 3600_000) }),
+        site({ siteId: 'b', lastPlanGeneratedAt: ago(5 * 3600_000) }),
+        site({ siteId: 'c', deviceCount: 1, onlineCount: 0, waitingCount: 1, worstStatus: 'waiting' }),
+        site({
+          siteId: 'd',
+          pflege: [{ code: 'tarif-fehlt', label: 'Stromtarif fehlt', detail: null }],
         }),
       ],
-      {},
       NOW,
     );
     const p = fleetPulse(rows);
@@ -196,77 +169,59 @@ describe('fleetPulse', () => {
   });
 });
 
-describe('fleetLoadNote', () => {
-  it('names a partial outage instead of hiding it', () => {
-    expect(fleetLoadNote([tenantData()])).toBeNull();
-    expect(fleetLoadNote([tenantData({ overview: null })])).toContain('Demo C&I');
-    const two = fleetLoadNote([
-      tenantData({ tenant: { id: 'a', name: 'A' }, overview: null }),
-      tenantData({ tenant: { id: 'b', name: 'B' }, overview: null }),
-    ]);
-    expect(two).toContain('2 Mandanten');
-    expect(two).toContain('A, B');
-  });
-});
-
 describe('sourceHealth', () => {
-  const src = (health: SiteSource['health']): SiteSource =>
-    ({ sourceId: `s-${health}-${Math.random()}`, health }) as SiteSource;
-
-  it('an empty list is "no report", never "0 healthy"', () => {
-    expect(sourceHealth([])).toBeNull();
+  it('no report at all is "unknown", never "0 healthy"', () => {
+    expect(sourceHealth(null)).toBeNull();
+    expect(sourceHealth({ total: 0, ok: 0, stale: 0, never: 0 })).toBeNull();
   });
 
   it('a stale source turns the cell amber and is counted', () => {
-    const h = sourceHealth([src('ok'), src('stale'), src('ok')])!;
+    const h = sourceHealth({ total: 3, ok: 2, stale: 1, never: 0 })!;
     expect(h.text).toBe('2/3 liefern');
     expect(h.tone).toBe('warn');
     expect(h.stale).toBe(1);
   });
 
   it('a never-delivering source is off, not a warning', () => {
-    expect(sourceHealth([src('ok'), src('never')])!.tone).toBe('off');
-    expect(sourceHealth([src('ok'), src('ok')])!.tone).toBe('ok');
+    expect(sourceHealth({ total: 2, ok: 1, stale: 0, never: 1 })!.tone).toBe('off');
+    expect(sourceHealth({ total: 2, ok: 2, stale: 0, never: 0 })!.tone).toBe('ok');
   });
 });
 
 describe('edgeStand', () => {
-  const v = (siteId: string, core: string | null): EdgeVersion => ({
-    deviceId: `d-${siteId}`,
-    siteId,
+  const edge = (core: string | null) => ({
     coreVersion: core,
     paletteVersion: '0.3.0',
     reportedAt: ago(60_000),
   });
 
   it('a device that never reported is UNKNOWN, never outdated', () => {
-    const stand = edgeStand([], 's1', '1.5.0');
+    const stand = edgeStand(null, '1.5.0');
     expect(stand.text).toBe('unbekannt');
     expect(stand.outdated).toBe(false);
     expect(stand.tone).toBe('off');
-  });
-
-  it('says nothing at all while the versions were not loaded', () => {
-    expect(edgeStand(null, 's1', '1.5.0').text).toBe('—');
+    // Auch ein Block ohne Kernversion behauptet kein Alter.
+    expect(edgeStand(edge(null), '1.5.0').text).toBe('unbekannt');
   });
 
   it('marks a reported version behind the newest known one', () => {
-    expect(edgeStand([v('s1', '1.4.2')], 's1', '1.5.0').outdated).toBe(true);
-    expect(edgeStand([v('s1', '1.5.0')], 's1', '1.5.0').outdated).toBe(false);
+    expect(edgeStand(edge('1.4.2'), '1.5.0').outdated).toBe(true);
+    expect(edgeStand(edge('1.5.0'), '1.5.0').outdated).toBe(false);
   });
 
   it('without a yardstick nothing is outdated', () => {
-    const stand = edgeStand([v('s1', '1.4.2')], 's1', null);
+    const stand = edgeStand(edge('1.4.2'), null);
     expect(stand.outdated).toBe(false);
     expect(stand.text).toBe('1.4.2');
   });
 
   it('newestCoreVersion ignores what nobody reported', () => {
-    expect(newestCoreVersion([tenantData()])).toBeNull();
+    expect(newestCoreVersion([site()])).toBeNull();
     expect(
       newestCoreVersion([
-        tenantData({ edgeVersions: [v('s1', '1.4.2'), v('s2', null)] }),
-        tenantData({ edgeVersions: [v('s3', '1.10.0')] }),
+        site({ edge: edge('1.4.2') }),
+        site({ siteId: 's2', edge: edge(null) }),
+        site({ siteId: 's3', edge: edge('1.10.0') }),
       ]),
     ).toBe('1.10.0');
   });
@@ -285,13 +240,15 @@ describe('compareVersions', () => {
   });
 });
 
-describe('pflegeItems', () => {
-  it('is an existence check, never a second price calculation', () => {
-    expect(pflegeItems(masterSite({ tarifArt: 'dynamisch' }), site())).toEqual([]);
-    expect(pflegeItems(masterSite({ tarifArt: 'ohne' }), site()).map((p) => p.id)).toEqual(['tarif']);
-    expect(pflegeItems(undefined, site({ batteryWithoutDevice: true })).map((p) => p.id)).toEqual([
-      'speicher-ohne-geraet',
+describe('controlMatrixInputs', () => {
+  it('takes only the storage plants - and keeps a plant WITHOUT any proof', () => {
+    const inputs = controlMatrixInputs([
+      site({ siteId: 'pv', hasStorage: false }),
+      site({ siteId: 'batt', hasStorage: true }),
     ]);
+    expect(inputs.map((i) => i.siteId)).toEqual(['batt']);
+    expect(inputs[0].control).toBeNull();
+    expect(inputs[0].curtailment).toBeNull();
   });
 });
 

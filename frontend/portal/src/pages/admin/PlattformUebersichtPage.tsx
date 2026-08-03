@@ -4,17 +4,13 @@ import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
-import type { SiteSource } from '../../api';
-import type { Tenant } from '../../admin/adminApi';
-import { fleetApi } from '../../admin/fleetApi';
+import { fleetApi, type AdminFleetSite } from '../../admin/fleetApi';
 import {
+  controlMatrixInputs,
   controlMatrixRows,
-  fleetLoadNote,
   fleetPulse,
   fleetRows,
-  type ControlMatrixInput,
   type FleetRow,
-  type FleetTenantData,
 } from '../../adminFleet';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
@@ -22,7 +18,7 @@ import { anlageRoute, type Route } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
 
 /**
- * Plattform → Übersicht: der FLOTTEN-PULS (Admin-Umbau Stufe 1, Baustein B1).
+ * Plattform → Übersicht: der FLOTTEN-PULS (Bausteine B1 + B2 + B4).
  *
  * Die tägliche erste Frage eines EMS-Betreibers - „welche Anlage braucht heute
  * meine Aufmerksamkeit?" - hatte im Portal keinen Ort: alles Operative lag
@@ -34,72 +30,36 @@ import { AdminPageHead } from './AdminPageHead';
  * Plattform-Summe über die absichtlich hold-last-veränderte Messreihe und eine
  * gemischte Flotte wäre schief und röche nach Abrechnung.
  *
- * **Alle Ableitung ist das reine `adminFleet.ts`** - hier wird nur geladen und
- * gerendert. Drei Ladewellen, damit ein Fehlschlag nie mehr als seine Zelle
- * kostet und der erste Blick schnell steht:
- *
- * 1. je Mandant `/overview` + Anlagen + `/edge-versions` (die Tabelle steht),
- * 2. je Anlage die Quellen-Gesundheit (füllt EINE Spalte nach),
- * 3. beim Aufklappen die Steuerungs-/Abregel-Matrix (B2, nur Speicher-Anlagen).
+ * **Seit Stufe 2 speist EIN Aufruf die ganze Seite** (`GET /api/v1/admin/fleet`)
+ * - die Mandanten-Schleife und die Nachlade-Wellen der Stufe 1 sind entfallen,
+ * die Ableitungen und die Oberfläche sind dieselben geblieben. Alle Ableitung
+ * ist weiterhin das reine `adminFleet.ts`; hier wird nur geladen und gerendert.
  */
 export function PlattformUebersichtPage({
-  tenants,
   onJumpToTenant,
 }: {
-  tenants: Tenant[];
   onJumpToTenant: (tenantId: string, target: Route) => void;
 }) {
-  const [data, setData] = useState<FleetTenantData[] | null>(null);
-  const [sourcesBySite, setSourcesBySite] = useState<Record<string, SiteSource[]>>({});
+  const [sites, setSites] = useState<AdminFleetSite[] | null>(null);
   // Der Bezugszeitpunkt der Daten - jedes Alter wird DAGEGEN gerechnet, nie
   // gegen eine Uhr über einem stehenden Schnappschuss (die Lebendigkeits-Lehre).
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   const [loadError, setLoadError] = useState<string | null>(null);
-  const tenantsKey = tenants.map((t) => t.id).join(',');
 
   const load = useCallback(async () => {
-    if (tenants.length === 0) {
-      setData([]);
-      return;
-    }
     try {
-      // Welle 1 (je Mandant): die Tabelle steht.
-      const perTenant = await Promise.all(
-        tenants.map(async (t): Promise<FleetTenantData> => {
-          const [overview, sites, edgeVersions] = await Promise.all([
-            fleetApi.overview(t.id).catch(() => null),
-            fleetApi.sites(t.id).catch(() => null),
-            fleetApi.edgeVersions(t.id).catch(() => null),
-          ]);
-          return { tenant: { id: t.id, name: t.name }, overview, sites, edgeVersions };
-        }),
-      );
-      setData(perTenant);
+      const fleet = await fleetApi.fleet();
+      setSites(fleet.sites);
       setFetchedAt(Date.now());
       setLoadError(null);
-
-      // Welle 2 (je Anlage): die Quellen-Gesundheit füllt EINE Spalte nach.
-      // Sie hängt bewusst am SELBEN Ladevorgang wie Welle 1 - sonst stünde nach
-      // dem ersten Abruf für immer ein alter Gesundheitsstand neben einer
-      // frischen Bezugszeit (die Lebendigkeits-Lehre gilt für jede Zelle).
-      const refs = perTenant.flatMap((d) =>
-        (d.overview?.sites ?? []).map((s) => ({ tenantId: d.tenant.id, siteId: s.id })),
-      );
-      const pairs = await Promise.all(
-        refs.map(async (r) => {
-          const list = await fleetApi.sources(r.tenantId, r.siteId).catch(() => null);
-          return list ? ([r.siteId, list] as const) : null;
-        }),
-      );
-      const next: Record<string, SiteSource[]> = {};
-      for (const p of pairs) if (p) next[p[0]] = p[1];
-      setSourcesBySite(next);
     } catch {
-      // Promise.all über .catch-te Aufrufe kann eigentlich nicht scheitern -
-      // wenn doch, steht es da, statt still eine leere Flotte zu behaupten.
+      // Ein Fehlschlag ist keine Datenlage: die Seite sagt, dass sie nichts
+      // weiß, statt eine leere Flotte zu behaupten. Steht schon eine Tabelle,
+      // bleibt sie mit ihrer alten Bezugszeit stehen (der stille Takt darf den
+      // Zustand nie kippen).
       setLoadError('Die Plattform-Übersicht konnte nicht geladen werden.');
     }
-  }, [tenantsKey]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -107,15 +67,14 @@ export function PlattformUebersichtPage({
 
   // Stiller 30-s-Takt: eine erfolgreiche Antwort setzt Zustand UND Bezugszeit,
   // ein Fehlschlag lässt beides unberührt (er kann den Zustand nicht kippen).
-  useFreshnessPoll(() => void load(), 30_000, tenants.length > 0);
+  useFreshnessPoll(() => void load(), 30_000, true);
 
   const rows = useMemo(
-    () => (data ? fleetRows(data, sourcesBySite, new Date(fetchedAt)) : null),
-    [data, sourcesBySite, fetchedAt],
+    () => (sites ? fleetRows(sites, new Date(fetchedAt)) : null),
+    [sites, fetchedAt],
   );
 
   const pulse = rows ? fleetPulse(rows) : null;
-  const note = data ? fleetLoadNote(data) : null;
 
   return (
     <>
@@ -135,7 +94,7 @@ export function PlattformUebersichtPage({
         }
       />
 
-      {note && <div className="vp-alert vp-alert-warn">{note}</div>}
+      {loadError && rows != null && <div className="vp-alert vp-alert-warn">{loadError}</div>}
 
       {pulse && (
         <div className="vp-kpis vp-admin-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
@@ -172,7 +131,7 @@ export function PlattformUebersichtPage({
         </div>
       )}
 
-      {loadError ? (
+      {loadError && rows == null ? (
         <ErrorState message={loadError} onRetry={() => void load()} />
       ) : rows == null ? (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -204,17 +163,20 @@ export function PlattformUebersichtPage({
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  // Mandant + Anlage als Schlüssel: Anlagen-Ids sind zwar
-                  // global eindeutig, aber der Puls fügt Listen aus mehreren
-                  // Antworten zusammen - der Schlüssel soll nicht davon
-                  // abhängen, dass zwei Server-Antworten sich nie überschneiden.
+                  // Mandant + Anlage als Schlüssel: Anlagen-Ids sind global
+                  // eindeutig, aber der Schlüssel soll auch dann tragen, wenn
+                  // dieselbe Anlage je unter zwei Mandanten stünde.
                   <FleetTableRow key={`${r.tenantId}:${r.siteId}`} row={r} onOpen={onJumpToTenant} />
                 ))}
               </tbody>
             </table>
           </Card>
 
-          <ControlMatrixSection rows={rows} refreshKey={fetchedAt} onOpen={onJumpToTenant} />
+          <ControlMatrixSection
+            sites={sites ?? []}
+            fetchedAt={fetchedAt}
+            onOpen={onJumpToTenant}
+          />
         </>
       )}
     </>
@@ -277,9 +239,13 @@ function FleetTableRow({
       <td data-label="Signale">
         <div className="vp-fleet-signals">
           {row.signals.map((s) => (
-            <Badge key={s.id} variant={s.tone} dot>
-              {s.label}
-            </Badge>
+            // Die Begründung reist am Chip mit (`title`) - ein Signal, das
+            // seinen Grund nicht nennen kann, wäre nur ein Alarm.
+            <span key={s.id} title={s.title}>
+              <Badge variant={s.tone} dot>
+                {s.label}
+              </Badge>
+            </span>
           ))}
         </div>
       </td>
@@ -288,68 +254,34 @@ function FleetTableRow({
 }
 
 /**
- * B2 - die Steuerungs-/Abregel-Matrix als LAZY Sektion des Pulses.
+ * B2 - die Steuerungs-/Abregel-Matrix als Sektion des Pulses.
  *
  * Sie beantwortet die Pilsting-Frage: „wo ist Steuerung frei UND zertifiziert,
  * wo klafft geplant gegen ausgeführt?" `certifiedUnits < units` („0 von 2
  * Wechselrichtern freigegeben") war wochenlang unsichtbar, obwohl der Beleg in
  * der DB lag.
  *
- * Lazy und nur für Anlagen MIT Speicher: die zwei Belege sind je Anlage
- * abrufbar, das kostet also einen Aufruf je Zeile - der Puls darf davon beim
- * ersten Blick nicht ausgebremst werden.
+ * Nur Anlagen MIT Speicher - und seit Stufe 2 ohne eigenen Abruf: die beiden
+ * Belege reisen im Flotten-Aggregat mit, das Aufklappen ist damit reine
+ * Anzeige. Das Beleg-ALTER rechnet gegen dieselbe Bezugszeit wie der Puls
+ * darüber; ein einfrierendes Alter wäre genau die Halbwahrheit, die diese
+ * Matrix beenden soll.
  */
 function ControlMatrixSection({
-  rows,
-  refreshKey,
+  sites,
+  fetchedAt,
   onOpen,
 }: {
-  rows: FleetRow[];
-  /** Der Bezugszeitpunkt des Pulses - ändert er sich, holt auch die Matrix neu. */
-  refreshKey: number;
+  sites: AdminFleetSite[];
+  fetchedAt: number;
   onOpen: (tenantId: string, target: Route) => void;
 }) {
-  const candidates = useMemo(() => rows.filter((r) => r.hasStorage), [rows]);
-  const candidateKey = candidates.map((c) => `${c.tenantId}:${c.siteId}`).join(',');
   const [open, setOpen] = useState(false);
-  const [inputs, setInputs] = useState<ControlMatrixInput[] | null>(null);
-  const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
-
-  // Geladen wird erst beim Aufklappen (zwei Abrufe je Zeile), danach im Takt
-  // des Pulses - ein Beleg-Alter, das nach dem ersten Laden einfriert, wäre
-  // genau die Halbwahrheit, die diese Matrix beenden soll.
-  useEffect(() => {
-    if (!open || candidates.length === 0) return;
-    let cancelled = false;
-    void Promise.all(
-      candidates.map(async (c): Promise<ControlMatrixInput> => {
-        const [control, curtailment] = await Promise.all([
-          fleetApi.controlStatus(c.tenantId, c.siteId).catch(() => null),
-          fleetApi.curtailmentStatus(c.tenantId, c.siteId).catch(() => null),
-        ]);
-        return {
-          siteId: c.siteId,
-          siteName: c.siteName,
-          tenantId: c.tenantId,
-          tenantName: c.tenantName,
-          control,
-          curtailment,
-        };
-      }),
-    ).then((res) => {
-      if (cancelled) return;
-      setInputs(res);
-      setFetchedAt(Date.now());
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, candidateKey, refreshKey]);
+  const candidates = useMemo(() => controlMatrixInputs(sites), [sites]);
 
   if (candidates.length === 0) return null;
 
-  const matrix = inputs ? controlMatrixRows(inputs, new Date(fetchedAt)) : null;
+  const matrix = controlMatrixRows(candidates, new Date(fetchedAt));
 
   return (
     <Card style={{ padding: 0, overflow: 'hidden', marginTop: 'var(--vp-space-6)' }}>
@@ -370,60 +302,57 @@ function ControlMatrixSection({
           gilt erst als ausgeführt, wenn der Wechselrichter sie bestätigt hat.
         </p>
       </div>
-      {open &&
-        (matrix == null ? (
-          <TableSkeleton rows={Math.min(candidates.length, 4)} cols={5} />
-        ) : (
-          <table className="vp-table responsive">
-            <thead>
-              <tr>
-                <th>Anlage</th>
-                <th>Batterie-Steuerung</th>
-                <th>Abregelung</th>
-                <th>Ausführung jetzt</th>
-                <th>Beleg</th>
+      {open && (
+        <table className="vp-table responsive">
+          <thead>
+            <tr>
+              <th>Anlage</th>
+              <th>Batterie-Steuerung</th>
+              <th>Abregelung</th>
+              <th>Ausführung jetzt</th>
+              <th>Beleg</th>
+            </tr>
+          </thead>
+          <tbody>
+            {matrix.map((m) => (
+              <tr key={m.siteId}>
+                <td data-label="Anlage">
+                  <div className="vp-cell-main">
+                    <button
+                      type="button"
+                      className="vp-linklike"
+                      onClick={() => onOpen(m.tenantId, anlageRoute(m.siteId))}
+                    >
+                      {m.siteName}
+                    </button>
+                    <span className="vp-cell-sub">{m.tenantName}</span>
+                  </div>
+                </td>
+                <td data-label="Batterie-Steuerung">
+                  <div className="vp-cell-main">
+                    <Badge variant={m.battery.tone} dot>
+                      {m.battery.text}
+                    </Badge>
+                    {m.battery.detail && <span className="vp-cell-sub">{m.battery.detail}</span>}
+                  </div>
+                </td>
+                <td data-label="Abregelung">
+                  <div className="vp-cell-main">
+                    <Badge variant={m.curtail.tone} dot>
+                      {m.curtail.text}
+                    </Badge>
+                    {m.curtail.detail && <span className="vp-cell-sub">{m.curtail.detail}</span>}
+                  </div>
+                </td>
+                <td data-label="Ausführung jetzt">{m.executionText}</td>
+                <td data-label="Beleg">
+                  <span className={m.belegStale ? 'vp-muted' : undefined}>{m.belegText}</span>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {matrix.map((m) => (
-                <tr key={m.siteId}>
-                  <td data-label="Anlage">
-                    <div className="vp-cell-main">
-                      <button
-                        type="button"
-                        className="vp-linklike"
-                        onClick={() => onOpen(m.tenantId, anlageRoute(m.siteId))}
-                      >
-                        {m.siteName}
-                      </button>
-                      <span className="vp-cell-sub">{m.tenantName}</span>
-                    </div>
-                  </td>
-                  <td data-label="Batterie-Steuerung">
-                    <div className="vp-cell-main">
-                      <Badge variant={m.battery.tone} dot>
-                        {m.battery.text}
-                      </Badge>
-                      {m.battery.detail && <span className="vp-cell-sub">{m.battery.detail}</span>}
-                    </div>
-                  </td>
-                  <td data-label="Abregelung">
-                    <div className="vp-cell-main">
-                      <Badge variant={m.curtail.tone} dot>
-                        {m.curtail.text}
-                      </Badge>
-                      {m.curtail.detail && <span className="vp-cell-sub">{m.curtail.detail}</span>}
-                    </div>
-                  </td>
-                  <td data-label="Ausführung jetzt">{m.executionText}</td>
-                  <td data-label="Beleg">
-                    <span className={m.belegStale ? 'vp-muted' : undefined}>{m.belegText}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ))}
+            ))}
+          </tbody>
+        </table>
+      )}
     </Card>
   );
 }

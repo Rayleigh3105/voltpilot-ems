@@ -860,7 +860,7 @@ function UnifiedPortal() {
             <PrognosePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
           )}
           {page === 'plattform-uebersicht' && isAdmin && (
-            <PlattformUebersichtPage tenants={tenants} onJumpToTenant={jumpToTenant} />
+            <PlattformUebersichtPage onJumpToTenant={jumpToTenant} />
           )}
           {page === 'mandanten' && isAdmin && (
             <MandantenPage
