@@ -201,11 +201,11 @@ echo "== 5. Datenebene (DATA_PLANE): aus = nichts veroeffentlicht, an = die Clus
 for f in infra/prod/dataplane/disabled.yml infra/prod/dataplane/enabled.yml; do
   if [ -f "$f" ]; then pass "overlay present: $f"; else bad "overlay MISSING: $f (include would abort every deploy)"; fi
 done
-# Both overlays must ride along to the VM, or the include path dangles there.
-for wf in .forgejo/workflows/deploy.yaml .forgejo/workflows/deploy-fast.yaml; do
-  if grep -q 'infra/prod/\*\*' "$wf"; then pass "$wf ships infra/prod/** (carries the overlays)"
-  else bad "$wf no longer ships infra/prod/** - the data-plane include would dangle on the VM"; fi
-done
+# Der frueher hier gepruefte scp-Schritt ("beide Overlays muessen zur VM
+# mitreisen") ist mit dem Cutover (03.08.2026) weggefallen: die Workflows
+# deployen die VM nicht mehr, sie bauen Images und bumpen das gitops-Repo.
+# Wer die VM von Hand faehrt, arbeitet im Checkout - der include zeigt dort
+# ohnehin auf die committeten Dateien oben.
 
 DP_OFF="$(docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE" config 2>/dev/null || true)"
 if [ -n "$DP_OFF" ]; then
