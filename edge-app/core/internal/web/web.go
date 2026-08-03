@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
@@ -840,6 +840,12 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			"pairing_state":   snap.PairingState,
 			"cloud_connected": snap.CloudConnected,
 			"uptime_seconds":  int(time.Since(snap.StartedAt).Seconds()),
+			// The OTA verdict (Stufe 1): the supervised on-box test drops a
+			// release into <data_dir>/ota/ and reads it back here - no cloud
+			// link required. Absent until something was actually checked;
+			// verification only, nothing is ever applied.
+			"ota_state":  snap.OtaState,
+			"ota_reason": snap.OtaReason,
 		})
 	})
 

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/ota-signature.schema.json",
+  "title": "VoltPilot OTA detached signature (*.sig) + trust set",
+  "description": "Die BEIDEN Dateien, die neben einem signierten Dokument liegen: die abgetrennte Signatur (release.json.sig / trust-set.json.sig) und das root-signierte Trust-Set (trust-set.json). Warum abgetrennt: die Signatur MUSS ueber die exakten Bytes des Dokuments gehen; ein Signaturfeld IM Dokument muesste beim Pruefen entfernt und der Rest neu serialisiert werden - genau die Re-Serialisierungs-Mehrdeutigkeit (Schluesselreihenfolge, Unicode-Escapes, Zahlenformat), aus der Signatur-Umgehungen entstehen. Details: docs/ota-signing.md.",
+  "$defs": {
+    "signature": {
+      "title": "Abgetrennte Signatur (release.json.sig, trust-set.json.sig)",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "alg", "key_id", "domain", "signature"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "alg": {
+          "type": "string",
+          "const": "ed25519",
+          "description": "FEST verdrahtet, keine Algorithmus-Agilitaet. Ein Verifizierer, der den Algorithmus aus dem Dokument uebernimmt, laesst sich auf einen schwaecheren (oder 'none') herunterhandeln - die klassische JWT-alg-Luecke. Ein anderer Wert ist eine ABLEHNUNG, kein Fallback."
+        },
+        "key_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "description": "Waehlt den Schluessel aus (Root-Set bzw. Trust-Set). Er waehlt nur AUS - die Vertrauensentscheidung faellt die Signaturpruefung selbst."
+        },
+        "domain": {
+          "type": "string",
+          "enum": ["release", "trust-set"],
+          "description": "Der Verwendungszweck. Er wird NICHT von hier uebernommen: der Verifizierer kennt den Zweck aus dem, was er gerade prueft, und verlangt hier nur Uebereinstimmung. Die Bytes, ueber die tatsaechlich gerechnet wird, sind context || dokument_bytes mit context = 'voltpilot-ota-release-v1\\n' bzw. 'voltpilot-ota-trust-set-v1\\n' - diese Domain-Trennung verhindert, dass ein signiertes Trust-Set je als Manifest durchgeht (und umgekehrt)."
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "description": "Die 64-Byte-Ed25519-Signatur, base64 (Standard-Alphabet, mit Padding)."
+        },
+        "signed_at": { "type": "string", "format": "date-time", "description": "Rein informativ - nie ein Prueffaktor." }
+      }
+    },
+    "trust_set": {
+      "title": "Trust-Set (trust-set.json) - die Menge gueltiger Release-Schluessel",
+      "description": "Nur gueltig, wenn es SELBST mit dem kalten Root-Schluessel signiert ist (trust-set.json.sig, domain=trust-set). Deshalb gewaehrt Schreibzugriff auf /data allein KEIN Vertrauen: wer die Datei austauscht, hat noch keine Root-Signatur. Widerruf ist genau das - ein neues, root-signiertes Set OHNE den Schluessel; das wirkt uhrunabhaengig, waehrend not_after nur so gut ist wie die Uhr des Geraets.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "keys"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "keys": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key_id", "alg", "public_key"],
+            "properties": {
+              "key_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+              "alg": { "type": "string", "const": "ed25519" },
+              "public_key": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9+/]{42}[AQgw]==$",
+                "description": "Der 32-Byte-Ed25519-Oeffentlicheschluessel, base64."
+              },
+              "not_after": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Optionales Ablaufdatum. Fehlt es, laeuft der Schluessel nicht ab. Ehrliche Grenze: mit einer nicht vertrauenswuerdigen Geraeteuhr ist Ablauf bestenfalls best effort - der belastbare Widerruf ist das neu signierte Set."
+              },
+              "comment": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "root_keys": {
+      "title": "Gebackene Vertrauenswurzel (edge-app/core/internal/otaverify/rootkeys.json)",
+      "description": "Die UNVERAENDERLICHE Wurzel: im Core-Image eingebacken (go:embed) und im Git nachlesbar, weil ein oeffentlicher Schluessel oeffentlich sein DARF und genau dadurch ueberpruefbar wird. Leer = kein Vertrauensanker = jede Pruefung schlaegt fehl (fail-closed).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "keys"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key_id", "alg", "public_key"],
+            "properties": {
+              "key_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" },
+              "alg": { "type": "string", "const": "ed25519" },
+              "public_key": { "type": "string", "pattern": "^[A-Za-z0-9+/]{42}[AQgw]==$" },
+              "comment": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/signature" },
+    { "$ref": "#/$defs/trust_set" },
+    { "$ref": "#/$defs/root_keys" }
+  ]
+}

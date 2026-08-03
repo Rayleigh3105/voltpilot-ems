@@ -9,6 +9,7 @@ fixtures cover, and the fixtures are read by REAL test code - never decoration:
 | Fixture prefix | Schema | Read by |
 |---|---|---|
 | `mqtt-schedule.*` | `../mqtt-schedule.schema.json` | `services/optimization/tests/test_contract.py` (jsonschema, both directions) and `edge-app/core/internal/plan/plan_test.go` (the Go executor parses the same bytes) |
+| `ota-release-manifest.*` | `../ota-release-manifest.schema.json` | `edge-app/core/internal/otaverify/verify_test.go` (`TestContractExamplesParseAsSpecified` - the REAL device-side parser reads the same bytes) |
 
 Moving or renaming a fixture breaks those tests deliberately: the file path is
 part of the contract check.
@@ -35,3 +36,9 @@ would make a fixture invalid for the wrong reason):
   forecast-derived watt value whose blindness to the real surplus this flag
   exists to correct - and it would be the one place a payload could RAISE a
   charge past what the plan itself committed.
+- `ota-release-manifest.invalid.tag-not-digest.json` - the artifact `ref` is a
+  TAG (`:latest`) instead of a full `@sha256:` digest. A tag is not a pin: the
+  whole at-rest/in-transit integrity of a release rests on the digest nailing
+  down the bytes (a tampered layer then fails the pull itself). A manifest that
+  says "run whatever `:latest` points at today" would be a signed statement
+  about mutable content - the one thing the signature is supposed to prevent.

@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "release": "edge-2026.08.0",
+  "release_seq": 12,
+  "target_commit": "3bf8c038a1b2",
+  "artifacts": [
+    {
+      "type": "oci-image",
+      "name": "core",
+      "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "type": "oci-image",
+      "name": "nodered",
+      "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "min_from_seq": 9,
+  "allow_downgrade": false,
+  "valid_until": "2026-10-01T00:00:00Z",
+  "state_schema": 3,
+  "compat": {
+    "backends": ["compose"]
+  },
+  "signing_key_id": "rel-2026-a",
+  "notes": "Solarman-Lesepfad gehaertet; keine /data-Migration."
+}

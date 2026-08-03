@@ -34,6 +34,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
@@ -202,14 +203,14 @@ type Agent struct {
 	// arbiter, the cached v2 plan + its staleness-surviving postures, the
 	// plan-executor bookkeeping and per-entity readback verdicts. All no-ops
 	// without a pushed registry.
-	arb        *desired.Arbiter
-	plan2Store *plan2.Store
-	arbMu      sync.Mutex
-	curPlan2   *plan2.Plan
-	peak2      *float64            // v2 site peak target (survives staleness)
-	reserve2   map[string]*float64 // v2 per-entity reserves (survive staleness)
-	planHeld    map[string]string // entity -> "v1"|"v2" currently plan-commanded
-	entReadback map[string]*bool  // per-entity latest readback all_match
+	arb         *desired.Arbiter
+	plan2Store  *plan2.Store
+	arbMu       sync.Mutex
+	curPlan2    *plan2.Plan
+	peak2       *float64            // v2 site peak target (survives staleness)
+	reserve2    map[string]*float64 // v2 per-entity reserves (survive staleness)
+	planHeld    map[string]string   // entity -> "v1"|"v2" currently plan-commanded
+	entReadback map[string]*bool    // per-entity latest readback all_match
 	arbWake     chan struct{}
 
 	// Modbus-Datenspiegel (agent/mirror.go + internal/mirror): the read-only
@@ -239,6 +240,14 @@ type Agent struct {
 	// dashboard keeps running); the reconcile loop keeps polling so a re-claim
 	// exits the state and resumes normal operation.
 	cloudRemoved atomic.Bool
+
+	// ota holds the verdict of the last OTA release verification (agent/ota.go,
+	// OTA Stufe 1). Verification only - there is no apply path on the device.
+	ota otaState
+	// otaRoots overrides the BAKED trust root - a TEST SEAM only (the repo
+	// carries no private key, so a test must mint its own throwaway root).
+	// nil = the production path: otaverify.BakedRoots(), i.e. rootkeys.json.
+	otaRoots *otaverify.KeySet
 
 	// wake signals the publisher that new telemetry or connectivity arrived.
 	wake chan struct{}
@@ -583,6 +592,12 @@ func (a *Agent) Start(ctx context.Context) error {
 		a.flowReconcileLoop(ctx)
 	}()
 
+	// OTA Stufe 1: verify a release placed in <data_dir>/ota/ and REPORT the
+	// verdict in the heartbeat. There is no downlink and no apply path yet -
+	// this loop only ever reads files and forms an opinion.
+	a.done.Add(1)
+	go a.otaCheckLoop(ctx)
+
 	a.done.Add(2)
 	go a.setpointLoop(ctx)
 	go a.publisherLoop(ctx)
@@ -888,10 +903,10 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// (OTA Stufe 0) - see cloud.Options.Version.
 		Version:    Version,
 		OnSchedule: a.onSchedule,
-		OnCommand:   a.onPurgeCommand,
-		OnEntities:  a.onEntityRegistryPush,
-		OnPlanV2:    a.onPlanV2,
-		OnFlows:     a.onFlows,
+		OnCommand:  a.onPurgeCommand,
+		OnEntities: a.onEntityRegistryPush,
+		OnPlanV2:   a.onPlanV2,
+		OnFlows:    a.onFlows,
 		OnConnect: func(connected bool) {
 			a.State.Update(func(s *state.Snapshot) {
 				s.CloudConnected = connected

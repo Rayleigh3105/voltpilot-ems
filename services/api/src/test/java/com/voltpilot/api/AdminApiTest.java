@@ -2784,6 +2784,109 @@ class AdminApiTest {
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    /**
+     * OTA Stufe 1 „Vertrauen": ein Register-Eintrag traegt das SIGNIERTE
+     * Release - und die Bytes ueberstehen den Weg durch die Datenbank
+     * unveraendert.
+     *
+     * <p>Das ist die eine Eigenschaft, an der die ganze Kette haengt: die
+     * Signatur geht ueber die ROHEN Manifest-Bytes, also muss jede Station sie
+     * bytegenau durchreichen. Die Spalte ist deshalb {@code text} und niemals
+     * {@code jsonb} (das normalisiert Schluesselreihenfolge und Leerraum und
+     * machte die Signatur lautlos unpruefbar) - genau das prueft dieser Test,
+     * indem er ein bewusst „unaufgeraeumtes" Manifest schickt und es Zeichen
+     * fuer Zeichen zurueckerwartet.
+     *
+     * <p>Die api PRUEFT die Signatur nicht (der Verifizierer ist das Geraet mit
+     * seiner eingebackenen Wurzel). Sie prueft WIDERSPRUCHSFREIHEIT: das
+     * Register darf nie etwas anderes behaupten als das, was unterschrieben
+     * wurde.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void aSignedReleaseIsRegisteredByteExactAndNeverContradictsItsManifest() {
+        String admin = token("admin", "admin");
+        String version = "edge-2027.03.0";
+        // Absichtlich unregelmaessig eingerueckt + mit Leerzeile: exakt SO
+        // wurde signiert, exakt SO muss es zurueckkommen.
+        String manifest = "{\n"
+                + "  \"schema_version\": \"1.0\",\n"
+                + "\t\"release\": \"" + version + "\",\n"
+                + "\n"
+                + "  \"release_seq\": 4711,\n"
+                + "  \"target_commit\": \"3bf8c038a1b2\",\n"
+                + "  \"signing_key_id\": \"rel-2026-a\"\n"
+                + "}\n";
+        String signature = "{\"schema_version\":\"1.0\",\"alg\":\"ed25519\","
+                + "\"key_id\":\"rel-2026-a\",\"domain\":\"release\","
+                + "\"signature\":\"" + "A".repeat(86) + "==\"}\n";
+
+        Map<String, Object> created = createRelease(admin, Map.of(
+                "version", version, "manifest", manifest, "signature", signature));
+
+        assertThat(created).containsEntry("signingKeyId", "rel-2026-a");
+        assertThat(((Number) created.get("releaseSeq")).longValue())
+                .as("Sequenz und Commit kommen AUS dem signierten Manifest")
+                .isEqualTo(4711L);
+        assertThat(created).containsEntry("targetCommit", "3bf8c038a1b2");
+
+        // Der Rundlauf durch die Datenbank: Byte fuer Byte.
+        List<Map<String, Object>> register = listReleases(admin);
+        Map<String, Object> back = register.stream()
+                .filter(r -> version.equals(r.get("version"))).findFirst().orElseThrow();
+        assertThat((String) back.get("manifest"))
+                .as("die signierten Bytes muessen den Weg durch die DB unveraendert ueberstehen")
+                .isEqualTo(manifest);
+        assertThat((String) back.get("signature")).isEqualTo(signature);
+
+        // Widerspruch zum signierten Manifest = Fehler, nie eine stille
+        // Abweichung: das Register ist die Papier-Spur.
+        assertThat(postRelease(admin, Map.of("version", "edge-2027.04.0",
+                "manifest", manifest, "signature", signature)).getStatusCode())
+                .as("eine andere Version als die signierte").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", version, "releaseSeq", 9999,
+                "manifest", manifest, "signature", signature)).getStatusCode())
+                .as("eine andere Sequenz als die signierte").isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", version, "targetCommit", "deadbeef",
+                "manifest", manifest, "signature", signature)).getStatusCode())
+                .as("ein anderer Commit als der signierte").isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Manifest und Signatur gehoeren zusammen - halb geht nicht.
+        assertThat(postRelease(admin, Map.of("version", "edge-2027.05.0", "manifest", manifest))
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(postRelease(admin, Map.of("version", "edge-2027.05.0", "signature", signature))
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Eine fremde Signatur an ein Manifest zu heften waere im Register eine
+        // Luege, die niemand mehr bemerkt.
+        assertThat(postRelease(admin, Map.of("version", "edge-2027.05.0", "manifest", manifest,
+                "signature", signature.replace("rel-2026-a", "rel-2099-x"))).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        // Eine Signatur fuer ein Trust-Set ist keine fuer ein Release.
+        assertThat(postRelease(admin, Map.of("version", "edge-2027.05.0", "manifest", manifest,
+                "signature", signature.replace("\"domain\":\"release\"",
+                        "\"domain\":\"trust-set\""))).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Und der Stufe-0-Handpfad bleibt unveraendert gueltig: ein Eintrag
+        // ohne Manifest liest sich ehrlich als „nicht signiert", nie als
+        // „geprueft".
+        Map<String, Object> unsigned = createRelease(admin,
+                Map.of("version", "edge-2027.06.0", "targetCommit", "aabbccdd"));
+        assertThat(unsigned.get("manifest")).isNull();
+        assertThat(unsigned.get("signature")).isNull();
+        assertThat(unsigned.get("signingKeyId")).isNull();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> listReleases(String adminToken) {
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/admin/edge-releases"), HttpMethod.GET,
+                new HttpEntity<>(bearer(adminToken)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
     private ResponseEntity<Map<String, Object>> postRelease(String token, Map<String, ?> body) {
         return rest.exchange(url("/api/v1/admin/edge-releases"), HttpMethod.POST,
                 new HttpEntity<>(body, bearer(token)), new ParameterizedTypeReference<>() {});

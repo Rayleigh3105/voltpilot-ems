@@ -14,8 +14,22 @@ name: Build & Push Edge-App Images
 #   FORGEJO_USERNAME / FORGEJO_PASSWORD  - registry login (git.tecmaxx.de)
 # See edge-app/DEPLOY.md.
 
+# Ein RELEASE entsteht durch einen git-Tag `edge-JJJJ.MM.N` (Captain-Entscheid
+# D5). Der Tag-Lauf baut dieselben Images (der Versionsstempel wird dann
+# automatisch `<tag>-<kurzsha>`) und erzeugt zusaetzlich das UNSIGNIERTE
+# Manifest als Build-Artefakt.
+#
+# ⚠ NICHTS in einem Wirkpfad haengt an diesem Lauf (§6-Doktrin). Der Runner
+# schlaeft nachweislich ein, also darf ein Rollout nie auf ihn warten: das
+# Manifest ist eine BEQUEMLICHKEIT - dieselben Bytes entstehen lokal mit
+# demselben Befehl (`vp-ota manifest …`, docs/ota-signing.md). Signiert wird
+# ohnehin OFFLINE beim Owner (D3: kein heisser Schluessel in CI), und der
+# Register-Eintrag entsteht dort ebenfalls.
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'edge-*'
 
 jobs:
   # Build + push each edge-app image in parallel. Tags: :latest and
@@ -80,3 +94,135 @@ jobs:
           tags: |
             git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:latest
             git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:${{ github.sha }}
+
+  # Erzeugt das UNSIGNIERTE release.json fuer einen Tag-Lauf. Laeuft NUR bei
+  # einem Tag und nur, wenn beide Images wirklich gebaut wurden.
+  #
+  # Die Digests werden bewusst NICHT aus dem Build-Job durchgereicht, sondern
+  # aus der REGISTRY zurueckgelesen: die Registry ist die Wahrheit darueber,
+  # was unter diesem Tag tatsaechlich liegt, und der Weg spart die
+  # Artefakt-Verdrahtung ueber eine Matrix hinweg. Gepinnt wird der Digest der
+  # MANIFEST-LISTE (multi-arch), also genau das, was ein Geraet zieht.
+  manifest:
+    name: Unsigniertes Release-Manifest
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest-mo
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Login to Forgejo Registry
+        uses: docker/login-action@v3
+        with:
+          registry: git.tecmaxx.de
+          username: ${{ secrets.FORGEJO_USERNAME }}
+          password: ${{ secrets.FORGEJO_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Der Digest der Manifest-Liste IST per Definition der sha256 ihrer rohen
+      # Bytes - deshalb ist `--raw | sha256sum` der versionsunabhaengige Weg,
+      # mit dem `--format` als schnellerer Erstversuch. Ein Ergebnis, das nicht
+      # wie ein Digest aussieht, bricht den Lauf ab: ein halb geratener Pin
+      # waere schlimmer als kein Manifest.
+      - name: Digests der gepushten Images auflesen
+        id: digests
+        run: |
+          set -euo pipefail
+          resolve() {
+            local ref="$1" d=""
+            d="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$ref" 2>/dev/null || true)"
+            if ! printf '%s' "$d" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+              d="sha256:$(docker buildx imagetools inspect --raw "$ref" | sha256sum | cut -d' ' -f1)"
+            fi
+            if ! printf '%s' "$d" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+              echo "Kein Digest fuer $ref ermittelbar - Abbruch statt geratenem Pin." >&2
+              exit 1
+            fi
+            printf '%s' "$d"
+          }
+          base="git.tecmaxx.de/mamotec/voltpilot-ems"
+          {
+            echo "core=$base/edge-app-core@$(resolve "$base/edge-app-core:${GITHUB_SHA}")"
+            echo "nodered=$base/edge-app-nodered@$(resolve "$base/edge-app-nodered:${GITHUB_SHA}")"
+          } >> "$GITHUB_OUTPUT"
+
+      # EINE Wahrheit ueber die Manifest-Form: derselbe Befehl, den der Owner
+      # lokal fuer ein handgebautes Release benutzt (und den der Verifizierer
+      # des Geraets gegenliest).
+      # EINE Wahrheit ueber die Manifest-Form: derselbe Befehl, den der Owner
+      # lokal fuer ein handgebautes Release benutzt (und dessen Ergebnis der
+      # Verifizierer des Geraets gegenliest). Die Ausgabe ist DETERMINISTISCH
+      # (feste Feldreihenfolge, feste Einrueckung, genau ein abschliessender
+      # Zeilenumbruch) - dieselben Eingaben ergeben byteweise dieselbe Datei.
+      - name: Manifest erzeugen
+        working-directory: edge-app/core
+        run: |
+          set -euo pipefail
+          go run ./cmd/vp-ota manifest \
+            --release "${GITHUB_REF_NAME}" \
+            --seq "${RELEASE_SEQ:?RELEASE_SEQ ist Pflicht - die Ordnung kommt aus dem Register}" \
+            --commit "${GITHUB_SHA::12}" \
+            --artifact "core=${{ steps.digests.outputs.core }}" \
+            --artifact "nodered=${{ steps.digests.outputs.nodered }}" \
+            --min-from-seq "${MIN_FROM_SEQ:-0}" \
+            --state-schema "${STATE_SCHEMA:-1}" \
+            --key-id "${SIGNING_KEY_ID:-rel-2026-a}" \
+            --out "${GITHUB_WORKSPACE}/release.json"
+        env:
+          # Die Sequenz ist die Ordnung des Registers und kann in CI nicht
+          # erraten werden. Sie wird als Repo-Variable gepflegt und beim Taggen
+          # hochgezaehlt; fehlt sie, bricht der Job LAUT ab, statt eine Nummer
+          # zu erfinden (eine falsche Ordnung ist genau der Zustand, den das
+          # Register beseitigt hat).
+          RELEASE_SEQ: ${{ vars.EDGE_RELEASE_SEQ }}
+          MIN_FROM_SEQ: ${{ vars.EDGE_MIN_FROM_SEQ }}
+          STATE_SCHEMA: ${{ vars.EDGE_STATE_SCHEMA }}
+          SIGNING_KEY_ID: ${{ vars.EDGE_SIGNING_KEY_ID }}
+
+      # ⚠ Aus einem CI-Log heraus wird NICHT kopiert: die Signatur geht ueber
+      # die exakten Bytes, und ein Log kann Leerraum/Zeilenenden anfassen. Der
+      # Log liefert deshalb die beiden Dinge, die man lokal NICHT wissen kann
+      # (die Digests) und die PRUEFSUMME, gegen die man die lokal erzeugte
+      # Datei haelt. Stimmt sie ueberein, ist die lokale Datei die richtige.
+      - name: Digests + Pruefsumme ausgeben
+        run: |
+          set -euo pipefail
+          echo "core    : ${{ steps.digests.outputs.core }}"
+          echo "nodered : ${{ steps.digests.outputs.nodered }}"
+          echo "sha256(release.json) = $(sha256sum "${GITHUB_WORKSPACE}/release.json" | cut -d' ' -f1)"
+          echo "--- release.json (NUR zur Ansicht, nicht kopieren) ---"
+          cat "${GITHUB_WORKSPACE}/release.json"
+
+      # Bequemlichkeit, kein Wirkpfad: schlaegt die Artefakt-Ablage fehl (der
+      # Runner braucht dafuer einen Artefakt-Dienst), bleibt der Job GRUEN -
+      # die Pruefsumme oben genuegt, um lokal dieselbe Datei zu erzeugen.
+      - name: Manifest als Artefakt ablegen (best effort)
+        continue-on-error: true
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-manifest-${{ github.ref_name }}
+          path: release.json
+          if-no-files-found: error
+
+      - name: Naechste Schritte (offline beim Owner)
+        run: |
+          cat <<'EOF'
+          Das Manifest ist UNSIGNIERT und damit noch wertlos. Weiter offline:
+            1. release.json lokal mit denselben Digests erzeugen und die
+               sha256-Pruefsumme von oben vergleichen (oder das Artefakt laden)
+            2. vp-ota sign --key <release>.key --domain release --in release.json
+            3. release.json + release.json.sig + trust-set.json(.sig) als
+               Forgejo-Release-Assets anhaengen
+            4. den ausgegebenen curl gegen /api/v1/admin/edge-releases schicken
+          Anleitung: docs/ota-signing.md
+          EOF

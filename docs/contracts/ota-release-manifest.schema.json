@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/ota-release-manifest.schema.json",
+  "title": "VoltPilot OTA release manifest (release.json)",
+  "description": "Der EINE Soll-Stand eines Edge-Releases (Scout vp-ota-rollout-h4 §5, OTA Stufe 1 „Vertrauen\"). SIGNIERT WIRD DIESE DATEI ALS ROHE BYTES - es gibt in dieser Datei bewusst KEIN signature-Feld, weil ein eingebettetes Feld die Signatur ueber sich selbst rechnen muesste und damit eine Re-Serialisierung erzwaenge. Die Signatur liegt DANEBEN (release.json.sig, siehe ota-signature.schema.json), und die zu signierenden Bytes sind exakt die Bytes dieser Datei, Byte fuer Byte, inklusive jedes Leerzeichens und eines etwaigen abschliessenden Zeilenumbruchs. Vollstaendige Herleitung + Zeremonie: docs/ota-signing.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release",
+    "release_seq",
+    "target_commit",
+    "artifacts",
+    "min_from_seq",
+    "allow_downgrade",
+    "state_schema",
+    "compat",
+    "signing_key_id"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Format-Version dieses Manifests. Die MAJOR-Stelle ist bindend: ein Geraet lehnt eine fremde MAJOR ab, statt zu raten. Additive Felder innerhalb von 1.x sind erlaubt (der Verifizierer akzeptiert unbekannte Felder, weil ein Manifest per Signatur immer von UNS stammt); dieses Schema beschreibt, was die Werkzeuge ERZEUGEN, und ist deshalb additionalProperties:false."
+    },
+    "release": {
+      "type": "string",
+      "pattern": "^edge-\\d{4}\\.\\d{2}\\.\\d+$",
+      "description": "Das menschenlesbare Release-Tag (Captain-Entscheid D5), identisch mit dem Git-Tag im voltpilot-ems-Repo. NIE die Ordnung - dafuer ist release_seq da."
+    },
+    "release_seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "DIE Ordnung: eine monotone Ganzzahl aus dem Release-Register (edge_release.release_seq). Nie ein String-/SHA-Vergleich - 12-stellige Hex-SHAs als Zahlen zu vergleichen ist eine Zufallsordnung (§2.3 Loch 3)."
+    },
+    "target_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,64}$",
+      "description": "Der Commit im voltpilot-ems-Repo, aus dem gebaut wurde - die Papier-Spur."
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Was dieses Release AUSMACHT, typisiert. Der einzige backend-spezifische Teil des Manifests: ein Apply-Backend wendet nur Artefakt-Typen an, die es versteht. Heute zwei OCI-Images; spaeter moeglich sind os-image (Mender-Slot) oder quadlet-bundle, ohne dass irgendein anderes Feld sich aendert.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "name", "ref"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["oci-image"],
+            "description": "Heute nur oci-image. Ein Geraet, das einen Typ nicht kennt, LEHNT AB (deferred + Grund) statt zu raten."
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$",
+            "description": "Die Rolle im Deployment (core, nodered) - der Schluessel, unter dem ein Backend das Artefakt einsetzt."
+          },
+          "ref": {
+            "type": "string",
+            "pattern": "^[^\\s@]+@sha256:[0-9a-f]{64}$",
+            "description": "VOLL digest-gepinnte OCI-Referenz. Ein Tag waere kein Pin: die Integritaet dieses Releases haengt daran, dass die Bytes durch den Digest festgenagelt sind (eine manipulierte Ebene scheitert schon beim Pull)."
+          }
+        }
+      }
+    },
+    "min_from_seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Der monotone Anti-Rollback-BODEN: ein Geraet unterhalb dieser release_seq darf dieses Release NICHT direkt anwenden (es fehlt ihm eine Zwischenstufe, etwa eine /data-Migration). Bewusst UHRUNABHAENGIG - ein Pi ohne RTC hat nach Stromausfall mit blockiertem NTP keine vertrauenswuerdige Zeit, ein zeitbasierter Boden waere dort wirkungslos."
+    },
+    "allow_downgrade": {
+      "type": "boolean",
+      "description": "false = ein Release mit release_seq <= dem laufenden Stand wird abgelehnt (Replay-Schutz). true NUR in einem bewusst signierten Owner-Manifest fuer einen echten Tief-Rollback - das unterscheidet den legitimen Rueckschritt vom Replay eines alten, ehemals gueltigen Manifests durch einen Netzwerk-Angreifer."
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ADVISORY (Anti-Freeze), niemals ein harter Ablehnungsgrund: siehe min_from_seq zur Uhr-Frage. Ein Geraet mit NTP-vertrauter Uhr darf daraus eine Warnung machen; ohne Uhrvertrauen wird das Feld nur berichtet."
+    },
+    "state_schema": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Die /data-Zustandsversion, die dieses Release unterstuetzt (Datenkompatibilitaets-Gate). In Stufe 1 wird sie GETRAGEN und berichtet, aber nicht erzwungen - das Gate braucht die /data-Snapshot-Maschinerie der Stufe 3, und ein Gate ohne Ruecksicherung waere ein Versprechen ohne Deckung."
+    },
+    "compat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backends"],
+      "properties": {
+        "backends": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["compose", "quadlet", "mender"] },
+          "description": "Fuer welche Apply-Backends dieses Release bestimmt ist. Ein Geraet, dessen Backend hier NICHT steht, lehnt ab (deferred + Grund) - nie ein Rateversuch."
+        },
+        "inverter_families": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optionale Zertifizierungs-Bindung (Reconcile-Rail §2). In Stufe 1 nur getragen."
+        }
+      }
+    },
+    "signing_key_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+      "description": "Die key_id des Release-Schluessels, mit dem dieses Manifest signiert IST. Sie steht INNERHALB der signierten Bytes und ist damit selbst signaturgeschuetzt; der Verifizierer verlangt zusaetzlich, dass sie mit der key_id in der .sig-Datei uebereinstimmt, damit die beiden Angaben nicht auseinanderlaufen koennen."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Freitext fuer das Register/die Oberflaeche (Release-Notiz)."
+    }
+  }
+}

@@ -13,9 +13,21 @@ import java.time.Instant;
  * 3). Wer „neuer" sagen will, vergleicht {@code releaseSeq}.
  *
  * <p>{@code version} ist das menschenlesbare Tag {@code edge-JJJJ.MM.N};
- * {@code targetCommit} die Papier-Spur ins Repo. Signatur-Felder kommen in
- * Stufe 1 additiv dazu.
+ * {@code targetCommit} die Papier-Spur ins Repo.
+ *
+ * <p><b>Seit OTA Stufe 1</b> trägt ein Eintrag zusätzlich die Signatur:
+ * {@code manifest} sind die EXAKTEN Bytes des signierten {@code release.json},
+ * {@code signature} die abgetrennte Signaturdatei daneben, {@code signingKeyId}
+ * der Schlüssel, der unterschrieben hat. Die Bytes reisen unverändert durch -
+ * die Signatur geht über sie, jede Umformung machte sie unprüfbar. Alle drei
+ * sind {@code null} bei einem Stufe-0-Eintrag; das liest sich ehrlich als
+ * „nicht signiert", nie als „geprüft".
+ *
+ * <p>Die api prüft die Signatur NICHT (siehe Migration V20260804000000): der
+ * einzige Verifizierer, auf den es ankommt, ist das Gerät mit seiner
+ * eingebackenen Wurzel.
  */
 public record EdgeReleaseDto(long releaseSeq, String version, String targetCommit, String notes,
-        Instant createdAt, String createdBy) {
+        Instant createdAt, String createdBy, String manifest, String signature,
+        String signingKeyId) {
 }

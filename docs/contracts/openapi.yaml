@@ -1933,6 +1933,12 @@ paths:
         construction. Registering an existing version is a 409, not a silent
         no-op: a release is created once, by hand, and the register is the
         paper trail.
+        Since OTA Stufe 1 the body may additionally carry the SIGNED release
+        (`manifest` + `signature`, byte for byte). The api stores those bytes
+        unchanged and checks only CONSISTENCY - it deliberately does NOT verify
+        the signature: the only verifier that matters is the DEVICE with its
+        baked-in root, and a register that "blessed" a manifest would create
+        confidence where nothing can be guaranteed. See docs/ota-signing.md.
       requestBody:
         required: true
         content:
@@ -4638,10 +4644,8 @@ components:
     EdgeRelease:
       type: object
       description: >
-        One entry of the edge release register (OTA Stufe 0, decision D5).
-        Signature fields (signing key, signature, artifacts, min_from_seq)
-        arrive additively in Stufe 1 - releaseSeq and version are exactly the
-        parts a signed manifest carries over unchanged.
+        One entry of the edge release register (OTA Stufe 0, decision D5;
+        signature fields added in Stufe 1).
       properties:
         releaseSeq:
           type: integer
@@ -4652,6 +4656,23 @@ components:
         notes: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
         createdBy: { type: string, nullable: true, description: The registering platform-admin's subject. }
+        manifest:
+          type: string
+          nullable: true
+          description: >
+            The EXACT bytes of the signed release.json, verbatim (OTA Stufe 1).
+            Stored as text and never re-serialized: the signature is over these
+            bytes, so any normalisation (a jsonb column, a formatter, a copy out
+            of a log) makes it silently unverifiable. Null on a Stufe-0 hand
+            entry, which then honestly reads as "not signed".
+        signature:
+          type: string
+          nullable: true
+          description: The detached signature file (release.json.sig), verbatim.
+        signingKeyId:
+          type: string
+          nullable: true
+          description: The release key that signed the manifest, e.g. rel-2026-a.
     CreateEdgeReleaseRequest:
       type: object
       required: [version]
@@ -4666,6 +4687,27 @@ components:
             strictly greater than every existing entry.
         targetCommit: { type: string, nullable: true }
         notes: { type: string, nullable: true }
+        manifest:
+          type: string
+          nullable: true
+          description: >
+            The signed release.json, byte for byte (OTA Stufe 1). When present,
+            ITS values win: version, releaseSeq and targetCommit are taken from
+            it, and a contradicting value in this body is a 400 rather than a
+            silent divergence - the register must never claim something other
+            than what was signed. Requires `signature`.
+        signature:
+          type: string
+          nullable: true
+          description: >
+            The detached signature file (release.json.sig), byte for byte.
+            Manifest and signature belong together - sending only one is a 400.
+        signingKeyId:
+          type: string
+          nullable: true
+          description: >
+            Optional cross-check; must equal the key named by the manifest and
+            by the signature file.
     ProvisionedDevice:
       type: object
       properties:
