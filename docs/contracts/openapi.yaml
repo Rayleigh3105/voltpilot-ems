@@ -1954,6 +1954,203 @@ paths:
         "409": { description: This version is already registered. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/edge-updates:
+    get:
+      tags: [admin]
+      summary: Everything the platform page "Edge-Updates" shows (OTA Stufe 2).
+      description: >
+        ONE server-side aggregate (the /admin/fleet discipline): the release
+        register, the newest rollout with its wave board, the fleet matrix
+        (Anlage · Mandant · Ist · Soll · Zustand · seit · Grund) and the
+        append-only audit journal.
+        HONESTY RULES, enforced server-side: "unbekannt" is never "veraltet"
+        (a device that reports nothing says nothing about its age), "offline" is
+        never "fehlgeschlagen" (the assignment waits retained on the broker and
+        is picked up on reconnect), every non-green state carries its reason,
+        and the KPI percentages count only the REACHABLE set.
+        The rollout shown is the NEWEST one whatever its state - a rollout that
+        just auto-halted must not vanish from the page in the very moment
+        something went wrong. Platform-admin only; there is deliberately NO
+        customer-facing surface for updates.
+      responses:
+        "200":
+          description: Releases, the newest rollout, the fleet matrix, the journal and the KPI.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/rollouts:
+    post:
+      tags: [admin]
+      summary: Start a rollout of a SIGNED release in waves (OTA Stufe 2).
+      description: >
+        Only a SIGNED release can be rolled out (409 otherwise): without
+        manifest bytes a device has nothing to check against its baked-in root,
+        and the downlink would be an instruction without evidence.
+        The FIRST wave is assigned immediately; every further wave is
+        hand-advanced (decision D4). At most ONE rollout may be live (active or
+        paused) - two concurrent distributions could assign the same device two
+        targets, and an auto-halt would no longer be attributable.
+        Assigning publishes the signed manifest RETAINED on
+        `ems/{t}/{s}/{d}/v2/update` (contract mqtt-ota-target.schema.json). It
+        applies NOTHING: the device verifies, and a human at the device applies
+        (`update.sh --from-target`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [releaseSeq, waves]
+              properties:
+                releaseSeq: { type: integer, format: int64 }
+                channel: { type: string, enum: [canary, stable] }
+                waves:
+                  type: array
+                  items:
+                    type: object
+                    required: [devices]
+                    properties:
+                      name: { type: string }
+                      devices:
+                        type: array
+                        items: { type: string, format: uuid }
+      responses:
+        "201": { description: Rollout created; the first wave is assigned. }
+        "400": { description: No waves, an empty wave, an unknown device, or a device in two waves. }
+        "404": { description: The release is not registered. }
+        "409": { description: The release is not signed, or a rollout is already live. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/rollouts/{rolloutId}/promote:
+    post:
+      tags: [admin]
+      summary: Release the next wave - gated by the bake criterion.
+      description: >
+        REFUSED (409, with the reason) while the running wave is not fully
+        confirmed. The criterion is decision D4: 24 h healthy AND at least one
+        real control cycle per device. The cycle half is THREE-valued - on a
+        plant where VoltPilot does not (yet) control, that evidence cannot
+        exist, so it reports "nicht_pruefbar" and is visibly excluded rather
+        than silently assumed. The gate lives on the server, not only in a
+        greyed-out button.
+      parameters:
+        - name: rolloutId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: The next wave is assigned. }
+        "404": { description: Rollout not found. }
+        "409": { description: Bake criterion still open, all waves released, or the rollout is not active. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/rollouts/{rolloutId}/pause:
+    post:
+      tags: [admin]
+      summary: Pause a rollout (reversible).
+      parameters:
+        - name: rolloutId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Paused - nothing further is assigned. }
+        "409": { description: Only a running rollout can be paused. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/rollouts/{rolloutId}/resume:
+    post:
+      tags: [admin]
+      summary: Resume a paused rollout.
+      parameters:
+        - name: rolloutId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Running again. }
+        "409": { description: Only a paused rollout can be resumed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/rollouts/{rolloutId}/halt:
+    post:
+      tags: [admin]
+      summary: Not-Aus - freeze a rollout (deliberately final).
+      description: >
+        Nothing further is distributed. Assignments already made REMAIN -
+        withdrawing them would send a half-updated fleet to a third state; what
+        stops is the rolling on. "Continue" after a freeze is a new, deliberate
+        rollout, not a click that skips the cause.
+        The watcher triggers the same transition automatically on any device
+        reporting failed / rolled_back / gone silent while applying (D4).
+      parameters:
+        - name: rolloutId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "204": { description: Frozen. }
+        "404": { description: Rollout not found. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/devices/{deviceId}/update-target:
+    post:
+      tags: [admin]
+      summary: Assign ONE device a release (channel + pin).
+      description: >
+        The single-device path behind "Jetzt aktualisieren" and the channel/pin
+        controls of the device registry page. `pinned` is the statement "this
+        device stays where it is" - a rollout does not overwrite a pinned
+        assignment, it visibly SKIPS the device. Only a signed release is
+        assignable (409 otherwise).
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [releaseSeq]
+              properties:
+                releaseSeq: { type: integer, format: int64 }
+                channel: { type: string, enum: [canary, stable] }
+                pinned: { type: boolean }
+      responses:
+        "204": { description: Assigned; the signed manifest went out retained. }
+        "404": { description: Device or release not found. }
+        "409": { description: The release is not signed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/devices/{deviceId}/update-target/revert:
+    post:
+      tags: [admin]
+      summary: Withdraw a device's assignment.
+      description: >
+        The row goes AND the retained message is cleared - otherwise an
+        instruction nobody owns any more would wait on the broker for the
+        device to return.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Withdrawn. }
+        "404": { description: Device not found. }
+        "409": { description: This device has no assignment. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/provisioned-devices:
     get:
       tags: [admin]

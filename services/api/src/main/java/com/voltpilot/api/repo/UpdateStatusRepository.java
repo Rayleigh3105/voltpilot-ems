@@ -41,13 +41,14 @@ public class UpdateStatusRepository {
     public void upsert(UUID deviceId, UUID siteId, String version, String backend,
             String currentVersion, Long currentSeq, String targetVersion, Long targetSeq,
             String channel, String state, String reason, String lastKnownGood,
-            Instant reportedAt) {
+            String targetVerdict, Instant reportedAt) {
         jdbc.update(
                 "INSERT INTO device_update_status (device_id, tenant_id, site_id, version, "
                         + "backend, current_version, current_seq, target_version, target_seq, "
-                        + "channel, state, reason, last_known_good, reported_at, updated_at) "
+                        + "channel, state, reason, last_known_good, target_verdict, "
+                        + "reported_at, updated_at) "
                         + "VALUES (?, NULLIF(current_setting('app.tenant_id', true), '')::uuid, "
-                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
+                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
                         + "ON CONFLICT (device_id) DO UPDATE SET site_id = EXCLUDED.site_id, "
                         + "version = EXCLUDED.version, backend = EXCLUDED.backend, "
                         + "current_version = EXCLUDED.current_version, "
@@ -56,9 +57,11 @@ public class UpdateStatusRepository {
                         + "target_seq = EXCLUDED.target_seq, channel = EXCLUDED.channel, "
                         + "state = EXCLUDED.state, reason = EXCLUDED.reason, "
                         + "last_known_good = EXCLUDED.last_known_good, "
+                        + "target_verdict = EXCLUDED.target_verdict, "
                         + "reported_at = EXCLUDED.reported_at, updated_at = now()",
                 deviceId, siteId, version, backend, currentVersion, currentSeq, targetVersion,
-                targetSeq, channel, state, reason, lastKnownGood, Timestamp.from(reportedAt));
+                targetSeq, channel, state, reason, lastKnownGood, targetVerdict,
+                Timestamp.from(reportedAt));
     }
 
     // Bewusst NUR ein Schreibpfad: gelesen wird der Stand cross-tenant im

@@ -94,6 +94,10 @@ PIN_REQUESTED=0
 PIN_TAG=""
 PIN_CORE_IMAGE=""
 PIN_NODERED_IMAGE=""
+# --from-target (OTA Stufe 2): das vom Portal ZUGEWIESENE Release anwenden.
+FROM_TARGET=0
+TARGET_RELEASE=""
+TARGET_RELEASE_SEQ=""
 PIN_RELEASE=0
 
 # Abort wording for the updater (overrides install.sh's installer wording).
@@ -164,6 +168,16 @@ das Gerät folgt ':latest'):
                        (Digests der laufenden Stände zeigt jedes Update am
                        Ende an; VP_EDGE_CORE_IMAGE / VP_EDGE_NODERED_IMAGE).
       --latest         Alle Pins lösen: zurück auf ':latest' (Standard).
+
+${C_BOLD}Portal-Zuweisung anwenden${C_RESET} (OTA Stufe 2 - Verteilen):
+      --from-target    Genau das Release anwenden, das das Portal DIESEM Gerät
+                       zugewiesen hat. Die Artefakt-Digests kommen aus
+                       /api/ota/target - und ausschließlich dann, wenn das
+                       GERÄT die Signaturkette selbst geprüft hat (eingebackene
+                       Vertrauenswurzel). Ist die Kette nicht geprüft oder gibt
+                       es keine Zuweisung, bricht der Lauf ab, statt irgendetwas
+                       anzuwenden. Nach erfolgreicher Prüfung meldet das Gerät
+                       den angewandten Stand ans Portal zurück.
 EOF
 }
 
@@ -222,12 +236,20 @@ parse_args() {
         if ! valid_image_ref "$PIN_NODERED_IMAGE"; then err "Ungültige Image-Referenz: ${PIN_NODERED_IMAGE}"; exit 2; fi
         PIN_REQUESTED=1 ;;
       --latest) PIN_RELEASE=1; PIN_REQUESTED=1 ;;
+      --from-target) FROM_TARGET=1; PIN_REQUESTED=1 ;;
       *) err "Unbekannte Option: $1"; echo; usage; exit 2 ;;
     esac
     shift
   done
   if [ "$PIN_RELEASE" -eq 1 ] && { [ -n "$PIN_TAG" ] || [ -n "$PIN_CORE_IMAGE" ] || [ -n "$PIN_NODERED_IMAGE" ]; }; then
     err "--latest schließt --tag / --core-image / --nodered-image aus."
+    exit 2
+  fi
+  if [ "$FROM_TARGET" -eq 1 ] && { [ "$PIN_RELEASE" -eq 1 ] || [ -n "$PIN_TAG" ] \
+       || [ -n "$PIN_CORE_IMAGE" ] || [ -n "$PIN_NODERED_IMAGE" ]; }; then
+    # Zwei Quellen fuer dieselbe Frage waeren genau die Mehrdeutigkeit, gegen
+    # die die Zuweisung gebaut ist: welches Release soll denn nun laufen?
+    err "--from-target schließt --latest / --tag / --core-image / --nodered-image aus."
     exit 2
   fi
 }
@@ -615,6 +637,111 @@ refresh_hostnet_file() {
   fi
 }
 
+# =========================================================================
+# --from-target: die Zuweisung des Portals anwenden (OTA Stufe 2)
+# =========================================================================
+#
+# DIE Sicherheits-Eigenschaft dieses Modus: die Digests kommen vom GERÄT,
+# nicht aus dem Aufruf und nicht aus der Cloud-Antwort. Das Gerät hat das
+# signierte Manifest gegen seine EINGEBACKENE Vertrauenswurzel geprüft und
+# gibt die Artefakt-Referenzen erst danach heraus (GET /api/ota/target liefert
+# `images` nur bei verdict=ok). Ein beaufsichtigter Lauf kann damit nie etwas
+# anwenden, das diese Box nicht selbst verifiziert hat - und der Mensch am
+# Gerät muss keinen Digest mehr abtippen.
+
+# Ein verschachteltes JSON-Feld ("images": { "core": "..." }) lesen. Absichtlich
+# ohne jq (auf einer Box nicht vorausgesetzt) und absichtlich eng: gesucht wird
+# der Wert GENAU dieses Schlüssels innerhalb des images-Objekts.
+target_image_ref() {
+  local json="$1" name="$2"
+  printf '%s' "$json" \
+    | tr -d '\n' \
+    | sed -n 's/.*"images"[[:space:]]*:[[:space:]]*{\([^}]*\)}.*/\1/p' \
+    | sed -n "s/.*\"${name}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" \
+    | head -n1
+}
+
+resolve_target_pin() {
+  [ "$FROM_TARGET" -eq 1 ] || return 0
+  step "2b/5 Zugewiesenes Release vom Gerät lesen (--from-target)"
+
+  if ! command -v curl >/dev/null 2>&1; then
+    die "--from-target benötigt curl (die Zuweisung wird über /api/ota/target gelesen)."
+  fi
+  local json
+  json="$(curl -fsS --max-time 5 "http://127.0.0.1:${ACTIVE_WEB_PORT}/api/ota/target" 2>/dev/null || true)"
+  if [ -z "$json" ]; then
+    err "Das Gerät antwortet nicht auf /api/ota/target (Port ${ACTIVE_WEB_PORT})."
+    info "Läuft der Core? ${C_CYAN}docker compose ps${C_RESET}"
+    info "Ein älterer Core kennt diesen Endpunkt noch nicht - dann per Digest aktualisieren:"
+    info "  ${C_CYAN}./update.sh --core-image <ref@sha256:...> --nodered-image <ref@sha256:...>${C_RESET}"
+    die "Keine Zuweisung lesbar."
+  fi
+
+  local has verdict reason release seq core nodered
+  has="$(json_field "$json" has_target)"
+  verdict="$(json_field "$json" verdict)"
+  reason="$(json_field "$json" reason)"
+  release="$(json_field "$json" release)"
+  seq="$(json_field "$json" release_seq)"
+
+  if [ "$has" != "true" ]; then
+    err "Diesem Gerät ist im Portal kein Release zugewiesen."
+    info "Im Portal unter Plattform → Edge-Updates ein Ziel setzen und erneut ausführen."
+    die "Keine Zuweisung vorhanden."
+  fi
+  if [ "$verdict" != "ok" ]; then
+    # Ein nicht geprüftes Release wird NICHT angewandt - egal wie es heißt.
+    err "Das zugewiesene Release ist auf diesem Gerät nicht anwendbar (${verdict:-unbekannt})."
+    [ -n "$reason" ] && info "Grund: ${reason}"
+    die "Signaturkette bzw. Politik nicht erfüllt - es wurde nichts angewandt."
+  fi
+
+  core="$(target_image_ref "$json" core)"
+  nodered="$(target_image_ref "$json" nodered)"
+  if [ -z "$core" ] || [ -z "$nodered" ]; then
+    err "Die geprüfte Zuweisung nennt nicht beide Artefakte (core/nodered)."
+    die "Unvollständiges Release - es wurde nichts angewandt."
+  fi
+  # Dieselbe strenge Prüfung wie bei --core-image: was hier durchkommt, geht in
+  # die .env und in eine docker-Kommandozeile.
+  if ! valid_image_ref "$core"; then die "Ungültige core-Referenz in der Zuweisung: ${core}"; fi
+  if ! valid_image_ref "$nodered"; then die "Ungültige nodered-Referenz in der Zuweisung: ${nodered}"; fi
+  case "$core" in *@sha256:*) ;; *) die "Die core-Referenz ist kein Digest-Pin: ${core}" ;; esac
+  case "$nodered" in *@sha256:*) ;; *) die "Die nodered-Referenz ist kein Digest-Pin: ${nodered}" ;; esac
+
+  PIN_CORE_IMAGE="$core"
+  PIN_NODERED_IMAGE="$nodered"
+  TARGET_RELEASE="$release"
+  TARGET_RELEASE_SEQ="$seq"
+  ok "Zuweisung geprüft: ${release} (Stand ${seq:-?}) - vom Gerät selbst verifiziert."
+  info "  core:    ${core}"
+  info "  nodered: ${nodered}"
+}
+
+# Nach einem erfolgreichen Lauf meldet das GERÄT den angewandten Stand zurück.
+# Der Aufruf kann nur bestätigen, was nachweislich läuft (der Core prüft den
+# Release gegen seine eigene Build-Stempelung) und hebt den Anti-Rollback-Boden
+# nur je an - deshalb ist er ungefährlich und deshalb ist er ehrlich.
+report_applied_target() {
+  [ "$FROM_TARGET" -eq 1 ] || return 0
+  [ "$DRY_RUN" -eq 0 ] || return 0
+  [ -n "$TARGET_RELEASE" ] || return 0
+  case "$VERIFY_RESULT" in FAIL*) return 0 ;; esac
+  command -v curl >/dev/null 2>&1 || return 0
+
+  local body out
+  body="{\"release\":\"${TARGET_RELEASE}\",\"release_seq\":${TARGET_RELEASE_SEQ:-0}}"
+  out="$(curl -fsS --max-time 5 -X POST -H 'Content-Type: application/json' \
+        -d "$body" "http://127.0.0.1:${ACTIVE_WEB_PORT}/api/ota/applied" 2>/dev/null || true)"
+  if [ -z "$out" ]; then
+    warn "Das Gerät hat den angewandten Stand nicht bestätigt - im Portal erscheint er"
+    warn "erst, wenn der laufende Build das zugewiesene Release IST."
+    return 0
+  fi
+  ok "Angewandter Stand aufgezeichnet: ${TARGET_RELEASE} - das Portal sieht ihn beim nächsten Herzschlag."
+}
+
 validate_compose_config() {
   if [ "$DOCKER_AVAILABLE" -eq 0 ]; then
     warn "Compose-Validierung übersprungen (Docker nicht verfügbar)."
@@ -889,9 +1016,11 @@ update_main() {
 
   update_prerequisites
   detect_deployment
+  resolve_target_pin
   refresh_compose
   update_containers
   verify_update
+  report_applied_target
   print_update_summary
 
   case "$VERIFY_RESULT" in
