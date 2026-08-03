@@ -10,19 +10,23 @@ import type { OptimizerConfig, OptimizerDiagnostics } from '../../optimizerApi';
 vi.mock('./OptimizerPlanChart', () => ({
   OptimizerPlanChart: () => <div data-testid="plan-chart" />,
 }));
+vi.mock('./WhatIfCompareChart', () => ({
+  WhatIfCompareChart: () => <div data-testid="whatif-chart" />,
+}));
 
-const { listSites, diagnostics, config, updateConfig } = vi.hoisted(() => ({
+const { listSites, diagnostics, config, updateConfig, whatIf } = vi.hoisted(() => ({
   listSites: vi.fn(),
   diagnostics: vi.fn(),
   config: vi.fn(),
   updateConfig: vi.fn(),
+  whatIf: vi.fn(),
 }));
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: { listSites },
 }));
 vi.mock('../../optimizerApi', () => ({
-  optimizerApi: { diagnostics, config, updateConfig },
+  optimizerApi: { diagnostics, config, updateConfig, whatIf },
 }));
 
 const tenants: Tenant[] = [
@@ -126,6 +130,7 @@ beforeEach(() => {
   diagnostics.mockReset();
   config.mockReset();
   updateConfig.mockReset();
+  whatIf.mockReset();
 });
 
 describe('OptimizerPage - picker gating', () => {
@@ -316,9 +321,127 @@ describe('OptimizerPage - config PUT round-trip', () => {
         effective: { wearCostCtPerKwh: null, socMinPct: null, socMaxPct: null, backupReserveSocPct: null },
       }),
     );
-    expect(screen.getByText(/keinen Batteriespeicher/)).toBeInTheDocument();
+    // Both the config panel and the what-if panel explain the same absence,
+    // each in its own section - so match ALL of them, not one.
+    expect(screen.getAllByText(/keinen Batteriespeicher/).length).toBeGreaterThan(0);
     expect(screen.getByLabelText('Verschleißkosten-Override in ct/kWh')).toBeDisabled();
     // The backup reserve stays editable (site-scoped, not battery-scoped).
     expect(screen.getByLabelText('Backup-Reserve-Override in Prozent')).not.toBeDisabled();
+  });
+});
+
+describe('OptimizerPage - what-if re-optimize', () => {
+  function makeWhatIf(over: Record<string, unknown> = {}) {
+    const plan = (o: Record<string, unknown> = {}) => ({
+      slotMinutes: 15,
+      costEur: -1,
+      baselineCostEur: 2,
+      savingsEur: 3,
+      wearCostEur: 1,
+      netSavingsEur: 2,
+      terminalValueEurPerKwh: 0.2,
+      bankedValueEur: 0.5,
+      chargedKwh: 10,
+      dischargedKwh: 9,
+      gridImportKwh: 20,
+      gridExportKwh: 5,
+      curtailedKwh: 0,
+      cycles: 1,
+      socStartPct: 20,
+      socEndPct: 40,
+      peakTargetKw: null,
+      fallback14a: false,
+      knobs: {
+        wearCostCtPerKwh: 4,
+        backupReserveSocPct: null,
+        socMinPct: 5,
+        socMaxPct: 95,
+        netzladenErlaubt: false,
+      },
+      slots: [],
+      ...o,
+    });
+    return {
+      siteId: 's-1',
+      computedAt: '2026-08-03T10:00:00Z',
+      horizonSlots: 96,
+      slotMinutes: 15,
+      appliedOverrides: { wearCostCtPerKwh: 8 },
+      baseline: plan(),
+      variant: plan({ netSavingsEur: 3.5 }),
+      delta: { netSavingsEur: 1.5 },
+      ...over,
+    };
+  }
+
+  async function openSite() {
+    listSites.mockResolvedValue(sites);
+    diagnostics.mockResolvedValue(makeDiag());
+    config.mockResolvedValue(makeConfig());
+    render(<OptimizerPage tenants={tenants} />);
+    fireEvent.change(screen.getByLabelText('Mandant'), { target: { value: 't-1' } });
+    await screen.findByRole('option', { name: 'Hof Lindenberg' });
+    fireEvent.change(screen.getByLabelText('Anlage'), { target: { value: 's-1' } });
+    await waitFor(() => expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, null));
+  }
+
+  it('always states that nothing is sent to the plant', async () => {
+    await openSite();
+    expect(
+      await screen.findByText(/es wird nichts an die Anlage gesendet/i),
+    ).toBeInTheDocument();
+    // ... and it says so BEFORE any run, not only next to a result.
+    expect(whatIf).not.toHaveBeenCalled();
+  });
+
+  it('posts only the moved knob and renders the comparison', async () => {
+    await openSite();
+    whatIf.mockResolvedValue(makeWhatIf());
+
+    fireEvent.change(await screen.findByLabelText('Vorschau: Verschleißkosten in ct/kWh'), {
+      target: { value: '8' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Neu rechnen' }));
+
+    await waitFor(() =>
+      expect(whatIf).toHaveBeenCalledWith('t-1', 's-1', { wearCostCtPerKwh: 8 }),
+    );
+    expect(await screen.findByTestId('whatif-chart')).toBeInTheDocument();
+    expect(screen.getByText(/mehr Ersparnis/)).toBeInTheDocument();
+    // The persisted run above is untouched - its own chart is still there.
+    expect(screen.getByTestId('plan-chart')).toBeInTheDocument();
+  });
+
+  it('a Speicherschonung preset fills the wear field, it does not post on its own', async () => {
+    await openSite();
+    fireEvent.click(await screen.findByRole('button', { name: 'Schonend' }));
+    expect((screen.getByLabelText('Vorschau: Verschleißkosten in ct/kWh') as HTMLInputElement).value).toBe('8');
+    expect(whatIf).not.toHaveBeenCalled();
+  });
+
+  it('refuses an impossible knob client-side without a round trip', async () => {
+    await openSite();
+    fireEvent.change(await screen.findByLabelText('Vorschau: SoC-Untergrenze in %'), {
+      target: { value: '80' },
+    });
+    fireEvent.change(screen.getByLabelText('Vorschau: SoC-Obergrenze in %'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Neu rechnen' }));
+    expect(await screen.findByText(/SoC-Band ungültig/)).toBeInTheDocument();
+    expect(whatIf).not.toHaveBeenCalled();
+  });
+
+  it('shows the failure and DROPS the stale result - never a silent old answer', async () => {
+    await openSite();
+    whatIf.mockResolvedValueOnce(makeWhatIf());
+    fireEvent.change(await screen.findByLabelText('Vorschau: Verschleißkosten in ct/kWh'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Neu rechnen' }));
+    expect(await screen.findByTestId('whatif-chart')).toBeInTheDocument();
+
+    whatIf.mockRejectedValueOnce(new Error('boom'));
+    fireEvent.change(screen.getByLabelText('Vorschau: Verschleißkosten in ct/kWh'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Neu rechnen' }));
+
+    expect(await screen.findByText(/fehlgeschlagen/)).toBeInTheDocument();
+    expect(screen.queryByTestId('whatif-chart')).not.toBeInTheDocument();
   });
 });

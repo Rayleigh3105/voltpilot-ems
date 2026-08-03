@@ -167,6 +167,117 @@ export interface UpdateOptimizerConfig extends LastspitzenConfigFields {
   backupReserveSocPct: number | null;
 }
 
+// ---- what-if re-optimize (design §4.3) --------------------------------------
+
+/**
+ * The knobs a what-if may move. EVERY field is optional and an ABSENT field
+ * means "leave it as the site has it" - never zero. That is what makes an
+ * empty body meaningful: it re-solves the site exactly as configured, which
+ * is the baseline the variant is measured against.
+ *
+ * `backupReserveSocPct: 0` IS "no reserve" (a 0 % floor and no floor are the
+ * same constraint), so there is no separate clear flag.
+ */
+export interface WhatIfOverrides {
+  wearCostCtPerKwh?: number;
+  backupReserveSocPct?: number;
+  socMinPct?: number;
+  socMaxPct?: number;
+  netzladenErlaubt?: boolean;
+  horizonSlots?: number;
+}
+
+/** One slot of a freshly solved (never persisted) plan. */
+export interface WhatIfSlot {
+  time: string;
+  batteryKw: number | null;
+  gridKw: number | null;
+  socPct: number | null;
+  pvKw: number | null;
+  loadKw: number | null;
+  curtailKw: number | null;
+  priceEurMwh: number | null;
+  costEur: number | null;
+  baselineCostEur: number | null;
+  wearCostEur: number | null;
+  slotRole: string | null;
+}
+
+/** The knob values one solve actually used (so the panel never has to guess). */
+export interface WhatIfKnobs {
+  wearCostCtPerKwh: number;
+  backupReserveSocPct: number | null;
+  socMinPct: number;
+  socMaxPct: number;
+  netzladenErlaubt: boolean;
+}
+
+/**
+ * One ephemeral solve. Money keeps the persisted schedule's discipline:
+ * `savingsEur` is GROSS of wear, `wearCostEur` is separate, `netSavingsEur`
+ * is the honest difference, and `bankedValueEur` prices what the plan carries
+ * into the next day at its own terminal value.
+ */
+export interface WhatIfPlan {
+  slotMinutes: number;
+  costEur: number | null;
+  baselineCostEur: number | null;
+  savingsEur: number | null;
+  wearCostEur: number | null;
+  netSavingsEur: number | null;
+  terminalValueEurPerKwh: number | null;
+  bankedValueEur: number | null;
+  chargedKwh: number | null;
+  dischargedKwh: number | null;
+  gridImportKwh: number | null;
+  gridExportKwh: number | null;
+  curtailedKwh: number | null;
+  cycles: number | null;
+  socStartPct: number | null;
+  socEndPct: number | null;
+  peakTargetKw: number | null;
+  fallback14a: boolean;
+  knobs: WhatIfKnobs;
+  slots: WhatIfSlot[];
+}
+
+/** Variant minus baseline; a figure null on either side stays null. */
+export type WhatIfDelta = Partial<
+  Record<
+    | 'costEur'
+    | 'savingsEur'
+    | 'wearCostEur'
+    | 'netSavingsEur'
+    | 'bankedValueEur'
+    | 'chargedKwh'
+    | 'dischargedKwh'
+    | 'gridImportKwh'
+    | 'gridExportKwh'
+    | 'curtailedKwh'
+    | 'cycles'
+    | 'socEndPct'
+    | 'peakTargetKw',
+    number | null
+  >
+>;
+
+/**
+ * Two plans solved over ONE freshly gathered set of inputs, plus their delta.
+ * NOTHING here was committed: no plan was persisted, no MQTT schedule was
+ * published, and the site's stored settings and in-force run are untouched.
+ */
+export interface WhatIfResult {
+  siteId: string;
+  computedAt: string;
+  horizonSlots: number;
+  slotMinutes: number;
+  /** Echo of the knobs that actually differed (untouched ones are absent). */
+  appliedOverrides: Record<string, number | boolean>;
+  baseline: WhatIfPlan;
+  variant: WhatIfPlan;
+  delta: WhatIfDelta;
+}
+
 function tenantHeaders(tenantId: string): RequestInit {
   return { headers: { 'X-Tenant-Id': tenantId } };
 }
@@ -202,6 +313,18 @@ export const optimizerApi = {
   updateConfig: (tenantId: string, siteId: string, body: UpdateOptimizerConfig) =>
     request<OptimizerConfig>(`/api/v1/admin/sites/${siteId}/optimizer-config`, {
       method: 'PUT',
+      body: JSON.stringify(body),
+      ...tenantHeaders(tenantId),
+    }),
+
+  /**
+   * Preview a knob change: solve this site twice on ONE fresh set of inputs
+   * (as configured + with the overrides) and get both plans plus the delta.
+   * Persists nothing, publishes nothing - the run in force stays in force.
+   */
+  whatIf: (tenantId: string, siteId: string, body: WhatIfOverrides) =>
+    request<WhatIfResult>(`/api/v1/admin/sites/${siteId}/optimizer-what-if`, {
+      method: 'POST',
       body: JSON.stringify(body),
       ...tenantHeaders(tenantId),
     }),

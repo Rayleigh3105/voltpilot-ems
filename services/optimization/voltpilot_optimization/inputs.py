@@ -168,8 +168,14 @@ class BatterySite:
     abrechnung_leistung: str = "jahr"
 
 
-def load_battery_sites(dsn: str) -> list[BatterySite]:
-    """Every site with a battery asset, with full parameters resolved."""
+def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySite]:
+    """Every site with a battery asset, with full parameters resolved.
+
+    ``site_id`` narrows the load to ONE site (the admin what-if re-optimize,
+    :mod:`voltpilot_optimization.whatif`) - deliberately the same resolution
+    path as the tick loop, so a preview can never disagree with the plan that
+    will actually run.
+    """
     import psycopg  # lazy: optional [db] extra
 
     # Platform default for assets without a per-asset wear override (NULL
@@ -201,8 +207,10 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
             LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv' AND pv.is_primary
             LEFT JOIN site_supply_price ssp ON ssp.site_id = a.site_id
             WHERE a.type = 'battery' AND a.is_primary
+              AND (%(site_id)s::uuid IS NULL OR a.site_id = %(site_id)s::uuid)
             ORDER BY a.site_id
-            """
+            """,
+            {"site_id": str(site_id) if site_id is not None else None},
         )
         for row in cur.fetchall():
             (

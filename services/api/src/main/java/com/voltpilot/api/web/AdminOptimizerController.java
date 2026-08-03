@@ -2,22 +2,29 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.optimizer.OptimizerDiagnosticsService;
 import com.voltpilot.api.optimizer.OptimizerProperties;
+import com.voltpilot.api.optimizer.WhatIfClient;
 import com.voltpilot.api.repo.OptimizerConfigRepository;
 import com.voltpilot.api.repo.OptimizerDiagnosticsRepository.SiteContext;
 import com.voltpilot.api.web.dto.OptimizerConfigDto;
 import com.voltpilot.api.web.dto.OptimizerDiagnosticsDto;
 import com.voltpilot.api.web.dto.UpdateOptimizerConfigRequest;
+import com.voltpilot.api.web.dto.WhatIfRequestDto;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,10 +35,15 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Portal-Admin optimizer surface (design vp-admin-optimizer-ui-design):
  * understand what the optimizer did for a site and WHY
- * ({@code optimizer-diagnostics}, §4.2) and tune its per-site / per-asset
- * knobs ({@code optimizer-config}, §2.7). The what-if re-optimize (§4.3) is a
- * DEFERRED separate increment - config writes here change what the NEXT
- * scheduled run uses, they never trigger a solve.
+ * ({@code optimizer-diagnostics}, §4.2), tune its per-site / per-asset knobs
+ * ({@code optimizer-config}, §2.7), and preview a knob change before saving
+ * it ({@code optimizer-what-if}, §4.3).
+ *
+ * <p>The two write-ish routes answer different questions and must not be
+ * confused: a config PUT changes what the NEXT scheduled run uses (it never
+ * triggers a solve), while the what-if solves IMMEDIATELY and changes
+ * NOTHING - it persists no plan, publishes no MQTT, and leaves the site's
+ * stored settings and its in-force plan exactly as they were.
  *
  * <p>Auth + tenancy mirror the established admin pattern exactly: every route
  * is {@code platform-admin}-gated, and the data access is READ/WRITE OVER THE
@@ -54,12 +66,15 @@ public class AdminOptimizerController {
     private final OptimizerDiagnosticsService diagnostics;
     private final OptimizerConfigRepository config;
     private final OptimizerProperties properties;
+    private final WhatIfClient whatIf;
 
     public AdminOptimizerController(OptimizerDiagnosticsService diagnostics,
-            OptimizerConfigRepository config, OptimizerProperties properties) {
+            OptimizerConfigRepository config, OptimizerProperties properties,
+            WhatIfClient whatIf) {
         this.diagnostics = diagnostics;
         this.config = config;
         this.properties = properties;
+        this.whatIf = whatIf;
     }
 
     /**
@@ -124,6 +139,70 @@ public class AdminOptimizerController {
         config.updatePeakShaving(siteId, request.leistungspreisEurKw(),
                 request.abrechnungLeistung(), request.peakReserveSocPct());
         return toConfigDto(requireSite(siteId));
+    }
+
+    /**
+     * The what-if re-optimize (§4.3): solve THIS site's next horizon twice on
+     * one freshly gathered set of inputs - once as configured, once with the
+     * posted knobs - and return both plans plus their delta.
+     *
+     * <p><b>Nothing is committed.</b> No plan is persisted, no MQTT schedule is
+     * published, and the site's stored settings are untouched; the run that is
+     * in force stays in force. That property lives in the Python module (which
+     * imports neither the repository nor either publisher and is pinned by an
+     * import-graph test), so no route on this side can subvert it.
+     *
+     * <p><b>Why two solves and not "variant vs. the persisted run":</b> the
+     * persisted run was generated at some earlier time over a different
+     * horizon with a different price/forecast vintage, so a slot-by-slot delta
+     * against it would attribute the passage of time to the knob. The only
+     * honest comparison shares its inputs.
+     *
+     * <p>Tenancy is the same fence as every other route here and it is
+     * SECURITY-RELEVANT: the solve service resolves the site with the trusted
+     * backend credentials (it has no tenant concept), so {@link #requireSite}
+     * must prove through the RLS-scoped datasource that the site is visible in
+     * the switched tenant BEFORE the id is forwarded. A foreign site is 404
+     * and never reaches the service.
+     */
+    @PostMapping("/optimizer-what-if")
+    public Map<String, Object> optimizerWhatIf(@PathVariable UUID siteId,
+            @Valid @RequestBody(required = false) WhatIfRequestDto request) {
+        SiteContext site = requireSite(siteId);
+        if (!site.hasBattery()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Diese Anlage hat keinen Batteriespeicher - der Optimierer plant "
+                            + "sie nicht, es gibt also nichts neu zu rechnen.");
+        }
+        WhatIfRequestDto knobs = request != null
+                ? request : new WhatIfRequestDto(null, null, null, null, null, null);
+        // Only the UNAMBIGUOUS case is decidable here: with both sides posted
+        // the window is wrong whatever the site holds. A ONE-sided knob is
+        // deliberately NOT judged against the platform default - the site may
+        // override the other side, and rejecting on a default the site does
+        // not use would refuse a perfectly valid preview. The solve service
+        // checks it against the site's real other side and names the reason.
+        if (knobs.socMinPct() != null && knobs.socMaxPct() != null
+                && knobs.socMinPct().compareTo(knobs.socMaxPct()) >= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Das SoC-Band ist ungültig: die Untergrenze (" + knobs.socMinPct()
+                            + " %) muss unter der Obergrenze (" + knobs.socMaxPct()
+                            + " %) liegen.");
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("siteId", site.siteId().toString());
+        payload.put("overrides", knobs.overrides());
+        if (knobs.horizonSlots() != null) {
+            payload.put("horizonSlots", knobs.horizonSlots());
+        }
+        return whatIf.reoptimize(payload);
+    }
+
+    /** German reason into the body (the MastrController/AdminSimulation pattern). */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> onStatusException(ResponseStatusException e) {
+        return ResponseEntity.status(e.getStatusCode())
+                .body(Map.of("message", e.getReason() == null ? "Fehler" : e.getReason()));
     }
 
     /**
