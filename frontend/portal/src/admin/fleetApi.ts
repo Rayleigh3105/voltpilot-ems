@@ -1,60 +1,98 @@
-import {
-  request,
-  type ControlStatus,
-  type CurtailmentStatus,
-  type EdgeVersion,
-  type Overview,
-  type Site,
-  type SiteSource,
-} from '../api';
+import { request, type ControlStatus, type CurtailmentStatus } from '../api';
 
 /**
- * Die Datenquelle der Plattform-Übersicht: dieselben KUNDEN-Endpunkte, die auch
- * eine Kundenseite liest, nur je Aufruf auf EINEN Mandanten gestellt.
+ * Die Datenquelle der Plattform-Übersicht: der EINE Flotten-Endpunkt
+ * `GET /api/v1/admin/fleet` (Admin-Umbau Stufe 2).
  *
- * **Stufe 1 aggregiert bewusst client-seitig** (Captain-Entscheid Q3): der
- * per-Call-`X-Tenant-Id`-Mechanismus ist erprobt (`api.ts request()` spreadet
- * `init.headers` ZULETZT, `optimizerApi.ts` nutzt genau das), und bei der
- * heutigen Flottengröße ist eine Schleife über die Mandanten unkritisch. Der
- * EINE Fleet-Endpunkt (`GET /api/v1/admin/fleet`, BYPASSRLS) ist Stufe 2 -
- * dann wechselt hier die Datenquelle und die Oberfläche bleibt, wie sie ist.
+ * **Stufe 1 hat den Puls client-seitig aggregiert** - je Mandant `/overview` +
+ * Anlagen + `/edge-versions`, dazu je Anlage die Quellen und beim Aufklappen
+ * zwei Steuerungs-Belege. Das war ein bewusster Zwischenstand (Captain-Entscheid
+ * Q3: erprobter Mechanismus, kleine Flotte), skalierte aber mit Mandanten ×
+ * Anlagen. Jetzt ist es EINE Antwort - die Oberfläche bleibt, wie sie ist.
  *
- * Es geht bewusst NICHT über `setTenantOverride`: der Umschalter der Schale ist
- * ein globaler Zustand, den diese Seite nicht umschreiben darf (der Admin steht
- * beim Verlassen sonst in einem fremden Mandanten). Jeder Aufruf trägt seinen
- * Mandanten selbst - der RLS-Pfad bleibt der Zaun, BYPASSRLS bleibt hinter
- * `/api/v1/admin/**`.
+ * Die Route liegt unter `/api/v1/admin/**` und ist server-seitig an die
+ * `platform-admin`-Rolle gebunden; ein Kunden-Token bekommt 403. Die
+ * RLS-Umgehung lebt ausschließlich dort (dieselbe dedizierte BYPASSRLS-Rolle
+ * wie die übrigen Admin-Reads) - die Kunden-Endpunkte bleiben unberührt auf dem
+ * RLS-Pfad, und deshalb trägt dieser Aufruf auch KEINEN `X-Tenant-Id`-Header
+ * mehr: es gibt nichts mehr umzuschalten.
  *
- * Jeder Aufruf ist EINZELN, damit ein Fehlschlag genau eine Zelle leer lässt
- * und nie eine ganze Zeile (oder gar die Seite) verschluckt.
+ * Ehrlichkeit reist im Vertrag mit: ein Block, den niemand gemessen hat, ist
+ * `null` und trägt seinen Grund - nie eine erfundene Null.
  */
-function forTenant(tenantId: string): RequestInit {
-  return { headers: { 'X-Tenant-Id': tenantId } };
+
+/** Die vom Gerät gemeldeten Quellen, nach Gesundheit gezählt. */
+export interface AdminFleetSources {
+  total: number;
+  ok: number;
+  stale: number;
+  never: number;
+}
+
+/** Der gemeldete Software-Stand der Edge. `null` an der Anlage = unbekannt. */
+export interface AdminFleetEdge {
+  coreVersion: string | null;
+  paletteVersion: string | null;
+  reportedAt: string;
+}
+
+/** Die kWp-Plausibilität (B4a) - `unbekannt` ist ein vollwertiges Urteil. */
+export interface AdminFleetKwp {
+  configuredKwp: number | null;
+  observedPeakKw: number | null;
+  buckets: number;
+  verdict: 'ok' | 'zu_hoch' | 'zu_niedrig' | 'unbekannt';
+  reason: string;
+}
+
+/** Die Prognosequalität einer Anlage für EINE Prognoseart (B4b). */
+export interface AdminFleetForecast {
+  kind: string;
+  nmaePct: number;
+  days: number;
+  /** `null` = kein Flotten-Maßstab; dann wird auch kein Ausreißer behauptet. */
+  fleetMedianPct: number | null;
+  outlier: boolean;
+  reason: string;
+}
+
+/** Ein offener Pflege-Punkt, server-abgeleitet (eine Wahrheit). */
+export interface AdminFleetPflege {
+  code: string;
+  label: string;
+  detail: string | null;
+}
+
+/** Eine Zeile des Pulses = eine Anlage, über alle Mandanten. */
+export interface AdminFleetSite {
+  siteId: string;
+  siteName: string;
+  tenantId: string;
+  tenantName: string;
+  plantKind: string;
+  netzladenErlaubt: boolean;
+  tarifArt: string | null;
+  deviceCount: number;
+  onlineCount: number;
+  waitingCount: number;
+  worstStatus: 'online' | 'stale' | 'waiting' | null;
+  lastSeenAt: string | null;
+  lastPlanGeneratedAt: string | null;
+  hasStorage: boolean;
+  batteryWithoutDevice: boolean;
+  sources: AdminFleetSources | null;
+  edge: AdminFleetEdge | null;
+  control: ControlStatus | null;
+  curtailment: CurtailmentStatus | null;
+  kwp: AdminFleetKwp;
+  forecast: AdminFleetForecast[];
+  pflege: AdminFleetPflege[];
+}
+
+export interface AdminFleet {
+  sites: AdminFleetSite[];
 }
 
 export const fleetApi = {
-  overview: (tenantId: string) => request<Overview>('/api/v1/overview', forTenant(tenantId)),
-
-  /** Die Anlagen-Stammdaten - der Pflege-Check liest daraus die Tarifart. */
-  sites: (tenantId: string) =>
-    request<Site[]>(`/api/v1/admin/tenants/${tenantId}/sites`),
-
-  edgeVersions: (tenantId: string) =>
-    request<EdgeVersion[]>('/api/v1/edge-versions', forTenant(tenantId)),
-
-  sources: (tenantId: string, siteId: string) =>
-    request<SiteSource[]>(`/api/v1/sites/${siteId}/sources`, forTenant(tenantId)),
-
-  /** 204 -> null (kein Rücklese-Beleg), wie auf der Kundenfläche. */
-  controlStatus: (tenantId: string, siteId: string) =>
-    request<ControlStatus | undefined>(
-      `/api/v1/sites/${siteId}/control-status`,
-      forTenant(tenantId),
-    ).then((v) => v ?? null),
-
-  curtailmentStatus: (tenantId: string, siteId: string) =>
-    request<CurtailmentStatus | undefined>(
-      `/api/v1/sites/${siteId}/curtailment-status`,
-      forTenant(tenantId),
-    ).then((v) => v ?? null),
+  fleet: () => request<AdminFleet>('/api/v1/admin/fleet'),
 };

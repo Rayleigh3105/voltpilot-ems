@@ -2496,6 +2496,181 @@ class AdminApiTest {
                 .isEqualTo(HttpStatus.OK);
     }
 
+    // ---- der EINE Flotten-Endpunkt (Admin-Umbau Stufe 2) ---------------------
+
+    /**
+     * {@code GET /api/v1/admin/fleet}: eine Zeile je Anlage über ALLE Mandanten,
+     * server-seitig - der Ersatz für die Client-Schleife der Stufe 1.
+     *
+     * <p>Bewiesen wird beides, was an diesem Endpunkt zählt: die ROLLEN-Grenze
+     * (ein Kunde bekommt 403, anonym 401, und die BYPASSRLS-Sicht leckt an
+     * keiner Kunden-Route) und die INHALTE inklusive der B4-Pflege-Ableitung
+     * (kWp-Plausibilität + Prognose-Ausreißer über die Flotte).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void adminFleetAggregatesEveryTenantServerSideAndStaysRoleGated() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Flottenpuls GmbH", "CI").get("id");
+
+        UUID nord = UUID.randomUUID();
+        UUID sued = UUID.randomUUID();
+        UUID ost = UUID.randomUUID();
+        UUID west = UUID.randomUUID();
+        seedSite(nord, UUID.fromString(tenantId), "Puls Nord");
+        seedSite(sued, UUID.fromString(tenantId), "Puls Sued");
+        seedSite(ost, UUID.fromString(tenantId), "Puls Ost");
+        seedSite(west, UUID.fromString(tenantId), "Puls West");
+
+        // Nord: der Sorgenfall. Tarifart 'ohne' (rechnet mit Standard-Komponenten),
+        // ein Speicher OHNE steuerndes Gerät, ein Gerät das gerade gemeldet hat,
+        // ein frischer Optimierer-Lauf, Steuerungs-/Abregel-Beleg, Edge-Stand,
+        // zwei gemeldete Quellen (eine davon verstummt).
+        exec("UPDATE site SET tarif_art = 'ohne' WHERE id = '" + nord + "'");
+        // Die anderen drei sind gepflegt - „Ost" soll gleich beweisen, dass eine
+        // Anlage OHNE Datenlage gar nichts behauptet bekommt.
+        exec("UPDATE site SET tarif_art = 'fest', tarif_param_ct_kwh = 30 WHERE id IN ('"
+                + sued + "', '" + ost + "', '" + west + "')");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw) VALUES ('" + tenantId + "', '" + nord + "', 'battery', 20, 10, 10)");
+        UUID nordDevice = UUID.randomUUID();
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind) VALUES ('"
+                + nordDevice + "', '" + tenantId + "', '" + nord + "', 'fleet-nord-01', 'inverter')");
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, received_at, pv_power_kw) "
+                + "VALUES (now(), '" + tenantId + "', '" + nord + "', '" + nordDevice + "', now(), 3.2)");
+        exec("INSERT INTO schedule (site_id, tenant_id, plan_id, generated_at, time, battery_kw) "
+                + "VALUES ('" + nord + "', '" + tenantId + "', gen_random_uuid(), "
+                + "now() - interval '10 minutes', now(), 1.0)");
+        exec("INSERT INTO device_control_status (device_id, tenant_id, site_id, commanded_kw, "
+                + "confirmed_kw, all_match, control_enabled, certified, checked_at) VALUES ('"
+                + nordDevice + "', '" + tenantId + "', '" + nord + "', -4.3, -4.3, TRUE, TRUE, TRUE, now())");
+        exec("INSERT INTO device_curtailment_status (device_id, tenant_id, site_id, units, "
+                + "certified_units, control_enabled, active, possible_override, checked_at) VALUES ('"
+                + nordDevice + "', '" + tenantId + "', '" + nord + "', 2, 0, TRUE, FALSE, FALSE, now())");
+        exec("INSERT INTO device_edge_version (device_id, tenant_id, site_id, core_version, "
+                + "palette_version, reported_at) VALUES ('" + nordDevice + "', '" + tenantId + "', '"
+                + nord + "', '1.4.0', '0.3.0', now())");
+        exec("INSERT INTO device_source_status (device_id, source_id, tenant_id, site_id, kind, "
+                + "health, reported_at) VALUES ('" + nordDevice + "', 'primary', '" + tenantId + "', '"
+                + nord + "', 'primary', 'ok', now())");
+        exec("INSERT INTO device_source_status (device_id, source_id, tenant_id, site_id, kind, "
+                + "health, reported_at) VALUES ('" + nordDevice + "', 'pv-2', '" + tenantId + "', '"
+                + nord + "', 'source', 'stale', now())");
+
+        // Sued: 30 kWp gepflegt, aber die Rollups melden eine Spitze von 105 kW
+        // (26,25 kWh je Viertelstunde) - der Skalierungsfehler-Fall.
+        exec("INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) VALUES ('"
+                + tenantId + "', '" + sued + "', 'pv', 30)");
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, n_samples) "
+                + "SELECT now() - (g || ' hours')::interval, '" + tenantId + "', '" + sued
+                + "', 26.25, 90 FROM generate_series(1, 120) g");
+
+        // Prognose: vier bewertete Anlagen (Median 13 %), Nord ist mit 60 % der
+        // Ausreisser. Nur das AKTIVE Modell zaehlt.
+        seedForecastAccuracy(tenantId, nord, "load-persistence", "load", 60);
+        seedForecastAccuracy(tenantId, sued, "load-persistence", "load", 10);
+        seedForecastAccuracy(tenantId, ost, "load-persistence", "load", 12);
+        seedForecastAccuracy(tenantId, west, "load-persistence", "load", 14);
+        // Ein SCHATTEN-Modell mit katastrophalem Fehler darf nichts auslösen.
+        seedForecastAccuracy(tenantId, west, "load-xgb", "load", 400);
+
+        List<Map<String, Object>> fleet = fleet(admin);
+        Map<String, Map<String, Object>> bySite = new java.util.HashMap<>();
+        for (Map<String, Object> row : fleet) {
+            bySite.put((String) row.get("siteName"), row);
+        }
+
+        // (1) cross-tenant: der neue Mandant UND der Demo-Mandant stehen drin.
+        assertThat(bySite).containsKeys("Puls Nord", "Puls Sued", "Puls Ost", "Puls West");
+        assertThat(fleet).extracting(r -> r.get("tenantName")).contains("Demo C&I Tenant");
+        assertThat(bySite.get("Puls Nord")).containsEntry("tenantName", "Flottenpuls GmbH");
+
+        // (2) Nord: Overview-Kernfelder + Plan-Alter + die drei Kurzbelege.
+        Map<String, Object> n = bySite.get("Puls Nord");
+        assertThat(n).containsEntry("deviceCount", 1).containsEntry("onlineCount", 1)
+                .containsEntry("waitingCount", 0).containsEntry("worstStatus", "online")
+                .containsEntry("hasStorage", true).containsEntry("batteryWithoutDevice", true);
+        assertThat(n.get("lastSeenAt")).isNotNull();
+        assertThat(n.get("lastPlanGeneratedAt")).as("der jüngste Optimierer-Lauf").isNotNull();
+        assertThat((Map<String, Object>) n.get("control")).containsEntry("certified", true)
+                .containsEntry("allMatch", true).containsEntry("commandedKw", -4.3);
+        assertThat((Map<String, Object>) n.get("curtailment")).containsEntry("units", 2)
+                .containsEntry("certifiedUnits", 0);
+        assertThat((Map<String, Object>) n.get("edge")).containsEntry("coreVersion", "1.4.0")
+                .containsEntry("paletteVersion", "0.3.0");
+        assertThat((Map<String, Object>) n.get("sources")).containsEntry("total", 2)
+                .containsEntry("ok", 1).containsEntry("stale", 1);
+
+        // (3) die Pflege-Flags sind SERVER-abgeleitet (Stufe-1-Regeln + B4).
+        assertThat((List<Map<String, Object>>) n.get("pflege"))
+                .extracting(f -> f.get("code"))
+                .containsExactly("tarif-fehlt", "speicher-ohne-geraet", "prognose-ausreisser-load");
+        Map<String, Object> forecast = ((List<Map<String, Object>>) n.get("forecast")).get(0);
+        assertThat(forecast).containsEntry("kind", "load").containsEntry("outlier", true);
+        assertThat((Double) forecast.get("fleetMedianPct")).isEqualTo(13.0);
+
+        // (4) B4a: die kWp-Plausibilität nennt ihren Grund.
+        Map<String, Object> s = bySite.get("Puls Sued");
+        Map<String, Object> kwp = (Map<String, Object>) s.get("kwp");
+        assertThat(kwp).containsEntry("verdict", "zu_hoch");
+        assertThat((String) kwp.get("reason")).contains("105,0 kW").contains("30,0 kWp");
+        assertThat((List<Map<String, Object>>) s.get("pflege")).extracting(f -> f.get("code"))
+                .contains("kwp-unplausibel");
+
+        // (5) keine Daten = Lücke MIT Grund, nie ein erfundenes Urteil.
+        Map<String, Object> o = bySite.get("Puls Ost");
+        assertThat((Map<String, Object>) o.get("kwp")).containsEntry("verdict", "unbekannt");
+        assertThat((String) ((Map<String, Object>) o.get("kwp")).get("reason"))
+                .contains("Keine PV-Nennleistung gepflegt");
+        assertThat(o.get("edge")).as("nie gemeldet heißt unbekannt, nicht veraltet").isNull();
+        assertThat(o.get("sources")).isNull();
+        assertThat(o.get("control")).isNull();
+        assertThat(o.get("curtailment")).isNull();
+        assertThat(o.get("lastPlanGeneratedAt")).isNull();
+        assertThat((List<Map<String, Object>>) o.get("pflege"))
+                .as("ohne Datenlage wird nichts behauptet").isEmpty();
+
+        // (6) die Rollen-Grenze: ein Kunde bekommt 403, anonym 401 - und die
+        // BYPASSRLS-Sicht leckt an keiner Kunden-Route.
+        String customer = token("demo", "demo");
+        assertThat(rest.exchange(url("/api/v1/admin/fleet"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(url("/api/v1/admin/fleet"), HttpMethod.GET,
+                new HttpEntity<>(new HttpHeaders()), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        // Auch MIT gesetztem Umschalter-Header (den nur Admins tragen dürfen).
+        assertThat(rest.exchange(url("/api/v1/admin/fleet"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(customer), tenantId)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        ResponseEntity<Map<String, Object>> customerOverview = rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(customerOverview.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((List<Map<String, Object>>) customerOverview.getBody().get("sites"))
+                .as("der Kunde sieht weiterhin nur seine eigenen Anlagen")
+                .extracting(r -> r.get("name")).doesNotContain("Puls Nord", "Puls Sued");
+    }
+
+    /** Der Flotten-Puls, als Liste von Zeilen. */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> fleet(String adminToken) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/admin/fleet"), HttpMethod.GET, new HttpEntity<>(bearer(adminToken)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return (List<Map<String, Object>>) res.getBody().get("sites");
+    }
+
+    /** 14 bewertete Tage mit konstantem normiertem Fehler (Superuser-Seed). */
+    private static void seedForecastAccuracy(String tenantId, UUID siteId, String model,
+            String kind, double nmaePct) {
+        exec("INSERT INTO forecast_accuracy (day, tenant_id, site_id, model, kind, mae_kw, "
+                + "nmae_pct, n_slots) SELECT current_date - g, '" + tenantId + "', '" + siteId
+                + "', '" + model + "', '" + kind + "', 1.0, " + nmaePct
+                + ", 96 FROM generate_series(1, 10) g");
+    }
+
     private Map<String, Object> createTenant(String token, String name, String segment) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/admin/tenants"), HttpMethod.POST,

@@ -1976,6 +1976,33 @@ paths:
                 items: { $ref: "#/components/schemas/PendingEnrollment" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fleet:
+    get:
+      tags: [admin]
+      summary: The ONE fleet aggregate behind the platform overview (Flotten-Puls).
+      description: >
+        One row per site across ALL tenants, server-side: the overview core
+        fields (device liveness from each device's newest telemetry ARRIVAL,
+        5-min window; worstStatus stale > waiting > online), the age of the
+        newest optimizer run, the control/curtailment evidence, the reported
+        edge version, the reported source health, and the SERVER-derived
+        maintenance flags (B4: tariff, battery without device, kWp plausibility,
+        fleet-wide forecast outliers). It replaces the platform overview's
+        client-side loop over tenants; the surface stays the same.
+        Platform-admin only (a customer token gets 403), read-only, and the
+        cross-tenant read is confined to the dedicated BYPASSRLS admin
+        datasource exactly like the other /api/v1/admin/** reads - customer
+        endpoints stay on the RLS path untouched.
+        Honesty is part of the contract: a block nobody measured is null and
+        carries its reason - never a fabricated zero, never a guessed verdict.
+      responses:
+        "200":
+          description: One row per site, tenant then site name.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminFleet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/sites/{siteId}/v2-entities:
     get:
       tags: [admin]
@@ -3617,6 +3644,132 @@ components:
             optimizer re-plans every 15 minutes, so the age is the statement.
             null = no run inside the lookback window (7 days), never a
             fabricated age.
+    AdminFleet:
+      type: object
+      description: The platform-wide fleet aggregate (see GET /api/v1/admin/fleet).
+      properties:
+        sites:
+          type: array
+          items: { $ref: "#/components/schemas/AdminFleetSite" }
+    AdminFleetSite:
+      type: object
+      description: >
+        One site of the platform fleet. The device fields carry exactly the
+        OverviewSite semantics; control/curtailment are the SAME rows the
+        per-site customer routes serve, so the platform overview and a site page
+        can never claim different things.
+      properties:
+        siteId: { type: string, format: uuid }
+        siteName: { type: string }
+        tenantId: { type: string, format: uuid }
+        tenantName: { type: string }
+        plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
+        netzladenErlaubt: { type: boolean }
+        tarifArt: { type: string, enum: [dynamisch, fest, ohne] }
+        deviceCount: { type: integer }
+        onlineCount: { type: integer, description: "Devices whose newest telemetry ARRIVED within 5 minutes." }
+        waitingCount: { type: integer, description: "Devices that never sent data." }
+        worstStatus:
+          type: string
+          nullable: true
+          enum: [online, stale, waiting]
+          description: stale beats waiting beats online; null without devices.
+        lastSeenAt: { type: string, format: date-time, nullable: true }
+        lastPlanGeneratedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Newest optimizer run; null = no run inside the 7-day lookback
+            window, never a fabricated age.
+        hasStorage: { type: boolean, description: "The site owns a battery asset (the control matrix's row set)." }
+        batteryWithoutDevice: { type: boolean }
+        sources:
+          nullable: true
+          description: >
+            The device-reported measurement points counted by health; null = the
+            device reported none - which is NOT "0 healthy".
+          allOf: [{ $ref: "#/components/schemas/AdminFleetSources" }]
+        edge:
+          nullable: true
+          description: >
+            The reported edge software version; null means UNKNOWN (the edge
+            only builds the heartbeat's flows block after its first deployment
+            set), never "outdated".
+          allOf: [{ $ref: "#/components/schemas/AdminFleetEdge" }]
+        control:
+          nullable: true
+          description: Latest control evidence; null = the device never read back.
+          allOf: [{ $ref: "#/components/schemas/ControlStatus" }]
+        curtailment:
+          nullable: true
+          description: Latest curtailment evidence; null = no evidence.
+          allOf: [{ $ref: "#/components/schemas/CurtailmentStatus" }]
+        kwp: { $ref: "#/components/schemas/AdminFleetKwp" }
+        forecast:
+          type: array
+          description: >
+            Forecast quality per kind (load/pv) over the evaluation window;
+            empty when the site has no evaluated day at all.
+          items: { $ref: "#/components/schemas/AdminFleetForecast" }
+        pflege:
+          type: array
+          description: >
+            The SERVER-derived maintenance items (one truth - the portal renders
+            them, it does not re-derive them). Empty = nothing open; "not
+            checked" is never an item, it is the reason inside kwp/forecast.
+          items: { $ref: "#/components/schemas/AdminFleetPflege" }
+    AdminFleetSources:
+      type: object
+      properties:
+        total: { type: integer }
+        ok: { type: integer }
+        stale: { type: integer, description: "Reported but without current values." }
+        never: { type: integer, description: "Has never delivered." }
+    AdminFleetEdge:
+      type: object
+      properties:
+        coreVersion: { type: string, nullable: true }
+        paletteVersion: { type: string, nullable: true }
+        reportedAt: { type: string, format: date-time }
+    AdminFleetKwp:
+      type: object
+      description: >
+        kWp plausibility (B4): the measured PV peak (max quarter-hour mean power
+        over the lookback window) against the maintained nameplate. `unbekannt`
+        is a full verdict - without a nameplate or without enough measured
+        quarter-hours nothing is judged, and `reason` says why.
+      properties:
+        configuredKwp: { type: number, nullable: true }
+        observedPeakKw: { type: number, nullable: true }
+        buckets: { type: integer, description: "Quarter-hours WITH a PV value in the window." }
+        verdict: { type: string, enum: [ok, zu_hoch, zu_niedrig, unbekannt] }
+        reason: { type: string, description: "One German sentence - also (and especially) for `unbekannt`." }
+    AdminFleetForecast:
+      type: object
+      description: >
+        The site's mean normalized forecast error for one kind, plus the FLEET
+        median as the yardstick. Normalized because only that is comparable
+        across plant sizes. `outlier` is only ever claimed when a yardstick
+        exists (enough evaluated sites) - the same discipline as the edge
+        version ("without a reference nothing is outdated").
+      properties:
+        kind: { type: string, enum: [load, pv] }
+        nmaePct: { type: number }
+        days: { type: integer, description: "Evaluated days inside the window." }
+        fleetMedianPct: { type: number, nullable: true, description: "null = no fleet yardstick." }
+        outlier: { type: boolean }
+        reason: { type: string }
+    AdminFleetPflege:
+      type: object
+      properties:
+        code:
+          type: string
+          description: >
+            Machine-readable id (tarif-fehlt | speicher-ohne-geraet |
+            kwp-unplausibel | prognose-ausreisser-{kind}).
+        label: { type: string, description: "Short German chip label." }
+        detail: { type: string, nullable: true, description: "The reason, where the check has one." }
     EdgeVersion:
       type: object
       description: >

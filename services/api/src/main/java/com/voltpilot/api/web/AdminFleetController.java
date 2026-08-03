@@ -1,0 +1,179 @@
+package com.voltpilot.api.web;
+
+import com.voltpilot.api.fleet.FleetPflege;
+import com.voltpilot.api.history.HistoryRange;
+import com.voltpilot.api.repo.AdminFleetRepository;
+import com.voltpilot.api.repo.AdminFleetRepository.DeviceStats;
+import com.voltpilot.api.repo.AdminFleetRepository.EdgeVersionRow;
+import com.voltpilot.api.repo.AdminFleetRepository.FleetSiteRow;
+import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
+import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
+import com.voltpilot.api.repo.AdminFleetRepository.SourceCounts;
+import com.voltpilot.api.web.dto.AdminFleetDto;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetEdgeDto;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetForecastDto;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetKwpDto;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetSiteDto;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetSourcesDto;
+import com.voltpilot.api.web.dto.ControlStatusDto;
+import com.voltpilot.api.web.dto.CurtailmentStatusDto;
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Der EINE Flotten-Endpunkt der Plattform-Übersicht:
+ * {@code GET /api/v1/admin/fleet} (Admin-Umbau Stufe 2).
+ *
+ * <p>Stufe 1 hat den Puls client-seitig aggregiert - je Mandant
+ * {@code /overview} + Anlagen + {@code /edge-versions}, dazu je Anlage die
+ * Quellen und beim Aufklappen zwei Steuerungs-Belege. Das war bewusst so
+ * (Captain-Entscheid Q3: erprobter Mechanismus, kleine Flotte), skaliert aber
+ * mit der Zahl der Mandanten × Anlagen. Hier wird daraus EINE Antwort.
+ *
+ * <p><b>Sicherheits-Disziplin, unverändert vom bestehenden Muster
+ * übernommen:</b> die Route liegt unter {@code /api/v1/admin/**} und die Klasse
+ * trägt {@code @PreAuthorize("hasRole('platform-admin')")} wie
+ * {@link AdminController} - ein Kunden-Token bekommt 403, ein anonymer Aufruf
+ * 401. Die RLS-Umgehung ist auf {@link AdminFleetRepository} beschränkt
+ * (dieselbe dedizierte BYPASSRLS-Rolle wie {@code TenantRepository} /
+ * {@code AdminSiteRepository}), read-only, ohne einen einzigen Schreibpfad. Die
+ * Kunden-Endpunkte bleiben unangetastet auf dem RLS-Pfad - hier wird nichts
+ * aufgeweicht und nichts neu erfunden.
+ *
+ * <p>Die Oberfläche bleibt dieselbe wie in Stufe 1; nur die Datenquelle
+ * wechselt.
+ */
+@RestController
+@RequestMapping("/api/v1/admin/fleet")
+@PreAuthorize("hasRole('platform-admin')")
+public class AdminFleetController {
+
+    /**
+     * Nachschau-Fenster für „wann lief der Optimierer zuletzt" - identisch zum
+     * {@link OverviewController}: der Optimierer plant alle 15 Minuten, alles
+     * Ältere ist für die Betriebsfrage ohnehin „kein aktueller Plan", und die
+     * Grenze hält die Abfrage vom Scan über die ganze Plan-Historie ab.
+     */
+    private static final Duration PLAN_LOOKBACK = Duration.ofDays(7);
+
+    /**
+     * Fenster der kWp-Plausibilität. Lang genug, dass jede Anlage einen sonnigen
+     * Tag darin hatte (eine Spitze entsteht nicht im Nebel), kurz genug, dass
+     * eine gerade behobene Fehlkonfiguration nicht ewig nachhallt.
+     */
+    private static final Duration PV_PEAK_LOOKBACK = Duration.ofDays(30);
+
+    /**
+     * Fenster der Prognose-Bewertung. Die Auswertung läuft täglich; zwei Wochen
+     * glätten Wetterlagen, ohne eine seit Tagen kaputte Prognose zu verstecken.
+     */
+    private static final int FORECAST_LOOKBACK_DAYS = 14;
+
+    private final AdminFleetRepository fleet;
+    private final String activeLoadModel;
+    private final String activePvModel;
+
+    public AdminFleetController(AdminFleetRepository fleet,
+            @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
+            @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
+        this.fleet = fleet;
+        this.activeLoadModel = activeLoadModel;
+        this.activePvModel = activePvModel;
+    }
+
+    @GetMapping
+    public AdminFleetDto fleet() {
+        Instant now = Instant.now();
+        List<FleetSiteRow> siteRows = fleet.sites();
+
+        Map<UUID, DeviceStats> deviceStats = fleet.deviceStatsPerSite();
+        Map<UUID, Instant> lastPlan = fleet.lastPlanPerSite(now.minus(PLAN_LOOKBACK));
+        Map<UUID, ControlStatusDto> control = fleet.controlPerSite();
+        Map<UUID, CurtailmentStatusDto> curtailment = fleet.curtailmentPerSite();
+        Map<UUID, EdgeVersionRow> edge = fleet.edgeVersionPerSite();
+        Map<UUID, SourceCounts> sources = fleet.sourceCountsPerSite();
+        Set<UUID> unlinkedBattery = fleet.sitesWithUnlinkedBattery();
+        Set<UUID> withBattery = fleet.sitesWithBattery();
+        Map<UUID, BigDecimal> pvCapacity = fleet.pvCapacityPerSite();
+        Map<UUID, PvPeak> pvPeak = fleet.pvPeakPerSite(now.minus(PV_PEAK_LOOKBACK));
+
+        List<ForecastRow> forecastRows = fleet.forecastAccuracy(
+                LocalDate.now(HistoryRange.ZONE).minusDays(FORECAST_LOOKBACK_DAYS),
+                List.of(activeLoadModel, activePvModel));
+        Map<UUID, List<FleetForecastDto>> forecast = FleetPflege.forecastChecks(forecastRows);
+
+        List<FleetSiteDto> out = new ArrayList<>(siteRows.size());
+        for (FleetSiteRow site : siteRows) {
+            UUID id = site.siteId();
+            DeviceStats stats = deviceStats.get(id);
+            int deviceCount = stats == null ? 0 : stats.deviceCount();
+            int onlineCount = stats == null ? 0 : stats.onlineCount();
+            int waitingCount = stats == null ? 0 : stats.waitingCount();
+
+            FleetKwpDto kwp = FleetPflege.kwp(pvCapacity.get(id), pvPeak.get(id));
+            List<FleetForecastDto> siteForecast = forecast.getOrDefault(id, List.of());
+            boolean batteryWithoutDevice = unlinkedBattery.contains(id);
+
+            SourceCounts counts = sources.get(id);
+            EdgeVersionRow version = edge.get(id);
+
+            out.add(new FleetSiteDto(
+                    id,
+                    site.siteName(),
+                    site.tenantId(),
+                    site.tenantName(),
+                    site.plantKind(),
+                    site.netzladenErlaubt(),
+                    site.tarifArt(),
+                    deviceCount,
+                    onlineCount,
+                    waitingCount,
+                    worstStatus(deviceCount, onlineCount, waitingCount),
+                    stats == null ? null : stats.lastSeenAt(),
+                    lastPlan.get(id),
+                    withBattery.contains(id),
+                    batteryWithoutDevice,
+                    counts == null ? null : new FleetSourcesDto(
+                            counts.total(), counts.ok(), counts.stale(), counts.never()),
+                    version == null ? null : new FleetEdgeDto(
+                            version.coreVersion(), version.paletteVersion(), version.reportedAt()),
+                    control.get(id),
+                    curtailment.get(id),
+                    kwp,
+                    siteForecast,
+                    FleetPflege.flags(site.tarifArt(), batteryWithoutDevice, kwp, siteForecast)));
+        }
+        return new AdminFleetDto(out);
+    }
+
+    /**
+     * Der schlechteste Gerätezustand einer Anlage, im Vokabular des Portals:
+     * {@code stale} (ein Gerät ist verstummt - ein Problem) schlägt
+     * {@code waiting} (hat nie gesendet - Einrichtung) schlägt {@code online};
+     * {@code null} für eine Anlage ohne Gerät. Wortgleich mit
+     * {@link OverviewController} - dieselbe Frage darf nicht zwei Antworten
+     * haben.
+     */
+    private static String worstStatus(int deviceCount, int onlineCount, int waitingCount) {
+        if (deviceCount == 0) {
+            return null;
+        }
+        int staleCount = deviceCount - onlineCount - waitingCount;
+        if (staleCount > 0) {
+            return "stale";
+        }
+        return waitingCount > 0 ? "waiting" : "online";
+    }
+}
