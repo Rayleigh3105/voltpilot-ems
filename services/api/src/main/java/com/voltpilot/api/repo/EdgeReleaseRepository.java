@@ -24,9 +24,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class EdgeReleaseRepository {
 
-    private static final String SELECT =
-            "SELECT release_seq, version, target_commit, notes, created_at, created_by "
-                    + "FROM edge_release ";
+    private static final String COLUMNS =
+            "release_seq, version, target_commit, notes, created_at, created_by, "
+                    + "manifest, signature, signing_key_id";
+
+    private static final String SELECT = "SELECT " + COLUMNS + " FROM edge_release ";
 
     private final JdbcTemplate jdbc;
 
@@ -54,15 +56,24 @@ public class EdgeReleaseRepository {
         return jdbc.queryForObject("SELECT max(release_seq) FROM edge_release", Long.class);
     }
 
-    /** Ein neues Release eintragen. Der Aufrufer hat Version + Seq geprüft. */
+    /**
+     * Ein neues Release eintragen. Der Aufrufer hat Version + Seq geprüft.
+     *
+     * <p>{@code manifest}/{@code signature} werden BYTEGENAU abgelegt (Spalten
+     * sind {@code text}, nie {@code jsonb} - siehe Migration V20260804000000):
+     * die Signatur geht über genau diese Bytes, und Stufe 2 reicht sie
+     * unverändert an das Gerät weiter. Alle drei zusammen {@code null} =
+     * ein Stufe-0-Eintrag ohne Signatur.
+     */
     public EdgeReleaseDto insert(long releaseSeq, String version, String targetCommit,
-            String notes, String createdBy) {
+            String notes, String createdBy, String manifest, String signature,
+            String signingKeyId) {
         return jdbc.queryForObject(
-                "INSERT INTO edge_release (release_seq, version, target_commit, notes, created_by) "
-                        + "VALUES (?, ?, ?, ?, ?) "
-                        + "RETURNING release_seq, version, target_commit, notes, created_at, "
-                        + "created_by",
-                EdgeReleaseRepository::map, releaseSeq, version, targetCommit, notes, createdBy);
+                "INSERT INTO edge_release (release_seq, version, target_commit, notes, created_by, "
+                        + "manifest, signature, signing_key_id) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING " + COLUMNS,
+                EdgeReleaseRepository::map, releaseSeq, version, targetCommit, notes, createdBy,
+                manifest, signature, signingKeyId);
     }
 
     private static EdgeReleaseDto map(java.sql.ResultSet rs, int rowNum)
@@ -73,6 +84,9 @@ public class EdgeReleaseRepository {
                 rs.getString("target_commit"),
                 rs.getString("notes"),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getString("created_by"));
+                rs.getString("created_by"),
+                rs.getString("manifest"),
+                rs.getString("signature"),
+                rs.getString("signing_key_id"));
     }
 }

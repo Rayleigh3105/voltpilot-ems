@@ -16,10 +16,24 @@ import jakarta.validation.constraints.PositiveOrZero;
  * (max + 1). Passing it explicitly is allowed but must be strictly greater
  * than every existing entry - the ordering is monotonic by construction, so a
  * later release can never sort below an earlier one.
+ *
+ * <p><b>Seit OTA Stufe 1</b> darf der Rumpf zusätzlich das signierte Release
+ * tragen: {@code manifest} sind die EXAKTEN Bytes von {@code release.json},
+ * {@code signature} die Bytes von {@code release.json.sig}. Sie werden
+ * unverändert abgelegt (die Signatur geht über genau diese Bytes). Wird ein
+ * Manifest mitgeschickt, GEWINNEN seine Angaben: Version, Sequenz und Commit
+ * kommen dann daraus, und ein davon abweichender Wert im Rumpf ist ein Fehler
+ * statt einer stillen Abweichung - das Register soll nie etwas anderes
+ * behaupten als das, was unterschrieben wurde. Der fertige Rumpf entsteht
+ * ohnehin aus {@code vp-ota sign} bzw. {@code vp-ota register}
+ * (docs/ota-signing.md).
  */
 public record CreateEdgeReleaseRequest(
         @NotBlank String version,
         @PositiveOrZero Long releaseSeq,
         String targetCommit,
-        String notes) {
+        String notes,
+        String manifest,
+        String signature,
+        String signingKeyId) {
 }

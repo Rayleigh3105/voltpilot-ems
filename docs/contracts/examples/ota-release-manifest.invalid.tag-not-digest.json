@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "release": "edge-2026.08.0",
+  "release_seq": 12,
+  "target_commit": "3bf8c038a1b2",
+  "artifacts": [
+    {
+      "type": "oci-image",
+      "name": "core",
+      "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest"
+    }
+  ],
+  "min_from_seq": 9,
+  "allow_downgrade": false,
+  "state_schema": 3,
+  "compat": {
+    "backends": ["compose"]
+  },
+  "signing_key_id": "rel-2026-a"
+}

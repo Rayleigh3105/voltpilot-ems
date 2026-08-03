@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "release": "edge-2026.07.2",
+  "release_seq": 11,
+  "target_commit": "665d59b8c0d1",
+  "artifacts": [
+    {
+      "type": "oci-image",
+      "name": "core",
+      "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "type": "oci-image",
+      "name": "nodered",
+      "ref": "git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ],
+  "min_from_seq": 9,
+  "allow_downgrade": true,
+  "state_schema": 3,
+  "compat": {
+    "backends": ["compose"]
+  },
+  "signing_key_id": "rel-2026-a",
+  "notes": "Bewusster Tief-Rollback auf den Vorstand."
+}

@@ -135,6 +135,15 @@ type Snapshot struct {
 
 	StartedAt time.Time `json:"started_at"`
 	Version   string    `json:"version"`
+
+	// OtaState/OtaReason are the verdict of the last OTA release verification
+	// (agent/ota.go, OTA Stufe 1) - the same two values the heartbeat's `update`
+	// block carries. They live here so /health can answer "was das Release, das
+	// ich abgelegt habe, in Ordnung?" WITHOUT a cloud link, which is exactly the
+	// supervised on-box test. Verification only: nothing on the device applies
+	// anything, so OtaState never leaves idle/verifying in this stage.
+	OtaState  string `json:"ota_state,omitempty"`
+	OtaReason string `json:"ota_reason,omitempty"`
 }
 
 // DataPurgeInfo is the UI-facing state of a device-triggered data purge.
