@@ -49,6 +49,14 @@ public class OverviewController {
     /** Days of the hero's savings mini chart (incl. today). */
     private static final int DAILY_SAVINGS_DAYS = 14;
 
+    /**
+     * Nachschau-Fenster für „wann lief der Optimierer zuletzt". Der Optimierer
+     * plant alle 15 Minuten; ein Lauf, der älter als das hier ist, ist für die
+     * Betriebsfrage ohnehin „kein aktueller Plan" - und die Grenze hält die
+     * Abfrage von einem Scan über die ganze Plan-Historie ab.
+     */
+    private static final Duration PLAN_LOOKBACK = Duration.ofDays(7);
+
     private final SiteRepository sites;
     private final OverviewRepository overview;
     private final EntityTypeCatalog catalog;
@@ -77,6 +85,7 @@ public class OverviewController {
         // in ONE round trip so the portfolio table renders without N calls.
         Map<UUID, Map<String, Integer>> entityCounts = overview.entityTypeCountsPerSite();
         Map<UUID, Set<String>> strategyNodes = overview.activeStrategyNodeTypesPerSite();
+        Map<UUID, Instant> lastPlan = overview.lastPlanPerSite(Instant.now().minus(PLAN_LOOKBACK));
 
         Instant freshnessCutoff = Instant.now().minus(ONLINE_WINDOW);
         int totalDevices = 0;
@@ -121,7 +130,8 @@ public class OverviewController {
                     savings,
                     roleCounts(typeCounts),
                     usageProfile(site, typeCounts,
-                            strategyNodes.getOrDefault(site.id(), Set.of()))));
+                            strategyNodes.getOrDefault(site.id(), Set.of())),
+                    lastPlan.get(site.id())));
         }
 
         OverviewRepository.StorageTotals storage = overview.storageTotals();

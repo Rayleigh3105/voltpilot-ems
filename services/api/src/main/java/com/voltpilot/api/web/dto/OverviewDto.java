@@ -51,6 +51,14 @@ public record OverviewDto(
      * AE7 profile ({@code arbitrage} | {@code peak} | {@code private}, the same
      * {@link com.voltpilot.api.profile.UsageProfileDeriver} the profile endpoint
      * runs) - the portfolio Profil-Chip, without an N-per-site round trip.
+     *
+     * <p>{@code lastPlanGeneratedAt} ist der Zeitpunkt des JÜNGSTEN
+     * Optimierer-Laufs dieser Anlage (Admin-Umbau Stufe 1, Spalte „Plan" der
+     * Plattform-Übersicht). Der Optimierer plant alle 15 Minuten neu, das Alter
+     * IST also die Aussage - anders als {@code plannedSavingsTodayEur}, das nur
+     * „für heute existiert irgendein Plan" beantwortet. {@code null} = kein Lauf
+     * im Nachschau-Fenster ({@link com.voltpilot.api.repo.OverviewRepository#lastPlanPerSite}),
+     * nie ein erfundenes Alter.
      */
     public record OverviewSiteDto(
             UUID id,
@@ -66,7 +74,8 @@ public record OverviewDto(
             OverviewLiveDto live,
             BigDecimal plannedSavingsTodayEur,
             RoleCountsDto roleCounts,
-            String usageProfile) {
+            String usageProfile,
+            Instant lastPlanGeneratedAt) {
     }
 
     /**

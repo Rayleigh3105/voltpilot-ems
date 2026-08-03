@@ -1,0 +1,72 @@
+package com.voltpilot.api.repo;
+
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Der von der Edge gemeldete Software-Stand je Gerät (Tabelle
+ * {@code device_edge_version}, Migration V20260803000000), RLS-gefenced wie
+ * {@code device_control_status}.
+ *
+ * <p>Genau EINE Zeile je Gerät: der Herzschlag trägt den vollständigen Ist, ein
+ * Upsert ist deshalb richtig (kein Merge, keine Historie - „welche Version läuft
+ * JETZT" ist die einzige Frage).
+ *
+ * <p>Der Lesepfad hat bewusst KEIN Mandanten-Prädikat: RLS ist der Zaun, genau
+ * wie bei {@link OverviewRepository}. Ein Portal-Admin liest den Stand eines
+ * Mandanten über den {@code X-Tenant-Id}-Umschalter - denselben Weg, den jede
+ * andere Kundendaten-Ansicht nimmt.
+ */
+@Repository
+public class EdgeVersionRepository {
+
+    private final JdbcTemplate jdbc;
+
+    public EdgeVersionRepository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    /**
+     * Der Stand EINES Geräts. {@code coreVersion}/{@code paletteVersion} können
+     * einzeln null sein (die Edge lässt ein leeres Feld weg) - dann bleibt das
+     * jeweilige Feld leer, nie eine geratene Version.
+     */
+    public record EdgeVersion(UUID deviceId, UUID siteId, String coreVersion,
+            String paletteVersion, Instant reportedAt) {
+    }
+
+    /**
+     * Den gemeldeten Stand eines Geräts festhalten. {@code tenant_id} kommt aus
+     * der RLS-Sitzung, nie aus dem Aufruf - eine fremde Mandanten-Id wäre damit
+     * schon vom {@code WITH CHECK} der Policy abgewiesen.
+     */
+    public void record(UUID deviceId, UUID siteId, String coreVersion, String paletteVersion,
+            Instant reportedAt) {
+        jdbc.update(
+                "INSERT INTO device_edge_version (device_id, tenant_id, site_id, core_version, "
+                        + "palette_version, reported_at) VALUES (?, "
+                        + "NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?) "
+                        + "ON CONFLICT (device_id) DO UPDATE SET site_id = EXCLUDED.site_id, "
+                        + "core_version = EXCLUDED.core_version, "
+                        + "palette_version = EXCLUDED.palette_version, "
+                        + "reported_at = EXCLUDED.reported_at",
+                deviceId, siteId, coreVersion, paletteVersion, Timestamp.from(reportedAt));
+    }
+
+    /** Jeder gemeldete Gerätestand des aufrufenden Mandanten (RLS-gefenced). */
+    public List<EdgeVersion> findAll() {
+        return jdbc.query(
+                "SELECT device_id, site_id, core_version, palette_version, reported_at "
+                        + "FROM device_edge_version ORDER BY reported_at DESC",
+                (rs, i) -> new EdgeVersion(
+                        rs.getObject("device_id", UUID.class),
+                        rs.getObject("site_id", UUID.class),
+                        rs.getString("core_version"),
+                        rs.getString("palette_version"),
+                        rs.getTimestamp("reported_at").toInstant()));
+    }
+}

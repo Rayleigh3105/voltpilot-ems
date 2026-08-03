@@ -3,6 +3,7 @@ package com.voltpilot.api.flows;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.repo.EdgeVersionRepository;
 import com.voltpilot.api.repo.FlowStatusRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -36,12 +37,26 @@ import org.springframework.stereotype.Component;
  *   <li>{@code flows} - the EXISTING flow-deployment ack (flow_id,
  *       flow_version, content_hash, state active|error|unsupported). This is
  *       what lets the editor open the version that is REALLY running
- *       ("Läuft auf dem Gerät · v4") instead of the one the cloud activated.</li>
+ *       ("Läuft auf dem Gerät · v4") instead of the one the cloud activated.
+ *       Since the Admin-Umbau (Stufe 1) the SAME block's {@code core_version} /
+ *       {@code palette_version} are persisted too - see below.</li>
  *   <li>{@code flow_node_status} - the NEW, feature-flagged per-node state
  *       ("erfüllt", "EIN seit 14:02"). An edge without the flag simply does not
  *       send it and the editor falls back to channel values only; it NEVER
  *       guesses a node state.</li>
  * </ul>
+ *
+ * <p><b>Der Edge-Stand reitet im {@code flows}-Block mit, deshalb wird er HIER
+ * gelesen und nicht von einem fünften Geschwister.</b> Die Curtailment-Regel
+ * ("zwei unabhängige Blöcke, zwei Listener") greift genau nicht: {@code
+ * core_version}/{@code palette_version} sind FELDER dieses Blocks, den dieser
+ * Listener ohnehin parst - ein eigener Listener wäre eine zweite
+ * Broker-Verbindung und eine zweite Identitätsprüfung für dieselben Bytes.
+ * Zwei Grenzen, die man kennen muss: der Ingest hängt am Flag dieses Listeners
+ * ({@code voltpilot.flows.mqtt-listener-enabled}, in beiden Composes an), und
+ * die Edge baut den {@code flows}-Block erst, wenn sie je einen
+ * Deployment-Satz gesehen hat - ein Gerät ohne ausgerollte Automation meldet
+ * also keine Version, und die Oberfläche sagt dann ehrlich „unbekannt".
  *
  * <p>Authorization is the same posture as its siblings: the broker ACL + the
  * mTLS cert CN make a message on {@code ems/{t}/{s}/{d}/status} the
@@ -66,6 +81,7 @@ public class FlowNodeStatusListener {
     private final String password;
     private final DeviceRepository devices;
     private final FlowStatusRepository flowStatus;
+    private final EdgeVersionRepository edgeVersions;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -74,12 +90,14 @@ public class FlowNodeStatusListener {
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
-            DeviceRepository devices, FlowStatusRepository flowStatus) {
+            DeviceRepository devices, FlowStatusRepository flowStatus,
+            EdgeVersionRepository edgeVersions) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.flowStatus = flowStatus;
+        this.edgeVersions = edgeVersions;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -194,6 +212,7 @@ public class FlowNodeStatusListener {
             }
             if (hasFlows) {
                 flowStatus.replaceAcks(deviceId, siteId, parseAcks(flows.get("applied")), reportedAt);
+                recordEdgeVersion(deviceId, siteId, flows, reportedAt);
             }
             if (hasNodes) {
                 flowStatus.replaceNodeStatuses(deviceId, siteId,
@@ -202,6 +221,23 @@ public class FlowNodeStatusListener {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * Den gemeldeten Edge-Stand festhalten (Admin-Umbau Stufe 1). Die zwei
+     * Felder sind einzeln optional - die Edge lässt ein leeres weg (die
+     * Palette-Version fehlt z. B., solange Node-REDs Admin-API nicht
+     * konfiguriert ist). Trägt der Block KEINES von beiden, wird gar nichts
+     * geschrieben: eine Zeile mit zwei NULLs behauptete „gemeldet, aber
+     * unbekannt", und das wäre eine Aussage, die niemand gemessen hat.
+     */
+    private void recordEdgeVersion(UUID deviceId, UUID siteId, JsonNode flows, Instant reportedAt) {
+        String core = blankToNull(flows.path("core_version").asText(""));
+        String palette = blankToNull(flows.path("palette_version").asText(""));
+        if (core == null && palette == null) {
+            return;
+        }
+        edgeVersions.record(deviceId, siteId, core, palette, reportedAt);
     }
 
     private List<FlowStatusRepository.Ack> parseAcks(JsonNode applied) {

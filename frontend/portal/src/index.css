@@ -3866,6 +3866,47 @@ button.vp-tech-card-h.toggle {
 .vp-btn-danger {
   color: var(--vp-industry-end);
 }
+/* Title + one explaining sentence INSIDE a padding-0 table card (the shared
+   .vp-section-head is a flex row for h2 + actions and carries no padding, so it
+   cannot sit inside one). Used wherever an admin page stacks several titled
+   tables - the Geräte-Registry funnel, the Plattform-Übersicht sections. */
+.vp-admin-sec-head {
+  padding: var(--vp-space-5) var(--vp-space-5) var(--vp-space-3);
+  border-bottom: 1px solid var(--vp-border);
+  min-width: 0;
+}
+.vp-admin-sec-head h2 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+.vp-admin-sec-head p {
+  margin: 4px 0 0;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted);
+}
+/* Ein Abschnitts-Kopf, der auf- und zuklappt: der Chevron trägt die
+   Affordanz, deshalb OHNE Unterstreichung - unterstrichen liest sich wie
+   Navigation, und diese Schaltfläche klappt an Ort und Stelle auf. */
+.vp-admin-sec-head h2 .vp-linklike {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  color: inherit;
+  text-decoration: none;
+}
+/* Plattform-Übersicht (Flotten-Puls): mehrere Signal-Chips je Zeile brechen um
+   statt die Spalte aufzuziehen - am Telefon klappt `.vp-table.responsive` die
+   Zelle ohnehin zu einer Label/Wert-Zeile, dort muss der Wert umbrechen
+   dürfen (die im Portfolio gemessene nowrap-Falle). */
+.vp-fleet-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-fleetpuls td {
+  vertical-align: top;
+}
 
 /* ============================================================================
    Betreiber PORTFOLIO shell (U5, pages/PortfolioPage)

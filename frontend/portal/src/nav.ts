@@ -25,6 +25,7 @@ export type PageId =
   | 'anlagen'
   | 'marktpreise'
   | 'prognose'
+  | 'plattform-uebersicht'
   | 'mandanten'
   | 'benutzer'
   | 'geraete-registry'
@@ -145,7 +146,19 @@ export function isPortfolioPage(page: PageId): boolean {
   return page === 'portfolio' || PORTFOLIO_WELT_PAGES.some((p) => p.id === page);
 }
 
+/**
+ * Die Plattform-Gruppe. Sie führt seit dem Admin-Umbau (Stufe 1) mit der
+ * **Plattform-Übersicht** - dem Flotten-Puls über ALLE Mandanten (Captain-
+ * Entscheid Q1: ein eigener Nav-Punkt, die Mandanten-Seite bleibt reine
+ * Verwaltung). Alles darunter ist Verwaltung bzw. Diagnose EINER Anlage.
+ */
 export const PLATFORM_PAGES: PageDef[] = [
+  {
+    id: 'plattform-uebersicht',
+    label: 'Plattform-Übersicht',
+    icon: 'dashboard',
+    adminOnly: true,
+  },
   { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
   { id: 'geraete-registry', label: 'Geräte-Registry', icon: 'list', adminOnly: true },
