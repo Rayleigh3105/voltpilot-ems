@@ -6,24 +6,37 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
 import { ApiError } from '../../api';
-import { adminApi, type ProvisionedDevice } from '../../admin/adminApi';
+import { adminApi, type PendingEnrollment, type ProvisionedDevice } from '../../admin/adminApi';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
 import { normalizeDeviceIdInput } from '../../anlageFlow';
-import { deviceKindLabel } from '../../format';
+import { deviceKindLabel, fmtRelative } from '../../format';
+import { funnelStages, pendingRows } from '../../onboardingFunnel';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('de-DE');
 
 /**
- * Plattform → Geräte-Registry: the manufacturing registry of sticker
- * Geräte-IDs (platform-wide, not per-tenant). Customers can only connect
- * device IDs registered here, so a typo'd ID fails fast in the portal instead
- * of creating a ghost device. New IDs are registered when devices are
- * produced/shipped.
+ * Plattform → Geräte-Registry: der Onboarding-FUNNEL eines Geräts, nicht mehr
+ * nur seine Manufacturing-Registry.
+ *
+ * Drei Stufen: **registriert** (die Aufkleber-ID steht hier, nur sie kann ein
+ * Kunde verbinden — ein Tippfehler wird sofort abgewiesen statt ein Geist-Gerät
+ * anzulegen) → **wartet auf Zuordnung** (das Gerät hat sich gemeldet, aber kein
+ * Claim passt: das Tippfehler-Fenster) → **verbunden**.
+ *
+ * Die mittlere Stufe war bis zum Admin-Umbau (Stufe 1, B3) unsichtbar, obwohl
+ * `GET /api/v1/admin/enrollments/pending` seit dem Enrollment-Bau existiert —
+ * ein Gerät „tat seinen Teil", während der Kunde eine andere Referenz tippte,
+ * und beide Seiten sahen davon nichts.
  */
 export function GeraeteRegistryPage() {
   const [devices, setDevices] = useState<ProvisionedDevice[] | null>(null);
+  const [pending, setPending] = useState<PendingEnrollment[] | null>(null);
+  // Getrennt von `pending === null` (= lädt noch), damit ein Fehlschlag als
+  // Fehlschlag steht und nie als "niemand wartet" gelesen wird.
+  const [pendingFailed, setPendingFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Load failure kept distinct from action errors (and from the loading `null`)
   // so a failed load shows a retryable ErrorState, not a permanent skeleton.
@@ -37,6 +50,17 @@ export function GeraeteRegistryPage() {
       setDevices(await adminApi.listProvisionedDevices());
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : 'Die Registry konnte nicht geladen werden.');
+    }
+    // Die wartenden Geräte sind eine EIGENE Wahrheit: fällt ihr Abruf aus,
+    // bleibt die Registry darunter benutzbar (und die Sektion sagt selbst, dass
+    // sie gerade nichts weiß) - nie eine leere Liste, die „niemand wartet"
+    // behaupten würde.
+    try {
+      setPending(await adminApi.listPendingEnrollments());
+      setPendingFailed(false);
+    } catch {
+      setPending(null);
+      setPendingFailed(true);
     }
   }
 
@@ -75,11 +99,15 @@ export function GeraeteRegistryPage() {
         icon="list"
         category="primary"
         title="Geräte-Registry"
-        description="Produzierte Geräte mit ihrer Aufkleber-ID registrieren - Kunden können nur registrierte Geräte-IDs verbinden, Tippfehler werden sofort abgewiesen."
+        description="Der Weg eines Geräts: registrieren - Kunde verbindet es - es liefert Daten. Kunden können nur registrierte Geräte-IDs verbinden, Tippfehler werden sofort abgewiesen."
         actions={registerButton}
       />
 
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
+
+      <FunnelStrip devices={devices ?? []} pending={pending ?? []} known={devices != null} />
+
+      <PendingEnrollments rows={pending} failed={pendingFailed} onRetry={() => void reload()} />
 
       {loadError ? (
         <ErrorState message={loadError} onRetry={() => void reload()} />
@@ -99,13 +127,22 @@ export function GeraeteRegistryPage() {
         </Card>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="vp-admin-sec-head">
+            <h2>Registrierte Geräte-IDs</h2>
+            <p>
+              Die Manufacturing-Registry: nur eine hier eingetragene Aufkleber-ID
+              kann ein Kunde verbinden.
+            </p>
+          </div>
           <table className="vp-table responsive">
             <thead>
               <tr>
                 <th>Geräte-ID</th>
                 <th>Typ</th>
                 <th>Notiz</th>
-                <th>Registriert</th>
+                {/* „Registriert am" statt „Registriert": im Funnel darüber ist
+                    „Registriert" eine STUFE, hier ist es ein Datum. */}
+                <th>Registriert am</th>
                 <th>Status</th>
                 <th aria-label="Aktionen" />
               </tr>
@@ -118,7 +155,7 @@ export function GeraeteRegistryPage() {
                   </td>
                   <td data-label="Typ">{deviceKindLabel(d.kind)}</td>
                   <td data-label="Notiz">{d.note ?? '-'}</td>
-                  <td data-label="Registriert">{fmtDate(d.provisionedAt)}</td>
+                  <td data-label="Registriert am">{fmtDate(d.provisionedAt)}</td>
                   <td data-label="Status">
                     {d.claimed ? (
                       <Badge variant="ok" dot title={d.claimedByTenant ?? undefined}>
@@ -160,6 +197,126 @@ export function GeraeteRegistryPage() {
         onCreated={() => void reload()}
       />
     </>
+  );
+}
+
+/**
+ * Die drei Funnel-Stufen als ruhiger Streifen (das `MandantenPulse`-Muster).
+ * Solange die Registry noch lädt, werden gar keine Zahlen behauptet.
+ */
+function FunnelStrip({
+  devices,
+  pending,
+  known,
+}: {
+  devices: ProvisionedDevice[];
+  pending: PendingEnrollment[];
+  known: boolean;
+}) {
+  if (!known) return null;
+  const stages = funnelStages(devices, pending);
+  const icons: Record<string, 'list' | 'history' | 'check'> = {
+    registriert: 'list',
+    wartet: 'history',
+    verbunden: 'check',
+  };
+  return (
+    <div className="vp-kpis vp-admin-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
+      {stages.map((s) => (
+        <KpiCard
+          key={s.id}
+          icon={<Icon name={icons[s.id]} size={20} />}
+          category={s.attention ? 'dynamic' : s.id === 'verbunden' ? 'battery' : 'primary'}
+          value={String(s.count)}
+          label={
+            // `.vp-cell-main` ist die vorhandene Spalten-Klasse (flex column) -
+            // so steht der einordnende Satz unter dem Wort statt daneben.
+            <span className="vp-cell-main">
+              <span>{s.label}</span>
+              <span className="vp-cell-sub">{s.note}</span>
+            </span>
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Sektion „Wartet auf Zuordnung": Geräte, die sich gemeldet haben und auf
+ * keinen Claim treffen. Read-only - von hier aus ist nichts zu klicken, weil
+ * die Reparatur beim Kunden liegt (er tippt die richtige Referenz) bzw. beim
+ * Support. Die Fläche macht den Zustand SICHTBAR, sie behauptet keine Lösung.
+ */
+function PendingEnrollments({
+  rows,
+  failed,
+  onRetry,
+}: {
+  rows: PendingEnrollment[] | null;
+  failed: boolean;
+  onRetry: () => void;
+}) {
+  if (failed) {
+    return (
+      <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-6)' }}>
+        <ErrorState
+          message="Die wartenden Geräte konnten nicht geladen werden."
+          onRetry={onRetry}
+        />
+      </Card>
+    );
+  }
+  if (rows == null) return null;
+  const list = pendingRows(rows);
+  if (list.length === 0) {
+    return (
+      <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-6)' }}>
+        <EmptyState
+          icon="check"
+          category="battery"
+          title="Kein Gerät wartet auf Zuordnung"
+          description="Jedes Gerät, das sich gemeldet hat, ist einem Kundenkonto zugeordnet."
+        />
+      </Card>
+    );
+  }
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 'var(--vp-space-6)' }}>
+      <div className="vp-admin-sec-head">
+        <h2>Wartet auf Zuordnung</h2>
+        <p>
+          Diese Geräte melden sich, treffen aber auf kein Kundenkonto - meist,
+          weil beim Verbinden eine andere Referenz eingegeben wurde.
+        </p>
+      </div>
+      <table className="vp-table responsive">
+        <thead>
+          <tr>
+            <th>Referenz</th>
+            <th>Geräte-Info</th>
+            <th>Meldet sich seit</th>
+            <th>Hinweis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((r) => (
+            <tr key={r.externalRef}>
+              <td data-label="Referenz" className="vp-mono">
+                {r.externalRef}
+              </td>
+              <td data-label="Geräte-Info">{r.deviceInfo ?? '—'}</td>
+              <td data-label="Meldet sich seit">{fmtRelative(r.csrUpdatedAt)}</td>
+              <td data-label="Hinweis">
+                <Badge variant={r.suspect ? 'warn' : 'off'} dot>
+                  {r.hint}
+                </Badge>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
   );
 }
 

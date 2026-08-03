@@ -118,6 +118,12 @@ class PortalApiTest {
     @Autowired
     com.voltpilot.api.entities.EntityObservedRepository entityObservedRepo;
 
+    @Autowired
+    com.voltpilot.api.repo.FlowStatusRepository flowStatusRepo;
+
+    @Autowired
+    com.voltpilot.api.repo.EdgeVersionRepository edgeVersionRepo;
+
     // ---- token validation ---------------------------------------------------
 
     @Test
@@ -4724,6 +4730,66 @@ class PortalApiTest {
         ResponseEntity<Map> still = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
         assertThat(still.getBody().get("units")).isEqualTo(2);
         assertThat(still.getBody().get("possibleOverride")).isEqualTo(true);
+    }
+
+    /**
+     * Admin-Umbau Stufe 1: der Edge-Stand kommt im {@code flows}-Block an, den
+     * der Flow-Status-Listener ohnehin liest, und wird RLS-gefenced festgehalten
+     * ({@code GET /api/v1/edge-versions}).
+     *
+     * <p>Was halten muss: eine gemeldete Version reist verlustfrei durch, ein
+     * einzeln fehlendes Feld bleibt LEER (nie eine geratene Version), ein
+     * {@code flows}-Block ohne beide Felder erzeugt GAR KEINE Zeile (ein Gerät
+     * ohne Meldung bleibt „unbekannt", nie „veraltet"), ein Update ersetzt die
+     * eine Zeile, und ein anderer Mandant sieht nichts davon.
+     */
+    @Test
+    void edgeVersionIsIngestedFromTheFlowsHeartbeatAndTenantScoped() {
+        var listener = new com.voltpilot.api.flows.FlowNodeStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, flowStatusRepo, edgeVersionRepo);
+        String topic = "ems/00000000-0000-0000-0000-000000000001/"
+                + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
+        String head = "{\"schema_version\":\"1.0\","
+                + "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"online\":true,";
+        String versionsUrl = url("/api/v1/edge-versions");
+        HttpEntity<Void> demo = new HttpEntity<>(bearer(token("demo", "demo")));
+
+        // Ein flows-Block OHNE Versionsfelder (ältere Edge): die Acks laufen,
+        // aber es entsteht keine Versionszeile - „unbekannt" bleibt unbekannt.
+        listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:00:00Z\","
+                + "\"flows\":{\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<List> none = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        assertThat(none.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(none.getBody()).isEmpty();
+
+        listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:15:00Z\","
+                + "\"flows\":{\"core_version\":\"1.4.2\",\"palette_version\":\"0.3.0\","
+                + "\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<List> reported = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        assertThat(reported.getBody()).hasSize(1);
+        Map<String, Object> row = (Map<String, Object>) reported.getBody().get(0);
+        assertThat(row.get("deviceId")).isEqualTo("00000000-0000-0000-0000-000000000003");
+        assertThat(row.get("siteId")).isEqualTo("00000000-0000-0000-0000-000000000002");
+        assertThat(row.get("coreVersion")).isEqualTo("1.4.2");
+        assertThat(row.get("paletteVersion")).isEqualTo("0.3.0");
+
+        // Der andere Mandant sieht davon nichts (RLS).
+        assertThat(rest.exchange(versionsUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), List.class).getBody())
+                .isEmpty();
+
+        // Ein Update ersetzt die EINE Zeile; die fehlende Palette-Version bleibt
+        // leer statt die alte weiterzubehaupten.
+        listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:30:00Z\","
+                + "\"flows\":{\"core_version\":\"1.5.0\",\"applied\":[]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<List> updated = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        assertThat(updated.getBody()).hasSize(1);
+        Map<String, Object> after = (Map<String, Object>) updated.getBody().get(0);
+        assertThat(after.get("coreVersion")).isEqualTo("1.5.0");
+        assertThat(after.get("paletteVersion")).isNull();
     }
 
     /**

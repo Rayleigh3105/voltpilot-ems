@@ -59,6 +59,25 @@ export interface ProvisionedDevice {
   claimedByTenant: string | null;
 }
 
+/**
+ * Ein Gerät, das sich gemeldet hat (CSR hochgeladen) und auf keinen Claim
+ * trifft — die andere Hälfte des Tippfehler-Fensters: das Gerät „hat seinen
+ * Teil getan", der Kunde hat eine andere Referenz getippt, und bis hierher war
+ * dieser Zustand auf BEIDEN Seiten unsichtbar.
+ *
+ * `everIssued` unterscheidet „nie beansprucht" von „war beansprucht und wurde
+ * getrennt" (ein Zertifikat wurde schon einmal ausgestellt).
+ *
+ * Mandantenlos per Konstruktion — ein Enrollment kennt keinen Mandanten.
+ */
+export interface PendingEnrollment {
+  externalRef: string;
+  deviceInfo: string | null;
+  csrUpdatedAt: string;
+  everIssued: boolean;
+  issuedAt: string | null;
+}
+
 export interface ProvisionDeviceInput {
   externalRef: string;
   kind?: string;
@@ -165,6 +184,14 @@ export const adminApi = {
 
   listProvisionedDevices: () =>
     request<ProvisionedDevice[]>('/api/v1/admin/provisioned-devices'),
+
+  /**
+   * Geräte, die sich gemeldet haben, aber auf keinen Claim treffen. Cross-tenant
+   * per Konstruktion (ein Enrollment kennt keinen Mandanten), deshalb ohne
+   * Mandanten-Argument.
+   */
+  listPendingEnrollments: () =>
+    request<PendingEnrollment[]>('/api/v1/admin/enrollments/pending'),
 
   provisionDevice: (input: ProvisionDeviceInput) =>
     request<ProvisionedDevice>('/api/v1/admin/provisioned-devices', {

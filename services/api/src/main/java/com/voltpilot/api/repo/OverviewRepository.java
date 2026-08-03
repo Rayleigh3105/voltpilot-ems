@@ -183,6 +183,33 @@ public class OverviewRepository {
     }
 
     /**
+     * Wann der Optimierer zuletzt für jede Anlage GERECHNET hat
+     * ({@code max(generated_at)} über die persistierten Läufe) - die Spalte
+     * „Plan" der Plattform-Übersicht. Sie macht einen toten Optimierer
+     * flottenweit sichtbar; der Optimierer plant alle 15 Minuten neu, ein Lauf
+     * von vor Stunden ist also selbst die Aussage.
+     *
+     * <p>Das Fenster ist BEWUSST begrenzt ({@code generated_at >= from}, die
+     * Aufrufer geben wenige Tage): ohne Untergrenze wäre es ein Scan über die
+     * ganze Historie des Hypertables. Eine Anlage ohne Lauf im Fenster ist
+     * ABWESEND - „kein aktueller Plan", nie ein erfundenes Alter.
+     */
+    public Map<UUID, Instant> lastPlanPerSite(Instant from) {
+        Map<UUID, Instant> runs = new HashMap<>();
+        jdbc.query(
+                "SELECT site_id, max(generated_at) AS last_run FROM schedule "
+                        + "WHERE generated_at >= ? GROUP BY site_id",
+                rs -> {
+                    Timestamp last = rs.getTimestamp("last_run");
+                    if (last != null) {
+                        runs.put(rs.getObject("site_id", UUID.class), last.toInstant());
+                    }
+                },
+                Timestamp.from(from));
+        return runs;
+    }
+
+    /**
      * Ex-ante battery savings per site over one window, from the persisted
      * optimizer plans: sum(baseline_cost - cost) taking per 15-min slot the
      * LATEST run that planned it (DISTINCT ON - the HistoryRepository.savings

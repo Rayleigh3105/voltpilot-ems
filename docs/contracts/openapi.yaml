@@ -265,6 +265,28 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Overview" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/edge-versions:
+    get:
+      tags: [sites]
+      summary: Reported edge software version per device (tenant-wide).
+      description: >
+        The `core_version` / `palette_version` each device reports in the
+        `flows` block of its status heartbeat, persisted by the flow-status
+        listener - the data behind the platform overview's "Edge-Stand" column.
+        RLS-scoped like /overview (admins read another tenant's devices via the
+        X-Tenant-Id switcher). A device is ABSENT until it reports: the edge
+        only builds the `flows` block once it has seen a flow deployment set, so
+        a device without a rolled-out automation reports no version at all.
+        Absent therefore means "unknown", never "outdated".
+      responses:
+        "200":
+          description: One entry per device that reported a version.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EdgeVersion" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/earnings:
     get:
       tags: [sites]
@@ -3585,6 +3607,34 @@ components:
           description: >
             The site's effective AE7 usage profile (the portfolio Profil-Chip),
             same derivation as GET /sites/{id}/profile.
+        lastPlanGeneratedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            When the optimizer last RAN for this site (max generated_at over the
+            persisted plans) - the "Plan" column of the platform overview. The
+            optimizer re-plans every 15 minutes, so the age is the statement.
+            null = no run inside the lookback window (7 days), never a
+            fabricated age.
+    EdgeVersion:
+      type: object
+      description: >
+        One device's reported software version. Both version fields are
+        individually nullable - the edge omits an empty one (the palette version
+        is absent while Node-RED's admin API is not configured).
+      properties:
+        deviceId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        coreVersion:
+          type: string
+          nullable: true
+          description: The running vp-edge-core version.
+        paletteVersion:
+          type: string
+          nullable: true
+          description: The installed @voltpilot/node-red-vp-palette version.
+        reportedAt: { type: string, format: date-time }
     OverviewRoleCounts:
       type: object
       description: >

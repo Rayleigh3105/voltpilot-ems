@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.repo.EdgeVersionRepository;
 import com.voltpilot.api.repo.FlowStatusRepository;
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.nio.charset.StandardCharsets;
@@ -43,13 +44,16 @@ class FlowNodeStatusListenerTest {
 
     private DeviceRepository devices;
     private FlowStatusRepository flowStatus;
+    private EdgeVersionRepository edgeVersions;
     private FlowNodeStatusListener listener;
 
     @BeforeEach
     void setUp() {
         devices = mock(DeviceRepository.class);
         flowStatus = mock(FlowStatusRepository.class);
-        listener = new FlowNodeStatusListener("tcp://localhost:1883", "", "", devices, flowStatus);
+        edgeVersions = mock(EdgeVersionRepository.class);
+        listener = new FlowNodeStatusListener("tcp://localhost:1883", "", "", devices, flowStatus,
+                edgeVersions);
         when(devices.findById(DEVICE)).thenReturn(Optional.of(device()));
     }
 
@@ -128,5 +132,36 @@ class FlowNodeStatusListenerTest {
         listener.handle("ems/kaputt/status", heartbeat(",\"flows\":{\"applied\":[]}")
                 .getBytes(StandardCharsets.UTF_8));
         verifyNoInteractions(flowStatus);
+        verifyNoInteractions(edgeVersions);
+    }
+
+    /**
+     * Admin-Umbau Stufe 1: die Edge sendet ihre Versionen im SELBEN
+     * {@code flows}-Block, den dieser Listener ohnehin parst - er hält sie jetzt
+     * fest. Ein einzeln fehlendes Feld bleibt leer (nie eine geratene Version),
+     * und ein Block OHNE beide Felder schreibt gar nichts: eine Zeile mit zwei
+     * NULLs behauptete „gemeldet, aber unbekannt".
+     */
+    @Test
+    void persistsTheReportedEdgeVersionFromTheSameFlowsBlock() {
+        handle(heartbeat(",\"flows\":{\"core_version\":\"1.4.2\",\"palette_version\":\"0.3.0\","
+                + "\"applied\":[]}"));
+        verify(edgeVersions).record(DEVICE, SITE, "1.4.2", "0.3.0",
+                Instant.parse("2026-07-22T14:02:00Z"));
+    }
+
+    @Test
+    void keepsAMissingVersionFieldEmptyAndWritesNothingWithoutEither() {
+        // Palette-Version fehlt (Node-RED-Admin-API nicht konfiguriert).
+        handle(heartbeat(",\"flows\":{\"core_version\":\"1.4.2\",\"applied\":[]}"));
+        verify(edgeVersions).record(DEVICE, SITE, "1.4.2", null,
+                Instant.parse("2026-07-22T14:02:00Z"));
+
+        // Ein Block ohne beide Felder (ältere Edge) - die Acks laufen weiter,
+        // aber es entsteht KEINE Versionszeile.
+        handle(heartbeat(",\"flows\":{\"applied\":[]}"));
+        verify(flowStatus, org.mockito.Mockito.times(2))
+                .replaceAcks(eq(DEVICE), eq(SITE), anyList(), any());
+        org.mockito.Mockito.verifyNoMoreInteractions(edgeVersions);
     }
 }

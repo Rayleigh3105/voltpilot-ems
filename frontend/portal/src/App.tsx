@@ -50,6 +50,7 @@ import { AnlagenPage } from './pages/AnlagenPage';
 import { MarktpreisePage } from './pages/DataPages';
 import { PrognosePage } from './pages/PrognosePage';
 import { MandantenPage } from './pages/admin/MandantenPage';
+import { PlattformUebersichtPage } from './pages/admin/PlattformUebersichtPage';
 import { BenutzerPage } from './pages/admin/BenutzerPage';
 import { GeraeteRegistryPage } from './pages/admin/GeraeteRegistryPage';
 import { OptimizerPage } from './pages/admin/OptimizerPage';
@@ -596,7 +597,10 @@ function UnifiedPortal() {
     else sessionStorage.removeItem('vp-tenant-override');
   };
 
-  const jumpToTenant = (id: string, target: PageId) => {
+  // Der Sprung in einen Mandanten-Kontext. `target` ist bewusst eine ganze
+  // Route (nicht nur eine PageId), damit der Flotten-Puls direkt in DIE Anlage
+  // springen kann statt nur auf die Übersicht des Mandanten.
+  const jumpToTenant = (id: string, target: Route | PageId) => {
     changeTenant(id);
     navigate(target);
   };
@@ -854,6 +858,9 @@ function UnifiedPortal() {
           )}
           {page === 'prognose' && (
             <PrognosePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
+          )}
+          {page === 'plattform-uebersicht' && isAdmin && (
+            <PlattformUebersichtPage tenants={tenants} onJumpToTenant={jumpToTenant} />
           )}
           {page === 'mandanten' && isAdmin && (
             <MandantenPage

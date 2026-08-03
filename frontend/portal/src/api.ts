@@ -1104,6 +1104,13 @@ export interface OverviewSite {
    * on an older backend.
    */
   usageProfile?: string;
+  /**
+   * Wann der Optimierer zuletzt für diese Anlage GERECHNET hat. Er plant alle
+   * 15 Minuten neu, das Alter IST also die Aussage („Optimierer tot" wird
+   * flottenweit sichtbar). `null`/absent = kein Lauf im Nachschau-Fenster des
+   * Servers bzw. älteres Backend — nie ein erfundenes Alter.
+   */
+  lastPlanGeneratedAt?: string | null;
 }
 
 /** Σ v2 entities per topology role (U5 portfolio "Entitäten" badge). */
@@ -1138,6 +1145,27 @@ export interface Overview {
   sites: OverviewSite[];
   totals: OverviewTotals;
   dailySavings: OverviewDailySavings[];
+}
+
+// ---- Edge-Stand je Gerät (GET /api/v1/edge-versions) ------------------------
+
+/**
+ * Der von einem Gerät gemeldete Software-Stand (Spalte „Edge-Stand" der
+ * Plattform-Übersicht). Beide Versionsfelder sind einzeln nullable — die Edge
+ * lässt ein leeres weg (die Palette-Version fehlt z. B., solange Node-REDs
+ * Admin-API nicht konfiguriert ist).
+ *
+ * **Ein FEHLENDER Eintrag heißt „unbekannt", nie „veraltet".** Die Edge baut
+ * den Herzschlag-Block, in dem die Versionen reisen, erst nach dem ersten
+ * Flow-Deployment — ein Gerät ohne ausgerollte Automation meldet also gar
+ * nichts.
+ */
+export interface EdgeVersion {
+  deviceId: string;
+  siteId: string;
+  coreVersion: string | null;
+  paletteVersion: string | null;
+  reportedAt: string;
 }
 
 // ---- Inverter control confirmation (GET /api/v1/sites/{id}/control-status) --
@@ -1639,6 +1667,11 @@ export type { ProfileState, SiteProfile, SiteProfiles } from './profiles';
 export const api = {
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
+  /**
+   * Der gemeldete Edge-Stand aller Geräte des Mandanten (Plattform-Übersicht).
+   * Eine leere Liste heißt „kein Gerät hat je gemeldet", nicht „alle aktuell".
+   */
+  edgeVersions: () => request<EdgeVersion[]>('/api/v1/edge-versions'),
   /**
    * Realized earnings (measured, per site + totals) for a Berlin period. `at`
    * (ISO day) picks the period instance - e.g. a past month tapped in the
