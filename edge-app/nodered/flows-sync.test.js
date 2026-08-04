@@ -1170,3 +1170,70 @@ test('flow curtail planner releases without a cap and stops on the kill-switch, 
   assert.deepStrictEqual(offU.plan.writes, []);
   assert.ok(offU.plan.readbacks.length > 0, 'readbacks still run (observe-only)');
 });
+
+// --- KOSTAL PLENTICORE Tier-2 control (external battery management) -----------
+//
+// The inline controlRoute/controlRelease copies must produce the module's KOSTAL
+// plan byte-for-byte: a divergence here could silently re-enable a gated write or
+// drop the activation gate.
+
+const KOSTAL_SEL = {
+  schema_version: '1.0', brand: 'kostal', family: 'kostal_plenticore',
+  communication: 'kostal_modbus', control_tier: 2, rated_kw: 10,
+  connection: { ip: '192.168.0.30', port: 1502, unit_id: 71, byte_order: 'auto' },
+};
+
+test('flow control planner matches controlRoute() for a granted KOSTAL write', () => {
+  const sp = { battery_setpoint_kw: -3, source: 'schedule', control_enabled: true, device_certified: true };
+  const flowPlan = runControlPlan(KOSTAL_SEL, sp);
+  assert.deepStrictEqual(flowPlan, JSON.parse(JSON.stringify(controlRouting.controlRoute(KOSTAL_SEL, sp, {}))));
+  assert.strictEqual(flowPlan.adapter, 'kostal_modbus');
+  assert.strictEqual(flowPlan.writes.length, 1, 'the single-lever discipline: exactly one write op');
+  assert.strictEqual(flowPlan.writes[0].addr, 1034);
+  assert.strictEqual(flowPlan.writes[0].value, 3000, 'sign negated: -3 kW discharge -> +3000 W');
+  assert.strictEqual(flowPlan.mgmt_gate.addr, 1080);
+});
+
+test('flow control planner matches controlRoute() for an UNCERTIFIED KOSTAL (planned only)', () => {
+  const sp = { battery_setpoint_kw: 2, source: 'schedule', control_enabled: true };
+  const flowPlan = runControlPlan(KOSTAL_SEL, sp);
+  assert.deepStrictEqual(flowPlan, JSON.parse(JSON.stringify(controlRouting.controlRoute(KOSTAL_SEL, sp, {}))));
+  assert.deepStrictEqual(flowPlan.writes, [], 'no bench pass -> never an executable write');
+  assert.strictEqual(flowPlan.planned.length, 1);
+  // A pv limit on a BI is reported dropped by BOTH copies (never silently).
+  const withPv = runControlPlan(KOSTAL_SEL, Object.assign({}, sp, { pv_limit_kw: 4 }));
+  assert.strictEqual(withPv.pvLimitSupported, false);
+  assert.strictEqual(withPv.pvLimitDroppedKw, 4);
+});
+
+test('flow control planner matches controlRelease() on a kill-off after controlling (KOSTAL)', () => {
+  const ctx = {}; const flow = { inverter_config: KOSTAL_SEL };
+  const plan = byId['auto-control-plan'].func;
+  const fresh = new Date().toISOString();
+  runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -3, source: 'schedule', ts: fresh, control_enabled: true, device_certified: true } }, flow, context: ctx });
+  assert.strictEqual(ctx.was_controlling, true);
+  const { msg } = runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -3, source: 'schedule', ts: fresh, control_enabled: false, device_certified: true } }, flow, context: ctx });
+  assert.strictEqual(msg.control.mode, 'release');
+  assert.deepStrictEqual(
+    msg.control,
+    JSON.parse(JSON.stringify(controlRouting.controlRelease(KOSTAL_SEL, { deviceCertified: true }))),
+  );
+  assert.strictEqual(msg.control.planned[0].value, 0, 'release = setpoint 0 once');
+});
+
+// The KOSTAL executor node: structural discipline (the activation gate before any
+// write, FC16 float32, the ONE lever, and no forbidden register anywhere).
+test('flow auto-control-exec-kostal gates on register 1080 and writes only 1034', () => {
+  const func = byId['auto-control-exec-kostal'].func;
+  assert.ok(func.includes("ctrl.adapter !== 'kostal_modbus'"), 'no-ops on any other adapter');
+  assert.ok(func.includes('ctrl.mgmt_gate'), 'the activation gate is evaluated');
+  assert.ok(func.includes('blocked: true'), 'a closed gate publishes a blocked readback with its reason');
+  assert.ok(func.includes('buildWriteF32'), 'the setpoint is written as float32');
+  assert.ok(func.includes('b[7] = 0x10'), 'FC16 (write multiple) - a float32 cannot ride FC6');
+  // The gate is read BEFORE the write loop (order is the safety property).
+  assert.ok(func.indexOf('ctrl.mgmt_gate') < func.indexOf('for (const w of (ctrl.writes'),
+    'the activation gate must be checked before the first write');
+  for (const forbidden of ['1038', '1040', '1042', '1044']) {
+    assert.ok(!func.includes(forbidden), 'the executor must never mention register ' + forbidden);
+  }
+});

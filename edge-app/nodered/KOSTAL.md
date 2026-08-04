@@ -7,9 +7,9 @@ Grundlage ist die offizielle Schnittstellenbeschreibung („PIKO IQ/PLENTICORE �
 KOSTAL Interface description MODBUS (TCP) & SunSpec with control information",
 Rev. 2.9). Vollständige Analyse: firstmate `data/vp-kostal-plenticore-s5/report.md`.
 
-**Nur lesen.** Die Steuerung (externes Batteriemanagement, Register 1024–1044,
-Tier 2) ist ein eigenes, über Prüfstand/First-Light gegatetes Inkrement — dieser
-Lesepfad schreibt nie.
+Die **Steuerung** (externes Batteriemanagement, Tier 2) ist gebaut, aber
+**stumm**: bis zur Prüfstand-/First-Light-Freigabe auf dem echten Gerät geht kein
+einziger Schreibbefehl hinaus (§6).
 
 ## 1. Transport
 
@@ -79,10 +79,52 @@ Netz + SoC.
 - Der KSEM hat zusätzlich eine EIGENE Modbus-Schnittstelle; als separate
   Netz-Zähler-QUELLE ist er ein mögliches späteres Inkrement — hier wird sein
   Messwert über den Wechselrichter (Register 252) mitgelesen.
-- Steuerung/First-Light/Prüfstand: siehe den Scout-Report §3 (Bauplan) und
-  künftig `CONTROL-BENCH.md` → Kostal (kommt mit dem Steuer-Inkrement).
+- Steuerung/First-Light/Prüfstand: §5 unten +
+  [`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „Checkliste Kostal PLENTICORE".
 
-## 5. Firmware-Hinweis
+## 5. Steuerung (externes Batteriemanagement, Tier 2)
+
+Der PLENTICORE hat eine **offizielle, dokumentierte** externe Batteriesteuerung —
+anders als bei Deye ist hier nichts trianguliert. VoltPilot nutzt sie mit **EINEM
+Hebel**:
+
+| Was | Wie |
+|---|---|
+| Sollwert | **Register 1034** „Battery charge power (DC) setpoint, absolute", **float32 Watt**, geschrieben per **FC16** (ein 2-Wort-Wert passt nicht in FC6) |
+| Vorzeichen | ⚠ Kostal: **− = Laden / + = Entladen** — VoltPilot negiert (unsere Konvention ist + = Laden); `invert_control_sign` ist die First-Light-Notluke |
+| Halten | schlicht Sollwert **0** — es gibt keinen zweiten Hebel |
+| Freigabe-Tor | **Register 1080** muss **2** melden („extern via MODBUS"); sonst wird NICHT geschrieben, sondern der Hebel genannt |
+| Rückgabe | Sollwert 0 einmal, danach aufhören zu schreiben |
+
+**Die EIN-HEBEL-DISZIPLIN ist tragend, nicht Stil.** Solange extern gesteuert
+wird, bleibt in der Sitzung JEDES geschriebene Register in Kraft, bis der
+Watchdog abläuft — wer 1034 mit den Grenz-/SoC-Registern mischt, baut
+Zustandskonflikte, bei denen die Batterie komplett blockiert (belegt in der
+Praxis: evcc #26709, openHAB-Thread). Deshalb fasst VoltPilot **1038/1040/1042/1044
+NIE** an: `guards.Clamp` ist vorgelagert die SoC- und Leistungs-Autorität, und der
+Adapter bekommt einen bereits geklemmten Wert.
+
+**Der Watchdog ist die Failsafe-Rückfallebene.** Der Wechselrichter hat einen im
+Webserver konfigurierbaren Timeout (Empfehlung **60 s**): bleibt der Sollwert aus,
+verwirft er ihn und kehrt zur **internen Batteriesteuerung** zurück. Die
+Steuerregister sind RAM (laut Doku beim Reset verworfen), deshalb ist das
+Re-Assert bei jedem ~10-s-Takt kein Verschleiß, sondern **der Watchdog-Kick**
+(`always: true`, `dwell_s: 0`). Drei unabhängige Ebenen: unser Takt hält den
+Watchdog → Kern still > 20 min ⇒ Release (Sollwert 0) → VoltPilot tot ⇒
+Geräte-Watchdog. Weil kein Installateurs-Zustand angefasst wird, gibt es **nichts
+zu restaurieren** (anders als beim Deye-ToU-Pfad).
+
+**PV-Abregelung gibt es hier nicht** (der BI hat keine MPPTs): ein `pv_limit_kw`
+wird als „nicht unterstützt" GEMELDET, nie still verworfen.
+
+**Freigabe-Status:** `kostal_plenticore` steht ABSICHTLICH **nicht** in
+`CERTIFIED_CONTROL_FAMILIES`/`VP_CONTROL_CERTIFIED_FAMILIES`. Bis zum Prüfstand
+plant der Adapter vollständig (`planned`), schreibt aber nichts; die
+First-Light-Kalibrierung auf `:8484` ist die eine bewusste, begrenzte Ausnahme,
+und `VP_CONTROL_ENABLED` bleibt das äußere UND. Ablauf:
+[`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „Checkliste Kostal PLENTICORE".
+
+## 6. Firmware-Hinweis
 
 Die Registerkarte gilt für G1 ab UI 01.16.05025 (Praxis-Untergrenze der
 Feld-Integrationen) und ist mit der aktuellen Doku Rev. 2.9 (G1 ab UI
