@@ -5750,3 +5750,29 @@ button.vp-tech-card-h.toggle {
 .vp-row-click:hover {
   background: var(--vp-surface-2, rgba(0, 0, 0, 0.02));
 }
+
+/* ============================================================
+   Deploy-Erkennung (deployWatch.ts): dezenter Hinweis, wenn der
+   Server ein neueres Portal ausliefert als das, das dieser Tab
+   gerade ausführt. position: fixed - schwebt über jeder Seite,
+   der DOM-Platz im Shell-Baum ist bewusst egal.
+   ============================================================ */
+.vp-update-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--vp-space-3, 12px);
+  max-width: min(92vw, 480px);
+  padding: 10px 16px;
+  background: var(--vp-surface, #fff);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  font-size: 0.9rem;
+}

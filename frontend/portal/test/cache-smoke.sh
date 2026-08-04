@@ -19,10 +19,16 @@
 #   5. unhashed extras (/favicon.svg, /silent-check-sso.js) -> no-cache; they
 #      keep their filename across releases, so immutable would pin them forever.
 #   6. the SECURITY headers survive on every one of those responses - nginx does
-#      not inherit add_header into an inner block, so a future `location /assets/`
-#      would silently drop the CSP. This is the guard for that trap.
+#      not inherit add_header into an inner block (`location /assets/` exists
+#      now and had to repeat the whole set). This is the guard for that trap.
 #   7. a conditional request (If-None-Match) on / really answers 304 - i.e. the
 #      policy costs a revalidation, not a full transfer.
+#   8. a VANISHED hashed bundle -> hard 404 with no-cache + security headers,
+#      never the SPA fallback: 200 + index.html under a .js URL gets cached by
+#      CDNs/browsers (Cloudflare stamps its default browser TTL onto it,
+#      live-measured 2026-08-04) and poisons the URL for hours - and the 404
+#      must never carry the immutable policy, or a deploy race (new index.html,
+#      old pod) would pin the miss for a year.
 #
 # Usage: test/cache-smoke.sh [image]
 #   Without an image argument, builds the portal Dockerfile first.
@@ -104,6 +110,19 @@ ASSETS="$(printf '%s' "$INDEX" | grep -oE '/assets/[A-Za-z0-9._-]+' | sort -u)"
 for a in $ASSETS; do
   assert_immutable "$a"
 done
+
+# A vanished hashed bundle is a hard 404 (check 8). hdrs() cannot be reused
+# here - its curl -f fails on 4xx - so the status and headers are read without -f.
+MISS="/assets/index-does-not-exist-$$.js"
+MISS_CODE="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE$MISS")"
+[ "$MISS_CODE" = "404" ] \
+  || fail "$MISS answered $MISS_CODE, expected 404 - the SPA fallback would serve HTML under a .js URL and poison caches"
+MISS_H="$(curl -sS -D - -o /dev/null "$BASE$MISS" | tr -d '\r')"
+MISS_CC="$(header_of cache-control "$MISS_H")"
+[ "$MISS_CC" = "no-cache" ] \
+  || fail "$MISS: the 404 must carry 'Cache-Control: no-cache' (never immutable), got '${MISS_CC:-<none>}'"
+pass "$MISS -> 404 with Cache-Control: no-cache"
+assert_security_headers "$MISS" "$MISS_H"
 
 # The revalidation must really be cheap: same ETag -> 304, no body.
 ETAG="$(header_of etag "$(hdrs "/")")"
