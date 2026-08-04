@@ -215,6 +215,69 @@ func TestAWorkingSidecarOwnsTheApplicationStateWhileTheCoreKeepsTheVerdict(t *te
 	}
 }
 
+// Der Soak-Fall vom 04.08.2026: der Sidecar VERWEIGERT, und bis dahin trug der
+// Herzschlag trotzdem den freundlichen Satz des Verifizierers weiter.
+func TestABlockedSidecarOwnsTheReasonInsteadOfTheVerifiersFriendlySentence(t *testing.T) {
+	a := autonomyAgent(t)
+	// Der Ausgangszustand: der Kern hat nichts zu melden, also steht dort sein
+	// eigener Satz (bzw. gar keiner).
+	stale := a.updateSummary().Reason
+
+	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileUpdaterState,
+		otaapply.UpdaterState{
+			UpdatedAt: time.Now().UTC().Format(otaapply.TimeFormat),
+			State:     otaapply.StateDeferred,
+			Blocker:   otaapply.BlockerNeutralTime,
+			Reason: "Diese Anlage steuert. Fuer die Familie 'hybrid_3p' ist die Neutral-Zeit " +
+				"des Wechselrichters NICHT verifiziert. Es wird deshalb nicht autonom " +
+				"angewandt (am Pruefstand belegen und in VP_OTA_NEUTRAL_VERIFIED eintragen).",
+			Release: "edge-2026.08.2", ReleaseSeq: 14, Autonomous: true,
+		}); err != nil {
+		t.Fatal(err)
+	}
+
+	sum := a.updateSummary()
+	if sum.Reason == stale {
+		t.Fatalf("der stehen gebliebene Satz darf eine Sperre nicht ueberleben: %q", sum.Reason)
+	}
+	if !strings.HasPrefix(sum.Reason, otaapply.BlockedPrefix) {
+		t.Fatalf("eine Sperre muss als solche erkennbar sein: %q", sum.Reason)
+	}
+	for _, want := range []string{"steuert", "hybrid_3p", "VP_OTA_NEUTRAL_VERIFIED"} {
+		if !strings.Contains(sum.Reason, want) {
+			t.Fatalf("der Grund nennt %q nicht: %q", want, sum.Reason)
+		}
+	}
+	// `deferred` bleibt richtig - es ist keine Stoerung, sondern eine bewusst
+	// nicht getroffene Entscheidung; nur der GRUND muss stimmen.
+	if sum.State != cloud.UpdateStateDeferred {
+		t.Fatalf("Zustand: %q", sum.State)
+	}
+	if sum.Target != "edge-2026.08.2" || sum.TargetSeq == nil || *sum.TargetSeq != 14 {
+		t.Fatalf("das Ziel muss mitreisen: %+v", sum)
+	}
+}
+
+// Die Sperre gewinnt auch dann, wenn daneben ein harmloses Zustandswort steht -
+// sonst haette die „idle"-Abkuerzung genau den Fall verschluckt, fuer den es
+// dieses Feld gibt.
+func TestABlockerIsCarriedEvenNextToAnIdleState(t *testing.T) {
+	a := autonomyAgent(t)
+	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileUpdaterState,
+		otaapply.UpdaterState{
+			UpdatedAt:  time.Now().UTC().Format(otaapply.TimeFormat),
+			State:      otaapply.StateIdle,
+			Blocker:    otaapply.BlockerApprovalRelease,
+			Reason:     "Die Freigabe galt fuer Release edge-2026.08.1.",
+			Autonomous: false,
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.updateSummary().Reason; !strings.Contains(got, "Die Freigabe galt") {
+		t.Fatalf("der Grund der Sperre fehlt: %q", got)
+	}
+}
+
 // Ein gestoppter Sidecar darf den Herzschlag nicht auf „wendet an" einfrieren.
 func TestAStaleSidecarStateIsIgnored(t *testing.T) {
 	a := autonomyAgent(t)

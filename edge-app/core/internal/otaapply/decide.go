@@ -42,9 +42,62 @@ type Decision struct {
 	State string
 	// Reason ist der deutsche Grund. Bei allem ausser ActionIdle PFLICHT.
 	Reason string
+	// Blocker ist der MASCHINENLESBARE Name des Tores, das hier zugemacht hat
+	// (leer = keines, also idle oder anwenden).
+	//
+	// Er steht NEBEN Reason, weil beide verschiedene Fragen beantworten: Reason
+	// ist der Satz fuer einen Menschen, Blocker ist das, worauf ein Log, eine
+	// Zustandsdatei und eine Oberflaeche vergleichen duerfen - genau so, wie
+	// `target_verdict` neben `state` steht, damit niemand einen deutschen Satz
+	// nach Stichworten durchsuchen muss.
+	Blocker string
 	// Deadline ist die Wachhund-Frist - nur bei ActionApply gesetzt.
 	Deadline time.Duration
 }
+
+// Die Blocker-Namen. Sie sind ein VERTRAG zwischen Sidecar-Log,
+// `updater-state.json` und dem Herzschlag - kurz, stabil, ohne Umlaute.
+const (
+	// BlockerChain: die Vertrauenskette oder die Form ist kaputt (Vorfall).
+	BlockerChain = "kette"
+	// BlockerPolicy: gueltig signiert, gilt hier aber nicht (Boden, Rueckschritt).
+	BlockerPolicy = "politik"
+	// BlockerRolledBack: genau dieses Release wurde hier schon zurueckgenommen.
+	BlockerRolledBack = "zurueckgenommen"
+	// BlockerBackend: das Release ist nicht fuer dieses Apply-Backend bestimmt.
+	BlockerBackend = "backend"
+	// BlockerStateSchema: das Release kennt unseren /data-Stand nicht.
+	BlockerStateSchema = "state_schema"
+	// BlockerCoreSilent: der Kern meldet seinen Zustand nicht.
+	BlockerCoreSilent = "kern_still"
+	// BlockerDisk: der Plattenwaechter.
+	BlockerDisk = "platte"
+	// BlockerNeutralTime: die Anlage STEUERT und die Neutral-Zeit T ihrer
+	// Familie ist nicht belegt - der Fall, fuer den es §3 gibt.
+	BlockerNeutralTime = "neutralzeit"
+	// BlockerNeutralTooShort: ein belegtes T, unter dem keine brauchbare
+	// Wachhund-Frist Platz hat.
+	BlockerNeutralTooShort = "neutralzeit_zu_kurz"
+	// BlockerInterlock: es wird gerade ein von neutral abweichender Sollwert
+	// ausgefuehrt.
+	BlockerInterlock = "interlock"
+	// BlockerApprovalRelease: die Freigabe galt einem anderen Release.
+	BlockerApprovalRelease = "freigabe_release"
+	// BlockerPull/BlockerRollback/BlockerSnapshot sind die Tore der
+	// VORBEREITUNG - sie halten den Tausch auf, bevor irgendetwas gestoppt wird.
+	BlockerPull     = "laden"
+	BlockerRollback = "rueckfallziel"
+	BlockerSnapshot = "sicherung"
+	// BlockerUnreadable: eine Datei des Protokolls ist unlesbar.
+	BlockerUnreadable = "unlesbar"
+)
+
+// BlockedPrefix leitet jeden Grund ein, der eine STEHENDE Sperre beschreibt.
+//
+// Er steht hier, damit Sidecar, Kern und Doku denselben Satzanfang benutzen:
+// „wartet" und „blockiert" sehen sonst auf jeder Oberflaeche gleich aus, und
+// genau daran ist der erste Canary-Soak gescheitert.
+const BlockedPrefix = "Autonomie blockiert: "
 
 // Die Zustandswoerter, die dieses Paket meldet. Sie sind absichtlich als
 // Konstanten dupliziert statt aus `internal/cloud` importiert: `cloud` zieht
@@ -135,15 +188,15 @@ func Decide(in DecisionInput) Decision {
 		// Eine gebrochene Kette ist ein SICHERHEITS-Ereignis und darf nie wie
 		// „passt gerade nicht" aussehen - genau das Signal, auf das der
 		// Rollout im Portal automatisch anhaelt.
-		return Decision{Action: ActionRefuse, State: StateFailed,
+		return Decision{Action: ActionRefuse, State: StateFailed, Blocker: BlockerChain,
 			Reason: in.Verdict.Reason}
 	case otaverify.OutcomeDeferred:
-		return Decision{Action: ActionDefer, State: StateDeferred,
+		return Decision{Action: ActionDefer, State: StateDeferred, Blocker: BlockerPolicy,
 			Reason: in.Verdict.Reason}
 	case otaverify.OutcomeOK:
 		// weiter
 	default:
-		return Decision{Action: ActionRefuse, State: StateFailed,
+		return Decision{Action: ActionRefuse, State: StateFailed, Blocker: BlockerChain,
 			Reason: "Der Verifizierer hat kein Urteil abgegeben - es wird nichts angewandt."}
 	}
 	m := in.Verdict.Manifest
@@ -151,7 +204,7 @@ func Decide(in DecisionInput) Decision {
 		// Kann per Konstruktion nicht vorkommen (OutcomeOK traegt immer ein
 		// Manifest) - und genau deshalb ist es hier eine Ablehnung und kein
 		// nil-Zugriff drei Zeilen spaeter.
-		return Decision{Action: ActionRefuse, State: StateFailed,
+		return Decision{Action: ActionRefuse, State: StateFailed, Blocker: BlockerChain,
 			Reason: "Das Urteil nennt kein Manifest - es wird nichts angewandt."}
 	}
 	if in.Failed.Blocks(m.Release) {
@@ -163,14 +216,15 @@ func Decide(in DecisionInput) Decision {
 		if in.Failed.Reason != "" {
 			reason += " Grund damals: " + in.Failed.Reason
 		}
-		return Decision{Action: ActionRefuse, State: StateRolledBack, Reason: reason}
+		return Decision{Action: ActionRefuse, State: StateRolledBack,
+			Blocker: BlockerRolledBack, Reason: reason}
 	}
 	if in.Verdict.AlreadyRunning {
 		return Decision{Action: ActionIdle, State: StateSucceeded,
 			Reason: "Release " + m.Release + " laeuft hier bereits."}
 	}
 	if !m.SupportsBackend(BackendCompose) {
-		return Decision{Action: ActionRefuse, State: StateDeferred,
+		return Decision{Action: ActionRefuse, State: StateDeferred, Blocker: BlockerBackend,
 			Reason: "Dieses Release ist nicht fuer das Compose-Backend bestimmt."}
 	}
 
@@ -179,7 +233,7 @@ func Decide(in DecisionInput) Decision {
 		// Das Release kennt unser /data-Format nicht. Es anzuwenden hiesse,
 		// einem alten Stand einen neueren Zustand vorzusetzen - der klassische
 		// Weg, Identitaet und Puffer zu zerlegen.
-		return Decision{Action: ActionRefuse, State: StateDeferred,
+		return Decision{Action: ActionRefuse, State: StateDeferred, Blocker: BlockerStateSchema,
 			Reason: fmt.Sprintf("Dieses Release unterstuetzt den lokalen Datenstand nicht "+
 				"(state_schema %d, auf dem Geraet %d).", m.StateSchema, in.StateSchemaOnDisk)}
 	}
@@ -189,12 +243,12 @@ func Decide(in DecisionInput) Decision {
 		// Ohne den Zustand des Kerns weiss der Sidecar nicht, ob gerade
 		// gesteuert wird - und ein Tausch im Blindflug ist genau das, was die
 		// ganze Stufe verhindern soll.
-		return Decision{Action: ActionDefer, State: StateDeferred,
+		return Decision{Action: ActionDefer, State: StateDeferred, Blocker: BlockerCoreSilent,
 			Reason: "Der Kern meldet seinen Zustand nicht (zuletzt vor " +
 				age.Round(time.Second).String() + ") - ohne ihn wird nichts angewandt."}
 	}
 	if in.RequiredBytes > 0 && in.FreeBytes < in.RequiredBytes {
-		return Decision{Action: ActionDefer, State: StateDeferred,
+		return Decision{Action: ActionDefer, State: StateDeferred, Blocker: BlockerDisk,
 			Reason: fmt.Sprintf("Zu wenig freier Speicherplatz (%s frei, %s noetig) - "+
 				"ein Tausch ohne Platz fuer das Rueckfallziel wird nicht begonnen.",
 				humanBytes(in.FreeBytes), humanBytes(in.RequiredBytes))}
@@ -206,12 +260,17 @@ func Decide(in DecisionInput) Decision {
 	// Sperre - der Vorentwurf ist da eindeutig.
 	if in.Signal.ControlActive {
 		if !in.Neutral.Verified {
+			// Der Grund NENNT den Hebel: ohne den Namen der Umgebungsvariablen
+			// ist „nicht belegt" eine Sackgasse, mit ihm eine Aufgabe.
 			return Decision{Action: ActionRefuse, State: StateDeferred,
-				Reason: in.Neutral.Note + " Solange dieses Geraet steuert, wird deshalb " +
-					"nicht autonom angewandt."}
+				Blocker: BlockerNeutralTime,
+				Reason: "Diese Anlage steuert. " + in.Neutral.Note +
+					" Es wird deshalb nicht autonom angewandt (am Pruefstand belegen und " +
+					"in VP_OTA_NEUTRAL_VERIFIED eintragen)."}
 		}
 		if !NeutralSupportsWatchdog(in.Neutral) {
 			return Decision{Action: ActionRefuse, State: StateDeferred,
+				Blocker: BlockerNeutralTooShort,
 				Reason: fmt.Sprintf("Die belegte Neutral-Zeit (%s) laesst keine Wachhund-Frist "+
 					"unter ihr zu - es wird nicht autonom angewandt.", in.Neutral.T)}
 		}
@@ -220,7 +279,7 @@ func Decide(in DecisionInput) Decision {
 	// Der „nicht mitten im Schreiben"-Interlock.
 	if in.Signal.Dispatching {
 		if !m.Urgent {
-			return Decision{Action: ActionDefer, State: StateDeferred,
+			return Decision{Action: ActionDefer, State: StateDeferred, Blocker: BlockerInterlock,
 				Reason: "Es wird gerade ein von neutral abweichender Sollwert ausgefuehrt - " +
 					"der Tausch wartet auf das Ende des Zeitfensters."}
 		}
@@ -240,7 +299,7 @@ func Decide(in DecisionInput) Decision {
 	// Verifizieren: vorher gibt es kein vertrauenswuerdiges Release, mit dem
 	// sich vergleichen liesse.
 	if !in.Autonomous && manual && in.Request.Release != "" && in.Request.Release != m.Release {
-		return Decision{Action: ActionIdle, State: StateDeferred,
+		return Decision{Action: ActionIdle, State: StateDeferred, Blocker: BlockerApprovalRelease,
 			Reason: "Die Freigabe galt fuer Release " + in.Request.Release + ", zugewiesen ist " +
 				"inzwischen " + m.Release + " - es wird nichts angewandt."}
 	}

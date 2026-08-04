@@ -10,6 +10,7 @@ package otaupdater
 // laeuft ab), sind als Eingabe beschreibbar statt nur im Feld beobachtbar.
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
@@ -229,7 +230,11 @@ func (f *fakeDocker) indexOf(substr string) int {
 // ---------------------------------------------------------------------------
 
 type rig struct {
-	t       *testing.T
+	t *testing.T
+	// logs faengt auf, was der Sidecar protokolliert - fuer die Tests, in
+	// denen genau das die Aussage ist (eine Sperre, die niemand nennt, ist
+	// keine Sperre, sondern ein Raetsel).
+	logs    bytes.Buffer
 	dataDir string
 	deploy  string
 	fd      *fakeDocker
@@ -270,7 +275,7 @@ func newRig(t *testing.T) *rig {
 		Now:       func() time.Time { return r.now },
 		FreeBytes: func(string) (uint64, error) { return 8 << 30, nil },
 		Token:     func() string { return "tok-1" },
-		Log:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Log:       slog.New(slog.NewTextHandler(&r.logs, nil)),
 	})
 	r.signalCore(func(*otaapply.CoreSignal) {})
 	return r

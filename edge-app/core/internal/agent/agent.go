@@ -112,6 +112,12 @@ type Agent struct {
 	otaAckedToken     string
 	otaAckedAt        string
 	otaAckFailedToken string
+	// otaBlockerLogged ist die zuletzt vom Kern PROTOKOLLIERTE Sperre des
+	// Sidecars ("" = keine). Der Sidecar protokolliert seine Sperre selbst;
+	// der Kern tut es zusaetzlich, weil `docker compose logs core` der Ort ist,
+	// an dem ohnehin jeder nachsieht - und auch hier nur bei AENDERUNG.
+	otaBlockerLogged string
+	otaBlockerKnown  bool
 
 	// First-Light calibration (agent/calibration.go): the bounded, armed,
 	// TTL-limited procedure that proves a battery inverter's control sign + scale

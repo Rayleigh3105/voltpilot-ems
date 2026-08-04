@@ -130,6 +130,42 @@ Für eine Familie, deren T sich nicht belegen lässt, bleibt der Weg des
 Vorentwurfs: ein winziger externer Neutral-Herzschlag außerhalb des
 tauschbaren Satzes. Der ist **nicht gebaut**.
 
+### So sieht die Verweigerung aus — im Log und im Portal
+
+Bis zum Canary-Soak am 04.08.2026 verweigerte der Sidecar in diesem Fall
+**vollkommen still**: im Protokoll standen nur die Startzeilen, und der
+Herzschlag trug weiter den freundlichen Satz des Verifizierers („Release … ist
+verifiziert – die Anwendung erfolgt beaufsichtigt am Gerät"). Der Betreiber sah
+„wartet" und hatte keine Möglichkeit zu erfahren, worauf. Jede Sperre trägt
+deshalb jetzt einen **maschinenlesbaren Namen** (`blocker`, Vokabular in
+`otaapply` — hier `neutralzeit`) und wird an drei Stellen sichtbar:
+
+```bash
+# 1. Das Sidecar-Protokoll - EINE Zeile je ÄNDERUNG der Sperre, nicht je Takt.
+docker compose --profile ota logs updater | grep blockiert
+#  WARN OTA: autonomes Anwenden blockiert blocker=neutralzeit
+#       grund="Diese Anlage steuert. Fuer die Familie 'hybrid_3p' ist die
+#       Neutral-Zeit des Wechselrichters NICHT verifiziert. …"
+
+# 2. Die Zustandsdatei - maschinenlesbar, für jede Oberfläche.
+docker run --rm -v vp-edge-data:/data alpine cat /data/ota/updater-state.json
+#  { "state": "deferred", "blocker": "neutralzeit", "reason": "…" }
+```
+
+**3. Das Portal.** Der Kern faltet den Grund in den `update`-Block des
+Herzschlags (mit dem Vorsatz **„Autonomie blockiert: …"**, damit „wartet" und
+„blockiert" nie gleich aussehen) und ersetzt damit den Satz des Verifizierers,
+solange die Sperre steht. In der Flotten-Matrix der Seite „Edge-Updates" steht
+das Gerät auf **`ausstehend`** und die Spalte **Grund** zeigt genau diesen Satz;
+der Wellen-Hinweis („Hand-Vorschub: … noch nicht bestätigt") bleibt daneben
+unverändert. Der Zustand ist bewusst weiter `deferred` — es ist keine Störung,
+sondern eine bewusst nicht getroffene Entscheidung; nur der Grund muss stimmen.
+
+Fällt die Sperre (T eingetragen, Steuerung abgeschaltet, Platte aufgeräumt),
+steht **eine** Zeile „Sperre aufgehoben" im Protokoll und der Herzschlag trägt
+wieder seinen gewöhnlichen Satz. Ein Gerät ohne Sperre meldet das Feld gar nicht
+— alles hier ist additiv.
+
 ---
 
 ## 4. Der Registry-Zugang je Gerät
