@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-04T07:24:45Z",
+  "keys": [
+    {
+      "key_id": "rel-2026-a",
+      "alg": "ed25519",
+      "public_key": "tRVDCmrwBi1S4YMpIRRcxcsTBTEq3kx36rdAHm9l4uA=",
+      "comment": "Release-Schluessel 2026"
+    }
+  ]
+}
