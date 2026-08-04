@@ -386,6 +386,11 @@ func TestControlTierPerBrand(t *testing.T) {
 		BrandFronius:        ControlTierSunSpec,
 		BrandFroniusSunSpec: ControlTierSunSpec,
 		BrandGoe:            ControlTierReadOnly,
+		// The PLENTICORE's external battery management is a true forced-watts RAM
+		// setpoint behind the inverter's own watchdog = the vendor external-EMS
+		// primitive. Until the Tier-2 adapter ships, controlRoute's stub refuses
+		// honestly - the tier is a dispatch fact, never an authorisation.
+		BrandKostal: ControlTierVendorEMS,
 	}
 	for _, b := range cat.Brands {
 		w, ok := want[b.ID]
@@ -1082,5 +1087,146 @@ func TestBackfillFamilyOnlySelectionSetsTierNotRating(t *testing.T) {
 	}
 	if filled.RatedKw != 0 {
 		t.Errorf("a family-only selection has no model rating to derive: got %v", filled.RatedKw)
+	}
+}
+
+// --- KOSTAL PLENTICORE BI (kostal_modbus) ------------------------------------
+
+// TestNormalizeKostal pins the vendor transport facts: factory defaults TCP
+// 1502 / Unit-ID 71 (NOT the generic Modbus 502/1), the byte-order vocabulary
+// (auto = read device register 5 live; little/big explicit), the read-sign
+// hatches surviving, foreign transport fields cleared, and the battery family
+// classification the house-balance honesty keys on.
+func TestNormalizeKostal(t *testing.T) {
+	cat := DefaultCatalog()
+
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "plenticore-bi-10-26",
+		Connection: Connection{IP: "192.168.0.30", InvertGridSign: true, InvertBattSign: true},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	if sel.Communication != CommKostalModbus {
+		t.Fatalf("communication = %q, want %q", sel.Communication, CommKostalModbus)
+	}
+	if sel.Family != FamKostalPlenticore {
+		t.Fatalf("family = %q, want %q", sel.Family, FamKostalPlenticore)
+	}
+	if sel.Connection.Port != 1502 || sel.Connection.UnitID != 71 {
+		t.Fatalf("defaults = %d/%d, want 1502/71", sel.Connection.Port, sel.Connection.UnitID)
+	}
+	if sel.Connection.ByteOrder != "auto" {
+		t.Fatalf("byte_order default = %q, want auto", sel.Connection.ByteOrder)
+	}
+	if !sel.Connection.InvertGridSign || !sel.Connection.InvertBattSign {
+		t.Fatal("the read-sign hatches must survive normalization")
+	}
+	if sel.Connection.Profile != FamKostalPlenticore {
+		t.Fatalf("profile = %q, want the register family", sel.Connection.Profile)
+	}
+	if sel.RatedKw != 10 {
+		t.Fatalf("RatedKw = %v, want 10 (the BI 10/26 nameplate)", sel.RatedKw)
+	}
+	if sel.ControlTier != ControlTierVendorEMS {
+		t.Fatalf("control tier = %d, want vendor EMS (2)", sel.ControlTier)
+	}
+
+	// Explicit byte order is kept; garbage refused.
+	sel, err = cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "kostal-plenticore-bi-generic",
+		Connection: Connection{IP: "192.168.0.30", ByteOrder: "big"},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize big: %v", err)
+	}
+	if sel.Connection.ByteOrder != "big" {
+		t.Fatalf("explicit byte_order = %q, want big", sel.Connection.ByteOrder)
+	}
+	if sel.RatedKw != 0 {
+		t.Fatalf("generic entry must carry no rating, got %v", sel.RatedKw)
+	}
+	if _, err = cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "plenticore-bi-10-26",
+		Connection: Connection{IP: "192.168.0.30", ByteOrder: "cdab"},
+	}, time.Now()); err == nil {
+		t.Fatal("garbage byte_order must be refused")
+	}
+
+	// Foreign transport fields are cleared; the shared write-sign hatch is kept
+	// (the future Tier-2 control adapter reads it).
+	sel, err = cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "plenticore-bi-5.5-13",
+		Connection: Connection{
+			IP: "192.168.0.30", Serial: "123", MbSlaveID: 3, PowerScale: 10,
+			InsecureTLS: true, ModelType: "float", ControlWriteFc: 6, RemoteMode: "auto",
+			InvertControlSign: true,
+		},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize foreign fields: %v", err)
+	}
+	c := sel.Connection
+	if c.Serial != "" || c.MbSlaveID != 0 || c.PowerScale != 0 || c.InsecureTLS || c.ModelType != "" ||
+		c.ControlWriteFc != 0 || c.RemoteMode != "" {
+		t.Fatalf("foreign transport fields must be cleared, got %+v", c)
+	}
+	if !c.InvertControlSign {
+		t.Fatal("invert_control_sign must survive (shared write-path sign)")
+	}
+	if sel.RatedKw != 5.5 {
+		t.Fatalf("BI 5.5/13 RatedKw = %v, want 5.5", sel.RatedKw)
+	}
+
+	// The family is a BATTERY family (missing battery reading must drop the house
+	// load, never fabricate battery=0) and NOT provably batteryless.
+	if !FamilyHasBattery(FamKostalPlenticore) {
+		t.Fatal("kostal_plenticore must count as a battery family")
+	}
+	if FamilyBatteryless(FamKostalPlenticore) {
+		t.Fatal("kostal_plenticore must not be classified batteryless")
+	}
+}
+
+// TestBusPayloadKostalShape pins the retained edge/inverter/config shape the
+// Node-RED self-wiring reads: unit id + byte order + BOTH read-sign hatches +
+// the shared write-sign hatch must all be published (the fm/vp-deye-sign-fix-v6
+// lesson: an unpublished hatch never reaches the reader).
+func TestBusPayloadKostalShape(t *testing.T) {
+	cat := DefaultCatalog()
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandKostal, Model: "plenticore-bi-10-26",
+		Connection: Connection{IP: "192.168.0.30", InvertGridSign: true, InvertBattSign: true, InvertControlSign: true},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("Normalize: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &payload); err != nil {
+		t.Fatalf("BusPayload JSON: %v", err)
+	}
+	if payload["communication"] != CommKostalModbus || payload["family"] != FamKostalPlenticore {
+		t.Fatalf("payload identity wrong: %v", payload)
+	}
+	if payload["rated_kw"] != 10.0 {
+		t.Fatalf("rated_kw = %v, want 10", payload["rated_kw"])
+	}
+	conn, _ := payload["connection"].(map[string]any)
+	if conn == nil {
+		t.Fatal("connection object missing")
+	}
+	if conn["port"] != 1502.0 || conn["unit_id"] != 71.0 {
+		t.Fatalf("connection defaults wrong: %v", conn)
+	}
+	if conn["byte_order"] != "auto" {
+		t.Fatalf("byte_order = %v, want auto", conn["byte_order"])
+	}
+	for _, k := range []string{"invert_grid_sign", "invert_batt_sign", "invert_control_sign"} {
+		if conn[k] != true {
+			t.Fatalf("%s must be published true, got %v", k, conn[k])
+		}
+	}
+	if _, present := conn["serial"]; present {
+		t.Fatal("foreign solarman field serial must not be published")
 	}
 }

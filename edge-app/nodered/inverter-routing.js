@@ -37,6 +37,7 @@ const deyeDecode = require('./deye/deye-decode');
 const modbusTcp = require('./modbus-tcp');
 const froniusSolarApi = require('./fronius/solar-api');
 const goeApi = require('./goe/goe-api');
+const kostalDecode = require('./kostal/kostal-decode');
 
 const SCHEMA_VERSION = '1.0';
 
@@ -54,12 +55,20 @@ const COMM_GOE = 'goe_http_api';
 // (sunspec/sunspec-live.js), NOT the fake fixed-block modbus_tcp `sunspec`
 // profile. Read-only; control (Model 123) is a separate bench-gated increment.
 const COMM_FRONIUS_SUNSPEC = 'fronius_sunspec';
+// KOSTAL PLENTICORE BI over the vendor's own Modbus-TCP server (TCP 1502,
+// Unit-ID 71 - factory defaults, hence its own communication): fixed official
+// register map, battery power + SoC + (via KSEM) grid power. Read-only; the
+// Tier-2 control path (external battery management) is a separate gated
+// increment. See kostal/kostal-decode.js.
+const COMM_KOSTAL = 'kostal_modbus';
 
 const DEFAULT_SOLARMAN_PORT = 8899;
 const DEFAULT_MODBUS_PORT = 502;
 const DEFAULT_FRONIUS_PORT = 80;
 const DEFAULT_FRONIUS_SUNSPEC_PORT = 502;
 const DEFAULT_GOE_PORT = 80;
+const DEFAULT_KOSTAL_PORT = kostalDecode.DEFAULT_PORT; // 1502
+const DEFAULT_KOSTAL_UNIT_ID = kostalDecode.DEFAULT_UNIT_ID; // 71
 
 // The one register-profile id the SunSpec-live read path uses (mirrors how the
 // Deye family / Modbus profile names the decode). Discovery is dynamic, so there
@@ -75,6 +84,9 @@ const FRONIUS_FAMILIES = Object.keys(froniusSolarApi.FAMILIES);
 
 // The go-e HTTP API family set (one entry - the API is self-describing).
 const GOE_FAMILIES = Object.keys(goeApi.FAMILIES);
+
+// The KOSTAL register-family set (one entry - the official map covers the BI line).
+const KOSTAL_FAMILIES = Object.keys(kostalDecode.FAMILIES);
 
 function isObject(v) {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -108,7 +120,7 @@ function parseConfig(input) {
   const communication = typeof obj.communication === 'string' ? obj.communication : '';
   if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS &&
       communication !== COMM_FRONIUS && communication !== COMM_FRONIUS_SUNSPEC &&
-      communication !== COMM_GOE) return null;
+      communication !== COMM_GOE && communication !== COMM_KOSTAL) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
   if (!family) return null;
@@ -262,6 +274,40 @@ function route(sel) {
     };
   }
 
+  if (sel.communication === COMM_KOSTAL) {
+    // KOSTAL PLENTICORE BI: fixed FC3 blocks per the official register map
+    // (kostal/kostal-decode.js planReads). Gate on the known family set (an
+    // unknown family stays idle-safe, never fabricates). Read-only.
+    if (!KOSTAL_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte Kostal-Familie: ' + sel.family };
+    }
+    const reads = kostalDecode.planReads({ family: sel.family });
+    if (!reads.length) {
+      return { adapter: 'idle', reason: sel.family + ': keine Messwert-Register' };
+    }
+    const port = num(conn.port, DEFAULT_KOSTAL_PORT);
+    const byteOrder = conn.byte_order === 'little' || conn.byte_order === 'big' ? conn.byte_order : 'auto';
+    return {
+      adapter: COMM_KOSTAL,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: {
+        ip,
+        port,
+        unit_id: num(conn.unit_id, DEFAULT_KOSTAL_UNIT_ID),
+        // Grid sign hangs on the CONFIGURED sensor position (2 = grid connection
+        // point matches VoltPilot's +Bezug/-Einspeisung); battery sign per doc is
+        // - charge/+ discharge and is NEGATED in the decode - both hatches are
+        // VERIFY-on-device.
+        invert_grid_sign: !!conn.invert_grid_sign,
+        invert_batt_sign: !!conn.invert_batt_sign,
+        // 'auto' reads device register 5 (in the plan) each cycle.
+        byte_order: byteOrder,
+      },
+      reads,
+    };
+  }
+
   if (sel.communication === COMM_GOE) {
     // go-e Charger local HTTP API v2: ONE HTTP GET to /api/status returns the
     // charging power. Self-describing (one family), so gate on the known set for
@@ -289,12 +335,15 @@ module.exports = {
   COMM_FRONIUS,
   COMM_FRONIUS_SUNSPEC,
   COMM_GOE,
+  COMM_KOSTAL,
   SUNSPEC_LIVE_PROFILE,
   DEFAULT_SOLARMAN_PORT,
   DEFAULT_MODBUS_PORT,
   DEFAULT_FRONIUS_PORT,
   DEFAULT_FRONIUS_SUNSPEC_PORT,
   DEFAULT_GOE_PORT,
+  DEFAULT_KOSTAL_PORT,
+  DEFAULT_KOSTAL_UNIT_ID,
   parseConfig,
   route,
 };

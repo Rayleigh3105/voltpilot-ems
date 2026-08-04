@@ -43,6 +43,14 @@ const (
 	// power, which VoltPilot maps onto the CONSUMER load channel. Read-only by
 	// construction (no charge/current control). See nodered/goe/goe-api.js.
 	CommGoeHTTP = "goe_http_api"
+	// CommKostalModbus reads a KOSTAL PLENTICORE battery inverter over the
+	// vendor's own Modbus-TCP server (TCP 1502, Unit-ID 71 - NOT the generic 502/1
+	// defaults, which is why this is its own communication like fronius_sunspec):
+	// fixed register map per the official interface description (Rev. 2.9), see
+	// nodered/kostal/kostal-decode.js + the scout report
+	// data/vp-kostal-plenticore-s5. Read-only in this increment; the control path
+	// (external battery management, Tier 2) is a separate gated increment.
+	CommKostalModbus = "kostal_modbus"
 )
 
 // Brand ids.
@@ -58,6 +66,14 @@ const (
 	// point). Added as a source in the "Weitere Energiequellen" flow, not as a
 	// primary inverter.
 	BrandGoe = "go-e"
+	// BrandKostal is the KOSTAL PLENTICORE BI battery inverter (AC-coupled,
+	// battery-only - the DC side IS the battery, no MPPTs). It is a PRIMARY
+	// inverter: it measures battery power + SoC and, via an attached KOSTAL
+	// Smart Energy Meter, the grid power; the site's PV rides on other
+	// inverters as Erzeuger sources. The hybrid PLENTICORE plus is deliberately
+	// NOT offered yet (its PV DC registers are not decoded, and a battery-only
+	// read of a PV-carrying hybrid would understate the house balance).
+	BrandKostal = "kostal"
 )
 
 // Default ports per communication.
@@ -66,7 +82,9 @@ const (
 	defaultModbusPort         = 502
 	defaultFroniusPort        = 80 // Fronius Solar API (HTTP); GEN24 self-signed HTTPS uses insecure_tls
 	defaultFroniusSunSpecPort = 502
-	defaultGoePort            = 80 // go-e Charger local HTTP API v2
+	defaultGoePort            = 80   // go-e Charger local HTTP API v2
+	defaultKostalPort         = 1502 // KOSTAL PLENTICORE Modbus-TCP server
+	defaultKostalUnitID       = 71   // KOSTAL default Modbus Unit-ID (changeable on the device)
 )
 
 // Control tiers - the battery-control PRIMITIVE a brand exposes, decoupled from
@@ -270,6 +288,10 @@ const (
 	// self-describing (one GET returns the charging power), so there is no
 	// per-model register map - one family covers every go-e Charger model.
 	FamGoeHTTP = "goe_http_api"
+	// FamKostalPlenticore is the register profile of the KOSTAL PLENTICORE BI
+	// battery-inverter line (official Modbus map, G1/G2 identical for the read
+	// registers used) - nodered/kostal/kostal-decode.js owns the map + decode.
+	FamKostalPlenticore = "kostal_plenticore"
 )
 
 // deyeFamilies is the register-map reference list (what each Model decodes with).
@@ -433,6 +455,58 @@ func goeModels() []Model {
 	}
 }
 
+// kostalFields describes the KOSTAL PLENTICORE Modbus-TCP connection: the
+// vendor server on TCP 1502 with Unit-ID 71 (both device-changeable), plus the
+// float byte-order setting (device register 5: factory default little/CDAB;
+// "auto" reads it live each cycle) and the two READ-sign escape hatches. The
+// grid sign hangs on the CONFIGURED energy-meter position (Sensorposition 2 =
+// Netzanschlusspunkt matches VoltPilot's +Bezug/-Einspeisung; Position 1 needs
+// the invert hatch) - verified on the device, never guessed.
+func kostalFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Wechselrichters", Type: "text", Required: true,
+			Help: "Die IP des PLENTICORE im lokalen Netz. Modbus (TCP) muss im Webserver des Wechselrichters aktiviert sein (Servicemenü)."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultKostalPort,
+			Help: "Modbus-TCP-Port des PLENTICORE, werksseitig 1502."},
+		{Key: "unit_id", Label: "Modbus-Unit-ID", Type: "number", Default: defaultKostalUnitID,
+			Help: "Die Modbus-Adresse des Geräts, werksseitig 71."},
+		{Key: "byte_order", Label: "Byte-Reihenfolge (Float-Register)", Type: "select", Default: "auto",
+			Help: "Wird automatisch aus dem Gerät gelesen (Register 5; Werkseinstellung Little-Endian/CDAB). Nur ändern, wenn die automatische Erkennung nicht greift.",
+			Options: []Opt{
+				{Value: "auto", Label: "Automatisch (empfohlen)"},
+				{Value: "little", Label: "Little-Endian (CDAB, Werk)"},
+				{Value: "big", Label: "Big-Endian (ABCD)"},
+			}},
+		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
+			Help: "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind (Energiezähler in Sensorposition 1 statt am Netzanschlusspunkt)."},
+		{Key: "invert_batt_sign", Label: "Batterie-Vorzeichen invertieren (Messung)", Type: "checkbox",
+			Help: "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."},
+	}
+}
+
+// kostalFamilies is the register-map reference list (one family - the official
+// map covers the BI line).
+func kostalFamilies() []Family {
+	return []Family{
+		{ID: FamKostalPlenticore, Label: "PLENTICORE BI (Batterie-Wechselrichter)",
+			Note: "Offizielle Modbus-TCP-Registerkarte (Port 1502, Unit-ID 71)"},
+	}
+}
+
+// kostalModels offers the PLENTICORE BI models individually (the captain's
+// per-model rule). RatedKw is the nameplate AC power (S_ac,r) - the physical
+// envelope bound; the generic entry has none.
+func kostalModels() []Model {
+	return []Model{
+		{ID: "plenticore-bi-10-26", Label: "PLENTICORE BI 10/26", Family: FamKostalPlenticore, RatedKw: 10,
+			Note: "10 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 26 A)"},
+		{ID: "plenticore-bi-5.5-13", Label: "PLENTICORE BI 5.5/13", Family: FamKostalPlenticore, RatedKw: 5.5,
+			Note: "5,5 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 13 A)"},
+		{ID: "kostal-plenticore-bi-generic", Label: "PLENTICORE BI (weitere/G2)", Family: FamKostalPlenticore,
+			Note: "Anderes PLENTICORE-BI-Modell (Nennleistung unbekannt)"},
+	}
+}
+
 // DefaultCatalog returns the built-in option tree.
 func DefaultCatalog() Catalog {
 	return Catalog{
@@ -496,6 +570,24 @@ func DefaultCatalog() Catalog {
 				// not wired in controlRoute today (it routes Fronius control through the
 				// Solar-API brand's selection); this read-only brand idles there.
 				ControlTier: ControlTierSunSpec,
+			},
+			{
+				ID:            BrandKostal,
+				Label:         "KOSTAL",
+				Communication: CommKostalModbus,
+				CommLabel:     "Modbus TCP (TCP 1502, Unit-ID 71)",
+				Note:          "KOSTAL PLENTICORE BI (Batterie-Wechselrichter) über die eingebaute Modbus-TCP-Schnittstelle. Modbus muss im Webserver des Wechselrichters aktiviert sein.",
+				Models:        kostalModels(),
+				Families:      kostalFamilies(),
+				Fields:        kostalFields(),
+				// Tier 2: the PLENTICORE's external battery management is a true
+				// forced-watts RAM setpoint (register 1034) behind the inverter's own
+				// configurable watchdog - the vendor external-EMS primitive. The Tier-2
+				// control adapter is a separate gated increment (scout report
+				// data/vp-kostal-plenticore-s5 §3.3); until then controlRoute's Tier-2
+				// stub honestly refuses, and certification stays per-device/First-Light
+				// regardless.
+				ControlTier: ControlTierVendorEMS,
 			},
 			{
 				ID:            BrandGoe,
@@ -564,7 +656,7 @@ func (c Catalog) RatedKw(brandID, modelID string) (float64, bool) {
 // derived-battery consistency check applies to them alone.
 func FamilyHasBattery(family string) bool {
 	switch family {
-	case FamHybrid1p, FamHybrid3p:
+	case FamHybrid1p, FamHybrid3p, FamKostalPlenticore:
 		return true
 	default:
 		return false
@@ -680,6 +772,13 @@ type Connection struct {
 	// ModelType is an optional hint ("auto"|"float"|"int_sf"); the walker
 	// auto-detects, so "auto" is the default.
 	ModelType string `json:"model_type,omitempty"`
+
+	// kostal_modbus (reuses IP/Port/UnitID/InvertGridSign/InvertBattSign).
+	// ByteOrder is the float word order of the PLENTICORE's two-word registers
+	// (device register 5): "auto" (default - read live from the device each
+	// cycle), or an explicit "little" (CDAB, the factory default) / "big"
+	// (ABCD) override for when the auto-detect cannot be read.
+	ByteOrder string `json:"byte_order,omitempty"`
 }
 
 // SelectionRequest is what the web form POSTs: the client picks brand + the
@@ -826,6 +925,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		}
 		// fields of the other transports are not part of this one.
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		conn.ByteOrder = ""
 	case CommModbusTCP:
 		if conn.Port == 0 {
 			conn.Port = defaultModbusPort
@@ -842,6 +942,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
 	case CommFroniusSolarAPI:
 		// The Solar API (HTTP/JSON) needs only host + port; no serial, unit id or
 		// auth. `insecure_tls` and `invert_grid_sign` (shared) are the only extras.
@@ -854,6 +955,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.UnitID, conn.Profile, conn.InvertControlSign, conn.InvertBattSign = 0, "", false, false
 		conn.ControlWriteFc = 0
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
 	case CommFroniusSunSpec:
 		// Real SunSpec over Modbus TCP: host + unit id + an optional model-type
 		// hint + the grid-sign escape hatch. The register-map profile is the single
@@ -882,6 +984,36 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
+	case CommKostalModbus:
+		// KOSTAL PLENTICORE vendor Modbus server: port 1502 / Unit-ID 71 factory
+		// defaults (both device-changeable), float byte order "auto" = read live
+		// from device register 5 each cycle ("little" CDAB is the factory
+		// setting; an explicit value overrides for an unreadable register 5).
+		if conn.Port == 0 {
+			conn.Port = defaultKostalPort
+		}
+		if conn.UnitID == 0 {
+			conn.UnitID = defaultKostalUnitID
+		}
+		if conn.UnitID < 1 || conn.UnitID > 247 {
+			return Selection{}, invalid("Die Modbus-Unit-ID muss zwischen 1 und 247 liegen.")
+		}
+		switch conn.ByteOrder {
+		case "", "auto":
+			conn.ByteOrder = "auto"
+		case "little", "big":
+			// explicit override, keep as-is
+		default:
+			return Selection{}, invalid("Die Byte-Reihenfolge muss automatisch, little oder big sein.")
+		}
+		conn.Profile = registerFamily // kostal_plenticore
+		// fields of the other transports are not part of this one. InvertControlSign
+		// is kept: it is the shared WRITE-path sign the future Tier-2 control
+		// adapter reads (the modbus_tcp precedent).
+		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, 0, false, ""
+		conn.ControlWriteFc = 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
 		// escape hatch (charging power is unsigned load).
@@ -895,6 +1027,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.InvertControlSign, conn.InvertBattSign = false, false
 		conn.ControlWriteFc = 0
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}
@@ -1008,6 +1141,20 @@ func (s Selection) BusPayload() []byte {
 		conn["profile"] = s.Connection.Profile
 		conn["model_type"] = s.Connection.ModelType
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_control_sign"] = s.Connection.InvertControlSign
+	case CommKostalModbus:
+		conn["unit_id"] = s.Connection.UnitID
+		conn["profile"] = s.Connection.Profile
+		// byte_order: the float word order of the PLENTICORE's two-word registers
+		// ("auto" = read device register 5 live each cycle; the reader needs it).
+		conn["byte_order"] = s.Connection.ByteOrder
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		// invert_batt_sign: READ-path battery sign hatch (the BusPayload lesson of
+		// fm/vp-deye-sign-fix-v6 - a hatch that is not published never reaches the
+		// self-wiring reader).
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
+		// invert_control_sign: the WRITE-path sign the future Tier-2 control
+		// adapter reads (published now so the control increment is JS-side only).
 		conn["invert_control_sign"] = s.Connection.InvertControlSign
 	}
 	payload := map[string]any{

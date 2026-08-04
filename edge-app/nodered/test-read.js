@@ -76,6 +76,7 @@ function makeReadOnce(deps) {
   const sunspec = deps.sunspec;
   const discovery = deps.discovery;
   const goe = deps.goe;
+  const kostal = deps.kostal;
   const net = deps.net;
   const http = deps.http;
   const https = deps.https;
@@ -125,6 +126,13 @@ function makeReadOnce(deps) {
     if (sel.communication === 'goe_http_api') {
       const port = num(conn.port, 80);
       return { adapter: 'goe_http_api', ip, port, url: goe.statusUrl(ip, port) };
+    }
+    if (sel.communication === 'kostal_modbus') {
+      return {
+        adapter: 'kostal_modbus', ip, port: num(conn.port, 1502), unitId: num(conn.unit_id, 71),
+        invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
+        byte_order: conn.byte_order === 'little' || conn.byte_order === 'big' ? conn.byte_order : 'auto',
+      };
     }
     return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
   }
@@ -283,6 +291,33 @@ function makeReadOnce(deps) {
     });
   }
 
+  // readKostal reads the KOSTAL PLENTICORE's official register blocks once via
+  // the embedded kostal/kostal-decode.js reader (the readSunSpec pattern: a
+  // connect probe classifies unreachable; the module reader then owns the block
+  // reads/decode - null or an empty decode = invalid_response). The UI reading
+  // shows grid (via KSEM) + SoC; battery power stays a local-bus channel.
+  function readKostal(plan, role) {
+    return new Promise((resolve) => {
+      const probe = new net.Socket();
+      probe.setNoDelay(true);
+      let settled = false;
+      const done = (res) => { if (settled) return; settled = true; try { probe.destroy(); } catch (e) { /* ignore */ } resolve(res); };
+      const t = setTimeout(() => done({ ok: false, error_code: ERR_UNREACHABLE }), CONNECT_TIMEOUT_MS);
+      probe.once('error', () => { clearTimeout(t); done({ ok: false, error_code: ERR_UNREACHABLE }); });
+      probe.connect(plan.port, plan.ip, () => {
+        clearTimeout(t);
+        try { probe.destroy(); } catch (e) { /* ignore */ }
+        const read = kostal.makeKostalReader({ net, connectTimeoutMs: CONNECT_TIMEOUT_MS, readTimeoutMs: READ_TIMEOUT_MS });
+        read({ ip: plan.ip, port: plan.port, unitId: plan.unitId, invertGridSign: plan.invert_grid_sign, invertBattSign: plan.invert_batt_sign, byteOrder: plan.byte_order })
+          .then((out) => {
+            if (out && out.reading) return done({ ok: true, reading: toReading(out.reading, role) });
+            done({ ok: false, error_code: ERR_INVALID_RESPONSE });
+          })
+          .catch(() => done({ ok: false, error_code: ERR_INVALID_RESPONSE }));
+      });
+    });
+  }
+
   // readGoe does ONE HTTP GET to the go-e /api/status endpoint and decodes the
   // charging power onto load_kw (embedded goe/goe-api.js). Read-only. Classifies:
   // connect/transport failure -> unreachable, timeout -> no_answer, HTTP>=400 or
@@ -324,6 +359,7 @@ function makeReadOnce(deps) {
     if (plan.adapter === 'fronius_solar_api') return readFronius(plan, role);
     if (plan.adapter === 'sunspec_live') return readSunSpec(plan, role);
     if (plan.adapter === 'goe_http_api') return readGoe(plan, role);
+    if (plan.adapter === 'kostal_modbus') return readKostal(plan, role);
     return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST });
   };
 }
