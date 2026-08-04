@@ -71,6 +71,8 @@ FORCE_COMPOSE=0
 SKIP_PULL=0
 DRY_RUN=0
 PRINT_COMPOSE=0
+REFRESH_TRUST=0
+TRUST_RESULT="unbekannt"
 
 # --------------------------------------------------------------------------
 # Output helpers (color only on a TTY).
@@ -126,6 +128,13 @@ ${C_BOLD}Optionen:${C_RESET}
       --print-compose  Die erzeugte docker-compose.yml nach stdout schreiben und
                        beenden (schreibt nichts, prüft nichts). Nützlich zum
                        Prüfen / Ableiten der Datei.
+      --refresh-trust  NUR das Vertrauens-Set (OTA-Signaturkette) aus dem Portal
+                       holen und im Datenverzeichnis des Cores ablegen, sonst
+                       nichts anfassen. Für BESTEHENDE Boxen, die vor dieser
+                       Automatik eingerichtet wurden - der Ersatz für den
+                       bisherigen Handpfad. Eine LAUFENDE Box holt sich nie von
+                       selbst eines; dies ist eine ausdrückliche Handlung des
+                       Betreibers an genau dieser Box.
       --skip-pull      'docker compose pull' überspringen (nur 'up -d').
       --dry-run        Nur prüfen: Voraussetzungen + 'docker compose config'
                        gegen die erzeugte Compose-Datei (temporär). Kein Login,
@@ -159,6 +168,7 @@ parse_args() {
       --reconfigure) FORCE_RECONFIGURE=1; FORCE_COMPOSE=1 ;;
       --force-compose) FORCE_COMPOSE=1 ;;
       --print-compose) PRINT_COMPOSE=1 ;;
+      --refresh-trust) REFRESH_TRUST=1 ;;
       --skip-pull) SKIP_PULL=1 ;;
       --dry-run) DRY_RUN=1 ;;
       *) err "Unbekannte Option: $1"; echo; usage; exit 2 ;;
@@ -235,7 +245,7 @@ json_field() {
 # STEP 1 - Prerequisites.
 # =========================================================================
 check_prerequisites() {
-  step "1/7  Voraussetzungen prüfen"
+  step "1/8  Voraussetzungen prüfen"
   local os; os="$(uname -s 2>/dev/null || echo unknown)"
 
   if ! command -v docker >/dev/null 2>&1; then
@@ -288,7 +298,7 @@ registry_config_has_auth() {
 }
 
 check_registry_login() {
-  step "2/7  An der Image-Registry (${REGISTRY}) anmelden"
+  step "2/8  An der Image-Registry (${REGISTRY}) anmelden"
   if [ "$DRY_RUN" -eq 1 ]; then
     if registry_config_has_auth; then
       ok "Ein Anmelde-Eintrag für ${REGISTRY} ist vorhanden (Dry-Run: nicht verifiziert)."
@@ -466,7 +476,7 @@ write_compose_file() {
 }
 
 generate_compose_step() {
-  step "3/7  docker-compose.yml erzeugen (nur Images, echter Modus)"
+  step "3/8  docker-compose.yml erzeugen (nur Images, echter Modus)"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     warn "Dry-Run: docker-compose.yml wird NICHT geschrieben (Konfiguration wird temporär geprüft)."
@@ -540,7 +550,7 @@ warn_dev_hatches() {
 }
 
 configure_env() {
-  step "4/7  Konfiguration (.env)"
+  step "4/8  Konfiguration (.env)"
   local envfile="$ENV_FILE"
 
   if [ -f "$envfile" ] && [ "$FORCE_RECONFIGURE" -eq 0 ]; then
@@ -712,7 +722,7 @@ configure_env() {
 # STEP 5 - Validate the compose config.
 # =========================================================================
 compose_validate() {
-  step "5/7  Compose-Konfiguration prüfen"
+  step "5/8  Compose-Konfiguration prüfen"
   local errlog; errlog="$(mktemp)"
 
   # In dry-run no file was written, so validate the GENERATED content via a
@@ -745,7 +755,7 @@ compose_validate() {
 }
 
 pull_and_up() {
-  step "6/7  Images ziehen und starten (core + nodered, ohne Simulator)"
+  step "6/8  Images ziehen und starten (core + nodered, ohne Simulator)"
   if [ "$DRY_RUN" -eq 1 ]; then
     warn "Dry-Run: 'docker compose pull' und 'up -d' werden übersprungen."
     return
@@ -774,7 +784,155 @@ pull_and_up() {
 }
 
 # =========================================================================
-# STEP 7 - Reference-ID + claim guidance + verification.
+# STEP 7 - Vertrauens-Set (Trust-Set) aus dem Portal holen und ablegen.
+# =========================================================================
+#
+# WOFÜR: ohne das root-signierte Trust-Set unter /data/ota lehnt das Gerät
+# JEDE Release-Zuweisung fail-closed ab ("Das Vertrauens-Set oder seine
+# Signatur fehlt.") - genau daran ist der erste Live-Rollout gescheitert.
+# Bisher musste es jemand von Hand auf jede Box kopieren.
+#
+# DIE VERTRAUENSGRENZE (dieselben Sätze wie in docs/ota-signing.md §6 und im
+# EdgeTrustSetController):
+#
+#   * Die Installation ist ein SANKTIONIERTER TOFU-Moment. Diese Box vertraut
+#     ihrem Installationskanal per Definition - sie hat sich soeben ihre
+#     IMAGES darüber geholt. Das aktuelle root-signierte Trust-Set über
+#     denselben Kanal zu holen fügt KEIN neues Vertrauen hinzu: die Box prüft
+#     die ROOT-Signatur weiterhin selbst gegen ihre EINGEBACKENE Wurzel, der
+#     Kanal transportiert nur öffentliches Material.
+#   * Der SPÄTERE Austausch bleibt out-of-band. Eine LAUFENDE Box holt sich
+#     NIE ein Trust-Set über das Netz (das wäre der Widerrufs-Anker über genau
+#     den Kanal, den er widerruft). Der Core kennt diese Route nicht; auch
+#     '--refresh-trust' ist kein Automatismus, sondern eine ausdrückliche
+#     Handlung eines Betreibers an DIESER Box - der Ersatz für den bisherigen
+#     scp-Zweizeiler, nicht für den Rotations-Entscheid.
+#
+# Fehlt das Set im Portal (ältere Cloud), wird LAUT gewarnt und der Handpfad
+# gedruckt - die Installation gilt weiterhin als erfolgreich: eine Box ohne
+# Trust-Set arbeitet vollständig, sie kann nur (noch) kein Release anwenden.
+
+readonly TRUST_SET_FILE="trust-set.json"
+readonly TRUST_SIG_FILE="trust-set.json.sig"
+readonly EDGE_OTA_DIR="/data/ota"
+
+# Der Handpfad, den wir drucken, wenn das Automatische nicht geht.
+print_trust_manual_path() {
+  info "Von Hand (auf dieser Box, die zwei Dateien aus edge-app/ota/ des Repos):"
+  info "  ${C_CYAN}docker compose cp ${TRUST_SET_FILE} core:${EDGE_OTA_DIR}/${TRUST_SET_FILE}${C_RESET}"
+  info "  ${C_CYAN}docker compose cp ${TRUST_SIG_FILE} core:${EDGE_OTA_DIR}/${TRUST_SIG_FILE}${C_RESET}"
+  info "Hintergrund: docs/ota-signing.md §6."
+}
+
+# Holt beide Dateien in ein temporäres Verzeichnis. 0 = beide da, 1 = nicht
+# verfügbar (dann ist $2 der Grund).
+fetch_trust_set() {
+  local dir="$1" base="${VP_PORTAL_BASE_URL:-$DEF_VP_PORTAL_BASE_URL}"
+  base="${base%/}"
+  local url="${base}/api/v1/edge/trust-set"
+  # Die Routen heissen wie die ZIELDATEIEN und liefern die ROHEN Bytes -
+  # deshalb wird hier nichts geparst, dekodiert oder umformatiert: die
+  # Wurzel-Signatur geht über genau diese Bytes.
+  curl -fsS --max-time 20 -o "${dir}/${TRUST_SET_FILE}" "${url}/${TRUST_SET_FILE}" 2>/dev/null \
+    || return 1
+  curl -fsS --max-time 20 -o "${dir}/${TRUST_SIG_FILE}" "${url}/${TRUST_SIG_FILE}" 2>/dev/null \
+    || return 1
+  # Beide oder keines: ein Set ohne seine Signatur ist wertlos (das Gerät
+  # lehnt fail-closed ab), also darf auch nur eine halbe Ablage nie passieren.
+  [ -s "${dir}/${TRUST_SET_FILE}" ] && [ -s "${dir}/${TRUST_SIG_FILE}" ]
+}
+
+# Legt beide Dateien im Datenverzeichnis des Cores ab. 0 = abgelegt.
+#
+# ⚠ Kopiert werden DATEIEN, nie das VERZEICHNIS. `docker cp` eines
+# Verzeichnisses setzt den Besitzer des ZIELVERZEICHNISSES auf die uid des
+# Hosts (gemessen: root:root bzw. 501:root) - /data/ota gehörte danach nicht
+# mehr dem unprivilegierten Core-Benutzer, und der könnte weder 'target.json'
+# (die Zuweisung) noch 'current.json' (den bezeugten Stand) schreiben. Beim
+# Kopieren einzelner Dateien in ein BESTEHENDES Verzeichnis bleibt dessen
+# Besitz unberührt; nachgemessen und festgenagelt in test/install-selfcheck.sh.
+place_trust_set() {
+  local dir="$1"
+  # Das Verzeichnis anlegen lassen - als der Benutzer des Images, damit es ihm
+  # gehört. Ein neuerer Core legt es beim Start ohnehin selbst an; für einen
+  # älteren ist das hier der Nachzieher. Fehlschlag ist nicht fatal: dann muss
+  # es schon existieren, sonst scheitert das cp gleich sichtbar.
+  dc exec -T core mkdir -p "$EDGE_OTA_DIR" >/dev/null 2>&1 || true
+  dc cp "${dir}/${TRUST_SET_FILE}" "core:${EDGE_OTA_DIR}/${TRUST_SET_FILE}" >/dev/null 2>&1 \
+    || return 1
+  dc cp "${dir}/${TRUST_SIG_FILE}" "core:${EDGE_OTA_DIR}/${TRUST_SIG_FILE}" >/dev/null 2>&1 \
+    || return 1
+  return 0
+}
+
+install_trust_set() {
+  step "7/8  Vertrauens-Set (OTA-Signaturkette) bereitstellen"
+  TRUST_RESULT="uebersprungen"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    warn "Dry-Run: das Vertrauens-Set wird weder geholt noch abgelegt."
+    return 0
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "curl ist nicht installiert - das Vertrauens-Set kann nicht geholt werden."
+    print_trust_manual_path
+    return 0
+  fi
+
+  local tmp; tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064  # $tmp soll JETZT ausgewertet werden.
+  trap "rm -rf '$tmp'" RETURN
+
+  if ! fetch_trust_set "$tmp"; then
+    # Eine ältere Cloud kennt die Route nicht, oder es wurde noch keines
+    # hochgeladen. Beides ist KEIN Installationsfehler.
+    warn "Das Portal liefert (noch) kein Vertrauens-Set - die Box bleibt ohne."
+    info "Folge: eine Release-Zuweisung wird abgelehnt ('Das Vertrauens-Set oder"
+    info "seine Signatur fehlt.'). Alles andere funktioniert normal."
+    info "Behebt der Betreiber im Portal (einmalig für die ganze Flotte):"
+    info "  ${C_CYAN}PUT ${VP_PORTAL_BASE_URL:-$DEF_VP_PORTAL_BASE_URL}/api/v1/admin/edge-trust-set${C_RESET}"
+    info "Danach hier: ${C_CYAN}./install.sh --refresh-trust${C_RESET}"
+    print_trust_manual_path
+    TRUST_RESULT="nicht verfügbar"
+    return 0
+  fi
+
+  if ! place_trust_set "$tmp"; then
+    warn "Das Vertrauens-Set konnte nicht in den Container kopiert werden."
+    info "Läuft der Core? ${C_CYAN}(cd '${TARGET_DIR}' && docker compose ps)${C_RESET}"
+    print_trust_manual_path
+    TRUST_RESULT="FEHLER beim Ablegen"
+    return 0
+  fi
+
+  ok "Vertrauens-Set abgelegt (${EDGE_OTA_DIR}/${TRUST_SET_FILE} + .sig)."
+  info "Das Gerät prüft die Signatur der kalten Wurzel selbst - spätestens nach 30 s."
+  TRUST_RESULT="abgelegt"
+  return 0
+}
+
+# --refresh-trust: NUR das Vertrauens-Set erneuern, sonst nichts anfassen.
+#
+# Ausdrücklich eine Handlung des BETREIBERS an DIESER Box (der Ersatz für den
+# scp-Zweizeiler), kein Automatismus und kein Flotten-Fan-out: die laufende Box
+# holt sich weiterhin selbst nie ein Trust-Set. Die Verteil-Entscheidung für
+# eine ROTATION bleibt davon unberührt (docs/ota-signing.md §6/§7.1).
+refresh_trust_only() {
+  printf '%s%sVoltPilot Edge-App - Vertrauens-Set erneuern%s\n' "${C_BOLD}" "${C_CYAN}" "${C_RESET}"
+  printf '%sArbeitsverzeichnis: %s%s\n' "${C_DIM}" "$TARGET_DIR" "${C_RESET}"
+  if [ ! -f "$COMPOSE_FILE" ]; then
+    die "Hier liegt keine docker-compose.yml - im Deploy-Verzeichnis der Box ausführen."
+  fi
+  install_trust_set
+  echo
+  case "$TRUST_RESULT" in
+    abgelegt) ok "Fertig. Prüfen: ${C_CYAN}curl -s http://127.0.0.1:${ACTIVE_WEB_PORT}/health${C_RESET}" ;;
+    *)        warn "Vertrauens-Set: ${TRUST_RESULT}." ;;
+  esac
+}
+
+# =========================================================================
+# STEP 8 - Reference-ID + claim guidance + verification.
 # =========================================================================
 health_json() {
   curl -fsS --max-time 3 "http://127.0.0.1:${ACTIVE_WEB_PORT}/health" 2>/dev/null || true
@@ -797,7 +955,7 @@ wait_for_core() {
 }
 
 show_reference_and_verify() {
-  step "7/7  Referenz-ID, Portal-Beanspruchung und Verifizierung"
+  step "8/8  Referenz-ID, Portal-Beanspruchung und Verifizierung"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     warn "Dry-Run: keine laufenden Container - Referenz/Verifizierung übersprungen."
@@ -943,6 +1101,10 @@ print_summary() {
   info "Webansicht:        ${FINAL_WEB_URL:-http://<geraet-ip>:${ACTIVE_WEB_PORT}}"
   info "Im Portal beanspruchen: ${PORTAL_URL}"
   info "Pairing-Zustand:   ${FINAL_PAIRING:-unbekannt}"
+  case "$TRUST_RESULT" in
+    abgelegt) printf '    Vertrauens-Set:    %s%s%s\n' "${C_GREEN}" "$TRUST_RESULT" "${C_RESET}" ;;
+    *)        printf '    Vertrauens-Set:    %s%s%s\n' "${C_YELLOW}" "${TRUST_RESULT:-unbekannt}" "${C_RESET}" ;;
+  esac
   case "$VERIFY_RESULT" in
     PASS*) printf '    Verifizierung:     %s%s%s\n' "${C_GREEN}" "$VERIFY_RESULT" "${C_RESET}" ;;
     FAIL*) printf '    Verifizierung:     %s%s%s\n' "${C_RED}"   "$VERIFY_RESULT" "${C_RESET}" ;;
@@ -983,6 +1145,14 @@ main() {
   ACTIVE_WEB_PORT="$(env_get VP_WEB_PORT "$ENV_FILE")"; ACTIVE_WEB_PORT="${ACTIVE_WEB_PORT:-$DEF_VP_WEB_PORT}"
   VERIFY_RESULT="unbekannt"; FINAL_REF=""; FINAL_WEB_URL=""; FINAL_PAIRING=""
 
+  # --refresh-trust: NUR das Vertrauens-Set erneuern. Kein Login, kein Pull,
+  # kein up -d, keine .env-Änderung - eine bestehende Box wird dabei nicht
+  # angefasst.
+  if [ "$REFRESH_TRUST" -eq 1 ]; then
+    refresh_trust_only
+    exit 0
+  fi
+
   printf '%s%sVoltPilot Edge-App - geführte Installation (eigenständig)%s\n' "${C_BOLD}" "${C_CYAN}" "${C_RESET}"
   printf '%sArbeitsverzeichnis: %s%s\n' "${C_DIM}" "$TARGET_DIR" "${C_RESET}"
   [ "$DRY_RUN" -eq 1 ] && printf '%sModus: DRY-RUN (nur prüfen)%s\n' "${C_YELLOW}" "${C_RESET}"
@@ -993,6 +1163,7 @@ main() {
   configure_env
   compose_validate
   pull_and_up
+  install_trust_set
   show_reference_and_verify
   print_summary
 }

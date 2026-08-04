@@ -2006,6 +2006,123 @@ paths:
                     example: edge-2026.08.0
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/edge/trust-set/trust-set.json:
+    get:
+      tags: [registry]
+      summary: The current root-signed trust-set (raw bytes), for a box being INSTALLED.
+      security: []
+      description: >
+        One of the two files that go into `<data>/ota/` on the device; its
+        sibling is `trust-set.json.sig` below. Serves the install-time TOFU
+        moment - see docs/ota-signing.md §6.
+        RAW BYTES, verbatim - deliberately NOT wrapped in a JSON envelope: in an
+        envelope the document would be an ESCAPED JSON string, and the consumer
+        is a shell installer that would then have to decode it by hand. That is
+        exactly where silent byte drift creeps in and the signature stops
+        verifying. So the routes are NAMED like the target files and the
+        installer simply writes what it downloads (`curl -o`).
+        THE TRUST BOUNDARY, and it is the whole reason this route may exist:
+        a box being INSTALLED trusts its installation channel by definition
+        (it just pulled its images over it), so serving the CURRENT
+        root-signed trust-set over the same channel adds NO new trust - the
+        box still verifies the ROOT signature itself against its BAKED-IN
+        root, the channel only transports public material. LATER replacement
+        stays OUT-OF-BAND: a RUNNING box never fetches a trust-set over the
+        network (that would let the revocation anchor travel the channel it
+        revokes), so there is no downlink and no device-side fetch; the core
+        does not know this route. `update.sh` may DETECT a missing set and
+        say how to fix it - it never downloads one.
+        UNAUTHENTICATED on purpose: a box being installed has no token yet
+        (the enrollment endpoints are open for the same reason), and what is
+        handed out is public key material that is readable in git anyway
+        (edge-app/ota/trust-set.json) - that readability is exactly what makes
+        the trusted release keys auditable.
+      responses:
+        "200":
+          description: The trust-set document, byte for byte.
+          content:
+            application/json:
+              schema: { type: string, description: The verbatim bytes of trust-set.json. }
+        "404":
+          description: >
+            No trust-set uploaded yet. The installer degrades with a loud
+            warning plus the manual path and the install still SUCCEEDS - a box
+            without a trust-set works fully, it just cannot (yet) apply a
+            release.
+  /api/v1/edge/trust-set/trust-set.json.sig:
+    get:
+      tags: [registry]
+      summary: The detached root signature over the trust-set (raw bytes).
+      security: []
+      description: >
+        The second of the two files - the cold root's signature over exactly
+        the bytes served by `trust-set.json`. Same trust boundary, same raw-byte
+        rule (see the sibling route). A set without its signature is worthless
+        (the device refuses fail-closed), so an installer fetches both or
+        neither.
+      responses:
+        "200":
+          description: The detached signature, byte for byte.
+          content:
+            application/json:
+              schema: { type: string, description: The verbatim bytes of trust-set.json.sig. }
+        "404": { description: No trust-set uploaded yet. }
+  /api/v1/admin/edge-trust-set:
+    get:
+      tags: [admin]
+      summary: The current trust-set with its operator metadata.
+      description: >
+        What is in force, who uploaded it when, which RELEASE key ids it
+        trusts and which ROOT key signed it. Platform-admin only (the narrow
+        `edge-release-publisher` role may upload but not inspect - uploading
+        needs none of this).
+      responses:
+        "200":
+          description: The current trust-set.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EdgeTrustSet" }
+        "404": { description: No trust-set uploaded yet. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [admin]
+      summary: Set or replace the current root-signed trust-set.
+      description: >
+        Upload the two files from the ceremony (docs/ota-signing.md §3.4).
+        A rotation is exactly this: a new, freshly root-signed set (§7.1).
+        PUT because there is a SINGLETON - "the current set" is a resource,
+        not a history; re-uploading identical bytes is therefore idempotent
+        (a re-run automation job must not go red), and the HISTORY lives where
+        it belongs, as a reviewable commit in edge-app/ota/.
+        Reachable by `platform-admin` AND by the narrow `edge-release-publisher`
+        service role (the trust-set comes out of the same ceremony as a release
+        key, and the automation should be able to keep it current without an
+        admin token in CI); that role still reaches no rollout and no device.
+        The api stores the bytes UNCHANGED and checks only the FORM - it
+        deliberately does NOT verify the root signature: the only verifier that
+        matters is the DEVICE with its baked-in root. The form checks are: both
+        documents parse, `alg` is ed25519 (never a fallback - the JWT alg
+        hole), the signature's `domain` is `trust-set` (else a RELEASE
+        signature would pass as a trust-set signature), and the SIGNING (root)
+        key must NOT appear in the set itself - the invariant `vp-ota
+        trust-set` already enforces, because a set containing the root could
+        EXTEND the root. Note the key ids of the two files must DIFFER, unlike
+        the release case where manifest and signature name the same key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveEdgeTrustSetRequest" }
+      responses:
+        "200":
+          description: Trust-set stored; it is now what a fresh install receives.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EdgeTrustSet" }
+        "400": { description: The set or its signature is malformed (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/edge-updates:
     get:
       tags: [admin]
@@ -4987,6 +5104,38 @@ components:
           type: string
           nullable: true
           description: The release key that signed the manifest, e.g. rel-2026-a.
+    EdgeTrustSet:
+      type: object
+      description: The current trust-set plus the operator metadata (admin view).
+      properties:
+        trustSet: { type: string }
+        signature: { type: string }
+        keyIds:
+          type: string
+          example: rel-2026-a,rel-2026-b
+          description: >
+            DERIVED, display only: the RELEASE key ids this set trusts, sorted
+            and comma-separated. The truth stays the raw bytes.
+        signingKeyId:
+          type: string
+          example: root-2026-a
+          description: The ROOT key that signed the set - never one of keyIds (see the PUT).
+        generatedAt:
+          type: string
+          nullable: true
+          description: What the DOCUMENT claims about itself (optional in the contract).
+        uploadedAt: { type: string, format: date-time }
+        uploadedBy: { type: string, nullable: true }
+    SaveEdgeTrustSetRequest:
+      type: object
+      required: [trustSet, signature]
+      properties:
+        trustSet:
+          type: string
+          description: The exact bytes of trust-set.json.
+        signature:
+          type: string
+          description: The exact bytes of trust-set.json.sig.
     CreateEdgeReleaseRequest:
       type: object
       required: [version]

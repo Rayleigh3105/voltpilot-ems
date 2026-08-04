@@ -3018,6 +3018,122 @@ class AdminApiTest {
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * Das Vertrauens-Set: hochgeladen von beiden Rollen, öffentlich BYTEGENAU
+     * ausgeliefert - und die Publisher-Rolle wird dadurch kein Stück mächtiger.
+     *
+     * <p>Der Endpunkt existiert, weil eine NEUE Box beim Einrichten in die
+     * Vertrauenskette kommen muss, ohne dass jemand zwei Dateien von Hand
+     * kopiert (der erste Live-Rollout scheiterte genau daran). Die
+     * VERTRAUENSGRENZE steht in {@code EdgeTrustSetController}: die
+     * Installation ist ein sanktionierter TOFU-Moment, die Box prüft die
+     * Root-Signatur weiterhin selbst - und eine LAUFENDE Box holt sich nie
+     * eines über das Netz.
+     */
+    @Test
+    void theTrustSetIsUploadedByBothRolesAndServedByteExactToAnAnonymousInstaller() {
+        String admin = token("admin", "admin");
+        String publisher = serviceToken("voltpilot-release-publisher",
+                "voltpilot-release-publisher-dev-secret");
+
+        // Bewusst „unaufgeräumte" Bytes: Einrückung, Leerzeilen, ein
+        // abschliessender Zeilenumbruch. Genau darüber geht die Signatur der
+        // kalten Wurzel - wer hier normalisiert, macht sie lautlos unprüfbar.
+        String set = "{\n  \"schema_version\" : \"1.0\",\n\n  \"generated_at\": "
+                + "\"2026-08-04T10:00:00Z\",\n  \"keys\": [\n    {\n"
+                + "      \"key_id\": \"rel-2026-a\",\n      \"alg\": \"ed25519\",\n"
+                + "      \"public_key\": \"" + b64(32) + "\"\n    }\n  ]\n}\n";
+        String sig = "{\"schema_version\":\"1.0\",\"alg\":\"ed25519\","
+                + "\"key_id\":\"root-2026-a\",\"domain\":\"trust-set\","
+                + "\"signature\":\"" + b64(64) + "\"}\n";
+
+        // (1) Der Plattform-Admin lädt hoch.
+        assertThat(putTrustSet(admin, Map.of("trustSet", set, "signature", sig))
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // (2) Und das Veröffentlichungs-Konto darf es AUCH - das Set entsteht
+        // in derselben Zeremonie wie ein Release-Schlüssel, die Automatik soll
+        // es aktuell halten können, ohne dass ein Admin-Token in CI liegt.
+        String set2 = set.replace("rel-2026-a", "rel-2026-b");
+        assertThat(putTrustSet(publisher, Map.of("trustSet", set2, "signature", sig))
+                .getStatusCode()).as("der Publisher darf hochladen").isEqualTo(HttpStatus.OK);
+
+        // (3) Der ÖFFENTLICHE Abruf - ANONYM, wie eine Box, die gerade
+        // eingerichtet wird und noch kein Token hat. Und Zeichen für Zeichen
+        // dasselbe, was hochgeladen wurde: der Installer schreibt schlicht,
+        // was er lädt.
+        ResponseEntity<String> file = rest.exchange(url("/api/v1/edge/trust-set/trust-set.json"),
+                HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), String.class);
+        assertThat(file.getStatusCode()).as("anonym erreichbar").isEqualTo(HttpStatus.OK);
+        assertThat(file.getBody()).as("BYTEGENAU zurück").isEqualTo(set2);
+        ResponseEntity<String> sigFile = rest.exchange(
+                url("/api/v1/edge/trust-set/trust-set.json.sig"), HttpMethod.GET,
+                new HttpEntity<>(new HttpHeaders()), String.class);
+        assertThat(sigFile.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(sigFile.getBody()).isEqualTo(sig);
+
+        // (4) Die Betreiber-Sicht leitet die Anzeige-Felder ab, ohne die
+        // Bytes anzufassen.
+        ResponseEntity<Map<String, Object>> view = rest.exchange(
+                url("/api/v1/admin/edge-trust-set"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(view.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(view.getBody().get("keyIds")).isEqualTo("rel-2026-b");
+        assertThat(view.getBody().get("signingKeyId")).isEqualTo("root-2026-a");
+        assertThat(view.getBody().get("generatedAt")).isEqualTo("2026-08-04T10:00:00Z");
+        assertThat(view.getBody().get("trustSet")).isEqualTo(set2);
+
+        // (5) FORM-Prüfungen. Die api prüft die Signatur NICHT (das Gerät ist
+        // der einzige Verifizierer, auf den es ankommt) - aber ein formal
+        // kaputtes Set würde die Box nur mit einem Umweg erreichen.
+        assertTrustSetRefused(admin, set, sig.replace("\"domain\":\"trust-set\"",
+                "\"domain\":\"release\""), "nicht fuer ein Trust-Set");
+        assertTrustSetRefused(admin, set, sig.replace("ed25519", "ed448"),
+                "akzeptiert wird ausschliesslich ed25519");
+        // DER Invariant: die WURZEL gehört nie ins Set - sonst könnte ein
+        // Trust-Set die Wurzel erweitern. (Beim Release ist es umgekehrt:
+        // dort MÜSSEN Manifest und Signatur denselben Schlüssel nennen.)
+        assertTrustSetRefused(admin, set.replace("rel-2026-a", "root-2026-a"), sig,
+                "steht selbst im Trust-Set");
+        assertTrustSetRefused(admin, "{\"schema_version\":\"1.0\",\"keys\":[]}", sig,
+                "keinen einzigen Schluessel");
+        assertTrustSetRefused(admin, set.replace(b64(32), b64(31)), sig, "statt 32 Bytes");
+        assertTrustSetRefused(admin, "kein json", sig, "kein gueltiges JSON");
+
+        // (6) Und die Rollen-Grenze bleibt, wie sie war: hochladen ja, alles
+        // andere nein. Ein KUNDE erreicht beides nicht.
+        assertForbidden(publisher, HttpMethod.GET, "/api/v1/admin/edge-trust-set", null);
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts",
+                Map.of("releaseSeq", 1, "channel", "canary", "waves",
+                        List.of(Map.of("name", "W", "devices",
+                                List.of(UUID.randomUUID().toString())))));
+        String customer = token("demo", "demo");
+        assertThat(putTrustSet(customer, Map.of("trustSet", set, "signature", sig))
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertForbidden(customer, HttpMethod.GET, "/api/v1/admin/edge-trust-set", null);
+        assertThat(rest.exchange(url("/api/v1/admin/edge-trust-set"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("trustSet", set, "signature", sig), new HttpHeaders()),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    /** Base64 von n Null-Bytes - Form statt Kryptografie (die api prüft keine Signatur). */
+    private static String b64(int n) {
+        return java.util.Base64.getEncoder().encodeToString(new byte[n]);
+    }
+
+    private ResponseEntity<Map<String, Object>> putTrustSet(String token, Map<String, ?> body) {
+        return rest.exchange(url("/api/v1/admin/edge-trust-set"), HttpMethod.PUT,
+                new HttpEntity<>(body, bearer(token)), new ParameterizedTypeReference<>() {});
+    }
+
+    /** Ein formal kaputtes Set wird mit einem DEUTSCHEN Grund abgelehnt. */
+    private void assertTrustSetRefused(String token, String set, String sig, String reason) {
+        ResponseEntity<Map<String, Object>> res =
+                putTrustSet(token, Map.of("trustSet", set, "signature", sig));
+        assertThat(res.getStatusCode()).as(reason).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(res.getBody().get("message"))).contains(reason);
+    }
+
     /** Eine Route, die dieses Token NICHT erreichen darf. */
     private void assertForbidden(String token, HttpMethod method, String path, Object body) {
         assertThat(rest.exchange(url(path), method,

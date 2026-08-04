@@ -108,6 +108,25 @@ type otaState struct {
 // Urteil fuer den Herzschlag bereit. Er WENDET NICHTS AN.
 func (a *Agent) otaCheckLoop(ctx context.Context) {
 	defer a.done.Done()
+	// Das Ablage-Verzeichnis EINMAL anlegen, und zwar HIER - damit es dem
+	// Nutzer gehoert, unter dem der Core laeuft (das Image faehrt als
+	// `voltpilot`, nicht als root).
+	//
+	// ⚠ Der Grund ist ein gemessener Fallstrick des Installers: `docker cp`
+	// eines VERZEICHNISSES setzt den Besitzer des ZIELVERZEICHNISSES auf die
+	// uid des Hosts (gemessen: 501:root bzw. root:root). `/data/ota` gehoerte
+	// danach nicht mehr dem Core - er koennte `target.json`/`current.json`
+	// nicht mehr schreiben, also weder eine Zuweisung ablegen noch bezeugen,
+	// was laeuft. Existiert das Verzeichnis dagegen schon, kopiert der
+	// Installer nur noch DATEIEN hinein, und der Besitz des Verzeichnisses
+	// bleibt unberuehrt (bewiesen in edge-app/test/install-selfcheck.sh).
+	//
+	// Ein Fehlschlag ist bewusst nicht fatal: das Verzeichnis ist ein
+	// Bequemlichkeits-Vorgriff, jeder Schreibpfad legt es ohnehin selbst an,
+	// und ein unbeschreibbares /data hat laengst der Enroll-Pfad gemeldet.
+	if err := os.MkdirAll(a.otaDir(), 0o755); err != nil {
+		slog.Warn("OTA: Ablage-Verzeichnis konnte nicht angelegt werden", "err", err)
+	}
 	a.otaCheckOnce()
 	t := time.NewTicker(otaCheckInterval)
 	defer t.Stop()

@@ -259,6 +259,43 @@ printf '%s\n' "$out" | grep -q 'PIN=' \
   && fail "a rejected assignment must abort BEFORE anything is pinned"
 pass "--from-target: digests come from the device's verified assignment; a non-ok verdict applies nothing"
 
+# --- 4c. A MISSING trust-set: name the fix, download NOTHING. -------------
+#
+# The most common reason a rejected assignment on an EXISTING box: the
+# root-signed trust-set was never placed under /data/ota (the first live
+# rollout died on exactly this). Two properties, and the second is the
+# security-relevant one:
+#
+#   * update.sh RECOGNISES the reason and prints the concrete fix - both the
+#     automated form (`install.sh --refresh-trust`) and the manual two-liner,
+#     because install.sh need not be present next to a hand-deployed box.
+#   * update.sh NEVER downloads a trust-set. A RUNNING box must not fetch the
+#     revocation anchor over the network - that would let it travel the very
+#     channel it revokes. Install time is the sanctioned TOFU moment, not
+#     update time.
+cat > "$d/bin/curl" <<'STUB'
+#!/bin/sh
+echo '{"has_target":true,"verdict":"rejected","reason":"Das Vertrauens-Set oder seine Signatur fehlt.","release":"edge-2026.08.0"}'
+STUB
+chmod +x "$d/bin/curl"
+out="$(cd "$d" && PATH="$d/bin:$PATH" bash -c '. ./update.sh
+  FROM_TARGET=1; ACTIVE_WEB_PORT=8484
+  resolve_target_pin
+  echo "PIN=${PIN_CORE_IMAGE:-none}"' 2>&1 || true)"
+printf '%s\n' "$out" | grep -q -- '--refresh-trust' \
+  || fail "a missing trust-set must name the automated fix: $out"
+printf '%s\n' "$out" | grep -q 'docker compose cp trust-set.json core:/data/ota/trust-set.json' \
+  || fail "a missing trust-set must also name the manual path: $out"
+printf '%s\n' "$out" | grep -q 'PIN=' \
+  && fail "a missing trust-set must abort BEFORE anything is pinned"
+# THE boundary: no fetch of a trust-set anywhere in update.sh.
+if grep -nE '(curl|wget)[^|]*trust-set' "$UPDATE"; then
+  fail "update.sh must never DOWNLOAD a trust-set - a running box stays out-of-band"
+fi
+grep -q '/api/v1/edge/trust-set' "$UPDATE" \
+  && fail "update.sh must not know the trust-set route at all"
+pass "missing trust-set: fix named (automated + manual), nothing downloaded, nothing pinned"
+
 # --- 5. docker compose validity of the merged templates (docker-gated). ---
 if docker compose version >/dev/null 2>&1; then
   d="$tmp_root/merge"; mkdir -p "$d"

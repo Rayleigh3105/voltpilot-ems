@@ -273,6 +273,80 @@ Die abschliessende Stufe des OTA-Konzepts (Scout `vp-ota-rollout-h4` §9 Stufe 4
 - **Beweise:** rein `otaverify/inspect_test.go` · `otaapply/apply_request_test.go` · `RolloutJournalTest` (8) · portal `adminEdgeUpdates.test.ts` (+13) ; Testcontainers `OtaRolloutApiTest` (7, davon 4 neu: Automatik gibt nur auf demselben Bake frei · Auto-Halt schlägt sie · Hand bleibt Vorgabe + Schalter reversibel · Vertrauens-Identität in der Matrix mit allen drei Zuständen · Journal-Export + Rollen-Grenze) ; Edge `agent/ota_trust_test.go`, `agent/ota_apply_test.go`, `web` (Passwort-Gate, 400-mit-Grund, //go:embed) ; CLI `cmd/vp-ota/main_test.go` (echter Rotations-Drill: der abgelöste Schlüssel ist danach nachweislich wertlos, das alte Set bleibt als Rückweg gültig).
 - **Ops:** keine neuen Pflicht-Variablen. Die Automatik hängt am schon gesetzten `VOLTPILOT_OTA_MQTT_LISTENER_ENABLED` (ohne Status-Ingest gäbe es kein Ist, gegen das der Wächter urteilen könnte); der `:8484`-Knopf am schon existierenden `VP_CALIBRATION_ADMIN_SECRET` und am Compose-Profil `ota`.
 
+## Trust-Set-Bereitstellung beim Einrichten: das Portal ist der Auslieferpunkt
+
+Captain-Order 04.08.2026, nachdem der erste Live-Rollout mit „Das Vertrauens-Set
+oder seine Signatur fehlt." abgelehnt wurde: eine NEUE Box kommt in die
+Vertrauenskette, ohne dass jemand zwei Dateien von Hand kopiert.
+Betreiber-Handbuch: [`docs/ota-signing.md`](docs/ota-signing.md) §6.0.
+
+- **DIE VERTRAUENSGRENZE (wörtlich so in Code UND Doku, weil alles daran hängt):**
+  (1) **Die Installation ist ein SANKTIONIERTER TOFU-Moment** — eine Box, die
+  gerade eingerichtet wird, vertraut ihrem Installationskanal per Definition
+  (sie hat sich soeben ihre IMAGES darüber geholt). Das aktuelle root-signierte
+  Trust-Set über denselben Kanal auszuliefern fügt KEIN neues Vertrauen hinzu:
+  die Box prüft die ROOT-Signatur weiterhin SELBST gegen ihre eingebackene
+  Wurzel, der Kanal transportiert nur öffentliches Material. (2) **Der spätere
+  Austausch bleibt out-of-band** — eine LAUFENDE Box holt sich NIE ein Trust-Set
+  über das Netz (das wäre der Widerrufs-Anker über genau den Kanal, den er
+  widerruft; die Rotations-Verteilung aus Stufe 4 bleibt offen). Der Core kennt
+  die Route nicht; `update.sh` DARF ein fehlendes Set erkennen und den Weg
+  NENNEN — es lädt nie eines herunter (im Selbst-Check festgenagelt).
+- **api:** Tabelle `edge_trust_set` (Migration `V20260806010000`) ist ein
+  **SINGLETON** — die Frage ist „welches Set gilt JETZT", und der VERLAUF liegt
+  schon im Git (`edge-app/ota/`, eine Rotation ist ein reviewbarer Commit); eine
+  zweite Historie hätte keinen Leser. `trust_set`/`signature` sind `text`, NIE
+  `jsonb` (dieselbe Begründung wie `edge_release.manifest`). Routen in
+  `EdgeTrustSetController`: `PUT /api/v1/admin/edge-trust-set` (platform-admin
+  ODER `edge-release-publisher` — das Set entsteht in derselben Zeremonie wie
+  der Release-Schlüssel; die Rolle wird dadurch nicht mächtiger),
+  `GET /api/v1/admin/edge-trust-set` (Betreiber-Sicht) und **unauthentifiziert**
+  `GET /api/v1/edge/trust-set/trust-set.json(.sig)`.
+- **Die öffentlichen Routen liefern ROHE BYTES und heißen wie die ZIELDATEIEN** —
+  kein JSON-Umschlag: darin stünde das Dokument als ESCAPED Zeichenkette, und
+  der Abnehmer ist ein Shell-Installer, der sie dekodieren müsste; genau dort
+  entstehen die stillen Byte-Abweichungen, an denen die Signatur scheitert. Im
+  Controller **`byte[]` statt `String`** zurückgeben: ein `String`-Rumpf kann
+  vom Jackson-Konverter als JSON-Zeichenkette SERIALISIERT werden (Quotes +
+  Escapes) — dieselbe Fehlerklasse, gegen die `text` statt `jsonb` schützt.
+- **Die api prüft die SIGNATUR nicht** (Doktrin des Registers: der einzige
+  Verifizierer, auf den es ankommt, ist das Gerät). Geprüft wird nur die FORM —
+  und dabei gilt **das Gegenteil der Release-Regel:** dort MÜSSEN Manifest und
+  Signatur dieselbe `key_id` nennen, hier müssen sie sich UNTERSCHEIDEN. Der
+  signierende (WURZEL-)Schlüssel darf NICHT im Set stehen, sonst könnte ein
+  Trust-Set die Wurzel ERWEITERN (derselbe Invariant, den `vp-ota trust-set`
+  erzwingt).
+- **⚠ `docker cp` eines VERZEICHNISSES setzt den Besitzer des ZIELVERZEICHNISSES
+  auf die uid des Hosts** (nachgemessen: `root:root` bzw. `501:root`). `/data/ota`
+  gehörte danach nicht mehr dem unprivilegierten Core-Benutzer (`voltpilot`), und
+  der könnte weder `target.json` (seine Zuweisung) noch `current.json` (den
+  bezeugten Stand) schreiben — ein OTA-Totalausfall aus einer Kopier-Bequemlichkeit.
+  Deshalb kopiert `install.sh` **einzelne DATEIEN in ein BESTEHENDES Verzeichnis**
+  (dann bleibt dessen Besitz unberührt), und `agent/ota.go` legt `<data>/ota` beim
+  Start selbst an, damit es dem Core gehört. Gilt für JEDE künftige Datei, die von
+  aussen in ein Container-Volume wandert. Beweis (echter Docker, mutationsgetestet):
+  `edge-app/test/install-selfcheck.sh`.
+- **⚠ Eine Migration muss NACH dem höchsten schon ausgelieferten Stand sortieren,
+  auch wenn sie fachlich zu einer früheren Stufe gehört.** Eine Version unterhalb
+  des Stands einer langlebigen DB ist für Flyway „out of order" und wird bei der
+  Vorgabe-Konfiguration NIE angewandt — die Selbstheilung repariert Prüfsummen,
+  sie holt keine übersprungene Migration nach. (Deshalb heißt die Trust-Set-
+  Migration `V20260806010000` und nicht `V20260804010000`.)
+- **Betreiber-Ablauf:** einmalig je Flotte das Set ins Portal (`PUT`, curl in
+  §6.0), danach bekommt es JEDE neue Box automatisch; eine BESTANDSBOX holt es
+  mit `./install.sh --refresh-trust` nach (ausdrückliche Handlung des Betreibers
+  an DIESER Box — der Ersatz für den scp-Zweizeiler, kein Automatismus und kein
+  Flotten-Fan-out). Fehlt es im Portal, WARNT der Installer laut und die
+  Installation gilt trotzdem als erfolgreich: eine Box ohne Trust-Set arbeitet
+  vollständig, sie kann nur (noch) kein Release anwenden.
+- **Beweise:** `AdminApiTest.theTrustSetIsUploadedByBothRolesAndServedByteExactToAnAnonymousInstaller`
+  (echtes Keycloak + DB: beide Rollen laden hoch, ANONYMER Abruf bekommt die
+  „unaufgeräumten" Bytes Zeichen für Zeichen zurück, Form-Ablehnungen inkl.
+  „Wurzel gehört nie ins Set", Rollen-Grenze unverändert) ·
+  `edge-app/test/install-selfcheck.sh` (gegen echten Docker: holen, ablegen,
+  bytegenau, andere Dateien in `/data/ota` überleben, Verzeichnis bleibt
+  schreibbar) · `edge-app/test/update-selfcheck.sh` (Weg genannt, nichts geladen).
+
 ## OTA Release-Automatik: `git tag` → signiert, geprüft, registriert
 
 Captain-Order 04.08.2026 („git tag → fertig"). Sie **revidiert D3 bewusst**: der RELEASE-Schlüssel ist jetzt ein heißes CI-Geheimnis (`VP_OTA_RELEASE_KEY`). Betreiber-Handbuch + einmalige Einrichtung: [`docs/ota-signing.md`](docs/ota-signing.md) §4/§4d.

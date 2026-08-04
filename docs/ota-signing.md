@@ -461,6 +461,10 @@ nachlesbar, welchen Release-Schlüsseln die Flotte traut. Begründung und
 Abgrenzung: `edge-app/ota/README.md`. **Ohne diese beiden Dateien bricht der
 Lauf ab** — er könnte die Kette sonst nicht gegenprüfen.
 
+**Dieselben zwei Dateien gehören einmalig ins Portal** (§6.0), damit jede neu
+eingerichtete Box den Vertrauens-Anker automatisch mitbekommt. Das Repo bleibt
+die reviewbare Wahrheit; das Portal ist der Auslieferpunkt.
+
 ### Schritt 2 — Keycloak: Rolle, Client, Dienstkonto
 
 In einem **frischen** Realm-Import sind alle drei schon enthalten (der Client
@@ -621,6 +625,76 @@ beaufsichtigt durchgeführt.
 Flotten-Fan-out.** Ein Fan-out wäre genau die Verteilung ohne Prüfung, gegen
 die die ganze Kette gebaut ist.
 
+### 6.0 Das Trust-Set kommt beim EINRICHTEN automatisch
+
+Seit dem 04.08.2026 (Captain-Order, nachdem der erste Live-Rollout mit „Das
+Vertrauens-Set oder seine Signatur fehlt." abgelehnt wurde) bringt der
+Installer den Vertrauens-Anker selbst mit: `install.sh` holt nach dem Start
+das **aktuelle root-signierte Trust-Set** aus dem Portal und legt es unter
+`/data/ota/` ab. **Der Handpfad unten bleibt vollständig gültig** — er ist der
+Weg für Bestandsboxen und für den Fall, dass das Portal (noch) keines hat.
+
+**Die Vertrauensgrenze, und sie ist der ganze Punkt:**
+
+* **Die Installation ist ein SANKTIONIERTER TOFU-Moment.** Eine Box, die
+  gerade eingerichtet wird, vertraut ihrem Installationskanal per Definition —
+  sie hat sich soeben ihre **Images** darüber geholt. Das Trust-Set über
+  denselben Kanal auszuliefern fügt **kein neues Vertrauen** hinzu: die Box
+  prüft die Root-Signatur weiterhin **selbst** gegen ihre eingebackene Wurzel,
+  der Kanal transportiert nur öffentliches Material.
+* **Der spätere Austausch bleibt out-of-band.** Eine **laufende** Box holt sich
+  **nie** ein Trust-Set über das Netz — das wäre der Widerrufs-Anker über genau
+  den Kanal, den er widerruft. Der Core kennt die Route nicht; `update.sh`
+  **erkennt** ein fehlendes Set und **nennt** den Weg, lädt aber keines
+  herunter. Die Verteil-Entscheidung für eine **Rotation** (§7.1) ist davon
+  unberührt und bleibt offen.
+
+**Einmalig je Flotte** trägt der Betreiber das Set ins Portal ein (danach
+bekommt es **jede** neue Box automatisch):
+
+```bash
+# Im Verzeichnis mit den beiden Dateien aus der Zeremonie (§3.4) - identisch
+# mit edge-app/ota/ im Repo bzw. den Assets der Release edge-2026.08.0.
+python3 - > /tmp/trust-set-payload.json <<'PY'
+import json
+print(json.dumps({"trustSet":  open("trust-set.json").read(),
+                  "signature": open("trust-set.json.sig").read()}))
+PY
+
+curl -fsS -X PUT "https://portal.voltpilot.de/api/v1/admin/edge-trust-set" \
+  -H "Authorization: Bearer $VP_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data-binary @/tmp/trust-set-payload.json
+
+# Gegenprobe - exakt das, was eine neue Box beim Einrichten lädt (anonym):
+curl -fsS https://portal.voltpilot.de/api/v1/edge/trust-set/trust-set.json | diff - trust-set.json \
+  && echo "bytegleich"
+```
+
+Das `python3` dient **nur** dem JSON-Verpacken für den Upload — die
+**Ausliefer**-Routen geben die **rohen Bytes** heraus (`…/trust-set.json` und
+`…/trust-set.json.sig` heißen wie die Zieldateien), damit der Installer
+schlicht schreibt, was er lädt, und nirgends eine Zeichenkette dekodieren muss.
+Genau dort entstünden sonst die stillen Byte-Abweichungen, an denen die
+Signatur scheitert.
+
+Die api legt die Bytes **unverändert** ab und prüft nur die FORM (parst?
+`alg` = ed25519? Domain `trust-set`? steckt die Wurzel fälschlich im Set?) —
+**die Signatur prüft sie bewusst nicht**, denn der einzige Verifizierer, auf
+den es ankommt, ist das Gerät mit seiner eingebackenen Wurzel (dieselbe
+Doktrin wie beim Register, §4c). Hochladen dürfen der Portal-Admin **und** das
+schmale Veröffentlichungs-Konto (`edge-release-publisher`) — es entsteht in
+derselben Zeremonie wie der Release-Schlüssel; mehr erreicht diese Rolle
+dadurch nicht.
+
+**Auf einer BESTANDSBOX** (vor dieser Automatik eingerichtet) genügt danach
+ein Befehl im Deploy-Verzeichnis — der Ersatz für den bisherigen
+scp-Zweizeiler, ausdrücklich eine Handlung des Betreibers an genau dieser Box:
+
+```bash
+./install.sh --refresh-trust
+```
+
 ### Checkliste je Box
 
 1. **Vorher notieren**, was läuft (das Rollback-Ziel):
@@ -639,17 +713,35 @@ die die ganze Kette gebaut ist.
    Portal steht die Anlage auf online, und mindestens **ein echter Steuerzyklus**
    ist gelaufen (die Pilsting-Regel). Kein Weitermachen mit der nächsten Box,
    bevor diese Box gesund ist.
-4. **Wurzel bestätigen:** ein Testpaket nach Abschnitt 5 ablegen und prüfen,
+4. **Trust-Set ablegen** — auf einer Bestandsbox einmalig, danach nie wieder
+   (eine NEU eingerichtete Box bringt es seit §6.0 selbst mit):
+   ```bash
+   ./install.sh --refresh-trust
+   ```
+   Ohne `install.sh` im Deploy-Verzeichnis der Handpfad, die zwei Dateien aus
+   `edge-app/ota/` auf die Box kopieren und dann:
+   ```bash
+   docker compose cp trust-set.json     core:/data/ota/trust-set.json
+   docker compose cp trust-set.json.sig core:/data/ota/trust-set.json.sig
+   ```
+   ⚠ **Immer die DATEIEN kopieren, nie das Verzeichnis.** `docker cp` eines
+   Verzeichnisses setzt den Besitzer des ZIELVERZEICHNISSES auf die uid des
+   Hosts (nachgemessen); `/data/ota` gehörte danach nicht mehr dem
+   unprivilegierten Core-Benutzer, und der könnte weder `target.json` (seine
+   Zuweisung) noch `current.json` (den bezeugten Stand) schreiben.
+5. **Wurzel bestätigen:** ein Testpaket nach Abschnitt 5 ablegen und prüfen,
    dass `ota_reason` **verifiziert** meldet. Meldet es „kein Vertrauensanker",
-   trägt das Image die Wurzel nicht — dann stimmt der Digest nicht.
-5. **Der Crossover-Stand steht seit Stufe 4 im PORTAL** — jedes Gerät meldet
+   trägt das Image die Wurzel nicht — dann stimmt der Digest nicht. Meldet es
+   „Das Vertrauens-Set oder seine Signatur fehlt.", fehlt Schritt 4 (genau
+   diesen Grund erkennt auch `update.sh --from-target` und druckt den Weg).
+6. **Der Crossover-Stand steht seit Stufe 4 im PORTAL** — jedes Gerät meldet
    seine Vertrauens-Identität im Herzschlag, und unter **Plattform →
    Edge-Updates** trägt die Flotten-Matrix je Gerät eine Spalte *Vertrauen*
    (`gekreuzt ✓` / `Crossover offen` / `unbekannt`) plus die ruhige Zeile
    „Crossover offen: n Geräte". Die handgeführte Liste ist damit nur noch
    Beiwerk. **`unbekannt` heißt „älterer Stand", nie „nicht gekreuzt"** — ein
    Gerät, das die Identität gar nicht meldet, ist kein Befund.
-6. **Bei Problemen zurück:** auf den in Schritt 1 notierten Digest pinnen und
+7. **Bei Problemen zurück:** auf den in Schritt 1 notierten Digest pinnen und
    erneut `update.sh`.
 
 Zwischen zwei Boxen liegt bewusst ein Abstand (mindestens ein voller Tageslauf
@@ -660,11 +752,28 @@ erwischt.
 
 Seit Stufe 2 kommt das **Release** über den Downlink (retained auf
 `ems/{t}/{s}/{d}/v2/update`). Das **root-signierte Trust-Set** kommt weiterhin
-NICHT über diesen Weg, sondern liegt beim Crossover je Box im Datenverzeichnis:
-es ist der Widerrufs-Anker, und den Widerruf über denselben Kanal zu verteilen,
-über den auch die widerrufenen Sachen kamen, ist eine Kreisabhängigkeit. Ein
-Gerät ohne Trust-Set lehnt eine Zuweisung deshalb **fail-closed** ab und sagt
-das als Grund — sichtbar in der Flotten-Matrix, nie stillschweigend.
+NICHT über diesen Weg, sondern liegt je Box im Datenverzeichnis: es ist der
+Widerrufs-Anker, und den Widerruf über denselben Kanal zu verteilen, über den
+auch die widerrufenen Sachen kamen, ist eine Kreisabhängigkeit. Ein Gerät ohne
+Trust-Set lehnt eine Zuweisung deshalb **fail-closed** ab und sagt das als
+Grund — sichtbar in der Flotten-Matrix, nie stillschweigend.
+
+**Die Einrichtungs-Automatik (§6.0) ändert daran nichts** — sie ist genau
+deshalb an die INSTALLATION gebunden und nicht an die Laufzeit:
+
+| | Wer holt? | Wann? | Warum zulässig |
+|---|---|---|---|
+| **Einrichtung** (`install.sh`) | der Installer, einmal | während der Installation | die Box vertraut ihrem Installationskanal ohnehin (sie hat ihre **Images** darüber geholt); sie prüft die Root-Signatur **selbst** |
+| **Bestandsbox** (`install.sh --refresh-trust`) | ein **Betreiber**, je Box | ausdrücklich angestoßen | der Ersatz für den scp-Zweizeiler — dieselbe beaufsichtigte Handlung, nur getippt statt kopiert |
+| **Laufende Box** | **niemand** | **nie** | ein Abruf zur Laufzeit ließe den Widerrufs-Anker über den Kanal reisen, den er widerruft |
+
+Der Core kennt die Ausliefer-Route deshalb **gar nicht**; `update.sh`
+**erkennt** ein fehlendes Set (der Grund steht wörtlich in der Ablehnung) und
+**nennt** den Weg, lädt aber keines herunter. Für eine **Rotation** (§7.1)
+bleibt die Verteilung damit unverändert die beaufsichtigte je Box — ein
+automatischer Trust-Set-Downlink ist weiterhin **bewusst nicht gebaut** und
+bräuchte zusätzlich einen monotonen Zähler im signierten Set gegen Replay
+(Captain-Entscheid, kein Implementierungsdetail).
 
 ---
 
@@ -826,7 +935,7 @@ Der belastbare Hebel ist immer das **neu unterschriebene Trust-Set**.
 | `root-<id>.pub` | `edge-app/core/internal/otaverify/rootkeys.json` (Git) | Nein |
 | `rel-<id>.key` | Arbeitsmaschine des Owners **+ Forgejo-Secret `VP_OTA_RELEASE_KEY`** | Ja (ersetzbar — §7.1) |
 | `rel-<id>.pub` | im Trust-Set | Nein |
-| `trust-set.json(.sig)` | **`edge-app/ota/` (Git)** + Release-Asset + auf jedem Gerät unter `/data/ota/` | Nein |
+| `trust-set.json(.sig)` | **`edge-app/ota/` (Git)** + Release-Asset + **Portal (`edge_trust_set`, der Auslieferpunkt für neue Boxen, §6.0)** + auf jedem Gerät unter `/data/ota/` | Nein |
 | `release.json(.sig)` | Release-Asset + Register (`edge_release.manifest`) | Nein |
 | Client-Secret des Veröffentlichers | Forgejo-Secret `VP_OTA_PUBLISHER_CLIENT_SECRET`, Keycloak | Ja (Rolle: nur registrieren) |
 
@@ -857,6 +966,18 @@ und bleibt der Hebel, der einen missbrauchten Release-Schlüssel entwertet.
   Welle, Not-Aus, Geräte-Ziel, Flotte, Journal, Mandanten, Registry und selbst
   auf die Release-LISTE ein 403 — und sieht ohne Mandant keine einzige
   Kundenzeile, auch nicht mit gesetztem Umschalter-Header).
+* **Trust-Set-Bereitstellung (§6.0):**
+  `AdminApiTest.theTrustSetIsUploadedByBothRolesAndServedByteExactToAnAnonymousInstaller`
+  (echtes Keycloak + echte DB: beide Rollen laden hoch, ein ANONYMER Abruf
+  bekommt die „unaufgeräumten" Bytes Zeichen für Zeichen zurück, die
+  Form-Prüfungen inkl. „die Wurzel gehört nie ins Set", und die
+  Publisher-Rolle wird dadurch kein Stück mächtiger) —
+  `edge-app/test/install-selfcheck.sh` (gegen ECHTEN Docker: `install.sh`
+  holt vom Stub-Portal und legt ab; die Bytes kommen unverändert an, andere
+  Dateien in `/data/ota` überleben, und **das Verzeichnis bleibt für den
+  unprivilegierten Core schreibbar** — die naive Verzeichnis-Kopie fällt
+  hier durch) — `edge-app/test/update-selfcheck.sh` (`update.sh` NENNT den
+  Weg bei fehlendem Set und lädt nachweislich **nichts** herunter).
 * **Veröffentlichungs-Schritte:** `tools/ota/test-release-publish.sh`
   (Tag-Annotation, Zustandsversion, key_id, Token, next-seq, 201/200/409 gegen
   einen Stub — plus die ECHTE Zeremonie mit `go`, byteweise zurückgelesen) und
