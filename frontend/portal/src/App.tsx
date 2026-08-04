@@ -39,6 +39,7 @@ import { activeAreaKey, activeKeyForPage, anlageSidebar, resolveAnlage } from '.
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
 import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
 import { useFreshnessPoll } from './useFreshnessPoll';
+import { useDeployWatch } from './deployWatch';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
 import { OnboardingWizard } from './Onboarding';
@@ -428,6 +429,10 @@ function UnifiedPortal() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   // The shell's "＋ Anlage hinzufügen" one-flow drawer (single-Anlage customers).
   const [addAnlageOpen, setAddAnlageOpen] = useState(false);
+  // Deploy-Erkennung (deployWatch.ts): ein tagelang offener Tab erfuhr sonst
+  // NIE von einem Deploy und zeigte die UI seines Boot-Stands weiter (die
+  // APIs sind additiv, die alte App läuft klaglos - Scout vp-stale-view-w2).
+  const updateAvailable = useDeployWatch();
 
   const navigate = useCallback(
     (target: Route | PageId) => {
@@ -781,6 +786,23 @@ function UnifiedPortal() {
       onTenantChange={changeTenant}
       anlage={anlageNav}
     >
+      {updateAvailable && (
+        // Der Server liefert einen neueren Stand als den, den dieser Tab
+        // ausführt (useDeployWatch). Sichtbar = dezenter Hinweis, nie ein
+        // Reload unter dem Kunden; verdeckte Tabs hat der Hook schon selbst
+        // still neu geladen. position: fixed - der DOM-Platz ist egal.
+        <div className="vp-update-toast" role="status">
+          <span>Eine neue Version des Portals ist verfügbar.</span>
+          <Button
+            variant="primary"
+            size="sm"
+            iconLeft={<Icon name="refresh-cw" size={16} />}
+            onClick={() => window.location.reload()}
+          >
+            Jetzt aktualisieren
+          </Button>
+        </div>
+      )}
       {error && !loadFailed && (
         <div
           className="vp-alert vp-alert-err"
