@@ -75,6 +75,21 @@ public class SecurityConfig {
                 // (absent unless voltpilot.enrollment.enabled).
                 .requestMatchers(HttpMethod.POST, "/api/v1/enrollment/*/csr").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/enrollment/*/certificate").permitAll()
+                // Das root-signierte Trust-Set beim EINRICHTEN: eine Box, die
+                // gerade installiert wird, hat noch kein Token - dieselbe Lage
+                // wie beim Enrollment. Herausgegeben wird ausschliesslich
+                // OEFFENTLICHES Schluesselmaterial (die .pub-Teile der
+                // Release-Schluessel plus die Signatur der kalten Wurzel
+                // darueber), und die Box prueft die Root-Signatur weiterhin
+                // selbst gegen ihre EINGEBACKENE Wurzel - der Kanal
+                // transportiert nur, er begruendet kein Vertrauen.
+                // EXAKTE Pfade, kein /api/v1/edge/** - dieselbe Ueberlegung wie
+                // bei den Probe-Pfaden oben: ein Platzhalter oeffnete auch
+                // jede kuenftige Route unter diesem Praefix. Die Routen heissen
+                // wie die ZIELDATEIEN auf dem Geraet, damit der Installer
+                // schlicht schreibt, was er laedt.
+                .requestMatchers(HttpMethod.GET, "/api/v1/edge/trust-set/trust-set.json",
+                        "/api/v1/edge/trust-set/trust-set.json.sig").permitAll()
                 // Gürtel UND Hosenträger für den Admin-Baum: die eigentliche
                 // Autorisierung ist weiterhin @PreAuthorize je Controller, aber
                 // seit es eine ZWEITE, eng geschnittene Admin-Rolle gibt

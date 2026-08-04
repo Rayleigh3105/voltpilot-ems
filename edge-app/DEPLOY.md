@@ -20,7 +20,19 @@ chmod +x install.sh
 
 Die **erzeugte `docker-compose.yml` nutzt ausschließlich vorgefertigte Registry-Images** (`edge-app-core` + `edge-app-nodered`, `pull_policy: always`) - **kein lokaler Build, kein Simulator**. Sie spiegelt die echten Dienste der Repo-`docker-compose.yml` exakt (Images, Env, Volumes, Ports), sodass ein gezogener Stack sich wie ein Repo-basiertes `docker compose up -d` verhält.
 
-Der Installer startet **nur** den echten Modus (`core` + `nodered`), verlangt ein nicht-Standard Node-RED-Passwort und setzt die `VP_DEV_*`-Schalter nie. Er schreibt in das **aktuelle Verzeichnis** (dort, wo er ausgeführt wird) und überschreibt eine **handbearbeitete** `docker-compose.yml` nie ohne Rückfrage (eine selbst erzeugte wird beim Update aktualisiert). Nützliche Optionen: `./install.sh --help`, `--reconfigure` (neue `.env` **und** `docker-compose.yml`), `--force-compose` (nur die `docker-compose.yml`), `--print-compose` (die erzeugte Datei nach stdout), `--dry-run` (nur prüfen), `--non-interactive` (Werte aus der Umgebung). Danach ist nur noch der Wechselrichter zu wählen (Abschnitt 4) und die Referenz im Portal zu beanspruchen (Abschnitt 5), die der Installer am Ende anzeigt.
+Der Installer startet **nur** den echten Modus (`core` + `nodered`), verlangt ein nicht-Standard Node-RED-Passwort und setzt die `VP_DEV_*`-Schalter nie. Er legt ausserdem das **root-signierte Vertrauens-Set** der OTA-Signaturkette ab (siehe unten). Er schreibt in das **aktuelle Verzeichnis** (dort, wo er ausgeführt wird) und überschreibt eine **handbearbeitete** `docker-compose.yml` nie ohne Rückfrage (eine selbst erzeugte wird beim Update aktualisiert). Nützliche Optionen: `./install.sh --help`, `--reconfigure` (neue `.env` **und** `docker-compose.yml`), `--force-compose` (nur die `docker-compose.yml`), `--print-compose` (die erzeugte Datei nach stdout), `--dry-run` (nur prüfen), `--non-interactive` (Werte aus der Umgebung). Danach ist nur noch der Wechselrichter zu wählen (Abschnitt 4) und die Referenz im Portal zu beanspruchen (Abschnitt 5), die der Installer am Ende anzeigt.
+
+### Das Vertrauens-Set kommt automatisch mit
+
+Der Installer holt nach dem Start das **aktuelle root-signierte Trust-Set** aus dem Portal (`GET /api/v1/edge/trust-set/…`) und legt es unter `/data/ota/` im Core ab. Ohne diesen Vertrauens-Anker lehnt das Gerät **jede** Release-Zuweisung fail-closed ab (`Das Vertrauens-Set oder seine Signatur fehlt.`) - genau daran ist der erste Live-Rollout gescheitert. Liefert das Portal (noch) keines, **warnt** der Installer laut und die Installation gilt trotzdem als erfolgreich: eine Box ohne Trust-Set arbeitet vollständig, sie kann nur (noch) kein Release anwenden.
+
+**Die Vertrauensgrenze** (ausführlich in [`docs/ota-signing.md`](../docs/ota-signing.md) §6.0): die **Installation** ist ein sanktionierter TOFU-Moment - die Box vertraut ihrem Installationskanal ohnehin, sie hat sich soeben ihre **Images** darüber geholt, und sie prüft die Root-Signatur weiterhin **selbst** gegen ihre eingebackene Wurzel. Eine **laufende** Box holt sich dagegen **nie** ein Trust-Set über das Netz; `update.sh` erkennt ein fehlendes nur und nennt den Weg.
+
+Eine **Bestandsbox** (vor dieser Automatik eingerichtet) bekommt es mit einem Befehl im Deploy-Verzeichnis - der Ersatz für den bisherigen Handpfad, ausdrücklich eine Handlung des Betreibers an genau dieser Box:
+
+```bash
+./install.sh --refresh-trust     # holt + legt nur das Trust-Set ab, sonst nichts
+```
 
 > **Lockstep-Hinweis (Entwickler):** Ändern sich in der Repo-`edge-app/docker-compose.yml` die echten Dienste (Image-Refs, Env-Variablen/-Defaults, Volumes, Ports), muss `generate_compose()` in `install.sh` entsprechend angepasst werden. Der Selbst-Check `edge-app/test/install-selfcheck.sh` prüft genau diese Gleichheit (`install.sh --print-compose` gegen `docker compose config` der Repo-Datei) und schlägt bei Drift fehl.
 

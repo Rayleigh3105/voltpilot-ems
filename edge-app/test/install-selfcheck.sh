@@ -153,6 +153,143 @@ else
   note "docker compose (v2) unavailable - skipping config validity + equivalence check"
 fi
 
+# --- 2b. Trust-set provisioning: structure (docker-free). ------------------
+#
+# A NEW box must join the OTA trust chain without a manual copy step - the
+# first live rollout was rejected for a missing trust-set. Two properties are
+# pinned here because both are load-bearing and neither is obvious from
+# reading the happy path:
+#
+#   * The trust boundary. INSTALL time is a sanctioned TOFU moment (the box
+#     just pulled its images over the same channel, and it still verifies the
+#     ROOT signature itself). A RUNNING box must never fetch a trust-set on
+#     its own - so the ONLY fetch lives in install.sh, and the core has no
+#     such route.
+#   * FILE-level copies only. `docker cp` of a DIRECTORY sets the owner of the
+#     DESTINATION DIRECTORY to the host uid (measured: root:root / 501:root);
+#     /data/ota would stop belonging to the unprivileged core user, which
+#     could then write neither target.json (its assignment) nor current.json
+#     (the stand it witnesses). Copying single FILES into an EXISTING
+#     directory leaves that ownership untouched - proven for real in 2c.
+grep -q 'refresh-trust' "$INSTALL" || fail "install.sh must offer --refresh-trust"
+grep -q '/api/v1/edge/trust-set' "$INSTALL" || fail "install.sh must fetch the trust-set from the portal"
+# The copy must name FILES on both sides - never `cp <dir> core:/data`.
+if grep -E 'dc cp .*core:/data(/)?"?$' "$INSTALL" | grep -qv 'trust-set'; then
+  fail "install.sh must copy trust-set FILES, never a directory into /data"
+fi
+# shellcheck disable=SC2016  # literal shell text inside install.sh, deliberately not expanded
+grep -q 'core:${EDGE_OTA_DIR}/${TRUST_SET_FILE}' "$INSTALL" \
+  || fail "the trust-set copy must target the FILE path inside /data/ota"
+# A missing trust-set must never fail the install: a box without one works
+# fully, it just cannot (yet) apply a release.
+grep -q 'TRUST_RESULT="nicht verfügbar"' "$INSTALL" \
+  || fail "install.sh must degrade (not die) when the portal serves no trust-set"
+pass "trust-set: fetched at install time, FILE-level copy, missing set degrades"
+
+# --- 2c. Trust-set provisioning: the REAL placement (docker). --------------
+#
+# The ownership rule above is a measured docker behaviour, not a style choice,
+# so it is proven against a real container that mirrors the core image
+# (unprivileged user owning /data) with a real stub portal.
+if docker info >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+  tdir="$(mktemp -d)"
+  proj="vp-trustcheck-$$"
+  cleanup_trust() {
+    docker compose --project-directory "$tdir" -f "$tdir/docker-compose.yml" \
+      -p "$proj" down -v >/dev/null 2>&1 || true
+    docker rmi -f "$proj-core" >/dev/null 2>&1 || true
+    [ -n "${stub_pid:-}" ] && kill "$stub_pid" >/dev/null 2>&1
+    rm -rf "$tdir"
+  }
+  trap cleanup_trust EXIT
+
+  # A stub portal serving the two RAW-byte routes, incl. a deliberately
+  # "untidy" document: whatever the api stores must come back byte for byte,
+  # because the root signature is over exactly these bytes.
+  printf '{\n  "schema_version": "1.0",\n  "keys": [ ]\n}\n' > "$tdir/trust-set.json"
+  printf '{"schema_version":"1.0","domain":"trust-set"}\n' > "$tdir/trust-set.json.sig"
+  mkdir -p "$tdir/api/v1/edge/trust-set"
+  cp "$tdir/trust-set.json" "$tdir/trust-set.json.sig" "$tdir/api/v1/edge/trust-set/"
+  # Pick the port OURSELVES rather than parsing the server banner: python
+  # block-buffers stdout into a file, so the banner is not there yet when we
+  # would read it (measured).
+  port="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
+  ( cd "$tdir" && exec python3 -m http.server "$port" --bind 127.0.0.1 >/dev/null 2>&1 ) &
+  stub_pid=$!
+  disown "$stub_pid" 2>/dev/null || true   # keep the kill quiet at the end
+  sleep 1
+
+  cat > "$tdir/Dockerfile" <<'EOF'
+FROM alpine:3.20
+RUN addgroup -S voltpilot && adduser -S -G voltpilot voltpilot \
+    && mkdir -p /data && chown voltpilot:voltpilot /data
+USER voltpilot
+ENTRYPOINT ["sleep", "600"]
+EOF
+  cat > "$tdir/docker-compose.yml" <<EOF
+name: $proj
+services:
+  core:
+    image: $proj-core
+    volumes:
+      - vp-edge-data:/data
+volumes:
+  vp-edge-data:
+EOF
+
+  if docker build -q -t "$proj-core" "$tdir" >/dev/null 2>&1 \
+     && docker compose --project-directory "$tdir" -f "$tdir/docker-compose.yml" -p "$proj" up -d >/dev/null 2>&1; then
+    # The core creates /data/ota itself at startup (agent/ota.go); the stand-in
+    # cannot, so create it AS THE IMAGE USER exactly like install.sh does.
+    docker compose --project-directory "$tdir" -f "$tdir/docker-compose.yml" -p "$proj" \
+      exec -T core mkdir -p /data/ota >/dev/null 2>&1 || true
+    # Something the core owns and must keep owning + writing.
+    docker compose --project-directory "$tdir" -f "$tdir/docker-compose.yml" -p "$proj" \
+      exec -T core sh -c 'echo KEEP > /data/ota/current.json' >/dev/null 2>&1
+
+    # Drive install.sh's OWN functions - not a re-implementation.
+    (
+      set +u
+      # shellcheck disable=SC1090
+      source "$INSTALL"
+      TARGET_DIR="$tdir"; COMPOSE_FILE="$tdir/docker-compose.yml"
+      # Both are consumed by install.sh's OWN functions below (indirectly).
+      # shellcheck disable=SC2329
+      dc() { docker compose --project-directory "$TARGET_DIR" -f "$COMPOSE_FILE" -p "$proj" "$@"; }
+      # shellcheck disable=SC2034
+      VP_PORTAL_BASE_URL="http://127.0.0.1:${port}"
+      fetched="$(mktemp -d)"
+      fetch_trust_set "$fetched" || { echo "FETCH-FAILED"; exit 1; }
+      place_trust_set "$fetched" || { echo "PLACE-FAILED"; exit 1; }
+      rm -rf "$fetched"
+    ) || fail "install.sh's fetch/place of the trust-set failed against the stub portal"
+
+    dcx() {
+      docker compose --project-directory "$tdir" -f "$tdir/docker-compose.yml" -p "$proj" \
+        exec -T core "$@"
+    }
+    # (a) byte-exact: the untidy document survives the whole path.
+    got="$(dcx cat /data/ota/trust-set.json)"
+    [ "$got" = "$(cat "$tdir/trust-set.json")" ] \
+      || fail "the trust-set did not arrive byte for byte"
+    dcx test -s /data/ota/trust-set.json.sig || fail "the detached signature was not placed"
+    # (b) other files in /data/ota survive - a wipe would destroy current.json,
+    #     which is integrity-relevant LOCAL state.
+    [ "$(dcx cat /data/ota/current.json)" = "KEEP" ] \
+      || fail "placing the trust-set must not touch other files in /data/ota"
+    # (c) THE ownership rule: the core can still write its own state.
+    dcx sh -c 'touch /data/ota/target.json' >/dev/null 2>&1 \
+      || fail "after placement the core can no longer write /data/ota - the directory was chowned away"
+    pass "trust-set placement: byte-exact, merges, and /data/ota stays writable by the core"
+  else
+    note "could not build/start the stand-in core - skipping the real placement proof"
+  fi
+  cleanup_trust
+  trap - EXIT
+else
+  note "docker / python3 unavailable - skipping the real trust-set placement proof"
+fi
+
 # --- 3. shellcheck (if present). ------------------------------------------
 if command -v shellcheck >/dev/null 2>&1; then
   if shellcheck "$INSTALL"; then pass "shellcheck clean"; else fail "shellcheck reported issues"; fi

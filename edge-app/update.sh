@@ -730,6 +730,29 @@ resolve_target_pin() {
     # Ein nicht geprüftes Release wird NICHT angewandt - egal wie es heißt.
     err "Das zugewiesene Release ist auf diesem Gerät nicht anwendbar (${verdict:-unbekannt})."
     [ -n "$reason" ] && info "Grund: ${reason}"
+    # Der häufigste Grund auf einer BESTEHENDEN Box: das root-signierte
+    # Vertrauens-Set liegt gar nicht erst unter /data/ota (genau daran ist der
+    # erste Live-Rollout gescheitert). Seit der Einrichtungs-Automatik bringt
+    # install.sh es mit; eine ältere Box hat es schlicht nie bekommen.
+    #
+    # ⚠ Hier wird NICHTS heruntergeladen, und das ist Absicht: eine LAUFENDE
+    # Box holt sich nie ein Trust-Set über das Netz - das wäre der
+    # Widerrufs-Anker über genau den Kanal, den er widerruft. update.sh darf
+    # den Mangel ERKENNEN und den Weg NENNEN, mehr nicht. Das Nachlegen ist
+    # eine ausdrückliche Handlung eines Betreibers an dieser Box.
+    case "$reason" in
+      *Vertrauens-Set*|*Vertrauensanker*)
+        echo
+        info "${C_BOLD}Dieser Box fehlt der Vertrauens-Anker.${C_RESET} Nachlegen (einmalig, je Box):"
+        info "  ${C_CYAN}./install.sh --refresh-trust${C_RESET}"
+        info "  (holt das aktuelle root-signierte Set aus dem Portal und legt es ab)"
+        info "Von Hand, falls install.sh hier nicht liegt - die zwei Dateien aus"
+        info "edge-app/ota/ des Repos auf die Box kopieren und dann:"
+        info "  ${C_CYAN}docker compose cp trust-set.json core:/data/ota/trust-set.json${C_RESET}"
+        info "  ${C_CYAN}docker compose cp trust-set.json.sig core:/data/ota/trust-set.json.sig${C_RESET}"
+        info "Danach prüft das Gerät spätestens nach 30 s erneut. Hintergrund: docs/ota-signing.md §6."
+        ;;
+    esac
     die "Signaturkette bzw. Politik nicht erfüllt - es wurde nichts angewandt."
   fi
 
