@@ -1,4 +1,11 @@
 {
   "schema_version": "1.0",
-  "keys": []
+  "keys": [
+    {
+      "key_id": "root-2026-a",
+      "alg": "ed25519",
+      "public_key": "2tVnqoOYrpcfVvaHl2MpVOP86xi+YqVVH+WvCiNC+K4=",
+      "comment": "Kalte Wurzel, erzeugt 2026-08-04, offline beim Owner"
+    }
+  ]
 }

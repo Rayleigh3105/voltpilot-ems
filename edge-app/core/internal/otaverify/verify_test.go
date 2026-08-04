@@ -284,16 +284,29 @@ func TestVerifyFailsClosedWithoutABakedRoot(t *testing.T) {
 	}
 }
 
-func TestBakedRootsAreEmptyUntilTheCeremonyRan(t *testing.T) {
+// Die Zeremonie lief am 04.08.2026 (offline beim Owner, docs/ota-signing.md
+// §3.2); seither ist DIESE Wurzel die Vertrauensbasis der ganzen Flotte. Der
+// Waechter nagelt sie deshalb ganz fest - genau EINE Wurzel, mit DIESER key_id
+// und DIESEM Schluesselwert. Ein blosses „nicht leer" waere genau die Luecke,
+// die er zumacht: ein stiller Wurzeltausch darf die CI nie passieren.
+func TestBakedRootIsExactlyTheCeremonyRoot(t *testing.T) {
+	const (
+		wantKeyID = "root-2026-a"
+		wantKey   = "2tVnqoOYrpcfVvaHl2MpVOP86xi+YqVVH+WvCiNC+K4="
+	)
 	ks, err := BakedRoots()
 	if err != nil {
 		t.Fatalf("rootkeys.json ist nicht lesbar: %v", err)
 	}
-	// Dieser Test ist ABSICHTLICH so formuliert: er faellt in dem Moment auf,
-	// in dem der Owner eine echte Wurzel eintraegt - dann gehoert er auf
-	// „genau eine Wurzel, und zwar diese" umgestellt (docs/ota-signing.md).
-	if len(ks.Keys) != 0 {
-		t.Fatalf("es sind %d Wurzeln eingebacken - Test auf die erwartete Wurzel festnageln", len(ks.Keys))
+	if len(ks.Keys) != 1 {
+		t.Fatalf("erwartet genau eine eingebackene Wurzel, sind %d", len(ks.Keys))
+	}
+	if got := ks.Keys[0].KeyID; got != wantKeyID {
+		t.Errorf("key_id: erwartet '%s', ist '%s'", wantKeyID, got)
+	}
+	if got := ks.Keys[0].PublicKey; got != wantKey {
+		t.Errorf("public_key von '%s' weicht ab - wurde die Wurzel getauscht?\n erwartet: %s\n ist:      %s",
+			wantKeyID, wantKey, got)
 	}
 }
 
