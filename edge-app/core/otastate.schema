@@ -1,0 +1,18 @@
+# Die /data-Zustandsversion, die der aktuelle Stand dieses Repos schreibt.
+#
+# Sie wandert als `state_schema` in JEDES Release-Manifest (vp-ota manifest
+# --state-schema, in CI aus dieser Datei gelesen) und ist der Grund, warum sie
+# NEBEN dem Code steht statt in einer Repo-Variable: sie ist eine Eigenschaft
+# des Codes und gehoert damit in denselben Commit wie die Aenderung, die sie
+# noetig macht.
+#
+# Wirkung auf dem Geraet (edge-app/core/internal/otaapply/decide.go): der
+# Sidecar verweigert ein Release, dessen state_schema NIEDRIGER ist als der
+# Stand, den das Geraet bereits auf der Platte hat - ein Rueckschritt des
+# Zustandsformats waere ein Datenverlust, kein Update.
+#
+# HOCHZAEHLEN, sobald `/data` in einer Weise geschrieben wird, die ein AELTERER
+# Stand nicht mehr lesen kann. Nie herunterzaehlen.
+#
+# Format: die erste Zeile, die weder leer noch ein `#`-Kommentar ist.
+1

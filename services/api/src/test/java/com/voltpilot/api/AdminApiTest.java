@@ -2878,6 +2878,173 @@ class AdminApiTest {
         assertThat(unsigned.get("signingKeyId")).isNull();
     }
 
+    /**
+     * Die AUTORITAETS-GRENZE der Release-Automatisierung: das
+     * Veroeffentlichungs-Konto darf REGISTRIEREN - und sonst nichts.
+     *
+     * <p><b>Warum dieser Test die halbe Begruendung der Automatisierung
+     * traegt:</b> mit ihr wird der Release-Schluessel ein heisses CI-Geheimnis
+     * (bewusste Revision von Entscheid D3). Der Preis dafuer ist nur dann
+     * bezahlbar, wenn ein uebernommener Runner die Flotte NICHT erreichen kann:
+     * er darf die Release-LISTE verunreinigen, aber keinen Rollout starten,
+     * keine Welle freigeben, kein Geraeteziel setzen. Das ist keine
+     * Absichtserklaerung, sondern wird hier Endpunkt fuer Endpunkt nachgewiesen
+     * - und es steht serverseitig, nicht im CI-Skript.
+     */
+    @Test
+    void theReleasePublisherAccountMayOnlyRegisterAndReachesNoDevice() {
+        String publisher = serviceToken("voltpilot-release-publisher",
+                "voltpilot-release-publisher-dev-secret");
+        String admin = token("admin", "admin");
+
+        // (1) Was es KANN: die Ordnung lesen und ein signiertes Release
+        // eintragen. Die Sequenz muss VOR dem Signieren feststehen (sie steht
+        // im Manifest, die Signatur geht ueber dessen Bytes) - deshalb gibt es
+        // die schmale next-seq-Route ueberhaupt.
+        ResponseEntity<Map<String, Object>> next = rest.exchange(
+                url("/api/v1/admin/edge-releases/next-seq"), HttpMethod.GET,
+                new HttpEntity<>(bearer(publisher)), new ParameterizedTypeReference<>() {});
+        assertThat(next.getStatusCode()).isEqualTo(HttpStatus.OK);
+        long seq = ((Number) next.getBody().get("nextSeq")).longValue();
+        Long current = next.getBody().get("currentSeq") == null ? null
+                : ((Number) next.getBody().get("currentSeq")).longValue();
+        assertThat(current == null ? 1L : current + 1L)
+                .as("nextSeq setzt das Register fort").isEqualTo(seq);
+
+        String version = "edge-2028.01.0";
+        String manifest = "{\n  \"schema_version\": \"1.0\",\n  \"release\": \"" + version
+                + "\",\n  \"release_seq\": " + seq + ",\n"
+                + "  \"target_commit\": \"c0ffee123456\",\n"
+                + "  \"signing_key_id\": \"rel-2026-a\"\n}\n";
+        String signature = "{\"schema_version\":\"1.0\",\"alg\":\"ed25519\","
+                + "\"key_id\":\"rel-2026-a\",\"domain\":\"release\","
+                + "\"signature\":\"" + "B".repeat(86) + "==\"}\n";
+        Map<String, ?> body = Map.of("version", version, "manifest", manifest,
+                "signature", signature);
+
+        assertThat(postRelease(publisher, body).getStatusCode())
+                .as("registrieren DARF es").isEqualTo(HttpStatus.CREATED);
+
+        // (2) Ein wiederholter Lauf mit BYTEGLEICHEN Bytes ist derselbe
+        // Eintrag - sonst waere jeder erneut gestartete Job rot, obwohl nichts
+        // fehlt. Abweichende Bytes unter derselben Version bleiben 409: das
+        // Register ist die Papier-Spur.
+        assertThat(postRelease(publisher, body).getStatusCode())
+                .as("bytegleiche Wiederholung").isEqualTo(HttpStatus.OK);
+        assertThat(postRelease(publisher, Map.of("version", version,
+                "manifest", manifest.replace("c0ffee123456", "deadbeef9999"),
+                "signature", signature)).getStatusCode())
+                .as("abweichende Bytes unter derselben Version").isEqualTo(HttpStatus.CONFLICT);
+        // Auch die Notiz zaehlt zur Gleichheit - sie ist das einzige Feld, das
+        // nicht aus dem Manifest stammt.
+        assertThat(postRelease(publisher, Map.of("version", version, "manifest", manifest,
+                "signature", signature, "notes", "nachtraeglich")).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        // (3) Was es NICHT kann. Jede dieser Routen ist ein Weg zur FLOTTE -
+        // und genau deshalb steht hier jede einzeln.
+        //
+        // ⚠ Die Rumpfe sind bewusst GUELTIG: Bean-Validation laeuft bei der
+        // Argument-Aufloesung und damit VOR @PreAuthorize, ein krummer Rumpf
+        // ergaebe also 400 statt 403 - und haette hier gar nichts bewiesen.
+        UUID rollout = UUID.randomUUID();
+        UUID device = UUID.randomUUID();
+        List<Map<String, Object>> waves =
+                List.of(Map.of("name", "Welle 1", "devices", List.of(device.toString())));
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts",
+                Map.of("releaseSeq", seq, "channel", "canary", "waves", waves));
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
+                + "/promote", Map.of());
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
+                + "/pause", Map.of());
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
+                + "/resume", Map.of());
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
+                + "/halt", Map.of("reason", "weil"));
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/rollouts/" + rollout
+                + "/auto-advance", Map.of("enabled", true));
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/devices/" + device
+                + "/update-target", Map.of("releaseSeq", seq, "channel", "stable"));
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/devices/" + device
+                + "/update-target/revert", Map.of());
+        // Lesen ist ebenfalls zu - auch das Lesen ist Aufklaerung ueber die
+        // Flotte, und Registrieren braucht nichts davon.
+        assertForbidden(publisher, HttpMethod.GET, "/api/v1/admin/edge-updates", null);
+        assertForbidden(publisher, HttpMethod.GET, "/api/v1/admin/rollout-journal.md", null);
+        assertForbidden(publisher, HttpMethod.GET, "/api/v1/admin/fleet", null);
+        assertForbidden(publisher, HttpMethod.GET, "/api/v1/admin/tenants", null);
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/tenants",
+                Map.of("name", "Uebernommener Runner", "segment", "CI"));
+        assertForbidden(publisher, HttpMethod.GET, "/api/v1/admin/provisioned-devices", null);
+        assertForbidden(publisher, HttpMethod.POST, "/api/v1/admin/provisioned-devices",
+                Map.of("externalRef", "VP-RUNNER-0001"));
+        // Und selbst die volle RELEASE-Liste ist zu: sie traegt jedes Manifest
+        // und den Urheber jedes Eintrags - mehr, als Registrieren braucht.
+        assertForbidden(publisher, HttpMethod.GET, "/api/v1/admin/edge-releases", null);
+
+        // (4) Und es sieht keine KUNDENDATEN. Das Konto traegt keinen
+        // tenant_id-Anspruch und ist kein platform-admin, also bleibt der
+        // Mandanten-Kontext leer -> RLS ist default-deny. Der
+        // Umschalter-Header hilft ihm nicht: den ehrt TenantFilter NUR fuer
+        // platform-admin-Token.
+        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(publisher)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(sites.getBody()).as("kein Mandant => keine Zeilen").isEmpty();
+
+        ResponseEntity<List<Map<String, Object>>> switched = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(publisher),
+                        "00000000-0000-0000-0000-000000000001")),
+                new ParameterizedTypeReference<>() {});
+        assertThat(switched.getBody())
+                .as("der Mandanten-Umschalter gilt nur fuer platform-admin").isEmpty();
+
+        // (5) Der Plattform-Admin bleibt unangetastet - er kann alles, was er
+        // vorher konnte, inklusive der neuen next-seq-Route.
+        assertThat(rest.exchange(url("/api/v1/admin/edge-releases/next-seq"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(listReleases(admin)).extracting(r -> r.get("version")).contains(version);
+
+        // (6) Und ein KUNDE erreicht die Veroeffentlichungs-Routen nicht.
+        String customer = token("demo", "demo");
+        assertForbidden(customer, HttpMethod.GET, "/api/v1/admin/edge-releases/next-seq", null);
+        assertThat(postRelease(customer, Map.of("version", "edge-2028.02.0")).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(url("/api/v1/admin/edge-releases/next-seq"), HttpMethod.GET,
+                new HttpEntity<>(new HttpHeaders()), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    /** Eine Route, die dieses Token NICHT erreichen darf. */
+    private void assertForbidden(String token, HttpMethod method, String path, Object body) {
+        assertThat(rest.exchange(url(path), method,
+                new HttpEntity<>(body, bearer(token)), String.class).getStatusCode())
+                .as(method + " " + path).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * client_credentials-Token eines Dienstkontos (kein Benutzer, kein
+     * Passwort-Grant) - genau der Weg, den der CI-Lauf geht.
+     */
+    private String serviceToken(String clientId, String clientSecret) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "client_credentials");
+        form.add("client_id", clientId);
+        form.add("client_secret", clientSecret);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = keycloakRest().postForObject(
+                KEYCLOAK.getAuthServerUrl() + "/realms/voltpilot/protocol/openid-connect/token",
+                new HttpEntity<>(form, headers), Map.class);
+        assertThat(body).as("client_credentials for " + clientId).containsKey("access_token");
+        return (String) body.get("access_token");
+    }
+
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> listReleases(String adminToken) {
         ResponseEntity<List<Map<String, Object>>> res = rest.exchange(

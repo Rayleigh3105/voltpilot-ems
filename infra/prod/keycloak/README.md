@@ -18,5 +18,10 @@ Key points:
   Like every realm change, these reach an EXISTING Keycloak volume only after a fresh import.
 - The `realm-management` roles on the `voltpilot-api` service account and the declarative user profile (`tenant_id`, `ADMIN_EDIT`) are required for Portal-Admin user provisioning - same as dev.
   Keycloak 26 silently drops unmanaged attributes without the profile ("Account is not fully set up" on login).
+- **`edge-release-publisher` + the `voltpilot-release-publisher` client ship DISABLED.**
+  They are the OTA release automation's account (`git tag edge-*` → signed release → register entry): client-credentials only, no browser flow, no password grant, and the service account carries exactly ONE realm role that reaches exactly two api routes (`GET/POST /api/v1/admin/edge-releases[/next-seq]`) - never a rollout, never a device target.
+  `enabled: false` is deliberate and fail-closed: the secret placeholder `${VP_RELEASE_PUBLISHER_SECRET:change-me}` carries an in-file default (unlike the others above) so a deploy that does not use OTA automation never has to set it, and a DISABLED client hands out no token whatever its secret is.
+  To switch it on: set `VP_RELEASE_PUBLISHER_SECRET` in `.env`, recreate keycloak, then flip the client to Enabled.
+  The EXISTING prod realm was imported long ago, so there this is a one-time manual setup - exact clicks and `kcadm` lines in [`docs/ota-signing.md`](../../../docs/ota-signing.md) §4d.
 - The `admin` (Portal-Admin) and `demo`/`demo2` users are seeded so a fresh deploy is immediately loginable alongside `SPRING_PROFILES_ACTIVE=local`.
   Remove the demo users (and clear the api profile) before a real customer launch - see `docs/deploy.md`.

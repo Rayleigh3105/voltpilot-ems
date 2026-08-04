@@ -22,10 +22,28 @@
     "realm": [
       { "name": "operator", "description": "Portal-User: customer, scoped to one tenant via tenant_id" },
       { "name": "admin", "description": "Tenant admin (legacy)" },
-      { "name": "platform-admin", "description": "Portal-Admin: platform operator, manages tenants and users across all tenants" }
+      { "name": "platform-admin", "description": "Portal-Admin: platform operator, manages tenants and users across all tenants" },
+      { "name": "edge-release-publisher", "description": "OTA release automation: may ONLY register a signed edge release (POST /api/v1/admin/edge-releases + its next-seq read). Never a rollout, never a device target - see docs/ota-signing.md." }
     ]
   },
   "clients": [
+    {
+      "clientId": "voltpilot-release-publisher",
+      "name": "VoltPilot OTA Release Publisher",
+      "description": "Service account for the edge-* tag pipeline. Client credentials only: no login, no browser flow, no password grant - the token carries edge-release-publisher and nothing else. Ships DISABLED: enable it only after setting VP_RELEASE_PUBLISHER_SECRET (infra/prod/keycloak/README.md).",
+      "enabled": false,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "secret": "${VP_RELEASE_PUBLISHER_SECRET:change-me}",
+      "redirectUris": [],
+      "webOrigins": []
+    },
     {
       "clientId": "voltpilot-api",
       "name": "Voltpilot Portal API",
@@ -90,6 +108,12 @@
     }
   ],
   "users": [
+    {
+      "username": "service-account-voltpilot-release-publisher",
+      "enabled": true,
+      "serviceAccountClientId": "voltpilot-release-publisher",
+      "realmRoles": ["edge-release-publisher"]
+    },
     {
       "username": "service-account-voltpilot-api",
       "enabled": true,

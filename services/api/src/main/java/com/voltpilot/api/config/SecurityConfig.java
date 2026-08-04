@@ -75,6 +75,17 @@ public class SecurityConfig {
                 // (absent unless voltpilot.enrollment.enabled).
                 .requestMatchers(HttpMethod.POST, "/api/v1/enrollment/*/csr").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/enrollment/*/certificate").permitAll()
+                // Gürtel UND Hosenträger für den Admin-Baum: die eigentliche
+                // Autorisierung ist weiterhin @PreAuthorize je Controller, aber
+                // seit es eine ZWEITE, eng geschnittene Admin-Rolle gibt
+                // (edge-release-publisher, siehe AdminEdgeReleaseController)
+                // hängt zu viel daran, dass niemand eine Annotation vergisst.
+                // Diese Zeile stellt sicher, dass eine künftige, versehentlich
+                // un-annotierte Admin-Route KEINEM Kunden-Token offensteht -
+                // sie erweitert nichts (Methodensicherheit schneidet danach
+                // weiter zu), sie schließt nur die Rückfallebene.
+                .requestMatchers("/api/v1/admin/**")
+                        .hasAnyRole("platform-admin", "edge-release-publisher")
                 .anyRequest().authenticated())
             // Map Keycloak realm roles -> ROLE_* authorities so @PreAuthorize on the
             // admin API can gate Portal-Admins (platform-admin) from Portal-Users.

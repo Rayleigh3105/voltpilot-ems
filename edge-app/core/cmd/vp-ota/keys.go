@@ -227,7 +227,7 @@ Domain-Kontext. Die Datei wird dabei NIE neu serialisiert - genau deshalb
 liegt die Signatur daneben und nicht darin.
 
 Nach dem Signieren eines Releases wird der fertige Register-Eintrag samt
-curl-Befehl ausgegeben (die Registrierung macht der Owner, nicht CI).
+curl-Befehl ausgegeben - der Handpfad neben dem Tag-Lauf.
 
 `)
 		fs.PrintDefaults()

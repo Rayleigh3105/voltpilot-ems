@@ -3,8 +3,14 @@
 //
 // Es ist BEWUSST ein eigenes Kommando und nicht Teil des Edge-Binaers: der
 // Agent verifiziert nur (internal/otaverify, ohne eine Zeile Code fuer private
-// Schluessel), und die Zeremonie laeuft auf der Maschine des Owners - der
-// kalte Root-Schluessel geht nie an CI (Captain-Entscheid D3).
+// Schluessel), und die ZEREMONIE laeuft auf der Maschine des Owners - der
+// KALTE Root-Schluessel geht nie an CI.
+//
+// Der RELEASE-Schluessel dagegen liegt seit dem 04.08.2026 als CI-Geheimnis
+// vor (Captain-Order „git tag -> fertig", bewusste Revision von D3): der
+// Tag-Lauf ruft genau diese Befehle auf. Die Gegenleistungen dafuer -
+// insbesondere ein Register-Konto, das NUR registrieren darf - stehen in
+// docs/ota-signing.md §1.
 //
 // Der geteilte Kern ist internal/otaverify: Signierer und Geraet erzeugen die
 // zu signierenden Bytes ueber DIESELBE Funktion (otaverify.SigningInput), damit
