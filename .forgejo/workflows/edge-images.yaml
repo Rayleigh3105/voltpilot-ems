@@ -16,15 +16,40 @@ name: Build & Push Edge-App Images
 
 # Ein RELEASE entsteht durch einen git-Tag `edge-JJJJ.MM.N` (Captain-Entscheid
 # D5). Der Tag-Lauf baut dieselben Images (der Versionsstempel wird dann
-# automatisch `<tag>-<kurzsha>`) und erzeugt zusaetzlich das UNSIGNIERTE
-# Manifest als Build-Artefakt.
+# automatisch `<tag>-<kurzsha>`), erzeugt das Manifest, SIGNIERT es, prueft die
+# Kette gegen die eingebackene Wurzel, haengt die vier Dateien als
+# Release-Assets an und traegt das Release ins Portal-Register ein.
+# „git tag -> fertig" (Captain-Order 04.08.2026).
 #
-# ⚠ NICHTS in einem Wirkpfad haengt an diesem Lauf (§6-Doktrin). Der Runner
-# schlaeft nachweislich ein, also darf ein Rollout nie auf ihn warten: das
-# Manifest ist eine BEQUEMLICHKEIT - dieselben Bytes entstehen lokal mit
-# demselben Befehl (`vp-ota manifest …`, docs/ota-signing.md). Signiert wird
-# ohnehin OFFLINE beim Owner (D3: kein heisser Schluessel in CI), und der
-# Register-Eintrag entsteht dort ebenfalls.
+# ⚠ DIESE AUTOMATIK REVIDIERT ENTSCHEID D3 BEWUSST: der Release-Schluessel ist
+# jetzt ein heisses CI-Geheimnis. Die vier Kompensationen sind LOAD-BEARING und
+# muessen alle gelten (docs/ota-signing.md §4):
+#   1. Die KALTE WURZEL bleibt offline beim Owner - CI sieht sie nie. Ein
+#      missbrauchter Release-Schluessel wird durch ein neues root-signiertes
+#      Trust-Set entwertet (§7.1), ohne dass ein einziges Geraet angefasst wird.
+#   2. Das Register-Konto darf NUR registrieren (Realm-Rolle
+#      edge-release-publisher). Kein Rollout, keine Welle, kein Geraete-Ziel -
+#      serverseitig erzwungen und Endpunkt fuer Endpunkt in AdminApiTest
+#      nachgewiesen. Ein uebernommener Runner verunreinigt die Liste; er
+#      erreicht kein Geraet.
+#   3. Der Mensch-Akt bleibt Mensch-Akt: „Rollout starten" ist Portal
+#      (Plattform-Admin). Es gibt hier keinen Pfad dorthin.
+#   4. NICHTS in einem Wirkpfad haengt an diesem Lauf (§6-Doktrin). Der Runner
+#      schlaeft nachweislich ein - dann taucht das Release eben SPAETER in der
+#      Liste auf; ein laufender Rollout wartet nie auf ihn. Und die Handarbeit
+#      bleibt vollstaendig moeglich: dieselben Bytes entstehen lokal mit
+#      demselben Befehl (`vp-ota manifest …` ist deterministisch).
+#
+# Fehlt eines der Geheimnisse, laeuft der Job GRUEN durch, signiert NICHTS und
+# druckt die Handschritte - so ist die Automatik einschaltbar, ohne dass ein
+# halb konfiguriertes Repo halb veroeffentlichte Releases erzeugt.
+#
+# Zusaetzliche Actions-Secrets (Repo -> Settings -> Actions -> Secrets):
+#   VP_OTA_RELEASE_KEY               Inhalt von rel-<id>.key (die GEHEIME Datei)
+#   VP_OTA_PUBLISHER_CLIENT_SECRET   Secret des Keycloak-Dienstkontos
+#   VP_OTA_FORGEJO_TOKEN             optional; sonst FORGEJO_USERNAME/PASSWORD
+# Variablen (optional): VP_OTA_PORTAL, EDGE_RELEASE_SEQ (nur als Rueckfall),
+#   EDGE_MIN_FROM_SEQ, EDGE_STATE_SCHEMA, EDGE_SIGNING_KEY_ID
 on:
   workflow_dispatch:
   push:
@@ -123,15 +148,20 @@ jobs:
   # protokolliert). Seine eigenen Aktualisierungen sind selten, beaufsichtigt
   # und out-of-band: `docker compose --profile ota up -d updater`.
   manifest:
-    name: Unsigniertes Release-Manifest
+    name: Release signieren + veroeffentlichen
     needs: build
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest-mo
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          # Die Tag-ANNOTATION ist eine Eingabe (min-from-seq, urgent,
+          # Release-Notiz), und die haengt am Tag-OBJEKT - ohne die Tags im
+          # Klon gaebe es sie nicht.
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -175,38 +205,135 @@ jobs:
             echo "nodered=$base/edge-app-nodered@$(resolve "$base/edge-app-nodered:${GITHUB_SHA}")"
           } >> "$GITHUB_OUTPUT"
 
-      # EINE Wahrheit ueber die Manifest-Form: derselbe Befehl, den der Owner
-      # lokal fuer ein handgebautes Release benutzt (und den der Verifizierer
-      # des Geraets gegenliest).
+      # Alles, was das Manifest braucht - an EINER Stelle, damit der signierte
+      # und der unsignierte Pfad nachweislich dieselben Eingaben benutzen.
+      #
+      # Die Reihenfolge ist tragend: `release_seq` steht IM Manifest, die
+      # Signatur geht ueber dessen Bytes - die Ordnung muss also VOR dem
+      # Signieren feststehen. Sie kommt deshalb aus dem REGISTER
+      # (GET .../edge-releases/next-seq mit dem Veroeffentlicher-Konto), nicht
+      # aus einer von Hand gepflegten Repo-Variable. Traegt sich zwischen Lesen
+      # und Eintragen ein zweites Release ein, scheitert die Registrierung LAUT
+      # an der Monotonie-Pruefung - der Lauf wird dann mit der neuen Nummer
+      # wiederholt, statt eine Reihenfolge zu verbiegen.
+      - name: Release-Eingaben bestimmen
+        id: inputs
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+
+          ready=true
+          [ -n "${VP_OTA_RELEASE_KEY:-}" ] || { echo "::notice::VP_OTA_RELEASE_KEY fehlt - es wird NICHT signiert."; ready=false; }
+          [ -n "${VP_OTA_PUBLISHER_CLIENT_SECRET:-}" ] || { echo "::notice::VP_OTA_PUBLISHER_CLIENT_SECRET fehlt - es wird NICHT registriert."; ready=false; }
+
+          portal="${VP_OTA_PORTAL:-https://portal.voltpilot.de}"
+          keyfile="${RUNNER_TEMP}/vp-ota-release.key"
+
+          if [ "$ready" = true ]; then
+            # Der geheime Schluessel beruehrt nie das Arbeitsverzeichnis und nie
+            # eine Kommandozeile: Datei ausserhalb des Checkouts, 0600, am Ende
+            # des Jobs geschreddert.
+            umask 077
+            printf '%s' "$VP_OTA_RELEASE_KEY" > "$keyfile"
+            chmod 600 "$keyfile"
+            key_id="$(ota_key_id "$keyfile")"
+            echo "::add-mask::$VP_OTA_PUBLISHER_CLIENT_SECRET"
+
+            trust="${VP_OTA_TRUST_SET:-edge-app/ota/trust-set.json}"
+            for f in "$trust" "$trust.sig"; do
+              [ -f "$f" ] || { echo "::error::$f fehlt - ohne root-signiertes Trust-Set kann die Kette nicht gegengeprueft werden (edge-app/ota/README.md)."; exit 1; }
+            done
+
+            token="$(ota_token "$(ota_token_url "$portal")" \
+              "${VP_OTA_PUBLISHER_CLIENT_ID:-voltpilot-release-publisher}" \
+              "$VP_OTA_PUBLISHER_CLIENT_SECRET")"
+            echo "::add-mask::$token"
+            printf '%s' "$token" > "${RUNNER_TEMP}/vp-ota-token"
+            chmod 600 "${RUNNER_TEMP}/vp-ota-token"
+
+            read -r seq prev <<<"$(ota_next_seq "$portal" "$token")"
+            echo "Register: naechste Sequenz $seq (bisher hoechste: $prev)"
+          else
+            # Rueckfall ohne Automatik: die von Hand gepflegte Repo-Variable.
+            # Fehlt auch sie, bricht der Lauf LAUT ab, statt eine Ordnung zu
+            # erfinden - eine falsche Reihenfolge ist genau der Zustand, den
+            # das Register beseitigt hat.
+            seq="${EDGE_RELEASE_SEQ:?weder ein Veroeffentlicher-Konto noch EDGE_RELEASE_SEQ - die Ordnung kommt aus dem Register}"
+            prev=$((seq > 0 ? seq - 1 : 0))
+            key_id="${EDGE_SIGNING_KEY_ID:-rel-2026-a}"
+          fi
+
+          # Die /data-Zustandsversion steht im REPO neben dem Code (sie ist eine
+          # Eigenschaft des Codes), nicht in einer Repo-Variable, die niemand
+          # mit einem Commit verbindet. Eine Variable darf sie noch ueberstimmen.
+          state_schema="${EDGE_STATE_SCHEMA:-$(ota_state_schema edge-app/core/otastate.schema)}"
+
+          # Die Tag-Annotation ist die einzige RELEASE-spezifische Eingabe, die
+          # nicht aus dem Code oder dem Register folgt - und sie reist im Tag,
+          # also im selben Objekt, das den Lauf ausgeloest hat.
+          ann="$(git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)' || true)"
+          min_from="$(ota_tag_directive min-from-seq "$ann")"
+          [ -n "$min_from" ] || min_from="${EDGE_MIN_FROM_SEQ:-0}"
+          notes="$(ota_tag_notes "$ann")"
+          urgent="$(ota_tag_directive urgent "$ann")"
+          downgrade="$(ota_tag_directive allow-downgrade "$ann")"
+
+          {
+            echo "ready=$ready"
+            echo "seq=$seq"
+            echo "prev=$prev"
+            echo "key_id=$key_id"
+            echo "state_schema=$state_schema"
+            echo "min_from=$min_from"
+            echo "notes=$notes"
+            echo "urgent=$urgent"
+            echo "downgrade=$downgrade"
+            echo "portal=$portal"
+            echo "keyfile=$keyfile"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          VP_OTA_RELEASE_KEY: ${{ secrets.VP_OTA_RELEASE_KEY }}
+          VP_OTA_PUBLISHER_CLIENT_SECRET: ${{ secrets.VP_OTA_PUBLISHER_CLIENT_SECRET }}
+          VP_OTA_PORTAL: ${{ vars.VP_OTA_PORTAL }}
+          VP_OTA_PUBLISHER_CLIENT_ID: ${{ vars.VP_OTA_PUBLISHER_CLIENT_ID }}
+          EDGE_RELEASE_SEQ: ${{ vars.EDGE_RELEASE_SEQ }}
+          EDGE_MIN_FROM_SEQ: ${{ vars.EDGE_MIN_FROM_SEQ }}
+          EDGE_STATE_SCHEMA: ${{ vars.EDGE_STATE_SCHEMA }}
+          EDGE_SIGNING_KEY_ID: ${{ vars.EDGE_SIGNING_KEY_ID }}
+
       # EINE Wahrheit ueber die Manifest-Form: derselbe Befehl, den der Owner
       # lokal fuer ein handgebautes Release benutzt (und dessen Ergebnis der
       # Verifizierer des Geraets gegenliest). Die Ausgabe ist DETERMINISTISCH
       # (feste Feldreihenfolge, feste Einrueckung, genau ein abschliessender
-      # Zeilenumbruch) - dieselben Eingaben ergeben byteweise dieselbe Datei.
+      # Zeilenumbruch) - dieselben Eingaben ergeben byteweise dieselbe Datei,
+      # lokal wie hier.
       - name: Manifest erzeugen
         working-directory: edge-app/core
         run: |
           set -euo pipefail
+          args=()
+          [ "${NOTES}" = "" ] || args+=(--notes "${NOTES}")
+          [ "${URGENT}" = "true" ] && args+=(--urgent) || true
+          [ "${DOWNGRADE}" = "true" ] && args+=(--allow-downgrade) || true
           go run ./cmd/vp-ota manifest \
             --release "${GITHUB_REF_NAME}" \
-            --seq "${RELEASE_SEQ:?RELEASE_SEQ ist Pflicht - die Ordnung kommt aus dem Register}" \
+            --seq "${SEQ}" \
             --commit "${GITHUB_SHA::12}" \
             --artifact "core=${{ steps.digests.outputs.core }}" \
             --artifact "nodered=${{ steps.digests.outputs.nodered }}" \
-            --min-from-seq "${MIN_FROM_SEQ:-0}" \
-            --state-schema "${STATE_SCHEMA:-1}" \
-            --key-id "${SIGNING_KEY_ID:-rel-2026-a}" \
+            --min-from-seq "${MIN_FROM}" \
+            --state-schema "${STATE_SCHEMA}" \
+            --key-id "${SIGNING_KEY_ID}" \
+            "${args[@]}" \
             --out "${GITHUB_WORKSPACE}/release.json"
         env:
-          # Die Sequenz ist die Ordnung des Registers und kann in CI nicht
-          # erraten werden. Sie wird als Repo-Variable gepflegt und beim Taggen
-          # hochgezaehlt; fehlt sie, bricht der Job LAUT ab, statt eine Nummer
-          # zu erfinden (eine falsche Ordnung ist genau der Zustand, den das
-          # Register beseitigt hat).
-          RELEASE_SEQ: ${{ vars.EDGE_RELEASE_SEQ }}
-          MIN_FROM_SEQ: ${{ vars.EDGE_MIN_FROM_SEQ }}
-          STATE_SCHEMA: ${{ vars.EDGE_STATE_SCHEMA }}
-          SIGNING_KEY_ID: ${{ vars.EDGE_SIGNING_KEY_ID }}
+          SEQ: ${{ steps.inputs.outputs.seq }}
+          MIN_FROM: ${{ steps.inputs.outputs.min_from }}
+          STATE_SCHEMA: ${{ steps.inputs.outputs.state_schema }}
+          SIGNING_KEY_ID: ${{ steps.inputs.outputs.key_id }}
+          NOTES: ${{ steps.inputs.outputs.notes }}
+          URGENT: ${{ steps.inputs.outputs.urgent }}
+          DOWNGRADE: ${{ steps.inputs.outputs.downgrade }}
 
       # ⚠ Aus einem CI-Log heraus wird NICHT kopiert: die Signatur geht ueber
       # die exakten Bytes, und ein Log kann Leerraum/Zeilenenden anfassen. Der
@@ -233,10 +360,63 @@ jobs:
           path: release.json
           if-no-files-found: error
 
-      - name: Naechste Schritte (offline beim Owner)
+      # Signieren und danach mit `--root baked` GEGENPRUEFEN - also gegen exakt
+      # die Wurzel, die im Image steckt. Das ist Zeichen fuer Zeichen die
+      # Pruefung, die jedes Geraet durchfuehrt, nur vorgezogen vor die
+      # Auslieferung: faellt sie durch, geht NICHTS hinaus (kein Asset, kein
+      # Register-Eintrag) - ein Release, das die Flotte ohnehin ablehnen wuerde,
+      # darf gar nicht erst entstehen.
+      - name: Signieren + gegen die eingebackene Wurzel pruefen
+        if: steps.inputs.outputs.ready == 'true'
         run: |
-          cat <<'EOF'
-          Das Manifest ist UNSIGNIERT und damit noch wertlos. Weiter offline:
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          ota_sign "${GITHUB_WORKSPACE}/release.json" "${{ steps.inputs.outputs.keyfile }}"
+
+      # Erst jetzt geht etwas hinaus. Beides ist idempotent: eine vorhandene
+      # Forgejo-Release wird wiederverwendet, ein gleichnamiges Asset ersetzt,
+      # und eine BYTEGLEICHE Wiederholung im Register ist ein 200 statt eines
+      # 409 (ein erneut gelaufener Job hinter einer erfolgreichen Registrierung
+      # darf nicht rot werden). Abweichende Bytes unter derselben Version
+      # bleiben ein LAUTER Fehlschlag.
+      - name: Assets anhaengen + ins Register eintragen
+        if: steps.inputs.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          . tools/ota/release-publish.sh
+          VP_OTA_PORTAL_TOKEN="$(cat "${RUNNER_TEMP}/vp-ota-token")"
+          export VP_OTA_PORTAL_TOKEN
+          ota_publish "${GITHUB_WORKSPACE}/release.json" "${GITHUB_REF_NAME}"
+        env:
+          VP_OTA_PORTAL: ${{ steps.inputs.outputs.portal }}
+          VP_OTA_FORGEJO_TOKEN: ${{ secrets.VP_OTA_FORGEJO_TOKEN }}
+          FORGEJO_USERNAME: ${{ secrets.FORGEJO_USERNAME }}
+          FORGEJO_PASSWORD: ${{ secrets.FORGEJO_PASSWORD }}
+
+      # Der geheime Schluessel verlaesst den Runner nicht - und er bleibt auch
+      # nicht liegen. `always()`, damit auch ein abgebrochener Lauf aufraeumt.
+      - name: Schluessel + Token vom Runner entfernen
+        if: always()
+        run: |
+          rm -f "${RUNNER_TEMP}/vp-ota-release.key" "${RUNNER_TEMP}/vp-ota-token" || true
+
+      - name: Ergebnis
+        run: |
+          if [ "${{ steps.inputs.outputs.ready }}" = "true" ]; then
+            cat <<EOF
+          Release ${GITHUB_REF_NAME} ist signiert, gegen die eingebackene Wurzel
+          geprueft, als Release-Asset angehaengt und im Register eingetragen
+          (Stand ${{ steps.inputs.outputs.seq }}).
+
+          Was NICHT passiert ist - und mit Absicht nie aus CI passiert:
+            * kein Rollout gestartet, keine Welle freigegeben
+            * keinem Geraet ein Ziel zugewiesen
+          Beides ist Portal -> Plattform -> Edge-Updates (Plattform-Admin).
+          EOF
+          else
+            cat <<'EOF'
+          Es wurde NICHT signiert (Geheimnisse fehlen, siehe die Hinweise oben).
+          Das Manifest ist damit noch wertlos. Weiter von Hand:
             1. release.json lokal mit denselben Digests erzeugen und die
                sha256-Pruefsumme von oben vergleichen (oder das Artefakt laden)
             2. vp-ota sign --key <release>.key --domain release --in release.json
@@ -245,3 +425,4 @@ jobs:
             4. den ausgegebenen curl gegen /api/v1/admin/edge-releases schicken
           Anleitung: docs/ota-signing.md
           EOF
+          fi

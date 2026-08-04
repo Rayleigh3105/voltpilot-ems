@@ -1907,9 +1907,10 @@ paths:
         the fleet view compared a reported version against the fleet MAXIMUM
         (so "all equally old" read as "all current") and compared 12-char hex
         SHAs as number blocks, which is a random ordering on SHAs.
-        Platform-admin only; read-only from the customer side. In Stufe 0 the
-        register is maintained by hand and there is NO write path towards any
-        device.
+        Platform-admin only (the narrow `edge-release-publisher` role does NOT
+        reach this route: the list carries every manifest and the author of
+        every entry - more than registering needs). Read-only from the customer
+        side, and there is NO write path towards any device here.
       responses:
         "200":
           description: The register, newest first.
@@ -1930,9 +1931,14 @@ paths:
         replaces. `releaseSeq` may be omitted - it then continues the register
         (max + 1); passing it explicitly requires it to be strictly greater
         than every existing entry, so the ordering stays monotonic by
-        construction. Registering an existing version is a 409, not a silent
-        no-op: a release is created once, by hand, and the register is the
-        paper trail.
+        construction. Registering an existing version with DEVIATING bytes is a
+        409, never a silent no-op: the register is the paper trail. A repeat
+        with BYTE-IDENTICAL `manifest`/`signature`/`notes` answers 200 with the
+        stored entry instead - a re-run CI job behind a successful registration
+        must not go red, and identical bytes swallow nothing.
+        Reachable by `platform-admin` AND by the narrow `edge-release-publisher`
+        service role used by the `edge-*` tag pipeline; that role reaches
+        nothing else in the admin tree (no rollout, no wave, no device target).
         Since OTA Stufe 1 the body may additionally carry the SIGNED release
         (`manifest` + `signature`, byte for byte). The api stores those bytes
         unchanged and checks only CONSISTENCY - it deliberately does NOT verify
@@ -1950,8 +1956,54 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/EdgeRelease" }
+        "200":
+          description: >
+            Already registered with BYTE-IDENTICAL manifest/signature/notes -
+            the stored entry, unchanged (an idempotent CI re-run).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EdgeRelease" }
         "400": { description: Version does not match edge-YYYY.MM.N, or releaseSeq is not strictly increasing. }
-        "409": { description: This version is already registered. }
+        "409": { description: This version is already registered with DIFFERENT bytes. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/edge-releases/next-seq:
+    get:
+      tags: [admin]
+      summary: The next free release sequence number.
+      description: >
+        The ONE thing the release publisher must read. `release_seq` lives
+        INSIDE the signed manifest and the signature covers exactly its bytes,
+        so the ordering has to be fixed BEFORE signing - the api cannot hand it
+        out at registration time (the manifest would already carry a different
+        number) and CI must not guess it.
+        Deliberately a separate, narrow route rather than publisher access to
+        the full register listing.
+        HONEST LIMIT: between this read and the registration lies the signing
+        step, so there is a TOCTOU window. If a second release registers in
+        between, the POST fails LOUDLY on the monotonicity check and the run is
+        repeated with the new number - reserving instead would punch holes into
+        the ordering whenever a run aborts.
+        Reachable by `platform-admin` and by `edge-release-publisher`.
+      responses:
+        "200":
+          description: The next number, plus the current head of the register.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nextSeq]
+                properties:
+                  nextSeq: { type: integer, format: int64, example: 13 }
+                  currentSeq:
+                    type: integer
+                    format: int64
+                    nullable: true
+                    description: Highest assigned number; null on an empty register.
+                  currentVersion:
+                    type: string
+                    nullable: true
+                    example: edge-2026.08.0
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/edge-updates:

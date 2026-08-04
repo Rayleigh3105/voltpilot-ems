@@ -57,6 +57,18 @@ public class EdgeReleaseRepository {
     }
 
     /**
+     * Die Version zu einer Sequenznummer, {@code null} wenn es sie nicht gibt.
+     *
+     * <p>Bewusst eine eigene, schmale Abfrage statt {@link #findAll()}: der
+     * Veröffentlichungs-Endpunkt braucht nur den Namen des Vorgänger-Stands,
+     * und die volle Liste trägt jedes Manifest samt Urheber mit.
+     */
+    public String versionOfSeq(long releaseSeq) {
+        return jdbc.query("SELECT version FROM edge_release WHERE release_seq = ?",
+                (rs, n) -> rs.getString(1), releaseSeq).stream().findFirst().orElse(null);
+    }
+
+    /**
      * Ein neues Release eintragen. Der Aufrufer hat Version + Seq geprüft.
      *
      * <p>{@code manifest}/{@code signature} werden BYTEGENAU abgelegt (Spalten

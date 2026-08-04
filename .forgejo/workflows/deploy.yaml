@@ -75,6 +75,12 @@ jobs:
           # beiden Workflows gegen ein lokales git-Repo). Sekunden, kein Netz.
           - name: gitops-tag-bump
             type: shell
+          # Die OTA-Release-Automatik prueft sich selbst: die
+          # Veroeffentlichungs-Schritte gegen einen lokalen Stub (inkl. einer
+          # ECHTEN Signatur-Zeremonie mit Wegwerf-Schluesseln) und der ECHTE
+          # `run:`-Text des Tag-Laufs. Ohne Forgejo, ohne Portal, ohne Docker.
+          - name: ota-release
+            type: shell
 
     steps:
       - name: Checkout Repository
@@ -155,12 +161,29 @@ jobs:
           python-version: "3.11"
 
       - name: gitops tag-bump self-checks
-        if: matrix.type == 'shell'
+        if: matrix.name == 'gitops-tag-bump'
         run: |
           python -m pip install --upgrade pip
           pip install pyyaml
           bash tools/deploy/test-gitops-image-bump.sh
           bash tools/deploy/test-gitops-bump-workflow.sh
+
+      # Go, damit die ECHTE Zeremonie im Selbsttest wirklich laeuft (ohne go
+      # ueberspringt er sie sauber - im Gate wollen wir sie aber haben).
+      - name: Set up Go
+        if: matrix.name == 'ota-release'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: OTA release self-checks
+        if: matrix.name == 'ota-release'
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+          bash tools/ota/test-release-publish.sh
+          bash tools/ota/test-release-workflow.sh
 
   # Build + push every deployed image in parallel. The tag-bump job waits for
   # the whole matrix. Tags: :latest and :${{ github.sha }} (the gitops overlay

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.EdgeReleaseRepository;
 import com.voltpilot.api.web.dto.CreateEdgeReleaseRequest;
 import com.voltpilot.api.web.dto.EdgeReleaseDto;
+import com.voltpilot.api.web.dto.NextReleaseSeqDto;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -47,11 +48,40 @@ import org.springframework.web.server.ResponseStatusException;
  * Die api prüft die Signatur bewusst NICHT - siehe {@code readSigned}. Und es
  * gibt weiterhin KEINEN Schreibpfad zu irgendeinem Gerät: Stufe 0 heißt
  * „Sehen", Stufe 1 „Vertrauen"; verteilt wird erst in Stufe 2.
+ *
+ * <p><b>Seit der Release-Automatisierung (Captain-Entscheid 04.08.2026, der
+ * D3 bewusst revidiert) trägt diese Klasse als EINZIGE im Admin-Baum eine
+ * zweite, ENG geschnittene Rolle:</b> {@code edge-release-publisher}. Sie
+ * gehört dem Dienstkonto, mit dem der CI-Lauf eines {@code edge-*}-Tags ein
+ * frisch signiertes Release einträgt. Die Rolle steht deshalb NUR an genau zwei
+ * Methoden - {@link #nextSeq()} (die Ordnung, die das Manifest VOR dem
+ * Signieren braucht) und {@link #create} -, und die Klasse trägt bewusst KEINE
+ * klassenweite Annotation mehr, damit eine neu hinzugefügte Methode nicht
+ * versehentlich in den Geltungsbereich der Publisher-Rolle rutscht: eine
+ * Methode ohne Annotation fällt auf die Filterkette zurück, und dort verlangt
+ * {@code /api/v1/admin/**} weiterhin mindestens eine der beiden Rollen.
+ *
+ * <p><b>Was die Publisher-Rolle NICHT kann</b> (und was {@code AdminApiTest}
+ * Endpunkt für Endpunkt nachweist): einen Rollout anlegen, eine Welle
+ * freigeben, anhalten, einem Gerät ein Ziel zuweisen, die Flotte lesen,
+ * Mandanten/Benutzer anfassen - all das liegt hinter
+ * {@code hasRole('platform-admin')} in den anderen Controllern. Ein übernommener
+ * Runner kann also die Release-LISTE verunreinigen, aber kein Gerät erreichen;
+ * der Mensch-Akt „Rollout starten" bleibt Mensch-Akt. Und selbst das
+ * eingetragene Release ist nur so viel wert wie seine Signatur: die kalte
+ * Wurzel liegt weiterhin offline beim Owner, ein missbrauchter Release-
+ * Schlüssel wird durch ein neues root-signiertes Trust-Set entwertet
+ * (docs/ota-signing.md §7.1).
  */
 @RestController
 @RequestMapping("/api/v1/admin/edge-releases")
-@PreAuthorize("hasRole('platform-admin')")
 public class AdminEdgeReleaseController {
+
+    /**
+     * Die eng geschnittene Veröffentlichungs-Rolle. Sie darf ausschließlich
+     * registrieren (und die dafür nötige nächste Sequenznummer lesen).
+     */
+    private static final String PUBLISH = "hasAnyRole('platform-admin','edge-release-publisher')";
 
     /**
      * Das Versionsschema aus D5: {@code edge-JJJJ.MM.N}. Bewusst eng - der
@@ -72,11 +102,44 @@ public class AdminEdgeReleaseController {
 
     /** Das Register, NEUESTE zuerst - der erste Eintrag ist der Soll-Stand. */
     @GetMapping
+    @PreAuthorize("hasRole('platform-admin')")
     public List<EdgeReleaseDto> list() {
         return releases.findAll();
     }
 
+    /**
+     * Die nächste freie Sequenznummer - das EINE, was der Veröffentlicher
+     * lesen muss.
+     *
+     * <p><b>Warum es diesen Endpunkt gibt:</b> {@code release_seq} steht IM
+     * signierten Manifest, die Signatur geht über genau dessen Bytes - die
+     * Ordnung muss also VOR dem Signieren feststehen. Die api kann sie deshalb
+     * nicht erst bei der Registrierung vergeben (das Manifest wäre dann schon
+     * mit einer anderen Zahl unterschrieben), und CI kann sie nicht raten. Also
+     * fragt der Lauf hier nach, baut das Manifest damit und signiert es.
+     *
+     * <p>Bewusst eine EIGENE, schmale Route statt eines Publisher-Zugriffs auf
+     * {@link #list()}: die Liste trägt alle Manifest-Bytes und den Urheber
+     * jedes Eintrags - mehr, als Registrieren braucht.
+     *
+     * <p><b>Ehrliche Grenze (bewusst nicht wegdefiniert):</b> zwischen diesem
+     * Lesen und dem Registrieren liegt das Signieren, also gibt es ein
+     * TOCTOU-Fenster. Trägt sich in dieser Zeit ein zweites Release ein,
+     * scheitert {@link #create} LAUT an der Monotonie-Prüfung, statt eine
+     * Reihenfolge zu verbiegen - und der Lauf wird mit der neuen Nummer
+     * wiederholt. Ein Reservieren wäre die Alternative, würde aber Löcher in
+     * die Ordnung reißen, sobald ein Lauf abbricht.
+     */
+    @GetMapping("/next-seq")
+    @PreAuthorize(PUBLISH)
+    public NextReleaseSeqDto nextSeq() {
+        Long max = releases.maxSeq();
+        String latest = max == null ? null : releases.versionOfSeq(max);
+        return new NextReleaseSeqDto(max == null ? 1L : max + 1L, max, latest);
+    }
+
     @PostMapping
+    @PreAuthorize(PUBLISH)
     public ResponseEntity<EdgeReleaseDto> create(@Valid @RequestBody CreateEdgeReleaseRequest req,
             @AuthenticationPrincipal Jwt caller) {
         Signed signed = readSigned(req);
@@ -85,11 +148,17 @@ public class AdminEdgeReleaseController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Die Version muss dem Schema edge-JJJJ.MM.N folgen (z. B. edge-2026.08.0).");
         }
-        if (releases.findByVersion(version).isPresent()) {
-            // Bewusst 409 statt einer idempotenten 200: ein Release entsteht
-            // EINMAL und von Hand. Ein stilles „ist schon da" würde einen
-            // abweichenden Commit im Body verschlucken - und das Register ist
-            // die Papier-Spur, die genau das beantworten soll.
+        java.util.Optional<EdgeReleaseDto> existing = releases.findByVersion(version);
+        if (existing.isPresent()) {
+            // Ein WIEDERHOLTER Lauf mit BYTEGLEICHEN Bytes ist derselbe Eintrag
+            // und bekommt 200 - ein CI-Lauf darf an einem Netzwerk-Aussetzer
+            // hinter der erfolgreichen Registrierung nicht scheitern. Alles
+            // andere bleibt 409: die ursprüngliche Begründung („ein stilles
+            // ‚ist schon da' würde einen ABWEICHENDEN Commit verschlucken")
+            // gilt unverändert - bytegleich verschluckt per Definition nichts.
+            if (signed != null && isIdenticalRepeat(existing.get(), req)) {
+                return ResponseEntity.ok(existing.get());
+            }
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Release '" + version + "' ist bereits registriert.");
         }
@@ -125,6 +194,22 @@ public class AdminEdgeReleaseController {
     /** Die Angaben, die AUS dem signierten Manifest kommen. */
     private record Signed(String release, long releaseSeq, String targetCommit,
             String signingKeyId) {
+    }
+
+    /**
+     * Ist die Anfrage die BYTEGLEICHE Wiederholung des gespeicherten Eintrags?
+     *
+     * <p>Verglichen werden die rohen Manifest- und Signatur-Bytes (auf sie geht
+     * die Signatur, und Version/Sequenz/Commit/Schlüssel leiten sich ohnehin
+     * ausschließlich daraus ab) plus die Notiz, die als EINZIGES Feld nicht aus
+     * dem Manifest stammt. Ein gespeicherter UNSIGNIERTER Eintrag ist nie eine
+     * Wiederholung: dort gäbe es nichts, woran Gleichheit festzumachen wäre.
+     */
+    private static boolean isIdenticalRepeat(EdgeReleaseDto stored, CreateEdgeReleaseRequest req) {
+        return stored.manifest() != null
+                && stored.manifest().equals(req.manifest())
+                && java.util.Objects.equals(stored.signature(), req.signature())
+                && java.util.Objects.equals(stored.notes(), blankToNull(req.notes()));
     }
 
     /**

@@ -31,10 +31,31 @@
       {
         "name": "platform-admin",
         "description": "Portal-Admin: platform operator, manages tenants and users across all tenants (dev)"
+      },
+      {
+        "name": "edge-release-publisher",
+        "description": "OTA release automation: may ONLY register a signed edge release (POST /api/v1/admin/edge-releases + its next-seq read). Never a rollout, never a device target (dev)"
       }
     ]
   },
   "clients": [
+    {
+      "clientId": "voltpilot-release-publisher",
+      "name": "VoltPilot OTA Release Publisher",
+      "description": "Service account for the edge-* tag pipeline. Client credentials only - no login, no browser flow, no password grant.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "secret": "voltpilot-release-publisher-dev-secret",
+      "redirectUris": [],
+      "webOrigins": []
+    },
     {
       "clientId": "voltpilot-api",
       "name": "Voltpilot Portal API",
@@ -109,6 +130,12 @@
     }
   ],
   "users": [
+    {
+      "username": "service-account-voltpilot-release-publisher",
+      "enabled": true,
+      "serviceAccountClientId": "voltpilot-release-publisher",
+      "realmRoles": ["edge-release-publisher"]
+    },
     {
       "username": "service-account-voltpilot-api",
       "enabled": true,

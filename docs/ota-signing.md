@@ -32,12 +32,43 @@ Werkzeug: `edge-app/core/cmd/vp-ota`. Verifizierer auf dem Gerät:
 3. Der **öffentliche** Teil der Wurzel ist im Core-Image **eingebacken**
    (`edge-app/core/internal/otaverify/rootkeys.json`, im Git nachlesbar). Ein
    Gerät vertraut nur dem, was dort steht.
-4. **Es gibt keinen heißen Schlüssel in CI** (Entscheid D3). CI baut Images und
-   erzeugt ein *unsigniertes* Manifest; unterschrieben wird offline beim Owner.
-   Ein übernommener CI-Runner kann damit **kein vertrauenswürdiges Release
-   erzeugen**.
+4. **Der RELEASE-Schlüssel liegt seit dem 04.08.2026 in CI** (Captain-Order
+   „git tag → fertig", die Entscheid D3 bewusst revidiert). Die **kalte Wurzel
+   nicht** — und genau diese Trennung trägt den Rest: siehe den nächsten
+   Abschnitt.
 5. Unterschrieben werden **die exakten rohen Bytes** der Manifest-Datei — die
    Signatur liegt **daneben** (`release.json.sig`), nie darin.
+
+### Warum ein heißer Release-Schlüssel vertretbar ist
+
+Die Revision von D3 ist kein Nachgeben, sondern ein Tausch mit vier
+Gegenleistungen. **Alle vier müssen gelten; fällt eine weg, ist der Tausch
+nicht mehr bezahlt:**
+
+1. **Die kalte Wurzel bleibt offline beim Owner.** CI sieht sie nie. Ein
+   missbrauchter Release-Schlüssel wird durch ein **neues root-signiertes
+   Trust-Set** entwertet (§7.1) — ohne dass ein einziges Gerät angefasst werden
+   muss und ohne dass ein Angreifer daran etwas ändern kann.
+2. **Das Register-Konto darf ausschließlich REGISTRIEREN.** Es trägt die
+   Realm-Rolle `edge-release-publisher` und erreicht damit genau zwei Routen
+   (`GET …/edge-releases/next-seq` und `POST …/edge-releases`). Kein Rollout,
+   keine Welle, kein Geräte-Ziel, nicht einmal die Flotten-Ansicht. Das steht
+   **serverseitig** (`AdminEdgeReleaseController`, plus die Rückfallebene in
+   `SecurityConfig`) und wird Endpunkt für Endpunkt nachgewiesen
+   (`AdminApiTest.theReleasePublisherAccountMayOnlyRegisterAndReachesNoDevice`).
+   Ein übernommener Runner kann die Release-LISTE verunreinigen — er erreicht
+   **kein Gerät**.
+3. **Der Mensch-Akt bleibt Mensch-Akt.** Was eine Anlage tatsächlich erreicht,
+   ist ein *Rollout*, und den startet ein Portal-Admin im Portal
+   (Plattform → Edge-Updates). Es gibt aus CI keinen Weg dorthin.
+4. **Nichts in einem Wirkpfad hängt an CI** (§6-Doktrin, unverändert). Schläft
+   der Runner, taucht das Release eben **später** in der Liste auf; ein
+   laufender Rollout wartet nie auf ihn, und der Handpfad (§4b) bleibt
+   vollständig gültig.
+
+Dazu die Eigenschaft, die zwei davon überhaupt erst wirksam macht: **das Gerät
+prüft selbst.** Ein Manifest ohne gültige Kette zur eingebackenen Wurzel wird
+abgelehnt, egal wer es eingetragen hat — das Register „segnet" nichts (§4c).
 
 ### Warum die Signatur abgetrennt ist
 
@@ -190,41 +221,116 @@ vp-ota sign --key root-2026-a.key --domain trust-set --in trust-set.json
 Ergebnis: `trust-set.json` + `trust-set.json.sig`. **Beide Dateien** gehören zu
 jedem Release-Paket dazu — ohne sie kennt das Gerät den Release-Schlüssel nicht.
 
+**Beide nach `edge-app/ota/` kopieren und committen** (sie sind öffentlich, und
+der Release-Lauf braucht sie für seine Gegenprüfung — `edge-app/ota/README.md`).
+
 Die Wurzel kann danach wieder offline verschwinden. Sie wird nur für
 Trust-Set-Änderungen gebraucht.
 
 ---
 
-## 4. Ein Release unterschreiben (pro Release)
-
-### 4.1 Tag setzen, CI die Images bauen lassen
+## 4. Ein Release veröffentlichen: `git tag` → fertig
 
 ```bash
-git tag edge-2026.08.0 && git push origin edge-2026.08.0
+git tag -a edge-2026.08.0 -m 'Solarman-Lesepfad gehaertet.
+Keine /data-Migration.'
+git push origin edge-2026.08.0
 ```
 
-Der Tag-Lauf von `.forgejo/workflows/edge-images.yaml` baut beide Images
-multi-arch (der Versionsstempel wird automatisch `<tag>-<kurzsha>`) und gibt im
-Job **„Digests + Prüfsumme"** aus:
+**Das ist alles.** Der Tag-Lauf von `.forgejo/workflows/edge-images.yaml` macht
+danach in dieser Reihenfolge:
 
-* die beiden `@sha256:`-Digests der Manifest-Listen,
-* die `sha256`-Prüfsumme des unsignierten `release.json`.
+1. baut beide Images multi-arch (Versionsstempel `<tag>-<kurzsha>`),
+2. liest die Digests der **Manifest-Listen** aus der Registry zurück (die
+   Registry ist die Wahrheit darüber, was unter dem Tag liegt),
+3. holt die **nächste Sequenznummer aus dem Register**
+   (`GET /api/v1/admin/edge-releases/next-seq`),
+4. erzeugt das Manifest (`vp-ota manifest`, deterministisch),
+5. **signiert** es mit dem Release-Schlüssel aus dem CI-Geheimnis,
+6. **prüft die Kette gegen die EINGEBACKENE Wurzel** (`vp-ota verify --root
+   baked`) — dieselbe Prüfung, die jedes Gerät fährt, nur vorgezogen. Fällt sie
+   durch, geht **nichts** hinaus,
+7. hängt `release.json`, `release.json.sig`, `trust-set.json`,
+   `trust-set.json.sig` an die Forgejo-Release,
+8. trägt das Release ins Portal-Register ein.
 
-Der Job braucht die Repo-Variable **`EDGE_RELEASE_SEQ`** (die nächste freie
-Sequenznummer des Registers) — fehlt sie, bricht er laut ab, statt eine
-Reihenfolge zu erfinden. Optional: `EDGE_MIN_FROM_SEQ`, `EDGE_STATE_SCHEMA`,
-`EDGE_SIGNING_KEY_ID`.
+**Was NICHT passiert — und mit Absicht nie aus CI passiert:** kein Rollout wird
+gestartet, keine Welle freigegeben, keinem Gerät ein Ziel zugewiesen. Das
+bleibt Portal → Plattform → Edge-Updates.
 
-> **Nichts im Wirkpfad hängt an diesem Lauf.** Der Forgejo-Runner schläft
-> nachweislich ein. Wenn er nicht läuft: die Digests direkt aus der Registry
-> holen und weiter mit 4.2.
->
-> ```bash
-> docker buildx imagetools inspect --format '{{.Manifest.Digest}}' \
->   git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:<voller-sha>
-> ```
+### 4.1 Die Eingaben und wo sie herkommen
 
-### 4.2 Manifest lokal erzeugen
+| Feld | Quelle | Warum dort |
+|---|---|---|
+| `release` | der Tag-Name | — |
+| `release_seq` | **das Register** (`next-seq`) | Sie steht IM signierten Manifest, also muss sie VOR dem Signieren feststehen — die api kann sie nicht erst beim Eintragen vergeben. |
+| `target_commit` | der Commit des Tags | — |
+| Artefakt-Digests | die **Registry** | Was dort liegt, ist die Wahrheit; ein Tag wäre kein Pin. |
+| `state_schema` | `edge-app/core/otastate.schema` | Eine Eigenschaft des **Codes** — sie gehört in denselben Commit wie die Änderung, die sie nötig macht. |
+| `min_from_seq` | Tag-Annotation `min-from-seq=<n>`, sonst **0** | Siehe den Kasten unten. |
+| `notes` | der Fließtext der Tag-Annotation | Reist im selben Objekt, das den Lauf ausgelöst hat. |
+| `urgent`, `allow_downgrade` | Tag-Annotation `urgent=true` / `allow-downgrade=true` | Seltene, bewusste Ausnahmen. |
+| `signing_key_id` | **aus der Schlüsseldatei** | Manifest und Signatur können so gar nicht auseinanderlaufen. |
+
+Eine Tag-Annotation sieht damit z. B. so aus:
+
+```
+Solarman-Lesepfad gehaertet.
+min-from-seq=9
+Keine /data-Migration.
+```
+
+Nur die **vier bekannten Schlüssel** gelten als Anweisung; jede andere Zeile —
+auch eine mit Gleichheitszeichen — bleibt Fließtext und wird zur Release-Notiz.
+
+> **Annotierten Tag nehmen (`git tag -a`).** Ein *leichter* Tag zeigt direkt auf
+> den Commit, also liest der Lauf dessen **Commit-Nachricht** als Annotation.
+> Das ist meist harmlos, aber eine Commit-Nachricht wurde nie als Anweisung
+> geschrieben — und genau deshalb ist die Direktiv-Liste auf vier Schlüssel
+> begrenzt.
+
+> **⚠ `min_from_seq` ist standardmäßig 0, und das ist eine bewusste
+> Entscheidung.** Die Order sagte „Vorgabe = vorherige Sequenz (keine
+> Sprung-Erzwingung)" — unter `otaverify` sind das aber **zwei verschiedene
+> Dinge**: ein Boden auf der Vorgänger-Nummer BLOCKIERT jedes Gerät, das ein
+> Release übersprungen hat (`verify.go`: `cur < min_from_seq` ⇒ `deferred`), und
+> genau das passiert regelmäßig — ein Rollout hält bei einem Fehlschlag an,
+> eine Box ist ein paar Tage offline. Wir nehmen deshalb die
+> sicherheitswahrende Lesart der Klammer: **kein Boden = keine
+> Sprung-Erzwingung.** Ein Release, das wirklich eine Zwischenstufe braucht
+> (etwa eine `/data`-Migration), setzt ihn ausdrücklich per
+> `min-from-seq=<n>` in der Tag-Annotation. Umgekehrt lässt sich die andere
+> Lesart mit **einer** Zeile herstellen (Repo-Variable `EDGE_MIN_FROM_SEQ`).
+
+### 4.2 Wenn der Lauf abbricht
+
+| Abbruch | Bedeutung | Was zu tun ist |
+|---|---|---|
+| `… trust-set.json fehlt` | Das root-signierte Trust-Set ist nicht im Repo. | Zeremonie §3.4 fahren, beide Dateien nach `edge-app/ota/` committen (`edge-app/ota/README.md`). |
+| `Token vom Portal abgelehnt` | Dienstkonto falsch, deaktiviert oder Secret veraltet. | Einrichtung §4d prüfen. **Kein** stiller Rückfall auf eine Repo-Variable. |
+| `Gegenpruefung … fehlgeschlagen` | Die Kette passt nicht zur eingebackenen Wurzel. | Das Release würde auf **jedem** Gerät abgelehnt. Schlüssel/Trust-Set prüfen — es geht nichts hinaus. |
+| `release_seq muss groesser …` | Zwischen `next-seq` und dem Eintragen kam ein anderes Release. | Lauf wiederholen; er holt die neue Nummer. |
+| `Release '…' ist bereits registriert` | Dieselbe Version, **abweichende** Bytes. | Nie überschreiben — neuen Tag ziehen. (Eine **bytegleiche** Wiederholung ist ein stilles 200.) |
+
+Der Lauf ist **wiederholbar**: eine vorhandene Forgejo-Release wird
+wiederverwendet, ein gleichnamiges Asset ersetzt, und eine bytegleiche
+Registrierung ist ein 200 statt eines 409.
+
+### 4b. Der Handpfad (unverändert gültig)
+
+Er bleibt der Weg, wenn der Runner schläft, wenn die Automatik nicht
+eingerichtet ist, oder wenn man ein Release bewusst offline erzeugen will.
+Fehlt eines der Geheimnisse, **läuft der CI-Job grün durch, signiert nichts**
+und druckt genau diese Schritte.
+
+Digests notfalls direkt aus der Registry:
+
+```bash
+docker buildx imagetools inspect --format '{{.Manifest.Digest}}' \
+  git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:<voller-sha>
+```
+
+#### 4b.1 Manifest lokal erzeugen
 
 **Aus einem CI-Log wird nicht kopiert** (Leerraum/Zeilenenden könnten sich
 ändern und die Signatur zerstören). Die Ausgabe von `vp-ota manifest` ist
@@ -254,7 +360,7 @@ Feldbedeutungen stehen im Kontrakt; die drei, bei denen man nachdenken muss:
   Geräts, das noch im Feld ist.
 * `--state-schema` — die `/data`-Zustandsversion, die dieses Release verträgt.
 
-### 4.3 Unterschreiben
+#### 4b.2 Unterschreiben
 
 ```bash
 vp-ota sign --key rel-2026-a.key --domain release --in release.json
@@ -267,7 +373,7 @@ Das Werkzeug erzwingt dabei die Rollentrennung: die Wurzel kann kein Release
 unterschreiben, ein Release-Schlüssel kein Trust-Set, und ein Manifest, das einen
 anderen `signing_key_id` nennt, wird gar nicht erst unterschrieben.
 
-### 4.4 Gegenprüfen, bevor irgendetwas hinausgeht
+#### 4b.3 Gegenprüfen, bevor irgendetwas hinausgeht
 
 ```bash
 vp-ota verify --root baked \
@@ -282,7 +388,7 @@ nicht gelaufen ist, ist sie leer und der Befehl sagt das; dann mit
 Mit `--current-seq <n>` lässt sich zusätzlich durchspielen, wie ein Gerät auf
 einem bestimmten Stand urteilen würde (Boden, Rückschritt).
 
-### 4.5 Assets anhängen und ins Register eintragen
+#### 4b.4 Assets anhängen und ins Register eintragen
 
 Beide Befehle druckt `vp-ota sign` fertig aus. Der Vollständigkeit halber:
 
@@ -307,12 +413,16 @@ curl -sS -X POST https://portal.voltpilot.de/api/v1/admin/edge-releases \
   --data-binary @register.json
 ```
 
-**Warum der Register-Eintrag nicht aus CI kommt:** er begleitet die
-**Unterschrift**, und die entsteht per D3 offline. Ein Portal-Admin-Token in CI
-wäre genau der heiße Schlüssel, den D3 vermeidet — und ein Wirkpfad, der auf
-einen schlafenden Runner wartet.
+> **Historisch:** hier stand bis zum 04.08.2026 „warum der Register-Eintrag
+> nicht aus CI kommt". Diese Begründung ist mit der Captain-Order bewusst
+> abgelöst — nicht widerlegt: sie zielte auf ein **Portal-ADMIN**-Token in CI,
+> und genau das gibt es weiterhin nicht. Das Konto, das jetzt einträgt, kann
+> ausschließlich eintragen (§1, Punkt 2 der Gegenleistungen). Der Handpfad mit
+> dem eigenen Admin-Token bleibt daneben gültig.
 
-**Was die api mit dem Eintrag macht:** sie legt die Manifest- und Signatur-Bytes
+### 4c. Was die api mit dem Eintrag macht
+
+Sie legt die Manifest- und Signatur-Bytes
 **unverändert** ab (Spalte `text`, niemals `jsonb` — das würde Schlüsselreihen-
 folge und Leerraum normalisieren und die Signatur lautlos unprüfbar machen) und
 prüft **Widerspruchsfreiheit** (Version/Sequenz/Commit/Schlüssel müssen zum
@@ -320,6 +430,137 @@ signierten Manifest passen). **Sie prüft die Signatur nicht** — der einzige
 Verifizierer, auf den es ankommt, ist das Gerät mit seiner eingebackenen Wurzel.
 Ein Register, das ein Manifest „segnet", erzeugte Sicherheitsgefühl an einer
 Stelle, die nichts garantieren kann.
+
+Eine **bytegleiche** Wiederholung derselben Version beantwortet sie mit **200**
+und dem gespeicherten Eintrag (ein erneut gestarteter CI-Job hinter einer
+erfolgreichen Registrierung darf nicht rot werden); **abweichende** Bytes unter
+derselben Version bleiben **409** — das Register ist die Papier-Spur, und zwei
+verschiedene Manifeste unter einer Version wären genau die Lüge, die dort
+niemand mehr bemerkt.
+
+---
+
+## 4d. Einmalige Einrichtung der Automatik (macht der Owner)
+
+Vier Dinge, danach genügt `git tag`. **Bis alle vier stehen, läuft der Job grün
+durch und signiert nichts** — die Automatik lässt sich also gefahrlos halb
+vorbereiten.
+
+### Schritt 1 — Trust-Set ins Repo
+
+Aus der Zeremonie (§3.4), beide Dateien:
+
+```bash
+cp trust-set.json trust-set.json.sig  <repo>/edge-app/ota/
+git add edge-app/ota/trust-set.json edge-app/ota/trust-set.json.sig
+git commit -m "ota: root-signiertes Trust-Set"
+```
+
+Öffentliche Schlüssel dürfen öffentlich sein; genau dadurch ist im Git
+nachlesbar, welchen Release-Schlüsseln die Flotte traut. Begründung und
+Abgrenzung: `edge-app/ota/README.md`. **Ohne diese beiden Dateien bricht der
+Lauf ab** — er könnte die Kette sonst nicht gegenprüfen.
+
+### Schritt 2 — Keycloak: Rolle, Client, Dienstkonto
+
+In einem **frischen** Realm-Import sind alle drei schon enthalten (der Client
+kommt allerdings **deaktiviert**, siehe unten). Der bestehende Prod-Realm wurde
+längst importiert, dort also von Hand — entweder in der Admin-Konsole
+(`https://portal.voltpilot.de/auth/admin`, Realm `voltpilot`):
+
+1. **Realm roles → Create role** → Name `edge-release-publisher`,
+   Description „darf NUR ein signiertes Edge-Release registrieren".
+2. **Clients → Create client** → Client ID `voltpilot-release-publisher`,
+   Next → **Client authentication: On**, **Authorization: Off**,
+   Authentication flow: **nur** „Service accounts roles" ankreuzen
+   (Standard flow, Direct access grants, Implicit **aus**) → Next → Save.
+3. **Clients → voltpilot-release-publisher → Credentials** → das Client secret
+   kopieren (oder „Regenerate"). Das ist `VP_OTA_PUBLISHER_CLIENT_SECRET`.
+4. **Clients → voltpilot-release-publisher → Service accounts roles →
+   Assign role → Filter by realm roles** → `edge-release-publisher` → Assign.
+   **Sonst nichts zuweisen** — das ist der ganze Punkt.
+
+…oder mit `kcadm` (im Keycloak-Container, `docker compose exec keycloak bash`):
+
+```bash
+kcadm.sh config credentials --server http://localhost:8080/auth \
+  --realm master --user admin --password "$KEYCLOAK_ADMIN_PASSWORD"
+
+kcadm.sh create roles -r voltpilot \
+  -s name=edge-release-publisher \
+  -s 'description=darf NUR ein signiertes Edge-Release registrieren'
+
+kcadm.sh create clients -r voltpilot \
+  -s clientId=voltpilot-release-publisher \
+  -s publicClient=false -s serviceAccountsEnabled=true \
+  -s standardFlowEnabled=false -s implicitFlowEnabled=false \
+  -s directAccessGrantsEnabled=false -s enabled=true
+
+CID=$(kcadm.sh get clients -r voltpilot -q clientId=voltpilot-release-publisher \
+  --fields id --format csv --noquotes)
+kcadm.sh get clients/$CID/client-secret -r voltpilot          # -> das Secret
+SA=$(kcadm.sh get clients/$CID/service-account-user -r voltpilot \
+  --fields id --format csv --noquotes)
+kcadm.sh add-roles -r voltpilot --uid $SA --rolename edge-release-publisher
+```
+
+Gegenprobe — das Token muss die Rolle tragen **und sonst nichts Nützliches**:
+
+```bash
+TOK=$(curl -sS -X POST \
+  https://portal.voltpilot.de/auth/realms/voltpilot/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=voltpilot-release-publisher \
+  -d client_secret=… | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
+
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer $TOK" \
+  https://portal.voltpilot.de/api/v1/admin/edge-releases/next-seq   # 200
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer $TOK" \
+  https://portal.voltpilot.de/api/v1/admin/edge-updates             # 403
+```
+
+> **In einem frischen Deployment** liefert der Realm-Import den Client bereits
+> mit — aber **`enabled: false`** und mit dem Secret aus
+> `VP_RELEASE_PUBLISHER_SECRET` (`.env`). Fail-closed: solange niemand die
+> Variable setzt, ist ein etwaiger Vorgabewert wertlos, weil ein deaktivierter
+> Client gar kein Token ausgibt. Zum Einschalten: Variable setzen, Stack neu
+> starten, Client in der Konsole auf **Enabled** stellen.
+
+### Schritt 3 — die beiden Forgejo-Actions-Secrets
+
+Repo → **Settings → Actions → Secrets**:
+
+| Secret | Inhalt |
+|---|---|
+| `VP_OTA_RELEASE_KEY` | der **gesamte Inhalt** von `rel-2026-a.key` (die JSON-Datei, nicht nur das Feld) |
+| `VP_OTA_PUBLISHER_CLIENT_SECRET` | das Client-Secret aus Schritt 2 |
+| `VP_OTA_FORGEJO_TOKEN` | *optional* — Repo-Token mit `repo (write)` für die Release-Assets. Fehlt es, nimmt der Lauf `FORGEJO_USERNAME`/`FORGEJO_PASSWORD` (die für die Registry ohnehin da sind). |
+
+```bash
+cat rel-2026-a.key   # -> vollständig in VP_OTA_RELEASE_KEY einfügen
+```
+
+Der Schlüssel wird im Lauf in eine Datei **außerhalb des Checkouts** (0600)
+geschrieben, nie auf eine Kommandozeile gelegt und am Jobende gelöscht — auch
+nach einem Abbruch (`if: always()`).
+
+### Schritt 4 — die alte Repo-Variable aufräumen
+
+`EDGE_RELEASE_SEQ` wird nicht mehr gebraucht (die Ordnung kommt aus dem
+Register) und ist nur noch der Rückfall für den Fall, dass die Automatik
+**nicht** eingerichtet ist. Sie darf stehen bleiben; ein veralteter Wert stört
+nicht, solange die Automatik läuft. `EDGE_STATE_SCHEMA` ist ebenfalls entbehrlich
+— die Zustandsversion steht jetzt in `edge-app/core/otastate.schema`.
+
+### Prüfen, ohne etwas zu veröffentlichen
+
+Beide Selbsttests laufen ohne Forgejo, ohne Portal und ohne Docker:
+
+```bash
+tools/ota/test-release-publish.sh    # die Schritte einzeln, gegen einen Stub
+tools/ota/test-release-workflow.sh   # der ECHTE run:-Text des Workflows
+```
 
 ---
 
@@ -583,13 +824,19 @@ Der belastbare Hebel ist immer das **neu unterschriebene Trust-Set**.
 |---|---|---|
 | `root-<id>.key` | Offline-Datenträger beim Owner | **Ja — der wichtigste Schlüssel des Systems** |
 | `root-<id>.pub` | `edge-app/core/internal/otaverify/rootkeys.json` (Git) | Nein |
-| `rel-<id>.key` | Arbeitsmaschine des Owners | Ja (ersetzbar) |
+| `rel-<id>.key` | Arbeitsmaschine des Owners **+ Forgejo-Secret `VP_OTA_RELEASE_KEY`** | Ja (ersetzbar — §7.1) |
 | `rel-<id>.pub` | im Trust-Set | Nein |
-| `trust-set.json(.sig)` | Release-Asset + auf jedem Gerät unter `/data/ota/` | Nein |
+| `trust-set.json(.sig)` | **`edge-app/ota/` (Git)** + Release-Asset + auf jedem Gerät unter `/data/ota/` | Nein |
 | `release.json(.sig)` | Release-Asset + Register (`edge_release.manifest`) | Nein |
+| Client-Secret des Veröffentlichers | Forgejo-Secret `VP_OTA_PUBLISHER_CLIENT_SECRET`, Keycloak | Ja (Rolle: nur registrieren) |
 
 **In diesem Repo liegt kein einziger geheimer Schlüssel.** Alle Tests erzeugen
 ihre eigenen Wegwerf-Schlüssel zur Laufzeit.
+
+Der Release-Schlüssel liegt seit dem 04.08.2026 **zusätzlich** als CI-Geheimnis
+vor — die vier Gegenleistungen dafür stehen in §1 („Warum ein heißer
+Release-Schlüssel vertretbar ist"). Die **kalte Wurzel** ist davon unberührt
+und bleibt der Hebel, der einen missbrauchten Release-Schlüssel entwertet.
 
 ---
 
@@ -604,5 +851,18 @@ ihre eigenen Wegwerf-Schlüssel zur Laufzeit.
   bytegenauer Register-Rumpf).
 * Gerät: `edge-app/core/internal/agent/ota_verify_test.go`.
 * Register: `AdminApiTest.aSignedReleaseIsRegisteredByteExactAndNeverContradictsItsManifest`.
+* **Autoritäts-Grenze der Automatik:**
+  `AdminApiTest.theReleasePublisherAccountMayOnlyRegisterAndReachesNoDevice`
+  (echtes Keycloak: das Dienstkonto registriert, bekommt aber auf Rollout,
+  Welle, Not-Aus, Geräte-Ziel, Flotte, Journal, Mandanten, Registry und selbst
+  auf die Release-LISTE ein 403 — und sieht ohne Mandant keine einzige
+  Kundenzeile, auch nicht mit gesetztem Umschalter-Header).
+* **Veröffentlichungs-Schritte:** `tools/ota/test-release-publish.sh`
+  (Tag-Annotation, Zustandsversion, key_id, Token, next-seq, 201/200/409 gegen
+  einen Stub — plus die ECHTE Zeremonie mit `go`, byteweise zurückgelesen) und
+  `tools/ota/test-release-workflow.sh` (führt den **echten `run:`-Text** des
+  Workflows aus: Sequenz aus dem Register, Schlüsseldatei 0600 außerhalb des
+  Checkouts, kein Geheimnis im Protokoll, Abbruch ohne Trust-Set, grüner
+  Handpfad ohne Geheimnisse, kein stiller Rückfall bei abgelehntem Token).
 * Kontrakt-Beispiele: `docs/contracts/examples/ota-release-manifest.*.json`
   (vom echten Geräte-Parser per Pfad gelesen).

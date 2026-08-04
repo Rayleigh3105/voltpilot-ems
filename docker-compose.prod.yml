@@ -157,6 +157,11 @@ services:
       VP_API_CLIENT_SECRET: ${VP_API_CLIENT_SECRET:?set VP_API_CLIENT_SECRET in .env}
       # Password of the seeded Portal-Admin user `admin` (realm role platform-admin).
       VP_PORTAL_ADMIN_PASSWORD: ${VP_PORTAL_ADMIN_PASSWORD:?set VP_PORTAL_ADMIN_PASSWORD in .env}
+      # Secret of the OTA release-publisher service account (client
+      # voltpilot-release-publisher). The client ships DISABLED in the realm
+      # import, so the default here is inert until an operator enables it -
+      # see docs/ota-signing.md "Einmalige Einrichtung".
+      VP_RELEASE_PUBLISHER_SECRET: ${VP_RELEASE_PUBLISHER_SECRET:-change-me}
     volumes:
       - ./infra/prod/keycloak:/opt/keycloak/data/import:ro
       # VoltPilot login theme. On a CI roll-out the deploy workflow ships this

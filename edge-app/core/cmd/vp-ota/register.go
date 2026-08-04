@@ -42,10 +42,11 @@ func cmdRegister(args []string) error {
 Schreibt den fertigen JSON-Rumpf und druckt den curl-Befehl. Abgeschickt wird
 er vom OWNER mit seinem eigenen Portal-Admin-Token.
 
-Warum nicht aus CI: der Register-Eintrag begleitet die SIGNATUR, und die
-entsteht per Entscheid D3 offline beim Owner. Ein Admin-Token in CI waere
-genau der heisse Schluessel, den D3 vermeidet - und der Forgejo-Runner schlaeft
-nachweislich ein, darf also in keinem Wirkpfad stehen.
+Das ist der HANDPFAD. Seit dem 04.08.2026 traegt ihn im Normalfall der
+Tag-Lauf (docs/ota-signing.md §4) - mit einem Dienstkonto, das AUSSCHLIESSLICH
+registrieren darf, nie mit einem Portal-Admin-Token. Der Handpfad bleibt
+vollstaendig gueltig: der Forgejo-Runner schlaeft nachweislich ein, also darf
+kein Wirkpfad auf ihn warten.
 
 `)
 		fs.PrintDefaults()
