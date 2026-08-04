@@ -112,6 +112,27 @@ class RolloutStatesTest {
         assertThat(RolloutStates.haltsRollout(broken.state())).isTrue();
     }
 
+    /**
+     * Der Canary-Soak vom 04.08.2026: das Gerät durfte nicht anwenden (steuernde
+     * Anlage ohne belegte Neutral-Zeit) und meldete das - stumm blieb es bis
+     * dahin auf der Edge. Sobald der Grund im Herzschlag steht, muss die
+     * Spalte „Grund" der Flotten-Matrix ihn ZEIGEN und nicht durch eine eigene
+     * Formulierung ersetzen: die Anlage weiß, warum sie nicht anwendet, das
+     * Portal nicht.
+     */
+    @Test
+    @DisplayName("der Sperr-Grund des Geräts überlebt bis in die Grund-Spalte")
+    void aDeviceSideBlockerReasonSurvivesIntoTheRow() {
+        String blocked = "Autonomie blockiert: Diese Anlage steuert. Für die Familie "
+                + "'hybrid_3p' ist die Neutral-Zeit des Wechselrichters NICHT verifiziert. "
+                + "Es wird deshalb nicht autonom angewandt (am Prüfstand belegen und in "
+                + "VP_OTA_NEUTRAL_VERIFIED eintragen).";
+        RolloutStates.Verdict v = RolloutStates.derive(TARGET,
+                reported("edge-2026.07.2", "deferred", "ok", blocked, NOW), NOW);
+        assertThat(v.state()).isEqualTo(RolloutStates.AUSSTEHEND);
+        assertThat(v.reason()).isEqualTo(blocked);
+    }
+
     @Test
     @DisplayName("ohne Zuweisung wird kein Fortschritt behauptet")
     void withoutATargetNothingIsClaimed() {

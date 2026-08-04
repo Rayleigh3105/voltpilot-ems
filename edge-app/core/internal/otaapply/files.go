@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -180,7 +181,14 @@ type UpdaterState struct {
 	// Woerter, die die Cloud seit Stufe 0 versteht.
 	State string `json:"state"`
 	// Reason ist PFLICHT bei jedem Nicht-idle/Nicht-succeeded (deutsch).
-	Reason        string `json:"reason,omitempty"`
+	Reason string `json:"reason,omitempty"`
+	// Blocker ist der MASCHINENLESBARE Name des Tores, das gerade zu ist
+	// (leer = keines). Er ist der Grund, warum eine Verweigerung nicht mehr
+	// still sein kann: das Sidecar-Log vergleicht darauf (und schreibt nur bei
+	// AENDERUNG), der Kern faltet den zugehoerigen Satz in den Herzschlag, und
+	// keine Oberflaeche muss dafuer einen deutschen Satz nach Stichworten
+	// durchsuchen. Vokabular: die Blocker*-Konstanten in decide.go.
+	Blocker       string `json:"blocker,omitempty"`
 	Release       string `json:"release,omitempty"`
 	ReleaseSeq    int64  `json:"release_seq,omitempty"`
 	LastKnownGood string `json:"last_known_good,omitempty"`
@@ -201,6 +209,31 @@ type UpdaterState struct {
 	AppliedRequestToken string `json:"applied_request_token,omitempty"`
 	// DeadlineAt ist die Wachhund-Frist des laufenden Vorgangs.
 	DeadlineAt string `json:"deadline_at,omitempty"`
+}
+
+// Blocked sagt, ob der Sidecar eine STEHENDE Sperre meldet.
+func (s *UpdaterState) Blocked() bool {
+	return s != nil && s.Blocker != ""
+}
+
+// BlockedReason ist der Satz, den jede Oberflaeche zeigt, wenn eine Sperre
+// steht - mit [BlockedPrefix], damit „wartet" und „blockiert" nie gleich
+// aussehen. Leer, wenn keine Sperre gemeldet ist.
+//
+// Er wohnt HIER und nicht in der Oberflaeche, weil Sidecar-Log und Herzschlag
+// denselben Satz tragen muessen: zwei Formulierungen desselben Befundes waeren
+// zwei Wahrheiten ueber dieselbe Anlage.
+func (s *UpdaterState) BlockedReason() string {
+	if !s.Blocked() {
+		return ""
+	}
+	if strings.TrimSpace(s.Reason) == "" {
+		// Kann per Konstruktion nicht vorkommen (jeder Blocker traegt seinen
+		// deutschen Grund) - und genau deshalb steht hier ein ehrlicher Satz
+		// statt eines nackten Praefixes.
+		return BlockedPrefix + "kein Grund gemeldet (" + s.Blocker + ")."
+	}
+	return BlockedPrefix + s.Reason
 }
 
 // PendingConfirm ist die BROTKRUME: sie wird geschrieben, BEVOR der erste

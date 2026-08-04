@@ -353,3 +353,131 @@ func TestARolledBackReleaseIsNeverAppliedAgainByItself(t *testing.T) {
 		t.Fatalf("ohne Merkzettel muss angewandt werden, ist %v", d.Action)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Der BLOCKER: jede Sperre traegt einen maschinenlesbaren Namen
+// ---------------------------------------------------------------------------
+
+// Ohne diesen Namen bliebe von einer Verweigerung nur ein deutscher Satz, und
+// jede Oberflaeche muesste ihn nach Stichworten durchsuchen - genau die Sorte
+// Ableitung, gegen die es `target_verdict` neben `state` schon gibt.
+func TestEveryClosedGateNamesItself(t *testing.T) {
+	cases := []struct {
+		name string
+		mut  func(*DecisionInput)
+		want string
+	}{
+		{"gebrochene Kette", func(in *DecisionInput) {
+			in.Verdict = otaverify.Verdict{Outcome: otaverify.OutcomeRejected,
+				Reason: "Die Signatur passt nicht."}
+		}, BlockerChain},
+		{"Politik", func(in *DecisionInput) {
+			in.Verdict = otaverify.Verdict{Outcome: otaverify.OutcomeDeferred,
+				Reason: "Anti-Rollback-Boden."}
+		}, BlockerPolicy},
+		{"schon zurueckgenommen", func(in *DecisionInput) {
+			in.Failed = &FailedRelease{Release: "edge-2026.08.0", Reason: "Selbsttest"}
+		}, BlockerRolledBack},
+		{"falsches Backend", func(in *DecisionInput) {
+			m := manifest()
+			m.Compat.Backends = []string{"mender"}
+			in.Verdict = otaverify.Verdict{Outcome: otaverify.OutcomeOK, Manifest: m}
+		}, BlockerBackend},
+		{"Datenstand", func(in *DecisionInput) { in.StateSchemaOnDisk = 9 }, BlockerStateSchema},
+		{"Kern still", func(in *DecisionInput) {
+			in.Signal = freshSignal(func(s *CoreSignal) {
+				s.UpdatedAt = testNow.Add(-10 * time.Minute).Format(TimeFormat)
+			})
+		}, BlockerCoreSilent},
+		{"Platte", func(in *DecisionInput) { in.FreeBytes = 1 }, BlockerDisk},
+		{"Neutral-Zeit", func(in *DecisionInput) {
+			in.Signal = freshSignal(func(s *CoreSignal) { s.ControlActive = true })
+		}, BlockerNeutralTime},
+		{"Neutral-Zeit zu kurz", func(in *DecisionInput) {
+			in.Signal = freshSignal(func(s *CoreSignal) { s.ControlActive = true })
+			in.Neutral = NeutralTimeout{Family: "hybrid_3p", T: 10 * time.Second, Verified: true}
+		}, BlockerNeutralTooShort},
+		{"Interlock", func(in *DecisionInput) {
+			in.Signal = freshSignal(func(s *CoreSignal) {
+				s.ControlActive = true
+				s.Dispatching = true
+			})
+			in.Neutral = NeutralTimeout{Family: "hybrid_3p", T: 90 * time.Second, Verified: true}
+		}, BlockerInterlock},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := baseInput()
+			c.mut(&in)
+			d := Decide(in)
+			if d.Blocker != c.want {
+				t.Fatalf("Blocker: erwartet %q, ist %q (Grund: %q)", c.want, d.Blocker, d.Reason)
+			}
+			// Die Haus-Regel: jede geschlossene Tuer traegt ihren Grund.
+			if strings.TrimSpace(d.Reason) == "" {
+				t.Fatalf("die Sperre %q hat keinen Grund", d.Blocker)
+			}
+		})
+	}
+}
+
+// Ein offener Weg NENNT keine Sperre - sonst waere das Feld kein Signal mehr.
+func TestAnOpenPathNamesNoBlocker(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		mut  func(*DecisionInput)
+	}{
+		{"anwenden", func(*DecisionInput) {}},
+		{"ausgeschaltet", func(in *DecisionInput) { in.Autonomous = false }},
+		{"keine Zuweisung", func(in *DecisionInput) { in.HasTarget = false }},
+		{"laeuft schon", func(in *DecisionInput) {
+			v := okVerdict()
+			v.AlreadyRunning = true
+			in.Verdict = v
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			in := baseInput()
+			c.mut(&in)
+			if d := Decide(in); d.Blocker != "" {
+				t.Fatalf("hier ist nichts gesperrt, gemeldet wurde %q", d.Blocker)
+			}
+		})
+	}
+}
+
+// Der Grund der Neutral-Zeit muss den HEBEL nennen: „nicht belegt" allein ist
+// eine Sackgasse, mit dem Namen der Umgebungsvariablen ist es eine Aufgabe.
+func TestTheNeutralTimeReasonNamesTheLeverAndTheFamily(t *testing.T) {
+	in := baseInput()
+	in.Signal = freshSignal(func(s *CoreSignal) { s.ControlActive = true })
+	d := Decide(in)
+	for _, want := range []string{"steuert", "hybrid_3p", "VP_OTA_NEUTRAL_VERIFIED"} {
+		if !strings.Contains(d.Reason, want) {
+			t.Fatalf("der Grund nennt %q nicht: %q", want, d.Reason)
+		}
+	}
+}
+
+// Der Satz fuer die Oberflaeche entsteht an EINER Stelle - „wartet" und
+// „blockiert" duerfen nirgends gleich aussehen.
+func TestTheBlockedSentenceCarriesItsPrefixExactlyWhenABlockerStands(t *testing.T) {
+	blocked := &UpdaterState{State: StateDeferred, Blocker: BlockerNeutralTime,
+		Reason: "Diese Anlage steuert."}
+	if !blocked.Blocked() || blocked.BlockedReason() != BlockedPrefix+"Diese Anlage steuert." {
+		t.Fatalf("Sperr-Satz: %q", blocked.BlockedReason())
+	}
+	open := &UpdaterState{State: StateDeferred, Reason: "wartet auf den Menschen"}
+	if open.Blocked() || open.BlockedReason() != "" {
+		t.Fatalf("ohne Blocker gibt es keinen Sperr-Satz: %q", open.BlockedReason())
+	}
+	if (*UpdaterState)(nil).Blocked() || (*UpdaterState)(nil).BlockedReason() != "" {
+		t.Fatal("ohne Zustandsdatei gibt es keine Sperre")
+	}
+	// Kann per Konstruktion nicht vorkommen - und faellt trotzdem nicht in ein
+	// nacktes Praefix.
+	bare := &UpdaterState{Blocker: BlockerDisk}
+	if !strings.Contains(bare.BlockedReason(), BlockerDisk) {
+		t.Fatalf("ein grundloser Blocker muss sich wenigstens benennen: %q", bare.BlockedReason())
+	}
+}

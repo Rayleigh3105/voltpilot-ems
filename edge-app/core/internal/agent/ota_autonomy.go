@@ -492,9 +492,6 @@ func (a *Agent) otaUpdaterOverlay(sum *cloud.UpdateSummary) {
 	if up.LastKnownGood != "" {
 		sum.LastKnownGood = up.LastKnownGood
 	}
-	if up.State == "" || up.State == otaapply.StateIdle {
-		return
-	}
 	// Ein Zustand, der aelter ist als ein paar Takte, beschreibt nichts
 	// Laufendes mehr - ein gestoppter Sidecar darf den Herzschlag nicht auf
 	// „wendet an" einfrieren.
@@ -502,16 +499,73 @@ func (a *Agent) otaUpdaterOverlay(sum *cloud.UpdateSummary) {
 		time.Since(t) > 2*time.Minute {
 		return
 	}
+
+	// --- Die STEHENDE Sperre, VOR jeder anderen Ueberlagerung. -------------
+	//
+	// Sie steht bewusst oberhalb der „idle"-Abkuerzung: solange der Sidecar
+	// eine Sperre meldet, ist SIE die Wahrheit ueber die Anwendung - und zwar
+	// unabhaengig davon, welches Zustandswort daneben steht. Ohne das trug der
+	// Herzschlag den freundlichen Satz des VERIFIZIERERS („verifiziert - die
+	// Anwendung erfolgt beaufsichtigt am Geraet") weiter, waehrend die Box in
+	// Wahrheit gar nicht anwenden DURFTE: der Betreiber sah „wartet" und hatte
+	// keine Moeglichkeit zu erfahren, worauf (Canary-Soak 04.08.2026).
+	a.otaLogBlocker(up)
+	if up.Blocked() {
+		sum.Reason = up.BlockedReason()
+		if up.State != "" {
+			sum.State = up.State
+		}
+		otaOverlayTarget(sum, up)
+		return
+	}
+
+	if up.State == "" || up.State == otaapply.StateIdle {
+		return
+	}
 	sum.State = up.State
 	if up.Reason != "" {
 		sum.Reason = up.Reason
 	}
+	otaOverlayTarget(sum, up)
+}
+
+// otaOverlayTarget uebernimmt das Ziel des Sidecars - er kennt es aus dem von
+// IHM geprueften Manifest, nicht aus dem unsignierten Umschlag.
+func otaOverlayTarget(sum *cloud.UpdateSummary, up *otaapply.UpdaterState) {
 	if up.Release != "" {
 		sum.Target = up.Release
 	}
 	if up.ReleaseSeq > 0 {
 		seq := up.ReleaseSeq
 		sum.TargetSeq = &seq
+	}
+}
+
+// otaLogBlocker schreibt GENAU EINE Zeile je Aenderung der Sperre.
+//
+// Der Herzschlag geht alle 15 s hinaus; ein Log je Herzschlag waere Rauschen,
+// in dem die Aussage untergeht. Verglichen wird deshalb nur der BLOCKER-Name -
+// wechselt bei gleicher Sperre nur die Zahl im Grund, ist das keine neue
+// Nachricht fuer diese Seite (der Sidecar nennt sie ohnehin bei jeder
+// Aenderung des Grundes).
+func (a *Agent) otaLogBlocker(up *otaapply.UpdaterState) {
+	blocker := ""
+	if up != nil {
+		blocker = up.Blocker
+	}
+	a.otaMu.Lock()
+	known, last := a.otaBlockerKnown, a.otaBlockerLogged
+	a.otaBlockerLogged, a.otaBlockerKnown = blocker, true
+	a.otaMu.Unlock()
+	if known && last == blocker {
+		return
+	}
+	switch {
+	case blocker != "":
+		slog.Warn("OTA: der Aktualisierer wendet nicht an", "blocker", blocker,
+			"grund", up.Reason, "release", up.Release)
+	case known && last != "":
+		slog.Info("OTA: Sperre des Aktualisierers aufgehoben", "vorher", last)
 	}
 }
 

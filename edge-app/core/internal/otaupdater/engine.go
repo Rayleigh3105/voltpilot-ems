@@ -79,6 +79,19 @@ type Engine struct {
 	d *docker
 	// applyStart merkt sich, seit wann auf den durablen Bericht gewartet wird.
 	ackSince time.Time
+	// blocker/blockerReason ist die zuletzt PROTOKOLLIERTE Sperre.
+	//
+	// Ohne sie war die Verweigerung vollstaendig still: der Sidecar schrieb den
+	// Grund brav in `updater-state.json`, protokollierte aber nichts, und wer in
+	// `docker compose logs updater` sah, fand nur die Startzeilen (Canary-Soak
+	// 04.08.2026). Geloggt wird deshalb bei jeder AENDERUNG der Sperre - und
+	// nur dann: bei einem 5-s-Takt waere „jeder Durchlauf" kein Hinweis mehr,
+	// sondern Rauschen, in dem der Hinweis untergeht. Der Nullwert sorgt
+	// nebenbei dafuer, dass ein Sidecar, der BEREITS blockiert startet, seine
+	// Sperre im ersten Durchlauf nennt.
+	blocker       string
+	blockerReason string
+	blockerKnown  bool
 }
 
 // New baut den Motor mit vernuenftigen Vorgaben.
@@ -141,7 +154,8 @@ func (e *Engine) Tick(ctx context.Context) error {
 		// wir wissen, dass etwas lief, aber nicht was. Es wird nichts Neues
 		// begonnen, und ein Mensch muss hinsehen.
 		return e.report(otaapply.UpdaterState{
-			State: otaapply.StateFailed,
+			State:   otaapply.StateFailed,
+			Blocker: otaapply.BlockerUnreadable,
 			Reason: "Die Brotkrume eines laufenden Vorgangs ist unlesbar - es wird " +
 				"nichts weiter unternommen, bis das geklaert ist.",
 		})
@@ -167,6 +181,7 @@ func (e *Engine) Tick(ctx context.Context) error {
 	default:
 		return e.report(otaapply.UpdaterState{
 			State:      otaapply.StateFailed,
+			Blocker:    otaapply.BlockerUnreadable,
 			Autonomous: autonomous,
 			Reason:     "Die abgelegte Zuweisung ist unlesbar: " + err.Error(),
 		})
@@ -187,21 +202,22 @@ func (e *Engine) Tick(ctx context.Context) error {
 		Autonomous:          autonomous,
 		Request:             req,
 		AppliedRequestToken: appliedToken,
-		HasTarget:          hasTarget,
-		Verdict:            verdict,
-		StateSchemaOnDisk:  e.stateSchemaOnDisk(),
-		FreeBytes:          free,
-		RequiredBytes:      e.o.DiskGuard,
-		Signal:             sig,
-		Failed:             e.failedRelease(),
-		Neutral:            e.o.Neutral.For(family),
-		ConfiguredDeadline: e.o.Deadline,
-		Now:                now,
+		HasTarget:           hasTarget,
+		Verdict:             verdict,
+		StateSchemaOnDisk:   e.stateSchemaOnDisk(),
+		FreeBytes:           free,
+		RequiredBytes:       e.o.DiskGuard,
+		Signal:              sig,
+		Failed:              e.failedRelease(),
+		Neutral:             e.o.Neutral.For(family),
+		ConfiguredDeadline:  e.o.Deadline,
+		Now:                 now,
 	})
 
 	st := otaapply.UpdaterState{
 		State:               dec.State,
 		Reason:              dec.Reason,
+		Blocker:             dec.Blocker,
 		Autonomous:          autonomous,
 		LastKnownGood:       e.lastKnownGood(),
 		AppliedRequestToken: appliedToken,
@@ -275,8 +291,9 @@ func (e *Engine) apply(ctx context.Context, m *otaverify.Manifest, dec otaapply.
 			// Ein gescheiterter Pull ist harmlos: es wurde noch nichts
 			// gestoppt. Beim naechsten Takt wird es erneut versucht.
 			return e.report(otaapply.UpdaterState{
-				State: otaapply.StateDeferred, Autonomous: st.Autonomous,
-				Release: st.Release, ReleaseSeq: st.ReleaseSeq,
+				State: otaapply.StateDeferred, Blocker: otaapply.BlockerPull,
+				Autonomous: st.Autonomous,
+				Release:    st.Release, ReleaseSeq: st.ReleaseSeq,
 				LastKnownGood: st.LastKnownGood,
 				Reason:        "Das Image '" + name + "' konnte nicht geladen werden: " + err.Error(),
 			})
@@ -291,16 +308,18 @@ func (e *Engine) apply(ctx context.Context, m *otaverify.Manifest, dec otaapply.
 	previous, err := e.captureLKG(ctx, m, target)
 	if err != nil {
 		return e.report(otaapply.UpdaterState{
-			State: otaapply.StateDeferred, Autonomous: st.Autonomous,
-			Release: st.Release, ReleaseSeq: st.ReleaseSeq,
+			State: otaapply.StateDeferred, Blocker: otaapply.BlockerRollback,
+			Autonomous: st.Autonomous,
+			Release:    st.Release, ReleaseSeq: st.ReleaseSeq,
 			Reason: "Das Rueckfallziel konnte nicht gesichert werden (" + err.Error() +
 				") - ohne Rueckfallziel wird nicht getauscht.",
 		})
 	}
 	if err := otaapply.Snapshot(e.o.DataDir); err != nil {
 		return e.report(otaapply.UpdaterState{
-			State: otaapply.StateDeferred, Autonomous: st.Autonomous,
-			Release: st.Release, ReleaseSeq: st.ReleaseSeq,
+			State: otaapply.StateDeferred, Blocker: otaapply.BlockerSnapshot,
+			Autonomous: st.Autonomous,
+			Release:    st.Release, ReleaseSeq: st.ReleaseSeq,
 			Reason: "Der Zustand unter /data konnte nicht gesichert werden (" + err.Error() +
 				") - ohne Sicherung wird nicht getauscht.",
 		})
@@ -801,19 +820,42 @@ func lkgHolder(name string) string { return "vp-edge-lkg-" + name }
 func (e *Engine) fail(st otaapply.UpdaterState, reason string) error {
 	st.State = otaapply.StateFailed
 	st.Reason = reason
+	st.Blocker = otaapply.BlockerChain
 	st.Phase = ""
 	e.o.Log.Error("OTA: Tausch abgelehnt", "grund", reason)
 	return e.report(st)
 }
 
 // report schreibt den Zustand fuer den Kern (und damit fuer Herzschlag und
-// `:8484`).
+// `:8484`) - und protokolliert eine STEHENDE Sperre bei jeder Aenderung.
 func (e *Engine) report(st otaapply.UpdaterState) error {
 	st.UpdatedAt = e.o.Now().UTC().Format(otaapply.TimeFormat)
 	if st.State == "" {
 		st.State = otaapply.StateIdle
 	}
+	e.logBlocker(st)
 	return otaapply.WriteJSON(e.o.DataDir, otaapply.FileUpdaterState, st)
+}
+
+// logBlocker schreibt GENAU EINE Zeile je Aenderung der Sperre.
+//
+// Verglichen wird Blocker UND Grund: derselbe Blocker mit einem anderen Grund
+// (der Plattenwaechter mit einer anderen Zahl, ein anderes Release) ist eine
+// neue Aussage. Ein aufgehobener Blocker wird ebenfalls genannt - „es geht
+// wieder weiter" ist die Information, auf die ein Betreiber wartet.
+func (e *Engine) logBlocker(st otaapply.UpdaterState) {
+	if e.blockerKnown && e.blocker == st.Blocker && e.blockerReason == st.Reason {
+		return
+	}
+	switch {
+	case st.Blocker != "":
+		// WARN, nicht INFO: eine Zuweisung liegt, und sie wird nicht angewandt.
+		e.o.Log.Warn("OTA: autonomes Anwenden blockiert", "blocker", st.Blocker,
+			"grund", st.Reason, "release", st.Release, "autonomie", st.Autonomous)
+	case e.blockerKnown && e.blocker != "":
+		e.o.Log.Info("OTA: Sperre aufgehoben", "vorher", e.blocker, "zustand", st.State)
+	}
+	e.blocker, e.blockerReason, e.blockerKnown = st.Blocker, st.Reason, true
 }
 
 func randomToken() string {

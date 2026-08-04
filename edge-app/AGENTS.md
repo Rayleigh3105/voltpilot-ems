@@ -844,6 +844,23 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
 - **Was einmal zurueckgerollt wurde, laeuft NIE wieder von selbst an**
   (`failed.json`). Ohne das begann der naechste Takt denselben Tausch von vorn -
   die Zuweisung liegt ja noch. In der Fehlerinjektions-Matrix aufgefallen.
+- **⚠ Eine Sperre wird GENANNT - je AENDERUNG, nie je Takt** (Canary-Soak
+  04.08.2026): jedes geschlossene Tor traegt seit dem einen maschinenlesbaren
+  Namen (`Decision.Blocker` -> `UpdaterState.Blocker`, Vokabular
+  `otaapply.Blocker*`), `Engine.report` protokolliert eine WARN-Zeile bei jeder
+  Aenderung von Blocker ODER Grund (und eine INFO beim Aufheben), und
+  `agent.otaUpdaterOverlay` laesst eine STEHENDE Sperre im `update`-Block VOR
+  jeder anderen Ueberlagerung gewinnen - mit `otaapply.BlockedPrefix`
+  („Autonomie blockiert: …"), damit „wartet" und „blockiert" nirgends gleich
+  aussehen. Vorher schrieb der Sidecar den Grund brav in die Zustandsdatei,
+  protokollierte aber NICHTS, und der Herzschlag trug weiter den freundlichen
+  Satz des Verifizierers: der Betreiber sah „wartet" ohne jede Chance zu
+  erfahren, worauf. Wer ein neues Tor einbaut, gibt ihm einen Blocker-Namen und
+  einen Grund, der den HEBEL nennt (bei der Neutral-Zeit: Familie +
+  `VP_OTA_NEUTRAL_VERIFIED`). Cloud/Portal unveraendert - der Text reist im
+  bestehenden `reason`-Feld. Beweise: `otaupdater/blocker_test.go`,
+  `otaapply/decide_test.go`, `agent/ota_autonomy_test.go`; Betreiber-Sicht:
+  `docs/ota-autonomie.md` §3.
 - **`update.sh` muss das `ota`-Profil kennen:** `up -d --remove-orphans` wuerde
   den Sidecar sonst als Waise ENTFERNEN und einer eingerichteten Box
   stillschweigend die Autonomie nehmen. `detect_ota_profile` erkennt ihn,
