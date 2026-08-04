@@ -868,12 +868,11 @@ func TestWithoutAnInjectedRootTheBakedAnchorIsUsed(t *testing.T) {
 	if e.o.Roots == nil {
 		t.Fatal("ohne Test-Naht muss die EINGEBACKENE Wurzel geladen werden")
 	}
-	// Im Repo ist sie bis zur Zeremonie LEER - fail-closed, und der Test faellt
-	// bewusst auf, sobald der Owner eine echte Wurzel eintraegt (derselbe
-	// Waechter wie TestBakedRootsAreEmptyUntilTheCeremonyRan).
-	if len(e.o.Roots.Keys) != 0 {
-		t.Fatalf("die ausgelieferte Wurzel ist nicht mehr leer (%d Schluessel) - "+
-			"lief die Zeremonie? Dann diesen Waechter bewusst nachziehen.", len(e.o.Roots.Keys))
+	// Seit der Zeremonie (04.08.2026) traegt das Image die kalte Wurzel; der
+	// Sidecar muss GENAU SIE laden - byteweise festgenagelt ist sie beim
+	// Eigentuemer der Datei (otaverify.TestBakedRootIsExactlyTheCeremonyRoot).
+	if len(e.o.Roots.Keys) != 1 || e.o.Roots.Keys[0].KeyID != "root-2026-a" {
+		t.Fatalf("der Sidecar laedt nicht die eingebackene Zeremonie-Wurzel: %+v", e.o.Roots.Keys)
 	}
 }
 

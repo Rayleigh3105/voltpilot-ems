@@ -160,10 +160,15 @@ Den `public_key`-Wert aus `root-2026-a.pub` in
 Ein öffentlicher Schlüssel **darf** öffentlich sein — genau dadurch ist im Git
 nachlesbar und überprüfbar, welcher Wurzel ein Image traut.
 
-Danach den Test `TestBakedRootsAreEmptyUntilTheCeremonyRan` in
-`edge-app/core/internal/otaverify/verify_test.go` auf die erwartete Wurzel
-festnageln (er ist absichtlich so geschrieben, dass er genau in diesem Moment
-auffällt). Erst ein **neu gebautes Core-Image** trägt die Wurzel.
+Danach den Wächter in `edge-app/core/internal/otaverify/verify_test.go` auf die
+erwartete Wurzel festnageln — er ist absichtlich so geschrieben, dass er genau
+in diesem Moment auffällt, und nagelt danach `key_id` **und** Schlüsselwert
+fest, damit ein stiller Wurzeltausch die CI nie passiert. Erst ein **neu
+gebautes Core-Image** trägt die Wurzel.
+
+> **Gelaufen am 04.08.2026:** eingebacken ist `root-2026-a`; festgenagelt von
+> `TestBakedRootIsExactlyTheCeremonyRoot` (otaverify) und, für den Sidecar, von
+> `TestWithoutAnInjectedRootTheBakedAnchorIsUsed` (otaupdater).
 
 ### 3.3 Release-Schlüssel erzeugen
 

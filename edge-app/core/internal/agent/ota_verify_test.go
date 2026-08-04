@@ -196,15 +196,22 @@ func TestOtaRejectsTamperedBytesLoudly(t *testing.T) {
 	}
 }
 
-func TestOtaFailsClosedWithoutABakedRoot(t *testing.T) {
+// Seit der Zeremonie (04.08.2026) traegt das Image eine echte Wurzel, also
+// urteilt der Produktionspfad gegen SIE. Die Wegwerf-Kette dieser Suite nennt
+// zwar dieselbe key_id, hat aber einen fremden Schluessel - und faellt genau
+// deshalb durch: eine key_id ist ein Name, kein Nachweis.
+func TestOtaFailsClosedAgainstTheBakedRoot(t *testing.T) {
 	b := newOtaBox(t, otaManifest("edge-2026.08.0", 12, 9))
-	b.a.otaRoots = nil // Produktionspfad: die eingebackene (heute leere) Wurzel
+	b.a.otaRoots = nil // Produktionspfad: die eingebackene Wurzel
 	u := b.check()
 	if u.State != cloud.UpdateStateIdle {
 		t.Fatalf("state = %q", u.State)
 	}
-	if !strings.Contains(u.Reason, "Vertrauensanker") {
-		t.Fatalf("ohne eingebackene Wurzel muss fail-closed berichtet werden: %q", u.Reason)
+	if !strings.Contains(u.Reason, "root-signiert") {
+		t.Fatalf("gegen die eingebackene Wurzel muss fail-closed berichtet werden: %q", u.Reason)
+	}
+	if strings.Contains(u.Reason, "verifiziert") {
+		t.Fatalf("eine fremde Kette darf nie wie ein Erfolg klingen: %q", u.Reason)
 	}
 }
 
