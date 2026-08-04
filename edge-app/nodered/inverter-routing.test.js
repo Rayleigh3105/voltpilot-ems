@@ -257,3 +257,68 @@ test('route: null / no selection -> idle (stay idle-safe)', () => {
   assert.strictEqual(routing.route(null).adapter, 'idle');
   assert.strictEqual(routing.route(undefined).adapter, 'idle');
 });
+
+// --- KOSTAL PLENTICORE BI (kostal_modbus) ------------------------------------
+
+const kostalDecode = require('./kostal/kostal-decode');
+
+function kostalConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'kostal',
+      label: 'KOSTAL · PLENTICORE BI 10/26',
+      family: 'kostal_plenticore',
+      communication: 'kostal_modbus',
+      connection: { ip: '192.168.0.30', port: 1502, unit_id: 71, byte_order: 'auto' },
+      updated_at: '2026-08-04T10:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('parseConfig accepts a kostal_modbus selection', () => {
+  const sel = routing.parseConfig(kostalConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, routing.COMM_KOSTAL);
+  assert.strictEqual(sel.family, 'kostal_plenticore');
+});
+
+test('route maps kostal_modbus onto the official read plan with vendor defaults 1502/71', () => {
+  const plan = routing.route(routing.parseConfig(kostalConfig({
+    connection: { ip: '192.168.0.30' }, // port/unit/byte order omitted -> defaults
+  })));
+  assert.strictEqual(plan.adapter, 'kostal_modbus');
+  assert.strictEqual(plan.family, 'kostal_plenticore');
+  assert.strictEqual(plan.target, '192.168.0.30:1502');
+  assert.strictEqual(plan.connection.port, 1502);
+  assert.strictEqual(plan.connection.unit_id, 71);
+  assert.strictEqual(plan.connection.byte_order, 'auto');
+  assert.strictEqual(plan.connection.invert_grid_sign, false);
+  assert.strictEqual(plan.connection.invert_batt_sign, false);
+  // The read plan is EXACTLY the decode module's (one truth for the blocks).
+  assert.deepStrictEqual(plan.reads, kostalDecode.planReads({ family: 'kostal_plenticore' }));
+});
+
+test('route keeps explicit kostal connection values and gates unknown families idle-safe', () => {
+  const plan = routing.route(routing.parseConfig(kostalConfig({
+    connection: {
+      ip: '10.0.0.9', port: 1503, unit_id: 3,
+      byte_order: 'big', invert_grid_sign: true, invert_batt_sign: true,
+    },
+  })));
+  assert.strictEqual(plan.target, '10.0.0.9:1503');
+  assert.strictEqual(plan.connection.unit_id, 3);
+  assert.strictEqual(plan.connection.byte_order, 'big');
+  assert.strictEqual(plan.connection.invert_grid_sign, true);
+  assert.strictEqual(plan.connection.invert_batt_sign, true);
+  // Garbage byte order degrades to auto (never an unknown mode downstream).
+  const auto = routing.route(routing.parseConfig(kostalConfig({
+    connection: { ip: '10.0.0.9', byte_order: 'cdab' },
+  })));
+  assert.strictEqual(auto.connection.byte_order, 'auto');
+  // Unknown family -> idle with a named reason, never a fabricated plan.
+  const idle = routing.route(routing.parseConfig(kostalConfig({ family: 'hybrid_3p' })));
+  assert.strictEqual(idle.adapter, 'idle');
+  assert.match(idle.reason, /Kostal-Familie/);
+});

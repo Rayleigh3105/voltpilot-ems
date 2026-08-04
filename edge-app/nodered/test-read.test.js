@@ -23,9 +23,10 @@ const solarman = require('./deye/solarman-v5');
 const sunspec = require('./sunspec/sunspec-live');
 const discovery = require('./sunspec/model-discovery');
 const goe = require('./goe/goe-api');
+const kostal = require('./kostal/kostal-decode');
 
 function deps(extra) {
-  return Object.assign({ deye, modbus, fronius, solarman, sunspec, discovery, goe, net, http, https }, extra || {});
+  return Object.assign({ deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, net, http, https }, extra || {});
 }
 
 // Build a SunSpec float-113 register image (Map addr->word) for the reader tests.
@@ -422,4 +423,71 @@ test('go-e: a refused connect classifies as unreachable', async () => {
   const res = await readOnce({ communication: 'goe_http_api', family: 'goe_http_api', connection: { ip: '127.0.0.1', port: 1 } }, 'consumer');
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.error_code, testRead.ERR_UNREACHABLE);
+});
+
+// --- KOSTAL PLENTICORE BI (kostal_modbus) ------------------------------------
+
+// Absolute register image of a healthy PLENTICORE BI 10/26: byte order little
+// (factory), KSEM at the grid connection importing 1.5 kW, SoC 87 %, battery
+// charging 2 kW (register -2000: negative = charge per the official doc).
+function kostalImage() {
+  const regs = {};
+  const putF32 = (addr, value) => {
+    const buf = Buffer.alloc(4);
+    buf.writeFloatBE(value, 0);
+    regs[addr] = buf.readUInt16BE(2); // little/CDAB: LOW word first
+    regs[addr + 1] = buf.readUInt16BE(0);
+  };
+  regs[kostal.REG.BYTE_ORDER] = 0;
+  regs[kostal.REG.INVERTER_STATE] = 6; // low word (little)
+  regs[kostal.REG.INVERTER_STATE + 1] = 0;
+  regs[kostal.REG.BATTERY_SOC_PCT] = 87;
+  regs[kostal.REG.INVERTER_MAX_POWER_W] = 10000;
+  regs[kostal.REG.BATTERY_POWER_W] = -2000 & 0xffff;
+  regs[kostal.REG.BATTERY_TYPE] = 0x0004;
+  regs[kostal.REG.BATTERY_MGMT_MODE] = kostal.MGMT_MODE_EXTERNAL_MODBUS;
+  regs[kostal.REG.SENSOR_TYPE] = 0x03; // KSEM
+  putF32(kostal.REG.POWERMETER_TOTAL_W, 1500);
+  putF32(kostal.REG.BMS_MAX_CHARGE_W, 9000);
+  putF32(kostal.REG.BMS_MAX_DISCHARGE_W, 10000);
+  putF32(kostal.REG.BATTERY_WORK_CAPACITY_WH, 10240);
+  return regs;
+}
+
+function kostalSelection(ip, port) {
+  return {
+    communication: 'kostal_modbus', family: 'kostal_plenticore',
+    connection: { ip, port, unit_id: 71, byte_order: 'auto' },
+  };
+}
+
+test('kostal_modbus: reads + decodes a live PLENTICORE -> ok with grid + SoC', async () => {
+  const { server, port } = await startModbusServer(kostalImage());
+  try {
+    const readOnce = testRead.makeReadOnce(deps());
+    const res = await readOnce(kostalSelection('127.0.0.1', port));
+    assert.strictEqual(res.ok, true);
+    assert.strictEqual(res.reading.grid_kw, 1.5);
+    assert.strictEqual(res.reading.soc_pct, 87);
+    // The BI has no PV/load channel - absent, never fabricated.
+    assert.strictEqual(res.reading.pv_kw, undefined);
+    assert.strictEqual(res.reading.load_kw, undefined);
+  } finally {
+    server.close();
+  }
+});
+
+test('kostal_modbus: refused connect classifies unreachable, garbage as invalid_response', async () => {
+  const readOnce = testRead.makeReadOnce(deps({ connectTimeoutMs: 500, readTimeoutMs: 500 }));
+  const refused = await readOnce(kostalSelection('127.0.0.1', 1));
+  assert.strictEqual(refused.ok, false);
+  assert.strictEqual(refused.error_code, 'unreachable');
+  const { server, port } = await startGarbageServer();
+  try {
+    const res = await readOnce(kostalSelection('127.0.0.1', port));
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.error_code, 'invalid_response');
+  } finally {
+    server.close();
+  }
 });

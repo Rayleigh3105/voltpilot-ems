@@ -133,13 +133,62 @@ test('flow router matches inverter-routing.route() for fronius_sunspec', () => {
   assert.strictEqual(ret[4], null);
 });
 
-test('flow router routes to idle (output 5) with no selection', () => {
+test('flow router routes to idle (output 6) with no selection', () => {
   const { ret } = runFunctionNode(byId['auto-router'].func, { flow: {} });
   assert.strictEqual(ret[0], null);
   assert.strictEqual(ret[1], null);
   assert.strictEqual(ret[2], null);
   assert.strictEqual(ret[3], null);
-  assert.ok(ret[4] && ret[4].idle);
+  assert.strictEqual(ret[4], null);
+  assert.ok(ret[5] && ret[5].idle);
+});
+
+test('flow router matches inverter-routing.route() for kostal_modbus', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PLENTICORE BI 10/26',
+    family: 'kostal_plenticore', communication: 'kostal_modbus',
+    connection: { ip: '192.168.0.30', port: 1502, unit_id: 71, byte_order: 'auto', invert_grid_sign: true, invert_batt_sign: true },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[4]; // output 5 carries msg.kostal
+  const expected = routing.route(routing.parseConfig(sel));
+  assert.strictEqual(outMsg.kostal.target, expected.target);
+  assert.strictEqual(outMsg.kostal.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.kostal.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.kostal.conn.unit_id, expected.connection.unit_id);
+  assert.strictEqual(outMsg.kostal.conn.byte_order, expected.connection.byte_order);
+  assert.strictEqual(outMsg.kostal.conn.invert_grid_sign, expected.connection.invert_grid_sign);
+  assert.strictEqual(outMsg.kostal.conn.invert_batt_sign, expected.connection.invert_batt_sign);
+  // The inline KOSTAL_READS block plan must equal the decode module's planReads
+  // (one truth for the register blocks - the DEYE_READS drift-guard discipline).
+  assert.deepStrictEqual(outMsg.kostal.reads, expected.reads);
+  // the other branches must be null on this path.
+  assert.strictEqual(ret[0], null);
+  assert.strictEqual(ret[1], null);
+  assert.strictEqual(ret[2], null);
+  assert.strictEqual(ret[3], null);
+  assert.strictEqual(ret[5], null);
+});
+
+// The "KOSTAL PLENTICORE lesen" node (auto-kostal) carries an EMBEDDED verbatim
+// copy of kostal/kostal-decode.js (a Node-RED flow cannot `require` a repo
+// file). Drift guard: editing the module without re-running build-flows.js
+// fails here instead of shipping a stale reader.
+test('flow auto-kostal embeds the current kostal/kostal-decode.js source', () => {
+  const func = byId['auto-kostal'].func;
+  const src = fs.readFileSync(path.join(__dirname, 'kostal/kostal-decode.js'), 'utf8');
+  assert.ok(
+    func.includes(src),
+    'flows.json auto-kostal node is out of sync with kostal/kostal-decode.js - re-run build-flows.js',
+  );
+  // Same discipline as the SunSpec/sources polls: explicit timeouts, an overlap
+  // guard, and non-silent failures.
+  assert.ok(func.includes('__KOSTAL.makeKostalReader({ net: net, connectTimeoutMs: 8000, readTimeoutMs: 8000 })'));
+  assert.ok(func.includes("context.get('k_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
+  // The measured battery power rides the LOCAL bus only, decoded per the module
+  // (register sign negated there) - the node forwards battKw as battery_power_kw.
+  assert.ok(func.includes('reading.battery_power_kw = out.battKw'));
 });
 
 // --- Modbus-Datenspiegel: the router's learned-block merge -------------------
@@ -930,6 +979,7 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     'sunspec/model-discovery.js',
     'sunspec/sunspec-live.js',
     'goe/goe-api.js',
+    'kostal/kostal-decode.js',
   ];
   for (const rel of embeds) {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
@@ -939,7 +989,7 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     );
   }
   // And it wires the embedded modules into makeReadOnce the intended way.
-  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, goe: __GOE'));
+  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, goe: __GOE, kostal: __KOSTAL'));
 });
 
 // The "Fronius SunSpec lesen" node (auto-sunspec) carries EMBEDDED verbatim

@@ -159,6 +159,34 @@ live here (the Eco site has no meter). See
 the `W→pv_power_kw` mapping are **VERIFY-on-device** (captain follow-up on the
 real Eco).
 
+### `communication: "kostal_modbus"` (KOSTAL PLENTICORE BI)
+
+The KOSTAL PLENTICORE BI battery inverter (AC-coupled, battery-only - no
+MPPTs), read over the **vendor's own Modbus-TCP server** (official interface
+description; NOT the generic 502/1 defaults, hence its own communication).
+
+```jsonc
+"connection": {
+  "ip": "192.168.0.30",       // PLENTICORE IP on the LAN (Modbus enabled in its webserver)
+  "port": 1502,               // vendor Modbus-TCP port (factory default 1502)
+  "unit_id": 71,              // vendor Modbus unit id (factory default 71)
+  "byte_order": "auto",       // "auto" (recommended; reads device register 5) | "little" (CDAB, factory) | "big"
+  "invert_grid_sign": false,  // escape hatch: energy-meter sensor position 1 instead of the grid connection point
+  "invert_batt_sign": false,  // escape hatch: measured battery power inverted (verify on device)
+  "invert_control_sign": false // WRITE-path sign for the future Tier-2 control adapter (unused by the read path)
+}
+```
+
+`family` is always `kostal_plenticore`. The reader fetches the fixed official
+register blocks (battery power 582, SoC 514, grid via the attached KOSTAL Smart
+Energy Meter 252, BMS limits 1076/1078, management mode 1080) and publishes
+`battery_power_kw` (+charge/-discharge - the register sign is NEGATED, Kostal
+documents -=charge), `soc_pct` (socPlausible-gated) and `power_kw` (only while a
+sensor is installed). **No `pv_power_kw`, no `load_kw`** (the BI has no PV; the
+house balance is the core's job). **Read-only** - the control path (external
+battery management) is a separate gated increment. Operator guide:
+[`nodered/KOSTAL.md`](nodered/KOSTAL.md).
+
 ## Catalog (what the UI offers)
 
 The UI form is fully data-driven from `GET /api/inverter` → `catalog`, so adding
@@ -172,6 +200,7 @@ exposes a per-model list (`models`, the UI selection unit) plus its register-map
 | `deye` | `solarman_v5` | every `SUN-*` model individually (SG04LP3 LV incl. 12K, SG01HP3 HV, SG03LP1 1-phase, G03/G04 string, SUN*G3 micro) | `hybrid_3p`, `hybrid_1p`, `string`, `micro` |
 | `fronius` | `fronius_solar_api` | `fronius_solar_api` (one generic entry; GEN24 / Symo / Primo / Symo Hybrid) | `fronius_solar_api` |
 | `fronius_sunspec` | `fronius_sunspec` | `Fronius Eco 27.0-3-S` / `25.0-3-S` (rated) + a generic SunSpec entry | `sunspec_live` |
+| `kostal` | `kostal_modbus` | `PLENTICORE BI 10/26` / `BI 5.5/13` (rated) + a generic BI entry | `kostal_plenticore` |
 | `generic_modbus` | `modbus_tcp` | `sunspec` | `sunspec` |
 
 Each `models[]` entry is `{id, label, family, note}` - `family` is the register
