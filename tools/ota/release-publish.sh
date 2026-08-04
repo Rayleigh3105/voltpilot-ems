@@ -29,6 +29,21 @@ OTA_FORGEJO_DEFAULT="https://git.tecmaxx.de"
 OTA_REPO_DEFAULT="mamotec/voltpilot-ems"
 OTA_REALM_DEFAULT="voltpilot"
 
+# ⚠ DER EINE ANKER: jeder repo-relative Pfad in diesem Skript haengt HIER dran
+# und NIE am Arbeitsverzeichnis.
+#
+# Der Grund ist gemessen (Erstflug edge-2026.08.1): `vp-ota` laeuft in einer
+# Subshell `(cd edge-app/core && go run …)`, und eine Kommandosubstitution im
+# `go run`-Kommando wird ERST NACH dem `cd` ausgewertet - ein cwd-relativer
+# Anker ergab dort `edge-app/core/edge-app/ota/trust-set.json`, die
+# Gegenpruefung fand das Trust-Set nicht und der Lauf brach ab. Die Skriptdatei
+# liegt fest in `<repo>/tools/ota/`, ihr eigener Ort ist also der einzige
+# Anker, den kein `cd` verschieben kann (in CI ist er identisch mit
+# GITHUB_WORKSPACE). Relative Pfade werden ausserdem GRUNDSAETZLICH aufgeloest,
+# BEVOR in ein anderes Verzeichnis gewechselt wird - so kann die Falle nicht
+# wiederkehren, wenn jemand einen weiteren `cd` einzieht.
+OTA_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+
 # --- kleine Helfer -----------------------------------------------------------
 
 ota_die() {
@@ -37,6 +52,15 @@ ota_die() {
 }
 
 ota_info() { printf '%s\n' "$*"; }
+
+# ota_abs <pfad> - macht einen Pfad absolut. Anker ist OTA_REPO_ROOT, NIE das
+# Arbeitsverzeichnis (siehe die Begruendung dort).
+ota_abs() {
+	case "$1" in
+	/*) printf '%s' "$1" ;;
+	*) printf '%s/%s' "$OTA_REPO_ROOT" "$1" ;;
+	esac
+}
 
 # ota_json_field <feld> - liest ein TOP-LEVEL-Feld aus JSON auf stdin.
 # Fehlt es, ist die Ausgabe leer (und der Aufrufer entscheidet, ob das ein
@@ -62,7 +86,8 @@ print(v if not isinstance(v, bool) else ("true" if v else "false"))
 # Code und nicht in einer Repo-Variable, die niemand mit einem Commit verbindet.
 # Format: erste Zeile, die weder leer noch ein `#`-Kommentar ist.
 ota_state_schema() {
-	local file="$1" line
+	local file line
+	file="$(ota_abs "$1")"
 	[ -f "$file" ] || ota_die "Zustandsversion fehlt: $file"
 	line="$(grep -v '^[[:space:]]*#' "$file" | grep -v '^[[:space:]]*$' | head -n 1 | tr -d '[:space:]')"
 	case "$line" in
@@ -308,36 +333,39 @@ EOF
 # ausfuehrt, nur vorgezogen vor die Auslieferung: ein Manifest, das hier
 # durchfaellt, darf die Registry nie erreichen.
 ota_sign() {
-	local manifest="$1" keyfile="$2" trust="${3:-${VP_OTA_TRUST_SET:-edge-app/ota/trust-set.json}}"
-	local core="${VP_OTA_CORE_DIR:-edge-app/core}"
+	# ⚠ ALLES wird absolut gemacht, BEVOR die Subshell ins Go-Modul wechselt:
+	# eine Kommandosubstitution im `go run`-Kommando liefe erst NACH dem `cd`
+	# (genau so verdoppelte sich der Trust-Set-Pfad beim Erstflug).
+	local manifest keyfile trust core
+	manifest="$(ota_abs "$1")"
+	keyfile="$(ota_abs "$2")"
+	trust="$(ota_abs "${3:-${VP_OTA_TRUST_SET:-edge-app/ota/trust-set.json}}")"
+	core="$(ota_abs "${VP_OTA_CORE_DIR:-edge-app/core}")"
 	[ -f "$manifest" ] || ota_die "Manifest fehlt: $manifest"
 	[ -f "$trust" ] || ota_die "Trust-Set fehlt: $trust (im Repo versioniert - siehe edge-app/ota/README.md)"
 	[ -f "$trust.sig" ] || ota_die "Trust-Set-Signatur fehlt: $trust.sig"
 
 	(cd "$core" && go run ./cmd/vp-ota sign \
-		--key "$(ota_abs "$keyfile")" --domain release --in "$(ota_abs "$manifest")") ||
+		--key "$keyfile" --domain release --in "$manifest") ||
 		ota_die "Signieren fehlgeschlagen"
 
 	(cd "$core" && go run ./cmd/vp-ota verify --root baked \
-		--trust-set "$(ota_abs "$trust")" --manifest "$(ota_abs "$manifest")") ||
+		--trust-set "$trust" --manifest "$manifest") ||
 		ota_die "Gegenpruefung gegen die EINGEBACKENE Wurzel fehlgeschlagen - dieses Release wuerde auf jedem Geraet abgelehnt. Es geht nichts hinaus."
-}
-
-ota_abs() {
-	case "$1" in
-	/*) printf '%s' "$1" ;;
-	*) printf '%s/%s' "$(pwd -P)" "$1" ;;
-	esac
 }
 
 # ota_publish <manifest> <tag>
 ota_publish() {
-	local manifest="$1" tag="$2" dir auth rel
+	local manifest tag="$2" dir auth rel
+	manifest="$(ota_abs "$1")"
 	dir="$(dirname "$manifest")"
 	[ -f "$manifest.sig" ] || ota_die "Signatur fehlt: $manifest.sig"
 	[ -f "$dir/register.json" ] || ota_die "Register-Rumpf fehlt: $dir/register.json (entsteht beim Signieren)"
 
-	local trust="${VP_OTA_TRUST_SET:-edge-app/ota/trust-set.json}"
+	# Dieselbe Vorgabe wie beim Signieren - und derselbe Anker: die vier
+	# Assets sind genau die Dateien, gegen die eben gegengeprueft wurde.
+	local trust
+	trust="$(ota_abs "${VP_OTA_TRUST_SET:-edge-app/ota/trust-set.json}")"
 	auth="$(ota_forgejo_auth_header "${VP_OTA_FORGEJO_TOKEN:-}" \
 		"${FORGEJO_USERNAME:-}" "${FORGEJO_PASSWORD:-}")" ||
 		ota_die "Keine Forgejo-Zugangsdaten (VP_OTA_FORGEJO_TOKEN oder FORGEJO_USERNAME/FORGEJO_PASSWORD)"
