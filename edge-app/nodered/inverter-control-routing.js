@@ -60,6 +60,10 @@ const sunspec = require('./sunspec/model-discovery');
 const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
 const COMM_FRONIUS = 'fronius_solar_api';
+// KOSTAL PLENTICORE BI: the vendor's own Modbus-TCP server (TCP 1502, Unit-ID
+// 71) - the first REALIZED Tier-2 (vendor external-EMS) control surface. See
+// kostalControl below + the scout report data/vp-kostal-plenticore-s5.
+const COMM_KOSTAL = 'kostal_modbus';
 
 // Control tiers - the battery-control PRIMITIVE, decoupled from the read transport
 // (design data/vp-battery-control-deepdive/report.md §1). Mirrors the Go
@@ -175,6 +179,7 @@ function inferTierFromCommunication(communication) {
     case COMM_SOLARMAN: return CONTROL_TIER.TOU;
     case COMM_MODBUS: return CONTROL_TIER.SUNSPEC;
     case COMM_FRONIUS: return CONTROL_TIER.SUNSPEC;
+    case COMM_KOSTAL: return CONTROL_TIER.VENDOR_EMS;
     default: return CONTROL_TIER.READ_ONLY;
   }
 }
@@ -264,6 +269,9 @@ function controlRoute(selection, setpoint, opts = {}) {
     return deyeControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap, sticky });
   }
   if (tier === CONTROL_TIER.VENDOR_EMS) {
+    if (comm === COMM_KOSTAL) {
+      return kostalControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw });
+    }
     return vendorEmsControl({ conn, ip, family, certified, controlEnabled });
   }
   if (tier === CONTROL_TIER.SUNSPEC) {
@@ -300,6 +308,109 @@ function vendorEmsControl({ conn, ip, family, controlEnabled }) {
     planned: [],
     reason: 'Tier-2 Wechselrichtersteuerung (externes EMS) noch nicht implementiert',
   };
+}
+
+// --- KOSTAL PLENTICORE Tier-2 control adapter (external battery management) ---
+//
+// The FIRST realized vendor external-EMS surface (scout report
+// data/vp-kostal-plenticore-s5 §3.3; official "Interface description MODBUS
+// (TCP) & SunSpec with control information" Rev. 2.9 §3.4, field-proven by
+// OpenEMS io.openems.edge.kostal + evcc):
+//
+//   ONE LEVER: register 1034 "Battery charge power (DC) setpoint, absolute"
+//   (float32, FC16, watts). Doc note 1: NEGATIVE = charge / POSITIVE =
+//   discharge - the OPPOSITE of VoltPilot's + = charge, so the adapter
+//   NEGATES; `invert_control_sign` is the First-Light hatch on top.
+//
+// SINGLE-LEVER DISCIPLINE (load-bearing; field evidence evcc #26709 +
+// openHAB): while external control is active, EVERY register written in the
+// session stays in force until the inverter's watchdog expires - mixing 1034
+// with the limit/SoC registers creates stuck state conflicts (battery fully
+// blocked). So this adapter touches register 1034 and NOTHING else: the SoC
+// window registers 1042/1044 and the limit registers 1038/1040 are NEVER
+// written - guards.Clamp upstream is the SoC/limit authority (it already
+// clamped the kw this adapter receives), and "hold" is simply the clamped
+// setpoint 0.
+//
+// WATCHDOG MODEL (the inverter's own dead-man's switch): the PLENTICORE's
+// external battery management has a webserver-configured timeout (60 s is the
+// common standard); when the EMS goes silent the inverter DISCARDS the
+// setpoint and returns to internal battery management. Control registers are
+// RAM (doc §3.3 semantics: discarded on reset), so re-asserting every ~10-s
+// setpoint tick IS the watchdog kick - `always: true` + `dwell_s: 0`, the
+// Deye remote-mode discipline (an EEPROM write-on-change filter would let the
+// watchdog expire mid-operation). Simply STOPPING is the failsafe of last
+// resort; the explicit release additionally writes 0 once (controlRelease).
+//
+// ACTIVATION GATE: the installer must enable "Externe Batteriesteuerung über
+// Protokoll Modbus (TCP)" (Webserver -> Servicemenü -> Batterieeinstellungen);
+// register 1080 reports the active mode (2 = external via MODBUS). The plan
+// carries `mgmt_gate` so the EXECUTOR verifies 1080 BEFORE the first write and
+// refuses with the German lever otherwise; 1080 also rides the readbacks so a
+// mid-session deactivation surfaces as a mismatch, never silently.
+//
+// SAFETY: kostal_plenticore is DELIBERATELY absent from
+// CERTIFIED_CONTROL_FAMILIES - until the bench pass on the real unit
+// (CONTROL-BENCH.md -> "Checkliste Kostal PLENTICORE") every write stays
+// `planned`-only; First-Light calibration is the one bounded bypass, and
+// VP_CONTROL_ENABLED stays the outer AND. PV curtailment does not exist on
+// the BI (no MPPTs): a pv_limit_kw is reported dropped, never silently.
+const KOSTAL_REG = { SETPOINT: 1034, MGMT_MODE: 1080 };
+const KOSTAL_MGMT_EXTERNAL_MODBUS = 2;
+const KOSTAL_DEFAULT_PORT = 1502;
+const KOSTAL_DEFAULT_UNIT_ID = 71;
+const KOSTAL_MGMT_GATE_REASON = 'Externe Batteriesteuerung (Modbus) ist am Wechselrichter nicht aktiviert - Webserver -> Servicemenü -> Batterieeinstellungen';
+
+function kostalControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw }) {
+  const port = Number(conn.port) > 0 ? Number(conn.port) : KOSTAL_DEFAULT_PORT;
+  const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : KOSTAL_DEFAULT_UNIT_ID;
+  const invert = conn.invert_control_sign === true;
+  const byteOrder = conn.byte_order === 'little' || conn.byte_order === 'big' ? conn.byte_order : 'auto';
+  // VoltPilot + = charge -> Kostal register - = charge: NEGATE (hatch flips back).
+  // `|| 0` normalizes the negative zero the negation produces at kw = 0 (a -0
+  // would travel into the readback comparison + the payload as a distinct value).
+  const watts = Math.round((invert ? 1 : -1) * kw * 1000) || 0;
+
+  // The intended write (always computed so the readback surface + tests see the
+  // full mapping); whether it EXECUTES depends on the gate below. float32 over
+  // FC16 - the executor encodes per the resolved byte order (register 5 on
+  // 'auto'). always:true = re-assert every tick (the watchdog kick, RAM register).
+  const planned = [
+    {
+      role: 'battery_setpoint', fc: 16, addr: KOSTAL_REG.SETPOINT, value: watts,
+      encode: { kind: 'watts_float32', kw: watts / 1000 }, dwell_s: 0, min_change: 0, always: true,
+    },
+  ];
+
+  // Readbacks ALWAYS run: the setpoint echo (float, 2 registers) proves the
+  // hold; the management mode proves the installer gate stays active.
+  const readbacks = [
+    { role: 'battery_setpoint', fc: 3, addr: KOSTAL_REG.SETPOINT, count: 2, decode: 'float32', expect: watts, tolerance: 1 },
+    { role: 'mgmt_mode', fc: 3, addr: KOSTAL_REG.MGMT_MODE, count: 1, expect: KOSTAL_MGMT_EXTERNAL_MODBUS, tolerance: 0 },
+  ];
+
+  const writeAllowed = controlEnabled && (certified || calibration);
+  const out = {
+    adapter: 'kostal_modbus', family, tier: CONTROL_TIER.VENDOR_EMS,
+    target: ip + ':' + port,
+    connection: { ip, port, unit_id: unitId, byte_order: byteOrder },
+    certified, controlEnabled, calibration: calibration === true,
+    // The executor's pre-write activation probe (register 1080 must read 2).
+    mgmt_gate: { fc: 3, addr: KOSTAL_REG.MGMT_MODE, expect: KOSTAL_MGMT_EXTERNAL_MODBUS, reason: KOSTAL_MGMT_GATE_REASON },
+    writes: writeAllowed ? planned.map((w) => ({ ...w })) : [],
+    readbacks,
+    planned,
+  };
+  if (!writeAllowed) {
+    out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Modell noch nicht freigegeben';
+  }
+  if (pvLimitKw !== null && pvLimitKw !== undefined) {
+    // The BI has no PV - a curtailment cap cannot be executed here. Reported,
+    // never silently dropped (the Deye remote-mode rule).
+    out.pvLimitSupported = false;
+    out.pvLimitDroppedKw = pvLimitKw;
+  }
+  return out;
 }
 
 // The controller-owned staleness window (report §5.5/§7.5): an edge/setpoint whose
@@ -457,6 +568,34 @@ function controlRelease(selection, opts = {}) {
       writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? readbacks : [],
       planned, capabilityProbe: deyeCapabilityProbeSpec(family),
       reason: releaseAllowed ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
+    };
+  }
+
+  if (tier === CONTROL_TIER.VENDOR_EMS && comm === COMM_KOSTAL) {
+    // KOSTAL release: setpoint 0 ONCE, then the caller simply stops writing -
+    // the inverter's OWN watchdog (webserver timeout) discards the external
+    // setpoint and returns to internal battery management with NOTHING changed.
+    // No installer state was ever touched (single-lever discipline), so there is
+    // no snapshot to restore - structurally the Deye remote-mode release.
+    const port = Number(conn.port) > 0 ? Number(conn.port) : KOSTAL_DEFAULT_PORT;
+    const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : KOSTAL_DEFAULT_UNIT_ID;
+    const byteOrder = conn.byte_order === 'little' || conn.byte_order === 'big' ? conn.byte_order : 'auto';
+    const planned = [
+      {
+        role: 'battery_setpoint', fc: 16, addr: KOSTAL_REG.SETPOINT, value: 0,
+        encode: { kind: 'watts_float32', kw: 0 }, dwell_s: 0, min_change: 0, always: true,
+      },
+    ];
+    const readbacks = [
+      { role: 'battery_setpoint', fc: 3, addr: KOSTAL_REG.SETPOINT, count: 2, decode: 'float32', expect: 0, tolerance: 1 },
+    ];
+    return {
+      adapter: 'kostal_modbus', family, tier, certified, controlEnabled, calibration, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port, unit_id: unitId, byte_order: byteOrder },
+      writes: releaseAllowed ? planned.map((w) => ({ ...w })) : [],
+      readbacks: releaseAllowed ? readbacks : [],
+      planned,
+      reason: releaseAllowed ? undefined : 'Modell noch nicht freigegeben',
     };
   }
 
@@ -1823,6 +1962,13 @@ module.exports = {
   COMM_SOLARMAN,
   COMM_MODBUS,
   COMM_FRONIUS,
+  COMM_KOSTAL,
+  // KOSTAL PLENTICORE Tier-2 (external battery management)
+  KOSTAL_REG,
+  KOSTAL_MGMT_EXTERNAL_MODBUS,
+  KOSTAL_DEFAULT_PORT,
+  KOSTAL_DEFAULT_UNIT_ID,
+  KOSTAL_MGMT_GATE_REASON,
   CONTROL_TIER,
   DEFAULT_FRONIUS_CONTROL_PORT,
   SUNSPEC_REG,

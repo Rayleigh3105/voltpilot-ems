@@ -426,6 +426,77 @@ Prüfstand):** dieselbe Ehrlichkeit wie bei jedem Hersteller.
 3. **Not-Aus.** `VP_CONTROL_ENABLED=false` → **null HTTP** an die Wallbox (die zwei
    Live-Lesestandorte werden nie angefasst).
 
+## Checkliste Kostal PLENTICORE (externe Batteriesteuerung, Tier 2)
+
+Der PLENTICORE ist der **einfachste** Steuerfall der Flotte: ein offiziell
+dokumentierter, vorzeichenbehafteter Watt-Sollwert plus ein **geräteeigener
+Watchdog** — nichts ist geraten, alles ist zu VERIFIZIEREN. Analyse:
+firstmate `data/vp-kostal-plenticore-s5/report.md`; Registerkarte + Lesepfad:
+[`KOSTAL.md`](KOSTAL.md).
+
+### Vorbereitung (mit VORLAUF — nicht am Prüfstandstag beginnen)
+
+1. **Installateur-Zugang beschaffen:** Master Key steht auf dem Typenschild,
+   der persönliche **Service-Code** wird bei Kostal beantragt. Ohne beides
+   öffnet sich das Servicemenü nicht.
+2. **Firmware aktualisieren** (Webserver). Das Referenzgerät kam mit UI
+   01.23.07734; die aktuelle Protokoll-Doku (Rev. 2.9) gilt ab UI 01.30.12092.
+   Stand notieren.
+3. **Modbus aktivieren + Werte notieren:** Webserver → Modbus/TCP an, Port
+   (Werk 1502), Unit-ID (Werk 71), **Byte-Reihenfolge** (Register 5, Werk
+   Little/CDAB).
+4. **Externe Batteriesteuerung einschalten:** Webserver → **Servicemenü →
+   Batterieeinstellungen → Batteriesteuerung: „Extern über Protokoll Modbus
+   (TCP)"** → Speichern. Der **Timeout** steht auf derselben Seite —
+   auf **60 s** stellen (gemeinsamer Standard der Feld-Integrationen; unser
+   Sollwert-Takt ~10 s hält ihn mühelos).
+5. **Nur EIN Steuersystem:** kein zweites EMS/Portal darf die Batterie
+   steuern, sonst kämpfen zwei Regler.
+6. **Sensorposition des Energiezählers (KSEM) notieren** (1 = Hausverbrauch,
+   2 = Netzanschlusspunkt) — bestimmt das Vorzeichen von Register 252.
+
+### Messprogramm (halber Tag)
+
+1. **Nur lesen.** Register 514 (SoC), 582 (Batterieleistung), 252 (Netz), 56
+   (Status), 1076/1078 (BMS-Grenzen) gegen die Webserver-Anzeige prüfen.
+   Vorzeichen kalibrieren: Laden ⇒ 582 negativ ⇒ VoltPilot `battery_power_kw`
+   **positiv**; Einspeisung ⇒ 252 negativ (bei Sensorposition 2).
+2. **Aktivierungs-Tor:** Register **1080 muss 2 melden** („extern via MODBUS").
+   Meldet es 0/1, schreibt VoltPilot nichts und nennt den Hebel — das ist
+   korrekt, dann fehlt Schritt 4 der Vorbereitung.
+3. **First-Light** (`:8484` → Steuerung kalibrieren): ±0,5–1 kW in BEIDE
+   Richtungen aus ruhiger Baseline. Urteil = Rücklesen von 1034 stimmt (der
+   Wert ist float32-Watt) **und** 582 bewegt sich in Befehlsrichtung.
+   Größenordnung prüfen: das Register IST Watt, ein ×1000-Fehler wäre sofort
+   sichtbar.
+4. **Watchdog messen (die T-Zahl).** Schreiben einstellen, Stoppuhr laufen
+   lassen, bis 582 wieder dem internen Verhalten folgt. Erwartet: ≤ Timeout +
+   wenige Sekunden. Ergebnis dokumentieren (und als
+   `VP_OTA_NEUTRAL_VERIFIED=kostal_plenticore:<T>` eintragen, wenn autonome
+   OTA auf dieser Box je aktiviert wird).
+5. **Release-Probe.** Sollwert 0 ⇒ sofort neutral; danach Rückkehr zur
+   internen Batteriesteuerung nach Ablauf des Timeouts. ⚠ Auf ÄLTEREN
+   G1-Ständen ist diese Rückgabe laut Feldberichten gelegentlich unzuverlässig
+   (Abhilfe: im Webserver kurz auf „interne Batteriesteuerung" umschalten oder
+   Gerät neu starten) — hier ausdrücklich prüfen.
+6. **SoC-Fenster.** Entladebefehl an der SoC-Untergrenze ⇒ `guards.Clamp`
+   liefert 0 ⇒ Gerät verharrt; Ladebefehl an der Obergrenze analog. VoltPilot
+   schreibt die Geräte-Register 1042/1044 NIE — die Klemme ist die Autorität.
+7. **Netzladen.** Ladung über die PV-Produktion hinaus nur mit
+   `netzladen_erlaubt` (EEG-Klemme); Gegenprobe über den Energiezähler
+   „Total AC charge energy (grid to battery)" (Register 1054).
+8. **24-h-Soak** (erst lesend, dann gesteuerte Zyklen), Rücklesungen ohne
+   Abweichungen.
+
+### Freigabe
+
+Nach bestandenem Programm: Freigabe **pro Gerät** über die
+First-Light-Karte (persistiert in `calibration-certified.json`). Die
+flottenweite Aufnahme von `kostal_plenticore` in
+`VP_CONTROL_CERTIFIED_FAMILIES` + `CERTIFIED_CONTROL_FAMILIES` erst, wenn die
+Modellklasse belegt ist — bis dahin bleibt die Familie ABSICHTLICH draußen
+(der Code shippt schreibfähig, aber stumm).
+
 ## Siehe auch
 
 - [`goe/goe-control.js`](goe/goe-control.js) — der zertifizierte go-e-Steueradapter

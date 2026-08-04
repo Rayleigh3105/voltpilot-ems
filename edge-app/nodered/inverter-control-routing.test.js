@@ -1730,3 +1730,127 @@ test('remote release: with remote ABSENT the release is byte-identical to the To
   assert.deepStrictEqual(JSON.parse(JSON.stringify(withCap)), JSON.parse(JSON.stringify(without)));
   assert.strictEqual(withCap.writes[0].role, 'tou_enable');
 });
+
+// --- KOSTAL PLENTICORE Tier-2 (external battery management) ------------------
+
+function kostalSel(overrides = {}) {
+  return Object.assign({
+    schema_version: '1.0', brand: 'kostal', label: 'KOSTAL · PLENTICORE BI 10/26',
+    family: 'kostal_plenticore', communication: 'kostal_modbus', control_tier: 2, rated_kw: 10,
+    connection: { ip: '192.168.0.30', port: 1502, unit_id: 71, byte_order: 'auto' },
+  }, overrides);
+}
+const kostalSp = (over = {}) => Object.assign({
+  battery_setpoint_kw: -3, source: 'schedule', control_enabled: true, device_certified: true,
+}, over);
+
+test('kostal: ONE lever - register 1034 as float32 watts, sign NEGATED', () => {
+  // VoltPilot -3 kW (discharge) -> Kostal register +3000 W (positive = discharge).
+  const plan = C.controlRoute(kostalSel(), kostalSp(), {});
+  assert.strictEqual(plan.adapter, 'kostal_modbus');
+  assert.strictEqual(plan.tier, C.CONTROL_TIER.VENDOR_EMS);
+  assert.strictEqual(plan.target, '192.168.0.30:1502');
+  assert.strictEqual(plan.connection.unit_id, 71);
+  assert.strictEqual(plan.writes.length, 1, 'exactly ONE write op - the single-lever discipline');
+  const w = plan.writes[0];
+  assert.strictEqual(w.addr, C.KOSTAL_REG.SETPOINT);
+  assert.strictEqual(w.addr, 1034);
+  assert.strictEqual(w.fc, 16);
+  assert.strictEqual(w.value, 3000);
+  assert.strictEqual(w.always, true, 're-assert every tick IS the watchdog kick');
+  assert.strictEqual(w.dwell_s, 0);
+  // Charging is negative on the register.
+  const charge = C.controlRoute(kostalSel(), kostalSp({ battery_setpoint_kw: 2.5 }), {});
+  assert.strictEqual(charge.writes[0].value, -2500);
+  // The sign hatch flips it back.
+  const inverted = C.controlRoute(
+    kostalSel({ connection: { ip: '192.168.0.30', invert_control_sign: true } }), kostalSp({ battery_setpoint_kw: 2.5 }), {},
+  );
+  assert.strictEqual(inverted.writes[0].value, 2500);
+});
+
+test('kostal: the SoC/limit registers are NEVER written (session-persistence rule)', () => {
+  for (const kw of [-5, 0, 4]) {
+    const plan = C.controlRoute(kostalSel(), kostalSp({ battery_setpoint_kw: kw }), {});
+    const addrs = plan.planned.map((w) => w.addr);
+    assert.deepStrictEqual(addrs, [1034], 'only 1034 - never 1038/1040/1042/1044');
+    for (const forbidden of [1038, 1040, 1042, 1044]) {
+      assert.ok(!addrs.includes(forbidden), 'register ' + forbidden + ' must never be written');
+    }
+  }
+  // "Hold" is simply the clamped setpoint 0 - still only the one lever.
+  const hold = C.controlRoute(kostalSel(), kostalSp({ battery_setpoint_kw: 0 }), {});
+  assert.strictEqual(hold.planned[0].value, 0);
+});
+
+test('kostal: the activation gate + the readback surface are always present', () => {
+  const plan = C.controlRoute(kostalSel(), kostalSp(), {});
+  assert.strictEqual(plan.mgmt_gate.addr, C.KOSTAL_REG.MGMT_MODE);
+  assert.strictEqual(plan.mgmt_gate.addr, 1080);
+  assert.strictEqual(plan.mgmt_gate.expect, C.KOSTAL_MGMT_EXTERNAL_MODBUS);
+  assert.match(plan.mgmt_gate.reason, /Servicemenü/);
+  const roles = plan.readbacks.map((r) => r.role);
+  assert.deepStrictEqual(roles, ['battery_setpoint', 'mgmt_mode']);
+  assert.strictEqual(plan.readbacks[0].count, 2, 'float32 spans two registers');
+  assert.strictEqual(plan.readbacks[0].decode, 'float32');
+});
+
+test('kostal: uncertified plans but never writes; the kill-switch and First-Light behave', () => {
+  // No device grant + not in the fleet allowlist -> planned only, honest reason.
+  const uncertified = C.controlRoute(kostalSel(), kostalSp({ device_certified: false }), {});
+  assert.deepStrictEqual(uncertified.writes, []);
+  assert.strictEqual(uncertified.planned.length, 1, 'the intended mapping stays visible for the bench');
+  assert.strictEqual(uncertified.certified, false);
+  assert.match(uncertified.reason, /nicht freigegeben/);
+  assert.ok(!C.CERTIFIED_CONTROL_FAMILIES.has('kostal_plenticore'),
+    'the family must NOT be fleet-certified before the bench pass');
+  // Kill-switch OFF beats a granted device.
+  const killed = C.controlRoute(kostalSel(), kostalSp({ control_enabled: false }), {});
+  assert.deepStrictEqual(killed.writes, []);
+  assert.match(killed.reason, /Not-Aus/);
+  // First-Light calibration bypasses ONLY the certification gate.
+  const calib = C.controlRoute(kostalSel(), kostalSp({ device_certified: false, calibration: true }), {});
+  assert.strictEqual(calib.writes.length, 1);
+  const calibKilled = C.controlRoute(
+    kostalSel(), kostalSp({ device_certified: false, calibration: true, control_enabled: false }), {},
+  );
+  assert.deepStrictEqual(calibKilled.writes, [], 'calibration never bypasses the kill-switch');
+});
+
+test('kostal: a pv limit is reported dropped (the BI has no PV), never silently ignored', () => {
+  const plan = C.controlRoute(kostalSel(), kostalSp({ pv_limit_kw: 5 }), {});
+  assert.strictEqual(plan.pvLimitSupported, false);
+  assert.strictEqual(plan.pvLimitDroppedKw, 5);
+  assert.strictEqual(plan.planned.length, 1, 'no curtailment write is invented');
+  const none = C.controlRoute(kostalSel(), kostalSp(), {});
+  assert.strictEqual(none.pvLimitSupported, undefined);
+});
+
+test('kostal release: setpoint 0 once, nothing to restore (the watchdog is the failsafe)', () => {
+  const rel = C.controlRelease(kostalSel(), { controlEnabled: true, deviceCertified: true });
+  assert.strictEqual(rel.adapter, 'kostal_modbus');
+  assert.strictEqual(rel.mode, 'release');
+  assert.strictEqual(rel.writes.length, 1);
+  assert.strictEqual(rel.writes[0].addr, 1034);
+  assert.strictEqual(rel.writes[0].value, 0);
+  assert.strictEqual(rel.writes[0].fc, 16);
+  // No installer state was touched, so no snapshot/restore ops exist at all.
+  assert.ok(!rel.snapshotPlan, 'the single-lever path has no installer state to snapshot');
+  // Uncertified: planned-only, exactly like the drive path.
+  const unc = C.controlRelease(kostalSel(), { controlEnabled: true });
+  assert.deepStrictEqual(unc.writes, []);
+  assert.strictEqual(unc.planned.length, 1);
+});
+
+test('kostal: the tier dispatch reaches the adapter even without control_tier on the selection', () => {
+  const sel = kostalSel();
+  delete sel.control_tier; // an older core that did not stamp the tier
+  const plan = C.controlRoute(sel, kostalSp(), {});
+  assert.strictEqual(plan.adapter, 'kostal_modbus', 'communication inference must reach Tier 2');
+  // A Tier-2 brand that is NOT kostal still hits the honest stub.
+  const other = C.controlRoute(
+    Object.assign(kostalSel(), { communication: 'modbus_tcp', control_tier: 2, family: 'sunspec' }), kostalSp(), {},
+  );
+  assert.strictEqual(other.adapter, 'vendor_ems');
+  assert.deepStrictEqual(other.writes, []);
+});
