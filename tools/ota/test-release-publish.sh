@@ -265,7 +265,72 @@ else
 fi
 
 echo
+echo "== der Anhang haengt am REPO, nicht am Arbeitsverzeichnis =="
+# Die zweite Haelfte derselben Falle, die den Erstflug beendete: die vier
+# Assets werden ueber die VORGABE `edge-app/ota/trust-set.json` gefunden. Haengt
+# die am Arbeitsverzeichnis, haengt sie daran, WO der Lauf gerade steht - und
+# der Signier-Schritt davor steht nachweislich woanders. Also: derselbe Aufruf
+# aus `edge-app/core` heraus, mit der Vorgabe (VP_OTA_TRUST_SET ist NICHT
+# gesetzt), muss die vier Dateien des Repos anhaengen.
+PUB="$TMP/anhang"
+mkdir -p "$PUB"
+printf '{"release":"edge-2026.08.3"}\n' >"$PUB/release.json"
+printf '{"key_id":"rel-2026-a"}\n' >"$PUB/release.json.sig"
+cat >"$PUB/register.json" <<'EOF'
+{
+  "version": "edge-2026.08.3",
+  "releaseSeq": 15,
+  "targetCommit": "0123456789ab",
+  "manifest": "{\"release\":\"edge-2026.08.3\"}\n",
+  "signature": "{\"key_id\":\"rel-2026-a\"}\n",
+  "signingKeyId": "rel-2026-a"
+}
+EOF
+if out="$(
+	cd "$ROOT/edge-app/core" || exit 1
+	VP_OTA_PORTAL="$BASE" VP_OTA_PORTAL_TOKEN="$TOK" \
+		VP_OTA_FORGEJO_BASE="$BASE" VP_OTA_FORGEJO_REPO="mamotec/voltpilot-ems" \
+		VP_OTA_FORGEJO_TOKEN="forgejo-stub" \
+		ota_publish "$PUB/release.json" edge-2026.08.3 2>&1
+)"; then
+	ok "ota_publish findet das Trust-Set des Repos auch aus einem anderen Verzeichnis"
+else
+	bad "ota_publish findet das Trust-Set des Repos auch aus einem anderen Verzeichnis" "Erfolg" "$out"
+fi
+# Die Release-id wird ueber den Tag gesucht, nicht geraten - sonst haenge diese
+# Pruefung daran, ob die Zeremonie oben gelaufen ist.
+RID="$(curl -sS -H 'Authorization: token forgejo-stub' \
+	"$BASE/api/v1/repos/mamotec/voltpilot-ems/releases/tags/edge-2026.08.3" |
+	python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+eq "…und es sind wieder genau die vier richtigen Dateien" \
+	"release.json release.json.sig trust-set.json trust-set.json.sig" \
+	"$(curl -sS -H 'Authorization: token forgejo-stub' \
+		"$BASE/api/v1/repos/mamotec/voltpilot-ems/releases/$RID/assets" |
+		python3 -c 'import json,sys; print(" ".join(a["name"] for a in json.load(sys.stdin)))')"
+
+echo
 echo "== Wirkpfad-Disziplin =="
+# Der Anker der Pfadaufloesung ist die Skriptdatei selbst - NIE das
+# Arbeitsverzeichnis. Ein `pwd`-Anker war genau der Fehler des Erstflugs
+# (edge-2026.08.1): er wurde erst INNERHALB von `(cd edge-app/core && …)`
+# ausgewertet und verdoppelte den Pfad.
+if grep -qE '^OTA_REPO_ROOT=.*BASH_SOURCE' "$HERE/release-publish.sh"; then
+	ok "die Repo-Wurzel wird aus dem Ort der Skriptdatei bestimmt"
+else
+	bad "die Repo-Wurzel wird aus dem Ort der Skriptdatei bestimmt" "OTA_REPO_ROOT=… BASH_SOURCE" "fehlt"
+fi
+# `pwd` darf GENAU EINMAL vorkommen: in der Zeile, die den Anker selbst
+# aufloest. Jedes weitere Vorkommen waere wieder ein Pfad am Aufrufer.
+eq "ausser dem Anker selbst haengt kein Pfad am Arbeitsverzeichnis" "0" \
+	"$(grep -c 'pwd' "$HERE/release-publish.sh" | tr -d ' ' |
+		awk -v n="$(grep -c '^OTA_REPO_ROOT=.*pwd' "$HERE/release-publish.sh" | tr -d ' ')" '{print $1 - n}')"
+# Und die Verallgemeinerung, die den Fehler als KLASSE ausschliesst: in den
+# Zeilen, die nach einem `cd` laufen, darf keine Kommandosubstitution stehen -
+# sie wuerde erst dort ausgewertet, also im falschen Verzeichnis.
+# shellcheck disable=SC2016  # das $ ist ein Literal im grep-Muster, bewusst nicht expandiert
+CD_LINES="$(grep -n 'cd "\$core" && go run' -A 2 "$HERE/release-publish.sh" | grep '\$(' || true)"
+eq "die vp-ota-Aufrufe tragen keine Kommandosubstitution (alles ist VOR dem cd aufgeloest)" \
+	"" "$CD_LINES"
 # Das ist keine Kosmetik: `--root baked` IST die Pruefung des Geraets. Ein Lauf,
 # der gegen irgendeine andere Wurzel prueft, prueft nicht das, was zaehlt.
 if grep -q -- '--root baked' "$HERE/release-publish.sh"; then

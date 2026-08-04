@@ -63,6 +63,18 @@ open(out + "/step-env.txt", "w").write("\n".join(sorted(step.get("env", {}))) + 
 PY
 ok "der Schritt \"$STEP\" ist im Workflow auffindbar"
 
+# Der Signier-Schritt kommt gleich mit heraus - er ist der Schritt, der beim
+# Erstflug (edge-2026.08.1) an einem verdoppelten Pfad zerbrach, und er wird
+# unten mit ECHTER Verzeichnis-Tiefe ausgefuehrt.
+python3 - "$WORKFLOW" "$TMP" <<'PY'
+import sys, yaml
+wf, out = sys.argv[1], sys.argv[2]
+steps = yaml.safe_load(open(wf))["jobs"]["manifest"]["steps"]
+step = next(s for s in steps if s.get("name", "").startswith("Signieren"))
+open(out + "/sign-step.sh", "w").write(step["run"])
+PY
+ok "der Signier-Schritt ist im Workflow auffindbar"
+
 # Der Schritt darf KEINE ${{ }}-Ausdruecke im Rumpf tragen: nur dann ist er
 # ausserhalb von Forgejo ausfuehrbar - und nur dann kann eine Eingabe nicht
 # heimlich an der env-Liste vorbei hereinkommen.
@@ -224,6 +236,93 @@ if run_step "$TMP/out5" >"$TMP/log5" 2>&1; then
 	bad "ein abgelehntes Token bricht ab" "Abbruch" "durchgelaufen"
 else
 	ok "ein abgelehntes Token bricht ab - es faellt NICHT still auf die Repo-Variable zurueck"
+fi
+
+echo
+echo "== Fall 6: der ECHTE Signier-Schritt bei ECHTER Verzeichnis-Tiefe =="
+# Die Luecke, durch die der Erstflug fiel: die 29 Faelle davor fuehrten NUR den
+# Eingaben-Schritt aus, und der wechselt nirgends das Verzeichnis. `ota_sign`
+# tut es (`cd edge-app/core`, weil dort das Go-Modul liegt) - und ein
+# repo-relativer Pfad, der ERST DANN aufgeloest wird, landet bei
+# `edge-app/core/edge-app/ota/trust-set.json`. Deshalb wird hier der echte
+# `run:`-Text ausgefuehrt, in einem Baum mit der echten Tiefe (Trust-Set unter
+# <root>/edge-app/ota, Werkzeug laufend in <root>/edge-app/core).
+#
+# Die Go-Werkzeugkette steht dabei als Stellvertreter da: gebaut werden muss
+# nichts, geprueft wird die PFADAUFLOESUNG - und genau die ist Sache des
+# Skripts, nicht des Compilers. Der Stellvertreter scheitert auf einer Datei,
+# die es nicht gibt: dieselbe Ablehnung, mit der `vp-ota verify` abbrach.
+mkdir -p "$TMP/bin"
+cat >"$TMP/bin/go" <<'SH'
+#!/usr/bin/env bash
+{ printf 'cwd=%s\n' "$(pwd -P)"; printf 'argv=%s\n' "$*"; } >>"$GO_SHIM_LOG"
+prev=""
+for a in "$@"; do
+	case "$prev" in
+	--trust-set | --manifest | --in | --key)
+		[ -f "$a" ] || {
+			printf 'open %s: no such file or directory\n' "$a" >&2
+			exit 1
+		}
+		;;
+	esac
+	prev="$a"
+done
+SH
+chmod +x "$TMP/bin/go"
+
+printf '{"release":"edge-2026.08.1"}\n' >"$WS/release.json"
+
+# Der Rumpf traegt GENAU EINEN Workflow-Ausdruck (die Schluesseldatei aus dem
+# Eingaben-Schritt). Das wird gepruefft, bevor er ersetzt wird - ein spaeter
+# hinzugefuegter zweiter Ausdruck darf hier nicht stillschweigend verschwinden.
+eq "der Signier-Schritt traegt genau EINEN Workflow-Ausdruck (die Schluesseldatei)" \
+	"\${{ steps.inputs.outputs.keyfile }}" \
+	"$(grep -oE '[$][{][{][^}]*[}][}]' "$TMP/sign-step.sh" | tr '\n' ' ' | sed 's/ $//')"
+sed 's|\${{ steps.inputs.outputs.keyfile }}|'"$WS"'/rel.key|' \
+	"$TMP/sign-step.sh" >"$TMP/sign-step.run.sh"
+
+# Der Anker im Skript ist `pwd -P`-aufgeloest (auf macOS liegt /var unter
+# /private/var) - die Erwartung muss dieselbe Aufloesung benutzen.
+WS_P="$(cd "$WS" && pwd -P)"
+GO_LOG="$TMP/go-shim.log"
+: >"$GO_LOG"
+if (
+	cd "$WS"
+	PATH="$TMP/bin:$PATH" GO_SHIM_LOG="$GO_LOG" GITHUB_WORKSPACE="$WS" \
+		bash "$TMP/sign-step.run.sh"
+) >"$TMP/log6" 2>&1; then
+	ok "der echte Signier-Schritt laeuft bei echter Tiefe durch"
+else
+	bad "der echte Signier-Schritt laeuft bei echter Tiefe durch" "Erfolg" "$(tail -n 3 "$TMP/log6")"
+fi
+
+eq "…und das Werkzeug lief wirklich UNTERHALB der Wurzel (sonst waere die Tiefe fingiert)" \
+	"$WS_P/edge-app/core" "$(sed -n 's/^cwd=//p' "$GO_LOG" | tail -n 1)"
+
+# DIE Zeile, die den Erstflug beendet haette: der Pfad, den die Gegenpruefung
+# zu sehen bekommt, ist der im Repo - nicht der unter dem Arbeitsverzeichnis
+# des Werkzeugs.
+eq "die Gegenpruefung bekommt das Trust-Set AUS DEM REPO (nicht unter edge-app/core)" \
+	"$WS_P/edge-app/ota/trust-set.json" \
+	"$(sed -n 's/.*--trust-set \([^ ]*\).*/\1/p' "$GO_LOG" | tail -n 1)"
+if grep -q 'edge-app/core/edge-app' "$GO_LOG"; then
+	bad "kein verdoppelter Pfad" "einfacher Pfad" "$(grep -o '[^ ]*edge-app/core/edge-app[^ ]*' "$GO_LOG" | head -n 1)"
+else
+	ok "kein Pfad ist verdoppelt worden"
+fi
+
+# Und die Verallgemeinerung: der Anker haengt am Skript, nicht am Aufrufer -
+# derselbe Aufruf aus einem anderen Verzeichnis findet dieselben Dateien.
+: >"$GO_LOG"
+if (
+	cd "$WS/edge-app/core"
+	PATH="$TMP/bin:$PATH" GO_SHIM_LOG="$GO_LOG" \
+		bash -c '. "$1/tools/ota/release-publish.sh"; ota_sign "$1/release.json" "$1/rel.key"' _ "$WS"
+) >"$TMP/log6b" 2>&1; then
+	ok "…und derselbe Aufruf aus einem ANDEREN Arbeitsverzeichnis findet dieselben Dateien"
+else
+	bad "derselbe Aufruf aus einem anderen Arbeitsverzeichnis" "Erfolg" "$(tail -n 3 "$TMP/log6b")"
 fi
 
 echo
