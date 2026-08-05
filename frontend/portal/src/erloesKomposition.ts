@@ -644,6 +644,14 @@ export interface PreisTreiberInput {
   netzladenErlaubt?: boolean;
   /** Nur für den Weg in die Einstellungen, wo ein Wert fehlt. */
   siteId?: string | null;
+  /**
+   * Zeilen, die eine ANDERE Karte derselben Seite schon zeigt — sie entfallen
+   * hier, statt dieselbe Wahrheit zweimal zu behaupten (die Absorption des
+   * Kombinations-Bilds, Konzept `vp-ertrag-kombi-konzept-t7` D2). Wer absorbiert,
+   * sagt es selbst: `soVerdient().absorbiert` ist die eine Liste, damit Karte und
+   * Preis-Karte nie über verschiedene Mengen reden.
+   */
+  ohne?: readonly PreisZeileId[];
 }
 
 /**
@@ -744,10 +752,16 @@ export function preisTreiber(input: PreisTreiberInput): PreisZeile[] {
       : 'Verkaufserlös der aus dem Netz geladenen Energie abzüglich ihrer Einkaufskosten',
   );
 
-  return zeilen;
+  return input.ohne?.length ? zeilen.filter((z) => !input.ohne!.includes(z.id)) : zeilen;
 }
 
-function marktVergleich(erzielt: number, markt: number): string {
+/**
+ * „2,9 ct über dem Monatsdurchschnitt" — der Wortlaut, mit dem die Preis-Karte
+ * den erzielten Marktwert einordnet. Exportiert, weil der Verdikt-Chip des
+ * Kombinations-Bilds ihn WIEDERVERWENDET: die Einordnung darf nicht an zwei
+ * Stellen verschieden formuliert sein.
+ */
+export function marktVergleich(erzielt: number, markt: number): string {
   const diff = erzielt - markt;
   if (Math.abs(diff) < 0.05) return 'etwa auf Höhe des Monatsdurchschnitts';
   const betrag = Math.abs(diff).toLocaleString('de-DE', {

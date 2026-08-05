@@ -25,6 +25,7 @@ import {
   preisTreiber,
   type ErgebnisZeile,
 } from '../erloesKomposition';
+import { soVerdient } from '../soVerdient';
 import {
   availableWelten,
   historieHash,
@@ -48,6 +49,7 @@ import {
   ZeitLeiste,
 } from '../components/HistorieWelt';
 import { ErloeseVerlaufChart } from '../components/ErloeseVerlaufChart';
+import { SoVerdientCard } from '../components/SoVerdient';
 
 import '../components/Historie.css';
 import '../components/Erloese.css';
@@ -193,10 +195,16 @@ export function ErloeseSection({
   const isDay = range === 'day';
 
   const ergebnis = erloesErgebnis({ money, periodLabel: label });
+  // Das Kombinations-Bild — `null` auf einer nicht direkt vermarkteten Anlage
+  // (S9): dort bleibt die Welt byte-gleich wie bisher.
+  const verdient = soVerdient({ money, siteId: site.id });
   const preise = preisTreiber({
     money,
     netzladenErlaubt: site.netzladenErlaubt,
     siteId: site.id,
+    // Absorbieren statt doppeln: die Karte sagt selbst, welche Zeilen sie
+    // übernommen hat — dieselbe Wahrheit steht nie zweimal auf einer Seite.
+    ohne: verdient?.absorbiert,
   });
   const vergleichName = vergleichsName(anchor, range, modus);
   const kopfVergleich = vorher ? (
@@ -308,6 +316,11 @@ export function ErloeseSection({
                 )}
               </Card>
             </section>
+
+            {/* „Ist das gut?" — die Antwort gehört direkt hinter die
+                „Wie viel?"-Antwort. Nur direkt vermarktete Anlagen; alle
+                anderen sehen die Welt unverändert. */}
+            {verdient && <SoVerdientCard view={verdient} />}
 
             {/* Karte 2 - dieselben Teile über die Zeit, für JEDEN Zeitraum. */}
             <section className="vp-section">

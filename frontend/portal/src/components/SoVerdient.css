@@ -1,0 +1,149 @@
+/*
+ * „So verdient Ihre Anlage" — das Kombinations-Ertragsbild
+ * (Konzept `vp-ertrag-kombi-konzept-t7`, Variante A).
+ *
+ * Komponenten-LOKAL (das `Erloese.css`/`CockpitBlocks.css`-Muster): `index.css`
+ * bleibt unangetastet. Hier steht ausschließlich Neues (`.vp-sv-*`) — nichts
+ * setzt eine Basisregel außer Kraft, damit die dokumentierte Ladereihenfolge-
+ * Falle gar nicht erst greifen kann.
+ */
+
+/* --- Das Verdikt: die Antwort, bevor der Beweis kommt --------------------- */
+
+.vp-sv-verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 0 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.35;
+  /* Der Prüf-Zusatz der „unter"-Lage ist ein ganzer Satz — er muss umbrechen
+     dürfen, statt die Karte aufzuspannen. */
+  overflow-wrap: anywhere;
+}
+
+/* Über dem Durchschnitt: der Vorteil, in der Sprache der Steuerungs-Zurechnung. */
+.vp-sv-verdict.vp-sv-vorteil {
+  background: var(--vp-flow-batt-soft, #e7f6ec);
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+/* Auf Höhe des Durchschnitts: eine Feststellung, keine Wertung. */
+.vp-sv-verdict.vp-sv-neutral {
+  background: #eef1f4;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/*
+ * Unter dem Durchschnitt ist NICHT neutral (Captain-Entscheid 05.08.2026):
+ * verkauft die Anlage unter dem Durchschnitt, ist das das Gegenteil von
+ * Optimierung. Deshalb der HAUS-Warnton (`.vp-alert-warn`) statt Grau — und
+ * bewusst NICHT das Kosten-Rot: die Anlage ist nicht kaputt, die Lage ist
+ * prüfenswert. Der Grund steht als Wort im Chip, nie nur in der Farbe.
+ */
+.vp-sv-verdict.vp-sv-aufmerksam {
+  background: #fff4e5;
+  color: #8a5300;
+}
+
+/* --- Das Bild ------------------------------------------------------------ */
+
+.vp-sv-chartbox {
+  /* min-width: 0 gehört zu jedem Flex-/Grid-Kind mit Inhalt (Telefon-Überlauf). */
+  min-width: 0;
+  margin: 2px 0 4px;
+}
+
+.vp-sv-chartbox svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Die Bühne skaliert über die viewBox — sie kann ihren Container nie sprengen. */
+  max-width: 100%;
+}
+
+/* --- Kernsatz + der ehrliche Ersatz für ein fehlendes Bild ---------------- */
+
+.vp-sv-kernsatz {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-sv-fallback {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--vp-border, #e9ecef);
+  border-radius: 10px;
+  background: var(--vp-surface-muted, #fafbfc);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+/* --- Die Prämien-Zeile (wörtlich aus `marktpraemie()`) ------------------- */
+
+.vp-sv-praemie {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vp-border, #e9ecef);
+}
+
+.vp-sv-praemie-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vp-sv-praemie-lbl {
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vp-text, #1a1a1a);
+  overflow-wrap: anywhere;
+}
+
+.vp-sv-praemie-val {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+/* „—" ist nie eine Null: gedämpft, damit es als Nicht-Zahl liest. */
+.vp-sv-praemie-off {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-sv-praemie-note {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-sv-praemie-hint {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--vp-text-muted, #6c757d);
+  overflow-wrap: anywhere;
+}
+
+.vp-sv-praemie-link {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.78rem;
+}

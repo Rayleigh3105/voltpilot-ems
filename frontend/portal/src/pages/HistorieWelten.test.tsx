@@ -437,8 +437,12 @@ describe('Welt B · Erlöse', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Was den Preis gemacht hat' })).toBeInTheDocument();
     expect(screen.getByText('Ø Bezugspreis')).toBeInTheDocument();
     expect(screen.getByText('4,9 ct/kWh')).toBeInTheDocument();
-    expect(screen.getByText('8,9 ct/kWh')).toBeInTheDocument();
-    expect(screen.getByText('3,0 ct über dem Monatsdurchschnitt')).toBeInTheDocument();
+    // Die drei EXPORT-Zeilen leben seit dem Kombinations-Bild eine Karte höher
+    // (Absorption, Konzept D2) - dieselbe Wahrheit steht nie zweimal auf einer
+    // Seite. Die Einordnung trägt dort der Verdikt-Chip.
+    expect(screen.queryByText('8,9 ct/kWh')).not.toBeInTheDocument();
+    expect(screen.queryByText('3,0 ct über dem Monatsdurchschnitt')).not.toBeInTheDocument();
+    expect(screen.getByText('+ 3,0 ct über dem Monatsdurchschnitt')).toBeInTheDocument();
   });
 
   // Der reale Kundenfall vom 05.08.2026: „+ 0,00 € · Marktprämie" ohne ein Wort
