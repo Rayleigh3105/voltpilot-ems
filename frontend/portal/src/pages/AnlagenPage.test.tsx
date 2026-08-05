@@ -777,7 +777,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
 });
 
 describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', () => {
-  it('die MIGRIERTE Anlage hat eine „Zustand"-Karte (vorher gab es sie dort nicht)', async () => {
+  it('die MIGRIERTE Anlage hat eine „Zustand"-Karte — laut, mit Ursache und Hebel', async () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     // Ein stilles Gerät: genau der Fall, der oben „Warnung" auslöst.
@@ -786,9 +786,68 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     await waitFor(() => {
       expect(container.querySelector('.vp-cockpit-health')).not.toBeNull();
     });
+    // PR 3: der Befund-Fall ist die LAUTE Karte (Titel wortgleich mit dem
+    // Abzeichen-Popover), die Ursache steht in Kundendeutsch, der Hebel führt
+    // zur Unterseite.
     const card = container.querySelector('.vp-cockpit-health');
-    expect(card?.textContent).toContain('Gesundheit');
-    expect(card?.textContent).toContain('meldet sich nicht');
+    expect(card?.querySelector('.vp-zustand.befund')).not.toBeNull();
+    expect(card?.textContent).toContain('Zustand der Anlage');
+    expect(card?.textContent).toContain('Gerät: meldet sich nicht');
+    expect(card?.textContent).toContain('Anlagen-Modell');
+  });
+
+  it('alles grün: EINE ruhige Zeile mit dem Modus-Fuß in der Fläche (D5/D6)', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    // Grün braucht einen HEUTIGEN Plan (der Standard-Stub hat keinen —
+    // „Fahrplan: noch keiner erstellt" wäre ein ehrlicher off-Befund).
+    vi.spyOn(api, 'schedule').mockResolvedValue({
+      planId: 'p1',
+      deviceId: null,
+      generatedAt: new Date().toISOString(),
+      slotMinutes: 15,
+      savingsEur: null,
+      bankedValueEur: null,
+      socStartPct: null,
+      socEndPct: null,
+      peakTargetKw: null,
+      slots: [
+        {
+          start: new Date().toISOString(),
+          batteryKw: 0,
+          gridKw: null,
+          socPct: null,
+          priceEurMwh: null,
+          costEur: null,
+          baselineCostEur: null,
+          curtailKw: null,
+          pvKw: null,
+          loadKw: null,
+          slotRole: null,
+          slotFlags: null,
+          storedValueCtKwh: null,
+          gridValueCtKwh: null,
+          peakPressureEurKw: null,
+          importPriceCtKwh: null,
+          exportValueCtKwh: null,
+          importPriceSource: null,
+          coverLoadFromBattery: null,
+          chargeFromSurplusOnly: null,
+        },
+      ],
+    } as never);
+    const { container } = renderSeite();
+    await waitFor(() => {
+      expect(container.querySelector('.vp-cockpit-health .vp-zustand')).not.toBeNull();
+    });
+    const card = container.querySelector('.vp-cockpit-health');
+    // Leise: die eine Zeile statt vier Häkchen-Zeilen …
+    expect(card?.textContent).toContain('Alles in Ordnung');
+    expect(card?.querySelector('.vp-zustand.befund')).toBeNull();
+    expect(card?.querySelector('.vp-health-list')).toBeNull();
+    // … und die Modus-Zeile wohnt als Fuß IN der Fläche — kein Baumler mehr.
+    expect(card?.querySelector('.vp-zustand-foot .vp-toolbox-line')).not.toBeNull();
+    expect(container.querySelector('.vp-stack-foot')).toBeNull();
   });
 
   it('meldet die selbst gemessenen Fakten (Fahrplan/Steuerung/Speicher) nach oben', async () => {

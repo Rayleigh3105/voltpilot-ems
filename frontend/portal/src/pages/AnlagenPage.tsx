@@ -55,9 +55,9 @@ import {
   historyRangeForCockpit,
   type WidgetDef,
 } from '../cockpitWidgets';
-import { ToolboxPointer } from '../components/CockpitBlocks';
 import { CockpitHero } from '../components/CockpitHero';
 import { KomponentenSection } from '../components/KomponentenSection';
+import { ZustandCard } from '../components/ZustandCard';
 import { StrompreisStrip } from '../components/StrompreisStrip';
 import { gateStrompreis } from '../strompreis';
 import { PvBreakdownLine } from '../components/PvBreakdown';
@@ -1124,23 +1124,22 @@ export function AnlageSeite({
             dayTotals={dayTotals}
           />
 
-          {/* Zustand: die Erklärung zur Kopfzeilen-Warnung lebt auf der Seite,
-              die der Kunde wirklich sieht. Auf einer migrierten Anlage gab es
-              diese Fläche vorher gar nicht - die Warnung hatte also keinen Ort,
-              an dem sie ihre Ursache nennen konnte. */}
-          {health.length > 0 && (
+          {/* Zustand (vp-cockpit-unten-ux-n3 PR 3): leise, wenn gesund — EINE
+              Zeile; laut nur mit Befund (Ursache + Hebel je Zeile). Der
+              Modus-Fuß wohnt IN der Fläche (D6) — der Stack endet mit einer
+              Karte statt mit einem baumelnden Absatz. Gated auf die geladene
+              Übersicht: vor der ersten Antwort gäbe es nur erfundene
+              „noch nicht verbunden"-Befunde. id="zustand" bleibt das
+              Sprungziel des Schalen-Abzeichens. */}
+          {ovSite != null && health.length > 0 && (
             <div className="vp-cockpit-health" id="zustand">
-              <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-                <HealthChecklist items={health} />
-              </Card>
+              <ZustandCard
+                items={health}
+                onOpenSub={onOpenSub}
+                onOpenModus={() => onOpenSub('steuerung')}
+              />
             </div>
           )}
-
-          {/* Die ruhige Toolbox-Zeile - der Abschluss (§1.3). Kein Werben
-              für einen bestimmten Modus. Das Wetter ist jetzt eine Kachel. */}
-          <div className="vp-stack-foot">
-            <ToolboxPointer onOpen={() => onOpenSub('steuerung')} />
-          </div>
         </>
       ) : (
         /* ===== v1 (un-migrated): byte-identical to today ================== */

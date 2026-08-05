@@ -3,6 +3,7 @@ import {
   healthBadge,
   healthChecklist,
   sameHealthFacts,
+  zustandView,
   type HealthInput,
 } from './health';
 
@@ -209,5 +210,120 @@ describe('sameHealthFacts - unknown never equals measured', () => {
     expect(sameHealthFacts({ controlState: null }, { controlState: 'off' })).toBe(false);
     expect(sameHealthFacts({ plan: null }, { plan: { hasPlanToday: false, hasAnyPlan: false } }))
       .toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Die Zustand-Fläche (vp-cockpit-unten-ux-n3 PR 3, D5/D6)
+// ---------------------------------------------------------------------------
+
+describe('zustandView — leise wenn gesund, laut nur mit Befund', () => {
+  const allOk = healthChecklist({
+    deviceCount: 1,
+    onlineCount: 1,
+    waitingCount: 0,
+    hasPlanToday: true,
+    hasAnyPlan: true,
+    controlState: 'healthy',
+    batteryWithoutDevice: false,
+    batteryLinked: true,
+  });
+
+  it('grün: EIN Satz, der genau die gemessenen Bereiche aufzählt', () => {
+    const v = zustandView(allOk)!;
+    expect(v.state).toBe('ok');
+    expect(v.line).toBe(
+      'Alles in Ordnung — Gerät, Fahrplan, Steuerung und Speicher arbeiten zusammen.',
+    );
+    expect(v.findings).toEqual([]);
+    expect(v.toneWord).toBeNull();
+  });
+
+  it('grün mit Teilmenge: der Satz behauptet nie Gesundheit über Ungemessenes', () => {
+    // Ohne Steuerungs-Signal und ohne Batterie lässt die Checkliste die
+    // Zeilen weg — der Satz erbt das.
+    const partial = healthChecklist({
+      deviceCount: 1,
+      onlineCount: 1,
+      waitingCount: 0,
+      hasPlanToday: true,
+      hasAnyPlan: true,
+      controlState: null,
+      batteryWithoutDevice: false,
+      batteryLinked: false,
+    });
+    expect(zustandView(partial)!.line).toBe(
+      'Alles in Ordnung — Gerät und Fahrplan arbeiten zusammen.',
+    );
+  });
+
+  it('explodiert bei einer WARNUNG: Befund warn-zuerst, mit Text und Hebel', () => {
+    const items = healthChecklist({
+      deviceCount: 1,
+      onlineCount: 0,
+      waitingCount: 0,
+      hasPlanToday: true,
+      hasAnyPlan: true,
+      controlState: 'healthy',
+      batteryWithoutDevice: false,
+      batteryLinked: true,
+    });
+    const v = zustandView(items)!;
+    expect(v.state).toBe('befund');
+    expect(v.toneWord).toBe('Warnung');
+    expect(v.findings[0]).toEqual({
+      key: 'device',
+      state: 'warn',
+      text: 'Gerät: meldet sich nicht',
+      lever: { sub: 'modell', label: 'Anlagen-Modell' },
+    });
+    // Die gesunden Reste kollabieren zu einer Zeile.
+    expect(v.okSummary).toBe('Fahrplan, Steuerung und Speicher: in Ordnung.');
+  });
+
+  it('explodiert auch bei einem OFF-Befund (D5) — aber als Hinweis, nicht als Warnung', () => {
+    const items = healthChecklist({
+      deviceCount: 1,
+      onlineCount: 1,
+      waitingCount: 0,
+      hasPlanToday: true,
+      hasAnyPlan: true,
+      controlState: 'pending', // → off „noch nicht freigegeben"
+      batteryWithoutDevice: false,
+      batteryLinked: true,
+    });
+    const v = zustandView(items)!;
+    expect(v.state).toBe('befund');
+    expect(v.toneWord).toBe('Hinweis');
+    expect(v.findings).toEqual([
+      {
+        key: 'control',
+        state: 'off',
+        text: 'Steuerung: noch nicht freigegeben',
+        lever: { sub: 'steuerung', label: 'Steuerung' },
+      },
+    ]);
+  });
+
+  it('warn-zuerst bleibt auch gemischt erhalten (die Checklisten-Sortierung)', () => {
+    const items = healthChecklist({
+      deviceCount: 1,
+      onlineCount: 0,
+      waitingCount: 0,
+      hasPlanToday: false,
+      hasAnyPlan: false, // → off „noch keiner erstellt"
+      controlState: null,
+      batteryWithoutDevice: true, // → warn
+      batteryLinked: false,
+    });
+    const v = zustandView(items)!;
+    expect(v.findings.map((f) => f.state)).toEqual(['warn', 'warn', 'off']);
+    expect(v.findings.map((f) => f.lever.sub)).toEqual(['modell', 'technik', 'fahrplan']);
+    expect(v.okSummary).toBeNull();
+    expect(v.toneWord).toBe('Warnung');
+  });
+
+  it('ohne einen einzigen gemessenen Fakt gibt es keine Fläche', () => {
+    expect(zustandView([])).toBeNull();
   });
 });
