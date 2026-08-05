@@ -1,29 +1,36 @@
 /**
- * Live-Daten „Komponenten-Board" — the pure derivation behind the V3 live view
- * (design `data/vp-portal-livedata-design/report.md` §1 „Live-Daten" + §4 V3).
+ * Das Komponenten-Board des Cockpits — die pure Zeilen-Ableitung.
  *
- * The board shows ONE row per component: icon, name, health dot, the live value
- * with its state word, a 60-minute sparkline and a „Verlauf →" jump into the
- * explorer pre-focused on that measurement. This module is the pure,
- * unit-tested logic (the `live.ts` / `adaptiveLive.ts` precedent): no React, no
- * network. It DERIVES only.
+ * Seit dem Umbau der unteren Cockpit-Hälfte (Konzept
+ * `data/vp-cockpit-unten-ux-n3`, Variante A „Markt & Tag", PR 2; Captain-Go
+ * 05.08.2026 mit Empfehlung D4) hat jede Zeile EINE Grammatik statt vier:
  *
- * It does NOT re-derive signs or deadbands — the migrated (v2) rows REUSE the
- * `adaptiveLive.deriveTiles` values/state words verbatim and only enrich each
- * with its health, its representative measurement (for the jump + sparkline) and
- * its full Messwert list (the phone-expand). The v1 fallback rows REUSE the
- * `live.buildSnapshot` snapshot + the `live.ts` state derivations.
+ *   [Punkt] [Icon] Name (+ Bestands-Notiz) · JETZT-Wert + Richtungswort
+ *   | HEUTE-Energie | ›
  *
- * Two rules are law (the „—"-Disziplin): an absent value stays absent (the tile
- * renders the shared `nodata.NO_DATA`), never a fabricated 0; and a sparkline
- * with too few points is simply omitted — and since the audit (V5) the BOARD
- * only promises „letzte 60 Min" when at least one row really has one
- * ({@link hasAnySpark} / {@link boardHint}).
+ * Die zwei Zeitbezüge sind damit GETRENNT beschriftet („jetzt" ist die
+ * Wert-Zeile, „heute" die eigene Spalte) — vorher beantworteten die vier
+ * Unterzeilen vier verschiedene Fragen („3 Erzeuger" = Bestand · „Voll
+ * geladen" = Zustand · „122 kWh heute" = Tagessumme · „ins Netz" = Richtung)
+ * unter einer Kopfzeile, die „letzte 60 Min" versprach.
+ *
+ * **Die Sparklines sind ersatzlos entfallen (D4/K3):** 84×30 px, pro Zeile
+ * min→max-autoskaliert ohne Nulllinie und Zeitachse, am Telefon per CSS
+ * gelöscht — die Aussage war Schein, und der Trend wohnt in der
+ * Verlauf-Ebene der Karte (die bleibt). Mit ihnen entfiel das bedingte
+ * „letzte 60 Min"-Versprechen (V5) — der Kopfhinweis ist jetzt die eine
+ * Konstante {@link BOARD_HINT}.
+ *
+ * Unverändert gilt: die Zeilen re-derivieren NICHTS — die migrierten (v2)
+ * Zeilen reusen `adaptiveLive.deriveTiles` wörtlich (Werte, Zustandswörter,
+ * Deadbands), die v1-Zeilen `live.buildSnapshot` + die `live.ts`-Zustände.
+ * Und die „—"-Disziplin: ein fehlender Wert bleibt fehlend (das geteilte
+ * `nodata.NO_DATA`), nie eine erfundene 0 — auch in der Heute-Spalte
+ * (`liveDetail.withDayTotals` füllt sie nur aus BERICHTETEN Summen).
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import type { EntityHistory, SiteTopology, TelemetryPoint } from './api';
+import type { SiteTopology, TelemetryPoint } from './api';
 import { deriveTiles } from './adaptiveLive';
-import { channelLabel, channelUnitHint } from './channels';
 import { toComponentHealth, type ComponentHealth } from './komponenten';
 import { numOrNoData } from './nodata';
 import {
@@ -37,52 +44,57 @@ import {
 import type { FlowMember, Role } from './topology';
 import { V1_ENTITY } from './verlauf';
 
-function num(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
-}
+/** Der Kopfhinweis des Boards — beide Zeitbezüge, eine Interaktion. */
+export const BOARD_HINT = 'Jetzt und heute · eine Zeile öffnet den Verlauf';
 
 // --- Row model ---------------------------------------------------------------
 
-/** One measured value behind a row (the phone-expand list; its own jump). */
-export interface LivePulsChannel {
-  entityId: string;
-  channel: string;
-  /** Plain-German measurement name (never a raw channel identifier). */
-  label: string;
-  /** Unit shown after values (kW · % · °C …). */
-  unit: string;
+/**
+ * Eine Zeile der uniformen HEUTE-Spalte. Das Richtungs-WORT trägt die
+ * Bedeutung (aria/title); der Pfeil ist nur die visuelle Abkürzung — die
+ * Netz-Zeile liest sich „Einspeisung 141 kWh · Bezug 3 kWh".
+ */
+export interface TodayLine {
+  text: string;
+  arrow?: 'up' | 'down';
+  word?: string;
 }
 
 /** One component row of the Komponenten-Board. */
 export interface LivePulsRow {
   key: string;
-  /** Role → the sparkline colour (house-load maps to the consumer hue). */
+  /** Role → Icon-/Farbwelt (house-load maps to the consumer hue). */
   role: Role;
   icon: IconName;
   /** Short generalised component name. */
   title: string;
   /** The untouched full name for the `title` tooltip (else undefined). */
   fullTitle?: string;
+  /** Bestands-Notiz NEBEN dem Namen („3 Erzeuger"); nie ein Zustand. */
+  titleNote?: string;
   /** Headline value ("6,4 kW" / "78 %" / "—"). */
   value: string;
   /** Verdict word ("erzeugt", "Lädt", "Einspeisung", …). */
   stateLabel: string;
   stateTone: 'accent' | 'muted';
   arrow?: 'up' | 'down';
-  /** Storage SoC for the fill bar (0-100). */
+  /** Storage SoC for the compact inline bar next to the value (0-100). */
   socPct?: number;
-  /** Optional detail sub-line ("2 Erzeuger", "Ladeleistung 3,4 kW"). */
+  /** Detail der JETZT-Zeile ("Ladeleistung 3,4 kW"); nie eine Tagessumme. */
   subLine?: string;
   health: ComponentHealth;
-  /** Representative measurement — the sparkline + „Verlauf →" target. */
+  /** Representative measurement — the „Verlauf"-jump target. */
   target: { entityId: string; channel: string } | null;
-  /** Every Messwert behind this row (phone-expand, each its own jump). */
-  channels: LivePulsChannel[];
+  /**
+   * Die uniforme HEUTE-Spalte (gefüllt von `liveDetail.withDayTotals` aus den
+   * BERICHTETEN Tages-Summen); null = „—", nie eine erfundene 0.
+   */
+  today: TodayLine[] | null;
 }
 
 // --- v2 (topology-driven) rows -----------------------------------------------
 
-/** The representative channel a role's row plots + jumps to. */
+/** The representative channel a role's row jumps to. */
 const ROLE_CHANNEL: Record<Role, string> = {
   pv: 'pv_power_kw',
   storage: 'soc_pct',
@@ -91,9 +103,9 @@ const ROLE_CHANNEL: Record<Role, string> = {
 };
 
 /**
- * Worst-wins health over member entities. H2: the ranking now carries the
- * honest `unknown` (no feedback at all) BETWEEN „liefert" and „noch keine
- * Daten" — see `komponenten.toComponentHealth`, the ONE mapping.
+ * Worst-wins health over member entities. H2: the ranking carries the honest
+ * `unknown` (no feedback at all) BETWEEN „liefert" and „noch keine Daten" —
+ * see `komponenten.toComponentHealth`, the ONE mapping.
  */
 const HEALTH_RANK: Record<ComponentHealth, number> = {
   ok: 0,
@@ -108,9 +120,9 @@ function capsOf(topo: SiteTopology, entityId: string) {
 
 /**
  * The capabilities of an entity that belong to THIS row's role (V6). A hybrid
- * inverter measures PV *and* Speicher; the „Erzeuger" row must not list the
- * Ladestand. Falls back to every capability when the backend assigned no role
- * to any of them - an empty expansion would be worse than a wide one.
+ * inverter measures PV *and* Speicher; the „Erzeuger" row must not jump to
+ * the Ladestand. Falls back to every capability when the backend assigned no
+ * role to any of them.
  */
 function roleCapsOf(topo: SiteTopology, entityId: string, role: Role) {
   const caps = capsOf(topo, entityId);
@@ -130,30 +142,6 @@ function resolveChannel(
   return caps[0]?.channel ?? preferred;
 }
 
-/** Every Messwert of the row's role, deduped, in a stable order. */
-function collectChannels(
-  topo: SiteTopology,
-  members: FlowMember[],
-  role: Role,
-): LivePulsChannel[] {
-  const seen = new Set<string>();
-  const out: LivePulsChannel[] = [];
-  for (const m of members) {
-    for (const cap of roleCapsOf(topo, m.entity_id, role)) {
-      const key = `${m.entity_id}:${cap.channel}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({
-        entityId: m.entity_id,
-        channel: cap.channel,
-        label: channelLabel(cap.channel),
-        unit: (cap.unit && cap.unit.trim()) || channelUnitHint(cap.channel) || '',
-      });
-    }
-  }
-  return out;
-}
-
 function worstMemberHealth(topo: SiteTopology, members: FlowMember[]): ComponentHealth {
   let worst: ComponentHealth = 'ok';
   for (const m of members) {
@@ -164,12 +152,17 @@ function worstMemberHealth(topo: SiteTopology, members: FlowMember[]): Component
 }
 
 /**
- * The Komponenten-Board rows for a migrated (v2) site. It REUSES
- * `deriveTiles(topology)` for every value + state word (no re-derived sign or
- * deadband) and only resolves each tile's backing component(s) to add the
- * health dot, the „Verlauf →" / sparkline target and the Messwert list. A
- * multi-producer PV role collapses to one row exactly like the tile does (the
- * parts stay reachable in the explorer rail).
+ * Die Komponenten-Zeilen einer migrierten (v2) Anlage. REUSE von
+ * `deriveTiles(topology)` für jeden Wert + jedes Zustandswort (kein
+ * re-derivierter Sign/Deadband); hier kommen nur Health, Sprungziel und die
+ * Grammatik-Sortierung der Nebentexte dazu:
+ *
+ * - die PV-Bestands-Notiz („3 Erzeuger") wandert als {@link LivePulsRow.titleNote}
+ *   NEBEN den Namen (sie beschreibt die Komponente, nicht den Moment);
+ * - die Netz-Richtungs-Unterzeile („aus dem Netz"/„ins Netz") entfällt — das
+ *   Zustandswort („Netzbezug"/„Einspeisung") sagt es bereits, die Dopplung
+ *   war Teil der alten Grammatik-Mischung;
+ * - Detail-Unterzeilen der JETZT-Zeile („Ladeleistung 3,4 kW") bleiben.
  */
 export function componentRows(topo: SiteTopology): LivePulsRow[] {
   const tiles = deriveTiles(topo);
@@ -202,22 +195,23 @@ export function componentRows(topo: SiteTopology): LivePulsRow[] {
       icon: tile.icon,
       title: tile.title,
       fullTitle: tile.fullTitle,
+      titleNote: tile.role === 'pv' ? tile.subLine : undefined,
       value: tile.value,
       stateLabel: tile.stateLabel,
       stateTone: tile.stateTone,
       arrow: tile.arrow,
       socPct: tile.socPct,
-      subLine: tile.subLine,
+      subLine: tile.role === 'pv' || tile.role === 'grid' ? undefined : tile.subLine,
       health: worstMemberHealth(topo, members),
       target,
-      channels: collectChannels(topo, members, tile.role),
+      today: null,
     };
   });
 }
 
 // --- v1 fallback rows (entity-less site) -------------------------------------
 
-/** The v1 site-level channel a row plots + deep-links to (the verlauf.ts tree). */
+/** The v1 site-level channel a row deep-links to (the verlauf.ts tree). */
 type V1Channel = 'pv' | 'haus' | 'netz' | 'soc';
 
 function v1Row(
@@ -225,8 +219,6 @@ function v1Row(
   role: Role,
   icon: IconName,
   title: string,
-  rawChannel: string,
-  unit: string,
   value: string,
   stateLabel: string,
   stateTone: 'accent' | 'muted',
@@ -246,15 +238,15 @@ function v1Row(
     // absent must not show a green „liefert Daten" dot.
     health: extra?.measured === false ? 'unknown' : 'ok',
     target: { entityId: V1_ENTITY, channel },
-    channels: [{ entityId: V1_ENTITY, channel, label: channelLabel(rawChannel), unit }],
+    today: null,
   };
 }
 
 /**
- * The v1 fallback rows for an entity-less site: the four site-level measurements
- * (PV / Haus / Netz / Speicher) drawn from `buildSnapshot` and the `live.ts`
- * state derivations — the same wording the v1 status hero used, so nothing is
- * re-derived. Each row deep-links into the v1 explorer tree
+ * The v1 fallback rows for an entity-less site: the four site-level
+ * measurements (PV / Haus / Netz / Speicher) drawn from `buildSnapshot` and
+ * the `live.ts` state derivations — the same wording the v1 status hero used,
+ * so nothing is re-derived. Each row deep-links into the v1 explorer tree
  * (`{V1_ENTITY, pv|haus|netz|soc}`).
  */
 export function v1FallbackRows(points: TelemetryPoint[]): LivePulsRow[] {
@@ -271,7 +263,7 @@ function pvRow(snap: LiveSnapshot): LivePulsRow {
   const s = pvState(snap.pvKw);
   const [label, tone]: [string, 'accent' | 'muted'] =
     s === 'erzeugt' ? ['erzeugt', 'accent'] : s === 'keine' ? ['keine Erzeugung', 'muted'] : ['noch keine Daten', 'muted'];
-  return v1Row('pv', 'pv', 'sun', 'Solar', 'pv_power_kw', 'kW', numOrNoData(snap.pvKw, 'kW'), label, tone, {
+  return v1Row('pv', 'pv', 'sun', 'Solar', numOrNoData(snap.pvKw, 'kW'), label, tone, {
     measured: snap.pvKw != null,
   });
 }
@@ -305,8 +297,6 @@ function storageRow(snap: LiveSnapshot): LivePulsRow {
     'storage',
     'battery',
     'Batterie',
-    'soc_pct',
-    '%',
     numOrNoData(snap.socPct, '%', 0),
     label,
     tone,
@@ -320,7 +310,7 @@ function hausRow(snap: LiveSnapshot): LivePulsRow {
   const s = loadState(snap.loadKw);
   const [label, tone]: [string, 'accent' | 'muted'] =
     s === 'bedarf' ? ['aktueller Bedarf', 'accent'] : s === 'keiner' ? ['kein Verbrauch', 'muted'] : ['noch keine Daten', 'muted'];
-  return v1Row('haus', 'consumer', 'home', 'Haus', 'load_kw', 'kW', numOrNoData(snap.loadKw, 'kW'), label, tone, {
+  return v1Row('haus', 'consumer', 'home', 'Haus', numOrNoData(snap.loadKw, 'kW'), label, tone, {
     measured: snap.loadKw != null,
   });
 }
@@ -342,122 +332,8 @@ function netzRow(snap: LiveSnapshot): LivePulsRow {
   } else if (s === 'ausgeglichen') {
     label = 'ausgeglichen';
   }
-  return v1Row('netz', 'grid', 'zap', 'Netz', 'power_kw', 'kW', numOrNoData(abs, 'kW'), label, tone, {
+  return v1Row('netz', 'grid', 'zap', 'Netz', numOrNoData(abs, 'kW'), label, tone, {
     arrow,
     measured: snap.gridKw != null,
   });
-}
-
-// --- Sparklines --------------------------------------------------------------
-
-/** A render-ready 60-minute sparkline (the chart draws + colours it). */
-export interface Spark {
-  /** Bucket/sample values in time order (null = a gap, kept honest). */
-  values: (number | null)[];
-  min: number;
-  max: number;
-}
-
-/** The trailing 60-minute window; too few points → null (no sparkline). */
-function buildSpark(pairs: { t: number; v: number | null }[], nowMs: number): Spark | null {
-  const cutoff = nowMs - 60 * 60 * 1000;
-  const recent = pairs.filter((p) => p.t >= cutoff && p.t <= nowMs).sort((a, b) => a.t - b.t);
-  const values = recent.map((p) => p.v);
-  const finite = values.filter((v): v is number => v != null);
-  if (finite.length < 2) return null;
-  return { values, min: Math.min(...finite), max: Math.max(...finite) };
-}
-
-/**
- * The last-60-minute sparkline of one entity channel, plucked from a
- * `range='day'` entity history (its rollup/raw buckets carry `{start, avg}`).
- */
-export function sparkFromEntityHistory(
-  history: EntityHistory,
-  channel: string,
-  now: Date,
-): Spark | null {
-  const buckets = history.channels[channel] ?? [];
-  return buildSpark(
-    buckets.map((b) => ({ t: new Date(b.start).getTime(), v: num(b.avg) })),
-    now.getTime(),
-  );
-}
-
-/** The last-60-minute sparkline of a v1 telemetry channel (the loaded window). */
-export function sparkFromPoints(
-  points: TelemetryPoint[],
-  pick: (p: TelemetryPoint) => number | null,
-  now: Date,
-): Spark | null {
-  return buildSpark(
-    points.map((p) => ({ t: new Date(p.ts).getTime(), v: num(pick(p)) })),
-    now.getTime(),
-  );
-}
-
-/** The telemetry accessor for a v1 board row's sparkline. */
-export function v1Pick(channel: string): (p: TelemetryPoint) => number | null {
-  switch (channel) {
-    case 'pv':
-      return (p) => p.pvPowerKw;
-    case 'haus':
-      return (p) => p.loadKw;
-    case 'netz':
-      return (p) => p.powerKw;
-    case 'soc':
-      return (p) => p.socPct;
-    default:
-      return () => null;
-  }
-}
-
-/** Build the sparks map (key = row.key) for the v1 rows from the loaded window. */
-export function v1Sparks(
-  rows: LivePulsRow[],
-  points: TelemetryPoint[],
-  now: Date,
-): Map<string, Spark | null> {
-  const out = new Map<string, Spark | null>();
-  for (const r of rows) {
-    const ch = r.target?.channel;
-    out.set(r.key, ch ? sparkFromPoints(points, v1Pick(ch), now) : null);
-  }
-  return out;
-}
-
-/**
- * V5 (Audit) — **das Versprechen nur machen, wenn es eingelöst wird.** Der
- * Kopf des Boards sagte immer „letzte 60 Min" und jede Zeile reservierte einen
- * Sparkline-Platz, auch wenn KEINE Zeile eine Linie hat (schweigendes Gerät;
- * die Quelle ist die Tages-Rollup-Reihe, die kurz nach Berliner Mitternacht
- * naturgemäß fast leer ist). Vier dauerhaft leere Kästchen unter einem
- * Versprechen sind unehrlich — also entscheidet das hier.
- */
-export function hasAnySpark(sparks: Map<string, Spark | null>): boolean {
-  for (const s of sparks.values()) if (s) return true;
-  return false;
-}
-
-/**
- * Der Kopfhinweis des Boards: mit Sparklines der volle Satz, ohne sie nur der
- * Absprung-Hinweis — nie eine „letzte 60 Min"-Zusage ohne Linie.
- */
-export function boardHint(hasSpark: boolean): { spark: string | null; jump: string } {
-  return { spark: hasSpark ? 'letzte 60 Min' : null, jump: 'tippen für den Verlauf' };
-}
-
-/** Build the sparks map (key = row.key) for the v2 rows from per-entity history. */
-export function entitySparks(
-  rows: LivePulsRow[],
-  histories: Map<string, EntityHistory>,
-  now: Date,
-): Map<string, Spark | null> {
-  const out = new Map<string, Spark | null>();
-  for (const r of rows) {
-    const t = r.target;
-    const hist = t ? histories.get(t.entityId) : undefined;
-    out.set(r.key, hist && t ? sparkFromEntityHistory(hist, t.channel, now) : null);
-  }
-  return out;
 }

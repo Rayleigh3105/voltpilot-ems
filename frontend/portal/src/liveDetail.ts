@@ -13,7 +13,7 @@ import type { LiveState } from './adaptiveLive';
 import type { LiveSnapshot } from './live';
 import { energyLabel } from './anlage';
 import { fmtRelative } from './format';
-import type { LivePulsRow } from './livePuls';
+import type { LivePulsRow, TodayLine } from './livePuls';
 import { isReportedTotal } from './nodata';
 
 /**
@@ -86,22 +86,25 @@ export function initialVerlaufOpen(stored: string | null): boolean {
 }
 
 /**
- * R2 (optional half): the retired flow tiles' kWh sub-lines move onto the
- * board rows — "32,1 kWh heute" under Erzeugung, the consumed energy under the
- * Haus row. Applied ONLY where the row has no sub-line of its own (a
- * multi-producer "2 Erzeuger" line is never overwritten) and only where the
- * row is unambiguous (the PV role row; the house row identified by key/title —
- * a Wallbox consumer never gets the house total).
+ * Die uniforme HEUTE-Spalte des Komponenten-Boards (vp-cockpit-unten-ux-n3
+ * PR 2 — die K2-Heilung: EINE Grammatik statt vier Unterzeilen-Bedeutungen).
+ * Gefüllt wird nur, was die Tages-Summen BERICHTEN:
  *
- * **V2 (Audit) — no fabricated zero next to an honest „no data".** The board
- * read „noch keine Daten **· 0,0 kWh heute**" because the history endpoint
- * returns `pvGenerationKwh: 0.0` on a day with ZERO buckets (while correctly
- * returning `null` for the cost fields). Two guards now:
- *  1. a row whose own state says „noch keine Daten" gets NO day total at all —
- *     the two halves of one line must not contradict each other;
- *  2. a total of 0 (or absent) is treated as NOT REPORTED
- *     (`nodata.isReportedTotal`) — until the server sends `null` there, the
- *     portal must not print a kWh figure it cannot vouch for.
+ * - PV → erzeugte kWh; Haus (per key/title identifiziert — eine Wallbox
+ *   bekommt nie die Haus-Summe) → verbrauchte kWh;
+ * - Netz → BEIDE Richtungen als eigene Zeilen (↓ Einspeisung / ↑ Bezug),
+ *   jede nur, wenn ihr Kanal berichtet ist;
+ * - Speicher/Verbraucher → null („—"): ihre Tages-Energie steht nicht in den
+ *   `HistoryTotals`, und eine Spalte ohne Quelle bleibt ehrlich leer.
+ *
+ * **V2 (Audit), fortgeschrieben:** ein 0-Summen-Total gilt weiter als NICHT
+ * BERICHTET (`nodata.isReportedTotal`) — nie eine gedruckte 0,0 kWh ohne
+ * Beleg. Der zweite alte Guard (kein Tageswert neben „noch keine Daten")
+ * ist mit der Grammatik OBSOLET: der Widerspruch entstand, weil beide
+ * Aussagen in EINER Zeile klebten; jetzt sind „jetzt" (Wert-Zeile) und
+ * „heute" (eigene Spalte) getrennt beschriftet, und eine real gemessene
+ * Tagessumme neben einem gerade stummen Gerät ist zwei wahre Antworten auf
+ * zwei benannte Fragen.
  */
 export function withDayTotals(
   rows: LivePulsRow[],
@@ -110,21 +113,29 @@ export function withDayTotals(
   if (!totals) return rows;
   const pvKwh = isReportedTotal(totals.pvGenerationKwh) ? totals.pvGenerationKwh : null;
   const loadKwh = isReportedTotal(totals.consumptionKwh) ? totals.consumptionKwh : null;
+  const exportKwh = isReportedTotal(totals.gridExportKwh) ? totals.gridExportKwh : null;
+  const importKwh = isReportedTotal(totals.gridImportKwh) ? totals.gridImportKwh : null;
   return rows.map((row) => {
-    if (row.subLine || row.stateLabel === NO_DATA_STATE) return row;
     if (row.role === 'pv' && pvKwh != null) {
-      return { ...row, subLine: `${energyLabel(pvKwh)} heute` };
+      return { ...row, today: [{ text: energyLabel(pvKwh) }] };
     }
     const isHouse = row.key === 'v1-haus' || row.title === 'Hausverbrauch';
     if (row.role === 'consumer' && isHouse && loadKwh != null) {
-      return { ...row, subLine: `${energyLabel(loadKwh)} heute` };
+      return { ...row, today: [{ text: energyLabel(loadKwh) }] };
+    }
+    if (row.role === 'grid') {
+      const lines: TodayLine[] = [];
+      if (exportKwh != null) {
+        lines.push({ text: energyLabel(exportKwh), arrow: 'down', word: 'Einspeisung' });
+      }
+      if (importKwh != null) {
+        lines.push({ text: energyLabel(importKwh), arrow: 'up', word: 'Bezug' });
+      }
+      if (lines.length > 0) return { ...row, today: lines };
     }
     return row;
   });
 }
-
-/** The verdict word that means „this row has nothing to report" (livePuls.ts). */
-const NO_DATA_STATE = 'noch keine Daten';
 
 /**
  * V14 (Audit) — hat der Energiefluss ÜBERHAUPT einen Wert?
