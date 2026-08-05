@@ -2390,6 +2390,61 @@ paths:
         "409": { description: The release is not signed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/devices/{deviceId}/apply:
+    post:
+      tags: [admin]
+      summary: Approve applying the assigned release ONCE ("Jetzt anwenden").
+      description: >
+        The one-shot apply approval (OTA Portal-Apply, concept
+        `vp-admin-geraete-ux-k2` §6/E3). It is WORD FOR WORD the approval the
+        operator used to give at the device's own `:8484` page behind the device
+        password - only the transport changed: it travels NON-RETAINED on
+        `ems/{t}/{s}/{d}/v2/apply` (contract
+        `docs/contracts/mqtt-ota-apply.schema.json`) and the device consumes it
+        through the very same code path its own button uses.
+
+
+        The security posture is therefore UNCHANGED: the approval opens ONLY the
+        first gate of the device's apply decision, for exactly ONE release (the
+        one the operator saw) and exactly ONE operation, and it expires after 15
+        minutes. Device autonomy stays OFF, and every later gate - signature
+        chain against the baked root, anti-rollback floor, the neutral-time rule
+        of a CONTROLLING plant, interlock, disk guard, self-test, LKG rollback,
+        the rollout's auto-halt - applies unchanged. It is a POINT-IN-TIME
+        authorization, never a content authorization.
+
+
+        NON-retained is load-bearing: a retained message is redelivered on every
+        reconnect, so a one-shot approval placed there would not be one. A box
+        that is offline right now therefore does NOT get the approval delivered
+        later - deliberately, because a consent from three hours ago is not a
+        consent for now. The portal shows that as the approval state
+        `verfallen` ("nicht abgeholt") instead of waiting silently; the state
+        rides the additive `apply` block of the fleet/device rows.
+
+
+        Platform-admin ONLY - the narrow `edge-release-publisher` account never
+        reaches a device.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "202": { description: The approval went out to the device. }
+        "404": { description: Device not found. }
+        "409":
+          description: >
+            Nothing to apply (no assignment), the device REJECTED the assigned
+            release (broken chain), the device reports it cannot apply right now
+            (no updater running), or an approval is already open. The German
+            reason is in the `message` body.
+        "503":
+          description: >
+            The approval could NOT be sent (broker unreachable). Nothing was
+            approved and nothing recorded - the approval IS the message.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/devices/{deviceId}/update-target/revert:
     post:
       tags: [admin]

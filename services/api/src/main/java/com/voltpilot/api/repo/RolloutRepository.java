@@ -262,6 +262,61 @@ public class RolloutRepository {
                 RolloutRepository::mapEvent, limit);
     }
 
+    // ── Portal-Apply: die erteilte Einmal-Freigabe ───────────────────────
+
+    /**
+     * Der BELEG über eine erteilte Freigabe (Migration V20260807010000).
+     *
+     * <p>Sie ist ausdrücklich nicht die Autorisierung - die ist die
+     * NICHT-retained MQTT-Nachricht, die schon draußen ist, wenn diese Zeile
+     * entsteht. Sie existiert, damit die Oberfläche „erteilt, wartet" sagen kann
+     * und, nach dem 15-Minuten-Fenster ohne Wirkung, „nicht abgeholt" statt
+     * still weiterzuwarten.
+     */
+    public record ApplyRequestRow(UUID deviceId, String token, String releaseVersion,
+            Long releaseSeq, String requestedBy, Instant requestedAt) {
+    }
+
+    /** Genau EINE Zeile je Gerät - eine neue Freigabe ERSETZT die alte. */
+    public void upsertApplyRequest(UUID deviceId, String token, String releaseVersion,
+            Long releaseSeq, String requestedBy) {
+        jdbc.update("""
+                INSERT INTO device_apply_request
+                       (device_id, token, release_version, release_seq, requested_by, requested_at)
+                VALUES (?, ?, ?, ?, ?, now())
+                ON CONFLICT (device_id) DO UPDATE SET token = EXCLUDED.token,
+                       release_version = EXCLUDED.release_version,
+                       release_seq = EXCLUDED.release_seq,
+                       requested_by = EXCLUDED.requested_by,
+                       requested_at = EXCLUDED.requested_at
+                """, deviceId, token, releaseVersion, releaseSeq, requestedBy);
+    }
+
+    public List<ApplyRequestRow> allApplyRequests() {
+        return jdbc.query("SELECT device_id, token, release_version, release_seq, requested_by, "
+                + "requested_at FROM device_apply_request", RolloutRepository::mapApplyRequest);
+    }
+
+    public Optional<ApplyRequestRow> applyRequest(UUID deviceId) {
+        return jdbc.query("SELECT device_id, token, release_version, release_seq, requested_by, "
+                + "requested_at FROM device_apply_request WHERE device_id = ?",
+                RolloutRepository::mapApplyRequest, deviceId).stream().findFirst();
+    }
+
+    public boolean deleteApplyRequest(UUID deviceId) {
+        return jdbc.update("DELETE FROM device_apply_request WHERE device_id = ?", deviceId) > 0;
+    }
+
+    private static ApplyRequestRow mapApplyRequest(ResultSet rs, int rowNum) throws SQLException {
+        return new ApplyRequestRow(
+                rs.getObject("device_id", UUID.class),
+                rs.getString("token"),
+                rs.getString("release_version"),
+                (Long) rs.getObject("release_seq"),
+                rs.getString("requested_by"),
+                instant(rs, "requested_at"));
+    }
+
     // ── Flottensicht: was meldet welches Gerät? ──────────────────────────
 
     /**
@@ -280,7 +335,15 @@ public class RolloutRepository {
             String reportedBlocker, Instant reportedAt, Instant lastSeenAt,
             Instant controlCheckedAt, Boolean controlConfirmed, Boolean controlCertified,
             String rootKeyIds, String trustSetKeyIds, String trustSetGeneratedAt,
-            String trustSetError) {
+            String trustSetError,
+            /*
+             * DREIWERTIG wie die Vertrauens-Spalten: null = ein älterer
+             * Edge-Stand meldet die Fähigkeit nicht („unbekannt"), false = die
+             * Box sagt selbst, dass hier gerade nichts angewandt werden kann,
+             * true = sie würde eine Freigabe aufgreifen. Deshalb ein
+             * Boolean-Objekt und niemals ein primitives boolean mit Default.
+             */
+            Boolean canApply) {
     }
 
     /**
@@ -293,7 +356,7 @@ public class RolloutRepository {
                 SELECT d.id AS device_id, d.external_ref, d.name AS device_name,
                        d.site_id, s.name AS site_name, s.tenant_id, t.name AS tenant_name,
                        u.version, u.current_version, u.target_version, u.state, u.target_verdict,
-                       u.reason, u.blocker, u.reported_at,
+                       u.reason, u.blocker, u.can_apply, u.reported_at,
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
                        u.trust_set_error,
                        ls.last_seen,
@@ -336,7 +399,8 @@ public class RolloutRepository {
                         rs.getString("root_key_ids"),
                         rs.getString("trust_set_key_ids"),
                         rs.getString("trust_set_generated_at"),
-                        rs.getString("trust_set_error")));
+                        rs.getString("trust_set_error"),
+                        (Boolean) rs.getObject("can_apply")));
     }
 
     /** Prüft, ob eine Geräte-Id überhaupt existiert (bevor sie ein Ziel bekommt). */

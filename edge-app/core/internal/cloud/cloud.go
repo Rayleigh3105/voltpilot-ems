@@ -39,6 +39,7 @@ type Link struct {
 	onPlanV2       func(payload []byte)
 	onFlows        func(payload []byte)
 	onUpdateTarget func(payload []byte)
+	onApplyRequest func(payload []byte)
 	onConnect      func(connected bool)
 }
 
@@ -79,6 +80,17 @@ type Options struct {
 	// The device verifies against its own baked root before the assignment
 	// means a thing, and applying stays supervised in this stage.
 	OnUpdateTarget func(payload []byte)
+	// OnApplyRequest receives the NON-RETAINED one-shot apply approval on
+	// .../v2/apply (docs/contracts/mqtt-ota-apply.schema.json, „Portal-Apply").
+	// nil = the portal-apply downlink is not wired.
+	//
+	// ⚠ NON-retained is the load-bearing half of this feature: a retained
+	// message is redelivered on EVERY reconnect, so a one-shot approval placed
+	// there would not be one - it would re-apply for as long as it sat on the
+	// broker. An offline box therefore never gets a missed approval delivered
+	// late, and that is intended: a consent from three hours ago is not a
+	// consent for now.
+	OnApplyRequest func(payload []byte)
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -102,7 +114,8 @@ func (o Options) brokerURL() string {
 func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, version: o.Version, onSchedule: o.OnSchedule,
 		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
-		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget, onConnect: o.OnConnect}
+		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
+		onApplyRequest: o.OnApplyRequest, onConnect: o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -194,6 +207,18 @@ func New(o Options) (*Link, error) {
 				l.onUpdateTarget(msg.Payload())
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 update subscribe failed", "topic", updTopic, "err", tok.Error())
+			}
+		}
+		// Die NICHT-retained Einmal-Freigabe (Portal-Apply). Sie liegt
+		// ausdruecklich NICHT auf dem retained Zuweisungs-Slot: retained
+		// wuerde bei jedem Reconnect erneut zugestellt, und eine
+		// Einmal-Freigabe darf nie replayt werden.
+		if l.onApplyRequest != nil {
+			applyTopic := l.topic("v2/apply")
+			if tok := c.Subscribe(applyTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				l.onApplyRequest(msg.Payload())
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 apply subscribe failed", "topic", applyTopic, "err", tok.Error())
 			}
 		}
 		if l.onConnect != nil {
@@ -488,6 +513,21 @@ type UpdateSummary struct {
 	//
 	// ABSENT and EMPTY mean different things on purpose - see TrustSummary.
 	Trust *TrustSummary `json:"trust,omitempty"`
+	// CanApply says whether a Portal-Apply approval would actually be picked up
+	// RIGHT NOW - i.e. an assignment is verified AND a Stufe-3 sidecar is
+	// running here (the `:8484` card's own gate, `otaapply.ApplyView.CanApply`).
+	//
+	// It exists because the portal must not offer a button that cannot work.
+	// The honest alternative - offering it always and letting the device refuse
+	// silently - is exactly the „ein Rätsel statt einer Verweigerung" failure
+	// the blocker field was added to end.
+	//
+	// It is a CAPABILITY, never an authorization: a `true` grants nothing, and
+	// a device that never reports it is simply „unbekannt" cloud-side, never
+	// „geht nicht". That THIRD state is why the field is emitted
+	// UNCONDITIONALLY (no omitempty): a build that knows the question always
+	// answers it, so „absent" can only ever mean „an older build", never „no".
+	CanApply bool `json:"can_apply"`
 }
 
 // TrustSummary is the reported trust identity (OTA Stufe 4).

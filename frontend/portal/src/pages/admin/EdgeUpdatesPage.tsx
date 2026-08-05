@@ -22,6 +22,7 @@ import {
   crossoverHint,
   freshnessLabel,
   frozenFraming,
+  applyView,
   handelnItems,
   loudBanner,
   progressBackbone,
@@ -96,6 +97,10 @@ export function EdgeUpdatesPage({ onNavigate }: { onNavigate?: (target: Route) =
   // Welche Rückfrage gerade aussteht - beide im Haus-Muster (Folgenliste),
   // nie ein nativer `window.confirm`.
   const [confirm, setConfirm] = useState<'halt' | 'auto' | null>(null);
+  // Das Gerät, für das gerade eine Freigabe bestätigt wird. Eine Handlung, die
+  // eine Kundenanlage neu startet, geht nie ohne Rückfrage - und die Rückfrage
+  // NENNT die Folgen.
+  const [applyFor, setApplyFor] = useState<string | null>(null);
   const [tick, setTick] = useState<number>(() => Date.now());
 
   async function load() {
@@ -234,12 +239,34 @@ export function EdgeUpdatesPage({ onNavigate }: { onNavigate?: (target: Route) =
                       </Button>
                     )}
                     {item.kind === 'apply' && item.deviceId && (
-                      <Button
-                        variant="outline"
-                        onClick={() => setDeviceFor(item.deviceId)}
-                      >
-                        Gerät ansehen
-                      </Button>
+                      <>
+                        {/* Was die Anwendung verhindern WIRD, steht VOR dem
+                            Knopf - eine Verweigerung danach wäre ein Rätsel. */}
+                        {item.apply?.warn && (
+                          <div className="vp-text-sm vp-lever" data-testid="handeln-warn">
+                            Achtung: {item.apply.warn}
+                          </div>
+                        )}
+                        <div className="vp-row-gap">
+                          <Button
+                            variant="primary"
+                            disabled={busy || !item.apply?.canClick}
+                            onClick={() => setApplyFor(item.deviceId)}
+                          >
+                            {/* Das ▸ ist ein Versprechen auf einen nächsten
+                                Schritt - ein Knopf, der gerade nichts auslösen
+                                kann, gibt es nicht. */}
+                            {item.apply?.label ?? 'Auf Gerät anwenden'}
+                            {item.apply?.canClick ? ' ▸' : ''}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setDeviceFor(item.deviceId)}
+                          >
+                            Gerät ansehen
+                          </Button>
+                        </div>
+                      </>
                     )}
                   </li>
                 ))}
@@ -559,6 +586,39 @@ export function EdgeUpdatesPage({ onNavigate }: { onNavigate?: (target: Route) =
             onRevert={async () => {
               await act(() => adminApi.revertUpdateTarget(row.deviceId));
               setDeviceFor(null);
+            }}
+            onApply={async () => setApplyFor(row.deviceId)}
+          />
+        );
+      })()}
+
+      {applyFor && data && (() => {
+        const row = data.fleet.find((r) => r.deviceId === applyFor);
+        if (!row) return null;
+        const view = applyView(row);
+        return (
+          <ConfirmDialog
+            open
+            title="Release jetzt auf dem Gerät anwenden?"
+            intro={`${row.siteName}: ${row.soll ?? 'das zugewiesene Release'} wird angewandt.`}
+            consequences={[
+              'Das Gerät startet seine Dienste neu - die Anlage ist dabei kurz ohne '
+                + 'VoltPilot-Steuerung und fällt in ihr eigenes Verhalten zurück.',
+              'Es ist GENAU EINE Freigabe für GENAU DIESES Release: sie gilt 15 Minuten und '
+                + 'wird danach nicht nachgeliefert.',
+              'Das Gerät prüft die Signatur weiterhin selbst und wendet nur an, wenn alle '
+                + 'seine Bedingungen erfüllt sind - Selbsttest und automatische Rücknahme '
+                + 'inklusive.',
+              'Automatische Updates werden dadurch NICHT eingeschaltet.',
+              ...(view.warn ? [`Achtung: ${view.warn}`] : []),
+            ]}
+            confirmLabel="Jetzt freigeben"
+            busy={busy}
+            onCancel={() => setApplyFor(null)}
+            onConfirm={() => {
+              setApplyFor(null);
+              setDeviceFor(null);
+              void act(() => adminApi.requestApply(row.deviceId));
             }}
           />
         );

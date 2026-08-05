@@ -469,5 +469,10 @@ func (a *Agent) updateSummary() *cloud.UpdateSummary {
 	// die Wahrheit ueber die PRUEFUNG, target_verdict). Ohne Sidecar bzw. bei
 	// `idle` ist der Block zeichengleich der der Stufe 2.
 	a.otaUpdaterOverlay(sum)
+	// Ob eine Portal-Freigabe ueberhaupt aufgegriffen wuerde, weiss NUR die
+	// Box (laeuft hier ein Sidecar? ist die Zuweisung geprueft?). Sie sagt es,
+	// damit das Portal keinen Knopf anbietet, der nichts bewirken kann - es
+	// ist eine FAEHIGKEIT, keine Erlaubnis (`UpdateSummary.CanApply`).
+	sum.CanApply = a.OtaApplyState().CanApply
 	return sum
 }

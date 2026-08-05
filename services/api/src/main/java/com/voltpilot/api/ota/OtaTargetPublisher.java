@@ -114,6 +114,60 @@ public class OtaTargetPublisher {
     }
 
     /**
+     * Das Apply-Topic eines Geräts - derselbe {@code v2/#}-Teilbaum wie die
+     * Zuweisung, also ebenfalls ohne Broker-Änderung (D-2).
+     */
+    public static String applyTopic(UUID tenantId, UUID siteId, UUID deviceId) {
+        return "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/v2/apply";
+    }
+
+    /**
+     * Die EINMALIGE Freigabe zum Anwenden veröffentlichen (Portal-Apply,
+     * Kontrakt {@code docs/contracts/mqtt-ota-apply.schema.json}).
+     *
+     * <p><b>⚠ NICHT-RETAINED, und das ist die tragende Entscheidung dieser
+     * Stufe.</b> Eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut
+     * zugestellt - eine Einmal-Freigabe, die beim nächsten Reconnect wieder
+     * erscheint, wäre keine, sie würde beliebig oft erneut anwenden. Deshalb
+     * liegt sie ausdrücklich NICHT auf dem retained Zuweisungs-Slot
+     * {@code v2/update}, und deshalb bekommt eine Box, die gerade offline ist,
+     * die Freigabe bewusst NICHT nachgeliefert: eine Zustimmung von vor drei
+     * Stunden ist keine Zustimmung für jetzt.
+     *
+     * <p><b>Anders als {@link #publishTarget} ist das NICHT best-effort.</b> Bei
+     * der Zuweisung ist die DB die Wahrheit und der Drift-Wächter holt die
+     * Veröffentlichung nach; hier IST die Nachricht die Freigabe - geht sie
+     * nicht hinaus, ist nichts passiert, und der Aufrufer muss das erfahren
+     * statt eine Freigabe zu protokollieren, die es nie gab.
+     *
+     * <p>Der Umschlag wird wie bei der Zuweisung von Hand zusammengesetzt: es
+     * ist dieselbe Klasse von Nachricht, und ein Objekt-Mapper wäre die Tür,
+     * durch die irgendwann doch ein re-serialisiertes Manifest kommt.
+     */
+    public synchronized void publishApplyRequest(UUID tenantId, UUID siteId, UUID deviceId,
+            String token, String release, String requestedBy, Instant requestedAt)
+            throws Exception {
+        String topic = applyTopic(tenantId, siteId, deviceId);
+        StringBuilder sb = new StringBuilder(512);
+        sb.append("{\"schema_version\":\"1.0\",\"type\":\"apply_request\"")
+                .append(",\"tenant_id\":\"").append(tenantId).append('"')
+                .append(",\"site_id\":\"").append(siteId).append('"')
+                .append(",\"device_id\":\"").append(deviceId).append('"')
+                .append(",\"token\":\"").append(esc(token)).append('"')
+                .append(",\"release\":\"").append(esc(release)).append('"')
+                .append(",\"requested_at\":\"").append(requestedAt).append('"');
+        if (requestedBy != null && !requestedBy.isBlank()) {
+            sb.append(",\"requested_by\":\"").append(esc(requestedBy)).append('"');
+        }
+        sb.append('}');
+        MqttMessage message = new MqttMessage(sb.toString().getBytes(StandardCharsets.UTF_8));
+        message.setQos(1);
+        message.setRetained(false);
+        connected().publish(topic, message);
+        log.info("published one-shot apply approval for {} to {} (NON-retained)", release, topic);
+    }
+
+    /**
      * Baut den Umschlag - von Hand, damit die Manifest-Bytes GARANTIERT
      * unverändert durchgehen (siehe Klassen-Doku). Nur die base64-Blöcke und
      * die Kopfdaten werden zusammengesetzt; die Zeichenketten werden mit

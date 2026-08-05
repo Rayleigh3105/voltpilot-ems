@@ -20,7 +20,12 @@ import { AdminPageHead } from './AdminPageHead';
 import { normalizeDeviceIdInput } from '../../anlageFlow';
 import { fmtRelative } from '../../format';
 import { deviceRows, funnelStages, pendingRows, versionLabel } from '../../onboardingFunnel';
-import { crossoverState, stateLabel, type EdgeUpdates } from '../../adminEdgeUpdates';
+import {
+  applyView,
+  crossoverState,
+  stateLabel,
+  type EdgeUpdates,
+} from '../../adminEdgeUpdates';
 import { GeraeteDrawer } from './GeraeteDrawer';
 
 /**
@@ -63,6 +68,8 @@ export function GeraeteRegistryPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  // Die Referenz des Geräts, für das gerade eine Anwendung freigegeben wird.
+  const [applying, setApplying] = useState<string | null>(null);
 
   async function reload() {
     setError(null);
@@ -199,6 +206,54 @@ export function GeraeteRegistryPage() {
                 setBusy(false);
               }
             } : undefined}
+            onApply={row.deviceId && row.soll
+              ? async () => setApplying(row.externalRef)
+              : undefined}
+          />
+        );
+      })()}
+
+      {applying && (() => {
+        const row = (fleet ?? []).find((d) => d.externalRef === applying);
+        if (!row || !row.deviceId) return null;
+        const view = applyView(row);
+        return (
+          <ConfirmDialog
+            open
+            title="Release jetzt auf dem Gerät anwenden?"
+            intro={`${row.siteName ?? row.externalRef}: `
+              + `${row.soll ?? 'das zugewiesene Release'} wird angewandt.`}
+            consequences={[
+              'Das Gerät startet seine Dienste neu - die Anlage ist dabei kurz ohne '
+                + 'VoltPilot-Steuerung und fällt in ihr eigenes Verhalten zurück.',
+              'Es ist GENAU EINE Freigabe für GENAU DIESES Release: sie gilt 15 Minuten und '
+                + 'wird danach nicht nachgeliefert.',
+              'Das Gerät prüft die Signatur weiterhin selbst und wendet nur an, wenn alle '
+                + 'seine Bedingungen erfüllt sind - Selbsttest und automatische Rücknahme '
+                + 'inklusive.',
+              'Automatische Updates werden dadurch NICHT eingeschaltet.',
+              ...(view.warn ? [`Achtung: ${view.warn}`] : []),
+            ]}
+            confirmLabel="Jetzt freigeben"
+            busy={busy}
+            onCancel={() => setApplying(null)}
+            onConfirm={() => {
+              const id = row.deviceId as string;
+              setApplying(null);
+              setOpenRef(null);
+              setBusy(true);
+              void (async () => {
+                try {
+                  await adminApi.requestApply(id);
+                  await reload();
+                } catch (e) {
+                  setError(e instanceof ApiError ? e.message
+                    : 'Die Freigabe ist fehlgeschlagen.');
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
           />
         );
       })()}

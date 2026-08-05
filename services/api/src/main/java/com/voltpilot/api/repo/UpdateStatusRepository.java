@@ -43,15 +43,16 @@ public class UpdateStatusRepository {
             String channel, String state, String reason, String lastKnownGood,
             String targetVerdict, String blocker, String rootKeyIds, String trustSetKeyIds,
             String trustSetGeneratedAt, String trustSetSignedBy, String trustSetError,
-            Instant reportedAt) {
+            Boolean canApply, Instant reportedAt) {
         jdbc.update(
                 "INSERT INTO device_update_status (device_id, tenant_id, site_id, version, "
                         + "backend, current_version, current_seq, target_version, target_seq, "
                         + "channel, state, reason, last_known_good, target_verdict, blocker, "
                         + "root_key_ids, trust_set_key_ids, trust_set_generated_at, "
-                        + "trust_set_signed_by, trust_set_error, reported_at, updated_at) "
+                        + "trust_set_signed_by, trust_set_error, can_apply, reported_at, "
+                        + "updated_at) "
                         + "VALUES (?, NULLIF(current_setting('app.tenant_id', true), '')::uuid, "
-                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
+                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
                         + "ON CONFLICT (device_id) DO UPDATE SET site_id = EXCLUDED.site_id, "
                         + "version = EXCLUDED.version, backend = EXCLUDED.backend, "
                         + "current_version = EXCLUDED.current_version, "
@@ -67,11 +68,12 @@ public class UpdateStatusRepository {
                         + "trust_set_generated_at = EXCLUDED.trust_set_generated_at, "
                         + "trust_set_signed_by = EXCLUDED.trust_set_signed_by, "
                         + "trust_set_error = EXCLUDED.trust_set_error, "
+                        + "can_apply = EXCLUDED.can_apply, "
                         + "reported_at = EXCLUDED.reported_at, updated_at = now()",
                 deviceId, siteId, version, backend, currentVersion, currentSeq, targetVersion,
                 targetSeq, channel, state, reason, lastKnownGood, targetVerdict, blocker,
                 rootKeyIds, trustSetKeyIds, trustSetGeneratedAt, trustSetSignedBy, trustSetError,
-                Timestamp.from(reportedAt));
+                canApply, Timestamp.from(reportedAt));
     }
 
     // Bewusst NUR ein Schreibpfad: gelesen wird der Stand cross-tenant im

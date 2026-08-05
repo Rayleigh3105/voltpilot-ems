@@ -35,6 +35,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
@@ -45,6 +46,9 @@ import (
 // Sidecars als „er laeuft" gilt. Er schreibt jeden Takt (30 s); zwei Minuten
 // ueberbruecken einen Neustart, ohne einen gestoppten Sidecar zu uebersehen.
 const otaUpdaterSeenWithin = 2 * time.Minute
+
+// otaApplyTokenRe ist die Form aus `docs/contracts/mqtt-ota-apply.schema.json`.
+var otaApplyTokenRe = regexp.MustCompile(`^[0-9a-f]{16,64}$`)
 
 // otaApplyRejection ist eine ABLEHNUNG mit deutschem Grund (400), kein Fehler.
 type otaApplyRejection struct{ msg string }
@@ -88,12 +92,37 @@ func (a *Agent) OtaApplyState() otaapply.ApplyView {
 	return view
 }
 
-// OtaRequestApply legt die EINMALIGE Freigabe ab.
+// OtaRequestApply legt die EINMALIGE Freigabe ab - der Weg der `:8484`-Taste,
+// die ihren Token selbst erzeugt.
+func (a *Agent) OtaRequestApply(by string) (otaapply.ApplyView, error) {
+	raw := make([]byte, 8)
+	if _, err := rand.Read(raw); err != nil {
+		return a.OtaApplyState(), fmt.Errorf("Freigabe konnte nicht erzeugt werden: %w", err)
+	}
+	// Der lokale Weg stempelt JETZT: der Mensch steht an der Box.
+	return a.OtaRequestApplyWithToken(by, hex.EncodeToString(raw), time.Now())
+}
+
+// OtaRequestApplyWithToken legt dieselbe Freigabe mit einem VORGEGEBENEN Token
+// und einem VORGEGEBENEN Zeitpunkt ab - der Weg des Portals
+// (`ota_apply_downlink.go`), das beides erzeugt.
 //
 // Sie schreibt nur eine Datei; angewandt wird von einem anderen Prozess, der
 // alles noch einmal selbst prueft. Genau deshalb ist dieser Aufruf so kurz -
-// er darf gar nichts entscheiden koennen.
-func (a *Agent) OtaRequestApply(by string) (otaapply.ApplyView, error) {
+// er darf gar nichts entscheiden koennen. Dass BEIDE Wege hier
+// zusammenlaufen, ist der ganze Sicherheits-Beweis der Portal-Taste: es gibt
+// nur EINEN Weg zum Anwenden, und er ist derselbe wie vorher.
+//
+// ⚠ `requestedAt` ist der Beginn des 15-Minuten-Fensters und kommt beim
+// Portal-Weg aus dem UMSCHLAG, nicht von der lokalen Uhr. Das ist tragend: der
+// Cloud-Link haelt eine DAUERHAFTE Sitzung (`cleanSession=false`), der Broker
+// darf eine QoS1-Nachricht fuer ein abwesendes Geraet also nachliefern. Wuerde
+// hier der Empfangs-Zeitpunkt gestempelt, waere eine stundenalte Zustimmung
+// beim Wiederverbinden wieder taufrisch - genau das, was eine EINMALIGE
+// Freigabe nie sein darf. Ein Zeitpunkt, der schon ausserhalb des Fensters
+// liegt, wird deshalb ABGELEHNT statt abgelegt.
+func (a *Agent) OtaRequestApplyWithToken(by, token string,
+	requestedAt time.Time) (otaapply.ApplyView, error) {
 	state := a.OtaApplyState()
 	if !state.CanApply {
 		reason := state.Reason
@@ -102,18 +131,25 @@ func (a *Agent) OtaRequestApply(by string) (otaapply.ApplyView, error) {
 		}
 		return state, &otaApplyRejection{msg: reason}
 	}
-
-	raw := make([]byte, 8)
-	if _, err := rand.Read(raw); err != nil {
-		return state, fmt.Errorf("Freigabe konnte nicht erzeugt werden: %w", err)
+	// Der Token wird QUITTIERT (`UpdaterState.AppliedRequestToken`) und ist
+	// damit die Einmaligkeit selbst - ein unbrauchbarer Token liesse denselben
+	// Tausch beliebig oft anlaufen.
+	if !otaApplyTokenRe.MatchString(token) {
+		return state, &otaApplyRejection{msg: "Die Freigabe traegt keine brauchbare Kennung."}
+	}
+	// Dieselbe Frist, die `ApplyRequest.Fresh` spaeter anwendet - nur eben schon
+	// hier, damit eine nachgelieferte Freigabe gar nicht erst auf Platte landet.
+	if requestedAt.IsZero() || time.Since(requestedAt) >= otaapply.ApplyRequestWindow {
+		return state, &otaApplyRejection{
+			msg: "Diese Freigabe ist aelter als das 15-Minuten-Fenster - sie gilt nicht mehr."}
 	}
 	req := otaapply.ApplyRequest{
-		Token: hex.EncodeToString(raw),
+		Token: token,
 		// Das Release, das der Mensch GESEHEN hat. Aendert sich die Zuweisung
 		// bis zum naechsten Takt, gilt die Freigabe nicht mehr - eine
 		// Zustimmung gilt fuer das, was auf dem Schirm stand.
 		Release:     state.Release,
-		RequestedAt: time.Now().UTC().Format(otaapply.TimeFormat),
+		RequestedAt: requestedAt.UTC().Format(otaapply.TimeFormat),
 		RequestedBy: by,
 	}
 	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileApplyRequest, req); err != nil {

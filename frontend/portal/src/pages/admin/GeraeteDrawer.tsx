@@ -5,13 +5,14 @@ import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { deviceKindLabel, fmtRelative } from '../../format';
 import { versionLabel } from '../../onboardingFunnel';
 import {
-  APPLY_HOW,
   actorLabel,
+  applyView,
   blockerLever,
   crossoverState,
   eventLabel,
   formatTrustStamp,
   stateLabel,
+  type DeviceApply,
   type EdgeUpdatesRelease,
   type JournalEntry,
 } from '../../adminEdgeUpdates';
@@ -45,6 +46,7 @@ export interface DrawerDevice {
   provisioned?: boolean;
   note?: string | null;
   trust?: Parameters<typeof crossoverState>[0];
+  apply?: DeviceApply | null;
 }
 
 /**
@@ -70,6 +72,7 @@ export function GeraeteDrawer({
   onClose,
   onAssign,
   onRevert,
+  onApply,
 }: {
   device: DrawerDevice;
   releases: EdgeUpdatesRelease[];
@@ -78,6 +81,12 @@ export function GeraeteDrawer({
   onClose: () => void;
   onAssign?: (releaseSeq: number, channel: string, pinned: boolean) => Promise<void>;
   onRevert?: () => Promise<void>;
+  /**
+   * Die EINMALIGE Freigabe zum Anwenden. Ohne diesen Aufrufer rendert der
+   * Knopf gar nicht - eine Fläche, die eine Handlung anbietet, die ihr Host
+   * nicht ausführen kann, ist eine Attrappe.
+   */
+  onApply?: () => Promise<void>;
 }) {
   const signed = releases.filter((r) => r.signed);
   const [seq, setSeq] = useState<number | null>(device.sollSeq ?? signed[0]?.releaseSeq ?? null);
@@ -89,6 +98,7 @@ export function GeraeteDrawer({
   const cross = crossoverState(device.trust);
   const lever = blockerLever(device.blocker);
   const connected = device.deviceId != null;
+  const apply = applyView(device);
 
   return (
     <Drawer open title={device.siteName ?? device.label ?? device.externalRef} onClose={onClose}>
@@ -180,8 +190,38 @@ export function GeraeteDrawer({
           {lever && (
             <p className="vp-text-sm vp-lever" data-testid="drawer-lever">Hebel: {lever}</p>
           )}
-          {device.state === 'wartet_auf_anwendung' && (
-            <p className="vp-text-sm" data-testid="drawer-apply-how">{APPLY_HOW}</p>
+          {/* Der Zustand einer schon ERTEILTEN Freigabe - er steht NEBEN dem
+              Geräte-Zustand, weil beide verschiedene Fragen beantworten. */}
+          {apply.approval && (
+            <p className="vp-text-sm" data-testid="drawer-approval">
+              <Badge variant={apply.approval.tone === 'busy' ? 'warn' : apply.approval.tone}>
+                {apply.approval.label}
+              </Badge>
+              {apply.approval.reason ? ` ${apply.approval.reason}` : ''}
+            </p>
+          )}
+          {onApply && connected && (
+            <div className="vp-apply-block" data-testid="drawer-apply">
+              {/* Was die Anwendung verhindern WIRD, steht VOR dem Knopf - eine
+                  Verweigerung danach wäre ein Rätsel. */}
+              {apply.warn && (
+                <p className="vp-text-sm vp-lever" data-testid="drawer-apply-warn">
+                  Achtung: {apply.warn}
+                </p>
+              )}
+              {apply.hint && (
+                <p className="vp-muted vp-text-sm" data-testid="drawer-apply-hint">
+                  {apply.hint}
+                </p>
+              )}
+              <Button
+                variant="outline"
+                disabled={busy || !apply.canClick}
+                onClick={() => void onApply()}
+              >
+                {apply.label}
+              </Button>
+            </div>
           )}
         </>
       ) : (

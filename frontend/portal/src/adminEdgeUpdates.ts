@@ -111,6 +111,28 @@ export interface DeviceTrust {
   trustSetError: string | null;
 }
 
+/**
+ * Was mit dem ANWENDEN dieses Geräts gerade ist (Portal-Apply, §6/E3).
+ *
+ * Er steht NEBEN `state`, nicht darin: `state` beantwortet „was ist mit dem
+ * GERÄT", dieser Block „was ist mit der FREIGABE".
+ */
+export interface DeviceApply {
+  /**
+   * Die vom GERÄT gemeldete Fähigkeit, eine Freigabe aufzugreifen -
+   * DREIWERTIG: `null` = ein älterer Edge-Stand meldet sie nicht, also
+   * unbekannt (NIE „geht nicht"); `false` = die Box sagt selbst, dass dort
+   * gerade nichts angewandt werden kann; `true` = sie würde aufgreifen.
+   */
+  canApply: boolean | null;
+  /** `erteilt` · `abgeholt` · `verfallen` - `null`, solange es keine gibt. */
+  state: string | null;
+  reason: string | null;
+  release: string | null;
+  requestedAt: string | null;
+  requestedBy: string | null;
+}
+
 export interface FleetRow {
   deviceId: string;
   /** Anzeige-Name: Gerätename, sonst die Referenz. */
@@ -138,6 +160,7 @@ export interface FleetRow {
   reportedAt: string | null;
   rolloutId: string | null;
   trust?: DeviceTrust | null;
+  apply?: DeviceApply | null;
 }
 
 export interface JournalEntry {
@@ -540,6 +563,7 @@ const EVENT_LABELS: Record<string, string> = {
   target_reverted: 'Zuweisung zurückgenommen',
   target_republished: 'Zuweisung erneut gesendet',
   target_cleared_on_unclaim: 'Zuweisung beim Entfernen des Geräts gelöscht',
+  apply_requested: 'Anwendung freigegeben',
   device_pinned_skipped: 'Gerät übersprungen (festgenagelt)',
   device_state: 'Zustand geändert',
 };
@@ -666,12 +690,137 @@ export interface HandelnItem {
   /** Der WEG - ohne ihn ist „Sie sind dran" nur ein Vorwurf. */
   how: string | null;
   deviceId: string | null;
+  /**
+   * Der Apply-Knopf dieser Zeile (nur bei `kind: 'apply'`). Seit dem
+   * Portal-Apply ist der WEG in den meisten Fällen ein Knopf statt einer
+   * Anleitung - `how` bleibt für die Box, der er nachweislich nicht hilft.
+   */
+  apply?: ApplyView;
 }
 
-/** Die Anleitung, wie am Gerät angewandt wird (der beaufsichtigte Weg). */
+/**
+ * Der Weg AM GERÄT - seit dem Portal-Apply nur noch der Rückfall.
+ *
+ * Er steht dort, wo das Portal nachweislich nicht helfen kann (die Box meldet
+ * selbst, dass sie nichts anwenden kann). Ihn immer zu zeigen, hieße einen
+ * Umweg zu empfehlen, den es nicht mehr braucht; ihn nie zu zeigen, ließe
+ * genau die Box im Regen stehen, die den Knopf nicht bedienen kann.
+ */
 export const APPLY_HOW =
-  'Anwenden ist beaufsichtigt: Geräteseite der Box (Port 8484) → „Jetzt anwenden" - '
-  + 'mit Selbsttest und automatischer Rücknahme.';
+  'Hier hilft nur der Weg am Gerät: Geräteseite der Box (Port 8484) → „Jetzt '
+  + 'anwenden" - mit Selbsttest und automatischer Rücknahme.';
+
+/** Die Aussagen einer erteilten Freigabe (Portal-Apply). */
+const APPROVAL_LABELS: Record<string, { label: string; tone: UpdateTone }> = {
+  erteilt: { label: 'Freigabe erteilt', tone: 'busy' },
+  abgeholt: { label: 'Freigabe abgeholt', tone: 'ok' },
+  verfallen: { label: 'Freigabe nicht abgeholt', tone: 'warn' },
+};
+
+/** Was der „Auf Gerät anwenden"-Knopf dieser Zeile darf und sagen muss. */
+export interface ApplyView {
+  /** Darf der Knopf gedrückt werden? */
+  canClick: boolean;
+  /** Die Beschriftung - sie sagt IMMER, was gerade Sache ist. */
+  label: string;
+  /**
+   * Was VOR dem Klick gesagt werden muss, weil es die Anwendung verhindern
+   * WIRD (eine stehende Sperre, z. B. die Neutral-Zeit einer steuernden
+   * Anlage). Der Knopf bleibt trotzdem bedienbar - die Entscheidung gehört dem
+   * Betreiber, nicht dieser Funktion.
+   */
+  warn: string | null;
+  /** Der ehrliche Hinweis, wenn das Portal nicht helfen kann. */
+  hint: string | null;
+  /** Der Zustand einer schon ERTEILTEN Freigabe - `null`, wenn es keine gibt. */
+  approval: { state: string; label: string; tone: UpdateTone; reason: string | null } | null;
+}
+
+/**
+ * Die EINE Ableitung des Apply-Knopfes - rein, damit jede Fläche (Handeln-
+ * Karte, Geräte-Drawer) dasselbe sagt.
+ *
+ * Vier Regeln, jede gegen einen konkreten Fehlgriff:
+ *
+ * 1. **Ein Knopf, der strukturell nichts bewirken kann, wird nicht angeboten.**
+ *    Meldet die Box `canApply: false`, steht dort der Weg am Gerät - nicht ein
+ *    Knopf, der in eine stille Verweigerung läuft.
+ * 2. **Unbekannt ist nicht „nein".** Ein älterer Edge-Stand meldet die
+ *    Fähigkeit gar nicht; ihm den Knopf zu verweigern hieße, eine Box zu
+ *    sperren, die ihn sehr wohl bedienen kann. Der Knopf bleibt - mit einem
+ *    ehrlichen Hinweis.
+ * 3. **Was die Anwendung verhindern WIRD, wird VORHER gesagt.** Eine stehende
+ *    Sperre (Neutral-Zeit einer steuernden Anlage, Platte, Interlock …) nennt
+ *    ihren Hebel, bevor jemand klickt - sonst ist die Verweigerung danach ein
+ *    Rätsel.
+ * 4. **Eine offene Freigabe wird nicht doppelt erteilt.** Der Server lehnt das
+ *    ohnehin ab (409); der Knopf sagt es vorher.
+ */
+export function applyView(row: {
+  state?: string | null;
+  blocker?: string | null;
+  reason?: string | null;
+  apply?: DeviceApply | null;
+  soll?: string | null;
+}): ApplyView {
+  const apply = row.apply ?? null;
+  const approvalState = apply?.state ?? null;
+  const approval = approvalState
+    ? {
+        state: approvalState,
+        label: APPROVAL_LABELS[approvalState]?.label ?? approvalState,
+        tone: APPROVAL_LABELS[approvalState]?.tone ?? ('off' as UpdateTone),
+        reason: apply?.reason ?? null,
+      }
+    : null;
+
+  const base: ApplyView = {
+    canClick: false,
+    label: 'Auf Gerät anwenden',
+    warn: null,
+    hint: null,
+    approval,
+  };
+
+  // Ohne Zuweisung gibt es nichts anzuwenden.
+  if (!row.soll) {
+    return { ...base, label: 'Kein Release zugewiesen' };
+  }
+  // Eine gebrochene Kette ist ein Sicherheits-Ereignis, kein „probier es halt".
+  if (row.state === 'fehlgeschlagen' || row.state === 'zurueckgerollt') {
+    return {
+      ...base,
+      label: 'Anwenden nicht möglich',
+      hint: row.reason
+        ?? 'Dieses Gerät meldet einen Fehlschlag - erst den Grund klären.',
+    };
+  }
+  if (approvalState === 'erteilt') {
+    return {
+      ...base,
+      label: 'Freigabe läuft',
+      hint: apply?.reason ?? null,
+    };
+  }
+  if (apply?.canApply === false) {
+    return { ...base, label: 'Gerät kann gerade nicht anwenden', hint: APPLY_HOW };
+  }
+
+  const warn = row.blocker
+    ? (blockerLever(row.blocker)
+      ?? row.reason
+      ?? 'Dieses Gerät meldet eine stehende Sperre.')
+    : null;
+  return {
+    ...base,
+    canClick: true,
+    warn,
+    hint: apply?.canApply === undefined || apply?.canApply === null
+      ? 'Diese Box meldet (noch) nicht, ob sie eine Freigabe aufgreifen kann - '
+        + 'ein älterer Stand. Die Freigabe geht trotzdem hinaus.'
+      : null,
+  };
+}
 
 /**
  * Die „Sie sind dran"-Karte: alles, was gerade auf den Betreiber wartet, an
@@ -704,16 +853,25 @@ export function handelnItems(data: EdgeUpdates | null): HandelnItem[] {
   }
   for (const row of data.fleet) {
     if (row.state !== 'wartet_auf_anwendung') continue;
+    const view = applyView(row);
+    // Eine LAUFENDE Freigabe wartet auf das Gerät, nicht auf den Betreiber -
+    // sie gehört damit nicht in eine Karte namens „Sie sind dran".
+    if (view.approval?.state === 'erteilt') continue;
+    const verfallen = view.approval?.state === 'verfallen';
     items.push({
       kind: 'apply',
       key: `apply-${row.deviceId}`,
       title: `${row.siteName}${row.tenantName ? ` · ${row.tenantName}` : ''}: `
-        + 'Release am Gerät anwenden',
-      detail: row.soll
-        ? `${row.soll} ist auf diesem Gerät verifiziert.`
-        : 'Das zugewiesene Release ist auf diesem Gerät verifiziert.',
-      how: APPLY_HOW,
+        + (verfallen ? 'Freigabe erneut erteilen' : 'Release anwenden'),
+      detail: verfallen
+        ? (view.approval?.reason
+          ?? 'Die letzte Freigabe ist abgelaufen, ohne dass das Gerät sie abgeholt hat.')
+        : (row.soll
+          ? `${row.soll} ist auf diesem Gerät verifiziert.`
+          : 'Das zugewiesene Release ist auf diesem Gerät verifiziert.'),
+      how: view.hint,
       deviceId: row.deviceId,
+      apply: view,
     });
   }
   return items;

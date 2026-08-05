@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EdgeUpdates } from '../../adminEdgeUpdates';
 
@@ -7,6 +7,7 @@ const promoteRollout = vi.fn();
 const haltRollout = vi.fn();
 const setUpdateTarget = vi.fn();
 const setAutoAdvance = vi.fn();
+const requestApply = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -19,6 +20,7 @@ vi.mock('../../admin/adminApi', () => ({
     setUpdateTarget: (...a: unknown[]) => setUpdateTarget(...a),
     setAutoAdvance: (...a: unknown[]) => setAutoAdvance(...a),
     revertUpdateTarget: vi.fn(),
+    requestApply: (...a: unknown[]) => requestApply(...a),
   },
 }));
 
@@ -317,9 +319,75 @@ describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
     const card = await screen.findByTestId('handeln');
     expect(card).toHaveTextContent('Welle 2 „Flotte" freigeben');
     expect(card).toHaveTextContent('Auernheim');
-    // Ohne den WEG wäre „Sie sind dran" nur ein Vorwurf.
-    expect(card).toHaveTextContent('8484');
+    // Seit dem Portal-Apply IST der WEG ein Knopf - nicht mehr eine Anleitung
+    // zum Tunnel auf die Box. Er steht direkt in der Karte.
+    expect(within(card).getByRole('button', { name: /Auf Gerät anwenden/ })).toBeEnabled();
     expect(screen.getByTestId('handeln-count')).toHaveTextContent('2 Schritte');
+  });
+
+  /**
+   * Der Knopf des Portal-Apply: eine Handlung, die eine Kundenanlage neu
+   * startet, fragt NIE ohne Rückfrage - und die Rückfrage nennt die Folgen,
+   * inklusive der Zusage, die sie NICHT gibt.
+   */
+  it('erteilt die Freigabe erst nach einer Rückfrage, die die Folgen NENNT', async () => {
+    const d = data();
+    d.fleet[1].state = 'wartet_auf_anwendung';
+    d.fleet[1].soll = 'edge-2026.08.0';
+    d.fleet[1].apply = { canApply: true, state: null, reason: null, release: null,
+      requestedAt: null, requestedBy: null };
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    const card = await screen.findByTestId('handeln');
+    fireEvent.click(within(card).getByRole('button', { name: /Auf Gerät anwenden/ }));
+
+    const dialog = await screen.findByTestId('confirm-consequences');
+    expect(dialog).toHaveTextContent('ohne VoltPilot-Steuerung');
+    expect(dialog).toHaveTextContent('15 Minuten');
+    // Die wichtigste Zusage ist die, die NICHT gegeben wird.
+    expect(dialog).toHaveTextContent('NICHT eingeschaltet');
+    // Bis hierher ist NICHTS passiert.
+    expect(requestApply).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt freigeben' }));
+    await waitFor(() => expect(requestApply).toHaveBeenCalledWith('d2'));
+  });
+
+  /**
+   * Was die Anwendung verhindern WIRD, steht VOR dem Klick - sonst ist die
+   * Verweigerung danach ein Rätsel (die Lehre des Canary-Soaks).
+   */
+  it('nennt die stehende Sperre samt Hebel, bevor jemand klickt', async () => {
+    const d = data();
+    d.fleet[1].state = 'wartet_auf_anwendung';
+    d.fleet[1].soll = 'edge-2026.08.0';
+    d.fleet[1].blocker = 'neutralzeit';
+    d.fleet[1].apply = { canApply: true, state: null, reason: null, release: null,
+      requestedAt: null, requestedBy: null };
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    expect(await screen.findByTestId('handeln-warn'))
+      .toHaveTextContent('VP_OTA_NEUTRAL_VERIFIED');
+  });
+
+  /**
+   * Eine Box, die selbst sagt „ich kann gerade nicht", bekommt keinen Knopf,
+   * der ins Leere läuft - sondern den ehrlichen Weg am Gerät.
+   */
+  it('bietet keinen Knopf an, wo das Portal nachweislich nicht helfen kann', async () => {
+    const d = data();
+    d.fleet[1].state = 'wartet_auf_anwendung';
+    d.fleet[1].soll = 'edge-2026.08.0';
+    d.fleet[1].apply = { canApply: false, state: null, reason: null, release: null,
+      requestedAt: null, requestedBy: null };
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    const card = await screen.findByTestId('handeln');
+    expect(within(card).getByRole('button', { name: /kann gerade nicht/ })).toBeDisabled();
+    expect(card).toHaveTextContent('8484');
   });
 
   it('zeigt die Karte GAR NICHT, wenn nichts ansteht', async () => {

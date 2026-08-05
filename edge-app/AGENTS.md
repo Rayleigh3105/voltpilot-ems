@@ -960,6 +960,36 @@ Seite + Portal: root `AGENTS.md` „OTA Stufe 4"; Rotations-Drill:
     eine Karte, die nur sagen kann „geht hier nicht", ist Laerm.
   - `static/*` ist `//go:embed`-ed - Kern nach jeder Aenderung neu bauen.
 
+- **Dieselbe Freigabe kommt seit dem Admin-UX-Umbau P3 auch aus dem PORTAL**
+  (`agent/ota_apply_downlink.go`, Kontrakt
+  `docs/contracts/mqtt-ota-apply.schema.json`) - und das ist ausdruecklich
+  KEIN zweiter Weg zum Anwenden:
+  - **Beide muenden in `OtaRequestApplyWithToken`.** Die `:8484`-Taste erzeugt
+    ihren Token selbst, das Portal bringt einen mit (damit es SEINEN Vorgang
+    spaeter wiedererkennt); alles danach ist woertlich derselbe Code. Wer hier
+    einen zweiten Pfad einzieht, muss jedes Tor ein zweites Mal absichern.
+  - **⚠ NICHT-retained, und das ist die tragende Entscheidung.** Der Abonnent
+    liegt auf `v2/apply`, ausdruecklich NICHT auf dem retained
+    Zuweisungs-Slot `v2/update`: retained wird bei jedem Reconnect erneut
+    zugestellt, eine Einmal-Freigabe waere damit keine. **Das allein genuegt
+    aber nicht** - der Link haelt eine DAUERHAFTE Sitzung
+    (`cleanSession=false`), der Broker darf eine QoS1-Nachricht also
+    nachliefern. Die zweite Haelfte ist deshalb `requested_at`: der Stempel
+    des UMSCHLAGS ist der Beginn des 15-Minuten-Fensters, nicht der
+    Empfangs-Zeitpunkt, also ist eine nachgelieferte Freigabe bei ihrer
+    Ankunft schon abgelaufen und wird abgelehnt statt abgelegt. Die Cloud
+    zeigt dafuer „Freigabe nicht abgeholt".
+  - **Verworfen wird STUMM zum Broker und LAUT im Protokoll:** falsche Form,
+    fremde Identitaet (die Regel von Telemetrie/purge_data/Zuweisung), und -
+    der eigene Fall dieses Pfades - eine Freigabe, die ein ANDERES als das
+    zugewiesene Release nennt. Eine Zustimmung gilt fuer das, was der Mensch
+    SAH.
+  - **`update.can_apply` im Herzschlag** (`cloud.UpdateSummary.CanApply`) ist
+    die FAEHIGKEIT, nie eine Erlaubnis: laeuft hier ein Sidecar, und ist die
+    Zuweisung geprueft? Sie wird bewusst OHNE `omitempty` gesendet - ein
+    Build, der die Frage kennt, beantwortet sie IMMER, damit „abwesend"
+    cloud-seitig nur „aelterer Build" heissen kann.
+
 ## Per-source status in the heartbeat (#524)
 
 `agent.sourcesSummary()` (`internal/agent/entities.go`) folds an additive

@@ -91,7 +91,33 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
             UUID siteId, String siteName,
             UUID tenantId, String tenantName, String ist, String soll, Long sollSeq,
             String channel, boolean pinned, String state, String reason, String blocker,
-            Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust) {
+            Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust, ApplyDto apply) {
+    }
+
+    /**
+     * Was mit dem ANWENDEN dieses Geräts gerade ist (Portal-Apply, §6/E3).
+     *
+     * <p>Er steht NEBEN {@code state}, nicht darin - dieselbe Begründung, aus
+     * der {@code blocker} neben {@code reason} steht: {@code state} beantwortet
+     * „was ist mit dem GERÄT", dieser Block „was ist mit der FREIGABE". Ein
+     * Gerät kann gleichzeitig {@code wartet_auf_anwendung} sein und eine
+     * Freigabe offen, abgeholt oder verfallen haben; jede Vermischung
+     * verschluckte einen der beiden Sätze.
+     *
+     * <p>{@code canApply} ist die vom GERÄT gemeldete Fähigkeit und
+     * DREIWERTIG: {@code null} = ein älterer Edge-Stand meldet sie nicht, also
+     * unbekannt - NIE „geht nicht"; {@code false} = die Box sagt selbst, dass
+     * dort gerade nichts angewandt werden kann (meist läuft kein
+     * Aktualisierer); {@code true} = sie würde eine Freigabe aufgreifen. Sie
+     * ist eine Fähigkeit, nie eine Erlaubnis.
+     *
+     * <p>{@code state}/{@code reason} beschreiben eine ERTEILTE Freigabe
+     * ({@code erteilt} · {@code abgeholt} · {@code verfallen}) und sind
+     * {@code null}, solange es keine gibt - über etwas, das nie erteilt wurde,
+     * wird nichts behauptet.
+     */
+    public record ApplyDto(Boolean canApply, String state, String reason, String release,
+            Instant requestedAt, String requestedBy) {
     }
 
     /**

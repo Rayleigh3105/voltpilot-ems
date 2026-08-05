@@ -73,6 +73,7 @@ public final class RolloutJournal {
             Map.entry("target_reverted", "Zuweisung zurückgenommen"),
             Map.entry("target_republished", "Zuweisung erneut gesendet"),
             Map.entry("target_cleared_on_unclaim", "Zuweisung beim Entfernen des Geräts gelöscht"),
+            Map.entry("apply_requested", "Anwendung freigegeben"),
             Map.entry("device_pinned_skipped", "Gerät übersprungen (festgenagelt)"),
             Map.entry("device_state", "Zustand geändert"));
 

@@ -216,6 +216,34 @@ public class AdminEdgeUpdateController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * <b>Jetzt anwenden</b> - die EINMALIGE Freigabe aus dem Portal (UX-Konzept
+     * {@code vp-admin-geraete-ux-k2} §6 / E3, Captain-Go 05.08.2026).
+     *
+     * <p>Es ist die einzige Route dieser Klasse, deren Wirkung über „eine
+     * Nachricht liegt bereit" hinausgeht - und trotzdem ist die
+     * Sicherheits-Haltung UNVERÄNDERT: sie erteilt exakt die Freigabe, die
+     * bisher ein Mensch an der {@code :8484}-Oberfläche hinter dem
+     * Geräte-Passwort erteilt hat, für EIN Release und EINEN Vorgang, 15 Minuten
+     * gültig. Angewandt wird sie vom Gerät selbst, das jedes weitere Tor
+     * (Signaturkette, Boden, Neutral-Zeit, Interlock, Selbsttest, Rücknahme)
+     * unverändert durchläuft - siehe {@link RolloutService#requestApply}.
+     *
+     * <p>Sie ist ausdrücklich NUR für {@code platform-admin}: die schmale
+     * Publisher-Rolle ({@code edge-release-publisher}) erreicht sie nicht - sie
+     * darf registrieren, nie ein Gerät anfassen. Das ist keine zusätzliche
+     * Prüfung, sondern die klassenweite {@code @PreAuthorize} dieser Klasse
+     * (der Publisher-Client liegt allein auf
+     * {@code AdminEdgeReleaseController}, das genau deshalb keine
+     * klassenweite Annotation trägt).
+     */
+    @PostMapping("/devices/{deviceId}/apply")
+    public ResponseEntity<Void> requestApply(@PathVariable UUID deviceId,
+            @AuthenticationPrincipal Jwt caller) {
+        rollouts.requestApply(deviceId, actor(caller));
+        return ResponseEntity.accepted().build();
+    }
+
     @PostMapping("/devices/{deviceId}/update-target/revert")
     public ResponseEntity<Void> revertTarget(@PathVariable UUID deviceId,
             @AuthenticationPrincipal Jwt caller) {
