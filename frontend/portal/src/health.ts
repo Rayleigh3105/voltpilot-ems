@@ -90,6 +90,99 @@ export function healthChecklist(input: HealthInput): HealthItem[] {
 }
 
 // ---------------------------------------------------------------------------
+// Die Zustand-Fläche des Cockpits (vp-cockpit-unten-ux-n3 PR 3, D5/D6)
+// ---------------------------------------------------------------------------
+
+/** Basiswort je Checklisten-Schlüssel (Aufzählung der grünen Zeile). */
+const KEY_WORD: Record<HealthItem['key'], string> = {
+  device: 'Gerät',
+  plan: 'Fahrplan',
+  control: 'Steuerung',
+  battery: 'Speicher',
+};
+
+/** „a, b und c" — die deutsche Aufzählung. */
+function joinDe(words: string[]): string {
+  if (words.length <= 1) return words[0] ?? '';
+  return `${words.slice(0, -1).join(', ')} und ${words[words.length - 1]}`;
+}
+
+/** Der Hebel je Befund: wohin ein Tipp führt (Unterseite der Anlage). */
+export const ZUSTAND_LEVER: Record<
+  HealthItem['key'],
+  { sub: 'modell' | 'fahrplan' | 'steuerung' | 'technik'; label: string }
+> = {
+  device: { sub: 'modell', label: 'Anlagen-Modell' },
+  plan: { sub: 'fahrplan', label: 'Fahrplan' },
+  control: { sub: 'steuerung', label: 'Steuerung' },
+  battery: { sub: 'technik', label: 'Einstellungen' },
+};
+
+/** Kopftitel der lauten Karte — wortgleich mit dem Popover des Abzeichens. */
+export const ZUSTAND_TITLE = 'Zustand der Anlage';
+
+export interface ZustandFinding {
+  key: HealthItem['key'];
+  /** warn = laut (bernstein), off = ruhig (die Vier-Klassen-Lehre, D5). */
+  state: Exclude<HealthState, 'ok'>;
+  /** „Gerät: meldet sich nicht" — wortgleich mit den Badge-Befunden. */
+  text: string;
+  lever: { sub: 'modell' | 'fahrplan' | 'steuerung' | 'technik'; label: string };
+}
+
+export interface ZustandView {
+  /** ok = die eine ruhige Zeile; befund = die laute Karte. */
+  state: 'ok' | 'befund';
+  /** Grüner Fall: der EINE Satz — er zählt nur auf, was GEMESSEN wurde. */
+  line: string | null;
+  /** Befund-Fall: warn-zuerst (die healthChecklist-Sortierung bleibt). */
+  findings: ZustandFinding[];
+  /** „Steuerung und Speicher: in Ordnung." — die gesunden Reste, eine Zeile. */
+  okSummary: string | null;
+  /** Das Kopf-Wort der lauten Karte (Badge-Vokabular), sonst null. */
+  toneWord: 'Warnung' | 'Hinweis' | null;
+}
+
+/**
+ * Die Zustand-Fläche des Cockpits: **leise, wenn gesund — laut nur mit
+ * Befund** (die Asymmetrie, die der vier-Häkchen-Karte fehlte). Im Grün-Fall
+ * EINE Zeile, die ausschließlich die GEMESSENEN Bereiche aufzählt (die
+ * Checkliste lässt unehrliche Zeilen weg — der Satz erbt das und behauptet
+ * nie Gesundheit über Ungemessenes). Bei IRGENDEINEM Befund (warn UND off,
+ * D5) explodiert die Fläche zur Karte: Befunde warn-zuerst, jede Zeile in
+ * Kundendeutsch mit ihrem Hebel; `off` bleibt im ruhigen Ton — laut ist nur,
+ * was kaputt ist. Die gesunden Reste kollabieren zu einer gedämpften Zeile.
+ *
+ * Leer (nichts gemessen) → null: eine Zustand-Fläche ohne einen einzigen
+ * Fakt hätte nichts zu sagen.
+ */
+export function zustandView(items: HealthItem[]): ZustandView | null {
+  if (items.length === 0) return null;
+  const findings = items.filter((i) => i.state !== 'ok');
+  if (findings.length === 0) {
+    const words = joinDe(items.map((i) => KEY_WORD[i.key]));
+    const line =
+      items.length === 1
+        ? `Alles in Ordnung — ${words} läuft.`
+        : `Alles in Ordnung — ${words} arbeiten zusammen.`;
+    return { state: 'ok', line, findings: [], okSummary: null, toneWord: null };
+  }
+  const ok = items.filter((i) => i.state === 'ok');
+  return {
+    state: 'befund',
+    line: null,
+    findings: findings.map((i) => ({
+      key: i.key,
+      state: i.state as Exclude<HealthState, 'ok'>,
+      text: `${KEY_WORD[i.key]}: ${i.detail}`,
+      lever: ZUSTAND_LEVER[i.key],
+    })),
+    okSummary: ok.length > 0 ? `${joinDe(ok.map((i) => KEY_WORD[i.key]))}: in Ordnung.` : null,
+    toneWord: findings.some((f) => f.state === 'warn') ? 'Warnung' : 'Hinweis',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Portal v3 · M1 — the ONE aggregated plant state for the shell's top bar
 // ---------------------------------------------------------------------------
 
