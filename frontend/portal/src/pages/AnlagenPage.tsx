@@ -28,7 +28,7 @@ import {
 } from '../fleet';
 import { eurAmount, fmtNum, plantKindLabel } from '../format';
 import { DEFAULT_EARNINGS_RANGE, periodLabel, stripSlots } from '../anlage';
-import { anlageRoute, type AnlagenSub, type Route } from '../nav';
+import { anlageRoute, pageRoute, type AnlagenSub, type Route } from '../nav';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip } from '../control';
 import { curtailTruth, curtailTruthForSlot } from '../curtailment';
@@ -58,6 +58,8 @@ import {
 import { ToolboxPointer } from '../components/CockpitBlocks';
 import { CockpitHero } from '../components/CockpitHero';
 import { KomponentenSection } from '../components/KomponentenSection';
+import { StrompreisStrip } from '../components/StrompreisStrip';
+import { gateStrompreis } from '../strompreis';
 import { PvBreakdownLine } from '../components/PvBreakdown';
 import { WidgetGrid } from '../components/WidgetGrid';
 import { AnlageSetup } from '../components/AnlageSetup';
@@ -451,6 +453,7 @@ export function AnlageSeite({
   sites,
   onOpenSub,
   onBackToList,
+  onNavigate,
   onReload,
   onHealthFacts,
 }: AnlagenPageProps & {
@@ -1089,6 +1092,24 @@ export function AnlageSeite({
           {/* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
               Ziel der Kachel - kein Modal mehr. */}
           <WidgetGrid widgets={widgets} onSelect={jumpToWidget} />
+
+          {/* Markt & Tag (vp-cockpit-unten-ux-n3, PR 1): der Börsenpreis-
+              Streifen führt die untere Hälfte an — er erklärt, warum der
+              Fahrplan gerade tut, was er tut. Gating = die Marktpreise-Regel
+              (Markt-Modus ∨ dynamischer Tarif); auf einer Festpreis-EEG-
+              Anlage erklärt der Preis nichts und erscheint deshalb nicht. */}
+          {gateStrompreis(modes, site.tarifArt) && (
+            <StrompreisStrip
+              siteId={site.id}
+              isDv={site.plantKind === 'direktvermarktung'}
+              tarifArt={site.tarifArt}
+              kind={site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch'}
+              slots={planSlots}
+              slotMinutes={plan?.slotMinutes ?? 15}
+              activeSlot={activePlanSlot}
+              onOpenMarktpreise={() => onNavigate(pageRoute('marktpreise'))}
+            />
+          )}
 
           {/* Merge Option A · Stratum 3: Komponenten im Detail — das Board
               (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die

@@ -1,0 +1,155 @@
+/*
+ * Börsenpreis-Streifen (Cockpit, Kopf der unteren Hälfte) — komponenten-
+ * lokale Styles (der KomponentenSection/CockpitBlocks-Präzedenzfall;
+ * index.css bleibt unangetastet).
+ */
+.vp-strompreis {
+  min-width: 0;
+}
+
+.vp-sp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+.vp-sp-head h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+.vp-sp-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+.vp-sp-link:hover,
+.vp-sp-link:focus-visible {
+  text-decoration: underline;
+}
+
+.vp-sp-now {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 2px 0 6px;
+  min-width: 0;
+}
+.vp-sp-val {
+  font-size: 1.35rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-sp-urteil {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+/* Bedeutung trägt das WORT; der Ton unterstützt nur (Haus-Farbwelt). */
+.vp-sp-urteil.tone-teuer {
+  color: #8a5300;
+}
+.vp-sp-urteil.tone-guenstig {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-sp-urteil.tone-mittel,
+.vp-sp-urteil.tone-flach {
+  color: var(--vp-text-muted, #667);
+}
+.vp-sp-urteil.tone-negativ {
+  color: #c0392b;
+}
+
+.vp-sp-bezug {
+  margin: 0 0 6px;
+  font-size: 0.86rem;
+}
+
+/* Kurve: das SVG streckt nur BALKEN (preserveAspectRatio none); Texte liegen
+   als HTML-Overlays darüber, damit nichts verzerrt. */
+.vp-sp-curve {
+  position: relative;
+  min-width: 0;
+}
+.vp-sp-curve svg {
+  display: block;
+  width: 100%;
+  height: 76px;
+}
+.vp-sp-overlay {
+  position: absolute;
+  font-size: 0.68rem;
+  font-weight: 700;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.vp-sp-overlay.jetzt {
+  bottom: 2px;
+  color: var(--vp-chart-plan, #1e3a5f);
+}
+.vp-sp-overlay.morgen {
+  top: 0;
+  color: var(--vp-chart-price, #2f6bd6);
+}
+
+.vp-sp-anker {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+  font-size: 0.76rem;
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-sp-note {
+  margin: 7px 0 0;
+  font-size: 0.8rem;
+  color: var(--vp-text-muted, #667);
+}
+.vp-sp-praemie {
+  margin: 7px 0 0;
+  font-size: 0.8rem;
+  color: #8a5300;
+}
+
+.vp-sp-plan {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.vp-sp-plan > svg {
+  flex: 0 0 auto;
+  color: var(--vp-chart-pv, #ff9800);
+  margin-top: 2px;
+}
+.vp-sp-plan-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-sp-geplant {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--vp-text-muted, #667);
+  background: var(--vp-surface, #fff);
+  white-space: nowrap;
+}

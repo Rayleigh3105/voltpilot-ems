@@ -127,6 +127,14 @@ function stubApi(overviewSite: Record<string, unknown> = {}) {
   // Cockpit+Live merge: the merged home also loads the PV-breakdown sources
   // and (lazy) the per-entity sparkline histories — both fail-soft.
   vi.spyOn(api, 'siteSources').mockResolvedValue(null as never);
+  // Markt & Tag (PR 1): der Börsenpreis-Streifen holt die Zonen-Serie —
+  // leer gemockt zeigt er den ehrlichen Leerzustand (bzw. nichts auf v1).
+  vi.spyOn(api, 'prices').mockResolvedValue({
+    biddingZone: 'DE-LU',
+    resolution: 'PT15M',
+    currency: 'EUR',
+    points: [],
+  } as never);
   vi.spyOn(api, 'entityHistory').mockResolvedValue({
     range: 'day',
     from: '',
@@ -532,6 +540,50 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     expect(line).toContain('Ihre Anlage kann mehr');
     expect(line).toContain('Modus hinzufügen');
     expect(line).not.toMatch(/Lastspitzen|Marktvermarktung|Eigenverbrauch/);
+  });
+
+  // Markt & Tag (vp-cockpit-unten-ux-n3, PR 1): der Börsenpreis-Streifen führt
+  // die untere Hälfte an — gated auf die Marktpreise-Regel (Markt-Modus ∨
+  // dynamischer Tarif; die Fixture-Anlage trägt `tarifArt: 'dynamisch'`).
+  it('trägt den Börsenpreis-Streifen mit Wert, Urteil und Absprung', async () => {
+    const base = new Date(Date.now() - 60 * 60 * 1000);
+    const points = Array.from({ length: 8 }, (_, i) => {
+      const ts = new Date(base.getTime() + i * 15 * 60_000);
+      return {
+        ts: ts.toISOString(),
+        end: new Date(ts.getTime() + 15 * 60_000).toISOString(),
+        priceEurMwh: i % 2 === 0 ? 5 : 140,
+      };
+    });
+    vi.spyOn(api, 'prices').mockResolvedValue({
+      biddingZone: 'DE-LU',
+      resolution: 'PT15M',
+      currency: 'EUR',
+      points,
+    } as never);
+    mockAdaptive(true);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-strompreis')).toBeTruthy());
+    const strip = container.querySelector('.vp-strompreis') as HTMLElement;
+    expect(strip.textContent).toContain('Börsenpreis');
+    expect(strip.textContent).toContain('ct/kWh');
+    expect(strip.textContent).toContain('Marktpreise');
+    // Der Streifen sitzt VOR der Komponenten-Sektion (Kopf der unteren Hälfte).
+    const komponenten = container.querySelector('.vp-komponenten');
+    expect(komponenten).toBeTruthy();
+    expect(
+      strip.compareDocumentPosition(komponenten as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('v1 kennt keinen Börsenpreis-Streifen — und ruft die Preise gar nicht ab', async () => {
+    mockAdaptive(false);
+    mockSurface(LEER);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
+    expect(container.querySelector('.vp-strompreis')).toBeNull();
+    expect(api.prices).not.toHaveBeenCalled();
   });
 });
 
