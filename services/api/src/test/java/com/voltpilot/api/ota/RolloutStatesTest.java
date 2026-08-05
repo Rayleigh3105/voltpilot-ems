@@ -24,6 +24,13 @@ class RolloutStatesTest {
                 reportedAt, reportedAt);
     }
 
+    /** Dasselbe, aber mit dem maschinenlesbaren Sperr-Namen. */
+    private static RolloutStates.Reported blocked(String current, String state, String verdict,
+            String reason, String blocker) {
+        return new RolloutStates.Reported(current, current, TARGET, state, verdict, reason,
+                blocker, NOW, NOW);
+    }
+
     @Test
     @DisplayName("ein Gerät ohne Meldung ist UNBEKANNT - nie veraltet")
     void unknownIsNeverOutdated() {
@@ -93,10 +100,17 @@ class RolloutStatesTest {
     @Test
     @DisplayName("das Pruefurteil trennt wartet von gilt-hier-nicht von kaputt")
     void theVerdictSeparatesPendingFromPolicyFromBroken() {
+        // „geprüft und in Ordnung, aber das Anwenden ist beaufsichtigt" ist der
+        // Zustand, in dem der ADMIN der fehlende Akteur ist - er hat seit dem
+        // UX-Umbau ein eigenes Wort und liegt nie wieder im Fortschritts-Ton.
         RolloutStates.Verdict pending = RolloutStates.derive(TARGET,
                 reported("edge-2026.07.2", "deferred", "ok", "verifiziert - beaufsichtigt", NOW),
                 NOW);
-        assertThat(pending.state()).isEqualTo(RolloutStates.AUSSTEHEND);
+        assertThat(pending.state()).isEqualTo(RolloutStates.WARTET_AUF_ANWENDUNG);
+        // Er ist KEIN Vorfall und zählt NICHT als bestätigt: die Welle wartet
+        // wirklich, aber die Verteilung wird nicht eingefroren.
+        assertThat(RolloutStates.haltsRollout(pending.state())).isFalse();
+        assertThat(RolloutStates.isConfirmed(pending.state())).isFalse();
 
         RolloutStates.Verdict policy = RolloutStates.derive(TARGET,
                 reported("edge-2026.07.2", "deferred", "deferred", "Boden nicht erreicht", NOW),
@@ -119,18 +133,62 @@ class RolloutStatesTest {
      * Spalte „Grund" der Flotten-Matrix ihn ZEIGEN und nicht durch eine eigene
      * Formulierung ersetzen: die Anlage weiß, warum sie nicht anwendet, das
      * Portal nicht.
+     *
+     * <p>Seit dem UX-Umbau trägt die Zeile zusätzlich den ZUSTAND {@code
+     * blockiert} - vorher landete genau dieser Fall im Fortschritts-Ton
+     * „ausstehend", und ein stehender Blocker sah aus wie etwas, das gleich
+     * weitergeht (Reibung R4).
      */
     @Test
     @DisplayName("der Sperr-Grund des Geräts überlebt bis in die Grund-Spalte")
     void aDeviceSideBlockerReasonSurvivesIntoTheRow() {
-        String blocked = "Autonomie blockiert: Diese Anlage steuert. Für die Familie "
+        String blocked = RolloutStates.BLOCKED_PREFIX + "Diese Anlage steuert. Für die Familie "
                 + "'hybrid_3p' ist die Neutral-Zeit des Wechselrichters NICHT verifiziert. "
                 + "Es wird deshalb nicht autonom angewandt (am Prüfstand belegen und in "
                 + "VP_OTA_NEUTRAL_VERIFIED eintragen).";
         RolloutStates.Verdict v = RolloutStates.derive(TARGET,
-                reported("edge-2026.07.2", "deferred", "ok", blocked, NOW), NOW);
-        assertThat(v.state()).isEqualTo(RolloutStates.AUSSTEHEND);
+                blocked("edge-2026.07.2", "deferred", "ok", blocked, "neutralzeit"), NOW);
+        assertThat(v.state()).isEqualTo(RolloutStates.BLOCKIERT);
         assertThat(v.reason()).isEqualTo(blocked);
+        // Eine Sperre ist kein Vorfall: sie hält den Rollout NICHT an.
+        assertThat(RolloutStates.haltsRollout(v.state())).isFalse();
+    }
+
+    /**
+     * Die HEUTIGE Flotte fährt Stände, die den maschinenlesbaren Namen noch
+     * nicht senden - und für sie wäre „wartet auf Anwendung" die falscheste
+     * aller Aussagen (dort wartet niemand auf den Admin). Der gepinnte
+     * Satzanfang {@code otaapply.BlockedPrefix} trägt den Übergang.
+     */
+    @Test
+    @DisplayName("ein älterer Stand ohne Blocker-Namen wird am gepinnten Satzanfang erkannt")
+    void theBlockedPrefixCarriesOlderBuilds() {
+        RolloutStates.Verdict v = RolloutStates.derive(TARGET,
+                reported("edge-2026.07.2", "deferred", "ok",
+                        RolloutStates.BLOCKED_PREFIX + "Der Kern meldet seinen Zustand nicht.",
+                        NOW), NOW);
+        assertThat(v.state()).isEqualTo(RolloutStates.BLOCKIERT);
+
+        // Und ein Grund, der NICHT so beginnt, wird nicht zur Sperre umgedeutet:
+        // aus einem freundlichen Satz wird nie ein Befund.
+        assertThat(RolloutStates.derive(TARGET,
+                reported("edge-2026.07.2", "deferred", "ok",
+                        "Release ist verifiziert - die Anwendung erfolgt beaufsichtigt.", NOW),
+                NOW).state()).isEqualTo(RolloutStates.WARTET_AUF_ANWENDUNG);
+    }
+
+    /**
+     * Der Sperr-Name gilt auch dort, wo das Gerät gar keinen Grund mitschickt -
+     * dann formuliert diese Klasse einen, statt die Zeile ohne Grund zu lassen
+     * (die Regel „jede nicht-grüne Zeile trägt ihren Grund").
+     */
+    @Test
+    @DisplayName("eine Sperre ohne Grund bekommt trotzdem einen Satz")
+    void aBlockerWithoutAReasonStillCarriesOne() {
+        RolloutStates.Verdict v = RolloutStates.derive(TARGET,
+                blocked("edge-2026.07.2", "deferred", "ok", null, "platte"), NOW);
+        assertThat(v.state()).isEqualTo(RolloutStates.BLOCKIERT);
+        assertThat(v.reason()).isNotBlank();
     }
 
     @Test

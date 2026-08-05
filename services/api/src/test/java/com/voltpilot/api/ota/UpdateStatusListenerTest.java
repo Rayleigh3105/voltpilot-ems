@@ -56,8 +56,9 @@ class UpdateStatusListenerTest {
     /** One heartbeat in; the captured upsert arguments out. */
     private record Row(String version, String backend, String current, Long currentSeq,
             String target, Long targetSeq, String channel, String state, String reason,
-            String lastKnownGood, String targetVerdict, String rootKeyIds, String trustSetKeyIds,
-            String trustSetGeneratedAt, String trustSetSignedBy, String trustSetError) {
+            String lastKnownGood, String targetVerdict, String blocker, String rootKeyIds,
+            String trustSetKeyIds, String trustSetGeneratedAt, String trustSetSignedBy,
+            String trustSetError) {
     }
 
     private Row ingest(String bodyFields) {
@@ -75,6 +76,7 @@ class UpdateStatusListenerTest {
         ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> lkg = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> verdict = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> blocker = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> roots = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> trustKeys = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> trustGen = ArgumentCaptor.forClass(String.class);
@@ -83,18 +85,19 @@ class UpdateStatusListenerTest {
         verify(store).upsert(eq(DEVICE), eq(SITE), version.capture(), backend.capture(),
                 current.capture(), currentSeq.capture(), target.capture(), targetSeq.capture(),
                 channel.capture(), state.capture(), reason.capture(), lkg.capture(),
-                verdict.capture(), roots.capture(), trustKeys.capture(), trustGen.capture(),
-                trustBy.capture(), trustErr.capture(), any());
+                verdict.capture(), blocker.capture(), roots.capture(), trustKeys.capture(),
+                trustGen.capture(), trustBy.capture(), trustErr.capture(), any());
         return new Row(version.getValue(), backend.getValue(), current.getValue(),
                 currentSeq.getValue(), target.getValue(), targetSeq.getValue(),
                 channel.getValue(), state.getValue(), reason.getValue(), lkg.getValue(),
-                verdict.getValue(), roots.getValue(), trustKeys.getValue(), trustGen.getValue(),
-                trustBy.getValue(), trustErr.getValue());
+                verdict.getValue(), blocker.getValue(), roots.getValue(), trustKeys.getValue(),
+                trustGen.getValue(), trustBy.getValue(), trustErr.getValue());
     }
 
     private void assertNothingStored() {
         verify(store, never()).upsert(any(), any(), any(), any(), any(), any(), any(), any(),
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any());
     }
 
     /**
@@ -136,6 +139,52 @@ class UpdateStatusListenerTest {
         // ingest, decides that such a version is "nicht registriert".
         assertThat(row.version()).isEqualTo("665d59b80000");
         assertThat(row.state()).isEqualTo("idle");
+    }
+
+    /**
+     * Der Canary-Soak-Fall, jetzt maschinenlesbar: das Gerät DARF nicht
+     * anwenden und nennt den Hebel beim Namen. Der Name ist genau das, was der
+     * Oberfläche erspart, den deutschen Satz nach Stichworten zu durchsuchen.
+     */
+    @Test
+    void aReportedBlockerIsStoredNextToItsGermanReason() {
+        Row row = ingest("\"version\":\"edge-2026.08.0\","
+                + "\"update\":{\"backend\":\"compose\",\"current\":\"edge-2026.08.0\","
+                + "\"state\":\"deferred\",\"target_verdict\":\"ok\","
+                + "\"blocker\":\"neutralzeit\","
+                + "\"reason\":\"Autonomie blockiert: keine belegte Neutral-Zeit.\"}");
+
+        assertThat(row.blocker()).isEqualTo("neutralzeit");
+        assertThat(row.reason()).startsWith("Autonomie blockiert: ");
+        assertThat(row.targetVerdict()).isEqualTo("ok");
+    }
+
+    /**
+     * Ein Wort außerhalb des Sperr-Vertrags wird VERWORFEN - dieselbe Regel wie
+     * beim unbekannten Zustand. Was bleibt, ist der deutsche Grund: die Aussage
+     * geht nicht verloren, nur der Hebel-Hinweis.
+     */
+    @Test
+    void anUnknownBlockerIsDroppedWhileTheReasonSurvives() {
+        Row row = ingest("\"version\":\"edge-2026.08.0\","
+                + "\"update\":{\"backend\":\"compose\",\"state\":\"deferred\","
+                + "\"blocker\":\"mondphase\",\"reason\":\"Autonomie blockiert: irgendwas.\"}");
+
+        assertThat(row.blocker()).isNull();
+        assertThat(row.reason()).isEqualTo("Autonomie blockiert: irgendwas.");
+    }
+
+    /**
+     * Ein älterer Edge-Stand meldet das Feld gar nicht - dann bleibt es leer.
+     * Aus dieser Leere darf nie „nicht blockiert" werden; die Ableitung liest
+     * dafür den gepinnten Satzanfang (siehe {@code RolloutStatesTest}).
+     */
+    @Test
+    void anEdgeWithoutTheFieldStoresNoBlocker() {
+        Row row = ingest("\"version\":\"edge-2026.08.0\","
+                + "\"update\":{\"backend\":\"compose\",\"state\":\"idle\"}");
+
+        assertThat(row.blocker()).isNull();
     }
 
     /**

@@ -458,6 +458,24 @@ type UpdateSummary struct {
 	// device" are both State=deferred - only this field separates them
 	// machine-readably, so no surface has to grep the German reason.
 	TargetVerdict string `json:"target_verdict,omitempty"`
+	// Blocker is the MACHINE-READABLE name of a STANDING block
+	// (`otaapply.Blocker*`: neutralzeit, platte, interlock, kern_still, …),
+	// additive since the admin-UX rework.
+	//
+	// PR #331 deliberately kept it on the device („kein Schema, kein DTO") and
+	// let the German Reason carry the whole statement. That was the right call
+	// for a log line and the wrong one for a fleet: cloud-side a T-guard halt
+	// was indistinguishable from „the assignment is on its way" and landed in
+	// the BUSY tone „ausstehend" - a standing block looked like progress.
+	//
+	// It travels NEXT TO Reason for the same reason TargetVerdict travels next
+	// to State: so no surface has to grep a German sentence for keywords. The
+	// sentence stays the statement; this is the LEVER's name.
+	//
+	// ABSENT means „no standing block reported" - it is emitted only while the
+	// sidecar really blocks, so an older cloud simply ignores an extra field
+	// and this box behaves exactly as before.
+	Blocker string `json:"blocker,omitempty"`
 	// Trust is the device's VERTRAUENS-IDENTITAET (OTA Stufe 4 „Politur"):
 	// against which baked root does this build check, and which release keys
 	// does it currently accept? nil = an older edge that does not report it.

@@ -3,24 +3,33 @@ import {
   actorLabel,
   advanceMode,
   bakeLine,
+  blockerLever,
   canRollOut,
   crossoverHint,
   crossoverState,
   eventLabel,
+  freshnessLabel,
+  frozenFraming,
+  handelnItems,
   isLoud,
   kpiText,
   kpiTone,
   kpiUnknownNote,
   loudBanner,
+  progressBackbone,
   promoteHint,
+  restingLine,
   rolloutStateLabel,
   signatureLabel,
   sortFleet,
   stateLabel,
   trustSetSpread,
   visibleJournal,
+  waveDeviceName,
+  waveRowView,
   type ActiveRollout,
   type DeviceTrust,
+  type EdgeUpdates,
   type EdgeUpdatesRelease,
   type FleetRow,
   type JournalEntry,
@@ -67,9 +76,10 @@ describe('Zustands-Vokabular', () => {
   it('macht aus einem UNBEKANNTEN Zustand nie „aktuell"', () => {
     // Ein Server, der neuer ist als dieses Portal, darf keine falsche
     // Behauptung erzeugen - „unbekannt" ist die ehrliche Antwort.
-    expect(stateLabel('teleporting')).toEqual({ label: 'unbekannt', tone: 'off' });
-    expect(stateLabel(null)).toEqual({ label: 'unbekannt', tone: 'off' });
-    expect(stateLabel(undefined)).toEqual({ label: 'unbekannt', tone: 'off' });
+    const unknown = { label: 'unbekannt', tone: 'off', cls: 'calm' };
+    expect(stateLabel('teleporting')).toEqual(unknown);
+    expect(stateLabel(null)).toEqual(unknown);
+    expect(stateLabel(undefined)).toEqual(unknown);
   });
 
   it('ist laut nur bei echten Vorfällen', () => {
@@ -79,6 +89,59 @@ describe('Zustands-Vokabular', () => {
     expect(isLoud('offline_holt_nach')).toBe(false);
     expect(isLoud('zurueckgestellt')).toBe(false);
     expect(isLoud('unbekannt')).toBe(false);
+  });
+});
+
+describe('Vier-Klassen-Grammatik', () => {
+  it('trennt „läuft von selbst" von „SIE sind dran" von „blockiert"', () => {
+    // DER Fehler, für den diese Klasse existiert: bis hierher trugen alle drei
+    // dasselbe busy-blaue „ausstehend".
+    expect(stateLabel('ausstehend').cls).toBe('busy');
+    expect(stateLabel('wartet_auf_anwendung').cls).toBe('action');
+    expect(stateLabel('blockiert').cls).toBe('blocked');
+    // Und sie sind wirklich VERSCHIEDEN - eine Klasse, die zweimal vorkommt,
+    // wäre keine Unterscheidung.
+    const seen = new Set(['ausstehend', 'wartet_auf_anwendung', 'blockiert']
+      .map((s) => stateLabel(s).cls));
+    expect(seen.size).toBe(3);
+  });
+
+  it('lässt ruhig ruhig und laut laut', () => {
+    for (const s of ['aktuell', 'bestaetigt', 'offline_holt_nach', 'unbekannt']) {
+      expect(stateLabel(s).cls).toBe('calm');
+    }
+    for (const s of ['fehlgeschlagen', 'zurueckgerollt', 'im_update_verstummt']) {
+      expect(stateLabel(s).cls).toBe('incident');
+    }
+    // Ein Politik-Halt steht in derselben Klasse wie eine Sperre: kein Vorfall,
+    // aber auch kein Fortschritt.
+    expect(stateLabel('zurueckgestellt').cls).toBe('blocked');
+  });
+
+  it('sortiert „Sie sind dran" direkt hinter die Vorfälle', () => {
+    const sorted = sortFleet([
+      row({ deviceId: 'a', state: 'bestaetigt' }),
+      row({ deviceId: 'b', state: 'wartet_auf_anwendung' }),
+      row({ deviceId: 'c', state: 'fehlgeschlagen' }),
+      row({ deviceId: 'd', state: 'ausstehend' }),
+      row({ deviceId: 'e', state: 'blockiert' }),
+    ]).map((r) => r.deviceId);
+    expect(sorted).toEqual(['c', 'b', 'e', 'd', 'a']);
+  });
+});
+
+describe('Hebel einer Sperre', () => {
+  it('nennt den Hebel zum maschinenlesbaren Namen', () => {
+    expect(blockerLever('neutralzeit')).toContain('VP_OTA_NEUTRAL_VERIFIED');
+    expect(blockerLever('platte')).toContain('Platz');
+  });
+
+  it('erfindet KEINEN Hebel zu einem unbekannten Namen', () => {
+    // Der Grund des Geräts steht ohnehin daneben; ein geratener Hebel wäre
+    // eine Anweisung ins Leere.
+    expect(blockerLever('mondphase')).toBeNull();
+    expect(blockerLever(null)).toBeNull();
+    expect(blockerLever(undefined)).toBeNull();
   });
 });
 
@@ -347,5 +410,227 @@ describe('TOFU-Abschluss (Stufe 4)', () => {
       { stamp: '2026-09-01T10:00:00Z', devices: 2 },
       { stamp: '2026-08-01T10:00:00Z', devices: 1 },
     ]);
+  });
+});
+
+// ── Beobachten: Namen, Handeln, Fortschritt, Frische ───────────────────────
+
+const waveDev = (over: Partial<WaveDevice> = {}): WaveDevice => ({
+  deviceId: 'd1', label: 'edge-a1', siteName: 'Pilsting', tenantName: 'Kunde A',
+  state: 'bestaetigt', reason: null, since: null,
+  bakeRemainingMinutes: null, bakeCycle: null, bakeReason: null, ...over,
+});
+
+const rolloutOf = (over: Partial<ActiveRollout> = {}): ActiveRollout => ({
+  id: 'r1', releaseVersion: 'edge-2026.08.1', releaseSeq: 14, channel: 'canary',
+  state: 'active', currentWave: 1, waveCount: 2, haltedReason: null, createdBy: 'admin',
+  createdAt: '2026-08-05T09:12:00Z', canPromote: false, promoteBlockedReason: null,
+  waves: [], ...over,
+});
+
+const updates = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
+  releases: [], activeRollout: null, fleet: [], journal: [],
+  kpi: { known: 0, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
+  ...over,
+});
+
+describe('Namen in der Wellen-Liste', () => {
+  it('rendert NIE eine UUID', () => {
+    // Reibung R2: nach einem Unclaim fiel die Zeile auf `id.toString()` zurück
+    // und stand als nackte Kennung zwischen Klarnamen.
+    const uuid = 'cdba2ee8-91f3-4c1a-9d3e-000000000001';
+    const got = waveDeviceName(waveDev({
+      deviceId: uuid, label: null, siteName: null, removed: true,
+    }));
+    expect(got.name).not.toContain('91f3');
+    expect(got.name).toContain('Entferntes Gerät');
+    expect(got.removed).toBe(true);
+  });
+
+  it('nimmt den Schnappschuss, wenn das Gerät weg ist - und sagt es', () => {
+    const got = waveDeviceName(waveDev({ siteName: 'Pilsting', removed: true }));
+    expect(got.name).toBe('Pilsting (entfernt)');
+    expect(got.removed).toBe(true);
+  });
+
+  it('nennt ein lebendes Gerät schlicht beim Namen', () => {
+    expect(waveDeviceName(waveDev())).toEqual({ name: 'Pilsting', removed: false });
+  });
+});
+
+describe('„Sie sind dran"', () => {
+  it('bündelt Welle-freigeben und Anwenden-am-Gerät mit Weg', () => {
+    const items = handelnItems(updates({
+      activeRollout: rolloutOf({
+        canPromote: true,
+        waves: [
+          { index: 1, name: 'Canary', released: true, confirmed: true,
+            devices: [waveDev({ bakeCycle: 'erfuellt', bakeRemainingMinutes: 0 })] },
+          { index: 2, name: 'Flotte', released: false, confirmed: false, devices: [] },
+        ],
+      }),
+      fleet: [row({ deviceId: 'x', siteName: 'Auernheim', state: 'wartet_auf_anwendung' })],
+    }));
+    expect(items).toHaveLength(2);
+    expect(items[0].kind).toBe('wave');
+    expect(items[0].title).toContain('Welle 2 „Flotte"');
+    expect(items[0].detail).toContain('Steuerzyklus ✓');
+    expect(items[1].kind).toBe('apply');
+    expect(items[1].title).toContain('Auernheim');
+    // Ohne den WEG ist „Sie sind dran" nur ein Vorwurf.
+    expect(items[1].how).toContain('8484');
+    expect(items[1].deviceId).toBe('x');
+  });
+
+  it('ist LEER, solange nichts ansteht - nie ein Dauerbanner', () => {
+    expect(handelnItems(updates())).toEqual([]);
+    expect(handelnItems(updates({
+      activeRollout: rolloutOf({ canPromote: false }),
+      fleet: [row({ state: 'ausstehend' }), row({ deviceId: 'z', state: 'bestaetigt' })],
+    }))).toEqual([]);
+    expect(handelnItems(null)).toEqual([]);
+  });
+
+  it('zählt eine blockierte Box NICHT als wartende Handlung', () => {
+    // Dort wartet niemand auf den Admin: die Box DARF gar nicht anwenden.
+    expect(handelnItems(updates({
+      fleet: [row({ state: 'blockiert', blocker: 'neutralzeit' })],
+    }))).toEqual([]);
+  });
+});
+
+describe('Fortschritts-Rückgrat', () => {
+  const board = (states: string[]) => updates({
+    activeRollout: rolloutOf({
+      waves: [{
+        index: 1, name: 'Canary', released: true, confirmed: false,
+        devices: states.map((_, i) => waveDev({ deviceId: `d${i}` })),
+      }],
+    }),
+    fleet: states.map((s, i) => row({ deviceId: `d${i}`, state: s })),
+  });
+
+  it('zählt je Klasse und hält offline AUS dem Nenner', () => {
+    const view = progressBackbone(board([
+      'bestaetigt', 'bestaetigt', 'wendet_an', 'wartet_auf_anwendung', 'blockiert',
+      'offline_holt_nach',
+    ]))!;
+    // Fünf erreichbare Geräte - das offline-Gerät steht daneben, nie im Nenner.
+    expect(view.total).toBe(5);
+    expect(view.segments.find((s) => s.cls === 'calm')?.count).toBe(2);
+    expect(view.segments.find((s) => s.cls === 'busy')?.count).toBe(1);
+    expect(view.segments.find((s) => s.cls === 'action')?.count).toBe(1);
+    expect(view.segments.find((s) => s.cls === 'blocked')?.count).toBe(1);
+    expect(view.asideNote).toContain('1 offline');
+    expect(view.asideNote).toContain('zählt nicht in die Quote');
+  });
+
+  it('nennt Geräte ohne Meldung getrennt, statt sie als Rückstand zu zählen', () => {
+    const view = progressBackbone(board(['bestaetigt', 'unbekannt']))!;
+    expect(view.total).toBe(1);
+    expect(view.asideNote).toContain('1 ohne Meldung');
+  });
+
+  it('folgt der LIVE-Wahrheit, nicht dem eingefrorenen Zustand der Zeile', () => {
+    const view = progressBackbone(updates({
+      activeRollout: rolloutOf({
+        state: 'halted',
+        waves: [{
+          index: 1, name: 'Canary', released: true, confirmed: false,
+          devices: [waveDev({ deviceId: 'd1', state: 'fehlgeschlagen' })],
+        }],
+      }),
+      fleet: [row({ deviceId: 'd1', state: 'bestaetigt' })],
+    }))!;
+    expect(view.segments.find((s) => s.cls === 'calm')?.count).toBe(1);
+    expect(view.segments.find((s) => s.cls === 'incident')).toBeUndefined();
+  });
+
+  it('gibt es ohne Rollout gar nicht', () => {
+    expect(progressBackbone(updates())).toBeNull();
+  });
+});
+
+describe('Abschlussbild', () => {
+  it('rahmt einen eingefrorenen Rollout und ordnet die Geschichte unter', () => {
+    const framing = frozenFraming(rolloutOf({ state: 'halted' }))!;
+    expect(framing.frozen).toBe(true);
+    expect(framing.headline).toContain('eingefroren');
+    expect(framing.note).toContain('HEUTIGEN');
+  });
+
+  it('lässt einen laufenden Rollout ungerahmt', () => {
+    expect(frozenFraming(rolloutOf({ state: 'active' }))).toBeNull();
+    expect(frozenFraming(null)).toBeNull();
+  });
+
+  it('führt mit LIVE und macht die Historie zur Fußnote - aber nur bei Abweichung', () => {
+    const dev = waveDev({ deviceId: 'd1', state: 'fehlgeschlagen' });
+    const differs = waveRowView(dev, [row({ deviceId: 'd1', state: 'bestaetigt' })], true);
+    expect(differs.state).toBe('bestaetigt');
+    expect(differs.historyNote).toContain('fehlgeschlagen');
+
+    // Eine Fußnote, die dasselbe wiederholt, ist Rauschen.
+    const same = waveRowView(dev, [row({ deviceId: 'd1', state: 'fehlgeschlagen' })], true);
+    expect(same.historyNote).toBeNull();
+
+    // Und in einem LAUFENDEN Rollout gibt es keine Geschichte zu erzählen.
+    expect(waveRowView(dev, [row({ deviceId: 'd1', state: 'bestaetigt' })], false).historyNote)
+      .toBeNull();
+  });
+
+  it('behält die eingefrorene Zeile, wenn das Gerät nicht mehr in der Flotte steht', () => {
+    const view = waveRowView(waveDev({ deviceId: 'weg', state: 'bestaetigt' }), [], true);
+    expect(view.state).toBe('bestaetigt');
+  });
+});
+
+describe('Ruhezustand + Bezugszeit', () => {
+  it('sagt in EINEM Satz, wie die Flotte steht', () => {
+    const line = restingLine(updates({
+      kpi: { known: 4, upToDate: 4, unknown: 1, inRollout: 0, failed: 0,
+        newestRelease: 'edge-2026.08.1' },
+    }))!;
+    expect(line).toContain('4/4 Geräte auf edge-2026.08.1');
+    // „unbekannt" ist NIE „veraltet" - auch nicht in der Kurzform.
+    expect(line).toContain('unbekannt, nicht veraltet');
+    expect(line).toContain('Kein Rollout aktiv');
+  });
+
+  it('behauptet ohne Register keinen Maßstab', () => {
+    const line = restingLine(updates({
+      kpi: { known: 2, upToDate: 0, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
+    }))!;
+    expect(line).toContain('Kein Release im Register');
+  });
+
+  it('schweigt, solange ein Rollout läuft', () => {
+    expect(restingLine(updates({ activeRollout: rolloutOf() }))).toBeNull();
+  });
+
+  it('nennt die Bezugszeit in Worten', () => {
+    const t = 1_000_000_000_000;
+    expect(freshnessLabel(t, t + 2_000)).toBe('Stand: gerade eben');
+    expect(freshnessLabel(t, t + 12_000)).toContain('12');
+    expect(freshnessLabel(t, t + 120_000)).toContain('2');
+    // Eine Zukunft rechnet nie negativ.
+    expect(freshnessLabel(t, t - 5_000)).toBe('Stand: gerade eben');
+  });
+});
+
+describe('Puls-Signal „Sie sind dran"', () => {
+  it('nennt wartende Handlungen auf der Landing-Seite', () => {
+    expect(kpiText({ known: 5, upToDate: 4, unknown: 0, inRollout: 2, failed: 0,
+      waitingForAdmin: 1, newestRelease: 'edge-2026.08.1' }))
+      .toContain('1 Aktion wartet auf Sie');
+    expect(kpiTone({ known: 5, upToDate: 4, unknown: 0, inRollout: 0, failed: 0,
+      waitingForAdmin: 1, newestRelease: null })).toBe('busy');
+  });
+
+  it('behauptet ohne das Feld (älteres Backend) nichts', () => {
+    const text = kpiText({ known: 5, upToDate: 5, unknown: 0, inRollout: 0, failed: 0,
+      newestRelease: 'edge-2026.08.1' });
+    expect(text).not.toContain('wartet auf Sie');
+    expect(text).toBe('5/5 aktuell');
   });
 });

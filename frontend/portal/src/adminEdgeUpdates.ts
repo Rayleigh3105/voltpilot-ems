@@ -20,6 +20,28 @@
 
 export type UpdateTone = 'ok' | 'warn' | 'off' | 'busy';
 
+/**
+ * Die VIER Zustandsklassen der Beobachtungs-Grammatik (UX-Konzept
+ * `vp-admin-geraete-ux-k2` §5) - der Kern des Umbaus.
+ *
+ * Bis hierher trugen drei grundverschiedene Situationen dasselbe Kleid: die
+ * Zuweisung ist unterwegs, der ADMIN ist der fehlende Akteur, und die Autonomie
+ * ist blockiert - alle drei als busy-blaues „ausstehend". Ein stehender Blocker
+ * sah damit aus wie Fortschritt, der gleich weitergeht, und der eine Zustand,
+ * in dem sich OHNE eine Handlung nie wieder etwas bewegt, war von „läuft" nicht
+ * zu unterscheiden.
+ *
+ * - `busy` läuft von SELBST (einziger animierter Zustand - die Animation ist
+ *   das Versprechen „hier bewegt sich etwas ohne Sie").
+ * - `action` heißt SIE sind dran: statisch, denn es bewegt sich nichts, bis
+ *   jemand handelt. Trägt immer einen Weg.
+ * - `blocked` ist eine Sperre oder ein Politik-Halt: kein Vorfall, hält keinen
+ *   Rollout an - sieht aber nie wieder wie Fortschritt aus.
+ * - `incident` ist laut und trägt seinen Grund.
+ * - `calm` bleibt ruhig; „offline" ist ausdrücklich KEIN Alarm (NAT-Normalfall).
+ */
+export type StateClass = 'busy' | 'action' | 'blocked' | 'incident' | 'calm';
+
 export interface EdgeUpdatesRelease {
   releaseSeq: number;
   version: string;
@@ -33,7 +55,8 @@ export interface EdgeUpdatesRelease {
 
 export interface WaveDevice {
   deviceId: string;
-  label: string;
+  /** Der Name zum ZUWEISUNGS-Zeitpunkt bzw. von heute - nie eine UUID. */
+  label: string | null;
   siteName: string | null;
   tenantName: string | null;
   state: string;
@@ -42,6 +65,8 @@ export interface WaveDevice {
   bakeRemainingMinutes: number | null;
   bakeCycle: string | null;
   bakeReason: string | null;
+  /** Dieses Gerät hat die Plattform verlassen (Unclaim), die Welle bleibt. */
+  removed?: boolean;
 }
 
 export interface Wave {
@@ -100,6 +125,12 @@ export interface FleetRow {
   pinned: boolean;
   state: string;
   reason: string | null;
+  /**
+   * Der maschinenlesbare Name einer stehenden Sperre (`otaapply.Blocker*`).
+   * `null` heißt „kein Name gemeldet" - der Zustand `blockiert` kann trotzdem
+   * gelten (ein älterer Edge-Stand meldet nur den deutschen Satz).
+   */
+  blocker?: string | null;
   since: string | null;
   reportedAt: string | null;
   rolloutId: string | null;
@@ -122,6 +153,8 @@ export interface EdgeUpdatesKpi {
   unknown: number;
   inRollout: number;
   failed: number;
+  /** Geräte im Zustand „wartet auf Anwendung" plus eine freigebbare Welle. */
+  waitingForAdmin?: number;
   newestRelease: string | null;
 }
 
@@ -133,24 +166,26 @@ export interface EdgeUpdates {
   kpi: EdgeUpdatesKpi;
 }
 
-/** Beschriftung + Ton eines Geräte-Zustands (§7.2, plus `zurueckgestellt`). */
-const STATE_LABELS: Record<string, { label: string; tone: UpdateTone }> = {
-  aktuell: { label: 'aktuell', tone: 'ok' },
-  bestaetigt: { label: 'bestätigt ✓', tone: 'ok' },
-  ausstehend: { label: 'ausstehend', tone: 'busy' },
-  laedt: { label: 'lädt', tone: 'busy' },
-  wendet_an: { label: 'wendet an', tone: 'busy' },
-  selbsttest: { label: 'Selbsttest', tone: 'busy' },
-  offline_holt_nach: { label: 'offline – holt nach', tone: 'off' },
-  zurueckgestellt: { label: 'zurückgestellt', tone: 'off' },
-  unbekannt: { label: 'unbekannt', tone: 'off' },
-  im_update_verstummt: { label: 'im Update verstummt ⚠', tone: 'warn' },
-  zurueckgerollt: { label: 'zurückgerollt ⚠', tone: 'warn' },
-  fehlgeschlagen: { label: 'fehlgeschlagen ⚠', tone: 'warn' },
+/** Beschriftung + Ton + Klasse eines Geräte-Zustands (§7.2, §5-Grammatik). */
+const STATE_LABELS: Record<string, { label: string; tone: UpdateTone; cls: StateClass }> = {
+  aktuell: { label: 'aktuell', tone: 'ok', cls: 'calm' },
+  bestaetigt: { label: 'bestätigt ✓', tone: 'ok', cls: 'calm' },
+  ausstehend: { label: 'ausstehend', tone: 'busy', cls: 'busy' },
+  laedt: { label: 'lädt', tone: 'busy', cls: 'busy' },
+  wendet_an: { label: 'wendet an', tone: 'busy', cls: 'busy' },
+  selbsttest: { label: 'Selbsttest', tone: 'busy', cls: 'busy' },
+  wartet_auf_anwendung: { label: 'wartet auf Sie', tone: 'busy', cls: 'action' },
+  blockiert: { label: 'blockiert', tone: 'warn', cls: 'blocked' },
+  offline_holt_nach: { label: 'offline – holt nach', tone: 'off', cls: 'calm' },
+  zurueckgestellt: { label: 'zurückgestellt', tone: 'off', cls: 'blocked' },
+  unbekannt: { label: 'unbekannt', tone: 'off', cls: 'calm' },
+  im_update_verstummt: { label: 'im Update verstummt ⚠', tone: 'warn', cls: 'incident' },
+  zurueckgerollt: { label: 'zurückgerollt ⚠', tone: 'warn', cls: 'incident' },
+  fehlgeschlagen: { label: 'fehlgeschlagen ⚠', tone: 'warn', cls: 'incident' },
 };
 
 /**
- * Zustand → Beschriftung + Ton.
+ * Zustand → Beschriftung + Ton + Klasse.
  *
  * Ein Zustand, den dieser Portal-Stand NICHT kennt, wird zu „unbekannt" mit
  * neutralem Ton: er könnte alles bedeuten, und „aktuell" wäre die eine
@@ -161,9 +196,51 @@ const STATE_LABELS: Record<string, { label: string; tone: UpdateTone }> = {
 export function stateLabel(state: string | null | undefined): {
   label: string;
   tone: UpdateTone;
+  cls: StateClass;
 } {
-  if (!state) return { label: 'unbekannt', tone: 'off' };
-  return STATE_LABELS[state] ?? { label: 'unbekannt', tone: 'off' };
+  if (!state) return { label: 'unbekannt', tone: 'off', cls: 'calm' };
+  return STATE_LABELS[state] ?? { label: 'unbekannt', tone: 'off', cls: 'calm' };
+}
+
+/**
+ * Der HEBEL zu einer Sperre - das, was den Blocker aufhebt.
+ *
+ * Er kommt aus dem maschinenlesbaren Namen (`update.blocker`), nie aus einer
+ * Stichwortsuche im deutschen Grund. Ein Name, den dieser Portal-Stand nicht
+ * kennt, bekommt KEINEN Hebel: der Grund des Geräts steht ohnehin daneben und
+ * ist die Aussage - ein geratener Hebel wäre eine Anweisung ins Leere.
+ */
+const BLOCKER_LEVERS: Record<string, string> = {
+  neutralzeit:
+    'Neutral-Zeit der Wechselrichter-Familie am Prüfstand belegen und in '
+    + 'VP_OTA_NEUTRAL_VERIFIED eintragen.',
+  neutralzeit_zu_kurz:
+    'Die belegte Neutral-Zeit lässt keine brauchbare Wachhund-Frist zu - Wert am '
+    + 'Prüfstand überprüfen.',
+  platte: 'Platz auf dem Datenträger der Box schaffen.',
+  interlock:
+    'Die Anlage führt gerade einen Sollwert aus. Sie wird von selbst wieder frei - '
+    + 'oder das Release wird als eilig markiert.',
+  kern_still: 'Der Kern meldet seinen Zustand nicht - Zustand der Box am Gerät prüfen.',
+  kette: 'Signaturkette prüfen: Vertrauens-Set und Release-Signatur auf der Box.',
+  politik:
+    'Das Release gilt für diese Box nicht (Anti-Rollback-Boden oder Rückschritt) - '
+    + 'ein passendes Release zuweisen.',
+  zurueckgenommen:
+    'Dieses Release wurde auf dieser Box schon einmal zurückgenommen und läuft nie '
+    + 'von selbst wieder an - ein ANDERES Release zuweisen.',
+  backend: 'Das Release ist nicht für das Apply-Backend dieser Box bestimmt.',
+  state_schema: 'Das Release kennt den Datenstand dieser Box nicht.',
+  freigabe_release: 'Die erteilte Freigabe galt einem anderen Release.',
+  laden: 'Die Images konnten nicht geladen werden - Registry-Zugang der Box prüfen.',
+  rueckfallziel: 'Das Rückfallziel konnte nicht gesichert werden.',
+  sicherung: 'Die Sicherung des Datenstands ist nicht gelungen.',
+  unlesbar: 'Eine Protokoll-Datei der Box ist unlesbar.',
+};
+
+export function blockerLever(blocker: string | null | undefined): string | null {
+  if (!blocker) return null;
+  return BLOCKER_LEVERS[blocker] ?? null;
 }
 
 /** Zustände, die einen LAUTEN Hinweis verdienen (Warn-first, wie im Puls). */
@@ -198,12 +275,27 @@ export function kpiText(kpi: EdgeUpdatesKpi): string {
   const parts = [`${kpi.upToDate}/${kpi.known} aktuell`];
   if (kpi.inRollout > 0) parts.push(`${kpi.inRollout} im Rollout`);
   if (kpi.failed > 0) parts.push(`${kpi.failed} fehlgeschlagen`);
+  // „Sie sind dran" gehört auf die Landing-Seite, sonst bleibt der eine
+  // Zustand, in dem sich ohne den Betreiber nie wieder etwas bewegt,
+  // unsichtbar, bis jemand die Update-Seite öffnet. Ein ÄLTERES Backend ohne
+  // das Feld schweigt hier - es wird nichts gezählt, was niemand gemeldet hat.
+  const waiting = kpi.waitingForAdmin ?? 0;
+  if (waiting > 0) {
+    parts.push(waiting === 1 ? '1 Aktion wartet auf Sie'
+      : `${waiting} Aktionen warten auf Sie`);
+  }
   return parts.join(' · ');
 }
 
-/** Der Ton der Puls-Karte: rot vor gelb vor ruhig. */
+/**
+ * Der Ton der Puls-Karte: rot vor „Sie sind dran" vor gelb vor ruhig.
+ *
+ * Eine wartende Handlung schlägt den Fortschritts-Ton bewusst: „läuft" ist
+ * dort die eine Aussage, die nicht stimmt.
+ */
 export function kpiTone(kpi: EdgeUpdatesKpi): UpdateTone {
   if (kpi.failed > 0) return 'warn';
+  if ((kpi.waitingForAdmin ?? 0) > 0) return 'busy';
   if (kpi.inRollout > 0) return 'busy';
   return 'ok';
 }
@@ -488,21 +580,25 @@ const STATE_RANK: Record<string, number> = {
   fehlgeschlagen: 0,
   zurueckgerollt: 0,
   im_update_verstummt: 0,
-  wendet_an: 1,
-  laedt: 1,
-  selbsttest: 1,
-  ausstehend: 2,
-  zurueckgestellt: 3,
-  offline_holt_nach: 4,
-  unbekannt: 5,
-  bestaetigt: 6,
-  aktuell: 6,
+  // „Sie sind dran" steht direkt hinter den Vorfällen: es ist das Einzige, was
+  // ohne den Betreiber nie von selbst weitergeht.
+  wartet_auf_anwendung: 1,
+  blockiert: 2,
+  wendet_an: 3,
+  laedt: 3,
+  selbsttest: 3,
+  ausstehend: 4,
+  zurueckgestellt: 5,
+  offline_holt_nach: 6,
+  unbekannt: 7,
+  bestaetigt: 8,
+  aktuell: 8,
 };
 
 export function sortFleet(fleet: FleetRow[]): FleetRow[] {
   return [...fleet].sort((a, b) => {
-    const ra = STATE_RANK[a.state] ?? 5;
-    const rb = STATE_RANK[b.state] ?? 5;
+    const ra = STATE_RANK[a.state] ?? 7;
+    const rb = STATE_RANK[b.state] ?? 7;
     if (ra !== rb) return ra - rb;
     const t = a.tenantName.localeCompare(b.tenantName, 'de');
     if (t !== 0) return t;
@@ -527,4 +623,268 @@ export function signatureLabel(release: EdgeUpdatesRelease): {
   return release.signed
     ? { label: `signiert (${release.signingKeyId ?? 'unbekannter Schlüssel'})`, tone: 'ok' }
     : { label: 'nicht signiert', tone: 'off' };
+}
+
+// ── Beobachten: Namen, Handeln, Fortschritt, Frische ───────────────────────
+
+/**
+ * Der Name einer Wellen-Zeile - **nie eine UUID**.
+ *
+ * Die Wellen-Definition wird beim Start eingefroren; verschwindet ein Gerät
+ * danach von der Plattform (Unclaim + Re-Claim prägt eine NEUE Geräte-Id), fiel
+ * die Zeile bis hierher auf `id.toString()` zurück und stand als nackte
+ * `cdba2ee8-91f3-4c…` mitten zwischen Klarnamen (Reibung R2 vom 04.08.2026).
+ *
+ * Der Server liefert seit dem Umbau einen NAMENS-Schnappschuss vom
+ * Zuweisungs-Zeitpunkt; fehlt auch der (ein Rollout von vor der Migration),
+ * wird das ausdrücklich GESAGT statt eine Kennung zu rendern, die die Frage der
+ * Zeile („welche Anlage?") gar nicht beantwortet. Die Kurzform der Id steht nur
+ * als Wiedererkennungs-Hilfe dahinter, nie allein.
+ */
+export function waveDeviceName(device: WaveDevice): { name: string; removed: boolean } {
+  const shortId = device.deviceId ? device.deviceId.slice(0, 8) : '';
+  const named = device.siteName ?? device.label ?? null;
+  if (!named) {
+    return { name: `Entferntes Gerät${shortId ? ` (${shortId}…)` : ''}`, removed: true };
+  }
+  if (device.removed) {
+    return { name: `${named} (entfernt)`, removed: true };
+  }
+  return { name: named, removed: false };
+}
+
+/** Eine Sache, die auf den Betreiber wartet. */
+export interface HandelnItem {
+  kind: 'wave' | 'apply';
+  key: string;
+  title: string;
+  /** Was der Beleg ist bzw. was das Gerät gemeldet hat. */
+  detail: string;
+  /** Der WEG - ohne ihn ist „Sie sind dran" nur ein Vorwurf. */
+  how: string | null;
+  deviceId: string | null;
+}
+
+/** Die Anleitung, wie am Gerät angewandt wird (der beaufsichtigte Weg). */
+export const APPLY_HOW =
+  'Anwenden ist beaufsichtigt: Geräteseite der Box (Port 8484) → „Jetzt anwenden" - '
+  + 'mit Selbsttest und automatischer Rücknahme.';
+
+/**
+ * Die „Sie sind dran"-Karte: alles, was gerade auf den Betreiber wartet, an
+ * EINEM Ort - mit Ort und Weg.
+ *
+ * Bis hierher hatte dieser Job kein Zuhause (§2 J6): Welle-freigeben versteckte
+ * sich in einem Knopf unter dem Board, Anwenden-am-Gerät in einem Geräte-Satz
+ * in einer Zeile. Beides sind Handlungen, ohne die sich nie wieder etwas
+ * bewegt - und genau das sagte keine Fläche.
+ *
+ * **Leer heißt: die Karte verschwindet.** Sie ist nie ein Dauer-Banner.
+ */
+export function handelnItems(data: EdgeUpdates | null): HandelnItem[] {
+  if (!data) return [];
+  const items: HandelnItem[] = [];
+  const rollout = data.activeRollout;
+  if (rollout && rollout.canPromote) {
+    const next = rollout.waves.find((w) => w.index === rollout.currentWave + 1);
+    const current = rollout.waves.find((w) => w.index === rollout.currentWave);
+    const proof = current?.devices.map((d) => bakeLine(d)).filter((l): l is string => !!l) ?? [];
+    items.push({
+      kind: 'wave',
+      key: `wave-${rollout.id}-${rollout.currentWave + 1}`,
+      title: next
+        ? `Welle ${next.index} „${next.name}" freigeben`
+        : 'Nächste Welle freigeben',
+      detail: proof.length > 0
+        ? `${proof.join(' · ')} - das Bake-Kriterium ist erfüllt.`
+        : 'Das Bake-Kriterium der laufenden Welle ist erfüllt.',
+      how: null,
+      deviceId: null,
+    });
+  }
+  for (const row of data.fleet) {
+    if (row.state !== 'wartet_auf_anwendung') continue;
+    items.push({
+      kind: 'apply',
+      key: `apply-${row.deviceId}`,
+      title: `${row.siteName}${row.tenantName ? ` · ${row.tenantName}` : ''}: `
+        + 'Release am Gerät anwenden',
+      detail: row.soll
+        ? `${row.soll} ist auf diesem Gerät verifiziert.`
+        : 'Das zugewiesene Release ist auf diesem Gerät verifiziert.',
+      how: APPLY_HOW,
+      deviceId: row.deviceId,
+    });
+  }
+  return items;
+}
+
+/** Ein Abschnitt des Fortschritts-Rückgrats. */
+export interface ProgressSegment {
+  cls: StateClass;
+  label: string;
+  count: number;
+}
+
+export interface ProgressView {
+  /** Der Nenner: die ERREICHBARE Menge, ohne offline/unbekannt. */
+  total: number;
+  segments: ProgressSegment[];
+  /** Was neben der Quote steht, statt im Nenner zu verschwinden. */
+  asideNote: string | null;
+}
+
+const PROGRESS_ORDER: { cls: StateClass; label: string }[] = [
+  { cls: 'calm', label: 'bestätigt' },
+  { cls: 'busy', label: 'im Gang' },
+  { cls: 'action', label: 'wartet auf Sie' },
+  { cls: 'blocked', label: 'blockiert' },
+  { cls: 'incident', label: 'Vorfall' },
+];
+
+/**
+ * Das Fortschritts-Rückgrat EINES Rollouts: wo steht die Verteilung?
+ *
+ * Gezählt wird der LIVE-Zustand (aus der Flotte), nicht der historische der
+ * Wellen-Zeile - eine Fläche, eine Wahrheit. **Offline und unbekannt stehen
+ * NEBEN der Quote, nie in ihrem Nenner** (die bestehende Quoten-Regel: ein
+ * Gerät hinter NAT ist der Normalfall einer Verteilung, kein Rückstand).
+ */
+export function progressBackbone(data: EdgeUpdates | null): ProgressView | null {
+  const rollout = data?.activeRollout;
+  if (!data || !rollout) return null;
+  const live = new Map(data.fleet.map((r) => [r.deviceId, r.state]));
+  const counts = new Map<StateClass, number>();
+  let offline = 0;
+  let unknown = 0;
+  let total = 0;
+  for (const wave of rollout.waves) {
+    for (const d of wave.devices) {
+      const state = live.get(d.deviceId) ?? d.state;
+      if (state === 'offline_holt_nach') {
+        offline += 1;
+        continue;
+      }
+      if (state === 'unbekannt' || !live.has(d.deviceId)) {
+        // Ein Gerät, über das nichts bekannt ist (oder das die Plattform
+        // verlassen hat), zählt weder im Zähler noch im Nenner.
+        unknown += 1;
+        continue;
+      }
+      total += 1;
+      const cls = stateLabel(state).cls;
+      counts.set(cls, (counts.get(cls) ?? 0) + 1);
+    }
+  }
+  const segments = PROGRESS_ORDER
+    .map((s) => ({ ...s, count: counts.get(s.cls) ?? 0 }))
+    .filter((s) => s.count > 0);
+  const aside: string[] = [];
+  if (offline > 0) {
+    aside.push(offline === 1 ? '1 offline – holt nach' : `${offline} offline – holen nach`);
+  }
+  if (unknown > 0) {
+    aside.push(unknown === 1 ? '1 ohne Meldung' : `${unknown} ohne Meldung`);
+  }
+  return {
+    total,
+    segments,
+    asideNote: aside.length > 0 ? `${aside.join(' · ')} (zählt nicht in die Quote)` : null,
+  };
+}
+
+/**
+ * Die Rahmung eines eingefrorenen/abgeschlossenen Rollouts als ABSCHLUSSBILD.
+ *
+ * Die Zwei-Wahrheiten-Reibung (§1 Nr. 3) entstand nicht aus falschen Daten,
+ * sondern aus GLEICHRANGIGKEIT: das Wellen-Board zeigt den persistierten
+ * Zustand vom Zeitpunkt des Einfrierens, die Flotte daneben den heutigen. Als
+ * Nachbarn liest sich das als Widerspruch. Ab hier führt überall die
+ * LIVE-Wahrheit, und die Geschichte steht als gedämpfte Fußnote darunter.
+ */
+export function frozenFraming(rollout: ActiveRollout | null): {
+  frozen: boolean;
+  headline: string;
+  note: string;
+} | null {
+  if (!rollout) return null;
+  if (rollout.state !== 'halted' && rollout.state !== 'done') return null;
+  return {
+    frozen: rollout.state === 'halted',
+    headline: rollout.state === 'halted' ? 'Abschlussbild - eingefroren'
+      : 'Abschlussbild - abgeschlossen',
+    note: 'Die Zeilen zeigen den HEUTIGEN Stand jedes Geräts; der Ausgang beim Abschluss '
+      + 'steht darunter. Weitermachen ist ein neuer, bewusst gestarteter Rollout.',
+  };
+}
+
+/**
+ * Eine Wellen-Zeile: LIVE führt, die Geschichte ist Fußnote.
+ *
+ * `historyNote` entsteht nur, wenn der persistierte Ausgang vom heutigen
+ * Zustand ABWEICHT - eine Fußnote, die dasselbe wiederholt, ist Rauschen.
+ */
+export function waveRowView(device: WaveDevice, fleet: FleetRow[], frozen: boolean): {
+  state: string;
+  reason: string | null;
+  historyNote: string | null;
+} {
+  const liveRow = fleet.find((r) => r.deviceId === device.deviceId);
+  const state = liveRow?.state ?? device.state;
+  const reason = liveRow?.reason ?? device.reason;
+  const differs = liveRow != null && liveRow.state !== device.state;
+  return {
+    state,
+    reason,
+    historyNote: frozen && differs
+      ? `beim Abschluss: ${stateLabel(device.state).label}`
+      : null,
+  };
+}
+
+/**
+ * Die eine ruhige Zeile, wenn kein Rollout läuft.
+ *
+ * Statt leerer Karten („Kein Rollout", „Noch nichts passiert") sagt die Seite
+ * in einem Satz, wie die Flotte steht - und nennt Unbekanntes getrennt, statt
+ * es als Rückstand zu zählen.
+ */
+export function restingLine(data: EdgeUpdates | null): string | null {
+  if (!data || data.activeRollout) return null;
+  const kpi = data.kpi;
+  if (kpi.known === 0 && kpi.unknown === 0) {
+    return 'Es ist kein Gerät verbunden. Kein Rollout aktiv.';
+  }
+  const parts: string[] = [];
+  if (kpi.newestRelease) {
+    parts.push(`${kpi.upToDate}/${kpi.known} Geräte auf ${kpi.newestRelease} ✓`);
+  } else {
+    parts.push('Kein Release im Register - ohne Maßstab wird kein Stand bewertet');
+  }
+  if (kpi.unknown > 0) {
+    parts.push(kpi.unknown === 1
+      ? '1 meldet keinen Stand (unbekannt, nicht veraltet)'
+      : `${kpi.unknown} melden keinen Stand (unbekannt, nicht veraltet)`);
+  }
+  return `${parts.join(' · ')}. Kein Rollout aktiv.`;
+}
+
+const NBSP = ' ';
+
+/**
+ * „Stand: vor X" - die Bezugszeit der gezeigten Daten.
+ *
+ * Sie gehört sichtbar auf ein BEOBACHTUNGS-Werkzeug: ohne sie ist nicht zu
+ * unterscheiden, ob sich nichts bewegt oder ob nur niemand nachgesehen hat -
+ * genau das „dauert das wirklich so lang?"-Gefühl vom 04.08.2026. Gerechnet
+ * wird gegen die ANTWORTZEIT, nie gegen eine Uhr über einem stehenden
+ * Schnappschuss (die Lebendigkeits-Lehre aus `liveness.ts`).
+ */
+export function freshnessLabel(fetchedAt: number, now: number): string {
+  const secs = Math.max(0, Math.round((now - fetchedAt) / 1000));
+  if (secs < 5) return 'Stand: gerade eben';
+  if (secs < 60) return `Stand: vor ${secs}${NBSP}Sek.`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `Stand: vor ${mins}${NBSP}Min.`;
+  return `Stand: vor ${Math.round(mins / 60)}${NBSP}Std.`;
 }
