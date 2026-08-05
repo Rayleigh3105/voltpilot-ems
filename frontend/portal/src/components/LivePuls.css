@@ -1,8 +1,11 @@
 /*
- * Live-Daten „Komponenten-Board" (V3) — component-local styles. index.css is
- * left untouched (the Verlauf.css / CockpitBlocks precedent). One row per
- * component: a jump button (dot · icon · name+state · sparkline · value ·
- * „Verlauf →") plus an optional expander listing every Messwert.
+ * Komponenten-Board — component-local styles (index.css untouched).
+ *
+ * Seit vp-cockpit-unten-ux-n3 PR 2 trägt jede Zeile EINE Grammatik:
+ * [Punkt][Icon] Name (+ Notiz) / JETZT-Wert + Wort  |  heute: Energie  |  ›
+ * Die ganze Zeile ist ein Absprung (immer sichtbarer Chevron); Sparklines
+ * und der vollbreite SoC-Balken sind entfallen (D4/K3/K4). Ab 900 px stehen
+ * die Kacheln 2-spaltig (K6: keine gestreckte Telefon-Liste mehr).
  */
 
 /* --- the flow | board split (shared by the adaptive + v1 heroes) --------- */
@@ -49,51 +52,41 @@
   font-size: 0.76rem;
   color: var(--vp-text-muted, #667);
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: right;
 }
 
 .vp-puls-rows {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--vp-space-2);
 }
+/* K6: ab 900 px ein 2-Spalten-Raster statt vollbreiter Zeilen. */
+@media (min-width: 900px) {
+  .vp-puls-rows {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
 
+/* --- one row = one jump --------------------------------------------------- */
 .vp-puls-row {
-  border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 14px);
-  background: var(--vp-surface, #fff);
-  min-width: 0;
-  overflow: hidden;
-}
-
-.vp-puls-line {
-  display: flex;
-  align-items: stretch;
-  min-width: 0;
-}
-
-/* --- the jump button (the whole row is one Absprung) --------------------- */
-.vp-puls-jump {
-  flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
   padding: 10px 12px;
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 14px);
+  background: var(--vp-surface, #fff);
   font: inherit;
   color: var(--vp-text, #1a1a1a);
   text-align: left;
   cursor: pointer;
 }
-.vp-puls-jump:hover:not(:disabled),
-.vp-puls-jump:focus-visible {
+.vp-puls-row:hover:not(:disabled),
+.vp-puls-row:focus-visible {
   background: var(--vp-surface-2, #f1f5f9);
 }
-.vp-puls-jump:disabled {
+.vp-puls-row:disabled {
   cursor: default;
 }
 
@@ -114,14 +107,40 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 .vp-puls-name {
   font-weight: 600;
-  font-size: 0.94rem;
+  font-size: 0.93rem;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-puls-note {
+  color: var(--vp-text-muted, #667);
+  font-weight: 500;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+/* Der Trenner ist CSS, damit die Notiz am Telefon als EIGENE Zeile stehen
+   kann, ohne einen verwaisten Punkt am Namensende. */
+.vp-puls-note::before {
+  content: ' · ';
+}
+
+/* Die JETZT-Zeile: großer Wert + Richtungswort (+ Detail). */
+.vp-puls-now {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.vp-puls-val {
+  font-weight: 700;
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .vp-puls-state {
@@ -137,176 +156,90 @@
 }
 .vp-puls-sub {
   color: var(--vp-text-muted, #667);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.vp-puls-socbar {
-  margin-top: 3px;
-  display: block;
-  height: 4px;
-  border-radius: 2px;
+
+/* K4: der Ladestand ist eine kompakte Anzeige AM Wert, kein Banner mehr. */
+.vp-puls-socmini {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 42px;
+  height: 7px;
+  border-radius: 4px;
   background: color-mix(in srgb, var(--vp-chart-soc, #9c27b0) 22%, transparent);
-  overflow: hidden;
+  position: relative;
+  align-self: center;
 }
-.vp-puls-socbar > span {
-  display: block;
-  height: 100%;
+.vp-puls-socmini > i {
+  position: absolute;
+  inset: 0;
+  right: auto;
+  border-radius: 4px;
   background: var(--vp-chart-soc, #9c27b0);
 }
 
-.vp-puls-spark {
+/* Die uniforme HEUTE-Spalte. */
+.vp-puls-today {
   flex: 0 0 auto;
-  width: 84px;
-  height: 30px;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  max-width: 40%;
 }
-.vp-puls-spark-none {
-  width: 84px;
-  height: 30px;
+.vp-puls-today-cap {
+  font-size: 0.72rem;
+  color: var(--vp-text-muted, #667);
 }
-
-.vp-puls-val {
-  flex: 0 0 auto;
-  font-weight: 700;
-  font-size: 1rem;
+.vp-puls-today-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.86rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--vp-text, #1a1a1a);
 }
+.vp-puls-today-line svg {
+  color: var(--vp-text-muted, #667);
+}
+.vp-puls-today-none {
+  color: var(--vp-text-muted, #667);
+  font-weight: 500;
+}
 
+/* Der IMMER sichtbare Absprung (K5: kein Hover-only-Label mehr). */
 .vp-puls-go {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  font-size: 0.76rem;
-  font-weight: 600;
+  color: var(--vp-text-muted, #667);
+}
+.vp-puls-row:hover:not(:disabled) .vp-puls-go,
+.vp-puls-row:focus-visible .vp-puls-go {
   color: var(--vp-action, #2c5282);
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-.vp-puls-jump:hover:not(:disabled) .vp-puls-go,
-.vp-puls-jump:focus-visible .vp-puls-go {
-  opacity: 1;
 }
 
-/* --- expander ------------------------------------------------------------ */
-.vp-puls-expand {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  border: 0;
-  border-left: 1px solid var(--vp-border, #e2e8f0);
-  background: transparent;
-  color: var(--vp-text-muted, #667);
-  cursor: pointer;
-}
-.vp-puls-expand:hover,
-.vp-puls-expand:focus-visible {
-  background: var(--vp-surface-2, #f1f5f9);
-}
-.vp-puls-expand.is-open {
-  transform: rotate(180deg);
-}
-
-/* V10: reserved chevron column on rows that cannot expand - without it the
-   expandable rows were visibly narrower than the rest. */
-.vp-puls-expand-spacer {
-  flex: 0 0 44px;
-}
-
-.vp-puls-channels {
-  border-top: 1px solid var(--vp-border, #e2e8f0);
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--vp-surface-2, #f8fafc);
-}
-.vp-puls-ch {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 10px 8px 44px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  font: inherit;
-  color: var(--vp-text, #1a1a1a);
-  cursor: pointer;
-  min-width: 0;
-}
-.vp-puls-ch:hover,
-.vp-puls-ch:focus-visible {
-  background: var(--vp-surface, #fff);
-}
-.vp-puls-ch-label {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: left;
-}
-.vp-puls-ch-unit {
-  flex: 0 0 auto;
-  font-size: 0.78rem;
-  color: var(--vp-text-muted, #667);
-}
-.vp-puls-ch > svg {
-  flex: 0 0 auto;
-  color: var(--vp-text-muted, #667);
-}
-
-/* --- phone --------------------------------------------------------------- */
-@media (max-width: 560px) {
-  /* Keep the row one honest line: name+state (ellipsised) then the value; the
-     sparkline is dropped so nothing squeezes. The full Verlauf stays one tap
-     away (the row jumps) and every Messwert is in the expander. */
-  .vp-puls-spark,
-  .vp-puls-spark-none,
-  .vp-puls-go {
-    display: none;
-  }
-}
-
-/* --- V10: phone rows (Audit) --------------------------------------------- */
+/* --- phone ---------------------------------------------------------------- */
 @media (max-width: 420px) {
-  /* Title / state / value stack VERTICALLY: at 375 px the one-line row
-     truncated the sub-line mid-token ("· 0,0 kWh he…") and collided with the
-     value column. Nothing is ellipsised away any more - it wraps. */
-  .vp-puls-jump {
-    flex-wrap: wrap;
-    row-gap: 4px;
-    align-items: flex-start;
-  }
-  .vp-puls-ico {
-    margin-top: 2px;
-  }
-  .vp-puls-name,
-  .vp-puls-state,
-  .vp-puls-sub {
+  /* Der Name darf umbrechen statt mitten im Wort zu enden (V10-Erbe); die
+     Heute-Spalte bleibt rechts, schrumpft aber zugunsten der JETZT-Zeile. */
+  .vp-puls-name {
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
   }
-  .vp-puls-state {
-    flex-wrap: wrap;
+  /* Die Bestands-Notiz wird eine eigene ruhige Zeile — nie eine Kollision
+     mit der Heute-Spalte, nie ein Umbruch mitten im Namen. */
+  .vp-puls-note {
+    display: block;
   }
-  .vp-puls-val {
-    /* own full-width line, aligned under the name (icon 26px + gap 10px). */
-    flex: 1 0 100%;
-    padding-left: 36px;
-    font-size: 1.05rem;
+  .vp-puls-note::before {
+    content: '';
   }
-  /* The header hint must not truncate to "tippen für den…". */
   .vp-puls-hint {
     white-space: normal;
-    text-align: right;
   }
   .vp-puls-head {
     align-items: flex-start;

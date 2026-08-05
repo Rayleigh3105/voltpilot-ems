@@ -4,7 +4,6 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
   type EarningsRange,
-  type EntityHistory,
   type HistoryTotals,
   type Site,
   type SiteTopology,
@@ -13,13 +12,7 @@ import {
 import { ChartSubtitle } from './ChartExplain';
 import { ErrorState, Skeleton } from './States';
 import { LivePuls } from './LivePuls';
-import {
-  componentRows,
-  entitySparks,
-  v1FallbackRows,
-  v1Sparks,
-  type LivePulsRow,
-} from '../livePuls';
+import { componentRows, v1FallbackRows, type LivePulsRow } from '../livePuls';
 import {
   initialVerlaufOpen,
   LIVE_WINDOWS,
@@ -34,19 +27,20 @@ import { verlaufRangeForCockpit } from '../verlaufTarget';
 import './KomponentenSection.css';
 
 /**
- * Cockpit + Live-Daten merge (Option A): the merged home's THIRD stratum —
- * **Komponenten im Detail**. Hosts the V3 Komponenten-Board (one row per
- * component: health dot, state word, 60-min sparkline, „Verlauf →" jump) and
+ * Cockpit + Live-Daten merge (Option A): the merged home's stratum
+ * **Komponenten im Detail**. Hosts the Komponenten-Board (since
+ * vp-cockpit-unten-ux-n3 PR 2 with ONE row grammar: health dot · name ·
+ * JETZT value + word · the uniform HEUTE column · always-visible jump) and
  * the compact, channel-toggleable Verlauf chart behind a „Verlauf ▾"
  * disclosure (owner Q2: board visible, chart collapsed, remembered per
- * session). All derivation is the untouched `livePuls.ts` + the pure
- * `liveDetail.ts`; this component fetches and renders.
+ * session). All derivation is the pure `livePuls.ts` + `liveDetail.ts`; this
+ * component fetches and renders. The former per-entity sparkline fetches are
+ * GONE with the sparklines (D4) — the trend lives in the Verlauf disclosure.
  *
  * **Lazy by design (the landing-page-weight answer):** the telemetry-window
- * fetch, its 30 s poll and the per-entity sparkline fetches arm only once the
- * section scrolls near the viewport (IntersectionObserver, jsdom-guarded) or
- * the disclosure opens — the cockpit's above-the-fold load stays exactly what
- * it was before the merge.
+ * fetch and its 30 s poll arm only once the section scrolls near the viewport
+ * (IntersectionObserver, jsdom-guarded) or the disclosure opens — the
+ * cockpit's above-the-fold load stays exactly what it was before the merge.
  *
  * A board-row jump carries the Bilanz period into the explorer
  * (`verlaufRangeForCockpit`: Heute→Tag, Monat→Monat, Jahr/Gesamt→Jahr) —
@@ -55,10 +49,6 @@ import './KomponentenSection.css';
 
 /** Background refresh cadence of the live data (30 s poll pattern). */
 const POLL_MS = 30_000;
-/** Re-render cadence for the sparkline "now" anchor. */
-const TICK_MS = 5_000;
-/** Sparkline refresh cadence (one entityHistory per entity). */
-const SPARK_MS = 60_000;
 
 export function KomponentenSection({
   site,
@@ -88,7 +78,6 @@ export function KomponentenSection({
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [liveWindow, setLiveWindow] = useState<LiveWindow>('3h');
-  const [now, setNow] = useState(() => new Date());
   // Channels the customer has toggled off on the compact chart.
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   // Q2: the Verlauf chart sits behind a disclosure, remembered per session.
@@ -153,8 +142,8 @@ export function KomponentenSection({
   }, [site.id, armed, liveWindow, reloadKey]);
 
   // Live means live: silent 30 s background poll (keeps the last good values
-  // on a failure) + a 5 s clock tick anchoring the sparklines. One stable
-  // interval reads the latest site + window via a ref; armed gates it.
+  // on a failure). One stable interval reads the latest site + window via a
+  // ref; armed gates it.
   const pollRef = useRef<() => void>(() => {});
   pollRef.current = () => {
     const to = new Date();
@@ -165,11 +154,7 @@ export function KomponentenSection({
   };
   useEffect(() => {
     if (!armed) return undefined;
-    let ticks = 0;
-    const timer = setInterval(() => {
-      setNow(new Date());
-      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) pollRef.current();
-    }, TICK_MS);
+    const timer = setInterval(() => pollRef.current(), POLL_MS);
     return () => clearInterval(timer);
   }, [armed]);
 
@@ -183,48 +168,6 @@ export function KomponentenSection({
         dayTotals,
       ),
     [adaptive, topology, telemetry, dayTotals],
-  );
-
-  // Sparklines: one entityHistory('day') per component entity, refreshed at
-  // 60 s, fail-soft. Only the migrated branch fetches — the v1 sparks come
-  // from the loaded telemetry window. Armed gates the fetches.
-  const entityIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (adaptive) for (const r of rows) if (r.target) ids.add(r.target.entityId);
-    return Array.from(ids).sort();
-  }, [adaptive, rows]);
-  const [histories, setHistories] = useState<Map<string, EntityHistory>>(new Map());
-  const idsKey = entityIds.join(',');
-
-  const fetchHist = useRef<() => void>(() => {});
-  fetchHist.current = () => {
-    if (entityIds.length === 0) return;
-    Promise.all(
-      entityIds.map((id) =>
-        api.entityHistory(site.id, id, 'day').then(
-          (h) => [id, h] as const,
-          () => null,
-        ),
-      ),
-    ).then((results) => {
-      const next = new Map<string, EntityHistory>();
-      for (const r of results) if (r) next.set(r[0], r[1]);
-      setHistories(next);
-    });
-  };
-  useEffect(() => {
-    if (!armed) return undefined;
-    setHistories(new Map());
-    fetchHist.current();
-    if (idsKey === '') return undefined;
-    const timer = setInterval(() => fetchHist.current(), SPARK_MS);
-    return () => clearInterval(timer);
-    // idsKey/site.id are the stable identity of the fetch set.
-  }, [site.id, idsKey, armed]);
-
-  const sparks = useMemo(
-    () => (adaptive ? entitySparks(rows, histories, now) : v1Sparks(rows, telemetry, now)),
-    [adaptive, rows, histories, telemetry, now],
   );
 
   // A board-row jump navigates into the Verlauf-Explorer, carrying the Bilanz
@@ -278,7 +221,7 @@ export function KomponentenSection({
         ) : !hasBoard && loading && telemetry.length === 0 ? (
           <Skeleton height={180} radius="var(--vp-radius-md)" />
         ) : (
-          <LivePuls rows={rows} sparks={sparks} onOpenVerlauf={openVerlauf} />
+          <LivePuls rows={rows} onOpenVerlauf={openVerlauf} />
         )}
       </div>
 

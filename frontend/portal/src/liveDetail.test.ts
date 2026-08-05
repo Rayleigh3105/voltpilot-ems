@@ -76,7 +76,7 @@ describe('initialVerlaufOpen — Q2: collapsed by default, remembered per sessio
   });
 });
 
-describe('withDayTotals — R2: the retired flow tiles’ kWh lines move to the board', () => {
+describe('withDayTotals — die uniforme Heute-Spalte (PR 2 der unteren Hälfte)', () => {
   function row(over: Partial<LivePulsRow>): LivePulsRow {
     return {
       key: 'k',
@@ -88,51 +88,59 @@ describe('withDayTotals — R2: the retired flow tiles’ kWh lines move to the 
       stateTone: 'accent',
       health: 'ok',
       target: null,
-      channels: [],
+      today: null,
       ...over,
     };
   }
-  const totals = { pvGenerationKwh: 32.1, consumptionKwh: 18.4 } as never;
+  const totals = {
+    pvGenerationKwh: 32.1,
+    consumptionKwh: 18.4,
+    gridExportKwh: 14.2,
+    gridImportKwh: 3.1,
+  } as never;
 
-  it('adds the PV kWh line and the house kWh line', () => {
+  it('füllt PV und Haus mit ihrer Tages-Energie', () => {
     const rows = withDayTotals(
       [row({ key: 'v1-pv', role: 'pv' }), row({ key: 'v1-haus', role: 'consumer', title: 'Haus' })],
       totals,
     );
-    expect(rows[0].subLine).toBe(`32,1${NBSP}kWh heute`);
-    expect(rows[1].subLine).toBe(`18,4${NBSP}kWh heute`);
+    expect(rows[0].today).toEqual([{ text: `32,1${NBSP}kWh` }]);
+    expect(rows[1].today).toEqual([{ text: `18,4${NBSP}kWh` }]);
   });
 
-  it('never overwrites an existing sub-line ("2 Erzeuger")', () => {
-    const rows = withDayTotals([row({ role: 'pv', subLine: '2 Erzeuger' })], totals);
-    expect(rows[0].subLine).toBe('2 Erzeuger');
+  it('die Netz-Zeile trägt BEIDE Richtungen, das Wort trägt die Bedeutung', () => {
+    const [netz] = withDayTotals([row({ key: 'v1-netz', role: 'grid' })], totals);
+    expect(netz.today).toEqual([
+      { text: `14,2${NBSP}kWh`, arrow: 'down', word: 'Einspeisung' },
+      { text: `3,1${NBSP}kWh`, arrow: 'up', word: 'Bezug' },
+    ]);
+  });
+
+  it('eine einseitig berichtete Netz-Summe ergibt genau ihre eine Zeile', () => {
+    const onlyImport = { gridImportKwh: 3.1 } as never;
+    const [netz] = withDayTotals([row({ role: 'grid' })], onlyImport);
+    expect(netz.today).toEqual([{ text: `3,1${NBSP}kWh`, arrow: 'up', word: 'Bezug' }]);
   });
 
   it('never gives a Wallbox the house total, and absent totals add nothing', () => {
     const wb = row({ key: 'c-wb', role: 'consumer', title: 'Wallbox' });
-    expect(withDayTotals([wb], totals)[0].subLine).toBeUndefined();
-    expect(withDayTotals([row({ role: 'pv' })], null)[0].subLine).toBeUndefined();
+    expect(withDayTotals([wb], totals)[0].today).toBeNull();
+    expect(withDayTotals([row({ role: 'pv' })], null)[0].today).toBeNull();
     expect(
-      withDayTotals([row({ role: 'pv' })], { pvGenerationKwh: null } as never)[0].subLine,
-    ).toBeUndefined();
+      withDayTotals([row({ role: 'pv' })], { pvGenerationKwh: null } as never)[0].today,
+    ).toBeNull();
     // The v2 house row is identified by its generalised title.
     const haus = row({ key: 'consumer-e1-0', role: 'consumer', title: 'Hausverbrauch' });
-    expect(withDayTotals([haus], totals)[0].subLine).toBe(`18,4${NBSP}kWh heute`);
+    expect(withDayTotals([haus], totals)[0].today).toEqual([{ text: `18,4${NBSP}kWh` }]);
   });
 
-  // --- V2 (Audit): no fabricated zero next to an honest "no data" ----------
-
-  it('V2: a row that says „noch keine Daten" gets NO day total appended', () => {
-    // The board read „noch keine Daten · 0,0 kWh heute" — the two halves of one
-    // line contradicted each other.
-    const rows = withDayTotals(
-      [row({ key: 'v1-pv', role: 'pv', stateLabel: 'noch keine Daten', value: '—' })],
-      totals,
-    );
-    expect(rows[0].subLine).toBeUndefined();
+  it('der Speicher bleibt ehrlich leer — seine Tages-Energie steht nicht in den Totals', () => {
+    expect(withDayTotals([row({ role: 'storage', title: 'Batterie' })], totals)[0].today).toBeNull();
   });
 
-  it('V2: a 0-bucket total is „not reported", never printed as 0,0 kWh', () => {
+  // --- V2 (Audit), fortgeschrieben ------------------------------------------
+
+  it('V2: ein 0-Summen-Total gilt als NICHT berichtet, nie eine gedruckte 0', () => {
     // The history endpoint returns pvGenerationKwh: 0.0 on a day with ZERO
     // buckets (while correctly nulling the cost fields).
     const zeroDay = { pvGenerationKwh: 0, consumptionKwh: 0 } as never;
@@ -140,10 +148,20 @@ describe('withDayTotals — R2: the retired flow tiles’ kWh lines move to the 
       [row({ key: 'v1-pv', role: 'pv' }), row({ key: 'v1-haus', role: 'consumer', title: 'Haus' })],
       zeroDay,
     );
-    expect(rows[0].subLine).toBeUndefined();
-    expect(rows[1].subLine).toBeUndefined();
-    // A real, non-zero total still shows.
-    expect(withDayTotals([row({ role: 'pv' })], totals)[0].subLine).toBe(`32,1${NBSP}kWh heute`);
+    expect(rows[0].today).toBeNull();
+    expect(rows[1].today).toBeNull();
+  });
+
+  it('V2, revidiert: ein gerade stummes Gerät behält seine BERICHTETE Tagessumme', () => {
+    // Der alte Guard (kein Tageswert neben „noch keine Daten") heilte eine
+    // EIN-Zeilen-Vermischung; die Grammatik trennt „jetzt" und „heute" in
+    // benannte Zellen — zwei wahre Antworten auf zwei Fragen dürfen
+    // nebeneinander stehen.
+    const rows = withDayTotals(
+      [row({ key: 'v1-pv', role: 'pv', stateLabel: 'noch keine Daten', value: '—' })],
+      totals,
+    );
+    expect(rows[0].today).toEqual([{ text: `32,1${NBSP}kWh` }]);
   });
 });
 

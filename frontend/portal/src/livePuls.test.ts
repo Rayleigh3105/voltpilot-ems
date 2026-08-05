@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import type { EntityHistory, SiteTopology, TelemetryPoint, TopologyEntity } from './api';
+import type { SiteTopology, TelemetryPoint, TopologyEntity } from './api';
 import type { FlowNode } from './topology';
-import {
-  boardHint,
-  componentRows,
-  entitySparks,
-  hasAnySpark,
-  sparkFromEntityHistory,
-  sparkFromPoints,
-  v1FallbackRows,
-  v1Pick,
-  v1Sparks,
-} from './livePuls';
+import { BOARD_HINT, componentRows, v1FallbackRows } from './livePuls';
 import { NO_DATA } from './nodata';
+
+/**
+ * Das Komponenten-Board seit der EINEN Zeilen-Grammatik (vp-cockpit-unten-
+ * ux-n3 PR 2): Werte/Zustandswörter kommen unverändert aus `deriveTiles`
+ * bzw. den `live.ts`-Zuständen (keine Re-Derivation), NEU ist die Sortierung
+ * der Nebentexte — Bestands-Notizen an den Namen, Detail-Zeilen an den
+ * JETZT-Wert, die redundante Netz-Richtungs-Unterzeile entfällt — und dass
+ * jede Zeile mit `today: null` startet (die Heute-Spalte füllt
+ * `liveDetail.withDayTotals` aus BERICHTETEN Summen). Die Sparklines sind
+ * ersatzlos entfallen (D4).
+ */
 
 /** fmtNum puts a non-breaking space before the unit. */
 const NBSP = ' ';
@@ -105,22 +106,11 @@ describe('componentRows (v2, reusing the tile derivations)', () => {
     expect(grid.stateLabel).toBe('Netzbezug');
   });
 
-  it('resolves the „Verlauf →" / sparkline target to the representative channel', () => {
+  it('resolves the „Verlauf"-Sprungziel to the representative channel', () => {
     expect(rows[0].target).toEqual({ entityId: 'pv', channel: 'pv_power_kw' });
     expect(rows[1].target).toEqual({ entityId: 'batt', channel: 'soc_pct' });
     expect(rows[2].target).toEqual({ entityId: 'wb', channel: 'power_kw' });
     expect(rows[3].target).toEqual({ entityId: 'grid', channel: 'power_kw' });
-  });
-
-  it('lists every Messwert of a component (the battery-hybrid has three)', () => {
-    const storage = rows[1];
-    expect(storage.channels.map((c) => c.label)).toEqual([
-      'Ladestand',
-      'Batterieleistung',
-      'PV-Leistung',
-    ]);
-    expect(storage.channels[0].unit).toBe('%');
-    expect(storage.channels[1].unit).toBe('kW');
   });
 
   it('takes the component health (a stale entity → an amber dot)', () => {
@@ -128,7 +118,21 @@ describe('componentRows (v2, reusing the tile derivations)', () => {
     expect(rows[0].health).toBe('ok');
   });
 
-  it('collapses a multi-producer PV role to ONE row with a subline (parts stay in the rail)', () => {
+  it('jede Zeile startet ohne Heute-Spalte — die füllt erst withDayTotals', () => {
+    expect(rows.every((r) => r.today === null)).toBe(true);
+  });
+
+  it('die Grammatik sortiert die Nebentexte: Detail bleibt an der JETZT-Zeile', () => {
+    const [, storage, , grid] = rows;
+    // Speicher-Detail („Ladeleistung X") bleibt subLine der Wert-Zeile.
+    expect(storage.subLine).toMatch(/^Ladeleistung/);
+    expect(storage.titleNote).toBeUndefined();
+    // Die Netz-Richtungs-Unterzeile („aus dem Netz") entfällt — das
+    // Zustandswort („Netzbezug") sagt es bereits.
+    expect(grid.subLine).toBeUndefined();
+  });
+
+  it('collapses a multi-producer PV role to ONE row with the count as titleNote', () => {
     const topo: SiteTopology = {
       ...TOPO,
       entities: [
@@ -153,10 +157,11 @@ describe('componentRows (v2, reusing the tile derivations)', () => {
       },
     };
     const [pvRow] = componentRows(topo);
-    expect(pvRow.subLine).toBe('2 Erzeuger');
-    // The primary member is the representative jump; both parts are listed.
+    // Der Bestand steht NEBEN dem Namen, nie als Zustands-Unterzeile.
+    expect(pvRow.titleNote).toBe('2 Erzeuger');
+    expect(pvRow.subLine).toBeUndefined();
+    // The primary member is the representative jump.
     expect(pvRow.target).toEqual({ entityId: 'pv', channel: 'pv_power_kw' });
-    expect(pvRow.channels).toHaveLength(2);
   });
 
   it('resolves to an existing channel when the preferred one is absent', () => {
@@ -215,6 +220,8 @@ describe('v1FallbackRows (site-level, reusing live.ts states)', () => {
     // grid -2.4 → export → Einspeisung, value shown as a positive magnitude.
     expect(netz.stateLabel).toBe('Einspeisung');
     expect(netz.value).not.toMatch(/-/);
+    // Auch v1: die Heute-Spalte startet leer und wird nur BERICHTET gefüllt.
+    expect(rows.every((r) => r.today === null)).toBe(true);
   });
 
   it('keeps an absent value as „—", never a fabricated 0 — and never „keine Batterie"', () => {
@@ -229,113 +236,9 @@ describe('v1FallbackRows (site-level, reusing live.ts states)', () => {
   });
 });
 
-// --- sparklines --------------------------------------------------------------
+// --- V6 (Audit), fortgeschrieben: der Sprung bleibt im Rollen-Kanal ----------
 
-const NOW = new Date('2026-07-06T10:00:00Z');
-const minsAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
-
-function entHistory(buckets: { start: string; avg: number | null }[]): EntityHistory {
-  return {
-    range: 'day',
-    from: minsAgo(1440),
-    to: NOW.toISOString(),
-    bucketMinutes: 15,
-    channels: {
-      pv_power_kw: buckets.map((b) => ({
-        start: b.start,
-        avg: b.avg,
-        min: b.avg,
-        max: b.avg,
-        last: b.avg,
-        n: 1,
-      })),
-    },
-  };
-}
-
-describe('sparkFromEntityHistory', () => {
-  it('plucks only the trailing 60 minutes', () => {
-    const h = entHistory([
-      { start: minsAgo(120), avg: 9 }, // outside the window → dropped
-      { start: minsAgo(45), avg: 3 },
-      { start: minsAgo(15), avg: 6 },
-      { start: minsAgo(2), avg: 5 },
-    ]);
-    const spark = sparkFromEntityHistory(h, 'pv_power_kw', NOW)!;
-    expect(spark.values).toEqual([3, 6, 5]);
-    expect(spark.min).toBe(3);
-    expect(spark.max).toBe(6);
-  });
-
-  it('keeps a null bucket as an honest gap', () => {
-    const h = entHistory([
-      { start: minsAgo(45), avg: 3 },
-      { start: minsAgo(30), avg: null },
-      { start: minsAgo(15), avg: 6 },
-    ]);
-    expect(sparkFromEntityHistory(h, 'pv_power_kw', NOW)!.values).toEqual([3, null, 6]);
-  });
-
-  it('returns null when fewer than two finite points remain (no invented line)', () => {
-    const h = entHistory([{ start: minsAgo(15), avg: 6 }]);
-    expect(sparkFromEntityHistory(h, 'pv_power_kw', NOW)).toBeNull();
-    // An unknown channel is also null (never throws).
-    expect(sparkFromEntityHistory(h, 'nope', NOW)).toBeNull();
-  });
-});
-
-describe('sparkFromPoints / v1Sparks', () => {
-  const points = [
-    pt({ ts: minsAgo(90), pvPowerKw: 9 }), // outside window
-    pt({ ts: minsAgo(40), pvPowerKw: 2 }),
-    pt({ ts: minsAgo(10), pvPowerKw: 4 }),
-  ];
-
-  it('plucks the last 60 minutes of a telemetry channel', () => {
-    const spark = sparkFromPoints(points, v1Pick('pv'), NOW)!;
-    expect(spark.values).toEqual([2, 4]);
-  });
-
-  it('keys the v1 sparks by row.key and honours the „too few points → null" rule', () => {
-    const rows = v1FallbackRows(points);
-    const sparks = v1Sparks(rows, points, NOW);
-    expect(sparks.get('v1-pv')?.values).toEqual([2, 4]);
-    // Only one non-null soc sample in-window → null (SoC never set here).
-    expect(sparks.get('v1-soc')).toBeNull();
-  });
-});
-
-describe('entitySparks', () => {
-  it('maps each row to its entity history spark (missing history → null)', () => {
-    const rows = componentRows(TOPO);
-    const histories = new Map<string, EntityHistory>([
-      [
-        'pv',
-        {
-          range: 'day',
-          from: minsAgo(1440),
-          to: NOW.toISOString(),
-          bucketMinutes: 15,
-          channels: {
-            pv_power_kw: [
-              { start: minsAgo(30), avg: 3, min: 3, max: 3, last: 3, n: 1 },
-              { start: minsAgo(5), avg: 6, min: 6, max: 6, last: 6, n: 1 },
-            ],
-          },
-        },
-      ],
-    ]);
-    const sparks = entitySparks(rows, histories, NOW);
-    expect(sparks.get('role-pv')?.values).toEqual([3, 6]);
-    // Storage entity has no history loaded → null (honest, no sparkline).
-    expect(sparks.get('role-storage')).toBeNull();
-  });
-});
-
-
-// --- V6 (Audit): the expansion lists only the ROW's own Messwerte ------------
-
-describe('componentRows — V6: a role row expands to ITS channels only', () => {
+describe('componentRows — V6: a role row jumps to ITS channel only', () => {
   /** A hybrid whose capabilities carry real roles (as the API returns them). */
   function roledEnt(id: string, type: string, caps: [string, string][]): TopologyEntity {
     return {
@@ -379,41 +282,20 @@ describe('componentRows — V6: a role row expands to ITS channels only', () => 
     },
   };
 
-  it('the Erzeuger row lists PV only — never the hybrid’s Ladestand', () => {
+  it('die Erzeuger-Zeile springt in die PV-Leistung — nie in den Ladestand des Hybriden', () => {
     const [pv, storage] = componentRows(topo);
-    expect(pv.channels.map((c) => c.channel)).toEqual(['pv_power_kw']);
     expect(pv.target?.channel).toBe('pv_power_kw');
-    // ... while the Speicher row keeps its own two.
-    expect(storage.channels.map((c) => c.channel)).toEqual(['soc_pct', 'battery_power_kw']);
+    // ... while the Speicher row keeps its own representative.
     expect(storage.target?.channel).toBe('soc_pct');
-  });
-
-  it('falls back to every channel when the backend assigned no role', () => {
-    // An empty expansion would be worse than a wide one.
-    const roleless: SiteTopology = {
-      ...topo,
-      entities: [ent('hy', 'battery-hybrid', ['soc_pct', 'pv_power_kw'])],
-    };
-    const [pv] = componentRows(roleless);
-    expect(pv.channels.map((c) => c.channel)).toEqual(['soc_pct', 'pv_power_kw']);
   });
 });
 
-// --- V5 (Audit): promise a sparkline only when there IS one -----------------
+// --- Kopfhinweis -------------------------------------------------------------
 
-describe('hasAnySpark / boardHint — V5: no blank promise', () => {
-  const spark = { values: [1, 2], min: 1, max: 2 };
-
-  it('detects whether the board carries a single line', () => {
-    expect(hasAnySpark(new Map())).toBe(false);
-    expect(hasAnySpark(new Map([['a', null]]))).toBe(false);
-    expect(hasAnySpark(new Map([['a', null], ['b', spark]]))).toBe(true);
-  });
-
-  it('drops „letzte 60 Min" when no row can show one', () => {
-    expect(boardHint(true).spark).toBe('letzte 60 Min');
-    expect(boardHint(false).spark).toBeNull();
-    // the jump hint is always honest and always there
-    expect(boardHint(false).jump).toBe('tippen für den Verlauf');
+describe('BOARD_HINT — beide Zeitbezüge benannt, kein bedingtes Versprechen', () => {
+  it('nennt „jetzt" und „heute" und die eine Interaktion', () => {
+    expect(BOARD_HINT).toBe('Jetzt und heute · eine Zeile öffnet den Verlauf');
+    // Das alte „letzte 60 Min"-Versprechen ist mit den Sparklines entfallen.
+    expect(BOARD_HINT).not.toContain('60');
   });
 });

@@ -487,8 +487,8 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-puls')).toBeTruthy());
     window.location.hash = '';
-    // Die Netz-Zeile antippen — sie springt auf ihren Messwert.
-    const netzRow = [...container.querySelectorAll('.vp-puls-jump')].find(
+    // Die Netz-Zeile antippen — die ganze Zeile IST der Absprung (PR 2).
+    const netzRow = [...container.querySelectorAll('.vp-puls-row')].find(
       (b) => b.querySelector('.vp-puls-name')?.textContent === 'Netz',
     ) as HTMLButtonElement;
     fireEvent.click(netzRow);
