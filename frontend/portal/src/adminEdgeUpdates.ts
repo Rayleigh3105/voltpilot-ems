@@ -688,16 +688,13 @@ export function handelnItems(data: EdgeUpdates | null): HandelnItem[] {
   if (rollout && rollout.canPromote) {
     const next = rollout.waves.find((w) => w.index === rollout.currentWave + 1);
     const current = rollout.waves.find((w) => w.index === rollout.currentWave);
-    const proof = current?.devices.map((d) => bakeLine(d)).filter((l): l is string => !!l) ?? [];
     items.push({
       kind: 'wave',
       key: `wave-${rollout.id}-${rollout.currentWave + 1}`,
       title: next
         ? `Welle ${next.index} „${next.name}" freigeben`
         : 'Nächste Welle freigeben',
-      detail: proof.length > 0
-        ? `${proof.join(' · ')} - das Bake-Kriterium ist erfüllt.`
-        : 'Das Bake-Kriterium der laufenden Welle ist erfüllt.',
+      detail: bakeProof(current),
       how: null,
       deviceId: null,
     });
@@ -717,6 +714,44 @@ export function handelnItems(data: EdgeUpdates | null): HandelnItem[] {
     });
   }
   return items;
+}
+
+/** Wie viele Geräte-Belege die Karte nennt, bevor sie zusammenfasst. */
+const MAX_PROOF_DEVICES = 2;
+
+/**
+ * Der BELEG unter „Welle freigeben": warum ist das Bake-Kriterium erfüllt?
+ *
+ * Zwei Regeln, beide gegen einen konkreten Fehlgriff:
+ *
+ * 1. **Belegt wird nur an BESTÄTIGTEN Geräten.** Eine Welle kann Geräte
+ *    enthalten, deren Zyklus noch offen ist (übersprungene Pins, offline);
+ *    ihre Zeilen als Beleg zu nennen, während der Satz „das Bake-Kriterium ist
+ *    erfüllt" darüber steht, wäre ein sichtbarer Selbstwiderspruch.
+ * 2. **Zwei Belege, dann eine Zahl.** Eine Welle mit zehn Geräten erzeugte
+ *    sonst eine Kette aus zehn gleichlautenden Halbsätzen - der Beleg ginge im
+ *    Rauschen unter, das er widerlegen soll.
+ *
+ * Die ENTSCHEIDUNG selbst kommt weiterhin ausschließlich vom Server
+ * (`canPromote`); dies ist nur ihre Begründung in Worten.
+ */
+function bakeProof(wave: Wave | undefined): string {
+  const plain = 'Das Bake-Kriterium der laufenden Welle ist erfüllt.';
+  if (!wave) return plain;
+  const confirmed = wave.devices.filter((d) => d.state === 'bestaetigt');
+  const lines: string[] = [];
+  for (const d of confirmed) {
+    const line = bakeLine(d);
+    if (!line) continue;
+    const name = waveDeviceName(d).name;
+    const entry = `${name}: ${line}`;
+    if (!lines.includes(entry)) lines.push(entry);
+  }
+  if (lines.length === 0) return plain;
+  const shown = lines.slice(0, MAX_PROOF_DEVICES);
+  const more = lines.length - shown.length;
+  const rest = more > 0 ? ` (und ${more} weitere)` : '';
+  return `${shown.join(' · ')}${rest} - das Bake-Kriterium ist erfüllt.`;
 }
 
 /** Ein Abschnitt des Fortschritts-Rückgrats. */

@@ -5851,8 +5851,14 @@ button.vp-tech-card-h.toggle {
 /* Der HEBEL zu einer Sperre: er nennt, was sie aufhebt. Ohne ihn ist eine
    Sperre ein Rätsel - mit ihm eine Aufgabe. */
 .vp-lever {
+  display: block;
   color: #b45309;
   margin-top: 2px;
+  /* Er steht auch in einer Tabellenzelle, die am Telefon zu einer FLEX-Zeile
+     kollabiert - ohne `min-width: 0` behält er dort seine Inhaltsbreite und
+     läuft aus der Karte (bei 375 px gemessen). */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Die „Sie sind dran"-Karte: der Ort für den Job, der bis hierher keinen
@@ -5906,7 +5912,10 @@ button.vp-tech-card-h.toggle {
 .vp-backbone-key .vp-ustate-dot.vp-ustate-action { background: var(--vp-action, #2c5282); }
 .vp-backbone-key .vp-ustate-dot.vp-ustate-blocked { background: #b45309; }
 .vp-backbone-key .vp-ustate-dot.vp-ustate-incident { background: var(--vp-industry-end, #c62828); }
-.vp-backbone-key .vp-ustate-dot.vp-ustate-calm { background: #57606a; }
+/* „bestätigt" ist im Rückgrat der GUTE Ausgang - Legendenpunkt und
+   Balkenfläche müssen dieselbe Farbe tragen, sonst erklärt die Legende einen
+   anderen Balken als den daneben. */
+.vp-backbone-key .vp-ustate-dot.vp-ustate-calm { background: #16a34a; }
 /* Der Balken selbst: die Klasse ist hier die Fläche. */
 .vp-backbone-seg.vp-ustate-busy { background: var(--vp-primary-deep, #2b6cb0); }
 .vp-backbone-seg.vp-ustate-action { background: var(--vp-action, #2c5282); }
@@ -5917,6 +5926,15 @@ button.vp-tech-card-h.toggle {
 /* Die Geschichte einer eingefrorenen Welle: gedämpfte Fußnote UNTER der
    Live-Wahrheit, nie ihr gleichrangiger Nachbar. */
 .vp-wave-history { font-style: italic; opacity: 0.75; }
+
+/* Eine breite Tabelle scrollt in ihrem EIGENEN Container, statt von der
+   `overflow: hidden`-Karte abgeschnitten zu werden (die Haus-Regel für breite
+   Inhalte). Unterhalb von 720 px klappt `.vp-table.responsive` ohnehin zu
+   Etikett/Wert-Zeilen - dort gibt es nichts zu scrollen. */
+.vp-table-scroll {
+  overflow-x: auto;
+  min-width: 0;
+}
 
 /* Ein Abschnitt, der zurücktritt, solange ein Rollout läuft. Der Chevron
    trägt die Affordanz - deshalb ohne Unterstreichung. */

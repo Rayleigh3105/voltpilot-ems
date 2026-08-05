@@ -482,6 +482,59 @@ describe('„Sie sind dran"', () => {
     expect(items[1].deviceId).toBe('x');
   });
 
+  it('belegt die Freigabe NUR an bestätigten Geräten', () => {
+    // Sonst stünde „Steuerzyklus offen" als Beleg unter dem Satz „das
+    // Bake-Kriterium ist erfüllt" - ein sichtbarer Selbstwiderspruch.
+    const items = handelnItems(updates({
+      activeRollout: rolloutOf({
+        canPromote: true,
+        waves: [{
+          index: 1, name: 'Canary', released: true, confirmed: false,
+          devices: [
+            waveDev({ deviceId: 'ok', siteName: 'Pilsting', state: 'bestaetigt',
+              bakeCycle: 'erfuellt', bakeRemainingMinutes: 0 }),
+            waveDev({ deviceId: 'offen', siteName: 'Mienbach', state: 'blockiert',
+              bakeCycle: 'offen', bakeRemainingMinutes: 900 }),
+          ],
+        }],
+      }),
+    }));
+    expect(items[0].detail).toContain('Pilsting');
+    expect(items[0].detail).not.toContain('Mienbach');
+    expect(items[0].detail).not.toContain('offen');
+    expect(items[0].detail).toContain('Bake-Kriterium ist erfüllt');
+  });
+
+  it('fasst eine große Welle zusammen, statt zehn gleiche Halbsätze zu ketten', () => {
+    const devices = Array.from({ length: 5 }, (_, i) => waveDev({
+      deviceId: `d${i}`, siteName: `Anlage ${i}`, state: 'bestaetigt',
+      bakeCycle: 'erfuellt', bakeRemainingMinutes: 0,
+    }));
+    const items = handelnItems(updates({
+      activeRollout: rolloutOf({
+        canPromote: true,
+        waves: [{ index: 1, name: 'Canary', released: true, confirmed: true, devices }],
+      }),
+    }));
+    expect(items[0].detail).toContain('und 3 weitere');
+    expect(items[0].detail).toContain('Anlage 0');
+    expect(items[0].detail).not.toContain('Anlage 4');
+  });
+
+  it('behauptet ohne einen einzigen Beleg nur den Server-Satz', () => {
+    const items = handelnItems(updates({
+      activeRollout: rolloutOf({
+        canPromote: true,
+        waves: [{
+          index: 1, name: 'Canary', released: true, confirmed: true,
+          // Bestätigt, aber ohne Bake-Urteil (Welle war nie freigegeben).
+          devices: [waveDev({ state: 'bestaetigt', bakeCycle: null })],
+        }],
+      }),
+    }));
+    expect(items[0].detail).toBe('Das Bake-Kriterium der laufenden Welle ist erfüllt.');
+  });
+
   it('ist LEER, solange nichts ansteht - nie ein Dauerbanner', () => {
     expect(handelnItems(updates())).toEqual([]);
     expect(handelnItems(updates({

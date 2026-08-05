@@ -511,6 +511,14 @@ export function EdgeUpdatesPage() {
             {fleet.length === 0 ? (
               <EmptyState title="Keine Geräte" description="Es ist kein Gerät verbunden." />
             ) : (
+              /* Acht Spalten passen zwischen 720 und ~1000 px nicht in die
+                 Karte, und die Karte KLIPPT (`overflow: hidden` rundet ihre
+                 Ecken). Bis hierher waren die letzten Spalten dort schlicht
+                 unerreichbar - seit dem Hebel wäre ausgerechnet der Satz
+                 unsichtbar, der sagt, was eine Sperre aufhebt. Also scrollt
+                 die Tabelle in ihrem EIGENEN Container (Haus-Regel für breite
+                 Inhalte), statt abgeschnitten zu werden. */
+              <div className="vp-table-scroll">
               <table className="vp-table responsive" data-testid="fleet">
                 <thead>
                   <tr>
@@ -534,6 +542,7 @@ export function EdgeUpdatesPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Card>
 
@@ -686,9 +695,16 @@ function FleetTableRow({ row, onOpen }: { row: FleetRow; onOpen: () => void }) {
       <td data-label="seit" className="vp-muted">
         {row.since ? fmtRelative(row.since) : '–'}
       </td>
+      {/* `vp-cell-main` stapelt Grund + Hebel zu EINER Spalte - auch innerhalb
+          der Telefon-Zeile aus Etikett und Wert. Ohne das stünden beide als
+          zwei Flex-Kinder nebeneinander, und der Hebel liefe aus der Karte
+          heraus (bei 375 px gemessen) - ausgerechnet der Satz, der sagt, was
+          die Sperre aufhebt. */}
       <td data-label="Grund" className="vp-muted vp-text-sm">
-        {row.reason ?? '–'}
-        {lever && <div className="vp-lever" data-testid="lever">Hebel: {lever}</div>}
+        <span className="vp-cell-main">
+          <span>{row.reason ?? '–'}</span>
+          {lever && <span className="vp-lever" data-testid="lever">Hebel: {lever}</span>}
+        </span>
       </td>
     </tr>
   );
