@@ -7,9 +7,17 @@ One call refreshes everything the earnings math needs:
      range=year queries covered) and upsert them,
   2. for every month after the last published one up to and including the
      running month, compute the PROVISIONAL value from the stored DE-LU
-     day-ahead prices (solar-shape weighted - see
+     day-ahead prices, weighted by the Germany-wide solar generation of the
+     same intervals (the official Anlage 1 Nr. 2.2 EEG 2023 formula - see
      :func:`voltpilot_market_data.market_value.provisional_solar_market_value`)
      and upsert it flagged ``provisional``.
+
+The generation series is FETCHED PER MONTH here rather than persisted: it is
+consumed immediately and no other consumer reads it, so a hypertable would be
+pure overhead (rationale in
+:mod:`voltpilot_market_data.solar_generation`). Without a ``generation_source``
+- or when every source fails - the computation degrades to the weather-blind
+clear-sky shape, which is the documented last resort, never a fabricated value.
 
 The published upsert overwrites yesterday's provisional row the moment the
 TSOs publish (the repository's published-beats-provisional rule keeps the
@@ -25,14 +33,20 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from voltpilot_market_data.market_value import (
+    CLEAR_SKY_WEIGHTING,
     MARKET_TZ,
     TECHNOLOGY_SOLAR,
     MarketValueSource,
     MonthlyMarketValue,
-    provisional_solar_market_value,
+    provisional_solar_market_value_weighted_by,
 )
 from voltpilot_market_data.market_value_persistence import MarketValueRepository
 from voltpilot_market_data.persistence import DayAheadPriceRepository
+from voltpilot_market_data.solar_generation import (
+    SolarGenerationSeries,
+    SolarGenerationSource,
+    SolarGenerationSourceError,
+)
 
 logger = logging.getLogger("voltpilot.market_data.market_value_service")
 
@@ -47,6 +61,10 @@ class MarketValueRefreshResult:
     published_rows: int = 0
     provisional_rows: int = 0
     provisional_months: list[date] = field(default_factory=list)
+    # Which quantity actually weighted each provisional month - the adapter's
+    # source tag, or "clear-sky" when the chain fell all the way through. Kept
+    # so the CLI/serve output says HOW exact today's value is.
+    provisional_weighting: dict[date, str] = field(default_factory=dict)
 
 
 def _month_start(day: date) -> date:
@@ -64,11 +82,35 @@ def _month_window_utc(month: date, tz: ZoneInfo = MARKET_TZ) -> tuple[datetime, 
     return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
 
 
+def _solar_generation_for(
+    generation_source: SolarGenerationSource | None,
+    month: date,
+    start: datetime,
+    end: datetime,
+) -> SolarGenerationSeries | None:
+    """Fetch the month's generation series; ``None`` degrades to clear-sky.
+
+    A generation outage must never sink the refresh: the provisional value has
+    a documented last resort, and the official value overwrites it anyway.
+    """
+    if generation_source is None:
+        return None
+    try:
+        return generation_source.fetch_solar_generation(start, end)
+    except SolarGenerationSourceError as exc:
+        logger.warning(
+            "market_value.provisional.generation_unavailable",
+            extra={"context": {"month": month.isoformat(), "error": str(exc)}},
+        )
+        return None
+
+
 def refresh_market_values(
     source: MarketValueSource,
     market_value_repository: MarketValueRepository,
     price_repository: DayAheadPriceRepository | None,
     today: date | None = None,
+    generation_source: SolarGenerationSource | None = None,
 ) -> MarketValueRefreshResult:
     """Refresh published + provisional solar market values (see module doc)."""
     today = today or datetime.now(MARKET_TZ).date()
@@ -96,10 +138,15 @@ def refresh_market_values(
             break
         start, end = _month_window_utc(month)
         series = price_repository.latest_series(PROVISIONAL_PRICE_ZONE, start, end)
-        value = (
-            provisional_solar_market_value(series.points, month)
+        generation = (
+            _solar_generation_for(generation_source, month, start, end)
             if series is not None
             else None
+        )
+        value, weighting = (
+            provisional_solar_market_value_weighted_by(series.points, month, generation)
+            if series is not None
+            else (None, CLEAR_SKY_WEIGHTING)
         )
         if value is None:
             logger.info(
@@ -117,6 +164,7 @@ def refresh_market_values(
                 )
             )
             result.provisional_months.append(month)
+            result.provisional_weighting[month] = weighting
         month = _next_month(month)
 
     result.provisional_rows = market_value_repository.upsert_values(provisional)

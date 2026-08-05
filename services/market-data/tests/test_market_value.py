@@ -6,6 +6,13 @@ VERBATIM recordings of the live keyless endpoint
 taken on 2026-07-07 (netztransparenz_marketpremium_2025.json with the full
 published year-to-May-2026 state, and _2026.json where Jun+Jul 2026 are still
 unpublished - exactly the state the provisional value exists for).
+
+The generation-weighted provisional value additionally uses the three VERBATIM
+recordings of the German day 2026-06-15 taken on 2026-08-05 (DE-LU prices, ÜNB
+Online-Hochrechnung Solar and energy-charts public_power - see
+``tests/test_solar_generation.py`` for their provenance), so the official
+Anlage 1 Nr. 2.2 EEG 2023 formula is exercised on real data, not only on
+hand-built curves.
 """
 
 from __future__ import annotations
@@ -18,10 +25,28 @@ import pytest
 
 from tests.conftest import load_fixture
 from voltpilot_market_data.http import HttpResponse
+from voltpilot_market_data.energy_charts import (
+    parse_price_response,
+    parse_public_power_response,
+)
 from voltpilot_market_data.market_value import (
+    CLEAR_SKY_WEIGHTING,
     MonthlyMarketValue,
+    clear_sky_weighted_solar_market_value,
+    generation_weighted_solar_market_value,
+    generation_weights_by_slot,
     provisional_solar_market_value,
+    provisional_solar_market_value_weighted_by,
     solar_shape_weight,
+)
+from voltpilot_market_data.netztransparenz_generation import (
+    parse_online_hochrechnung_response,
+)
+from voltpilot_market_data.solar_generation import (
+    GenerationPoint,
+    SolarGenerationSeries,
+    SolarGenerationSource,
+    SolarGenerationSourceUnavailable,
 )
 from voltpilot_market_data.market_value_persistence import (
     InMemoryMarketValueRepository,
@@ -339,3 +364,299 @@ def test_published_value_replaces_provisional_but_never_the_reverse():
     assert repo.upsert_values([provisional]) == 0
     assert repo.rows[("solar", date(2026, 5, 1))].value_ct_kwh == pytest.approx(3.163)
     assert not repo.rows[("solar", date(2026, 5, 1))].provisional
+
+
+# ---------------------------------------------------------------------------
+# Generation weighting - the official Anlage 1 Nr. 2.2 EEG 2023 formula
+# ---------------------------------------------------------------------------
+
+UNB_FIXTURE = "netztransparenz_online_hochrechnung_solar_20260615.json"
+EC_GEN_FIXTURE = "energy_charts_public_power_de_20260615.json"
+PRICE_FIXTURE = "energy_charts_de_lu_20260615.json"
+
+
+def _generation(day: date, power_by_hour: dict[int, float]) -> SolarGenerationSeries:
+    """Hourly generation series (MW), aligned with ``_hourly_points``."""
+    return SolarGenerationSeries(
+        points=tuple(
+            GenerationPoint(
+                start=datetime(day.year, day.month, day.day, h, tzinfo=timezone.utc),
+                end=datetime(day.year, day.month, day.day, h, tzinfo=timezone.utc)
+                + timedelta(hours=1),
+                power_mw=mw,
+            )
+            for h, mw in sorted(power_by_hour.items())
+        ),
+        source="test-generation",
+    )
+
+
+def test_generation_weighting_is_the_hand_computed_energy_weighted_average():
+    # sum(p_i * E_i) / sum(E_i): (50*1000 + 10*4000 + 30*1000) / 6000
+    #                          = 120000/6000 = 20 EUR/MWh = 2.0 ct/kWh.
+    prices = _hourly_points(date(2026, 6, 15), {10: 50.0, 12: 10.0, 14: 30.0})
+    generation = _generation(date(2026, 6, 15), {10: 1000.0, 12: 4000.0, 14: 1000.0})
+    value = generation_weighted_solar_market_value(
+        prices, generation, date(2026, 6, 1)
+    )
+    assert value == pytest.approx(2.0)
+    # ...and provably NOT the plain average (30 EUR/MWh = 3 ct/kWh), because
+    # the fleet sells most of its energy in the cheap noon hour.
+    assert value < 3.0
+
+
+def test_generation_weighting_drops_zero_generation_slots_entirely():
+    # An absurd night price carries no weight - the fleet fed in nothing.
+    prices = _hourly_points(date(2026, 6, 15), {2: 9999.0, 12: 40.0})
+    generation = _generation(date(2026, 6, 15), {2: 0.0, 12: 5000.0})
+    assert generation_weighted_solar_market_value(
+        prices, generation, date(2026, 6, 1)
+    ) == pytest.approx(4.0)
+
+
+def test_generation_weighting_only_counts_the_requested_berlin_month():
+    prices = _hourly_points(date(2026, 6, 15), {12: 50.0}) + _hourly_points(
+        date(2026, 7, 15), {12: 500.0}
+    )
+    generation = SolarGenerationSeries(
+        points=_generation(date(2026, 6, 15), {12: 1000.0}).points
+        + _generation(date(2026, 7, 15), {12: 1000.0}).points,
+        source="test-generation",
+    )
+    assert generation_weighted_solar_market_value(
+        prices, generation, date(2026, 6, 1)
+    ) == pytest.approx(5.0)
+
+
+def test_join_assigns_a_sample_to_the_slot_containing_its_midpoint():
+    # One PT60M price slot meeting four quarter-hourly generation samples: the
+    # hour collects all four, i.e. its full share of the month's energy.
+    hour_start = datetime(2026, 6, 15, 12, tzinfo=timezone.utc)
+    slot = PricePoint(
+        start=hour_start, end=hour_start + timedelta(hours=1), price_eur_mwh=40.0
+    )
+    quarters = SolarGenerationSeries(
+        points=tuple(
+            GenerationPoint(
+                start=hour_start + timedelta(minutes=15 * i),
+                end=hour_start + timedelta(minutes=15 * (i + 1)),
+                power_mw=1000.0,
+            )
+            for i in range(4)
+        ),
+        source="test-generation",
+    )
+    weights = generation_weights_by_slot([slot], quarters)
+    assert weights == {hour_start: pytest.approx(1000.0)}  # 4 x 250 MWh
+    assert generation_weighted_solar_market_value(
+        [slot], quarters, date(2026, 6, 1)
+    ) == pytest.approx(4.0)
+
+
+def test_join_leaves_uncovered_price_slots_unweighted():
+    # Generation covers only the noon hour; the 14:00 price must not enter.
+    prices = _hourly_points(date(2026, 6, 15), {12: 40.0, 14: 400.0})
+    generation = _generation(date(2026, 6, 15), {12: 1000.0})
+    weights = generation_weights_by_slot(prices, generation)
+    assert list(weights) == [datetime(2026, 6, 15, 12, tzinfo=timezone.utc)]
+    assert generation_weighted_solar_market_value(
+        prices, generation, date(2026, 6, 1)
+    ) == pytest.approx(4.0)
+
+
+def test_generation_weighting_on_the_real_recorded_day_beats_the_clear_sky_shape():
+    """Real prices x real ÜNB quantity on 2026-06-15 (all three verbatim)."""
+    prices = parse_price_response(load_fixture(PRICE_FIXTURE), "DE-LU")
+    unb = parse_online_hochrechnung_response(load_fixture(UNB_FIXTURE))
+    energy_charts = parse_public_power_response(load_fixture(EC_GEN_FIXTURE))
+    month = date(2026, 6, 1)
+
+    official_style = generation_weighted_solar_market_value(prices.points, unb, month)
+    substitute = generation_weighted_solar_market_value(
+        prices.points, energy_charts, month
+    )
+    clear_sky = clear_sky_weighted_solar_market_value(prices.points, month)
+    plain = sum(p.price_eur_mwh for p in prices.points) / len(prices) / 10
+
+    assert official_style == pytest.approx(2.4981, abs=1e-3)
+    assert substitute == pytest.approx(2.5901, abs=1e-3)
+    assert clear_sky == pytest.approx(3.1136, abs=1e-3)
+    # The whole point: every weighting sits below the plain average (solar sells
+    # when it shines), and the weather-blind shape sits CLOSEST to it - i.e. it
+    # systematically overstates what the fleet earned.
+    assert official_style < substitute < clear_sky < plain == pytest.approx(7.4265, abs=1e-3)
+
+
+def test_part_month_value_converges_as_the_month_fills_up():
+    """A part-month value is a running average, not a month value."""
+    # Cheap first half (the fleet's big days), expensive second half.
+    prices = []
+    generation_points = []
+    for day in range(1, 31):
+        price = 20.0 if day <= 15 else 80.0
+        prices += _hourly_points(date(2026, 6, day), {12: price})
+        generation_points += _generation(date(2026, 6, day), {12: 1000.0}).points
+    month = date(2026, 6, 1)
+
+    def value_after(days: int) -> float:
+        partial = SolarGenerationSeries(
+            points=tuple(p for p in generation_points if p.start.day <= days),
+            source="test-generation",
+        )
+        return generation_weighted_solar_market_value(prices, partial, month)
+
+    early, mid, full = value_after(5), value_after(20), value_after(30)
+    # Early: only cheap days seen. Full month: 15 cheap + 15 expensive = 5 ct.
+    assert early == pytest.approx(2.0)
+    assert full == pytest.approx(5.0)
+    # ...and the mid-month reading already sits between the two, converging.
+    assert early < mid < full
+    # The uncovered tail is NOT modelled - the covered part is all there is.
+    assert value_after(15) == pytest.approx(2.0)
+
+
+# ---------------------------------------------------------------------------
+# The fallback chain inside the provisional value
+# ---------------------------------------------------------------------------
+
+
+def test_provisional_prefers_generation_and_reports_which_quantity_it_used():
+    prices = _hourly_points(date(2026, 6, 15), {10: 50.0, 12: 10.0, 14: 30.0})
+    generation = _generation(date(2026, 6, 15), {10: 1000.0, 12: 4000.0, 14: 1000.0})
+    value, weighting = provisional_solar_market_value_weighted_by(
+        prices, date(2026, 6, 1), generation
+    )
+    assert value == pytest.approx(2.0)
+    assert weighting == "test-generation"
+
+
+def test_provisional_falls_back_to_clear_sky_without_generation_data():
+    prices = _hourly_points(date(2026, 6, 15), {10: 50.0, 12: 10.0, 14: 30.0})
+    expected = clear_sky_weighted_solar_market_value(prices, date(2026, 6, 1))
+
+    for generation in (
+        None,  # no source configured / every source down
+        SolarGenerationSeries(points=(), source="test-generation"),  # empty answer
+        _generation(date(2026, 7, 15), {12: 5000.0}),  # wrong month, no overlap
+        _generation(date(2026, 6, 15), {10: 0.0, 12: 0.0, 14: 0.0}),  # nothing fed in
+    ):
+        value, weighting = provisional_solar_market_value_weighted_by(
+            prices, date(2026, 6, 1), generation
+        )
+        assert value == pytest.approx(expected)
+        assert weighting == CLEAR_SKY_WEIGHTING
+    # The old positional call keeps working (clear-sky, unchanged behaviour).
+    assert provisional_solar_market_value(prices, date(2026, 6, 1)) == pytest.approx(
+        expected
+    )
+
+
+def test_provisional_is_none_when_even_the_clear_sky_fallback_has_nothing():
+    night_only = _hourly_points(date(2026, 6, 15), {0: 42.0, 23: 42.0})
+    generation = _generation(date(2026, 6, 15), {0: 0.0})
+    assert provisional_solar_market_value(night_only, date(2026, 6, 1), generation) is None
+    assert provisional_solar_market_value([], date(2026, 6, 1), generation) is None
+
+
+# ---------------------------------------------------------------------------
+# Refresh orchestration with a generation source
+# ---------------------------------------------------------------------------
+
+
+class _StubGenerationSource(SolarGenerationSource):
+    """Serves one canned series; records the requested windows."""
+
+    def __init__(self, series: SolarGenerationSeries | None) -> None:
+        self.series = series
+        self.windows: list[tuple[datetime, datetime]] = []
+
+    def fetch_solar_generation(self, start, end):
+        self.windows.append((start, end))
+        if self.series is None:
+            raise SolarGenerationSourceUnavailable("down")
+        return SolarGenerationSeries(
+            points=tuple(p for p in self.series.points if start <= p.start < end),
+            source=self.series.source,
+        )
+
+
+def _june_july_prices() -> PriceSeries:
+    points = _hourly_points(date(2026, 6, 20), {10: 100.0, 12: 20.0}) + _hourly_points(
+        date(2026, 7, 3), {12: 90.0}
+    )
+    return PriceSeries(
+        zone="DE-LU",
+        resolution="PT60M",
+        currency="EUR",
+        points=tuple(points),
+        source="test",
+    )
+
+
+def test_refresh_weights_the_provisional_months_by_generation():
+    repo = InMemoryMarketValueRepository()
+    prices = FakePriceRepository(series=_june_july_prices())
+    generation = _StubGenerationSource(
+        SolarGenerationSeries(
+            points=_generation(date(2026, 6, 20), {10: 1000.0, 12: 3000.0}).points
+            + _generation(date(2026, 7, 3), {12: 1000.0}).points,
+            source="netztransparenz-online-hochrechnung",
+        )
+    )
+
+    result = refresh_market_values(
+        _fixture_source(),
+        repo,
+        prices,
+        today=date(2026, 7, 7),
+        generation_source=generation,
+    )
+
+    assert result.provisional_months == [date(2026, 6, 1), date(2026, 7, 1)]
+    # (100*1000 + 20*3000) / 4000 = 40 EUR/MWh = 4.0 ct/kWh - the generation
+    # weighting, NOT the clear-sky one (which would land above 5).
+    assert repo.rows[("solar", date(2026, 6, 1))].value_ct_kwh == pytest.approx(4.0)
+    assert repo.rows[("solar", date(2026, 7, 1))].value_ct_kwh == pytest.approx(9.0)
+    assert repo.rows[("solar", date(2026, 6, 1))].provisional
+    assert result.provisional_weighting == {
+        date(2026, 6, 1): "netztransparenz-online-hochrechnung",
+        date(2026, 7, 1): "netztransparenz-online-hochrechnung",
+    }
+    # One request per provisional month, over the German calendar month.
+    assert len(generation.windows) == 2
+    assert generation.windows[0] == prices.windows[0]
+
+
+def test_refresh_survives_a_generation_outage_and_says_so():
+    repo = InMemoryMarketValueRepository()
+    result = refresh_market_values(
+        _fixture_source(),
+        repo,
+        FakePriceRepository(series=_june_july_prices()),
+        today=date(2026, 7, 7),
+        generation_source=_StubGenerationSource(None),
+    )
+    # The value is still written - degraded to the documented last resort, and
+    # the result names the weighting so nobody mistakes it for the exact one.
+    assert result.provisional_rows == 2
+    assert set(result.provisional_weighting.values()) == {CLEAR_SKY_WEIGHTING}
+    assert repo.rows[("solar", date(2026, 6, 1))].provisional
+
+
+def test_refresh_without_a_generation_source_is_the_old_clear_sky_behaviour():
+    repo_old = InMemoryMarketValueRepository()
+    repo_new = InMemoryMarketValueRepository()
+    kwargs = dict(today=date(2026, 7, 7))
+    refresh_market_values(
+        _fixture_source(), repo_old, FakePriceRepository(series=_june_july_prices()), **kwargs
+    )
+    refresh_market_values(
+        _fixture_source(),
+        repo_new,
+        FakePriceRepository(series=_june_july_prices()),
+        generation_source=None,
+        **kwargs,
+    )
+    assert {k: v.value_ct_kwh for k, v in repo_old.rows.items()} == {
+        k: v.value_ct_kwh for k, v in repo_new.rows.items()
+    }

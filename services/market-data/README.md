@@ -57,10 +57,24 @@ that is the whole point of the port below (architecture section 13).
 > `monthly_market_value` (`db/migration/V20260707001000`; twelve rows per
 > technology per year, so deliberately NOT a hypertable). For months the TSOs
 > have not published yet (always the running month), a PROVISIONAL value is
-> computed from the stored DE-LU day-ahead prices as a clear-sky solar-shape
-> weighted average (`provisional_solar_market_value` - the approximation and
-> its bias are documented in `market_value.py`) and flagged `provisional`;
-> the official value overwrites it after publication, never the reverse.
+> computed with the OFFICIAL formula of Anlage 1 Nr. 2.2 EEG 2023,
+> `MW = sum(p_i * E_i) / sum(E_i)`: the stored DE-LU day-ahead prices weighted
+> by the Germany-wide solar generation of the same quarter hours
+> (`provisional_solar_market_value`, formula/join rule/caveats documented in
+> `market_value.py`), and flagged `provisional`; the official value overwrites
+> it after publication, never the reverse.
+>
+> The quantity `E` comes from a keyless fallback chain (`solar_generation.py`):
+> the ÜNB **Online-Hochrechnung der tatsächlichen Erzeugung**
+> (`netztransparenz_generation.py`, the quantity the EEG names) first, then
+> energy-charts `public_power` (`energy_charts.py`), and only if neither answers
+> the weather-blind clear-sky shape. Measured on June 2026 against the official
+> 6.190 ct/kWh: **6.1897** (ÜNB), 6.372 (energy-charts), 6.966 (clear-sky),
+> 10.952 (unweighted average). The series is fetched per refresh cycle, not
+> persisted (rationale in `solar_generation.py`). A part-month value is a
+> running average that converges as the month fills up - not a month value and
+> not a forecast; nothing models the remaining days.
+>
 > `serve --persist` refreshes it every cycle; one-shot:
 >
 > ```bash
@@ -104,6 +118,13 @@ optimizer / job  ->  DayAheadPriceSource        (port, source.py)
   in-memory double for tests.
 - `service.py` / `cli.py` - the fetch orchestration and the cron/manual
   entrypoint.
+- `solar_generation.py` - the SECOND port, for the Monatsmarktwert's quantity
+  `E`: `SolarGenerationSource` + `GenerationPoint`/`SolarGenerationSeries` (MW,
+  UTC interval bounds) + `FallbackSolarGenerationSource`, which encodes the
+  ranking "official ÜNB series first, substitute second" and logs a fallback
+  hit at WARNING. Adapters: `netztransparenz_generation.py` (ÜNB
+  Online-Hochrechnung, primary) and `EnergyChartsSolarGenerationSource` in
+  `energy_charts.py` (fallback).
 
 ## Persistence
 
