@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { FilmRow, FilmView } from './fahrplanFilm';
 import {
   filmKicker,
   filmKurzfassung,
@@ -6,6 +7,7 @@ import {
   filmPastNote,
   filmRows,
   naechsterEinsatz,
+  speicherKurzzeile,
   phaseDuty,
 } from './fahrplanFilm';
 import { phases, type WhySlot } from './fahrplanWhy';
@@ -379,5 +381,71 @@ describe('filmLabel · das listen-taugliche Vokabular', () => {
     expect(filmLabel('reserve_halten', 'eigenverbrauch', ['reserve_backup'])).toBe(
       'Reserve halten (Notstrom)',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// speicherKurzzeile — die Erzählzeile der Cockpit-Karte (PR 4, Konzept §4b)
+// ---------------------------------------------------------------------------
+
+describe('speicherKurzzeile (Ruhe nennt den Blick nach vorn)', () => {
+  const row = (over: Partial<FilmRow>): FilmRow => ({
+    phaseIndex: 0,
+    role: 'verkaufen',
+    kind: 'discharge',
+    now: false,
+    done: false,
+    label: 'Zum Spitzenpreis verkaufen',
+    time: '18:00–20:00 Uhr',
+    from: new Date(2026, 7, 5, 18, 0).toISOString(),
+    to: new Date(2026, 7, 5, 20, 0).toISOString(),
+    sub: null,
+    eur: null,
+    einkauf: false,
+    duty: null,
+    ...over,
+  });
+  const view = (today: FilmRow[], tomorrow: FilmRow[] = []): FilmView => ({
+    past: [],
+    today,
+    tomorrow,
+    tomorrowSummary: null,
+    empty: today.length === 0 ? 'leer' : null,
+  });
+
+  it('eine laufende Ruhe wird zum Blick nach vorn — nie ein Leerlauf-Rätsel', () => {
+    const v = view([
+      row({ role: 'warten', kind: 'idle', now: true, label: 'Ruhe' }),
+      row({}),
+    ]);
+    expect(speicherKurzzeile(v)).toMatch(
+      /^Ruhe — als Nächstes: Zum Spitzenpreis verkaufen ab \d{2}:\d{2} Uhr\.$/,
+    );
+  });
+
+  it('eine laufende Aktions-Phase bleibt WÖRTLICH die Kurzfassung', () => {
+    const v = view([
+      row({ role: 'pv_speichern', kind: 'charge', now: true, label: 'Sonne speichern' }),
+      row({ label: 'Verbrauch decken', role: 'eigenverbrauch' }),
+    ]);
+    expect(speicherKurzzeile(v)).toBe(filmKurzfassung(v));
+    expect(speicherKurzzeile(v)).toMatch(/^Jetzt Sonne speichern bis \d{2}:\d{2} Uhr · danach Verbrauch decken\.$/);
+  });
+
+  it('Ruhe ohne späteren Einsatz bleibt die ehrliche Kurzfassung', () => {
+    const v = view([row({ role: 'warten', kind: 'idle', now: true, label: 'Ruhe' })]);
+    expect(speicherKurzzeile(v)).toBe(filmKurzfassung(v));
+  });
+
+  it('eine NICHT laufende Ruhe (Plan beginnt später) bleibt die Kurzfassung', () => {
+    const v = view([
+      row({ role: 'warten', kind: 'idle', now: false, label: 'Ruhe' }),
+      row({}),
+    ]);
+    expect(speicherKurzzeile(v)).toBe(filmKurzfassung(v));
+  });
+
+  it('ohne Zeilen null — der Aufrufer fällt auf planSentence zurück', () => {
+    expect(speicherKurzzeile(view([]))).toBeNull();
   });
 });

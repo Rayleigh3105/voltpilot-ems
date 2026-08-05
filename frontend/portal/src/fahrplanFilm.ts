@@ -347,3 +347,21 @@ export function filmKurzfassung(view: FilmView): string | null {
   if (rows[2]) parts.push(`dann ${rows[2].label}`);
   return `${parts.join(' · ')}.`;
 }
+
+/**
+ * Die Erzählzeile der Speicher-Fahrplan-Karte des Cockpits
+ * (vp-cockpit-unten-ux-n3 PR 4): wörtlich die {@link filmKurzfassung} — außer
+ * die LAUFENDE Phase ist Ruhe, dann nennt die Zeile den Blick nach vorn
+ * („Ruhe — als Nächstes: {Label} ab HH:MM Uhr.", via {@link naechsterEinsatz})
+ * statt eines Leerlauf-Rätsels. Eine Ruhe ohne späteren Einsatz und jede
+ * Nicht-Ruhe bleiben zeichengleich die Kurzfassung; null ohne Zeilen (der
+ * Aufrufer fällt auf `planSentence` zurück — die Band-Disziplin).
+ */
+export function speicherKurzzeile(view: FilmView): string | null {
+  const head = view.today[0];
+  if (head?.now && head.kind === 'idle') {
+    const next = naechsterEinsatz(view);
+    if (next) return `Ruhe — als Nächstes: ${next.label} ab ${hm(next.at)} Uhr.`;
+  }
+  return filmKurzfassung(view);
+}

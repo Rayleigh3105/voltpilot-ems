@@ -10,16 +10,13 @@ import {
   type ChargeKind,
 } from '../schedule';
 import { phases } from '../fahrplanWhy';
-import { filmKurzfassung, filmRows } from '../fahrplanFilm';
+import { filmRows, speicherKurzzeile } from '../fahrplanFilm';
+import { PROVENIENZ } from '../historieWelten';
 import { energyLabel } from '../anlage';
-import { ScheduleChart } from '../ScheduleChart';
-import { useContainerWidth } from '../useContainerWidth';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Skeleton } from './States';
-
-/** Below this container width the compact mini bars replace the full chart. */
-const FULL_CHART_MIN_WIDTH = 620;
+import './FahrplanBand.css';
 
 /** The bar CSS class per charge kind (matches .vp-plan-mini tokens). */
 const BAR_CLASS: Record<ChargeKind, string> = {
@@ -29,14 +26,30 @@ const BAR_CLASS: Record<ChargeKind, string> = {
   ruhe: 'idle',
 };
 
+/** Der ehrliche Leerzustand — wortgleich mit der Fahrplan-Seite. */
+export const KEIN_PLAN_TEXT = 'Für heute liegt noch kein Fahrplan vor.';
+
 /**
- * The promoted Batterie-Fahrplan band (captain decision 2): the full-width 24h
- * plan chart (price line, grid-charge cyan, Jetzt marker, SoC) on desktop, a
- * real compact mini-widget (24 hourly bars + Jetzt marker) on phone - both
- * capped by container width, not the viewport, so it stays right inside the
- * dashboard column. One plain-German summary sentence names what the plan does;
- * the planned saving and any negative-price curtailment are the honest
- * takeaways. "Ganzer Fahrplan im Detail →" opens the full subpage.
+ * Die kurze Speicher-Fahrplan-Karte (vp-cockpit-unten-ux-n3 PR 4, Konzept
+ * §4b, Captain-Entscheid D7): das frühere Band trug den VOLLEN 24-h-Chart
+ * (Preislinie, SoC, Netzlade-Flächen) — genau die Schwere, gegen die der
+ * Umbau der unteren Hälfte lief, und eine zweite Plan-Visualisierung neben
+ * der Fahrplan-Seite. Jetzt erzählt die Karte den Tag KURZ, in der Grammatik
+ * des Fahrplan-Films (Wort trägt, Farbe verstärkt); der volle Chart lebt nur
+ * noch auf der Fahrplan-Seite — einen Klick über „Fahrplan ›".
+ *
+ * Reine Komposition, nichts neu gerechnet:
+ * - Erzählzeile = `speicherKurzzeile` (die `filmKurzfassung` wörtlich; eine
+ *   laufende Ruhe nennt via `naechsterEinsatz` den Blick nach vorn) mit dem
+ *   „Geplant"-Abzeichen — EINE Provenienz-Grammatik mit dem Preis-Streifen.
+ *   Ohne Warum-Ebene bleibt `planSentence` (zeichengleich zur Band-Regel).
+ * - Ministreifen = die 24 Stundenbalken (`planHourBars`) auf ALLEN Breiten,
+ *   der Jetzt-Balken UMRANDET statt einer Positionslinie.
+ * - Geld = „Geplanter Vorteil heute: X €" (`savingsTodayEur`, entfällt
+ *   ehrlich ohne belegte Zahl) · Abregel-Zeile (`curtailmentPlannedLine`,
+ *   PLAN-Wortlaut) unverändert.
+ * - Zustände wie zuvor: lädt → Skeleton · Fehler → Hinweis · kein Plan →
+ *   {@link KEIN_PLAN_TEXT} (ruhige Leere, kein Fehlerton ohne Befund).
  */
 export function FahrplanBand({
   plan,
@@ -53,64 +66,58 @@ export function FahrplanBand({
   failed: boolean;
   onOpen: () => void;
 }) {
-  const [ref, width] = useContainerWidth();
   const slots = plan?.slots ?? [];
   const hasPlan = slots.length > 0;
-  // Die KURZFASSUNG des Films (Fahrplan-Neubau, Konzept §6.2) statt der
-  // früheren →-Kette: die war eine Techniker-Kompression mit Wiederholungen
-  // („morgens … → morgens wieder …"), weil der Horizont zwei Abende überspannt.
-  // Es ist DIESELBE Ableitung wie auf der Fahrplan-Seite - Band und Seite
-  // können sich damit nicht widersprechen. Ohne persistierte Rollen bleibt der
-  // klassische planSentence - zeichengleich zu vorher.
+  // Die Erzählzeile des Films — DIESELBE Ableitung wie auf der Fahrplan-Seite,
+  // Band und Seite können sich nicht widersprechen. Ohne persistierte Rollen
+  // bleibt der klassische planSentence.
   const daySlots = todaySlots(slots, now);
   const whyPhases = phases(daySlots, plan?.slotMinutes ?? 15);
   const kurz =
     whyPhases.length > 0
-      ? filmKurzfassung(filmRows(whyPhases, daySlots, plantKind, now))
+      ? speicherKurzzeile(filmRows(whyPhases, daySlots, plantKind, now))
       : null;
   const sentence = kurz ?? planSentence(slots, plantKind, now);
   const saved = savingsTodayEur(slots, now);
   const curtail = curtailmentToday(slots, now);
 
   return (
-    <div ref={ref} style={{ minWidth: 0 }}>
     <Card padding="lg" radius="lg" className="vp-fp-band" style={{ minWidth: 0 }}>
-      <div className="vp-fp-head">
-        <span className="vp-card-label">
-          <Icon name="battery-charging" size={14} /> Batterie-Fahrplan · heute
-        </span>
-        <button type="button" className="vp-linklike" onClick={onOpen}>
-          Ganzer Fahrplan im Detail →
+      <div className="vp-fpk-head">
+        <h3>Speicher-Fahrplan</h3>
+        <button type="button" className="vp-fpk-link" onClick={onOpen}>
+          Fahrplan
+          <Icon name="chevron-right" size={15} />
         </button>
       </div>
 
       {loading ? (
-        <Skeleton height={140} radius="var(--vp-radius-md)" />
+        <Skeleton height={96} radius="var(--vp-radius-md)" />
       ) : failed ? (
         <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
           Der Fahrplan konnte gerade nicht geladen werden.
         </p>
       ) : !hasPlan ? (
         <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-          Noch kein Fahrplan. Sobald Ihre Anlage einen Speicher meldet und Börsenpreise
-          vorliegen, plant VoltPilot alle 15 Minuten einen kostenoptimalen Tag - er
-          erscheint dann automatisch hier.
+          {KEIN_PLAN_TEXT}
         </p>
       ) : (
         <>
-          {width >= FULL_CHART_MIN_WIDTH ? (
-            <ScheduleChart plan={plan!} />
-          ) : (
-            <MiniBars slots={slots} now={now} />
+          {sentence && (
+            <div className="vp-fpk-story">
+              <Icon name="zap" size={15} />
+              <span className="vp-fpk-story-text">{sentence}</span>
+              <span className="vp-fpk-geplant" title={PROVENIENZ.geplant.satz}>
+                {PROVENIENZ.geplant.label}
+              </span>
+            </div>
           )}
-          <p className="vp-fp-summary">
-            {sentence && <span className="s">{sentence}</span>}{' '}
-            {saved != null && saved > 0.005 && (
-              <>
-                Heute <b>+{eurAmount(saved)}</b> geplant.
-              </>
-            )}
-          </p>
+          <MiniBars slots={slots} now={now} />
+          {saved != null && saved > 0.005 && (
+            <p className="vp-fpk-money">
+              Geplanter Vorteil heute: <b>+{eurAmount(saved)}</b>
+            </p>
+          )}
           {/* PLAN, kein Ergebnis: die Ausführung der Abregelung ist
               cloud-seitig nicht belegt (siehe `curtailmentPlannedLine`). */}
           {curtail && (
@@ -122,17 +129,20 @@ export function FahrplanBand({
         </>
       )}
     </Card>
-    </div>
   );
 }
 
-/** The compact 24-hour bar strip with a "Jetzt" marker (phone-calm resolution). */
+/**
+ * Der 24-Stunden-Ministreifen (auf allen Breiten): ein Balken je Stunde in
+ * der Fahrplan-Farbsprache, der Balken der LAUFENDEN Stunde umrandet — die
+ * Stunden-Achse darunter macht ihn ohne Legende lesbar.
+ */
 function MiniBars({ slots, now }: { slots: SchedulePlan['slots']; now: Date }) {
   const bars = planHourBars(slots, now);
   const maxKw = Math.max(1, ...bars.map((b) => b.kw ?? 0));
-  const nowLeft = ((now.getHours() + now.getMinutes() / 60) / 24) * 100;
+  const nowHour = now.getHours();
   return (
-    <div className="vp-plan-mini-wrap">
+    <div className="vp-fpk-ribbon">
       <div className="vp-plan-mini" role="img" aria-label="Batterie-Fahrplan heute">
         {bars.map((b) => {
           const pct = b.kw && b.kw > 0 ? Math.max(12, Math.round((b.kw / maxKw) * 100)) : 0;
@@ -140,13 +150,19 @@ function MiniBars({ slots, now }: { slots: SchedulePlan['slots']; now: Date }) {
           return (
             <i
               key={b.hour}
-              className={cls}
+              className={`${cls}${b.hour === nowHour ? ' now' : ''}`}
               style={cls === 'idle' ? undefined : { height: `${pct}%` }}
             />
           );
         })}
       </div>
-      <span className="vp-plan-mini-now" style={{ left: `${nowLeft}%` }} aria-hidden="true" />
+      <div className="vp-fpk-hours" aria-hidden="true">
+        <span>0</span>
+        <span>6</span>
+        <span>12</span>
+        <span>18</span>
+        <span>24</span>
+      </div>
     </div>
   );
 }

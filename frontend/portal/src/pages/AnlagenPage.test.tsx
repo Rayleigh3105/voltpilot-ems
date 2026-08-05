@@ -577,6 +577,33 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     ).toBeTruthy();
   });
 
+  // PR 4 (Konzept §4b): die kurze Speicher-Fahrplan-Karte sitzt DIREKT unter
+  // dem Börsenpreis-Streifen — ① Markt (warum) → ①b Speicher-Fahrplan (was
+  // der Plan draus macht) → ② Komponenten. Gated wie die Fahrplan-Ansicht
+  // (Speicher vorhanden); der volle Chart lebt nur auf der Fahrplan-Seite.
+  it('trägt die kurze Speicher-Fahrplan-Karte zwischen Preis-Streifen und Komponenten', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-fp-band')).toBeTruthy());
+    const band = container.querySelector('.vp-fp-band') as HTMLElement;
+    expect(band.textContent).toContain('Speicher-Fahrplan');
+    // Ohne Plan (Standard-Stub): die ruhige Leere, kein voller Chart.
+    expect(band.textContent).toContain('Für heute liegt noch kein Fahrplan vor.');
+    expect(band.querySelector('.vp-chart')).toBeNull();
+    // Reihenfolge: Streifen → Karte → Komponenten.
+    const strip = container.querySelector('.vp-strompreis');
+    const komponenten = container.querySelector('.vp-komponenten');
+    expect(strip).toBeTruthy();
+    expect(komponenten).toBeTruthy();
+    expect(
+      (strip as Node).compareDocumentPosition(band) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      band.compareDocumentPosition(komponenten as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('v1 kennt keinen Börsenpreis-Streifen — und ruft die Preise gar nicht ab', async () => {
     mockAdaptive(false);
     mockSurface(LEER);
