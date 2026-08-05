@@ -193,7 +193,11 @@ export function ErloeseSection({
   const isDay = range === 'day';
 
   const ergebnis = erloesErgebnis({ money, periodLabel: label });
-  const preise = preisTreiber({ money, netzladenErlaubt: site.netzladenErlaubt });
+  const preise = preisTreiber({
+    money,
+    netzladenErlaubt: site.netzladenErlaubt,
+    siteId: site.id,
+  });
   const vergleichName = vergleichsName(anchor, range, modus);
   const kopfVergleich = vorher ? (
     <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range, modus)}</span>
@@ -338,6 +342,16 @@ export function ErloeseSection({
                       <span className="vp-pt-wert">{z.wert}</span>
                       <span className="vp-pt-label">{z.label}</span>
                       {z.note && <span className="vp-pt-note">{z.note}</span>}
+                      {z.hinweise.map((h) => (
+                        <span key={h} className="vp-pt-hint">
+                          {h}
+                        </span>
+                      ))}
+                      {z.href && (
+                        <a className="vp-pt-link" href={z.href}>
+                          Zu den Einstellungen
+                        </a>
+                      )}
                     </li>
                   ))}
                 </ul>

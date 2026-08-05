@@ -37,6 +37,7 @@ import type {
 } from './api';
 import { coveredSinceLabel, periodLabel } from './anlage';
 import { eurAmount, fmtNum } from './format';
+import { marktpraemie } from './marktpraemie';
 import type { MoneyStream, MoneyStreamId, StreamPeriod } from './surface';
 
 // ---------------------------------------------------------------------------
@@ -619,6 +620,14 @@ export interface PreisZeile {
   note: string | null;
   /** false = „—" (nicht berechenbar bzw. für diese Anlage nicht zutreffend). */
   vorhanden: boolean;
+  /**
+   * Ruhige Zusatzzeilen unter der Einordnung (Vorläufigkeit, „bereits
+   * enthalten", der Weg zu einer fehlenden Eingabe). Leer bei jeder Zeile, die
+   * mit einem Satz auskommt.
+   */
+  hinweise: string[];
+  /** Optionaler Weg dorthin, wo der fehlende Wert gepflegt wird. */
+  href: string | null;
 }
 
 /** ct/kWh in Kundenschreibweise: deutsches Komma, eine Nachkommastelle. */
@@ -633,6 +642,8 @@ export interface PreisTreiberInput {
   money: SiteEarnings | null;
   /** Ob die Anlage überhaupt aus dem Netz laden darf (Stammdatum der Anlage). */
   netzladenErlaubt?: boolean;
+  /** Nur für den Weg in die Einstellungen, wo ein Wert fehlt. */
+  siteId?: string | null;
 }
 
 /**
@@ -645,7 +656,15 @@ export function preisTreiber(input: PreisTreiberInput): PreisZeile[] {
   const m = input.money;
   const zeilen: PreisZeile[] = [];
   const add = (id: PreisZeileId, label: string, wert: string | null, note: string | null) => {
-    zeilen.push({ id, label, wert: wert ?? DASH, note, vorhanden: wert != null });
+    zeilen.push({
+      id,
+      label,
+      wert: wert ?? DASH,
+      note,
+      vorhanden: wert != null,
+      hinweise: [],
+      href: null,
+    });
   };
 
   const bezug = num(m?.bezugspreisCtKwh ?? null);
@@ -683,17 +702,35 @@ export function preisTreiber(input: PreisTreiberInput): PreisZeile[] {
         : null,
   );
 
-  const praemie = num(m?.marktpraemieEur ?? null);
-  add(
-    'marktpraemie',
-    'Marktprämie',
-    praemie == null ? null : signedEuro(praemie),
-    praemie == null
-      ? m?.anzulegenderWertCtKwh == null
-        ? 'Kein anzulegender Wert hinterlegt.'
-        : 'Für diesen Zeitraum ist keine Prämie angefallen.'
-      : 'bereits im Einspeise-Erlös enthalten',
-  );
+  // Die Marktprämie erklärt sich selbst (`marktpraemie.ts`) — insbesondere die
+  // BERECHNETE Null, die vorher wie ein Defekt aussah.
+  if (m) {
+    const p = marktpraemie({
+      marktpraemieEur: m.marktpraemieEur,
+      anzulegenderWertCtKwh: m.anzulegenderWertCtKwh,
+      marketValueSolarCtKwh: m.marketValueSolarCtKwh,
+      marketValueProvisional: m.marketValueProvisional,
+      eingespeistKwh: m.eingespeistKwh,
+      plantKind: m.plantKind,
+      range: m.range,
+      from: m.from,
+      to: m.to,
+      siteId: input.siteId ?? null,
+    });
+    zeilen.push({
+      id: 'marktpraemie',
+      // Der Monat IST die Abrechnungseinheit der Prämie — er gehört in die
+      // Überschrift, nicht in eine Fußnote.
+      label: p.label,
+      wert: p.wert,
+      note: p.note,
+      vorhanden: p.vorhanden,
+      hinweise: p.hinweise,
+      href: p.href,
+    });
+  } else {
+    add('marktpraemie', 'Marktprämie', null, null);
+  }
 
   const arbitrage = num(m?.arbitrageEur ?? null);
   add(
