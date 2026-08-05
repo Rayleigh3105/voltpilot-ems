@@ -1,0 +1,96 @@
+/*
+ * Speicher-Fahrplan-Karte (vp-cockpit-unten-ux-n3 PR 4, Konzept §4b) —
+ * component-local styles (index.css untouched; die geteilten
+ * `.vp-plan-mini`-Balkenfarben bleiben dort). Kurz statt Band: Erzählzeile
+ * in der Film-Grammatik, 24-Stunden-Ministreifen mit umrandetem
+ * Jetzt-Balken, Stunden-Achse, Geld-Zeile.
+ */
+.vp-fpk-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+  margin-bottom: 6px;
+}
+.vp-fpk-head h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+.vp-fpk-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+.vp-fpk-link:hover,
+.vp-fpk-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* Die Erzählzeile — dieselbe Bau-Form wie die Plan-Kopplung des
+   Preis-Streifens (Blitz · Satz · Geplant-Abzeichen). */
+.vp-fpk-story {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 0.88rem;
+  min-width: 0;
+}
+.vp-fpk-story > svg {
+  flex: 0 0 auto;
+  color: var(--vp-chart-pv, #ff9800);
+  margin-top: 2px;
+}
+.vp-fpk-story-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-fpk-geplant {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--vp-text-muted, #667);
+  background: var(--vp-surface, #fff);
+  white-space: nowrap;
+}
+
+/* Ministreifen: die geteilten .vp-plan-mini-Balken, hier mit UMRANDETEM
+   Jetzt-Balken (statt der früheren Positionslinie) + Stunden-Achse. */
+.vp-fpk-ribbon {
+  min-width: 0;
+}
+.vp-fpk-ribbon .vp-plan-mini {
+  height: 40px;
+}
+.vp-fpk-ribbon .vp-plan-mini i.now {
+  outline: 2px solid var(--vp-chart-plan, #1e3a5f);
+  outline-offset: 1px;
+}
+.vp-fpk-hours {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  color: var(--vp-text-muted, #667);
+  margin-top: 2px;
+}
+
+.vp-fpk-money {
+  margin: 8px 0 0;
+  font-size: 0.86rem;
+}
+.vp-fpk-money b {
+  color: #2e7d32;
+}

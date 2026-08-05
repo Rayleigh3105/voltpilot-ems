@@ -1111,6 +1111,21 @@ export function AnlageSeite({
             />
           )}
 
+          {/* ①b Speicher-Fahrplan (PR 4, Konzept §4b): die kurze Karte erzählt
+              den Tag — der Streifen darüber sagt „jetzt". Gated wie die
+              Fahrplan-Ansicht selbst (Speicher vorhanden, die surface-Regel);
+              der volle Chart lebt nur noch auf der Fahrplan-Seite (D7). */}
+          {(surface?.deepViews ?? []).includes('fahrplan') && (
+            <FahrplanBand
+              plan={plan}
+              plantKind={site.plantKind}
+              now={now}
+              loading={planLoading && plan == null}
+              failed={planFailed}
+              onOpen={() => onOpenSub('fahrplan')}
+            />
+          )}
+
           {/* Merge Option A · Stratum 3: Komponenten im Detail — das Board
               (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die
               Abrufe starten erst nahe dem Viewport (lazy-mount). */}
