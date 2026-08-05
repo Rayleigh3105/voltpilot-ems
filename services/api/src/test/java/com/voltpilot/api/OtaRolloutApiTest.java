@@ -620,11 +620,65 @@ class OtaRolloutApiTest {
     }
 
     /**
+     * Das INVENTAR (UX-Konzept §4, E1/E4): die Vereinigung von Aufkleber-
+     * Registry und echter Flotte - der Read, ohne den die Seite „Geräte" die
+     * Bestandsboxen gar nicht kennen konnte.
+     */
+    @Test
+    @Order(8)
+    void theDeviceInventoryUnitesTheStickerRegistryWithTheRealFleet() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        // Eine echte Bestandsbox: selbst generierte Referenz, NIE in der
+        // Aufkleber-Registry - genau die Klasse, die auf der alten
+        // Registry-Seite mit null Zeilen auftauchte.
+        String ref = "ota-inv-" + UUID.randomUUID().toString().substring(0, 8);
+        UUID device = claim(customer, ref);
+        // Und eine gedruckte ID, die noch niemand verbunden hat.
+        String sticker = "VP-INV-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+        assertThat(post("/api/v1/admin/provisioned-devices", admin,
+                Map.of("externalRef", sticker)).getStatusCode())
+                .isIn(HttpStatus.CREATED, HttpStatus.OK);
+
+        ResponseEntity<String> res = rest.exchange(url("/api/v1/admin/devices"),
+                HttpMethod.GET, new HttpEntity<>(bearer(admin)), String.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode rows = json.readTree(res.getBody()).get("devices");
+
+        JsonNode connected = deviceRow(rows, ref);
+        assertThat(connected).as("die echte Flotte fehlt im Inventar").isNotNull();
+        assertThat(connected.get("deviceId").asText()).isEqualTo(device.toString());
+        // Eine `edge-`Referenz läuft per Konstruktion an der Registry vorbei -
+        // das ist der Normalfall der Bestandsflotte, kein Mangel.
+        assertThat(connected.get("provisioned").asBoolean()).isFalse();
+        assertThat(connected.get("siteName").isNull()).isFalse();
+
+        JsonNode printed = deviceRow(rows, sticker);
+        assertThat(printed).as("die gedruckte ID fehlt im Inventar").isNotNull();
+        assertThat(printed.get("deviceId").isNull()).isTrue();
+        assertThat(printed.get("provisioned").asBoolean()).isTrue();
+        // Über eine ID, die sich nie gemeldet hat, ist NICHTS abzuleiten -
+        // „unbekannt" wäre schon eine Behauptung über ein Gerät, das es noch
+        // gar nicht gibt.
+        assertThat(printed.get("state").isNull()).isTrue();
+
+        // Und jedes Gerät steht GENAU EINMAL drin.
+        long dupes = java.util.stream.StreamSupport.stream(rows.spliterator(), false)
+                .filter(r -> ref.equals(r.get("externalRef").asText())).count();
+        assertThat(dupes).isEqualTo(1);
+
+        // Die Rollen-Grenze ist die des ganzen Aggregats.
+        assertThat(rest.exchange(url("/api/v1/admin/devices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    /**
      * Der dokumentarische gitops-Spiegel (D2): ein EXPORT, kein Deploy - und
      * er bleibt hinter derselben Rollen-Grenze wie alles andere hier.
      */
     @Test
-    @Order(8)
+    @Order(9)
     void theJournalIsExportableAsMarkdownAndStaysRoleGated() {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
@@ -677,6 +731,16 @@ class OtaRolloutApiTest {
             st.execute("UPDATE device_update_status SET blocker = " + sql(blocker)
                     + ", reason = " + sql(reason) + " WHERE device_id = '" + deviceId + "'");
         }
+    }
+
+    /** Eine Zeile des Inventars anhand ihrer Referenz, sonst {@code null}. */
+    private static JsonNode deviceRow(JsonNode rows, String externalRef) {
+        for (JsonNode r : rows) {
+            if (externalRef.equals(r.get("externalRef").asText())) {
+                return r;
+            }
+        }
+        return null;
     }
 
     /** Ein beliebiges Feld einer Flotten-Zeile - {@code null} bleibt null. */

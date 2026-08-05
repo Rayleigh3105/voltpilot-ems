@@ -896,7 +896,7 @@ function UnifiedPortal() {
             <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
           )}
           {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
-          {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage />}
+          {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage onNavigate={navigate} />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'flows' && isAdmin && <FlowsPage tenants={tenants} />}
         </>

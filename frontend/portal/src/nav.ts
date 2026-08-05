@@ -162,7 +162,11 @@ export const PLATFORM_PAGES: PageDef[] = [
   },
   { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
-  { id: 'geraete-registry', label: 'Geräte-Registry', icon: 'list', adminOnly: true },
+  // E4: „Geräte", nicht mehr „Geräte-Registry" - die Seite ist seit dem
+  // Konsolidierungs-Umbau das INVENTAR über den ganzen Lebenszyklus, nicht mehr
+  // nur die Manufacturing-Registry (die echte Flotte kam dort gar nicht vor).
+  // Die Id bleibt, damit jedes Lesezeichen und jeder Deep-Link gilt.
+  { id: 'geraete-registry', label: 'Geräte', icon: 'list', adminOnly: true },
   // OTA Stufe 2: Releases, der laufende Rollout, die Flotten-Matrix und das
   // Audit-Journal - die EINE neue Seite dieser Stufe (Scout §7.1).
   { id: 'edge-updates', label: 'Edge-Updates', icon: 'refresh-cw', adminOnly: true },

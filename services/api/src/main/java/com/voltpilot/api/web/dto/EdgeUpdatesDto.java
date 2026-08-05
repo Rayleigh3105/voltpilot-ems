@@ -81,8 +81,14 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
      * nennen kann, ohne den deutschen Grund nach Stichworten zu durchsuchen.
      * {@code null} heißt „kein Name gemeldet"; der Zustand {@code blockiert}
      * kann dann trotzdem gelten (ein älterer Edge-Stand meldet nur den Satz).
+     *
+     * <p>{@code label} ist der ANZEIGE-Name (Gerätename, sonst die Referenz),
+     * {@code externalRef} die Referenz selbst - der geteilte Geräte-Drawer
+     * zeigt beide, und die Referenz als „Name" auszugeben wäre auf einem
+     * benannten Gerät schlicht falsch.
      */
-    public record FleetRowDto(UUID deviceId, String label, UUID siteId, String siteName,
+    public record FleetRowDto(UUID deviceId, String label, String externalRef,
+            UUID siteId, String siteName,
             UUID tenantId, String tenantName, String ist, String soll, Long sollSeq,
             String channel, boolean pinned, String state, String reason, String blocker,
             Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust) {

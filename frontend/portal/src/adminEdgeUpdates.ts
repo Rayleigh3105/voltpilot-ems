@@ -113,7 +113,10 @@ export interface DeviceTrust {
 
 export interface FleetRow {
   deviceId: string;
+  /** Anzeige-Name: Gerätename, sonst die Referenz. */
   label: string;
+  /** Die Referenz selbst - auf einem benannten Gerät NICHT dasselbe. */
+  externalRef: string;
   siteId: string;
   siteName: string;
   tenantId: string;
@@ -922,4 +925,105 @@ export function freshnessLabel(fetchedAt: number, now: number): string {
   const mins = Math.round(secs / 60);
   if (mins < 60) return `Stand: vor ${mins}${NBSP}Min.`;
   return `Stand: vor ${Math.round(mins / 60)}${NBSP}Std.`;
+}
+
+// ── Rollout starten: der Kandidat und die Zusammenfassung ──────────────────
+
+/** Wie tauglich ist dieses Gerät gerade als Canary? */
+export interface CandidateView {
+  deviceId: string;
+  name: string;
+  tenantName: string | null;
+  /** Der Zustand in Worten (dieselbe Ableitung wie überall). */
+  state: string;
+  cls: StateClass;
+  /** Was gegen dieses Gerät spricht - null heißt: nichts Bekanntes. */
+  caveat: string | null;
+  /** Der bewährte Canary (D4): war er in Welle 1 des letzten Rollouts? */
+  proven: boolean;
+}
+
+/**
+ * Die Kandidaten für Welle 1 - **mit ihrem Zustand**, statt als nackte
+ * Checkbox-Liste.
+ *
+ * Der behobene Befund (UX-Konzept §3 G): der Start-Drawer zeigte weder
+ * Gerätezustand (offline? blockiert? Vertrauen offen?) noch einen Vorschlag.
+ * Ein offline gewähltes Canary lässt Welle 1 still stehen - und niemand sieht,
+ * warum.
+ *
+ * **Der Vorschlag ist eine BEOBACHTUNG, keine Empfehlung aus dem Nichts:**
+ * „bewährt" heißt hier nachweislich „stand in Welle 1 des letzten Rollouts"
+ * (D4: der eingespielte Canary). Ohne einen vorherigen Rollout wird nichts
+ * vorgeschlagen - die AUSWAHL bleibt in jedem Fall Handarbeit.
+ */
+export function candidates(
+  fleet: FleetRow[],
+  rollout: ActiveRollout | null,
+): CandidateView[] {
+  const provenIds = new Set(
+    (rollout?.waves.find((w) => w.index === 1)?.devices ?? []).map((d) => d.deviceId),
+  );
+  return sortFleet(fleet).map((row) => {
+    const st = stateLabel(row.state);
+    const cross = crossoverState(row.trust);
+    let caveat: string | null = null;
+    if (row.pinned) {
+      caveat = 'festgenagelt - ein Rollout überspringt dieses Gerät sichtbar';
+    } else if (row.state === 'offline_holt_nach') {
+      caveat = 'meldet sich gerade nicht - eine Welle 1 aus diesem Gerät stünde still';
+    } else if (row.state === 'blockiert' || row.state === 'zurueckgestellt') {
+      caveat = 'kann gerade nicht anwenden';
+    } else if (row.state === 'unbekannt') {
+      caveat = 'hat noch keinen Stand gemeldet';
+    } else if (cross.state === 'offen' || cross.state === 'fehler') {
+      caveat = 'Vertrauen noch nicht gekreuzt - dieses Gerät kann kein Release anwenden';
+    }
+    return {
+      deviceId: row.deviceId,
+      name: row.siteName,
+      tenantName: row.tenantName,
+      state: st.label,
+      cls: st.cls,
+      caveat,
+      proven: provenIds.has(row.deviceId),
+    };
+  });
+}
+
+/**
+ * Die Zusammenfassung VOR dem Start - was dieser Klick konkret auslöst.
+ *
+ * Sie nennt ausdrücklich auch, was NICHT passiert (ein festgenageltes Gerät
+ * wird übersprungen, ein offline gegangenes holt nach): beides sieht später
+ * wie ein Fehler aus, wenn es hier nicht angekündigt wurde.
+ */
+export function startSummary(
+  canaryIds: string[],
+  fleet: FleetRow[],
+): string[] {
+  const byId = new Map(fleet.map((r) => [r.deviceId, r]));
+  const canaryNames = canaryIds
+    .map((id) => byId.get(id)?.siteName)
+    .filter((n): n is string => !!n);
+  const rest = fleet.filter((r) => !canaryIds.includes(r.deviceId));
+  const lines: string[] = [];
+  if (canaryNames.length > 0) {
+    lines.push(`Welle 1 „Canary": ${canaryNames.join(', ')} - wird SOFORT zugewiesen.`);
+  }
+  if (rest.length > 0) {
+    lines.push(`Welle 2 „Flotte": ${rest.length} Gerät${rest.length === 1 ? '' : 'e'} - `
+      + 'erst nach Ihrer Freigabe.');
+  }
+  const pinned = fleet.filter((r) => r.pinned).length;
+  if (pinned > 0) {
+    lines.push(`${pinned} festgenagelt${pinned === 1 ? 'es Gerät wird' : 'e Geräte werden'} `
+      + 'übersprungen, nicht überschrieben.');
+  }
+  const offline = fleet.filter((r) => r.state === 'offline_holt_nach').length;
+  if (offline > 0) {
+    lines.push(`${offline} Gerät${offline === 1 ? '' : 'e'} meldet sich gerade nicht - die `
+      + 'Zuweisung liegt beim Broker bereit und wird nachgeholt.');
+  }
+  return lines;
 }

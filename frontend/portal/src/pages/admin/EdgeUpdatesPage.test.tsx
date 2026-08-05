@@ -52,18 +52,28 @@ const data = (over: Partial<EdgeUpdates> = {}): EdgeUpdates => ({
           bakeReason: 'Auf dieser Anlage steuert VoltPilot (noch) nicht.',
         }],
       },
-      { index: 2, name: 'Flotte', released: false, confirmed: false, devices: [] },
+      {
+        index: 2, name: 'Flotte', released: false, confirmed: false,
+        devices: [{
+          deviceId: 'd2', label: 'edge-b2', siteName: 'Auernheim', tenantName: 'Kunde A',
+          state: 'unbekannt',
+          reason: 'Dieses Gerät hat noch keinen Software-Stand gemeldet.',
+          since: null, bakeRemainingMinutes: null, bakeCycle: null, bakeReason: null,
+        }],
+      },
     ],
   },
   fleet: [
     {
-      deviceId: 'd1', label: 'edge-a1', siteId: 's1', siteName: 'Pilsting', tenantId: 't1',
+      deviceId: 'd1', label: 'edge-a1', externalRef: 'edge-a1', siteId: 's1',
+      siteName: 'Pilsting', tenantId: 't1',
       tenantName: 'Kunde A', ist: 'edge-2026.08.0', soll: 'edge-2026.08.0', sollSeq: 12,
       channel: 'canary', pinned: false, state: 'bestaetigt', reason: null,
       since: '2026-08-05T08:00:00Z', reportedAt: '2026-08-05T09:00:00Z', rolloutId: 'r1',
     },
     {
-      deviceId: 'd2', label: 'edge-b2', siteId: 's2', siteName: 'Auernheim', tenantId: 't1',
+      deviceId: 'd2', label: 'edge-b2', externalRef: 'edge-b2', siteId: 's2',
+      siteName: 'Auernheim', tenantId: 't1',
       tenantName: 'Kunde A', ist: null, soll: null, sollSeq: null, channel: null,
       pinned: false, state: 'unbekannt',
       reason: 'Dieses Gerät hat noch keinen Software-Stand gemeldet.',
@@ -90,12 +100,17 @@ describe('EdgeUpdatesPage', () => {
     edgeUpdates.mockResolvedValue(data());
   });
 
-  it('zeigt die vier Abschnitte', async () => {
+  it('zeigt die Abschnitte - und die Flotten-Matrix ist ENTFALLEN (E2)', async () => {
     render(<EdgeUpdatesPage />);
     expect(await screen.findByText('Releases')).toBeInTheDocument();
     expect(screen.getByText('Aktiver Rollout')).toBeInTheDocument();
-    expect(screen.getByText('Flotten-Matrix')).toBeInTheDocument();
     expect(screen.getByText('Verlauf')).toBeInTheDocument();
+    // Sie war die strukturelle Ursache der „zwei Wahrheiten auf einer Seite";
+    // ihre drei Aufgaben haben bessere Wohnorte. Statt ihrer steht ein
+    // Verweis - der Informationsgehalt geht nirgends verloren.
+    expect(screen.queryByText('Flotten-Matrix')).toBeNull();
+    expect(screen.queryByTestId('fleet')).toBeNull();
+    expect(screen.getByTestId('fleet-pointer')).toHaveTextContent('Geräte-Übersicht');
   });
 
   it('bietet ein Rollout NUR für ein signiertes Release an', async () => {
@@ -124,11 +139,12 @@ describe('EdgeUpdatesPage', () => {
 
   it('zeigt ein Gerät ohne Meldung als „unbekannt" MIT Grund - nie als veraltet', async () => {
     render(<EdgeUpdatesPage />);
-    await screen.findByTestId('fleet');
-    const matrix = screen.getByTestId('fleet');
-    expect(matrix).toHaveTextContent('unbekannt');
-    expect(matrix).toHaveTextContent('noch keinen Software-Stand gemeldet');
-    expect(matrix).not.toHaveTextContent('veraltet');
+    // Seit dem Wegfall der Matrix trägt das Wellen-Board diese Wahrheit - und
+    // zwar als EINZIGE Fläche der Seite (keine zwei Antworten mehr).
+    expect(await screen.findByText('Auernheim')).toBeInTheDocument();
+    expect(document.body.textContent).toContain('unbekannt');
+    expect(document.body.textContent).toContain('noch keinen Software-Stand gemeldet');
+    expect(document.body.textContent).not.toContain('veraltet');
   });
 
   it('blendet das Zustands-Protokoll aus dem Verlauf aus', async () => {
@@ -158,11 +174,11 @@ describe('EdgeUpdatesPage', () => {
     expect(screen.getByText('eingefroren ⚠')).toBeInTheDocument();
   });
 
-  it('weist ein Einzelgerät über die Matrix-Zeile zu', async () => {
+  it('weist ein Einzelgerät über die Wellen-Zeile zu', async () => {
     setUpdateTarget.mockResolvedValue(undefined);
     render(<EdgeUpdatesPage />);
-    await screen.findByTestId('fleet');
-    fireEvent.click(screen.getByText('Auernheim'));
+    // Die Wellen-Zeile ist seit dem Wegfall der Matrix der Weg ins Gerät.
+    fireEvent.click(await screen.findByText('Auernheim'));
 
     const drawer = await screen.findByRole('dialog');
     // Nur signierte Releases stehen zur Wahl.
@@ -211,8 +227,7 @@ describe('Wellen-Automatik + TOFU-Abschluss auf der Seite', () => {
     expect(screen.getByTestId('advance-note')).toHaveTextContent('Offen:');
   });
 
-  it('schaltet den Vorschub um - und fragt VORHER, was sich dabei ändert', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('schaltet den Vorschub um - und fragt VORHER im Haus-Muster, was sich ändert', async () => {
     edgeUpdates.mockResolvedValue(data());
     setAutoAdvance.mockResolvedValue(undefined);
     render(<EdgeUpdatesPage />);
@@ -221,54 +236,67 @@ describe('Wellen-Automatik + TOFU-Abschluss auf der Seite', () => {
     expect(screen.getByTestId('advance-mode')).toHaveTextContent('Wellen von Hand');
     fireEvent.click(screen.getByRole('button', { name: /Automatisch weiterschalten/ }));
 
+    // Der Klick schaltet NICHT sofort um - erst die Folgenliste, dann die Tat.
+    const list = await screen.findByTestId('confirm-consequences');
+    // Sie nennt, was GLEICH bleibt: sonst liest sich das Umlegen wie ein
+    // Lockern der Regeln.
+    expect(list).toHaveTextContent('Bake-Kriterium');
+    expect(list).toHaveTextContent('automatische Halt');
+    expect(list).toHaveTextContent('Not-Aus');
+    expect(setAutoAdvance).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Automatik einschalten' }));
     await waitFor(() => expect(setAutoAdvance).toHaveBeenCalledWith('r1', true));
-    // Die Rückfrage nennt, was GLEICH bleibt - sonst liest sich das Umlegen
-    // wie ein Lockern der Regeln.
-    expect(confirmSpy.mock.calls[0][0]).toContain('Bake-Kriterium');
-    confirmSpy.mockRestore();
   });
 
-  it('zeigt den Vertrauens-Stand je Gerät und nennt Abwesenheit „unbekannt"', async () => {
-    const base = data();
-    edgeUpdates.mockResolvedValue({
-      ...base,
-      fleet: [
-        {
-          ...base.fleet[0],
-          trust: {
-            rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
-            trustSetGeneratedAt: '2026-09-01T10:00:00Z', trustSetError: null,
-          },
-        },
-        {
-          ...base.fleet[1],
-          trust: {
-            rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null,
-            trustSetError: 'Diesem Stand ist kein Vertrauensanker eingebacken.',
-          },
-        },
-      ],
-    });
+  it('friert NUR nach der Folgenliste ein - und nennt die Endgültigkeit', async () => {
+    edgeUpdates.mockResolvedValue(data());
+    haltRollout.mockResolvedValue(undefined);
     render(<EdgeUpdatesPage />);
 
-    await waitFor(() => expect(screen.getByTestId('fleet')).toBeInTheDocument());
-    expect(screen.getByText('gekreuzt ✓')).toBeInTheDocument();
-    expect(screen.getByText('Crossover offen')).toBeInTheDocument();
-    // Der ruhige Hinweis über der Flotte zählt nur die BELEGT offenen.
-    expect(screen.getByTestId('crossover-hint'))
-      .toHaveTextContent('Crossover offen: 1 Gerät');
+    fireEvent.click(await screen.findByRole('button', { name: /Einfrieren/ }));
+    const list = await screen.findByTestId('confirm-consequences');
+    expect(list).toHaveTextContent('ENDGÜLTIG');
+    // Bereits erteilte Zuweisungen BLEIBEN - das steht in der Rückfrage, nicht
+    // erst hinterher.
+    expect(list).toHaveTextContent('BLEIBEN bestehen');
+    expect(haltRollout).not.toHaveBeenCalled();
+
+    // Abbrechen ändert nichts.
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    await waitFor(() => expect(screen.queryByTestId('confirm-consequences')).toBeNull());
+    expect(haltRollout).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Einfrieren/ }));
+    await screen.findByTestId('confirm-consequences');
+    fireEvent.click(screen.getByRole('button', { name: 'Endgültig einfrieren' }));
+    await waitFor(() => expect(haltRollout).toHaveBeenCalledWith('r1'));
   });
 
-  it('schweigt über den Crossover, solange kein Gerät ihn meldet', async () => {
+  it('traegt den ruhigen Crossover-Hinweis im Verweis auf die Geraete-Seite', async () => {
+    const d = data();
+    d.fleet[0].trust = {
+      rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null,
+      trustSetError: 'Diesem Stand ist kein Vertrauensanker eingebacken.',
+    };
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    // Die SPALTE „Vertrauen" wohnt seit E2 auf der Geraete-Seite; hier bleibt
+    // die ruhige Zeile, weil sie eine Aufgabe der ganzen Flotte benennt.
+    const pointer = await screen.findByTestId('fleet-pointer');
+    expect(pointer).toHaveTextContent('Crossover offen: 1 Gerät');
+  });
+
+  it('behauptet ohne gemeldeten Vertrauensanker keinen offenen Crossover', async () => {
     edgeUpdates.mockResolvedValue(data());
     render(<EdgeUpdatesPage />);
 
-    await waitFor(() => expect(screen.getByTestId('fleet')).toBeInTheDocument());
-    // Zwei Geräte OHNE trust-Block: das ist „unbekannt" und wird als solches
+    const pointer = await screen.findByTestId('fleet-pointer');
+    // Zwei Geraete OHNE trust-Block: das ist „unbekannt" und wird als solches
     // genannt - nie als „Crossover offen".
-    expect(screen.getByTestId('crossover-hint'))
-      .toHaveTextContent('melden ihren Vertrauensanker nicht');
-    expect(screen.getByTestId('crossover-hint')).not.toHaveTextContent('Crossover offen');
+    expect(pointer).toHaveTextContent('melden ihren Vertrauensanker nicht');
+    expect(pointer).not.toHaveTextContent('Crossover offen');
   });
 });
 
@@ -296,7 +324,7 @@ describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
 
   it('zeigt die Karte GAR NICHT, wenn nichts ansteht', async () => {
     render(<EdgeUpdatesPage />);
-    await screen.findByTestId('fleet');
+    await screen.findByText('Aktiver Rollout');
     expect(screen.queryByTestId('handeln')).toBeNull();
   });
 
@@ -307,7 +335,7 @@ describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
 
-    await screen.findByTestId('fleet');
+    await screen.findByText('Aktiver Rollout');
     // DER Kern des Umbaus: die zwei Situationen sehen nie wieder gleich aus.
     expect(screen.getAllByTestId('state-action').length).toBeGreaterThan(0);
     expect(screen.getAllByTestId('state-busy').length).toBeGreaterThan(0);
@@ -321,7 +349,7 @@ describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
 
-    await screen.findByTestId('fleet');
+    await screen.findByText('Aktiver Rollout');
     expect(screen.getAllByTestId('lever')[0]).toHaveTextContent('VP_OTA_NEUTRAL_VERIFIED');
     expect(screen.getAllByTestId('state-blocked').length).toBeGreaterThan(0);
   });
@@ -336,7 +364,7 @@ describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
     edgeUpdates.mockResolvedValue(d);
     render(<EdgeUpdatesPage />);
 
-    await screen.findByTestId('fleet');
+    await screen.findByText('Aktiver Rollout');
     expect(screen.getByText(/Entferntes Gerät/)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('91f3-4c1a');
   });

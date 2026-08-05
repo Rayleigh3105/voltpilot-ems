@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
-import { funnelStages, pendingRows, TYPO_SUSPECT_AFTER_MS } from './onboardingFunnel';
+import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
+import {
+  TYPO_SUSPECT_AFTER_MS,
+  deviceRows,
+  funnelStages,
+  pendingRows,
+  versionDisplay,
+  versionLabel,
+} from './onboardingFunnel';
 
 const NOW = new Date('2026-08-03T12:00:00Z');
 
@@ -96,5 +103,119 @@ describe('pendingRows', () => {
     const list = [pending('edge-b', 1000), pending('edge-a', 2000)];
     pendingRows(list, NOW);
     expect(list.map((p) => p.externalRef)).toEqual(['edge-b', 'edge-a']);
+  });
+});
+
+// ── P2 Konsolidierung: vierte Stufe, Inventar, Tag+Build ───────────────────
+
+const fleetRow = (over: Partial<AdminDeviceRow> = {}): AdminDeviceRow => ({
+  deviceId: 'd1', externalRef: 'edge-a1', label: 'edge-a1', siteId: 's1',
+  siteName: 'Auernheim', tenantId: 't1', tenantName: 'Kunde A', kind: null,
+  ist: 'edge-2026.08.1-9b37439a02c1', soll: 'edge-2026.08.1', sollSeq: 14,
+  channel: 'stable', pinned: false, state: 'bestaetigt', reason: null, blocker: null,
+  lastSeenAt: null, reportedAt: null, provisioned: false, note: null, provisionedAt: null,
+  trust: null, ...over,
+});
+
+const crossed = {
+  rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
+  trustSetGeneratedAt: '2026-08-04T10:00:00Z', trustSetError: null,
+};
+const openCrossover = {
+  rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null,
+  trustSetError: 'Diesem Stand ist kein Vertrauensanker eingebacken.',
+};
+
+describe('Funnel-Stufe 4 „Vertrauen gekreuzt"', () => {
+  it('schließt den Funnel - „verbunden" ist nicht das Onboarding-Ende', () => {
+    const stages = funnelStages([], [], [
+      fleetRow({ deviceId: 'a', externalRef: 'a', trust: crossed }),
+      fleetRow({ deviceId: 'b', externalRef: 'b', trust: openCrossover }),
+    ]);
+    const trust = stages.find((s) => s.id === 'vertrauen')!;
+    expect(trust.count).toBe(1);
+    expect(trust.note).toContain('1 Gerät ist noch nicht update-fähig');
+    // Ein offener Crossover ist eine AUFGABE - er verdient Aufmerksamkeit.
+    expect(trust.attention).toBe(true);
+  });
+
+  it('zählt ein Gerät ohne gemeldeten Anker WEDER als gekreuzt NOCH als offen', () => {
+    // „unbekannt" ist keine Aufgabe - daraus lässt sich nichts ableiten.
+    const stages = funnelStages([], [], [
+      fleetRow({ deviceId: 'a', externalRef: 'a', trust: crossed }),
+      fleetRow({ deviceId: 'b', externalRef: 'b', trust: null }),
+    ]);
+    const trust = stages.find((s) => s.id === 'vertrauen')!;
+    expect(trust.count).toBe(1);
+    expect(trust.attention).toBe(false);
+  });
+
+  it('erscheint GAR NICHT ohne Flotte - eine „0 von 0"-Kachel ist kein Befund', () => {
+    expect(funnelStages([], [], []).map((s) => s.id)).toEqual([
+      'registriert', 'wartet', 'verbunden',
+    ]);
+  });
+
+  it('zählt „verbunden" über die ECHTE Flotte, nicht über Aufkleber', () => {
+    // Der behobene Befund: die Bestandsboxen verbinden sich über selbst
+    // generierte `edge-`Referenzen und kamen in dieser Zahl gar nicht vor.
+    const registry = [{
+      externalRef: 'VP-DEMO-0001', kind: 'inverter', note: null,
+      provisionedAt: '2026-07-01T00:00:00Z', claimed: false, claimedByTenant: null,
+    }];
+    const stages = funnelStages(registry, [], [fleetRow(), fleetRow({
+      deviceId: 'd2', externalRef: 'edge-b2',
+    })]);
+    expect(stages.find((s) => s.id === 'verbunden')!.count).toBe(2);
+    // Ohne Inventar (älteres Backend) bleibt die alte Quelle gültig.
+    expect(funnelStages(registry, [], []).find((s) => s.id === 'verbunden')!.count).toBe(0);
+  });
+});
+
+describe('Das Inventar', () => {
+  it('stellt die verbundene Flotte vor die gedruckten IDs', () => {
+    const rows = deviceRows([
+      fleetRow({ deviceId: null, externalRef: 'VP-DEMO-0002', siteName: null, label: null,
+        state: null, provisioned: true }),
+      fleetRow({ deviceId: 'd1', externalRef: 'edge-a1', siteName: 'Auernheim' }),
+    ]);
+    expect(rows.map((r) => r.lifecycle)).toEqual(['verbunden', 'gedruckt']);
+    expect(rows[0].name).toBe('Auernheim');
+    // Eine gedruckte ID hat noch keinen Namen - dann IST die Referenz der Name.
+    expect(rows[1].name).toBe('VP-DEMO-0002');
+  });
+
+  it('sortiert innerhalb der Flotte warn-first', () => {
+    const rows = deviceRows([
+      fleetRow({ deviceId: 'a', externalRef: 'a', siteName: 'A', state: 'bestaetigt' }),
+      fleetRow({ deviceId: 'b', externalRef: 'b', siteName: 'B', state: 'blockiert' }),
+      fleetRow({ deviceId: 'c', externalRef: 'c', siteName: 'C', state: 'fehlgeschlagen' }),
+      fleetRow({ deviceId: 'd', externalRef: 'd', siteName: 'D', state: 'wartet_auf_anwendung' }),
+    ]);
+    expect(rows.map((r) => r.name)).toEqual(['C', 'D', 'B', 'A']);
+  });
+});
+
+describe('Tag + Build', () => {
+  const releases = [{ version: 'edge-2026.08.1' }, { version: 'edge-2026.08.0' }];
+
+  it('trennt Tag und Build nach der PRÄFIX-Regel', () => {
+    expect(versionLabel('edge-2026.08.1-9b37439a02c1', releases))
+      .toBe('edge-2026.08.1 (Build 9b37439a)');
+    expect(versionLabel('edge-2026.08.1', releases)).toBe('edge-2026.08.1');
+  });
+
+  it('lässt eine nackte SHA VERBATIM - ein Release-Tag wird nie erfunden', () => {
+    // Ein Bestandsbau gehört zu keinem Release; ihn zu zerlegen erfände ein
+    // Tag, mit dem er nie gebaut wurde.
+    expect(versionLabel('665d59b8c0de', releases)).toBe('665d59b8c0de');
+    // Und ein Präfix-Treffer ohne Trenner zählt NICHT.
+    expect(versionLabel('edge-2026.08.11', releases)).toBe('edge-2026.08.11');
+  });
+
+  it('sagt „–", wenn nichts gemeldet wurde - nie eine erfundene Version', () => {
+    expect(versionLabel(null, releases)).toBe('–');
+    expect(versionLabel('', releases)).toBe('–');
+    expect(versionDisplay(null)).toBeNull();
   });
 });

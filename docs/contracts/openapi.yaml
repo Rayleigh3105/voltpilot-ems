@@ -2146,6 +2146,30 @@ paths:
           description: Releases, the newest rollout, the fleet matrix, the journal and the KPI.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/devices:
+    get:
+      tags: [admin]
+      summary: The device INVENTORY over the whole lifecycle (platform page "Geräte").
+      description: >
+        The UNION of the sticker registry and the real fleet, joined on the
+        external reference - one row per device, whichever half exists.
+        It closes the finding that the page called "Geräte-Registry" did not
+        contain the real fleet at all: its table listed only `VP-` sticker IDs,
+        while the shipped boxes connect through self-generated `edge-`
+        references and appeared there with ZERO rows.
+        `deviceId == null` is a printed sticker ID that no customer has
+        connected yet; `provisioned == false` is a connected device whose
+        reference never came from the registry (the normal case for the
+        installed base). A row that is not yet a device carries NO state -
+        deriving one would be a claim about a device that does not exist.
+        The state fields are the SAME derivation as the fleet row
+        (RolloutStates), so the two surfaces can never disagree.
+        Platform-admin only.
+      responses:
+        "200":
+          description: One row per device - registry half, fleet half, or both.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/rollouts:
     post:
       tags: [admin]

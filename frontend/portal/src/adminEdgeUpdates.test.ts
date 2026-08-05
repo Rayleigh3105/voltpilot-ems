@@ -5,6 +5,7 @@ import {
   bakeLine,
   blockerLever,
   canRollOut,
+  candidates,
   crossoverHint,
   crossoverState,
   eventLabel,
@@ -22,6 +23,7 @@ import {
   rolloutStateLabel,
   signatureLabel,
   sortFleet,
+  startSummary,
   stateLabel,
   trustSetSpread,
   visibleJournal,
@@ -39,6 +41,7 @@ import {
 const row = (over: Partial<FleetRow> = {}): FleetRow => ({
   deviceId: over.deviceId ?? 'd1',
   label: 'edge-a1',
+  externalRef: 'edge-a1',
   siteId: 's1',
   siteName: over.siteName ?? 'Pilsting',
   tenantId: 't1',
@@ -685,5 +688,66 @@ describe('Puls-Signal „Sie sind dran"', () => {
       newestRelease: 'edge-2026.08.1' });
     expect(text).not.toContain('wartet auf Sie');
     expect(text).toBe('5/5 aktuell');
+  });
+});
+
+describe('Rollout starten: Kandidat + Zusammenfassung (P2)', () => {
+  it('zeigt je Kandidat den ZUSTAND und nennt, was gegen ihn spricht', () => {
+    // Der behobene Befund: der Start-Drawer zeigte weder Gerätezustand noch
+    // Vorschlag - ein offline gewähltes Canary lässt Welle 1 still stehen.
+    const list = candidates([
+      row({ deviceId: 'a', siteName: 'A', state: 'bestaetigt' }),
+      row({ deviceId: 'b', siteName: 'B', state: 'offline_holt_nach' }),
+      row({ deviceId: 'c', siteName: 'C', state: 'bestaetigt', pinned: true }),
+    ], null);
+    const byName = new Map(list.map((c) => [c.name, c]));
+    expect(byName.get('A')!.caveat).toBeNull();
+    expect(byName.get('B')!.caveat).toContain('still');
+    expect(byName.get('C')!.caveat).toContain('festgenagelt');
+  });
+
+  it('nennt einen offenen Crossover als Einwand - dort wirkt kein Release', () => {
+    const list = candidates([row({
+      deviceId: 'a', siteName: 'A', state: 'bestaetigt',
+      trust: { rootKeyIds: [], trustSetKeyIds: [], trustSetGeneratedAt: null,
+        trustSetError: 'kein Anker' },
+    })], null);
+    expect(list[0].caveat).toContain('Vertrauen');
+  });
+
+  it('schlägt nur einen BELEGT bewährten Canary vor - sonst gar keinen', () => {
+    const last = {
+      id: 'r0', releaseVersion: 'edge-2026.08.0', releaseSeq: 12, channel: 'canary',
+      state: 'done', currentWave: 2, waveCount: 2, haltedReason: null, createdBy: 'admin',
+      createdAt: '2026-08-01T08:00:00Z', canPromote: false, promoteBlockedReason: null,
+      waves: [
+        { index: 1, name: 'Canary', released: true, confirmed: true,
+          devices: [waveDev({ deviceId: 'a' })] },
+        { index: 2, name: 'Flotte', released: true, confirmed: true, devices: [] },
+      ],
+    };
+    const list = candidates([row({ deviceId: 'a', siteName: 'A' }),
+      row({ deviceId: 'b', siteName: 'B' })], last);
+    expect(list.find((c) => c.name === 'A')!.proven).toBe(true);
+    expect(list.find((c) => c.name === 'B')!.proven).toBe(false);
+    // Ohne vorherigen Rollout wird NICHTS vorgeschlagen.
+    expect(candidates([row({ deviceId: 'a' })], null)[0].proven).toBe(false);
+  });
+
+  it('sagt vor dem Start, was passiert - INKLUSIVE dessen, was nicht passiert', () => {
+    const lines = startSummary(['a'], [
+      row({ deviceId: 'a', siteName: 'Pilsting' }),
+      row({ deviceId: 'b', siteName: 'B' }),
+      row({ deviceId: 'c', siteName: 'C', pinned: true }),
+      row({ deviceId: 'd', siteName: 'D', state: 'offline_holt_nach' }),
+    ]);
+    const text = lines.join(' ');
+    expect(text).toContain('Welle 1 „Canary": Pilsting');
+    expect(text).toContain('SOFORT');
+    expect(text).toContain('3 Geräte');
+    // Beides sieht später wie ein Fehler aus, wenn es hier nicht angekündigt
+    // wurde.
+    expect(text).toContain('übersprungen, nicht überschrieben');
+    expect(text).toContain('nachgeholt');
   });
 });

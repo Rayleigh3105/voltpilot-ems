@@ -8,31 +8,51 @@ import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
 import { ApiError } from '../../api';
-import { adminApi, type PendingEnrollment, type ProvisionedDevice } from '../../admin/adminApi';
+import {
+  adminApi,
+  type AdminDeviceRow,
+  type PendingEnrollment,
+  type ProvisionedDevice,
+} from '../../admin/adminApi';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
 import { normalizeDeviceIdInput } from '../../anlageFlow';
-import { deviceKindLabel, fmtRelative } from '../../format';
-import { funnelStages, pendingRows } from '../../onboardingFunnel';
-
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('de-DE');
+import { fmtRelative } from '../../format';
+import { deviceRows, funnelStages, pendingRows, versionLabel } from '../../onboardingFunnel';
+import { crossoverState, stateLabel, type EdgeUpdates } from '../../adminEdgeUpdates';
+import { GeraeteDrawer } from './GeraeteDrawer';
 
 /**
- * Plattform → Geräte-Registry: der Onboarding-FUNNEL eines Geräts, nicht mehr
- * nur seine Manufacturing-Registry.
+ * Plattform → **Geräte**: das INVENTAR über den ganzen Lebenszyklus (UX-Konzept
+ * `vp-admin-geraete-ux-k2` §4, E1/E4 — umbenannt aus „Geräte-Registry").
  *
- * Drei Stufen: **registriert** (die Aufkleber-ID steht hier, nur sie kann ein
+ * Vier Stufen: **registriert** (die Aufkleber-ID steht hier, nur sie kann ein
  * Kunde verbinden — ein Tippfehler wird sofort abgewiesen statt ein Geist-Gerät
  * anzulegen) → **wartet auf Zuordnung** (das Gerät hat sich gemeldet, aber kein
- * Claim passt: das Tippfehler-Fenster) → **verbunden**.
+ * Claim passt: das Tippfehler-Fenster) → **verbunden** → **Vertrauen
+ * gekreuzt**.
  *
- * Die mittlere Stufe war bis zum Admin-Umbau (Stufe 1, B3) unsichtbar, obwohl
- * `GET /api/v1/admin/enrollments/pending` seit dem Enrollment-Bau existiert —
- * ein Gerät „tat seinen Teil", während der Kunde eine andere Referenz tippte,
- * und beide Seiten sahen davon nichts.
+ * **Zwei Befunde, die diese Seite hier behebt:** sie enthielt die ECHTE Flotte
+ * gar nicht (ihre Tabelle listete ausschließlich `VP-`Aufkleber-IDs, während
+ * die Bestandsboxen über selbst generierte `edge-`Referenzen verbunden sind und
+ * mit NULL Zeilen auftauchten), und der Funnel endete eine Stufe zu früh —
+ * „verbunden" ist nicht das Onboarding-Ende, erst der TOFU-Crossover macht eine
+ * Box update-fähig. Diese Spalte wohnte in der Flotten-Matrix der ANDEREN
+ * Seite.
+ *
+ * Eine Zeile öffnet den EINEN Geräte-Drawer, den auch die Update-Seite
+ * benutzt — ein Gerät hat genau einen Ort.
  */
 export function GeraeteRegistryPage() {
   const [devices, setDevices] = useState<ProvisionedDevice[] | null>(null);
+  const [fleet, setFleet] = useState<AdminDeviceRow[] | null>(null);
+  // Releases + Journal für den geteilten Drawer (Zuweisung + Historie). FAIL-
+  // SOFT in einem EIGENEN Zustand: fällt der Abruf aus, bleibt das Inventar
+  // benutzbar, der Drawer zeigt dann eben keine Zuweisung.
+  const [updates, setUpdates] = useState<EdgeUpdates | null>(null);
+  const [openRef, setOpenRef] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingEnrollment[] | null>(null);
   // Getrennt von `pending === null` (= lädt noch), damit ein Fehlschlag als
   // Fehlschlag steht und nie als "niemand wartet" gelesen wird.
@@ -42,6 +62,7 @@ export function GeraeteRegistryPage() {
   // so a failed load shows a retryable ErrorState, not a permanent skeleton.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   async function reload() {
     setError(null);
@@ -50,6 +71,19 @@ export function GeraeteRegistryPage() {
       setDevices(await adminApi.listProvisionedDevices());
     } catch (e) {
       setLoadError(e instanceof ApiError ? e.message : 'Die Registry konnte nicht geladen werden.');
+    }
+    // Das Inventar ist eine EIGENE Wahrheit: ein älteres Backend kennt die
+    // Route noch nicht, dann fehlt die Flotte - und das ist ehrlicher als eine
+    // erfundene Zeile.
+    try {
+      setFleet(await adminApi.listDevices());
+    } catch {
+      setFleet(null);
+    }
+    try {
+      setUpdates(await adminApi.edgeUpdates());
+    } catch {
+      setUpdates(null);
     }
     // Die wartenden Geräte sind eine EIGENE Wahrheit: fällt ihr Abruf aus,
     // bleibt die Registry darunter benutzbar (und die Sektion sagt selbst, dass
@@ -64,18 +98,17 @@ export function GeraeteRegistryPage() {
     }
   }
 
-  async function remove(d: ProvisionedDevice) {
-    if (!window.confirm(`Geräte-ID „${d.externalRef}“ aus der Registry entfernen? Sie kann danach von keinem Kunden mehr verbunden werden.`)) {
-      return;
-    }
+  // Auch hier die Folgenliste des Hauses statt des nativen Ein-Satz-Dialogs:
+  // das Entfernen macht eine gedruckte Aufkleber-ID unbrauchbar.
+  async function remove(externalRef: string) {
     setError(null);
     try {
-      await adminApi.deleteProvisionedDevice(d.externalRef);
+      await adminApi.deleteProvisionedDevice(externalRef);
       await reload();
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 409
-          ? `„${d.externalRef}“ ist bereits mit einem Kundenkonto verbunden und kann nicht entfernt werden. Der Kunde (oder Sie über die Mandanten-Ansicht) muss das Gerät zuerst entfernen.`
+          ? `„${externalRef}“ ist bereits mit einem Kundenkonto verbunden und kann nicht entfernt werden. Der Kunde (oder Sie über die Mandanten-Ansicht) muss das Gerät zuerst entfernen.`
           : e instanceof ApiError
             ? `Entfernen fehlgeschlagen: ${e.message}`
             : 'Entfernen fehlgeschlagen. Bitte versuchen Sie es erneut.',
@@ -98,14 +131,19 @@ export function GeraeteRegistryPage() {
       <AdminPageHead
         icon="list"
         category="primary"
-        title="Geräte-Registry"
-        description="Der Weg eines Geräts: registrieren - Kunde verbindet es - es liefert Daten. Kunden können nur registrierte Geräte-IDs verbinden, Tippfehler werden sofort abgewiesen."
+        title="Geräte"
+        description="Jedes Gerät über seinen ganzen Lebenszyklus: gedruckte Aufkleber-IDs und die verbundene Flotte in EINER Tabelle. Eine Zeile öffnet das Gerät."
         actions={registerButton}
       />
 
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
 
-      <FunnelStrip devices={devices ?? []} pending={pending ?? []} known={devices != null} />
+      <FunnelStrip
+        devices={devices ?? []}
+        pending={pending ?? []}
+        fleet={fleet ?? []}
+        known={devices != null}
+      />
 
       <PendingEnrollments rows={pending} failed={pendingFailed} onRetry={() => void reload()} />
 
@@ -115,80 +153,76 @@ export function GeraeteRegistryPage() {
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <TableSkeleton rows={4} cols={6} />
         </Card>
-      ) : devices.length === 0 ? (
-        <Card padding="lg" radius="lg">
-          <EmptyState
-            icon="list"
-            category="primary"
-            title="Noch keine Geräte registriert"
-            description="Registrieren Sie die erste Aufkleber-ID (Format VP-XXXX-XXXX), damit Kunden ihr Gerät verbinden können."
-            action={registerButton}
-          />
-        </Card>
       ) : (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <div className="vp-admin-sec-head">
-            <h2>Registrierte Geräte-IDs</h2>
-            <p>
-              Die Manufacturing-Registry: nur eine hier eingetragene Aufkleber-ID
-              kann ein Kunde verbinden.
-            </p>
-          </div>
-          <table className="vp-table responsive">
-            <thead>
-              <tr>
-                <th>Geräte-ID</th>
-                <th>Typ</th>
-                <th>Notiz</th>
-                {/* „Registriert am" statt „Registriert": im Funnel darüber ist
-                    „Registriert" eine STUFE, hier ist es ein Datum. */}
-                <th>Registriert am</th>
-                <th>Status</th>
-                <th aria-label="Aktionen" />
-              </tr>
-            </thead>
-            <tbody>
-              {devices.map((d) => (
-                <tr key={d.externalRef}>
-                  <td data-label="Geräte-ID" className="vp-mono">
-                    {d.externalRef}
-                  </td>
-                  <td data-label="Typ">{deviceKindLabel(d.kind)}</td>
-                  <td data-label="Notiz">{d.note ?? '-'}</td>
-                  <td data-label="Registriert am">{fmtDate(d.provisionedAt)}</td>
-                  <td data-label="Status">
-                    {d.claimed ? (
-                      <Badge variant="ok" dot title={d.claimedByTenant ?? undefined}>
-                        verbunden{d.claimedByTenant ? ` · ${d.claimedByTenant}` : ''}
-                      </Badge>
-                    ) : (
-                      <Badge variant="off" dot>
-                        noch nicht verbunden
-                      </Badge>
-                    )}
-                  </td>
-                  <td data-label="" style={{ textAlign: 'right' }}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={d.claimed ? undefined : 'vp-btn-danger'}
-                      iconLeft={<Icon name="trash" size={16} />}
-                      onClick={() => remove(d)}
-                      disabled={d.claimed}
-                      title={
-                        d.claimed
-                          ? 'Verbundene Geräte-IDs können nicht entfernt werden - das Gerät muss zuerst vom Kundenkonto getrennt werden.'
-                          : undefined
-                      }
-                    >
-                      Entfernen
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <DeviceInventory
+          fleet={fleet}
+          releases={updates?.releases ?? []}
+          onOpen={setOpenRef}
+          onRemove={setRemoving}
+          registerButton={registerButton}
+        />
+      )}
+
+      {openRef && (() => {
+        // Der EINE Drawer, denselben den die Update-Seite öffnet.
+        const row = (fleet ?? []).find((d) => d.externalRef === openRef);
+        if (!row) return null;
+        return (
+          <GeraeteDrawer
+            device={row}
+            releases={updates?.releases ?? []}
+            journal={updates?.journal ?? []}
+            busy={busy}
+            onClose={() => setOpenRef(null)}
+            onAssign={row.deviceId ? async (releaseSeq, channel, pinned) => {
+              setBusy(true);
+              try {
+                await adminApi.setUpdateTarget(row.deviceId as string,
+                  { releaseSeq, channel, pinned });
+                await reload();
+                setOpenRef(null);
+              } catch (e) {
+                setError(e instanceof ApiError ? e.message : 'Die Zuweisung ist fehlgeschlagen.');
+              } finally {
+                setBusy(false);
+              }
+            } : undefined}
+            onRevert={row.deviceId && row.soll ? async () => {
+              setBusy(true);
+              try {
+                await adminApi.revertUpdateTarget(row.deviceId as string);
+                await reload();
+                setOpenRef(null);
+              } catch (e) {
+                setError(e instanceof ApiError ? e.message : 'Die Rücknahme ist fehlgeschlagen.');
+              } finally {
+                setBusy(false);
+              }
+            } : undefined}
+          />
+        );
+      })()}
+
+      {removing && (
+        <ConfirmDialog
+          open
+          tone="danger"
+          title="Geräte-ID entfernen?"
+          intro={`Die Aufkleber-ID „${removing}" wird aus der Registry gelöscht.`}
+          consequences={[
+            'Kein Kunde kann diese ID danach mehr verbinden - ein Versuch wird abgewiesen.',
+            'Die gedruckte ID auf dem Gerät bleibt bestehen; sie ist dann unbrauchbar, bis '
+              + 'sie erneut registriert wird.',
+            'Erneut registrieren geht jederzeit - die Löschung ist also umkehrbar.',
+          ]}
+          confirmLabel="Geräte-ID entfernen"
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => {
+            const ref = removing;
+            setRemoving(null);
+            void remove(ref);
+          }}
+        />
       )}
 
       <ProvisionDeviceDrawer
@@ -207,18 +241,22 @@ export function GeraeteRegistryPage() {
 function FunnelStrip({
   devices,
   pending,
+  fleet,
   known,
 }: {
   devices: ProvisionedDevice[];
   pending: PendingEnrollment[];
+  fleet: AdminDeviceRow[];
   known: boolean;
 }) {
   if (!known) return null;
-  const stages = funnelStages(devices, pending);
-  const icons: Record<string, 'list' | 'history' | 'check'> = {
+  const stages = funnelStages(devices, pending, fleet);
+  const icons: Record<string, 'list' | 'history' | 'check' | 'shield'> = {
     registriert: 'list',
     wartet: 'history',
     verbunden: 'check',
+    // Die vierte Stufe: erst der TOFU-Crossover macht eine Box update-fähig.
+    vertrauen: 'shield',
   };
   return (
     <div className="vp-kpis vp-admin-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
@@ -226,7 +264,8 @@ function FunnelStrip({
         <KpiCard
           key={s.id}
           icon={<Icon name={icons[s.id]} size={20} />}
-          category={s.attention ? 'dynamic' : s.id === 'verbunden' ? 'battery' : 'primary'}
+          category={s.attention ? 'dynamic'
+            : s.id === 'verbunden' || s.id === 'vertrauen' ? 'battery' : 'primary'}
           value={String(s.count)}
           label={
             // `.vp-cell-main` ist die vorhandene Spalten-Klasse (flex column) -
@@ -239,6 +278,180 @@ function FunnelStrip({
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * **EINE Tabelle über alle Geräte** (UX-Konzept §4): gedruckte Aufkleber-IDs
+ * und die verbundene Flotte, verbunden über die Referenz.
+ *
+ * Der behobene Befund: die Vorgänger-Tabelle listete ausschließlich
+ * `VP-`Aufkleber-IDs. Die realen Bestandsboxen sind über selbst generierte
+ * `edge-`Referenzen verbunden und tauchten hier mit NULL Zeilen auf — wer
+ * „meine Geräte" suchte, fand sie nur als Nebenspalten anderer Seiten.
+ *
+ * Eine Zeile ist anklickbar, sobald es etwas zu zeigen gibt; das „Entfernen"
+ * bleibt an der gedruckten, unverbundenen ID (nur sie darf aus der Registry).
+ */
+function DeviceInventory({
+  fleet,
+  releases,
+  onOpen,
+  onRemove,
+  registerButton,
+}: {
+  fleet: AdminDeviceRow[] | null;
+  releases: { version: string }[];
+  onOpen: (ref: string) => void;
+  onRemove: (externalRef: string) => void;
+  registerButton: React.ReactNode;
+}) {
+  // ⚠ Ohne Inventar (älteres Backend, 404) wird die Registry NICHT als Ersatz
+  // gerendert: eine beanspruchte Aufkleber-ID hat dort zwar `claimed`, aber
+  // keine Geräte-Id - jede Zeile läse sich als „noch nicht verbunden", und das
+  // wäre für genau die verbundenen Geräte eine sichtbare Lüge. Ein Fehlschlag
+  // ist keine Datenlage (die `pending`-Disziplin): die Fläche sagt, dass sie
+  // nichts weiß.
+  if (fleet == null) {
+    return (
+      <Card padding="lg" radius="lg">
+        <EmptyState
+          icon="list"
+          category="primary"
+          title="Das Geräte-Inventar ist gerade nicht abrufbar"
+          description="Die Liste aller Geräte konnte nicht geladen werden. Der Funnel oben und die wartenden Geräte bleiben gültig."
+        />
+      </Card>
+    );
+  }
+  const rows = deviceRows(fleet);
+
+  if (rows.length === 0) {
+    return (
+      <Card padding="lg" radius="lg">
+        <EmptyState
+          icon="list"
+          category="primary"
+          title="Noch kein Gerät"
+          description="Registrieren Sie die erste Aufkleber-ID (Format VP-XXXX-XXXX), damit Kunden ihr Gerät verbinden können."
+          action={registerButton}
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="vp-admin-sec-head">
+        <h2>Alle Geräte</h2>
+        <p>
+          Gedruckte Aufkleber-IDs und die verbundene Flotte. Eine Zeile öffnet das Gerät.
+        </p>
+      </div>
+      <div className="vp-table-scroll">
+        <table className="vp-table responsive" data-testid="devices">
+          <thead>
+            <tr>
+              <th>Gerät</th>
+              <th>Referenz</th>
+              <th>Edge-Stand</th>
+              <th>Vertrauen</th>
+              <th>Kanal</th>
+              <th aria-label="Aktionen" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const d = r.row;
+              const connected = r.lifecycle === 'verbunden';
+              const cross = crossoverState(d.trust);
+              const st = stateLabel(d.state);
+
+              return (
+                <tr
+                  key={r.key}
+                  className={connected ? 'vp-row-click' : undefined}
+                  onClick={connected ? () => onOpen(r.key) : undefined}
+                  title={connected ? 'Gerät öffnen' : undefined}
+                >
+                  <td data-label="Gerät">
+                    <span className="vp-cell-main">
+                      <span>
+                        {connected ? r.name : <span className="vp-muted">— noch nicht verbunden —</span>}
+                      </span>
+                      {r.context && <span className="vp-cell-sub">{r.context}</span>}
+                    </span>
+                  </td>
+                  <td data-label="Referenz" className="vp-mono">{d.externalRef}</td>
+                  <td data-label="Edge-Stand">
+                    {connected ? (
+                      <span className="vp-cell-main">
+                        {/* Tag + Build getrennt statt Roh-Stempel. */}
+                        <span>{versionLabel(d.ist, releases)}</span>
+                        <span className="vp-cell-sub">
+                          <span className={`vp-ustate vp-ustate-${st.cls}`}>
+                            <i className="vp-ustate-dot" aria-hidden="true" />
+                            {st.label}
+                          </span>
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="vp-muted">–</span>
+                    )}
+                  </td>
+                  <td data-label="Vertrauen">
+                    {connected ? (
+                      <Badge variant={cross.tone === 'ok' ? 'ok' : cross.tone === 'warn' ? 'warn' : 'off'}
+                             dot title={cross.detail ?? undefined}>
+                        {cross.label}
+                      </Badge>
+                    ) : (
+                      <span className="vp-muted">–</span>
+                    )}
+                  </td>
+                  <td data-label="Kanal">
+                    {connected ? (
+                      <>
+                        {d.channel ?? '–'}
+                        {d.pinned && (
+                          <>
+                            {' '}
+                            <Badge variant="off">festgenagelt</Badge>
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <span className="vp-muted">–</span>
+                    )}
+                  </td>
+                  <td data-label="" style={{ textAlign: 'right' }}>
+                    {/* Nur eine gedruckte, UNVERBUNDENE ID darf aus der
+                        Registry - eine verbundene müsste der Kunde zuerst
+                        trennen. Die Bedingung kommt aus der Zeile SELBST
+                        (`provisioned`), nicht aus einer zweiten Liste: die
+                        Vereinigung weiß es bereits. */}
+                    {d.provisioned && !connected && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="vp-btn-danger"
+                        iconLeft={<Icon name="trash" size={16} />}
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          onRemove(d.externalRef);
+                        }}
+                      >
+                        Entfernen
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }
 

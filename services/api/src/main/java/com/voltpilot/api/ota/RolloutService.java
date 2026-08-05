@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.EdgeReleaseRepository;
 import com.voltpilot.api.repo.RolloutRepository;
+import com.voltpilot.api.web.dto.AdminDevicesDto;
 import com.voltpilot.api.web.dto.EdgeReleaseDto;
 import com.voltpilot.api.web.dto.EdgeUpdatesDto;
+import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -475,7 +477,8 @@ public class RolloutService {
             String assigned = t == null ? null : t.releaseVersion();
             RolloutStates.Verdict v = deviceVerdict(d, assigned, now);
             RolloutRepository.RolloutDeviceRow rd = inRollout.get(d.deviceId());
-            rows.add(new EdgeUpdatesDto.FleetRowDto(d.deviceId(), label(d), d.siteId(),
+            rows.add(new EdgeUpdatesDto.FleetRowDto(d.deviceId(), label(d), d.externalRef(),
+                    d.siteId(),
                     d.siteName(), d.tenantId(), d.tenantName(), reportedRunning(d), assigned,
                     t == null ? null : t.releaseSeq(), t == null ? null : t.channel(),
                     t != null && t.pinned(), v.state(), v.reason(), d.reportedBlocker(),
@@ -516,6 +519,63 @@ public class RolloutService {
         return new EdgeUpdatesDto(releaseDtos, rolloutDto, rows, journal,
                 new EdgeUpdatesDto.KpiDto(known, upToDate, unknown, inRollout.size(), failed,
                         waiting, newest));
+    }
+
+    /**
+     * Das INVENTAR aller Geräte über den ganzen Lebenszyklus (UX-Konzept §4,
+     * E1/E4) - die Vereinigung von Aufkleber-Registry und echter Flotte,
+     * verbunden über die Referenz.
+     *
+     * <p>Bis hierher gab es beide Hälften nur getrennt: die Registry-Seite
+     * kannte ausschließlich gedruckte {@code VP-}IDs (und damit von den realen
+     * Bestandsboxen mit selbst generierter {@code edge-}Referenz KEINE), und die
+     * Flotten-Sicht hing an der Update-Seite. Ein Gerät hatte nirgends EINEN
+     * Ort.
+     *
+     * <p>Es entsteht KEINE neue Wahrheit: die Zustände kommen aus derselben
+     * {@link #deviceVerdict} wie die Flotten-Zeile, die Registry-Felder aus
+     * derselben Abfrage wie die Registry-Seite. Zusammengeführt wird über die
+     * kanonische Referenz, damit ein Gerät nie zweimal erscheint.
+     */
+    public AdminDevicesDto devices(List<ProvisionedDeviceDto> registry, Instant now) {
+        Map<UUID, RolloutRepository.TargetRow> targets = new HashMap<>();
+        for (RolloutRepository.TargetRow t : rollouts.allTargets()) {
+            targets.put(t.deviceId(), t);
+        }
+        Map<String, ProvisionedDeviceDto> byRef = new HashMap<>();
+        for (ProvisionedDeviceDto p : registry) {
+            byRef.put(p.externalRef(), p);
+        }
+
+        List<AdminDevicesDto.DeviceRowDto> rows = new ArrayList<>();
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (RolloutRepository.FleetDeviceRow d : rollouts.fleetDevices()) {
+            RolloutRepository.TargetRow t = targets.get(d.deviceId());
+            RolloutStates.Verdict v = deviceVerdict(d, t == null ? null : t.releaseVersion(), now);
+            ProvisionedDeviceDto p = byRef.get(d.externalRef());
+            seen.add(d.externalRef());
+            rows.add(new AdminDevicesDto.DeviceRowDto(d.deviceId(), d.externalRef(), label(d),
+                    d.siteId(), d.siteName(), d.tenantId(), d.tenantName(),
+                    p == null ? null : p.kind(), reportedRunning(d),
+                    t == null ? null : t.releaseVersion(), t == null ? null : t.releaseSeq(),
+                    t == null ? null : t.channel(), t != null && t.pinned(),
+                    v.state(), v.reason(), d.reportedBlocker(), d.lastSeenAt(), d.reportedAt(),
+                    p != null, p == null ? null : p.note(),
+                    p == null ? null : p.provisionedAt(), trustDto(d)));
+        }
+        // Danach die gedruckten IDs, die noch KEIN Gerät sind. Sie tragen
+        // bewusst keinen Zustand: über eine ID, die sich nie gemeldet hat, ist
+        // nichts abzuleiten - „unbekannt" wäre schon eine Behauptung über ein
+        // Gerät, das es noch gar nicht gibt.
+        for (ProvisionedDeviceDto p : registry) {
+            if (seen.contains(p.externalRef())) {
+                continue;
+            }
+            rows.add(new AdminDevicesDto.DeviceRowDto(null, p.externalRef(), null, null, null,
+                    null, null, p.kind(), null, null, null, null, false,
+                    null, null, null, null, null, true, p.note(), p.provisionedAt(), null));
+        }
+        return new AdminDevicesDto(rows);
     }
 
     private EdgeUpdatesDto.RolloutDto rolloutDto(RolloutRepository.RolloutRow r,
