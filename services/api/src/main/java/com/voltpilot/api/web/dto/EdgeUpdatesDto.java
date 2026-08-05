@@ -55,10 +55,17 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
      * {@code nicht_pruefbar}) - siehe {@code BakeGate}: auf einer Anlage, auf
      * der VoltPilot nicht steuert, ist ein echter Steuerzyklus strukturell
      * nicht zu belegen, und das wird gesagt statt unterstellt.
+     *
+     * <p>{@code label}/{@code siteName} sind {@code null}, wenn weder das Gerät
+     * noch ein Namens-Schnappschuss existiert - eine UUID wird ausdrücklich NIE
+     * geliefert (sie beantwortet die Frage der Zeile nicht). {@code removed}
+     * sagt, dass dieses Gerät die Plattform inzwischen VERLASSEN hat: die
+     * Wellen-Definition ist eingefroren, ein Unclaim + Re-Claim prägt aber eine
+     * neue Geräte-Id - und „ist weg" ist etwas anderes als „meldet sich nicht".
      */
     public record WaveDeviceDto(UUID deviceId, String label, String siteName, String tenantName,
             String state, String reason, Instant since, Long bakeRemainingMinutes,
-            String bakeCycle, String bakeReason) {
+            String bakeCycle, String bakeReason, boolean removed) {
     }
 
     /**
@@ -68,11 +75,17 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
      * <p>{@code ist} ist der gemeldete Stempel VERBATIM ({@code null} =
      * unbekannt, NIE „veraltet"); {@code soll} ist {@code null}, wenn dem Gerät
      * nichts zugewiesen ist.
+     *
+     * <p>{@code blocker} ist der maschinenlesbare Name einer STEHENDEN Sperre
+     * ({@code otaapply.Blocker*}) - er trägt den HEBEL, den die Oberfläche
+     * nennen kann, ohne den deutschen Grund nach Stichworten zu durchsuchen.
+     * {@code null} heißt „kein Name gemeldet"; der Zustand {@code blockiert}
+     * kann dann trotzdem gelten (ein älterer Edge-Stand meldet nur den Satz).
      */
     public record FleetRowDto(UUID deviceId, String label, UUID siteId, String siteName,
             UUID tenantId, String tenantName, String ist, String soll, Long sollSeq,
-            String channel, boolean pinned, String state, String reason, Instant since,
-            Instant reportedAt, UUID rolloutId, TrustDto trust) {
+            String channel, boolean pinned, String state, String reason, String blocker,
+            Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust) {
     }
 
     /**
@@ -104,8 +117,13 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, RolloutDto activeRollout
      * {@code known} zählt die Geräte, die überhaupt einen Stand gemeldet haben -
      * ein Gerät ohne Meldung geht weder in den Zähler noch in den Nenner ein,
      * denn über sein Alter ist nichts bekannt.
+     *
+     * <p>{@code waitingForAdmin} ist das „Sie sind dran"-Signal: Geräte im
+     * Zustand {@code wartet_auf_anwendung}, plus eine freigebbare Welle. Ohne
+     * es ist der EINZIGE Zustand, in dem sich ohne den Betreiber nie wieder
+     * etwas bewegt, unsichtbar, bis jemand die Seite öffnet.
      */
     public record KpiDto(int known, int upToDate, int unknown, int inRollout, int failed,
-            String newestRelease) {
+            int waitingForAdmin, String newestRelease) {
     }
 }

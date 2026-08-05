@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.ota.RolloutStates;
 import com.voltpilot.api.ota.RolloutService;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.nio.charset.StandardCharsets;
@@ -555,11 +556,75 @@ class OtaRolloutApiTest {
     }
 
     /**
+     * Der Beobachtungs-Umbau (UX-Deep-Dive {@code vp-admin-geraete-ux-k2}) in
+     * EINEM Durchlauf: die drei Situationen, die bis hierher alle „ausstehend"
+     * hießen, sind server-seitig unterscheidbar - und die Wellen-Historie
+     * überlebt einen Unclaim mit ihrem NAMEN.
+     */
+    @Test
+    @Order(7)
+    void theThreeSituationsAreToldApartAndTheWaveKeepsItsNames() throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        String refWartet = "ota-w1-" + UUID.randomUUID().toString().substring(0, 8);
+        UUID wartet = claim(customer, refWartet);
+        UUID blockiert = claim(customer, "ota-w2-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID unterwegs = claim(customer, "ota-w3-" + UUID.randomUUID().toString().substring(0, 8));
+
+        rollouts.assign(wartet, 12L, "stable", false, null, "admin");
+        rollouts.assign(blockiert, 12L, "stable", false, null, "admin");
+        rollouts.assign(unterwegs, 12L, "stable", false, null, "admin");
+
+        // 1) geprüft und in Ordnung - der ADMIN ist der fehlende Akteur.
+        reportRunning(wartet, "edge-2026.07.2", "deferred", "ok", Instant.now());
+        // 2) dieselbe Signatur-Lage, aber die Box DARF nicht anwenden.
+        reportRunning(blockiert, "edge-2026.07.2", "deferred", "ok", Instant.now());
+        reportBlocker(blockiert, "neutralzeit",
+                RolloutStates.BLOCKED_PREFIX + "Diese Anlage steuert, und für ihre Familie ist "
+                        + "keine Neutral-Zeit belegt.");
+        // 3) die Zuweisung ist unterwegs - hier bewegt sich etwas von selbst.
+        reportRunning(unterwegs, "edge-2026.07.2", "idle", null, Instant.now());
+
+        JsonNode page = readModel(admin);
+        assertThat(stateOf(page, wartet)).isEqualTo(RolloutStates.WARTET_AUF_ANWENDUNG);
+        assertThat(stateOf(page, blockiert)).isEqualTo(RolloutStates.BLOCKIERT);
+        assertThat(stateOf(page, unterwegs)).isEqualTo(RolloutStates.AUSSTEHEND);
+        // Der HEBEL reist maschinenlesbar mit - keine Oberfläche muss den
+        // deutschen Satz nach Stichworten durchsuchen.
+        assertThat(fieldOf(page, blockiert, "blocker")).isEqualTo("neutralzeit");
+        assertThat(fieldOf(page, unterwegs, "blocker")).isNull();
+        // Und das „Sie sind dran"-Signal erreicht die Puls-Kennzahl.
+        assertThat(page.get("kpi").get("waitingForAdmin").asInt()).isGreaterThanOrEqualTo(1);
+
+        // Die Wellen-Historie: sie überlebt einen Unclaim MIT Namen. Vorher
+        // fiel die Zeile auf die nackte Geräte-Id zurück (Reibung R2).
+        Map<String, Object> body = Map.of("releaseSeq", 12, "channel", "stable",
+                "waves", List.of(Map.of("name", "Canary", "devices", List.of(wartet.toString()))));
+        assertThat(post("/api/v1/admin/rollouts", admin, body).getStatusCode())
+                .isEqualTo(HttpStatus.CREATED);
+
+        ResponseEntity<Void> unclaim = rest.exchange(url("/api/v1/devices/" + wartet),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(customer)), Void.class);
+        assertThat(unclaim.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        JsonNode after = readModel(admin);
+        JsonNode row = after.get("activeRollout").get("waves").get(0).get("devices").get(0);
+        assertThat(row.get("deviceId").asText()).isEqualTo(wartet.toString());
+        // Der Name steht noch da - und die Zeile SAGT, dass das Gerät weg ist.
+        assertThat(row.get("label").asText()).isEqualTo(refWartet);
+        assertThat(row.get("removed").asBoolean()).isTrue();
+        assertThat(row.get("siteName").isNull()).isFalse();
+
+        rollouts.halt(after.get("activeRollout").get("id").asText().transform(UUID::fromString),
+                "Testende", "admin");
+    }
+
+    /**
      * Der dokumentarische gitops-Spiegel (D2): ein EXPORT, kein Deploy - und
      * er bleibt hinter derselben Rollen-Grenze wie alles andere hier.
      */
     @Test
-    @Order(7)
+    @Order(8)
     void theJournalIsExportableAsMarkdownAndStaysRoleGated() {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
@@ -604,6 +669,25 @@ class OtaRolloutApiTest {
 
     private static String sql(String v) {
         return v == null ? "NULL" : "'" + v.replace("'", "''") + "'";
+    }
+
+    /** Die Sperre, die eine Box meldet - der Name UND ihr deutscher Grund. */
+    private void reportBlocker(UUID deviceId, String blocker, String reason) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("UPDATE device_update_status SET blocker = " + sql(blocker)
+                    + ", reason = " + sql(reason) + " WHERE device_id = '" + deviceId + "'");
+        }
+    }
+
+    /** Ein beliebiges Feld einer Flotten-Zeile - {@code null} bleibt null. */
+    private static String fieldOf(JsonNode page, UUID deviceId, String field) {
+        for (JsonNode row : page.get("fleet")) {
+            if (deviceId.toString().equals(row.get("deviceId").asText())) {
+                JsonNode v = row.get(field);
+                return v == null || v.isNull() ? null : v.asText();
+            }
+        }
+        return null;
     }
 
     private static JsonNode trustOf(JsonNode page, UUID deviceId) {

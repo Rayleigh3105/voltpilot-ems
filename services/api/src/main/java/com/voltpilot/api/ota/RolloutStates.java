@@ -39,6 +39,34 @@ public final class RolloutStates {
      */
     public static final String AKTUELL = "aktuell";
     public static final String AUSSTEHEND = "ausstehend";
+    /**
+     * <b>„Sie sind dran"</b> - das Gerät hat das zugewiesene Release GEPRÜFT
+     * und wartet auf das beaufsichtigte Anwenden durch einen Menschen (OTA
+     * Stufe 2: {@code state=deferred ∧ target_verdict=ok}).
+     *
+     * <p>Er trennt den einen Fall, in dem der ADMIN der fehlende Akteur ist,
+     * von „die Zuweisung ist unterwegs" - bis hierher fielen beide in
+     * {@link #AUSSTEHEND} und trugen damit denselben Fortschritts-Ton, obwohl
+     * sich ohne eine Handlung nie wieder etwas bewegt (Reibung R1 des
+     * UX-Deep-Dives {@code vp-admin-geraete-ux-k2}). Die Unterscheidung war
+     * schon maschinenlesbar angelegt - sie wurde nur nicht ausgespielt.
+     *
+     * <p>Er hält den Rollout NICHT an (es ist kein Vorfall) und zählt NICHT
+     * als bestätigt (die Welle wartet wirklich).
+     */
+    public static final String WARTET_AUF_ANWENDUNG = "wartet_auf_anwendung";
+    /**
+     * <b>Autonomie blockiert</b> - das Gerät meldet eine STEHENDE Sperre
+     * ({@code otaapply.Blocker*}: Neutral-Zeit, Platte, Interlock, stiller
+     * Kern, …). Signatur und Politik sind in Ordnung, aber das Gerät DARF
+     * gerade nicht anwenden.
+     *
+     * <p>Wie {@link #ZURUECKGESTELLT} ist das kein Vorfall und hält keine
+     * Verteilung an - aber es ist auch kein Fortschritt, und genau so darf es
+     * nie wieder aussehen. Der Grund kommt vom Gerät (es weiß, warum es nicht
+     * anwendet), der maschinenlesbare Name aus {@code Reported.blocker}.
+     */
+    public static final String BLOCKIERT = "blockiert";
     public static final String LAEDT = "laedt";
     public static final String WENDET_AN = "wendet_an";
     public static final String SELBSTTEST = "selbsttest";
@@ -68,9 +96,24 @@ public final class RolloutStates {
     private RolloutStates() {
     }
 
-    /** Das gemeldete IST eines Geräts, so weit es die Cloud kennt. */
+    /**
+     * Das gemeldete IST eines Geräts, so weit es die Cloud kennt.
+     *
+     * <p>{@code blocker} ist der maschinenlesbare Name einer STEHENDEN Sperre
+     * ({@code otaapply.Blocker*}); {@code null} heißt „keine gemeldet" und ist
+     * ausdrücklich NICHT „nicht blockiert" - ein älterer Edge-Stand meldet das
+     * Feld gar nicht. Deshalb wird aus seiner Abwesenheit nie etwas abgeleitet,
+     * nur aus seiner Anwesenheit.
+     */
     public record Reported(String version, String current, String target, String state,
-            String verdict, String reason, Instant reportedAt, Instant lastSeenAt) {
+            String verdict, String reason, String blocker, Instant reportedAt,
+            Instant lastSeenAt) {
+
+        /** Der Vor-Blocker-Aufrufweg: ein Gerät, das keine Sperre meldet. */
+        public Reported(String version, String current, String target, String state,
+                String verdict, String reason, Instant reportedAt, Instant lastSeenAt) {
+            this(version, current, target, state, verdict, reason, null, reportedAt, lastSeenAt);
+        }
     }
 
     /** Das abgeleitete Urteil: Zustand + (bei jedem nicht-grünen) sein Grund. */
@@ -156,6 +199,19 @@ public final class RolloutStates {
             return new Verdict(ZURUECKGESTELLT, reasonOr(r,
                     "Das zugewiesene Release gilt für dieses Gerät nicht."));
         }
+        // Eine STEHENDE Sperre schlägt „wartet auf Sie": auf einer blockierten
+        // Box wartet niemand auf den Admin - sie darf gar nicht anwenden, und
+        // ein Klick würde daran nichts ändern.
+        if (isBlocked(r)) {
+            return new Verdict(BLOCKIERT, reasonOr(r,
+                    "Dieses Gerät meldet eine Sperre, aber keinen Grund dazu."));
+        }
+        // „Sie sind dran": geprüft und in Ordnung, das Anwenden ist beaufsichtigt.
+        if ("deferred".equals(r.state()) && "ok".equals(r.verdict())) {
+            return new Verdict(WARTET_AUF_ANWENDUNG, reasonOr(r,
+                    "Das Release ist auf diesem Gerät verifiziert und wartet auf das "
+                            + "beaufsichtigte Anwenden."));
+        }
         return new Verdict(AUSSTEHEND, r.reason());
     }
 
@@ -193,6 +249,34 @@ public final class RolloutStates {
         }
         String s = stamped.trim();
         return s.equals(release) || s.startsWith(release + "-");
+    }
+
+    /**
+     * Der Satzanfang, mit dem der Sidecar JEDE stehende Sperre einleitet
+     * ({@code otaapply.BlockedPrefix}, PR #331 - dort ausdrücklich als „die EINE
+     * Formulierung" gebaut, damit „wartet" und „blockiert" nirgends gleich
+     * aussehen). Der Go-Zwilling ist die Konstante selbst; die beiden dürfen
+     * nicht auseinanderlaufen (das refCheckChar/EdgeRef-Muster).
+     *
+     * <p><b>Er ist der ÜBERGANG, nicht die Regel.</b> Die dauerhafte Antwort ist
+     * das maschinenlesbare {@code blocker}-Feld - aber die heutige Flotte fährt
+     * Stände, die es noch nicht senden, und für sie wäre „wartet auf Anwendung"
+     * die falscheste aller Aussagen: dort wartet niemand auf den Admin. Sobald
+     * eine Box das Feld meldet, entscheidet es allein; diese Prüfung greift dann
+     * gar nicht mehr, weil sie nach ihm kommt.
+     */
+    public static final String BLOCKED_PREFIX = "Autonomie blockiert: ";
+
+    /**
+     * Meldet dieses Gerät eine stehende Sperre? Erst der maschinenlesbare Name,
+     * dann - für ältere Stände - der gepinnte Satzanfang. Die ABWESENHEIT von
+     * beidem sagt nichts, aus ihr wird nie „läuft" abgeleitet.
+     */
+    private static boolean isBlocked(Reported r) {
+        if (r.blocker() != null && !r.blocker().isBlank()) {
+            return true;
+        }
+        return r.reason() != null && r.reason().startsWith(BLOCKED_PREFIX);
     }
 
     private static String reasonOr(Reported r, String fallback) {

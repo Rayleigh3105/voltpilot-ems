@@ -166,6 +166,7 @@ public class RolloutService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Es läuft bereits ein Rollout. Erst beenden oder einfrieren.");
         }
+        Map<UUID, RolloutRepository.FleetDeviceRow> fleet = fleetById();
         LinkedHashSet<UUID> seen = new LinkedHashSet<>();
         for (WaveSpec w : waves) {
             if (w.devices() == null || w.devices().isEmpty()) {
@@ -177,8 +178,10 @@ public class RolloutService {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                             "Ein Gerät kann nur in EINER Welle stehen (" + d + ").");
                 }
-                rollouts.fleetDevice(d).orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "Unbekanntes Gerät: " + d));
+                if (!fleet.containsKey(d)) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Unbekanntes Gerät: " + d);
+                }
             }
         }
 
@@ -187,7 +190,13 @@ public class RolloutService {
                 autoAdvance, actor);
         for (int i = 0; i < waves.size(); i++) {
             for (UUID d : waves.get(i).devices()) {
-                rollouts.insertRolloutDevice(id, d, i + 1, RolloutStates.AUSSTEHEND, null);
+                // Der NAMENS-Schnappschuss entsteht hier, nicht beim Lesen: die
+                // Wellen-Definition ist eingefroren, also muss auch ihre
+                // Beschriftung einen späteren Unclaim überleben (sonst fällt die
+                // Zeile auf eine nackte UUID zurück - Reibung R2).
+                RolloutRepository.FleetDeviceRow d0 = fleet.get(d);
+                rollouts.insertRolloutDevice(id, d, i + 1, RolloutStates.AUSSTEHEND, null,
+                        d0 == null ? null : label(d0), d0 == null ? null : d0.siteName());
             }
         }
         rollouts.appendEvent(actor, "rollout_created", id, null,
@@ -459,6 +468,7 @@ public class RolloutService {
         int upToDate = 0;
         int unknown = 0;
         int failed = 0;
+        int waiting = 0;
         String newest = releaseDtos.isEmpty() ? null : releaseDtos.get(0).version();
         for (RolloutRepository.FleetDeviceRow d : fleet) {
             RolloutRepository.TargetRow t = targets.get(d.deviceId());
@@ -468,7 +478,7 @@ public class RolloutService {
             rows.add(new EdgeUpdatesDto.FleetRowDto(d.deviceId(), label(d), d.siteId(),
                     d.siteName(), d.tenantId(), d.tenantName(), reportedRunning(d), assigned,
                     t == null ? null : t.releaseSeq(), t == null ? null : t.channel(),
-                    t != null && t.pinned(), v.state(), v.reason(),
+                    t != null && t.pinned(), v.state(), v.reason(), d.reportedBlocker(),
                     rd == null ? null : rd.since(), d.reportedAt(),
                     rd == null ? null : rd.rolloutId(), trustDto(d)));
 
@@ -486,6 +496,9 @@ public class RolloutService {
                     || RolloutStates.IM_UPDATE_VERSTUMMT.equals(v.state())) {
                 failed++;
             }
+            if (RolloutStates.WARTET_AUF_ANWENDUNG.equals(v.state())) {
+                waiting++;
+            }
         }
 
         EdgeUpdatesDto.RolloutDto rolloutDto = live.map(r -> rolloutDto(r, fleet, now))
@@ -495,9 +508,14 @@ public class RolloutService {
             journal.add(new EdgeUpdatesDto.EventDto(e.id(), e.at(), e.actor(), e.event(),
                     e.rolloutId(), e.deviceId(), e.detail()));
         }
+        // Eine freigebbare Welle ist ebenfalls „Sie sind dran" - der zweite der
+        // zwei Schritte, die ohne den Betreiber nie passieren.
+        if (rolloutDto != null && rolloutDto.canPromote()) {
+            waiting++;
+        }
         return new EdgeUpdatesDto(releaseDtos, rolloutDto, rows, journal,
                 new EdgeUpdatesDto.KpiDto(known, upToDate, unknown, inRollout.size(), failed,
-                        newest));
+                        waiting, newest));
     }
 
     private EdgeUpdatesDto.RolloutDto rolloutDto(RolloutRepository.RolloutRow r,
@@ -530,13 +548,19 @@ public class RolloutService {
                 if (!RolloutStates.isConfirmed(state)) {
                     confirmed = false;
                 }
-                devices.add(new EdgeUpdatesDto.WaveDeviceDto(id,
-                        d == null ? id.toString() : label(d),
-                        d == null ? null : d.siteName(), d == null ? null : d.tenantName(),
+                // NAMEN, in dieser Reihenfolge: das Gerät, wie es HEUTE heißt -
+                // sonst der Schnappschuss vom Zuweisungs-Zeitpunkt - sonst gar
+                // nichts. Eine UUID wird NIE ausgeliefert: sie beantwortet die
+                // Frage der Zeile („welche Anlage?") nicht, und die Oberfläche
+                // müsste sie trotzdem rendern.
+                String label = d != null ? label(d) : rd == null ? null : rd.deviceRef();
+                String site = d != null ? d.siteName() : rd == null ? null : rd.siteName();
+                devices.add(new EdgeUpdatesDto.WaveDeviceDto(id, label, site,
+                        d == null ? null : d.tenantName(),
                         state, rd == null ? null : rd.reason(), rd == null ? null : rd.since(),
                         released ? bake.remaining().toMinutes() : null,
                         released ? bake.cycle().name().toLowerCase() : null,
-                        released ? bake.reason() : null));
+                        released ? bake.reason() : null, d == null));
             }
             waveDtos.add(new EdgeUpdatesDto.WaveDto(index, specs.get(i).name(), released,
                     released && confirmed, devices));
@@ -717,7 +741,7 @@ public class RolloutService {
         }
         return RolloutStates.derive(assigned, new RolloutStates.Reported(d.reportedVersion(),
                 d.reportedCurrent(), d.reportedTarget(), d.reportedState(), d.reportedVerdict(),
-                d.reportedReason(), d.reportedAt(), d.lastSeenAt()), now);
+                d.reportedReason(), d.reportedBlocker(), d.reportedAt(), d.lastSeenAt()), now);
     }
 
     /** Der gemeldete laufende Stand - {@code current} vor {@code version}. */

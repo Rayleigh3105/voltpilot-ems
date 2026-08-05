@@ -182,23 +182,42 @@ public class RolloutRepository {
 
     // ── Geräte eines Rollouts ────────────────────────────────────────────
 
+    /**
+     * Ein Gerät innerhalb eines Rollouts.
+     *
+     * <p>{@code deviceRef}/{@code siteName} sind der NAMENS-SCHNAPPSCHUSS vom
+     * Zeitpunkt der Zuweisung (Migration V20260807000000): die Wellen-Definition
+     * ist eingefroren, also muss auch ihre Beschriftung einen Unclaim
+     * überleben - sonst fällt die Zeile auf eine nackte UUID zurück. Beide sind
+     * {@code null} für Rollouts, die vor dieser Migration gestartet wurden;
+     * dann greift der Live-Join wie bisher.
+     */
     public record RolloutDeviceRow(UUID rolloutId, UUID deviceId, int wave, String state,
-            String reason, Instant since) {
+            String reason, Instant since, String deviceRef, String siteName) {
     }
 
     public List<RolloutDeviceRow> devicesOf(UUID rolloutId) {
-        return jdbc.query("SELECT rollout_id, device_id, wave, state, reason, since "
+        return jdbc.query("SELECT rollout_id, device_id, wave, state, reason, since, "
+                + "device_ref, site_name "
                 + "FROM rollout_device WHERE rollout_id = ? ORDER BY wave, device_id",
                 RolloutRepository::mapRolloutDevice, rolloutId);
     }
 
+    /**
+     * Ein Gerät in eine Welle aufnehmen - mit seinem Namen, wie er JETZT ist.
+     *
+     * <p>Der Schnappschuss ist bewusst Denormalisierung: die Frage der Historie
+     * lautet „wie hieß dieses Gerät, ALS es in die Welle kam", und ein FK auf
+     * {@code device} würde die Antwort beim Unclaim löschen.
+     */
     public void insertRolloutDevice(UUID rolloutId, UUID deviceId, int wave, String state,
-            String reason) {
+            String reason, String deviceRef, String siteName) {
         jdbc.update("""
-                INSERT INTO rollout_device (rollout_id, device_id, wave, state, reason, since)
-                VALUES (?, ?, ?, ?, ?, now())
+                INSERT INTO rollout_device (rollout_id, device_id, wave, state, reason, since,
+                                            device_ref, site_name)
+                VALUES (?, ?, ?, ?, ?, now(), ?, ?)
                 ON CONFLICT (rollout_id, device_id) DO NOTHING
-                """, rolloutId, deviceId, wave, state, reason);
+                """, rolloutId, deviceId, wave, state, reason, deviceRef, siteName);
     }
 
     /**
@@ -258,9 +277,10 @@ public class RolloutRepository {
             UUID siteId, String siteName, UUID tenantId, String tenantName,
             String reportedVersion, String reportedCurrent, String reportedTarget,
             String reportedState, String reportedVerdict, String reportedReason,
-            Instant reportedAt, Instant lastSeenAt, Instant controlCheckedAt,
-            Boolean controlConfirmed, Boolean controlCertified, String rootKeyIds,
-            String trustSetKeyIds, String trustSetGeneratedAt, String trustSetError) {
+            String reportedBlocker, Instant reportedAt, Instant lastSeenAt,
+            Instant controlCheckedAt, Boolean controlConfirmed, Boolean controlCertified,
+            String rootKeyIds, String trustSetKeyIds, String trustSetGeneratedAt,
+            String trustSetError) {
     }
 
     /**
@@ -273,7 +293,7 @@ public class RolloutRepository {
                 SELECT d.id AS device_id, d.external_ref, d.name AS device_name,
                        d.site_id, s.name AS site_name, s.tenant_id, t.name AS tenant_name,
                        u.version, u.current_version, u.target_version, u.state, u.target_verdict,
-                       u.reason, u.reported_at,
+                       u.reason, u.blocker, u.reported_at,
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
                        u.trust_set_error,
                        ls.last_seen,
@@ -301,6 +321,9 @@ public class RolloutRepository {
                         rs.getString("state"),
                         rs.getString("target_verdict"),
                         rs.getString("reason"),
+                        // Der maschinenlesbare Sperr-Name. null = keine
+                        // gemeldet - ausdrücklich NICHT „nicht blockiert".
+                        rs.getString("blocker"),
                         instant(rs, "reported_at"),
                         instant(rs, "last_seen"),
                         instant(rs, "control_checked_at"),
@@ -364,7 +387,9 @@ public class RolloutRepository {
                 rs.getInt("wave"),
                 rs.getString("state"),
                 rs.getString("reason"),
-                instant(rs, "since"));
+                instant(rs, "since"),
+                rs.getString("device_ref"),
+                rs.getString("site_name"));
     }
 
     private static EventRow mapEvent(ResultSet rs, int rowNum) throws SQLException {

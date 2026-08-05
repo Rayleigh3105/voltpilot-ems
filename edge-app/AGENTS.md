@@ -857,10 +857,22 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
   Satz des Verifizierers: der Betreiber sah „wartet" ohne jede Chance zu
   erfahren, worauf. Wer ein neues Tor einbaut, gibt ihm einen Blocker-Namen und
   einen Grund, der den HEBEL nennt (bei der Neutral-Zeit: Familie +
-  `VP_OTA_NEUTRAL_VERIFIED`). Cloud/Portal unveraendert - der Text reist im
-  bestehenden `reason`-Feld. Beweise: `otaupdater/blocker_test.go`,
+  `VP_OTA_NEUTRAL_VERIFIED`). Beweise: `otaupdater/blocker_test.go`,
   `otaapply/decide_test.go`, `agent/ota_autonomy_test.go`; Betreiber-Sicht:
   `docs/ota-autonomie.md` §3.
+  - **Seit dem Admin-UX-Umbau (05.08.2026) reist der NAME zusaetzlich in die
+    Cloud:** `cloud.UpdateSummary.Blocker` (`blocker`, `omitempty`) traegt ihn
+    NEBEN dem deutschen `reason` - dieselbe Begruendung, aus der
+    `target_verdict` neben `state` steht: die Cloud konnte „blockiert" sonst
+    nicht von „unterwegs" trennen, ohne einen deutschen Satz nach Stichworten
+    zu durchsuchen, und ein stehender Blocker landete portalseitig im
+    Fortschritts-Ton. Er wird NUR gesetzt, solange der Sidecar wirklich
+    blockiert (`up.Blocked()`), also bleibt der Herzschlag einer gesunden Box
+    byte-gleich. Das frueher hier stehende „Cloud/Portal unveraendert" gilt
+    damit nicht mehr - die Cloud-Seite steht in der Root-`AGENTS.md`
+    („Admin-UX-Umbau P1"), inklusive des Uebergangs fuer Baende ohne das Feld
+    (`RolloutStates.BLOCKED_PREFIX` ist der gepinnte Zwilling von
+    `otaapply.BlockedPrefix` - **beide zusammen aendern**).
 - **`update.sh` muss das `ota`-Profil kennen:** `up -d --remove-orphans` wuerde
   den Sidecar sonst als Waise ENTFERNEN und einer eingerichteten Box
   stillschweigend die Autonomie nehmen. `detect_ota_profile` erkennt ihn,

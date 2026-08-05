@@ -167,7 +167,11 @@ describe('EdgeUpdatesPage', () => {
     const drawer = await screen.findByRole('dialog');
     // Nur signierte Releases stehen zur Wahl.
     expect(drawer).toHaveTextContent('edge-2026.08.0');
-    fireEvent.click(screen.getByRole('button', { name: 'Jetzt aktualisieren' }));
+    // Der Knopf heißt „Release zuweisen", nicht „Jetzt aktualisieren": er
+    // veröffentlicht eine Zuweisung, das ANWENDEN bleibt beaufsichtigt am
+    // Gerät - der alte Wortlaut versprach genau das, was danach nicht geschah.
+    expect(screen.queryByRole('button', { name: 'Jetzt aktualisieren' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Release zuweisen' }));
     await waitFor(() =>
       expect(setUpdateTarget).toHaveBeenCalledWith('d2', {
         releaseSeq: 12, channel: 'stable', pinned: false,
@@ -265,5 +269,123 @@ describe('Wellen-Automatik + TOFU-Abschluss auf der Seite', () => {
     expect(screen.getByTestId('crossover-hint'))
       .toHaveTextContent('melden ihren Vertrauensanker nicht');
     expect(screen.getByTestId('crossover-hint')).not.toHaveTextContent('Crossover offen');
+  });
+});
+
+describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    edgeUpdates.mockResolvedValue(data());
+  });
+
+  it('führt mit „Sie sind dran" und nennt Ort und Weg', async () => {
+    const d = data();
+    d.activeRollout!.canPromote = true;
+    d.fleet[1].state = 'wartet_auf_anwendung';
+    d.fleet[1].soll = 'edge-2026.08.0';
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    const card = await screen.findByTestId('handeln');
+    expect(card).toHaveTextContent('Welle 2 „Flotte" freigeben');
+    expect(card).toHaveTextContent('Auernheim');
+    // Ohne den WEG wäre „Sie sind dran" nur ein Vorwurf.
+    expect(card).toHaveTextContent('8484');
+    expect(screen.getByTestId('handeln-count')).toHaveTextContent('2 Schritte');
+  });
+
+  it('zeigt die Karte GAR NICHT, wenn nichts ansteht', async () => {
+    render(<EdgeUpdatesPage />);
+    await screen.findByTestId('fleet');
+    expect(screen.queryByTestId('handeln')).toBeNull();
+  });
+
+  it('trägt „wartet auf Sie" in einem anderen Kleid als „ausstehend"', async () => {
+    const d = data();
+    d.fleet[0].state = 'ausstehend';
+    d.fleet[1].state = 'wartet_auf_anwendung';
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    await screen.findByTestId('fleet');
+    // DER Kern des Umbaus: die zwei Situationen sehen nie wieder gleich aus.
+    expect(screen.getAllByTestId('state-action').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('state-busy').length).toBeGreaterThan(0);
+  });
+
+  it('nennt den HEBEL einer Sperre, statt nur ihren Satz', async () => {
+    const d = data();
+    d.fleet[1].state = 'blockiert';
+    d.fleet[1].blocker = 'neutralzeit';
+    d.fleet[1].reason = 'Autonomie blockiert: keine belegte Neutral-Zeit.';
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    await screen.findByTestId('fleet');
+    expect(screen.getAllByTestId('lever')[0]).toHaveTextContent('VP_OTA_NEUTRAL_VERIFIED');
+    expect(screen.getAllByTestId('state-blocked').length).toBeGreaterThan(0);
+  });
+
+  it('rendert in der Wellen-Liste NIE eine UUID', async () => {
+    const d = data();
+    d.activeRollout!.waves[0].devices[0] = {
+      ...d.activeRollout!.waves[0].devices[0],
+      deviceId: 'cdba2ee8-91f3-4c1a-9d3e-000000000001',
+      label: null, siteName: null, tenantName: null, removed: true,
+    };
+    edgeUpdates.mockResolvedValue(d);
+    render(<EdgeUpdatesPage />);
+
+    await screen.findByTestId('fleet');
+    expect(screen.getByText(/Entferntes Gerät/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('91f3-4c1a');
+  });
+
+  it('rahmt einen eingefrorenen Rollout als Abschlussbild und ordnet die Historie unter',
+    async () => {
+      const d = data();
+      d.activeRollout!.state = 'halted';
+      // Die Zeile ist beim Einfrieren als fehlgeschlagen eingefroren worden,
+      // heute meldet dasselbe Gerät „bestätigt" - genau die Zwei-Wahrheiten-
+      // Reibung, die hier zur Präsentation wird.
+      d.activeRollout!.waves[0].devices[0].state = 'fehlgeschlagen';
+      d.fleet[0].state = 'bestaetigt';
+      edgeUpdates.mockResolvedValue(d);
+      render(<EdgeUpdatesPage />);
+
+      expect(await screen.findByTestId('frozen-framing')).toHaveTextContent('eingefroren');
+      expect(screen.getByTestId('wave-history')).toHaveTextContent('beim Abschluss');
+    });
+
+  it('zeigt die Bezugszeit der gezeigten Daten', async () => {
+    render(<EdgeUpdatesPage />);
+    // Ohne sie ist „nichts bewegt sich" von „niemand hat nachgesehen" nicht zu
+    // trennen - genau das Gefühl vom 04.08.2026.
+    expect(await screen.findByTestId('freshness')).toHaveTextContent('Stand:');
+    expect(screen.getByTestId('freshness')).toHaveTextContent('alle 30 s');
+  });
+
+  it('pollt sich SELBST, statt auf einen Knopfdruck zu warten', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<EdgeUpdatesPage />);
+      await vi.advanceTimersByTimeAsync(0);
+      const initial = edgeUpdates.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(31_000);
+      // Ein Beobachtungs-Werkzeug, das man von Hand aktualisieren muss,
+      // erzeugt genau das „hängt es?"-Gefühl, für das dieser Umbau existiert.
+      expect(edgeUpdates.mock.calls.length).toBeGreaterThan(initial);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sagt im Ruhezustand in EINEM Satz, wie die Flotte steht', async () => {
+    edgeUpdates.mockResolvedValue(data({ activeRollout: null }));
+    render(<EdgeUpdatesPage />);
+
+    const line = await screen.findByTestId('resting-line');
+    expect(line).toHaveTextContent('Kein Rollout aktiv');
+    expect(line).toHaveTextContent('unbekannt, nicht veraltet');
   });
 });

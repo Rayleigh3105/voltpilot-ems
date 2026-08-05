@@ -91,6 +91,20 @@ public class UpdateStatusListener {
     private static final Set<String> KNOWN_VERDICTS = Set.of("ok", "deferred", "rejected");
 
     /**
+     * Das Sperr-Vokabular des Sidecars ({@code otaapply.Blocker*}) - der
+     * maschinenlesbare Name einer STEHENDEN Sperre, seit dem Admin-UX-Umbau
+     * additiv im Herzschlag. Es ist ausdrücklich ein VERTRAG (kurz, stabil, ohne
+     * Umlaute), und ein Wort außerhalb davon wird VERWORFEN wie ein unbekannter
+     * Zustand: es gäbe keiner Oberfläche etwas zu rendern, und eine erfundene
+     * Ersatz-Aussage wäre schlimmer als das ehrliche „kein Name gemeldet" (der
+     * deutsche {@code reason} trägt die Aussage dann allein).
+     */
+    private static final Set<String> KNOWN_BLOCKERS = Set.of("kette", "politik",
+            "zurueckgenommen", "backend", "state_schema", "kern_still", "platte", "neutralzeit",
+            "neutralzeit_zu_kurz", "interlock", "freigabe_release", "laden", "rueckfallziel",
+            "sicherung", "unlesbar");
+
+    /**
      * A sanity bound on the free-text fields. They reach an operator surface,
      * and a device is not the authority on how long our columns are.
      */
@@ -256,6 +270,7 @@ public class UpdateStatusListener {
                     hasUpdate ? text(update.get("reason")) : null,
                     hasUpdate ? text(update.get("last_known_good")) : null,
                     hasUpdate ? verdict(update.get("target_verdict")) : null,
+                    hasUpdate ? blocker(update.get("blocker")) : null,
                     // ⚠ Die DREI Zustände von root_key_ids sind hier zu Hause:
                     // kein trust-Block => null (ein älterer Stand, „unbekannt");
                     // ein Block mit leerer Liste => "" (Image OHNE Wurzel, also
@@ -298,6 +313,23 @@ public class UpdateStatusListener {
         }
         if (!KNOWN_VERDICTS.contains(raw)) {
             log.warn("unknown target verdict '{}' reported - dropped instead of stored", raw);
+            return null;
+        }
+        return raw;
+    }
+
+    /**
+     * Der Sperr-Name, gegen das Vertrags-Vokabular geprüft. Ein unbekanntes Wort
+     * wird verworfen - der deutsche Grund bleibt und trägt die Aussage; was
+     * verloren geht, ist nur der Hebel-Hinweis, nicht die Ehrlichkeit.
+     */
+    private static String blocker(JsonNode node) {
+        String raw = text(node);
+        if (raw == null) {
+            return null;
+        }
+        if (!KNOWN_BLOCKERS.contains(raw)) {
+            log.warn("unknown OTA blocker '{}' reported - dropped instead of stored", raw);
             return null;
         }
         return raw;

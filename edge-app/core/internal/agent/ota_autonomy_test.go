@@ -256,6 +256,33 @@ func TestABlockedSidecarOwnsTheReasonInsteadOfTheVerifiersFriendlySentence(t *te
 	if sum.Target != "edge-2026.08.2" || sum.TargetSeq == nil || *sum.TargetSeq != 14 {
 		t.Fatalf("das Ziel muss mitreisen: %+v", sum)
 	}
+	// Der NAME der Sperre reist seit dem Admin-UX-Umbau mit: der Satz bleibt
+	// die Aussage, aber die Cloud darf ihn nicht nach Stichworten durchsuchen
+	// muessen, um „blockiert" von „unterwegs" zu unterscheiden.
+	if sum.Blocker != otaapply.BlockerNeutralTime {
+		t.Fatalf("der maschinenlesbare Sperr-Name fehlt: %q", sum.Blocker)
+	}
+}
+
+// Ohne Sperre wird auch KEIN Name gemeldet - ein leeres Feld ist die ehrliche
+// Aussage „keine stehende Sperre", und `omitempty` haelt den Herzschlag eines
+// gesunden Geraets byte-gleich zu dem vor dieser Aenderung.
+func TestNoBlockerNameIsReportedWithoutABlock(t *testing.T) {
+	a := autonomyAgent(t)
+	if got := a.updateSummary().Blocker; got != "" {
+		t.Fatalf("ohne Sperre darf kein Name stehen: %q", got)
+	}
+	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileUpdaterState,
+		otaapply.UpdaterState{
+			UpdatedAt: time.Now().UTC().Format(otaapply.TimeFormat),
+			State:     otaapply.StateApplying, Reason: "Die Komponente 'core' wird getauscht.",
+			Release: "edge-2026.08.0", ReleaseSeq: 12, Autonomous: true,
+		}); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.updateSummary().Blocker; got != "" {
+		t.Fatalf("ein arbeitender Sidecar ist nicht blockiert: %q", got)
+	}
 }
 
 // Die Sperre gewinnt auch dann, wenn daneben ein harmloses Zustandswort steht -
@@ -273,8 +300,12 @@ func TestABlockerIsCarriedEvenNextToAnIdleState(t *testing.T) {
 		}); err != nil {
 		t.Fatal(err)
 	}
-	if got := a.updateSummary().Reason; !strings.Contains(got, "Die Freigabe galt") {
-		t.Fatalf("der Grund der Sperre fehlt: %q", got)
+	sum := a.updateSummary()
+	if !strings.Contains(sum.Reason, "Die Freigabe galt") {
+		t.Fatalf("der Grund der Sperre fehlt: %q", sum.Reason)
+	}
+	if sum.Blocker != otaapply.BlockerApprovalRelease {
+		t.Fatalf("auch neben `idle` reist der Sperr-Name: %q", sum.Blocker)
 	}
 }
 

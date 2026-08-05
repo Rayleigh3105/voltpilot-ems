@@ -512,6 +512,10 @@ func (a *Agent) otaUpdaterOverlay(sum *cloud.UpdateSummary) {
 	a.otaLogBlocker(up)
 	if up.Blocked() {
 		sum.Reason = up.BlockedReason()
+		// Der NAME der Sperre reist mit - er ist der Hebel, den die Cloud
+		// nennen kann, ohne den deutschen Satz nach Stichworten zu
+		// durchsuchen. Der Satz bleibt die Aussage; dies ist sein Etikett.
+		sum.Blocker = up.Blocker
 		if up.State != "" {
 			sum.State = up.State
 		}
