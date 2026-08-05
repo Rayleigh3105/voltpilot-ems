@@ -37,6 +37,15 @@ const SRC = join(process.cwd(), 'src');
  */
 const EXCLUDED = [
   '/pages/admin/',
+  // Die REINEN Schichten der Admin-Konsole. Sie liegen in `src/`, weil dort
+  // die reinen Module wohnen - sie sind aber ausschließlich Zulieferer von
+  // `pages/admin/*` und sprechen deshalb legitim Betreiber-Vokabular („Broker",
+  // „Rollout", „Manifest"). Damit diese Ausnahme keine Lücke wird, PRÜFT der
+  // Test unten, dass keine Kundenfläche sie importiert.
+  '/adminEdgeUpdates.ts',
+  '/adminFleet.ts',
+  '/adminPulse.ts',
+  '/onboardingFunnel.ts',
   '/pages/EntitaetenSection.',
   '/entities.ts',
   '/entitiesApi.ts',
@@ -75,6 +84,20 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
 ];
 
 /** Every customer-facing portal source file (no tests, no excluded paths). */
+/** JEDE Quelldatei - der Wächter über die Ausnahme braucht auch die ausgenommenen. */
+function walk(dir = SRC): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) {
+      out.push(...walk(full));
+      continue;
+    }
+    if (/\.tsx?$/.test(name)) out.push(full);
+  }
+  return out;
+}
+
 function customerFiles(dir = SRC): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
@@ -123,6 +146,31 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
     expect(violations, `Verbotenes Vokabular in der Kundensicht:\n${violations.join('\n')}`).toEqual(
       [],
     );
+  });
+
+  /**
+   * Der Wächter über die Ausnahme: die vier ausgenommenen reinen Schichten
+   * dürfen NUR von der Admin-Konsole benutzt werden. Zöge sie eines Tages eine
+   * Kundenfläche herein, wäre die Ausnahme still zu einem Loch geworden - und
+   * genau das fällt hier auf, nicht erst im Portal.
+   */
+  it('the admin-only pure layers are really admin-only', () => {
+    const adminOnly = ['adminEdgeUpdates', 'adminFleet', 'adminPulse', 'onboardingFunnel'];
+    const offenders: string[] = [];
+    for (const file of walk(SRC)) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (rel.includes('.test.')) continue;
+      // Die Admin-Konsole selbst und die vier Module untereinander dürfen.
+      if (rel.startsWith('pages/admin/') || rel.startsWith('admin/')) continue;
+      if (adminOnly.some((m) => rel === `${m}.ts`)) continue;
+      const code = readFileSync(file, 'utf8');
+      for (const m of adminOnly) {
+        if (new RegExp(`from '[^']*\\b${m}'`).test(code)) {
+          offenders.push(`${rel} importiert ${m}`);
+        }
+      }
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
   });
 
   it('would fail on a re-introduced forbidden word (the guard actually bites)', () => {

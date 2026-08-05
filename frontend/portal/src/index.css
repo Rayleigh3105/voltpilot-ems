@@ -5944,3 +5944,17 @@ button.vp-tech-card-h.toggle {
   margin-bottom: var(--vp-space-3, 12px);
 }
 .vp-sec-summary::-webkit-details-marker { display: revert; }
+
+/* Ein Verweis IM Fließtext: er sieht aus wie ein Link, ist aber ein Knopf
+   (er navigiert innerhalb der SPA, hat also keine eigene Adresse). Ohne diese
+   Klasse rendert er als Kasten mitten im Satz. */
+.vp-linkbtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--vp-link, #2c5282);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.vp-linkbtn:hover { color: var(--vp-link-hover, #2c5282); }

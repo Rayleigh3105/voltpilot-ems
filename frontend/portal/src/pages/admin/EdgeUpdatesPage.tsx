@@ -6,20 +6,20 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi } from '../../admin/adminApi';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
+import { pageRoute, type Route } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
+import { GeraeteDrawer } from './GeraeteDrawer';
 import {
-  APPLY_HOW,
   actorLabel,
   bakeLine,
   blockerLever,
   eventLabel,
   advanceMode,
   crossoverHint,
-  crossoverState,
-  formatTrustStamp,
   freshnessLabel,
   frozenFraming,
   handelnItems,
@@ -29,11 +29,13 @@ import {
   restingLine,
   rolloutStateLabel,
   signatureLabel,
-  sortFleet,
+  candidates,
+  startSummary,
   stateLabel,
   visibleJournal,
   waveDeviceName,
   waveRowView,
+  type ActiveRollout,
   type EdgeUpdates,
   type EdgeUpdatesRelease,
   type FleetRow,
@@ -80,7 +82,7 @@ function StateChip({ state }: { state: string }) {
  * nie „fehlgeschlagen", Prozente laufen über die erreichbare Menge, und jede
  * rote Zeile trägt ihren Grund.
  */
-export function EdgeUpdatesPage() {
+export function EdgeUpdatesPage({ onNavigate }: { onNavigate?: (target: Route) => void } = {}) {
   const [data, setData] = useState<EdgeUpdates | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -91,6 +93,9 @@ export function EdgeUpdatesPage() {
   // Uhr über einem stehenden Schnappschuss rechnet, verfällt von selbst
   // (die Lebendigkeits-Lehre aus `liveness.ts`).
   const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
+  // Welche Rückfrage gerade aussteht - beide im Haus-Muster (Folgenliste),
+  // nie ein nativer `window.confirm`.
+  const [confirm, setConfirm] = useState<'halt' | 'auto' | null>(null);
   const [tick, setTick] = useState<number>(() => Date.now());
 
   async function load() {
@@ -140,7 +145,6 @@ export function EdgeUpdatesPage() {
   }
 
   const rollout = data?.activeRollout ?? null;
-  const fleet = useMemo(() => sortFleet(data?.fleet ?? []), [data]);
   const banner = useMemo(() => loudBanner(data?.fleet ?? []), [data]);
   const journal = useMemo(() => visibleJournal(data?.journal ?? []), [data]);
   const hint = promoteHint(rollout);
@@ -401,6 +405,7 @@ export function EdgeUpdatesPage() {
                           device={d}
                           fleet={data.fleet}
                           frozen={framing != null}
+                          onOpen={setDeviceFor}
                         />
                       ))}
                     </ul>
@@ -430,19 +435,10 @@ export function EdgeUpdatesPage() {
                     <Button
                       variant="outline"
                       disabled={busy}
-                      onClick={() => {
-                        // Der Not-Aus ist ENDGÜLTIG - das steht in der Rückfrage,
-                        // nicht erst hinterher.
-                        if (
-                          !window.confirm(
-                            'Rollout einfrieren? Es wird nichts weiter verteilt. Bereits erteilte '
-                              + 'Zuweisungen bleiben bestehen. Weitermachen ist danach ein NEUER Rollout.',
-                          )
-                        ) {
-                          return;
-                        }
-                        void act(() => adminApi.haltRollout(rollout.id));
-                      }}
+                      /* Der Not-Aus ist ENDGÜLTIG - er verdient die Folgenliste
+                         des Hauses, nicht den nativen Ein-Satz-Dialog, den
+                         niemand liest. */
+                      onClick={() => setConfirm('halt')}
                     >
                       ⛔ Einfrieren
                     </Button>
@@ -467,16 +463,13 @@ export function EdgeUpdatesPage() {
                         variant="ghost"
                         disabled={busy}
                         onClick={() => {
-                          const on = rollout.autoAdvance !== true;
-                          if (on && !window.confirm(
-                            'Wellen automatisch weiterschalten?\n\nEs ändert sich NUR, wer '
-                              + '„Nächste Welle" drückt: dasselbe Bake-Kriterium (24 h gesund '
-                              + 'und ein echter Steuerzyklus), derselbe automatische Halt bei '
-                              + 'jedem Fehlschlag, derselbe endgültige Not-Aus.',
-                          )) {
-                            return;
+                          // Das AUSschalten braucht keine Rückfrage: es nimmt
+                          // eine Erleichterung zurück, es gibt keine her.
+                          if (rollout.autoAdvance === true) {
+                            void act(() => adminApi.setAutoAdvance(rollout.id, false));
+                          } else {
+                            setConfirm('auto');
                           }
-                          void act(() => adminApi.setAutoAdvance(rollout.id, on));
                         }}
                       >
                         {rollout.autoAdvance ? 'Auf Hand-Vorschub umstellen'
@@ -500,51 +493,28 @@ export function EdgeUpdatesPage() {
           </Card>
           )}
 
-          {/* ── 3. Flotten-Matrix ───────────────────────────────────────── */}
-          <Card padding="lg" radius="lg" style={{ marginBottom: 'var(--vp-space-6)' }}>
-            <h3 style={{ marginTop: 0 }}>Flotten-Matrix</h3>
-            {/* Der TOFU-Abschluss-Stand der Flotte: eine offene Aufgabe, kein
-                Alarm - deshalb eine ruhige Zeile und kein Warn-Banner. */}
-            {crossover && (
-              <p className="vp-muted vp-text-sm" data-testid="crossover-hint">{crossover}</p>
-            )}
-            {fleet.length === 0 ? (
-              <EmptyState title="Keine Geräte" description="Es ist kein Gerät verbunden." />
-            ) : (
-              /* Acht Spalten passen zwischen 720 und ~1000 px nicht in die
-                 Karte, und die Karte KLIPPT (`overflow: hidden` rundet ihre
-                 Ecken). Bis hierher waren die letzten Spalten dort schlicht
-                 unerreichbar - seit dem Hebel wäre ausgerechnet der Satz
-                 unsichtbar, der sagt, was eine Sperre aufhebt. Also scrollt
-                 die Tabelle in ihrem EIGENEN Container (Haus-Regel für breite
-                 Inhalte), statt abgeschnitten zu werden. */
-              <div className="vp-table-scroll">
-              <table className="vp-table responsive" data-testid="fleet">
-                <thead>
-                  <tr>
-                    <th>Anlage</th>
-                    <th>Mandant</th>
-                    <th>Ist</th>
-                    <th>Soll</th>
-                    <th>Zustand</th>
-                    <th>Vertrauen</th>
-                    <th>seit</th>
-                    <th>Grund</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fleet.map((row) => (
-                    <FleetTableRow
-                      key={row.deviceId}
-                      row={row}
-                      onOpen={() => setDeviceFor(row.deviceId)}
-                    />
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </Card>
+          {/* ── 3. Die Flotten-Matrix ist ENTFALLEN (E2) ────────────────
+              Sie war die strukturelle Ursache der „zwei Wahrheiten auf einer
+              Seite": das Wellen-Board zeigte den historischen Zustand, sie
+              daneben die Live-Ableitung - als gleichrangige Nachbarn las sich
+              das als Widerspruch. Ihre drei Aufgaben haben bessere Wohnorte:
+              Flotten-Zustand → Puls (Spalte „Edge-Stand"), Rollout-Beobachtung
+              → das Wellen-Board oben (es zeigt ohnehin JEDES Gerät des
+              Rollouts), Geräte-Drilldown → die Seite „Geräte".
+              Das REVIDIERT bewusst §7.3 des OTA-Scouts; kein Informations-
+              gehalt geht verloren. */}
+          {/* Ein VERWEIS ist keine Meldung: er steht ruhig, nicht als zweiter
+              blauer Kasten neben der Ruhezustands-Zeile. */}
+          <p className="vp-muted vp-text-sm" data-testid="fleet-pointer"
+             style={{ marginBottom: 'var(--vp-space-6)' }}>
+            Der heutige Stand JEDES Geräts steht in der{' '}
+            <button type="button" className="vp-linkbtn"
+                    onClick={() => onNavigate?.(pageRoute('geraete-registry'))}>
+              Geräte-Übersicht
+            </button>
+            {' '}(dort auch Kanal, Pin und Vertrauen je Gerät) und im Flotten-Puls.
+            {crossover ? ` ${crossover}` : ''}
+          </p>
 
           {/* ── 4. Verlauf ──────────────────────────────────────────────── */}
           <Card padding="lg" radius="lg">
@@ -574,8 +544,8 @@ export function EdgeUpdatesPage() {
         const row = data.fleet.find((r) => r.deviceId === deviceFor);
         if (!row) return null;
         return (
-          <DeviceTargetDrawer
-            row={row}
+          <GeraeteDrawer
+            device={row}
             releases={data.releases}
             journal={data.journal}
             busy={busy}
@@ -594,10 +564,56 @@ export function EdgeUpdatesPage() {
         );
       })()}
 
+      {rollout && (
+        <ConfirmDialog
+          open={confirm === 'halt'}
+          tone="danger"
+          title="Rollout einfrieren?"
+          intro={`Der Rollout von ${rollout.releaseVersion} wird angehalten.`}
+          consequences={[
+            'Es wird nichts weiter verteilt - keine weitere Welle, kein weiteres Gerät.',
+            'Bereits erteilte Zuweisungen BLEIBEN bestehen: sie zurückzunehmen schickte eine '
+              + 'halb aktualisierte Flotte auf einen dritten Stand.',
+            'Das Einfrieren ist ENDGÜLTIG. Weitermachen ist danach ein neuer, bewusst '
+              + 'gestarteter Rollout.',
+          ]}
+          confirmLabel="Endgültig einfrieren"
+          busy={busy}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            setConfirm(null);
+            void act(() => adminApi.haltRollout(rollout.id));
+          }}
+        />
+      )}
+
+      {rollout && (
+        <ConfirmDialog
+          open={confirm === 'auto'}
+          title="Wellen automatisch weiterschalten?"
+          intro={'Es ändert sich AUSSCHLIESSLICH, wer „Nächste Welle" drückt.'}
+          consequences={[
+            'Dasselbe Bake-Kriterium: 24 Std. gesunder Betrieb und - wo VoltPilot steuert - '
+              + 'ein bestätigter Steuerzyklus.',
+            'Derselbe automatische Halt bei jedem Fehlschlag.',
+            'Derselbe endgültige Not-Aus.',
+            'Jederzeit wieder auf Hand-Vorschub umstellbar.',
+          ]}
+          confirmLabel="Automatik einschalten"
+          busy={busy}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => {
+            setConfirm(null);
+            void act(() => adminApi.setAutoAdvance(rollout.id, true));
+          }}
+        />
+      )}
+
       {rolloutFor && data && (
         <StartRolloutDrawer
           release={rolloutFor}
           fleet={data.fleet}
+          rollout={data.activeRollout}
           onClose={() => setRolloutFor(null)}
           onStart={async (waves, channel, autoAdvance) => {
             await act(() =>
@@ -628,17 +644,25 @@ function WaveDeviceRow({
   device,
   fleet,
   frozen,
+  onOpen,
 }: {
   device: WaveDevice;
   fleet: FleetRow[];
   frozen: boolean;
+  /** Seit die Matrix entfallen ist, ist DIESE Zeile der Weg ins Gerät. */
+  onOpen?: (deviceId: string) => void;
 }) {
   const name = waveDeviceName(device);
   const view = waveRowView(device, fleet, frozen);
   const bake = bakeLine(device);
-  const lever = blockerLever(fleet.find((r) => r.deviceId === device.deviceId)?.blocker);
+  const live = fleet.find((r) => r.deviceId === device.deviceId);
+  const lever = blockerLever(live?.blocker);
+  // Ein Gerät, das die Plattform verlassen hat, ist nicht mehr zu öffnen -
+  // ein Klick führte ins Leere.
+  const open = live && onOpen ? () => onOpen(device.deviceId) : undefined;
   return (
-    <li className="vp-wave-device">
+    <li className={open ? 'vp-wave-device vp-row-click' : 'vp-wave-device'}
+        onClick={open} title={open ? 'Gerät öffnen' : undefined}>
       <StateChip state={view.state} />{' '}
       <strong className={name.removed ? 'vp-muted' : undefined}>{name.name}</strong>
       {device.tenantName && <span className="vp-muted"> · {device.tenantName}</span>}
@@ -662,212 +686,6 @@ function WaveDeviceRow({
   );
 }
 
-function FleetTableRow({ row, onOpen }: { row: FleetRow; onOpen: () => void }) {
-  const cross = crossoverState(row.trust);
-  const lever = blockerLever(row.blocker);
-  return (
-    <tr className="vp-row-click" onClick={onOpen} title="Zuweisung dieses Geräts">
-      <td data-label="Anlage">
-        {row.siteName}
-        {row.pinned && (
-          <>
-            {' '}
-            <Badge variant="off">festgenagelt</Badge>
-          </>
-        )}
-      </td>
-      <td data-label="Mandant" className="vp-muted">
-        {row.tenantName}
-      </td>
-      {/* Der gemeldete Stempel VERBATIM - „–" heißt unbekannt, nie veraltet. */}
-      <td data-label="Ist">{row.ist ?? '–'}</td>
-      <td data-label="Soll">{row.soll ?? '–'}</td>
-      <td data-label="Zustand">
-        <StateChip state={row.state} />
-      </td>
-      {/* OTA Stufe 4: trägt diese Box schon ein schlüsseltragendes Image?
-          „unbekannt" ist hier ruhig und heißt NIE „nicht gekreuzt". */}
-      <td data-label="Vertrauen">
-        <Badge variant={toneVariant(cross.tone)} dot title={cross.detail ?? undefined}>
-          {cross.label}
-        </Badge>
-      </td>
-      <td data-label="seit" className="vp-muted">
-        {row.since ? fmtRelative(row.since) : '–'}
-      </td>
-      {/* `vp-cell-main` stapelt Grund + Hebel zu EINER Spalte - auch innerhalb
-          der Telefon-Zeile aus Etikett und Wert. Ohne das stünden beide als
-          zwei Flex-Kinder nebeneinander, und der Hebel liefe aus der Karte
-          heraus (bei 375 px gemessen) - ausgerechnet der Satz, der sagt, was
-          die Sperre aufhebt. */}
-      <td data-label="Grund" className="vp-muted vp-text-sm">
-        <span className="vp-cell-main">
-          <span>{row.reason ?? '–'}</span>
-          {lever && <span className="vp-lever" data-testid="lever">Hebel: {lever}</span>}
-        </span>
-      </td>
-    </tr>
-  );
-}
-
-/**
- * Die Zuweisung EINES Geräts (§7.1 „Geräte-Registry-Seite": Kanal + Pin +
- * „Jetzt aktualisieren" + die letzte Update-Historie).
- *
- * <p>Sie sitzt an der FLOTTEN-MATRIX, nicht an der Registry-Seite: die
- * Manufacturing-Registry kennt nur die Aufkleber-ID, eine Zuweisung braucht
- * aber die Geräte-Id - und die trägt genau diese Zeile.
- */
-function DeviceTargetDrawer({
-  row,
-  releases,
-  journal,
-  busy,
-  onClose,
-  onAssign,
-  onRevert,
-}: {
-  row: FleetRow;
-  releases: EdgeUpdatesRelease[];
-  journal: EdgeUpdates['journal'];
-  busy: boolean;
-  onClose: () => void;
-  onAssign: (releaseSeq: number, channel: string, pinned: boolean) => Promise<void>;
-  onRevert: () => Promise<void>;
-}) {
-  const signed = releases.filter((r) => r.signed);
-  const [seq, setSeq] = useState<number | null>(row.sollSeq ?? signed[0]?.releaseSeq ?? null);
-  const [channel, setChannel] = useState(row.channel ?? 'stable');
-  const [pinned, setPinned] = useState(row.pinned);
-  const history = journal.filter((e) => e.deviceId === row.deviceId).slice(0, 10);
-
-  return (
-    <Drawer open title={row.siteName} onClose={onClose}>
-      <p className="vp-muted">
-        {row.tenantName} · {row.label}
-      </p>
-      <dl className="vp-kv-list">
-        <dt>Ist</dt>
-        <dd>{row.ist ?? '–'}</dd>
-        <dt>Soll</dt>
-        <dd>{row.soll ?? '–'}</dd>
-        <dt>Zustand</dt>
-        <dd><StateChip state={row.state} /></dd>
-        {/* Die Vertrauens-Identität dieses Geräts (OTA Stufe 4): trägt es ein
-            schlüsseltragendes Image, und WELCHES Vertrauens-Set fährt es? Das
-            zweite ist der Blick, den ein Rotations-Drill je Box braucht. */}
-        <dt>Vertrauen</dt>
-        <dd>{crossoverState(row.trust).label}</dd>
-        {row.trust && row.trust.trustSetKeyIds.length > 0 && (
-          <>
-            <dt>Vertrauens-Set</dt>
-            <dd>
-              {row.trust.trustSetKeyIds.join(', ')}
-              {row.trust.trustSetGeneratedAt
-                && ` (vom ${formatTrustStamp(row.trust.trustSetGeneratedAt)})`}
-            </dd>
-          </>
-        )}
-      </dl>
-      {/* Der Grund steht IMMER dabei - „Crossover offen" ohne die Erklärung,
-          dass das der dokumentierte Vor-TOFU-Zustand ist, läse sich wie ein
-          Defekt. */}
-      {crossoverState(row.trust).detail && (
-        <p className="vp-muted vp-text-sm" data-testid="trust-detail">
-          {crossoverState(row.trust).detail}
-        </p>
-      )}
-      {row.reason && <p className="vp-muted vp-text-sm">{row.reason}</p>}
-      {blockerLever(row.blocker) && (
-        <p className="vp-text-sm vp-lever" data-testid="drawer-lever">
-          Hebel: {blockerLever(row.blocker)}
-        </p>
-      )}
-      {row.state === 'wartet_auf_anwendung' && (
-        <p className="vp-text-sm" data-testid="drawer-apply-how">{APPLY_HOW}</p>
-      )}
-
-      {signed.length === 0 ? (
-        <p className="vp-muted">
-          Kein signiertes Release im Register – ohne signiertes Manifest hat ein Gerät nichts,
-          was es gegen seinen Vertrauensanker prüfen könnte.
-        </p>
-      ) : (
-        <>
-          <label className="vp-field-row">
-            <span>Release</span>
-            <select
-              value={seq ?? ''}
-              onChange={(e) => setSeq(Number(e.target.value))}
-              aria-label="Release"
-            >
-              {signed.map((r) => (
-                <option key={r.releaseSeq} value={r.releaseSeq}>
-                  {r.version}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="vp-field-row">
-            <span>Kanal</span>
-            <select
-              value={channel}
-              onChange={(e) => setChannel(e.target.value)}
-              aria-label="Kanal"
-            >
-              <option value="stable">stable</option>
-              <option value="canary">canary</option>
-            </select>
-          </label>
-          <label className="vp-check-row">
-            <input
-              type="checkbox"
-              checked={pinned}
-              onChange={(e) => setPinned(e.target.checked)}
-            />{' '}
-            Festnageln – ein Rollout überschreibt dieses Gerät dann nicht, sondern
-            überspringt es sichtbar.
-          </label>
-          <div className="vp-row-gap">
-            {/* „Release zuweisen", nicht „Jetzt aktualisieren": der Knopf
-                veröffentlicht eine Zuweisung - das ANWENDEN bleibt
-                beaufsichtigt am Gerät. Der alte Wortlaut versprach genau das,
-                was danach nicht passierte, und fütterte damit die Frage
-                „warum passiert nichts?" (Reibung R5). */}
-            <Button
-              variant="primary"
-              disabled={busy || seq == null}
-              onClick={() => void onAssign(seq as number, channel, pinned)}
-            >
-              Release zuweisen
-            </Button>
-            {row.soll && (
-              <Button variant="outline" disabled={busy} onClick={() => void onRevert()}>
-                Zuweisung zurücknehmen
-              </Button>
-            )}
-          </div>
-        </>
-      )}
-
-      <h4>Update-Historie</h4>
-      {history.length === 0 ? (
-        <p className="vp-muted vp-text-sm">Für dieses Gerät ist noch nichts passiert.</p>
-      ) : (
-        <ul className="vp-plain-list">
-          {history.map((e) => (
-            <li key={e.id} className="vp-text-sm">
-              <span className="vp-muted">{fmtWhen(e.at)}</span> · {actorLabel(e.actor)} ·{' '}
-              {eventLabel(e.event)}
-              {e.detail ? ` – ${e.detail}` : ''}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Drawer>
-  );
-}
-
 /**
  * Die Wellen werden von HAND geschnitten (D4: hand-advanced ist bei ≤10
  * Geräten richtig) - wer die Wellen schneidet, trifft eine Entscheidung, die
@@ -876,11 +694,14 @@ function DeviceTargetDrawer({
 function StartRolloutDrawer({
   release,
   fleet,
+  rollout,
   onClose,
   onStart,
 }: {
   release: EdgeUpdatesRelease;
   fleet: FleetRow[];
+  /** Der letzte Rollout - er BELEGT, welcher Canary sich bewährt hat (D4). */
+  rollout: ActiveRollout | null;
   onClose: () => void;
   onStart: (
     waves: { name: string; devices: string[] }[],
@@ -892,8 +713,11 @@ function StartRolloutDrawer({
   // OTA Stufe 4: die Automatik ist eine OPTION und startet AUS - Hand-Vorschub
   // ist bei dieser Flottengröße die richtige Vorgabe (D4).
   const [autoAdvance, setAutoAdvance] = useState(false);
-  const candidates = useMemo(() => sortFleet(fleet), [fleet]);
-  const rest = candidates.filter((d) => !canary.includes(d.deviceId));
+  // Kandidaten MIT Zustand: ein offline gewähltes Canary lässt Welle 1 still
+  // stehen, und bis hierher sah man das an der Checkbox nicht.
+  const cands = useMemo(() => candidates(fleet, rollout), [fleet, rollout]);
+  const rest = fleet.filter((d) => !canary.includes(d.deviceId));
+  const summary = useMemo(() => startSummary(canary, fleet), [canary, fleet]);
 
   const waves: { name: string; devices: string[] }[] = [];
   if (canary.length > 0) waves.push({ name: 'Canary', devices: canary });
@@ -905,35 +729,58 @@ function StartRolloutDrawer({
         Welle 1 wird sofort zugewiesen, jede weitere erst nach Freigabe (24 Std. gesunder
         Betrieb und – wo VoltPilot steuert – ein bestätigter Steuerzyklus).
       </p>
-      <p className="vp-muted vp-text-sm">
-        Ein festgenageltes Gerät wird übersprungen, nicht überschrieben.
-      </p>
       <fieldset style={{ border: 0, padding: 0 }}>
         <legend className="vp-text-sm" style={{ fontWeight: 600 }}>
           Welle 1 (Canary)
         </legend>
-        {candidates.map((d) => (
-          <label key={d.deviceId} className="vp-check-row">
+        {cands.map((c) => (
+          <label key={c.deviceId} className="vp-check-row vp-candidate">
             <input
               type="checkbox"
-              checked={canary.includes(d.deviceId)}
+              checked={canary.includes(c.deviceId)}
               onChange={(e) =>
                 setCanary((prev) =>
                   e.target.checked
-                    ? [...prev, d.deviceId]
-                    : prev.filter((id) => id !== d.deviceId),
+                    ? [...prev, c.deviceId]
+                    : prev.filter((id) => id !== c.deviceId),
                 )
               }
             />{' '}
-            {d.siteName} <span className="vp-muted">· {d.tenantName}</span>
+            <span className="vp-cell-main">
+              <span>
+                {c.name} <span className="vp-muted">· {c.tenantName}</span>{' '}
+                <span className={`vp-ustate vp-ustate-${c.cls}`}>
+                  <i className="vp-ustate-dot" aria-hidden="true" />
+                  {c.state}
+                </span>
+                {/* Der VORSCHLAG ist eine Beobachtung, keine Empfehlung aus
+                    dem Nichts: dieses Gerät stand in Welle 1 des letzten
+                    Rollouts (D4, der eingespielte Canary). */}
+                {c.proven && (
+                  <>
+                    {' '}
+                    <Badge variant="ok" data-testid="proven-canary">bewährter Canary</Badge>
+                  </>
+                )}
+              </span>
+              {c.caveat && <span className="vp-cell-sub vp-lever">{c.caveat}</span>}
+            </span>
           </label>
         ))}
       </fieldset>
-      <p className="vp-muted vp-text-sm">
-        {rest.length === 0
-          ? 'Alle Geräte stehen in Welle 1.'
-          : `Welle 2 „Flotte“: ${rest.length} Gerät${rest.length === 1 ? '' : 'e'}.`}
-      </p>
+
+      {/* Was dieser Klick konkret auslöst - inklusive dessen, was NICHT
+          passiert (übersprungene Pins, offline nachholend). Beides sieht
+          später wie ein Fehler aus, wenn es hier nicht angekündigt wurde. */}
+      {summary.length > 0 && (
+        <>
+          <h4>Das passiert beim Start</h4>
+          <ul className="vp-plain-list vp-text-sm" data-testid="start-summary">
+            {summary.map((l) => <li key={l}>{l}</li>)}
+          </ul>
+        </>
+      )}
+
       <label className="vp-check-row" style={{ marginTop: 'var(--vp-space-3)' }}>
         <input
           type="checkbox"
@@ -944,7 +791,7 @@ function StartRolloutDrawer({
       </label>
       <p className="vp-muted vp-text-sm">
         {autoAdvance
-          ? 'Es ändert sich nur, WER „Nächste Welle“ drückt. Dasselbe Bake-Kriterium, '
+          ? 'Es ändert sich nur, WER „Nächste Welle" drückt. Dasselbe Bake-Kriterium, '
             + 'derselbe automatische Halt bei jedem Fehlschlag, derselbe endgültige Not-Aus.'
           : 'Vorgabe: jede weitere Welle geben Sie von Hand frei. Umstellen geht auch '
             + 'später, während der Rollout läuft.'}

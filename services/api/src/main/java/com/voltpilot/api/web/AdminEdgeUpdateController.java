@@ -1,6 +1,8 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.ota.RolloutService;
+import com.voltpilot.api.repo.AdminProvisionedDeviceRepository;
+import com.voltpilot.api.web.dto.AdminDevicesDto;
 import com.voltpilot.api.web.dto.EdgeUpdatesDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -49,15 +51,37 @@ import org.springframework.web.server.ResponseStatusException;
 public class AdminEdgeUpdateController {
 
     private final RolloutService rollouts;
+    private final AdminProvisionedDeviceRepository registry;
 
-    public AdminEdgeUpdateController(RolloutService rollouts) {
+    public AdminEdgeUpdateController(RolloutService rollouts,
+            AdminProvisionedDeviceRepository registry) {
         this.rollouts = rollouts;
+        this.registry = registry;
     }
 
     /** Alles, was die Seite „Edge-Updates" zeigt - in EINEM Aufruf. */
     @GetMapping("/edge-updates")
     public EdgeUpdatesDto edgeUpdates() {
         return rollouts.readModel(Instant.now());
+    }
+
+    /**
+     * Das INVENTAR aller Geräte - der EINE additive Read hinter der Seite
+     * „Geräte" (UX-Konzept {@code vp-admin-geraete-ux-k2} §4/§6).
+     *
+     * <p>Er vereinigt die Aufkleber-Registry mit der echten Flotte. Bis hierher
+     * gab es beide nur getrennt, und die Seite namens „Geräte-Registry" enthielt
+     * die realen Bestandsboxen (selbst generierte {@code edge-}Referenzen) gar
+     * nicht - wer „meine Geräte" suchte, fand sie nur als Nebenspalten anderer
+     * Seiten.
+     *
+     * <p>Er erzeugt KEINE neue Wahrheit: Zustände kommen aus derselben
+     * Ableitung wie die Flotten-Zeile, die Registry-Felder aus derselben
+     * Abfrage wie bisher.
+     */
+    @GetMapping("/devices")
+    public AdminDevicesDto devices() {
+        return rollouts.devices(registry.findAll(), Instant.now());
     }
 
     /**

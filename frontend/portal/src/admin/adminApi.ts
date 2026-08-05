@@ -1,5 +1,5 @@
 import { request, type CreateSiteInput, type Site } from '../api';
-import type { EdgeUpdates } from '../adminEdgeUpdates';
+import type { DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -77,6 +77,43 @@ export interface PendingEnrollment {
   csrUpdatedAt: string;
   everIssued: boolean;
   issuedAt: string | null;
+}
+
+/**
+ * Eine Zeile des Geräte-Inventars: die VEREINIGUNG von Aufkleber-Registry und
+ * echter Flotte, verbunden über die Referenz.
+ *
+ * Genau eine der beiden Hälften darf fehlen, und welche, sagt die Zeile:
+ * `deviceId === null` ist eine gedruckte, noch nicht verbundene ID;
+ * `provisioned === false` ist ein verbundenes Gerät, dessen Referenz nie aus
+ * der Aufkleber-Registry kam (der Normalfall der Bestandsflotte).
+ *
+ * `state` ist `null`, solange die Zeile noch kein Gerät IST - über eine ID, die
+ * sich nie gemeldet hat, ist nichts abzuleiten.
+ */
+export interface AdminDeviceRow {
+  deviceId: string | null;
+  externalRef: string;
+  label: string | null;
+  siteId: string | null;
+  siteName: string | null;
+  tenantId: string | null;
+  tenantName: string | null;
+  kind: string | null;
+  ist: string | null;
+  soll: string | null;
+  sollSeq: number | null;
+  channel: string | null;
+  pinned: boolean;
+  state: string | null;
+  reason: string | null;
+  blocker: string | null;
+  lastSeenAt: string | null;
+  reportedAt: string | null;
+  provisioned: boolean;
+  note: string | null;
+  provisionedAt: string | null;
+  trust?: DeviceTrust | null;
 }
 
 export interface ProvisionDeviceInput {
@@ -214,6 +251,16 @@ export const adminApi = {
 
   /** Alles, was die Seite „Edge-Updates" zeigt, in EINEM Aufruf. */
   edgeUpdates: () => request<EdgeUpdates>('/api/v1/admin/edge-updates'),
+
+  /**
+   * Das INVENTAR aller Geräte über den ganzen Lebenszyklus (Seite „Geräte") -
+   * die Vereinigung von Aufkleber-Registry und echter Flotte. Bis zum
+   * Konsolidierungs-Umbau kannte die Registry-Seite die realen Bestandsboxen
+   * (selbst generierte `edge-`Referenzen) gar nicht.
+   */
+  listDevices: () =>
+    request<{ devices: AdminDeviceRow[] }>('/api/v1/admin/devices')
+      .then((r) => r.devices),
 
   /** Rollout aus einem SIGNIERTEN Register-Eintrag starten (409 sonst). */
   createRollout: (input: {

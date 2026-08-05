@@ -1,4 +1,5 @@
-import type { PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
+import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
+import { crossoverState } from './adminEdgeUpdates';
 
 /**
  * Der Onboarding-Funnel der Geräte-Registry (Admin-Umbau Stufe 1, Baustein B3).
@@ -25,7 +26,7 @@ import type { PendingEnrollment, ProvisionedDevice } from './admin/adminApi';
  */
 export const TYPO_SUSPECT_AFTER_MS = 24 * 60 * 60 * 1000;
 
-export type FunnelStageId = 'registriert' | 'wartet' | 'verbunden';
+export type FunnelStageId = 'registriert' | 'wartet' | 'verbunden' | 'vertrauen';
 
 /** Eine Stufe des Funnels: Zahl + Wort, sonst nichts. */
 export interface FunnelStage {
@@ -39,18 +40,46 @@ export interface FunnelStage {
 }
 
 /**
- * Die drei Stufen aus dem, was die Seite ohnehin lädt. `pending` ist
- * mandantenlos (ein Enrollment kennt keinen Mandanten), `devices` ist die
- * Registry.
+ * Die VIER Stufen aus dem, was die Seite ohnehin lädt. `pending` ist
+ * mandantenlos (ein Enrollment kennt keinen Mandanten), `registry` ist die
+ * Aufkleber-Registry, `fleet` das Geräte-Inventar.
+ *
+ * **Die vierte Stufe „Vertrauen gekreuzt" schließt den Funnel** (UX-Konzept §3
+ * Befund C): „verbunden" ist nicht das Onboarding-ENDE - erst der TOFU-
+ * Crossover macht eine Box update-fähig. Diese Information existierte schon,
+ * wohnte aber als SPALTE in der Flotten-Matrix der ANDEREN Seite; der Funnel
+ * hörte damit eine Stufe zu früh auf.
+ *
+ * **Gezählt wird nur, was belegt ist:** ein Gerät, das seinen Vertrauensanker
+ * gar nicht meldet, ist „unbekannt" und geht weder in den Zähler noch in die
+ * offene Zahl ein - `crossoverState` ist dieselbe Ableitung, die auch die
+ * Geräte-Zeile rendert.
+ *
+ * `verbunden` zählt seit dem Umbau die ECHTE Flotte, nicht mehr nur die
+ * beanspruchten Aufkleber-IDs: die Bestandsboxen verbinden sich über selbst
+ * generierte `edge-`Referenzen und kamen in dieser Zahl gar nicht vor.
  */
 export function funnelStages(
-  devices: ProvisionedDevice[],
+  registry: ProvisionedDevice[],
   pending: PendingEnrollment[],
+  fleet: AdminDeviceRow[] = [],
 ): FunnelStage[] {
-  const connected = devices.filter((d) => d.claimed).length;
-  const registered = devices.length;
+  const registered = registry.length;
   const waiting = pending.length;
-  return [
+  const connectedRows = fleet.filter((d) => d.deviceId != null);
+  // Ohne Inventar (älteres Backend) bleibt die alte Quelle gültig - dann zählt
+  // die Stufe eben nur die beanspruchten Aufkleber, statt zu schweigen.
+  const connected = fleet.length > 0
+    ? connectedRows.length
+    : registry.filter((d) => d.claimed).length;
+  let crossed = 0;
+  let open = 0;
+  for (const d of connectedRows) {
+    const s = crossoverState(d.trust).state;
+    if (s === 'gekreuzt') crossed += 1;
+    else if (s === 'offen' || s === 'fehler') open += 1;
+  }
+  const stages: FunnelStage[] = [
     {
       id: 'registriert',
       label: 'Registriert',
@@ -82,6 +111,27 @@ export function funnelStages(
       attention: false,
     },
   ];
+  // Die vierte Stufe erscheint nur, wenn es überhaupt eine Flotte gibt, über
+  // die sie etwas sagen könnte - eine „0 von 0"-Kachel wäre kein Befund.
+  if (connectedRows.length > 0) {
+    stages.push({
+      id: 'vertrauen',
+      label: 'Vertrauen gekreuzt',
+      count: crossed,
+      note:
+        open > 0
+          ? open === 1
+            ? '1 Gerät ist noch nicht update-fähig.'
+            : `${open} Geräte sind noch nicht update-fähig.`
+          : crossed === 0
+            ? 'Noch kein Gerät meldet einen geprüften Vertrauensanker.'
+            : 'Diese Geräte können Releases anwenden.',
+      // Ein offener Crossover ist eine AUFGABE, kein Fehler - aber er ist der
+      // Grund, warum ein Rollout auf dieser Box nichts bewirkt.
+      attention: open > 0,
+    });
+  }
+  return stages;
 }
 
 /** Eine Zeile der Sektion „Wartet auf Zuordnung". */
@@ -127,4 +177,119 @@ export function pendingRows(
         suspect,
       };
     });
+}
+
+// ── Das INVENTAR: eine Tabelle über den ganzen Lebenszyklus ────────────────
+
+/** Wo im Lebenszyklus steht diese Zeile? */
+export type DeviceLifecycle = 'gedruckt' | 'verbunden';
+
+/** Eine Zeile der EINEN Geräte-Tabelle. */
+export interface DeviceRow {
+  key: string;
+  row: AdminDeviceRow;
+  lifecycle: DeviceLifecycle;
+  /** Was die Zeile in der Spalte „Gerät" trägt - nie eine UUID. */
+  name: string;
+  /** Anlage · Mandant, wo bekannt. */
+  context: string | null;
+  /** Steht diese Referenz in der Aufkleber-Registry? */
+  provisioned: boolean;
+}
+
+/**
+ * Das Inventar, sortiert: erst was Aufmerksamkeit braucht, dann die verbundene
+ * Flotte, zuletzt die gedruckten IDs, die noch niemand verbunden hat.
+ *
+ * Die Reihenfolge INNERHALB der verbundenen Geräte ist die des Flotten-Pulses
+ * (warn-first) - eine zweite Rangfolge für dieselbe Frage wäre eine zweite
+ * Wahrheit; sie kommt deshalb aus `sortFleet`s Rang-Tabelle über `stateRank`.
+ */
+export function deviceRows(devices: AdminDeviceRow[]): DeviceRow[] {
+  const rows: DeviceRow[] = devices.map((row) => ({
+    key: row.externalRef,
+    row,
+    lifecycle: row.deviceId != null ? 'verbunden' : 'gedruckt',
+    // Ein verbundenes Gerät heißt nach seiner Anlage bzw. seinem Namen; eine
+    // gedruckte ID hat noch keinen - dann IST die Referenz der Name.
+    name: row.siteName ?? row.label ?? row.externalRef,
+    context: row.tenantName ?? null,
+    provisioned: row.provisioned,
+  }));
+  return rows.sort((a, b) => {
+    if (a.lifecycle !== b.lifecycle) return a.lifecycle === 'verbunden' ? -1 : 1;
+    const ra = stateRank(a.row.state);
+    const rb = stateRank(b.row.state);
+    if (ra !== rb) return ra - rb;
+    return a.name.localeCompare(b.name, 'de');
+  });
+}
+
+/** Warn-first, dieselbe Ordnung wie im Flotten-Puls. */
+function stateRank(state: string | null): number {
+  switch (state) {
+    case 'fehlgeschlagen':
+    case 'zurueckgerollt':
+    case 'im_update_verstummt':
+      return 0;
+    case 'wartet_auf_anwendung':
+      return 1;
+    case 'blockiert':
+      return 2;
+    case 'wendet_an':
+    case 'laedt':
+    case 'selbsttest':
+      return 3;
+    case 'ausstehend':
+      return 4;
+    case 'zurueckgestellt':
+      return 5;
+    case 'offline_holt_nach':
+      return 6;
+    case 'unbekannt':
+      return 7;
+    default:
+      return 8;
+  }
+}
+
+/**
+ * Der gemeldete Stempel als **Tag + Build** statt als Rohstring.
+ *
+ * `edge-2026.08.0-3bf8c038e1d2` neben `edge-2026.08.0` sind zwei verschieden
+ * AUSSEHENDE Zeichenketten für „läuft das Soll" (UX-Konzept §3 Befund F). Die
+ * Daten sind richtig - es fehlte die Aufbereitung.
+ *
+ * Getrennt wird nach der PRÄFIX-Regel des Hauses (`releaseIsRunning`, der
+ * Zwilling von `otaverify.ReleaseIsRunning` und `RolloutStates`): nur was
+ * wirklich `<release>-<sha>` ist, wird zerlegt. Ein Bestandsbau mit nackter
+ * SHA bleibt VERBATIM - ihn zu zerlegen erfände ein Release-Tag, mit dem er
+ * nie gebaut wurde.
+ */
+export function versionDisplay(
+  stamp: string | null | undefined,
+  releases: { version: string }[] = [],
+): { tag: string; build: string | null } | null {
+  if (!stamp || !stamp.trim()) return null;
+  const s = stamp.trim();
+  for (const r of releases) {
+    if (r.version && s.startsWith(`${r.version}-`)) {
+      return { tag: r.version, build: s.slice(r.version.length + 1) };
+    }
+    if (r.version === s) return { tag: s, build: null };
+  }
+  return { tag: s, build: null };
+}
+
+/** „edge-2026.08.0 (Build 3bf8c038)" - der Stempel in EINEM Wort. */
+export function versionLabel(
+  stamp: string | null | undefined,
+  releases: { version: string }[] = [],
+): string {
+  const v = versionDisplay(stamp, releases);
+  if (!v) return '–';
+  // Der Build wird gekürzt: die ersten acht Zeichen identifizieren ihn
+  // eindeutig genug, und die vollen zwölf verdrängen in einer schmalen Spalte
+  // das Tag, das die eigentliche Aussage ist.
+  return v.build ? `${v.tag} (Build ${v.build.slice(0, 8)})` : v.tag;
 }

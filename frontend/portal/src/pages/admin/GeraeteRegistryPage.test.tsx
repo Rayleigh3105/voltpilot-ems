@@ -1,15 +1,22 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listProvisionedDevices = vi.fn();
 const listPendingEnrollments = vi.fn();
 
+const listDevices = vi.fn();
+const edgeUpdates = vi.fn();
+
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
     listProvisionedDevices: () => listProvisionedDevices(),
     listPendingEnrollments: () => listPendingEnrollments(),
+    listDevices: () => listDevices(),
+    edgeUpdates: () => edgeUpdates(),
     provisionDevice: vi.fn(),
     deleteProvisionedDevice: vi.fn(),
+    setUpdateTarget: vi.fn(),
+    revertUpdateTarget: vi.fn(),
   },
 }));
 
@@ -24,18 +31,62 @@ const DEVICE = {
   claimedByTenant: 'Demo C&I',
 };
 
+/** Eine echte Bestandsbox: `edge-`Referenz, NICHT aus der Aufkleber-Registry. */
+const FLEET_ROW = {
+  deviceId: 'd1', externalRef: 'edge-k2m4pqj', label: 'edge-k2m4pqj',
+  siteId: 's1', siteName: 'Auernheim', tenantId: 't1', tenantName: 'Maximilian Wüstholz',
+  kind: null, ist: 'edge-2026.08.1-9b37439a02c1', soll: 'edge-2026.08.1', sollSeq: 14,
+  channel: 'stable', pinned: false, state: 'bestaetigt', reason: null, blocker: null,
+  lastSeenAt: '2026-08-05T09:00:00Z', reportedAt: '2026-08-05T09:00:00Z',
+  provisioned: false, note: null, provisionedAt: null,
+  trust: {
+    rootKeyIds: ['root-2026-a'], trustSetKeyIds: ['rel-2026-a'],
+    trustSetGeneratedAt: '2026-08-04T10:00:00Z', trustSetError: null,
+  },
+};
+
+/** Die gedruckte, noch NICHT verbundene Aufkleber-ID. */
+const PRINTED = {
+  deviceId: null, externalRef: 'VP-DEMO-0002', label: null,
+  siteId: null, siteName: null, tenantId: null, tenantName: null, kind: 'inverter',
+  ist: null, soll: null, sollSeq: null, channel: null, pinned: false,
+  state: null, reason: null, blocker: null, lastSeenAt: null, reportedAt: null,
+  provisioned: true, note: null, provisionedAt: '2026-07-01T00:00:00Z', trust: null,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   listProvisionedDevices.mockResolvedValue([DEVICE]);
   listPendingEnrollments.mockResolvedValue([]);
+  // Das Inventar ist die VEREINIGUNG: die verbundene Aufkleber-ID, eine echte
+  // `edge-`Bestandsbox und eine gedruckte, noch unverbundene ID.
+  listDevices.mockResolvedValue([
+    { ...FLEET_ROW, deviceId: 'd0', externalRef: DEVICE.externalRef, label: 'VP-DEMO-0001',
+      siteName: 'Demo Site', tenantName: DEVICE.claimedByTenant, kind: 'inverter',
+      provisioned: true, provisionedAt: DEVICE.provisionedAt },
+    FLEET_ROW,
+    PRINTED,
+  ]);
+  edgeUpdates.mockResolvedValue({
+    releases: [{
+      releaseSeq: 14, version: 'edge-2026.08.1', targetCommit: null, notes: null,
+      signed: true, signingKeyId: 'rel-2026-a', createdAt: '2026-08-04T10:00:00Z',
+      runningOnDevices: 1,
+    }],
+    activeRollout: null, fleet: [], journal: [],
+    kpi: { known: 1, upToDate: 1, unknown: 0, inRollout: 0, failed: 0, newestRelease: null },
+  });
 });
 
 describe('GeraeteRegistryPage (B3 - der Onboarding-Funnel)', () => {
-  it('shows the three funnel stages over the registry', async () => {
+  it('shows the FOUR funnel stages - der Funnel endet nicht mehr bei „verbunden"', async () => {
     render(<GeraeteRegistryPage />);
     expect(await screen.findByText('Registriert')).toBeInTheDocument();
     expect(screen.getByText('Wartet auf Zuordnung')).toBeInTheDocument();
     expect(screen.getByText('Verbunden')).toBeInTheDocument();
+    // Die vierte Stufe: erst der TOFU-Crossover macht eine Box update-fähig.
+    // Sie wohnte bis zum Umbau als Spalte in der Matrix der ANDEREN Seite.
+    expect(await screen.findByText('Vertrauen gekreuzt')).toBeInTheDocument();
   });
 
   it('surfaces a device that reported but met no claim - the typo window', async () => {
@@ -69,5 +120,67 @@ describe('GeraeteRegistryPage (B3 - der Onboarding-Funnel)', () => {
     // ... und die Sektion sagt, dass sie gerade nichts weiß.
     expect(screen.getByText(/wartenden Geräte konnten nicht geladen werden/)).toBeInTheDocument();
     expect(screen.queryByText('Kein Gerät wartet auf Zuordnung')).toBeNull();
+  });
+});
+
+describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', () => {
+  it('enthält die ECHTE Flotte, nicht nur die Aufkleber-IDs', async () => {
+    render(<GeraeteRegistryPage />);
+    const table = await screen.findByTestId('devices');
+    // DER behobene Befund: eine `edge-`Bestandsbox kam auf dieser Seite mit
+    // NULL Zeilen vor - wer „meine Geräte" suchte, fand sie nur als
+    // Nebenspalten anderer Seiten.
+    expect(table).toHaveTextContent('edge-k2m4pqj');
+    expect(table).toHaveTextContent('Auernheim');
+    // Und die gedruckte, noch unverbundene ID steht daneben - eine Tabelle.
+    expect(table).toHaveTextContent('VP-DEMO-0002');
+    expect(table).toHaveTextContent('noch nicht verbunden');
+  });
+
+  it('zeigt den Stempel als Tag + Build statt als Rohstring', async () => {
+    render(<GeraeteRegistryPage />);
+    const table = await screen.findByTestId('devices');
+    // `edge-2026.08.1-9b37439a02c1` neben `edge-2026.08.1` sind zwei
+    // verschieden AUSSEHENDE Zeichenketten für dieselbe Frage.
+    expect(table).toHaveTextContent('edge-2026.08.1 (Build 9b37439a)');
+    expect(table).not.toHaveTextContent('9b37439a02c1');
+  });
+
+  it('öffnet den GETEILTEN Geräte-Drawer aus der Zeile', async () => {
+    render(<GeraeteRegistryPage />);
+    const table = await screen.findByTestId('devices');
+    fireEvent.click(within(table).getByText('Auernheim'));
+
+    const drawer = await screen.findByRole('dialog');
+    expect(drawer).toHaveTextContent('edge-k2m4pqj');
+    expect(drawer).toHaveTextContent('Identität');
+    expect(drawer).toHaveTextContent('gekreuzt');
+    // Der Drawer der ANDEREN Seite ist derselbe - er kann hier zuweisen.
+    expect(within(drawer).getByRole('button', { name: 'Release zuweisen' }))
+      .toBeInTheDocument();
+    // Und er sagt, dass eine `edge-`Referenz NICHT aus der Registry kommt -
+    // das ist der Normalfall der Bestandsflotte, kein Mangel.
+    expect(drawer).toHaveTextContent('selbst erzeugte Referenz');
+  });
+
+  it('bietet der noch unverbundenen ID keine Zuweisung an', async () => {
+    render(<GeraeteRegistryPage />);
+    const table = await screen.findByTestId('devices');
+    // Eine gedruckte ID ist noch kein Gerät - eine Zeile, die sich nicht
+    // öffnen lässt, ist ehrlicher als ein Drawer ohne Inhalt.
+    const row = within(table).getByText('VP-DEMO-0002').closest('tr') as HTMLElement;
+    expect(row.className).not.toContain('vp-row-click');
+  });
+
+  it('fragt vor dem Entfernen im Haus-Muster - mit Folgenliste', async () => {
+    render(<GeraeteRegistryPage />);
+    const table = await screen.findByTestId('devices');
+    fireEvent.click(within(table).getByRole('button', { name: /Entfernen/ }));
+
+    const list = await screen.findByTestId('confirm-consequences');
+    expect(list).toHaveTextContent('Kein Kunde kann diese ID danach mehr verbinden');
+    // Umkehrbarkeit gehört dazu - sonst liest sich das Entfernen endgültiger,
+    // als es ist.
+    expect(list).toHaveTextContent('umkehrbar');
   });
 });
