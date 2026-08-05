@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APPLY_HOW,
   actorLabel,
   advanceMode,
+  applyView,
   bakeLine,
   blockerLever,
   canRollOut,
@@ -480,8 +482,9 @@ describe('„Sie sind dran"', () => {
     expect(items[0].detail).toContain('Steuerzyklus ✓');
     expect(items[1].kind).toBe('apply');
     expect(items[1].title).toContain('Auernheim');
-    // Ohne den WEG ist „Sie sind dran" nur ein Vorwurf.
-    expect(items[1].how).toContain('8484');
+    // Seit dem Portal-Apply IST der Weg ein Knopf - die Anleitung am Gerät
+    // steht nur noch dort, wo das Portal nachweislich nicht helfen kann.
+    expect(items[1].apply?.canClick).toBe(true);
     expect(items[1].deviceId).toBe('x');
   });
 
@@ -749,5 +752,117 @@ describe('Rollout starten: Kandidat + Zusammenfassung (P2)', () => {
     // wurde.
     expect(text).toContain('übersprungen, nicht überschrieben');
     expect(text).toContain('nachgeholt');
+  });
+});
+
+describe('Portal-Apply: der Knopf sagt, was Sache ist', () => {
+  const applyRow = (over: Partial<FleetRow> = {}) => row({
+    state: 'wartet_auf_anwendung', soll: 'edge-2026.08.1', ...over,
+  });
+
+  it('bietet den Knopf an, wenn die Box ihn aufgreifen kann', () => {
+    const v = applyView(applyRow({
+      apply: { canApply: true, state: null, reason: null, release: null,
+        requestedAt: null, requestedBy: null },
+    }));
+    expect(v.canClick).toBe(true);
+    expect(v.label).toBe('Auf Gerät anwenden');
+    expect(v.hint).toBeNull();
+    expect(v.warn).toBeNull();
+  });
+
+  it('bietet ihn NICHT an, wenn die Box selbst sagt „kann ich nicht" - und nennt den Weg', () => {
+    const v = applyView(applyRow({
+      apply: { canApply: false, state: null, reason: null, release: null,
+        requestedAt: null, requestedBy: null },
+    }));
+    expect(v.canClick).toBe(false);
+    // Ein Knopf, der strukturell nichts bewirken kann, ist eine Attrappe -
+    // stattdessen steht dort der verbleibende Weg.
+    expect(v.hint).toBe(APPLY_HOW);
+    expect(v.hint).toContain('8484');
+  });
+
+  it('behandelt „unbekannt" NIE als „nein" - ein älterer Stand behält den Knopf', () => {
+    // Sonst sperrte das Portal eine Box aus, die den Knopf sehr wohl bedienen
+    // kann; die Ehrlichkeit steckt im Hinweis, nicht in einer Sperre.
+    const v = applyView(applyRow({ apply: null }));
+    expect(v.canClick).toBe(true);
+    expect(v.hint).toContain('älterer Stand');
+  });
+
+  it('nennt eine stehende Sperre VOR dem Klick - mit ihrem HEBEL', () => {
+    const v = applyView(applyRow({
+      blocker: 'neutralzeit',
+      reason: 'Autonomie blockiert: die Neutral-Zeit ist nicht belegt.',
+      apply: { canApply: true, state: null, reason: null, release: null,
+        requestedAt: null, requestedBy: null },
+    }));
+    // Der Knopf bleibt bedienbar - die Entscheidung gehört dem Betreiber -,
+    // aber die Verweigerung danach darf kein Rätsel sein.
+    expect(v.canClick).toBe(true);
+    expect(v.warn).toContain('VP_OTA_NEUTRAL_VERIFIED');
+  });
+
+  it('fällt bei einem unbekannten Blocker auf den Geräte-Grund zurück, nie auf Stille', () => {
+    const v = applyView(applyRow({
+      blocker: 'ein_neues_tor',
+      reason: 'Autonomie blockiert: irgendetwas Neues.',
+      apply: { canApply: true, state: null, reason: null, release: null,
+        requestedAt: null, requestedBy: null },
+    }));
+    expect(v.warn).toBe('Autonomie blockiert: irgendetwas Neues.');
+  });
+
+  it('erteilt keine zweite Freigabe, solange eine offen ist', () => {
+    const v = applyView(applyRow({
+      apply: { canApply: true, state: 'erteilt', reason: 'Freigabe erteilt - …',
+        release: 'edge-2026.08.1', requestedAt: '2026-08-05T09:00:00Z', requestedBy: 'a' },
+    }));
+    expect(v.canClick).toBe(false);
+    expect(v.label).toBe('Freigabe läuft');
+    expect(v.approval?.state).toBe('erteilt');
+  });
+
+  it('nennt eine nicht abgeholte Freigabe beim Namen', () => {
+    const v = applyView(applyRow({
+      apply: { canApply: true, state: 'verfallen', reason: 'Die Freigabe ist abgelaufen …',
+        release: 'edge-2026.08.1', requestedAt: '2026-08-05T09:00:00Z', requestedBy: 'a' },
+    }));
+    expect(v.approval?.label).toBe('Freigabe nicht abgeholt');
+    expect(v.approval?.tone).toBe('warn');
+    // Und sie ist erneut erteilbar - genau darum geht es.
+    expect(v.canClick).toBe(true);
+  });
+
+  it('bietet nichts an, wo es nichts anzuwenden gibt oder die Kette gebrochen ist', () => {
+    expect(applyView(row({ state: 'wartet_auf_anwendung', soll: null })).canClick).toBe(false);
+    const kaputt = applyView(applyRow({
+      state: 'fehlgeschlagen', reason: 'Das Gerät meldet einen Fehlschlag.',
+    }));
+    expect(kaputt.canClick).toBe(false);
+    expect(kaputt.hint).toContain('Fehlschlag');
+  });
+
+  it('nimmt eine LAUFENDE Freigabe aus „Sie sind dran" - dort wartet das Gerät', () => {
+    const laufend = handelnItems(updates({
+      fleet: [applyRow({
+        deviceId: 'x',
+        apply: { canApply: true, state: 'erteilt', reason: null, release: 'edge-2026.08.1',
+          requestedAt: '2026-08-05T09:00:00Z', requestedBy: 'a' },
+      })],
+    }));
+    expect(laufend).toEqual([]);
+
+    // Eine VERFALLENE dagegen ist wieder Sache des Betreibers.
+    const verfallen = handelnItems(updates({
+      fleet: [applyRow({
+        deviceId: 'x',
+        apply: { canApply: true, state: 'verfallen', reason: 'abgelaufen …',
+          release: 'edge-2026.08.1', requestedAt: '2026-08-05T09:00:00Z', requestedBy: 'a' },
+      })],
+    }));
+    expect(verfallen).toHaveLength(1);
+    expect(verfallen[0].title).toContain('erneut');
   });
 });

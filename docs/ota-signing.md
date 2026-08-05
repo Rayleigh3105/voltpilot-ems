@@ -777,11 +777,40 @@ bräuchte zusätzlich einen monotonen Zähler im signierten Set gegen Replay
 
 ---
 
-## 6b. Ein zugewiesenes Release anwenden (Stufe 2, beaufsichtigt)
+## 6b. Ein zugewiesenes Release anwenden
 
 Ab Stufe 2 entscheidet das **Portal**, welches Release eine Box bekommt; die
-Box prüft es selbst und legt es ab. **Angewandt wird weiterhin von Hand am
-Gerät** — ein autonomer Apply-Pfad ist Stufe 3.
+Box prüft es selbst und legt es ab. Das ANWENDEN ist seither auf drei Wegen
+möglich — alle drei münden im selben Code und in derselben Torkette, keiner
+schaltet Autonomie ein.
+
+### Weg 1 (Regelfall): der Knopf im Portal
+
+Plattform → **Edge-Updates** → Karte „Sie sind dran" → **Auf Gerät anwenden**.
+Der Knopf fragt nach und nennt die Folgen; danach geht eine **einmalige
+Freigabe** an die Box (nicht-retained, 15 Minuten gültig, für GENAU dieses
+Release). Die Box wendet an, sobald ihre eigenen Bedingungen erfüllt sind —
+Signaturkette, Boden, Neutral-Zeit, Interlock, Selbsttest und automatische
+Rücknahme gelten unverändert.
+
+Drei Dinge, die die Oberfläche vorher sagt und die man kennen muss:
+
+* **Steht dort eine „Achtung"-Zeile**, wird die Box die Anwendung
+  VERWEIGERN, bis der genannte Hebel umgelegt ist (typisch: die Neutral-Zeit
+  einer steuernden Anlage, siehe `docs/ota-autonomie.md` §3). Der Knopf bleibt
+  bedienbar — die Entscheidung ist Ihre —, aber die Freigabe verpufft dann.
+* **„Gerät kann gerade nicht anwenden"** heißt: dort läuft kein Aktualisierer
+  (Compose-Profil `ota`). Dann hilft nur Weg 3.
+* **„Freigabe nicht abgeholt"** heißt: die Box war offline. Eine Freigabe wird
+  bewusst NICHT nachgeliefert — eine Zustimmung von vor drei Stunden ist keine
+  Zustimmung für jetzt. Einfach erneut freigeben, sobald die Box wieder da ist.
+
+### Weg 2: der Knopf an der Box
+
+`:8484` → ④ Erweitert → **Jetzt anwenden** (hinter dem Betreiber-Passwort).
+Identisch zu Weg 1, nur lokal erteilt.
+
+### Weg 3: von Hand, ohne Aktualisierer
 
 ```bash
 # 1. Was hat das Portal dieser Box zugewiesen, und hat sie es selbst geprüft?
@@ -792,6 +821,8 @@ curl -s http://127.0.0.1:8484/api/ota/target | jq
 ./update.sh --from-target
 ```
 
+Dieser Weg braucht keinen Sidecar - dafür hat er weder Selbsttest noch
+automatische Rücknahme; er ist deshalb der RÜCKFALL, nicht der Regelfall.
 `--from-target` bricht ab, wenn es keine Zuweisung gibt oder ihre Kette nicht
 geprüft ist (`verdict != ok`) — die Artefakt-Digests gibt der Core dann gar
 nicht erst heraus. Nach einem erfolgreichen Lauf meldet die Box den angewandten

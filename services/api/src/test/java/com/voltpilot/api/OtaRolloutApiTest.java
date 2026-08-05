@@ -705,7 +705,167 @@ class OtaRolloutApiTest {
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * Portal-Apply (§6/E3): die EINMALIGE Freigabe erreicht das Gerät auf
+     * seinem eigenen Topic - NICHT-retained -, und jede Verweigerung nennt
+     * ihren Grund.
+     *
+     * <p>Was hier belegt wird, ist die Sicherheits-Aussage der Stufe: die
+     * Freigabe ist eine ZEITPUNKT-Autorisierung für EIN Release, sie ist keine
+     * Autonomie, sie wird für eine gebrochene Kette NIE erteilt, und eine Box,
+     * die selbst sagt „ich kann gerade nicht", bekommt keine.
+     */
+    @Test
+    @Order(10)
+    void aPortalApprovalReachesTheDeviceNonRetainedAndEveryRefusalNamesItsReason()
+            throws Exception {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        String ref = "ota-apply-" + UUID.randomUUID().toString().substring(0, 8);
+        UUID device = claim(customer, ref);
+
+        // (a) Ohne Zuweisung gibt es nichts anzuwenden - und das wird GESAGT.
+        ResponseEntity<Map<String, Object>> ohneZiel =
+                post("/api/v1/admin/devices/" + device + "/apply", admin, null);
+        assertThat(ohneZiel.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(String.valueOf(ohneZiel.getBody().get("message")))
+                .contains("kein Release zugewiesen");
+
+        // Das Release ist aus den früheren Fällen dieser Klasse bereits
+        // registriert - eine BYTEGLEICHE Wiederholung ist idempotent (200).
+        assertThat(post("/api/v1/admin/edge-releases", admin,
+                Map.of("version", "edge-2026.08.0", "releaseSeq", 12,
+                        "manifest", MANIFEST, "signature", SIGNATURE)).getStatusCode())
+                .isIn(HttpStatus.CREATED, HttpStatus.OK);
+        assertThat(post("/api/v1/admin/devices/" + device + "/update-target", admin,
+                Map.of("releaseSeq", 12, "channel", "stable")).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+
+        // (b) Eine GEBROCHENE Kette ist ein Sicherheits-Ereignis, kein „probier
+        //     es halt" - dafür wird nie freigegeben.
+        reportRunning(device, "edge-2026.07.9", "failed", "rejected", Instant.now());
+        ResponseEntity<Map<String, Object>> abgelehnt =
+                post("/api/v1/admin/devices/" + device + "/apply", admin, null);
+        assertThat(abgelehnt.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(String.valueOf(abgelehnt.getBody().get("message"))).contains("ABGELEHNT");
+
+        // (c) Eine Box, die SELBST sagt „ich kann gerade nicht" (kein
+        //     Aktualisierer), bekommt keine Freigabe - und der Grund nennt den
+        //     verbleibenden Weg.
+        reportRunning(device, "edge-2026.07.9", "deferred", "ok", Instant.now());
+        setCanApply(device, Boolean.FALSE);
+        ResponseEntity<Map<String, Object>> ohneSidecar =
+                post("/api/v1/admin/devices/" + device + "/apply", admin, null);
+        assertThat(ohneSidecar.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(String.valueOf(ohneSidecar.getBody().get("message")))
+                .contains("update.sh --from-target");
+
+        // (d) Der Normalfall - und der Umschlag kommt auf dem GERÄTE-Topic an.
+        setCanApply(device, Boolean.TRUE);
+        BlockingQueue<byte[]> zugestellt = subscribeApply(device);
+        assertThat(post("/api/v1/admin/devices/" + device + "/apply", admin, null)
+                .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        byte[] raw = zugestellt.poll(10, TimeUnit.SECONDS);
+        assertThat(raw).as("die Freigabe hat das Gerät nie erreicht").isNotNull();
+        JsonNode env = json.readTree(raw);
+        assertThat(env.get("schema_version").asText()).isEqualTo("1.0");
+        assertThat(env.get("type").asText()).isEqualTo("apply_request");
+        assertThat(env.get("device_id").asText()).isEqualTo(device.toString());
+        // Das Release, das der Betreiber SAH - nicht irgendeines.
+        assertThat(env.get("release").asText()).isEqualTo("edge-2026.08.0");
+        // Der Token macht sie einmalig; der Urheber ist die Papier-Spur.
+        assertThat(env.get("token").asText()).matches("[0-9a-f]{16}");
+        assertThat(env.has("requested_by")).isTrue();
+
+        // ⚠ NICHT-retained ist die tragende Entscheidung: ein SPÄTER
+        //   verbundener Abonnent darf sie nicht mehr bekommen - sonst wäre eine
+        //   Einmal-Freigabe keine.
+        assertThat(subscribeApply(device).poll(2, TimeUnit.SECONDS))
+                .as("eine Einmal-Freigabe darf NIE retained liegenbleiben").isNull();
+
+        // (e) Zwei offene Freigaben gleichzeitig wären zwei Zusagen für
+        //     denselben Vorgang.
+        ResponseEntity<Map<String, Object>> doppelt =
+                post("/api/v1/admin/devices/" + device + "/apply", admin, null);
+        assertThat(doppelt.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(String.valueOf(doppelt.getBody().get("message"))).contains("bereits eine "
+                + "Freigabe offen");
+
+        // (f) Die Zeile trägt den Zustand der FREIGABE neben dem des Geräts -
+        //     und das Journal die Papier-Spur.
+        JsonNode page = readModel(admin);
+        JsonNode apply = applyOf(page, device);
+        assertThat(apply.get("state").asText()).isEqualTo("erteilt");
+        assertThat(apply.get("canApply").asBoolean()).isTrue();
+        assertThat(apply.get("release").asText()).isEqualTo("edge-2026.08.0");
+        assertThat(eventActors(page.get("journal"), "apply_requested"))
+                .as("eine Freigabe ohne nachvollziehbaren Urheber wäre keine Papier-Spur")
+                .isNotEmpty();
+
+        // (g) Eine Freigabe, die NIEMAND abgeholt hat, sagt das - statt still
+        //     weiterzuwarten. (Eine Box, die offline war, bekommt sie bewusst
+        //     nicht nachgeliefert.)
+        backdateApproval(device, Duration.ofMinutes(20));
+        assertThat(applyOf(readModel(admin), device).get("state").asText())
+                .isEqualTo("verfallen");
+
+        // (h) Und wo sie GEWIRKT hat, wird das belegt - nicht geglaubt.
+        reportRunning(device, "edge-2026.08.0", "idle", "ok", Instant.now());
+        assertThat(applyOf(readModel(admin), device).get("state").asText())
+                .isEqualTo("abgeholt");
+
+        // (i) Die Rollen-Grenze: ein Kunde erreicht diese Route nie - auch
+        //     nicht mit gesetztem Mandanten-Umschalter -, und anonym schon gar
+        //     nicht. Die schmale Publisher-Rolle liegt gar nicht erst auf
+        //     dieser Klasse.
+        assertThat(post("/api/v1/admin/devices/" + device + "/apply", customer, null)
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(url("/api/v1/admin/devices/" + device + "/apply"),
+                HttpMethod.POST, HttpEntity.EMPTY, String.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
     // ── Helfer ───────────────────────────────────────────────────────────
+
+    /** Ein Abonnent auf dem APPLY-Topic eines Geräts (NICHT-retained). */
+    private BlockingQueue<byte[]> subscribeApply(UUID deviceId) throws Exception {
+        MqttClient device = new MqttClient(
+                "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883),
+                "dev-" + UUID.randomUUID(), new MemoryPersistence());
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setCleanSession(true);
+        device.connect(options);
+        BlockingQueue<byte[]> queue = new ArrayBlockingQueue<>(8);
+        device.subscribe("ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + deviceId + "/v2/apply", 1,
+                (topic, msg) -> queue.add(msg.getPayload()));
+        return queue;
+    }
+
+    /** Die vom Gerät gemeldete FÄHIGKEIT direkt setzen (der Ingest ist rein getestet). */
+    private void setCanApply(UUID deviceId, Boolean value) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("UPDATE device_update_status SET can_apply = "
+                    + (value == null ? "NULL" : value) + " WHERE device_id = '" + deviceId + "'");
+        }
+    }
+
+    /** Die erteilte Freigabe zurückdatieren - das Fenster hängt an `requested_at`. */
+    private void backdateApproval(UUID deviceId, Duration by) throws Exception {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            st.execute("UPDATE device_apply_request SET requested_at = now() - interval '"
+                    + by.toMinutes() + " minutes' WHERE device_id = '" + deviceId + "'");
+        }
+    }
+
+    private static JsonNode applyOf(JsonNode page, UUID deviceId) {
+        for (JsonNode row : page.get("fleet")) {
+            if (deviceId.toString().equals(row.get("deviceId").asText())) {
+                return row.get("apply");
+            }
+        }
+        throw new AssertionError("Gerät nicht in der Flotte: " + deviceId);
+    }
 
     /** Die gemeldete Vertrauens-Identität eines Geräts direkt setzen. */
     private void reportTrust(UUID deviceId, String rootKeyIds, String trustSetKeyIds,

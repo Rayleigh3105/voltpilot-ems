@@ -11,6 +11,7 @@ fixtures cover, and the fixtures are read by REAL test code - never decoration:
 | `mqtt-schedule.*` | `../mqtt-schedule.schema.json` | `services/optimization/tests/test_contract.py` (jsonschema, both directions) and `edge-app/core/internal/plan/plan_test.go` (the Go executor parses the same bytes) |
 | `ota-release-manifest.*` | `../ota-release-manifest.schema.json` | `edge-app/core/internal/otaverify/verify_test.go` (`TestContractExamplesParseAsSpecified` - the REAL device-side parser reads the same bytes) |
 | `mqtt-ota-target.*` | `../mqtt-ota-target.schema.json` | `edge-app/core/internal/agent/ota_target_test.go` (`TestContractExampleEnvelopeIsParsedAsSpecified` - the REAL device-side envelope parser reads the same bytes) |
+| `mqtt-ota-apply.*` | `../mqtt-ota-apply.schema.json` | `edge-app/core/internal/agent/ota_apply_downlink_test.go` (`TestContractExampleApprovalIsParsedAsSpecified` - the REAL device-side approval parser reads the same bytes) |
 
 Moving or renaming a fixture breaks those tests deliberately: the file path is
 part of the contract check.
@@ -50,3 +51,9 @@ would make a fixture invalid for the wrong reason):
   that the box - not the cloud - decides whether to trust what it was handed.
   Both fields are therefore required together (the same all-or-nothing rule the
   register enforces in SQL, `edge_release_signed_pair`).
+- `mqtt-ota-apply.invalid.no-token.json` - the one-shot approval carries no
+  `token`. The token is what makes it ONE-shot: the sidecar remembers the last
+  executed one in its own state, so the same approval can never trigger a second
+  swap. Without it the message is an unbounded "apply whenever you see this" -
+  and on a link that reconnects, that is the swap loop `failed.json` exists to
+  stop. It is therefore required, not optional-with-a-default.

@@ -155,11 +155,19 @@ docker run --rm -v vp-edge-data:/data alpine cat /data/ota/updater-state.json
 **3. Das Portal.** Der Kern faltet den Grund in den `update`-Block des
 Herzschlags (mit dem Vorsatz **„Autonomie blockiert: …"**, damit „wartet" und
 „blockiert" nie gleich aussehen) und ersetzt damit den Satz des Verifizierers,
-solange die Sperre steht. In der Flotten-Matrix der Seite „Edge-Updates" steht
-das Gerät auf **`ausstehend`** und die Spalte **Grund** zeigt genau diesen Satz;
-der Wellen-Hinweis („Hand-Vorschub: … noch nicht bestätigt") bleibt daneben
-unverändert. Der Zustand ist bewusst weiter `deferred` — es ist keine Störung,
-sondern eine bewusst nicht getroffene Entscheidung; nur der Grund muss stimmen.
+solange die Sperre steht. Seit dem Admin-UX-Umbau reist zusätzlich der
+maschinenlesbare NAME mit, und das Portal zeigt ihn an drei Stellen:
+
+* Das Gerät steht auf **`blockiert`** (bis dahin fiel es in den
+  Fortschritts-Ton „ausstehend" — eine stehende Sperre sah aus wie Bewegung).
+* Die Spalte **Grund** zeigt den deutschen Satz der Box, und darunter steht der
+  **HEBEL** („Neutral-Zeit … in `VP_OTA_NEUTRAL_VERIFIED` eintragen").
+* Beim Knopf **„Auf Gerät anwenden"** steht derselbe Hebel als „Achtung"-Zeile
+  **VOR dem Klick** — eine Freigabe würde hier verpuffen, und das muss man
+  vorher wissen, nicht hinterher raten.
+
+Der Zustand ist bewusst weiter `deferred` — es ist keine Störung, sondern eine
+bewusst nicht getroffene Entscheidung; nur der Grund muss stimmen.
 
 Fällt die Sperre (T eingetragen, Steuerung abgeschaltet, Platte aufgeräumt),
 steht **eine** Zeile „Sperre aufgehoben" im Protokoll und der Herzschlag trägt

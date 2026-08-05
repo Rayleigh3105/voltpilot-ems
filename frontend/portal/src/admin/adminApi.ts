@@ -1,5 +1,5 @@
 import { request, type CreateSiteInput, type Site } from '../api';
-import type { DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
+import type { DeviceApply, DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -114,6 +114,8 @@ export interface AdminDeviceRow {
   note: string | null;
   provisionedAt: string | null;
   trust?: DeviceTrust | null;
+  /** Der Portal-Apply-Block - dieselbe Struktur wie in der Flotten-Zeile. */
+  apply?: DeviceApply | null;
 }
 
 export interface ProvisionDeviceInput {
@@ -321,4 +323,16 @@ export const adminApi = {
     request<void>(`/api/v1/admin/devices/${deviceId}/update-target/revert`, {
       method: 'POST',
     }),
+
+  /**
+   * Die EINMALIGE Freigabe zum Anwenden (Portal-Apply).
+   *
+   * Sie ist wörtlich die Freigabe, die der Betreiber bisher an der
+   * Geräteseite der Box hinter dem Geräte-Passwort erteilt hat - nur der
+   * Transport ist ein anderer. Sie gilt für EIN Release und EINEN Vorgang und
+   * verfällt nach 15 Minuten; angewandt wird sie vom Gerät, das jedes weitere
+   * Tor unverändert durchläuft.
+   */
+  requestApply: (deviceId: string) =>
+    request<void>(`/api/v1/admin/devices/${deviceId}/apply`, { method: 'POST' }),
 };

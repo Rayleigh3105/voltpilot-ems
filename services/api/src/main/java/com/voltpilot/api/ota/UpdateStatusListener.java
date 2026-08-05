@@ -282,10 +282,25 @@ public class UpdateStatusListener {
                     hasTrust ? text(trust.get("trust_set_generated_at")) : null,
                     hasTrust ? text(trust.get("trust_set_signed_by")) : null,
                     hasTrust ? text(trust.get("trust_set_error")) : null,
+                    // ⚠ DREIWERTIG wie die Vertrauens-Spalten: ein Feld, das das
+                    // Gerät nicht sendet, bleibt null („unbekannt") - ein
+                    // `asBoolean()` mit Default machte daraus stillschweigend ein
+                    // behauptetes „kann nicht anwenden", und die Oberfläche würde
+                    // einem älteren Stand einen Knopf verweigern, den er sehr wohl
+                    // bedienen kann.
+                    hasUpdate ? bool(update.get("can_apply")) : null,
                     reportedAt);
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * A boolean that is absent or not a boolean stays {@code null} - „the device
+     * did not say", never a fabricated no.
+     */
+    private static Boolean bool(JsonNode node) {
+        return node != null && node.isBoolean() ? node.booleanValue() : null;
     }
 
     /**

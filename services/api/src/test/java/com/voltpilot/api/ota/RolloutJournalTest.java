@@ -91,6 +91,32 @@ class RolloutJournalTest {
     }
 
     /** Ein Ereignis, das dieser Stand nicht kennt, steht ROH da - nie geraten. */
+    /**
+     * Der Spiegel ist eine Papier-Spur: ein Ereignis, das der Dienst SCHREIBT,
+     * darf dort nicht als roher Schlüssel stehen. Der Wächter liest die
+     * Ereignis-Namen aus dem Dienst selbst, damit ein künftiges Ereignis nicht
+     * still unbeschriftet bleibt.
+     */
+    @Test
+    void everyEventTheServiceWritesHasAGermanLabel() throws Exception {
+        String src = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/com/voltpilot/api/ota/RolloutService.java"));
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("appendEvent\\([^,]+,\\s*\"([a-z_]+)\"").matcher(src);
+        java.util.List<String> written = new java.util.ArrayList<>();
+        while (m.find()) {
+            written.add(m.group(1));
+        }
+        assertThat(written).as("der Wächter findet die Ereignis-Namen nicht mehr")
+                .isNotEmpty();
+        for (String event : written) {
+            String md = RolloutJournal.render(
+                    List.of(ev(1, "2026-08-05T09:00:00Z", "admin", event, null)), Map.of());
+            assertThat(md).as("unbeschriftetes Ereignis: " + event)
+                    .doesNotContain("| " + event + " |");
+        }
+    }
+
     @Test
     void anUnknownEventIsShownVerbatim() {
         String md = RolloutJournal.render(List.of(

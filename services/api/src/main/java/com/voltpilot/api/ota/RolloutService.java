@@ -8,6 +8,7 @@ import com.voltpilot.api.web.dto.AdminDevicesDto;
 import com.voltpilot.api.web.dto.EdgeReleaseDto;
 import com.voltpilot.api.web.dto.EdgeUpdatesDto;
 import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -124,6 +125,126 @@ public class RolloutService {
         publisher.ifAvailable(p -> p.clearTarget(device.tenantId(), device.siteId(), deviceId));
     }
 
+    // ── Portal-Apply: die EINMALIGE Freigabe zum Anwenden ────────────────
+
+    /**
+     * Ein zugewiesenes und vom Gerät GEPRÜFTES Release jetzt anwenden lassen
+     * (UX-Konzept {@code vp-admin-geraete-ux-k2} §6 / E3, Captain-Go
+     * 05.08.2026).
+     *
+     * <p><b>Es ist die Freigabe der {@code :8484}-Taste mit anderem
+     * TRANSPORT.</b> Bis hierher brauchte der unbequemste Schritt des ganzen
+     * Flusses einen Tunnel und das Geräte-Passwort je Box - entschieden und
+     * verteilt im Portal, angewandt per SSH. Die Sicherheits-Haltung ist damit
+     * UNVERÄNDERT, und das ist eine Konstruktions-Aussage, keine Beteuerung:
+     * das Gerät führt die Freigabe durch GENAU DEN Pfad, den seine eigene Taste
+     * benutzt ({@code agent.OtaRequestApplyWithToken}), sie öffnet
+     * ausschließlich das ERSTE Tor von {@code otaapply.Decide}, für GENAU EIN
+     * Release und GENAU EINEN Vorgang, und sie verfällt nach 15 Minuten.
+     * {@code autonomy.json} bleibt unberührt AUS, und jede weitere Sicherung -
+     * Signaturkette, Anti-Rollback-Boden, Neutral-Zeit-Regel einer STEUERNDEN
+     * Anlage, Interlock, Plattenwächter, Selbsttest, LKG-Rücknahme,
+     * {@code failed.json}, der Auto-Halt des Rollouts - gilt wörtlich weiter.
+     *
+     * <p><b>Diese Methode ist eine ZEITPUNKT-Autorisierung, keine
+     * Inhalts-Autorisierung.</b> WAS laufen darf, entscheidet allein das
+     * signierte Manifest gegen die eingebackene Wurzel - vom Kern UND vom
+     * Sidecar unabhängig geprüft. Deshalb prüft sie hier nur, ob eine Freigabe
+     * überhaupt SINN ergibt, und verweigert sonst mit einem deutschen Grund.
+     *
+     * <p><b>Reihenfolge: erst veröffentlichen, dann protokollieren.</b> Die
+     * Freigabe IST die Nachricht; geht sie nicht hinaus, darf kein Beleg
+     * entstehen, der eine Freigabe behauptet, die es nie gab. Scheitert
+     * umgekehrt der Beleg NACH einer erfolgreichen Veröffentlichung, wird das
+     * laut protokolliert - das Gerät kann dann anwenden, und der Herzschlag
+     * zeigt es, nur ohne die Zeile im Portal. Von den beiden Halbfehlern ist
+     * das der sichtbare.
+     */
+    public void requestApply(UUID deviceId, String actor) {
+        RolloutRepository.FleetDeviceRow device = rollouts.fleetDevice(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Gerät nicht gefunden."));
+        RolloutRepository.TargetRow target = rollouts.targetOf(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Diesem Gerät ist kein Release zugewiesen - es gibt nichts anzuwenden."));
+
+        // Eine GEBROCHENE Kette ist ein Sicherheits-Ereignis, kein „probier es
+        // halt". Für ein Release, das dieses Gerät abgelehnt hat, wird nie eine
+        // Freigabe erteilt - auch nicht auf ausdrücklichen Wunsch.
+        if ("rejected".equals(device.reportedVerdict())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Dieses Gerät hat das zugewiesene Release ABGELEHNT (die Signaturkette ist "
+                            + "gebrochen). Eine Freigabe ändert daran nichts - erst den Grund "
+                            + "klären.");
+        }
+        // Die Box sagt selbst, ob sie eine Freigabe aufgreifen könnte. Ein
+        // ausdrückliches „nein" wird geglaubt (dort läuft kein Aktualisierer);
+        // ein ÄLTERER Stand meldet die Fähigkeit gar nicht - dann ist sie
+        // „unbekannt", und Unbekanntes wird nicht als „geht nicht" ausgelegt.
+        if (Boolean.FALSE.equals(device.canApply())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Dieses Gerät meldet, dass es gerade nichts anwenden kann (meist läuft dort "
+                            + "kein Aktualisierer - Compose-Profil „ota“). Angewandt wird dann "
+                            + "weiterhin am Gerät über `update.sh --from-target`.");
+        }
+        // Zwei offene Freigaben gleichzeitig wären zwei Zusagen für denselben
+        // Vorgang - und die zweite überschriebe den Token, den der Sidecar
+        // vielleicht gerade abarbeitet.
+        rollouts.applyRequest(deviceId).ifPresent(open -> {
+            if (ApplyApproval.isOpen(open.requestedAt(), Instant.now())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Für dieses Gerät ist bereits eine Freigabe offen. Sie gilt 15 Minuten - "
+                                + "danach kann erneut freigegeben werden.");
+            }
+        });
+
+        String token = newApplyToken();
+        Instant requestedAt = Instant.now();
+        OtaTargetPublisher p = publisher.getIfAvailable();
+        if (p == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Der Broker-Zugang ist in dieser Umgebung nicht eingerichtet - es wurde "
+                            + "nichts freigegeben.");
+        }
+        try {
+            p.publishApplyRequest(device.tenantId(), device.siteId(), deviceId, token,
+                    target.releaseVersion(), actor, requestedAt);
+        } catch (Exception e) {
+            log.warn("could not publish the apply approval for device {}: {}", deviceId,
+                    e.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Freigabe konnte nicht an das Gerät gesendet werden (Broker nicht "
+                            + "erreichbar). Es wurde nichts freigegeben - bitte erneut versuchen.");
+        }
+        try {
+            rollouts.upsertApplyRequest(deviceId, token, target.releaseVersion(),
+                    target.releaseSeq(), actor);
+            rollouts.appendEvent(actor, "apply_requested", null, deviceId,
+                    target.releaseVersion() + " (Einmal-Freigabe, 15 min)");
+        } catch (Exception e) {
+            log.error("the apply approval for device {} WENT OUT but could not be recorded: {}",
+                    deviceId, e.getMessage());
+        }
+    }
+
+    /**
+     * Der Token ist die Einmaligkeit selbst: der Sidecar quittiert genau ihn,
+     * dieselbe Freigabe kann also nie zweimal einen Tausch auslösen. Er kommt
+     * aus einem KRYPTOGRAFISCHEN Generator - nicht, weil er ein Geheimnis wäre
+     * (er reist auf demselben Kanal wie die Zuweisung), sondern damit er
+     * niemals kollidiert oder vorhersagbar ist.
+     */
+    private static String newApplyToken() {
+        byte[] raw = new byte[8];
+        new SecureRandom().nextBytes(raw);
+        StringBuilder sb = new StringBuilder(16);
+        for (byte b : raw) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+            sb.append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
+    }
+
     /**
      * Aufräumen beim Unclaim: Zuweisung löschen und den retained Slot leeren.
      * Best-effort und niemals werfend - ein Unclaim darf an einem
@@ -136,6 +257,11 @@ public class RolloutService {
                 rollouts.appendEvent(SYSTEM_ACTOR, "target_cleared_on_unclaim", null, deviceId,
                         null);
             }
+            // Und die erteilte Freigabe mit: eine Zusage für ein Gerät, das
+            // niemandem mehr gehört, darf nicht liegenbleiben (dieselbe Hygiene
+            // wie beim retained Slot). Die Nachricht selbst ist NICHT-retained,
+            // liegt also ohnehin nirgends mehr.
+            rollouts.deleteApplyRequest(deviceId);
         } catch (Exception e) {
             log.warn("could not drop the OTA target of unclaimed device {}: {}", deviceId,
                     e.getMessage());
@@ -459,6 +585,7 @@ public class RolloutService {
         }
 
         // Die Flotten-Matrix.
+        Map<UUID, RolloutRepository.ApplyRequestRow> approvals = applyRequestsById();
         List<EdgeUpdatesDto.FleetRowDto> rows = new ArrayList<>();
         Map<UUID, RolloutRepository.RolloutDeviceRow> inRollout = new HashMap<>();
         if (live.isPresent()) {
@@ -483,7 +610,8 @@ public class RolloutService {
                     t == null ? null : t.releaseSeq(), t == null ? null : t.channel(),
                     t != null && t.pinned(), v.state(), v.reason(), d.reportedBlocker(),
                     rd == null ? null : rd.since(), d.reportedAt(),
-                    rd == null ? null : rd.rolloutId(), trustDto(d)));
+                    rd == null ? null : rd.rolloutId(), trustDto(d),
+                    applyDto(d, approvals.get(d.deviceId()), now)));
 
             if (RolloutStates.UNBEKANNT.equals(v.state())) {
                 unknown++;
@@ -547,6 +675,7 @@ public class RolloutService {
             byRef.put(p.externalRef(), p);
         }
 
+        Map<UUID, RolloutRepository.ApplyRequestRow> approvals = applyRequestsById();
         List<AdminDevicesDto.DeviceRowDto> rows = new ArrayList<>();
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         for (RolloutRepository.FleetDeviceRow d : rollouts.fleetDevices()) {
@@ -561,7 +690,8 @@ public class RolloutService {
                     t == null ? null : t.channel(), t != null && t.pinned(),
                     v.state(), v.reason(), d.reportedBlocker(), d.lastSeenAt(), d.reportedAt(),
                     p != null, p == null ? null : p.note(),
-                    p == null ? null : p.provisionedAt(), trustDto(d)));
+                    p == null ? null : p.provisionedAt(), trustDto(d),
+                    applyDto(d, approvals.get(d.deviceId()), now)));
         }
         // Danach die gedruckten IDs, die noch KEIN Gerät sind. Sie tragen
         // bewusst keinen Zustand: über eine ID, die sich nie gemeldet hat, ist
@@ -573,7 +703,7 @@ public class RolloutService {
             }
             rows.add(new AdminDevicesDto.DeviceRowDto(null, p.externalRef(), null, null, null,
                     null, null, p.kind(), null, null, null, null, false,
-                    null, null, null, null, null, true, p.note(), p.provisionedAt(), null));
+                    null, null, null, null, null, true, p.note(), p.provisionedAt(), null, null));
         }
         return new AdminDevicesDto(rows);
     }
@@ -802,6 +932,35 @@ public class RolloutService {
         return RolloutStates.derive(assigned, new RolloutStates.Reported(d.reportedVersion(),
                 d.reportedCurrent(), d.reportedTarget(), d.reportedState(), d.reportedVerdict(),
                 d.reportedReason(), d.reportedBlocker(), d.reportedAt(), d.lastSeenAt()), now);
+    }
+
+    /**
+     * Der Portal-Apply-Block einer Zeile: die vom Gerät gemeldete FÄHIGKEIT plus
+     * - falls es eine gibt - der Zustand der ERTEILTEN Freigabe.
+     *
+     * <p>Beides bleibt getrennt vom Geräte-Zustand: eine Freigabe ist etwas
+     * anderes als ein Gerät, und ohne erteilte Freigabe wird über sie nichts
+     * behauptet ({@code state} bleibt dann {@code null}).
+     */
+    private static EdgeUpdatesDto.ApplyDto applyDto(RolloutRepository.FleetDeviceRow d,
+            RolloutRepository.ApplyRequestRow req, Instant now) {
+        if (req == null) {
+            return new EdgeUpdatesDto.ApplyDto(d.canApply(), null, null, null, null, null);
+        }
+        ApplyApproval.Verdict v = ApplyApproval.derive(req.releaseVersion(), req.requestedAt(),
+                d.reportedState(), reportedRunning(d), now);
+        return new EdgeUpdatesDto.ApplyDto(d.canApply(),
+                v == null ? null : v.state(), v == null ? null : v.reason(),
+                req.releaseVersion(), req.requestedAt(), req.requestedBy());
+    }
+
+    /** Die erteilten Freigaben je Gerät - EIN Read je Aggregat, nie N+1. */
+    private Map<UUID, RolloutRepository.ApplyRequestRow> applyRequestsById() {
+        Map<UUID, RolloutRepository.ApplyRequestRow> map = new HashMap<>();
+        for (RolloutRepository.ApplyRequestRow r : rollouts.allApplyRequests()) {
+            map.put(r.deviceId(), r);
+        }
+        return map;
     }
 
     /** Der gemeldete laufende Stand - {@code current} vor {@code version}. */
