@@ -184,6 +184,27 @@ export function sollRelease(releases: AdminFleetRelease[]): AdminFleetRelease | 
 }
 
 /**
+ * Läuft `release` auf einem Gerät, das sich mit `stamped` meldet?
+ *
+ * Die Hausregel, gespiegelt aus `otaverify.ReleaseIsRunning` (Go-Core) und
+ * `RolloutStates.releaseIsRunning` (api): edge-images stempelt bei einem
+ * TAG-Lauf `<tag>-<kurzsha>` (`edge-images.yaml` „Compute version stamp"),
+ * das Register trägt aber den nackten Tag - also zählt sowohl die blanke
+ * Gleichheit als auch das Tag mit angehängter SHA. Ein Bestandsbau trägt eine
+ * nackte SHA und gehört damit zu KEINEM Release; das ist die ehrliche Antwort,
+ * nicht ein geratenes „ist wohl aktuell".
+ *
+ * **Die drei Kopien dürfen nicht auseinanderlaufen** (das refCheckChar/EdgeRef-
+ * Muster) - sonst beantworten Gerät, Rollout-Wächter und Puls dieselbe Frage
+ * verschieden.
+ */
+export function releaseIsRunning(release: string, stamped: string): boolean {
+  const s = stamped.trim();
+  if (!s || !release) return false;
+  return s === release || s.startsWith(`${release}-`);
+}
+
+/**
  * Der Edge-Stand einer Anlage als SOLL-GEGEN-IST (OTA Stufe 0).
  *
  * Drei Ehrlichkeitsregeln, jede gegen einen konkreten früheren Fehlgriff:
@@ -198,7 +219,11 @@ export function sollRelease(releases: AdminFleetRelease[]): AdminFleetRelease | 
  * 3. **Ein Stand, den das Register nicht kennt, ist „nicht registriert".** Das
  *    ist eine Lücke im Register (genau der Zustand einer Bestands-Edge mit
  *    nackter SHA), keine Aussage über das Gerät - also kein Warnton und
- *    ausdrücklich kein „veraltet".
+ *    ausdrücklich kein „veraltet". Zugeordnet wird über [releaseIsRunning],
+ *    also die PRÄFIX-Regel des Hauses: ein Tag-Build meldet
+ *    `<tag>-<kurzsha>`, im Register steht der nackte Tag - eine strikte
+ *    Gleichheit hätte jedes erfolgreich angewandte Tag-Release als „nicht
+ *    registriert" gelesen.
  *
  * Der IST-Stand kommt bevorzugt aus dem OTA-Block (er reist top-level im
  * Herzschlag und deckt auch Geräte ohne Flow-Deployment ab) und fällt sonst auf
@@ -235,7 +260,7 @@ export function edgeStand(
       title: 'Kein Release im Register - ohne Maßstab wird kein Stand als veraltet bewertet.',
     };
   }
-  const entry = releases.find((r) => r.version === ist);
+  const entry = releases.find((r) => releaseIsRunning(r.version, ist));
   if (!entry) {
     return {
       coreVersion: ist,
@@ -249,25 +274,32 @@ export function edgeStand(
         'Ob er älter oder neuer ist, lässt sich daraus nicht sagen.',
     };
   }
+  // Benannt wird ab hier der REGISTER-Eintrag, nicht die rohe Stempelung: ein
+  // Tag-Build meldet `<tag>-<kurzsha>`, und in einer schmalen Spalte ist der
+  // Release-Name die Aussage. Die Stempelung geht nicht verloren - sie bleibt
+  // in `coreVersion` und, wo sie abweicht, im Titel.
+  const stampNote = entry.version === ist ? '' : ` Gemeldet: ${ist}.`;
   if (entry.releaseSeq >= soll.releaseSeq) {
     return {
       coreVersion: ist,
       paletteVersion,
       status: 'aktuell',
-      text: `${ist} ✓`,
+      text: `${entry.version} ✓`,
       tone: 'ok',
       outdated: false,
-      title: 'Das Gerät fährt den aktuellen Stand des Release-Registers.',
+      title: `Das Gerät fährt den aktuellen Stand des Release-Registers.${stampNote}`,
     };
   }
   return {
     coreVersion: ist,
     paletteVersion,
     status: 'veraltet',
-    text: `${ist} → ${soll.version}`,
+    text: `${entry.version} → ${soll.version}`,
     tone: 'warn',
     outdated: true,
-    title: `Das Gerät fährt ${ist}; im Register steht ${soll.version} als neuester Stand.`,
+    title:
+      `Das Gerät fährt ${entry.version}; im Register steht ${soll.version} ` +
+      `als neuester Stand.${stampNote}`,
   };
 }
 

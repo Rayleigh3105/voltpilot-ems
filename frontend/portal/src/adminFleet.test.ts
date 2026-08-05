@@ -7,6 +7,7 @@ import {
   edgeStand,
   fleetPulse,
   fleetRows,
+  releaseIsRunning,
   sollRelease,
   sourceHealth,
 } from './adminFleet';
@@ -297,6 +298,48 @@ describe('edgeStand', () => {
     ];
     expect(edgeStand(edge('3bf8c0380000'), null, shaRegister).status).toBe('aktuell');
     expect(edgeStand(edge('665d59b80000'), null, shaRegister).status).toBe('veraltet');
+  });
+
+  it('matches a TAG BUILD stamp against the bare tag in the register', () => {
+    // edge-images stempelt bei einem Tag-Lauf `<tag>-<kurzsha>`, das Register
+    // trägt den nackten Tag. Die frühere strikte Gleichheit las damit JEDES
+    // erfolgreich angewandte Tag-Release als „nicht registriert".
+    const stand = edgeStand(null, update('edge-2026.08.0-9b3743959025'), REGISTER);
+    expect(stand.status).toBe('aktuell');
+    expect(stand.text).toBe('edge-2026.08.0 ✓');
+    expect(stand.tone).toBe('ok');
+    expect(stand.outdated).toBe(false);
+    // Die rohe Stempelung geht nicht verloren.
+    expect(stand.coreVersion).toBe('edge-2026.08.0-9b3743959025');
+    expect(stand.title).toContain('edge-2026.08.0-9b3743959025');
+  });
+
+  it('places a stamped OLDER tag behind the register, unchanged', () => {
+    const stand = edgeStand(null, update('edge-2026.07.2-665d59b80000'), REGISTER);
+    expect(stand.status).toBe('veraltet');
+    expect(stand.text).toBe('edge-2026.07.2 → edge-2026.08.0');
+    expect(stand.tone).toBe('warn');
+    expect(stand.outdated).toBe(true);
+  });
+
+  it('a SHA-only build still belongs to no release - the prefix rule is not a suffix rule', () => {
+    // Ein Bestandsbau trägt eine nackte SHA. Er darf nicht plötzlich als
+    // aktuell gelten, nur weil die Zuordnung lockerer wurde.
+    expect(edgeStand(null, update('9b3743959025'), REGISTER).status).toBe('nicht_registriert');
+    // Und ein Tag, der bloß mit dem Register-Eintrag ANFÄNGT, ist ein anderer
+    // Tag - getrennt wird am Bindestrich, nicht am Zeichen.
+    expect(edgeStand(null, update('edge-2026.08.01'), REGISTER).status).toBe('nicht_registriert');
+  });
+
+  it('releaseIsRunning is the house prefix rule, both refusals included', () => {
+    expect(releaseIsRunning('edge-2026.08.0', 'edge-2026.08.0')).toBe(true);
+    expect(releaseIsRunning('edge-2026.08.0', 'edge-2026.08.0-9b3743959025')).toBe(true);
+    // Führende/nachlaufende Leerzeichen sind kein anderer Stand.
+    expect(releaseIsRunning('edge-2026.08.0', '  edge-2026.08.0 ')).toBe(true);
+    expect(releaseIsRunning('edge-2026.08.0', 'edge-2026.08.01')).toBe(false);
+    expect(releaseIsRunning('edge-2026.08.0', '9b3743959025')).toBe(false);
+    expect(releaseIsRunning('edge-2026.08.0', '')).toBe(false);
+    expect(releaseIsRunning('', 'edge-2026.08.0')).toBe(false);
   });
 
   it('a version the register does not know is NOT registered - and NOT outdated', () => {
