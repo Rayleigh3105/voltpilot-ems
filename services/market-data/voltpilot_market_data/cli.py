@@ -29,6 +29,7 @@ from urllib.parse import quote
 from voltpilot_market_data.energy_charts import (
     EnergyChartsConfig,
     EnergyChartsDayAheadPriceSource,
+    EnergyChartsSolarGenerationSource,
 )
 from voltpilot_market_data.entsoe import EntsoeConfig, EntsoeDayAheadPriceSource
 from voltpilot_market_data.market_value_persistence import (
@@ -38,6 +39,10 @@ from voltpilot_market_data.market_value_service import refresh_market_values
 from voltpilot_market_data.netztransparenz import (
     NetztransparenzConfig,
     NetztransparenzMarketValueSource,
+)
+from voltpilot_market_data.netztransparenz_generation import (
+    NetztransparenzGenerationConfig,
+    NetztransparenzSolarGenerationSource,
 )
 from voltpilot_market_data.persistence import (
     DayAheadPriceRepository,
@@ -51,6 +56,7 @@ from voltpilot_market_data.refresh import (
 )
 from voltpilot_market_data.resilience import ResilientPriceSource
 from voltpilot_market_data.runtime import ServeRuntime, serve_health
+from voltpilot_market_data.solar_generation import FallbackSolarGenerationSource
 from voltpilot_market_data.service import (
     FetchResult,
     backfill_range,
@@ -247,12 +253,33 @@ def _refresh_market_values_once(env: dict[str, str], persist: bool) -> str:
         source,
         TimescaleMarketValueRepository(dsn),
         TimescaleDayAheadPriceRepository(dsn),
+        generation_source=_solar_generation_source(env),
     )
-    provisional = ", ".join(m.isoformat() for m in result.provisional_months) or "-"
+    provisional = (
+        ", ".join(
+            f"{m.isoformat()} [{result.provisional_weighting.get(m, '?')}]"
+            for m in result.provisional_months
+        )
+        or "-"
+    )
     return (
         "voltpilot-market-data: MW Solar refreshed - "
         f"{result.published_rows} published rows, "
         f"{result.provisional_rows} provisional rows ({provisional})"
+    )
+
+
+def _solar_generation_source(env: dict[str, str]) -> FallbackSolarGenerationSource:
+    """The quantity chain of the provisional Monatsmarktwert (both keyless).
+
+    Order is the legal ranking: the ÜNB Online-Hochrechnung is the quantity
+    Anlage 1 Nr. 2.2 EEG 2023 names, energy-charts is only a substitute.
+    """
+    return FallbackSolarGenerationSource(
+        NetztransparenzSolarGenerationSource(
+            NetztransparenzGenerationConfig.from_env(env)
+        ),
+        EnergyChartsSolarGenerationSource(EnergyChartsConfig.from_env(env)),
     )
 
 
