@@ -172,6 +172,21 @@ describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', ()
     expect(row.className).not.toContain('vp-row-click');
   });
 
+  it('behauptet ohne Inventar KEINE Geräteliste - ein Fehlschlag ist keine Datenlage', async () => {
+    // Die Registry als Ersatz zu rendern wäre eine sichtbare Lüge: eine
+    // beanspruchte Aufkleber-ID hat dort zwar `claimed`, aber keine Geräte-Id,
+    // und jede Zeile läse sich als „noch nicht verbunden".
+    listDevices.mockRejectedValue(new Error('kaputt'));
+    render(<GeraeteRegistryPage />);
+
+    expect(await screen.findByText(/Geräte-Inventar ist gerade nicht abrufbar/))
+      .toBeInTheDocument();
+    expect(screen.queryByTestId('devices')).toBeNull();
+    expect(document.body.textContent).not.toContain('noch nicht verbunden —');
+    // Der Funnel oben bleibt gültig - er hat eine eigene Quelle.
+    expect(screen.getByText('Registriert')).toBeInTheDocument();
+  });
+
   it('fragt vor dem Entfernen im Haus-Muster - mit Folgenliste', async () => {
     render(<GeraeteRegistryPage />);
     const table = await screen.findByTestId('devices');

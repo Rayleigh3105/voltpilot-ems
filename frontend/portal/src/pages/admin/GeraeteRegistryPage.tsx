@@ -155,7 +155,6 @@ export function GeraeteRegistryPage() {
         </Card>
       ) : (
         <DeviceInventory
-          registry={devices}
           fleet={fleet}
           releases={updates?.releases ?? []}
           onOpen={setOpenRef}
@@ -295,30 +294,37 @@ function FunnelStrip({
  * bleibt an der gedruckten, unverbundenen ID (nur sie darf aus der Registry).
  */
 function DeviceInventory({
-  registry,
   fleet,
   releases,
   onOpen,
   onRemove,
   registerButton,
 }: {
-  registry: ProvisionedDevice[];
   fleet: AdminDeviceRow[] | null;
   releases: { version: string }[];
   onOpen: (ref: string) => void;
   onRemove: (externalRef: string) => void;
   registerButton: React.ReactNode;
 }) {
-  // Ohne Inventar-Route (älteres Backend) wird die Registry als Inventar
-  // gelesen — eine Zeile je gedruckter ID, ohne Flotten-Hälfte. Das ist der
-  // alte Funktionsumfang, nie eine erfundene Flotte.
-  const rows = deviceRows(fleet ?? registry.map((p) => ({
-    deviceId: null, externalRef: p.externalRef, label: null, siteId: null, siteName: null,
-    tenantId: null, tenantName: p.claimedByTenant, kind: p.kind, ist: null, soll: null,
-    sollSeq: null, channel: null, pinned: false, state: null, reason: null, blocker: null,
-    lastSeenAt: null, reportedAt: null, provisioned: true, note: p.note,
-    provisionedAt: p.provisionedAt, trust: null,
-  })));
+  // ⚠ Ohne Inventar (älteres Backend, 404) wird die Registry NICHT als Ersatz
+  // gerendert: eine beanspruchte Aufkleber-ID hat dort zwar `claimed`, aber
+  // keine Geräte-Id - jede Zeile läse sich als „noch nicht verbunden", und das
+  // wäre für genau die verbundenen Geräte eine sichtbare Lüge. Ein Fehlschlag
+  // ist keine Datenlage (die `pending`-Disziplin): die Fläche sagt, dass sie
+  // nichts weiß.
+  if (fleet == null) {
+    return (
+      <Card padding="lg" radius="lg">
+        <EmptyState
+          icon="list"
+          category="primary"
+          title="Das Geräte-Inventar ist gerade nicht abrufbar"
+          description="Die Liste aller Geräte konnte nicht geladen werden. Der Funnel oben und die wartenden Geräte bleiben gültig."
+        />
+      </Card>
+    );
+  }
+  const rows = deviceRows(fleet);
 
   if (rows.length === 0) {
     return (
