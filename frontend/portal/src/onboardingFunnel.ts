@@ -2,17 +2,22 @@ import type { AdminDeviceRow, PendingEnrollment, ProvisionedDevice } from './adm
 import { crossoverState } from './adminEdgeUpdates';
 
 /**
- * Der Onboarding-Funnel der Geräte-Registry (Admin-Umbau Stufe 1, Baustein B3).
+ * Die reine Schicht der Plattform-Seite **„Geräte"**: der Onboarding-Funnel
+ * (Admin-Umbau Stufe 1, B3) und - seit der Konsolidierung P2 - das INVENTAR
+ * über den ganzen Lebenszyklus.
  *
- * Ein Gerät nimmt drei Stufen: **registriert** (die Aufkleber-ID steht in der
+ * Ein Gerät nimmt VIER Stufen: **registriert** (die Aufkleber-ID steht in der
  * Manufacturing-Registry) → **wartet auf Zuordnung** (das Gerät hat sich
  * gemeldet und einen CSR hochgeladen, aber kein Claim passt dazu) →
- * **verbunden** (ein Kundenkonto hat es beansprucht).
+ * **verbunden** (ein Kundenkonto hat es beansprucht) → **Vertrauen gekreuzt**
+ * (erst der TOFU-Crossover macht die Box update-fähig).
  *
- * Die Registry-Seite zeigte bisher nur die erste und dritte Stufe. Die mittlere
- * ist das TIPPFEHLER-FENSTER: das Gerät hat seinen Teil getan, der Kunde hat
- * eine andere Referenz getippt — sichtbar war das auf keiner der beiden Seiten,
- * obwohl der Endpunkt seit dem Enrollment-Bau existiert.
+ * Die Seite zeigte bisher nur die erste und dritte Stufe. Die zweite ist das
+ * TIPPFEHLER-FENSTER: das Gerät hat seinen Teil getan, der Kunde hat eine
+ * andere Referenz getippt — sichtbar war das auf keiner der beiden Seiten,
+ * obwohl der Endpunkt seit dem Enrollment-Bau existiert. Die vierte wohnte als
+ * SPALTE in der Flotten-Matrix der ANDEREN Seite, der Funnel hörte also eine
+ * Stufe zu früh auf.
  *
  * Reine Ableitung: hier wird nur gezählt und formuliert, nie geraten. Was der
  * Server nicht liefert, behauptet dieses Modul auch nicht.

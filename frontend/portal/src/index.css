@@ -3829,7 +3829,7 @@ button.vp-tech-card-h.toggle {
    Portal-Admin (Plattform) shared chrome
    The iconed page header (AdminPageHead), the Mandanten pulse strip, quiet
    table sub-lines and a ghost destructive action - so the four admin pages
-   (Mandanten / Benutzer / Geräte-Registry / Optimizer) read as one operator
+   (Mandanten / Benutzer / Geräte / Optimizer) read as one operator
    console. Tokens only.
    ============================================================================ */
 /* AdminPageHead: IconTile + title/description, vertically centred (overrides the
@@ -3869,7 +3869,7 @@ button.vp-tech-card-h.toggle {
 /* Title + one explaining sentence INSIDE a padding-0 table card (the shared
    .vp-section-head is a flex row for h2 + actions and carries no padding, so it
    cannot sit inside one). Used wherever an admin page stacks several titled
-   tables - the Geräte-Registry funnel, the Plattform-Übersicht sections. */
+   tables - the Geräte funnel, the Plattform-Übersicht sections. */
 .vp-admin-sec-head {
   padding: var(--vp-space-5) var(--vp-space-5) var(--vp-space-3);
   border-bottom: 1px solid var(--vp-border);
