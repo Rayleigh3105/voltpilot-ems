@@ -441,6 +441,41 @@ describe('Welt B · Erlöse', () => {
     expect(screen.getByText('3,0 ct über dem Monatsdurchschnitt')).toBeInTheDocument();
   });
 
+  // Der reale Kundenfall vom 05.08.2026: „+ 0,00 € · Marktprämie" ohne ein Wort
+  // dazu. Die Zustände selbst sind in `marktpraemie.test.ts` festgenagelt.
+  it('erklärt die Marktprämie-Null - statt sie nackt stehen zu lassen', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    stubMoney({
+      ...moneyWithData,
+      marktpraemieEur: 0,
+      anzulegenderWertCtKwh: 6.9,
+      marketValueSolarCtKwh: 7.0,
+      marketValueProvisional: true,
+    });
+    render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    expect(screen.getByText(/Ihre Vergütung kommt diesen Monat voll aus dem Markt/)).toBeInTheDocument();
+    expect(screen.getByText(/die Prämie kann sich noch ändern/)).toBeInTheDocument();
+    // Der Monat ist die Abrechnungseinheit und steht in der Überschrift; die
+    // Tagesansicht sagt zusätzlich, dass die Zahl eine Zurechnung ist.
+    expect(screen.getByText('Marktprämie · Juli 2026')).toBeInTheDocument();
+    expect(screen.getByText('anteilig — abgerechnet je Monat')).toBeInTheDocument();
+  });
+
+  it('zeigt ohne anzulegenden Wert „—" MIT Weg - nie eine erfundene Null', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    stubMoney();
+    render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    expect(screen.getByText(/Kein anzulegender Wert hinterlegt/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Zu den Einstellungen' })).toHaveAttribute(
+      'href',
+      '#/anlage/s-1/technik?abschnitt=geld',
+    );
+  });
+
   it('trennt die BEWERTETE Zahl von der GEPLANTEN — je Karte ein Abzeichen', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney();

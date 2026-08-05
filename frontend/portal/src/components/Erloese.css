@@ -191,6 +191,22 @@
   font-weight: 600;
 }
 
+/* Die ruhigen Zusatzzeilen der Marktprämie (Vorläufigkeit, „bereits enthalten",
+   der Weg zu einem fehlenden Wert). Bewusst noch leiser als die Einordnung und
+   ohne Warnton: eine Prämie von 0 ist kein Defekt, sondern eine gute Nachricht. */
+.vp-pt-hint {
+  font-size: 0.74rem;
+  color: var(--vp-text-muted, #6c757d);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.vp-pt-link {
+  font-size: 0.76rem;
+  color: var(--vp-link, #2c5282);
+  align-self: flex-start;
+}
+
 /* Am Telefon stapeln Name und Betrag; der Balken entfällt (er ist Beiwerk,
    und vier Spalten in 343 px sind der dokumentierte Überlauf-Fall). */
 @media (max-width: 560px) {

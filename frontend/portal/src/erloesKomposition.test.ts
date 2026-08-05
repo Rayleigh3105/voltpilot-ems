@@ -654,12 +654,42 @@ describe('preisTreiber · Karte 3 „Was den Preis gemacht hat"', () => {
     expect(erlaubt?.note).toContain('nicht aus dem Netz geladen');
   });
 
-  it('weist eine vorhandene Marktprämie als BEREITS ENTHALTEN aus', () => {
+  it('weist eine vorhandene Marktprämie mit ihrer Rechnung aus - und als BEREITS ENTHALTEN', () => {
     const praemie = preisTreiber({
       money: siteMoney({ marktpraemieEur: 212.4, anzulegenderWertCtKwh: 8.11 }),
     }).find((z) => z.id === 'marktpraemie');
     expect(praemie?.wert).toBe(`+ 212,40${NBSP}€`);
-    expect(praemie?.note).toContain('bereits im Einspeise-Erlös');
+    expect(praemie?.note).toContain('8,11 − 5,92 = 2,19');
+    expect(praemie?.hinweise.join(' ')).toContain('bereits im Einspeise-Erlös');
+  });
+
+  // Der reale Kundenfall vom 05.08.2026 - die Null war richtig und sah aus wie
+  // ein Defekt. Details/Zustände: `marktpraemie.test.ts`.
+  it('erklärt eine berechnete Null, statt sie nackt stehen zu lassen', () => {
+    const praemie = preisTreiber({
+      money: siteMoney({
+        marktpraemieEur: 0,
+        anzulegenderWertCtKwh: 6.9,
+        marketValueSolarCtKwh: 7.0,
+        marketValueProvisional: true,
+      }),
+      siteId: 's1',
+    }).find((z) => z.id === 'marktpraemie');
+
+    expect(praemie?.wert).toBe(`0,00${NBSP}€`);
+    expect(praemie?.vorhanden).toBe(true);
+    expect(praemie?.note).toContain('voll aus dem Markt');
+    expect(praemie?.hinweise.join(' ')).toContain('kann sich noch ändern');
+  });
+
+  it('bietet den Weg zum fehlenden anzulegenden Wert an - aber nur mit bekannter Anlage', () => {
+    const mit = preisTreiber({ money: siteMoney(), siteId: 's1' }).find(
+      (z) => z.id === 'marktpraemie',
+    );
+    expect(mit?.href).toBe('#/anlage/s1/technik?abschnitt=geld');
+
+    const ohne = preisTreiber({ money: siteMoney() }).find((z) => z.id === 'marktpraemie');
+    expect(ohne?.href).toBeNull();
   });
 });
 
