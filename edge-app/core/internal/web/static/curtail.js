@@ -84,19 +84,37 @@
       lastErr = "⚠ Letzte Störung: " + u.last_error +
         (u.last_error_age_seconds ? " (vor " + u.last_error_age_seconds + " s)" : "");
     }
+    // A recognised firmware QUIRK is NOT a fault: it gets its own calm line,
+    // never the warning triangle (this Datamanager answers a commanded
+    // WMaxLim_Ena=0 permanently with 1 - see sunspec/curtail.js).
+    var quirk = u.quirk_note ? "Hinweis: " + u.quirk_note : "";
 
     var body = "";
     if (u.test) {
       lines.push("Test läuft: Begrenzung auf " + nf1.format(u.test.cap_kw) + " kW (von " +
         nf1.format(u.test.before_kw) + " kW), noch " + u.test.seconds_remaining + " s");
       lines.push("Register: " + (u.test.register_ok ? "✓ bestätigt" : "warte auf Bestätigung …"));
-      lines.push("Tiefster Messwert: " + (u.test.min_observed_kw != null ? nf1.format(u.test.min_observed_kw) + " kW" : "–"));
+      // The proof is a PLATEAU at the cap, not a fall below it - so the card
+      // shows the progress of that plateau, plus what the plant WOULD deliver
+      // unthrottled (the yardstick the cap is measured against).
+      lines.push("Am Limit geklemmt: " + (u.test.plateau_samples || 0) + " von " +
+        (u.test.plateau_required || 0) + " Messwerten");
+      if (u.test.ambient_kw != null) {
+        lines.push("Ohne Begrenzung möglich: ~" + nf1.format(u.test.ambient_kw) + " kW" +
+          (u.test.ambient_source ? " (Vergleich mit " + u.test.ambient_source + ")" : ""));
+      }
       body += '<button type="button" class="cal-btn ghost" data-act="abort">Test abbrechen</button>';
     } else {
       if (u.evidence && u.evidence.valid) {
         lines.push("Letzter Test (vor " + u.evidence.age_seconds + " s): Register " +
-          (u.evidence.register_confirmed ? "✓" : "✗") + " · Leistung gefallen " +
-          (u.evidence.drop_observed ? "✓ (auf " + (u.evidence.min_observed_kw != null ? nf1.format(u.evidence.min_observed_kw) : "?") + " kW)" : "✗"));
+          (u.evidence.register_confirmed ? "✓" : "✗") + " · am Limit geklemmt " +
+          (u.evidence.clamp_observed
+            ? "✓ (" + u.evidence.plateau_samples + " Messwerte bei " + nf1.format(u.evidence.cap_kw) + " kW)"
+            : "✗ (" + (u.evidence.plateau_samples || 0) + " von " + (u.evidence.plateau_required || 0) + ")"));
+        // The honest outcome, in the operator's words. "nicht beweisbar" is a
+        // statement about the WEATHER, not about the inverter - it must never
+        // read like a defect, and it must never read like a pass.
+        if (u.evidence.reason) lines.push(u.evidence.reason);
       }
       if (u.test_cap_kw != null) {
         body += '<button type="button" class="cal-btn" data-act="test">Test: auf ' +
@@ -116,6 +134,7 @@
       '<p class="tech-h">' + head + " " + status + "</p>" +
       '<p class="cal-hint">' + lines.join(" · ") + "</p>" +
       (lastErr ? '<p class="cal-hint curtail-err">' + lastErr + "</p>" : "") +
+      (quirk ? '<p class="cal-hint">' + quirk + "</p>" : "") +
       '<div class="cal-actions">' + body + "</div>";
 
     div.addEventListener("click", function (ev) {
