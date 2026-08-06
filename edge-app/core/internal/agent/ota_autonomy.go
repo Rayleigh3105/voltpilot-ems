@@ -192,11 +192,23 @@ func (a *Agent) otaDispatching(snap state.Snapshot) bool {
 		return false
 	}
 	switch snap.Mode {
-	case state.ModeSchedule, state.ModeSelfConsume, state.ModeDesired, state.ModeCalibration:
+	case state.ModeSchedule, state.ModeSelfConsume, state.ModeDesired, state.ModeCalibration, state.ModeNeutralTest:
 		return math.Abs(snap.SetpointKw) > otaSetpointDeadbandKw
 	default:
 		return false
 	}
+}
+
+// otaNeutralRequestPending sagt, ob GERADE eine frische Bitte des Sidecars um
+// Neutralstellung ansteht (der Eil-Pfad, otaNeutralOverride) - lesend, ohne
+// Seiteneffekt. Ein laufender Neutral-Zeit-Test konsultiert es als eigenes
+// Sicherheitsnetz: eine EILIGE OTA-Aktualisierung darf fuer die Dauer eines
+// Tests nie verhungern, denn otaNeutralOverride sitzt in der Kette dahinter
+// und kaeme sonst nicht zum Zug.
+func (a *Agent) otaNeutralRequestPending(now time.Time) bool {
+	a.otaMu.Lock()
+	defer a.otaMu.Unlock()
+	return !a.otaNeutralReq.IsZero() && now.Sub(a.otaNeutralReq) <= otaNeutralRequestTTL
 }
 
 // otaNeutralOverride publiziert die Neutralstellung des Eil-Pfades statt des

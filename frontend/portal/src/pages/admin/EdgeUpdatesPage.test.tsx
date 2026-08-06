@@ -197,6 +197,29 @@ describe('EdgeUpdatesPage', () => {
     );
   });
 
+  it('zeigt am bestätigten Gerät WANN gemeldet wurde und die eindeutige Soll==Ist-Aussage', async () => {
+    render(<EdgeUpdatesPage />);
+    // d1 (Pilsting) ist im Fixture `state: 'bestaetigt'` mit einem
+    // `reportedAt`-Stempel - der Drawer muss beides zeigen, nie nur den
+    // Badge-Text „bestätigt ✓".
+    fireEvent.click(await screen.findByText('Pilsting'));
+    const drawer = await screen.findByRole('dialog');
+    expect(drawer).toHaveTextContent('Ist gemeldet');
+    const confirmed = within(drawer).getByTestId('drawer-confirmed');
+    expect(confirmed).toHaveTextContent('Ist entspricht dem Soll');
+    expect(confirmed).toHaveTextContent('bestätigt');
+  });
+
+  it('behauptet ohne bestätigten Zustand KEINE Soll==Ist-Gleichheit', async () => {
+    render(<EdgeUpdatesPage />);
+    // d2 (Auernheim) ist `state: 'unbekannt'` - ein Gerät ohne bestätigten
+    // Zustand darf nie „Ist entspricht dem Soll" behaupten, auch nicht mit
+    // einem gemeldeten Ist-Stempel.
+    fireEvent.click(await screen.findByText('Auernheim'));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).queryByTestId('drawer-confirmed')).toBeNull();
+  });
+
   it('zeigt eine Ablehnung des Servers WÖRTLICH', async () => {
     const { ApiError } = await import('../../api');
     promoteRollout.mockRejectedValue(new ApiError(409, 'Die laufende Welle ist noch nicht bestätigt: Noch 3 Std.'));

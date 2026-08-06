@@ -22,6 +22,12 @@ const (
 	// now" is neither the plan nor self-consumption - and a surface that shows
 	// a cause must be able to name this one.
 	ModeOtaNeutral Mode = "ota_neutral"
+	// ModeNeutralTest: a guided Neutral-Zeit-Test (docs/ota-autonomie.md §3)
+	// is measuring the inverter's Kommunikations-Verlust-Zeit T - during its
+	// silent phase NOTHING is written at all, which is the entire mechanism,
+	// so this mode names the reason a surface must not mistake for a stuck
+	// setpoint.
+	ModeNeutralTest Mode = "neutralzeit_test"
 )
 
 // Snapshot is one consistent view of the agent for the UI / health endpoint.

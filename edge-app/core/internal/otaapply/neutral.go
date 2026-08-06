@@ -49,6 +49,80 @@ import (
 // Verifikation NIE - `Verified:false` bleibt eine Sperre.
 const DefaultNeutralT = 60 * time.Second
 
+// NeutralRecord ist EIN gemessener, belegter Nachweis fuer eine Familie - das
+// geraete-lokale Gegenstueck zu einem Eintrag in VP_OTA_NEUTRAL_VERIFIED,
+// erzeugt vom gefuehrten First-Light-Neutral-Zeit-Test auf `:8484`
+// (internal/neutralcal) statt von einer Pruefstands-Sitzung.
+//
+// Er ist eine SOFTWARE-Naeherung des Pruefstand-Verfahrens (das den Link
+// physisch trennt) - gemessen wird das Verhalten, wenn schlicht niemand mehr
+// den Sollwert auffrischt, nicht ein echter Kommunikationsabriss. Das ist
+// exakt der Ausfall, den OTA Stufe 3 ueberleben muss (ein haengender Tausch),
+// weshalb der Nachweis trotzdem tragfaehig ist.
+type NeutralRecord struct {
+	Family     string `json:"family"`
+	Seconds    int    `json:"seconds"`
+	MeasuredAt string `json:"measured_at"`
+	// TestKw/SettleSamples sind Diagnose (was wurde befohlen, wie viele
+	// Messwerte haben den Rueckfall belegt) - fuer die Torkette irrelevant.
+	TestKw        float64 `json:"test_kw,omitempty"`
+	SettleSamples int     `json:"settle_samples,omitempty"`
+}
+
+// FileNeutralEvidence ist die Protokolldatei der geraete-lokal GEMESSENEN
+// Neutral-Zeiten (ota/neutral-verified.json) - eine Zeile je Familie, damit
+// ein Wechsel des Wechselrichter-Modells nie die Messung des alten Geraets
+// erbt.
+const FileNeutralEvidence = "neutral-verified.json"
+
+// neutralEvidenceVersion ist die Schema-Version der Datei, damit ein
+// kuenftiger Aenderungsbedarf (etwa strengere Beweisregeln) alte Eintraege
+// beim Laden verwerfen kann, statt sie stillschweigend weiterzuverwenden -
+// dasselbe Muster wie calibrationCertVersion in agent/calibration.go.
+const neutralEvidenceVersion = 1
+
+// NeutralEvidenceFile ist die Form der Protokolldatei.
+type NeutralEvidenceFile struct {
+	Version int                      `json:"version"`
+	Records map[string]NeutralRecord `json:"records"`
+}
+
+// LoadNeutralEvidence liest die geraete-lokal gemessenen Nachweise. Eine
+// fehlende, unlesbare oder zu alte Datei ergibt eine LEERE Tabelle - niemals
+// ein erfundener Beleg (derselbe fail-closed-Vorsatz wie jede andere Datei in
+// diesem Paket).
+func LoadNeutralEvidence(dataDir string) map[string]NeutralRecord {
+	f, err := ReadJSON[NeutralEvidenceFile](dataDir, FileNeutralEvidence)
+	if err != nil || f == nil || f.Version != neutralEvidenceVersion {
+		return nil
+	}
+	return f.Records
+}
+
+// SaveNeutralRecord traegt EINEN gemessenen Nachweis ein (ersetzt einen
+// vorherigen fuer dieselbe Familie). Sie fasst NIE einen Nicht-Erfolg an - der
+// Aufrufer (agent/neutral.go) ruft sie ausschliesslich fuer einen
+// `neutralcal.VerdictPassed` mit einer gemessenen Sekundenzahl auf.
+func SaveNeutralRecord(dataDir string, rec NeutralRecord) error {
+	fam := strings.ToLower(strings.TrimSpace(rec.Family))
+	if fam == "" {
+		return fmt.Errorf("ein Nachweis ohne Familie kann nicht gespeichert werden")
+	}
+	if rec.Seconds <= 0 {
+		return fmt.Errorf("ein Nachweis ohne gemessene Sekundenzahl kann nicht gespeichert werden")
+	}
+	rec.Family = fam
+	records := LoadNeutralEvidence(dataDir)
+	out := make(map[string]NeutralRecord, len(records)+1)
+	for k, v := range records {
+		out[k] = v
+	}
+	out[fam] = rec
+	return WriteJSON(dataDir, FileNeutralEvidence, NeutralEvidenceFile{
+		Version: neutralEvidenceVersion, Records: out,
+	})
+}
+
 // NeutralTimeout ist die aufgeloeste Aussage ueber EINE Familie.
 type NeutralTimeout struct {
 	Family   string
@@ -128,6 +202,40 @@ func (t *NeutralTable) For(family string) NeutralTimeout {
 		Note: fmt.Sprintf("Fuer die Familie '%s' ist die Neutral-Zeit des Wechselrichters "+
 			"NICHT verifiziert.", fam),
 	}
+}
+
+// ForWithMeasured loest die Aussage fuer eine Familie wie [For] auf, zieht
+// aber zusaetzlich einen geraete-lokal GEMESSENEN Nachweis heran
+// ([NeutralRecord], typischerweise aus [LoadNeutralEvidence]), wenn die
+// Betreiber-Tabelle (VP_OTA_NEUTRAL_VERIFIED) fuer diese Familie KEINEN
+// Eintrag traegt.
+//
+// Der Vorrang ist ABSICHTLICH und EINSEITIG: ein Tabellen-Eintrag gewinnt
+// IMMER, auch wenn er kleiner ist als der gemessene Wert - ein Betreiber, der
+// eine Pruefstands-Zahl eingetragen hat (docs/ota-autonomie.md §3: „mehrfach
+// wiederholen, den GROESSTEN Wert nehmen"), hat bereits die konservative,
+// wiederholte Messung gemacht, die dieses Paket nicht besser wissen kann. Nur
+// wenn die Tabelle schweigt, oeffnet die eigene gefuehrte Messung der Box das
+// Tor.
+func (t *NeutralTable) ForWithMeasured(family string, measured map[string]NeutralRecord) NeutralTimeout {
+	fam := strings.ToLower(strings.TrimSpace(family))
+	if fam == "" {
+		return t.For(family)
+	}
+	if t != nil {
+		if _, ok := t.verified[fam]; ok {
+			return t.For(family) // die Betreiber-Angabe gewinnt unveraendert.
+		}
+	}
+	if rec, ok := measured[fam]; ok && rec.Seconds > 0 {
+		d := time.Duration(rec.Seconds) * time.Second
+		return NeutralTimeout{
+			Family: fam, T: d, Verified: true,
+			Note: fmt.Sprintf("Neutral-Zeit %s am Geraet per gefuehrtem First-Light-Test "+
+				"gemessen (%s).", d, rec.MeasuredAt),
+		}
+	}
+	return t.For(family)
 }
 
 // WatchdogMargin ist der Sicherheitsabstand unter T.

@@ -5,11 +5,21 @@ Stufe 2 hat ihn VERTEILT — angewandt hat ihn immer noch ein Mensch am Gerät
 (`update.sh --from-target`). Stufe 3 baut die Maschine, die das selbst tut:
 den Sidecar **`vp-edge-updater`**.
 
-> **Sie ist gebaut und im Labor geprüft — und NIRGENDWO eingeschaltet.**
-> Autonomes Anwenden hat zwei unabhängige Tore, und beide sind zu:
-> das Compose-Profil `ota` (der Container läuft sonst gar nicht) und der
-> Schalter je Gerät (Vorgabe AUS). Eine Box ohne beides verhält sich
-> zeichengleich wie vor dieser Stufe.
+> **Sie ist gebaut und im Labor geprüft.** Autonomes Anwenden hat zwei
+> unabhängige Tore. **Seit einer frischen Installation läuft das erste Tor
+> (Compose-Profil `ota`) standardmäßig mit** — der Sidecar beobachtet und
+> meldet von Anfang an, ohne einen zweiten Handgriff (`install.sh`,
+> §7 unten). **Das zweite Tor — der Geräte-Schalter — bleibt unverändert
+> AUS**, bis ein Betreiber ihn bewusst setzt (§8: auf `:8484`, ganz ohne
+> Shell, oder von Hand in `/data/ota/autonomy.json`). Eine Box mit laufendem
+> Sidecar, aber ausgeschaltetem Schalter, wendet nichts an — sie beobachtet
+> nur und meldet, exakt wie eine ganz ohne Sidecar.
+
+**Auf Bestandsboxen ändert sich nichts von selbst.** `update.sh` erkennt den
+laufenden Zustand einer Box und behält ihn bei (§5, `detect_ota_profile`) —
+eine Box ohne laufenden Sidecar bleibt eine Box ohne laufenden Sidecar, bis
+sie neu installiert oder der Sidecar von Hand (`docker compose --profile ota
+up -d updater`) nachgezogen wird.
 
 Zeremonie und Signaturkette: [`ota-signing.md`](ota-signing.md).
 Rollout-Steuerung im Portal: dort §6b und die Seite „Edge-Updates".
@@ -130,6 +140,68 @@ Für eine Familie, deren T sich nicht belegen lässt, bleibt der Weg des
 Vorentwurfs: ein winziger externer Neutral-Herzschlag außerhalb des
 tauschbaren Satzes. Der ist **nicht gebaut**.
 
+### T am GERÄT messen — der gefuehrte Neutral-Zeit-Test auf `:8484`
+
+Der Pruefstand-Weg oben braucht ein physisch getrenntes Kabel und einen
+Menschen mit einer Stoppuhr. Seit `internal/neutralcal` ist T stattdessen eine
+**messbare Eigenschaft**, die die Box selbst ermittelt — unter „Einrichten →
+Steuerung → Neutral-Zeit messen", direkt neben der PV-Abregelungs-Karte.
+
+**Das Verfahren (die Software-Näherung des Pruefstand-Schritts 2/3 oben):**
+
+1. Die Box schreibt einen kleinen, klar von neutral abweichenden Sollwert
+   (`neutralcal.TestKw`, aktuell 0,5 kW — bewusst niedrig, es geht um
+   Erkennbarkeit, nicht um Leistung) und frischt ihn auf, bis das Register
+   die Ankunft bestätigt UND die gemessene Batterieleistung die Abweichung
+   zeigt (zwei aufeinanderfolgende frische Messwerte — ein einzelner Ausreißer
+   beweist nichts).
+2. **Dann hört sie bewusst auf zu schreiben** — kein weiterer Sollwert, keine
+   Neutral-Freigabe, GAR NICHTS auf `edge/setpoint`. Das ist der ganze
+   Mechanismus: Layer 1 reagiert nur auf eine NEUE Nachricht, und ohne eine
+   neue Nachricht bleibt der Wechselrichter sich selbst überlassen — genau der
+   Ausfall, den die Wachhund-Frist überleben muss.
+3. Der GEWÖHNLICHE Telemetrie-Lesepfad läuft unveraendert weiter (nichts wird
+   gestoppt) und beobachtet, wie lange es dauert, bis die gemessene
+   Batterieleistung von selbst — dreimal in Folge, frisch — ins Neutralband
+   zurückkehrt.
+
+**Das Urteil ist immer eines von vier, nie eine erfundene Zahl:**
+
+| Urteil | Bedeutung |
+|---|---|
+| `bestanden` | Beide Hälften bewiesen — die Karte bietet „Als Nachweis übernehmen" an |
+| `nicht_beweisbar` | Die Anlage hat sich nie messbar von neutral entfernt (z. B. SoC-Grenze), oder die Messwerte sind ausgeblieben — eine Aussage über den LAUF, nie über T |
+| `kein_nachweis` | Das Register hat den Testwert nie bestätigt, oder die Rückkehr blieb im Zeitfenster aus — bitte wiederholen |
+| `laeuft` | Test noch aktiv |
+
+**T wird KONSERVATIV berichtet, nie optimistisch:** die Sekundenzahl ist auf
+den letzten Messwert verankert, der nachweislich noch AUSSERHALB des
+Neutralbands lag — nie auf den ersten, der zufällig schon eingeschwungen
+aussah. Ein zu schnell gemessenes T unterschätzt sich damit selbst (und
+scheitert ggf. an der Mindestfrist), aber es ÜBERSCHÄTZT NIE — die
+sicherheitskritische Richtung, denn die Wachhund-Frist muss strikt darunter
+bleiben.
+
+**Sicherheitsnetz:** harte Obergrenze für die Schreibphase
+(`neutralcal.DepartureTimeout`, 90 s) und für den ganzen Test
+(`neutralcal.DefaultTTL`, 6 min); jederzeit per Knopf abbrechbar
+(„Test abbrechen"); ein laufender Neutral-Zeit-Test bricht selbst ab, sobald
+eine EILIGE Aktualisierung die Anlage neutral parken möchte oder eine
+Kalibrierung startet — er hat dann ohnehin nichts mehr zu beweisen. Die
+Freigabe folgt derselben `X-VP-Calibration-Token`-Schranke wie die
+Batteriekalibrierung; der Test ändert nie eine Guard-Grenze und weitet nie
+eine Befugnis.
+
+**Ein bestandener Test trägt sich in `/data/ota/neutral-verified.json` ein**
+(je Familie eine Zeile: Sekunden, Zeitpunkt, Testparameter).
+`otaapply.NeutralTable.ForWithMeasured` zieht diesen Beleg GLEICHWERTIG zu
+einem `VP_OTA_NEUTRAL_VERIFIED`-Eintrag heran — **die Umgebungsvariable
+gewinnt aber IMMER**, wenn sie für dieselbe Familie gesetzt ist, auch mit
+einer kleineren Zahl: ein Betreiber, der bereits die konservative,
+wiederholte Pruefstands-Messung gemacht hat (Schritt 4 oben), wird nie
+stillschweigend überstimmt. Ohne einen Env-Eintrag öffnet der geräte-lokale
+Nachweis das Tor genauso wie ein Eintrag in der `.env`.
+
 ### So sieht die Verweigerung aus — im Log und im Portal
 
 Bis zum Canary-Soak am 04.08.2026 verweigerte der Sidecar in diesem Fall
@@ -223,23 +295,31 @@ Zustand, in dem eine heute von Hand gepflegte Box ohnehin ist).
 **Nichts davon gehört auf eine Kundenanlage, bevor die Matrix aus §6 auf der
 Canary-Box (Pilsting) mit echten Steuerzyklen bestanden ist.**
 
+**Auf einer FRISCH installierten Box (`edge-app/install.sh`) läuft Tor 1
+bereits** — `./update.sh --ota` in Schritt 1 unten ist dann nur noch für
+BESTANDSBOXEN nötig, die vor dieser Änderung installiert wurden.
+
 ```bash
 cd /srv/voltpilot-edge
 
-# 1. Sidecar-Image holen und starten (Tor 1) - er beobachtet nur.
+# 1. NUR Bestandsboxen: Sidecar-Image holen und starten (Tor 1) - er
+#    beobachtet nur. Eine frische Installation hat das bereits.
 ./update.sh --ota
 
 # 2. Beobachten: was sagt er über sich?
 docker compose --profile ota logs -f updater
 docker run --rm -v vp-edge-data:/data alpine cat /data/ota/updater-state.json
 
-# 3. Erst wenn das stimmt: der Schalter je Gerät (Tor 2).
+# 3. Erst wenn das stimmt: der Schalter je Gerät (Tor 2) - OHNE SHELL auf
+#    `:8484` unter „Einrichten → Automatische Aktualisierung" (siehe unten),
+#    oder von Hand:
 docker run --rm -v vp-edge-data:/data alpine sh -c \
   'printf "{\"enabled\":true,\"note\":\"Canary Pilsting, Soak <Datum>\"}\n" \
    > /data/ota/autonomy.json'
 ```
 
-**Wieder ausschalten** — sofort wirksam, ohne Neustart:
+**Wieder ausschalten** — sofort wirksam, ohne Neustart: derselbe Schalter auf
+`:8484`, oder von Hand:
 
 ```bash
 docker run --rm -v vp-edge-data:/data alpine \
@@ -250,12 +330,31 @@ Ein laufender Vorgang wird davon **nicht** abgebrochen (er wird zu Ende
 gefahren oder zurückgenommen — beides endet in einem definierten Zustand). Der
 harte Not-Aus ist `docker compose --profile ota stop updater`.
 
+### Der Schalter OHNE SHELL, auf `:8484`
+
+„Einrichten → Steuerung → Automatische Aktualisierung" (`GET`/`POST
+/api/ota/autonomy`, hinter demselben `X-VP-Calibration-Token` wie jede andere
+physische Steuer-Mutation) schreibt **ausschließlich** `/data/ota/autonomy.json`
+— dieselbe Datei, die der Sidecar ohnehin jeden Takt liest. Jedes weitere Tor
+der Kette (Signaturkette, Anti-Rollback-Boden, Plattenwächter, Neutral-Zeit-Regel,
+Interlock, Selbsttest, Wachhund, `failed.json`) gilt **unverändert** — dieser
+Schalter erteilt keine neue Befugnis, er ersetzt nur den `docker run`-Einzeiler
+oben durch einen Klick. Ohne laufenden Sidecar (Profil `ota` aus) hat der
+Schalter keine Wirkung — die Karte sagt das.
+
+**Empfehlung zur Flotten-Vorgabe (eine Entscheidung des Betreibers, keine
+technische):** die Vorgabe des GERÄTE-Schalters bleibt bewusst AUS, auch nach
+dieser Änderung. Erst nachdem die Canary-Box (Pilsting) die Fehlerinjektions-
+Matrix (§6) MIT belegtem T und echten Steuerzyklen im Dauerbetrieb bestanden
+hat, ist eine flottenweite Umstellung auf AN eine Abwägung wert — und dann
+eher schrittweise (einzelne Wellen) als auf einen Schlag.
+
 ### Alle Stellschrauben
 
 | Variable | Vorgabe | Bedeutung |
 |---|---|---|
 | `VP_OTA_AUTONOMOUS` | `false` | Not-Ein aus der Umgebung. Der eigentliche Schalter ist `autonomy.json`. |
-| `VP_OTA_NEUTRAL_VERIFIED` | leer | Belegte Neutral-Zeiten, `familie:sekunden` (§3). |
+| `VP_OTA_NEUTRAL_VERIFIED` | leer | Belegte Neutral-Zeiten, `familie:sekunden` (§3) - gewinnt immer über einen am Gerät GEMESSENEN Nachweis (`/data/ota/neutral-verified.json`, §3). |
 | `VP_OTA_WATCHDOG_SECONDS` | `600` | Wachhund-Frist; wird durch T zusätzlich gedeckelt. |
 | `VP_OTA_DISK_GUARD_MB` | `2048` | Freier Platz, unter dem nicht getauscht wird. |
 | `VP_OTA_COMPOSE_FILES` | `docker-compose.yml` | Bei Host-Netz-Overlay BEIDE Dateien, durch `:` getrennt. |

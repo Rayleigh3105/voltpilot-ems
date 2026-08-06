@@ -160,6 +160,41 @@ func (a *Agent) OtaRequestApplyWithToken(by, token string,
 	return a.OtaApplyState(), nil
 }
 
+// OtaAutonomyState liest den Geraete-Schalter fuer autonomes Anwenden
+// (ota/autonomy.json). Fehlende/unlesbare Datei = AUS, siehe
+// otaapply.ReadAutonomy.
+func (a *Agent) OtaAutonomyState() otaapply.Autonomy {
+	return otaapply.ReadAutonomy(a.Cfg.DataDir)
+}
+
+// OtaSetAutonomy ist der Weg, den Schalter OHNE SHELL zu setzen - hinter
+// demselben Betreiber-Passwort wie jede andere physische Steuer-Mutation
+// (calGuard). Sie schreibt AUSSCHLIESSLICH die eine Datei, die der Sidecar
+// ohnehin jeden Takt liest (otaapply.ReadAutonomy); jedes weitere Tor der
+// Torkette (Signaturkette, Anti-Rollback-Boden, Plattenwaechter,
+// Neutral-Zeit-Regel, Interlock, Selbsttest, Wachhund, `failed.json`) gilt
+// UNVERAENDERT - dieser Knopf erteilt keine neue Befugnis, er stellt nur den
+// Schalter, den ein Betreiber sonst per Shell in das Docker-Volume schreiben
+// muesste.
+func (a *Agent) OtaSetAutonomy(enabled bool, by string) (otaapply.Autonomy, error) {
+	note := "manuell auf :8484 ausgeschaltet"
+	if enabled {
+		note = "manuell auf :8484 eingeschaltet"
+	}
+	if by != "" {
+		note += " (" + by + ")"
+	}
+	au := otaapply.Autonomy{
+		Enabled: enabled, Note: note,
+		UpdatedAt: time.Now().UTC().Format(otaapply.TimeFormat),
+	}
+	if err := otaapply.WriteJSON(a.Cfg.DataDir, otaapply.FileAutonomy, au); err != nil {
+		return a.OtaAutonomyState(), fmt.Errorf("Autonomie-Schalter konnte nicht gespeichert werden: %w", err)
+	}
+	slog.Warn("OTA: Autonomie-Schalter ueber :8484 geaendert", "enabled", enabled, "von", orNone(by))
+	return au, nil
+}
+
 // otaUpdaterState liest den Zustand des Sidecars und sagt, ob er FRISCH ist.
 func (a *Agent) otaUpdaterState() (*otaapply.UpdaterState, bool) {
 	up, err := otaapply.ReadJSON[otaapply.UpdaterState](a.Cfg.DataDir,

@@ -528,6 +528,26 @@ type UpdateSummary struct {
 	// UNCONDITIONALLY (no omitempty): a build that knows the question always
 	// answers it, so „absent" can only ever mean „an older build", never „no".
 	CanApply bool `json:"can_apply"`
+	// NeutralVerified is the device-MEASURED Inverter-Neutral-Zeit T for the
+	// CURRENTLY selected inverter family (docs/ota-autonomie.md §3), produced
+	// by the guided :8484 First-Light Neutral-Zeit-Test - the belegte
+	// Ergaenzung zum Betreiber-Eintrag VP_OTA_NEUTRAL_VERIFIED. nil = never
+	// measured on this device (or no inverter selected).
+	//
+	// It is a FACT about the device, never an authorization: whether it
+	// actually opens the autonomous-apply gate is decided entirely on-device
+	// by otaapply.NeutralTable.ForWithMeasured, where the operator's env
+	// entry ALWAYS wins when present. An older device simply never sends this
+	// field.
+	NeutralVerified *NeutralVerifiedSummary `json:"neutral_verified,omitempty"`
+}
+
+// NeutralVerifiedSummary is one geraete-lokal gemessener Neutral-Zeit-Nachweis
+// (the otaapply.NeutralRecord counterpart carried in the heartbeat).
+type NeutralVerifiedSummary struct {
+	Family     string `json:"family"`
+	Seconds    int    `json:"seconds"`
+	MeasuredAt string `json:"measured_at,omitempty"`
 }
 
 // TrustSummary is the reported trust identity (OTA Stufe 4).

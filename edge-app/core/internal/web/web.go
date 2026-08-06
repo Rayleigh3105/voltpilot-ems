@@ -24,6 +24,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/neutralcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otatarget"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
@@ -166,6 +167,21 @@ type CalibrationController interface {
 	CurtailAbort() curtailcal.View
 	CurtailCertify(sourceID string) (curtailcal.View, error)
 	CurtailDecertify(sourceID string) (curtailcal.View, error)
+
+	// Neutral-Zeit First-Light (docs/ota-autonomie.md §3): the guided,
+	// bounded test that MEASURES the Inverter-Neutral-Zeit T at the device
+	// instead of a bench session with a physically cut cable. Same admin
+	// gate, same discipline: a small departure from neutral is commanded and
+	// confirmed, then the write goes COMPLETELY SILENT while the normal
+	// telemetry read path watches the return. A *neutralcal.ValidationError
+	// is a 400.
+	NeutralSnapshot() neutralcal.View
+	NeutralStartTest() (neutralcal.View, error)
+	NeutralAbort() neutralcal.View
+	// NeutralRecord is "Als Nachweis übernehmen": persists the current valid
+	// PASSED evidence into the device-local belegte Neutral-Zeit-Datei.
+	// Refused (400) unless the evidence is a genuine, still-valid pass.
+	NeutralRecord() (neutralcal.View, error)
 }
 
 // OtaController is the supervised half of OTA Stufe 2 „Verteilen": the box
@@ -196,6 +212,16 @@ type OtaController interface {
 	// OtaRequestApply places the ONE-SHOT approval. It only writes a file; the
 	// applying is done by another process that verifies everything itself.
 	OtaRequestApply(by string) (otaapply.ApplyView, error)
+
+	// OtaAutonomyState/OtaSetAutonomy are the WAY TO SET the per-device
+	// autonomous-apply switch WITHOUT A SHELL (behind the same operator
+	// password as every other physical-control mutation). Setting it grants
+	// no new capability - it only writes the ONE file the sidecar already
+	// reads every tick (ota/autonomy.json); every gate of the apply chain
+	// (signature check, anti-rollback floor, disk guard, neutral-time rule,
+	// interlock, self-test, watchdog, failed.json) applies unchanged.
+	OtaAutonomyState() otaapply.Autonomy
+	OtaSetAutonomy(enabled bool, by string) (otaapply.Autonomy, error)
 }
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
@@ -858,6 +884,48 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		curtailResult(w, v, err)
 	}))
 
+	// --- Neutral-Zeit First-Light (docs/ota-autonomie.md §3): the guided
+	// on-device measurement of the Inverter-Neutral-Zeit T. Mutations share
+	// the SAME calGuard as calibration/curtailment - it is the same
+	// physical-control calibration surface.
+	neutralResult := func(w http.ResponseWriter, v neutralcal.View, err error) {
+		if err != nil {
+			var ve *neutralcal.ValidationError
+			if errors.As(err, &ve) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg, "neutral": v})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Die Aktion konnte nicht ausgeführt werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"neutral": v})
+	}
+	// GET /api/neutral - session state: availability, live battery reading,
+	// the running test + its evidence, and the persisted (belegte) record for
+	// the currently selected family. The surface polls this.
+	mux.HandleFunc("GET /api/neutral", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"neutral": cal.NeutralSnapshot()})
+	})
+	// POST /api/neutral/test - start the bounded test (a tiny departure from
+	// neutral, confirmed by readback, then TOTAL SILENCE on the write channel
+	// while the return is observed via the normal telemetry read path).
+	mux.HandleFunc("POST /api/neutral/test", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		v, err := cal.NeutralStartTest()
+		neutralResult(w, v, err)
+	}))
+	// POST /api/neutral/abort - end the running test now; control resumes on
+	// the very next setpoint tick, and the evidence is invalidated.
+	mux.HandleFunc("POST /api/neutral/abort", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"neutral": cal.NeutralAbort()})
+	}))
+	// POST /api/neutral/record - "Als Nachweis übernehmen": persists the
+	// current, still-valid, PASSED evidence as the belegte Neutral-Zeit for
+	// this family. Refused (400) on anything less than a genuine pass.
+	mux.HandleFunc("POST /api/neutral/record", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		v, err := cal.NeutralRecord()
+		neutralResult(w, v, err)
+	}))
+
 	// ── OTA Stufe 2 „Verteilen" ───────────────────────────────────────────
 	//
 	// GET /api/ota/target - was hat das Portal dieser Box zugewiesen, und hat
@@ -924,6 +992,33 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			return
 		}
 		writeJSON(w, http.StatusOK, view)
+	}))
+
+	// ── Autonomie-Schalter OHNE SHELL (Teil C, docs/ota-autonomie.md §2) ──
+	//
+	// GET liefert den Zustand - lesend und deshalb ungeschuetzt.
+	mux.HandleFunc("GET /api/ota/autonomy", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, ota.OtaAutonomyState())
+	})
+	// POST setzt den Schalter - hinter DEMSELBEN Betreiber-Passwort wie jede
+	// andere physische Steuer-Mutation (calGuard). Sie schreibt AUSSCHLIESSLICH
+	// die eine Datei, die der Sidecar ohnehin jeden Takt liest; jedes Tor der
+	// Torkette gilt unveraendert.
+	mux.HandleFunc("POST /api/ota/autonomy", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Enabled bool   `json:"enabled"`
+			By      string `json:"by"`
+		}
+		if !readBody(r, &req) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		au, err := ota.OtaSetAutonomy(req.Enabled, req.By)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, au)
 	}))
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
