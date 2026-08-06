@@ -273,30 +273,59 @@ kalibrieren") - KEIN Register-Handbetrieb nötig. Für die zwei Pilsting-Fronius
 (`192.168.210.40:502`, Unit 1 + Unit 2), **je Einheit einzeln, bei Sonne
 (≥ 5 kW aktuelle Leistung der Einheit)**:
 
+0. **Vor der Sitzung: den Datamanager einmal neu starten**, wenn er kürzlich
+   umkonfiguriert wurde (z. B. „Allow Control" gesetzt, EVU-Editor bearbeitet).
+   Ein Datamanager 2.0 antwortet nach so einer Änderung manchmal minutenlang
+   erratisch auf Modbus (live gemessen: derselbe Test scheiterte um 10:51 -
+   Register hielt 105 s durchgehend den alten Wert - und gelang um 10:47 ohne
+   jede Konfigurationsänderung dazwischen); ein Neustart behebt das
+   zuverlässiger als mehrfaches Wiederholen.
 1. **Voraussetzungen prüfen.** Am Datamanager Kommunikation → Modbus:
    „Allow Control" ist angehakt (ohne antwortet der Wechselrichter auf keinen
    Schreibbefehl); `VP_CONTROL_ENABLED=true` auf dem Core; beide Fronius sind
-   als fronius_sunspec-Erzeuger-Quellen eingerichtet und liefern Daten.
+   als fronius_sunspec-Erzeuger-Quellen eingerichtet und liefern Daten. Prüfen,
+   ob eine interne Fronius-Regel (EVU-Editor, z. B. die IO-Regel „100 %" bei
+   geschlossenem Kontakt I1) gerade aktiv ist - siehe Schritt 3.
 2. **Karte öffnen.** `:8484` → Einrichten → „PV-Abregelung kalibrieren": beide
    Einheiten erscheinen mit Status „noch nicht freigegeben" + aktueller
    Leistung. (Ist das Kalibrier-Kennwort gesetzt, fragt die Karte danach.)
-3. **Test starten** („Test: auf X kW begrenzen (80 %)"). Was passieren MUSS,
-   live auf der Karte:
+3. **Test starten** („Test: auf X kW begrenzen (80 %)"), nur bei Sonne mit
+   ausreichendem Kopfraum zum Cap (die Karte verweigert sonst - kein
+   aussagekräftiger Nachweis möglich). Was passieren MUSS, live auf der Karte:
    - „Register: ✓ bestätigt" - `WMaxLimPct`/`RvrtTms`/`Ena` wurden geschrieben
-     und unverändert zurückgelesen (an live erkannten Modell-123-Adressen);
-   - der „Tiefste Messwert" fällt binnen ~1-2 Minuten auf die Test-Begrenzung
-     (z. B. 21,4 kW → ≤ ~17,1 kW). Fällt er NICHT, obwohl die Register
-     bestätigt sind, übersteuert etwas die Modbus-Begrenzung (lokale
-     Einstellung / Solar.web / Smart-Meter-Regel - Modbus hat auf Fronius die
-     NIEDRIGSTE Priorität): NICHT freigeben, Ursache am Gerät klären.
-4. **Automatischer Rückfall.** Nach spätestens 120 s endet der Test von selbst
-   und die Leistung erholt sich (der native `WMaxLimPct_RvrtTms` = 60 s ist
-   dabei der Geräte-Totmann - auch bei Absturz des Core bleibt nichts
+     und (fortlaufend AUFGEFRISCHT, alle 20 s) unverändert zurückgelesen (an
+     live erkannten Modell-123-Adressen). Ein Hinweis „Ena meldet dauerhaft 1"
+     ist ein bekannter Firmware-Quirk dieses Datamanagers, KEIN Fehler -
+     maßgeblich ist `WMaxLimPct`.
+   - **„Am Limit geklemmt: N von 3 Messwerten"** - die Leistung muss sich
+     mehrere Messwerte hintereinander AM Cap EINPENDELN (Plateau), nicht nur
+     einmalig darunter fallen (ein einzelner tiefer Wert kann eine Wolke sein -
+     zwei live Fehlpositive an diesem Datamanager haben das gezeigt: 12,9 kW
+     bei Cap 17,4 kW und 9,5 kW bei Cap 9,7 kW waren beide die Sonne, nicht die
+     Begrenzung, erkennbar am unveränderten Verhältnis zur zweiten Einheit).
+   - **„Ohne Begrenzung möglich: ~X kW"** - die Ambient-Schätzung (von der
+     zweiten Einheit oder dem eigenen Vor-Test-Wert) muss klar über dem Cap
+     bleiben. Sinkt sie während des Tests auf/unter den Cap, endet der Test
+     ehrlich mit „nicht beweisbar" - dann bei stabilerer Sonne wiederholen,
+     NICHT als Fehlschlag werten.
+   - Bleibt das Register unbestätigt oder klemmt die Leistung trotz
+     bestätigter Register NICHT auf dem Cap, obwohl genug Sonne da ist:
+     übersteuert vermutlich eine Fronius-INTERNE Regel (EVU-Editor / IO-Regel
+     „100 %", Solar.web, ein Smart Meter - Modbus hat die NIEDRIGSTE
+     Priorität). **Die störende Regel im EVU-Editor DEAKTIVIEREN, nicht die
+     Kommunikations-Prioritäten umbauen** (das ändert das Verhalten der Anlage
+     in vielen anderen Situationen mit) - danach den Test wiederholen. Hält
+     die Abweichung über mehrere Wiederholungsversuche an, zeigt die Karte die
+     benannte Ursache („Letzte Störung: …") statt endlos weiter zu schreiben.
+4. **Automatischer Rückfall.** Endet der Test (spätestens 120 s) oder wird er
+   abgebrochen, erholt sich die Leistung (der native `WMaxLimPct_RvrtTms` =
+   60 s ist dabei der Geräte-Totmann - auch bei Absturz des Core bleibt nichts
    gedrosselt). Das MUSS sichtbar passieren, bevor freigegeben wird.
 5. **Freigeben.** „Abregelung freigeben" wird erst aktiv, wenn BEIDE Nachweise
-   vorliegen (Register bestätigt + Leistung gefallen) und bleibt es für 3 min
-   nach Testende. Die Freigabe gilt dieser EINEN Einheit (physisch verankert,
-   überlebt Neustart + Quellen-Neuanlage); „Freigabe zurücknehmen" jederzeit.
+   vorliegen (Register bestätigt + Klemm-Plateau nachgewiesen, verdikt
+   „bestanden") und bleibt es für 3 min nach Testende. Die Freigabe gilt
+   dieser EINEN Einheit (physisch verankert, überlebt Neustart +
+   Quellen-Neuanlage); „Freigabe zurücknehmen" jederzeit.
 6. **Wiederholen für Unit 2**, dann Gegenprobe im Betrieb: bei der nächsten
    „Abregeln"-Phase des Fahrplans zeigt die Betrieb-Karte „VoltPilot begrenzt
    die PV-Einspeisung … (bestätigt)" mit der Summe der Einzel-Begrenzungen,
