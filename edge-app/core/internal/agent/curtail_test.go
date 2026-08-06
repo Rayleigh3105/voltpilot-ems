@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
@@ -257,11 +258,22 @@ func TestCurtailFirstLightJourneyEvidenceGatePersistenceAndRevocation(t *testing
 
 	// Register alone is NOT enough (Fronius may silently override): still refused.
 	if _, err := a.CurtailCertify(fr1.ID); err == nil {
-		t.Fatal("register-only evidence must not certify (no observed drop)")
+		t.Fatal("register-only evidence must not certify (no observed clamp)")
 	}
 
-	// The enforcement half: the measured output drops to the cap.
+	// A SINGLE reading at the cap is not enough either: a cloud edge crosses
+	// the band too. The proof is a PLATEAU (curtailcal.PlateauSamples
+	// consecutive in-band readings while the register holds).
 	feedSource(a, fr1.ID, 16.9)
+	if _, err := a.CurtailCertify(fr1.ID); err == nil {
+		t.Fatal("one in-band reading is not a plateau - certify must refuse")
+	}
+
+	// The enforcement half: the measured output SITS AT the cap and stays
+	// there while the register keeps holding it.
+	for i := 0; i < curtailcal.PlateauSamples; i++ {
+		feedSource(a, fr1.ID, 16.9)
+	}
 	v2, err := a.CurtailCertify(fr1.ID)
 	if err != nil {
 		t.Fatalf("evidence complete -> certify: %v", err)

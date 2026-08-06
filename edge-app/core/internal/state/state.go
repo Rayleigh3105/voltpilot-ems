@@ -326,9 +326,15 @@ type CurtailUnit struct {
 	CapKw   *float64 `json:"cap_kw,omitempty"`
 	RatedKw *float64 `json:"rated_kw,omitempty"`
 	// AllMatch is nil for an observed-only readback (nothing was commanded).
-	AllMatch      *bool             `json:"all_match,omitempty"`
-	MismatchRoles []string          `json:"mismatch_roles,omitempty"`
-	Registers     []ControlRegister `json:"registers,omitempty"`
+	AllMatch      *bool    `json:"all_match,omitempty"`
+	MismatchRoles []string `json:"mismatch_roles,omitempty"`
+	// QuirkRoles/QuirkNote: register deviations recognised as a KNOWN, harmless
+	// firmware behaviour (WMaxLim_Ena answering 1 to a commanded 0 on this
+	// Datamanager). NOT mismatches, NOT a fault - naming them as one would send
+	// an operator hunting a defect that does not exist.
+	QuirkRoles []string          `json:"quirk_roles,omitempty"`
+	QuirkNote  string            `json:"quirk_note,omitempty"`
+	Registers  []ControlRegister `json:"registers,omitempty"`
 	// EnforcementStatus: inactive|unknown|settling|ok|possible_override - the
 	// EFFECT verdict comparing measured AC power against the commanded cap.
 	EnforcementStatus string   `json:"enforcement_status,omitempty"`

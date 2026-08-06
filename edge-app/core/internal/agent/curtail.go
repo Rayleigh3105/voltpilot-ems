@@ -74,6 +74,11 @@ func curtailUnitKey(c inverter.Connection) string {
 func (a *Agent) curtailSources() []sources.Source {
 	a.srcMu.Lock()
 	defer a.srcMu.Unlock()
+	return a.curtailSourcesLocked()
+}
+
+// curtailSourcesLocked is curtailSources for a caller already holding srcMu.
+func (a *Agent) curtailSourcesLocked() []sources.Source {
 	var out []sources.Source
 	for _, s := range a.srcs {
 		if s.Role == sources.RoleErzeuger && s.Communication == inverter.CommFroniusSunSpec {
@@ -169,9 +174,15 @@ type curtailReadbackMsg struct {
 	RatedKw        *float64 `json:"rated_kw"`
 	AllMatch       *bool    `json:"all_match"`
 	MismatchRoles  []string `json:"mismatch_roles"`
-	Blocked        bool     `json:"blocked"`
-	Reason         string   `json:"reason"`
-	Enforcement    *struct {
+	// QuirkRoles/QuirkNote: register deviations the executor recognised as a
+	// KNOWN, harmless firmware behaviour (today: WMaxLim_Ena answering 1 to a
+	// commanded 0). They are deliberately NOT mismatches - see
+	// sunspec/curtail.js evaluateReadback for the one-sided tolerance rule.
+	QuirkRoles  []string `json:"quirk_roles"`
+	QuirkNote   string   `json:"quirk_note"`
+	Blocked     bool     `json:"blocked"`
+	Reason      string   `json:"reason"`
+	Enforcement *struct {
 		Status           string   `json:"status"`
 		PossibleOverride bool     `json:"possible_override"`
 		Reason           string   `json:"reason"`
@@ -229,6 +240,8 @@ func (a *Agent) onCurtailReadback(payload []byte) {
 		RatedKw:        m.RatedKw,
 		AllMatch:       m.AllMatch,
 		MismatchRoles:  m.MismatchRoles,
+		QuirkRoles:     m.QuirkRoles,
+		QuirkNote:      m.QuirkNote,
 		Blocked:        m.Blocked,
 		Reason:         m.Reason,
 	}
@@ -255,10 +268,14 @@ func (a *Agent) onCurtailReadback(payload []byte) {
 		a.curtailUnits = map[string]state.CurtailUnit{}
 	}
 	a.curtailUnits[m.UnitKey] = unit
-	// The register half of the First-Light evidence: an APPLIED, fully
-	// confirmed write during THIS unit's armed test.
-	if m.Calibration && m.Applied && m.AllMatch != nil {
-		a.curtailCal.NoteRegisterMatch(m.SourceID, *m.AllMatch, now)
+	// The register half of the First-Light evidence during THIS unit's armed
+	// test. Deliberately NOT gated on m.Applied any more: since the executor
+	// refreshes an active cap and VERIFIES it every cycle, a verify-only
+	// readback carries a real verdict too - and that verdict is what gates the
+	// clamp plateau ("the register demonstrably HOLDS the commanded value").
+	// A blocked publish carries no verdict (AllMatch nil) and is skipped.
+	if m.Calibration && m.AllMatch != nil {
+		a.curtailCal.NoteRegister(m.SourceID, *m.AllMatch, now)
 	}
 	units := a.renderCurtailUnitsLocked()
 	a.curtailMu.Unlock()
@@ -347,25 +364,39 @@ func (a *Agent) curtailView(now time.Time) curtailcal.View {
 				u.TestCapKw = &cap
 			}
 		}
+		u.Evidence = a.curtailCal.EvidenceFor(s.ID, now)
 		if t := a.curtailCal.ActiveTestFor(s.ID, now); t != nil {
-			u.Test = &curtailcal.TestView{
+			tv := &curtailcal.TestView{
 				CapKw:            t.CapKw,
 				BeforeKw:         t.BeforeKw,
 				SecondsRemaining: int(t.Deadline.Sub(now) / time.Second),
 				RegisterOk:       t.RegisterConfirmed,
 				MinObservedKw:    t.MinObservedKw,
+				PlateauRequired:  curtailcal.PlateauSamples,
 			}
+			// The live clamp-proof progress rides the evidence (the ONE place
+			// that renders the plateau), so the card never re-derives it.
+			if u.Evidence != nil {
+				tv.PlateauSamples = u.Evidence.PlateauSamples
+				tv.AmbientKw = u.Evidence.AmbientKw
+				tv.AmbientSource = u.Evidence.AmbientSource
+			}
+			u.Test = tv
 		}
-		u.Evidence = a.curtailCal.EvidenceFor(s.ID, now)
 		u.CanCertify = a.curtailCal.CanCertify(s.ID, now)
 		// The card must name the CAUSE of a failed/hanging execution: surface
 		// the latest BLOCKED readback reason for this unit (kept while it is
-		// the newest word from the executor and recent enough to matter).
-		if ru, ok := a.curtailUnits[key]; ok && ru.Blocked && ru.Reason != "" && now.Sub(ru.CheckedAt) < 15*time.Minute {
-			u.LastError = ru.Reason
-			if age := now.Sub(ru.CheckedAt); age > 0 {
-				u.LastErrorAgeSeconds = int(age / time.Second)
+		// the newest word from the executor and recent enough to matter). A
+		// recognised firmware QUIRK is deliberately not one of those - it is
+		// reported separately so it never reads as a fault.
+		if ru, ok := a.curtailUnits[key]; ok && now.Sub(ru.CheckedAt) < 15*time.Minute {
+			if ru.Blocked && ru.Reason != "" {
+				u.LastError = ru.Reason
+				if age := now.Sub(ru.CheckedAt); age > 0 {
+					u.LastErrorAgeSeconds = int(age / time.Second)
+				}
 			}
+			u.QuirkNote = ru.QuirkNote
 		}
 		v.Units = append(v.Units, u)
 	}
@@ -400,11 +431,25 @@ func (a *Agent) CurtailStartTest(sourceID string) (curtailcal.View, error) {
 	if !ok {
 		return a.curtailView(now), curtailErr("Diese Energiequelle ist nicht als Fronius-SunSpec-Erzeuger eingerichtet.")
 	}
+	// The tested unit's live output PLUS the site's other curtailment units as
+	// the AMBIENT REFERENCE: a sibling on the same roof is what tells a cap
+	// apart from a cloud (two live false positives at Pilsting - see
+	// internal/curtailcal). Without a sibling the session falls back to this
+	// unit's own pre-test value, conservatively.
 	var pv *float64
+	refs := map[string]float64{}
 	a.srcMu.Lock()
 	if r, fresh := a.sourceFresh(src, now); fresh && r.pv != nil {
 		v := *r.pv
 		pv = &v
+	}
+	for _, s := range a.curtailSourcesLocked() {
+		if s.ID == sourceID {
+			continue
+		}
+		if r, fresh := a.sourceFresh(s, now); fresh && r.pv != nil {
+			refs[s.ID] = *r.pv
+		}
 	}
 	a.srcMu.Unlock()
 	if pv == nil {
@@ -412,7 +457,7 @@ func (a *Agent) CurtailStartTest(sourceID string) (curtailcal.View, error) {
 	}
 
 	a.curtailMu.Lock()
-	capKw, err := a.curtailCal.Start(sourceID, curtailUnitKey(src.Connection), *pv, now)
+	capKw, err := a.curtailCal.Start(sourceID, curtailUnitKey(src.Connection), *pv, refs, now)
 	if err == nil {
 		if a.curtailWatchdog != nil {
 			a.curtailWatchdog.Stop()
@@ -463,7 +508,15 @@ func (a *Agent) CurtailCertify(sourceID string) (curtailcal.View, error) {
 	}
 	a.curtailMu.Unlock()
 	if !can {
-		return a.curtailView(now), curtailErr("Für die Freigabe fehlt der Nachweis: ein Testlauf, dessen Register bestätigt wurden UND dessen gemessene Leistung auf die Begrenzung gefallen ist. Bitte den Test (erneut) ausführen.")
+		// Name the CONCRETE gap when the finished test already has a verdict
+		// ("nicht beweisbar" is a different instruction than "keine Wirkung").
+		a.curtailMu.Lock()
+		ev := a.curtailCal.EvidenceFor(sourceID, now)
+		a.curtailMu.Unlock()
+		if ev != nil && ev.Reason != "" {
+			return a.curtailView(now), curtailErr("Für die Freigabe fehlt der Nachweis. %s", ev.Reason)
+		}
+		return a.curtailView(now), curtailErr("Für die Freigabe fehlt der Nachweis: ein Testlauf, dessen Register bestätigt wurden UND dessen gemessene Leistung nachweislich AM Limit geklemmt hat (mehrere Messwerte hintereinander), während der Wechselrichter unbegrenzt deutlich mehr liefern würde. Bitte den Test (erneut) ausführen.")
 	}
 	if err := a.persistCurtailCert(); err != nil {
 		a.curtailMu.Lock()
