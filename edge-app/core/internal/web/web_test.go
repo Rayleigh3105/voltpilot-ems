@@ -19,6 +19,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/neutralcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otatarget"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
@@ -178,6 +179,12 @@ type fakeCalibration struct {
 	curtailAborts        int
 	lastCurtailCertify   string
 	lastCurtailDecertify string
+
+	neutralView    neutralcal.View
+	neutralErr     error
+	neutralStarts  int
+	neutralAborts  int
+	neutralRecords int
 }
 
 func (f *fakeCalibration) CalibrationSnapshot() calibration.Snapshot { return f.snap }
@@ -225,6 +232,18 @@ func (f *fakeCalibration) CalibrationDecertify() (calibration.Snapshot, error) {
 	return f.snap, nil
 }
 
+// The Neutral-Zeit First-Light surface (same controller interface).
+func (f *fakeCalibration) NeutralSnapshot() neutralcal.View { return f.neutralView }
+func (f *fakeCalibration) NeutralStartTest() (neutralcal.View, error) {
+	f.neutralStarts++
+	return f.neutralView, f.neutralErr
+}
+func (f *fakeCalibration) NeutralAbort() neutralcal.View { f.neutralAborts++; return f.neutralView }
+func (f *fakeCalibration) NeutralRecord() (neutralcal.View, error) {
+	f.neutralRecords++
+	return f.neutralView, f.neutralErr
+}
+
 // fakeMirror is an in-memory MirrorController for the HTTP-layer test: it
 // records the settings requests the route forwards and returns a
 // configurable status/error.
@@ -254,6 +273,12 @@ type fakeOta struct {
 	applyErr    error
 	applyCalls  int
 	applyLastBy string
+
+	// Teil C: der Autonomie-Schalter OHNE SHELL.
+	autonomy       otaapply.Autonomy
+	setAutonomyErr error
+	lastAutonomy   *bool
+	lastAutonomyBy string
 }
 
 func (f *fakeOta) OtaTarget() otatarget.View         { return f.view }
@@ -278,6 +303,16 @@ func (f *fakeOta) OtaRecordApplied(release string, seq int64) (otatarget.View, e
 	return f.view, nil
 }
 func (f *fakeOta) IsOtaRejection(err error) bool { return err != nil }
+
+func (f *fakeOta) OtaAutonomyState() otaapply.Autonomy { return f.autonomy }
+func (f *fakeOta) OtaSetAutonomy(enabled bool, by string) (otaapply.Autonomy, error) {
+	f.lastAutonomy, f.lastAutonomyBy = &enabled, by
+	if f.setAutonomyErr != nil {
+		return f.autonomy, f.setAutonomyErr
+	}
+	f.autonomy = otaapply.Autonomy{Enabled: enabled}
+	return f.autonomy, nil
+}
 
 // fakeSources is an in-memory SourcesController for the HTTP-layer test.
 type fakeSources struct {

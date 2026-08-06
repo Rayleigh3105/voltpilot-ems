@@ -474,5 +474,10 @@ func (a *Agent) updateSummary() *cloud.UpdateSummary {
 	// damit das Portal keinen Knopf anbietet, der nichts bewirken kann - es
 	// ist eine FAEHIGKEIT, keine Erlaubnis (`UpdateSummary.CanApply`).
 	sum.CanApply = a.OtaApplyState().CanApply
+	// Der geraete-lokal gemessene Neutral-Zeit-Nachweis (der gefuehrte
+	// First-Light-Test auf `:8484`) reist als reine Tatsache mit - er
+	// entscheidet cloud-seitig nichts, die Torkette laeuft ausschliesslich
+	// auf dem Geraet.
+	sum.NeutralVerified = a.neutralVerifiedSummary()
 	return sum
 }

@@ -209,9 +209,16 @@ func (e *Engine) Tick(ctx context.Context) error {
 		RequiredBytes:       e.o.DiskGuard,
 		Signal:              sig,
 		Failed:              e.failedRelease(),
-		Neutral:             e.o.Neutral.For(family),
-		ConfiguredDeadline:  e.o.Deadline,
-		Now:                 now,
+		// ForWithMeasured zieht additiv den geraete-lokal GEMESSENEN Nachweis
+		// heran (der gefuehrte First-Light-Neutral-Zeit-Test auf `:8484`,
+		// internal/neutralcal), aber NUR wenn die Betreiber-Tabelle
+		// (VP_OTA_NEUTRAL_VERIFIED) fuer diese Familie schweigt - die
+		// Umgebungsvariable bleibt bindend und hat Vorrang. Die Datei wird
+		// JEDEN Takt frisch gelesen (wie CoreSignal/Autonomy), weil der
+		// laufende Kern sie waehrend des Sidecar-Betriebs neu schreiben kann.
+		Neutral:            e.o.Neutral.ForWithMeasured(family, otaapply.LoadNeutralEvidence(e.o.DataDir)),
+		ConfiguredDeadline: e.o.Deadline,
+		Now:                now,
 	})
 
 	st := otaapply.UpdaterState{

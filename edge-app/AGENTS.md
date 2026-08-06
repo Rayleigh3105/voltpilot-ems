@@ -1734,6 +1734,98 @@ aus `sources.js`). Regeln, die halten müssen:
   am Server nichts, Bestätigen kippt das Vorzeichen UND leert
   `calibration-certified.json`.
 
+## Neutral-Zeit-Test: T wird MESSBAR statt behauptet (`internal/neutralcal`)
+
+Bis hierher war die Inverter-Neutral-Zeit T (root `AGENTS.md` "OTA Stufe 3" §3,
+`docs/ota-autonomie.md` §3) nur am Pruefstand mit physisch getrenntem Kabel zu
+belegen. `internal/neutralcal` (rein, keine I/O - dieselbe Disziplin wie
+`internal/calibration`/`internal/curtailcal`) macht T zu einer MESSBAREN
+Eigenschaft, die die Box am `:8484`-Card „Neutral-Zeit messen" selbst
+ermittelt: ein kleiner, klar von neutral abweichender Sollwert wird
+geschrieben und bestaetigt (Register-Ruecklesung + gemessene Batterieleistung
+zeigt die Abweichung), dann hoert die Box **bewusst auf zu schreiben** -
+KEINE weitere Nachricht auf `edge/setpoint`, nicht einmal eine
+Neutral-Freigabe - und der GEWOEHNLICHE Telemetrie-Lesepfad (unveraendert,
+nichts wird gestoppt) beobachtet, wie lange es dauert, bis die gemessene
+Batterieleistung von selbst - dreimal in Folge, frisch - ins Neutralband
+zurueckkehrt.
+
+- **Das Verdikt ist eines von vier, NIE eine erfundene Zahl:** `bestanden`
+  (beide Haelften bewiesen - Register UND die Ruecklkehr), `nicht_beweisbar`
+  (die Anlage hat sich nie messbar von neutral entfernt, z. B. SoC-Grenze -
+  oder es fehlen Messwerte: eine Aussage ueber den LAUF, nie ueber T),
+  `kein_nachweis` (Register nie bestaetigt, oder keine Rueckkehr im
+  Zeitfenster - bitte wiederholen), `laeuft`.
+- **T wird KONSERVATIV berichtet, nie optimistisch** (`measuredSeconds` in
+  `neutralcal.go`): verankert auf den letzten Messwert, der NACHWEISLICH noch
+  AUSSERHALB des Neutralbands lag, nie auf den ersten, der zufaellig schon
+  eingeschwungen aussah - eine ueberschaetzte Zahl waere die gefaehrliche
+  Richtung, denn die Wachhund-Frist (`otaapply.WatchdogDeadline`) muss strikt
+  darunter bleiben.
+- **Sicherheitsnetz:** `DepartureTimeout` (90 s) bindet die Schreibphase
+  enger als die Gesamt-TTL (`DefaultTTL`, 6 min); ein `time.AfterFunc`-Wachhund
+  (`agent/neutral.go`, analog `calWatchdog`/`curtailWatchdog`) nimmt die
+  Steuerung unabhaengig vom Oberflaechen-Takt wieder auf; jederzeit per Knopf
+  abbrechbar (`NeutralAbort`); ein laufender Test bricht SELBST ab, sobald
+  eine EILIGE OTA-Aktualisierung die Anlage neutral parken will
+  (`otaNeutralRequestPending`, sonst wuerde `otaNeutralOverride` bis zu 6 min
+  verhungern) oder eine Kalibrierung startet (`neutralPreflight` refuses
+  waehrend `a.cal.Engaged`). Derselbe `X-VP-Calibration-Token`-Gate wie
+  Kalibrierung/Abregelung; die Guard-Kette (`guards.Clamp`) laeuft
+  UNVERAENDERT ueber jeden geschriebenen Wert.
+- **Ein bestandener Test traegt sich in `ota/neutral-verified.json` ein**
+  (`otaapply.SaveNeutralRecord`, je Familie eine Zeile, Schema-versioniert wie
+  `calibration-certified.json`). `otaapply.NeutralTable.ForWithMeasured`
+  zieht ihn GLEICHWERTIG zu `VP_OTA_NEUTRAL_VERIFIED` heran - **die
+  Umgebungsvariable gewinnt IMMER**, auch mit einer kleineren Zahl (ein
+  Betreiber, der die konservative Pruefstands-Messung bereits gemacht hat,
+  wird nie ueberstimmt); der Sidecar (`otaupdater.Engine.Tick`) laedt die
+  Datei JEDEN Takt frisch (wie `CoreSignal`/`Autonomy`), weil der laufende
+  Kern sie waehrend des Sidecar-Betriebs neu schreiben kann.
+- **Wiring:** `neutralTestOverride` sitzt in `applySetpoint` NACH
+  `calibrationOverride` und VOR `otaNeutralOverride` (dieselbe Prioritaet wie
+  Kalibrierung: „ein First-Light-Test gewinnt"); `onLocalTelemetry` speist
+  `neutralObserve` mit der gemessenen `battery_power_kw` (derselbe Wert, den
+  `lastBattKw` fuer die Kalibrier-Gegenprobe haelt); `onControlReadback`
+  routet einen Readback mit `source:"neutral_test"` in `NoteRegister` (ein
+  neuer Discriminator neben `"calibration"`, nicht `"ota_neutral"`). Ein
+  additiver `neutral_verified`-Block im Herzschlag (`cloud.UpdateSummary`,
+  `agent.neutralVerifiedSummary`) traegt den Nachweis der AKTUELLEN Familie
+  als reine TATSACHE mit - er entscheidet cloud-seitig nichts, die Torkette
+  laeuft ausschliesslich auf dem Geraet.
+- Beweise: `internal/neutralcal` (die Regel-Tests: Verdikte, Grenzfaelle,
+  konservative Verankerung, Abort-Invarianz, TTL/Departure-Timeout-Grenzen),
+  `internal/otaapply` (Vorrang der Env-Variable, Datei-Rundlauf, Schema-
+  Versions-Ablehnung), `internal/otaupdater` (Sidecar-Ebene: der gemessene
+  Nachweis oeffnet das Tor, eine kuerzere Env-Zahl gewinnt trotzdem, zu kurz/
+  unlesbar/veraltete Version sperrt weiterhin), `internal/agent`
+  (Override-Verdrahtung, Interlock, Record/Abort), `internal/web`
+  (`/api/neutral/*`-Endpunkte + der Admin-Gate, Seiten-Struktur).
+
+## Teil C: eine frische Installation bringt den Aktualisierer gleich mit
+
+`install.sh`s `pull_and_up()` zieht und startet seit dieser Aenderung
+IMMER mit `--profile ota` (`dc --profile ota pull core nodered updater` /
+`dc --profile ota up -d`) - **nur das COMPOSE-PROFIL (Tor 1)**. Der
+GERAETE-Schalter (`ota/autonomy.json`, Tor 2) bleibt bewusst bei seiner
+Vorgabe AUS (`VP_OTA_AUTONOMOUS: ${VP_OTA_AUTONOMOUS:-false}` in
+`generate_compose()` unveraendert) - eine frische Box beobachtet und meldet
+also von Anfang an, wendet aber nichts an, bis ein Betreiber den Schalter
+bewusst setzt. `update.sh` ist davon NICHT betroffen: seine eigene
+`detect_ota_profile()` erkennt weiterhin den TATSAECHLICH laufenden Zustand
+einer Bestandsbox und nimmt `--profile ota` nur auf, wenn der Sidecar dort
+schon lief - eine vor dieser Aenderung installierte Box bekommt das neue
+Verhalten also NICHT rueckwirkend durch ein blosses Update, nur eine neue
+Installation. Der Schalter selbst ist jetzt zusaetzlich OHNE SHELL setzbar:
+`:8484` → Einrichten → „Automatische Aktualisierung" (`GET`/`POST
+/api/ota/autonomy`, hinter demselben `X-VP-Calibration-Token` wie jede
+andere physische Steuer-Mutation - `agent.OtaSetAutonomy` schreibt
+AUSSCHLIESSLICH die eine Datei, die der Sidecar ohnehin jeden Takt liest).
+Beweise: `edge-app/test/install-selfcheck.sh` (docker-frei: die Pull-/Up-
+Zeilen tragen `--profile ota`; die generierte Compose haelt
+`VP_OTA_AUTONOMOUS` weiterhin bei `false`) + `internal/web`
+(Admin-Gate + Seiten-Struktur fuer den Schalter).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

@@ -266,7 +266,8 @@ func Decide(in DecisionInput) Decision {
 				Blocker: BlockerNeutralTime,
 				Reason: "Diese Anlage steuert. " + in.Neutral.Note +
 					" Es wird deshalb nicht autonom angewandt (am Pruefstand belegen und " +
-					"in VP_OTA_NEUTRAL_VERIFIED eintragen)."}
+					"in VP_OTA_NEUTRAL_VERIFIED eintragen, oder den gefuehrten " +
+					"Neutral-Zeit-Test auf :8484 durchfuehren)."}
 		}
 		if !NeutralSupportsWatchdog(in.Neutral) {
 			return Decision{Action: ActionRefuse, State: StateDeferred,

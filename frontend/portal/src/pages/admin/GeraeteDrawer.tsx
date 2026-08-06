@@ -42,6 +42,12 @@ export interface DrawerDevice {
   state: string | null;
   reason: string | null;
   blocker?: string | null;
+  /**
+   * Wann das Gerät den GEZEIGTEN Ist-Stand gemeldet hat (`device_update_status.reported_at`) -
+   * unabhängig davon, ob dieser Ist dem Soll entspricht. `undefined`/`null` heißt „noch nie
+   * gemeldet" (Fahrplan-Update-Betreff, nicht die Telemetrie-Lebendigkeit von `lastSeenAt`).
+   */
+  reportedAt?: string | null;
   lastSeenAt?: string | null;
   provisioned?: boolean;
   note?: string | null;
@@ -148,6 +154,8 @@ export function GeraeteDrawer({
                 für dieselbe Frage. */}
             <dt>Ist</dt>
             <dd>{versionLabel(device.ist, releases)}</dd>
+            <dt>Ist gemeldet</dt>
+            <dd>{device.reportedAt ? fmtRelative(device.reportedAt) : 'noch nie'}</dd>
             <dt>Soll</dt>
             <dd>{device.soll ? versionLabel(device.soll, releases) : '–'}</dd>
             <dt>Zustand</dt>
@@ -187,6 +195,16 @@ export function GeraeteDrawer({
             <p className="vp-muted vp-text-sm" data-testid="trust-detail">{cross.detail}</p>
           )}
           {device.reason && <p className="vp-muted vp-text-sm">{device.reason}</p>}
+          {/* Die eindeutige Soll==Ist-Aussage: nur der Server-Zustand `bestaetigt`
+              behauptet die Gleichheit (gemeldeter Ist entspricht dem Soll,
+              releaseIsRunning-Präfixregel), also wird hier keine zweite
+              Bewertung vorgenommen - nur der Zeitpunkt ergänzt. */}
+          {device.state === 'bestaetigt' && (
+            <p className="vp-text-sm" data-testid="drawer-confirmed">
+              Ist entspricht dem Soll
+              {device.reportedAt ? ` – bestätigt ${fmtRelative(device.reportedAt)}.` : '.'}
+            </p>
+          )}
           {lever && (
             <p className="vp-text-sm vp-lever" data-testid="drawer-lever">Hebel: {lever}</p>
           )}

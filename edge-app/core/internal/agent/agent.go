@@ -34,6 +34,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/neutralcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
@@ -150,6 +151,16 @@ type Agent struct {
 	curtailWatchdog *time.Timer
 	curtailCert     map[string]bool
 	curtailUnits    map[string]state.CurtailUnit
+
+	// Neutral-Zeit First-Light (agent/neutral.go): the guided, bounded test
+	// that MEASURES the Inverter-Neutral-Zeit T (docs/ota-autonomie.md §3) on
+	// the real device instead of a bench session. neutralCal is the pure
+	// state machine; neutralWatchdog is the belt-and-suspenders timer that
+	// resumes normal control promptly even if a setpoint tick is somehow
+	// delayed. Guarded by neutralMu (never nested with calMu/curtailMu).
+	neutralMu       sync.Mutex
+	neutralCal      *neutralcal.Session
+	neutralWatchdog *time.Timer
 
 	// Per-node live flow state (Portal v3 M5 Part C), recorded from the local
 	// bus and folded into the heartbeat ONLY when the feature flag is on.
@@ -424,6 +435,7 @@ func New(cfg config.Config) (*Agent, error) {
 		curtailCal:   curtailcal.New(0),
 		curtailCert:  map[string]bool{},
 		curtailUnits: map[string]state.CurtailUnit{},
+		neutralCal:   neutralcal.New(0),
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
 		lastReading: guards.Reading{
@@ -1256,6 +1268,13 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	}
 	a.mu.Unlock()
 
+	// Feed a running Neutral-Zeit-Test with this reading - the NORMAL
+	// telemetry read path is exactly what keeps running, unchanged, while the
+	// test withholds writes (see internal/neutralcal's package doc).
+	if battKw != nil {
+		a.neutralObserve(*battKw, ts)
+	}
+
 	// Feed the PS-3 peak tracker with the gated composite site grid (a despiked
 	// channel already carries its last accepted value, so a spike can never
 	// poison the quarter mean). A sample without power_kw feeds nothing - the
@@ -1829,6 +1848,17 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		a.cal.SetControlPath(m.ControlPath)
 		a.calMu.Unlock()
 	}
+	// Neutral-Zeit First-Light: the SAME write-readback proof calibration uses
+	// (a matched register readback = "the tiny departure landed"), correlated
+	// to a running neutral-time test instead. Like calibration's own check,
+	// an UNCONFIRMED cycle (no answer) is not evidence - the test just keeps
+	// waiting, never treated as a failed departure.
+	if !m.Blocked && cycle != controlCycleUnconfirmed &&
+		strings.EqualFold(strings.TrimSpace(m.Source), "neutral_test") {
+		a.neutralMu.Lock()
+		a.neutralCal.NoteRegister(m.Family, cycle == controlCycleHeld, checkedAt)
+		a.neutralMu.Unlock()
+	}
 	// Sticky-path backfill (2026-07-28): a NORMAL driving readback names the surface
 	// a device-granted family is actually controlled on. For a grant certified before
 	// the path field existed (the live pilot) this records the proven path ONCE, so
@@ -1950,6 +1980,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// bypasses the certification allowlist so the first real write can prove
 	// sign/scale. Returns true when it handled the tick.
 	if a.calibrationOverride(now, r, limits) {
+		return
+	}
+
+	// Neutral-Zeit First-Light (agent/neutral.go): while a guided
+	// Neutral-Zeit-Test measures T, this OVERRIDE handles the ENTIRE tick -
+	// either publishing the tiny bounded departure (active phase, still
+	// guard-clamped) or publishing NOTHING AT ALL (silent phase - the whole
+	// mechanism is going silent, never even a neutral release). It sits right
+	// after calibration (a First-Light test wins) and before the OTA urgent
+	// neutral-park request, mirroring that precedence exactly.
+	if a.neutralTestOverride(now, r, limits) {
 		return
 	}
 

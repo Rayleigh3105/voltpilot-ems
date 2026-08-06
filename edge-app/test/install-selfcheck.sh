@@ -87,6 +87,23 @@ grep_has 'network_mode: none'
 grep_has 'VP_OTA_AUTONOMOUS: ${VP_OTA_AUTONOMOUS:-false}'
 pass "structural: marker, images, volumes, pull_policy; no build/context/sim; ota profile fenced"
 
+# --- 1b. A FRESH install brings the updater's PROFILE along by default -----
+# (Teil C, docs/ota-autonomie.md): two independent gates stay two independent
+# gates - the compose profile ships enabled so the sidecar OBSERVES and
+# REPORTS from the very first `up -d`, while the per-device switch
+# (VP_OTA_AUTONOMOUS / ota/autonomy.json, asserted OFF above) is UNTOUCHED. A
+# regression here would either silently drop the sidecar again (two manual
+# steps per box, the very bug this closes) or - far worse - would need to be
+# paired with flipping the device switch's default, which this check would
+# also catch since it is asserted separately above.
+if ! grep -qE 'dc --profile ota pull [^|&;]*\bcore\b[^|&;]*\bnodered\b[^|&;]*\bupdater\b' "$INSTALL"; then
+  fail "pull_and_up must pull core, nodered AND the updater WITH --profile ota by default"
+fi
+if ! grep -qE 'dc --profile ota up -d\b' "$INSTALL"; then
+  fail "pull_and_up must bring the stack up WITH --profile ota by default"
+fi
+pass "fresh installs pull + start core, nodered AND the updater sidecar (profile 'ota') by default; the device switch stays untouched"
+
 # --- 2. docker compose validity + equivalence to the repo real-mode config.
 if docker compose version >/dev/null 2>&1; then
   if ! printf '%s\n' "$COMPOSE" | docker compose -f - config >/dev/null 2>&1; then

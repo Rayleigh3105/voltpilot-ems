@@ -161,6 +161,12 @@ describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', ()
     // Und er sagt, dass eine `edge-`Referenz NICHT aus der Registry kommt -
     // das ist der Normalfall der Bestandsflotte, kein Mangel.
     expect(drawer).toHaveTextContent('selbst erzeugte Referenz');
+    // Derselbe Drawer beantwortet von HIER aus auch: wann wurde der gezeigte
+    // Ist-Stand gemeldet, und entspricht er dem Soll? Beides kommt aus
+    // demselben `FleetRow`, egal über welche Seite der Drawer öffnet.
+    expect(drawer).toHaveTextContent('Ist gemeldet');
+    expect(within(drawer).getByTestId('drawer-confirmed'))
+      .toHaveTextContent('Ist entspricht dem Soll');
   });
 
   it('bietet der noch unverbundenen ID keine Zuweisung an', async () => {

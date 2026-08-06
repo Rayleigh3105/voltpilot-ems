@@ -755,17 +755,28 @@ compose_validate() {
 }
 
 pull_and_up() {
-  step "6/8  Images ziehen und starten (core + nodered, ohne Simulator)"
+  step "6/8  Images ziehen und starten (core + nodered + Aktualisierer)"
   if [ "$DRY_RUN" -eq 1 ]; then
     warn "Dry-Run: 'docker compose pull' und 'up -d' werden übersprungen."
     return
   fi
 
+  # Eine FRISCHE Installation bringt den Aktualisierer (Profil "ota", OTA
+  # Stufe 3) gleich MIT - er ist eines von ZWEI unabhängigen Toren, siehe
+  # generate_compose() oben. Ohne das zweite Tor (der Geräte-Schalter
+  # /data/ota/autonomy.json, weiterhin per VOREINSTELLUNG AUS) BEOBACHTET und
+  # MELDET er nur - kein einziges veränderndes docker-Kommando läuft, bis ein
+  # Betreiber den Schalter bewusst setzt (auf :8484 unter „Automatische
+  # Aktualisierung", oder von Hand in /data/ota/autonomy.json). Das ist der
+  # Unterschied zwischen „die Box KANN sich selbst aktualisieren, sobald
+  # jemand das erlaubt" (jetzt Standard) und „niemand hat sich je darum
+  # gekümmert" (der bisherige Standard, der jede neue Box zwei Handgriffe
+  # kostete). Siehe docs/ota-autonomie.md.
   if [ "$SKIP_PULL" -eq 1 ]; then
     warn "--skip-pull: 'docker compose pull' übersprungen."
   else
     info "Ziehe die aktuellen Registry-Images ..."
-    if ! dc pull core nodered; then
+    if ! dc --profile ota pull core nodered updater; then
       err "Das Ziehen der Images ist fehlgeschlagen."
       info "Häufige Ursachen: nicht an ${REGISTRY} angemeldet, keine Netzverbindung,"
       info "oder kein Image für diese Architektur. Prüfe: docker login ${REGISTRY}"
@@ -775,12 +786,12 @@ pull_and_up() {
   fi
 
   info "Starte die Container (up -d, Volumes bleiben erhalten) ..."
-  if ! dc up -d; then
+  if ! dc --profile ota up -d; then
     err "'docker compose up -d' ist fehlgeschlagen."
     info "Logs ansehen: (cd '${TARGET_DIR}' && docker compose logs)"
     die "Start fehlgeschlagen."
   fi
-  ok "core + nodered gestartet."
+  ok "core + nodered + Aktualisierer gestartet (Autonomie bleibt AUS, bis sie bewusst eingeschaltet wird)."
 }
 
 # =========================================================================
