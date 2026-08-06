@@ -22,6 +22,7 @@ import {
   type LiveWindow,
 } from '../liveDetail';
 import { TelemetryChart } from '../TelemetryChart';
+import { useFreshnessPoll } from '../useFreshnessPoll';
 import { verlaufHash } from '../verlauf';
 import { verlaufRangeForCockpit } from '../verlaufTarget';
 import './KomponentenSection.css';
@@ -152,11 +153,9 @@ export function KomponentenSection({
       () => {},
     );
   };
-  useEffect(() => {
-    if (!armed) return undefined;
-    const timer = setInterval(() => pollRef.current(), POLL_MS);
-    return () => clearInterval(timer);
-  }, [armed]);
+  // `useFreshnessPoll` statt eines nackten Intervalls: ein verdeckter Tab wird
+  // gedrosselt/eingefroren, sonst stünde beim Zurückkommen erst der alte Stand.
+  useFreshnessPoll(() => pollRef.current(), POLL_MS, armed);
 
   // The board rows: one per component (migrated) or the site-level fallback
   // (v1) — both pure derivations (livePuls.ts), plus the optional kWh

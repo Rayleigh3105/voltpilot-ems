@@ -2,6 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useFreshnessPoll } from './useFreshnessPoll';
 
+/** Die bfcache-Rückkehr: `pageshow` mit `persisted` - kein Boot, kein Effekt. */
+function firePageShow(persisted: boolean) {
+  const e = new Event('pageshow');
+  Object.defineProperty(e, 'persisted', { get: () => persisted });
+  window.dispatchEvent(e);
+}
+
 /** Simuliert den Tab-Wechsel, den Browser beim Ein-/Ausblenden feuern. */
 function setVisibility(state: 'visible' | 'hidden') {
   Object.defineProperty(document, 'visibilityState', {
@@ -37,6 +44,18 @@ describe('useFreshnessPoll', () => {
     expect(poll).not.toHaveBeenCalled();
     // ... und ist wieder da: kein Warten auf die restlichen 25 Sekunden.
     setVisibility('visible');
+    expect(poll).toHaveBeenCalledTimes(1);
+  });
+
+  it('holt bei der bfcache-Rückkehr nach (pageshow persisted)', () => {
+    // Die Seite kam EINGEFROREN zurück: kein Boot, kein Effekt läuft neu, die
+    // Takte standen still - ohne diesen Auslöser stünde dort der Stand von
+    // vorhin. Ein normaler Boot (persisted=false) löst nichts aus.
+    const poll = vi.fn();
+    renderHook(() => useFreshnessPoll(poll, 30_000));
+    firePageShow(false);
+    expect(poll).not.toHaveBeenCalled();
+    firePageShow(true);
     expect(poll).toHaveBeenCalledTimes(1);
   });
 
@@ -76,6 +95,7 @@ describe('useFreshnessPoll', () => {
     unmount();
     vi.advanceTimersByTime(120_000);
     setVisibility('visible');
+    firePageShow(true);
     expect(poll).not.toHaveBeenCalled();
   });
 });

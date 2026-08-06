@@ -29,6 +29,8 @@ import {
 import { eurAmount, fmtNum, plantKindLabel } from '../format';
 import { DEFAULT_EARNINGS_RANGE, periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, pageRoute, type AnlagenSub, type Route } from '../nav';
+import { useFreshnessPoll } from '../useFreshnessPoll';
+import { useWake } from '../useWake';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip } from '../control';
 import { curtailTruth, curtailTruthForSlot } from '../curtailment';
@@ -252,18 +254,18 @@ function AnlagenListe({
     };
   }, [reloadKey, sites]);
 
-  // Freshness tick + silent background poll (the fleet-mode pattern).
+  // Freshness tick + silent background poll (the fleet-mode pattern). Der
+  // DATEN-Takt läuft über `useFreshnessPoll`, damit die Rückkehr in einen
+  // verdeckten Tab sofort nachholt statt den Stand von vorhin zu zeigen.
+  useFreshnessPoll(() => {
+    setNow(new Date());
+    api.overview().then(
+      (o) => setOverview(o),
+      () => {},
+    );
+  }, POLL_MS);
   useEffect(() => {
-    let ticks = 0;
-    const timer = setInterval(() => {
-      setNow(new Date());
-      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) {
-        api.overview().then(
-          (o) => setOverview(o),
-          () => {},
-        );
-      }
-    }, TICK_MS);
+    const timer = setInterval(() => setNow(new Date()), TICK_MS);
     return () => clearInterval(timer);
   }, []);
 
@@ -504,6 +506,12 @@ export function AnlageSeite({
   const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  // Aufwach-Signal: die drei BEDINGTEN Lade-Effekte unten holen beim Betreten
+  // sofort und hängen sonst nur an einem Intervall - das ein verdeckter Tab
+  // drosselt oder einfriert. `wake` in ihrer Abhängigkeitsliste lässt sie beim
+  // Zurückkommen (auch aus dem bfcache) erneut laufen, ihre Bedingungen und
+  // Abbruch-Wächter bleiben unangetastet (`useWake.ts`).
+  const wake = useWake();
 
   // Status + live snapshot: the site's overview row (device health + newest
   // sample) - the same source the fleet cards render from.
@@ -651,33 +659,34 @@ export function AnlageSeite({
   rangeRef.current = range;
   const atRef = useRef(at);
   atRef.current = at;
+  // Daten-Takt über `useFreshnessPoll` (holt beim Aufwachen SOFORT nach), Uhr
+  // daneben - sonst zeigt das Cockpit dem zurückkehrenden Kunden bis zu 30 s
+  // lang die Zahlen von vorhin.
+  useFreshnessPoll(() => {
+    setNow(new Date());
+    api.overview().then(
+      (o) => setOverview(o),
+      () => {},
+    );
+    api.earnings(rangeRef.current, atRef.current).then(
+      (e) => setEarnings(e),
+      () => {},
+    );
+    api.controlStatus(site.id).then(
+      (c) => setControlStatus(c),
+      () => {},
+    );
+    api.curtailmentStatus(site.id).then(
+      (c) => setCurtailStatus(c),
+      () => {},
+    );
+    api.schedule(site.id).then(
+      (p) => setPlan(p),
+      () => {},
+    );
+  }, POLL_MS);
   useEffect(() => {
-    let ticks = 0;
-    const timer = setInterval(() => {
-      setNow(new Date());
-      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) {
-        api.overview().then(
-          (o) => setOverview(o),
-          () => {},
-        );
-        api.earnings(rangeRef.current, atRef.current).then(
-          (e) => setEarnings(e),
-          () => {},
-        );
-        api.controlStatus(site.id).then(
-          (c) => setControlStatus(c),
-          () => {},
-        );
-        api.curtailmentStatus(site.id).then(
-          (c) => setCurtailStatus(c),
-          () => {},
-        );
-        api.schedule(site.id).then(
-          (p) => setPlan(p),
-          () => {},
-        );
-      }
-    }, TICK_MS);
+    const timer = setInterval(() => setNow(new Date()), TICK_MS);
     return () => clearInterval(timer);
   }, []);
 
@@ -755,7 +764,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, isPeakLead, reloadKey]);
+  }, [site.id, isPeakLead, reloadKey, wake]);
 
   // M3: the Eigenverbrauchs-Block's Autarkie / PV-Nutzung come from the EXISTING
   // Historie totals of today (server-computed) - fetched ONLY when that block is
@@ -780,7 +789,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, needsDayTotals, reloadKey]);
+  }, [site.id, needsDayTotals, reloadKey, wake]);
 
   // v3.2 M1: the hero rings follow the SELECTED period tab. They read
   // range-scoped Historie totals (Tag/Monat/Jahr) so "Autarkie · Monat" is
@@ -809,7 +818,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, projection, range, at, reloadKey]);
+  }, [site.id, projection, range, at, reloadKey, wake]);
 
   // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
   // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
