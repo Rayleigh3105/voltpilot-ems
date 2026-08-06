@@ -71,11 +71,25 @@ async function runFunctionNode(func, {
 
 // A Modbus-TCP gateway over per-unit register images: FC3 reads + FC6 writes
 // (writes update the image, so a readback sees the written value). Counts
-// accepted connections; `hang: true` accepts and never answers (the half-dead
-// Datamanager whose Modbus service is restarting).
-function startGateway(imgByUnit, { hang = false } = {}) {
+// accepted connections and FC6 writes; the failure modes are the ones measured
+// live on the Pilsting Fronius Datamanager (2026-08-06):
+//
+//   hang     accept the TCP connection and never answer (the half-dead
+//            Datamanager whose Modbus service is restarting).
+//   swallow  answer every FC6 with a correct echo and NOT change the register
+//            ("Schlucker": live at 10:51 the commanded 2593 was answered OK
+//            while the register read 10000 for 105 s straight).
+//   revert   the vendor dead-man: `revertMs` after a write, the addresses in
+//            `revert` snap back to their given values ("Reverter": the native
+//            WMaxLimPct_RvrtTms lifting a cap that is not refreshed).
+//   enaQuirk writes to the enable register ALWAYS store 1, whatever was
+//            commanded (this Datamanager answers a commanded 0 with 1 for
+//            ever).
+function startGateway(imgByUnit, { hang = false, swallow = false, revertMs = 0, revert = {}, enaQuirk = 0 } = {}) {
   return new Promise((resolve) => {
     let connections = 0;
+    let writes = 0;
+    const timers = [];
     const server = net.createServer((sock) => {
       connections++;
       if (hang) return; // accept, never answer
@@ -99,7 +113,15 @@ function startGateway(imgByUnit, { hang = false } = {}) {
           if (!img) { ex(0x0b); continue; }
           if (fc === 0x06) {
             if (!img.has(addr)) { ex(0x02); continue; }
-            img.set(addr, arg & 0xffff);
+            writes++;
+            // The device ACKNOWLEDGES either way - that is what makes the
+            // swallowing so hard to see without a readback.
+            if (!swallow) {
+              img.set(addr, (enaQuirk && addr === enaQuirk) ? 1 : (arg & 0xffff));
+              if (revertMs > 0 && Object.prototype.hasOwnProperty.call(revert, addr)) {
+                timers.push(setTimeout(() => img.set(addr, revert[addr] & 0xffff), revertMs));
+              }
+            }
             const resp = Buffer.alloc(12);
             req.copy(resp); resp.writeUInt16BE(6, 4);
             sock.write(resp);
@@ -118,7 +140,11 @@ function startGateway(imgByUnit, { hang = false } = {}) {
       });
     });
     server.listen(0, '127.0.0.1', () => resolve({
-      server, port: server.address().port, connections: () => connections,
+      server,
+      port: server.address().port,
+      connections: () => connections,
+      writes: () => writes,
+      close: () => { timers.forEach(clearTimeout); server.close(); },
     }));
   });
 }
@@ -351,6 +377,139 @@ test('OBSERVE-only ticks take NO claim and are throttled to one pass per window'
     assert.strictEqual(gw.connections(), 1, 'the second observe inside the window does NO I/O');
     assert.strictEqual(r2.sends.length, 0, 'throttled tick publishes nothing new');
   } finally { gw.server.close(); }
+});
+
+// --- the First-Light hardening (live Pilsting findings, 2026-08-06) ---------
+//
+// Three device behaviours, all measured on the captain's real Datamanager,
+// driven through the ACTUAL flow nodes: the SWALLOWER, the REVERTER and the
+// CLAMPER. Plus the Ena firmware quirk on the release path.
+
+// A curtailment setup: one certified Fronius unit with a discovered image.
+async function curtailRun(gw, img, { flow, ctx, over, sourceId = 'src-a' } = {}) {
+  return runExec({
+    sources: [froniusSource(sourceId, gw.port, 1)],
+    setpoint: curtailSetpoint(gw.port, [sourceId], over),
+    flow, ctx: ctx || {}, flowLog: [],
+  });
+}
+
+test('SCHLUCKER: a write the device acknowledges but discards is retried, bounded, then NAMED - and never claims a match', async () => {
+  const img = unitImage(25);
+  const disc = discOver(img);
+  const gw = await startGateway({ 1: img }, { swallow: true });
+  try {
+    const flow = {
+      ['curtail_disc:127.0.0.1:' + gw.port + '#1']: { at: Date.now(), disc: disc },
+      curtail_refresh_ms: 0, // every tick is a refresh tick (test seam)
+    };
+    const ctx = {};
+    const rounds = [];
+    for (let i = 0; i < 5; i++) {
+      ctx.curtail_busy_since = 0;
+      rounds.push(await curtailRun(gw, img, { flow, ctx }));
+    }
+    const pubs = rounds.flatMap((r) => r.sends);
+
+    // The register never took the command - so nothing ever claims it did.
+    assert.strictEqual(img.get(disc.controls.wMaxLimPctAddr), 0, 'the swallower kept its register');
+    assert.ok(pubs.every((p) => p.all_match !== true), 'no publish may claim a match: ' + JSON.stringify(pubs.map((p) => p.all_match)));
+    assert.ok(pubs.some((p) => (p.mismatch_roles || []).includes('pv_limit_pct')),
+      'the BINDING register is named as the mismatch');
+
+    // Bounded: the ladder stops. The in-tick retry makes the first tick write
+    // twice, so counting rounds is not the bound - the bound is that the
+    // writes STOP while the ticks continue.
+    const before = gw.writes();
+    ctx.curtail_busy_since = 0;
+    const cooling = await curtailRun(gw, img, { flow, ctx });
+    assert.strictEqual(gw.writes(), before, 'the cooldown writes NOTHING - never a hot loop');
+
+    // ... and the CAUSE is on the card, not a silent giving-up.
+    const last = cooling.sends[cooling.sends.length - 1];
+    assert.strictEqual(last.blocked, true);
+    assert.ok(last.reason.includes('EVU-Editor'), 'the honest cause names the lever: ' + last.reason);
+    assert.ok(rounds.flatMap((r) => r.warns).some((w) => w.includes('nicht uebernommen')),
+      'the discarded command is warned, never silent');
+  } finally { gw.close(); }
+});
+
+test('REVERTER: the native dead-man lifts an un-refreshed cap - the refresh puts it back', async () => {
+  const img = unitImage(25);
+  const disc = discOver(img);
+  const pctAddr = disc.controls.wMaxLimPctAddr;
+  // The vendor dead-man, compressed: 150 ms instead of 60 s, reverting the
+  // limit register to 100 % exactly like WMaxLimPct_RvrtTms does.
+  const gw = await startGateway({ 1: img }, { revertMs: 150, revert: { [pctAddr]: 10000 } });
+  try {
+    const flow = {
+      ['curtail_disc:127.0.0.1:' + gw.port + '#1']: { at: Date.now(), disc: disc },
+      curtail_refresh_ms: 0,
+    };
+    const ctx = {};
+    const t1 = await curtailRun(gw, img, { flow, ctx });
+    assert.strictEqual(t1.sends[0].all_match, true, 'the first write lands');
+    assert.strictEqual(img.get(pctAddr), 4000, 'cap 10/25 = 40 % at SF -2');
+
+    // THE LIVE DEFECT: without a refresh the inverter takes the cap back.
+    await new Promise((r) => setTimeout(r, 250));
+    assert.strictEqual(img.get(pctAddr), 10000, 'the dead-man lifted the un-refreshed cap');
+
+    // The next executor tick re-applies it - inside the revert window in
+    // production (REFRESH_MS 20 s < RvrtTms 60 s).
+    ctx.curtail_busy_since = 0;
+    const t2 = await curtailRun(gw, img, { flow, ctx });
+    assert.strictEqual(img.get(pctAddr), 4000, 'the refresh put the cap back');
+    assert.strictEqual(t2.sends[0].applied, true, 'the tick really WROTE, it did not just look');
+    assert.strictEqual(t2.sends[0].all_match, true);
+  } finally { gw.close(); }
+});
+
+test('KLEMMER: a holding register plus power AT the cap reports a confirmed, enforced limit', async () => {
+  const img = unitImage(25);
+  const disc = discOver(img);
+  const gw = await startGateway({ 1: img });
+  try {
+    const key = '127.0.0.1:' + gw.port + '#1';
+    const flow = {
+      ['curtail_disc:' + key]: { at: Date.now(), disc: disc },
+      // The plant is CLAMPED at the cap (10 kW) while it could deliver ~22 kW;
+      // the settle window is already over, so the effect check has a verdict.
+      ['src_last:src-a']: { pv_kw: 10.0, at: Date.now() },
+      ['curtail_enf:' + key]: { activeSince: Date.now() - 120000, capKw: 10 },
+    };
+    const r = await curtailRun(gw, img, { flow, ctx: {} });
+    const p = r.sends[0];
+    assert.strictEqual(p.applied, true);
+    assert.strictEqual(p.all_match, true, 'the register holds the commanded value');
+    assert.strictEqual(p.enforcement.status, 'ok');
+    assert.strictEqual(p.enforcement.possible_override, false);
+    assert.strictEqual(p.enforcement.measured_kw, 10.0);
+    assert.strictEqual(img.get(disc.controls.wMaxLimPctAddr), 4000);
+  } finally { gw.close(); }
+});
+
+test('ENA-QUIRK: a commanded 0 answered with 1 does NOT make the release look broken', async () => {
+  const img = unitImage(25);
+  const disc = discOver(img);
+  const gw = await startGateway({ 1: img }, { enaQuirk: disc.controls.wMaxLimEnaAddr });
+  try {
+    const key = '127.0.0.1:' + gw.port + '#1';
+    const flow = {
+      ['curtail_disc:' + key]: { at: Date.now(), disc: disc },
+      ['curtail_was:' + key]: 1, // the unit WAS curtailed, so a release is due
+    };
+    // No pv_limit_kw -> release: WMaxLimPct back to 100 %, Ena commanded 0.
+    const r = await curtailRun(gw, img, { flow, ctx: {}, over: { pv_limit_kw: undefined } });
+    const p = r.sends[0];
+    assert.strictEqual(img.get(disc.controls.wMaxLimEnaAddr), 1, 'the firmware kept its 1');
+    assert.strictEqual(img.get(disc.controls.wMaxLimPctAddr), 10000, 'but the BINDING register is released');
+    assert.strictEqual(p.all_match, true, 'the release is confirmed - a 100 % limit throttles nothing');
+    assert.deepStrictEqual(p.mismatch_roles, [], 'the quirk is not a mismatch');
+    assert.deepStrictEqual(p.quirk_roles, ['pv_limit_enable']);
+    assert.ok(p.quirk_note.includes('WMaxLimPct'), 'the note names the register that binds');
+    assert.notStrictEqual(p.blocked, true, 'a known quirk is never a fault');
+  } finally { gw.close(); }
 });
 
 // --- poll: bounded yields, forced reads, expiry, rotation --------------------
