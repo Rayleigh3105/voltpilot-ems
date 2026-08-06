@@ -90,7 +90,16 @@ type Agent struct {
 	// instead of exported - at a negative price, paid away (guards.SurplusCharger -
 	// the charge-side counterpart of trim, which only ever lowers; the edge
 	// enforces, the cloud priced).
-	absorb         *guards.SurplusCharger
+	absorb *guards.SurplusCharger
+	// export is the REAL-TIME feed-in watchdog (dynamische Einspeisebegrenzung):
+	// it regulates the CONTROLLABLE producers against the MEASURED connection
+	// point so the site's feed-in limit holds no matter what the house does -
+	// the job a customer-owned Loxone does at Anlage Pilsting today. Fed with
+	// (power_kw, pv_power_kw) at onLocalTelemetry, read at applySetpoint, where
+	// its plant cap composes most-restrictive-wins with the plan's own
+	// curtailment. Unlike every economic guard it does NOT go inactive when
+	// blind (guards/exportlimit.go: hold, then contract to a safe static cap).
+	export         *guards.ExportLimiter
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
@@ -150,6 +159,9 @@ type Agent struct {
 	curtailWatchdog *time.Timer
 	curtailCert     map[string]bool
 	curtailUnits    map[string]state.CurtailUnit
+	// exportLogKey deduplicates the feed-in watchdog's log line: it is written on
+	// a state CHANGE, never per tick (the OTA-blocker lesson).
+	exportLogKey string
 
 	// Per-node live flow state (Portal v3 M5 Part C), recorded from the local
 	// bus and folded into the heartbeat ONLY when the feature flag is on.
@@ -417,6 +429,7 @@ func New(cfg config.Config) (*Agent, error) {
 		trim:         guards.NewPriceTrimmer(),
 		follow:       guards.NewLoadFollower(),
 		absorb:       guards.NewSurplusCharger(),
+		export:       guards.NewExportLimiter(),
 		despikeStore: ds,
 		cal:          calibration.NewSession(calibration.Config{MaxKw: cfg.CalibrationMaxKw, TTL: cfg.CalibrationTTL}),
 		calCert:      map[string]bool{},
@@ -1265,6 +1278,30 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		a.peak.Add(ts, g)
 	}
 
+	// Feed the feed-in watchdog with the SAME gated composite connection-point
+	// measurement plus the total plant PV: those two are the whole control law
+	// (guards/exportlimit.go), and because the grid value already contains the
+	// house, the wallboxes and the battery, they are netted in automatically -
+	// that is what the customer's Loxone does today. A sample missing either
+	// channel is not a measurement for this purpose: the guard then runs its
+	// staged HOLD/CONTRACT fallback instead of releasing.
+	//
+	// urgent = this sample demands a MEANINGFULLY tighter cap than the one
+	// currently commanded (a wallbox was unplugged). Republish the setpoint at
+	// once instead of waiting up to a full tick: the curtailment executor is
+	// driven BY the setpoint (vp-sollwert -> plan -> exec), and a changed cap
+	// changes the command signature, so the write goes out on the next executor
+	// pass. Deliberately only on a TIGHTENING - a release must never bypass its
+	// rate limit, and an unconditional nudge would republish at telemetry
+	// cadence for no gain.
+	if g, ok := measurements["power_kw"]; ok {
+		if pv, okPv := measurements["pv_power_kw"]; okPv {
+			if a.export.Observe(ts, g, pv) {
+				a.nudgeSetpoint()
+			}
+		}
+	}
+
 	// While the device is removed (unclaimed) in the cloud, the local dashboard
 	// stays fully alive (guard reading, history ring, KPIs below) but the
 	// store-and-forward buffer is NOT grown: there is no claimed identity to
@@ -1924,6 +1961,12 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// anything). nil = module off = byte-for-byte pre-PS behavior.
 	peakTarget := p.PeakImportLimit()
 	peakReserve := p.PeakReserveSoc()
+	// The site's feed-in limit at the grid connection point (FK1, published as
+	// grid_export_limit_kw). Like the peak target it deliberately survives plan
+	// staleness - and here the argument is stronger: this is a COMPLIANCE limit,
+	// so a dead optimizer must never hand the plant back its unlimited feed-in.
+	// nil = no limit configured -> byte-for-byte pre-feature behavior.
+	exportLimit := p.ExportLimit()
 	// The v2 plan's site-level target / battery-entity reserve compose in
 	// (tighter wins, both staleness survivors). nil without a v2 plan - the
 	// v1 path is then byte-identical.
@@ -2000,6 +2043,15 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// watchdog, which does not write without a reading). The peak module's
 		// display state stays honest: target/reserve are known from the plan,
 		// but without a reading the guard cannot be active.
+		//
+		// The feed-in watchdog is the ONE guard that does NOT stand down here:
+		// "no measurement" is exactly what its staged fallback exists for, and a
+		// compliance limit may not be released just because the box has not seen
+		// its plant yet. It is EVALUATED (so the state shows the safe static cap
+		// it would command) while this branch still publishes nothing - the honest
+		// outcome is that state, on :8484 and in the heartbeat.
+		exportGuard := a.exportGuardInfo(
+			a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, 0)))
 		a.State.Update(func(s *state.Snapshot) {
 			s.Mode = state.ModeNoReading
 			s.PeakTargetKw = peakTarget
@@ -2012,6 +2064,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.Trim = nil
 			s.Follow = nil
 			s.Absorb = nil
+			s.ExportGuard = exportGuard
 		})
 		a.trim.Release()
 		a.follow.Release()
@@ -2143,6 +2196,40 @@ func (a *Agent) applySetpoint(now time.Time) {
 		}
 	}
 
+	// DYNAMISCHE EINSPEISEBEGRENZUNG (2026-08-06): the real-time watchdog at the
+	// grid connection point. The plan already carries the site's feed-in limit as
+	// a hard EXPORT cap for the solver (FK1), but a 15-min plan cannot HOLD that
+	// limit: it is shared with the house, so unplugging a wallbox raises the
+	// feed-in by that wallbox's power INSIDE the slot - which is exactly the job
+	// a customer-owned Loxone does at Anlage Pilsting today, and the reason it
+	// cannot be disconnected until we do it. guards.ExportLimiter closes the loop
+	// on the MEASURED connection point (house, wallboxes and battery netted in
+	// automatically, because they are already inside that measurement) and
+	// returns the PLANT-level PV cap - the same quantity the plan's pv_limit_kw
+	// carries, so the existing curtailment executor splits it across the Fronius
+	// units unchanged.
+	//
+	// The safe static cap it falls back to when blind is `limit - commanded
+	// discharge`, derived HERE because only this point knows the final setpoint.
+	// It is sufficient for ANY house load: export = pv + discharge - load -
+	// charge <= pv + discharge <= (limit - discharge) + discharge = limit.
+	//
+	// COMPOSITION IS A MINIMUM, never a widening: the watchdog cap and the plan's
+	// own (negative-price / FK1) curtailment compose most-restrictive-wins, so the
+	// watchdog can never release a planned curtailment, and §14a/EEG/SoC/rated
+	// guards are untouched - this only ever REDUCES generation, and never
+	// commands the battery (absorbing a surplus is an optimizer decision, see
+	// guards/surpluscharge.go).
+	exportCap := a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, kw))
+	if exportCap.Active {
+		if pvLimit == nil || exportCap.CapKw < *pvLimit {
+			v := exportCap.CapKw
+			pvLimit = &v
+		}
+	}
+	exportGuard := a.exportGuardInfo(exportCap)
+	a.logExportGuard(exportGuard)
+
 	// Control gate (report §6.6/§6.7): the setpoint carries the core's kill-switch
 	// AND per-model certification verdict as control_enabled. Layer 1 writes only
 	// when this is true (defence in depth with its own family allowlist). OFF by
@@ -2242,7 +2329,33 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Trim = trimInfo
 		s.Follow = followInfo
 		s.Absorb = absorbInfo
+		s.ExportGuard = exportGuard
 	})
+}
+
+// exportSafeStaticCap is the BLIND fallback cap of the feed-in watchdog: the
+// plant-level PV cap that holds the site's feed-in limit WITHOUT any
+// measurement, for any house load.
+//
+//	export = pv + discharge - load - charge
+//	      <= pv + discharge                        (load, charge >= 0)
+//	      <= (limit - discharge) + discharge = limit
+//
+// So capping total PV at `limit - commanded discharge` is sufficient. It is
+// derived at the setpoint path because only there is the final commanded
+// setpoint known - a CHARGE only ever absorbs PV, so it subtracts nothing.
+func exportSafeStaticCap(limitKw *float64, setpointKw float64) float64 {
+	if limitKw == nil {
+		return 0
+	}
+	discharge := 0.0
+	if setpointKw < 0 && !math.IsNaN(setpointKw) && !math.IsInf(setpointKw, 0) {
+		discharge = -setpointKw
+	}
+	if v := *limitKw - discharge; v > 0 {
+		return v
+	}
+	return 0
 }
 
 // trimSnapshot turns one trim evaluation into the UI-facing block, or nil when

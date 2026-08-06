@@ -496,7 +496,59 @@
     possible_override: "Möglicher Override",
   };
 
+  /* ------------------------------------------------------------------
+     Dynamische Einspeisebegrenzung am Netzverknüpfungspunkt.
+
+     The German sentence is NOT written here: guards.ExportLimiter writes it
+     once (state + reason travel together, the target_verdict-beside-state
+     pattern), so this page and the cloud can never word the same verdict
+     differently. This function only decides the TONE and puts the two
+     sentences the core owns - the state's reason and the reach - in order.
+
+     The reach is the safety-critical half: the operator is preparing to
+     disconnect the customer's own controller, so a watchdog that computes a
+     perfect cap and writes it NOWHERE must say so instead of letting anyone
+     rely on a protection that does not exist.
+     ------------------------------------------------------------------ */
+  function deriveExportGuard(s) {
+    var g = s && s.export_guard;
+    if (!g || typeof g.limit_kw !== "number") return null;
+    var text = "Einspeisegrenze " + nf1.format(g.limit_kw) + " kW. " + (g.reason || "");
+    if (g.reach) text += " " + g.reach;
+    return {
+      // Not effective outranks everything (a plant that believes it is
+      // protected and is not); running blind is a warning too - "the
+      // measurement went away" must never look like "everything is fine".
+      tone: (!g.effective || g.blind) ? "warn" : "ok",
+      title: g.effective
+        ? "Einspeisegrenze wird überwacht."
+        : "Einspeisegrenze NICHT wirksam.",
+      text: text.trim(),
+      effective: !!g.effective,
+      blind: !!g.blind,
+      limiting: !!g.limiting
+    };
+  }
+
   function deriveCurtail(s) {
+    var eg = deriveExportGuard(s);
+    var d = deriveCurtailUnits(s);
+    if (!d) {
+      // No curtailment-capable unit at all. Without a feed-in limit there is
+      // nothing to say and the card stays hidden (byte-identical page); WITH
+      // one, the card exists precisely to say that the limit reaches nothing.
+      if (!eg) return null;
+      return {
+        tone: eg.tone, units: [], title: eg.title, text: eg.text,
+        showTable: false, exportGuard: eg
+      };
+    }
+    d.exportGuard = eg;
+    if (eg && !eg.effective) d.tone = "warn";
+    return d;
+  }
+
+  function deriveCurtailUnits(s) {
     var units = s && s.curtail_units;
     if (!units || !units.length) return null;
 
@@ -633,6 +685,15 @@
     if (sum) sum.className = "ctrl-summary " + d.tone;
     var dot = card.querySelector(".ss-dot");
     if (dot) dot.style.background = CHIP_COLOR[d.tone] || CHIP_COLOR.muted;
+    // The watchdog line only appears NEXT TO a curtailment sentence; with no
+    // units the guard IS the card's sentence and repeating it would be noise.
+    var exp = $("curtailExport");
+    if (exp) {
+      var showExp = !!(d.exportGuard && d.units && d.units.length);
+      show(exp, showExp);
+      if (showExp) exp.textContent = d.exportGuard.text;
+    }
+    show($("curtailTech"), !!(d.units && d.units.length));
     renderCurtailUnits(d.units);
   }
 
@@ -699,6 +760,7 @@
     deriveFollow: deriveFollow,
     deriveAbsorb: deriveAbsorb,
     deriveCurtail: deriveCurtail,
+    deriveExportGuard: deriveExportGuard,
     trackStateSince: trackStateSince,
     ROLE_LABEL: ROLE_LABEL,
     PATH_LABEL: PATH_LABEL

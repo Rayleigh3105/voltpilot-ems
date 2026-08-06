@@ -88,6 +88,15 @@ type Snapshot struct {
 	// command, and only up to the surplus.
 	Absorb *AbsorbInfo `json:"absorb,omitempty"`
 
+	// ExportGuard is the live feed-in watchdog at the grid connection point
+	// (dynamische Einspeisebegrenzung), non-nil whenever the site HAS a feed-in
+	// limit configured - including while it is only watching, because a
+	// compliance limit that is being observed is itself the news. It carries its
+	// own German sentence (written once in guards.ExportLimiter and rendered
+	// verbatim here and in the cloud heartbeat) plus the honest statement of
+	// whether it can actually reach a device.
+	ExportGuard *ExportGuardInfo `json:"export_guard,omitempty"`
+
 	InverterLink     string    `json:"inverter_link"` // "up" | "down" | "" (unknown)
 	InverterLinkSeen time.Time `json:"inverter_link_seen,omitzero"`
 
@@ -218,6 +227,53 @@ type AbsorbInfo struct {
 	// SurplusKw is the measured surplus the charge is raised to; nil when unknown
 	// (then the correction would be inactive anyway - never regulate blind).
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+}
+
+// ExportGuardInfo is the UI-facing state of the dynamic feed-in limitation: the
+// site has a feed-in limit at the grid connection point, and the device is
+// regulating its CONTROLLABLE producers against the MEASURED connection point so
+// the limit holds while the house (and its wallboxes) move. Read-only display of
+// a decision already taken - the loop itself lives in guards.ExportLimiter.
+//
+// The two honesty rules it exists for:
+//   - Reason is ALWAYS filled, in every state, including the blind fallbacks: a
+//     limitation nobody names reads as a defect, and "the measurement went away"
+//     must never look like "everything is fine".
+//   - Effective says whether the computed cap can reach a device at all. A
+//     watchdog nobody wrote to is not a protection, and an operator who is about
+//     to disconnect their own controller must be able to see that.
+type ExportGuardInfo struct {
+	// LimitKw is the configured feed-in limit at the connection point.
+	LimitKw float64 `json:"limit_kw"`
+	// State is the machine-readable verdict (guards.ExportState): aus |
+	// ueberwacht | regelt | haelt | zieht_zusammen | sicherheitskappe.
+	State string `json:"state"`
+	// Reason is the German sentence for exactly that state.
+	Reason string `json:"reason"`
+	// CapKw is the plant-level PV cap currently commanded; nil only when no
+	// limit is configured (then this whole block is absent).
+	CapKw *float64 `json:"cap_kw,omitempty"`
+	// Limiting is true while the cap actually holds the producers back.
+	Limiting bool `json:"limiting"`
+	// Blind is true whenever the verdict was NOT formed from a fresh
+	// connection-point measurement (hold / contract / safe cap).
+	Blind bool `json:"blind"`
+	// ExportKw / PvKw are the measurements behind the verdict; nil when blind.
+	ExportKw *float64 `json:"export_kw,omitempty"`
+	PvKw     *float64 `json:"pv_kw,omitempty"`
+	// MeasurementAgeSeconds is how old the newest usable connection-point
+	// measurement is; nil when there has never been one.
+	MeasurementAgeSeconds *int `json:"measurement_age_seconds,omitempty"`
+	// Units / CertifiedUnits are the curtailment-capable inverters and how many
+	// carry a First-Light release.
+	Units          int `json:"units"`
+	CertifiedUnits int `json:"certified_units"`
+	// Effective is false when the cap cannot reach ANY device (no curtailable
+	// inverter, the control kill-switch off, or no released unit). Reach names
+	// the gap in German whenever the reach is not complete - including the
+	// PARTIAL case, where the watchdog works but cannot pull back every inverter.
+	Effective bool   `json:"effective"`
+	Reach     string `json:"reach,omitempty"`
 }
 
 // ControlInfo is the UI-facing per-register control readback: what the schedule

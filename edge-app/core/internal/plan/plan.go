@@ -113,6 +113,14 @@ type Plan struct {
 	// reserve survives for peak defense (which alone may go below it, down to
 	// the technical SoC floor). nil = no reserve - fallback behaves as before.
 	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct,omitempty"`
+	// GridExportLimitKw is the OPTIONAL site feed-in limit at the grid
+	// connection point (kW >= 0), mirroring site.max_feed_in_kw (FK1). It is the
+	// EXPORT-side twin of GridImportLimitKw: the cloud plans against it as a hard
+	// export cap, and the edge REGULATES it in real time against the MEASURED
+	// connection point (guards.ExportLimiter), because the 15-min plan cannot see
+	// a wallbox being unplugged. nil = no limit configured - byte-for-byte
+	// pre-feature behavior; a limit is NEVER invented.
+	GridExportLimitKw *float64 `json:"grid_export_limit_kw,omitempty"`
 }
 
 // SolarOnlyCharge reports whether the plan demands the EEG solar-only-charge
@@ -141,6 +149,23 @@ func (p *Plan) PeakImportLimit() *float64 {
 	return &v
 }
 
+// ExportLimit returns the plan-carried site feed-in limit at the grid
+// connection point (kW), or nil when none is configured.
+//
+// Like PeakImportLimit it is DELIBERATELY independent of Fresh(), and here the
+// reason is stronger: this is a COMPLIANCE limit. A dead optimizer must never
+// hand the plant back its unlimited feed-in - the live watchdog keeps regulating
+// against the last known limit (restrict-only, so a stale limit can never widen
+// anything, only cost a little yield). A NEW plan without the field clears it,
+// per the contract's clear-on-absent rule.
+func (p *Plan) ExportLimit() *float64 {
+	if p == nil || p.GridExportLimitKw == nil {
+		return nil
+	}
+	v := *p.GridExportLimitKw
+	return &v
+}
+
 // PeakReserveSoc returns the plan-carried peak-shaving SoC reserve (percent),
 // or nil when none is configured. Like PeakImportLimit it survives staleness:
 // the reserve exists precisely FOR the offline fallback.
@@ -161,6 +186,7 @@ type wire struct {
 	GridChargeAllowed *bool    `json:"grid_charge_allowed"`
 	GridImportLimitKw *float64 `json:"grid_import_limit_kw"`
 	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct"`
+	GridExportLimitKw *float64 `json:"grid_export_limit_kw"`
 	Slots             []struct {
 		Start                  string   `json:"start"`
 		BatterySetpointKw      float64  `json:"battery_setpoint_kw"`
@@ -211,6 +237,15 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 			r := *w.PeakReserveSocPct
 			p.PeakReserveSocPct = &r
 		}
+	}
+	// Feed-in limit (the dynamic Einspeisebegrenzung's target): keep only a
+	// valid, finite, non-negative limit. A garbage value must never become a
+	// compliance target - and, unlike the peak fields, a missing one must never
+	// be replaced by a guess: absent = no limit at all.
+	if w.GridExportLimitKw != nil && !math.IsNaN(*w.GridExportLimitKw) &&
+		!math.IsInf(*w.GridExportLimitKw, 0) && *w.GridExportLimitKw >= 0 {
+		v := *w.GridExportLimitKw
+		p.GridExportLimitKw = &v
 	}
 	if t, err := time.Parse(time.RFC3339, w.GeneratedAt); err == nil {
 		p.GeneratedAt = t

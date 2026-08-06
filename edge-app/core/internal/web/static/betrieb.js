@@ -22,6 +22,17 @@
     return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
   }
 
+  // The watchdog's machine-readable state in plain words. The SENTENCE behind
+  // each of them is written by the core (guards.ExportLimiter) and rendered on
+  // the PV-Abregelung card - this is only the short label for the numbers row.
+  var EXPORT_STATE_LABEL = {
+    ueberwacht: "überwacht",
+    regelt: "regelt",
+    haelt: "hält (keine Messung)",
+    zieht_zusammen: "zieht zusammen (keine Messung)",
+    sicherheitskappe: "Sicherheitskappe (keine Messung)"
+  };
+
   function show(el, on) { if (el) el.hidden = !on; }
   function set(id, text, ok) {
     var el = $(id);
@@ -67,6 +78,21 @@
     var reserve = s.peak_reserve_soc_pct;
     show($("btReserveRow"), reserve != null);
     if (reserve != null) set("btReserve", nf0.format(reserve) + " % SoC vorgehalten", false);
+
+    // Einspeise-Wache: the EXPORT-side twin of the peak guard. Only the numbers
+    // live here (Technikmodus) - the CAUSE of every non-ok state is on the
+    // PV-Abregelung card in normal mode, per the "hidden content must never
+    // hide a cause" rule.
+    var eg = s.export_guard;
+    show($("btEinspeiseRow"), !!eg);
+    if (eg) {
+      var cap = eg.cap_kw != null ? " · Kappe " + nf1.format(eg.cap_kw) + " kW" : "";
+      set("btEinspeise",
+        EXPORT_STATE_LABEL[eg.state] || eg.state,
+        eg.effective && !eg.blind);
+      set("btEinspeiseZiel", nf1.format(eg.limit_kw) + " kW" + cap, false);
+    }
+    show($("btEinspeiseZielRow"), !!eg);
 
     // What the device does on a dead cloud link - honest, per module state.
     if (moduleOn) {

@@ -767,4 +767,10 @@ def _extract_plan(
             if inp.leistungspreis_eur_kw is not None
             else None
         ),
+        # FK1 handed to the EDGE: the site's static feed-in limit at the grid
+        # connection point, published as grid_export_limit_kw so the device can
+        # REGULATE it against the measured connection point instead of only
+        # planning against it. Pure pass-through of the master datum the solver
+        # already constrained on - never a solved value.
+        max_feed_in_kw=inp.max_feed_in_kw,
     )

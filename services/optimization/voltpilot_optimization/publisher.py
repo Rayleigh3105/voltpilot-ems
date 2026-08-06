@@ -61,6 +61,15 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
             payload["peak_reserve_soc_pct"] = round(
                 plan.battery.peak_reserve_pct, 2
             )
+    # OPTIONAL per the contract (dynamische Einspeisebegrenzung, 2026-08-06,
+    # additive - schema_version stays 1.0): the site's static feed-in limit at
+    # the grid connection point (site.max_feed_in_kw / FK1), so the EDGE can
+    # regulate it in real time against the measured connection point instead of
+    # only having it planned against every 15 minutes. Present only when the site
+    # has it configured, so every other payload stays byte-identical - and a
+    # limit is never invented.
+    if plan.max_feed_in_kw is not None:
+        payload["grid_export_limit_kw"] = round(plan.max_feed_in_kw, 3)
     return payload
 
 

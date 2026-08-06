@@ -744,6 +744,39 @@ type CurtailmentSummary struct {
 	// settle window - a foreign controller may override the Modbus limit.
 	PossibleOverride bool   `json:"possible_override,omitempty"`
 	CheckedAt        string `json:"checked_at,omitempty"`
+	// ExportGuard is the ADDITIVE live feed-in watchdog block (dynamische
+	// Einspeisebegrenzung, 2026-08-06), present only when the site HAS a feed-in
+	// limit configured. It rides inside `curtailment` because the watchdog IS the
+	// curtailment path's live driver - same actors, same gates, one freshness
+	// anchor. An older cloud ignores it (the api reads the heartbeat as a
+	// JsonNode), so this is safe to add without any cloud change.
+	ExportGuard *ExportGuardSummary `json:"export_guard,omitempty"`
+}
+
+// ExportGuardSummary is the heartbeat half of the dynamic feed-in limitation.
+// It carries the MACHINE-READABLE state next to the German sentence (the
+// target_verdict-beside-state pattern): no surface ever has to parse a sentence,
+// and the sentence is written ONCE (guards.ExportLimiter) so the device page and
+// the portal can never word the same verdict differently.
+type ExportGuardSummary struct {
+	// LimitKw is the configured feed-in limit at the connection point.
+	LimitKw float64 `json:"limit_kw"`
+	// State: ueberwacht | regelt | haelt | zieht_zusammen | sicherheitskappe.
+	State string `json:"state"`
+	// Reason is the German sentence for exactly that state.
+	Reason string `json:"reason"`
+	// CapKw is the plant-level PV cap the watchdog currently commands.
+	CapKw *float64 `json:"cap_kw,omitempty"`
+	// Limiting: the cap is actually holding the producers back right now.
+	Limiting bool `json:"limiting,omitempty"`
+	// Blind: the verdict was NOT formed from a fresh connection-point
+	// measurement (hold / contract / safe cap).
+	Blind bool `json:"blind,omitempty"`
+	// Effective is false when the cap cannot reach ANY device. Reach names the
+	// gap in German whenever the reach is not complete. This is the field that
+	// keeps a plant from believing in a protection it does not have.
+	Effective bool   `json:"effective"`
+	Reach     string `json:"reach,omitempty"`
 }
 
 // PublishStatus sends the lightweight heartbeat on .../status (no frozen

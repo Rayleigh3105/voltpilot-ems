@@ -941,6 +941,101 @@ test("curtail: released units read calm, a blocked unit surfaces its reason", ()
   assert.match(blocked.text, /Gateway nicht erreichbar/);
 });
 
+/* ====== control.js: dynamische Einspeisebegrenzung (Waechter-Zustand) ====== */
+//
+// Die Saetze schreibt der KERN (guards.ExportLimiter) - hier wird geprueft,
+// dass die Oberflaeche sie durchreicht statt sie neu zu erfinden, und dass der
+// eine Satz, auf den es sicherheitskritisch ankommt ("erreicht kein Geraet"),
+// laut wird statt hinter einer ruhigen Abregel-Zeile zu verschwinden.
+
+function exportGuardFor(state) {
+  return load(["control.js"]).VPControl.deriveExportGuard(state);
+}
+
+const GUARD_LIMITING = {
+  limit_kw: 30,
+  state: "regelt",
+  reason: "Die Erzeuger sind auf 22,4 kW begrenzt, damit die Einspeisegrenze von 30,0 kW " +
+    "am Netzverknuepfungspunkt eingehalten wird (aktuell 29,4 kW Einspeisung bei 22,4 kW Erzeugung).",
+  cap_kw: 22.4,
+  limiting: true,
+  effective: true
+};
+
+test("Einspeise-Waechter: ohne Grenze gibt es keine Aussage", () => {
+  assert.strictEqual(exportGuardFor({}), null);
+  assert.strictEqual(exportGuardFor({ export_guard: {} }), null);
+});
+
+test("Einspeise-Waechter: der Grund des Kerns wird VERBATIM durchgereicht", () => {
+  const d = exportGuardFor({ export_guard: GUARD_LIMITING });
+  assert.strictEqual(d.tone, "ok");
+  assert.ok(d.text.includes(GUARD_LIMITING.reason), "der Satz des Kerns muss unveraendert erscheinen");
+  assert.match(d.text, /Einspeisegrenze 30,0 kW/);
+});
+
+test("Einspeise-Waechter: blind ist eine WARNUNG, nie ein ruhiger Zustand", () => {
+  const d = exportGuardFor({
+    export_guard: {
+      limit_kw: 30, state: "zieht_zusammen", blind: true, effective: true, cap_kw: 18,
+      reason: "Seit 3 min keine Messung am Netzverknuepfungspunkt - die Begrenzung wird " +
+        "schrittweise auf die sichere Kappe von 30,0 kW zusammengezogen (aktuell 18,0 kW)."
+    }
+  });
+  assert.strictEqual(d.tone, "warn");
+  assert.match(d.text, /keine Messung/);
+});
+
+test("Einspeise-Waechter: ohne erreichbares Geraet ist er NICHT wirksam - und sagt es", () => {
+  const d = exportGuardFor({
+    export_guard: Object.assign({}, GUARD_LIMITING, {
+      effective: false,
+      reach: "Kein Wechselrichter ist für die Abregelung freigegeben (0 von 2) - die " +
+        "Einspeisegrenze wird berechnet, aber an KEIN Gerät geschrieben. Sie ist damit nicht wirksam."
+    })
+  });
+  assert.strictEqual(d.tone, "warn");
+  assert.match(d.title, /NICHT wirksam/);
+  assert.match(d.text, /an KEIN Gerät geschrieben/);
+});
+
+test("Einspeise-Waechter: eine unwirksame Wache ueberstimmt eine ruhige Abregel-Zeile", () => {
+  // Ohne Einheiten gaebe es die Karte gar nicht - MIT Grenze existiert sie
+  // genau dafuer, das zu sagen.
+  const alone = curtailFor({
+    export_guard: Object.assign({}, GUARD_LIMITING, {
+      effective: false,
+      reach: "Für diese Anlage ist kein abregelbarer Wechselrichter eingerichtet - die " +
+        "Einspeisegrenze wird berechnet, aber an KEIN Gerät geschrieben. Sie ist damit nicht wirksam."
+    })
+  });
+  assert.strictEqual(alone.tone, "warn");
+  assert.match(alone.text, /kein abregelbarer Wechselrichter/);
+  assert.strictEqual(alone.units.length, 0);
+
+  // Mit Einheiten bleibt der Abregel-Satz die Ueberschrift, aber der Ton kippt
+  // auf Warnung und die Wachen-Zeile reist mit.
+  const withUnits = curtailFor({
+    curtail_units: [{ source_id: "a", unit_key: "k1", applied: true, mode: "release", all_match: true }],
+    export_guard: Object.assign({}, GUARD_LIMITING, {
+      effective: false, reach: "Die Wechselrichter-Steuerung ist ausgeschaltet (Not-Aus)."
+    })
+  });
+  assert.strictEqual(withUnits.tone, "warn");
+  assert.match(withUnits.title, /Keine PV-Begrenzung aktiv/);
+  assert.ok(withUnits.exportGuard, "die Wachen-Zeile muss neben der Abregel-Zeile stehen");
+  assert.match(withUnits.exportGuard.text, /Not-Aus/);
+});
+
+test("Einspeise-Waechter: eine wirksame Wache aendert den Abregel-Ton NICHT", () => {
+  const d = curtailFor({
+    curtail_units: [{ source_id: "a", unit_key: "k1", applied: true, mode: "apply", cap_kw: 8, all_match: true }],
+    export_guard: GUARD_LIMITING
+  });
+  assert.strictEqual(d.tone, "ok");
+  assert.ok(d.exportGuard);
+});
+
 /* ============ consequences.js: die Nebenwirkungs-Regel (E3) ============ */
 //
 // Die Regel: eine Aktion, die ANDERSWO einen freigegebenen/bestätigten/
