@@ -385,3 +385,207 @@ test('unitKey is the physical ip:port#unit identity with defaults', () => {
   assert.strictEqual(C.unitKey({ ip: '192.168.210.40', port: 502, unit_id: 2 }), '192.168.210.40:502#2');
   assert.strictEqual(C.unitKey({ ip: ' 10.0.0.5 ' }), '10.0.0.5:502#1');
 });
+
+// --- the REFRESH / VERIFY layer (First-Light hardening 2026-08-06) -----------
+
+// THE chain the whole hardening rests on. Pinned here AND in the Go half
+// (curtailcal TestTheRefreshRevertTTLChainHolds) - change one, change both.
+test('the refresh interval sits well inside the native revert timer, which sits inside the test TTL', () => {
+  assert.ok(C.REFRESH_MS * 2 <= C.DEFAULT_RVRT_TMS * 1000,
+    'a MISSED refresh must still land before the inverter reverts');
+  assert.ok(C.DEFAULT_RVRT_TMS * 1000 < 120000,
+    'the native revert must fire INSIDE the 120 s test TTL, never define its end');
+});
+
+function unitWithWrites(over) {
+  return Object.assign({
+    mode: 'apply', calibration: false, planned: [],
+    plan: { ok: true, writes: [
+      { role: 'pv_limit_pct', value: 3273 },
+      { role: 'pv_limit_revert_tms', value: 60 },
+      { role: 'pv_limit_enable', value: 1 },
+    ] },
+  }, over || {});
+}
+
+test('commandSignature is stable for the same command and changes with the cap', () => {
+  const u = unitWithWrites();
+  assert.strictEqual(C.commandSignature(u), C.commandSignature(unitWithWrites()));
+  const other = unitWithWrites();
+  other.plan.writes[0].value = 4000;
+  assert.notStrictEqual(C.commandSignature(u), C.commandSignature(other));
+  // Release vs apply are different commands even with equal register values.
+  const rel = unitWithWrites({ mode: 'release' });
+  assert.notStrictEqual(C.commandSignature(u), C.commandSignature(rel));
+  // Nothing to command -> no signature (never a fabricated identity).
+  assert.strictEqual(C.commandSignature({ plan: { ok: false, writes: [] } }), null);
+});
+
+// DEFECT 1 (live): the cap was written EXACTLY ONCE, so the inverter's own
+// 60-s revert timer lifted it in the MIDDLE of a 120-s test.
+test('an ACTIVE cap is RE-APPLIED before the native revert timer can fire', () => {
+  const u = unitWithWrites();
+  const t0 = 1000000;
+  const first = C.writeDecision({ unit: u, state: {}, nowMs: t0 });
+  assert.strictEqual(first.write, true);
+  assert.strictEqual(first.kind, 'first');
+
+  let st = C.noteWrite({}, first, t0);
+  st = C.noteVerdict(st, { held: true }, t0);
+
+  // Right after the write: verify only, do not hammer the gateway.
+  const soon = C.writeDecision({ unit: u, state: st, nowMs: t0 + 5000 });
+  assert.strictEqual(soon.write, false);
+  assert.strictEqual(soon.kind, 'verify');
+
+  // Past the refresh interval - and still WELL before the revert timer.
+  const due = C.writeDecision({ unit: u, state: st, nowMs: t0 + C.REFRESH_MS });
+  assert.strictEqual(due.write, true);
+  assert.strictEqual(due.kind, 'refresh');
+  assert.ok(C.REFRESH_MS < C.DEFAULT_RVRT_TMS * 1000, 'the refresh precedes the revert');
+
+  // A CHANGED cap is applied immediately, whatever the refresh clock says.
+  const changed = unitWithWrites();
+  changed.plan.writes[0].value = 2593;
+  const dc = C.writeDecision({ unit: changed, state: st, nowMs: t0 + 1000 });
+  assert.strictEqual(dc.write, true);
+  assert.strictEqual(dc.kind, 'changed');
+});
+
+test('a bounded First-Light TEST refreshes on EVERY tick - its evidence needs the register to HOLD', () => {
+  const u = unitWithWrites({ calibration: true });
+  const t0 = 1000000;
+  let st = C.noteWrite({}, C.writeDecision({ unit: u, state: {}, nowMs: t0 }), t0);
+  st = C.noteVerdict(st, { held: true }, t0);
+  const next = C.writeDecision({ unit: u, state: st, nowMs: t0 + 1 });
+  assert.strictEqual(next.write, true);
+  assert.strictEqual(next.kind, 'refresh');
+});
+
+// DEFECT 2 (live 10:51): the Datamanager accepted the write and the register
+// read 10000 for 105 s straight. No retry existed - the whole test ran into
+// the void.
+test('a SWALLOWED command is re-written immediately, bounded, then NAMED and cooled down', () => {
+  const u = unitWithWrites();
+  let now = 1000000;
+  let st = C.noteWrite({}, C.writeDecision({ unit: u, state: {}, nowMs: now }), now);
+  st = C.noteVerdict(st, { held: false }, now); // the register did not take it
+
+  const seen = [];
+  for (let i = 0; i < 6; i++) {
+    now += 1000;
+    const d = C.writeDecision({ unit: u, state: st, nowMs: now });
+    seen.push(d.kind);
+    if (!d.write) break;
+    st = C.noteWrite(st, d, now);
+    st = C.noteVerdict(st, { held: false }, now);
+  }
+  // Bounded: at most REWRITE_MAX_ATTEMPTS writes of the SAME command, then
+  // the executor STOPS and the cooldown holds it there.
+  const retries = seen.filter((k) => k === 'retry').length;
+  assert.strictEqual(retries, C.REWRITE_MAX_ATTEMPTS - 1,
+    'the first write plus the retries stay within the ladder: ' + JSON.stringify(seen));
+  assert.strictEqual(st.attempts, C.REWRITE_MAX_ATTEMPTS);
+  assert.strictEqual(seen[seen.length - 1], 'cooldown');
+
+  // The CAUSE is named, and the executor stops writing - never a hot loop.
+  const cooling = C.writeDecision({ unit: u, state: st, nowMs: now + 5000 });
+  assert.strictEqual(cooling.write, false);
+  assert.strictEqual(cooling.kind, 'cooldown');
+  assert.strictEqual(cooling.reason, C.REJECTED_REASON);
+  assert.ok(cooling.reason.includes('EVU-Editor'), 'the honest cause names the likely culprit + the lever');
+  assert.ok(cooling.reason.includes('NIEDRIGSTE'), 'and why Modbus loses: ' + cooling.reason);
+
+  // ... and after it, the whole bounded ladder starts over (never give up).
+  const again = C.writeDecision({ unit: u, state: st, nowMs: now + C.REWRITE_COOLDOWN_MS + 1 });
+  assert.strictEqual(again.write, true);
+  assert.strictEqual(again.kind, 'changed');
+});
+
+// A readback that never ANSWERS must not re-open the ladder: without a
+// verdict noteVerdict never runs, so the guard has to bound it on its own.
+test('a lost readback cannot re-enter the re-write ladder for ever', () => {
+  const u = unitWithWrites();
+  let now = 1000000;
+  let st = C.noteWrite({}, C.writeDecision({ unit: u, state: {}, nowMs: now }), now);
+  st = C.noteVerdict(st, { held: false }, now);
+  for (let i = 0; i < C.REWRITE_MAX_ATTEMPTS; i++) {
+    now += 1000;
+    const d = C.writeDecision({ unit: u, state: st, nowMs: now });
+    if (!d.write) {
+      assert.strictEqual(d.kind, 'exhausted');
+      assert.strictEqual(d.reason, C.REJECTED_REASON);
+      return;
+    }
+    st = C.noteWrite(st, d, now); // the readback vanished: no verdict follows
+  }
+  assert.fail('the ladder must run out even without a readback verdict');
+});
+
+test('a HELD readback clears the attempt ladder, so a later blip starts fresh', () => {
+  const u = unitWithWrites();
+  let now = 1000000;
+  let st = C.noteWrite({}, C.writeDecision({ unit: u, state: {}, nowMs: now }), now);
+  st = C.noteVerdict(st, { held: false }, now);
+  st = C.noteWrite(st, C.writeDecision({ unit: u, state: st, nowMs: now + 100 }), now + 100);
+  assert.strictEqual(st.attempts, 2);
+  st = C.noteVerdict(st, { held: true }, now + 200);
+  assert.strictEqual(st.attempts, 0);
+  assert.strictEqual(st.deviating, false);
+  assert.strictEqual(st.blockedSince, 0);
+});
+
+test('nothing to command -> no decision at all (an uncertified/gated unit never writes)', () => {
+  const d = C.writeDecision({ unit: { mode: 'apply', plan: { ok: true, writes: [] }, planned: [{ role: 'x', value: 1 }] }, state: {}, nowMs: 1 });
+  assert.strictEqual(d.write, false);
+  assert.strictEqual(d.kind, 'none');
+});
+
+// --- readback SEMANTICS: the Ena firmware quirk ------------------------------
+
+const REGS = (over) => Object.assign({
+  pct: { role: 'pv_limit_pct', commanded_raw: 3273, actual_raw: 3273, match: true },
+  rvrt: { role: 'pv_limit_revert_tms', commanded_raw: 60, actual_raw: 60, match: true },
+  ena: { role: 'pv_limit_enable', commanded_raw: 0, actual_raw: 0, match: true },
+}, over || {});
+const asList = (r) => [r.pct, r.rvrt, r.ena];
+
+test('DEFECT 4: a commanded Ena=0 answered with 1 is a QUIRK, not a mismatch - the pct value binds', () => {
+  const r = REGS({ ena: { role: 'pv_limit_enable', commanded_raw: 0, actual_raw: 1, match: false } });
+  const v = C.evaluateReadback({}, asList(r));
+  assert.strictEqual(v.held, true, 'the release counts as held - WMaxLimPct=100 % throttles nothing');
+  assert.deepStrictEqual(v.mismatchRoles, []);
+  assert.deepStrictEqual(v.quirkRoles, ['pv_limit_enable']);
+  assert.ok(v.quirkNote.includes('WMaxLimPct'), 'the note names the binding register');
+});
+
+test('the Ena tolerance is ONE-SIDED: a commanded 1 answered with 0 stays a real mismatch', () => {
+  const r = REGS({ ena: { role: 'pv_limit_enable', commanded_raw: 1, actual_raw: 0, match: false } });
+  const v = C.evaluateReadback({}, asList(r));
+  assert.strictEqual(v.held, false, 'we asked for the cap to be ENFORCED and the device says off');
+  assert.deepStrictEqual(v.mismatchRoles, ['pv_limit_enable']);
+  assert.deepStrictEqual(v.quirkRoles, []);
+});
+
+test('the BINDING register never gets a pass, and an unread register confirms nothing', () => {
+  const bad = REGS({ pct: { role: 'pv_limit_pct', commanded_raw: 2593, actual_raw: 10000, match: false } });
+  const v = C.evaluateReadback({}, asList(bad));
+  assert.strictEqual(v.held, false);
+  assert.deepStrictEqual(v.mismatchRoles, ['pv_limit_pct']);
+
+  const unread = REGS({ pct: { role: 'pv_limit_pct', commanded_raw: 2593, actual_raw: null, match: false } });
+  const v2 = C.evaluateReadback({}, asList(unread));
+  assert.strictEqual(v2.held, false, 'no answer is not a confirmation');
+  assert.deepStrictEqual(v2.unreadRoles, ['pv_limit_pct']);
+  assert.deepStrictEqual(v2.mismatchRoles, [], 'and it is not a mismatch either');
+
+  // An EMPTY readback set proves nothing at all.
+  assert.strictEqual(C.evaluateReadback({}, []).held, false);
+});
+
+test('a fully matching readback holds and reports no quirk', () => {
+  const v = C.evaluateReadback({}, asList(REGS()));
+  assert.strictEqual(v.held, true);
+  assert.strictEqual(v.allMatch, true);
+  assert.strictEqual(v.quirkNote, '');
+});
