@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, type SiteTopology, type SiteUsageProfile } from './api';
 import { hasTopology } from './adaptiveLive';
+import { useFreshnessPoll } from './useFreshnessPoll';
 
 /**
  * Fetches the AE1 topology read-model + the AE7 usage profile of a site for the
@@ -50,15 +51,15 @@ export function useAdaptiveLive(siteId: string): AdaptiveLive {
 
   // Silent live poll of the topology values (keeps the last good values on a
   // failure); the profile changes rarely, so it is not re-polled.
-  useEffect(() => {
-    const timer = setInterval(() => {
-      api.topology(idRef.current).then(
-        (t) => setTopology((prev) => (t && t.entities.length ? t : prev)),
-        () => {},
-      );
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, []);
+  // `useFreshnessPoll` statt eines nackten Intervalls: ein verdeckter Tab wird
+  // gedrosselt/eingefroren, der zurückkehrende Kunde sähe sonst erst den
+  // Stand von vorhin und den echten 30 s später.
+  useFreshnessPoll(() => {
+    api.topology(idRef.current).then(
+      (t) => setTopology((prev) => (t && t.entities.length ? t : prev)),
+      () => {},
+    );
+  }, POLL_MS);
 
   return { topology, profile, adaptive: !loading && hasTopology(topology), loading };
 }

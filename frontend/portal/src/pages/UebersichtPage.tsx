@@ -23,6 +23,7 @@ import { AddDeviceDrawer } from '../components/DeviceDrawers';
 import { ErrorState, Skeleton } from '../components/States';
 import { EarningsHero, FleetSiteCard, FleetStatusCard } from '../components/FleetOverview';
 import { AnlageSeite } from './AnlagenPage';
+import { useFreshnessPoll } from '../useFreshnessPoll';
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
 const POLL_MS = 30_000;
@@ -190,23 +191,26 @@ function FleetUebersicht({
 
   // Freshness tick (5 s) + silent background poll (30 s) - the page keeps its
   // last good data on a poll failure, exactly like the single-site widgets.
+  // Der DATEN-Takt läuft über `useFreshnessPoll`, damit die Rückkehr in einen
+  // verdeckten Tab (dort drosselt/friert der Browser die Takte ein) SOFORT
+  // nachholt statt erst 30 s später - sonst begrüßt die Seite den
+  // zurückkehrenden Kunden mit dem Stand von vorhin. Die Uhr tickt daneben
+  // weiter (nur Anzeige) und wird beim Nachholen mitgesetzt.
   const rangeRef = useRef(range);
   rangeRef.current = range;
+  useFreshnessPoll(() => {
+    setNow(new Date());
+    api.overview().then(
+      (o) => setOverview(o),
+      () => {},
+    );
+    api.earnings(rangeRef.current).then(
+      (e) => setEarnings(e),
+      () => {},
+    );
+  }, POLL_MS);
   useEffect(() => {
-    let ticks = 0;
-    const timer = setInterval(() => {
-      setNow(new Date());
-      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) {
-        api.overview().then(
-          (o) => setOverview(o),
-          () => {},
-        );
-        api.earnings(rangeRef.current).then(
-          (e) => setEarnings(e),
-          () => {},
-        );
-      }
-    }, TICK_MS);
+    const timer = setInterval(() => setNow(new Date()), TICK_MS);
     return () => clearInterval(timer);
   }, []);
 

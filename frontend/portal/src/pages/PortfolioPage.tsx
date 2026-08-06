@@ -23,6 +23,7 @@ import { eurAmount, fmtNum } from '../format';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
+import { useFreshnessPoll } from '../useFreshnessPoll';
 
 /** Background refresh cadence (30 s poll pattern, like the fleet Übersicht). */
 const POLL_MS = 30_000;
@@ -81,15 +82,15 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
 
   // Freshness tick (5 s) + silent background poll (30 s): the page keeps its
   // last good data on a poll failure, exactly like the fleet Übersicht.
+  // Daten-Takt über `useFreshnessPoll` (holt beim Zurückkommen SOFORT nach -
+  // ein verdeckter Tab wird gedrosselt/eingefroren); die Uhr tickt daneben.
+  useFreshnessPoll(() => {
+    setNow(new Date());
+    api.overview().then((o) => setOverview(o), () => {});
+    api.earnings('month').then((e) => setEarnings(e), () => {});
+  }, POLL_MS);
   useEffect(() => {
-    let ticks = 0;
-    const timer = setInterval(() => {
-      setNow(new Date());
-      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) {
-        api.overview().then((o) => setOverview(o), () => {});
-        api.earnings('month').then((e) => setEarnings(e), () => {});
-      }
-    }, TICK_MS);
+    const timer = setInterval(() => setNow(new Date()), TICK_MS);
     return () => clearInterval(timer);
   }, []);
 

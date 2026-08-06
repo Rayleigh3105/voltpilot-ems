@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import {
   DEPLOY_CHECK_MIN_INTERVAL_MS,
+  INPUT_GRACE_MS,
+  RESUME_CHECK_AFTER_MS,
   entryBundleFrom,
   fetchNewBundle,
+  hasUnsavedInput,
+  noteUserInput,
+  resetUserInput,
   runningEntryBundle,
   useDeployWatch,
 } from './deployWatch';
@@ -31,9 +36,18 @@ function setVisibility(state: 'visible' | 'hidden') {
   document.dispatchEvent(new Event('visibilitychange'));
 }
 
+/** Die bfcache-Rückkehr: `pageshow` mit `persisted`. */
+function firePageShow(persisted: boolean) {
+  const e = new Event('pageshow');
+  Object.defineProperty(e, 'persisted', { get: () => persisted });
+  window.dispatchEvent(e);
+}
+
 afterEach(() => {
   document.head.querySelectorAll('script').forEach((s) => s.remove());
+  document.body.innerHTML = '';
   sessionStorage.clear();
+  resetUserInput();
 });
 
 describe('entryBundleFrom', () => {
@@ -70,10 +84,13 @@ describe('fetchNewBundle', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('gleicher Stand -> null', async () => {
+  it('gleicher Stand -> null, und gefragt wird am Browser-Cache VORBEI', async () => {
     mountEntryScript('/assets/index-Cs5wLOiD.js');
     const fetchImpl = vi.fn(async () => new Response(BUILT_HTML, { status: 200 }));
     expect(await fetchNewBundle(fetchImpl as unknown as typeof fetch)).toBeNull();
+    // `no-store` ist tragend: die Frage lautet „was liefert der Server JETZT".
+    // Ein Client mit heuristisch gecachter index.html bemerkt seinen Rückstand
+    // ausschliesslich dadurch.
     expect(fetchImpl).toHaveBeenCalledWith('/', { cache: 'no-store' });
   });
 
@@ -98,6 +115,38 @@ describe('fetchNewBundle', () => {
   });
 });
 
+describe('hasUnsavedInput', () => {
+  it('eine offene Aufgabenfläche (Drawer/Dialog) blockiert den stillen Reload', () => {
+    document.body.innerHTML = '<aside class="vp-drawer" role="dialog" aria-modal="true"></aside>';
+    expect(hasUnsavedInput()).toBe(true);
+  });
+
+  it('eine reine ERKLÄRfläche blockiert NICHT (role=dialog ohne aria-modal)', () => {
+    // Das Mehr-Blatt, das Hilfe-Panel und die Fahrplan-Erklärung tragen
+    // `role="dialog"` - dort geht nichts verloren.
+    document.body.innerHTML = '<div class="vp-fw-panel" role="dialog"></div>';
+    expect(hasUnsavedInput()).toBe(false);
+  });
+
+  it('der Fokus in einem Eingabefeld blockiert', () => {
+    document.body.innerHTML = '<input id="f" />';
+    (document.getElementById('f') as HTMLInputElement).focus();
+    expect(hasUnsavedInput()).toBe(true);
+  });
+
+  it('eine frische Eingabe blockiert, eine alte nicht mehr', () => {
+    const t0 = 1_000_000;
+    noteUserInput(t0);
+    expect(hasUnsavedInput(document, t0 + INPUT_GRACE_MS - 1)).toBe(true);
+    expect(hasUnsavedInput(document, t0 + INPUT_GRACE_MS + 1)).toBe(false);
+  });
+
+  it('eine ruhige Seite blockiert nicht', () => {
+    document.body.innerHTML = '<main><p>Nur Anzeige</p></main>';
+    expect(hasUnsavedInput()).toBe(false);
+  });
+});
+
 describe('useDeployWatch', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -114,25 +163,41 @@ describe('useDeployWatch', () => {
     });
   };
 
-  it('prüft frühestens nach der Mindestfrist - der Boot zählt als Prüfung', async () => {
+  it('der BOOT prüft sofort - er zählt NICHT als Prüfung', async () => {
+    // Das war das zweite Loch: ein Dokument aus einer alten Schicht
+    // (heuristischer Cache, Zwischenschicht, wiederhergestellter Tab) galt eine
+    // halbe Stunde lang als geprüft, und eine Portal-Sitzung ist kürzer.
     const check = vi.fn(async () => null);
-    renderHook(() => useDeployWatch({ check, minIntervalMs: 1_000, pollMs: 200 }));
-    await tick(800);
-    expect(check).not.toHaveBeenCalled();
-    await tick(400);
+    renderHook(() => useDeployWatch({ check, minIntervalMs: 30 * 60_000, pollMs: 10 * 60_000 }));
+    await tick(0);
     expect(check).toHaveBeenCalledTimes(1);
   });
 
-  it('sichtbarer Tab: meldet die neue Version, statt unter dem Kunden neu zu laden', async () => {
+  it('ein Dokument aus einer alten Schicht lädt beim Boot AUTOMATISCH neu', async () => {
     const check = vi.fn(async () => '/assets/index-NeuNeu01.js');
     const reload = vi.fn();
     const { result } = renderHook(() =>
-      useDeployWatch({ check, reload, minIntervalMs: 1_000, pollMs: 200 }),
+      useDeployWatch({ check, reload, minIntervalMs: 30 * 60_000, pollMs: 10 * 60_000 }),
     );
+    await tick(0);
+    expect(reload).toHaveBeenCalledTimes(1);
+    // Kein Hinweis nötig - der Tab holt sich den richtigen Stand selbst.
     expect(result.current).toBe(false);
-    await tick(1_200);
-    expect(result.current).toBe(true);
+  });
+
+  it('SICHTBARER Tab im laufenden Takt: Hinweis statt Reload unter dem Kunden', async () => {
+    const check = vi.fn(async () => '/assets/index-NeuNeu01.js');
+    const reload = vi.fn();
+    const { result } = renderHook(() =>
+      useDeployWatch({ check, reload, minIntervalMs: 1_000, pollMs: 200, busy: () => false }),
+    );
+    await tick(0);
+    // Der Boot-Reload ist der einzige automatische; danach ist der Kunde da.
+    expect(reload).toHaveBeenCalledTimes(1);
+    reload.mockClear();
+    await tick(2_000);
     expect(reload).not.toHaveBeenCalled();
+    expect(result.current).toBe(true);
   });
 
   it('unveränderter Stand bleibt still', async () => {
@@ -151,9 +216,9 @@ describe('useDeployWatch', () => {
     const { result } = renderHook(() =>
       useDeployWatch({ check, reload, minIntervalMs: 1_000, pollMs: 200 }),
     );
-    setVisibility('hidden');
-    await tick(1_200);
+    await tick(0);
     expect(reload).toHaveBeenCalledTimes(1);
+    setVisibility('hidden');
     // Der Reload hat (z. B. wegen einer kaputten Zwischenschicht) nichts
     // geändert: derselbe Befund erneut -> KEIN zweiter stiller Reload, der
     // sichtbare Hinweis übernimmt.
@@ -162,18 +227,113 @@ describe('useDeployWatch', () => {
     expect(result.current).toBe(true);
   });
 
-  it('Rückkehr in den Tab prüft sofort, wenn die Frist abgelaufen ist', async () => {
-    const check = vi.fn(async () => null);
-    // pollMs riesig: nur der visibilitychange-Auslöser kann feuern.
-    renderHook(() => useDeployWatch({ check, minIntervalMs: 1_000, pollMs: 10 * 60_000 }));
+  it('AUFWACHEN nach echter Abwesenheit: prüfen UND automatisch übernehmen', async () => {
+    // Das erste Loch: der stille Reload hing an `visibilityState === hidden`,
+    // beim Zurückkommen ist er per Definition `visible` - der Zweig war vom
+    // Rückkehr-Auslöser aus unerreichbar, es blieb bei der alten Ansicht.
+    // Der Boot findet nichts Neues; der Deploy passiert, WÄHREND der Kunde weg
+    // ist - genau die gemeldete Reihenfolge.
+    let served: string | null = null;
+    const check = vi.fn(async () => served);
+    const reload = vi.fn();
+    renderHook(() =>
+      useDeployWatch({
+        check,
+        reload,
+        // Mindestfrist RIESIG: nur die Aufwach-Regel kann hier feuern.
+        minIntervalMs: 60 * 60_000,
+        pollMs: 60 * 60_000,
+        resumeAfterMs: 1_000,
+        busy: () => false,
+      }),
+    );
+    await tick(0);
+    expect(reload).not.toHaveBeenCalled();
+    check.mockClear();
+    served = '/assets/index-NeuNeu01.js';
     setVisibility('hidden');
-    await tick(2_000);
+    await tick(5_000);
     expect(check).not.toHaveBeenCalled();
     await act(async () => {
       setVisibility('visible');
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(check).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('ein KURZER Blick woandershin löst weder Prüfung noch Reload aus', async () => {
+    const check = vi.fn(async () => '/assets/index-NeuNeu01.js');
+    const reload = vi.fn();
+    renderHook(() =>
+      useDeployWatch({
+        check,
+        reload,
+        minIntervalMs: 60 * 60_000,
+        pollMs: 60 * 60_000,
+        resumeAfterMs: 60_000,
+        busy: () => false,
+      }),
+    );
+    await tick(0);
+    check.mockClear();
+    reload.mockClear();
+    setVisibility('hidden');
+    await tick(2_000);
+    await act(async () => {
+      setVisibility('visible');
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(check).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('bfcache-Rückkehr (pageshow persisted) prüft sofort und übernimmt', async () => {
+    let served: string | null = null;
+    const check = vi.fn(async () => served);
+    const reload = vi.fn();
+    renderHook(() =>
+      useDeployWatch({
+        check,
+        reload,
+        minIntervalMs: 60 * 60_000,
+        pollMs: 60 * 60_000,
+        busy: () => false,
+      }),
+    );
+    await tick(0);
+    check.mockClear();
+    expect(reload).not.toHaveBeenCalled();
+    served = '/assets/index-NeuNeu01.js';
+    await act(async () => {
+      firePageShow(false); // ein normaler Boot löst hier nichts aus
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(check).not.toHaveBeenCalled();
+    await act(async () => {
+      firePageShow(true);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('über ungesicherter Eingabe wird NIE automatisch neu geladen', async () => {
+    const check = vi.fn(async () => '/assets/index-NeuNeu01.js');
+    const reload = vi.fn();
+    const { result } = renderHook(() =>
+      useDeployWatch({
+        check,
+        reload,
+        minIntervalMs: 60 * 60_000,
+        pollMs: 60 * 60_000,
+        busy: () => true,
+      }),
+    );
+    await tick(0);
+    expect(reload).not.toHaveBeenCalled();
+    // Der sichtbare Hinweis ist der Weg - der Kunde entscheidet, wann.
+    expect(result.current).toBe(true);
   });
 
   it('räumt Takt und Listener beim Abbau ab', async () => {
@@ -181,13 +341,19 @@ describe('useDeployWatch', () => {
     const { unmount } = renderHook(() =>
       useDeployWatch({ check, minIntervalMs: 1_000, pollMs: 200 }),
     );
+    await tick(0);
+    const afterBoot = check.mock.calls.length;
     unmount();
     await tick(5_000);
     setVisibility('visible');
-    expect(check).not.toHaveBeenCalled();
+    firePageShow(true);
+    await tick(0);
+    expect(check).toHaveBeenCalledTimes(afterBoot);
   });
 
-  it('die Standard-Mindestfrist ist eine halbe Stunde', () => {
+  it('die Konstanten: halbe Stunde Frist, eine Minute Abwesenheit, fünf Minuten Eingabe-Schonfrist', () => {
     expect(DEPLOY_CHECK_MIN_INTERVAL_MS).toBe(30 * 60 * 1000);
+    expect(RESUME_CHECK_AFTER_MS).toBe(60 * 1000);
+    expect(INPUT_GRACE_MS).toBe(5 * 60 * 1000);
   });
 });
