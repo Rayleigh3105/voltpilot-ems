@@ -14,6 +14,13 @@ import { anlageSurface, type AnlageSurface, type SurfaceFlow } from './surface';
  * `.catch(() => …)`-ed, so an older backend or a transient blip simply yields
  * a surface with no modes — the trio still renders, Steuerung just carries no
  * badge and the mode-scoped nav group stays hidden. It never blocks the shell.
+ *
+ * `failed` is the ONE extra signal a caller needs to tell "successfully loaded,
+ * genuinely no entities" apart from "the decision-critical `/entities` call
+ * itself broke" — true only for the latter. The Anlagen-Seite's
+ * `anlageDecision` gate consumes it to show an honest error state instead of
+ * silently guessing a layout while the backend is unreachable (Captain-Nachtrag
+ * 06.08.2026).
  */
 export interface AnlageSurfaceState {
   surface: AnlageSurface | null;
@@ -26,13 +33,24 @@ export interface AnlageSurfaceState {
    */
   entities: SiteEntity[] | null;
   loading: boolean;
+  /** true = the decision-critical `/entities` fetch failed. */
+  failed: boolean;
 }
 
-export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
+/**
+ * `retryKey` (default 0): bump it (e.g. on an "Erneut versuchen" click) to
+ * force a fresh fetch of the SAME site without an identity change - included
+ * in the effect's dependencies exactly like `siteId`.
+ */
+export function useAnlageSurface(
+  site: Site | null,
+  retryKey: number | string = 0,
+): AnlageSurfaceState {
   const [surface, setSurface] = useState<AnlageSurface | null>(null);
   const [profiles, setProfiles] = useState<SiteProfiles | null>(null);
   const [entityList, setEntityList] = useState<SiteEntity[] | null>(null);
   const [loading, setLoading] = useState(site != null);
+  const [failed, setFailed] = useState(false);
 
   const siteId = site?.id ?? null;
   // The money/contract master data comes from the SiteDto we already hold, so
@@ -48,13 +66,21 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
       setProfiles(null);
       setEntityList(null);
       setLoading(false);
+      setFailed(false);
       return undefined;
     }
     let active = true;
     setLoading(true);
+    setFailed(false);
+    // Only `/entities` is decision-critical (it is what `hasEntities` reads);
+    // profile/flows/profileStates stay best-effort as before.
+    let entitiesFailed = false;
     Promise.all([
       api.usageProfile(siteId).catch(() => null),
-      api.siteEntities(siteId).catch(() => null),
+      api.siteEntities(siteId).catch(() => {
+        entitiesFailed = true;
+        return null;
+      }),
       customerFlowApi(siteId)
         .list()
         .catch(() => null),
@@ -81,12 +107,13 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
           profileStates: profileStatesFrom(shelf),
         }),
       );
+      setFailed(entitiesFailed);
       setLoading(false);
     });
     return () => {
       active = false;
     };
-  }, [siteId, plantKind, tarifArt, netzladen, leistungspreis]);
+  }, [siteId, plantKind, tarifArt, netzladen, leistungspreis, retryKey]);
 
-  return { surface, profiles, entities: entityList, loading };
+  return { surface, profiles, entities: entityList, loading, failed };
 }

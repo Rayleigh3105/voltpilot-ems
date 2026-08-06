@@ -324,69 +324,6 @@ a:focus-visible,
   transition: opacity 0.3s ease;
 }
 
-/* ---------------------------------------------------------------------------
-   Simplified single-site Übersicht: the status card (one sentence + the
-   energy-flow centerpiece) beside the money hero, and the detail link cards
-   (Fahrplan/Historie/Marktpreise/Wetter) that say where the depth lives.
-   --------------------------------------------------------------------------- */
-.vp-site-status {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-4);
-}
-.vp-site-status .vp-flow-wrap {
-  margin-top: auto;
-}
-.vp-site-status-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--vp-space-3);
-  margin-top: auto;
-}
-.vp-site-status-foot a {
-  font-weight: 600;
-  font-size: 0.9rem;
-  white-space: nowrap;
-}
-.vp-site-status-foot .vp-note {
-  white-space: nowrap;
-}
-
-/* Detail links: 2x2 on phones/tablet portrait, one calm row of four from 900px. */
-.vp-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--vp-gap);
-}
-@media (min-width: 900px) {
-  .vp-detail-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-.vp-detail-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2);
-  min-width: 0;
-}
-.vp-detail-card-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--vp-space-2);
-  margin-bottom: var(--vp-space-1);
-}
-.vp-detail-card-title {
-  font-weight: 700;
-  font-size: 1rem;
-  color: var(--vp-text-dark);
-}
-.vp-detail-card-line {
-  color: var(--vp-text-muted);
-  font-size: 0.85rem;
-  line-height: 1.45;
-}
 
 /* ---------------------------------------------------------------------------
    Live-Daten status hero (report direction B): a status-first layer that
@@ -2531,6 +2468,25 @@ button.vp-cl-item.is-off .vp-cl-label {
   align-items: center;
 }
 
+/* Der DREIWERTIGE Render-Entscheid (Captain-Nachtrag 06.08.2026, `cockpit.ts`
+   `anlageDecision`): der ruhige Zwischenzustand, solange die Entscheidungs-
+   Eingaben laufen (layout-stabil - fixe Höhen, kein Sprung beim Umbau auf das
+   Endlayout), und der ehrliche "nicht zugeordnet"-Endzustand (Anlage MIT
+   Daten, ohne v2-Komponenten - der frühere v1-Rückfall ist entfallen). */
+.vp-anlage-pending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4);
+}
+.vp-anlage-pending-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--vp-gap-lg);
+}
+.vp-anlage-unassigned {
+  align-items: center;
+}
+
 /* Tiny uppercase card label ("Jetzt gerade", "Fahrplan · heute"). */
 .vp-card-label {
   display: block;
@@ -2581,21 +2537,6 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-plan-mini-text b {
   color: #2e7d32;
   font-weight: 700;
-}
-
-/* The Anlagen-Seite's "Mehr" row has exactly two link cards - let them share
-   the row instead of huddling in the 4-up grid's left half. */
-.vp-detail-grid.two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-/* ...three cards (Fahrplan/Historie/Wetter) stack on phones, 3-up from tablet. */
-.vp-detail-grid.three {
-  grid-template-columns: 1fr;
-}
-@media (min-width: 720px) {
-  .vp-detail-grid.three {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 /* ============================================================================
@@ -2681,127 +2622,6 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-mstrip-m:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
   outline-offset: 1px;
-}
-
-/* Gesamtertrag hero (reuses .vp-fleet-hero) + its four money tiles. */
-.vp-money-hero {
-  margin-bottom: var(--vp-gap);
-}
-.vp-money-tiles {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: var(--vp-space-4);
-}
-.vp-money-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.14);
-}
-.vp-money-tile .t {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.82);
-}
-.vp-money-tile .v {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-}
-.vp-money-note {
-  margin: var(--vp-space-3) 0 0;
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.78);
-}
-/* Forward "erwarteter Marktwert Solar" - one calm line under the tiles. */
-.vp-money-forward {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-  margin: var(--vp-space-3) 0 0;
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.82);
-}
-.vp-money-forward .v {
-  font-weight: 700;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Energie-Kennzahlen row: eingespeist / selbst verbraucht / Batterie bewegt. */
-.vp-estats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: var(--vp-space-2);
-}
-.vp-estat {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  align-items: center;
-  text-align: center;
-  min-width: 0;
-  padding: 10px 8px;
-  border-radius: 12px;
-  background: var(--vp-bg-light, #f8f9fa);
-}
-.vp-estat .t {
-  font-size: 0.66rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--vp-text-gray, #6c757d);
-}
-.vp-estat .v {
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--vp-text-dark, #1a1a1a);
-  font-variant-numeric: tabular-nums;
-}
-/* One-line everyday-language explanation under each energy tile (decision 4). */
-.vp-estat .e {
-  font-size: 0.64rem;
-  color: var(--vp-text-gray, #6c757d);
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-/* Provenance "i" tips on the dark money hero: inline with the label + legible
-   on the gradient (decision 3). */
-.vp-money-tile .t {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.vp-money-hero .vp-fleet-hero-label,
-.vp-money-hero .vp-fleet-hero-sub {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-.vp-money-hero .vp-infotip-btn {
-  color: rgba(255, 255, 255, 0.85);
-  cursor: pointer;
-}
-.vp-money-hero .vp-infotip-btn:hover,
-.vp-money-hero .vp-infotip-btn[aria-expanded='true'] {
-  color: #fff;
-}
-
-/* "Bester Tag: 7. Juli · +48,20 €" under the Ertrag chart. */
-.vp-anlage-best {
-  margin: var(--vp-space-3) 0 0;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--vp-text-gray, #6c757d);
 }
 
 /* The gear button in the Anlagen-Seite header (Technik hinterm Zahnrad). */
@@ -3384,316 +3204,11 @@ button.vp-tech-card-h.toggle {
   overflow-wrap: anywhere;
 }
 
-/* ============================================================================
-   "Meine Anlage" v4 - the 3-zone desktop dashboard + phone money-first reflow
-   (captain 2026-07-08). Above the fold on desktop: Geld | Live | Rail; below a
-   full-width Fahrplan band, then the deep-view cards. On phone/tablet the zones
-   dissolve (display:contents) and the blocks reorder money-first via `order`.
-   ========================================================================== */
-
-.vp-anlage-dash {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--vp-gap);
-  align-items: start;
-  min-width: 0;
-}
-/* Grid/flex items must shrink below their content's min-content, else a single
-   wide child (a chart, a long number) blows out the 1fr track and the column
-   overflows the viewport. */
-.vp-dash-hero,
-.vp-dash-ertrag,
-.vp-dash-energy,
-.vp-dash-live,
-.vp-dash-control,
-.vp-dash-plantraf,
-.vp-dash-rail,
-.vp-dash-health,
-.vp-dash-fahrplan,
-.vp-dash-komponenten,
-.vp-dash-deep {
-  min-width: 0;
-}
-/* Section margins are handled by the grid gap inside the dashboard. */
-.vp-anlage-dash .vp-section {
-  margin-top: 0;
-}
-.vp-anlage-dash .vp-money-hero {
-  margin-bottom: 0;
-}
-
-/* Phone + tablet: zones dissolve, blocks reflow into the money-first order. */
-@media (max-width: 1159px) {
-  .vp-zone {
-    display: contents;
-  }
-  .vp-dash-hero { order: 1; }
-  .vp-dash-plantraf { order: 2; }
-  .vp-dash-live { order: 3; }
-  .vp-dash-fahrplan { order: 4; }
-  .vp-dash-control { order: 5; }
-  .vp-dash-ertrag { order: 6; }
-  .vp-dash-energy { order: 7; }
-  /* Merge Option A: the component depth follows the money story, before the
-     deep-link cards — scroll IS the progressive disclosure. */
-  .vp-dash-komponenten { order: 8; }
-  .vp-dash-deep { order: 9; }
-  /* The vertical rail + standalone health list are a desktop affordance; on
-     phone the horizontal month strip navigates and the header sentence +
-     warnings carry the health story. */
-  .vp-dash-rail,
-  .vp-dash-health {
-    display: none;
-  }
-  /* AE4 peak/Nachweis: live + Fahrplan lead, the money hero drops below them. */
-  .vp-money-nachweis .vp-dash-live { order: 1; }
-  .vp-money-nachweis .vp-dash-plantraf { order: 2; }
-  .vp-money-nachweis .vp-dash-fahrplan { order: 3; }
-  .vp-money-nachweis .vp-dash-control { order: 4; }
-  .vp-money-nachweis .vp-dash-hero { order: 5; }
-  .vp-money-nachweis .vp-dash-ertrag { order: 6; }
-  .vp-money-nachweis .vp-dash-energy { order: 7; }
-}
-
-/* Desktop: the real 3-zone dashboard. */
-@media (min-width: 1160px) {
-  .vp-anlage-dash {
-    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) minmax(0, 3fr);
-  }
-  .vp-zone {
-    display: flex;
-    flex-direction: column;
-    gap: var(--vp-gap);
-    min-width: 0;
-  }
-  .vp-dash-fahrplan,
-  .vp-dash-komponenten,
-  .vp-dash-deep {
-    grid-column: 1 / -1;
-  }
-  /* The horizontal month strip is replaced by the vertical rail in Zone C. */
-  .vp-mstrip-mobile {
-    display: none;
-  }
-}
-
-/* --- AE4: profile-conditional money view ----------------------------------
-   The money view is a lens, not a rebuild: `prominent` (arbitrage/fallback) is
-   the untouched hero; `nachweis` (peak) mutes the hero + frames it as evidence;
-   `min` (private) swaps the hero for a quiet glance card (money reachable via
-   detail). Only the presentation changes - the components are reused. */
-
-/* Nachweis: the "Nachweis · Zeitraum" tag above the muted hero. */
-.vp-money-nachweis-tag {
-  display: inline-block;
-  margin-bottom: var(--vp-space-2);
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--vp-surface-2, #eef2f8);
-  color: var(--vp-muted, #64748b);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-/* Nachweis: de-emphasise the money hero (calmer, smaller headline number). */
-.vp-money-nachweis .vp-dash-hero .vp-money-hero {
-  box-shadow: 0 4px 12px rgba(90, 141, 232, 0.22);
-  opacity: 0.92;
-}
-.vp-money-nachweis .vp-dash-hero .vp-fleet-hero-value {
-  font-size: clamp(1.7rem, 4.4vw, 2.1rem);
-}
-
-/* Private/minimal: the quiet money glance card in the hero slot. */
-.vp-money-glance {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-3);
-  width: 100%;
-  text-align: left;
-  padding: 15px 17px;
-  border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-lg, 20px);
-  background: var(--vp-surface, #fff);
-  cursor: pointer;
-  color: inherit;
-  transition: border-color 0.12s, box-shadow 0.12s;
-}
-.vp-money-glance:hover {
-  border-color: var(--vp-primary, #95b9ff);
-  box-shadow: 0 2px 10px rgba(90, 141, 232, 0.12);
-}
-.vp-money-glance:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
-  outline-offset: 1px;
-}
-.vp-money-glance-ico {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: var(--vp-surface-2, #eef2f8);
-  color: var(--vp-action, #2c5282);
-}
-.vp-money-glance-text {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.vp-money-glance-text b {
-  font-weight: 700;
-  color: var(--vp-ink, #1e293b);
-}
-.vp-money-glance-text span {
-  font-size: 0.85rem;
-  color: var(--vp-muted, #64748b);
-}
-.vp-money-glance-chev {
-  flex: 0 0 auto;
-  font-size: 1.3rem;
-  color: var(--vp-muted, #94a3b8);
-}
-
-/* --- Live zone: the weather "why" one-liner under the energy flow ---------- */
-.vp-live-why {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: var(--vp-space-3) 0 0;
-  font-size: 0.85rem;
-  color: var(--vp-navy-2, #2c5282);
-}
-.vp-live-why svg {
-  flex: 0 0 auto;
-  color: var(--vp-flow-pv, #f59e0b);
-}
-
-/* --- Plan-traf-zu one-liner (the optimizer's trust number) ----------------- */
-.vp-plantraf {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-3);
-  width: 100%;
-  text-align: left;
-  padding: 13px 15px;
-  border: 1px solid #fde68a;
-  border-radius: var(--vp-radius-md, 16px);
-  background: #fffbeb;
-  color: #92400e;
-  cursor: pointer;
-  font-size: 0.88rem;
-  line-height: 1.4;
-  transition: border-color 0.12s, box-shadow 0.12s;
-}
-.vp-plantraf:hover {
-  border-color: #fbbf24;
-  box-shadow: 0 2px 10px rgba(180, 130, 20, 0.12);
-}
-.vp-plantraf:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
-  outline-offset: 1px;
-}
-.vp-plantraf-ico {
-  flex: 0 0 auto;
-  display: inline-flex;
-  color: #b45309;
-}
-.vp-plantraf-text {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.vp-plantraf-text b {
-  font-weight: 700;
-  color: #78350f;
-  font-variant-numeric: tabular-nums;
-}
-.vp-plantraf-chev {
-  flex: 0 0 auto;
-  font-size: 1.3rem;
-  line-height: 1;
-  color: #d1a05a;
-}
-
-/* --- Zone C: the vertical 12-month rail ------------------------------------ */
-.vp-mrail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2);
-  min-width: 0;
-}
-.vp-mrail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.vp-mrail-m {
-  display: grid;
-  grid-template-columns: 30px 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 7px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.76rem;
-}
-.vp-mrail-m:hover {
-  background: var(--vp-bg-light, #f8f9fa);
-}
-.vp-mrail-m:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
-  outline-offset: 1px;
-}
-.vp-mrail-m .mn {
-  color: var(--vp-text-gray, #6c757d);
-  font-weight: 600;
-  text-align: left;
-}
-.vp-mrail-m .mb {
-  height: 7px;
-  border-radius: 4px;
-  background: var(--vp-paleblue-b, #e3ecff);
-  overflow: hidden;
-}
-.vp-mrail-m .mbf {
-  display: block;
-  height: 100%;
-  border-radius: 4px;
-  background: var(--vp-grad-hero);
-}
-.vp-mrail-m .mv {
-  font-family: var(--vp-font-heading, inherit);
-  font-weight: 700;
-  color: var(--vp-text-dark, #1a1a1a);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-.vp-mrail-m.on {
-  background: var(--vp-paleblue-start, #f0f4ff);
-  border-color: var(--vp-primary-deep, #5a8de8);
-}
-.vp-mrail-m.on .mn {
-  color: var(--vp-primary-deep, #5a8de8);
-}
-.vp-mrail-cap {
-  font-size: 0.72rem;
-  color: var(--vp-text-gray, #6c757d);
-}
-
-/* --- Zone C: the Gesundheits-Checklist ------------------------------------- */
-.vp-health {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2);
-  min-width: 0;
-}
+/* --- Die Gesundheits-Checklist (`ZustandCard`) -----------------------------
+   `.vp-health-list`/`.vp-health-item`/`.vp-health-mark`/`.vp-health-label`/
+   `.vp-health-detail` sind GETEILT mit `components/ZustandCard.css` - nicht
+   löschen, auch wenn die frühere v1-Standalone-Karte (`.vp-health`-Wrapper,
+   `components/HealthChecklist.tsx`) mit dem v1-Zweig entfallen ist. */
 .vp-health-list {
   list-style: none;
   margin: 0;

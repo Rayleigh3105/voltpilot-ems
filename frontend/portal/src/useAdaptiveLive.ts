@@ -6,9 +6,15 @@ import { useFreshnessPoll } from './useFreshnessPoll';
 /**
  * Fetches the AE1 topology read-model + the AE7 usage profile of a site for the
  * adaptive live view, with a silent background poll (the topology carries live
- * values). Fail-soft: any error, or a site that has no v2 entities yet
- * (`adaptive === false`), leaves the host to render the byte-identical v1 view -
- * so un-migrated sites are unaffected.
+ * values). Fail-soft: `topology`/`profile` degrade to `null` on error and
+ * `adaptive` degrades to `false` — the SAME shape whether the site simply has
+ * no v2 entities yet or the fetch genuinely broke.
+ *
+ * `failed` is the ONE extra signal callers need to tell those two apart: it is
+ * true only when the decision-critical `/topology` call itself threw (not a
+ * "no data" 200). The Anlagen-Seite's `anlageDecision` gate consumes it to
+ * show an honest error state instead of silently guessing a layout while the
+ * backend is unreachable (Captain-Nachtrag 06.08.2026).
  */
 export interface AdaptiveLive {
   topology: SiteTopology | null;
@@ -16,14 +22,22 @@ export interface AdaptiveLive {
   /** true once loaded AND the site has a renderable topology. */
   adaptive: boolean;
   loading: boolean;
+  /** true = the decision-critical `/topology` fetch failed. */
+  failed: boolean;
 }
 
 const POLL_MS = 30_000;
 
-export function useAdaptiveLive(siteId: string): AdaptiveLive {
+/**
+ * `retryKey` (default 0): bump it (e.g. on an "Erneut versuchen" click) to
+ * force a fresh fetch of the SAME site without an identity change - the effect
+ * depends on it exactly like `siteId`.
+ */
+export function useAdaptiveLive(siteId: string, retryKey: number | string = 0): AdaptiveLive {
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [profile, setProfile] = useState<SiteUsageProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   // Latest siteId for the stable poll interval.
   const idRef = useRef(siteId);
@@ -32,22 +46,29 @@ export function useAdaptiveLive(siteId: string): AdaptiveLive {
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setFailed(false);
     setTopology(null);
     setProfile(null);
-    // Topology drives the fallback decision; the profile is best-effort emphasis.
+    // Topology drives the stack decision; the profile is best-effort emphasis,
+    // so only a topology failure counts as decision-critical.
+    let topologyFailed = false;
     Promise.all([
-      api.topology(siteId).catch(() => null),
+      api.topology(siteId).catch(() => {
+        topologyFailed = true;
+        return null;
+      }),
       api.usageProfile(siteId).catch(() => null),
     ]).then(([topo, prof]) => {
       if (!active) return;
       setTopology(topo);
       setProfile(prof);
+      setFailed(topologyFailed);
       setLoading(false);
     });
     return () => {
       active = false;
     };
-  }, [siteId]);
+  }, [siteId, retryKey]);
 
   // Silent live poll of the topology values (keeps the last good values on a
   // failure); the profile changes rarely, so it is not re-polled.
@@ -61,5 +82,5 @@ export function useAdaptiveLive(siteId: string): AdaptiveLive {
     );
   }, POLL_MS);
 
-  return { topology, profile, adaptive: !loading && hasTopology(topology), loading };
+  return { topology, profile, adaptive: !loading && hasTopology(topology), loading, failed };
 }

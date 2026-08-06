@@ -8,23 +8,31 @@ import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from '../s
 import { periodLabel } from '../anlage';
 
 /**
- * M3 (#531) — der Cockpit-Beweis.
+ * M3 (#531) — der Cockpit-Beweis, erweitert um die Captain-Nachtrag-Invarianten
+ * vom 06.08.2026 (`fm/vp-erst-alt-layout-r5`): der v1-Zonen-Dashboard-Renderpfad
+ * ist ERSATZLOS entfallen.
  *
- * Zwei Dinge werden hier festgenagelt:
+ * Drei Dinge werden hier festgenagelt (über die GEMOCKTEN Hooks - der Weg
+ * dorthin über echte Fetch-Zyklen inkl. Lade-/Fehlerzustand steht in
+ * `AnlagenPage.v1.test.tsx`):
  *
- * 1. **Das v1-Invariant (report §6.2, nicht verhandelbar):** eine nie migrierte
- *    Anlage (keine Entitäten, keine Modi, geschlossene `useAdaptiveLive`-Weiche)
- *    rendert das heutige Standard-Cockpit — und M3 steuert dazu **kein einziges
- *    Element** bei. Der Beweis ist stärker als eine Marker-Prüfung: dieselbe
- *    Anlage wird einmal mit einer NULL-Surface (älteres Backend / Ladefehler)
- *    und einmal mit der leeren Projektion gerendert; beide DOMs müssen
- *    **zeichengleich** sein und dürfen keinen M3-Knoten enthalten.
+ * 1. **Der Nicht-zugeordnet-Endzustand (report §6.2 + Nachtrag §3):** eine
+ *    Anlage ohne Entitäten (bzw. mit geschlossener `useAdaptiveLive`-Weiche)
+ *    rendert die ruhige „nicht zugeordnet"-Zeile + den Hebel — und M3 steuert
+ *    dazu **kein einziges Element** bei. Der Beweis ist stärker als eine
+ *    Marker-Prüfung: dieselbe Anlage wird einmal mit einer NULL-Surface
+ *    (älteres Backend / Ladefehler) und einmal mit der leeren Projektion
+ *    gerendert; beide DOMs müssen **zeichengleich** sein und dürfen keinen
+ *    M3-Knoten enthalten.
  * 2. **Das Live-Cockpit (Portal v3 M2)** erscheint für eine migrierte Anlage:
  *    der WIEDERVERWENDETE Energiefluss als Hero (kein neues „Energie-Rad"),
  *    Autarkie/Eigenverbrauch als Ringe, das Widget-Raster in kanonischer
  *    Reihenfolge und die ruhige Toolbox-Zeile. Seit V2 ist eine Kachel ein
  *    ABSPRUNG (kein Modal mehr): Fluss-Kacheln springen in den Verlauf-Explorer,
  *    Modus-Kacheln auf ihre Seite.
+ * 3. **Der M5-Einrichtungspfad bleibt unangetastet** - er gewinnt gegenüber
+ *    dem Nicht-zugeordnet-Zustand genau dann, wenn die Anlage noch NIE
+ *    Messdaten geliefert hat.
  */
 
 // jsdom kennt weder ResizeObserver (useContainerWidth/EnergyFlow) noch das
@@ -202,6 +210,7 @@ function mockAdaptive(adaptiveOn: boolean, topology: unknown = null) {
     profile: null,
     adaptive: adaptiveOn,
     loading: false,
+    failed: false,
   } as never);
 }
 
@@ -254,7 +263,10 @@ const TOPO = {
 function mockSurface(input: AnlageSurfaceInput | null) {
   vi.spyOn(surfaceHook, 'useAnlageSurface').mockReturnValue({
     surface: input ? anlageSurface(input) : null,
+    profiles: null,
+    entities: null,
     loading: false,
+    failed: false,
   });
 }
 
@@ -285,21 +297,19 @@ beforeEach(() => {
   stubApi();
 });
 
-describe('v1-Invariant: eine nie migrierte Anlage rendert das heutige Cockpit', () => {
-  it('rendert das v4-Zonen-Dashboard und KEINEN M3-Knoten', async () => {
+describe('Endzustand „nicht zugeordnet": Anlage MIT Daten, ohne v2-Komponenten (Captain-Nachtrag 06.08.2026)', () => {
+  it('rendert die ruhige Zeile + den Hebel, und KEINEN M3-Knoten', async () => {
     mockAdaptive(false);
     mockSurface(LEER);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
-    // Die heutigen Bausteine sind da ...
-    expect(container.querySelector('.vp-zone-money')).toBeTruthy();
-    expect(container.querySelector('.vp-dash-fahrplan')).toBeTruthy();
-    expect(container.querySelector('.vp-detail-grid')).toBeTruthy();
-    // Cockpit+Live-Merge: das absolute v1-DOM ändert sich BEWUSST — die
-    // Komponenten-Sektion gehört jetzt auch zur v1-Startseite (das Invariant
-    // bleibt die Zeichengleichheit null-Surface === leere Projektion unten).
-    expect(container.querySelector('.vp-dash-komponenten')).toBeTruthy();
-    // ... und M3 steuert nichts bei.
+    await waitFor(() => expect(container.querySelector('.vp-anlage-unassigned')).toBeTruthy());
+    expect(container.textContent).toContain('noch nicht zugeordnet');
+    expect(container.querySelector('.vp-anlage-unassigned button')).toBeTruthy();
+    // Der frühere v1-Zonen-Dashboard-Rückfall ist ERSATZLOS entfallen ...
+    expect(container.querySelector('.vp-anlage-dash')).toBeNull();
+    expect(container.querySelector('.vp-zone-money')).toBeNull();
+    expect(container.querySelector('.vp-detail-grid')).toBeNull();
+    // ... und M3 steuert auch hier nichts bei.
     expect(container.querySelector('.vp-stack')).toBeNull();
     expect(container.querySelector('.vp-block')).toBeNull();
     expect(container.querySelector('.vp-toolbox-line')).toBeNull();
@@ -307,13 +317,10 @@ describe('v1-Invariant: eine nie migrierte Anlage rendert das heutige Cockpit', 
   });
 
   it('ist zeichengleich, egal ob das Read-Model geladen wurde oder nicht', async () => {
-    // Beide Renderpfade müssen erst AUSSCHWINGEN (die lazy Komponenten-Sektion
-    // lädt asynchron), sonst verglichen wir einen Lade- mit einem Endzustand.
+    // Beide Renderpfade müssen erst AUSSCHWINGEN, sonst verglichen wir einen
+    // Lade- mit einem Endzustand.
     const settle = async (container: HTMLElement) => {
-      await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
-      await waitFor(() =>
-        expect(container.textContent).toContain('Es liegen noch keine Messwerte vor'),
-      );
+      await waitFor(() => expect(container.querySelector('.vp-anlage-unassigned')).toBeTruthy());
     };
 
     // (a) älteres Backend / Ladefehler: gar keine Surface.
@@ -335,12 +342,13 @@ describe('v1-Invariant: eine nie migrierte Anlage rendert das heutige Cockpit', 
     expect(b.container.innerHTML).toBe(withoutSurface);
   });
 
-  it('bleibt v1, solange die Topologie-Weiche zu ist - auch MIT Entitäten', async () => {
+  it('bleibt „nicht zugeordnet", solange die Topologie-Weiche zu ist - auch MIT Entitäten', async () => {
     mockAdaptive(false);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-anlage-unassigned')).toBeTruthy());
     expect(container.querySelector('.vp-stack')).toBeNull();
+    expect(container.querySelector('.vp-cockpit-hero')).toBeNull();
   });
 });
 
@@ -365,9 +373,9 @@ describe('M5 · Der Leer-Zustand IST der Einrichtungspfad (#533)', () => {
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-setup-steps')).toBeTruthy());
     expect(container.querySelectorAll('.vp-setup-step')).toHaveLength(3);
-    // Kein Platzhalter-Cockpit, kein Modul-Stapel.
-    expect(container.querySelector('.vp-anlage-dash')).toBeNull();
+    // Kein Platzhalter-Cockpit, kein Modul-Stapel, kein "nicht zugeordnet".
     expect(container.querySelector('.vp-stack')).toBeNull();
+    expect(container.querySelector('.vp-anlage-unassigned')).toBeNull();
     // Der Kopf spricht vom Weg, nicht von "offline".
     expect(container.querySelector('.vp-anlage-sentence')?.textContent).toContain(
       'Energie-System zusammen',
@@ -383,13 +391,13 @@ describe('M5 · Der Leer-Zustand IST der Einrichtungspfad (#533)', () => {
     expect(container.querySelector('.vp-setup-steps')).toBeNull();
   });
 
-  it('erscheint NICHT auf einer laufenden v1-Anlage ohne Entitäten', async () => {
-    // Das v1-Invariant von der anderen Seite: dieselbe leere Projektion, aber
-    // die Anlage misst bereits - ihr Cockpit bleibt unangetastet.
+  it('erscheint NICHT auf einer bereits messenden Anlage ohne Entitäten - die bleibt „nicht zugeordnet"', async () => {
+    // Das Invariant von der anderen Seite: dieselbe leere Projektion, aber die
+    // Anlage misst bereits - der Einrichtungspfad greift dann NICHT.
     mockAdaptive(false);
     mockSurface(LEER);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-anlage-unassigned')).toBeTruthy());
     expect(container.querySelector('.vp-setup-steps')).toBeNull();
   });
 });
@@ -401,8 +409,7 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
 
-    // Das feste v4-Zonen-Raster UND der M3-Kartenstapel sind abgelöst.
-    expect(container.querySelector('.vp-anlage-dash')).toBeNull();
+    // Der M3-Kartenstapel (die frühere Zwischenform) ist abgelöst.
     expect(container.querySelector('.vp-stack')).toBeNull();
     // Das Diagramm ist das WIEDERVERWENDETE `EnergyFlow`/`AdaptiveEnergyFlow`
     // (kein neues "Energie-Rad") - erkennbar an seinem Wrapper.
@@ -415,7 +422,11 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-hero-rings')).toBeTruthy());
+    // `.vp-hero-rings` trägt AUCH den leeren Platzhalter (`vp-hero-rings-empty`,
+    // solange `rangeHistory` noch lädt - die Ring-Daten werden erst geholt,
+    // sobald die Entscheidung wirklich "stack" ist) - abgewartet wird deshalb
+    // die ECHTE Ring-Beschriftung, nicht nur der (mehrdeutige) Container.
+    await waitFor(() => expect(container.querySelectorAll('.vp-hero-ring-label')).toHaveLength(2));
     const labels = [...container.querySelectorAll('.vp-hero-ring-label')].map((n) => n.textContent);
     // Default-Tab „Heute" (Captain 2026-07-30): die Ringe tragen die Periode
     // des gewählten Zeitraums.
@@ -604,11 +615,11 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     ).toBeTruthy();
   });
 
-  it('v1 kennt keinen Börsenpreis-Streifen — und ruft die Preise gar nicht ab', async () => {
+  it('der Nicht-zugeordnet-Zustand kennt keinen Börsenpreis-Streifen — und ruft die Preise gar nicht ab', async () => {
     mockAdaptive(false);
     mockSurface(LEER);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-anlage-unassigned')).toBeTruthy());
     expect(container.querySelector('.vp-strompreis')).toBeNull();
     expect(api.prices).not.toHaveBeenCalled();
   });
@@ -904,7 +915,7 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     mockSurface(LEER);
     const { container } = renderSeite();
     await waitFor(() => {
-      expect(container.querySelector('.vp-anlage-dash')).not.toBeNull();
+      expect(container.querySelector('.vp-anlage-unassigned')).not.toBeNull();
     });
     // Kein onHealthFacts übergeben: die Seite rendert unverändert weiter.
     expect(container.querySelector('.vp-cockpit-health')).toBeNull();

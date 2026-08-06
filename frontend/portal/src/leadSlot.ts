@@ -1,9 +1,10 @@
 // The cockpit lead-slot switch. Every Anlage renders the SAME block set; only
 // which artifact fills the LEAD slot varies.
 //
-// U4 shipped the binary form (`leadArtifact`, AE7 emphasis → Peak-Band | money).
+// U4 originally shipped a binary form (AE7 emphasis → Peak-Band | money) for
+// the (now removed, Captain-Nachtrag 06.08.2026) v1 zone-dashboard path.
 // M3 ("Projektion" #531, report `data/vp-anlagen-face-k9/report.md` §1.3)
-// evolves it to **N-ary over the M0 module stack**: the lead is simply the
+// evolved it to **N-ary over the M0 module stack**: the lead is simply the
 // FIRST block of the deterministic §1.3 order that this Anlage actually has —
 //
 //   Peak-Band            (iff the Lastspitzenkappung mode is active)
@@ -13,28 +14,11 @@
 // i.e. **peak → money → flow**, exactly the rule the report names. It is a pure
 // function of the M0 read-model (`cockpitBlocks(base, modes)`), never of a
 // re-derived profile: a mode being active IS the emphasis (report §1.1), so no
-// argmax and no emphasis raster is consulted any more.
-//
-// `leadArtifact` stays for the v1 path: an un-migrated site has no blocks at
-// all, keeps the AE7 emphasis lens and therefore renders byte-identically.
+// argmax and no emphasis raster is consulted any more. This is now the ONLY
+// lead rule - the binary v1 form (`leadArtifact`) was removed with the v1
+// render path it served.
 
 import type { CockpitBlock, CockpitBlockId } from './surface';
-
-/** Which artifact fills the cockpit's lead slot (U4, binary/v1 form). */
-export type LeadArtifact = 'peakband' | 'money';
-
-/**
- * Resolve the cockpit lead artifact from the AE7 `emphasis.peak` level. Only a
- * peak-profile site (peak emphasis `prominent`) leads with the Peak-Band;
- * anything else - including null/undefined/unknown - leads with money, so the
- * private and arbitrage faces are byte-identical to today.
- *
- * Still the rule on the **v1 (un-migrated) path**; a projected Anlage uses the
- * N-ary `leadBlock` below.
- */
-export function leadArtifact(emphasisPeak: string | null | undefined): LeadArtifact {
-  return emphasisPeak === 'prominent' ? 'peakband' : 'money';
-}
 
 /**
  * The N-ary lead rule (report §1.3): peak → money → flow. Deliberately derived
