@@ -321,27 +321,38 @@ Remote-Pfad keine PV-Begrenzung schreiben (`pvLimitSupported:false`, bleibt so).
   **proportional zur Nennleistung** (erkannte `WRtg`, sonst `capacity_kwp`)
   über die schreibbaren Einheiten verteilt - Wasserfall, nie über die eigene
   Nennleistung.
-- **Schreiben:** je Einheit `WMaxLimPct` (Wert) → `WMaxLimPct_RvrtTms` (60 s,
-  der native Totmann - der Core republiziert alle ~10 s; hören wir auf, hebt
-  der Wechselrichter die Begrenzung SELBST auf) → `WMaxLim_Ena` (strikt
-  zuletzt), an LIVE ERKANNTEN Modell-123-Adressen. Kein Cap im Fahrplan /
-  Sollwert veraltet → Freigabe (`Ena=0`, einmalig; der Timer räumt Reste ab).
+- **Schreiben + AUFFRISCHUNG:** je Einheit `WMaxLimPct` (Wert) →
+  `WMaxLimPct_RvrtTms` (60 s, der native Totmann) → `WMaxLim_Ena` (strikt
+  zuletzt), an LIVE ERKANNTEN Modell-123-Adressen. Eine AKTIVE Begrenzung wird
+  alle 20 s (`REFRESH_MS`, klar unter den 60 s) erneut geschrieben, statt sich
+  auf den einmaligen Schreibvorgang zu verlassen - siehe „First-Light-Härtung"
+  unten für den Grund. Kein Cap im Fahrplan / Sollwert veraltet → Freigabe
+  (`Ena=0`, einmalig; der Timer räumt Reste ab).
 - **Wirkungs-Prüfung (Override-Erkennung):** Modbus hat auf Fronius die
   **NIEDRIGSTE Steuer-Priorität** - lokale Einstellungen, Solar.web oder eine
   Smart-Meter-Regel übersteuern ein bestätigtes Register stillschweigend. Nach
   einem Settle-Fenster (90 s) gilt: gemessene Leistung ÜBER Begrenzung +
   Toleranz → „möglicher Override" auf `:8484` + im Heartbeat - nie still.
-  (Leistung UNTER der Begrenzung beweist nichts - Wolken senken sie auch.)
+  (Leistung UNTER der Begrenzung beweist für sich allein nichts - Wolken senken
+  sie auch; der First-Light-**Klemm-Beweis** unten macht daraus einen echten
+  Nachweis.)
 - **Freigabe JE WECHSELRICHTER-EINHEIT** (`:8484` → Einrichten →
   „PV-Abregelung kalibrieren", Endpunkte `/api/curtail/*`): ein begrenzter
   Test drosselt die Einheit auf **80 % ihrer aktuellen Leistung** (verweigert
-  unter 5 kW - kein aussagekräftiger Nachweis), Register werden zurückgelesen
-  UND die gemessene Leistung muss binnen des Testfensters (120 s, danach
-  automatischer Rückfall) tatsächlich fallen. Erst beide Nachweise schalten
-  „Abregelung freigeben" frei; die Freigabe ist am PHYSISCHEN Gerät verankert
+  unter 5 kW UND ohne ausreichenden Kopfraum zum Cap - kein aussagekräftiger
+  Nachweis möglich). Register werden fortlaufend zurückgelesen UND die
+  gemessene Leistung muss sich mehrere Messwerte hintereinander AM Cap
+  EINPENDELN (Plateau), während der Wechselrichter unbegrenzt nachweislich
+  deutlich mehr liefern würde (Ambient-Schätzung, ggf. über eine
+  Schwester-Einheit am selben Standort). Erst beide Nachweise schalten
+  „Abregelung freigeben" frei; ein Test, dessen Ambient-Schätzung während der
+  Laufzeit unter den Cap fällt, endet ehrlich mit „nicht beweisbar" statt
+  „bestanden" - das ist eine Aussage über die Sonne, nie über den
+  Wechselrichter. Die Freigabe ist am PHYSISCHEN Gerät verankert
   (`ip:port#unit_id`, `data_dir/curtail-certified.json`) und überlebt das
   Löschen/Neuanlegen des Quellen-Eintrags. `CERTIFIED_CONTROL_FAMILIES` bleibt
-  unverändert - Fronius kommt NIE über die Flotten-Allowlist live.
+  unverändert - Fronius kommt NIE über die Flotten-Allowlist live. Details zum
+  Beweisverfahren: „First-Light-Härtung" unten.
 - **Not-Aus:** `VP_CONTROL_ENABLED=false` stoppt auch die Abregelung sofort
   (der `curtail`-Block trägt den ROHEN Kill-Switch - bewusst nicht das
   Top-Level-`control_enabled`, das mit der Freigabe des PRIMÄR-Wechselrichters
@@ -353,6 +364,70 @@ Remote-Pfad keine PV-Begrenzung schreiben (`pvLimitSupported:false`, bleibt so).
 
 Bench-Ablauf: [`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „Checkliste Fronius
 PV-Abregelung (Increment 3)".
+
+## 6c. First-Light-Härtung (06.08.2026, live am Pilsting-Datamanager gemessen)
+
+Vier Defekte, alle mit echten Zahlen am selben Datamanager gemessen
+(`192.168.210.40`, zwei Fronius Eco 27, Unit 1 + 2), führten zu einer
+HÄRTUNG der Freigabe-Prüfung - die Sicherheits-Grundsätze (restrict-only,
+Kill-Switch, Freigabe je Einheit, Totmann) sind davon UNBERÜHRT.
+
+- **Einmal-Schreiben genügt nicht.** Ein Test schrieb den Cap GENAU EINMAL;
+  `pv_limit_revert_tms` war mit 60 s gesetzt, der Test lief aber 120 s → das
+  Register revertierte planmäßig NACH 60 s mitten im Test (gemessen: ist=3593
+  hielt ~60 s, dann wieder 10000). Fix: der Executor frischt eine AKTIVE
+  Begrenzung alle 20 s auf (`REFRESH_MS < RvrtTms < Test-TTL`, siehe die
+  Kommentare in `sunspec/curtail.js`).
+- **Der Datamanager verschluckt Schreibbefehle ERRATISCH.** Ein Test um 10:51
+  (Befehl 2593 = 25,9 %) las 105 s lang durchgehend 10000; ein identischer Test
+  um 10:47 wurde angenommen. Vermutete Ursachen: Modbus-Wackligkeit nach einer
+  Konfigurationsänderung, evtl. eine Session-Race mit dem parallelen
+  Mess-Poll auf demselben TCP-Gateway. Fix: eine deviante Rücklesung wird
+  SOFORT einmal neu geschrieben, begrenzt auf 3 Versuche derselben Signatur,
+  dann `REJECTED_REASON` benennen + 60 s abkühlen - nie eine heiße Schleife.
+  **Wenn ein Test komplett ins Leere läuft (Register hält konstant den alten
+  Wert), zuerst den Datamanager NEU STARTEN** (Weboberfläche oder Stromlos-
+  Zyklus) - das hat den 10:51-Fall beim nächsten Versuch behoben, ohne dass
+  sich an der Konfiguration etwas geändert hätte. Ein Datamanager 2.0 nach
+  einer Konfigurationsänderung (z. B. „Allow Control" gesetzt, EVU-Editor
+  bearbeitet) braucht gelegentlich diesen Neustart, bevor Modbus wieder
+  zuverlässig antwortet.
+- **Der Klemm-Beweis ersetzt die alte „Minimum ≤ Cap"-Regel.** Zwei
+  Fehlpositive am selben Tag: Leistung fiel UNTER den Cap (12,9 bei Cap 17,4;
+  9,5 bei Cap 9,7), passte aber exakt zum unveränderten Ambient-Verhältnis der
+  beiden Dächer (WR2 ≈ 0,82 × WR1, vorher wie nachher) - beides Wolken, keine
+  Klemmung. Ein echter Cap KLEMMT die Leistung AM Cap (Plateau), er drückt sie
+  nicht darunter. Die Freigabe verlangt jetzt mehrere aufeinanderfolgende
+  Messwerte AM Cap, während das Register nachweislich hält UND der geschätzte
+  Ambient-Wert (die Schwester-Einheit als Referenz, sonst der eigene
+  Vor-Test-Wert) klar über dem Cap liegt; sinkt die Ambient-Schätzung während
+  der Testlaufzeit auf/unter den Cap, lautet das ehrliche Urteil „nicht
+  beweisbar" statt „bestanden". Details: `internal/curtailcal` (Go).
+- **Die Ena-Kennung (`WMaxLim_Ena`) ist ein bekannter Firmware-Quirk.** Dieser
+  Datamanager beantwortet einen befohlenen `Ena=0` DAUERHAFT mit `ist=1` -
+  auch nachdem jeder interne Fremdregler (siehe der EVU-Editor-Hinweis unten)
+  deaktiviert war. Das ist kosmetisch, aber irreführend: das Rücklesen
+  toleriert diesen EINEN Fall (befohlen 0, ist 1) und behandelt ihn NICHT als
+  Fehler, solange das bindende Register `WMaxLimPct` stimmt - im UI erscheint
+  dafür ein ruhiger Hinweis statt des Warndreiecks.
+- **EVU-Editor / IO-Prioritäten: die 100-%-Regel DEAKTIVIEREN, nicht die
+  Prioritäten umbauen.** Solange eine Fronius-INTERNE Steuerung aktiv ist (auf
+  dem Eco z. B. die IO-Regel „100 %" bei geschlossenem Kontakt I1, Priorität
+  1 vor Modbus, siehe §5b), spiegeln die Modell-123-Register den
+  GEWINNER-Zustand: unsere Schreibvorgänge werden angenommen und wieder
+  verworfen, ohne dass das Register das laut sagt. Der richtige Hebel ist NICHT,
+  die Kommunikations-Prioritäten umzustellen (das ändert das Verhalten der
+  Anlage in vielen anderen Situationen mit), sondern im Fronius-Weboberflächen-
+  EVU-Editor genau die störende Regel (z. B. „100 %" bei I1) zu deaktivieren -
+  Modbus bleibt dann die niedrigste, aber die einzig aktive Instanz.
+- Tests (In-Process-SunSpec-Server, drei Geräte-Verhalten + ein
+  Wolken-Szenario): `curtail-lease.e2e.test.js` SCHLUCKER (Write 200-OK,
+  Register bleibt 10000 → Retry, dann ehrlicher `last_error`, NIE zertifiziert),
+  REVERTER (Register fällt nach `RvrtTms` zurück → die Auffrischung hält ihn),
+  KLEMMER (Register hält, gemeldete Leistung = min(ambient, cap) →
+  Override-Erkennung meldet „ok") + ENA-QUIRK; Go
+  `internal/curtailcal/curtailcal_test.go` für den Plateau-Beweis + das
+  Wolken-Szenario (Ambient sinkt unter Cap, Register hält → „nicht beweisbar").
 
 ## Ausgeklammert (bewusst)
 

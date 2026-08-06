@@ -1049,6 +1049,18 @@ test('flow curtail plan + exec nodes embed the current model-discovery.js + curt
   assert.ok(exec.includes("flow.get('src_reading:' + ipKey)"), 'waits out an in-flight poll read');
   assert.ok(exec.includes("'curtail_was:'"), 'one-shot release discipline present');
   assert.ok(exec.includes('evaluateEnforcement'), 'override detection wired');
+  // The First-Light hardening (live Pilsting 2026-08-06): an ACTIVE cap is
+  // re-applied before the native dead-man can lift it, every readback is
+  // evaluated SEMANTICALLY (Ena quirk / unread register), and a discarded
+  // command is re-written boundedly and then NAMED.
+  assert.ok(exec.includes('__CURT.writeDecision'), 'refresh/retry decision wired');
+  assert.ok(exec.includes('__CURT.evaluateReadback'), 'semantic readback verdict wired');
+  assert.ok(exec.includes('__CURT.noteWrite') && exec.includes('__CURT.noteVerdict'),
+    'the bounded re-write ladder keeps its state');
+  assert.ok(exec.includes("'curtail_cmd:'"), 'per-unit command state key present');
+  assert.ok(exec.includes('__CURT.REJECTED_REASON'), 'a discarded command names its cause');
+  assert.ok(exec.includes(': null;') && exec.includes('typeof regs[0]'),
+    'an unread register stays null - never a fabricated 0');
   // And the read poll takes the BOUNDED lease decision (yield <= MAX_CLAIM_SKIPS,
   // force + warn, expire an orphaned claim), rotates fairly + stashes readings.
   const read = byId['sources-read'].func;

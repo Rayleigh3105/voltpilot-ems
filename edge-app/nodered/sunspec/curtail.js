@@ -58,6 +58,54 @@
 // (a single missed tick must not flap the cap).
 const DEFAULT_RVRT_TMS = 60;
 
+// --- the REFRESH / VERIFY layer (First-Light hardening, live 2026-08-06) -----
+//
+// THE CHAIN THAT MUST HOLD:  REFRESH_MS  <  DEFAULT_RVRT_TMS  <  test TTL
+//                             20 s       <     60 s           <   120 s
+//
+// Measured live at Pilsting (2× Fronius Eco 27 behind ONE Datamanager): the
+// executor applied a First-Light test cap EXACTLY ONCE, so the inverter's own
+// dead-man reverted the register to 100 % after 60 s - in the MIDDLE of a
+// 120-s test (ist=3593 held ~60 s, then 10000 again). A cap that is written
+// once is not a cap; it is a 60-second pulse.
+//
+// So an ACTIVE command is RE-APPLIED, and the refresh must sit well inside the
+// revert window: at REFRESH_MS = 20 s a whole missed cycle still lands before
+// the inverter lets go, while the executor claims the shared gateway at most
+// every second ~10 s setpoint tick (the Pilsting STARVATION incident of
+// 2026-07-28 is the reason a claim on every tick is not acceptable - see
+// curtail-lease.js). A BOUNDED First-Light test refreshes on EVERY tick
+// instead (unit.calibration): its evidence needs the register to demonstrably
+// HOLD, and its claim pressure is bounded by the 120-s TTL.
+const REFRESH_MS = 20000;
+
+// The Datamanager SWALLOWS writes erratically (live 10:51: commanded 2593 =
+// 25,9 %, the register read 10000 for 105 s straight; the identical run at
+// 10:47 was accepted). A deviating readback therefore triggers an IMMEDIATE
+// re-write - bounded, never a hot loop: at most REWRITE_MAX_ATTEMPTS writes of
+// the SAME command before the executor stops writing, names the cause and
+// waits REWRITE_COOLDOWN_MS before trying again.
+const REWRITE_MAX_ATTEMPTS = 3;
+const REWRITE_COOLDOWN_MS = 60000;
+
+// The honest German cause for a command the device keeps discarding. It names
+// the LIKELIEST reason (a Fronius-internal controller wins over Modbus, which
+// is the LOWEST priority) plus the operator lever, because "Schreiben
+// fehlgeschlagen" would be wrong - the write itself was accepted with a 200 OK.
+const REJECTED_REASON = 'Der Wechselrichter verwirft die Begrenzung: der befohlene Wert wurde '
+  + Number(REWRITE_MAX_ATTEMPTS) + '× geschrieben und jedes Mal wieder überschrieben. Vermutlich regelt '
+  + 'eine Fronius-INTERNE Steuerung vor (EVU-Editor / IO-Regel "100 %", Solar.web, ein Smart Meter) - '
+  + 'Modbus hat auf Fronius die NIEDRIGSTE Priorität. Bitte im Fronius-Weboberflächen-EVU-Editor die '
+  + '100-%-Regel deaktivieren.';
+
+// The Ena readback QUIRK (live: this Datamanager answers a commanded
+// WMaxLim_Ena=0 permanently with 1, even with every internal controller off).
+// See evaluateReadback() for the one-sided tolerance rule + its safety
+// argument.
+const ENA_QUIRK_NOTE = 'Die Freigabe-Kennung (WMaxLim_Ena) meldet dauerhaft 1 - ein bekanntes '
+  + 'Verhalten dieser Datamanager-Firmware. Maßgeblich ist der Begrenzungswert (WMaxLimPct); '
+  + 'er wurde bestätigt.';
+
 // Override detection: how long a cap must have been applied before a measured
 // power ABOVE it counts as evidence of a foreign controller (irradiance ramps
 // + the inverter's WMaxLimPct_WinTms ramp need settle time), and the tolerance
@@ -393,6 +441,182 @@ function evaluateEnforcement(args) {
   return out;
 }
 
+/**
+ * commandSignature - the STABLE identity of what this tick wants written on a
+ * unit: the mode plus every planned register value. Two ticks that want the
+ * same registers share a signature, so the executor can tell "the same cap,
+ * just being refreshed" from "a NEW cap" without comparing floats.
+ *
+ * Returns null when the unit has nothing to command (no plan / no ops).
+ */
+function commandSignature(unit) {
+  if (!unit || !unit.plan || !unit.plan.ok) return null;
+  const ops = (unit.plan.writes && unit.plan.writes.length) ? unit.plan.writes
+    : (Array.isArray(unit.planned) ? unit.planned : []);
+  if (!ops.length) return null;
+  return String(unit.mode) + '|' + ops.map((w) => w.role + '=' + ((Number(w.value) || 0) & 0xffff)).join(',');
+}
+
+/**
+ * evaluateReadback - what the FC3 readback of one unit MEANS. Not a value
+ * comparison: the readback-verify discipline of the Deye path applied to
+ * Model 123.
+ *
+ *   registers: [{ role, commanded_raw, actual_raw (null = no answer), match }]
+ *
+ * Returns { held, allMatch, mismatchRoles, quirkRoles, unreadRoles, quirkNote }.
+ *
+ * THE ENA QUIRK (live 2026-08-06, Pilsting Datamanager): this firmware answers
+ * a commanded WMaxLim_Ena = 0 permanently with 1 - even after every internal
+ * controller (the EVU-editor IO rule "100 %") was switched off. That made the
+ * RELEASE path report `match:false` forever, which reads like a defect and is
+ * none. The tolerance is deliberately ONE-SIDED:
+ *
+ *   commanded 0 -> actual 1  = QUIRK. The device claims MORE enforcement than
+ *      we asked for, and on a release we also command WMaxLimPct = 100 %, so an
+ *      enabled 100-%-limit throttles exactly nothing. Curtailment is
+ *      restrict-only, so a device erring toward "enabled" can never make a
+ *      plant produce more than commanded. Tolerated, recorded, never silent.
+ *   commanded 1 -> actual 0  = REAL MISMATCH. We asked for the cap to be
+ *      ENFORCED and the device says it is off - that is exactly the case this
+ *      readback exists to catch. Never tolerated.
+ *
+ * The BINDING register is always WMaxLimPct: a deviation there is a mismatch
+ * regardless of what the enable flag says, and `held` is false unless it was
+ * actually READ (a register without an answer is not a confirmation).
+ */
+function evaluateReadback(unit, registers) {
+  const out = {
+    held: false, allMatch: false, mismatchRoles: [], quirkRoles: [], unreadRoles: [], quirkNote: '',
+  };
+  const regs = Array.isArray(registers) ? registers : [];
+  if (!regs.length) return out;
+  let sawPct = false;
+  for (const r of regs) {
+    if (!r || typeof r.role !== 'string') continue;
+    if (r.actual_raw === null || r.actual_raw === undefined) {
+      out.unreadRoles.push(r.role);
+      continue;
+    }
+    if (r.role === 'pv_limit_pct') sawPct = true;
+    if (r.match) continue;
+    const cmd = (Number(r.commanded_raw) || 0) & 0xffff;
+    const act = (Number(r.actual_raw) || 0) & 0xffff;
+    if (r.role === 'pv_limit_enable' && cmd === 0 && act !== 0) {
+      out.quirkRoles.push(r.role);
+      continue;
+    }
+    out.mismatchRoles.push(r.role);
+  }
+  out.held = sawPct && out.mismatchRoles.length === 0 && out.unreadRoles.length === 0;
+  out.allMatch = out.held;
+  if (out.quirkRoles.length) out.quirkNote = ENA_QUIRK_NOTE;
+  return out;
+}
+
+/**
+ * writeDecision - does this executor tick WRITE the unit's command, and why?
+ * Pure; the executor owns the state (flow context `curtail_cmd:<unitKey>`).
+ *
+ *   state: { sig, wroteAt, attempts, deviating, blockedSince, verifiedAt }
+ *
+ * Returns { write, kind, sig, reason }:
+ *   'none'      nothing to command (no plan, or writing is not allowed)
+ *   'first'     never applied before
+ *   'changed'   a DIFFERENT command than the one last written
+ *   'retry'     the last readback deviated - re-apply IMMEDIATELY (bounded)
+ *   'refresh'   the same command, older than the refresh interval - RE-APPLY
+ *               so the inverter's native revert timer can never fire on a live
+ *               command (the "written exactly once" defect)
+ *   'verify'    same command, still fresh - read it back, do not write
+ *   'exhausted' REWRITE_MAX_ATTEMPTS re-writes were discarded - stop writing,
+ *               name the cause (REJECTED_REASON)
+ *   'cooldown'  inside REWRITE_COOLDOWN_MS after 'exhausted' - never hot-loop
+ */
+function writeDecision(args) {
+  const a = args || {};
+  const unit = a.unit || {};
+  const st = a.state || {};
+  const nowMs = isFiniteNum(a.nowMs) ? a.nowMs : Date.now();
+  const sig = commandSignature(unit);
+  const canWrite = !!(unit.plan && unit.plan.ok && unit.plan.writes && unit.plan.writes.length > 0);
+  if (!canWrite || sig === null) return { write: false, kind: 'none', sig: sig, reason: '' };
+
+  if (!(Number(st.wroteAt) > 0)) return { write: true, kind: 'first', sig: sig, reason: '' };
+  if (st.sig !== sig) return { write: true, kind: 'changed', sig: sig, reason: '' };
+
+  const blockedSince = Number(st.blockedSince) || 0;
+  if (blockedSince > 0) {
+    if (nowMs - blockedSince < REWRITE_COOLDOWN_MS) {
+      return { write: false, kind: 'cooldown', sig: sig, reason: REJECTED_REASON };
+    }
+    // The cooldown is over: try the whole bounded ladder again from scratch.
+    return { write: true, kind: 'changed', sig: sig, reason: '' };
+  }
+  if (st.deviating) {
+    if ((Number(st.attempts) || 0) < REWRITE_MAX_ATTEMPTS) {
+      return { write: true, kind: 'retry', sig: sig, reason: '' };
+    }
+    // Reached when the ladder ran out WITHOUT a verdict closing it (e.g. the
+    // readback itself kept failing, so noteVerdict never opened the cooldown):
+    // stop writing all the same - a bounded ladder that can be re-entered by a
+    // missing answer would be no bound at all.
+    return { write: false, kind: 'exhausted', sig: sig, reason: REJECTED_REASON };
+  }
+  // A bounded First-Light test re-applies on EVERY tick (its evidence needs
+  // the register to demonstrably HOLD); a normal cap every REFRESH_MS.
+  // args.refreshMs is a TEST seam (the flow's curtail_refresh_ms override, the
+  // sv5_acquire_ms precedent) - never set in production.
+  const refreshMs = unit.calibration ? 0
+    : (isFiniteNum(a.refreshMs) && a.refreshMs >= 0 ? a.refreshMs : REFRESH_MS);
+  if (nowMs - Number(st.wroteAt) >= refreshMs) return { write: true, kind: 'refresh', sig: sig, reason: '' };
+  return { write: false, kind: 'verify', sig: sig, reason: '' };
+}
+
+/**
+ * noteWrite - fold a performed write into the command state. A 'first' /
+ * 'changed' write starts a fresh attempt ladder; every other write of the SAME
+ * signature counts up (that is what bounds the re-write loop).
+ */
+function noteWrite(state, decision, nowMs) {
+  const st = state || {};
+  const d = decision || {};
+  const fresh = d.kind === 'first' || d.kind === 'changed';
+  const same = st.sig === d.sig;
+  return {
+    sig: d.sig,
+    wroteAt: nowMs,
+    attempts: fresh || !same ? 1 : (Number(st.attempts) || 0) + 1,
+    deviating: fresh || !same ? false : !!st.deviating,
+    blockedSince: fresh || !same ? 0 : (Number(st.blockedSince) || 0),
+    verifiedAt: same ? (Number(st.verifiedAt) || 0) : 0,
+  };
+}
+
+/**
+ * noteVerdict - fold a readback verdict into the command state. A HELD
+ * register clears the attempt ladder (the command is in force); a deviating
+ * one arms the bounded re-write and, once the ladder is exhausted, opens the
+ * cooldown so the executor states the cause instead of hammering the gateway.
+ */
+function noteVerdict(state, verdict, nowMs) {
+  const st = state || {};
+  const held = !!(verdict && verdict.held);
+  if (held) {
+    return {
+      sig: st.sig, wroteAt: Number(st.wroteAt) || 0, attempts: 0,
+      deviating: false, blockedSince: 0, verifiedAt: nowMs,
+    };
+  }
+  const attempts = Number(st.attempts) || 0;
+  let blockedSince = Number(st.blockedSince) || 0;
+  if (!blockedSince && attempts >= REWRITE_MAX_ATTEMPTS) blockedSince = nowMs;
+  return {
+    sig: st.sig, wroteAt: Number(st.wroteAt) || 0, attempts: attempts,
+    deviating: true, blockedSince: blockedSince, verifiedAt: Number(st.verifiedAt) || 0,
+  };
+}
+
 module.exports = {
   DEFAULT_RVRT_TMS,
   DEFAULT_SETTLE_MS,
@@ -400,9 +624,19 @@ module.exports = {
   OVERRIDE_TOL_MIN_KW,
   READING_FRESH_MS,
   CURTAIL_STALE_MS,
+  REFRESH_MS,
+  REWRITE_MAX_ATTEMPTS,
+  REWRITE_COOLDOWN_MS,
+  REJECTED_REASON,
+  ENA_QUIRK_NOTE,
   unitKey,
   setpointStale,
   splitPlantCap,
   planFleetCurtailment,
   evaluateEnforcement,
+  commandSignature,
+  evaluateReadback,
+  writeDecision,
+  noteWrite,
+  noteVerdict,
 };
