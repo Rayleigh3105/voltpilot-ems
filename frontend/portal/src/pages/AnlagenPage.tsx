@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -31,7 +31,7 @@ import { curtailTruth, curtailTruthForSlot } from '../curtailment';
 import { todaySlots } from '../schedule';
 import { slotWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
-import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
+import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
 import { resolveAnlage } from '../anlageNav';
 import { ControlStrip } from '../components/ControlStrip';
 import { useAdaptiveLive } from '../useAdaptiveLive';
@@ -61,13 +61,36 @@ import { FleetSiteCard } from '../components/FleetOverview';
 import { PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
-import { FahrplanSection, WetterSection } from './DataPages';
-import { MesswerteSection } from './MesswerteSection';
-import { ErloeseSection } from './ErloeseSection';
-import { AnlagenModellSection } from './AnlagenModellSection';
-import { LastspitzenSection } from './LastspitzenSection';
-import { SteuerungSection } from './SteuerungSection';
-import { TechnikSection } from './AnlageTechnik';
+import { LazyBoundary } from '../components/Lazy';
+// Die Unterseiten einer Anlage werden LAZY geladen. Das Cockpit (`sub === null`)
+// zeichnet keine von ihnen, zog aber über den statischen Import ihre gesamte
+// Fracht ins Einstiegs-Bündel: ECharts (jede Diagramm-Fläche), Leaflet (die
+// Karte auf „Einstellungen"), den Automations-Editor. Gemessen war das der
+// grösste Einzelposten der Ladezeit - siehe `components/Lazy.tsx`.
+const FahrplanSection = lazy(() =>
+  import('./DataPages').then((m) => ({ default: m.FahrplanSection })),
+);
+const WetterSection = lazy(() =>
+  import('./DataPages').then((m) => ({ default: m.WetterSection })),
+);
+const MesswerteSection = lazy(() =>
+  import('./MesswerteSection').then((m) => ({ default: m.MesswerteSection })),
+);
+const ErloeseSection = lazy(() =>
+  import('./ErloeseSection').then((m) => ({ default: m.ErloeseSection })),
+);
+const AnlagenModellSection = lazy(() =>
+  import('./AnlagenModellSection').then((m) => ({ default: m.AnlagenModellSection })),
+);
+const LastspitzenSection = lazy(() =>
+  import('./LastspitzenSection').then((m) => ({ default: m.LastspitzenSection })),
+);
+const SteuerungSection = lazy(() =>
+  import('./SteuerungSection').then((m) => ({ default: m.SteuerungSection })),
+);
+const TechnikSection = lazy(() =>
+  import('./AnlageTechnik').then((m) => ({ default: m.TechnikSection })),
+);
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
 const POLL_MS = 30_000;
@@ -391,45 +414,47 @@ function AnlagenSubPage({
           </div>
         </div>
       )}
-      {sub === 'fahrplan' && <FahrplanSection site={site} />}
-      {sub === 'messwerte' && (
-        <MesswerteSection
-          site={site}
-          surface={surface}
-          onOpenWelt={(welt) => onOpenSub(welt)}
-        />
-      )}
-      {sub === 'erloese' && (
-        <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
-      )}
-      {sub === 'wetter' && <WetterSection site={site} />}
+      <LazyBoundary>
+        {sub === 'fahrplan' && <FahrplanSection site={site} />}
+        {sub === 'messwerte' && (
+          <MesswerteSection
+            site={site}
+            surface={surface}
+            onOpenWelt={(welt) => onOpenSub(welt)}
+          />
+        )}
+        {sub === 'erloese' && (
+          <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
+        )}
+        {sub === 'wetter' && <WetterSection site={site} />}
       {/* The Anlagen-Modell names the ONE VoltPilot-Box every reported device
           hangs off (Captain-Korrektur) — from the devices list the shell already
           holds and keeps fresh, so this page adds no request of its own. Its
           Bezugszeit travels along: der Zustand der Box altert gegen die
           Server-Antwort, nie gegen eine weiterlaufende Uhr (`liveness.ts`). */}
-      {sub === 'modell' && (
-        <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
-      )}
-      {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
-      {sub === 'steuerung' && (
-        <SteuerungSection
-          site={site}
-          isAdmin={isAdmin}
-          onOpenSub={onOpenSub}
-          onSiteSaved={(updated) => onReload(updated.id)}
-        />
-      )}
-      {sub === 'technik' && (
-        <TechnikSection
-          site={site}
-          devices={devices}
-          sites={sites}
-          onReload={onReload}
-          onSiteSaved={(updated) => onReload(updated.id)}
-          onSiteDeleted={onBack}
-        />
-      )}
+        {sub === 'modell' && (
+          <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
+        )}
+        {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
+        {sub === 'steuerung' && (
+          <SteuerungSection
+            site={site}
+            isAdmin={isAdmin}
+            onOpenSub={onOpenSub}
+            onSiteSaved={(updated) => onReload(updated.id)}
+          />
+        )}
+        {sub === 'technik' && (
+          <TechnikSection
+            site={site}
+            devices={devices}
+            sites={sites}
+            onReload={onReload}
+            onSiteSaved={(updated) => onReload(updated.id)}
+            onSiteDeleted={onBack}
+          />
+        )}
+      </LazyBoundary>
     </>
   );
 }
@@ -768,8 +793,17 @@ export function AnlageSeite({
   // truly renders, so neither the setup nor the "nicht zugeordnet" end state
   // pays for it. A failure leaves the numbers null and the block simply omits
   // those tiles (never a fake 0 %).
+  // Beim Standard-Zeitraum „Heute" (ohne getippten Vormonat) fragt dieser
+  // Abruf ZEICHENGLEICH dasselbe wie der Zeitraum-Abruf darunter - es war zwei
+  // Mal dieselbe Anfrage samt zweitem 30-s-Takt. Dann wird er ausgelassen und
+  // der Wert kommt aus `rangeHistory`; die Aussage ist identisch, weil es
+  // dieselbe Antwort ist.
+  const dayIsRange = range === 'day' && at == null;
+  /** Die Tages-Summen: eigener Abruf - oder die des Zeitraums, wenn er GENAU
+   *  derselbe ist. Nie ein anderer Wert, nur eine Anfrage weniger. */
+  const dayTotalsEffective: HistoryTotals | null = dayIsRange ? rangeTotals : dayTotals;
   useEffect(() => {
-    if (!showStack) {
+    if (!showStack || dayIsRange) {
       setDayTotals(null);
       return undefined;
     }
@@ -787,7 +821,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, showStack, reloadKey, wake]);
+  }, [site.id, showStack, dayIsRange, reloadKey, wake]);
 
   // v3.2 M1: the hero rings follow the SELECTED period tab. They read
   // range-scoped Historie totals (Tag/Monat/Jahr) so "Autarkie · Monat" is
@@ -926,7 +960,7 @@ export function AnlageSeite({
     blocks,
     modes,
     lead,
-    dayTotals,
+    dayTotals: dayTotalsEffective,
     money: siteEarnings,
     streams: surface?.moneyStreams ?? [],
     range,
@@ -1152,7 +1186,7 @@ export function AnlageSeite({
             stale={heroStale}
             range={range}
             at={at}
-            dayTotals={dayTotals}
+            dayTotals={dayTotalsEffective}
           />
 
           {/* Zustand (vp-cockpit-unten-ux-n3 PR 3): leise, wenn gesund — EINE

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -10,6 +10,7 @@ import {
   type TelemetryPoint,
 } from '../api';
 import { ChartSubtitle } from './ChartExplain';
+import { ChartLoading, LazyBoundary } from './Lazy';
 import { ErrorState, Skeleton } from './States';
 import { LivePuls } from './LivePuls';
 import { componentRows, v1FallbackRows, type LivePulsRow } from '../livePuls';
@@ -21,7 +22,13 @@ import {
   withDayTotals,
   type LiveWindow,
 } from '../liveDetail';
-import { TelemetryChart } from '../TelemetryChart';
+// ECharts kommt NUR über dieses Diagramm auf den Cockpit-Pfad, und es steht
+// hinter einem standardmässig ZUgeklappten „Verlauf" - es lazy zu laden nimmt
+// die gesamte Diagramm-Bibliothek aus dem Einstiegs-Bündel, ohne dass eine
+// Fläche später fehlt (`components/Lazy.tsx`).
+const TelemetryChart = lazy(() =>
+  import('../TelemetryChart').then((m) => ({ default: m.TelemetryChart })),
+);
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { verlaufHash } from '../verlauf';
 import { verlaufRangeForCockpit } from '../verlaufTarget';
@@ -261,13 +268,15 @@ export function KomponentenSection({
                   Der Verlauf zeigt die Messwerte Ihrer Geräte {activeWindow.insight}. Tippen
                   Sie eine Kennzahl an, um sie ein- oder auszublenden.
                 </ChartSubtitle>
-                <TelemetryChart
-                  points={telemetry}
-                  windowLabel={activeWindow.insight}
-                  hidden={hidden}
-                  onToggle={toggleChannel}
-                  variant="compact"
-                />
+                <LazyBoundary fallback={<ChartLoading chartHeight={160} />}>
+                  <TelemetryChart
+                    points={telemetry}
+                    windowLabel={activeWindow.insight}
+                    hidden={hidden}
+                    onToggle={toggleChannel}
+                    variant="compact"
+                  />
+                </LazyBoundary>
               </>
             ) : loading ? (
               <Skeleton height={160} radius="var(--vp-radius-md)" />
