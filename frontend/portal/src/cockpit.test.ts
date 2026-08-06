@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  anlageDecision,
   automationRows,
   cockpitStack,
   coverUntil,
@@ -338,11 +339,11 @@ describe('Block-Drill-ins (report §2.2 + feedback.md)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// §6.2 — der v1-Riegel
+// §6.2 — das Stapel-Kriterium (ehem. "der v1-Riegel")
 // ---------------------------------------------------------------------------
 
-describe('projectionActive — der v1-Rückfall (report §6.2)', () => {
-  it('eine nie migrierte Anlage bleibt v1', () => {
+describe('projectionActive — das Stapel-Kriterium (report §6.2)', () => {
+  it('ohne Entitäten kein Stapel', () => {
     expect(projectionActive({ hasEntities: false, adaptive: false })).toBe(false);
     expect(projectionActive({ hasEntities: false, adaptive: true })).toBe(false);
   });
@@ -352,7 +353,7 @@ describe('projectionActive — der v1-Rückfall (report §6.2)', () => {
     expect(projectionActive({ hasEntities: true, adaptive: true })).toBe(true);
   });
 
-  it('null/undefined (älteres Backend, Ladefehler) fällt auf v1 zurück', () => {
+  it('null/undefined (Ladefehler, noch nicht geladen) ist KEIN Stapel', () => {
     expect(projectionActive({ hasEntities: null, adaptive: null })).toBe(false);
     expect(projectionActive({ hasEntities: undefined, adaptive: undefined })).toBe(false);
     expect(projectionActive({ hasEntities: true, adaptive: undefined })).toBe(false);
@@ -362,6 +363,90 @@ describe('projectionActive — der v1-Rückfall (report §6.2)', () => {
     expect(projectionActive({ hasEntities: anlageSurface(LEER).base.hasEntities, adaptive: true })).toBe(
       false,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// anlageDecision — der DREIWERTIGE Render-Entscheid (Captain-Nachtrag
+// 06.08.2026): pending / error / stack / unassigned. Der eigentliche Fix des
+// "erst zeigt das Portal die alte Ansicht"-Defekts - die Weiche darf NIE
+// entscheiden, solange ihre Eingaben noch laufen.
+// ---------------------------------------------------------------------------
+
+describe('anlageDecision — pending schlägt jede Entscheidung', () => {
+  it('loading gewinnt, egal was hasEntities/adaptive sagen', () => {
+    expect(
+      anlageDecision({ loading: true, failed: false, timedOut: false, hasEntities: true, adaptive: true }),
+    ).toBe('pending');
+    expect(
+      anlageDecision({
+        loading: true,
+        failed: false,
+        timedOut: false,
+        hasEntities: false,
+        adaptive: false,
+      }),
+    ).toBe('pending');
+    expect(
+      anlageDecision({
+        loading: true,
+        failed: false,
+        timedOut: false,
+        hasEntities: undefined,
+        adaptive: undefined,
+      }),
+    ).toBe('pending');
+  });
+
+  it('loading UND failed gleichzeitig: loading gewinnt (noch nichts entschieden)', () => {
+    expect(
+      anlageDecision({ loading: true, failed: true, timedOut: false, hasEntities: null, adaptive: null }),
+    ).toBe('pending');
+  });
+});
+
+describe('anlageDecision — timedOut gewinnt vor loading (kein Dauer-Spinner)', () => {
+  it('eine überschrittene Frist ist ein Fehlschlag, auch während loading noch true ist', () => {
+    expect(
+      anlageDecision({ loading: true, failed: false, timedOut: true, hasEntities: null, adaptive: null }),
+    ).toBe('error');
+  });
+
+  it('timedOut nach dem Laden bleibt ein Fehlschlag', () => {
+    expect(
+      anlageDecision({ loading: false, failed: false, timedOut: true, hasEntities: true, adaptive: true }),
+    ).toBe('error');
+  });
+});
+
+describe('anlageDecision — ein fehlgeschlagener Abruf ist wie "fertig", nie stillschweigend', () => {
+  it('failed nach dem Laden ⇒ error, nicht "unassigned"', () => {
+    expect(
+      anlageDecision({ loading: false, failed: true, timedOut: false, hasEntities: false, adaptive: false }),
+    ).toBe('error');
+  });
+});
+
+describe('anlageDecision — fertig geladen entscheidet stack vs. unassigned', () => {
+  it('projectionActive true ⇒ stack', () => {
+    expect(
+      anlageDecision({ loading: false, failed: false, timedOut: false, hasEntities: true, adaptive: true }),
+    ).toBe('stack');
+  });
+
+  it('projectionActive false (keine Entitäten, oder Topologie-Weiche zu) ⇒ unassigned', () => {
+    expect(
+      anlageDecision({
+        loading: false,
+        failed: false,
+        timedOut: false,
+        hasEntities: false,
+        adaptive: false,
+      }),
+    ).toBe('unassigned');
+    expect(
+      anlageDecision({ loading: false, failed: false, timedOut: false, hasEntities: true, adaptive: false }),
+    ).toBe('unassigned');
   });
 });
 

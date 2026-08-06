@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { leadArtifact, leadBlock, LEAD_CANDIDATES } from './leadSlot';
-import { emphasisFor } from './usageProfile';
+import { leadBlock, LEAD_CANDIDATES } from './leadSlot';
 import type { CockpitBlock, CockpitBlockId } from './surface';
 
 const ORDER: Record<CockpitBlockId, number> = {
@@ -16,33 +15,6 @@ const ORDER: Record<CockpitBlockId, number> = {
 
 const blocks = (...ids: CockpitBlockId[]): CockpitBlock[] =>
   ids.map((id) => ({ id, title: id, order: ORDER[id], from: null }));
-
-describe('leadArtifact - the U4 cockpit lead-slot switch', () => {
-  it('peak profile leads with the Peak-Band', () => {
-    expect(leadArtifact(emphasisFor('peak').peak)).toBe('peakband');
-  });
-
-  it('arbitrage profile leads with money (byte-identical to today)', () => {
-    expect(leadArtifact(emphasisFor('arbitrage').peak)).toBe('money');
-  });
-
-  it('private profile leads with money', () => {
-    expect(leadArtifact(emphasisFor('private').peak)).toBe('money');
-  });
-
-  it('only the literal "prominent" peak emphasis flips to the Peak-Band', () => {
-    expect(leadArtifact('prominent')).toBe('peakband');
-    expect(leadArtifact('secondary')).toBe('money');
-    expect(leadArtifact('minimal')).toBe('money');
-    expect(leadArtifact('hidden')).toBe('money');
-  });
-
-  it('null/undefined/unknown resolve to money (v1-safe fallback)', () => {
-    expect(leadArtifact(null)).toBe('money');
-    expect(leadArtifact(undefined)).toBe('money');
-    expect(leadArtifact('nonsense')).toBe('money');
-  });
-});
 
 describe('leadBlock - the M3 N-ary lead rule (peak -> money -> flow)', () => {
   it('peak wins over money and flow', () => {

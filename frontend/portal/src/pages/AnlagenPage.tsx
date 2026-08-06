@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
-import { Icon, type IconName } from '../../designsystem/components/core/Icon';
-import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
+import { Icon } from '../../designsystem/components/core/Icon';
+import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
   api,
   type ControlStatus,
@@ -19,15 +19,9 @@ import {
   type SiteSource,
   type TelemetryPoint,
 } from '../api';
-import {
-  BATTERY_NO_DEVICE_WARNING,
-  composeSiteSentence,
-  notComputableHint,
-  siteLiveFresh,
-  siteSnapshot,
-} from '../fleet';
-import { eurAmount, fmtNum, plantKindLabel } from '../format';
-import { DEFAULT_EARNINGS_RANGE, periodLabel, stripSlots } from '../anlage';
+import { BATTERY_NO_DEVICE_WARNING, composeSiteSentence, siteLiveFresh, siteSnapshot } from '../fleet';
+import { plantKindLabel } from '../format';
+import { DEFAULT_EARNINGS_RANGE } from '../anlage';
 import { anlageRoute, pageRoute, type AnlagenSub, type Route } from '../nav';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useWake } from '../useWake';
@@ -36,21 +30,17 @@ import { controlReasonSlot, controlStrip } from '../control';
 import { curtailTruth, curtailTruthForSlot } from '../curtailment';
 import { todaySlots } from '../schedule';
 import { slotWhy } from '../fahrplanWhy';
-import { planTrafZu, type PlanTrafZu } from '../planAccuracy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { resolveAnlage } from '../anlageNav';
 import { ControlStrip } from '../components/ControlStrip';
-import { EnergyFlow } from '../components/EnergyFlow';
-import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
 import { useAdaptiveLive } from '../useAdaptiveLive';
 import { liveState, type LiveState } from '../adaptiveLive';
 import { flowHasValues, headSentenceVisible, liveChip } from '../liveDetail';
-import { moneyLayout } from '../moneyEmphasis';
-import { leadArtifact, leadBlock } from '../leadSlot';
+import { leadBlock } from '../leadSlot';
 import { useAnlageSurface } from '../useAnlageSurface';
 import type { AnlageSurface } from '../surface';
-import { hasBlock, projectionActive } from '../cockpit';
+import { anlageDecision, hasBlock } from '../cockpit';
 import {
   cockpitHero,
   cockpitWidgets,
@@ -62,17 +52,13 @@ import { KomponentenSection } from '../components/KomponentenSection';
 import { ZustandCard } from '../components/ZustandCard';
 import { StrompreisStrip } from '../components/StrompreisStrip';
 import { gateStrompreis } from '../strompreis';
-import { PvBreakdownLine } from '../components/PvBreakdown';
 import { WidgetGrid } from '../components/WidgetGrid';
 import { AnlageSetup } from '../components/AnlageSetup';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
 import { peakBand, quarterHourMeanImportKw } from '../peakBand';
-import { PeakBand } from '../components/PeakBand';
 import { FahrplanBand } from '../components/FahrplanBand';
 import { FleetSiteCard } from '../components/FleetOverview';
-import { ErtragChart } from '../components/ErtragChart';
-import { HealthChecklist } from '../components/HealthChecklist';
-import { AnlageHero, EnergyStatsRow, MonthRail, MonthStrip, PeriodTabs } from '../components/MoneyView';
+import { PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
@@ -87,6 +73,13 @@ import { TechnikSection } from './AnlageTechnik';
 const POLL_MS = 30_000;
 /** Re-render cadence of the "Stand vor X" freshness note. */
 const TICK_MS = 5_000;
+/**
+ * Die knappe, begründete Frist, bevor eine hängende Entscheidungs-Eingabe
+ * (Netz hängt, Backend antwortet nie) als Fehlschlag behandelt wird - "kein
+ * Dauer-Spinner" (Captain-Nachtrag 06.08.2026). Am `BOOT_TIMEOUT_MS`-Präzedenz
+ * orientiert (`src/boot.ts`).
+ */
+const ANLAGE_DECISION_TIMEOUT_MS = 10_000;
 
 export interface AnlagenPageProps {
   sites: Site[];
@@ -466,7 +459,6 @@ export function AnlageSeite({
   const [overview, setOverview] = useState<Overview | null>(null);
   const [overviewFailed, setOverviewFailed] = useState(false);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
-  const [earnFailed, setEarnFailed] = useState(false);
   // The period tabs govern the whole page (captain 2026-07-07). `at` is the
   // selected instance (a month tapped in the strip); null = the current period.
   // Die Voreinstellung ist „Heute" und steht an EINER Stelle (`anlage.ts`);
@@ -483,7 +475,6 @@ export function AnlageSeite({
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [planFailed, setPlanFailed] = useState(false);
-  const [planTraf, setPlanTraf] = useState<PlanTrafZu | null>(null);
   // U4: recent telemetry for the peak face's live ¼-h mean (fetched only when
   // the cockpit leads with the Peak-Band - see the gated effect below).
   const [peakSamples, setPeakSamples] = useState<TelemetryPoint[]>([]);
@@ -541,13 +532,9 @@ export function AnlageSeite({
     let active = true;
     api.earnings(range, at).then(
       (e) => {
-        if (!active) return;
-        setEarnings(e);
-        setEarnFailed(false);
+        if (active) setEarnings(e);
       },
-      () => {
-        if (active) setEarnFailed(true);
-      },
+      () => {},
     );
     return () => {
       active = false;
@@ -636,24 +623,6 @@ export function AnlageSeite({
     };
   }, [site.id, reloadKey]);
 
-  // Plan-vs-actual accuracy for the "Fahrplan traf zu X %" one-liner (report
-  // N5): the latest point of the forecast-quality plan_accuracy series,
-  // graduated from Prognosequalität. Silent - null when nothing trustworthy.
-  useEffect(() => {
-    let active = true;
-    api.forecastQuality(site.id).then(
-      (fq) => {
-        if (active) setPlanTraf(planTrafZu(fq.planAccuracy, new Date()));
-      },
-      () => {
-        if (active) setPlanTraf(null);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [site.id, reloadKey]);
-
   // Freshness tick (5 s) + silent 30 s background poll.
   const rangeRef = useRef(range);
   rangeRef.current = range;
@@ -695,52 +664,80 @@ export function AnlageSeite({
   const sentence = ovSite ? composeSiteSentence(ovSite, now) : null;
   const fresh = ovSite ? siteLiveFresh(ovSite, now) : false;
   // AE1/AE7: the compact "Jetzt gerade" flow becomes the adaptive N-node
-  // diagram for migrated sites; un-migrated sites keep the v1 EnergyFlow.
-  const adaptiveLive = useAdaptiveLive(site.id);
-  // AE4: the money view is a profile-conditional lens. Only a MIGRATED site with
-  // a usage profile carries an emphasis; anything else resolves to `prominent`,
-  // so an un-migrated (or profile-less) site renders byte-identical to today.
-  const emphasis = adaptiveLive.adaptive ? adaptiveLive.profile?.emphasis : null;
-  const money = moneyLayout(emphasis?.money);
+  // diagram once the site has a renderable topology; otherwise the cockpit
+  // falls back to the plain `EnergyFlow` (`CockpitHero` decides internally).
+  // `reloadKey` doubles as the retry key: bumping it (an "Erneut versuchen"
+  // click) forces a fresh fetch of the SAME site.
+  const adaptiveLive = useAdaptiveLive(site.id, reloadKey);
 
   // M3 (#531): the cockpit is the PROJECTION of the Anlage — a deterministic
-  // module stack derived from the ACTIVE MODES (M0 `surface.ts`), not a fixed
-  // zone raster. The v1 gate is non-negotiable (report §6.2): without entities
-  // (and with the existing `useAdaptiveLive`/`hasTopology` gate closed) the
-  // Anlage renders EXACTLY today's default cockpit, byte-identical.
-  const { surface, entities: siteEntityPins } = useAnlageSurface(site);
-  const projection = projectionActive({
+  // module stack derived from the ACTIVE MODES (M0 `surface.ts`). `blocks`/
+  // `modes` come straight from the read-model - `cockpitBlocks` already
+  // returns `[]` for a site without entities, so there is no separate
+  // "projected ? … : []" ternary any more.
+  const {
+    surface,
+    entities: siteEntityPins,
+    loading: surfaceLoading,
+    failed: surfaceFailed,
+  } = useAnlageSurface(site, reloadKey);
+  const blocks = surface?.cockpitBlocks ?? [];
+  const modes = surface?.modes ?? [];
+  const lead = leadBlock(blocks);
+  const isPeakLead = hasBlock(blocks, 'peak-band');
+
+  // Der DREIWERTIGE Render-Entscheid (Captain-Nachtrag 06.08.2026, `cockpit.ts`
+  // `anlageDecision`): SOLANGE die Entscheidungs-Eingaben laufen — `/entities`,
+  // `/topology` UND die Übersichts-Zeile (die `setupPathActive` unten braucht,
+  // um „noch nie Daten geliefert" von „noch nicht geladen" zu unterscheiden) —
+  // wird KEIN Layout gewählt. Das ist der eigentliche Fix des „erst zeigt das
+  // Portal die alte Ansicht"-Defekts: die frühere Weiche entschied, BEVOR ihre
+  // Eingaben geladen waren.
+  const overviewPending = overview == null && !overviewFailed;
+  const decisionLoading = surfaceLoading || adaptiveLive.loading || overviewPending;
+  const decisionFailed = surfaceFailed || adaptiveLive.failed || overviewFailed;
+  const [decisionTimedOut, setDecisionTimedOut] = useState(false);
+  useEffect(() => {
+    if (!decisionLoading) {
+      setDecisionTimedOut(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setDecisionTimedOut(true), ANLAGE_DECISION_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [decisionLoading, site.id, reloadKey]);
+  const decision = anlageDecision({
+    loading: decisionLoading,
+    failed: decisionFailed,
+    timedOut: decisionTimedOut,
     hasEntities: surface?.base.hasEntities,
     adaptive: adaptiveLive.adaptive,
   });
-  const blocks = projection ? surface?.cockpitBlocks ?? [] : [];
-  const modes = projection ? surface?.modes ?? [] : [];
-  // The N-ary lead rule (peak → money → flow) replaces the binary U4 switch on
-  // the projected path; the v1 path keeps the AE7 emphasis lens.
-  const lead = projection ? leadBlock(blocks) : null;
-  const isPeakLead = projection
-    ? hasBlock(blocks, 'peak-band')
-    : leadArtifact(emphasis?.peak) === 'peakband';
-  // v3 M2: the day totals now feed the hero rings on EVERY projected cockpit,
-  // not just the Eigenverbrauchs-Block - so the gate is the projection itself.
-  const needsDayTotals = projection;
+  const decided = decision === 'stack' || decision === 'unassigned';
 
   // M5 (#533): die Ausprägung "Neu / leer" — das Cockpit IST der
   // Einrichtungspfad. Die Weiche ist bewusst eng (siehe `setupPath.ts`): eine
-  // LAUFENDE v1-Anlage ohne v2-Entitäten behält ihr Cockpit; nur eine Anlage,
-  // die noch nie Messdaten geliefert hat, bekommt den geführten Pfad. `pinned`
-  // hält ihn stehen, während der Kunde mitten in der Kette steht (nach einer
-  // Übernahme), damit die Seite nicht unter ihm wegspringt.
+  // bereits messende Anlage ohne v2-Entitäten bekommt NICHT den Einrichtungspfad
+  // (siehe den „nicht zugeordnet"-Endzustand unten) — nur eine Anlage, die noch
+  // nie Messdaten geliefert hat. `pinned` hält ihn stehen, während der Kunde
+  // mitten in der Kette steht (nach einer Übernahme), damit die Seite nicht
+  // unter ihm wegspringt. Ausgewertet erst, sobald wirklich ENTSCHIEDEN ist -
+  // während `decision === 'pending'` bräuchte sie eine Übersichts-Zeile, die es
+  // noch gar nicht gibt.
   const [setupPinned, setSetupPinned] = useState(false);
   const showSetup =
-    setupPinned ||
-    setupPathActive({
-      hasEntities: surface?.base.hasEntities,
-      modeCount: surface?.modes.length ?? 0,
-      statusLoaded: ovSite != null,
-      lastSeenAt: ovSite?.lastSeenAt ?? null,
-      hasLiveSample: ovSite?.live != null,
-    });
+    decided &&
+    (setupPinned ||
+      setupPathActive({
+        hasEntities: surface?.base.hasEntities,
+        modeCount: surface?.modes.length ?? 0,
+        statusLoaded: ovSite != null,
+        lastSeenAt: ovSite?.lastSeenAt ?? null,
+        hasLiveSample: ovSite?.live != null,
+      }));
+  // Der Modul-Stapel selbst rendert nur, wenn ENTSCHIEDEN, nicht der
+  // Einrichtungspfad, UND `projectionActive` (in `decision` verrechnet) wirklich
+  // zutrifft - sonst ist es der ehrliche „nicht zugeordnet"-Endzustand.
+  const showStack = decided && !showSetup && decision === 'stack';
 
   // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
   // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
@@ -767,11 +764,12 @@ export function AnlageSeite({
   }, [site.id, isPeakLead, reloadKey, wake]);
 
   // M3: the Eigenverbrauchs-Block's Autarkie / PV-Nutzung come from the EXISTING
-  // Historie totals of today (server-computed) - fetched ONLY when that block is
-  // part of the projection, so no other Ausprägung pays for it. A failure leaves
-  // the numbers null and the block simply omits those tiles (never a fake 0 %).
+  // Historie totals of today (server-computed) - fetched ONLY while the stack
+  // truly renders, so neither the setup nor the "nicht zugeordnet" end state
+  // pays for it. A failure leaves the numbers null and the block simply omits
+  // those tiles (never a fake 0 %).
   useEffect(() => {
-    if (!needsDayTotals) {
+    if (!showStack) {
       setDayTotals(null);
       return undefined;
     }
@@ -789,7 +787,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, needsDayTotals, reloadKey, wake]);
+  }, [site.id, showStack, reloadKey, wake]);
 
   // v3.2 M1: the hero rings follow the SELECTED period tab. They read
   // range-scoped Historie totals (Tag/Monat/Jahr) so "Autarkie · Monat" is
@@ -799,7 +797,7 @@ export function AnlageSeite({
   // (never a wrong-range value). Fail-soft; the energy flow is untouched.
   useEffect(() => {
     const hRange = historyRangeForCockpit(range);
-    if (!projection || hRange == null) {
+    if (!showStack || hRange == null) {
       setRangeHistory(null);
       return undefined;
     }
@@ -818,7 +816,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, projection, range, at, reloadKey, wake]);
+  }, [site.id, showStack, range, at, reloadKey, wake]);
 
   // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
   // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
@@ -905,12 +903,8 @@ export function AnlageSeite({
     batteryLinked,
   ]);
 
-  // The period label + strip selection follow the SELECTED instance.
+  // The selected period instance (`at` = a tapped past month; null = current).
   const atDate = at ? new Date(`${at}T12:00:00`) : now;
-  const period = periodLabel(range, atDate, now);
-  const currentMonthIso = `${now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 7)}-01`;
-  const selectedMonth = at ?? currentMonthIso;
-  const series = siteEarnings?.series ?? [];
 
   // v3 M2 · das Live-Cockpit: Hero (bestehendes Energiefluss-Diagramm groß +
   // Ringe + Geld + Fahrplan-Zeile) und das Widget-Raster. Beide Ableitungen
@@ -925,25 +919,25 @@ export function AnlageSeite({
     slotMinutes: plan?.slotMinutes ?? 15,
     plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
   });
-  const widgets = projection
-    ? cockpitWidgets({
-        blocks,
-        modes,
-        lead,
-        dayTotals,
-        money: siteEarnings,
-        streams: surface?.moneyStreams ?? [],
-        range,
-        at: atDate,
-        now,
-        slots: planSlots,
-        slotMinutes: plan?.slotMinutes ?? 15,
-        plantKind:
-          site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
-        peak: peakView,
-        weather: { nextHourTempC, why: weatherWhyText },
-      })
-    : [];
+  // `cockpitWidgets` is safe to call unconditionally: `blocks`/`modes` are
+  // already the correctly-empty read-model of a non-stack Anlage, so it
+  // returns `[]` on its own - no separate gate needed here.
+  const widgets = cockpitWidgets({
+    blocks,
+    modes,
+    lead,
+    dayTotals,
+    money: siteEarnings,
+    streams: surface?.moneyStreams ?? [],
+    range,
+    at: atDate,
+    now,
+    slots: planSlots,
+    slotMinutes: plan?.slotMinutes ?? 15,
+    plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+    peak: peakView,
+    weather: { nextHourTempC, why: weatherWhyText },
+  });
   // ONE freshness truth (G3/R4): the three-state `liveState` drives BOTH the
   // head chip and the hero/board dimming. `site-only` (the Anlage delivers,
   // the per-device breakdown does not) gets its own honest chip wording and
@@ -968,7 +962,7 @@ export function AnlageSeite({
   // kein zweites Urteil über dieselbe Frage.
   const heroSnapshot = ovSite ? siteSnapshot(ovSite.live) : null;
   const showHeadSentence = headSentenceVisible({
-    projected: projection && !showSetup,
+    projected: showStack,
     tone: sentence?.tone ?? null,
     hasFlow: flowHasValues(adaptiveLive.topology, heroSnapshot),
   });
@@ -976,10 +970,6 @@ export function AnlageSeite({
   const switchRange = (r: EarningsRange) => {
     setRange(r);
     setAt(null);
-  };
-  const selectMonth = (monthIso: string) => {
-    setRange('month');
-    setAt(monthIso);
   };
 
   // „Eine Kachel ist ein Absprung" (V2): ein Tipp navigiert direkt zum Ziel der
@@ -1048,7 +1038,24 @@ export function AnlageSeite({
         </div>
       )}
 
-      {showSetup ? (
+      {decision === 'pending' ? (
+        /* ===== Zwischenzustand: die Entscheidungs-Eingaben laufen noch =====
+           Der eigentliche Fix (Captain-Nachtrag 06.08.2026): solange
+           `/entities`/`/topology`/die Übersichts-Zeile noch laufen, wird KEIN
+           Layout gewählt - weder der Modul-Stapel noch der Einrichtungspfad
+           noch der „nicht zugeordnet"-Endzustand. Layout-stabil, ruhig,
+           begrenzt (siehe die knappe Frist oben in `decisionTimedOut`). */
+        <AnlagePending />
+      ) : decision === 'error' ? (
+        /* ===== Ehrlicher Fehlerzustand statt Dauer-Spinner ================
+           Ein entscheidungskritischer Abruf ist fehlgeschlagen ODER die
+           knappe Frist ist überschritten - beides wird wie „fertig"
+           behandelt: kein endloses Warten, sondern Wiederholen. */
+        <ErrorState
+          message="Diese Anlage konnte gerade nicht geladen werden. Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+          onRetry={() => setReloadKey((k) => k + 1)}
+        />
+      ) : showSetup ? (
         /* ===== M5 · Der Leer-Zustand IST der Einrichtungspfad =============
            Ausprägung "Neu / leer" (report §3): keine Entitäten, keine Modi,
            noch nie Daten - also keine Platzhalter-Karten, sondern die drei
@@ -1061,7 +1068,7 @@ export function AnlageSeite({
           onReload={onReload}
           onStay={setSetupPinned}
         />
-      ) : projection ? (
+      ) : showStack ? (
         /* ===== v3 M2 · Das Live-Cockpit ==================================
            Der Hero trägt das BESTEHENDE Energiefluss-Diagramm groß und
            zentral (kein neues "Energie-Rad", BUILD.md §2) mit Autarkie/
@@ -1166,258 +1173,15 @@ export function AnlageSeite({
           )}
         </>
       ) : (
-        /* ===== v1 (un-migrated): byte-identical to today ================== */
-        <>
-      {/* U4 · Peak-Band lead artifact: on the peak face the cockpit leads with
-          the Spitzen-Verteidigung (¼-h-Mittel vs. Ziel + PS-4-Zahlen); Geld
-          läuft darunter als Nachweis (AE4 secondary). Non-peak faces skip it. */}
-      {peakView && (
-        <div className="vp-lead-peakband" style={{ marginBottom: 'var(--vp-space-4)' }}>
-          <PeakBand view={peakView} peak={siteEarnings?.peakShaving ?? null} />
-        </div>
-      )}
-
-      {/* 2 · Zeitraum-Tabs regieren die Geld-Ansicht - nur wenn Geld geführt
-          wird (AE4: für das Privat-Profil ist Geld aus dem Hero genommen). */}
-      {money.showFullMoney && <PeriodTabs range={range} onRange={switchRange} />}
-
-      {/* 3 · Monats-Leiste (Phone/Tablet): letzte 12 Monate zum Durchtippen.
-          Auf Desktop ersetzt der vertikale Rail in Zone C diese Leiste. */}
-      {money.showFullMoney && range === 'month' && (
-        <div className="vp-mstrip-mobile">
-          <MonthStrip
-            slots={stripSlots(siteEarnings?.monthlyStrip ?? [], now)}
-            selectedMonth={selectedMonth}
-            onSelect={selectMonth}
-          />
-        </div>
-      )}
-
-      {/* Das 3-Zonen-Dashboard (Desktop): Geld | Live | Rail über einem
-          Fahrplan-Band in voller Breite. Auf Phone/Tablet lösen sich die Zonen
-          auf und die Blöcke ordnen sich geldzuerst (per CSS order). */}
-      <div
-        className={`vp-anlage-dash${money.nachweis ? ' vp-money-nachweis' : ''}${
-          money.hiddenFromHero ? ' vp-money-min' : ''
-        }`}
-      >
-        {/* ---- Zone A · Geld (ruhig; AE4 profil-bedingt) ----------------- */}
-        <div className="vp-zone vp-zone-money">
-          {money.hiddenFromHero ? (
-            // Privat-Profil: Geld ist aus dem Hero genommen, aber über ein ruhiges
-            // Detail erreichbar - der Fokus liegt auf Live-Flüssen + Steuerung.
-            <div className="vp-dash-hero">
-              <MoneyGlanceCard onOpen={() => onOpenSub('erloese')} />
-            </div>
-          ) : (
-            <>
-              <div className="vp-dash-hero">
-                {money.nachweis && (
-                  <span className="vp-money-nachweis-tag">Nachweis · {period}</span>
-                )}
-                {earnings == null && !earnFailed ? (
-                  <Skeleton height={300} radius="var(--vp-radius-lg)" />
-                ) : (
-                  <AnlageHero
-                    money={siteEarnings}
-                    period={period}
-                    unavailable={earnFailed}
-                    emptyHint={
-                      siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined
-                    }
-                  />
-                )}
-              </div>
-
-              <div className="vp-dash-ertrag">
-                <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-                  <span className="vp-card-label">Ertrag · {period}</span>
-                  {earnings == null && !earnFailed ? (
-                    <Skeleton height={220} radius="var(--vp-radius-md)" />
-                  ) : series.length > 0 ? (
-                    <ErtragChart series={series} range={range} />
-                  ) : (
-                    <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-                      Für diesen Zeitraum liegen noch keine Erträge vor. Sobald Ihre Anlage
-                      misst und Börsenpreise vorliegen, erscheint hier Ihr Verlauf.
-                    </p>
-                  )}
-                </Card>
-              </div>
-
-              <div className="vp-dash-energy">
-                <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-                  <span className="vp-card-label">Energie · {period}</span>
-                  <EnergyStatsRow money={siteEarnings} />
-                </Card>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* ---- Zone B · Live (bewegt) ------------------------------------ */}
-        <div className="vp-zone vp-zone-live">
-          <div className="vp-dash-live">
-            <Card padding="lg" radius="lg" className="vp-site-status" style={{ minWidth: 0 }}>
-              <span className="vp-card-label">Jetzt gerade</span>
-              {overview == null && overviewFailed ? (
-                <ErrorState
-                  message="Der Live-Zustand Ihrer Anlage konnte gerade nicht geladen werden."
-                  onRetry={() => setReloadKey((k) => k + 1)}
-                />
-              ) : ovSite == null ? (
-                <Skeleton height={240} radius="var(--vp-radius-md)" />
-              ) : (
-                <>
-                  {adaptiveLive.adaptive && adaptiveLive.topology ? (
-                    <AdaptiveEnergyFlow
-                      topology={adaptiveLive.topology}
-                      sources={sources}
-                      pins={siteEntityPins}
-                      stale={
-                        liveState({
-                          entityFresh: adaptiveLive.topology.entities.some(
-                            (e) => e.health === 'ok',
-                          ),
-                          siteFresh: fresh,
-                        }) === 'stale'
-                      }
-                    />
-                  ) : (
-                    <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
-                  )}
-                  {/* #524: why the Solar number is what it is (renders itself
-                      away on a single-inverter site). Auf einer migrierten
-                      Anlage trägt der PV-Knoten das selbst - ein Tipp darauf
-                      öffnet die Zusammensetzung. */}
-                  {!(adaptiveLive.adaptive && adaptiveLive.topology) && (
-                    <PvBreakdownLine sources={sources} />
-                  )}
-                  {weatherWhyText && fresh && (
-                    <p className="vp-live-why">
-                      <Icon name="sun" size={14} /> {weatherWhyText}
-                    </p>
-                  )}
-                  {/* Die Live-Tiefe lebt seit dem Merge auf DIESER Seite
-                      (Komponenten im Detail unten) — kein Absprung mehr; die
-                      Frische trägt der Kopf-Chip (R4). */}
-                </>
-              )}
-            </Card>
-          </div>
-
-          {/* Steuerung: honest even before the first readback (report N4). */}
-          {controlView && (
-            <div className="vp-dash-control">
-              <ControlStrip view={controlView} />
-            </div>
-          )}
-
-          {/* Plan-traf-zu one-liner (report N5): the optimizer's trust number. */}
-          {planTraf && (
-            <div className="vp-dash-plantraf">
-              <PlanTrafCard traf={planTraf} onOpen={() => onOpenSub('fahrplan')} />
-            </div>
-          )}
-        </div>
-
-        {/* ---- Zone C · Rail (Desktop-only) ------------------------------ */}
-        <div className="vp-zone vp-zone-rail">
-          {money.showFullMoney && range === 'month' && (
-            <div className="vp-dash-rail">
-              <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-                <MonthRail
-                  slots={stripSlots(siteEarnings?.monthlyStrip ?? [], now)}
-                  selectedMonth={selectedMonth}
-                  onSelect={selectMonth}
-                />
-              </Card>
-            </div>
-          )}
-          {health.length > 0 && (
-            <div className="vp-dash-health">
-              <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-                <HealthChecklist items={health} />
-              </Card>
-            </div>
-          )}
-        </div>
-
-        {/* ---- Fahrplan-Band (volle Breite) ----------------------------- */}
-        <div className="vp-dash-fahrplan">
-          <FahrplanBand
-            plan={plan}
-            plantKind={site.plantKind}
-            now={now}
-            loading={planLoading && plan == null}
-            failed={planFailed}
-            onOpen={() => onOpenSub('fahrplan')}
-          />
-        </div>
-
-        {/* ---- Komponenten im Detail (volle Breite) ---------------------
-            Merge Option A: das Komponenten-Board + der kompakte Verlauf
-            (hinter „Verlauf ▾") leben jetzt AUF der Startseite — die frühere
-            Live-Daten-Seite ist hierher aufgegangen. Lazy-mount: die Abrufe
-            starten erst nahe dem Viewport. */}
-        <div className="vp-dash-komponenten">
-          <KomponentenSection
-            site={site}
-            topology={adaptiveLive.topology}
-            adaptive={adaptiveLive.adaptive}
-            stale={heroStale}
-            range={range}
-            at={at}
-            dayTotals={null}
-          />
-        </div>
-
-        {/* ---- Tiefer schauen (volle Breite) ---------------------------- */}
-        <div className="vp-dash-deep">
-          <div className="vp-detail-grid">
-            <DetailCard
-              icon="history"
-              category="home"
-              title="Messwerte"
-              line="Ihre Tage im Rückblick - Energie, Verlauf, einzelne Messwerte."
-              onOpen={() => onOpenSub('messwerte')}
-            />
-            <DetailCard
-              icon="sun"
-              category="solar"
-              title="Wetter am Standort"
-              line={
-                nextHourTempC != null
-                  ? `Nächste Stunde ${fmtNum(nextHourTempC, '°C')}.`
-                  : 'Die Vorhersage für Ihre Anlage.'
-              }
-              onOpen={() => onOpenSub('wetter')}
-            />
-            <DetailCard
-              icon="settings"
-              category="industry"
-              title="Einstellungen"
-              line="Stromtarif, Vergütung, Speicher, Wechselrichter und Standort."
-              onOpen={() => onOpenSub('technik')}
-            />
-            <DetailCard
-              icon="layers"
-              category="primary"
-              title="Anlagen-Modell"
-              line="Geräte, Komponenten und was das Cockpit daraus macht."
-              onOpen={() => onOpenSub('modell')}
-            />
-            <DetailCard
-              icon="zap"
-              category="primary"
-              title="Steuerung"
-              line="Was läuft - und eigene Strategien & Automationen bauen."
-              onOpen={() => onOpenSub('steuerung')}
-            />
-          </div>
-        </div>
-      </div>
-        </>
+        /* ===== Ehrlicher Endzustand: Anlage MIT Daten, ohne Komponenten ====
+           Captain-Nachtrag 06.08.2026 §3: der automatische v2-Backfill
+           überspringt eine Anlage ohne EINDEUTIGES Gateway-Gerät (kein Gerät
+           oder mehrere) - sie bleibt un-migriert, obwohl sie längst misst
+           (eine Anlage ohne Gerät landet stattdessen im M5-Einrichtungspfad
+           oben). Kein Ersatz-Layout mehr, das gleich wieder verschwindet -
+           die NEUE Schale, plus eine ruhige, benennende Zeile und der
+           konkrete Hebel (Anlagen-Modell / Zuordnung). */
+        <AnlageUnassigned onOpenModell={() => onOpenSub('modell')} />
       )}
 
       {/* Single-Anlage customers have no Übersicht/Anlagen-Liste; their way to
@@ -1429,92 +1193,57 @@ export function AnlageSeite({
 }
 
 /**
- * The Plan-traf-zu one-liner card (report N5): the single most trust-building
- * graduated number - "Der Fahrplan traf gestern zu 93 % zu", plus the realized
- * advantage vs. doing nothing when positive. Tapping opens the full Fahrplan.
+ * Der ruhige Zwischenzustand, solange die Entscheidungs-Eingaben laufen
+ * (Captain-Nachtrag 06.08.2026): weder v1 noch der Modul-Stapel - ein
+ * layout-stabiler Platzhalter, der weder wie das eine noch wie das andere
+ * aussieht, damit nie eine Fassung zu sehen ist, die gleich wieder
+ * verschwindet. Die Kopf-Informationen (Name, Status-Satz, Badges) bleiben
+ * unverändert sichtbar - sie sind bereits Teil des immer gerenderten Kopfs.
  */
-function PlanTrafCard({ traf, onOpen }: { traf: PlanTrafZu; onOpen: () => void }) {
+function AnlagePending() {
   return (
-    <button type="button" className="vp-plantraf" onClick={onOpen}>
-      <span className="vp-plantraf-ico" aria-hidden="true">
-        <Icon name="trending-up" size={18} />
-      </span>
-      <span className="vp-plantraf-text">
-        Der Fahrplan traf {traf.whenLabel} zu <b>{traf.accuracyPct} %</b> zu
-        {traf.savedVsBaselineEur != null && (
-          <> · <b>+{eurAmount(traf.savedVsBaselineEur)}</b> ggü. ohne Speicher</>
-        )}
-        .
-      </span>
-      <span className="vp-plantraf-chev" aria-hidden="true">
-        ›
-      </span>
-    </button>
+    <div className="vp-anlage-pending" role="status" aria-live="polite" aria-busy="true">
+      <span className="vp-note vp-sr-only">Wird geladen…</span>
+      <Skeleton height={420} radius="var(--vp-radius-lg)" />
+      <div className="vp-anlage-pending-grid">
+        <Skeleton height={96} radius="var(--vp-radius-md)" />
+        <Skeleton height={96} radius="var(--vp-radius-md)" />
+        <Skeleton height={96} radius="var(--vp-radius-md)" />
+      </div>
+    </div>
   );
 }
 
 /**
- * AE4: the quiet money affordance shown in the hero slot when the usage profile
- * (private) takes money out of the hero. It de-emphasises the number without
- * destroying access - one tap reaches the full Erlöse/Wert rückblick.
+ * Der ehrliche Endzustand einer Anlage, die MISST, aber (noch) keiner
+ * v2-Komponente zugeordnet ist (Captain-Nachtrag 06.08.2026 §"Was entfällt"
+ * Punkt 3). Der einzige heute bekannte Weg dorthin: der automatische Backfill
+ * überspringt eine Anlage ohne EINDEUTIGES Gateway-Gerät (kein Gerät oder
+ * mehrere) - eine Mehr-Geräte-Anlage bleibt dann un-migriert, obwohl sie
+ * längst Daten liefert. Der frühere v1-Zonen-Dashboard-Rückfall ist mit
+ * dieser Umstellung ENTFALLEN (kein Ersatz-Layout) - an seine Stelle tritt
+ * diese ruhige, benennende Zeile mit dem konkreten Hebel, nie ein leeres
+ * weißes Feld und nie ein Dauer-Spinner.
  */
-function MoneyGlanceCard({ onOpen }: { onOpen: () => void }) {
+function AnlageUnassigned({ onOpenModell }: { onOpenModell: () => void }) {
   return (
-    <button type="button" className="vp-money-glance" onClick={onOpen}>
-      <span className="vp-money-glance-ico" aria-hidden="true">
-        <Icon name="euro" size={18} />
-      </span>
-      <span className="vp-money-glance-text">
-        <b>Erlöse &amp; Wert</b>
-        <span>Ihr finanzieller Rückblick - im Detail ansehen.</span>
-      </span>
-      <span className="vp-money-glance-chev" aria-hidden="true">
-        ›
-      </span>
-    </button>
-  );
-}
-
-/** One "where is the detail" link card: icon, title, one calm German line. */
-function DetailCard({
-  icon,
-  category,
-  title,
-  line,
-  onOpen,
-}: {
-  icon: IconName;
-  category: IconCategory;
-  title: string;
-  line: string;
-  onOpen: () => void;
-}) {
-  return (
-    <Card
-      interactive
-      className="vp-detail-card"
-      style={{ minWidth: 0 }}
-      onClick={onOpen}
-      role="link"
-      tabIndex={0}
-      onKeyDown={(e: KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      aria-label={`${title} öffnen`}
-    >
-      <div className="vp-detail-card-head">
-        <IconTile category={category} size={40}>
-          <Icon name={icon} size={20} />
+    <Card padding="lg" radius="lg" accent="primary" className="vp-resume-banner vp-anlage-unassigned">
+      <div style={{ display: 'flex', gap: 'var(--vp-space-4)', flex: '1 1 360px', minWidth: 0 }}>
+        <IconTile category="primary" size={48}>
+          <Icon name="layers" size={22} />
         </IconTile>
-        <span className="vp-fleet-chev" aria-hidden="true">
-          ›
-        </span>
+        <div style={{ minWidth: 0 }}>
+          <h4 style={{ marginBottom: 4 }}>Diese Anlage ist noch nicht zugeordnet</h4>
+          <p className="vp-muted" style={{ margin: 0 }}>
+            Ihre Anlage sendet bereits Messwerte, aber die Komponenten (PV, Speicher, Netz)
+            fehlen - vermutlich, weil mehrere Geräte gemeldet werden. Ordnen Sie sie im
+            Anlagen-Modell zu.
+          </p>
+        </div>
       </div>
-      <span className="vp-detail-card-title">{title}</span>
-      <span className="vp-detail-card-line">{line}</span>
+      <Button variant="primary" onClick={onOpenModell}>
+        Zuordnung öffnen
+      </Button>
     </Card>
   );
 }

@@ -36,6 +36,14 @@
  * Der Drill-in zeigt deshalb dorthin, mit eigenem Label („Verlauf"), während
  * die Erlös-Historie auf `#/anlage/{id}/historie` zeigt. So bleiben `nav.ts`
  * und die M1-Shell unangetastet und die beiden Historien trotzdem getrennt.
+ *
+ * **Der v1-Zonen-Dashboard-Zweig ist ENTFALLEN (Captain-Nachtrag 06.08.2026,
+ * `fm/vp-erst-alt-layout-r5`).** Die frühere Weiche (`projectionActive` als
+ * "Stapel ODER v1-Rückfall") entschied, BEVOR ihre Eingaben geladen waren -
+ * das erzeugte das sichtbare "erst die alte Ansicht, dann der Stapel". Die
+ * Anlagen-Seite kennt seither drei, nicht zwei Zustände: siehe `anlageDecision`
+ * unten. Ein Modul-Stapel ODER der ehrliche "nicht zugeordnet"-Endzustand -
+ * nie mehr ein Ersatz-Layout, das gleich wieder verschwindet.
  */
 
 import type { EarningsSite } from './api';
@@ -148,18 +156,78 @@ export function hasBlock(blocks: CockpitBlock[] | null | undefined, id: CockpitB
 }
 
 /**
- * Der v1-Rückfall-Riegel (report §6.2, nicht verhandelbar): **ohne Entitäten
- * und ohne Modi rendert die Anlage exakt das heutige Standard-Cockpit.** Der
- * Stapel erscheint erst, wenn die Anlage wirklich migriert ist — Entitäten
- * vorhanden UND die bestehende Topologie-Weiche (`useAdaptiveLive`/`hasTopology`)
- * offen. Beide Tore bleiben Gesetz; ein älteres Backend, ein Fehlschlag beim
- * Laden oder eine nie migrierte Anlage fällt still auf v1 zurück.
+ * Das Stapel-Kriterium (ehem. "der v1-Rückfall-Riegel", report §6.2): der
+ * Modul-Stapel erscheint erst, wenn die Anlage wirklich migriert ist —
+ * Entitäten vorhanden UND die bestehende Topologie-Weiche (`useAdaptiveLive`/
+ * `hasTopology`) offen. **Beide Tore müssen offen sein.**
+ *
+ * Seit dem Wegfall des v1-Zonen-Dashboards (Captain-Nachtrag 06.08.2026, siehe
+ * `anlageDecision` unten) entscheidet dieses Kriterium NICHT mehr zwischen
+ * „Stapel" und „altes Layout" — es entscheidet zwischen „Stapel" (§6.2:
+ * `projectionActive` true) und dem ehrlichen Endzustand „nicht zugeordnet"
+ * (Anlage misst, aber ohne Komponenten). `false`/`null`/`undefined` heißt hier
+ * also NICHT mehr automatisch "un-migriert" — es heißt nur "kein Stapel", und
+ * `anlageDecision` entscheidet, was daraus für die Anzeige folgt (nie ohne
+ * geladene Eingaben, siehe dort).
  */
 export function projectionActive(input: {
   hasEntities: boolean | null | undefined;
   adaptive: boolean | null | undefined;
 }): boolean {
   return input.hasEntities === true && input.adaptive === true;
+}
+
+// ---------------------------------------------------------------------------
+// Die Lade-/Fehler-Weiche (Captain-Nachtrag 06.08.2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Der DREIWERTIGE Render-Entscheid der Anlagen-Seite — der eigentliche Fix
+ * des "erst zeigt das Portal die alte Ansicht"-Defekts: die frühere Weiche
+ * entschied `projectionActive`, BEVOR ihre Eingaben (`/entities`, `/topology`,
+ * die Übersichts-Zeile) geladen waren — während des Ladens war `hasEntities`/
+ * `adaptive` schlicht `false`, also rendete die Seite den (heute entfernten)
+ * v1-Zweig, bis die Abrufe landeten und auf den Stapel umgebaut wurde. Der
+ * Fehler war die fehlende Unterscheidung zwischen „nicht migriert" und „noch
+ * nicht bekannt".
+ *
+ * `anlageDecision` macht diese Unterscheidung explizit:
+ *  - `'pending'`  — die Entscheidungs-Eingaben laufen noch. Es wird KEIN
+ *    Layout gewählt (weder Stapel noch der Nicht-zugeordnet-Zustand) — der
+ *    Aufrufer zeigt einen ruhigen Zwischenzustand.
+ *  - `'error'`    — ein entscheidungskritischer Abruf ist fehlgeschlagen ODER
+ *    die Frist ist überschritten (`timedOut` — kein Dauer-Spinner). Ein
+ *    Fehlschlag wird wie „fertig" behandelt: kein endloses Warten, sondern der
+ *    ehrliche Fehlerzustand mit Wiederholen.
+ *  - `'stack'`    — geladen, `projectionActive` true: der Modul-Stapel.
+ *  - `'unassigned'` — geladen, `projectionActive` false: die Anlage hat
+ *    (potenziell) noch nie Komponenten zugeordnet bekommen. Der Aufrufer prüft
+ *    zusätzlich `setupPathActive` (die Anlage hat NIE Daten geliefert) — trifft
+ *    das zu, gewinnt der Einrichtungspfad (M5); sonst der ehrliche
+ *    „nicht zugeordnet"-Endzustand (Anlage MIT Daten, ohne Komponenten - die
+ *    Lücke, die der frühere v1-Zweig stillschweigend gefüllt hat).
+ *
+ * `timedOut` gewinnt IMMER (auch während `loading` noch true ist) - die knappe,
+ * begründete Frist verhindert den Dauer-Spinner.
+ */
+export type AnlageDecision = 'pending' | 'error' | 'stack' | 'unassigned';
+
+export interface AnlageDecisionInput {
+  /** Laufen die Entscheidungs-Eingaben noch (Entitäten/Topologie/Übersicht)? */
+  loading: boolean;
+  /** Ist mindestens ein entscheidungskritischer Abruf fehlgeschlagen? */
+  failed: boolean;
+  /** Wurde die knappe Lade-Frist überschritten? Gewinnt vor `loading`. */
+  timedOut: boolean;
+  hasEntities: boolean | null | undefined;
+  adaptive: boolean | null | undefined;
+}
+
+export function anlageDecision(input: AnlageDecisionInput): AnlageDecision {
+  if (input.timedOut) return 'error';
+  if (input.loading) return 'pending';
+  if (input.failed) return 'error';
+  return projectionActive(input) ? 'stack' : 'unassigned';
 }
 
 /** Die ruhige Toolbox-Zeile (§1.3) — nennt NIE einen bestimmten Modus. */
