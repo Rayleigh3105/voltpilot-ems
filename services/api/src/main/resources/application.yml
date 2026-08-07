@@ -94,6 +94,21 @@ voltpilot:
       global-max: ${VOLTPILOT_REGISTRATION_RATE_LIMIT_GLOBAL_MAX:100}
       window: ${VOLTPILOT_REGISTRATION_RATE_LIMIT_WINDOW:PT1H}
       trusted-proxies: ${VOLTPILOT_REGISTRATION_RATE_LIMIT_TRUSTED_PROXIES:0}
+  # Fleet-operations metrics (com.voltpilot.api.metrics): the Prometheus gauges
+  # an alert rule watches - plan age and telemetry age per site, priced-slot
+  # coverage per bidding zone. Collected on a TIMER, never per scrape, so a
+  # scrape can never cost a fleet-wide aggregate.
+  #
+  # ON by default, on purpose: this is the only thing standing between a dead
+  # optimizer and a plant running 17 hours on its fallback (the 06./07.08.2026
+  # incident), and an alarm source that depends on someone remembering an env
+  # var is not an alarm source. VOLTPILOT_METRICS_FLEET_ENABLED=false is the
+  # kill switch (it also removes the scheduler thread pool).
+  metrics:
+    fleet:
+      enabled: ${VOLTPILOT_METRICS_FLEET_ENABLED:true}
+      interval-ms: ${VOLTPILOT_METRICS_FLEET_INTERVAL_MS:60000}
+      initial-delay-ms: ${VOLTPILOT_METRICS_FLEET_INITIAL_DELAY_MS:10000}
   security:
     oidc:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:true}
@@ -262,12 +277,26 @@ voltpilot:
       customer-role: operator
 
 # Expose actuator at the root so health is reachable at /health (and /info).
+#
+# The Prometheus scrape endpoint is the actuator endpoint whose id is
+# `prometheus`, so with the root base-path it would sit at /prometheus. It is
+# REMAPPED to /metrics: that is the ecosystem convention (and the ServiceMonitor
+# default), while /prometheus only leaks the framework name into an ops
+# contract. The JSON `metrics` endpoint (actuator id `metrics`) is deliberately
+# NOT exposed, so /metrics is unambiguously the scrape endpoint.
+#
+# It answers ANONYMOUSLY - Prometheus scrapes without a token - which is why
+# SecurityConfig permits exactly this one path (MetricsEndpointSecurityTest
+# guards both halves). It is not publicly reachable: the frontend nginx proxies
+# only /api/ and /auth/, so it exists only on the pod/compose network.
 management:
   endpoints:
     web:
       base-path: /
       exposure:
-        include: health,info
+        include: health,info,prometheus
+      path-mapping:
+        prometheus: metrics
   endpoint:
     health:
       probes:

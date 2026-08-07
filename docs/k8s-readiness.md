@@ -130,6 +130,100 @@ atomare Rename scheitert sonst mit EBUSY).
 
 ---
 
+## Metriken (Prometheus) — nur `api`
+
+**Scrape:** `GET :8090/metrics`, **unauthentifiziert**, kein eigener
+Management-Port.
+
+Drei Dinge daran sind bewusst so und nicht anders:
+
+* **Der Pfad ist `/metrics`, nicht `/prometheus` und nicht `/actuator/prometheus`.**
+  Der Actuator-Endpunkt heißt `prometheus`; weil der Management-Base-Path die
+  Wurzel ist, läge er auf `/prometheus`. `management.endpoints.web.path-mapping`
+  hängt ihn auf `/metrics` um — die Ökosystem-Konvention und der
+  ServiceMonitor-Default. Der JSON-`metrics`-Endpunkt ist NICHT exponiert, es
+  gibt also keine Kollision.
+* **Anonym, und das braucht eine ausdrückliche Freigabe.** Prometheus scrapt ohne
+  Token. `SecurityConfig` erlaubt genau diesen einen Pfad (`GET /metrics`) —
+  kein Platzhalter, dieselbe Disziplin wie bei den Probe-Pfaden, deren fehlende
+  Freigabe am 02.08.2026 jeden api-Pod in den Neustart-Kreisel schickte.
+  Regressionswächter: `MetricsEndpointSecurityTest` (echte Filterkette).
+* **Von außen nicht erreichbar.** Die nginx des Frontends proxied nur `/api/`
+  und `/auth/`; `https://<domain>/metrics` trifft die SPA. Der Endpunkt
+  existiert nur im Pod-/Compose-Netz. Ein zweiter Management-Port hätte daran
+  nichts verbessert und Deployment + Service verkompliziert.
+
+**Was ausgegeben wird** (`com.voltpilot.api.metrics`, gesammelt alle 60 s;
+Kill-Switch `VOLTPILOT_METRICS_FLEET_ENABLED=false`, Vorgabe AN):
+
+| Metrik | Labels | Bedeutung |
+|---|---|---|
+| `voltpilot_site_last_plan_age_seconds` | `site`, `tenant` | Alter des jüngsten Optimierer-Laufs. **Fehlt, wenn unbekannt.** |
+| `voltpilot_site_plan_state` | `site`, `tenant`, `state` | 1 für den aktiven Zustand: `known` \| `older_than_window` \| `never` |
+| `voltpilot_site_last_telemetry_age_seconds` | `site`, `tenant` | Alter der jüngsten Mess-ANKUNFT (`received_at`). **Fehlt, wenn nie gemessen.** |
+| `voltpilot_site_telemetry_state` | `site`, `tenant`, `state` | 1 für den aktiven Zustand: `known` \| `never` |
+| `voltpilot_priced_slots_ahead` | `zone` | Lückenlos bepreiste Viertelstunden ab jetzt (Deckel 96). Der Optimierer braucht 16. |
+| `voltpilot_sites` | – | Anzahl Anlagen (Nenner für Quoten) |
+| `voltpilot_site_plan_lookback_seconds` | – | Das Nachschaufenster (604800), damit eine Regel es nicht hart kodiert |
+| `voltpilot_metrics_collect_age_seconds` | – | Sekunden seit dem letzten ERFOLGREICHEN Sammel-Lauf |
+| `voltpilot_metrics_collect_duration_seconds` | – | Dauer des letzten Sammel-Laufs |
+
+**Die Labels sind INTERNE Kennungen — kein Name, keine Adresse, kein Messwert.**
+Der Endpunkt antwortet unauthentifiziert und seine Ausgabe reist über
+Alertmanager bis in Telegram und E-Mail, also aus der Plattform heraus; ein
+Anlagen- oder Mandantenname wäre dort Kundenstammdaten (bei
+Selbstregistrierung ist der Mandantenname der Personen- bzw. Firmenname des
+Kunden). Ein Alarm benennt die Anlage über ihre UUID und verlinkt sie mit
+`https://<portal>/#/anlage/{{ $labels.site }}`; der Klartext bleibt hinter der
+Anmeldung. Gewächter von `FleetMetricsScrapeTest`.
+
+**Ehrlichkeitsregel: was nicht gemessen ist, ist keine Zahl.** Eine Anlage ohne
+bekanntes Alter hat **keine** Alters-Zeitreihe — weder eine 0 noch ein Sentinel
+(mit `-1` rechnete früher oder später jemand weiter). Die Unterscheidung, auf der
+jede Alarm-Regel steht, trägt stattdessen das Enum:
+`never` (frische Anlage, **kein** Alarm) vs. `older_than_window` (hatte
+Fahrpläne, aber keinen im 7-Tage-Fenster — **echter** Alarm, nur nicht mehr
+bezifferbar). Das Fenster ist eine Kostenbremse, keine Nachlässigkeit: ohne es
+wäre die Abfrage ein Scan über die ganze Plan-Historie.
+
+**Alarm-Regeln immer aggregieren.** Heute läuft genau eine api-Replica; bei
+mehreren sammelt jede für sich und exponiert dieselben `site`-Serien unter
+eigenem `pod`/`instance`. Regeln deshalb von Anfang an so schreiben:
+
+```promql
+# Anlage fährt ohne Fahrplan (der Vorfall vom 06./07.08.2026)
+max by (site, tenant) (voltpilot_site_last_plan_age_seconds) > 3600
+  or max by (site, tenant) (voltpilot_site_plan_state{state="older_than_window"}) == 1
+
+# Anlage verstummt (eine Neuanlage ohne Gerät fällt raus - die steht auf "never")
+max by (site, tenant) (voltpilot_site_last_telemetry_age_seconds) > 900
+
+# Die URSACHE des Vorfalls, der früheste Alarm von allen
+min by (zone) (voltpilot_priced_slots_ahead) < 16
+
+# Und der Wächter über dem Wächter
+max(voltpilot_metrics_collect_age_seconds) > 300
+```
+
+**Kosten.** Gesammelt wird auf einem Zeitgeber (60 s), **nie pro Scrape** — ein
+Scrape darf keine flottenweite Aggregat-Abfrage auslösen. Gemessen
+(`FleetMetricsDbTest`, echte TimescaleDB): **Median 95 ms** über 11.606
+Telemetrie- und 69.206 Plan-Zeilen in **106 Chunks** (ein Jahr Historie); bei nur
+9 Chunks waren es 54 ms. Die Chunk-Anzahl ist der Treiber, nicht die Zeilenzahl —
+`max(received_at)` je Gerät und das `EXISTS` auf `schedule` fassen je Chunk einen
+Index an.
+
+**Das ALTER wird beim Scrape gerechnet, nicht beim Sammeln.** Läge eine feste
+Zahl aus, fröre „Alter des Fahrplans" bei einem gesunden Wert ein, sobald der
+Sammler stirbt — und **jeder** Alarm verstummte still. So wächst es weiter: ein
+toter Sammler sieht aus wie ein toter Optimierer, die sichere Richtung.
+
+**Andere Dienste exponieren nichts.** Die Betriebs-Wahrheit sitzt bewusst im
+`api`: er läuft ohnehin, hat die Daten aggregiert und eine Actuator-Basis,
+während der Optimierer eine Takt-Schleife ist.
+
+---
+
 ## Python-Dienste (`market-data`, `weather-collector`, `forecast`, `optimization`, `simulation`)
 
 Die vier Collector-Schleifen (`serve`) teilen sich ein Laufzeit-Modul
@@ -327,3 +421,7 @@ optional später als Argo-PreSync-Job, sobald Migrationen > 30 s auftreten.
 | Python: die drei `runtime.py` driften nicht | `services/optimization/tests/test_runtime.py` |
 | market-data: Kadenz-Logik unverändert | `services/market-data/tests/test_refresh.py` |
 | flowc: SIGTERM beendet den echten Entrypoint | `edge-app/nodered/flowc/shutdown.test.js` |
+| api: `/metrics` ist anonym erreichbar und hat sonst nichts geöffnet | `MetricsEndpointSecurityTest` (echte Filterkette, echte `application.yml`) |
+| Metrik-Namen/Labels sind der Vertrag mit den Alarm-Regeln | `FleetMetricsScrapeTest` — liest den ECHTEN Scrape-Rumpf zurück, nicht die Meter-Namen im Code |
+| „nie gehabt" ≠ „veraltet", und die 7-Tage-Grenze | `FleetMetricsTest` (rein) + `FleetMetricsDbTest` (echte TimescaleDB) |
+| Ein Sammel-Lauf bleibt weit unter dem Takt | `FleetMetricsDbTest.aCollectRunCostsLittleEnoughToRunEveryMinute` |
