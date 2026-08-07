@@ -59,7 +59,15 @@ final class PriceSlots {
     private static final String WINDOW_FROM =
             " AND p.ts > ?::timestamptz - " + LOWER_MARGIN;
 
-    /** The tenant's bidding zones (RLS-scoped like every read in this package). */
+    /**
+     * The tenant's bidding zones (RLS-scoped like every read in this package).
+     *
+     * <p><b>The sub-select is RLS-RELATIVE, which is a feature.</b> Read through
+     * the {@code @Primary} tenant-aware datasource it yields the caller's zones;
+     * read through the BYPASSRLS admin role it yields the WHOLE fleet's zones.
+     * {@link FleetMetricsRepository} relies on exactly that to build the
+     * per-zone price-coverage metric without a second price query.
+     */
     private static final String TENANT_ZONES =
             "p.bidding_zone IN (SELECT s2.bidding_zone FROM site s2)";
 

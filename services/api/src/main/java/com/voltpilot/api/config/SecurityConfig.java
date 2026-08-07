@@ -65,6 +65,20 @@ public class SecurityConfig {
                 // whatever per-component paths a future show-details setting adds.
                 .requestMatchers("/health", "/health/liveness", "/health/readiness",
                         "/info", "/actuator/**").permitAll()
+                // Prometheus scrapes without a token, so the scrape endpoint has
+                // to answer anonymously - the SAME shape of hole the probe paths
+                // above needed, and listed with the same discipline: the EXACT
+                // path, never a wildcard. (It is /metrics, not /prometheus:
+                // application.yml remaps the endpoint; and not /actuator/metrics,
+                // because the management base-path is the root.)
+                //
+                // What it hands out is deliberately bounded to platform-operations
+                // facts - see com.voltpilot.api.metrics.FleetMetrics: site and
+                // tenant appear as internal UUIDs only, never a name, address or
+                // meter reading. It is also not publicly reachable (the frontend
+                // nginx proxies only /api/ and /auth/), so this opens the endpoint
+                // to the pod/compose network, not to the internet.
+                .requestMatchers(HttpMethod.GET, "/metrics").permitAll()
                 // Self-service registration is the front door - it must work
                 // before the caller has any token (the controller can be turned
                 // off via voltpilot.registration.enabled).

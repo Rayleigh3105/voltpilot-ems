@@ -38,6 +38,15 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Prometheus scrape format for the actuator (com.voltpilot.api.metrics):
+             the fleet-operations gauges an alert rule watches. Registering this
+             registry is what turns the `prometheus` actuator endpoint on; the
+             endpoint is exposed + remapped to /metrics in application.yml. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
@@ -154,6 +163,22 @@
                          Override with -Ddocker.api.version=... if needed. -->
                     <systemPropertyVariables>
                         <api.version>${docker.api.version}</api.version>
+                        <!-- Der Flotten-Metrik-Sammler ist in PRODUKTION an
+                             (application.yml, matchIfMissing) - im Testlauf aber
+                             aus, und zwar nicht aus Bequemlichkeit: Spring
+                             CACHET Testkontexte, waehrend Testcontainers seine
+                             Container nach der Klasse STOPPT. Ein getakteter Job
+                             laeuft danach in jedem zwischengespeicherten Kontext
+                             gegen eine tote Datenbank weiter und erzeugt in allen
+                             folgenden Klassen Verbindungs-Validierungsstuerme
+                             (gemessen: 56 Hikari-Warnungen gegen 0 ohne ihn).
+                             Wer den Sammler wirklich prueft, schaltet ihn in
+                             seiner Testklasse ausdruecklich ein - inline gesetzte
+                             Test-Eigenschaften schlagen diese Systemeigenschaft.
+                             Dass die AUSGELIEFERTE Vorgabe AN ist, prueft
+                             FleetMetricsWiringTest an der echten
+                             application.yml. -->
+                        <voltpilot.metrics.fleet.enabled>false</voltpilot.metrics.fleet.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>
