@@ -52,8 +52,13 @@ import org.springframework.web.context.WebApplicationContext;
 @SpringBootTest(classes = FleetMetricsEndpointE2eTest.ScrapeApp.class,
         properties = {
             "voltpilot.security.oidc.enabled=true",
-            // Der Takt wird hier nicht gebraucht - der Test sammelt selbst, damit
-            // er nicht auf einen Zeitgeber wartet.
+            // Ausdruecklich AN: der Testlauf schaltet den Sammler global aus
+            // (surefire, siehe pom.xml), weil ein getakteter Job in
+            // zwischengespeicherten Kontexten gegen gestoppte Container weiter
+            // liefe. Hier ist er der Gegenstand der Pruefung.
+            "voltpilot.metrics.fleet.enabled=true",
+            // Der Takt wird nicht gebraucht - der Test sammelt selbst, damit er
+            // nicht auf einen Zeitgeber wartet.
             "voltpilot.metrics.fleet.initial-delay-ms=3600000"
         })
 class FleetMetricsEndpointE2eTest {

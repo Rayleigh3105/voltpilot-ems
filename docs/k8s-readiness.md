@@ -207,11 +207,18 @@ max(voltpilot_metrics_collect_age_seconds) > 300
 
 **Kosten.** Gesammelt wird auf einem Zeitgeber (60 s), **nie pro Scrape** — ein
 Scrape darf keine flottenweite Aggregat-Abfrage auslösen. Gemessen
-(`FleetMetricsDbTest`, echte TimescaleDB): **Median 95 ms** über 11.606
-Telemetrie- und 69.206 Plan-Zeilen in **106 Chunks** (ein Jahr Historie); bei nur
-9 Chunks waren es 54 ms. Die Chunk-Anzahl ist der Treiber, nicht die Zeilenzahl —
-`max(received_at)` je Gerät und das `EXISTS` auf `schedule` fassen je Chunk einen
-Index an.
+(`FleetMetricsDbTest`, echte TimescaleDB): **Median 88–160 ms** (über mehrere
+Läufe, maschinenabhängig) über 11.606 Telemetrie- und 69.206 Plan-Zeilen in
+**106 Chunks** (ein Jahr Historie); bei nur 9 Chunks waren es 54 ms. Die
+Chunk-Anzahl ist der Treiber, nicht die Zeilenzahl — `max(received_at)` je Gerät
+und das `EXISTS` auf `schedule` fassen je Chunk einen Index an. Selbst am oberen
+Ende bleibt ein Lauf ~400× unter dem Takt.
+
+**Im Testlauf ist der Sammler AUS** (surefire-Systemeigenschaft, siehe
+`services/api/pom.xml`): Spring cacht Testkontexte, während Testcontainers seine
+Container nach der Klasse stoppt — ein getakteter Job liefe danach in jedem
+zwischengespeicherten Kontext gegen eine tote Datenbank weiter. Die
+ausgelieferte Vorgabe bleibt AN und wird an der echten `application.yml` geprüft.
 
 **Das ALTER wird beim Scrape gerechnet, nicht beim Sammeln.** Läge eine feste
 Zahl aus, fröre „Alter des Fahrplans" bei einem gesunden Wert ein, sobald der

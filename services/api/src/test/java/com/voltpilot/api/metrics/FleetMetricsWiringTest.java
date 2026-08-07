@@ -6,6 +6,8 @@ import com.voltpilot.api.ota.OtaSchedulingConfig;
 import com.voltpilot.api.repo.FleetMetricsRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.io.InputStream;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.PropertyPlaceholderAutoConfiguration;
@@ -15,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.SchedulingConfiguration;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * Die Spring-Verdrahtung des Sammlers - der Teil, den weder die reinen Tests noch
@@ -64,19 +67,40 @@ class FleetMetricsWiringTest {
         // Faellt gegen ein fehlendes @Autowired am Produktions-Konstruktor mit
         // "No default constructor found" - genau der Absturz, der schon einmal
         // ausgeliefert wurde.
-        runner.run(context -> {
+        runner.withPropertyValues("voltpilot.metrics.fleet.enabled=true").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(FleetMetricsCollector.class);
             assertThat(context).hasSingleBean(MetricsSchedulingConfig.class);
         });
     }
 
+    /**
+     * Die AUSGELIEFERTE Vorgabe ist AN - geprüft an der echten
+     * {@code application.yml}, nicht an einem Kontext.
+     *
+     * <p>Das ist hier der einzige belastbare Ort: der Testlauf schaltet den
+     * Sammler global aus (surefire, siehe {@code pom.xml}), damit ein getakteter
+     * Job nicht in zwischengespeicherten Kontexten gegen gestoppte Container
+     * weiterläuft. „Ohne Eigenschaft entsteht der Bean" liesse sich damit nicht
+     * mehr ehrlich prüfen - wohl aber, dass die Datei, die ausgeliefert wird, den
+     * Schalter auf {@code true} vorbelegt. Und darauf kommt es an: eine
+     * Alarmquelle, die daran hängt, dass jemand eine Umgebungsvariable setzt, ist
+     * keine Alarmquelle. Der Vorfall, wegen dem es sie gibt, blieb 17 Stunden
+     * unbemerkt.
+     */
     @Test
-    void theCollectorIsOnByDefaultBecauseAnAlarmSourceMustNotNeedAnEnvVar() {
-        // Ohne gesetzte Eigenschaft greift matchIfMissing - ein Deployment, das die
-        // Variable nicht kennt, bekommt trotzdem Metriken. Das ist Absicht: der
-        // Vorfall, wegen dem es sie gibt, blieb 17 Stunden unbemerkt.
-        runner.run(context -> assertThat(context).hasSingleBean(FleetMetricsCollector.class));
+    @SuppressWarnings("unchecked")
+    void theShippedDefaultIsOnBecauseAnAlarmSourceMustNotNeedAnEnvVar() throws Exception {
+        Map<String, Object> yml;
+        try (InputStream in = getClass().getResourceAsStream("/application.yml")) {
+            assertThat(in).as("application.yml auf dem Klassenpfad").isNotNull();
+            yml = (Map<String, Object>) new Yaml().loadAll(in).iterator().next();
+        }
+        Object node = yml;
+        for (String key : new String[] {"voltpilot", "metrics", "fleet", "enabled"}) {
+            node = ((Map<String, Object>) node).get(key);
+        }
+        assertThat(node).isEqualTo("${VOLTPILOT_METRICS_FLEET_ENABLED:true}");
     }
 
     @Test
