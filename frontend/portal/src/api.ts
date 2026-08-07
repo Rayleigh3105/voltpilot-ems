@@ -1579,7 +1579,50 @@ export function setTenantOverride(tenantId: string | null): void {
   tenantOverride = tenantId;
 }
 
+/**
+ * IN-FLIGHT-Bündelung gleicher GETs.
+ *
+ * Gemessen auf dem Cockpit: von 21 anlagenbezogenen Anfragen waren 8 exakte
+ * Doppel - `/profile` dreimal, `/entities`/`/flows`/`/profiles`/`/history` je
+ * zweimal. Sie entstehen strukturell, nicht durch einen Fehler: die Schale und
+ * die Anlagen-Seite lesen BEIDE dasselbe Lese-Modell (`useAnlageSurface`), und
+ * `useAdaptiveLive` braucht dasselbe Profil noch einmal. Jede Kopie kostet eine
+ * Server-Abfrage, einen Verbindungsplatz und einen JSON-Parse.
+ *
+ * Bewusst KEIN Ergebnis-Zwischenspeicher: gebündelt wird nur, was GERADE
+ * unterwegs ist, und der Eintrag fällt weg, sobald die Antwort da ist. Ein
+ * 30-s-Takt holt also weiterhin wirklich neu - eine zwischengespeicherte
+ * Antwort wäre genau die stille Veraltung, die dieses Portal nirgends duldet.
+ *
+ * Zwei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
+ * werden) und der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
+ * ein Admin, der mitten im Flug umschaltet, die Antwort des vorherigen
+ * Mandanten bekommen.
+ */
+const inFlight = new Map<string, Promise<unknown>>();
+
+function coalesceKey(path: string, init: RequestInit): string | null {
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (method !== 'GET') return null;
+  if (init.body != null || init.signal != null) return null;
+  return `${tenantOverride ?? ''}|${path}`;
+}
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const key = coalesceKey(path, init);
+  if (key != null) {
+    const running = inFlight.get(key);
+    if (running) return running as Promise<T>;
+    const p = requestUncoalesced<T>(path, init).finally(() => {
+      inFlight.delete(key);
+    });
+    inFlight.set(key, p);
+    return p;
+  }
+  return requestUncoalesced<T>(path, init);
+}
+
+async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
   let token: string | undefined;
   try {
     token = await freshToken();

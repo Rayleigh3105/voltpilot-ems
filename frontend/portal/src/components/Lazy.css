@@ -1,0 +1,9 @@
+/* Platzhalter einer noch nachladenden Fläche. Komponenten-lokal (index.css
+   bleibt unangetastet); die Skelett-Blöcke sind `display:block` und brauchen
+   deshalb ihren Abstand von hier. */
+.vp-lazy-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-gap-lg, 16px);
+  min-width: 0;
+}

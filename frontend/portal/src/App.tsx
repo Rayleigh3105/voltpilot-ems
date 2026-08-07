@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
@@ -41,22 +41,56 @@ import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
 import { useFreshnessPoll } from './useFreshnessPoll';
 import { useDeployWatch } from './deployWatch';
 import { useAnlageSurface } from './useAnlageSurface';
-import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
+import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
+import { LazyBoundary } from './components/Lazy';
 import { OnboardingWizard } from './Onboarding';
-import { UebersichtPage } from './pages/UebersichtPage';
-import { PortfolioPage } from './pages/PortfolioPage';
-import { PortfolioMesswerte } from './pages/PortfolioMesswerte';
-import { PortfolioErloese } from './pages/PortfolioErloese';
+// Die Anlagen-Seite ist das Ziel fast jedes Besuchs und bleibt deshalb im
+// Einstiegs-Bündel. Jede ANDERE Seite wird lazy geladen: die Plattform-Seiten
+// sieht ein Kunde nie, Portfolio nur ein Betreiber, Marktpreise/Prognose nur
+// auf Klick - statisch importiert zogen sie ECharts, Leaflet und den
+// Automations-Editor in den Startpfad (siehe `components/Lazy.tsx`).
 import { AnlagenPage } from './pages/AnlagenPage';
-import { MarktpreisePage } from './pages/DataPages';
-import { PrognosePage } from './pages/PrognosePage';
-import { MandantenPage } from './pages/admin/MandantenPage';
-import { PlattformUebersichtPage } from './pages/admin/PlattformUebersichtPage';
-import { BenutzerPage } from './pages/admin/BenutzerPage';
-import { GeraeteRegistryPage } from './pages/admin/GeraeteRegistryPage';
-import { EdgeUpdatesPage } from './pages/admin/EdgeUpdatesPage';
-import { OptimizerPage } from './pages/admin/OptimizerPage';
-import { FlowsPage } from './pages/admin/FlowsPage';
+const UebersichtPage = lazy(() =>
+  import('./pages/UebersichtPage').then((m) => ({ default: m.UebersichtPage })),
+);
+const PortfolioPage = lazy(() =>
+  import('./pages/PortfolioPage').then((m) => ({ default: m.PortfolioPage })),
+);
+const PortfolioMesswerte = lazy(() =>
+  import('./pages/PortfolioMesswerte').then((m) => ({ default: m.PortfolioMesswerte })),
+);
+const PortfolioErloese = lazy(() =>
+  import('./pages/PortfolioErloese').then((m) => ({ default: m.PortfolioErloese })),
+);
+const MarktpreisePage = lazy(() =>
+  import('./pages/DataPages').then((m) => ({ default: m.MarktpreisePage })),
+);
+const PrognosePage = lazy(() =>
+  import('./pages/PrognosePage').then((m) => ({ default: m.PrognosePage })),
+);
+const MandantenPage = lazy(() =>
+  import('./pages/admin/MandantenPage').then((m) => ({ default: m.MandantenPage })),
+);
+const PlattformUebersichtPage = lazy(() =>
+  import('./pages/admin/PlattformUebersichtPage').then((m) => ({
+    default: m.PlattformUebersichtPage,
+  })),
+);
+const BenutzerPage = lazy(() =>
+  import('./pages/admin/BenutzerPage').then((m) => ({ default: m.BenutzerPage })),
+);
+const GeraeteRegistryPage = lazy(() =>
+  import('./pages/admin/GeraeteRegistryPage').then((m) => ({ default: m.GeraeteRegistryPage })),
+);
+const EdgeUpdatesPage = lazy(() =>
+  import('./pages/admin/EdgeUpdatesPage').then((m) => ({ default: m.EdgeUpdatesPage })),
+);
+const OptimizerPage = lazy(() =>
+  import('./pages/admin/OptimizerPage').then((m) => ({ default: m.OptimizerPage })),
+);
+const FlowsPage = lazy(() =>
+  import('./pages/admin/FlowsPage').then((m) => ({ default: m.FlowsPage })),
+);
 
 export default function App({
   initialAuth,
@@ -843,6 +877,11 @@ function UnifiedPortal() {
                 </Button>
               </Card>
             )}
+          {/* Jede lazy geladene Seite hinter EINER Suspense-Grenze: die
+              Anlagen-Seite bleibt statisch (sie ist das Ziel fast jedes
+              Besuchs), alles andere kommt beim ersten Aufruf nach. Der
+              Platzhalter ist ein Skelett, nie eine erfundene Zahl. */}
+          <LazyBoundary>
           {page === 'portfolio' && (
             <PortfolioPage
               sites={sites}
@@ -899,6 +938,7 @@ function UnifiedPortal() {
           {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage onNavigate={navigate} />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'flows' && isAdmin && <FlowsPage tenants={tenants} />}
+          </LazyBoundary>
         </>
       )}
 
