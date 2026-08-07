@@ -37,16 +37,27 @@ export function isPlatformAdmin(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Seamless post-registration login (Direct Access Grant).
+// The TAB TOKEN STORE - one mechanism, two feeders.
 //
-// A fresh customer just typed their email + password into OUR registration
-// form; sending them to the Keycloak login page to type the same credentials
-// again would be a pointless second hurdle. Instead the register flow mints
-// tokens directly at the token endpoint (grant_type=password on the public
-// client) and boots the SPA with them injected into keycloak-js. Because this
-// path sets no Keycloak SSO cookie, the tokens are kept in sessionStorage and
-// re-validated (refresh grant) on every page load until they expire - then the
-// portal simply falls back to the normal redirect login.
+// (1) Seamless post-registration login (Direct Access Grant). A fresh customer
+//     just typed their email + password into OUR registration form; sending
+//     them to the Keycloak login page to type the same credentials again would
+//     be a pointless second hurdle. So the register flow mints tokens directly
+//     at the token endpoint (grant_type=password on the public client) and
+//     boots the SPA with them injected into keycloak-js.
+//
+// (2) The NORMAL Keycloak login (Authorization Code + PKCE). Measured
+//     2026-08-06: every page load spent ~1,1 s (56 % of the cockpit's total
+//     load time on Fast 4G) in three CONSECUTIVE Keycloak round trips -
+//     3p-cookies probe, auth?prompt=none, token - because nothing was stored
+//     and initAuth always fell through to the full check-sso dance. The tokens
+//     of a successful login are therefore remembered here too, so the next load
+//     in this tab takes the SAME proven ONE-request refresh path as (1).
+//
+// The store lives in sessionStorage, so it dies with the tab and is never
+// shared between tabs - a deliberate scope/lifetime trade-off (see AGENTS.md).
+// A failing/expired/refused refresh ALWAYS degrades to the normal check-sso
+// path, so the store can only ever make a boot faster, never break it.
 // ---------------------------------------------------------------------------
 
 const TOKEN_STORE_KEY = 'vp.auth.tokens';
@@ -206,6 +217,39 @@ async function refreshStoredTokens(): Promise<TokenSet | null> {
 }
 
 /**
+ * Write the LIVE keycloak-js session into the tab store. Called on every
+ * authenticated boot and again after each background token refresh, because
+ * keycloak-js rotates the refresh token - a store left at the token of an hour
+ * ago would present a superseded (idle-timed-out) one on the next reload and
+ * pointlessly fall back to check-sso.
+ *
+ * Silent when keycloak-js has no token pair: an incomplete store is worse than
+ * none (the next boot would spend a refused grant before falling back anyway).
+ */
+function rememberSession(): void {
+  if (keycloak.token && keycloak.refreshToken) {
+    storeTokens({
+      access_token: keycloak.token,
+      refresh_token: keycloak.refreshToken,
+      id_token: keycloak.idToken,
+    });
+  }
+}
+
+/**
+ * The ONE thing both authenticated init paths do: remember the session for the
+ * next load, keep it current across refreshes, and drop the diagnosis flags a
+ * failed stored-session probe may have set on the way here - we ARE signed in,
+ * so "Sitzung abgelaufen" / "zu viele Anmeldeversuche" would be untrue.
+ */
+function onAuthenticated(): void {
+  keycloak.onAuthRefreshSuccess = rememberSession;
+  rememberSession();
+  storedSessionExpired = false;
+  authRateLimited = false;
+}
+
+/**
  * Sign in with credentials the user just typed (post-registration): mint
  * tokens via the Direct Access Grant, persist them, and reload the SPA -
  * initAuth() picks them up and the customer lands in the portal without ever
@@ -218,15 +262,23 @@ export async function loginWithCredentials(username: string, password: string): 
 }
 
 /**
- * Initialise Keycloak. A stored direct-grant session (fresh registration) is
- * re-validated and injected; otherwise a silent SSO check picks up an existing
- * Keycloak session without a full redirect. Returns whether authenticated.
+ * Initialise Keycloak.
+ *
+ * FAST path: a stored session (fresh registration OR the last successful login
+ * in this tab) is re-validated with ONE refresh grant and injected - no SSO
+ * iframe, no auth?prompt=none redirect.
+ *
+ * FALLBACK path: no store, or the stored session could not be refreshed for ANY
+ * reason (expired, revoked, throttled, corrupt, Keycloak unreachable) - then the
+ * proven silent SSO check runs exactly as before. Returns whether authenticated.
  */
 export async function initAuth(): Promise<boolean> {
   const injected = await refreshStoredTokens();
   if (injected) {
-    // No SSO cookie exists on this path, so skip the SSO iframe check - the
-    // just-refreshed tokens are the session.
+    // The refresh above already proved the session, so skip the SSO iframe
+    // check - the just-refreshed tokens ARE the session. (On the registration
+    // path no SSO cookie exists at all; after a normal login one does, but this
+    // path deliberately does not depend on it.)
     const ok = await keycloak.init({
       token: injected.access_token,
       refreshToken: injected.refresh_token,
@@ -235,23 +287,13 @@ export async function initAuth(): Promise<boolean> {
       pkceMethod: 'S256',
     });
     if (ok) {
-      // keycloak-js rotates the tokens on refresh; keep the store current so
-      // a mid-onboarding page reload stays signed in.
-      keycloak.onAuthRefreshSuccess = () => {
-        if (keycloak.token && keycloak.refreshToken) {
-          storeTokens({
-            access_token: keycloak.token,
-            refresh_token: keycloak.refreshToken,
-            id_token: keycloak.idToken,
-          });
-        }
-      };
+      onAuthenticated();
       return true;
     }
     clearStoredTokens();
     return false;
   }
-  return keycloak.init({
+  const authenticated = await keycloak.init({
     onLoad: 'check-sso',
     silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
     pkceMethod: 'S256',
@@ -267,6 +309,11 @@ export async function initAuth(): Promise<boolean> {
     // response mode would clobber the current page on every login redirect.
     responseMode: 'query',
   });
+  // Remember the session this login/SSO check just established, so the NEXT
+  // load in this tab takes the fast path above instead of these three round
+  // trips. Nothing else about this path changes.
+  if (authenticated) onAuthenticated();
+  return authenticated;
 }
 
 /** Redirect to the Keycloak login; a hint pre-fills the username/email field. */
