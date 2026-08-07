@@ -29,17 +29,24 @@
 #   point it at the old inline-script variant and the smoke must go RED).
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Resolve the script's own directory BEFORE the cd, so sourcing never depends on
+# how the script was invoked.
+SMOKE_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+cd "$SMOKE_HERE/.."
 IMAGE="${1:-voltpilot-portal-csp-smoke}"
 if [ $# -eq 0 ]; then
   echo "==> docker build ${IMAGE} (portal Dockerfile)"
   docker build -q -t "$IMAGE" . >/dev/null
 fi
 
+# Requests run inside a sidecar sharing the container's network namespace, not
+# over a published port - see test/smoke-lib.sh for why (CI run #183).
+# shellcheck source=./smoke-lib.sh
+. "$SMOKE_HERE/smoke-lib.sh"
+
 TMP="$(mktemp -d)"
-CID=""
 cleanup() {
-  [ -n "$CID" ] && docker rm -f "$CID" >/dev/null 2>&1 || true
+  smoke_stop
   rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -72,18 +79,8 @@ if [ -n "${SSO_HTML_OVERRIDE:-}" ]; then
   MOUNTS+=(-v "${SSO_HTML_OVERRIDE}:/usr/share/nginx/html/silent-check-sso.html:ro")
 fi
 
-# nginx resolves the proxy upstreams (api/keycloak) at startup; dummy hosts
-# keep it bootable without the backend stack.
-CID="$(docker run -d --add-host api:127.0.0.1 --add-host keycloak:127.0.0.1 \
-  -p 127.0.0.1::80 "${MOUNTS[@]}" "$IMAGE")"
-PORT="$(docker port "$CID" 80/tcp | head -1 | sed 's/.*://')"
-BASE="http://127.0.0.1:${PORT}"
-
-for i in $(seq 1 50); do
-  curl -fsS -o /dev/null "$BASE/" 2>/dev/null && break
-  [ "$i" -eq 50 ] && { echo "FAIL: nginx container never became ready"; docker logs "$CID"; exit 1; }
-  sleep 0.2
-done
+smoke_report_context
+smoke_start "$IMAGE" "${MOUNTS[@]}" || exit 1
 
 fail() { echo "FAIL: $*"; exit 1; }
 pass() { echo "  ok: $*"; }
@@ -91,7 +88,7 @@ pass() { echo "  ok: $*"; }
 echo "==> static header/content checks against $BASE"
 
 # 1. CSP on the SPA, hardening intact.
-CSP="$(curl -fsS -D - -o /dev/null "$BASE/" | tr -d '\r' | grep -i '^content-security-policy:' || true)"
+CSP="$(req -fsS -D - -o /dev/null "$BASE/" | tr -d '\r' | grep -i '^content-security-policy:' || true)"
 [ -n "$CSP" ] || fail "no Content-Security-Policy header on /"
 SCRIPT_SRC="$(printf '%s' "$CSP" | grep -oi "script-src [^;]*" || true)"
 printf '%s' "$SCRIPT_SRC" | grep -q "'self'" || fail "script-src lacks 'self': $SCRIPT_SRC"
@@ -101,7 +98,7 @@ pass "CSP present, script-src 'self' without 'unsafe-inline'"
 # 2. No inline <script> in CSP-governed HTML (the outage class).
 check_no_inline() { # url
   local body
-  body="$(curl -fsS "$BASE$1")"
+  body="$(req -fsS "$BASE$1")"
   # any <script ...> opening tag without a src= attribute is an inline script
   if printf '%s' "$body" | tr '\n' ' ' | grep -oiE '<script[^>]*>' | grep -viq 'src='; then
     fail "$1 contains an inline <script> - blocked by script-src 'self' (this is the login outage)"
@@ -112,12 +109,12 @@ check_no_inline "/index.html"
 check_no_inline "/silent-check-sso.html"
 
 # 3. The external postMessage script is served.
-curl -fsS "$BASE/silent-check-sso.js" | grep -q "postMessage" \
+req -fsS "$BASE/silent-check-sso.js" | grep -q "postMessage" \
   || fail "/silent-check-sso.js missing or lacks postMessage"
 pass "/silent-check-sso.js served with postMessage"
 
 # 4. Our CSP must not leak onto the proxied Keycloak responses.
-AUTH_HDRS="$(curl -sS -D - -o /dev/null "$BASE/auth/realms/voltpilot/" | tr -d '\r' || true)"
+AUTH_HDRS="$(req -sS -D - -o /dev/null "$BASE/auth/realms/voltpilot/" | tr -d '\r' || true)"
 printf '%s' "$AUTH_HDRS" | grep -qi '^content-security-policy:' \
   && fail "/auth/ response carries our CSP header - it must stay scoped to the SPA locations"
 pass "/auth/ carries no portal CSP header (Keycloak governs its own)"
@@ -130,13 +127,20 @@ for c in google-chrome google-chrome-stable chromium chromium-browser \
 done
 if [ -z "$CHROME" ]; then
   echo "  WARN: no Chrome/Chromium binary found - skipping the real-browser postMessage check"
+elif [ -z "$SMOKE_HOST_BASE" ]; then
+  # A browser on this host cannot reach the container: the published port lands
+  # on the docker host, and this job is not on it (see smoke-lib.sh). The four
+  # static checks above ran at full strength through the sidecar - only this
+  # one needs a host-reachable URL, so it is skipped LOUDLY rather than faked.
+  echo "  WARN: the container's published port is not reachable from this job -"
+  echo "        skipping the real-browser postMessage check (the static CSP checks all ran)"
 else
   echo "==> real-browser silent-SSO check via $CHROME"
   # perl alarm = portable timeout (macOS has no coreutils timeout); some Chrome
   # builds linger after --dump-dom has printed, the verdict is already out.
   DOM="$(perl -e 'alarm 45; exec @ARGV' "$CHROME" --headless=new --disable-gpu --no-first-run \
         --user-data-dir="$TMP/chrome-profile" \
-        --virtual-time-budget=6000 --dump-dom "$BASE/csp-harness.html" 2>/dev/null || true)"
+        --virtual-time-budget=6000 --dump-dom "$SMOKE_HOST_BASE/csp-harness.html" 2>/dev/null || true)"
   if printf '%s' "$DOM" | grep -q 'data-csp-smoke="PASS"'; then
     pass "silent-check-sso iframe postMessage received under the real CSP"
   elif printf '%s' "$DOM" | grep -q 'data-csp-smoke="FAIL"'; then

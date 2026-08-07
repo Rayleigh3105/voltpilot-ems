@@ -34,34 +34,30 @@
 #   Without an image argument, builds the portal Dockerfile first.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+# Resolve the script's own directory BEFORE the cd, so sourcing never depends on
+# how the script was invoked.
+SMOKE_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+cd "$SMOKE_HERE/.."
 IMAGE="${1:-voltpilot-portal-cache-smoke}"
 if [ $# -eq 0 ]; then
   echo "==> docker build ${IMAGE} (portal Dockerfile)"
   docker build -q -t "$IMAGE" . >/dev/null
 fi
 
-CID=""
-cleanup() { [ -n "$CID" ] && docker rm -f "$CID" >/dev/null 2>&1 || true; }
-trap cleanup EXIT
+# Requests run inside a sidecar sharing the container's network namespace, not
+# over a published port - see test/smoke-lib.sh for why (CI run #183).
+# shellcheck source=./smoke-lib.sh
+. "$SMOKE_HERE/smoke-lib.sh"
 
-# nginx resolves the proxy upstreams (api/keycloak) at startup; dummy hosts keep
-# it bootable without the backend stack.
-CID="$(docker run -d --add-host api:127.0.0.1 --add-host keycloak:127.0.0.1 \
-  -p 127.0.0.1::80 "$IMAGE")"
-PORT="$(docker port "$CID" 80/tcp | head -1 | sed 's/.*://')"
-BASE="http://127.0.0.1:${PORT}"
+trap smoke_stop EXIT
 
-for i in $(seq 1 50); do
-  curl -fsS -o /dev/null "$BASE/" 2>/dev/null && break
-  [ "$i" -eq 50 ] && { echo "FAIL: nginx container never became ready"; docker logs "$CID"; exit 1; }
-  sleep 0.2
-done
+smoke_report_context
+smoke_start "$IMAGE" || exit 1
 
 fail() { echo "FAIL: $*"; exit 1; }
 pass() { echo "  ok: $*"; }
 
-hdrs() { curl -fsS -D - -o /dev/null "$BASE$1" | tr -d '\r'; }
+hdrs() { req -fsS -D - -o /dev/null "$BASE$1" | tr -d '\r'; }
 header_of() { printf '%s' "$2" | grep -i "^$1:" | head -1 | cut -d: -f2- | sed 's/^ *//'; }
 
 # The security headers must ride along on EVERY response the SPA location serves.
@@ -104,7 +100,7 @@ assert_no_cache "/favicon.svg"
 assert_no_cache "/silent-check-sso.js"
 
 # Take the hashed bundles from the served index.html - never hardcode a hash.
-INDEX="$(curl -fsS "$BASE/")"
+INDEX="$(req -fsS "$BASE/")"
 ASSETS="$(printf '%s' "$INDEX" | grep -oE '/assets/[A-Za-z0-9._-]+' | sort -u)"
 [ -n "$ASSETS" ] || fail "index.html references no /assets/* bundle - did the Vite output dir change?"
 for a in $ASSETS; do
@@ -114,10 +110,10 @@ done
 # A vanished hashed bundle is a hard 404 (check 8). hdrs() cannot be reused
 # here - its curl -f fails on 4xx - so the status and headers are read without -f.
 MISS="/assets/index-does-not-exist-$$.js"
-MISS_CODE="$(curl -sS -o /dev/null -w '%{http_code}' "$BASE$MISS")"
+MISS_CODE="$(req -sS -o /dev/null -w '%{http_code}' "$BASE$MISS")"
 [ "$MISS_CODE" = "404" ] \
   || fail "$MISS answered $MISS_CODE, expected 404 - the SPA fallback would serve HTML under a .js URL and poison caches"
-MISS_H="$(curl -sS -D - -o /dev/null "$BASE$MISS" | tr -d '\r')"
+MISS_H="$(req -sS -D - -o /dev/null "$BASE$MISS" | tr -d '\r')"
 MISS_CC="$(header_of cache-control "$MISS_H")"
 [ "$MISS_CC" = "no-cache" ] \
   || fail "$MISS: the 404 must carry 'Cache-Control: no-cache' (never immutable), got '${MISS_CC:-<none>}'"
@@ -127,7 +123,7 @@ assert_security_headers "$MISS" "$MISS_H"
 # The revalidation must really be cheap: same ETag -> 304, no body.
 ETAG="$(header_of etag "$(hdrs "/")")"
 [ -n "$ETAG" ] || fail "/ carries no ETag - 'no-cache' would then mean a full transfer every time"
-CODE="$(curl -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$BASE/")"
+CODE="$(req -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$BASE/")"
 [ "$CODE" = "304" ] || fail "/ with a matching If-None-Match answered $CODE, expected 304"
 pass "/ revalidates to 304 with a matching ETag"
 

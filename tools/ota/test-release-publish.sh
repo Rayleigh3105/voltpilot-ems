@@ -17,6 +17,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd "$HERE/../.." && pwd -P)"
 # shellcheck source=./release-publish.sh
 . "$HERE/release-publish.sh"
+# shellcheck source=./selfcheck-env.sh
+. "$HERE/selfcheck-env.sh"
+ota_install_err_trap
+ota_env_report
 
 PASS=0
 FAIL=0
@@ -119,7 +123,10 @@ echo "== gegen einen lokalen Stub =="
 STUB="$HERE/testdata/stub-portal.py"
 
 PORTFILE="$TMP/port"
-python3 "$STUB" >"$PORTFILE" 2>/dev/null &
+# stderr wird AUFGEHOBEN statt verworfen: kommt der Stub nicht hoch (kein
+# Loopback, belegter Port, kaputtes python3), stand der Grund frueher nirgends.
+STUBERR="$TMP/stub.err"
+python3 "$STUB" >"$PORTFILE" 2>"$STUBERR" &
 STUB_PID=$!
 # Ohne disown meldet bash beim Aufraeumen ein "Terminated" ins Protokoll - das
 # liest sich wie ein Fehlschlag und ist keiner.
@@ -131,6 +138,7 @@ done
 PORT="$(head -n 1 "$PORTFILE")"
 [ -n "$PORT" ] || {
 	echo "Stub konnte nicht starten" >&2
+	[ -s "$STUBERR" ] && sed 's/^/  stub: /' "$STUBERR" >&2
 	exit 1
 }
 BASE="http://127.0.0.1:$PORT"
@@ -170,6 +178,12 @@ fails "abweichende Bytes unter derselben Version: LAUTER Fehlschlag, kein stille
 echo
 echo "== echte Zeremonie (nur mit go) =="
 if command -v go >/dev/null 2>&1; then
+	# AUFGESPURT: das ist der einzige Block mit externem Werkzeug, und beim
+	# Erstflug am 04.08. war der Fehler ein AUFGELOESTER PFAD (das
+	# OTA_REPO_ROOT-Doppel unter edge-app/core) - genau das, was `set -x`
+	# zeigt und eine blosse Fehlermeldung verschweigt. Der Rest des Laufs
+	# bleibt still, damit die Spur nicht im Rauschen untergeht.
+	set -x
 	CER="$TMP/zeremonie"
 	mkdir -p "$CER"
 	CORE="$ROOT/edge-app/core"
@@ -260,6 +274,7 @@ PY
 	else
 		bad "der Register-Rumpf traegt die Manifest-Bytes UNVERAENDERT" "gleich" "abweichend"
 	fi
+	set +x
 else
 	echo "  (uebersprungen - kein go im PATH)"
 fi

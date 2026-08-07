@@ -16,6 +16,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd "$HERE/../.." && pwd -P)"
 WORKFLOW="$ROOT/.forgejo/workflows/edge-images.yaml"
 STEP="Release-Eingaben bestimmen"
+# shellcheck source=./selfcheck-env.sh
+. "$HERE/selfcheck-env.sh"
+ota_install_err_trap
+ota_env_report
 
 PASS=0
 FAIL=0
@@ -99,15 +103,29 @@ printf '{"schema_version":"1.0","keys":[]}\n' >"$WS/edge-app/ota/trust-set.json"
 printf '{"schema_version":"1.0"}\n' >"$WS/edge-app/ota/trust-set.json.sig"
 
 # Ein echter git-Tag mit Annotation - genau das liest der Schritt aus.
+#
+# Die Identitaet wird ins REPO geschrieben, nicht je Kommando mitgegeben: ein
+# ANNOTIERTER Tag braucht einen Tagger, und `git tag -a` erbt kein `-c` vom
+# vorherigen `git commit`. Genau daran ist dieses Leg beim ERSTEN CI-Lauf
+# gestorben (#183) - auf einem frischen Runner gibt es keine globale
+# git-Identitaet, `git tag -a` endet mit Status 128, und weil der Block sein
+# stderr verwarf, stand der Grund nirgends. Auf jeder Entwicklermaschine lief
+# es durch, weil dort eine globale Identitaet konfiguriert ist.
+#
+# stdout bleibt still, stderr NICHT: ein Fehlschlag hier muss sich selbst
+# erklaeren. (Der Nachbar tools/deploy/test-gitops-bump-workflow.sh macht es
+# seit je richtig - er gibt die Identitaet jedem Kommando einzeln mit.)
 (
 	cd "$WS"
 	git init -q .
-	git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+	git config user.email t@t
+	git config user.name t
+	git commit -q --allow-empty -m init
 	git tag -a edge-2026.08.1 -m 'Solarman-Lesepfad gehaertet.
 min-from-seq=9
 urgent=true
 Keine /data-Migration.'
-) >/dev/null 2>&1
+) >/dev/null
 
 cat >"$WS/rel.key" <<'EOF'
 {
@@ -122,7 +140,9 @@ EOF
 
 # --- Stub ---------------------------------------------------------------------
 PORTFILE="$TMP/port"
-python3 "$HERE/testdata/stub-portal.py" >"$PORTFILE" 2>/dev/null &
+# stderr wird AUFGEHOBEN statt verworfen - siehe test-release-publish.sh.
+STUBERR="$TMP/stub.err"
+python3 "$HERE/testdata/stub-portal.py" >"$PORTFILE" 2>"$STUBERR" &
 STUB_PID=$!
 disown "$STUB_PID" 2>/dev/null || true
 for _ in $(seq 1 50); do
@@ -132,6 +152,7 @@ done
 PORT="$(head -n 1 "$PORTFILE")"
 [ -n "$PORT" ] || {
 	echo "Stub konnte nicht starten" >&2
+	[ -s "$STUBERR" ] && sed 's/^/  stub: /' "$STUBERR" >&2
 	exit 1
 }
 STUB_BASE="http://127.0.0.1:$PORT"
@@ -179,7 +200,7 @@ eq "die Notiz ist der Annotations-Fliesstext" \
 KEYFILE="$(val "$TMP/out1" keyfile)"
 if [ -f "$KEYFILE" ]; then
 	eq "die Schluesseldatei liegt 0600 AUSSERHALB des Checkouts" "600" \
-		"$(stat -f '%OLp' "$KEYFILE" 2>/dev/null || stat -c '%a' "$KEYFILE")"
+		"$(ota_file_mode "$KEYFILE")"
 	case "$KEYFILE" in
 	"$WS"/*) bad "die Schluesseldatei liegt ausserhalb des Checkouts" "ausserhalb" "$KEYFILE" ;;
 	*) ok "die Schluesseldatei liegt ausserhalb des Checkouts" ;;
