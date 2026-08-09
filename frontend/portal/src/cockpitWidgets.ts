@@ -423,6 +423,182 @@ export function cockpitHero(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Mobil-Umbau Stufe 2 — die Telefon-Fassung des Cockpits (<= 720 px)
+// ---------------------------------------------------------------------------
+//
+// Abgenommenes Konzept `data/vp-mobile-views-x1` (Sektion „Cockpit", Captain-Go
+// 09.08.2026). Der gemessene Befund war Wiederholung, nicht Layout: dieselbe
+// Geld-Aussage stand am Telefon VIER Mal auf 550 px (Hero-Zahl 788 px,
+// Zurechnung 825 px, Kachel „Erlöse" 1226 px, Kachel „Handel" 1333 px), und der
+// Fahrplan-Satz zweimal in Folge (Preis-Streifen + Speicher-Fahrplan-Karte).
+//
+// Alles hier ist REINE Ableitung über schon vorhandene Sichten — es wird nichts
+// nachgerechnet und nichts erfunden; die Regeln stehen an EINER Stelle, damit
+// Telefon- und Desktop-Fassung nie Verschiedenes behaupten können.
+
+/** Die Kacheln, deren Aussage am Telefon ANDERSWO auf demselben Schirm steht. */
+const MOBILE_DEDUPED: ReadonlySet<WidgetId> = new Set<WidgetId>([
+  // Die Geld-Karte trägt die Zahl (und die Bottom-Bar seit Stufe 1 den Weg in
+  // die Erlöse-Welt) — die Kachel wäre die dritte Kopie derselben Aussage.
+  'erloes',
+  // „Handel" IST die Steuerungs-Zurechnung, die in der Geld-Karte schon als
+  // Unterzeile unter der Zahl steht (MIG §5: nie ein eigener Summand).
+  'handel',
+  // Das Wetter verliert die eigene Kachel; sein EINER erklärender Satz reist
+  // als Notiz in der Fahrplan-Zeile — und nur dann, wenn er etwas erklärt.
+  'wetter',
+]);
+
+/**
+ * Das Widget-Raster der Telefon-Fassung: dieselben Kacheln, minus die, deren
+ * Aussage auf demselben Bildschirm schon steht (P2 „eine Wahrheit steht einmal
+ * auf dem Schirm").
+ *
+ * **Die Kachel-Maschine BLEIBT** — Modus-Kacheln wie Lastspitze und
+ * Geräte-Automatik tragen ihre eigene Aussage und werden nie entfernt.
+ *
+ * `hasRings` ist die eine bedingte Regel: die Eigenverbrauchs-Kachel führt
+ * „Autarkie heute", und genau das steht als Ring-Chip in der Geld-Karte —
+ * **aber nur, wenn es dort wirklich einen Ring gibt** (unter „Gesamt" gibt es
+ * keinen, dann ist die Kachel der einzige Träger und bleibt).
+ */
+export function mobileWidgets(widgets: WidgetDef[], opts: { hasRings: boolean }): WidgetDef[] {
+  return widgets.filter((w) => {
+    if (MOBILE_DEDUPED.has(w.id)) return false;
+    if (w.id === 'eigenverbrauch' && opts.hasRings) return false;
+    return true;
+  });
+}
+
+/** Ein Ring als Chip der Geld-Karte („Autarkie 64 %"). */
+export interface HeroChip {
+  id: HeroRing['id'];
+  /** Die kurze Form für den Chip. */
+  text: string;
+  /** Das volle Etikett samt Periode — als `title`, damit nichts verloren geht. */
+  title: string;
+}
+
+/**
+ * Die Hero-Ringe als Chips (Konzept: „Ringe als Chips" in der EINEN Geld-Karte).
+ * Am Telefon kostet ein SVG-Ring-Paar ~120 px Höhe für zwei Prozentzahlen; die
+ * Chips sagen dasselbe in einer Zeile.
+ *
+ * Die Periode wird im Chip-Text WEGGELASSEN und wandert in den `title`: sie
+ * steht in derselben Karte bereits zweimal — im Zeitraum-Segment darüber und im
+ * Geld-Etikett („Verdient · Juli") daneben. Der Wert selbst wird nie verändert.
+ */
+export function heroChips(rings: HeroRing[]): HeroChip[] {
+  return rings.map((r) => ({
+    id: r.id,
+    text: `${r.label.split('·')[0].trim()} ${r.valueText}`,
+    title: `${r.label}: ${r.valueText}`,
+  }));
+}
+
+/** Eine Zeile der Telefon-Fassung: EINE Aussage + ein Absprung. */
+export interface MobileRow {
+  /** Die Aussage (fett, erste Zeile). */
+  head: string;
+  /** Die ruhige zweite Zeile; null = keine. */
+  sub: string | null;
+}
+
+/**
+ * Die Fahrplan-ZEILE der Telefon-Fassung (statt Hero-Satz + Speicher-Karte, die
+ * am Telefon denselben Satz zweimal in Folge zeigten).
+ *
+ * `sentence` ist die schon abgeleitete Erzählzeile (`speicherKurzzeile` bzw.
+ * `planSentence`) — hier wird sie NICHT neu gebaut. Die Unterzeile trägt den
+ * geplanten Vorteil und, NUR wenn er etwas erklärt, den Wetter-Satz
+ * (`weather.weatherWhy`); ohne beides bleibt sie weg statt leer dazustehen.
+ *
+ * null = kein Fahrplan-Satz ⇒ der Aufrufer zeigt seinen ehrlichen Leerzustand.
+ */
+export function fahrplanZeile(input: {
+  sentence: string | null;
+  /** Der geplante Vorteil in Euro (`savingsTodayEur`); null = keine Zahl. */
+  savedEur?: number | null;
+  /** Der Wetter-Satz (`weatherWhy`); null = er erklärt gerade nichts. */
+  weatherWhy?: string | null;
+  /** Formatierer für den Betrag (der Aufrufer reicht `eurAmount` durch). */
+  eur: (v: number) => string;
+}): MobileRow | null {
+  if (!input.sentence) return null;
+  const parts: string[] = [];
+  const saved = num(input.savedEur);
+  // Dieselbe Schwelle wie die Speicher-Fahrplan-Karte: unter einem halben Cent
+  // ist „Vorteil" keine Aussage, sondern Rauschen.
+  if (saved != null && saved > 0.005) parts.push(`Heute geplant: +${input.eur(saved)}`);
+  if (input.weatherWhy) parts.push(input.weatherWhy);
+  return { head: input.sentence, sub: parts.length > 0 ? parts.join(' · ') : null };
+}
+
+/**
+ * Die Börsenpreis-ZEILE der Telefon-Fassung (statt des vollen Streifens mit
+ * 24-h-Kurve, Ankern und Notizen — die wohnen auf der Marktpreise-Seite, die
+ * seit Stufe 1 einen Daumen entfernt in der Bottom-Bar sitzt).
+ *
+ * Alles kommt fertig formatiert aus `strompreis.ts` — hier wird nur komponiert.
+ * null = keine heutigen Preise ⇒ der Aufrufer zeigt den Leerzustand bzw. gar
+ * nichts.
+ */
+export function preisZeile(input: {
+  /** „11,9 ct/kWh" des laufenden Slots; null = kein Preis. */
+  jetztWert: string | null;
+  /** „Negativpreis"/„günstig"/… ; null = kein Urteil. */
+  urteilLabel: string | null;
+  /** „Ihr Bezugspreis jetzt: 32,5 ct/kWh" — der Wert; null = kein Tarif. */
+  bezug?: string | null;
+  /** „Tageshoch 13,6 ct (19:45)"; null = flacher Tag. */
+  hoch?: string | null;
+}): MobileRow | null {
+  if (!input.jetztWert) return null;
+  const head = input.urteilLabel
+    ? `Börsenpreis ${input.jetztWert} · ${input.urteilLabel}`
+    : `Börsenpreis ${input.jetztWert}`;
+  const parts: string[] = [];
+  if (input.bezug) parts.push(`Ihr Bezugspreis jetzt ${input.bezug}`);
+  if (input.hoch) parts.push(input.hoch);
+  return { head, sub: parts.length > 0 ? parts.join(' · ') : null };
+}
+
+/** Die geschrumpfte Kopfzeile beim Scrollen (Konzept: die zwei Anker). */
+export interface StickyHead {
+  /** „10,60 €"; null = diese Anlage hat keine Geld-Zahl. */
+  value: string | null;
+  /** „Verdient · Heute"; null ohne Zahl. */
+  label: string | null;
+  /** Der Zustands-Satz der Anlage; null = noch keiner. */
+  status: string | null;
+  tone: 'ok' | 'warn' | 'off';
+}
+
+/**
+ * Der Kopf, der beim Scrollen stehen bleibt: die verdiente Zahl und der
+ * Zustand — die zwei Anker, die der Kunde beim Weiterscrollen behalten soll.
+ *
+ * Es wird **nichts Neues abgeleitet**: die Zahl ist die des Hero, der Satz ist
+ * derselbe `composeSiteSentence`-Satz wie im Seitenkopf (der am Telefon in die
+ * Topbar gewandert ist). Ohne beides gibt es keinen Kopf — ein Streifen, der
+ * nur sich selbst trägt, kostet nur Platz.
+ */
+export function stickyHead(input: {
+  money: HeroMoney | null;
+  status: { text: string; tone: 'ok' | 'warn' | 'off' } | null;
+}): StickyHead | null {
+  const money = input.money;
+  const status = input.status;
+  if (!money && !status) return null;
+  return {
+    value: money?.value ?? null,
+    label: money?.label ?? null,
+    status: status?.text ?? null,
+    tone: status?.tone ?? 'off',
+  };
+}
+
+// ---------------------------------------------------------------------------
 
 function num(v: number | null | undefined): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;

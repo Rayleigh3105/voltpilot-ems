@@ -2,8 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   cockpitHero,
   cockpitWidgets,
+  fahrplanZeile,
+  heroChips,
   historyRangeForCockpit,
+  mobileWidgets,
+  preisZeile,
+  stickyHead,
   type CockpitWidgetsInput,
+  type WidgetDef,
   type WidgetId,
 } from './cockpitWidgets';
 import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from './surface';
@@ -332,5 +338,160 @@ describe('Die Ring-Kennzahlen folgen dem gewählten Zeitraum (v3.2 M1)', () => {
     expect(historyRangeForCockpit('year')).toBe('year');
     // „Gesamt" (all) → kein All-Zeit-Historie-Endpunkt → keine Ringe.
     expect(historyRangeForCockpit('all')).toBeNull();
+  });
+});
+
+/**
+ * Mobil-Umbau Stufe 2 — die Telefon-Fassung (abgenommenes Konzept
+ * `data/vp-mobile-views-x1`, Sektion „Cockpit"; Captain-Go 09.08.2026).
+ *
+ * Der gemessene Befund war Wiederholung, nicht Layout: dieselbe Geld-Aussage
+ * stand am Telefon VIERMAL auf 550 px. Diese Regeln beenden das — und dürfen
+ * dabei nie eine Aussage verlieren, die sonst nirgends steht.
+ */
+describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung des Cockpits', () => {
+  const w = (id: WidgetId): WidgetDef => ({
+    id,
+    label: id,
+    value: '1',
+    sub: null,
+    accent: 'money',
+    lead: false,
+    target: { sub: 'messwerte' } as WidgetDef['target'],
+  });
+
+  describe('mobileWidgets', () => {
+    it('entfernt die zwei Geld-Kacheln — ihre Zahl steht in der Geld-Karte', () => {
+      const out = mobileWidgets([w('erloes'), w('handel')], { hasRings: false });
+      expect(out).toEqual([]);
+    });
+
+    it('entfernt die Wetter-Kachel — ihr Satz reist in der Fahrplan-Zeile', () => {
+      expect(mobileWidgets([w('wetter')], { hasRings: false })).toEqual([]);
+    });
+
+    it('behält die Modus-Kacheln: sie tragen ihre EIGENE Aussage', () => {
+      const out = mobileWidgets([w('lastspitze'), w('automatik')], { hasRings: true });
+      expect(out.map((x) => x.id)).toEqual(['lastspitze', 'automatik']);
+    });
+
+    it('entfernt die Eigenverbrauchs-Kachel nur, wenn die Ringe wirklich dastehen', () => {
+      // Mit Ringen ist „Autarkie heute" die zweite Kopie des Ring-Chips …
+      expect(mobileWidgets([w('eigenverbrauch')], { hasRings: true })).toEqual([]);
+      // … ohne Ringe (z. B. „Gesamt") ist die Kachel der EINZIGE Träger.
+      expect(mobileWidgets([w('eigenverbrauch')], { hasRings: false }).map((x) => x.id)).toEqual([
+        'eigenverbrauch',
+      ]);
+    });
+
+    it('erfindet nie eine Kachel und lässt die Reihenfolge unangetastet', () => {
+      const out = mobileWidgets([w('lastspitze'), w('erloes'), w('automatik')], {
+        hasRings: false,
+      });
+      expect(out.map((x) => x.id)).toEqual(['lastspitze', 'automatik']);
+    });
+  });
+
+  describe('heroChips', () => {
+    it('macht aus den Ringen Chips und behält die Periode im title', () => {
+      const view = cockpitHero({ totals: TOTALS, money: money(), range: 'day', now: NOW });
+      const chips = heroChips(view.rings);
+      expect(chips.map((c) => c.text)).toEqual([`Autarkie 82${NBSP}%`, `Eigenverbrauch 64${NBSP}%`]);
+      // Die Periode geht nicht verloren - sie steht im title (und im Etikett
+      // der Geld-Zeile derselben Karte).
+      expect(chips[0].title).toBe(`Autarkie · Heute: 82${NBSP}%`);
+    });
+
+    it('ohne Ringe gibt es keine Chips (nie eine erfundene 0)', () => {
+      expect(heroChips([])).toEqual([]);
+    });
+  });
+
+  describe('fahrplanZeile', () => {
+    const eur = (v: number) => `${v.toFixed(2).replace('.', ',')} €`;
+
+    it('ohne Satz gibt es keine Zeile', () => {
+      expect(fahrplanZeile({ sentence: null, savedEur: 5, eur })).toBeNull();
+    });
+
+    it('führt mit der schon abgeleiteten Erzählzeile und ergänzt den Vorteil', () => {
+      const row = fahrplanZeile({ sentence: 'Jetzt Sonne speichern.', savedEur: 5.01, eur });
+      expect(row).toEqual({ head: 'Jetzt Sonne speichern.', sub: 'Heute geplant: +5,01 €' });
+    });
+
+    it('nimmt den Wetter-Satz auf — aber nur, wenn er etwas erklärt', () => {
+      const mit = fahrplanZeile({
+        sentence: 'Jetzt Sonne speichern.',
+        savedEur: 5.01,
+        weatherWhy: 'Ab 16 Uhr sonniger.',
+        eur,
+      });
+      expect(mit?.sub).toBe('Heute geplant: +5,01 € · Ab 16 Uhr sonniger.');
+      const ohne = fahrplanZeile({ sentence: 'Jetzt Sonne speichern.', weatherWhy: null, eur });
+      expect(ohne?.sub).toBeNull();
+    });
+
+    it('behauptet keinen Vorteil unterhalb der Anzeige-Schwelle', () => {
+      const row = fahrplanZeile({ sentence: 'Ruhe.', savedEur: 0.004, eur });
+      expect(row?.sub).toBeNull();
+      const nan = fahrplanZeile({ sentence: 'Ruhe.', savedEur: Number.NaN, eur });
+      expect(nan?.sub).toBeNull();
+    });
+  });
+
+  describe('preisZeile', () => {
+    it('ohne Preis gibt es keine Zeile', () => {
+      expect(preisZeile({ jetztWert: null, urteilLabel: 'günstig' })).toBeNull();
+    });
+
+    it('nennt Preis + Urteil oben, Bezugspreis + Tageshoch darunter', () => {
+      const row = preisZeile({
+        jetztWert: '−2,0 ct/kWh',
+        urteilLabel: 'Negativpreis',
+        bezug: '18,4 ct/kWh',
+        hoch: 'Tageshoch 15,0 ct (19:15)',
+      });
+      expect(row).toEqual({
+        head: 'Börsenpreis −2,0 ct/kWh · Negativpreis',
+        sub: 'Ihr Bezugspreis jetzt 18,4 ct/kWh · Tageshoch 15,0 ct (19:15)',
+      });
+    });
+
+    it('lässt weg, was der Server nicht liefert — statt es zu erfinden', () => {
+      expect(preisZeile({ jetztWert: '11,9 ct/kWh', urteilLabel: null })).toEqual({
+        head: 'Börsenpreis 11,9 ct/kWh',
+        sub: null,
+      });
+    });
+  });
+
+  describe('stickyHead', () => {
+    it('trägt die zwei Anker: Geld und Zustand', () => {
+      const head = stickyHead({
+        money: { label: 'Verdient · Heute', value: '10,60 €', attribution: null },
+        status: { text: 'Alles läuft.', tone: 'ok' },
+      });
+      expect(head).toEqual({
+        value: '10,60 €',
+        label: 'Verdient · Heute',
+        status: 'Alles läuft.',
+        tone: 'ok',
+      });
+    });
+
+    it('ohne beide Anker gibt es keinen Kopf', () => {
+      expect(stickyHead({ money: null, status: null })).toBeNull();
+    });
+
+    it('behauptet ohne Geld keine Zahl — und ohne Zustand keinen Satz', () => {
+      expect(stickyHead({ money: null, status: { text: 'Gerät meldet sich nicht.', tone: 'warn' } }))
+        .toEqual({ value: null, label: null, status: 'Gerät meldet sich nicht.', tone: 'warn' });
+      const nurGeld = stickyHead({
+        money: { label: 'Verdient · Juli', value: '1,00 €', attribution: null },
+        status: null,
+      });
+      expect(nurGeld?.status).toBeNull();
+      expect(nurGeld?.tone).toBe('off');
+    });
   });
 });

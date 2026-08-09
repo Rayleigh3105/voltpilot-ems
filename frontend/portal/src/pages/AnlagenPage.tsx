@@ -24,6 +24,8 @@ import { plantKindLabel } from '../format';
 import { DEFAULT_EARNINGS_RANGE } from '../anlage';
 import { anlageRoute, pageRoute, type AnlagenSub, type Route } from '../nav';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { useIsPhone } from '../useIsPhone';
+import { useScrolledPast } from '../useScrolledPast';
 import { useWake } from '../useWake';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook } from '../control';
@@ -45,9 +47,15 @@ import {
   cockpitHero,
   cockpitWidgets,
   historyRangeForCockpit,
+  mobileWidgets,
+  stickyHead,
   type WidgetDef,
 } from '../cockpitWidgets';
 import { CockpitHero } from '../components/CockpitHero';
+import {
+  MobileMoneyCard,
+  MobileStickyHead,
+} from '../components/CockpitBlocks';
 import { KomponentenSection } from '../components/KomponentenSection';
 import { ZustandCard } from '../components/ZustandCard';
 import { StrompreisStrip } from '../components/StrompreisStrip';
@@ -536,6 +544,13 @@ export function AnlageSeite({
   // Zurückkommen (auch aus dem bfcache) erneut laufen, ihre Bedingungen und
   // Abbruch-Wächter bleiben unangetastet (`useWake.ts`).
   const wake = useWake();
+  // Mobil-Umbau Stufe 2: unterhalb der Telefon-Grenze rendert das Cockpit eine
+  // eigene KOMPOSITION (Konzept `data/vp-mobile-views-x1`, Sektion „Cockpit").
+  // Ohne `matchMedia` (jsdom/SSR) ist das `false` — also die Bühne, unverändert.
+  const isPhone = useIsPhone();
+  // Der Auslöser der Sticky-Kopfzahl: sie erscheint erst, wenn die Geld-Karte
+  // nach oben aus dem Bild gescrollt ist.
+  const [moneyRef, scrolledPastMoney] = useScrolledPast<HTMLDivElement>(isPhone);
 
   // Status + live snapshot: the site's overview row (device health + newest
   // sample) - the same source the fleet cards render from.
@@ -987,6 +1002,12 @@ export function AnlageSeite({
     peak: peakView,
     weather: { nextHourTempC, why: weatherWhyText },
   });
+  // Mobil-Umbau Stufe 2 (`<= 720px`): dieselben Kacheln minus die, deren
+  // Aussage auf demselben Telefon-Bildschirm schon steht. Die Regel ist rein
+  // (`mobileWidgets`), hier wird nur gewählt.
+  const shownWidgets = isPhone
+    ? mobileWidgets(widgets, { hasRings: heroView.rings.length > 0 })
+    : widgets;
   // ONE freshness truth (G3/R4): the three-state `liveState` drives BOTH the
   // head chip and the hero/board dimming. `site-only` (the Anlage delivers,
   // the per-device breakdown does not) gets its own honest chip wording and
@@ -1027,6 +1048,45 @@ export function AnlageSeite({
   // Übernahme) leben auf den Komponenten-Board-Zeilen.
   const jumpToWidget = (widget: WidgetDef) => onOpenSub(widget.target.sub);
 
+  // --- Mobil-Umbau Stufe 2 --------------------------------------------------
+  // Dieselben zwei Bausteine, nur in zwei Kleidern und zwei Reihenfolgen: am
+  // Rechner Preis → Fahrplan als Karten, am Telefon Fahrplan → Preis als je
+  // EINE Zeile mit Absprung. Sie werden hier EINMAL gebaut, damit die zwei
+  // Fassungen nicht auseinanderlaufen können.
+  const strompreisRow = gateStrompreis(modes, site.tarifArt) ? (
+    <StrompreisStrip
+      siteId={site.id}
+      isDv={site.plantKind === 'direktvermarktung'}
+      tarifArt={site.tarifArt}
+      kind={site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch'}
+      slots={planSlots}
+      slotMinutes={plan?.slotMinutes ?? 15}
+      activeSlot={activePlanSlot}
+      onOpenMarktpreise={() => onNavigate(pageRoute('marktpreise'))}
+      compact={isPhone}
+    />
+  ) : null;
+  // ①b Speicher-Fahrplan (PR 4, Konzept §4b). Gated wie die Fahrplan-Ansicht
+  // selbst; der volle Chart lebt nur auf der Fahrplan-Seite (D7). Am Telefon
+  // trägt die Zeile zusätzlich den Wetter-Satz — die Wetter-Kachel entfällt
+  // dafür, und ohne erklärenden Satz erscheint gar nichts.
+  const fahrplanRow = (surface?.deepViews ?? []).includes('fahrplan') ? (
+    <FahrplanBand
+      plan={plan}
+      plantKind={site.plantKind}
+      now={now}
+      loading={planLoading && plan == null}
+      failed={planFailed}
+      onOpen={() => onOpenSub('fahrplan')}
+      compact={isPhone}
+      weatherWhy={weatherWhyText}
+    />
+  ) : null;
+  // Die geschrumpfte Kopfzahl beim Scrollen: die zwei Anker (Geld + Zustand).
+  const sticky = isPhone
+    ? stickyHead({ money: heroView.money, status: showSetup ? null : (sentence ?? null) })
+    : null;
+
   return (
     <>
       {onBackToList && (
@@ -1036,8 +1096,15 @@ export function AnlageSeite({
         </button>
       )}
 
-      {/* 1 · Kopf: Status + Warnungen bleiben oben sichtbar; Technik hinterm Zahnrad. */}
-      <div className="vp-page-head vp-anlage-head">
+      {/* 1 · Kopf: Status + Warnungen bleiben oben sichtbar; Technik hinterm Zahnrad.
+             Mobil-Umbau Stufe 2: am Telefon trägt die Topbar seit Stufe 1 die
+             IDENTITÄT (Name als Wechsler + Zustands-Wort als Unterzeile), also
+             ist dieser Block dort die zweite Kopie davon — er entfällt bis auf
+             den Frische-Chip (die EINE Frischewahrheit, R4) und das Zahnrad.
+             Die Überschrift bleibt als sr-only bestehen: 0 px hoch, aber die
+             Seite verliert ihr Sprungziel nicht. */}
+      <div className={`vp-page-head vp-anlage-head${isPhone ? ' is-phone' : ''}`}>
+        {isPhone && <h1 className="vp-sr-only">{site.name}</h1>}
         <div className="titles">
           <h1>
             <span
@@ -1067,8 +1134,10 @@ export function AnlageSeite({
               {chip.label}
             </Badge>
           )}
-          <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>
-          <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
+          {/* Stammdaten-Abzeichen: sie ändern sich nie und beantworten keine
+              Tagesfrage — am Telefon wohnen sie in den Einstellungen. */}
+          {!isPhone && <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>}
+          {!isPhone && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
           <button
             type="button"
             className="vp-gear-btn"
@@ -1127,6 +1196,8 @@ export function AnlageSeite({
            ihr Modal (Jetzt | Verlauf). Was kein Modus und keine Quelle
            beisteuert, erscheint nicht - auch nicht als leere Karte. */
         <>
+          {sticky && <MobileStickyHead head={sticky} shown={scrolledPastMoney} />}
+
           {ovSite == null ? (
             <Skeleton height={320} radius="var(--vp-radius-lg)" />
           ) : (
@@ -1141,55 +1212,67 @@ export function AnlageSeite({
               /* Der Zeitraum steht in der Bilanz-Leiste, direkt über den
                  Zahlen, die er regiert (Konzept §6.3) - nicht mehr als volle
                  Seitenzeile für vier Knöpfe. Ohne Geld-Modus gibt es keinen
-                 Zeitraum zu wählen. */
+                 Zeitraum zu wählen.
+                 Am Telefon (Stufe 2) trägt die EINE Geld-Karte darunter das
+                 Segment - dort gibt es keine Leiste. */
               periodSeg={
-                hasBlock(blocks, 'erloes-komposition') ? (
+                !isPhone && hasBlock(blocks, 'erloes-komposition') ? (
                   <PeriodTabs range={range} onRange={switchRange} variant="seg" />
                 ) : null
               }
+              showRail={!isPhone}
               /* Die Bestätigung ist AM Diagramm ablesbar (Speicher-Knoten),
                  der Bühnenfuß liefert Satz und Grund. */
               controlConfirmed={controlView?.state === 'healthy'}
-              footer={controlView ? <ControlStrip view={controlView} variant="bare" /> : null}
+              /* Am Telefon steht die Geld-Karte „direkt unterm Fluss"
+                 (Konzept) — der Bühnenfuß wandert deshalb unter die
+                 Fahrplan-Zeile, deren Aussage er fortsetzt (was ist geplant →
+                 was bestätigt der Wechselrichter). Er entfällt NICHT: er ist
+                 die einzige Fläche, die einen abweichenden Sollwert meldet. */
+              footer={
+                !isPhone && controlView ? (
+                  <ControlStrip view={controlView} variant="bare" />
+                ) : null
+              }
             />
           )}
+
+          {/* Mobil-Umbau Stufe 2: die EINE Geld-Karte direkt unter dem Fluss —
+              Zahl, Zurechnung, Zeitraum-Segment und die Ringe als Chips. Sie
+              ersetzt am Telefon die Bilanz-Leiste UND die zwei Geld-Kacheln
+              (dieselbe Aussage stand dort bis zu viermal auf 550 px). */}
+          {isPhone && (
+            <div ref={moneyRef}>
+              <MobileMoneyCard
+                view={heroView}
+                periodSeg={
+                  hasBlock(blocks, 'erloes-komposition') ? (
+                    <PeriodTabs range={range} onRange={switchRange} variant="seg" />
+                  ) : null
+                }
+              />
+            </div>
+          )}
+
+          {/* Am Telefon führen die zwei täglichen Fragen als ZEILEN (Fahrplan
+              zuerst, dann der Preis, der ihn erklärt); die Kacheln folgen
+              darunter. Am Rechner bleibt die Reihenfolge der Bühne. */}
+          {isPhone && fahrplanRow}
+          {isPhone && controlView && (
+            <ControlStrip view={controlView} variant="card" />
+          )}
+          {isPhone && strompreisRow}
 
           {/* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
               Ziel der Kachel - kein Modal mehr. */}
-          <WidgetGrid widgets={widgets} onSelect={jumpToWidget} />
+          <WidgetGrid widgets={shownWidgets} onSelect={jumpToWidget} />
 
           {/* Markt & Tag (vp-cockpit-unten-ux-n3, PR 1): der Börsenpreis-
               Streifen führt die untere Hälfte an — er erklärt, warum der
-              Fahrplan gerade tut, was er tut. Gating = die Marktpreise-Regel
-              (Markt-Modus ∨ dynamischer Tarif); auf einer Festpreis-EEG-
-              Anlage erklärt der Preis nichts und erscheint deshalb nicht. */}
-          {gateStrompreis(modes, site.tarifArt) && (
-            <StrompreisStrip
-              siteId={site.id}
-              isDv={site.plantKind === 'direktvermarktung'}
-              tarifArt={site.tarifArt}
-              kind={site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch'}
-              slots={planSlots}
-              slotMinutes={plan?.slotMinutes ?? 15}
-              activeSlot={activePlanSlot}
-              onOpenMarktpreise={() => onNavigate(pageRoute('marktpreise'))}
-            />
-          )}
-
-          {/* ①b Speicher-Fahrplan (PR 4, Konzept §4b): die kurze Karte erzählt
-              den Tag — der Streifen darüber sagt „jetzt". Gated wie die
-              Fahrplan-Ansicht selbst (Speicher vorhanden, die surface-Regel);
-              der volle Chart lebt nur noch auf der Fahrplan-Seite (D7). */}
-          {(surface?.deepViews ?? []).includes('fahrplan') && (
-            <FahrplanBand
-              plan={plan}
-              plantKind={site.plantKind}
-              now={now}
-              loading={planLoading && plan == null}
-              failed={planFailed}
-              onOpen={() => onOpenSub('fahrplan')}
-            />
-          )}
+              Fahrplan gerade tut, was er tut. Am Telefon stehen beide weiter
+              oben (siehe dort) und je als EINE Zeile. */}
+          {!isPhone && strompreisRow}
+          {!isPhone && fahrplanRow}
 
           {/* Merge Option A · Stratum 3: Komponenten im Detail — das Board
               (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die

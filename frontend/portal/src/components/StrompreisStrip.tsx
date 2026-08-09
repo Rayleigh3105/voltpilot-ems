@@ -13,7 +13,9 @@ import {
   praemieRuhtNote,
   strompreisView,
 } from '../strompreis';
+import { preisZeile } from '../cockpitWidgets';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { MobileRowCard } from './CockpitBlocks';
 import './StrompreisStrip.css';
 
 /**
@@ -63,6 +65,7 @@ export function StrompreisStrip({
   slotMinutes,
   activeSlot,
   onOpenMarktpreise,
+  compact = false,
 }: {
   siteId: string;
   /** Direktvermarktungs-Anlage (nur dort gibt es die § 51-Prämien-Zeile). */
@@ -75,6 +78,15 @@ export function StrompreisStrip({
   /** Der laufende Plan-Slot der Seite (trägt den Bezugspreis), oder null. */
   activeSlot: ScheduleSlot | null;
   onOpenMarktpreise: () => void;
+  /**
+   * Die Telefon-Fassung (Mobil-Umbau Stufe 2, `<= 720px`): EINE Zeile mit
+   * Absprung — Preis jetzt + Urteil, darunter Bezugspreis + Tageshoch. Kurve,
+   * Anker-Paar, Prämien-/Morgen-Notizen und die Plan-Kopplung wohnen auf der
+   * Marktpreise- bzw. Fahrplan-Seite, die seit Mobil-Stufe 1 in der Bottom-Bar
+   * sitzen; die Kopplung stand am Telefon zusätzlich direkt neben derselben
+   * Aussage der Fahrplan-Zeile.
+   */
+  compact?: boolean;
 }) {
   const [points, setPoints] = useState<PricePoint[] | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -118,6 +130,20 @@ export function StrompreisStrip({
 
   const bezug = bezugspreisJetzt(tarifArt, activeSlot);
   const praemie = praemieRuhtNote(view.urteil, isDv);
+
+  if (compact) {
+    if (view.state === 'leer') return null;
+    const row = preisZeile({
+      jetztWert: view.jetztWert,
+      urteilLabel: view.urteilLabel,
+      bezug,
+      hoch: view.anker?.hoch ?? null,
+    });
+    if (!row) return null;
+    return (
+      <MobileRowCard icon="euro" row={row} linkLabel="Marktpreise" onOpen={onOpenMarktpreise} />
+    );
+  }
 
   return (
     <Card padding="lg" radius="lg" className="vp-strompreis" style={{ minWidth: 0 }}>

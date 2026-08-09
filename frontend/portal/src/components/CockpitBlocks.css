@@ -608,3 +608,243 @@
     transform: none;
   }
 }
+
+/* ==========================================================================
+   Mobil-Umbau Stufe 2 · die Telefon-Fassung des Cockpits (<= 720 px)
+   --------------------------------------------------------------------------
+   Konzept `data/vp-mobile-views-x1`, Sektion „Cockpit" (Captain-Go 09.08.2026).
+   Alles hier gehoert zu Bausteinen, die NUR unterhalb der Telefon-Grenze
+   gerendert werden (`useIsPhone`) — die Buehne (`.vp-cockpit-hero`-Grid) und
+   das Kachel-Raster ab 640/1100 px bleiben unberuehrt.
+   ========================================================================== */
+
+/* --- Der Seitenkopf am Telefon: die Identitaet steht in der Topbar --------- */
+
+.vp-anlage-head.is-phone {
+  margin-bottom: var(--vp-space-3);
+}
+.vp-anlage-head.is-phone .titles {
+  display: none;
+}
+.vp-anlage-head.is-phone .vp-anlage-badges {
+  margin-left: auto;
+}
+
+/* --- Die EINE Geld-Karte -------------------------------------------------- */
+
+.vp-mob-money {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--vp-space-3);
+}
+.vp-mob-money-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.vp-mob-money-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.vp-mob-money-seg {
+  display: flex;
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vp-mob-money-seg::-webkit-scrollbar {
+  display: none;
+}
+.vp-mob-money-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #64748b);
+}
+.vp-mob-money-value {
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.12;
+  color: var(--vp-stat-ink, #2c5282);
+  overflow-wrap: anywhere;
+}
+.vp-mob-money-attr,
+.vp-mob-money-note {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-mob-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+  min-width: 0;
+}
+.vp-mob-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f8fafc);
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--vp-text, #0f172a);
+  white-space: nowrap;
+}
+/* Die Chips tragen die Ring-Farben weiter — dieselbe Sprache wie die Buehne. */
+.vp-mob-chip-autarkie {
+  border-color: color-mix(in srgb, var(--vp-flow-pv) 45%, transparent);
+  background: var(--vp-flow-pv-soft, #fff7ed);
+}
+.vp-mob-chip-eigenverbrauch {
+  border-color: color-mix(in srgb, var(--vp-flow-batt) 45%, transparent);
+  background: var(--vp-flow-batt-soft, #f0fdf4);
+}
+
+/* --- Eine Aussage-Zeile mit Absprung (Fahrplan / Boersenpreis) ------------- */
+
+.vp-mob-row {
+  margin-top: var(--vp-space-3);
+  padding: 0 !important;
+}
+.vp-mob-row-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  /* >= 44 px Trefferflaeche, ohne dass die Zeile hoch baut. */
+  min-height: 44px;
+  padding: 12px var(--vp-space-4, 16px);
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.vp-mob-row-btn > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--vp-action, #2c5282);
+}
+.vp-mob-row-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-mob-row-head {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--vp-text, #0f172a);
+  overflow-wrap: anywhere;
+}
+.vp-mob-row-sub {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+.vp-mob-row-badge {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f1f5f9);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--vp-text-muted, #64748b);
+  white-space: nowrap;
+}
+.vp-mob-row-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  align-self: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--vp-link, #2c5282);
+  white-space: nowrap;
+}
+
+/* --- Die Sticky-Kopfzahl -------------------------------------------------- */
+
+.vp-mob-sticky {
+  /* FIXED, nicht sticky: ein sticky Element belegt seinen Platz im Fluss auch
+     dann, wenn es unsichtbar ist — das wären ~34 px Leere ueber dem Falz,
+     also genau das, was dieser Umbau abschafft. */
+  position: fixed;
+  /* Direkt unter der 68-px-Schalenkopfzeile. */
+  top: 68px;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px var(--vp-space-4, 16px);
+  border-bottom: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface, #fff);
+  min-width: 0;
+  /* Ausserhalb des Bildes statt entfernt: das Layout springt nie. */
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+.vp-mob-sticky.is-shown {
+  opacity: 1;
+  transform: none;
+}
+.vp-mob-sticky-money {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  flex: none;
+}
+.vp-mob-sticky-money b {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--vp-stat-ink, #2c5282);
+}
+.vp-mob-sticky-label {
+  font-size: 0.72rem;
+  color: var(--vp-text-muted, #64748b);
+  white-space: nowrap;
+}
+.vp-mob-sticky-state {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.76rem;
+  color: var(--vp-text-muted, #64748b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-mob-sticky-state.tone-warn {
+  color: var(--vp-warn-ink, #92400e);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-mob-sticky {
+    transition: none;
+  }
+}
