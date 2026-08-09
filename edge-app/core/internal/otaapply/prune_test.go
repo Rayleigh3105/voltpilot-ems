@@ -158,12 +158,76 @@ func TestTheKeptReleaseIsCountedPerRepository(t *testing.T) {
 	}
 }
 
+// Ein Abbild, das JUENGER ist als der laufende Stand, ist kein „frueheres
+// Release", sondern etwas voraus Bereitgelegtes - und bleibt.
+//
+// In der Fehlerinjektions-Matrix aufgefallen, nicht im Unit-Test: die Matrix
+// legt ihre Stellvertreter fuer spaetere Faelle vorab an, und ohne diese Regel
+// hat ein frueherer Fall sie eingesammelt.
+func TestAnImageNewerThanTheRunningStandIsNeverRemoved(t *testing.T) {
+	plan := PlanPrune(PruneInput{
+		Policy: PrunePolicy{Enabled: true, KeepReleases: 0, Source: "test"},
+		Images: []ImageRecord{
+			img("sha256:ahead", coreRepo, "", "sha256:da", at(9)), // voraus bereitgelegt
+			img("sha256:run", coreRepo, "", "sha256:dr", at(5)),   // laeuft
+			img("sha256:old", coreRepo, "", "sha256:do", at(1)),
+		},
+		InUse: []string{"sha256:run"},
+	})
+	if removesID(plan, "sha256:ahead") {
+		t.Fatalf("was juenger ist als der laufende Stand, bleibt: %v", refsOf(plan))
+	}
+	if !removesID(plan, "sha256:old") {
+		t.Fatalf("das wirklich fruehere Release muss weg: %v", refsOf(plan))
+	}
+}
+
+// Gleich alt ist nicht aelter - der Gleichstand bleibt.
+func TestAnImageAsOldAsTheRunningStandIsKept(t *testing.T) {
+	plan := PlanPrune(PruneInput{
+		Policy: PrunePolicy{Enabled: true, KeepReleases: 0, Source: "test"},
+		Images: []ImageRecord{
+			img("sha256:twin", coreRepo, "", "sha256:dt", at(5)),
+			img("sha256:run", coreRepo, "", "sha256:dr", at(5)),
+		},
+		InUse: []string{"sha256:run"},
+	})
+	if removesID(plan, "sha256:twin") {
+		t.Fatalf("Gleichstand ist nicht aelter als der laufende Stand: %v", refsOf(plan))
+	}
+}
+
+// Ohne lesbare Bau-Zeit des laufenden Standes gibt es nichts, wozu „aelter"
+// eine Aussage waere - dann traegt allein die Kulanz-Regel, statt das
+// Aufraeumen stillschweigend ganz abzuschalten.
+func TestWithoutAReadableAnchorTheGraceRuleStillCleansUp(t *testing.T) {
+	plan := PlanPrune(PruneInput{
+		Policy: PrunePolicy{Enabled: true, KeepReleases: 1, Source: "test"},
+		Images: []ImageRecord{
+			img("sha256:run", coreRepo, "", "sha256:dr", time.Time{}),
+			img("sha256:a", coreRepo, "", "sha256:da", at(3)),
+			img("sha256:b", coreRepo, "", "sha256:db", at(1)),
+		},
+		InUse: []string{"sha256:run"},
+	})
+	if removesID(plan, "sha256:a") {
+		t.Fatalf("die Kulanz haelt den juengsten Verwaisten: %v", refsOf(plan))
+	}
+	if !removesID(plan, "sha256:b") {
+		t.Fatalf("der aeltere muss weg: %v", refsOf(plan))
+	}
+}
+
 // Die Kandidatenmenge ist die ganze Zusage: was nicht in der Liste steht, kann
 // nicht entfernt werden - ein fremdes Abbild kommt gar nicht in ihre Naehe.
 func TestNothingOutsideTheCandidateListCanBeRemoved(t *testing.T) {
 	plan := PlanPrune(PruneInput{
 		Policy: PrunePolicy{Enabled: true, KeepReleases: 0, Source: "test"},
-		Images: []ImageRecord{img("sha256:old", coreRepo, "", "sha256:do", at(1))},
+		Images: []ImageRecord{
+			img("sha256:run", coreRepo, "", "sha256:dr", at(5)),
+			img("sha256:old", coreRepo, "", "sha256:do", at(1)),
+		},
+		InUse: []string{"sha256:run"},
 	})
 	if len(plan.Remove) != 1 || plan.Remove[0].ID != "sha256:old" {
 		t.Fatalf("nur der eine Kandidat darf im Plan stehen: %v", refsOf(plan))

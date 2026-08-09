@@ -25,6 +25,10 @@ package otaapply
 //     Halter fehlen sollte;
 //   - alles ausdruecklich Geschuetzte (aufgeloeste Ziel- und
 //     Rueckfall-Referenzen, siehe [PruneInput.Protected]);
+//   - alles, was NICHT AELTER ist als der hier laufende Stand. Entfernt werden
+//     „Abbilder FRUEHERER Releases" - ein Abbild, das juenger ist als das
+//     laufende, ist keines davon, sondern etwas VORAUS Bereitgelegtes (ein
+//     vorab geholtes naechstes Ziel, ein am Pruefstand hingelegter Kandidat);
 //   - je Repository die [PrunePolicy.KeepReleases] JUENGSTEN verwaisten
 //     Abbilder - die Kulanz fuer abgeloeste Releases.
 //
@@ -261,6 +265,20 @@ func PlanPrune(in PruneInput) PrunePlan {
 			superseded[s] = true
 		}
 	}
+	// Der ANKER je Repository: die Bau-Zeit des juengsten Abbildes, das hier
+	// gehalten wird (der laufende Stand, das Ziel, das Rueckfallziel). Nur was
+	// AELTER ist, kann ein „frueheres Release" sein.
+	anchor := map[string]time.Time{}
+	for _, img := range in.Images {
+		id := strings.TrimSpace(img.ID)
+		if id == "" || !keep[id] {
+			continue
+		}
+		if img.Created.After(anchor[img.Repo]) {
+			anchor[img.Repo] = img.Created
+		}
+	}
+
 	var repos []string
 	candByRepo := map[string][]string{}
 	seenInRepo := map[string]map[string]bool{}
@@ -280,10 +298,43 @@ func PlanPrune(in PruneInput) PrunePlan {
 		candByRepo[img.Repo] = append(candByRepo[img.Repo], id)
 	}
 
+	// Alles, was nicht aelter als der Anker ist, wird geschuetzt - inklusive
+	// jedes Abbildes ohne lesbare Bau-Zeit (unbekannt gilt als neu, die
+	// vorsichtige Richtung). Ist der Anker selbst unbekannt (kein gehaltenes
+	// Abbild mit lesbarer Zeit), gibt es nichts, wozu „aelter" eine Aussage
+	// waere - dann traegt allein die Kulanz-Regel, statt das Aufraeumen
+	// stillschweigend ganz abzuschalten.
+	//
+	// Iteriert wird ueber `repos` und nicht ueber die Anker-MAP: Go wuerfelt die
+	// Reihenfolge einer Map, und eine Kennung, die in zwei Repositories liegt,
+	// bekaeme sonst je nach Wurf einen anderen Kulanz-Platz.
+	for _, repo := range repos {
+		ref := anchor[repo]
+		if ref.IsZero() {
+			continue
+		}
+		kept := candByRepo[repo][:0]
+		for _, id := range candByRepo[repo] {
+			if t := newestCreated(byID[id]); t.IsZero() || !t.Before(ref) {
+				keep[id] = true
+				continue
+			}
+			kept = append(kept, id)
+		}
+		candByRepo[repo] = kept
+	}
+
 	plan := PrunePlan{}
 	spared := map[string]bool{}
 	for _, repo := range repos {
-		cand := candByRepo[repo]
+		// Was der Anker eines ANDEREN Repositories schon geschuetzt hat, darf
+		// hier keinen Kulanz-Platz mehr verbrauchen - es bleibt ohnehin.
+		cand := candByRepo[repo][:0]
+		for _, id := range candByRepo[repo] {
+			if !keep[id] {
+				cand = append(cand, id)
+			}
+		}
 		sort.SliceStable(cand, func(i, j int) bool {
 			return pruneRankLess(cand[i], cand[j], superseded, byID)
 		})

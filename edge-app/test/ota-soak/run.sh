@@ -369,7 +369,9 @@ scenario_broker_outage() {
 # legitimen Rollout. Der Sidecar hat die abgeloesten Abbilder nie entsorgt.
 scenario_image_cleanup() {
   start_on_v1
-  push_components v3
+  # build statt push: der Stellvertreter wird hier NEU erzeugt, falls ihn etwas
+  # weggeraeumt hat. Der Bau ist deterministisch, der Digest bleibt derselbe.
+  build_components v3
 
   # --- Runde 1: v1 -> v2. Danach ist v1 der EINE aufgehobene Vorgaenger. ----
   assign edge-2026.08.0 12 "$CORE_V2" "$NR_V2"

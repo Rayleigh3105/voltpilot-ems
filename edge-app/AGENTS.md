@@ -908,6 +908,15 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
     getauscht hat** (`prunableRepos`; `imageRepo` trennt Tag/Digest ab, aber nie
     den Port einer Registry). Der Sidecar steht nicht darin - seine alten
     Abbilder bleiben liegen, die vorsichtige Richtung.
+  - **⚠ Nur was AELTER ist als der laufende Stand** (der ANKER je Repository =
+    die juengste Bau-Zeit unter den gehaltenen Abbildern). Entfernt werden
+    „Abbilder FRUEHERER Releases"; was juenger ist, ist etwas voraus
+    Bereitgelegtes. **In der Fehlerinjektions-Matrix aufgefallen, nicht im
+    Unit-Test:** ohne diese Regel sammelte ein frueherer Fall die Stellvertreter
+    ein, die die Matrix fuer spaetere Faelle vorab angelegt hatte. Unbekannte
+    Bau-Zeit = jung = bleibt; unbekannter ANKER = die Regel greift nicht (sonst
+    schaltete ein unlesbares Zeitformat das Aufraeumen still ganz ab), dann
+    traegt allein die Kulanz.
   - **Kulanz JE REPOSITORY** (`VP_OTA_PRUNE_KEEP`, Vorgabe 1): global gezaehlt
     behielte „eines aufheben" den Vorgaenger von core und entfernte den von
     nodered.

@@ -395,7 +395,11 @@ geprüft):
    sollte;
 3. der laufende Zielstand und eine bereits vorab geholte **nächste** Zuweisung
    (genau die nähme ein pauschales `docker image prune -a` mit);
-4. je Komponente die `VP_OTA_PRUNE_KEEP` jüngsten verwaisten Abbilder — bei der
+4. **alles, was nicht älter ist als der hier laufende Stand.** Entfernt werden
+   „Abbilder *früherer* Releases" — was jünger ist, ist keines davon, sondern
+   etwas voraus Bereitgelegtes (ein handverlesener Kandidat, ein vorab
+   geholtes Image). Ein Abbild ohne lesbare Bau-Zeit gilt als jung und bleibt;
+5. je Komponente die `VP_OTA_PRUNE_KEEP` jüngsten verwaisten Abbilder — bei der
    Vorgabe also der zuletzt abgelöste Stand.
 
 Das `docker save`-Archiv unter `/data/ota/lkg/` ist eine **Datei** und liegt
