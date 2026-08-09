@@ -276,8 +276,16 @@ export interface ReviewItem {
   value: string;
 }
 
-/** The Prüfseite facts (§14.7): every auto-set fact in Klartext. */
-export function reviewFacts(doc: ConsumerPolicyDocument, consumerName: string): ReviewItem[] {
+/**
+ * The Prüfseite facts (§14.7): every auto-set fact in Klartext. The default
+ * (no `activationEnabled`) keeps the Increment-1 wording byte-identical - an
+ * older environment never promises an activation it cannot perform.
+ */
+export function reviewFacts(
+  doc: ConsumerPolicyDocument,
+  consumerName: string,
+  activationEnabled = false,
+): ReviewItem[] {
   const items: ReviewItem[] = [];
   const r = doc.requirements[0];
   items.push({ label: 'Verbraucher', value: consumerName });
@@ -289,6 +297,11 @@ export function reviewFacts(doc: ConsumerPolicyDocument, consumerName: string): 
   const storage = storageSentence(r);
   if (storage) items.push({ label: 'Speicher', value: storage });
   items.push({ label: 'Bei fehlenden Signalen', value: 'Der Verbraucher schaltet aus (Failsafe).' });
-  items.push({ label: 'Aktivierung', value: 'Steuerung noch nicht aktiviert - die Regel wird als Entwurf gespeichert.' });
+  items.push({
+    label: 'Aktivierung',
+    value: activationEnabled
+      ? 'Nach dem Aktivieren steuert VoltPilot den Verbraucher nach dieser Regel.'
+      : 'Steuerung noch nicht aktiviert - die Regel wird als Entwurf gespeichert.',
+  });
   return items;
 }

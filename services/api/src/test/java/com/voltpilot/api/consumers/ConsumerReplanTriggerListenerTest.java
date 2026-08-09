@@ -56,7 +56,7 @@ class ConsumerReplanTriggerListenerTest {
 
     @Test
     void aParagraph134TransitionFiresOneReplanForTheSite() {
-        Instant t0 = Instant.parse("2026-08-10T10:00:00Z");
+        Instant t0 = Instant.parse("2026-08-01T10:00:00Z");
         listener.handle(topic(), heartbeat(TENANT, SITE, DEVICE, "ready"), t0);
         listener.handle(topic(), heartbeat(TENANT, SITE, DEVICE, "running_forced"),
                 t0.plusSeconds(1));
@@ -67,7 +67,7 @@ class ConsumerReplanTriggerListenerTest {
     @Test
     void aSpoofedPayloadIdentityFeedsNothing() {
         UUID foreignDevice = UUID.randomUUID();
-        Instant t0 = Instant.parse("2026-08-10T10:00:00Z");
+        Instant t0 = Instant.parse("2026-08-01T10:00:00Z");
         // The payload claims ANOTHER device than the topic carries.
         listener.handle(topic(), heartbeat(TENANT, SITE, foreignDevice, "ready"), t0);
         listener.handle(topic(), heartbeat(TENANT, SITE, foreignDevice, "running_forced"),
@@ -79,7 +79,7 @@ class ConsumerReplanTriggerListenerTest {
     @Test
     void anUnknownDeviceUnderTheTopicTenantFeedsNothing() {
         when(devices.findById(DEVICE)).thenReturn(Optional.empty());
-        Instant t0 = Instant.parse("2026-08-10T10:00:00Z");
+        Instant t0 = Instant.parse("2026-08-01T10:00:00Z");
         listener.handle(topic(), heartbeat(TENANT, SITE, DEVICE, "ready"), t0);
         listener.handle(topic(), heartbeat(TENANT, SITE, DEVICE, "running_forced"),
                 t0.plusSeconds(1));

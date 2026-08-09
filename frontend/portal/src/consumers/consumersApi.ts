@@ -46,6 +46,25 @@ export interface PatchConsumerBody {
 
 const base = (siteId: string) => `/api/v1/sites/${siteId}/consumers`;
 
+/**
+ * The activate/resume outcome envelope (the flows-activation pattern):
+ * `activated:false` + `reason`/`message` is an HONEST refusal, not a transport
+ * error - the German `message` is customer copy.
+ */
+export interface PolicyActivationOutcome {
+  activated: boolean;
+  reason: string | null;
+  message: string;
+  published: boolean;
+  policyVersion: number | null;
+}
+
+/** The stop half (deactivate/pause): flag-independent, always available. */
+export interface PolicyStopOutcome {
+  published: boolean;
+  message: string;
+}
+
 export const consumersApi = {
   options: (siteId: string) =>
     request<ConsumerOptions>(`/api/v1/sites/${siteId}/consumer-options`),
@@ -72,4 +91,16 @@ export const consumersApi = {
       method: 'PUT',
       body: JSON.stringify({ document }),
     }),
+  /** Activate the latest saved draft (§11 atomic: validate → compile → rollout). */
+  activatePolicy: (siteId: string, id: string) =>
+    request<PolicyActivationOutcome>(`${base(siteId)}/${id}/policy/activate`, { method: 'POST' }),
+  /** Retire the active rule + retract the generated automation (flag-independent). */
+  deactivatePolicy: (siteId: string, id: string) =>
+    request<PolicyStopOutcome>(`${base(siteId)}/${id}/policy/deactivate`, { method: 'POST' }),
+  /** Pause: the device failsafe takes over; the rule stays stored (flag-independent). */
+  pause: (siteId: string, id: string) =>
+    request<PolicyStopOutcome>(`${base(siteId)}/${id}/pause`, { method: 'POST' }),
+  /** Resume after a pause: re-enable + re-deploy the stored artifact. */
+  resume: (siteId: string, id: string) =>
+    request<PolicyActivationOutcome>(`${base(siteId)}/${id}/resume`, { method: 'POST' }),
 };

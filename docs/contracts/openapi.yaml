@@ -4050,8 +4050,12 @@ components:
         edgeSourceId: { type: string, nullable: true }
         controlActivation:
           type: string
-          enum: [not_activated]
-          description: Increment 1 is always "not_activated" ("Steuerung noch nicht aktiviert").
+          enum: [not_activated, active, paused]
+          description: >
+            Derived from the active policy (Inkrement 4): "active" = an active
+            policy exists and the consumer is enabled; "paused" = active policy
+            with the pause failsafe in force; else "not_activated" ("Steuerung
+            noch nicht aktiviert").
         hasDraftPolicy: { type: boolean }
         draftPolicyVersion: { type: integer, nullable: true }
         minOnSeconds:

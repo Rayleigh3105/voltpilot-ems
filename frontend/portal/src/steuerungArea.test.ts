@@ -427,6 +427,32 @@ describe('automationRows (M4 Kapsel 2)', () => {
     expect(rows[0].tone).toBe('off');
     expect(rows[0].active).toBe(false);
   });
+
+  it('marks the generated consumer rule via its server-stamped origin (D7)', () => {
+    const rows = automationRows([
+      {
+        ...FLOW_ROW,
+        latestDocument: {
+          origin: { kind: 'consumer-policy', entity_id: 'e-wallbox' },
+        },
+      },
+    ]);
+    expect(rows[0].fromConsumerRule).toEqual({ entityId: 'e-wallbox' });
+  });
+
+  it('never invents an origin: plain flows and foreign kinds stay null', () => {
+    expect(automationRows([FLOW_ROW])[0].fromConsumerRule).toBeNull();
+    expect(
+      automationRows([
+        { ...FLOW_ROW, latestDocument: { origin: { kind: 'something-else', entity_id: 'x' } } },
+      ])[0].fromConsumerRule,
+    ).toBeNull();
+    expect(
+      automationRows([
+        { ...FLOW_ROW, latestDocument: { origin: { kind: 'consumer-policy' } } },
+      ])[0].fromConsumerRule,
+    ).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -45,6 +45,7 @@ import type { CustomerTemplateDef } from '../flows/customerTemplates';
 import { catalogType, type EditorEntity, type FlowDocument } from '../flows/model';
 import { flowMode, paletteFilterFor, type SteuerungMode } from '../flows/steuerung';
 import {
+  AUS_VERBRAUCHERREGEL,
   AUTOMATION_CAPSULE_EMPTY,
   AUTOMATION_CAPSULE_INTRO,
   AUTOMATION_CAPSULE_TITLE,
@@ -61,6 +62,11 @@ import {
   type ProfileRow,
   type ReservationInput,
 } from '../steuerungArea';
+import {
+  isConsumerRuleTemplate,
+  verbraucherRegelHash,
+  verbraucherVorlageHash,
+} from '../consumers/vorlagen';
 import { type ProfileState, type SiteProfiles } from '../profiles';
 import {
   activeModes,
@@ -311,6 +317,14 @@ export function SteuerungSection({
 
   const useTemplate = useCallback(
     (def: CustomerTemplateDef) => {
+      // D7 (Inkrement 4): a CONSUMER template is a Verbraucherregel - it opens
+      // the guided Regelbaukasten prefilled instead of emitting a raw flow
+      // (cycle guard, grid policy and enforcement live there).
+      if (isConsumerRuleTemplate(def.id)) {
+        setCreating(false);
+        window.location.hash = verbraucherVorlageHash(site.id, def.id);
+        return;
+      }
       const res = def.resolve(entities, site.id);
       if ('reason' in res) {
         setCreating(false);
@@ -493,12 +507,24 @@ export function SteuerungSection({
                         <strong>{row.name}</strong>
                         <p>{row.state}</p>
                       </div>
+                      {/* D7: eine generierte Verbraucherregel wird HIER nur
+                          beobachtet - bearbeitet wird sie im Regelbaukasten
+                          ihres Verbrauchers, nie im Flow-Editor. */}
+                      {row.fromConsumerRule && (
+                        <Badge variant="off">{AUS_VERBRAUCHERREGEL}</Badge>
+                      )}
                       <Badge variant={row.active ? 'ok' : 'off'}>v{row.version}</Badge>
                       <Button
                         variant="outline"
                         size="sm"
                         disabled={busy}
                         onClick={() => {
+                          if (row.fromConsumerRule) {
+                            window.location.hash = verbraucherRegelHash(
+                              site.id, row.fromConsumerRule.entityId,
+                            );
+                            return;
+                          }
                           const flow = (flows ?? []).find((f) => f.flowId === row.flowId);
                           if (flow) openFlow(flow.flowId, flow.latestVersion, flow.latestDocument);
                         }}

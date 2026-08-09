@@ -408,12 +408,19 @@ public class ConsumerService {
         int maxPolicy = repo.maxPolicyVersion(siteId, row.entityId());
         String connection = (row.deviceId() != null || row.edgeSourceId() != null)
                 ? "connected" : "disconnected";
+        // Derived, never stored: an ACTIVE policy while enabled = "active",
+        // while disabled = "paused" (the pause failsafe), else "not_activated".
+        // Without this the row would keep claiming "Steuerung noch nicht
+        // aktiviert" right after a successful activation.
+        ConsumerRepository.PolicyRow activePolicy = repo.activePolicy(siteId, row.entityId());
+        String activation = activePolicy == null ? "not_activated"
+                : (row.enabled() ? "active" : "paused");
         return new ConsumerDto(row.entityId(), row.entityType(), catalog.labelFor(row.entityType()),
                 row.label(), row.controlKind(), row.ratedPowerKw(), row.minPowerKw(),
                 parse(row.levelsKwJson()), row.resolutionKw(), parse(row.powerRangesKwJson()),
                 row.storageRelation(), row.defaultGridEnergyPolicy(), row.allowStorageDischarge(),
                 row.failsafe(), row.enabled(), row.version(), connection, row.edgeSourceId(),
-                "not_activated", maxPolicy > 0, maxPolicy > 0 ? maxPolicy : null,
+                activation, maxPolicy > 0, maxPolicy > 0 ? maxPolicy : null,
                 row.minOnSeconds(), row.minOffSeconds(), row.maxStartsPerDay());
     }
 

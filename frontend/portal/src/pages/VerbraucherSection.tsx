@@ -1,24 +1,28 @@
 /**
- * Steuerbare Verbraucher (docs/verbrauchssteuerung.md §14, Increment 1). The
- * customer surface for controllable consumers: list them, add one (connected to
- * a reported device OR as a draft), and configure a rule with the guided
- * Regelbaukasten. Increment 1 stores a policy DRAFT; there is no compiler /
- * optimizer / edge command yet, so every consumer honestly reads "Steuerung
- * noch nicht aktiviert".
+ * Steuerbare Verbraucher (docs/verbrauchssteuerung.md §14, Increment 1;
+ * activation since Inkrement 4). The customer surface for controllable
+ * consumers: list them, add one (connected to a reported device OR as a
+ * draft), and configure a rule with the guided Regelbaukasten. On an
+ * environment WITHOUT the activation flags the builder stores a policy DRAFT
+ * and every consumer honestly reads "Steuerung noch nicht aktiviert" -
+ * byte-identical to Increment 1; with the flags on, the review page's
+ * "Speichern & aktivieren" really activates (validate → compile → rollout),
+ * and the row states/pause/resume follow the server-derived truth.
  *
  * All rule LOGIC is the pure, unit-tested `src/consumers/*` (validate / questions
- * / policy); the React below only renders those derivations. No internal
- * vocabulary reaches the customer (the copy guard scans this file).
+ * / policy / activation / vorlagen); the React below only renders those
+ * derivations. No internal vocabulary reaches the customer (the copy guard
+ * scans this file).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import type { Site } from '../api';
-import { ApiError } from '../api';
+import type { EntityStrategy, Site } from '../api';
+import { ApiError, api } from '../api';
 import { consumersApi, type CreateConsumerBody } from '../consumers/consumersApi';
 import type {
   Consumer,
@@ -37,16 +41,27 @@ import {
 import { buildPolicyDocument, policySentence, reviewFacts } from '../consumers/policy';
 import { validatePolicy, isValid, type ConsumerFinding } from '../consumers/validate';
 import { consumerStatusLine, type ConsumerRuntimeStatus } from '../consumers/status';
+import { activationBadge, conflictNote, saveButtonLabel } from '../consumers/activation';
+import {
+  CONSUMER_TEMPLATE_PREFILL,
+  parseVerbraucherParams,
+  templateConsumer,
+} from '../consumers/vorlagen';
 import './Verbraucher.css';
 
 export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
   const [options, setOptions] = useState<ConsumerOptions | null>(null);
   const [consumers, setConsumers] = useState<Consumer[] | null>(null);
   const [status, setStatus] = useState<ConsumerRuntimeStatus[]>([]);
+  const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]>>({});
   const [error, setError] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [ruleFor, setRuleFor] = useState<Consumer | null>(null);
+  const [rulePrefill, setRulePrefill] = useState<Partial<ConsumerDraft> | null>(null);
+  // The D7 deep link (?vorlage=/?verbraucher=) is consumed exactly ONCE.
+  const deepLinkDone = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -64,12 +79,69 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
       .status(site.id)
       .then((s) => alive && setStatus(s ?? []))
       .catch(() => alive && setStatus([]));
+    // Active-flow claims (V-5): fail-soft - without them no conflict is
+    // CLAIMED, the server still refuses an activation truthfully.
+    api
+      .entityStrategies(site.id)
+      .then((s) => alive && setStrategies(s ?? {}))
+      .catch(() => alive && setStrategies({}));
     return () => {
       alive = false;
     };
   }, [site.id, reloadKey]);
 
   const reload = () => setReloadKey((k) => k + 1);
+
+  // D7 deep link: a consumer template from the automation gallery opens the
+  // Regelbaukasten prefilled; ?verbraucher= (the origin-badge edit path) opens
+  // the builder for that consumer. Params are stripped after consumption (the
+  // explorer/replaceState pattern) so back/reload does not re-open.
+  useEffect(() => {
+    if (deepLinkDone.current || !consumers) return;
+    const params = parseVerbraucherParams(window.location.hash);
+    if (!params.vorlage && !params.verbraucher) {
+      deepLinkDone.current = true;
+      return;
+    }
+    deepLinkDone.current = true;
+    window.history.replaceState(null, '', window.location.hash.split('?')[0]);
+    if (params.verbraucher) {
+      const c = consumers.find((x) => x.id === params.verbraucher);
+      if (c) setRuleFor(c);
+      return;
+    }
+    const prefill = params.vorlage ? CONSUMER_TEMPLATE_PREFILL[params.vorlage] : undefined;
+    if (!prefill) return;
+    const c = templateConsumer(params.vorlage as string, consumers);
+    if (c) {
+      setRulePrefill(prefill);
+      setRuleFor(c);
+    } else {
+      // No consumer yet: a rule needs one first - open the create wizard.
+      setWizardOpen(true);
+    }
+  }, [consumers]);
+
+  /** Pause/resume (Inkrement 4): the stop half works on EVERY environment. */
+  const pauseConsumer = async (c: Consumer) => {
+    setActionError(null);
+    try {
+      await consumersApi.pause(site.id, c.id);
+      reload();
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Pausieren fehlgeschlagen.');
+    }
+  };
+  const resumeConsumer = async (c: Consumer) => {
+    setActionError(null);
+    try {
+      const out = await consumersApi.resume(site.id, c.id);
+      if (!out.activated) setActionError(out.message);
+      reload();
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Fortsetzen fehlgeschlagen.');
+    }
+  };
 
   return (
     <section className="vp-verbraucher">
@@ -93,6 +165,9 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
       {error && (
         <ErrorState message="Die Verbraucher konnten nicht geladen werden." onRetry={reload} />
       )}
+      {actionError && (
+        <p className="vp-vb-error" role="alert">{actionError}</p>
+      )}
       {!error && !consumers && <TextSkeleton lines={3} />}
       {!error && consumers && consumers.length === 0 && (
         <EmptyState
@@ -109,6 +184,8 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
               status={status.find((s) => s.entityId === c.id)}
               anyReported={status.length > 0}
               onConfigure={() => setRuleFor(c)}
+              onPause={() => void pauseConsumer(c)}
+              onResume={() => void resumeConsumer(c)}
             />
           ))}
         </div>
@@ -133,9 +210,15 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
           site={site}
           options={options}
           consumer={ruleFor}
-          onClose={() => setRuleFor(null)}
+          prefill={rulePrefill}
+          claims={strategies[ruleFor.id]}
+          onClose={() => {
+            setRuleFor(null);
+            setRulePrefill(null);
+          }}
           onSaved={() => {
             setRuleFor(null);
+            setRulePrefill(null);
             reload();
           }}
         />
@@ -144,11 +227,13 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
   );
 }
 
-function ConsumerRow({ consumer, status, anyReported, onConfigure }: {
+function ConsumerRow({ consumer, status, anyReported, onConfigure, onPause, onResume }: {
   consumer: Consumer;
   status?: ConsumerRuntimeStatus;
   anyReported: boolean;
   onConfigure: () => void;
+  onPause: () => void;
+  onResume: () => void;
 }): JSX.Element {
   const connectionLabel = consumer.connection === 'connected' ? 'Verbunden' : 'Noch nicht verbunden';
   // The live line renders only once ANY device reported states (Inkrement 3):
@@ -156,13 +241,15 @@ function ConsumerRow({ consumer, status, anyReported, onConfigure }: {
   // WITHOUT its own entry while others have one honestly reads "Zustand nicht
   // bestätigt" - never a guessed live state.
   const live = anyReported ? consumerStatusLine(status) : null;
+  const badge = activationBadge(consumer);
   return (
     <div className="vp-vb-card">
       <div className="vp-vb-card-main">
         <div className="vp-vb-card-name">{consumer.name}</div>
         <div className="vp-vb-card-sub">
           {consumer.typeLabel} · {controlKindLabel(consumer.controlKind)}
-          {consumer.hasDraftPolicy ? ' · Regel als Entwurf gespeichert' : ''}
+          {consumer.hasDraftPolicy && consumer.controlActivation === 'not_activated'
+            ? ' · Regel als Entwurf gespeichert' : ''}
         </div>
         {live && (
           <div className={`vp-vb-live vp-vb-live-${live.tone}`}>
@@ -176,9 +263,15 @@ function ConsumerRow({ consumer, status, anyReported, onConfigure }: {
         <Badge variant={consumer.connection === 'connected' ? 'ok' : 'off'} dot>
           {connectionLabel}
         </Badge>
-        <span className="vp-vb-not-activated" title="Increment 1: die Steuerung ist noch nicht scharf geschaltet.">
-          <span className="vp-dot" /> Steuerung noch nicht aktiviert
+        <span className={`vp-vb-not-activated vp-vb-act-${badge.tone}`}>
+          <span className="vp-dot" /> {badge.text}
         </span>
+        {consumer.controlActivation === 'active' && (
+          <Button variant="ghost" size="sm" onClick={onPause}>Pausieren</Button>
+        )}
+        {consumer.controlActivation === 'paused' && (
+          <Button variant="ghost" size="sm" onClick={onResume}>Fortsetzen</Button>
+        )}
         <Button variant="outline" size="sm" onClick={onConfigure}>
           {consumer.hasDraftPolicy ? 'Regel bearbeiten' : 'Regel festlegen'}
         </Button>
@@ -355,11 +448,13 @@ const INTENT_CARDS: { key: Intent; title: string; line: string }[] = [
 ];
 
 function RuleBuilder({
-  site, options, consumer, onClose, onSaved,
+  site, options, consumer, prefill, claims, onClose, onSaved,
 }: {
   site: Site;
   options: ConsumerOptions;
   consumer: Consumer;
+  prefill?: Partial<ConsumerDraft> | null;
+  claims?: EntityStrategy[];
   onClose: () => void;
   onSaved: () => void;
 }): JSX.Element {
@@ -369,12 +464,16 @@ function RuleBuilder({
     hasMeasurementChannel: consumer.type === 'wallbox' || consumer.type === 'heating-rod'
       || consumer.type === 'pump' || consumer.type === 'generic-load',
   };
-  const [draft, setDraft] = useState<ConsumerDraft>(() => initialDraft(consumer));
+  const [draft, setDraft] = useState<ConsumerDraft>(
+    () => ({ ...initialDraft(consumer), ...(prefill ?? {}) }),
+  );
   const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<null | { kind: 'draft' | 'active'; message: string }>(null);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  const activationEnabled = options.policyActivationEnabled === true;
+  const conflict = conflictNote(claims, consumer.controlActivation);
   const questions = draft.intent ? consumerQuestions(ctx, draft) : [];
   const total = standardStepCount(ctx, draft);
 
@@ -405,9 +504,58 @@ function RuleBuilder({
     setServerError(null);
     consumersApi
       .savePolicy(site.id, consumer.id, doc)
-      .then(() => setSaved(true))
+      .then(() => setSaved({
+        kind: 'draft',
+        message: 'Steuerung noch nicht aktiviert - VoltPilot sendet noch keine Befehle an das Gerät.',
+      }))
       .catch((e) => setServerError(e instanceof ApiError ? e.message : 'Speichern fehlgeschlagen.'))
       .finally(() => setBusy(false));
+  };
+
+  /**
+   * Inkrement 4: save the draft, then really activate (validate → compile →
+   * atomic activate → rollout). An HONEST refusal (`activated:false`, 409, 503)
+   * keeps the draft and shows the server's German reason - the active rule is
+   * unchanged then (§11).
+   */
+  const saveAndActivate = async () => {
+    if (!doc || !valid) return;
+    setBusy(true);
+    setServerError(null);
+    try {
+      await consumersApi.savePolicy(site.id, consumer.id, doc);
+    } catch (e) {
+      setServerError(e instanceof ApiError ? e.message : 'Speichern fehlgeschlagen.');
+      setBusy(false);
+      return;
+    }
+    try {
+      const out = await consumersApi.activatePolicy(site.id, consumer.id);
+      if (out.activated) {
+        setSaved({ kind: 'active', message: out.message });
+      } else {
+        setServerError(`${out.message} Die Regel ist als Entwurf gespeichert.`);
+      }
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : 'Aktivieren fehlgeschlagen.';
+      setServerError(`${msg} Die Regel ist als Entwurf gespeichert.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** The real stop path (flag-independent): retire the rule + retract the rollout. */
+  const deactivate = async () => {
+    setBusy(true);
+    setServerError(null);
+    try {
+      await consumersApi.deactivatePolicy(site.id, consumer.id);
+      onSaved();
+    } catch (e) {
+      setServerError(e instanceof ApiError ? e.message : 'Deaktivieren fehlgeschlagen.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const footer = saved ? (
@@ -415,27 +563,45 @@ function RuleBuilder({
   ) : review ? (
     <>
       <Button variant="ghost" onClick={() => setReview(false)}>Zurück</Button>
-      <Button onClick={save} disabled={busy || !valid}>
-        {busy ? 'Wird gespeichert …' : 'Als Entwurf speichern'}
+      {activationEnabled && (
+        <Button variant="ghost" onClick={save} disabled={busy || !valid}>
+          Als Entwurf speichern
+        </Button>
+      )}
+      <Button
+        onClick={() => (activationEnabled ? void saveAndActivate() : save())}
+        disabled={busy || !valid}
+      >
+        {busy ? 'Wird gespeichert …' : saveButtonLabel(activationEnabled)}
       </Button>
     </>
   ) : (
     <Button onClick={() => setReview(true)} disabled={!valid}>Prüfen</Button>
   );
 
+  // The stop path must be reachable WITHOUT building a new rule: the intent
+  // screen of an activated consumer carries "Regel deaktivieren" as its footer.
+  const intentFooter = consumer.controlActivation !== 'not_activated' ? (
+    <Button variant="ghost" onClick={() => void deactivate()} disabled={busy}>
+      Regel deaktivieren
+    </Button>
+  ) : undefined;
+
   return (
     <Drawer
       open
       onClose={onClose}
       title={`Regel für ${consumer.name}`}
-      footer={draft.intent ? footer : undefined}
+      footer={draft.intent ? footer : intentFooter}
     >
       {saved ? (
         <div className="vp-vb-success">
-          <p><strong>Regel als Entwurf gespeichert.</strong></p>
-          <p className="vp-vb-hint">
-            Steuerung noch nicht aktiviert - VoltPilot sendet noch keine Befehle an das Gerät.
+          <p>
+            <strong>
+              {saved.kind === 'active' ? 'Regel aktiviert.' : 'Regel als Entwurf gespeichert.'}
+            </strong>
           </p>
+          <p className="vp-vb-hint">{saved.message}</p>
         </div>
       ) : !draft.intent ? (
         <div className="vp-vb-step">
@@ -462,13 +628,17 @@ function RuleBuilder({
         <div className="vp-vb-step vp-vb-review">
           <div className="vp-vb-stepcount">Prüfen</div>
           <dl>
-            {doc && reviewFacts(doc, consumer.name).map((f, i) => (
+            {doc && reviewFacts(doc, consumer.name, activationEnabled).map((f, i) => (
               <div key={i} style={{ display: 'contents' }}>
                 <dt>{f.label}</dt>
                 <dd>{f.value}</dd>
               </div>
             ))}
           </dl>
+          {/* V-5 honestly BEFORE the click - the server would refuse the same way. */}
+          {activationEnabled && conflict && (
+            <p className="vp-vb-conflict">{conflict}</p>
+          )}
           {serverError && <p className="vp-vb-error">{serverError}</p>}
         </div>
       ) : (
