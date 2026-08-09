@@ -6,15 +6,19 @@ matching the repo's dependency-lean Python services):
     POST /simulations          -> 202 {"simulationId"} | 400 | 429
     GET  /simulations/{id}     -> 200 {status, progress, result?, error?} | 404
     POST /what-if              -> 200 {baseline, variant, delta} | 400 | 429 | 503
+    POST /replan               -> 200 {siteId, planId, ...} | 400 | 404 | 429 | 503
     GET  /health               -> 200 {"status": "ok"}
 
-The two POST routes are the two shapes of "solve something the tick loop did
-not ask for": the Ersparnis-Simulation is a long ASYNC year chain behind a job
-store, the admin what-if re-optimize (vp-admin-optimizer-ui-design §4.3) is a
-single 24 h horizon that solves in well under a second and is therefore served
-SYNCHRONOUSLY - two solves in the request thread, no job id to poll. Both are
-ephemeral: neither writes ``schedule`` nor publishes MQTT, and both run in this
-process, never in the 15-minute tick loop's.
+The POST routes are the shapes of "solve something the tick loop did not ask
+for": the Ersparnis-Simulation is a long ASYNC year chain behind a job store;
+the admin what-if re-optimize (vp-admin-optimizer-ui-design §4.3) is a single
+24 h horizon served SYNCHRONOUSLY - two solves in the request thread, no job
+id to poll, and EPHEMERAL by construction (neither writes ``schedule`` nor
+publishes MQTT). ``/replan`` (D8, Verbrauchssteuerung §13.4) is the deliberate
+opposite: ONE site's REAL cycle gather → optimize → persist → publish, run
+synchronously and semaphore-bounded, reusing the engine's plan_site verbatim -
+the api's debounced trigger listener calls it on edge consumer events; the
+15-minute tick stays the Grundschlag.
 
 The service knows neither tenants nor tokens: it only ever runs on the
 internal compose network, and ALL auth/tenancy lives in the Java api (the
@@ -31,6 +35,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from voltpilot_optimization.simulation.jobs import JobStore, TooBusyError
 from voltpilot_optimization.simulation.request import InvalidRequest, parse_request
+from voltpilot_optimization.replan import (
+    InvalidReplanRequest,
+    ReplanUnavailable,
+    UnknownReplanSite,
+)
 from voltpilot_optimization.whatif import (
     InvalidWhatIfRequest,
     WhatIfUnavailable,
@@ -49,12 +58,19 @@ WHAT_IF_FAILED_MESSAGE = (
     "Die Neuberechnung ist fehlgeschlagen. Der gespeicherte Fahrplan gilt unverändert."
 )
 
+REPLAN_BUSY_MESSAGE = (
+    "Gerade laufen zu viele Neuplanungen. Der 15-Minuten-Takt plant ohnehin neu."
+)
+REPLAN_FAILED_MESSAGE = (
+    "Die Neuplanung ist fehlgeschlagen. Der gespeicherte Fahrplan gilt unverändert."
+)
 
-def make_handler(store: JobStore, what_if=None):
+
+def make_handler(store: JobStore, what_if=None, replan=None):
     """Bind the request handler class to a job store.
 
-    ``what_if`` is the optional synchronous re-optimize callable
-    (``dict -> dict``); when it is None the route answers 503 rather than
+    ``what_if`` and ``replan`` are the optional synchronous callables
+    (``dict -> dict``); when one is None its route answers 503 rather than
     pretending the feature exists.
     """
 
@@ -102,6 +118,9 @@ def make_handler(store: JobStore, what_if=None):
             if self.path == "/what-if":
                 self._what_if()
                 return
+            if self.path == "/replan":
+                self._replan()
+                return
             if self.path != "/simulations":
                 self._send(404, {"message": "Unbekannter Pfad."})
                 return
@@ -141,10 +160,31 @@ def make_handler(store: JobStore, what_if=None):
                 logger.exception("whatif.failed")
                 self._send(500, {"message": WHAT_IF_FAILED_MESSAGE})
 
+        def _replan(self) -> None:
+            if replan is None:
+                self._send(503, {"message": REPLAN_FAILED_MESSAGE})
+                return
+            doc = self._body()
+            if doc is None:
+                return
+            try:
+                self._send(200, replan(doc))
+            except InvalidReplanRequest as exc:
+                self._send(400, {"message": str(exc)})
+            except UnknownReplanSite as exc:
+                self._send(404, {"message": str(exc)})
+            except ReplanUnavailable as exc:
+                self._send(400, {"message": str(exc)})
+            except TooBusyError:
+                self._send(429, {"message": REPLAN_BUSY_MESSAGE})
+            except Exception:  # a failed replan leaves the stored plan in force
+                logger.exception("replan.failed")
+                self._send(500, {"message": REPLAN_FAILED_MESSAGE})
+
     return Handler
 
 
 def serve(store: JobStore, port: int, bind: str = "0.0.0.0",
-          what_if=None) -> ThreadingHTTPServer:
+          what_if=None, replan=None) -> ThreadingHTTPServer:
     """Build (not start) the HTTP server - the CLI calls serve_forever()."""
-    return ThreadingHTTPServer((bind, port), make_handler(store, what_if))
+    return ThreadingHTTPServer((bind, port), make_handler(store, what_if, replan))

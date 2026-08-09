@@ -328,6 +328,10 @@ services:
       # them by design (Flag aus != gestoppt).
       VOLTPILOT_CONSUMER_CONTROL_ENABLED: ${VOLTPILOT_CONSUMER_CONTROL_ENABLED:-false}
       VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED: ${VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED:-false}
+      # D8 event replanning: the trigger listener (sibling on the status
+      # topic) - on like the other listeners; it only ever CALLS the solve
+      # service, which is itself semaphore-bounded.
+      VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED: ${VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED:-true}
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Portal v3 M5: deployment acks + the feature-flagged per-node flow states.
@@ -655,6 +659,14 @@ services:
       # A what-if solves in the request thread, so it is bounded: excess
       # calls get 429 instead of starving the simulation jobs' CPU budget.
       WHATIF_MAX_CONCURRENT: ${WHATIF_MAX_CONCURRENT:-2}
+      # D8 on-demand replan (POST /replan, Verbrauchssteuerung §13.4): one real
+      # cycle per call, bounded; the api's trigger listener debounces per site.
+      # MQTT_HOST wires the retained plan publish - without it a replan
+      # persists and honestly reports published: false.
+      REPLAN_MAX_CONCURRENT: ${REPLAN_MAX_CONCURRENT:-1}
+      MQTT_HOST: emqx
+      MQTT_PORT: "1883"
+      VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
       # Same pricing layer as the optimizer - keep the ONE price truth
       # (default-supply-components defaults ON platform-wide, opt out with false).
       OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-true}
