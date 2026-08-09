@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 )
@@ -153,6 +154,26 @@ func TestParseRegistryPushAcceptsTheConsumerFixture(t *testing.T) {
 	load := reg.FirstOfType(TypeGenericLoad)
 	if load == nil || !load.modeDeclared("eco") || load.modeDeclared("turbo") {
 		t.Fatalf("generic-load declared mode set not honored: %+v", load)
+	}
+
+	// The Inkrement-3 cycle-guard limits travel in guards.limits (D-9): the
+	// heating-rod fixture carries min-on/min-off/starts, the wallbox a ramp,
+	// and absent limits deactivate every axis (no invented protection).
+	rod := reg.FirstOfType(TypeHeatingRod)
+	if rod == nil {
+		t.Fatal("heating-rod missing from the fixture")
+	}
+	cl := rod.CycleLimits()
+	if cl.MinOn != 300*time.Second || cl.MinOff != 180*time.Second ||
+		cl.MaxStartsPerDay != 8 || cl.RampKwPerMin != 0 {
+		t.Fatalf("heating-rod cycle limits wrong: %+v", cl)
+	}
+	if wcl := wb.CycleLimits(); wcl.RampKwPerMin != 6 || wcl.MinOn != 0 ||
+		wcl.MinOff != 0 || wcl.MaxStartsPerDay != 0 {
+		t.Fatalf("wallbox cycle limits wrong: %+v", wcl)
+	}
+	if lcl := load.CycleLimits(); lcl != (guards.CycleLimits{}) {
+		t.Fatalf("generic-load must carry no cycle limits: %+v", lcl)
 	}
 }
 

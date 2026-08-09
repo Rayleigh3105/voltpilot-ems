@@ -1,0 +1,36 @@
+{
+  "schema_version": "2.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "plan_id": "5b8d1f6e-2a3c-4d5e-8f90-123456789abc",
+  "generated_at": "2026-08-10T11:30:02Z",
+  "slot_minutes": 15,
+  "entities": [
+    {
+      "entity_id": "wb-carport",
+      "kind": "consumer",
+      "slots": [
+        { "start": "2026-08-10T11:30:00Z", "commands": { "setpoint_kw": 3.0 } },
+        { "start": "2026-08-10T11:45:00Z", "commands": { "setpoint_kw": 11.0 } },
+        { "start": "2026-08-10T12:00:00Z", "commands": { "setpoint_kw": 0.0 } }
+      ]
+    },
+    {
+      "entity_id": "rod-boiler",
+      "kind": "consumer",
+      "slots": [
+        { "start": "2026-08-10T11:30:00Z", "commands": { "on_off": true } },
+        { "start": "2026-08-10T11:45:00Z", "commands": { "on_off": true } },
+        { "start": "2026-08-10T12:00:00Z", "commands": { "on_off": false } }
+      ]
+    },
+    {
+      "entity_id": "pump-stall",
+      "kind": "consumer",
+      "slots": [
+        { "start": "2026-08-10T11:45:00Z", "commands": { "on_off": true } }
+      ]
+    }
+  ]
+}

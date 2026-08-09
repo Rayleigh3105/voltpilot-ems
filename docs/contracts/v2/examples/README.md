@@ -18,6 +18,7 @@ const ajv = new Ajv2020({ strict: false });
 | `edge-desired.invalid.missing-ttl.json` | edge-desired | **invalid** — `ttl_s` missing (no immortal desires; fails the `desired` branch, and the `arbitration` branch by shape) |
 | `mqtt-schedule-2.0.valid.two-entities.json` | mqtt-schedule-2.0 | valid — storage + PV entity, site peak target, per-entity reserve |
 | `mqtt-schedule-2.0.valid.minimal-battery.json` | mqtt-schedule-2.0 | valid — minimal single-storage plan, explicit `charge_from_grid_allowed: true` |
+| `mqtt-schedule-2.0.valid.consumer-dispatch.json` | mqtt-schedule-2.0 | valid — the Verbrauchssteuerung Inkrement-2 publisher shape: three `kind: "consumer"` entities (`setpoint_kw` for continuous, `on_off` for on/off consumers, a 0/false slot IS the plan); read BY PATH by the Go executor test (`plan2_test.go`) and validated by `test_contract_v2.py` |
 | `mqtt-schedule-2.0.invalid.v1-command-key.json` | mqtt-schedule-2.0 | **invalid** — uses the v1 field name `battery_setpoint_kw` as a command key (not in the 2.0 vocabulary; `additionalProperties: false`) |
 | `flow-graph.valid.pv-surplus-heatrod.json` | flow-graph | valid — read → threshold → on_off control, interval + value-change triggers, explicit claim |
 | `flow-graph.valid.market-battery.json` | flow-graph | valid — strategy node with `delegated: true` claim, slot-boundary trigger |
@@ -34,7 +35,7 @@ const ajv = new Ajv2020({ strict: false });
 | `edge-entity.valid.config-battery.json` | edge-entity | valid — retained per-entity config for a battery-hybrid (guard limits + self-consumption failsafe) |
 | `edge-entity.valid.config-wallbox.json` | edge-entity | valid — retained per-entity config for a wallbox (E1b consumer type: `max_consumption_kw`, `release` failsafe) |
 | `edge-entity.valid.registry-push.json` | edge-entity | valid — full `…/v2/entities` push carrying the three pilot entity descriptors |
-| `edge-entity.valid.registry-push-consumers.json` | edge-entity | valid — push carrying the E1b consumer types (wallbox + heating-rod + generic-load incl. a `mode` capability) |
+| `edge-entity.valid.registry-push-consumers.json` | edge-entity | valid — push carrying the E1b consumer types (wallbox + heating-rod + generic-load incl. a `mode` capability); the heating-rod carries the Inkrement-3 cycle-guard limits (`min_on_seconds`/`min_off_seconds`/`max_starts_per_day`), the wallbox `ramp_kw_per_min` |
 | `edge-entity.valid.telemetry-producer.json` | edge-entity | valid — local per-entity telemetry of a producer |
 | `edge-entity.invalid.malformed-entity-type.json` | edge-entity | **invalid** — `entity_type: "Wallbox 11kW!"` violates the kebab-case type pattern (the vocabulary is open since E1b, but never free-form; fails every oneOf branch) |
 | `consumer-policy.valid.heater.json` | consumer-policy | valid — the §10 heater: a `fixed_window` `must_run` at 13–14 plus a `reactive` `must_run` with an `any` (OR) of a cloud price signal and a local SoC signal with hysteresis |

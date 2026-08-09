@@ -87,6 +87,13 @@ type GuardLimits struct {
 	ChargeFromGridAllowed *bool    `json:"charge_from_grid_allowed,omitempty"`
 	MaxGenerationKw       *float64 `json:"max_generation_kw,omitempty"`
 	MaxConsumptionKw      *float64 `json:"max_consumption_kw,omitempty"`
+	// The consumer cycle-guard limits (Verbrauchssteuerung Inkrement 3,
+	// additive; sourced from consumer_profile via the registry push). Absent =
+	// that axis inactive - never an invented protection.
+	MinOnSeconds    *float64 `json:"min_on_seconds,omitempty"`
+	MinOffSeconds   *float64 `json:"min_off_seconds,omitempty"`
+	MaxStartsPerDay *float64 `json:"max_starts_per_day,omitempty"`
+	RampKwPerMin    *float64 `json:"ramp_kw_per_min,omitempty"`
 }
 
 // Failsafe is what the entity falls back to when nothing commands it.
@@ -338,6 +345,29 @@ func (e Entity) GuardChainLimits() guards.Limits {
 	}
 	if v := e.Guards.Limits.SocMaxPct; v != nil {
 		l.SocMaxPct = *v
+	}
+	return l
+}
+
+// CycleLimits maps the registry's cycle-guard fields onto the stateful
+// guard's limit set (Verbrauchssteuerung Inkrement 3). Absent, non-finite or
+// negative values deactivate their axis - the no-invented-protection rule.
+func (e Entity) CycleLimits() guards.CycleLimits {
+	sec := func(v *float64) time.Duration {
+		if v == nil || math.IsNaN(*v) || math.IsInf(*v, 0) || *v <= 0 {
+			return 0
+		}
+		return time.Duration(*v * float64(time.Second))
+	}
+	l := guards.CycleLimits{
+		MinOn:  sec(e.Guards.Limits.MinOnSeconds),
+		MinOff: sec(e.Guards.Limits.MinOffSeconds),
+	}
+	if v := e.Guards.Limits.MaxStartsPerDay; v != nil && !math.IsNaN(*v) && !math.IsInf(*v, 0) && *v > 0 {
+		l.MaxStartsPerDay = int(*v)
+	}
+	if v := e.Guards.Limits.RampKwPerMin; v != nil && !math.IsNaN(*v) && !math.IsInf(*v, 0) && *v > 0 {
+		l.RampKwPerMin = *v
 	}
 	return l
 }

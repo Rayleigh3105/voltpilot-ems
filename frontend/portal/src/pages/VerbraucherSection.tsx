@@ -36,11 +36,13 @@ import {
 } from '../consumers/questions';
 import { buildPolicyDocument, policySentence, reviewFacts } from '../consumers/policy';
 import { validatePolicy, isValid, type ConsumerFinding } from '../consumers/validate';
+import { consumerStatusLine, type ConsumerRuntimeStatus } from '../consumers/status';
 import './Verbraucher.css';
 
 export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
   const [options, setOptions] = useState<ConsumerOptions | null>(null);
   const [consumers, setConsumers] = useState<Consumer[] | null>(null);
+  const [status, setStatus] = useState<ConsumerRuntimeStatus[]>([]);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -56,6 +58,12 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
         setConsumers(list);
       })
       .catch(() => alive && setError(true));
+    // Live states fail SOFT: without evidence (older device, endpoint error)
+    // the surface stays byte-identical to before.
+    consumersApi
+      .status(site.id)
+      .then((s) => alive && setStatus(s ?? []))
+      .catch(() => alive && setStatus([]));
     return () => {
       alive = false;
     };
@@ -95,7 +103,13 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
       {!error && consumers && consumers.length > 0 && (
         <div className="vp-vb-list">
           {consumers.map((c) => (
-            <ConsumerRow key={c.id} consumer={c} onConfigure={() => setRuleFor(c)} />
+            <ConsumerRow
+              key={c.id}
+              consumer={c}
+              status={status.find((s) => s.entityId === c.id)}
+              anyReported={status.length > 0}
+              onConfigure={() => setRuleFor(c)}
+            />
           ))}
         </div>
       )}
@@ -130,8 +144,18 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
   );
 }
 
-function ConsumerRow({ consumer, onConfigure }: { consumer: Consumer; onConfigure: () => void }): JSX.Element {
+function ConsumerRow({ consumer, status, anyReported, onConfigure }: {
+  consumer: Consumer;
+  status?: ConsumerRuntimeStatus;
+  anyReported: boolean;
+  onConfigure: () => void;
+}): JSX.Element {
   const connectionLabel = consumer.connection === 'connected' ? 'Verbunden' : 'Noch nicht verbunden';
+  // The live line renders only once ANY device reported states (Inkrement 3):
+  // without evidence the surface is byte-identical to before. A consumer
+  // WITHOUT its own entry while others have one honestly reads "Zustand nicht
+  // bestätigt" - never a guessed live state.
+  const live = anyReported ? consumerStatusLine(status) : null;
   return (
     <div className="vp-vb-card">
       <div className="vp-vb-card-main">
@@ -140,6 +164,13 @@ function ConsumerRow({ consumer, onConfigure }: { consumer: Consumer; onConfigur
           {consumer.typeLabel} · {controlKindLabel(consumer.controlKind)}
           {consumer.hasDraftPolicy ? ' · Regel als Entwurf gespeichert' : ''}
         </div>
+        {live && (
+          <div className={`vp-vb-live vp-vb-live-${live.tone}`}>
+            <span className="vp-dot" /> {live.text}
+            {live.reason ? ` · ${live.reason}` : ''}
+            {live.unconfirmed ? ' · Ausführung nicht bestätigt' : ''}
+          </div>
+        )}
       </div>
       <div className="vp-vb-card-actions">
         <Badge variant={consumer.connection === 'connected' ? 'ok' : 'off'} dot>

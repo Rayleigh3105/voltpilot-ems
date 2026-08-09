@@ -9,7 +9,9 @@ import com.voltpilot.api.consumers.ConsumerService.CreateConsumerRequest;
 import com.voltpilot.api.consumers.ConsumerService.PatchConsumerRequest;
 import com.voltpilot.api.consumers.ConsumerService.PolicyDto;
 import com.voltpilot.api.consumers.ConsumerService.SavePolicyRequest;
+import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.web.dto.ConsumerRuntimeStatusDto;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -54,12 +56,15 @@ public class SiteConsumerController {
     private final SiteRepository sites;
     private final ConsumerService consumers;
     private final ConsumerScheduleRepository consumerSchedules;
+    private final ConsumerRuntimeStatusRepository runtimeStatus;
 
     public SiteConsumerController(SiteRepository sites, ConsumerService consumers,
-            ConsumerScheduleRepository consumerSchedules) {
+            ConsumerScheduleRepository consumerSchedules,
+            ConsumerRuntimeStatusRepository runtimeStatus) {
         this.sites = sites;
         this.consumers = consumers;
         this.consumerSchedules = consumerSchedules;
+        this.runtimeStatus = runtimeStatus;
     }
 
     private void requireSite(UUID siteId) {
@@ -137,6 +142,28 @@ public class SiteConsumerController {
     public ConsumerScheduleDto consumerSchedule(@PathVariable UUID siteId) {
         requireSite(siteId);
         return consumerSchedules.latestForSite(siteId);
+    }
+
+    /**
+     * The edge-reported live states of the site's consumers (Inkrement 3,
+     * D9/§15.1 - a §11 status excerpt). An EMPTY list is the honest no-evidence
+     * state ("Zustand nicht bestätigt"): no device reported a consumers block
+     * yet, and the portal then renders byte-identical to before.
+     */
+    @GetMapping("/consumer-status")
+    public List<ConsumerRuntimeStatusDto> consumerStatus(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return runtimeStatus.listForSite(siteId);
+    }
+
+    /** One consumer's edge-reported live state; 204 without evidence. */
+    @GetMapping("/consumers/{id}/status")
+    public ResponseEntity<ConsumerRuntimeStatusDto> consumerStatusOne(@PathVariable UUID siteId,
+            @PathVariable UUID id) {
+        requireSite(siteId);
+        return runtimeStatus.forEntity(siteId, id)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /** German reasons reach the portal as {"message": ...} (MastrController pattern). */

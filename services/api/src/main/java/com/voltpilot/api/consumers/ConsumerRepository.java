@@ -104,15 +104,17 @@ public class ConsumerRepository {
     public void insertProfile(UUID entityId, UUID tenantId, UUID siteId, String controlKind,
             BigDecimal ratedPowerKw, BigDecimal minPowerKw, String levelsJson,
             BigDecimal resolutionKw, String powerRangesJson, String storageRelation,
-            String defaultGridEnergyPolicy, boolean allowStorageDischarge, String failsafe) {
+            String defaultGridEnergyPolicy, boolean allowStorageDischarge, String failsafe,
+            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {
         jdbc.update(
                 "INSERT INTO consumer_profile (entity_id, tenant_id, site_id, control_kind, "
                         + "rated_power_kw, min_power_kw, levels_kw, resolution_kw, power_ranges_kw, "
                         + "storage_relation, default_grid_energy_policy, allow_storage_discharge, "
-                        + "failsafe) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ?)",
+                        + "failsafe, min_on_seconds, min_off_seconds, max_starts_per_day) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)",
                 entityId, tenantId, siteId, controlKind, ratedPowerKw, minPowerKw, levelsJson,
                 resolutionKw, powerRangesJson, storageRelation, defaultGridEnergyPolicy,
-                allowStorageDischarge, failsafe);
+                allowStorageDischarge, failsafe, minOnSeconds, minOffSeconds, maxStartsPerDay);
     }
 
     /**
@@ -123,16 +125,18 @@ public class ConsumerRepository {
             BigDecimal ratedPowerKw, BigDecimal minPowerKw, String levelsJson,
             BigDecimal resolutionKw, String powerRangesJson, String storageRelation,
             String defaultGridEnergyPolicy, boolean allowStorageDischarge, String failsafe,
-            boolean enabled) {
+            boolean enabled, Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {
         int updated = jdbc.update(
                 "UPDATE consumer_profile SET control_kind = ?, rated_power_kw = ?, min_power_kw = ?, "
                         + "levels_kw = ?::jsonb, resolution_kw = ?, power_ranges_kw = ?::jsonb, "
                         + "storage_relation = ?, default_grid_energy_policy = ?, "
                         + "allow_storage_discharge = ?, failsafe = ?, enabled = ?, "
+                        + "min_on_seconds = ?, min_off_seconds = ?, max_starts_per_day = ?, "
                         + "version = version + 1, updated_at = now() "
                         + "WHERE site_id = ? AND entity_id = ? AND version = ?",
                 controlKind, ratedPowerKw, minPowerKw, levelsJson, resolutionKw, powerRangesJson,
                 storageRelation, defaultGridEnergyPolicy, allowStorageDischarge, failsafe, enabled,
+                minOnSeconds, minOffSeconds, maxStartsPerDay,
                 siteId, entityId, expectedVersion);
         if (updated == 0) {
             return -1;

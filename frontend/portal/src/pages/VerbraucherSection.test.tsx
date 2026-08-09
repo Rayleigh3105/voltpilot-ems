@@ -38,6 +38,7 @@ const options = vi.fn();
 const list = vi.fn();
 const create = vi.fn();
 const savePolicy = vi.fn();
+const status = vi.fn();
 
 vi.mock('../consumers/consumersApi', () => ({
   consumersApi: {
@@ -45,6 +46,7 @@ vi.mock('../consumers/consumersApi', () => ({
     list: (...a: unknown[]) => list(...a),
     create: (...a: unknown[]) => create(...a),
     savePolicy: (...a: unknown[]) => savePolicy(...a),
+    status: (...a: unknown[]) => status(...a),
     get: vi.fn(),
     patch: vi.fn(),
     remove: vi.fn(),
@@ -58,6 +60,7 @@ beforeEach(() => {
   options.mockResolvedValue(OPTIONS);
   list.mockResolvedValue([]);
   create.mockResolvedValue(CREATED);
+  status.mockResolvedValue([]);
   savePolicy.mockResolvedValue({ entityId: 'c-1', version: 1, lifecycle: 'draft', document: {}, contentHash: 'sha256:x', createdBy: null });
 });
 
@@ -86,6 +89,43 @@ describe('VerbraucherSection', () => {
     expect(await screen.findByText('Heizstab Keller')).toBeInTheDocument();
     expect(screen.getByText('Noch nicht verbunden')).toBeInTheDocument();
     expect(screen.getByText(/Steuerung noch nicht aktiviert/)).toBeInTheDocument();
+  });
+
+  it('without any reported status the surface stays byte-identical (no live line)', async () => {
+    list.mockResolvedValue([CREATED]);
+    render(<VerbraucherSection site={SITE} />);
+    expect(await screen.findByText('Heizstab Keller')).toBeInTheDocument();
+    expect(document.querySelector('.vp-vb-live')).toBeNull();
+  });
+
+  it('a status-failure is fail-soft: no live line, page intact', async () => {
+    list.mockResolvedValue([CREATED]);
+    status.mockRejectedValue(new Error('boom'));
+    render(<VerbraucherSection site={SITE} />);
+    expect(await screen.findByText('Heizstab Keller')).toBeInTheDocument();
+    expect(document.querySelector('.vp-vb-live')).toBeNull();
+  });
+
+  it('renders the reported live state with its mapped reason and the readback disclaimer', async () => {
+    list.mockResolvedValue([CREATED, { ...CREATED, id: 'c-2', name: 'Wallbox Carport' }]);
+    status.mockResolvedValue([
+      { entityId: 'c-1', state: 'waiting', reasonCode: 'guard_min_off', reportedAt: '2026-08-10T12:00:00Z' },
+      { entityId: 'c-2', state: 'running_optimized', confirmed: false, reportedAt: '2026-08-10T12:00:00Z' },
+    ]);
+    render(<VerbraucherSection site={SITE} />);
+    expect(await screen.findByText(/Wartet auf passenden Zeitpunkt/)).toBeInTheDocument();
+    expect(screen.getByText(/Mindestpause des Geräts/)).toBeInTheDocument();
+    const wb = screen.getByText(/Läuft · von VoltPilot geplant/);
+    expect(wb.textContent).toContain('Ausführung nicht bestätigt');
+  });
+
+  it('a consumer WITHOUT its own entry while others report reads honest unknown', async () => {
+    list.mockResolvedValue([CREATED, { ...CREATED, id: 'c-2', name: 'Wallbox Carport' }]);
+    status.mockResolvedValue([
+      { entityId: 'c-2', state: 'running_optimized', reportedAt: '2026-08-10T12:00:00Z' },
+    ]);
+    render(<VerbraucherSection site={SITE} />);
+    expect(await screen.findByText(/Zustand nicht bestätigt/)).toBeInTheDocument();
   });
 
   it('the rule builder saves a policy DRAFT and stays honest about activation', async () => {

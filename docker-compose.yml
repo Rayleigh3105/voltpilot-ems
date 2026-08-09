@@ -319,6 +319,9 @@ services:
       # into device_curtailment_status, so the portal can tell a planned Abregeln
       # slot that IS executed from one the plant cannot execute yet.
       VOLTPILOT_CURTAILMENT_MQTT_LISTENER_ENABLED: "true"
+      # Consumer runtime status (Verbrauchssteuerung Inkrement 3, D9): the
+      # heartbeat consumers block -> consumer_runtime_status.
+      VOLTPILOT_CONSUMERS_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Portal v3 M5: deployment acks + the feature-flagged per-node flow states.

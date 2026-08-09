@@ -22,7 +22,7 @@
         ]
       },
       "guards": {
-        "limits": { "max_consumption_kw": 11 },
+        "limits": { "max_consumption_kw": 11, "ramp_kw_per_min": 6 },
         "failsafe": { "behavior": "release" }
       }
     },
@@ -39,7 +39,7 @@
         ]
       },
       "guards": {
-        "limits": { "max_consumption_kw": 6 },
+        "limits": { "max_consumption_kw": 6, "min_on_seconds": 300, "min_off_seconds": 180, "max_starts_per_day": 8 },
         "failsafe": { "behavior": "off" }
       }
     },

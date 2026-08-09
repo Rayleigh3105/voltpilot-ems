@@ -415,6 +415,44 @@ type SourceEntry struct {
 	ReadAt string `json:"read_at,omitempty"`
 }
 
+// ConsumersSummary is the additive status-heartbeat block reporting the edge
+// runtime state of every CONTROLLABLE consumer entity (Verbrauchssteuerung
+// Inkrement 3, D9/§15.1): per entity {state, reason_code, actual_kw,
+// confirmed, requirement_progress}. Keys are entity ids. A device without
+// consumer entities sends NO block (the heartbeat stays byte-identical); the
+// cloud ingests it with its OWN sibling listener and discards unknown state/
+// reason words instead of storing them.
+type ConsumersSummary map[string]ConsumerRuntime
+
+// ConsumerRuntime is one consumer entity's edge runtime state.
+type ConsumerRuntime struct {
+	// State is from the §14.13 vocabulary. The edge only ever claims what it
+	// can know: running_forced | running_optimized | clamped | waiting |
+	// offline (device had telemetry, went silent).
+	State string `json:"state"`
+	// ReasonCode is from the §15 vocabulary incl. the cycle-guard extension
+	// (guard_min_on | guard_min_off | guard_max_starts | guard_ramp |
+	// guard_rated_power | readback_mismatch | device_offline | plan_stale).
+	// Empty = no notable reason.
+	ReasonCode string `json:"reason_code,omitempty"`
+	// ActualKw is the entity's own MEASURED power (fresh local telemetry);
+	// absent when the device never/staleley reports - never a fabricated 0.
+	ActualKw *float64 `json:"actual_kw,omitempty"`
+	// Confirmed is the latest readback verdict (nil = no readback evidence -
+	// "Ausführung nicht bestätigt" territory, never claimed).
+	Confirmed *bool `json:"confirmed,omitempty"`
+	// RequirementProgress is the edge view of the running day (measured
+	// commanded runtime + starts; the cloud-side fulfilment ledger keys on
+	// telemetry, this is the device's own honest counter).
+	RequirementProgress *ConsumerRequirementProgress `json:"requirement_progress,omitempty"`
+}
+
+// ConsumerRequirementProgress carries the edge's per-day counters.
+type ConsumerRequirementProgress struct {
+	RuntimeSecondsToday int `json:"runtime_seconds_today"`
+	StartsToday         int `json:"starts_today"`
+}
+
 // EntityArbitration is one entity's decision summary in the heartbeat.
 type EntityArbitration struct {
 	// Holder is the holder's source kind ("" = registry failsafe).
@@ -816,7 +854,7 @@ type ExportGuardSummary struct {
 func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary,
 	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary,
 	flowNodes *FlowNodeStatusSummary, curtail *CurtailmentSummary,
-	update *UpdateSummary) error {
+	update *UpdateSummary, consumers ConsumersSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -841,6 +879,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if entities != nil {
 		payload["entities"] = entities
+	}
+	if len(consumers) > 0 {
+		payload["consumers"] = consumers
 	}
 	if flows != nil {
 		payload["flows"] = flows
