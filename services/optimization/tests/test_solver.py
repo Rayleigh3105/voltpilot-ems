@@ -598,3 +598,125 @@ def test_plan_carries_the_sites_grid_charge_posture_for_the_edge():
 
     merchant = solve(make_input(arbitrage_prices()))
     assert merchant.grid_charge_allowed is True
+
+
+# ---- Charge-timing tie-break: early-charge (captain decision 2026-08-09) -----
+# "Bei gleichen Kosten so frueh wie moeglich laden." A free/negative-price PV
+# surplus window is a pure timing tie - the pre-2026-08 solver put the fill at
+# the window's END (Anlage Pilsting). Early filling is strictly more robust
+# (an early cloud finds a full battery) and, on a plant whose curtailment is
+# not yet released, immediately cuts the real loss-making export.
+
+BIG_BATTERY = BatteryParams(
+    capacity_kwh=60.0,
+    max_charge_kw=15.0,
+    max_discharge_kw=15.0,
+    roundtrip_efficiency=0.92,
+)
+
+
+def test_early_charge_tiebreak_is_strictly_smaller_than_its_two_siblings():
+    # The magnitude discipline (docstring): the third tie-break must stay
+    # cleanly sub-dominant so prefer-idle keeps deciding WHETHER to cycle and
+    # early-charge only WHEN a justified charge is placed. Docker-free unit,
+    # always runs (no HiGHS needed).
+    from voltpilot_optimization.solver import (
+        BATTERY_WEAR_TIEBREAK_EUR_PER_KW,
+        CURTAIL_TIEBREAK_EUR_PER_KW,
+        EARLY_CHARGE_TIEBREAK_EUR_PER_KW,
+    )
+
+    assert 0 < EARLY_CHARGE_TIEBREAK_EUR_PER_KW < BATTERY_WEAR_TIEBREAK_EUR_PER_KW
+    assert EARLY_CHARGE_TIEBREAK_EUR_PER_KW < CURTAIL_TIEBREAK_EUR_PER_KW
+
+
+def _pilsting_scenario(pv_kw: float = 38.0, netzladen_erlaubt: bool = False):
+    # A long free/negative-price PV-surplus window (slots 40..63), an evening
+    # peak (slots 74..95) that makes filling the battery worthwhile, and a low
+    # starting SoC (23%): the fill is a pure timing tie inside the window.
+    n = 96
+    prices = [40.0] * n
+    pv = [0.0] * n
+    for t in range(40, 64):
+        prices[t] = -10.0
+        pv[t] = pv_kw
+    for t in range(74, 96):
+        prices[t] = 300.0
+    return make_input(
+        prices,
+        load=4.0,
+        pv=pv,
+        battery=BIG_BATTERY,
+        soc0_kwh=BIG_BATTERY.capacity_kwh * 0.23,
+        netzladen_erlaubt=netzladen_erlaubt,
+    )
+
+
+@needs_highs
+def test_early_charge_places_the_fill_in_the_earliest_surplus_slots():
+    # THE Pilsting vector: EEG mode, a long negative-price window with ample
+    # PV, the battery must be full for the evening peak. The fill MUST sit in
+    # the EARLIEST surplus slots, not (as before) at the window's end.
+    window = list(range(40, 64))  # 24 slots of free/negative-price surplus
+    plan = solve(_pilsting_scenario())
+
+    charge = [max(plan.slots[t].battery_kw, 0.0) for t in window]
+    charged_kwh = sum(charge) * 0.25
+    assert charged_kwh > 20.0, "the battery fills from the free surplus"
+
+    # Front-loaded: charging starts at the window's very first slot...
+    assert plan.slots[window[0]].battery_kw > 1.0, (
+        "charging must start at the window's first surplus slot"
+    )
+    # ...and the last third of the window stays idle (the fill is placed early,
+    # not late - this is exactly what the old plan got wrong).
+    assert all(plan.slots[t].battery_kw < 0.1 for t in window[-8:]), (
+        "the late window slots must stay idle - the fill is early, not late"
+    )
+    # The charge's energy-weighted center of mass sits in the window's early
+    # half (robust to the exact slot split).
+    com = sum(t * c for t, c in zip(window, charge)) / sum(charge)
+    midpoint = (window[0] + window[-1]) / 2
+    assert com < midpoint, "the charge's center of mass is in the early half"
+
+
+@needs_highs
+def test_a_genuinely_cheaper_later_slot_still_beats_an_earlier_expensive_one():
+    # The tie-break must NEVER override real economics: an early expensive
+    # charge window (50 EUR/MWh) and a later CHEAPER one (20 EUR/MWh, 30 apart -
+    # far beyond the ~4e-4 EUR/MWh epsilon). The merchant plan charges in the
+    # LATER cheap window and leaves the earlier expensive one alone.
+    prices = [50.0] * 32 + [20.0] * 32 + [300.0] * 32  # early 50 / late 20 / peak
+    plan = solve(
+        make_input(
+            prices,
+            load=1.0,
+            pv=0.0,
+            battery=BIG_BATTERY,
+            soc0_kwh=BIG_BATTERY.soc_min_kwh,
+        )
+    )
+    charged_early = sum(max(s.battery_kw, 0.0) for s in plan.slots[:32]) * 0.25
+    charged_cheap = sum(max(s.battery_kw, 0.0) for s in plan.slots[32:64]) * 0.25
+    assert charged_cheap > 10.0, "the battery fills in the cheaper later window"
+    assert charged_early < 0.5, (
+        "it must NOT charge in the earlier, genuinely more expensive window"
+    )
+
+
+@needs_highs
+def test_early_charge_never_exceeds_the_produced_pv_in_eeg_mode():
+    # EEG solar-only stays intact under the tie-break: with the window PV
+    # (10 kW) BELOW the 15 kW charge limit the bound charge <= pv - curtail
+    # binds in every charging slot, and front-loading may never pull the charge
+    # beyond the PV actually produced.
+    plan = solve(_pilsting_scenario(pv_kw=10.0, netzladen_erlaubt=False))
+    for i, slot in enumerate(plan.slots):
+        charge = max(slot.battery_kw, 0.0)
+        assert charge <= max(slot.pv_kw, 0.0) - slot.curtail_kw + 1e-6, (
+            f"slot {i} charges beyond the produced PV - EEG solar-only broken"
+        )
+    # It still charges early where PV allows (the first surplus slots).
+    assert any(plan.slots[t].battery_kw > 0.1 for t in range(40, 48)), (
+        "the battery charges in the early PV slots"
+    )
