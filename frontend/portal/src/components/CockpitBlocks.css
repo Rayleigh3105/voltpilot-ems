@@ -359,6 +359,10 @@
   flex: 1 1 100%;
   margin: 2px 0 0;
 }
+.vp-control-foot .vp-outlook {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+}
 
 .vp-hero-fresh {
   margin: var(--vp-space-2, 8px) 0 0;

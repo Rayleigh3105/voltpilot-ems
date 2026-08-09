@@ -26,10 +26,10 @@ import { anlageRoute, pageRoute, type AnlagenSub, type Route } from '../nav';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useWake } from '../useWake';
 import { nextHourIndex, weatherWhy } from '../weather';
-import { controlReasonSlot, controlStrip } from '../control';
+import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook } from '../control';
 import { curtailTruth, curtailTruthForSlot } from '../curtailment';
 import { todaySlots } from '../schedule';
-import { slotWhy } from '../fahrplanWhy';
+import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
 import { resolveAnlage } from '../anlageNav';
@@ -880,19 +880,26 @@ export function AnlageSeite({
     curtailTruth(curtailStatus, now),
     activePlanSlot?.slotRole,
   );
-  const controlReason = activePlanSlot
-    ? slotWhy(
-        activePlanSlot,
-        site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
-        controlCurtail,
-      )
+  const planKind =
+    site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch';
+  // Teil 4b: warum geht der Solar-Überschuss GERADE ins Netz statt in die
+  // Batterie? Overrides the plain slot reason when the slot exports; null
+  // otherwise, so the strip falls back to the base reason (Null-Degradation).
+  const surplusReason = activePlanSlot
+    ? surplusWhy(activePlanSlot, planKind, nextChargeStart(planSlots, now))
     : null;
+  const baseReason = activePlanSlot ? slotWhy(activePlanSlot, planKind, controlCurtail) : null;
+  const controlReason = surplusReason ?? baseReason;
+  // Teil 3: der nächste geplante Einsatz - im Ruhefall als eigene Ausblick-Zeile.
+  const controlOutlook = planOutlook(planSlots, now);
   const controlView = controlStrip(
     controlStatus,
     now,
     batteryLinked,
     controlReason,
     controlCurtail,
+    controlOutlook,
+    surplusReason != null,
   );
 
   // The Gesundheits-Checklist — rendered on BOTH cockpit paths (the projected

@@ -39,6 +39,8 @@ export function ControlStrip({
         {view.curtailment && <p className="vp-control-reason">{view.curtailment}</p>}
         {/* The WHY - only present when the plan actually recorded one. */}
         {view.reason && <p className="vp-control-reason">{view.reason}</p>}
+        {/* Der Ausblick aus dem Fahrplan - nur im Ruhefall, Action-Blau. */}
+        {view.outlook && <p className="vp-outlook">{view.outlook}</p>}
       </section>
     );
   }
@@ -58,6 +60,8 @@ export function ControlStrip({
         {view.curtailment && <p className="vp-control-reason">{view.curtailment}</p>}
         {/* The WHY - only present when the plan actually recorded one. */}
         {view.reason && <p className="vp-control-reason">{view.reason}</p>}
+        {/* Der Ausblick aus dem Fahrplan - nur im Ruhefall, Action-Blau. */}
+        {view.outlook && <p className="vp-outlook">{view.outlook}</p>}
       </Card>
     </section>
   );

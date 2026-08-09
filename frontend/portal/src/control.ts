@@ -24,8 +24,14 @@ export type ControlState = 'healthy' | 'mismatch' | 'stale' | 'off' | 'pending' 
 export interface ControlStripView {
   state: ControlState;
   /**
-   * The plain-German sentence, e.g. "Ihr Gerät regelt gerade auf −4,0 kW →
-   * Wechselrichter bestätigt −4,0 kW".
+   * The plain-German sentence, e.g. "Der Speicher entlädt gerade mit 4,0 kW –
+   * vom Wechselrichter bestätigt".
+   *
+   * Variante B (Wortlaut-Überarbeitung vp-steuerung-ruhe-w2): the battery's
+   * direction is a WORD in every state (pausiert / lädt / entlädt), never a
+   * sign, never an arrow, so a resting battery ("Der Speicher pausiert gerade")
+   * can no longer read as an external §14a/Netzbetreiber curtailment. Numbers
+   * are `fmtNum(Math.abs(...))`; the confirmation becomes a half-sentence.
    *
    * It deliberately does NOT say "Fahrplan-Sollwert": since the in-slot
    * following duties the box may knowingly deviate from the plan's watt value,
@@ -78,20 +84,104 @@ export interface ControlStripView {
    * die Karte über die Abregelung nichts, statt etwas zu behaupten.
    */
   curtailment: string | null;
+  /**
+   * Die Ausblick-Zeile aus dem Fahrplan (vp-steuerung-ruhe-w2, Teil 3): der
+   * nächste geplante Einsatz, z. B. "→ Weiter laut Fahrplan: Laden ab ca.
+   * 11:15 Uhr." Sie verwandelt "nichts passiert" in "gleich geht's weiter" -
+   * und erscheint deshalb NUR im Ruhefall (der Speicher pausiert). Null, wenn
+   * der Plan im Horizont keinen Einsatz mehr vorsieht, keine Slots geladen sind,
+   * die Batterie gerade lädt/entlädt, oder ein Überschuss-Satz die Lage schon
+   * vollständig (samt Ladezeit) erklärt. Der Aufrufer liefert den Text über
+   * {@link planOutlook}; die Karte rendert ihn in Action-Blau (`.vp-outlook`).
+   */
+  outlook: string | null;
 }
 
 // A confirmation older than this reads as "stale" - kept in sync with the
 // device liveness window used elsewhere in the portal (5 min).
 export const CONTROL_STALE_MS = 5 * 60 * 1000;
 
-function kw(v: number | null): string {
-  return v == null ? '–' : fmtNum(v, 'kW', 1);
-}
+/**
+ * Below this a commanded/read-back setpoint reads as "pausiert" - mirrors the
+ * 0,05-kW deadband used across the portal (`live.ts` DEADBAND_KW, `schedule.ts`
+ * SLOT_DEADBAND_KW) so the strip agrees with the energy flow + the plan chart.
+ */
+export const CONTROL_DEADBAND_KW = 0.05;
 
 /** „6,1 kW" ohne Vorzeichen — die Richtung ist ein Wort, nie ein Minus. */
 function absKw(v: number): string {
   return fmtNum(Math.abs(v), 'kW', 1);
 }
+
+/** Die drei Richtungen des Batterie-Sollwerts als Vokabular. */
+export type BatteryDir = 'laden' | 'entladen' | 'pausieren';
+
+/**
+ * Die Richtung eines Batterie-Werts als WORT, nie als Vorzeichen. Die
+ * Konvention ist im Code empirisch belegt: `+ = laden`, `− = entladen`
+ * (`live.ts` `batteryState`, der Edge-Steueradapter „VoltPilot + = charge", der
+ * mqtt-schedule-Contract). `commandedKw` ist der Wert, den das GERÄT regelt.
+ */
+export function batteryDirection(kw: number | null | undefined): BatteryDir {
+  const n = num(kw);
+  if (n == null || Math.abs(n) <= CONTROL_DEADBAND_KW) return 'pausieren';
+  return n > 0 ? 'laden' : 'entladen';
+}
+
+/**
+ * Variante B, gesunder Fall: „Der Speicher lädt/entlädt gerade mit X kW – vom
+ * Wechselrichter bestätigt" bzw. „Der Speicher pausiert gerade – vom
+ * Wechselrichter bestätigt". Nie ein Vorzeichen, nie „regelt auf X".
+ */
+function directionSentence(cmd: number | null): string {
+  const n = num(cmd);
+  const dir = batteryDirection(n);
+  if (dir === 'pausieren') return 'Der Speicher pausiert gerade – vom Wechselrichter bestätigt';
+  const verb = dir === 'laden' ? 'lädt' : 'entlädt';
+  return `Der Speicher ${verb} gerade mit ${absKw(n as number)} – vom Wechselrichter bestätigt`;
+}
+
+/**
+ * Variante B, Abweichung: „Der Speicher soll mit 4,0 kW laden – der
+ * Wechselrichter meldet 2,1 kW". Die Richtung ist auf beiden Seiten ein Wort,
+ * nie ein Vorzeichen: die „soll"-Seite trägt das Verb (laden/entladen/
+ * pausieren); die „meldet"-Seite bleibt bei gleicher Richtung schlicht
+ * („meldet 2,1 kW"), nennt aber bei ABWEICHENDER Richtung (oder „soll
+ * pausieren, meldet X") das gemeldete Verhalten ausdrücklich ("meldet 4,0 kW
+ * Ladung" / „meldet Stillstand"), damit das Gegenteil nie verborgen bleibt.
+ */
+function mismatchSentence(cmd: number | null, conf: number | null): string {
+  const c = num(cmd);
+  const f = num(conf);
+  const cmdDir = batteryDirection(c);
+  const sollPhrase = cmdDir === 'pausieren' ? 'pausieren' : `mit ${absKw(c as number)} ${cmdDir}`;
+  const confDir = batteryDirection(f);
+  let meldet: string;
+  if (confDir === 'pausieren') meldet = 'meldet Stillstand';
+  else if (confDir === cmdDir) meldet = `meldet ${absKw(f as number)}`;
+  else meldet = `meldet ${absKw(f as number)} ${confDir === 'laden' ? 'Ladung' : 'Entladung'}`;
+  return `Der Speicher soll ${sollPhrase} – der Wechselrichter ${meldet}`;
+}
+
+/**
+ * Variante B, veralteter Stand: „Zuletzt: Speicher lud/entlud mit X kW –
+ * bestätigt" bzw. „Zuletzt: Speicher pausierte – bestätigt" (Vergangenheit,
+ * richtungs-wortbasiert wie der gesunde Fall).
+ */
+function staleSentence(cmd: number | null): string {
+  const n = num(cmd);
+  const dir = batteryDirection(n);
+  if (dir === 'pausieren') return 'Zuletzt: Speicher pausierte – bestätigt';
+  const verb = dir === 'laden' ? 'lud' : 'entlud';
+  return `Zuletzt: Speicher ${verb} mit ${absKw(n as number)} – bestätigt`;
+}
+
+/**
+ * Der Klarstellungs-Halbsatz (Teil 2), NUR im Ruhefall an die Begründung
+ * angehängt: er räumt das Missverständnis „meine PV wird gedrosselt" direkt
+ * aus - nur der Speicher ruht, die Erzeugung nicht.
+ */
+export const PV_CLARIFICATION = 'Ihre Solaranlage erzeugt und speist normal weiter.';
 
 /**
  * Die Richtung einer Nachführung als WORT. Beide sind bewusste Korrekturen -
@@ -192,6 +282,8 @@ export function controlStrip(
   expectControl = false,
   reason: string | null = null,
   curtail: CurtailTruth = CURTAIL_PLAN,
+  outlook: string | null = null,
+  surplusActive = false,
 ): ControlStripView | null {
   if (!status) {
     if (!expectControl) return null;
@@ -204,6 +296,7 @@ export function controlStrip(
       reason: null,
       execution: null,
       curtailment: null,
+      outlook: null,
     };
   }
 
@@ -217,11 +310,10 @@ export function controlStrip(
       reason: null,
       execution: null,
       curtailment: null,
+      outlook: null,
     };
   }
 
-  const commanded = kw(status.commandedKw);
-  const confirmed = kw(status.confirmedKw);
   // Die Selbst-Erklärung des GERÄTS (PR 3) - nur dort angehängt, wo auch ein
   // Sollwert gezeigt wird; sie erklärt eine Abweichung, die ohne Sollwert gar
   // nicht sichtbar wäre. Null ohne Ausführungs-Felder (ältere Edge-Version).
@@ -245,6 +337,7 @@ export function controlStrip(
       reason: null,
       execution: null,
       curtailment: null,
+      outlook: null,
     };
   }
 
@@ -252,11 +345,12 @@ export function controlStrip(
     return {
       state: 'stale',
       tone: 'off',
-      sentence: `Zuletzt geregelt auf ${commanded} - bestätigt ${confirmed}`,
+      sentence: staleSentence(status.commandedKw),
       agoNote: `zuletzt geprüft ${ago}`,
       reason,
       execution: note,
       curtailment: curtailNote,
+      outlook: null,
     };
   }
 
@@ -264,22 +358,34 @@ export function controlStrip(
     return {
       state: 'mismatch',
       tone: 'warn',
-      sentence: `Ihr Gerät regelt gerade auf ${commanded} → Wechselrichter meldet ${confirmed}`,
+      sentence: mismatchSentence(status.commandedKw, status.confirmedKw),
       agoNote: `Abweichung · geprüft ${ago}`,
       reason,
       execution: note,
       curtailment: curtailNote,
+      outlook: null,
     };
   }
 
+  // Healthy. Only in the RUHE case (the battery pauses) do the two calm
+  // additions appear: the clarification half-sentence (PV keeps running) and
+  // the Fahrplan outlook. Both are suppressed when a surplus reason already
+  // explains the feed-in itself (`surplusActive`) - it names the export (and,
+  // in the "waits to charge later" case, the charge time), so appending the
+  // clarification or a second outlook line would only repeat it.
+  const isRuhe = batteryDirection(status.commandedKw) === 'pausieren';
+  const ruheReason =
+    isRuhe && reason && !surplusActive ? `${reason} ${PV_CLARIFICATION}` : reason;
+  const ruheOutlook = isRuhe && !surplusActive ? outlook : null;
   return {
     state: 'healthy',
     tone: 'ok',
-    sentence: `Ihr Gerät regelt gerade auf ${commanded} → Wechselrichter bestätigt ${confirmed}`,
+    sentence: directionSentence(status.commandedKw),
     agoNote: `geprüft ${ago}`,
-    reason,
+    reason: ruheReason,
     execution: note,
     curtailment: curtailNote,
+    outlook: ruheOutlook,
   };
 }
 
@@ -302,6 +408,74 @@ export function controlReasonSlot<T extends { start: string }>(
   for (const s of slots) {
     const start = new Date(s.start).getTime();
     if (!isNaN(start) && t >= start && t < start + width) return s;
+  }
+  return null;
+}
+
+// ---- The Ruhe outlook (Teil 3) -------------------------------------------
+
+/** de-DE "11:15". */
+function hhmm(iso: string): string {
+  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+/** The next engaged slot after `now` (the battery charges or discharges). */
+export interface NextEngagement {
+  kind: 'laden' | 'entladen';
+  /** ISO start of that slot. */
+  start: string;
+}
+
+/**
+ * The first plan slot STARTING at or after `now` whose battery is engaged
+ * (beyond the deadband). The current slot (started before `now`) is skipped -
+ * in the Ruhe case it is the idle one, so this is the next thing the battery
+ * does. Null when the plan schedules no further engagement or has no slots.
+ */
+export function nextEngagement<T extends { start: string; batteryKw: number | null }>(
+  slots: T[],
+  now: Date = new Date(),
+): NextEngagement | null {
+  const t = now.getTime();
+  for (const s of slots) {
+    const start = new Date(s.start).getTime();
+    if (isNaN(start) || start < t) continue;
+    const dir = batteryDirection(s.batteryKw);
+    if (dir === 'pausieren') continue;
+    return { kind: dir, start: s.start };
+  }
+  return null;
+}
+
+/**
+ * The Ruhe outlook line (Teil 3): "→ Weiter laut Fahrplan: Laden ab ca. 11:15
+ * Uhr." from the plan slots the page has already loaded. Null when the plan
+ * shows no further engagement in the horizon - honest, never a fabricated time.
+ */
+export function planOutlook<T extends { start: string; batteryKw: number | null }>(
+  slots: T[],
+  now: Date = new Date(),
+): string | null {
+  const ne = nextEngagement(slots, now);
+  if (!ne) return null;
+  const verb = ne.kind === 'laden' ? 'Laden' : 'Entladen';
+  return `→ Weiter laut Fahrplan: ${verb} ab ca. ${hhmm(ne.start)} Uhr.`;
+}
+
+/**
+ * ISO start of the next CHARGE slot at or after `now` - the surplus "waits to
+ * charge later" reason (fahrplanWhy `surplusWhy` case c) names that time. Null
+ * when the plan schedules no further charge.
+ */
+export function nextChargeStart<T extends { start: string; batteryKw: number | null }>(
+  slots: T[],
+  now: Date = new Date(),
+): string | null {
+  const t = now.getTime();
+  for (const s of slots) {
+    const start = new Date(s.start).getTime();
+    if (isNaN(start) || start < t) continue;
+    if (batteryDirection(s.batteryKw) === 'laden') return s.start;
   }
   return null;
 }

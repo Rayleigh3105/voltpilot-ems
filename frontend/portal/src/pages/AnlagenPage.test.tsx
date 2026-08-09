@@ -791,8 +791,11 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     await waitFor(() => expect(container.querySelector('.vp-stage-foot')).toBeTruthy());
     const foot = container.querySelector('.vp-stage-foot')!;
     // Sollwert → Bestätigung, über die volle Breite und ohne Karte-in-Karte.
+    // Variante B: die Richtung ist ein Wort (2,1 kW Ladung), nie „regelt auf".
     expect(foot.querySelector('.vp-control-foot')).toBeTruthy();
-    expect(foot.textContent).toContain('regelt gerade auf');
+    expect(foot.textContent).toContain('lädt gerade mit 2,1');
+    expect(foot.textContent).toContain('vom Wechselrichter bestätigt');
+    expect(foot.textContent).not.toContain('regelt gerade auf');
     expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
     // Verzahnung: die Bestätigung ist AM Diagramm ablesbar.
     await waitFor(() => expect(container.querySelector('.vp-flow-confirm')).toBeTruthy());

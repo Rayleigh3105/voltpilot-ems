@@ -3206,6 +3206,17 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-text-muted, #5b6672);
   overflow-wrap: anywhere;
 }
+/* The Ruhe outlook from the plan (vp-steuerung-ruhe-w2): "gleich geht's
+   weiter", so it reads forward in Action-Blau, one weight up from the reason. */
+.vp-outlook {
+  margin: 8px 0 0;
+  min-width: 0;
+  font-size: var(--vp-text-xs, 0.82rem);
+  line-height: 1.5;
+  color: var(--vp-action, #2c5282);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
 
 /* --- Die Gesundheits-Checklist (`ZustandCard`) -----------------------------
    `.vp-health-list`/`.vp-health-item`/`.vp-health-mark`/`.vp-health-label`/
