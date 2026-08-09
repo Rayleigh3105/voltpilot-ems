@@ -141,6 +141,24 @@ export function vergleichsKopf(
 }
 
 /**
+ * **Der Zustands-Chip der Mobil-Bedienzeile.** Am Telefon wandert der
+ * „Vergleichen"-Umschalter ins ⋯-Blatt (P4) — ein GESETZTER Vergleich darf
+ * damit aber nicht unsichtbar werden, sonst überlagert das Diagramm eine zweite
+ * Reihe, die niemand bestellt zu haben scheint. Also: **Bedienung versteckt,
+ * Zustand sichtbar.**
+ *
+ * Null bei „Aus" — ein Chip, der „kein Vergleich" sagt, wäre Rauschen.
+ */
+export function vergleichsChip(
+  anchor: Date,
+  range: HistoryRange,
+  modus: VergleichsModus,
+): string | null {
+  if (!ueberlagerungAktiv(modus)) return null;
+  return vergleichsKopf(anchor, range, modus);
+}
+
+/**
  * Der Hinweis, der eine LAUFENDE Periode als solche kennzeichnet — sonst läse
  * sich ein halber Juli gegen einen vollen Juni wie ein Einbruch. Null, wenn der
  * Zeitraum abgeschlossen ist (dann gibt es nichts klarzustellen).
@@ -352,4 +370,44 @@ export function angleichen(
   const out: (number | null)[] = [];
   for (let i = 0; i < laenge; i++) out.push(quelle[i] ?? null);
   return out;
+}
+
+/**
+ * **Die EINE Δ-Zeile der Mobil-Fassung** (Konzept `data/vp-mobile-views-x1` §5,
+ * Captain-Abnahme 09.08.2026). Am Telefon trug jede der sechs kWh-Kacheln ihre
+ * eigene Δ-Zeile — 6 × ~90 px VOR dem Diagramm, das dadurch erst bei 1 908 px
+ * begann. Die Summen bleiben vollzählig (zwei Spalten statt sechs Kacheln), der
+ * VERGLEICH wird auf eine Zeile eingedampft.
+ *
+ * **Die Ehrlichkeit steckt darin, dass die Zeile ihre Größe NENNT.** Der
+ * Entwurf zeichnete „gegen Vortag: etwa gleich" — ein Vergleich ohne
+ * Gegenstand, der über sechs verschiedene Kanäle gleichzeitig zu sprechen
+ * scheint. Hier steht stattdessen „Erzeugt · 18 % mehr als im Juni": WELCHE
+ * Summe verglichen wurde, ist Teil der Aussage.
+ *
+ * Gewählt wird die ERSTE Summe der kanonischen Reihenfolge, die in BEIDEN
+ * Zeiträumen eine Basis hat (die Reihenfolge beginnt mit „Erzeugt", also ist es
+ * auf einer PV-Anlage die Erzeugung und auf einer Anlage ohne PV die nächste
+ * wirklich gemessene Größe). Gibt es nirgends eine ehrliche Basis, ist das
+ * Ergebnis `null` und die Zeile rendert gar nicht — nie ein Δ gegen eine
+ * erfundene Null (`delta()` setzt dieselbe Regel je Kanal durch).
+ */
+export interface FuehrendesDelta {
+  /** Das Etikett der verglichenen Summe („Erzeugt"). */
+  label: string;
+  view: DeltaView;
+}
+
+export function fuehrendesDelta(
+  summen: readonly { key: EnergieSummeKey; label: string; kwh: number | null }[],
+  vorherSummen: readonly { kwh: number | null }[] | null | undefined,
+  vergleichName: string,
+): FuehrendesDelta | null {
+  if (!vorherSummen) return null;
+  for (let i = 0; i < summen.length; i += 1) {
+    const s = summen[i];
+    const view = delta(s.kwh, vorherSummen[i]?.kwh, ENERGIE_WERTUNG[s.key], vergleichName);
+    if (view) return { label: s.label, view };
+  }
+  return null;
 }

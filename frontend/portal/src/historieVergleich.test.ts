@@ -3,6 +3,7 @@ import {
   angleichen,
   delta,
   ENERGIE_WERTUNG,
+  fuehrendesDelta,
   keineVergleichsDatenText,
   laufendHinweis,
   normalisiereModus,
@@ -10,6 +11,7 @@ import {
   ueberlagerungLegende,
   vergleichsAnker,
   vergleichsAnkerFor,
+  vergleichsChip,
   vergleichsKopf,
   vergleichsName,
   vergleichsOptionen,
@@ -208,5 +210,63 @@ describe('F8 · gegen welchen Zeitraum überlagert wird', () => {
     expect(angleichen([1, 2, 3, 4], 2)).toEqual([1, 2]);
     expect(angleichen([1, null, 3], 3)).toEqual([1, null, 3]);
     expect(angleichen(null, 2)).toEqual([null, null]);
+  });
+
+  it('zeigt einen GESETZTEN Vergleich als Chip - und schweigt bei „Aus"', () => {
+    // Mobil wandert die Bedienung ins ⋯-Blatt; der Zustand darf damit nicht
+    // unsichtbar werden, sonst überlagert das Diagramm eine ungefragte Reihe.
+    expect(vergleichsChip(JULI, 'month', 'aus')).toBeNull();
+    expect(vergleichsChip(JULI, 'month', 'vorperiode')).toBe('Vergleich: Juni 2026');
+    expect(vergleichsChip(JULI, 'month', 'vorjahr')).toBe('Vergleich: Juli 2025');
+    // Er sagt exakt dasselbe wie die Kopfzeile der Karte - eine Wahrheit.
+    expect(vergleichsChip(JULI, 'month', 'vorjahr')).toBe(vergleichsKopf(JULI, 'month', 'vorjahr'));
+  });
+});
+
+/**
+ * Die EINE Δ-Zeile der Mobil-Fassung. Sie ersetzt sechs Einzel-Δ und muss
+ * deshalb NENNEN, worüber sie spricht - „etwa gleich" ohne Gegenstand wäre ein
+ * Vergleich, den niemand nachrechnen kann.
+ */
+describe('fuehrendesDelta', () => {
+  const summen = (werte: (number | null)[]) =>
+    (['erzeugt', 'verbraucht', 'bezogen', 'eingespeist', 'geladen', 'entladen'] as const).map(
+      (key, i) => ({ key, label: key[0].toUpperCase() + key.slice(1), kwh: werte[i] ?? null }),
+    );
+
+  it('nimmt die ERSTE Summe mit ehrlicher Basis und nennt sie beim Namen', () => {
+    const d = fuehrendesDelta(
+      summen([120, 40, 10, 80, 30, 25]),
+      summen([100, 40, 10, 80, 30, 25]),
+      'dem Vortag',
+    );
+    expect(d?.label).toBe('Erzeugt');
+    expect(d?.view.text).toBe('20 % mehr als am Vortag');
+    expect(d?.view.wertung).toBe('gut');
+  });
+
+  it('überspringt eine Summe ohne Vergleichsbasis, statt zu schweigen', () => {
+    // Eine Anlage ohne PV: „Erzeugt" hat nichts zu vergleichen, „Verbraucht"
+    // schon - der Vergleich fällt also auf die nächste GEMESSENE Größe.
+    const d = fuehrendesDelta(
+      summen([null, 50, 10, 0, 30, 25]),
+      summen([null, 40, 10, 0, 30, 25]),
+      'dem Vortag',
+    );
+    expect(d?.label).toBe('Verbraucht');
+    expect(d?.view.richtung).toBe('mehr');
+    // Verbrauch ist keine Leistung - die Richtung ist die Tatsache, nicht eine
+    // Wertung (Regel 3 bleibt auch in der Kurzfassung gültig).
+    expect(d?.view.wertung).toBe('neutral');
+  });
+
+  it('bleibt ohne Vorperiode und ohne jede Basis STUMM', () => {
+    expect(fuehrendesDelta(summen([120]), null, 'dem Vortag')).toBeNull();
+    expect(fuehrendesDelta(summen([120]), undefined, 'dem Vortag')).toBeNull();
+    // Nirgends eine Basis: nie ein Δ gegen eine erfundene Null.
+    expect(
+      fuehrendesDelta(summen([120, 40]), summen([null, null]), 'dem Vortag'),
+    ).toBeNull();
+    expect(fuehrendesDelta(summen([120, 40]), summen([0, 0]), 'dem Vortag')).toBeNull();
   });
 });
