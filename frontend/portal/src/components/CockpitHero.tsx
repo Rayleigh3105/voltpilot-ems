@@ -57,6 +57,7 @@ export function CockpitHero({
   footer,
   periodSeg = null,
   controlConfirmed = false,
+  showRail = true,
 }: {
   view: CockpitHeroView;
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
@@ -88,6 +89,14 @@ export function CockpitHero({
   periodSeg?: ReactNode;
   /** Der Wechselrichter bestätigt den Sollwert → Haken am Speicher-Knoten. */
   controlConfirmed?: boolean;
+  /**
+   * Ob die **Bilanz-Leiste** gerendert wird. Default `true` = die Bühne, wie
+   * sie war. Die Telefon-Fassung (Mobil-Umbau Stufe 2, `<= 720px`) setzt sie
+   * auf `false`: dort trägt die EINE Geld-Karte unter dem Fluss Segment, Zahl,
+   * Zurechnung und die Ringe (als Chips), und die Fahrplan-Zeile ist eine
+   * eigene Zeile mit Absprung — die Leiste wäre die zweite Kopie davon.
+   */
+  showRail?: boolean;
 }) {
   const hasFlow = flowHasValues(topology, snapshot);
   const rings =
@@ -107,7 +116,9 @@ export function CockpitHero({
   // Die Leiste verteilt die VORHANDENEN Blöcke über die Höhe. Steuert eine
   // Komposition keinen einzigen bei, gibt es keine Leiste (und keinen leeren
   // Rahmen) - die Bühne wird dann einspaltig und der Fluss nimmt sie ganz ein.
-  const hasRail = periodSeg != null || view.money != null || rings != null || view.planSentence != null;
+  const hasRail =
+    showRail &&
+    (periodSeg != null || view.money != null || rings != null || view.planSentence != null);
   return (
     <Card
       padding="lg"

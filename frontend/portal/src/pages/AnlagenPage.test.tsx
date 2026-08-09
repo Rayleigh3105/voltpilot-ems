@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, waitFor } from '@testing-library/react';
 import { AnlageSeite } from './AnlagenPage';
 import { api, type Site } from '../api';
@@ -924,5 +924,135 @@ describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', ()
     });
     // Kein onHealthFacts übergeben: die Seite rendert unverändert weiter.
     expect(container.querySelector('.vp-cockpit-health')).toBeNull();
+  });
+});
+
+/**
+ * Mobil-Umbau Stufe 2 — die Telefon-KOMPOSITION des Cockpits (abgenommenes
+ * Konzept `data/vp-mobile-views-x1`, Sektion „Cockpit"; Captain-Go 09.08.2026).
+ *
+ * Der Beweis ist bewusst BEIDSEITIG: dieselbe Anlage wird einmal am Telefon und
+ * einmal am Rechner gerendert. Am Telefon muss die Geld-Aussage GENAU EINMAL
+ * stehen; am Rechner darf sich **nichts** geändert haben (die Bühne ist
+ * unangetastet — das ist die eigentliche Zusage dieser Stufe).
+ *
+ * `useIsPhone` liest `matchMedia`; jsdom hat es nicht, deshalb ist die
+ * Desktop-Fassung überall sonst in dieser Datei automatisch die gerenderte.
+ */
+describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
+  function stubPhone(isPhone: boolean) {
+    (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+      matches: isPhone && query.includes('720px'),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    });
+  }
+
+  afterEach(() => {
+    delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('trägt EINE Geld-Karte statt Bilanz-Leiste + zwei Geld-Kacheln', async () => {
+    stubPhone(true);
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-mob-money')).toBeTruthy());
+
+    // Die Bühnen-Leiste gibt es am Telefon nicht - ihre Blöcke wohnen in der
+    // einen Karte darunter.
+    expect(container.querySelector('.vp-hero-side')).toBeNull();
+    // … und die zwei Geld-Kacheln sind ersatzlos weg (Dedupe: ihr Tap-Ziel
+    // sitzt seit Mobil-Stufe 1 in der Bottom-Bar).
+    const tiles = [...container.querySelectorAll('.vp-widget-label')].map((e) => e.textContent);
+    expect(tiles).not.toContain('Erlöse');
+    expect(tiles).not.toContain('Handel');
+    expect(tiles).not.toContain('Wetter');
+    // Die Modus-Kachel bleibt: sie trägt ihre EIGENE Aussage.
+    expect(tiles).toContain('Lastspitze');
+    // Die verdiente Zahl steht danach GENAU EINMAL auf der Seite - der
+    // gemessene Befund des Konzepts war „dreimal untereinander". Der
+    // Sticky-Kopf trägt sie ebenfalls, ist aber `aria-hidden`, solange er
+    // nicht ausgelöst wurde.
+    const sticky = container.querySelector('.vp-mob-sticky');
+    expect(sticky?.getAttribute('aria-hidden')).toBe('true');
+    // Die Karte trägt das Zeitraum-Segment UND die Ringe als Chips - beide
+    // Blöcke der abgelösten Leiste, in EINER Karte direkt unterm Fluss.
+    const money = container.querySelector('.vp-mob-money') as HTMLElement;
+    expect(money.querySelector('.vp-mob-money-seg')).toBeTruthy();
+    expect(money.querySelectorAll('.vp-mob-chip').length).toBe(2);
+    // Und die Ringe stehen nur noch dort - kein zweites SVG-Ringpaar daneben.
+    expect(container.querySelectorAll('.vp-hero-ring').length).toBe(0);
+  });
+
+  it('macht Fahrplan und Börsenpreis zu je EINER Zeile mit Absprung', async () => {
+    stubPhone(true);
+    const base = new Date(Date.now() - 60 * 60 * 1000);
+    vi.spyOn(api, 'prices').mockResolvedValue({
+      biddingZone: 'DE-LU',
+      resolution: 'PT15M',
+      currency: 'EUR',
+      points: Array.from({ length: 8 }, (_, i) => {
+        const ts = new Date(base.getTime() + i * 15 * 60_000);
+        return {
+          ts: ts.toISOString(),
+          end: new Date(ts.getTime() + 15 * 60_000).toISOString(),
+          priceEurMwh: i % 2 === 0 ? 5 : 140,
+        };
+      }),
+    } as never);
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelectorAll('.vp-mob-row').length).toBe(2));
+
+    // Die vollen Karten (Kurve, Ministreifen) gibt es am Telefon nicht mehr -
+    // sie wohnen auf den Zielseiten, die einen Daumen entfernt sind.
+    expect(container.querySelector('.vp-strompreis')).toBeNull();
+    expect(container.querySelector('.vp-fp-band')).toBeNull();
+    const rows = [...container.querySelectorAll('.vp-mob-row')].map((e) => e.textContent ?? '');
+    expect(rows[0]).toContain('Fahrplan');
+    expect(rows[1]).toContain('Börsenpreis');
+    expect(rows[1]).toContain('Marktpreise');
+  });
+
+  it('lässt den Seitenkopf weg — die Topbar trägt die Identität (Stufe 1)', async () => {
+    stubPhone(true);
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-mob-money')).toBeTruthy());
+    const head = container.querySelector('.vp-anlage-head') as HTMLElement;
+    expect(head.className).toContain('is-phone');
+    // Die Überschrift bleibt für Screenreader stehen (0 px hoch), die
+    // Stammdaten-Abzeichen entfallen: sie ändern sich nie und beantworten
+    // keine Tagesfrage.
+    expect(head.querySelector('h1.vp-sr-only')?.textContent).toBe(site.name);
+    expect(head.textContent).not.toContain('Direktvermarktung');
+    expect(head.textContent).not.toContain('Netzladen');
+  });
+
+  it('ändert am Rechner NICHTS: Leiste, Bühnenfuß und alle Kacheln bleiben', async () => {
+    stubPhone(false);
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    expect(container.querySelector('.vp-hero-side')).toBeTruthy();
+    // Die Ringe leben am Rechner weiter als SVG in der Leiste.
+    expect(container.querySelectorAll('.vp-hero-ring').length).toBe(2);
+    // Kein einziger Telefon-Knoten - die Bühne ist unangetastet.
+    expect(container.querySelectorAll('[class*="vp-mob-"]').length).toBe(0);
+    const tiles = [...container.querySelectorAll('.vp-widget-label')].map((e) => e.textContent);
+    expect(tiles).toContain('Erlöse');
+    expect(tiles).toContain('Lastspitze');
+    const head = container.querySelector('.vp-anlage-head') as HTMLElement;
+    expect(head.className).not.toContain('is-phone');
+    expect(head.querySelector('h1.vp-sr-only')).toBeNull();
   });
 });

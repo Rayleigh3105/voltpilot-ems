@@ -23,6 +23,7 @@ import {
 import { buildSitePayload } from '../anlage';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { settingsPageSettings } from '../modeSettings';
+import { useIsPhone } from '../useIsPhone';
 import {
   einstellungenHash,
   geldGroupSummary,
@@ -135,25 +136,6 @@ function useSettingsAnchor(): SettingsGroupId | null {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   return group;
-}
-
-/** Matches the phone breakpoint where sections turn into collapsible cards. */
-function useIsPhone(): boolean {
-  const query = '(max-width: 720px)';
-  const [isPhone, setIsPhone] = useState(
-    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(query).matches
-      : false,
-  );
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const mql = window.matchMedia(query);
-    const onChange = () => setIsPhone(mql.matches);
-    onChange();
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  }, []);
-  return isPhone;
 }
 
 /** Highlights the jump-nav item of the section currently in view (desktop). */

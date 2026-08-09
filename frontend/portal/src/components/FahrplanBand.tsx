@@ -13,8 +13,10 @@ import { phases } from '../fahrplanWhy';
 import { filmRows, speicherKurzzeile } from '../fahrplanFilm';
 import { PROVENIENZ } from '../historieWelten';
 import { energyLabel } from '../anlage';
+import { fahrplanZeile } from '../cockpitWidgets';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { MobileRowCard } from './CockpitBlocks';
 import { Skeleton } from './States';
 import './FahrplanBand.css';
 
@@ -58,6 +60,8 @@ export function FahrplanBand({
   loading,
   failed,
   onOpen,
+  compact = false,
+  weatherWhy = null,
 }: {
   plan: SchedulePlan | null;
   plantKind: PlantKind;
@@ -65,6 +69,19 @@ export function FahrplanBand({
   loading: boolean;
   failed: boolean;
   onOpen: () => void;
+  /**
+   * Die Telefon-Fassung (Mobil-Umbau Stufe 2, `<= 720px`): EINE Zeile mit
+   * Absprung statt Karte samt Ministreifen — der Fahrplan-Satz stand am Telefon
+   * zweimal in Folge (hier und im Preis-Streifen darüber), und der volle Plan
+   * ist seit Mobil-Stufe 1 ein Daumen entfernt in der Bottom-Bar.
+   */
+  compact?: boolean;
+  /**
+   * Der Wetter-Satz (`weatherWhy`) — er erscheint NUR in der kompakten Zeile
+   * und nur, wenn er etwas erklärt (Konzept: die Wetter-Kachel entfällt am
+   * Telefon zugunsten dieser einen Notiz).
+   */
+  weatherWhy?: string | null;
 }) {
   const slots = plan?.slots ?? [];
   const hasPlan = slots.length > 0;
@@ -80,6 +97,30 @@ export function FahrplanBand({
   const sentence = kurz ?? planSentence(slots, plantKind, now);
   const saved = savingsTodayEur(slots, now);
   const curtail = curtailmentToday(slots, now);
+
+  if (compact) {
+    // Die Zustände bleiben WÖRTLICH dieselben — nur die Fläche schrumpft.
+    if (loading) return <Skeleton height={64} radius="var(--vp-radius-lg)" />;
+    const row = failed
+      ? { head: 'Der Fahrplan konnte gerade nicht geladen werden.', sub: null }
+      : !hasPlan
+        ? { head: KEIN_PLAN_TEXT, sub: null }
+        : fahrplanZeile({ sentence, savedEur: saved, weatherWhy, eur: eurAmount });
+    if (!row) return null;
+    return (
+      <MobileRowCard
+        icon="zap"
+        row={row}
+        linkLabel="Fahrplan"
+        onOpen={onOpen}
+        badge={
+          hasPlan && !failed
+            ? { label: PROVENIENZ.geplant.label, title: PROVENIENZ.geplant.satz }
+            : null
+        }
+      />
+    );
+  }
 
   return (
     <Card padding="lg" radius="lg" className="vp-fp-band" style={{ minWidth: 0 }}>
