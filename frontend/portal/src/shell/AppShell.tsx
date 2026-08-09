@@ -17,9 +17,12 @@ import {
 } from '../nav';
 import {
   bottomBarSlots,
+  fleetBarSlots,
+  fleetSheetGroups,
   HELP_TEXT,
   moreSheetItems,
   type AnlageSidebar,
+  type FleetNavInput,
   type NavTarget,
   type SidebarGroup,
   type SidebarItem,
@@ -120,13 +123,11 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const user = currentUser();
-  const [mobileNav, setMobileNav] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
-  // Close the mobile drawer + sheets whenever navigation happens.
+  // Close the sheet whenever navigation happens.
   useEffect(() => {
-    setMobileNav(false);
     setMoreOpen(false);
   }, [page]);
 
@@ -142,21 +143,6 @@ export function AppShell({
     return () => document.removeEventListener('keydown', onKey);
   }, [moreOpen, helpOpen]);
 
-  // While the mobile nav is open: lock body scroll and close on Escape.
-  useEffect(() => {
-    if (!mobileNav) return undefined;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMobileNav(false);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [mobileNav]);
-
   const initials = (user.name || 'VP')
     .split(/\s+/)
     .map((p) => p[0])
@@ -164,35 +150,55 @@ export function AppShell({
     .join('')
     .toUpperCase();
 
-  const navigate = (id: PageId) => {
-    onNavigate(id);
-    setMobileNav(false);
-  };
-
   /**
-   * ONE place that turns a nav target into navigation — the sidebar, the
-   * bottom bar and the Mehr sheet all go through it, so they can never drift.
+   * ONE place that turns a nav target into navigation — the sidebar, both
+   * bottom bars and the Mehr sheet all go through it, so they can never drift.
    */
   const openTarget = (target: NavTarget) => {
-    setMobileNav(false);
     switch (target.kind) {
       case 'sub':
         anlage?.onOpenSub(target.sub);
         setMoreOpen(false);
         return;
       case 'page':
-        anlage?.onOpenPage(target.page);
+        // Inside an Anlage the page jump keeps its Anlage context; at fleet
+        // level there is none, so the plain shell navigation carries it.
+        if (anlage) anlage.onOpenPage(target.page);
+        else onNavigate(target.page);
         setMoreOpen(false);
         return;
       case 'help':
         setMoreOpen(false);
         setHelpOpen(true);
         return;
+      case 'action':
+        setMoreOpen(false);
+        if (target.action === 'add-anlage') onAddAnlage();
+        else logout();
+        return;
       case 'more':
       default:
         setMoreOpen((v) => !v);
     }
   };
+
+  /**
+   * The phone bar + sheet of the level the customer is on: one Anlage, or the
+   * fleet above it. Both are derived (`anlageNav.ts`) — the shell only renders.
+   */
+  const fleetNav: FleetNavInput = {
+    showPortfolio,
+    showPortfolioErloese,
+    showOverview,
+    siteCount: counts.sites,
+  };
+  const barSlots = anlage ? bottomBarSlots(anlage.sidebar) : fleetBarSlots(fleetNav);
+  const sheetGroups = anlage
+    ? moreSheetItems(anlage.sidebar, { isAdmin, showAddAnlage })
+    : fleetSheetGroups(fleetNav, { isAdmin, showAddAnlage });
+  const barLabel = anlage ? `Bereiche der Anlage ${anlage.siteName}` : 'Hauptbereiche';
+  /** 2+ Anlagen or a fleet level to return to = there is something to switch. */
+  const canSwitchAnlage = !!anlage && (anlage.sites.length > 1 || !!anlage.onOpenFleet);
 
   const navEntry = (item: SidebarItem) => (
     <NavItem
@@ -234,7 +240,6 @@ export function AppShell({
                 aria-label="Anlage wählen"
                 value={anlage.siteId}
                 onChange={(e) => {
-                  setMobileNav(false);
                   if (e.target.value === ALL_SITES) anlage.onOpenFleet?.();
                   else anlage.onSelectSite(e.target.value);
                 }}
@@ -275,20 +280,13 @@ export function AppShell({
   );
 
   const sidebar = (
-    <aside className={`vp-sidebar ${mobileNav ? 'mobile-open' : ''}`}>
+    // Desktop (>=1024px) and the tablet icon rail (721-1023px) are unchanged.
+    // The phone slide-over is GONE since Mobil-Umbau Stufe 1: the bottom bar
+    // plus its Mehr sheet cover every destination, so a second menu (and its
+    // hamburger) would only compete with the thumb pattern.
+    <aside className="vp-sidebar">
       <div className="brand">
         <img src={logoUrl} alt="VoltPilot EMS" />
-        {/* A slide-over needs a visible way out - the veil tap and the
-            hamburger stay, but neither is discoverable (G10). Phone-only
-            (CSS hides it once the sidebar is permanent). */}
-        <button
-          type="button"
-          className="vp-sidebar-close"
-          aria-label="Menü schließen"
-          onClick={() => setMobileNav(false)}
-        >
-          <Icon name="x" size={22} />
-        </button>
       </div>
       <nav aria-label="Hauptnavigation">
         {showPortfolio && (
@@ -299,7 +297,7 @@ export function AppShell({
             label={<span className="vp-nav-lbl">{PORTFOLIO_PAGE.label}</span>}
             title={PORTFOLIO_PAGE.label}
             active={page === PORTFOLIO_PAGE.id}
-            onClick={() => navigate(PORTFOLIO_PAGE.id)}
+            onClick={() => onNavigate(PORTFOLIO_PAGE.id)}
           />
         )}
         {showPortfolio && (
@@ -320,7 +318,7 @@ export function AppShell({
                 label={<span className="vp-nav-lbl">{p.label}</span>}
                 title={p.label}
                 active={page === p.id}
-                onClick={() => navigate(p.id)}
+                onClick={() => onNavigate(p.id)}
               />
             ))}
           </div>
@@ -343,7 +341,7 @@ export function AppShell({
                 ? counts.sites
                 : null
             }
-            onClick={() => navigate(p.id)}
+            onClick={() => onNavigate(p.id)}
           />
         ))}
         {anlageNav}
@@ -360,7 +358,7 @@ export function AppShell({
                 title={p.label}
                 active={page === p.id}
                 count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
-                onClick={() => navigate(p.id)}
+                onClick={() => onNavigate(p.id)}
               />
             ))}
           </>
@@ -378,40 +376,63 @@ export function AppShell({
   return (
     <div className="vp-app">
       {sidebar}
-      {mobileNav && (
-        <div className="vp-mobilenav-scrim" onClick={() => setMobileNav(false)} aria-hidden="true" />
-      )}
 
       <div className="vp-content">
         <header className="vp-topbar">
-          <button
-            type="button"
-            className="vp-hamburger"
-            aria-label={mobileNav ? 'Menü schließen' : 'Menü öffnen'}
-            aria-expanded={mobileNav}
-            onClick={() => setMobileNav((v) => !v)}
-          >
-            <Icon name={mobileNav ? 'x' : 'menu'} size={22} />
-          </button>
-          <div className="crumbs">
-            {/* On an Anlage page the breadcrumb names the ANLAGE, not the menu
-                item ("Hof Lindenberg", not "Meine Anlagen") - that is what the
-                customer is looking at, and it is usually shorter (G1). The
-                full text stays in the title for a truncated phone width. */}
-            <span className="here" title={anlage ? anlage.siteName : undefined}>
-              {anlage ? anlage.siteName : pageLabel(page, counts.sites)}
-            </span>
+          {/* Breadcrumb + plant state. On a phone (Stufe 1) this block becomes
+              the plant identity: name as a tappable SWITCHER with the state as
+              its sub-line — on wider screens it stays the row it always was
+              (name, then the health pill), so desktop is unchanged. */}
+          <div className={anlage ? 'vp-topbar-anlage' : 'crumbs'}>
+            {anlage ? (
+              <div className="crumbs">
+                {/* The breadcrumb names the ANLAGE, not the menu item ("Hof
+                    Lindenberg", not "Meine Anlagen") - that is what the
+                    customer is looking at (G1). The full text stays in the
+                    title for a truncated phone width. */}
+                <span className="here" title={anlage.siteName}>
+                  {anlage.siteName}
+                </span>
+                {canSwitchAnlage && (
+                  <>
+                    <Icon name="chevron-down" size={16} className="vp-tb-caret" />
+                    {/* Phone-only (CSS): the native picker is the best plant
+                        switcher a thumb can get, and it covers the whole block
+                        so the tap target is the full top-bar height. */}
+                    <select
+                      className="vp-tb-switch"
+                      aria-label="Anlage wechseln"
+                      value={anlage.siteId}
+                      onChange={(e) => {
+                        if (e.target.value === ALL_SITES) anlage.onOpenFleet?.();
+                        else anlage.onSelectSite(e.target.value);
+                      }}
+                    >
+                      {anlage.sites.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                      {anlage.onOpenFleet && <option value={ALL_SITES}>Alle Anlagen</option>}
+                    </select>
+                  </>
+                )}
+              </div>
+            ) : (
+              <span className="here">{pageLabel(page, counts.sites)}</span>
+            )}
+            {anlage?.health && (
+              // ONE aggregated plant state, always in sight (concept tab 2) —
+              // and a REAL control: the worst cause is visible text, one click
+              // lists every finding, and "Zur Anlage" leads to the plant's
+              // Zustand card (a warning names its cause and is reachable in one
+              // click). On a phone it renders as the switcher's sub-line.
+              <HealthBadgeButton
+                health={anlage.health}
+                onOpenDetail={() => anlage.onOpenSub(null)}
+              />
+            )}
           </div>
-          {anlage?.health && (
-            // ONE aggregated plant state, always in sight (concept tab 2) — and
-            // a REAL control: the worst cause is visible text, one click lists
-            // every finding, and "Zur Anlage" leads to the plant's Zustand card
-            // (a warning names its cause and is reachable in one click).
-            <HealthBadgeButton
-              health={anlage.health}
-              onOpenDetail={() => anlage.onOpenSub(null)}
-            />
-          )}
           <div className="spacer" />
 
           {showAddAnlage && (
@@ -487,39 +508,46 @@ export function AppShell({
           </div>
         </header>
 
-        <main className={`vp-main${anlage ? ' has-bottombar' : ''}`}>{children}</main>
+        <main className="vp-main has-bottombar">{children}</main>
       </div>
 
-      {anlage && (
-        // v3 M1: the app-like 5-slot bottom bar on phones (concept tab 2) -
-        // Cockpit · Live · Steuerung · Anlage · Mehr. The core areas of an
-        // Anlage must never hide behind a hamburger; "Mehr" opens the sheet
-        // with everything else. Hidden above 720px by CSS.
-        <nav className="vp-bottombar" aria-label={`Bereiche der Anlage ${anlage.siteName}`}>
-          {bottomBarSlots(anlage.sidebar).map((item) => {
-            const active =
-              item.target.kind === 'more' ? moreOpen : anlage.activeKey === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                className={`vp-bottombar-item${active ? ' active' : ''}`}
-                aria-current={item.target.kind !== 'more' && active ? 'page' : undefined}
-                aria-expanded={item.target.kind === 'more' ? moreOpen : undefined}
-                onClick={() => openTarget(item.target)}
-              >
-                <span className="ic" aria-hidden="true">
-                  <Icon name={item.icon} size={20} />
-                  {item.badge != null && <span className="vp-bottombar-badge">{item.badge}</span>}
-                </span>
-                <span className="lbl">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      )}
+      {/* The app-like bottom bar on phones. Since Mobil-Umbau Stufe 1 BOTH
+          levels carry one: inside an Anlage the derived daily areas
+          (Cockpit · Fahrplan · Messwerte · Erlöse), above it the fleet entries
+          (Übersicht · Anlagen) — the last slot always opens the sheet with
+          everything else. Hidden above 720px by CSS. */}
+      <nav
+        className="vp-bottombar"
+        aria-label={barLabel}
+        style={{ ['--vp-bar-slots' as string]: String(barSlots.length) } as React.CSSProperties}
+      >
+        {barSlots.map((item) => {
+          const active =
+            item.target.kind === 'more'
+              ? moreOpen
+              : anlage
+                ? anlage.activeKey === item.key
+                : page === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              className={`vp-bottombar-item${active ? ' active' : ''}`}
+              aria-current={item.target.kind !== 'more' && active ? 'page' : undefined}
+              aria-expanded={item.target.kind === 'more' ? moreOpen : undefined}
+              onClick={() => openTarget(item.target)}
+            >
+              <span className="ic" aria-hidden="true">
+                <Icon name={item.icon} size={20} />
+                {item.badge != null && <span className="vp-bottombar-badge">{item.badge}</span>}
+              </span>
+              <span className="lbl">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
-      {anlage && moreOpen && (
+      {moreOpen && (
         // The "Mehr" sheet: every remaining area, grouped and colour-tagged
         // exactly like the sidebar - nothing is hidden, only folded away.
         <>
@@ -531,23 +559,29 @@ export function AppShell({
                 <Icon name="x" size={20} />
               </button>
             </div>
-            {moreSheetItems(anlage.sidebar).map((group) => (
+            {sheetGroups.map((group) => (
               <div className="vp-sheet-group" key={group.key}>
                 <div className={`vp-nav-group-label${group.tone ? ` tone-${group.tone}` : ''}`}>
                   {group.tone && <span className="vp-mode-dot" aria-hidden="true" />}
                   {group.label}
                 </div>
-                {group.items.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    className={`vp-sheet-item${anlage.activeKey === item.key ? ' active' : ''}`}
-                    onClick={() => openTarget(item.target)}
-                  >
-                    <Icon name={item.icon} size={18} />
-                    {item.label}
-                  </button>
-                ))}
+                {group.items.map((item) => {
+                  const active = anlage ? anlage.activeKey === item.key : page === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={`vp-sheet-item${active ? ' active' : ''}`}
+                      onClick={() => openTarget(item.target)}
+                    >
+                      <Icon name={item.icon} size={18} />
+                      {item.label}
+                      {item.badge != null && (
+                        <span className="vp-sheet-badge">{item.badge}</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             ))}
           </div>

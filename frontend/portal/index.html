@@ -2,7 +2,13 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      viewport-fit=cover ist die Voraussetzung dafuer, dass `env(safe-area-inset-*)`
+      ueberhaupt einen Wert liefert (Mobil-Umbau Stufe 1). Ohne sie saesse die
+      Bottom-Bar als installierte Web-App im iPhone-Home-Indicator, obwohl das
+      Polster im CSS laengst steht.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>VoltPilot EMS</title>
     <!--

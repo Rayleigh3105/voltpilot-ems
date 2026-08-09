@@ -9,7 +9,10 @@
  * 2026-07-30) plus
  * **one group per active mode profile** (`Modus · <Name>`, colour-tagged).
  * The v2 "Mehr ▾" popover and the retired U1 tab strip are gone; phones get a
- * 5-slot bottom bar whose last slot opens a sheet with everything else.
+ * bottom bar whose last slot opens a sheet with everything else — on the Anlage
+ * level (`bottomBarSlots`/`moreSheetItems`) AND one level up
+ * (`fleetBarSlots`/`fleetSheetGroups`, Mobil-Umbau Stufe 1), so the thumb
+ * pattern survives leaving the plant and the phone needs no hamburger at all.
  *
  * Pure + deterministic (the `betriebsart.ts`/`surface.ts` precedent) — no
  * React, no network. The three laws it encodes:
@@ -40,7 +43,7 @@
  * discipline).
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import type { AnlagenSub, PageId } from './nav';
+import { PLATFORM_PAGES, type AnlagenSub, type PageId } from './nav';
 import type { ActiveMode, AnlageSurface, DeepViewId, ModeKind } from './surface';
 
 /**
@@ -48,13 +51,15 @@ import type { ActiveMode, AnlageSurface, DeepViewId, ModeKind } from './surface'
  * top-level page (the market mode's Marktpreise/Prognosequalität, whose routes
  * predate the Anlage subpages); `help` opens the shell's Hilfe panel (there is
  * deliberately no invented support address — see `HELP_TEXT`); `more` opens the
- * phone sheet.
+ * phone sheet; `action` is a shell ACTION rather than a destination — the two
+ * top-bar buttons that the phone moves into that sheet (Mobil-Umbau Stufe 1).
  */
 export type NavTarget =
   | { kind: 'sub'; sub: AnlagenSub | null }
   | { kind: 'page'; page: PageId }
   | { kind: 'help' }
-  | { kind: 'more' };
+  | { kind: 'more' }
+  | { kind: 'action'; action: 'add-anlage' | 'logout' };
 
 /** The colour key of a mode group's dot; resolved to a token in Shell.css. */
 export type ModeTone = 'markt' | 'peak' | 'eigen' | 'atyp' | 'automation';
@@ -161,6 +166,14 @@ function baseItems(
  * CONTAINER opened from the Steuerung capsule, so the foot no longer carries a
  * `profile` entry. Steuerung remains the ONE door to the modes (base group).
  */
+const HELP_ITEM: SidebarItem = {
+  key: 'hilfe',
+  label: 'Hilfe & Kontakt',
+  icon: 'help-circle',
+  target: { kind: 'help' },
+  badge: null,
+};
+
 function footItems(): SidebarItem[] {
   return [
     // Steuerbare Verbraucher (docs/verbrauchssteuerung.md §14.1): a bookmarkable
@@ -168,7 +181,7 @@ function footItems(): SidebarItem[] {
     // than a permanent main nav entry. Keeps the base group the fixed areas.
     { key: 'verbraucher', label: 'Verbraucher', icon: 'zap', target: { kind: 'sub', sub: 'verbraucher' }, badge: null },
     { key: 'technik', label: 'Einstellungen', icon: 'settings', target: { kind: 'sub', sub: 'technik' }, badge: null },
-    { key: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle', target: { kind: 'help' }, badge: null },
+    HELP_ITEM,
   ];
 }
 
@@ -302,54 +315,227 @@ export function anlageSidebar(
   return { groups, foot: footItems() };
 }
 
-/** The bottom-bar keys, in order — the four core areas plus the Mehr sheet.
- *  Owner Q3: the Historie slot the Live-Daten merge freed now carries its BASE
- *  world „Messwerte" (every „Verlauf →" jump lands there — one thumb away);
- *  „Erlöse" is mode-bound and therefore travels in the Mehr sheet. */
-const BOTTOM_KEYS = ['cockpit', 'messwerte', 'steuerung', 'anlagen-modell'] as const;
+/**
+ * The order in which the phone bar hands out its four slots — the Mobil-Umbau
+ * Stufe 1 re-belegung (concept `data/vp-mobile-views-x1`, Captain-Go
+ * 09.08.2026). **The bar carries the DAILY questions**: „Was ist jetzt?"
+ * (Cockpit) · „Was macht die Batterie heute?" (Fahrplan) · „Was war?"
+ * (Messwerte) · „Was verdiene ich?" (Erlöse). Steuerung and Anlagen-Modell are
+ * setup/trust surfaces — important, but not daily — so they follow in the list
+ * and normally travel in the Mehr sheet.
+ *
+ * **The belegung stays DERIVED, never hard.** Fahrplan exists only on a plant
+ * with a storage, Erlöse only with a money mode (`surface.ts`), so a plant
+ * without either automatically moves Steuerung/Anlagen-Modell up — no empty
+ * slot, and no special case in the shell.
+ *
+ * The lookup spans BASE *and* mode groups on purpose: on a DV park without a
+ * storage the Fahrplan is a mode entry, and it deserves its slot wherever it
+ * is mounted.
+ */
+const BOTTOM_PRIORITY = [
+  'cockpit',
+  'fahrplan',
+  'messwerte',
+  'erloese',
+  'steuerung',
+  'anlagen-modell',
+] as const;
+
+/** Four areas plus „Mehr" — the fifth tile is always the sheet. */
+const BOTTOM_SLOTS = 4;
 
 /** Shorter phone labels; the sidebar keeps the full words. */
 const BOTTOM_LABELS: Record<string, string> = {
   cockpit: 'Cockpit',
+  fahrplan: 'Fahrplan',
   messwerte: 'Messwerte',
+  erloese: 'Erlöse',
   steuerung: 'Steuerung',
   'anlagen-modell': 'Anlage',
 };
 
-/**
- * The phone bottom bar: EXACTLY five slots —
- * Cockpit · Messwerte · Steuerung · Anlage · Mehr. The core areas are always
- * one thumb away; nothing hides behind a hamburger.
- */
-export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
-  const base = sidebar.groups[0]?.items ?? [];
-  const slots = BOTTOM_KEYS.map((key) => {
-    const item = base.find((i) => i.key === key);
-    return item ? { ...item, label: BOTTOM_LABELS[key] ?? item.label } : null;
-  }).filter((i): i is SidebarItem => i != null);
-  slots.push({ key: 'more', label: 'Mehr', icon: 'more-horizontal', target: { kind: 'more' }, badge: null });
-  return slots;
+const MORE_ITEM: SidebarItem = {
+  key: 'more',
+  label: 'Mehr',
+  icon: 'more-horizontal',
+  target: { kind: 'more' },
+  badge: null,
+};
+
+/** Every navigable entry of the Anlage nav — base group AND mode groups. */
+function navItems(sidebar: AnlageSidebar): SidebarItem[] {
+  return sidebar.groups.flatMap((g) => g.items);
 }
 
 /**
- * The "Mehr" sheet: everything the bottom bar does not carry, grouped and
- * colour-tagged exactly like the sidebar — the base remainder (the bar carries
- * the four fixed areas, so this is „Erlöse" plus the derived base views:
- * Fahrplan, Marktpreise, Prognosequalität), the mode groups, and a trailing group with the entries that
- * have no sidebar home (Wetter) plus the foot (Einstellungen · Hilfe & Kontakt).
+ * Which keys the bar really carries — ONE derivation, read by the bar AND by
+ * the sheet, so the two can never claim the same entry (or drop one).
  */
-export function moreSheetItems(sidebar: AnlageSidebar): SidebarGroup[] {
-  const inBottom = new Set<string>(BOTTOM_KEYS);
+function bottomKeys(sidebar: AnlageSidebar): string[] {
+  const present = new Set(navItems(sidebar).map((i) => i.key));
+  return BOTTOM_PRIORITY.filter((k) => present.has(k)).slice(0, BOTTOM_SLOTS);
+}
+
+/**
+ * The phone bottom bar of one Anlage: up to four derived areas plus the Mehr
+ * sheet. The daily areas are always one thumb away; nothing hides behind a
+ * hamburger (the phone has none since Stufe 1).
+ */
+export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
+  const items = navItems(sidebar);
+  const keys = bottomKeys(sidebar);
+  const slots = keys
+    .map((key) => items.find((i) => i.key === key))
+    .filter((i): i is SidebarItem => i != null)
+    .map((i) => ({ ...i, label: BOTTOM_LABELS[i.key] ?? i.label }));
+  // Falls die Steuerung ins Blatt fällt, wandert ihr Abzeichen sichtbar auf
+  // „Mehr" — sonst verschwände der einzige Hinweis auf Handlungsbedarf hinter
+  // einer geschlossenen Klappe.
+  const hidden = keys.includes('steuerung')
+    ? null
+    : items.find((i) => i.key === 'steuerung') ?? null;
+  slots.push({ ...MORE_ITEM, badge: hidden?.badge ?? null });
+  return slots;
+}
+
+/** What travels into the sheet BESIDES the areas of the current level. */
+export interface ShellExtras {
+  /** Portal-Admin: the Plattform group travels into the sheet (no hamburger). */
+  isAdmin?: boolean;
+  /** The single-Anlage customer's „＋ Anlage hinzufügen" (a top-bar button on
+   *  wider screens, a sheet entry on the phone). */
+  showAddAnlage?: boolean;
+}
+
+function accountItems(extras: ShellExtras): SidebarItem[] {
+  const items: SidebarItem[] = [];
+  if (extras.showAddAnlage) {
+    items.push({
+      key: 'add-anlage',
+      label: 'Anlage hinzufügen',
+      icon: 'plus',
+      target: { kind: 'action', action: 'add-anlage' },
+      badge: null,
+    });
+  }
+  items.push({
+    key: 'logout',
+    label: 'Abmelden',
+    icon: 'log-out',
+    target: { kind: 'action', action: 'logout' },
+    badge: null,
+  });
+  return items;
+}
+
+/** The Plattform group as sheet entries — a PROJECTION of `PLATFORM_PAGES`. */
+function platformGroup(): SidebarGroup {
+  return {
+    key: 'plattform',
+    label: 'Plattform',
+    tone: null,
+    items: PLATFORM_PAGES.map((p) => ({
+      key: p.id,
+      label: p.label,
+      icon: p.icon,
+      target: { kind: 'page', page: p.id } as NavTarget,
+      badge: null,
+    })),
+  };
+}
+
+/**
+ * The "Mehr" sheet of one Anlage: everything the bottom bar does not carry,
+ * grouped and colour-tagged exactly like the sidebar — the base remainder, the
+ * mode remainder, the Plattform group for an operator, and a trailing group
+ * with the entries that have no sidebar home (Wetter), the foot
+ * (Einstellungen · Hilfe & Kontakt) and the two top-bar actions the phone
+ * folds in here (＋ Anlage · Abmelden).
+ */
+export function moreSheetItems(
+  sidebar: AnlageSidebar,
+  extras: ShellExtras = {},
+): SidebarGroup[] {
+  const inBottom = new Set(bottomKeys(sidebar));
   const groups: SidebarGroup[] = [];
   const [base, ...modes] = sidebar.groups;
   const rest = (base?.items ?? []).filter((i) => !inBottom.has(i.key));
   if (rest.length > 0) groups.push({ key: 'base', label: BASE_GROUP_LABEL, tone: null, items: rest });
-  groups.push(...modes);
+  for (const mode of modes) {
+    const items = mode.items.filter((i) => !inBottom.has(i.key));
+    if (items.length > 0) groups.push({ ...mode, items });
+  }
+  if (extras.isAdmin) groups.push(platformGroup());
   groups.push({
     key: 'mehr',
     label: 'Mehr',
     tone: null,
-    items: [...SHEET_ONLY_ITEMS, ...sidebar.foot],
+    items: [...SHEET_ONLY_ITEMS, ...sidebar.foot, ...accountItems(extras)],
+  });
+  return groups;
+}
+
+/**
+ * What the FLEET level (no single Anlage in scope) offers — the same bar
+ * mechanics one level up (concept §3: „dieselbe Bar auf Flotten-Ebene"), so the
+ * thumb pattern survives the level change instead of falling back to a
+ * hamburger.
+ */
+export interface FleetNavInput {
+  /** Betreiber frame: the Portfolio landing replaces „Übersicht" (U5). */
+  showPortfolio: boolean;
+  /** Only when at least one Anlage has a money mode (PR G). */
+  showPortfolioErloese: boolean;
+  /** Fleet customers + admins; a single-Anlage endkunde has no Übersicht. */
+  showOverview: boolean;
+  /** Drives singular/plural of the Anlagen slot; null = not loaded yet. */
+  siteCount: number | null;
+}
+
+/** The visible top-level entries, in the order the bar hands out its slots. */
+function fleetItems(input: FleetNavInput): SidebarItem[] {
+  const entry = (page: PageId, label: string, icon: IconName): SidebarItem => ({
+    key: page,
+    label,
+    icon,
+    target: { kind: 'page', page },
+    badge: null,
+  });
+  const items: SidebarItem[] = [];
+  if (input.showPortfolio) items.push(entry('portfolio', 'Portfolio', 'building'));
+  if (input.showOverview) items.push(entry('uebersicht', 'Übersicht', 'dashboard'));
+  items.push(
+    entry('anlagen', input.siteCount != null && input.siteCount > 1 ? 'Anlagen' : 'Anlage', 'sun'),
+  );
+  if (input.showPortfolio) {
+    items.push(entry('portfolio-messwerte', 'Messwerte', 'activity'));
+    if (input.showPortfolioErloese) items.push(entry('portfolio-erloese', 'Erlöse', 'euro'));
+  }
+  return items;
+}
+
+/** The phone bottom bar one level up: Übersicht · Anlagen · Mehr (derived). */
+export function fleetBarSlots(input: FleetNavInput): SidebarItem[] {
+  return [...fleetItems(input).slice(0, BOTTOM_SLOTS), MORE_ITEM];
+}
+
+/** The fleet-level „Mehr" sheet — the complement of `fleetBarSlots`. */
+export function fleetSheetGroups(
+  input: FleetNavInput,
+  extras: ShellExtras = {},
+): SidebarGroup[] {
+  const groups: SidebarGroup[] = [];
+  const rest = fleetItems(input).slice(BOTTOM_SLOTS);
+  if (rest.length > 0) {
+    groups.push({ key: 'ebene', label: 'Alle Anlagen', tone: null, items: rest });
+  }
+  if (extras.isAdmin) groups.push(platformGroup());
+  groups.push({
+    key: 'mehr',
+    label: 'Mehr',
+    tone: null,
+    items: [HELP_ITEM, ...accountItems(extras)],
   });
   return groups;
 }
