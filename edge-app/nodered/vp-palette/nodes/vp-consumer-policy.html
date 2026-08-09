@@ -1,0 +1,46 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-consumer-policy', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true },
+      entity: { value: '' },
+      command: { value: 'on_off' },
+      ttl_s: { value: 45 },
+      renew_s: { value: 15 },
+      off_delay_s: { value: 15 },
+      requirements: { value: [] },
+      flowId: { value: '' },
+      flowVersion: { value: 1 },
+      nodeId: { value: '' }
+    },
+    inputs: 1,
+    outputs: 0,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-consumer-policy'; },
+    paletteLabel: 'vp-consumer-policy'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-consumer-policy">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-consumer-policy">
+  <p>GENERIERTER Verbraucherregel-Knoten (vom Policy-Compiler der Cloud
+  erzeugt, nie von Hand gepflegt): wertet die kompilierte reaktive Regel
+  lokal aus (Dreizustandslogik, Signal-Frische, Hysterese, vorberechnete
+  Preisfenster, Ausschaltverzögerung) und veröffentlicht solange die
+  Bedingung gilt einen WUNSCH auf
+  <code>edge/entities/&lt;entity&gt;/desired</code>. Der Core-Agent
+  arbitriert und klemmt durch die Guard-Kette; ein Pflichtlauf trägt das
+  begrenzte Override (max. 4 h) mit kurzer, laufend erneuerter TTL.</p>
+</script>

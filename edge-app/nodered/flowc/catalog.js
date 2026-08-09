@@ -584,8 +584,12 @@ const TYPES = {
       if (!p || COMMANDS.indexOf(p.command) < 0) errs.push('command fehlt oder ist ungültig');
       const ttl = p && Math.floor(Number(p.ttl_s));
       if (!(ttl >= 1 && ttl <= 86400)) errs.push('ttl_s fehlt oder liegt außerhalb 1..86400');
-      if (p && p.override !== undefined && typeof p.override !== 'boolean') {
-        errs.push('override muss boolesch sein');
+      // D-19: the D-5 override lever is RESERVED for the generated consumer
+      // artifact (vp.consumer.reactive stamps it from must_run). A catalog flow
+      // carrying it - even override:false - is refused, so no customer document
+      // can ever outrank the market plan through this node.
+      if (p && p.override !== undefined) {
+        errs.push('override ist der generierten Verbraucherregel vorbehalten');
       }
       return errs;
     },
@@ -740,7 +744,180 @@ const TYPES = {
   'vp.strategy.market': strategyType('Marktoptimierung', STRATEGY_INPUTS.market),
   'vp.strategy.peakshaving': strategyType('Lastspitzenkappung', STRATEGY_INPUTS.peakshaving),
   'vp.strategy.atypical-grid': strategyType('Atypische Netznutzung', STRATEGY_INPUTS.atypicalGrid),
+
+  // vp.consumer.reactive (D-19, Verbrauchssteuerung Inkrement 4 §13.2): the
+  // GENERATED-ONLY reactive consumer-policy node. The cloud policy compiler is
+  // its single author (compile.js refuses it in a document without the
+  // server-stamped consumer-policy origin); it never appears in the editor
+  // palette (api/portal catalogs mark it generated:true). It compiles to ONE
+  // vp-consumer-policy palette node (0.5.0) that evaluates the compiled spec
+  // locally - three-state logic (unknown NEVER starts), per-signal max_age_s
+  // freshness, hysteresis via reset_value, precomputed UTC price windows (D1:
+  // after the last window the condition is `unknown`) and an off-delay
+  // debounce on ending - and, while active, publishes a desired with the SAME
+  // shape as vp-desired, with `override` stamped from must_run (D-5 boost,
+  // short continuously renewed TTL; the core's 4-h cap holds).
+  'vp.consumer.reactive': {
+    version: '1.0.0',
+    runtimes: ['edge'],
+    minPalette: '0.5.0',
+    triggerable: true,
+    ports: { in: { trigger: { type: 'event' } }, out: {} },
+    validate(p) {
+      return validateReactiveSpec(p);
+    },
+    requires(p) {
+      return [{ entity_id: p.entity_id, capabilities: ['actuate:' + p.command] }];
+    },
+    claims(p) {
+      return [{ entity_id: p.entity_id, commands: [p.command] }];
+    },
+    compile(ctx, node) {
+      const p = node.parameters;
+      return [{
+        id: ctx.nrId(node.id),
+        type: 'vp-consumer-policy',
+        z: ctx.tabId,
+        name: node.label || 'Verbraucherregel',
+        core: ctx.coreId,
+        entity: p.entity_id,
+        command: p.command,
+        ttl_s: Math.floor(Number(p.ttl_s)),
+        renew_s: Math.floor(Number(p.renew_s)),
+        off_delay_s: Math.floor(Number(p.off_delay_s)),
+        requirements: p.requirements,
+        flowId: ctx.flowId,
+        flowVersion: ctx.flowVersion,
+        nodeId: node.id,
+      }];
+    },
+  },
 };
+
+// --- vp.consumer.reactive spec validation (shared shape with the cloud
+// policy compiler and the vp-consumer-policy runtime; reactive-eval.js is the
+// evaluation twin). Limits mirror the consumer-policy contract (§10).
+const REACTIVE_COMMANDS = ['on_off', 'setpoint_kw', 'mode'];
+const REACTIVE_OPS = ['lt', 'lte', 'gt', 'gte', 'eq', 'ne'];
+const REACTIVE_SOURCES = ['site', 'entity'];
+const MAX_REQUIREMENTS = 32;
+const MAX_TREE_DEPTH = 4;
+const MAX_TREE_NODES = 24;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+function validateReactiveSpec(p) {
+  const errs = [];
+  if (!p) return ['parameters fehlen'];
+  if (!ID_RE.test(p.entity_id || '')) errs.push('entity_id fehlt oder ist ungültig');
+  if (REACTIVE_COMMANDS.indexOf(p.command) < 0) errs.push('command fehlt oder ist ungültig');
+  const ttl = Math.floor(Number(p.ttl_s));
+  if (!(ttl >= 1 && ttl <= 86400)) errs.push('ttl_s fehlt oder liegt außerhalb 1..86400');
+  const renew = Math.floor(Number(p.renew_s));
+  if (!(renew >= 1 && renew <= 3600)) errs.push('renew_s fehlt oder liegt außerhalb 1..3600');
+  if (errs.length === 0 && renew * 2 > ttl) {
+    errs.push('renew_s muss höchstens die halbe ttl_s sein (sonst reißt die Erneuerungskette)');
+  }
+  const offDelay = Math.floor(Number(p.off_delay_s));
+  if (!(offDelay >= 0 && offDelay <= 3600)) errs.push('off_delay_s fehlt oder liegt außerhalb 0..3600');
+  if (!Array.isArray(p.requirements) || p.requirements.length < 1
+      || p.requirements.length > MAX_REQUIREMENTS) {
+    errs.push('requirements fehlt oder ist leer');
+    return errs;
+  }
+  const seenIds = {};
+  for (const req of p.requirements) {
+    if (!req || typeof req !== 'object') {
+      errs.push('requirement ist kein Objekt');
+      continue;
+    }
+    if (!ID_RE.test(req.id || '')) errs.push('requirement.id fehlt oder ist ungültig');
+    else if (seenIds[req.id]) errs.push('requirement.id doppelt: ' + req.id);
+    else seenIds[req.id] = true;
+    if (typeof req.must_run !== 'boolean') errs.push('requirement.must_run fehlt');
+    if (!validReactiveValue(p.command, req.value)) {
+      errs.push('requirement.value passt nicht zum command ' + p.command);
+    }
+    const counter = { nodes: 0 };
+    validateConditionTree(req.condition, 1, counter, errs);
+    if (counter.nodes > MAX_TREE_NODES) errs.push('condition hat zu viele Elemente');
+  }
+  return errs;
+}
+
+function validReactiveValue(command, v) {
+  switch (command) {
+    case 'on_off':
+      return typeof v === 'boolean';
+    case 'setpoint_kw':
+      return num(v) && v >= 0;
+    case 'mode':
+      return typeof v === 'string' && v.length >= 1 && v.length <= 64;
+    default:
+      return false;
+  }
+}
+
+function validateConditionTree(cond, depth, counter, errs) {
+  counter.nodes++;
+  if (!cond || typeof cond !== 'object') {
+    errs.push('condition fehlt oder ist kein Objekt');
+    return;
+  }
+  if (depth > MAX_TREE_DEPTH) {
+    errs.push('condition ist zu tief verschachtelt');
+    return;
+  }
+  const groups = ['all', 'any', 'not', 'windows', 'signal']
+    .filter((k) => cond[k] !== undefined);
+  if (groups.length !== 1) {
+    errs.push('condition muss genau eines von all/any/not/windows/signal tragen');
+    return;
+  }
+  if (Array.isArray(cond.all) || Array.isArray(cond.any)) {
+    const list = cond.all || cond.any;
+    if (list.length < 1) errs.push('leere Bedingungsgruppe');
+    for (const child of list) validateConditionTree(child, depth + 1, counter, errs);
+    return;
+  }
+  if (cond.not !== undefined) {
+    validateConditionTree(cond.not, depth + 1, counter, errs);
+    return;
+  }
+  if (cond.windows !== undefined) {
+    // Precompiled UTC windows (D1). Chronological, non-overlapping pairs.
+    if (!Array.isArray(cond.windows) || cond.windows.length < 1) {
+      errs.push('windows fehlt oder ist leer');
+      return;
+    }
+    let last = null;
+    for (const w of cond.windows) {
+      if (!Array.isArray(w) || w.length !== 2
+          || !ISO_RE.test(String(w[0])) || !ISO_RE.test(String(w[1]))) {
+        errs.push('window muss ein [von, bis]-Paar aus RFC-3339-Zeitstempeln sein');
+        return;
+      }
+      const from = Date.parse(w[0]);
+      const to = Date.parse(w[1]);
+      if (!(from < to)) errs.push('window: von muss vor bis liegen');
+      if (last !== null && from < last) errs.push('windows müssen chronologisch und überlappungsfrei sein');
+      last = to;
+    }
+    return;
+  }
+  // Local signal leaf.
+  if (typeof cond.signal !== 'string' || cond.signal.length === 0) {
+    errs.push('signal fehlt');
+    return;
+  }
+  if (REACTIVE_SOURCES.indexOf(cond.source) < 0) errs.push('signal.source muss site oder entity sein');
+  if (!CHANNEL_RE.test(cond.channel || '')) errs.push('signal.channel fehlt oder ist ungültig');
+  if (REACTIVE_OPS.indexOf(cond.op) < 0) errs.push('signal.op ist unbekannt');
+  if (!(num(cond.value) || typeof cond.value === 'boolean')) errs.push('signal.value fehlt');
+  if (cond.reset_value !== undefined && !num(cond.reset_value)) errs.push('signal.reset_value muss eine Zahl sein');
+  if (!(Number.isInteger(cond.max_age_s) && cond.max_age_s >= 1 && cond.max_age_s <= 86400)) {
+    errs.push('signal.max_age_s fehlt oder liegt außerhalb 1..86400 (ein lokales Signal ohne Frische-Fenster startet nie ehrlich)');
+  }
+}
 
 // strategyType: a strategy node DELEGATES its entity to the cloud
 // co-optimizer (claims delegated:true); on the edge its compiled form is a

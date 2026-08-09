@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "7d2f1a9c-3b45-4e67-89ab-cdef01234568",
+  "flow_version": 1,
+  "name": "Verbraucherregel ohne Herkunft",
+  "description": "INVALID (D-19): ein vp.consumer.reactive-Knoten in einem Dokument OHNE den server-gestempelten consumer-policy-origin. Der Typ ist der generierten Verbraucherregel vorbehalten - Validator-Zwillinge und flowc weisen ihn ab (das JSON-Schema allein kann diese Regel nicht ausdrücken, deshalb ist die Datei schema-konform und trotzdem ungültig).",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "draft",
+  "nodes": [
+    {
+      "id": "reaktiv",
+      "type": "vp.consumer.reactive",
+      "type_version": "1.0.0",
+      "parameters": {
+        "entity_id": "wallbox-1",
+        "command": "on_off",
+        "ttl_s": 45,
+        "renew_s": 15,
+        "off_delay_s": 15,
+        "requirements": [
+          {
+            "id": "charge-when-connected",
+            "must_run": true,
+            "value": true,
+            "condition": {
+              "signal": "consumer.vehicle_connected",
+              "source": "entity",
+              "channel": "vehicle_connected",
+              "op": "eq",
+              "value": 1,
+              "max_age_s": 20
+            }
+          }
+        ]
+      },
+      "claims": [
+        { "entity_id": "wallbox-1", "commands": ["on_off"] }
+      ]
+    }
+  ],
+  "edges": [],
+  "triggers": [
+    { "id": "tick", "kind": "interval", "every_s": 15 }
+  ]
+}
