@@ -11,6 +11,7 @@ Formulation (per slot t, dt = 0.25 h):
     minimize   sum_t  (import_price_t * import_t - export_value_t * export_t) * dt / 1000
                       + c_wear/2 * (charge_t + discharge_t) * dt   (battery wear, see below)
                       + epsilon * curtail_t                        (tie-break, see below)
+                      + epsilon_early * (t/T) * charge_t           (charge-timing tie-break, see below)
                - V_end * (soc_T - soc_0)                           (terminal energy value, see below)
     where      import_t - export_t = load_t - pv_t + curtail_t + charge_t - discharge_t
     s.t.       0 <= charge_t    <= max_charge    * is_charging_t
@@ -148,6 +149,21 @@ Design decisions, deliberately:
   PREFER that pointless wear. The tie-break is the same epsilon scale
   (~0.008 EUR/MWh equivalent), so real economics are never distorted - it
   only breaks exact ties toward the battery-friendly plan.
+- **A THIRD tie-break on charge TIMING** (``EARLY_CHARGE_TIEBREAK_EUR_PER_KW``,
+  a per-slot penalty on charge that grows with the slot's horizon position;
+  captain decision 2026-08-09 "bei gleichen Kosten so frueh wie moeglich
+  laden") places an otherwise cost-equal charge as EARLY as possible. A long
+  free/negative-price PV-surplus window is a pure timing tie - filling the
+  battery early or late costs the same and HiGHS put the fill at the window's
+  END (Anlage Pilsting). Early filling is strictly more ROBUST (clouds arriving
+  before forecast still find a full battery) and, on a plant whose curtailment
+  is not yet released, immediately cuts the real loss-making export at negative
+  prices by the charge power. It is 10x SMALLER than the two siblings so it
+  stays cleanly sub-dominant: prefer-idle decides WHETHER to cycle, early-charge
+  only WHEN a justified charge is placed - and being a positive penalty on
+  charge (minimized at charge = 0) it pushes the same way as prefer-idle, so it
+  can never reward spurious cycling. Discharge is untouched. Full magnitude /
+  no-circular-effect argument at the constant.
 
 - **The per-site grid-charging switch (``netzladen_erlaubt``, captain decision
   2026-07-07; PV-bus semantics per FK3, captain decision 2026-07-16)** is
@@ -262,6 +278,40 @@ CURTAIL_TIEBREAK_EUR_PER_KW = 1e-6
 # slot): strictly prefer an idle battery when cycling moves no money. See the
 # module docstring for why curtailment makes this necessary.
 BATTERY_WEAR_TIEBREAK_EUR_PER_KW = 1e-6
+
+# Tie-break penalty on the TIMING of battery charge (captain decision
+# 2026-08-09: "bei gleichen Kosten so frueh wie moeglich laden"). A per-slot
+# penalty on charge that GROWS linearly with the slot's position in the horizon
+# (weight t / max(n-1, 1), so 0 at the first slot and this value at the last):
+# under otherwise cost-equal plans the earliest charge placement wins. It fixes
+# a real degeneracy (Anlage Pilsting): a long free/negative-price PV-surplus
+# window is a pure timing tie - filling the battery early or late costs exactly
+# the same, and HiGHS put the fill at the END of the window. Early filling is
+# strictly more ROBUST: if clouds arrive earlier than forecast the battery is
+# already full (the morning surplus was captured, not wasted), and on a plant
+# whose curtailment is not yet certified/released the surplus is really being
+# EXPORTED at negative prices, so charging now cuts that loss-making feed-in by
+# the charge power immediately.
+#
+# Magnitude and the no-circular-effect argument (this is a THIRD tie-break next
+# to the two above, and its interplay must stay deterministic):
+# - It is 10x SMALLER than the two 1e-6 siblings, so at its maximum (last slot)
+#   it is a strict fraction of the prefer-idle penalty regardless of horizon
+#   length. That keeps the clean separation of duties: prefer-idle decides
+#   WHETHER to cycle (its 1e-6 dominates), early-charge only decides WHEN a
+#   charge that is otherwise happening is placed. There is no circular effect
+#   because early-charge is a POSITIVE penalty on charge (minimized at
+#   charge = 0), so it pushes in the SAME direction as prefer-idle - it can
+#   never reward spurious cycling, only front-load a charge the economics have
+#   already justified. Discharge is deliberately untouched (only charge timing
+#   is steered).
+# - Its price-equivalent at the last slot is 1e-7 / (dt/1000) = ~4e-4 EUR/MWh,
+#   two orders of magnitude below the ~0.01 EUR/MWh resolution of real
+#   day-ahead prices, so a genuinely cheaper later slot (beyond that threshold)
+#   still wins - real economics are never overridden, only exact ties broken.
+#   The MIP gap is 1e-9 (below), so a realistic fill (tens of kW over several
+#   slots, ~1e-6 EUR of accumulated weight difference) is resolved decisively.
+EARLY_CHARGE_TIEBREAK_EUR_PER_KW = 1e-7
 
 # MIP optimality tolerances (scout vp-fahrplan-idle-n7, "latent defect found in
 # passing"). HiGHS defaults to mip_rel_gap = 1e-4, i.e. on a ~10 EUR objective
@@ -465,6 +515,7 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             + wear_eur_per_kwh * (m.charge[t] + m.discharge[t]) * dt
             + CURTAIL_TIEBREAK_EUR_PER_KW * m.curtail[t]
             + BATTERY_WEAR_TIEBREAK_EUR_PER_KW * (m.charge[t] + m.discharge[t])
+            + EARLY_CHARGE_TIEBREAK_EUR_PER_KW * (t / max(n - 1, 1)) * m.charge[t]
             for t in m.T
         )
         + peak_cost

@@ -82,6 +82,7 @@ from voltpilot_optimization.modules import SolverModule, select_modules
 from voltpilot_optimization.solver import (
     BATTERY_WEAR_TIEBREAK_EUR_PER_KW,
     CURTAIL_TIEBREAK_EUR_PER_KW,
+    EARLY_CHARGE_TIEBREAK_EUR_PER_KW,
     _solve,
 )
 
@@ -263,6 +264,12 @@ def build_co_model(
             + CURTAIL_TIEBREAK_EUR_PER_KW * sum(m.curtail[p, t] for p in P)
             + BATTERY_WEAR_TIEBREAK_EUR_PER_KW
             * sum(m.charge[e, t] + m.discharge[e, t] for e in E)
+            # Charge-timing tie-break (early-charge, captain 2026-08-09), the
+            # summation-generalized twin of the v1 term - kept in lockstep so
+            # the golden suite stays exact (see solver.py for the rationale).
+            + EARLY_CHARGE_TIEBREAK_EUR_PER_KW
+            * (t / max(n - 1, 1))
+            * sum(m.charge[e, t] for e in E)
             for t in m.T
         )
         + module_cost
