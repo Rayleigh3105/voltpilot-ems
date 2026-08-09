@@ -338,14 +338,123 @@
   cursor: pointer;
 }
 
-/* ---------- Phone bottom bar: five slots ---------- */
+/* ---------- Phone top bar: the plant identity block (Mobil-Stufe 1) ----------
+   Desktop/tablet keep the row they always were (name, then the health pill) —
+   the wrapper only adds the gap the top bar used to provide between the two,
+   so nothing moves above 720px. */
+.vp-topbar-anlage {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+/* Der Wechsler ist AUSSCHLIESSLICH die Telefon-Geste. Ohne diese zwei Zeilen
+   stünde das `<select>` oberhalb von 720px ungestylt in der Kopfzeile und
+   fräße dem Anlagen-Namen die Breite weg (im Browser bei 1440/768 gemessen). */
+.vp-tb-switch,
+.vp-tb-caret {
+  display: none;
+}
+
+/* ---------- Phone bottom bar: up to four areas + Mehr ---------- */
 .vp-bottombar {
   display: none;
 }
 @media (max-width: 720px) {
+  /* The plant block becomes the identity: name as a tappable switcher, state
+     as its sub-line. „＋ Anlage" and „Abmelden" leave the bar for the sheet
+     (concept §3) — an Einmal-im-Leben action must not own the biggest tap
+     target of the chrome. */
+  .vp-app .vp-topbar-anlage {
+    position: relative;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    align-self: stretch;
+    gap: 0;
+  }
+  .vp-app .vp-topbar-anlage:focus-within {
+    border-radius: var(--vp-radius-sm);
+    box-shadow: 0 0 0 3px var(--vp-focus-ring);
+  }
+  /* An admin phone hides the breadcrumb to make room for the tenant switcher
+     (index.css). The plant NAME is not a breadcrumb though - it is the thing
+     the customer is looking at, so it stays. One specificity step above that
+     rule, because Shell.css loads FIRST (see the load-order note on top). */
+  .vp-app .vp-topbar .vp-topbar-anlage .crumbs {
+    display: flex;
+    gap: 0.25rem;
+  }
+  .vp-app .vp-topbar-anlage .here {
+    font-size: 1.02rem;
+  }
+  .vp-tb-caret {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--vp-text-gray);
+  }
+  /* The native picker is the best plant switcher a thumb can get. It covers
+     the WHOLE block, so the tap target is the full 68px top-bar height. */
+  .vp-tb-switch {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    font: inherit;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  /* The state is the sub-line, not a pill: dot + word + cause, no chrome. It
+     keeps its own hit area (and stays ABOVE the switcher overlay), so the
+     findings popover is still one tap away. */
+  .vp-app .vp-topbar-anlage .vp-healthbadge {
+    position: relative;
+    z-index: 2;
+    align-self: flex-start;
+    align-items: center;
+    max-width: 100%;
+    min-height: 20px;
+    padding: 0;
+    border: none;
+    background: none;
+    gap: 0.3rem;
+    font-weight: 500;
+  }
+  /* Der Zustands-Zeile so viel Trefferfläche geben, wie ohne Übergriff auf die
+     Namenszeile geht (≈37px). Sie ist die ZWEITE Handlung des Blocks — der
+     Wechsler darunter nimmt die ganzen 68px —, und ihre Aussage steht ohnehin
+     schon als Text da; der Klick öffnet nur die vollständige Befund-Liste. */
+  .vp-app .vp-topbar-anlage .vp-healthbadge::before {
+    inset: -6px -8px -11px;
+  }
+  /* The state WORD belongs in the sub-line (the pill drops it for room). */
+  .vp-app .vp-topbar-anlage .vp-healthbadge-lbl {
+    display: inline;
+  }
+  .vp-app .vp-topbar-anlage .vp-healthbadge-cause::before {
+    content: '· ';
+  }
+  .vp-app .vp-topbar-anlage .vp-healthbadge-caret {
+    display: none;
+  }
+  /* Both move into the Mehr sheet on a phone. */
+  .vp-app .vp-add-anlage-btn,
+  .vp-app .vp-logout-btn {
+    display: none;
+  }
+
   .vp-bottombar {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* The slot count is DERIVED (3 at fleet level, up to 5 in an Anlage), so
+       the track count follows it instead of hard-coding five. */
+    grid-template-columns: repeat(var(--vp-bar-slots, 5), minmax(0, 1fr));
     position: fixed;
     left: 0;
     right: 0;
@@ -354,7 +463,11 @@
     background: var(--vp-surface);
     border-top: 1px solid var(--vp-border);
     box-shadow: 0 -2px 12px rgba(30, 58, 95, 0.08);
+    /* Installed as a web app the bar would otherwise sit IN the home
+       indicator (and in the notch in landscape). */
     padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-left: env(safe-area-inset-left, 0);
+    padding-right: env(safe-area-inset-right, 0);
   }
   /* Room for the bar so the last card is never covered. */
   .vp-main.has-bottombar {
@@ -428,8 +541,9 @@
   border-top-left-radius: var(--vp-radius-lg);
   border-top-right-radius: var(--vp-radius-lg);
   box-shadow: var(--vp-shadow-md);
-  padding: var(--vp-space-3) var(--vp-space-3)
-    calc(var(--vp-space-5) + env(safe-area-inset-bottom, 0));
+  padding: var(--vp-space-3) calc(var(--vp-space-3) + env(safe-area-inset-right, 0))
+    calc(var(--vp-space-5) + env(safe-area-inset-bottom, 0))
+    calc(var(--vp-space-3) + env(safe-area-inset-left, 0));
 }
 .vp-helppanel {
   position: fixed;
@@ -499,6 +613,19 @@
 .vp-sheet-item.active {
   background: var(--vp-tint);
   color: var(--vp-primary-deep);
+}
+/* Falls die Steuerung ins Blatt gefallen ist, trägt ihre Zeile dort weiter das
+   Abzeichen (die Leiste zeigt es dann auf „Mehr"). */
+.vp-sheet-badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 0.45rem;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-tint);
+  color: var(--vp-primary-deep);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 /* ---------- Tablet: a 56px icon rail instead of a hamburger ----------

@@ -5,13 +5,15 @@ import {
   anlageSidebar,
   bottomBarSlots,
   BASE_GROUP_LABEL,
+  fleetBarSlots,
+  fleetSheetGroups,
   modeViewItems,
   moreSheetItems,
   resolveAnlage,
   type SidebarGroup,
   type SidebarItem,
 } from './anlageNav';
-import { MAIN_PAGES, type AnlagenSub } from './nav';
+import { MAIN_PAGES, PLATFORM_PAGES, type AnlagenSub } from './nav';
 import { anlageSurface, type AnlageSurface, type AnlageSurfaceInput } from './surface';
 
 /** Every AnlagenSub that exists - the "nothing is orphaned" ground truth. */
@@ -297,54 +299,291 @@ describe('anlageSidebar - mode groups are a projection, never a hardcoded list',
   });
 });
 
-describe('bottomBarSlots - exactly five, Mehr last', () => {
-  it('is Cockpit · Messwerte · Steuerung · Anlage · Mehr (owner Q3)', () => {
-    // Die Basis-Welt „Messwerte" nimmt den Platz, den der Live-Daten-Merge frei
-    // gemacht hat — jeder „Verlauf →"-Sprung landet dort, also einen Daumen
-    // entfernt. „Erlöse" ist modusgebunden und reist im Mehr-Blatt.
-    for (const surface of [MARKT, PRIVAT, null]) {
+/**
+ * Mobil-Umbau Stufe 1 (Konzept `data/vp-mobile-views-x1`, Captain-Go
+ * 09.08.2026): die Leiste trägt die TÄGLICHEN Fragen. Vorher hielt das
+ * Anlagen-Modell - eine Verifikations-Fläche, die man einmal ansieht - einen
+ * Prime-Slot, während Fahrplan und Erlöse hinter „Mehr" lagen.
+ */
+describe('bottomBarSlots - die tägliche Belegung, ABGELEITET', () => {
+  it('ist Cockpit · Fahrplan · Messwerte · Erlöse · Mehr, sobald es beides gibt', () => {
+    for (const surface of [MARKT, PEAK, ALLE]) {
       const slots = bottomBarSlots(anlageSidebar(surface));
       expect(slots).toHaveLength(5);
       expect(slots.map((s) => s.label)).toEqual([
         'Cockpit',
+        'Fahrplan',
         'Messwerte',
-        'Steuerung',
-        'Anlage',
+        'Erlöse',
         'Mehr',
       ]);
       expect(slots[4].target).toEqual({ kind: 'more' });
     }
   });
 
-  it('carries the Steuerung badge into the bar', () => {
-    const slots = bottomBarSlots(anlageSidebar(null, 4));
-    expect(slots.find((s) => s.key === 'steuerung')?.badge).toBe(4);
+  it('rückt Steuerung/Anlage nach, wo Fahrplan bzw. Erlöse fehlen - nie ein leerer Slot', () => {
+    // Speicher, aber kein Geld-Modus: der Fahrplan bleibt, die Erlöse-Welt gibt
+    // es gar nicht - also rückt die Steuerung nach.
+    expect(bottomBarSlots(anlageSidebar(PRIVAT)).map((s) => s.label)).toEqual([
+      'Cockpit',
+      'Fahrplan',
+      'Messwerte',
+      'Steuerung',
+      'Mehr',
+    ]);
+    // Weder Speicher noch Geld-Modus (auch die nie migrierte Anlage): beide
+    // Nachrücker ziehen ein. Die Leiste bleibt immer fünf Kacheln lang.
+    for (const surface of [anlageSurface({ entities: [PV_ONLY] }), null, undefined]) {
+      expect(bottomBarSlots(anlageSidebar(surface)).map((s) => s.label)).toEqual([
+        'Cockpit',
+        'Messwerte',
+        'Steuerung',
+        'Anlage',
+        'Mehr',
+      ]);
+    }
+  });
+
+  it('holt den Fahrplan auch aus einer MODUS-Gruppe in die Leiste', () => {
+    // Ein DV-Park ohne Speicher trägt den Fahrplan im Markt-Modus, nicht in der
+    // Basis - die tägliche Frage verdient ihren Platz, wo immer sie hängt.
+    const park = anlageSurface({
+      entities: [PV_ONLY],
+      config: { plantKind: 'direktvermarktung', tarifArt: 'fest' },
+    });
+    expect(anlageSidebar(park).groups[0].items.map((i) => i.key)).not.toContain('fahrplan');
+    expect(bottomBarSlots(anlageSidebar(park)).map((s) => s.label)).toEqual([
+      'Cockpit',
+      'Fahrplan',
+      'Messwerte',
+      'Erlöse',
+      'Mehr',
+    ]);
+  });
+
+  it('behält das Steuerungs-Abzeichen sichtbar - auf der Kachel oder auf „Mehr"', () => {
+    // In der Leiste: am eigenen Slot.
+    const inBar = bottomBarSlots(anlageSidebar(null, 4));
+    expect(inBar.find((s) => s.key === 'steuerung')?.badge).toBe(4);
+    expect(inBar.find((s) => s.key === 'more')?.badge).toBeNull();
+    // Fällt die Steuerung ins Blatt, wandert das Abzeichen sichtbar auf „Mehr" -
+    // sonst verschwände der einzige Hinweis auf Handlungsbedarf.
+    const inSheet = bottomBarSlots(anlageSidebar(MARKT, 2));
+    expect(inSheet.map((s) => s.key)).not.toContain('steuerung');
+    expect(inSheet.find((s) => s.key === 'more')?.badge).toBe(2);
+    // Und eine 0 wird auch hier nie zu einem entmutigenden Abzeichen.
+    expect(bottomBarSlots(anlageSidebar(MARKT, 0)).find((s) => s.key === 'more')?.badge).toBeNull();
   });
 });
 
 describe('moreSheetItems - everything the bottom bar does not carry', () => {
-  it('carries the derived base views, the mode groups (colour-tagged) and the foot', () => {
-    // Die Leiste trägt die vier FESTEN Bereiche, der Rest der Basis-Gruppe
-    // (Fahrplan/Marktpreise) landet im Blatt - also ist er am Telefon ebenso
-    // ohne Modus erreichbar.
+  it('carries the base remainder, the mode groups (colour-tagged) and the foot', () => {
     const groups = moreSheetItems(anlageSidebar(ALLE));
     expect(groups[0].label).toBe(BASE_GROUP_LABEL);
     expect(groups[0].tone).toBeNull();
+    // Cockpit/Fahrplan/Messwerte/Erlöse sind in der Leiste, der Rest hier.
     expect(groups[0].items.map((i) => i.key)).toEqual([
-      'erloese',
-      'fahrplan',
+      'steuerung',
+      'anlagen-modell',
       'marktpreise',
       'prognose',
     ]);
     expect(groups[1].label).toBe('Modus · Lastspitzenkappung');
     expect(groups[1].tone).toBe('peak');
     const last = groups[groups.length - 1];
-    expect(last.items.map((i) => i.key)).toEqual(['wetter', 'verbraucher', 'technik', 'hilfe']);
+    // Wetter + der Fuß (inkl. „Verbraucher") - und „Abmelden", das am Telefon
+    // nirgends sonst steht.
+    expect(last.items.map((i) => i.key)).toEqual([
+      'wetter',
+      'verbraucher',
+      'technik',
+      'hilfe',
+      'logout',
+    ]);
+  });
+
+  it('lässt eine Modus-Gruppe weg, deren einziger Eintrag in der Leiste steht', () => {
+    // Der DV-Park: sein Markt-Modus trägt Fahrplan + Marktpreise + Prognose, der
+    // Fahrplan zieht in die Leiste - die Gruppe bleibt mit dem Rest bestehen.
+    const park = anlageSurface({
+      entities: [PV_ONLY],
+      config: { plantKind: 'direktvermarktung', tarifArt: 'fest' },
+    });
+    const modeGroups = moreSheetItems(anlageSidebar(park)).filter((g) =>
+      g.label.startsWith('Modus ·'),
+    );
+    expect(modeGroups.flatMap((g) => g.items.map((i) => i.key))).toEqual([
+      'marktpreise',
+      'prognose',
+    ]);
+    // Und eine Gruppe, die NUR den Leisten-Eintrag trug, verschwindet ganz statt
+    // als leere Überschrift stehen zu bleiben.
+    const nurFahrplan = {
+      groups: [
+        { key: 'base', label: BASE_GROUP_LABEL, tone: null, items: [] },
+        {
+          key: 'mode:x',
+          label: 'Modus · X',
+          tone: 'markt' as const,
+          items: [
+            {
+              key: 'fahrplan',
+              label: 'Fahrplan',
+              icon: 'calendar' as const,
+              target: { kind: 'sub' as const, sub: 'fahrplan' as const },
+              badge: null,
+            },
+          ],
+        },
+      ],
+      foot: [],
+    };
+    expect(moreSheetItems(nurFahrplan).some((g) => g.label === 'Modus · X')).toBe(false);
   });
 
   it('has no base group in the sheet when nothing was derived', () => {
     const groups = moreSheetItems(anlageSidebar(null));
     expect(groups.some((g) => g.label === BASE_GROUP_LABEL)).toBe(false);
+  });
+
+  /**
+   * „Verbraucher" (#363) ist eine EINRICHTUNGS-Fläche wie Einstellungen, keine
+   * tägliche Frage - sie wohnt im Fuß und reist damit ins Blatt, nie in die
+   * Leiste. Wer sie später doch in `BOTTOM_PRIORITY` schriebe, bräuchte einen
+   * sechsten Slot; dieser Test hält die Belegung bei fünf.
+   */
+  it('trägt eine Fuß-Fläche wie „Verbraucher" im Blatt, nie in der Leiste', () => {
+    for (const surface of [ALLE, MARKT, PEAK, PRIVAT, null]) {
+      const sidebar = anlageSidebar(surface);
+      expect(bottomBarSlots(sidebar)).toHaveLength(5);
+      expect(bottomBarSlots(sidebar).map((s) => s.key)).not.toContain('verbraucher');
+      const sheet = moreSheetItems(sidebar).flatMap((g) => g.items.map((i) => i.key));
+      expect(sheet.filter((k) => k === 'verbraucher')).toEqual(['verbraucher']);
+    }
+  });
+
+  it('faltet die zwei Kopfzeilen-Aktionen und die Plattform-Gruppe ein (kein Hamburger mehr)', () => {
+    // Am Telefon gibt es seit Stufe 1 keine zweite Menü-Tür - also muss ALLES,
+    // was die Kopfzeile bzw. die Seitenleiste trägt, hier ankommen.
+    const groups = moreSheetItems(anlageSidebar(PRIVAT), { isAdmin: true, showAddAnlage: true });
+    const platform = groups.find((g) => g.label === 'Plattform');
+    expect(platform?.items.map((i) => i.key)).toEqual(PLATFORM_PAGES.map((p) => p.id));
+    const last = groups[groups.length - 1];
+    expect(last.items.map((i) => i.key)).toEqual([
+      'wetter',
+      'verbraucher',
+      'technik',
+      'hilfe',
+      'add-anlage',
+      'logout',
+    ]);
+    expect(last.items.at(-1)?.target).toEqual({ kind: 'action', action: 'logout' });
+    // Ein Kunde ohne zweite Anlage bekommt keinen „＋"-Eintrag, und keine
+    // Plattform-Gruppe.
+    const kunde = moreSheetItems(anlageSidebar(PRIVAT), { isAdmin: false, showAddAnlage: false });
+    expect(kunde.some((g) => g.label === 'Plattform')).toBe(false);
+    expect(kunde.at(-1)?.items.map((i) => i.key)).toEqual([
+      'wetter',
+      'verbraucher',
+      'technik',
+      'hilfe',
+      'logout',
+    ]);
+  });
+});
+
+/**
+ * Flotten-Ebene: dieselbe Bar-Mechanik eine Ebene höher (Konzept §3), damit das
+ * Daumen-Muster den Ebenen-Wechsel überlebt.
+ */
+describe('fleetBarSlots / fleetSheetGroups - die Leiste über der Anlage', () => {
+  const FLOTTE = {
+    showPortfolio: false,
+    showPortfolioErloese: false,
+    showOverview: true,
+    siteCount: 3,
+  };
+
+  it('ist Übersicht · Anlagen · Mehr für einen Flotten-Kunden', () => {
+    const slots = fleetBarSlots(FLOTTE);
+    expect(slots.map((s) => s.label)).toEqual(['Übersicht', 'Anlagen', 'Mehr']);
+    expect(slots[0].target).toEqual({ kind: 'page', page: 'uebersicht' });
+    expect(slots.at(-1)?.target).toEqual({ kind: 'more' });
+  });
+
+  it('führt beim Betreiber mit dem Portfolio und seinen zwei Welten', () => {
+    const slots = fleetBarSlots({
+      showPortfolio: true,
+      showPortfolioErloese: true,
+      showOverview: false,
+      siteCount: 12,
+    });
+    expect(slots.map((s) => s.label)).toEqual([
+      'Portfolio',
+      'Anlagen',
+      'Messwerte',
+      'Erlöse',
+      'Mehr',
+    ]);
+    // Ohne Geld-Modus in der Flotte gibt es die Erlöse-Welt nicht.
+    expect(
+      fleetBarSlots({
+        showPortfolio: true,
+        showPortfolioErloese: false,
+        showOverview: false,
+        siteCount: 12,
+      }).map((s) => s.label),
+    ).toEqual(['Portfolio', 'Anlagen', 'Messwerte', 'Mehr']);
+  });
+
+  it('bleibt bedienbar, wenn es noch gar keine Anlage gibt (Einrichtung)', () => {
+    const slots = fleetBarSlots({
+      showPortfolio: false,
+      showPortfolioErloese: false,
+      showOverview: false,
+      siteCount: 0,
+    });
+    // Singular, und „Mehr" trägt weiterhin Hilfe + Abmelden - ohne Hamburger
+    // wäre das Portal sonst eine Sackgasse.
+    expect(slots.map((s) => s.label)).toEqual(['Anlage', 'Mehr']);
+    expect(
+      fleetSheetGroups(
+        { showPortfolio: false, showPortfolioErloese: false, showOverview: false, siteCount: 0 },
+        {},
+      )
+        .flatMap((g) => g.items.map((i) => i.key)),
+    ).toEqual(['hilfe', 'logout']);
+  });
+
+  it('trägt im Blatt die Plattform-Gruppe und die Kopfzeilen-Aktionen', () => {
+    const groups = fleetSheetGroups(FLOTTE, { isAdmin: true, showAddAnlage: true });
+    expect(groups.find((g) => g.label === 'Plattform')?.items.map((i) => i.key)).toEqual(
+      PLATFORM_PAGES.map((p) => p.id),
+    );
+    expect(groups.at(-1)?.items.map((i) => i.key)).toEqual(['hilfe', 'add-anlage', 'logout']);
+  });
+
+  it('verwaist keinen Eintrag: Leiste ∪ Blatt = alle sichtbaren Ebenen-Einträge', () => {
+    for (const input of [
+      FLOTTE,
+      { showPortfolio: true, showPortfolioErloese: true, showOverview: false, siteCount: 9 },
+      { showPortfolio: true, showPortfolioErloese: false, showOverview: true, siteCount: 9 },
+      { showPortfolio: false, showPortfolioErloese: false, showOverview: false, siteCount: 1 },
+    ]) {
+      const bar = fleetBarSlots(input)
+        .filter((i) => i.target.kind === 'page')
+        .map((i) => i.key);
+      const sheet = fleetSheetGroups(input, { isAdmin: false, showAddAnlage: false })
+        .flatMap((g) => g.items)
+        .filter((i) => i.target.kind === 'page')
+        .map((i) => i.key);
+      const all = [...bar, ...sheet];
+      // Immer die Anlagen-Ebene, nie ein Eintrag zweimal.
+      expect(all).toContain('anlagen');
+      expect(new Set(all).size).toBe(all.length);
+      if (input.showPortfolio) expect(all).toContain('portfolio');
+      if (input.showOverview) expect(all).toContain('uebersicht');
+    }
   });
 });
 
@@ -365,6 +604,36 @@ describe('no orphaned view: every AnlagenSub is mounted exactly once', () => {
       [...sidebarSubs, ...sheetSubs].filter((s): s is AnlagenSub => s != null),
     );
     expect([...reachable].sort()).toEqual([...ALL_SUBS].sort());
+  });
+
+  /**
+   * Seit Stufe 1 hat das Telefon KEINEN Hamburger mehr: erreichbar ist genau,
+   * was Leiste oder Blatt tragen. Diese Verfassung gilt also am Telefon eigens -
+   * die Seitenleiste rettet dort nichts mehr.
+   */
+  it('am TELEFON: Leiste ∪ Blatt trägt jede Ansicht, und keine zweimal', () => {
+    for (const surface of [ALLE, MARKT, PEAK, PRIVAT]) {
+      const sidebar = anlageSidebar(surface);
+      const barKeys = bottomBarSlots(sidebar)
+        .filter((i) => i.target.kind !== 'more')
+        .map((i) => i.key);
+      // Nur ZIELE, keine Aktionen (＋ Anlage / Abmelden sind keine Ansichten).
+      const sheetKeys = moreSheetItems(sidebar)
+        .flatMap((g) => g.items)
+        .filter((i) => i.target.kind !== 'action')
+        .map((i) => i.key);
+      const together = [...barKeys, ...sheetKeys];
+      // Partition: was die Leiste trägt, steht nicht noch einmal im Blatt.
+      expect(new Set(together).size).toBe(together.length);
+      // Und zusammen sind sie GENAU die Navigation der Anlage (plus Wetter +
+      // Fuß, die keinen Seitenleisten-Platz haben).
+      const navKeys = [
+        ...sidebar.groups.flatMap((g) => g.items.map((i) => i.key)),
+        ...sidebar.foot.map((i) => i.key),
+        'wetter',
+      ];
+      expect([...new Set(together)].sort()).toEqual([...new Set(navKeys)].sort());
+    }
   });
 
   it('reaches every sub even on a plant with no mode at all (via the sheet)', () => {

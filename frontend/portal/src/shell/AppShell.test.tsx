@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
 import { anlageSidebar } from '../anlageNav';
 import { anlageSurface } from '../surface';
@@ -250,7 +250,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
       onOpenFleet,
     });
     const select = screen.getByLabelText('Anlage wählen');
-    expect(screen.getByRole('option', { name: 'Halle Nord' })).toBeInTheDocument();
+    expect(select.querySelector('option[value="s-2"]')?.textContent).toBe('Halle Nord');
     fireEvent.change(select, { target: { value: 's-2' } });
     expect(onSelectSite).toHaveBeenCalledWith('s-2');
     fireEvent.change(select, { target: { value: '__all__' } });
@@ -265,14 +265,15 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
   });
 
   it('renders the market mode group ONLY while that mode is active', () => {
-    renderShell();
-    expect(screen.queryByRole('button', { name: /Marktpreise/ })).toBeNull();
+    const { container } = renderShell();
+    expect(container.querySelector('.vp-sidebar')?.textContent).not.toContain('Marktpreise');
 
     const onOpenPage = vi.fn();
-    renderShell({ sidebar: anlageSidebar(MARKT), onOpenPage });
-    expect(screen.getByText('Modus · Marktvermarktung')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Fahrplan/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Marktpreise/ }));
+    const second = renderShell({ sidebar: anlageSidebar(MARKT), onOpenPage });
+    const sidebar = second.container.querySelector('.vp-sidebar') as HTMLElement;
+    expect(sidebar.textContent).toContain('Modus · Marktvermarktung');
+    expect(sidebar.textContent).toContain('Fahrplan');
+    fireEvent.click(within(sidebar).getByRole('button', { name: /Marktpreise/ }));
     expect(onOpenPage).toHaveBeenCalledWith('marktpreise');
   });
 
@@ -281,13 +282,113 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
     fireEvent.click(bar.querySelectorAll('.vp-bottombar-item')[4]);
     const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
-    // Historie sits in the bottom bar since the merge (owner Q3), so the sheet
-    // leads with the mode groups.
+    // Der DV-Park trägt Fahrplan/Marktpreise/Prognose im Modus; der Fahrplan
+    // zieht in die Leiste, der Rest bleibt farbig getaggt im Blatt.
     expect(sheet.textContent).toContain('Modus · Marktvermarktung');
     expect(sheet.textContent).toContain('Wetter');
     expect(sheet.textContent).toContain('Einstellungen');
     expect(sheet.textContent).toContain('Hilfe & Kontakt');
     expect(sheet.querySelector('.tone-markt')).not.toBeNull();
+  });
+
+  /**
+   * Mobil-Umbau Stufe 1: die Leiste trägt die täglichen Fragen, der Hamburger
+   * ist weg, und die Kopfzeile wird zur Anlagen-Identität.
+   */
+  it('belegt die Leiste mit den täglichen Fragen (und rückt ohne sie nach)', () => {
+    // Speicher + Geld-Modus: die neue Belegung.
+    renderShell({ sidebar: anlageSidebar(MARKT) });
+    expect(
+      [...screen.getByLabelText(/Bereiche der Anlage/).querySelectorAll('.lbl')].map(
+        (n) => n.textContent,
+      ),
+    ).toEqual(['Cockpit', 'Fahrplan', 'Messwerte', 'Erlöse', 'Mehr']);
+
+    // Weder Speicher noch Geld-Modus: Steuerung und Anlage rücken nach.
+    cleanup();
+    renderShell();
+    expect(
+      [...screen.getByLabelText(/Bereiche der Anlage/).querySelectorAll('.lbl')].map(
+        (n) => n.textContent,
+      ),
+    ).toEqual(['Cockpit', 'Messwerte', 'Steuerung', 'Anlage', 'Mehr']);
+  });
+
+  it('zeigt das Steuerungs-Abzeichen auf „Mehr", wenn die Steuerung ins Blatt fällt', () => {
+    renderShell({ sidebar: anlageSidebar(MARKT, 2) });
+    const bar = screen.getByLabelText(/Bereiche der Anlage/);
+    const mehr = [...bar.querySelectorAll('.vp-bottombar-item')].at(-1) as HTMLElement;
+    expect(mehr.textContent).toContain('Mehr');
+    expect(mehr.querySelector('.vp-bottombar-badge')?.textContent).toBe('2');
+  });
+
+  it('hat KEINEN Hamburger mehr - Leiste und Blatt tragen alles', () => {
+    const { container } = renderShell();
+    expect(container.querySelector('.vp-hamburger')).toBeNull();
+    expect(container.querySelector('.vp-sidebar-close')).toBeNull();
+    expect(container.querySelector('.vp-sidebar.mobile-open')).toBeNull();
+  });
+
+  it('macht den Anlagen-Namen in der Kopfzeile antippbar - und nur, wenn es etwas zu wechseln gibt', () => {
+    const onSelectSite = vi.fn();
+    const { container } = renderShell({
+      sites: [
+        { id: 's-1', name: 'Hof Lindenberg' },
+        { id: 's-2', name: 'Halle Nord' },
+      ],
+      onSelectSite,
+    });
+    const block = container.querySelector('.vp-topbar-anlage') as HTMLElement;
+    // Name + Zustands-Unterzeile leben in EINEM Block (am Telefon gestapelt).
+    expect(block.querySelector('.here')?.textContent).toBe('Hof Lindenberg');
+    expect(block.querySelector('.vp-healthbadge')).not.toBeNull();
+    const switcher = within(block).getByLabelText('Anlage wechseln');
+    fireEvent.change(switcher, { target: { value: 's-2' } });
+    expect(onSelectSite).toHaveBeenCalledWith('s-2');
+
+    // Ein Kunde mit genau EINER Anlage bekommt keinen Wechsler vorgegaukelt.
+    cleanup();
+    const single = renderShell();
+    expect(
+      single.container.querySelector('.vp-topbar-anlage .vp-tb-switch'),
+    ).toBeNull();
+  });
+
+  it('faltet „＋ Anlage" und „Abmelden" ins Blatt (sie verlassen die Kopfzeile am Telefon)', () => {
+    render(
+      <AppShell
+        {...baseProps}
+        showAddAnlage
+        onAddAnlage={vi.fn()}
+        anlage={anlage}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+    fireEvent.click(
+      [...screen.getByLabelText(/Bereiche der Anlage/).querySelectorAll('.vp-bottombar-item')].at(
+        -1,
+      ) as HTMLElement,
+    );
+    const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
+    expect(sheet.textContent).toContain('Anlage hinzufügen');
+    expect(sheet.textContent).toContain('Abmelden');
+  });
+
+  it('führt die Plattform-Gruppe im Blatt mit, weil ein Admin am Telefon sonst nirgends hinkommt', () => {
+    render(
+      <AppShell {...baseProps} isAdmin showAddAnlage={false} onAddAnlage={vi.fn()} anlage={anlage}>
+        <div>content</div>
+      </AppShell>,
+    );
+    fireEvent.click(
+      [...screen.getByLabelText(/Bereiche der Anlage/).querySelectorAll('.vp-bottombar-item')].at(
+        -1,
+      ) as HTMLElement,
+    );
+    const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
+    expect(sheet.textContent).toContain('Plattform');
+    expect(sheet.textContent).toContain('Edge-Updates');
   });
 
   it('the foot Hilfe entry opens an honest help panel, never a dead link', () => {
@@ -297,14 +398,85 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(panel.textContent).toContain('VoltPilot');
   });
 
-  it('renders no Anlage nav and no bottom bar without an Anlage in scope', () => {
-    render(
+  it('renders no Anlage nav without an Anlage in scope', () => {
+    const { container } = render(
       <AppShell {...baseProps} showAddAnlage={false} onAddAnlage={vi.fn()} anlage={null}>
         <div>content</div>
       </AppShell>,
     );
     expect(screen.queryByLabelText(/Bereiche der Anlage/)).toBeNull();
+    expect(container.querySelector('.vp-anlagenav')).toBeNull();
+    expect(container.querySelector('.vp-topbar-anlage')).toBeNull();
     expect(screen.queryByRole('button', { name: /Anlagen-Modell/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Hilfe/ })).toBeNull();
+  });
+});
+
+/**
+ * Mobil-Umbau Stufe 1, Flotten-Ebene: dieselbe Bar-Mechanik eine Ebene höher -
+ * das Daumen-Muster überlebt den Ebenen-Wechsel, statt am Hamburger zu enden.
+ */
+describe('AppShell: die Leiste der Flotten-Ebene', () => {
+  const renderFleet = (over: Partial<React.ComponentProps<typeof AppShell>> = {}) =>
+    render(
+      <AppShell
+        {...baseProps}
+        page="uebersicht"
+        showOverview
+        counts={{ sites: 3, devices: 4 }}
+        showAddAnlage={false}
+        onAddAnlage={vi.fn()}
+        anlage={null}
+        {...over}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+
+  it('ist Übersicht · Anlagen · Mehr und hebt die offene Seite hervor', () => {
+    renderFleet();
+    const bar = screen.getByLabelText('Hauptbereiche');
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
+      'Übersicht',
+      'Anlagen',
+      'Mehr',
+    ]);
+    expect(bar.querySelector('.vp-bottombar-item.active')?.textContent).toContain('Übersicht');
+    // Die Spaltenzahl folgt der Belegung, statt fünf zu behaupten.
+    expect(bar.getAttribute('style')).toContain('--vp-bar-slots: 3');
+  });
+
+  it('navigiert per Leiste und trägt Hilfe/Abmelden im Blatt', () => {
+    const onNavigate = vi.fn();
+    renderFleet({ onNavigate });
+    const bar = screen.getByLabelText('Hauptbereiche');
+    fireEvent.click(bar.querySelectorAll('.vp-bottombar-item')[1]);
+    expect(onNavigate).toHaveBeenCalledWith('anlagen');
+
+    fireEvent.click([...bar.querySelectorAll('.vp-bottombar-item')].at(-1) as HTMLElement);
+    const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
+    expect(sheet.textContent).toContain('Hilfe & Kontakt');
+    expect(sheet.textContent).toContain('Abmelden');
+  });
+
+  it('führt beim Betreiber mit dem Portfolio und legt die Plattform ins Blatt', () => {
+    renderFleet({
+      isAdmin: true,
+      page: 'portfolio',
+      showOverview: false,
+      showPortfolio: true,
+      showPortfolioErloese: true,
+    });
+    const bar = screen.getByLabelText('Hauptbereiche');
+    expect([...bar.querySelectorAll('.lbl')].map((n) => n.textContent)).toEqual([
+      'Portfolio',
+      'Anlagen',
+      'Messwerte',
+      'Erlöse',
+      'Mehr',
+    ]);
+    fireEvent.click([...bar.querySelectorAll('.vp-bottombar-item')].at(-1) as HTMLElement);
+    expect(screen.getByRole('dialog', { name: 'Weitere Bereiche' }).textContent).toContain(
+      'Mandanten',
+    );
   });
 });
