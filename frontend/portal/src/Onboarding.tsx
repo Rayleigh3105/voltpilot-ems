@@ -1,5 +1,6 @@
 import { Card } from '../designsystem/components/core/Card';
 import type { Site } from './api';
+import { STARTKLAR_SATZ } from './anlageFlow';
 import { AnlageFlow } from './components/AnlageFlow';
 
 /**
@@ -27,7 +28,7 @@ export function OnboardingWizard({
       <Card padding="lg" radius="lg">
         <h2 style={{ marginBottom: 4 }}>Willkommen bei VoltPilot</h2>
         <p className="vp-muted" style={{ margin: '0 0 8px' }}>
-          In drei Schritten ist Ihre Anlage startklar.
+          {STARTKLAR_SATZ}
         </p>
         <AnlageFlow sites={sites} waitForFirstData onDone={onDone} onSkipAll={onSkip} />
       </Card>

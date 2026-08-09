@@ -14,6 +14,7 @@ import {
   type HistoryRange,
   type PriceHistory,
   type ConsumerSchedule,
+  type PriceRangeSummary,
   type SchedulePlan,
   type Site,
   type TelemetryPoint,
@@ -40,7 +41,22 @@ import { controlReasonSlot } from '../control';
 import { curtailTruth } from '../curtailment';
 import { buildSnapshot } from '../live';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { useIsPhone } from '../useIsPhone';
 import { ProvBadge } from '../components/HistorieWelt';
+import {
+  bezugspreisNote,
+  fokusUmschalter,
+  jetztPreis,
+  preisChips,
+  type TagFokus,
+} from '../marktpreise';
+import {
+  MarktJetztHeld,
+  PreisChips,
+  ProfiDetail,
+  TagZeile,
+} from '../components/MarktpreiseMobil';
+import { aktuellerPreisSlot } from '../settingsSurface';
 
 /** Shared frame for the site-scoped data pages (picker + load/error states). */
 function useSiteData<T>(
@@ -154,6 +170,35 @@ function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+/**
+ * Die vier EUR/MWh-Kennzahlen. EINE Definition, zwei Wohnorte: am Rechner offen
+ * ueber der Kurve, am Telefon im Profi-Aufklapper darunter - so koennen die
+ * beiden Fassungen nicht auseinanderlaufen.
+ */
+function eurMwhStats(summary: PriceRangeSummary) {
+  return (
+    <>
+      <Stat value={fmtNum(summary.minEurMwh, '')} label="Minimum (EUR/MWh)" />
+      <Stat value={fmtNum(summary.avgEurMwh, '')} label="Ø im Zeitraum (EUR/MWh)" />
+      <Stat value={fmtNum(summary.maxEurMwh, '')} label="Maximum (EUR/MWh)" />
+      <Stat
+        value={fmtNum(
+          summary.minEurMwh == null || summary.maxEurMwh == null
+            ? null
+            : summary.maxEurMwh - summary.minEurMwh,
+          '',
+        )}
+        label="Spanne (EUR/MWh)"
+      />
+    </>
+  );
+}
+
+/** „Ihr Bezugspreis 32,50 ct/kWh" - oder gar nichts. Nie eine erfundene Zahl. */
+function bezugpreisZeile(ct: number | null): string | null {
+  return bezugspreisNote(ct);
+}
+
 export function MarktpreisePage(props: {
   sites: Site[];
   selectedSite: string | null;
@@ -193,6 +238,45 @@ export function MarktpreisePage(props: {
   const hasData = buckets.length > 0 && (summary?.count ?? 0) > 0;
   const isDay = range === 'day';
 
+  // --- Mobil-Fassung (Stufe 4). Am Rechner ist nichts hiervon aktiv. -------
+  const isPhone = useIsPhone();
+  const [now, setNow] = useState<Date>(() => new Date());
+  const [fokus, setFokus] = useState<TagFokus>('heute');
+  // Der Bezugspreis wird GELESEN, nie gerechnet: er reist je Viertelstunde im
+  // Fahrplan mit (`importPriceCtKwh`, die eine serverseitige Komposition) -
+  // dieselbe Quelle wie die Vorschau unter dem Stromtarif. Aus den
+  // Tarif-Feldern zu addieren waere die zweite Preiswahrheit.
+  const [bezugCt, setBezugCt] = useState<number | null>(null);
+
+  // Der Held zeigt die laufende Viertelstunde - ohne Takt zeigte er nach dem
+  // ersten Slotwechsel eine vergangene.
+  useFreshnessPoll(() => setNow(new Date()), 60_000);
+
+  useEffect(() => {
+    setBezugCt(null);
+    if (!site || !isPhone || !isDay) return;
+    let active = true;
+    api
+      .schedule(site.id)
+      .then((plan) => {
+        if (!active) return;
+        const slot = aktuellerPreisSlot(plan.slots, plan.slotMinutes, new Date());
+        setBezugCt(slot?.importPriceCtKwh ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [site?.id, isPhone, isDay]);
+
+  // Ein Zeitraumwechsel setzt den Tages-Fokus zurueck - sonst zeigte der
+  // Rueckblick auf "Morgen".
+  useEffect(() => setFokus('heute'), [range, at]);
+
+  const jetzt = isPhone && isDay ? jetztPreis(history, now) : null;
+  const chips = isPhone ? preisChips(summary, isDay) : [];
+  const umschalter = isPhone && isDay ? fokusUmschalter(buckets, fokus) : null;
+
   // Partial coverage: the collector only fetches today+tomorrow, so week/month/
   // year fill in over time. Flag when the stored data starts well after the
   // window opens (older prices were never collected).
@@ -204,7 +288,14 @@ export function MarktpreisePage(props: {
   return (
     <PageFrame
       title="Marktpreise"
-      subtitle={`Börsen-Strompreise (Day-Ahead)${site ? ` - Gebotszone ${site.biddingZone}` : ''}: heute & morgen sowie der Rückblick über Tag, Woche, Monat und Jahr.`}
+      // Am Telefon EIN Satz: der lange Untertitel maß gemessene 113 px (fuenf
+      // Zeilen) und schob die Antwort nach unten - die Gebotszone steht ohnehin
+      // in der Kopfzeile der Kurve (Mobil-Umbau Stufe 4, Prinzip P1).
+      subtitle={
+        isPhone
+          ? 'Was Strom an der Börse kostet - heute und morgen.'
+          : `Börsen-Strompreise (Day-Ahead)${site ? ` - Gebotszone ${site.biddingZone}` : ''}: heute & morgen sowie der Rückblick über Tag, Woche, Monat und Jahr.`
+      }
       {...props}
     >
       {/* Period navigation: Tag/Woche/Monat/Jahr + stepper + Heute. */}
@@ -277,7 +368,18 @@ export function MarktpreisePage(props: {
 
       {!loading && !err && hasData && summary && history && (
         <>
+          {/* Mobil: „Was kostet Strom JETZT" ist die erste Antwort - am Rechner
+              tragen das die drei KPI-Karten darunter. */}
+          {jetzt && (
+            <section className="vp-section">
+              <Card padding="lg" radius="lg">
+                <MarktJetztHeld preis={jetzt} bezug={bezugpreisZeile(bezugCt)} />
+              </Card>
+            </section>
+          )}
+
           {/* Headline: relatable ct/kWh average + the cheapest/most expensive slot. */}
+          {!isPhone && (
           <section className="vp-kpis" aria-label="Preis-Kennzahlen">
             <KpiCard
               icon={<Icon name="euro" size={20} />}
@@ -301,6 +403,7 @@ export function MarktpreisePage(props: {
               title={`Höchster Preis im Zeitraum · ${fmtNum(summary.maxEurMwh, 'EUR/MWh')}`}
             />
           </section>
+          )}
 
           <section className="vp-section">
             <Card padding="lg" radius="lg">
@@ -327,23 +430,19 @@ export function MarktpreisePage(props: {
                 </InfoTip>
               </div>
 
-              {/* EUR/MWh detail for the professional reader. */}
-              <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
-                <Stat value={fmtNum(summary.minEurMwh, '')} label="Minimum (EUR/MWh)" />
-                <Stat value={fmtNum(summary.avgEurMwh, '')} label="Ø im Zeitraum (EUR/MWh)" />
-                <Stat value={fmtNum(summary.maxEurMwh, '')} label="Maximum (EUR/MWh)" />
-                <Stat
-                  value={fmtNum(
-                    summary.minEurMwh == null || summary.maxEurMwh == null
-                      ? null
-                      : summary.maxEurMwh - summary.minEurMwh,
-                    '',
-                  )}
-                  label="Spanne (EUR/MWh)"
-                />
-              </div>
+              {/* EUR/MWh detail for the professional reader. Am Telefon zieht
+                  es in den Profi-Aufklapper unter der Kurve - eine Botschaft,
+                  eine Einheit (ct/kWh), aber verlustfrei erreichbar. */}
+              {!isPhone && (
+                <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
+                  {eurMwhStats(summary)}
+                </div>
+              )}
 
-              <PriceHistoryChart history={history} />
+              <PriceHistoryChart history={history} fokus={isPhone && isDay ? fokus : null} />
+
+              <TagZeile umschalter={umschalter} onSpringen={setFokus} />
+              <PreisChips chips={chips} />
 
               {partialFrom && summary.coverageStart && (
                 <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
@@ -352,11 +451,42 @@ export function MarktpreisePage(props: {
                   nicht erfasst.
                 </p>
               )}
-              <p className="vp-note" style={{ marginTop: partialFrom ? 4 : 12 }}>
-                Quelle: energy-charts.info (Fraunhofer ISE). {isDay
-                  ? 'Ihr Batterie-Fahrplan nutzt genau diese Day-Ahead-Preise.'
-                  : 'Preise sind marktweit je Gebotszone (nicht pro Anlage).'}
-              </p>
+              {isPhone ? (
+                <>
+                  {/* Der Fahrplan-Querverweis BLEIBT sichtbar - er erklaert,
+                      warum es diese Seite ueberhaupt gibt. Die Quellenangabe
+                      zieht mit den EUR/MWh ins Profi-Detail. */}
+                  <p className="vp-note" style={{ marginTop: partialFrom ? 4 : 12 }}>
+                    {isDay ? (
+                      <>
+                        Ihr Fahrplan nutzt genau diese Preise
+                        {site ? (
+                          <>
+                            {' '}
+                            - <a href={`#/anlage/${site.id}/fahrplan`}>zum Fahrplan →</a>
+                          </>
+                        ) : (
+                          '.'
+                        )}
+                      </>
+                    ) : (
+                      'Preise sind marktweit je Gebotszone (nicht pro Anlage).'
+                    )}
+                  </p>
+                  <ProfiDetail>
+                    <div className="vp-grid vp-grid-stats-4">{eurMwhStats(summary)}</div>
+                    <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+                      Quelle: energy-charts.info (Fraunhofer ISE).
+                    </p>
+                  </ProfiDetail>
+                </>
+              ) : (
+                <p className="vp-note" style={{ marginTop: partialFrom ? 4 : 12 }}>
+                  Quelle: energy-charts.info (Fraunhofer ISE). {isDay
+                    ? 'Ihr Batterie-Fahrplan nutzt genau diese Day-Ahead-Preise.'
+                    : 'Preise sind marktweit je Gebotszone (nicht pro Anlage).'}
+                </p>
+              )}
             </Card>
           </section>
         </>
@@ -370,6 +500,10 @@ export function MarktpreisePage(props: {
 /** The Wetter subpage of one Anlage: the forecast feeding its PV-Prognose. */
 export function WetterSection({ site }: { site: Site }) {
   const { data: forecast, loading, err, reload } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
+  // Feinschliff (Mobil-Umbau Stufe 4): am Telefon lagen vier einspaltige
+  // Kennzahlen (~600 px) VOR der Kurve - die Kurve ist aber das, wofuer man die
+  // Seite oeffnet. Sie rueckt nach oben, die Kennzahlen werden ein 2x2-Raster.
+  const isPhone = useIsPhone();
 
   const points = forecast?.points ?? [];
   // The run's series starts at 00:00 UTC (hours already in the past) - the hero
@@ -408,13 +542,35 @@ export function WetterSection({ site }: { site: Site }) {
       )}
       {!loading && !err && points.length > 0 && (
         <>
-          <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
-            <Stat value={fmtNum(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
-            <Stat value={fmtNum(now?.cloudCoverPct, '%', 0)} label="Bewölkung" />
-            <Stat value={fmtNum(peakGhi, '', 0)} label="Max. Einstrahlung (W/m²)" />
-            <Stat value={fmtNum(horizon, 'h', 0)} label="Vorhersagehorizont" />
-          </div>
-          <WeatherChart points={points} />
+          {(() => {
+            const kpis = (
+              <div
+                className={`vp-grid ${isPhone ? 'vp-grid-stats-4' : 'vp-grid-stats'}`}
+                style={
+                  isPhone
+                    ? { marginTop: 'var(--vp-space-4)' }
+                    : { marginBottom: 'var(--vp-space-5)' }
+                }
+              >
+                <Stat value={fmtNum(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
+                <Stat value={fmtNum(now?.cloudCoverPct, '%', 0)} label="Bewölkung" />
+                <Stat value={fmtNum(peakGhi, '', 0)} label="Max. Einstrahlung (W/m²)" />
+                <Stat value={fmtNum(horizon, 'h', 0)} label="Vorhersagehorizont" />
+              </div>
+            );
+            const chart = <WeatherChart points={points} />;
+            return isPhone ? (
+              <>
+                {chart}
+                {kpis}
+              </>
+            ) : (
+              <>
+                {kpis}
+                {chart}
+              </>
+            );
+          })()}
           <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
             Quelle: Open-Meteo, stündlich aktualisiert. Die Einstrahlung (GHI) fließt in
             die PV-Prognose Ihrer Anlage ein.

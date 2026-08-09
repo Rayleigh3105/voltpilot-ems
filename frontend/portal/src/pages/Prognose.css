@@ -1,0 +1,118 @@
+/* ============================================================
+   Prognosequalitaet - Mobil-Fassung (Mobil-Umbau Stufe 4)
+   Komponenten-lokal; `index.css` bleibt unangetastet. Jede Regel haengt an
+   einem Knoten, den es NUR am Telefon gibt - der Desktop ist byte-gleich.
+   ============================================================ */
+
+/* ---------- Die Verdikt-Karte: 2 Arten x Ø-Abweichung ---------- */
+.vp-pq-verdikt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+.vp-pq-zeile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-pq-zeile + .vp-pq-zeile {
+  border-top: 1px solid var(--vp-border);
+  padding-top: var(--vp-space-3);
+}
+.vp-pq-art {
+  min-width: 0;
+  font-size: var(--vp-text-sm);
+  /* Die Artnamen sind lang ("Verbrauchsprognose (Last)") - sie duerfen
+     umbrechen, aber die Zahl daneben nie wegdruecken. */
+  overflow-wrap: anywhere;
+}
+.vp-pq-wert {
+  flex: 0 0 auto;
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-pq-wert b {
+  display: block;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.vp-pq-wert span {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-pq-rahmung {
+  margin: var(--vp-space-3) 0 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* ---------- Kandidaten als Zwei-Zeilen-Wahrheit ---------- */
+.vp-pq-kandidat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  min-width: 0;
+  font-size: var(--vp-text-sm);
+}
+.vp-pq-kandidat + .vp-pq-kandidat {
+  margin-top: var(--vp-space-2);
+}
+.vp-pq-kandidat > span:first-child {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+.vp-pq-stand {
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-pq-stand.ton-besser {
+  color: #166534;
+  font-weight: 700;
+}
+.vp-pq-stand.ton-sammelt {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* ---------- Die Erklaer-Aufklapper ---------- */
+.vp-pq-fold {
+  margin-top: var(--vp-space-3);
+  border-top: 1px solid var(--vp-border);
+}
+.vp-pq-fold > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-muted, #6c757d);
+  /* 44-px-Trefferflaeche ohne die Zeile optisch aufzublasen. */
+  padding: 12px 0;
+  margin-bottom: -2px;
+}
+.vp-pq-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.vp-pq-fold > summary svg {
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+}
+.vp-pq-fold[open] > summary svg {
+  transform: rotate(180deg);
+}
+.vp-pq-fold-body {
+  padding-bottom: var(--vp-space-4);
+}
+.vp-pq-fold-body > p {
+  margin: 0 0 var(--vp-space-3);
+}
+.vp-pq-fold-body > p:last-child {
+  margin-bottom: 0;
+}

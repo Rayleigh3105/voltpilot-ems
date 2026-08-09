@@ -24,6 +24,7 @@ import { ErrorState, Skeleton } from '../components/States';
 import { EarningsHero, FleetSiteCard, FleetStatusCard } from '../components/FleetOverview';
 import { AnlageSeite } from './AnlagenPage';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { useIsPhone } from '../useIsPhone';
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
 const POLL_MS = 30_000;
@@ -216,6 +217,25 @@ function FleetUebersicht({
 
   const earningsBySite = new Map((earnings?.sites ?? []).map((s) => [s.id, s]));
 
+  /*
+   * Feinschliff (Mobil-Umbau Stufe 4): die zwei Aktions-Knoepfe standen VOR dem
+   * Geld-Helden - zwei volle Zeilen Einrichtung ueber der Frage, wegen der man
+   * die Uebersicht oeffnet. Am Telefon wandern sie unter die Anlagen-Karten;
+   * am Rechner bleiben sie in der Kopfzeile, wo sie neben dem Titel liegen und
+   * nichts verdraengen.
+   */
+  const isPhone = useIsPhone();
+  const aktionen = (
+    <>
+      <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
+        Anlage anlegen
+      </Button>
+      <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDeviceDrawer(true)}>
+        Gerät hinzufügen
+      </Button>
+    </>
+  );
+
   return (
     <>
       <div className="vp-page-head">
@@ -223,14 +243,7 @@ function FleetUebersicht({
           <h1>Guten Tag, {firstName}</h1>
           <p>Alle Ihre Anlagen auf einen Blick.</p>
         </div>
-        <div className="actions">
-          <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
-            Anlage anlegen
-          </Button>
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDeviceDrawer(true)}>
-            Gerät hinzufügen
-          </Button>
-        </div>
+        {!isPhone && <div className="actions">{aktionen}</div>}
       </div>
 
       {overview == null && failed ? (
@@ -295,6 +308,7 @@ function FleetUebersicht({
                 />
               ))}
             </div>
+            {isPhone && <div className="vp-fleet-actions">{aktionen}</div>}
           </section>
         </>
       )}

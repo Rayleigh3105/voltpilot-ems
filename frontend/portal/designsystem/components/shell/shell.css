@@ -122,12 +122,19 @@
   -webkit-appearance: none;
 }
 
-/* ---------- Drawer (right side panel: add / detail) ---------- */
+/* ---------- Drawer (right side panel: add / detail) ----------
+   Die z-Ebenen 60/61 sind DIESELBEN wie die des „Mehr"-Blatts der Schale
+   (`src/shell/Shell.css`), und das ist der Punkt: ein Drawer ist eine MODALE
+   Flaeche, die Bottom-Bar (z-index 50) ist Navigation - eine Navigationsleiste
+   gehoert nie ueber einen Dialog. Vorher lagen Schleier (40) und Panel (50)
+   unter bzw. gleichauf mit der Bar, also blieb sie am Telefon sichtbar UND
+   antippbar ueber dem offenen „Neue Automation"-Dialog (gemessener Befund,
+   Konzept `data/vp-mobile-views-x1` §9). */
 .vp-drawer-scrim {
   position: fixed;
   inset: 0;
   background: rgba(30, 58, 95, 0.35);
-  z-index: 40;
+  z-index: 60;
 }
 .vp-drawer {
   outline: none; /* panel takes programmatic focus on open */
@@ -138,11 +145,16 @@
   height: 100dvh; /* mobile browsers: exclude the dynamic URL bar */
   width: min(560px, 100%);
   background: var(--vp-surface);
-  z-index: 50;
+  z-index: 61;
   box-shadow: var(--vp-shadow-md);
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--vp-border);
+  /* Als installierte Web-App saesse der Fuss sonst im Home-Indicator; in
+     Landscape frisst die Notch die Seite. Das Panel ist bildschirmhoch, also
+     traegt es das Polster selbst (Stufe-1-Muster). */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-right: env(safe-area-inset-right, 0);
 }
 .vp-drawer .dhead {
   display: flex;

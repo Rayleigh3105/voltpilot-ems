@@ -2162,6 +2162,27 @@ button.vp-cl-item.is-off .vp-cl-label {
   margin-top: 2px;
   color: rgba(255, 255, 255, 0.75);
 }
+/* Telefon: dieselbe Fussnote hinter einem InfoTip (Mobil-Umbau Stufe 4). Die
+   Bubble portaliert nach `document.body`, hier steht also nur der Ausloeser. */
+.vp-fleet-fine-tip {
+  align-items: center;
+  gap: 6px;
+}
+.vp-fleet-fine-tip .vp-infotip-btn {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Telefon: die Einrichtungs-Aktionen stehen UNTER den Anlagen-Karten, nicht
+   vor dem Geld-Helden. Volle Breite, damit sie als Zeilen lesbar bleiben. */
+.vp-fleet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  margin-top: var(--vp-space-4);
+}
+.vp-fleet-actions > * {
+  width: 100%;
+}
 
 /* Two-number proof line: "Erlös mit VoltPilot X € / Ungeregelt wären es Y €". */
 .vp-fleet-hero-proof {

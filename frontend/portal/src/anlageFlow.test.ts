@@ -4,6 +4,7 @@ import {
   DEVICE_ID_FIELD,
   DEVICE_ID_UNKNOWN_MSG,
   FLOW_STEPS,
+  STARTKLAR_SATZ,
   initialFlowStep,
   mastrLocationLabel,
   mastrPvSummary,
@@ -74,6 +75,15 @@ function storagePreview(overrides: Partial<MastrPreview> = {}): MastrPreview {
 describe('the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => {
   it('has exactly the four steps, Anlage -> Register -> Gerät -> Nutzung (AE5: device before the adaptive step)', () => {
     expect(FLOW_STEPS).toEqual(['Anlage', 'Register', 'Gerät', 'Nutzung']);
+  });
+
+  it('sagt die Schrittzahl ABGELEITET - die Copy kann nicht mehr veralten', () => {
+    // Der behobene Fehler: „In drei Schritten" ueber VIER Schritt-Punkten,
+    // seit AE5 den Nutzung-Schritt ergaenzte (Mobil-Umbau Stufe 4).
+    expect(STARTKLAR_SATZ).toBe('In vier Schritten ist Ihre Anlage startklar.');
+    expect(STARTKLAR_SATZ).toContain(
+      ['null', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'][FLOW_STEPS.length],
+    );
   });
 
   it('starts fresh customers at the Anlage step', () => {

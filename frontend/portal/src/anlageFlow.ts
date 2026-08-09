@@ -26,6 +26,22 @@ export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Nutzung'] as const;
 
 export type FlowStep = 1 | 2 | 3 | 4;
 
+/** Zahlwörter für die Schrittzahl - so weit, wie ein Assistent je reichen kann. */
+const ZAHLWORT = ['null', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'] as const;
+
+/**
+ * „In vier Schritten ist Ihre Anlage startklar." — ABGELEITET aus
+ * {@link FLOW_STEPS}, nicht getippt.
+ *
+ * Die Copy sagte „In drei Schritten" über VIER Schritt-Punkten: seit AE5 den
+ * Gerät-Schritt vorzog und „Nutzung" ergänzte, war sie falsch, und niemand
+ * bemerkte es, weil Satz und Schrittleiste keine gemeinsame Quelle hatten.
+ * Jetzt haben sie eine — ein fünfter Schritt korrigiert den Satz von selbst.
+ */
+export const STARTKLAR_SATZ = `In ${
+  ZAHLWORT[FLOW_STEPS.length] ?? FLOW_STEPS.length
+} Schritten ist Ihre Anlage startklar.`;
+
 /**
  * Where the flow starts: a customer who already created an Anlage (but has no
  * device yet - wizard restart, "Später einrichten") resumes at the Register

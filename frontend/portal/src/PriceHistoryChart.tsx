@@ -1,5 +1,6 @@
 import type { PriceHistory } from './api';
 import { chartTheme } from './chartTheme';
+import { fokusFenster, tagesGrenze, type TagFokus } from './marktpreise';
 import { useEChart } from './useEChart';
 
 /** de-DE EUR/MWh + ct/kWh for a tooltip value. */
@@ -49,8 +50,21 @@ function tooltipHead(iso: string, bucket: string): string {
  * average price as a line with a light min/max band, so a whole year stays
  * readable while the daily spread is still visible. Prices are EUR/MWh (API
  * native); tooltips also show ct/kWh.
+ *
+ * **`fokus` ist die Telefon-Fassung der Tagesgrenze** (Mobil-Umbau Stufe 4):
+ * bei 375 px liegen 192 Viertelstunden in ~343 px, die Kurve ist dann ein
+ * Farbverlauf. Mit `fokus` zeigt sie EINEN Tag; die Grenze bleibt trotzdem
+ * sichtbar (getönte Folgetags-Fläche + beschrifteter Strich), damit der Sprung
+ * nicht aus dem Nichts kommt. Ohne `fokus` (Desktop) ist alles byte-gleich wie
+ * vorher.
  */
-export function PriceHistoryChart({ history }: { history: PriceHistory }) {
+export function PriceHistoryChart({
+  history,
+  fokus = null,
+}: {
+  history: PriceHistory;
+  fokus?: TagFokus | null;
+}) {
   const ref = useEChart(
     (chart, width) => {
       const t = chartTheme();
@@ -67,13 +81,11 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
         const max = nums.length ? Math.max(...nums) : 100;
 
         // Divider at the first slot on the next calendar day (today/tomorrow).
-        let boundaryIdx = -1;
-        for (let i = 1; i < buckets.length; i++) {
-          if (new Date(buckets[i].ts).toDateString() !== new Date(buckets[i - 1].ts).toDateString()) {
-            boundaryIdx = i;
-            break;
-          }
-        }
+        const boundaryIdx = tagesGrenze(buckets);
+        // Das Fenster ist REIN PROGRAMMATISCH: jede Geste ist abgeschaltet
+        // (`zoomLock` + alle move/zoom-Auslöser aus), sonst finge das Diagramm
+        // am Telefon Wischgesten ab, die der Seite gehören.
+        const fenster = fokus ? fokusFenster(buckets, fokus) : null;
 
         chart.setOption(
           {
@@ -97,6 +109,20 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
               dimension: 1,
               inRange: { color: [t.charge, t.pv, t.discharge] },
             },
+            dataZoom: fenster
+              ? [
+                  {
+                    type: 'inside',
+                    startValue: fenster.start,
+                    endValue: fenster.end,
+                    zoomLock: true,
+                    moveOnMouseMove: false,
+                    moveOnMouseWheel: false,
+                    zoomOnMouseWheel: false,
+                    zoomOnTouch: false,
+                  },
+                ]
+              : undefined,
             xAxis: {
               type: 'category',
               data: times,
@@ -107,12 +133,29 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
             },
               axisLine: { lineStyle: { color: t.axisLine } },
             },
-            yAxis: {
-              type: 'value',
-              name: 'EUR/MWh',
-              splitLine: { lineStyle: { color: t.grid } },
-              axisLabel: { color: t.axis },
-            },
+            // EINE Botschaft, EINE Einheit: am Telefon spricht die Achse
+            // ct/kWh wie die Chips darunter und der Held darüber (die
+            // Rechnungs-Einheit). Die WERTE bleiben EUR/MWh - nur ihre
+            // Beschriftung wird umgerechnet, damit visualMap, Tooltip und
+            // Datenreihe unangetastet bleiben. Am Rechner steht EUR/MWh
+            // unverändert an der Achse (Profi-Detail-Grundsatz).
+            yAxis: fenster
+              ? {
+                  type: 'value',
+                  name: 'ct/kWh',
+                  splitLine: { lineStyle: { color: t.grid } },
+                  axisLabel: {
+                    color: t.axis,
+                    formatter: (v: number) =>
+                      (v / 10).toLocaleString('de-DE', { maximumFractionDigits: 1 }),
+                  },
+                }
+              : {
+                  type: 'value',
+                  name: 'EUR/MWh',
+                  splitLine: { lineStyle: { color: t.grid } },
+                  axisLabel: { color: t.axis },
+                },
             series: [
               {
                 name: 'Börsenpreis',
@@ -126,8 +169,32 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
                         silent: true,
                         symbol: 'none',
                         lineStyle: { color: t.price, type: 'dashed', width: 1.5 },
-                        label: { formatter: 'Morgen', color: t.price, position: 'insideEndTop' },
+                        label: {
+                          formatter: 'Morgen',
+                          color: t.price,
+                          position: 'insideEndTop',
+                          // Auf einer Kategorie-Achse rendert ECharts eine
+                          // Beschriftung sonst GEDREHT an der Linie entlang -
+                          // die dokumentierte Kanten-Falle. Der helle Grund
+                          // hebt sie von den Balken darunter ab.
+                          rotate: 0,
+                          backgroundColor: t.surface,
+                          padding: [2, 4],
+                          borderRadius: 3,
+                        },
                         data: [{ xAxis: boundaryIdx }],
+                      }
+                    : undefined,
+                // Die Tagesgrenze ist bei 375 px die eigentliche Botschaft der
+                // Kurve („bis wohin ist der Preis schon bekannt"): der Strich
+                // allein geht zwischen 96 Balken unter, die getönte Fläche
+                // nicht.
+                markArea:
+                  boundaryIdx > 0
+                    ? {
+                        silent: true,
+                        itemStyle: { color: t.price, opacity: 0.06 },
+                        data: [[{ xAxis: boundaryIdx }, { xAxis: buckets.length - 1 }]],
                       }
                     : undefined,
               },
@@ -232,7 +299,12 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
         true,
       );
     },
-    [history],
+    // `fokus` MUSS in den Abhaengigkeiten stehen: `useEChart` fuehrt die
+    // Render-Closure nur bei einer Aenderung hier erneut aus, sonst behielte
+    // das Diagramm sein altes Fenster und der „Morgen ›"-Sprung waere eine
+    // Beschriftung ohne Wirkung (im Browser per Canvas-Vergleich aufgefallen -
+    // Etikett und Chip wechselten, die Pixel nicht).
+    [history, fokus],
   );
 
   return <div ref={ref} className="vp-chart" />;
