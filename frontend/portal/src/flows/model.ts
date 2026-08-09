@@ -64,9 +64,23 @@ export interface FlowDocument {
   site_id?: string;
   tenant_id?: string;
   lifecycle?: string;
+  /**
+   * D-19: provenance marker of a GENERATED flow (today: derived from a
+   * consumer policy). SERVER-STAMPED ONLY - the flow save API refuses
+   * customer documents carrying it; the portal opens the owning
+   * Regelbaukasten instead of the free editor.
+   */
+  origin?: FlowOrigin;
   nodes: FlowNode[];
   edges: FlowEdge[];
   triggers: FlowTrigger[];
+}
+
+export interface FlowOrigin {
+  kind: 'consumer-policy';
+  policy_id: string;
+  policy_version: number;
+  entity_id: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +147,12 @@ export interface CatalogType {
    * technical (platform-admin) layer keeps it for diagnosis. Absent = visible.
    */
   customer_visible?: boolean;
+  /**
+   * D-19: true = the type exists ONLY in platform-GENERATED documents (the
+   * consumer-policy compiler); no palette ever offers it, and the validator
+   * refuses it in a document without the consumer-policy origin.
+   */
+  generated?: boolean;
   runtimes: string[];
   inputs: CatalogPort[];
   outputs: CatalogPort[];

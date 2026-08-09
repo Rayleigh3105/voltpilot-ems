@@ -26,6 +26,8 @@ const ajv = new Ajv2020({ strict: false });
 | `flow-graph.valid.market-starter.json` | flow-graph | valid — the AE7 starter / pilot chain (Profil `arbitrage`): delegated strategy → control `plan`, control derives NO own claim (#519 MEDIUM-5, D-13) |
 | `flow-graph.valid.two-window-and.json` | flow-graph | valid — two topic-less `vp.schedule.window` branches through `vp.logic.and` (#519 H3-b) |
 | `flow-graph.invalid.unknown-trigger.json` | flow-graph | **invalid** — trigger `kind: "cron"` is not in the trigger enum |
+| `flow-graph.valid.consumer-reactive.json` | flow-graph | valid — a GENERATED consumer-policy flow (D-19): `origin` marker + one `vp.consumer.reactive` node (must_run availability rule + an ODER mix of a precompiled price window and a hysteresis SoC signal) |
+| `flow-graph.invalid.reactive-without-origin.json` | flow-graph | **invalid** — a `vp.consumer.reactive` node in a document WITHOUT the server-stamped consumer-policy `origin`; schema-conform (JSON Schema cannot express the rule), refused by the validator twins + flowc (D-19) |
 | `flow-artifact.valid.artifact.json` | flow-artifact | valid — one compiled artifact (manifest + nodered-tabs bundle with `@vp-flow` tab marker) |
 | `flow-artifact.valid.deployment.json` | flow-artifact | valid — retained deployment set for one device carrying that artifact |
 | `flow-artifact.invalid.bad-hash.json` | flow-artifact | **invalid** — `content_hash` is not `sha256:<64 hex>` (md5 prefix) |

@@ -86,6 +86,28 @@ describe('contract fixtures (executable contract)', () => {
     const findings = validateFlow(fixture('flow-graph.valid.price-wallbox.json'), ENTITIES);
     expect(errors(findings)).toEqual([]);
   });
+
+  it.skipIf(!haveFixtures)('consumer-reactive fixture validates clean ONLY with its origin (D-19)', () => {
+    expect(errors(validateFlow(fixture('flow-graph.valid.consumer-reactive.json'), ENTITIES)))
+      .toEqual([]);
+    const findings = validateFlow(
+      fixture('flow-graph.invalid.reactive-without-origin.json'), ENTITIES);
+    expect(errors(findings)).toContain('V-4');
+    expect(findings.map((f) => f.message).join(' '))
+      .toContain('generierten Verbraucherregel vorbehalten');
+  });
+
+  it.skipIf(!haveFixtures)('override on vp.entity.control is reserved (D-19)', () => {
+    const doc = fixture('flow-graph.valid.price-wallbox.json');
+    (doc.nodes[2].parameters as Record<string, unknown>).override = true;
+    const findings = validateFlow(doc, ENTITIES);
+    expect(findings.map((f) => f.message).join(' '))
+      .toContain('override ist der generierten Verbraucherregel');
+    // Even override:false is refused - the field itself is reserved.
+    (doc.nodes[2].parameters as Record<string, unknown>).override = false;
+    expect(validateFlow(doc, ENTITIES).map((f) => f.message).join(' '))
+      .toContain('override ist der generierten Verbraucherregel');
+  });
 });
 
 describe('U3 combinator + price condition', () => {

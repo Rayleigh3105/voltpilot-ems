@@ -763,6 +763,10 @@ export function FlowEditorPage({
             const groupTypes = catalog.types.filter(
               (t) => t.group === group.key
                 && (!paletteFilter || paletteFilter(t))
+                // D-19: generated-only types (the consumer-policy compiler's
+                // vp.consumer.reactive) never appear in ANY palette - not even
+                // the technical layer places one by hand.
+                && t.generated !== true
                 // N-1: a node whose promise the platform cannot keep (the
                 // notification has no delivery channel, and the Wenn/Dann gate
                 // only feeds it) is offered ONLY in the technical layer -
