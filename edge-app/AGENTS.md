@@ -880,11 +880,69 @@ inkl. Betreiber-Ablauf: root `AGENTS.md` „OTA Stufe 3" und
 - **Der Sidecar tauscht sich NIE selbst** (`otaapply.TargetRefs` laesst
   `updater` aus, `ReleaseNamesUpdater` protokolliert es laut); seine eigenen
   Updates sind beaufsichtigt und out-of-band.
+- **⚠ Er raeumt seine abgeloesten Abbilder NACH einem bestaetigten Tausch weg -
+  und die Nie-entfernen-Menge ist der ganze Punkt** (Pilsting 09.08.2026:
+  `docker system df` meldete 58 Abbilder, 3 in Benutzung, 5,8 GB
+  rueckgewinnbar, und der Plattenwaechter verweigerte deshalb einen legitimen
+  Rollout - die Verweigerung war richtig, der Grund war unser Muell). Regel
+  rein in `otaapply.PlanPrune`, Wirkung in `otaupdater/prune.go`, aufgerufen
+  ausschliesslich am ENDE von `Engine.commit` - nie vorher, nie mitten drin,
+  nach einer Ruecknahme GAR NICHT (dort ist jedes Abbild potenziell das
+  Rueckfallziel). Was die Sicherheit traegt:
+  - **„auf das ein Container zeigt" ist die allgemeine Regel, nicht eine Liste
+    von Ausnahmen** (`docker ps -aq` + `docker inspect --format {{.Image}}`):
+    sie deckt core/nodered/updater UND die GESTOPPTEN `vp-edge-lkg-*`-Halter
+    ab, also genau den Mechanismus, mit dem das Rueckfall-Image ein
+    `prune -a` ueberlebt. Das `docker save`-Archiv ist eine DATEI und per
+    Konstruktion ausser Reichweite. Dazu: der Rueckfall-Namensraum
+    (`otaapply.LKGTagPrefix`, geteilt mit `lkgTag`/`lkgHolder`) ist auch ohne
+    Halter tabu - **docker schuetzt hier NICHT**, einen Tag abzuhaengen gelingt
+    trotz Container, solange ein anderer Name bleibt.
+  - **Entfernt wird je NAME (`docker image rm <ref>`), nie mit `-f`, nie
+    pauschal.** `-f` haebelte die dritte Sicherungsebene aus (docker verweigert
+    die Loeschung, solange ein Container haelt), und `image prune -a` naehme
+    ein vorab geholtes naechstes Ziel sowie jedes von aussen abgelegte Abbild
+    mit. Ein Abbild mit Tag UND Digest braucht BEIDE Namen, sonst ueberlebt es
+    unter der jeweils anderen Referenz.
+  - **Die Kandidatenmenge sind nur die Repositories, die dieses Geraet selbst
+    getauscht hat** (`prunableRepos`; `imageRepo` trennt Tag/Digest ab, aber nie
+    den Port einer Registry). Der Sidecar steht nicht darin - seine alten
+    Abbilder bleiben liegen, die vorsichtige Richtung.
+  - **⚠ Nur was AELTER ist als der laufende Stand** (der ANKER je Repository =
+    die juengste Bau-Zeit unter den gehaltenen Abbildern). Entfernt werden
+    „Abbilder FRUEHERER Releases"; was juenger ist, ist etwas voraus
+    Bereitgelegtes. **In der Fehlerinjektions-Matrix aufgefallen, nicht im
+    Unit-Test:** ohne diese Regel sammelte ein frueherer Fall die Stellvertreter
+    ein, die die Matrix fuer spaetere Faelle vorab angelegt hatte. Unbekannte
+    Bau-Zeit = jung = bleibt; unbekannter ANKER = die Regel greift nicht (sonst
+    schaltete ein unlesbares Zeitformat das Aufraeumen still ganz ab), dann
+    traegt allein die Kulanz.
+  - **Kulanz JE REPOSITORY** (`VP_OTA_PRUNE_KEEP`, Vorgabe 1): global gezaehlt
+    behielte „eines aufheben" den Vorgaenger von core und entfernte den von
+    nodered.
+  - **Nicht-fatal, aber nie ratend:** jeder Fehlschlag wird nur protokolliert
+    (die Reinigung ist die Kuer, der Tausch die Pflicht); eine unvollstaendige
+    Sicht (`docker images`/`docker ps` antwortet nicht) bricht das Aufraeumen AB,
+    statt auf einer Luecke zu entscheiden.
+  - Schalter: `VP_OTA_PRUNE`/`VP_OTA_PRUNE_KEEP` (in BEIDEN Composes -
+    Lockstep!) und `<data>/ota/prune.json` je Geraet. **Die Vorzeichen sind
+    ANDERS als bei der Autonomie:** fehlende Datei = Vorgabe AN (das
+    Nicht-Aufraeumen war der Defekt), UNLESBARE Datei = nichts entfernen.
+  - **Bekannte Grenze:** eine Box, die der Plattenwaechter schon blockiert,
+    kommt hierueber nicht frei (ohne Tausch kein Aufraeumen) - dort einmal von
+    Hand `docker image prune -a`, was durch den Halter-Container nachweislich
+    sicher ist. Betreiber-Handbuch: `docs/ota-autonomie.md` §5b.
 - Beweise: `internal/otaapply` (die Tore + Wiederaufnahme + Sequenz + Snapshot +
-  Schalter), `internal/otaupdater` (die Orchestrierung gegen eine geschriebene
-  docker-Welt), `agent/ota_autonomy_test.go`, `internal/web/jstest/ui.test.js`
-  (die Neutral-Aussage) und die Matrix `test/ota-soak/run.sh` (10 Faelle gegen
-  echten Docker, echte Signaturkette, echte Registry).
+  Schalter + `prune_test.go`: die Regel inkl. Halter, Namensraum, Kulanz je
+  Repository, alle Namen einer Kennung, Schalter-Vorzeichen), `internal/otaupdater`
+  (die Orchestrierung gegen eine geschriebene docker-Welt; `prune_test.go`:
+  Rueckfallebene ueberlebt, Ruecknahme raeumt nicht, vorab geholtes Ziel bleibt,
+  ein Reinigungs-Fehlschlag kippt keinen bestaetigten Tausch),
+  `agent/ota_autonomy_test.go`, `internal/web/jstest/ui.test.js`
+  (die Neutral-Aussage) und die Matrix `test/ota-soak/run.sh` (11 Faelle gegen
+  echten Docker, echte Signaturkette, echte Registry - `image_cleanup` faehrt
+  ZWEI bestaetigte Updates und prueft danach Stueck fuer Stueck, was weg ist
+  und was steht).
 
 ## Das Trust-Set kommt beim EINRICHTEN mit - nie zur Laufzeit
 

@@ -72,6 +72,7 @@ func main() {
 		Neutral:         neutral,
 		Deadline:        envDuration("VP_OTA_WATCHDOG_SECONDS", 10*time.Minute),
 		DiskGuard:       envBytes("VP_OTA_DISK_GUARD_MB", otaapply.DefaultDiskGuardBytes),
+		Prune:           prunePolicy(),
 		ForceAutonomous: envBool("VP_OTA_AUTONOMOUS", false),
 		AckWait:         envDuration("VP_OTA_ACK_WAIT_SECONDS", 45*time.Second),
 		HealthWait:      envDuration("VP_OTA_HEALTH_WAIT_SECONDS", 120*time.Second),
@@ -87,7 +88,9 @@ func main() {
 	log.Info("vp-edge-updater gestartet", "version", Version, "daten", dataDir,
 		"deploy", deployDir, "takt", interval.String(),
 		"autonomie_erzwungen", envBool("VP_OTA_AUTONOMOUS", false),
-		"neutral_verifiziert", strings.Join(neutral.Families(), ","))
+		"neutral_verifiziert", strings.Join(neutral.Families(), ","),
+		"aufraeumen", prunePolicy().Enabled,
+		"aufraeumen_aufgehoben", prunePolicy().KeepReleases)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -146,6 +149,20 @@ func setupRegistryAuth(dataDir string, log *slog.Logger) error {
 	return nil
 }
 
+// prunePolicy ist die FLOTTEN-Vorgabe fuers Aufraeumen abgeloester Abbilder.
+//
+// Die Vorgabe ist AN (das Nicht-Aufraeumen war der Defekt, nicht das
+// Aufraeumen); `VP_OTA_PRUNE=false` schaltet es flottenweit ab,
+// `VP_OTA_PRUNE_KEEP` bestimmt, wie viele abgeloeste Releases je Komponente
+// liegen bleiben. Das einzelne Geraet ueberstimmt beides mit
+// `<data>/ota/prune.json` (siehe otaapply.ResolvePrunePolicy).
+func prunePolicy() otaapply.PrunePolicy {
+	p := otaapply.DefaultPrunePolicy()
+	p.Enabled = envBool("VP_OTA_PRUNE", p.Enabled)
+	p.KeepReleases = envCount("VP_OTA_PRUNE_KEEP", p.KeepReleases)
+	return p
+}
+
 func composeFiles() []string {
 	raw := env("VP_OTA_COMPOSE_FILES", "docker-compose.yml")
 	var out []string
@@ -182,6 +199,21 @@ func envDuration(key string, def time.Duration) time.Duration {
 		return def
 	}
 	return time.Duration(n) * time.Second
+}
+
+// envCount liest eine Anzahl. Anders als [envDuration] ist 0 hier ein
+// GUELTIGER Wert („nichts zusaetzlich aufheben"); nur eine unlesbare oder
+// negative Angabe faellt auf die Vorgabe zurueck.
+func envCount(key string, def int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return def
+	}
+	return n
 }
 
 func envBytes(key string, def uint64) uint64 {

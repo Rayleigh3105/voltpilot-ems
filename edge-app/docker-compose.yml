@@ -127,6 +127,13 @@ services:
       VP_OTA_NEUTRAL_VERIFIED: ${VP_OTA_NEUTRAL_VERIFIED:-}
       VP_OTA_WATCHDOG_SECONDS: ${VP_OTA_WATCHDOG_SECONDS:-600}
       VP_OTA_DISK_GUARD_MB: ${VP_OTA_DISK_GUARD_MB:-2048}
+      # Nach einem BESTAETIGTEN Tausch die abgeloesten Abbilder entfernen -
+      # sonst waechst die Karte zu, bis der Plattenwaechter das naechste
+      # Update verweigert. VP_OTA_PRUNE_KEEP ist die Zahl der abgeloesten
+      # Releases, die je Komponente liegen bleiben. Je Geraet ueberstimmbar
+      # mit /data/ota/prune.json.
+      VP_OTA_PRUNE: ${VP_OTA_PRUNE:-true}
+      VP_OTA_PRUNE_KEEP: ${VP_OTA_PRUNE_KEEP:-1}
       # Eine Box mit Host-Netz-Overlay muss beide Dateien nennen.
       VP_OTA_COMPOSE_FILES: ${VP_OTA_COMPOSE_FILES:-docker-compose.yml}
     volumes:

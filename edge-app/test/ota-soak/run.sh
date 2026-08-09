@@ -30,7 +30,7 @@ cd "$(dirname "$0")"
 . ./lib.sh
 
 SCENARIOS=(autonomy_off happy selftest_fail prune registry_outage wedged_pull
-           mid_flip_reboot clock_skew broker_outage disk_full)
+           mid_flip_reboot clock_skew broker_outage disk_full image_cleanup)
 
 usage() {
   cat <<EOF
@@ -86,10 +86,15 @@ prepare() {
   done
   build_components v1
   build_components v2
+  # v3 gibt es nur fuer den Aufraeum-Fall: erst ab dem ZWEITEN Update wird ein
+  # Stand wirklich abgeloest (die Vorgabe hebt genau einen auf).
+  build_components v3
   CORE_V1="$(digest_of core v1)"; NR_V1="$(digest_of nodered v1)"
   CORE_V2="$(digest_of core v2)"; NR_V2="$(digest_of nodered v2)"
+  CORE_V3="$(digest_of core v3)"; NR_V3="$(digest_of nodered v3)"
   note "v1 core=${CORE_V1##*@}"
   note "v2 core=${CORE_V2##*@}"
+  note "v3 core=${CORE_V3##*@}"
   docker compose -p "$PROJECT" --project-directory "$DEPLOY" \
     -f "${DEPLOY}/docker-compose.yml" down >/dev/null 2>&1 || true
 }
@@ -354,6 +359,79 @@ scenario_broker_outage() {
   wait_for_state succeeded 90 || bad "nicht bestaetigt ($(updater_state))"
   assert_alive v2
   SOAK_RUNNING_VERSION=""
+}
+
+# Nach ZWEI Updates bleiben nur der laufende Stand und EIN abgeloester -
+# und alles, was die Rueckfallebene traegt, steht unangetastet.
+#
+# Der Anlass ist gemessen (Pilsting, 09.08.2026): 58 Abbilder, 3 in Benutzung,
+# 5,8 GB rueckgewinnbar - und der Plattenwaechter verweigerte deshalb einen
+# legitimen Rollout. Der Sidecar hat die abgeloesten Abbilder nie entsorgt.
+scenario_image_cleanup() {
+  start_on_v1
+  # build statt push: der Stellvertreter wird hier NEU erzeugt, falls ihn etwas
+  # weggeraeumt hat. Der Bau ist deterministisch, der Digest bleibt derselbe.
+  build_components v3
+
+  # --- Runde 1: v1 -> v2. Danach ist v1 der EINE aufgehobene Vorgaenger. ----
+  assign edge-2026.08.0 12 "$CORE_V2" "$NR_V2"
+  wait_for_pending self_test 90 || { bad "Runde 1 erreichte die Selbsttest-Phase nicht"; assert_alive; return; }
+  SOAK_RUNNING_VERSION="edge-2026.08.0"
+  core_selftest true
+  wait_for_state succeeded 60 || { bad "Runde 1 nicht bestaetigt ($(updater_reason))"; assert_alive; return; }
+  if docker image inspect "$CORE_V1" >/dev/null 2>&1; then
+    ok "nach EINEM Update bleibt der Vorgaenger liegen (die Kulanz der Vorgabe)"
+  else
+    bad "der zuletzt abgeloeste Stand haette liegen bleiben muessen"
+  fi
+
+  # --- Runde 2: v2 -> v3. JETZT ist v1 wirklich verwaist. ------------------
+  assign edge-2026.08.1 13 "$CORE_V3" "$NR_V3"
+  wait_for_pending self_test 90 || { bad "Runde 2 erreichte die Selbsttest-Phase nicht"; assert_alive; return; }
+  SOAK_RUNNING_VERSION="edge-2026.08.1"
+  core_selftest true
+  wait_for_state succeeded 60 || { bad "Runde 2 nicht bestaetigt ($(updater_reason))"; assert_alive; return; }
+  SOAK_RUNNING_VERSION=""
+
+  # 1. Das Verwaiste ist weg - beide Namen, Tag UND Digest.
+  local gone=1
+  for ref in "$CORE_V1" "$NR_V1" "${REG}/soak/core:v1" "${REG}/soak/nodered:v1"; do
+    if docker image inspect "$ref" >/dev/null 2>&1; then
+      bad "das verwaiste Abbild '${ref}' liegt noch da"
+      gone=0
+    fi
+  done
+  [ "$gone" -eq 1 ] && ok "die Abbilder des ueberholten Standes sind entfernt (Tag UND Digest)"
+
+  # 2. Die NIE-entfernen-Menge, Stueck fuer Stueck.
+  local kept=1
+  for ref in "$CORE_V3" "$NR_V3" "$CORE_V2" "$NR_V2"; do
+    docker image inspect "$ref" >/dev/null 2>&1 || { bad "'${ref}' haette bleiben muessen"; kept=0; }
+  done
+  [ "$kept" -eq 1 ] && ok "laufender Stand UND der eine aufgehobene Vorgaenger stehen"
+
+  local rollback=1
+  for comp in core nodered; do
+    docker image inspect "vp-edge-lkg-${comp}:lkg" >/dev/null 2>&1 \
+      || { bad "der Rueckfall-Tag 'vp-edge-lkg-${comp}:lkg' fehlt"; rollback=0; }
+    docker inspect "vp-edge-lkg-${comp}" >/dev/null 2>&1 \
+      || { bad "der gestoppte Rueckfall-Halter 'vp-edge-lkg-${comp}' fehlt"; rollback=0; }
+    [ -s "${DATA}/ota/lkg/${comp}.tar" ] \
+      || { bad "das Rueckfall-Archiv '${comp}.tar' fehlt"; rollback=0; }
+  done
+  [ "$rollback" -eq 1 ] && ok "Rueckfall-Tag, gestoppter Halter und Archiv sind unangetastet"
+
+  # 3. Es wurde nur in den EIGENEN Repositories geraeumt.
+  if docker image inspect alpine:3.20 >/dev/null 2>&1; then
+    ok "ein fremdes Abbild (alpine:3.20) wurde nicht angefasst"
+  else
+    bad "es wurde ausserhalb der eigenen Repositories aufgeraeumt"
+  fi
+  assert_log_mentions "abgeloeste Abbilder entfernt"
+  assert_alive v3
+
+  # Fuer die uebrigen Faelle wieder herstellen, was hier entfernt wurde.
+  restore_component v1
 }
 
 # Kein Platz: es wird nicht einmal geholt.

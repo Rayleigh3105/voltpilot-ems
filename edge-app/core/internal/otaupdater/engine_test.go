@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +54,10 @@ type fakeDocker struct {
 	log        []string
 	images     map[string]bool   // vorhandene Referenzen/Tags
 	digests    map[string]string // Referenz -> Repo-Digest (das, was inspect meldet)
+	ids        map[string]string // Referenz -> lokale Abbild-Kennung
+	created    map[string]int    // Referenz -> Bau-Reihenfolge (groesser = neuer)
+	holders    map[string]string // gestoppter Halter-Container -> Referenz
+	clock      int
 	containers map[string]*fakeContainer
 	tars       map[string]bool
 	// envPath ist die .env, die der Motor pinnt (der Stellvertreter liest sie,
@@ -67,6 +72,7 @@ type fakeDocker struct {
 func newFakeDocker(t *testing.T) *fakeDocker {
 	f := &fakeDocker{
 		t: t, images: map[string]bool{}, digests: map[string]string{},
+		ids: map[string]string{}, created: map[string]int{}, holders: map[string]string{},
 		containers: map[string]*fakeContainer{}, tars: map[string]bool{},
 		failOn: map[string]string{}, pulledWrongDigest: map[string]bool{},
 	}
@@ -81,6 +87,15 @@ func newFakeDocker(t *testing.T) *fakeDocker {
 func (f *fakeDocker) present(ref string) {
 	f.images[ref] = true
 	f.digests[ref] = ref
+	// Ein TAG teilt seine Kennung mit dem Abbild - eine eigene waere die Sorte
+	// Unwahrheit, an der ein Aufraeum-Test nichts mehr beweist.
+	if f.ids[ref] == "" {
+		f.ids[ref] = "sha256:id-" + ref
+	}
+	if f.created[ref] == 0 {
+		f.clock++
+		f.created[ref] = f.clock
+	}
 }
 
 func (f *fakeDocker) Run(_ context.Context, name string, args ...string) (string, error) {
@@ -104,6 +119,25 @@ func (f *fakeDocker) Run(_ context.Context, name string, args ...string) (string
 		f.present(ref)
 		return "", nil
 
+	case len(args) >= 3 && args[0] == "image" && args[1] == "rm":
+		// Wie docker: der NAME wird abgehaengt. Ein Abbild, das ein Container
+		// haelt, wird verweigert (die dritte Sicherungsebene) - hier nur, wenn
+		// der Name seine letzte Referenz waere.
+		ref := args[2]
+		if !f.images[ref] {
+			return "", fmt.Errorf("No such image: %s", ref)
+		}
+		id := f.ids[ref]
+		if f.lastRefOf(id, ref) && f.heldByContainer(id) {
+			return "", fmt.Errorf("conflict: unable to delete %s (cannot be forced) - "+
+				"image is being used by container", ref)
+		}
+		delete(f.images, ref)
+		delete(f.digests, ref)
+		delete(f.ids, ref)
+		delete(f.created, ref)
+		return "", nil
+
 	case len(args) >= 4 && args[0] == "image" && args[1] == "inspect":
 		// Der Motor fragt sowohl mit einer Referenz als auch mit der lokalen
 		// Image-Kennung (so loest er den Digest des LAUFENDEN Containers auf).
@@ -112,23 +146,42 @@ func (f *fakeDocker) Run(_ context.Context, name string, args ...string) (string
 			return "", fmt.Errorf("No such image: %s", ref)
 		}
 		if args[3] == "{{.Id}}" {
-			return "sha256:id-" + ref + "\n", nil
+			return f.ids[ref] + "\n", nil
 		}
 		d := f.digests[ref]
 		raw, _ := json.Marshal([]string{d})
 		return string(raw) + "\n", nil
 
+	case args[0] == "images":
+		return f.listImages(args[len(args)-1]), nil
+
+	case args[0] == "ps":
+		// `docker ps -aq --no-trunc`: JEDER Container, auch die gestoppten
+		// Rueckfall-Halter.
+		var out strings.Builder
+		for _, svc := range sortedKeys(f.containers) {
+			out.WriteString("cid-" + svc + "\n")
+		}
+		for _, name := range sortedKeys(f.holders) {
+			out.WriteString("held-" + name + "\n")
+		}
+		return out.String(), nil
+
 	case args[0] == "tag":
 		f.images[args[2]] = true
 		f.digests[args[2]] = f.digests[args[1]]
+		f.ids[args[2]] = f.ids[args[1]]
+		f.created[args[2]] = f.created[args[1]]
 		return "", nil
 
 	case args[0] == "rm":
+		delete(f.holders, args[len(args)-1])
 		return "", nil
 
 	case args[0] == "create":
 		// Die gestoppte Container-Referenz: sie ist der Grund, aus dem ein
 		// `prune -a` das Rueckfall-Image verschont.
+		f.holders[args[2]] = args[3]
 		return "held\n", nil
 
 	case args[0] == "save":
@@ -140,6 +193,29 @@ func (f *fakeDocker) Run(_ context.Context, name string, args ...string) (string
 		f.restoreFromTar(args[2])
 		return "", nil
 
+	case args[0] == "inspect" && len(args) >= 3 && args[2] == "{{.Image}}":
+		// Ein Aufruf, viele Container -> je eine Abbild-Kennung.
+		var out strings.Builder
+		for _, cid := range args[3:] {
+			switch {
+			case strings.HasPrefix(cid, "cid-"):
+				c, ok := f.containers[strings.TrimPrefix(cid, "cid-")]
+				if !ok {
+					return out.String(), fmt.Errorf("No such object: %s", cid)
+				}
+				out.WriteString(f.ids[c.imageRef] + "\n")
+			case strings.HasPrefix(cid, "held-"):
+				ref, ok := f.holders[strings.TrimPrefix(cid, "held-")]
+				if !ok {
+					return out.String(), fmt.Errorf("No such object: %s", cid)
+				}
+				out.WriteString(f.ids[ref] + "\n")
+			default:
+				return out.String(), fmt.Errorf("No such object: %s", cid)
+			}
+		}
+		return out.String(), nil
+
 	case args[0] == "inspect":
 		cid := args[len(args)-1]
 		svc := strings.TrimPrefix(cid, "cid-")
@@ -147,7 +223,7 @@ func (f *fakeDocker) Run(_ context.Context, name string, args ...string) (string
 		if !ok {
 			return "", fmt.Errorf("No such object: %s", cid)
 		}
-		return fmt.Sprintf("sha256:id-%s\t%v\t%d\t%s\n", c.imageRef, c.running, c.restarts, c.health), nil
+		return fmt.Sprintf("%s\t%v\t%d\t%s\n", f.idOf(c.imageRef), c.running, c.restarts, c.health), nil
 
 	case args[0] == "compose":
 		return f.compose(args)
@@ -163,6 +239,78 @@ func (f *fakeDocker) restoreFromTar(path string) {
 	base := strings.TrimSuffix(filepath.Base(path), ".tar")
 	tag := lkgTag(base)
 	f.images[tag] = true
+	if f.ids[tag] == "" {
+		f.ids[tag] = "sha256:id-" + tag
+	}
+	if f.created[tag] == 0 {
+		f.clock++
+		f.created[tag] = f.clock
+	}
+}
+
+func (f *fakeDocker) idOf(ref string) string {
+	if id := f.ids[ref]; id != "" {
+		return id
+	}
+	return "sha256:id-" + ref
+}
+
+// listImages bildet `docker images --no-trunc --digests --format … <repo>` ab:
+// EINE Zeile je NAME, mehrere Namen koennen dieselbe Kennung tragen.
+func (f *fakeDocker) listImages(repo string) string {
+	base := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	var out strings.Builder
+	for _, ref := range sortedKeys(f.images) {
+		if imageRepo(ref) != repo {
+			continue
+		}
+		tag, dig := "<none>", "<none>"
+		if i := strings.Index(ref, "@"); i > 0 {
+			dig = ref[i+1:]
+		} else if i := strings.LastIndex(ref, ":"); i > 0 && !strings.Contains(ref[i+1:], "/") {
+			tag = ref[i+1:]
+		}
+		created := base.Add(time.Duration(f.created[ref]) * time.Minute)
+		fmt.Fprintf(&out, "%s\t%s\t%s\t%s\t%s\n", f.idOf(ref), repo, tag, dig,
+			created.Format("2006-01-02 15:04:05 -0700 MST"))
+	}
+	return out.String()
+}
+
+// heldByContainer sagt, ob IRGENDEIN Container (laufend oder gestoppt) diese
+// Kennung haelt - die Regel, mit der docker eine Loeschung verweigert.
+func (f *fakeDocker) heldByContainer(id string) bool {
+	for _, c := range f.containers {
+		if f.idOf(c.imageRef) == id {
+			return true
+		}
+	}
+	for _, ref := range f.holders {
+		if f.idOf(ref) == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *fakeDocker) lastRefOf(id, ref string) bool {
+	for other := range f.images {
+		if other != ref && f.ids[other] == id {
+			return false
+		}
+	}
+	return true
+}
+
+func (f *fakeDocker) hasImage(ref string) bool { return f.images[ref] }
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (f *fakeDocker) compose(args []string) (string, error) {

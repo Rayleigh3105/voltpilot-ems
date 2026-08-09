@@ -61,7 +61,7 @@ Sidecar-Log und die verwendete `.env` — abgelegt BEVOR abgeräumt wird.
 
 ## Was diese Matrix im Bau bereits gefunden hat
 
-Drei echte Defekte, alle mit einem Regressionstest festgenagelt:
+Vier echte Defekte, alle mit einem Regressionstest festgenagelt:
 
 1. der Motor reichte die Vertrauenswurzel als `nil` weiter, statt die
    eingebackene zu laden — jedes Release wäre mit dem falschen Grund abgelehnt
@@ -72,3 +72,8 @@ Drei echte Defekte, alle mit einem Regressionstest festgenagelt:
    Zuweisung liegt ja noch) — eine Endlosschleife aus Tausch und Rücknahme.
    Daraus wurde die Regel „was hier einmal zurückgerollt wurde, läuft nie
    wieder von selbst an" (`/data/ota/failed.json`).
+4. das Aufräumen abgelöster Abbilder sammelte auch ein, was VORAUS bereitgelegt
+   war: die Matrix legt ihre Stellvertreter für spätere Fälle vorab an, und ein
+   früherer Fall nahm sie mit. Daraus wurde die Regel „entfernt wird nur, was
+   ÄLTER ist als der hier laufende Stand" — es sind ja *frühere* Releases, die
+   weg sollen (`otaapply.PlanPrune`, Anker je Repository).
