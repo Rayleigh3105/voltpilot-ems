@@ -1,0 +1,239 @@
+/* Steuerbare Verbraucher (Increment 1) - component-local styles (index.css
+   stays untouched, the CockpitBlocks precedent). Mobile-first vertical steps. */
+
+.vp-vb-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.vp-vb-head h2 {
+  margin: 0;
+}
+.vp-vb-intro {
+  color: var(--vp-text-muted, #5b6472);
+  margin: 4px 0 0;
+  max-width: 60ch;
+}
+
+.vp-vb-list {
+  display: grid;
+  gap: 12px;
+}
+.vp-vb-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-border, #e2e6ec);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface, #fff);
+  min-width: 0;
+}
+.vp-vb-card-main {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.vp-vb-card-name {
+  font-weight: 600;
+}
+.vp-vb-card-sub {
+  color: var(--vp-text-muted, #5b6472);
+  font-size: 0.9em;
+  margin-top: 2px;
+}
+.vp-vb-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.vp-vb-not-activated {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--vp-text-muted, #5b6472);
+  font-size: 0.85em;
+}
+.vp-vb-not-activated .vp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-border, #cdd3db);
+  flex: none;
+}
+
+/* Wizard + rule builder step body */
+.vp-vb-step {
+  display: grid;
+  gap: 16px;
+}
+.vp-vb-stepcount {
+  color: var(--vp-text-muted, #5b6472);
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.vp-vb-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-vb-field > label,
+.vp-vb-fieldset > legend {
+  font-weight: 600;
+}
+.vp-vb-hint {
+  color: var(--vp-text-muted, #5b6472);
+  font-size: 0.9em;
+}
+.vp-vb-error {
+  color: var(--vp-alert-warn-ink, #8a5a00);
+  font-size: 0.9em;
+}
+.vp-vb-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Card-style radio/checkbox groups (real inputs, not colour-only) */
+.vp-vb-cards {
+  display: grid;
+  gap: 10px;
+}
+@media (min-width: 560px) {
+  .vp-vb-cards.two {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.vp-vb-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-border, #e2e6ec);
+  border-radius: var(--vp-radius-md, 12px);
+  cursor: pointer;
+  min-width: 0;
+}
+.vp-vb-choice:focus-within {
+  outline: 2px solid var(--vp-focus-ring-color, #2c5282);
+  outline-offset: 2px;
+}
+.vp-vb-choice input {
+  margin-top: 3px;
+  flex: none;
+}
+.vp-vb-choice.selected {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 1px var(--vp-action, #2c5282) inset;
+}
+.vp-vb-choice-title {
+  font-weight: 600;
+}
+.vp-vb-choice-sub {
+  color: var(--vp-text-muted, #5b6472);
+  font-size: 0.9em;
+  margin-top: 2px;
+}
+
+.vp-vb-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  min-width: 0;
+}
+.vp-vb-row > * {
+  min-width: 0;
+}
+
+/* The permanent sentence preview (§14.5) */
+.vp-vb-preview {
+  border-left: 3px solid var(--vp-action, #2c5282);
+  background: var(--vp-surface-2, #f5f7fa);
+  padding: 12px 14px;
+  border-radius: 0 var(--vp-radius-md, 12px) var(--vp-radius-md, 12px) 0;
+}
+.vp-vb-preview-label {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--vp-text-muted, #5b6472);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.vp-vb-preview p {
+  margin: 4px 0 0;
+}
+
+.vp-vb-more summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+}
+.vp-vb-more[open] summary {
+  margin-bottom: 10px;
+}
+
+.vp-vb-review dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  min-width: 0;
+}
+.vp-vb-review dt {
+  font-weight: 600;
+  color: var(--vp-text-muted, #5b6472);
+}
+.vp-vb-review dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .vp-vb-review dl {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .vp-vb-review dd {
+    margin-bottom: 8px;
+  }
+}
+
+.vp-vb-cond-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--vp-border, #e2e6ec);
+  border-radius: var(--vp-radius-md, 12px);
+}
+.vp-vb-cond-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+}
+
+.vp-vb-note {
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface-2, #f5f7fa);
+  color: var(--vp-text-muted, #5b6472);
+  font-size: 0.92em;
+}
+.vp-vb-success {
+  display: grid;
+  gap: 12px;
+  text-align: center;
+  padding: 8px 0;
+}

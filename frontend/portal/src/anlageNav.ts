@@ -163,6 +163,10 @@ function baseItems(
  */
 function footItems(): SidebarItem[] {
   return [
+    // Steuerbare Verbraucher (docs/verbrauchssteuerung.md §14.1): a bookmarkable
+    // per-Anlage area, reachable on EVERY Anlage (like Einstellungen) rather
+    // than a permanent main nav entry. Keeps the base group the fixed areas.
+    { key: 'verbraucher', label: 'Verbraucher', icon: 'zap', target: { kind: 'sub', sub: 'verbraucher' }, badge: null },
     { key: 'technik', label: 'Einstellungen', icon: 'settings', target: { kind: 'sub', sub: 'technik' }, badge: null },
     { key: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle', target: { kind: 'help' }, badge: null },
   ];

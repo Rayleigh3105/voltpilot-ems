@@ -90,6 +90,20 @@ tags:
       override them, foreign site = 404 via RLS); the prospect route is
       platform-admin-only with explicit inputs and persists nothing (V1 is
       stateless - results live in the service's job cache for ~1 h).
+  - name: consumer
+    description: >
+      Steuerbare Verbraucher (docs/verbrauchssteuerung.md): a Portal-User models,
+      names and rule-configures a controllable consumer (Wallbox / Heizstab /
+      Pumpe / generische Last) of THEIR OWN site. A consumer STAYS a v2 entity;
+      these routes carry the extra master data (consumer_profile) + the
+      declarative operating requirements (consumer_policy, contract
+      docs/contracts/v2/consumer-policy.schema.json). Tenant-scoped like every
+      site endpoint (foreign site = 404 via RLS; a body tenant_id/site_id is
+      never trusted; the requested control kind is mapped onto the INTERSECTION
+      of the device's reported capabilities, never widened). Increment 1 ships
+      consumer-options + CRUD + policy GET/PUT only; a policy is stored as a
+      DRAFT (no compiler / optimizer / edge command yet, so every surface reports
+      "Steuerung noch nicht aktiviert").
   - name: flows
     description: >
       Customer flow editor (E3b "Kunden-Freigabe"): a Portal-User builds,
@@ -3629,6 +3643,177 @@ paths:
         "409": { description: The site has no battery asset - nothing to re-plan. }
         "429": { description: Too many concurrent re-optimizes; retry shortly. }
         "502": { description: The solve service is unreachable; the stored plan is unchanged. }
+  /api/v1/sites/{siteId}/consumer-options:
+    get:
+      tags: [consumer]
+      summary: The Anlagen-Modell assistant's capability-/context-filtered inputs.
+      description: >
+        The consumer types the site may create (catalog category=consumer,
+        controllable, non-composed - each with its allowed control kinds, default
+        failsafe and per-type intent suggestions), the condition SIGNAL catalog
+        (name/label/class/valueType; cloud signals are compiled to windows and
+        carry no hysteresis, D1), the four intent cards, whether the site has a
+        storage (steers the storage questions, E3), the edge-reported sources
+        that can back a consumer, and the master-data defaults. Tenant-scoped (RLS
+        foreign site = 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The assistant inputs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsumerOptions" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/consumers:
+    get:
+      tags: [consumer]
+      summary: List the site's controllable consumers.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The consumers with their master data + control-activation state.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Consumer" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    post:
+      tags: [consumer]
+      summary: Create a consumer (connected to a reported source, or as a draft).
+      description: >
+        Creates the consumer as a v2 entity + its consumer_profile. `edgeSourceId`
+        binds a reported source ("verbunden"); omitting it creates an unconnected
+        DRAFT ("Noch nicht verbunden"). The requested `controlKind` is refused
+        (422) when the device type cannot execute it (§16 - never widened by a
+        customer value). No real command is issued in Increment 1.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateConsumerRequest" }
+      responses:
+        "201":
+          description: The created consumer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Consumer" }
+        "400": { description: Unknown type / invalid master data. Body carries a German `message`. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+        "409": { description: The chosen reported source is already assigned to a consumer. }
+        "422": { description: The device type cannot execute the requested control kind. }
+  /api/v1/sites/{siteId}/consumers/{id}:
+    get:
+      tags: [consumer]
+      summary: Read one consumer's master data + state.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The consumer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Consumer" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
+    patch:
+      tags: [consumer]
+      summary: Edit a consumer's master data (optimistic via version).
+      description: >
+        Optimistic concurrency: send `expectedVersion`; a stale value is refused
+        with 409. The control kind is again mapped onto the device capabilities
+        (§16). `name` updates the entity label.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PatchConsumerRequest" }
+      responses:
+        "200":
+          description: The updated consumer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Consumer" }
+        "400": { description: Invalid master data. Body carries a German `message`. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
+        "409": { description: Version conflict (someone else changed it first). }
+        "422": { description: The device type cannot execute the requested control kind. }
+    delete:
+      tags: [consumer]
+      summary: Fachlich stilllegen (409 while still connected).
+      description: >
+        Removes an UNCONNECTED consumer (returning the site to its pre-consumer
+        state - Increment 1 holds no audit/fulfilment data). A consumer still
+        bound to a device/source is refused (409): disconnect first (physische
+        Registry-Bereinigung erst nach Deaktivierung, §11).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
+        "409": { description: Still connected to a device/source; disconnect first. }
+  /api/v1/sites/{siteId}/consumers/{id}/policy:
+    get:
+      tags: [consumer]
+      summary: Read the consumer's latest policy (204 when none).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The latest policy version (draft in Increment 1).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsumerPolicyVersion" }
+        "204": { description: No policy authored yet. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
+    put:
+      tags: [consumer]
+      summary: Save a new DRAFT policy version.
+      description: >
+        Validates the policy document against consumer-policy.schema.json + the
+        semantic ConsumerPolicyValidator (kind/enforcement coherence, must_run⇒grid
+        allow, condition-tree limits, cloud-vs-local hysteresis, catalog signals,
+        D4 power ranges, 24:00 normalisation) and stores it as the next DRAFT
+        version. The document's `entity_id` is stamped from the path (a body can
+        never target another entity). content_hash is derived from canonical JSON.
+        Activation does not exist yet (Increment 1).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  type: object
+                  description: A consumer-policy document (consumer-policy.schema.json).
+      responses:
+        "200":
+          description: The stored draft version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsumerPolicyVersion" }
+        "400": { description: The policy is invalid. Body carries a German `message`. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
 components:
   securitySchemes:
     bearerAuth:
@@ -3653,6 +3838,131 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    Consumer:
+      type: object
+      description: A controllable consumer's master data + control-activation state.
+      properties:
+        id: { type: string, format: uuid, description: The consumer entity id. }
+        type: { type: string, example: wallbox, description: entity_type (catalog consumer type). }
+        typeLabel: { type: string, example: Wallbox }
+        name: { type: string, example: Wallbox Garage }
+        controlKind: { type: string, enum: [on_off, stepped, continuous] }
+        ratedPowerKw: { type: number, example: 11.0 }
+        minPowerKw: { type: number, nullable: true }
+        levelsKw: { type: array, nullable: true, items: { type: number } }
+        resolutionKw: { type: number, nullable: true }
+        powerRangesKw:
+          type: array
+          nullable: true
+          description: D4 non-convex [min,max] ranges (continuous).
+          items: { type: array, items: { type: number } }
+        storageRelation: { type: string, enum: [consumer_first, storage_first] }
+        defaultGridEnergyPolicy: { type: string, enum: [allow, avoid, forbid] }
+        allowStorageDischarge: { type: boolean }
+        failsafe: { type: string, enum: [off, release] }
+        enabled: { type: boolean, description: The pausierbarer Gesamtschalter. }
+        version: { type: integer, description: Optimistic-concurrency version of the master data. }
+        connection:
+          type: string
+          enum: [connected, disconnected]
+          description: disconnected = "Noch nicht verbunden".
+        edgeSourceId: { type: string, nullable: true }
+        controlActivation:
+          type: string
+          enum: [not_activated]
+          description: Increment 1 is always "not_activated" ("Steuerung noch nicht aktiviert").
+        hasDraftPolicy: { type: boolean }
+        draftPolicyVersion: { type: integer, nullable: true }
+    CreateConsumerRequest:
+      type: object
+      required: [type, ratedPowerKw]
+      properties:
+        type: { type: string, example: wallbox }
+        name: { type: string }
+        ratedPowerKw: { type: number, example: 11.0 }
+        controlKind: { type: string, enum: [on_off, stepped, continuous] }
+        levelsKw: { type: array, items: { type: number } }
+        minPowerKw: { type: number }
+        resolutionKw: { type: number }
+        powerRangesKw: { type: array, items: { type: array, items: { type: number } } }
+        storageRelation: { type: string, enum: [consumer_first, storage_first] }
+        defaultGridEnergyPolicy: { type: string, enum: [allow, avoid, forbid] }
+        allowStorageDischarge: { type: boolean }
+        failsafe: { type: string, enum: [off, release] }
+        edgeSourceId:
+          type: string
+          description: An edge-reported source id to bind ("verbunden"); omit for a draft.
+    PatchConsumerRequest:
+      type: object
+      description: All fields optional; send `expectedVersion` for optimistic concurrency.
+      properties:
+        name: { type: string }
+        ratedPowerKw: { type: number }
+        controlKind: { type: string, enum: [on_off, stepped, continuous] }
+        levelsKw: { type: array, items: { type: number } }
+        minPowerKw: { type: number }
+        resolutionKw: { type: number }
+        powerRangesKw: { type: array, items: { type: array, items: { type: number } } }
+        storageRelation: { type: string, enum: [consumer_first, storage_first] }
+        defaultGridEnergyPolicy: { type: string, enum: [allow, avoid, forbid] }
+        allowStorageDischarge: { type: boolean }
+        failsafe: { type: string, enum: [off, release] }
+        enabled: { type: boolean }
+        expectedVersion: { type: integer }
+    ConsumerOptions:
+      type: object
+      description: Capability-/context-filtered inputs for the assistant question tree.
+      properties:
+        types:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string }
+              label: { type: string }
+              controlKinds: { type: array, items: { type: string } }
+              defaultFailsafe: { type: string }
+              releaseAllowed: { type: boolean }
+              intents: { type: array, items: { type: string } }
+        signals:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              label: { type: string }
+              signalClass: { type: string, enum: [cloud, local] }
+              valueType: { type: string, enum: [number, boolean] }
+        intents:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              title: { type: string }
+              customerLine: { type: string }
+        hasStorage: { type: boolean }
+        reportedSources:
+          type: array
+          items:
+            type: object
+            properties:
+              sourceId: { type: string }
+              label: { type: string }
+              brand: { type: string }
+              role: { type: string }
+              health: { type: string, enum: [ok, stale, never] }
+        defaultStorageRelation: { type: string }
+        defaultGridEnergyPolicy: { type: string }
+    ConsumerPolicyVersion:
+      type: object
+      properties:
+        entityId: { type: string, format: uuid }
+        version: { type: integer }
+        lifecycle: { type: string, enum: [draft, active, retired] }
+        document: { type: object, description: The consumer-policy document. }
+        contentHash: { type: string, example: "sha256:..." }
+        createdBy: { type: string, nullable: true }
     SimulationRequest:
       type: object
       description: >

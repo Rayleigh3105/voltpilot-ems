@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "entity_id": "pump-01",
+  "timezone": "Europe/Berlin",
+  "requirements": [
+    {
+      "id": "pump-daily-hour",
+      "kind": "flexible_task",
+      "enforcement": "required_by_deadline",
+      "recurrence": { "days": "daily", "from": "00:00", "to": "24:00" },
+      "demand": { "runtime_minutes": 60, "contiguous": true },
+      "grid_energy_policy": "avoid",
+      "target": { "kind": "on_off", "value": true }
+    }
+  ]
+}
