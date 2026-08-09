@@ -436,6 +436,8 @@ for i in $(seq 1 30); do
   [ "$i" = 30 ] && { echo "$CMD"; fail "rod never fell to failsafe off after its window"; }
   sleep 4
 done
+# The switch-off ARMED the rod's 45 s Mindestpause; C3 measures against it.
+ROD_OFF_AT=$(date +%s)
 pass "the window ended: rod fell to its off failsafe"
 
 echo "--- C2: power_ranges - a 4.0 kW wish (in the 3.7..4.2 gap) NEVER lands between the ranges"
@@ -458,13 +460,24 @@ done
 pass "gap wish snapped DOWN to 3.7, honest confirmed=false + readback_mismatch in the heartbeat"
 
 echo "--- C3: cycle guard - a restart during the 45 s Mindestpause is HELD with the honest reason"
+# The C1b switch-off armed the pause; wait it out so this scenario starts from
+# a CLEAN baseline (its own off->on toggle below then arms a fresh pause).
+ELAPSED=$(( $(date +%s) - ROD_OFF_AT ))
+if [ "$ELAPSED" -lt 50 ]; then
+  echo "    (waiting out the residual Mindestpause: $((50 - ELAPSED))s)"
+  sleep $((50 - ELAPSED))
+fi
 SLOT_START="$(now_iso)"
 plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"on_off\":true}}]}" \
   "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
 for i in $(seq 1 15); do
   CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 15) || CMD=""
   echo "$CMD" | grep -q '"on_off":true' && break
-  [ "$i" = 15 ] && fail "rod never restarted for the cycle-guard scenario"
+  if [ "$i" = 15 ]; then
+    echo "retained rod command: $CMD"
+    "${COMPOSE[@]}" logs core 2>/dev/null | tail -30
+    fail "rod never restarted for the cycle-guard scenario"
+  fi
   sleep 2
 done
 # Off, then IMMEDIATELY on again: the min-off pause must hold the restart.
@@ -485,10 +498,21 @@ for i in $(seq 1 10); do
   [ "$i" = 10 ] && { echo "$HB"; fail "heartbeat never named the cycle-guard hold (guard_min_off)"; }
 done
 # After the pause the STANDING wish goes through - no flapping in between.
+# Re-publish a fresh 1-min slot every few polls so the wish outlives its short
+# slot while the pause runs down (the production cadence is a 15-min slot).
 for i in $(seq 1 30); do
   CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 15) || CMD=""
   echo "$CMD" | grep -q '"on_off":true' && break
-  [ "$i" = 30 ] && fail "the held restart never released after the Mindestpause"
+  if [ $((i % 4)) = 0 ]; then
+    SLOT_START="$(now_iso)"
+    plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"on_off\":true}}]}" \
+      "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+  fi
+  if [ "$i" = 30 ]; then
+    echo "retained rod command: $CMD"
+    "${COMPOSE[@]}" logs core 2>/dev/null | tail -30
+    fail "the held restart never released after the Mindestpause"
+  fi
   sleep 4
 done
 pass "cycle guard held the restart (waiting - guard_min_off in the heartbeat), then released"
