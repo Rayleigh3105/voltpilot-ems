@@ -457,6 +457,12 @@ services:
       # Consumer runtime status (Verbrauchssteuerung Inkrement 3, D9): the
       # heartbeat consumers block -> consumer_runtime_status.
       VOLTPILOT_CONSUMERS_MQTT_LISTENER_ENABLED: "true"
+      # Verbrauchssteuerung Inkrement 4: the consumer-policy activation gates,
+      # BOTH default OFF (tests/rig only; Produktivierung ist Inkrement 5). The
+      # stop paths (deactivate/pause + retained-artifact retraction) ignore
+      # them by design (Flag aus != gestoppt).
+      VOLTPILOT_CONSUMER_CONTROL_ENABLED: ${VOLTPILOT_CONSUMER_CONTROL_ENABLED:-false}
+      VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED: ${VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED:-false}
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Portal v3 M5: the device's own view of the flows it runs (deployment

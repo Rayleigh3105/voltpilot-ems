@@ -176,6 +176,41 @@ public class ConsumerRepository {
         return max == null ? 0 : max;
     }
 
+    /** The ACTIVE policy version, or null (at most one per consumer by index). */
+    public PolicyRow activePolicy(UUID siteId, UUID entityId) {
+        List<PolicyRow> rows = jdbc.query(
+                "SELECT policy_id, entity_id, version, lifecycle, document::text AS document, "
+                        + "content_hash, created_by, created_at FROM consumer_policy "
+                        + "WHERE site_id = ? AND entity_id = ? AND lifecycle = 'active'",
+                POLICY_MAPPER, siteId, entityId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Retire whatever is active for this consumer (0 or 1 row). */
+    public int retireActivePolicy(UUID siteId, UUID entityId) {
+        return jdbc.update(
+                "UPDATE consumer_policy SET lifecycle = 'retired' "
+                        + "WHERE site_id = ? AND entity_id = ? AND lifecycle = 'active'",
+                siteId, entityId);
+    }
+
+    /** draft -> active (the atomic activation's DB half). */
+    public boolean markPolicyActive(UUID siteId, UUID entityId, int version) {
+        return jdbc.update(
+                "UPDATE consumer_policy SET lifecycle = 'active', activated_at = now() "
+                        + "WHERE site_id = ? AND entity_id = ? AND version = ? "
+                        + "AND lifecycle <> 'active'",
+                siteId, entityId, version) > 0;
+    }
+
+    /** The Gesamtschalter (§4.2 "Aktiv"): pause/resume flip it, activation sets it. */
+    public void setEnabled(UUID siteId, UUID entityId, boolean enabled) {
+        jdbc.update(
+                "UPDATE consumer_profile SET enabled = ?, version = version + 1, "
+                        + "updated_at = now() WHERE site_id = ? AND entity_id = ?",
+                enabled, siteId, entityId);
+    }
+
     public PolicyRow insertPolicyDraft(UUID entityId, UUID tenantId, UUID siteId, int version,
             String documentJson, String contentHash, String createdBy) {
         UUID policyId = jdbc.queryForObject(

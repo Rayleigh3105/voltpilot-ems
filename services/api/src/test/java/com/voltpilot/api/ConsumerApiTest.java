@@ -451,6 +451,51 @@ class ConsumerApiTest {
                                 "target", Map.of("kind", "on_off", "value", true))));
     }
 
+    @Test
+    void policyLifecycleRoutesAreHonestlyFlagGatedAndRlsFenced() {
+        String tok = token("demo", "demo");
+        Map<String, Object> c = create(tok, Map.of(
+                "type", "heating-rod", "name", "Heizstab Lifecycle", "ratedPowerKw", 3.0,
+                "controlKind", "on_off", "edgeSourceId", "edge-src-lifecycle-1"));
+        String id = (String) c.get("id");
+        String base = "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id;
+        put(tok, base + "/policy", Map.of("document", heaterPolicy("ignored")));
+
+        // This context runs with BOTH Inkrement-4 flags at their default OFF:
+        // the options surface says so, and activation refuses HONESTLY (200
+        // with activated:false) - the portal keeps "Steuerung noch nicht
+        // aktiviert" (§16/§19).
+        assertThat(getMap("/api/v1/sites/" + BERLIN_SITE + "/consumer-options", tok)
+                .get("policyActivationEnabled")).isEqualTo(Boolean.FALSE);
+        ResponseEntity<Map<String, Object>> activate = post(tok, base + "/policy/activate",
+                Map.of());
+        assertThat(activate.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(activate.getBody().get("activated")).isEqualTo(Boolean.FALSE);
+        assertThat(activate.getBody().get("reason")).isEqualTo("activation_disabled");
+        assertThat(getMap(base + "/policy", tok).get("lifecycle")).isEqualTo("draft");
+
+        // The STOP paths work regardless of the flags (§16): pause flips the
+        // Gesamtschalter off (no broker in this context -> published false)...
+        ResponseEntity<Map<String, Object>> pause = post(tok, base + "/pause", Map.of());
+        assertThat(pause.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getMap(base, tok).get("enabled")).isEqualTo(Boolean.FALSE);
+        // ...and deactivate answers the honest 409 while nothing is active.
+        assertThat(post(tok, base + "/policy/deactivate", Map.of()).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        // resume is a START path and stays flag-gated.
+        ResponseEntity<Map<String, Object>> resume = post(tok, base + "/resume", Map.of());
+        assertThat(resume.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resume.getBody().get("activated")).isEqualTo(Boolean.FALSE);
+
+        // RLS: the foreign tenant sees 404 on every lifecycle route.
+        String other = token("demo2", "demo2");
+        for (String route : new String[] {"/policy/activate", "/policy/deactivate", "/pause",
+                "/resume"}) {
+            assertThat(post(other, base + route, Map.of()).getStatusCode())
+                    .as(route).isEqualTo(HttpStatus.NOT_FOUND);
+        }
+    }
+
     private Map<String, Object> create(String token, Map<String, Object> body) {
         ResponseEntity<Map<String, Object>> res = post(token,
                 "/api/v1/sites/" + BERLIN_SITE + "/consumers", body);

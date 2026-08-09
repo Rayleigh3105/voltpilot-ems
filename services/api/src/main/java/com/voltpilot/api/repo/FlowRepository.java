@@ -104,6 +104,25 @@ public class FlowRepository {
                 flowId, version, tenantId, siteId, name, runtime, documentJson);
     }
 
+    /**
+     * Insert-or-replace a GENERATED flow version (D-19 consumer policy): the
+     * document is platform-derived, so re-activating the same policy version
+     * (pause/resume round trips, a republished compile) REPLACES the row
+     * instead of conflicting. Resets lifecycle to draft + clears the stored
+     * artifact - the activation path re-marks active with the fresh artifact.
+     */
+    public void upsertGenerated(UUID tenantId, UUID siteId, UUID flowId, int version, String name,
+            String runtime, String documentJson) {
+        jdbc.update(
+                "INSERT INTO flow_definition (flow_id, flow_version, tenant_id, site_id, name, "
+                        + "runtime, lifecycle, document) VALUES (?, ?, ?, ?, ?, ?, 'draft', "
+                        + "?::jsonb) "
+                        + "ON CONFLICT (flow_id, flow_version) DO UPDATE SET "
+                        + "name = EXCLUDED.name, document = EXCLUDED.document, "
+                        + "lifecycle = 'draft', artifact = NULL, updated_at = now()",
+                flowId, version, tenantId, siteId, name, runtime, documentJson);
+    }
+
     /** Update a DRAFT version in place (no-op when the version left draft). */
     public boolean updateDraft(UUID flowId, int version, String name, String documentJson) {
         return jdbc.update(
