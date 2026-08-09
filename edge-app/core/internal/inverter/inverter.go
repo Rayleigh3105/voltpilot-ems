@@ -399,6 +399,13 @@ func froniusSunspecFields() []Field {
 			}},
 		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
 			Help: "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."},
+		{Key: "curtail_write_fc", Label: "Schreib-Funktionscode (Abregelung)", Type: "select", Default: 0,
+			Help: "Modbus-Funktion für die Einspeise-Begrenzung. Der Datamanager übernimmt die Begrenzung nur als geschlossenen Satz: einzelne FC6-Schreibbefehle landen zwar im Register, werden aber nie zum aktiven Befehl (am 09.08.2026 an einer echten Anlage gemessen). Deshalb ist FC16 (mehrere Register in einem Vorgang) die Voreinstellung - so beschreibt es auch das Fronius-Handbuch und so macht es die erprobte Victron-Umsetzung. Nur auf FC6 zurückstellen, wenn eine abweichende Firmware ausschließlich FC6 beantwortet.",
+			Options: []Opt{
+				{Value: 0, Label: "Automatisch (FC16, empfohlen)"},
+				{Value: 16, Label: "FC16 – mehrere Register (0x10)"},
+				{Value: 6, Label: "FC6 – einzelne Register (0x06)"},
+			}},
 	}
 }
 
@@ -773,6 +780,17 @@ type Connection struct {
 	// auto-detects, so "auto" is the default.
 	ModelType string `json:"model_type,omitempty"`
 
+	// CurtailWriteFc pins the Modbus WRITE function code the Fronius CURTAILMENT
+	// adapter uses for the Model-123 limit block. 0/absent = auto = FC16
+	// (0x10, write-multiple), the only form Fronius documents for these five
+	// registers and the one Victron's production Fronius limiter uses; 6 flips
+	// back to the legacy per-register FC6 writes, which were measured at
+	// Pilsting (09.08.2026) to be ACCEPTED and then ignored by the Datamanager.
+	// The sibling of ControlWriteFc above, for the OTHER control path.
+	// Node-RED reads conn.curtail_write_fc (sunspec/model-discovery.js
+	// resolveCurtailWriteFc).
+	CurtailWriteFc int `json:"curtail_write_fc,omitempty"`
+
 	// kostal_modbus (reuses IP/Port/UnitID/InvertGridSign/InvertBattSign).
 	// ByteOrder is the float word order of the PLENTICORE's two-word registers
 	// (device register 5): "auto" (default - read live from the device each
@@ -925,6 +943,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		}
 		// fields of the other transports are not part of this one.
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
 		conn.ByteOrder = ""
 	case CommModbusTCP:
 		if conn.Port == 0 {
@@ -941,6 +960,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, false, 0, false, ""
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
+		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
 	case CommFroniusSolarAPI:
@@ -954,6 +974,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.ModelType = "", 0, 0, ""
 		conn.UnitID, conn.Profile, conn.InvertControlSign, conn.InvertBattSign = 0, "", false, false
 		conn.ControlWriteFc = 0
+		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
 	case CommFroniusSunSpec:
@@ -977,6 +998,10 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 			// explicit override, keep as-is
 		default:
 			return Selection{}, invalid("Der SunSpec-Modelltyp muss automatisch, float oder int_sf sein.")
+		}
+		// 0 = auto (-> FC16, the default), 16 = FC16, 6 = FC6. See CurtailWriteFc.
+		if conn.CurtailWriteFc != 0 && conn.CurtailWriteFc != 6 && conn.CurtailWriteFc != 16 {
+			return Selection{}, invalid("Der Schreib-Funktionscode der Abregelung muss automatisch, FC16 oder FC6 sein.")
 		}
 		conn.Profile = registerFamily // sunspec_live
 		// fields of the other transports are not part of this one.
@@ -1013,6 +1038,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		// adapter reads (the modbus_tcp precedent).
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, 0, false, ""
 		conn.ControlWriteFc = 0
+		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
@@ -1026,6 +1052,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 		conn.InvertControlSign, conn.InvertBattSign = false, false
 		conn.ControlWriteFc = 0
+		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
 	default:

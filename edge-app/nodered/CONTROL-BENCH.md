@@ -273,6 +273,22 @@ kalibrieren") - KEIN Register-Handbetrieb nötig. Für die zwei Pilsting-Fronius
 (`192.168.210.40:502`, Unit 1 + Unit 2), **je Einheit einzeln, bei Sonne
 (≥ 5 kW aktuelle Leistung der Einheit)**:
 
+0a. **Was sich am 09.08.2026 geändert hat - unbedingt vor dem Lauf lesen.** Die
+   Begrenzung geht seither als EIN Block-Schreibvorgang (Modbus FC16) über die
+   fünf zusammenhängenden Register `WMaxLimPct .. WMaxLim_Ena` hinaus, statt als
+   drei Einzel-Schreibbefehle. Grund: der Datamanager übernimmt sie nur als
+   geschlossenen Satz - im letzten Lauf stand unser Wert bestätigt im Register,
+   die Leistung folgte aber nicht, und `RvrtTms` blieb auf dem Fremdwert 12000.
+   Vollständige Herleitung + Quellen: `FRONIUS.md` §6e. **Für diesen Lauf heißt
+   das: der Bench-Durchgang ist zu WIEDERHOLEN**, und er gilt nur als bestanden,
+   wenn diesmal
+   - `RvrtTms` sich auf **60** zurücklesen lässt (nicht 12000 - das ist der
+     direkteste Beleg, dass die Transaktion angekommen ist), und
+   - die Leistung wirklich am Cap KLEMMT („Am Limit geklemmt: 3 von 3"),
+     während die Schwester-Einheit als Ambient-Referenz klar darüber liegt.
+   Ein „Register bestätigt" allein beweist weiterhin NICHTS - genau deshalb gibt
+   es den Klemm-Beweis.
+
 0. **Vor der Sitzung: den Datamanager einmal neu starten**, wenn er kürzlich
    umkonfiguriert wurde (z. B. „Allow Control" gesetzt, EVU-Editor bearbeitet).
    Ein Datamanager 2.0 antwortet nach so einer Änderung manchmal minutenlang

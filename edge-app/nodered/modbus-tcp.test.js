@@ -208,3 +208,59 @@ test('decodeValue returns null instead of NaN/Infinity or on bad input', () => {
   assert.strictEqual(mb.decodeValue([1, 2], 'float64', 'big'), null, 'unknown type');
   assert.strictEqual(mb.decodeValue('regs', 'u16', 'big'), null, 'not an array');
 });
+
+// --- fn 0x10 (write multiple): the TRANSACTIONAL write form -----------------
+//
+// The Fronius Datamanager adopts the Model-123 limit only as a closed SET; the
+// live Pilsting tests (09.08.2026) showed single-register FC6 writes being
+// accepted and then ignored. Fronius documents these five registers as ONE 0x10
+// command, and Victron's dbus-fronius writes exactly that.
+
+test('buildWriteMultipleRequest frames a contiguous block per the Modbus spec', () => {
+  const req = mb.buildWriteMultipleRequest({ txid: 0x1234, unitId: 2, addr: 40243, values: [3273, 0, 60, 0, 1] });
+  assert.strictEqual(req.length, 13 + 10);
+  assert.strictEqual(req.readUInt16BE(0), 0x1234, 'txid');
+  assert.strictEqual(req.readUInt16BE(2), 0, 'protocol id');
+  assert.strictEqual(req.readUInt16BE(4), 7 + 10, 'MBAP length = unit+fn+addr+count+bytecount+payload');
+  assert.strictEqual(req[6], 2, 'unit id');
+  assert.strictEqual(req[7], 0x10, 'function code');
+  assert.strictEqual(req.readUInt16BE(8), 40243, 'start address');
+  assert.strictEqual(req.readUInt16BE(10), 5, 'register count');
+  assert.strictEqual(req[12], 10, 'byte count');
+  const payload = [];
+  for (let i = 0; i < 5; i++) payload.push(req.readUInt16BE(13 + i * 2));
+  assert.deepStrictEqual(payload, [3273, 0, 60, 0, 1]);
+  // The framed length must match what the socket reader expects.
+  assert.strictEqual(mb.expectedFrameLength(req), req.length);
+});
+
+test('buildWriteMultipleRequest masks to 16 bit and refuses an impossible block', () => {
+  const req = mb.buildWriteMultipleRequest({ addr: 0, values: [-1, 0x12345] });
+  assert.strictEqual(req.readUInt16BE(13), 0xffff);
+  assert.strictEqual(req.readUInt16BE(15), 0x2345);
+  assert.throws(() => mb.buildWriteMultipleRequest({ addr: 0, values: [] }), /1\.\.123/);
+  assert.throws(() => mb.buildWriteMultipleRequest({ addr: 0, values: new Array(124).fill(0) }), /1\.\.123/);
+});
+
+test('parseWriteMultipleResponse accepts the echo and rejects everything else', () => {
+  const echo = (fn, addr, count, txid = 7, unit = 2) => {
+    const b = Buffer.alloc(12);
+    b.writeUInt16BE(txid, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4);
+    b[6] = unit; b[7] = fn; b.writeUInt16BE(addr, 8); b.writeUInt16BE(count, 10);
+    return b;
+  };
+  assert.deepStrictEqual(
+    mb.parseWriteMultipleResponse(echo(0x10, 40243, 5), { expectTxid: 7, expectUnit: 2 }),
+    { addr: 40243, count: 5 });
+  // A Modbus exception must SURFACE, never read as success - 0x01 "illegal
+  // function" is exactly how a firmware that cannot do FC16 would answer, and
+  // that is the operator's cue to use the FC6 flip-back.
+  const exc = Buffer.alloc(12);
+  exc.writeUInt16BE(7, 0); exc.writeUInt16BE(0, 2); exc.writeUInt16BE(3, 4);
+  exc[6] = 2; exc[7] = 0x90; exc[8] = 0x01;
+  assert.throws(() => mb.parseWriteMultipleResponse(exc), /Ausnahme 0x01/);
+  assert.throws(() => mb.parseWriteMultipleResponse(echo(0x06, 40243, 5)), /Funktion 0x06/);
+  assert.throws(() => mb.parseWriteMultipleResponse(echo(0x10, 40243, 5, 8), { expectTxid: 7 }), /Transaktions-ID/);
+  assert.throws(() => mb.parseWriteMultipleResponse(echo(0x10, 40243, 5, 7, 3), { expectUnit: 2 }), /Unit-ID/);
+  assert.throws(() => mb.parseWriteMultipleResponse(Buffer.alloc(6)), /zu kurz/);
+});

@@ -851,12 +851,16 @@ test('Fronius is UNCERTIFIED: never emits executable writes/readbacks even when 
 test('Fronius planned curtailment maps pv_limit_kw -> discovered Model 123 WMaxLimPct (bench_pending)', () => {
   const disc = froniusDiscovery();
   const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 0, pv_limit_kw: 6 }), { sunspec: disc });
-  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  // The limit is ONE FC16 block over the discovered Model-123 span; `parts`
+  // names the five registers inside it.
+  const blk = r.planned.find((w) => w.role === 'pv_limit_block');
+  assert.ok(blk, 'the curtailment block is planned');
+  assert.strictEqual(blk.fc, 16);
+  assert.strictEqual(blk.addr, disc.controls.wMaxLimPctAddr);
   // 6 kW cap of a 12 kW nameplate -> 50 %, register scale SF -2 -> raw 5000.
-  assert.strictEqual(p.pv_limit_pct.addr, disc.controls.wMaxLimPctAddr);
-  assert.strictEqual(p.pv_limit_pct.value, 5000);
+  assert.deepStrictEqual(blk.values, [5000, 0, sunspec.DEFAULT_RVRT_TMS, 0, sunspec.WMAX_LIM_ENA.ENABLED]);
+  const p = Object.fromEntries(blk.parts.map((w) => [w.role, w]));
   assert.strictEqual(p.pv_limit_enable.addr, disc.controls.wMaxLimEnaAddr);
-  assert.strictEqual(p.pv_limit_enable.value, sunspec.WMAX_LIM_ENA.ENABLED);
   assert.strictEqual(p.pv_limit_revert_tms.addr, disc.controls.wMaxLimPctRvrtTmsAddr);
   // every Fronius planned op is bench-pending, and NONE is executable
   assert.ok(r.planned.every((w) => w.bench_pending === true));
@@ -873,7 +877,8 @@ test('Fronius is IDLE-SAFE without a discovery result: no planned addresses, hon
 
 test('Fronius uncurtailed slot plans DISABLING the limit (Model 123 enable = 0)', () => {
   const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 0, pv_limit_kw: null }), { sunspec: froniusDiscovery() });
-  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  const blk = r.planned.find((w) => w.role === 'pv_limit_block');
+  const p = Object.fromEntries(blk.parts.map((w) => [w.role, w]));
   assert.strictEqual(p.pv_limit_enable.value, sunspec.WMAX_LIM_ENA.DISABLED);
 });
 
@@ -940,7 +945,7 @@ test('Fronius storage is UNCERTIFIED: control_enabled never produces executable 
   assert.deepStrictEqual(r.readbacks, []);
   // both curtailment AND storage roles are present in the planned bench artefact
   const roles = new Set(r.planned.map((w) => w.role));
-  assert.ok(roles.has('pv_limit_pct'), 'curtailment still planned');
+  assert.ok(roles.has('pv_limit_block'), 'curtailment still planned');
   assert.ok(roles.has('battery_in_rate'), 'storage planned');
   assert.ok(r.planned.every((w) => w.bench_pending === true));
 });
@@ -949,7 +954,7 @@ test('Fronius storage is IDLE-SAFE when Model 124 is absent (no battery / no dis
   // Discovery WITHOUT storage: Model 123 present -> only curtailment planned, no storage ops.
   const noStore = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 5, pv_limit_kw: 6 }), { sunspec: froniusDiscovery() });
   const roles = new Set(noStore.planned.map((w) => w.role));
-  assert.ok(roles.has('pv_limit_pct'), 'curtailment still planned');
+  assert.ok(roles.has('pv_limit_block'), 'curtailment still planned');
   assert.strictEqual(noStore.planned.find((w) => w.role === 'battery_in_rate'), undefined, 'no fabricated storage address without Model 124');
   // No discovery at all: nothing planned, honest reason.
   const noDisc = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 5 }), {});
@@ -1062,7 +1067,10 @@ test('Tier-1 Fronius release plans idling storage + disabling curtailment (bench
   assert.deepStrictEqual(r.readbacks, []);
   const roles = new Set(r.planned.map((w) => w.role));
   assert.ok(roles.has('battery_storage_mode'), 'StorCtl_Mod=0 planned (idle storage)');
-  assert.ok(roles.has('pv_limit_enable'), 'WMaxLim_Ena=0 planned (curtailment off)');
+  const relBlk = r.planned.find((w) => w.role === 'pv_limit_block');
+  assert.ok(relBlk, 'the curtailment release block is planned');
+  assert.strictEqual(relBlk.parts.find((w) => w.role === 'pv_limit_enable').value, sunspec.WMAX_LIM_ENA.DISABLED,
+    'WMaxLim_Ena=0 planned (curtailment off)');
   assert.strictEqual(r.planned.find((w) => w.role === 'battery_storage_mode').value, sunspec.STORCTL_MOD.NONE);
   assert.ok(r.planned.every((w) => w.bench_pending === true));
 });

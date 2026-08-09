@@ -234,7 +234,7 @@ function fullDiscovery(sf) {
   return D.discover(readerOver(buildImage(D.DEFAULT_BASE, fullDeviceModels(103, sf))));
 }
 
-test('planCurtailment maps pv_limit_kw -> WMaxLimPct % at the discovered addresses', () => {
+test('planCurtailment writes the limit as ONE FC16 transaction over the discovered block', () => {
   const disc = fullDiscovery(-2); // 12 kW nameplate, SF -2
   const plan = D.planCurtailment({ discovery: disc, pvLimitKw: 6 }); // 6 of 12 kW = 50 %
   assert.strictEqual(plan.ok, true);
@@ -242,24 +242,68 @@ test('planCurtailment maps pv_limit_kw -> WMaxLimPct % at the discovered address
   assert.strictEqual(plan.pctRaw, 5000); // 50 % / 10^-2
   assert.strictEqual(plan.ena, D.WMAX_LIM_ENA.ENABLED);
 
-  const w = Object.fromEntries(plan.writes.map((op) => [op.role, op]));
-  assert.strictEqual(w.pv_limit_pct.addr, disc.controls.wMaxLimPctAddr);
-  assert.strictEqual(w.pv_limit_pct.value, 5000);
-  assert.strictEqual(w.pv_limit_pct.fc, 6);
-  assert.strictEqual(w.pv_limit_revert_tms.addr, disc.controls.wMaxLimPctRvrtTmsAddr);
-  assert.strictEqual(w.pv_limit_revert_tms.value, D.DEFAULT_RVRT_TMS);
-  assert.strictEqual(w.pv_limit_enable.addr, disc.controls.wMaxLimEnaAddr);
-  assert.strictEqual(w.pv_limit_enable.value, D.WMAX_LIM_ENA.ENABLED);
+  // THE fix (live Pilsting 09.08.2026): the Datamanager only adopts the limit as
+  // a closed SET. Three separate FC6 writes were accepted and ignored; the
+  // Fronius manual and Victron's dbus-fronius both write these five registers
+  // with ONE function-code-0x10 command.
+  assert.strictEqual(plan.writes.length, 1, 'exactly ONE write op - the block');
+  const blk = plan.writes[0];
+  assert.strictEqual(blk.fc, 16);
+  assert.strictEqual(blk.role, 'pv_limit_block');
+  assert.strictEqual(blk.addr, disc.controls.wMaxLimPctAddr, 'the block starts AT WMaxLimPct');
+  assert.strictEqual(blk.addr, disc.controls.limitBlockAddr);
+  assert.strictEqual(blk.values.length, 5);
+  assert.strictEqual(disc.controls.limitBlockCount, 5);
 
-  // Ordering is safety-relevant: value + revert BEFORE the enable.
-  assert.deepStrictEqual(plan.writes.map((op) => op.role),
-    ['pv_limit_pct', 'pv_limit_revert_tms', 'pv_limit_enable']);
+  // The payload is the five registers in ADDRESS order: value, window, revert,
+  // ramp, enable. WinTms/RmpTms are written EXPLICITLY as 0 (act immediately) so
+  // a foreign controller's leftovers can never delay our limit.
+  assert.deepStrictEqual(blk.values, [5000, 0, D.DEFAULT_RVRT_TMS, 0, D.WMAX_LIM_ENA.ENABLED]);
+  assert.deepStrictEqual(blk.parts.map((p) => p.role),
+    ['pv_limit_pct', 'pv_limit_window_tms', 'pv_limit_revert_tms', 'pv_limit_ramp_tms', 'pv_limit_enable']);
 
-  // Readbacks mirror the writes.
+  // The span is CONTIGUOUS and ends at the enable - that is what makes it one
+  // legal Modbus block, and it pins the address arithmetic Victron uses
+  // (model-123 header + 5 = body + 3 = WMaxLimPct).
+  blk.parts.forEach((p, i) => assert.strictEqual(p.addr, blk.addr + i, p.role + ' is contiguous'));
+  assert.strictEqual(blk.parts[4].addr, disc.controls.wMaxLimEnaAddr);
+  assert.strictEqual(blk.parts[2].addr, disc.controls.wMaxLimPctRvrtTmsAddr);
+  assert.strictEqual(blk.parts[3].addr, disc.controls.wMaxLimPctRmpTmsAddr);
+
+  // The kW back-conversion metadata stays reachable at writes[0].encode.
+  assert.strictEqual(blk.encode.sf, -2);
+  assert.strictEqual(blk.encode.rated_kw, 12);
+
+  // Readbacks stay PER REGISTER (fn 0x03) - the write echo proves nothing on
+  // this device. RvrtTms is deliberately verified: a revert timer that does not
+  // take is the signature of a non-transactional write.
   const rb = Object.fromEntries(plan.readbacks.map((op) => [op.role, op]));
   assert.strictEqual(rb.pv_limit_pct.fc, 3);
   assert.strictEqual(rb.pv_limit_pct.expect, 5000);
+  assert.strictEqual(rb.pv_limit_revert_tms.expect, D.DEFAULT_RVRT_TMS);
   assert.strictEqual(rb.pv_limit_enable.expect, D.WMAX_LIM_ENA.ENABLED);
+});
+
+test('planCurtailment flips back to the legacy per-register FC6 writes on request', () => {
+  const disc = fullDiscovery(-2);
+  const plan = D.planCurtailment({ discovery: disc, pvLimitKw: 6, writeFc: 6 });
+  assert.strictEqual(plan.ok, true);
+  assert.strictEqual(plan.writeFc, 6);
+  assert.deepStrictEqual(plan.writes.map((op) => op.role),
+    ['pv_limit_pct', 'pv_limit_revert_tms', 'pv_limit_enable']);
+  plan.writes.forEach((op) => assert.strictEqual(op.fc, 6));
+  // Ordering still puts value + dead-man timer ahead of the enable.
+  const w = Object.fromEntries(plan.writes.map((op) => [op.role, op]));
+  assert.strictEqual(w.pv_limit_pct.value, 5000);
+  assert.strictEqual(w.pv_limit_revert_tms.value, D.DEFAULT_RVRT_TMS);
+  assert.strictEqual(w.pv_limit_enable.value, D.WMAX_LIM_ENA.ENABLED);
+
+  // Anything that is not an explicit 6 is the FC16 default - a garbage value
+  // must never silently produce the form that is proven not to work.
+  for (const v of [undefined, null, 0, 16, 3, 'sechs']) {
+    assert.strictEqual(D.planCurtailment({ discovery: disc, pvLimitKw: 6, writeFc: v }).writeFc, 16,
+      'writeFc ' + JSON.stringify(v) + ' -> FC16');
+  }
 });
 
 test('planCurtailment DISABLES the limit when there is no cap (uncurtailed slot)', () => {
@@ -268,9 +312,15 @@ test('planCurtailment DISABLES the limit when there is no cap (uncurtailed slot)
   assert.strictEqual(plan.ok, true);
   assert.strictEqual(plan.pct, 100);
   assert.strictEqual(plan.ena, D.WMAX_LIM_ENA.DISABLED);
-  const w = Object.fromEntries(plan.writes.map((op) => [op.role, op]));
-  assert.strictEqual(w.pv_limit_enable.value, D.WMAX_LIM_ENA.DISABLED);
-  assert.strictEqual(w.pv_limit_enable.encode.curtailing, false);
+  const blk = plan.writes[0];
+  // The release is the SAME transaction with the enable cleared and the value
+  // back at 100 % - so a released unit can never be left holding a foreign
+  // controller's stale 0 % cap (the Pilsting stranding shape).
+  assert.strictEqual(blk.fc, 16);
+  assert.deepStrictEqual(blk.values, [10000, 0, D.DEFAULT_RVRT_TMS, 0, D.WMAX_LIM_ENA.DISABLED]);
+  const parts = Object.fromEntries(blk.parts.map((p) => [p.role, p]));
+  assert.strictEqual(parts.pv_limit_enable.value, D.WMAX_LIM_ENA.DISABLED);
+  assert.strictEqual(parts.pv_limit_enable.encode.curtailing, false);
 });
 
 test('planCurtailment clamps the percentage into [0,100]', () => {
@@ -292,7 +342,20 @@ test('planCurtailment honours override nameplate/SF and a custom revert timeout'
   const plan = D.planCurtailment({ discovery: disc, pvLimitKw: 2.5, nameplateKw: 10, wMaxLimPctSf: 0, rvrtTms: 120 });
   assert.strictEqual(plan.pct, 25);
   assert.strictEqual(plan.pctRaw, 25); // SF 0 -> raw = pct
-  assert.strictEqual(plan.writes.find((op) => op.role === 'pv_limit_revert_tms').value, 120);
+  assert.strictEqual(plan.rvrtTms, 120);
+  assert.deepStrictEqual(plan.writes[0].values, [25, 0, 120, 0, D.WMAX_LIM_ENA.ENABLED]);
+  assert.strictEqual(plan.readbacks.find((op) => op.role === 'pv_limit_revert_tms').expect, 120);
+});
+
+test('planCurtailment never writes RvrtTms 0 by default - 0 would LATCH the limit', () => {
+  // Fronius: RvrtTms is "the duration the operating mode remains active" and 0
+  // means "until manually deactivated". That latch is exactly what stranded both
+  // Pilsting inverters at ~0.135 kW when the previous controller went silent.
+  const disc = fullDiscovery(-2);
+  assert.ok(D.DEFAULT_RVRT_TMS > 0, 'the shipped default must be a real timeout');
+  const plan = D.planCurtailment({ discovery: disc, pvLimitKw: 6 });
+  assert.strictEqual(plan.writes[0].values[2], D.DEFAULT_RVRT_TMS);
+  assert.ok(plan.writes[0].values[2] > 0);
 });
 
 test('planCurtailment is IDLE-SAFE when discovery failed / Model 123 absent / nameplate unknown', () => {

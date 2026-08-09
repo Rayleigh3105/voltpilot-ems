@@ -351,6 +351,9 @@ function planFleetCurtailment(args) {
       pvLimitKw: release ? null : capKw,
       nameplateKw: row.ratedKw,
       rvrtTms: DEFAULT_RVRT_TMS,
+      // The per-connection write-form flip-back (absent = FC16, the documented
+      // + proven transactional form). See planCurtailment's write-form comment.
+      writeFc: row.p.conn ? row.p.conn.curtail_write_fc : undefined,
     });
     // The certification bypass is EXACTLY the bounded test (never wider); the
     // kill-switch is the outer AND on every branch.
@@ -447,6 +450,11 @@ function evaluateEnforcement(args) {
  * same registers share a signature, so the executor can tell "the same cap,
  * just being refreshed" from "a NEW cap" without comparing floats.
  *
+ * Handles BOTH write forms: a block op (fc 16) carries `values`, a legacy
+ * single-register op carries `value`. A block MUST fold in every value - if it
+ * signed only its first register, a changed revert timer or a flipped enable
+ * would read as "unchanged" and never be re-applied.
+ *
  * Returns null when the unit has nothing to command (no plan / no ops).
  */
 function commandSignature(unit) {
@@ -454,7 +462,10 @@ function commandSignature(unit) {
   const ops = (unit.plan.writes && unit.plan.writes.length) ? unit.plan.writes
     : (Array.isArray(unit.planned) ? unit.planned : []);
   if (!ops.length) return null;
-  return String(unit.mode) + '|' + ops.map((w) => w.role + '=' + ((Number(w.value) || 0) & 0xffff)).join(',');
+  const opSig = (w) => (Array.isArray(w.values)
+    ? w.values.map((v) => (Number(v) || 0) & 0xffff).join('.')
+    : String((Number(w.value) || 0) & 0xffff));
+  return String(unit.mode) + '|' + ops.map((w) => w.role + '=' + opSig(w)).join(',');
 }
 
 /**
