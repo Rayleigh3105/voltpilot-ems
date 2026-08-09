@@ -39,13 +39,21 @@ public class TelemetryWriteRepository {
     }
 
     /**
-     * @param event   the parsed event (identity + measurements)
-     * @param rawJson the exact event JSON, stored verbatim in the payload column
+     * Inserts one telemetry sample.
+     *
+     * <p><b>No {@code payload} (Datenhaltung Phase 2 / E2).</b> New rows no longer
+     * carry the raw {@code telemetry.raw} JSON: it was ~636 B/row (~57% of the
+     * telemetry size, ~77% even compressed) and no read path in api/optimizer/
+     * forecast ever selected it - it merely duplicated the structured columns.
+     * The {@code payload} column stays in the schema (old rows keep their JSONB;
+     * dropping it is a later, separate step), it is just left NULL from now on.
+     *
+     * @param event the parsed event (identity + measurements)
      * @return {@code true} if a new row was inserted, {@code false} if it already
      *     existed (idempotent no-op)
      */
     @Transactional
-    public boolean insert(TelemetryRawEvent event, String rawJson) {
+    public boolean insert(TelemetryRawEvent event) {
         // Bind the RLS tenant for this transaction (transaction-local; reset on
         // commit/rollback, so it never leaks across the connection pool).
         // set_config is a function -> query for its result rather than update().
@@ -86,8 +94,8 @@ public class TelemetryWriteRepository {
         int rows = jdbc.update(
                 "INSERT INTO telemetry "
                         + "(time, received_at, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, "
-                        + " load_kw, grid_limit_kw, payload) "
-                        + "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb "
+                        + " load_kw, grid_limit_kw) "
+                        + "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ? "
                         + "WHERE NOT EXISTS ("
                         + "  SELECT 1 FROM telemetry WHERE device_id = ? AND time = ?) "
                         + "AND NOT EXISTS ("
@@ -102,7 +110,6 @@ public class TelemetryWriteRepository {
                 decimal(m, "pv_power_kw"),
                 decimal(m, "load_kw"),
                 decimal(m, "grid_limit_kw"),
-                rawJson,
                 event.device_id(),
                 Timestamp.from(event.observed_at()),
                 event.device_id(),
