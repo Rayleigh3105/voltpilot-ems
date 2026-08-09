@@ -19,6 +19,12 @@ export interface ChartTheme {
   grid: string;
   /** Axis lines. */
   axisLine: string;
+  /**
+   * Der Kartengrund unter dem Canvas. Canvas kann `var()` nicht auflösen, eine
+   * Beschriftung MITTEN im Diagramm (z. B. die Tagesgrenze der Marktpreise)
+   * braucht aber einen deckenden Grund, um über den Balken lesbar zu bleiben.
+   */
+  surface: string;
   /** PV / irradiance. */
   pv: string;
   /** Temperature. */
@@ -77,6 +83,7 @@ export function chartTheme(): ChartTheme {
     axis: read('--vp-chart-axis', '#6C757D'),
     ink: read('--vp-chart-ink', '#1A1A1A'),
     grid: read('--vp-chart-grid', '#F1F3F5'),
+    surface: read('--vp-surface', '#FFFFFF'),
     axisLine: read('--vp-chart-axisline', '#E9ECEF'),
     pv: read('--vp-chart-pv', '#FF9800'),
     temp: read('--vp-chart-temp', '#F57C00'),

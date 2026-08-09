@@ -1,0 +1,168 @@
+/* ============================================================
+   Marktpreise - Mobil-Fassung (Mobil-Umbau Stufe 4)
+   Komponenten-lokal; `index.css` bleibt unangetastet. Jede Regel gilt nur
+   unterhalb der Telefon-Grenze bzw. haengt an Knoten, die es NUR am Telefon
+   gibt - der Desktop ist damit per Konstruktion byte-gleich.
+   ============================================================ */
+
+/* ---------- Der „Jetzt"-Held ---------- */
+.vp-mp-jetzt {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-mp-jetzt-left {
+  min-width: 0;
+}
+.vp-mp-kicker {
+  display: block;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 700;
+}
+.vp-mp-preis {
+  display: block;
+  font-size: clamp(1.7rem, 9vw, 2.1rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin-top: 2px;
+  /* Der Preis kann lang werden (-12,34 ct/kWh) - er darf die Karte nie
+     sprengen, aber auch nicht mitten in der Zahl brechen. */
+  overflow-wrap: anywhere;
+}
+.vp-mp-preis.ton-negativ,
+.vp-mp-preis.ton-guenstig {
+  color: var(--vp-chart-charge, #2e9e5b);
+}
+.vp-mp-preis.ton-teuer {
+  color: var(--vp-chart-discharge, #e53935);
+}
+.vp-mp-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-mp-wort {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--vp-chart-grid, #f1f3f5);
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-mp-wort.ton-negativ,
+.vp-mp-wort.ton-teuer {
+  background: #fdecec;
+  color: #b91c1c;
+}
+.vp-mp-wort.ton-guenstig {
+  background: #e6f4ec;
+  color: #166534;
+}
+
+/* ---------- Tagesgrenze + Sprung-Chip unter der Kurve ---------- */
+.vp-mp-tagzeile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  margin-top: var(--vp-space-2);
+  flex-wrap: wrap;
+}
+.vp-mp-tagname {
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 600;
+}
+.vp-mp-sprung {
+  appearance: none;
+  border: 1px solid var(--vp-border);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-action);
+  cursor: pointer;
+  position: relative;
+}
+/* Die sichtbare Pille ist 30 px hoch - die Trefferflaeche muss 44 sein. */
+.vp-mp-sprung::before {
+  content: '';
+  position: absolute;
+  inset: -7px -4px;
+}
+.vp-mp-sprung:hover {
+  background: var(--vp-chart-grid, #f1f3f5);
+}
+
+/* ---------- Tief / Hoch / Ø als Chips ---------- */
+.vp-mp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--vp-space-3);
+}
+.vp-mp-chip {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: var(--vp-chart-grid, #f1f3f5);
+  color: var(--vp-text-muted, #6c757d);
+  white-space: nowrap;
+}
+.vp-mp-chip.ton-gut {
+  background: #e6f4ec;
+  color: #166534;
+}
+.vp-mp-chip.ton-teuer {
+  background: #fdecec;
+  color: #b91c1c;
+}
+
+/* ---------- Der Profi-Aufklapper (EUR/MWh + Quelle) ---------- */
+.vp-mp-profi {
+  margin-top: var(--vp-space-4);
+  border-top: 1px solid var(--vp-border);
+  padding-top: var(--vp-space-3);
+}
+.vp-mp-profi > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-muted, #6c757d);
+  /* 44-px-Trefferflaeche ohne die Zeile optisch aufzublasen. */
+  padding: 11px 0;
+  margin: -11px 0;
+}
+.vp-mp-profi > summary::-webkit-details-marker {
+  display: none;
+}
+.vp-mp-profi > summary svg {
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+}
+.vp-mp-profi[open] > summary svg {
+  transform: rotate(180deg);
+}
+.vp-mp-profi-body {
+  padding-top: var(--vp-space-3);
+}
+.vp-mp-profi-body .vp-grid-stats-4 {
+  gap: var(--vp-space-3);
+}

@@ -22,6 +22,8 @@ import {
 import { eurAmount, fmtNum, fmtRelative } from '../format';
 import { batteryState, deriveBatteryKw, gridState } from '../live';
 import { sanitizeSoc } from '../plausible';
+import { useIsPhone } from '../useIsPhone';
+import { InfoTip } from './InfoTip';
 import { NetzladenBadge } from './NetzladenBadge';
 
 /**
@@ -147,6 +149,7 @@ export function EarningsHero({
   const worded = dataRange ?? range;
   const saved = money?.savedEur ?? null;
   const animated = useCountUp(saved);
+  const isPhone = useIsPhone();
 
   const today = berlinDay(now);
   const todayEntry = dailySaved.find((d) => d.day === today);
@@ -248,12 +251,32 @@ export function EarningsHero({
         </>
       )}
 
-      <p className="vp-fleet-hero-fine">
-        <span className="vp-fleet-fine-ico" aria-hidden="true">
-          <Icon name="info" size={13} />
-        </span>
-        {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null, premium, arbitrage != null, premiumDetail)}
-      </p>
+      {/* Das Kleingedruckte sind ~9 Zeilen. Am Telefon standen sie offen
+          zwischen dem Geld und den Anlagen-Karten; jetzt tragen sie ein
+          InfoTip - dasselbe Muster wie ueberall sonst im Portal, und der Text
+          ist unveraendert erreichbar (Mobil-Umbau Stufe 4). */}
+      {isPhone ? (
+        <p className="vp-fleet-hero-fine vp-fleet-fine-tip">
+          <InfoTip title="Wie diese Zahl zu lesen ist" label="Erläuterung zur Zahl">
+            {realizedFinePrint(
+              kind,
+              worded,
+              money?.firstCoveredDate ?? null,
+              premium,
+              arbitrage != null,
+              premiumDetail,
+            )}
+          </InfoTip>
+          <span>Wie diese Zahl zu lesen ist</span>
+        </p>
+      ) : (
+        <p className="vp-fleet-hero-fine">
+          <span className="vp-fleet-fine-ico" aria-hidden="true">
+            <Icon name="info" size={13} />
+          </span>
+          {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null, premium, arbitrage != null, premiumDetail)}
+        </p>
+      )}
     </section>
   );
 }

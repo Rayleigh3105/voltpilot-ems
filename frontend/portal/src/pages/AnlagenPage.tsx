@@ -376,8 +376,10 @@ const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>
   },
   steuerung: {
     title: 'Steuerung',
-    subtitle:
-      'Ihre Steuerungs-Flows: Regeln bauen, prüfen, simulieren und aktivieren - was geschaltet wird und zu welchen Bedingungen.',
+    // EIN Satz, kein Technik-Vokabular: „Steuerungs-Flows" ist unser Wort fuer
+    // die Regel-Dokumente, nicht das des Kunden - und vier Zeilen Untertitel
+    // schoben am Telefon die Kapseln unter den Falz (Mobil-Umbau Stufe 4).
+    subtitle: 'Was Ihre Anlage automatisch tut - und was es bringt.',
   },
   lastspitzen: {
     title: 'Lastspitzen',
