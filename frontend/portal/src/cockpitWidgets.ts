@@ -42,8 +42,8 @@
  */
 
 import type {
+  CockpitMoney,
   EarningsRange,
-  EarningsSite,
   HistoryRange,
   HistoryTotals,
 } from './api';
@@ -111,7 +111,7 @@ export interface CockpitWidgetsInput {
   /** Die Historie-Totals des heutigen Tages (serverseitig gerechnet). */
   dayTotals?: HistoryTotals | null;
   /** Die Earnings-Zeile dieser Anlage. */
-  money?: EarningsSite | null;
+  money?: CockpitMoney | null;
   /** Die Geld-Ströme der aktiven Modi (M0 `moneyStreams`). */
   streams?: MoneyStream[] | null;
   range: EarningsRange;
@@ -363,7 +363,7 @@ export function historyRangeForCockpit(range: EarningsRange): HistoryRange | nul
 export function cockpitHero(input: {
   /** Die Historie-Summen des GEWÄHLTEN Zeitraums (nicht „heute"). */
   totals?: HistoryTotals | null;
-  money?: EarningsSite | null;
+  money?: CockpitMoney | null;
   range: EarningsRange;
   at?: Date;
   now: Date;

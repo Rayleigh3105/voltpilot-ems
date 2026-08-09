@@ -180,6 +180,8 @@ function stubApi(overviewSite: Record<string, unknown> = {}) {
     sites: [],
     totals: {} as never,
   } as never);
+  // B2: the cockpit money hero reads the site-scoped endpoint now.
+  vi.spyOn(api, 'siteEarnings').mockResolvedValue(null as never);
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null as never);
   vi.spyOn(api, 'weather').mockResolvedValue({ points: [] } as never);
   vi.spyOn(api, 'schedule').mockResolvedValue({

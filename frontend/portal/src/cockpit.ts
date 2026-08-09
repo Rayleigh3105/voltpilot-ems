@@ -46,7 +46,7 @@
  * nie mehr ein Ersatz-Layout, das gleich wieder verschwindet.
  */
 
-import type { EarningsSite } from './api';
+import type { CockpitMoney } from './api';
 import { ctPerKwh, eurAmount, fmtNum } from './format';
 import type { AnlagenSub } from './nav';
 import { chargeKind, todaySlots, SLOT_DEADBAND_KW } from './schedule';
@@ -357,7 +357,7 @@ export function windowHours(w: PlanWindow): string {
  * Fahrplan-Slots); eine Kachel ohne Datengrundlage entfällt ersatzlos.
  */
 export function handelBlock(input: {
-  money: EarningsSite | null;
+  money: CockpitMoney | null;
   slots: CockpitSlot[];
   now: Date;
   slotMinutes?: number;

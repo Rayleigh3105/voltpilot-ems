@@ -9,13 +9,13 @@ import {
   type ControlStatus,
   type CurtailmentStatus,
   type Device,
-  type Earnings,
   type EarningsRange,
   type History,
   type HistoryTotals,
   type Overview,
   type SchedulePlan,
   type Site,
+  type SiteEarnings,
   type SiteSource,
   type TelemetryPoint,
 } from '../api';
@@ -483,7 +483,11 @@ export function AnlageSeite({
 }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [overviewFailed, setOverviewFailed] = useState(false);
-  const [earnings, setEarnings] = useState<Earnings | null>(null);
+  // Das GEMESSENE Geld dieser Anlage. Seit dem Perf-Audit (vp-portal-perf-a4,
+  // B2) vom anlagen-scharfen `/sites/{id}/earnings` (3 Queries, ~0,42 s) statt
+  // vom mandantenweiten `/earnings` (8 Queries, 1,8 s bei range=year) mit
+  // Client-Filter - der Flotten-Endpunkt bleibt der Portfolio-Seite.
+  const [siteEarnings, setSiteEarnings] = useState<SiteEarnings | null>(null);
   // The period tabs govern the whole page (captain 2026-07-07). `at` is the
   // selected instance (a month tapped in the strip); null = the current period.
   // Die Voreinstellung ist „Heute" und steht an EINER Stelle (`anlage.ts`);
@@ -550,14 +554,15 @@ export function AnlageSeite({
     // edited), keeping a fresh claim's status current without the 30 s poll.
   }, [site.id, sites, reloadKey]);
 
-  // The measured money numbers - tenant-wide response, rendered site-scoped.
-  // Refetched when the period (range/at) changes; the page keeps the previous
-  // numbers until the new ones arrive (no flash).
+  // The measured money numbers - site-scoped (B2). Refetched when the period
+  // (range/at) changes; the page keeps the previous numbers until the new ones
+  // arrive (no flash). Fail-soft: an older backend / a 404 leaves the last
+  // value.
   useEffect(() => {
     let active = true;
-    api.earnings(range, at).then(
+    api.siteEarnings(site.id, range, at).then(
       (e) => {
-        if (active) setEarnings(e);
+        if (active) setSiteEarnings(e);
       },
       () => {},
     );
@@ -662,8 +667,8 @@ export function AnlageSeite({
       (o) => setOverview(o),
       () => {},
     );
-    api.earnings(rangeRef.current, atRef.current).then(
-      (e) => setEarnings(e),
+    api.siteEarnings(site.id, rangeRef.current, atRef.current).then(
+      (e) => setSiteEarnings(e),
       () => {},
     );
     api.controlStatus(site.id).then(
@@ -685,7 +690,6 @@ export function AnlageSeite({
   }, []);
 
   const ovSite = overview?.sites.find((x) => x.id === site.id) ?? null;
-  const siteEarnings = earnings?.sites.find((x) => x.id === site.id) ?? null;
   const sentence = ovSite ? composeSiteSentence(ovSite, now) : null;
   const fresh = ovSite ? siteLiveFresh(ovSite, now) : false;
   // AE1/AE7: the compact "Jetzt gerade" flow becomes the adaptive N-node

@@ -313,6 +313,14 @@ paths:
           in: query
           description: The date whose period to report (default today, Europe/Berlin).
           schema: { type: string, format: date }
+        - name: strip
+          in: query
+          description: >
+            Opt in to the tappable 12-month strip (`monthlyStrip`). It is a fixed
+            ~173 ms 12-month scan and no portal surface renders the fleet strip's
+            values today, so it is computed ONLY on demand (audit
+            vp-portal-perf-a4, finding B5); `monthlyStrip` is [] when omitted.
+          schema: { type: boolean, default: false }
       responses:
         "200":
           description: The caller's realized earnings.
@@ -4754,7 +4762,8 @@ components:
           description: >
             Gesamtertrag per Europe/Berlin month for the last 12 months
             (independent of `range`) - the tappable month strip. Months without
-            a computable slot are absent.
+            a computable slot are absent. OPT-IN (audit vp-portal-perf-a4,
+            finding B5): [] unless the request carries `strip=true`.
           items:
             type: object
             properties:
@@ -4855,6 +4864,29 @@ components:
         eingespeistKwh: { type: number, nullable: true }
         selbstverbrauchKwh: { type: number, nullable: true }
         batterieBewegtKwh: { type: number, nullable: true }
+        gesamtertragEur:
+          type: number
+          nullable: true
+          description: >
+            Money-centric total = einspeiseErloesEur + eigenverbrauchsWertEur
+            (the feed-in revenue alone for an "ohne" tariff) - the ONE number
+            the cockpit money hero reads. Parity with the fleet twin so the
+            cockpit renders from this cheaper site endpoint (audit
+            vp-portal-perf-a4, finding B2).
+        expectedMarketValueSolarCtKwh:
+          type: number
+          nullable: true
+          description: >
+            Forward expected Marktwert Solar (day-ahead price weighted with this
+            site's own PV forecast over the coming horizon) - range-independent;
+            null without forward PV/price coverage.
+        expectedMarketValueFrom: { type: string, format: date-time, nullable: true }
+        expectedMarketValueTo: { type: string, format: date-time, nullable: true }
+        expectedMarketValueSlots:
+          type: integer
+          format: int64
+          nullable: true
+          description: Covered forward slot count behind expectedMarketValueSolarCtKwh.
         series:
           type: array
           description: >

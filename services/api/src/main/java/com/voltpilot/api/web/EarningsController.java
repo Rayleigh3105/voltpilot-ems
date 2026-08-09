@@ -77,7 +77,8 @@ public class EarningsController {
     @GetMapping
     public EarningsDto earnings(
             @RequestParam(defaultValue = "month") String range,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at,
+            @RequestParam(name = "strip", defaultValue = "false") boolean stripRequested) {
         String normalized = range == null ? "" : range.trim().toLowerCase(Locale.ROOT);
         boolean all = "all".equals(normalized);
         HistoryRange parsed = all ? null : HistoryRange.parse(normalized);
@@ -127,13 +128,26 @@ public class EarningsController {
 
         // The tappable 12-month strip is a stable navigator anchored on today,
         // independent of the selected range/at (the last 12 Berlin months).
-        YearMonth currentMonth = YearMonth.from(today);
-        Instant stripFrom = currentMonth.minusMonths(MONTH_STRIP_LENGTH - 1)
-                .atDay(1).atStartOfDay(HistoryRange.ZONE).toInstant();
-        Instant stripTo = currentMonth.plusMonths(1).atDay(1)
-                .atStartOfDay(HistoryRange.ZONE).toInstant();
-        Map<UUID, List<EarningsRepository.BucketPoint>> strip =
-                earnings.bucketed(stripFrom, stripTo, EarningsRepository.Bucket.MONTH);
+        //
+        // OPT-IN (audit vp-portal-perf-a4, finding B5). Computing it is a fixed
+        // ~173 ms 12-month scan over telemetry_rollup_15m x the price CTE, and
+        // it used to run on EVERY /earnings call - including range=day in the
+        // 30 s cockpit poll and the fleet Übersicht poll. No portal surface
+        // renders the fleet strip's VALUES today (the MonthStrip is a
+        // date-derived jump navigator with showValues={false}; the pin lives in
+        // frontend/portal/src/monthStripStrip.test.ts). So it is computed ONLY
+        // when a caller explicitly asks (?strip=true) and is [] otherwise -
+        // chosen over a shared server-side TTL cache, which would have to be
+        // keyed by tenant and carries the RLS-leak risk the audit flagged.
+        Map<UUID, List<EarningsRepository.BucketPoint>> strip = Map.of();
+        if (stripRequested) {
+            YearMonth currentMonth = YearMonth.from(today);
+            Instant stripFrom = currentMonth.minusMonths(MONTH_STRIP_LENGTH - 1)
+                    .atDay(1).atStartOfDay(HistoryRange.ZONE).toInstant();
+            Instant stripTo = currentMonth.plusMonths(1).atDay(1)
+                    .atStartOfDay(HistoryRange.ZONE).toInstant();
+            strip = earnings.bucketed(stripFrom, stripTo, EarningsRepository.Bucket.MONTH);
+        }
 
         BigDecimal totalBaseline = null;
         BigDecimal totalActual = null;

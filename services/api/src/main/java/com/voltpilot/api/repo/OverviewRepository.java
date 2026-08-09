@@ -215,16 +215,32 @@ public class OverviewRepository {
      * LATEST run that planned it (DISTINCT ON - the HistoryRepository.savings
      * semantics, grouped per site). Sites without any priced plan slot in the
      * window are absent (null = "no plan", never a fake zero).
+     *
+     * <p><b>Per-site LATERAL, not a fleet-wide DISTINCT ON (audit
+     * vp-portal-perf-a4, finding B4).</b> A single {@code DISTINCT ON (site_id,
+     * time)} with only a {@code time} filter cannot skip-scan
+     * {@code idx_schedule_site_time_gen} (V20260809010000): the leading
+     * {@code site_id} has no equality bound, so Postgres reads and sorts EVERY
+     * candidate (387k rows / 22 MB disk-sort for the 14-day fleet window). Here
+     * each site's LATERAL carries {@code site_id = s.id}, giving the equality
+     * bound that triggers the per-chunk SkipScan (~1008 rows per site instead).
+     * Measured 474 ms -> 17 ms. This is the SAME {@code FROM site s JOIN
+     * LATERAL} shape {@link #latestLivePerSite()} and the v2 fanout already use.
+     * The result is byte-identical: {@code DISTINCT ON (time)} per site picks
+     * the same latest-run-per-slot; the outer NULL filter and {@code GROUP BY}
+     * behave exactly as before (a site whose slots are all NULL sums to NULL and
+     * is skipped; a site with no rows drops out of the inner join).
      */
     public Map<UUID, BigDecimal> savingsPerSite(Instant from, Instant to) {
         Map<UUID, BigDecimal> savings = new HashMap<>();
         jdbc.query(
-                "SELECT site_id, sum(baseline_cost_eur - cost_eur) AS savings FROM ("
-                        + "  SELECT DISTINCT ON (site_id, time) site_id, baseline_cost_eur, cost_eur"
-                        + "  FROM schedule WHERE time >= ? AND time < ?"
-                        + "  ORDER BY site_id, time, generated_at DESC) s "
-                        + "WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL "
-                        + "GROUP BY site_id",
+                "SELECT s.id AS site_id, sum(x.baseline_cost_eur - x.cost_eur) AS savings "
+                        + "FROM site s "
+                        + "JOIN LATERAL (SELECT DISTINCT ON (time) baseline_cost_eur, cost_eur"
+                        + "  FROM schedule WHERE site_id = s.id AND time >= ? AND time < ?"
+                        + "  ORDER BY time, generated_at DESC) x ON true "
+                        + "WHERE x.baseline_cost_eur IS NOT NULL AND x.cost_eur IS NOT NULL "
+                        + "GROUP BY s.id",
                 rs -> {
                     BigDecimal value = rs.getBigDecimal("savings");
                     if (value != null) {
@@ -239,16 +255,23 @@ public class OverviewRepository {
      * Fleet-wide ex-ante savings per Europe/Berlin day (the hero's 14-day mini
      * chart): the same latest-run-per-slot de-duplication, then day buckets.
      * Days without any plan are absent.
+     *
+     * <p>Per-site LATERAL for the same SkipScan reason as {@link
+     * #savingsPerSite} (finding B4): each Anlage's newest run per slot is
+     * skip-scanned, then all sites' slots are bucketed by Berlin day and summed
+     * across the fleet - byte-identical to the previous fleet-wide DISTINCT ON.
+     * Measured 474 ms -> 17 ms.
      */
     public List<DailySavings> dailySavings(Instant from, Instant to) {
         List<DailySavings> days = new ArrayList<>();
         jdbc.query(
-                "SELECT time_bucket('1 day', time, 'Europe/Berlin') AS day,"
-                        + " sum(baseline_cost_eur - cost_eur) AS savings FROM ("
-                        + "  SELECT DISTINCT ON (site_id, time) time, baseline_cost_eur, cost_eur"
-                        + "  FROM schedule WHERE time >= ? AND time < ?"
-                        + "  ORDER BY site_id, time, generated_at DESC) s "
-                        + "WHERE baseline_cost_eur IS NOT NULL AND cost_eur IS NOT NULL "
+                "SELECT time_bucket('1 day', x.time, 'Europe/Berlin') AS day,"
+                        + " sum(x.baseline_cost_eur - x.cost_eur) AS savings "
+                        + "FROM site s "
+                        + "JOIN LATERAL (SELECT DISTINCT ON (time) time, baseline_cost_eur, cost_eur"
+                        + "  FROM schedule WHERE site_id = s.id AND time >= ? AND time < ?"
+                        + "  ORDER BY time, generated_at DESC) x ON true "
+                        + "WHERE x.baseline_cost_eur IS NOT NULL AND x.cost_eur IS NOT NULL "
                         + "GROUP BY 1 ORDER BY 1",
                 rs -> {
                     BigDecimal value = rs.getBigDecimal("savings");
