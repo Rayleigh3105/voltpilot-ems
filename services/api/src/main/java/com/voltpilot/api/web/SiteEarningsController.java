@@ -55,12 +55,16 @@ public class SiteEarningsController {
     private final SiteRepository sites;
     private final EarningsRepository earnings;
     private final PeakShavingRepository peaks;
+    private final String activePvModel;
 
     public SiteEarningsController(SiteRepository sites, EarningsRepository earnings,
-            PeakShavingRepository peaks) {
+            PeakShavingRepository peaks,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.earnings = earnings;
         this.peaks = peaks;
+        this.activePvModel = activePvModel;
     }
 
     @GetMapping
@@ -107,6 +111,17 @@ public class SiteEarningsController {
         BigDecimal eigenverbrauchsWert = computable ? agg.eigenverbrauchsWertEur() : null;
         BigDecimal stromkosten = computable ? agg.stromkostenEur() : null;
         BigDecimal netto = netto(einspeise, eigenverbrauchsWert, stromkosten);
+        // Money-centric Gesamtertrag = Einspeise-Erlös + Eigenverbrauchs-Wert
+        // (the fleet twin's field, so the cockpit hero reads ONE number). A NULL
+        // Eigenverbrauchs-Wert ('ohne' tariff) leaves the feed-in revenue alone;
+        // both null => not computable (B2 parity).
+        BigDecimal gesamtertrag = einspeise == null ? null
+                : eigenverbrauchsWert == null ? einspeise : einspeise.add(eigenverbrauchsWert);
+        // Forward expected Marktwert Solar (range-INDEPENDENT, always the coming
+        // horizon): the SAME RLS-fenced query the fleet twin runs, keyed on the
+        // ACTIVE PV model; absent when there is no forward PV/price coverage.
+        EarningsRepository.ExpectedMarketValue expected =
+                earnings.expectedMarketValue(activePvModel, Instant.now()).get(siteId);
 
         // The scale of the money chart follows the period (P6): a year shows
         // twelve month bars, not 365 day bars.
@@ -178,6 +193,11 @@ public class SiteEarningsController {
                 computable ? agg.eingespeistKwh() : null,
                 computable ? agg.selbstverbrauchKwh() : null,
                 computable ? agg.batterieBewegtKwh() : null,
+                gesamtertrag,
+                expected == null ? null : expected.ctKwh(),
+                expected == null ? null : expected.from(),
+                expected == null ? null : expected.to(),
+                expected == null ? null : expected.slots(),
                 series,
                 EarningsController.peakShaving(site, today, peakRows));
     }

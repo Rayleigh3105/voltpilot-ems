@@ -50,6 +50,17 @@ import java.util.UUID;
  *     division of two shown sums, so the surface can be checked against itself
  * @param marktpraemieEur the premium already CONTAINED in
  *     {@code einspeiseErloesEur} (shown as provenance, never added again)
+ * @param gesamtertragEur the money-centric total = {@code einspeiseErloesEur +
+ *     eigenverbrauchsWertEur} (the fleet twin's semantics), so the cockpit
+ *     money hero reads ONE field; it is the feed-in revenue alone for an
+ *     {@code ohne} tariff (no Eigenverbrauchs-Wert) and null when nothing is
+ *     computable. Parity with the fleet twin so the cockpit reads the SAME
+ *     number from this cheaper site endpoint (audit vp-portal-perf-a4, B2).
+ * @param expectedMarketValueSolarCtKwh the FORWARD expected Marktwert Solar
+ *     (day-ahead price weighted with this site's own PV forecast over the
+ *     coming horizon) - range-independent, null without forward PV/price
+ *     coverage; {@code expectedMarketValueFrom}/{@code ...To} bound and
+ *     {@code expectedMarketValueSlots} counts the covered forward slots
  * @param series the money per Berlin bucket (hour for a day, day for week and
  *     month, month for year/all) - the stacked bars + the cumulative line
  */
@@ -85,6 +96,11 @@ public record SiteEarningsDto(
         BigDecimal eingespeistKwh,
         BigDecimal selbstverbrauchKwh,
         BigDecimal batterieBewegtKwh,
+        BigDecimal gesamtertragEur,
+        BigDecimal expectedMarketValueSolarCtKwh,
+        Instant expectedMarketValueFrom,
+        Instant expectedMarketValueTo,
+        Long expectedMarketValueSlots,
         List<SiteEarningsBucketDto> series,
         PeakShavingDto peakShaving) {
 

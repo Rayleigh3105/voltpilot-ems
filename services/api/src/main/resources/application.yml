@@ -63,6 +63,18 @@ spring:
 
 server:
   port: ${API_PORT:8090}
+  # Response compression (audit vp-portal-perf-a4, finding B3). The portal's
+  # JSON payloads are 79-93 % compressible and re-fetched on a 30 s poll, so
+  # every unshipped byte is paid repeatedly on mobile/remote links. In prod the
+  # frontend nginx (the single web entry) also gzips, but it PASSES THROUGH an
+  # already-encoded upstream response - so enabling this here compresses the api
+  # for prod too AND covers every non-nginx path (dev, a direct probe, a future
+  # ingress that does not gzip). `min-response-size` skips tiny bodies where the
+  # gzip header costs more than it saves.
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/plain,text/css,application/javascript
+    min-response-size: 1024
   # Graceful shutdown (docs/k8s-readiness.md): on SIGTERM Tomcat stops
   # accepting new connections and lets in-flight requests finish instead of
   # cutting them. That is what makes a rolling deploy invisible to the portal

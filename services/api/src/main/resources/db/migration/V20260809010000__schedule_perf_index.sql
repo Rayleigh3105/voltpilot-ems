@@ -1,0 +1,50 @@
+-- =============================================================================
+-- V20260809010000 - Perf: latest-run-per-slot SkipScan index on `schedule`.
+-- -----------------------------------------------------------------------------
+-- The #1 DB cost of the portal (audit vp-portal-perf-a4, finding B1). The
+-- optimizer re-plans every 15 min over a 24h horizon, so EVERY quarter-hour
+-- slot is stored ~96 times. Both the fleet overview savings and the site
+-- Historie savings/curtailment read the "newest run that planned this slot"
+-- with the same pattern:
+--
+--   SELECT DISTINCT ON (time) ... FROM schedule
+--   WHERE site_id = ? AND time >= ? AND time < ?
+--   ORDER BY time, generated_at DESC
+--
+-- The pre-existing indexes are `(site_id, generated_at DESC)` and
+-- `(tenant_id, time DESC)` - NEITHER serves the ORDER BY `(..., time,
+-- generated_at DESC)`, so Postgres had to read every candidate (553k rows for
+-- a one-site year window) and sort it (external-merge to disk). This composite
+-- index leads with the equality-bound `site_id` and then carries `time`,
+-- `generated_at DESC` in the order the DISTINCT ON needs, so TimescaleDB uses
+-- its per-chunk `Custom Scan (SkipScan)` and reads only the newest run per
+-- slot.
+--
+-- Measured on a faithfully-migrated TimescaleDB 2.17.2-pg16 with the real
+-- optimizer write cadence (1.66M schedule rows / 3 sites / 60 days):
+--   /history savings (year)      757 ms (553056 rows) -> 26 ms (5856 rows)
+--   /history curtailSlots (year) 653 ms               -> 22 ms
+--   /history?range=year e2e      1.393 s              -> 0.205 s (6.8x)
+--
+--   EXPLAIN (ANALYZE) of HistoryRepository.savings after the index:
+--     GroupAggregate ...
+--       ->  Custom Scan (SkipScan) on _hyper_..._chunk schedule
+--             Index Cond: (site_id = '...'::uuid AND time >= ... AND time < ...)
+--             (heap fetches only the newest generated_at per slot)
+--
+-- The site-scoped Historie/earnings queries carry a `site_id = ?` equality and
+-- thus SkipScan directly (no query rewrite needed). The FLEET overview savings
+-- have NO site filter (DISTINCT ON (site_id, time), RLS-fenced), so the leading
+-- site_id has no equality bound and cannot trigger SkipScan on its own - those
+-- are additionally rewritten as a per-site LATERAL (finding B4) so each Anlage
+-- gets its own equality bound and skip-scans.
+--
+-- Idempotent (IF NOT EXISTS) like every other index migration; date-versioned
+-- ABOVE the highest shipped migration (V20260809000000) per the AGENTS.md
+-- ordering rule. Additive, RLS-neutral (an index carries no policy), and cheap
+-- (a few MB per chunk). The app role needs no new grant - it already SELECTs
+-- `schedule` (V20260701020000).
+-- =============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_schedule_site_time_gen
+    ON schedule (site_id, time, generated_at DESC);

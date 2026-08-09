@@ -1338,7 +1338,27 @@ export interface EarningsMonth {
  * `dailySaved` is the last 14 Berlin days regardless of range (spark bars +
  * "Heute" teaser).
  */
-export interface EarningsSite {
+/**
+ * The money fields the COCKPIT derivations (`cockpitHero`, `cockpitWidgets` ->
+ * `erloesKomposition`/`handelBlock`) actually read. Both the tenant-wide
+ * {@link EarningsSite} row AND the site-scoped {@link SiteEarnings} carry them,
+ * so the cockpit can be fed by either - the audit's B2 fix points it at the
+ * cheaper `/sites/{id}/earnings` endpoint, and this shared type documents the
+ * exact contract both must satisfy (drift is a compile error, not a runtime
+ * surprise).
+ */
+export interface CockpitMoney {
+  gesamtertragEur: number | null;
+  einspeiseErloesEur: number | null;
+  eigenverbrauchsWertEur: number | null;
+  savedEur: number | null;
+  arbitrageEur: number | null;
+  anzulegenderWertCtKwh: number | null;
+  firstCoveredDate: string | null;
+  peakShaving?: PeakShaving | null;
+}
+
+export interface EarningsSite extends CockpitMoney {
   id: string;
   name: string;
   plantKind: PlantKind;
@@ -1525,7 +1545,7 @@ export interface SiteEarningsBucket {
  * `peakShaving` gehört einer ANDEREN Periode (laufende Abrechnungsperiode) und
  * wird nie in die Zeitraum-Summe addiert.
  */
-export interface SiteEarnings {
+export interface SiteEarnings extends CockpitMoney {
   siteId: string;
   name: string;
   range: SiteEarningsRange;
@@ -1557,6 +1577,19 @@ export interface SiteEarnings {
   eingespeistKwh: number | null;
   selbstverbrauchKwh: number | null;
   batterieBewegtKwh: number | null;
+  /**
+   * B2 parity with the fleet twin (audit vp-portal-perf-a4): the cockpit money
+   * hero reads these from THIS cheaper site endpoint instead of filtering the
+   * tenant-wide `/earnings`. `gesamtertragEur` = einspeiseErloesEur +
+   * eigenverbrauchsWertEur (feed-in alone for an 'ohne' tariff); the
+   * `expectedMarketValue*` are the forward Marktwert Solar (range-independent),
+   * all null without forward PV/price coverage - never a fabricated figure.
+   */
+  gesamtertragEur: number | null;
+  expectedMarketValueSolarCtKwh: number | null;
+  expectedMarketValueFrom: string | null;
+  expectedMarketValueTo: string | null;
+  expectedMarketValueSlots: number | null;
   series: SiteEarningsBucket[];
   peakShaving?: PeakShaving | null;
 }

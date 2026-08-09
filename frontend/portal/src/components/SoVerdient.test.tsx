@@ -44,6 +44,11 @@ function anlage(over: Partial<SiteEarnings> = {}): SiteEarnings {
     eingespeistKwh: 9573.8,
     selbstverbrauchKwh: 400,
     batterieBewegtKwh: 900,
+    gesamtertragEur: null,
+    expectedMarketValueSolarCtKwh: null,
+    expectedMarketValueFrom: null,
+    expectedMarketValueTo: null,
+    expectedMarketValueSlots: null,
     series: [],
     ...over,
   };

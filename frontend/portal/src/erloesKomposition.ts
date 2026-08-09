@@ -29,8 +29,8 @@
  */
 
 import type {
+  CockpitMoney,
   EarningsRange,
-  EarningsSite,
   PeakShaving,
   SiteEarnings,
   SiteEarningsBucket,
@@ -201,7 +201,7 @@ export function steeringAttributionNote(savedEur: number | null | undefined): st
     : `VoltPilots Steuerung: ${eurAmount(eur)} in diesem Zeitraum`;
 }
 
-function resolve(stream: MoneyStream, money: EarningsSite | null): Resolved {
+function resolve(stream: MoneyStream, money: CockpitMoney | null): Resolved {
   if (!money) return { eur: null, note: null };
   switch (stream.id) {
     case 'eigenverbrauchswert':
@@ -244,7 +244,7 @@ export interface ErloesKompositionInput {
   /** Die Ströme der aktiven Modi — `moneyStreams(activeModes(site))` aus M0. */
   streams: MoneyStream[];
   /** Die Earnings-Zeile dieser Anlage; null = noch nicht geladen. */
-  money: EarningsSite | null;
+  money: CockpitMoney | null;
   /** Der gewählte Zeitraum der Seite. */
   range: EarningsRange;
   /** Der Anker des Zeitraums (angetippter Monat), Standard: jetzt. */

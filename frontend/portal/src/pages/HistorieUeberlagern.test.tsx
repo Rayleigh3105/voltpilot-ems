@@ -150,6 +150,11 @@ const money: SiteEarnings = {
   eingespeistKwh: 500,
   selbstverbrauchKwh: 50,
   batterieBewegtKwh: 200,
+  gesamtertragEur: null,
+  expectedMarketValueSolarCtKwh: null,
+  expectedMarketValueFrom: null,
+  expectedMarketValueTo: null,
+  expectedMarketValueSlots: null,
   series: [
     {
       start: '2026-07-01T00:00:00Z',

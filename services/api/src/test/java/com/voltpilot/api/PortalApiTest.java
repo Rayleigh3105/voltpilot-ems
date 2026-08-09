@@ -2666,6 +2666,9 @@ class PortalApiTest {
         assertThat(num(live, "loadKw")).isEqualTo(1.1);
         assertThat(num(live, "gridKw")).isEqualTo(-0.9);
         assertThat(num(live, "socPct")).isEqualTo(76.0);
+        // B4 byte-identity: this exact 0.10 pins OverviewRepository.savingsPerSite
+        // after its per-site-LATERAL rewrite - the newer of two runs on slot1
+        // wins (0.08, not 0.98) AND the slot before Berlin midnight is excluded.
         assertThat(num(site, "plannedSavingsTodayEur"))
                 .isCloseTo(0.10, org.assertj.core.data.Offset.offset(1e-9));
 
@@ -3071,8 +3074,10 @@ class PortalApiTest {
                     + "ON CONFLICT DO NOTHING");
         }
 
+        // strip=true opts into the 12-month strip (finding B5: it is now
+        // computed only on demand, empty otherwise); this test asserts it.
         ResponseEntity<Map<String, Object>> res = rest.exchange(
-                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                url("/api/v1/earnings?range=month&strip=true"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = res.getBody();
@@ -3101,6 +3106,13 @@ class PortalApiTest {
         List<Map<String, Object>> strip = list(withRow, "monthlyStrip");
         assertThat(strip).hasSize(1);
         assertThat(num(strip.get(0), "gesamtertragEur")).isCloseTo(0.40, eps);
+
+        // B5 opt-in: WITHOUT strip=true the strip is not computed (empty), so
+        // the fixed ~173 ms 12-month scan never runs on the default poll.
+        ResponseEntity<Map<String, Object>> noStrip = rest.exchange(
+                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(list(siteRow(noStrip.getBody(), withTariff), "monthlyStrip")).isEmpty();
 
         // No tariff => self-consumption stays kWh-only, NEVER a fabricated euro,
         // and the Gesamtertrag is the feed-in revenue alone.
@@ -3173,8 +3185,10 @@ class PortalApiTest {
                     + "ON CONFLICT DO NOTHING");
         }
 
+        // strip=true opts into the 12-month strip (finding B5); this test
+        // asserts its window logic.
         ResponseEntity<Map<String, Object>> res = rest.exchange(
-                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                url("/api/v1/earnings?range=month&strip=true"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = res.getBody();
@@ -5117,6 +5131,19 @@ class PortalApiTest {
         assertThat(num(body, "stromkostenEur") - num(body, "einspeiseErloesEur"))
                 .isCloseTo(num(body, "actualEur"), eps);
 
+        // B2 parity with the fleet twin: the cockpit money hero reads
+        // gesamtertragEur = einspeise + eigenverbrauch from THIS endpoint.
+        assertThat(num(body, "gesamtertragEur")).isCloseTo(0.40, eps);
+        assertThat(num(body, "gesamtertragEur")).isCloseTo(
+                num(body, "einspeiseErloesEur") + num(body, "eigenverbrauchsWertEur"), eps);
+        // The forward expected Marktwert Solar is wired (its math is proven on
+        // the fleet endpoint, which shares the query); with no forward PV
+        // forecast seeded here it is honestly null, never a fabricated figure.
+        assertThat(body).containsEntry("expectedMarketValueSolarCtKwh", null)
+                .containsEntry("expectedMarketValueSlots", null)
+                .containsEntry("expectedMarketValueFrom", null)
+                .containsEntry("expectedMarketValueTo", null);
+
         // The money chart carries the three parts per bucket (month -> day),
         // and its cumulative line lands on the period result.
         List<Map<String, Object>> series = list(body, "series");
@@ -5144,7 +5171,9 @@ class PortalApiTest {
                 .containsEntry("einspeiseErloesEur", null)
                 .containsEntry("stromkostenEur", null)
                 .containsEntry("bezugspreisCtKwh", null)
-                .containsEntry("savedEur", null);
+                .containsEntry("savedEur", null)
+                .containsEntry("gesamtertragEur", null)
+                .containsEntry("expectedMarketValueSolarCtKwh", null);
         assertThat(list(empty.getBody(), "series")).isEmpty();
 
         // RLS: another tenant does not even see the Anlage.
