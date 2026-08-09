@@ -100,8 +100,11 @@ a:focus-visible,
   border-bottom: 1px solid var(--vp-border);
 }
 .vp-sidebar .brand img {
-  height: 44px;
-  width: auto;
+  /* The source PNG has generous transparent space above and below the
+     wordmark. Size it from the available width so the visible logo uses the
+     complete brand area while keeping its original proportions. */
+  width: 100%;
+  height: auto;
   max-width: 100%;
   display: block;
 }
