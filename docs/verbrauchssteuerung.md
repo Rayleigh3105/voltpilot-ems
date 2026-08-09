@@ -1,6 +1,6 @@
 # Konzept: steuerbare Verbraucher in VoltPilot
 
-**Status:** Überarbeiteter Entwurf nach fachlicher Abstimmung
+**Status:** Überarbeiteter Entwurf nach Konzept-Review
 **Stand:** 2026-08-09
 **Zielbild:** Portalnutzer können steuerbare Verbraucher anlegen, sicher konfigurieren, automatisch oder durch den Fahrplan betreiben und ihren Zustand sowie ihren geplanten und tatsächlichen Verbrauch nachvollziehen.
 
@@ -63,6 +63,30 @@ Diese Punkte vervollständigen die Nutzerführung:
 
 - Bei einer Preisschwelle wählt der Nutzer verständlich zwischen **Börsenpreis** und **meinem vollständigen Bezugspreis**. Die Auswahl erscheint erst nach Wahl einer Preisbedingung.
 - Mehrere Regeln eines Verbrauchers werden automatisch zu einem Ziel zusammengeführt; der wirksame Grund bleibt in der Oberfläche sichtbar.
+
+### Review-Entscheidungen 2026-08-09
+
+Das Konzept-Review vom 09.08.2026 hat zehn Punkte verbindlich entschieden. Sie sind zusätzlich in
+die betroffenen Abschnitte eingearbeitet.
+
+| ID | Entscheidung |
+|---|---|
+| D1 | Kein Marktsignal-Down-Kanal. Preis- und Zeitbedingungen werden in der Cloud deterministisch zu konkreten UTC-Zeitfenstern kompiliert; reaktiv am Edge bleiben nur lokale Signale (Geräteverfügbarkeit, Speicher-SoC, gemessener PV-Überschuss/Netzfluss). Preis-Hysterese entfällt (deterministische Fenster flattern nicht), SoC-/Überschuss-Hysterese bleibt. `vp.price.current` kompiliert zu einem Plan-/Fensterbeitrag; ein produktiver Live-Preis-Downlink und dessen Entgating entfallen ersatzlos. Grund: eine Preiswahrheit (`SlotEconomics`/`pricing.py`), Hausgesetz „die Cloud bepreist, der Edge begrenzt“ (`slot_trim`/`loadfollow`/`surpluscharge`-Disziplin). |
+| D2 | Lexikografik auf höchstens drei konditionale Stufen: (1) Pflichterfüllung (unbediente Pflichtläufe und Fristverletzungen als Slacks, nach Mindestlauf, `service_rank`, Frist), (2) Netzenergie – nur wenn mindestens ein Verbraucher `grid_energy_policy=avoid` trägt, (3) Ökonomie + bestehende deterministische Epsilon-Tie-Breaks. Schutz/Netz/Vertrag sind Constraints, keine Stufe. `consumer_first`/`storage_first` wird als deterministischer Tie-Break in der Epsilon-Klasse modelliert, nicht als eigene Stufe. Die Quellen-/Senken-Zuordnungsmatrix wird nur gebaut, wenn ein Verbraucher eine Quellen-Restriktion oder -Präferenz trägt. |
+| D3 | Vierstufige Bestätigungshierarchie für den Erfüllungsnachweis: kWh-Messung → kW-Telemetrie → Relais-/Zustands-Readback (Energie „angenommen“) → kein Readback (nie „erfüllt“). kWh-Ziele bietet der Assistent nur bei vorhandenem Energie-/Leistungsmesskanal an; ohne Messung erscheint der ehrliche Satz „Ohne Messung kann VoltPilot die Erfüllung nicht nachweisen.“ |
+| D4 | Stufenlose Verbraucher dürfen nicht-konvexe Leistungsbereiche `power_ranges_kw` tragen (je Bereich ein Binary, höchstens ein aktiver Bereich, Bereichswechsel unter Mindestlauf-/Umschaltpausen). Der erste reale Wallbox-Treiber (go-e) baut die Phasenumschaltung mit (Umschalt-Hysterese, Mindest-Umschaltpausen, Readback der Phasenlage). E8 bleibt gültig. |
+| D5 | Frühzeitigkeits-Tie-Break sofort: bei Kostengleichheit werden flexible Aufgaben so früh wie möglich erfüllt (gleiche Klasse wie der Early-Charge-Tie-Break). Der lokale Deadline-Fallback wird als festes Inkrement 6 eingeplant, nicht mehr „optional später“. |
+| D6 | Energiepräferenz (`consumer_first`/`storage_first`) bleibt an Speicher-Standorten aktive Pflichtfrage – bewusst bestätigt, gegen den Vereinfachungsvorschlag „Default je Absicht“ entschieden. §4.2/§14.4 bleiben inhaltlich unverändert. |
+| D7 | Die bestehenden Kunden-Flow-Vorlagen „Wallbox nur bei PV-Überschuss“ und „Heizstab-Zeitplan“ zeigen ab Inkrement 4 auf den Verbraucher-Regelbaukasten statt auf den Flow-Editor; der Node-RED-Editor bleibt Power-User-Tür (M4-Reihenfolge unverändert). Konflikte mit aktiven Flow-Claims werden ehrlich benannt (V-5). |
+| D8 | Ereignis-Neuplanung als dritter Endpunkt `POST /replan` auf der bestehenden Solve-Fläche (`simulate-serve`): echter Zyklus gather → optimize → persist → publish je Site, semaphore-begrenzt wie Simulation/What-if. Der What-if-Endpunkt bleibt per Konstruktion ephemer. Debounce (5–10 s) und maximale Replan-Rate liegen in der API; Auslöser über einen eigenen Status-Listener. Der 15-Minuten-Tick bleibt Grundschlag. |
+| D9 | Additiver `consumers`-Block im Status-Heartbeat je Verbraucher-Entity: `{state, reason_code, actual_kw, confirmed, requirement_progress}`. Eigener api-Listener (Geschwister-Regel), RLS-Tabelle `consumer_runtime_status` (eine Zeile je Entity, je Heartbeat wholesale ersetzt), Lesepfad je Site. Unbekannte Zustands-/Grundwörter werden beim Ingest verworfen; das Portal mappt `reason_code`s über eine reine, getestete TS-Tabelle. |
+| D10 | Treiber-Reihenfolge nach der Simulator-Scheibe: zuerst go-e Wallbox (Consumer-Control-Executor mit Readback existiert; inkl. Phasenumschaltung, D4), danach der Shelly-Heizstab-Treiber (HTTP-Relais). Pilotanlagen (Captain-Angabe 09.08.2026): go-e Wallbox + Heizstab über Shelly; ein Shelly **mit** Leistungsmessung liefert D3-Bestätigungsstufe 2 (kW-Telemetrie), ohne nur Stufe 3 (Relais-Readback, Energie „angenommen“). |
+
+Zusätzliche Review-Klarstellungen: die Zeitzonenführung bleibt in v1 faktisch Europe/Berlin
+(bestehende Pinnung); ein Standort-Zeitzonenfeld wird vorgesehen, aber es entsteht keine
+per-Tenant-Zeitzonen-Baustelle in diesem Feature. V1 enthält keinen kundenseitigen
+Verbraucher-Erlösausweis; `consumer_plan_economics` bleibt optional und intern, ein späterer
+Ausweis wird ausdrücklich als „geplant“ gelabelt.
 
 ## 3. Leitprinzipien
 
@@ -179,6 +203,17 @@ Benötigt mindestens:
 
 Unterhalb der Mindestleistung ist der Verbraucher aus. Oberhalb wird der Sollwert auf Raster und Guard-Grenzen geklemmt.
 
+Optional dürfen stufenlose Verbraucher **nicht-konvexe Leistungsbereiche** tragen:
+
+```json
+{ "power_ranges_kw": [[1.4, 3.7], [4.2, 11.0]] }
+```
+
+Die Liste enthält disjunkte, aufsteigende `[min, max]`-Bereiche – etwa 1- und 3-phasiges Laden
+einer Wallbox – jeweils innerhalb der effektiven Nennleistung. Unterhalb des kleinsten Minimums
+ist der Verbraucher aus. Fehlt das Feld, gilt der einfache `[min_power_kw, max_power_kw]`-Bereich.
+Die Solverkopplung je Bereich beschreibt §12.2, die Edge-Umschaltung §13.1.
+
 ### 4.4 Effektive Leistungsgrenze
 
 Die vom Nutzer angegebene Leistung darf niemals eine physische Fähigkeit erweitern:
@@ -248,7 +283,7 @@ hinzukommt, fragt der Baukasten mit zwei Satzkarten: **„Alle müssen zutreffen
 
 ```text
 ANY / ALL / NOT
-  └─ Signal + Operator + Schwelle + Hysterese
+  └─ Signal + Operator + Schwelle + Hysterese (nur bei lokalen Signalen)
 ```
 
 Zulässige Signale im ersten Inkrement:
@@ -272,12 +307,14 @@ Mit `UND` würde derselbe Verbraucher nur laufen, wenn **gleichzeitig** der Prei
 ct/kWh liegt und der Speicher mehr als 80 % geladen ist. Verschachtelte Gruppen bleiben über
 „Weitere Logik“ möglich, werden aber nicht im einfachen Standardpfad gezeigt.
 
-Empfohlene Hysterese:
+Preis- und Zeitbedingungen werden in der Cloud deterministisch zu Zeitfenstern kompiliert (D1)
+und tragen deshalb **keine Hysterese** – ein vorberechnetes Fenster flattert nicht. Nur lokal am
+Edge ausgewertete Signale brauchen Hysterese:
 
-- Preis: ein unter `5`, aus über `6 ct/kWh`,
-- SoC: ein über `80 %`, aus unter `75 %`.
+- SoC: ein über `80 %`, aus unter `75 %`,
+- PV-Überschuss/Netzfluss: analog mit einem kleinen Rückschaltabstand.
 
-Ohne Hysterese könnte der Verbraucher an einer verrauschten Schwelle häufig schalten.
+Ohne Hysterese könnte ein solcher Verbraucher an einer verrauschten Schwelle häufig schalten.
 
 ### 5.4 Flexible Aufgabe
 
@@ -483,6 +520,8 @@ Validierung:
   geführte UI erzeugt diese widersprüchliche Kombination gar nicht.
 - `service_rank` ist fachliche Konfliktauflösung zwischen Verbraucherwünschen und darf niemals
   auf eine höhere Edge-Arbitrationsklasse abgebildet werden.
+- `availability_channel` und `confirmation_channel` folgen dem offenen v2-Kanalvokabular
+  (`CHANNEL_RE`), nicht Freitext.
 - tenant- und site-FKs müssen zur referenzierten Entität passen.
 
 ### 9.3 Neue Tabelle `consumer_policy`
@@ -515,12 +554,24 @@ required_energy_kwh       NUMERIC NULL
 required_runtime_seconds  INTEGER NULL
 actual_energy_kwh         NUMERIC NOT NULL DEFAULT 0
 actual_runtime_seconds    INTEGER NOT NULL DEFAULT 0
+energy_confirmation       TEXT NULL -- measured | integrated | assumed
 state                     TEXT -- pending | running | fulfilled | missed | blocked
 reason_code               TEXT NULL
 updated_at                TIMESTAMPTZ
 ```
 
 Die tatsächliche Erfüllung wird aus bestätigter Verbrauchertelemetrie abgeleitet, nicht aus dem gesendeten Sollwert.
+
+Der Erfüllungsnachweis folgt einer **Bestätigungshierarchie** nach verfügbarem Messkanal:
+
+1. **Energiemessung (kWh):** bestätigt Laufzeit- und Energieziele als „erfüllt“.
+2. **Leistungstelemetrie (kW):** Laufzeit exakt, Energie integriert; „erfüllt“.
+3. **Relais-/Zustands-Readback:** bestätigt nur Laufzeitziele als „erfüllt“; Energie wird als
+   „angenommen (Nennleistung × Zeit)“ gekennzeichnet (`energy_confirmation = assumed`).
+4. **Kein Readback:** nie „erfüllt“; Status „Ausführung nicht bestätigt“.
+
+Sobald Energie nur aus Nennleistung × Zeit hochgerechnet ist, trägt der Erfüllungszustand die
+Kennzeichnung „angenommen“ (§14.13).
 
 ### 9.5 Planpersistenz
 
@@ -531,6 +582,15 @@ Der bisherige v1-`schedule`-Datensatz ist standort-/speicherzentriert. Für v2 w
 - optional `consumer_plan_economics`: erwartete Kosten, verschobene Energie und vermiedene Kosten.
 
 Damit können Fahrplan, Plan-vs.-Ist und „Warum läuft die Pumpe jetzt?“ ohne Rekonstruktion aus einem MQTT-Payload beantwortet werden.
+
+Persistenz-Disziplin: `entity_plan_slot` erhält ab der ersten Migration eine Retention (180 Tage
+wie `schedule`) und den Index `(entity_id, time, generated_at DESC)` für SkipScan; Leser folgen dem
+bestehenden DISTINCT-ON-LATERAL-Muster. RLS-Tabellen erhalten nur Retention, nie Kompression
+(gemessene Timescale-Einschränkung).
+
+V1 enthält keinen kundenseitigen Verbraucher-Erlösausweis; `consumer_plan_economics` bleibt
+optional und rein intern. Ein späterer Geld-Ausweis für Verbraucher wird ausdrücklich als
+„geplant“ gelabelt.
 
 ### 9.6 Migration und RLS
 
@@ -568,9 +628,7 @@ Anforderungen in einer Policy kombinieren:
           {
             "signal": "market.spot_price_ct_kwh",
             "operator": "lt",
-            "value": 5,
-            "reset_value": 6,
-            "max_age_s": 1200
+            "value": 5
           },
           {
             "signal": "storage.soc_pct",
@@ -638,6 +696,9 @@ Vertragsregeln:
 - Keine freien Ausdrücke oder Topics im geführten Modell.
 - Signalnamen kommen aus einem serverseitigen Katalog.
 - Dreizustandslogik `true | false | unknown`; unbekannte Eingangswerte werden nicht als `0` behandelt.
+- Preis- und Zeitbedingungen werden vom Compiler deterministisch zu Zeitfenstern expandiert; sie
+  tragen keine Hysterese (`reset_value`) und kein `max_age_s`. Nur lokal ausgewertete Signale
+  (Verfügbarkeit, SoC, PV-Überschuss/Netzfluss) tragen `max_age_s` und optionale Hysterese (D1).
 - Jede Anforderung darf `allow_storage_discharge` und `service_rank` optional überschreiben;
   ohne Wert gelten die Verbraucher-Defaults.
 - `must_run` impliziert `grid_energy_policy=allow`; flexible/opportunistische Anforderungen
@@ -658,7 +719,7 @@ Alle Kundenendpunkte sind tenantgescoped; `tenant_id` und `site_id` werden nicht
 | `GET/PATCH` | `/api/v1/sites/{siteId}/consumers/{id}` | Stammdaten lesen/ändern, optimistisch über `version`/ETag. |
 | `DELETE` | `/api/v1/sites/{siteId}/consumers/{id}` | Fachlich stilllegen; keine harte Löschung von Audit-/Erfüllungsdaten. Physische Registry-Bereinigung erst nach Deaktivierung. |
 | `GET/PUT` | `/api/v1/sites/{siteId}/consumers/{id}/policy` | Aktive Policy lesen bzw. neue Draft-Version speichern. |
-| `POST` | `/api/v1/sites/{siteId}/consumers/{id}/policy/simulate` | Vorschau, Konflikte, fehlende Fähigkeiten und nötige Rangentscheidungen für einen Zeitraum erzeugen. |
+| `POST` | `/api/v1/sites/{siteId}/consumers/{id}/policy/simulate` | Vorschau, Konflikte, fehlende Fähigkeiten und nötige Rangentscheidungen für einen Zeitraum erzeugen; setzt auf das ephemere What-if-Vehikel des Solve-Service auf (Draft-Policy als Override, semaphore-begrenzt), kein neuer Rechenpfad. |
 | `POST` | `/api/v1/sites/{siteId}/consumers/{id}/policy/activate` | Validieren, kompilieren und atomar aktivieren. |
 | `POST` | `/api/v1/sites/{siteId}/consumers/{id}/pause` | Verbrauchersteuerung pausieren; Failsafe aktivieren. |
 | `POST` | `/api/v1/sites/{siteId}/consumers/{id}/override` | Zeitlich begrenzter manueller Start/Stopp. |
@@ -715,6 +776,11 @@ stepped:    load_power = Σ(level_l * level_selected_l), Σ level_selected_l = 1
 continuous: min_power * is_on <= load_power <= max_power * is_on
 ```
 
+Trägt ein stufenloser Verbraucher `power_ranges_kw` (§4.3), erhält jeder Bereich ein eigenes
+Binary; höchstens ein Bereich ist je Slot aktiv, und `load_power` liegt im aktiven Bereich.
+Bereichswechsel – etwa 1-/3-phasiges Laden – unterliegen denselben Mindestlauf- und
+Umschaltpausen wie Ein/Aus-Schaltungen.
+
 Die Standortbilanz wird erweitert:
 
 ```text
@@ -737,6 +803,11 @@ Speicherladung als echte Solverbedingungen/-präferenzen modelliert, ohne eine k
 verwenden. Die Matrix verändert die physische Bilanz nicht; sie erklärt und beschränkt deren
 zulässige Aufteilung.
 
+Die Zuordnungsmatrix wird **nur gebaut, wenn mindestens ein Verbraucher eine Quellen-Restriktion
+oder -Präferenz trägt** (`allow_storage_discharge=false` oder `grid_energy_policy != allow`).
+Trägt kein Verbraucher eine solche Einschränkung, entfällt die Matrix und das Modell bleibt klein
+(D2).
+
 ### 12.3 Anforderungen als Constraints
 
 - Festes Fenster: Zielleistung in den betroffenen Slots, mit Erfüllungsslack nur unterhalb höherer Schutzebenen.
@@ -746,25 +817,42 @@ zulässige Aufteilung.
 - Aufteilbar: mehrere Laufblöcke erlaubt, jeweils weiterhin unter Mindestlauf/-pause und maximalen
   Starts; die Nutzerwahl wird nicht nachträglich vom Optimizer umgedeutet.
 - Mindestlauf/-pause: klassische Unit-Commitment-Constraints.
-- Preisbedingung: bekannte Preisslots deterministisch aktivieren.
+- Preis-/Zeitbedingung: in der Cloud deterministisch zu Zeitfenstern kompiliert und als bekannte
+  Slots aktiviert; kein Edge-Marktsignal (D1).
 - SoC-/Verfügbarkeitsbedingung: im Edge sofort auswerten; Zustand an den Optimizer melden und bei Änderung neu planen. Eine spätere MILP-Kopplung an den prognostizierten SoC ist möglich, aber nicht für das erste sichere Inkrement nötig.
 - Pflichtlauf: Netzanteil zulässig; Kosten bleiben Teil des Nachweises, dürfen aber die
   Pflichtanforderung nicht verdrängen.
+- Frühzeitigkeit: bei kostengleichen Lösungen wird der noch offene flexible Bedarf früh statt
+  spät verplant (deterministischer Tie-Break, siehe §12.4).
 - Verbraucher-Konflikt: bereits bindende Mindestläufe als Betriebsconstraint einhalten;
   verbleibenden Erfüllungsslack nach `service_rank` und Frist lexikografisch minimieren.
 
 ### 12.4 Priorität ohne willkürliche Big-M-Eurotricks
 
-Empfohlen wird eine mehrstufige lexikografische Lösung:
+Schutz, Netz und Vertrag sind harte **Constraints, keine Stufe**. Über den zulässigen Bereich
+entscheidet eine lexikografische Lösung mit **höchstens drei konditionalen Stufen** (D2):
 
-1. Schutz-, Netz- und Vertragsconstraints einhalten.
-2. Unbediente Pflichtanforderungen nach bindenden Mindestläufen, `service_rank` und Frist minimieren.
-3. Fristverletzungen und Energiezuordnungsabweichungen minimieren; `consumer_first` weist
-   freigegebene Energie vor optionaler Speicherladung zu, `storage_first` umgekehrt.
-4. Unter den gleich guten Lösungen Energiekosten, Erlöse, Leistungsspitze, Batterieverschleiß und Terminalwert optimieren.
-5. Kleine deterministische Tie-Breaks anwenden.
+1. **Stufe 1 – Pflichterfüllung.** Unbediente Pflichtläufe und Fristverletzungen werden als Slacks
+   lexikografisch minimiert: zuerst bereits bindende Mindestläufe, dann `service_rank`, dann die
+   frühere Frist.
+2. **Stufe 2 – Netzenergie (nur bedingt vorhanden).** Nur wenn mindestens ein Verbraucher
+   `grid_energy_policy=avoid` trägt, werden die zugeordneten Netz-kWh minimiert. Ohne einen solchen
+   Verbraucher entfällt diese Stufe vollständig.
+3. **Stufe 3 – Ökonomie.** Energiekosten, Erlöse, Leistungsspitze, Batterieverschleiß und
+   Terminalwert werden zusammen mit den bestehenden deterministischen Epsilon-Tie-Breaks optimiert.
+   `consumer_first`/`storage_first` wird als deterministischer Tie-Break in dieser bestehenden
+   Epsilon-Klasse modelliert (Indifferenz-Präferenz bei kostengleichen Lösungen), **nicht als eigene
+   Stufe**.
+
+Als weiterer deterministischer Tie-Break der Stufe 3 gilt: **bei Kostengleichheit werden flexible
+Aufgaben so früh wie möglich erfüllt** (D5, dieselbe Klasse wie der bestehende
+Early-Charge-Tie-Break, klein genug, um echte Preisunterschiede nie zu überstimmen). Das
+verkleinert das Fenster, in dem ein Cloud-Ausfall eine Frist reißt.
 
 So kann kein zufällig gewählter Strafpreis dazu führen, dass ein sehr negativer Börsenpreis einen Nutzer-Pflichtlauf „wegkauft“ oder umgekehrt die ökonomische Zielfunktion numerisch zerstört.
+
+Die lexikografische Stufenfixierung hält eine dokumentierte Toleranz oberhalb des gepinnten
+MIP-Gaps ein; die deterministischen Epsilon-Tie-Breaks werden dafür nie aufgeweicht.
 
 ### 12.5 Ergebnis und Publisher
 
@@ -806,6 +894,18 @@ Consumer-Control-Executor mit Readback. Die Implementierung muss diese vorhanden
 daher mit Consumer-Planvektoren absichern und um fehlende Heizstab-/Pumpen-Driver ergänzen;
 Parser, Arbitration und Guard-Kette werden nicht neu erfunden oder gelockert.
 
+Mindest-Ein-/Ausschaltzeit, maximale Starts pro Tag und Rampe sind **zeitliche Invarianten** und
+werden am Edge durch einen eigenen **zustandsbehafteten Zyklen-Guard** durchgesetzt (Zustand:
+letzte Schaltzeitpunkte und Startzähler; Muster wie `PeakTracker`/`Despiker`). Der Guard ist
+restrict-only und trägt einen ehrlichen Grund in den Status („wartet – Mindestpause“). Die reine
+Leistungsklemme `[0, effective_max]` genügt dafür nicht, weil reaktive Regeln und Arbitration
+schneller schalten können als jeder Plan.
+
+Der erste reale Wallbox-Treiber (go-e) baut die **Phasenumschaltung** mit: Umschalt-Hysterese und
+Mindest-Umschaltpausen schonen die Fahrzeug-Elektronik, der Readback bestätigt die tatsächliche
+Phasenlage (D4). Der zulässige Leistungsbereich folgt dem aktiven `power_ranges_kw`-Bereich (§4.3,
+§12.2).
+
 ### 13.2 Reaktive Regeln
 
 Der Policy Compiler erzeugt je Verbraucher höchstens ein abgeleitetes Edge-Flow-Artefakt mit genau einem Entity-Claim. Alle Bedingungen werden darin vor dem Aktionsknoten zusammengeführt. Dadurch bleibt die bestehende Exklusivitätsregel V-5 erfüllt.
@@ -819,28 +919,26 @@ editierbare** Artefakt stempeln. Eine beliebige Kunden-Flow-Aktion erhält dadur
 Möglichkeit, den Marktplan zu überstimmen. Dafür sind Compiler-, Validator- und Golden-Artifact-
 Tests nötig; der Edge-Desired-Vertrag unterstützt den begrenzten Override bereits.
 
-### 13.3 Marktsignal am Edge
+### 13.3 Preis- und Zeitbedingungen werden in der Cloud kompiliert
 
-Für `vp.price.current` fehlt laut bestehendem Katalog noch ein produktiver Down-Kanal. Erforderlich ist ein neuer bindender, retained QoS1 Signalvertrag, beispielsweise:
+Es gibt bewusst **keinen Marktsignal-Down-Kanal** an den Edge. Day-Ahead-Preise sind zum
+Lieferzeitpunkt vollständig bekannt; der Policy-Compiler expandiert Preis- und Zeitbedingungen
+deterministisch zu konkreten UTC-Zeitfenstern. Diese Fenster fließen
 
-```text
-ems/{tenant}/{site}/{device}/v2/signals/market
-```
+- **(a)** als Solver-Slots in den Marktplan und
+- **(b)** für `UND`/`ODER`-Kombinationen mit lokalen Signalen als vorberechnete Zeitfenster in das
+  generierte Edge-Artefakt.
 
-Payload:
+Reaktiv am Edge bleiben **ausschließlich lokale Signale**: Geräteverfügbarkeit (z. B.
+`vehicle_connected`), Speicher-SoC und gemessener PV-Überschuss/Netzfluss. Für diese Signale gelten
+weiterhin Frische (`max_age_s`) und Hysterese; ein vorberechnetes Preis- oder Zeitfenster flattert
+nicht und braucht keine Hysterese.
 
-```json
-{
-  "schema_version": "1.0",
-  "generated_at": "2026-08-09T10:00:00Z",
-  "valid_from": "2026-08-09T10:00:00Z",
-  "valid_to": "2026-08-09T10:15:00Z",
-  "spot_price_ct_kwh": 4.8,
-  "import_price_ct_kwh": 31.2
-}
-```
-
-Nach Ablauf von `valid_to` ist das Signal `unknown`; eine preisabhängige Einschaltregel startet dann nicht neu. Erst nach Implementierung und E2E-Nachweis darf `vp.price.current` für Kunden entgated werden.
+Das folgt dem Hausgesetz **„die Cloud bepreist, der Edge begrenzt“** (die Disziplin von
+`slot_trim`/`loadfollow`/`surpluscharge`) und wahrt die eine Preiswahrheit
+(`SlotEconomics`/`pricing.py`): Preise werden an genau einer Stelle bewertet, nie zusätzlich am
+Gerät. Der Katalog-Node `vp.price.current` kompiliert deshalb zu einem Plan- bzw. Fensterbeitrag;
+ein produktiver Live-Preis-Downlink und dessen Entgating entfallen ersatzlos.
 
 ### 13.4 Schnelle Neuplanung
 
@@ -853,14 +951,22 @@ Folgende Edge-Ereignisse lösen über den Statuskanal eine Neuplanung aus:
 - relevante SoC-Schwelle überschritten,
 - Sollwert dauerhaft geklemmt oder Readback abweichend.
 
-Die API debounced pro Standort, z. B. 5–10 Sekunden, und begrenzt die maximale Replan-Rate. Bis zum neuen Plan deckt das Netz die Bilanzdifferenz, soweit Guards dies erlauben; Schutz- und Netzgrenzen bleiben wirksam.
+Die Auslöser erreichen die API über einen **eigenen Status-Listener** (Geschwister-Muster: ein
+eigener Block bekommt einen eigenen Listener, nie den early-return eines bestehenden Listeners
+erweitern). Die API debounced pro Standort (z. B. 5–10 Sekunden) und begrenzt die maximale
+Replan-Rate. Der On-Demand-Replan läuft als **dritter Endpunkt `POST /replan`** auf der bestehenden
+Solve-Fläche des optimization-Service (`simulate-serve`): ein echter Zyklus
+`gather → optimize → persist → publish` für genau eine Site, semaphore-begrenzt wie Simulation und
+What-if. Der What-if-Endpunkt bleibt per Konstruktion ephemer und unangetastet (er importiert weder
+Persistence noch Publisher). Der 15-Minuten-Tick bleibt der Grundschlag. Bis zum neuen Plan deckt
+das Netz die Bilanzdifferenz, soweit Guards dies erlauben; Schutz- und Netzgrenzen bleiben wirksam.
 
 ### 13.5 Offline und Staleness
 
 - Ein stale v2-Plan zieht seine `market`-Wünsche wie bisher zurück.
 - Lokal auswertbare, aktive Pflichtregeln dürfen offline weiterlaufen, solange alle benötigten Signale frisch sind.
-- Preisregeln laufen nur bis zum Ende des letzten bestätigten Preisslots.
-- Flexible Aufgaben ohne frischen Plan werden nicht eigenmächtig zu beliebigen Zeiten gestartet; optional kann später ein lokaler Deadline-Fallback mit eigener, getesteter Semantik ergänzt werden.
+- Preis- und Zeitregeln laufen nur bis zum Ende des letzten vorberechneten Fensters; danach ist die Bedingung `unknown`.
+- Flexible Aufgaben ohne frischen Plan werden nicht eigenmächtig zu beliebigen Zeiten gestartet. Ein lokaler Deadline-Fallback (Start spätestens bei Frist minus Restbedarf, unter allen Guards, mit eigener getesteter Semantik) ist als festes Inkrement 6 eingeplant (D5).
 - Danach gilt der Entitäts-Failsafe `off` oder `release`.
 
 ## 14. Portal-Konzept
@@ -947,8 +1053,9 @@ Jede Vorlage ist nach dem Auswählen vollständig veränderbar.
 | Standort hat einen Speicher | Verbraucher/Speicher zuerst und Speicherentladung | alle Speicherfragen |
 | genau eine Bedingung | direkt mit Ziel fortfahren | UND/ODER-Auswahl |
 | zweite Bedingung wird hinzugefügt | „Alle (UND)“ oder „Mindestens eine (ODER)“ | verschachtelte Logik |
-| Preisbedingung gewählt | Börsenpreis oder vollständiger Bezugspreis, Schwelle und Hysterese | Preisdetails |
+| Preisbedingung gewählt | Börsenpreis oder vollständiger Bezugspreis und Schwelle (in der Cloud zu Zeitfenstern kompiliert, keine Hysterese) | Preisdetails |
 | flexible Laufzeit gewählt | Minuten/Stunden und zusammenhängend oder aufteilbar | Laufzeitteilung |
+| Energie-/Leistungsmesskanal vorhanden (Capability-Schnittmenge, §16) | kWh-Ziel als flexible Aufgabe anbieten | kWh-Ziel; stattdessen ehrlicher Hinweis „Ohne Messung kann VoltPilot die Erfüllung nicht nachweisen.“ |
 | flexibler Energiebedarf gewählt | kWh und Frist | Frage nach zusammenhängender Laufzeit, sofern keine Mindestlaufzeit existiert |
 | `Muss laufen` gewählt | Hinweis „Netzstrom erlaubt“ | bearbeitbare Netzstromfrage |
 | flexibel/opportunistisch gewählt | Netzstrom erlauben, vermeiden oder ausschließen | Pflichtlauf-Hinweis |
@@ -1006,13 +1113,14 @@ Gute Defaults reduzieren Eingaben, dürfen aber immer sichtbar und reversibel se
 | Einstellung | Empfohlener Default | Sichtbarkeit |
 |---|---|---|
 | Failsafe | `off`, bei nativer Wallbox ggf. `release` aus Gerätekatalog | Zusammenfassung; editierbar, wenn Hardware mehrere Optionen erlaubt |
-| Preis-Hysterese | passend zur Einheit, z. B. 1 ct/kWh | direkt unter Preisschwelle, vorausgefüllt |
+| Preis-/Zeitbedingung | in der Cloud zu Zeitfenstern kompiliert, keine Hysterese (D1) | kein Hysteresefeld; als Satz erklärt |
 | SoC-Hysterese | 5 Prozentpunkte | direkt unter SoC-Schwelle, vorausgefüllt |
+| PV-Überschuss-Hysterese | kleiner Rückschaltabstand | direkt unter Überschuss-Schwelle, vorausgefüllt |
 | Mindestlauf/-pause | aus Driver/Katalog, sonst keine erfundene Grenze | nur bei vorhandener/aktivierter Grenze |
 | Netzstrom bei Pflichtlauf | erlaubt | nicht als Frage, aber als klarer Satz |
 | Speicherentladung | keine stille Annahme; Nutzerwahl bei erster relevanter Regel | nur wenn Speicher existiert |
 | Laufzeitteilung | zusammenhängend als Empfehlung, aber Nutzerwahl | nur bei Laufzeitaufgabe |
-| Zeitzone | Standort-Zeitzone | in Zusammenfassung, unter „Weitere Einstellungen“ änderbar nur durch Standortpflege |
+| Zeitzone | Standort-Zeitzone | in Zusammenfassung; Feld vorgesehen, in v1 faktisch Europe/Berlin (bestehende Pinnung); änderbar nur durch Standortpflege |
 
 „Weitere Einstellungen“ enthält unter anderem Mindestlauf/-pause, maximale Starts, Rampe,
 regelbezogene Abweichung vom Verbraucher-Standard für Speicherentladung und mehrstufige
@@ -1030,7 +1138,11 @@ Vor der Aktivierung zeigt eine einzige Prüfseite:
 - eine 24-h-Vorschau bzw. bei wiederkehrenden Aufgaben die nächste Instanz,
 - erwartete Kosten/Verlagerung nur, wenn dafür belastbare Daten existieren,
 - Konflikte und nicht verfügbare Geräteeigenschaften,
-- Failsafe und Verhalten bei fehlenden Signalen.
+- Failsafe und Verhalten bei fehlenden Signalen,
+- bei flexiblen Aufgaben, solange kein lokaler Deadline-Fallback ausgerollt ist (Inkrement 6), den offenen Hinweis „Bei Verbindungsausfall kann diese Aufgabe entfallen“.
+
+Vorschau und Simulation setzen auf das ephemere What-if-Vehikel des Solve-Service auf
+(Draft-Policy als Override, semaphore-begrenzt), nicht auf einen neuen Rechenpfad.
 
 Primäraktion: **„Regel aktivieren“**. Bei einer bestehenden aktiven Regel wird zunächst ein
 Entwurf bearbeitet; bis zur Aktivierung läuft die alte Version weiter. „Verwerfen“ stellt die
@@ -1139,6 +1251,14 @@ Baukasten aus einem Verbraucherdetail geöffnet, ist der Verbraucher bereits vor
 Generierte Policy-Flows tragen den Herkunftshinweis „Aus Verbraucherregel“ und öffnen beim
 Bearbeiten wieder denselben Regelbaukasten.
 
+Mit Inkrement 4 zeigen die bestehenden Kunden-Flow-Vorlagen „Wallbox nur bei PV-Überschuss“ und
+„Heizstab-Zeitplan“ (`frontend/portal/src/flows/customerTemplates.ts`) auf den
+Verbraucher-Regelbaukasten statt auf den Flow-Editor (D7); der Node-RED-Editor bleibt als
+Power-User-Tür erhalten, die M4-Reihenfolge bleibt unverändert. Bestehende aktive Flows bleiben
+gültig. Legt ein Nutzer eine Verbraucherregel auf eine Entität mit aktivem Flow-Claim, zeigt der
+Baukasten den Konflikt ehrlich an („wird bereits durch Automation X gesteuert“, V-5-Claims),
+statt zwei Regeln um dieselbe Entität kämpfen zu lassen.
+
 ### 14.13 Detailseite eines Verbrauchers
 
 Reihenfolge:
@@ -1170,6 +1290,9 @@ Sofortaktionen **„Jetzt starten“**, **„Jetzt stoppen“** und **„Automat
 manueller Start verlangt eine Endzeit bzw. Dauer und zeigt vorher wirksame Leistung sowie den
 Hinweis auf möglichen Netzbezug. Der Eingriff ist zeitlich begrenzt, im Status deutlich sichtbar
 und verändert die gespeicherte Regel nicht.
+
+Ist die Energie nur aus Nennleistung × Zeit hochgerechnet (Bestätigungshierarchie Stufe 3, §9.4),
+wird sie im Erfüllungszustand als „angenommen“ gekennzeichnet, nie als gemessen ausgegeben.
 
 ## 15. Ereignisse, Audit und Erklärbarkeit
 
@@ -1203,6 +1326,18 @@ Wichtige `reason_code`s:
 
 Diese Codes speisen Portaltexte, Supportdiagnose und Metriken; Texte werden nicht im Optimizer fest verdrahtet.
 
+### 15.1 Status-Rückkanal des Edge
+
+Zusätzlich zu den fachlichen Ereignissen trägt der Status-Heartbeat einen **additiven
+`consumers`-Block**: je Verbraucher-Entity `{state, reason_code, actual_kw, confirmed,
+requirement_progress}`. Der Block wird von einem **eigenen api-Listener** ingestet
+(Geschwister-Regel: ein eigener Block bekommt einen eigenen Listener; niemals den early-return
+eines bestehenden Listeners erweitern) und in die RLS-Tabelle `consumer_runtime_status` (eine
+Zeile je Entity, je Heartbeat wholesale ersetzt) geschrieben; ein Lesepfad je Site liefert ihn an
+das Portal. Unbekannte Zustands- oder Grundwörter werden beim Ingest verworfen, nie gespeichert.
+Das Portal übersetzt `reason_code`s über eine reine, getestete TS-Tabelle; keine Oberfläche
+durchsucht deutsche Sätze.
+
 ## 16. Sicherheit und Berechtigungen
 
 - Kunden dürfen nur Verbraucher am eigenen Standort erstellen und konfigurieren; RLS bleibt die zweite Schranke.
@@ -1222,7 +1357,7 @@ Diese Codes speisen Portaltexte, Supportdiagnose und Metriken; Texte werden nich
 | Telemetrie stale | Bedingung `unknown`, kein neuer Start | Warnstatus mit letztem Zeitpunkt |
 | Readback fehlt | Sollwert nicht als Ist zählen | „Ausführung nicht bestätigt“ |
 | Plan stale | Markt-Wunsch zurückziehen | Failsafe + Hinweis |
-| Preis stale | Preisregel nicht neu aktivieren | „Preis nicht aktuell“ |
+| Preis-/Zeitfenster abgelaufen | Preis-/Zeitregel nicht neu aktivieren; Bedingung `unknown` | „Fenster abgelaufen“ |
 | Flexible Aufgabe gefährdet | Sofortige Neuplanung, Priorität innerhalb Nutzerwünschen erhöhen | „Frist gefährdet“ |
 | Pflichtlauf durch Netzlimit geklemmt | Plan bleibt lösbar, Abweichung speichern | „Durch Netzvorgabe begrenzt“ |
 | Policy-Kompilierung fehlgeschlagen | Aktive Version unverändert lassen | Aktivierung fehlgeschlagen |
@@ -1242,6 +1377,10 @@ Metriken:
 - Verbraucherenergie nach PV-/Speicher-/Netz-Zuordnung, soweit messbar,
 - Kosten mit Steuerung gegenüber definierter Baseline.
 
+Die Metriken schließen an den bestehenden `/metrics`-Vertrag an (siehe `k8s-readiness.md`
+„Metriken (Prometheus)“). Gauge-Namen enden **nie auf `_total`** (Prometheus-Client-Falle);
+erfüllte und verpasste Aufgaben werden als Zähler je Grund geführt.
+
 Logs und Traces tragen `tenant_id`, `site_id`, `entity_id`, `policy_version` und `plan_id`, aber keine unnötigen personenbezogenen Daten.
 
 ## 19. Umsetzung in Inkrementen
@@ -1257,27 +1396,37 @@ Logs und Traces tragen `tenant_id`, `site_id`, `entity_id`, `policy_version` und
 ### Inkrement 2: Optimizer im Shadow-Modus
 
 - `ControllableLoadEntity` vollständig modellieren.
-- Solver-Variablen und Anforderungen für Ein/Aus, Stufen und stufenlos ergänzen.
+- Solver-Variablen und Anforderungen für Ein/Aus, Stufen, stufenlos und nicht-konvexe
+  `power_ranges_kw` ergänzen (D4).
+- Dreistufige Lexikografik (D2) und den Frühzeitigkeits-Tie-Break (D5) implementieren; die
+  Zuordnungsmatrix nur bei Quellen-Restriktion/-Präferenz aufbauen.
 - Verbraucher in `SitePlan`, v2 Publisher und v2 Persistenz aufnehmen.
 - Fahrplan mit Verbraucher-Layern darstellen.
-- Gegen bestehende Anlagen beweisen: leere Verbraucherliste bleibt unverändert.
+- Gegen bestehende Anlagen beweisen: leere Verbraucherliste bleibt zum Golden-Modell bytegleich.
 
 ### Inkrement 3: Edge und Simulator
 
 - Den vorhandenen generischen `plan2 → market desired → arbitration → consumer guard`-Pfad mit
   echten Consumer-Planvektoren und Planstaleness nachweisen.
+- Zustandsbehafteten Zyklen-Guard (Mindestlauf/-pause, Starts/Tag, Rampe) am Edge durchsetzen,
+  restrict-only, mit ehrlichem Grund im Status.
 - Den bestehenden go-e-Executor weiterverwenden; fehlende Heizstab-/Pumpen-Driver,
   Failsafe-/Readback- und Statuspfade ergänzen.
 - Simulierte Wallbox, Heizstab und Pumpe bereitstellen.
 - `plan → desired → arbitration → guard → command → readback` E2E beweisen.
+- Reale Treiber folgen der Simulator-Scheibe in der Reihenfolge go-e Wallbox (inkl.
+  Phasenumschaltung, D4) → Shelly-Heizstab-Treiber (D10, siehe §23).
 
 ### Inkrement 4: Reaktive Regeln
 
 - Policy Compiler für ein abgeleitetes Edge-Artefakt.
-- standardisierte Verfügbarkeits- und SoC-Signale.
-- Marktsignal-Down-Kanal bauen und erst danach Preisnode entgaten.
-- Debouncte Event-Neuplanung.
-- Hysterese, stale-Verhalten und ein einziger Claim je Verbraucher beweisen.
+- Preis- und Zeitbedingungen in der Cloud deterministisch zu Zeitfenstern kompilieren – kein
+  Marktsignal-Down-Kanal; `vp.price.current` kompiliert zu einem Plan-/Fensterbeitrag (D1).
+- standardisierte lokale Verfügbarkeits-, SoC- und PV-Überschuss-Signale.
+- Bestehende Kunden-Flow-Vorlagen auf den Verbraucher-Regelbaukasten umstellen (D7).
+- Ereignis-Neuplanung als `POST /replan` auf dem Solve-Service, debounced über einen eigenen
+  Status-Listener (D8).
+- Hysterese der lokalen Signale, Fensterablauf und ein einziger Claim je Verbraucher beweisen.
 
 ### Inkrement 5: Produktivierung
 
@@ -1285,6 +1434,8 @@ Logs und Traces tragen `tenant_id`, `site_id`, `entity_id`, `policy_version` und
 - Feature-Flags und Kill-Switches pro API, Optimizer und Edge.
 - Canaries je Hardwaretyp.
 - Portal-Cockpit, Historie, Erfüllungsnachweis und Supportdiagnose vervollständigen.
+- Erfüllungs-Ledger in die Historie-Ereignisspur aufnehmen.
+- Benachrichtigung „Frist gefährdet“ (`vp.notify.push`) als Anschlussarbeit benennen.
 - Operator-Runbook und kontrollierten Rollback dokumentieren.
 
 Empfohlene Flags:
@@ -1298,20 +1449,30 @@ VP_CONSUMER_CONTROL_ENABLED
 
 Ein ausgeschalteter Aktivierungsflag darf bereits ausgerollte Artefakte nicht als gestoppt erscheinen lassen; der echte Stopppfad muss Policies deaktivieren und retained Artefakte zurückziehen.
 
+### Inkrement 6: Lokaler Deadline-Fallback
+
+- Für flexible Aufgaben einen edge-lokalen Deadline-Fallback ergänzen: Start spätestens bei Frist
+  minus Restbedarf, unter allen Guards, mit eigener getesteter Semantik (D5).
+- Der Fallback greift nur, wenn kein frischer Plan vorliegt, und verkleinert das Fenster, in dem
+  ein Cloud-Ausfall eine Frist reißt.
+- Solange dieses Inkrement nicht ausgerollt ist, weist die Prüfseite offen aus, dass eine flexible
+  Aufgabe bei Verbindungsausfall entfallen kann (§14.7).
+
 ## 20. Betroffene Komponenten
 
 | Bereich | Hauptänderungen |
 |---|---|
-| `docs/contracts/v2` | Consumer-Policy- und Marktsignalvertrag, Beispiele und Entscheidungseinträge. |
+| `docs/contracts/v2` | Consumer-Policy-Vertrag, Beispiele und Entscheidungseinträge (kein Marktsignal-Down-Kanal, D1). |
 | `docs/contracts/openapi.yaml` | Consumer-CRUD, Policy, Simulation, Status und Fahrplan. |
-| `services/api` | Migrationen, RLS-Repositories, Policy-Validierung/-Compiler, Status, Audit und Events. |
-| `services/optimization/entities.py` | `ControllableLoadEntity` vom Platzhalter zum vollständigen Modell erweitern. |
-| `services/optimization/co_solver.py` | Lastvariablen, Bilanz, Anforderungen, Priorität und Extraktion. |
+| `services/api` | Migrationen, RLS-Repositories, Policy-Validierung/-Compiler, Status, Audit und Events; `consumers`-Status-Listener + RLS-Tabelle `consumer_runtime_status` + Lesepfad (D9); Replan-Auslöser über eigenen Status-Listener, debounced, ruft `POST /replan` des Solve-Service (D8). |
+| `services/optimization/simulation` | `POST /replan` als dritter Endpunkt der Solve-Fläche (`simulate-serve`), semaphore-begrenzt; What-if bleibt ephemer (D8). |
+| `services/optimization/entities.py` | `ControllableLoadEntity` vom Platzhalter zum vollständigen Modell erweitern, inkl. `power_ranges_kw` (D4). |
+| `services/optimization/co_solver.py` | Lastvariablen, Bilanz, Anforderungen, dreistufige Lexikografik + Tie-Breaks (D2, D5), bedingte Zuordnungsmatrix und Extraktion. |
 | `services/optimization/publisher_v2.py` | `LoadDispatch` in `mqtt-schedule 2.0` publizieren. |
 | `edge-app/core/internal/plan2` / `agent/arbitration.go` | Vorhandene generische Consumer-Slotausführung mit Vertrags-/E2E-Vektoren absichern; nicht typabhängig verzweigen. |
-| `edge-app/core/internal/entities` / `desired` | Vorhandenen Consumer-Guard und Priority-Vertrag unverändert wiederverwenden; Status-/Readback-Lücken schließen. |
-| `edge-app/core/internal/agent/consumer_control.go` / `edge-app/nodered` | Bestehenden go-e-Pfad wiederverwenden und Driver-/Simulatorpfade für weitere Hardwaretypen ergänzen. |
-| `frontend/portal` | Assistent, Policy-Baukasten, Consumer-Status, Cockpit-Strip, Fahrplan-Layer und Tests. |
+| `edge-app/core/internal/entities` / `desired` | Vorhandenen Consumer-Guard und Priority-Vertrag unverändert wiederverwenden; zustandsbehafteten Zyklen-Guard (Mindestlauf/-pause, Starts/Tag, Rampe) ergänzen; Status-/Readback-Lücken schließen. |
+| `edge-app/core/internal/agent/consumer_control.go` / `edge-app/nodered` | Bestehenden go-e-Pfad wiederverwenden (inkl. Phasenumschaltung, D4) und Driver-/Simulatorpfade ergänzen (Shelly-Heizstab-Treiber, D10); additiver `consumers`-Status-Block im Heartbeat (D9). |
+| `frontend/portal` | Assistent, Policy-Baukasten, Consumer-Status, Cockpit-Strip, Fahrplan-Layer, `reason_code`-Mapping-Tabelle (rein, getestet) und Tests. |
 
 ## 21. Teststrategie
 
@@ -1372,6 +1533,8 @@ Ein ausgeschalteter Aktivierungsflag darf bereits ausgerollte Artefakte nicht al
   zusammen mit einer Laufzeitanforderung,
 - jede fachliche Policy-Eigenschaft ist über Standardpfad oder „Weitere Einstellungen“ erreichbar
   (Reachability-Guard gegen versehentlich verlorene Möglichkeiten),
+- keine internen Begriffe (Broker, Pipeline, RLS, Compiler, Topic, Register) auf der Kundenfläche
+  (Copy-Guard-Erweiterung),
 - alle automatisch gesetzten Defaults erscheinen im Review,
 - eine Rangfolge wird erst bei simuliertem Pflichtkonflikt abgefragt,
 - verständlicher Satz entspricht dem Policy-Dokument,
@@ -1385,9 +1548,11 @@ Ein ausgeschalteter Aktivierungsflag darf bereits ausgerollte Artefakte nicht al
 
 1. Auto anstecken → Wallbox sofort auf effektives Maximum → Replan passt Speicher an.
 2. 13:00 Uhr → Heizstab startet → Readback bestätigt → 14:00 Uhr endet der Pflichtlauf.
-3. Preis fällt unter 5 ct oder SoC steigt über 80 % → Heizstab startet; Hysterese beendet stabil.
+3. Vorberechnetes Preisfenster aktiv oder SoC steigt über 80 % → Heizstab startet; die SoC-Hysterese beendet stabil, das Preisfenster endet zum vorberechneten Zeitpunkt.
 4. Stallpumpe wird im günstigsten zulässigen zusammenhängenden Stundenblock geplant und als erfüllt markiert.
 5. Netzlimit kollidiert mit Pflichtlauf → Guard begrenzt, Portal zeigt Grund und Fehlmenge.
+6. Cloud fällt während eines Pflichtfensters aus → die lokal auswertbare Pflichtregel läuft mit frischen Signalen weiter; nach Wiederkehr synchronisiert der Replan Speicher und Verbraucher.
+7. Verbraucher wird während einer aktiven Regel getrennt → die Regel geht ehrlich auf `unknown`/„nicht verbunden“, kein erfundener Livezustand, Guard und Failsafe greifen.
 
 ## 22. Abnahmekriterien für das Gesamtfeature
 
@@ -1410,6 +1575,11 @@ Ein ausgeschalteter Aktivierungsflag darf bereits ausgerollte Artefakte nicht al
     Konflikt wird keine abstrakte Verbraucher-Prioritätsmatrix verlangt.
 15. Energieherkunft wird als bilanzielle Zuordnung bezeichnet und erfüllt im Solver für jeden Slot
     die Quellen-/Senkensummen ohne Doppelzählung.
+16. Bei leerer Verbraucherliste bleibt die Co-Optimizer-Golden-Suite bytegleich zum bestehenden
+    Modell.
+17. Das Solver-Laufzeitbudget bleibt mit Verbrauchern beherrschbar: p95 < 5 s pro Standort
+    gemessen; die lexikografische Stufenfixierung hält eine dokumentierte Toleranz oberhalb des
+    gepinnten MIP-Gaps ein, ohne die deterministischen Epsilon-Tie-Breaks aufzuweichen.
 
 ## 23. Empfohlene erste vertikale Scheibe
 
@@ -1427,3 +1597,12 @@ stufenlos, Verfügbarkeit und Readback abbilden kann. Daran werden in einem Durc
 Reale Driver werden anschließend unabhängig pro Device angebunden. Jeder Driver muss dieselben
 Capability-, Guard-, Staleness- und Readback-Verträge erfüllen; die Verbraucher-Policy erhält
 keinen herstellerspezifischen Sonderpfad.
+
+Treiber-Reihenfolge nach der Simulator-Scheibe (D10, Pilotanlagen laut Captain-Angabe 09.08.2026 =
+go-e Wallbox + Heizstab über Shelly):
+
+1. **go-e Wallbox** – der erste reale Treiber; der Consumer-Control-Executor mit Readback existiert
+   bereits und baut die Phasenumschaltung mit (D4).
+2. **Shelly-Heizstab-Treiber** – HTTP-Relais. Ein Shelly **mit** Leistungsmessung liefert
+   D3-Bestätigungsstufe 2 (kW-Telemetrie: Laufzeit exakt, Energie integriert); ein Shelly **ohne**
+   Leistungsmessung liefert nur Stufe 3 (Relais-Readback: Laufzeit bestätigt, Energie „angenommen“).
