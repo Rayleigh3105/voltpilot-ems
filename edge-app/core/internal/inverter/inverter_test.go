@@ -1230,3 +1230,73 @@ func TestBusPayloadKostalShape(t *testing.T) {
 		t.Fatal("foreign solarman field serial must not be published")
 	}
 }
+
+// TestCurtailWriteFcIsPreservedAndPublished pins the CURTAILMENT write-function-code
+// switch (the fix for the Fronius Datamanager that stores an FC6 write without ever
+// adopting it - live Pilsting 09.08.2026): the field must survive Normalize on a
+// fronius_sunspec selection, default to 0 (auto -> FC16), validate to {0,6,16}, and
+// NOT leak onto the other transports. It is the sibling of ControlWriteFc, for the
+// OTHER control path - so a Deye flip-back can never silently change the Fronius
+// curtailment form, or vice versa.
+func TestCurtailWriteFcIsPreservedAndPublished(t *testing.T) {
+	cat := DefaultCatalog()
+	fronius := func(conn Connection) SelectionRequest {
+		return SelectionRequest{Brand: BrandFroniusSunSpec, Model: "fronius-eco-27-3-s", Connection: conn}
+	}
+
+	// default (absent) stays 0 = auto -> FC16 downstream.
+	def, err := cat.Normalize(fronius(Connection{IP: "192.168.210.40"}), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def.Connection.CurtailWriteFc != 0 {
+		t.Errorf("default curtail_write_fc should be 0 (auto -> FC16), got %v", def.Connection.CurtailWriteFc)
+	}
+
+	// an explicit FC6 flip-back survives Normalize.
+	for _, fc := range []int{6, 16} {
+		sel, err := cat.Normalize(fronius(Connection{IP: "192.168.210.40", CurtailWriteFc: fc}), now)
+		if err != nil {
+			t.Fatalf("fc %d: %v", fc, err)
+		}
+		if sel.Connection.CurtailWriteFc != fc {
+			t.Fatalf("Normalize must preserve curtail_write_fc=%d, got %d", fc, sel.Connection.CurtailWriteFc)
+		}
+	}
+
+	// anything else is refused - a garbage value must never silently become the
+	// form that is proven not to work on this device.
+	for _, bad := range []int{1, 3, 10, -6} {
+		if _, err := cat.Normalize(fronius(Connection{IP: "192.168.210.40", CurtailWriteFc: bad}), now); err == nil {
+			t.Fatalf("curtail_write_fc=%d must be refused", bad)
+		}
+	}
+
+	// it belongs to fronius_sunspec ONLY: a Deye selection must not carry it.
+	deye, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: Connection{IP: "192.168.0.28", Serial: "2985159064", CurtailWriteFc: 6},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deye.Connection.CurtailWriteFc != 0 {
+		t.Error("curtail_write_fc must be cleared on a non-Fronius transport")
+	}
+
+	// the catalog offers the switch so it is reachable on :8484 without a shell.
+	var found bool
+	for _, b := range cat.Brands {
+		if b.ID != BrandFroniusSunSpec {
+			continue
+		}
+		for _, f := range b.Fields {
+			if f.Key == "curtail_write_fc" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("the fronius_sunspec form must offer curtail_write_fc")
+	}
+}

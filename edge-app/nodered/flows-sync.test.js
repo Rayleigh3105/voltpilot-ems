@@ -1166,7 +1166,7 @@ test('flow curtail planner releases without a cap and stops on the kill-switch, 
   const rel = runCurtailPlan(base, flowCtx);
   assert.strictEqual(rel.mode, 'release');
   const relU = rel.units.find((u) => u.sourceId === 'src-fr1');
-  assert.strictEqual(relU.plan.writes.find((w) => w.role === 'pv_limit_enable').value, 0);
+  assert.strictEqual(relU.plan.writes[0].parts.find((p) => p.role === 'pv_limit_enable').value, 0);
   // Kill-switch off -> no writes at all, module-identical.
   const off = Object.assign({}, base, {
     pv_limit_kw: 20,

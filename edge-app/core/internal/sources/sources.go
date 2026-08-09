@@ -314,6 +314,11 @@ func (s Source) busEntry() map[string]any {
 		conn["unit_id"] = s.Connection.UnitID
 		conn["model_type"] = s.Connection.ModelType
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		// The CURTAILMENT write form. It must ride the SOURCE config, because a
+		// Fronius is curtailed as an Erzeuger SOURCE (sunspec/curtail.js), not as
+		// the primary inverter - without it the flip-back is unreachable and the
+		// plan node silently falls back to the FC16 default.
+		conn["curtail_write_fc"] = s.Connection.CurtailWriteFc
 	}
 	return map[string]any{
 		"id":            s.ID,

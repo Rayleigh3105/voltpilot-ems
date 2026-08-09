@@ -205,6 +205,26 @@ func TestBusConfigCarriesFroniusSunSpecConnection(t *testing.T) {
 	if conn["ip"] != "192.168.254.40" || conn["port"] != float64(502) {
 		t.Fatalf("ip/port wrong: %+v", conn)
 	}
+	// The CURTAILMENT write form must ride the SOURCE config: a Fronius is
+	// curtailed as an Erzeuger source, so without this the per-connection
+	// flip-back is unreachable from :8484 and the plan node silently keeps the
+	// FC16 default. Absent = 0 = auto (-> FC16).
+	if conn["curtail_write_fc"] != float64(0) {
+		t.Fatalf("curtail_write_fc default missing from the bus entry: %+v", conn)
+	}
+
+	req.Connection.CurtailWriteFc = 6
+	flipped, err := Normalize(cat(), req, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	flipped.ID = "src-eco"
+	if err := json.Unmarshal(BusConfig([]Source{flipped}), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Sources[0].Connection["curtail_write_fc"] != float64(6) {
+		t.Fatalf("the FC6 flip-back must reach Node-RED: %+v", m.Sources[0].Connection)
+	}
 }
 
 func TestIDFromTopic(t *testing.T) {

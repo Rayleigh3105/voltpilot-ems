@@ -78,11 +78,25 @@ const INVERTER_FLOAT = { 111: 'single', 112: 'split', 113: 'three' };
 // These are the STANDARD, not a guessed absolute table - the base is discovered.
 const M123 = {
   WMaxLimPct: 3, // uint16, scaled by WMaxLimPct_SF -> % of nameplate
-  WMaxLimPct_WinTms: 4, // uint16, ramp window (s)
-  WMaxLimPct_RvrtTms: 5, // uint16, REVERT timeout (s) - the vendor dead-man's switch
+  WMaxLimPct_WinTms: 4, // uint16, randomised-start window (s), 0..300
+  WMaxLimPct_RvrtTms: 5, // uint16, how long the mode stays ACTIVE (s) - see below
+  WMaxLimPct_RmpTms: 6, // uint16, ramp time (s)
   WMaxLim_Ena: 7, // enum16, 0 = disabled / 1 = enabled
   WMaxLimPct_SF: 21, // sunssf (signed) - the WMaxLimPct scale factor
   LENGTH: 24,
+};
+
+// Offsets 3..7 are CONTIGUOUS and are exactly the five registers the Fronius
+// Modbus manual names as one command: "All 5 registers (WMaxLimPct,
+// WMaxLimPct_WinTms, WMaxLimPct_RvrtTms, WMaxLimPct_RmpTms, WMaxLim_Ena) can be
+// written with one command" (function code 0x10). Victron's production Fronius
+// limiter writes the same block in one writeMultipleHoldingRegisters call at
+// model-123 HEADER + 5 (= body + 3 = WMaxLimPct), which is byte-for-byte the
+// span below. See CURTAIL_WRITE_FC / planCurtailment for why that matters.
+const M123_LIMIT_BLOCK = {
+  first: M123.WMaxLimPct,
+  count: 5,
+  roles: ['pv_limit_pct', 'pv_limit_window_tms', 'pv_limit_revert_tms', 'pv_limit_ramp_tms', 'pv_limit_enable'],
 };
 const M120 = {
   WRtg: 1, // uint16, nameplate active-power rating
@@ -136,13 +150,44 @@ const DEFAULT_STORAGE_RVRT_TMS = 60;
 const DEFAULT_INOUT_WRTE_SF = -2; // InWRte / OutWRte
 const DEFAULT_MIN_RSV_PCT_SF = -2; // MinRsvPct
 
-// Default revert timeout for the curtailment write (report §1.3 / §3.3): the
-// inverter auto-reverts if no fresh Modbus message arrives within RvrtTms, so a
-// crashed/partitioned client can never leave a stale limit latched. The core
-// re-publishes the setpoint every ~10 s (SetpointIntervalSeconds), so 60 s is a
-// comfortable margin while still failing safe quickly. Range per manual: 0..28800.
-// VERIFY the actual reached/behaviour on the bench.
+// Default revert timeout for the curtailment write. The Fronius manual defines
+// WMaxLimPct_RvrtTms as "the duration the operating mode remains active",
+// range 0..28800 s, and "the timer restarts with each new Modbus message" - so
+// it IS the vendor dead-man's switch: stop refreshing and the INVERTER ITSELF
+// lifts the limit. The core re-publishes the setpoint every ~10 s
+// (SetpointIntervalSeconds) and curtail.js re-applies every 20 s, so 60 s is a
+// comfortable margin while still failing safe quickly.
+//
+// ⚠ 0 IS NOT "no timeout", it is "stays active until MANUALLY deactivated" -
+// the latch. That is not theory: at Pilsting the previous controller left
+// WMaxLimPct=0 / Ena=1 / RvrtTms=12000 behind, and when it stopped writing BOTH
+// inverters stayed pinned at ~0.135 kW (0.5 % of 27 kW) for the rest of that
+// 3.3-hour window. Never write 0 here, and never raise this above the test TTL.
 const DEFAULT_RVRT_TMS = 60;
+
+// WinTms (randomised start window) + RmpTms (ramp time): 0 = act immediately,
+// which is what a closed-loop controller wants - any delay would make the plant
+// chase its own actuator. They are written EXPLICITLY as part of the block
+// (Victron writes 0 for both) so a foreign controller's leftover values can
+// never delay OUR limit; leaving them out is what makes a "partial" command.
+const DEFAULT_WIN_TMS = 0;
+const DEFAULT_RMP_TMS = 0;
+
+// The Modbus function code the curtailment block is written with.
+// 16 (0x10, write-multiple) is the DEFAULT and the only form documented by
+// Fronius for this register set; 6 (0x06, write-single) is the legacy
+// per-register form kept ONLY as a per-connection flip-back, mirroring the Deye
+// `control_write_fc` precedent (AGENTS.md "Deye control writes go out as FC16").
+const CURTAIL_WRITE_FC = { BLOCK: 16, SINGLE: 6 };
+
+/**
+ * resolveCurtailWriteFc - which write form to use for THIS connection.
+ * 0/absent/garbage -> auto -> FC16 (documented + proven); an explicit 6 flips
+ * back to the legacy single-register writes.
+ */
+function resolveCurtailWriteFc(v) {
+  return Number(v) === CURTAIL_WRITE_FC.SINGLE ? CURTAIL_WRITE_FC.SINGLE : CURTAIL_WRITE_FC.BLOCK;
+}
 
 // The scale factor a device typically publishes for WMaxLimPct (register holds
 // pct * 100). Used ONLY as a fallback when discovery could not read the live SF;
@@ -325,8 +370,13 @@ function resolveControls(m) {
     wMaxLimPctAddr: m.bodyAddr + M123.WMaxLimPct,
     wMaxLimPctWinTmsAddr: m.bodyAddr + M123.WMaxLimPct_WinTms,
     wMaxLimPctRvrtTmsAddr: m.bodyAddr + M123.WMaxLimPct_RvrtTms,
+    wMaxLimPctRmpTmsAddr: m.bodyAddr + M123.WMaxLimPct_RmpTms,
     wMaxLimEnaAddr: m.bodyAddr + M123.WMaxLim_Ena,
     wMaxLimPctSfAddr: m.bodyAddr + M123.WMaxLimPct_SF,
+    // The contiguous 5-register span the limit is written with in ONE FC16
+    // transaction (= wMaxLimPctAddr .. wMaxLimEnaAddr).
+    limitBlockAddr: m.bodyAddr + M123_LIMIT_BLOCK.first,
+    limitBlockCount: M123_LIMIT_BLOCK.count,
   };
 }
 
@@ -420,31 +470,80 @@ function planCurtailment(args) {
   const ena = curtail ? WMAX_LIM_ENA.ENABLED : WMAX_LIM_ENA.DISABLED;
   const rvrt = (Number.isFinite(args.rvrtTms) && args.rvrtTms >= 0 ? Math.round(args.rvrtTms) : DEFAULT_RVRT_TMS) & 0xffff;
 
-  // Ordering is safety-relevant: set the LIMIT VALUE + the REVERT TIMER first,
-  // ARM the enable LAST, so the cap can never be enabled with a stale value or
-  // without its dead-man's timer.
-  const writes = [
+  const winTms = DEFAULT_WIN_TMS;
+  const rmpTms = DEFAULT_RMP_TMS;
+  const writeFc = resolveCurtailWriteFc(args.writeFc);
+
+  // The five registers of the block, in ADDRESS order (= the wire order of the
+  // FC16 payload). `parts` is the ONE description of what is being written: the
+  // block's `values` are derived from it, and the display/signature enumerate it
+  // - so there is never a second, drifting copy of the same command.
+  const parts = [
     {
-      role: 'pv_limit_pct', fc: 6, addr: c.wMaxLimPctAddr, value: pctRaw,
+      role: 'pv_limit_pct', addr: c.wMaxLimPctAddr, value: pctRaw,
       encode: { kind: 'wmax_lim_pct', pct, sf, rated_kw: nameplateKw, kw: curtail ? args.pvLimitKw : null },
-      dwell_s: 0, min_change: 0,
     },
+    { role: 'pv_limit_window_tms', addr: c.wMaxLimPctWinTmsAddr, value: winTms, encode: { kind: 'seconds' } },
+    { role: 'pv_limit_revert_tms', addr: c.wMaxLimPctRvrtTmsAddr, value: rvrt, encode: { kind: 'seconds' } },
+    { role: 'pv_limit_ramp_tms', addr: c.wMaxLimPctRmpTmsAddr, value: rmpTms, encode: { kind: 'seconds' } },
     {
-      role: 'pv_limit_revert_tms', fc: 6, addr: c.wMaxLimPctRvrtTmsAddr, value: rvrt,
-      encode: { kind: 'seconds' }, dwell_s: 0, min_change: 0,
-    },
-    {
-      role: 'pv_limit_enable', fc: 6, addr: c.wMaxLimEnaAddr, value: ena,
+      role: 'pv_limit_enable', addr: c.wMaxLimEnaAddr, value: ena,
       encode: { kind: 'enum', enabled: WMAX_LIM_ENA.ENABLED, disabled: WMAX_LIM_ENA.DISABLED, curtailing: curtail },
-      dwell_s: 0, min_change: 0,
     },
   ];
+
+  // THE WRITE FORM IS THE FIX (live Pilsting 2026-08-09, two supervised tests).
+  // Three separate FC6 writes were ACCEPTED - the WMaxLimPct readback confirmed
+  // our value for the full 120 s - and the inverter kept producing above the
+  // cap, while the RvrtTms write never took at all (commanded 60, read 12000 =
+  // the previous controller's value, forever). That is a device applying the
+  // parameter SET transactionally: a lone register write lands in the register
+  // but never becomes an active command.
+  //
+  // So the limit goes out as ONE FC16 transaction over the contiguous span,
+  // exactly as Fronius documents ("All 5 registers ... can be written with one
+  // command") and exactly as Victron's production Fronius limiter does
+  // (dbus-fronius sunspec_updater.cpp: ONE writeMultipleHoldingRegisters of
+  // [pct, 0, timeout, 0, 1] at model-123 header + 5). It is the same bug class
+  // this repo already fixed for Deye, where FC6 was likewise accepted and
+  // silently ignored (AGENTS.md "Deye control writes go out as FC16").
+  //
+  // Ordering INSIDE the transaction is no longer a safety argument (the device
+  // sees the whole set at once), but the address order still puts the value and
+  // the dead-man timer ahead of the enable - so even a device that applies the
+  // payload register by register can never arm a stale cap.
+  const writes = writeFc === CURTAIL_WRITE_FC.BLOCK
+    ? [{
+      role: 'pv_limit_block',
+      fc: CURTAIL_WRITE_FC.BLOCK,
+      addr: c.limitBlockAddr,
+      values: parts.map((p) => p.value),
+      parts,
+      // Kept at the block level so every consumer that reads writes[0].encode.sf
+      // (the executor's kW back-conversion) keeps working unchanged.
+      encode: { kind: 'wmax_lim_pct', pct, sf, rated_kw: nameplateKw, kw: curtail ? args.pvLimitKw : null },
+      dwell_s: 0, min_change: 0,
+    }]
+    // Legacy flip-back: the pre-2026-08-09 per-register form. Proven NOT to
+    // take effect on the Pilsting Datamanager - only for a firmware that
+    // answers exclusively FC6.
+    : parts
+      .filter((p) => p.role === 'pv_limit_pct' || p.role === 'pv_limit_revert_tms' || p.role === 'pv_limit_enable')
+      .map((p) => ({
+        role: p.role, fc: CURTAIL_WRITE_FC.SINGLE, addr: p.addr, value: p.value,
+        encode: p.encode, dwell_s: 0, min_change: 0,
+      }));
+
+  // Readbacks stay PER REGISTER (fn 0x03) and cover the three registers that
+  // carry meaning. The echo of a write never proves anything on this device -
+  // only the readback does, and RvrtTms is deliberately among them because a
+  // RvrtTms that does not take is the signature of a non-transactional write.
   const readbacks = [
     { role: 'pv_limit_pct', fc: 3, addr: c.wMaxLimPctAddr, expect: pctRaw, tolerance: 1 },
     { role: 'pv_limit_revert_tms', fc: 3, addr: c.wMaxLimPctRvrtTmsAddr, expect: rvrt, tolerance: 2 },
     { role: 'pv_limit_enable', fc: 3, addr: c.wMaxLimEnaAddr, expect: ena, tolerance: 0 },
   ];
-  return { ok: true, writes, readbacks, pct, pctRaw, ena };
+  return { ok: true, writes, readbacks, parts, writeFc, pct, pctRaw, ena, winTms, rmpTms, rvrtTms: rvrt };
 }
 
 // --- Model 124 (Storage) battery charge/discharge mapping (INCREMENT 2) -------
@@ -591,9 +690,14 @@ module.exports = {
   COMMON_BASES,
   MODEL,
   M123,
+  M123_LIMIT_BLOCK,
   M120,
   M124,
   WMAX_LIM_ENA,
+  CURTAIL_WRITE_FC,
+  resolveCurtailWriteFc,
+  DEFAULT_WIN_TMS,
+  DEFAULT_RMP_TMS,
   STORCTL_MOD,
   CHA_GRI_SET,
   DEFAULT_RVRT_TMS,

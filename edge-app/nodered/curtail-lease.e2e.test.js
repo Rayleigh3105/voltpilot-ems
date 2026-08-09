@@ -85,11 +85,21 @@ async function runFunctionNode(func, {
 //   enaQuirk writes to the enable register ALWAYS store 1, whatever was
 //            commanded (this Datamanager answers a commanded 0 with 1 for
 //            ever).
-function startGateway(imgByUnit, { hang = false, swallow = false, revertMs = 0, revert = {}, enaQuirk = 0 } = {}) {
+//   transactionalOnly  a single-register (FC6) write is ACKed and stored, but
+//            only a BLOCK write (FC16) is ADOPTED as the active limit - the
+//            live Pilsting Datamanager behaviour (09.08.2026).
+//   fc16     'refuse' answers every FC16 with Modbus exception 0x01 (a firmware
+//            that only speaks FC6), so the flip-back has something to fail on.
+function startGateway(imgByUnit, {
+  hang = false, swallow = false, revertMs = 0, revert = {}, enaQuirk = 0,
+  transactionalOnly = false, fc16 = 'accept',
+} = {}) {
   return new Promise((resolve) => {
     let connections = 0;
     let writes = 0;
     const timers = [];
+    const applied = new Map(); // what the device actually ENFORCES
+    const blockWrites = [];
     const server = net.createServer((sock) => {
       connections++;
       if (hang) return; // accept, never answer
@@ -97,8 +107,12 @@ function startGateway(imgByUnit, { hang = false, swallow = false, revertMs = 0, 
       sock.on('error', () => {});
       sock.on('data', (chunk) => {
         acc = Buffer.concat([acc, chunk]);
-        while (acc.length >= 12) {
-          const req = acc.slice(0, 12); acc = acc.slice(12);
+        // Length-aware framing: an fn-0x10 request is 13 + 2*n bytes, so a
+        // fixed 12-byte slice would desynchronise the stream.
+        while (acc.length >= 6) {
+          const need = 6 + acc.readUInt16BE(4);
+          if (acc.length < need) break;
+          const req = acc.slice(0, need); acc = acc.slice(need);
           const txid = req.readUInt16BE(0);
           const unit = req[6];
           const fc = req[7];
@@ -111,19 +125,47 @@ function startGateway(imgByUnit, { hang = false, swallow = false, revertMs = 0, 
             sock.write(e);
           };
           if (!img) { ex(0x0b); continue; }
+          const store = (a, v) => {
+            img.set(a, (enaQuirk && a === enaQuirk) ? 1 : (v & 0xffff));
+            if (revertMs > 0 && Object.prototype.hasOwnProperty.call(revert, a)) {
+              timers.push(setTimeout(() => img.set(a, revert[a] & 0xffff), revertMs));
+            }
+          };
           if (fc === 0x06) {
             if (!img.has(addr)) { ex(0x02); continue; }
             writes++;
             // The device ACKNOWLEDGES either way - that is what makes the
             // swallowing so hard to see without a readback.
+            if (!swallow) store(addr, arg);
+            // transactionalOnly reproduces the LIVE Pilsting Datamanager: a
+            // single-register write is acknowledged AND lands in the register
+            // (so a readback confirms it!) but never becomes the ACTIVE limit.
+            if (!transactionalOnly && !swallow) applied.set(addr, arg & 0xffff);
+            const resp = Buffer.alloc(12);
+            req.copy(resp, 0, 0, 12); resp.writeUInt16BE(6, 4);
+            sock.write(resp);
+            continue;
+          }
+          if (fc === 0x10) {
+            if (fc16 === 'refuse') { ex(0x01); continue; } // firmware without FC16
+            const count = arg;
+            const bc = req[12];
+            if (bc !== count * 2 || req.length < 13 + bc) { ex(0x03); continue; }
+            let okBlk = true;
+            for (let i = 0; i < count; i++) if (!img.has(addr + i)) { okBlk = false; break; }
+            if (!okBlk) { ex(0x02); continue; }
+            writes++;
+            blockWrites.push({ unit, addr, values: Array.from({ length: count }, (_, i) => req.readUInt16BE(13 + i * 2)) });
             if (!swallow) {
-              img.set(addr, (enaQuirk && addr === enaQuirk) ? 1 : (arg & 0xffff));
-              if (revertMs > 0 && Object.prototype.hasOwnProperty.call(revert, addr)) {
-                timers.push(setTimeout(() => img.set(addr, revert[addr] & 0xffff), revertMs));
+              for (let i = 0; i < count; i++) {
+                const v = req.readUInt16BE(13 + i * 2);
+                store(addr + i, v);
+                applied.set(addr + i, v); // the SET is what the device adopts
               }
             }
             const resp = Buffer.alloc(12);
-            req.copy(resp); resp.writeUInt16BE(6, 4);
+            resp.writeUInt16BE(txid, 0); resp.writeUInt16BE(6, 4); resp[6] = unit; resp[7] = 0x10;
+            resp.writeUInt16BE(addr, 8); resp.writeUInt16BE(count, 10);
             sock.write(resp);
             continue;
           }
@@ -144,6 +186,8 @@ function startGateway(imgByUnit, { hang = false, swallow = false, revertMs = 0, 
       port: server.address().port,
       connections: () => connections,
       writes: () => writes,
+      applied: (a) => (applied.has(a) ? applied.get(a) : null),
+      blockWrites: () => blockWrites.slice(),
       close: () => { timers.forEach(clearTimeout); server.close(); },
     }));
   });
@@ -265,6 +309,95 @@ test('SUCCESS path: the exec writes, reads back, and the claim is released', asy
     // The write really hit the served registers: pct = 10/25*100 = 40 %, SF -2.
     const disc = discOver(img);
     assert.strictEqual(img.get(disc.controls.wMaxLimPctAddr), 4000);
+  } finally { gw.server.close(); }
+});
+
+test('PILSTING: a transactional Datamanager ADOPTS the block write - the legacy single writes it did not', async () => {
+  // THE regression test for the live failure of 09.08.2026. Two supervised
+  // tests on a real 2x Fronius Eco 27 behind one Datamanager: our WMaxLimPct
+  // value stood in the register for the full 120 s (register_confirmed: true)
+  // and the inverter kept producing far above the cap, while the RvrtTms write
+  // never took at all (commanded 60, read 12000 - the previous controller's
+  // value). That is a device that ACKNOWLEDGES and STORES a single-register
+  // write but only ADOPTS a complete parameter SET.
+  //
+  // The gateway below models exactly that (transactionalOnly). `applied` is what
+  // the device would actually enforce; the register image is what a readback
+  // sees - and the whole point is that the two can disagree.
+  const img = unitImage(25);
+  const gw = await startGateway({ 1: img }, { transactionalOnly: true });
+  try {
+    const disc = discOver(img);
+    const c = disc.controls;
+    const flow = { ['curtail_disc:127.0.0.1:' + gw.port + '#1']: { at: Date.now(), disc } };
+    const { sends } = await runExec({
+      sources: [froniusSource('src-a', gw.port, 1)],
+      setpoint: curtailSetpoint(gw.port, ['src-a']),
+      flow, ctx: {}, flowLog: [],
+    });
+
+    // ONE transaction over the five contiguous registers, starting at WMaxLimPct.
+    const blocks = gw.blockWrites();
+    assert.strictEqual(blocks.length, 1, 'exactly one block write per applied cap');
+    assert.strictEqual(blocks[0].addr, c.wMaxLimPctAddr);
+    assert.deepStrictEqual(blocks[0].values, [4000, 0, 60, 0, 1],
+      'pct 40 %, window 0, the 60 s dead-man, ramp 0, enable last');
+
+    // ADOPTED, not merely stored: this is what the FC6 path never achieved.
+    assert.strictEqual(gw.applied(c.wMaxLimPctAddr), 4000, 'the cap is in force');
+    assert.strictEqual(gw.applied(c.wMaxLimEnaAddr), 1, 'the limit is enabled');
+    // And the revert timer landed - the register that never moved in the field.
+    assert.strictEqual(img.get(c.wMaxLimPctRvrtTmsAddr), 60);
+    assert.strictEqual(gw.applied(c.wMaxLimPctRvrtTmsAddr), 60);
+    assert.strictEqual(sends[0].all_match, true);
+  } finally { gw.server.close(); }
+});
+
+test('PILSTING: the FC6 flip-back reproduces the field symptom - registers confirm, nothing is adopted', async () => {
+  // The same gateway, with the source flipped back to the legacy per-register
+  // form. This is NOT a test of a feature we want; it PINS the failure the new
+  // default fixes, so a future change back to single writes cannot look green.
+  const img = unitImage(25);
+  const gw = await startGateway({ 1: img }, { transactionalOnly: true });
+  try {
+    const disc = discOver(img);
+    const c = disc.controls;
+    // Seed the register with a foreign controller's revert timer, exactly as the
+    // Loxone had left it (12000 s = 3.3 h).
+    img.set(c.wMaxLimPctRvrtTmsAddr, 12000);
+    const src = froniusSource('src-a', gw.port, 1);
+    src.connection.curtail_write_fc = 6;
+    const flow = { ['curtail_disc:127.0.0.1:' + gw.port + '#1']: { at: Date.now(), disc } };
+    const { sends } = await runExec({
+      sources: [src],
+      setpoint: curtailSetpoint(gw.port, ['src-a']),
+      flow, ctx: {}, flowLog: [],
+    });
+    assert.strictEqual(gw.blockWrites().length, 0, 'the flip-back writes no block');
+    // The register HOLDS our value - the readback is honestly "confirmed" ...
+    assert.strictEqual(img.get(c.wMaxLimPctAddr), 4000);
+    assert.strictEqual(sends[0].all_match, true, 'the field symptom: the readback agrees');
+    // ... and the device adopts NOTHING. Register confirmation alone never
+    // proved enforcement - which is why the clamp/plateau evidence exists.
+    assert.strictEqual(gw.applied(c.wMaxLimPctAddr), null, 'the cap was never adopted');
+    assert.strictEqual(gw.applied(c.wMaxLimEnaAddr), null);
+  } finally { gw.server.close(); }
+});
+
+test('a firmware that REFUSES FC16 surfaces the exception instead of silently doing nothing', async () => {
+  const img = unitImage(25);
+  const gw = await startGateway({ 1: img }, { fc16: 'refuse' });
+  try {
+    const flow = { ['curtail_disc:127.0.0.1:' + gw.port + '#1']: { at: Date.now(), disc: discOver(img) } };
+    const { sends } = await runExec({
+      sources: [froniusSource('src-a', gw.port, 1)],
+      setpoint: curtailSetpoint(gw.port, ['src-a']),
+      flow, ctx: {}, flowLog: [],
+    });
+    assert.strictEqual(sends.length, 1);
+    assert.notStrictEqual(sends[0].all_match, true, 'a refused write never claims a match');
+    const said = JSON.stringify(sends[0]);
+    assert.ok(/Ausnahme|Modbus/i.test(said), 'the refusal names a Modbus cause: ' + said);
   } finally { gw.server.close(); }
 });
 

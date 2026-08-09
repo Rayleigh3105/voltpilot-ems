@@ -91,10 +91,13 @@ function setpoint(over) {
   }, over || {});
 }
 
-function fleet(over, discs) {
+function fleet(over, discs, connOver) {
+  const plans = connOver
+    ? PLANS.map((p) => Object.assign({}, p, { conn: Object.assign({}, p.conn, connOver) }))
+    : PLANS;
   return C.planFleetCurtailment({
     setpoint: setpoint(over),
-    plans: PLANS,
+    plans: plans,
     discoveries: discs !== undefined ? discs : { [KEY1]: discoveryFor(25), [KEY2]: discoveryFor(30) },
     readings: {},
     nowMs: NOW,
@@ -154,25 +157,34 @@ test('fleet plan splits the plant cap across both units and writes at DISCOVERED
   assert.strictEqual(u1.unitKey, KEY1);
   assert.strictEqual(u2.unitKey, KEY2);
 
-  // Write order is safety-relevant: limit VALUE, then REVERT TIMER, then the
-  // ENABLE strictly last - at the discovered Model-123 addresses.
+  // The limit leaves as ONE FC16 transaction over the discovered Model-123
+  // block - the Datamanager only adopts it as a closed set (live 09.08.2026).
   const d1 = discoveryFor(25);
-  assert.strictEqual(u1.plan.writes.length, 3);
+  assert.strictEqual(u1.plan.writes.length, 1);
+  const blk = u1.plan.writes[0];
+  assert.strictEqual(blk.fc, 16);
+  assert.strictEqual(blk.addr, d1.controls.wMaxLimPctAddr);
+  // pct = cap/rated, register scaled by the discovered SF (-2 -> *100):
+  // 8.182/25 = 32.73 % -> 3273; then window 0, the 60 s native dead-man,
+  // ramp 0, enable last.
+  assert.deepStrictEqual(blk.values, [3273, 0, C.DEFAULT_RVRT_TMS, 0, 1]);
+  assert.strictEqual(u1.writeAllowed, true);
+  // The readbacks are per register and cover the three that carry meaning.
+  assert.deepStrictEqual(u1.plan.readbacks.map((r) => r.addr),
+    [d1.controls.wMaxLimPctAddr, d1.controls.wMaxLimPctRvrtTmsAddr, d1.controls.wMaxLimEnaAddr]);
+});
+
+test('a source may flip its curtailment write form back to the legacy FC6', () => {
+  // The per-connection escape hatch rides the SOURCE config (curtail.js reads
+  // conn.curtail_write_fc), because a Fronius is curtailed as an Erzeuger
+  // source, not as the primary inverter.
+  const f = fleet({}, undefined, { curtail_write_fc: 6 });
+  const u1 = f.units.find((u) => u.sourceId === 'src-fr1');
+  assert.deepStrictEqual(u1.plan.writes.map((w) => w.fc), [6, 6, 6]);
   assert.deepStrictEqual(u1.plan.writes.map((w) => w.role),
     ['pv_limit_pct', 'pv_limit_revert_tms', 'pv_limit_enable']);
-  assert.strictEqual(u1.plan.writes[0].addr, d1.controls.wMaxLimPctAddr);
-  assert.strictEqual(u1.plan.writes[1].addr, d1.controls.wMaxLimPctRvrtTmsAddr);
-  assert.strictEqual(u1.plan.writes[2].addr, d1.controls.wMaxLimEnaAddr);
-  // The native dead-man: 60 s revert, refreshed every setpoint tick.
-  assert.strictEqual(u1.plan.writes[1].value, C.DEFAULT_RVRT_TMS);
-  assert.strictEqual(u1.plan.writes[2].value, 1);
-  // pct = cap/rated, register scaled by the discovered SF (-2 -> *100):
-  // 8.182/25 = 32.73 % -> 3273.
-  assert.strictEqual(u1.plan.writes[0].value, 3273);
-  assert.strictEqual(u1.writeAllowed, true);
-  // Readbacks mirror the three registers.
-  assert.deepStrictEqual(u1.plan.readbacks.map((r) => r.addr),
-    u1.plan.writes.map((w) => w.addr));
+  // Absent = the FC16 default; the proven-broken form is never the fallback.
+  assert.strictEqual(fleet().units[0].plan.writes[0].fc, 16);
 });
 
 test('a unit WITHOUT a discovery gets no plan and an honest reason - never a fabricated address', () => {
@@ -208,7 +220,7 @@ test('a unit whose live WRtg read failed still plans from the CONFIGURED kWp (fl
   assert.strictEqual(u1.ratedKw, 25, 'rating falls back to the configured capacity_kwp');
   assert.strictEqual(u1.plan.ok, true, 'the fallback reaches planCurtailment - no refusal');
   assert.ok(u1.plan.writes.length > 0, 'the certified unit writes');
-  const w = u1.plan.writes.find((x) => x.role === 'pv_limit_pct');
+  const w = u1.plan.writes[0];
   assert.strictEqual(w.encode.rated_kw, 25, 'the pct conversion uses the configured kWp');
   assert.ok(Math.abs(w.encode.pct - (u1.capKw / 25) * 100) < 1e-9, 'pct = cap / configured rating');
 });
@@ -221,7 +233,7 @@ test('an uncurtailed slot (pv_limit_kw absent) releases: WMaxLim_Ena=0', () => {
   for (const u of f.units) {
     assert.strictEqual(u.capKw, null);
     assert.strictEqual(u.mode, 'release');
-    const ena = u.plan.writes.find((w) => w.role === 'pv_limit_enable');
+    const ena = u.plan.writes[0].parts.find((p) => p.role === 'pv_limit_enable');
     assert.strictEqual(ena.value, 0);
   }
 });
@@ -419,6 +431,28 @@ test('commandSignature is stable for the same command and changes with the cap',
   assert.notStrictEqual(C.commandSignature(u), C.commandSignature(rel));
   // Nothing to command -> no signature (never a fabricated identity).
   assert.strictEqual(C.commandSignature({ plan: { ok: false, writes: [] } }), null);
+});
+
+test('commandSignature folds EVERY register of a block write, not just the first', () => {
+  // The block form carries `values`, not `value`. A signature that only looked
+  // at the first register would read a changed revert timer or a FLIPPED ENABLE
+  // as "unchanged" - so the refresh/change machinery would never re-apply it,
+  // and a release could be skipped entirely.
+  const blockUnit = (values) => ({
+    mode: 'apply', calibration: false, planned: [],
+    plan: { ok: true, writes: [{ role: 'pv_limit_block', fc: 16, addr: 40243, values: values }] },
+  });
+  const base = [3273, 0, 60, 0, 1];
+  const sig = C.commandSignature(blockUnit(base));
+  assert.strictEqual(sig, C.commandSignature(blockUnit(base.slice())), 'stable for an equal block');
+  // Each position must move the signature - the cap, the timers AND the enable.
+  base.forEach((_, i) => {
+    const other = base.slice();
+    other[i] = other[i] + 7;
+    assert.notStrictEqual(sig, C.commandSignature(blockUnit(other)), 'register ' + i + ' changes the signature');
+  });
+  // The enable specifically: 1 -> 0 is a RELEASE and must never look identical.
+  assert.notStrictEqual(sig, C.commandSignature(blockUnit([3273, 0, 60, 0, 0])));
 });
 
 // DEFECT 1 (live): the cap was written EXACTLY ONCE, so the inverter's own

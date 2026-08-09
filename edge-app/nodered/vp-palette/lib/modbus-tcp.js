@@ -266,10 +266,82 @@ function parseReadResponse(buf, opts = {}) {
   return regs;
 }
 
+const FN_WRITE_MULTIPLE = 0x10;
+
+/**
+ * buildWriteMultipleRequest - a Modbus-TCP "write multiple registers" (fn 0x10)
+ * frame over a CONTIGUOUS register block. This is the TRANSACTIONAL write form:
+ * the whole block reaches the device as ONE request, so a device that applies a
+ * parameter SET atomically (rather than register by register) sees a complete,
+ * self-consistent command.
+ *
+ * It is what the Fronius Datamanager needs for the Model-123 power limitation:
+ * the Fronius Modbus manual states the five registers "WMaxLimPct,
+ * WMaxLimPct_WinTms, WMaxLimPct_RvrtTms, WMaxLimPct_RmpTms, WMaxLim_Ena ... can
+ * be written with one command" using function code 0x10, and Victron's
+ * production Fronius limiter (victronenergy/dbus-fronius,
+ * software/src/sunspec_updater.cpp `SunspecLimiter::writePowerLimit`) writes
+ * exactly that block with a single writeMultipleHoldingRegisters call. The
+ * SAME class of bug is already documented for Deye in AGENTS.md: FC6 is
+ * ACCEPTED and then silently ignored.
+ *
+ * `values` are masked to 16 bits each; the server answers with an echo of
+ * {addr, count} which parseWriteMultipleResponse validates.
+ */
+function buildWriteMultipleRequest({ txid = 0, unitId = 1, addr, values }) {
+  const vals = Array.isArray(values) ? values : [];
+  if (vals.length < 1 || vals.length > 123) {
+    throw new Error('Modbus-Blockschreibung braucht 1..123 Register');
+  }
+  const byteCount = vals.length * 2;
+  const buf = Buffer.alloc(13 + byteCount);
+  buf.writeUInt16BE(txid & 0xffff, 0);
+  buf.writeUInt16BE(0x0000, 2);
+  buf.writeUInt16BE(7 + byteCount, 4); // unit + fn + addr + count + bytecount + payload
+  buf[6] = unitId & 0xff;
+  buf[7] = FN_WRITE_MULTIPLE;
+  buf.writeUInt16BE(addr & 0xffff, 8);
+  buf.writeUInt16BE(vals.length & 0xffff, 10);
+  buf[12] = byteCount & 0xff;
+  for (let i = 0; i < vals.length; i++) buf.writeUInt16BE(Number(vals[i]) & 0xffff, 13 + i * 2);
+  return buf;
+}
+
+/**
+ * parseWriteMultipleResponse - validate a Modbus-TCP fn-0x10 echo reply and
+ * return { addr, count }. Throws on a short frame, a txid/unit mismatch, a
+ * Modbus exception (fn | 0x80) or an unexpected function code. Like the fn-0x06
+ * echo this only proves the request was ACCEPTED - whether the values took
+ * effect is settled by the fn-0x03 readback, never by this echo.
+ */
+function parseWriteMultipleResponse(buf, opts = {}) {
+  if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf);
+  if (buf.length < 12) throw new Error('Modbus-Schreibantwort zu kurz');
+  const txid = buf.readUInt16BE(0);
+  const proto = buf.readUInt16BE(2);
+  const unit = buf[6];
+  const fn = buf[7];
+  if (proto !== 0) throw new Error('unerwartete Protokoll-ID ' + proto);
+  if (opts.expectTxid !== undefined && (opts.expectTxid & 0xffff) !== txid) {
+    throw new Error('Transaktions-ID weicht ab: ' + txid);
+  }
+  if (opts.expectUnit !== undefined && (opts.expectUnit & 0xff) !== unit) {
+    throw new Error('Unit-ID weicht ab: ' + unit);
+  }
+  if (fn & 0x80) {
+    throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16).padStart(2, '0'));
+  }
+  if (fn !== FN_WRITE_MULTIPLE) {
+    throw new Error('unerwartete Modbus-Funktion 0x' + fn.toString(16).padStart(2, '0'));
+  }
+  return { addr: buf.readUInt16BE(8), count: buf.readUInt16BE(10) };
+}
+
 module.exports = {
   FN_READ_HOLDING,
   FN_READ_INPUT,
   FN_WRITE_SINGLE,
+  FN_WRITE_MULTIPLE,
   PROFILES,
   profileRead,
   decodeProfile,
@@ -278,6 +350,8 @@ module.exports = {
   buildReadRequest,
   buildWriteSingleRequest,
   parseWriteSingleResponse,
+  buildWriteMultipleRequest,
+  parseWriteMultipleResponse,
   expectedFrameLength,
   parseReadResponse,
   _helpers: { s16, round3, round1 },

@@ -429,6 +429,96 @@ Kill-Switch, Freigabe je Einheit, Totmann) sind davon UNBERÜHRT.
   `internal/curtailcal/curtailcal_test.go` für den Plateau-Beweis + das
   Wolken-Szenario (Ambient sinkt unter Cap, Register hält → „nicht beweisbar").
 
+## 6e. ⚠ Die Begrenzung geht als EIN Block-Schreibvorgang (FC16) hinaus (09.08.2026)
+
+**Der Befund.** Zwei beaufsichtigte Tests am Pilsting-Datamanager, bei stabiler
+Sonne (die Ehrlichkeits-Vorbedingung war also erfüllt):
+
+- Cap 13,1 kW auf Unit 1 (80 % von 16,37 kW vorher), `register_confirmed: true` -
+  unser `WMaxLimPct`-Wert stand die vollen 120 s im Register.
+- Die **Leistung folgte NICHT**: nie unter dem Cap, WR1 lief mit 13,8-17,5 kW
+  weiter, während die Schwester-Einheit als Ambient-Referenz 20,4 kW meldete.
+  Wolken waren es also nicht; Verdikt `kein_nachweis`, Plateau 0/3.
+- Und: `pv_limit_revert_tms` wurde mit **60 befohlen und las dauerhaft 12000** -
+  den Wert des vorherigen Reglers. Dieser Schreibvorgang kam also nie an.
+
+**Der Gegenbeweis vom selben Morgen.** Als der bisherige Regler (eine Loxone am
+SELBEN Datamanager) ausgeschaltet wurde, strandeten BEIDE Wechselrichter stabil
+bei ~0,135 kW. Register-Ist: `WMaxLimPct = 0`, `RvrtTms = 12000`, `Ena = 1`. Die
+Begrenzung KANN also greifen - die des Vorgängers tat es, unsere nicht.
+
+**Die Ursache: die SCHREIBFORM, nicht die Adresse.** Die Adressen waren richtig
+(sie decken sich Register für Register mit Victrons Umsetzung, siehe unten). Der
+Datamanager übernimmt die Begrenzung aber nur als **geschlossenen Satz**: ein
+einzelner Register-Schreibbefehl (FC6) wird bestätigt und landet sogar im
+Register - deshalb war die Rücklesung „bestätigt" - wird aber nie zum aktiven
+Befehl. Genau deshalb blieb auch `RvrtTms` auf dem Fremdwert: er war ein eigener
+Einzelschreibvorgang.
+
+Belegt aus zwei unabhängigen Quellen:
+
+- Das **Fronius-Modbus-Handbuch** sagt es wörtlich: *„All 5 registers
+  (WMaxLimPct, WMaxLimPct_WinTms, WMaxLimPct_RvrtTms, WMaxLimPct_RmpTms,
+  WMaxLim_Ena) can be written with one command"* - Funktionscode **0x10**.
+- **Victron** macht es in der Praxis genau so (`victronenergy/dbus-fronius`,
+  `software/src/sunspec_updater.cpp`, `SunspecLimiter::writePowerLimit`): EIN
+  `writeMultipleHoldingRegisters` mit `[pct, 0, timeout, 0, 1]` auf
+  Modell-123-Kopf + 5. Das ist byte-für-byte unsere Blockadresse (Kopf + 5 =
+  Rumpf + 3 = `WMaxLimPct`), was zugleich unsere Adress-Arithmetik bestätigt.
+
+Es ist dieselbe Fehlerklasse, die dieses Repo für **Deye** schon behoben hat
+(dort wurde FC6 ebenfalls angenommen und still ignoriert, siehe
+`AGENTS.md` → „Deye control writes go out as FC16").
+
+**Was jetzt passiert.** `sunspec/model-discovery.js planCurtailment` erzeugt EINE
+FC16-Transaktion über die fünf zusammenhängenden Register
+`WMaxLimPct .. WMaxLim_Ena`:
+
+| Position | Register | Wert |
+|---|---|---|
+| +0 | `WMaxLimPct` | Cap in % der Nennleistung, mit dem GELESENEN Skalenfaktor |
+| +1 | `WMaxLimPct_WinTms` | `0` (sofort, nie verzögert) |
+| +2 | `WMaxLimPct_RvrtTms` | `60` s - der Totmann |
+| +3 | `WMaxLimPct_RmpTms` | `0` (keine Rampe) |
+| +4 | `WMaxLim_Ena` | `1` (bzw. `0` bei Freigabe) |
+
+`WinTms`/`RmpTms` werden AUSDRÜCKLICH mitgeschrieben (wie bei Victron), damit
+Reste eines Fremdreglers unsere Begrenzung nicht verzögern können. Die
+Rücklesung bleibt pro Register (FC3) - der Echo eines Schreibbefehls beweist auf
+diesem Gerät nichts.
+
+**⚠ `RvrtTms = 0` heißt NICHT „kein Timeout".** Fronius definiert das Register
+als *„die Dauer, die der Betriebsmodus aktiv bleibt"* (0..28800 s), und **0
+bedeutet „aktiv, bis manuell deaktiviert"**. Genau dieser Latch hat die beiden
+Pilsting-Wechselrichter stranden lassen, als der Vorgänger mit `RvrtTms = 12000`
+(3,3 h) verstummte. Deshalb schreiben wir immer einen echten Timeout, und die
+Kette `Auffrischung 20 s < RvrtTms 60 s < Test-TTL 120 s` gilt unverändert.
+
+**Rückfallebene.** Falls eine abweichende Firmware ausschließlich FC6
+beantwortet: `:8484` → Einrichten → die Fronius-Quelle → **„Schreib-Funktionscode
+(Abregelung)"** auf FC6. Voreinstellung ist „Automatisch (FC16)". Antwortet ein
+Gerät auf FC16 mit einer Modbus-Ausnahme, steht diese im Grund der Karte - sie
+wird nie stillschweigend verschluckt.
+
+**Was das NICHT war (der Vollständigkeit halber geprüft):**
+
+- **Keine Anlagen-Ebene.** Es gibt in SunSpec kein anlagenweites Modell 123, das
+  Fronius-Handbuch kennt nur Wechselrichter- und Zähler-Adressen, und Victron
+  schreibt pro Wechselrichter. Dass beide Geräte GLEICHZEITIG klemmten, erklärt
+  sich vollständig aus dem gemessenen Register-Ist: beide trugen den gelatchten
+  Zustand des Vorgängers, dessen `RvrtTms = 12000` ihn 3,3 h am Leben hielt. Es
+  wurde deshalb bewusst KEINE Anlagen-Adresse erfunden - die Aufteilung einer
+  Anlagen-Begrenzung auf die Einheiten macht `splitPlantCap` bereits.
+- **Kein Skalen-Fehler.** Der Skalenfaktor wird live aus dem Gerät gelesen
+  (`WMaxLimPct_SF`; ältere Datamanager-Firmware < 3.7.1-5 meldet 0, neuere -2).
+
+**Beweise:** `curtail-lease.e2e.test.js` „PILSTING" (ein In-Process-Gateway, das
+das gemessene Verhalten nachbildet: FC6 wird bestätigt UND gespeichert, aber nur
+ein FC16-Block wird übernommen) - der Block-Pfad setzt die Begrenzung wirklich
+durch, der FC6-Rückfall reproduziert exakt das Feld-Symptom „Register bestätigt,
+nichts übernommen"; dazu `modbus-tcp.test.js` (Rahmenformat FC16),
+`sunspec/model-discovery.test.js`, `sunspec/curtail.test.js`.
+
 ## 6d. Dynamische Einspeisebegrenzung am Netzverknüpfungspunkt (06.08.2026)
 
 Bis hierher war die Anlagen-Kappe, die §6b über die Fronius-Einheiten aufteilt,
