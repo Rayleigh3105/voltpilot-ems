@@ -2951,6 +2951,53 @@ func TestCurtailmentSurfaceServed(t *testing.T) {
 	}
 }
 
+// The dynamic feed-in limitation's state must be reachable in NORMAL mode: it
+// is a compliance limit, and the one sentence that matters most ("this cap
+// reaches no device") may never sit behind Technikmodus - the operator reading
+// it is about to disconnect the controller that holds the limit today.
+func TestFeedInWatchdogStateIsVisibleWithoutTechnikmodus(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+
+	page := get("/index.html")
+	if !strings.Contains(page, `id="curtailExport"`) {
+		t.Fatal("index.html: the feed-in watchdog line is missing from the PV-Abregelung card")
+	}
+	// It sits INSIDE the always-visible summary, before the Technik block.
+	expIdx := strings.Index(page, `id="curtailExport"`)
+	techIdx := strings.Index(page, `id="curtailTech"`)
+	if techIdx < 0 || expIdx > techIdx {
+		t.Error("index.html: the watchdog line must render BEFORE (outside) the Technik block")
+	}
+	// ...and nothing between the card and the line opened a tech-only block.
+	cardIdx := strings.Index(page, `id="curtailCard"`)
+	if cardIdx < 0 || strings.Contains(page[cardIdx:expIdx], "tech-only") {
+		t.Error("index.html: the watchdog line sits inside a tech-only block - a cause would be hidden")
+	}
+	// The NUMBERS row belongs in the Technik Betrieb card (the peak-guard twin).
+	for _, want := range []string{`id="btEinspeiseRow"`, `id="btEinspeise"`, `id="btEinspeiseZiel"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html: missing feed-in watchdog element %s", want)
+		}
+	}
+	ctrl := get("/control.js")
+	if !strings.Contains(ctrl, "deriveExportGuard") {
+		t.Error("control.js: the pure watchdog derivation must stay exported for the unit tests")
+	}
+	if !strings.Contains(get("/betrieb.js"), "export_guard") {
+		t.Error("betrieb.js: does not read the watchdog state")
+	}
+}
+
 // TestCurtailEndpoints exercises the /api/curtail surface against the fake
 // controller: the GET view, a mutation routed with its source id, the 400
 // mapping of a *curtailcal.ValidationError, and the admin gate on mutations.

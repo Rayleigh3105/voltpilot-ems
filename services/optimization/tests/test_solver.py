@@ -208,6 +208,19 @@ def test_feed_in_cap_constraint_exists_in_both_builds_export_only():
 
 
 @needs_highs
+def test_the_feed_in_cap_is_handed_to_the_edge_as_the_watchdogs_target():
+    # Dynamische Einspeisebegrenzung (2026-08-06): the SAME master datum the
+    # constraint above plans against is stamped on the plan, so the edge's
+    # real-time watchdog regulates against exactly the number the cloud planned
+    # against - a pure pass-through, never a solved value (a solved export peak
+    # would drift below the real limit and quietly throttle the plant).
+    plan = solve(make_input([50.0] * 96, max_feed_in_kw=40.0))
+    assert plan.max_feed_in_kw == 40.0
+    # Unconfigured stays unconfigured: a limit is never invented.
+    assert solve(make_input([50.0] * 96)).max_feed_in_kw is None
+
+
+@needs_highs
 def test_pv_surplus_beyond_the_feed_in_cap_caps_export_instead_of_infeasible():
     # A 100-kW PV forecast against a 40-kW connection: the plan must stay
     # feasible and hold export at/below the cap - absorbing the surplus into

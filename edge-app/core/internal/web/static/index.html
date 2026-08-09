@@ -273,9 +273,13 @@
     </section>
 
     <!-- PV-Abregelung (Fronius): the fleet curtailment state. Hidden entirely
-         until the device reports curtailment units. The summary sentence (incl.
-         a possible override CAUSE) is always visible; the per-unit register
-         evidence is Technik detail. -->
+         until the device reports curtailment units OR a feed-in limit. The
+         summary sentence (incl. a possible override CAUSE) is always visible;
+         the per-unit register evidence is Technik detail.
+         The dynamic feed-in limitation lives here because it is what DRIVES the
+         curtailment: its own line says what the connection point is doing, and
+         - the safety-critical half - whether the limit can reach a device at
+         all. NORMAL mode, never behind Technikmodus. -->
     <section class="card" id="curtailCard" hidden>
       <div class="chart-head">
         <h3 class="chart-title"><span class="ico" style="background:var(--pv-soft, var(--bg-2));color:var(--pv, #f0b400)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.66 1.41M8 16l8-8"/></svg></span>PV-Abregelung</h3>
@@ -284,6 +288,9 @@
       <div class="ctrl-summary" id="curtailSummary">
         <strong id="curtailTitle">–</strong>
         <p id="curtailText"></p>
+        <!-- The live feed-in watchdog at the grid connection point: what it is
+             doing, and whether it can actually reach an inverter. -->
+        <p class="ctrl-reason" id="curtailExport" hidden></p>
       </div>
       <div class="tech-block tech-only" id="curtailTech">
         <p class="tech-h">Abregelung · Register je Wechselrichter</p>
@@ -331,6 +338,8 @@
         <div class="betrieb-row"><span class="bt-label">Spitzen-Wache</span><span class="bt-value" id="btWache">inaktiv</span></div>
         <div class="betrieb-row" id="btMeanRow" hidden><span class="bt-label">Aktuelles 15-min-Mittel</span><span class="bt-value" id="btMean">–</span></div>
         <div class="betrieb-row" id="btReserveRow" hidden><span class="bt-label">Spitzen-Reserve</span><span class="bt-value" id="btReserve">–</span></div>
+        <div class="betrieb-row" id="btEinspeiseRow" hidden><span class="bt-label">Einspeise-Wache</span><span class="bt-value" id="btEinspeise">–</span></div>
+        <div class="betrieb-row" id="btEinspeiseZielRow" hidden><span class="bt-label">Grenze / Kappe</span><span class="bt-value" id="btEinspeiseZiel">–</span></div>
         <div class="betrieb-row"><span class="bt-label">Bei Cloud-Ausfall</span><span class="bt-value bt-plain" id="btOffline">–</span></div>
       </div>
     </section>

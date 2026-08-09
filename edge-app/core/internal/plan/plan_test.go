@@ -683,4 +683,52 @@ func TestCommittedContractFixturesParse(t *testing.T) {
 			t.Fatalf("cover-load fixture slot %d must carry no absorption duty", i)
 		}
 	}
+
+	// The FEED-IN LIMIT fixture (the Pilsting shape: a 30 kW connection-point
+	// limit alongside an ordinary plan, one of whose slots also curtails).
+	limited, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.export-limit.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limRx := time.Date(2026, 8, 6, 9, 1, 0, 0, time.UTC)
+	lp, err := Parse(limited, limRx)
+	if err != nil {
+		t.Fatalf("export-limit fixture: %v", err)
+	}
+	if lp.ExportLimit() == nil || *lp.ExportLimit() != 30.0 {
+		t.Fatalf("export-limit fixture limit = %v, want 30", lp.ExportLimit())
+	}
+	// It survives staleness on purpose: a dead optimizer must never hand a plant
+	// back its unlimited feed-in.
+	lp.ReceivedAt = limRx.Add(-2 * StaleAfter)
+	if lp.ExportLimit() == nil {
+		t.Fatal("the feed-in limit must survive plan staleness")
+	}
+	if lp.ActivePvLimit(limRx) != nil {
+		t.Fatal("the fixture's active slot carries no planned curtailment")
+	}
+	// The other fixtures carry no limit - absent means absent, never a guess.
+	for name, other := range map[string]*Plan{"plain": pp, "surplus-only": tp, "cover-load": cp, "absorb": ap} {
+		if other.ExportLimit() != nil {
+			t.Fatalf("%s fixture must carry no feed-in limit", name)
+		}
+	}
+}
+
+// A malformed feed-in limit leaves the site with NO limit and the honest state
+// that says so - never a nonsensical compliance target. The committed invalid
+// fixture is the same bytes the schema rejects.
+func TestAMalformedFeedInLimitIsDroppedNotGuessed(t *testing.T) {
+	dir := filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples")
+	raw, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.invalid.export-limit-negative.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Parse(raw, time.Date(2026, 8, 6, 9, 1, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("the payload is otherwise well-formed: %v", err)
+	}
+	if p.ExportLimit() != nil {
+		t.Fatalf("a negative limit must be dropped, got %v", *p.ExportLimit())
+	}
 }

@@ -48,6 +48,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -154,6 +155,114 @@ func (a *Agent) curtailSetpointExtras(now time.Time) map[string]any {
 		out["pv_uncontrolled_kw"] = math.Round(math.Max(0, sitePv-froniusPv)*1000) / 1000
 	}
 	return out
+}
+
+// --- the feed-in watchdog's REACH (dynamische Einspeisebegrenzung) ------------
+
+// curtailReach reports how far the curtailment path can actually reach:
+// curtailment-capable units configured and how many carry a per-unit First-Light
+// release. It is the gate half of the feed-in watchdog's honesty statement (the
+// house rule: gates come from the CORE, observations from the readback).
+func (a *Agent) curtailReach() (units, certified int) {
+	list := a.curtailSources()
+	a.curtailMu.Lock()
+	defer a.curtailMu.Unlock()
+	for _, s := range list {
+		if a.curtailCert[curtailUnitKey(s.Connection)] {
+			certified++
+		}
+	}
+	return len(list), certified
+}
+
+// exportGuardInfo enriches one watchdog verdict with the question the verdict
+// itself cannot answer: can this cap reach a device at all?
+//
+// THIS IS SAFETY-CRITICAL COPY, not decoration. The operator is preparing to
+// disconnect the customer-owned controller that holds the feed-in limit today,
+// so a watchdog that computes a perfect cap and writes it NOWHERE must say so
+// loudly rather than let anyone rely on a protection that does not exist.
+// Nothing here influences execution - the two gates (kill-switch, per-unit
+// release) are enforced where they always were, in the curtailment executor.
+func (a *Agent) exportGuardInfo(c guards.ExportCap) *state.ExportGuardInfo {
+	if !c.Active {
+		return nil
+	}
+	units, certified := a.curtailReach()
+	capKw := c.CapKw
+	info := &state.ExportGuardInfo{
+		LimitKw:        c.LimitKw,
+		State:          string(c.State),
+		Reason:         c.Reason,
+		CapKw:          &capKw,
+		Limiting:       c.Limiting,
+		Blind:          c.Blind,
+		ExportKw:       c.ExportKw,
+		PvKw:           c.PvKw,
+		Units:          units,
+		CertifiedUnits: certified,
+	}
+	if c.MeasurementAge > 0 || !c.Blind {
+		secs := int(c.MeasurementAge / time.Second)
+		info.MeasurementAgeSeconds = &secs
+	}
+	switch {
+	case units == 0:
+		info.Reach = "Für diese Anlage ist kein abregelbarer Wechselrichter eingerichtet - " +
+			"die Einspeisegrenze wird berechnet, aber an KEIN Gerät geschrieben. " +
+			"Sie ist damit nicht wirksam."
+	case !a.Cfg.ControlEnabled:
+		info.Reach = "Die Wechselrichter-Steuerung ist ausgeschaltet (Not-Aus) - " +
+			"die Einspeisegrenze wird berechnet, aber an KEIN Gerät geschrieben. " +
+			"Sie ist damit nicht wirksam."
+	case certified == 0:
+		info.Reach = fmt.Sprintf(
+			"Kein Wechselrichter ist für die Abregelung freigegeben (0 von %d) - "+
+				"die Einspeisegrenze wird berechnet, aber an KEIN Gerät geschrieben. "+
+				"Sie ist damit nicht wirksam.", units)
+	case certified < units:
+		info.Effective = true
+		info.Reach = fmt.Sprintf(
+			"%d von %d Wechselrichtern sind für die Abregelung freigegeben - die übrigen "+
+				"können nicht zurückgeregelt werden und zählen nur als nicht regelbare Erzeugung.",
+			certified, units)
+	default:
+		info.Effective = true
+	}
+	return info
+}
+
+// logExportGuard names the watchdog's state on CHANGE, never per tick (the
+// OTA-blocker lesson: a refusal nobody logs is a riddle, a refusal logged every
+// tick is noise the real hint drowns in). An ineffective watchdog is a WARNING -
+// it is the state in which a plant believes it is protected and is not.
+func (a *Agent) logExportGuard(info *state.ExportGuardInfo) {
+	key := ""
+	if info != nil {
+		key = info.State + "|" + strconv.FormatBool(info.Effective) + "|" + info.Reach
+	}
+	a.curtailMu.Lock()
+	changed := a.exportLogKey != key
+	a.exportLogKey = key
+	a.curtailMu.Unlock()
+	if !changed || info == nil {
+		return
+	}
+	if !info.Effective {
+		slog.Warn("feed-in watchdog is NOT effective", "state", info.State,
+			"limit_kw", info.LimitKw, "reach", info.Reach)
+		return
+	}
+	if info.Blind {
+		slog.Warn("feed-in watchdog running blind", "state", info.State, "reason", info.Reason)
+		return
+	}
+	capKw := math.NaN()
+	if info.CapKw != nil {
+		capKw = *info.CapKw
+	}
+	slog.Info("feed-in watchdog", "state", info.State, "limit_kw", info.LimitKw,
+		"cap_kw", capKw, "reach", info.Reach)
 }
 
 // curtailReadbackMsg is the per-unit curtailment readback the flow publishes on
@@ -689,6 +798,29 @@ func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 	}
 	if !latest.IsZero() {
 		sum.CheckedAt = latest.Format(time.RFC3339Nano)
+	}
+	// The live feed-in watchdog rides along ADDITIVELY, straight from the
+	// Snapshot the setpoint path wrote - never re-derived here, so the device
+	// page and the cloud can never state two different verdicts. Absent when the
+	// site has no feed-in limit configured.
+	//
+	// Known boundary: the block as a whole is only emitted when the plant HAS a
+	// curtailment-capable unit (a heartbeat with units=0 is dropped cloud-side
+	// on purpose, so "0 von 0 freigegeben" can never be fabricated). A site with
+	// a feed-in limit but no curtailable inverter therefore states that case
+	// locally - on :8484 and in the log - where the commissioning operator is
+	// standing, and not in the fleet view.
+	if g := a.State.Get().ExportGuard; g != nil {
+		sum.ExportGuard = &cloud.ExportGuardSummary{
+			LimitKw:   g.LimitKw,
+			State:     g.State,
+			Reason:    g.Reason,
+			CapKw:     g.CapKw,
+			Limiting:  g.Limiting,
+			Blind:     g.Blind,
+			Effective: g.Effective,
+			Reach:     g.Reach,
+		}
 	}
 	return sum
 }

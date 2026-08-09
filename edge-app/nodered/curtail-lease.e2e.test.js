@@ -512,6 +512,110 @@ test('ENA-QUIRK: a commanded 0 answered with 1 does NOT make the release look br
   } finally { gw.close(); }
 });
 
+// --- the DELIVERY half of the dynamic feed-in limitation ---------------------
+//
+// The control LOOP lives in the core (guards.ExportLimiter); it hands its plant
+// cap to the executor through the SAME sp.pv_limit_kw the plan uses, so nothing
+// here changed. What these cases prove is that the delivery is fast and honest
+// enough for a COMPLIANCE limit:
+//
+//   - a FALLING cap (the unplugged wallbox) is written on the very tick it
+//     arrives - it must never wait out the 20-s refresh interval;
+//   - the plant cap is SPLIT across the units, minus the share the path cannot
+//     control (the Deye hybrid), which is what makes the cap a plant-level
+//     quantity rather than a per-inverter one;
+//   - an UNRELEASED unit is not written, and says so - the watchdog is
+//     provably ineffective there, which is exactly what the core states.
+
+test('EINSPEISE-WACHE: a falling cap is written on the tick it arrives, not one refresh later', async () => {
+  const img = unitImage(27);
+  const disc = discOver(img);
+  const gw = await startGateway({ 1: img });
+  try {
+    const key = '127.0.0.1:' + gw.port + '#1';
+    const flow = { ['curtail_disc:' + key]: { at: Date.now(), disc: disc } };
+    const ctx = {};
+
+    // Roomy: a charging car leaves headroom, so the watchdog's cap is above the
+    // unit's own rating and nothing is held back.
+    await curtailRun(gw, img, { flow, ctx, over: { pv_limit_kw: 27 } });
+    assert.strictEqual(img.get(disc.controls.wMaxLimPctAddr), 10000, '100 % - not held back');
+
+    // The car is unplugged: the core's next setpoint carries a much lower cap.
+    // The command SIGNATURE changed, so this tick writes - no refresh wait.
+    ctx.curtail_busy_since = 0;
+    const r = await curtailRun(gw, img, { flow, ctx, over: { pv_limit_kw: 11.7 } });
+    assert.strictEqual(r.sends[0].applied, true, 'the tighter cap was WRITTEN, not just observed');
+    assert.strictEqual(r.sends[0].all_match, true);
+    // 11,7 / 27 = 43,33 % -> 4333 at SF -2.
+    assert.strictEqual(img.get(disc.controls.wMaxLimPctAddr), 4333);
+  } finally { gw.close(); }
+});
+
+test('EINSPEISE-WACHE: the plant cap splits across the units minus the share we cannot control', async () => {
+  const img1 = unitImage(27);
+  const img2 = unitImage(27);
+  const gw = await startGateway({ 1: img1, 2: img2 });
+  try {
+    const d1 = discOver(img1);
+    const d2 = discOver(img2);
+    const flow = {
+      ['curtail_disc:127.0.0.1:' + gw.port + '#1']: { at: Date.now(), disc: d1 },
+      ['curtail_disc:127.0.0.1:' + gw.port + '#2']: { at: Date.now(), disc: d2 },
+    };
+    // The Pilsting shape: a 33,4 kW plant cap from the watchdog, of which the
+    // uncurtailable Deye already occupies 10 kW -> 23,4 kW for the two Fronius.
+    const setpoint = curtailSetpoint(gw.port, ['src-a', 'src-b'], {
+      pv_limit_kw: 33.4,
+      curtail: {
+        control_enabled: true,
+        pv_uncontrolled_kw: 10,
+        sources: [
+          { id: 'src-a', certified: true, capacity_kwp: 27, label: 'WR1' },
+          { id: 'src-b', certified: true, capacity_kwp: 27, label: 'WR2' },
+        ],
+      },
+    });
+    const { sends } = await runExec({
+      sources: [froniusSource('src-a', gw.port, 1), froniusSource('src-b', gw.port, 2)],
+      setpoint, flow, ctx: {}, flowLog: [],
+    });
+    const caps = sends.map((p) => p.cap_kw).sort();
+    assert.deepStrictEqual(caps, [11.7, 11.7], 'the 23,4 kW budget split evenly: ' + JSON.stringify(sends));
+    // And the SUM of what the plant may now produce holds the plant cap.
+    assert.ok(caps[0] + caps[1] + 10 <= 33.4 + 1e-9, 'split + uncontrolled must stay inside the plant cap');
+    assert.strictEqual(img1.get(d1.controls.wMaxLimPctAddr), 4333);
+    assert.strictEqual(img2.get(d2.controls.wMaxLimPctAddr), 4333);
+  } finally { gw.close(); }
+});
+
+test('EINSPEISE-WACHE: an unreleased unit is NOT written - the watchdog is provably ineffective there', async () => {
+  const img = unitImage(27);
+  const disc = discOver(img);
+  const gw = await startGateway({ 1: img });
+  try {
+    const key = '127.0.0.1:' + gw.port + '#1';
+    const flow = { ['curtail_disc:' + key]: { at: Date.now(), disc: disc } };
+    const before = img.get(disc.controls.wMaxLimPctAddr);
+    const { sends } = await runExec({
+      sources: [froniusSource('src-a', gw.port, 1)],
+      setpoint: curtailSetpoint(gw.port, ['src-a'], {
+        pv_limit_kw: 11.7,
+        curtail: {
+          control_enabled: true,
+          pv_uncontrolled_kw: 0,
+          sources: [{ id: 'src-a', certified: false, capacity_kwp: 27, label: 'WR1' }],
+        },
+      }),
+      flow, ctx: {}, flowLog: [],
+    });
+    assert.strictEqual(sends[0].applied, false, 'nothing may be written to an unreleased unit');
+    assert.strictEqual(img.get(disc.controls.wMaxLimPctAddr), before, 'the register is untouched');
+    assert.match(sends[0].reason, /noch nicht freigegeben/,
+      'and the refusal names its cause: ' + JSON.stringify(sends[0]));
+  } finally { gw.close(); }
+});
+
 // --- poll: bounded yields, forced reads, expiry, rotation --------------------
 
 // A compact-sim image for the modbus_tcp `sunspec` PROFILE (9 registers).

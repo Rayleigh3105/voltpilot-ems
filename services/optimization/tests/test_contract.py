@@ -230,6 +230,7 @@ def test_committed_fixtures_match_the_schema_both_ways():
         "mqtt-schedule.valid.surplus-only-charge.json",
         "mqtt-schedule.valid.cover-load.json",
         "mqtt-schedule.valid.absorb-surplus.json",
+        "mqtt-schedule.valid.export-limit.json",
     ):
         payload = json.loads((EXAMPLES / name).read_text())
         errors = list(validator.iter_errors(payload))
@@ -242,11 +243,15 @@ def test_committed_fixtures_match_the_schema_both_ways():
             "mqtt-schedule.invalid.absorb-surplus-not-boolean.json",
             "charge_surplus_to_battery",
         ),
+        ("mqtt-schedule.invalid.export-limit-negative.json", "grid_export_limit_kw"),
     ):
         bad = json.loads((EXAMPLES / name).read_text())
         messages = [e.message for e in validator.iter_errors(bad)]
         assert messages, f"{name}: the invalid fixture must be rejected"
-        assert any(field in m or "boolean" in m for m in messages), (name, messages)
+        assert any(field in m or "boolean" in m or "minimum" in m for m in messages), (
+            name,
+            messages,
+        )
 
 
 def test_the_surplus_only_fixture_is_what_the_publisher_actually_emits():
@@ -384,3 +389,44 @@ def test_the_absorb_surplus_flag_is_omitted_unless_true_and_validates():
     assert first["charge_surplus_to_battery"] is True
     assert "charge_surplus_to_battery" not in second
     assert "charge_surplus_to_battery" not in third
+
+
+def test_grid_export_limit_is_optional_additive_and_validates():
+    """Dynamische Einspeisebegrenzung (2026-08-06): the site's feed-in limit at
+    the grid connection point (site.max_feed_in_kw / FK1) rides the payload as
+    the OPTIONAL grid_export_limit_kw, so the EDGE can regulate it in real time
+    instead of only having it planned against every 15 minutes.
+
+    None (no limit configured) OMITS the field, so every other payload stays
+    byte-identical and an old edge has nothing to ignore - and, load-bearing,
+    a limit is never invented for a site that has none.
+    """
+    import dataclasses
+
+    validator = load_validator()
+
+    legacy = build_schedule_payload(make_plan())
+    assert "grid_export_limit_kw" not in legacy
+    assert list(validator.iter_errors(legacy)) == []
+
+    plan = dataclasses.replace(make_plan(), max_feed_in_kw=30.0)
+    payload = build_schedule_payload(plan)
+    assert payload["grid_export_limit_kw"] == 30.0
+    errors = list(validator.iter_errors(payload))
+    assert errors == [], [e.message for e in errors]
+
+    # It is a RUN-level field: it never appears on a slot (the per-slot
+    # curtailment pv_limit_kw is a different, composing quantity).
+    assert all("grid_export_limit_kw" not in slot for slot in payload["slots"])
+
+
+def test_the_export_limit_fixture_is_what_the_publisher_actually_emits():
+    """Fixture-vs-producer: the committed feed-in-limit fixture is not hand
+    fiction - the publisher emits the same top-level field from a plan whose
+    site carries the limit."""
+    import dataclasses
+
+    fixture = json.loads((EXAMPLES / "mqtt-schedule.valid.export-limit.json").read_text())
+    plan = dataclasses.replace(make_plan(slots=1), max_feed_in_kw=30.0)
+    emitted = build_schedule_payload(plan)
+    assert emitted["grid_export_limit_kw"] == fixture["grid_export_limit_kw"]

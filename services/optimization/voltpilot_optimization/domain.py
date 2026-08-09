@@ -570,6 +570,16 @@ class SchedulePlan:
     # module is off (site.leistungspreis_eur_kw NULL) - both consumers then
     # omit/NULL the field, never a fabricated number.
     peak_target_kw: float | None = None
+    # FK1 mirrored to the EDGE (2026-08-06): the site's static feed-in limit at
+    # the grid connection point (``site.max_feed_in_kw``), published as the
+    # OPTIONAL ``grid_export_limit_kw`` contract field. The solver already
+    # applies it as a hard EXPORT cap, but a 15-min plan cannot HOLD a
+    # connection-point limit - it is shared with the house, so unplugging a
+    # wallbox raises the feed-in within the slot. The edge therefore regulates it
+    # in real time against the measured connection point
+    # (``guards.ExportLimiter``). None = no limit configured; the field is
+    # omitted and the edge behaves exactly as before.
+    max_feed_in_kw: float | None = None
     # Fahrplan-Warum run-level fact (repeated per slot row in persistence, the
     # terminal_value pattern): True = this plan is the advisory §14a-fallback
     # build (the grid-limit constraint was dropped as infeasible - the edge

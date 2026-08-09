@@ -333,6 +333,54 @@ kalibrieren") - KEIN Register-Handbetrieb nötig. Für die zwei Pilsting-Fronius
    Karte / im Portal-Heartbeat ist IMMER ein Handlungsauftrag (fremden
    Controller abschalten), nie zu ignorieren.
 
+## Umstellung: die Loxone des Betreibers ablösen (dynamische Einspeisebegrenzung)
+
+Gilt für eine Anlage, deren Einspeisegrenze am Netzverknüpfungspunkt heute ein
+KUNDENEIGENER Regler hält (Pilsting: eine Loxone an den IO-Klemmen, inkl.
+Wallbox-Verrechnung). VoltPilot übernimmt das seit 06.08.2026 selbst
+(`FRONIUS.md` §6d), aber die REIHENFOLGE ist sicherheitskritisch: solange beide
+regeln, gewinnt am Fronius die IO-Steuerung (Priorität 1) über Modbus
+(Priorität 3), und solange keiner regelt, ist die Grenze ungeschützt.
+
+**Das Zeitfenster:** idealerweise dann, wenn die GESAMTE PV-Erzeugung der Anlage
+unter der Grenze liegt (früher Morgen, später Abend, bedeckter Tag). Dann ist
+eine Überschreitung während der Umstellung **physikalisch unmöglich**, und jeder
+Schritt darf in Ruhe geprüft werden.
+
+1. **Grenze pflegen.** `site.max_feed_in_kw` im Portal auf den Wert des
+   Netzanschlusses (Pilsting: 30 kW). Prüfen, dass sie ankommt: `:8484` →
+   Betrieb → PV-Abregelung zeigt „Einspeisegrenze 30,0 kW …". Steht dort nichts,
+   ist der Fahrplan noch der alte — der nächste Optimierer-Lauf (15 min) bringt
+   sie.
+2. **Freigabe je Einheit** nach der Checkliste oben (Increment 3), **einzeln**
+   für jeden Wechselrichter. Die Loxone bleibt dabei aktiv; die kurzen
+   First-Light-Tests sind gebunden und reverten selbst.
+3. **Wirksamkeit ablesen — der Gate-Schritt.** Auf `:8484` muss stehen
+   „**Einspeisegrenze wird überwacht**". Steht dort „**NICHT wirksam**"
+   (kein freigegebener Wechselrichter, Not-Aus, kein abregelbares Gerät),
+   **hier abbrechen** — die Loxone darf dann nicht weg.
+4. **Erst jetzt die Loxone von den IO-Klemmen nehmen.** Danach ist Modbus die
+   einzige aktive Instanz; die zuvor typischen `possible_override`-Meldungen
+   müssen verschwinden.
+5. **Nachweis am selben Tag, bei steigender Erzeugung.** Beobachten, dass die
+   Einspeisung an die Grenze läuft und dort KLEMMT (Betrieb-Karte:
+   „regelt … aktuell X kW Einspeisung"), und dass die Kappe nicht dauerhaft
+   deutlich unter der Grenze klebt (das wäre eine zu tiefe Regelung).
+6. **Der Wallbox-Test — das Kriterium, an dem der alte Regler gemessen wurde.**
+   Bei PV über der Grenze ein Auto laden lassen (Einspeisung sinkt, die Kappe
+   wird freigegeben), dann **abstecken**. Erwartet: die Einspeisung schießt
+   kurz hoch und wird innerhalb weniger Sekunden (ein Mess- + Schreibzyklus)
+   wieder auf die Grenze gezogen. Der Betreiber sollte dabei danebenstehen.
+7. **Messausfall-Probe (optional, aber empfohlen).** Den Netz-Zähler bzw. den
+   Primär-Wechselrichter kurz trennen: die Karte muss „hält (keine Messung)"
+   und danach „zieht zusammen" zeigen — **nie** eine Freigabe. Wieder
+   anstecken → zurück auf „überwacht/regelt".
+
+**Rückweg:** die Loxone wieder an die Klemmen und im Portal
+`site.max_feed_in_kw` leeren (dann meldet die Box „Einspeisegrenze wird nicht
+überwacht", weil keine konfiguriert ist) — oder, schneller, den Not-Aus
+(`VP_CONTROL_ENABLED=false`), der jeden Schreibpfad stoppt.
+
 ## Checkliste Fronius (SunSpec Modbus, Batterie-Laden/-Entladen - Increment 2)
 
 Batterie-Laden/-Entladen läuft über **SunSpec Modell 124 (Storage)** (+ 802/803 für

@@ -429,6 +429,53 @@ Kill-Switch, Freigabe je Einheit, Totmann) sind davon UNBERÜHRT.
   `internal/curtailcal/curtailcal_test.go` für den Plateau-Beweis + das
   Wolken-Szenario (Ambient sinkt unter Cap, Register hält → „nicht beweisbar").
 
+## 6d. Dynamische Einspeisebegrenzung am Netzverknüpfungspunkt (06.08.2026)
+
+Bis hierher war die Anlagen-Kappe, die §6b über die Fronius-Einheiten aufteilt,
+der **Plan-Wert** `pv_limit_kw` aus dem 15-Minuten-Fahrplan. Für eine
+**Einspeisegrenze am Netzverknüpfungspunkt** genügt das nicht: die Grenze wird
+mit dem HAUS geteilt. Steckt ein E-Auto ab, springt die Einspeisung um dessen
+Leistung nach oben — bis zum nächsten Plan bis zu 15 Minuten lang. Genau diese
+Aufgabe erledigt in Pilsting bis heute die **Loxone des Betreibers** („sonst
+schiesst der drüber wenn ein Auto abgesteckt wird").
+
+Seit dieser Runde regelt die Box selbst:
+
+- **Der Soll-Wert reist im Fahrplan** — additives Top-Level-Feld
+  `grid_export_limit_kw` (= `site.max_feed_in_kw`, FK1) im
+  `mqtt-schedule`-Kontrakt. **Ohne gepflegte Grenze bleibt der Wächter inaktiv**
+  und sagt das; eine Grenze wird nie erfunden.
+- **Der Regelkreis läuft auf dem KERN** (`internal/guards/exportlimit.go`), nicht
+  im Flow: gemessene Netzleistung + gemessene Gesamt-PV → Anlagen-Kappe. Haus,
+  Wallboxen und Batterie sind automatisch mitverrechnet, weil sie in der
+  Netzmessung schon drinstecken — das ist der ganze Vorteil gegenüber der
+  Planung.
+- **Der Weg zum Wechselrichter ist UNVERÄNDERT**: die Kappe kommt als dasselbe
+  `pv_limit_kw` am Sollwert an, das §6b schon aufteilt, und komponiert
+  **most-restrictive-wins** mit der geplanten Abregelung (Negativpreis/FK1) — der
+  Wächter lockert eine geplante Drosselung nie.
+- **Was das für die Reaktionszeit heißt:** die Kappe steht im Wechselrichter
+  (`WMaxLimPct`) und wird dort **laufend** durchgesetzt; unsere Schleife stellt
+  sie nur nach. Ein Lastsprung (Auto abgesteckt) wird deshalb erst mit dem
+  nächsten Messwert beantwortet — der Kern schiebt bei einer drohenden
+  Überschreitung sofort einen neuen Sollwert nach (statt bis zum nächsten
+  10-s-Takt zu warten), und der Executor schreibt bei geänderter Kappe sofort,
+  ohne das 20-s-Auffrischfenster abzuwarten.
+- **Blind heißt hier NICHT „unbegrenzt"** (die Umkehrung der Regel aller anderen
+  Guards): kurzer Messausfall → die letzte Kappe wird **gehalten**; längerer →
+  sie wird auf eine **sichere statische Kappe** zusammengezogen (`Grenze −
+  befohlene Entladung`, hält bei JEDEM Hausverbrauch); noch nie gemessen → sofort
+  diese Kappe.
+- **Freigabe je Einheit gilt weiter.** Ein nicht freigegebener Wechselrichter
+  wird nicht beschrieben — dann ist der Wächter nachweislich wirkungslos und sagt
+  das laut (`:8484` PV-Abregelung, Log, Herzschlag). Vor dem Abklemmen der Loxone
+  **muss** dort „Einspeisegrenze wird überwacht" stehen.
+- Beweise: `internal/guards/exportlimit_test.go` (abgestecktes/wieder
+  angestecktes Auto, Wolke, Messausfall, sichere Kappe),
+  `internal/agent/export_limit_test.go` (Verdrahtung + Komposition +
+  Wirksamkeits-Aussage), `curtail-lease.e2e.test.js` EINSPEISE-WACHE
+  (Zustellung an echte SunSpec-Register).
+
 ## Ausgeklammert (bewusst)
 
 - **802/803-Batteriebank-Detail als eigener Kanal.** Die Erkennung lokalisiert Modell

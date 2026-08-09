@@ -31,6 +31,14 @@ would make a fixture invalid for the wrong reason):
   value it follows comes from the device, never from the payload. A number there
   would read like a cloud-supplied load setpoint - which is exactly the rigid
   forecast watt value this flag exists to stop being executed.
+- `mqtt-schedule.invalid.export-limit-negative.json` - `grid_export_limit_kw` is
+  a feed-in LIMIT at the grid connection point, so it is `minimum: 0`. A negative
+  value has no defined meaning and would be read by a naive consumer as "cap the
+  producers below zero", i.e. a command to CONSUME - the one thing a curtailment
+  path must never be able to express. The edge parser rejects it independently
+  (`plan.Parse` keeps only a finite, non-negative limit), so a bad payload leaves
+  the site with NO limit and the honest state that says so, never a nonsensical
+  one.
 - `mqtt-schedule.invalid.absorb-surplus-not-boolean.json` - and once more for the
   charge-side counterpart `charge_surplus_to_battery`: it is a BOOLEAN duty
   ("raise the commanded charge to the MEASURED surplus in this slot"). A number
