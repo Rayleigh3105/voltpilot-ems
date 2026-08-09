@@ -4514,6 +4514,10 @@ button.vp-tech-card-h.toggle {
 .vp-entity-name { font-weight: 600; overflow-wrap: anywhere; }
 .vp-entity-sub { font-size: 0.82rem; color: var(--vp-text-muted, #667); }
 .vp-entity-control { color: var(--vp-action, #2C5282); }
+/* R2 on the installer surface: when the top line is the CUSTOMER's own name,
+   the line below says so and keeps the technical identity next to it - the
+   alias is never shown alone where identity is what you came for. */
+.vp-entity-alias { color: var(--vp-action, #2C5282); font-weight: 600; }
 .vp-health-dot {
   flex: 0 0 auto;
   width: 10px;

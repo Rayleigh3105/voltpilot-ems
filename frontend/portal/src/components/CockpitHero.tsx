@@ -58,6 +58,7 @@ export function CockpitHero({
   periodSeg = null,
   controlConfirmed = false,
   showRail = true,
+  rename = null,
 }: {
   view: CockpitHeroView;
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
@@ -97,6 +98,12 @@ export function CockpitHero({
    * eigene Zeile mit Absprung — die Leiste wäre die zweite Kopie davon.
    */
   showRail?: boolean;
+  /**
+   * Aktiviert die Umbenennen-Stifte in der PV-Zusammensetzung (Konzept
+   * `vp-entity-alias-k1` §5): der Wunsch entsteht beim Blick auf DIESE Liste.
+   * Es öffnet denselben Dialog wie das Anlagen-Modell, nie eine zweite Maske.
+   */
+  rename?: { siteId: string; onRenamed: () => void } | null;
 }) {
   const hasFlow = flowHasValues(topology, snapshot);
   const rings =
@@ -136,6 +143,7 @@ export function CockpitHero({
               sources={sources}
               pins={pins}
               controlConfirmed={controlConfirmed}
+              rename={rename}
             />
           ) : (
             <EnergyFlow snapshot={snapshot} stale={stale} size="hero" />

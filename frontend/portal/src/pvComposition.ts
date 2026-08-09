@@ -37,7 +37,7 @@
  * Pure + framework-free (unit-tested in pvComposition.test.ts).
  */
 import type { SiteSource, SiteTopology, TopologyEntity } from './api';
-import { deviceName } from './entityLabel';
+import { deviceName, technicalDeviceName } from './entityLabel';
 import {
   reconcileProducerPv,
   orphanedEntityIds,
@@ -69,8 +69,22 @@ export interface PvContribution {
    * component: {@link UNASSIGNED_NOTE}).
    */
   note: string | null;
-  /** The verbose stored name, kept for the row's tooltip. */
+  /**
+   * The PRE-ALIAS name, kept as the row's tooltip (R2): whatever the row would
+   * be called without the customer's own name - the edge name, else
+   * brand + model. So a support call about "Dach Süd" can still be traced to
+   * the physical box.
+   */
   title: string;
+  /**
+   * The component this row belongs to, or null on a `src:` row (a delivering
+   * source no component is pinned to). The rename pencil hangs off this: a row
+   * without a component has no name to give yet - the existing "zuordnen" flow
+   * comes first (concept `vp-entity-alias-k1` §5).
+   */
+  entityId: string | null;
+  /** The customer's OWN name for this row, or null when they gave none. */
+  alias: string | null;
 }
 
 export interface PvComposition {
@@ -177,16 +191,26 @@ export function pvComposition(
     // the PINNED `/sources` entry, else - for the hybrid - the primary inverter
     // entry, else the stored entity label. NEVER a name/order lookup.
     const matched = sourceById.get(pinBySource.get(m.entity_id) ?? '') ?? (isHybrid(entity) ? primary : null);
-    const label =
-      deviceName({
-        edgeLabel: matched?.label,
-        brand: matched?.brand,
-        model: matched?.model,
-        storedLabel: m.label ?? entity?.label,
-        typeLabel: entity?.typeLabel,
-      }) ?? 'Gerät';
+    // ⚠ The alias is read from the ENTITY and from the UNRECONCILED member -
+    // never from `m.label`. The interim reconstruction rewrites a filled
+    // member's label to the SOURCE's edge name (`pvReconcile`:
+    // `label: sourceLabel(src)`), so reading it here would quietly replace the
+    // customer's own name with the device's, and the rename dialog would
+    // prefill with a name they never typed. `rawNode` is the pre-reconcile
+    // node; reconcile replaces members in place, so the index still matches.
+    const nameInput = {
+      edgeLabel: matched?.label,
+      brand: matched?.brand,
+      model: matched?.model,
+      storedLabel: entity?.label ?? rawNode.members[i]?.label,
+      typeLabel: entity?.typeLabel,
+    };
+    const label = deviceName(nameInput) ?? 'Gerät';
     const health = orphaned ? 'never' : (matched?.health ?? healthOf(entity));
-    const title = (m.label ?? entity?.label ?? label).trim() || label;
+    // R2: the tooltip is what the row WOULD be called without the alias, so the
+    // physical identity stays reachable. Falls back to the shown name when
+    // there is nothing else to say (an alias on a device that reports nothing).
+    const title = technicalDeviceName(nameInput) ?? label;
     const row: PvContribution = {
       key: `${m.entity_id}:${i}`,
       label,
@@ -194,6 +218,8 @@ export function pvComposition(
       health,
       note: m.value_kw == null ? emptyNote(health, hybridCarriesTheRest && !orphaned, orphaned) : null,
       title,
+      entityId: m.entity_id,
+      alias: (nameInput.storedLabel ?? '').trim() || null,
     };
     if (row.kw == null) unmeasured.push(row);
     else parts.push(row);
@@ -224,6 +250,9 @@ export function pvComposition(
         health: u.health,
         note: UNASSIGNED_NOTE,
         title: sourceLabel(u),
+        // No component yet ⇒ nothing to name. Assign it first.
+        entityId: null,
+        alias: null,
       });
     }
   }

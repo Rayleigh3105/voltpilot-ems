@@ -5,6 +5,7 @@ import {
   shortLabelsForRole,
   shortModel,
   stripParenthetical,
+  technicalDeviceName,
 } from './entityLabel';
 
 describe('shortModel', () => {
@@ -17,6 +18,51 @@ describe('shortModel', () => {
 });
 
 describe('deviceName · ONE name per box', () => {
+  // The alias concept (`vp-entity-alias-k1`): the name the customer typed in
+  // the PORTAL is even closer to them than the one typed on the box, and it is
+  // the only one they can change from where they are looking.
+  it('prefers the name the CUSTOMER gave over every derivation', () => {
+    expect(
+      deviceName({
+        storedLabel: 'Dach Süd',
+        edgeLabel: 'Fronius Anlage WR1',
+        brand: 'fronius',
+        model: 'Symo',
+        typeLabel: 'Erzeuger',
+      }),
+    ).toBe('Dach Süd');
+  });
+
+  it('uses the alias VERBATIM - it is not a composed label to strip', () => {
+    // stripParenthetical exists for the composed labels of the old world; a
+    // customer who types "Dach Süd (neu)" means exactly that.
+    expect(deviceName({ storedLabel: 'Dach Süd (neu)', edgeLabel: 'WR1' })).toBe('Dach Süd (neu)');
+  });
+
+  it('falls back to the derivation when the alias is cleared or blank', () => {
+    expect(deviceName({ storedLabel: null, edgeLabel: 'Fronius WR 2' })).toBe('Fronius WR 2');
+    expect(deviceName({ storedLabel: '   ', edgeLabel: 'Fronius WR 2' })).toBe('Fronius WR 2');
+    expect(deviceName({ storedLabel: '', brand: 'deye', model: 'SUN-30K-SG01HP3-EU' })).toBe(
+      'Deye SUN-30K',
+    );
+  });
+
+  it('keeps the PRE-ALIAS name reachable for support (R2)', () => {
+    const box = {
+      storedLabel: 'Dach Süd',
+      edgeLabel: 'Fronius Anlage WR1',
+      brand: 'fronius',
+      model: 'Symo',
+    };
+    expect(deviceName(box)).toBe('Dach Süd');
+    expect(technicalDeviceName(box)).toBe('Fronius Anlage WR1');
+    // Without an edge name it degrades exactly like the old chain did.
+    expect(technicalDeviceName({ storedLabel: 'Dach Süd', brand: 'deye', model: 'SUN-30K' })).toBe(
+      'Deye SUN-30K',
+    );
+    expect(technicalDeviceName({ storedLabel: 'Dach Süd' })).toBeNull();
+  });
+
   it('prefers the name the device carries on the edge', () => {
     expect(deviceName({ edgeLabel: 'Fronius WR 2', brand: 'fronius', model: 'Symo' })).toBe(
       'Fronius WR 2',
@@ -33,10 +79,7 @@ describe('deviceName · ONE name per box', () => {
     expect(deviceName({ brand: 'go-e', model: 'Charger 3' })).toBe('go-e Charger 3');
   });
 
-  it('then the stored label without its qualifier, then the type label', () => {
-    expect(deviceName({ storedLabel: 'Batteriespeicher (Hybrid-Wechselrichter)' })).toBe(
-      'Batteriespeicher',
-    );
+  it('then the type label', () => {
     expect(deviceName({ typeLabel: 'Erzeuger' })).toBe('Erzeuger');
   });
 

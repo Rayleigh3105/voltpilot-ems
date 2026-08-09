@@ -36,7 +36,7 @@ const entities: SiteEntities = {
       entityType: 'battery-hybrid',
       typeLabel: 'Batteriespeicher',
       role: 'storage',
-      label: 'Batteriespeicher',
+      label: null,
       control: true,
       deviceId: 'gw',
       capabilities: {
@@ -55,7 +55,7 @@ const entities: SiteEntities = {
       entityType: 'grid-meter',
       typeLabel: 'Netzanschluss',
       role: 'grid',
-      label: 'Netzanschluss',
+      label: null,
       control: false,
       deviceId: 'gw',
       capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
@@ -422,23 +422,74 @@ describe('AnlagenModellSection — Variante A', () => {
 
   // M7 role-gate: two views, one product. A customer never sees the technical
   // installer layer; a platform-admin sees it ADDED to the same page.
-  it('hides the installer layer and the rename pencil for a customer', async () => {
+  it('hides the installer layer for a customer - but NOT the rename pencil', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
     await screen.findByRole('region', { name: 'Komponenten' });
     expect(screen.queryByText(/Installateur-Ansicht/)).toBeNull();
     expect(screen.queryByText('Rollen & Zuordnung')).toBeNull();
-    // The label PUT is admin-only today, so the customer gets no pencil.
-    expect(screen.queryByRole('button', { name: /umbenennen/ })).toBeNull();
+    // Naming your own plant is not a technical act (concept
+    // `vp-entity-alias-k1`): the pencil is open to every customer since the
+    // customer label route exists.
+    expect(screen.getAllByRole('button', { name: /umbenennen/ }).length).toBeGreaterThan(0);
   });
 
-  it('shows the installer layer and a working rename for a platform-admin', async () => {
+  // Captain, 09.08.2026: renaming covers EVERY component of the plant - the
+  // battery, the grid connection, the house consumption and the producers.
+  it('offers the pencil on every renameable component, in every role group', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Komponenten' });
+    const named = screen
+      .getAllByRole('button', { name: /umbenennen/ })
+      .map((b) => b.getAttribute('aria-label'));
+    // The platform-COMPOSED rows are explicitly included - only their type and
+    // role stay ours, never their name.
+    expect(named.some((n) => n?.includes('Netzanschluss'))).toBe(true);
+    expect(named.some((n) => n?.includes('Speicher'))).toBe(true);
+    // …and the producer, so all three role groups of this plant are covered.
+    expect(named.some((n) => n?.includes('Fronius'))).toBe(true);
+    // …and the PV aspect line is NOT separately renameable (it follows its
+    // carrier, so its own pencil would retitle two rows at once).
+    expect(named.some((n) => n?.includes('Solarmodule'))).toBe(false);
+  });
+
+  it('renames through the CUSTOMER route and can reset back to the derivation', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    const rename = vi.spyOn(entitiesApi, 'rename').mockResolvedValue({
+      id: 'grid',
+      entityType: 'grid-meter',
+      role: 'grid',
+      label: 'Hausanschluss',
+      deviceId: null,
+    });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Komponenten' });
+
+    fireEvent.click(screen.getByRole('button', { name: /„Netzanschluss“ umbenennen/ }));
+    const field = await screen.findByLabelText('Eigener Name');
+    // The field carries the ALIAS, so an un-named component starts EMPTY and
+    // the placeholder shows what VoltPilot would call it instead.
+    expect(field).toHaveValue('');
+    expect(field).toHaveAttribute('placeholder', 'Netzanschluss');
+    // The honesty line is the promise the route keeps by construction.
+    expect(
+      screen.getByText('Der Name ist reine Darstellung — er ändert nie die Steuerung.'),
+    ).toBeInTheDocument();
+    // Nothing to undo yet, so no reset offer.
+    expect(screen.queryByRole('button', { name: 'Zurücksetzen' })).toBeNull();
+
+    fireEvent.change(field, { target: { value: '  Hausanschluss  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(rename).toHaveBeenCalledWith('s-1', 'grid', 'Hausanschluss'));
+  });
+
+  it('shows the installer layer for a platform-admin', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
     stub();
-    const update = vi
-      .spyOn(entitiesApi, 'update')
-      .mockResolvedValue(entities.entities[0]);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
     // The customer picture is still there…
@@ -446,14 +497,5 @@ describe('AnlagenModellSection — Variante A', () => {
     // …plus the installer panel added on top.
     expect(screen.getByText(/Installateur-Ansicht/)).toBeInTheDocument();
     expect(await screen.findByText('Rollen & Zuordnung')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /„Netzanschluss“ umbenennen/ }));
-    fireEvent.change(await screen.findByLabelText('Name der Komponente'), {
-      target: { value: 'Hausanschluss' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
-    await waitFor(() =>
-      expect(update).toHaveBeenCalledWith('s-1', 'grid', { label: 'Hausanschluss' }),
-    );
   });
 });

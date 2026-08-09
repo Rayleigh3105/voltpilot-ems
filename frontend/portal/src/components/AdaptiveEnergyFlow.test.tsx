@@ -69,15 +69,16 @@ const MULTI = siteTopology(
   [
     {
       entity_id: 'deye',
-      label: 'Batteriespeicher (Hybrid-Wechselrichter)',
+      // Post-Label-Hygiene a composed row carries no label of its own.
+      label: null,
       primary: true,
       value_kw: 69.8,
     },
-    { entity_id: 'f1', label: 'Fronius (Erzeuger)', primary: false },
-    { entity_id: 'f2', label: 'Fronius 2 (Erzeuger)', primary: false },
+    { entity_id: 'f1', label: null, primary: false },
+    { entity_id: 'f2', label: null, primary: false },
   ],
   [
-    entity({ id: 'deye', entityType: 'battery-hybrid', category: 'storage', label: 'Batteriespeicher' }),
+    entity({ id: 'deye', entityType: 'battery-hybrid', category: 'storage', label: null }),
     entity({ id: 'f1', health: 'never' }),
     entity({ id: 'f2', health: 'never' }),
   ],
@@ -140,6 +141,32 @@ describe('AdaptiveEnergyFlow · click on PV-Erzeugung opens the composition', ()
 
     fireEvent.click(screen.getByRole('button', { name: /PV-Erzeugung/ }));
     expect(container.querySelector('.vp-pvcomp')).toBeNull();
+  });
+
+  // Alias concept §5: the pencil belongs HERE too - this is the list the wish
+  // was born looking at - but only where a component exists to name.
+  it('offers a rename pencil per component row only when the host allows it', () => {
+    const { container, rerender } = render(
+      <AdaptiveEnergyFlow topology={MULTI} sources={MULTI_SOURCES} pins={MULTI_PINS} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /PV-Erzeugung/ }));
+    expect(container.querySelectorAll('.vp-pvcomp-pencil')).toHaveLength(0);
+
+    rerender(
+      <AdaptiveEnergyFlow
+        topology={MULTI}
+        sources={MULTI_SOURCES}
+        pins={MULTI_PINS}
+        rename={{ siteId: 's1', onRenamed: () => {} }}
+      />,
+    );
+    expect(container.querySelectorAll('.vp-pvcomp-pencil')).toHaveLength(3);
+    // …and it opens the SAME mask the Anlagen-Modell uses, never a second one.
+    fireEvent.click(screen.getAllByRole('button', { name: /umbenennen/ })[0]);
+    expect(screen.getByText('Komponente umbenennen')).toBeInTheDocument();
+    expect(
+      screen.getByText('Der Name ist reine Darstellung — er ändert nie die Steuerung.'),
+    ).toBeInTheDocument();
   });
 
   it('opens on Enter and Space, so it is reachable without a mouse', () => {

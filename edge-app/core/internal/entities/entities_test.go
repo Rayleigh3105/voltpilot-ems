@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -462,5 +463,54 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 	if loaded.FirstOfType(TypeProducer).Guards.Limits.MaxGenerationKw == nil {
 		t.Fatal("round trip lost guard limits")
+	}
+}
+
+// The customer's own name (concept `vp-entity-alias-k1`) needs NO new transport:
+// the registry descriptor already carries `label`, so a rename in the portal
+// reaches the device's own `:8484` topology through the existing push. This
+// pins that path - and the honest degradation when there is no name.
+func TestRegistryPushCarriesTheCustomerNameAndDegradesWithoutOne(t *testing.T) {
+	push := func(label string) []byte {
+		lbl := ""
+		if label != "" {
+			lbl = `"label": ` + strconv.Quote(label) + `,`
+		}
+		return []byte(`{
+		  "schema_version": "1.0",
+		  "tenant_id": "` + pushIdentity.TenantID + `",
+		  "site_id": "` + pushIdentity.SiteID + `",
+		  "device_id": "` + pushIdentity.DeviceID + `",
+		  "revision": "r1",
+		  "entities": [{
+		    "entity_id": "5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f",
+		    "entity_type": "producer",
+		    ` + lbl + `
+		    "capabilities": {"measure": [{"channel": "pv_power_kw", "unit": "kW"}]},
+		    "guards": {"failsafe": {"behavior": "hold"}}
+		  }]
+		}`)
+	}
+
+	named, _, err := ParseRegistryPush(push("Dach Süd"), pushIdentity)
+	if err != nil {
+		t.Fatalf("named push rejected: %v", err)
+	}
+	if got := named.Entities[0].Label; got != "Dach Süd" {
+		t.Fatalf("label = %q, want the customer's own name", got)
+	}
+
+	// Post-Label-Hygiene the cloud composes NO label, so the descriptor simply
+	// omits it. That must stay an empty string the device can fall back from -
+	// never a parse failure and never an invented name.
+	unnamed, skipped, err := ParseRegistryPush(push(""), pushIdentity)
+	if err != nil {
+		t.Fatalf("unnamed push rejected: %v", err)
+	}
+	if len(skipped) != 0 {
+		t.Fatalf("unnamed entity skipped: %v", skipped)
+	}
+	if got := unnamed.Entities[0].Label; got != "" {
+		t.Fatalf("label = %q, want empty (the surfaces derive the role word)", got)
 	}
 }

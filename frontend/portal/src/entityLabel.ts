@@ -27,21 +27,30 @@ import type { Role } from './topology';
  * Anlage" below - and, because the two lists were ordered independently, even
  * crossed (entity WR1 ↔ source "Anlage WR 2").
  *
- * The rule (concept `vp-ui-pv-hist-d8`, "Eine Kiste = ein Name"): the name comes
- * from the name the device carries ON THE EDGE - what the customer typed on
- * `:8484` and therefore recognises - else brand + short model. The ROLE is a
- * subtitle, never mixed into the name. The verbose stored label stays the
- * tooltip.
+ * The rule (concept `vp-ui-pv-hist-d8`, "Eine Kiste = ein Name"): the name the
+ * CUSTOMER recognises wins. That rule is also what moved the customer's own
+ * name to rank 1 (concept `vp-entity-alias-k1`): a name typed in the PORTAL is
+ * even closer to the customer than one typed on the box's own `:8484` page, and
+ * it is the only one they can change from where they are looking.
+ *
+ * ⚠ Rank 1 only works because of the Label-Hygiene migration
+ * (`V20260812000000`): the composition no longer writes a label at all, so
+ * `storedLabel != null` MEANS a human named it. Re-introduce a composed default
+ * label anywhere and a Deye PV row starts reading "Batteriespeicher (…)".
+ *
+ * The ROLE is a subtitle, never mixed into the name. The pre-alias derivation
+ * stays reachable as the tooltip (R2 - support must still be able to tell which
+ * physical box a customer means; see `technicalDeviceName`).
  *
  * Returns null when nothing nameable was supplied, so each caller keeps its own
  * last resort (`shortEntityLabel` → "Gerät", `sourceLabel` → the role word).
  */
 export interface DeviceNameInput {
-  /** The name the device carries on the edge (`/sources` label) - wins. */
+  /** The name the device carries on the edge (`/sources` label). */
   edgeLabel?: string | null;
   brand?: string | null;
   model?: string | null;
-  /** The stored (verbose) v2 entity label - fallback. */
+  /** The v2 entity label = the customer's own name (alias) - wins. */
   storedLabel?: string | null;
   /** The server's type label - the last derivable fallback. */
   typeLabel?: string | null;
@@ -83,14 +92,27 @@ function brandCase(brand: string): string {
 }
 
 export function deviceName(input: DeviceNameInput): string | null {
+  // Rank 1: the customer's own name, VERBATIM. Never stripped - "Dach Süd
+  // (neu)" is what they typed, and after the hygiene migration no composed
+  // parenthetical can reach this branch.
+  const alias = (input.storedLabel ?? '').trim();
+  if (alias) return alias;
+  return technicalDeviceName(input);
+}
+
+/**
+ * The name WITHOUT the customer's alias - the pre-alias derivation: the edge
+ * name, else brand + short model, else the type word. This is R2 made
+ * mechanical: every alias surface keeps it as the row's `title`, so a support
+ * call about "Dach Süd" can still be traced back to the physical box.
+ */
+export function technicalDeviceName(input: DeviceNameInput): string | null {
   const edge = (input.edgeLabel ?? '').trim();
   if (edge) return edge;
   const brand = brandCase((input.brand ?? '').trim());
   const model = shortModel((input.model ?? '').trim());
   const brandModel = [brand, model].filter(Boolean).join(' ');
   if (brandModel) return brandModel;
-  const stored = stripParenthetical((input.storedLabel ?? '').trim());
-  if (stored) return stored;
   const typeLabel = stripParenthetical((input.typeLabel ?? '').trim());
   if (typeLabel) return typeLabel;
   return null;

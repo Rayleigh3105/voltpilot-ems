@@ -1223,6 +1223,11 @@ export function AnlageSeite({
                 ) : null
               }
               showRail={!isPhone}
+              /* Der Stift in der PV-Zusammensetzung — die Abkürzung zum
+                 Umbenennen dort, wo der Wunsch entsteht. Nach dem Speichern
+                 dieselbe Auffrischung wie jeder „Erneut versuchen"-Klick, damit
+                 der neue Name sofort überall steht. */
+              rename={{ siteId: site.id, onRenamed: () => setReloadKey((k) => k + 1) }}
               /* Die Bestätigung ist AM Diagramm ablesbar (Speicher-Knoten),
                  der Bühnenfuß liefert Satz und Grund. */
               controlConfirmed={controlView?.state === 'healthy'}

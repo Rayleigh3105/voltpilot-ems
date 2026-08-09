@@ -339,7 +339,13 @@ function EntityCard({
           <span className={`vp-health-dot vp-health-${healthTone(entity.observed)}`} />
           <div>
             <div className="vp-entity-name">{entity.label ?? entity.typeLabel}</div>
+            {/* R2 on the technical surface: never the alias ALONE. When the
+                customer gave the component a name it is what the top line
+                says, so the line below states that it IS a customer name and
+                keeps the technical identity next to it - otherwise an operator
+                reading a support ticket cannot tell "Dach Süd" from a type. */}
             <div className="vp-entity-sub">
+              {entity.label && <span className="vp-entity-alias">Eigener Name · </span>}
               {entity.typeLabel}
               {entity.control && <span className="vp-entity-control"> · steuerbar</span>}
             </div>

@@ -1011,6 +1011,61 @@ paths:
         "404": { description: Site or entity not found for this tenant. }
         "409": { description: The source is already pinned to another entity (and swap was not requested). }
         "422": { description: The source is not currently reported, its role does not fit the entity's type, or the component is platform-composed. }
+  /api/v1/sites/{siteId}/v2-entities/{entityId}/label:
+    put:
+      tags: [topology]
+      summary: Rename a component (the customer's own name / alias).
+      description: >
+        The customer twin of the admin label PUT (concept vp-entity-alias-k1).
+        The name is what the CUSTOMER calls the thing ("Dach Süd"); since the
+        Label-Hygiene migration (V20260812000000) a non-null label means
+        human-given, so it wins the customer-facing name chain over the name the
+        device carries on its own :8484 page.
+
+
+        R1 - a name is PRESENTATION and never an intervention. Enforced by
+        construction: this route accepts ONLY `label`. There is no type, role,
+        pin or guard field in the request, so nothing can be smuggled through
+        the rename door; assignment and control keep their own gated routes.
+
+
+        EVERY component may be renamed, including the platform-composed
+        battery-hybrid / grid-meter / house-load - re-pin and delete refuse
+        those because they change what a component IS or whether it exists,
+        while a name changes neither. Only their TYPE and ROLE stay ours.
+
+
+        Semantics mirror the admin PUT so there is one label-writing rule: an
+        absent/null label keeps the current name, an EMPTY one clears it - back
+        to the derived name, never an empty label. Newlines/control characters
+        collapse to single spaces and the value is trimmed. Duplicates are
+        allowed on purpose (two arrays may both be called "Dach").
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  maxLength: 200
+                  nullable: true
+                  description: >
+                    The customer's name. Empty string clears it (back to the
+                    derived name); absent/null keeps the current one.
+      responses:
+        "200":
+          description: The renamed entity.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2Entity" }
+        "400": { description: The label exceeds 200 characters. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or entity not found for this tenant. }
   /api/v1/sites/{siteId}/v2-entities/{entityId}:
     delete:
       tags: [topology]

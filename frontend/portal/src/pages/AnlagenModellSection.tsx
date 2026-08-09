@@ -1,13 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { IconName } from '../../designsystem/components/core/Icon';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
-import { Input } from '../../designsystem/components/forms/Input';
 import {
   api,
-  ApiError,
   type Device,
   type Site,
   type SiteEntities,
@@ -32,13 +28,13 @@ import {
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { livenessReference } from '../liveness';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
+import { UmbenennenDialog } from '../components/UmbenennenDialog';
 import {
   KomponenteLoeschenDialog,
   ZuordnungAendernDialog,
 } from '../components/ZuordnungAendern';
 import { InfoTip } from '../components/InfoTip';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { entitiesApi } from '../entitiesApi';
 import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
 import { anlageRoute, hashForRoute } from '../nav';
@@ -249,7 +245,7 @@ export function AnlagenModellSection({
                   selected={selected}
                   highlighted={highlightedComponents}
                   onSelect={setSelected}
-                  onRename={showTechnical ? setRename : undefined}
+                  onRename={setRename}
                   actionsFor={(c) =>
                     componentActions(
                       c,
@@ -310,7 +306,11 @@ export function AnlagenModellSection({
       {rename && (
         <UmbenennenDialog
           siteId={site.id}
-          component={rename}
+          target={{
+            entityId: rename.entityId,
+            alias: rename.alias,
+            derivedLabel: rename.derivedLabel,
+          }}
           onClose={() => setRename(null)}
           onSaved={() => {
             setRename(null);
@@ -573,7 +573,10 @@ function ComponentRow({
         {c.measuredVia && c.reading == null && <span className="vp-am-note">{c.measuredVia}</span>}
       </div>
 
-      {onRename && (
+      {/* Every real component may be named - including the platform-composed
+          battery / grid / house rows. The PV ASPECT row is the one exception
+          (`renameable: false`): it belongs to its carrier and follows its name. */}
+      {onRename && c.renameable && (
         <button
           type="button"
           className="vp-am-pencil"
@@ -629,75 +632,3 @@ function ComponentRow({
   );
 }
 
-/**
- * Umbenennen — the technical-layer rename (the label PUT is admin-only today;
- * the customer twin is the one piece of backend work the design names, so the
- * pencil renders only behind `showTechnicalLayer()`).
- */
-function UmbenennenDialog({
-  siteId,
-  component,
-  onClose,
-  onSaved,
-}: {
-  siteId: string;
-  component: PlantComponent;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [label, setLabel] = useState(component.label);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save() {
-    setBusy(true);
-    setError(null);
-    try {
-      await entitiesApi.update(siteId, component.entityId, { label: label.trim() || null });
-      onSaved();
-    } catch (e) {
-      setError(
-        e instanceof ApiError && e.message
-          ? e.message
-          : 'Der Name konnte nicht gespeichert werden.',
-      );
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      title="Komponente umbenennen"
-      icon={<Icon name="pencil" size={20} />}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Abbrechen
-          </Button>
-          <Button onClick={save} disabled={busy}>
-            Speichern
-          </Button>
-        </>
-      }
-    >
-      <div className="vp-form-stack">
-        <Input
-          label="Name der Komponente"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder={component.label}
-        />
-        <p className="vp-note vp-zuordnen-hint">
-          Der Name ist reine Darstellung — er ändert nie die Steuerung.
-        </p>
-        {error && (
-          <div className="vp-alert vp-alert-err" role="alert">
-            {error}
-          </div>
-        )}
-      </div>
-    </Drawer>
-  );
-}
