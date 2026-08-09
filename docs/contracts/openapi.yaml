@@ -3838,6 +3838,50 @@ paths:
               schema: { $ref: "#/components/schemas/ConsumerSchedule" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/consumer-status:
+    get:
+      tags: [consumer]
+      summary: Edge-reported live states of the site's consumers.
+      description: >
+        Verbrauchssteuerung Inkrement 3 (D9/§15.1, a §11 status excerpt): the
+        device heartbeat's additive consumers block, ingested by its own
+        sibling listener into consumer_runtime_status (one row per entity,
+        replaced wholesale per heartbeat; unknown state/reason words are
+        discarded at ingest, never stored). An EMPTY list is the honest
+        no-evidence state ("Zustand nicht bestätigt") - the portal then
+        renders byte-identical to before. Tenant-scoped via RLS (foreign
+        site = 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Reported consumer states (possibly empty).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConsumerRuntimeStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/consumers/{id}/status:
+    get:
+      tags: [consumer]
+      summary: One consumer's edge-reported live state.
+      description: >
+        The single-entity form of consumer-status. 204 without evidence -
+        never a fabricated live state.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The reported state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsumerRuntimeStatus" }
+        "204": { description: No reported state yet ("Zustand nicht bestätigt"). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
 components:
   securitySchemes:
     bearerAuth:
@@ -3897,12 +3941,52 @@ components:
           description: Increment 1 is always "not_activated" ("Steuerung noch nicht aktiviert").
         hasDraftPolicy: { type: boolean }
         draftPolicyVersion: { type: integer, nullable: true }
+        minOnSeconds:
+          type: integer
+          nullable: true
+          description: >
+            Cycle-guard minimum on-time (Inkrement 3, §13.1) - enforced by the
+            EDGE's stateful cycle guard; travels to the device in the entity
+            registry push (guards.limits.min_on_seconds). Null = axis inactive.
+        minOffSeconds: { type: integer, nullable: true, description: Cycle-guard minimum off-time. }
+        maxStartsPerDay: { type: integer, nullable: true, description: Cycle-guard start budget per site-local day. }
+    ConsumerRuntimeStatus:
+      type: object
+      description: >
+        The edge-reported live state of one consumer entity (heartbeat
+        consumers block, table consumer_runtime_status). confirmed is
+        TRI-STATE - null means no readback evidence ("Ausführung nicht
+        bestätigt" territory); actualKw null = not measured (never a
+        fabricated 0).
+      properties:
+        entityId: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [disconnected, offline, ready, running_forced, running_optimized,
+                 waiting, fulfilled, clamped, missed, unknown]
+          description: §14.13 vocabulary; the edge claims only what it can know.
+        reasonCode:
+          type: string
+          nullable: true
+          description: >
+            §15 vocabulary incl. the cycle-guard extension (guard_min_on,
+            guard_min_off, guard_max_starts, guard_ramp, guard_rated_power,
+            readback_mismatch, device_offline, plan_stale, ...). The portal
+            maps it through a pure, tested table - never grep German text.
+        actualKw: { type: number, nullable: true }
+        confirmed: { type: boolean, nullable: true }
+        runtimeSecondsToday: { type: integer, nullable: true }
+        startsToday: { type: integer, nullable: true }
+        reportedAt: { type: string, format: date-time }
     CreateConsumerRequest:
       type: object
       required: [type, ratedPowerKw]
       properties:
         type: { type: string, example: wallbox }
         name: { type: string }
+        minOnSeconds: { type: integer, nullable: true }
+        minOffSeconds: { type: integer, nullable: true }
+        maxStartsPerDay: { type: integer, nullable: true }
         ratedPowerKw: { type: number, example: 11.0 }
         controlKind: { type: string, enum: [on_off, stepped, continuous] }
         levelsKw: { type: array, items: { type: number } }
@@ -3933,6 +4017,9 @@ components:
         failsafe: { type: string, enum: [off, release] }
         enabled: { type: boolean }
         expectedVersion: { type: integer }
+        minOnSeconds: { type: integer, nullable: true, description: Cycle guard - 0 clears the bound. }
+        minOffSeconds: { type: integer, nullable: true, description: Cycle guard - 0 clears the bound. }
+        maxStartsPerDay: { type: integer, nullable: true, description: Cycle guard - 0 clears the bound. }
     ConsumerOptions:
       type: object
       description: Capability-/context-filtered inputs for the assistant question tree.

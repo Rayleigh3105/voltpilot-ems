@@ -237,3 +237,24 @@
   text-align: center;
   padding: 8px 0;
 }
+
+/* Inkrement 3: the edge-reported live status line (state · reason). Renders
+   only once a device reported evidence; the dot tone is never the only
+   signal - the words carry the state. */
+.vp-vb-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.85em;
+  color: var(--vp-text-muted, #5b6472);
+}
+.vp-vb-live .vp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-border, #cdd3db);
+  flex: none;
+}
+.vp-vb-live-ok .vp-dot { background: var(--vp-success, #2e9e5b); }
+.vp-vb-live-warn .vp-dot { background: var(--vp-warning, #d98a1f); }

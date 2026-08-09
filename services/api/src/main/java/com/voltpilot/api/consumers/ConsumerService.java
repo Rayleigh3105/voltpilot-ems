@@ -76,17 +76,20 @@ public class ConsumerService {
             BigDecimal resolutionKw, JsonNode powerRangesKw, String storageRelation,
             String defaultGridEnergyPolicy, boolean allowStorageDischarge, String failsafe,
             boolean enabled, long version, String connection, String edgeSourceId,
-            String controlActivation, boolean hasDraftPolicy, Integer draftPolicyVersion) {}
+            String controlActivation, boolean hasDraftPolicy, Integer draftPolicyVersion,
+            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {}
 
     public record CreateConsumerRequest(String type, String name, BigDecimal ratedPowerKw,
             String controlKind, JsonNode levelsKw, BigDecimal minPowerKw, BigDecimal resolutionKw,
             JsonNode powerRangesKw, String storageRelation, String defaultGridEnergyPolicy,
-            Boolean allowStorageDischarge, String failsafe, String edgeSourceId) {}
+            Boolean allowStorageDischarge, String failsafe, String edgeSourceId,
+            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {}
 
     public record PatchConsumerRequest(String name, BigDecimal ratedPowerKw, String controlKind,
             JsonNode levelsKw, BigDecimal minPowerKw, BigDecimal resolutionKw, JsonNode powerRangesKw,
             String storageRelation, String defaultGridEnergyPolicy, Boolean allowStorageDischarge,
-            String failsafe, Boolean enabled, Long expectedVersion) {}
+            String failsafe, Boolean enabled, Long expectedVersion,
+            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {}
 
     public record TypeOption(String type, String label, List<String> controlKinds,
             String defaultFailsafe, boolean releaseAllowed, List<String> intents) {}
@@ -197,6 +200,10 @@ public class ConsumerService {
                     "Dieses Gerät ist bereits einem Verbraucher zugeordnet.");
         }
 
+        Integer minOn = validatedCycleSeconds(req.minOnSeconds(), "Mindestlaufzeit");
+        Integer minOff = validatedCycleSeconds(req.minOffSeconds(), "Mindestpause");
+        Integer maxStarts = validatedMaxStarts(req.maxStartsPerDay());
+
         EntityRow entity = entities.createEntity(siteId, req.type(), name, rated, null, null);
         UUID entityId = entity.id();
 
@@ -207,9 +214,41 @@ public class ConsumerService {
         repo.insertProfile(entityId, TenantContext.get(), siteId, controlKind, rated,
                 req.minPowerKw(), toJsonText(req.levelsKw()), req.resolutionKw(),
                 toJsonText(req.powerRangesKw()), storageRelation, gridPolicy,
-                Boolean.TRUE.equals(req.allowStorageDischarge()), failsafe);
+                Boolean.TRUE.equals(req.allowStorageDischarge()), failsafe,
+                minOn, minOff, maxStarts);
+
+        // createEntity pushed the registry BEFORE the profile existed; the
+        // cycle-guard limits ride the push (D-9), so push again when they are
+        // set - the edge's temporal guard must know them from the start.
+        if (minOn != null || minOff != null || maxStarts != null) {
+            entities.pushRegistryBestEffort(siteId);
+        }
 
         return get(siteId, entityId);
+    }
+
+    /**
+     * Cycle-guard bounds (§4.2/§13.1): optional, non-negative, sanity-capped
+     * (a week of seconds). 0 clears the bound (no invented protection).
+     */
+    private static Integer validatedCycleSeconds(Integer v, String label) {
+        if (v == null) {
+            return null;
+        }
+        if (v < 0 || v > 7 * 86400) {
+            throw badRequest("Die " + label + " muss zwischen 0 und 604800 Sekunden liegen.");
+        }
+        return v == 0 ? null : v;
+    }
+
+    private static Integer validatedMaxStarts(Integer v) {
+        if (v == null) {
+            return null;
+        }
+        if (v < 0 || v > 1000) {
+            throw badRequest("Die maximale Anzahl Starts pro Tag muss zwischen 0 und 1000 liegen.");
+        }
+        return v == 0 ? null : v;
     }
 
     // --- patch ---------------------------------------------------------------
@@ -262,16 +301,32 @@ public class ConsumerService {
         boolean enabled = req.enabled() != null ? req.enabled() : cur.enabled();
         boolean allowDischarge = req.allowStorageDischarge() != null
                 ? req.allowStorageDischarge() : cur.allowStorageDischarge();
+        // PATCH semantics like every other field: absent keeps the stored
+        // value; an explicit 0 clears the bound (validatedCycleSeconds).
+        Integer minOn = req.minOnSeconds() != null
+                ? validatedCycleSeconds(req.minOnSeconds(), "Mindestlaufzeit") : cur.minOnSeconds();
+        Integer minOff = req.minOffSeconds() != null
+                ? validatedCycleSeconds(req.minOffSeconds(), "Mindestpause") : cur.minOffSeconds();
+        Integer maxStarts = req.maxStartsPerDay() != null
+                ? validatedMaxStarts(req.maxStartsPerDay()) : cur.maxStartsPerDay();
+        boolean cycleChanged = !java.util.Objects.equals(minOn, cur.minOnSeconds())
+                || !java.util.Objects.equals(minOff, cur.minOffSeconds())
+                || !java.util.Objects.equals(maxStarts, cur.maxStartsPerDay());
         long expected = req.expectedVersion() != null ? req.expectedVersion() : cur.version();
         long newVersion = repo.updateProfile(siteId, entityId, expected, controlKind, rated,
                 minPower, toJsonText(levels), resolution, toJsonText(ranges), storageRelation,
-                gridPolicy, allowDischarge, failsafe, enabled);
+                gridPolicy, allowDischarge, failsafe, enabled, minOn, minOff, maxStarts);
         if (newVersion < 0) {
             throw versionConflict(cur.version());
         }
         if (req.name() != null && !req.name().isBlank()) {
             jdbc.update("UPDATE measurement_point SET label = ? WHERE site_id = ? AND id = ?",
                     req.name().trim(), siteId, entityId);
+        }
+        // The cycle-guard limits ride the registry push (D-9): a change must
+        // reach the device, or its temporal guard enforces yesterday's bounds.
+        if (cycleChanged) {
+            entities.pushRegistryBestEffort(siteId);
         }
         return get(siteId, entityId);
     }
@@ -350,7 +405,8 @@ public class ConsumerService {
                 parse(row.levelsKwJson()), row.resolutionKw(), parse(row.powerRangesKwJson()),
                 row.storageRelation(), row.defaultGridEnergyPolicy(), row.allowStorageDischarge(),
                 row.failsafe(), row.enabled(), row.version(), connection, row.edgeSourceId(),
-                "not_activated", maxPolicy > 0, maxPolicy > 0 ? maxPolicy : null);
+                "not_activated", maxPolicy > 0, maxPolicy > 0 ? maxPolicy : null,
+                row.minOnSeconds(), row.minOffSeconds(), row.maxStartsPerDay());
     }
 
     /** control kind => the actuate commands that back it (the §16 capability map). */

@@ -139,7 +139,7 @@ func TestHeartbeatCarriesTheVersionWithoutAnyFlowsBlock(t *testing.T) {
 
 	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
 		&UpdateSummary{Backend: UpdateBackendCompose,
-			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}); err != nil {
+			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,7 +186,7 @@ func TestHeartbeatCarriesTheVersionAlongsideTheFlowsBlock(t *testing.T) {
 	}
 	if err := link.PublishStatus("schedule", nil, nil, nil, flows, nil, nil, nil,
 		&UpdateSummary{Backend: UpdateBackendCompose,
-			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}); err != nil {
+			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -210,7 +210,7 @@ func TestHeartbeatOmitsAnUnknownVersionInsteadOfSendingAnEmptyOne(t *testing.T) 
 	sink := startStatusSink(t)
 	link := connectedLink(t, sink, "")
 
-	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 

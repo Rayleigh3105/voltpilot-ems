@@ -50,6 +50,13 @@ export const consumersApi = {
   options: (siteId: string) =>
     request<ConsumerOptions>(`/api/v1/sites/${siteId}/consumer-options`),
   list: (siteId: string) => request<Consumer[]>(base(siteId)),
+  /**
+   * Edge-reported live states (Inkrement 3, D9). An empty list is the honest
+   * no-evidence state - the surface then renders exactly like before.
+   */
+  status: (siteId: string) =>
+    request<import('./status').ConsumerRuntimeStatus[]>(
+      `/api/v1/sites/${siteId}/consumer-status`),
   get: (siteId: string, id: string) => request<Consumer>(`${base(siteId)}/${id}`),
   create: (siteId: string, body: CreateConsumerBody) =>
     request<Consumer>(base(siteId), { method: 'POST', body: JSON.stringify(body) }),

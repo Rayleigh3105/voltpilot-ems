@@ -800,7 +800,10 @@ public class EntityRegistryService {
             java.util.Set.of("self-consumption", "off", "release", "measure-only");
     private static final java.util.Set<String> NUMERIC_LIMIT_KEYS = java.util.Set.of(
             "max_charge_kw", "max_discharge_kw", "soc_min_pct", "soc_max_pct",
-            "max_generation_kw", "max_consumption_kw");
+            "max_generation_kw", "max_consumption_kw",
+            // The consumer cycle-guard limits (Verbrauchssteuerung Inkrement 3,
+            // edge-entity.schema.json guard_limits - additive).
+            "min_on_seconds", "min_off_seconds", "max_starts_per_day", "ramp_kw_per_min");
 
     /** Contract-shape validation of an explicit capabilities override. */
     private ObjectNode validatedCapabilities(JsonNode node) {
@@ -889,14 +892,42 @@ public class EntityRegistryService {
         push.put("device_id", deviceId.toString());
         push.put("revision", now.toString());
         push.put("published_at", now.toString());
+        // The consumer cycle-guard limits (min-on/min-off/starts per day) live
+        // in consumer_profile - the ONE profile truth - and ride the push as
+        // guards.limits fields (D-9: limits live in registry config, never in
+        // plans). Merged at COMPOSE time so a profile change re-pushes cleanly.
+        java.util.Map<UUID, EntityRegistryRepository.ConsumerCycleLimits> cycle =
+                repo.consumerCycleLimits(siteId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
-            entities.add(descriptor(row));
+            ObjectNode d = descriptor(row);
+            EntityRegistryRepository.ConsumerCycleLimits cl = cycle.get(row.id());
+            if (cl != null) {
+                mergeCycleLimits(d, cl);
+            }
+            entities.add(d);
         }
         try {
             return mapper.writeValueAsBytes(push);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("cannot serialize v2 entity registry push", e);
+        }
+    }
+
+    private static void mergeCycleLimits(ObjectNode descriptor,
+            EntityRegistryRepository.ConsumerCycleLimits cl) {
+        JsonNode g = descriptor.get("guards");
+        ObjectNode guards = g instanceof ObjectNode on ? on : descriptor.putObject("guards");
+        JsonNode l = guards.get("limits");
+        ObjectNode limits = l instanceof ObjectNode on2 ? on2 : guards.putObject("limits");
+        if (cl.minOnSeconds() != null) {
+            limits.put("min_on_seconds", cl.minOnSeconds());
+        }
+        if (cl.minOffSeconds() != null) {
+            limits.put("min_off_seconds", cl.minOffSeconds());
+        }
+        if (cl.maxStartsPerDay() != null) {
+            limits.put("max_starts_per_day", cl.maxStartsPerDay());
         }
     }
 

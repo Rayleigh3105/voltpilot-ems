@@ -3,11 +3,20 @@ package com.voltpilot.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
+import com.voltpilot.api.consumers.ConsumerRuntimeStatusListener;
+import com.voltpilot.api.entities.EntityRegistryPublisher;
+import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
+import com.voltpilot.api.repo.DeviceRepository;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
@@ -80,6 +89,33 @@ class ConsumerApiTest {
 
     @Autowired
     TestRestTemplate rest;
+
+    @Autowired
+    DeviceRepository deviceRepository;
+
+    @Autowired
+    ConsumerRuntimeStatusRepository runtimeStatusRepository;
+
+    /**
+     * Records every registry push so the test can assert the cycle-guard
+     * limits actually ride it (D-9). Without this bean the provider is empty
+     * and composePush's payload is discarded unchecked.
+     */
+    @TestConfiguration
+    static class RecordingPublisherConfig {
+        static final List<byte[]> PUSHES = new CopyOnWriteArrayList<>();
+
+        @Bean
+        EntityRegistryPublisher entityRegistryPublisher() {
+            EntityRegistryPublisher pub = Mockito.mock(EntityRegistryPublisher.class);
+            Mockito.when(pub.publishRegistry(Mockito.any(), Mockito.any(), Mockito.any(),
+                    Mockito.any())).thenAnswer(inv -> {
+                        PUSHES.add(inv.getArgument(3));
+                        return true;
+                    });
+            return pub;
+        }
+    }
 
     @Test
     void optionsAreCapabilityAndContextFiltered() {
@@ -316,6 +352,88 @@ class ConsumerApiTest {
         assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/consumer-schedule"),
                 HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void consumersHeartbeatIsIngestedTenantScopedAndCycleLimitsRideTheRegistryPush() {
+        String tok = token("demo", "demo");
+        String device = "00000000-0000-0000-0000-000000000003"; // BERLIN seed inverter
+        Map<String, Object> c = create(tok, Map.of(
+                "type", "heating-rod", "name", "Heizstab Statusbad",
+                "ratedPowerKw", 3.0, "controlKind", "on_off",
+                "minOnSeconds", 120, "minOffSeconds", 180, "maxStartsPerDay", 8));
+        String id = (String) c.get("id");
+        try {
+            // The CRUD echoes the cycle-guard bounds ...
+            assertThat(c.get("minOnSeconds")).isEqualTo(120);
+            assertThat(c.get("minOffSeconds")).isEqualTo(180);
+            assertThat(c.get("maxStartsPerDay")).isEqualTo(8);
+            // ... and they ride the registry push as guards.limits (D-9), so
+            // the edge's temporal cycle guard learns them.
+            assertThat(RecordingPublisherConfig.PUSHES).isNotEmpty();
+            String push = new String(RecordingPublisherConfig.PUSHES
+                    .get(RecordingPublisherConfig.PUSHES.size() - 1), StandardCharsets.UTF_8);
+            assertThat(push).contains(id)
+                    .contains("\"min_on_seconds\":120")
+                    .contains("\"min_off_seconds\":180")
+                    .contains("\"max_starts_per_day\":8");
+
+            // Honest empty state before any heartbeat: empty list, 204 single.
+            ResponseEntity<List<Map<String, Object>>> empty = rest.exchange(
+                    url("/api/v1/sites/" + BERLIN_SITE + "/consumer-status"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+            assertThat(empty.getBody()).isEmpty();
+            assertThat(rest.exchange(
+                    url("/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id + "/status"),
+                    HttpMethod.GET, new HttpEntity<>(bearer(tok)), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+            // A heartbeat consumers block arrives (the pure listener parse +
+            // the MQTT transport are proven elsewhere; here the REAL repos +
+            // RLS carry it): known entity kept, a foreign id and an unknown
+            // state word discarded.
+            ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
+                    "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository);
+            String topic = "ems/00000000-0000-0000-0000-000000000001/" + BERLIN_SITE + "/"
+                    + device + "/status";
+            String hb = "{\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                    + "\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + device + "\","
+                    + "\"ts\":\"2026-08-10T12:00:00Z\",\"consumers\":{"
+                    + "\"" + id + "\":{\"state\":\"waiting\",\"reason_code\":\"guard_min_off\","
+                    + "\"requirement_progress\":{\"runtime_seconds_today\":600,\"starts_today\":2}},"
+                    + "\"99999999-0000-0000-0000-000000000009\":{\"state\":\"waiting\"}}}";
+            listener.handle(topic, hb.getBytes(StandardCharsets.UTF_8));
+
+            ResponseEntity<List<Map<String, Object>>> list = rest.exchange(
+                    url("/api/v1/sites/" + BERLIN_SITE + "/consumer-status"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+            assertThat(list.getBody()).hasSize(1);
+            Map<String, Object> st = list.getBody().get(0);
+            assertThat(st.get("entityId")).isEqualTo(id);
+            assertThat(st.get("state")).isEqualTo("waiting");
+            assertThat(st.get("reasonCode")).isEqualTo("guard_min_off");
+            assertThat(st.get("confirmed")).isNull(); // tri-state: no evidence
+            assertThat(st.get("runtimeSecondsToday")).isEqualTo(600);
+            assertThat(st.get("startsToday")).isEqualTo(2);
+
+            // Wholesale replace: the next heartbeat's truth wins outright.
+            String hb2 = hb.replace("\"state\":\"waiting\",\"reason_code\":\"guard_min_off\",",
+                    "\"state\":\"running_optimized\",\"actual_kw\":2.9,\"confirmed\":true,");
+            listener.handle(topic, hb2.getBytes(StandardCharsets.UTF_8));
+            Map<String, Object> st2 = getMap(
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id + "/status", tok);
+            assertThat(st2.get("state")).isEqualTo("running_optimized");
+            assertThat(st2.get("reasonCode")).isNull();
+            assertThat(st2.get("actualKw")).isEqualTo(2.9);
+            assertThat(st2.get("confirmed")).isEqualTo(Boolean.TRUE);
+
+            // RLS: tenant B gets 404 on the same routes, never data.
+            assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/consumer-status"),
+                    HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                    String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            delete(tok, id);
+        }
     }
 
     // --- helpers -------------------------------------------------------------

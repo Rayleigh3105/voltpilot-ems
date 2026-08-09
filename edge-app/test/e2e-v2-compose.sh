@@ -16,8 +16,19 @@
 #         an AGED redelivery is stale -> failsafe + producer release (P5)
 #   the v1 telemetry path runs untouched alongside (P7).
 #
+# Verbrauchssteuerung Inkrement 3 (§23 vertical slice, plan-based half): the
+# generic CONSUMER SIMULATOR (cmd/vp-consumer-sim - wallbox/heat-rod/pump as
+# configurations of ONE model) joins the local bus and proves
+#   plan -> desired -> arbitration -> consumer guard -> command -> readback:
+#   C1 fixed must-run window executes + confirms + ends on time,
+#   C2 power_ranges: an in-gap setpoint never lands between the ranges,
+#   C3 the cycle guard holds a restart during the Mindestpause (honest reason
+#      in the heartbeat consumers block), then releases,
+#   C4 plan staleness withdraws consumer desires -> failsafe off / release.
+#
 # Own compose project + high host ports (never touches a live stack).
-# Requires Docker + node (flowc compiles the rig flow at test time).
+# Requires Docker + node (flowc compiles the rig flow at test time) + go
+# (builds the consumer simulator).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -36,8 +47,13 @@ BATT="batt-main"
 PV="pv-sim"
 WORK="$(mktemp -d)"
 
+SIM_PIDS=()
+
 cleanup() {
   echo "--- cleanup"
+  for pid in "${SIM_PIDS[@]:-}"; do
+    kill "$pid" >/dev/null 2>&1 || true
+  done
   "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$WORK"
 }
@@ -54,6 +70,7 @@ bus_pub()   { docker run --rm -i --network "$NET" eclipse-mosquitto:2 mosquitto_
 bus_sub()   { docker run --rm --network "$NET" eclipse-mosquitto:2 mosquitto_sub -h core -p 1883 "$@"; }
 
 command -v node >/dev/null 2>&1 || fail "node is required (flowc compiles the rig flow)"
+command -v go >/dev/null 2>&1 || fail "go is required (builds the consumer simulator)"
 
 # --- Rig fixtures -------------------------------------------------------------
 
@@ -135,7 +152,9 @@ const graph = {
   ],
   edges: [
     { id: 'e1', from: { node: 'w1', port: 'active' }, to: { node: 'i1', port: 'condition' } },
-    { id: 'e2', from: { node: 'i1', port: 'value' }, to: { node: 'c1', port: 'value' } },
+    // Since #519 the control node's `value` input is BOOL (Ein/Aus); a numeric
+    // vp.logic.if output wires the `setpoint` input (the guided-setpoint rule).
+    { id: 'e2', from: { node: 'i1', port: 'value' }, to: { node: 'c1', port: 'setpoint' } },
   ],
   triggers: [{ id: 't1', kind: 'interval', every_s: 20 }],
 };
@@ -306,8 +325,216 @@ for i in $(seq 1 30); do
 done
 pass "aged plan stale immediately: producer released (retained clear), flow desire resumed the battery"
 
+# =============================================================================
+# Verbrauchssteuerung Inkrement 3: the consumer slice (§23, plan-based half).
+# =============================================================================
+WB="wb-rig"; ROD="rod-rig"; PUMP="pump-rig"
+
+# Registry rev 2: the pilot entities PLUS three consumers. The heat rod
+# carries the cycle-guard bounds (min_off 45 s), sourced from consumer_profile
+# via the registry push in production (D-9).
+registry_push_consumers() {
+  cat <<JSON
+{"schema_version":"1.0","tenant_id":"$TENANT","site_id":"$SITE","device_id":"$DEVICE",
+ "revision":"rig-2","published_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "entities":[
+  {"entity_id":"$BATT","entity_type":"battery-hybrid",
+   "capabilities":{"measure":[{"channel":"soc_pct","unit":"%"}],
+     "actuate":[{"command":"setpoint_kw","min":-30,"max":30},{"command":"limit_kw"}]},
+   "guards":{"limits":{"max_charge_kw":30,"max_discharge_kw":30,"soc_min_pct":5,"soc_max_pct":95},
+     "failsafe":{"behavior":"self-consumption"}}},
+  {"entity_id":"$PV","entity_type":"producer",
+   "capabilities":{"measure":[{"channel":"pv_power_kw","unit":"kW"}],
+     "actuate":[{"command":"limit_kw","max":27}]},
+   "guards":{"limits":{"max_generation_kw":27},"failsafe":{"behavior":"release"}}},
+  {"entity_id":"$WB","entity_type":"wallbox","label":"Wallbox Rig",
+   "capabilities":{"measure":[{"channel":"power_kw","unit":"kW"},{"channel":"vehicle_connected"}],
+     "actuate":[{"command":"setpoint_kw","min":0,"max":11},{"command":"on_off"}]},
+   "guards":{"limits":{"max_consumption_kw":11},"failsafe":{"behavior":"release"}}},
+  {"entity_id":"$ROD","entity_type":"heating-rod","label":"Heizstab Rig",
+   "capabilities":{"measure":[{"channel":"power_kw","unit":"kW"}],
+     "actuate":[{"command":"on_off"}]},
+   "guards":{"limits":{"max_consumption_kw":6,"min_off_seconds":45},
+     "failsafe":{"behavior":"off"}}},
+  {"entity_id":"$PUMP","entity_type":"generic-load","label":"Pumpe Rig",
+   "capabilities":{"measure":[{"channel":"power_kw","unit":"kW"}],
+     "actuate":[{"command":"on_off"}]},
+   "guards":{"limits":{"max_consumption_kw":2.2},"failsafe":{"behavior":"off"}}}
+ ]}
+JSON
+}
+
+now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# A 1-minute-slot consumer plan whose first slot starts NOW ($1 = entities
+# JSON, $2 = generated_at) - short slots so "the Pflichtlauf ends on time" is
+# provable in rig time.
+plan_v2c() {
+  cat <<JSON
+{"schema_version":"2.0","tenant_id":"$TENANT","site_id":"$SITE","device_id":"$DEVICE",
+ "plan_id":"8d0f7780-8536-41ef-a55c-f18fd2f01bf8","generated_at":"$2",
+ "horizon_slots":2,"slot_minutes":1,
+ "entities":[$1]}
+JSON
+}
+
+echo "--- build + start the generic consumer simulators (wallbox/heat-rod/pump)"
+(cd core && go build -o "$WORK/vp-consumer-sim" ./cmd/vp-consumer-sim) \
+  || fail "consumer simulator build failed"
+BUS_URL="tcp://127.0.0.1:${VP_BUS_PORT}"
+"$WORK/vp-consumer-sim" --bus "$BUS_URL" --entity "$WB" --preset wallbox \
+  --telemetry-interval 5s > "$WORK/sim-wb.log" 2>&1 &
+SIM_PIDS+=($!)
+"$WORK/vp-consumer-sim" --bus "$BUS_URL" --entity "$ROD" --preset heating-rod \
+  --telemetry-interval 5s > "$WORK/sim-rod.log" 2>&1 &
+SIM_PIDS+=($!)
+"$WORK/vp-consumer-sim" --bus "$BUS_URL" --entity "$PUMP" --preset pump \
+  --telemetry-interval 5s > "$WORK/sim-pump.log" 2>&1 &
+SIM_PIDS+=($!)
+sleep 3
+
+echo "--- push registry rev 2 (consumers join) and wait for the ack"
+registry_push_consumers | cloud_pub -t "$T_BASE/v2/entities" -q 1 -r -s
+for i in $(seq 1 10); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q '"revision":"rig-2"' && break
+  [ "$i" = 10 ] && fail "heartbeat never acked registry revision rig-2"
+done
+pass "consumer entities applied (revision rig-2)"
+
+echo "--- C1: fixed must-run window (1-min slot): rod ON + wallbox 3.0 kW execute and CONFIRM"
+SLOT_START="$(now_iso)"
+plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"on_off\":true}}]},
+ {\"entity_id\":\"$WB\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"setpoint_kw\":3.0}}]}" \
+  "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 30) || fail "no retained rod command"
+echo "$CMD" | grep -q '"on_off":true' || fail "rod command wrong: $CMD"
+echo "$CMD" | grep -q '"source":"plan"' || fail "rod command source wrong: $CMD"
+for i in $(seq 1 15); do
+  grep -q 'applied on=true 6.000 kW mismatch=false' "$WORK/sim-rod.log" && break
+  [ "$i" = 15 ] && { cat "$WORK/sim-rod.log"; fail "rod sim never executed the must-run"; }
+  sleep 2
+done
+for i in $(seq 1 15); do
+  grep -q 'applied on=true 3.000 kW mismatch=false' "$WORK/sim-wb.log" && break
+  [ "$i" = 15 ] && { cat "$WORK/sim-wb.log"; fail "wallbox sim never executed 3.0 kW"; }
+  sleep 2
+done
+# The heartbeat consumers block carries state + readback CONFIRMATION (D9).
+for i in $(seq 1 12); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q "\"$ROD\":{\"state\":\"running_optimized\"" \
+    && echo "$HB" | grep -q '"confirmed":true' && break
+  [ "$i" = 12 ] && { echo "$HB"; fail "heartbeat consumers block never confirmed the rod run"; }
+done
+pass "must-run executes at the sim, readback confirms, heartbeat consumers block reports it"
+
+echo "--- C1b: the Pflichtlauf ENDS ON TIME (no follow-up slot -> failsafe off after the minute)"
+for i in $(seq 1 30); do
+  CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 15) || CMD=""
+  echo "$CMD" | grep -q '"on_off":false' && echo "$CMD" | grep -q '"source":"failsafe"' && break
+  [ "$i" = 30 ] && { echo "$CMD"; fail "rod never fell to failsafe off after its window"; }
+  sleep 4
+done
+# The switch-off ARMED the rod's 45 s Mindestpause; C3 measures against it.
+ROD_OFF_AT=$(date +%s)
+pass "the window ended: rod fell to its off failsafe"
+
+echo "--- C2: power_ranges - a 4.0 kW wish (in the 3.7..4.2 gap) NEVER lands between the ranges"
+SLOT_START="$(now_iso)"
+plan_v2c "{\"entity_id\":\"$WB\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"setpoint_kw\":4.0}}]}" \
+  "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+for i in $(seq 1 15); do
+  grep -q 'applied on=true 3.700 kW mismatch=true' "$WORK/sim-wb.log" && break
+  [ "$i" = 15 ] && { cat "$WORK/sim-wb.log"; fail "wallbox sim never snapped the gap wish to 3.7"; }
+  sleep 2
+done
+grep -Eq 'applied on=true (3\.8|3\.9|4\.0)' "$WORK/sim-wb.log" \
+  && fail "a value INSIDE the range gap reached the device"
+for i in $(seq 1 12); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q '"confirmed":false' \
+    && echo "$HB" | grep -q '"reason_code":"readback_mismatch"' && break
+  [ "$i" = 12 ] && { echo "$HB"; fail "the range snap was never reported as readback_mismatch"; }
+done
+pass "gap wish snapped DOWN to 3.7, honest confirmed=false + readback_mismatch in the heartbeat"
+
+echo "--- C3: cycle guard - a restart during the 45 s Mindestpause is HELD with the honest reason"
+# The C1b switch-off armed the pause; wait it out so this scenario starts from
+# a CLEAN baseline (its own off->on toggle below then arms a fresh pause).
+ELAPSED=$(( $(date +%s) - ROD_OFF_AT ))
+if [ "$ELAPSED" -lt 50 ]; then
+  echo "    (waiting out the residual Mindestpause: $((50 - ELAPSED))s)"
+  sleep $((50 - ELAPSED))
+fi
+SLOT_START="$(now_iso)"
+plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"on_off\":true}}]}" \
+  "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+for i in $(seq 1 15); do
+  CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 15) || CMD=""
+  echo "$CMD" | grep -q '"on_off":true' && break
+  if [ "$i" = 15 ]; then
+    echo "retained rod command: $CMD"
+    "${COMPOSE[@]}" logs core 2>/dev/null | tail -30
+    fail "rod never restarted for the cycle-guard scenario"
+  fi
+  sleep 2
+done
+# Off, then IMMEDIATELY on again: the min-off pause must hold the restart.
+SLOT_START="$(now_iso)"
+plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"on_off\":false}}]}" \
+  "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+sleep 4
+SLOT_START="$(now_iso)"
+plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"on_off\":true}}]}" \
+  "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+sleep 6
+CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 15) || fail "no rod command during the hold"
+echo "$CMD" | grep -q '"on_off":false' || { echo "$CMD"; fail "Mindestpause violated: rod switched on"; }
+for i in $(seq 1 10); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q '"reason_code":"guard_min_off"' \
+    && echo "$HB" | grep -q "\"$ROD\":{\"state\":\"waiting\"" && break
+  [ "$i" = 10 ] && { echo "$HB"; fail "heartbeat never named the cycle-guard hold (guard_min_off)"; }
+done
+# After the pause the STANDING wish goes through - no flapping in between.
+# Re-publish a fresh 1-min slot every few polls so the wish outlives its short
+# slot while the pause runs down (the production cadence is a 15-min slot).
+for i in $(seq 1 30); do
+  CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 15) || CMD=""
+  echo "$CMD" | grep -q '"on_off":true' && break
+  if [ $((i % 4)) = 0 ]; then
+    SLOT_START="$(now_iso)"
+    plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"on_off\":true}}]}" \
+      "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+  fi
+  if [ "$i" = 30 ]; then
+    echo "retained rod command: $CMD"
+    "${COMPOSE[@]}" logs core 2>/dev/null | tail -30
+    fail "the held restart never released after the Mindestpause"
+  fi
+  sleep 4
+done
+pass "cycle guard held the restart (waiting - guard_min_off in the heartbeat), then released"
+
+echo "--- C4: plan staleness withdraws consumer desires - rod failsafe OFF, wallbox RELEASE (cleared)"
+plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$(now_iso)\",\"commands\":{\"on_off\":true}}]},
+ {\"entity_id\":\"$WB\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$(now_iso)\",\"commands\":{\"setpoint_kw\":3.0}}]}" \
+  "$(python3 -c "from datetime import datetime,timedelta,timezone;print((datetime.now(timezone.utc)-timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M:%SZ'))")" \
+  | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+sleep 8
+CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 15) || fail "no rod failsafe command after staleness"
+echo "$CMD" | grep -q '"on_off":false' || fail "stale plan must drop the rod to failsafe off: $CMD"
+if bus_sub -t "edge/entities/$WB/command" -C 1 -W 8 >/dev/null 2>&1; then
+  fail "wallbox command was not cleared on plan staleness (release failsafe)"
+fi
+pass "stale plan: consumer desires withdrawn - rod off (failsafe), wallbox released (retained clear)"
+
 echo
 echo "E2E-V2 OK: September-Gate chain proven on the rig -"
 echo "  registry push -> configs/guards; flowc artifact -> deployment -> NR -> desired ->"
 echo "  arbitration -> guard clamp -> certified sunspec write -> register readback;"
 echo "  P2 clamp, P3 conflict, P4 override/resume, P5 multi-entity plan + staleness, P7 v1 untouched."
+echo "  Verbrauchssteuerung Inkrement 3: C1 must-run executes+confirms+ends, C2 power_ranges"
+echo "  never land in the gap (honest mismatch), C3 cycle guard holds + names its reason,"
+echo "  C4 staleness -> failsafe off / release; heartbeat consumers block ingest-ready."

@@ -62,6 +62,74 @@ func TestParseTwoEntitiesFixture(t *testing.T) {
 	}
 }
 
+func TestParseConsumerDispatchFixture(t *testing.T) {
+	// The Verbrauchssteuerung Inkrement-2 publisher shape, read BY PATH (the
+	// examples discipline): three kind:"consumer" entities - setpoint_kw for a
+	// continuous wallbox, on_off for the rod and the pump; a 0/false slot IS
+	// the plan (an all-off raster stays a commanded state, unlike the
+	// producer's release-by-omission semantics).
+	// Received 14 min after generation: inside the redelivery slack, so the
+	// freshness window still reaches past the fixture's 12:00 slot.
+	crecv := time.Date(2026, 8, 10, 11, 44, 0, 0, time.UTC)
+	p, err := Parse(fixture(t, "mqtt-schedule-2.0.valid.consumer-dispatch.json"), crecv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Entities) != 3 {
+		t.Fatalf("want 3 consumer entities, got %d", len(p.Entities))
+	}
+	for _, e := range p.Entities {
+		if e.Kind != "consumer" {
+			t.Fatalf("entity %s kind = %q", e.ID, e.Kind)
+		}
+		// D-8 reads identically for consumers: absent = NOT grid-released
+		// (irrelevant to the consumer clamp, but the parse must not invent it).
+		if e.ChargeFromGridAllowed {
+			t.Fatalf("entity %s: absent charge_from_grid_allowed must read false", e.ID)
+		}
+	}
+
+	// 11:44: the wallbox's 11:30 slot commands 3.0 kW.
+	cmds, start, ok := p.ActiveCommands("wb-carport", crecv)
+	if !ok || cmds.SetpointKw == nil || *cmds.SetpointKw != 3.0 {
+		t.Fatalf("wallbox active slot wrong: %+v ok=%v", cmds, ok)
+	}
+	if start != time.Date(2026, 8, 10, 11, 30, 0, 0, time.UTC) {
+		t.Fatalf("slot start wrong: %v", start)
+	}
+	// 12:01: the wallbox's 0.0 slot is STILL a command (off), never a release.
+	late := time.Date(2026, 8, 10, 12, 1, 0, 0, time.UTC)
+	cmds, _, ok = p.ActiveCommands("wb-carport", late)
+	if !ok || cmds.SetpointKw == nil || *cmds.SetpointKw != 0 {
+		t.Fatalf("wallbox off slot must stay a command: %+v ok=%v", cmds, ok)
+	}
+	// The rod's on_off raster: true at 11:44, false at 12:01.
+	cmds, _, ok = p.ActiveCommands("rod-boiler", crecv)
+	if !ok || cmds.OnOff == nil || !*cmds.OnOff {
+		t.Fatalf("rod active slot wrong: %+v", cmds)
+	}
+	cmds, _, ok = p.ActiveCommands("rod-boiler", late)
+	if !ok || cmds.OnOff == nil || *cmds.OnOff {
+		t.Fatalf("rod off slot wrong: %+v", cmds)
+	}
+	// The pump has NO slot covering 11:44 (its Pflichtlauf starts 11:45): no
+	// active command - the executor leaves it to its failsafe.
+	if _, _, ok := p.ActiveCommands("pump-stall", crecv); ok {
+		t.Fatal("pump must have no active slot before its window")
+	}
+	if cmds, _, ok := p.ActiveCommands("pump-stall", time.Date(2026, 8, 10, 11, 50, 0, 0, time.UTC)); !ok ||
+		cmds.OnOff == nil || !*cmds.OnOff {
+		t.Fatalf("pump window slot wrong: %+v ok=%v", cmds, ok)
+	}
+
+	// Plan staleness withdraws consumer desires like every other entity: past
+	// the 20-min window ActiveCommands answers nothing.
+	stale := crecv.Add(21 * time.Minute)
+	if _, _, ok := p.ActiveCommands("rod-boiler", stale); ok {
+		t.Fatal("a stale plan must not command a consumer")
+	}
+}
+
 func TestParseMinimalFixtureAndV1KeyRejected(t *testing.T) {
 	if _, err := Parse(fixture(t, "mqtt-schedule-2.0.valid.minimal-battery.json"), recv); err != nil {
 		t.Fatalf("minimal fixture must parse: %v", err)

@@ -41,6 +41,31 @@ public class EntityRegistryRepository {
         this.jdbc = jdbc;
     }
 
+    /** The consumer cycle-guard limits of one entity (Inkrement 3, D-9). */
+    public record ConsumerCycleLimits(Integer minOnSeconds, Integer minOffSeconds,
+            Integer maxStartsPerDay) {}
+
+    /**
+     * The site's consumer cycle-guard limits from consumer_profile - the ONE
+     * profile truth, merged into the registry push at compose time so the
+     * edge's temporal guard learns them (Verbrauchssteuerung §13.1). Only
+     * rows with at least one bound set.
+     */
+    public java.util.Map<UUID, ConsumerCycleLimits> consumerCycleLimits(UUID siteId) {
+        java.util.Map<UUID, ConsumerCycleLimits> out = new java.util.HashMap<>();
+        jdbc.query(
+                "SELECT entity_id, min_on_seconds, min_off_seconds, max_starts_per_day "
+                        + "FROM consumer_profile WHERE site_id = ? AND (min_on_seconds IS NOT NULL "
+                        + "OR min_off_seconds IS NOT NULL OR max_starts_per_day IS NOT NULL)",
+                rs -> {
+                    out.put(rs.getObject("entity_id", UUID.class), new ConsumerCycleLimits(
+                            (Integer) rs.getObject("min_on_seconds"),
+                            (Integer) rs.getObject("min_off_seconds"),
+                            (Integer) rs.getObject("max_starts_per_day")));
+                }, siteId);
+        return out;
+    }
+
     /** The site's v2 entities (entity_type set), stable order. */
     public List<EntityRow> entitiesForSite(UUID siteId) {
         return jdbc.query(

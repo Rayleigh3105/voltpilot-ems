@@ -44,6 +44,10 @@ type Deps struct {
 	// OnDecision, when set, is nudged after a decision changed an entity's
 	// granted command (the agent re-runs the v1 setpoint path for the battery).
 	OnDecision func(entityID string)
+	// CycleLocation is the site-local timezone for the consumer cycle guard's
+	// per-day start budget (Verbrauchssteuerung §13.1). nil = time.Local (the
+	// device clock, which v1 pins to the site's own time).
+	CycleLocation *time.Location
 }
 
 // Reason is one machine-readable event reason ({stage, detail}).
@@ -59,6 +63,14 @@ type Decision struct {
 	HolderKind string
 	Source     string
 	Granted    entities.Commands
+	// HolderOverride reports the holder's D-5 override elevation (a must-run
+	// flow desire) - the heartbeat's running_forced vs running_optimized split.
+	HolderOverride bool
+	// Clamped reports that the granted command differs from the holder's wish
+	// (some guard bit).
+	Clamped bool
+	// Cycle is the consumer cycle guard's active hold, nil when none.
+	Cycle *guards.CycleHold
 }
 
 type entState struct {
@@ -68,9 +80,16 @@ type entState struct {
 	holderKey  string // "" = failsafe
 	inFailsafe bool   // fallback event already emitted for this failsafe episode
 
+	// cycle is the stateful consumer cycle guard (nil for non-consumers): the
+	// ONE temporal clamp every consumer command runs through - plan desires,
+	// flow desires and the failsafe alike (Verbrauchssteuerung §13.1).
+	cycle *guards.CycleGuard
+
 	lastGranted     entities.Commands
 	lastSource      string
 	lastFingerprint string
+	lastClamped     bool
+	lastCycle       *guards.CycleHold
 	commandCleared  bool // retained command currently cleared
 }
 
@@ -100,15 +119,34 @@ func (a *Arbiter) SetEntities(reg entities.Registry) {
 	for _, e := range reg.Entities {
 		if st, ok := a.states[e.ID]; ok {
 			st.entity = e
+			st.syncCycleGuard(a.deps.CycleLocation)
 			next[e.ID] = st
 		} else {
 			// A fresh entity STARTS in its registry failsafe - that is the
 			// default state, not an event-worthy transition (fallback events
 			// mark the FALL from a commanded state).
-			next[e.ID] = &entState{entity: e, desires: map[string]*Desired{}, inFailsafe: true}
+			st := &entState{entity: e, desires: map[string]*Desired{}, inFailsafe: true}
+			st.syncCycleGuard(a.deps.CycleLocation)
+			next[e.ID] = st
 		}
 	}
 	a.states = next
+}
+
+// syncCycleGuard creates/updates the consumer cycle guard from the entity's
+// registry limits. Non-consumers (and actuate-less composed types like
+// house-load) never get one; a registry re-push updates the limits WITHOUT
+// resetting the timing state.
+func (st *entState) syncCycleGuard(loc *time.Location) {
+	if st.entity.Category() != "consumer" || len(st.entity.Capabilities.Actuate) == 0 {
+		st.cycle = nil
+		return
+	}
+	if st.cycle == nil {
+		st.cycle = guards.NewCycleGuard(st.entity.CycleLimits(), loc)
+		return
+	}
+	st.cycle.SetLimits(st.entity.CycleLimits())
 }
 
 // Submit ingests one EXTERNAL desired payload from the local bus. Every
@@ -222,13 +260,32 @@ func (a *Arbiter) DecisionFor(entityID string) (Decision, bool) {
 	if !ok || (st.lastSource == "" && st.lastGranted.Empty()) {
 		return Decision{}, false
 	}
-	dec := Decision{Source: st.lastSource, Granted: st.lastGranted}
+	dec := Decision{Source: st.lastSource, Granted: st.lastGranted,
+		Clamped: st.lastClamped, Cycle: st.lastCycle}
 	if st.holderKey != "" {
 		if d := st.desires[st.holderKey]; d != nil {
 			dec.HolderKind = string(d.Source.Kind)
+			dec.HolderOverride = d.Override
 		}
 	}
 	return dec, true
+}
+
+// CycleStateFor returns the consumer cycle guard's snapshot for one entity
+// (ok=false for unknown entities and non-consumers). Feeds the heartbeat's
+// consumers block (starts/runtime today, the active hold).
+func (a *Arbiter) CycleStateFor(entityID string) (guards.CycleState, bool) {
+	a.mu.Lock()
+	st, ok := a.states[entityID]
+	var g *guards.CycleGuard
+	if ok {
+		g = st.cycle
+	}
+	a.mu.Unlock()
+	if g == nil {
+		return guards.CycleState{}, false
+	}
+	return g.State(a.deps.Now()), true
 }
 
 // HolderCommand returns the granted command set + source kind of the desire
@@ -450,6 +507,11 @@ type eventCtx struct {
 func (a *Arbiter) applyDecision(st *entState, now time.Time, holder *Desired, ctx eventCtx) {
 	r := a.reading(st.entity.ID)
 	granted, stages := a.clampFor(st, holder, now, r)
+	// The consumer cycle guard runs LAST (its holds are temporal; the value
+	// clamps above already bounded the level it may hold).
+	granted, cycleStages, hold := applyCycle(st, now, granted)
+	stages = append(stages, cycleStages...)
+	st.lastCycle = hold
 
 	source := "desired"
 	if holder.Source.Kind == SourcePlanExecutor {
@@ -465,6 +527,7 @@ func (a *Arbiter) applyDecision(st *entState, now time.Time, holder *Desired, ct
 			outcome = "clamped"
 		}
 	}
+	st.lastClamped = !grantedMatchesWish(holder, granted)
 	reasons := append([]Reason{}, ctx.reasons...)
 	for _, s := range stages {
 		reasons = append(reasons, Reason{Stage: s.Stage,
@@ -474,7 +537,7 @@ func (a *Arbiter) applyDecision(st *entState, now time.Time, holder *Desired, ct
 	if subject == nil {
 		subject = holder.Ref()
 	}
-	fp := fingerprint(st.holderKey, source, granted)
+	fp := cycleFingerprint(fingerprint(st.holderKey, source, granted), hold)
 	if !ctx.force && fp == st.lastFingerprint {
 		st.lastGranted, st.lastSource = granted, source
 		return
@@ -526,13 +589,34 @@ func (a *Arbiter) clampFor(st *entState, d *Desired, now time.Time, r guards.Rea
 // the contract's fallback description).
 func (a *Arbiter) fallToFailsafe(st *entState, now time.Time, subject *SourceRef, reasons []Reason) {
 	granted, publish := a.failsafeCommand(st, now)
+	// The cycle guard binds the FAILSAFE too (Geräteschutz > Failsafe, §3.1):
+	// an 'off' failsafe during the minimum runtime holds the previously
+	// granted state, with the honest reason. A cleared command (release /
+	// nothing publishable) leaves nothing to hold onto - the guard just notes
+	// the withdrawal.
+	if st.cycle != nil {
+		if publish {
+			var cycleStages []guards.ClampStage
+			var hold *guards.CycleHold
+			granted, cycleStages, hold = applyCycle(st, now, granted)
+			st.lastCycle = hold
+			for _, s := range cycleStages {
+				reasons = append(reasons, Reason{Stage: s.Stage,
+					Detail: fmt.Sprintf("%.3f -> %.3f", s.Before, s.After)})
+			}
+		} else {
+			st.cycle.NoteUncommanded(now)
+			st.lastCycle = nil
+		}
+	}
+	st.lastClamped = false
 	source := "failsafe"
 	if publish {
 		a.publishCommand(st, now, source, granted)
 	} else {
 		a.clearCommand(st)
 	}
-	fp := fingerprint("", source, granted)
+	fp := cycleFingerprint(fingerprint("", source, granted), st.lastCycle)
 	changed := fp != st.lastFingerprint
 	st.lastFingerprint = fp
 	st.lastGranted, st.lastSource = granted, source
@@ -561,6 +645,83 @@ func (a *Arbiter) fallToFailsafe(st *entState, now time.Time, subject *SourceRef
 			a.deps.OnDecision(st.entity.ID)
 		}
 	}
+}
+
+// onKwThreshold separates "commanded to run" from "commanded off" on a
+// setpoint (mirrors the guard deadband discipline).
+const onKwThreshold = 0.005
+
+// applyCycle runs one command set through the entity's stateful cycle guard
+// (no-op for non-consumers). The guard decides the temporal ON/OFF state and
+// the ramped level; the command SHAPE is preserved (an on_off wish stays an
+// on_off command, a setpoint wish a setpoint) so the driver semantics never
+// change under a hold.
+func applyCycle(st *entState, now time.Time, granted entities.Commands) (entities.Commands, []guards.ClampStage, *guards.CycleHold) {
+	if st.cycle == nil {
+		return granted, nil, nil
+	}
+	if granted.SetpointKw == nil && granted.OnOff == nil {
+		// No run-state command (limits/mode only): nothing the temporal
+		// invariants govern.
+		return granted, nil, nil
+	}
+	wishKw := math.NaN()
+	if granted.SetpointKw != nil {
+		wishKw = *granted.SetpointKw
+	}
+	wishOn := false
+	if granted.OnOff != nil {
+		wishOn = *granted.OnOff
+	} else {
+		wishOn = wishKw > onKwThreshold
+	}
+	on, kw, hold := st.cycle.Apply(now, wishOn, wishKw)
+
+	out := granted
+	if granted.OnOff != nil {
+		v := on
+		out.OnOff = &v
+	}
+	if granted.SetpointKw != nil {
+		v := 0.0
+		if on && !math.IsNaN(kw) {
+			v = kw
+		}
+		out.SetpointKw = &v
+	}
+	if hold == nil {
+		return out, nil, nil
+	}
+	stage := guards.ClampStage{Stage: cycleStage(hold.Code)}
+	switch hold.Code {
+	case guards.CycleReasonRamp:
+		stage.Before, stage.After = wishKw, kw
+	default:
+		stage.Before, stage.After = boolKw(wishOn), boolKw(on)
+	}
+	return out, []guards.ClampStage{stage}, hold
+}
+
+func boolKw(on bool) float64 {
+	if on {
+		return 1
+	}
+	return 0
+}
+
+// cycleStage maps a cycle reason code onto its arbitration-event stage name.
+func cycleStage(code string) string {
+	switch code {
+	case guards.CycleReasonMinOn:
+		return guards.StageCycleMinOn
+	case guards.CycleReasonMinOff:
+		return guards.StageCycleMinOff
+	case guards.CycleReasonMaxStarts:
+		return guards.StageCycleMaxStarts
+	case guards.CycleReasonRamp:
+		return guards.StageCycleRamp
+	}
+	return "guard:cycle"
 }
 
 // failsafeCommand derives the registry failsafe command for one entity.
@@ -729,6 +890,17 @@ func grantedMatchesWish(d *Desired, granted entities.Commands) bool {
 func fingerprint(holderKey, source string, granted entities.Commands) string {
 	raw, _ := json.Marshal(granted)
 	return holderKey + "|" + source + "|" + string(raw)
+}
+
+// cycleFingerprint appends the active cycle hold to a decision fingerprint: a
+// newly-biting (or releasing) temporal hold IS a decision change even when
+// the published command bytes stay identical - the onset must emit its event
+// with the honest stage, the steady state must stay silent.
+func cycleFingerprint(fp string, hold *guards.CycleHold) string {
+	if hold == nil {
+		return fp
+	}
+	return fp + "|cycle:" + hold.Code
 }
 
 // emitEvent publishes one $defs/arbitration event (never retained).
