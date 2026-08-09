@@ -5,8 +5,6 @@ import java.net.URI;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
 /**
  * Thin client of the solve service's {@code POST /replan} (D8): one real
@@ -14,8 +12,13 @@ import org.springframework.stereotype.Component;
  * base-url as the Ersparnis-Simulation proxy - the solve surface is ONE
  * service, so there is exactly one base-url to keep in sync. Best-effort: a
  * refused/failed replan only logs (the 15-minute tick replans anyway).
+ *
+ * <p>Deliberately NOT a {@code @Component}: {@code SimulationHttp} is never a
+ * bean by default (the ObjectProvider seam with the {@code JdkSimulationHttp}
+ * fallback lives in {@code SimulationConfig}), so a component with a hard
+ * constructor dependency would refuse EVERY context start - prod included.
+ * {@code SimulationConfig} constructs this bean like its two siblings.
  */
-@Component
 public class ReplanClient {
 
     private static final Logger log = LoggerFactory.getLogger(ReplanClient.class);
@@ -23,8 +26,7 @@ public class ReplanClient {
     private final SimulationHttp http;
     private final URI baseUri;
 
-    public ReplanClient(SimulationHttp http,
-            @Value("${voltpilot.simulation.base-url:http://simulation:8095}") String baseUrl) {
+    public ReplanClient(SimulationHttp http, String baseUrl) {
         this.http = http;
         this.baseUri = URI.create(baseUrl.endsWith("/")
                 ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl);

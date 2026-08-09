@@ -1,6 +1,7 @@
 package com.voltpilot.api.simulation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.consumers.ReplanClient;
 import com.voltpilot.api.optimizer.WhatIfClient;
 import java.net.URI;
 import org.springframework.beans.factory.ObjectProvider;
@@ -51,5 +52,12 @@ public class SimulationConfig {
     public WhatIfClient whatIfClient(SimulationProperties props,
             ObjectProvider<SimulationHttp> httpProvider, ObjectMapper json) {
         return new WhatIfClient(http(props, httpProvider), URI.create(props.baseUrl()), json);
+    }
+
+    /** The D8 event-replan client (Verbrauchssteuerung Inkrement 4) - the third sibling. */
+    @Bean
+    public ReplanClient replanClient(SimulationProperties props,
+            ObjectProvider<SimulationHttp> httpProvider) {
+        return new ReplanClient(http(props, httpProvider), props.baseUrl());
     }
 }

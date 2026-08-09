@@ -169,6 +169,45 @@ const deployment = {
 fs.writeFileSync(path.join(work, 'deployment.json'), JSON.stringify(deployment));
 fs.writeFileSync(path.join(work, 'artifact-hash.txt'), artifact.content_hash + '\n');
 console.log('rig flow compiled:', artifact.content_hash);
+
+// C5 (Verbrauchssteuerung Inkrement 4): the GENERATED reactive consumer rule -
+// origin-stamped, must_run -> override, 22-kW wish ABOVE the 11-kW band so the
+// arbitration clamp is provable, short renewed TTL (30 s / renew 10 s) so the
+// withdrawal-by-absence is provable in rig time.
+const reactive = {
+  schema_version: '1.0',
+  flow_id: 'bb2d3c4b-6e7f-4081-9234-56789abcdebb',
+  flow_version: 1,
+  name: 'Verbraucherregel Rig: Wallbox',
+  runtime: 'edge',
+  site_id: '00000000-0000-0000-0000-000000000002',
+  tenant_id: '00000000-0000-0000-0000-000000000001',
+  origin: { kind: 'consumer-policy',
+    policy_id: 'cc3e4d5c-7f80-4192-a345-6789abcdefcc', policy_version: 1, entity_id: 'wb-rig' },
+  nodes: [
+    { id: 'reaktiv', type: 'vp.consumer.reactive', type_version: '1.0.0',
+      parameters: { entity_id: 'wb-rig', command: 'setpoint_kw',
+        ttl_s: 30, renew_s: 10, off_delay_s: 10,
+        requirements: [
+          { id: 'laden-wenn-verbunden', must_run: true, value: 22.0,
+            condition: { signal: 'consumer.vehicle_connected', source: 'entity',
+              channel: 'vehicle_connected', op: 'eq', value: 1, max_age_s: 60 } },
+        ] },
+      claims: [{ entity_id: 'wb-rig', commands: ['setpoint_kw'] }] },
+  ],
+  edges: [],
+  triggers: [{ id: 'tick', kind: 'interval', every_s: 10 }],
+};
+const artifactC5 = compile(reactive, { compiledAt: new Date().toISOString() });
+fs.writeFileSync(path.join(work, 'deployment-c5.json'), JSON.stringify({
+  schema_version: '1.0', kind: 'deployment',
+  tenant_id: reactive.tenant_id, site_id: reactive.site_id,
+  device_id: '00000000-0000-0000-0000-000000000003',
+  deployed_at: new Date().toISOString(),
+  artifacts: [artifactC5],
+}));
+fs.writeFileSync(path.join(work, 'hash-c5.txt'), artifactC5.content_hash + '\n');
+console.log('rig reactive rule compiled:', artifactC5.content_hash);
 NODE
 HASH="$(cat "$WORK/artifact-hash.txt")"
 
@@ -217,10 +256,16 @@ EV_FILE="$WORK/events.txt"
 ( bus_sub -t "edge/entities/$BATT/arbitration" -W 55 > "$EV_FILE" 2>/dev/null || true ) &
 EV_PID=$!
 sleep 2
-desired_payload probe-clamp -80 25 false | bus_pub -t "edge/entities/$BATT/desired" -q 1 -s
-for i in $(seq 1 20); do
+# TTL 65 s, NOT shorter (real flake, 2026-08-09): the sim simulates a §14a
+# dimming window for 30 s out of every 120 s (wmaxLimPct 40 % -> grid limit
+# 20 kW), during which the envelope legitimately clamps BELOW -30. A probe
+# whose TTL fits inside that window can EXPIRE before the holder re-clamp
+# (reading change) ever writes the -30.00 this scenario asserts - the desire
+# must outlive one full dimming window.
+desired_payload probe-clamp -80 65 false | bus_pub -t "edge/entities/$BATT/desired" -q 1 -s
+for i in $(seq 1 25); do
   if "${COMPOSE[@]}" logs edge-sim 2>/dev/null | grep -q 'setpoint write: battery = -30.00 kW'; then break; fi
-  [ "$i" = 20 ] && { "${COMPOSE[@]}" logs edge-sim | tail -10; fail "sim never received the CLAMPED -30 kW write"; }
+  [ "$i" = 25 ] && { "${COMPOSE[@]}" logs edge-sim | tail -10; fail "sim never received the CLAMPED -30 kW write"; }
   sleep 2
 done
 pass "sim wrote the CLAMPED -30 kW - never the raw -80 wish"
@@ -530,6 +575,77 @@ if bus_sub -t "edge/entities/$WB/command" -C 1 -W 8 >/dev/null 2>&1; then
 fi
 pass "stale plan: consumer desires withdrawn - rod off (failsafe), wallbox released (retained clear)"
 
+# =============================================================================
+# Verbrauchssteuerung Inkrement 4: C5 - the REACTIVE rule end to end.
+# The cloud-side replan trigger (D8) is proven in the api tests; the rig
+# proves the edge half: local signal -> must_run override -> clamped command ->
+# honest heartbeat (clamped/guard_rated_power + holder flow) -> disconnect ->
+# off-delay debounce -> withdrawal by TTL absence.
+# =============================================================================
+echo "--- C5: deploy the compiled reactive Verbraucherregel (replaces the rig flow set)"
+docker run --rm --network "$NET" -v "$WORK":/w eclipse-mosquitto:2 \
+  mosquitto_pub -h cloud-broker -p 1883 -t "$T_BASE/v2/flows" -q 1 -r -f /w/deployment-c5.json
+HASH_C5="$(cat "$WORK/hash-c5.txt")"
+for i in $(seq 1 12); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q "$HASH_C5" && echo "$HB" | grep -q '"state":"active"' && break
+  [ "$i" = 12 ] && { echo "$HB"; fail "heartbeat never acked the reactive artifact active"; }
+done
+pass "reactive rule deployed + acked active (hash-exact)"
+
+# The vehicle signal is the WALLBOX SIM's availability (it publishes
+# vehicle_connected as a 0/1 telemetry channel every interval) - toggled via
+# its rig-only sim/availability topic. Publishing raw telemetry instead would
+# be overwritten by the sim's own 5-s cadence (the C5b lesson: the "unplugged"
+# signal must come from the device model, not from a parallel publisher).
+vehicle() {
+  printf '%s' "$1" | bus_pub -t "edge/entities/$WB/sim/availability" -q 1 -s
+}
+
+echo "--- C5a: vehicle connects -> must_run override -> 22-kW wish CLAMPED to the 11-kW band"
+vehicle 1
+DES=""
+for i in $(seq 1 12); do
+  DES=$(bus_sub -t "edge/entities/$WB/desired" -C 1 -W 10) || DES=""
+  echo "$DES" | grep -q '"override":true' && break
+  vehicle 1
+  [ "$i" = 12 ] && { echo "$DES"; fail "the reactive rule never emitted its override desired"; }
+done
+echo "$DES" | grep -q '"kind":"flow"' || fail "reactive desired must be class flow: $DES"
+for i in $(seq 1 12); do
+  CMD=$(bus_sub -t "edge/entities/$WB/command" -C 1 -W 10) || CMD=""
+  echo "$CMD" | grep -q '"setpoint_kw":11' && break
+  vehicle 1
+  [ "$i" = 12 ] && { echo "$CMD"; fail "wallbox never commanded at the CLAMPED 11 kW"; }
+  sleep 1
+done
+pass "must_run override active: max under guards (22-kW wish -> 11-kW consumer band)"
+
+# D9 honesty: a FORCED run whose value the guard limited reports `clamped`
+# (guard_rated_power), never running_forced - the clamp outranks the run word
+# (agent/consumers.go). The FORCED half shows in the same heartbeat's
+# arbitration block: the wallbox holder is the flow (the override desire).
+# The unclamped running_forced flip (the D8 trigger's §13.4 input) is proven
+# by the api trigger tests - a real compiled rule wishes AT rated, not above.
+for i in $(seq 1 10); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q "\"$WB\":{\"state\":\"clamped\",\"reason_code\":\"guard_rated_power\"" \
+    && echo "$HB" | grep -q "\"$WB\":{\"holder\":\"flow\"" && break
+  vehicle 1
+  [ "$i" = 10 ] && { echo "$HB"; fail "heartbeat never reported the clamped forced run (clamped/guard_rated_power + holder flow)"; }
+done
+pass "heartbeat: honest clamped/guard_rated_power + the flow override as holder"
+
+echo "--- C5b: vehicle disconnects -> off-delay debounce -> renewal stops -> wish withdraws by TTL"
+vehicle 0
+for i in $(seq 1 30); do
+  if ! bus_sub -t "edge/entities/$WB/command" -C 1 -W 4 >/dev/null 2>&1; then break; fi
+  vehicle 0
+  [ "$i" = 30 ] && fail "wallbox command never cleared after the vehicle disconnected"
+  sleep 2
+done
+pass "disconnect: off-delay debounced, TTL lapsed without renewal, wallbox released (retained clear)"
+
 echo
 echo "E2E-V2 OK: September-Gate chain proven on the rig -"
 echo "  registry push -> configs/guards; flowc artifact -> deployment -> NR -> desired ->"
@@ -538,3 +654,5 @@ echo "  P2 clamp, P3 conflict, P4 override/resume, P5 multi-entity plan + stalen
 echo "  Verbrauchssteuerung Inkrement 3: C1 must-run executes+confirms+ends, C2 power_ranges"
 echo "  never land in the gap (honest mismatch), C3 cycle guard holds + names its reason,"
 echo "  C4 staleness -> failsafe off / release; heartbeat consumers block ingest-ready."
+echo "  Inkrement 4: C5 reactive rule - vehicle connect -> must_run override -> clamped max"
+echo "  (honest clamped/guard_rated_power, holder flow), disconnect -> off-delay -> TTL withdrawal."
