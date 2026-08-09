@@ -53,7 +53,7 @@ public class TelemetryRawConsumer {
             return;
         }
 
-        boolean inserted = repository.insert(event, value);
+        boolean inserted = repository.insert(event);
         // MIG-B1: mirror the sample onto the site's COMPOSED v2 entities, so a
         // migrated plant renders real values before any edge speaks v2. It is a
         // display bridge over the very same numbers, so a failure here must

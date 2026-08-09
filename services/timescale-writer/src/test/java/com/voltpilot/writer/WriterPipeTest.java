@@ -113,8 +113,8 @@ class WriterPipeTest {
         try (Connection c = admin();
                 Statement st = c.createStatement();
                 ResultSet rs = st.executeQuery(
-                        "SELECT tenant_id, site_id, device_id, power_kw, soc_pct, grid_limit_kw, "
-                                + "time, received_at "
+                        "SELECT tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, "
+                                + "load_kw, grid_limit_kw, payload, time, received_at "
                                 + "FROM telemetry WHERE device_id = '" + DEVICE + "'")) {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getString("tenant_id")).isEqualTo(TENANT_A);
@@ -122,7 +122,12 @@ class WriterPipeTest {
             assertThat(rs.getString("device_id")).isEqualTo(DEVICE);
             assertThat(rs.getBigDecimal("power_kw")).isEqualByComparingTo("2.29");
             assertThat(rs.getBigDecimal("soc_pct")).isEqualByComparingTo("55.1");
+            assertThat(rs.getBigDecimal("pv_power_kw")).isEqualByComparingTo("16.9");
+            assertThat(rs.getBigDecimal("load_kw")).isEqualByComparingTo("9.58");
             assertThat(rs.getBigDecimal("grid_limit_kw")).isEqualByComparingTo("50");
+            // Datenhaltung Phase 2 / E2: the raw JSON is no longer written - all
+            // the structured columns above still land, payload stays NULL.
+            assertThat(rs.getString("payload")).as("payload no longer written").isNull();
             // Liveness signal: `time` is the observation timestamp, but `received_at`
             // is the ARRIVAL time (the event's ingested_at) - the two are distinct, so
             // a device replaying buffered samples with old observation times still
