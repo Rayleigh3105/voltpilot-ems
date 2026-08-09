@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "entity_id": "wallbox-01",
+  "timezone": "Europe/Berlin",
+  "control_profile": {
+    "control_kind": "continuous",
+    "rated_power_kw": 11.0,
+    "min_power_kw": 1.4,
+    "resolution_kw": 0.1,
+    "power_ranges_kw": [[1.4, 3.7], [4.2, 11.0]]
+  },
+  "requirements": [
+    {
+      "id": "charge-when-connected",
+      "kind": "reactive",
+      "enforcement": "must_run",
+      "condition": { "signal": "consumer.vehicle_connected", "operator": "eq", "value": true, "max_age_s": 20 },
+      "target": { "kind": "percent", "value": 100 }
+    }
+  ]
+}

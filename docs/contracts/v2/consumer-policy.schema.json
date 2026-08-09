@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/consumer-policy.schema.json",
+  "title": "VoltPilot Consumer Policy",
+  "description": "The declarative operating requirements of ONE controllable consumer (steuerbarer Verbraucher), verbatim per docs/verbrauchssteuerung.md §10. A policy belongs to exactly one consumer entity (entity_id -> measurement_point). The requirements[] carry the four operating shapes (reactive / fixed_window / flexible_task / opportunistic). This schema pins the DOCUMENT shape; the rules JSON Schema cannot express (kind/enforcement coherence, must_run=>grid allow, condition-tree depth, cloud-vs-local signal hysteresis, catalog signal names, D4 power-range disjointness, 24:00 normalisation) live in consumer-policy-vectors.json and are enforced by the ConsumerPolicyValidator twins (Java services/api .../consumers/ConsumerPolicyValidator + TS frontend/portal/src/consumers/validate.ts), the FlowGraphValidator precedent. content_hash is derived server-side from canonical JSON and is NOT part of the document. schema_version starts at 1.0 (brand-new contract). Increment 1 (docs/verbrauchssteuerung.md §19): the policy is authored + stored as a DRAFT; no compiler, optimizer or edge command exists yet.",
+  "type": "object",
+  "required": ["schema_version", "entity_id", "requirements"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "entity_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+      "description": "The consumer entity this policy governs (registry measurement_point id or a stable external ref)."
+    },
+    "timezone": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "IANA zone of the site; time windows are authored in it and expanded to concrete UTC intervals by the cloud compiler (§5.2). v1 is effectively Europe/Berlin (existing pinning)."
+    },
+    "control_profile": {
+      "$ref": "#/$defs/control_profile",
+      "description": "OPTIONAL snapshot of the effective control profile the requirements were authored against (control_kind, rated power, stufen/ranges). Present so percent/kW targets and D4 power_ranges_kw are contract-checkable; the AUTHORITATIVE profile is the consumer_profile row (§9.2)."
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "description": "The operating requirements of this consumer, merged into ONE target at runtime (§7). Empty is not a policy.",
+      "items": { "$ref": "#/$defs/requirement" }
+    }
+  },
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "required": ["id", "kind", "enforcement", "target"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "description": "Stable id for audit + fulfilment attribution (§10). Unique within the policy."
+        },
+        "name": { "type": "string", "maxLength": 120 },
+        "active": { "type": "boolean", "description": "Per-requirement enable switch; absent = true." },
+        "kind": {
+          "type": "string",
+          "enum": ["reactive", "fixed_window", "flexible_task", "opportunistic"],
+          "description": "reactive = target while a condition holds (§5.1/§5.3); fixed_window = target in a recurring local window (§5.2); flexible_task = a demand due by a deadline whose timing VoltPilot chooses (§5.4); opportunistic = run when energy is cheap/surplus, no obligation (§5.5)."
+        },
+        "enforcement": {
+          "type": "string",
+          "enum": ["must_run", "required_by_deadline", "opportunistic"],
+          "description": "Verbindlichkeit (§5). must_run = Pflichtlauf (implies grid_energy_policy=allow, E2); required_by_deadline = flexible task; opportunistic = optional."
+        },
+        "target": { "$ref": "#/$defs/target" },
+        "condition": {
+          "$ref": "#/$defs/condition",
+          "description": "reactive only: the boolean condition tree (§5.3)."
+        },
+        "recurrence": {
+          "$ref": "#/$defs/recurrence",
+          "description": "fixed_window / flexible_task: the recurring local window (§5.2/§5.4)."
+        },
+        "demand": {
+          "$ref": "#/$defs/demand",
+          "description": "flexible_task only: what must be done by the deadline (§5.4)."
+        },
+        "grid_energy_policy": {
+          "type": "string",
+          "enum": ["allow", "avoid", "forbid"],
+          "description": "Per-requirement override of the consumer default (§10). must_run forces allow. Absent = inherit the consumer default."
+        },
+        "allow_storage_discharge": {
+          "type": "boolean",
+          "description": "Per-requirement override (E10); absent = inherit the consumer default. Only meaningful at sites with storage."
+        },
+        "service_rank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "Conflict rank between mandatory consumers (§7); set only after a detected conflict. NEVER an edge arbitration class."
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["on_off", "percent", "kw", "mode"] },
+        "value": {
+          "description": "on_off => boolean; percent => 0..100; kw => >= 0; mode => a device mode string.",
+          "type": ["boolean", "number", "string"]
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "percent" } } }, "then": { "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 } } } },
+        { "if": { "properties": { "kind": { "const": "kw" } } }, "then": { "properties": { "value": { "type": "number", "minimum": 0 } } } },
+        { "if": { "properties": { "kind": { "const": "on_off" } } }, "then": { "properties": { "value": { "type": "boolean" } } } },
+        { "if": { "properties": { "kind": { "const": "mode" } } }, "then": { "properties": { "value": { "type": "string", "minLength": 1, "maxLength": 64 } } } }
+      ]
+    },
+    "condition": {
+      "description": "A boolean condition tree (§5.3): a leaf, or an ANY/ALL/NOT group. Depth/size limits and the cloud-vs-local hysteresis rules are enforced by the validator.",
+      "oneOf": [
+        { "$ref": "#/$defs/condition_leaf" },
+        { "$ref": "#/$defs/condition_any" },
+        { "$ref": "#/$defs/condition_all" },
+        { "$ref": "#/$defs/condition_not" }
+      ]
+    },
+    "condition_any": {
+      "type": "object",
+      "required": ["any"],
+      "additionalProperties": false,
+      "properties": { "any": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "$ref": "#/$defs/condition" } } }
+    },
+    "condition_all": {
+      "type": "object",
+      "required": ["all"],
+      "additionalProperties": false,
+      "properties": { "all": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "$ref": "#/$defs/condition" } } }
+    },
+    "condition_not": {
+      "type": "object",
+      "required": ["not"],
+      "additionalProperties": false,
+      "properties": { "not": { "$ref": "#/$defs/condition" } }
+    },
+    "condition_leaf": {
+      "type": "object",
+      "required": ["signal", "operator", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "signal": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+          "description": "A signal name from the server catalog (ConsumerSignalCatalog). Unknown names are rejected by the validator (§10)."
+        },
+        "operator": { "type": "string", "enum": ["lt", "lte", "gt", "gte", "eq", "ne"] },
+        "value": { "type": ["number", "boolean"] },
+        "reset_value": {
+          "type": "number",
+          "description": "Hysteresis reset threshold. ONLY local signals (SoC / PV-surplus / grid-flow) may carry it; cloud-compiled price/time signals must not (D1)."
+        },
+        "max_age_s": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "description": "Freshness window for a LOCAL signal; a stale value is `unknown`, never 0 (§3.3). Cloud-compiled signals must not carry it (D1)."
+        }
+      }
+    },
+    "recurrence": {
+      "type": "object",
+      "required": ["days", "from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "days": { "type": "string", "enum": ["daily", "weekdays", "weekend"] },
+        "from": { "$ref": "#/$defs/time_hhmm" },
+        "to": { "$ref": "#/$defs/time_hhmm_or_2400" }
+      }
+    },
+    "demand": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "runtime_minutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+        "energy_kwh": { "type": "number", "exclusiveMinimum": 0 },
+        "contiguous": { "type": "boolean", "description": "true = one run block; false = splittable (§5.4/E5)." }
+      }
+    },
+    "control_profile": {
+      "type": "object",
+      "required": ["control_kind", "rated_power_kw"],
+      "additionalProperties": false,
+      "properties": {
+        "control_kind": { "type": "string", "enum": ["on_off", "stepped", "continuous"] },
+        "rated_power_kw": { "type": "number", "exclusiveMinimum": 0 },
+        "min_power_kw": { "type": "number", "minimum": 0, "description": "continuous only." },
+        "resolution_kw": { "type": "number", "exclusiveMinimum": 0, "description": "continuous only." },
+        "levels_kw": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "number", "minimum": 0 },
+          "description": "stepped only: the explicit level list (§4.3); must contain 0 and strictly ascend."
+        },
+        "power_ranges_kw": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "number", "minimum": 0 }
+          },
+          "description": "continuous only, D4: disjoint, ascending [min,max] power ranges (e.g. 1- vs 3-phase charging), each within the effective rated power. The validator enforces disjointness + ordering + bounds; below the smallest minimum the consumer is off."
+        }
+      }
+    },
+    "time_hhmm": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+    "time_hhmm_or_2400": { "type": "string", "pattern": "^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$" }
+  }
+}

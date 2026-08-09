@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "entity_id": "heater-01",
+  "timezone": "Europe/Berlin",
+  "requirements": [
+    {
+      "id": "heater-noon",
+      "kind": "fixed_window",
+      "enforcement": "must_run",
+      "recurrence": { "days": "daily", "from": "13:00", "to": "14:00" },
+      "target": { "kind": "on_off", "value": true }
+    },
+    {
+      "id": "heater-cheap-or-full",
+      "kind": "reactive",
+      "enforcement": "must_run",
+      "condition": {
+        "any": [
+          { "signal": "market.spot_price_ct_kwh", "operator": "lt", "value": 5 },
+          { "signal": "storage.soc_pct", "operator": "gt", "value": 80, "reset_value": 75, "max_age_s": 30 }
+        ]
+      },
+      "target": { "kind": "on_off", "value": true }
+    }
+  ]
+}

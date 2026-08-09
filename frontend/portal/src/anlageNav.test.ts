@@ -24,6 +24,7 @@ const ALL_SUBS: AnlagenSub[] = [
   'modell',
   'steuerung',
   'lastspitzen',
+  'verbraucher',
 ];
 
 const ENTITIES: AnlageSurfaceInput['entities'] = [
@@ -207,9 +208,10 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
     // v3.1-M2 retired the Modus-Profile shelf - modes are containers opened from
     // the Steuerung capsule, so the foot no longer carries a `profile` entry.
     const { foot } = anlageSidebar(PRIVAT);
-    expect(foot.map((i) => i.key)).toEqual(['technik', 'hilfe']);
-    expect(foot[0].target).toEqual({ kind: 'sub', sub: 'technik' });
-    expect(foot[1].target).toEqual({ kind: 'help' });
+    expect(foot.map((i) => i.key)).toEqual(['verbraucher', 'technik', 'hilfe']);
+    expect(foot[0].target).toEqual({ kind: 'sub', sub: 'verbraucher' });
+    expect(foot[1].target).toEqual({ kind: 'sub', sub: 'technik' });
+    expect(foot[2].target).toEqual({ kind: 'help' });
   });
 });
 
@@ -337,7 +339,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     expect(groups[1].label).toBe('Modus · Lastspitzenkappung');
     expect(groups[1].tone).toBe('peak');
     const last = groups[groups.length - 1];
-    expect(last.items.map((i) => i.key)).toEqual(['wetter', 'technik', 'hilfe']);
+    expect(last.items.map((i) => i.key)).toEqual(['wetter', 'verbraucher', 'technik', 'hilfe']);
   });
 
   it('has no base group in the sheet when nothing was derived', () => {

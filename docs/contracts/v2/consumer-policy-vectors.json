@@ -1,0 +1,494 @@
+{
+  "_comment": [
+    "Shared cross-language vectors for the consumer-policy validator (steuerbare",
+    "Verbraucher, docs/verbrauchssteuerung.md §10). The SEMANTIC rules JSON Schema",
+    "cannot express are implemented byte-for-byte identically in Java",
+    "(services/api .../consumers/ConsumerPolicyValidator) and TS (frontend/portal/",
+    "src/consumers/validate.ts); BOTH test suites load THIS file and must produce",
+    "the same verdict per case (the topology-vectors.json / FlowGraphValidator /",
+    "EdgeRef precedent). Change the rules on both sides + these vectors together.",
+    "",
+    "Each case: `document` is a full consumer-policy document; `expect` is either",
+    "\"valid\" (no error findings) or { rule } (the error findings MUST contain that",
+    "rule code). The JSON-Schema-level shape is checked separately by the ajv run",
+    "over docs/contracts/v2/examples/consumer-policy.*.json; these vectors exercise",
+    "the semantics ABOVE the schema.",
+    "",
+    "Signal catalog (ConsumerSignalCatalog): cloud-compiled (no hysteresis / no",
+    "max_age_s, D1) = market.spot_price_ct_kwh, market.import_price_ct_kwh; local",
+    "(may carry reset_value + max_age_s) = storage.soc_pct, site.pv_surplus_kw,",
+    "site.grid_power_kw (number) and consumer.vehicle_connected, consumer.available",
+    "(boolean). Limits: MAX_TREE_DEPTH 4, MAX_TREE_NODES 24, MAX_REQUIREMENTS 32."
+  ],
+  "limits": { "max_tree_depth": 4, "max_tree_nodes": 24, "max_requirements": 32 },
+  "signal_catalog": {
+    "market.spot_price_ct_kwh": { "class": "cloud", "value_type": "number" },
+    "market.import_price_ct_kwh": { "class": "cloud", "value_type": "number" },
+    "storage.soc_pct": { "class": "local", "value_type": "number" },
+    "site.pv_surplus_kw": { "class": "local", "value_type": "number" },
+    "site.grid_power_kw": { "class": "local", "value_type": "number" },
+    "consumer.vehicle_connected": { "class": "local", "value_type": "boolean" },
+    "consumer.available": { "class": "local", "value_type": "boolean" }
+  },
+  "cases": [
+    {
+      "name": "heater-window-and-reactive-or",
+      "expect": "valid",
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "heater-01",
+        "timezone": "Europe/Berlin",
+        "requirements": [
+          {
+            "id": "heater-noon",
+            "kind": "fixed_window",
+            "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "13:00", "to": "14:00" },
+            "target": { "kind": "on_off", "value": true }
+          },
+          {
+            "id": "heater-cheap-or-full",
+            "kind": "reactive",
+            "enforcement": "must_run",
+            "condition": {
+              "any": [
+                { "signal": "market.spot_price_ct_kwh", "operator": "lt", "value": 5 },
+                { "signal": "storage.soc_pct", "operator": "gt", "value": 80, "reset_value": 75, "max_age_s": 30 }
+              ]
+            },
+            "target": { "kind": "on_off", "value": true }
+          }
+        ]
+      }
+    },
+    {
+      "name": "wallbox-reactive-percent",
+      "expect": "valid",
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "wallbox-01",
+        "timezone": "Europe/Berlin",
+        "requirements": [
+          {
+            "id": "charge-when-connected",
+            "kind": "reactive",
+            "enforcement": "must_run",
+            "condition": { "signal": "consumer.vehicle_connected", "operator": "eq", "value": true, "max_age_s": 20 },
+            "target": { "kind": "percent", "value": 100 }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pump-flexible-runtime",
+      "expect": "valid",
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "pump-01",
+        "timezone": "Europe/Berlin",
+        "requirements": [
+          {
+            "id": "pump-daily-hour",
+            "kind": "flexible_task",
+            "enforcement": "required_by_deadline",
+            "recurrence": { "days": "daily", "from": "00:00", "to": "24:00" },
+            "demand": { "runtime_minutes": 60, "contiguous": true },
+            "grid_energy_policy": "avoid",
+            "target": { "kind": "on_off", "value": true }
+          }
+        ]
+      }
+    },
+    {
+      "name": "flexible-energy-and-continuous-ranges",
+      "expect": "valid",
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "wallbox-02",
+        "timezone": "Europe/Berlin",
+        "control_profile": {
+          "control_kind": "continuous",
+          "rated_power_kw": 11.0,
+          "min_power_kw": 1.4,
+          "resolution_kw": 0.1,
+          "power_ranges_kw": [[1.4, 3.7], [4.2, 11.0]]
+        },
+        "requirements": [
+          {
+            "id": "charge-8kwh-by-morning",
+            "kind": "flexible_task",
+            "enforcement": "required_by_deadline",
+            "recurrence": { "days": "daily", "from": "22:00", "to": "06:30" },
+            "demand": { "energy_kwh": 8 },
+            "target": { "kind": "kw", "value": 11 }
+          }
+        ]
+      }
+    },
+    {
+      "name": "opportunistic-price",
+      "expect": "valid",
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "heater-02",
+        "requirements": [
+          {
+            "id": "use-cheap-power",
+            "kind": "opportunistic",
+            "enforcement": "opportunistic",
+            "condition": { "signal": "market.spot_price_ct_kwh", "operator": "lt", "value": 0 },
+            "grid_energy_policy": "forbid",
+            "target": { "kind": "on_off", "value": true }
+          }
+        ]
+      }
+    },
+    {
+      "name": "stepped-levels",
+      "expect": "valid",
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "heater-03",
+        "control_profile": { "control_kind": "stepped", "rated_power_kw": 4.5, "levels_kw": [0, 1.5, 3.0, 4.5] },
+        "requirements": [
+          { "id": "on-at-noon", "kind": "fixed_window", "enforcement": "must_run",
+            "recurrence": { "days": "weekdays", "from": "12:00", "to": "13:00" },
+            "target": { "kind": "kw", "value": 3.0 } }
+        ]
+      }
+    },
+    {
+      "name": "overnight-window",
+      "expect": "valid",
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "pump-03",
+        "requirements": [
+          { "id": "night-run", "kind": "fixed_window", "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "22:00", "to": "02:00" },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "empty-requirements",
+      "expect": { "rule": "empty_requirements" },
+      "document": { "schema_version": "1.0", "entity_id": "x-01", "requirements": [] }
+    },
+    {
+      "name": "duplicate-requirement-id",
+      "expect": { "rule": "duplicate_requirement_id" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-02",
+        "requirements": [
+          { "id": "dup", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "consumer.available", "operator": "eq", "value": true },
+            "target": { "kind": "on_off", "value": true } },
+          { "id": "dup", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "consumer.available", "operator": "eq", "value": true },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "reactive-without-condition",
+      "expect": { "rule": "reactive_needs_condition" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-03",
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "reactive-carries-demand",
+      "expect": { "rule": "field_foreign_to_kind" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-04",
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "consumer.vehicle_connected", "operator": "eq", "value": true },
+            "demand": { "runtime_minutes": 30 },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "fixed-window-without-recurrence",
+      "expect": { "rule": "fixed_window_needs_recurrence" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-05",
+        "requirements": [
+          { "id": "f", "kind": "fixed_window", "enforcement": "must_run",
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "flexible-without-demand",
+      "expect": { "rule": "flexible_needs_demand" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-06",
+        "requirements": [
+          { "id": "fl", "kind": "flexible_task", "enforcement": "required_by_deadline",
+            "recurrence": { "days": "daily", "from": "00:00", "to": "24:00" },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "flexible-wrong-enforcement",
+      "expect": { "rule": "enforcement_kind_mismatch" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-07",
+        "requirements": [
+          { "id": "fl", "kind": "flexible_task", "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "00:00", "to": "24:00" },
+            "demand": { "runtime_minutes": 60 },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "must-run-forbid-grid",
+      "expect": { "rule": "must_run_grid_conflict" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-08",
+        "requirements": [
+          { "id": "m", "kind": "fixed_window", "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "13:00", "to": "14:00" },
+            "grid_energy_policy": "forbid",
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "unknown-signal",
+      "expect": { "rule": "unknown_signal" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-09",
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "market.moon_phase", "operator": "gt", "value": 1 },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "boolean-signal-with-number",
+      "expect": { "rule": "signal_value_type" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-10",
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "consumer.vehicle_connected", "operator": "eq", "value": 3 },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "cloud-signal-with-hysteresis",
+      "expect": { "rule": "cloud_signal_hysteresis" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-11",
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "market.spot_price_ct_kwh", "operator": "lt", "value": 5, "max_age_s": 30 },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "tree-too-deep",
+      "expect": { "rule": "condition_tree_too_deep" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-12",
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "all": [ { "all": [ { "all": [ { "all": [ { "signal": "storage.soc_pct", "operator": "gt", "value": 50 } ] } ] } ] } ] },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "percent-target-out-of-range-is-semantic-too",
+      "expect": { "rule": "target_value_type" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-13",
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "consumer.available", "operator": "eq", "value": true },
+            "target": { "kind": "percent", "value": 150 } }
+        ]
+      }
+    },
+    {
+      "name": "on-off-target-with-number",
+      "expect": { "rule": "target_value_type" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-14",
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "consumer.available", "operator": "eq", "value": true },
+            "target": { "kind": "on_off", "value": 1 } }
+        ]
+      }
+    },
+    {
+      "name": "recurrence-empty-window",
+      "expect": { "rule": "recurrence_invalid_window" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-15",
+        "requirements": [
+          { "id": "f", "kind": "fixed_window", "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "13:00", "to": "13:00" },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "contiguous-without-runtime",
+      "expect": { "rule": "contiguous_without_runtime" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-16",
+        "requirements": [
+          { "id": "fl", "kind": "flexible_task", "enforcement": "required_by_deadline",
+            "recurrence": { "days": "daily", "from": "00:00", "to": "24:00" },
+            "demand": { "energy_kwh": 5, "contiguous": true },
+            "target": { "kind": "kw", "value": 3 } }
+        ]
+      }
+    },
+    {
+      "name": "levels-missing-zero",
+      "expect": { "rule": "levels_need_zero" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-17",
+        "control_profile": { "control_kind": "stepped", "rated_power_kw": 4.5, "levels_kw": [1.5, 3.0, 4.5] },
+        "requirements": [
+          { "id": "f", "kind": "fixed_window", "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "12:00", "to": "13:00" },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "levels-not-ascending",
+      "expect": { "rule": "levels_not_ascending" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-18",
+        "control_profile": { "control_kind": "stepped", "rated_power_kw": 4.5, "levels_kw": [0, 3.0, 1.5] },
+        "requirements": [
+          { "id": "f", "kind": "fixed_window", "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "12:00", "to": "13:00" },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "levels-exceed-rated",
+      "expect": { "rule": "levels_exceed_rated" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-19",
+        "control_profile": { "control_kind": "stepped", "rated_power_kw": 3.0, "levels_kw": [0, 1.5, 3.0, 4.5] },
+        "requirements": [
+          { "id": "f", "kind": "fixed_window", "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "12:00", "to": "13:00" },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "continuous-field-on-onoff",
+      "expect": { "rule": "profile_field_wrong_kind" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-20",
+        "control_profile": { "control_kind": "on_off", "rated_power_kw": 3.0, "min_power_kw": 1.0 },
+        "requirements": [
+          { "id": "r", "kind": "reactive", "enforcement": "must_run",
+            "condition": { "signal": "consumer.available", "operator": "eq", "value": true },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "power-ranges-on-stepped",
+      "expect": { "rule": "power_ranges_only_continuous" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-21",
+        "control_profile": { "control_kind": "stepped", "rated_power_kw": 11.0, "levels_kw": [0, 5.5, 11.0], "power_ranges_kw": [[1.4, 3.7]] },
+        "requirements": [
+          { "id": "f", "kind": "fixed_window", "enforcement": "must_run",
+            "recurrence": { "days": "daily", "from": "12:00", "to": "13:00" },
+            "target": { "kind": "on_off", "value": true } }
+        ]
+      }
+    },
+    {
+      "name": "power-ranges-overlap",
+      "expect": { "rule": "power_ranges_not_ascending" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-22",
+        "control_profile": { "control_kind": "continuous", "rated_power_kw": 11.0, "min_power_kw": 1.4, "resolution_kw": 0.1, "power_ranges_kw": [[1.4, 4.0], [3.5, 11.0]] },
+        "requirements": [
+          { "id": "fl", "kind": "flexible_task", "enforcement": "required_by_deadline",
+            "recurrence": { "days": "daily", "from": "22:00", "to": "06:00" },
+            "demand": { "energy_kwh": 8 },
+            "target": { "kind": "kw", "value": 11 } }
+        ]
+      }
+    },
+    {
+      "name": "power-ranges-reversed-pair",
+      "expect": { "rule": "power_ranges_not_ascending" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-23",
+        "control_profile": { "control_kind": "continuous", "rated_power_kw": 11.0, "min_power_kw": 1.4, "resolution_kw": 0.1, "power_ranges_kw": [[3.7, 1.4]] },
+        "requirements": [
+          { "id": "fl", "kind": "flexible_task", "enforcement": "required_by_deadline",
+            "recurrence": { "days": "daily", "from": "22:00", "to": "06:00" },
+            "demand": { "energy_kwh": 8 },
+            "target": { "kind": "kw", "value": 11 } }
+        ]
+      }
+    },
+    {
+      "name": "power-ranges-exceed-rated",
+      "expect": { "rule": "power_ranges_exceed_rated" },
+      "document": {
+        "schema_version": "1.0",
+        "entity_id": "x-24",
+        "control_profile": { "control_kind": "continuous", "rated_power_kw": 7.0, "min_power_kw": 1.4, "resolution_kw": 0.1, "power_ranges_kw": [[1.4, 3.7], [4.2, 11.0]] },
+        "requirements": [
+          { "id": "fl", "kind": "flexible_task", "enforcement": "required_by_deadline",
+            "recurrence": { "days": "daily", "from": "22:00", "to": "06:00" },
+            "demand": { "energy_kwh": 8 },
+            "target": { "kind": "kw", "value": 7 } }
+        ]
+      }
+    }
+  ]
+}

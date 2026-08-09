@@ -37,6 +37,10 @@ const ajv = new Ajv2020({ strict: false });
 | `edge-entity.valid.registry-push-consumers.json` | edge-entity | valid — push carrying the E1b consumer types (wallbox + heating-rod + generic-load incl. a `mode` capability) |
 | `edge-entity.valid.telemetry-producer.json` | edge-entity | valid — local per-entity telemetry of a producer |
 | `edge-entity.invalid.malformed-entity-type.json` | edge-entity | **invalid** — `entity_type: "Wallbox 11kW!"` violates the kebab-case type pattern (the vocabulary is open since E1b, but never free-form; fails every oneOf branch) |
+| `consumer-policy.valid.heater.json` | consumer-policy | valid — the §10 heater: a `fixed_window` `must_run` at 13–14 plus a `reactive` `must_run` with an `any` (OR) of a cloud price signal and a local SoC signal with hysteresis |
+| `consumer-policy.valid.wallbox-ranges.json` | consumer-policy | valid — a `reactive` `must_run` `percent` target gated on `consumer.vehicle_connected`, with a `continuous` `control_profile` carrying the D4 `power_ranges_kw` (1- vs 3-phase) |
+| `consumer-policy.valid.pump-flexible.json` | consumer-policy | valid — the §10 pump: a `flexible_task` with a daily availability window, a contiguous 60-minute runtime demand and `grid_energy_policy: avoid` |
+| `consumer-policy.invalid.percent-out-of-range.json` | consumer-policy | **invalid** — a `percent` target with `value: 150` exceeds the schema `maximum: 100` (JSON-Schema level; the semantic rules that JSON Schema cannot express live in `consumer-policy-vectors.json`) |
 
 The invalid fixtures fail at the JSON-Schema level by design (an ajv run proves it). Semantic
 validator rules that JSON Schema cannot express (port type compatibility, cycles, exclusive

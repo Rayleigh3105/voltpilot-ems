@@ -42,11 +42,12 @@ export type AnlagenSub =
   | 'technik'
   | 'modell'
   | 'steuerung'
-  | 'lastspitzen';
+  | 'lastspitzen'
+  | 'verbraucher';
 
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'wetter', 'technik', 'modell',
-  'steuerung', 'lastspitzen',
+  'steuerung', 'lastspitzen', 'verbraucher',
 ]);
 
 /**

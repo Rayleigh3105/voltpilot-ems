@@ -91,6 +91,9 @@ const SteuerungSection = lazy(() =>
 const TechnikSection = lazy(() =>
   import('./AnlageTechnik').then((m) => ({ default: m.TechnikSection })),
 );
+const VerbraucherSection = lazy(() =>
+  import('./VerbraucherSection').then((m) => ({ default: m.VerbraucherSection })),
+);
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
 const POLL_MS = 30_000;
@@ -436,6 +439,7 @@ function AnlagenSubPage({
           <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
+        {sub === 'verbraucher' && <VerbraucherSection site={site} />}
         {sub === 'steuerung' && (
           <SteuerungSection
             site={site}

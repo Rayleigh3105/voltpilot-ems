@@ -100,6 +100,20 @@
       ]
     },
     {
+      "type": "pump",
+      "label": "Pumpe",
+      "category": "consumer",
+      "controllable": true,
+      "composed": false,
+      "default_failsafe": "off",
+      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_actuate": [
+        { "command": "on_off" },
+        { "command": "setpoint_kw", "min": 0 },
+        { "command": "limit_kw" }
+      ]
+    },
+    {
       "type": "generic-load",
       "label": "Steuerbare Last",
       "category": "consumer",
