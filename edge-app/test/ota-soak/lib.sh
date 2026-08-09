@@ -133,6 +133,20 @@ push_components() {
   done
 }
 
+# restore_component holt eine Fassung zurueck, die ein Fall entfernt hat.
+#
+# Noetig fuer den Aufraeum-Fall: er ENTFERNT die Abbilder eines ueberholten
+# Standes (genau das ist seine Aussage), und der naechste Fall braucht sie
+# wieder lokal - samt Tag, denn `push_components` schiebt ueber den Tag.
+restore_component() {
+  local v="$1" comp
+  for comp in core nodered; do
+    docker pull -q "${REG}/soak/${comp}@$(digest_of "$comp" "$v" | sed 's/.*@//')" >/dev/null 2>&1 || true
+    docker tag "${REG}/soak/${comp}@$(digest_of "$comp" "$v" | sed 's/.*@//')" \
+      "${REG}/soak/${comp}:${v}" >/dev/null 2>&1 || true
+  done
+}
+
 digest_of() { # digest_of <component> <version> -> repo@sha256:...
   local ref="${REG}/soak/$1:$2" d
   d="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$ref" 2>/dev/null || true)"

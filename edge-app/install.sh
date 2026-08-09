@@ -449,6 +449,8 @@ services:
       VP_OTA_NEUTRAL_VERIFIED: \${VP_OTA_NEUTRAL_VERIFIED:-}
       VP_OTA_WATCHDOG_SECONDS: \${VP_OTA_WATCHDOG_SECONDS:-600}
       VP_OTA_DISK_GUARD_MB: \${VP_OTA_DISK_GUARD_MB:-2048}
+      VP_OTA_PRUNE: \${VP_OTA_PRUNE:-true}
+      VP_OTA_PRUNE_KEEP: \${VP_OTA_PRUNE_KEEP:-1}
       VP_OTA_COMPOSE_FILES: \${VP_OTA_COMPOSE_FILES:-docker-compose.yml}
     volumes:
       - vp-edge-data:/data

@@ -357,9 +357,89 @@ eher schrittweise (einzelne Wellen) als auf einen Schlag.
 | `VP_OTA_NEUTRAL_VERIFIED` | leer | Belegte Neutral-Zeiten, `familie:sekunden` (§3) - gewinnt immer über einen am Gerät GEMESSENEN Nachweis (`/data/ota/neutral-verified.json`, §3). |
 | `VP_OTA_WATCHDOG_SECONDS` | `600` | Wachhund-Frist; wird durch T zusätzlich gedeckelt. |
 | `VP_OTA_DISK_GUARD_MB` | `2048` | Freier Platz, unter dem nicht getauscht wird. |
+| `VP_OTA_PRUNE` | `true` | Abgelöste Abbilder nach einem **bestätigten** Tausch entfernen (§5b). |
+| `VP_OTA_PRUNE_KEEP` | `1` | Wie viele abgelöste Releases je Komponente liegen bleiben. |
 | `VP_OTA_COMPOSE_FILES` | `docker-compose.yml` | Bei Host-Netz-Overlay BEIDE Dateien, durch `:` getrennt. |
 | `VP_OTA_ACK_WAIT_SECONDS` | `45` | Wartezeit auf den durablen `applying`-Bericht. |
 | `VP_OTA_TICK_SECONDS` | `5` | Takt. |
+
+---
+
+## 5b. Alte Abbilder: der Sidecar räumt hinter sich auf
+
+Jedes Update holt **zwei** neue Abbilder und hebt das Rückfallziel dreifach
+auf. Ohne Aufräumen wächst die Karte deshalb mit jeder Runde — auf der
+Canary-Box gemessen (Raspberry Pi 5, 15-GB-Karte, 09.08.2026):
+
+```
+Images   58 total   3 active   7.283GB   RECLAIMABLE 5.826GB (79%)
+```
+
+86 % voll, und der **Plattenwächter verweigerte einen legitimen Rollout**
+(„Platz auf dem Datenträger schaffen"). Die Verweigerung war richtig, der Grund
+war unser Müll.
+
+**Wann es läuft:** nach einem **BESTÄTIGTEN** Tausch — also nachdem der
+Selbsttest bestanden ist, das Rückfallziel auf den neuen Stand gehoben wurde
+und die Brotkrume weg ist. Nie vorher, nie mitten drin, und nach einer
+**Rücknahme gar nicht**: solange ein Vorgang läuft, ist jedes Abbild potenziell
+das, worauf gleich zurückgefallen wird.
+
+**Was nie entfernt wird** (die Sicherheits-Invariante, in dieser Reihenfolge
+geprüft):
+
+1. jedes Abbild, auf das **irgendein** Container zeigt — laufend ODER gestoppt.
+   Das deckt core/nodered/updater **und** die gestoppten
+   `vp-edge-lkg-*`-Halter, die das Rückfall-Image tragen, ohne Sonderregel ab;
+2. alles im Rückfall-Namensraum `vp-edge-lkg-*`, auch wenn sein Halter fehlen
+   sollte;
+3. der laufende Zielstand und eine bereits vorab geholte **nächste** Zuweisung
+   (genau die nähme ein pauschales `docker image prune -a` mit);
+4. je Komponente die `VP_OTA_PRUNE_KEEP` jüngsten verwaisten Abbilder — bei der
+   Vorgabe also der zuletzt abgelöste Stand.
+
+Das `docker save`-Archiv unter `/data/ota/lkg/` ist eine **Datei** und liegt
+per Konstruktion außerhalb der Reichweite jeder Abbild-Entfernung.
+
+Entfernt wird **je Name** (`docker image rm <repo>:<tag>` bzw. `<repo>@<digest>`),
+nie mit `-f` und nie pauschal: docker verweigert die Löschung, solange ein
+Container das Abbild hält — eine dritte Sicherungsebene, die ein `-f` gerade
+aushebeln würde. Die Kandidatenmenge sind ausschließlich die Repositories, die
+dieses Gerät selbst getauscht hat; ein von außen abgelegtes Abbild
+(`tools/pki`, Prüfstand, ein fremder Container auf derselben Box) kommt nie in
+die Nähe. Das Sidecar-Image selbst steht auch nicht darin (es tauscht sich
+nicht selbst) — seine alten Abbilder bleiben liegen; das ist die vorsichtige
+Richtung.
+
+**Es ist die Kür, nicht die Pflicht.** Jeder Fehlschlag wird nur protokolliert;
+ein Update scheitert nie an der Reinigung. Und was nicht sicher entschieden
+werden kann, wird nicht entfernt: antwortet `docker images` oder `docker ps`
+nicht vollständig, bricht das Aufräumen ab und sagt das im Log.
+
+**Abschalten — flottenweit oder je Gerät:**
+
+```bash
+# a) flottenweit in der .env des Deploy-Verzeichnisses
+VP_OTA_PRUNE=false
+VP_OTA_PRUNE_KEEP=3        # oder: mehr abgeloeste Staende aufheben
+
+# b) je Geraet, ohne die .env anzufassen
+cat > /var/lib/docker/volumes/<projekt>_vp-edge-data/_data/ota/prune.json <<'EOF'
+{ "enabled": false, "note": "Diagnose - vorerst nichts entfernen" }
+EOF
+```
+
+Die Datei gewinnt über die Umgebung. **Fehlt** sie, gilt die Vorgabe (aufräumen
+— das Nicht-Aufräumen war der Defekt); ist sie **unlesbar**, wird nicht
+geraten, sondern nichts entfernt. Nur `keep_releases` zu setzen schaltet nichts
+ab (beide Felder sind unabhängig).
+
+> **Eine Bestandsbox, die der Plattenwächter bereits blockiert, kommt hierüber
+> nicht frei** — ohne Tausch kein Aufräumen. Dort einmal von Hand
+> `docker image prune -a` (das ist **sicher**: der gestoppte
+> `vp-edge-lkg-*`-Halter schützt das Rückfall-Image, in der Matrix mit einem
+> echten, label-gefilterten `docker image prune -a` belegt), danach hält der
+> Sidecar die Karte selbst sauber.
 
 ---
 
@@ -391,6 +471,7 @@ edge-app/test/ota-soak/run.sh happy prune
 | `clock_skew` | uralter Kern-Zustand · abgelaufenes `valid_until` | (a) verschoben (b) angewandt — `valid_until` ist advisory |
 | `broker_outage` | durabler Bericht nicht absetzbar | nach der Frist trotzdem getauscht |
 | `disk_full` | Plattenwächter über dem Freiraum | verschoben, nicht einmal geholt |
+| `image_cleanup` | zwei bestätigte Updates hintereinander | nur laufender + EIN abgelöster Stand bleiben; Rückfall-Tag, Halter und Archiv unangetastet, fremde Abbilder nicht angefasst (§5b) |
 
 **Rechner-Disziplin, im Skript verdrahtet:** eigenes Compose-Projekt, eigene
 hohe Ports, eigene Volumes; immer nur EIN Stapel gleichzeitig (nach JEDEM Fall

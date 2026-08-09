@@ -59,6 +59,11 @@ type Options struct {
 	Deadline time.Duration
 	// DiskGuard ist der geforderte freie Platz.
 	DiskGuard uint64
+	// Prune ist die FLOTTEN-Vorgabe fuers Aufraeumen abgeloester Abbilder. Der
+	// Nullwert (leere Source) heisst „nicht gesetzt" und faellt auf
+	// [otaapply.DefaultPrunePolicy] zurueck; das einzelne Geraet ueberstimmt sie
+	// mit `<data>/ota/prune.json`.
+	Prune otaapply.PrunePolicy
 	// ForceAutonomous ist der Not-Ein aus der Umgebung (Laborstand). Der
 	// eigentliche Schalter ist die Datei.
 	ForceAutonomous bool
@@ -122,6 +127,9 @@ func New(o Options) *Engine {
 	}
 	if len(o.ComposeFiles) == 0 {
 		o.ComposeFiles = []string{"docker-compose.yml"}
+	}
+	if o.Prune.Source == "" {
+		o.Prune = otaapply.DefaultPrunePolicy()
 	}
 	if o.Roots == nil {
 		// Ohne diesen Rueckgriff bekaeme der Verifizierer `nil` und lehnte
@@ -521,6 +529,15 @@ func (e *Engine) commit(ctx context.Context, p *otaapply.PendingConfirm, reason 
 	_ = otaapply.Remove(e.o.DataDir, otaapply.FileSelfTest)
 	_ = otaapply.Remove(e.o.DataDir, otaapply.FileFailed)
 	e.o.Log.Info("OTA: Tausch bestaetigt", "release", p.Release, "grund", reason)
+
+	// ERST JETZT wird aufgeraeumt - der Vorgang ist abgeschlossen, das
+	// Rueckfallziel zeigt auf den neuen bewiesenen Stand, und die Brotkrume ist
+	// weg. Vorher waere jedes Abbild potenziell das Rueckfallziel gewesen;
+	// mittendrin waere es der Griff in den eigenen Fallschirm. Der Schritt ist
+	// nicht-fatal und meldet nichts zurueck: die Reinigung ist die Kuer, der
+	// Tausch die Pflicht.
+	e.pruneSuperseded(ctx, p, lkg)
+
 	return e.report(otaapply.UpdaterState{
 		State: otaapply.StateSucceeded, Autonomous: true,
 		Release: p.Release, ReleaseSeq: p.ReleaseSeq,
@@ -821,8 +838,11 @@ func (e *Engine) lkgTar(name string) string {
 	return filepath.Join(otaapply.Dir(e.o.DataDir), otaapply.SubdirLKG, name+".tar")
 }
 
-func lkgTag(name string) string    { return "vp-edge-lkg-" + name + ":lkg" }
-func lkgHolder(name string) string { return "vp-edge-lkg-" + name }
+// Der Rueckfall-Namensraum. Das Praefix steht in [otaapply.LKGTagPrefix],
+// damit die Regel („was so heisst, wird nie entfernt") und diese Namen
+// dieselbe Zeichenkette benutzen.
+func lkgTag(name string) string    { return otaapply.LKGTagPrefix + name + ":lkg" }
+func lkgHolder(name string) string { return otaapply.LKGTagPrefix + name }
 
 func (e *Engine) fail(st otaapply.UpdaterState, reason string) error {
 	st.State = otaapply.StateFailed
