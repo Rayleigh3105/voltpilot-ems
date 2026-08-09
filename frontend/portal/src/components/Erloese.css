@@ -222,3 +222,100 @@
     grid-column: 2 / -1;
   }
 }
+
+/* ==========================================================================
+ * MOBIL-FASSUNG DER GELD-WELT (Konzept `data/vp-mobile-views-x1` §6,
+ * Captain-Abnahme 09.08.2026) — NUR <= 720 px.
+ *
+ * Gemessen waren **5 932 px** (7,3 Bildschirme): acht Karten in identischem
+ * Gewicht, die Ergebnis-Zahl an der Falzkante (627 px) und die reine
+ * Gelegenheits-Lektüre („Speicher & Preis" samt drei Absätzen, Tagesprotokoll)
+ * bei 4 867 px täglich im Scrollweg. Umgeordnet wird, nicht gekürzt: der Falz
+ * gehört dem Ergebnis, alles Erklärende wird ein benannter Aufklapper.
+ *
+ * Die Grenze ist 720 px wie in `Historie.css` — dieselbe Zahl wie `useIsPhone`.
+ * ========================================================================== */
+
+@media (max-width: 720px) {
+  /* Der Falz: Zahl, Satz, Zurechnung und die drei Kompositionszeilen sollen
+     gemeinsam in den ersten Bildschirm - also enger als am Schreibtisch. */
+  .vp-erg-netto {
+    font-size: clamp(1.8rem, 8.5vw, 2.2rem);
+  }
+
+  .vp-erg-satz {
+    margin-top: 4px;
+    font-size: 0.84rem;
+    line-height: 1.35;
+  }
+
+  .vp-ekomp {
+    margin-top: 10px;
+  }
+
+  .vp-ekomp-row {
+    padding: 5px 0;
+  }
+
+  /* --- Die GEPLANTE Ersparnis als gestrichelte Fußnotiz ----------------- */
+  /* Sie bleibt sichtbar und behält ihr Abzeichen wörtlich - sie verliert nur
+     ihren Karten-Rang. Als gleichrangige Karte neben dem GEMESSENEN Ergebnis
+     ist sie die dokumentierte Verwechslungs-Falle dieser Seite (die zwei Zahlen
+     dürfen um ein Vielfaches auseinanderliegen, und die geplante ist die
+     größere). Gestrichelt, weil „geplant" auch optisch nicht wie „gemessen"
+     aussehen darf. */
+  .vp-geplant-notiz {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    min-width: 0;
+    margin: 0 0 var(--vp-space-4, 16px);
+    padding: 10px 12px;
+    border: 1px dashed var(--vp-border);
+    border-radius: var(--vp-radius-md);
+    background: var(--vp-bg, #f7f9fc);
+    font-size: 0.78rem;
+    color: var(--vp-text-muted, #6c757d);
+    overflow-wrap: anywhere;
+  }
+
+  .vp-geplant-notiz > b {
+    font-family: 'Inter Tight', Inter, sans-serif;
+    font-size: 0.95rem;
+    color: var(--vp-text, #1f2933);
+    white-space: nowrap;
+  }
+
+  .vp-geplant-notiz > span:last-child {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .vp-geplant-notiz.is-leer > b {
+    color: var(--vp-text-muted, #6c757d);
+  }
+
+  /* --- Aufklapper-Körper: das Abzeichen führt, dann der volle Inhalt ---- */
+  .vp-welt-disclosure-body > .vp-prov {
+    margin-bottom: 8px;
+  }
+
+  /* Im Aufklapper trägt die Karte schon einen Rahmen - die Kombinations-Karte
+     (`SoVerdientCard`) darf ihren zweiten nicht dazulegen. */
+  .vp-welt-disclosure-body > .vp-card {
+    border: none;
+    box-shadow: none;
+    padding: 0 !important;
+  }
+
+  .vp-welt-disclosure-body > .vp-card > .vp-card__accent {
+    display: none;
+  }
+
+  /* Die Preis-Treiber-Liste wird im Aufklapper einspaltig - vier Kacheln in
+     343 px wären wieder der Überlauf-Fall. */
+  .vp-welt-disclosure-body .vp-preistreiber {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

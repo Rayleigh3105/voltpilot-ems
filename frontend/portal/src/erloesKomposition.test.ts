@@ -6,7 +6,9 @@ import {
   ERLOES_HISTORIE,
   STREAM_SOURCES,
   billingPeriodLabel,
+  erloesAufklapper,
   erloesErgebnis,
+  geplanteErsparnisNotiz,
   erloesKomposition,
   geldVerlauf,
   preisTreiber,
@@ -748,5 +750,83 @@ describe('geldVerlauf · Karte 2 „Geld im Verlauf"', () => {
     expect(view.leer).toBe(true);
     expect(view.kumuliert).toEqual([]);
     expect(view.kumuliertText).toBeNull();
+  });
+});
+
+/**
+ * **Die Mobil-Fassung der Geld-Welt** (Konzept `data/vp-mobile-views-x1` §6):
+ * acht gleichrangige Karten über 7,3 Bildschirme werden ein Ergebnis-Falz plus
+ * benannte Aufklapper. Umgeordnet, nicht gekürzt.
+ */
+describe('erloesAufklapper', () => {
+  const voll = {
+    hatSoVerdient: true,
+    hatPreisTreiber: true,
+    istTag: true,
+    hatTagesdaten: true,
+  };
+
+  it('nennt am Tag alle vier - in der Reihenfolge des Konzepts', () => {
+    expect(erloesAufklapper(voll).map((a) => a.id)).toEqual([
+      'so-verdient',
+      'preis-treiber',
+      'speicher-preis',
+      'tagesprotokoll',
+    ]);
+    expect(erloesAufklapper(voll)[0].titel).toBe('So verdient Ihre Anlage · der Markt-Vergleich');
+  });
+
+  it('lässt weg, was es auf dieser Anlage gar nicht gibt', () => {
+    // Keine Direktvermarktung: kein Markt-Vergleich (S9).
+    expect(erloesAufklapper({ ...voll, hatSoVerdient: false }).map((a) => a.id)).not.toContain(
+      'so-verdient',
+    );
+    // Woche/Monat/Jahr: der Tagesnachweis und das Protokoll existieren nicht.
+    expect(erloesAufklapper({ ...voll, istTag: false }).map((a) => a.id)).toEqual([
+      'so-verdient',
+      'preis-treiber',
+    ]);
+  });
+
+  it('verspricht nichts, wofür die Antwort fehlt', () => {
+    // Ein Tag OHNE Historie-Antwort: die zwei Tages-Aufklapper wären leer.
+    expect(erloesAufklapper({ ...voll, hatTagesdaten: false }).map((a) => a.id)).toEqual([
+      'so-verdient',
+      'preis-treiber',
+    ]);
+    expect(
+      erloesAufklapper({
+        hatSoVerdient: false,
+        hatPreisTreiber: false,
+        istTag: false,
+        hatTagesdaten: false,
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe('geplanteErsparnisNotiz', () => {
+  it('behält das Abzeichen „Geplant" und sagt, dass sie NICHT gemessen ist', () => {
+    const n = geplanteErsparnisNotiz(4.12, 'Fr., 24.07.2026');
+    expect(n.badge).toBe('Geplant');
+    expect(n.vorhanden).toBe(true);
+    expect(n.wertText).toBe(`+ 4,12${NBSP}€`);
+    expect(n.satz).toContain('nicht gemessen');
+    // Sie verweist auf die gemessene Zahl, statt sich mit ihr zu vermischen.
+    expect(n.satz).toContain('Ergebnis');
+  });
+
+  it('sagt ohne Fahrplan „—" MIT Grund - nie eine erfundene Null', () => {
+    const n = geplanteErsparnisNotiz(null, 'Juli 2026');
+    expect(n.wertText).toBe(DASH);
+    expect(n.vorhanden).toBe(false);
+    expect(n.satz).toContain('Juli 2026');
+    expect(n.satz).toContain('kein Batterie-Fahrplan');
+    // Auch die leere Notiz bleibt beschriftet.
+    expect(n.badge).toBe('Geplant');
+  });
+
+  it('bleibt beim Vorzeichen als eigenem Zeichen, auch wenn geplant verloren wird', () => {
+    expect(geplanteErsparnisNotiz(-1.5, 'Juli 2026').wertText).toBe(`− 1,50${NBSP}€`);
   });
 });

@@ -748,3 +748,357 @@
 .vp-vgl-vorher::before {
   border-top-style: dashed !important;
 }
+
+/* ==========================================================================
+ * MOBIL-FASSUNG BEIDER WELTEN (Konzept `data/vp-mobile-views-x1`,
+ * Captain-Abnahme 09.08.2026) — NUR <= 720 px; die Desktop-Bühne oben bleibt
+ * byte-gleich.
+ *
+ * Der gemessene Befund war Reihenfolge, nicht Layout: „Messwerte" lag bei
+ * 3 363 px (4,1 Bildschirme) und zeigte sein erstes Diagramm erst bei
+ * **1 908 px** — davor Welt-Kartenpaar (170 px), vierzeilige KLEBENDE
+ * Zeit-Leiste, sechs kWh-Kacheln mit je eigener Δ-Zeile und eine fünfzeilig
+ * gestapelte Legende (~220 px).
+ *
+ * Die Grenze ist 720 px, weil `useIsPhone` sie benutzt — Struktur (React) und
+ * Aussehen (CSS) müssen an DERSELBEN Zahl umschalten, sonst entsteht ein Band,
+ * in dem das eine schon Telefon ist und das andere noch nicht.
+ * ========================================================================== */
+
+@media (max-width: 720px) {
+  /* --- Welt-Kopf: EINE Zeile statt Kopfkarte + Kartenpaar --------------- */
+  .vp-welt-zeile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin: 0 0 10px;
+  }
+
+  .vp-welt-zeile > h1 {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-family: 'Inter Tight', Inter, sans-serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vp-welt-zeile-ico {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: var(--vp-welt-soft, #eef1f5);
+    color: var(--vp-welt-ink, var(--vp-navy, #1e3a5f));
+  }
+
+  /* --- Die klebende Bedienzeile: GENAU ZWEI Zeilen ---------------------- */
+  .vp-zeitleiste-mobil {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  /* Zeile 1: Perioden-Segment + ⋯. Das Segment nimmt den Rest, der Knopf
+     bleibt ein 44-px-Ziel. */
+  .vp-zeitleiste-mobil .vp-zl-row-1 {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .vp-zeitleiste-mobil .vp-zl-row-1 > .vp-seg {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+  }
+
+  .vp-zeitleiste-mobil .vp-zl-row-1 > .vp-seg > button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .vp-zl-more {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 1px solid var(--vp-border);
+    border-radius: var(--vp-radius-btn, 10px);
+    background: var(--vp-surface, #fff);
+    color: var(--vp-text-dark, #1f2933);
+    cursor: pointer;
+  }
+
+  /* Zeile 2: ‹ Zeitraum › Heute — in EINER Zeile. Die 560-px-Regel darüber
+     bricht sie in zwei (sie rechnet mit dem Sprungfeld, das hier ins Blatt
+     gewandert ist); diese Regeln haben einen Spezifitäts-Schritt mehr und
+     gewinnen deshalb unabhängig von der Reihenfolge. */
+  .vp-zeitleiste-mobil .vp-zl-row-2 {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .vp-zeitleiste-mobil .vp-zl-row-2 > .vp-period-nav {
+    margin-left: 0;
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .vp-zeitleiste-mobil .vp-zl-row-2 > .vp-period-nav > .label {
+    order: 0;
+    flex: 1 1 auto;
+    /* LOAD-BEARING: die Basisregel setzt `min-width: 170px` + `nowrap`. Bei
+       375 px bleiben dem Namen neben ‹ › Heute nur ~150 px — mit 170 px
+       quetschte er die Knöpfe aus der Zeile. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.9rem;
+  }
+
+  .vp-zeitleiste-mobil .vp-zl-row-2 > .vp-period-nav > .step {
+    flex: 0 0 auto;
+    min-width: 36px;
+    min-height: 40px;
+    padding: 0 0.45rem;
+  }
+
+  /* Der Zustands-Chip eines gesetzten Vergleichs: die Bedienung liegt im
+     Blatt, der ZUSTAND bleibt sichtbar. */
+  .vp-zl-chip {
+    flex: 1 1 100%;
+    min-width: 0;
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 1px solid var(--vp-welt, var(--vp-action));
+    border-radius: 999px;
+    background: var(--vp-welt-soft, #edf2fa);
+    color: var(--vp-welt-ink, var(--vp-navy, #1e3a5f));
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* --- Das ⋯-Blatt ------------------------------------------------------ */
+  .vp-zl-blatt .vp-zl-vgl,
+  .vp-zl-blatt .vp-zl-cover,
+  .vp-zl-blatt-feld {
+    margin-top: var(--vp-space-3, 12px);
+  }
+
+  .vp-zl-blatt-feld {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .vp-zl-blatt-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--vp-text-muted, #6c757d);
+  }
+
+  /* Im Blatt ist Platz: das Sprungfeld darf seine volle Breite haben (die
+     116-px-Klemme der Leiste gilt dort, wo fünf Elemente in eine Zeile
+     mussten - hier steht es allein). */
+  .vp-zl-blatt .vp-zl-jump {
+    flex: 1 1 160px;
+    min-height: 44px;
+  }
+
+  .vp-zl-blatt .vp-zl-jump input,
+  .vp-zl-blatt .vp-zl-jump select {
+    max-width: none;
+    width: 100%;
+  }
+
+  .vp-zl-blatt .vp-zl-jump > svg {
+    display: inline;
+  }
+
+  /* --- Die Legende wird eine CHIP-Zeile (60 statt 220 px) --------------- */
+  /* Sie bleibt die BEDIENUNG (Serie an/aus) und behält jedes Wort - sie wohnt
+     nur enger. Gescoped auf die Welten, damit `index.css` unberührt bleibt. */
+  .vp-welt-body .vp-chart-legend {
+    gap: 5px 6px;
+    margin-bottom: 8px;
+  }
+
+  .vp-welt-body button.vp-cl-item.is-toggle {
+    padding: 3px 8px 3px 5px;
+    min-height: 30px;
+    gap: 5px;
+  }
+
+  .vp-welt-body .vp-cl-item {
+    font-size: 0.76rem;
+    gap: 5px;
+  }
+
+  /* Die Einheit ist am Telefon Redundanz: „kWh" steht an jeder Zahl der
+     Summen-Liste, und sie kostet hier ~30 px je Chip. */
+  .vp-welt-body .vp-cl-unit {
+    display: none;
+  }
+
+  /* Das Richtungswort bleibt - es ist die Ehrlichkeitsregel, nicht Deko. */
+  .vp-welt-body .vp-energie-nulllinie {
+    gap: 0 12px;
+    margin-bottom: 4px;
+    font-size: 0.7rem;
+    line-height: 1.35;
+  }
+
+  /* Der Kartenkopf bleibt EINE Zeile: Kachel · Titel · Abzeichen. Bricht er,
+     kostet er 68 statt 32 px direkt über der Kurve (im Browser gemessen). */
+  .vp-welt-body .vp-section-head {
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .vp-welt-body .vp-section-head > h2 {
+    font-size: 1rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Der „Was zeigt das?"-Satz steht direkt über der Kurve - eng gesetzt. */
+  .vp-welt-body .vp-chart-sub {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  /* --- Die kWh-Summen: 2 Spalten, EINE Δ-Zeile ------------------------- */
+  .vp-esum-kompakt {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* 10 px Spaltenabstand, nicht 14: bei 375 px misst eine Zelle sonst 140 px
+       und „Verbraucht 22,6 kWh" braucht 144 (im Browser nachgemessen). */
+    gap: 2px 10px;
+    margin: 0 0 8px;
+  }
+
+  .vp-esum-k {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--vp-border);
+  }
+
+  .vp-esum-k > dt {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font-size: 0.75rem;
+    color: var(--vp-text-muted, #6c757d);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vp-esum-k > dd {
+    margin: 0;
+    flex: 0 0 auto;
+    font-family: 'Inter Tight', Inter, sans-serif;
+    font-weight: 700;
+    font-size: 0.84rem;
+    color: var(--vp-stat-ink, #1a1a1a);
+    white-space: nowrap;
+  }
+
+  .vp-esum-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    margin: 0;
+    min-width: 0;
+    font-size: 0.78rem;
+    color: var(--vp-text-muted, #6c757d);
+  }
+
+  .vp-esum-meta > span {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .vp-esum-meta-delta {
+    flex-wrap: wrap;
+  }
+
+  /* --- Die Fußkarte als Aufklapper -------------------------------------- */
+  .vp-welt-fusstext {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--vp-text-muted, #6c757d);
+  }
+
+  /* Ein Aufklapper ist eine ZEILE - die Kartenpolsterung schrumpft mit.
+     `Card` setzt sie INLINE, deshalb braucht die Regel `!important`; das ist
+     dieselbe Klippe, an der der Welt-Kopf seine `--vp-welt-pad`-Variable
+     bekommen hat. */
+  .vp-welt-disc-card {
+    padding: 10px 14px !important;
+  }
+
+  /* **Der dokumentierte `nowrap`-Fall.** `.vp-wd-sub` ist `white-space: nowrap`
+     und weigert sich damit zu schrumpfen; ein langer Titel („So verdient Ihre
+     Anlage · der Markt-Vergleich") wurde daneben auf Null gequetscht und brach
+     WORT FÜR WORT um (bei 375 px im Browser gesehen). Am Telefon ist der
+     Aufklapper deshalb ZWEIZEILIG: Titel + Chevron oben, Unterzeile darunter. */
+  .vp-welt-disclosure {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .vp-wd-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    order: 0;
+    font-size: 0.92rem;
+    line-height: 1.3;
+  }
+
+  .vp-wd-chev {
+    order: 1;
+  }
+
+  .vp-wd-sub {
+    flex: 1 1 100%;
+    order: 2;
+    min-width: 0;
+    font-size: 0.72rem;
+    /* Sie darf hier umbrechen - sie ist keine Spalte mehr, sondern eine Zeile. */
+    white-space: normal;
+  }
+}

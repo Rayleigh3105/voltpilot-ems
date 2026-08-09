@@ -452,7 +452,15 @@ export function zeitraumHinweis(anchor: Date, range: HistoryRange, now: Date): s
   return `Alle Zahlen auf dieser Seite gelten für ${periodLabel(anchor, range)} — nicht für heute.`;
 }
 
-/** Das Etikett der Kennzahl-Zeile: die Summen tragen ihren Zeitraum am Kopf. */
-export function summenTitel(anchor: Date, range: HistoryRange): string {
-  return `Energie im Zeitraum · ${periodLabel(anchor, range)}`;
+/**
+ * Das Etikett der Kennzahl-Zeile: die Summen tragen ihren Zeitraum am Kopf.
+ *
+ * **`kurz` lässt den Zeitraum weg** — die Mobil-Fassung braucht das, weil der
+ * Kartenkopf dort EINE Zeile ist und „Energie im Zeitraum · So., 09.08.2026"
+ * bei 375 px auf „Energie im Zeitraum · …" abgeschnitten wurde. Es geht dabei
+ * nichts verloren: die klebende Bedienzeile nennt den Zeitraum unmittelbar
+ * darüber, und ein VERGANGENER Zeitraum sagt es zusätzlich in `zeitraumHinweis`.
+ */
+export function summenTitel(anchor: Date, range: HistoryRange, kurz = false): string {
+  return kurz ? 'Energie im Zeitraum' : `Energie im Zeitraum · ${periodLabel(anchor, range)}`;
 }

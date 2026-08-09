@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
-import { Icon } from '../../designsystem/components/core/Icon';
 import type { History, HistoryRange, Site } from '../api';
 import { NBSP } from '../format';
 import { isoDate, periodLabel } from '../periodNav';
@@ -16,6 +15,7 @@ import {
 import {
   delta,
   ENERGIE_WERTUNG,
+  fuehrendesDelta,
   keineVergleichsDatenText,
   laufendHinweis,
   normalisiereModus,
@@ -36,6 +36,7 @@ import {
 } from '../historieWelten';
 import { ankerAusWert, mitVergleich, parseVergleichModus } from '../historieZeit';
 import { useHistoryPeriod, useVergleichsPeriode } from '../useHistoryPeriod';
+import { useIsPhone } from '../useIsPhone';
 import type { AnlageSurface } from '../surface';
 
 import { InfoTip } from '../components/InfoTip';
@@ -47,6 +48,7 @@ import {
   DeltaZeile,
   KartenKopf,
   PeriodeFehlgeschlagen,
+  WeltDisclosure,
   WeltFuss,
   WeltKopf,
   ZeitLeiste,
@@ -126,67 +128,71 @@ function SummeTile({
   );
 }
 
-/** Karte 1 + 2 der Welt: Energiemengen des Zeitraums und das eine Diagramm. */
-function EnergieKarten({
+/**
+ * Die Energiemengen des Zeitraums.
+ *
+ * **Am Telefon ist es ein kompaktes 2-Spalten-Raster mit EINER Δ-Zeile**
+ * (Konzept `data/vp-mobile-views-x1` §5): sechs Kacheln mit je eigener Δ-Zeile
+ * kosteten dort ~540 px VOR dem Diagramm. Die Zahlen bleiben alle sechs, der
+ * Vergleich wird auf `fuehrendesDelta` eingedampft — das seine Größe NENNT,
+ * statt wie im Entwurf gegenstandslos „etwa gleich" zu behaupten. Die Quoten
+ * ziehen in dieselbe Zeile.
+ */
+function EnergieSummenKarte({
   history,
   vorher,
   range,
   anchor,
   modus,
-  onTagOeffnen,
+  isPhone,
 }: {
   history: History;
-  /** Die Vorperiode für das Δ (F3) — null, solange sie nicht geladen ist. */
   vorher: History | null;
   range: HistoryRange;
   anchor: Date;
-  /** F8: der gewählte Vergleich — er regiert Δ-Namen UND Überlagerung. */
   modus: VergleichsModus;
-  /** Der Tagesdrilldown (F5) — im Tages-Zeitraum gibt es nichts zu öffnen. */
-  onTagOeffnen?: (at: string) => void;
+  isPhone: boolean;
 }) {
   const bilanz = energieBilanz(history);
   const now = new Date();
   const hinweis = zeitraumHinweis(anchor, range, now);
-  const isDay = range === 'day';
   const vergleichName = vergleichsName(anchor, range, modus);
   const vorherSummen = vorher ? energieBilanz(vorher).summen : null;
   const laufend = vorher ? laufendHinweis(anchor, range, now, modus) : null;
-  // F8: überlagert wird nur, was auch Zahlen trägt - eine leere Reihe läse sich
-  // wie gemessene Nullen.
-  const ueberlagern =
-    ueberlagerungAktiv(modus) && vorher != null && vorher.buckets.length > 0 ? vorher : null;
-
-  if (history.buckets.length === 0 || bilanz.empty) {
-    return (
-      <Card padding="lg" radius="lg">
-        <EmptyState
-          icon="history"
-          category="dynamic"
-          title="Keine Messwerte in diesem Zeitraum"
-          description="Sobald Ihre Anlage misst, entsteht hier die Energiegeschichte: PV-Erzeugung, Hausverbrauch, Netz und Speicher in einem Bild. Wählen Sie einen anderen Zeitraum oder schauen Sie später wieder vorbei."
-        />
-      </Card>
-    );
-  }
+  const einDelta = isPhone
+    ? fuehrendesDelta(bilanz.summen, vorherSummen, vergleichName)
+    : null;
 
   return (
-    <>
-      <section className="vp-section">
-        <Card padding="lg" radius="lg">
-          <KartenKopf
-            icon="zap"
-            titel={summenTitel(anchor, range)}
-            art="gemessen"
-            extra={
-              vorherSummen ? (
-                <span className="vp-karten-vergleich">
-                  {vergleichsKopf(anchor, range, modus)}
-                </span>
-              ) : undefined
-            }
-          />
+    <section className="vp-section">
+      <Card padding="lg" radius="lg">
+        <KartenKopf
+          icon="zap"
+          titel={summenTitel(anchor, range, isPhone)}
+          art="gemessen"
+          extra={
+            vorherSummen && !isPhone ? (
+              <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range, modus)}</span>
+            ) : undefined
+          }
+        />
 
+        {isPhone ? (
+          <dl className="vp-esum-kompakt" aria-label="Energiemengen im Zeitraum">
+            {bilanz.summen.map((s) => (
+              <div key={s.key} className="vp-esum-k" title={s.hinweis}>
+                <dt>
+                  <span
+                    className="vp-esum-dot"
+                    style={{ ['--dot' as string]: dotColor(s.farbe) }}
+                  />
+                  {s.label}
+                </dt>
+                <dd>{kwh(s.kwh)}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
           <div className="vp-energie-summen" aria-label="Energiemengen im Zeitraum">
             {bilanz.summen.map((s, i) => (
               <SummeTile
@@ -197,9 +203,26 @@ function EnergieKarten({
               />
             ))}
           </div>
+        )}
 
-          {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
+        {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
 
+        {isPhone ? (
+          // Quoten UND der eine Vergleich in einer ruhigen Meta-Zeile.
+          <p className="vp-esum-meta">
+            <span>
+              Autarkie <b>{pct(bilanz.autarkiePct)}</b>
+            </span>
+            <span>
+              Eigenverbrauch <b>{pct(bilanz.eigenverbrauchPct)}</b>
+            </span>
+            {einDelta && (
+              <span className="vp-esum-meta-delta">
+                {einDelta.label} <DeltaZeile delta={einDelta.view} />
+              </span>
+            )}
+          </p>
+        ) : (
           <div className="vp-energie-chips">
             <span className="vp-energie-chip">
               Autarkie <b>{pct(bilanz.autarkiePct)}</b>
@@ -216,36 +239,157 @@ function EnergieKarten({
               </InfoTip>
             </span>
           </div>
+        )}
 
-          {hinweis && <p className="vp-note">{hinweis}</p>}
-        </Card>
-      </section>
+        {hinweis && <p className="vp-note">{hinweis}</p>}
+      </Card>
+    </section>
+  );
+}
 
-      <section className="vp-section">
-        <Card padding="lg" radius="lg">
-          <KartenKopf
-            icon="activity"
-            titel="Ihre Energie im Verlauf"
-            art="gemessen"
-            extra={
-              <Badge variant="tint">
-                {isDay ? '15-Minuten-Mittel' : range === 'week' ? 'stündlich' : 'täglich'}
-              </Badge>
-            }
-          />
-          <ChartSubtitle>
-            {isDay
-              ? 'Der Tagesverlauf Ihrer Anlage in einem Bild: PV-Erzeugung, Hausverbrauch, Netz und Speicher - dazu der Ladestand.'
-              : 'Erzeugung, Verbrauch, Netz und Speicher je Abschnitt im gewählten Zeitraum - als Energiemengen in Kilowattstunden, dazu der Ladestand.'}
-          </ChartSubtitle>
-          <HistoryEnergieChart
-            history={history}
-            onTagOeffnen={onTagOeffnen}
-            vergleich={ueberlagern}
-            legende={ueberlagerungLegende(anchor, range, modus)}
-          />
-        </Card>
-      </section>
+/**
+ * Der „Was zeigt das?"-Satz des Diagramms.
+ *
+ * **Am Telefon die KURZE Fassung** (eine Zeile statt drei): der lange Satz
+ * kostete dort gemessen 91 px direkt über der Kurve, die im ersten Bildschirm
+ * stehen soll. Er verschwindet nicht — er nennt dieselben vier Größen, nur
+ * ohne den erklärenden Nachsatz, den die Legende darunter ohnehin zeigt.
+ */
+function diagrammUntertitel(isDay: boolean, isPhone: boolean, raster: string): string {
+  if (isPhone) {
+    // Das Raster (`15-Minuten-Mittel`) steht hier statt als eigenes Abzeichen
+    // im Kartenkopf: dort brach es den Kopf auf zwei Zeilen, und es IST eine
+    // Präzisions-Angabe zum Diagramm - sie gehört zu seinem Satz.
+    return isDay
+      ? `PV, Haus, Netz und Speicher im Tagesverlauf - dazu der Ladestand. ${raster}.`
+      : `PV, Haus, Netz und Speicher je Abschnitt in kWh - dazu der Ladestand. ${raster}.`;
+  }
+  return isDay
+    ? 'Der Tagesverlauf Ihrer Anlage in einem Bild: PV-Erzeugung, Hausverbrauch, Netz und Speicher - dazu der Ladestand.'
+    : 'Erzeugung, Verbrauch, Netz und Speicher je Abschnitt im gewählten Zeitraum - als Energiemengen in Kilowattstunden, dazu der Ladestand.';
+}
+
+/** Das eine Mehrreihen-Diagramm samt Legende und Ereignis-Chips. */
+function EnergieDiagrammKarte({
+  history,
+  range,
+  anchor,
+  modus,
+  vorher,
+  isPhone,
+  onTagOeffnen,
+}: {
+  history: History;
+  range: HistoryRange;
+  anchor: Date;
+  modus: VergleichsModus;
+  vorher: History | null;
+  isPhone: boolean;
+  onTagOeffnen?: (at: string) => void;
+}) {
+  const isDay = range === 'day';
+  const raster = isDay ? '15-Minuten-Mittel' : range === 'week' ? 'stündlich' : 'täglich';
+  // F8: überlagert wird nur, was auch Zahlen trägt - eine leere Reihe läse sich
+  // wie gemessene Nullen.
+  const ueberlagern =
+    ueberlagerungAktiv(modus) && vorher != null && vorher.buckets.length > 0 ? vorher : null;
+
+  return (
+    <section className="vp-section">
+      <Card padding="lg" radius="lg">
+        <KartenKopf
+          icon="activity"
+          titel="Ihre Energie im Verlauf"
+          art="gemessen"
+          extra={isPhone ? undefined : <Badge variant="tint">{raster}</Badge>}
+        />
+        <ChartSubtitle>{diagrammUntertitel(isDay, isPhone, raster)}</ChartSubtitle>
+        <HistoryEnergieChart
+          history={history}
+          onTagOeffnen={onTagOeffnen}
+          vergleich={ueberlagern}
+          legende={ueberlagerungLegende(anchor, range, modus)}
+        />
+      </Card>
+    </section>
+  );
+}
+
+/**
+ * Karte 1 + 2 der Welt.
+ *
+ * **Die Reihenfolge ist die Mobil-Entscheidung** (P3 „Diagramm zuerst, Zahlen
+ * dahinter"): am Telefon führt das Diagramm, am Schreibtisch bleibt es bei
+ * Summen → Diagramm (dort passt beides fast gemeinsam ins Bild, und die
+ * Desktop-Bühne bleibt byte-gleich). Getauscht wird die DOM-Reihenfolge, nicht
+ * nur die optische — sonst läse ein Screenreader eine andere Seite als das Auge.
+ */
+function EnergieKarten({
+  history,
+  vorher,
+  range,
+  anchor,
+  modus,
+  isPhone,
+  onTagOeffnen,
+}: {
+  history: History;
+  /** Die Vorperiode für das Δ (F3) — null, solange sie nicht geladen ist. */
+  vorher: History | null;
+  range: HistoryRange;
+  anchor: Date;
+  /** F8: der gewählte Vergleich — er regiert Δ-Namen UND Überlagerung. */
+  modus: VergleichsModus;
+  isPhone: boolean;
+  /** Der Tagesdrilldown (F5) — im Tages-Zeitraum gibt es nichts zu öffnen. */
+  onTagOeffnen?: (at: string) => void;
+}) {
+  const bilanz = energieBilanz(history);
+
+  if (history.buckets.length === 0 || bilanz.empty) {
+    return (
+      <Card padding="lg" radius="lg">
+        <EmptyState
+          icon="history"
+          category="dynamic"
+          title="Keine Messwerte in diesem Zeitraum"
+          description="Sobald Ihre Anlage misst, entsteht hier die Energiegeschichte: PV-Erzeugung, Hausverbrauch, Netz und Speicher in einem Bild. Wählen Sie einen anderen Zeitraum oder schauen Sie später wieder vorbei."
+        />
+      </Card>
+    );
+  }
+
+  const summen = (
+    <EnergieSummenKarte
+      history={history}
+      vorher={vorher}
+      range={range}
+      anchor={anchor}
+      modus={modus}
+      isPhone={isPhone}
+    />
+  );
+  const diagramm = (
+    <EnergieDiagrammKarte
+      history={history}
+      range={range}
+      anchor={anchor}
+      modus={modus}
+      vorher={vorher}
+      isPhone={isPhone}
+      onTagOeffnen={onTagOeffnen}
+    />
+  );
+
+  return isPhone ? (
+    <>
+      {diagramm}
+      {summen}
+    </>
+  ) : (
+    <>
+      {summen}
+      {diagramm}
     </>
   );
 }
@@ -274,6 +418,7 @@ export function MesswerteSection({
     parseVergleichModus(window.location.hash),
   );
 
+  const isPhone = useIsPhone();
   const at = isoDate(anchor);
   const { history, loading, stale, err, retry } = useHistoryPeriod(site.id, range, at);
   // Ein per Lesezeichen mitgebrachtes „Vorjahr" auf einem Tages-Zeitraum fällt
@@ -414,6 +559,7 @@ export function MesswerteSection({
               range={range}
               anchor={anchor}
               modus={modus}
+              isPhone={isPhone}
               onTagOeffnen={oeffneTag}
             />
           </>
@@ -421,32 +567,19 @@ export function MesswerteSection({
       </div>
 
       {/* Karte 3: der Messwerte-Explorer - ein Abschnitt DIESER Welt. */}
-      <section className="vp-section">
-        <Card padding="lg" radius="lg">
-          <button
-            type="button"
-            className={explorerOpen ? 'vp-welt-disclosure open' : 'vp-welt-disclosure'}
-            aria-expanded={explorerOpen}
-            onClick={toggleExplorer}
-          >
-            <span className="vp-wd-title">Einzelne Messwerte vergleichen</span>
-            <span className="vp-wd-sub">bis zu 3 gleichzeitig</span>
-            <span className="vp-wd-chev" aria-hidden="true">
-              <Icon name="chevron-down" size={20} />
-            </span>
-          </button>
-          {explorerOpen && (
-            <div className="vp-welt-disclosure-body">
-              <VerlaufExplorer
-                site={site}
-                range={range}
-                anchor={anchor}
-                initialTargets={init.targets}
-              />
-            </div>
-          )}
-        </Card>
-      </section>
+      <WeltDisclosure
+        titel="Einzelne Messwerte vergleichen"
+        sub="bis zu 3 gleichzeitig"
+        open={explorerOpen}
+        onToggle={toggleExplorer}
+      >
+        <VerlaufExplorer
+          site={site}
+          range={range}
+          anchor={anchor}
+          initialTargets={init.targets}
+        />
+      </WeltDisclosure>
 
       <WeltFuss welt={welt} />
     </>

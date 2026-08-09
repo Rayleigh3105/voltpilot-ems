@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
-import type { HistoryRange, ProtocolEvent, Site } from '../api';
+import type { History, HistoryRange, ProtocolEvent, Site } from '../api';
 import { eurAmount } from '../format';
 import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
@@ -21,9 +21,12 @@ import {
 import { mitVergleich, parseVergleichModus } from '../historieZeit';
 import {
   DASH,
+  erloesAufklapper,
   erloesErgebnis,
+  geplanteErsparnisNotiz,
   preisTreiber,
   type ErgebnisZeile,
+  type PreisZeile,
 } from '../erloesKomposition';
 import { soVerdient } from '../soVerdient';
 import {
@@ -34,6 +37,7 @@ import {
   type WeltId,
 } from '../historieWelten';
 import { useHistoryPeriod } from '../useHistoryPeriod';
+import { useIsPhone } from '../useIsPhone';
 import { useSiteEarnings, useVergleichsErloese } from '../useSiteEarnings';
 import type { AnlageSurface } from '../surface';
 
@@ -44,6 +48,8 @@ import {
   DeltaZeile,
   KartenKopf,
   PeriodeFehlgeschlagen,
+  ProvBadge,
+  WeltDisclosure,
   WeltFuss,
   WeltKopf,
   ZeitLeiste,
@@ -118,6 +124,91 @@ function KompositionsZeile({ row, zeigePeriode }: { row: ErgebnisZeile; zeigePer
   );
 }
 
+/**
+ * „Was den Preis gemacht hat" — der KÖRPER, ohne Karte.
+ *
+ * Er ist herausgelöst, weil ihn beide Fassungen brauchen: am Schreibtisch in
+ * seiner eigenen Karte, am Telefon im Aufklapper. **Ein zweiter Renderer wäre
+ * eine zweite Wahrheit** — die Zeilen selbst kommen ohnehin aus dem einen
+ * `preisTreiber()`.
+ */
+function PreisTreiberBody({ zeilen }: { zeilen: PreisZeile[] }) {
+  return (
+    <ul className="vp-preistreiber">
+      {zeilen.map((z) => (
+        <li key={z.id} className={z.vorhanden ? undefined : 'vp-pt-off'}>
+          <span className="vp-pt-wert">{z.wert}</span>
+          <span className="vp-pt-label">{z.label}</span>
+          {z.note && <span className="vp-pt-note">{z.note}</span>}
+          {z.hinweise.map((h) => (
+            <span key={h} className="vp-pt-hint">
+              {h}
+            </span>
+          ))}
+          {z.href && (
+            <a className="vp-pt-link" href={z.href}>
+              Zu den Einstellungen
+            </a>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Der Tagesnachweis „Speicher & Preis" — der Körper, ohne Karte. */
+function SpeicherPreisBody({ history }: { history: History }) {
+  return (
+    <>
+      <ChartSubtitle>
+        Was Ihr Speicher an diesem Tag wirklich getan hat - direkt über dem
+        Börsen-Strompreis, damit Sie sehen, dass er günstig lädt und teuer entlädt.
+      </ChartSubtitle>
+      <HistoryDayChart history={history} />
+    </>
+  );
+}
+
+/** Das Tagesprotokoll — der Körper, ohne Karte. */
+function TagesprotokollBody({ history }: { history: History }) {
+  if (history.protocol.length === 0) {
+    return (
+      <p className="vp-muted">
+        Keine besonderen Ereignisse an diesem Tag - keine nennenswerte
+        Batterie-Aktivität, PV-Erzeugung oder Preisspreizung erkannt.
+      </p>
+    );
+  }
+  return (
+    <>
+      <ul className="vp-timeline">
+        {history.protocol.map((e, i) => {
+          const fmt = (iso: string) =>
+            new Date(iso).toLocaleTimeString('de-DE', {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          const oneSlot = new Date(e.end).getTime() - new Date(e.start).getTime() <= 15 * 60000;
+          return (
+            <li key={`${e.type}-${e.start}-${i}`}>
+              <span className="t">
+                {oneSlot ? fmt(e.start) : `${fmt(e.start)} - ${fmt(e.end)}`}
+              </span>
+              <span className="ico" aria-hidden="true">
+                {EVENT_ICONS[e.type] ? <Icon name={EVENT_ICONS[e.type].icon} size={16} /> : null}
+              </span>
+              <span className="txt">{e.text}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="vp-note" style={{ marginTop: 12 }}>
+        Automatisch aus Messwerten und Börsenpreisen des Tages abgeleitet.
+      </p>
+    </>
+  );
+}
+
 export function ErloeseSection({
   site,
   surface,
@@ -138,6 +229,20 @@ export function ErloeseSection({
   const [modusWahl, setModusWahl] = useState<VergleichsModus>(() =>
     parseVergleichModus(window.location.hash),
   );
+
+  const isPhone = useIsPhone();
+  // Der Zustand der Aufklapper lebt in der Sitzung dieser Fläche (das
+  // Technik-Muster) - wer eine Erklärung geöffnet hat, findet sie beim
+  // Zeitraum-Wechsel offen wieder.
+  const [offen, setOffen] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleAufklapper = useCallback((id: string) => {
+    setOffen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const at = isoDate(anchor);
   // Das Geld dieser Anlage - ein Abruf, eine Anlage, ein Zeitraum (P3).
@@ -194,7 +299,7 @@ export function ErloeseSection({
   const now = new Date();
   const isDay = range === 'day';
 
-  const ergebnis = erloesErgebnis({ money, periodLabel: label });
+  const ergebnis = erloesErgebnis({ money, periodLabel: label, kurzerTitel: isPhone });
   // Das Kombinations-Bild — `null` auf einer nicht direkt vermarkteten Anlage
   // (S9): dort bleibt die Welt byte-gleich wie bisher.
   const verdient = soVerdient({ money, siteId: site.id });
@@ -207,9 +312,13 @@ export function ErloeseSection({
     ohne: verdient?.absorbiert,
   });
   const vergleichName = vergleichsName(anchor, range, modus);
-  const kopfVergleich = vorher ? (
-    <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range, modus)}</span>
-  ) : undefined;
+  // Am Telefon bleibt der Kartenkopf EINE Zeile (sonst rutscht der Titel auf
+  // „Ergebni…"); welcher Zeitraum verglichen wird, sagt die Δ-Zeile darunter
+  // ohnehin beim Namen („etwa wie am Vortag").
+  const kopfVergleich =
+    vorher && !isPhone ? (
+      <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range, modus)}</span>
+    ) : undefined;
   const laufend = vorher ? laufendHinweis(anchor, range, now, modus) : null;
   // Mehr Ergebnis ist eindeutig besser; die GEPLANTE Ersparnis ist eine
   // Plan-Aussage und wird deshalb nicht als Erfolg gewertet.
@@ -218,6 +327,32 @@ export function ErloeseSection({
     vorher?.nettoErgebnisEur,
     true,
     vergleichName,
+  );
+  // Welche Aufklapper es am Telefon gibt - ein Aufklapper ohne Karte dahinter
+  // wäre ein Versprechen ins Leere.
+  const aufklapper = erloesAufklapper({
+    hatSoVerdient: verdient != null,
+    hatPreisTreiber: preise.length > 0,
+    istTag: isDay,
+    hatTagesdaten: history != null,
+  });
+  const geplant = geplanteErsparnisNotiz(history?.totals.batterySavingsPlannedEur, label);
+
+  const steeringZeile = ergebnis.steering ? (
+    <p className="vp-erg-steering" title={ergebnis.steeringTitel ?? undefined}>
+      <Icon name="zap" size={14} aria-hidden="true" />
+      {ergebnis.steering}
+    </p>
+  ) : null;
+  const vergleichsZeilen = (
+    <>
+      {nettoDelta && (
+        <p className="vp-kpi-delta">
+          <DeltaZeile delta={nettoDelta} />
+        </p>
+      )}
+      {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
+    </>
   );
 
   return (
@@ -287,18 +422,13 @@ export function ErloeseSection({
                       {ergebnis.nettoText}
                     </p>
                     <p className="vp-erg-satz">{ergebnis.nettoSatz}</p>
-                    {ergebnis.steering && (
-                      <p className="vp-erg-steering" title={ergebnis.steeringTitel ?? undefined}>
-                        <Icon name="zap" size={14} aria-hidden="true" />
-                        {ergebnis.steering}
-                      </p>
-                    )}
-                    {nettoDelta && (
-                      <p className="vp-kpi-delta">
-                        <DeltaZeile delta={nettoDelta} />
-                      </p>
-                    )}
-                    {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
+                    {/* **Der Falz ist die Antwort.** Am Telefon stehen die drei
+                        Zeilen, die die Zahl ERGEBEN, direkt unter ihr; die
+                        Einordnung (Zurechnung, Δ, laufende Periode) folgt
+                        danach. Am Schreibtisch bleibt die gewachsene Ordnung —
+                        dort steht ohnehin alles gemeinsam im Bild. */}
+                    {!isPhone && steeringZeile}
+                    {!isPhone && vergleichsZeilen}
                     {/* Die Herkunft der großen Zahl - nur, wenn es eine gibt;
                         eine Liste aus lauter „—" erklärt nichts. */}
                     <ul className="vp-ekomp" aria-label="Woraus sich das Ergebnis zusammensetzt">
@@ -310,6 +440,8 @@ export function ErloeseSection({
                         />
                       ))}
                     </ul>
+                    {isPhone && steeringZeile}
+                    {isPhone && vergleichsZeilen}
                     {ergebnis.periodNote && <p className="vp-note">{ergebnis.periodNote}</p>}
                     {ergebnis.footnote && <p className="vp-note">{ergebnis.footnote}</p>}
                   </>
@@ -319,8 +451,9 @@ export function ErloeseSection({
 
             {/* „Ist das gut?" — die Antwort gehört direkt hinter die
                 „Wie viel?"-Antwort. Nur direkt vermarktete Anlagen; alle
-                anderen sehen die Welt unverändert. */}
-            {verdient && <SoVerdientCard view={verdient} />}
+                anderen sehen die Welt unverändert. Am Telefon wird sie zum
+                benannten Aufklapper (unten). */}
+            {!isPhone && verdient && <SoVerdientCard view={verdient} />}
 
             {/* Karte 2 - dieselben Teile über die Zeit, für JEDEN Zeitraum. */}
             <section className="vp-section">
@@ -340,127 +473,123 @@ export function ErloeseSection({
               </Card>
             </section>
 
-            {/* Karte 3 - die Preise hinter dem Ergebnis. */}
-            <section className="vp-section">
-              <Card padding="lg" radius="lg">
-                <KartenKopf
-                  icon="euro"
-                  category="industry"
-                  titel="Was den Preis gemacht hat"
-                  art="bewertet"
-                />
-                <ul className="vp-preistreiber">
-                  {preise.map((z) => (
-                    <li key={z.id} className={z.vorhanden ? undefined : 'vp-pt-off'}>
-                      <span className="vp-pt-wert">{z.wert}</span>
-                      <span className="vp-pt-label">{z.label}</span>
-                      {z.note && <span className="vp-pt-note">{z.note}</span>}
-                      {z.hinweise.map((h) => (
-                        <span key={h} className="vp-pt-hint">
-                          {h}
-                        </span>
-                      ))}
-                      {z.href && (
-                        <a className="vp-pt-link" href={z.href}>
-                          Zu den Einstellungen
-                        </a>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </section>
+            {isPhone ? (
+              <>
+                {/* **Alles Erklärende wird ein benannter Aufklapper** (Konzept
+                    §6): der Falz gehört dem Ergebnis, und „Speicher & Preis"
+                    samt drei Absätzen lag bisher täglich bei 4 867 px im
+                    Scrollweg. Geöffnet steht der VOLLE Inhalt samt Abzeichen
+                    darin — nichts wird gekürzt, nur einsortiert. */}
+                {aufklapper.map((a) => (
+                  <WeltDisclosure
+                    key={a.id}
+                    titel={a.titel}
+                    sub={a.sub}
+                    open={offen.has(a.id)}
+                    onToggle={() => toggleAufklapper(a.id)}
+                  >
+                    {a.id === 'so-verdient' && verdient && <SoVerdientCard view={verdient} />}
+                    {a.id === 'preis-treiber' && (
+                      <>
+                        <ProvBadge art="bewertet" />
+                        <PreisTreiberBody zeilen={preise} />
+                      </>
+                    )}
+                    {a.id === 'speicher-preis' && history && (
+                      <>
+                        <ProvBadge art="gemessen" />
+                        <SpeicherPreisBody history={history} />
+                      </>
+                    )}
+                    {a.id === 'tagesprotokoll' && history && (
+                      <>
+                        <ProvBadge art="bewertet" />
+                        <TagesprotokollBody history={history} />
+                      </>
+                    )}
+                  </WeltDisclosure>
+                ))}
 
-            {/* Geplant: die Vorher-Rechnung des Optimierers - eigene Karte,
-                eigenes Abzeichen, damit sie nie als gemessene Ersparnis gilt. */}
-            <section className="vp-section">
-              <Card padding="lg" radius="lg">
-                <KartenKopf
-                  icon="battery-charging"
-                  category="battery"
-                  titel={`Geplante Speicher-Ersparnis · ${label}`}
-                  art="geplant"
-                />
-                <p className="vp-erg-plan">
-                  {history?.totals.batterySavingsPlannedEur == null
-                    ? DASH
-                    : eurAmount(history.totals.batterySavingsPlannedEur)}
+                {/* Die GEPLANTE Ersparnis bleibt sichtbar, verliert aber ihren
+                    Karten-Rang: als gleichrangige Karte neben dem gemessenen
+                    Ergebnis ist sie die dokumentierte Verwechslungs-Falle
+                    dieser Seite. Das Abzeichen „Geplant" bleibt wörtlich. */}
+                <p className={geplant.vorhanden ? 'vp-geplant-notiz' : 'vp-geplant-notiz is-leer'}>
+                  <span className="vp-prov vp-prov-geplant">{geplant.badge}</span>
+                  <b>{geplant.wertText}</b>
+                  <span>{geplant.satz}</span>
                 </p>
-                <p className="vp-note">
-                  {history?.totals.batterySavingsPlannedEur == null
-                    ? 'Für diesen Zeitraum liegt kein Batterie-Fahrplan vor - die geplante Ersparnis erscheint, sobald geplant wird.'
-                    : 'Vorab geplant, nicht gemessen: der gemessene Beitrag der Steuerung steht oben im Ergebnis. Beide dürfen deutlich voneinander abweichen.'}
-                </p>
-              </Card>
-            </section>
+              </>
+            ) : (
+              <>
+                {/* Karte 3 - die Preise hinter dem Ergebnis. */}
+                <section className="vp-section">
+                  <Card padding="lg" radius="lg">
+                    <KartenKopf
+                      icon="euro"
+                      category="industry"
+                      titel="Was den Preis gemacht hat"
+                      art="bewertet"
+                    />
+                    <PreisTreiberBody zeilen={preise} />
+                  </Card>
+                </section>
 
-            {/* Tagesansicht: der Nachweis - was der Speicher wirklich getan hat. */}
-            {isDay && history && (
-              <section className="vp-section">
-                <Card padding="lg" radius="lg">
-                  <KartenKopf
-                    icon="battery"
-                    category="battery"
-                    titel="Speicher & Preis"
-                    art="gemessen"
-                    extra={
-                      history.plan.length > 0 ? (
-                        <Badge variant="tint">Plan &amp; Ist</Badge>
-                      ) : (
-                        <Badge variant="off">kein Plan</Badge>
-                      )
-                    }
-                  />
-                  <ChartSubtitle>
-                    Was Ihr Speicher an diesem Tag wirklich getan hat - direkt über dem
-                    Börsen-Strompreis, damit Sie sehen, dass er günstig lädt und teuer entlädt.
-                  </ChartSubtitle>
-                  <HistoryDayChart history={history} />
-                </Card>
-              </section>
-            )}
-
-            {/* Tagesprotokoll (nur Tag): der Tag in deutschen Sätzen. */}
-            {isDay && history && (
-              <section className="vp-section">
-                <Card padding="lg" radius="lg">
-                  <KartenKopf icon="list" category="home" titel="Tagesprotokoll" art="bewertet" />
-                  {history.protocol.length === 0 ? (
-                    <p className="vp-muted">
-                      Keine besonderen Ereignisse an diesem Tag - keine nennenswerte
-                      Batterie-Aktivität, PV-Erzeugung oder Preisspreizung erkannt.
+                {/* Geplant: die Vorher-Rechnung des Optimierers - eigene Karte,
+                    eigenes Abzeichen, damit sie nie als gemessene Ersparnis gilt. */}
+                <section className="vp-section">
+                  <Card padding="lg" radius="lg">
+                    <KartenKopf
+                      icon="battery-charging"
+                      category="battery"
+                      titel={`Geplante Speicher-Ersparnis · ${label}`}
+                      art="geplant"
+                    />
+                    <p className="vp-erg-plan">
+                      {history?.totals.batterySavingsPlannedEur == null
+                        ? DASH
+                        : eurAmount(history.totals.batterySavingsPlannedEur)}
                     </p>
-                  ) : (
-                    <ul className="vp-timeline">
-                      {history.protocol.map((e, i) => {
-                        const fmt = (iso: string) =>
-                          new Date(iso).toLocaleTimeString('de-DE', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          });
-                        const oneSlot =
-                          new Date(e.end).getTime() - new Date(e.start).getTime() <= 15 * 60000;
-                        return (
-                          <li key={`${e.type}-${e.start}-${i}`}>
-                            <span className="t">
-                              {oneSlot ? fmt(e.start) : `${fmt(e.start)} - ${fmt(e.end)}`}
-                            </span>
-                            <span className="ico" aria-hidden="true">
-                              {EVENT_ICONS[e.type] ? (
-                                <Icon name={EVENT_ICONS[e.type].icon} size={16} />
-                              ) : null}
-                            </span>
-                            <span className="txt">{e.text}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  <p className="vp-note" style={{ marginTop: 12 }}>
-                    Automatisch aus Messwerten und Börsenpreisen des Tages abgeleitet.
-                  </p>
-                </Card>
-              </section>
+                    <p className="vp-note">
+                      {history?.totals.batterySavingsPlannedEur == null
+                        ? 'Für diesen Zeitraum liegt kein Batterie-Fahrplan vor - die geplante Ersparnis erscheint, sobald geplant wird.'
+                        : 'Vorab geplant, nicht gemessen: der gemessene Beitrag der Steuerung steht oben im Ergebnis. Beide dürfen deutlich voneinander abweichen.'}
+                    </p>
+                  </Card>
+                </section>
+
+                {/* Tagesansicht: der Nachweis - was der Speicher wirklich getan hat. */}
+                {isDay && history && (
+                  <section className="vp-section">
+                    <Card padding="lg" radius="lg">
+                      <KartenKopf
+                        icon="battery"
+                        category="battery"
+                        titel="Speicher & Preis"
+                        art="gemessen"
+                        extra={
+                          history.plan.length > 0 ? (
+                            <Badge variant="tint">Plan &amp; Ist</Badge>
+                          ) : (
+                            <Badge variant="off">kein Plan</Badge>
+                          )
+                        }
+                      />
+                      <SpeicherPreisBody history={history} />
+                    </Card>
+                  </section>
+                )}
+
+                {/* Tagesprotokoll (nur Tag): der Tag in deutschen Sätzen. */}
+                {isDay && history && (
+                  <section className="vp-section">
+                    <Card padding="lg" radius="lg">
+                      <KartenKopf icon="list" category="home" titel="Tagesprotokoll" art="bewertet" />
+                      <TagesprotokollBody history={history} />
+                    </Card>
+                  </section>
+                )}
+              </>
             )}
           </>
         )}

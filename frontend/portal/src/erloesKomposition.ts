@@ -454,6 +454,13 @@ export interface ErloesErgebnisInput {
   money: SiteEarnings | null;
   /** Der Name des gezeigten Zeitraums („Juli 2026") — die Zeit-Leiste regiert. */
   periodLabel: string;
+  /**
+   * Mobil: den Zeitraum aus dem TITEL weglassen. Der Kartenkopf ist am Telefon
+   * EINE Zeile, und „Ergebnis · So., 09.08.2026" wurde dort auf „Ergebni…"
+   * abgeschnitten. Verloren geht nichts: die klebende Bedienzeile nennt den
+   * Zeitraum unmittelbar darüber, und der Satz unter der Zahl nennt ihn erneut.
+   */
+  kurzerTitel?: boolean;
 }
 
 /**
@@ -468,7 +475,7 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
   const money = input.money;
   const rangeLabel = input.periodLabel;
   const billingLabel = billingPeriodLabel(money);
-  const titel = `Ergebnis · ${rangeLabel}`;
+  const titel = input.kurzerTitel ? 'Ergebnis' : `Ergebnis · ${rangeLabel}`;
 
   const rows: ErgebnisZeile[] = [];
   const push = (
@@ -882,5 +889,127 @@ export function geldVerlauf(
     kumuliert,
     kumuliertText: `kumuliert ${signedEuro(lauf)}`,
     untertitel,
+  };
+}
+
+// --- Mobil: die Erlöse-Welt als Ergebnis + benannte Aufklapper ---------------
+
+/**
+ * **Die Mobil-Fassung der Erlöse-Welt** (Konzept `data/vp-mobile-views-x1` §6,
+ * Captain-Abnahme 09.08.2026). Gemessen waren es **5 932 px** = acht Karten in
+ * identischem Gewicht: nichts sagte, was die Hauptsache ist, und die reine
+ * Gelegenheits-Lektüre („Speicher & Preis" samt drei Absätzen, das
+ * Tagesprotokoll) lag bei 4 867 px täglich im Scrollweg.
+ *
+ * Umgeordnet wird, NICHT gekürzt: der Falz trägt das Ergebnis (Zahl + die drei
+ * Kompositionszeilen, die sie ERGEBEN + die Steuerungs-Zurechnung), danach ein
+ * kompakter Verlauf — und alles Erklärende wird ein BENANNTER Aufklapper, der
+ * beim Öffnen seinen vollen Inhalt und sein eigenes Abzeichen behält.
+ *
+ * Diese Funktion entscheidet nur, WELCHE Aufklapper es gibt und wie sie heißen.
+ * Ein Aufklapper, dessen Karte auf dieser Anlage bzw. in diesem Zeitraum gar
+ * nicht existiert (kein Markt-Vergleich ohne Direktvermarktung, kein
+ * Tagesnachweis außerhalb des Tages), erscheint nicht — ein leerer Aufklapper
+ * wäre ein Versprechen ins Leere.
+ */
+export type ErloesAufklapperId =
+  | 'so-verdient'
+  | 'preis-treiber'
+  | 'speicher-preis'
+  | 'tagesprotokoll';
+
+export interface ErloesAufklapper {
+  id: ErloesAufklapperId;
+  /** Die Zeile, die zugeklappt sichtbar ist. */
+  titel: string;
+  /** Die ruhige Unterzeile — was drinsteckt. */
+  sub: string;
+}
+
+const AUFKLAPPER: Record<ErloesAufklapperId, ErloesAufklapper> = {
+  'so-verdient': {
+    id: 'so-verdient',
+    titel: 'So verdient Ihre Anlage · der Markt-Vergleich',
+    sub: 'Ihr Erlös gegen den Monatsdurchschnitt',
+  },
+  'preis-treiber': {
+    id: 'preis-treiber',
+    titel: 'Was den Preis gemacht hat',
+    sub: 'Bezugspreis, Marktwert, Marktprämie',
+  },
+  'speicher-preis': {
+    id: 'speicher-preis',
+    titel: 'Speicher & Preis · Tagesnachweis',
+    sub: 'Was der Speicher wirklich getan hat',
+  },
+  tagesprotokoll: {
+    id: 'tagesprotokoll',
+    titel: 'Tagesprotokoll',
+    sub: 'Der Tag in Sätzen',
+  },
+};
+
+export interface ErloesAufklapperInput {
+  /** Gibt es das Kombinations-Ertragsbild? (nur direkt vermarktete Anlagen) */
+  hatSoVerdient: boolean;
+  /** Trägt „Was den Preis gemacht hat" überhaupt eine Zeile? */
+  hatPreisTreiber: boolean;
+  /** Der Tagesnachweis + das Protokoll gibt es nur im Tages-Zeitraum. */
+  istTag: boolean;
+  /** Liegt für diesen Tag überhaupt eine Historie-Antwort vor? */
+  hatTagesdaten: boolean;
+}
+
+export function erloesAufklapper(input: ErloesAufklapperInput): ErloesAufklapper[] {
+  const out: ErloesAufklapper[] = [];
+  if (input.hatSoVerdient) out.push(AUFKLAPPER['so-verdient']);
+  if (input.hatPreisTreiber) out.push(AUFKLAPPER['preis-treiber']);
+  if (input.istTag && input.hatTagesdaten) {
+    out.push(AUFKLAPPER['speicher-preis']);
+    out.push(AUFKLAPPER.tagesprotokoll);
+  }
+  return out;
+}
+
+/**
+ * **Die geplante Speicher-Ersparnis als gerahmte Fußnotiz.** Sie bleibt
+ * SICHTBAR, verliert am Telefon aber ihren Karten-Rang: als gleichrangige Karte
+ * neben dem gemessenen Ergebnis ist sie genau die dokumentierte
+ * Ehrlichkeits-Falle dieser Seite (die zwei Zahlen dürfen um ein Vielfaches
+ * auseinanderliegen, und die geplante ist die größere).
+ *
+ * **Das Abzeichen „Geplant" bleibt wörtlich** — es wandert nur vom Kartenkopf
+ * in die Notiz. Ohne Plan steht der Grund da, nie eine erfundene Null.
+ */
+export interface GeplantNotiz {
+  /** Immer „Geplant" — das Abzeichen der Notiz. */
+  badge: string;
+  /** „+ 4,12 €" oder „—". */
+  wertText: string;
+  /** Der Satz daneben. */
+  satz: string;
+  /** Ob wirklich ein Plan vorliegt (sonst ist `wertText` das ehrliche „—"). */
+  vorhanden: boolean;
+}
+
+export function geplanteErsparnisNotiz(
+  eur: number | null | undefined,
+  periodLabel: string,
+): GeplantNotiz {
+  if (eur == null) {
+    return {
+      badge: 'Geplant',
+      wertText: DASH,
+      satz: `Für ${periodLabel} liegt kein Batterie-Fahrplan vor — die geplante Ersparnis erscheint, sobald geplant wird.`,
+      vorhanden: false,
+    };
+  }
+  return {
+    badge: 'Geplant',
+    wertText: signedEuro(eur),
+    satz:
+      'Speicher-Ersparnis laut Fahrplan — vorab geplant, nicht gemessen. ' +
+      'Der gemessene Beitrag der Steuerung steht oben im Ergebnis.',
+    vorhanden: true,
   };
 }
