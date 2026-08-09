@@ -71,6 +71,34 @@ a:focus-visible,
   box-shadow: 0 0 0 3px var(--vp-focus-ring);
 }
 
+/* ⚠ Ein fokussierbarer SVG-Knoten braucht diese ZWEI Zeilen - EINMAL, für alle.
+   Chrome hängt seinen UA-Fokusring bei HTML an `:focus-visible`, bei einem
+   SVG-Element aber am nackten `:focus` (Chrome 151 gemessen: nach einem echten
+   Mausklick auf ein `<g tabindex role="button">` ist `:focus-visible` FALSE und
+   die berechnete Kontur trotzdem `rgb(0,95,204) auto 5px` - derselbe Klick auf
+   ein `div[tabindex]` zeichnet nichts). Der blaue Rahmen blieb deshalb nach
+   jedem Klick/Tipp stehen, bis man woanders hinklickte, und eine eigene
+   `:focus-visible`-Regel konnte ihn gar nicht ablösen: sie greift bei
+   Zeigerfokus per Definition nicht.
+   Also: den UA-Ring am `:focus` abschalten und den Haus-Ring am
+   `:focus-visible` selbst zeichnen - der matcht auf SVG nachweislich korrekt
+   NUR bei Tastaturfokus (Tab), die Bedienung per Tastatur bleibt also
+   vollständig sichtbar. Der Fokus wird nicht abgegeben, die Tab-Reihenfolge
+   bleibt also unangetastet.
+   ⚠ Die zweite Regel MUSS die erste überbieten (gleiche Spezifität, danach
+   notiert) - und eine komponenten-lokale `:focus-visible`-Regel auf einer
+   KLASSE (0,2,0) verlöre gegen `svg [tabindex]:focus` (0,2,1). Den Ring
+   deshalb nirgends sonst je SVG-Stelle wiederholen. */
+svg[tabindex]:focus,
+svg [tabindex]:focus {
+  outline: none;
+}
+svg[tabindex]:focus-visible,
+svg [tabindex]:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
 /* ============================================================
    Unified dashboard shell: fixed sidebar + content column
    ============================================================ */

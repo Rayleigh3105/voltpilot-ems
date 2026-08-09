@@ -120,14 +120,14 @@
   color: var(--vp-text-gray);
 }
 
-/* Der Knoten selbst ist die Schaltfläche: Tastaturfokus muss sichtbar sein. */
+/* Der Knoten selbst ist die Schaltfläche. Den Fokusring zeichnet BEWUSST nicht
+   diese Datei, sondern die eine `svg [tabindex]`-Regel in `src/index.css`: dort
+   wird zuerst der UA-Ring abgeschaltet, den Chrome auf einem SVG-Element schon
+   am nackten `:focus` zeichnet (er blieb sonst nach jedem Maus-/Touch-Klick
+   stehen). Eine Regel hier könnte ihn gar nicht ablösen - sie hinge an einer
+   Klasse (0,2,0) und verlöre gegen `svg [tabindex]:focus` (0,2,1). */
 .vp-flow-node-btn {
   cursor: pointer;
-}
-
-.vp-flow-node-btn:focus-visible {
-  outline: 2px solid var(--vp-focus-ring-color, #2c5282);
-  outline-offset: 2px;
 }
 
 @media (max-width: 420px) {
