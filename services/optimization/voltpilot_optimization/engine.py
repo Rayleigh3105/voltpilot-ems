@@ -11,7 +11,7 @@ grid operator and the edge guards regardless - an advisory plan beats none).
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -20,8 +20,10 @@ from voltpilot_optimization.co_solver import (
     co_optimize_ignoring_grid_limit,
 )
 from voltpilot_optimization.config import v2_plan_site_ids
+from voltpilot_optimization.consumer_inputs import load_consumer_entities
 from voltpilot_optimization.domain import SchedulePlan, SLOTS_24H
 from voltpilot_optimization.entities import from_v1_input
+from voltpilot_optimization.persistence_v2 import SitePlanRepository
 from voltpilot_optimization.inputs import (
     BatterySite,
     SkipSite,
@@ -67,6 +69,7 @@ def plan_site(
     horizon_slots: int = SLOTS_24H,
     v2_publisher: PlanV2Publisher | None = None,
     v2_sites: frozenset | None = None,
+    v2_repository: SitePlanRepository | None = None,
 ) -> SchedulePlan:
     """Plan one site end to end. Raises :class:`SkipSite` when un-plannable.
 
@@ -97,23 +100,32 @@ def plan_site(
                 "publish.no_device",
                 extra={"context": {"site_id": str(site.site_id)}},
             )
-    _shadow_publish_v2(site, inp, now, v2_publisher, v2_sites)
+    _shadow_publish_v2(dsn, site, inp, now, v2_publisher, v2_sites, v2_repository)
     return plan
 
 
 def _shadow_publish_v2(
+    dsn: str,
     site: BatterySite,
     inp,
     now: datetime,
     v2_publisher: PlanV2Publisher | None,
     v2_sites: frozenset | None,
+    v2_repository: SitePlanRepository | None = None,
 ) -> None:
-    """Co-optimize + publish the v2 plan for a flagged site (best-effort).
+    """Co-optimize + persist + publish the v2 plan for a flagged site
+    (best-effort).
 
     Its own solve on the N=1 adapter, deliberately: the shadow publishes what
     the CO-optimizer plans (the golden suite pins it equivalent to v1 today;
-    once entities multiply, the v2 plan is the richer one). Never raises - the
-    v1 plan already persisted/published and the shadow must stay harmless.
+    once entities multiply, the v2 plan is the richer one). Since
+    Verbrauchssteuerung Inkrement 2 the flagged site's ACTIVE consumer
+    policies join the co-optimization (SHADOW: planned, persisted into
+    ``site_plan_run``/``entity_plan_slot`` and published on the v2 topic -
+    but nothing controls a device, the v1 path executes unchanged). An
+    unflagged site never reaches any of it; a consumer-less flagged site
+    co-optimizes exactly the pre-consumer model. Never raises - the v1 plan
+    already persisted/published and the shadow must stay harmless.
     """
     if v2_publisher is None or site.device_id is None:
         return
@@ -122,11 +134,35 @@ def _shadow_publish_v2(
         return
     try:
         co_inp = from_v1_input(inp)
+        # Consumer policies join the co-optimization best-effort: a failed
+        # load (DB blip) degrades the SHADOW to a consumer-less plan with a
+        # loud warning instead of dropping the whole shadow run.
+        loads = ()
+        try:
+            loads = load_consumer_entities(
+                dsn,
+                site.site_id,
+                inp.slot_starts,
+                inp.slot_minutes,
+                [p / 10.0 for p in inp.prices_eur_mwh],
+                [p / 10.0 for p in co_inp.import_prices],
+            )
+        except Exception as exc:
+            logger.warning(
+                "consumer.load_failed",
+                extra={
+                    "context": {"site_id": str(site.site_id), "error": str(exc)}
+                },
+            )
+        if loads:
+            co_inp = replace(co_inp, controllable_loads=loads)
         v2_plan_id = uuid4()
         try:
             site_plan = co_optimize(co_inp, v2_plan_id, now)
         except InfeasiblePlanError:
             site_plan = co_optimize_ignoring_grid_limit(co_inp, v2_plan_id, now)
+        if v2_repository is not None:
+            v2_repository.upsert_site_plan(site_plan)
         v2_publisher.publish(site_plan)
     except Exception as exc:  # shadow only - never sink the v1 cycle
         logger.warning(
@@ -142,6 +178,7 @@ def run_cycle(
     now: datetime | None = None,
     horizon_slots: int = SLOTS_24H,
     v2_publisher: PlanV2Publisher | None = None,
+    v2_repository: SitePlanRepository | None = None,
 ) -> CycleSummary:
     """One full optimization pass over every battery site."""
     now = now if now is not None else datetime.now(timezone.utc)
@@ -162,6 +199,7 @@ def run_cycle(
                 horizon_slots,
                 v2_publisher=v2_publisher,
                 v2_sites=v2_sites,
+                v2_repository=v2_repository,
             )
             summary.planned.append(plan)
         except SkipSite as exc:

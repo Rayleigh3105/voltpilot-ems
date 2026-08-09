@@ -25,6 +25,7 @@ from urllib.parse import quote
 from voltpilot_optimization.config import v2_plan_site_ids
 from voltpilot_optimization.engine import run_cycle
 from voltpilot_optimization.persistence import TimescaleScheduleRepository
+from voltpilot_optimization.persistence_v2 import TimescaleSitePlanRepository
 from voltpilot_optimization.publisher import MqttSchedulePublisher
 from voltpilot_optimization.publisher_v2 import MqttPlanV2Publisher
 from voltpilot_optimization.runtime import ServeRuntime, serve_health
@@ -177,9 +178,14 @@ def _run_one(args, env: dict[str, str]) -> None:
     publisher = None if args.no_publish else MqttSchedulePublisher.from_env(env)
     # v2 shadow publisher (E13a): only worth constructing when at least one
     # site is flagged via VOLTPILOT_V2_PLAN_SITES - and never for --no-publish.
+    # Its persistence twin (Verbrauchssteuerung Inkrement 2: site_plan_run +
+    # entity_plan_slot) follows the SAME gate plus --no-persist.
     v2_publisher = None
+    v2_repository = None
     if not args.no_publish and v2_plan_site_ids(env):
         v2_publisher = MqttPlanV2Publisher.from_env(env)
+        if not args.no_persist:
+            v2_repository = TimescaleSitePlanRepository(dsn)
     horizon_slots = round(args.horizon_hours * 4)
     summary = run_cycle(
         dsn,
@@ -187,6 +193,7 @@ def _run_one(args, env: dict[str, str]) -> None:
         publisher,
         horizon_slots=horizon_slots,
         v2_publisher=v2_publisher,
+        v2_repository=v2_repository,
     )
     print(summary.line())
 

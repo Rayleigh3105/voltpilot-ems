@@ -744,9 +744,19 @@ def _solve(model: ConcreteModel) -> None:
     # Tighten the optimality tolerance so the model's own 1e-6 tie-break
     # epsilons actually decide ties instead of being swamped by the default
     # 1e-4 relative gap (see MIP_REL_GAP above).
+    #
+    # mip_feasibility_tolerance is the SECOND knob of the same lesson
+    # (measured on the consumer-dispatch earliness tie-break, Inkrement 2):
+    # at its 1e-6 default HiGHS accepts integer assignments whose objective
+    # sits ~1e-7-1e-6 above the true optimum, which silently swallows any
+    # tie-break riding on BINARY variables (the earliness/preference epsilons
+    # place on/off runs; the v1 charge tie-breaks ride continuous variables
+    # and never hit it). 1e-9 restores exact tie resolution - never loosen it
+    # to "speed up" a tie, and never raise an epsilon instead.
     solver.highs_options = {
         "mip_rel_gap": MIP_REL_GAP,
         "mip_abs_gap": MIP_ABS_GAP,
+        "mip_feasibility_tolerance": 1e-9,
     }
     results = solver.solve(model)
     if results.termination_condition != TerminationCondition.optimal:

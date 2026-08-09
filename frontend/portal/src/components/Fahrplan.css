@@ -506,3 +506,48 @@
     border-top: none;
   }
 }
+
+/* --- Verbraucher im Fahrplan (Verbrauchssteuerung §14.11) ------------------ */
+.vp-verbraucher-slotcard {
+  margin-top: var(--vp-space-3);
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+}
+.vp-verbraucher-slotcard-title {
+  margin: 0 0 var(--vp-space-2);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.vp-verbraucher-slotcard ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-1);
+}
+.vp-verbraucher-slotcard li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  font-size: 0.85rem;
+}
+.vp-verbraucher-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-verbraucher-pflicht {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--vp-flow-load, #8b5cf6);
+  font-weight: 600;
+}
+.vp-verbraucher-grund {
+  color: var(--vp-text-muted, #6c757d);
+}

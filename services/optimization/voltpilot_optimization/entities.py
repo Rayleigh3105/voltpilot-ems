@@ -118,22 +118,265 @@ class ProducerEntity:
         _require_entity_id(self.entity_id)
 
 
+CONTROL_KINDS = ("on_off", "stepped", "continuous")
+GRID_ENERGY_POLICIES = ("allow", "avoid", "forbid")
+STORAGE_RELATIONS = ("consumer_first", "storage_first")
+REQUIREMENT_KINDS = ("fixed_window", "flexible_task")
+ENFORCEMENTS = ("must_run", "required_by_deadline")
+
+# The plan-slot / requirement reason vocabulary (§15). The portal translates
+# these through a pure, tested TS map - never by scanning German sentences.
+REASON_FIXED_WINDOW = "fixed_window"
+REASON_PRICE_WINDOW = "price_below_threshold"
+REASON_OPTIMIZER = "optimizer_selected_low_cost"
+REASON_FLEX_DEADLINE = "flex_deadline"
+REASON_GRID_LIMIT = "guard_grid_limit"
+REASON_NO_PERMITTED_ENERGY = "no_permitted_energy"
+
+# A compiled requirement id: the policy document's stable id, optionally with
+# an ``@YYYY-MM-DD`` instance suffix (flexible tasks split per recurrence
+# instance) - persisted as TEXT, never an MQTT topic segment.
+REQUIREMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,80}$")
+
+
+@dataclass(frozen=True)
+class LoadRequirement:
+    """One COMPILED operating requirement of a controllable consumer.
+
+    This is the solver-facing half of the policy compiler (D1): the cloud has
+    already expanded recurrences and price/time conditions into concrete slot
+    indices of THIS horizon (``window_slots``), so the solver never evaluates
+    a price or a timezone - it only sees windows. Reactive requirements with
+    LOCAL signals never reach this shape (they are edge work, Inkrement 4).
+
+    ``kind``:
+
+    - ``fixed_window``: the target power must hold in EVERY window slot
+      (Pflichtlauf §5.2, or a compiled price/conditional window §5.3/D1) -
+      with an honest fulfilment slack that only ever engages below harder
+      protection layers (§12.3), minimized lexicographically BEFORE economics.
+    - ``flexible_task``: a runtime and/or energy demand due within the window
+      (§5.4); the optimizer picks the timing. ``contiguous`` keeps the user's
+      choice - it is never re-interpreted (E5).
+
+    ``reason_code`` is the §15 vocabulary word served slots of this
+    requirement carry in the persisted plan (``fixed_window`` vs
+    ``price_below_threshold`` vs ``optimizer_selected_low_cost``).
+
+    ``service_rank`` orders MANDATORY requirements between consumers in the
+    stage-1 slack lexicography (E9: binding min-runs are operational
+    constraints, then rank, then the earlier deadline, then the stable
+    requirement id). It is NEVER an edge arbitration class.
+
+    ``allow_storage_discharge`` / ``grid_energy_policy`` are per-requirement
+    overrides (E10/§10); ``None`` inherits the consumer default. A compiled
+    ``must_run`` requirement always carries ``grid_energy_policy="allow"``
+    (E2 - the compiler stamps it, the model never re-derives it).
+    """
+
+    requirement_id: str
+    kind: str
+    window_slots: tuple[int, ...]
+    target_kw: float | None = None
+    required_minutes: int | None = None
+    required_kwh: float | None = None
+    contiguous: bool = False
+    enforcement: str = "must_run"
+    service_rank: int | None = None
+    allow_storage_discharge: bool | None = None
+    grid_energy_policy: str | None = None
+    reason_code: str = REASON_FIXED_WINDOW
+
+    def __post_init__(self) -> None:
+        if not REQUIREMENT_ID_PATTERN.match(self.requirement_id):
+            raise ValueError(
+                f"requirement_id must match {REQUIREMENT_ID_PATTERN.pattern!r}: "
+                f"{self.requirement_id!r}"
+            )
+        if self.kind not in REQUIREMENT_KINDS:
+            raise ValueError(f"unknown requirement kind: {self.kind!r}")
+        if self.enforcement not in ENFORCEMENTS:
+            raise ValueError(f"unknown enforcement: {self.enforcement!r}")
+        if not self.window_slots:
+            raise ValueError(
+                f"requirement {self.requirement_id!r} needs at least one "
+                "window slot (empty windows are dropped by the compiler)"
+            )
+        if list(self.window_slots) != sorted(set(self.window_slots)):
+            raise ValueError(
+                f"requirement {self.requirement_id!r} window_slots must be "
+                "sorted and unique"
+            )
+        if any(t < 0 for t in self.window_slots):
+            raise ValueError("window_slots must be non-negative indices")
+        if self.kind == "fixed_window":
+            if self.target_kw is None or not (
+                math.isfinite(self.target_kw) and self.target_kw > 0
+            ):
+                raise ValueError(
+                    f"fixed_window requirement {self.requirement_id!r} needs "
+                    "a positive target_kw"
+                )
+        else:  # flexible_task
+            if self.required_minutes is None and self.required_kwh is None:
+                raise ValueError(
+                    f"flexible_task {self.requirement_id!r} needs "
+                    "required_minutes and/or required_kwh"
+                )
+            if self.required_minutes is not None and self.required_minutes <= 0:
+                raise ValueError("required_minutes must be positive")
+            if self.required_kwh is not None and not (
+                math.isfinite(self.required_kwh) and self.required_kwh > 0
+            ):
+                raise ValueError("required_kwh must be finite and positive")
+        if self.grid_energy_policy is not None and (
+            self.grid_energy_policy not in GRID_ENERGY_POLICIES
+        ):
+            raise ValueError(
+                f"unknown grid_energy_policy: {self.grid_energy_policy!r}"
+            )
+        if self.enforcement == "must_run" and self.grid_energy_policy == "forbid":
+            raise ValueError(
+                "must_run implies grid allow (E2) - forbid is contradictory"
+            )
+
+    @property
+    def deadline_slot(self) -> int:
+        """The last window slot - the requirement's in-horizon deadline
+        (orders colliding mandatory requirements, E9)."""
+        return self.window_slots[-1]
+
+    @property
+    def mandatory(self) -> bool:
+        """Both compiled enforcements are obligations whose shortfall is a
+        stage-1 slack (a Pflichtlauf immediately, a flexible task by its
+        deadline); opportunistic requirements never reach the solver."""
+        return True
+
+
 @dataclass(frozen=True)
 class ControllableLoadEntity:
-    """A controllable consumer (wallbox, heat rod, ...) - DECLARED but not yet
-    dispatched: the E4-Basis solver accepts only an empty list (the follow-up
-    E4 features add flexible-load dispatch semantics - HLZF windows, energy
-    demands - once their contracts exist). The dataclass exists so the input
-    shape is final and callers can already thread the (empty) list through.
+    """A controllable consumer (wallbox, heat rod, pump, ...) with its control
+    profile and COMPILED operating requirements (§12.1).
+
+    Control coupling per ``control_kind`` (§12.2):
+
+    - ``on_off``: power is 0 or ``max_power_kw``.
+    - ``stepped``: power is one of ``levels_kw`` (explicit ascending list
+      including 0 - uneven manufacturer levels stay representable, §4.3).
+    - ``continuous``: ``min_power_kw <= power <= max_power_kw`` while on,
+      optionally restricted to the D4 non-convex ``power_ranges_kw`` (one
+      binary per range, at most one active, e.g. 1-/3-phase charging).
+
+    ``storage_relation`` (E1/D6) is an ENERGY PREFERENCE inside the joint
+    optimization - a deterministic epsilon-class tie-break, never a safety or
+    grid priority and never a stage of its own (D2). ``grid_energy_policy`` /
+    ``allow_storage_discharge`` are the consumer DEFAULTS; requirements may
+    override per §10.
+
+    ``min_on_slots``/``min_off_slots``/``max_starts_per_horizon``/
+    ``ramp_kw_per_slot`` are the unit-commitment invariants (§12.2); the
+    stateful edge cycle guard (Inkrement 3) enforces them a second time at
+    the device - the solver plans within them so plans are executable.
+
+    A consumer runs ONLY to serve its requirements: outside every compiled
+    window it is planned OFF. Opportunistic operation (§5.5) is a later,
+    explicitly opted-in feature - without it the optimizer must not switch a
+    device on just because energy is momentarily cheap.
     """
 
     entity_id: str
     max_power_kw: float
+    control_kind: str = "on_off"
+    min_power_kw: float = 0.0
+    levels_kw: tuple[float, ...] = ()
+    power_ranges_kw: tuple[tuple[float, float], ...] = ()
+    storage_relation: str = "consumer_first"
+    grid_energy_policy: str = "allow"
+    allow_storage_discharge: bool = False
+    min_on_slots: int = 0
+    min_off_slots: int = 0
+    max_starts_per_horizon: int | None = None
+    ramp_kw_per_slot: float | None = None
+    requirements: tuple[LoadRequirement, ...] = ()
+    initially_on: bool = False
 
     def __post_init__(self) -> None:
         _require_entity_id(self.entity_id)
         if not (math.isfinite(self.max_power_kw) and self.max_power_kw > 0):
             raise ValueError("max_power_kw must be finite and positive")
+        if self.control_kind not in CONTROL_KINDS:
+            raise ValueError(f"unknown control_kind: {self.control_kind!r}")
+        if self.storage_relation not in STORAGE_RELATIONS:
+            raise ValueError(f"unknown storage_relation: {self.storage_relation!r}")
+        if self.grid_energy_policy not in GRID_ENERGY_POLICIES:
+            raise ValueError(
+                f"unknown grid_energy_policy: {self.grid_energy_policy!r}"
+            )
+        if self.control_kind == "stepped":
+            if len(self.levels_kw) < 2 or self.levels_kw[0] != 0.0:
+                raise ValueError(
+                    "stepped consumers need an explicit ascending levels_kw "
+                    "list starting at 0 (§4.3)"
+                )
+            if list(self.levels_kw) != sorted(set(self.levels_kw)):
+                raise ValueError("levels_kw must strictly ascend")
+            if self.levels_kw[-1] > self.max_power_kw + 1e-9:
+                raise ValueError("levels_kw must stay within max_power_kw")
+        elif self.levels_kw:
+            raise ValueError("levels_kw is only valid for stepped consumers")
+        if self.power_ranges_kw:
+            if self.control_kind != "continuous":
+                raise ValueError(
+                    "power_ranges_kw is only valid for continuous consumers (D4)"
+                )
+            prev_max = 0.0
+            for lo, hi in self.power_ranges_kw:
+                if not (0.0 < lo <= hi <= self.max_power_kw + 1e-9):
+                    raise ValueError(
+                        "each power range must satisfy 0 < min <= max <= rated"
+                    )
+                if lo < prev_max:
+                    raise ValueError(
+                        "power_ranges_kw must be disjoint and ascending (D4)"
+                    )
+                prev_max = hi
+        if self.control_kind == "continuous" and not self.power_ranges_kw:
+            if not (0.0 <= self.min_power_kw <= self.max_power_kw):
+                raise ValueError(
+                    "continuous consumers need 0 <= min_power_kw <= max_power_kw"
+                )
+        if self.min_on_slots < 0 or self.min_off_slots < 0:
+            raise ValueError("min_on/off_slots must be >= 0")
+        if self.max_starts_per_horizon is not None and self.max_starts_per_horizon < 0:
+            raise ValueError("max_starts_per_horizon must be >= 0 when set")
+        if self.ramp_kw_per_slot is not None and not (
+            math.isfinite(self.ramp_kw_per_slot) and self.ramp_kw_per_slot > 0
+        ):
+            raise ValueError("ramp_kw_per_slot must be finite and positive when set")
+        seen: set[str] = set()
+        for req in self.requirements:
+            if req.requirement_id in seen:
+                raise ValueError(
+                    f"duplicate requirement window id: {req.requirement_id!r}"
+                )
+            seen.add(req.requirement_id)
+
+    def effective_storage_discharge(self, req: LoadRequirement) -> bool:
+        """E10: the requirement override when present, else the consumer
+        default."""
+        if req.allow_storage_discharge is not None:
+            return req.allow_storage_discharge
+        return self.allow_storage_discharge
+
+    def effective_grid_policy(self, req: LoadRequirement) -> str:
+        """E2/§10: must_run is always allow; else the requirement override,
+        else the consumer default."""
+        if req.enforcement == "must_run":
+            return "allow"
+        if req.grid_energy_policy is not None:
+            return req.grid_energy_policy
+        return self.grid_energy_policy
 
 
 @dataclass(frozen=True)
@@ -195,11 +438,14 @@ class CoOptimizationInput:
         ids = [e.entity_id for e in self.entities]
         if len(set(ids)) != len(ids):
             raise ValueError(f"entity ids must be unique: {sorted(ids)}")
-        if self.controllable_loads:
-            raise NotImplementedError(
-                "controllable_loads dispatch is not part of E4-Basis - the "
-                "list must be empty until the flexible-load feature lands"
-            )
+        for load in self.controllable_loads:
+            for req in load.requirements:
+                if req.window_slots[-1] >= n:
+                    raise ValueError(
+                        f"load {load.entity_id!r} requirement "
+                        f"{req.requirement_id!r} references slot "
+                        f"{req.window_slots[-1]} outside the horizon ({n})"
+                    )
         if self.slot_minutes <= 0:
             raise ValueError("slot_minutes must be positive")
         if self.grid_limit_kw is not None and self.grid_limit_kw <= 0:
@@ -421,6 +667,53 @@ class ProducerDispatch:
 
 
 @dataclass(frozen=True)
+class LoadSlot:
+    """One controllable consumer's dispatch in one slot.
+
+    ``reason_code``/``requirement_id`` name WHY the slot runs (§15 vocabulary,
+    resolved deterministically from the served requirement windows) - ``None``
+    on an off slot. The portal renders them through its pure reason map; no
+    surface scans German sentences.
+    """
+
+    start: datetime
+    on: bool
+    power_kw: float
+    reason_code: str | None = None
+    requirement_id: str | None = None
+
+
+@dataclass(frozen=True)
+class UnservedRequirement:
+    """An honest shortfall: the solver kept the model feasible by NOT fully
+    serving this requirement (stage-1 slack > 0). ``shortfall`` is in
+    ``unit`` (``kw_slots`` for fixed windows = Σ missing kW over window
+    slots, ``minutes`` / ``kwh`` for flexible demands); ``reason_code`` names
+    the cause honestly (§17: grid limit vs. no permitted energy source)."""
+
+    requirement_id: str
+    shortfall: float
+    unit: str
+    reason_code: str
+
+
+@dataclass(frozen=True)
+class LoadDispatch:
+    """One controllable consumer's full-horizon dispatch."""
+
+    entity_id: str
+    control_kind: str
+    slots: list[LoadSlot] = field(default_factory=list)
+    unserved: tuple[UnservedRequirement, ...] = ()
+
+    @property
+    def energy_kwh(self) -> float:
+        """Planned consumption over the horizon (15-min slots assumed by the
+        caller via SitePlan.slot_minutes)."""
+        return sum(s.power_kw for s in self.slots)
+
+
+@dataclass(frozen=True)
 class SiteSlot:
     """Site-level flows and economics of one slot."""
 
@@ -447,6 +740,7 @@ class SitePlan:
     generated_at: datetime
     storages: list[StorageDispatch] = field(default_factory=list)
     producers: list[ProducerDispatch] = field(default_factory=list)
+    loads: list[LoadDispatch] = field(default_factory=list)
     site_slots: list[SiteSlot] = field(default_factory=list)
     slot_minutes: int = SLOT_MINUTES
     peak_target_kw: float | None = None

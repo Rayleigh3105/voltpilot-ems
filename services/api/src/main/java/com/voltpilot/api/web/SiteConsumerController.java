@@ -1,5 +1,7 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.consumers.ConsumerScheduleRepository;
+import com.voltpilot.api.consumers.ConsumerScheduleRepository.ConsumerScheduleDto;
 import com.voltpilot.api.consumers.ConsumerService;
 import com.voltpilot.api.consumers.ConsumerService.ConsumerDto;
 import com.voltpilot.api.consumers.ConsumerService.ConsumerOptionsDto;
@@ -51,10 +53,13 @@ public class SiteConsumerController {
 
     private final SiteRepository sites;
     private final ConsumerService consumers;
+    private final ConsumerScheduleRepository consumerSchedules;
 
-    public SiteConsumerController(SiteRepository sites, ConsumerService consumers) {
+    public SiteConsumerController(SiteRepository sites, ConsumerService consumers,
+            ConsumerScheduleRepository consumerSchedules) {
         this.sites = sites;
         this.consumers = consumers;
+        this.consumerSchedules = consumerSchedules;
     }
 
     private void requireSite(UUID siteId) {
@@ -118,6 +123,20 @@ public class SiteConsumerController {
         requireSite(siteId);
         String createdBy = jwt == null ? null : jwt.getSubject();
         return consumers.savePolicyDraft(siteId, id, request.document(), createdBy);
+    }
+
+    /**
+     * Consumer slots of the newest co-optimizer run for the Fahrplan view
+     * (§11/§14.11, Inkrement 2). SHADOW semantics: the slots exist only for
+     * sites the optimizer co-plans (VOLTPILOT_V2_PLAN_SITES); without a stored
+     * run the body is well-formed and empty - the Fahrplan then renders
+     * byte-identical to the pre-consumer view. RLS-fenced like every site
+     * route (foreign site 404 via {@link #requireSite}).
+     */
+    @GetMapping("/consumer-schedule")
+    public ConsumerScheduleDto consumerSchedule(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return consumerSchedules.latestForSite(siteId);
     }
 
     /** German reasons reach the portal as {"message": ...} (MastrController pattern). */

@@ -30,6 +30,10 @@ vi.mock('../api', async (importOriginal) => {
       controlStatus: (...a: unknown[]) => controlStatus(...a),
       curtailmentStatus: (...a: unknown[]) => curtailmentStatus(...a),
       telemetry: (...a: unknown[]) => telemetry(...a),
+      // Verbrauchssteuerung §14.11: the SHADOW empty document - the section
+      // must render byte-identical without consumer slots.
+      consumerSchedule: () =>
+        Promise.resolve({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),
     },
   };
 });

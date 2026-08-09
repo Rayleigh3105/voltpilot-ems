@@ -328,15 +328,20 @@ def test_solar_only_subset_constraint_binds_jointly_not_per_entity():
 # ---------------------------------------------------------------------------
 
 
-def test_controllable_loads_are_declared_but_not_yet_dispatched():
-    with pytest.raises(NotImplementedError):
-        make_input(
-            [50.0] * 4,
-            storages=(storage(),),
-            controllable_loads=(
-                ControllableLoadEntity("wallbox", max_power_kw=11.0),
-            ),
-        )
+def test_a_requirement_less_consumer_is_accepted_and_planned_off():
+    """Inkrement 2: controllable loads ARE dispatched now - but a consumer
+    runs only to serve requirements, so one without any is planned off in
+    every slot (no opportunistic operation, §5.5)."""
+    inp = make_input(
+        [50.0] * 4,
+        storages=(storage(),),
+        controllable_loads=(
+            ControllableLoadEntity("wallbox", max_power_kw=11.0),
+        ),
+    )
+    plan = solve(inp)
+    assert len(plan.loads) == 1
+    assert all(not s.on and s.power_kw == 0.0 for s in plan.loads[0].slots)
 
 
 def test_entity_ids_must_be_unique_and_topic_safe():

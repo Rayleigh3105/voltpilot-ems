@@ -1273,6 +1273,34 @@ export interface CurtailmentStatus {
   checkedAt: string;
 }
 
+/**
+ * Verbraucher-Slots des jüngsten Co-Optimizer-Laufs (Verbrauchssteuerung
+ * Inkrement 2, §14.11 Fahrplan-Layer). SHADOW: Zeilen existieren nur für
+ * Anlagen, die der Optimierer co-plant; ohne Lauf ist das Dokument leer und
+ * der Fahrplan rendert byte-identisch zur Vor-Verbraucher-Ansicht.
+ */
+export interface ConsumerPlanSlot {
+  time: string;
+  command: 'on_off' | 'setpoint_kw';
+  /** Geplante Leistung in kW (on_off: Nennleistung wenn an, 0 wenn aus). */
+  targetValue: number | null;
+  reasonCode: string | null;
+  requirementId: string | null;
+}
+
+export interface ConsumerEntitySchedule {
+  entityId: string;
+  name: string | null;
+  slots: ConsumerPlanSlot[];
+}
+
+export interface ConsumerSchedule {
+  planId: string | null;
+  generatedAt: string | null;
+  slotMinutes: number;
+  entities: ConsumerEntitySchedule[];
+}
+
 // ---- Per-source breakdown (GET /api/v1/sites/{id}/sources) ------------------
 
 /**
@@ -1791,6 +1819,13 @@ export const api = {
     request<CurtailmentStatus | undefined>(
       `/api/v1/sites/${siteId}/curtailment-status`,
     ).then((v) => v ?? null),
+  /**
+   * Verbraucher-Slots des jüngsten Co-Optimizer-Laufs für den Fahrplan-Layer
+   * (Inkrement 2, SHADOW). Leeres Dokument = der Normalzustand einer nicht
+   * geflaggten Anlage - der Fahrplan bleibt dann unverändert.
+   */
+  consumerSchedule: (siteId: string) =>
+    request<ConsumerSchedule>(`/api/v1/sites/${siteId}/consumer-schedule`),
   /**
    * The caller's tenant context (U0 login bootstrap): tenant name/segment +
    * the EFFECTIVE Betriebsart that picks the navigation shell. 404 for an

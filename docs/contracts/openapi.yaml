@@ -3814,6 +3814,30 @@ paths:
         "400": { description: The policy is invalid. Body carries a German `message`. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Consumer/site not found for this tenant. }
+  /api/v1/sites/{siteId}/consumer-schedule:
+    get:
+      tags: [consumer]
+      summary: Consumer slots of the newest co-optimizer run (Fahrplan view).
+      description: >
+        Verbrauchssteuerung Inkrement 2 (§14.11): the planned consumer slots of
+        the site's newest co-optimized run, one entity per consumer with its
+        FULL slot grid (command on_off|setpoint_kw, target value, §15
+        reason_code, served requirement). SHADOW semantics: rows exist only for
+        sites the optimizer co-plans (VOLTPILOT_V2_PLAN_SITES) with active
+        policies - nothing controls a device. Without a stored run the body is
+        well-formed and empty (planId/generatedAt null, entities []); the
+        Fahrplan then renders byte-identical to the pre-consumer view.
+        Tenant-scoped via RLS (foreign site = 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The newest run's consumer slots (possibly empty).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConsumerSchedule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
 components:
   securitySchemes:
     bearerAuth:
@@ -3963,6 +3987,41 @@ components:
         document: { type: object, description: The consumer-policy document. }
         contentHash: { type: string, example: "sha256:..." }
         createdBy: { type: string, nullable: true }
+    ConsumerSchedule:
+      type: object
+      description: >
+        Consumer slots of the newest co-optimizer run (Verbrauchssteuerung
+        Inkrement 2, read from site_plan_run + entity_plan_slot). Empty state:
+        planId/generatedAt null + entities [] - never fabricated slots.
+      properties:
+        planId: { type: string, format: uuid, nullable: true }
+        generatedAt: { type: string, format: date-time, nullable: true }
+        slotMinutes: { type: integer, example: 15 }
+        entities:
+          type: array
+          items:
+            type: object
+            properties:
+              entityId: { type: string, description: mqtt-schedule-2.0 entity id (consumer = measurement_point UUID as string). }
+              name: { type: string, nullable: true, description: Customer-facing label of the consumer. }
+              slots:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    time: { type: string, format: date-time }
+                    command: { type: string, enum: [on_off, setpoint_kw] }
+                    targetValue: { type: number, nullable: true, description: "Planned power in kW (on_off: rated when on, 0 when off)." }
+                    reasonCode:
+                      type: string
+                      nullable: true
+                      description: >
+                        §15 vocabulary (fixed_window | price_below_threshold |
+                        optimizer_selected_low_cost | flex_deadline |
+                        guard_grid_limit | no_permitted_energy); null on an off
+                        slot. The portal maps it through a pure, tested table -
+                        never by scanning German sentences.
+                    requirementId: { type: string, nullable: true }
     SimulationRequest:
       type: object
       description: >

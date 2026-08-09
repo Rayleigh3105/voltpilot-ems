@@ -13,6 +13,7 @@ import {
   type CurtailmentStatus,
   type HistoryRange,
   type PriceHistory,
+  type ConsumerSchedule,
   type SchedulePlan,
   type Site,
   type TelemetryPoint,
@@ -29,6 +30,7 @@ import { WeatherChart } from '../WeatherChart';
 import { hoursAhead, nextHourIndex } from '../weather';
 import { ScheduleChart } from '../ScheduleChart';
 import { bankedValueLine, horizonHint, planStaleNote, savingsTodayEur } from '../schedule';
+import { consumerLayers, consumerSlotInfos, hasConsumerData } from '../consumerSchedule';
 import { FALLBACK_14A_NOTE, FORECAST_FOOTNOTE, phases } from '../fahrplanWhy';
 import { FahrplanWhyPanel } from '../components/FahrplanWhy';
 import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
@@ -463,6 +465,37 @@ function chartOpenByDefault(): boolean {
  * der Daten. Ein Plan OHNE die persistierten Warum-Fakten degradiert wie
  * bisher: kein Film, kein Held-Grund, nur Euro-Zeile und Diagramm.
  */
+/**
+ * §14.11 slot card: the tapped slot's consumers with Ziel + Grund (the ONE
+ * tested reason map) and the Pflicht word + lock icon - never colour alone.
+ */
+function VerbraucherSlotCard({
+  infos,
+}: {
+  infos: ReturnType<typeof consumerSlotInfos>;
+}) {
+  if (infos.length === 0) return null;
+  return (
+    <div className="vp-verbraucher-slotcard" data-testid="verbraucher-slotcard">
+      <p className="vp-verbraucher-slotcard-title">Verbraucher in dieser Viertelstunde</p>
+      <ul>
+        {infos.map((info) => (
+          <li key={info.name}>
+            <span className="vp-verbraucher-name">{info.name}</span>
+            <span className="vp-verbraucher-ziel">{info.ziel}</span>
+            {info.pflicht && (
+              <span className="vp-verbraucher-pflicht">
+                <Icon name="lock" size={13} /> Pflichtfenster
+              </span>
+            )}
+            {info.grund && <span className="vp-verbraucher-grund">{info.grund}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function FahrplanSection({ site }: { site: Site }) {
   const { data: plan, loading, err, reload } = useSiteData<SchedulePlan>(site, (id) => api.schedule(id));
   const [selSlot, setSelSlot] = useState<number | null>(null);
@@ -482,6 +515,10 @@ export function FahrplanSection({ site }: { site: Site }) {
   // ebenfalls FAIL-SOFT: eine api ohne diese Lesart antwortet mit 400, dann
   // bleibt der Film exakt bei der Rest-des-Tages-Fassung des jüngsten Laufs.
   const [dayPlan, setDayPlan] = useState<SchedulePlan | null>(null);
+  // Verbrauchssteuerung §14.11 (SHADOW): die Verbraucher-Slots des jüngsten
+  // Co-Optimizer-Laufs, FAIL-SOFT - eine ältere api / eine nicht geflaggte
+  // Anlage liefert nichts, und der Fahrplan bleibt byte-identisch.
+  const [consumerPlan, setConsumerPlan] = useState<ConsumerSchedule | null>(null);
 
   const siteId = site.id;
   const loadLive = useCallback(() => {
@@ -520,8 +557,32 @@ export function FahrplanSection({ site }: { site: Site }) {
     };
   }, [siteId]);
 
+  useEffect(() => {
+    let active = true;
+    setConsumerPlan(null);
+    try {
+      api
+        .consumerSchedule(siteId)
+        .then((c) => active && setConsumerPlan(c))
+        .catch(() => active && setConsumerPlan(null));
+    } catch {
+      // Fail-soft also against a SYNC throw (an api double without the
+      // method): the Fahrplan then stays byte-identical.
+    }
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
+
   const slots = plan?.slots ?? [];
   const slotMinutes = plan?.slotMinutes ?? 15;
+  // Auf das Slot-Raster DIESES Plans ausgerichtet (Zeitstempel, nie Index);
+  // ohne Verbraucher bleibt alles Weitere unverändert.
+  const verbraucher = useMemo(
+    () => consumerLayers(consumerPlan, (plan?.slots ?? []).map((s) => s.start)),
+    [consumerPlan, plan],
+  );
+  const verbraucherAktiv = hasConsumerData(verbraucher);
   // The why-layer gate: [] unless EVERY slot carries a known role.
   const whyPhases = useMemo(() => phases(slots, slotMinutes), [plan]); // eslint-disable-line react-hooks/exhaustive-deps
   const hasWhy = whyPhases.length > 0;
@@ -779,8 +840,15 @@ export function FahrplanSection({ site }: { site: Site }) {
                   : undefined
               }
               selectedIndex={hasWhy ? selSlot : undefined}
+              consumers={verbraucherAktiv ? verbraucher : undefined}
             />
             {selSlot != null && slotPanel}
+            {/* §14.11: die Verbraucher des angetippten Slots - Ziel + Grund aus
+                der EINEN getesteten reason_code-Tabelle, Pflicht als Wort +
+                Schloss-Icon, nie nur Farbe. Ohne Verbraucher rendert nichts. */}
+            {selSlot != null && verbraucherAktiv && (
+              <VerbraucherSlotCard infos={consumerSlotInfos(verbraucher, selSlot)} />
+            )}
             {/* Die Energiesummen sind Diagramm-KONTEXT, kein Seiten-Einstieg -
                 deshalb stehen sie hier unten und nicht mehr als KPI-Reihe oben. */}
             <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>

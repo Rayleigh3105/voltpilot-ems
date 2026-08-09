@@ -35,6 +35,7 @@ import {
 } from './schedule';
 import { useEChart } from './useEChart';
 import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
+import { consumerShade, type ConsumerLayer } from './consumerSchedule';
 import './components/Fahrplan.css';
 
 /**
@@ -80,11 +81,29 @@ function ct(v: number | null): string {
     : `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh`;
 }
 
+/**
+ * Consumer names are CUSTOMER-CONTROLLED strings and the tooltip formatter
+ * returns raw HTML - escape them (the documented XSS rule for chart
+ * formatters).
+ */
+function esc(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** A small padlock as an ECharts path symbol - the §14.11 Schloss marking. */
+const LOCK_SYMBOL =
+  'path://M6 8V6a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1zm2 0h4V6a2 2 0 1 0-4 0v2z';
+
 export function ScheduleChart({
   plan,
   peakTargetKw,
   onSlotClick,
   selectedIndex,
+  consumers,
 }: {
   plan: SchedulePlan;
   /**
@@ -102,6 +121,15 @@ export function ScheduleChart({
   onSlotClick?: (index: number) => void;
   /** The selected slot to highlight (a solid marker line); null/absent = none. */
   selectedIndex?: number | null;
+  /**
+   * Verbrauchssteuerung §14.11: the consumer layers of the newest
+   * co-optimizer run, aligned to THIS plan's slot grid (consumerLayers()).
+   * Positive stacked step-areas in shades of the ONE consumer hue; a
+   * Pflichtfenster slot additionally carries a lock marker + the word in the
+   * tooltip (never colour alone). Absent/empty = the chart is byte-identical
+   * to the pre-consumer view.
+   */
+  consumers?: ConsumerLayer[];
 }) {
   const t = chartTheme();
   // D4: DREI Gruppen-Schalter statt neun Einzel-Pills, und der Default ist
@@ -138,6 +166,17 @@ export function ScheduleChart({
   // erklärt, warum die PV-Prognose über dem Einspeise-Cap liegt.
   const curtail = curtailArea(plan.slots);
   const showCurtailArea = curtailing && curtail.present && !hidden.has(PV_FORECAST_LABEL);
+
+  // §14.11 consumer layers (Verbrauchssteuerung Inkrement 2): only layers
+  // that carry a value in THIS plan's grid draw anything - without them the
+  // chart (series, legend, axis) is byte-identical to the pre-consumer view.
+  const activeConsumers = (consumers ?? []).filter((l) =>
+    l.values.some((v) => v != null),
+  );
+  const showConsumers = activeConsumers.length > 0;
+  const anyPflicht = activeConsumers.some((l) =>
+    l.pflicht.some((p, i) => p && (l.values[i] ?? 0) > 0.049),
+  );
 
   const ref = useEChart((chart, width) => {
     const narrow = width < 480;
@@ -187,8 +226,19 @@ export function ScheduleChart({
     const showLoadLine = showLoad;
     const showIstLine = showIst;
     const showIstPvLine = showIstPv;
-    const axisMax = powerAxisMax(
-      kwMax, [forecast.pv, forecast.load, ist, istPv], hidden, target);
+    // The consumer stack shares the kW axis - its peak must lift the top.
+    const consumerStackMax = showConsumers
+      ? Math.max(
+          0,
+          ...slots.map((_s, i) =>
+            activeConsumers.reduce((sum, l) => sum + (l.values[i] ?? 0), 0),
+          ),
+        )
+      : 0;
+    const axisMax = Math.max(
+      powerAxisMax(kwMax, [forecast.pv, forecast.load, ist, istPv], hidden, target),
+      consumerStackMax > 0 ? consumerStackMax * 1.1 : 0,
+    );
 
     // The plan's DATE belongs on the axis (audit F2): a plan from yesterday
     // rendered a pure 10:15 … 23:45 time axis and read as today. The first
@@ -311,6 +361,23 @@ export function ScheduleChart({
                 );
               } else if (p.seriesName === 'Ladestand') {
                 lines.push(`${p.marker} Ladestand: ${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`);
+              } else if (String(p.seriesName).startsWith('Verbraucher · ')) {
+                // Consumer names are customer-controlled -> escaped (XSS
+                // rule); an off slot (0 kW) stays silent. The Pflicht word
+                // travels WITH the value (never colour alone, §14.11).
+                const layer = activeConsumers.find(
+                  (l) => `Verbraucher · ${l.name}` === p.seriesName,
+                );
+                if (layer && v > 0.049) {
+                  const pflicht = layer.pflicht[p.dataIndex]
+                    ? ' · Pflichtfenster (fest)'
+                    : '';
+                  lines.push(
+                    `${p.marker} ${esc(layer.name)}: ${v.toLocaleString('de-DE', {
+                      maximumFractionDigits: 1,
+                    })} kW${pflicht}`,
+                  );
+                }
               }
             }
             if (batV != null && Math.abs(batV) > 0.05) {
@@ -619,13 +686,63 @@ export function ScheduleChart({
                 },
               ]
             : []),
+          // §14.11: consumers as POSITIVE stacked step-areas in shades of the
+          // ONE consumer hue (the battery keeps its own sign logic). A null =
+          // the consumer run does not cover the slot (gap, never a 0).
+          ...(showConsumers
+            ? activeConsumers.map((layer, li) => ({
+                name: `Verbraucher · ${layer.name}`,
+                type: 'line',
+                yAxisIndex: 0,
+                data: layer.values,
+                stack: 'vp-verbraucher',
+                step: 'end',
+                symbol: 'none',
+                connectNulls: false,
+                z: 2,
+                lineStyle: { color: consumerShade(t.consumer, li), width: 1.5 },
+                itemStyle: { color: consumerShade(t.consumer, li) },
+                areaStyle: { color: consumerShade(t.consumer, li), opacity: 0.28 },
+              }))
+            : []),
+          // The lock markers on Pflicht slots (word travels in the tooltip -
+          // never colour alone). One series at the TOP of the consumer stack.
+          ...(showConsumers && anyPflicht
+            ? [
+                {
+                  name: 'Pflichtfenster',
+                  type: 'scatter',
+                  yAxisIndex: 0,
+                  symbol: LOCK_SYMBOL,
+                  symbolSize: 11,
+                  symbolOffset: [0, -8],
+                  silent: true,
+                  z: 6,
+                  itemStyle: { color: t.consumer },
+                  tooltip: { show: false },
+                  data: slots
+                    .map((_s, i) => {
+                      const pflicht = activeConsumers.some(
+                        (l) => l.pflicht[i] && (l.values[i] ?? 0) > 0.049,
+                      );
+                      if (!pflicht) return null;
+                      const top = activeConsumers.reduce(
+                        (sum, l) => sum + (l.values[i] ?? 0),
+                        0,
+                      );
+                      return [i, top];
+                    })
+                    .filter((d): d is [number, number] => d != null),
+                },
+              ]
+            : []),
         ],
       },
       true,
     );
     // `forecast`/`ist`/`curtail`/`curtailing` are derived from `plan`, so
     // `plan` covers them.
-  }, [plan, t, peakTargetKw, onSlotClick, selectedIndex, hidden]);
+  }, [plan, t, peakTargetKw, onSlotClick, selectedIndex, hidden, consumers]);
 
   // Insight: charge cheap, discharge expensive, and today's saving - composed
   // by the pure builder so the "flat curve" clause can never contradict a
@@ -673,6 +790,30 @@ export function ScheduleChart({
       : []),
     ...(showSoc
       ? [{ color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed', toggleable: false } as LegendItem]
+      : []),
+    // §14.11: one row per consumer (only with consumers - the legend never
+    // advertises a layer the chart does not draw), plus the lock explainer
+    // when a Pflichtfenster exists.
+    ...activeConsumers.map(
+      (layer, li) =>
+        ({
+          color: consumerShade(t.consumer, li),
+          label: layer.name,
+          unit: 'kW',
+          shape: 'area',
+          toggleable: false,
+        }) as LegendItem,
+    ),
+    ...(anyPflicht
+      ? [
+          {
+            color: t.consumer,
+            label: 'Schloss = Pflichtfenster (feste Zeit)',
+            unit: 'kW',
+            shape: 'area',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
   ];
 

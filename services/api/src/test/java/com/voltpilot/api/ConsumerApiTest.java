@@ -241,6 +241,83 @@ class ConsumerApiTest {
                 .isEqualTo("Nur meine");
     }
 
+    @Test
+    void consumerScheduleServesTheNewestRunTenantScopedWithHonestEmptyState() throws Exception {
+        String tokA = token("demo", "demo");
+        // 1. Honest empty state: no stored run -> a well-formed empty document,
+        // never a 404 and never fabricated slots (the normal production state
+        // while VOLTPILOT_V2_PLAN_SITES is empty).
+        Map<String, Object> empty = getMap(
+                "/api/v1/sites/" + BERLIN_SITE + "/consumer-schedule", tokA);
+        assertThat(empty.get("planId")).isNull();
+        assertThat(empty.get("generatedAt")).isNull();
+        assertThat((List<?>) empty.get("entities")).isEmpty();
+
+        // 2. A consumer entity (its label feeds the response) + two runs seeded
+        // as the optimizer's trusted backend role (superuser, tenant stamped -
+        // the weather-collector pattern the shadow writer uses).
+        Map<String, Object> c = create(tokA, Map.of(
+                "type", "pump", "name", "Stallpumpe", "ratedPowerKw", 2.2,
+                "controlKind", "on_off"));
+        String entityId = (String) c.get("id");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        java.util.UUID oldPlan = java.util.UUID.randomUUID();
+        java.util.UUID newPlan = java.util.UUID.randomUUID();
+        java.time.Instant oldRun = java.time.Instant.parse("2026-08-10T11:45:00Z");
+        java.time.Instant newRun = java.time.Instant.parse("2026-08-10T12:00:00Z");
+        java.time.Instant slot0 = java.time.Instant.parse("2026-08-10T12:00:00Z");
+        java.time.Instant slot1 = java.time.Instant.parse("2026-08-10T12:15:00Z");
+        try (java.sql.Connection conn = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = conn.createStatement()) {
+            for (Object[] run : new Object[][] {
+                    {oldPlan, oldRun}, {newPlan, newRun}}) {
+                st.executeUpdate("INSERT INTO site_plan_run (plan_id, tenant_id, site_id, "
+                        + "generated_at, horizon_slots, slot_minutes) VALUES ('" + run[0]
+                        + "', '" + tenantA + "', '" + BERLIN_SITE + "', '" + run[1]
+                        + "', 96, 15)");
+            }
+            // The superseded run says OFF; the newest run says ON - the
+            // endpoint must serve ONLY the newest.
+            st.executeUpdate("INSERT INTO entity_plan_slot (time, tenant_id, site_id, "
+                    + "plan_id, generated_at, entity_id, command, target_value, reason_code, "
+                    + "requirement_id) VALUES ('" + slot0 + "', '" + tenantA + "', '"
+                    + BERLIN_SITE + "', '" + oldPlan + "', '" + oldRun + "', '" + entityId
+                    + "', 'on_off', 0, NULL, NULL)");
+            st.executeUpdate("INSERT INTO entity_plan_slot (time, tenant_id, site_id, "
+                    + "plan_id, generated_at, entity_id, command, target_value, reason_code, "
+                    + "requirement_id) VALUES ('" + slot0 + "', '" + tenantA + "', '"
+                    + BERLIN_SITE + "', '" + newPlan + "', '" + newRun + "', '" + entityId
+                    + "', 'on_off', 1, 'fixed_window', 'pump-daily'), ('" + slot1 + "', '"
+                    + tenantA + "', '" + BERLIN_SITE + "', '" + newPlan + "', '" + newRun
+                    + "', '" + entityId + "', 'on_off', 1, 'optimizer_selected_low_cost', "
+                    + "'pump-daily')");
+        }
+
+        // 3. The newest run, whole - label joined, slots ordered, reasons machine-readable.
+        Map<String, Object> schedule = getMap(
+                "/api/v1/sites/" + BERLIN_SITE + "/consumer-schedule", tokA);
+        assertThat(schedule.get("planId")).isEqualTo(newPlan.toString());
+        assertThat(schedule.get("slotMinutes")).isEqualTo(15);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> entities = (List<Map<String, Object>>) schedule.get("entities");
+        assertThat(entities).hasSize(1);
+        assertThat(entities.get(0).get("entityId")).isEqualTo(entityId);
+        assertThat(entities.get(0).get("name")).isEqualTo("Stallpumpe");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> slots = (List<Map<String, Object>>) entities.get(0).get("slots");
+        assertThat(slots).hasSize(2);
+        assertThat(slots.get(0).get("command")).isEqualTo("on_off");
+        assertThat(slots.get(0).get("reasonCode")).isEqualTo("fixed_window");
+        assertThat(slots.get(1).get("reasonCode")).isEqualTo("optimizer_selected_low_cost");
+        assertThat(slots.get(1).get("requirementId")).isEqualTo("pump-daily");
+
+        // 4. RLS: tenant B gets 404 on the same route, never data.
+        assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/consumer-schedule"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     // --- helpers -------------------------------------------------------------
 
     private Map<String, Object> heaterPolicy(String entityId) {
