@@ -52,6 +52,13 @@ export interface ChartTheme {
    * `discharge` (that is cost/warning ink).
    */
   flowGrid: string;
+  /**
+   * The CONSUMER role hue (purple) - the same `--vp-flow-load` the energy-flow
+   * diagram uses for Haus/Verbraucher, so the Fahrplan's stacked consumer
+   * layers read as loads everywhere (Verbrauchssteuerung §14.11). Several
+   * consumers get deterministic shades of THIS one hue.
+   */
+  consumer: string;
 }
 
 let cache: ChartTheme | null = null;
@@ -83,6 +90,7 @@ export function chartTheme(): ChartTheme {
     plan: read('--vp-chart-plan', '#1E3A5F'),
     cloud: read('--vp-chart-cloud', '#90A4AE'),
     flowGrid: read('--vp-flow-grid', '#0ea5a3'),
+    consumer: read('--vp-flow-load', '#8b5cf6'),
   };
   return cache;
 }

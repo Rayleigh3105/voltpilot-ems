@@ -37,6 +37,7 @@ from typing import Protocol
 
 from voltpilot_optimization.domain import ensure_utc
 from voltpilot_optimization.entities import (
+    LoadDispatch,
     ProducerDispatch,
     SitePlan,
     StorageDispatch,
@@ -64,6 +65,13 @@ def build_plan_v2_payload(plan: SitePlan) -> dict:
         # omitted - the edge withdraws its market desire and clears limits.
         if producer.curtails:
             entities.append(_producer_entity_payload(producer))
+    for load in plan.loads:
+        # Consumers carry the FULL slot grid (contract contiguity), always -
+        # an all-off grid IS the plan ("do not run"), unlike a producer's
+        # no-limit release. Shadow discipline: the entity only exists in the
+        # payload for sites the engine co-plans (flagged), so an unflagged
+        # site's v2 payload stays byte-identical.
+        entities.append(_load_entity_payload(load))
     if not entities:
         raise ValueError(
             "cannot build a v2 plan payload without any commanded entity"
@@ -123,6 +131,26 @@ def _producer_entity_payload(producer: ProducerDispatch) -> dict:
     return {
         "entity_id": producer.entity_id,
         "kind": "pv-generation",
+        "slots": slots,
+    }
+
+
+def _load_entity_payload(load: LoadDispatch) -> dict:
+    """A controllable consumer per mqtt-schedule 2.0 (§12.5): the generic
+    command vocabulary carries it without any schema change - ``on_off`` for
+    on/off consumers, ``setpoint_kw`` (+ = consume, 0 = off) for stepped and
+    continuous ones. ``kind`` stays informative (the registry is the
+    authority)."""
+    slots = []
+    for slot in load.slots:
+        if load.control_kind == "on_off":
+            commands: dict = {"on_off": bool(slot.on)}
+        else:
+            commands = {"setpoint_kw": round(slot.power_kw if slot.on else 0.0, 3)}
+        slots.append({"start": _rfc3339(slot.start), "commands": commands})
+    return {
+        "entity_id": load.entity_id,
+        "kind": "consumer",
         "slots": slots,
     }
 

@@ -19,6 +19,8 @@ from jsonschema import Draft202012Validator, FormatChecker
 
 from voltpilot_optimization.domain import BatteryParams
 from voltpilot_optimization.entities import (
+    LoadDispatch,
+    LoadSlot,
     ProducerDispatch,
     ProducerSlot,
     SitePlan,
@@ -103,6 +105,7 @@ def make_plan(
     storages: list[StorageDispatch] | None = None,
     producers: list[ProducerDispatch] | None = None,
     peak_target_kw: float | None = None,
+    loads: list[LoadDispatch] | None = None,
 ) -> SitePlan:
     return SitePlan(
         plan_id=UUID("a81bc81b-dead-4e5d-abff-90865d1e13b1"),
@@ -112,6 +115,7 @@ def make_plan(
         generated_at=T0,
         storages=storages if storages is not None else [storage_dispatch(n=n)],
         producers=producers if producers is not None else [],
+        loads=loads if loads is not None else [],
         site_slots=[
             SiteSlot(
                 start=s,
@@ -254,6 +258,55 @@ def test_peak_module_fields_site_level_target_and_per_entity_reserve():
     plain = build_plan_v2_payload(make_plan())
     assert "grid_import_limit_kw" not in plain
     assert "reserve_soc_pct" not in plain["entities"][0]
+
+
+def load_dispatch(
+    entity_id: str = "3f0c9d2e-1111-4222-8333-944445555666",
+    n: int = 4,
+    control_kind: str = "on_off",
+    on_slots: set[int] = frozenset({1, 2}),
+) -> LoadDispatch:
+    return LoadDispatch(
+        entity_id=entity_id,
+        control_kind=control_kind,
+        slots=[
+            LoadSlot(
+                start=s,
+                on=i in on_slots,
+                power_kw=2.2 if i in on_slots else 0.0,
+                reason_code="fixed_window" if i in on_slots else None,
+                requirement_id="req-1" if i in on_slots else None,
+            )
+            for i, s in enumerate(starts(n))
+        ],
+    )
+
+
+def test_consumer_entities_validate_with_the_full_slot_grid():
+    """Verbrauchssteuerung Inkrement 2 (§12.5): consumers ride the EXISTING
+    2.0 command vocabulary - on_off consumers as on_off booleans,
+    stepped/continuous ones as setpoint_kw (0 when off) - with the FULL slot
+    grid (an all-off grid IS the plan, unlike a producer's no-limit release).
+    No schema change."""
+    plan = make_plan(loads=[
+        load_dispatch(),
+        load_dispatch(
+            entity_id="wallbox-cont-1", control_kind="continuous",
+            on_slots={0},
+        ),
+    ])
+    payload = build_plan_v2_payload(plan)
+    validator = load_validator()
+    errors = list(validator.iter_errors(payload))
+    assert errors == [], [e.message for e in errors]
+    consumers = [e for e in payload["entities"] if e["kind"] == "consumer"]
+    assert len(consumers) == 2
+    onoff_entity, cont_entity = consumers
+    assert len(onoff_entity["slots"]) == 4  # full grid, contiguity
+    assert onoff_entity["slots"][1]["commands"] == {"on_off": True}
+    assert onoff_entity["slots"][0]["commands"] == {"on_off": False}
+    assert cont_entity["slots"][0]["commands"] == {"setpoint_kw": 2.2}
+    assert cont_entity["slots"][3]["commands"] == {"setpoint_kw": 0.0}
 
 
 def test_payload_requires_a_device_and_a_commanded_entity():

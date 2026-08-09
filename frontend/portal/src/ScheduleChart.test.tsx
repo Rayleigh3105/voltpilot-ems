@@ -313,3 +313,54 @@ describe('ScheduleChart Abregeln-Legende', () => {
     expect(series('Gedrosselte Menge').data).toEqual([4]);
   });
 });
+
+describe('ScheduleChart consumer layers (Verbrauchssteuerung §14.11)', () => {
+  const layers = [
+    {
+      entityId: 'e-1',
+      name: 'Stallpumpe',
+      values: [2.2, 0],
+      pflicht: [true, false],
+      reasons: ['fixed_window', null],
+    },
+  ];
+  const twoSlots = [
+    slot({ start: '2026-07-29T10:00:00Z' }),
+    slot({ start: '2026-07-29T10:15:00Z' }),
+  ];
+
+  it('without consumers the chart is byte-identical (no series, no legend row)', () => {
+    render(<ScheduleChart plan={plan(twoSlots)} />);
+    expect(series('Verbraucher · Stallpumpe')).toBeUndefined();
+    expect(series('Pflichtfenster')).toBeUndefined();
+    expect(screen.queryByText('Stallpumpe')).toBeNull();
+    expect(screen.queryByText(/Pflichtfenster/)).toBeNull();
+  });
+
+  it('with consumers it stacks positive areas, marks Pflicht slots with the lock series and advertises both in the legend', () => {
+    render(<ScheduleChart plan={plan(twoSlots)} consumers={layers} />);
+    const s = series('Verbraucher · Stallpumpe');
+    expect(s).toBeDefined();
+    expect(s.stack).toBe('vp-verbraucher');
+    expect(s.data).toEqual([2.2, 0]);
+    expect(s.areaStyle).toBeDefined();
+    // Lock markers: only the Pflicht slot, at the top of the stack.
+    const lock = series('Pflichtfenster');
+    expect(lock.data).toEqual([[0, 2.2]]);
+    expect(String(lock.symbol)).toMatch(/^path:\/\//);
+    // Legend carries the consumer name AND the lock explainer (word, not colour).
+    expect(screen.getByText('Stallpumpe')).toBeInTheDocument();
+    expect(screen.getByText(/Schloss = Pflichtfenster/)).toBeInTheDocument();
+  });
+
+  it('a consumer layer with no aligned value draws nothing', () => {
+    render(
+      <ScheduleChart
+        plan={plan(twoSlots)}
+        consumers={[{ ...layers[0], values: [null, null], pflicht: [false, false], reasons: [null, null] }]}
+      />,
+    );
+    expect(series('Verbraucher · Stallpumpe')).toBeUndefined();
+    expect(screen.queryByText('Stallpumpe')).toBeNull();
+  });
+});
