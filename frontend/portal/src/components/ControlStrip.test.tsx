@@ -11,6 +11,8 @@ function view(over: Partial<ControlStripView> = {}): ControlStripView {
     agoNote: 'geprüft vor 3 s',
     reason: null,
     execution: null,
+    curtailment: null,
+    outlook: null,
     ...over,
   };
 }
@@ -45,6 +47,20 @@ describe('ControlStrip', () => {
     const { container } = render(<ControlStrip view={view()} />);
     expect(container.textContent).not.toContain('angehoben');
     expect(container.querySelector('.vp-control-reason')).toBeNull();
+  });
+
+  it('renders the Ruhe outlook line (Teil 3) in both variants, else nothing', () => {
+    const outlook = '→ Weiter laut Fahrplan: Laden ab ca. 11:15 Uhr.';
+    for (const variant of ['card', 'bare'] as const) {
+      const { container, unmount } = render(
+        <ControlStrip view={view({ outlook })} variant={variant} />,
+      );
+      expect(container.querySelector('.vp-outlook')?.textContent).toBe(outlook);
+      unmount();
+    }
+    // No outlook → no line.
+    const { container } = render(<ControlStrip view={view()} />);
+    expect(container.querySelector('.vp-outlook')).toBeNull();
   });
 
   describe('Bühnenfuß (variant="bare")', () => {

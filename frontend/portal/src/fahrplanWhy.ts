@@ -23,7 +23,7 @@ import {
   curtailRoleLabel,
   type CurtailTruth,
 } from './curtailment';
-import { eurAmount } from './format';
+import { eurAmount, fmtNum } from './format';
 import type { PlanWordingKind } from './schedule';
 
 // ---- The slot-role vocabulary (report §6) ---------------------------------
@@ -53,6 +53,13 @@ export interface WhySlot {
   baselineCostEur: number | null;
   curtailKw?: number | null;
   pvKw?: number | null;
+  /**
+   * Net grid power of the slot (kW, signed +import/−export). A negative value
+   * means the slot feeds surplus into the grid - the trigger for the "Überschuss
+   * geht ins Netz statt in die Batterie" reasons (Teil 4b, `surplusWhy`). Absent
+   * on older runs: the surplus reasons then simply do not fire.
+   */
+  gridKw?: number | null;
   /** Slot role id (report §6); null/unknown = no why-layer for the plan. */
   slotRole?: string | null;
   /** Binding-constraint codes (report §5.1); null = none recorded. */
@@ -497,18 +504,20 @@ export function slotWhy(
     }
     case 'spitze_kappen':
       return 'Der Speicher hält den Netzbezug unter dem Spitzen-Ziel – jede Viertelstunde darüber würde die Leistungsspitze anheben.';
+    // Ruhe-Sätze geschärft (vp-steuerung-ruhe-w2 §4): jeder sagt, was ALS
+    // NÄCHSTES passiert - nicht nur, was gerade nicht passiert.
     case 'reserve_halten':
       if (flags.includes('reserve_backup'))
-        return 'Der Speicher hält Ladung als Notstrom-Reserve zurück.';
+        return 'Der Speicher hält Ladung als Notstrom-Reserve zurück – so wie in Ihren Einstellungen festgelegt.';
       if (flags.includes('reserve_peak'))
         return 'Der Speicher hält Ladung als Reserve für die Lastspitzenkappung zurück.';
       return 'Der Speicher hält Ladung als Reserve zurück.';
     case 'warten':
       if (flags.includes('soc_max'))
-        return 'Der Speicher ist voll und wartet auf die nächste Entladephase.';
+        return 'Der Speicher ist voll. Er entlädt wieder, sobald es sich lohnt – meist am Abend, wenn der Strompreis steigt.';
       if (flags.includes('soc_floor'))
-        return 'Der Speicher ist am Minimum und wartet auf PV-Überschuss oder günstigen Strom.';
-      return 'Der Speicher wartet – kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.';
+        return 'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.';
+      return 'Gerade lohnt sich weder Laden noch Entladen: Der Preisunterschied ist kleiner als Umwandlungsverluste und Batterie-Verschleiß. Nichtstun ist jetzt das Wirtschaftlichste.';
     case 'abregeln': {
       // Gegenwart NUR mit Ausführungs-Beleg (PR 3); ohne ihn der
       // Plan-Wortlaut aus Fix 1, unverändert.
@@ -520,6 +529,79 @@ export function slotWhy(
         ? `Einspeisen würde beim negativen Börsenpreis (${ctFmt(price)}) Geld kosten – ${tail}`
         : `Einspeisen würde bei negativen Preisen Geld kosten – ${tail}`;
     }
+  }
+  return null;
+}
+
+// ---- Überschuss geht ins Netz statt in die Batterie (Teil 4b) -------------
+//
+// Situationen mit genug PV-Überschuss, in denen trotzdem eingespeist statt
+// gespeichert wird. Der Kunde sieht im Energiefluss "PV → Netz" bei ruhendem
+// (oder am Limit ladendem) Speicher und fragt sich warum - dafür gab es keine
+// Begründung. Vier Fälle, alle aus schon vorhandenen Fahrplan-Daten ableitbar.
+
+/** Below this a slot's grid power reads as "kein Export". */
+const SURPLUS_EXPORT_DEADBAND_KW = 0.05;
+/** Below this the battery reads as resting (mirrors the plan/chart deadband). */
+const SURPLUS_REST_DEADBAND_KW = 0.05;
+
+/** de-DE "12:00" for the "lädt ab X Uhr" reason. */
+function slotTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Warum wird der Solar-Überschuss GERADE eingespeist statt gespeichert? Fires
+ * ONLY when the slot actually EXPORTS (`gridKw` < 0) and is not curtailed at a
+ * negative price (role `abregeln`). Priority a > b > c > d:
+ *   a) charge_cap: the battery already charges at max power, the rest overflows;
+ *   b) soc_max: the battery is full;
+ *   c) a resting battery that will charge later (needs `nextChargeAt`);
+ *   d) a resting battery where feeding in pays more than storing would be worth.
+ *
+ * Null when no case applies OR a needed datum is missing - the caller then
+ * falls back to the plain `slotWhy` reason (Null-Degradation bleibt Gesetz).
+ * `nextChargeAt` (ISO) = start of the next charge phase, supplied by the caller
+ * (`control.ts nextChargeStart`); absent → case c is skipped for case d.
+ */
+export function surplusWhy(
+  slot: WhySlot,
+  kind: PlanWordingKind,
+  nextChargeAt?: string | null,
+): string | null {
+  const grid = slot.gridKw == null ? null : Number(slot.gridKw);
+  // Only when the slot really feeds surplus into the grid.
+  if (grid == null || grid >= -SURPLUS_EXPORT_DEADBAND_KW) return null;
+  // Negative prices are a different story (role abregeln, Fix 1/3).
+  if (slot.slotRole === 'abregeln') return null;
+
+  const flags = slot.slotFlags ?? [];
+  const batt = slot.batteryKw == null ? null : Number(slot.batteryKw);
+
+  // a) Charging at max power - what the PV delivers beyond that is fed in.
+  if (flags.includes('charge_cap') && batt != null && batt > SURPLUS_REST_DEADBAND_KW) {
+    return `Der Speicher lädt bereits mit seiner maximalen Leistung (${fmtNum(batt, 'kW', 1)}). Was Ihre PV darüber hinaus liefert, wird eingespeist und vergütet.`;
+  }
+  // b) Full battery + surplus.
+  if (flags.includes('soc_max')) {
+    return 'Der Speicher ist voll – Ihr Überschuss wird eingespeist und vergütet. Er entlädt wieder, sobald es sich lohnt, meist am Abend.';
+  }
+
+  // The remaining cases are about a RESTING battery.
+  const resting = batt == null || Math.abs(batt) <= SURPLUS_REST_DEADBAND_KW;
+  if (!resting) return null;
+
+  // c) Deliberately waiting to charge later, when storing is most valuable.
+  if (nextChargeAt != null) {
+    return `Der Speicher wartet absichtlich: Er lädt laut Fahrplan ab ${slotTime(nextChargeAt)} Uhr, wenn Speichern am wertvollsten ist. Bis dahin wird Ihr Überschuss eingespeist und vergütet.`;
+  }
+  // d) Feeding in pays more than storing would be worth later.
+  const exp = slot.exportValueCtKwh == null ? null : Number(slot.exportValueCtKwh);
+  const lam = slot.storedValueCtKwh == null ? null : Number(slot.storedValueCtKwh);
+  if (exp != null && lam != null && exp >= lam) {
+    return kind === 'direktvermarktung'
+      ? `Ihr Solar-Überschuss wird gerade verkauft statt gespeichert: Die Einspeisung bringt jetzt ${ctFmt(exp)} – mehr, als der Strom später aus dem Speicher wert wäre (≈ ${ctFmt(lam)} nach Verlusten und Verschleiß).`
+      : 'Ihr Solar-Überschuss wird gerade eingespeist statt gespeichert: Die Einspeisevergütung bringt jetzt mehr, als der Strom später einsparen würde.';
   }
   return null;
 }

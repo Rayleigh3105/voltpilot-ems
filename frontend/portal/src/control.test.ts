@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlStatus } from './api';
-import { controlReasonSlot, controlStrip, directionLabel, executionNote } from './control';
+import {
+  PV_CLARIFICATION,
+  batteryDirection,
+  controlReasonSlot,
+  controlStrip,
+  directionLabel,
+  executionNote,
+  nextChargeStart,
+  nextEngagement,
+  planOutlook,
+} from './control';
 import { CURTAIL_PLAN, curtailTruth } from './curtailment';
 import { slotWhy } from './fahrplanWhy';
+import { NBSP } from './format';
 
 const NOW = new Date('2026-07-08T12:00:10Z');
 
@@ -48,7 +59,7 @@ describe('controlStrip', () => {
     // Der gemeldete Widerspruch (Konzept vp-fahrplan-kunde-konzept K2): seit den
     // Nachführungs-Pflichten weicht `commandedKw` bewusst vom Plan-Watt ab, stand
     // aber unter demselben Wort wie der Fahrplan-Balken - zwei verschiedene Zahlen
-    // unter „Fahrplan" auf EINEM Bildschirm.
+    // unter „Fahrplan" auf EINEM Bildschirm. Variante B: nie mehr „regelt auf".
     for (const v of [
       controlStrip(status({}), NOW)!,
       controlStrip(status({ allMatch: false, confirmedKw: -1.2 }), NOW)!,
@@ -58,8 +69,13 @@ describe('controlStrip', () => {
       )!,
     ]) {
       expect(v.sentence).not.toContain('Fahrplan-Sollwert');
+      expect(v.sentence).not.toContain('regelt gerade auf');
     }
-    expect(controlStrip(status({}), NOW)!.sentence).toContain('regelt gerade auf');
+    // The direction is a WORD (default cmd -4 = discharge), never a sign.
+    const healthy = controlStrip(status({}), NOW)!;
+    expect(healthy.sentence).toContain('entlädt gerade mit 4,0');
+    expect(healthy.sentence).not.toContain('-4');
+    expect(healthy.sentence).not.toContain('−4');
   });
 
   it('flags a mismatch when the read-back differs from the command', () => {
@@ -97,6 +113,177 @@ describe('controlStrip', () => {
       const v = controlStrip(status(over), NOW)!;
       expect(v.sentence).not.toMatch(/register|modbus|kill-switch|readback/i);
     }
+  });
+});
+
+// --- Variante B: die Richtung ist ein Wort, nie ein Vorzeichen ---------------
+//
+// „Ihr Gerät regelt gerade auf 0,0 kW" liest sich wie eine Abregelung von
+// außen. Der Speicher „pausiert / lädt / entlädt" - eine konsistente
+// Satz-Familie in jedem Zustand, die Bestätigung wird zum Halbsatz.
+describe('controlStrip · Variante B (Richtung als Wort)', () => {
+  it('reads „pausiert" when the battery rests (the screenshot case)', () => {
+    const v = controlStrip(status({ commandedKw: 0, confirmedKw: 0 }), NOW)!;
+    expect(v.state).toBe('healthy');
+    expect(v.sentence).toBe('Der Speicher pausiert gerade – vom Wechselrichter bestätigt');
+    // A pausing battery can never read as an external curtailment.
+    expect(v.sentence).not.toContain('regelt');
+    expect(v.sentence).not.toContain('0,0');
+  });
+
+  it('reads „lädt/entlädt mit X kW" and never a sign', () => {
+    expect(controlStrip(status({ commandedKw: 4, confirmedKw: 4 }), NOW)!.sentence).toBe(
+      `Der Speicher lädt gerade mit 4,0${NBSP}kW – vom Wechselrichter bestätigt`,
+    );
+    expect(controlStrip(status({ commandedKw: -6.1, confirmedKw: -6.1 }), NOW)!.sentence).toBe(
+      `Der Speicher entlädt gerade mit 6,1${NBSP}kW – vom Wechselrichter bestätigt`,
+    );
+  });
+
+  it('a tiny setpoint inside the 0,05-kW deadband still reads as pausiert', () => {
+    expect(controlStrip(status({ commandedKw: 0.03, confirmedKw: 0.03 }), NOW)!.sentence).toContain(
+      'pausiert',
+    );
+  });
+
+  it('mismatch names the direction as a word on both sides, incl. „soll pausieren"', () => {
+    // soll laden, meldet weniger (gleiche Richtung) - der Mockup-Fall.
+    expect(
+      controlStrip(status({ commandedKw: 4, confirmedKw: 2.1, allMatch: false }), NOW)!.sentence,
+    ).toBe(`Der Speicher soll mit 4,0${NBSP}kW laden – der Wechselrichter meldet 2,1${NBSP}kW`);
+    // soll pausieren, meldet eine echte Bewegung - benennt das Verhalten.
+    expect(
+      controlStrip(status({ commandedKw: 0, confirmedKw: 4, allMatch: false }), NOW)!.sentence,
+    ).toBe(`Der Speicher soll pausieren – der Wechselrichter meldet 4,0${NBSP}kW Ladung`);
+    // Gegenrichtung - nie verborgen.
+    expect(
+      controlStrip(status({ commandedKw: 4, confirmedKw: -2, allMatch: false }), NOW)!.sentence,
+    ).toBe(`Der Speicher soll mit 4,0${NBSP}kW laden – der Wechselrichter meldet 2,0${NBSP}kW Entladung`);
+    // soll etwas, meldet Stillstand (Entladen = negativer Befehl).
+    expect(
+      controlStrip(status({ commandedKw: -6.1, confirmedKw: 0, allMatch: false }), NOW)!.sentence,
+    ).toBe(`Der Speicher soll mit 6,1${NBSP}kW entladen – der Wechselrichter meldet Stillstand`);
+    // Kein Minuszeichen, egal welche Richtung.
+    const s = controlStrip(
+      status({ commandedKw: -4, confirmedKw: -1.2, allMatch: false }),
+      NOW,
+    )!.sentence;
+    expect(s).not.toContain('-');
+    expect(s).not.toContain('−');
+  });
+
+  it('stale reads richtungs-wortbasiert', () => {
+    const old = new Date(NOW.getTime() - 6 * 60 * 1000).toISOString();
+    expect(
+      controlStrip(status({ commandedKw: 4, confirmedKw: 4, checkedAt: old }), NOW)!.sentence,
+    ).toBe(`Zuletzt: Speicher lud mit 4,0${NBSP}kW – bestätigt`);
+    expect(
+      controlStrip(status({ commandedKw: -6.1, confirmedKw: -6.1, checkedAt: old }), NOW)!.sentence,
+    ).toBe(`Zuletzt: Speicher entlud mit 6,1${NBSP}kW – bestätigt`);
+    expect(
+      controlStrip(status({ commandedKw: 0, confirmedKw: 0, checkedAt: old }), NOW)!.sentence,
+    ).toBe('Zuletzt: Speicher pausierte – bestätigt');
+  });
+
+  it('batteryDirection maps the sign convention (+ = laden)', () => {
+    expect(batteryDirection(4)).toBe('laden');
+    expect(batteryDirection(-6.1)).toBe('entladen');
+    expect(batteryDirection(0)).toBe('pausieren');
+    expect(batteryDirection(0.04)).toBe('pausieren');
+    expect(batteryDirection(null)).toBe('pausieren');
+  });
+});
+
+// --- Ruhefall: Klarstellungs-Halbsatz (Teil 2) + Ausblick (Teil 3) ----------
+describe('controlStrip · Ruhe additions', () => {
+  const REST = { commandedKw: 0, confirmedKw: 0 };
+  const OUTLOOK = '→ Weiter laut Fahrplan: Laden ab ca. 11:15 Uhr.';
+
+  it('appends the PV clarification to the reason ONLY in Ruhe with a reason', () => {
+    expect(
+      controlStrip(status(REST), NOW, false, 'Grund.', CURTAIL_PLAN, null, false)!.reason,
+    ).toBe(`Grund. ${PV_CLARIFICATION}`);
+    // Not on laden/entladen.
+    expect(
+      controlStrip(status({ commandedKw: 4, confirmedKw: 4 }), NOW, false, 'Grund.')!.reason,
+    ).toBe('Grund.');
+    // Not without a reason.
+    expect(controlStrip(status(REST), NOW, false, null)!.reason).toBeNull();
+  });
+
+  it('carries the outlook line ONLY in Ruhe', () => {
+    expect(
+      controlStrip(status(REST), NOW, false, 'Grund.', CURTAIL_PLAN, OUTLOOK)!.outlook,
+    ).toBe(OUTLOOK);
+    // Not while charging/discharging (the battery is already engaged).
+    expect(
+      controlStrip(status({ commandedKw: 4, confirmedKw: 4 }), NOW, false, null, CURTAIL_PLAN, OUTLOOK)!
+        .outlook,
+    ).toBeNull();
+    // Not when stale / off / pending.
+    const old = new Date(NOW.getTime() - 6 * 60 * 1000).toISOString();
+    expect(
+      controlStrip(status({ ...REST, checkedAt: old }), NOW, false, null, CURTAIL_PLAN, OUTLOOK)!
+        .outlook,
+    ).toBeNull();
+    expect(
+      controlStrip(status({ ...REST, controlEnabled: false }), NOW, false, null, CURTAIL_PLAN, OUTLOOK)!
+        .outlook,
+    ).toBeNull();
+  });
+
+  it('a surplus reason suppresses BOTH the clarification and the generic outlook', () => {
+    const v = controlStrip(
+      status(REST),
+      NOW,
+      false,
+      'Ihr Solar-Überschuss wird gerade verkauft statt gespeichert.',
+      CURTAIL_PLAN,
+      OUTLOOK,
+      true,
+    )!;
+    // The surplus reason is self-contained: kept verbatim, no clarification.
+    expect(v.reason).toBe('Ihr Solar-Überschuss wird gerade verkauft statt gespeichert.');
+    expect(v.reason).not.toContain(PV_CLARIFICATION);
+    expect(v.outlook).toBeNull();
+  });
+});
+
+// --- planOutlook / nextEngagement / nextChargeStart -------------------------
+describe('planOutlook / nextEngagement / nextChargeStart', () => {
+  const slots = [
+    { start: '2026-07-30T09:00:00Z', batteryKw: 0 },
+    { start: '2026-07-30T09:15:00Z', batteryKw: 0.02 }, // inside deadband → pausiert
+    { start: '2026-07-30T11:15:00Z', batteryKw: 4 }, // next charge
+    { start: '2026-07-30T18:00:00Z', batteryKw: -5 }, // later discharge
+  ];
+  const NOWP = new Date('2026-07-30T09:05:00Z');
+
+  it('nextEngagement finds the next engaged slot after now (skips the current + deadband slots)', () => {
+    expect(nextEngagement(slots, NOWP)).toEqual({ kind: 'laden', start: '2026-07-30T11:15:00Z' });
+  });
+
+  it('planOutlook formats the outlook line (TZ-robust)', () => {
+    expect(planOutlook(slots, NOWP)).toMatch(
+      /^→ Weiter laut Fahrplan: Laden ab ca\. \d{2}:\d{2} Uhr\.$/,
+    );
+  });
+
+  it('is null when no engagement remains or there are no slots', () => {
+    expect(planOutlook([], NOWP)).toBeNull();
+    expect(planOutlook([{ start: '2026-07-30T09:00:00Z', batteryKw: 0 }], NOWP)).toBeNull();
+    expect(planOutlook(slots, new Date('2026-07-30T20:00:00Z'))).toBeNull();
+  });
+
+  it('nextChargeStart returns the next charge, skipping an intervening discharge', () => {
+    const s = [
+      { start: '2026-07-30T10:00:00Z', batteryKw: -3 },
+      { start: '2026-07-30T12:00:00Z', batteryKw: 5 },
+    ];
+    expect(nextChargeStart(s, new Date('2026-07-30T09:00:00Z'))).toBe('2026-07-30T12:00:00Z');
+    expect(
+      nextChargeStart([{ start: '2026-07-30T10:00:00Z', batteryKw: -3 }], new Date('2026-07-30T09:00:00Z')),
+    ).toBeNull();
   });
 });
 

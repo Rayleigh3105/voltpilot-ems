@@ -18,6 +18,7 @@ import {
   roleLabel,
   slotContextRows,
   slotWhy,
+  surplusWhy,
   type PlanPhase,
   type WhySlot,
 } from './fahrplanWhy';
@@ -349,22 +350,25 @@ describe('slotWhy (per-slot customer sentence)', () => {
     expect(slotWhy({ ...base, slotRole: 'verkaufen' }, 'eigenverbrauch')).toContain('Speist ein');
   });
 
+  // §4 geschärft: jeder Ruhe-Satz sagt, was ALS NÄCHSTES passiert.
   it('warten reads its detail from the binding flags', () => {
     expect(slotWhy({ ...base, slotRole: 'warten', slotFlags: ['soc_max'] }, 'eigenverbrauch')).toBe(
-      'Der Speicher ist voll und wartet auf die nächste Entladephase.',
+      'Der Speicher ist voll. Er entlädt wieder, sobald es sich lohnt – meist am Abend, wenn der Strompreis steigt.',
     );
     expect(
       slotWhy({ ...base, slotRole: 'warten', slotFlags: ['soc_floor'] }, 'eigenverbrauch'),
-    ).toBe('Der Speicher ist am Minimum und wartet auf PV-Überschuss oder günstigen Strom.');
+    ).toBe(
+      'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.',
+    );
     expect(slotWhy({ ...base, slotRole: 'warten' }, 'eigenverbrauch')).toBe(
-      'Der Speicher wartet – kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.',
+      'Gerade lohnt sich weder Laden noch Entladen: Der Preisunterschied ist kleiner als Umwandlungsverluste und Batterie-Verschleiß. Nichtstun ist jetzt das Wirtschaftlichste.',
     );
   });
 
   it('reserve_halten names the reserve owner from the flags', () => {
     expect(
       slotWhy({ ...base, slotRole: 'reserve_halten', slotFlags: ['reserve_backup'] }, 'eigenverbrauch'),
-    ).toBe('Der Speicher hält Ladung als Notstrom-Reserve zurück.');
+    ).toBe('Der Speicher hält Ladung als Notstrom-Reserve zurück – so wie in Ihren Einstellungen festgelegt.');
     expect(
       slotWhy({ ...base, slotRole: 'reserve_halten', slotFlags: ['reserve_peak'] }, 'eigenverbrauch'),
     ).toBe('Der Speicher hält Ladung als Reserve für die Lastspitzenkappung zurück.');
@@ -395,6 +399,85 @@ describe('slotWhy (per-slot customer sentence)', () => {
   it('is null for missing/unknown roles (never fabricated)', () => {
     expect(slotWhy({ ...base, slotRole: null }, 'eigenverbrauch')).toBeNull();
     expect(slotWhy({ ...base, slotRole: 'phantasie' }, 'eigenverbrauch')).toBeNull();
+  });
+});
+
+describe('surplusWhy (Teil 4b: Überschuss geht ins Netz statt in die Batterie)', () => {
+  // A slot that EXPORTS (gridKw < 0). All the surplus reasons key on that.
+  const exporting: WhySlot = {
+    start: new Date(2026, 6, 23, 12, 0).toISOString(),
+    batteryKw: 0,
+    gridKw: -16.6,
+    priceEurMwh: 40,
+    costEur: null,
+    baselineCostEur: null,
+    slotRole: 'warten',
+    slotFlags: null,
+    exportValueCtKwh: 9.2,
+    storedValueCtKwh: 7.8,
+  };
+
+  it('does NOT fire when the slot imports or has no grid value', () => {
+    expect(surplusWhy({ ...exporting, gridKw: 4.3 }, 'eigenverbrauch')).toBeNull();
+    expect(surplusWhy({ ...exporting, gridKw: null }, 'eigenverbrauch')).toBeNull();
+    // A tiny export inside the deadband does not count either.
+    expect(surplusWhy({ ...exporting, gridKw: -0.03 }, 'eigenverbrauch')).toBeNull();
+  });
+
+  it('does NOT fire on a curtailment slot (negative price is a different story)', () => {
+    expect(surplusWhy({ ...exporting, slotRole: 'abregeln', priceEurMwh: -21 }, 'eigenverbrauch')).toBeNull();
+  });
+
+  it('a) names the max-power charge that overflows to the grid', () => {
+    expect(
+      surplusWhy(
+        { ...exporting, batteryKw: 20, slotFlags: ['charge_cap'], slotRole: 'pv_speichern' },
+        'eigenverbrauch',
+      ),
+    ).toBe(
+      `Der Speicher lädt bereits mit seiner maximalen Leistung (20,0${NBSP}kW). Was Ihre PV darüber hinaus liefert, wird eingespeist und vergütet.`,
+    );
+  });
+
+  it('b) names the full battery feeding surplus in', () => {
+    expect(surplusWhy({ ...exporting, slotFlags: ['soc_max'] }, 'eigenverbrauch')).toBe(
+      'Der Speicher ist voll – Ihr Überschuss wird eingespeist und vergütet. Er entlädt wieder, sobald es sich lohnt, meist am Abend.',
+    );
+  });
+
+  it('c) a resting battery waiting to charge later names the charge time (priority over d)', () => {
+    const nextCharge = new Date(2026, 6, 23, 12, 0).toISOString();
+    // 12:00 local (constructed with local wall-clock) → toLocaleTimeString.
+    expect(surplusWhy(exporting, 'eigenverbrauch', nextCharge)).toBe(
+      'Der Speicher wartet absichtlich: Er lädt laut Fahrplan ab 12:00 Uhr, wenn Speichern am wertvollsten ist. Bis dahin wird Ihr Überschuss eingespeist und vergütet.',
+    );
+  });
+
+  it('d) selling pays more than storing - DV names the ct values', () => {
+    expect(surplusWhy(exporting, 'direktvermarktung')).toBe(
+      'Ihr Solar-Überschuss wird gerade verkauft statt gespeichert: Die Einspeisung bringt jetzt 9,2 ct/kWh – mehr, als der Strom später aus dem Speicher wert wäre (≈ 7,8 ct/kWh nach Verlusten und Verschleiß).',
+    );
+  });
+
+  it('d) EEG variant stays number-free and says „einspeisen", not „verkaufen"', () => {
+    const s = surplusWhy(exporting, 'eigenverbrauch')!;
+    expect(s).toBe(
+      'Ihr Solar-Überschuss wird gerade eingespeist statt gespeichert: Die Einspeisevergütung bringt jetzt mehr, als der Strom später einsparen würde.',
+    );
+    expect(s).not.toContain('verkauft');
+  });
+
+  it('is null (falls back to slotWhy) when no case applies', () => {
+    // Resting + exporting but feed-in does NOT pay more, and no later charge.
+    expect(
+      surplusWhy({ ...exporting, exportValueCtKwh: 5, storedValueCtKwh: 8 }, 'eigenverbrauch'),
+    ).toBeNull();
+    // Missing the numbers for case d.
+    expect(
+      surplusWhy({ ...exporting, exportValueCtKwh: null }, 'eigenverbrauch'),
+    ).toBeNull();
+    // Charging (not at cap, not full) while exporting: no surplus reason.
+    expect(surplusWhy({ ...exporting, batteryKw: 3, slotRole: 'pv_speichern' }, 'eigenverbrauch')).toBeNull();
   });
 });
 
