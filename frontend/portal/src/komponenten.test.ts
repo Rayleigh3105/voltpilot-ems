@@ -135,8 +135,10 @@ describe('componentLabel', () => {
 
 describe('plantModel - hybrid only', () => {
   const entities = [
+    // Post-Label-Hygiene a COMPOSED row carries no label of its own: what the
+    // row says is derived, and a label would mean a human gave it.
     entity('batt', 'battery-hybrid', {
-      label: 'Batteriespeicher',
+      label: null,
       control: true,
       capabilities: {
         measure: [
@@ -169,6 +171,25 @@ describe('plantModel - hybrid only', () => {
     expect(m.components[0].control).toBe(true);
     // Herkunft is a chip on every component, not a riddle.
     expect(m.components[0].provenance).toBe('gemessen über SUN-12K');
+  });
+
+  // Alias-Politur (`vp-entity-alias-k1`): the modules hang on THAT box, so the
+  // aspect line must follow whatever the customer calls it - otherwise the same
+  // inverter would carry two names one row apart.
+  it('the PV aspect follows the carrier‘s own name', () => {
+    const named = [{ ...entities[0], label: 'Wechselrichter Scheune' }];
+    const m = plantModel(named, null, localSetup);
+    expect(m.components[0].label).toBe('Wechselrichter Scheune');
+    expect(m.components[1].label).toBe('Solarmodule am Wechselrichter Scheune');
+    // …and it is NOT separately renameable: it belongs to its carrier, so a
+    // pencil here would silently retitle the Speicher row too.
+    expect(m.components[0].renameable).toBe(true);
+    expect(m.components[1].renameable).toBe(false);
+    // The dialog needs both halves: the name given, and the one that returns.
+    expect(m.components[0].alias).toBe('Wechselrichter Scheune');
+    expect(m.components[0].derivedLabel).toBe('Speicher');
+    // An un-named component offers no alias, so the field starts empty.
+    expect(plantModel(entities, null, localSetup).components[0].alias).toBeNull();
   });
 
   it('produces no forbidden customer words', () => {

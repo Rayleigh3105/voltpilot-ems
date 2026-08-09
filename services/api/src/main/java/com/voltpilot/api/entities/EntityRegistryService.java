@@ -59,13 +59,28 @@ public class EntityRegistryService {
     static final String ROLE_HOUSE_LOAD = "house-load";
 
     /**
-     * The synthesized measurement points' labels - honest about WHERE the
-     * measurement comes from (the gateway inverter's own channel, not a
-     * separate meter). When the customer later adopts a real grid meter, the
-     * {@link #adopt} path relabels that very row.
+     * THE LABEL RULE (Label-Hygiene, migration {@code V20260812000000}, concept
+     * vp-entity-alias-k1 "Pfad B"): {@code measurement_point.label} carries ONLY
+     * the name a HUMAN gave - the rename pencil, the adopt dialog, the
+     * Verbraucher-Assistent. <b>The composition writes NO label at all.</b>
+     *
+     * <p>That invariant ({@code label != null => human-given}) is what lets the
+     * customer-facing name chain put the alias FIRST, above the edge label
+     * ({@code entityLabel.deviceName}), without a second column and without a
+     * flag threaded through every DTO and all three topology derivations.
+     *
+     * <p>Composed rows used to carry three provenance constants
+     * ("Batteriespeicher (Hybrid-Wechselrichter)", "Netzanschluss/Hausverbrauch
+     * (Messung über Wechselrichter)"). They said HOW a value is measured, never
+     * what a device is CALLED - and ranked above the edge name they would have
+     * renamed a Deye PV row to "Batteriespeicher (…)". They are gone; the
+     * provenance line has said it better since M6 ("gemessen über Deye SUN-30K"),
+     * and an unnamed row falls back to its role word.
+     *
+     * <p><b>So: never re-introduce a composed default label here.</b> A name the
+     * platform invents is indistinguishable from one the customer chose.
      */
-    static final String LABEL_SYNTHESIZED_GRID = "Netzanschluss (Messung über Wechselrichter)";
-    static final String LABEL_SYNTHESIZED_HOUSE = "Hausverbrauch (Messung über Wechselrichter)";
+    private static final String COMPOSED_LABEL = null;
 
     /** Outcome of a best-effort registry push. */
     public record PushOutcome(boolean attempted, boolean published, String reason,
@@ -129,8 +144,8 @@ public class EntityRegistryService {
         if (battery != null) {
             UUID pointId = repo.batteryHybridPointId(siteId);
             if (pointId == null) {
-                pointId = repo.createBatteryHybridPoint(tenantId, siteId,
-                        "Batteriespeicher (Hybrid-Wechselrichter)", gatewayDevice(siteId, battery));
+                pointId = repo.createBatteryHybridPoint(tenantId, siteId, COMPOSED_LABEL,
+                        gatewayDevice(siteId, battery));
             }
             repo.setEntityConfig(pointId, TYPE_BATTERY_HYBRID,
                     write(batteryCapabilities(battery)),
@@ -195,17 +210,21 @@ public class EntityRegistryService {
             skipped.add("grid-meter/house-load: no unambiguous gateway device to measure through");
             return;
         }
-        ensureComposedPoint(tenantId, siteId, ROLE_GRID_METER, LABEL_SYNTHESIZED_GRID, gateway);
-        ensureComposedPoint(tenantId, siteId, ROLE_HOUSE_LOAD, LABEL_SYNTHESIZED_HOUSE, gateway);
+        ensureComposedPoint(tenantId, siteId, ROLE_GRID_METER, gateway);
+        ensureComposedPoint(tenantId, siteId, ROLE_HOUSE_LOAD, gateway);
     }
 
-    /** Create the measure-only point for a role once; an existing one wins. */
-    private void ensureComposedPoint(UUID tenantId, UUID siteId, String role, String label,
-            UUID gateway) {
+    /**
+     * Create the measure-only point for a role once; an existing one wins.
+     * Deliberately UNNAMED ({@link #COMPOSED_LABEL}) - the surfaces derive the
+     * role word, and a name the platform invents would be indistinguishable
+     * from one the customer chose.
+     */
+    private void ensureComposedPoint(UUID tenantId, UUID siteId, String role, UUID gateway) {
         if (repo.pointIdByRole(siteId, role) != null) {
             return;
         }
-        repo.createComposedPoint(tenantId, siteId, role, label, gateway);
+        repo.createComposedPoint(tenantId, siteId, role, COMPOSED_LABEL, gateway);
     }
 
     /** What the automatic backfill did with one site (MIG §6). */
@@ -272,14 +291,21 @@ public class EntityRegistryService {
     public ConversionPreview preview(UUID siteId) {
         List<PlannedEntity> plan = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
+        // Only used by the battery-hybrid branch below, where the row is NOT in
+        // the pointsForSite loop's own switch (it is "counted from the asset").
+
 
         BatteryAsset battery = repo.batteryAsset(siteId);
         if (battery != null) {
             UUID pointId = repo.batteryHybridPointId(siteId);
             ObjectNode caps = batteryCapabilities(battery);
             ObjectNode guards = batteryGuards(battery, repo.netzladenErlaubt(siteId));
+            // LOCKSTEP with bootstrap(): a CREATE composes no label at all
+            // (Label-Hygiene), a REFRESH keeps whatever a human named it - the
+            // preview must never claim the conversion renames a customer's row.
             plan.add(new PlannedEntity(pointId, pointId != null ? "refresh" : "create",
-                    TYPE_BATTERY_HYBRID, "Batteriespeicher (Hybrid-Wechselrichter)",
+                    TYPE_BATTERY_HYBRID, pointId == null ? COMPOSED_LABEL : labelOfPoint(siteId,
+                            pointId),
                     rolesFor(TYPE_BATTERY_HYBRID, caps), caps, guards));
         } else {
             skipped.add("battery-hybrid: no battery asset on this site");
@@ -324,17 +350,31 @@ public class EntityRegistryService {
         } else {
             if (!hasGridPoint) {
                 ObjectNode caps = gridMeterCapabilities();
-                plan.add(new PlannedEntity(null, "create", TYPE_GRID_METER, LABEL_SYNTHESIZED_GRID,
+                plan.add(new PlannedEntity(null, "create", TYPE_GRID_METER, COMPOSED_LABEL,
                         rolesFor(TYPE_GRID_METER, caps), caps, gridMeterGuards()));
             }
             if (!hasHousePoint) {
                 ObjectNode caps = houseLoadCapabilities();
-                plan.add(new PlannedEntity(null, "create", TYPE_HOUSE_LOAD, LABEL_SYNTHESIZED_HOUSE,
+                plan.add(new PlannedEntity(null, "create", TYPE_HOUSE_LOAD, COMPOSED_LABEL,
                         rolesFor(TYPE_HOUSE_LOAD, caps), caps, houseLoadGuards()));
             }
         }
         return new ConversionPreview(repo.hasEntities(siteId), gateway,
                 gateway == null ? gatewayReason(siteId, battery) : null, plan, skipped);
+    }
+
+    /**
+     * The stored label of one of the site's measurement points, or null. Used
+     * by {@link #preview} so a REFRESH reports the name a human actually gave
+     * instead of a composed default (there is none any more).
+     */
+    private String labelOfPoint(UUID siteId, UUID pointId) {
+        // ⚠ NOT `.map(EntityRow::label).findFirst()`: an unnamed point maps to a
+        // null element, and Optional/findFirst throws NPE on one - which since
+        // the Label-Hygiene is the NORMAL case for a composed row.
+        return repo.pointsForSite(siteId).stream()
+                .filter(p -> pointId.equals(p.id()))
+                .findFirst().map(EntityRow::label).orElse(null);
     }
 
     /**

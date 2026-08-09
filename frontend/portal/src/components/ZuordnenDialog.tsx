@@ -270,6 +270,12 @@ export function ZuordnenDialog({
               Die Zuordnung ist reine Darstellung — sie ändert nie die Steuerung. Steuer-Rechte
               hängen am Gerät, nicht an der Rolle.
             </p>
+            {/* Alias-Politur: a loose source has no name to give yet, so the
+                pencil is deliberately absent on its row — this says where the
+                naming lives instead of leaving a dead end. */}
+            <p className="vp-note vp-zuordnen-hint">
+              Nach dem Zuordnen können Sie der Komponente einen eigenen Namen geben.
+            </p>
           </>
         ) : mode === 'new' ? (
           <p className="vp-note">

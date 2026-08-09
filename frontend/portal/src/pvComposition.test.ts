@@ -61,12 +61,14 @@ function topo(members: FlowMember[], entities: TopologyEntity[]): SiteTopology {
  */
 const HYBRID_CARRIES_ALL = topo(
   [
-    { entity_id: 'deye', label: 'Batteriespeicher (Hybrid-Wechselrichter)', primary: true, value_kw: 69.8 },
-    { entity_id: 'f1', label: 'Fronius (Erzeuger)', primary: false },
-    { entity_id: 'f2', label: 'Fronius 2 (Erzeuger)', primary: false },
+    // Post-Label-Hygiene (V20260812000000) a COMPOSED row carries NO label:
+    // the composition writes none, so a label here would mean a human gave it.
+    { entity_id: 'deye', label: null, primary: true, value_kw: 69.8 },
+    { entity_id: 'f1', label: null, primary: false },
+    { entity_id: 'f2', label: null, primary: false },
   ],
   [
-    entity({ id: 'deye', entityType: 'battery-hybrid', category: 'storage', label: 'Batteriespeicher' }),
+    entity({ id: 'deye', entityType: 'battery-hybrid', category: 'storage', label: null }),
     entity({ id: 'f1', health: 'never' }),
     entity({ id: 'f2', health: 'never' }),
   ],
@@ -176,13 +178,14 @@ describe('pvComposition · strictly pin-based (the Pilsting cross-pin)', () => {
 
   it('gives the value to the PINNED component, never to the row above it', () => {
     const c = pvComposition(CROSS, CROSS_SOURCES, CROSS_PINS)!;
-    const wr2 = c.parts.find((p) => p.label === 'Fronius Anlage WR2')!;
+    // The ENTITY carries the customer's name, so that is what the row shows.
+    const wr2 = c.parts.find((p) => p.label === 'Fronius WR2')!;
     expect(wr2.kw).toBe(20.1);
     // …and the orphan carries NO value at all - its own state is „nicht verbunden".
-    const wr1 = c.unmeasured.find((p) => p.title.includes('WR1'))!;
+    const wr1 = c.unmeasured.find((p) => p.label.includes('WR1'))!;
     expect(wr1.kw).toBeNull();
     expect(wr1.note).toBe('nicht mehr mit einem gemeldeten Gerät verbunden');
-    expect(c.parts.some((p) => p.title.includes('WR1'))).toBe(false);
+    expect(c.parts.some((p) => p.label.includes('WR1'))).toBe(false);
     // Σ shown = the composite the edge reported (23 own + 20,1 WR2).
     expect(c.totalKw).toBeCloseTo(43.1, 9);
   });
@@ -190,10 +193,7 @@ describe('pvComposition · strictly pin-based (the Pilsting cross-pin)', () => {
   it('assigns nothing at all without pins - a guess by position is not an option', () => {
     const c = pvComposition(CROSS, CROSS_SOURCES, null)!;
     // Neither producer is pinned, so neither is filled…
-    expect(c.unmeasured.map((p) => p.title)).toEqual([
-      'Fronius WR1 (Erzeuger)',
-      'Fronius WR2 (Erzeuger)',
-    ]);
+    expect(c.unmeasured.map((p) => p.label)).toEqual(['Fronius WR1', 'Fronius WR2']);
     // …and the delivering source is NAMED as unassigned instead of sliding onto
     // the next row. The total still equals the composite (physical truth).
     const loose = c.parts.find((p) => p.note === UNASSIGNED_NOTE)!;
@@ -339,10 +339,10 @@ describe('pvComposition · scale', () => {
 describe('pvComposition · one vocabulary, no crossed labels', () => {
   it('names every box the way the customer named it on the device', () => {
     const c = pvComposition(HYBRID_CARRIES_ALL, REAL_SOURCES, PINS)!;
-    // The hybrid's PV share reads as the DEVICE ("Deye SUN-30K"), never as the
-    // verbose entity label "Batteriespeicher (Hybrid-Wechselrichter)".
+    // An UNNAMED row reads as the DEVICE ("Deye SUN-30K") - the composition
+    // gives it no name of its own to get in the way.
     expect(c.parts[0].label).toBe('Deye SUN-30K');
-    expect(c.parts[0].title).toContain('Batteriespeicher');
+    expect(c.parts[0].title).toBe('Deye SUN-30K');
     // The two Fronius keep the edge's own names, in the edge's own order -
     // the flow prints no device name at all, so nothing can cross any more.
     expect(c.parts[1].label).toBe('Fronius Anlage');
@@ -350,9 +350,38 @@ describe('pvComposition · one vocabulary, no crossed labels', () => {
     expect(new Set(c.parts.map((p) => p.label)).size).toBe(3);
   });
 
-  it('falls back to the stored name when the edge reported none', () => {
+  it('falls back to the type word when neither a name nor a device is known', () => {
     const c = pvComposition(HYBRID_CARRIES_ALL, [], PINS)!;
-    expect(c.parts[0].label).toBe('Batteriespeicher');
-    expect(c.unmeasured.map((p) => p.label)).toEqual(['Fronius', 'Fronius 2']);
+    expect(c.parts[0].label).toBe('Erzeuger');
+    expect(c.parts[0].alias).toBeNull();
+    expect(c.unmeasured.map((p) => p.label)).toEqual(['Erzeuger', 'Erzeuger']);
+  });
+
+  // The alias concept (`vp-entity-alias-k1`): THE surface the customer was
+  // looking at when they asked for their own names.
+  it('lets the customer‘s own name beat the name typed on the device', () => {
+    const named = topo(
+      [
+        { entity_id: 'deye', label: null, primary: true, value_kw: 69.8 },
+        { entity_id: 'f1', label: 'Dach Süd', primary: false },
+        { entity_id: 'f2', label: null, primary: false },
+      ],
+      [
+        entity({ id: 'deye', entityType: 'battery-hybrid', category: 'storage', label: null }),
+        entity({ id: 'f1', health: 'never', label: 'Dach Süd' }),
+        entity({ id: 'f2', health: 'never' }),
+      ],
+    );
+    const c = pvComposition(named, REAL_SOURCES, PINS)!;
+    const dach = c.parts.find((p) => p.label === 'Dach Süd')!;
+    // The edge still calls it „Fronius Anlage" - and that stays reachable as
+    // the row's tooltip (R2), so support can still find the physical box.
+    expect(dach.title).toBe('Fronius Anlage');
+    expect(dach.alias).toBe('Dach Süd');
+    // The un-renamed sibling is untouched.
+    expect(c.parts.some((p) => p.label === 'Fronius Anlage WR 2')).toBe(true);
+    // Every component row can be renamed; a loose source row cannot (assign it
+    // to a component first).
+    expect(c.parts.every((p) => p.entityId != null || p.note === UNASSIGNED_NOTE)).toBe(true);
   });
 });

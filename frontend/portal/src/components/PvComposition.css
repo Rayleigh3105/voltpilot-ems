@@ -100,6 +100,46 @@
   white-space: nowrap;
 }
 
+/* Der Stift AN der Zeile — die Abkürzung zum Umbenennen dort, wo der Wunsch
+   entsteht (Konzept `vp-entity-alias-k1` §5). Er sitzt ZWISCHEN Name und Wert,
+   damit die kW-Spalte rechtsbündig bleibt und die Zeile nicht springt. Sichtbar
+   26 px, Trefferfläche 44 px über `::before` (das `.vp-am-pencil`-Muster) —
+   die Zeilen stehen 6 px auseinander, ein 44-px-KASTEN würde sie auseinander-
+   ziehen. `align-self: center` statt der `baseline` der Zeile: ein Icon hat
+   keine sinnvolle Schriftlinie. */
+.vp-pvcomp-pencil {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #b4bcc6;
+  cursor: pointer;
+}
+
+.vp-pvcomp-pencil::before {
+  content: '';
+  position: absolute;
+  inset: -9px;
+}
+
+.vp-pvcomp-pencil:hover {
+  color: var(--vp-action);
+  background: var(--vp-tint);
+}
+
+.vp-pvcomp-pencil:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+}
+
 /* Der ehrliche Leerzustand: das Gerät wird BENANNT und der Grund gesagt —
    nie ein nacktes „–". */
 .vp-pvcomp-hint {

@@ -150,6 +150,30 @@ export interface PlantComponent {
   aspect: ComponentAspect;
   /** Customer-facing name (its own label, else a role/type default). */
   label: string;
+  /**
+   * The customer's OWN name for this component (the alias), or null when they
+   * have not given one. Distinct from {@link label}, which already falls back
+   * to the derivation - the rename dialog needs to tell "no name yet" from
+   * "named exactly like the default" (concept `vp-entity-alias-k1`).
+   */
+  alias: string | null;
+  /**
+   * What this row is called WITHOUT an alias. The dialog shows it as the
+   * placeholder (so the fallback is visible BEFORE typing) and names it in the
+   * reset hint ("Ohne eigenen Namen zeigt VoltPilot wieder …").
+   */
+  derivedLabel: string;
+  /**
+   * May the customer name this row? Every real component may (including the
+   * platform-composed battery / grid / house rows - a name changes neither what
+   * a component is nor whether it exists).
+   *
+   * false ONLY for the PV ASPECT row of a hybrid: it is an aspect of another
+   * component, not one of its own, so renaming it would rename its carrier and
+   * silently retitle the Speicher row too. It FOLLOWS the carrier's alias
+   * instead ("Solarmodule am Wechselrichter Scheune").
+   */
+  renameable: boolean;
   role: ComponentRole;
   /** One plain-German line describing what this component is/does. */
   summary: string;
@@ -1005,6 +1029,9 @@ export function plantModel(
       entityId: e.id,
       aspect: 'main',
       label: componentLabel(e.label, role, e.typeLabel),
+      alias: e.label?.trim() ? e.label.trim() : null,
+      derivedLabel: componentLabel(null, role, e.typeLabel),
+      renameable: true,
       role,
       summary: componentSummary(role, control, primary),
       deviceIds: [],
@@ -1029,6 +1056,11 @@ export function plantModel(
         entityId: e.id,
         aspect: 'pv',
         label: 'Solarmodule',
+        // An aspect of the hybrid, not a component of its own: it FOLLOWS the
+        // carrier's name (composed below) and carries no pencil.
+        alias: null,
+        derivedLabel: 'Solarmodule',
+        renameable: false,
         role: 'pv',
         summary: componentSummary('pv', false, false),
         deviceIds: [],
@@ -1146,9 +1178,17 @@ export function plantModel(
   // composed one names the box it is read through.
   for (const c of components) {
     const label = c.deviceIds.length > 0 ? deviceLabelById.get(c.deviceIds[0]) : undefined;
-    if (c.aspect === 'pv' && label) {
+    if (c.aspect === 'pv') {
       // The concept's „Solarmodule am Deye SUN-30K" — the modules of THAT box.
-      c.label = `Solarmodule am ${label}`;
+      // It FOLLOWS the carrier's alias: once the customer calls their hybrid
+      // „Wechselrichter Scheune", this row must say so too, or the same box
+      // would carry two names one row apart.
+      const carrier = entities.find((e) => e.id === c.entityId)?.label?.trim();
+      const on = carrier || label;
+      if (on) {
+        c.label = `Solarmodule am ${on}`;
+        c.derivedLabel = c.label;
+      }
     }
     if (c.role === 'house' || label == null) {
       c.provenance = null;

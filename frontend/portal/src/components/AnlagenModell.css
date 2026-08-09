@@ -371,6 +371,7 @@
 
 /* The rename pencil (technical layer only until the customer route exists). */
 .vp-am-pencil {
+  position: relative;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -382,6 +383,15 @@
   background: transparent;
   color: #b4bcc6;
   cursor: pointer;
+}
+
+/* The pencil is open to every customer since the alias concept, so its touch
+   target must clear 44 px WITHOUT growing the 30 px visual dot in a dense row
+   — the documented `.vp-switch::before` pattern. */
+.vp-am-pencil::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
 }
 
 .vp-am-pencil:hover {

@@ -1,0 +1,20 @@
+/* „Komponente umbenennen" — the ONE rename mask, so its styles travel with it
+   (component-local, `index.css` untouched). */
+
+/* R5 made visible: „Zurücksetzen" sits with the sentence that names the name
+   which comes back, so the offer is never a bare button whose effect you have
+   to guess. Wraps on a phone; the button keeps a full-height touch target. */
+.vp-rename-reset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--vp-border);
+  margin-top: 4px;
+}
+
+.vp-rename-reset > .vp-note {
+  flex: 1 1 220px;
+  min-width: 0;
+}

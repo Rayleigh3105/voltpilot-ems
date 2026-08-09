@@ -102,11 +102,34 @@ export const entitiesApi = {
       body: JSON.stringify(body),
     }),
 
-  /** Edit an entity (label; config only for non-composed types). */
+  /**
+   * Edit an entity's CONFIG (guards, rated power, capabilities) - the
+   * installer/admin editor. Renaming has its own customer route, see
+   * {@link entitiesApi.rename}.
+   */
   update: (siteId: string, pointId: string, body: SaveEntityInput) =>
     request<SiteEntity>(`/api/v1/admin/sites/${siteId}/v2-entities/${pointId}`, {
       method: 'PUT',
       body: JSON.stringify(body),
+    }),
+
+  /**
+   * Rename a component - the customer's own name (concept vp-entity-alias-k1).
+   * CUSTOMER route (RLS-fenced, own site only, admins via the X-Tenant-Id
+   * switcher), and deliberately its OWN route rather than a label-only `update`:
+   * that one is admin-gated and also carries guard/capability fields, so a
+   * customer could never have reached it and a rename would have travelled next
+   * to config it must never touch (R1).
+   *
+   * `null` clears the name - back to the derived one, never an empty label (R5).
+   * Every component may be renamed, including the platform-composed
+   * battery/grid/house rows: a name changes neither what a component IS nor
+   * whether it exists.
+   */
+  rename: (siteId: string, entityId: string, label: string | null) =>
+    request<AdminEntity>(`/api/v1/sites/${siteId}/v2-entities/${entityId}/label`, {
+      method: 'PUT',
+      body: JSON.stringify({ label: label ?? '' }),
     }),
 
   /**

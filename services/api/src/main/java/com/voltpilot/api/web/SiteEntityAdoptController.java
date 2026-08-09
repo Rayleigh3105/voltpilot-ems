@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -163,6 +164,65 @@ public class SiteEntityAdoptController {
         }
         return new AdoptedEntityDto(row.id(), row.entityType(), row.role(), row.label(),
                 row.deviceId());
+    }
+
+    /** Rename body: the customer's own name for this component. */
+    public record LabelRequest(@Size(max = 200) String label) {}
+
+    /**
+     * RENAME a component - the customer twin of the admin label PUT (concept
+     * vp-entity-alias-k1; the M6 docs called it "die eine offene Backend-Arbeit
+     * des Designs"). The name is what the customer calls the thing ("Dach Süd"),
+     * and after the Label-Hygiene migration a non-null label MEANS human-given,
+     * so it wins the customer-facing name chain over the edge label.
+     *
+     * <p><b>R1 - a name is PRESENTATION, never an intervention.</b> Enforced by
+     * construction, not by promise: this route accepts ONLY {@code label}. There
+     * is no type, no role, no pin, no guard field in the request, so nothing can
+     * be smuggled through the rename door; assignment and control keep their own
+     * already-gated routes ({@link #repin}, the admin config PUT).
+     *
+     * <p><b>Every component may be renamed - deliberately no PLATFORM_MANAGED
+     * gate</b> (Captain, 09.08.2026). {@link #repin} and {@link #delete} refuse
+     * battery-hybrid / house-load because those CHANGE what a component is or
+     * whether it exists; a name changes neither. A customer who calls their
+     * battery "Keller" or their grid connection "Hausanschluss Nord" is describing
+     * their own plant, and the platform keeps composing and maintaining that row
+     * exactly as before - only its TYPE and ROLE stay ours.
+     *
+     * <p>Semantics mirror {@code updateEntity} so there is ONE label-writing rule
+     * in the codebase: an ABSENT/null field keeps the current name (a no-op), an
+     * EMPTY one clears it - back to the derived name, never an empty label (R5).
+     * Duplicates are allowed on purpose: two arrays may both be called "Dach".
+     */
+    @PutMapping("/{entityId}/label")
+    @Transactional
+    public AdoptedEntityDto rename(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @Valid @RequestBody LabelRequest request) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        EntityRegistryRepository.EntityRow row = service.updateEntity(siteId, entityId,
+                normalizeLabel(request.label()), null, null, null);
+        if (row == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
+        return new AdoptedEntityDto(row.id(), row.entityType(), row.role(), row.label(),
+                row.deviceId());
+    }
+
+    /**
+     * Trim, and collapse newlines/control characters into single spaces - a name
+     * is one line of text, and a pasted multi-line string would break every
+     * surface that renders it in a row. null stays null (= keep the current
+     * name); a string that is only whitespace becomes "" (= clear it, which
+     * {@code updateEntity} stores as NULL).
+     */
+    private static String normalizeLabel(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        return raw.replaceAll("[\\p{Cntrl}\\s]+", " ").trim();
     }
 
     /**

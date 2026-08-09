@@ -3,9 +3,10 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import type { SiteSource, SiteTopology } from '../api';
 import { ROLE_META } from '../adaptive';
 import { layoutFlow, NARROW_MAX_PX, type FlowVertex } from '../adaptiveFlow';
-import { pvComposition } from '../pvComposition';
+import { pvComposition, type PvContribution } from '../pvComposition';
 import type { EntityPin } from '../pvReconcile';
 import { PvCompositionDetails } from './PvBreakdown';
+import { UmbenennenDialog } from './UmbenennenDialog';
 import type { EnergyFlowSize } from './EnergyFlow';
 
 /**
@@ -38,6 +39,7 @@ export function AdaptiveEnergyFlow({
   sources = null,
   pins = null,
   controlConfirmed = false,
+  rename = null,
 }: {
   topology: SiteTopology;
   stale?: boolean;
@@ -71,10 +73,19 @@ export function AdaptiveEnergyFlow({
    * Bestätigungs-Haken (Konzept §6.3 „Verzahnung"). Additiv.
    */
   controlConfirmed?: boolean;
+  /**
+   * Enables the rename pencils on the PV-composition rows (concept
+   * `vp-entity-alias-k1` §5, the „Abkürzung"): the wish is born looking at this
+   * very list, so the pencil is here too — opening the SAME dialog as the
+   * Anlagen-Modell, never a second mask. Absent = no pencils, byte-for-byte the
+   * previous panel.
+   */
+  rename?: { siteId: string; onRenamed: () => void } | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState<PvContribution | null>(null);
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return undefined;
@@ -187,7 +198,29 @@ export function AdaptiveEnergyFlow({
         </svg>
       </div>
 
-      {showDetails && composition && <PvCompositionDetails composition={composition} />}
+      {showDetails && composition && (
+        <PvCompositionDetails
+          composition={composition}
+          onRename={rename ? setRenaming : undefined}
+        />
+      )}
+      {rename && renaming?.entityId && (
+        <UmbenennenDialog
+          siteId={rename.siteId}
+          target={{
+            entityId: renaming.entityId,
+            alias: renaming.alias,
+            // R2 again: `title` IS the pre-alias derivation, so the dialog's
+            // placeholder and its reset hint name exactly what returns.
+            derivedLabel: renaming.title,
+          }}
+          onClose={() => setRenaming(null)}
+          onSaved={() => {
+            setRenaming(null);
+            rename.onRenamed();
+          }}
+        />
+      )}
     </div>
   );
 }

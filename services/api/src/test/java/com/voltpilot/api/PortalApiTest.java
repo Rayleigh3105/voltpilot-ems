@@ -2340,6 +2340,119 @@ class PortalApiTest {
     }
 
     /**
+     * The customer's OWN name for a component (concept vp-entity-alias-k1, the
+     * customer twin of the admin label PUT). Three things must hold at once:
+     * every component may be named - INCLUDING the platform-composed ones,
+     * because a name changes neither what a component is nor whether it exists
+     * (Captain, 09.08.2026); clearing falls BACK to the derivation instead of
+     * leaving an empty name (R5); and the route can write NOTHING but the label
+     * (R1), which is why it exists separately from the config PUT.
+     */
+    @Test
+    void customerNamesEveryComponentAndClearingRestoresTheDerivation() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Alias-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String deviceId = claimDeviceInto(demo, siteId, "edge-alias-01");
+
+        java.util.function.Function<String, Map<String, Object>> entityById = id -> {
+            ResponseEntity<Map<String, Object>> res = rest.exchange(
+                    url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+            return ((List<Map<String, Object>>) res.getBody().get("entities")).stream()
+                    .filter(e -> id.equals(e.get("id"))).findFirst().orElseThrow();
+        };
+        java.util.function.BiFunction<String, Object, ResponseEntity<String>> rename =
+                (entityId, label) -> rest.exchange(
+                        url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/label"),
+                        HttpMethod.PUT,
+                        new HttpEntity<>(label == null ? new java.util.HashMap<String, Object>()
+                                : Map.of("label", label), bearer(demo)),
+                        String.class);
+
+        // A PLATFORM-COMPOSED component: re-pin and delete refuse it, renaming
+        // must not - it is the customer's battery and they may call it what
+        // they like. Seeded with NO label, as the composition now leaves it.
+        String hybrid = java.util.UUID.randomUUID().toString();
+        exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                + "device_id, entity_type, capabilities, guard_config) VALUES ('" + hybrid
+                + "','" + tenantA + "','" + siteId + "','battery-hybrid', NULL, "
+                + "FALSE, '" + deviceId + "', 'battery-hybrid', "
+                + "'{\"measure\":[{\"channel\":\"soc_pct\"}]}'::jsonb, "
+                + "'{\"failsafe\":{\"behavior\":\"hold\"}}'::jsonb)");
+        assertThat(entityById.apply(hybrid).get("label")).as("composed = unnamed").isNull();
+
+        // The rename re-composes the Soll, so the device learns the name too -
+        // the alias reaches the box's own :8484 topology over the SAME push.
+        String revisionBefore = queryText("SELECT revision FROM entity_registry_state "
+                + "WHERE site_id = '" + siteId + "'");
+        assertThat(rename.apply(hybrid, "Keller").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(entityById.apply(hybrid).get("label")).isEqualTo("Keller");
+        assertThat(queryText("SELECT revision FROM entity_registry_state WHERE site_id = '"
+                + siteId + "'")).isNotEqualTo(revisionBefore);
+
+        // R1: the route carries ONLY a name. Type, control and guards are the
+        // same afterwards - there is no field to smuggle them through.
+        assertThat(queryText("SELECT entity_type FROM measurement_point WHERE id = '" + hybrid
+                + "'")).isEqualTo("battery-hybrid");
+        assertThat(queryText("SELECT guard_config::text FROM measurement_point WHERE id = '"
+                + hybrid + "'")).contains("hold");
+        assertThat(queryText("SELECT control::text FROM measurement_point WHERE id = '" + hybrid
+                + "'")).isEqualTo("false");
+
+        // Trim + collapse: a name is one line of text.
+        assertThat(rename.apply(hybrid, "  Keller\n Süd  ").getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(entityById.apply(hybrid).get("label")).isEqualTo("Keller Süd");
+
+        // R5: clearing means falling BACK to the derivation - NULL in the
+        // column, never an empty string the surfaces would render as a blank.
+        assertThat(rename.apply(hybrid, "   ").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(entityById.apply(hybrid).get("label")).isNull();
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE id = '" + hybrid
+                + "' AND label IS NULL")).isEqualTo(1L);
+
+        // An ABSENT field keeps the current name (the admin PUT's semantics, so
+        // there is ONE label-writing rule) - it is a no-op, not a clear.
+        assertThat(rename.apply(hybrid, "Keller").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(rename.apply(hybrid, null).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(entityById.apply(hybrid).get("label")).isEqualTo("Keller");
+
+        // Duplicates are allowed on purpose: two arrays may both be "Dach".
+        String producer = java.util.UUID.randomUUID().toString();
+        exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                + "device_id, entity_type, capabilities, guard_config) VALUES ('" + producer
+                + "','" + tenantA + "','" + siteId + "','pv-generation', NULL, FALSE, '"
+                + deviceId + "', 'producer', "
+                + "'{\"measure\":[{\"channel\":\"pv_power_kw\"}]}'::jsonb, '{}'::jsonb)");
+        assertThat(rename.apply(producer, "Keller").getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(entityById.apply(producer).get("label")).isEqualTo("Keller");
+
+        // The 200-char parity cap with the admin route.
+        assertThat(rename.apply(producer, "x".repeat(201)).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rename.apply(producer, "x".repeat(200)).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+
+        // RLS is the fence: a foreign tenant cannot rename, and provably did
+        // not change anything.
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + hybrid + "/label"),
+                HttpMethod.PUT, new HttpEntity<>(Map.of("label", "geklaut"),
+                        bearer(token("demo2", "demo2"))), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(entityById.apply(hybrid).get("label")).isEqualTo("Keller");
+
+        // An unknown entity of a site the caller DOES own is 404, not a create.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/"
+                + java.util.UUID.randomUUID() + "/label"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("label", "nichts"), bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * MIG v1->v2 history bridge: a migrated site's Historie must NOT reset at
      * the cutover. With v1 5-channel telemetry BEFORE the cutover instant and
      * v2 per-entity telemetry (producer + grid-meter + battery-hybrid) AT/AFTER

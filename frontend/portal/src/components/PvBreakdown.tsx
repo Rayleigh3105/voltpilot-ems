@@ -57,7 +57,20 @@ function Part({ part }: { part: PvPart }) {
  * The rows sum to the number in the circle by construction: both come from the
  * one `pvComposition` derivation. Render-only.
  */
-export function PvCompositionDetails({ composition }: { composition: PvComposition }) {
+export function PvCompositionDetails({
+  composition,
+  onRename,
+}: {
+  composition: PvComposition;
+  /**
+   * Open the rename dialog for this row's component - the SHORTCUT of the alias
+   * concept (§5): the wish is born looking at THIS list, so the pencil is here
+   * too, opening the SAME mask as the Anlagen-Modell. Absent = no pencils (the
+   * host has no rename path), and a `src:` row never gets one - assign it to a
+   * component first.
+   */
+  onRename?: (row: PvContribution) => void;
+}) {
   const { parts, unmeasured, totalKw } = composition;
   return (
     <div className="vp-pvcomp">
@@ -85,18 +98,27 @@ export function PvCompositionDetails({ composition }: { composition: PvCompositi
 
       <ul className="vp-pvcomp-rows">
         {parts.map((p) => (
-          <Row key={p.key} row={p} />
+          <Row key={p.key} row={p} onRename={onRename} />
         ))}
         {unmeasured.map((p) => (
-          <Row key={p.key} row={p} />
+          <Row key={p.key} row={p} onRename={onRename} />
         ))}
       </ul>
     </div>
   );
 }
 
-function Row({ row }: { row: PvContribution }) {
+function Row({
+  row,
+  onRename,
+}: {
+  row: PvContribution;
+  onRename?: (row: PvContribution) => void;
+}) {
+  // R2: the technical name stays reachable as the row's tooltip even once the
+  // customer's own name is what the row SAYS.
   const title = row.kw == null ? row.title : healthTitle(row.health, row.label);
+  const renameable = onRename != null && row.entityId != null;
   return (
     <li className={`vp-pvcomp-row${row.kw == null ? ' quiet' : ''}`}>
       <span
@@ -111,6 +133,16 @@ function Row({ row }: { row: PvContribution }) {
             kW onto a neighbour (`vp-pin-werte-f8`). */}
         {row.kw != null && row.note && <span className="vp-pvcomp-hint"> · {row.note}</span>}
       </span>
+      {renameable && (
+        <button
+          type="button"
+          className="vp-pvcomp-pencil"
+          aria-label={`„${row.label}“ umbenennen`}
+          onClick={() => onRename!(row)}
+        >
+          <Icon name="pencil" size={14} />
+        </button>
+      )}
       {row.kw == null ? (
         <span className="vp-pvcomp-note">{row.note}</span>
       ) : (
