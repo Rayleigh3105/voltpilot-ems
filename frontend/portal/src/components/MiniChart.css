@@ -12,11 +12,20 @@
   min-width: 0;
 }
 
-.vp-mini {
+/* ⚠ Die Farbvariablen stehen auf BEIDEN Trägern - dem zusammenhängenden
+   Streifen UND der Einzelzelle. Ein Balken erbt seine Farbe über `--mini-pos`;
+   stünde sie nur auf `.vp-mini`, wäre die Variable in einer `.vp-mini-cell`
+   undefiniert und der Balken damit UNSICHTBAR (genau so waren die Balken des
+   Monats-Streifens beim ersten Browser-Durchgang gar nicht da). */
+.vp-mini,
+.vp-mini-cell {
   --mini-pos: var(--vp-chart-charge, #2e9e5b);
   --mini-neg: var(--vp-chart-discharge, #e53935);
   --mini-zero: var(--vp-chart-zero, #c9d1d9);
   --mini-dim: 0.45;
+}
+
+.vp-mini {
   position: relative;
   display: flex;
   align-items: stretch;
@@ -106,10 +115,15 @@
    Luminanz-Kontrast gegen den Verlauf liegt unter 3:1 - die vom Validator
    verlangte Erleichterung ist die sichtbare benannte Marke („Verlusttag
    −0,40 €") plus die Position unter der Nulllinie, also Farbe + Wort + Ort. */
+/* ⚠ Die Dämpfung ist hier HÖHER als auf weissem Grund (0,62 gegen 0,45):
+   Weiss auf dem Marken-Verlauf hat viel weniger Kontrast als die Serienfarbe
+   auf Weiss - bei 0,4 verschwammen die 14 Balken im Browser zu einem
+   gleichmässigen Band, obwohl ihre Höhen (gemessen 2,0 bis 16,0 px) korrekt
+   im Verhältnis 8:1 standen. Eine Höhe, die man nicht sieht, ist keine. */
 .vp-mini-on-gradient {
-  --mini-pos: rgba(255, 255, 255, 0.95);
-  --mini-zero: rgba(255, 255, 255, 0.5);
-  --mini-dim: 0.4;
+  --mini-pos: rgba(255, 255, 255, 0.98);
+  --mini-zero: rgba(255, 255, 255, 0.55);
+  --mini-dim: 0.62;
 }
 .vp-mini-on-gradient .vp-mini-bar.is-past {
   background: rgba(255, 255, 255, 0.55);

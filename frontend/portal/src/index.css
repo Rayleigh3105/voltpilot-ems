@@ -2680,16 +2680,30 @@ button.vp-cl-item.is-off .vp-cl-label {
   border-color: transparent;
 }
 
-/* K5: die Richtungs-WÖRTER - ohne sie trüge die Richtung nur Farbe + Lage. */
-.vp-plan-dirs {
-  display: flex;
-  justify-content: space-between;
+/* K5: die Richtungs-WÖRTER - ohne sie trüge die Richtung nur Farbe + Lage.
+   Sie stehen auf DER SEITE, die sie meinen: „lädt ↑" über dem Streifen,
+   „gibt ab ↓" darunter (das Zielbild `ministreifen.svg`). */
+.vp-plan-dir {
+  display: block;
   font-size: 0.66rem;
   font-weight: 700;
+  line-height: 1.3;
   color: var(--vp-chart-charge, #2e9e5b);
 }
+.vp-plan-dir.is-up {
+  margin-top: var(--vp-space-2, 8px);
+}
 .vp-plan-dir.is-down {
+  margin-top: 2px;
+  margin-bottom: 4px;
   color: var(--vp-text-muted, #6c757d);
+}
+
+/* Eine schon vergangene Stunde bleibt LESBAR (der Plan des Vormittags ist
+   Teil der Aussage) - nur ruhig. Bei 0,3 auf einem ohnehin hellen Neutral
+   war der halbe Streifen im Browser praktisch leer. */
+.vp-plan-mini .vp-mini-bar.is-past {
+  opacity: 0.75;
 }
 
 /* K1: die Zahl, die ein 40-px-Balken nicht zeigen kann, plus der Formschlüssel. */

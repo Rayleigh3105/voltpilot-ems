@@ -207,11 +207,12 @@ function MiniBars({ slots, now }: { slots: SchedulePlan['slots']; now: Date }) {
 
   return (
     <div className="vp-fpk-ribbon">
-      {/* K5: die Richtung trägt Position UND Wort, nie die Farbe allein. */}
-      <div className="vp-plan-dirs" aria-hidden="true">
-        <span className="vp-plan-dir is-up">lädt ↑</span>
-        <span className="vp-plan-dir is-down">gibt ab ↓</span>
-      </div>
+      {/* K5: die Richtung trägt Position UND Wort, nie die Farbe allein — die
+          Wörter stehen deshalb auf DER SEITE, die sie meinen (oben laden,
+          unten abgeben), nicht nebeneinander in einer Zeile. */}
+      <span className="vp-plan-dir is-up" aria-hidden="true">
+        lädt ↑
+      </span>
       <MiniBarSpark
         className="vp-plan-mini"
         points={points}
@@ -220,6 +221,9 @@ function MiniBars({ slots, now }: { slots: SchedulePlan['slots']; now: Date }) {
         emphasisKey={String(nowHour)}
         ariaLabel="Batterie-Fahrplan heute"
       />
+      <span className="vp-plan-dir is-down" aria-hidden="true">
+        gibt ab ↓
+      </span>
       <div className="vp-fpk-hours" aria-hidden="true">
         {planStreifenTicks().map((t) => (
           <span key={t.hour} className="vp-fpk-hour" style={{ left: `${t.pct}%` }}>
