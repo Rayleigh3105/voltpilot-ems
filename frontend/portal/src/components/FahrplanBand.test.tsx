@@ -98,16 +98,60 @@ describe('FahrplanBand — die kurze Speicher-Fahrplan-Karte', () => {
     expect(container.textContent).toContain('+1,60');
   });
 
-  it('zeigt den Ministreifen auf allen Breiten — Jetzt-Balken umrandet, Stunden-Achse', () => {
+  it('zeigt den Ministreifen auf allen Breiten — Jetzt-Balken betont, Stunden-Achse', () => {
     const { container } = renderBand();
-    const bars = container.querySelectorAll('.vp-plan-mini i');
+    // 24 Säulen (der Baustein), und jede Stunde traegt einen Wert - eine
+    // Ruhe-Stunde ist eine gemessene Null, keine Luecke.
+    const cols = container.querySelectorAll('.vp-plan-mini .vp-mini-col');
+    expect(cols).toHaveLength(24);
+    const bars = container.querySelectorAll('.vp-plan-mini .vp-mini-bar');
     expect(bars).toHaveLength(24);
-    // Genau der Balken der laufenden Stunde (12) trägt die Umrandung.
-    const now = container.querySelectorAll('.vp-plan-mini i.now');
+    // Genau der Balken der laufenden Stunde (12) ist betont.
+    const now = container.querySelectorAll('.vp-plan-mini .vp-mini-bar.is-on');
     expect(now).toHaveLength(1);
     expect([...bars].indexOf(now[0])).toBe(12);
     // Die Achse macht den Streifen ohne Legende lesbar.
     expect(container.querySelector('.vp-fpk-hours')?.textContent).toBe('061218' + '24');
+  });
+
+  it('trägt eine ECHTE Nulllinie mit Richtungs-Wörtern (K5)', () => {
+    const { container, getByText } = renderBand();
+    expect(container.querySelector('.vp-plan-mini .vp-mini-zero')).not.toBeNull();
+    // Farbe allein traegt die Richtung nicht - Grün↔Türkis liegt unter der
+    // Normalsicht-Grenze, also muessen die Woerter dastehen.
+    expect(getByText('lädt ↑')).toBeTruthy();
+    expect(getByText('gibt ab ↓')).toBeTruthy();
+  });
+
+  it('hängt die Abgabe UNTER die Null und lädt darüber', () => {
+    const { container } = renderBand();
+    const zeroTop = Number(
+      /top:\s*([\d.]+)px/.exec(
+        container.querySelector<HTMLElement>('.vp-plan-mini .vp-mini-zero')!.getAttribute('style') ??
+          '',
+      )?.[1],
+    );
+    const laden = container.querySelector<HTMLElement>('.vp-plan-mini .vp-mini-bar.is-solarladen');
+    const abgeben = container.querySelector<HTMLElement>('.vp-plan-mini .vp-mini-bar.is-entladen');
+    expect(laden).not.toBeNull();
+    expect(abgeben).not.toBeNull();
+    const top = (el: HTMLElement) =>
+      Number(/top:\s*([\d.]+)px/.exec(el.getAttribute('style') ?? '')?.[1]);
+    const height = (el: HTMLElement) =>
+      Number(/height:\s*([\d.]+)px/.exec(el.getAttribute('style') ?? '')?.[1]);
+    expect(top(laden!) + height(laden!)).toBeCloseTo(zeroTop, 3);
+    expect(top(abgeben!)).toBeCloseTo(zeroTop, 3);
+  });
+
+  it('dimmt die vergangenen Stunden und nennt den Maßstab (K1)', () => {
+    const { container } = renderBand();
+    // Jetzt ist 12 Uhr - also sind die Stunden 0..11 vorbei.
+    expect(container.querySelectorAll('.vp-plan-mini .vp-mini-bar.is-past')).toHaveLength(12);
+    const scale = container.querySelector('.vp-plan-scale')?.textContent ?? '';
+    expect(scale).toContain('Höchstens');
+    expect(scale).toContain('laden');
+    // Der Formschlüssel - sonst waere „Umriss" eine Kodierung ohne Wort.
+    expect(scale).toContain('gefüllt = lädt, Umriss = gibt ab');
   });
 
   it('D7: der volle Chart hat die Karte verlassen — kein Chart-Container mehr', () => {

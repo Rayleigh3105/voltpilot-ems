@@ -169,6 +169,7 @@ export function MiniBarSpark({
                   'vp-mini-bar',
                   `is-${b.form}`,
                   b.sign < 0 ? 'is-neg' : 'is-pos',
+                  b.tone && `is-${b.tone}`,
                   b.emphasis && 'is-on',
                   b.past && 'is-past',
                 )}

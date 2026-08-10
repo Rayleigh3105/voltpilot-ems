@@ -5,28 +5,23 @@ import {
   curtailmentToday,
   planHourBars,
   planSentence,
+  planStreifenSkala,
+  planStreifenTicks,
   savingsTodayEur,
   todaySlots,
-  type ChargeKind,
 } from '../schedule';
 import { phases } from '../fahrplanWhy';
 import { filmRows, speicherKurzzeile } from '../fahrplanFilm';
 import { PROVENIENZ } from '../historieWelten';
 import { energyLabel } from '../anlage';
 import { fahrplanZeile } from '../cockpitWidgets';
+import type { MiniPoint } from '../miniChart';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { MobileRowCard } from './CockpitBlocks';
+import { MiniBarSpark } from './MiniChart';
 import { Skeleton } from './States';
 import './FahrplanBand.css';
-
-/** The bar CSS class per charge kind (matches .vp-plan-mini tokens). */
-const BAR_CLASS: Record<ChargeKind, string> = {
-  solarladen: 'ch',
-  netzladen: 'grid',
-  entladen: 'dis',
-  ruhe: 'idle',
-};
 
 /** Der ehrliche Leerzustand — wortgleich mit der Fahrplan-Seite. */
 export const KEIN_PLAN_TEXT = 'Für heute liegt noch kein Fahrplan vor.';
@@ -174,36 +169,69 @@ export function FahrplanBand({
 }
 
 /**
- * Der 24-Stunden-Ministreifen (auf allen Breiten): ein Balken je Stunde in
- * der Fahrplan-Farbsprache, der Balken der LAUFENDEN Stunde umrandet — die
- * Stunden-Achse darunter macht ihn ohne Legende lesbar.
+ * Der 24-Stunden-Ministreifen (auf allen Breiten) — seit Chart-Redesign
+ * Stufe 5 der geteilte Mini-Baustein statt eigener CSS-Balken.
+ *
+ * Was sich dabei ändert, ist nicht die Optik, sondern die EHRLICHKEIT (die
+ * drei Befunde aus `vp-charts-filigran-c7` §3b Nr. 15):
+ *
+ *  - **Eine echte Nulllinie mit RICHTUNGS-WÖRTERN.** Vorher trug die Richtung
+ *    allein `align-self` plus die Farbe — und Grün↔Türkis liegt unter der
+ *    Normalsicht-Grenze, die Haus-Auflage „Wort + Icon tragen die Identität"
+ *    war hier also VERLETZT. Jetzt hängt Laden über und Abgeben unter einer
+ *    gezeichneten Null, und „lädt ↑" / „gibt ab ↓" stehen daneben.
+ *  - **Keine 12-%-Mindesthöhe.** `Math.max(12, …)` zog jede kleine Stunde auf
+ *    ein Achtel der Fläche; der Baustein gibt ihr stattdessen die Strich-Form.
+ *  - **Die Stundenskala steht UNTER ihren Ticks.** Vorher `space-between`,
+ *    also die Beschriftung NEBEN ihrer Stunde.
+ *
+ * Dazu die Maßstabs-Zeile (K1): ein 40-px-Streifen kann seine Leistungen nicht
+ * beschriften, und genau danach fragt ein Betreiber.
  */
 function MiniBars({ slots, now }: { slots: SchedulePlan['slots']; now: Date }) {
   const bars = planHourBars(slots, now);
-  const maxKw = Math.max(1, ...bars.map((b) => b.kw ?? 0));
   const nowHour = now.getHours();
+  // Die Richtung wird zum VORZEICHEN - erst damit kann die Nulllinie sie
+  // tragen. `ruhe` ist eine gemessene Null (ein Strich auf der Linie), keine
+  // Lücke: der Plan sieht für diese Stunde nichts vor, das IST die Aussage.
+  const points: MiniPoint[] = bars.map((b) => {
+    const kw = b.kw ?? 0;
+    const signed = b.kind === 'entladen' ? -kw : b.kind === 'ruhe' ? 0 : kw;
+    return {
+      key: String(b.hour),
+      value: signed,
+      label: `${b.hour} Uhr`,
+      tone: b.kind,
+    };
+  });
+
   return (
     <div className="vp-fpk-ribbon">
-      <div className="vp-plan-mini" role="img" aria-label="Batterie-Fahrplan heute">
-        {bars.map((b) => {
-          const pct = b.kw && b.kw > 0 ? Math.max(12, Math.round((b.kw / maxKw) * 100)) : 0;
-          const cls = BAR_CLASS[b.kind];
-          return (
-            <i
-              key={b.hour}
-              className={`${cls}${b.hour === nowHour ? ' now' : ''}`}
-              style={cls === 'idle' ? undefined : { height: `${pct}%` }}
-            />
-          );
-        })}
+      {/* K5: die Richtung trägt Position UND Wort, nie die Farbe allein. */}
+      <div className="vp-plan-dirs" aria-hidden="true">
+        <span className="vp-plan-dir is-up">lädt ↑</span>
+        <span className="vp-plan-dir is-down">gibt ab ↓</span>
       </div>
+      <MiniBarSpark
+        className="vp-plan-mini"
+        points={points}
+        size="streifen"
+        nowKey={String(nowHour)}
+        emphasisKey={String(nowHour)}
+        ariaLabel="Batterie-Fahrplan heute"
+      />
       <div className="vp-fpk-hours" aria-hidden="true">
-        <span>0</span>
-        <span>6</span>
-        <span>12</span>
-        <span>18</span>
-        <span>24</span>
+        {planStreifenTicks().map((t) => (
+          <span key={t.hour} className="vp-fpk-hour" style={{ left: `${t.pct}%` }}>
+            {t.hour}
+          </span>
+        ))}
       </div>
+      {/* Die Zahl, die ein 40-px-Balken nicht zeigen kann - plus der
+          Formschlüssel, ohne den „Umriss" eine Kodierung ohne Wort wäre. */}
+      {planStreifenSkala(bars) && (
+        <p className="vp-plan-scale">{planStreifenSkala(bars)}</p>
+      )}
     </div>
   );
 }

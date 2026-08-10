@@ -89,6 +89,14 @@ export interface MiniPoint {
   value: number | null;
   /** Klartext für den Ableseweg („12.08." / „Aug" / „14 Uhr"). */
   label?: string;
+  /**
+   * Ein freier Zustands-Name, den die FLÄCHE vergibt und als CSS-Modifier
+   * wiederfindet (`is-<tone>`). Der Baustein weiß nichts über Batterien —
+   * so kann der Cockpit-Streifen trotzdem die Haus-Regel „der Speicher ist
+   * EINE Farbe, die Richtung trägt Form + Wort" (K5) anwenden, ohne dass
+   * sie hier hineinwandert.
+   */
+  tone?: string;
 }
 
 /**
@@ -105,6 +113,8 @@ export interface MiniBar {
   label: string | null;
   value: number | null;
   form: MiniBarForm;
+  /** Der Zustands-Name des Punktes (siehe {@link MiniPoint.tone}). */
+  tone: string | null;
   /** Oberkante in px, von oben. */
   y: number;
   /** Höhe in px. */
@@ -167,6 +177,7 @@ export function miniBars(
       key: p.key,
       label: p.label ?? null,
       value: p.value,
+      tone: p.tone ?? null,
       emphasis,
       past,
     };

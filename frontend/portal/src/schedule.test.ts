@@ -32,6 +32,8 @@ import {
   needsPointMarkers,
   planCoversNow,
   planHourBars,
+  planStreifenSkala,
+  planStreifenTicks,
   planInsightParts,
   planKernaussage,
   planSentence,
@@ -427,6 +429,40 @@ describe('planSentence', () => {
     expect(planSentence(idle('warten'), 'eigenverbrauch', NOW)).toBe(
       'Der Speicher wartet heute - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.',
     );
+  });
+});
+
+describe('planStreifenSkala (K1 · die Maßstabs-Zeile des Ministreifens)', () => {
+  it('nennt beide Spitzen und den Formschlüssel', () => {
+    const bars = planHourBars([...hours(11, 12, 10.9, -3), ...hours(18, 19, -7, 2)], NOW);
+    const satz = planStreifenSkala(bars)!;
+    expect(satz).toContain('Höchstens 10,9');
+    expect(satz).toContain('laden');
+    expect(satz).toContain('7,0');
+    expect(satz).toContain('abgeben');
+    expect(satz).toContain('gefüllt = lädt, Umriss = gibt ab');
+  });
+
+  it('nennt nur, was der Plan wirklich vorsieht', () => {
+    const nurLaden = planStreifenSkala(planHourBars(hours(11, 12, 4, -3), NOW))!;
+    expect(nurLaden).toContain('laden');
+    expect(nurLaden).not.toContain('abgeben');
+  });
+
+  it('behauptet an einem Tag ohne Bewegung GAR NICHTS', () => {
+    expect(planStreifenSkala(planHourBars([], NOW))).toBeNull();
+  });
+});
+
+describe('planStreifenTicks (die Stundenskala steht ÜBER ihrer Stunde)', () => {
+  it('setzt jede Stunde auf ihren Anteil des Tages', () => {
+    const ticks = planStreifenTicks();
+    expect(ticks.map((t) => t.hour)).toEqual([0, 6, 12, 18, 24]);
+    expect(ticks.map((t) => t.pct)).toEqual([0, 25, 50, 75, 100]);
+  });
+
+  it('bleibt für eine eigene Auswahl richtig', () => {
+    expect(planStreifenTicks([12])).toEqual([{ hour: 12, pct: 50 }]);
   });
 });
 

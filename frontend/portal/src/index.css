@@ -2643,37 +2643,61 @@ button.vp-cl-item.is-off .vp-cl-label {
   color: var(--vp-text-muted, #6c757d);
 }
 
-/* Fahrplan mini preview: 24 hourly bars around a center line - charge grows
-   up (green, cyan when grid-fed), discharge hangs down (red), idle is a thin
-   neutral tick. Colors = the chart tokens, so preview and full chart agree. */
+/* Fahrplan-Ministreifen: 24 Stundenbalken um eine ECHTE Nulllinie. Geometrie,
+   Nulllinie, Sichtbarkeits-Striche und die Vergangenheits-Dämpfung kommen seit
+   Stufe 5 aus dem Mini-Baustein; hier steht nur die FARBSPRACHE DES SPEICHERS.
+
+   ⚠ Der Speicher ist EINE Farbe (K5): Laden ist die GEFÜLLTE Form, Abgeben der
+   UMRISS derselben Farbe - die Richtung tragen zusätzlich die Position (über /
+   unter der Null) und das Wort daneben. Der frühere eigene Entladen-Ton
+   (`--vp-chart-battdischarge`) ist damit hier abgelöst: er war die letzte
+   Fläche, die die Richtung allein über die Farbe trug, und genau deshalb war
+   die Haus-Auflage „Wort + Icon tragen die Identität" hier verletzt.
+   Netzladen behält seinen eigenen Ton - die Unterscheidung Solar↔Netz ist
+   compliance-tragend (EEG). */
 .vp-plan-mini {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 56px;
   margin-top: var(--vp-space-3);
 }
-.vp-plan-mini i {
-  flex: 1 1 0;
-  min-width: 0;
-  border-radius: 2px;
-  align-self: center;
-  height: 4px;
-  background: var(--vp-border, #e9ecef);
-}
-.vp-plan-mini i.ch {
-  align-self: flex-start;
-  background: var(--vp-chart-charge, #2e9e5b);
-}
-.vp-plan-mini i.grid {
-  align-self: flex-start;
+/* Solarladen = die gefüllte Speicher-Farbe (die Vorgabe des Bausteins). */
+.vp-plan-mini .vp-mini-bar.is-netzladen {
   background: var(--vp-chart-gridcharge, #00acc1);
 }
-.vp-plan-mini i.dis {
-  align-self: flex-end;
-  /* Entladen is blue, not red: emptying the battery into an expensive hour is
-     how the plant earns money (audit F5) - the same hue as the chart bars. */
-  background: var(--vp-chart-battdischarge, #2c5282);
+.vp-plan-mini .vp-mini-bar.is-entladen {
+  background: transparent;
+  border: 1.2px solid var(--vp-chart-charge, #2e9e5b);
+  opacity: 0.92;
+}
+/* Eine Stunde ohne Batteriebewegung ist eine gemessene Null, kein Wert -
+   sie liegt neutral auf der Linie. */
+.vp-plan-mini .vp-mini-bar.is-ruhe {
+  background: var(--vp-chart-axisline, #e9ecef);
+  opacity: 1;
+}
+/* Vergangene Stunden bleiben LESBAR gedämpft (der Baustein dämpft auf einen
+   neutralen Ton); ein Umriss würde dabei unsichtbar, also bekommt er Fläche. */
+.vp-plan-mini .vp-mini-bar.is-entladen.is-past {
+  background: var(--vp-chart-axisline, #e9ecef);
+  border-color: transparent;
+}
+
+/* K5: die Richtungs-WÖRTER - ohne sie trüge die Richtung nur Farbe + Lage. */
+.vp-plan-dirs {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--vp-chart-charge, #2e9e5b);
+}
+.vp-plan-dir.is-down {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* K1: die Zahl, die ein 40-px-Balken nicht zeigen kann, plus der Formschlüssel. */
+.vp-plan-scale {
+  margin: 6px 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--vp-text-muted, #6c757d);
 }
 
 /* ============================================================================
@@ -3455,13 +3479,6 @@ button.vp-tech-card-h.toggle {
 .vp-fp-curtail svg {
   flex: 0 0 auto;
   color: var(--vp-flow-pv, #f59e0b);
-}
-
-/* Der ruhende Balken einer Stunde ohne Batteriebewegung. */
-.vp-plan-mini i.idle {
-  align-self: center;
-  height: 4px;
-  background: var(--vp-border, #e9ecef);
 }
 
 /* --- Weitere Erzeuger (additional read-only PV sources, multi-source Anlage) --- */
