@@ -3,8 +3,10 @@ import type { SchedulePlan } from './api';
 import {
   AXIS,
   BAR,
+  dayBoundaryStyle,
   FILL,
   FORECAST,
+  NARROW_PX,
   nowLabel,
   nowLineStyle,
   PANELS,
@@ -238,7 +240,7 @@ export function ScheduleChart({
   );
 
   const ref = useEChart((chart, width) => {
-    const narrow = width < 480;
+    const narrow = width < NARROW_PX;
     const slots = plan.slots;
     const target = peakTargetKw != null && peakTargetKw > 0 ? peakTargetKw : null;
     const times = slots.map((s) => s.start);
@@ -351,7 +353,7 @@ export function ScheduleChart({
       // der Börsenpreis für morgen steht fest und bleibt durchgezogen.
       const dayLine = {
         xAxis: boundaryIdx,
-        lineStyle: { color: t.axis, type: 'dashed', width: STROKE.ref, opacity: 0.7 },
+        lineStyle: dayBoundaryStyle(t),
       };
       priceMarks.push({
         ...dayLine,

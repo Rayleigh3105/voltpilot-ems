@@ -4,6 +4,7 @@ import {
   DIRECT_LABEL_GUTTER_PX,
   directLabel,
   FILL,
+  NARROW_PX,
   SMOOTH_SERIES,
   STROKE,
 } from './chartStyle';
@@ -89,7 +90,7 @@ export function TelemetryChart({
 
   const ref = useEChart(
     (chart, width) => {
-      const narrow = width < 480;
+      const narrow = width < NARROW_PX;
       const nowMs = Date.now();
       const series = (name: string, key: keyof TelemetryPoint, color: string, axis = 0) => ({
         name,

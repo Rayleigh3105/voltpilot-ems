@@ -4,10 +4,13 @@ import {
   BAR,
   BASE_SERIES_LIMIT,
   FILL,
+  DAY_BOUNDARY_OPACITY,
+  dayBoundaryStyle,
   GHOST,
   ghostBar,
   ghostItem,
   ghostLine,
+  NARROW_PX,
   NOW,
   nowLabel,
   nowLineStyle,
@@ -204,5 +207,28 @@ describe('M9 · und sie heißt überall gleich', () => {
 
   it('stellt die GRÖSSE voran - die Legende wird nach Größen gelesen', () => {
     expect(vergleichReihe('Ladestand', 'gestern').startsWith('Ladestand')).toBe(true);
+  });
+});
+
+describe('Feinschliff · eine Referenz ist EINMAL definiert', () => {
+  it('gibt der Tagesgrenze EINEN Stil - vorher stand er dreimal ausgeschrieben', () => {
+    const s = dayBoundaryStyle({ axis: '#6c757d' });
+    expect(s).toEqual({
+      color: '#6c757d',
+      type: 'dashed',
+      width: STROKE.ref,
+      opacity: DAY_BOUNDARY_OPACITY,
+    });
+  });
+
+  it('haelt die Tagesgrenze RUHIGER als die Jetzt-Linie - sie ordnet nur ein', () => {
+    expect(DAY_BOUNDARY_OPACITY).toBeGreaterThan(NOW.inkOpacity);
+    // Beide sind Referenzen, also beide auf der Referenz-Staerke.
+    expect(dayBoundaryStyle({ axis: '#000' }).width).toBe(STROKE.ref);
+    expect(nowLineStyle({ ink: '#000' }).width).toBe(STROKE.ref);
+  });
+
+  it('traegt die Schmal-Grenze als EINE Zahl', () => {
+    expect(NARROW_PX).toBe(480);
   });
 });

@@ -10,6 +10,7 @@ import {
   FILL,
   ghostItem,
   ghostLine,
+  NARROW_PX,
   nowLabel,
   nowLineStyle,
   SMOOTH_SERIES,
@@ -266,7 +267,7 @@ export function HistoryEnergieChart({
           if (at) oeffne(at);
         });
       }
-      const narrow = width < 480;
+      const narrow = width < NARROW_PX;
       const weekNarrow = narrow && history.range === 'week';
       const { zeiten, einheit, jetztIndex } = diagramm;
       const brauchtSoc = sichtbar.some((s) => s.zweiteAchse);

@@ -1,5 +1,5 @@
 import type { PriceHistory } from './api';
-import { AXIS, FILL, STROKE, withAlpha } from './chartStyle';
+import { AXIS, dayBoundaryStyle, FILL, NARROW_PX, STROKE, withAlpha } from './chartStyle';
 import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { fokusFenster, tagesGrenze, type TagFokus } from './marktpreise';
@@ -122,7 +122,7 @@ export function PriceHistoryChart({
   const ref = useEChart(
     (chart, width) => {
       const t = chartTheme();
-      const narrow = width < 480;
+      const narrow = width < NARROW_PX;
       const { buckets, bucket } = history;
       const isDay = bucket === 'PT15M';
       const weekNarrow = narrow && bucket === 'PT1H';
@@ -284,12 +284,7 @@ export function PriceHistoryChart({
                             // F6 (korrigiert): der Börsenpreis für morgen STEHT
                             // FEST - die Tagesgrenze ist eine Referenz-
                             // Haarlinie mit DATUM, keine Prognose-Marke.
-                            lineStyle: {
-                              color: t.axis,
-                              type: 'dashed',
-                              width: STROKE.ref,
-                              opacity: 0.7,
-                            },
+                            lineStyle: dayBoundaryStyle(t),
                             label: {
                               formatter: grenzLabel(times[boundaryIdx]),
                               color: t.axis,

@@ -1,5 +1,5 @@
 import type { ComponentRole } from '../komponenten';
-import { BAR, FILL, nowLabel, nowLineStyle, STROKE } from '../chartStyle';
+import { BAR, FILL, NARROW_PX, nowLabel, nowLineStyle, STROKE } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { useEChart } from '../useEChart';
 import { secondAxisUnit, type VerlaufRange, type VerlaufSeries } from '../verlauf';
@@ -137,7 +137,7 @@ export function VerlaufChart({
   const ref = useEChart(
     (chart, width) => {
       const t = chartTheme();
-      const narrow = width < 480;
+      const narrow = width < NARROW_PX;
       const weekNarrow = narrow && range === 'week';
       const first = selections[0];
       if (!first) return;

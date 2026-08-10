@@ -1,7 +1,7 @@
 import type { EarningsRange, SiteEarningsBucket, SiteEarningsRange } from '../api';
 import { bucketAxisLabel, bucketTooltipLabel } from '../anlage';
 import type { Kernaussage } from '../chartKopf';
-import { AXIS, BAR, ghostItem, ghostLine, STROKE } from '../chartStyle';
+import { AXIS, BAR, ghostItem, ghostLine, SMOOTH_SERIES, STROKE } from '../chartStyle';
 import { vergleichName, vergleichReihe } from '../chartCopy';
 import { chartTheme } from '../chartTheme';
 import { eurAmount } from '../format';
@@ -121,7 +121,7 @@ export function ErloeseVerlaufChart({
                   ...vglView.reihen.map((r) => ({
                     name: vergleichReihe(r.label, vglName),
                     type: 'line' as const,
-                    smooth: true,
+                    ...SMOOTH_SERIES,
                     symbol: 'none',
                     silent: true,
                     z: 0,
@@ -133,7 +133,7 @@ export function ErloeseVerlaufChart({
                   {
                     name: vergleichReihe('kumuliert', vglName),
                     type: 'line' as const,
-                    smooth: true,
+                    ...SMOOTH_SERIES,
                     symbol: 'none',
                     silent: true,
                     z: 0,
@@ -156,7 +156,12 @@ export function ErloeseVerlaufChart({
             {
               name: 'kumuliert',
               type: 'line',
-              smooth: true,
+              // ⚠ `smooth: true` ist der ECharts-Faktor 0,5 und schwingt
+              // zwischen zwei Stuetzstellen ueber - auf einer KUMULIERTEN
+              // Geldkurve heisst das, sie faellt sichtbar unter einen Stand,
+              // den sie nie hatte. `SMOOTH_SERIES` (0,2 + smoothMonotone) ist
+              // die Hausregel; diese Flaeche war die letzte mit dem Footgun.
+              ...SMOOTH_SERIES,
               symbol: 'none',
               // F1-Hierarchie: die kumulierte Linie IST die Aussage der Flaeche.
               lineStyle: { color: t.plan, width: STROKE.lead },

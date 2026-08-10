@@ -153,6 +153,32 @@ export function nowLabel(
   } as const;
 }
 
+/**
+ * Die TAGESGRENZE — die zweite Referenzlinie des Hauses, neben
+ * {@link nowLineStyle}.
+ *
+ * Sie stand in drei Flächen (Fahrplan, Marktpreise, Admin-Plan) Zeichen für
+ * Zeichen dreimal ausgeschrieben; das ist dieselbe Doppelung, die bei der
+ * Jetzt-Linie schon aufgelöst ist. Eine Referenz ist nie eine Serienfarbe, und
+ * sie liegt eine Spur blasser als die Jetzt-Linie: die Tagesgrenze ordnet ein,
+ * die Jetzt-Linie zeigt.
+ *
+ * ⚠ F6 (korrigiert): sie ist eine REFERENZ, keine Prognose-Marke — der
+ * Börsenpreis für morgen steht fest. Die Linie ist deshalb gestrichelt, weil
+ * sie eine GRENZE ist, nicht weil das Dahinter unsicher wäre.
+ */
+export const DAY_BOUNDARY_OPACITY = 0.7;
+
+/** Der `lineStyle` JEDER Tagesgrenze. */
+export function dayBoundaryStyle(t: { axis: string }) {
+  return {
+    color: t.axis,
+    type: 'dashed' as const,
+    width: STROKE.ref,
+    opacity: DAY_BOUNDARY_OPACITY,
+  };
+}
+
 /* ---------------------------------------------------------------------------
  * F4 · Raster sind Haarlinien, Achsen haben keine Linie
  *
@@ -412,8 +438,13 @@ export const BASE_SERIES_LIMIT = 3;
 
 /**
  * Unterhalb dieser Container-Breite ist eine Fläche „schmal": Achsennamen
- * kürzen, Ränder straffen, Zweitachsen fallen lassen. Die Zahl war bisher in
- * jeder Chart-Datei einzeln als `width < 480` einkopiert.
+ * kürzen, Ränder straffen, Zweitachsen fallen lassen. Die Zahl stand in jeder
+ * Chart-Datei einzeln als `width < 480`; seit Stufe 6 lesen sie alle von hier.
+ *
+ * ⚠ Zwei Flächen weichen BEGRÜNDET ab und tun das mit einer eigenen Zahl:
+ * das Wetter und die Was-wäre-wenn-Vorschau werden bei 520 px schmal, weil
+ * sie mehr Achsen-Beiwerk tragen. Eine Abweichung ist erlaubt — sie muss nur
+ * eine sein, keine vergessene Kopie.
  */
 export const NARROW_PX = 480;
 

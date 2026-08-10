@@ -1,6 +1,7 @@
 import {
   AXIS,
   BAR,
+  dayBoundaryStyle,
   FILL,
   NARROW_PX,
   PANELS,
@@ -125,7 +126,7 @@ export function OptimizerPlanChart({
         mitWort(
           {
             xAxis: boundaryIdx,
-            lineStyle: { color: t.axis, type: 'dashed', width: STROKE.ref, opacity: 0.7 },
+            lineStyle: dayBoundaryStyle(t),
           },
           'Morgen',
           t.axis,
