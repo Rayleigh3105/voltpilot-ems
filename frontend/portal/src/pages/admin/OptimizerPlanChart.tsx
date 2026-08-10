@@ -149,7 +149,7 @@ export function OptimizerPlanChart({
               yAxisIndex: 0,
               data: grid,
               barCategoryGap: BAR.categoryGap,
-          barMaxWidth: BAR.maxWidth,
+              barMaxWidth: BAR.maxWidth,
               barGap: '-100%',
               z: 1,
               silent: true,
@@ -170,7 +170,7 @@ export function OptimizerPlanChart({
               yAxisIndex: 0,
               data: battery,
               barCategoryGap: BAR.categoryGap,
-          barMaxWidth: BAR.maxWidth,
+              barMaxWidth: BAR.maxWidth,
               z: 3,
               itemStyle: {
                 borderRadius: 2,

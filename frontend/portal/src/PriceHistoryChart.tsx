@@ -129,10 +129,12 @@ export function PriceHistoryChart({
               type: 'category',
               data: times,
               axisLabel: {
-              formatter: (v: string) => axisLabel(v, bucket, narrow),
-              color: t.axis,
-              hideOverlap: true,
-            },
+                formatter: (v: string) => axisLabel(v, bucket, narrow),
+                color: t.axis,
+                fontSize: AXIS.fontSize,
+                hideOverlap: true,
+              },
+              // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
               axisTick: { show: false },
               axisLine: { show: false },
             },

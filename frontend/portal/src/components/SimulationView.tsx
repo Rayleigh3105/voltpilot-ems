@@ -407,7 +407,7 @@ function SweepChart({ data }: { data: NonNullable<ReturnType<typeof sweepChartDa
                 itemStyle: i === data.baseIndex ? { color: t.pv, borderColor: t.ink, borderWidth: 2 } : undefined,
               })),
               // F1-Hierarchie: die Sweep-Kurve IST die Aussage der Flaeche.
-          lineStyle: { color: t.soc, width: STROKE.lead },
+              lineStyle: { color: t.soc, width: STROKE.lead },
               itemStyle: { color: t.soc },
             },
           ],
