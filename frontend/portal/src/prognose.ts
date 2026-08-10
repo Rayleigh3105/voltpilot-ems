@@ -1,4 +1,5 @@
 import type { ForecastAccuracyPoint, ForecastModelId, ForecastModelState } from './api';
+import type { Kernaussage } from './chartKopf';
 import { NBSP } from './format';
 
 /**
@@ -162,4 +163,131 @@ export function kandidatenZeilen(
       ton: bilanz.besser * 2 > bilanz.gesamt ? 'besser' : 'neutral',
     };
   });
+}
+
+/* ---------------------------------------------------------------------------
+ * Die Diagramm-Schicht (Chart-Redesign Stufe 4)
+ *
+ * Die Diagnose war, dass die Fläche drei Dinge nicht sagte, die sie sagen muss
+ * (Scout `vp-charts-verstaendlich-r2` §6 F):
+ *
+ *  - **Die POLARITÄT war unerklärt.** Die aktive Linie liegt oben, oben ist
+ *    hier aber SCHLECHTER — ein Laie liest das genau verkehrt herum. Der Anker
+ *    steht deshalb INNEN im Bild („↑ schlechter" / „↓ besser"); außen lief er
+ *    in der Revision 1 aus der Fläche heraus.
+ *  - **Die grüne Fläche zwischen den Kurven war unbenannt** (K10). Sie ist die
+ *    eigentliche Aussage und trägt jetzt ihr Wort.
+ *  - **„Ø kW" liest sich als Durchschnittsleistung** — die Klartext-Einheit
+ *    steht in `chartCopy.AXIS.abweichung`.
+ * ------------------------------------------------------------------------- */
+
+/** Die zwei Polaritäts-Anker — sie stehen INNEN am Rand, nie außerhalb. */
+export const POLARITAET = {
+  oben: '↑ schlechter',
+  unten: '↓ besser',
+} as const;
+
+/** Das Wort AN der Verbesserungs-Fläche (K10: keine Kodierung ohne Wort). */
+export const VERBESSERUNG_WORT = 'so viel besser war der Kandidat';
+
+export interface Verbesserung {
+  /** Untere Kante je Tag (der bessere der beiden Werte) — `null` = Lücke. */
+  unten: (number | null)[];
+  /** Höhe der Fläche je Tag; nur wo der Kandidat WIRKLICH besser war. */
+  delta: (number | null)[];
+  /** {@link VERBESSERUNG_WORT} — nur gesetzt, wenn es etwas zu benennen gibt. */
+  wort: string | null;
+}
+
+/**
+ * Die Fläche zwischen aktivem Modell und Kandidat — sie wird NUR dort
+ * gezeichnet, wo der Kandidat an diesem Tag wirklich näher lag. Ein Tag, an
+ * dem er schlechter war, bekommt keine Fläche (sie hieße sonst das Gegenteil
+ * von dem, was ihr Wort behauptet), und ein Tag ohne beide Werte bleibt eine
+ * Lücke.
+ *
+ * `wort` ist `null`, wenn kein einziger Tag eine Fläche trägt — dann wird auch
+ * nichts beschriftet.
+ */
+export function verbesserung(
+  aktiv: readonly (number | null)[],
+  kandidat: readonly (number | null)[],
+): Verbesserung {
+  const unten: (number | null)[] = [];
+  const delta: (number | null)[] = [];
+  let irgendwas = false;
+  for (let i = 0; i < aktiv.length; i++) {
+    const a = aktiv[i];
+    const k = kandidat[i];
+    if (a == null || k == null || k >= a) {
+      unten.push(null);
+      delta.push(null);
+      continue;
+    }
+    unten.push(k);
+    delta.push(a - k);
+    irgendwas = true;
+  }
+  return { unten, delta, wort: irgendwas ? VERBESSERUNG_WORT : null };
+}
+
+/** Der Grund, wenn es (noch) keinen Kandidaten-Vergleich gibt. */
+export const KEIN_VERGLEICH_GRUND =
+  'Für diese Prognoseart läuft gerade kein lernender Kandidat.';
+/** Der Grund, solange der Kandidat noch keine Bewertung hat. */
+export const NOCH_KEINE_BEWERTUNG_GRUND =
+  'Der Kandidat rechnet mit - die erste Bewertung folgt.';
+
+/**
+ * K1 · „Der Kandidat lag an 11 von 14 Tagen näher an der Wirklichkeit."
+ *
+ * ABGELEITET aus `skillBilanz` — derselben Zahl, die die Kandidaten-Zeile
+ * nennt; sie rückt nur nach oben. Ohne Kandidat bzw. ohne Bewertung steht dort
+ * der ehrliche GRUND, nie ein erfundener Satz. Der Ton ist nur dann `ok`, wenn
+ * eine MEHRHEIT der Bewertungen für den Kandidaten spricht — sonst läse sich
+ * „an 1 von 12 Tagen" wie ein Erfolg.
+ */
+export function kandidatKern(
+  accuracy: readonly ForecastAccuracyPoint[],
+  kandidat: ForecastModelId | null,
+): Kernaussage {
+  if (!kandidat) return { wert: null, satz: null, grund: KEIN_VERGLEICH_GRUND, ton: 'calm' };
+  const bilanz = skillBilanz(accuracy, kandidat, 14);
+  if (!bilanz) {
+    return { wert: null, satz: null, grund: NOCH_KEINE_BEWERTUNG_GRUND, ton: 'calm' };
+  }
+  const mehrheit = bilanz.besser * 2 > bilanz.gesamt;
+  // ⚠ Der Kopf trägt hier bewusst KEINEN Anker. Zwei Kandidaten waren im Test
+  // beide eine DOPPELUNG derselben Seite: `KANDIDAT_EHRLICHKEIT` steht schon
+  // unter der Kandidaten-Zeile, und die zwei Ø-Abweichungen stehen schon in
+  // der Verdikt-Karte darüber. Die Zahlen gehören stattdessen AN die Kurven
+  // (K2, `direktEtikett`) - dort können sie nicht von ihnen abweichen.
+  return {
+    wert: `${bilanz.besser} von ${bilanz.gesamt}`,
+    satz: `${
+      bilanz.gesamt === 1 ? 'Bewertung' : 'Bewertungen'
+    }: So oft lag der Kandidat näher an der Wirklichkeit.`,
+    grund: null,
+    ton: mehrheit ? 'ok' : 'calm',
+    anker: null,
+  };
+}
+
+/**
+ * K2 · Das Etikett AM Kurvenende: „aktiv Ø 0,68 kW" / „Kandidat Ø 0,54 kW".
+ *
+ * Es steht dort statt im Kopf, weil es dort nicht von der Kurve abweichen kann
+ * (der Revision-1-Fehler: eine Legende behauptete einen Wert, den die Kurve
+ * nicht zeigte) - und weil dieselben zwei Zahlen im Kopf eine Doppelung der
+ * Verdikt-Karte wären. `null`, solange das Modell keine Bewertung hat.
+ */
+export function direktEtikett(
+  accuracy: readonly ForecastAccuracyPoint[],
+  model: ForecastModelId,
+  istAktiv: boolean,
+  tage = 14,
+): string | null {
+  const m = mittlereMae(accuracy, model, tage);
+  if (!m) return null;
+  return `${istAktiv ? 'aktiv' : 'Kandidat'} Ø ${abweichung(m.mae)}`;
 }
