@@ -14,6 +14,7 @@
  * fall back to the old import-based derivation.
  */
 
+import { storageMark, type StorageMark } from './chartStyle';
 import type { ChartTheme } from './chartTheme';
 import { eurAmount, NBSP } from './format';
 
@@ -71,16 +72,25 @@ export function hasGridCharge(
 }
 
 /**
- * The bar colour of one plan slot, from the shared chart palette: green =
- * Solarladen, türkis = Netzladen, BLAU = Entladen. Discharging deliberately
- * does NOT use the red `discharge` hue (audit F5) - emptying the battery into
- * an expensive hour is how the plant earns money, and red reads as a fault.
- * Red stays reserved for real costs and warnings (Netzbezug, Lastspitzen-Ziel).
+ * Die MARKE eines Plan-Slots (Farbe + Form) aus der geteilten Chart-Sprache:
+ * grün gefüllt = Solarladen, türkis gefüllt = Netzladen, grün als UMRISS =
+ * Entladen. Der Speicher ist EINE Farbe (K5) - Laden und Abgeben sind derselbe
+ * Gegenstand in zwei Zuständen, die Richtung trägt Position (über/unter Null),
+ * Form und Wort. Begründung + Messung in `chartStyle.ts` `storageMark`.
+ *
+ * Entladen nimmt weiterhin ausdrücklich NICHT das rote `discharge` (Audit F5):
+ * die Batterie in eine teure Stunde zu entleeren ist die Art, wie die Anlage
+ * verdient - Rot bleibt echten Kosten und Warnungen vorbehalten.
  */
+export function slotBarMark(kind: ChargeKind, t: ChartTheme): StorageMark {
+  if (kind === 'netzladen') return storageMark('netzladen', t);
+  if (kind === 'entladen') return storageMark('entladen', t);
+  return storageMark('laden', t);
+}
+
+/** Nur die Farbe derselben Marke - für Flächen ohne eigene Form (CSS-Punkte). */
 export function slotBarColor(kind: ChargeKind, t: ChartTheme): string {
-  if (kind === 'netzladen') return t.gridCharge;
-  if (kind === 'entladen') return t.battDischarge;
-  return t.charge;
+  return slotBarMark(kind, t).color;
 }
 
 // ---- Plan freshness (audit F2) ----------------------------------------------

@@ -38,6 +38,7 @@ import {
   savingsTodayEur,
   SLOT_DEADBAND_KW,
   slotBarColor,
+  slotBarMark,
   slotDuty,
   socRange,
   socRangeLine,
@@ -819,29 +820,40 @@ describe('socRange / socRangeLine', () => {
   });
 });
 
-/** F5: discharging earns money - it must not be painted in the warning red. */
-describe('slotBarColor', () => {
+/**
+ * K5: der Speicher ist EINE Farbe. Laden und Abgeben sind derselbe Gegenstand
+ * in zwei Zuständen; die Richtung tragen Position, FORM und Wort - nicht ein
+ * zweiter Ton, der gegen das Haus-Blau unter der Normalsicht-Grenze lag.
+ * F5 gilt unverändert weiter: Entladen verdient Geld und wird nie rot.
+ */
+describe('slotBarMark / slotBarColor', () => {
   const t = {
     charge: '#2E9E5B',
     gridCharge: '#00ACC1',
-    battDischarge: '#2C5282',
     discharge: '#E53935',
+    surface: '#FFFFFF',
   } as ChartTheme;
 
-  it('paints discharge blue, never the red cost hue', () => {
-    expect(slotBarColor('entladen', t)).toBe(t.battDischarge);
+  it('gibt Laden und Abgeben DIESELBE Farbe und unterscheidet über die Form', () => {
+    expect(slotBarMark('entladen', t)).toEqual({ color: t.charge, form: 'outline' });
+    expect(slotBarMark('solarladen', t)).toEqual({ color: t.charge, form: 'filled' });
+    expect(slotBarColor('entladen', t)).toBe(slotBarColor('solarladen', t));
+  });
+
+  it('malt Entladen nie im Kosten-Rot (F5, unverändert)', () => {
     expect(slotBarColor('entladen', t)).not.toBe(t.discharge);
   });
 
-  it('keeps the charge colours', () => {
-    expect(slotBarColor('solarladen', t)).toBe(t.charge);
-    expect(slotBarColor('netzladen', t)).toBe(t.gridCharge);
+  it('behält Netzladen als EIGENEN Ton - die EEG-Unterscheidung ist compliance-tragend', () => {
+    expect(slotBarMark('netzladen', t)).toEqual({ color: t.gridCharge, form: 'filled' });
+    expect(slotBarColor('netzladen', t)).not.toBe(t.charge);
   });
 
-  it('resolves the real palette to a blue that is not the red token', () => {
-    const real = chartTheme();
-    expect(real.battDischarge).toBe('#2C5282');
-    expect(real.battDischarge).not.toBe(real.discharge);
+  it('führt in der echten Palette keinen Entladen-Ton mehr - er kann nicht zurückkehren', () => {
+    const real = chartTheme() as unknown as Record<string, unknown>;
+    expect(real.battDischarge).toBeUndefined();
+    // Und die Farbe, die statt seiner gilt, ist weiterhin nicht das Kosten-Rot.
+    expect(slotBarColor('entladen', chartTheme())).not.toBe(chartTheme().discharge);
   });
 });
 

@@ -1,5 +1,16 @@
 import { useMemo, useState } from 'react';
 import type { SchedulePlan } from './api';
+import {
+  AXIS,
+  BAR,
+  FILL,
+  FORECAST,
+  nowLabel,
+  nowLineStyle,
+  SMOOTH_SERIES,
+  STROKE,
+} from './chartStyle';
+import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import {
   chargeKind,
@@ -26,7 +37,7 @@ import {
   powerAxisMax,
   PV_FORECAST_LABEL,
   SERIES_GROUPS,
-  slotBarColor,
+  slotBarMark,
   slotDuty,
   SOC_LABEL,
   socRangeLine,
@@ -257,40 +268,67 @@ export function ScheduleChart({
     // the customer switched the "Ladestand" layer on (D4).
     const hasSoc = showSoc;
 
+    /**
+     * Die Lade-Art EINES Balkens. `chargeKind` ist die eine Ableitung; der
+     * Rückfall auf das Vorzeichen greift nur, wenn der Slot fehlt.
+     */
+    const kindOfSlot = (p: { dataIndex: number; value: unknown }) => {
+      const slot = slots[p.dataIndex];
+      if (slot) return chargeKind(slot.batteryKw, slot.gridKw, slot.pvKw, slot.curtailKw);
+      return Number(p.value) >= 0 ? ('solarladen' as const) : ('entladen' as const);
+    };
+
     const markLineData: any[] = [];
     if (boundaryIdx > 0)
       markLineData.push({
         xAxis: boundaryIdx,
-        lineStyle: { color: t.axis, type: 'dashed', width: 1.5 },
-        label: { formatter: 'Morgen', color: t.axis, position: 'insideEndTop' },
+        // F6 (korrigiert): die Tagesgrenze ist eine REFERENZ, keine Prognose -
+        // der Börsenpreis für morgen steht fest und bleibt durchgezogen.
+        lineStyle: { color: t.axis, type: 'dashed', width: STROKE.ref, opacity: 0.7 },
+        label: {
+          formatter: 'Morgen',
+          color: t.axis,
+          fontSize: AXIS.fontSize,
+          position: 'insideEndTop',
+          rotate: 0,
+        },
       });
     if (nowInPlan)
       markLineData.push({
         xAxis: nowIdx,
-        lineStyle: { color: t.price, type: 'solid', width: 2 },
+        // F5: EINE Jetzt-Linie im ganzen Portal - dünn, gestrichelt, in Ink.
+        lineStyle: nowLineStyle(t),
         // rotate 0: an inside label on a vertical markLine otherwise renders
         // rotated along the line (the documented edge-label gotcha).
-        label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop', rotate: 0 },
+        label: nowLabel(t, 'insideStartTop'),
       });
     // U4: the peak-shaving Ziel as a horizontal red dashed line on the power axis.
     if (target != null)
       markLineData.push({
         yAxis: target,
-        lineStyle: { color: t.discharge, type: 'dashed', width: 1.5 },
+        lineStyle: { color: t.discharge, type: 'dashed', width: STROKE.ref },
         label: {
           formatter: `Ziel Netzbezug ${Math.round(target)} kW`,
           color: t.discharge,
+          fontSize: AXIS.fontSize,
           position: 'insideEndTop',
+          rotate: 0,
         },
       });
     // "Warum"-layer selection highlight (the OptimizerPlanChart pattern).
     if (selectedIndex != null && selectedIndex >= 0 && selectedIndex < slots.length)
       markLineData.push({
         xAxis: selectedIndex,
-        lineStyle: { color: t.plan, type: 'solid', width: 2 },
+        lineStyle: { color: t.plan, type: 'solid', width: STROKE.context },
         // rotate 0: an inside label on a vertical markLine otherwise renders
         // rotated along the line (the documented edge-label gotcha).
-        label: { formatter: 'Ausgewählt', color: t.plan, position: 'insideEndTop', rotate: 0 },
+        label: {
+          formatter: 'Ausgewählt',
+          color: t.plan,
+          fontSize: AXIS.fontSize,
+          position: 'insideEndTop',
+          rotate: 0,
+        },
       });
 
     // Tap-to-explain: the whole plot column is a tap target (idle slots too),
@@ -430,31 +468,38 @@ export function ScheduleChart({
             },
             lineHeight: 15,
             color: t.axis,
+            fontSize: AXIS.fontSize,
             hideOverlap: true,
           },
-          axisLine: { lineStyle: { color: t.axisLine } },
+          // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
+          axisTick: { show: false },
+          axisLine: { show: false },
         },
         yAxis: [
           {
             type: 'value',
-            name: narrow ? 'kW' : 'Leistung (kW)',
-            nameTextStyle: { color: t.axis, align: 'left' },
+            name: AXIS_NAME.leistung(narrow),
+            nameTextStyle: { color: t.axis, align: 'left', fontSize: AXIS.nameFontSize },
             nameGap: 12,
             // Discharge stays at battery scale; the top grows to keep the peak
             // Ziel visible when the Lastspitzen overlay is on.
             min: -Math.ceil(kwMax),
             max: Math.ceil(axisMax),
             splitLine: { lineStyle: { color: t.grid } },
-            axisLabel: { color: t.axis },
+            axisLabel: { color: t.axis, fontSize: AXIS.fontSize },
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           {
             type: 'value',
-            name: narrow ? 'ct/kWh' : 'Preis (ct/kWh)',
-            nameTextStyle: { color: t.price, align: 'right' },
+            name: AXIS_NAME.preis(narrow),
+            nameTextStyle: { color: t.price, align: 'right', fontSize: AXIS.nameFontSize },
             nameGap: 12,
             position: 'right',
             splitLine: { show: false },
-            axisLabel: { color: t.price, formatter: '{value}' },
+            axisTick: { show: false },
+            axisLine: { show: false },
+            axisLabel: { color: t.price, formatter: '{value}', fontSize: AXIS.fontSize },
           },
           // SoC axis (0-100 %) - VISIBLE on the right, offset behind the price
           // axis (audit F4: as a hidden axis over a signed kW scale the SoC
@@ -470,9 +515,13 @@ export function ScheduleChart({
             position: 'right',
             offset: 44,
             splitLine: { show: false },
-            axisLine: { show: true, lineStyle: { color: t.soc } },
-            axisTick: { lineStyle: { color: t.soc } },
-            axisLabel: { color: t.soc, formatter: '{value} %' },
+            // Diese EINE Achse behält ihre Linie: sie steht 44 px neben der
+            // Preis-Achse, und ohne den Strich wäre nicht ablesbar, welche
+            // Zahlenreihe zu welcher Achse gehört (F4 regelt den RAHMEN um die
+            // Daten, nicht die Zuordnung zweier Rechts-Achsen).
+            axisLine: { show: true, lineStyle: { color: t.soc, width: STROKE.ref } },
+            axisTick: { show: false },
+            axisLabel: { color: t.soc, formatter: '{value} %', fontSize: AXIS.fontSize },
           },
         ],
         series: [
@@ -481,26 +530,28 @@ export function ScheduleChart({
             type: 'bar',
             yAxisIndex: 0,
             data: battery,
-            barCategoryGap: '8%',
+            // F9: aus dem 96-Slot-Farbblock werden ablesbare Viertelstunden-Stäbe.
+            barCategoryGap: BAR.categoryGap,
+            barMaxWidth: BAR.maxWidth,
             z: 3,
             itemStyle: {
-              borderRadius: 2,
+              borderRadius: BAR.radius,
+              // K5: der Speicher ist EINE Farbe - Laden gefüllt, Abgeben als
+              // UMRISS (dazu unter der Nulllinie und mit Wort in der Legende).
               color: (p: any) => {
-                const slot = slots[p.dataIndex];
-                const kind = slot
-                  ? chargeKind(slot.batteryKw, slot.gridKw, slot.pvKw, slot.curtailKw)
-                  : Number(p.value) >= 0
-                    ? 'solarladen'
-                    : 'entladen';
-                return slotBarColor(kind, t);
+                const mark = slotBarMark(kindOfSlot(p), t);
+                return mark.form === 'filled' ? mark.color : t.surface;
               },
+              borderColor: (p: any) => slotBarMark(kindOfSlot(p), t).color,
+              borderWidth: (p: any) =>
+                slotBarMark(kindOfSlot(p), t).form === 'outline' ? 1.2 : 0,
             },
             // Shade the already-elapsed part of the day, and mark today|morgen + jetzt.
             markArea:
               nowIdx > 0
                 ? {
                     silent: true,
-                    itemStyle: { color: t.axis, opacity: 0.08 },
+                    itemStyle: { color: t.axis, opacity: FILL.past },
                     data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
                   }
                 : undefined,
@@ -516,7 +567,7 @@ export function ScheduleChart({
             step: 'end',
             symbol: 'none',
             z: 2,
-            lineStyle: { color: t.price, width: 2 },
+            lineStyle: { color: t.price, width: STROKE.context },
             itemStyle: { color: t.price },
             // Das orange Abregeln-BAND (Basis-Ebene, immer sichtbar): es reitet
             // auf der Preis-Reihe, weil die Batterie-Reihe ihre markArea schon
@@ -525,7 +576,7 @@ export function ScheduleChart({
             markArea: curtailBands.length
               ? {
                   silent: true,
-                  itemStyle: { color: t.pv, opacity: 0.16 },
+                  itemStyle: { color: t.pv, opacity: FILL.speaking },
                   data: curtailBands.map((s) => [{ xAxis: s.from }, { xAxis: s.to }]),
                 }
               : undefined,
@@ -562,12 +613,12 @@ export function ScheduleChart({
                   type: 'line',
                   yAxisIndex: 0,
                   data: forecast.pv.values,
-                  smooth: true,
+                  ...SMOOTH_SERIES,
                   symbol: 'none',
                   connectNulls: false,
                   z: 4,
-                  lineStyle: { color: t.pv, width: 1.5, type: 'dotted' },
-                  itemStyle: { color: t.pv },
+                  lineStyle: { color: t.pvLine, width: FORECAST.width, type: 'dotted' },
+                  itemStyle: { color: t.pvLine },
                 },
               ]
             : []),
@@ -602,9 +653,11 @@ export function ScheduleChart({
                   connectNulls: false,
                   silent: true,
                   z: 3,
-                  lineStyle: { color: t.pv, width: 1, type: 'dashed' },
+                  lineStyle: { color: t.pv, width: STROKE.ref, type: 'dashed' },
                   itemStyle: { color: t.pv },
-                  areaStyle: { color: t.pv, opacity: 0.22 },
+                  // F3-Ausnahme: die Fläche TRÄGT hier die Aussage (wie viel
+                  // gedrosselt wird) und hat ihr Namensschild in der Legende.
+                  areaStyle: { color: t.pv, opacity: FILL.speaking },
                   tooltip: { show: false },
                 },
               ]
@@ -616,12 +669,12 @@ export function ScheduleChart({
                   type: 'line',
                   yAxisIndex: 0,
                   data: forecast.load.values,
-                  smooth: true,
+                  ...SMOOTH_SERIES,
                   symbol: 'none',
                   connectNulls: false,
                   z: 4,
-                  lineStyle: { color: t.load, width: 1.5, type: 'dotted' },
-                  itemStyle: { color: t.load },
+                  lineStyle: { color: t.loadLine, width: FORECAST.width, type: 'dotted' },
+                  itemStyle: { color: t.loadLine },
                 },
               ]
             : []),
@@ -643,8 +696,8 @@ export function ScheduleChart({
                   showSymbol: needsPointMarkers(istPv),
                   connectNulls: false,
                   z: 5,
-                  lineStyle: { color: t.pv, width: 2 },
-                  itemStyle: { color: t.pv },
+                  lineStyle: { color: t.pvLine, width: STROKE.context },
+                  itemStyle: { color: t.pvLine },
                 },
               ]
             : []),
@@ -666,8 +719,8 @@ export function ScheduleChart({
                   showSymbol: needsPointMarkers(ist),
                   connectNulls: false,
                   z: 5,
-                  lineStyle: { color: t.load, width: 2 },
-                  itemStyle: { color: t.load },
+                  lineStyle: { color: t.loadLine, width: STROKE.context },
+                  itemStyle: { color: t.loadLine },
                 },
               ]
             : []),
@@ -678,10 +731,10 @@ export function ScheduleChart({
                   type: 'line',
                   yAxisIndex: 2,
                   data: soc,
-                  smooth: true,
+                  ...SMOOTH_SERIES,
                   symbol: 'none',
                   z: 1,
-                  lineStyle: { color: t.soc, width: 1.5, type: 'dashed' },
+                  lineStyle: { color: t.soc, width: STROKE.contextSoft, type: 'dashed' },
                   itemStyle: { color: t.soc },
                 },
               ]
@@ -700,9 +753,9 @@ export function ScheduleChart({
                 symbol: 'none',
                 connectNulls: false,
                 z: 2,
-                lineStyle: { color: consumerShade(t.consumer, li), width: 1.5 },
+                lineStyle: { color: consumerShade(t.consumer, li), width: STROKE.contextSoft },
                 itemStyle: { color: consumerShade(t.consumer, li) },
-                areaStyle: { color: consumerShade(t.consumer, li), opacity: 0.28 },
+                areaStyle: { color: consumerShade(t.consumer, li), opacity: FILL.band },
               }))
             : []),
           // The lock markers on Pflicht slots (word travels in the tooltip -
@@ -760,7 +813,9 @@ export function ScheduleChart({
     ...(gridCharging
       ? [{ color: t.gridCharge, label: 'Laden aus dem Netz (günstig)', unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
       : []),
-    { color: t.battDischarge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'bar', toggleable: false },
+    // K5: dieselbe Farbe wie Laden, andere FORM - „gefüllt = lädt, Umriss =
+    // gibt ab"; das Wort steht daneben und die Position unter der Nulllinie.
+    { color: t.charge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'outline', toggleable: false },
     // Orange steht am Canvas als BAND + Sockel-Tick (und in der
     // Prognosen-Ebene als Fläche), also trägt die Legende die Flächen-Form -
     // nicht mehr 'bar', dessen Träger der im Abregeln-Slot 0 kW hohe
@@ -775,18 +830,18 @@ export function ScheduleChart({
     // ...plus exactly the rows of the layers that are switched ON, so the
     // legend never advertises a line the chart does not draw.
     ...(showPv
-      ? [{ color: t.pv, label: PV_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
+      ? [{ color: t.pvLine, label: PV_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
       : []),
     ...(showLoad
-      ? [{ color: t.load, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
+      ? [{ color: t.loadLine, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
       : []),
     // The measured twins sit next to their forecast (gepunktet = Prognose,
     // durchgezogen = gemessen), so the pairing is obvious.
     ...(showIstPv
-      ? [{ color: t.pv, label: MEASURED_PV_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
+      ? [{ color: t.pvLine, label: MEASURED_PV_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
       : []),
     ...(showIst
-      ? [{ color: t.load, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
+      ? [{ color: t.loadLine, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
       : []),
     ...(showSoc
       ? [{ color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed', toggleable: false } as LegendItem]

@@ -25,12 +25,25 @@ export interface ChartTheme {
    * braucht aber einen deckenden Grund, um über den Balken lesbar zu bleiben.
    */
   surface: string;
-  /** PV / irradiance. */
+  /** PV / irradiance as a BAR or AREA. */
   pv: string;
+  /**
+   * Die LINIEN-Stufe von {@link pv} (`--vp-chart-pv-line` #E65100). Das helle
+   * Grundorange misst nur 2,2:1 auf Weiss - als 1,4-2,2-px-Linie verschwindet
+   * es. Regel wie bei {@link flowGridLine}: **PV als LINIE nimmt `pvLine`, PV
+   * als BALKEN/FLAECHE behaelt `pv`** (F2, „duenn heisst dunkler").
+   */
+  pvLine: string;
   /** Temperature. */
   temp: string;
-  /** Consumption / load. */
+  /** Consumption / load as a BAR or AREA. */
   load: string;
+  /**
+   * Die LINIEN-Stufe von {@link load} (`--vp-chart-load-line` #1D6FD8, 4,9:1).
+   * Sie hebt das Haus-Blau zugleich vom Preis-Blau ab (der gemessene
+   * Blau-Kollaps im Live-Chart, F10).
+   */
+  loadLine: string;
   /** Price + net-power reference line (action ink). */
   price: string;
   /** Battery state of charge. */
@@ -41,12 +54,12 @@ export interface ChartTheme {
   gridCharge: string;
   /** Grid draw / cost (Netzbezug, warning-coloured red). */
   discharge: string;
-  /**
-   * BATTERY discharge in the plan (blue). Deliberately NOT the red `discharge`
-   * above: a discharging battery is the money-making action, and red reads as
-   * a problem (audit F5). Red stays for genuine costs/warnings.
-   */
-  battDischarge: string;
+  /* ⚠ `battDischarge` gibt es hier ABSICHTLICH nicht mehr. Der Speicher ist EINE
+     Farbe ({@link charge}); Laden und Abgeben sind derselbe Gegenstand in zwei
+     Zustaenden, und die Richtung tragen Position, Form und Wort - siehe
+     `src/chartStyle.ts` `storageMark` fuer Messung und Begruendung. Das alte
+     `#2C5282` lebt nur noch als CSS-Flaechen-Akzent weiter, damit es auf keiner
+     Leinwand neben das Haus-Blau zurueckkehren kann. */
   /** Plan overlay. */
   plan: string;
   /** Cloud cover. */
@@ -105,14 +118,15 @@ export function chartTheme(): ChartTheme {
     surface: read('--vp-surface', '#FFFFFF'),
     axisLine: read('--vp-chart-axisline', '#E9ECEF'),
     pv: read('--vp-chart-pv', '#FF9800'),
+    pvLine: read('--vp-chart-pv-line', '#E65100'),
     temp: read('--vp-chart-temp', '#4B5563'),
     load: read('--vp-chart-load', '#2196F3'),
+    loadLine: read('--vp-chart-load-line', '#1D6FD8'),
     price: read('--vp-chart-price', '#2F6BD6'),
     soc: read('--vp-chart-soc', '#9C27B0'),
     charge: read('--vp-chart-charge', '#2E9E5B'),
     gridCharge: read('--vp-chart-gridcharge', '#00ACC1'),
     discharge: read('--vp-chart-discharge', '#E53935'),
-    battDischarge: read('--vp-chart-battdischarge', '#2C5282'),
     plan: read('--vp-chart-plan', '#1E3A5F'),
     cloud: read('--vp-chart-cloud', '#90A4AE'),
     idle: read('--vp-chart-idle', '#EDEFF2'),

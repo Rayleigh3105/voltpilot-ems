@@ -1,5 +1,16 @@
 import { useRef, useState } from 'react';
 import type { History } from './api';
+import {
+  BAR,
+  FILL,
+  nowLabel,
+  nowLineStyle,
+  SMOOTH_SERIES,
+  storageItemStyle,
+  storageMark,
+  STROKE,
+  withAlpha,
+} from './chartStyle';
 import { chartTheme, type ChartTheme } from './chartTheme';
 import {
   anzeigeWert,
@@ -101,18 +112,24 @@ function ct(v: number | null): string {
 /**
  * A pure `EnergieFarbe` key -> the resolved chart hex.
  *
- * **Die FORM entscheidet beim Netz mit:** als LINIE (Tages-Ansicht) läuft
- * „Netz" direkt neben der Batterie-Linie, und der helle Netz-Ton war vom
- * Laden-Grün nicht zu trennen (ΔE 9,8, harter FAIL) - dort gilt die dunklere
- * `flowGridLine`-Stufe (ΔE 19,3). Als BALKEN (Woche+) behält es den hellen
- * Grundton, der auch der Energiefluss trägt.
+ * **Die FORM entscheidet mit (F2, „dünn heisst dunkler"):** als LINIE
+ * (Tages-Ansicht) braucht dieselbe Rolle eine dunklere Stufe als als Balken.
+ * Beim NETZ ist das zusätzlich eine Trennungsfrage - der helle Netz-Ton war
+ * vom Laden-Grün nicht zu trennen (ΔE 9,8, harter FAIL), die dunklere
+ * `flowGridLine`-Stufe trennt mit ΔE 19,3. PV und Haus bekommen aus demselben
+ * Grund ihre `-line`-Stufen; als BALKEN (Woche+) behalten alle drei den hellen
+ * Grundton, den auch der Energiefluss trägt.
+ *
+ * ⚠ `battDischarge` ist KEIN eigener Ton mehr: der Speicher ist EINE Farbe
+ * (K5), die Richtung tragen Vorzeichen/Position und das Wort - siehe
+ * `chartStyle.ts` `storageMark`.
  */
 function farbe(t: ChartTheme, key: EnergieFarbe, linie = false): string {
   switch (key) {
     case 'pv':
-      return t.pv;
+      return linie ? t.pvLine : t.pv;
     case 'load':
-      return t.load;
+      return linie ? t.loadLine : t.load;
     case 'grid':
       return linie ? t.flowGridLine : t.flowGrid;
     case 'gridImport':
@@ -120,9 +137,8 @@ function farbe(t: ChartTheme, key: EnergieFarbe, linie = false): string {
     case 'gridExport':
       return t.charge;
     case 'charge':
-      return t.charge;
     case 'battDischarge':
-      return t.battDischarge;
+      return t.charge;
     case 'soc':
     default:
       return t.soc;
@@ -270,20 +286,17 @@ export function HistoryEnergieChart({
                   data: [
                     {
                       yAxis: 0,
-                      lineStyle: { color: t.axis, width: 1.6, type: 'solid' as const },
+                      // F4: die Nulllinie signierter Flächen ist eine eigene,
+                      // etwas dunklere HAARLINIE - nie ein 1,6-px-Balken.
+                      lineStyle: { color: t.axisLine, width: STROKE.ref, type: 'solid' as const },
                       label: { show: false },
                     },
                     ...(jetztIndex > 0 && jetztIndex < zeiten.length - 1
                       ? [
                           {
                             xAxis: jetztIndex,
-                            lineStyle: { color: t.price, width: 2, type: 'solid' as const },
-                            label: {
-                              formatter: 'Jetzt',
-                              color: t.price,
-                              position: 'insideEndTop' as const,
-                              rotate: 0,
-                            },
+                            lineStyle: nowLineStyle(t),
+                            label: nowLabel(t, 'insideEndTop'),
                           },
                         ]
                       : []),
@@ -296,13 +309,15 @@ export function HistoryEnergieChart({
             ...base,
             ...zeroLine,
             type: 'line' as const,
-            smooth: true,
+            ...SMOOTH_SERIES,
             showSymbol: false,
             connectNulls: false,
+            // F1-Hierarchie: die gemessenen Reihen TRAGEN die Aussage, der
+            // Ladestand auf der zweiten Achse ist Kontext.
             lineStyle: s.zweiteAchse
-              ? { width: 1.8, color, type: 'dotted' as const }
-              : { width: 2.4, color },
-            ...(s.zweiteAchse ? {} : { areaStyle: { opacity: 0.06, color } }),
+              ? { width: STROKE.contextSoft, color, type: 'dotted' as const }
+              : { width: STROKE.lead, color },
+            ...(s.zweiteAchse ? {} : { areaStyle: { opacity: FILL.wash, color } }),
             z: s.zweiteAchse ? 1 : 2,
           };
         }
@@ -310,8 +325,9 @@ export function HistoryEnergieChart({
           ...base,
           ...zeroLine,
           type: 'bar' as const,
-          barMaxWidth: 16,
-          itemStyle: { color, borderRadius: 2 },
+          barMaxWidth: BAR.maxWidth,
+          barCategoryGap: BAR.categoryGap,
+          itemStyle: { color, borderRadius: BAR.radius },
         };
       };
 
@@ -371,8 +387,9 @@ export function HistoryEnergieChart({
               color: t.axis,
               hideOverlap: true,
             },
-            axisTick: { show: !weekNarrow },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: [
             {
@@ -420,7 +437,9 @@ export function HistoryEnergieChart({
                   height: 22,
                   bottom: 2,
                   borderColor: t.axisLine,
-                  fillerColor: 'rgba(149,185,255,0.22)',
+                  // Token + Alpha statt eines rgba-Literals (die Hausregel des
+                  // Admin-PlanCharts) - der letzte rgba-Wert der Chart-Schicht.
+                  fillerColor: withAlpha(t.price, FILL.band),
                   handleStyle: { color: t.price },
                   textStyle: { color: t.axis },
                 },
@@ -433,14 +452,14 @@ export function HistoryEnergieChart({
               type: 'line' as const,
               yAxisIndex: s.zweiteAchse ? 1 : 0,
               data: angleichen(v.werte, zeiten.length),
-              smooth: true,
+              ...SMOOTH_SERIES,
               showSymbol: false,
               connectNulls: false,
               z: 0,
               silent: true,
               lineStyle: {
                 color: farbe(t, s.farbe, s.linie),
-                width: 1.6,
+                width: STROKE.contextSoft,
                 type: 'dashed' as const,
                 opacity: VERGLEICH_OPACITY,
               },
@@ -541,11 +560,14 @@ export function HistoryDayChart({ history }: { history: History }) {
     if (nowIdx >= 0 && nowIdx < buckets.length - 1)
       markLineData.push({
         xAxis: nowIdx,
-        lineStyle: { color: t.price, type: 'solid', width: 2 },
+        // F5: EINE Jetzt-Linie im ganzen Portal - dünn, gestrichelt, in Ink.
+        // Sie ist eine REFERENZ, nie eine Datenreihe, und trug deshalb zuletzt
+        // zu Unrecht die Preis-Serienfarbe.
+        lineStyle: nowLineStyle(t),
         // `rotate: 0` is load-bearing: on a category axis an inside-positioned
         // markLine label otherwise renders ROTATED along the line (the
         // documented edge-label gotcha) - measured in the browser.
-        label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop', rotate: 0 },
+        label: nowLabel(t, 'insideStartTop'),
       });
 
     chart.setOption(
@@ -586,7 +608,8 @@ export function HistoryDayChart({ history }: { history: History }) {
             color: t.axis,
             hideOverlap: true,
           },
-          axisLine: { lineStyle: { color: t.axisLine } },
+          axisTick: { show: false },
+          axisLine: { show: false },
         },
         yAxis: [
           {
@@ -617,17 +640,24 @@ export function HistoryDayChart({ history }: { history: History }) {
             type: 'bar',
             yAxisIndex: 0,
             data: battery,
-            barCategoryGap: '8%',
+            // F9: aus dem Farb-Block werden ablesbare Viertelstunden-Stäbe.
+            barCategoryGap: BAR.categoryGap,
+            barMaxWidth: BAR.maxWidth,
             z: 3,
             itemStyle: {
-              borderRadius: 2,
-              color: (p: { value: number }) => (Number(p.value) >= 0 ? t.charge : t.battDischarge),
+              // K5: der Speicher ist EINE Farbe. Laden ist gefüllt, Abgeben ein
+              // UMRISS - dazu liegt es unter der Nulllinie und trägt sein Wort
+              // in Legende und Tooltip.
+              ...storageItemStyle(storageMark('laden', t), t.surface),
+              color: (p: { value: number }) => (Number(p.value) >= 0 ? t.charge : t.surface),
+              borderColor: t.charge,
+              borderWidth: (p: { value: number }) => (Number(p.value) >= 0 ? 0 : 1.2),
             },
             markArea:
               nowIdx > 0
                 ? {
                     silent: true,
-                    itemStyle: { color: t.axis, opacity: 0.08 },
+                    itemStyle: { color: t.axis, opacity: FILL.past },
                     data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
                   }
                 : undefined,
@@ -645,7 +675,7 @@ export function HistoryDayChart({ history }: { history: History }) {
                   step: 'middle' as const,
                   symbol: 'none',
                   z: 2,
-                  lineStyle: { color: t.plan, width: 1.5, type: 'dashed' as const },
+                  lineStyle: { color: t.plan, width: STROKE.contextSoft, type: 'dashed' as const },
                   itemStyle: { color: t.plan },
                 },
               ]
@@ -658,7 +688,7 @@ export function HistoryDayChart({ history }: { history: History }) {
             step: 'end',
             symbol: 'none',
             z: 2,
-            lineStyle: { color: t.price, width: 2 },
+            lineStyle: { color: t.price, width: STROKE.context },
             itemStyle: { color: t.price },
             // Die Ereignis-Bänder hängen an DIESER Reihe: die Batterie-Reihe
             // trägt bereits die markArea der vergangenen Stunden.
@@ -669,10 +699,10 @@ export function HistoryDayChart({ history }: { history: History }) {
             type: 'line',
             yAxisIndex: 2,
             data: soc,
-            smooth: true,
+            ...SMOOTH_SERIES,
             symbol: 'none',
             z: 1,
-            lineStyle: { color: t.soc, width: 1.5, type: 'dotted' },
+            lineStyle: { color: t.soc, width: STROKE.contextSoft, type: 'dotted' },
             itemStyle: { color: t.soc },
           },
         ],
@@ -684,7 +714,8 @@ export function HistoryDayChart({ history }: { history: History }) {
   const hasPlan = history.plan.length > 0;
   const legend: LegendItem[] = [
     { color: t.charge, label: 'Batterie lädt', unit: 'kW', shape: 'bar' },
-    { color: t.battDischarge, label: 'Batterie entlädt', unit: 'kW', shape: 'bar' },
+    // K5: dieselbe Farbe, andere FORM - „gefüllt = lädt, Umriss = gibt ab".
+    { color: t.charge, label: 'Batterie entlädt', unit: 'kW', shape: 'outline' },
     ...(hasPlan
       ? [{ color: t.plan, label: 'Geplant (Soll)', unit: 'kW', shape: 'dashed' as const }]
       : []),
