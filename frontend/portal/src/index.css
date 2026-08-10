@@ -2267,30 +2267,15 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-size: 0.95rem;
   color: rgba(255, 255, 255, 0.9);
 }
+/* Der 14-Tage-Spark ist seit Stufe 5 der `MiniBarSpark`-Baustein („on-gradient")
+   - Nulllinie, negative Tage und Sichtbarkeits-Striche kommen von dort, und die
+   Höhe ist die eine Spark-Höhe des Systems (vorher 38 px, eine von sieben).
+   Hier bleibt nur, was DIESE Fläche ausmacht. */
 .vp-fleet-spark {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 38px;
   margin-top: var(--vp-space-4);
 }
-.vp-fleet-spark i {
-  flex: 1;
-  min-height: 3px;
-  border-radius: 2px 2px 0 0;
-  background: rgba(255, 255, 255, 0.38);
-}
-.vp-fleet-spark i.hi {
-  background: #fff;
+.vp-fleet-spark .vp-mini-bar.is-on {
   box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
-}
-.vp-fleet-spark-cap {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--vp-space-3);
-  margin-top: var(--vp-space-1);
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.78);
 }
 .vp-fleet-hero-fine {
   display: flex;
@@ -2567,20 +2552,13 @@ button.vp-cl-item.is-off .vp-cl-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Geometrie + Bahn kommen seit Stufe 5 aus dem `MiniShareBar`-Baustein; hier
+   bleibt nur, was DIESE Fläche ausmacht (Abstand + der Batterie-Verlauf). */
 .vp-ftile-soc {
-  display: block;
-  height: 4px;
   margin-top: 3px;
-  border-radius: 2px;
-  background: var(--vp-border, #e9ecef);
-  overflow: hidden;
 }
-.vp-ftile-soc span {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
+.vp-ftile-soc .vp-share-fill {
   background: linear-gradient(90deg, var(--vp-flow-batt-lite, #34c77b), var(--vp-flow-batt));
-  transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .vp-fleet-site-earn {

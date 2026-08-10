@@ -15,15 +15,18 @@ import {
   savedOnDay,
   siteEarnText,
   siteLiveFresh,
+  sparkAussage,
   sparkDays,
   type FleetKind,
   type PremiumDetail,
 } from '../fleet';
 import { eurAmount, fmtNum, fmtRelative } from '../format';
 import { batteryState, deriveBatteryKw, gridState } from '../live';
+import type { MiniPoint } from '../miniChart';
 import { sanitizeSoc } from '../plausible';
 import { useIsPhone } from '../useIsPhone';
 import { InfoTip } from './InfoTip';
+import { MiniBarSpark, MiniShareBar, type MiniMark } from './MiniChart';
 import { NetzladenBadge } from './NetzladenBadge';
 
 /**
@@ -77,6 +80,71 @@ export function useCountUp(target: number | null, ms = 800): number | null {
 /** Near-zero day values render as exactly 0 (never "-0,00 €"). */
 function heuteValue(savedEur: number): number {
   return Math.abs(savedEur) < 0.005 ? 0 : savedEur;
+}
+
+/** „12.08." — der Tagesschlüssel als Wort, für Marke und Ablese-Zeile. */
+function dayLabel(day: string): string {
+  const [, m, d] = day.split('-');
+  return m && d ? `${d}.${m}.` : day;
+}
+
+/**
+ * Der 14-Tage-Spark des Flotten-Helden.
+ *
+ * Er hatte die zwei gemessenen Ehrlichkeitsfehler des Mini-Inventars zugleich
+ * (`vp-charts-filigran-c7` §4 Nr. 9): `Math.max(0, savedEur)` machte aus jedem
+ * VERLUSTTAG einen Nulltag, und `Math.max(8, …)` zog jeden kleinen Tag auf 8 %
+ * hoch. Beides ist mit dem Baustein strukturell weg — hier bleibt nur die
+ * Zuordnung „welcher Punkt trägt welche Marke".
+ *
+ * Er liegt auf dem Marken-Verlauf, also die „on-gradient"-Fassung.
+ */
+function FleetSpark({
+  spark,
+  today,
+  aussage,
+}: {
+  spark: { day: string; savedEur: number | null }[];
+  today: string;
+  aussage: ReturnType<typeof sparkAussage>;
+}) {
+  const points: MiniPoint[] = spark.map((d) => ({
+    key: d.day,
+    value: d.savedEur,
+    label: dayLabel(d.day),
+  }));
+  const heuteHatWert = spark.some((d) => d.day === today && d.savedEur != null);
+
+  // K6: höchstens die zwei Punkte, die wirklich etwas bedeuten. „heute" nur,
+  // wenn es dort auch einen Wert gibt - eine Fahne über einer Lücke wäre eine
+  // Behauptung.
+  const marks: MiniMark[] = [];
+  if (heuteHatWert) marks.push({ key: today, label: 'heute' });
+  if (aussage.verlustTag) {
+    marks.push({
+      key: aussage.verlustTag.day,
+      label: aussage.verlustTag.label,
+      place: 'below',
+      tone: 'warn',
+    });
+  }
+
+  return (
+    <MiniBarSpark
+      className="vp-fleet-spark"
+      points={points}
+      emphasisKey={heuteHatWert ? today : null}
+      tone="gradient"
+      marks={marks}
+      ariaLabel={`Tageswerte der letzten ${spark.length} Tage`}
+      readout={(p) =>
+        p.value == null
+          ? `${p.label}: keine Daten`
+          : `${p.label}: ${heuteValue(p.value) >= 0 ? '+' : ''}${eurAmount(heuteValue(p.value))}`
+      }
+      caption={aussage.satz ?? aussage.grund}
+    />
+  );
 }
 
 const RANGES: { id: EarningsRange; label: string }[] = [
@@ -152,9 +220,11 @@ export function EarningsHero({
   const isPhone = useIsPhone();
 
   const today = berlinDay(now);
-  const todayEntry = dailySaved.find((d) => d.day === today);
   const spark = sparkDays(dailySaved, now);
-  const maxDay = dailySaved.reduce((m, d) => Math.max(m, d.savedEur), 0);
+  // K1/K8: der Satz zum Spark - heutiger Wert, Vergleichsanker und der
+  // BENANNTE Verlusttag. Vorher stand dort nur "Tageswerte, letzte 14 Tage"
+  // neben einer Zahl, und ein Verlusttag war per `Math.max(0, …)` unsichtbar.
+  const aussage = sparkAussage(spark, now);
   const proof =
     money != null && money.baselineEur != null && money.actualEur != null
       ? proofLine(kind, money.baselineEur, money.actualEur)
@@ -221,34 +291,7 @@ export function EarningsHero({
       </div>
 
       {dailySaved.length > 1 && (
-        <>
-          <div className="vp-fleet-spark" role="img" aria-label="Tageswerte der letzten 14 Tage">
-            {spark.map((d) => (
-              <i
-                key={d.day}
-                className={d.day === today && d.savedEur != null ? 'hi' : undefined}
-                style={{
-                  height:
-                    d.savedEur == null
-                      ? '3px'
-                      : `${maxDay > 0 ? Math.max(8, Math.round((Math.max(0, d.savedEur) / maxDay) * 100)) : 8}%`,
-                }}
-                title={d.savedEur == null ? d.day : `${d.day}: ${eurAmount(d.savedEur)}`}
-              />
-            ))}
-          </div>
-          <div className="vp-fleet-spark-cap">
-            <span>Tageswerte, letzte 14 Tage</span>
-            {todayEntry && (
-              // Clamp near-zero to 0 so a tiny negative never renders the
-              // confusing "-0,00 €".
-              <span>
-                heute: {heuteValue(todayEntry.savedEur) >= 0 ? '+' : ''}
-                {eurAmount(heuteValue(todayEntry.savedEur))}
-              </span>
-            )}
-          </div>
-        </>
+        <FleetSpark spark={spark} today={today} aussage={aussage} />
       )}
 
       {/* Das Kleingedruckte sind ~9 Zeilen. Am Telefon standen sie offen
@@ -414,9 +457,14 @@ export function FleetSiteCard({
             value={soc == null ? '–' : `${fmtNum(soc, '%', 0)} · ${battWord}`}
           >
             {soc != null && (
-              <span className="vp-ftile-soc" aria-hidden="true">
-                <span style={{ width: `${Math.max(0, Math.min(100, soc))}%` }} />
-              </span>
+              // Der Ladestand ist ein ANTEIL (0-100 %), also der Anteils-
+              // Baustein in seiner kleinsten Höhe - nicht die Sparkline.
+              <MiniShareBar
+                className="vp-ftile-soc"
+                size="micro"
+                fraction={soc / 100}
+                color="var(--vp-flow-batt, #34c77b)"
+              />
             )}
           </FleetTile>
           <FleetTile cls="load" label="Haus" value={fmtNum(live.loadKw, 'kW')} />

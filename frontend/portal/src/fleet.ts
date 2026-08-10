@@ -378,6 +378,105 @@ export function sparkDays(
   return result;
 }
 
+/* ---------------------------------------------------------------------------
+ * K1/K8 · Der Satz zum 14-Tage-Spark
+ *
+ * Ein 18-px-Balken kann seine Zahl nicht zeigen — genau dort steckt aber die
+ * Zahl, die zählt. Die Antwort ist nicht ein Tooltip, sondern ein SATZ mit
+ * Vergleichsanker (K8: „9,84 €" allein sagt nichts, „gestern waren es 3,40 €"
+ * sagt alles) plus die BENENNUNG des Ausreissers (K6) — der Verlusttag wurde
+ * vorher nur rot gefärbt, und davor sogar auf 0 geklemmt.
+ *
+ * Wie `composeFleetSentence` ist das eine reine Ableitung: kein Satz ohne
+ * belegte Zahl, und ohne Satz der ehrliche Grund.
+ * ------------------------------------------------------------------------- */
+
+export interface SparkAussage {
+  /** Der abgeleitete Satz — `null`, wenn es keine belegbare Aussage gibt. */
+  satz: string | null;
+  /** Dann der ehrliche Grund. */
+  grund: string | null;
+  /** Der schlechteste Verlusttag im Fenster — die eine benannte Marke (K6). */
+  verlustTag: { day: string; eur: number; label: string } | null;
+  /** Wie viele Verlusttage das Fenster trägt (für die Bildunterschrift). */
+  verlustTage: number;
+}
+
+/** Ab dieser Abweichung heisst es nicht mehr „etwa so viel wie gestern". */
+const GESTERN_TOLERANZ = 0.15;
+
+/** Beträge darunter runden auf 0 — „−0,00 €" darf nirgends erscheinen. */
+const EUR_DEADBAND = 0.005;
+
+/**
+ * Der Satz über dem 14-Tage-Spark: heutiger Wert, Vergleich mit gestern und —
+ * falls es einen gibt — der benannte Verlusttag.
+ */
+export function sparkAussage(
+  spark: { day: string; savedEur: number | null }[],
+  now: Date,
+): SparkAussage {
+  const verluste = spark.filter(
+    (d) => typeof d.savedEur === 'number' && d.savedEur < -EUR_DEADBAND,
+  ) as { day: string; savedEur: number }[];
+  const schlechtester = verluste.reduce<{ day: string; savedEur: number } | null>(
+    (worst, d) => (worst == null || d.savedEur < worst.savedEur ? d : worst),
+    null,
+  );
+  const verlustTag = schlechtester
+    ? {
+        day: schlechtester.day,
+        eur: schlechtester.savedEur,
+        label: `Verlusttag ${signedEur(schlechtester.savedEur)}`,
+      }
+    : null;
+
+  const heute = spark.find((d) => d.day === berlinDay(now));
+  if (!heute || heute.savedEur == null) {
+    return {
+      satz: null,
+      grund: 'Für heute liegt noch kein Tageswert vor.',
+      verlustTag,
+      verlustTage: verluste.length,
+    };
+  }
+
+  const gestern = spark.find(
+    (d) => d.day === berlinDay(new Date(now.getTime() - 24 * 60 * 60 * 1000)),
+  );
+  const teile = [`Heute ${signedEur(heute.savedEur)}`];
+  if (gestern && gestern.savedEur != null) {
+    teile.push(` — ${vergleich(heute.savedEur, gestern.savedEur)}`);
+  }
+  let satz = `${teile.join('')}.`;
+  if (verlustTag) {
+    satz +=
+      verluste.length === 1
+        ? ` Ein Verlusttag ${signedEur(verlustTag.eur)}.`
+        : ` ${verluste.length} Verlusttage, schlechtester ${signedEur(verlustTag.eur)}.`;
+  }
+  return { satz, grund: null, verlustTag, verlustTage: verluste.length };
+}
+
+/**
+ * Der Vergleichsanker. „Etwa so viel" braucht BEIDE Schranken: rein relativ
+ * wäre ein Sprung von 0,02 auf 0,05 € ein „mehr als doppelt so viel", rein
+ * absolut wäre bei grossen Flotten jede Bewegung „etwa gleich".
+ */
+function vergleich(heute: number, gestern: number): string {
+  const delta = heute - gestern;
+  const schranke = Math.max(Math.abs(gestern) * GESTERN_TOLERANZ, 0.2);
+  if (Math.abs(delta) <= schranke) return `etwa so viel wie gestern (${signedEur(gestern)})`;
+  return delta > 0
+    ? `mehr als gestern (${signedEur(gestern)})`
+    : `weniger als gestern (${signedEur(gestern)})`;
+}
+
+function signedEur(eur: number): string {
+  const value = Math.abs(eur) < EUR_DEADBAND ? 0 : eur;
+  return `${value >= 0 ? '+' : ''}${eurAmount(value)}`;
+}
+
 /** Merge the sites' per-day series into one fleet-wide series (sorted by day). */
 export function fleetDailySaved(sites: EarningsSite[]): EarningsDaily[] {
   const byDay = new Map<string, number>();
