@@ -43,6 +43,17 @@ import { validatePolicy, isValid, type ConsumerFinding } from '../consumers/vali
 import { consumerStatusLine, type ConsumerRuntimeStatus } from '../consumers/status';
 import { activationBadge, conflictNote, saveButtonLabel } from '../consumers/activation';
 import {
+  fulfilmentSummary,
+  overrideLine,
+  sofortAktionen,
+  SOFORT_LABEL,
+  taskLine,
+  type ConsumerFulfilment,
+  type ManualOverride,
+  type SofortAktion,
+} from '../consumers/fulfillment';
+import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
+import {
   CONSUMER_TEMPLATE_PREFILL,
   parseVerbraucherParams,
   templateConsumer,
@@ -53,7 +64,12 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
   const [options, setOptions] = useState<ConsumerOptions | null>(null);
   const [consumers, setConsumers] = useState<Consumer[] | null>(null);
   const [status, setStatus] = useState<ConsumerRuntimeStatus[]>([]);
+  const [overrides, setOverrides] = useState<ManualOverride[]>([]);
+  const [fulfillment, setFulfillment] = useState<Record<string, ConsumerFulfilment>>({});
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]>>({});
+  // The Sofortaktion being confirmed (§14.13), or null.
+  const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
+  const [sofortBusy, setSofortBusy] = useState(false);
   const [error, setError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -79,6 +95,26 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
       .status(site.id)
       .then((s) => alive && setStatus(s ?? []))
       .catch(() => alive && setStatus([]));
+    // Active manual overrides + per-consumer fulfilment ledger, both fail-soft:
+    // an older backend / a fresh site simply yields nothing new (§9.4 empty state).
+    consumersApi
+      .overrides(site.id)
+      .then((o) => alive && setOverrides(o ?? []))
+      .catch(() => alive && setOverrides([]));
+    consumersApi
+      .list(site.id)
+      .then((list) =>
+        Promise.all(
+          (list ?? []).map((c) =>
+            consumersApi
+              .fulfillment(site.id, c.id)
+              .then((f) => [c.id, f] as const)
+              .catch(() => [c.id, { tasks: [] }] as const),
+          ),
+        ),
+      )
+      .then((pairs) => alive && setFulfillment(Object.fromEntries(pairs)))
+      .catch(() => alive && setFulfillment({}));
     // Active-flow claims (V-5): fail-soft - without them no conflict is
     // CLAIMED, the server still refuses an activation truthfully.
     api
@@ -143,6 +179,29 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
     }
   };
 
+  // §14.13 Sofortaktionen: a TTL-bound manual intervention (start/stop) or
+  // "Automatik fortsetzen" (resume). The server records + audits it and, with
+  // the control flag off, honestly reports it was not pushed to the device.
+  const runSofort = async (durationMinutes?: number) => {
+    if (!sofort) return;
+    const { consumer, action } = sofort;
+    setActionError(null);
+    setSofortBusy(true);
+    try {
+      const out =
+        action === 'resume'
+          ? await consumersApi.clearOverride(site.id, consumer.id)
+          : await consumersApi.startOverride(site.id, consumer.id, { action, durationMinutes });
+      if (!out.pushed && out.message) setActionError(out.message);
+      setSofort(null);
+      reload();
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Der Eingriff ist fehlgeschlagen.');
+    } finally {
+      setSofortBusy(false);
+    }
+  };
+
   return (
     <section className="vp-verbraucher">
       <div className="vp-vb-head">
@@ -183,9 +242,12 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
               consumer={c}
               status={status.find((s) => s.entityId === c.id)}
               anyReported={status.length > 0}
+              override={overrides.find((o) => o.entityId === c.id) ?? null}
+              fulfillment={fulfillment[c.id]}
               onConfigure={() => setRuleFor(c)}
               onPause={() => void pauseConsumer(c)}
               onResume={() => void resumeConsumer(c)}
+              onSofort={(action) => setSofort({ consumer: c, action })}
             />
           ))}
         </div>
@@ -204,6 +266,15 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
           }}
         />
       )}
+
+      <ConsumerOverrideDialog
+        action={sofort?.action ?? null}
+        consumerName={sofort?.consumer.name ?? ''}
+        effectivePowerKw={sofort ? Number(sofort.consumer.ratedPowerKw) : null}
+        busy={sofortBusy}
+        onConfirm={(m) => void runSofort(m)}
+        onCancel={() => setSofort(null)}
+      />
 
       {options && ruleFor && (
         <RuleBuilder
@@ -227,13 +298,18 @@ export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
   );
 }
 
-function ConsumerRow({ consumer, status, anyReported, onConfigure, onPause, onResume }: {
+function ConsumerRow({
+  consumer, status, anyReported, override, fulfillment, onConfigure, onPause, onResume, onSofort,
+}: {
   consumer: Consumer;
   status?: ConsumerRuntimeStatus;
   anyReported: boolean;
+  override: ManualOverride | null;
+  fulfillment?: ConsumerFulfilment;
   onConfigure: () => void;
   onPause: () => void;
   onResume: () => void;
+  onSofort: (action: SofortAktion) => void;
 }): JSX.Element {
   const connectionLabel = consumer.connection === 'connected' ? 'Verbunden' : 'Noch nicht verbunden';
   // The live line renders only once ANY device reported states (Inkrement 3):
@@ -242,6 +318,12 @@ function ConsumerRow({ consumer, status, anyReported, onConfigure, onPause, onRe
   // bestätigt" - never a guessed live state.
   const live = anyReported ? consumerStatusLine(status) : null;
   const badge = activationBadge(consumer);
+  const banner = overrideLine(override);
+  const summary = fulfilmentSummary(fulfillment);
+  const connected = consumer.connection === 'connected';
+  // §14.13 Sofortaktionen: only for a CONNECTED consumer; resume when an
+  // override is running, start+stop otherwise.
+  const actions = sofortAktionen({ connected, hasOverride: banner != null });
   return (
     <div className="vp-vb-card">
       <div className="vp-vb-card-main">
@@ -258,14 +340,45 @@ function ConsumerRow({ consumer, status, anyReported, onConfigure, onPause, onRe
             {live.unconfirmed ? ' · Ausführung nicht bestätigt' : ''}
           </div>
         )}
+        {banner && (
+          <div className="vp-vb-live vp-vb-live-warn">
+            <span className="vp-dot" /> {banner.text}
+          </div>
+        )}
+        {summary.headline && (
+          <div className="vp-vb-heute">
+            Heute: {summary.headline}
+            {fulfillment && fulfillment.tasks.length > 0 && (
+              <ul className="vp-vb-tasks">
+                {fulfillment.tasks.map((t) => {
+                  const l = taskLine(t);
+                  return (
+                    <li key={t.requirementId} className={`vp-vb-task vp-vb-task-${l.tone}`}>
+                      {l.text}
+                      {l.progress ? ` · ${l.progress}` : ''}
+                      {l.confirmation ? ` · ${l.confirmation}` : ''}
+                      {l.atRisk ? ' · Frist gefährdet' : ''}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
       <div className="vp-vb-card-actions">
-        <Badge variant={consumer.connection === 'connected' ? 'ok' : 'off'} dot>
+        <Badge variant={connected ? 'ok' : 'off'} dot>
           {connectionLabel}
         </Badge>
         <span className={`vp-vb-not-activated vp-vb-act-${badge.tone}`}>
           <span className="vp-dot" /> {badge.text}
         </span>
+        {actions.map((a) => (
+          <Button key={a} variant={a === 'stop' ? 'ghost' : 'outline'} size="sm"
+            onClick={() => onSofort(a)}>
+            {SOFORT_LABEL[a]}
+          </Button>
+        ))}
         {consumer.controlActivation === 'active' && (
           <Button variant="ghost" size="sm" onClick={onPause}>Pausieren</Button>
         )}

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import com.voltpilot.api.consumers.ConsumerRuntimeStatusListener;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
+import com.voltpilot.api.tenant.TenantContext;
+import java.util.UUID;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import java.nio.charset.StandardCharsets;
@@ -95,6 +97,15 @@ class ConsumerApiTest {
 
     @Autowired
     ConsumerRuntimeStatusRepository runtimeStatusRepository;
+
+    @Autowired
+    com.voltpilot.api.consumers.ConsumerRequirementLedgerWriter ledgerWriter;
+
+    @Autowired
+    com.voltpilot.api.repo.ConsumerRequirementStateRepository requirementStateRepository;
+
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     /**
      * Records every registry push so the test can assert the cycle-guard
@@ -393,7 +404,8 @@ class ConsumerApiTest {
             // RLS carry it): known entity kept, a foreign id and an unknown
             // state word discarded.
             ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
-                    "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository);
+                    "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository,
+                    ledgerWriter);
             String topic = "ems/00000000-0000-0000-0000-000000000001/" + BERLIN_SITE + "/"
                     + device + "/status";
             String hb = "{\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
@@ -432,6 +444,179 @@ class ConsumerApiTest {
                     HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))),
                     String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         } finally {
+            delete(tok, id);
+        }
+    }
+
+    @Test
+    void fulfilmentLedgerIsDerivedFromConfirmedTelemetryAndReadPerConsumer() {
+        String tok = token("demo", "demo");
+        UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        String device = "00000000-0000-0000-0000-000000000003"; // BERLIN seed inverter
+        Map<String, Object> c = create(tok, Map.of(
+                "type", "heating-rod", "name", "Heizstab Ledger", "ratedPowerKw", 3.0,
+                "controlKind", "on_off"));
+        String id = (String) c.get("id");
+        try {
+            // Enable it + a DAILY flexible 60-min task, then make the policy
+            // ACTIVE and give it a relay confirmation channel directly (activation
+            // is flag-gated; the ledger only needs an active policy).
+            patch(tok, id, Map.of("enabled", true));
+            put(tok, "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id + "/policy", Map.of(
+                    "document", Map.of("schema_version", "1.0", "entity_id", id,
+                            "timezone", "Europe/Berlin", "requirements", List.of(Map.of(
+                                    "id", "rod-daily-hour", "kind", "flexible_task",
+                                    "enforcement", "required_by_deadline",
+                                    "recurrence", Map.of("days", "daily", "from", "00:00",
+                                            "to", "24:00"),
+                                    "demand", Map.of("runtime_minutes", 60, "contiguous", true),
+                                    "target", Map.of("kind", "on_off", "value", true))))));
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("UPDATE consumer_policy SET lifecycle='active' WHERE entity_id = ?",
+                        UUID.fromString(id));
+                jdbc.update("UPDATE consumer_profile SET confirmation_channel='relay_state' "
+                        + "WHERE entity_id = ?", UUID.fromString(id));
+            } finally {
+                TenantContext.clear();
+            }
+
+            // Honest empty state before any evidence.
+            @SuppressWarnings("unchecked")
+            Map<String, Object> before = getMap("/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id
+                    + "/fulfillment", tok);
+            assertThat((List<?>) before.get("tasks")).isEmpty();
+
+            // A heartbeat with 90 min of CONFIRMED relay runtime -> fulfilled by
+            // runtime, energy ASSUMED (Nennleistung × Zeit = 3.0 kW × 1.5 h).
+            ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
+                    "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository,
+                    ledgerWriter);
+            String topic = "ems/" + tenantA + "/" + BERLIN_SITE + "/" + device + "/status";
+            String hb = "{\"tenant_id\":\"" + tenantA + "\",\"site_id\":\"" + BERLIN_SITE + "\","
+                    + "\"device_id\":\"" + device + "\",\"ts\":\"2026-08-10T12:00:00Z\","
+                    + "\"consumers\":{\"" + id + "\":{\"state\":\"running_optimized\","
+                    + "\"confirmed\":true,\"requirement_progress\":"
+                    + "{\"runtime_seconds_today\":5400,\"starts_today\":1}}}}";
+            listener.handle(topic, hb.getBytes(StandardCharsets.UTF_8));
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> after = getMap("/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id
+                    + "/fulfillment", tok);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> tasks = (List<Map<String, Object>>) after.get("tasks");
+            assertThat(tasks).hasSize(1);
+            Map<String, Object> t = tasks.get(0);
+            assertThat(t.get("requirementId")).isEqualTo("rod-daily-hour");
+            assertThat(t.get("state")).isEqualTo("fulfilled");
+            assertThat(t.get("energyConfirmation")).isEqualTo("assumed");
+            assertThat(t.get("actualRuntimeSeconds")).isEqualTo(5400);
+            assertThat(((Number) t.get("actualEnergyKwh")).doubleValue()).isEqualTo(4.5);
+            assertThat(t.get("atRisk")).isEqualTo(Boolean.FALSE);
+
+            // RLS: the foreign tenant sees 404, never the fulfilment.
+            assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id
+                            + "/fulfillment"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            patch(tok, id, Map.of("enabled", false));
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("DELETE FROM consumer_requirement_state WHERE entity_id = ?",
+                        UUID.fromString(id));
+                jdbc.update("UPDATE consumer_policy SET lifecycle='retired' WHERE entity_id = ?",
+                        UUID.fromString(id));
+            } finally {
+                TenantContext.clear();
+            }
+            delete(tok, id);
+        }
+    }
+
+    @Test
+    void manualOverrideIsTtlBoundAuditedAndRlsFenced() {
+        String tok = token("demo", "demo");
+        UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID device = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        Map<String, Object> c = create(tok, Map.of(
+                "type", "wallbox", "name", "Wallbox Eingriff", "ratedPowerKw", 11.0,
+                "controlKind", "on_off"));
+        String id = (String) c.get("id");
+        String base = "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id + "/override";
+        try {
+            // Not connected yet -> 409.
+            assertThat(post(tok, base, Map.of("action", "start", "durationMinutes", 30))
+                    .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+            // Connect it (set the entity's gateway device directly).
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("UPDATE measurement_point SET device_id = ? WHERE id = ?", device,
+                        UUID.fromString(id));
+            } finally {
+                TenantContext.clear();
+            }
+
+            // Endzeit/Dauer PFLICHT: a start without either is 400.
+            assertThat(post(tok, base, Map.of("action", "start")).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+
+            // Start with a duration -> recorded, TTL-bound; with the control flag
+            // OFF (this context) it is NOT pushed but honestly reported.
+            ResponseEntity<Map<String, Object>> start = post(tok, base,
+                    Map.of("action", "start", "durationMinutes", 30));
+            assertThat(start.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(start.getBody().get("applied")).isEqualTo(Boolean.TRUE);
+            assertThat(start.getBody().get("pushed")).isEqualTo(Boolean.FALSE);
+            assertThat(start.getBody().get("kind")).isEqualTo("start");
+            assertThat(start.getBody().get("endsAt")).isNotNull();
+
+            // The active override is listed.
+            ResponseEntity<List<Map<String, Object>>> list = rest.exchange(
+                    url("/api/v1/sites/" + BERLIN_SITE + "/consumer-overrides"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+            assertThat(list.getBody()).hasSize(1);
+            assertThat(list.getBody().get(0).get("entityId")).isEqualTo(id);
+
+            // "Automatik fortsetzen" clears it.
+            ResponseEntity<Map<String, Object>> resume = rest.exchange(url(base),
+                    HttpMethod.DELETE, new HttpEntity<>(bearer(tok)),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(resume.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(resume.getBody().get("kind")).isEqualTo("resume");
+            ResponseEntity<List<Map<String, Object>>> gone = rest.exchange(
+                    url("/api/v1/sites/" + BERLIN_SITE + "/consumer-overrides"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(tok)), new ParameterizedTypeReference<>() {});
+            assertThat(gone.getBody()).isEmpty();
+
+            // Audited: override_started + override_cleared exist.
+            TenantContext.set(tenantA);
+            try {
+                Integer events = jdbc.queryForObject(
+                        "SELECT count(*) FROM consumer_audit_event WHERE entity_id = ? "
+                                + "AND event_type IN ('override_started','override_cleared')",
+                        Integer.class, UUID.fromString(id));
+                assertThat(events).isEqualTo(2);
+            } finally {
+                TenantContext.clear();
+            }
+
+            // RLS: the foreign tenant sees 404 on the override route.
+            assertThat(rest.exchange(url(base), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("action", "start", "durationMinutes", 30),
+                            bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("DELETE FROM consumer_override WHERE entity_id = ?",
+                        UUID.fromString(id));
+                jdbc.update("UPDATE measurement_point SET device_id = NULL WHERE id = ?",
+                        UUID.fromString(id));
+            } finally {
+                TenantContext.clear();
+            }
             delete(tok, id);
         }
     }

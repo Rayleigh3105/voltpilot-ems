@@ -169,6 +169,7 @@ func TestGoeConsumerControlExecutesArbitratedCommand(t *testing.T) {
 
 	cfg := config.Defaults()
 	cfg.ControlEnabled = true
+	cfg.ConsumerControlEnabled = true // Inkrement 5: consumer control is now flag-gated (default OFF)
 	a := &Agent{Cfg: cfg, entRegistry: reg, arb: arb, Bus: bus,
 		goeDoer: goeHTTPDoer{c: srv.Client()}}
 
@@ -224,6 +225,7 @@ func TestGoeConsumerControlSkipsNonGoeEntities(t *testing.T) {
 	// A wallbox with a NON-go-e driver (or none) is not touched by this executor.
 	cfg := config.Defaults()
 	cfg.ControlEnabled = true
+	cfg.ConsumerControlEnabled = true // arm the pass so the skip is proven, not vacuous
 	reg := entities.Registry{Revision: "r", Entities: []entities.Entity{{
 		ID: "batt", Type: entities.TypeBatteryHybrid,
 	}, {

@@ -820,6 +820,10 @@ services:
       # unset/remove a site to roll back (seconds, no image change). See
       # docs/migration-v1-to-v2.md.
       VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
+      # Verbrauchssteuerung §19 Inkrement 5: master gate for co-optimizing
+      # steuerbare Verbraucher. OFF (default) = consumer-less v2 shadow, turned
+      # on per docs/verbrauchssteuerung-betrieb.md after the pilot.
+      OPTIMIZER_CONTROLLABLE_LOADS_ENABLED: ${OPTIMIZER_CONTROLLABLE_LOADS_ENABLED:-false}
       OPTIMIZER_HEALTH_PORT: ${OPTIMIZER_HEALTH_PORT:-8096}
       POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}
     healthcheck:
@@ -872,6 +876,7 @@ services:
       MQTT_HOST: emqx
       MQTT_PORT: "1883"
       VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
+      OPTIMIZER_CONTROLLABLE_LOADS_ENABLED: ${OPTIMIZER_CONTROLLABLE_LOADS_ENABLED:-false}
       POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}
       # Same pricing layer as the optimizer - keep the ONE price truth
       # (default-supply-components defaults ON platform-wide, opt out with false).

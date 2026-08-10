@@ -43,6 +43,10 @@ const activatePolicy = vi.fn();
 const deactivatePolicy = vi.fn();
 const pause = vi.fn();
 const resume = vi.fn();
+const fulfillment = vi.fn();
+const overrides = vi.fn();
+const startOverride = vi.fn();
+const clearOverride = vi.fn();
 
 vi.mock('../consumers/consumersApi', () => ({
   consumersApi: {
@@ -59,6 +63,11 @@ vi.mock('../consumers/consumersApi', () => ({
     patch: vi.fn(),
     remove: vi.fn(),
     getPolicy: vi.fn(),
+    // Inkrement 5: fulfilment ledger + manual override (fail-soft in the effect).
+    fulfillment: (...a: unknown[]) => fulfillment(...a),
+    overrides: (...a: unknown[]) => overrides(...a),
+    startOverride: (...a: unknown[]) => startOverride(...a),
+    clearOverride: (...a: unknown[]) => clearOverride(...a),
   },
 }));
 
@@ -78,6 +87,16 @@ beforeEach(() => {
   pause.mockResolvedValue({ published: true, message: 'Verbraucher pausiert.' });
   resume.mockResolvedValue({ activated: true, reason: null, message: 'Fortgesetzt.', published: true, policyVersion: 1 });
   deactivatePolicy.mockResolvedValue({ published: true, message: 'Regel deaktiviert.' });
+  fulfillment.mockResolvedValue({ tasks: [] });
+  overrides.mockResolvedValue([]);
+  startOverride.mockResolvedValue({
+    applied: true, pushed: false, kind: 'start', endsAt: null,
+    effectivePowerKw: null, gridImportPossible: true, ttlCapped: false, message: '',
+  });
+  clearOverride.mockResolvedValue({
+    applied: true, pushed: false, kind: 'clear', endsAt: null,
+    effectivePowerKw: null, gridImportPossible: false, ttlCapped: false, message: '',
+  });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
 });
 

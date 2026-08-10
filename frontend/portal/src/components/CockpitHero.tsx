@@ -6,9 +6,11 @@ import type { CockpitHeroView, HeroRing } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
 import { flowHasValues } from '../liveDetail';
+import type { ConsumerStripView } from '../consumers/fulfillment';
 import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 import { EnergyFlow } from './EnergyFlow';
 import { PvBreakdownLine } from './PvBreakdown';
+import { ConsumerStrip } from './ConsumerStrip';
 import './CockpitBlocks.css';
 
 /**
@@ -59,6 +61,8 @@ export function CockpitHero({
   controlConfirmed = false,
   showRail = true,
   rename = null,
+  consumers = null,
+  onOpenConsumers,
 }: {
   view: CockpitHeroView;
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
@@ -104,6 +108,13 @@ export function CockpitHero({
    * Es öffnet denselben Dialog wie das Anlagen-Modell, nie eine zweite Maske.
    */
   rename?: { siteId: string; onRenamed: () => void } | null;
+  /**
+   * Der Cockpit-Verbraucherstreifen (§14.10): eine Zeile je steuerbarem
+   * Verbraucher unter dem Energiefluss. null (keine Verbraucher / älteres
+   * Backend) rendert nichts - das Cockpit ist dann byte-identisch zu vorher.
+   */
+  consumers?: ConsumerStripView | null;
+  onOpenConsumers?: () => void;
 }) {
   const hasFlow = flowHasValues(topology, snapshot);
   const rings =
@@ -156,6 +167,7 @@ export function CockpitHero({
             dann eine zweite, widersprechbare Wahrheit. Die v1-Anlage behält sie:
             ihr Fluss hat keinen anklickbaren PV-Knoten. */}
         {hasFlow && !topology && <PvBreakdownLine sources={sources} />}
+        <ConsumerStrip view={consumers} onOpen={onOpenConsumers} />
       </div>
 
       {hasRail && (

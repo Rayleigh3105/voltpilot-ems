@@ -1,5 +1,10 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.consumers.ConsumerDeviationReader;
+import com.voltpilot.api.consumers.ConsumerFulfillmentReader;
+import com.voltpilot.api.consumers.ConsumerOverrideService;
+import com.voltpilot.api.consumers.ConsumerOverrideService.OverrideOutcome;
+import com.voltpilot.api.consumers.ConsumerOverrideService.OverrideRequest;
 import com.voltpilot.api.consumers.ConsumerPolicyActivationService;
 import com.voltpilot.api.consumers.ConsumerScheduleRepository;
 import com.voltpilot.api.consumers.ConsumerScheduleRepository.ConsumerScheduleDto;
@@ -10,8 +15,12 @@ import com.voltpilot.api.consumers.ConsumerService.CreateConsumerRequest;
 import com.voltpilot.api.consumers.ConsumerService.PatchConsumerRequest;
 import com.voltpilot.api.consumers.ConsumerService.PolicyDto;
 import com.voltpilot.api.consumers.ConsumerService.SavePolicyRequest;
+import com.voltpilot.api.repo.ConsumerOverrideRepository;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.web.dto.ConsumerDeviationDto;
+import com.voltpilot.api.web.dto.ConsumerFulfillmentDto;
+import com.voltpilot.api.web.dto.ConsumerOverrideDto;
 import com.voltpilot.api.web.dto.ConsumerRuntimeStatusDto;
 import java.util.List;
 import java.util.Map;
@@ -59,16 +68,26 @@ public class SiteConsumerController {
     private final ConsumerScheduleRepository consumerSchedules;
     private final ConsumerRuntimeStatusRepository runtimeStatus;
     private final ConsumerPolicyActivationService activation;
+    private final ConsumerFulfillmentReader fulfillment;
+    private final ConsumerDeviationReader deviation;
+    private final ConsumerOverrideService overrideService;
+    private final ConsumerOverrideRepository overrides;
 
     public SiteConsumerController(SiteRepository sites, ConsumerService consumers,
             ConsumerScheduleRepository consumerSchedules,
             ConsumerRuntimeStatusRepository runtimeStatus,
-            ConsumerPolicyActivationService activation) {
+            ConsumerPolicyActivationService activation, ConsumerFulfillmentReader fulfillment,
+            ConsumerDeviationReader deviation, ConsumerOverrideService overrideService,
+            ConsumerOverrideRepository overrides) {
         this.sites = sites;
         this.consumers = consumers;
         this.consumerSchedules = consumerSchedules;
         this.runtimeStatus = runtimeStatus;
         this.activation = activation;
+        this.fulfillment = fulfillment;
+        this.deviation = deviation;
+        this.overrideService = overrideService;
+        this.overrides = overrides;
     }
 
     private void requireSite(UUID siteId) {
@@ -212,6 +231,66 @@ public class SiteConsumerController {
         return runtimeStatus.forEntity(siteId, id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    // -- fulfilment ledger (Inkrement 5, §9.4 / §14.13) ----------------------
+
+    /**
+     * The fulfilment ledger of one consumer (§9.4): the current/recent instances
+     * of its recurring requirements with Ist runtime/energy DERIVED FROM
+     * TELEMETRY, the D3 confirmation level, and the effective state + "Frist
+     * gefährdet" warn. Empty {@code tasks} = no recurring requirement / no
+     * evidence yet.
+     */
+    @GetMapping("/consumers/{id}/fulfillment")
+    public ConsumerFulfillmentDto fulfillment(@PathVariable UUID siteId, @PathVariable UUID id) {
+        requireSite(siteId);
+        consumers.get(siteId, id); // 404 for a foreign/unknown consumer
+        return fulfillment.forEntity(siteId, id);
+    }
+
+    /**
+     * Soll/Ist-Abweichung je Verbraucher (§18): the PLANNED current slot vs. the
+     * CONFIRMED Ist - a support/diagnosis read for the platform layer
+     * ({@code showTechnicalLayer()} in the portal), not a customer surface.
+     */
+    @GetMapping("/consumer-deviation")
+    public ConsumerDeviationDto consumerDeviation(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return deviation.forSite(siteId);
+    }
+
+    // -- manual override (Inkrement 5, §11 + §14.13 Sofortaktionen) -----------
+
+    /** Every ACTIVE (unexpired) manual override of a site's consumers. */
+    @GetMapping("/consumer-overrides")
+    public List<ConsumerOverrideDto> consumerOverrides(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return overrides.activeForSite(siteId).stream()
+                .map(r -> new ConsumerOverrideDto(r.entityId(), r.kind(), r.targetCommand(),
+                        r.targetValue(), r.endsAt()))
+                .toList();
+    }
+
+    /**
+     * "Jetzt starten" / "Jetzt stoppen" (§14.13): a TTL-bound manual intervention
+     * (Endzeit/Dauer PFLICHT). It never changes the stored rule; the physical
+     * push rides the master control flag (honest {@code applied} otherwise) and
+     * the arbiter's bounded override TTL is the failsafe (§16).
+     */
+    @PostMapping("/consumers/{id}/override")
+    public OverrideOutcome startOverride(@PathVariable UUID siteId, @PathVariable UUID id,
+            @RequestBody OverrideRequest request, @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        return overrideService.start(siteId, id, request, jwt == null ? null : jwt.getSubject());
+    }
+
+    /** "Automatik fortsetzen" (§14.13): end the manual intervention now. */
+    @DeleteMapping("/consumers/{id}/override")
+    public OverrideOutcome clearOverride(@PathVariable UUID siteId, @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        return overrideService.clear(siteId, id, jwt == null ? null : jwt.getSubject());
     }
 
     /** German reasons reach the portal as {"message": ...} (MastrController pattern). */

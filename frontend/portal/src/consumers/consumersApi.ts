@@ -103,4 +103,39 @@ export const consumersApi = {
   /** Resume after a pause: re-enable + re-deploy the stored artifact. */
   resume: (siteId: string, id: string) =>
     request<PolicyActivationOutcome>(`${base(siteId)}/${id}/resume`, { method: 'POST' }),
+
+  // -- fulfilment ledger + manual override (Inkrement 5) -------------------
+
+  /** The fulfilment ledger of one consumer (§9.4): Ist derived from telemetry. */
+  fulfillment: (siteId: string, id: string) =>
+    request<import('./fulfillment').ConsumerFulfilment>(`${base(siteId)}/${id}/fulfillment`),
+  /** Every ACTIVE (unexpired) manual override of the site's consumers. */
+  overrides: (siteId: string) =>
+    request<import('./fulfillment').ManualOverride[]>(
+      `/api/v1/sites/${siteId}/consumer-overrides`),
+  /** "Jetzt starten"/"Jetzt stoppen" (§14.13): a TTL-bound intervention. */
+  startOverride: (
+    siteId: string,
+    id: string,
+    body: { action: 'start' | 'stop'; durationMinutes?: number; setpointKw?: number },
+  ) =>
+    request<ConsumerOverrideOutcome>(`${base(siteId)}/${id}/override`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** "Automatik fortsetzen": end the manual intervention now. */
+  clearOverride: (siteId: string, id: string) =>
+    request<ConsumerOverrideOutcome>(`${base(siteId)}/${id}/override`, { method: 'DELETE' }),
 };
+
+/** The override start/stop/resume outcome (honest `pushed` while the flag is off). */
+export interface ConsumerOverrideOutcome {
+  applied: boolean;
+  pushed: boolean;
+  kind: string;
+  endsAt: string | null;
+  effectivePowerKw: number | null;
+  gridImportPossible: boolean;
+  ttlCapped: boolean;
+  message: string;
+}

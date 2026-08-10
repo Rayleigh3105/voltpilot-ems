@@ -60,6 +60,16 @@ type Config struct {
 	// inverter write happens until a per-model bench pass adds the family to the
 	// allowlist (CONTROL-BENCH.md). VP_CONTROL_ENABLED=false is the global stop.
 	ControlEnabled bool `json:"control_enabled"`
+	// ConsumerControlEnabled is the CONSUMER-control master switch
+	// (Verbrauchssteuerung §19 Inkrement 5, the VP_CONSUMER_CONTROL_ENABLED
+	// flag), distinct from the battery/inverter ControlEnabled above. The
+	// consumer control path (the go-e consumer executor + the manual override
+	// forward) is gated on (ControlEnabled AND ConsumerControlEnabled). Default
+	// FALSE: with all four consumer flags off the edge never issues a consumer
+	// command, so a plant behaves byte-for-byte as before this feature; the
+	// runbook turns it on per plant after the pilot. VP_CONTROL_ENABLED still
+	// wins as the global stop.
+	ConsumerControlEnabled bool `json:"consumer_control_enabled"`
 	// ControlCertifiedFamilies is the per-model bench-certification allowlist,
 	// keyed by register-map family (report §6.7). Only a selected inverter whose
 	// family is listed here may ever receive a live write, AND only when
@@ -324,6 +334,7 @@ func applyEnv(cfg *Config) {
 		}
 	}
 	boolEnv("VP_CONTROL_ENABLED", &cfg.ControlEnabled)
+	boolEnv("VP_CONSUMER_CONTROL_ENABLED", &cfg.ConsumerControlEnabled)
 	boolEnv("VP_GRID_CHARGE_ALLOWED", &cfg.GridChargeAllowed)
 	boolEnv("VP_FLOW_NODE_STATUS_ENABLED", &cfg.FlowNodeStatusEnabled)
 	str("VP_NODERED_ADMIN_URL", &cfg.NodeRedAdminURL)

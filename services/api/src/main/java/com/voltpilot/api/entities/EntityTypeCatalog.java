@@ -27,10 +27,21 @@ public class EntityTypeCatalog {
     /** The contract's open kebab-case entity_type pattern. */
     public static final Pattern TYPE_PATTERN = Pattern.compile("^[a-z][a-z0-9-]{0,62}$");
 
-    /** One catalog entry. Capability nodes are the raw catalog JSON. */
+    /**
+     * One catalog entry. Capability nodes are the raw catalog JSON.
+     *
+     * <p>{@code certificationStatus}/{@code certifiedAt}/{@code certificationNotes}
+     * carry the platform-wide driver certification (captain 2026-08-10): the
+     * truth is DATA in the catalog (a bench session ends as a PR that sets the
+     * field - the CERTIFIED_CONTROL_FAMILIES pattern, no DB table, no customer
+     * path). Status is one of {@code certified | in_certification |
+     * simulator_only | not_certified}; today only the simulator is proven, so
+     * every real consumer type is {@code simulator_only}. Absent for types
+     * without the field (null status).
+     */
     public record EntityType(String type, String label, String category, boolean controllable,
-            boolean composed, String defaultFailsafe, JsonNode defaultMeasure,
-            JsonNode defaultActuate) {}
+            boolean composed, String defaultFailsafe, JsonNode defaultMeasure, JsonNode defaultActuate,
+            String certificationStatus, String certifiedAt, String certificationNotes) {}
 
     private final JsonNode raw;
     private final Map<String, EntityType> types = new LinkedHashMap<>();
@@ -53,7 +64,12 @@ public class EntityTypeCatalog {
                     t.path("composed").asBoolean(false),
                     t.path("default_failsafe").asText("off"),
                     t.path("default_measure"),
-                    t.path("default_actuate"));
+                    t.path("default_actuate"),
+                    t.hasNonNull("certification_status")
+                            ? t.get("certification_status").asText() : null,
+                    t.hasNonNull("certified_at") ? t.get("certified_at").asText() : null,
+                    t.hasNonNull("certification_notes")
+                            ? t.get("certification_notes").asText() : null);
             if (!TYPE_PATTERN.matcher(type.type()).matches()) {
                 throw new IllegalStateException("catalog type not kebab-case: " + type.type());
             }

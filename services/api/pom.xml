@@ -179,6 +179,10 @@
                              FleetMetricsWiringTest an der echten
                              application.yml. -->
                         <voltpilot.metrics.fleet.enabled>false</voltpilot.metrics.fleet.enabled>
+                        <!-- Der Verbraucher-Metrik-Sammler (Inkrement 5) ist
+                             dieselbe @Scheduled-Falle - im Testlauf aus, in
+                             PRODUKTION an (application.yml, matchIfMissing). -->
+                        <voltpilot.metrics.consumer.enabled>false</voltpilot.metrics.consumer.enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

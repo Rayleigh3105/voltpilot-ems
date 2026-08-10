@@ -118,7 +118,10 @@ func (a *Agent) consumerControlLoop(ctx context.Context) {
 // deterministic pass without the loop's timing.
 func (a *Agent) runGoeControlPass(ctx context.Context, doer goe.Doer,
 	lastFP map[string]string, lastAssert map[string]time.Time, now time.Time) {
-	if !a.Cfg.ControlEnabled || doer == nil {
+	// Gated on BOTH the global inverter kill-switch AND the consumer master
+	// switch (§19 Inkrement 5): a plant with the consumer flags off never issues
+	// a consumer command, byte-for-byte as before the feature.
+	if !a.Cfg.ControlEnabled || !a.Cfg.ConsumerControlEnabled || doer == nil {
 		return
 	}
 	a.entMu.Lock()

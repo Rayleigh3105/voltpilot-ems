@@ -3410,6 +3410,15 @@ button.vp-tech-card-h.toggle {
    (Mandanten / Benutzer / Geräte / Optimizer) read as one operator
    console. Tokens only.
    ============================================================================ */
+/* Inkrement 5 / D11: die ruhige Kopfzeile der Gerätetypen-Liste. */
+.vp-gt-summary {
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vp-border, #d7dde5);
+  color: var(--vp-muted, #64748b);
+  font-size: 0.9rem;
+}
+
 /* AdminPageHead: IconTile + title/description, vertically centred (overrides the
    customer .vp-page-head flex-start so the tile lines up with the heading). */
 .vp-admin-head {

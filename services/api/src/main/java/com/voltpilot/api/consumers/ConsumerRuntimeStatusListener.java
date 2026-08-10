@@ -91,6 +91,7 @@ public class ConsumerRuntimeStatusListener {
     private final String password;
     private final DeviceRepository devices;
     private final ConsumerRuntimeStatusRepository store;
+    private final ConsumerRequirementLedgerWriter ledger;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -99,12 +100,14 @@ public class ConsumerRuntimeStatusListener {
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
-            DeviceRepository devices, ConsumerRuntimeStatusRepository store) {
+            DeviceRepository devices, ConsumerRuntimeStatusRepository store,
+            ConsumerRequirementLedgerWriter ledger) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.store = store;
+        this.ledger = ledger;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -232,6 +235,9 @@ public class ConsumerRuntimeStatusListener {
             // discarded (the device reported, and what it reported was not
             // storable; keeping stale rows would claim an older truth).
             store.replaceForDevice(deviceId, siteId, reportedAt, rows);
+            // Derive + upsert the fulfilment ledger from the SAME confirmed
+            // telemetry (§9.4) - additive, never throws, tenant context still set.
+            ledger.ingest(siteId, rows, reportedAt);
         } finally {
             TenantContext.clear();
         }
