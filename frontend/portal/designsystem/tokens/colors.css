@@ -92,10 +92,11 @@
      werden im Messwerte-Tag UND im Fahrplan gemeinsam gezeichnet. Der Speicher
      ist seither EINE Farbe (`--vp-chart-charge`), die Richtung tragen Position,
      Form und Wort (K5, Begruendung in `src/chartStyle.ts` `storageMark`).
-     Uebrig bleibt er als reiner FLAECHEN-Akzent an zwei Stellen ohne zweiten
-     Traeger: dem Cockpit-Ministreifen (bekommt in Stufe 5 Nulllinie + Woerter)
-     und der Nachfuehrungs-Notiz des Jetzt-Helden. `chartTheme()` fuehrt ihn
-     bewusst NICHT mehr - so kann er auf keiner Leinwand zurueckkehren. */
+     Seit Stufe 5 hat der Cockpit-Ministreifen seine zweiten Traeger (echte
+     Nulllinie + Richtungs-Woerter) und ist mit umgestellt; uebrig bleibt der
+     Wert nur noch als FLAECHEN-Akzent der Nachfuehrungs-Notiz des
+     Jetzt-Helden. `chartTheme()` fuehrt ihn bewusst NICHT mehr - so kann er
+     auf keiner Leinwand zurueckkehren. */
   --vp-chart-battdischarge:#2C5282;/* Flaechen-Akzent, siehe oben */
 
   /* --- LINIEN-Stufen (F2: „dünn heisst dunkler") ---------------------------
