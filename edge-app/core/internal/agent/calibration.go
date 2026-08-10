@@ -45,16 +45,30 @@ func calErr(format string, args ...any) error {
 }
 
 // controlCertified reports whether a family may receive live control writes. It
-// merges the env allowlist (config.ControlCertified, which treats an empty family
-// as certified for the dev/sim path) with the per-device First-Light certification
-// the operator granted via "Steuerung freigeben".
+// is the ONE place the THREE certification sources are merged:
+//
+//  1. the fleet-wide env allowlist (config.ControlCertified, which treats an
+//     empty family as certified for the dev/sim path),
+//  2. the per-device First-Light certification the operator granted here via
+//     "Steuerung freigeben" (calibration-certified.json),
+//  3. the PLATFORM register the cloud published (agent/controlcert.go) - a model
+//     certified ONCE at a bench, valid fleet-wide, and armed per plant.
+//
+// They are ORed, so source 3 can only ever ADD a grant: an existing plant keeps
+// exactly the state it had, and a fresh box gets nothing until its model is in
+// the register AND an operator armed it. Everything downstream is unchanged -
+// the kill switch is still the outer AND, and guards.Clamp still binds.
 func (a *Agent) controlCertified(family string) bool {
 	if a.Cfg.ControlCertified(family) {
 		return true
 	}
 	a.calMu.Lock()
-	defer a.calMu.Unlock()
-	return a.calCert[strings.ToLower(strings.TrimSpace(family))]
+	local := a.calCert[strings.ToLower(strings.TrimSpace(family))]
+	a.calMu.Unlock()
+	if local {
+		return true
+	}
+	return a.platformCertified(family)
 }
 
 // deviceCertified reports ONLY the per-device First-Light grant, without the
@@ -71,10 +85,17 @@ func (a *Agent) deviceCertified(family string) bool {
 // was proven on ("remote"/"tou"), or "" when unknown (env-allowlisted family, or a
 // pre-path grant that has not been backfilled yet). Published on edge/setpoint as
 // device_certified_path so Layer 1's sticky path decision can seed from it.
+// Falls back to the PLATFORM register's benched path when this box has no
+// First-Light evidence of its own: the bench proved that surface for this model,
+// which is exactly the fact the sticky decision wants to be seeded with.
 func (a *Agent) certifiedControlPath(family string) string {
 	a.calMu.Lock()
-	defer a.calMu.Unlock()
-	return a.calPath[strings.ToLower(strings.TrimSpace(family))]
+	local := a.calPath[strings.ToLower(strings.TrimSpace(family))]
+	a.calMu.Unlock()
+	if local != "" {
+		return local
+	}
+	return a.platformControlPath(family)
 }
 
 // backfillCertifiedControlPath records the driving path ONCE for a family that

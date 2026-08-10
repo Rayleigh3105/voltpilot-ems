@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "activated": true,
+  "certified_models": [
+    {
+      "brand": "deye",
+      "family": "hybrid_3p",
+      "certified_at": "2026-07-27T14:05:00Z"
+    }
+  ],
+  "published_at": "2026-08-10T09:00:00Z"
+}

@@ -41,6 +41,7 @@ type Link struct {
 	onUpdateTarget    func(payload []byte)
 	onApplyRequest    func(payload []byte)
 	onDesiredDownlink func(payload []byte)
+	onControlCert     func(payload []byte)
 	onConnect         func(connected bool)
 }
 
@@ -81,6 +82,17 @@ type Options struct {
 	// The device verifies against its own baked root before the assignment
 	// means a thing, and applying stays supervised in this stage.
 	OnUpdateTarget func(payload []byte)
+	// OnControlCert receives the RETAINED platform control-certification
+	// document on .../v2/control-certification (contract
+	// docs/contracts/mqtt-control-certification.schema.json). An EMPTY payload
+	// IS forwarded - it withdraws the document (retained-clear, e.g. on
+	// unclaim). nil = the platform register is not wired (pure pre-register
+	// behaviour: env allowlist + local First-Light only).
+	//
+	// It carries the register and the plant's activation; it does NOT authorize
+	// a write. The DEVICE decides by comparing the register against its own
+	// inverter selection, and every guard binds unchanged afterwards.
+	OnControlCert func(payload []byte)
 	// OnApplyRequest receives the NON-RETAINED one-shot apply approval on
 	// .../v2/apply (docs/contracts/mqtt-ota-apply.schema.json, „Portal-Apply").
 	// nil = the portal-apply downlink is not wired.
@@ -124,6 +136,7 @@ func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, version: o.Version, onSchedule: o.OnSchedule,
 		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
+		onControlCert:  o.OnControlCert,
 		onApplyRequest: o.OnApplyRequest, onDesiredDownlink: o.OnDesiredDownlink,
 		onConnect: o.OnConnect}
 
@@ -217,6 +230,19 @@ func New(o Options) (*Link, error) {
 				l.onUpdateTarget(msg.Payload())
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 update subscribe failed", "topic", updTopic, "err", tok.Error())
+			}
+		}
+		// The retained platform control-certification document, in the same
+		// v2/# subtree the per-device ACL already covers (D-2) - no broker
+		// change. Retained is the whole mechanism again: a box that was offline
+		// when an operator armed it picks the document up on reconnect. An empty
+		// payload IS forwarded - it withdraws the document.
+		if l.onControlCert != nil {
+			certTopic := l.topic("v2/control-certification")
+			if tok := c.Subscribe(certTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				l.onControlCert(msg.Payload())
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 control-certification subscribe failed", "topic", certTopic, "err", tok.Error())
 			}
 		}
 		// Die NICHT-retained Einmal-Freigabe (Portal-Apply). Sie liegt
@@ -753,6 +779,31 @@ type ControlSummary struct {
 	// Additive; absent on an older core, and the cloud then keeps its generic
 	// "the device adjusted the value" wording.
 	Execution *ExecutionSummary `json:"execution,omitempty"`
+	// CertSource names WHICH of the three certification sources granted control:
+	// "env" (the fleet-wide allowlist), "device" (this box's First-Light grant)
+	// or "platform" (the cloud model register). Empty = not certified, or an
+	// older core that does not report it - so the cloud must never read an
+	// absent value as a claim about the source.
+	CertSource string `json:"cert_source,omitempty"`
+	// PlatformCert is what the PLATFORM register says about the selected model.
+	// Absent = this box has no cloud document at all, which reads "unknown" and
+	// NEVER "not certified": those are different sentences, and only this field
+	// lets the portal tell "a bench run is needed" from "one click is needed".
+	PlatformCert *PlatformCertSummary `json:"platform_cert,omitempty"`
+}
+
+// PlatformCertSummary is the additive `platform_cert` block: the device's own
+// verdict on the cloud register, reported so the portal can name the state
+// instead of guessing it. Like every gate-adjacent flag it comes from the CORE,
+// never from a Layer-1 readback stamp.
+type PlatformCertSummary struct {
+	// Verdict: "granted" | "covered_not_activated" | "not_covered" | "unknown".
+	Verdict string `json:"verdict"`
+	// Model is the register entry that matched, when one did.
+	Model string `json:"model,omitempty"`
+	// Reason is the plain-German cause where a covered-looking model still gets
+	// nothing (today: a contradicted write-sign convention).
+	Reason string `json:"reason,omitempty"`
 }
 
 // ExecutionSummary is the additive `execution` block inside ControlSummary

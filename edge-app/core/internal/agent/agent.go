@@ -24,6 +24,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlcert"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
@@ -146,6 +147,12 @@ type Agent struct {
 	cal         *calibration.Session
 	calWatchdog *time.Timer
 	calCert     map[string]bool
+
+	// pcMu guards platformDoc, the retained PLATFORM control-certification
+	// document (agent/controlcert.go). ⚠ Lock order: invMu (the inverter
+	// selection) is always taken BEFORE pcMu, never the other way round.
+	pcMu        sync.Mutex
+	platformDoc *controlcert.Document
 	// calPath records, per granted family, WHICH control surface the First-Light
 	// evidence was produced on ("remote"/"tou") - persisted with the grant in
 	// calibration-certified.json and published as device_certified_path on
@@ -527,6 +534,10 @@ func New(cfg config.Config) (*Agent, error) {
 	// Restore the per-UNIT curtailment certification (Fronius units the operator
 	// proved + released via the bounded curtailment test). Fail-safe like above.
 	a.loadCurtailCert()
+	// Restore the PLATFORM control-certification document (the cloud register +
+	// this plant's activation). Missing/corrupt = no platform grant, and the
+	// retained redelivery repairs it on the next cloud connect.
+	a.loadControlCert()
 	// Restore the applied v2 entity registry (persisted across restarts); its
 	// per-entity retained configs are re-published once the bus is up in Start.
 	a.entStore = es
@@ -1009,6 +1020,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// Portal-Apply: die EINMALIGE Freigabe, jetzt anzuwenden. NICHT
 		// retained - siehe ota_apply_downlink.go.
 		OnApplyRequest: a.onApplyRequest,
+		OnControlCert:  a.onControlCert,
 		// Verbrauchssteuerung §11/§14.13: der manuelle Eingriff. NICHT retained -
 		// siehe override.go.
 		OnDesiredDownlink: a.onDesiredDownlink,
@@ -1607,6 +1619,18 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 		}
 	}
 	sum.Execution = executionSummary(snap)
+	// WHICH source granted the certification, and what the PLATFORM register
+	// says about the selected model. Both come from the CORE snapshot for the
+	// same reason `certified` does (see above): a Layer-1 readback stamp cannot
+	// know a runtime grant. Absent on a device that never received a cloud
+	// document - the cloud then keeps its generic wording rather than reading
+	// silence as "not certified".
+	sum.CertSource = snap.ControlCertSource
+	if p := snap.PlatformCert; p != nil {
+		sum.PlatformCert = &cloud.PlatformCertSummary{
+			Verdict: p.Verdict, Model: p.Model, Reason: p.Reason,
+		}
+	}
 	return sum
 }
 
@@ -2331,6 +2355,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// certification (agent/calibration.go), so a family the operator proved + released
 	// drives the optimizer path live without an env change.
 	certified := a.controlCertified(family)
+	// certSource names WHICH of the three sources granted it (env allowlist /
+	// this box's First-Light grant / the platform model register) - reported
+	// only, it decides nothing.
+	certSource := a.certSource(family)
 	controlEnabled := a.Cfg.ControlEnabled && certified
 
 	msg := map[string]any{
@@ -2409,6 +2437,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.SlotStart = slotStart
 		s.ControlEnabled = controlEnabled
 		s.ControlCertified = certified
+		s.ControlCertSource = certSource
 		s.PeakTargetKw = peakTarget
 		s.PeakReserveSocPct = peakReserve
 		s.PeakGuardActive = peakActive
@@ -2615,6 +2644,11 @@ func (a *Agent) SetInverter(req inverter.SelectionRequest) (inverter.Selection, 
 	a.publishInverterConfig()
 	// The mirror's native pass-through area follows the device's mb_slave_id.
 	a.applyMirrorNativeUnit()
+	// The PLATFORM register is matched against brand+model+family+sign, so a
+	// changed selection can gain or lose the grant. Re-derive it (and nudge the
+	// setpoint if the gate flipped) instead of leaving a stale verdict on the
+	// card - the register did not change, but what it applies to did.
+	a.refreshPlatformCertAfterSelectionChange()
 	slog.Info("inverter selection updated", "brand", sel.Brand, "family", sel.Family,
 		"communication", sel.Communication)
 	return sel, nil

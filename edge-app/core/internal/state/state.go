@@ -116,6 +116,17 @@ type Snapshot struct {
 	// gate whether ANY setpoint is written to the inverter.
 	ControlEnabled   bool `json:"control_enabled"`
 	ControlCertified bool `json:"control_certified"`
+	// ControlCertSource names WHICH source granted it: "env" (the fleet-wide
+	// allowlist), "device" (this box's First-Light grant) or "platform" (the
+	// cloud model register). Empty = not certified. Reported only.
+	ControlCertSource string `json:"control_cert_source,omitempty"`
+	// PlatformCert is what the PLATFORM register says about the selected model
+	// (the cloud document on .../v2/control-certification). nil = no usable
+	// document, which reads "unbekannt" and NEVER "nicht zertifiziert" - an
+	// older cloud, a cleared retained slot and a genuinely uncertified model are
+	// three different statements. It only ever ADDS a certification source next
+	// to the env allowlist and the local First-Light grant.
+	PlatformCert *PlatformCertInfo `json:"platform_cert,omitempty"`
 	// Control is the latest per-register control readback (commanded vs actual),
 	// nil until the first readback arrives. Read-only proof for the :8484
 	// "Steuerung & Bestätigung" card + the cloud status heartbeat.
@@ -280,6 +291,26 @@ type ExportGuardInfo struct {
 	// PARTIAL case, where the watchdog works but cannot pull back every inverter.
 	Effective bool   `json:"effective"`
 	Reach     string `json:"reach,omitempty"`
+}
+
+// PlatformCertInfo is the platform register's verdict for the SELECTED inverter
+// (contract docs/contracts/mqtt-control-certification.schema.json). Read-only
+// proof for the :8484 card and the heartbeat - it never widens a guard.
+type PlatformCertInfo struct {
+	// Verdict is one of controlcert.Verdict: "granted" | "covered_not_activated"
+	// | "not_covered" | "unknown". The three non-granted answers are DIFFERENT
+	// sentences and must never be collapsed: "a bench run is needed", "one click
+	// is needed", "we do not know".
+	Verdict string `json:"verdict"`
+	// Model is the register entry that matched, when one did.
+	Model string `json:"model,omitempty"`
+	// CertifiedAt is the bench date of the matching entry, verbatim.
+	CertifiedAt string `json:"certified_at,omitempty"`
+	// Reason is the plain-German refusal cause where a covered-looking model
+	// still gets nothing (today: a contradicted write-sign convention).
+	Reason string `json:"reason,omitempty"`
+	// SeenAt is when this device last applied a cloud document.
+	SeenAt time.Time `json:"seen_at,omitzero"`
 }
 
 // ControlInfo is the UI-facing per-register control readback: what the schedule

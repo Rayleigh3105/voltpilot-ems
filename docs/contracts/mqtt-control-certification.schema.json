@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/mqtt-control-certification.schema.json",
+  "title": "Cloud -> Edge Steuerungs-Zertifizierung (Plattform-Register + Freigabe je Anlage)",
+  "description": "RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/control-certification.\n\nDas Dokument beantwortet ZWEI voneinander unabhaengige Fragen und traegt deshalb ZWEI Felder: (1) `certified_models` ist das PLATTFORM-REGISTER - welche Wechselrichter-Modelle am Pruefstand fuer die Batterie-Steuerung freigegeben wurden, EINMAL je Modell und danach flottenweit gueltig; (2) `activated` ist die ausdrueckliche Entscheidung des Betreibers, DIESE Anlage scharfzuschalten. Erst BEIDE zusammen ergeben eine Freigabe.\n\nDIE ENTSCHEIDUNG FAELLT AUF DEM GERAET, nicht in der Cloud: die Cloud sagt, WELCHE Modelle gedeckt sind, und das Geraet vergleicht das mit seiner EIGENEN Auswahl (Marke/Modell/Registerfamilie). Deshalb reist das ganze (kleine) Register mit, statt dass die Cloud raet, welches Modell an dieser Box haengt - dieselbe Disziplin wie beim OTA-Sidecar, der dem Kern nichts glaubt.\n\nDAS DOKUMENT AUTORISIERT NICHTS AN DER PHYSIK. Es oeffnet ausschliesslich dasselbe Zertifizierungs-Tor, das bisher die env-Allowlist (VP_CONTROL_CERTIFIED_FAMILIES) und die geraetelokale First-Light-Freigabe geoeffnet haben. Der globale Not-Aus (VP_CONTROL_ENABLED), die Guard-Kette (Nennband, SoC-Fenster, §14a, EEG-Solarklemme), die Magnitudenkappung und jede Layer-1-Regel binden unveraendert.\n\nEine LEERE retained Nachricht nimmt das Dokument zurueck (Unclaim) - danach gilt wieder ausschliesslich, was env-Allowlist und First-Light hergeben.",
+  "type": "object",
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "activated", "certified_models", "published_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "description": "Vertragsversion; ein Geraet, das sie nicht kennt, VERWIRFT das Dokument (fail-closed)."
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Muss der Identitaet des Topics entsprechen - das Geraet prueft das nach (die Regel von Telemetrie/purge_data/Zuweisung)."
+    },
+    "activated": {
+      "type": "boolean",
+      "description": "Die ausdrueckliche Scharfschaltung DIESER Anlage durch einen Betreiber. FALSE ist der Normalzustand und der Auslieferungszustand: das Register allein steuert nie etwas."
+    },
+    "certified_models": {
+      "type": "array",
+      "description": "Das Plattform-Register, neueste Eintragung zuerst. LEER ist gueltig und heisst 'noch kein Modell zertifiziert' - nie 'alles erlaubt'.",
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/certified_model" }
+    },
+    "published_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "certified_model": {
+      "type": "object",
+      "required": ["brand", "model", "family", "certified_at"],
+      "additionalProperties": false,
+      "properties": {
+        "brand": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Katalog-Marke, z. B. 'deye'. Gross-/Kleinschreibung ist unerheblich."
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Katalog-Modell, z. B. 'SUN-30K-SG01HP3-EU'.\n\nDER SCHLUESSEL IST BEWUSST DAS MODELL, NICHT DIE REGISTERFAMILIE: eine Familie deckt mehrere Baureihen ab (hybrid_3p meint die LV-SG04LP3 UND die HV-SG01HP3 mit verschiedener Leistungsskala), ein Pruefstandslauf deckt aber genau EIN Modell. Ein Familien-Schluessel wuerde von einem Geraet auf ungepruefte Geschwister schliessen - genau die Ueberdehnung, die die env-Allowlist hat."
+        },
+        "family": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Die Registerfamilie des Modells (z. B. 'hybrid_3p'). Sie wird MITGEPRUEFT, nicht abgeleitet: waehlt eine Box dasselbe Modell mit einer anderen Familie aus, passt der Beleg nicht."
+        },
+        "control_path": {
+          "enum": ["remote", "tou"],
+          "description": "Die Steuerflaeche, auf der der Pruefstandslauf stattfand. Sie setzt den durablen Pfad-Entscheid von Layer 1 vor (device_certified_path), sonst nichts. Fehlt = keine Aussage."
+        },
+        "invert_control_sign": {
+          "type": "boolean",
+          "description": "Die am Pruefstand belegte SCHREIB-Vorzeichenkonvention. Sie ist firmware-abhaengig, also PRUEFT das Geraet sie: weicht seine eigene Einstellung ab, gilt der Beleg fuer diese Box NICHT (fail-closed).\n\nFEHLT das Feld, wird nichts geprueft und nichts behauptet - der uebliche Zustand, wenn der Pruefstand die Frage nicht beantwortet hat."
+        },
+        "certified_at": { "type": "string", "format": "date-time" },
+        "firmware_note": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Die Firmware, auf der geprueft wurde, als KLARTEXT fuer den Betreiber.\n\nAUSDRUECKLICH KEIN MASCHINEN-TOR: die Box liest heute keine Firmware-Version aus dem Wechselrichter, ein Firmware-Fenster waere also eine Zusage, die niemand pruefen kann. Die zwei firmware-abhaengigen Dinge sind anderweitig abgesichert - das Vorzeichen ueber invert_control_sign (oben, geprueft) und die Verfuegbarkeit des Remote-Modus ueber die laufende Faehigkeitspruefung von Layer 1 (erkannt, nie angenommen)."
+        },
+        "note": { "type": "string", "maxLength": 512 }
+      }
+    }
+  }
+}
