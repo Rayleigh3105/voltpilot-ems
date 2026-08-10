@@ -1,4 +1,6 @@
 import type { ForecastAccuracyPoint, ForecastModelId } from './api';
+import { STROKE } from './chartStyle';
+import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { useEChart } from './useEChart';
 import { ChartLegend, type LegendItem } from './components/ChartExplain';
@@ -53,11 +55,12 @@ export function ForecastQualityChart({
               color: t.axis,
               hideOverlap: true,
             },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: {
             type: 'value',
-            name: 'kW',
+            name: AXIS_NAME.abweichung(false),
             splitLine: { lineStyle: { color: t.grid } },
             axisLabel: { color: t.axis },
           },
@@ -70,11 +73,14 @@ export function ForecastQualityChart({
               symbolSize: 6,
               data: days.map((d) => byKey.get(`${model}|${d}`) ?? null),
               lineStyle: {
-                width: 2.5,
+                // F1-Hierarchie: das AKTIVE Modell traegt die Aussage, der
+                // Kandidat ist Kontext. F6: gestrichelt heisst Kandidat.
+                width: isActive ? STROKE.lead : STROKE.contextSoft,
                 type: isActive ? 'solid' : 'dashed',
-                color: isActive ? t.price : t.pv,
+                color: isActive ? t.price : t.pvLine,
               },
-              itemStyle: { color: isActive ? t.price : t.pv },
+              itemStyle: { color: isActive ? t.price : t.pvLine },
+              symbol: isActive ? 'circle' : 'emptyCircle',
             };
           }),
         },
@@ -85,7 +91,7 @@ export function ForecastQualityChart({
   );
 
   const legend: LegendItem[] = models.map((model) => ({
-    color: model === activeModel ? t.price : t.pv,
+    color: model === activeModel ? t.price : t.pvLine,
     label: modelLabels[model] ?? model,
     unit: 'kW',
     shape: model === activeModel ? 'line' : 'dashed',

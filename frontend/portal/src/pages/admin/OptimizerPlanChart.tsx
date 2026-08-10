@@ -1,3 +1,4 @@
+import { BAR, SMOOTH_SERIES, STROKE } from '../../chartStyle';
 import { chartTheme } from '../../chartTheme';
 import { chargeKind } from '../../schedule';
 import { useEChart } from '../../useEChart';
@@ -47,14 +48,14 @@ export function OptimizerPlanChart({
       if (boundaryIdx > 0) {
         markLineData.push({
           xAxis: boundaryIdx,
-          lineStyle: { color: t.axis, type: 'dashed', width: 1.5 },
+          lineStyle: { color: t.axis, type: 'dashed', width: STROKE.ref, opacity: 0.7 },
           label: { formatter: 'Morgen', color: t.axis, position: 'insideEndTop' },
         });
       }
       if (selectedIdx >= 0 && selectedIdx < slots.length) {
         markLineData.push({
           xAxis: selectedIdx,
-          lineStyle: { color: t.price, type: 'solid', width: 2 },
+          lineStyle: { color: t.plan, type: 'solid', width: STROKE.context },
           label: { formatter: 'Slot', color: t.price, position: 'insideStartTop' },
         });
       }
@@ -116,7 +117,8 @@ export function OptimizerPlanChart({
               color: t.axis,
               hideOverlap: true,
             },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: [
             {
@@ -146,7 +148,8 @@ export function OptimizerPlanChart({
               type: 'bar',
               yAxisIndex: 0,
               data: grid,
-              barCategoryGap: '8%',
+              barCategoryGap: BAR.categoryGap,
+          barMaxWidth: BAR.maxWidth,
               barGap: '-100%',
               z: 1,
               silent: true,
@@ -166,7 +169,8 @@ export function OptimizerPlanChart({
               type: 'bar',
               yAxisIndex: 0,
               data: battery,
-              barCategoryGap: '8%',
+              barCategoryGap: BAR.categoryGap,
+          barMaxWidth: BAR.maxWidth,
               z: 3,
               itemStyle: {
                 borderRadius: 2,
@@ -192,7 +196,7 @@ export function OptimizerPlanChart({
               step: 'end',
               symbol: 'none',
               z: 2,
-              lineStyle: { color: t.price, width: 2 },
+              lineStyle: { color: t.price, width: STROKE.context },
               itemStyle: { color: t.price },
             },
             {
@@ -204,7 +208,7 @@ export function OptimizerPlanChart({
               symbol: 'none',
               connectNulls: false,
               z: 2,
-              lineStyle: { color: t.discharge, width: 1.6, type: 'dashed' },
+              lineStyle: { color: t.discharge, width: STROKE.contextSoft, type: 'dashed' },
               itemStyle: { color: t.discharge },
             },
             {
@@ -216,7 +220,7 @@ export function OptimizerPlanChart({
               symbol: 'none',
               connectNulls: false,
               z: 2,
-              lineStyle: { color: t.charge, width: 1.6, type: 'dashed' },
+              lineStyle: { color: t.charge, width: STROKE.contextSoft, type: 'dashed' },
               itemStyle: { color: t.charge },
             },
             {
@@ -224,10 +228,10 @@ export function OptimizerPlanChart({
               type: 'line',
               yAxisIndex: 2,
               data: soc,
-              smooth: true,
+              ...SMOOTH_SERIES,
               symbol: 'none',
               z: 1,
-              lineStyle: { color: t.soc, width: 1.5, type: 'dashed' },
+              lineStyle: { color: t.soc, width: STROKE.contextSoft, type: 'dashed' },
               itemStyle: { color: t.soc },
             },
           ],

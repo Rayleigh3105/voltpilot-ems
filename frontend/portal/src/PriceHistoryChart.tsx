@@ -1,4 +1,6 @@
 import type { PriceHistory } from './api';
+import { BAR, FILL, STROKE } from './chartStyle';
+import { AXIS as AXIS_NAME, axisName } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { fokusFenster, tagesGrenze, type TagFokus } from './marktpreise';
 import { useEChart } from './useEChart';
@@ -131,7 +133,8 @@ export function PriceHistoryChart({
               color: t.axis,
               hideOverlap: true,
             },
-              axisLine: { lineStyle: { color: t.axisLine } },
+              axisTick: { show: false },
+              axisLine: { show: false },
             },
             // EINE Botschaft, EINE Einheit: am Telefon spricht die Achse
             // ct/kWh wie die Chips darunter und der Held darüber (die
@@ -142,7 +145,10 @@ export function PriceHistoryChart({
             yAxis: fenster
               ? {
                   type: 'value',
-                  name: 'ct/kWh',
+                  // K4-Ausnahme mit Grund: am Telefon ist fuer das Wort kein
+                  // Platz - die Einheit steht dann allein, wie ueberall in der
+                  // schmalen Fassung.
+                  name: AXIS_NAME.preis(true),
                   splitLine: { lineStyle: { color: t.grid } },
                   axisLabel: {
                     color: t.axis,
@@ -152,7 +158,9 @@ export function PriceHistoryChart({
                 }
               : {
                   type: 'value',
-                  name: 'EUR/MWh',
+                  // K4: die Einheit steht nie allein. EUR/MWh bleibt als
+                  // Profi-Detail am Rechner - nur mit ihrer Groesse davor.
+                  name: axisName('Preis', 'EUR/MWh'),
                   splitLine: { lineStyle: { color: t.grid } },
                   axisLabel: { color: t.axis },
                 },
@@ -161,14 +169,19 @@ export function PriceHistoryChart({
                 name: 'Börsenpreis',
                 type: 'bar',
                 data: avg,
-                barCategoryGap: '10%',
-                itemStyle: { borderRadius: [2, 2, 0, 0] },
+                // F9: Saeulenstaebe mit Deckel + Fuge statt eines Farb-Blocks.
+                barCategoryGap: BAR.categoryGap,
+                barMaxWidth: BAR.maxWidth,
+                itemStyle: { borderRadius: [BAR.radius, BAR.radius, 0, 0] },
                 markLine:
                   boundaryIdx > 0
                     ? {
                         silent: true,
                         symbol: 'none',
-                        lineStyle: { color: t.price, type: 'dashed', width: 1.5 },
+                        // F6 (korrigiert): der Boersenpreis fuer morgen STEHT
+                        // FEST - die Tagesgrenze ist eine Referenz-Haarlinie,
+                        // keine Prognose-Marke.
+                        lineStyle: { color: t.axis, type: 'dashed', width: STROKE.ref, opacity: 0.7 },
                         label: {
                           formatter: 'Morgen',
                           color: t.price,
@@ -252,8 +265,9 @@ export function PriceHistoryChart({
               color: t.axis,
               hideOverlap: true,
             },
-            axisTick: { show: !weekNarrow },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: {
             type: 'value',
@@ -281,7 +295,7 @@ export function PriceHistoryChart({
               symbol: 'none',
               silent: true,
               lineStyle: { opacity: 0 },
-              areaStyle: { color: t.price, opacity: 0.14 },
+              areaStyle: { color: t.price, opacity: FILL.band },
               z: 1,
             },
             {
@@ -290,7 +304,7 @@ export function PriceHistoryChart({
               data: avg,
               symbol: 'none',
               smooth: false,
-              lineStyle: { color: t.price, width: 2.5 },
+              lineStyle: { color: t.price, width: STROKE.lead },
               itemStyle: { color: t.price },
               z: 2,
             },

@@ -1,5 +1,6 @@
 import type { EarningsRange, SiteEarningsBucket, SiteEarningsRange } from '../api';
 import { bucketAxisLabel, bucketTooltipLabel } from '../anlage';
+import { AXIS, BAR, STROKE } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { eurAmount } from '../format';
 import { geldVerlauf, type GeldReihe } from '../erloesKomposition';
@@ -52,9 +53,8 @@ export function ErloeseVerlaufChart({
     range === 'day' ? 'day' : range === 'week' || range === 'month' ? 'month' : 'year';
 
   const ref = useEChart(
-    (chart, width) => {
+    (chart) => {
       const t = chartTheme();
-      const narrow = width < 480;
       const hue: Record<GeldReihe['id'], string> = {
         einspeisung: t.price,
         eigenverbrauchswert: t.charge,
@@ -92,15 +92,15 @@ export function ErloeseVerlaufChart({
           xAxis: {
             type: 'category',
             data: view.starts.map((s) => bucketAxisLabel(s, labelRange)),
-            axisLine: { lineStyle: { color: t.axisLine } },
+            axisLine: { show: false },
             axisTick: { show: false },
-            axisLabel: { color: t.axis, hideOverlap: true, fontSize: narrow ? 10 : 11 },
+            axisLabel: { color: t.axis, hideOverlap: true, fontSize: AXIS.fontSize },
           },
           yAxis: {
             type: 'value',
             axisLabel: {
               color: t.axis,
-              fontSize: narrow ? 10 : 11,
+              fontSize: AXIS.fontSize,
               formatter: (v: number) => `${v.toLocaleString('de-DE')} €`,
             },
             splitLine: { lineStyle: { color: t.grid } },
@@ -119,7 +119,7 @@ export function ErloeseVerlaufChart({
                     data: angleichen(r.data, view.starts.length),
                     lineStyle: {
                       color: hue[r.id],
-                      width: 1.6,
+                      width: STROKE.contextSoft,
                       type: 'dashed' as const,
                       opacity: VERGLEICH_OPACITY,
                     },
@@ -135,7 +135,7 @@ export function ErloeseVerlaufChart({
                     data: angleichen(vglView.kumuliert, view.starts.length),
                     lineStyle: {
                       color: t.plan,
-                      width: 1.6,
+                      width: STROKE.contextSoft,
                       type: 'dashed' as const,
                       opacity: VERGLEICH_OPACITY,
                     },
@@ -147,7 +147,9 @@ export function ErloeseVerlaufChart({
               name: r.label,
               type: 'bar',
               stack: 'geld',
-              barMaxWidth: 26,
+              // F9: EIN Breiten-Deckel im ganzen Portal (vorher 16 und 26).
+              barMaxWidth: BAR.maxWidth,
+              barCategoryGap: BAR.categoryGap,
               itemStyle: { color: hue[r.id] },
               data: r.data,
             })),
@@ -156,14 +158,16 @@ export function ErloeseVerlaufChart({
               type: 'line',
               smooth: true,
               symbol: 'none',
-              lineStyle: { color: t.plan, width: 2 },
+              // F1-Hierarchie: die kumulierte Linie IST die Aussage der Flaeche.
+              lineStyle: { color: t.plan, width: STROKE.lead },
               itemStyle: { color: t.plan },
               data: view.kumuliert,
               // Die betonte Nulllinie: darüber Erlöse, darunter Kosten.
               markLine: {
                 silent: true,
                 symbol: 'none',
-                lineStyle: { color: t.axis, width: 1, type: 'solid', opacity: 0.5 },
+                // F4: die Nulllinie ist eine eigene, etwas dunklere Haarlinie.
+                lineStyle: { color: t.axisLine, width: STROKE.ref, type: 'solid' },
                 label: { show: false },
                 data: [{ yAxis: 0 }],
               },
