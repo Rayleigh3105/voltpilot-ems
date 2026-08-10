@@ -46,6 +46,7 @@ import type { PricePoint, TarifArt } from './api';
 import { filmLabel } from './fahrplanFilm';
 import { phases, type SlotRole, type WhySlot } from './fahrplanWhy';
 import { ctPerKwh } from './format';
+import { preisFenster, type FensterArt } from './preisFenster';
 import type { PlanWordingKind } from './schedule';
 import { hasMode, type ActiveMode } from './surface';
 
@@ -100,6 +101,8 @@ export interface PreisBar {
   vergangen: boolean;
   /** Der laufende Slot (trägt den Jetzt-Marker). */
   jetzt: boolean;
+  /** Beginn des Slots (ISO) — die benannten Fenster brauchen ihre Uhrzeit. */
+  ts: string;
 }
 
 export interface StrompreisView {
@@ -218,6 +221,7 @@ export function strompreisView(points: PricePoint[], now: Date): StrompreisView 
     tag,
     vergangen: new Date(p.end).getTime() <= nowMs,
     jetzt: current != null && p.ts === current.ts,
+    ts: p.ts,
   });
   const bars = [...today.map((p) => bar(p, 'heute')), ...tomorrow.map((p) => bar(p, 'morgen'))];
 
@@ -235,6 +239,62 @@ export function strompreisView(points: PricePoint[], now: Date): StrompreisView 
     // morgen aus einem anderen Grund, und den kennt der Client nicht.
     morgenNote: tomorrow.length === 0 && berlinHour(now) < 14 ? MORGEN_NOTE : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Benannte Preisfenster (Chart-Redesign Stufe 4)
+// ---------------------------------------------------------------------------
+
+/** Ein benanntes Fenster der Streifen-Kurve — Farbe UND Wort UND Zeitraum. */
+export interface StreifenFenster {
+  art: FensterArt;
+  /** Erster/letzter Balken-Index in {@link StrompreisView.bars}. */
+  von: number;
+  bis: number;
+  /** „die günstigsten 2½ Stunden" — das Wort, ohne das die Farbe ein Rätsel ist. */
+  wort: string;
+  /** „12:00–14:30" — wann. */
+  zeit: string;
+}
+
+/**
+ * Die benannten Fenster der Cockpit-Kurve — DIESELBE Ableitung wie auf der
+ * Marktpreise-Seite (`preisFenster`), damit die zwei Flächen über denselben Tag
+ * nichts Verschiedenes behaupten. Sie ersetzt den früheren JS-Farbverlauf
+ * (grün → orange → rot), der eine Kodierung ohne Skala war.
+ *
+ * Gerechnet wird auf dem HEUTIGEN Teil der Kurve: das Urteil des Streifens
+ * hängt an der heutigen Spanne, also darf ein Fenster nicht über die
+ * Tagesgrenze hinausgreifen.
+ *
+ * ⚠ Jedes Fenster wird MIT seinem Wort gerendert (K10) — wer die Bänder
+ * zeichnet, ohne diese Zeile auszugeben, hat wieder ein Rätsel gebaut.
+ */
+export function streifenFenster(view: StrompreisView): StreifenFenster[] {
+  const heute = view.morgenAb >= 0 ? view.bars.slice(0, view.morgenAb) : view.bars;
+  if (heute.length === 0) return [];
+  return preisFenster(
+    heute.map((b) => b.ct),
+    15,
+  ).map((f) => ({
+    art: f.art,
+    von: f.von,
+    bis: f.bis,
+    wort: f.wort,
+    zeit: `${hm(heute[f.von].ts)}–${hm(heute[f.bis].ts)}`,
+  }));
+}
+
+/**
+ * Der zugängliche Name der Kurve — sie war `aria-hidden` und damit für
+ * Vorlesesoftware gar nicht vorhanden, obwohl sie die Tagesform trägt.
+ */
+export function kurveBeschreibung(view: StrompreisView): string {
+  const teile = ['Börsenpreis-Verlauf für heute'];
+  if (view.morgenAb >= 0) teile[0] += ' und morgen';
+  if (view.anker) teile.push(view.anker.tief, view.anker.hoch);
+  for (const f of streifenFenster(view)) teile.push(`${f.wort}: ${f.zeit}`);
+  return `${teile.join('. ')}.`;
 }
 
 // ---------------------------------------------------------------------------

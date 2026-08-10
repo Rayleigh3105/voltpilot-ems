@@ -8,11 +8,16 @@ import type { PlanWordingKind } from '../schedule';
 import {
   bezugspreisJetzt,
   KOPPLUNG_PREFIX,
+  kurveBeschreibung,
   LEER_TEXT,
   planKopplung,
   praemieRuhtNote,
+  streifenFenster,
   strompreisView,
+  type StreifenFenster,
 } from '../strompreis';
+import { withAlpha } from '../chartStyle';
+import { useContainerWidth } from '../useContainerWidth';
 import { preisZeile } from '../cockpitWidgets';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { MobileRowCard } from './CockpitBlocks';
@@ -39,22 +44,10 @@ import './StrompreisStrip.css';
 const PRICE_POLL_MS = 60 * 60 * 1000;
 /** Minuten-Uhr für Jetzt-Marker + Urteil (bewegt sich je 15-min-Slot). */
 const CLOCK_MS = 60 * 1000;
-
-/** Farbverlauf grün → orange → rot über die Tagesspanne (Marktpreise-Sprache). */
-function grade(t: { charge: string; pv: string; discharge: string }, p: number): string {
-  const mix = (c1: string, c2: string, f: number): string => {
-    const h = (c: string) => {
-      const n = parseInt(c.slice(1), 16);
-      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-    };
-    const a = h(c1);
-    const b = h(c2);
-    const ch = (i: number) => Math.round(a[i] + (b[i] - a[i]) * f);
-    return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
-  };
-  const clamped = Math.max(0, Math.min(1, p));
-  return clamped < 0.5 ? mix(t.charge, t.pv, clamped * 2) : mix(t.pv, t.discharge, (clamped - 0.5) * 2);
-}
+/** Höhe der Kurve in Pixeln — sie ist auch die viewBox-Höhe (K11: 1 Einheit = 1 px). */
+const CURVE_H = 76;
+/** Rückfallbreite, solange der ResizeObserver noch nicht gemessen hat. */
+const CURVE_W_FALLBACK = 600;
 
 export function StrompreisStrip({
   siteId,
@@ -130,6 +123,7 @@ export function StrompreisStrip({
 
   const bezug = bezugspreisJetzt(tarifArt, activeSlot);
   const praemie = praemieRuhtNote(view.urteil, isDv);
+  const fenster = streifenFenster(view);
 
   if (compact) {
     if (view.state === 'leer') return null;
@@ -173,6 +167,18 @@ export function StrompreisStrip({
             </p>
           )}
           <Kurve view={view} />
+          {/* K10: eine Hinterlegung ohne Wort ist ein Rätsel - die zwei
+              benannten Fenster sagen im selben Block, was sie sind. */}
+          {fenster.length > 0 && (
+            <div className="vp-sp-fenster">
+              {fenster.map((f) => (
+                <span key={f.art} className={`vp-sp-fenster-item art-${f.art}`}>
+                  <i aria-hidden="true" />
+                  {f.wort} · {f.zeit}
+                </span>
+              ))}
+            </div>
+          )}
           {view.anker != null && (
             <div className="vp-sp-anker">
               <span>{view.anker.tief}</span>
@@ -204,111 +210,163 @@ export function StrompreisStrip({
 
 /**
  * Die 24-h-Kurve als abhängigkeitsfreies SVG (der Sparkline/EnergyFlow-
- * Präzedenzfall). Ehrliche Skala: Balken ab 0, Negativpreise hängen unter der
- * sichtbaren Nulllinie; Vergangenheit gedimmt, Morgen blass hinter dem
- * Trenner. Texte („Jetzt"/„Morgen") liegen als HTML-Overlays, damit das
- * gestreckte SVG sie nicht verzerrt.
+ * Präzedenzfall) — seit Chart-Redesign Stufe 4 in DERSELBEN Preis-Grammatik
+ * wie die Marktpreise-Seite.
+ *
+ * Was sich geändert hat und warum:
+ *
+ *  - **Der JS-Farbverlauf grün → orange → rot ist weg.** Er war eine Farbskala
+ *    ohne Skala (K10) und die satteste Fläche des Cockpits. Jetzt: EINE ruhige
+ *    Stufenlinie in Preis-Blau plus höchstens zwei benannte Fenster als zarte
+ *    Hinterlegung — und ihre Wörter stehen als Zeile darunter.
+ *  - **Kein `preserveAspectRatio="none"` mehr.** Das gestreckte SVG verzerrte
+ *    jeden Kreis und jede Strichstärke. Die viewBox ist jetzt die GEMESSENE
+ *    Pixelbreite (K11: 1 Einheit = 1 px), also gibt es nichts mehr zu
+ *    verzerren — und die Texte brauchen keine HTML-Overlay-Krücke mehr.
+ *  - **Mini-Anker:** die Nulllinie ist immer da (sie ist der Bezug, an dem ein
+ *    Negativpreis überhaupt erst als solcher lesbar wird), Tief und Hoch
+ *    tragen einen kleinen Punkt.
+ *  - **`aria-label` statt `aria-hidden`:** die Kurve trägt die Tagesform, sie
+ *    war für Vorlesesoftware schlicht nicht vorhanden.
+ *
+ * Ehrliche Skala unverändert: Lücken bleiben Lücken, Negativpreise hängen
+ * unter der Nulllinie, Vergangenheit ist gedimmt, Morgen liegt blass hinter
+ * dem Trenner.
  */
 function Kurve({ view }: { view: ReturnType<typeof strompreisView> }) {
   const t = chartTheme();
+  const [wrapRef, gemessen] = useContainerWidth<HTMLDivElement>();
   const bars = view.bars;
   const n = bars.length;
-  if (n === 0) return null;
+  if (n === 0) return <div ref={wrapRef} className="vp-sp-curve" />;
 
-  const W = 600;
-  const H = 76;
-  const todayCts = bars
-    .filter((b) => b.tag === 'heute' && b.ct != null)
-    .map((b) => b.ct as number);
-  const min = Math.min(0, ...todayCts, ...bars.map((b) => b.ct ?? 0));
-  const max = Math.max(0, ...bars.map((b) => b.ct ?? 0));
-  const tMin = Math.min(...todayCts);
-  const tMax = Math.max(...todayCts);
-  const y = (v: number) => H - ((v - min) / (max - min || 1)) * (H - 6) - 3;
+  const W = gemessen > 0 ? gemessen : CURVE_W_FALLBACK;
+  const H = CURVE_H;
+  const cts = bars.map((b) => b.ct);
+  const werte = cts.filter((v): v is number => v != null);
+  const min = Math.min(0, ...werte);
+  const max = Math.max(0, ...werte);
+  const y = (v: number) => H - ((v - min) / (max - min || 1)) * (H - 10) - 5;
   const y0 = y(0);
   const bw = W / n;
+  const x = (i: number) => i * bw;
+
+  const fenster = streifenFenster(view);
+  const farbe = (f: StreifenFenster) => (f.art === 'teuer' ? t.discharge : t.guenstig);
+
+  // Die Stufenlinie: ein Viertelstundenpreis GILT bis zum nächsten Slot.
+  // Eine Lücke unterbricht den Zug, statt über sie hinweg zu interpolieren.
+  const zuege: string[] = [];
+  let zug: string[] = [];
+  bars.forEach((b, i) => {
+    if (b.ct == null) {
+      if (zug.length > 1) zuege.push(zug.join(' '));
+      zug = [];
+      return;
+    }
+    const yv = y(b.ct);
+    if (zug.length === 0) zug.push(`M ${x(i).toFixed(1)} ${yv.toFixed(1)}`);
+    else zug.push(`L ${x(i).toFixed(1)} ${yv.toFixed(1)}`);
+    zug.push(`L ${x(i + 1).toFixed(1)} ${yv.toFixed(1)}`);
+  });
+  if (zug.length > 1) zuege.push(zug.join(' '));
 
   const jetztIdx = bars.findIndex((b) => b.jetzt);
-  const jetztPct = jetztIdx < 0 ? null : ((jetztIdx + 0.5) / n) * 100;
-  const morgenPct = view.morgenAb < 0 ? null : (view.morgenAb / n) * 100;
+  let tiefIdx = -1;
+  let hochIdx = -1;
+  cts.forEach((v, i) => {
+    if (v == null) return;
+    if (tiefIdx < 0 || v < (cts[tiefIdx] as number)) tiefIdx = i;
+    if (hochIdx < 0 || v > (cts[hochIdx] as number)) hochIdx = i;
+  });
 
   return (
-    <div className="vp-sp-curve">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
-        {bars.map((b, i) => {
-          if (b.ct == null) return null;
-          const top = Math.min(y(b.ct), y0);
-          const h = Math.abs(y(b.ct) - y0) || 1;
-          const dim = b.vergangen ? 0.35 : b.tag === 'morgen' ? 0.45 : 1;
-          return (
-            <rect
-              key={i}
-              x={i * bw}
-              y={top}
-              width={Math.max(bw - 0.7, 1)}
-              height={h}
-              fill={grade(t, tMax - tMin === 0 ? 0.5 : ((b.ct as number) - tMin) / (tMax - tMin))}
-              opacity={dim}
-            />
-          );
-        })}
+    <div ref={wrapRef} className="vp-sp-curve">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width={W}
+        height={H}
+        role="img"
+        aria-label={kurveBeschreibung(view)}
+      >
+        {/* Die benannten Fenster - ihr WORT steht in der Zeile darunter. */}
+        {fenster.map((f) => (
+          <rect
+            key={f.art}
+            x={x(f.von)}
+            y={0}
+            width={Math.max(x(f.bis + 1) - x(f.von), 1)}
+            height={H}
+            fill={withAlpha(farbe(f), 0.14)}
+          />
+        ))}
+        {/* Morgen liegt blass hinter dem Trenner. */}
+        {view.morgenAb >= 0 && (
+          <rect
+            x={x(view.morgenAb)}
+            y={0}
+            width={Math.max(W - x(view.morgenAb), 1)}
+            height={H}
+            fill={withAlpha(t.price, 0.05)}
+          />
+        )}
+        {/* Mini-Anker: die Nulllinie ist immer da. */}
         <line x1={0} x2={W} y1={y0} y2={y0} stroke={t.axisLine} strokeWidth={1} />
+        {zuege.map((d, i) => (
+          <path key={i} d={d} fill="none" stroke={t.price} strokeWidth={1.6} strokeLinejoin="round" />
+        ))}
+        {/* Vergangenheit dimmen: ein Schleier über den gelaufenen Teil. */}
+        {jetztIdx > 0 && (
+          <rect x={0} y={0} width={x(jetztIdx)} height={H} fill={t.surface} opacity={0.45} />
+        )}
         {view.morgenAb >= 0 && (
           <line
-            x1={view.morgenAb * bw}
-            x2={view.morgenAb * bw}
+            x1={x(view.morgenAb)}
+            x2={x(view.morgenAb)}
             y1={0}
             y2={H}
-            stroke={t.price}
-            strokeWidth={1.2}
-            strokeDasharray="4 4"
+            stroke={t.axis}
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            opacity={0.7}
           />
+        )}
+        {[tiefIdx, hochIdx].map((i, k) =>
+          i < 0 || i === (k === 0 ? hochIdx : tiefIdx) ? null : (
+            <circle
+              key={k}
+              cx={x(i) + bw / 2}
+              cy={y(cts[i] as number)}
+              r={2.6}
+              fill={t.surface}
+              stroke={k === 0 ? t.guenstig : t.discharge}
+              strokeWidth={1.6}
+            />
+          ),
         )}
         {jetztIdx >= 0 && (
           <>
             <line
-              x1={jetztIdx * bw + bw / 2}
-              x2={jetztIdx * bw + bw / 2}
+              x1={x(jetztIdx) + bw / 2}
+              x2={x(jetztIdx) + bw / 2}
               y1={0}
               y2={H}
-              stroke={t.plan}
-              strokeWidth={1.6}
+              stroke={t.ink}
+              strokeWidth={1}
+              strokeDasharray="3 3"
+              opacity={0.55}
             />
             {bars[jetztIdx].ct != null && (
               <circle
-                cx={jetztIdx * bw + bw / 2}
+                cx={x(jetztIdx) + bw / 2}
                 cy={y(bars[jetztIdx].ct as number)}
-                r={3.4}
-                fill={t.plan}
+                r={3}
+                fill={t.price}
               />
             )}
           </>
         )}
       </svg>
-      {jetztPct != null && (
-        <span
-          className="vp-sp-overlay jetzt"
-          style={
-            jetztPct > 82
-              ? { left: `${jetztPct}%`, transform: 'translateX(calc(-100% - 5px))' }
-              : { left: `calc(${jetztPct}% + 5px)` }
-          }
-        >
-          Jetzt
-        </span>
-      )}
-      {morgenPct != null && (
-        <span
-          className="vp-sp-overlay morgen"
-          style={
-            morgenPct > 82
-              ? { left: `${morgenPct}%`, transform: 'translateX(calc(-100% - 5px))' }
-              : { left: `calc(${morgenPct}% + 5px)` }
-          }
-        >
-          Morgen
-        </span>
-      )}
     </div>
   );
 }
