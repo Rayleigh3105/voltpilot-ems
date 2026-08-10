@@ -98,11 +98,20 @@ public class MeasurementPointController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Diese Art von Energiequelle wird nicht unterstützt.");
         }
-        if (ROLE_NETZ.equals(role) && points.countByRole(siteId, ROLE_NETZ) > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Diese Anlage hat bereits einen Netz-Zähler. Es ist nur einer möglich.");
-        }
         String label = blankToNull(request.label());
+        if (ROLE_NETZ.equals(role) && points.countByRole(siteId, ROLE_NETZ) > 0) {
+            // Der ECHTE Zähler übernimmt die von der Plattform synthetisierte
+            // Netz-Zeile ("gemessen über den Wechselrichter") - sonst bliebe
+            // eine verbundene Anlage für immer beim Platzhalter, seit die
+            // Komposition automatisch beim Claim läuft. Zwei Zeilen wären keine
+            // Alternative: die Topologie summiert je Rolle.
+            if (!points.adoptComposedGridMeter(siteId, label, blankToNull(request.brand()),
+                    blankToNull(request.model()), blankToNull(request.registryUnitId()))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Diese Anlage hat bereits einen Netz-Zähler. Es ist nur einer möglich.");
+            }
+            return points.findForSite(siteId);
+        }
         // Only an Erzeuger's kWp feeds the aggregate PV; a meter and a consumer
         // have no nameplate.
         BigDecimal capacity = ROLE_ERZEUGER.equals(role) ? request.capacityKwp() : null;
