@@ -754,6 +754,13 @@ describe('K7 · der Fahrplan-Tooltip ist ein Satz, keine Zahlenkolonne', () => {
     return String(lastOption.tooltip.formatter([{ dataIndex: i }])).split('<br/>');
   }
 
+  it('laesst den Satz umbrechen, statt den Kasten breiter zu machen', () => {
+    // Ohne das lief der Satz am Telefon seitlich aus dem Canvas heraus
+    // (`confine: true` verschiebt nur, es macht nicht schmaler).
+    render(<ScheduleChart plan={plan([slot({})])} />);
+    expect(lastOption.tooltip.extraCssText).toContain('white-space: normal');
+  });
+
   it('nennt die HANDLUNG direkt unter der Uhrzeit - vor jeder Wert-Zeile', () => {
     const z = zeilen([slot({ batteryKw: 4, gridKw: 1, pvKw: 6, importPriceCtKwh: 30 })]);
     expect(z[0]).toMatch(/^<b>/);

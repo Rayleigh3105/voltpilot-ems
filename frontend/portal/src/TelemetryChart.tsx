@@ -10,7 +10,7 @@ import {
 } from './chartStyle';
 import { endsCollide, useDirectLabels } from './chartKopf';
 import { AXIS as AXIS_NAME, LADESTAND } from './chartCopy';
-import { flussSatz, kopf, tooltip, wertZeile } from './chartTooltip';
+import { flussSatz, kopf, tooltip, TOOLTIP_CSS, wertZeile } from './chartTooltip';
 import { chartTheme } from './chartTheme';
 import { ChartInsight, ChartLegend, type LegendItem } from './components/ChartExplain';
 import { fmtNum } from './format';
@@ -176,6 +176,8 @@ export function TelemetryChart({
           tooltip: {
             trigger: 'axis',
             confine: true,
+            // K7: ein SATZ muss umbrechen duerfen - siehe TOOLTIP_CSS.
+            extraCssText: TOOLTIP_CSS,
             /**
              * K7: ein Mini-SATZ statt einer Zahlenkolonne. Die drei
              * Leistungs-Kanäle ziehen sich zu einer Aussage zusammen („Sonne

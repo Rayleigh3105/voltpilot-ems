@@ -13,7 +13,7 @@ import {
   type FensterZeile,
 } from './preisFenster';
 import { useEChart } from './useEChart';
-import { kopf, tooltip } from './chartTooltip';
+import { kopf, tooltip, TOOLTIP_CSS } from './chartTooltip';
 
 import './preisFenster.css';
 
@@ -162,6 +162,8 @@ export function PriceHistoryChart({
             tooltip: {
               trigger: 'axis',
               confine: true,
+              // K7: ein SATZ muss umbrechen duerfen - siehe TOOLTIP_CSS.
+              extraCssText: TOOLTIP_CSS,
               /**
                * K7: der Preis mit seiner BEDEUTUNG statt einer nackten Zahl.
                * Die Einordnung kommt aus DEMSELBEN `preisFenster`-Ergebnis,

@@ -14,7 +14,7 @@ import {
 } from '../chartStyle';
 import { chartTheme, type ChartTheme } from '../chartTheme';
 import { LADESTAND } from '../chartCopy';
-import { flussSatz, kopf, tooltip, wertZeile } from '../chartTooltip';
+import { flussSatz, kopf, tooltip, TOOLTIP_CSS, wertZeile } from '../chartTooltip';
 import { preisMarken } from '../preisFenster';
 import { ereignisSpur } from '../historieEreignisse';
 import {
@@ -390,6 +390,8 @@ export function Tagesbild({
           tooltip: {
             trigger: 'axis',
             confine: true,
+            // K7: ein SATZ muss umbrechen duerfen - siehe TOOLTIP_CSS.
+            extraCssText: TOOLTIP_CSS,
             /**
              * ⚠ Aus dem EIMER-INDEX komponiert, nicht aus den `params`: bei
              * mehreren Grids liefert ECharts nur die Serien des überfahrenen

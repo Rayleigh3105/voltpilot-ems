@@ -9,6 +9,7 @@ import {
   notizZeile,
   punkt,
   tooltip,
+  TOOLTIP_CSS,
   wertZeile,
 } from './chartTooltip';
 
@@ -159,5 +160,21 @@ describe('M10 im Geiste · keine Doppel-Kolonne', () => {
   it('kann denselben Satz mit dem ENERGIE-Wortschatz bauen', () => {
     const s = flussSatz({ pv: 42.1, haus: 31 }, kwh, energieTeil);
     expect(s.text).toBe('Sonne 42,1 kWh erzeugt, Haus 31 kWh verbraucht.');
+  });
+});
+
+describe('K7 · der Kasten muss den Satz umbrechen lassen', () => {
+  it('hebt ECharts\' hartes `nowrap` auf', () => {
+    // ECharts setzt `white-space: nowrap` auf seinen HTML-Tooltip. Fuer eine
+    // Zahlenkolonne ist das richtig, fuer einen SATZ macht es ihn beliebig
+    // breit - im Browser 431 px auf einem 327-px-Canvas gemessen.
+    expect(TOOLTIP_CSS).toContain('white-space: normal');
+  });
+
+  it('deckelt ihn auf die Breite SEINES Diagramms', () => {
+    // `100%` = der Chart-Container (position: relative, der Tooltip ist sein
+    // absolut positioniertes Kind) - der Kasten kann sein Bild nie verlassen.
+    expect(TOOLTIP_CSS).toContain('100%');
+    expect(TOOLTIP_CSS).toMatch(/max-width:\s*min\(/);
   });
 });

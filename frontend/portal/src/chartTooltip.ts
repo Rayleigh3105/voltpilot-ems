@@ -37,6 +37,27 @@
 import { DEADBAND_KW, gridState, loadState, pvState } from './live';
 
 /* ---------------------------------------------------------------------------
+ * Der Kasten selbst — ein SATZ muss umbrechen dürfen
+ * ------------------------------------------------------------------------- */
+
+/**
+ * ⚠ ECharts setzt auf seinen HTML-Tooltip hart `white-space: nowrap` und
+ * KEINE Breitenbegrenzung. Für eine Zahlenkolonne ist das richtig (jede Zeile
+ * ist kurz), für einen SATZ ist es fatal: „Sonne liefert 1,6 kW, Haus braucht
+ * 3,4 kW, 1,8 kW aus dem Netz." wurde damit **431 px breit** und lief auf
+ * einem 327-px-Canvas seitlich heraus — `confine: true` verschiebt den Kasten
+ * nur, es macht ihn nicht schmaler. **Im Browser bei Telefonbreite gemessen,
+ * nicht im Test** (jsdom rendert keine Textbreite).
+ *
+ * Jede Fläche, die einen K7-Satz zeigt, MUSS das hier mitgeben. `100%` ist die
+ * Breite des Chart-Containers (er ist `position: relative`, der Tooltip liegt
+ * als absolut positioniertes Kind darin) — der Kasten wird also nie breiter
+ * als sein eigenes Diagramm; der 320-px-Deckel hält ihn am Schreibtisch
+ * lesbar, statt eine Zeile über die halbe Leinwand zu ziehen.
+ */
+export const TOOLTIP_CSS = 'white-space: normal; max-width: min(320px, 100%);';
+
+/* ---------------------------------------------------------------------------
  * Bausteine — Kopf, Zeile, Punkt
  * ------------------------------------------------------------------------- */
 

@@ -19,14 +19,7 @@ import {
 } from './chartStyle';
 import { vergleichName, vergleichReihe } from './chartCopy';
 import { chartTheme, type ChartTheme } from './chartTheme';
-import {
-  energieTeil,
-  flussSatz,
-  flussTeil,
-  kopf,
-  tooltip,
-  type FlussRolle,
-} from './chartTooltip';
+import { energieTeil, flussSatz, flussTeil, kopf, tooltip, TOOLTIP_CSS, type FlussRolle } from './chartTooltip';
 import { fmtNum } from './format';
 import {
   anzeigeWert,
@@ -397,6 +390,8 @@ export function HistoryEnergieChart({
           tooltip: {
             trigger: 'axis',
             confine: true,
+            // K7: ein SATZ muss umbrechen duerfen - siehe TOOLTIP_CSS.
+            extraCssText: TOOLTIP_CSS,
             /**
              * K7 · ein Mini-SATZ statt einer Zahlenkolonne. Die vier
              * Fluss-Größen (Sonne · Haus · Netz · Speicher) ziehen sich zu

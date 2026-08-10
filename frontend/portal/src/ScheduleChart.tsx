@@ -16,7 +16,7 @@ import {
 } from './chartStyle';
 import { AXIS as AXIS_NAME, BEZUGSPREIS, BOERSENPREIS, EINSPEISEWERT, SPANNE } from './chartCopy';
 import { chartTheme } from './chartTheme';
-import { escHtml, kopf, notizZeile, tooltip, wertZeile } from './chartTooltip';
+import { escHtml, kopf, notizZeile, tooltip, TOOLTIP_CSS, wertZeile } from './chartTooltip';
 import {
   chargeKind,
   curtailArea,
@@ -584,6 +584,8 @@ export function ScheduleChart({
         tooltip: {
           trigger: 'axis',
           confine: true,
+          // K7: ein SATZ muss umbrechen duerfen - siehe TOOLTIP_CSS.
+          extraCssText: TOOLTIP_CSS,
           /**
            * Der Tooltip wird aus dem SLOT-INDEX komponiert, nicht aus den
            * `params` des gerade überfahrenen Panels: bei zwei Grids liefert
