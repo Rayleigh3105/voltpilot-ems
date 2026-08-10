@@ -35,7 +35,11 @@ class V2SiteBackfillRunnerTest {
     private final EntityRegistryRepository repo = mock(EntityRegistryRepository.class);
 
     private V2SiteBackfillRunner runner(boolean enabled) {
-        return new V2SiteBackfillRunner(adminJdbc, entities, repo, enabled,
+        return runner(enabled, true);
+    }
+
+    private V2SiteBackfillRunner runner(boolean enabled, boolean reconcileEnabled) {
+        return new V2SiteBackfillRunner(adminJdbc, entities, repo, enabled, reconcileEnabled,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -143,5 +147,59 @@ class V2SiteBackfillRunnerTest {
         when(adminJdbc.query(any(String.class), any(RowMapper.class)))
                 .thenThrow(new IllegalStateException("db down at boot"));
         runner(true).onApplicationReady(); // must not throw
+    }
+
+    // ---- Der getaktete Abgleich (Selbstheilung ohne Deploy/Klick) -----------
+
+    /**
+     * Der Kern des Umbaus: eine Anlage, die NACH dem letzten api-Start ihr
+     * Gerät bekam, wartete bis hierher auf den nächsten Deploy. Der Takt fährt
+     * denselben Lauf mit denselben Wächtern - also wird sie komponiert und
+     * gestempelt, ohne dass jemand etwas tut.
+     */
+    @Test
+    void theTickHealsASiteThatBecameEligibleAfterBootWithoutAnyHumanStep() {
+        V2SiteBackfillRunner.Candidate mienbach = site("Mienbach");
+        pending(mienbach);
+        when(entities.bootstrapIfEligible(mienbach.siteId()))
+                .thenReturn(BackfillOutcome.MIGRATED);
+
+        runner(true).reconcile();
+
+        verify(entities).bootstrapIfEligible(mienbach.siteId());
+        verify(repo).markV2Backfilled(mienbach.siteId(), NOW);
+    }
+
+    /**
+     * Der Takt hat einen EIGENEN Schalter, weil {@code @EnableScheduling}
+     * global ist: sobald eine fremde Konfiguration (OTA, Metriken) Scheduling
+     * einschaltet, liefe diese Methode sonst auch im Testlauf gegen gestoppte
+     * Testcontainer.
+     */
+    @Test
+    void theTickRespectsItsOwnSwitchEvenWhileTheFeatureItselfIsOn() {
+        pending(site("Egal"));
+        runner(true, false).reconcile();
+        verify(adminJdbc, never()).query(any(String.class), any(RowMapper.class));
+        verify(entities, never()).bootstrapIfEligible(any());
+    }
+
+    @Test
+    void theOpsKillSwitchAlsoStopsTheTick() {
+        pending(site("Egal"));
+        runner(false, true).reconcile();
+        verify(adminJdbc, never()).query(any(String.class), any(RowMapper.class));
+        verify(entities, never()).bootstrapIfEligible(any());
+    }
+
+    /**
+     * Eine geworfene Ausnahme im Takt würde den Scheduler-Thread beenden - und
+     * damit die Selbstheilung LAUTLOS für immer abschalten.
+     */
+    @Test
+    void aFailingTickNeverKillsTheSchedulerThread() {
+        when(adminJdbc.query(any(String.class), any(RowMapper.class)))
+                .thenThrow(new IllegalStateException("db blip"));
+        runner(true).reconcile(); // must not throw
     }
 }

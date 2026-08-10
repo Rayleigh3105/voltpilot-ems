@@ -249,6 +249,23 @@ describe('Abbau-Invarianten (M6)', () => {
     }
   });
 
+  /**
+   * Das Anlagen-Modell komponiert der SERVER (Captain-Order 10.08.2026): der
+   * Assistent rief `entitiesApi.bootstrap` hinter einem `if (admin)` auf, und
+   * genau deshalb bekam ein KUNDE nie eine Komposition. Der Aufruf ist
+   * ersatzlos entfallen; bliebe er „als Sofort-Refresh für Admins" stehen,
+   * gäbe es wieder zwei Wege zu derselben Wirkung - und der Kunden-Weg wäre
+   * erneut der stille.
+   */
+  it('kein Kunden-Assistent stösst die v2-Komposition an - das tut der Server', () => {
+    for (const f of sourceFiles()) {
+      // Die Admin-Konsole darf den Bootstrap-Endpunkt weiter besitzen; jede
+      // ANDERE Fläche (allen voran der Anlege-Assistent) nicht.
+      if (f.includes('/pages/admin/') || f.endsWith('entitiesApi.ts')) continue;
+      expect(readFileSync(f, 'utf8')).not.toMatch(/entitiesApi\.bootstrap|v2-entities\/bootstrap/);
+    }
+  });
+
   it('das „Mehr ▾"-Popover ist vollständig weg (v3 M1)', () => {
     const files = sourceFiles();
     expect(files.some((f) => /AnlageMoreMenu\.tsx?$/.test(f))).toBe(false);
