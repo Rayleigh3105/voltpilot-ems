@@ -1,0 +1,202 @@
+/* Das Mini-Chart-System (Chart-Redesign Stufe 5).
+ *
+ * EIN Block für die Flächen, die vorher jede ihre eigene Optik hatten:
+ * Flotten-Spark, Monats-Streifen, Portfolio-Trend, Cockpit-Ministreifen,
+ * Datenabdeckung, Ladestand-Mini, Erlös-Komposition, Admin-Fortschritt.
+ *
+ * Die Farben laufen über zwei lokale Variablen (`--mini-pos` / `--mini-neg`),
+ * damit die „on-gradient"-Fassung des Flotten-Helden nur EINE Regel überschreibt
+ * und nicht die ganze Geometrie kopieren muss. */
+
+.vp-mini-wrap {
+  min-width: 0;
+}
+
+.vp-mini {
+  --mini-pos: var(--vp-chart-charge, #2e9e5b);
+  --mini-neg: var(--vp-chart-discharge, #e53935);
+  --mini-zero: var(--vp-chart-zero, #c9d1d9);
+  --mini-dim: 0.45;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Die Säule ist das ZIEL, nicht der Balken: sie ist immer voll hoch, also auch
+   über einem 2-px-Strich antippbar (der `title`-Tooltip war am Telefon gar
+   nicht erreichbar - genau der Befund, den Stufe 5 behebt). */
+.vp-mini-col {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.vp-mini-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 2px;
+  background: var(--mini-pos);
+  opacity: var(--mini-dim);
+}
+
+/* Betont = der eine Punkt, um den es geht („heute", der gewählte Monat). */
+.vp-mini-bar.is-on {
+  opacity: 1;
+}
+
+/* Vergangenheit ist gedämpft, nicht entfärbt - sonst hinge die Identität
+   wieder am Wort allein (dieselbe Regel wie im Fahrplan-Film). */
+.vp-mini-bar.is-past {
+  opacity: 0.3;
+  background: var(--vp-chart-axisline, #e9ecef);
+}
+
+/* ⚠ Ein Verlust wird NIE gedimmt. Er ist der Punkt, den man nicht übersehen
+   darf - und der einzige, der unter der Nulllinie hängt. */
+.vp-mini-bar.is-neg {
+  background: var(--mini-neg);
+  opacity: 0.9;
+}
+.vp-mini-bar.is-neg.is-on {
+  opacity: 1;
+}
+
+/* Der Sichtbarkeits-Strich trägt seine eigene Form: flach, ohne Radius, damit
+   er auch bei genauem Hinsehen kein „kleiner Balken" ist. */
+.vp-mini-bar.is-tick {
+  border-radius: 1px;
+}
+
+/* Die echte Nulllinie. Sie erscheint nur, wenn sie etwas TRENNT. */
+.vp-mini-zero {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--mini-zero);
+  pointer-events: none;
+}
+
+.vp-mini:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.vp-mini-col.is-active .vp-mini-bar {
+  opacity: 1;
+}
+
+/* --- Der Flotten-Held liegt auf dem Marken-Verlauf ------------------------
+   Dort sind Weiss-Töne die richtige Farbe. Der Verlusttag behält seinen roten
+   Ton: gemessen (dataviz, --pairs all) trennt er sich von Weiss mit
+   ΔE 44,4 (Normalsicht) bzw. 39,0 (Deutan) über ALLE drei Verlauf-Stops. Sein
+   Luminanz-Kontrast gegen den Verlauf liegt unter 3:1 - die vom Validator
+   verlangte Erleichterung ist die sichtbare benannte Marke („Verlusttag
+   −0,40 €") plus die Position unter der Nulllinie, also Farbe + Wort + Ort. */
+.vp-mini-on-gradient {
+  --mini-pos: rgba(255, 255, 255, 0.95);
+  --mini-zero: rgba(255, 255, 255, 0.5);
+  --mini-dim: 0.4;
+}
+.vp-mini-on-gradient .vp-mini-bar.is-past {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/* --- Benannte Marken (K6) ------------------------------------------------- */
+
+.vp-mini-marks {
+  position: relative;
+  height: 19px;
+  min-width: 0;
+}
+.vp-mini-marks.is-above {
+  margin-bottom: 3px;
+}
+.vp-mini-marks.is-below {
+  margin-top: 3px;
+}
+
+.vp-mini-mark {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--vp-surface, #fff);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 16px;
+  color: var(--vp-ink, #1a2332);
+  white-space: nowrap;
+  /* Eine Marke am Rand wird hereingezogen statt abgeschnitten. */
+  max-inline-size: max-content;
+}
+/* Der Warnton der Marke wird aus dem EINEN Kosten-/Verlust-Token gemischt -
+   kein zweiter Rotton, der auseinanderlaufen könnte. */
+.vp-mini-mark.is-warn {
+  border-color: color-mix(in srgb, var(--vp-chart-discharge, #e53935) 28%, #fff);
+  background: color-mix(in srgb, var(--vp-chart-discharge, #e53935) 8%, #fff);
+  color: var(--vp-chart-discharge, #e53935);
+}
+
+/* --- Die Ablese-Zeile (K7: Ablesen in Sätzen) ----------------------------- */
+
+.vp-mini-cap {
+  margin: var(--vp-space-1, 4px) 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--vp-text-muted, #6c757d);
+  min-height: 1.35em;
+}
+.vp-mini-on-gradient ~ .vp-mini-cap,
+.vp-fleet-hero .vp-mini-cap {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* --- Linien-Spark --------------------------------------------------------- */
+
+.vp-mini-line {
+  display: block;
+  overflow: visible;
+}
+.vp-mini-line-path {
+  stroke: var(--vp-chart-plan, #1e3a5f);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.vp-mini-line-zero {
+  stroke: var(--vp-chart-zero, #c9d1d9);
+  stroke-width: 1;
+}
+
+/* --- Anteils-/Fortschrittsbalken: EINE Geometrie, drei Höhen -------------- */
+
+.vp-share {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-radius: 999px;
+  background: var(--vp-neutral-soft, #eef1f5);
+  overflow: hidden;
+}
+.vp-share-seg,
+.vp-share-fill {
+  display: block;
+  height: 100%;
+  /* Ein vorhandener Teil bleibt sichtbar (Begründung an SHARE_MIN_PX in
+     `miniChart.ts`): ein Anteils-Segment ist ein TEIL EINES GANZEN ohne eigene
+     Skala, seine Zahl steht in der Zeile daneben. Ein Sparkline-Balken ist
+     dagegen eine Grössen-Aussage und bekommt deshalb NIE eine Mindesthöhe. */
+  min-width: 2px;
+}
+.vp-share-fill {
+  background: var(--vp-action, #2c5282);
+  transition: width 0.4s ease;
+}

@@ -69,6 +69,11 @@
   --vp-chart-ink:       #1A1A1A;  /* legend labels (= text-dark) */
   --vp-chart-grid:      #F1F3F5;  /* split lines */
   --vp-chart-axisline:  #E9ECEF;  /* axis lines (= border) */
+  /* Die NULLLINIE einer signierten Flaeche - eine Spur dunkler als das Raster,
+     weil sie etwas TRENNT (oben/unten, Gewinn/Verlust, laden/abgeben) statt
+     nur zu gliedern. Stufe 1 nannte den Wert in `chartStyle.ts`, Stufe 5
+     hebt ihn hierher, weil ihn jetzt jedes Mini-Chart braucht. */
+  --vp-chart-zero:      #C9D1D9;  /* zero line of a signed surface */
   --vp-chart-pv:        #FF9800;  /* PV / irradiance (= solar) */
   /* Temperatur ist NEUTRAL, nicht orange: gegen das PV-Orange darüber mass der
      dataviz-Validator nur ΔE 6,7 (harter FAIL, Untergrenze 15) - zwei Kurven,
