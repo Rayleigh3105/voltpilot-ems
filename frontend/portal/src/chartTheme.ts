@@ -52,12 +52,31 @@ export interface ChartTheme {
   /** Cloud cover. */
   cloud: string;
   /**
+   * Der RUHENDE Slot (warten / Reserve halten) - bewusst KEIN Serienton,
+   * damit „hier passiert nichts" nie wie eine Handlung aussieht.
+   */
+  idle: string;
+  /**
+   * Benanntes Neutral-Grau für Kontext-/Admin-Reihen (F10: „Neutral-Grau als
+   * *benanntes* Token"). Es ist der Wert, der als `rgba(96,125,139,…)` im
+   * Admin-PlanChart stand - gleicher Ton, jetzt mit Namen.
+   */
+  neutral: string;
+  /**
    * The GRID role hue (teal) - the same `--vp-flow-grid` the energy-flow diagram
    * uses, so a "Netz" series reads as the grid everywhere. Deliberately NOT
    * `gridCharge` (that is the Netzladen slot colour) and not the red
    * `discharge` (that is cost/warning ink).
    */
   flowGrid: string;
+  /**
+   * Die LINIEN-Stufe von {@link flowGrid}. Als Linie steht „Netz" direkt neben
+   * dem Batterie-Laden-Grün und war davon nicht zu trennen (ΔE 9,8, harter
+   * FAIL); diese Stufe trennt mit ΔE 19,3. Regel: **Netz als LINIE nimmt
+   * `flowGridLine`, Netz als BALKEN/FLÄCHE behält `flowGrid`** - der helle
+   * Grundton bleibt die Rollenfarbe (Energiefluss, Kacheln, kWh-Balken).
+   */
+  flowGridLine: string;
   /**
    * The CONSUMER role hue (purple) - the same `--vp-flow-load` the energy-flow
    * diagram uses for Haus/Verbraucher, so the Fahrplan's stacked consumer
@@ -86,7 +105,7 @@ export function chartTheme(): ChartTheme {
     surface: read('--vp-surface', '#FFFFFF'),
     axisLine: read('--vp-chart-axisline', '#E9ECEF'),
     pv: read('--vp-chart-pv', '#FF9800'),
-    temp: read('--vp-chart-temp', '#F57C00'),
+    temp: read('--vp-chart-temp', '#4B5563'),
     load: read('--vp-chart-load', '#2196F3'),
     price: read('--vp-chart-price', '#2F6BD6'),
     soc: read('--vp-chart-soc', '#9C27B0'),
@@ -96,7 +115,10 @@ export function chartTheme(): ChartTheme {
     battDischarge: read('--vp-chart-battdischarge', '#2C5282'),
     plan: read('--vp-chart-plan', '#1E3A5F'),
     cloud: read('--vp-chart-cloud', '#90A4AE'),
+    idle: read('--vp-chart-idle', '#EDEFF2'),
+    neutral: read('--vp-chart-neutral', '#607D8B'),
     flowGrid: read('--vp-flow-grid', '#0ea5a3'),
+    flowGridLine: read('--vp-chart-grid-line', '#036672'),
     consumer: read('--vp-flow-load', '#8b5cf6'),
   };
   return cache;

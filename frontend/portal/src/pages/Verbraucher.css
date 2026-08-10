@@ -294,7 +294,7 @@
   font-size: 0.8rem;
 }
 .vp-vb-task-ok { color: #166534; }
-.vp-vb-task-warn { color: #b45309; }
+.vp-vb-task-warn { color: var(--vp-warn-ink, #b45309); }
 .vp-vb-task-off { color: var(--vp-muted, #64748b); }
 
 .vp-vb-override-dialog {

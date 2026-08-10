@@ -98,15 +98,23 @@ function ct(v: number | null): string {
     : `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh`;
 }
 
-/** A pure `EnergieFarbe` key -> the resolved chart hex. */
-function farbe(t: ChartTheme, key: EnergieFarbe): string {
+/**
+ * A pure `EnergieFarbe` key -> the resolved chart hex.
+ *
+ * **Die FORM entscheidet beim Netz mit:** als LINIE (Tages-Ansicht) läuft
+ * „Netz" direkt neben der Batterie-Linie, und der helle Netz-Ton war vom
+ * Laden-Grün nicht zu trennen (ΔE 9,8, harter FAIL) - dort gilt die dunklere
+ * `flowGridLine`-Stufe (ΔE 19,3). Als BALKEN (Woche+) behält es den hellen
+ * Grundton, der auch der Energiefluss trägt.
+ */
+function farbe(t: ChartTheme, key: EnergieFarbe, linie = false): string {
   switch (key) {
     case 'pv':
       return t.pv;
     case 'load':
       return t.load;
     case 'grid':
-      return t.flowGrid;
+      return linie ? t.flowGridLine : t.flowGrid;
     case 'gridImport':
       return t.discharge;
     case 'gridExport':
@@ -239,7 +247,7 @@ export function HistoryEnergieChart({
       const vglLookup = new Map(vglReihen.map((x) => [nameOf(x.s), x.s]));
 
       const serieOption = (s: EnergieSerie, isFirst: boolean) => {
-        const color = farbe(t, s.farbe);
+        const color = farbe(t, s.farbe, s.linie);
         const base = {
           name: s.label,
           yAxisIndex: s.zweiteAchse ? 1 : 0,
@@ -431,12 +439,12 @@ export function HistoryEnergieChart({
               z: 0,
               silent: true,
               lineStyle: {
-                color: farbe(t, s.farbe),
+                color: farbe(t, s.farbe, s.linie),
                 width: 1.6,
                 type: 'dashed' as const,
                 opacity: VERGLEICH_OPACITY,
               },
-              itemStyle: { color: farbe(t, s.farbe), opacity: VERGLEICH_OPACITY },
+              itemStyle: { color: farbe(t, s.farbe, s.linie), opacity: VERGLEICH_OPACITY },
             })),
             ...sichtbar.map((s, i) => serieOption(s, i === 0)),
           ],
@@ -448,7 +456,7 @@ export function HistoryEnergieChart({
   );
 
   const legend: LegendItem[] = vorhanden.map((s) => ({
-    color: farbe(t, s.farbe),
+    color: farbe(t, s.farbe, s.linie),
     label: s.label,
     unit: s.vorzeichen ?? s.unit,
     shape: s.zweiteAchse ? 'dotted' : s.linie ? 'area' : 'bar',

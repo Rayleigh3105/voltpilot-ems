@@ -370,6 +370,14 @@ svg [tabindex]:focus-visible {
   --vp-flow-load-soft: #f1ecfd;
   --vp-flow-grid: #0ea5a3;
   --vp-flow-grid-soft: #e2f6f5;
+  /* Die LINIEN-Stufe desselben Netz-Tons. Als LINIE steht Netz direkt neben
+     dem Batterie-Laden-Grün (#2E9E5B) und war davon nicht zu trennen
+     (dataviz-Validator: ΔE 9,8, harter FAIL); dieser dunklere, entsättigte
+     Schiefer-Teal trennt mit ΔE 19,3. Bewusst so weit weg: KEIN hellerer
+     Türkis-Schritt reisst die Grenze (geprüft: #0F766E 13,9 · #00838F 13,1 ·
+     #0E7490 11,9 · #00697A 15,1). Flächen, Balken und die Rollen-Farbe des
+     Energieflusses behalten den hellen Grundton oben. */
+  --vp-chart-grid-line: #036672;
   --vp-flow-batt: #16a34a;
   --vp-flow-batt-soft: #e7f6ec;
   /* Die LESBARE Tiefe desselben Grüns (7,1:1 auf Weiß, 6,3:1 auf -soft) - kein
@@ -377,6 +385,11 @@ svg [tabindex]:focus-visible {
      stand, jetzt als Token. Ink für „Alles in Ordnung"-Flächen; das satte
      `--vp-flow-batt` bleibt für Punkt, Rahmen und Flächen. */
   --vp-flow-batt-ink: #166534;
+  /* Das HELLE Ende des Ladestands-Verlaufs - stand als Literal in den beiden
+     SoC-Balken (Verdict-Kachel + Flotten-Karte) und ist derselbe Wert, nur
+     benannt. Es ist ausdruecklich KEIN zweites Gruen: es endet in
+     `--vp-flow-batt`, der Verlauf traegt also EINE Rolle. */
+  --vp-flow-batt-lite: #34c77b;
   --vp-flow-base: #e3e9f1;
   --vp-flow-ink: #33414f;
 }
@@ -518,7 +531,7 @@ svg [tabindex]:focus-visible {
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #34c77b, var(--vp-flow-batt));
+  background: linear-gradient(90deg, var(--vp-flow-batt-lite, #34c77b), var(--vp-flow-batt));
   transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
@@ -1417,7 +1430,7 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-alert-ok {
   background: var(--vp-mint-start);
-  color: #2e7d32;
+  color: var(--vp-ok-ink, #2e7d32);
 }
 .vp-alert-err {
   background: #fdecea;
@@ -1490,7 +1503,7 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-step-done .vp-step-num {
   background: var(--vp-mint-start);
   border-color: transparent;
-  color: #2e7d32;
+  color: var(--vp-ok-ink, #2e7d32);
 }
 .vp-step-label {
   font-size: var(--vp-text-sm);
@@ -1636,7 +1649,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-size: 1.6rem;
   font-weight: var(--vp-weight-bold);
   background: var(--vp-mint-start);
-  color: #2e7d32;
+  color: var(--vp-ok-ink, #2e7d32);
 }
 
 /* Register-first "Anlage anlegen" flow (captain 2026-07-09) */
@@ -2463,7 +2476,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, #34c77b, var(--vp-flow-batt));
+  background: linear-gradient(90deg, var(--vp-flow-batt-lite, #34c77b), var(--vp-flow-batt));
   transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
@@ -2475,7 +2488,7 @@ button.vp-cl-item.is-off .vp-cl-label {
   margin-top: auto;
   font-size: 0.9rem;
   font-weight: 600;
-  color: #2e7d32;
+  color: var(--vp-ok-ink, #2e7d32);
 }
 .vp-fleet-site-earn.muted {
   color: var(--vp-text-muted, #6c757d);
@@ -2581,15 +2594,6 @@ button.vp-cl-item.is-off .vp-cl-label {
      how the plant earns money (audit F5) - the same hue as the chart bars. */
   background: var(--vp-chart-battdischarge, #2c5282);
 }
-.vp-plan-mini-text {
-  margin: var(--vp-space-3) 0 0;
-  font-size: 0.95rem;
-  color: var(--vp-text-dark);
-}
-.vp-plan-mini-text b {
-  color: #2e7d32;
-  font-weight: 700;
-}
 
 /* ============================================================================
    Money-centric "Meine Anlage" v2 (captain 2026-07-07, Deye-Copilot style):
@@ -2661,7 +2665,7 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-mstrip-m .mv {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #2e7d32;
+  color: var(--vp-ok-ink, #2e7d32);
   font-variant-numeric: tabular-nums;
 }
 .vp-mstrip-m.on {
@@ -2956,7 +2960,7 @@ button.vp-tech-card-h.toggle {
    without a controlling device) - the full warning shows in the always-visible
    slot below the header. */
 .vp-tech-warn-summary {
-  color: #b45309;
+  color: var(--vp-warn-ink, #b45309);
   font-weight: 600;
 }
 
@@ -3348,7 +3352,7 @@ button.vp-tech-card-h.toggle {
   font-weight: 600;
 }
 .vp-fp-summary b {
-  color: #2e7d32;
+  color: var(--vp-ok-ink, #2e7d32);
   font-weight: 700;
 }
 .vp-fp-curtail {
@@ -3364,28 +3368,11 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-flow-pv, #f59e0b);
 }
 
-/* The compact mini bars (phone) with a "Jetzt" marker. */
-.vp-plan-mini-wrap {
-  position: relative;
-  margin-top: var(--vp-space-3);
-}
-.vp-plan-mini-wrap .vp-plan-mini {
-  margin-top: 0;
-}
+/* Der ruhende Balken einer Stunde ohne Batteriebewegung. */
 .vp-plan-mini i.idle {
   align-self: center;
   height: 4px;
   background: var(--vp-border, #e9ecef);
-}
-.vp-plan-mini-now {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  border-radius: 2px;
-  background: #e5484d;
-  opacity: 0.75;
-  pointer-events: none;
 }
 
 /* --- Weitere Erzeuger (additional read-only PV sources, multi-source Anlage) --- */
@@ -3499,7 +3486,7 @@ button.vp-tech-card-h.toggle {
    „unbekannt" und „nicht registriert" bleiben ruhig gedämpft - sie sind
    Lücken, keine Alters-Aussagen. */
 .vp-edge-stand-warn {
-  color: #b45309;
+  color: var(--vp-warn-ink, #b45309);
 }
 
 /* ============================================================================
@@ -3562,7 +3549,7 @@ button.vp-tech-card-h.toggle {
 }
 .vp-mode-chip.vp-mode-lastspitzenkappung {
   background: var(--vp-flow-pv-soft, #fff1e0);
-  color: #b45309;
+  color: var(--vp-warn-ink, #b45309);
 }
 .vp-mode-chip.vp-mode-marktvermarktung {
   background: color-mix(in srgb, var(--vp-action, #2c5282) 12%, transparent);
@@ -4259,13 +4246,13 @@ button.vp-tech-card-h.toggle {
 .vp-flowed-railstep { display: inline-flex; align-items: center; gap: 6px; }
 .vp-flowed-railarrow { color: var(--vp-text-muted); }
 .vp-flowed-railchip { padding: 2px 10px; border-radius: 999px; background: #ECEFF1; color: #546E7A; }
-.vp-flowed-railchip.done { background: #E8F5E9; color: #2E7D32; font-weight: 600; }
+.vp-flowed-railchip.done { background: #E8F5E9; color: var(--vp-ok-ink, #2e7d32); font-weight: 600; }
 .vp-flowed-railchip.live { background: var(--vp-navy-1, #1E3A5F); color: #fff; font-weight: 700; }
 .vp-flowed-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
 .vp-flowed-notice { border-radius: var(--vp-radius-md); padding: 10px 14px; font-size: 0.88rem; }
-.vp-flowed-notice.ok { background: #E8F5E9; color: #2E7D32; }
-.vp-flowed-notice.warn { background: #FFF3E0; color: #B45309; }
+.vp-flowed-notice.ok { background: #E8F5E9; color: var(--vp-ok-ink, #2e7d32); }
+.vp-flowed-notice.warn { background: #FFF3E0; color: var(--vp-warn-ink, #b45309); }
 .vp-flowed-notice.error { background: #FDECEA; color: #B3261E; }
 
 .vp-flowed-main {
@@ -4339,7 +4326,7 @@ button.vp-tech-card-h.toggle {
   padding: 9px 14px; font-size: 0.86rem; min-width: 0;
   border-radius: 0 0 var(--vp-radius-md) var(--vp-radius-md);
 }
-.vp-flowed-simstrip b { color: #2E7D32; }
+.vp-flowed-simstrip b { color: var(--vp-ok-ink, #2e7d32); }
 .vp-flowed-report { margin-top: var(--vp-space-3); min-width: 0; }
 
 .vp-flowed-findings {
@@ -4761,7 +4748,7 @@ button.vp-tech-card-h.toggle {
 }
 .vp-profile-chip.peak {
   background: var(--vp-flow-pv-soft);
-  color: #b45309;
+  color: var(--vp-warn-ink, #b45309);
 }
 .vp-profile-chip.priv {
   background: var(--vp-flow-load-soft);
@@ -4870,117 +4857,6 @@ button.vp-tech-card-h.toggle {
 .vp-rowmenu-pop button.active {
   color: var(--vp-primary-deep);
   background: var(--vp-bg-light);
-}
-
-/* ============================================================
-   U4 · Peak-Band lead artifact (Lastspitzenkappung, design §6 Face 2)
-   The peak-face cockpit lead: current ¼-h grid-import mean vs. the Ziel
-   (progress bar + red limit marker) + the PS-4 avoided-peak numbers.
-   ============================================================ */
-.vp-peakband {
-  border-left: 5px solid var(--vp-flow-pv);
-}
-.vp-peakband-top {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-5);
-  flex-wrap: wrap;
-}
-.vp-peakband-now {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.vp-peakband-value {
-  font-family: var(--vp-font-display, inherit);
-  font-weight: 800;
-  font-size: var(--vp-text-stat-sm);
-  color: var(--vp-stat-ink);
-  line-height: 1.1;
-}
-.vp-peakband-value.vp-stale {
-  color: var(--vp-text-gray);
-}
-.vp-peakband-bar-wrap {
-  flex: 1 1 240px;
-  min-width: 0;
-  padding-top: 18px; /* room for the "Ziel" label above the bar */
-}
-.vp-peakband-bar {
-  position: relative;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--vp-bg-light, #f1f3f5);
-  overflow: visible;
-}
-.vp-peakband-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 8px 0 0 8px;
-  background: linear-gradient(90deg, #fbbf24, var(--vp-flow-pv));
-  transition: width 0.4s ease;
-}
-.vp-peakband-bar.breach .vp-peakband-fill {
-  border-radius: 8px;
-  background: linear-gradient(90deg, #f87171, #dc2626);
-}
-.vp-peakband-limit {
-  position: absolute;
-  top: -5px;
-  bottom: -5px;
-  width: 2px;
-  background: #dc2626;
-  transform: translateX(-1px);
-}
-.vp-peakband-limit-lbl {
-  position: absolute;
-  top: -18px;
-  transform: translateX(-50%);
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: #dc2626;
-  white-space: nowrap;
-}
-.vp-peakband-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vp-space-5);
-  margin-top: var(--vp-space-4);
-  padding-top: var(--vp-space-3);
-  border-top: 1px solid var(--vp-border);
-}
-.vp-peakband-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.vp-peakband-metric-lbl {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--vp-text-gray);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.vp-peakband-metric-val {
-  font-weight: 700;
-  font-size: 1.15rem;
-  color: var(--vp-stat-ink);
-}
-.vp-peakband-metric-val.good {
-  color: var(--vp-flow-batt);
-}
-.vp-peakband-note {
-  margin: var(--vp-space-3) 0 0;
-}
-@media (max-width: 560px) {
-  .vp-peakband-metrics {
-    gap: var(--vp-space-4);
-  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -5206,40 +5082,6 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-text-muted, #667);
 }
 
-/* G7 · Skala + Legende unter dem Peak-Band; ohne Ziel wird gar kein Balken
-   gezeichnet (siehe PeakBand.tsx). */
-.vp-peakband-scale {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--vp-space-2);
-  margin-top: 6px;
-  font-size: 0.7rem;
-  color: var(--vp-text-muted, #667);
-  flex-wrap: wrap;
-}
-.vp-peakband-scale-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-.vp-peakband-key {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  margin-left: 6px;
-}
-.vp-peakband-key.fill {
-  background: linear-gradient(90deg, #fbbf24, var(--vp-flow-pv));
-}
-.vp-peakband-key.limit {
-  width: 3px;
-  border-radius: 1px;
-  background: #dc2626;
-}
-
 /* G11 · Bequemere Trefferflächen auf JEDEM Finger-Gerät. `pointer: coarse`
    deckt auch das 768er Tablet ab (die Maus-Dichte am Desktop bleibt), dem
    Vorbild des bestehenden `.vp-seg`-Blocks folgend. Es wird Höhe gewonnen,
@@ -5426,7 +5268,7 @@ button.vp-tech-card-h.toggle {
 /* blockiert / zurückgestellt - bernstein, kein Alarm, aber nie Fortschritt. */
 .vp-ustate-blocked {
   background: #fff3e0;
-  color: #b45309;
+  color: var(--vp-warn-ink, #b45309);
 }
 /* Vorfall - laut. */
 .vp-ustate-incident {
@@ -5443,7 +5285,7 @@ button.vp-tech-card-h.toggle {
    Sperre ein Rätsel - mit ihm eine Aufgabe. */
 .vp-lever {
   display: block;
-  color: #b45309;
+  color: var(--vp-warn-ink, #b45309);
   margin-top: 2px;
   /* Er steht auch in einer Tabellenzelle, die am Telefon zu einer FLEX-Zeile
      kollabiert - ohne `min-width: 0` behält er dort seine Inhaltsbreite und
@@ -5501,18 +5343,18 @@ button.vp-tech-card-h.toggle {
 }
 .vp-backbone-key .vp-ustate-dot.vp-ustate-busy { background: var(--vp-primary-deep, #2b6cb0); }
 .vp-backbone-key .vp-ustate-dot.vp-ustate-action { background: var(--vp-action, #2c5282); }
-.vp-backbone-key .vp-ustate-dot.vp-ustate-blocked { background: #b45309; }
+.vp-backbone-key .vp-ustate-dot.vp-ustate-blocked { background: var(--vp-warn-ink, #b45309); }
 .vp-backbone-key .vp-ustate-dot.vp-ustate-incident { background: var(--vp-industry-end, #c62828); }
 /* „bestätigt" ist im Rückgrat der GUTE Ausgang - Legendenpunkt und
    Balkenfläche müssen dieselbe Farbe tragen, sonst erklärt die Legende einen
    anderen Balken als den daneben. */
-.vp-backbone-key .vp-ustate-dot.vp-ustate-calm { background: #16a34a; }
+.vp-backbone-key .vp-ustate-dot.vp-ustate-calm { background: var(--vp-flow-batt, #16a34a); }
 /* Der Balken selbst: die Klasse ist hier die Fläche. */
 .vp-backbone-seg.vp-ustate-busy { background: var(--vp-primary-deep, #2b6cb0); }
 .vp-backbone-seg.vp-ustate-action { background: var(--vp-action, #2c5282); }
-.vp-backbone-seg.vp-ustate-blocked { background: #b45309; }
+.vp-backbone-seg.vp-ustate-blocked { background: var(--vp-warn-ink, #b45309); }
 .vp-backbone-seg.vp-ustate-incident { background: var(--vp-industry-end, #c62828); }
-.vp-backbone-seg.vp-ustate-calm { background: #16a34a; }
+.vp-backbone-seg.vp-ustate-calm { background: var(--vp-flow-batt, #16a34a); }
 
 /* Die Geschichte einer eingefrorenen Welle: gedämpfte Fußnote UNTER der
    Live-Wahrheit, nie ihr gleichrangiger Nachbar. */

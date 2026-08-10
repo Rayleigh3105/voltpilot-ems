@@ -196,7 +196,7 @@
   border-radius: 9px;
   display: grid;
   place-items: center;
-  background: #eef1f5;
+  background: var(--vp-neutral-soft, #eef1f5);
   color: #6c757d;
 }
 
@@ -296,7 +296,7 @@
 }
 
 .vp-prov-geplant {
-  background: #eef1f5;
+  background: var(--vp-neutral-soft, #eef1f5);
   color: #4b5563;
 }
 
@@ -479,7 +479,7 @@
   max-width: 220px;
   height: 5px;
   border-radius: 3px;
-  background: #eef1f5;
+  background: var(--vp-neutral-soft, #eef1f5);
   overflow: hidden;
 }
 

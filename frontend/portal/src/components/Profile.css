@@ -175,7 +175,7 @@
 
 .vp-profile-chip.req.missing {
   background: rgba(180, 83, 9, 0.1);
-  color: #b45309;
+  color: var(--vp-warn-ink, #b45309);
 }
 
 .vp-profile-blocked {

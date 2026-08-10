@@ -8,30 +8,6 @@
  * die Kacheln 2-spaltig (K6: keine gestreckte Telefon-Liste mehr).
  */
 
-/* --- the flow | board split (shared by the adaptive + v1 heroes) --------- */
-.vp-live-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--vp-space-4);
-  align-items: start;
-  margin-top: var(--vp-space-4);
-  min-width: 0;
-}
-.vp-live-split > * {
-  min-width: 0;
-}
-.vp-live-flow {
-  display: flex;
-  justify-content: center;
-}
-/* ≥ ~1000 px: energy flow left, Komponenten-Board right. */
-@media (min-width: 1000px) {
-  .vp-live-split {
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-    align-items: center;
-  }
-}
-
 .vp-puls {
   min-width: 0;
 }
