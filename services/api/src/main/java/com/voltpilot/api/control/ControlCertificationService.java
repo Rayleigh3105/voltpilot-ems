@@ -160,19 +160,29 @@ public class ControlCertificationService {
     }
 
     /**
-     * Räumt beim Unclaim ab: die Scharfschaltung geht (der FK-CASCADE erledigt
-     * das ohnehin, wenn die Gerätezeile fällt - das hier ist der Fall, in dem
-     * das Gerät bestehen bleibt) und der retained Slot wird geleert.
+     * Räumt beim Unclaim den retained Slot: ein Gerät, das niemandem mehr
+     * gehört, darf keine Freigabe behalten, die auf dem Broker auf seine
+     * Rückkehr wartet - dieselbe Hygiene wie beim Provisionierungs-Config, beim
+     * Entity-Push und bei der OTA-Zuweisung. Best-effort und nie werfend.
      *
-     * <p>Best-effort und nie werfend - dieselbe Hygiene wie beim
-     * Provisionierungs-Config und bei der OTA-Zuweisung.
+     * <p><b>⚠ Die Aktivierungs-ZEILE wird hier ABSICHTLICH nicht gelöscht - sie
+     * stirbt am FK-CASCADE.</b> Ein {@code DELETE} von hier aus wäre ein
+     * SELBST-BLOCKADE (im Testcontainers-Lauf reproduziert, Thread hing im
+     * Postgres-Zeilenlock): {@code DeviceController.unclaim} ist
+     * {@code @Transactional} auf dem {@code @Primary} (mandantenbezogenen)
+     * Datenpfad und hat die Gerätezeile schon gelöscht, hält also bis zum
+     * Commit die Sperre auf den kaskadierenden Zeilen - während dieses
+     * Repository an einer ANDEREN Verbindung hängt (der BYPASSRLS-Rolle
+     * {@code voltpilot_admin}) und damit auf einen Commit wartet, der ohne
+     * seinen eigenen Rücklauf nie kommt.
+     *
+     * <p>Das ist die Kehrseite derselben Regel, aus der in {@code RolloutService}
+     * kein {@code @Transactional} steht: die zwei Datenpfade dürfen sich nie
+     * gegenseitig belauern. Das {@code ON DELETE CASCADE} der Migration erledigt
+     * das Aufräumen ohnehin ATOMAR mit dem Gerät - besser, als es von außen
+     * nachzuziehen.
      */
     public void onDeviceUnclaimed(UUID tenantId, UUID siteId, UUID deviceId) {
-        try {
-            repo.deactivate(deviceId);
-        } catch (Exception e) {
-            log.warn("could not clear the control activation of {}: {}", deviceId, e.getMessage());
-        }
         ControlCertificationPublisher p = publisher.getIfAvailable();
         if (p != null) {
             p.clear(tenantId, siteId, deviceId);
