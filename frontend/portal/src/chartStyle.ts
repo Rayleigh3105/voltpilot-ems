@@ -235,12 +235,19 @@ export function storageMark(
 
 /**
  * Der ECharts-`itemStyle` einer Speicher-Marke. Ein Umriss zeichnet den Rand in
- * der Serienfarbe und lässt die Füllung fast leer — bei einem 14-px-Stab ist
- * das ablesbar, ohne einen zweiten Farbton zu erfinden.
+ * der Serienfarbe und lässt die Füllung leer — bei einem 14-px-Stab ist das
+ * ablesbar, ohne einen zweiten Farbton zu erfinden.
+ *
+ * ⚠ Er gehört an das DATENELEMENT (`data: [{ value, itemStyle }]`), nicht als
+ * Callback an die Serie. ECharts wertet auf `series.itemStyle` nur einen Teil
+ * der Felder als Funktion aus — `color` ja, `borderWidth` NICHT: eine Funktion
+ * dort ergibt eine ungültige Breite, und die Serie zeichnet dann GAR NICHTS
+ * (im Browser aufgefallen: der ganze Balken-Satz des Fahrplans fehlte, nicht
+ * nur der Rand). Per-Item-Stil ist der unterstützte Weg.
  */
 export function storageItemStyle(mark: StorageMark, surface: string) {
   if (mark.form === 'filled') {
-    return { color: mark.color, borderRadius: BAR.radius };
+    return { color: mark.color, borderRadius: BAR.radius, borderWidth: 0 };
   }
   return {
     color: surface,
@@ -248,6 +255,12 @@ export function storageItemStyle(mark: StorageMark, surface: string) {
     borderWidth: 1.2,
     borderRadius: BAR.radius,
   };
+}
+
+/** Ein Balken-Datenelement mit seiner Speicher-Marke - `null` bleibt eine Lücke. */
+export function storageBar(value: number | null, mark: StorageMark, surface: string) {
+  if (value == null) return null;
+  return { value, itemStyle: storageItemStyle(mark, surface) };
 }
 
 /* ---------------------------------------------------------------------------
@@ -310,7 +323,7 @@ export function directLabel(
  * schneidet ECharts das Etikett am Canvas-Rand ab — der Baufehler, den die
  * Revision-1-Mockups vorführten (r2 §2 Befund ⑥).
  */
-export const DIRECT_LABEL_GUTTER_PX = 92;
+export const DIRECT_LABEL_GUTTER_PX = 108;
 
 /* ---------------------------------------------------------------------------
  * K3 · Detailtiefe — drei Serien im Grundzustand

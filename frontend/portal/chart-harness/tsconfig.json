@@ -5,5 +5,11 @@
     "types": []
   },
   "include": ["./**/*.ts", "./**/*.tsx", "../src"],
-  "exclude": ["./vite.config.ts", "../src/**/*.test.ts", "../src/**/*.test.tsx", "../src/test"]
+  "exclude": [
+    "./vite.config.ts",
+    "./vitest.config.ts",
+    "../src/**/*.test.ts",
+    "../src/**/*.test.tsx",
+    "../src/test"
+  ]
 }

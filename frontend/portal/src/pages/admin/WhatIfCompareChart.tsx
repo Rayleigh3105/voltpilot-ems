@@ -1,4 +1,4 @@
-import { BAR, STROKE } from '../../chartStyle';
+import { BAR, storageBar, STROKE } from '../../chartStyle';
 import { chartTheme } from '../../chartTheme';
 import { chargeKind, slotBarMark } from '../../schedule';
 import { useEChart } from '../../useEChart';
@@ -133,24 +133,17 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               name: 'Ihre Regler',
               type: 'bar',
               yAxisIndex: 0,
-              data: variantBattery,
+              // Dieselbe Speicher-Sprache wie im Kunden-Fahrplan: EINE Farbe,
+              // Umriss = abgeben. Bis Stufe 1 malte dieser Chart das Entladen
+              // im Kosten-ROT und widersprach damit jeder anderen Flaeche. Der
+              // Stil haengt am DATENELEMENT (siehe `storageItemStyle`).
+              data: variantBattery.map((v, i) =>
+                storageBar(v, slotBarMark(kindOf({ dataIndex: i, value: v }), t), t.surface),
+              ),
               barCategoryGap: BAR.categoryGap,
               barMaxWidth: BAR.maxWidth,
               z: 3,
-              itemStyle: {
-                borderRadius: BAR.radius,
-                // Dieselbe Speicher-Sprache wie im Kunden-Fahrplan: EINE Farbe,
-                // Umriss = abgeben. Bis Stufe 1 malte dieser Chart das Entladen
-                // im Kosten-ROT und widersprach damit jeder anderen Flaeche.
-                color: (p: { dataIndex: number; value: number | null }) => {
-                  const mark = slotBarMark(kindOf(p), t);
-                  return mark.form === 'filled' ? mark.color : t.surface;
-                },
-                borderColor: (p: { dataIndex: number; value: number | null }) =>
-                  slotBarMark(kindOf(p), t).color,
-                borderWidth: (p: { dataIndex: number; value: number | null }) =>
-                  slotBarMark(kindOf(p), t).form === 'outline' ? 1.2 : 0,
-              },
+
             },
             {
               name: 'Ladestand (Regler)',

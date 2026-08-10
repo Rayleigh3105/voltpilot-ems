@@ -44,11 +44,24 @@ function timeLabel(ms: number): string {
  * dem Haus-Blau: der gemessene Blau-Kollaps dieses Charts (F10). Preis-Blau ist
  * ab jetzt fuer PREISE reserviert, Netz traegt ueberall den Netz-Ton.
  */
-const CHANNELS: { label: string; key: keyof TelemetryPoint; tone: keyof ReturnType<typeof chartTheme>; axis: number; unit: string }[] = [
-  { label: 'PV-Erzeugung', key: 'pvPowerKw', tone: 'pvLine', axis: 0, unit: 'kW' },
-  { label: 'Hausverbrauch', key: 'loadKw', tone: 'loadLine', axis: 0, unit: 'kW' },
-  { label: 'Netz', key: 'powerKw', tone: 'flowGridLine', axis: 0, unit: 'kW' },
-  { label: 'Batterie-Ladestand', key: 'socPct', tone: 'soc', axis: 1, unit: '%' },
+const CHANNELS: {
+  label: string;
+  /**
+   * Der KURZE Name für das Etikett am Kurvenende (K2). Ein Etikett steht im
+   * Bild und muss in den rechten Rand passen - „Batterie-Ladestand  95 %"
+   * wurde dort abgeschnitten (im Browser gemessen). Die Legende trägt weiter
+   * den vollen Namen; gleiche Farbe + gleicher Wortanfang machen die Zuordnung.
+   */
+  kurz: string;
+  key: keyof TelemetryPoint;
+  tone: keyof ReturnType<typeof chartTheme>;
+  axis: number;
+  unit: string;
+}[] = [
+  { label: 'PV-Erzeugung', kurz: 'PV', key: 'pvPowerKw', tone: 'pvLine', axis: 0, unit: 'kW' },
+  { label: 'Hausverbrauch', kurz: 'Haus', key: 'loadKw', tone: 'loadLine', axis: 0, unit: 'kW' },
+  { label: 'Netz', kurz: 'Netz', key: 'powerKw', tone: 'flowGridLine', axis: 0, unit: 'kW' },
+  { label: 'Batterie-Ladestand', kurz: 'Ladestand', key: 'socPct', tone: 'soc', axis: 1, unit: '%' },
 ];
 
 export function TelemetryChart({
@@ -129,8 +142,8 @@ export function TelemetryChart({
               if (v == null) return '';
               const n = Number(v);
               return c.unit === '%'
-                ? `${c.label}  ${fmtNum(n, '%', 0)}`
-                : `${c.label}  ${fmtNum(Math.abs(n), 'kW')}`;
+                ? `${c.kurz}  ${fmtNum(n, '%', 0)}`
+                : `${c.kurz}  ${fmtNum(Math.abs(n), 'kW')}`;
             }),
           );
         });
@@ -151,7 +164,10 @@ export function TelemetryChart({
             // ECharts es am Canvas-Rand ab (der Baufehler der Revision 1).
             right: labelled ? DIRECT_LABEL_GUTTER_PX : narrow ? 20 : 44,
             bottom: 8,
-            left: 8,
+            // `containLabel` rechnet die Achsen-BESCHRIFTUNG ein, nicht den
+            // Achsen-NAMEN - ohne diesen Rand wird „Leistung (kW)" links
+            // angeschnitten (im Browser gemessen).
+            left: 12,
             containLabel: true,
           },
           tooltip: {
@@ -194,7 +210,7 @@ export function TelemetryChart({
               // wird, und kW neben kWh unkommentiert ist die haeufigste
               // Verwechslung im Energie-Portal.
               name: AXIS_NAME.leistung(narrow),
-              nameTextStyle: { color: t.axis, fontSize: AXIS.nameFontSize },
+              nameTextStyle: { color: t.axis, fontSize: AXIS.nameFontSize, align: 'left' },
               splitLine: { lineStyle: { color: t.grid } },
               axisTick: { show: false },
               axisLine: { show: false },

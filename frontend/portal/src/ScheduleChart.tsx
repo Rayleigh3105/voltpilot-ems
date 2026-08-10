@@ -8,6 +8,7 @@ import {
   nowLabel,
   nowLineStyle,
   SMOOTH_SERIES,
+  storageBar,
   STROKE,
 } from './chartStyle';
 import { AXIS as AXIS_NAME } from './chartCopy';
@@ -299,16 +300,6 @@ export function ScheduleChart({
     // the customer switched the "Ladestand" layer on (D4).
     const hasSoc = showSoc;
 
-    /**
-     * Die Lade-Art EINES Balkens. `chargeKind` ist die eine Ableitung; der
-     * Rückfall auf das Vorzeichen greift nur, wenn der Slot fehlt.
-     */
-    const kindOfSlot = (p: { dataIndex: number; value: unknown }) => {
-      const slot = slots[p.dataIndex];
-      if (slot) return chargeKind(slot.batteryKw, slot.gridKw, slot.pvKw, slot.curtailKw);
-      return Number(p.value) >= 0 ? ('solarladen' as const) : ('entladen' as const);
-    };
-
     const markLineData: any[] = [];
     if (boundaryIdx > 0)
       markLineData.push({
@@ -560,23 +551,24 @@ export function ScheduleChart({
             name: 'Batterie',
             type: 'bar',
             yAxisIndex: 0,
-            data: battery,
+            // K5: der Speicher ist EINE Farbe - Laden gefüllt, Abgeben als
+            // UMRISS (dazu unter der Nulllinie und mit Wort in der Legende).
+            // Der Stil hängt am DATENELEMENT, nicht als Callback an der Serie
+            // (siehe `storageItemStyle` - eine Funktion auf `borderWidth` lässt
+            // ECharts den ganzen Balken-Satz weglassen).
+            data: battery.map((v, i) => {
+              const sl = slots[i];
+              const kind = sl
+                ? chargeKind(sl.batteryKw, sl.gridKw, sl.pvKw, sl.curtailKw)
+                : (v ?? 0) >= 0
+                  ? ('solarladen' as const)
+                  : ('entladen' as const);
+              return storageBar(v, slotBarMark(kind, t), t.surface);
+            }),
             // F9: aus dem 96-Slot-Farbblock werden ablesbare Viertelstunden-Stäbe.
             barCategoryGap: BAR.categoryGap,
             barMaxWidth: BAR.maxWidth,
             z: 3,
-            itemStyle: {
-              borderRadius: BAR.radius,
-              // K5: der Speicher ist EINE Farbe - Laden gefüllt, Abgeben als
-              // UMRISS (dazu unter der Nulllinie und mit Wort in der Legende).
-              color: (p: any) => {
-                const mark = slotBarMark(kindOfSlot(p), t);
-                return mark.form === 'filled' ? mark.color : t.surface;
-              },
-              borderColor: (p: any) => slotBarMark(kindOfSlot(p), t).color,
-              borderWidth: (p: any) =>
-                slotBarMark(kindOfSlot(p), t).form === 'outline' ? 1.2 : 0,
-            },
             // Shade the already-elapsed part of the day, and mark today|morgen + jetzt.
             markArea:
               nowIdx > 0

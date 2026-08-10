@@ -11,7 +11,7 @@ import {
   nowLabel,
   nowLineStyle,
   SMOOTH_SERIES,
-  storageItemStyle,
+  storageBar,
   storageMark,
   STROKE,
   withAlpha,
@@ -708,20 +708,17 @@ export function HistoryDayChart({ history }: { history: History }) {
             name: 'Batterie (ist)',
             type: 'bar',
             yAxisIndex: 0,
-            data: battery,
+            // K5: der Speicher ist EINE Farbe. Laden ist gefüllt, Abgeben ein
+            // UMRISS - dazu liegt es unter der Nulllinie und trägt sein Wort in
+            // Legende und Tooltip. Der Stil hängt am DATENELEMENT, nicht als
+            // Callback an der Serie (siehe `storageItemStyle`).
+            data: battery.map((v) =>
+              storageBar(v, storageMark(v != null && v < 0 ? 'entladen' : 'laden', t), t.surface),
+            ),
             // F9: aus dem Farb-Block werden ablesbare Viertelstunden-Stäbe.
             barCategoryGap: BAR.categoryGap,
             barMaxWidth: BAR.maxWidth,
             z: 3,
-            itemStyle: {
-              // K5: der Speicher ist EINE Farbe. Laden ist gefüllt, Abgeben ein
-              // UMRISS - dazu liegt es unter der Nulllinie und trägt sein Wort
-              // in Legende und Tooltip.
-              ...storageItemStyle(storageMark('laden', t), t.surface),
-              color: (p: { value: number }) => (Number(p.value) >= 0 ? t.charge : t.surface),
-              borderColor: t.charge,
-              borderWidth: (p: { value: number }) => (Number(p.value) >= 0 ? 0 : 1.2),
-            },
             markArea:
               nowIdx > 0
                 ? {

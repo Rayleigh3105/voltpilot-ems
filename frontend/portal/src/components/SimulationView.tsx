@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { ApiError } from '../api';
-import { BAR, STROKE } from '../chartStyle';
+import { BAR, storageBar, storageMark, STROKE } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { useEChart } from '../useEChart';
 import { eurAmount, fmtNum } from '../format';
@@ -318,17 +318,18 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
             {
               name: 'VoltPilot Speicher',
               type: 'bar',
-              data: tag.slots.map((s) => s.batterieVoltpilotKw),
+              // Dieselbe Speicher-Sprache wie ueberall: EINE Farbe, Umriss =
+              // abgeben. Das Kosten-ROT ist hier raus (F5/F10); der Stil haengt
+              // am DATENELEMENT (siehe `storageItemStyle`).
+              data: tag.slots.map((s) =>
+                storageBar(
+                  s.batterieVoltpilotKw,
+                  storageMark(s.batterieVoltpilotKw < 0 ? 'entladen' : 'laden', t),
+                  t.surface,
+                ),
+              ),
               barMaxWidth: BAR.maxWidth,
               barCategoryGap: BAR.categoryGap,
-              itemStyle: {
-                // Dieselbe Speicher-Sprache wie ueberall: EINE Farbe, Umriss =
-                // abgeben. Das Kosten-ROT ist hier raus (F5/F10).
-                borderRadius: BAR.radius,
-                color: (p: { value: number }) => (Number(p.value) >= 0 ? t.charge : t.surface),
-                borderColor: t.charge,
-                borderWidth: (p: { value: number }) => (Number(p.value) >= 0 ? 0 : 1.2),
-              },
             },
             {
               name: 'Standard-Speicher',
