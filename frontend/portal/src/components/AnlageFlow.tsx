@@ -1045,12 +1045,13 @@ function ManualBatteryStep({
  * Step 4 · Nutzung: the ADAPTIVE step (AE5, spec §2/§3/§10). Three parts, all
  * optional and skippable:
  *
- *  - Ihre Geräte: the entities of the Anlage. When VoltPilot onboards
- *    (platform-admin via the tenant switcher) the pilot entities are composed
- *    from the Register/Gerät master data via the v2 bootstrap and additional
- *    controllable Verbraucher (Wallbox/Heizstab/…) can be added; a customer
- *    sees the recognised devices read-only (the permanent editing home is the
- *    "Geräte & Entitäten" surface).
+ *  - Ihre Geräte: the entities of the Anlage. They are composed from the
+ *    Register/Gerät master data BY THE SERVER, automatically, the moment the
+ *    Gerät step claims the device - for every customer, with no admin and no
+ *    button (the former `if (admin)` bootstrap call is gone). A platform-admin
+ *    can additionally add controllable Verbraucher (Wallbox/Heizstab/…) here;
+ *    a customer sees the recognised devices read-only (the permanent editing
+ *    home is the "Geräte & Entitäten" surface).
  *  - Womit sollen wir starten: the auto-start TEMPLATE chooser. Since M1/M6
  *    (F5, report §6.5) this is the ONLY surviving use of
  *    `usage_profile_override` in the portal - it picks which starter flow
@@ -1099,9 +1100,17 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
     };
   }, [site.id]);
 
-  // Compose the pilot entities (admin bootstrap - idempotent, fail-soft), then
-  // load the entity list + derived usage profile (+ the type catalog for the
+  // Load the entity list + derived usage profile (+ the type catalog for the
   // admin add). A customer just reads what exists; nothing here blocks the step.
+  //
+  // Der frühere `if (admin)`-Bootstrap-Aufruf ist ERSATZLOS entfallen: der
+  // SERVER komponiert seit dem Auto-Trigger selbst, sobald die Anlage ihr Gerät
+  // hat (Geräte-Claim in Schritt „Gerät", das direkt vor diesem liegt). Ihn für
+  // Admins „als Sofort-Refresh" stehen zu lassen wäre ein zweiter Weg zu
+  // derselben Wirkung - genau die Doppelung, wegen der ein KUNDE bis hierher
+  // nie eine Komposition bekam: was nur ein Admin auslöst, passiert für den
+  // Kunden eben nicht. Eine Anlage ohne Gerät (Schritt übersprungen) bleibt
+  // ehrlich leer, statt dass der Admin heimlich eine andere Anlage sieht.
   const loadEntities = () =>
     api.siteEntities(site.id).then(
       (d) => setEntities(d.entities),
@@ -1111,14 +1120,6 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
   useEffect(() => {
     let active = true;
     async function run() {
-      if (admin) {
-        try {
-          await entitiesApi.bootstrap(site.id);
-        } catch {
-          // Best-effort: an un-migratable or gateway-less site just shows fewer
-          // entities - the wizard never dead-ends on it.
-        }
-      }
       const [d, prof] = await Promise.all([
         api.siteEntities(site.id).then((x) => x.entities).catch(() => [] as SiteEntity[]),
         api.usageProfile(site.id).then((p) => p).catch(() => null),
