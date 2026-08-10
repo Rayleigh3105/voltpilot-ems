@@ -30,6 +30,7 @@ import { useWake } from '../useWake';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook } from '../control';
 import { curtailTruth, curtailTruthForSlot } from '../curtailment';
+import { flowConflict, flowConflictCandidate, stepFlowConflict } from '../flowConflict';
 import { todaySlots } from '../schedule';
 import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
@@ -960,6 +961,29 @@ export function AnlageSeite({
     surplusReason != null,
   );
 
+  // Flussabgleich (Scout `vp-verkauf-praemisse-s8` §3): der Speicherknoten-Haken
+  // hängt am `controlStrip`-healthy - aber eine register-bestätigte, nicht
+  // fließende Order darf keinen Haken tragen. Dieselbe reine Ableitung wie der
+  // Fahrplan-Held (eine Wahrheit, zwei Flächen), entprellt über den
+  // Rücklese-Zeitpunkt des Geräts.
+  const cockpitFlowInput = {
+    commandedKw: controlStatus?.commandedKw,
+    snapshot: siteSnapshot(ovSite?.live ?? null),
+    snapshotFresh: fresh,
+    executionMode: controlStatus?.executionMode,
+    maxFeedInKw: site.maxFeedInKw,
+  };
+  const hasFlowConflictCandidate = flowConflictCandidate(cockpitFlowInput) != null;
+  const [flowConflictStreak, setFlowConflictStreak] = useState(0);
+  const flowCandRef = useRef(hasFlowConflictCandidate);
+  flowCandRef.current = hasFlowConflictCandidate;
+  const flowConflictObs = controlStatus?.checkedAt ?? null;
+  useEffect(() => {
+    if (flowConflictObs == null) return;
+    setFlowConflictStreak((s) => stepFlowConflict(s, flowCandRef.current));
+  }, [flowConflictObs]);
+  const cockpitFlowConflict = flowConflict(cockpitFlowInput, flowConflictStreak) != null;
+
   // The Gesundheits-Checklist — rendered on BOTH cockpit paths (the projected
   // one lists it as its "Zustand" card, so a migrated plant has the surface the
   // header badge drills to; before this it existed only on the v1 branch).
@@ -1264,8 +1288,10 @@ export function AnlageSeite({
                  der neue Name sofort überall steht. */
               rename={{ siteId: site.id, onRenamed: () => setReloadKey((k) => k + 1) }}
               /* Die Bestätigung ist AM Diagramm ablesbar (Speicher-Knoten),
-                 der Bühnenfuß liefert Satz und Grund. */
-              controlConfirmed={controlView?.state === 'healthy'}
+                 der Bühnenfuß liefert Satz und Grund. Ein Flusskonflikt
+                 (register-bestätigt, aber nicht fließend) entzieht den Haken -
+                 er wäre sonst genau die „lädt 3,3 kW ✓"-Lüge aus Pilsting. */
+              controlConfirmed={controlView?.state === 'healthy' && !cockpitFlowConflict}
               /* Am Telefon steht die Geld-Karte „direkt unterm Fluss"
                  (Konzept) — der Bühnenfuß wandert deshalb unter die
                  Fahrplan-Zeile, deren Aussage er fortsetzt (was ist geplant →

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -37,6 +37,7 @@ import { FahrplanWhyPanel } from '../components/FahrplanWhy';
 import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
 import { jetztHeld } from '../fahrplanJetzt';
 import { JetztHeld, TagesFilm } from '../components/FahrplanJetzt';
+import { flowConflictCandidate, stepFlowConflict } from '../flowConflict';
 import { controlReasonSlot } from '../control';
 import { curtailTruth } from '../curtailment';
 import { buildSnapshot } from '../live';
@@ -788,6 +789,27 @@ export function FahrplanSection({ site }: { site: Site }) {
   const newestTs = points.length > 0 ? points[points.length - 1].ts : null;
   const snapshotFresh =
     newestTs != null && now.getTime() - new Date(newestTs).getTime() <= ONLINE_WINDOW_MS;
+  // Flussabgleich (Scout `vp-verkauf-praemisse-s8` §3): der Entprellungs-Zähler,
+  // EINE Beobachtung je Poll, verankert am Rücklese-Zeitpunkt des Geräts
+  // (`checkedAt` ist je Herzschlag neu). So kann ein einzelner Messversatz
+  // zwischen Speicher-, Haus- und Netzzähler keinen Alarm gebären. Der aktuelle
+  // Befund liegt in einer Ref, damit der Effekt nur je NEUER Beobachtung faltet.
+  const hasConflictCandidate =
+    flowConflictCandidate({
+      commandedKw: control?.commandedKw,
+      snapshot,
+      snapshotFresh,
+      executionMode: control?.executionMode,
+      maxFeedInKw: site.maxFeedInKw,
+    }) != null;
+  const [conflictStreak, setConflictStreak] = useState(0);
+  const conflictCandRef = useRef(hasConflictCandidate);
+  conflictCandRef.current = hasConflictCandidate;
+  const conflictObs = control?.checkedAt ?? null;
+  useEffect(() => {
+    if (conflictObs == null) return;
+    setConflictStreak((s) => stepFlowConflict(s, conflictCandRef.current));
+  }, [conflictObs]);
   // Die Beleg-Lage der Abregelung, EINMAL abgeleitet und an alle drei Flächen
   // gereicht (Held, Slot-Panel, Phasen-Panel) - so können sie sich nicht
   // widersprechen. Sie gilt nur für den laufenden Slot: die Panels filtern
@@ -812,10 +834,26 @@ export function FahrplanSection({ site }: { site: Site }) {
         planStale: staleNote != null,
         nextPhase: naechsterEinsatz(film),
         curtail,
+        maxFeedInKw: site.maxFeedInKw,
+        conflictStreak,
         plantKind: site.plantKind,
         now,
       }),
-    [slots, slotMinutes, control, curtail, plan?.deviceId, snapshot, snapshotFresh, staleNote, film, site.plantKind, now],
+    [
+      slots,
+      slotMinutes,
+      control,
+      curtail,
+      plan?.deviceId,
+      snapshot,
+      snapshotFresh,
+      staleNote,
+      film,
+      site.plantKind,
+      site.maxFeedInKw,
+      conflictStreak,
+      now,
+    ],
   );
 
   const closePanel = () => {
