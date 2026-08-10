@@ -215,10 +215,17 @@
   min-width: 2px;
 }
 
+/* Die drei reservierten Segmente tragen die ROLLENFARBEN des Energieflusses:
+   Notstrom = Haus, Lastspitze = Netz, frei = Batterie. Sie hiessen hier bis
+   Stufe 0 `--vp-flow-haus/-netz/-batterie` - Namen, die es NIE gab (echt sind
+   `-load/-grid/-batt`), also lief jedes Segment auf seinem Hex-Fallback, und
+   zwei davon waren Beinah-Toene der echten Rolle (#14b8a6 statt #0ea5a3,
+   #22c55e statt #16a34a). Jetzt zieht das Segment mit seiner Rolle mit; der
+   Fallback trägt den Token-Wert, damit beide nie wieder auseinanderlaufen. */
 .vp-soc-seg.technisch { background: #94a3b8; }
-.vp-soc-seg.notstrom { background: var(--vp-flow-haus, #8b5cf6); }
-.vp-soc-seg.lastspitze { background: var(--vp-flow-netz, #14b8a6); }
-.vp-soc-seg.frei { background: var(--vp-flow-batterie, #22c55e); }
+.vp-soc-seg.notstrom { background: var(--vp-flow-load, #8b5cf6); }
+.vp-soc-seg.lastspitze { background: var(--vp-flow-grid, #0ea5a3); }
+.vp-soc-seg.frei { background: var(--vp-flow-batt, #16a34a); }
 
 .vp-soc-legend {
   display: grid;
