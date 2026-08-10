@@ -70,6 +70,9 @@
     },
     {
       "type": "wallbox",
+      "certification_status": "simulator_only",
+      "certified_at": null,
+      "certification_notes": "Nur am generischen Simulator nachgewiesen; die reale go-e-Wallbox folgt als erster Bench-zertifizierter Typ (Runbook §5).",
       "label": "Wallbox",
       "category": "consumer",
       "controllable": true,
@@ -87,6 +90,9 @@
     },
     {
       "type": "heating-rod",
+      "certification_status": "simulator_only",
+      "certified_at": null,
+      "certification_notes": "Nur am generischen Simulator nachgewiesen; der Shelly-Heizstab-Treiber folgt der go-e-Zertifizierung.",
       "label": "Heizstab",
       "category": "consumer",
       "controllable": true,
@@ -101,6 +107,9 @@
     },
     {
       "type": "pump",
+      "certification_status": "simulator_only",
+      "certified_at": null,
+      "certification_notes": "Nur am generischen Simulator nachgewiesen; noch keine Bench-Zertifizierung eines realen Geräts.",
       "label": "Pumpe",
       "category": "consumer",
       "controllable": true,
@@ -115,6 +124,9 @@
     },
     {
       "type": "generic-load",
+      "certification_status": "simulator_only",
+      "certified_at": null,
+      "certification_notes": "Nur am generischen Simulator nachgewiesen; noch keine Bench-Zertifizierung eines realen Geräts.",
       "label": "Steuerbare Last",
       "category": "consumer",
       "controllable": true,

@@ -80,6 +80,22 @@ export interface PendingEnrollment {
 }
 
 /**
+ * Ein steuerbarer Gerätetyp mit seinem plattformweiten Freigabe-Stand
+ * (Inkrement 5 / D11). `certificationStatus` ist ein Katalog-Fakt
+ * (`certified` | `in_certification` | `simulator_only` | `not_certified`);
+ * `certifiedAt`/`certificationNotes` sind optional, `connectedCount` die
+ * flottenweite Zahl der verbundenen Geräte dieses Typs.
+ */
+export interface ConsumerDeviceType {
+  type: string;
+  label: string;
+  certificationStatus: string;
+  certifiedAt: string | null;
+  certificationNotes: string | null;
+  connectedCount: number;
+}
+
+/**
  * Eine Zeile des Geräte-Inventars: die VEREINIGUNG von Aufkleber-Registry und
  * echter Flotte, verbunden über die Referenz.
  *
@@ -232,6 +248,15 @@ export const adminApi = {
    */
   listPendingEnrollments: () =>
     request<PendingEnrollment[]>('/api/v1/admin/enrollments/pending'),
+
+  /**
+   * Die steuerbaren Gerätetypen mit ihrem plattformweiten Freigabe-Stand
+   * (Inkrement 5 / D11). Wahrheitsquelle ist der entitytypes-Katalog; die Liste
+   * ist read-only (kein Schalter) und cross-tenant (Zertifizierung gilt je Typ,
+   * nicht je Mandant).
+   */
+  consumerDeviceTypes: () =>
+    request<ConsumerDeviceType[]>('/api/v1/admin/consumer-device-types'),
 
   provisionDevice: (input: ProvisionDeviceInput) =>
     request<ProvisionedDevice>('/api/v1/admin/provisioned-devices', {

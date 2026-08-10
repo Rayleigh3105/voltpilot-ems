@@ -116,6 +116,8 @@ def test_shadow_persists_consumer_slots_only_for_the_flagged_site(monkeypatch):
     )
     flagged = sites[0]
     monkeypatch.setenv("VOLTPILOT_V2_PLAN_SITES", str(flagged.site_id))
+    # Inkrement 5: consumer co-optimization is now flag-gated (default OFF).
+    monkeypatch.setenv("OPTIMIZER_CONTROLLABLE_LOADS_ENABLED", "true")
 
     heater = ControllableLoadEntity(
         entity_id="11111111-2222-4333-8444-555566667777",

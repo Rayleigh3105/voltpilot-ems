@@ -91,6 +91,9 @@ const OptimizerPage = lazy(() =>
 const FlowsPage = lazy(() =>
   import('./pages/admin/FlowsPage').then((m) => ({ default: m.FlowsPage })),
 );
+const GeraetetypenPage = lazy(() =>
+  import('./pages/admin/GeraetetypenPage').then((m) => ({ default: m.GeraetetypenPage })),
+);
 
 export default function App({
   initialAuth,
@@ -937,6 +940,7 @@ function UnifiedPortal() {
           {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
           {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage onNavigate={navigate} />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
+          {page === 'geraetetypen' && isAdmin && <GeraetetypenPage />}
           {page === 'flows' && isAdmin && <FlowsPage tenants={tenants} />}
           </LazyBoundary>
         </>

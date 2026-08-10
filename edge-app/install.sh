@@ -386,6 +386,10 @@ services:
       # exakt der einkompilierte Default; der eigentliche Gerätegate ist die
       # Freigabe pro Modell (First-Light / Zertifizierungs-Allowlist).
       VP_CONTROL_ENABLED: \${VP_CONTROL_ENABLED:-true}
+      # Verbrauchssteuerung §19 Inkrement 5: Verbraucher-Steuerung, Standard
+      # 'false' (getrennt vom Wechselrichter-Not-Aus). Siehe Runbook
+      # docs/verbrauchssteuerung-betrieb.md.
+      VP_CONSUMER_CONTROL_ENABLED: \${VP_CONSUMER_CONTROL_ENABLED:-false}
       # Host-Port des Modbus-Datenspiegels (NUR fuer die Anzeige der Adresse
       # in der Weboberflaeche; das Port-Mapping unten muss denselben Wert
       # nutzen). Der Spiegel selbst ist standardmaessig AUS (mirror.json).

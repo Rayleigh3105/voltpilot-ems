@@ -848,3 +848,60 @@
     transition: none;
   }
 }
+
+/* Inkrement 5: Cockpit-Verbraucherstreifen (§14.10) unter dem Energiefluss */
+.vp-cstrip {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vp-border, #d7dde5);
+  min-width: 0;
+}
+.vp-cstrip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.vp-cstrip-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.vp-cstrip-sum {
+  font-weight: 700;
+  color: var(--vp-stat-ink, #1f2937);
+}
+.vp-cstrip-more {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: var(--vp-action, #2c5282);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.vp-cstrip-more:hover { text-decoration: underline; }
+.vp-cstrip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.vp-cstrip-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "dot name power" "dot state state";
+  column-gap: 8px;
+  align-items: center;
+  font-size: 0.82rem;
+  min-width: 0;
+}
+.vp-cstrip-row .vp-dot { grid-area: dot; }
+.vp-cstrip-name { grid-area: name; font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.vp-cstrip-power { grid-area: power; white-space: nowrap; color: var(--vp-muted, #64748b); }
+.vp-cstrip-state { grid-area: state; color: var(--vp-muted, #64748b); min-width: 0; }
+.vp-cstrip-ok .vp-dot { background: var(--vp-flow-batt, #22c55e); }
+.vp-cstrip-warn .vp-dot { background: #f59e0b; }
+.vp-cstrip-off .vp-dot { background: var(--vp-border, #cbd5e1); }

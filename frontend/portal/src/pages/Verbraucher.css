@@ -274,3 +274,57 @@
 }
 .vp-vb-live-ok .vp-dot { background: var(--vp-success, #2e9e5b); }
 .vp-vb-live-warn .vp-dot { background: var(--vp-warning, #d98a1f); }
+
+/* Inkrement 5: Erfüllungsnachweis (§14.13 "Heute") + Sofortaktionen-Dialog */
+.vp-vb-heute {
+  margin-top: 6px;
+  font-size: 0.82rem;
+  color: var(--vp-muted, #64748b);
+}
+.vp-vb-tasks {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vp-vb-task {
+  min-width: 0;
+  font-size: 0.8rem;
+}
+.vp-vb-task-ok { color: #166534; }
+.vp-vb-task-warn { color: #b45309; }
+.vp-vb-task-off { color: var(--vp-muted, #64748b); }
+
+.vp-vb-override-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px;
+}
+.vp-vb-consequences {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+.vp-vb-duration {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+}
+.vp-vb-duration select {
+  padding: 8px 10px;
+  border: 1px solid var(--vp-border, #d7dde5);
+  border-radius: var(--vp-radius-md, 10px);
+  font: inherit;
+}
+.vp-vb-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

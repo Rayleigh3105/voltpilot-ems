@@ -332,6 +332,31 @@ def surplus_charge_enabled(env=None) -> bool:
     raise ValueError(f"{SURPLUS_CHARGE_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Master gate for co-optimizing steuerbare Verbraucher (Verbrauchssteuerung
+#: §19 Inkrement 5). Default OFF: even a VOLTPILOT_V2_PLAN_SITES-flagged site's
+#: ACTIVE consumer policies are NOT loaded into the shadow co-optimization, so
+#: the v2 plan stays consumer-less and byte-identical to the pre-Inkrement-2
+#: shadow. Turning it on (per the runbook, after the pilot) lets consumers join
+#: the plan. Garbage values raise loudly (the explain_enabled discipline).
+CONTROLLABLE_LOADS_ENABLED_ENV = "OPTIMIZER_CONTROLLABLE_LOADS_ENABLED"
+
+
+def controllable_loads_enabled(env=None) -> bool:
+    """Whether ACTIVE consumer policies join the shadow co-optimization
+    (§19 Inkrement 5). Default OFF - a flagged site's v2 plan stays consumer-less
+    until this is turned on. Garbage values raise loudly."""
+    env = os.environ if env is None else env
+    raw = env.get(CONTROLLABLE_LOADS_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return False
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{CONTROLLABLE_LOADS_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
 #: Researched default supply-price components as the Bezugspreis fallback for
 #: ``dynamisch``-without-Aufschlag and ``ohne`` sites WITHOUT a maintained
 #: ``site_supply_price`` row (report vp-nacht-bezug-e7 Teil 2: household

@@ -35,6 +35,8 @@ import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
 import { resolveAnlage } from '../anlageNav';
+import { consumersApi } from '../consumers/consumersApi';
+import { consumerStrip, type ConsumerStripView } from '../consumers/fulfillment';
 import { ControlStrip } from '../components/ControlStrip';
 import { useAdaptiveLive } from '../useAdaptiveLive';
 import { liveState, type LiveState } from '../adaptiveLive';
@@ -538,6 +540,10 @@ export function AnlageSeite({
   // the hero can explain a multi-inverter site's composite PV (#524).
   // Fail-soft: an older backend simply yields no breakdown.
   const [sources, setSources] = useState<SiteSource[] | null>(null);
+  // Der Cockpit-Verbraucherstreifen (§14.10): steuerbare Verbraucher + ihr
+  // Live-Zustand, fail-soft geladen. Ohne Verbraucher / auf einem älteren
+  // Backend bleibt es null und das Cockpit ist byte-identisch zu vorher.
+  const [consumersView, setConsumersView] = useState<ConsumerStripView | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   // Aufwach-Signal: die drei BEDINGTEN Lade-Effekte unten holen beim Betreten
@@ -628,6 +634,33 @@ export function AnlageSeite({
         if (active) setSources(null);
       },
     );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
+
+  // The cockpit consumer strip (§14.10): controllable consumers + their live
+  // state. Fail-soft - an older backend / a site without consumers yields null,
+  // and the strip renders nothing (cockpit byte-identical to before).
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      consumersApi.list(site.id).catch(() => []),
+      consumersApi.status(site.id).catch(() => []),
+    ]).then(([list, statuses]) => {
+      if (!active) return;
+      setConsumersView(
+        consumerStrip(
+          (list ?? []).map((c) => ({
+            id: c.id,
+            name: c.name,
+            ratedPowerKw: Number(c.ratedPowerKw),
+            connection: c.connection,
+          })),
+          statuses ?? [],
+        ),
+      );
+    });
     return () => {
       active = false;
     };
@@ -1210,6 +1243,8 @@ export function AnlageSeite({
               stale={heroStale}
               sources={sources}
               pins={siteEntityPins}
+              consumers={consumersView}
+              onOpenConsumers={() => onOpenSub('verbraucher')}
               onOpenSub={onOpenSub}
               /* Der Zeitraum steht in der Bilanz-Leiste, direkt über den
                  Zahlen, die er regiert (Konzept §6.3) - nicht mehr als volle

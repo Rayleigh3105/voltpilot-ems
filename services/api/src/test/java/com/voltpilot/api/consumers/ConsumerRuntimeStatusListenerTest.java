@@ -52,7 +52,10 @@ class ConsumerRuntimeStatusListenerTest {
                 DEVICE, SITE, "demo-inverter-01", "inverter", null, "active", Instant.now(),
                 Instant.now())));
         when(store.consumerEntityIds(SITE)).thenReturn(Set.of(ROD, WALLBOX));
-        listener = new ConsumerRuntimeStatusListener("tcp://localhost:1883", "", "", devices, store);
+        // The fulfilment-ledger writer is exercised end-to-end in ConsumerApiTest;
+        // here it is a no-op mock so this test stays a pure runtime-status parse.
+        listener = new ConsumerRuntimeStatusListener("tcp://localhost:1883", "", "", devices, store,
+                mock(ConsumerRequirementLedgerWriter.class));
     }
 
     @SuppressWarnings("unchecked")

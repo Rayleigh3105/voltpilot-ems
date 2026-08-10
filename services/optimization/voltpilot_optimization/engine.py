@@ -19,7 +19,7 @@ from voltpilot_optimization.co_solver import (
     co_optimize,
     co_optimize_ignoring_grid_limit,
 )
-from voltpilot_optimization.config import v2_plan_site_ids
+from voltpilot_optimization.config import controllable_loads_enabled, v2_plan_site_ids
 from voltpilot_optimization.consumer_inputs import load_consumer_entities
 from voltpilot_optimization.domain import SchedulePlan, SLOTS_24H
 from voltpilot_optimization.entities import from_v1_input
@@ -139,14 +139,18 @@ def _shadow_publish_v2(
         # loud warning instead of dropping the whole shadow run.
         loads = ()
         try:
-            loads = load_consumer_entities(
-                dsn,
-                site.site_id,
-                inp.slot_starts,
-                inp.slot_minutes,
-                [p / 10.0 for p in inp.prices_eur_mwh],
-                [p / 10.0 for p in co_inp.import_prices],
-            )
+            # §19 Inkrement 5: the master gate. OFF (default) => the shadow plan
+            # stays consumer-less and byte-identical to the pre-Inkrement-2 model,
+            # even for a flagged site. Turned on per the runbook after the pilot.
+            if controllable_loads_enabled():
+                loads = load_consumer_entities(
+                    dsn,
+                    site.site_id,
+                    inp.slot_starts,
+                    inp.slot_minutes,
+                    [p / 10.0 for p in inp.prices_eur_mwh],
+                    [p / 10.0 for p in co_inp.import_prices],
+                )
         except Exception as exc:
             logger.warning(
                 "consumer.load_failed",

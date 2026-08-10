@@ -966,6 +966,9 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// Portal-Apply: die EINMALIGE Freigabe, jetzt anzuwenden. NICHT
 		// retained - siehe ota_apply_downlink.go.
 		OnApplyRequest: a.onApplyRequest,
+		// Verbrauchssteuerung §11/§14.13: der manuelle Eingriff. NICHT retained -
+		// siehe override.go.
+		OnDesiredDownlink: a.onDesiredDownlink,
 		OnConnect: func(connected bool) {
 			a.State.Update(func(s *state.Snapshot) {
 				s.CloudConnected = connected

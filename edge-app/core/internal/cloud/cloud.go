@@ -33,14 +33,15 @@ type Link struct {
 	// forget or condition on something.
 	version string
 
-	onSchedule     func(payload []byte)
-	onCommand      func(payload []byte)
-	onEntities     func(payload []byte)
-	onPlanV2       func(payload []byte)
-	onFlows        func(payload []byte)
-	onUpdateTarget func(payload []byte)
-	onApplyRequest func(payload []byte)
-	onConnect      func(connected bool)
+	onSchedule        func(payload []byte)
+	onCommand         func(payload []byte)
+	onEntities        func(payload []byte)
+	onPlanV2          func(payload []byte)
+	onFlows           func(payload []byte)
+	onUpdateTarget    func(payload []byte)
+	onApplyRequest    func(payload []byte)
+	onDesiredDownlink func(payload []byte)
+	onConnect         func(connected bool)
 }
 
 // Options configure the link.
@@ -91,6 +92,14 @@ type Options struct {
 	// late, and that is intended: a consent from three hours ago is not a
 	// consent for now.
 	OnApplyRequest func(payload []byte)
+	// OnDesiredDownlink receives the NON-RETAINED manual override envelope on
+	// .../v2/desired (Verbrauchssteuerung §11/§14.13). nil = not wired. It
+	// carries either a full edge-desired envelope (forwarded to the local bus
+	// where the arbiter clamps + enforces the bounded TTL) or a
+	// {entity_id, withdraw:true} to end the intervention ("Automatik
+	// fortsetzen"). NON-retained like the apply approval: a manual wish must
+	// never be revived as an immortal retained desire (§16).
+	OnDesiredDownlink func(payload []byte)
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -115,7 +124,8 @@ func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, version: o.Version, onSchedule: o.OnSchedule,
 		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
-		onApplyRequest: o.OnApplyRequest, onConnect: o.OnConnect}
+		onApplyRequest: o.OnApplyRequest, onDesiredDownlink: o.OnDesiredDownlink,
+		onConnect: o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -219,6 +229,19 @@ func New(o Options) (*Link, error) {
 				l.onApplyRequest(msg.Payload())
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 apply subscribe failed", "topic", applyTopic, "err", tok.Error())
+			}
+		}
+		// The NON-RETAINED manual override envelope (Verbrauchssteuerung §11).
+		// Not retained on purpose: a manual wish is never revived as an immortal
+		// desire (§16); an offline box simply misses a stale intervention.
+		if l.onDesiredDownlink != nil {
+			desiredTopic := l.topic("v2/desired")
+			if tok := c.Subscribe(desiredTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				if len(msg.Payload()) > 0 {
+					l.onDesiredDownlink(msg.Payload())
+				}
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 desired subscribe failed", "topic", desiredTopic, "err", tok.Error())
 			}
 		}
 		if l.onConnect != nil {

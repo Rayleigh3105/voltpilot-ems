@@ -31,6 +31,7 @@ export type PageId =
   | 'geraete-registry'
   | 'edge-updates'
   | 'optimizer'
+  | 'geraetetypen'
   | 'flows';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
@@ -172,6 +173,9 @@ export const PLATFORM_PAGES: PageDef[] = [
   // Audit-Journal - die EINE neue Seite dieser Stufe (Scout §7.1).
   { id: 'edge-updates', label: 'Edge-Updates', icon: 'refresh-cw', adminOnly: true },
   { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
+  // Inkrement 5 / D11: die read-only Freigabe-Liste der steuerbaren
+  // Gerätetypen - Wahrheitsquelle ist der entitytypes-Katalog (kein Schalter).
+  { id: 'geraetetypen', label: 'Gerätetypen', icon: 'cpu', adminOnly: true },
   { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
 ];
 

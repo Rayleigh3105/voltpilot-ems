@@ -631,6 +631,11 @@ services:
       # separated site UUIDs to ALSO publish a v2 shadow plan for. Empty (the
       # default) = nothing flagged = byte-identical v1.
       VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
+      # Verbrauchssteuerung §19 Inkrement 5: the master gate for co-optimizing
+      # steuerbare Verbraucher. OFF (default) = a flagged site's v2 plan stays
+      # consumer-less, byte-identical to the pre-Inkrement-2 shadow. Turned on
+      # per the runbook (docs/verbrauchssteuerung-betrieb.md) after the pilot.
+      OPTIMIZER_CONTROLLABLE_LOADS_ENABLED: ${OPTIMIZER_CONTROLLABLE_LOADS_ENABLED:-false}
 
   # Ersparnis-Simulation service: the SAME optimization image with a different
   # entrypoint (the weather-collector pattern) - an internal async-job HTTP
@@ -667,6 +672,9 @@ services:
       MQTT_HOST: emqx
       MQTT_PORT: "1883"
       VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
+      # Verbrauchssteuerung §19 Inkrement 5: same master gate as the optimizer,
+      # so a /replan runs the same consumer-less shadow while it is off.
+      OPTIMIZER_CONTROLLABLE_LOADS_ENABLED: ${OPTIMIZER_CONTROLLABLE_LOADS_ENABLED:-false}
       # Same pricing layer as the optimizer - keep the ONE price truth
       # (default-supply-components defaults ON platform-wide, opt out with false).
       OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-true}

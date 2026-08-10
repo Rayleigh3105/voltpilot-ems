@@ -119,6 +119,13 @@ voltpilot:
   metrics:
     fleet:
       enabled: ${VOLTPILOT_METRICS_FLEET_ENABLED:true}
+    # Consumer-control observability (Inkrement 5, §18): active/connected/
+    # disturbed consumers, requirement instances per state, at-risk deadlines,
+    # clamped-by-reason, active manual overrides. Same TIMER discipline as the
+    # fleet metrics; ON by default so the pilot is observable, kill switch
+    # VOLTPILOT_METRICS_CONSUMER_ENABLED=false.
+    consumer:
+      enabled: ${VOLTPILOT_METRICS_CONSUMER_ENABLED:true}
       interval-ms: ${VOLTPILOT_METRICS_FLEET_INTERVAL_MS:60000}
       initial-delay-ms: ${VOLTPILOT_METRICS_FLEET_INITIAL_DELAY_MS:10000}
   security:
