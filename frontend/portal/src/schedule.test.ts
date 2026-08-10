@@ -8,7 +8,11 @@ import {
   curtailSpans,
   curtailTickData,
   curtailTooltip,
+  curtailBandLabel,
+  CURTAIL_BAND_CAUSE,
+  CURTAIL_BAND_WORD,
   CURTAIL_LEGEND_LABEL,
+  priceSpread,
   DUTY_HINT,
   dutyLabel,
   dutyTooltip,
@@ -1166,5 +1170,116 @@ describe('slotDuty / dutyLabel / dutyTooltip (Duty-Vorschau)', () => {
       expect(hint).toContain('Vorhersage');
       expect(hint).not.toMatch(/Duty|Slot|Trim|Setpoint/i);
     }
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * M4 · Das Spannenband (Chart-Redesign Stufe 2)
+ *
+ * Bezugspreis und Einspeisewert liegen je Viertelstunde vor und wurden nirgends
+ * als Kurvenpaar gezeigt - gezeichnet war der nackte Börsenpreis, also genau
+ * die Zahl, mit der der Optimierer NICHT entscheidet. Die Fläche dazwischen ist
+ * der Grund fürs Laden und Entladen.
+ * ------------------------------------------------------------------------- */
+describe('priceSpread (das Spannenband)', () => {
+  const s = (imp: number | null, exp: number | null) => ({
+    importPriceCtKwh: imp,
+    exportValueCtKwh: exp,
+  });
+
+  it('reicht beide Linien durch und baut die Fläche exakt dazwischen', () => {
+    const r = priceSpread([s(30.4, 8.1), s(12, 7)]);
+    expect(r.present).toBe(true);
+    expect(r.importCt).toEqual([30.4, 12]);
+    expect(r.exportCt).toEqual([8.1, 7]);
+    // Gestapelt: Basis + Höhe treffen die obere Linie exakt.
+    expect(r.base).toEqual([8.1, 7]);
+    expect(r.delta[0]).toBeCloseTo(22.3, 6);
+    expect(r.base[0]! + r.delta[0]!).toBeCloseTo(30.4, 6);
+  });
+
+  it('nennt die größte Spanne samt ihrer Mitte - das Namensschild (K10)', () => {
+    const r = priceSpread([s(12, 7), s(30.4, 8.1), s(20, 15)]);
+    expect(r.widestIndex).toBe(1);
+    expect(r.widestCt).toBeCloseTo(22.3, 6);
+    expect(r.widestMidCt).toBeCloseTo((30.4 + 8.1) / 2, 6);
+  });
+
+  it('lässt eine unbewertbare Viertelstunde eine LÜCKE, nie eine 0', () => {
+    const r = priceSpread([s(30, 8), s(null, null), s(null, 8)]);
+    expect(r.importCt).toEqual([30, null, null]);
+    expect(r.base).toEqual([8, null, null]);
+    expect(r.delta).toEqual([22, null, null]);
+  });
+
+  it('trägt ohne BEIDE Größen gar kein Band (älterer Lauf)', () => {
+    expect(priceSpread([s(30, null), s(28, null)]).present).toBe(false);
+    expect(priceSpread([s(null, 8)]).present).toBe(false);
+    expect(priceSpread([]).present).toBe(false);
+  });
+
+  it('zeichnet die Fläche auch, wenn der Einspeisewert OBEN liegt', () => {
+    // Bei einem negativen Börsenpreis kann die feste Vergütung über dem
+    // Bezugspreis liegen. Die Fläche ist definiert als „zwischen den Linien",
+    // in jeder Reihenfolge - eine negative Stapelhöhe zeichnete sich sonst
+    // nach unten aus dem Band heraus.
+    const r = priceSpread([s(-2, 6.4)]);
+    expect(r.base).toEqual([-2]);
+    expect(r.delta[0]).toBeCloseTo(8.4, 6);
+    expect(r.widestMidCt).toBeCloseTo(2.2, 6);
+  });
+
+  it('hängt kein Namensschild an eine Spanne, die nur Rauschen ist', () => {
+    const r = priceSpread([s(20.0, 20.01)]);
+    expect(r.present).toBe(true);
+    expect(r.widestIndex).toBeNull();
+    expect(r.widestCt).toBeNull();
+  });
+
+  it('verwirft unbrauchbare Zahlen, statt sie zu zeichnen', () => {
+    const r = priceSpread([{ importPriceCtKwh: Number.NaN, exportValueCtKwh: 8 }]);
+    expect(r.importCt).toEqual([null]);
+    expect(r.present).toBe(false);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * K5 · Das Abregel-Band trägt sein WORT - und nennt die Ursache nur belegt
+ * ------------------------------------------------------------------------- */
+describe('curtailBandLabel', () => {
+  it('nennt „Preis unter 0", wenn ALLE abregelnden Slots negativ notieren', () => {
+    const label = curtailBandLabel([
+      { curtailKw: 4, exportValueCtKwh: -1.5 },
+      { curtailKw: 2, exportValueCtKwh: -0.4 },
+      { curtailKw: null, exportValueCtKwh: 6 },
+    ]);
+    expect(label).toBe(`${CURTAIL_BAND_WORD}${CURTAIL_BAND_CAUSE}`);
+  });
+
+  it('behauptet KEINE Ursache an einer Einspeisegrenze (positiver Preis)', () => {
+    // FK1: `site.max_feed_in_kw` lässt den Optimierer auch bei gutem Preis
+    // abregeln - „Preis unter 0" wäre dort schlicht falsch.
+    expect(curtailBandLabel([{ curtailKw: 4, exportValueCtKwh: 6.4 }])).toBe(CURTAIL_BAND_WORD);
+  });
+
+  it('nennt die Ursache nicht, wenn nur EIN Teil der Blöcke negativ ist', () => {
+    expect(
+      curtailBandLabel([
+        { curtailKw: 4, exportValueCtKwh: -1.5 },
+        { curtailKw: 4, exportValueCtKwh: 8 },
+      ]),
+    ).toBe(CURTAIL_BAND_WORD);
+  });
+
+  it('nimmt ersatzweise den Börsenpreis, wenn kein Einspeisewert vorliegt', () => {
+    expect(curtailBandLabel([{ curtailKw: 4, priceEurMwh: -30 }])).toBe(
+      `${CURTAIL_BAND_WORD}${CURTAIL_BAND_CAUSE}`,
+    );
+    expect(curtailBandLabel([{ curtailKw: 4, priceEurMwh: 80 }])).toBe(CURTAIL_BAND_WORD);
+  });
+
+  it('behauptet ohne jedes Preissignal nur das Wort', () => {
+    expect(curtailBandLabel([{ curtailKw: 4 }])).toBe(CURTAIL_BAND_WORD);
+    expect(curtailBandLabel([])).toBe(CURTAIL_BAND_WORD);
   });
 });

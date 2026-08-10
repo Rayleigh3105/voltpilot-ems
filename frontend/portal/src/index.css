@@ -313,6 +313,14 @@ svg [tabindex]:focus-visible {
 .vp-chart.compact {
   height: clamp(180px, 32vw, 260px);
 }
+/* Zwei Panels über EINER Zeitachse (F8 verschärft): das flache Preis-Panel
+   kommt zur Leistung dazu, also braucht das Bild mehr Höhe als `tall` - sonst
+   verliert das untere Panel genau das, was der Umbau lesbar machen soll. Am
+   Telefon stapeln sich die Panels weiter INNERHALB einer Instanz (sie teilen
+   die Zeitachse), deshalb wächst die Untergrenze mit. */
+.vp-chart.panels {
+  height: clamp(340px, 54vw, 460px);
+}
 
 /* KPI row (hero of the Übersicht) */
 .vp-kpis {
