@@ -92,5 +92,5 @@
   font-size: 0.86rem;
 }
 .vp-fpk-money b {
-  color: #2e7d32;
+  color: var(--vp-ok-ink, #2e7d32);
 }

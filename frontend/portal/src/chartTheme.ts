@@ -52,6 +52,17 @@ export interface ChartTheme {
   /** Cloud cover. */
   cloud: string;
   /**
+   * Der RUHENDE Slot (warten / Reserve halten) - bewusst KEIN Serienton,
+   * damit „hier passiert nichts" nie wie eine Handlung aussieht.
+   */
+  idle: string;
+  /**
+   * Benanntes Neutral-Grau für Kontext-/Admin-Reihen (F10: „Neutral-Grau als
+   * *benanntes* Token"). Es ist der Wert, der als `rgba(96,125,139,…)` im
+   * Admin-PlanChart stand - gleicher Ton, jetzt mit Namen.
+   */
+  neutral: string;
+  /**
    * The GRID role hue (teal) - the same `--vp-flow-grid` the energy-flow diagram
    * uses, so a "Netz" series reads as the grid everywhere. Deliberately NOT
    * `gridCharge` (that is the Netzladen slot colour) and not the red
@@ -96,6 +107,8 @@ export function chartTheme(): ChartTheme {
     battDischarge: read('--vp-chart-battdischarge', '#2C5282'),
     plan: read('--vp-chart-plan', '#1E3A5F'),
     cloud: read('--vp-chart-cloud', '#90A4AE'),
+    idle: read('--vp-chart-idle', '#EDEFF2'),
+    neutral: read('--vp-chart-neutral', '#607D8B'),
     flowGrid: read('--vp-flow-grid', '#0ea5a3'),
     consumer: read('--vp-flow-load', '#8b5cf6'),
   };

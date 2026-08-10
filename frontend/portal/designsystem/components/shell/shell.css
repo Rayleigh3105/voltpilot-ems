@@ -263,7 +263,7 @@
   font-size: 0.75rem;
   font-weight: 700;
   background: var(--vp-mint-start);
-  color: #2e7d32;
+  color: var(--vp-ok-ink, #2e7d32);
 }
 .vp-checklist .mk.todo {
   background: var(--vp-bg-light);

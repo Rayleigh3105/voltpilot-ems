@@ -152,8 +152,13 @@ export function OptimizerPlanChart({
               silent: true,
               itemStyle: {
                 borderRadius: 1,
+                // Token + `opacity` statt eines rgba-Literals - dasselbe Muster
+                // wie ueberall sonst (`{ color: t.x, opacity: n }`), gleiche
+                // gerenderte Farbe: Neutral-Grau fuer Bezug, Netzlade-Tuerkis
+                // fuer Einspeisung, beide bei 28 %.
+                opacity: 0.28,
                 color: (p: { value: number | null }) =>
-                  Number(p.value) >= 0 ? 'rgba(96,125,139,0.28)' : 'rgba(0,172,193,0.28)',
+                  Number(p.value) >= 0 ? t.neutral : t.gridCharge,
               },
             },
             {

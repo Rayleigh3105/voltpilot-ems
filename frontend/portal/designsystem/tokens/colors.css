@@ -80,6 +80,21 @@
   --vp-chart-battdischarge:#2C5282;/* battery DISCHARGE blue (= action) - earning money is not a problem */
   --vp-chart-plan:      #1E3A5F;  /* plan overlay (= navy) */
   --vp-chart-cloud:     #90A4AE;  /* cloud cover grey */
+  --vp-chart-idle:      #EDEFF2;  /* ruhender Slot (warten/Reserve halten) - bewusst KEIN Serienton */
+  --vp-chart-neutral:   #607D8B;  /* benanntes Neutral-Grau fuer Kontext-/Admin-Reihen (= --vp-grid) */
+
+  /* --- Zustands-Ink (Flaechen ausserhalb der Diagramme) ---
+     Zwei Toene, die im Portal an vielen Stellen als Literal standen. Sie sind
+     bewusst NICHT `--vp-flow-batt-ink` (#166534) bzw. `--vp-flow-pv`: jene
+     tragen das Gesundheits-Abzeichen der Kopfzeile, diese hier den Geld- bzw.
+     Hinweis-Text (Ertrag, erledigter Schritt, Warnhinweis). Gleicher Wert wie
+     zuvor - nur benannt. */
+  --vp-ok-ink:         #2e7d32;  /* positives Ergebnis: Ertrag, erledigt, „ok" */
+  --vp-warn-ink:       #b45309;  /* Hinweis/Warnung als TEXT (Bernstein) */
+
+  /* Neutrale weiche Flaeche: Fortschritts-/Abdeckungs-Spuren und „geplant"-
+     Chips (der noch unentschiedene Zustand). */
+  --vp-neutral-soft:   #eef1f5;
 
   /* Category gradients (135deg) */
   --vp-grad-solar:   linear-gradient(135deg, #FF9800, #F57C00); /* @kind color */

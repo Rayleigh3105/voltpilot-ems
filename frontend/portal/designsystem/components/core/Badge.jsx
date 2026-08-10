@@ -27,11 +27,11 @@ export function Badge({
     },
     ok: {
       background: 'var(--vp-mint-start)',
-      color: '#2e7d32',
+      color: 'var(--vp-ok-ink, #2e7d32)',
     },
     warn: {
       background: '#FFF3E0',
-      color: '#B45309',
+      color: 'var(--vp-warn-ink, #b45309)',
     },
     off: {
       background: 'var(--vp-bg-light)',

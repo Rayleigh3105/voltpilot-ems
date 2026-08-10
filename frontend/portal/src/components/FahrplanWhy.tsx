@@ -41,8 +41,6 @@ import {
 } from '../fahrplanWhy';
 import './FahrplanWhy.css';
 
-/** Neutral idle fill (warten/reserve) - dim like the concept, never a chart hue. */
-const IDLE_BG = '#EDEFF2';
 
 /** The band/panel color of a role, from the shared chart palette. */
 export function roleColor(role: SlotRole, t: ChartTheme): string {
@@ -61,7 +59,9 @@ export function roleColor(role: SlotRole, t: ChartTheme): string {
     case 'abregeln':
       return t.pv;
     default:
-      return IDLE_BG;
+      // Ruhe (warten/Reserve halten) traegt bewusst KEINEN Serienton, damit
+      // „hier passiert nichts" nie wie eine Handlung aussieht.
+      return t.idle;
   }
 }
 
@@ -102,7 +102,7 @@ export function PhaseCard({
         Phase · {phaseRange(phase)} · {phase.slotCount} Viertelstunden
       </div>
       <div className="vp-fw-role">
-        <i style={{ background: phase.kind === 'idle' ? IDLE_BG : roleColor(phase.role, t) }} />
+        <i style={{ background: phase.kind === 'idle' ? t.idle : roleColor(phase.role, t) }} />
         {roleLabel(phase.role, plantKind, null, false, curtail)}
         {mode && <span className="vp-fw-mode">{mode}</span>}
       </div>
@@ -166,7 +166,7 @@ export function SlotCard({
         <i
           style={{
             background:
-              role === 'warten' || role === 'reserve_halten' ? IDLE_BG : roleColor(role, t),
+              role === 'warten' || role === 'reserve_halten' ? t.idle : roleColor(role, t),
           }}
         />
         {roleLabel(role, plantKind, slot.slotFlags, false, curtail)}

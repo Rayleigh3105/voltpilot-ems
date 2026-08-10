@@ -194,7 +194,7 @@
 }
 
 .vp-setting-prov-geplant {
-  background: #eef1f5;
+  background: var(--vp-neutral-soft, #eef1f5);
   color: #4b5563;
 }
 
