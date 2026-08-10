@@ -92,15 +92,19 @@ func (a *Agent) startConsumerControl(ctx context.Context) {
 	}()
 }
 
-// consumerControlLoop drives one go-e control pass per tick (and re-asserts a
-// stable command every goeReassertInterval). Loop-local state (last executed
-// plan fingerprint + last assert time + phase switcher per entity) lives here.
+// consumerControlLoop drives one control pass per DRIVER per tick (go-e, then
+// shelly; both re-assert a stable command every goeReassertInterval - for
+// shelly the re-assert additionally re-arms the on-device dead-man timer).
+// Loop-local state (last executed plan fingerprint + last assert time + phase
+// switcher per entity) lives here.
 func (a *Agent) consumerControlLoop(ctx context.Context) {
 	t := time.NewTicker(consumerControlTick)
 	defer t.Stop()
 	lastFP := map[string]string{}
 	lastAssert := map[string]time.Time{}
 	switchers := map[string]*goe.PhaseSwitcher{}
+	shellyFP := map[string]string{}
+	shellyAssert := map[string]time.Time{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -108,6 +112,7 @@ func (a *Agent) consumerControlLoop(ctx context.Context) {
 		case <-t.C:
 		}
 		a.runGoeControlPass(ctx, a.goeDoer, lastFP, lastAssert, switchers, time.Now())
+		a.runShellyControlPass(ctx, a.shellyDoerRef(), shellyFP, shellyAssert, time.Now())
 	}
 }
 

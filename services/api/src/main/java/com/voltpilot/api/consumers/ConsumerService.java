@@ -82,7 +82,8 @@ public class ConsumerService {
             String defaultGridEnergyPolicy, boolean allowStorageDischarge, String failsafe,
             boolean enabled, long version, String connection, String edgeSourceId,
             String controlActivation, boolean hasDraftPolicy, Integer draftPolicyVersion,
-            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {}
+            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay,
+            String confirmationChannel) {}
 
     public record CreateConsumerRequest(String type, String name, BigDecimal ratedPowerKw,
             String controlKind, JsonNode levelsKw, BigDecimal minPowerKw, BigDecimal resolutionKw,
@@ -102,7 +103,7 @@ public class ConsumerService {
     public record SignalOption(String name, String label, String signalClass, String valueType) {}
 
     public record ReportedSourceDto(String sourceId, String label, String brand, String role,
-            String health) {}
+            boolean measuresPower, String health) {}
 
     public record IntentOption(String key, String title, String customerLine) {}
 
@@ -150,7 +151,7 @@ public class ConsumerService {
         List<ReportedSourceDto> reported = repo.reportedSources(siteId).stream()
                 .filter(s -> !s.bound())
                 .map(s -> new ReportedSourceDto(s.sourceId(), s.label(), s.brand(), s.role(),
-                        s.health()))
+                        s.measuresPower(), s.health()))
                 .toList();
         return new ConsumerOptionsDto(types, sig, INTENTS, siteHasStorage(siteId), reported,
                 "consumer_first", "allow", activation.activationAvailable());
@@ -213,15 +214,17 @@ public class ConsumerService {
         EntityRow entity = entities.createEntity(siteId, req.type(), name, rated, null, null);
         UUID entityId = entity.id();
 
+        String confirmationChannel = null;
         if (req.edgeSourceId() != null && !req.edgeSourceId().isBlank()) {
             repo.bindEdgeSource(siteId, entityId, req.edgeSourceId().trim());
+            confirmationChannel = confirmationChannelFor(siteId, req.edgeSourceId().trim());
         }
 
         repo.insertProfile(entityId, TenantContext.get(), siteId, controlKind, rated,
                 req.minPowerKw(), toJsonText(req.levelsKw()), req.resolutionKw(),
                 toJsonText(req.powerRangesKw()), storageRelation, gridPolicy,
                 Boolean.TRUE.equals(req.allowStorageDischarge()), failsafe,
-                minOn, minOff, maxStarts);
+                minOn, minOff, maxStarts, confirmationChannel);
 
         // createEntity pushed the registry BEFORE the profile existed; the
         // cycle-guard limits ride the push (D-9), so push again when they are
@@ -404,6 +407,31 @@ public class ConsumerService {
 
     // --- helpers -------------------------------------------------------------
 
+    /**
+     * The D3 confirmation channel a bound edge source honestly supports
+     * (Bestätigungshierarchie §9.4): a source that PROVABLY measures power
+     * (its reported reading carries load_kw - e.g. a go-e wallbox or a
+     * metering Shelly 1PM/Plug S) confirms via power telemetry -> Stufe 2
+     * (runtime exact, energy integrated); a driver-backed source without
+     * proven measurement (a bare Shelly relay, or one that has not reported
+     * yet) confirms via its relay/state readback -> Stufe 3 (runtime
+     * confirmed, energy "angenommen" = Nennleistung x Zeit, labeled so by the
+     * fulfilment ledger). An UNBOUND consumer keeps NULL -> the ledger never
+     * claims fulfilment (Stufe 4). The ledger additionally downgrades a
+     * power_kw channel per period when no telemetry covered it - so this can
+     * overstate nothing.
+     */
+    private String confirmationChannelFor(UUID siteId, String edgeSourceId) {
+        for (ConsumerRepository.ReportedSource s : repo.reportedSources(siteId)) {
+            if (s.sourceId().equals(edgeSourceId)) {
+                return s.measuresPower() ? "power_kw" : "relay_state";
+            }
+        }
+        // Bound but never reported: the driver's readback still confirms the
+        // runtime, only the energy stays assumed until measurement is proven.
+        return "relay_state";
+    }
+
     private ConsumerDto toDto(UUID siteId, ConsumerRow row) {
         int maxPolicy = repo.maxPolicyVersion(siteId, row.entityId());
         String connection = (row.deviceId() != null || row.edgeSourceId() != null)
@@ -421,7 +449,8 @@ public class ConsumerService {
                 row.storageRelation(), row.defaultGridEnergyPolicy(), row.allowStorageDischarge(),
                 row.failsafe(), row.enabled(), row.version(), connection, row.edgeSourceId(),
                 activation, maxPolicy > 0, maxPolicy > 0 ? maxPolicy : null,
-                row.minOnSeconds(), row.minOffSeconds(), row.maxStartsPerDay());
+                row.minOnSeconds(), row.minOffSeconds(), row.maxStartsPerDay(),
+                row.confirmationChannel());
     }
 
     /** control kind => the actuate commands that back it (the §16 capability map). */

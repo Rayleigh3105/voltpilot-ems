@@ -40,6 +40,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/shelly"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
@@ -291,6 +292,16 @@ type Agent struct {
 	// consumersSummary; own mutex so neither touches the other's locks.
 	goeMu    sync.Mutex
 	goeHolds map[string]string
+
+	// shellyDoer executes Shelly HTTP (nil = a default http.Client-backed
+	// doer; injectable for tests). shellyStore persists the once-detected
+	// generation dialect + metering capability per device
+	// (data_dir/shelly-devices.json), lazily opened by shellyStoreRef.
+	// The CORE owns the whole Shelly socket - source poll, connection test
+	// AND the consumer executor (single-writer, internal/shelly).
+	shellyDoer    shelly.Doer
+	shellyStoreMu sync.Mutex
+	shellyStore   *shelly.Store
 
 	// flowDep consumes the retained flow deployment set (agent/flows.go).
 	// Always constructed; without VP_NODERED_ADMIN_URL it verifies + persists
@@ -651,9 +662,14 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := a.startArbitration(ctx); err != nil {
 		return err
 	}
-	// Consumer-control executor (go-e Charger): a no-op while VP_CONTROL_ENABLED
-	// is off (the default), so a read-only deployment never pays for it.
+	// Consumer-control executor (go-e Charger + Shelly relay): a no-op while
+	// VP_CONTROL_ENABLED is off (the default), so a read-only deployment never
+	// pays for it.
 	a.startConsumerControl(ctx)
+	// Shelly source poll: the READ half of the core-owned shelly transport
+	// (Node-RED has no shelly reader). Independent of the control flags, like
+	// every other source read path; idles cheaply without shelly sources.
+	a.startShellySourcePoll(ctx)
 	// E2 flow deployment: reconcile the persisted set at boot (self-heal from
 	// truth) and keep reconciling periodically.
 	a.flowDep.Reconcile()
@@ -2683,7 +2699,12 @@ type sourceReading struct {
 	pv   *float64
 	grid *float64
 	load *float64 // Consumer load (kW, >= 0); only a consumer source populates it
-	recv time.Time
+	// relayOn is the switch state of a relay consumer source (shelly). It is
+	// a REAL fact both metering and non-metering relays have - for the
+	// non-metering class it is the ONLY per-reading fact, so it carries the
+	// freshness/liveness of that source (a fabricated load would not).
+	relayOn *bool
+	recv    time.Time
 	// period is the ACHIEVED read cadence: the wall-clock spacing between this
 	// reading and the previous one (0 until a second reading arrived). The
 	// freshness window derives from it, because the configured interval_s is a
@@ -2726,6 +2747,7 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		PvPowerKw *float64 `json:"pv_power_kw"`
 		PowerKw   *float64 `json:"power_kw"`
 		LoadKw    *float64 `json:"load_kw"`
+		RelayOn   *bool    `json:"relay_on"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
 		slog.Warn("source telemetry malformed; skipped", "id", id, "err", err)
@@ -2738,7 +2760,7 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		return v
 	}
 	pv, grid, load := usable(m.PvPowerKw), usable(m.PowerKw), usable(m.LoadKw)
-	if pv == nil && grid == nil && load == nil {
+	if pv == nil && grid == nil && load == nil && m.RelayOn == nil {
 		return // nothing usable in this reading
 	}
 	now := time.Now().UTC()
@@ -2747,7 +2769,8 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	if prev, ok := a.srcReadings[id]; ok && !prev.recv.IsZero() {
 		period = now.Sub(prev.recv) // the ACHIEVED cadence, feeds the freshness window
 	}
-	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, load: load, recv: now, period: period}
+	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, load: load, relayOn: m.RelayOn,
+		recv: now, period: period}
 	a.srcMu.Unlock()
 	// Feed a running curtailment First-Light test with the unit's measured
 	// output (the enforcement half of the evidence) - a no-op without a test.
@@ -3112,6 +3135,7 @@ func (a *Agent) SourceLastReadings() map[string]sources.LastReading {
 			PvKw:     r.pv,
 			PowerKw:  r.grid,
 			LoadKw:   r.load,
+			RelayOn:  r.relayOn,
 			ReadAtMs: r.recv.UnixMilli(),
 		}
 	}
@@ -3149,6 +3173,14 @@ func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
 			msg = ve.Msg
 		}
 		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest, Message: msg}
+	}
+	if sel.Communication == inverter.CommShellyHTTP {
+		// Shelly is CORE-owned (single-writer, internal/shelly): the one-shot
+		// test runs in-process - detect the generation dialect + metering
+		// capability FRESH (an unsaved form is never answered from the
+		// persisted identity store) and read the relay state. Node-RED has no
+		// shelly reader, so the flow round-trip would only time out.
+		return a.shellyTest(req)
 	}
 	res := a.testReadExchange(sel, req.Role, false, testReadTimeout)
 	if res.OK && req.ControlTest && sel.Communication == inverter.CommGoeHTTP {

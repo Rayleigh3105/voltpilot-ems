@@ -24,6 +24,35 @@ export interface ConsumerContext {
   hasMeasurementChannel: boolean;
 }
 
+/**
+ * The measurement-channel types the TYPE heuristic claims by default - the
+ * pre-confirmationChannel behavior, kept as the honest fallback for consumers
+ * created before the channel was derived (unknown is never "no").
+ */
+const MEASURING_TYPE_DEFAULT = new Set(['wallbox', 'heating-rod', 'pump', 'generic-load']);
+
+/**
+ * Whether a consumer has an energy/power measurement channel (D3, the Ink1
+ * rule "kWh-Ziele nur mit Messung"): the server-derived confirmationChannel
+ * decides when present - 'power_kw'/energy channels measure, 'relay_state'
+ * (a bare Shelly relay) does NOT, so its kWh goals honestly disappear and
+ * the "Ohne Messung kann VoltPilot die Erfüllung nicht nachweisen." note
+ * shows instead. Without the field (older consumer/backend) the type
+ * heuristic keeps today's behavior.
+ */
+export function consumerHasMeasurement(c: {
+  type: string;
+  confirmationChannel?: string | null;
+}): boolean {
+  const ch = c.confirmationChannel;
+  if (ch != null && ch.trim() !== '') {
+    const lower = ch.toLowerCase();
+    return lower.includes('power') || lower.includes('energy')
+      || lower.endsWith('kw') || lower.endsWith('kwh') || lower.endsWith('_wh');
+  }
+  return MEASURING_TYPE_DEFAULT.has(c.type);
+}
+
 export interface ConditionDraft {
   signal: string;
   operator: Operator;

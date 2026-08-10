@@ -25,9 +25,10 @@ type Request struct {
 	Family     string     `json:"family,omitempty"`
 	Connection Connection `json:"connection"`
 	// ControlTest asks for the ADDITIONAL non-disruptive control short-test
-	// (D11, go-e only today): after a successful read the core re-writes the
-	// charger's CURRENT requested current and reads it back - proving the
-	// write path without changing anything (a charging car keeps charging).
+	// (D11): go-e - the core re-writes the charger's CURRENT requested
+	// current and reads it back (a charging car keeps charging); shelly - a
+	// value-identical off-write ONLY while the relay is already off (a
+	// running heat cycle is never interrupted; then read-only + honest note).
 	// Only honored on an explicit request from the wizard's test button.
 	ControlTest bool `json:"control_test,omitempty"`
 }
@@ -61,11 +62,16 @@ type Result struct {
 	ControlCheck *ControlCheck `json:"control_check,omitempty"`
 }
 
-// ControlCheck is the non-disruptive write short-test verdict: the charger's
-// CURRENT requested current was re-written and read back. Message is the
-// German sentence the wizard shows ("Verbindung geprüft" / the honest failure).
+// ControlCheck is the non-disruptive write short-test verdict: a
+// value-identical write was executed and read back (go-e: the current amp
+// value; shelly: off-while-off). Message is the German sentence the wizard
+// shows ("Verbindung geprüft" / the honest failure).
 type ControlCheck struct {
-	OK        bool   `json:"ok"`
+	OK bool `json:"ok"`
+	// Skipped: the check was deliberately NOT run (shelly: the relay is ON
+	// and a running heat cycle is never interrupted). An honest state, not a
+	// failure - ErrorCode stays empty and Message names why.
+	Skipped   bool   `json:"skipped,omitempty"`
 	Key       string `json:"key,omitempty"`
 	Value     int    `json:"value,omitempty"`
 	ErrorCode string `json:"error_code,omitempty"`
@@ -74,6 +80,13 @@ type ControlCheck struct {
 	// during the check (absent = not reported; the wizard's D4 capability hint).
 	PhaseSwitchMode *int `json:"phase_switch_mode,omitempty"`
 	PhasesInUse     *int `json:"phases_in_use,omitempty"`
+	// The shelly capability facts (D3): the detected generation dialect,
+	// model and whether the device measures power. Metering steers the
+	// wizard's honest Bestätigungsstufe hint (Stufe 2 kW-Telemetrie vs
+	// Stufe 3 Laufzeit bestätigt / Energie angenommen). Absent on go-e.
+	Gen         int    `json:"gen,omitempty"`
+	DeviceModel string `json:"device_model,omitempty"`
+	Metering    *bool  `json:"metering,omitempty"`
 }
 
 // Error codes (kept in sync with the Node-RED test-read classification and the

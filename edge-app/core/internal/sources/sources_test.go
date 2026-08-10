@@ -427,3 +427,49 @@ func containsRune(s string, r rune) bool {
 	}
 	return false
 }
+
+// A shelly consumer source is CORE-owned (single-writer: source poll, test and
+// executor all live in internal/shelly), so the retained Node-RED config must
+// never carry it - a forwarded entry would only produce the sources store's
+// permanent NICHT-VERDRAHTET warning for a transport the flow has no reader
+// for. Other sources in the same list are untouched.
+func TestBusConfigExcludesCoreOwnedShellySources(t *testing.T) {
+	shelly, err := Normalize(cat(), Request{
+		Role:  RoleConsumer,
+		Brand: inverter.BrandShelly, Model: inverter.FamShellyHTTP,
+		Connection: inverter.Connection{IP: "192.168.0.60"},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	shelly.ID = "src-shelly1"
+	erz, _ := Normalize(cat(), erzeugerReq(), time.Now())
+	erz.ID = "src-erz1"
+	var m struct {
+		Sources []map[string]any `json:"sources"`
+	}
+	if err := json.Unmarshal(BusConfig([]Source{shelly, erz}), &m); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Sources) != 1 || m.Sources[0]["id"] != "src-erz1" {
+		t.Fatalf("shelly source must not reach Node-RED: %+v", m.Sources)
+	}
+}
+
+// The Shelly switch channel is part of the transport identity (a 2PM is one
+// box with two independent relays = two physical measurement points).
+func TestDeterministicIDShellyChannelIsIdentity(t *testing.T) {
+	base := Source{
+		Role:          RoleConsumer,
+		Communication: inverter.CommShellyHTTP,
+		Connection:    inverter.Connection{IP: "192.168.0.60", Port: 80, Channel: 0},
+	}
+	other := base
+	other.Connection.Channel = 1
+	if DeterministicID(base) == DeterministicID(other) {
+		t.Fatalf("channel must be identity: %q", DeterministicID(base))
+	}
+	if DeterministicID(base) != DeterministicID(base) {
+		t.Fatalf("not deterministic")
+	}
+}

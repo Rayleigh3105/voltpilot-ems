@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  consumerHasMeasurement,
   consumerQuestions,
   moreSettings,
   standardStepCount,
@@ -177,5 +178,36 @@ describe('consumerQuestions', () => {
     for (const k of all) {
       expect(reached, `capability ${k} must be reachable`).toContain(k);
     }
+  });
+});
+
+describe('consumerHasMeasurement (D3 - die Ink1-Regel folgt dem Gerät)', () => {
+  it('folgt dem server-abgeleiteten Bestätigungskanal, wenn er vorliegt', () => {
+    // Stufe 2: ein messender Shelly (1PM/Plug S) / eine go-e Wallbox.
+    expect(consumerHasMeasurement({ type: 'heating-rod', confirmationChannel: 'power_kw' }))
+      .toBe(true);
+    expect(consumerHasMeasurement({ type: 'generic-load', confirmationChannel: 'energy_kwh' }))
+      .toBe(true);
+    // Stufe 3: ein Shelly OHNE Messung - kWh-Ziele verschwinden ehrlich,
+    // obwohl der TYP heating-rod per Heuristik messen "würde".
+    expect(consumerHasMeasurement({ type: 'heating-rod', confirmationChannel: 'relay_state' }))
+      .toBe(false);
+  });
+
+  it('fällt ohne Kanal auf die Typ-Heuristik zurück (unbekannt ist nie "nein")', () => {
+    expect(consumerHasMeasurement({ type: 'heating-rod' })).toBe(true);
+    expect(consumerHasMeasurement({ type: 'wallbox', confirmationChannel: null })).toBe(true);
+    expect(consumerHasMeasurement({ type: 'house-load', confirmationChannel: null })).toBe(false);
+  });
+
+  it('ein nicht messender Verbraucher bekommt statt der kWh-Frage den ehrlichen Satz', () => {
+    const qs = consumerQuestions(
+      ctx({ hasMeasurementChannel: consumerHasMeasurement({
+        type: 'heating-rod', confirmationChannel: 'relay_state' }) }),
+      draft({ intent: 'deadline', demandMode: 'energy' }),
+    );
+    const note = qs.find((q) => q.kind === 'no-measurement-note');
+    expect(note?.note).toContain('Ohne Messung');
+    expect(qs.some((q) => q.kind === 'energy')).toBe(false);
   });
 });

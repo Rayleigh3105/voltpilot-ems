@@ -1,0 +1,158 @@
+{
+  "_comment": "Golden vectors of the Shelly consumer-control mapping (the goe-control-vectors discipline). Go (internal/shelly control_test.go) is the only implementation today; a future JS twin MUST read this SAME file so the two can never drift. plan: config+command -> the pure write plan. set_url: config+identity+on -> the dialect write URL (query keys are alphabetically encoded). readback: written plan vs read state -> the commanded-vs-actual verdict.",
+  "plan": [
+    {
+      "name": "explicit on carries the dead-man timer",
+      "config": { "ip": "192.168.0.60" },
+      "command": { "on_off": true, "control_enabled": true },
+      "expect": { "mode": "on", "on": true, "timer_s": 180, "write": true }
+    },
+    {
+      "name": "explicit off",
+      "config": { "ip": "192.168.0.60" },
+      "command": { "on_off": false, "control_enabled": true },
+      "expect": { "mode": "off", "on": false, "timer_s": 0, "write": true }
+    },
+    {
+      "name": "stale is failsafe OFF, never neutral",
+      "config": { "ip": "192.168.0.60" },
+      "command": { "stale": true, "control_enabled": true },
+      "expect": { "mode": "off", "on": false, "write": true, "reason": "Failsafe: ohne frischen Befehl bleibt das Relais aus" }
+    },
+    {
+      "name": "no actionable command is failsafe OFF",
+      "config": { "ip": "192.168.0.60" },
+      "command": { "control_enabled": true },
+      "expect": { "mode": "off", "on": false, "write": true, "reason": "Failsafe: ohne frischen Befehl bleibt das Relais aus" }
+    },
+    {
+      "name": "setpoint at rated power switches on",
+      "config": { "ip": "192.168.0.60", "rated_power_kw": 3.0 },
+      "command": { "setpoint_kw": 3.0, "control_enabled": true },
+      "expect": { "mode": "on", "on": true, "timer_s": 180, "write": true }
+    },
+    {
+      "name": "sub-rated setpoint snaps DOWN to off (restrict-only)",
+      "config": { "ip": "192.168.0.60", "rated_power_kw": 3.0 },
+      "command": { "setpoint_kw": 1.5, "control_enabled": true },
+      "expect": { "mode": "off", "on": false, "write": true, "reason": "Sollwert unter der Nennleistung - das Relais bleibt aus (nie mehr liefern als befohlen)" }
+    },
+    {
+      "name": "positive setpoint without a known rated power runs",
+      "config": { "ip": "192.168.0.60" },
+      "command": { "setpoint_kw": 2.0, "control_enabled": true },
+      "expect": { "mode": "on", "on": true, "timer_s": 180, "write": true }
+    },
+    {
+      "name": "zero setpoint is off",
+      "config": { "ip": "192.168.0.60" },
+      "command": { "setpoint_kw": 0.0, "control_enabled": true },
+      "expect": { "mode": "off", "on": false, "write": true }
+    },
+    {
+      "name": "kill-switch off plans but never writes",
+      "config": { "ip": "192.168.0.60" },
+      "command": { "on_off": true, "control_enabled": false },
+      "expect": { "mode": "on", "on": true, "timer_s": 180, "write": false, "reason": "Steuerung deaktiviert (Not-Aus)" }
+    },
+    {
+      "name": "no ip is idle",
+      "config": {},
+      "command": { "on_off": true, "control_enabled": true },
+      "expect": { "mode": "idle", "on": false, "write": false, "reason": "keine IP-Adresse" }
+    },
+    {
+      "name": "explicitly disabled timer is named",
+      "config": { "ip": "192.168.0.60", "on_timer_s": -1 },
+      "command": { "on_off": true, "control_enabled": true },
+      "expect": { "mode": "on", "on": true, "timer_s": 0, "write": true, "reason": "Einschalten OHNE Abfall-Timer (per Konfiguration deaktiviert)" }
+    },
+    {
+      "name": "custom timer window",
+      "config": { "ip": "192.168.0.60", "on_timer_s": 300 },
+      "command": { "on_off": true, "control_enabled": true },
+      "expect": { "mode": "on", "on": true, "timer_s": 300, "write": true }
+    }
+  ],
+  "set_url": [
+    {
+      "name": "gen2 on with timer",
+      "config": { "ip": "192.168.0.60" },
+      "identity": { "gen": 2 },
+      "on": true,
+      "expect": "http://192.168.0.60/rpc/Switch.Set?id=0&on=true&toggle_after=180"
+    },
+    {
+      "name": "gen2 off carries no timer",
+      "config": { "ip": "192.168.0.60" },
+      "identity": { "gen": 2 },
+      "on": false,
+      "expect": "http://192.168.0.60/rpc/Switch.Set?id=0&on=false"
+    },
+    {
+      "name": "gen2 second channel and non-default port",
+      "config": { "ip": "192.168.0.60", "port": 8080, "channel": 1 },
+      "identity": { "gen": 2 },
+      "on": true,
+      "expect": "http://192.168.0.60:8080/rpc/Switch.Set?id=1&on=true&toggle_after=180"
+    },
+    {
+      "name": "gen1 on with timer",
+      "config": { "ip": "192.168.0.61" },
+      "identity": { "gen": 1 },
+      "on": true,
+      "expect": "http://192.168.0.61/relay/0?timer=180&turn=on"
+    },
+    {
+      "name": "gen1 off carries no timer",
+      "config": { "ip": "192.168.0.61" },
+      "identity": { "gen": 1 },
+      "on": false,
+      "expect": "http://192.168.0.61/relay/0?turn=off"
+    },
+    {
+      "name": "gen1 disabled timer",
+      "config": { "ip": "192.168.0.61", "on_timer_s": -1 },
+      "identity": { "gen": 1 },
+      "on": true,
+      "expect": "http://192.168.0.61/relay/0?turn=on"
+    }
+  ],
+  "readback": [
+    {
+      "name": "written on and relay on matches",
+      "identity": { "gen": 2 },
+      "plan": { "on_off": true },
+      "state": { "on": true },
+      "expect": { "all_match": true, "key": "output", "commanded": 1, "actual": 1, "match": true }
+    },
+    {
+      "name": "written on but relay stayed off mismatches",
+      "identity": { "gen": 2 },
+      "plan": { "on_off": true },
+      "state": { "on": false },
+      "expect": { "all_match": false, "key": "output", "commanded": 1, "actual": 0, "match": false }
+    },
+    {
+      "name": "written off and relay off matches (gen1 key)",
+      "identity": { "gen": 1 },
+      "plan": { "on_off": false },
+      "state": { "on": false },
+      "expect": { "all_match": true, "key": "ison", "commanded": 0, "actual": 0, "match": true }
+    },
+    {
+      "name": "unreadable relay state never matches",
+      "identity": { "gen": 2 },
+      "plan": { "on_off": true },
+      "state": {},
+      "expect": { "all_match": false, "key": "output", "commanded": 1, "match": false }
+    },
+    {
+      "name": "kill-switch readback-only carries no verdict",
+      "identity": { "gen": 2 },
+      "plan": { "on_off": true, "control_disabled": true },
+      "state": { "on": true },
+      "expect": {}
+    }
+  ]
+}

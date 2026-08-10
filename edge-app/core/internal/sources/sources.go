@@ -120,10 +120,14 @@ type Source struct {
 // clock). A channel the source never delivered stays absent - never a
 // fabricated 0. Pure display data; it drives no aggregation or control.
 type LastReading struct {
-	PvKw     *float64 `json:"pv_kw,omitempty"`    // Erzeuger generation (kW)
-	PowerKw  *float64 `json:"power_kw,omitempty"` // Netz signed grid power (kW, +Bezug/-Einspeisung)
-	LoadKw   *float64 `json:"load_kw,omitempty"`  // Consumer load (kW, >= 0)
-	ReadAtMs int64    `json:"read_at_ms"`
+	PvKw    *float64 `json:"pv_kw,omitempty"`    // Erzeuger generation (kW)
+	PowerKw *float64 `json:"power_kw,omitempty"` // Netz signed grid power (kW, +Bezug/-Einspeisung)
+	LoadKw  *float64 `json:"load_kw,omitempty"`  // Consumer load (kW, >= 0)
+	// RelayOn is the switch state of a relay consumer source (shelly). For a
+	// NON-metering relay it is the only per-reading fact (a load value would
+	// be fabricated); the metering class carries it next to LoadKw.
+	RelayOn  *bool `json:"relay_on,omitempty"`
+	ReadAtMs int64 `json:"read_at_ms"`
 }
 
 // Request is what POST /api/sources accepts (the local web form). Role defaults
@@ -251,6 +255,10 @@ func DeterministicID(s Source) string {
 			strconv.Itoa(s.Connection.MbSlaveID))
 	case inverter.CommModbusTCP, inverter.CommFroniusSunSpec:
 		parts = append(parts, strconv.Itoa(s.Connection.UnitID))
+	case inverter.CommShellyHTTP:
+		// A multi-channel Shelly (2PM) is one box with two independent relays:
+		// each channel is its own physical measurement point.
+		parts = append(parts, strconv.Itoa(s.Connection.Channel))
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
 	id := make([]byte, 8)
@@ -337,9 +345,18 @@ func (s Source) busEntry() map[string]any {
 // plus the array of sources (each carrying only its transport's connection
 // fields). An empty list yields an empty array, which CLEARS the retained
 // config for Node-RED.
+//
+// Shelly sources are EXCLUDED: the CORE owns the whole Shelly socket (source
+// poll, connection test AND the consumer executor, internal/shelly -
+// single-writer), so Node-RED must never see them - a forwarded shelly entry
+// would only produce the sources store's permanent NICHT-VERDRAHTET warning
+// for a transport the flow deliberately has no reader for.
 func BusConfig(list []Source) []byte {
 	entries := make([]map[string]any, 0, len(list))
 	for _, s := range list {
+		if s.Communication == inverter.CommShellyHTTP {
+			continue // core-owned transport, not flow-read
+		}
 		entries = append(entries, s.busEntry())
 	}
 	raw, _ := json.Marshal(map[string]any{

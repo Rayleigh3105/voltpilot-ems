@@ -759,6 +759,89 @@ class ConsumerApiTest {
                 new ParameterizedTypeReference<>() {});
     }
 
+    /**
+     * The D3 capability chain of the Shelly driver (Bestätigungshierarchie
+     * §9.4): a bound edge source that PROVABLY measures power (its reported
+     * reading carries load_kw - a metering Shelly 1PM / go-e) yields the
+     * power_kw confirmation channel (ledger Stufe 2, energy integrated); a
+     * driver-backed source WITHOUT proven measurement (a bare Shelly relay)
+     * yields relay_state (Stufe 3, runtime confirmed, energy "angenommen");
+     * an unbound draft keeps NULL (never a claimed fulfilment). The
+     * consumer-options list carries the honest measuresPower hint per source.
+     */
+    @org.junit.jupiter.api.Test
+    void consumerCreationDerivesTheConfirmationChannelFromTheReportedSource() {
+        String tok = token("demo", "demo");
+        UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        String device = "00000000-0000-0000-0000-000000000003"; // BERLIN seed inverter
+        TenantContext.set(tenantA);
+        try {
+            jdbc.update("INSERT INTO device_source_status (device_id, source_id, tenant_id, "
+                    + "site_id, kind, role, label, brand, load_kw, health, reported_at) VALUES "
+                    + "(?::uuid, 'src-sh-pm', ?, ?::uuid, 'source', 'consumer', 'Heizstab PM', "
+                    + "'shelly', 2.0, 'ok', now()) ON CONFLICT (device_id, source_id) DO UPDATE "
+                    + "SET load_kw = EXCLUDED.load_kw", device, tenantA, BERLIN_SITE);
+            jdbc.update("INSERT INTO device_source_status (device_id, source_id, tenant_id, "
+                    + "site_id, kind, role, label, brand, load_kw, health, reported_at) VALUES "
+                    + "(?::uuid, 'src-sh-bare', ?, ?::uuid, 'source', 'consumer', 'Heizstab ohne "
+                    + "Messung', 'shelly', NULL, 'ok', now()) ON CONFLICT (device_id, source_id) "
+                    + "DO UPDATE SET load_kw = EXCLUDED.load_kw", device, tenantA, BERLIN_SITE);
+        } finally {
+            TenantContext.clear();
+        }
+        String metered = null;
+        String bare = null;
+        String draft = null;
+        try {
+            // The assistant sees WHAT each device can do before anything binds.
+            Map<String, Object> options = getMap(
+                    "/api/v1/sites/" + BERLIN_SITE + "/consumer-options", tok);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> reported =
+                    (List<Map<String, Object>>) options.get("reportedSources");
+            Map<String, Object> pm = reported.stream()
+                    .filter(r -> "src-sh-pm".equals(r.get("sourceId"))).findFirst().orElseThrow();
+            Map<String, Object> noMeter = reported.stream()
+                    .filter(r -> "src-sh-bare".equals(r.get("sourceId"))).findFirst().orElseThrow();
+            assertThat(pm.get("measuresPower")).isEqualTo(Boolean.TRUE);
+            assertThat(noMeter.get("measuresPower")).isEqualTo(Boolean.FALSE);
+
+            Map<String, Object> c1 = create(tok, Map.of("type", "heating-rod",
+                    "name", "Rod misst", "ratedPowerKw", 3.0, "controlKind", "on_off",
+                    "edgeSourceId", "src-sh-pm"));
+            metered = (String) c1.get("id");
+            assertThat(c1.get("confirmationChannel")).isEqualTo("power_kw");
+
+            Map<String, Object> c2 = create(tok, Map.of("type", "heating-rod",
+                    "name", "Rod ohne Messung", "ratedPowerKw", 3.0, "controlKind", "on_off",
+                    "edgeSourceId", "src-sh-bare"));
+            bare = (String) c2.get("id");
+            assertThat(c2.get("confirmationChannel")).isEqualTo("relay_state");
+
+            Map<String, Object> c3 = create(tok, Map.of("type", "heating-rod",
+                    "name", "Rod Entwurf", "ratedPowerKw", 3.0, "controlKind", "on_off"));
+            draft = (String) c3.get("id");
+            assertThat(c3.get("confirmationChannel")).isNull();
+        } finally {
+            // Unbind (a connected consumer refuses DELETE by design), then clean.
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("UPDATE measurement_point SET edge_source_id = NULL "
+                        + "WHERE site_id = ?::uuid AND edge_source_id IN "
+                        + "('src-sh-pm', 'src-sh-bare')", BERLIN_SITE);
+                jdbc.update("DELETE FROM device_source_status WHERE device_id = ?::uuid AND "
+                        + "source_id IN ('src-sh-pm', 'src-sh-bare')", device);
+            } finally {
+                TenantContext.clear();
+            }
+            for (String id : new String[] {metered, bare, draft}) {
+                if (id != null) {
+                    delete(tok, id);
+                }
+            }
+        }
+    }
+
     private ResponseEntity<Map<String, Object>> put(String token, String path,
             Map<String, Object> body) {
         return rest.exchange(url(path), HttpMethod.PUT, new HttpEntity<>(body, bearer(token)),

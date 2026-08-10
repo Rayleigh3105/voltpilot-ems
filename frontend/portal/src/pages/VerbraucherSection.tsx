@@ -31,6 +31,7 @@ import type {
 } from '../consumers/types';
 import {
   consumerQuestions,
+  consumerHasMeasurement,
   standardStepCount,
   type ConditionDraft,
   type ConsumerContext,
@@ -489,6 +490,9 @@ function CreateWizard({
                 <option key={s.sourceId} value={s.sourceId}>
                   {s.label ?? s.sourceId}
                   {s.brand ? ` · ${s.brand}` : ''}
+                  {s.measuresPower === true ? ' · misst Leistung' : ''}
+                  {s.measuresPower === false
+                    ? ' · ohne Leistungsmessung (Energie wird angenommen)' : ''}
                 </option>
               ))}
             </select>
@@ -574,8 +578,7 @@ function RuleBuilder({
   const ctx: ConsumerContext = {
     controlKind: consumer.controlKind,
     hasStorage: options.hasStorage,
-    hasMeasurementChannel: consumer.type === 'wallbox' || consumer.type === 'heating-rod'
-      || consumer.type === 'pump' || consumer.type === 'generic-load',
+    hasMeasurementChannel: consumerHasMeasurement(consumer),
   };
   const [draft, setDraft] = useState<ConsumerDraft>(
     () => ({ ...initialDraft(consumer), ...(prefill ?? {}) }),

@@ -43,6 +43,15 @@ const (
 	// power, which VoltPilot maps onto the CONSUMER load channel. Read-only by
 	// construction (no charge/current control). See nodered/goe/goe-api.js.
 	CommGoeHTTP = "goe_http_api"
+	// CommShellyHTTP is a Shelly relay/plug switching a consumer (heating rod,
+	// pump, generic load) over its local HTTP API (LAN, keyless, port 80).
+	// The generation dialect (Gen1 REST vs Gen2+ RPC) and the metering
+	// capability (1PM/Plug-S class vs plain relay) are DETECTED once by the
+	// CORE and persisted - never configured by the operator. Unlike every
+	// other transport the CORE owns the whole socket (source poll, connection
+	// test AND the consumer-control executor, internal/shelly) - single
+	// writer, no Node-RED read path. See nodered/SHELLY.md.
+	CommShellyHTTP = "shelly_http"
 	// CommKostalModbus reads a KOSTAL PLENTICORE battery inverter over the
 	// vendor's own Modbus-TCP server (TCP 1502, Unit-ID 71 - NOT the generic 502/1
 	// defaults, which is why this is its own communication like fronius_sunspec):
@@ -66,6 +75,11 @@ const (
 	// point). Added as a source in the "Weitere Energiequellen" flow, not as a
 	// primary inverter.
 	BrandGoe = "go-e"
+	// BrandShelly is a Shelly relay/plug switching a consumer (heating rod or
+	// another switchable load). Added as a source with the Verbraucher role,
+	// never as a primary inverter; the control path is the core executor
+	// (internal/shelly).
+	BrandShelly = "shelly"
 	// BrandKostal is the KOSTAL PLENTICORE BI battery inverter (AC-coupled,
 	// battery-only - the DC side IS the battery, no MPPTs). It is a PRIMARY
 	// inverter: it measures battery power + SoC and, via an attached KOSTAL
@@ -83,6 +97,7 @@ const (
 	defaultFroniusPort        = 80 // Fronius Solar API (HTTP); GEN24 self-signed HTTPS uses insecure_tls
 	defaultFroniusSunSpecPort = 502
 	defaultGoePort            = 80   // go-e Charger local HTTP API v2
+	defaultShellyPort         = 80   // Shelly local HTTP API (both generations)
 	defaultKostalPort         = 1502 // KOSTAL PLENTICORE Modbus-TCP server
 	defaultKostalUnitID       = 71   // KOSTAL default Modbus Unit-ID (changeable on the device)
 )
@@ -288,6 +303,11 @@ const (
 	// self-describing (one GET returns the charging power), so there is no
 	// per-model register map - one family covers every go-e Charger model.
 	FamGoeHTTP = "goe_http_api"
+	// FamShellyHTTP is the single decode profile for the Shelly local HTTP API.
+	// The GENERATION dialect (Gen1 REST vs Gen2+ RPC) is NOT a family: the
+	// core detects it per device and persists it (internal/shelly Store), so
+	// one family covers every Shelly relay/plug model.
+	FamShellyHTTP = "shelly_http"
 	// FamKostalPlenticore is the register profile of the KOSTAL PLENTICORE BI
 	// battery-inverter line (official Modbus map, G1/G2 identical for the read
 	// registers used) - nodered/kostal/kostal-decode.js owns the map + decode.
@@ -462,6 +482,38 @@ func goeModels() []Model {
 	}
 }
 
+// shellyFields describes the Shelly connection: host + HTTP port + the switch
+// channel on multi-channel devices. Generation and metering capability are
+// detected, never asked - the customer cannot know their "Gen".
+func shellyFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Shelly", Type: "text", Required: true,
+			Help: "Die IP des Shelly im lokalen Netz (z. B. 192.168.0.60). Feste IP/DHCP-Reservierung empfohlen; der Passwortschutz der Shelly-Weboberfläche muss AUS sein."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultShellyPort,
+			Help: "HTTP-Port des Shelly, üblicherweise 80."},
+		{Key: "channel", Label: "Schaltkanal", Type: "number", Default: 0,
+			Help: "Nur bei Mehrkanal-Geräten (z. B. Shelly 2PM): 0 = erster Kanal, 1 = zweiter."},
+	}
+}
+
+// shellyFamilies is the single profile (dialect + metering are detected).
+func shellyFamilies() []Family {
+	return []Family{
+		{ID: FamShellyHTTP, Label: "Shelly HTTP API", Note: "Lokale HTTP-Schnittstelle; Generation (Gen1/Gen2+) wird automatisch erkannt"},
+	}
+}
+
+// shellyModels offers one generic entry: whether the device measures power
+// (1PM/Plug-S class) is DETECTED from the device itself, not picked from a
+// list - a picked-but-wrong metering claim would fabricate a capability. No
+// RatedKw (the consumer's Nennleistung lives in the cloud consumer profile).
+func shellyModels() []Model {
+	return []Model{
+		{ID: FamShellyHTTP, Label: "Shelly Relais/Schaltaktor (alle Generationen)", Family: FamShellyHTTP,
+			Note: "Shelly 1/1PM, Plus 1/1PM, Plug S u. a. - Generation und Leistungsmessung werden automatisch erkannt"},
+	}
+}
+
 // kostalFields describes the KOSTAL PLENTICORE Modbus-TCP connection: the
 // vendor server on TCP 1502 with Unit-ID 71 (both device-changeable), plus the
 // float byte-order setting (device register 5: factory default little/CDAB;
@@ -608,6 +660,20 @@ func DefaultCatalog() Catalog {
 				// Tier 0 for the inverter control-path: a go-e wallbox is a CONSUMER,
 				// controlled by the certified Go core executor (internal/goe), not the
 				// Node-RED battery controlRoute.
+				ControlTier: ControlTierReadOnly,
+			},
+			{
+				ID:            BrandShelly,
+				Label:         "Shelly (Relais/Schaltaktor)",
+				Communication: CommShellyHTTP,
+				CommLabel:     "Shelly HTTP API (lokal)",
+				Note:          "Shelly-Relais vor einem Verbraucher (z. B. Heizstab) - Generation und Leistungsmessung werden automatisch erkannt. Als zusätzliche Energiequelle mit der Rolle \"Verbraucher\" hinzufügen.",
+				Models:        shellyModels(),
+				Families:      shellyFamilies(),
+				Fields:        shellyFields(),
+				// Tier 0 for the inverter control-path: a Shelly switches a
+				// CONSUMER, driven by the core executor (internal/shelly), not
+				// the Node-RED battery controlRoute.
 				ControlTier: ControlTierReadOnly,
 			},
 		},
@@ -772,6 +838,11 @@ type Connection struct {
 	UnitID  int    `json:"unit_id,omitempty"`
 	Profile string `json:"profile,omitempty"`
 
+	// shelly_http: the switch/relay output on multi-channel devices (0 = the
+	// first). Generation + metering are DETECTED per device (internal/shelly),
+	// never configured.
+	Channel int `json:"channel,omitempty"`
+
 	// fronius_solar_api (InvertGridSign above is shared as the sign escape hatch)
 	InsecureTLS bool `json:"insecure_tls,omitempty"`
 
@@ -893,6 +964,12 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		RatedKw:       ratedKw,
 	}
 
+	// The Shelly switch channel belongs to shelly_http only (cleared here
+	// once instead of per-case; the shelly case validates it below).
+	if b.Communication != CommShellyHTTP {
+		conn.Channel = 0
+	}
+
 	switch b.Communication {
 	case CommSolarmanV5:
 		conn.Serial = strings.TrimSpace(conn.Serial)
@@ -960,7 +1037,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, false, 0, false, ""
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
-		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
+		conn.CurtailWriteFc = 0     // the Fronius curtailment write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
 	case CommFroniusSolarAPI:
@@ -1053,6 +1130,23 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.InvertControlSign, conn.InvertBattSign = false, false
 		conn.ControlWriteFc = 0
 		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
+	case CommShellyHTTP:
+		// Shelly local HTTP: host + port + switch channel. Generation dialect
+		// and metering are DETECTED by the core (internal/shelly), never
+		// configured; no serial/unit id/sign hatch.
+		if conn.Port == 0 {
+			conn.Port = defaultShellyPort
+		}
+		if conn.Channel < 0 || conn.Channel > 3 {
+			return Selection{}, invalid("Der Schaltkanal muss zwischen 0 und 3 liegen.")
+		}
+		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
+		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		conn.InvertControlSign, conn.InvertBattSign = false, false
+		conn.ControlWriteFc = 0
+		conn.CurtailWriteFc = 0
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
 	default:
