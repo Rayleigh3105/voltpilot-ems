@@ -14,6 +14,7 @@
  * fall back to the old import-based derivation.
  */
 
+import type { Kernaussage } from './chartKopf';
 import { storageMark, type StorageMark } from './chartStyle';
 import type { ChartTheme } from './chartTheme';
 import { eurAmount, NBSP } from './format';
@@ -786,6 +787,54 @@ export function savingsTodayEur(
   );
   if (priced.length === 0) return null;
   return priced.reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
+}
+
+/**
+ * K1/M11 · Die KERNAUSSAGE des Fahrplan-Diagramms — die Zahl, die zählt, plus
+ * ihr Satz, plus der Vergleichsanker (K8).
+ *
+ * ⚠ Sie ist ZUSAMMENGESETZT, nicht neu gerechnet: der Satz ist
+ * {@link planSentence}, die Zahl {@link savingsTodayEur}, der Anker die schon
+ * persistierte Baseline derselben Slots. Es entsteht hier KEINE zweite
+ * Wahrheit — genau das ist die Auflage aus r2 §10, weil ein falsch
+ * abgeleiteter Satz schlimmer wäre als kein Satz.
+ *
+ * Ohne planbare Aussage bleibt `satz` null und `grund` trägt den ehrlichen
+ * Grund — nie ein erfundener Satz, nie eine erfundene 0.
+ */
+export function planKernaussage(
+  slots: (PlanSlotLike & { costEur: number | null; baselineCostEur: number | null })[],
+  kind: PlanWordingKind,
+  now: Date,
+  slotMinutes = 15,
+): Kernaussage {
+  const satz = planSentence(slots, kind, now, slotMinutes);
+  if (satz == null) {
+    return {
+      wert: null,
+      satz: null,
+      grund: 'Für heute liegt noch kein Fahrplan vor.',
+      ton: 'calm',
+    };
+  }
+  const saved = savingsTodayEur(slots, now);
+  const heute = todaySlots(slots, now).filter((s) => s.baselineCostEur != null);
+  const baseline = heute.length
+    ? heute.reduce((sum, s) => sum + (s.baselineCostEur ?? 0), 0)
+    : null;
+  return {
+    // Eine Ersparnis unter dem Totband ist Solver-Rauschen, keine Aussage.
+    wert: saved != null && Math.abs(saved) >= BANKED_DEADBAND_EUR ? eurAmount(saved) : null,
+    satz,
+    grund: null,
+    ton: saved != null && saved > BANKED_DEADBAND_EUR ? 'ok' : 'calm',
+    // K8: keine Zahl ohne Vergleichsanker. Die Baseline („dieselbe Anlage,
+    // Speicher untätig") liegt je Slot im Plan - sie wird nur nie gezeigt.
+    anker:
+      saved != null && baseline != null && Math.abs(saved) >= BANKED_DEADBAND_EUR
+        ? `Ohne Speicher wären es ${eurAmount(baseline)}.`
+        : null,
+  };
 }
 
 // ---- Banked terminal value + horizon-edge honesty (FK2) ----------------------

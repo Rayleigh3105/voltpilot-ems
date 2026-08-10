@@ -265,6 +265,54 @@ export const SMOOTH = 0.2;
 export const SMOOTH_SERIES = { smooth: SMOOTH, smoothMonotone: 'x' } as const;
 
 /* ---------------------------------------------------------------------------
+ * K2/M12 · Direktbeschriftung — Name + Wert AM Kurvenende
+ *
+ * Eine Legende ist eine Zuordnungsaufgabe, ein Etikett am Kurvenende ist eine
+ * Antwort. Und sie kann strukturell nicht mehr lügen: in Revision 1 stand in
+ * der Legende „PV 11,2 kW", während die Kurve an der Jetzt-Linie bei ~4 kW lag
+ * (r2 §2 Befund ④) — steht der Wert AN der Kurve, ist das unmöglich.
+ *
+ * Umgesetzt mit ECharts-Bordmitteln: `endLabel` schreibt das Etikett an den
+ * letzten Datenpunkt, `labelLayout.moveOverlap: 'shiftY'` schiebt zwei zu nah
+ * beieinander liegende Etiketten vertikal auseinander (die geforderte
+ * Kollisionsauflösung). WANN direkt beschriftet wird, entscheidet die reine
+ * `useDirectLabels` in `chartKopf.ts` — nicht diese Funktion.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Der `endLabel`-Satz EINER Reihe. `formatter` bekommt den Punkt und gibt den
+ * fertigen Text — die Fläche formatiert ihre Zahl selbst (`format.ts`), damit
+ * hier keine zweite Zahlen-Formatierung entsteht.
+ *
+ * ⚠ Der Text ist KUNDENCOPY und läuft durch ECharts' Label-Renderer, nicht
+ * durch `innerHTML` — anders als die Tooltip-Formatter. Trotzdem gilt: nur
+ * statische Reihennamen plus formatierte Zahlen, nie ein API-String.
+ */
+export function directLabel(
+  color: string,
+  formatter: (p: { value: unknown; seriesName: string }) => string,
+) {
+  return {
+    endLabel: {
+      show: true,
+      distance: 6,
+      color,
+      fontSize: AXIS.fontSize,
+      fontWeight: 600 as const,
+      formatter,
+    },
+    labelLayout: { moveOverlap: 'shiftY' as const },
+  };
+}
+
+/**
+ * Wie viel Rand eine direkt beschriftete Fläche rechts braucht. Ohne das
+ * schneidet ECharts das Etikett am Canvas-Rand ab — der Baufehler, den die
+ * Revision-1-Mockups vorführten (r2 §2 Befund ⑥).
+ */
+export const DIRECT_LABEL_GUTTER_PX = 92;
+
+/* ---------------------------------------------------------------------------
  * K3 · Detailtiefe — drei Serien im Grundzustand
  * ------------------------------------------------------------------------- */
 

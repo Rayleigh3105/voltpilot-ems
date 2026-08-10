@@ -1,5 +1,5 @@
 import type { PriceHistory } from './api';
-import { BAR, FILL, STROKE } from './chartStyle';
+import { AXIS, BAR, FILL, STROKE } from './chartStyle';
 import { AXIS as AXIS_NAME, axisName } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { fokusFenster, tagesGrenze, type TagFokus } from './marktpreise';
@@ -271,9 +271,13 @@ export function PriceHistoryChart({
           },
           yAxis: {
             type: 'value',
-            name: 'EUR/MWh',
+            // K4: die Einheit steht nie allein - EUR/MWh bleibt als
+            // Profi-Detail, nur mit ihrer Groesse davor.
+            name: axisName('Preis', 'EUR/MWh'),
             splitLine: { lineStyle: { color: t.grid } },
-            axisLabel: { color: t.axis },
+            axisTick: { show: false },
+            axisLine: { show: false },
+            axisLabel: { color: t.axis, fontSize: AXIS.fontSize },
           },
           series: [
             {

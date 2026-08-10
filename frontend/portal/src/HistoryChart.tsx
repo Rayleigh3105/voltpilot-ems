@@ -1,7 +1,12 @@
 import { useRef, useState } from 'react';
 import type { History } from './api';
+import { endsCollide, useDirectLabels } from './chartKopf';
+import { useChartDetail } from './useChartDetail';
 import {
   BAR,
+  BASE_SERIES_LIMIT,
+  DIRECT_LABEL_GUTTER_PX,
+  directLabel,
   FILL,
   nowLabel,
   nowLineStyle,
@@ -12,6 +17,7 @@ import {
   withAlpha,
 } from './chartStyle';
 import { chartTheme, type ChartTheme } from './chartTheme';
+import { fmtNum } from './format';
 import {
   anzeigeWert,
   energieDiagramm,
@@ -28,7 +34,12 @@ import {
 } from './historieEreignisse';
 import { angleichen, type UeberlagerungLegende } from './historieVergleich';
 import { useEChart } from './useEChart';
-import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
+import {
+  ChartDetailToggle,
+  ChartLegend,
+  ChartInsight,
+  type LegendItem,
+} from './components/ChartExplain';
 import { EreignisSpur, ereignisFarbe } from './components/EreignisSpur';
 import { UeberlagerungLegendeZeile } from './components/HistorieWelt';
 
@@ -198,13 +209,27 @@ export function HistoryEnergieChart({
   /** Wer oben/unten liegt, in Worten — kommt aus `historieVergleich`. */
   legende?: UeberlagerungLegende | null;
 }) {
+  // K3: der Grundzustand zeigt HÖCHSTENS drei Reihen. Was darüber hinausgeht
+  // (Batterie, Ladestand) liegt hinter „Mehr anzeigen ▾" - weniger
+  // gleichzeitig ist verständlicher, UND es ist die vom dataviz-Validator
+  // vorgeschriebene Antwort auf nicht trennbare Farbpaare („cut series or
+  // facet instead"). Der Zustand wird pro Tab-Sitzung gemerkt.
+  const [tiefe, tiefeUmschalten] = useChartDetail('messwerte.reihen');
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const t = chartTheme();
   const diagramm = energieDiagramm(history);
   // Nur Reihen mit Werten sind überhaupt schaltbar/zeichenbar.
   const vorhanden = diagramm.serien.filter((s) => !s.leer);
   const fehlend = diagramm.serien.filter((s) => s.leer);
-  const sichtbar = vorhanden.filter((s) => !hidden.has(s.label));
+  // Die Reihen jenseits des Grundzustands - benannt, damit der Umschalter
+  // sagt, WAS dahinter liegt (ein „mehr" ohne Inhaltsangabe ist eine
+  // Wundertüte). Ausgeblendet wird nur, was der Kunde nicht selbst ein- oder
+  // ausgeschaltet hat.
+  const tiefereReihen = vorhanden.slice(BASE_SERIES_LIMIT);
+  const sichtbar = vorhanden.filter(
+    (s) =>
+      !hidden.has(s.label) && (tiefe || !tiefereReihen.some((x) => x.label === s.label)),
+  );
   // Die Vergleichsreihen entstehen aus DEMSELBEN `energieDiagramm` - eine
   // zweite Ableitung könnte auseinanderlaufen. Zugeordnet wird über den
   // Reihen-SCHLÜSSEL (nie über die Reihenfolge), am Index ausgerichtet.
@@ -260,6 +285,31 @@ export function HistoryEnergieChart({
         .map((s) => ({ s, v: vglSerien.get(s.key) }))
         .filter((x): x is { s: EnergieSerie; v: EnergieSerie } => x.v != null);
       const nameOf = (s: EnergieSerie) => `${s.label} · ${vglName}`;
+      // K2: Name + Wert AM Kurvenende. Nur auf der TAGES-Ansicht (Linien mit
+      // sichtbarem Ende); die kWh-Balken von Woche+ haben kein Kurvenende, und
+      // eine Vergleichs-Überlagerung verdoppelt jede Reihe - dann bleibt die
+      // Legende der bessere Weg (K2-Rückfall).
+      const linienEnden = sichtbar
+        .filter((x) => x.linie && !x.zweiteAchse)
+        .map((x) => {
+          for (let i = x.werte.length - 1; i >= 0; i -= 1) {
+            const v = x.werte[i];
+            if (v != null) return v;
+          }
+          return null;
+        });
+      const alleWerte = sichtbar
+        .filter((x) => x.linie && !x.zweiteAchse)
+        .flatMap((x) => x.werte.filter((v): v is number => v != null));
+      const spanne = alleWerte.length ? Math.max(...alleWerte) - Math.min(...alleWerte) : 0;
+      const direkt =
+        vglReihen.length === 0 &&
+        sichtbar.every((x) => x.linie) &&
+        useDirectLabels(
+          sichtbar.filter((x) => !x.zweiteAchse).length,
+          width,
+          endsCollide(linienEnden, spanne),
+        );
       const vglLookup = new Map(vglReihen.map((x) => [nameOf(x.s), x.s]));
 
       const serieOption = (s: EnergieSerie, isFirst: boolean) => {
@@ -318,6 +368,13 @@ export function HistoryEnergieChart({
               ? { width: STROKE.contextSoft, color, type: 'dotted' as const }
               : { width: STROKE.lead, color },
             ...(s.zweiteAchse ? {} : { areaStyle: { opacity: FILL.wash, color } }),
+            ...(direkt && !s.zweiteAchse
+              ? directLabel(color, (p) => {
+                  const v = p.value;
+                  if (v == null) return '';
+                  return `${s.label}  ${fmtNum(Math.abs(Number(v)), einheit)}`;
+                })
+              : {}),
             z: s.zweiteAchse ? 1 : 2,
           };
         }
@@ -336,7 +393,8 @@ export function HistoryEnergieChart({
           textStyle: { fontFamily: t.font, color: t.axis },
           grid: {
             top: 26,
-            right: brauchtSoc ? (narrow ? 26 : 46) : 12,
+            // K2 braucht rechts Platz fuer das Etikett.
+            right: direkt ? DIRECT_LABEL_GUTTER_PX : brauchtSoc ? (narrow ? 26 : 46) : 12,
             bottom: narrow ? 8 : 34,
             left: 8,
             containLabel: true,
@@ -474,7 +532,11 @@ export function HistoryEnergieChart({
     [history, diagramm, sichtbar, vergleich, legende, t],
   );
 
-  const legend: LegendItem[] = vorhanden.map((s) => ({
+  // Die Legende bewirbt nur, was gezeichnet WERDEN KANN: eine Reihe hinter dem
+  // zugeklappten „Mehr anzeigen" ist keine ausgeblendete Reihe, sie ist gar
+  // nicht im Bild - sie in der Legende zu führen wäre ein leeres Versprechen.
+  const legendReihen = tiefe ? vorhanden : vorhanden.slice(0, BASE_SERIES_LIMIT);
+  const legend: LegendItem[] = legendReihen.map((s) => ({
     color: farbe(t, s.farbe, s.linie),
     label: s.label,
     unit: s.vorzeichen ?? s.unit,
@@ -483,6 +545,13 @@ export function HistoryEnergieChart({
 
   return (
     <div>
+      {tiefereReihen.length > 0 && (
+        <ChartDetailToggle
+          open={tiefe}
+          onToggle={tiefeUmschalten}
+          was={tiefereReihen.map((s) => s.label).join(', ')}
+        />
+      )}
       <ChartLegend
         items={legend}
         hidden={hidden}

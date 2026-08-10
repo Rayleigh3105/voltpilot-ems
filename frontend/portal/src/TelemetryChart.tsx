@@ -1,5 +1,13 @@
 import type { TelemetryPoint } from './api';
-import { AXIS, FILL, SMOOTH_SERIES, STROKE } from './chartStyle';
+import {
+  AXIS,
+  DIRECT_LABEL_GUTTER_PX,
+  directLabel,
+  FILL,
+  SMOOTH_SERIES,
+  STROKE,
+} from './chartStyle';
+import { endsCollide, useDirectLabels } from './chartKopf';
 import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { ChartInsight, ChartLegend, type LegendItem } from './components/ChartExplain';
@@ -87,8 +95,46 @@ export function TelemetryChart({
       // Only the channels the customer left on (V3 channel-toggle pills). The
       // "Jetzt" marker + shaded past ride the first VISIBLE series so they stay
       // even if PV is toggled off.
+      /** Der letzte gezeichnete Wert einer Reihe - `null`, wenn sie leer endet. */
+      const lastValues = (chans: typeof CHANNELS) =>
+        chans
+          .filter((c) => c.axis === 0)
+          .map((c) => {
+            for (let i = points.length - 1; i >= 0; i -= 1) {
+              const v = points[i][c.key] as number | null;
+              if (v != null) return Number(v);
+            }
+            return null;
+          });
+      /** Die Spannweite der kW-Achse - der Massstab fuer „zu nah beieinander". */
+      const kwValues = points.flatMap((p) =>
+        [p.pvPowerKw, p.loadKw, p.powerKw].filter((v): v is number => v != null),
+      );
+      const span = kwValues.length ? Math.max(...kwValues) - Math.min(...kwValues) : 0;
+
       const visible = CHANNELS.filter((c) => !hidden?.has(c.label));
       const built = visible.map((c) => series(c.label, c.key, t[c.tone] as string, c.axis));
+      // K2: Name + aktueller Wert AM Kurvenende statt einer Zuordnungsaufgabe
+      // in der Legende. Die Legende bleibt (sie ist hier zugleich der
+      // Kanal-Umschalter), aber die Zahl steht an der Linie - dort kann sie
+      // ihr nicht mehr widersprechen.
+      const labelled = useDirectLabels(visible.length, width, endsCollide(lastValues(visible), span));
+      if (labelled) {
+        built.forEach((b, i) => {
+          const c = visible[i];
+          Object.assign(
+            b,
+            directLabel(t[c.tone] as string, (p) => {
+              const v = Array.isArray(p.value) ? p.value[1] : p.value;
+              if (v == null) return '';
+              const n = Number(v);
+              return c.unit === '%'
+                ? `${c.label}  ${fmtNum(n, '%', 0)}`
+                : `${c.label}  ${fmtNum(Math.abs(n), 'kW')}`;
+            }),
+          );
+        });
+      }
       // F5: auf einer Flaeche, die AUSSCHLIESSLICH Vergangenheit zeigt,
       // entfaellt die Jetzt-Linie SAMT Vergangenheits-Wash. Der rechte Rand IST
       // jetzt (die x-Achse endet auf `nowMs`), und ein Wash ueber das ganze
@@ -99,7 +145,15 @@ export function TelemetryChart({
       chart.setOption(
         {
           textStyle: { fontFamily: t.font, color: t.axis },
-          grid: { top: 30, right: narrow ? 20 : 44, bottom: 8, left: 8, containLabel: true },
+          grid: {
+            top: 30,
+            // K2 braucht rechts Platz fuer das Etikett - sonst schneidet
+            // ECharts es am Canvas-Rand ab (der Baufehler der Revision 1).
+            right: labelled ? DIRECT_LABEL_GUTTER_PX : narrow ? 20 : 44,
+            bottom: 8,
+            left: 8,
+            containLabel: true,
+          },
           tooltip: {
             trigger: 'axis',
             confine: true,

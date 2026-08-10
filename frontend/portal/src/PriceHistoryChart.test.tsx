@@ -142,7 +142,8 @@ describe('PriceHistoryChart - der Telefon-Fokus', () => {
       maxEurMwh: 90 + i,
     }));
     render(<PriceHistoryChart history={historie(tage, 'P1D')} fokus="heute" />);
-    expect(lastOption.yAxis.name).toBe('EUR/MWh');
+    // K4: die Einheit steht nie allein - das Profi-Detail EUR/MWh bleibt.
+    expect(lastOption.yAxis.name).toBe('Preis (EUR/MWh)');
     expect(lastOption.dataZoom).toBeUndefined();
   });
 });

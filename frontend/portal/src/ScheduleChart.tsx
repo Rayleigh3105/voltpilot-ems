@@ -34,10 +34,12 @@ import {
   measuredPvLine,
   needsPointMarkers,
   planInsightParts,
+  planKernaussage,
   powerAxisMax,
   PV_FORECAST_LABEL,
   SERIES_GROUPS,
   slotBarMark,
+  type PlanWordingKind,
   slotDuty,
   SOC_LABEL,
   socRangeLine,
@@ -45,7 +47,13 @@ import {
   type SeriesGroup,
 } from './schedule';
 import { useEChart } from './useEChart';
-import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
+import {
+  ChartHeadline,
+  ChartLegend,
+  ChartInsight,
+  type LegendItem,
+} from './components/ChartExplain';
+import { chartDetailKey } from './useChartDetail';
 import { consumerShade, type ConsumerLayer } from './consumerSchedule';
 import './components/Fahrplan.css';
 
@@ -109,12 +117,16 @@ function esc(s: string): string {
 const LOCK_SYMBOL =
   'path://M6 8V6a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h1zm2 0h4V6a2 2 0 1 0-4 0v2z';
 
+/** Der Speicherschlüssel der Fahrplan-Schichten (K3, pro Tab-Sitzung). */
+const SCHED_GROUPS_KEY = chartDetailKey('fahrplan.schichten');
+
 export function ScheduleChart({
   plan,
   peakTargetKw,
   onSlotClick,
   selectedIndex,
   consumers,
+  plantKind,
 }: {
   plan: SchedulePlan;
   /**
@@ -141,12 +153,31 @@ export function ScheduleChart({
    * to the pre-consumer view.
    */
   consumers?: ConsumerLayer[];
+  /**
+   * K1: die Veräußerungsform der Anlage - sie entscheidet, ob der
+   * Kernaussage-Satz „verkaufen" oder „nutzen" sagt. **Ohne sie wird KEIN Satz
+   * gezeigt**: eine Direktvermarktungs-Anlage mit „nutzen" zu beschreiben wäre
+   * ein falsch abgeleiteter Satz, und der ist schlimmer als keiner (r2 §10).
+   */
+  plantKind?: PlanWordingKind;
 }) {
   const t = chartTheme();
   // D4: DREI Gruppen-Schalter statt neun Einzel-Pills, und der Default ist
   // ruhig - Balken + Preis + Jetzt tragen die Kernaussage „günstig laden,
   // teuer entladen"; Prognosen/Gemessen/Ladestand sind bewusste Schichten.
-  const [hiddenGroups, setHiddenGroups] = useState<ReadonlySet<SeriesGroup>>(defaultHiddenGroups);
+  // K3: der Grundzustand ist ruhig (Balken + Preis), die Tiefe liegt hinter
+  // den drei benannten Schaltern. Ihr Zustand wird PRO TAB-SITZUNG gemerkt -
+  // wer die Prognosen einmal aufgeklappt hat, findet sie beim Zurückspringen
+  // offen, und ein neuer Tab beginnt wieder ruhig.
+  const [hiddenGroups, setHiddenGroups] = useState<ReadonlySet<SeriesGroup>>(() => {
+    try {
+      const raw = sessionStorage.getItem(SCHED_GROUPS_KEY);
+      if (raw == null) return defaultHiddenGroups();
+      return new Set(raw ? (raw.split(',') as SeriesGroup[]) : []);
+    } catch {
+      return defaultHiddenGroups();
+    }
+  });
   // Memoised: `useEChart` depends on it, and a fresh Set per render would
   // re-draw the canvas on every render.
   const hidden = useMemo(() => hiddenLabels(hiddenGroups), [hiddenGroups]);
@@ -893,8 +924,16 @@ export function ScheduleChart({
       ? null
       : measuredNote(plan.slots, new Date(), plan.slotMinutes || 15);
 
+  // K1/M11: die Kernaussage als SATZ über dem Bild. Sie ist ABGELEITET
+  // (planSentence + savingsTodayEur + die persistierte Baseline als
+  // Vergleichsanker) - ohne belegbare Aussage steht dort der ehrliche Grund.
+  const kern = plantKind
+    ? planKernaussage(plan.slots, plantKind, new Date(), plan.slotMinutes || 15)
+    : null;
+
   return (
     <div>
+      <ChartHeadline kern={kern} />
       <div className="vp-sched-layers" role="group" aria-label="Zusätzliche Schichten">
         {SERIES_GROUPS.filter((g) => groupAvailable[g.id]).map((g) => {
           const on = !hiddenGroups.has(g.id);
@@ -904,7 +943,17 @@ export function ScheduleChart({
               type="button"
               className={`vp-sched-layer${on ? ' on' : ''}`}
               aria-pressed={on}
-              onClick={() => setHiddenGroups((cur) => toggleGroup(cur, g.id))}
+              onClick={() =>
+                setHiddenGroups((cur) => {
+                  const next = toggleGroup(cur, g.id);
+                  try {
+                    sessionStorage.setItem(SCHED_GROUPS_KEY, [...next].join(','));
+                  } catch {
+                    /* Speicher nicht verfügbar - der Zustand lebt nur im Bild. */
+                  }
+                  return next;
+                })
+              }
             >
               {on ? g.label : `+ ${g.label}`}
             </button>

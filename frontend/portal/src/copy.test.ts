@@ -188,3 +188,86 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
     expect(stripComments('return <div>{/* Entität */}ok</div>;')).not.toMatch(/Entität/);
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * K4 · Der Klartext-Wächter über den CHART-Beschriftungen
+ *
+ * Der Wächter oben prüft das gesperrte D3-Vokabular (Gerät/Komponente/
+ * Messwert). Eine Achse, eine Legendenzeile und ein Tooltip sind aber ebenso
+ * Kundencopy — nur eine Ebene tiefer, und sie standen bis Stufe 1 des
+ * Chart-Redesigns unter gar keinem Wächter. Die Ersetzungen selbst leben in
+ * `src/chartCopy.ts`; hier wird gemessen, dass sie eingehalten sind.
+ * ------------------------------------------------------------------------- */
+
+/** Die Kunden-Chart-Flächen (die Admin-Charts sprechen legitim Betreiber-Vokabular). */
+const CHART_FILES = [
+  'ScheduleChart.tsx',
+  'HistoryChart.tsx',
+  'TelemetryChart.tsx',
+  'WeatherChart.tsx',
+  'PriceHistoryChart.tsx',
+  'ForecastQualityChart.tsx',
+  'components/VerlaufChart.tsx',
+  'components/ErloeseVerlaufChart.tsx',
+  'components/PeakHistoryChart.tsx',
+];
+
+const CHART_FORBIDDEN: Array<{ re: RegExp; why: string }> = [
+  { re: /\bSoC\b/, why: 'K4: „Ladestand" statt „SoC"' },
+  { re: /State of Charge/i, why: 'K4: „Ladestand" statt „State of Charge"' },
+  { re: /Day-?Ahead/i, why: 'K4: „Börsenpreis" statt „Day-Ahead"' },
+  { re: /\bSpot(preis|-Preis)?\b/i, why: 'K4: „Börsenpreis" statt „Spot"' },
+  // Das Fallenwort: im Energie-Portal liest sich „Viertel" als VIERTELSTUNDE.
+  // Wer ein Tages-Quartil meint, schreibt die Zeitspanne aus.
+  { re: /günstigste[sn]? Viertel|teuerste[sn]? Viertel/i, why: 'K4: „Viertel" liest sich als Viertelstunde' },
+];
+
+/**
+ * Eine Achsen-BESCHRIFTUNG, die nur aus einer Einheit besteht. kW sagt nicht,
+ * WAS gemessen wird, und kW (Leistung) neben kWh (Energie) unkommentiert zu
+ * mischen ist die häufigste Verwechslung im Energie-Portal — deshalb komponiert
+ * `chartCopy.axisName` „Leistung (kW)". Die SCHMALE Fassung darf die Einheit
+ * allein tragen (dort ist kein Platz), und die steht immer hinter einem
+ * `narrow ?`, also nie in dieser Form.
+ */
+const BARE_UNIT_AXIS = /name:\s*'(kW|kWh|%|ct\/kWh|EUR\/MWh|°C|W\/m²|€)'/;
+
+describe('K4 · Klartext-Wächter über den Chart-Beschriftungen', () => {
+  it('scannt die Chart-Dateien wirklich (der Wächter ist verdrahtet)', () => {
+    for (const rel of CHART_FILES) {
+      expect(() => readFileSync(join(SRC, rel), 'utf8'), rel).not.toThrow();
+    }
+  });
+
+  it('nennt kein Fachwort in einer sichtbaren Chart-Beschriftung', () => {
+    const violations: string[] = [];
+    for (const rel of CHART_FILES) {
+      const visible = stripComments(readFileSync(join(SRC, rel), 'utf8'));
+      for (const { re, why } of CHART_FORBIDDEN) {
+        const m = re.exec(visible);
+        if (m) violations.push(`${rel}: „${m[0]}" — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('lässt keine Einheit als Achsennamen allein stehen', () => {
+    const violations: string[] = [];
+    for (const rel of CHART_FILES) {
+      const visible = stripComments(readFileSync(join(SRC, rel), 'utf8'));
+      const m = BARE_UNIT_AXIS.exec(visible);
+      if (m) violations.push(`${rel}: ${m[0]} — K4: die Einheit steht nie allein`);
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('beisst wirklich (beide Muster gegen ihren eigenen Fall geprüft)', () => {
+    expect(CHART_FORBIDDEN.some(({ re }) => re.test("name: 'SoC'"))).toBe(true);
+    expect(CHART_FORBIDDEN.some(({ re }) => re.test('das günstigste Viertel'))).toBe(true);
+    expect(BARE_UNIT_AXIS.test("name: 'kW',")).toBe(true);
+    // …und die zulässigen Formen NICHT: die komponierte Beschriftung und die
+    // schmale Fassung, die die Einheit hinter einem `narrow ?` allein trägt.
+    expect(BARE_UNIT_AXIS.test("name: 'Leistung (kW)',")).toBe(false);
+    expect(BARE_UNIT_AXIS.test("name: narrow ? 'kW' : 'Leistung (kW)',")).toBe(false);
+  });
+});
