@@ -455,7 +455,9 @@ type ConsumerRuntime struct {
 	State string `json:"state"`
 	// ReasonCode is from the §15 vocabulary incl. the cycle-guard extension
 	// (guard_min_on | guard_min_off | guard_max_starts | guard_ramp |
-	// guard_rated_power | readback_mismatch | device_offline | plan_stale).
+	// guard_rated_power | readback_mismatch | device_offline | plan_stale)
+	// and the Inkrement-6 deadline fallback (flex_deadline_fallback: the
+	// device started the flexible task itself so the deadline holds).
 	// Empty = no notable reason.
 	ReasonCode string `json:"reason_code,omitempty"`
 	// ActualKw is the entity's own MEASURED power (fresh local telemetry);

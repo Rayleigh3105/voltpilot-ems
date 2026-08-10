@@ -938,12 +938,25 @@ public class EntityRegistryService {
         // plans). Merged at COMPOSE time so a profile change re-pushes cleanly.
         java.util.Map<UUID, EntityRegistryRepository.ConsumerCycleLimits> cycle =
                 repo.consumerCycleLimits(siteId);
+        // The Inkrement-6 deadline duties (flex_requirements, D-20): composed
+        // from the ACTIVE policy of every ENABLED consumer, so a policy
+        // activation/deactivation/pause re-pushes cleanly too.
+        java.util.Map<UUID, EntityRegistryRepository.ConsumerFlexSource> flex =
+                repo.activeConsumerPolicies(siteId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
             EntityRegistryRepository.ConsumerCycleLimits cl = cycle.get(row.id());
             if (cl != null) {
                 mergeCycleLimits(d, cl);
+            }
+            EntityRegistryRepository.ConsumerFlexSource fs = flex.get(row.id());
+            if (fs != null) {
+                ArrayNode reqs = flexRequirementsFor(parseOr(fs.documentJson(), null),
+                        fs.ratedPowerKw(), mapper);
+                if (reqs != null) {
+                    d.set("flex_requirements", reqs);
+                }
             }
             entities.add(d);
         }
@@ -952,6 +965,110 @@ public class EntityRegistryService {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("cannot serialize v2 entity registry push", e);
         }
+    }
+
+    /**
+     * The registry-push {@code flex_requirements} block of ONE consumer
+     * (Verbrauchssteuerung Inkrement 6, D-20; edge-entity.schema.json
+     * $defs/flex_requirement): the ACTIVE policy's required_by_deadline
+     * flexible tasks, with the run power and the D-14 command RESOLVED here -
+     * the cloud is the one truth for policy semantics, the edge fallback never
+     * re-derives targets. Rules, each refusing the ENTRY (never guessing):
+     * only {@code kind=flexible_task} + {@code enforcement=required_by_deadline}
+     * + active; a complete recurrence (days/from/to) and a demand
+     * (runtime_minutes and/or energy_kwh); a resolvable positive power -
+     * {@code on_off}/{@code percent} targets need the profile's rated power,
+     * a {@code kw} target carries its own; {@code mode} targets and off
+     * targets are never pushed (not power-quantifiable). Returns null when
+     * nothing qualifies (the block is then absent - byte-identical push).
+     */
+    static ArrayNode flexRequirementsFor(JsonNode document, BigDecimal ratedPowerKw,
+            ObjectMapper mapper) {
+        if (document == null || !document.isObject()) {
+            return null;
+        }
+        JsonNode reqs = document.path("requirements");
+        if (!reqs.isArray()) {
+            return null;
+        }
+        String timezone = document.path("timezone").asText("");
+        ArrayNode out = mapper.createArrayNode();
+        for (JsonNode req : reqs) {
+            if (!"flexible_task".equals(req.path("kind").asText())
+                    || !"required_by_deadline".equals(req.path("enforcement").asText())) {
+                continue;
+            }
+            if (req.has("active") && !req.path("active").asBoolean(true)) {
+                continue;
+            }
+            String id = req.path("id").asText("");
+            JsonNode rec = req.path("recurrence");
+            String days = rec.path("days").asText("");
+            String from = rec.path("from").asText("");
+            String to = rec.path("to").asText("");
+            if (id.isBlank() || days.isBlank() || from.isBlank() || to.isBlank()) {
+                continue;
+            }
+            JsonNode demand = req.path("demand");
+            JsonNode runtime = demand.path("runtime_minutes");
+            JsonNode energy = demand.path("energy_kwh");
+            boolean hasRuntime = runtime.isNumber() && runtime.asDouble() > 0;
+            boolean hasEnergy = energy.isNumber() && energy.asDouble() > 0;
+            if (!hasRuntime && !hasEnergy) {
+                continue;
+            }
+            JsonNode target = req.path("target");
+            String targetKind = target.path("kind").asText("");
+            double powerKw;
+            String command;
+            switch (targetKind) {
+                case "on_off" -> {
+                    if (!target.path("value").asBoolean(false) || ratedPowerKw == null) {
+                        continue; // an OFF target / no rated power: not pushable
+                    }
+                    powerKw = ratedPowerKw.doubleValue();
+                    command = "on_off";
+                }
+                case "percent" -> {
+                    if (ratedPowerKw == null) {
+                        continue;
+                    }
+                    powerKw = ratedPowerKw.doubleValue() * target.path("value").asDouble(0) / 100.0;
+                    command = "setpoint_kw";
+                }
+                case "kw" -> {
+                    powerKw = target.path("value").asDouble(0);
+                    command = "setpoint_kw";
+                }
+                default -> {
+                    continue; // mode targets are not power-quantifiable
+                }
+            }
+            if (!(powerKw > 0)) {
+                continue;
+            }
+            ObjectNode entry = mapper.createObjectNode();
+            entry.put("id", id);
+            if (!timezone.isBlank()) {
+                entry.put("timezone", timezone);
+            }
+            entry.put("days", days);
+            entry.put("from", from);
+            entry.put("to", to);
+            if (hasRuntime) {
+                entry.put("runtime_minutes", runtime.asInt());
+            }
+            if (hasEnergy) {
+                entry.put("energy_kwh", energy.asDouble());
+            }
+            if (demand.has("contiguous")) {
+                entry.put("contiguous", demand.path("contiguous").asBoolean(true));
+            }
+            entry.put("power_kw", Math.round(powerKw * 1000.0) / 1000.0);
+            entry.put("command", command);
+            out.add(entry);
+        }
+        return out.isEmpty() ? null : out;
     }
 
     private static void mergeCycleLimits(ObjectNode descriptor,

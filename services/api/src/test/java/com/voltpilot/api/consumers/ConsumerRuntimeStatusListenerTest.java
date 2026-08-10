@@ -117,6 +117,19 @@ class ConsumerRuntimeStatusListenerTest {
     }
 
     @Test
+    void theDeadlineFallbackReasonIsKnownAndNeverDiscarded() {
+        // Inkrement 6 (§15): the device's own deadline start reports
+        // flex_deadline_fallback - the listener must KNOW the word, or the
+        // honest edge report would be silently dropped.
+        List<ConsumerRuntimeStatusRepository.Row> rows = ingest("{\"" + ROD + "\":{"
+                + "\"state\":\"running_optimized\",\"reason_code\":\"flex_deadline_fallback\","
+                + "\"actual_kw\":2.2,\"confirmed\":true}}");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).state()).isEqualTo("running_optimized");
+        assertThat(rows.get(0).reasonCode()).isEqualTo("flex_deadline_fallback");
+    }
+
+    @Test
     void aForeignEntityIdNeverMintsARow() {
         List<ConsumerRuntimeStatusRepository.Row> rows = ingest("{"
                 + "\"99999999-0000-0000-0000-000000000009\":{\"state\":\"waiting\"},"

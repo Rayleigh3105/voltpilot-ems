@@ -27,6 +27,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
@@ -254,6 +255,20 @@ type Agent struct {
 	planHeld    map[string]string   // entity -> "v1"|"v2" currently plan-commanded
 	entReadback map[string]*bool    // per-entity latest readback all_match
 	arbWake     chan struct{}
+
+	// Edge-local deadline fallback (agent/flexfallback.go + internal/
+	// flexfallback; Verbrauchssteuerung Inkrement 6, D-20): the validated
+	// per-entity deadline duties from the registry push, the confirmed-progress
+	// trackers (persisted, flexfallback.json), the currently emitted wishes and
+	// the last logged decision reason. ALL empty/no-op unless
+	// VP_CONSUMER_CONTROL_ENABLED is set (byte-identical behavior otherwise).
+	flexMu      sync.Mutex
+	flexReqs    map[string][]flexfallback.Requirement
+	flexTrack   map[string]map[string]*flexfallback.Tracker
+	flexHeld    map[string]bool
+	flexLast    map[string]string
+	flexDirty   bool
+	flexSavedAt time.Time
 
 	// Modbus-Datenspiegel (agent/mirror.go + internal/mirror): the read-only
 	// Modbus-TCP slave for the customer's building automation. mirSettings is
@@ -508,6 +523,11 @@ func New(cfg config.Config) (*Agent, error) {
 	reg := a.entRegistry
 	a.entMu.Unlock()
 	a.arb.SetEntities(reg)
+	// Edge-local deadline fallback (Inkrement 6): restore the confirmed-progress
+	// trackers and derive the deadline duties from the restored registry. Both
+	// no-ops unless VP_CONSUMER_CONTROL_ENABLED is set.
+	a.loadFlexState()
+	a.rebuildFlexRequirements(reg)
 	if p2, err := p2s.Load(); err == nil && p2 != nil {
 		a.curPlan2 = p2
 		a.peak2 = p2.GridImportLimitKw

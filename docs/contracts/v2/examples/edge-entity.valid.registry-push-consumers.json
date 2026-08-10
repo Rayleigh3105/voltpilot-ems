@@ -58,7 +58,13 @@
       "guards": {
         "limits": { "max_consumption_kw": 2 },
         "failsafe": { "behavior": "off" }
-      }
+      },
+      "flex_requirements": [
+        { "id": "pump-daily-hour", "timezone": "Europe/Berlin",
+          "days": "daily", "from": "00:00", "to": "24:00",
+          "runtime_minutes": 60, "contiguous": true,
+          "power_kw": 2.0, "command": "on_off" }
+      ]
     }
   ]
 }

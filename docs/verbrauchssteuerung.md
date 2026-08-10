@@ -1,7 +1,7 @@
 # Konzept: steuerbare Verbraucher in VoltPilot
 
-**Status:** Überarbeiteter Entwurf nach Konzept-Review
-**Stand:** 2026-08-09
+**Status:** Überarbeiteter Entwurf nach Konzept-Review; Inkremente 1-6 gebaut
+**Stand:** 2026-08-10
 **Zielbild:** Portalnutzer können steuerbare Verbraucher anlegen, sicher konfigurieren, automatisch oder durch den Fahrplan betreiben und ihren Zustand sowie ihren geplanten und tatsächlichen Verbrauch nachvollziehen.
 
 ## 1. Kurzfassung
@@ -75,7 +75,7 @@ die betroffenen Abschnitte eingearbeitet.
 | D2 | Lexikografik auf höchstens drei konditionale Stufen: (1) Pflichterfüllung (unbediente Pflichtläufe und Fristverletzungen als Slacks, nach Mindestlauf, `service_rank`, Frist), (2) Netzenergie – nur wenn mindestens ein Verbraucher `grid_energy_policy=avoid` trägt, (3) Ökonomie + bestehende deterministische Epsilon-Tie-Breaks. Schutz/Netz/Vertrag sind Constraints, keine Stufe. `consumer_first`/`storage_first` wird als deterministischer Tie-Break in der Epsilon-Klasse modelliert, nicht als eigene Stufe. Die Quellen-/Senken-Zuordnungsmatrix wird nur gebaut, wenn ein Verbraucher eine Quellen-Restriktion oder -Präferenz trägt. |
 | D3 | Vierstufige Bestätigungshierarchie für den Erfüllungsnachweis: kWh-Messung → kW-Telemetrie → Relais-/Zustands-Readback (Energie „angenommen“) → kein Readback (nie „erfüllt“). kWh-Ziele bietet der Assistent nur bei vorhandenem Energie-/Leistungsmesskanal an; ohne Messung erscheint der ehrliche Satz „Ohne Messung kann VoltPilot die Erfüllung nicht nachweisen.“ |
 | D4 | Stufenlose Verbraucher dürfen nicht-konvexe Leistungsbereiche `power_ranges_kw` tragen (je Bereich ein Binary, höchstens ein aktiver Bereich, Bereichswechsel unter Mindestlauf-/Umschaltpausen). Der erste reale Wallbox-Treiber (go-e) baut die Phasenumschaltung mit (Umschalt-Hysterese, Mindest-Umschaltpausen, Readback der Phasenlage). E8 bleibt gültig. |
-| D5 | Frühzeitigkeits-Tie-Break sofort: bei Kostengleichheit werden flexible Aufgaben so früh wie möglich erfüllt (gleiche Klasse wie der Early-Charge-Tie-Break). Der lokale Deadline-Fallback wird als festes Inkrement 6 eingeplant, nicht mehr „optional später“. |
+| D5 | Frühzeitigkeits-Tie-Break sofort: bei Kostengleichheit werden flexible Aufgaben so früh wie möglich erfüllt (gleiche Klasse wie der Early-Charge-Tie-Break). Der lokale Deadline-Fallback ist als Inkrement 6 GEBAUT (§13.5, Vertragsentscheid D-20). |
 | D6 | Energiepräferenz (`consumer_first`/`storage_first`) bleibt an Speicher-Standorten aktive Pflichtfrage – bewusst bestätigt, gegen den Vereinfachungsvorschlag „Default je Absicht“ entschieden. §4.2/§14.4 bleiben inhaltlich unverändert. |
 | D7 | Die bestehenden Kunden-Flow-Vorlagen „Wallbox nur bei PV-Überschuss“ und „Heizstab-Zeitplan“ zeigen ab Inkrement 4 auf den Verbraucher-Regelbaukasten statt auf den Flow-Editor; der Node-RED-Editor bleibt Power-User-Tür (M4-Reihenfolge unverändert). Konflikte mit aktiven Flow-Claims werden ehrlich benannt (V-5). |
 | D8 | Ereignis-Neuplanung als dritter Endpunkt `POST /replan` auf der bestehenden Solve-Fläche (`simulate-serve`): echter Zyklus gather → optimize → persist → publish je Site, semaphore-begrenzt wie Simulation/What-if. Der What-if-Endpunkt bleibt per Konstruktion ephemer. Debounce (5–10 s) und maximale Replan-Rate liegen in der API; Auslöser über einen eigenen Status-Listener. Der 15-Minuten-Tick bleibt Grundschlag. |
@@ -343,6 +343,7 @@ Der Fahrplan berücksichtigt dabei:
 - Restzeit bis zur Frist.
 
 Je näher die Frist kommt, desto weniger verschiebbar ist der noch offene Bedarf. Kann die Aufgabe wegen Schutz-, Netz- oder Geräteproblemen nicht vollständig erfüllt werden, bleibt der Gesamtplan lösbar und die Aufgabe erhält einen expliziten Nichterfüllungsgrund.
+Fällt die Cloud aus, startet das Gerät die Aufgabe notfalls selbst - der edge-lokale Deadline-Fallback aus Inkrement 6 (§13.5).
 
 ### 5.5 Opportunistischer Betrieb
 
@@ -966,7 +967,11 @@ das Netz die Bilanzdifferenz, soweit Guards dies erlauben; Schutz- und Netzgrenz
 - Ein stale v2-Plan zieht seine `market`-Wünsche wie bisher zurück.
 - Lokal auswertbare, aktive Pflichtregeln dürfen offline weiterlaufen, solange alle benötigten Signale frisch sind.
 - Preis- und Zeitregeln laufen nur bis zum Ende des letzten vorberechneten Fensters; danach ist die Bedingung `unknown`.
-- Flexible Aufgaben ohne frischen Plan werden nicht eigenmächtig zu beliebigen Zeiten gestartet. Ein lokaler Deadline-Fallback (Start spätestens bei Frist minus Restbedarf, unter allen Guards, mit eigener getesteter Semantik) ist als festes Inkrement 6 eingeplant (D5).
+- Flexible Aufgaben ohne frischen Plan werden nicht eigenmächtig zu beliebigen Zeiten gestartet.
+  Der lokale Deadline-Fallback (Inkrement 6, GEBAUT; Vertragsentscheid D-20) startet eine `required_by_deadline`-Aufgabe stattdessen SPÄTESTENS bei „Frist minus Restbedarf minus eine Slot-Marge“ selbst - nie früher (Notnagel, kein zweiter Optimierer), nur solange kein frischer v2-Plan liegt, und ausschließlich aus BESTÄTIGTEM eigenem Fortschritt (gemessene Telemetrie; unbekannter Fortschritt startet nichts).
+  Die Anforderungsdaten erreichen den Edge als additiver `flex_requirements`-Block im Registry-Push (`edge-entity.schema.json`); der Wunsch läuft als interne Arbitrationsklasse `deadline-fallback` (Rang zwischen `flow` und `market`, NIE `override`) durch die NORMALE Kette - Verbraucher-Klemme, Zyklen-Guard und §14a/Netz/Vertrag gelten wörtlich weiter, ein zurückkehrender frischer Plan und jede reaktive Pflichtregel übernehmen nahtlos.
+  Der Heartbeat meldet den Eigenstart mit dem §15-Grund `flex_deadline_fallback`; nach der Frist wird die Aufgabe ehrlich verpasst statt außerhalb ihres Fensters zu laufen.
+  Preis- und Zeitregeln bekommen NIE einen Eigenstart (voriger Punkt: nach dem letzten Fenster ist die Bedingung `unknown`).
 - Danach gilt der Entitäts-Failsafe `off` oder `release`.
 
 ## 14. Portal-Konzept
@@ -1139,7 +1144,7 @@ Vor der Aktivierung zeigt eine einzige Prüfseite:
 - erwartete Kosten/Verlagerung nur, wenn dafür belastbare Daten existieren,
 - Konflikte und nicht verfügbare Geräteeigenschaften,
 - Failsafe und Verhalten bei fehlenden Signalen,
-- bei flexiblen Aufgaben, solange kein lokaler Deadline-Fallback ausgerollt ist (Inkrement 6), den offenen Hinweis „Bei Verbindungsausfall kann diese Aufgabe entfallen“.
+- bei flexiblen Aufgaben den ehrlichen Hinweis „Bei Verbindungsausfall startet VoltPilot die Aufgabe spätestens zur Frist selbst - Schutz- und Netzgrenzen bleiben wirksam.“ (der lokale Deadline-Fallback aus Inkrement 6, §13.5).
 
 Vorschau und Simulation setzen auf das ephemere What-if-Vehikel des Solve-Service auf
 (Draft-Policy als Override, semaphore-begrenzt), nicht auf einen neuen Rechenpfad.
@@ -1315,6 +1320,7 @@ Wichtige `reason_code`s:
 - `price_below_threshold`,
 - `soc_above_threshold`,
 - `flex_deadline`,
+- `flex_deadline_fallback` (Inkrement 6: das Gerät hat die flexible Aufgabe selbst gestartet, damit die Frist hält),
 - `optimizer_selected_low_cost`,
 - `consumer_first`,
 - `storage_first`,
@@ -1359,6 +1365,7 @@ durchsucht deutsche Sätze.
 | Plan stale | Markt-Wunsch zurückziehen | Failsafe + Hinweis |
 | Preis-/Zeitfenster abgelaufen | Preis-/Zeitregel nicht neu aktivieren; Bedingung `unknown` | „Fenster abgelaufen“ |
 | Flexible Aufgabe gefährdet | Sofortige Neuplanung, Priorität innerhalb Nutzerwünschen erhöhen | „Frist gefährdet“ |
+| Cloud-Ausfall vor der Frist einer flexiblen Aufgabe | Edge-lokaler Deadline-Fallback: Eigenstart spätestens bei Frist minus Restbedarf, unter allen Guards (§13.5); bei unbekanntem Fortschritt kein Start | Lauf mit Grund `flex_deadline_fallback` |
 | Pflichtlauf durch Netzlimit geklemmt | Plan bleibt lösbar, Abweichung speichern | „Durch Netzvorgabe begrenzt“ |
 | Policy-Kompilierung fehlgeschlagen | Aktive Version unverändert lassen | Aktivierung fehlgeschlagen |
 | Edge offline bei Aktivierung | Policy kann gespeichert, aber nicht als laufend behauptet werden | „Noch nicht auf Gerät bestätigt“ |
@@ -1449,14 +1456,19 @@ VP_CONSUMER_CONTROL_ENABLED
 
 Ein ausgeschalteter Aktivierungsflag darf bereits ausgerollte Artefakte nicht als gestoppt erscheinen lassen; der echte Stopppfad muss Policies deaktivieren und retained Artefakte zurückziehen.
 
-### Inkrement 6: Lokaler Deadline-Fallback
+### Inkrement 6: Lokaler Deadline-Fallback (gebaut)
 
-- Für flexible Aufgaben einen edge-lokalen Deadline-Fallback ergänzen: Start spätestens bei Frist
-  minus Restbedarf, unter allen Guards, mit eigener getesteter Semantik (D5).
+- Für flexible Aufgaben existiert der edge-lokale Deadline-Fallback: Start spätestens bei Frist
+  minus Restbedarf (plus eine dokumentierte Slot-Marge), unter allen Guards, mit eigener
+  getesteter Semantik (D5; Semantik + Verteilweg in §13.5, Vertragsentscheid D-20).
 - Der Fallback greift nur, wenn kein frischer Plan vorliegt, und verkleinert das Fenster, in dem
-  ein Cloud-Ausfall eine Frist reißt.
-- Solange dieses Inkrement nicht ausgerollt ist, weist die Prüfseite offen aus, dass eine flexible
-  Aufgabe bei Verbindungsausfall entfallen kann (§14.7).
+  ein Cloud-Ausfall eine Frist reißt; der Restbedarf kommt aus bestätigtem eigenem Fortschritt,
+  der einen Neustart des Geräts überlebt.
+- Er gehört zur Verbrauchssteuerung und hängt am Edge-Flag `VP_CONSUMER_CONTROL_ENABLED`
+  (Vorgabe AUS; mit Flag aus byte-identisches Verhalten).
+- Die Prüfseite nennt seither die ehrliche neue Zusage statt des offenen Entfallen-Hinweises
+  (§14.7); der Heartbeat-Grund `flex_deadline_fallback` steht im §15-Vokabular, Ingest und
+  Portal-Map kennen ihn.
 
 ## 20. Betroffene Komponenten
 

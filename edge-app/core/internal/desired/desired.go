@@ -36,6 +36,16 @@ const (
 	ClassFlow     Class = "flow"
 )
 
+// ClassDeadlineFallback is the CORE-INTERNAL class of the edge-local deadline
+// fallback (Verbrauchssteuerung Inkrement 6, D-20): rank 50 - below `market`
+// (a fresh plan's dispatch already contains the flexible task, so it PREEMPTS
+// the fallback seamlessly, no failsafe blip) and below the D-5 flow override
+// (a reactive Pflichtregel outranks the duty), but above a plain
+// opportunistic flow wish. Never claimable externally: Parse rejects the
+// source kind outright and classAllowed lists it for nobody; it never carries
+// override.
+const ClassDeadlineFallback Class = "deadline-fallback"
+
 // rank orders the classes (higher wins). The zero rank marks an unknown class.
 func (c Class) rank() int {
 	switch c {
@@ -47,6 +57,8 @@ func (c Class) rank() int {
 		return 80
 	case ClassMarket:
 		return 60
+	case ClassDeadlineFallback:
+		return 50
 	case ClassFlow:
 		return 40
 	}
@@ -66,6 +78,12 @@ const (
 	SourceCloudCommand SourceKind = "cloud-command"
 	SourceLocalUI      SourceKind = "local-ui"
 )
+
+// SourceDeadlineFallback is the CORE-INTERNAL emitter of the edge-local
+// deadline fallback (Inkrement 6, D-20). It only ever enters via
+// SubmitInternal - Parse rejects external payloads claiming this kind, so no
+// flow/UI publisher can impersonate the fallback.
+const SourceDeadlineFallback SourceKind = "deadline-fallback"
 
 // Source identifies a desired's emitter. Flow sources carry the compiler-
 // stamped flow identity.

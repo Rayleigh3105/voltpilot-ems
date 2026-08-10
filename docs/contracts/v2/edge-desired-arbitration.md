@@ -78,6 +78,18 @@ Five classes, ranked: **`safety` (100) > `grid` (90) > `contract` (80) > `market
 | `market` | the cloud plan (mqtt-schedule 2.0), injected by the core's plan executor | today's schedule execution, generalized |
 | `flow` | user flows (compiled action nodes) | new |
 
+**Internal class `deadline-fallback` (rank 50, D-20 / Verbrauchssteuerung Inkrement 6):** the
+edge-local deadline fallback of a `required_by_deadline` flexible task injects its wish between
+`flow` (40) and `market` (60), below the D-5 flow override (70). It is CORE-INTERNAL only: no
+external publisher can claim it — the desired parser rejects its source kind
+(`deadline-fallback`) outright and no `classAllowed` entry exists — and it never carries
+`override`. The rank placement is the whole mechanism of the "frischer Plan übernimmt nahtlos"
+rule: a fresh plan's `market` desire and every reactive Pflichtregel-override PREEMPT the
+fallback holder (supersede, no failsafe blip), while a plain opportunistic flow wish does not
+outrank the due deadline duty. Deliberate deviation from verbrauchssteuerung.md §7 (fällige
+Aufgabe > normaler Fahrplan): at the edge a fresh plan already CONTAINS the flexible task's
+dispatch, so the plan wins whenever fresh.
+
 Two load-bearing rules:
 
 1. **Compliance never competes.** On the current edge, `safety`/`grid` (and later `contract`

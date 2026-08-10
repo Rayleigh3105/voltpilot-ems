@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.consumers.ConsumerRepository.ConsumerRow;
 import com.voltpilot.api.consumers.ConsumerRepository.PolicyRow;
+import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowCatalog;
 import com.voltpilot.api.flows.FlowClaims;
@@ -79,6 +80,7 @@ public class ConsumerPolicyActivationService {
     private final FlowActivationService deployments;
     private final ConsumerAuditRepository audit;
     private final ObjectMapper mapper;
+    private final EntityRegistryService registry;
     private final boolean controlEnabled;
     private final boolean compilerEnabled;
     private final Clock clock;
@@ -89,18 +91,19 @@ public class ConsumerPolicyActivationService {
             ConsumerPolicyValidator validator, ConsumerPolicyCompiler compiler,
             PriceWindowSource windowSource, ObjectProvider<FlowCompiler> flowc,
             FlowRepository flows, FlowCatalog flowCatalog, FlowActivationService deployments,
-            ConsumerAuditRepository audit, ObjectMapper mapper,
+            ConsumerAuditRepository audit, ObjectMapper mapper, EntityRegistryService registry,
             @Value("${voltpilot.consumer-control.enabled:false}") boolean controlEnabled,
             @Value("${voltpilot.consumer-control.policy-compiler-enabled:false}") boolean compilerEnabled) {
         this(repo, validator, compiler, windowSource, flowc, flows, flowCatalog, deployments,
-                audit, mapper, controlEnabled, compilerEnabled, Clock.systemUTC());
+                audit, mapper, registry, controlEnabled, compilerEnabled, Clock.systemUTC());
     }
 
     ConsumerPolicyActivationService(ConsumerRepository repo, ConsumerPolicyValidator validator,
             ConsumerPolicyCompiler compiler, ConsumerPolicyCompiler.WindowSource windowSource,
             ObjectProvider<FlowCompiler> flowc, FlowRepository flows, FlowCatalog flowCatalog,
             FlowActivationService deployments, ConsumerAuditRepository audit, ObjectMapper mapper,
-            boolean controlEnabled, boolean compilerEnabled, Clock clock) {
+            EntityRegistryService registry, boolean controlEnabled, boolean compilerEnabled,
+            Clock clock) {
         this.repo = repo;
         this.validator = validator;
         this.compiler = compiler;
@@ -111,6 +114,7 @@ public class ConsumerPolicyActivationService {
         this.deployments = deployments;
         this.audit = audit;
         this.mapper = mapper;
+        this.registry = registry;
         this.controlEnabled = controlEnabled;
         this.compilerEnabled = compilerEnabled;
         this.clock = clock;
@@ -219,6 +223,10 @@ public class ConsumerPolicyActivationService {
 
         audit.append(siteId, entityId, "policy_activated", latest.policyId(), latest.version(),
                 actor, artifact != null ? "mit Edge-Artefakt" : "nur Marktplan");
+        // The Inkrement-6 deadline duties ride the entity registry push
+        // (flex_requirements, D-20): a policy lifecycle change must re-push so
+        // the edge fallback learns/forgets them. Best-effort like every push.
+        registry.pushRegistryBestEffort(siteId);
         return new ActivationOutcome(true, null,
                 "Regel aktiviert (Version " + latest.version() + ").", published,
                 latest.version());
@@ -238,6 +246,7 @@ public class ConsumerPolicyActivationService {
         boolean published = retractGeneratedFlow(siteId, entityId);
         audit.append(siteId, entityId, "policy_deactivated", active.policyId(), active.version(),
                 actor, null);
+        registry.pushRegistryBestEffort(siteId);
         return new StopOutcome(published, "Regel deaktiviert.");
     }
 
@@ -247,6 +256,9 @@ public class ConsumerPolicyActivationService {
         repo.setEnabled(siteId, entityId, false);
         boolean published = retractGeneratedFlow(siteId, entityId);
         audit.append(siteId, entityId, "paused", null, null, actor, null);
+        // A paused consumer drops out of the flex_requirements compose
+        // (enabled=false) - the fallback must never self-start a paused device.
+        registry.pushRegistryBestEffort(siteId);
         return new StopOutcome(published, "Verbraucher pausiert - der Failsafe des Geräts gilt.");
     }
 
@@ -284,6 +296,7 @@ public class ConsumerPolicyActivationService {
             published = deployments.republishForSite(siteId);
         }
         audit.append(siteId, entityId, "resumed", active.policyId(), active.version(), actor, null);
+        registry.pushRegistryBestEffort(siteId);
         return new ActivationOutcome(true, null, "Verbraucher fortgesetzt.", published,
                 active.version());
     }

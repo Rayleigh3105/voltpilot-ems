@@ -61,6 +61,17 @@ identity + `revision` + `published_at` + the full `entities` descriptor array.
   `guards.Limits`.
 - **`driver`** — OPTIONAL opaque connection block (the v1 sources `busEntry` shape) for later
   Layer-1 self-wiring; E1a carries it through verbatim.
+- **`flex_requirements`** — OPTIONAL + ADDITIVE (Verbrauchssteuerung Inkrement 6, D-20): the
+  consumer's ACTIVE `required_by_deadline` duties (`$defs/flex_requirement`) for the edge-local
+  deadline fallback — recurrence window + timezone (wall-clock, DST-correct, E7), the demand
+  (`runtime_minutes` and/or `energy_kwh`, `contiguous`), and the CLOUD-resolved run `power_kw` +
+  D-14 `command` (`on_off` | `setpoint_kw`). Composed from the ACTIVE `consumer_policy` +
+  `consumer_profile` at push time — resolving targets/power stays a cloud truth, the edge never
+  re-derives policy semantics. The fallback starts the task itself at the latest at
+  `deadline − remaining need − margin`, ONLY while no fresh v2 plan lies, only from CONFIRMED
+  own progress, through the NORMAL desired → arbitration → guard chain (internal class
+  `deadline-fallback`, never `override`). Absent/empty = no fallback; price-conditioned,
+  opportunistic and reactive requirements are never pushed here.
 
 ## 3. Local per-entity telemetry: `edge/entities/{id}/telemetry`
 

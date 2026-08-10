@@ -118,10 +118,14 @@ describe('policySentence (matches the document)', () => {
     expect(s).toContain('Geräteschutz und Netzvorgaben bleiben wirksam.');
   });
 
-  it('a flexible task carries the honest connection-loss note (§14.7)', () => {
+  it('a flexible task carries the honest connection-loss promise (§14.7, Increment 6)', () => {
     const d = draft({ intent: 'deadline', demandMode: 'runtime', runtimeMinutes: 60 });
     const doc = buildPolicyDocument(d, opts({ ctx: { controlKind: 'on_off', hasStorage: false, hasMeasurementChannel: true } }));
-    expect(policySentence(doc, 'Stallpumpe')).toContain('Bei Verbindungsausfall kann diese Aufgabe entfallen.');
+    const s = policySentence(doc, 'Stallpumpe');
+    // The fallback EXISTS now - the old "kann diese Aufgabe entfallen" would
+    // deny a shipped behavior; the promise names exactly what the device does.
+    expect(s).toContain('Bei Verbindungsausfall startet VoltPilot die Aufgabe spätestens zur Frist selbst - Schutz- und Netzgrenzen bleiben wirksam.');
+    expect(s).not.toContain('kann diese Aufgabe entfallen');
   });
 
   it('a wallbox percent target reads as a charge sentence', () => {

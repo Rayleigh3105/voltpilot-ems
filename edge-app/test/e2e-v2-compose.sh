@@ -26,6 +26,12 @@
 #      in the heartbeat consumers block), then releases,
 #   C4 plan staleness withdraws consumer desires -> failsafe off / release.
 #
+# Verbrauchssteuerung Inkrement 6 (edge-local deadline fallback, D-20): C7 -
+#   with the plan STALE a required_by_deadline duty self-starts at the latest
+#   at deadline minus remaining need, under all guards (Mindestpause holds
+#   first, band clamps 22->11 kW), the heartbeat names flex_deadline_fallback,
+#   a dutyless consumer never self-starts, a fresh plan takes over seamlessly.
+#
 # Own compose project + high host ports (never touches a live stack).
 # Requires Docker + node (flowc compiles the rig flow at test time) + go
 # (builds the consumer simulator).
@@ -646,6 +652,167 @@ for i in $(seq 1 30); do
 done
 pass "disconnect: off-delay debounced, TTL lapsed without renewal, wallbox released (retained clear)"
 
+# =============================================================================
+# Verbrauchssteuerung Inkrement 6: C7 - the edge-local DEADLINE FALLBACK.
+# The retained v2 plan is C4's AGED one (stale) and the cloud publishes no
+# fresh plan: a required_by_deadline duty must not miss its deadline - the
+# device starts it ITSELF, under ALL guards, and a returning fresh plan takes
+# over seamlessly. Negative proofs ride along: the fallback respects the
+# cycle guard (Mindestpause holds the self-start, honest reason), the guard
+# chain clamps its wish (22-kW duty lands at the 11-kW band), and a consumer
+# WITHOUT a deadline duty never self-starts (the pump stays failsafe-off; a
+# price rule can never even become a duty - the cloud compose refuses it,
+# EntityRegistryFlexTest, and after its last precomputed window the condition
+# is `unknown`, reactive-eval tests - §13.5).
+# =============================================================================
+berlin_hhmm() { # offset-seconds -> local Berlin HH:MM
+  python3 -c "
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+t = datetime.now(ZoneInfo('Europe/Berlin')) + timedelta(seconds=$1)
+print(t.strftime('%H:%M'))"
+}
+
+# Registry rev 3: rev 2 plus the Inkrement-6 deadline duties. The rod's duty
+# (600 min in a 5-h window) is DUE immediately; its min_off widens to 90 s so
+# the armed Mindestpause visibly holds the self-start. The wallbox duty
+# deliberately carries power_kw 22 ABOVE its 11-kW band (production composes
+# the power from the profile - the rig widens it to prove the chain clamps
+# the FALLBACK's wish too). The pump carries NO duty (the negative).
+registry_push_flex() {
+  local from to
+  from="$(berlin_hhmm -7200)"
+  to="$(berlin_hhmm 10800)"
+  cat <<JSON
+{"schema_version":"1.0","tenant_id":"$TENANT","site_id":"$SITE","device_id":"$DEVICE",
+ "revision":"rig-3","published_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+ "entities":[
+  {"entity_id":"$BATT","entity_type":"battery-hybrid",
+   "capabilities":{"measure":[{"channel":"soc_pct","unit":"%"}],
+     "actuate":[{"command":"setpoint_kw","min":-30,"max":30},{"command":"limit_kw"}]},
+   "guards":{"limits":{"max_charge_kw":30,"max_discharge_kw":30,"soc_min_pct":5,"soc_max_pct":95},
+     "failsafe":{"behavior":"self-consumption"}}},
+  {"entity_id":"$PV","entity_type":"producer",
+   "capabilities":{"measure":[{"channel":"pv_power_kw","unit":"kW"}],
+     "actuate":[{"command":"limit_kw","max":27}]},
+   "guards":{"limits":{"max_generation_kw":27},"failsafe":{"behavior":"release"}}},
+  {"entity_id":"$WB","entity_type":"wallbox","label":"Wallbox Rig",
+   "capabilities":{"measure":[{"channel":"power_kw","unit":"kW"},{"channel":"vehicle_connected"}],
+     "actuate":[{"command":"setpoint_kw","min":0,"max":11},{"command":"on_off"}]},
+   "guards":{"limits":{"max_consumption_kw":11},"failsafe":{"behavior":"release"}},
+   "flex_requirements":[
+     {"id":"wb-energy","timezone":"Europe/Berlin","days":"daily",
+      "from":"$from","to":"$to","energy_kwh":100,
+      "power_kw":22,"command":"setpoint_kw"}]},
+  {"entity_id":"$ROD","entity_type":"heating-rod","label":"Heizstab Rig",
+   "capabilities":{"measure":[{"channel":"power_kw","unit":"kW"}],
+     "actuate":[{"command":"on_off"}]},
+   "guards":{"limits":{"max_consumption_kw":6,"min_off_seconds":90},
+     "failsafe":{"behavior":"off"}},
+   "flex_requirements":[
+     {"id":"rod-daily","timezone":"Europe/Berlin","days":"daily",
+      "from":"$from","to":"$to","runtime_minutes":600,"contiguous":true,
+      "power_kw":6.0,"command":"on_off"}]},
+  {"entity_id":"$PUMP","entity_type":"generic-load","label":"Pumpe Rig",
+   "capabilities":{"measure":[{"channel":"power_kw","unit":"kW"}],
+     "actuate":[{"command":"on_off"}]},
+   "guards":{"limits":{"max_consumption_kw":2.2},"failsafe":{"behavior":"off"}}}
+ ]}
+JSON
+}
+
+rod_flow_on() { # a short class-flow ON desire that arms the rod's Mindestpause on expiry
+  cat <<JSON
+{"schema_version":"1.0","entity_id":"$ROD","request_id":"arm-$(date +%s)",
+ "source":{"kind":"flow","flow_id":"9e1c2b3a-5d6e-4f70-8123-456789abcde9","flow_version":1,"node_id":"arm"},
+ "priority":"flow","override":false,
+ "command":{"type":"on_off","value":true},
+ "ttl_s":5,"issued_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+JSON
+}
+
+rod_applied_count() {
+  grep -c 'applied on=true 6.000 kW mismatch=false' "$WORK/sim-rod.log" 2>/dev/null || true
+}
+
+echo "--- C7 prep: arm the rod's Mindestpause (flow ON, 5-s TTL, expiry -> off transition)"
+ROD_RUNS_BEFORE=$(rod_applied_count)
+rod_flow_on | bus_pub -t "edge/entities/$ROD/desired" -q 1 -s
+for i in $(seq 1 10); do
+  [ "$(rod_applied_count)" -gt "$ROD_RUNS_BEFORE" ] && break
+  [ "$i" = 10 ] && { cat "$WORK/sim-rod.log"; fail "arming flow never ran the rod"; }
+  sleep 1
+done
+sleep 8 # TTL lapses -> failsafe off -> the on->off transition arms min_off
+ROD_RUNS_ARMED=$(rod_applied_count)
+
+echo "--- C7: push registry rev 3 (deadline duties) - plan is STALE, the device decides"
+registry_push_flex | cloud_pub -t "$T_BASE/v2/entities" -q 1 -r -s
+for i in $(seq 1 10); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q '"revision":"rig-3"' && break
+  [ "$i" = 10 ] && fail "heartbeat never acked registry revision rig-3"
+done
+pass "deadline duties applied (revision rig-3)"
+
+echo "--- C7a: the Mindestpause HOLDS the self-start first (Schutz > Frist, honest reason)"
+for i in $(seq 1 6); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q "\"$ROD\":{\"state\":\"waiting\",\"reason_code\":\"guard_min_off\"" && break
+  [ "$i" = 6 ] && { echo "$HB"; fail "the cycle guard never held the fallback's switch-on (waiting/guard_min_off)"; }
+done
+pass "fallback wish held by the cycle guard: waiting + guard_min_off in the heartbeat"
+
+echo "--- C7b: the guard chain clamps the fallback's wish (22-kW duty -> 11-kW band)"
+for i in $(seq 1 12); do
+  CMD=$(bus_sub -t "edge/entities/$WB/command" -C 1 -W 10) || CMD=""
+  echo "$CMD" | grep -q '"setpoint_kw":11' && echo "$CMD" | grep -q '"source":"desired"' && break
+  [ "$i" = 12 ] && { echo "$CMD"; fail "wallbox fallback never commanded at the CLAMPED 11 kW"; }
+  sleep 1
+done
+pass "fallback under guards: 22-kW duty landed at the 11-kW consumer band"
+
+echo "--- C7c: after the Mindestpause the rod SELF-STARTS - executes, confirms, honest reason"
+for i in $(seq 1 60); do
+  [ "$(rod_applied_count)" -gt "$ROD_RUNS_ARMED" ] && break
+  [ "$i" = 60 ] && { cat "$WORK/sim-rod.log"; fail "the rod never self-started after the Mindestpause"; }
+  sleep 2
+done
+CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 15) || fail "no retained rod command"
+echo "$CMD" | grep -q '"on_off":true' || fail "rod fallback command wrong: $CMD"
+echo "$CMD" | grep -q '"source":"desired"' || fail "rod fallback command source wrong: $CMD"
+for i in $(seq 1 10); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  echo "$HB" | grep -q "\"$ROD\":{\"state\":\"running_optimized\",\"reason_code\":\"flex_deadline_fallback\"" \
+    && echo "$HB" | grep -q "\"$ROD\":{\"state\":\"running_optimized\",\"reason_code\":\"flex_deadline_fallback\",\"actual_kw\":[0-9.]*,\"confirmed\":true" && break
+  [ "$i" = 10 ] && { echo "$HB"; fail "heartbeat never reported the confirmed fallback run (flex_deadline_fallback)"; }
+done
+pass "self-start executed + readback-confirmed; heartbeat: running_optimized + flex_deadline_fallback"
+
+echo "--- C7d: no duty, no self-start - the pump stays failsafe OFF"
+PUMPCMD=$(bus_sub -t "edge/entities/$PUMP/command" -C 1 -W 15) || fail "no retained pump command"
+echo "$PUMPCMD" | grep -q '"on_off":false' || fail "the dutyless pump must stay off: $PUMPCMD"
+echo "$PUMPCMD" | grep -q '"source":"failsafe"' || fail "the pump must stay on its failsafe: $PUMPCMD"
+pass "a consumer without a deadline duty never self-starts (pump failsafe off)"
+
+echo "--- C7e: a FRESH plan returns -> the cloud takes over seamlessly, the fallback withdraws"
+SLOT_START="$(now_iso)"
+plan_v2c "{\"entity_id\":\"$ROD\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"on_off\":true}}]},
+ {\"entity_id\":\"$WB\",\"kind\":\"consumer\",\"slots\":[{\"start\":\"$SLOT_START\",\"commands\":{\"setpoint_kw\":3.0}}]}" \
+  "$SLOT_START" | cloud_pub -t "$T_BASE/v2/plan" -q 1 -r -s
+for i in $(seq 1 15); do
+  CMD=$(bus_sub -t "edge/entities/$ROD/command" -C 1 -W 10) || CMD=""
+  echo "$CMD" | grep -q '"source":"plan"' && break
+  [ "$i" = 15 ] && { echo "$CMD"; fail "the fresh plan never took the rod over from the fallback"; }
+  sleep 1
+done
+for i in $(seq 1 10); do
+  HB=$(cloud_sub -t "$T_BASE/status" -C 1 -W 30) || true
+  if echo "$HB" | grep -q "\"$ROD\":" && ! echo "$HB" | grep -q 'flex_deadline_fallback'; then break; fi
+  [ "$i" = 10 ] && { echo "$HB"; fail "the heartbeat kept claiming the fallback after the plan returned"; }
+done
+pass "fresh plan preempted the fallback (source plan); heartbeat dropped flex_deadline_fallback"
+
 echo
 echo "E2E-V2 OK: September-Gate chain proven on the rig -"
 echo "  registry push -> configs/guards; flowc artifact -> deployment -> NR -> desired ->"
@@ -656,3 +823,6 @@ echo "  never land in the gap (honest mismatch), C3 cycle guard holds + names it
 echo "  C4 staleness -> failsafe off / release; heartbeat consumers block ingest-ready."
 echo "  Inkrement 4: C5 reactive rule - vehicle connect -> must_run override -> clamped max"
 echo "  (honest clamped/guard_rated_power, holder flow), disconnect -> off-delay -> TTL withdrawal."
+echo "  Inkrement 6: C7 deadline fallback - stale plan -> Mindestpause holds first (waiting/"
+echo "  guard_min_off), duty clamped to the band (22->11 kW), self-start executes + confirms"
+echo "  (flex_deadline_fallback), dutyless pump never self-starts, fresh plan takes over seamlessly."
