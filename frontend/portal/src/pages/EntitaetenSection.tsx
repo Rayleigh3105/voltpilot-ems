@@ -164,7 +164,10 @@ export function EntitaetenSection({
             title="Noch keine Geräte"
             description={
               isAdmin
-                ? 'Legen Sie oben eine Entität an, übernehmen Sie ein vom Gerät gemeldetes Gerät oder führen Sie den v2-Bootstrap aus.'
+                ? // Die Komposition aus den Stammdaten läuft automatisch, sobald
+                  // die Anlage ein eindeutiges Gerät hat - es gibt hier keinen
+                  // Bootstrap-Knopf mehr zu drücken (und vorher gab es ihn nie).
+                  'Die Komponenten aus den Stammdaten entstehen automatisch, sobald ein Gerät verbunden ist. Hier können Sie zusätzlich eine Entität anlegen oder ein vom Gerät gemeldetes Gerät übernehmen.'
                 : 'Für diese Anlage sind noch keine Geräte eingerichtet. Sobald Ihr Gerät sich meldet, erscheinen sie hier.'
             }
           />

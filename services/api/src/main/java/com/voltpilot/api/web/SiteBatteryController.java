@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -40,12 +41,14 @@ public class SiteBatteryController {
     private final SiteRepository sites;
     private final AssetRepository assets;
     private final DeviceRepository devices;
+    private final EntityAutoComposer autoCompose;
 
     public SiteBatteryController(SiteRepository sites, AssetRepository assets,
-            DeviceRepository devices) {
+            DeviceRepository devices, EntityAutoComposer autoCompose) {
         this.sites = sites;
         this.assets = assets;
         this.devices = devices;
+        this.autoCompose = autoCompose;
     }
 
     /**
@@ -85,6 +88,13 @@ public class SiteBatteryController {
             // Common single-device case: link the one device automatically.
             assets.autoLinkBatteryDevice(siteId);
         }
+        // Ein Speicher, der NACH dem Gerät eingetragen wird, vervollständigt die
+        // Komposition: bis hierher trägt die Anlage nur die aus dem Gateway
+        // synthetisierten Netz-/Haus-Zeilen, die battery-hybrid-Zeile (PV +
+        // Speicher des Hybriden) fehlt. Bewusst NACH dem Commit dieser
+        // Transaktion - eine Ausnahme im Modell-Aufbau darf den Speicher-
+        // Schreibvorgang niemals zurückrollen.
+        autoCompose.ensureComposed(siteId);
         return assets.findForSite(siteId);
     }
 

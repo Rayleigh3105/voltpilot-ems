@@ -1953,7 +1953,14 @@ class PortalApiTest {
         String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("name", "Stumm-Anlage"), bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
-        String deviceId = claimDeviceInto(demo, siteId, "edge-stumm-01");
+        // Das Gerät wird per Superuser eingesetzt, damit der CLAIM-Auslöser
+        // NICHT komponiert: dieser Test besitzt die Entitäts-Menge der Anlage
+        // selbst (er prüft das Urteil über EINE nie bestätigte Entität), und
+        // eine automatisch komponierte Netz-/Haus-Zeile wäre eine zweite,
+        // fremde Wahrheit in derselben Antwort.
+        String deviceId = java.util.UUID.randomUUID().toString();
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind) VALUES ('"
+                + deviceId + "','" + tenantA + "','" + siteId + "','edge-stumm-01','inverter')");
 
         String entityId = "eeeece02-0000-0000-0000-000000000001";
         exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "

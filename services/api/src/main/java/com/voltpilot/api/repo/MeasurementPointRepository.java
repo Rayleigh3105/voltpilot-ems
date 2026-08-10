@@ -83,6 +83,36 @@ public class MeasurementPointRepository {
     }
 
     /** How many measurement points of a given role the site already has. */
+    /**
+     * Ein vom Kunden erfasster ECHTER Netz-Zähler übernimmt die von der
+     * Plattform SYNTHETISIERTE Netz-Zeile, statt eine zweite anzulegen.
+     *
+     * <p>Seit die v2-Komposition automatisch beim Geräte-Claim läuft, trägt
+     * jede verbundene Anlage eine komponierte {@code grid-meter}-Zeile
+     * („gemessen über den Wechselrichter"). Die 0-1-Regel würde den Kunden
+     * danach mit 409 abweisen - und die Anlage behielte für immer den
+     * Platzhalter statt des echten Zählers. Zwei Zeilen sind ebenfalls keine
+     * Option: die Topologie summiert je Rolle, also zählte das Netz doppelt.
+     *
+     * <p>Erkannt wird die komponierte Zeile daran, dass sie durch ein GERÄT
+     * misst ({@code device_id} gesetzt, vom Gateway) und an KEINE gemeldete
+     * Quelle gepinnt ist - genau die Zeile, die {@code createComposedPoint}
+     * anlegt. Eine gepinnte oder kundeneigene Zeile bleibt unangetastet (dann
+     * gilt die 0-1-Regel unverändert), und die Entitäts-Konfiguration der Zeile
+     * wird NICHT angefasst: sie beschreibt dieselbe Rolle, nur jetzt mit dem
+     * Namen des echten Zählers.
+     *
+     * @return true, wenn eine komponierte Zeile übernommen wurde
+     */
+    public boolean adoptComposedGridMeter(UUID siteId, String label, String brand, String model,
+            String registryUnitId) {
+        return jdbc.update(
+                "UPDATE measurement_point SET label = ?, brand = ?, model = ?, "
+                        + "registry_unit_id = ? WHERE site_id = ? AND role = 'grid-meter' "
+                        + "AND device_id IS NOT NULL AND edge_source_id IS NULL",
+                label, brand, model, registryUnitId, siteId) > 0;
+    }
+
     public int countByRole(UUID siteId, String role) {
         Integer n = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM measurement_point WHERE site_id = ? AND role = ?",

@@ -242,6 +242,16 @@ voltpilot:
   # listener pattern/broker settings as `control`. Off by default.
   entities:
     mqtt-listener-enabled: ${VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED:false}
+    # Das Anlagen-Modell füllt sich von selbst: die v2-Komposition läuft
+    # automatisch beim Geräte-Claim, beim Speicher-Speichern und über den
+    # getakteten Abgleich (V2SiteBackfillRunner) - KEIN Admin-Handgriff, kein
+    # Kunden-Klick. `enabled` ist der Not-Aus für das ganze Feature (Start-Lauf
+    # UND Takt), `reconcile-enabled` schaltet NUR den Takt (im Testlauf aus, in
+    # PRODUKTION an - siehe EntitiesSchedulingConfig).
+    backfill:
+      enabled: ${VOLTPILOT_ENTITIES_BACKFILL_ENABLED:true}
+      reconcile-enabled: ${VOLTPILOT_ENTITIES_BACKFILL_RECONCILE_ENABLED:true}
+      interval-ms: ${VOLTPILOT_ENTITIES_BACKFILL_INTERVAL_MS:300000}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's

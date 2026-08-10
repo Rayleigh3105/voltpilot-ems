@@ -1741,6 +1741,156 @@ class AdminApiTest {
                 + "'")).isEqualTo(3);
     }
 
+    /**
+     * <b>Das Anlagen-Modell füllt sich von selbst - NULL Nutzer-Schritte,
+     * weder Kunde noch Admin</b> (Captain-Order 10.08.2026: „der hat den Deye
+     * schon auf der Edge Seite angelegt, der sollte sich beim Portal schon
+     * automatisch melden").
+     *
+     * <p>Der Live-Befund war „Mienbach": eine fertig gekoppelte Neuanlage
+     * (Telemetrie floss, Fahrplan lief) zeigte dauerhaft „Noch keine
+     * Komponenten. Sobald Ihr Gerät sich meldet, erscheint hier, wie Ihre
+     * Anlage verschaltet ist." - ein Versprechen, das die Plattform nicht
+     * halten konnte: die Komposition hing am platform-admin-gated Bootstrap
+     * bzw. am einmaligen Lauf beim api-Start.
+     *
+     * <p>Bewiesen werden hier die drei Auslöser und ihre Wächter:
+     * <ul>
+     *   <li><b>Claim</b> - ein KUNDE (Rolle {@code operator}, kein Admin,
+     *       kein {@code X-Tenant-Id}) beansprucht sein Gerät und liest
+     *       unmittelbar danach ein vollständiges Modell;</li>
+     *   <li><b>Selbstheilung</b> - eine BESTANDSanlage (Gerät längst
+     *       verbunden, Komposition nie gelaufen) wird vom Takt genau EINMAL
+     *       komponiert, ohne Deploy und ohne Klick;</li>
+     *   <li><b>Speicher danach</b> - eine Anlage, die ihr Gerät VOR dem
+     *       Speicher bekam, bleibt nicht halb komponiert;</li>
+     *   <li><b>Ehrlichkeit</b> - eine Anlage ohne eindeutiges Gateway bleibt
+     *       still und ungestempelt, und nichts davon weicht RLS auf.</li>
+     * </ul>
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theAnlagenModellComposesItselfOnClaimAndHealsAnExistingPlantWithoutAnyHumanStep() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Selbstbau GmbH", "B2C").get("id");
+        createUser(admin, tenantId, "selbstbau-kunde", "kunde@selbstbau.example", "kunde-pw-123");
+        // Ab hier spricht der KUNDE - operator-Rolle, Mandant aus dem Token,
+        // kein Umschalter-Header, kein einziger /admin/**-Aufruf.
+        HttpHeaders kunde = bearer(token("selbstbau-kunde", "kunde-pw-123"));
+
+        // (1) Claim-Auslöser: der Kunde legt seine Anlage an, trägt Speicher +
+        // PV ein und verbindet sein Gerät - der normale Assistenten-Weg.
+        String claimSite = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Neubau Mienbach", "biddingZone", "DE-LU"), kunde),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + claimSite + "', 'battery', 30, 15, 15, 92)");
+        exec("INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) VALUES ('"
+                + tenantId + "', '" + claimSite + "', 'pv', 29.9)");
+
+        assertThat(customerEntities(kunde, claimSite))
+                .as("vor dem Gerät gibt es ehrlich nichts zu zeigen").isEmpty();
+
+        rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", claimSite, "externalRef", "selbstbau-deye-01"),
+                        kunde),
+                new ParameterizedTypeReference<Map<String, Object>>() {});
+
+        assertThat(customerEntities(kunde, claimSite))
+                .as("der Claim allein komponiert das Modell - kein Admin, kein Neustart, "
+                        + "kein Takt")
+                .containsExactlyInAnyOrder("battery-hybrid", "grid-meter", "house-load");
+
+        // (2) Der Bestandsfall „Mienbach": Gerät längst verbunden (hier per
+        // Superuser eingesetzt, damit KEIN Claim-Auslöser feuert - genau der
+        // Zustand einer Anlage, die vor diesem Umbau verbunden wurde), Modell
+        // leer. Bis hierher hätte nur ein Deploy oder ein Admin geholfen.
+        String bestand = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Bestand Mienbach", "biddingZone", "DE-LU"), kunde),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw) VALUES ('" + tenantId + "', '" + bestand + "', 'battery', "
+                + "13.8, 12, 12)");
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind) VALUES ('"
+                + UUID.randomUUID() + "', '" + tenantId + "', '" + bestand
+                + "', 'edge-vv6yx5m', 'inverter')");
+        assertThat(customerEntities(kunde, bestand)).as("der gemeldete Zustand").isEmpty();
+
+        // Der getaktete Abgleich fährt GENAU DIESEN Lauf (der Takt selbst ist in
+        // V2SiteBackfillRunnerTest verdrahtungsgenau geprüft und im Testlauf
+        // ausgeschaltet - siehe pom.xml).
+        backfillRunner.run();
+
+        assertThat(customerEntities(kunde, bestand))
+                .as("die Bestandsanlage heilt sich über den Takt - ohne Deploy, ohne Klick")
+                .containsExactlyInAnyOrder("battery-hybrid", "grid-meter", "house-load");
+        // Mandanten-Korrektheit: geschrieben wurde unter dem Mandanten der
+        // Anlage (RLS ist der Zaun, nicht BYPASSRLS).
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + bestand
+                + "' AND tenant_id = '" + tenantId + "'")).isEqualTo(3);
+
+        // GENAU EINMAL: ein zweiter Takt komponiert nichts nach.
+        backfillRunner.run();
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + bestand
+                + "'")).as("idempotent").isEqualTo(3);
+
+        // (3) Speicher NACH dem Gerät: bis zum Speicher trägt die Anlage nur
+        // die aus dem Gateway synthetisierten Zeilen - danach ist sie komplett.
+        String spaeter = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Speicher kommt später", "biddingZone", "DE-LU"),
+                        kunde),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", spaeter, "externalRef", "selbstbau-deye-02"),
+                        kunde),
+                new ParameterizedTypeReference<Map<String, Object>>() {});
+        assertThat(customerEntities(kunde, spaeter))
+                .as("ohne Speicher-Stammdaten wird keine Speicher-Zeile erfunden")
+                .containsExactlyInAnyOrder("grid-meter", "house-load");
+
+        rest.exchange(url("/api/v1/sites/" + spaeter + "/battery"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("capacityKwh", 13.8, "maxChargeKw", 12,
+                        "maxDischargeKw", 12), kunde),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        assertThat(customerEntities(kunde, spaeter))
+                .as("der Speicher-Schreibpfad vervollständigt die Komposition")
+                .containsExactlyInAnyOrder("battery-hybrid", "grid-meter", "house-load");
+
+        // (4) Ehrlichkeit: eine Anlage ohne Gerät bekommt NICHTS - weder eine
+        // Komposition (das ersetzte ihren Einrichtungs-Wegweiser durch einen
+        // leeren Energiefluss) noch einen Stempel, sie wird also später erneut
+        // betrachtet.
+        String ohneGeraet = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Wartet auf Gerät", "biddingZone", "DE-LU"), kunde),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw) VALUES ('" + tenantId + "', '" + ohneGeraet + "', 'battery', "
+                + "5.9, 1.8, 1.8)");
+        backfillRunner.run();
+        assertThat(customerEntities(kunde, ohneGeraet)).isEmpty();
+        assertThat(queryLong("SELECT count(*) FROM site WHERE id = '" + ohneGeraet
+                + "' AND v2_backfilled_at IS NULL")).as("nicht gestempelt = wird erneut betrachtet")
+                .isEqualTo(1);
+
+        // RLS bleibt der Zaun: ein FREMDER Mandant sieht keine dieser Zeilen.
+        String fremd = (String) createTenant(admin, "Fremd GmbH", "B2C").get("id");
+        createUser(admin, fremd, "fremd-kunde", "kunde@fremd.example", "fremd-pw-123");
+        assertThat(rest.exchange(url("/api/v1/sites/" + bestand + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("fremd-kunde", "fremd-pw-123"))), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /** Die Entitätstypen, die der KUNDE auf seiner eigenen Anlage sieht. */
+    @SuppressWarnings("unchecked")
+    private List<String> customerEntities(HttpHeaders customer, String siteId) {
+        Map<String, Object> body = rest.exchange(url("/api/v1/sites/" + siteId + "/entities"),
+                HttpMethod.GET, new HttpEntity<>(customer),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        return ((List<Map<String, Object>>) body.get("entities")).stream()
+                .map(e -> (String) e.get("entityType")).toList();
+    }
+
     private static double num(Map<String, Object> map, String key) {
         Object v = map.get(key);
         assertThat(v).as("numeric field '" + key + "'").isInstanceOf(Number.class);
@@ -1770,9 +1920,13 @@ class AdminApiTest {
         exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
                 + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
                 + siteId + "', 'battery', 40, 20, 20, 95)");
-        rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "mig-rig-01"), adminTenant),
-                new ParameterizedTypeReference<Map<String, Object>>() {});
+        // Das Gerät wird per Superuser eingesetzt, damit der CLAIM-Auslöser
+        // NICHT feuert: die Vorschau ist das Werkzeug für eine Anlage, die noch
+        // NICHT konvertiert ist - also genau eine Bestandsanlage, die vor der
+        // automatischen Komposition verbunden wurde.
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind) VALUES ('"
+                + UUID.randomUUID() + "', '" + tenantId + "', '" + siteId
+                + "', 'mig-rig-01', 'inverter')");
         rest.exchange(url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("role", "pv-generation", "label", "AC-PV",
                         "capacityKwp", 18), adminTenant),
@@ -1787,7 +1941,7 @@ class AdminApiTest {
                 new HttpEntity<>(adminTenant),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
         assertThat(preview.get("alreadyConverted")).isEqualTo(false);
-        assertThat(preview.get("gatewayDevice")).as("auto-linked battery device").isNotNull();
+        assertThat(preview.get("gatewayDevice")).as("das EINE Gerät der Anlage").isNotNull();
         List<Map<String, Object>> plan = (List<Map<String, Object>>) preview.get("plan");
         // MIG: the preview twin must announce the synthesized Hausverbrauch too,
         // or it would lie about what the conversion does.
