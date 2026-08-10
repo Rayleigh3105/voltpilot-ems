@@ -939,8 +939,11 @@ const AUFKLAPPER: Record<ErloesAufklapperId, ErloesAufklapper> = {
   },
   'speicher-preis': {
     id: 'speicher-preis',
-    titel: 'Speicher & Preis · Tagesnachweis',
-    sub: 'Was der Speicher wirklich getan hat',
+    // Seit dem Chart-Redesign Stufe 3 ist der Tagesnachweis das TAGESBILD -
+    // drei Flächen über einer Zeitachse statt „Speicher & Preis" allein. Die
+    // ID bleibt, damit ein geöffneter Aufklapper seine Sitzung behält.
+    titel: 'Der Tag im Bild · Preis, Speicher, Ertrag',
+    sub: 'Was Ihre Anlage an diesem Tag getan hat',
   },
   tagesprotokoll: {
     id: 'tagesprotokoll',

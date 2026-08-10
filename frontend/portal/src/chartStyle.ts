@@ -399,6 +399,57 @@ export const PANELS = {
   leftNarrowPx: 30,
   /** Rechter Rand ohne Zweitachse. */
   rightPx: 20,
-  /** Rechter Rand MIT der Ladestand-Miniskala (F8-Ausnahme, `offset` 44). */
-  rightWithSocPx: 76,
+  /**
+   * Rechter Rand MIT der Ladestand-Miniskala (F8-Ausnahme, `offset` 44).
+   * ⚠ 76 px reichten nicht: das oberste Label „100 %" wurde am Canvas-Rand um
+   * ~2 px beschnitten (im Browser bei 1440 px gemessen). Der Wert gilt für
+   * jede Fläche mit dieser Miniskala.
+   */
+  rightWithSocPx: 86,
+} as const;
+
+/* ---------------------------------------------------------------------------
+ * DREI Panels — das Tagesbild (Stufe 3, r2 §6 A · Mockup `vn-tagesbild`)
+ *
+ * Dieselbe Bauart wie {@link PANELS}, nur eine Fläche mehr: Preis · Leistung ·
+ * Ertrag über EINER Zeitachse. Die Werte stehen HIER und nicht in der
+ * Komponente, weil sie kein Tagesbild-Sonderfall sind — sie sind die
+ * Drei-Panel-Stufe derselben Geometrie, und der nächste Dreiteiler nimmt sie.
+ *
+ * ⚠ Es gelten Wort für Wort die zwei Auflagen der Zwei-Panel-Stufe: ALLE Grids
+ * tragen denselben linken/rechten Rand (sonst lägen die Zeitachsen nicht
+ * übereinander, und genau das ist der Zweck), und `containLabel` bleibt aus (es
+ * misst je Grid die eigene Beschriftungsbreite und verschiebt die Plots
+ * gegeneinander).
+ *
+ * Die Prozentwerte sind aus dem abgenommenen Mockup abgeleitet (Panel 2 ist die
+ * größte Fläche — dort steht die Handlung; Panel 3 die flachste — eine
+ * monotone Summenkurve braucht keine Höhe) und lassen zwischen den Panels je
+ * eine Zeile für die Überschrift in Aussageform frei.
+ * ------------------------------------------------------------------------- */
+export const PANELS3 = {
+  /** Panel 1 „Was Strom kostet". */
+  preis: { topPct: 4, heightPct: 23 },
+  /** Panel 2 „Was die Anlage macht" — die größte Fläche. */
+  leistung: { topPct: 32.5, heightPct: 34 },
+  /** Panel 3 „Was dabei herauskommt" — bis zum Fußraum von {@link PANELS}. */
+  ertrag: { topPct: 72 },
+  /**
+   * Wie weit die Überschrift ÜBER ihrem Panel sitzt (Anteil der Bildhöhe).
+   * Sie steht über der Fläche, nicht daneben — eine Überschrift NEBEN der
+   * Fläche liest sich als Achsenname, und genau das war Befund ③ (r2 §2).
+   * Weil sie am Panel hängt, wandert sie mit, wenn ein Panel entfällt.
+   *
+   * ⚠ Der Abstand ist so gewählt, dass die Überschrift ZWISCHEN zwei Flächen
+   * steht und keine berührt - im Browser bei 420 px und 560 px Bildhöhe
+   * eingestellt. Wer die Panel-Anteile ändert, misst ihn neu.
+   */
+  titelGapPct: 4.5,
+  /**
+   * Wo das Leistungs-Panel endet, wenn es KEIN Ertrags-Panel gibt (kein
+   * gemessenes Geld für diesen Tag). Die Anzahl der Grids bleibt trotzdem drei,
+   * damit Achsen- und Serien-INDIZES stabil sind — der Ertrag schrumpft auf
+   * Höhe 0, statt einen zweiten Codepfad zu erzwingen.
+   */
+  ohneErtragBottomPx: PANELS.bottomPx,
 } as const;

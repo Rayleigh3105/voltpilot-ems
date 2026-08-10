@@ -210,6 +210,10 @@ const CHART_FILES = [
   'components/VerlaufChart.tsx',
   'components/ErloeseVerlaufChart.tsx',
   'components/PeakHistoryChart.tsx',
+  // Das Tagesbild (Stufe 3) - seine Beschriftungen leben in der reinen Regel,
+  // also steht die Regel-Datei hier gleichberechtigt neben dem Render.
+  'components/Tagesbild.tsx',
+  'tagesbild.ts',
 ];
 
 const CHART_FORBIDDEN: Array<{ re: RegExp; why: string }> = [

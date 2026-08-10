@@ -21,8 +21,10 @@ import { api, type History, type Site, type SiteEarnings } from '../api';
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
 
 /** Das Diagramm wird durch eine Attrappe ersetzt, die ihre Prop-Werte zeigt. */
+vi.mock('../components/Tagesbild', () => ({
+  Tagesbild: () => <div data-testid="day-chart" />,
+}));
 vi.mock('../HistoryChart', () => ({
-  HistoryDayChart: () => <div data-testid="day-chart" />,
   HistoryEnergieChart: (p: {
     vergleich?: History | null;
     legende?: { satz: string } | null;

@@ -18,8 +18,10 @@ import {
 
 // The explorer chart uses useEChart (canvas); jsdom has neither, so stub it.
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
+vi.mock('../components/Tagesbild', () => ({
+  Tagesbild: () => <div data-testid="day-chart" />,
+}));
 vi.mock('../HistoryChart', () => ({
-  HistoryDayChart: () => <div data-testid="day-chart" />,
   HistoryEnergieChart: () => <div data-testid="energie-chart" />,
 }));
 
