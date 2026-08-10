@@ -746,3 +746,67 @@ describe('ScheduleChart · die Geometrie der Chart-Sprache', () => {
     expect(container.querySelector('.vp-chart.panels')).not.toBeNull();
   });
 });
+
+describe('K7 · der Fahrplan-Tooltip ist ein Satz, keine Zahlenkolonne', () => {
+  /** Der Tooltip einer Viertelstunde, aufgeteilt in seine Zeilen. */
+  function zeilen(slots: ScheduleSlot[], i = 0): string[] {
+    render(<ScheduleChart plan={plan(slots)} />);
+    return String(lastOption.tooltip.formatter([{ dataIndex: i }])).split('<br/>');
+  }
+
+  it('nennt die HANDLUNG direkt unter der Uhrzeit - vor jeder Wert-Zeile', () => {
+    const z = zeilen([slot({ batteryKw: 4, gridKw: 1, pvKw: 6, importPriceCtKwh: 30 })]);
+    expect(z[0]).toMatch(/^<b>/);
+    expect(z[1]).toBe('Speichert 4 kW eigenen Solarstrom.');
+    // Erst danach folgen die Belege (Punkt-Zeilen).
+    expect(z[2]).toContain('border-radius:50%');
+  });
+
+  it('sagt die Quelle des Ladestroms, weil der PLAN sie belegt', () => {
+    // Netzladen: mehr Ladung als PV im Slot - das ist die Aussage des
+    // Optimierers ueber seinen eigenen Plan, keine Schaetzung.
+    expect(zeilen([slot({ batteryKw: 5, gridKw: 6, pvKw: 0 })])[1]).toBe(
+      'Speichert 5 kW günstigen Strom aus dem Netz.',
+    );
+    expect(zeilen([slot({ batteryKw: -3, gridKw: -3 })])[1]).toBe(
+      'Deckt den Verbrauch mit 3 kW aus dem Speicher.',
+    );
+    expect(zeilen([slot({ batteryKw: 0, gridKw: 0 })])[1]).toBe(
+      'Der Speicher hält seine Ladung.',
+    );
+  });
+
+  it('sagt die Batterie GENAU EINMAL - die frühere Doppel-Kolonne ist weg', () => {
+    const html = zeilen([slot({ batteryKw: 4, gridKw: 1, pvKw: 6 })]).join('<br/>');
+    // Vor Stufe 6 stand oben die Wert-Zeile „Batterie lädt Solarstrom 4 kW"
+    // UND unten der Satz „Speichert eigenen Solarstrom".
+    expect(html).not.toContain('Batterie lädt');
+    expect(html.match(/Speichert/g)).toHaveLength(1);
+  });
+
+  it('ERFINDET keine Bilanz-Zerlegung', () => {
+    const html = zeilen([
+      slot({ batteryKw: 4, gridKw: 1, pvKw: 6, loadKw: 3, importPriceCtKwh: 30, exportValueCtKwh: 8 }),
+    ]).join('<br/>');
+    expect(html).not.toMatch(/in die Batterie|ins Haus|davon/);
+  });
+
+  it('escapt einen kundenkontrollierten Verbrauchernamen weiterhin (XSS-Regel)', () => {
+    render(
+      <ScheduleChart
+        plan={plan([slot({ batteryKw: 1 })])}
+        consumers={[
+          {
+            entityId: 'e1',
+            name: '<img src=x onerror=alert(1)>',
+            values: [5],
+            pflicht: [false],
+          } as any,
+        ]}
+      />,
+    );
+    const html = String(lastOption.tooltip.formatter([{ dataIndex: 0 }]));
+    expect(html).toContain('&lt;img');
+    expect(html).not.toContain('<img src=x');
+  });
+});

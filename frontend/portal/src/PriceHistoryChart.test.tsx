@@ -189,6 +189,40 @@ describe('PriceHistoryChart - die Preis-Grammatik (Stufe 4)', () => {
     expect(alleTexte(lastOption).join(' ')).not.toMatch(/Viertel/);
   });
 
+  it('K7: der Tooltip nennt den Preis MIT seiner Einordnung, nicht nur die Zahl', () => {
+    const buckets = zweiTage();
+    render(<PriceHistoryChart history={historie(buckets)} fokus="heute" />);
+    // Der erste Slot INNERHALB des ersten Bandes - die Einordnung muss aus
+    // DEMSELBEN Fenster kommen, das dieses Band gezeichnet hat.
+    const i = (lastOption.series[0].markArea.data as any[])[0][0].xAxis as number;
+    const html = String(
+      lastOption.tooltip.formatter([
+        { axisValue: buckets[i].ts, dataIndex: i, value: lastOption.series[0].data[i] },
+      ]),
+    );
+    expect(html).toMatch(/ ct\/kWh \(.+\) — (die günstigsten|die teuersten|Strom kostet nichts)$/);
+  });
+
+  it('K7: behauptet ohne Fenster KEINE Einordnung', () => {
+    // Ein flacher Tag traegt per MIN_SPANNE_CT keine Fenster - dann steht dort
+    // nur der Preis, nie eine erfundene Einordnung.
+    const d0 = new Date();
+    d0.setHours(0, 0, 0, 0);
+    const flach: PriceBucket[] = Array.from({ length: 96 }, (_, i) => ({
+      ts: new Date(d0.getTime() + i * 15 * 60_000).toISOString(),
+      avgEurMwh: 100,
+      minEurMwh: 100,
+      maxEurMwh: 100,
+    }));
+    render(<PriceHistoryChart history={historie(flach)} />);
+    expect(lastOption.series[0].markArea.data).toEqual([]);
+    const html = String(
+      lastOption.tooltip.formatter([{ axisValue: flach[10].ts, dataIndex: 10, value: 10 }]),
+    );
+    expect(html).toContain('ct/kWh');
+    expect(html).not.toContain('—');
+  });
+
   it('setzt hoechstens zwei benannte Marken - je mit Wort UND Zahl', () => {
     render(<PriceHistoryChart history={historie(zweiTage())} fokus="heute" />);
     const mp = lastOption.series[0].markPoint.data as any[];

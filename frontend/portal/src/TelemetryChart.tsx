@@ -8,7 +8,8 @@ import {
   STROKE,
 } from './chartStyle';
 import { endsCollide, useDirectLabels } from './chartKopf';
-import { AXIS as AXIS_NAME } from './chartCopy';
+import { AXIS as AXIS_NAME, LADESTAND } from './chartCopy';
+import { flussSatz, kopf, tooltip, wertZeile } from './chartTooltip';
 import { chartTheme } from './chartTheme';
 import { ChartInsight, ChartLegend, type LegendItem } from './components/ChartExplain';
 import { fmtNum } from './format';
@@ -24,8 +25,11 @@ import { useEChart } from './useEChart';
  * 10-s live ingest, store-and-forward replays) must not distort time the way a
  * category axis does (every sample equal width). Chrome follows the portal's
  * self-explaining chart convention: plain-German HTML legend + one-line
- * takeaway (ChartExplain) instead of the raw ECharts legend, plus the
- * "Jetzt"-marker + shaded-past convention shared with Fahrplan/Historie.
+ * takeaway (ChartExplain) instead of the raw ECharts legend.
+ *
+ * ⚠ Diese Fläche trägt bewusst KEINE „Jetzt"-Linie und keinen
+ * Vergangenheits-Wash (F5): sie zeigt ausschließlich Vergangenheit, der rechte
+ * Rand IST jetzt (`xAxis.max = nowMs`) — beides wäre doppeltes Rauschen.
  *
  * An implausible SoC row maps to null via the shared sanitizeSoc (plausible.ts)
  * so the line shows a GAP (connectNulls stays false) instead of clipping to the
@@ -105,9 +109,7 @@ export function TelemetryChart({
         }),
       });
 
-      // Only the channels the customer left on (V3 channel-toggle pills). The
-      // "Jetzt" marker + shaded past ride the first VISIBLE series so they stay
-      // even if PV is toggled off.
+      // Nur die Kanäle, die der Kunde angelassen hat (V3-Umschalt-Pillen).
       /** Der letzte gezeichnete Wert einer Reihe - `null`, wenn sie leer endet. */
       const lastValues = (chans: typeof CHANNELS) =>
         chans
@@ -173,21 +175,36 @@ export function TelemetryChart({
           tooltip: {
             trigger: 'axis',
             confine: true,
+            /**
+             * K7: ein Mini-SATZ statt einer Zahlenkolonne. Die drei
+             * Leistungs-Kanäle ziehen sich zu einer Aussage zusammen („Sonne
+             * liefert 5,2 kW, Haus braucht 3,4 kW, 1,8 kW ins Netz."); der
+             * Ladestand trägt seine eigene Zeile, weil er weder Leistung noch
+             * eine Richtung ist. Was der Satz sagt, steht darunter NICHT noch
+             * einmal — das ist die Entlastung, die die Direktbeschriftung aus
+             * Stufe 1 verlangt.
+             */
             formatter: (params: any[]) => {
-              const lines = [`<b>${timeLabel(Number(params[0]?.axisValue))} Uhr</b>`];
-              for (const p of params) {
+              const wert = (name: string): number | null => {
+                const p = params.find((x) => x.seriesName === name);
+                if (!p) return null;
                 const v = Array.isArray(p.value) ? p.value[1] : p.value;
-                if (v == null) continue;
-                const n = Number(v);
-                if (p.seriesName === 'Netz') {
-                  const dir = n > 0.05 ? ' (Bezug)' : n < -0.05 ? ' (Einspeisung)' : '';
-                  lines.push(`${p.marker} Netz: ${fmtNum(Math.abs(n), 'kW')}${dir}`);
-                } else {
-                  const unit = p.seriesName === 'Batterie-Ladestand' ? '%' : 'kW';
-                  lines.push(`${p.marker} ${p.seriesName}: ${fmtNum(n, unit, unit === '%' ? 0 : 1)}`);
-                }
-              }
-              return lines.join('<br/>');
+                return v == null ? null : Number(v);
+              };
+              const satz = flussSatz(
+                {
+                  pv: wert('PV-Erzeugung'),
+                  haus: wert('Hausverbrauch'),
+                  netz: wert('Netz'),
+                },
+                (b) => fmtNum(b, 'kW'),
+              );
+              const soc = wert('Batterie-Ladestand');
+              return tooltip(
+                kopf(`${timeLabel(Number(params[0]?.axisValue))} Uhr`),
+                satz.text,
+                soc == null ? null : wertZeile(t.soc, `${LADESTAND} ${fmtNum(soc, '%', 0)}`),
+              );
             },
           },
           xAxis: {

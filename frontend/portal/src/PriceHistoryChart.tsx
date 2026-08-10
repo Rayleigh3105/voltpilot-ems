@@ -5,6 +5,7 @@ import { chartTheme } from './chartTheme';
 import { fokusFenster, tagesGrenze, type TagFokus } from './marktpreise';
 import {
   ctReihe,
+  fensterFuerSlot,
   fensterZeilen,
   preisFenster,
   preisMarken,
@@ -12,6 +13,8 @@ import {
   type FensterZeile,
 } from './preisFenster';
 import { useEChart } from './useEChart';
+import { kopf, tooltip } from './chartTooltip';
+
 import './preisFenster.css';
 
 /** ct/kWh (die Kunden-Einheit) + EUR/MWh (das Profi-Detail) für einen Tooltip. */
@@ -159,12 +162,22 @@ export function PriceHistoryChart({
             tooltip: {
               trigger: 'axis',
               confine: true,
+              /**
+               * K7: der Preis mit seiner BEDEUTUNG statt einer nackten Zahl.
+               * Die Einordnung kommt aus DEMSELBEN `preisFenster`-Ergebnis,
+               * das die Bänder im Bild zeichnet - Tooltip und Schattierung
+               * können sich damit nicht widersprechen. Ohne Fenster (flacher
+               * Tag) bleibt es beim Preis, nie eine erfundene Einordnung.
+               */
               formatter: (params: any[]) => {
                 const p = params[0];
                 if (!p) return '';
-                return `<b>${tooltipHead(p.axisValue, bucket)}</b><br/>${fmtPrice(
-                  p.value == null ? null : Number(p.value),
-                )}`;
+                const f = fensterFuerSlot(fenster, Number(p.dataIndex));
+                const preis = fmtPrice(p.value == null ? null : Number(p.value));
+                return tooltip(
+                  kopf(tooltipHead(p.axisValue, bucket)),
+                  f == null ? preis : `${preis} — ${f.wort}`,
+                );
               },
             },
             dataZoom: zoomFenster

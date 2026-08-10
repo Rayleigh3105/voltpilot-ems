@@ -51,6 +51,7 @@ import {
   socRangeLine,
   todaySlots,
   toggleSeries,
+  slotAktionSatz,
 } from './schedule';
 import { chartTheme, type ChartTheme } from './chartTheme';
 import { eurAmount, NBSP } from './format';
@@ -1317,5 +1318,45 @@ describe('curtailBandLabel', () => {
   it('behauptet ohne jedes Preissignal nur das Wort', () => {
     expect(curtailBandLabel([{ curtailKw: 4 }])).toBe(CURTAIL_BAND_WORD);
     expect(curtailBandLabel([])).toBe(CURTAIL_BAND_WORD);
+  });
+});
+
+describe('K7 · was der Plan in dieser Viertelstunde vorhat, als SATZ', () => {
+  it('nennt die Quelle des Ladestroms — sie ist vom Plan BELEGT', () => {
+    // Mehr Ladung als geplante PV ⇒ Netzladen (die FK3-Semantik von chargeKind).
+    expect(slotAktionSatz({ batteryKw: 5, gridKw: 6, pvKw: 0 })).toBe(
+      'Speichert 5 kW günstigen Strom aus dem Netz.',
+    );
+    // Ladung innerhalb der geplanten PV ⇒ Solarladen.
+    expect(slotAktionSatz({ batteryKw: 4, gridKw: 1, pvKw: 6 })).toBe(
+      'Speichert 4 kW eigenen Solarstrom.',
+    );
+  });
+
+  it('spricht Entladen und Ruhe in Kundendeutsch', () => {
+    expect(slotAktionSatz({ batteryKw: -3.5, gridKw: -1 })).toBe(
+      'Deckt den Verbrauch mit 3,5 kW aus dem Speicher.',
+    );
+    // Ruhe bekommt KEINE Menge - „0,0 kW" wäre Rauschen.
+    expect(slotAktionSatz({ batteryKw: 0, gridKw: 0 })).toBe('Der Speicher hält seine Ladung.');
+  });
+
+  it('nennt die Menge IMMER ohne Vorzeichen — die Richtung trägt das Wort', () => {
+    for (const satz of [
+      slotAktionSatz({ batteryKw: -3.5, gridKw: -1 }),
+      slotAktionSatz({ batteryKw: -12, gridKw: -12 }),
+    ]) {
+      expect(satz).not.toMatch(/[-−]\s*\d/);
+    }
+  });
+
+  it('sagt ohne geplante Batterieleistung GAR NICHTS', () => {
+    expect(slotAktionSatz({ batteryKw: null, gridKw: 1 })).toBeNull();
+    expect(slotAktionSatz({})).toBeNull();
+  });
+
+  it('besteht aus Konstanten und formatierten Zahlen (XSS-Regel der Formatter)', () => {
+    const satz = slotAktionSatz({ batteryKw: 4, gridKw: 1, pvKw: 6 })!;
+    expect(satz).not.toMatch(/[<>]/);
   });
 });

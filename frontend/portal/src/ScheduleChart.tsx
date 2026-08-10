@@ -14,6 +14,7 @@ import {
 } from './chartStyle';
 import { AXIS as AXIS_NAME, BEZUGSPREIS, BOERSENPREIS, EINSPEISEWERT, SPANNE } from './chartCopy';
 import { chartTheme } from './chartTheme';
+import { escHtml, kopf, notizZeile, tooltip, wertZeile } from './chartTooltip';
 import {
   chargeKind,
   curtailArea,
@@ -42,6 +43,7 @@ import {
   priceSpread,
   PV_FORECAST_LABEL,
   SERIES_GROUPS,
+  slotAktionSatz,
   slotBarMark,
   type PlanWordingKind,
   slotDuty,
@@ -117,19 +119,6 @@ function ctPlain(v: number): string {
 
 function kw(v: number, digits = 2): string {
   return `${v.toLocaleString('de-DE', { maximumFractionDigits: digits })} kW`;
-}
-
-/**
- * Consumer names are CUSTOMER-CONTROLLED strings and the tooltip formatter
- * returns raw HTML - escape them (the documented XSS rule for chart
- * formatters).
- */
-function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 /** A small padlock as an ECharts path symbol - the §14.11 Schloss marking. */
@@ -609,11 +598,13 @@ export function ScheduleChart({
               hour: '2-digit',
               minute: '2-digit',
             });
-            const lines = [`<b>${time} Uhr</b>`];
-            const row = (color: string, text: string) =>
-              lines.push(
-                `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>${text}`,
-              );
+            // K7: die HANDLUNG zuerst - der Satz beantwortet „was macht der
+            // Speicher hier", die Zeilen darunter belegen ihn. Bis Stufe 5
+            // stand dieselbe Aussage als LETZTE von neun Zeilen.
+            const lines = [kopf(`${time} Uhr`), slotAktionSatz(s)].filter(
+              (z): z is string => z != null,
+            );
+            const row = (color: string, text: string) => lines.push(wertZeile(color, text));
 
             // --- Preis-Panel
             if (showSpread) {
@@ -623,7 +614,7 @@ export function ScheduleChart({
               if (exp != null) row(t.flowGridLine, `${EINSPEISEWERT}: ${ct(exp)}`);
               if (imp != null && exp != null)
                 lines.push(
-                  `<span style="color:${t.axis}">${SPANNE}: ${ctPlain(Math.abs(imp - exp))} ct/kWh</span>`,
+                  notizZeile(t.axis, `${SPANNE}: ${ctPlain(Math.abs(imp - exp))} ct/kWh`),
                 );
             } else if (showSpot) {
               const p = pricesCt[i];
@@ -631,20 +622,9 @@ export function ScheduleChart({
             }
 
             // --- Leistungs-Panel
-            const batV = battery[i];
-            const kind = chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw);
-            if (batV != null) {
-              const label =
-                kind === 'netzladen'
-                  ? 'lädt aus dem Netz'
-                  : kind === 'solarladen'
-                    ? 'lädt Solarstrom'
-                    : kind === 'entladen'
-                      ? 'entlädt'
-                      : 'hält';
-              const amt = Math.abs(batV) < 0.05 ? '' : ` ${kw(Math.abs(batV))}`;
-              row(kind === 'netzladen' ? t.gridCharge : t.charge, `Batterie ${label}${amt}`);
-            }
+            // Die Batterie hat KEINE eigene Wert-Zeile mehr: ihre Menge UND
+            // ihre Quelle stehen schon im Satz oben (M10-Geist, keine
+            // Doppel-Kolonne). Ihre FARBE trägt weiterhin das Balkenbild.
             if (showPv && forecast.pv.values[i] != null)
               row(t.pvLine, `${PV_FORECAST_LABEL}: ${kw(forecast.pv.values[i]!)}`);
             if (showIstPv && istPv.values[i] != null)
@@ -667,21 +647,10 @@ export function ScheduleChart({
               const pflicht = layer.pflicht[i] ? ' · Pflichtfenster (fest)' : '';
               row(
                 consumerShade(t.consumer, li),
-                `${esc(layer.name)}: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW${pflicht}`,
+                `${escHtml(layer.name)}: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW${pflicht}`,
               );
             });
 
-            if (batV != null && Math.abs(batV) > 0.05) {
-              lines.push(
-                `<span style="color:${t.axis}">${
-                  batV > 0
-                    ? kind === 'netzladen'
-                      ? 'Speichert günstigen Strom aus dem Netz'
-                      : 'Speichert eigenen Solarstrom'
-                    : 'Deckt den Verbrauch aus dem Speicher'
-                }</span>`,
-              );
-            }
             // Duty-Vorschau (PR 4): in einem markierten Slot ist der Balken
             // eine Vorhersage - das Gerät folgt dort dem gemessenen Verbrauch
             // bzw. lädt nur den gemessenen Überschuss. Ohne Pflicht (oder auf
@@ -689,14 +658,14 @@ export function ScheduleChart({
             // Markierung. Der Text ist eine Konstante aus schedule.ts: in
             // diesen HTML-Formatter darf nie ein dynamischer String.
             const duty = slotDuty(s);
-            if (duty) lines.push(`<span style="color:${t.axis}">${dutyTooltip(duty)}</span>`);
+            if (duty) lines.push(notizZeile(t.axis, dutyTooltip(duty)));
             // Abregeln nennt seine MENGE und den Cap - sonst bliebe der orange
             // Slot eine Farbe ohne Zahl. `curtailTooltip` setzt den Satz aus
             // Konstanten + formatierten Zahlen zusammen (XSS-Regel der
             // Chart-Formatter); null = dieser Slot regelt nicht ab.
             const curtailLine = curtailTooltip(s);
-            if (curtailLine) lines.push(`<span style="color:${t.pv}">${curtailLine}</span>`);
-            return lines.join('<br/>');
+            if (curtailLine) lines.push(notizZeile(t.pv, curtailLine));
+            return tooltip(...lines);
           },
         },
         xAxis: [
