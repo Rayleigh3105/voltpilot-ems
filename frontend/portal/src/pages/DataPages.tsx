@@ -16,6 +16,7 @@ import {
   type ConsumerSchedule,
   type PriceRangeSummary,
   type SchedulePlan,
+  type ScheduleSlot,
   type Site,
   type TelemetryPoint,
   type WeatherForecast,
@@ -29,6 +30,7 @@ import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States'
 import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
 import { hoursAhead, nextHourIndex } from '../weather';
+import { erwarteteLeistung, wetterKern } from '../wetterLeistung';
 import { ScheduleChart } from '../ScheduleChart';
 import { bankedValueLine, horizonHint, planStaleNote, savingsTodayEur } from '../schedule';
 import { consumerLayers, consumerSlotInfos, hasConsumerData } from '../consumerSchedule';
@@ -522,6 +524,27 @@ export function MarktpreisePage(props: {
 /** The Wetter subpage of one Anlage: the forecast feeding its PV-Prognose. */
 export function WetterSection({ site }: { site: Site }) {
   const { data: forecast, loading, err, reload } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
+  /**
+   * Die LEITGRÖSSE der Fläche ist seit Stufe 4 die erwartete Leistung in kW -
+   * und die einzige Stelle, an der die PV-Prognose des aktiven Modells das
+   * Portal erreicht, ist der FAHRPLAN (`schedule.pv_kw`). Der Abruf ist
+   * FAIL-SOFT: ohne Plan (kein Speicher, toter Optimierer) führt die Fläche
+   * wieder die Sonnenstärke und sagt im Kopf den Grund.
+   */
+  const [planSlots, setPlanSlots] = useState<ScheduleSlot[]>([]);
+  useEffect(() => {
+    setPlanSlots([]);
+    let active = true;
+    api
+      .schedule(site.id)
+      .then((plan) => {
+        if (active) setPlanSlots(plan.slots);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [site.id]);
   // Feinschliff (Mobil-Umbau Stufe 4): am Telefon lagen vier einspaltige
   // Kennzahlen (~600 px) VOR der Kurve - die Kurve ist aber das, wofuer man die
   // Seite oeffnet. Sie rueckt nach oben, die Kennzahlen werden ein 2x2-Raster.
@@ -535,8 +558,12 @@ export function WetterSection({ site }: { site: Site }) {
   const nextIdx = nextHourIndex(points, nowMs);
   const now = nextIdx >= 0 ? points[nextIdx] : null;
   const horizon = hoursAhead(points, nowMs);
-  const peakGhi = points.reduce<number | null>(
-    (m, p) => (p.ghiWM2 != null && (m == null || p.ghiWM2 > m) ? p.ghiWM2 : m),
+  // K1 + die Kopf-Kennzahl aus DERSELBEN kW-Reihe, die das Diagramm zeichnet -
+  // sie können sich also nicht widersprechen.
+  const kwReihe = erwarteteLeistung(points, planSlots);
+  const kern = points.length > 0 ? wetterKern(points, kwReihe, new Date(nowMs)) : null;
+  const spitze = kwReihe.reduce<number | null>(
+    (m, v) => (v != null && (m == null || v > m) ? v : m),
     null,
   );
 
@@ -574,13 +601,24 @@ export function WetterSection({ site }: { site: Site }) {
                     : { marginBottom: 'var(--vp-space-5)' }
                 }
               >
+                <Stat
+                  value={fmtNum(spitze, 'kW')}
+                  label="Erwartete Spitzenleistung"
+                  title="Die stärkste Stunde im Vorhersagezeitraum - aus der PV-Prognose Ihres Fahrplans."
+                />
                 <Stat value={fmtNum(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
                 <Stat value={fmtNum(now?.cloudCoverPct, '%', 0)} label="Bewölkung" />
-                <Stat value={fmtNum(peakGhi, '', 0)} label="Max. Einstrahlung (W/m²)" />
                 <Stat value={fmtNum(horizon, 'h', 0)} label="Vorhersagehorizont" />
               </div>
             );
-            const chart = <WeatherChart points={points} />;
+            const chart = (
+              <>
+                {/* K1: die Kernaussage als SATZ - abgeleitet, nie geschrieben.
+                    Ohne PV-Prognose steht dort der ehrliche Grund. */}
+                <ChartHeadline kern={kern} />
+                <WeatherChart points={points} planSlots={planSlots} />
+              </>
+            );
             return isPhone ? (
               <>
                 {chart}
@@ -594,8 +632,9 @@ export function WetterSection({ site }: { site: Site }) {
             );
           })()}
           <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-            Quelle: Open-Meteo, stündlich aktualisiert. Die Einstrahlung (GHI) fließt in
-            die PV-Prognose Ihrer Anlage ein.
+            Wetterdaten: Open-Meteo, stündlich aktualisiert. Die erwartete Leistung ist
+            die PV-Prognose, mit der Ihr Fahrplan rechnet - sie reicht so weit wie der
+            Fahrplan.
           </p>
         </>
       )}
