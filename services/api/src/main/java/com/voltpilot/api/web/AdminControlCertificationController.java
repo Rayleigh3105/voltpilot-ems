@@ -132,6 +132,29 @@ public class AdminControlCertificationController {
     public record ActivateRequest(@Size(max = 512) String note) {
     }
 
+    /**
+     * Eine Anlage als Kandidat für den EINEN Klick.
+     *
+     * <p>{@code platformCertVerdict} ist die GEMELDETE Wahrheit des Geräts,
+     * nicht eine Cloud-Vermutung - nur die Box weiß, welches Modell dort
+     * ausgewählt ist. {@code null} heißt „sie hat nichts gemeldet", nie „nicht
+     * zertifiziert": nur mit dieser Unterscheidung kann eine Fläche „ein Klick
+     * fehlt" von „ein Prüfstandslauf fehlt" trennen.
+     */
+    public record CandidateDto(UUID deviceId, UUID tenantId, UUID siteId, String siteName,
+            String tenantName, String externalRef, boolean activated, String platformCertVerdict,
+            String platformCertModel, String certSource, Instant activatedAt, String activatedBy) {
+    }
+
+    @GetMapping("/api/v1/admin/control-candidates")
+    public List<CandidateDto> candidates() {
+        return service.candidates().stream()
+                .map(c -> new CandidateDto(c.deviceId(), c.tenantId(), c.siteId(), c.siteName(),
+                        c.tenantName(), c.externalRef(), c.activated(), c.platformCertVerdict(),
+                        c.platformCertModel(), c.certSource(), c.activatedAt(), c.activatedBy()))
+                .toList();
+    }
+
     @GetMapping("/api/v1/admin/control-activations")
     public List<ActivationDto> activations() {
         return service.activations().stream().map(ActivationDto::of).toList();

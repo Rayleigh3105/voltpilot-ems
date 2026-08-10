@@ -1,4 +1,10 @@
-import { request, type CreateSiteInput, type Site } from '../api';
+import {
+  request,
+  type CertSource,
+  type CreateSiteInput,
+  type PlatformCertVerdict,
+  type Site,
+} from '../api';
 import type { DeviceApply, DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
 
 export type { CreateSiteInput, Site } from '../api';
@@ -168,6 +174,81 @@ export interface TenantOffboardingReport {
   failedUsers: string[];
 }
 
+/**
+ * Ein Eintrag im PLATTFORM-Register der steuerungs-zertifizierten
+ * Wechselrichter-Modelle. Geschlüsselt auf `brand`+`model`, nicht auf die
+ * Registerfamilie: eine Familie deckt mehrere Baureihen ab, ein
+ * Prüfstandslauf genau eine.
+ */
+export interface ControlCertification {
+  brand: string;
+  model: string;
+  family: string;
+  /** Die Steuerfläche, auf der der Lauf lief - null = keine Aussage. */
+  controlPath: 'remote' | 'tou' | null;
+  /**
+   * Die belegte SCHREIB-Vorzeichenkonvention. ⚠ null und false sind
+   * verschieden: null heißt „der Prüfstand hat die Frage nicht beantwortet"
+   * (das Gerät prüft dann nichts), false heißt „er hat sie beantwortet".
+   */
+  invertControlSign: boolean | null;
+  certifiedAt: string;
+  /**
+   * Die Firmware als KLARTEXT - ausdrücklich kein Maschinen-Tor: die Box liest
+   * keine Firmware-Version aus dem Wechselrichter, ein Firmware-Fenster wäre
+   * eine Zusage, die niemand prüfen kann.
+   */
+  firmwareNote: string | null;
+  note: string | null;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface CertifyControlModelInput {
+  brand: string;
+  model: string;
+  family: string;
+  controlPath?: 'remote' | 'tou' | null;
+  invertControlSign?: boolean | null;
+  certifiedAt?: string | null;
+  firmwareNote?: string | null;
+  note?: string | null;
+}
+
+/**
+ * Eine Anlage als Kandidat für die Scharfschaltung, mit der GEMELDETEN Wahrheit
+ * ihres Geräts. `platformCertVerdict === null` heißt „das Gerät hat nichts
+ * gemeldet" (ältere Version, oder es hat das Cloud-Dokument nie gesehen) - nie
+ * „nicht zertifiziert".
+ */
+export interface ControlCandidate {
+  deviceId: string;
+  tenantId: string;
+  siteId: string;
+  siteName: string;
+  tenantName: string;
+  externalRef: string;
+  activated: boolean;
+  platformCertVerdict: PlatformCertVerdict | null;
+  platformCertModel: string | null;
+  certSource: CertSource | null;
+  activatedAt: string | null;
+  activatedBy: string | null;
+}
+
+/** Eine Anlage, deren Batterie-Steuerung bewusst scharfgeschaltet wurde. */
+export interface ControlActivation {
+  deviceId: string;
+  tenantId: string;
+  siteId: string;
+  siteName: string;
+  tenantName: string;
+  externalRef: string;
+  activatedAt: string;
+  activatedBy: string;
+  note: string | null;
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -257,6 +338,47 @@ export const adminApi = {
    */
   consumerDeviceTypes: () =>
     request<ConsumerDeviceType[]>('/api/v1/admin/consumer-device-types'),
+
+  // ── Steuerungs-Freigabe: das Plattform-Register + die Scharfschaltung ──
+  //
+  // Cross-tenant und mandantenlos (eine Modell-Freigabe gilt je PRODUKT, eine
+  // Scharfschaltung je Anlage) - deshalb ohne den X-Tenant-Id-Umschalter.
+
+  controlCertifications: () =>
+    request<ControlCertification[]>('/api/v1/admin/control-certifications'),
+
+  certifyControlModel: (input: CertifyControlModelInput) =>
+    request<ControlCertification>('/api/v1/admin/control-certifications', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  revokeControlModel: (brand: string, model: string) =>
+    request<void>(
+      `/api/v1/admin/control-certifications?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`,
+      { method: 'DELETE' },
+    ),
+
+  controlActivations: () =>
+    request<ControlActivation[]>('/api/v1/admin/control-activations'),
+
+  /**
+   * Jede Anlage als Kandidat für den EINEN Klick - samt dem, was ihr GERÄT über
+   * sein Modell gemeldet hat (`platformCertVerdict`). Null dort heißt „sie hat
+   * nichts gemeldet", nie „nicht zertifiziert".
+   */
+  controlCandidates: () =>
+    request<ControlCandidate[]>('/api/v1/admin/control-candidates'),
+
+  /** „Steuerung aktivieren" - der EINE bewusste Klick je Anlage. */
+  activateControl: (deviceId: string, note?: string) =>
+    request<ControlActivation>(`/api/v1/admin/devices/${deviceId}/control-activation`, {
+      method: 'POST',
+      body: JSON.stringify({ note: note ?? null }),
+    }),
+
+  deactivateControl: (deviceId: string) =>
+    request<void>(`/api/v1/admin/devices/${deviceId}/control-activation`, { method: 'DELETE' }),
 
   provisionDevice: (input: ProvisionDeviceInput) =>
     request<ProvisionedDevice>('/api/v1/admin/provisioned-devices', {

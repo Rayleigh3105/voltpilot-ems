@@ -5498,3 +5498,58 @@ button.vp-tech-card-h.toggle {
   cursor: pointer;
 }
 .vp-linkbtn:hover { color: var(--vp-link-hover, #2c5282); }
+
+/* ---------------------------------------------------------------------------
+   Steuerungs-Freigabe (Plattform) - das Modell-Register + die Scharfschaltung.
+   Bewusst schmal: die Fläche lebt von den Haus-Bausteinen (Card, Badge,
+   .vp-table.responsive, ConfirmDialog), hier stehen nur die vier Ergänzungen.
+--------------------------------------------------------------------------- */
+.vp-cert-summary {
+  margin: 0 0 12px;
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.vp-cert-error {
+  margin-bottom: 16px;
+}
+.vp-cert-form {
+  margin-top: 16px;
+}
+.vp-cert-form > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+}
+.vp-cert-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.vp-cert-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.vp-cert-grid select {
+  padding: 8px 10px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 8px);
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+  min-width: 0;
+}
+.vp-cert-wide {
+  grid-column: 1 / -1;
+}
+.vp-cert-hint {
+  margin: 0 0 12px;
+  color: var(--vp-text-muted, #64748b);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}

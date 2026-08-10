@@ -127,6 +127,11 @@ public class ControlCertificationService {
         return repo.listActivations();
     }
 
+    /** Jede Anlage als Kandidat, samt dem, was ihr Gerät gemeldet hat. */
+    public List<ControlCertificationRepository.Candidate> candidates() {
+        return repo.candidates();
+    }
+
     public Optional<Activation> activation(UUID deviceId) {
         return repo.findActivation(deviceId);
     }

@@ -261,6 +261,43 @@ function num(v: number | null | undefined): number | null {
 }
 
 /**
+ * WARUM die Steuerung noch nicht freigegeben ist - der Satz, den „wird
+ * vorbereitet" bisher verschluckt hat (Plattform-Register, 10.08.2026).
+ *
+ * Drei Situationen, drei Sätze:
+ *
+ * - **zertifiziert, Aktivierung ausstehend**: das Modell ist am Prüfstand
+ *   freigegeben, es fehlt der eine bewusste Klick. Der Kunde erfährt, dass es
+ *   NICHT an seiner Anlage liegt - und dass es schnell geht.
+ * - **noch nicht zertifiziert**: für dieses Modell ist wirklich ein
+ *   Prüfstandslauf nötig; kein Klick ersetzt ihn.
+ * - **unbekannt** (älteres Gerät, oder es hat nie ein Cloud-Dokument gesehen):
+ *   dann wird GAR NICHTS behauptet, und der Satz bleibt der alte.
+ *
+ * ⚠ `null`/`unknown` darf nie wie `not_covered` klingen: das schickte einen
+ * Kunden zu einem Prüfstand, den er nicht braucht.
+ */
+function pendingSentence(status: ControlStatus): string {
+  const base = 'Die Steuerung ist für dieses Modell noch nicht freigegeben - die Anlage wird nur ausgelesen.';
+  switch (status.platformCertVerdict) {
+    case 'covered_not_activated':
+      return (
+        'Ihr Wechselrichter-Modell ist für die Steuerung freigegeben - VoltPilot muss sie für ' +
+        'diese Anlage nur noch einschalten. Bis dahin wird die Anlage nur ausgelesen.'
+      );
+    case 'not_covered':
+      return (
+        'Die Steuerung ist für dieses Wechselrichter-Modell noch nicht freigegeben - VoltPilot ' +
+        'prüft es zuerst am Prüfstand. Bis dahin wird die Anlage nur ausgelesen.'
+      );
+    default:
+      // 'granted' kann hier gar nicht stehen (certified wäre dann true),
+      // 'unknown'/null behauptet nichts.
+      return base;
+  }
+}
+
+/**
  * controlStrip - derive the calm "Steuerung" strip from the latest control
  * confirmation.
  *
@@ -300,12 +337,15 @@ export function controlStrip(
     };
   }
 
-  // Not yet released for control: the inverter is only monitored.
+  // Not yet released for control: the inverter is only monitored - but WHY?
+  // Until the platform register existed, this one sentence swallowed three
+  // different situations, and the customer could not tell "a bench run is
+  // needed" from "one click is missing" from "we do not know yet".
   if (!status.certified) {
     return {
       state: 'pending',
       tone: 'off',
-      sentence: 'Die Steuerung ist für dieses Modell noch nicht freigegeben - die Anlage wird nur ausgelesen.',
+      sentence: pendingSentence(status),
       agoNote: '',
       reason: null,
       execution: null,

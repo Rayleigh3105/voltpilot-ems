@@ -108,6 +108,38 @@ describe('controlStrip', () => {
     expect(v.sentence).toContain('noch nicht freigegeben');
   });
 
+  // Bis zum Plattform-Register verschluckte dieser EINE Satz drei verschiedene
+  // Situationen: „ein Prüfstandslauf fehlt", „ein Klick fehlt" und „wir wissen
+  // es noch nicht". Genau die Unterscheidung war der Auftrag.
+  it('says „one click is missing" when the MODEL is certified but the plant is not armed', () => {
+    const v = controlStrip(
+      status({ certified: false, platformCertVerdict: 'covered_not_activated' }),
+      NOW,
+    )!;
+    expect(v.state).toBe('pending');
+    expect(v.sentence).toMatch(/Modell ist für die Steuerung freigegeben/);
+    expect(v.sentence).toMatch(/einschalten/);
+    expect(v.sentence).not.toMatch(/Prüfstand/);
+  });
+
+  it('says „a bench run is needed" when the model is genuinely not covered', () => {
+    const v = controlStrip(status({ certified: false, platformCertVerdict: 'not_covered' }), NOW)!;
+    expect(v.sentence).toMatch(/Prüfstand/);
+    expect(v.sentence).not.toMatch(/einschalten/);
+  });
+
+  // ⚠ Ein älteres Gerät meldet nichts - und „unbekannt" darf nie wie „Prüfstand
+  // nötig" klingen, sonst schickt das Portal einen Kunden zu einem Prüfstand,
+  // den er nicht braucht.
+  it('keeps the old, claim-free sentence when the device reported nothing', () => {
+    for (const verdict of [undefined, null, 'unknown' as const]) {
+      const v = controlStrip(status({ certified: false, platformCertVerdict: verdict }), NOW)!;
+      expect(v.sentence).toBe(
+        'Die Steuerung ist für dieses Modell noch nicht freigegeben - die Anlage wird nur ausgelesen.',
+      );
+    }
+  });
+
   it('never leaks internal vocabulary into any state', () => {
     for (const over of [{}, { allMatch: false }, { controlEnabled: false }, { certified: false }]) {
       const v = controlStrip(status(over), NOW)!;

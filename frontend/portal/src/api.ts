@@ -1226,7 +1226,40 @@ export interface ControlStatus {
    * (es regelt nie blind und meldet nie blind) — nie eine erfundene 0.
    */
   executionTargetKw?: number | null;
+  /**
+   * WELCHE Quelle die Freigabe erteilt hat: `env` = die flottenweite
+   * Allowlist, `device` = eine First-Light-Freigabe auf DIESER Box,
+   * `platform` = das Modell-Register der Plattform. Null/absent = nicht
+   * freigegeben oder ältere Edge-Version — eine Abwesenheit ist also nie eine
+   * Aussage über die Quelle.
+   */
+  certSource?: CertSource | null;
+  /**
+   * Was das PLATTFORM-Register über das AUSGEWÄHLTE Modell dieses Geräts sagt.
+   *
+   * ⚠ Die drei Nicht-`granted`-Antworten sind VERSCHIEDENE Sätze und dürfen
+   * nie zusammenfallen: `covered_not_activated` heißt „ein Klick fehlt",
+   * `not_covered` heißt „ein Prüfstandslauf fehlt" — und `null` heißt „wir
+   * wissen es nicht" (ältere Edge-Version, oder eine Box, die nie ein
+   * Cloud-Dokument gesehen hat). Wer null als „nicht zertifiziert" liest,
+   * schickt einen Kunden zu einem Prüfstand, den er nicht braucht.
+   */
+  platformCertVerdict?: PlatformCertVerdict | null;
+  /** Der Register-Eintrag, der gepasst hat — damit eine Fläche ihn NENNEN kann. */
+  platformCertModel?: string | null;
+  /** Der deutsche Grund, wenn ein gedeckt aussehendes Modell doch nichts bekommt. */
+  platformCertReason?: string | null;
 }
+
+/** Woher die Steuerungs-Freigabe kommt (siehe `ControlStatus.certSource`). */
+export type CertSource = 'env' | 'device' | 'platform';
+
+/** Das Urteil des Plattform-Registers (siehe `ControlStatus.platformCertVerdict`). */
+export type PlatformCertVerdict =
+  | 'granted'
+  | 'covered_not_activated'
+  | 'not_covered'
+  | 'unknown';
 
 // ---- Abregel-Wahrheit (GET /api/v1/sites/{id}/curtailment-status) -----------
 

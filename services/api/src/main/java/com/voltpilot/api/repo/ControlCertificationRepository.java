@@ -146,6 +146,53 @@ public class ControlCertificationRepository {
         return jdbc.update("DELETE FROM device_control_activation WHERE device_id = ?", deviceId) > 0;
     }
 
+    /**
+     * Eine Anlage, die scharfgeschaltet werden KÖNNTE, mit dem, was ihr Gerät
+     * über sein Modell gemeldet hat.
+     *
+     * <p>{@code platformCertVerdict} kommt aus dem Herzschlag, nicht aus einer
+     * Cloud-Vermutung: nur das Gerät weiß, welches Modell dort wirklich
+     * ausgewählt ist. {@code null} heißt „es hat nichts gemeldet" (älterer
+     * Stand, oder es hat das Dokument nie gesehen) - NIE „nicht zertifiziert".
+     */
+    public record Candidate(UUID deviceId, UUID tenantId, UUID siteId, String siteName,
+            String tenantName, String externalRef, boolean activated,
+            String platformCertVerdict, String platformCertModel, String certSource,
+            Instant activatedAt, String activatedBy) {
+    }
+
+    /**
+     * Jedes beanspruchte Gerät als Kandidat - scharfgeschaltete zuerst.
+     *
+     * <p>Der LEFT JOIN auf {@code device_control_status} ist der Punkt: eine
+     * Anlage, die noch nichts gemeldet hat, verschwindet nicht aus der Liste,
+     * sie sagt nur ehrlich nichts über ihr Modell.
+     */
+    public List<Candidate> candidates() {
+        return jdbc.query("""
+                SELECT d.id, d.tenant_id, d.site_id, s.name AS site_name, t.name AS tenant_name,
+                       d.external_ref, (a.device_id IS NOT NULL) AS activated,
+                       cs.platform_cert_verdict, cs.platform_cert_model, cs.cert_source,
+                       a.activated_at, a.activated_by
+                  FROM device d
+                  JOIN site   s ON s.id = d.site_id
+                  JOIN tenant t ON t.id = d.tenant_id
+                  LEFT JOIN device_control_activation a ON a.device_id = d.id
+                  LEFT JOIN device_control_status     cs ON cs.device_id = d.id
+                 ORDER BY (a.device_id IS NOT NULL) DESC, s.name ASC
+                """, (rs, i) -> new Candidate(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("tenant_id", UUID.class),
+                        rs.getObject("site_id", UUID.class),
+                        rs.getString("site_name"), rs.getString("tenant_name"),
+                        rs.getString("external_ref"), rs.getBoolean("activated"),
+                        rs.getString("platform_cert_verdict"), rs.getString("platform_cert_model"),
+                        rs.getString("cert_source"),
+                        rs.getTimestamp("activated_at") == null ? null
+                                : rs.getTimestamp("activated_at").toInstant(),
+                        rs.getString("activated_by")));
+    }
+
     /** Die Identität JEDES beanspruchten Geräts - die Empfänger des Downlinks. */
     public record DeviceIdentity(UUID deviceId, UUID tenantId, UUID siteId, boolean activated) {
     }

@@ -1973,6 +1973,113 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant not found. }
         "409": { description: A user with that username or email already exists. }
+  /api/v1/admin/control-certifications:
+    get:
+      tags: [admin]
+      summary: The PLATFORM register of control-certified inverter models.
+      description: >
+        "Model X is bench-certified for battery control" - entered ONCE and then
+        valid fleet-wide. It is the platform's MEMORY of a bench run: before it,
+        a certification landed either in the fleet-wide env allowlist (keyed on
+        the register FAMILY, so one proof leaked onto untested siblings) or in a
+        First-Light grant on ONE box, so the same model had to be certified again
+        for every new customer.
+        The key is brand+MODEL on purpose: a family covers several product lines,
+        a bench run covers exactly one.
+        The register ALONE controls nothing - a plant additionally needs its
+        explicit activation (see `/control-activations`).
+      responses:
+        "200":
+          description: The register, newest certification first.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ControlCertification" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
+    post:
+      tags: [admin]
+      summary: Certify an inverter model (a bench run ends here).
+      description: >
+        Adds a model to the register and republishes it to the whole fleet, so
+        every already-activated plant with that model is granted without anyone
+        touching it. An already-registered model is a CONFLICT, not a silent
+        update - two statements about one product could drift apart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CertifyControlModelRequest" }
+      responses:
+        "201":
+          description: Certified.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlCertification" }
+        "400": { description: Missing/invalid fields (German `message`). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
+        "409": { description: This model is already in the register (German `message`). }
+    delete:
+      tags: [admin]
+      summary: Take a model out of the register.
+      parameters:
+        - { name: brand, in: query, required: true, schema: { type: string } }
+        - { name: model, in: query, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Removed; the fleet gets the smaller register. }
+        "400": { description: This model is not in the register. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
+  /api/v1/admin/control-activations:
+    get:
+      tags: [admin]
+      summary: The plants whose battery control is armed.
+      responses:
+        "200":
+          description: One row per armed device.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ControlActivation" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
+  /api/v1/admin/devices/{deviceId}/control-activation:
+    post:
+      tags: [admin]
+      summary: "\"Steuerung aktivieren\" - the ONE deliberate click per plant."
+      description: >
+        Arms this plant so a register-certified model may actually be written.
+        It stays an explicit, safety-relevant decision (it is WRITE access to a
+        customer's inverter) - the register only removes the need to REPROVE the
+        model. Idempotent; publishes the retained certification document to the
+        device immediately.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { note: { type: string, maxLength: 512 } }
+      responses:
+        "200":
+          description: Armed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlActivation" }
+        "400": { description: Unknown device (German `message`). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
+    delete:
+      tags: [admin]
+      summary: Disarm a plant - it falls back to read-only.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Disarmed; the device is told immediately. }
+        "400": { description: Unknown device, or it was not armed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
   /api/v1/admin/edge-releases:
     get:
       tags: [admin]
@@ -6138,6 +6245,49 @@ components:
         executionDirection: { type: string, nullable: true, enum: [deepen, reduce], description: "Only for executionMode `follow`: the discharge was RAISED to cover the house (`deepen`) or LIMITED to what it needs (`reduce`). Both are deliberate; an unnamed correction reads as a defect. Null otherwise." }
         executionPlannedKw: { type: number, nullable: true, description: "The setpoint BEFORE the correction, so plan and execution can stand side by side instead of being two contradicting numbers under one word. Only for follow/trim." }
         executionTargetKw: { type: number, nullable: true, description: "The MEASURED value the correction tracks - the house deficit for `follow`, the PV surplus for `trim`; which one follows unambiguously from executionMode. Null when the device could not measure it (it never regulates blind, and never reports blind either) - never a fabricated 0." }
+        certSource: { type: string, nullable: true, enum: [env, device, platform], description: "WHICH source granted the certification: `env` = the fleet-wide allowlist, `device` = a First-Light grant on that box, `platform` = the model register. Null = not certified, or an older edge - so an absent value must never be read as a claim about the source." }
+        platformCertVerdict: { type: string, nullable: true, enum: [granted, covered_not_activated, not_covered, unknown], description: "What the PLATFORM model register says about this device's selected inverter. `covered_not_activated` = the model IS certified and one deliberate click is missing; `not_covered` = a bench run is genuinely needed. NULL is \"we do not know\" (an older edge, or one that never received a cloud document) and must NEVER be collapsed into `not_covered` - that would send a customer to a bench they do not need." }
+        platformCertModel: { type: string, nullable: true, description: "The register entry that matched, so a surface can name WHICH model is covered/waiting." }
+        platformCertReason: { type: string, nullable: true, description: "Plain-German cause where a covered-looking model still gets nothing (today: a contradicted bench write-sign convention)." }
+    ControlCertification:
+      type: object
+      description: One bench-certified inverter model in the platform register.
+      properties:
+        brand: { type: string, description: "Catalog brand, stored lower-case." }
+        model: { type: string, description: "Catalog model - the KEY, together with brand. A family is not a model: one bench run must never certify untested siblings." }
+        family: { type: string, description: "The model's register family. CHECKED by the device, not derived - the same model under another register map is not what was proven." }
+        controlPath: { type: string, nullable: true, enum: [remote, tou], description: "The control surface the bench run drove; it seeds Layer 1's sticky path decision. Null = the run states none." }
+        invertControlSign: { type: boolean, nullable: true, description: "The bench-proven WRITE sign convention, which is firmware-dependent - so the DEVICE checks it against its own setting and fails closed on a contradiction. NULL and false are different statements: null = the bench did not answer the question (nothing is checked), false = it did." }
+        certifiedAt: { type: string, format: date-time, description: "When the bench run happened (the substantive truth), separate from createdAt." }
+        firmwareNote: { type: string, nullable: true, description: "The firmware it was proven on, as PLAIN TEXT for the operator - deliberately NOT a machine gate: the box cannot read a firmware version from the inverter, so a firmware window would be a promise nobody can check." }
+        note: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
+    CertifyControlModelRequest:
+      type: object
+      required: [brand, model, family]
+      properties:
+        brand: { type: string, maxLength: 64 }
+        model: { type: string, maxLength: 128 }
+        family: { type: string, maxLength: 64 }
+        controlPath: { type: string, enum: [remote, tou] }
+        invertControlSign: { type: boolean, nullable: true, description: "Omit when the bench run did not answer the sign question - omitted means the device checks nothing, false means it was proven not-inverted." }
+        certifiedAt: { type: string, format: date-time, description: "Defaults to now when omitted." }
+        firmwareNote: { type: string, maxLength: 512 }
+        note: { type: string, maxLength: 512 }
+    ControlActivation:
+      type: object
+      description: A plant whose battery control has been deliberately armed.
+      properties:
+        deviceId: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        siteName: { type: string }
+        tenantName: { type: string }
+        externalRef: { type: string }
+        activatedAt: { type: string, format: date-time }
+        activatedBy: { type: string, description: "The JWT subject that clicked - the paper trail." }
+        note: { type: string, nullable: true }
     CurtailmentStatus:
       type: object
       description: >
