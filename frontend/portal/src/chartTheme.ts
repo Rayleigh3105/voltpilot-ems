@@ -76,6 +76,17 @@ export interface ChartTheme {
    */
   neutral: string;
   /**
+   * Der Ton des GÜNSTIGEN (und des negativen) Preisfensters — Chart-Redesign
+   * Stufe 4. Bewusst NICHT das helle Laden-Grün {@link charge}: die zwei
+   * benannten Fenster werden immer zusammen gezeichnet, und `#2E9E5B` gegen das
+   * Kosten-Rot misst ΔE 5,4 (harter CVD-FAIL), diese Stufe 6,0 — das Band, das
+   * der dataviz-Validator mit Zweitkodierung durchlässt, und jedes Fenster
+   * trägt sein WORT im Bild. Derselbe „die FORM entscheidet die Stufe"-Fall wie
+   * bei {@link pvLine}/{@link flowGridLine}. Das teure Fenster nimmt das
+   * bestehende Kosten-Rot {@link discharge}.
+   */
+  guenstig: string;
+  /**
    * The GRID role hue (teal) - the same `--vp-flow-grid` the energy-flow diagram
    * uses, so a "Netz" series reads as the grid everywhere. Deliberately NOT
    * `gridCharge` (that is the Netzladen slot colour) and not the red
@@ -131,6 +142,7 @@ export function chartTheme(): ChartTheme {
     cloud: read('--vp-chart-cloud', '#90A4AE'),
     idle: read('--vp-chart-idle', '#EDEFF2'),
     neutral: read('--vp-chart-neutral', '#607D8B'),
+    guenstig: read('--vp-chart-guenstig', '#15803D'),
     flowGrid: read('--vp-flow-grid', '#0ea5a3'),
     flowGridLine: read('--vp-chart-grid-line', '#036672'),
     consumer: read('--vp-flow-load', '#8b5cf6'),

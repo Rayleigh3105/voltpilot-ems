@@ -24,7 +24,7 @@ import { eurAmount, fmtNum } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
 import { InfoTip } from '../components/InfoTip';
-import { ChartSubtitle } from '../components/ChartExplain';
+import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
@@ -46,11 +46,13 @@ import { useIsPhone } from '../useIsPhone';
 import { ProvBadge } from '../components/HistorieWelt';
 import {
   bezugspreisNote,
+  fokusFenster,
   fokusUmschalter,
   jetztPreis,
   preisChips,
   type TagFokus,
 } from '../marktpreise';
+import { ctReihe, preisFenster, preisKern } from '../preisFenster';
 import {
   MarktJetztHeld,
   PreisChips,
@@ -278,6 +280,21 @@ export function MarktpreisePage(props: {
   const chips = isPhone ? preisChips(summary, isDay) : [];
   const umschalter = isPhone && isDay ? fokusUmschalter(buckets, fokus) : null;
 
+  /**
+   * K1 · Der Kernaussage-Satz über der Tageskurve — ABGELEITET aus denselben
+   * benannten Fenstern, die das Diagramm hinterlegt (`preisFenster`), also kann
+   * er ihm nie widersprechen. Gerechnet wird auf dem GEZEIGTEN Ausschnitt: am
+   * Telefon zeigt die Kurve einen Tag, dann darf der Satz nicht das Tief des
+   * anderen benennen. Ohne belegbare Aussage steht dort der ehrliche Grund.
+   */
+  const kern = useMemo(() => {
+    if (!isDay || !hasData) return null;
+    const zoom = isPhone ? fokusFenster(buckets, fokus) : null;
+    const sicht = zoom ? buckets.slice(zoom.start, zoom.end + 1) : buckets;
+    const cts = ctReihe(sicht.map((b) => b.avgEurMwh));
+    return preisKern(cts, sicht.map((b) => b.ts), preisFenster(cts, 15));
+  }, [isDay, hasData, isPhone, buckets, fokus]);
+
   // Partial coverage: the collector only fetches today+tomorrow, so week/month/
   // year fill in over time. Flag when the stored data starts well after the
   // window opens (older prices were never collected).
@@ -439,6 +456,10 @@ export function MarktpreisePage(props: {
                   {eurMwhStats(summary)}
                 </div>
               )}
+
+              {/* K1: die Kernaussage als SATZ über dem Bild - das Diagramm
+                  wird damit zum Beleg statt zur Aufgabe. */}
+              <ChartHeadline kern={kern} />
 
               <PriceHistoryChart history={history} fokus={isPhone && isDay ? fokus : null} />
 
