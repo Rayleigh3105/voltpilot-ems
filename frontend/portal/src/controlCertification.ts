@@ -14,7 +14,7 @@
  * Diese Datei rendert nichts; sie sortiert, benennt und leitet ab. Ehrlichkeit
  * ist hart verdrahtet: was das Gerät nicht gemeldet hat, wird nicht behauptet.
  */
-import type { ControlCertification, ControlActivation } from './admin/adminApi';
+import type { ControlCertification } from './admin/adminApi';
 import type { PlatformCertVerdict } from './api';
 
 export type CertTone = 'ok' | 'warn' | 'off';
@@ -215,42 +215,4 @@ export function revokeConsequences(model: string, activePlants: number): string[
     );
   }
   return list;
-}
-
-/** Eine Anlagen-Zeile für die Tabelle. */
-export interface PlantRow {
-  deviceId: string;
-  siteId: string;
-  siteName: string;
-  tenantName: string;
-  externalRef: string;
-  activated: boolean;
-  activatedAt: string;
-  activatedBy: string;
-  view: PlantCertView;
-}
-
-/**
- * Die Anlagen-Liste: die scharfgeschalteten zuerst (dort passiert etwas), dann
- * alphabetisch. Der Eingang ist bewusst schmal (die Aktivierungs-Liste plus,
- * je Anlage, das gemeldete Urteil) - so bleibt die Fläche unabhängig davon,
- * welches Aggregat sie speist.
- */
-export function plantRows(
-  activations: ControlActivation[],
-  verdictBySite: (siteId: string) => PlatformCertVerdict | null | undefined,
-): PlantRow[] {
-  return activations
-    .map((a) => ({
-      deviceId: a.deviceId,
-      siteId: a.siteId,
-      siteName: a.siteName,
-      tenantName: a.tenantName,
-      externalRef: a.externalRef,
-      activated: true,
-      activatedAt: isoDate(a.activatedAt),
-      activatedBy: a.activatedBy,
-      view: plantCertView(true, verdictBySite(a.siteId)),
-    }))
-    .sort((x, y) => x.siteName.localeCompare(y.siteName, 'de'));
 }

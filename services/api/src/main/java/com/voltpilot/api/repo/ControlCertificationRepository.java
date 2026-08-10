@@ -64,12 +64,6 @@ public class ControlCertificationRepository {
                 ControlCertificationRepository::mapCert);
     }
 
-    public Optional<Certification> findCertification(String brand, String model) {
-        return jdbc.query(CERT_SELECT + " WHERE brand = ? AND model = ?",
-                ControlCertificationRepository::mapCert, norm(brand), norm(model))
-                .stream().findFirst();
-    }
-
     /**
      * Trägt ein Modell ein. Ein bereits vorhandenes Modell wird NICHT still
      * überschrieben - der Aufrufer entscheidet (der Controller antwortet 409),

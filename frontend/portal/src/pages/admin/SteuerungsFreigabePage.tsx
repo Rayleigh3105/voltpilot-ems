@@ -34,6 +34,7 @@ import {
 } from '../../admin/adminApi';
 import {
   activateConsequences,
+  certSourceLabel,
   deactivateConsequences,
   plantCertView,
   registerRows,
@@ -215,6 +216,16 @@ export function SteuerungsFreigabePage(): JSX.Element {
                             {view.hint && <div className="vp-cell-sub">{view.hint}</div>}
                             {p.activated && p.activatedBy && (
                               <div className="vp-cell-sub">aktiviert durch {p.activatedBy}</div>
+                            )}
+                            {/* WORAUS die Freigabe kommt - das ist der
+                                Unterschied zwischen „haengt am Register" und
+                                „haengt an einer First-Light-Freigabe an DIESER
+                                Box": nur die erste faellt weg, wenn das Modell
+                                aus dem Register genommen wird. */}
+                            {certSourceLabel(p.certSource) && (
+                              <div className="vp-cell-sub">
+                                Freigabe: {certSourceLabel(p.certSource)}
+                              </div>
                             )}
                           </td>
                           <td data-label="">
