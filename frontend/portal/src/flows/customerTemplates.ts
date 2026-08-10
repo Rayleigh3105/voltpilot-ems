@@ -137,7 +137,7 @@ export const CUSTOMER_TEMPLATES: CustomerTemplateDef[] = [
     name: 'Heizstab-Zeitplan',
     description:
       'Schaltet Ihr Gerät in einem festen Zeitfenster ein (z. B. mittags) - '
-      + 'die Zeiten passen Sie im Editor an.',
+      + 'die Zeiten passen Sie im Regelbaukasten an.',
     requires: 'ein steuerbares Gerät',
     requiresRoles: ['consumer'],
     resolve(entities, siteId) {

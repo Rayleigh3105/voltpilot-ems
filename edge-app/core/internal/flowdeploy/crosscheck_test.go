@@ -159,3 +159,78 @@ func TestModbusReadArtifactVerifiesAndGatesOnPaletteFloor(t *testing.T) {
 		t.Fatal("modbus flow tab not materialized")
 	}
 }
+
+// The Verbrauchssteuerung-Inkrement-4 consumer-reactive artifact (D-19): the
+// generated consumer-policy flow's committed flowc output. (a) the JS-built
+// bundle re-canonicalizes to the SAME content hash in Go; (b) the fleet's
+// pre-0.5.0 palettes ack it `unsupported` with the honest palette-floor copy
+// (the vp-consumer-policy runtime node ships with 0.5.0); (c) a 0.5.0 palette
+// + a wallbox registry declaring actuate:setpoint_kw deploys it `active`.
+func TestConsumerReactiveArtifactVerifiesAndGatesOnPaletteFloor(t *testing.T) {
+	raw, err := os.ReadFile("../../../nodered/flowc/testdata/consumer-reactive.artifact.json")
+	if err != nil {
+		t.Fatalf("consumer-reactive artifact fixture unreadable: %v", err)
+	}
+	var a Artifact
+	if err := json.Unmarshal(raw, &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.MinPaletteVersion != "0.5.0" {
+		t.Fatalf("consumer-reactive artifact must require palette 0.5.0, got %s", a.MinPaletteVersion)
+	}
+
+	bundleRaw, err := json.Marshal(a.Bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := ContentHash(bundleRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash != a.ContentHash {
+		t.Fatalf("cross-language hash mismatch:\n js %s\n go %s", a.ContentHash, hash)
+	}
+
+	reg := entities.Registry{Revision: "x", Entities: []entities.Entity{
+		{ID: "wallbox-1", Type: "wallbox",
+			Capabilities: entities.Capabilities{
+				Measure: []entities.MeasureCap{{Channel: "vehicle_connected"}},
+				Actuate: []entities.ActuateCap{{Command: "setpoint_kw"}}},
+			Guards: entities.Guards{Failsafe: entities.Failsafe{Behavior: "off"}}},
+	}}
+	deployment, _ := json.Marshal(map[string]any{
+		"schema_version": "1.0", "kind": "deployment",
+		"tenant_id": tTenant, "site_id": tSite, "device_id": tDevice,
+		"deployed_at": "2026-08-10T12:00:00Z",
+		"artifacts":   []json.RawMessage{raw},
+	})
+
+	// (b) The shipped fleet (pre-0.5.0 palette) refuses honestly.
+	oldNR := newFakeNR()
+	oldDep := NewDeployer(Deps{NR: oldNR, DataDir: t.TempDir(), CoreVersion: "2.0.0",
+		Registry: func() entities.Registry { return reg },
+		Identity: func() Identity {
+			return Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice}
+		}})
+	oldDep.HandleDeployment(deployment)
+	state, detail := ackOf(t, oldDep, a.FlowID)
+	if state != "unsupported" || !strings.Contains(detail, "benötigt Palette >= 0.5.0") {
+		t.Fatalf("an old palette must degrade honestly: %s (%s)", state, detail)
+	}
+
+	// (c) A 0.5.0 palette deploys the generated tab.
+	newNR := &fakeNR{palette: "0.5.0"}
+	dep := NewDeployer(Deps{NR: newNR, DataDir: t.TempDir(), CoreVersion: "2.0.0",
+		Registry: func() entities.Registry { return reg },
+		Identity: func() Identity {
+			return Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice}
+		}})
+	dep.HandleDeployment(deployment)
+	state, detail = ackOf(t, dep, a.FlowID)
+	if state != "active" {
+		t.Fatalf("consumer-reactive artifact must deploy on a 0.5.0 palette: %s (%s)", state, detail)
+	}
+	if !newNR.tabIDs()["vpflow-7d2f1a9c-v3"] {
+		t.Fatal("consumer-reactive flow tab not materialized")
+	}
+}

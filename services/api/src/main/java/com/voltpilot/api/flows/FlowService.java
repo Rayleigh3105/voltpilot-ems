@@ -612,6 +612,16 @@ public class FlowService {
     /** Server-stamped document identity - clients never pick ids/versions. */
     private ObjectNode stampedDocument(JsonNode document, UUID flowId, int version, UUID siteId,
             String name, String lifecycle) {
+        // D-19: `origin` marks a GENERATED flow and is stamped exclusively by
+        // the consumer-policy activation path (which writes the repository
+        // directly). Refusing it here is what makes the origin marker - and
+        // with it the generated-only node types + their override - unforgeable
+        // through the customer/admin save surface.
+        if (document != null && document.has("origin")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Dieses Dokument ist einer Verbraucherregel vorbehalten - bitte die Regel "
+                            + "im Verbraucher-Regelbaukasten bearbeiten.");
+        }
         ObjectNode doc = document != null && document.isObject()
                 ? ((ObjectNode) document).deepCopy()
                 : mapper.createObjectNode();

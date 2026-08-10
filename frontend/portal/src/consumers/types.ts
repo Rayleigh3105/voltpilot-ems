@@ -98,7 +98,12 @@ export interface Consumer {
   version: number;
   connection: 'connected' | 'disconnected';
   edgeSourceId: string | null;
-  controlActivation: 'not_activated';
+  /**
+   * Derived server-side (Inkrement 4): 'active' = an active policy is in
+   * force, 'paused' = active policy with the pause failsafe, else the honest
+   * 'not_activated'.
+   */
+  controlActivation: 'not_activated' | 'active' | 'paused';
   hasDraftPolicy: boolean;
   draftPolicyVersion: number | null;
 }
@@ -141,6 +146,13 @@ export interface ConsumerOptions {
   reportedSources: ConsumerReportedSource[];
   defaultStorageRelation: 'consumer_first' | 'storage_first';
   defaultGridEnergyPolicy: GridEnergyPolicy;
+  /**
+   * Whether the environment can really activate a rule (Inkrement 4 flags:
+   * consumer control + policy compiler). OPTIONAL so an older backend reads as
+   * false - the surface then stays byte-identical to Increment 1 ("Steuerung
+   * noch nicht aktiviert"), never a button that dead-ends.
+   */
+  policyActivationEnabled?: boolean;
 }
 
 export interface ConsumerPolicyVersion {

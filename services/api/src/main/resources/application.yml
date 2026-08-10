@@ -191,6 +191,25 @@ voltpilot:
   # the portal endpoint uses. Reuses the provisioning broker settings above.
   # Off by default so unit tests and broker-less setups are unaffected; compose
   # turns it on.
+  # Verbrauchssteuerung Inkrement 4 (§16/§19): the consumer-policy activation
+  # path's two gates, BOTH default OFF - only tests and the simulator rig turn
+  # them on; productivisation/de-gating is Inkrement 5. `enabled` is the master
+  # switch of the activation surface (off = activate answers honestly
+  # "activation_disabled" and every portal surface keeps saying "Steuerung noch
+  # nicht aktiviert"); `policy-compiler-enabled` additionally gates the
+  # compile+rollout half (the generated vp.consumer.reactive artifact). The
+  # STOP paths (deactivate/pause + retained-artifact retraction) deliberately
+  # ignore both flags - Flag aus ≠ gestoppt (the OTA/flow lesson).
+  consumer-control:
+    enabled: ${VOLTPILOT_CONSUMER_CONTROL_ENABLED:false}
+    policy-compiler-enabled: ${VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED:false}
+    # D8 event replanning (§13.4): its OWN status listener watches the
+    # consumers block for the four trigger events and calls the solve
+    # service's POST /replan, debounced per site + rate-limited. The 15-min
+    # tick stays the Grundschlag. Off by default like every listener.
+    replan-trigger-enabled: ${VOLTPILOT_CONSUMER_REPLAN_TRIGGER_ENABLED:false}
+    replan-debounce-seconds: ${VOLTPILOT_CONSUMER_REPLAN_DEBOUNCE_SECONDS:8}
+    replan-min-interval-seconds: ${VOLTPILOT_CONSUMER_REPLAN_MIN_INTERVAL_SECONDS:120}
   purge:
     mqtt-listener-enabled: ${VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED:false}
   # Inverter-control confirmation ingestion: a sibling listener on the same

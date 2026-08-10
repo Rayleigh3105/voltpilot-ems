@@ -67,6 +67,22 @@
   background: var(--vp-border, #cdd3db);
   flex: none;
 }
+/* Inkrement 4: the activation badge carries its state as a WORD; the dot only
+   supports it (never colour alone). */
+.vp-vb-act-ok { color: var(--vp-flow-batt-ink, #166534); }
+.vp-vb-act-ok .vp-dot { background: var(--vp-flow-batt, #2e9e5b); }
+.vp-vb-act-warn { color: var(--vp-alert-warn-ink, #8a5a00); }
+.vp-vb-act-warn .vp-dot { background: var(--vp-warning, #d98a1f); }
+
+/* The V-5 conflict line on the review page: amber, never red - it is a rule
+   of the house, not a device fault. */
+.vp-vb-conflict {
+  color: var(--vp-alert-warn-ink, #8a5a00);
+  background: var(--vp-alert-warn-bg, #fdf3e2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.9em;
+}
 
 /* Wizard + rule builder step body */
 .vp-vb-step {

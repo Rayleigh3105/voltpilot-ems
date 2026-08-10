@@ -164,6 +164,26 @@ public class FlowGraphValidator {
                         "Baustein \"" + label(type) + "\" ist in der Laufzeit \"" + runtime
                                 + "\" nicht verfügbar."));
             }
+            // D-19: a generated-only catalog type is valid ONLY in a document
+            // the platform stamped with the consumer-policy origin. The flow
+            // save API refuses customer documents carrying `origin`, so this
+            // gate cannot be forged around.
+            if (type.path("generated").asBoolean(false)
+                    && !"consumer-policy".equals(doc.path("origin").path("kind").asText())) {
+                findings.add(FlowValidationFinding.error("V-4", List.of(id), List.of(),
+                        "Baustein \"" + label(type) + "\" ist der generierten Verbraucherregel "
+                                + "vorbehalten."));
+            }
+            // D-19: the D-5 override lever is reserved for the generated
+            // artifact - vp.entity.control never carries it, whatever the
+            // value (the api catalog declares no such parameter; this refuses
+            // a hand-injected one instead of silently passing it to flowc).
+            if ("vp.entity.control".equals(typeId)
+                    && node.path("parameters").has("override")) {
+                findings.add(FlowValidationFinding.error("V-4", List.of(id), List.of(),
+                        "Baustein \"" + label(type) + "\": override ist der generierten "
+                                + "Verbraucherregel vorbehalten."));
+            }
             checkParameters(node, type, id, findings);
         }
     }
@@ -236,6 +256,16 @@ public class FlowGraphValidator {
                     } else if (code.length() > max) {
                         findings.add(paramError(type, spec, nodeId,
                                 "darf höchstens " + max + " Zeichen lang sein"));
+                    }
+                }
+                // The compiled reactive spec (D-19): a structured JSON value.
+                // Its DEEP validation is flowc's type validation - the
+                // document is platform-generated, never customer input; this
+                // only keeps the shape honest for the editor/API surface.
+                case "json" -> {
+                    if (!value.isContainerNode()) {
+                        findings.add(paramError(type, spec, nodeId,
+                                "muss ein JSON-Objekt oder eine Liste sein"));
                     }
                 }
                 default -> {

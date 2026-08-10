@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0",
+  "kind": "artifact",
+  "artifact_id": "447c3ff3-41b1-48fe-8a5e-b017e08d08c8",
+  "flow_id": "7d2f1a9c-3b45-4e67-89ab-cdef01234567",
+  "flow_version": 3,
+  "runtime": "edge",
+  "content_hash": "sha256:983aa659d6c4608a0a23c4930d582ba32948d782e3a30cf62c002c3890f119d7",
+  "compiled_at": "1970-01-01T00:00:00Z",
+  "compiler_version": "1.0.0",
+  "min_palette_version": "0.5.0",
+  "min_core_version": "0.1.0",
+  "required_entities": [
+    {
+      "entity_id": "wallbox-1",
+      "capabilities": [
+        "actuate:setpoint_kw"
+      ]
+    }
+  ],
+  "bundle": {
+    "format": "nodered-tabs",
+    "tab_ids": [
+      "vpflow-7d2f1a9c-v3"
+    ],
+    "nodered_flows": [
+      {
+        "id": "vpflow-7d2f1a9c-v3",
+        "type": "tab",
+        "label": "VP Flow: Verbraucherregel: Wallbox (v3)",
+        "info": "@vp-flow flow_id=7d2f1a9c-3b45-4e67-89ab-cdef01234567 flow_version=3"
+      },
+      {
+        "id": "vpflow-7d2f1a9c-v3-reaktiv",
+        "type": "vp-consumer-policy",
+        "z": "vpflow-7d2f1a9c-v3",
+        "name": "Wallbox: reaktive Regeln",
+        "core": "cfg-vp-core",
+        "entity": "wallbox-1",
+        "command": "setpoint_kw",
+        "ttl_s": 45,
+        "renew_s": 15,
+        "off_delay_s": 15,
+        "requirements": [
+          {
+            "id": "charge-when-connected",
+            "must_run": true,
+            "value": 11,
+            "condition": {
+              "signal": "consumer.vehicle_connected",
+              "source": "entity",
+              "channel": "vehicle_connected",
+              "op": "eq",
+              "value": 1,
+              "max_age_s": 20
+            }
+          },
+          {
+            "id": "cheap-or-full",
+            "must_run": false,
+            "value": 4.2,
+            "condition": {
+              "any": [
+                {
+                  "windows": [
+                    [
+                      "2026-08-10T10:00:00Z",
+                      "2026-08-10T14:15:00Z"
+                    ],
+                    [
+                      "2026-08-11T09:30:00Z",
+                      "2026-08-11T13:00:00Z"
+                    ]
+                  ]
+                },
+                {
+                  "signal": "storage.soc_pct",
+                  "source": "site",
+                  "channel": "soc_pct",
+                  "op": "gt",
+                  "value": 80,
+                  "reset_value": 75,
+                  "max_age_s": 120
+                }
+              ]
+            }
+          }
+        ],
+        "flowId": "7d2f1a9c-3b45-4e67-89ab-cdef01234567",
+        "flowVersion": 3,
+        "nodeId": "reaktiv",
+        "x": 140,
+        "y": 80
+      },
+      {
+        "id": "vpflow-7d2f1a9c-v3-trig1",
+        "type": "inject",
+        "z": "vpflow-7d2f1a9c-v3",
+        "name": "alle 15 s",
+        "props": [],
+        "repeat": "15",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 1,
+        "topic": "",
+        "x": 360,
+        "y": 80,
+        "wires": [
+          [
+            "vpflow-7d2f1a9c-v3-reaktiv"
+          ]
+        ]
+      }
+    ]
+  }
+}

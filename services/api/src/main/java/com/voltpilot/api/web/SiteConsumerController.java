@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.consumers.ConsumerPolicyActivationService;
 import com.voltpilot.api.consumers.ConsumerScheduleRepository;
 import com.voltpilot.api.consumers.ConsumerScheduleRepository.ConsumerScheduleDto;
 import com.voltpilot.api.consumers.ConsumerService;
@@ -57,14 +58,17 @@ public class SiteConsumerController {
     private final ConsumerService consumers;
     private final ConsumerScheduleRepository consumerSchedules;
     private final ConsumerRuntimeStatusRepository runtimeStatus;
+    private final ConsumerPolicyActivationService activation;
 
     public SiteConsumerController(SiteRepository sites, ConsumerService consumers,
             ConsumerScheduleRepository consumerSchedules,
-            ConsumerRuntimeStatusRepository runtimeStatus) {
+            ConsumerRuntimeStatusRepository runtimeStatus,
+            ConsumerPolicyActivationService activation) {
         this.sites = sites;
         this.consumers = consumers;
         this.consumerSchedules = consumerSchedules;
         this.runtimeStatus = runtimeStatus;
+        this.activation = activation;
     }
 
     private void requireSite(UUID siteId) {
@@ -128,6 +132,50 @@ public class SiteConsumerController {
         requireSite(siteId);
         String createdBy = jwt == null ? null : jwt.getSubject();
         return consumers.savePolicyDraft(siteId, id, request.document(), createdBy);
+    }
+
+    // -- policy lifecycle (Inkrement 4, §11/§16) -----------------------------
+
+    /**
+     * Validate → compile → atomically activate the LATEST policy version and
+     * roll the generated artifact out (§11). Refuses honestly while the
+     * feature flags are off ({@code activated:false}, the portal keeps saying
+     * "Steuerung noch nicht aktiviert"); a compiler/publish failure is 503 and
+     * the previously active version stays untouched.
+     */
+    @PostMapping("/consumers/{id}/policy/activate")
+    public ConsumerPolicyActivationService.ActivationOutcome activatePolicy(
+            @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        return activation.activate(siteId, id, jwt == null ? null : jwt.getSubject());
+    }
+
+    /**
+     * The echte Stopppfad (§16): retire the active policy AND retract the
+     * retained generated artifact. Works with the feature flags OFF - a
+     * disabled flag must never leave a deployed rule looking stopped.
+     */
+    @PostMapping("/consumers/{id}/policy/deactivate")
+    public ConsumerPolicyActivationService.StopOutcome deactivatePolicy(
+            @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        return activation.deactivate(siteId, id, jwt == null ? null : jwt.getSubject());
+    }
+
+    /** Pause = Gesamtschalter aus + Artefakt-Rückzug → the device failsafe (§11). */
+    @PostMapping("/consumers/{id}/pause")
+    public ConsumerPolicyActivationService.StopOutcome pause(
+            @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        return activation.pause(siteId, id, jwt == null ? null : jwt.getSubject());
+    }
+
+    /** Resume after a pause: re-enable + re-deploy the stored artifact (no compile). */
+    @PostMapping("/consumers/{id}/resume")
+    public ConsumerPolicyActivationService.ActivationOutcome resume(
+            @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        requireSite(siteId);
+        return activation.resume(siteId, id, jwt == null ? null : jwt.getSubject());
     }
 
     /**

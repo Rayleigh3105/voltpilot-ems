@@ -56,10 +56,13 @@ public class ConsumerService {
     private final ConsumerPolicyValidator validator;
     private final ObjectMapper mapper;
     private final JdbcTemplate jdbc;
+    private final ConsumerAuditRepository audit;
+    private final ConsumerPolicyActivationService activation;
 
     public ConsumerService(ConsumerRepository repo, EntityRegistryService entities,
             EntityTypeCatalog catalog, ConsumerSignalCatalog signals,
-            ConsumerPolicyValidator validator, ObjectMapper mapper, JdbcTemplate jdbc) {
+            ConsumerPolicyValidator validator, ObjectMapper mapper, JdbcTemplate jdbc,
+            ConsumerAuditRepository audit, ConsumerPolicyActivationService activation) {
         this.repo = repo;
         this.entities = entities;
         this.catalog = catalog;
@@ -67,6 +70,8 @@ public class ConsumerService {
         this.validator = validator;
         this.mapper = mapper;
         this.jdbc = jdbc;
+        this.audit = audit;
+        this.activation = activation;
     }
 
     // --- DTOs ----------------------------------------------------------------
@@ -103,7 +108,8 @@ public class ConsumerService {
 
     public record ConsumerOptionsDto(List<TypeOption> types, List<SignalOption> signals,
             List<IntentOption> intents, boolean hasStorage, List<ReportedSourceDto> reportedSources,
-            String defaultStorageRelation, String defaultGridEnergyPolicy) {}
+            String defaultStorageRelation, String defaultGridEnergyPolicy,
+            boolean policyActivationEnabled) {}
 
     public record PolicyDto(UUID entityId, int version, String lifecycle, JsonNode document,
             String contentHash, String createdBy) {}
@@ -147,7 +153,7 @@ public class ConsumerService {
                         s.health()))
                 .toList();
         return new ConsumerOptionsDto(types, sig, INTENTS, siteHasStorage(siteId), reported,
-                "consumer_first", "allow");
+                "consumer_first", "allow", activation.activationAvailable());
     }
 
     // --- create --------------------------------------------------------------
@@ -390,6 +396,8 @@ public class ConsumerService {
         int next = repo.maxPolicyVersion(siteId, entityId) + 1;
         PolicyRow row = repo.insertPolicyDraft(entityId, TenantContext.get(), siteId, next,
                 doc.toString(), hash, createdBy);
+        audit.append(siteId, entityId, "policy_saved", row.policyId(), row.version(), createdBy,
+                null);
         return new PolicyDto(entityId, row.version(), row.lifecycle(), doc, row.contentHash(),
                 row.createdBy());
     }
@@ -400,12 +408,19 @@ public class ConsumerService {
         int maxPolicy = repo.maxPolicyVersion(siteId, row.entityId());
         String connection = (row.deviceId() != null || row.edgeSourceId() != null)
                 ? "connected" : "disconnected";
+        // Derived, never stored: an ACTIVE policy while enabled = "active",
+        // while disabled = "paused" (the pause failsafe), else "not_activated".
+        // Without this the row would keep claiming "Steuerung noch nicht
+        // aktiviert" right after a successful activation.
+        ConsumerRepository.PolicyRow activePolicy = repo.activePolicy(siteId, row.entityId());
+        String activation = activePolicy == null ? "not_activated"
+                : (row.enabled() ? "active" : "paused");
         return new ConsumerDto(row.entityId(), row.entityType(), catalog.labelFor(row.entityType()),
                 row.label(), row.controlKind(), row.ratedPowerKw(), row.minPowerKw(),
                 parse(row.levelsKwJson()), row.resolutionKw(), parse(row.powerRangesKwJson()),
                 row.storageRelation(), row.defaultGridEnergyPolicy(), row.allowStorageDischarge(),
                 row.failsafe(), row.enabled(), row.version(), connection, row.edgeSourceId(),
-                "not_activated", maxPolicy > 0, maxPolicy > 0 ? maxPolicy : null,
+                activation, maxPolicy > 0, maxPolicy > 0 ? maxPolicy : null,
                 row.minOnSeconds(), row.minOffSeconds(), row.maxStartsPerDay());
     }
 

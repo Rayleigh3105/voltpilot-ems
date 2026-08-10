@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SteuerungSection } from './SteuerungSection';
 import { api, type Site } from '../api';
 import { optimizerApi } from '../optimizerApi';
@@ -269,6 +269,53 @@ describe('SteuerungSection (Portal v3 M4)', () => {
       expect(screen.getByText('Wallbox nur bei PV-Überschuss')).toBeInTheDocument());
     expect(screen.getByText('Läuft')).toBeInTheDocument();
     expect(screen.queryByText(/× geschaltet/)).toBeNull();
+  });
+
+  it('a generated Verbraucherregel carries the origin badge and opens the Regelbaukasten (D7)', async () => {
+    const bound = setup();
+    bound.list.mockResolvedValue([
+      {
+        flowId: 'f-cons',
+        name: 'Verbraucherregel Wallbox',
+        activeVersion: 3,
+        latestVersion: 3,
+        latestLifecycle: 'active',
+        latestDocument: {
+          schema_version: '1.0', name: 'x', runtime: 'edge',
+          origin: { kind: 'consumer-policy', policy_id: 'p-1', policy_version: 3, entity_id: 'e-wb' },
+          nodes: [{ id: 'n1', type: 'vp.consumer.reactive', type_version: '1.0.0' }],
+          edges: [], triggers: [],
+        },
+        simulation: null,
+      },
+    ]);
+    window.location.hash = '';
+    render(<SteuerungSection site={site} />);
+
+    expect(await screen.findByText('Aus Verbraucherregel')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }));
+    // Edited where it lives: the consumer's Regelbaukasten, never the flow editor.
+    expect(window.location.hash).toBe('#/anlage/s-1/verbraucher?verbraucher=e-wb');
+    expect(bound.get).not.toHaveBeenCalled();
+    window.location.hash = '';
+  });
+
+  it('a consumer template opens the Regelbaukasten instead of emitting a flow (D7)', async () => {
+    const bound = setup();
+    window.location.hash = '';
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Neue Automation/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Neue Automation/ }));
+
+    // The fitting consumer template here is the Heizstab-Zeitplan (no grid meter).
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Verwenden' }));
+
+    expect(window.location.hash).toBe('#/anlage/s-1/verbraucher?vorlage=schedule-consumer');
+    // No flow is created on this path - the rule lives on the consumer surface.
+    expect(bound.create).not.toHaveBeenCalled();
+    window.location.hash = '';
   });
 
   it('stays honest when the optional endpoints are unavailable (older backend / 403)', async () => {

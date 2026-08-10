@@ -416,7 +416,17 @@ export interface AutomationRow {
   state: string;
   /** Punkt-Tönung: grün wenn ausgerollt, sonst ruhig. */
   tone: 'on' | 'off';
+  /**
+   * D7 (Inkrement 4): die aus einer VERBRAUCHERREGEL generierte Automation —
+   * sie trägt das Abzeichen „Aus Verbraucherregel" und öffnet den
+   * Regelbaukasten ihres Verbrauchers statt des Flow-Editors. Abgeleitet aus
+   * dem server-gestempelten `origin` des Dokuments, nie geraten.
+   */
+  fromConsumerRule: { entityId: string } | null;
 }
+
+/** Das Herkunfts-Abzeichen der generierten Verbraucherregel-Automation. */
+export const AUS_VERBRAUCHERREGEL = 'Aus Verbraucherregel';
 
 function timeOfDay(iso: string): string | null {
   const d = new Date(iso);
@@ -430,12 +440,22 @@ function timeOfDay(iso: string): string | null {
  * ein Schaltzähler wird niemals geschätzt.
  */
 export function automationRows(
-  flows: { flowId: string; name: string; activeVersion: number | null; latestVersion: number; latestLifecycle: string }[],
+  flows: {
+    flowId: string;
+    name: string;
+    activeVersion: number | null;
+    latestVersion: number;
+    latestLifecycle: string;
+    latestDocument?: { origin?: { kind?: string; entity_id?: string } } | null;
+  }[],
   activity?: AutomationActivity[] | null,
 ): AutomationRow[] {
   const byFlow = new Map((activity ?? []).map((a) => [a.flowId, a] as const));
   return (flows ?? []).map((f) => {
     const active = f.activeVersion != null;
+    const origin = f.latestDocument?.origin;
+    const fromConsumerRule = origin?.kind === 'consumer-policy' && origin.entity_id
+      ? { entityId: origin.entity_id } : null;
     const a = byFlow.get(f.flowId);
     const parts: string[] = [active ? 'Läuft' : lifecycleLabel(f.latestLifecycle)];
     if (active && a) {
@@ -452,6 +472,7 @@ export function automationRows(
       version: active ? (f.activeVersion as number) : f.latestVersion,
       state: parts.join(' · '),
       tone: active ? 'on' : 'off',
+      fromConsumerRule,
     };
   });
 }

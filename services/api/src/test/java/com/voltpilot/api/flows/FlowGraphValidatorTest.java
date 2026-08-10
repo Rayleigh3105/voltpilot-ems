@@ -101,6 +101,37 @@ class FlowGraphValidatorTest {
     }
 
     @Test
+    void consumerReactiveFixtureValidatesCleanOnlyWithItsOrigin() throws IOException {
+        // D-19: the GENERATED consumer-policy flow (origin marker + one
+        // vp.consumer.reactive node) validates clean...
+        assertThat(errors(validate(fixture("flow-graph.valid.consumer-reactive.json")))).isEmpty();
+
+        // ...while the SAME node without the server-stamped origin is refused -
+        // the generated-only type never validates in a customer document.
+        List<FlowValidationFinding> findings = validate(fixture(
+                "flow-graph.invalid.reactive-without-origin.json"));
+        assertThat(errors(findings)).contains("V-4");
+        assertThat(findings.stream().map(FlowValidationFinding::message))
+                .anyMatch(m -> m.contains("generierten Verbraucherregel vorbehalten"));
+    }
+
+    @Test
+    void overrideOnEntityControlIsReservedForTheGeneratedArtifact() throws IOException {
+        // D-19: whatever the value, a vp.entity.control carrying `override` is
+        // refused - no catalog flow may claim the D-5 plan-override lever.
+        ObjectNode doc = (ObjectNode) fixture("flow-graph.valid.price-wallbox.json");
+        ObjectNode control = (ObjectNode) doc.path("nodes").get(2);
+        ((ObjectNode) control.path("parameters")).put("override", true);
+        List<FlowValidationFinding> findings = validate(doc);
+        assertThat(findings.stream().map(FlowValidationFinding::message))
+                .anyMatch(m -> m.contains("override ist der generierten Verbraucherregel"));
+
+        ((ObjectNode) control.path("parameters")).put("override", false);
+        assertThat(validate(doc).stream().map(FlowValidationFinding::message))
+                .anyMatch(m -> m.contains("override ist der generierten Verbraucherregel"));
+    }
+
+    @Test
     void unknownTriggerFixtureFailsExactlyOnV7() throws IOException {
         List<FlowValidationFinding> findings = validate(fixture(
                 "flow-graph.invalid.unknown-trigger.json"));

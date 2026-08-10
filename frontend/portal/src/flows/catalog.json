@@ -273,6 +273,27 @@
       "hint": "Läuft ausschließlich auf Ihrem Gerät. Auch dieser Baustein kann ein Gerät nur WÜNSCHEN - die Schutzgrenzen der Anlage begrenzen jeden Befehl."
     },
     {
+      "type": "vp.consumer.reactive",
+      "type_version": "1.0.0",
+      "label": "Verbraucherregel (generiert)",
+      "description": "GENERIERT vom Consumer-Policy-Compiler (D-19): die kompilierte reaktive Verbraucherregel - lokale Signale mit Frische und Hysterese, vorberechnete Preisfenster, Ausschaltverzögerung. Nur in server-gestempelten Dokumenten mit consumer-policy-origin gültig; im Editor nie anzubieten, Bearbeiten öffnet den Verbraucher-Regelbaukasten.",
+      "group": "aktion",
+      "generated": true,
+      "customer_visible": false,
+      "runtimes": ["edge"],
+      "inputs": [],
+      "outputs": [],
+      "parameters": [
+        { "name": "entity_id", "kind": "entityRef", "label": "Verbraucher", "required": true },
+        { "name": "command", "kind": "enum", "label": "Kommando", "required": true, "options": ["on_off", "setpoint_kw", "mode"] },
+        { "name": "ttl_s", "kind": "number", "label": "Wunsch-Gültigkeit (s)", "required": true, "min": 1, "max": 86400 },
+        { "name": "renew_s", "kind": "number", "label": "Erneuerung (s)", "required": true, "min": 1, "max": 3600 },
+        { "name": "off_delay_s", "kind": "number", "label": "Ausschaltverzögerung (s)", "required": true, "min": 0, "max": 3600 },
+        { "name": "requirements", "kind": "json", "label": "Kompilierte Anforderungen", "required": true }
+      ],
+      "claim_template": { "entity_parameter": "entity_id", "command_parameter": "command", "delegated": false }
+    },
+    {
       "type": "vp.modbus.read",
       "type_version": "1.0.0",
       "label": "Modbus lesen",

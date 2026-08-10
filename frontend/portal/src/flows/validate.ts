@@ -154,6 +154,19 @@ function checkNodes(doc: FlowDocument, findings: FlowFinding[]): Map<string, Flo
       findings.push(error('V-8', [node.id], [],
         `Baustein "${type.label}" ist in der Laufzeit "${doc.runtime}" nicht verfügbar.`));
     }
+    // D-19: a generated-only catalog type is valid ONLY in a document the
+    // platform stamped with the consumer-policy origin (the flow save API
+    // refuses customer documents carrying `origin`, so this cannot be forged).
+    if (type.generated === true && doc.origin?.kind !== 'consumer-policy') {
+      findings.push(error('V-4', [node.id], [],
+        `Baustein "${type.label}" ist der generierten Verbraucherregel vorbehalten.`));
+    }
+    // D-19: the D-5 override lever is reserved for the generated artifact.
+    if (node.type === 'vp.entity.control'
+        && node.parameters !== undefined && 'override' in (node.parameters ?? {})) {
+      findings.push(error('V-4', [node.id], [],
+        `Baustein "${type.label}": override ist der generierten Verbraucherregel vorbehalten.`));
+    }
     checkParameters(node, findings);
   }
   return nodesById;
@@ -224,6 +237,15 @@ function checkParameters(node: FlowNode, findings: FlowFinding[]) {
           findings.push(error('V-4', [node.id], [],
             `Baustein "${type.label}": Parameter "${label}" darf höchstens ${max} Zeichen `
             + 'lang sein.'));
+        }
+        break;
+      }
+      // The compiled reactive spec (D-19): a structured JSON value whose deep
+      // validation is flowc's - the document is platform-generated.
+      case 'json': {
+        if (value === null || typeof value !== 'object') {
+          findings.push(error('V-4', [node.id], [],
+            `Baustein "${type.label}": Parameter "${label}" muss ein JSON-Objekt oder eine Liste sein.`));
         }
         break;
       }

@@ -37,7 +37,7 @@ function assertPinned(artifact, pinName) {
 // (and would break the "no user code paths" isolation guarantee).
 const WHITELISTED_NR_TYPES = new Set([
   'tab', 'vp-entity-read', 'vp-feed', 'vp-desired', 'vp-notify', 'vp-modbus-read',
-  'function', 'inject',
+  'vp-consumer-policy', 'function', 'inject',
 ]);
 
 test('pv-surplus-heatrod fixture compiles deterministically', () => {
@@ -720,4 +720,105 @@ test('the code node is refused in the cloud runtime and on bad params', () => {
 test('pinned content hash of the function-node fixture', () => {
   assertPinned(compile(fixture('flow-graph.valid.function-node.json')),
     'pinned-function-hash.txt');
+});
+
+// --- vp.consumer.reactive (D-19, Verbrauchssteuerung Inkrement 4) -----------
+
+test('the generated consumer-reactive fixture compiles to ONE vp-consumer-policy node', () => {
+  const graph = fixture('flow-graph.valid.consumer-reactive.json');
+  const a1 = compile(graph);
+  const a2 = compile(graph);
+  assert.strictEqual(JSON.stringify(a1), JSON.stringify(a2), 'compilation must be deterministic');
+  assert.strictEqual(a1.content_hash, contentHash(a1.bundle));
+  assert.strictEqual(a1.min_palette_version, '0.5.0', 'the reactive runtime node ships with palette 0.5.0');
+
+  const nodes = a1.bundle.nodered_flows;
+  for (const n of nodes) {
+    assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected NR type ' + n.type);
+  }
+  const policy = nodes.find((n) => n.type === 'vp-consumer-policy');
+  assert.ok(policy, 'the reactive spec lands in one vp-consumer-policy node');
+  assert.strictEqual(policy.entity, 'wallbox-1');
+  assert.strictEqual(policy.command, 'setpoint_kw');
+  assert.strictEqual(policy.ttl_s, 45);
+  assert.strictEqual(policy.renew_s, 15);
+  assert.strictEqual(policy.off_delay_s, 15);
+  assert.strictEqual(policy.requirements.length, 2, 'the spec travels VERBATIM');
+  assert.deepStrictEqual(a1.required_entities,
+    [{ entity_id: 'wallbox-1', capabilities: ['actuate:setpoint_kw'] }]);
+
+  // The interval trigger (the TTL renewal cadence) wires into the node.
+  const inject = nodes.find((n) => n.type === 'inject');
+  assert.ok(inject, 'the renew cadence compiles to an interval inject');
+  assert.deepStrictEqual(inject.wires, [[policy.id]]);
+});
+
+test('pinned content hash of the consumer-reactive fixture', () => {
+  assertPinned(compile(fixture('flow-graph.valid.consumer-reactive.json')),
+    'pinned-consumer-reactive-hash.txt');
+});
+
+test('vp.consumer.reactive is refused without the server-stamped origin (D-19)', () => {
+  const graph = fixture('flow-graph.invalid.reactive-without-origin.json');
+  assert.ok(validate(graph).some((f) => f.rule === 'V-4' && /origin fehlt/.test(f.message)),
+    'the generated-only type never validates in a customer document');
+
+  // A forged origin of the WRONG kind does not unlock it either.
+  const wrongKind = JSON.parse(JSON.stringify(graph));
+  wrongKind.origin = { kind: 'something-else' };
+  assert.ok(validate(wrongKind).some((f) => /origin fehlt/.test(f.message)));
+
+  // The valid fixture (with origin) passes.
+  assert.deepStrictEqual(validate(fixture('flow-graph.valid.consumer-reactive.json')), []);
+});
+
+test('override on vp.entity.control is reserved for the generated artifact (D-19)', () => {
+  const graph = fixture('flow-graph.valid.price-wallbox.json');
+  const smuggled = JSON.parse(JSON.stringify(graph));
+  smuggled.nodes[2].parameters.override = true;
+  assert.ok(validate(smuggled).some((f) => /override ist der generierten/.test(f.message)),
+    'a customer flow can never claim the D-5 override through the catalog node');
+
+  // Even override:false is refused - the field is reserved, not just the value.
+  const sneaky = JSON.parse(JSON.stringify(graph));
+  sneaky.nodes[2].parameters.override = false;
+  assert.ok(validate(sneaky).some((f) => /override ist der generierten/.test(f.message)));
+});
+
+test('the reactive spec validation refuses the honest error classes', () => {
+  const base = () => fixture('flow-graph.valid.consumer-reactive.json');
+  const withParams = (mutate) => {
+    const g = base();
+    mutate(g.nodes[0].parameters);
+    return g;
+  };
+
+  // A renewal cadence slower than half the TTL tears the renewal chain.
+  assert.ok(validate(withParams((p) => { p.renew_s = 40; }))
+    .some((f) => /Erneuerungskette/.test(f.message)));
+
+  // A local signal without a freshness window can never honestly start.
+  assert.ok(validate(withParams((p) => {
+    delete p.requirements[0].condition.max_age_s;
+  })).some((f) => /max_age_s/.test(f.message)));
+
+  // Windows must be chronological [from, to] pairs.
+  assert.ok(validate(withParams((p) => {
+    p.requirements[1].condition.any[0].windows = [
+      ['2026-08-11T10:00:00Z', '2026-08-11T12:00:00Z'],
+      ['2026-08-10T10:00:00Z', '2026-08-10T12:00:00Z'],
+    ];
+  })).some((f) => /chronologisch/.test(f.message)));
+
+  // The target value must fit the command.
+  assert.ok(validate(withParams((p) => { p.requirements[0].value = true; }))
+    .some((f) => /value passt nicht/.test(f.message)));
+
+  // Depth cap: a tower of NOTs past MAX_TREE_DEPTH is refused.
+  assert.ok(validate(withParams((p) => {
+    p.requirements[0].condition = { not: { not: { not: { not: { not: {
+      signal: 'storage.soc_pct', source: 'site', channel: 'soc_pct',
+      op: 'gt', value: 80, max_age_s: 60,
+    } } } } } };
+  })).some((f) => /zu tief/.test(f.message)));
 });

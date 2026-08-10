@@ -20,6 +20,7 @@ import logging
 import os
 import sys
 import threading
+from datetime import datetime, timezone
 from urllib.parse import quote
 
 from voltpilot_optimization.config import v2_plan_site_ids
@@ -126,6 +127,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("WHATIF_MAX_CONCURRENT", "2")),
         help="concurrent synchronous what-if re-optimizes (default "
         "WHATIF_MAX_CONCURRENT, else 2; excess calls get 429)",
+    )
+    sim.add_argument(
+        "--max-replan",
+        type=int,
+        default=int(os.environ.get("REPLAN_MAX_CONCURRENT", "1")),
+        help="concurrent synchronous single-site replans (default "
+        "REPLAN_MAX_CONCURRENT, else 1; excess calls get 429)",
     )
     sim.add_argument("--log-level", default="INFO", help="logging level (default INFO)")
 
@@ -234,6 +242,63 @@ def _what_if_handler(dsn: str, max_concurrent: int):
     return handle
 
 
+def _replan_handler(dsn: str, env: dict[str, str], max_concurrent: int):
+    """The D8 on-demand replan route's handler (Verbrauchssteuerung §13.4).
+
+    The DELIBERATE opposite of the what-if: it reuses the engine's plan_site
+    verbatim - one real cycle gather -> optimize -> persist -> publish for ONE
+    site, so there is never a second planning path. Semaphore-bounded like the
+    what-if (a replan is a real MILP solve in the request thread); the api
+    additionally debounces + rate-limits per site before calling here. The
+    publisher exists only when MQTT_HOST is configured - without a broker the
+    replan persists and honestly reports published: false.
+    """
+    from voltpilot_optimization.config import v2_plan_site_ids
+    from voltpilot_optimization.inputs import load_battery_sites
+    from voltpilot_optimization.persistence import TimescaleScheduleRepository
+    from voltpilot_optimization.persistence_v2 import TimescaleSitePlanRepository
+    from voltpilot_optimization.publisher import MqttSchedulePublisher
+    from voltpilot_optimization.publisher_v2 import MqttPlanV2Publisher
+    from voltpilot_optimization.replan import ReplanDeps, parse_request, run_replan
+    from voltpilot_optimization.engine import plan_site
+    from voltpilot_optimization.simulation.jobs import TooBusyError
+
+    gate = threading.Semaphore(max(max_concurrent, 1))
+    repository = TimescaleScheduleRepository(dsn)
+    publisher = MqttSchedulePublisher.from_env(env) if env.get("MQTT_HOST") else None
+    v2_sites = v2_plan_site_ids(env)
+    v2_publisher = None
+    v2_repository = None
+    if publisher is not None and v2_sites:
+        v2_publisher = MqttPlanV2Publisher.from_env(env)
+        v2_repository = TimescaleSitePlanRepository(dsn)
+
+    def load_site(site_id):
+        sites = load_battery_sites(dsn, site_id)
+        return sites[0] if sites else None
+
+    deps = ReplanDeps(
+        load_site=load_site,
+        plan=lambda site: plan_site(
+            dsn, site, repository, publisher, datetime.now(timezone.utc),
+            v2_publisher=v2_publisher, v2_sites=v2_sites, v2_repository=v2_repository,
+        ),
+        publishes=publisher is not None,
+        persists=True,
+    )
+
+    def handle(doc: dict) -> dict:
+        site_id = parse_request(doc)  # validate BEFORE taking a slot
+        if not gate.acquire(blocking=False):
+            raise TooBusyError("busy")
+        try:
+            return run_replan(site_id, deps)
+        finally:
+            gate.release()
+
+    return handle
+
+
 def _simulate_serve(args, env: dict[str, str]) -> int:
     """Assemble + run the Ersparnis-Simulation service (design report §2):
     DB-backed prices/market values, keyless Open-Meteo archive weather, the
@@ -255,7 +320,9 @@ def _simulate_serve(args, env: dict[str, str]) -> int:
         max_workers=max(args.max_workers, 1),
     )
     store = JobStore(lambda request, publish: run_simulation(request, deps, publish))
-    httpd = serve(store, args.port, what_if=_what_if_handler(dsn, args.max_what_if))
+    httpd = serve(store, args.port,
+                  what_if=_what_if_handler(dsn, args.max_what_if),
+                  replan=_replan_handler(dsn, env, args.max_replan))
     # SIGTERM handling (docs/k8s-readiness.md): a Python PID 1 without an
     # explicit handler IGNORES SIGTERM, so the container would always be
     # SIGKILLed after the full grace period. shutdown() lets serve_forever

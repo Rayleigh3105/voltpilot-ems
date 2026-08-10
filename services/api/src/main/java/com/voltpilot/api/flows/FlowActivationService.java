@@ -165,6 +165,25 @@ public class FlowActivationService {
     }
 
     /**
+     * Re-publish the site's COMPLETE deployment set (the consumer-policy
+     * activation/stop paths, D-19). Best-effort: no unique gateway / no broker
+     * → {@code false}, logged - the caller decides whether that is fatal.
+     */
+    public boolean republishForSite(UUID siteId) {
+        UUID gateway = gatewayDevice(siteId);
+        if (gateway == null) {
+            log.warn("deployment for site {} not re-published: no unique gateway device", siteId);
+            return false;
+        }
+        return publishDeploymentSet(siteId, gateway);
+    }
+
+    /** Whether the site resolves to exactly one gateway device (E1a rule). */
+    public boolean hasGatewayDevice(UUID siteId) {
+        return gatewayDevice(siteId) != null;
+    }
+
+    /**
      * The COMPLETE desired state for the gateway: every active edge flow's
      * stored artifact of this site (never a diff, contract §3).
      */

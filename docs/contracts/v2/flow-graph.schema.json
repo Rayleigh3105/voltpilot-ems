@@ -36,6 +36,18 @@
       "enum": ["draft", "simulated", "active", "retired"],
       "description": "Lifecycle state of THIS version. Informative snapshot in the document; the AUTHORITATIVE state machine lives in the platform API (see flow-graph.md): draft -> simulated (a recorded simulation run exists) -> active (validated + compiled + deployed; at most one active version per flow) -> retired."
     },
+    "origin": {
+      "type": "object",
+      "description": "OPTIONAL provenance marker of a GENERATED flow (D-19): present exactly when the platform derived this document from another source of truth (today: a consumer policy, docs/verbrauchssteuerung.md §13.2). SERVER-STAMPED ONLY - the flow save API refuses customer documents carrying it, so origin can never be forged to unlock generated-only node types (vp.consumer.reactive and its compiler-stamped override). A generated flow is not separately editable; portals open the owning builder instead.",
+      "required": ["kind", "policy_id", "policy_version", "entity_id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "const": "consumer-policy" },
+        "policy_id": { "type": "string", "format": "uuid" },
+        "policy_version": { "type": "integer", "minimum": 1 },
+        "entity_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" }
+      }
+    },
     "nodes": {
       "type": "array",
       "minItems": 1,

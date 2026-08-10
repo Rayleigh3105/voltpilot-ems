@@ -3869,6 +3869,119 @@ paths:
         "400": { description: The policy is invalid. Body carries a German `message`. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Consumer/site not found for this tenant. }
+  /api/v1/sites/{siteId}/consumers/{id}/policy/activate:
+    post:
+      tags: [consumer]
+      summary: Validate, compile and atomically activate the latest policy version (Inkrement 4).
+      description: >
+        Verbrauchssteuerung §11/§13.2 (D-19): validates the LATEST policy
+        version, compiles its reactive-with-local requirements into at most ONE
+        generated flow artifact (precomputed UTC price windows per D1, local
+        signals with freshness + hysteresis, must_run → the bounded D-5
+        override) and activates atomically - previous active version retired,
+        the artifact rolled out over the EXISTING retained flow-deployment set.
+        Flag-gated (VOLTPILOT_CONSUMER_CONTROL_ENABLED +
+        VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED, both default OFF): with a
+        flag off the response is 200 with activated:false and a reason
+        (activation_disabled / compiler_disabled) - the rule stays a draft. A
+        compiler or rollout failure is 503 and the previously active version
+        stays UNCHANGED. An entity already claimed by another active automation
+        is 409 naming it (V-5).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Outcome envelope (activated true/false + reason + published).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activated: { type: boolean }
+                  reason: { type: string, nullable: true, description: "activation_disabled | compiler_disabled | null" }
+                  message: { type: string }
+                  published: { type: boolean }
+                  policyVersion: { type: integer, nullable: true }
+        "400": { description: No policy yet / the stored policy is invalid. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
+        "409": { description: The entity is already controlled by another active automation (named in `message`). }
+        "422": { description: The consumer is not connected yet (E11). }
+        "503": { description: Compiler/rollout unavailable - the previously active version is unchanged. }
+  /api/v1/sites/{siteId}/consumers/{id}/policy/deactivate:
+    post:
+      tags: [consumer]
+      summary: The real stop path - retire the active policy AND retract the retained artifact.
+      description: >
+        §16: works INDEPENDENTLY of the activation feature flags (a disabled
+        flag must never leave a deployed rule looking stopped). Retires the
+        active policy version and re-publishes the site's retained deployment
+        set WITHOUT the generated artifact.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Stopped.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  published: { type: boolean }
+                  message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
+        "409": { description: No active policy. }
+  /api/v1/sites/{siteId}/consumers/{id}/pause:
+    post:
+      tags: [consumer]
+      summary: Pause the consumer (Gesamtschalter off, device failsafe applies).
+      description: >
+        §11/§16: flips the consumer's enable switch off, retracts the generated
+        artifact from the retained deployment set and lets the desired TTLs
+        expire - the entity falls to its registry failsafe. Works with the
+        activation flags OFF (stop paths are never flag-gated).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Paused.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  published: { type: boolean }
+                  message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
+  /api/v1/sites/{siteId}/consumers/{id}/resume:
+    post:
+      tags: [consumer]
+      summary: Resume after a pause (re-enable + re-deploy the stored artifact, no compile).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Outcome envelope (the activate shape).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activated: { type: boolean }
+                  reason: { type: string, nullable: true }
+                  message: { type: string }
+                  published: { type: boolean }
+                  policyVersion: { type: integer, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Consumer/site not found for this tenant. }
+        "409": { description: No active policy to resume. }
+        "503": { description: Rollout unavailable. }
   /api/v1/sites/{siteId}/consumer-schedule:
     get:
       tags: [consumer]
@@ -3992,8 +4105,12 @@ components:
         edgeSourceId: { type: string, nullable: true }
         controlActivation:
           type: string
-          enum: [not_activated]
-          description: Increment 1 is always "not_activated" ("Steuerung noch nicht aktiviert").
+          enum: [not_activated, active, paused]
+          description: >
+            Derived from the active policy (Inkrement 4): "active" = an active
+            policy exists and the consumer is enabled; "paused" = active policy
+            with the pause failsafe in force; else "not_activated" ("Steuerung
+            noch nicht aktiviert").
         hasDraftPolicy: { type: boolean }
         draftPolicyVersion: { type: integer, nullable: true }
         minOnSeconds:
@@ -4079,6 +4196,12 @@ components:
       type: object
       description: Capability-/context-filtered inputs for the assistant question tree.
       properties:
+        policyActivationEnabled:
+          type: boolean
+          description: >
+            Whether this environment can REALLY activate a consumer rule (both
+            Inkrement-4 feature flags on). false = the portal keeps the honest
+            "Steuerung noch nicht aktiviert" draft wording.
         types:
           type: array
           items:
