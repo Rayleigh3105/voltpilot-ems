@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.control.ControlCertificationService;
 import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
@@ -61,6 +62,7 @@ public class DeviceController {
     private final ObjectProvider<EntityRegistryPublisher> entityRegistry;
     private final ObjectProvider<RolloutService> rollouts;
     private final EntityAutoComposer autoCompose;
+    private final ControlCertificationService controlCertification;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, AssetRepository assets,
@@ -70,7 +72,8 @@ public class DeviceController {
             ObjectProvider<EnrollmentService> enrollment,
             ObjectProvider<EntityRegistryPublisher> entityRegistry,
             ObjectProvider<RolloutService> rollouts,
-            EntityAutoComposer autoCompose) {
+            EntityAutoComposer autoCompose,
+            ControlCertificationService controlCertification) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
@@ -82,6 +85,7 @@ public class DeviceController {
         this.entityRegistry = entityRegistry;
         this.rollouts = rollouts;
         this.autoCompose = autoCompose;
+        this.controlCertification = controlCertification;
     }
 
     @GetMapping
@@ -244,6 +248,11 @@ public class DeviceController {
         // die es nicht mehr gibt - dieselbe Hygiene wie beim retained
         // Provisionierungs-Config und beim Entity-Push, best-effort.
         rollouts.ifAvailable(r -> r.onDeviceUnclaimed(tenantId, device.siteId(), device.id()));
+        // Und die Steuerungs-Freigabe: eine scharfgeschaltete Anlage, deren
+        // Gerät niemandem mehr gehört, darf weder in der Liste stehen noch ein
+        // retained Zertifizierungs-Dokument auf dem Broker liegen lassen -
+        // dieselbe Hygiene wie eine Zeile darüber, best-effort.
+        controlCertification.onDeviceUnclaimed(tenantId, device.siteId(), device.id());
         return ResponseEntity.noContent().build();
     }
 
