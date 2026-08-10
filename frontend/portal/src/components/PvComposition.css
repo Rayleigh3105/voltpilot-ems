@@ -54,15 +54,19 @@
 
 /* Die proportionale Leiste: Anteile auf einen Blick, ohne eine Zahl zu
    wiederholen. Rein dekorativ (aria-hidden) — die Werte stehen darunter. */
+/* Die Segmente trennt die FUGE (F9 „Fuge min. 2 px"), nicht eine
+   Deckkraft-Rampe - Begründung an der Komponente. Höhe/Radius kommen aus dem
+   `MiniShareBar`-Baustein; die Bahn bleibt hier transparent, damit die Fuge
+   die Kartenfläche zeigt statt einer zweiten grauen Spur. */
 .vp-pvcomp-bar {
-  display: flex;
   gap: 3px;
   margin-top: var(--vp-space-2);
-  min-width: 0;
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
 }
 
 .vp-pvcomp-seg {
-  height: 8px;
   border-radius: 4px;
   background: var(--vp-flow-pv, #e8a33d);
   min-width: 4px;

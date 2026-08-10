@@ -3867,25 +3867,18 @@ button.vp-tech-card-h.toggle {
   gap: 4px;
   min-width: 0;
 }
+/* Geometrie aus dem `MiniShareBar`-Baustein (grosse Hoehe); hier bleibt die
+   Bahn dieser Flaeche und die Bedeutung der drei Balken-Arten. */
 .vp-optim-waterfall .wf-bar-wrap {
   background: var(--vp-bg-light);
-  border-radius: 6px;
-  height: 18px;
-  overflow: hidden;
 }
-.vp-optim-waterfall .wf-bar {
-  display: block;
-  height: 100%;
-  border-radius: 6px;
-  min-width: 2px;
-}
-.vp-optim-waterfall .wf-bar.kind-gain {
+.vp-optim-waterfall .wf-bar-wrap.kind-gain .vp-share-fill {
   background: var(--vp-chart-charge);
 }
-.vp-optim-waterfall .wf-bar.kind-cost {
+.vp-optim-waterfall .wf-bar-wrap.kind-cost .vp-share-fill {
   background: var(--vp-chart-discharge);
 }
-.vp-optim-waterfall .wf-bar.kind-ref {
+.vp-optim-waterfall .wf-bar-wrap.kind-ref .vp-share-fill {
   background: var(--vp-chart-price);
 }
 .vp-optim-waterfall .wf-val {
@@ -4246,17 +4239,10 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-text-muted);
   font-size: 0.92rem;
 }
+/* Geometrie aus dem `MiniShareBar`-Baustein (mittlere Hoehe - dieselbe wie
+   das Rueckgrat der Edge-Updates, vorher zufaellig gleich, jetzt EINE Regel). */
 .vp-sim-progress-bar {
-  height: 8px;
-  border-radius: 999px;
   background: var(--vp-border);
-  overflow: hidden;
-}
-.vp-sim-progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--vp-action);
-  transition: width 0.6s ease;
 }
 .vp-sim-result {
   display: flex;
@@ -5417,14 +5403,9 @@ button.vp-tech-card-h.toggle {
 /* Das Fortschritts-Rückgrat: EIN Balken über die ERREICHBARE Menge. Was nicht
    hineinzählt (offline, ohne Meldung), steht daneben und nie im Nenner. */
 .vp-backbone { margin: var(--vp-space-3, 12px) 0 var(--vp-space-4, 16px); }
-.vp-backbone-bar {
-  display: flex;
-  height: 10px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--vp-bg-light, #f8f9fa);
-}
-.vp-backbone-seg { min-width: 4px; }
+/* Bahn/Radius/Hoehe kommen seit Stufe 5 aus dem `MiniShareBar`-Baustein
+   (mittlere Hoehe; vorher 10 px - eine von vier Admin-Balken-Hoehen). */
+.vp-backbone-bar { background: var(--vp-bg-light, #f8f9fa); }
 .vp-backbone-legend {
   display: flex;
   flex-wrap: wrap;

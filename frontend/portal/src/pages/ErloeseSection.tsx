@@ -59,6 +59,7 @@ import { SoVerdientCard } from '../components/SoVerdient';
 
 import '../components/Historie.css';
 import '../components/Erloese.css';
+import { MiniShareBar } from '../components/MiniChart';
 
 /**
  * **Welt B · „Erlöse"** (`#/anlage/{id}/erloese`) — die Geld-Welt der Historie
@@ -108,9 +109,7 @@ function KompositionsZeile({ row, zeigePeriode }: { row: ErgebnisZeile; zeigePer
         {row.label}
         {zeigePeriode && <span className="vp-ekomp-period">{row.periodLabel}</span>}
       </span>
-      <span className="vp-ekomp-bar" aria-hidden="true">
-        <i style={{ width: `${Math.round(row.barFraction * 100)}%`, background: row.hue }} />
-      </span>
+      <MiniShareBar className="vp-ekomp-bar" fraction={row.barFraction} color={row.hue} />
       <span className="vp-ekomp-value">
         {row.eur != null && (
           <span className="vp-ekomp-sign" aria-hidden="true">

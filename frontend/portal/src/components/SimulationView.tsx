@@ -27,6 +27,7 @@ import {
   type SimulationStatus,
 } from '../simulation';
 import { ChartInsight, ChartLegend, ChartSubtitle } from './ChartExplain';
+import { MiniShareBar } from './MiniChart';
 
 const POLL_MS = 2000;
 
@@ -114,12 +115,7 @@ export function SimulationRunView({ status, error }: { status: SimulationStatus 
     <>
       {(status.status === 'queued' || status.status === 'running') && (
         <div className="vp-sim-progress" role="status">
-          <div className="vp-sim-progress-bar">
-            <div
-              className="vp-sim-progress-fill"
-              style={{ width: `${Math.round((status.progress ?? 0) * 100)}%` }}
-            />
-          </div>
+          <MiniShareBar className="vp-sim-progress-bar" fraction={status.progress ?? 0} />
           <span>{progressLabel(status)}</span>
         </div>
       )}

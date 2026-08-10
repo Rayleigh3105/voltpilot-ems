@@ -7,6 +7,7 @@ import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi } from '../../admin/adminApi';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { MiniShareBar } from '../../components/MiniChart';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { fmtRelative } from '../../format';
 import { useFreshnessPoll } from '../../useFreshnessPoll';
@@ -393,16 +394,15 @@ export function EdgeUpdatesPage({ onNavigate }: { onNavigate?: (target: Route) =
                     Blick - über die ERREICHBARE Menge, offline daneben. */}
                 {progress && progress.total > 0 && (
                   <div className="vp-backbone" data-testid="backbone">
-                    <div className="vp-backbone-bar">
-                      {progress.segments.map((s) => (
-                        <span
-                          key={s.cls}
-                          className={`vp-backbone-seg vp-ustate-${s.cls}`}
-                          style={{ flexGrow: s.count }}
-                          title={`${s.count} ${s.label}`}
-                        />
-                      ))}
-                    </div>
+                    <MiniShareBar
+                      className="vp-backbone-bar"
+                      segments={progress.segments.map((s) => ({
+                        key: s.cls,
+                        weight: s.count,
+                        className: `vp-backbone-seg vp-ustate-${s.cls}`,
+                        title: `${s.count} ${s.label}`,
+                      }))}
+                    />
                     <div className="vp-backbone-legend vp-text-sm">
                       {progress.segments.map((s) => (
                         <span key={s.cls} className="vp-backbone-key">

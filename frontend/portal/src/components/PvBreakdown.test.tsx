@@ -119,3 +119,48 @@ describe('PvCompositionDetails (the panel behind the click on „PV-Erzeugung")'
     expect(container.querySelectorAll('.vp-pvcomp-row.quiet')).toHaveLength(1);
   });
 });
+
+describe('PvCompositionDetails · Serien trennt die FUGE, nicht die Deckkraft', () => {
+  /** Eine Zusammensetzung aus n gleich grossen Geraeten. */
+  function mitGeraeten(n: number, kws?: number[]): PvComposition {
+    const parts = Array.from({ length: n }, (_, i) => ({
+      key: `wr${i}`,
+      label: `WR ${i + 1}`,
+      kw: kws?.[i] ?? 5,
+      health: 'ok' as const,
+      note: null,
+      title: `WR ${i + 1}`,
+    }));
+    return {
+      totalKw: parts.reduce((sum, p) => sum + p.kw, 0),
+      parts,
+      unmeasured: [],
+      deviceCount: n,
+      origin: 'sources',
+    };
+  }
+
+  it('bleibt auch bei sechs Geraeten sichtbar (die alte Rampe war ab dem 5. bei 0,04)', () => {
+    const { container } = render(<PvCompositionDetails composition={mitGeraeten(6)} />);
+    const segs = [...container.querySelectorAll<HTMLElement>('.vp-pvcomp-seg')];
+    expect(segs).toHaveLength(6);
+    // KEIN Segment traegt noch eine eigene Deckkraft - sie war der Defekt.
+    for (const seg of segs) expect(seg.style.opacity).toBe('');
+  });
+
+  it('behaelt die EINE PV-Farbe (F10) statt erfundener Serientoene', () => {
+    const { container } = render(<PvCompositionDetails composition={mitGeraeten(3)} />);
+    // Keine Inline-Farbe: alle tragen dieselbe Token-Farbe aus dem CSS.
+    for (const seg of container.querySelectorAll<HTMLElement>('.vp-pvcomp-seg')) {
+      expect(seg.style.background).toBe('');
+    }
+  });
+
+  it('gewichtet die Segmente weiterhin nach ihrem Anteil', () => {
+    const { container } = render(<PvCompositionDetails composition={mitGeraeten(2, [3, 9])} />);
+    const grows = [...container.querySelectorAll<HTMLElement>('.vp-pvcomp-seg')].map((s) =>
+      Number(s.style.flexGrow),
+    );
+    expect(grows[1] / grows[0]).toBeCloseTo(3, 3);
+  });
+});

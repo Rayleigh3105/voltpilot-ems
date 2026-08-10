@@ -4,6 +4,7 @@ import { fmtNum } from '../format';
 import { shareOf, type PvComposition, type PvContribution } from '../pvComposition';
 import { healthTitle, pvBreakdown, type PvPart } from '../pvSources';
 import './PvComposition.css';
+import { MiniShareBar } from './MiniChart';
 
 /**
  * The calm per-source PV breakdown under the live PV figure: "39,0 kW = Deye 8,3
@@ -82,18 +83,24 @@ export function PvCompositionDetails({
       </div>
 
       {totalKw != null && parts.length > 0 && (
-        <div className="vp-pvcomp-bar" aria-hidden="true">
-          {parts.map((p, i) => (
-            <span
-              key={p.key}
-              className="vp-pvcomp-seg"
-              style={{
-                flexGrow: Math.max(shareOf(p, composition), 0.001),
-                opacity: 1 - i * 0.24,
-              }}
-            />
-          ))}
-        </div>
+        /* ⚠ Die Serien werden durch die FUGE getrennt, nicht mehr durch eine
+           Deckkraft-Rampe. Die alte `opacity: 1 - i * 0,24` war ab dem
+           fünften Gerät bei 0,04 - also unsichtbar (Befund §3b Nr. 22), und
+           sie benannte ohnehin nichts: die Zuordnung Segment→Gerät trägt die
+           REIHENFOLGE der Zeilen darunter. Eine Trennung über die Position
+           ist skalenfrei und hält für beliebig viele Geräte; eine über die
+           Deckkraft geht nach vier Stufen aus. Die eine PV-Farbe bleibt (F10:
+           PV ist orange - fünf erfundene Farbtöne wären die andere,
+           schlechtere Antwort). */
+        <MiniShareBar
+          className="vp-pvcomp-bar"
+          segments={parts.map((p) => ({
+            key: p.key,
+            weight: Math.max(shareOf(p, composition), 0.001),
+            className: 'vp-pvcomp-seg',
+            title: p.label,
+          }))}
+        />
       )}
 
       <ul className="vp-pvcomp-rows">

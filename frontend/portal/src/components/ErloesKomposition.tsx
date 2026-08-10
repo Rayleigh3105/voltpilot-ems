@@ -8,6 +8,7 @@ import {
 } from '../erloesKomposition';
 import type { MoneyStream } from '../surface';
 import './ErloesKomposition.css';
+import { MiniShareBar } from './MiniChart';
 
 /**
  * Der Cockpit-Block **Erlös-Komposition** (M4, #532): Geld als Stapel von
@@ -109,9 +110,11 @@ function Row({ row }: { row: StreamRow }) {
         {/* Perioden-Etikett JE ZEILE - die tragende Ehrlichkeitsregel. */}
         <small className="vp-stream-period">{row.periodLabel}</small>
       </span>
-      <span className="vp-stream-bar">
-        <i style={{ width: `${Math.round(row.barFraction * 100)}%`, background: row.hue }} />
-      </span>
+      <MiniShareBar
+        className="vp-stream-bar"
+        fraction={row.barFraction}
+        color={row.hue}
+      />
       {row.note && <span className="vp-stream-note">{row.note}</span>}
     </li>
   );
