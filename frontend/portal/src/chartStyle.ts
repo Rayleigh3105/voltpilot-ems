@@ -135,7 +135,15 @@ export function nowLineStyle(t: { ink: string }) {
 }
 
 /** Das Label der Jetzt-Linie — K9: der Zeit-Anker ist ein WORT. */
-export function nowLabel(t: { axis: string }, position: 'insideEndTop' | 'insideStartTop') {
+export function nowLabel(
+  t: { axis: string },
+  /**
+   * `'start'` ist das UNTERE Ende einer senkrechten `markLine` (ECharts baut
+   * sie von yAxis-min nach -max) — der Ort, an dem K9 die Fahne haben will:
+   * an der Zeitachse, nicht neben einer Panel-Überschrift.
+   */
+  position: 'insideEndTop' | 'insideStartTop' | 'start',
+) {
   return {
     formatter: 'Jetzt',
     color: t.axis,
@@ -347,3 +355,50 @@ export const BASE_SERIES_LIMIT = 3;
  * jeder Chart-Datei einzeln als `width < 480` einkopiert.
  */
 export const NARROW_PX = 480;
+
+/* ---------------------------------------------------------------------------
+ * F8 VERSCHÄRFT · Mehr als zwei Größen ⇒ PANELS, nicht Achsen
+ *
+ * Die geduldete Ausnahme „Preis-Rechtsachse im Fahrplan" ist gestrichen (r2 §4):
+ * sie war die Ursache des Dual-Axis-Fehllesens UND der zwei gemessenen
+ * Farb-Kollisionen (Grün×Grün: Ladebalken in kW gegen Einspeisewert in ct ·
+ * Blau×Blau: Verbrauchslinie gegen Preislinie, ΔE 1,3). Zwei Panels über EINER
+ * Zeitachse lösen beide STRUKTURELL auf, statt sie umzufärben.
+ *
+ * Die Geometrie steht hier, weil sie kein Fahrplan-Sonderfall ist: das
+ * Tagesbild (Stufe 3) und der Admin-PlanChart bekommen dieselbe Aufteilung.
+ *
+ * ⚠ Beide Panels MÜSSEN denselben linken und rechten Rand bekommen, sonst
+ * liegen ihre Zeitachsen nicht übereinander — und eine geteilte Zeitachse ist
+ * der ganze Zweck. Deshalb wird `containLabel` hier NICHT benutzt (es misst je
+ * Grid die eigene Beschriftungsbreite und verschiebt die Plots gegeneinander);
+ * die Ränder sind feste Pixel.
+ * ------------------------------------------------------------------------- */
+export const PANELS = {
+  /** Kopfraum über dem ersten Panel — dort steht sein Achsen-Name. */
+  topPx: 26,
+  /** Höhe des flachen KOPF-Panels (Preis) als Anteil der Bildhöhe. */
+  headPct: 23,
+  /** Wo das große Panel beginnt — die Luft dazwischen trägt seinen Namen. */
+  bodyTopPct: 40,
+  /**
+   * Fußraum: zweizeilige Datums-Beschriftung plus die „Jetzt"-Fahne DARUNTER
+   * (K9). Die Fahne braucht die zweite Zeile - im Browser gemessen lag sie
+   * ohne sie auf den Achsen-Beschriftungen.
+   */
+  bottomPx: 66,
+  /**
+   * Abstand der „Jetzt"-Fahne vom unteren Ende ihrer Linie. Er muss die
+   * zweizeilige Datums-Beschriftung ÜBERSPRINGEN - deshalb hängt er an
+   * {@link bottomPx} und wird nicht getrennt geraten.
+   */
+  nowFlagDistancePx: 40,
+  /** Linker Rand: Platz für drei Ziffern Achsen-Beschriftung bei 11 px. */
+  leftPx: 38,
+  /** Derselbe Rand am Telefon (dort trägt die Achse zwei Ziffern). */
+  leftNarrowPx: 30,
+  /** Rechter Rand ohne Zweitachse. */
+  rightPx: 20,
+  /** Rechter Rand MIT der Ladestand-Miniskala (F8-Ausnahme, `offset` 44). */
+  rightWithSocPx: 76,
+} as const;

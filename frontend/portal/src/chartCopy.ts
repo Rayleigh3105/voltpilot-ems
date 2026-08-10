@@ -23,6 +23,17 @@ export const LADESTAND = 'Ladestand';
 export const BOERSENPREIS = 'Börsenpreis';
 /** Der komponierte Bezugspreis (P0-Textwahrheit) — nicht der nackte Börsenpreis. */
 export const BEZUGSPREIS = 'Bezugspreis';
+/**
+ * Was eine eingespeiste Kilowattstunde WIRKLICH einbringt (Börsenpreis +
+ * Marktprämie bzw. feste Vergütung) — der Gegenpol zum {@link BEZUGSPREIS}.
+ */
+export const EINSPEISEWERT = 'Einspeisewert';
+/**
+ * Der Abstand zwischen {@link BEZUGSPREIS} und {@link EINSPEISEWERT}. Er IST
+ * der Grund fürs Laden und Entladen, deshalb trägt die Fläche dazwischen ihr
+ * Wort im Bild (K10) und nicht nur eine Legendenzeile.
+ */
+export const SPANNE = 'Spanne';
 /** Die Leistung der Sonne auf die Anlage — nie „Einstrahlung (W/m²)" allein. */
 export const SONNENSTAERKE = 'Sonnenstärke';
 

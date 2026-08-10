@@ -886,6 +886,99 @@ export function horizonHint(
   return horizonEnd <= endOfToday ? HORIZON_HINT : null;
 }
 
+/* ---------------------------------------------------------------------------
+ * M4 · Das SPANNENBAND des Preis-Panels (Chart-Redesign Stufe 2)
+ *
+ * Das Portal HAT beide Größen je Viertelstunde (`importPriceCtKwh` /
+ * `exportValueCtKwh`, die eine serverseitige `SlotEconomics`-Komposition) und
+ * zeigte sie nirgends als Kurvenpaar - gezeichnet wurde der nackte Börsenpreis,
+ * also genau die Zahl, mit der der Optimierer NICHT entscheidet.
+ *
+ * Die Fläche zwischen beiden IST der Grund fürs Laden und Entladen: eine
+ * gespeicherte Kilowattstunde lohnt sich, wenn sie den Bezugspreis vermeidet
+ * statt zum Einspeisewert wegzugehen. Deshalb trägt sie ihr Wort im Bild (K10)
+ * und ist eine F3-AUSNAHME (die Fläche trägt die Aussage, nicht nur Kontext).
+ * ------------------------------------------------------------------------- */
+
+/** Unter dieser Spanne ist die Fläche Rauschen und bekommt kein Namensschild. */
+export const SPREAD_DEADBAND_CT = 0.05;
+
+export interface PriceSpread {
+  /** Bezugspreis je Slot (ct/kWh); `null` = für diesen Slot nicht bewertbar. */
+  importCt: (number | null)[];
+  /** Einspeisewert je Slot (ct/kWh); `null` = nicht bewertbar. */
+  exportCt: (number | null)[];
+  /**
+   * Untere Kante der Fläche = das MINIMUM der beiden Linien. Bewusst nicht
+   * „der Einspeisewert": bei einem negativen Börsenpreis kann er über dem
+   * Bezugspreis liegen, und eine gestapelte Fläche mit negativer Höhe zeichnete
+   * sich nach unten aus dem Band heraus. Das Band ist definiert als „zwischen
+   * den beiden Linien", in jeder Reihenfolge.
+   */
+  base: (number | null)[];
+  /** Die Höhe darüber, sodass `base + delta` exakt die obere Linie trifft. */
+  delta: (number | null)[];
+  /** True, sobald mindestens EIN Slot beide Werte trägt - sonst gibt es kein Band. */
+  present: boolean;
+  /** Der Slot mit der größten Spanne - dort hängt das Namensschild (K10/K6). */
+  widestIndex: number | null;
+  /** Die größte Spanne in ct/kWh. */
+  widestCt: number | null;
+  /** Ihre Mitte auf der Preisachse - die y-Koordinate des Namensschilds. */
+  widestMidCt: number | null;
+}
+
+function ctOrNull(v: number | null | undefined): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Das Kurvenpaar Bezugspreis/Einspeisewert plus die Fläche dazwischen.
+ *
+ * Ehrlichkeit wie bei jeder Plan-Linie: ein fehlender Wert bleibt eine LÜCKE
+ * (`null`), nie eine erfundene 0 - ein älterer Lauf ohne die zwei Spalten
+ * liefert damit gar kein Band, und die Fläche entsteht ausschließlich in
+ * Slots, die BEIDE Werte tragen.
+ */
+export function priceSpread(
+  slots: { importPriceCtKwh?: number | null; exportValueCtKwh?: number | null }[],
+): PriceSpread {
+  const importCt: (number | null)[] = [];
+  const exportCt: (number | null)[] = [];
+  const base: (number | null)[] = [];
+  const delta: (number | null)[] = [];
+  let present = false;
+  let widestIndex: number | null = null;
+  let widestCt: number | null = null;
+  let widestMidCt: number | null = null;
+
+  slots.forEach((s, i) => {
+    const imp = ctOrNull(s.importPriceCtKwh);
+    const exp = ctOrNull(s.exportValueCtKwh);
+    importCt.push(imp);
+    exportCt.push(exp);
+    if (imp == null || exp == null) {
+      base.push(null);
+      delta.push(null);
+      return;
+    }
+    present = true;
+    const lo = Math.min(imp, exp);
+    const hi = Math.max(imp, exp);
+    base.push(lo);
+    delta.push(hi - lo);
+    if (hi - lo > (widestCt ?? SPREAD_DEADBAND_CT)) {
+      widestIndex = i;
+      widestCt = hi - lo;
+      widestMidCt = (hi + lo) / 2;
+    }
+  });
+
+  return { importCt, exportCt, base, delta, present, widestIndex, widestCt, widestMidCt };
+}
+
 /** Below this the curtailment is solver noise, not a real feed-in cap. */
 export const CURTAIL_DEADBAND_KW = 0.01;
 
@@ -960,6 +1053,41 @@ export function curtailSpans(slots: { curtailKw?: number | null }[]): CurtailSpa
  */
 export function curtailTickData(slots: { curtailKw?: number | null }[]): (number | null)[] {
   return slots.map((s) => (curtails(s) ? 0 : null));
+}
+
+/** Das Wort am orangen Band - K5: Farbe nie allein, das Band trägt seinen Namen. */
+export const CURTAIL_BAND_WORD = 'Sonne wird gedrosselt';
+
+/** Der Zusatz, wenn ALLE abregelnden Slots wirklich unter null notieren. */
+export const CURTAIL_BAND_CAUSE = ' · Preis unter 0';
+
+/**
+ * Die Beschriftung des orangen Abregel-Bands im Leistungs-Panel.
+ *
+ * Der GRUND wird nur genannt, wenn er belegt ist: der Optimierer regelt bei
+ * negativen Preisen ab - aber auch an einer statischen Einspeisegrenze (FK1,
+ * `site.max_feed_in_kw`). „Preis unter 0" auf einer eingespeise-gedeckelten
+ * Anlage wäre eine falsche Ursache, also steht dort nur das Wort. Bewertet wird
+ * der Einspeisewert des Slots, ersatzweise der Börsenpreis; ohne jedes
+ * Preissignal wird nichts behauptet.
+ */
+export function curtailBandLabel(
+  slots: {
+    curtailKw?: number | null;
+    priceEurMwh?: number | null;
+    exportValueCtKwh?: number | null;
+  }[],
+): string {
+  const curtailing = slots.filter(curtails);
+  if (curtailing.length === 0) return CURTAIL_BAND_WORD;
+  const negative = curtailing.every((s) => {
+    const exp = s.exportValueCtKwh == null ? null : Number(s.exportValueCtKwh);
+    if (exp != null && Number.isFinite(exp)) return exp < 0;
+    const spot = s.priceEurMwh == null ? null : Number(s.priceEurMwh);
+    if (spot != null && Number.isFinite(spot)) return spot < 0;
+    return false;
+  });
+  return negative ? `${CURTAIL_BAND_WORD}${CURTAIL_BAND_CAUSE}` : CURTAIL_BAND_WORD;
 }
 
 /** Das Label der zuschaltbaren Abregel-Fläche (zugleich echarts-Serienname). */
