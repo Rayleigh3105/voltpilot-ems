@@ -70,6 +70,14 @@ export interface ChartTheme {
    */
   flowGrid: string;
   /**
+   * Die LINIEN-Stufe von {@link flowGrid}. Als Linie steht „Netz" direkt neben
+   * dem Batterie-Laden-Grün und war davon nicht zu trennen (ΔE 9,8, harter
+   * FAIL); diese Stufe trennt mit ΔE 19,3. Regel: **Netz als LINIE nimmt
+   * `flowGridLine`, Netz als BALKEN/FLÄCHE behält `flowGrid`** - der helle
+   * Grundton bleibt die Rollenfarbe (Energiefluss, Kacheln, kWh-Balken).
+   */
+  flowGridLine: string;
+  /**
    * The CONSUMER role hue (purple) - the same `--vp-flow-load` the energy-flow
    * diagram uses for Haus/Verbraucher, so the Fahrplan's stacked consumer
    * layers read as loads everywhere (Verbrauchssteuerung §14.11). Several
@@ -97,7 +105,7 @@ export function chartTheme(): ChartTheme {
     surface: read('--vp-surface', '#FFFFFF'),
     axisLine: read('--vp-chart-axisline', '#E9ECEF'),
     pv: read('--vp-chart-pv', '#FF9800'),
-    temp: read('--vp-chart-temp', '#F57C00'),
+    temp: read('--vp-chart-temp', '#4B5563'),
     load: read('--vp-chart-load', '#2196F3'),
     price: read('--vp-chart-price', '#2F6BD6'),
     soc: read('--vp-chart-soc', '#9C27B0'),
@@ -110,6 +118,7 @@ export function chartTheme(): ChartTheme {
     idle: read('--vp-chart-idle', '#EDEFF2'),
     neutral: read('--vp-chart-neutral', '#607D8B'),
     flowGrid: read('--vp-flow-grid', '#0ea5a3'),
+    flowGridLine: read('--vp-chart-grid-line', '#036672'),
     consumer: read('--vp-flow-load', '#8b5cf6'),
   };
   return cache;

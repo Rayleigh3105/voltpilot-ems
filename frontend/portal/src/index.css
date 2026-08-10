@@ -370,6 +370,14 @@ svg [tabindex]:focus-visible {
   --vp-flow-load-soft: #f1ecfd;
   --vp-flow-grid: #0ea5a3;
   --vp-flow-grid-soft: #e2f6f5;
+  /* Die LINIEN-Stufe desselben Netz-Tons. Als LINIE steht Netz direkt neben
+     dem Batterie-Laden-Grün (#2E9E5B) und war davon nicht zu trennen
+     (dataviz-Validator: ΔE 9,8, harter FAIL); dieser dunklere, entsättigte
+     Schiefer-Teal trennt mit ΔE 19,3. Bewusst so weit weg: KEIN hellerer
+     Türkis-Schritt reisst die Grenze (geprüft: #0F766E 13,9 · #00838F 13,1 ·
+     #0E7490 11,9 · #00697A 15,1). Flächen, Balken und die Rollen-Farbe des
+     Energieflusses behalten den hellen Grundton oben. */
+  --vp-chart-grid-line: #036672;
   --vp-flow-batt: #16a34a;
   --vp-flow-batt-soft: #e7f6ec;
   /* Die LESBARE Tiefe desselben Grüns (7,1:1 auf Weiß, 6,3:1 auf -soft) - kein

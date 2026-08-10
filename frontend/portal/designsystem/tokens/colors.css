@@ -70,7 +70,12 @@
   --vp-chart-grid:      #F1F3F5;  /* split lines */
   --vp-chart-axisline:  #E9ECEF;  /* axis lines (= border) */
   --vp-chart-pv:        #FF9800;  /* PV / irradiance (= solar) */
-  --vp-chart-temp:      #F57C00;  /* temperature (= solar-end) */
+  /* Temperatur ist NEUTRAL, nicht orange: gegen das PV-Orange darüber mass der
+     dataviz-Validator nur ΔE 6,7 (harter FAIL, Untergrenze 15) - zwei Kurven,
+     die im Wetter-Chart nebeneinander laufen und niemand trennen konnte.
+     Neutral-Schiefer trennt mit ΔE 38,1 und nimmt der Temperatur zugleich den
+     Kategorie-Platz weg, den sie als Kontextgrösse nicht braucht. */
+  --vp-chart-temp:      #4B5563;  /* temperature (neutral slate) */
   --vp-chart-load:      #2196F3;  /* consumption (= home) */
   --vp-chart-price:     #2F6BD6;  /* price + net reference line (= action) */
   --vp-chart-soc:       #9C27B0;  /* battery SoC (= battery) */
