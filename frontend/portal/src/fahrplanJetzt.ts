@@ -45,6 +45,7 @@ import {
   curtailWarnLine,
   type CurtailTruth,
 } from './curtailment';
+import { flowConflict, type FlowConflictInput } from './flowConflict';
 import { roleLabel, slotWhy, type SlotRole, type WhySlot } from './fahrplanWhy';
 import { fmtNum, fmtRelative } from './format';
 import { PROVENIENZ } from './historieWelten';
@@ -146,6 +147,17 @@ export interface JetztHeldView {
    * gibt gar keine.
    */
   curtailment: string | null;
+  /**
+   * Der FLUSSABGLEICH (bernstein, KEIN Fehler): der Batterie-Sollwert ist
+   * register-bestätigt, aber die Physik fließt nicht — z. B. „Entladung
+   * angewiesen (30,0 kW) - der Speicher entlädt aber nicht (Messung: lädt
+   * 3,3 kW). Bitte im Blick behalten." (Scout `vp-verkauf-praemisse-s8` §3, der
+   * Pilsting-Vorfall). Null, solange kein belegter, entprellter Widerspruch
+   * vorliegt — dann ist die Karte zeichengleich zur heutigen Anzeige. Im
+   * Konfliktfall ERSETZT er die Bestätigungszeile (`confirm` wird null) und der
+   * Zustand liest sich nicht mehr als „bestätigt/planmäßig".
+   */
+  flowConflict: string | null;
   /** Der Warum-Satz des laufenden Slots; null = kein Grund aufgezeichnet. */
   why: string | null;
   /** Die Mess-Wahrheit als Chips; leer, wenn nichts Frisches gemessen wurde. */
@@ -176,6 +188,15 @@ export interface JetztInput {
    * bleibt jede Formulierung beim Plan-Wortlaut aus Fix 1.
    */
   curtail?: CurtailTruth | null;
+  /** Die gepflegte Einspeisegrenze am Netzanschluss (kW); null/absent = keine. */
+  maxFeedInKw?: number | null;
+  /**
+   * Die ENTPRELLTE Serienlänge des Flussabgleichs — der Aufrufer führt sie über
+   * `flowConflict.stepFlowConflict` (eine Beobachtung je Poll). 0/absent = noch
+   * kein entprellter Konflikt, also nie eine Behauptung aus einem einzelnen
+   * Messversatz.
+   */
+  conflictStreak?: number;
   plantKind: PlanWordingKind;
   now: Date;
 }
@@ -340,13 +361,34 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
   const chips = input.snapshotFresh ? measurementChips(input.snapshot) : [];
   const measured = showValue || chips.length > 0;
 
+  // Der Flussabgleich (Scout `vp-verkauf-praemisse-s8` §3): register-bestätigt,
+  // aber die Physik fließt nicht. Er greift NUR dort, wo die Karte ohnehin eine
+  // Bestätigung zeigt (SHOWS_VALUE, kein echter Register-Bruch) - genau diese
+  // Bestätigung ersetzt er dann durch den bernstein Widerspruch. Die Tore von
+  // `flowConflictCandidate` (Nachführung follow/trim/absorb, |commanded| >= 1,
+  // unbekannter Kanal) plus die Entprellung schließen jeden Falschalarm aus.
+  const conflictInput: FlowConflictInput = {
+    commandedKw: status?.commandedKw,
+    snapshot: input.snapshot,
+    snapshotFresh: input.snapshotFresh,
+    executionMode: status?.executionMode,
+    maxFeedInKw: input.maxFeedInKw,
+  };
+  const flow =
+    SHOWS_VALUE.has(state) && state !== 'abweichung'
+      ? flowConflict(conflictInput, input.conflictStreak ?? 0)
+      : null;
+
   return {
     state,
-    tone,
+    // Ein Flussabgleich darf nie mehr als „grün, planmäßig" tragen.
+    tone: flow ? 'warn' : tone,
     badge: measured ? PROVENIENZ.gemessen.label : PROVENIENZ.geplant.label,
     badgeArt: measured ? 'gemessen' : 'geplant',
     badgeNote: measured && status ? fmtRelative(status.checkedAt, now) : null,
-    status: statusLine(state, strip?.sentence ?? null, executedKw, confirmedKw),
+    status: flow
+      ? 'Der angewiesene Wert fließt gerade nicht wie erwartet. Bitte im Blick behalten.'
+      : statusLine(state, strip?.sentence ?? null, executedKw, confirmedKw),
     lead: leadLine(
       state,
       role,
@@ -360,10 +402,14 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
       dir == null ? null : dir === 'laden' ? 'in den Speicher' : dir === 'entladen' ? 'aus dem Speicher' : 'der Speicher hält',
     valueMissing: showValue ? null : valueMissingReason(state),
     adjust: adjustLine(state, status, planKw),
+    // „vom Wechselrichter bestätigt" ENTFÄLLT im Flusskonflikt: es stimmt
+    // register-, aber nicht flussseitig - stattdessen trägt `flowConflict` die
+    // ehrliche Aussage.
     confirm:
-      SHOWS_VALUE.has(state) && state !== 'abweichung' && status
+      !flow && SHOWS_VALUE.has(state) && state !== 'abweichung' && status
         ? `vom Wechselrichter bestätigt · geprüft ${fmtRelative(status.checkedAt, now)}`
         : null,
+    flowConflict: flow ? flow.text : null,
     conflict: SHOWS_WHY.has(state)
       ? curtailConflictLine(role, input.snapshotFresh ? input.snapshot : null, curtail)
       : null,

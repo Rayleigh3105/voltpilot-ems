@@ -25,6 +25,9 @@ function held(over: Partial<JetztHeldView> = {}): JetztHeldView {
     valueMissing: null,
     adjust: 'Der Fahrplan sah 4,3 kW vor — Ihr Gerät hat den Wert angepasst.',
     confirm: 'vom Wechselrichter bestätigt · geprüft vor 8 Sek.',
+    conflict: null,
+    curtailment: null,
+    flowConflict: null,
     why: 'Netzstrom kostet Sie jetzt 32,5 ct/kWh.',
     chips: [{ label: 'Haus', value: '7,1 kW' }],
     next: null,
@@ -88,6 +91,23 @@ describe('JetztHeld', () => {
     expect(container.querySelector('.vp-jetzt-status.is-ok')).toBeTruthy();
     rerender(<JetztHeld view={held({ tone: 'warn', state: 'abweichung' })} />);
     expect(container.querySelector('.vp-jetzt-status.is-warn')).toBeTruthy();
+  });
+
+  it('zeigt im Flusskonflikt den bernstein Satz und lässt die Bestätigungszeile verschwinden', () => {
+    const { container } = render(
+      <JetztHeld
+        view={held({
+          tone: 'warn',
+          confirm: null,
+          flowConflict:
+            'Entladung angewiesen (30,0 kW) - der Speicher entlädt aber nicht (Messung: lädt 3,3 kW). Bitte im Blick behalten.',
+        })}
+      />,
+    );
+    expect(screen.getByText(/der Speicher entlädt aber nicht/)).toBeInTheDocument();
+    expect(container.querySelector('.vp-jetzt-conflict')).toBeTruthy();
+    // Die „vom Wechselrichter bestätigt"-Zeile ist weg.
+    expect(screen.queryByText(/vom Wechselrichter bestätigt/)).not.toBeInTheDocument();
   });
 });
 

@@ -62,6 +62,16 @@ export function JetztHeld({ view }: { view: JetztHeldView }) {
 
           {view.adjust && <p className="vp-jetzt-adjust">{view.adjust}</p>}
 
+          {/* Flussabgleich (bernstein, kein Gerätefehler): der Sollwert ist
+              register-bestätigt, aber die Physik fließt nicht - er ersetzt die
+              Bestätigungszeile. */}
+          {view.flowConflict && (
+            <p className="vp-jetzt-conflict">
+              <Icon name="alert-triangle" size={14} />
+              {view.flowConflict}
+            </p>
+          )}
+
           {/* Bernstein, nicht rot: die Anlage setzt die geplante Abregelung
               (noch) nicht um bzw. die Messung widerspricht ihr - das ist kein
               Gerätefehler, darf aber nicht unter einer Plan-Aussage

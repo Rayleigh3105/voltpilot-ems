@@ -546,3 +546,76 @@ describe('jetztHeld · die echte Richtung der Nachführung (PR 3)', () => {
     expect(v.adjust).not.toContain(`0,0${NBSP}kW`);
   });
 });
+
+/**
+ * Der Flussabgleich im Held (Scout `vp-verkauf-praemisse-s8` §3, Pilsting): eine
+ * register-bestätigte, aber nicht fließende Verkaufs-Order. Der ANKER ist der
+ * echte 10.08.-Fall - commanded −30 (entladen), gemessener Batteriefluss +3,3
+ * (laden), Einspeisung 30,0 an einer gepflegten 30-kW-Grenze.
+ */
+describe('jetztHeld · Flussabgleich (bestätigt, aber fließt nicht)', () => {
+  // Der Pilsting-Held: eine „verkaufen"-Order, register-bestätigt, während die
+  // Physik lädt. `batteryKw = grid − load + pv = −30 − 6,3 + 39,6 = +3,3`.
+  const pilstingHeld = (over: Partial<JetztInput> = {}): JetztInput =>
+    input({
+      slot: slot({ slotRole: 'verkaufen', batteryKw: -30, socPct: 12 }),
+      control: status({ commandedKw: -30, confirmedKw: -30, allMatch: true }),
+      snapshot: snap({ pvKw: 39.6, loadKw: 6.3, gridKw: -30, battKw: 3.3, socPct: 12 }),
+      plantKind: 'direktvermarktung',
+      ...over,
+    });
+
+  it('OHNE entprellte Serie ist die Karte zeichengleich - der Haken bleibt', () => {
+    const v = jetztHeld(pilstingHeld({ maxFeedInKw: 30, conflictStreak: 0 }));
+    expect(v.flowConflict).toBeNull();
+    expect(v.confirm).toContain('bestätigt'); // die Bestätigungszeile steht noch
+    expect(v.tone).toBe('ok');
+  });
+
+  it('mit entprellter Serie ersetzt der Konflikt die Bestätigung (Grenze 30 → Netzanschluss-voll-Zusatz)', () => {
+    const v = jetztHeld(pilstingHeld({ maxFeedInKw: 30, conflictStreak: 3 }));
+    expect(v.flowConflict).toContain(`Entladung angewiesen (30,0${NBSP}kW)`);
+    expect(v.flowConflict).toContain('der Speicher entlädt aber nicht');
+    expect(v.flowConflict).toContain(`Messung: lädt 3,3${NBSP}kW`);
+    expect(v.flowConflict).toContain(`Einspeisegrenze 30${NBSP}kW erreicht`);
+    expect(v.flowConflict).toContain('Bitte im Blick behalten.');
+    // „vom Wechselrichter bestätigt" ENTFÄLLT - register-, nicht flussseitig.
+    expect(v.confirm).toBeNull();
+    // Nicht mehr „grün, planmäßig".
+    expect(v.tone).toBe('warn');
+    expect(v.status).not.toContain('nichts zu tun');
+  });
+
+  it('dieselben Zahlen mit Grenze 75 melden den Konflikt OHNE Ursachen-Zusatz', () => {
+    const v = jetztHeld(pilstingHeld({ maxFeedInKw: 75, conflictStreak: 3 }));
+    expect(v.flowConflict).toContain('der Speicher entlädt aber nicht');
+    expect(v.flowConflict).not.toContain('Netzanschluss');
+    expect(v.confirm).toBeNull();
+  });
+
+  it('ohne gepflegte Grenze bleibt der Satz ursachenfrei', () => {
+    const v = jetztHeld(pilstingHeld({ maxFeedInKw: null, conflictStreak: 3 }));
+    expect(v.flowConflict).not.toContain('Netzanschluss');
+    expect(v.flowConflict).toContain('Bitte im Blick behalten.');
+  });
+
+  it('eine gemeldete Nachführung (follow) ist kein Konflikt - der Haken bleibt', () => {
+    const v = jetztHeld(pilstingHeld({ maxFeedInKw: 30, conflictStreak: 3, control: status({ commandedKw: -30, executionMode: 'follow' }) }));
+    expect(v.flowConflict).toBeNull();
+  });
+
+  it('ein fehlender Kanal (unbekannt ≠ 0) erzeugt keine Behauptung', () => {
+    const v = jetztHeld(
+      pilstingHeld({ maxFeedInKw: 30, conflictStreak: 3, snapshot: snap({ pvKw: null, loadKw: 6.3, gridKw: -30 }) }),
+    );
+    expect(v.flowConflict).toBeNull();
+    expect(v.confirm).toContain('bestätigt');
+  });
+
+  it('eine gewöhnliche, wirklich fließende Order bleibt byte-identisch (kein flowConflict)', () => {
+    // Der Standard-Held: commanded −6,1, gemessen −6,1 (deckungsgleich).
+    const v = jetztHeld(input({ conflictStreak: 3, maxFeedInKw: 30 }));
+    expect(v.flowConflict).toBeNull();
+    expect(v.confirm).toContain('bestätigt');
+  });
+});
