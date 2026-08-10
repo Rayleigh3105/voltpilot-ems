@@ -7,16 +7,18 @@ import {
   FORECAST,
   nowLabel,
   nowLineStyle,
+  PANELS,
   SMOOTH_SERIES,
   storageBar,
   STROKE,
 } from './chartStyle';
-import { AXIS as AXIS_NAME } from './chartCopy';
+import { AXIS as AXIS_NAME, BEZUGSPREIS, BOERSENPREIS, EINSPEISEWERT, SPANNE } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import {
   chargeKind,
   curtailArea,
   CURTAIL_AREA_LABEL,
+  curtailBandLabel,
   CURTAIL_LEGEND_LABEL,
   curtailSpans,
   curtailTickData,
@@ -37,6 +39,7 @@ import {
   planInsightParts,
   planKernaussage,
   powerAxisMax,
+  priceSpread,
   PV_FORECAST_LABEL,
   SERIES_GROUPS,
   slotBarMark,
@@ -59,46 +62,61 @@ import { consumerShade, type ConsumerLayer } from './consumerSchedule';
 import './components/Fahrplan.css';
 
 /**
- * The optimizer plan for the day, made obvious at a glance: planned battery
- * power as signed bars (grün = Laden aus Solarstrom, türkis = Laden aus dem
- * Netz, blau = Entladen; left axis, kW) directly over the day-ahead price
- * (stepped line, right axis, ct/kWh) so WHY the plan charges/discharges is
- * visible, plus the planned Ladestand (SoC) as a dashed line on its OWN
- * labelled right axis (0-100 %), so it can be read without hovering and never
- * looks like a negative power value. Grid-charge
- * slots are DERIVED per slot (charging while net-importing, see schedule.ts);
- * on an EEG site ("Nur Solarladen") the türkis color can never appear - the
- * chart itself is the proof that only solar is stored. Over the bars run the
- * two dotted FORECAST lines the plan was computed from (PV-Prognose orange,
- * Verbrauchsprognose blau, same kW axis as the bars) - they explain the plan
- * ("warum hält er abends? da liegt die Nachtlast"). Next to EACH of them runs its MEASURED twin
- * (solid, same colour - gepunktet = Prognose, durchgezogen = gemessen) for the
- * slots that already happened: "Verbrauch (gemessen)" makes the load forecast
- * error visible - the one that made a plant draw from the grid at night - and
- * "PV (gemessen)" does the same for the PV forecast while making the
- * Solarladen-Regel checkable (a charge bar may never exceed the measured PV
- * line). A slot the optimizer marked with an IN-SLOT DUTY says so in its
- * tooltip ("Vorhersage, kein fester Befehl - folgt dem gemessenen Verbrauch"):
- * the bar is what the plan expects, while the device tracks the measured house
- * resp. the measured surplus inside the quarter hour. Without a duty (or on an
- * older run) the tooltip stays silent - never a guessed marking.
- * A "Jetzt"-marker and a shaded past region separate what already
- * happened from what is still planned; a dashed line splits today from morgen.
- * The colour swatches + one-line takeaway below the canvas explain the diagram
- * in plain German (captain: the diagrams should be understandable instantly).
+ * Der Fahrplan ist seit dem Chart-Redesign Stufe 2 ein ZWEI-PANEL-BILD: EIN
+ * ECharts-Objekt, zwei Plotflächen über EINER Zeitachse, EIN Fadenkreuz
+ * (`axisPointer.link`) und die „Jetzt"-Fahne genau EINMAL an der Achse (K9).
  *
- * SINCE THE FAHRPLAN REBUILD (Konzept vp-fahrplan-kunde-konzept §6.4, D4) the
- * DEFAULT is deliberately quiet: bars + price + Jetzt carry the core statement
- * („günstig laden, teuer entladen"), and the forecast/measured/SoC lines are
- * THREE layer switches instead of nine legend pills - seven series at once
- * (three of them blue) were only legible to their author, and the pills alone
- * cost 339 px on a phone. A layer the run cannot fill gets no switch at all.
+ * OBEN das flache PREIS-Panel: Bezugspreis und Einspeisewert je Viertelstunde
+ * als Stufenlinien-Paar, dazwischen das zarte SPANNENBAND (M4) mit seinem
+ * Namensschild im Bild (K10) - die Spanne IST der Grund fürs Laden und
+ * Entladen. Fehlen die zwei Größen (älterer Lauf), steht dort ehrlich der
+ * nackte Börsenpreis; fehlt auch der, entfällt das Panel ganz statt eine leere
+ * Fläche zu behaupten.
+ *
+ * UNTEN das LEISTUNGS-Panel: der Speicher als Säulenstäbe in EINER Farbe (K5 -
+ * gefüllt = lädt, Umriss = gibt ab, Wort in der Legende; türkis nur, wenn der
+ * Plan wirklich aus dem Netz lädt, sodass „kein Türkis" der sichtbare
+ * EEG-Beweis bleibt), die Sonne als Kontextkurve, der Verbraucher-Stapel, der
+ * Ladestand als beschriftete Miniskala rechts (die eine geduldete
+ * F8-Ausnahme) und das orange Abregel-Band MIT seinem Wort (K5: Farbe nie
+ * allein).
+ *
+ * WARUM zwei Panels (F8 verschärft, r2 §4/§6 B): die frühere Preis-Rechtsachse
+ * im selben Bild war die Ursache des Dual-Axis-Fehllesens UND zweier
+ * gemessener Farb-Kollisionen - Grün×Grün (Ladebalken in kW gegen
+ * Einspeisewert in ct) und Blau×Blau (Verbrauchslinie gegen Preislinie, ΔE 1,3
+ * auf der Linien-Stufe). Der Panel-Schnitt löst beide STRUKTURELL auf, statt
+ * sie umzufärben - und weil der Preis das Leistungs-Panel verlassen hat, darf
+ * der Verbrauch jetzt seine dunklere Linien-Stufe `loadLine` tragen (F2), die
+ * ihn zugleich vom Netzladen-Türkis trennt (ΔE 10,9 → 18,3).
+ *
+ * Über den Balken laufen die zwei gepunkteten PROGNOSE-Linien, mit denen der
+ * Plan gerechnet hat, und daneben je ihr GEMESSENER Zwilling (durchgezogen,
+ * gleiche Farbe je Größe): „Verbrauch (gemessen)" macht den Prognosefehler
+ * sichtbar, der eine Anlage nachts ans Netz brachte, „PV (gemessen)" dasselbe
+ * für die Sonne - und damit die Solarladen-Regel prüfbar (ein Ladebalken darf
+ * diese Linie nie überragen). Ein Slot mit einer IN-SLOT-PFLICHT sagt das im
+ * Tooltip; ohne Pflicht (oder auf einem älteren Lauf) steht dort nichts - nie
+ * eine geratene Markierung.
+ *
+ * Der Grundzustand bleibt bewusst ruhig (D4): Balken + Preis-Panel + Jetzt
+ * tragen die Kernaussage, Prognosen/Gemessen/Ladestand sind DREI benannte
+ * Schichten statt neun Legenden-Pills. Eine Schicht, die der Lauf nicht füllen
+ * kann, bekommt gar keinen Schalter.
  */
 
+/** Preis mit Einheit für den Tooltip. */
 function ct(v: number | null): string {
-  return v == null
-    ? '-'
-    : `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh`;
+  return v == null ? '-' : `${ctPlain(v)} ct/kWh`;
+}
+
+/** Nackte Preiszahl (eine Nachkommastelle) - für Namensschilder im Bild. */
+function ctPlain(v: number): string {
+  return v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function kw(v: number, digits = 2): string {
+  return `${v.toLocaleString('de-DE', { maximumFractionDigits: digits })} kW`;
 }
 
 /**
@@ -140,7 +158,8 @@ export function ScheduleChart({
    * "Warum"-layer tap target (the OptimizerPlanChart bar-click pattern,
    * widened to the whole plot column so idle slots are tappable too): called
    * with the tapped slot's index. Absent = the chart behaves exactly as
-   * before (no click handling).
+   * before (no click handling). Beide Panels sind Tap-Ziel - sie teilen ihre
+   * Zeitachse, also beantwortet ein Tipp im Preis-Panel dieselbe Frage.
    */
   onSlotClick?: (index: number) => void;
   /** The selected slot to highlight (a solid marker line); null/absent = none. */
@@ -166,10 +185,10 @@ export function ScheduleChart({
   // D4: DREI Gruppen-Schalter statt neun Einzel-Pills, und der Default ist
   // ruhig - Balken + Preis + Jetzt tragen die Kernaussage „günstig laden,
   // teuer entladen"; Prognosen/Gemessen/Ladestand sind bewusste Schichten.
-  // K3: der Grundzustand ist ruhig (Balken + Preis), die Tiefe liegt hinter
-  // den drei benannten Schaltern. Ihr Zustand wird PRO TAB-SITZUNG gemerkt -
-  // wer die Prognosen einmal aufgeklappt hat, findet sie beim Zurückspringen
-  // offen, und ein neuer Tab beginnt wieder ruhig.
+  // K3: der Grundzustand ist ruhig, die Tiefe liegt hinter den drei benannten
+  // Schaltern. Ihr Zustand wird PRO TAB-SITZUNG gemerkt - wer die Prognosen
+  // einmal aufgeklappt hat, findet sie beim Zurückspringen offen, und ein
+  // neuer Tab beginnt wieder ruhig.
   const [hiddenGroups, setHiddenGroups] = useState<ReadonlySet<SeriesGroup>>(() => {
     try {
       const raw = sessionStorage.getItem(SCHED_GROUPS_KEY);
@@ -196,6 +215,16 @@ export function ScheduleChart({
   const showIstPv = istPv.present && !hidden.has(MEASURED_PV_LABEL);
   const showSoc = plan.slots.some((s) => s.socPct != null) && !hidden.has(SOC_LABEL);
 
+  // ---- Das PREIS-Panel (F8 verschärft + M4) --------------------------------
+  // Das Spannenband braucht BEIDE Größen; ein älterer Lauf ohne sie fällt auf
+  // den nackten Börsenpreis zurück, und ein Lauf ohne jeden Preis bekommt gar
+  // kein Panel - eine leere Fläche wäre eine Behauptung.
+  const spread = priceSpread(plan.slots);
+  const hasSpot = plan.slots.some((s) => s.priceEurMwh != null);
+  const showSpread = spread.present;
+  const showSpot = !showSpread && hasSpot;
+  const twoPanel = showSpread || showSpot;
+
   // The türkis entry appears only when the plan actually charges from the
   // grid: on an EEG site ("Nur Solarladen") the color never occurs, and the
   // legend must not advertise it - no türkis = provably no Netzstrom stored.
@@ -213,9 +242,7 @@ export function ScheduleChart({
   // §14.11 consumer layers (Verbrauchssteuerung Inkrement 2): only layers
   // that carry a value in THIS plan's grid draw anything - without them the
   // chart (series, legend, axis) is byte-identical to the pre-consumer view.
-  const activeConsumers = (consumers ?? []).filter((l) =>
-    l.values.some((v) => v != null),
-  );
+  const activeConsumers = (consumers ?? []).filter((l) => l.values.some((v) => v != null));
   const showConsumers = activeConsumers.length > 0;
   const anyPflicht = activeConsumers.some((l) =>
     l.pflicht.some((p, i) => p && (l.values[i] ?? 0) > 0.049),
@@ -236,6 +263,15 @@ export function ScheduleChart({
     // Prognosen-Ebene) Fläche.
     const curtailBands = curtailing ? curtailSpans(slots) : [];
     const curtailTicks = curtailing ? curtailTickData(slots) : [];
+    // K5/K10: das Band trägt sein WORT im Bild, und zwar genau einmal - am
+    // LÄNGSTEN Block. Ein Wort je Block wäre Rauschen (K6: höchstens drei
+    // benannte Marken).
+    const bandWord = curtailBandLabel(slots);
+    let longestBand = -1;
+    curtailBands.forEach((s, i) => {
+      if (longestBand < 0 || s.to - s.from > curtailBands[longestBand].to - curtailBands[longestBand].from)
+        longestBand = i;
+    });
 
     // today/tomorrow divider: first slot on the local "tomorrow".
     const tomorrow = new Date();
@@ -265,17 +301,11 @@ export function ScheduleChart({
     // The forecast lines share the kW axis, so a 60-kW PV forecast must lift
     // the axis top - otherwise it would be clipped by a 15-kW battery scale.
     // Only VISIBLE lines count, so hiding one re-tightens the scale.
-    const showPvLine = showPv;
-    const showLoadLine = showLoad;
-    const showIstLine = showIst;
-    const showIstPvLine = showIstPv;
-    // The consumer stack shares the kW axis - its peak must lift the top.
+    // The consumer stack shares it too - its peak must lift the top.
     const consumerStackMax = showConsumers
       ? Math.max(
           0,
-          ...slots.map((_s, i) =>
-            activeConsumers.reduce((sum, l) => sum + (l.values[i] ?? 0), 0),
-          ),
+          ...slots.map((_s, i) => activeConsumers.reduce((sum, l) => sum + (l.values[i] ?? 0), 0)),
         )
       : 0;
     const axisMax = Math.max(
@@ -296,17 +326,46 @@ export function ScheduleChart({
       }
     });
 
-    // The SoC line only gets an axis when the plan actually carries SoC AND
-    // the customer switched the "Ladestand" layer on (D4).
+    // The SoC line only gets its mini scale when the plan actually carries SoC
+    // AND the customer switched the "Ladestand" layer on (D4).
     const hasSoc = showSoc;
+    const socScale = hasSoc && !narrow;
 
-    const markLineData: any[] = [];
-    if (boundaryIdx > 0)
-      markLineData.push({
+    /* ---- Die zwei Plotflächen ------------------------------------------
+     * ⚠ BEIDE Grids tragen denselben linken und rechten Rand - sonst lägen
+     * ihre Zeitachsen nicht übereinander, und eine geteilte Zeitachse ist der
+     * ganze Zweck des Umbaus. Deshalb feste Pixel statt `containLabel`.
+     * Ohne Preisdaten schrumpft das Kopf-Panel auf null: die Indizes der
+     * Achsen und Serien bleiben damit stabil, und es wird nichts Leeres
+     * gezeichnet. */
+    const left = narrow ? PANELS.leftNarrowPx : PANELS.leftPx;
+    const right = socScale ? PANELS.rightWithSocPx : PANELS.rightPx;
+    const grid = twoPanel
+      ? [
+          { left, right, top: PANELS.topPx, height: `${PANELS.headPct}%` },
+          { left, right, top: `${PANELS.bodyTopPct}%`, bottom: PANELS.bottomPx },
+        ]
+      : [
+          { left, right, top: 0, height: 0, show: false },
+          { left, right, top: PANELS.topPx, bottom: PANELS.bottomPx },
+        ];
+
+    /* ---- Die Marken: Linie in BEIDEN Panels, das WORT genau EINMAL -------
+     * Rev 1 hatte je Panel eine eigene Jetzt-Fahne, und die kollidierten mit
+     * den Panel-Überschriften (r2 §6 A). K9: ein Zeit-Anker, ein Ort - die
+     * Fahne steht unten an der Zeitachse, die Linie zieht durch beide
+     * Flächen, damit das Fadenkreuz einen sichtbaren Anker hat. */
+    const priceMarks: any[] = [];
+    const powerMarks: any[] = [];
+    if (boundaryIdx > 0) {
+      // F6 (korrigiert): die Tagesgrenze ist eine REFERENZ, keine Prognose -
+      // der Börsenpreis für morgen steht fest und bleibt durchgezogen.
+      const dayLine = {
         xAxis: boundaryIdx,
-        // F6 (korrigiert): die Tagesgrenze ist eine REFERENZ, keine Prognose -
-        // der Börsenpreis für morgen steht fest und bleibt durchgezogen.
         lineStyle: { color: t.axis, type: 'dashed', width: STROKE.ref, opacity: 0.7 },
+      };
+      priceMarks.push({
+        ...dayLine,
         label: {
           formatter: 'Morgen',
           color: t.axis,
@@ -315,18 +374,34 @@ export function ScheduleChart({
           rotate: 0,
         },
       });
-    if (nowInPlan)
-      markLineData.push({
-        xAxis: nowIdx,
-        // F5: EINE Jetzt-Linie im ganzen Portal - dünn, gestrichelt, in Ink.
-        lineStyle: nowLineStyle(t),
-        // rotate 0: an inside label on a vertical markLine otherwise renders
-        // rotated along the line (the documented edge-label gotcha).
-        label: nowLabel(t, 'insideStartTop'),
+      powerMarks.push({ ...dayLine, label: { show: false } });
+    }
+    if (nowInPlan) {
+      // F5: EINE Jetzt-Linie im ganzen Portal - dünn, gestrichelt, in Ink.
+      const nowLine = { xAxis: nowIdx, lineStyle: nowLineStyle(t) };
+      priceMarks.push({ ...nowLine, label: { show: false } });
+      powerMarks.push({
+        ...nowLine,
+        // K9: der Zeit-Anker ist ein WORT mit seiner Uhrzeit, unten an der
+        // Achse (`start` = das untere Ende einer senkrechten markLine). Der
+        // deckende Grund hält die Fahne über den Balken lesbar; `rotate: 0`
+        // ist Pflicht - sonst rendert ECharts sie GEDREHT entlang der Linie.
+        label: {
+          ...nowLabel(t, 'start'),
+          formatter: `Jetzt ${new Date(slots[nowIdx].start).toLocaleTimeString('de-DE', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}`,
+          backgroundColor: t.surface,
+          padding: [2, 4],
+          borderRadius: 3,
+          distance: PANELS.nowFlagDistancePx,
+        },
       });
+    }
     // U4: the peak-shaving Ziel as a horizontal red dashed line on the power axis.
     if (target != null)
-      markLineData.push({
+      powerMarks.push({
         yAxis: target,
         lineStyle: { color: t.discharge, type: 'dashed', width: STROKE.ref },
         label: {
@@ -338,12 +413,14 @@ export function ScheduleChart({
         },
       });
     // "Warum"-layer selection highlight (the OptimizerPlanChart pattern).
-    if (selectedIndex != null && selectedIndex >= 0 && selectedIndex < slots.length)
-      markLineData.push({
+    if (selectedIndex != null && selectedIndex >= 0 && selectedIndex < slots.length) {
+      const selLine = {
         xAxis: selectedIndex,
         lineStyle: { color: t.plan, type: 'solid', width: STROKE.context },
-        // rotate 0: an inside label on a vertical markLine otherwise renders
-        // rotated along the line (the documented edge-label gotcha).
+      };
+      priceMarks.push({ ...selLine, label: { show: false } });
+      powerMarks.push({
+        ...selLine,
         label: {
           formatter: 'Ausgewählt',
           color: t.plan,
@@ -352,101 +429,249 @@ export function ScheduleChart({
           rotate: 0,
         },
       });
+    }
+
+    /** Die Vergangenheits-Schattierung - je Panel einmal (F5, Hauch). */
+    const pastArea =
+      nowIdx > 0
+        ? {
+            silent: true,
+            itemStyle: { color: t.axis, opacity: FILL.past },
+            data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
+          }
+        : undefined;
 
     // Tap-to-explain: the whole plot column is a tap target (idle slots too),
-    // via the zrender click + pixel→category conversion. Only wired when the
-    // caller opts in - without onSlotClick the chart is byte-identical.
+    // via the zrender click + pixel→category conversion. Beide Panels teilen
+    // die Zeitachse, also beantwortet ein Tipp oben dieselbe Frage wie unten.
+    // Only wired when the caller opts in - without onSlotClick the chart is
+    // byte-identical.
     const zr = chart.getZr();
     zr.off('click');
     if (onSlotClick) {
       zr.on('click', (e: { offsetX: number; offsetY: number }) => {
         const pt: [number, number] = [e.offsetX, e.offsetY];
         if (!chart.containPixel('grid', pt)) return;
-        const idx = Math.round(Number(chart.convertFromPixel({ xAxisIndex: 0 }, pt[0])));
+        // Beide x-Achsen haben denselben linken/rechten Rand, also liefert
+        // jede dieselbe Kategorie - die des Leistungs-Panels ist die, die es
+        // immer gibt.
+        const idx = Math.round(Number(chart.convertFromPixel({ xAxisIndex: 1 }, pt[0])));
         if (Number.isFinite(idx) && idx >= 0 && idx < slots.length) onSlotClick(idx);
       });
+    }
+
+    /* ---- Die Serien des PREIS-Panels ------------------------------------ */
+    const priceSeries: any[] = [];
+    if (showSpread) {
+      // Das Band als gestapeltes Paar (die bewährte echarts-Technik, dieselbe
+      // wie bei der gedrosselten Menge unten): die untere Kante trägt das
+      // Minimum unsichtbar, die obere die Höhe mit der Füllung - so liegt die
+      // Fläche exakt zwischen den zwei Linien, auch bei Lücken.
+      priceSeries.push(
+        {
+          name: 'Spannen-Basis',
+          type: 'line',
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          data: spread.base,
+          stack: 'vp-spanne',
+          step: 'end',
+          symbol: 'none',
+          connectNulls: false,
+          silent: true,
+          z: 1,
+          lineStyle: { opacity: 0 },
+          itemStyle: { color: t.price },
+          tooltip: { show: false },
+        },
+        {
+          name: SPANNE,
+          type: 'line',
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          data: spread.delta,
+          stack: 'vp-spanne',
+          step: 'end',
+          symbol: 'none',
+          connectNulls: false,
+          silent: true,
+          z: 1,
+          lineStyle: { opacity: 0 },
+          itemStyle: { color: t.price },
+          // F3-AUSNAHME: die Fläche TRÄGT hier die Aussage (die Spanne ist der
+          // Grund fürs Laden), deshalb 0,14 statt 0,08 - und sie bekommt ihr
+          // Namensschild im Bild (K10), nicht nur eine Legendenzeile.
+          areaStyle: { color: t.price, opacity: FILL.band },
+          tooltip: { show: false },
+          markPoint:
+            spread.widestIndex != null && spread.widestCt != null
+              ? {
+                  silent: true,
+                  symbol: 'circle',
+                  symbolSize: 0,
+                  data: [
+                    {
+                      coord: [spread.widestIndex, spread.widestMidCt],
+                      label: {
+                        show: true,
+                        formatter: `${SPANNE} ${ctPlain(spread.widestCt)} ct`,
+                        color: t.price,
+                        fontSize: AXIS.fontSize,
+                        fontWeight: 600,
+                        backgroundColor: t.surface,
+                        padding: [2, 5],
+                        borderRadius: 3,
+                      },
+                    },
+                  ],
+                }
+              : undefined,
+        },
+        {
+          // Der ruhigere Rand des Bands. Eigener Ton statt einer zweiten
+          // Blau-Stufe: `flowGridLine` hält gegen das Preis-Blau ΔE 16,4
+          // (normal) / 15,8 (Deutan) - zwei Stufen derselben Farbe lägen weit
+          // darunter. Grün bleibt auf dieser Leinwand AUSSCHLIESSLICH der
+          // Speicher (genau die Kollision, für die es diese Stufe gibt).
+          name: EINSPEISEWERT,
+          type: 'line',
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          data: spread.exportCt,
+          step: 'end',
+          symbol: 'none',
+          connectNulls: false,
+          z: 2,
+          lineStyle: { color: t.flowGridLine, width: STROKE.context },
+          itemStyle: { color: t.flowGridLine },
+        },
+        {
+          // Die LEITSERIE des Panels (F1-Hierarchie): der Preis, mit dem der
+          // Optimierer wirklich entscheidet.
+          name: BEZUGSPREIS,
+          type: 'line',
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          data: spread.importCt,
+          step: 'end',
+          symbol: 'none',
+          connectNulls: false,
+          z: 3,
+          lineStyle: { color: t.price, width: STROKE.lead },
+          itemStyle: { color: t.price },
+        },
+      );
+    } else if (showSpot) {
+      priceSeries.push({
+        name: BOERSENPREIS,
+        type: 'line',
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: pricesCt,
+        step: 'end',
+        symbol: 'none',
+        z: 2,
+        lineStyle: { color: t.price, width: STROKE.lead },
+        itemStyle: { color: t.price },
+      });
+    }
+    if (priceSeries.length) {
+      priceSeries[0].markArea = pastArea;
+      priceSeries[0].markLine = priceMarks.length
+        ? { silent: true, symbol: 'none', data: priceMarks }
+        : undefined;
     }
 
     chart.setOption(
       {
         textStyle: { fontFamily: t.font, color: t.axis },
-        grid: { top: 30, right: narrow ? 16 : 52, bottom: 8, left: 8, containLabel: true },
+        // EIN Fadenkreuz über BEIDE Panels: das macht die geteilte Zeitachse
+        // sichtbar (K9) - ohne die Verknüpfung wäre es zweimal dasselbe Bild
+        // mit zwei unabhängigen Zeigern.
+        axisPointer: { link: [{ xAxisIndex: 'all' }] },
+        grid,
         tooltip: {
           trigger: 'axis',
           confine: true,
+          /**
+           * Der Tooltip wird aus dem SLOT-INDEX komponiert, nicht aus den
+           * `params` des gerade überfahrenen Panels: bei zwei Grids liefert
+           * ECharts nur die Serien DIESES Grids, und ein Ablesen, das oben
+           * andere Zeilen zeigt als unten, wäre kein geteiltes Fadenkreuz.
+           * So liest sich jede Viertelstunde überall gleich.
+           */
           formatter: (params: any[]) => {
-            const time = new Date(params[0]?.axisValue).toLocaleString('de-DE', {
+            const i = params?.[0]?.dataIndex;
+            const s = slots[i];
+            if (s == null) return '';
+            const time = new Date(s.start).toLocaleString('de-DE', {
               weekday: 'short',
               hour: '2-digit',
               minute: '2-digit',
             });
             const lines = [`<b>${time} Uhr</b>`];
-            let batV: number | null = null;
-            for (const p of params) {
-              if (p.value == null) continue;
-              const v = Number(p.value);
-              if (p.seriesName === 'Batterie') {
-                batV = v;
-                const kind = chargeKind(
-                  slots[p.dataIndex]?.batteryKw ?? null,
-                  slots[p.dataIndex]?.gridKw ?? null,
-                  slots[p.dataIndex]?.pvKw,
-                  slots[p.dataIndex]?.curtailKw,
-                );
-                const label =
-                  kind === 'netzladen'
-                    ? 'lädt aus dem Netz'
-                    : kind === 'solarladen'
-                      ? 'lädt Solarstrom'
-                      : kind === 'entladen'
-                        ? 'entlädt'
-                        : 'hält';
-                const amt =
-                  Math.abs(v) < 0.05
-                    ? ''
-                    : ` ${Math.abs(v).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kW`;
-                lines.push(`${p.marker} Batterie ${label}${amt}`);
-              } else if (p.seriesName === 'Börsenpreis') {
-                lines.push(`${p.marker} Strompreis: ${ct(v)}`);
-              } else if (
-                p.seriesName === PV_FORECAST_LABEL ||
-                p.seriesName === LOAD_FORECAST_LABEL ||
-                p.seriesName === MEASURED_LOAD_LABEL ||
-                p.seriesName === MEASURED_PV_LABEL
-              ) {
-                lines.push(
-                  `${p.marker} ${p.seriesName}: ${v.toLocaleString('de-DE', {
-                    maximumFractionDigits: 2,
-                  })} kW`,
-                );
-              } else if (p.seriesName === 'Ladestand') {
-                lines.push(`${p.marker} Ladestand: ${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`);
-              } else if (String(p.seriesName).startsWith('Verbraucher · ')) {
-                // Consumer names are customer-controlled -> escaped (XSS
-                // rule); an off slot (0 kW) stays silent. The Pflicht word
-                // travels WITH the value (never colour alone, §14.11).
-                const layer = activeConsumers.find(
-                  (l) => `Verbraucher · ${l.name}` === p.seriesName,
-                );
-                if (layer && v > 0.049) {
-                  const pflicht = layer.pflicht[p.dataIndex]
-                    ? ' · Pflichtfenster (fest)'
-                    : '';
-                  lines.push(
-                    `${p.marker} ${esc(layer.name)}: ${v.toLocaleString('de-DE', {
-                      maximumFractionDigits: 1,
-                    })} kW${pflicht}`,
-                  );
-                }
-              }
-            }
-            if (batV != null && Math.abs(batV) > 0.05) {
-              const kind = chargeKind(
-                slots[params[0]?.dataIndex]?.batteryKw ?? null,
-                slots[params[0]?.dataIndex]?.gridKw ?? null,
-                slots[params[0]?.dataIndex]?.pvKw,
-                slots[params[0]?.dataIndex]?.curtailKw,
+            const row = (color: string, text: string) =>
+              lines.push(
+                `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>${text}`,
               );
+
+            // --- Preis-Panel
+            if (showSpread) {
+              const imp = spread.importCt[i];
+              const exp = spread.exportCt[i];
+              if (imp != null) row(t.price, `${BEZUGSPREIS}: ${ct(imp)}`);
+              if (exp != null) row(t.flowGridLine, `${EINSPEISEWERT}: ${ct(exp)}`);
+              if (imp != null && exp != null)
+                lines.push(
+                  `<span style="color:${t.axis}">${SPANNE}: ${ctPlain(Math.abs(imp - exp))} ct/kWh</span>`,
+                );
+            } else if (showSpot) {
+              const p = pricesCt[i];
+              if (p != null) row(t.price, `${BOERSENPREIS}: ${ct(p)}`);
+            }
+
+            // --- Leistungs-Panel
+            const batV = battery[i];
+            const kind = chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw);
+            if (batV != null) {
+              const label =
+                kind === 'netzladen'
+                  ? 'lädt aus dem Netz'
+                  : kind === 'solarladen'
+                    ? 'lädt Solarstrom'
+                    : kind === 'entladen'
+                      ? 'entlädt'
+                      : 'hält';
+              const amt = Math.abs(batV) < 0.05 ? '' : ` ${kw(Math.abs(batV))}`;
+              row(kind === 'netzladen' ? t.gridCharge : t.charge, `Batterie ${label}${amt}`);
+            }
+            if (showPv && forecast.pv.values[i] != null)
+              row(t.pvLine, `${PV_FORECAST_LABEL}: ${kw(forecast.pv.values[i]!)}`);
+            if (showIstPv && istPv.values[i] != null)
+              row(t.pvLine, `${MEASURED_PV_LABEL}: ${kw(istPv.values[i]!)}`);
+            if (showLoad && forecast.load.values[i] != null)
+              row(t.loadLine, `${LOAD_FORECAST_LABEL}: ${kw(forecast.load.values[i]!)}`);
+            if (showIst && ist.values[i] != null)
+              row(t.loadLine, `${MEASURED_LOAD_LABEL}: ${kw(ist.values[i]!)}`);
+            if (hasSoc && soc[i] != null)
+              row(
+                t.soc,
+                `${SOC_LABEL}: ${soc[i]!.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`,
+              );
+            // Consumer names are customer-controlled -> escaped (XSS rule); an
+            // off slot (0 kW) stays silent. The Pflicht word travels WITH the
+            // value (never colour alone, §14.11).
+            activeConsumers.forEach((layer, li) => {
+              const v = layer.values[i];
+              if (v == null || v <= 0.049) return;
+              const pflicht = layer.pflicht[i] ? ' · Pflichtfenster (fest)' : '';
+              row(
+                consumerShade(t.consumer, li),
+                `${esc(layer.name)}: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW${pflicht}`,
+              );
+            });
+
+            if (batV != null && Math.abs(batV) > 0.05) {
               lines.push(
                 `<span style="color:${t.axis}">${
                   batV > 0
@@ -463,48 +688,78 @@ export function ScheduleChart({
             // einem älteren Lauf) steht hier nichts - nie eine geratene
             // Markierung. Der Text ist eine Konstante aus schedule.ts: in
             // diesen HTML-Formatter darf nie ein dynamischer String.
-            const duty = slotDuty(slots[params[0]?.dataIndex] ?? {});
-            if (duty) {
-              lines.push(`<span style="color:${t.axis}">${dutyTooltip(duty)}</span>`);
-            }
+            const duty = slotDuty(s);
+            if (duty) lines.push(`<span style="color:${t.axis}">${dutyTooltip(duty)}</span>`);
             // Abregeln nennt seine MENGE und den Cap - sonst bliebe der orange
             // Slot eine Farbe ohne Zahl. `curtailTooltip` setzt den Satz aus
             // Konstanten + formatierten Zahlen zusammen (XSS-Regel der
             // Chart-Formatter); null = dieser Slot regelt nicht ab.
-            const curtailLine = curtailTooltip(slots[params[0]?.dataIndex] ?? {});
-            if (curtailLine) {
-              lines.push(`<span style="color:${t.pv}">${curtailLine}</span>`);
-            }
+            const curtailLine = curtailTooltip(s);
+            if (curtailLine) lines.push(`<span style="color:${t.pv}">${curtailLine}</span>`);
             return lines.join('<br/>');
           },
         },
-        xAxis: {
-          type: 'category',
-          data: times,
-          axisLabel: {
-            formatter: (v: string, index: number) => {
-              const d = new Date(v);
-              const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-              if (!dayStarts.has(index)) return time;
-              return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}\n${time}`;
-            },
-            lineHeight: 15,
-            color: t.axis,
-            fontSize: AXIS.fontSize,
-            hideOverlap: true,
+        xAxis: [
+          {
+            // Das Kopf-Panel teilt die Achse des Leistungs-Panels und
+            // beschriftet sie deshalb NICHT - eine Zeitachse, einmal
+            // beschriftet, unten wo der Blick ohnehin endet.
+            type: 'category',
+            gridIndex: 0,
+            data: times,
+            show: twoPanel,
+            axisLabel: { show: false },
+            axisTick: { show: false },
+            axisLine: { show: false },
+            axisPointer: { label: { show: false } },
           },
-          // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
-          axisTick: { show: false },
-          axisLine: { show: false },
-        },
+          {
+            type: 'category',
+            gridIndex: 1,
+            data: times,
+            axisLabel: {
+              formatter: (v: string, index: number) => {
+                const d = new Date(v);
+                const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                if (!dayStarts.has(index)) return time;
+                return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}\n${time}`;
+              },
+              lineHeight: 15,
+              color: t.axis,
+              fontSize: AXIS.fontSize,
+              hideOverlap: true,
+            },
+            // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
+            axisTick: { show: false },
+            axisLine: { show: false },
+          },
+        ],
         yAxis: [
           {
+            // Panel 1: der Preis, allein auf seiner Skala.
             type: 'value',
+            gridIndex: 0,
+            show: twoPanel,
+            name: AXIS_NAME.preis(narrow),
+            nameTextStyle: { color: t.axis, align: 'left', fontSize: AXIS.nameFontSize },
+            nameGap: 10,
+            // Negativpreise sind Produkt-Substanz - die Null bleibt im Bild
+            // (Hausregel 5d), sonst läse sich ein negativer Preis wie ein
+            // niedriger.
+            min: (v: { min: number }) => Math.min(0, v.min),
+            splitLine: { lineStyle: { color: t.grid } },
+            axisLabel: { color: t.axis, fontSize: AXIS.fontSize },
+            axisTick: { show: false },
+            axisLine: { show: false },
+          },
+          {
+            // Panel 2: die Leistung. Discharge stays at battery scale; the top
+            // grows to keep the peak Ziel visible when the overlay is on.
+            type: 'value',
+            gridIndex: 1,
             name: AXIS_NAME.leistung(narrow),
             nameTextStyle: { color: t.axis, align: 'left', fontSize: AXIS.nameFontSize },
-            nameGap: 12,
-            // Discharge stays at battery scale; the top grows to keep the peak
-            // Ziel visible when the Lastspitzen overlay is on.
+            nameGap: 10,
             min: -Math.ceil(kwMax),
             max: Math.ceil(axisMax),
             splitLine: { lineStyle: { color: t.grid } },
@@ -513,32 +768,20 @@ export function ScheduleChart({
             axisLine: { show: false },
           },
           {
+            // Die EINE geduldete F8-Ausnahme: der Ladestand als beschriftete
+            // Kontext-Miniskala (0-100 %, dimensionslos, Domänen-Konvention).
+            // Zu schmal für eine zweite Rechts-Achse ⇒ sie entfällt, und das
+            // Band wird unter dem Bild in Worten genannt.
             type: 'value',
-            name: AXIS_NAME.preis(narrow),
-            nameTextStyle: { color: t.price, align: 'right', fontSize: AXIS.nameFontSize },
-            nameGap: 12,
-            position: 'right',
-            splitLine: { show: false },
-            axisTick: { show: false },
-            axisLine: { show: false },
-            axisLabel: { color: t.price, formatter: '{value}', fontSize: AXIS.fontSize },
-          },
-          // SoC axis (0-100 %) - VISIBLE on the right, offset behind the price
-          // axis (audit F4: as a hidden axis over a signed kW scale the SoC
-          // line sat below the 0-kW gridline and read as a negative value, and
-          // touch users had no hover to decode it). Too narrow for a second
-          // right axis => hidden again, and the SoC band is named in text
-          // under the chart instead.
-          {
-            type: 'value',
+            gridIndex: 1,
             min: 0,
             max: 100,
-            show: hasSoc && !narrow,
+            show: socScale,
             position: 'right',
             offset: 44,
             splitLine: { show: false },
-            // Diese EINE Achse behält ihre Linie: sie steht 44 px neben der
-            // Preis-Achse, und ohne den Strich wäre nicht ablesbar, welche
+            // Diese EINE Achse behält ihre Linie: sie steht 44 px neben dem
+            // Panelrand, und ohne den Strich wäre nicht ablesbar, welche
             // Zahlenreihe zu welcher Achse gehört (F4 regelt den RAHMEN um die
             // Daten, nicht die Zuordnung zweier Rechts-Achsen).
             axisLine: { show: true, lineStyle: { color: t.soc, width: STROKE.ref } },
@@ -547,10 +790,12 @@ export function ScheduleChart({
           },
         ],
         series: [
+          ...priceSeries,
           {
             name: 'Batterie',
             type: 'bar',
-            yAxisIndex: 0,
+            xAxisIndex: 1,
+            yAxisIndex: 1,
             // K5: der Speicher ist EINE Farbe - Laden gefüllt, Abgeben als
             // UMRISS (dazu unter der Nulllinie und mit Wort in der Legende).
             // Der Stil hängt am DATENELEMENT, nicht als Callback an der Serie
@@ -569,51 +814,25 @@ export function ScheduleChart({
             barCategoryGap: BAR.categoryGap,
             barMaxWidth: BAR.maxWidth,
             z: 3,
-            // Shade the already-elapsed part of the day, and mark today|morgen + jetzt.
-            markArea:
-              nowIdx > 0
-                ? {
-                    silent: true,
-                    itemStyle: { color: t.axis, opacity: FILL.past },
-                    data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
-                  }
-                : undefined,
-            markLine: markLineData.length
-              ? { silent: true, symbol: 'none', data: markLineData }
-              : undefined,
-          },
-          {
-            name: 'Börsenpreis',
-            type: 'line',
-            yAxisIndex: 1,
-            data: pricesCt,
-            step: 'end',
-            symbol: 'none',
-            z: 2,
-            lineStyle: { color: t.price, width: STROKE.context },
-            itemStyle: { color: t.price },
-            // Das orange Abregeln-BAND (Basis-Ebene, immer sichtbar): es reitet
-            // auf der Preis-Reihe, weil die Batterie-Reihe ihre markArea schon
-            // für die Vergangenheits-Schattierung trägt (eine Reihe, eine
-            // markArea). Niedrige Opacity - es hinterlegt, es überdeckt nicht.
-            markArea: curtailBands.length
-              ? {
-                  silent: true,
-                  itemStyle: { color: t.pv, opacity: FILL.speaking },
-                  data: curtailBands.map((s) => [{ xAxis: s.from }, { xAxis: s.to }]),
-                }
+            markArea: pastArea,
+            markLine: powerMarks.length
+              ? { silent: true, symbol: 'none', data: powerMarks }
               : undefined,
           },
           // Der schmale orange Sockel-Tick am Nullpunkt je abregelndem Slot -
           // die EXAKTE Slot-Wahrheit neben dem weichen Band (das Muster des
           // `:8484`-Plan-Charts). Als Scatter mit Rechteck-Symbol bekommt er
-          // seine Höhe in PIXELN und hängt damit nicht an der kW-Skala.
+          // seine Höhe in PIXELN und hängt damit nicht an der kW-Skala. Er
+          // trägt zugleich das Band: die Batterie-Reihe hat ihre markArea schon
+          // an die Vergangenheit vergeben (eine Reihe, eine markArea), und das
+          // Abregeln gehört ins Leistungs-Panel - dort ist die Sonne.
           ...(curtailing
             ? [
                 {
                   name: 'Abregeln',
                   type: 'scatter',
-                  yAxisIndex: 0,
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
                   data: curtailTicks,
                   symbol: 'rect',
                   symbolSize: [7, 6],
@@ -622,19 +841,60 @@ export function ScheduleChart({
                   z: 6,
                   itemStyle: { color: t.pv },
                   tooltip: { show: false },
+                  markArea: curtailBands.length
+                    ? {
+                        silent: true,
+                        itemStyle: { color: t.pv, opacity: FILL.speaking },
+                        data: curtailBands.map((s) => [{ xAxis: s.from }, { xAxis: s.to }]),
+                      }
+                    : undefined,
+                  // K5/K10: das Wort steht IM BILD, genau einmal, über dem
+                  // LÄNGSTEN Block (K6: höchstens drei benannte Marken).
+                  // ⚠ Es hängt bewusst an einem markPoint und NICHT am Label
+                  // der markArea: ECharts klemmt ein Flächen-Label auf die
+                  // Breite seines Rechtecks, und ein drei Viertelstunden
+                  // schmaler Block quetschte den Satz Buchstabe auf Buchstabe
+                  // (im Browser aufgefallen, nicht im Test).
+                  markPoint: curtailBands.length
+                    ? {
+                        silent: true,
+                        symbol: 'circle',
+                        symbolSize: 0,
+                        data: [
+                          {
+                            coord: [
+                              Math.round(
+                                (curtailBands[longestBand].from + curtailBands[longestBand].to) / 2,
+                              ),
+                              Math.ceil(axisMax) * 0.92,
+                            ],
+                            label: {
+                              show: true,
+                              formatter: bandWord,
+                              color: t.pvLine,
+                              fontSize: AXIS.fontSize,
+                              fontWeight: 600,
+                              backgroundColor: t.surface,
+                              padding: [2, 5],
+                              borderRadius: 3,
+                            },
+                          },
+                        ],
+                      }
+                    : undefined,
                 },
               ]
             : []),
           // The two forecast INPUTS of the plan, on the SAME kW axis as the
           // bars: dotted + thin so they read as context, never as measured
-          // values, and so they stay distinguishable from the solid price line
-          // (which shares the blue family). An absent value is a GAP, never 0.
-          ...(showPvLine
+          // values. An absent value is a GAP, never 0.
+          ...(showPv
             ? [
                 {
                   name: PV_FORECAST_LABEL,
                   type: 'line',
-                  yAxisIndex: 0,
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
                   data: forecast.pv.values,
                   ...SMOOTH_SERIES,
                   symbol: 'none',
@@ -655,7 +915,8 @@ export function ScheduleChart({
                 {
                   name: 'Einspeise-Cap',
                   type: 'line',
-                  yAxisIndex: 0,
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
                   data: curtail.cap,
                   stack: 'vp-curtail',
                   symbol: 'none',
@@ -669,7 +930,8 @@ export function ScheduleChart({
                 {
                   name: CURTAIL_AREA_LABEL,
                   type: 'line',
-                  yAxisIndex: 0,
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
                   data: curtail.delta,
                   stack: 'vp-curtail',
                   symbol: 'none',
@@ -685,28 +947,25 @@ export function ScheduleChart({
                 },
               ]
             : []),
-          ...(showLoadLine
+          ...(showLoad
             ? [
                 {
                   name: LOAD_FORECAST_LABEL,
                   type: 'line',
-                  yAxisIndex: 0,
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
                   data: forecast.load.values,
                   ...SMOOTH_SERIES,
                   symbol: 'none',
                   connectNulls: false,
                   z: 4,
-                  // ⚠ Der Verbrauch behält im FAHRPLAN den hellen Grundton
-                  // `load`, NICHT die Linien-Stufe `loadLine`: diese Fläche
-                  // zeichnet die Preis-Stufenlinie auf derselben Leinwand, und
-                  // `loadLine` #1D6FD8 liegt gegen das Preis-Blau #2F6BD6 bei
-                  // ΔE 1,3 - praktisch dieselbe Farbe (gemessen, --pairs all).
-                  // Der Grundton hält 11,5 - ebenfalls unter der Grenze, aber
-                  // der BESTEHENDE Zustand, den Stufe 2 STRUKTURELL auflöst
-                  // (F8 verschärft: der Preis bekommt sein eigenes Panel).
-                  // Bis dahin gilt: nicht schlimmer machen.
-                  lineStyle: { color: t.load, width: FORECAST.width, type: 'dotted' },
-                  itemStyle: { color: t.load },
+                  // Seit Stufe 2 trägt der Verbrauch seine dunklere
+                  // LINIEN-Stufe (F2): der Preis hat das Panel verlassen, also
+                  // gibt es die Blau×Blau-Kollision (ΔE 1,3) hier nicht mehr -
+                  // und gegen das Netzladen-Türkis gewinnt `loadLine` deutlich
+                  // (ΔE 10,9 → 18,3, gemessen mit --pairs all).
+                  lineStyle: { color: t.loadLine, width: FORECAST.width, type: 'dotted' },
+                  itemStyle: { color: t.loadLine },
                 },
               ]
             : []),
@@ -715,12 +974,13 @@ export function ScheduleChart({
           // measured consumption (lower z) but over the bars, so a charge bar
           // exceeding the measured PV stays visible - that is the
           // Solarladen-Regel made checkable.
-          ...(showIstPvLine
+          ...(showIstPv
             ? [
                 {
                   name: MEASURED_PV_LABEL,
                   type: 'line',
-                  yAxisIndex: 0,
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
                   data: istPv.values,
                   smooth: false,
                   symbol: 'circle',
@@ -738,12 +998,13 @@ export function ScheduleChart({
           // "geplant vs. wirklich" and the gap between them is the message.
           // An MPC plan usually has only one or two past slots, so a stroke
           // alone would be invisible - point markers then carry the value.
-          ...(showIstLine
+          ...(showIst
             ? [
                 {
                   name: MEASURED_LOAD_LABEL,
                   type: 'line',
-                  yAxisIndex: 0,
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
                   data: ist.values,
                   smooth: false,
                   symbol: 'circle',
@@ -751,11 +1012,8 @@ export function ScheduleChart({
                   showSymbol: needsPointMarkers(ist),
                   connectNulls: false,
                   z: 5,
-                  // Siehe die Notiz an der Verbrauchsprognose: im Fahrplan
-                  // bleibt der Verbrauch auf dem hellen Grundton, solange der
-                  // Preis dieselbe Leinwand teilt.
-                  lineStyle: { color: t.load, width: STROKE.context },
-                  itemStyle: { color: t.load },
+                  lineStyle: { color: t.loadLine, width: STROKE.context },
+                  itemStyle: { color: t.loadLine },
                 },
               ]
             : []),
@@ -764,6 +1022,7 @@ export function ScheduleChart({
                 {
                   name: SOC_LABEL,
                   type: 'line',
+                  xAxisIndex: 1,
                   yAxisIndex: 2,
                   data: soc,
                   ...SMOOTH_SERIES,
@@ -781,7 +1040,8 @@ export function ScheduleChart({
             ? activeConsumers.map((layer, li) => ({
                 name: `Verbraucher · ${layer.name}`,
                 type: 'line',
-                yAxisIndex: 0,
+                xAxisIndex: 1,
+                yAxisIndex: 1,
                 data: layer.values,
                 stack: 'vp-verbraucher',
                 step: 'end',
@@ -800,7 +1060,8 @@ export function ScheduleChart({
                 {
                   name: 'Pflichtfenster',
                   type: 'scatter',
-                  yAxisIndex: 0,
+                  xAxisIndex: 1,
+                  yAxisIndex: 1,
                   symbol: LOCK_SYMBOL,
                   symbolSize: 11,
                   symbolOffset: [0, -8],
@@ -814,10 +1075,7 @@ export function ScheduleChart({
                         (l) => l.pflicht[i] && (l.values[i] ?? 0) > 0.049,
                       );
                       if (!pflicht) return null;
-                      const top = activeConsumers.reduce(
-                        (sum, l) => sum + (l.values[i] ?? 0),
-                        0,
-                      );
+                      const top = activeConsumers.reduce((sum, l) => sum + (l.values[i] ?? 0), 0);
                       return [i, top];
                     })
                     .filter((d): d is [number, number] => d != null),
@@ -828,8 +1086,8 @@ export function ScheduleChart({
       },
       true,
     );
-    // `forecast`/`ist`/`curtail`/`curtailing` are derived from `plan`, so
-    // `plan` covers them.
+    // `forecast`/`ist`/`curtail`/`curtailing`/`spread` are derived from
+    // `plan`, so `plan` covers them.
   }, [plan, t, peakTargetKw, onSlotClick, selectedIndex, hidden, consumers]);
 
   // Insight: charge cheap, discharge expensive, and today's saving - composed
@@ -840,46 +1098,147 @@ export function ScheduleChart({
   // axis has no room (phones) and the touch-friendly answer to "how full?".
   const socLine = socRangeLine(plan.slots);
 
-  // The DEFAULT legend is one calm line: the bar colours + the price. Nothing
-  // here is a toggle - the bar entries are per-slot STATES of ONE series, and
-  // the layers are switched by the three group buttons above (D4).
+  // Die Legende gilt für BEIDE Panels und ist der von K2 vorgesehene RÜCKFALL:
+  // eine Direktbeschriftung am Kurvenende trägt bis vier Reihen, der Fahrplan
+  // zeichnet bis zu zwölf (`useDirectLabels`). Nichts hier ist ein Umschalter -
+  // die Balkenfarben sind per-Slot-ZUSTÄNDE einer Serie, und die Schichten
+  // schalten die drei Gruppen-Knöpfe darüber (D4).
   const legend: LegendItem[] = [
+    // Zuerst das Preis-Panel, in der Lesereihenfolge des Bildes.
+    ...(showSpread
+      ? ([
+          { color: t.price, label: BEZUGSPREIS, unit: 'ct/kWh', shape: 'line', toggleable: false },
+          {
+            color: t.flowGridLine,
+            label: EINSPEISEWERT,
+            unit: 'ct/kWh',
+            shape: 'line',
+            toggleable: false,
+          },
+          {
+            color: t.price,
+            label: `${SPANNE} = Grund fürs Laden`,
+            unit: 'ct/kWh',
+            shape: 'area',
+            toggleable: false,
+          },
+        ] as LegendItem[])
+      : []),
+    ...(showSpot
+      ? [
+          {
+            color: t.price,
+            label: BOERSENPREIS,
+            unit: 'ct/kWh',
+            shape: 'line',
+            toggleable: false,
+          } as LegendItem,
+        ]
+      : []),
     { color: t.charge, label: 'Laden aus Solarstrom', unit: 'kW', shape: 'bar', toggleable: false },
     ...(gridCharging
-      ? [{ color: t.gridCharge, label: 'Laden aus dem Netz (günstig)', unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
+      ? [
+          {
+            color: t.gridCharge,
+            label: 'Laden aus dem Netz (günstig)',
+            unit: 'kW',
+            shape: 'bar',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
     // K5: dieselbe Farbe wie Laden, andere FORM - „gefüllt = lädt, Umriss =
     // gibt ab"; das Wort steht daneben und die Position unter der Nulllinie.
-    { color: t.charge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'outline', toggleable: false },
+    {
+      color: t.charge,
+      label: 'Entladen (teurer Strom)',
+      unit: 'kW',
+      shape: 'outline',
+      toggleable: false,
+    },
     // Orange steht am Canvas als BAND + Sockel-Tick (und in der
-    // Prognosen-Ebene als Fläche), also trägt die Legende die Flächen-Form -
-    // nicht mehr 'bar', dessen Träger der im Abregeln-Slot 0 kW hohe
-    // Batterie-Balken war. Gate = dasselbe `curtailing` wie das Canvas.
+    // Prognosen-Ebene als Fläche), also trägt die Legende die Flächen-Form.
+    // Gate = dasselbe `curtailing` wie das Canvas.
     ...(curtailing
-      ? [{ color: t.pv, label: CURTAIL_LEGEND_LABEL, unit: 'kW', shape: 'area', toggleable: false } as LegendItem]
+      ? [
+          {
+            color: t.pv,
+            label: CURTAIL_LEGEND_LABEL,
+            unit: 'kW',
+            shape: 'area',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
-    { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line', toggleable: false },
     ...(peakTargetKw != null && peakTargetKw > 0
-      ? [{ color: t.discharge, label: 'Ziel Netzbezug (Lastspitze)', unit: 'kW', shape: 'dashed', toggleable: false } as LegendItem]
+      ? [
+          {
+            color: t.discharge,
+            label: 'Ziel Netzbezug (Lastspitze)',
+            unit: 'kW',
+            shape: 'dashed',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
     // ...plus exactly the rows of the layers that are switched ON, so the
     // legend never advertises a line the chart does not draw.
     ...(showPv
-      ? [{ color: t.pvLine, label: PV_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
+      ? [
+          {
+            color: t.pvLine,
+            label: PV_FORECAST_LABEL,
+            unit: 'kW',
+            shape: 'dotted',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
     ...(showLoad
-      ? [{ color: t.load, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
+      ? [
+          {
+            color: t.loadLine,
+            label: LOAD_FORECAST_LABEL,
+            unit: 'kW',
+            shape: 'dotted',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
     // The measured twins sit next to their forecast (gepunktet = Prognose,
     // durchgezogen = gemessen), so the pairing is obvious.
     ...(showIstPv
-      ? [{ color: t.pvLine, label: MEASURED_PV_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
+      ? [
+          {
+            color: t.pvLine,
+            label: MEASURED_PV_LABEL,
+            unit: 'kW',
+            shape: 'line',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
     ...(showIst
-      ? [{ color: t.load, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
+      ? [
+          {
+            color: t.loadLine,
+            label: MEASURED_LOAD_LABEL,
+            unit: 'kW',
+            shape: 'line',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
     ...(showSoc
-      ? [{ color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed', toggleable: false } as LegendItem]
+      ? [
+          {
+            color: t.soc,
+            label: 'Ladestand des Speichers',
+            unit: '%',
+            shape: 'dashed',
+            toggleable: false,
+          } as LegendItem,
+        ]
       : []),
     // §14.11: one row per consumer (only with consumers - the legend never
     // advertises a layer the chart does not draw), plus the lock explainer
@@ -965,7 +1324,10 @@ export function ScheduleChart({
         })}
       </div>
       <ChartLegend items={legend} />
-      <div ref={ref} className="vp-chart tall" />
+      {/* Zwei Panels brauchen mehr Höhe als eine Fläche - `panels` ist die
+          Zwei-Panel-Stufe der `.vp-chart`-Höhenklassen. Am Telefon bleiben sie
+          UNTEREINANDER in derselben Instanz (sie teilen ja die Zeitachse). */}
+      <div ref={ref} className={`vp-chart ${twoPanel ? 'panels' : 'tall'}`} />
       {istNote && (
         <p className="vp-note vp-plan-ist" style={{ margin: 'var(--vp-space-2) 0 0' }}>
           {istNote}

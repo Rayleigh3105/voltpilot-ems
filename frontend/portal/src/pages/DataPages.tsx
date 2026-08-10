@@ -1020,8 +1020,10 @@ export function FahrplanSection({ site }: { site: Site }) {
         {chartOpen && (
           <>
             <ChartSubtitle>
-              Balken = Ihr Speicher, Linie = der Börsen-Strompreis dahinter; alles links
-              vom „Jetzt“ ist bereits vergangen. Details je Viertelstunde per Tipp.
+              Zwei Bilder über einer Zeitachse: oben der Preis, unten was Ihr Speicher tut.
+              Die Fläche im Preis-Bild ist die Spanne zwischen Bezugspreis und Einspeisewert –
+              sie ist der Grund fürs Laden und Entladen. Alles links vom „Jetzt“ ist bereits
+              vergangen; Details je Viertelstunde per Tipp.
             </ChartSubtitle>
             <ScheduleChart
               plan={plan!}
