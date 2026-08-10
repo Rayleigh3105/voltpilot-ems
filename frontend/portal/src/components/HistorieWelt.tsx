@@ -16,6 +16,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
 import type { HistoryCoverage, HistoryRange } from '../api';
+import { vergleichName } from '../chartCopy';
 import { useIsPhone } from '../useIsPhone';
 import {
   PROVENIENZ,
@@ -355,7 +356,10 @@ export function UeberlagerungLegendeZeile({
   return (
     <p className="vp-vgl-legende">
       <span className="vp-vgl-jetzt">{legende.aktuell}</span>
-      <span className="vp-vgl-vorher">{legende.vergleich}</span>
+      {/* M9: die Geister-Ebene trägt ihr WORT, nicht nur ihre Strichelung -
+          derselbe Ausdruck wie in den Tooltips und Reihen-Namen der drei
+          Vergleichsflächen (`chartCopy.vergleichName`). */}
+      <span className="vp-vgl-vorher">{vergleichName(legende.vergleich)}</span>
     </p>
   );
 }

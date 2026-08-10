@@ -1,7 +1,8 @@
 import type { EarningsRange, SiteEarningsBucket, SiteEarningsRange } from '../api';
 import { bucketAxisLabel, bucketTooltipLabel } from '../anlage';
 import type { Kernaussage } from '../chartKopf';
-import { AXIS, BAR, STROKE } from '../chartStyle';
+import { AXIS, BAR, ghostItem, ghostLine, STROKE } from '../chartStyle';
+import { vergleichName, vergleichReihe } from '../chartCopy';
 import { chartTheme } from '../chartTheme';
 import { eurAmount } from '../format';
 import { geldVerlauf, type GeldReihe } from '../erloesKomposition';
@@ -9,9 +10,6 @@ import { angleichen, type UeberlagerungLegende } from '../historieVergleich';
 import { useEChart } from '../useEChart';
 import { ChartHeadline, ChartInsight, ChartLegend, ChartSubtitle } from './ChartExplain';
 import { UeberlagerungLegendeZeile } from './HistorieWelt';
-
-/** Wie blass die Vergleichsperiode liegt (F8) — wie im `HistoryChart`. */
-const VERGLEICH_OPACITY = 0.38;
 
 /**
  * **Karte 2 der Erlöse-Welt · „Geld im Verlauf"** — die drei Teile des
@@ -71,7 +69,7 @@ export function ErloeseVerlaufChart({
         eigenverbrauchswert: t.charge,
         stromkosten: t.discharge,
       };
-      const vglName = legende?.vergleich ?? 'Vergleich';
+      const vglName = legende?.vergleich ?? null;
 
       chart.setOption(
         {
@@ -93,8 +91,8 @@ export function ErloeseVerlaufChart({
                 const k = vglView.kumuliert[i];
                 lines.push(
                   k == null
-                    ? `<span style="opacity:.7">${vglName}: keine Daten</span>`
-                    : `<span style="opacity:.7">${vglName} kumuliert: ${eurAmount(k)}</span>`,
+                    ? `<span style="opacity:.7">${vergleichName(vglName)}: keine Daten</span>`
+                    : `<span style="opacity:.7">${vergleichName(vglName)} kumuliert: ${eurAmount(k)}</span>`,
                 );
               }
               return `${bucketTooltipLabel(view.starts[i], labelRange)}<br/>${lines.join('<br/>')}`;
@@ -121,36 +119,27 @@ export function ErloeseVerlaufChart({
             ...(vglView && !vglView.leer
               ? [
                   ...vglView.reihen.map((r) => ({
-                    name: `${r.label} · ${vglName}`,
+                    name: vergleichReihe(r.label, vglName),
                     type: 'line' as const,
                     smooth: true,
                     symbol: 'none',
                     silent: true,
                     z: 0,
                     data: angleichen(r.data, view.starts.length),
-                    lineStyle: {
-                      color: hue[r.id],
-                      width: STROKE.contextSoft,
-                      type: 'dashed' as const,
-                      opacity: VERGLEICH_OPACITY,
-                    },
-                    itemStyle: { color: hue[r.id], opacity: VERGLEICH_OPACITY },
+                    // M9: die EINE Geister-Grammatik (`chartStyle.GHOST`).
+                    lineStyle: ghostLine(hue[r.id]),
+                    itemStyle: ghostItem(hue[r.id]),
                   })),
                   {
-                    name: `kumuliert · ${vglName}`,
+                    name: vergleichReihe('kumuliert', vglName),
                     type: 'line' as const,
                     smooth: true,
                     symbol: 'none',
                     silent: true,
                     z: 0,
                     data: angleichen(vglView.kumuliert, view.starts.length),
-                    lineStyle: {
-                      color: t.plan,
-                      width: STROKE.contextSoft,
-                      type: 'dashed' as const,
-                      opacity: VERGLEICH_OPACITY,
-                    },
-                    itemStyle: { color: t.plan, opacity: VERGLEICH_OPACITY },
+                    lineStyle: ghostLine(t.plan),
+                    itemStyle: ghostItem(t.plan),
                   },
                 ]
               : []),

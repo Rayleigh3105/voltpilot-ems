@@ -77,6 +77,40 @@ export const AXIS = {
 } as const;
 
 /* ---------------------------------------------------------------------------
+ * M9 · Die Geister-Ebene heißt überall gleich
+ *
+ * Die drei Vergleichs-Overlays beschrifteten sich verschieden: „… · Juni 2026",
+ * „kumuliert · Juni 2026", „Aktuelle Einstellungen", „Ladestand (aktuell)".
+ * Die GEOMETRIE der Ebene steht seit Stufe 6 in `chartStyle.GHOST`; ihr WORT
+ * steht hier, damit eine blass gestrichelte Linie auf jeder Fläche dasselbe
+ * bedeutet und der Leser sie nicht je Chart neu zuordnen muss.
+ * ------------------------------------------------------------------------- */
+
+/** Das Wort, das eine Geister-Ebene als solche ausweist. */
+export const VERGLEICH = 'Vergleich';
+
+/**
+ * Die Beschriftung einer Vergleichs-Reihe: `„Vergleich: Juni 2026"`.
+ *
+ * `womit` ist die Bezeichnung des Gegenstücks — ein Zeitraum in der Historie
+ * („Juni 2026", „Vorjahr"), der konfigurierte Stand in der Admin-Vorschau
+ * („aktuelle Einstellungen"). Ohne Bezeichnung bleibt das nackte Wort: lieber
+ * „Vergleich" als ein erfundener Zeitraum.
+ */
+export function vergleichName(womit?: string | null): string {
+  return womit ? `${VERGLEICH}: ${womit}` : VERGLEICH;
+}
+
+/**
+ * Der Reihen-Name einer Vergleichs-Reihe: `„Ergebnis · Vergleich: Juni 2026"`.
+ * Er trägt die GRÖSSE zuerst, weil die Legende nach Größen sortiert gelesen
+ * wird, und die Ebene danach.
+ */
+export function vergleichReihe(groesse: string, womit?: string | null): string {
+  return `${groesse} · ${vergleichName(womit)}`;
+}
+
+/* ---------------------------------------------------------------------------
  * Das Fallenwort
  * ------------------------------------------------------------------------- */
 

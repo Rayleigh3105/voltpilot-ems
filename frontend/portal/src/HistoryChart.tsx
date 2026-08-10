@@ -8,13 +8,24 @@ import {
   DIRECT_LABEL_GUTTER_PX,
   directLabel,
   FILL,
+  ghostItem,
+  ghostLine,
   nowLabel,
   nowLineStyle,
   SMOOTH_SERIES,
   STROKE,
   withAlpha,
 } from './chartStyle';
+import { vergleichName, vergleichReihe } from './chartCopy';
 import { chartTheme, type ChartTheme } from './chartTheme';
+import {
+  energieTeil,
+  flussSatz,
+  flussTeil,
+  kopf,
+  tooltip,
+  type FlussRolle,
+} from './chartTooltip';
 import { fmtNum } from './format';
 import {
   anzeigeWert,
@@ -52,11 +63,16 @@ import './components/Historie.css';
 const BAND_OPACITY = 0.2;
 
 /**
- * Wie blass die Vergleichsreihe liegt (F8). Gleiche Farbe je Größe — die
- * Wiedererkennung ist der Punkt —, aber deutlich zurückgenommen, damit die
- * aktuelle Periode vorne bleibt.
+ * Welche Reihe der Energie-Bilanz welche Fluss-Rolle des Ablese-Satzes ist
+ * (K7). Der Ladestand hat KEINE — er ist keine Leistung und trägt keine
+ * Richtung, also behält er seine eigene Wert-Zeile.
  */
-const VERGLEICH_OPACITY = 0.38;
+const SATZ_ROLLE: Partial<Record<EnergieSerie['key'], FlussRolle>> = {
+  pv: 'pv',
+  haus: 'haus',
+  netz: 'netz',
+  batterie: 'speicher',
+};
 
 /**
  * Die Ereignis-Bänder als ECharts-`markArea` (F6): je Ereignis eine
@@ -254,13 +270,15 @@ export function HistoryEnergieChart({
       const weekNarrow = narrow && history.range === 'week';
       const { zeiten, einheit, jetztIndex } = diagramm;
       const brauchtSoc = sichtbar.some((s) => s.zweiteAchse);
-      const vglName = legende?.vergleich ?? 'Vergleich';
+      const vglName = legende?.vergleich ?? null;
       // Nur zu SICHTBAREN Reihen gibt es eine Vergleichsreihe: die Legende ist
       // die Bedienung, und was ausgeblendet ist, bleibt es in beiden Zeiträumen.
       const vglReihen = sichtbar
         .map((s) => ({ s, v: vglSerien.get(s.key) }))
         .filter((x): x is { s: EnergieSerie; v: EnergieSerie } => x.v != null);
-      const nameOf = (s: EnergieSerie) => `${s.label} · ${vglName}`;
+      // M9: eine Geister-Ebene heißt überall gleich - `chartCopy` besitzt das
+      // Wort, damit „blass gestrichelt" auf jeder Fläche dasselbe bedeutet.
+      const nameOf = (s: EnergieSerie) => vergleichReihe(s.label, vglName);
       // K2: Name + Wert AM Kurvenende. Nur auf der TAGES-Ansicht (Linien mit
       // sichtbarem Ende); die kWh-Balken von Woche+ haben kein Kurvenende, und
       // eine Vergleichs-Überlagerung verdoppelt jede Reihe - dann bleibt die
@@ -378,32 +396,73 @@ export function HistoryEnergieChart({
           tooltip: {
             trigger: 'axis',
             confine: true,
+            /**
+             * K7 · ein Mini-SATZ statt einer Zahlenkolonne. Die vier
+             * Fluss-Größen (Sonne · Haus · Netz · Speicher) ziehen sich zu
+             * EINER Aussage zusammen; der Ladestand und die Reihen der
+             * Vergleichsperiode behalten ihre Wert-Zeile — der Ladestand, weil
+             * er keine Richtung hat, die Vergleichsreihen, weil sie einen
+             * ANDEREN Zeitraum meinen und ihn nennen müssen.
+             *
+             * Der Wortschatz folgt der Auflösung: am Tag misst die Fläche
+             * Leistung („Haus braucht 3,4 kW"), ab der Woche Energie über einen
+             * Eimer („Haus 31 kWh verbraucht") — zwei Sätze, die sich nicht
+             * gegenseitig umformulieren dürfen.
+             */
             formatter: (params: { axisValue: string; value: number | null; marker: string; seriesName: string }[]) => {
-              const head = `<b>${timeLabel(params[0]?.axisValue, history.range)}${
-                history.range === 'day' ? ' Uhr' : ''
-              }</b>`;
-              const lines = [head];
+              const istTag = einheit === 'kW';
+              const wertVon = (label: string): number | null => {
+                const p = params.find((x) => x.seriesName === label);
+                return p == null || p.value == null ? null : Number(p.value);
+              };
+              // Nur eine SICHTBARE Reihe darf in den Satz - was hinter „Mehr
+              // anzeigen" liegt, ist nicht im Bild und gehört nicht in seine
+              // Beschreibung.
+              const flussWert = (key: EnergieSerie['key']): number | null => {
+                const s = sichtbar.find((x) => x.key === key);
+                return s == null ? null : wertVon(s.label);
+              };
+              const satz = flussSatz(
+                {
+                  pv: flussWert('pv'),
+                  haus: flussWert('haus'),
+                  netz: flussWert('netz'),
+                  speicher: flussWert('batterie'),
+                },
+                (b) => `${num(b)} ${einheit}`,
+                istTag ? flussTeil : energieTeil,
+              );
+              const zeilen: string[] = [];
               for (const p of params) {
                 if (p.value == null) continue;
                 const vgl = vglLookup.get(p.seriesName);
                 const s = vgl ?? sichtbar.find((x) => x.label === p.seriesName);
                 if (!s) continue;
+                // Was der Satz schon ausgesprochen hat, steht darunter NICHT
+                // noch einmal (M10-Geist: keine Doppel-Kolonne). Die
+                // Vergleichsreihen sind davon ausgenommen - sie tragen
+                // dieselbe Größe für einen anderen Zeitraum.
+                if (!vgl && s.key !== 'soc' && satz.genannt.has(SATZ_ROLLE[s.key]!)) continue;
                 const v = Number(p.value);
                 const label = s.signed ? vorzeichenLabel(s.key, v) : s.label;
                 // Beide Werte stehen im selben Tooltip - die Vergleichszeile
                 // trägt ihren Zeitraum, damit nie geraten werden muss, welche
                 // Zahl zu welcher Periode gehört.
-                const suffix = vgl ? ` <span style="opacity:.7">(${vglName})</span>` : '';
-                lines.push(
+                const suffix = vgl
+                  ? ` <span style="opacity:.7">(${vergleichName(vglName)})</span>`
+                  : '';
+                zeilen.push(
                   `${p.marker} ${label}${suffix}: ${num(anzeigeWert(s, v))} ${s.unit}`,
                 );
               }
-              // Die Geste sichtbar machen, wo es sie gibt (F5) - dieselbe
-              // Klick-Zeile wie im Optimizer-Diagramm.
-              if (sprungHinweis) {
-                lines.push('<span style="opacity:.7">Klick: diesen Tag öffnen</span>');
-              }
-              return lines.join('<br/>');
+              return tooltip(
+                kopf(`${timeLabel(params[0]?.axisValue, history.range)}${history.range === 'day' ? ' Uhr' : ''}`),
+                satz.text,
+                ...zeilen,
+                // Die Geste sichtbar machen, wo es sie gibt (F5) - dieselbe
+                // Klick-Zeile wie im Optimizer-Diagramm.
+                sprungHinweis ? '<span style="opacity:.7">Klick: diesen Tag öffnen</span>' : null,
+              );
             },
           },
           xAxis: {
@@ -491,13 +550,10 @@ export function HistoryEnergieChart({
               connectNulls: false,
               z: 0,
               silent: true,
-              lineStyle: {
-                color: farbe(t, s.farbe, s.linie),
-                width: STROKE.contextSoft,
-                type: 'dashed' as const,
-                opacity: VERGLEICH_OPACITY,
-              },
-              itemStyle: { color: farbe(t, s.farbe, s.linie), opacity: VERGLEICH_OPACITY },
+              // M9: die EINE Geister-Grammatik - Kontext-Stärke, gestrichelt,
+              // EIN Alpha. Die Farbe bleibt die der Größe (Wiedererkennung).
+              lineStyle: ghostLine(farbe(t, s.farbe, s.linie)),
+              itemStyle: ghostItem(farbe(t, s.farbe, s.linie)),
             })),
             ...sichtbar.map((s, i) => serieOption(s, i === 0)),
           ],

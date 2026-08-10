@@ -195,6 +195,67 @@ export const FORECAST = {
 } as const;
 
 /* ---------------------------------------------------------------------------
+ * M9 · Die GEISTER-EBENE — EINE Grammatik für jeden Vergleich
+ *
+ * Drei Flächen legen einen zweiten Zeitraum bzw. einen Gegenentwurf hinter die
+ * Hauptreihen — die Messwerte-Welt (Vorperiode/Vorjahr), der Erlöse-Verlauf
+ * (dieselbe Überlagerung in Geld) und die Admin-Was-wäre-wenn-Vorschau (der
+ * Stand, wie er konfiguriert IST). Sie taten es in drei Dialekten: 0,38 · 0,38 ·
+ * 0,55/0,6, teils mit `contextSoft`, teils mit einem eigenen Rahmen. Das ist
+ * derselbe Wildwuchs, den `STROKE` und `BAR` für die Hauptreihen beendet haben
+ * — nur eine Ebene tiefer und deshalb länger unbemerkt.
+ *
+ * Die Grammatik ist ab hier EINE: Kontext-Strichstärke, gestrichelt, EIN Alpha.
+ * Die FARBE bleibt die der Größe — die Wiedererkennung ist der ganze Punkt
+ * einer Überlagerung —, zurückgenommen wird ausschließlich die Deckkraft.
+ *
+ * ⚠ Der Wert 0,38 ist der gemessene der zwei Kundenflächen und bleibt der
+ * Maßstab; die Admin-Fläche war heller (0,55/0,6) und war damit fast eine
+ * zweite gleichrangige Reihe — genau das soll eine Geister-Ebene nicht sein.
+ * ------------------------------------------------------------------------- */
+export const GHOST = {
+  /** Die ruhigste Kontext-Stufe — ein Vergleich ist nie die Leitserie. */
+  width: STROKE.contextSoft,
+  /** Gestrichelt: der zweite Zeitraum ist nie „auch gemessen, gerade jetzt". */
+  dash: 'dashed' as const,
+  /** DIE eine Deckkraft der Geister-Ebene. */
+  opacity: 0.38,
+} as const;
+
+/**
+ * Der `lineStyle` JEDER Vergleichs-/Baseline-LINIE. `farbe` ist der Ton der
+ * Größe, die verglichen wird — nie ein eigener „Vergleichs-Farbton": zwei
+ * Zeiträume derselben Größe sind dieselbe Größe.
+ */
+export function ghostLine(farbe: string) {
+  return { color: farbe, width: GHOST.width, type: GHOST.dash, opacity: GHOST.opacity };
+}
+
+/**
+ * Der `itemStyle` einer Vergleichs-Reihe (Punkte, Tooltip-Marker) — dieselbe
+ * Deckkraft, damit der Marker im Tooltip nicht kräftiger ist als die Linie, die
+ * er meint.
+ */
+export function ghostItem(farbe: string) {
+  return { color: farbe, opacity: GHOST.opacity };
+}
+
+/**
+ * Ein Vergleichs-BALKEN als Umriss: die Fläche bleibt leer, damit die
+ * Hauptreihe davor lesbar bleibt, und der Rand trägt die Geister-Deckkraft.
+ * Die Admin-Vorschau legt ihre Baseline so hinter die Regler-Balken.
+ */
+export function ghostBar(farbe: string) {
+  return {
+    color: 'transparent',
+    borderColor: farbe,
+    borderWidth: GHOST.width,
+    borderRadius: BAR.radius,
+    opacity: GHOST.opacity,
+  };
+}
+
+/* ---------------------------------------------------------------------------
  * K5 · Der SPEICHER ist EINE Farbe — die Richtung trägt Position + Form + Wort
  *
  * Messung (r2 §5): das frühere Entladen-Blau `#2C5282` liegt gegen das
