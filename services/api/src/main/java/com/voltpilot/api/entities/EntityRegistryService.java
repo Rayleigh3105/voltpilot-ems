@@ -227,7 +227,7 @@ public class EntityRegistryService {
         repo.createComposedPoint(tenantId, siteId, role, COMPOSED_LABEL, gateway);
     }
 
-    /** What the automatic backfill did with one site (MIG §6). */
+    /** What the automatic composition did with one site (MIG §6). */
     public enum BackfillOutcome {
         /** Composed now - stamp the marker. */
         MIGRATED,
@@ -244,18 +244,37 @@ public class EntityRegistryService {
     }
 
     /**
-     * The guarded unit of the automatic migration: compose this site's pilot
-     * entities unless it is already on v2 or has no gateway. Runs under the
+     * The guarded unit of the automatic composition: compose this site's pilot
+     * entities unless it is already complete or has no gateway. Runs under the
      * caller-established {@link TenantContext} through the RLS-scoped
      * repository, exactly like the admin bootstrap endpoint - ONE composition
-     * truth, no SQL twin.
+     * truth, no SQL twin. Every automatic trigger goes through here (device
+     * claim, battery save, the periodic reconciler), so they can never disagree
+     * about WHAT gets composed.
+     *
+     * <p><b>Two reasons to compose, and the second one is not cosmetic.</b> The
+     * obvious one is a site with no entity rows at all. The second is a site
+     * whose composition is BEHIND its master data: a device claimed before the
+     * battery was entered composes the gateway-synthesized grid-meter and
+     * house-load, and without this rule the battery-hybrid - the row carrying
+     * PV + Speicher of a hybrid inverter - would never appear, because
+     * {@code hasEntities} is already true. Keyed on the battery POINT (not its
+     * entity config) on purpose: deleting a composed entity keeps its point, so
+     * a deliberate delete is never silently re-composed.
+     *
+     * <p>Re-running {@link #bootstrap} is safe by construction - it creates
+     * what is missing and refreshes composed configs from the v1 master data
+     * they are derived from, which is the documented maintenance rule for
+     * composed pilot entities.
      */
     @Transactional
     public BackfillOutcome bootstrapIfEligible(UUID siteId) {
-        if (repo.hasEntities(siteId)) {
+        BatteryAsset battery = repo.batteryAsset(siteId);
+        boolean batteryUncomposed = battery != null && repo.batteryHybridPointId(siteId) == null;
+        if (repo.hasEntities(siteId) && !batteryUncomposed) {
             return BackfillOutcome.ALREADY_V2;
         }
-        if (gatewayDevice(siteId, repo.batteryAsset(siteId)) == null) {
+        if (gatewayDevice(siteId, battery) == null) {
             return BackfillOutcome.SKIPPED_NO_GATEWAY;
         }
         bootstrap(siteId);

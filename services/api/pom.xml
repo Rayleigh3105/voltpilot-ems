@@ -183,6 +183,15 @@
                              dieselbe @Scheduled-Falle - im Testlauf aus, in
                              PRODUKTION an (application.yml, matchIfMissing). -->
                         <voltpilot.metrics.consumer.enabled>false</voltpilot.metrics.consumer.enabled>
+                        <!-- Der getaktete v2-Komposition-Abgleich ist dieselbe
+                             @Scheduled-Falle - im Testlauf aus, in PRODUKTION an
+                             (application.yml + matchIfMissing). Der Start-Lauf
+                             selbst bleibt an: die Testklassen stossen ihn
+                             ausdruecklich selbst an (backfillRunner.run()).
+                             Dass die AUSGELIEFERTE Vorgabe AN ist, prueft
+                             V2SiteBackfillReconcileWiringTest an der echten
+                             application.yml. -->
+                        <voltpilot.entities.backfill.reconcile-enabled>false</voltpilot.entities.backfill.reconcile-enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

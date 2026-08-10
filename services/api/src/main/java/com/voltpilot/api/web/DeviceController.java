@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.enrollment.EnrollmentService;
+import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
@@ -59,6 +60,7 @@ public class DeviceController {
     private final ObjectProvider<EnrollmentService> enrollment;
     private final ObjectProvider<EntityRegistryPublisher> entityRegistry;
     private final ObjectProvider<RolloutService> rollouts;
+    private final EntityAutoComposer autoCompose;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, AssetRepository assets,
@@ -67,7 +69,8 @@ public class DeviceController {
             ObjectProvider<ProvisioningPublisher> provisioning,
             ObjectProvider<EnrollmentService> enrollment,
             ObjectProvider<EntityRegistryPublisher> entityRegistry,
-            ObjectProvider<RolloutService> rollouts) {
+            ObjectProvider<RolloutService> rollouts,
+            EntityAutoComposer autoCompose) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
@@ -78,6 +81,7 @@ public class DeviceController {
         this.enrollment = enrollment;
         this.entityRegistry = entityRegistry;
         this.rollouts = rollouts;
+        this.autoCompose = autoCompose;
     }
 
     @GetMapping
@@ -144,6 +148,13 @@ public class DeviceController {
                 log.info("Auto-linked device {} (ref '{}') to the battery asset of site {}",
                         claimed.id(), claimed.externalRef(), claimed.siteId());
             }
+            // Self-composing Anlagen-Modell: the claim is the moment the site
+            // gains an unambiguous gateway, so this is the earliest point at
+            // which its v2 entities CAN be composed - and the customer must
+            // never have to ask anyone for it (the composition used to need a
+            // platform-admin bootstrap or an api restart). Idempotent +
+            // fail-soft; a broken composition never fails the claim.
+            autoCompose.ensureComposed(claimed.siteId());
             // Zero-touch onboarding: hand the waiting device its identity via the
             // retained provision/{ref}/config (best-effort; see ProvisioningPublisher).
             // The claim still succeeds if the broker is down, but a discarded

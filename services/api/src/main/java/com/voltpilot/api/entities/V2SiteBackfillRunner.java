@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,13 +30,14 @@ import org.springframework.stereotype.Component;
  *
  * <p><b>The four guards</b> (the captain's properties):
  * <ul>
- *   <li><b>automatic</b> - runs on {@link ApplicationReadyEvent}; no flag flip
- *       is required. {@code voltpilot.entities.backfill.enabled=false} exists
- *       only as an ops kill-switch.</li>
+ *   <li><b>automatic</b> - runs on {@link ApplicationReadyEvent} AND on the
+ *       {@link #reconcile()} tick; no flag flip is required.
+ *       {@code voltpilot.entities.backfill.enabled=false} exists only as an ops
+ *       kill-switch (it stops both).</li>
  *   <li><b>idempotent</b> - the bootstrap itself refreshes in place, and a site
  *       that already carries entity rows composes nothing.</li>
  *   <li><b>guarded</b> - a site with no unambiguous gateway device is SKIPPED
- *       and deliberately NOT marked, so it is picked up on a later boot once a
+ *       and deliberately NOT marked, so it is picked up by a later tick once a
  *       device is claimed (MIG §7: composing entities for a device-less plant
  *       would replace its honest onboarding guide with an empty Energiefluss).</li>
  *   <li><b>reversible, and the rollback STICKS</b> - the marker
@@ -75,6 +77,7 @@ public class V2SiteBackfillRunner {
     private final EntityRegistryRepository repo;
     private final Clock clock;
     private final boolean enabled;
+    private final boolean reconcileEnabled;
 
     /**
      * The {@code @Autowired} is LOAD-BEARING (the BrokerAuthzReloader footgun):
@@ -85,16 +88,20 @@ public class V2SiteBackfillRunner {
     @org.springframework.beans.factory.annotation.Autowired
     public V2SiteBackfillRunner(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             EntityRegistryService entities, EntityRegistryRepository repo,
-            @Value("${voltpilot.entities.backfill.enabled:true}") boolean enabled) {
-        this(adminJdbc, entities, repo, enabled, Clock.systemUTC());
+            @Value("${voltpilot.entities.backfill.enabled:true}") boolean enabled,
+            @Value("${voltpilot.entities.backfill.reconcile-enabled:true}")
+            boolean reconcileEnabled) {
+        this(adminJdbc, entities, repo, enabled, reconcileEnabled, Clock.systemUTC());
     }
 
     V2SiteBackfillRunner(JdbcTemplate adminJdbc, EntityRegistryService entities,
-            EntityRegistryRepository repo, boolean enabled, Clock clock) {
+            EntityRegistryRepository repo, boolean enabled, boolean reconcileEnabled,
+            Clock clock) {
         this.adminJdbc = adminJdbc;
         this.entities = entities;
         this.repo = repo;
         this.enabled = enabled;
+        this.reconcileEnabled = reconcileEnabled;
         this.clock = clock;
     }
 
@@ -104,17 +111,57 @@ public class V2SiteBackfillRunner {
             log.info("v2 entity backfill disabled (voltpilot.entities.backfill.enabled=false)");
             return;
         }
+        runQuietly("boot");
+    }
+
+    /**
+     * <b>Der getaktete Abgleich - die Selbstheilung für BESTANDSanlagen.</b>
+     * Bis hierher lief die Komposition ausschliesslich beim api-Start: eine
+     * Anlage, die danach entstand oder ihr Gerät danach beanspruchte, wartete
+     * auf den nächsten Deploy - im Live-Befund „Mienbach" (10.08.2026) auf
+     * unbestimmte Zeit, während das Portal „Sobald Ihr Gerät sich meldet …"
+     * versprach. Derselbe Lauf, dieselben Wächter, nur zusätzlich getaktet:
+     * damit heilt sich eine Bestandsanlage OHNE Deploy, ohne Re-Claim und ohne
+     * einen einzigen Klick - weder vom Kunden noch vom Admin.
+     *
+     * <p>Er ist billig genug für diese Kadenz: die Kandidatenabfrage ist ein
+     * Index-loser, aber winziger Scan über {@code site} nach NULL-Markern, und
+     * jede fertige Anlage wird beim ersten Treffer gestempelt und danach nie
+     * wieder betrachtet. Übrig bleiben dauerhaft nur die Anlagen ohne
+     * eindeutiges Gateway - genau die, die noch auf ihr Gerät warten.
+     *
+     * <p><b>Replica-Singleton wie die MQTT-Zuhörer</b> (heute 1 api-Replica):
+     * jeder Schritt ist idempotent, bei mehreren Replicas gäbe es höchstens
+     * doppelte Log-Zeilen.
+     */
+    @Scheduled(fixedDelayString = "${voltpilot.entities.backfill.interval-ms:300000}",
+            initialDelayString = "${voltpilot.entities.backfill.interval-ms:300000}")
+    public void reconcile() {
+        // BEIDE Schalter, und das ist kein Gürtel-und-Hosenträger: Springs
+        // @EnableScheduling ist GLOBAL - sobald irgendeine andere Konfiguration
+        // (OTA, Metriken) es einschaltet, wäre diese Methode auch dann getaktet,
+        // wenn EntitiesSchedulingConfig gar nicht existiert. Der Takt hängt
+        // deshalb zusätzlich am eigenen Feld.
+        if (!enabled || !reconcileEnabled) {
+            return;
+        }
+        runQuietly("reconcile");
+    }
+
+    private void runQuietly(String trigger) {
         try {
             RunSummary summary = run();
-            if (summary.considered() > 0) {
-                log.info("v2 entity backfill: {} site(s) considered, {} migrated, {} already v2, "
-                        + "{} skipped (no gateway device), {} failed",
-                        summary.considered(), summary.migrated(), summary.alreadyV2(),
+            if (summary.migrated() > 0 || summary.failed() > 0 || summary.considered() > 0) {
+                log.info("v2 entity backfill ({}): {} site(s) considered, {} migrated, "
+                        + "{} already v2, {} skipped (no gateway device), {} failed",
+                        trigger, summary.considered(), summary.migrated(), summary.alreadyV2(),
                         summary.skippedNoGateway(), summary.failed());
             }
         } catch (RuntimeException e) {
-            // A backfill must never keep the api from serving.
-            log.error("v2 entity backfill run failed, sites stay on v1: {}", e.toString(), e);
+            // A backfill must never keep the api from serving - nor kill the
+            // scheduler thread, which would silently end the self-healing.
+            log.error("v2 entity backfill run ({}) failed, sites stay on v1: {}", trigger,
+                    e.toString(), e);
         }
     }
 
