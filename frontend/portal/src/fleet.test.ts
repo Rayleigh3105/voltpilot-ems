@@ -25,6 +25,7 @@ import {
   savedOnDay,
   composeSiteSentence,
   siteEarnText,
+  sparkAussage,
   siteLiveFresh,
   siteSnapshot,
   sparkDays,
@@ -519,6 +520,78 @@ describe('sparkDays (fixed 14-day axis)', () => {
     expect(days[0]).toEqual({ day: '2026-06-23', savedEur: null });
     expect(days[12]).toEqual({ day: '2026-07-05', savedEur: 0.4 });
     expect(days[13]).toEqual({ day: '2026-07-06', savedEur: 1.2 });
+  });
+});
+
+describe('sparkAussage (K1/K8: der Satz zum 14-Tage-Spark)', () => {
+  const tage = (over: Record<string, number | null>) =>
+    sparkDays(
+      Object.entries(over)
+        .filter(([, v]) => v != null)
+        .map(([day, savedEur]) => ({ day, savedEur: savedEur as number })),
+      NOW,
+    );
+
+  it('nennt den heutigen Wert MIT Vergleichsanker (K8)', () => {
+    const a = sparkAussage(tage({ '2026-07-05': 3.4, '2026-07-06': 3.6 }), NOW);
+    expect(a.satz).toBe('Heute +3,60 € — etwa so viel wie gestern (+3,40 €).');
+    expect(a.grund).toBeNull();
+  });
+
+  it('sagt „mehr" bzw. „weniger", sobald die Bewegung beide Schranken reisst', () => {
+    expect(sparkAussage(tage({ '2026-07-05': 1.0, '2026-07-06': 3.6 }), NOW).satz).toContain(
+      'mehr als gestern (+1,00 €)',
+    );
+    expect(sparkAussage(tage({ '2026-07-05': 6.0, '2026-07-06': 1.2 }), NOW).satz).toContain(
+      'weniger als gestern (+6,00 €)',
+    );
+  });
+
+  it('nennt eine winzige Bewegung nicht „mehr" - die absolute Schranke fängt sie', () => {
+    // Rein relativ waeren 0,02 -> 0,05 EUR ein „mehr als doppelt so viel".
+    expect(sparkAussage(tage({ '2026-07-05': 0.02, '2026-07-06': 0.05 }), NOW).satz).toContain(
+      'etwa so viel wie gestern',
+    );
+  });
+
+  it('BENENNT den Verlusttag, statt ihn nur rot zu färben (K6)', () => {
+    const a = sparkAussage(tage({ '2026-07-03': -0.4, '2026-07-05': 3.4, '2026-07-06': 3.6 }), NOW);
+    expect(a.satz).toContain('Ein Verlusttag -0,40 €.');
+    expect(a.verlustTag).toEqual({
+      day: '2026-07-03',
+      eur: -0.4,
+      label: 'Verlusttag -0,40 €',
+    });
+    expect(a.verlustTage).toBe(1);
+  });
+
+  it('nennt bei mehreren Verlusttagen den schlechtesten', () => {
+    const a = sparkAussage(
+      tage({ '2026-07-02': -0.4, '2026-07-03': -1.9, '2026-07-06': 3.6 }),
+      NOW,
+    );
+    expect(a.verlustTage).toBe(2);
+    expect(a.verlustTag?.eur).toBe(-1.9);
+    expect(a.satz).toContain('2 Verlusttage, schlechtester -1,90 €.');
+  });
+
+  it('behauptet ohne heutigen Wert KEINEN Satz, sondern nennt den Grund', () => {
+    const a = sparkAussage(tage({ '2026-07-05': 3.4 }), NOW);
+    expect(a.satz).toBeNull();
+    expect(a.grund).toBe('Für heute liegt noch kein Tageswert vor.');
+    // Der Verlusttag bleibt trotzdem benennbar - er haengt nicht am Satz.
+    expect(sparkAussage(tage({ '2026-07-03': -0.4 }), NOW).verlustTag).not.toBeNull();
+  });
+
+  it('lässt den Vergleich weg, wenn es für gestern keinen Wert gibt', () => {
+    const a = sparkAussage(tage({ '2026-07-06': 3.6 }), NOW);
+    expect(a.satz).toBe('Heute +3,60 €.');
+  });
+
+  it('rundet ein „-0,00 €" niemals als Verlust', () => {
+    const a = sparkAussage(tage({ '2026-07-05': 1, '2026-07-06': -0.001 }), NOW);
+    expect(a.verlustTag).toBeNull();
+    expect(a.satz).toContain('Heute +0,00 €');
   });
 });
 

@@ -2,6 +2,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { BOARD_HINT } from '../livePuls';
 import type { LivePulsRow, TodayLine } from '../livePuls';
 import { NO_DATA } from '../nodata';
+import { MiniShareBar } from './MiniChart';
 
 import './LivePuls.css';
 
@@ -72,9 +73,7 @@ function Row({
         <span className="vp-puls-now">
           <b className="vp-puls-val">{row.value}</b>
           {row.socPct != null && (
-            <span className="vp-puls-socmini" aria-hidden="true">
-              <i style={{ width: `${row.socPct}%` }} />
-            </span>
+            <MiniShareBar className="vp-puls-socmini" size="micro" fraction={row.socPct / 100} />
           )}
           <span className="vp-puls-state">
             {row.arrow && (

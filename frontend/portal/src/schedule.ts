@@ -17,7 +17,7 @@
 import type { Kernaussage } from './chartKopf';
 import { storageMark, type StorageMark } from './chartStyle';
 import type { ChartTheme } from './chartTheme';
-import { eurAmount, NBSP } from './format';
+import { eurAmount, fmtNum, NBSP } from './format';
 
 /** Matches the chart's "hält" deadband (0.05 kW) so tiny solver noise stays idle. */
 export const SLOT_DEADBAND_KW = 0.05;
@@ -1270,6 +1270,58 @@ export function planHourBars(slots: PlanSlotLike[], now: Date): PlanHourBar[] {
       kw: charge / list.length,
     };
   });
+}
+
+/* ---------------------------------------------------------------------------
+ * K1 · Die Maßstabs-Zeile des Cockpit-Ministreifens
+ *
+ * Ein 40-px-Streifen kann seine Leistungen nicht beschriften — genau dort
+ * steckt aber die Zahl, nach der ein Betreiber fragt („wie viel denn?").
+ * Der Satz nennt die Spitzen BEIDER Richtungen und den Formschlüssel, also
+ * das, was die Farbe allein nicht trägt (K5: Farbe nie ohne Wort).
+ * ------------------------------------------------------------------------- */
+
+/** Der Formschlüssel des Streifens — er benennt, was die Form bedeutet. */
+export const STREIFEN_FORM_KEY = 'gefüllt = lädt, Umriss = gibt ab';
+
+/**
+ * „Höchstens 10,9 kW laden · höchstens 7,0 kW abgeben · gefüllt = lädt,
+ * Umriss = gibt ab" — die Maßstabs-Zeile unter dem Ministreifen.
+ *
+ * Genannt wird nur, was der Plan wirklich vorsieht: ein Tag ohne Entladung
+ * bekommt keinen Abgabe-Halbsatz, und ein Tag ohne jede Bewegung `null`
+ * (der Streifen sagt dann nichts, statt „höchstens 0,0 kW" zu behaupten).
+ */
+export function planStreifenSkala(bars: PlanHourBar[]): string | null {
+  let laden = 0;
+  let abgeben = 0;
+  for (const b of bars) {
+    const kw = b.kw ?? 0;
+    if (kw <= SLOT_DEADBAND_KW) continue;
+    if (b.kind === 'entladen') abgeben = Math.max(abgeben, kw);
+    else if (b.kind === 'solarladen' || b.kind === 'netzladen') laden = Math.max(laden, kw);
+  }
+  const teile: string[] = [];
+  if (laden > 0) teile.push(`höchstens ${fmtNum(laden, 'kW')} laden`);
+  if (abgeben > 0) teile.push(`höchstens ${fmtNum(abgeben, 'kW')} abgeben`);
+  if (teile.length === 0) return null;
+  teile[0] = teile[0].charAt(0).toUpperCase() + teile[0].slice(1);
+  return `${teile.join(' · ')} · ${STREIFEN_FORM_KEY}`;
+}
+
+/**
+ * Die Stunden-Ticks des Ministreifens: WO auf der Breite eine Stunde steht.
+ *
+ * Vorher standen 0/6/12/18/24 per `space-between` — die Beschriftung lag
+ * damit NEBEN ihrer Stunde statt darüber (Befund §3b Nr. 15). Der Anteil ist
+ * die linke KANTE der Stundensäule (`hour/24`), also markiert „6" wirklich
+ * den Beginn der 6. Stunde; die 24 ist der rechte Rand des Tages.
+ */
+export function planStreifenTicks(stunden: readonly number[] = [0, 6, 12, 18, 24]): {
+  hour: number;
+  pct: number;
+}[] {
+  return stunden.map((hour) => ({ hour, pct: (hour / 24) * 100 }));
 }
 
 /** Plant kind steering the discharge verb (mirrors api.ts PlantKind). */

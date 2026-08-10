@@ -45,6 +45,7 @@ import {
 } from '../../optimizer';
 import { OptimizerPlanChart } from './OptimizerPlanChart';
 import { WhatIfCompareChart } from './WhatIfCompareChart';
+import { MiniShareBar } from '../../components/MiniChart';
 
 /**
  * Plattform → Optimizer: the admin diagnostic + tune surface (design
@@ -598,14 +599,11 @@ function ExplainSlot({
                         </InfoTip>
                       )}
                     </span>
-                    <span className="wf-bar-wrap">
-                      {r.ctKwh != null && (
-                        <span
-                          className={`wf-bar kind-${r.kind}`}
-                          style={{ width: `${(Math.abs(r.ctKwh) / maxAbs) * 100}%` }}
-                        />
-                      )}
-                    </span>
+                    <MiniShareBar
+                      className={`wf-bar-wrap kind-${r.kind}`}
+                      size="lg"
+                      fraction={r.ctKwh != null ? Math.abs(r.ctKwh) / maxAbs : 0}
+                    />
                     <span className={`wf-val${r.ctKwh != null && r.ctKwh < 0 ? ' neg' : ''}`}>
                       {fmtCt(r.ctKwh, 1)}
                     </span>

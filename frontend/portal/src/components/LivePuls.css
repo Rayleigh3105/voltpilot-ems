@@ -136,21 +136,15 @@
 }
 
 /* K4: der Ladestand ist eine kompakte Anzeige AM Wert, kein Banner mehr. */
+/* Geometrie aus dem `MiniShareBar`-Baustein (kleinste Höhe, vorher 7 px = eine
+   von sieben); hier bleiben Breite, Lage und der Ladestand-Ton. */
 .vp-puls-socmini {
   flex: 0 0 auto;
-  display: inline-block;
   width: 42px;
-  height: 7px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--vp-chart-soc, #9c27b0) 22%, transparent);
-  position: relative;
   align-self: center;
+  background: color-mix(in srgb, var(--vp-chart-soc, #9c27b0) 22%, transparent);
 }
-.vp-puls-socmini > i {
-  position: absolute;
-  inset: 0;
-  right: auto;
-  border-radius: 4px;
+.vp-puls-socmini .vp-share-fill {
   background: var(--vp-chart-soc, #9c27b0);
 }
 

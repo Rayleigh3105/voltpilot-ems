@@ -2267,30 +2267,15 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-size: 0.95rem;
   color: rgba(255, 255, 255, 0.9);
 }
+/* Der 14-Tage-Spark ist seit Stufe 5 der `MiniBarSpark`-Baustein („on-gradient")
+   - Nulllinie, negative Tage und Sichtbarkeits-Striche kommen von dort, und die
+   Höhe ist die eine Spark-Höhe des Systems (vorher 38 px, eine von sieben).
+   Hier bleibt nur, was DIESE Fläche ausmacht. */
 .vp-fleet-spark {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 38px;
   margin-top: var(--vp-space-4);
 }
-.vp-fleet-spark i {
-  flex: 1;
-  min-height: 3px;
-  border-radius: 2px 2px 0 0;
-  background: rgba(255, 255, 255, 0.38);
-}
-.vp-fleet-spark i.hi {
-  background: #fff;
+.vp-fleet-spark .vp-mini-bar.is-on {
   box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
-}
-.vp-fleet-spark-cap {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--vp-space-3);
-  margin-top: var(--vp-space-1);
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.78);
 }
 .vp-fleet-hero-fine {
   display: flex;
@@ -2567,20 +2552,13 @@ button.vp-cl-item.is-off .vp-cl-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Geometrie + Bahn kommen seit Stufe 5 aus dem `MiniShareBar`-Baustein; hier
+   bleibt nur, was DIESE Fläche ausmacht (Abstand + der Batterie-Verlauf). */
 .vp-ftile-soc {
-  display: block;
-  height: 4px;
   margin-top: 3px;
-  border-radius: 2px;
-  background: var(--vp-border, #e9ecef);
-  overflow: hidden;
 }
-.vp-ftile-soc span {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
+.vp-ftile-soc .vp-share-fill {
   background: linear-gradient(90deg, var(--vp-flow-batt-lite, #34c77b), var(--vp-flow-batt));
-  transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 .vp-fleet-site-earn {
@@ -2665,37 +2643,75 @@ button.vp-cl-item.is-off .vp-cl-label {
   color: var(--vp-text-muted, #6c757d);
 }
 
-/* Fahrplan mini preview: 24 hourly bars around a center line - charge grows
-   up (green, cyan when grid-fed), discharge hangs down (red), idle is a thin
-   neutral tick. Colors = the chart tokens, so preview and full chart agree. */
+/* Fahrplan-Ministreifen: 24 Stundenbalken um eine ECHTE Nulllinie. Geometrie,
+   Nulllinie, Sichtbarkeits-Striche und die Vergangenheits-Dämpfung kommen seit
+   Stufe 5 aus dem Mini-Baustein; hier steht nur die FARBSPRACHE DES SPEICHERS.
+
+   ⚠ Der Speicher ist EINE Farbe (K5): Laden ist die GEFÜLLTE Form, Abgeben der
+   UMRISS derselben Farbe - die Richtung tragen zusätzlich die Position (über /
+   unter der Null) und das Wort daneben. Der frühere eigene Entladen-Ton
+   (`--vp-chart-battdischarge`) ist damit hier abgelöst: er war die letzte
+   Fläche, die die Richtung allein über die Farbe trug, und genau deshalb war
+   die Haus-Auflage „Wort + Icon tragen die Identität" hier verletzt.
+   Netzladen behält seinen eigenen Ton - die Unterscheidung Solar↔Netz ist
+   compliance-tragend (EEG). */
 .vp-plan-mini {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 56px;
   margin-top: var(--vp-space-3);
 }
-.vp-plan-mini i {
-  flex: 1 1 0;
-  min-width: 0;
-  border-radius: 2px;
-  align-self: center;
-  height: 4px;
-  background: var(--vp-border, #e9ecef);
-}
-.vp-plan-mini i.ch {
-  align-self: flex-start;
-  background: var(--vp-chart-charge, #2e9e5b);
-}
-.vp-plan-mini i.grid {
-  align-self: flex-start;
+/* Solarladen = die gefüllte Speicher-Farbe (die Vorgabe des Bausteins). */
+.vp-plan-mini .vp-mini-bar.is-netzladen {
   background: var(--vp-chart-gridcharge, #00acc1);
 }
-.vp-plan-mini i.dis {
-  align-self: flex-end;
-  /* Entladen is blue, not red: emptying the battery into an expensive hour is
-     how the plant earns money (audit F5) - the same hue as the chart bars. */
-  background: var(--vp-chart-battdischarge, #2c5282);
+.vp-plan-mini .vp-mini-bar.is-entladen {
+  background: transparent;
+  border: 1.2px solid var(--vp-chart-charge, #2e9e5b);
+  opacity: 0.92;
+}
+/* Eine Stunde ohne Batteriebewegung ist eine gemessene Null, kein Wert -
+   sie liegt neutral auf der Linie. */
+.vp-plan-mini .vp-mini-bar.is-ruhe {
+  background: var(--vp-chart-axisline, #e9ecef);
+  opacity: 1;
+}
+/* Vergangene Stunden bleiben LESBAR gedämpft (der Baustein dämpft auf einen
+   neutralen Ton); ein Umriss würde dabei unsichtbar, also bekommt er Fläche. */
+.vp-plan-mini .vp-mini-bar.is-entladen.is-past {
+  background: var(--vp-chart-axisline, #e9ecef);
+  border-color: transparent;
+}
+
+/* K5: die Richtungs-WÖRTER - ohne sie trüge die Richtung nur Farbe + Lage.
+   Sie stehen auf DER SEITE, die sie meinen: „lädt ↑" über dem Streifen,
+   „gibt ab ↓" darunter (das Zielbild `ministreifen.svg`). */
+.vp-plan-dir {
+  display: block;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--vp-chart-charge, #2e9e5b);
+}
+.vp-plan-dir.is-up {
+  margin-top: var(--vp-space-2, 8px);
+}
+.vp-plan-dir.is-down {
+  margin-top: 2px;
+  margin-bottom: 4px;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* Eine schon vergangene Stunde bleibt LESBAR (der Plan des Vormittags ist
+   Teil der Aussage) - nur ruhig. Bei 0,3 auf einem ohnehin hellen Neutral
+   war der halbe Streifen im Browser praktisch leer. */
+.vp-plan-mini .vp-mini-bar.is-past {
+  opacity: 0.75;
+}
+
+/* K1: die Zahl, die ein 40-px-Balken nicht zeigen kann, plus der Formschlüssel. */
+.vp-plan-scale {
+  margin: 6px 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--vp-text-muted, #6c757d);
 }
 
 /* ============================================================================
@@ -2770,6 +2786,14 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-weight: 700;
   color: var(--vp-ok-ink, #2e7d32);
   font-variant-numeric: tabular-nums;
+}
+/* Größenkodierung (Stufe 5): die Chips trugen ihre Zahl, aber die Reihe war
+   ohne Zahlenlesen ununterscheidbar. EIN Balkensatz über alle Chips = EINE
+   Skala; der Balken selbst kommt aus dem Mini-Baustein. */
+.vp-mstrip-m .vp-mstrip-bar {
+  width: 100%;
+  height: 18px;
+  align-self: stretch;
 }
 .vp-mstrip-m.on {
   background: var(--vp-paleblue-start, #f0f4ff);
@@ -3471,13 +3495,6 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-flow-pv, #f59e0b);
 }
 
-/* Der ruhende Balken einer Stunde ohne Batteriebewegung. */
-.vp-plan-mini i.idle {
-  align-self: center;
-  height: 4px;
-  background: var(--vp-border, #e9ecef);
-}
-
 /* --- Weitere Erzeuger (additional read-only PV sources, multi-source Anlage) --- */
 .vp-tech-sub { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--vp-border, #E6E9F0); }
 .vp-tech-sub-title { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--vp-ink, #1A2332); }
@@ -3864,25 +3881,18 @@ button.vp-tech-card-h.toggle {
   gap: 4px;
   min-width: 0;
 }
+/* Geometrie aus dem `MiniShareBar`-Baustein (grosse Hoehe); hier bleibt die
+   Bahn dieser Flaeche und die Bedeutung der drei Balken-Arten. */
 .vp-optim-waterfall .wf-bar-wrap {
   background: var(--vp-bg-light);
-  border-radius: 6px;
-  height: 18px;
-  overflow: hidden;
 }
-.vp-optim-waterfall .wf-bar {
-  display: block;
-  height: 100%;
-  border-radius: 6px;
-  min-width: 2px;
-}
-.vp-optim-waterfall .wf-bar.kind-gain {
+.vp-optim-waterfall .wf-bar-wrap.kind-gain .vp-share-fill {
   background: var(--vp-chart-charge);
 }
-.vp-optim-waterfall .wf-bar.kind-cost {
+.vp-optim-waterfall .wf-bar-wrap.kind-cost .vp-share-fill {
   background: var(--vp-chart-discharge);
 }
-.vp-optim-waterfall .wf-bar.kind-ref {
+.vp-optim-waterfall .wf-bar-wrap.kind-ref .vp-share-fill {
   background: var(--vp-chart-price);
 }
 .vp-optim-waterfall .wf-val {
@@ -4243,17 +4253,10 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-text-muted);
   font-size: 0.92rem;
 }
+/* Geometrie aus dem `MiniShareBar`-Baustein (mittlere Hoehe - dieselbe wie
+   das Rueckgrat der Edge-Updates, vorher zufaellig gleich, jetzt EINE Regel). */
 .vp-sim-progress-bar {
-  height: 8px;
-  border-radius: 999px;
   background: var(--vp-border);
-  overflow: hidden;
-}
-.vp-sim-progress-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--vp-action);
-  transition: width 0.6s ease;
 }
 .vp-sim-result {
   display: flex;
@@ -5414,14 +5417,9 @@ button.vp-tech-card-h.toggle {
 /* Das Fortschritts-Rückgrat: EIN Balken über die ERREICHBARE Menge. Was nicht
    hineinzählt (offline, ohne Meldung), steht daneben und nie im Nenner. */
 .vp-backbone { margin: var(--vp-space-3, 12px) 0 var(--vp-space-4, 16px); }
-.vp-backbone-bar {
-  display: flex;
-  height: 10px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--vp-bg-light, #f8f9fa);
-}
-.vp-backbone-seg { min-width: 4px; }
+/* Bahn/Radius/Hoehe kommen seit Stufe 5 aus dem `MiniShareBar`-Baustein
+   (mittlere Hoehe; vorher 10 px - eine von vier Admin-Balken-Hoehen). */
+.vp-backbone-bar { background: var(--vp-bg-light, #f8f9fa); }
 .vp-backbone-legend {
   display: flex;
   flex-wrap: wrap;

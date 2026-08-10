@@ -43,6 +43,7 @@ import {
   type VergleichsModus,
 } from '../historieVergleich';
 import { PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
+import { MiniShareBar } from './MiniChart';
 import { MonthStrip } from './MoneyView';
 
 import './Historie.css';
@@ -275,13 +276,12 @@ function AbdeckungZeile({
     <div className={stale ? 'vp-zl-cover vp-zl-cover-stale' : 'vp-zl-cover'} title={view.titel}>
       {view.abText && <span className="vp-zl-ab">{view.abText}</span>}
       {view.balkenPct != null && (
-        <span
+        <MiniShareBar
           className="vp-zl-bar"
-          role="img"
-          aria-label={`Datenabdeckung ${view.balkenPct} Prozent`}
-        >
-          <i style={{ width: `${view.balkenPct}%` }} />
-        </span>
+          size="micro"
+          fraction={view.balkenPct / 100}
+          ariaLabel={`Datenabdeckung ${view.balkenPct} Prozent`}
+        />
       )}
       {view.satz && <span className="vp-zl-sat">{view.satz}</span>}
       {view.luecken && <span className="vp-zl-gap">· {view.luecken}</span>}

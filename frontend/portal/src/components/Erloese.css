@@ -103,19 +103,13 @@
   color: var(--vp-text-muted, #6c757d);
 }
 
+/* Dieselbe Geometrie wie der Cockpit-Zwilling `.vp-stream-bar` (Stufe 5) -
+   vorher 6 px r3 alpha 0,75 gegen 7 px r4 fuer dieselbe Idee. Die frueher
+   halbtransparente Fuellung ist mit weg: sie machte denselben Anteil hier
+   blasser als dort. */
 .vp-ekomp-bar {
-  height: 6px;
-  border-radius: 3px;
   background: var(--vp-border, #e9ecef);
-  overflow: hidden;
   min-width: 0;
-}
-
-.vp-ekomp-bar i {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  opacity: 0.75;
 }
 
 .vp-ekomp-value {

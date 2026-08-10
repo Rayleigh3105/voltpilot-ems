@@ -118,18 +118,13 @@
   color: var(--vp-text-gray, #718096);
 }
 
+/* EINE Geometrie mit dem Zwilling in der Erloese-Welt (`.vp-ekomp-bar`):
+   beide waren fast identisch und doch verschieden (7 px r4 gegen 6 px r3
+   alpha 0,75). Hoehe/Radius kommen jetzt aus dem `MiniShareBar`-Baustein. */
 .vp-stream-bar {
   flex: 1 1 100%;
-  height: 7px;
-  border-radius: 4px;
   background: var(--vp-bg-subtle, #f1f3f5);
-  overflow: hidden;
   min-width: 0;
-}
-.vp-stream-bar > i {
-  display: block;
-  height: 100%;
-  border-radius: 4px;
 }
 
 .vp-stream-note {

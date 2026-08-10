@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { EarningsRange } from '../api';
 import { stripValueLabel, type StripSlot } from '../anlage';
+import { MINI_HEIGHT, miniBars } from '../miniChart';
+import { MiniBarCell } from './MiniChart';
 
 /**
  * Render-only pieces of the period navigation shared across "Meine Anlage",
@@ -101,9 +103,22 @@ export function MonthStrip({
     }
   }, [selectedMonth, slots]);
 
+  // Größenkodierung (Stufe 5): die Chips trugen ihre Zahl, aber die Reihe war
+  // ohne Zahlenlesen ununterscheidbar. EIN Balkensatz über ALLE Chips - also
+  // EINE Skala, sonst wäre der Vergleich zwischen den Monaten wertlos. Die
+  // Ehrlichkeitsregeln kommen aus `miniBars`: ein kleiner Monat sieht klein
+  // aus (kein Mindesthöhen-Trick), ein Monat ohne Wert bekommt gar keinen
+  // Balken, und ein negativer hängt unter der Nulllinie.
+  const balken = showValues
+    ? miniBars(
+        slots.map((s) => ({ key: s.month, value: s.hasData === false ? null : s.value })),
+        { height: MINI_HEIGHT.spark, emphasisKey: selectedMonth },
+      )
+    : null;
+
   return (
     <div className="vp-mstrip" ref={ref} role="tablist" aria-label={ariaLabel}>
-      {slots.map((s) => {
+      {slots.map((s, i) => {
         const leer = s.hasData === false;
         return (
           <button
@@ -122,6 +137,9 @@ export function MonthStrip({
             }
           >
             <span className="mn">{s.label}</span>
+            {balken && (
+              <MiniBarCell className="vp-mstrip-bar" view={balken} index={i} />
+            )}
             {showValues && <span className="mv">{stripValueLabel(s.value)}</span>}
           </button>
         );
