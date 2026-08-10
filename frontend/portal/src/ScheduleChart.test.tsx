@@ -426,13 +426,31 @@ describe('ScheduleChart · die Geometrie der Chart-Sprache', () => {
   it('malt den Speicher in EINER Farbe und trennt Laden/Abgeben über die Form (K5)', () => {
     render(<ScheduleChart plan={plan(tag)} />);
     const t = chartTheme();
-    const item = series('Batterie').itemStyle;
+    const daten = series('Batterie').data;
+    // ⚠ Der Stil hängt am DATENELEMENT, nicht als Callback an der Serie:
+    // ECharts wertet auf `series.itemStyle` nur einen Teil der Felder als
+    // Funktion aus (`borderWidth` NICHT), und die Serie zeichnet dann GAR
+    // NICHTS - im Browser aufgefallen, nicht hier. Der Test prüft deshalb
+    // ausdrücklich die Per-Item-Form.
+    const laden = daten[0];
+    const abgeben = daten[4];
+    expect(laden.value).toBeGreaterThan(0);
+    expect(abgeben.value).toBeLessThan(0);
     // Laden: gefüllt. Abgeben: derselbe Ton als RAND, Füllung = Kartengrund.
-    expect(item.color({ dataIndex: 0, value: 3 })).toBe(t.charge);
-    expect(item.color({ dataIndex: 4, value: -3 })).toBe(t.surface);
-    expect(item.borderColor({ dataIndex: 4, value: -3 })).toBe(t.charge);
-    expect(item.borderWidth({ dataIndex: 4, value: -3 })).toBeGreaterThan(0);
-    expect(item.borderWidth({ dataIndex: 0, value: 3 })).toBe(0);
+    expect(laden.itemStyle.color).toBe(t.charge);
+    expect(laden.itemStyle.borderWidth).toBe(0);
+    expect(abgeben.itemStyle.color).toBe(t.surface);
+    expect(abgeben.itemStyle.borderColor).toBe(t.charge);
+    expect(abgeben.itemStyle.borderWidth).toBeGreaterThan(0);
+    // Und die Serie trägt KEINEN Callback mehr, der sie unsichtbar machen würde.
+    expect(typeof series('Batterie').itemStyle?.borderWidth).not.toBe('function');
+  });
+
+  it('lässt einen fehlenden Wert eine LÜCKE bleiben, nie eine 0 (Ehrlichkeitsregel)', () => {
+    const mitLuecke = [...tag];
+    mitLuecke[2] = slot({ start: mitLuecke[2].start, batteryKw: null });
+    render(<ScheduleChart plan={plan(mitLuecke)} />);
+    expect(series('Batterie').data[2]).toBeNull();
   });
 
   it('schattiert die Vergangenheit nur als Hauch (F5/FILL.past)', () => {
