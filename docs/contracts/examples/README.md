@@ -65,3 +65,12 @@ would make a fixture invalid for the wrong reason):
   swap. Without it the message is an unbounded "apply whenever you see this" -
   and on a link that reconnects, that is the swap loop `failed.json` exists to
   stop. It is therefore required, not optional-with-a-default.
+- `mqtt-control-certification.invalid.model-missing.json` - a register entry
+  without `model`. The register key is deliberately the MODEL, not the register
+  family: a family covers several product lines (`hybrid_3p` means the LV
+  SG04LP3 *and* the HV SG01HP3), while a bench run covers exactly one. An entry
+  that names only brand + family would silently extend one device's proof to
+  untested siblings - the very over-reach the per-model key exists to avoid, and
+  the one the fleet-wide env allowlist still has. Both `valid` fixtures show the
+  two halves that must BOTH hold before anything is granted: a covered model and
+  an explicitly activated plant (`activated`).

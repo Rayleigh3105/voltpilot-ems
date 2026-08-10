@@ -42,6 +42,25 @@ public class ControlStatusRepository {
         public static final Execution NONE = new Execution(null, null, null, null, null);
     }
 
+    /**
+     * WHY the control is (not) released - the platform-register half of the
+     * heartbeat (Plattform-Register, 10.08.2026).
+     *
+     * <p>Every field is nullable, and ⚠ a null {@code verdict} is "the device
+     * said nothing" (an older edge, or one that never saw a cloud document) -
+     * NEVER "not covered". Only this distinction lets a surface tell "a bench
+     * run is needed" from "one click is needed".
+     *
+     * @param source  {@code env|device|platform}: which source granted it.
+     * @param verdict {@code granted|covered_not_activated|not_covered|unknown}.
+     * @param model   the register entry that matched, when one did.
+     * @param reason  the plain-German cause of a refusal.
+     */
+    public record CertState(String source, String verdict, String model, String reason) {
+
+        public static final CertState NONE = new CertState(null, null, null, null);
+    }
+
     private final JdbcTemplate jdbc;
 
     public ControlStatusRepository(JdbcTemplate jdbc) {
@@ -58,15 +77,18 @@ public class ControlStatusRepository {
      */
     public void upsert(UUID deviceId, UUID siteId, Double commandedKw, Double confirmedKw,
             boolean allMatch, boolean controlEnabled, boolean certified,
-            String mismatchRoles, Instant slotStart, Instant checkedAt, Execution execution) {
+            String mismatchRoles, Instant slotStart, Instant checkedAt, Execution execution,
+            CertState cert) {
         Execution ex = execution == null ? Execution.NONE : execution;
+        CertState ct = cert == null ? CertState.NONE : cert;
         jdbc.update(
                 "INSERT INTO device_control_status (device_id, tenant_id, site_id, commanded_kw, "
                         + "confirmed_kw, all_match, control_enabled, certified, mismatch_roles, "
                         + "slot_start, checked_at, control_source, execution_mode, execution_direction, "
-                        + "execution_planned_kw, execution_target_kw, updated_at) "
+                        + "execution_planned_kw, execution_target_kw, cert_source, platform_cert_verdict, "
+                        + "platform_cert_model, platform_cert_reason, updated_at) "
                         + "VALUES (?, NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        + "?, ?, ?, ?, ?, now()) "
+                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, now()) "
                         + "ON CONFLICT (device_id) DO UPDATE SET "
                         + "site_id = EXCLUDED.site_id, commanded_kw = EXCLUDED.commanded_kw, "
                         + "confirmed_kw = EXCLUDED.confirmed_kw, all_match = EXCLUDED.all_match, "
@@ -76,10 +98,15 @@ public class ControlStatusRepository {
                         + "execution_mode = EXCLUDED.execution_mode, "
                         + "execution_direction = EXCLUDED.execution_direction, "
                         + "execution_planned_kw = EXCLUDED.execution_planned_kw, "
-                        + "execution_target_kw = EXCLUDED.execution_target_kw, updated_at = now()",
+                        + "execution_target_kw = EXCLUDED.execution_target_kw, "
+                        + "cert_source = EXCLUDED.cert_source, "
+                        + "platform_cert_verdict = EXCLUDED.platform_cert_verdict, "
+                        + "platform_cert_model = EXCLUDED.platform_cert_model, "
+                        + "platform_cert_reason = EXCLUDED.platform_cert_reason, updated_at = now()",
                 deviceId, siteId, commandedKw, confirmedKw, allMatch, controlEnabled, certified,
                 mismatchRoles, slotStart == null ? null : Timestamp.from(slotStart), Timestamp.from(checkedAt),
-                ex.source(), ex.mode(), ex.direction(), ex.plannedKw(), ex.targetKw());
+                ex.source(), ex.mode(), ex.direction(), ex.plannedKw(), ex.targetKw(),
+                ct.source(), ct.verdict(), ct.model(), ct.reason());
     }
 
     /** The newest control confirmation for a site (across its devices), or empty. */
@@ -87,7 +114,8 @@ public class ControlStatusRepository {
         return jdbc.query(
                 "SELECT device_id, commanded_kw, confirmed_kw, all_match, control_enabled, certified, "
                         + "mismatch_roles, slot_start, checked_at, control_source, execution_mode, "
-                        + "execution_direction, execution_planned_kw, execution_target_kw "
+                        + "execution_direction, execution_planned_kw, execution_target_kw, cert_source, "
+                        + "platform_cert_verdict, platform_cert_model, platform_cert_reason "
                         + "FROM device_control_status WHERE site_id = ? ORDER BY checked_at DESC LIMIT 1",
                 (rs, i) -> new ControlStatusDto(
                         rs.getObject("device_id", UUID.class),
@@ -103,7 +131,11 @@ public class ControlStatusRepository {
                         rs.getString("execution_mode"),
                         rs.getString("execution_direction"),
                         (Double) rs.getObject("execution_planned_kw"),
-                        (Double) rs.getObject("execution_target_kw")),
+                        (Double) rs.getObject("execution_target_kw"),
+                        rs.getString("cert_source"),
+                        rs.getString("platform_cert_verdict"),
+                        rs.getString("platform_cert_model"),
+                        rs.getString("platform_cert_reason")),
                 siteId).stream().findFirst();
     }
 }

@@ -172,7 +172,8 @@ public class AdminFleetRepository {
                 "SELECT DISTINCT ON (site_id) site_id, device_id, commanded_kw, confirmed_kw, "
                         + "all_match, control_enabled, certified, mismatch_roles, slot_start, "
                         + "checked_at, control_source, execution_mode, execution_direction, "
-                        + "execution_planned_kw, execution_target_kw "
+                        + "execution_planned_kw, execution_target_kw, cert_source, platform_cert_verdict, "
+                        + "platform_cert_model, platform_cert_reason "
                         + "FROM device_control_status ORDER BY site_id, checked_at DESC",
                 rs -> {
                     Timestamp slotStart = rs.getTimestamp("slot_start");
@@ -190,7 +191,11 @@ public class AdminFleetRepository {
                             rs.getString("execution_mode"),
                             rs.getString("execution_direction"),
                             (Double) rs.getObject("execution_planned_kw"),
-                            (Double) rs.getObject("execution_target_kw")));
+                            (Double) rs.getObject("execution_target_kw"),
+                            rs.getString("cert_source"),
+                            rs.getString("platform_cert_verdict"),
+                            rs.getString("platform_cert_model"),
+                            rs.getString("platform_cert_reason")));
                 });
         return out;
     }

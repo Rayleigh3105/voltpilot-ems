@@ -42,10 +42,35 @@ import java.util.UUID;
  * <p>All five are null for an older edge (and the target also when the device
  * could not measure it) - consumers then keep their generic wording and claim
  * NO direction, never a guessed one.
+ *
+ * <p><b>The certification fields (Plattform-Register, 10.08.2026) say WHY the
+ * control is not released - the question "Steuerung: wird vorbereitet" used to
+ * swallow.</b>
+ *
+ * <ul>
+ *   <li>{@code certSource} - WHICH source granted it: {@code env} (the
+ *       fleet-wide allowlist), {@code device} (a First-Light grant on that box)
+ *       or {@code platform} (the model register).
+ *   <li>{@code platformCertVerdict} - what the register says about THIS
+ *       device's selected model: {@code granted} |
+ *       {@code covered_not_activated} (the model is certified, one click is
+ *       missing) | {@code not_covered} (a bench run is genuinely needed) |
+ *       {@code unknown}.
+ *   <li>{@code platformCertModel} - the register entry that matched, so a
+ *       surface can name it.
+ *   <li>{@code platformCertReason} - the plain-German cause where a
+ *       covered-looking model still gets nothing.
+ * </ul>
+ *
+ * <p>All four are null for an older edge. ⚠ A null verdict is "we do not know",
+ * NEVER "not covered": those are different sentences, and a consumer that
+ * collapses them tells a customer to book a bench run they do not need.
  */
 public record ControlStatusDto(UUID deviceId, Double commandedKw, Double confirmedKw,
         boolean allMatch, boolean controlEnabled, boolean certified,
         String mismatchRoles, Instant slotStart, Instant checkedAt,
         String controlSource, String executionMode, String executionDirection,
-        Double executionPlannedKw, Double executionTargetKw) {
+        Double executionPlannedKw, Double executionTargetKw,
+        String certSource, String platformCertVerdict, String platformCertModel,
+        String platformCertReason) {
 }

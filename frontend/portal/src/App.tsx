@@ -94,6 +94,11 @@ const FlowsPage = lazy(() =>
 const GeraetetypenPage = lazy(() =>
   import('./pages/admin/GeraetetypenPage').then((m) => ({ default: m.GeraetetypenPage })),
 );
+const SteuerungsFreigabePage = lazy(() =>
+  import('./pages/admin/SteuerungsFreigabePage').then((m) => ({
+    default: m.SteuerungsFreigabePage,
+  })),
+);
 
 export default function App({
   initialAuth,
@@ -941,6 +946,7 @@ function UnifiedPortal() {
           {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage onNavigate={navigate} />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'geraetetypen' && isAdmin && <GeraetetypenPage />}
+          {page === 'steuerungs-freigabe' && isAdmin && <SteuerungsFreigabePage />}
           {page === 'flows' && isAdmin && <FlowsPage tenants={tenants} />}
           </LazyBoundary>
         </>

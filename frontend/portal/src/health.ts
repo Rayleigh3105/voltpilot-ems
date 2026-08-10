@@ -5,6 +5,7 @@
  * plus a state (ok/warn/off) and a short detail; the component only renders it.
  * No React, no internal vocabulary. Unit-tested in health.test.ts.
  */
+import type { PlatformCertVerdict } from './api';
 import type { ControlState } from './control';
 
 export type HealthState = 'ok' | 'warn' | 'off';
@@ -29,6 +30,13 @@ export interface HealthInput {
    * control signal exists (the item is then omitted).
    */
   controlState: ControlState | null;
+  /**
+   * WARUM die Steuerung aussteht, in einem Wort (Plattform-Register): das
+   * Urteil des Modell-Registers. Absent/`null`/`unknown` = keine Aussage, die
+   * Zeile bleibt beim allgemeinen „noch nicht freigegeben" - „unbekannt" darf
+   * nie wie „Prüfstand nötig" klingen.
+   */
+  platformCertVerdict?: PlatformCertVerdict | null;
   /** A battery asset exists but has no controlling device (silent failure). */
   batteryWithoutDevice: boolean;
   /** A battery is linked to a controlling device (the plan reaches it). */
@@ -74,7 +82,7 @@ export function healthChecklist(input: HealthInput): HealthItem[] {
 
   // 3 · Steuerung (only when a control signal exists).
   if (input.controlState) {
-    items.push(controlItem(input.controlState));
+    items.push(controlItem(input.controlState, pendingDetail(input.platformCertVerdict)));
   }
 
   // 4 · Speicher verknüpft (only when a battery is present at all).
@@ -223,6 +231,8 @@ export interface HealthBadgeInput {
   plan?: { hasPlanToday: boolean; hasAnyPlan: boolean } | null;
   /** The control-strip state; absent/null = no control finding. */
   controlState?: ControlState | null;
+  /** Das Register-Urteil zum Modell; absent = keine Aussage. */
+  platformCertVerdict?: PlatformCertVerdict | null;
   /** Battery link state; absent = unknown, no Speicher finding. */
   battery?: { withoutDevice: boolean; linked: boolean } | null;
   /**
@@ -288,6 +298,7 @@ export function healthBadge(input?: HealthBadgeInput | null): HealthBadge {
     hasPlanToday: facts.plan?.hasPlanToday ?? false,
     hasAnyPlan: facts.plan?.hasAnyPlan ?? false,
     controlState: facts.controlState ?? null,
+    platformCertVerdict: facts.platformCertVerdict ?? null,
     batteryWithoutDevice: facts.battery?.withoutDevice ?? false,
     batteryLinked: facts.battery?.linked ?? false,
   }).filter((i) => {
@@ -316,7 +327,28 @@ export function healthBadge(input?: HealthBadgeInput | null): HealthBadge {
   return { state, label: BADGE_LABELS[state], detail: worst?.text ?? null, findings };
 }
 
-function controlItem(state: ControlState): HealthItem {
+/**
+ * Die Kurzform des Grundes fürs Abzeichen. Ohne Angabe (ältere Edge-Version,
+ * `unknown`) bleibt es beim allgemeinen Wortlaut - nie eine Behauptung.
+ */
+function pendingDetail(verdict?: PlatformCertVerdict | null): string {
+  switch (verdict) {
+    case 'covered_not_activated':
+      return 'Aktivierung ausstehend';
+    case 'not_covered':
+      return 'Modell noch nicht freigegeben';
+    default:
+      return 'noch nicht freigegeben';
+  }
+}
+
+/**
+ * WARUM die Steuerung noch aussteht, in der Kurzform des Zustands-Abzeichens.
+ * Die Sätze leben in `control.ts` (der Strip zeigt sie aus); hier steht nur das
+ * eine Wort, das den Unterschied macht - „Aktivierung ausstehend" ist eine
+ * andere Aufgabe als „Prüfstand nötig", und ohne Angabe wird nichts behauptet.
+ */
+function controlItem(state: ControlState, pendingDetail = 'noch nicht freigegeben'): HealthItem {
   switch (state) {
     case 'healthy':
       return { key: 'control', label: 'Steuerung ok', state: 'ok', detail: 'Sollwert bestätigt' };
@@ -329,6 +361,6 @@ function controlItem(state: ControlState): HealthItem {
     case 'off':
       return { key: 'control', label: 'Steuerung', state: 'off', detail: 'ausgeschaltet' };
     default: // pending
-      return { key: 'control', label: 'Steuerung', state: 'off', detail: 'noch nicht freigegeben' };
+      return { key: 'control', label: 'Steuerung', state: 'off', detail: pendingDetail };
   }
 }

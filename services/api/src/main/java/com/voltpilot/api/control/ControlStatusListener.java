@@ -56,6 +56,11 @@ public class ControlStatusListener {
     private static final Set<String> EXECUTION_MODES = Set.of("plan", "follow", "trim", "fallback");
     /** The two follow directions - only meaningful for mode {@code follow}. */
     private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
+    /** The three certification sources the core may report - anything else is ignored. */
+    private static final Set<String> CERT_SOURCES = Set.of("env", "device", "platform");
+    /** The four platform-register verdicts - anything else is ignored. */
+    private static final Set<String> CERT_VERDICTS =
+            Set.of("granted", "covered_not_activated", "not_covered", "unknown");
 
     private final String brokerUrl;
     private final String username;
@@ -187,7 +192,7 @@ public class ControlStatusListener {
                     control.path("certified").asBoolean(false),
                     joinRoles(control.get("mismatch_roles")),
                     optInstant(control, "slot_start"), checkedAt(control),
-                    execution(json, control));
+                    execution(json, control), certState(control));
         } finally {
             TenantContext.clear();
         }
@@ -231,6 +236,40 @@ public class ControlStatusListener {
                 : "trim".equals(mode) ? optDouble(ex, "surplus_kw") : optDouble(ex, "deficit_kw");
         return new ControlStatusRepository.Execution(
                 source, mode, direction, optDouble(ex, "planned_kw"), target);
+    }
+
+    /**
+     * WHY the control is (not) released (Plattform-Register, 10.08.2026): which
+     * source granted it, and what the model register says about this device.
+     *
+     * <p>Strict on purpose, like {@link #execution}: an unknown source or
+     * verdict is DROPPED rather than stored, because every consumer turns these
+     * into a sentence about what a customer must do next, and a word we do not
+     * understand must not become a claim. An older edge sends no fields at all,
+     * and null then honestly means "we do not know" - never "not covered".
+     */
+    private static ControlStatusRepository.CertState certState(JsonNode control) {
+        String source = optText(control, "cert_source");
+        if (source != null && !CERT_SOURCES.contains(source)) {
+            log.warn("unknown control certification source '{}' ignored", source);
+            source = null;
+        }
+        JsonNode p = control.get("platform_cert");
+        if (p == null || !p.isObject()) {
+            return new ControlStatusRepository.CertState(source, null, null, null);
+        }
+        String verdict = optText(p, "verdict");
+        if (verdict != null && !CERT_VERDICTS.contains(verdict)) {
+            log.warn("unknown platform certification verdict '{}' ignored", verdict);
+            verdict = null;
+        }
+        // Model and reason DESCRIBE a verdict; without one they would describe
+        // nothing, so they are dropped with it.
+        if (verdict == null) {
+            return new ControlStatusRepository.CertState(source, null, null, null);
+        }
+        return new ControlStatusRepository.CertState(source, verdict,
+                optText(p, "model"), optText(p, "reason"));
     }
 
     /** A non-blank text field, or null. */

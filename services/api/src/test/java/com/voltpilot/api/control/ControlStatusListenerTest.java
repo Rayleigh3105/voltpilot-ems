@@ -62,7 +62,7 @@ class ControlStatusListenerTest {
         ArgumentCaptor<ControlStatusRepository.Execution> captor =
                 ArgumentCaptor.forClass(ControlStatusRepository.Execution.class);
         verify(store).upsert(eq(DEVICE), eq(SITE), any(), any(), anyBoolean(), anyBoolean(), anyBoolean(),
-                any(), any(), any(), captor.capture());
+                any(), any(), any(), captor.capture(), any());
         return captor.getValue();
     }
 
@@ -193,6 +193,79 @@ class ControlStatusListenerTest {
         listener.handle(TOPIC, payload.getBytes(StandardCharsets.UTF_8));
 
         verify(store, never()).upsert(any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyBoolean(),
-                any(), any(), any(), any());
+                any(), any(), any(), any(), any());
+    }
+
+    // ── Die Steuerungs-Zertifizierung (Plattform-Register, 10.08.2026) ────
+
+    private ControlStatusRepository.CertState ingestCert(String controlBlock) {
+        String payload = "{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE + "\","
+                + "\"device_id\":\"" + DEVICE + "\",\"control\":" + controlBlock + "}";
+        listener.handle(TOPIC, payload.getBytes(StandardCharsets.UTF_8));
+        ArgumentCaptor<ControlStatusRepository.CertState> captor =
+                ArgumentCaptor.forClass(ControlStatusRepository.CertState.class);
+        verify(store).upsert(eq(DEVICE), eq(SITE), any(), any(), anyBoolean(), anyBoolean(), anyBoolean(),
+                any(), any(), any(), any(), captor.capture());
+        return captor.getValue();
+    }
+
+    /** The whole point: the portal must be able to tell the three cases apart. */
+    @Test
+    void theCertificationSourceAndTheRegisterVerdictAreIngested() {
+        var c = ingestCert("{" + BASE + ",\"cert_source\":\"platform\","
+                + "\"platform_cert\":{\"verdict\":\"granted\",\"model\":\"sun-30k-sg01hp3\"}}");
+        assertThat(c.source()).isEqualTo("platform");
+        assertThat(c.verdict()).isEqualTo("granted");
+        assertThat(c.model()).isEqualTo("sun-30k-sg01hp3");
+    }
+
+    /**
+     * „Modell zertifiziert - Aktivierung ausstehend" is a DIFFERENT sentence
+     * from „Prüfstand nötig", and the model is named so a surface can say
+     * WHICH one is waiting.
+     */
+    @Test
+    void aCoveredButUnarmedModelIsReportedAsSuchAndNamed() {
+        var c = ingestCert("{" + BASE + ",\"platform_cert\":"
+                + "{\"verdict\":\"covered_not_activated\",\"model\":\"sun-30k-sg01hp3\"}}");
+        assertThat(c.verdict()).isEqualTo("covered_not_activated");
+        assertThat(c.model()).isEqualTo("sun-30k-sg01hp3");
+        assertThat(c.source()).isNull();
+    }
+
+    /**
+     * ⚠ An older edge says nothing, and null must stay "we do not know" - the
+     * one distinction that stops a customer being sent to a bench they do not
+     * need.
+     */
+    @Test
+    void anOlderEdgeLeavesEveryCertificationFieldNull() {
+        var c = ingestCert("{" + BASE + "}");
+        assertThat(c.source()).isNull();
+        assertThat(c.verdict()).isNull();
+        assertThat(c.model()).isNull();
+        assertThat(c.reason()).isNull();
+    }
+
+    /** A word we do not understand must never become a claim. */
+    @Test
+    void anUnknownSourceOrVerdictIsDroppedNotStored() {
+        var c = ingestCert("{" + BASE + ",\"cert_source\":\"telepathie\","
+                + "\"platform_cert\":{\"verdict\":\"vielleicht\",\"model\":\"m\","
+                + "\"reason\":\"weil\"}}");
+        assertThat(c.source()).isNull();
+        assertThat(c.verdict()).isNull();
+        // Model and reason DESCRIBE a verdict - without one they describe nothing.
+        assertThat(c.model()).isNull();
+        assertThat(c.reason()).isNull();
+    }
+
+    /** A refusal keeps its plain-German cause. */
+    @Test
+    void aRefusalReasonSurvivesTheIngest() {
+        var c = ingestCert("{" + BASE + ",\"platform_cert\":{\"verdict\":\"not_covered\","
+                + "\"reason\":\"Die Freigabe des Modells gilt fuer ein anderes Vorzeichen.\"}}");
+        assertThat(c.verdict()).isEqualTo("not_covered");
+        assertThat(c.reason()).contains("Vorzeichen");
     }
 }

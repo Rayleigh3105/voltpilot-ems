@@ -32,6 +32,7 @@ export type PageId =
   | 'edge-updates'
   | 'optimizer'
   | 'geraetetypen'
+  | 'steuerungs-freigabe'
   | 'flows';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
@@ -176,6 +177,9 @@ export const PLATFORM_PAGES: PageDef[] = [
   // Inkrement 5 / D11: die read-only Freigabe-Liste der steuerbaren
   // Gerätetypen - Wahrheitsquelle ist der entitytypes-Katalog (kein Schalter).
   { id: 'geraetetypen', label: 'Gerätetypen', icon: 'cpu', adminOnly: true },
+  // Das PLATTFORM-Gedaechtnis der Steuerungs-Freigabe: ein Modell wird EINMAL
+  // am Pruefstand freigegeben, jede Anlage wird einzeln scharfgeschaltet.
+  { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'settings', adminOnly: true },
   { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
 ];
 
