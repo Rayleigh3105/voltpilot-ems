@@ -565,6 +565,75 @@ Gerätetyp, kein Anlagen-Schalter; Runbook `docs/verbrauchssteuerung-betrieb.md`
 Bis dieser PR gemerged ist, bleibt der Typ unzertifiziert — der Treiber-Code ändert
 sich dafür nicht.
 
+## Shelly (Relais/Heizstab) — ZERTIFIZIERT in Software, nur kurze Geräte-Kontrolle
+
+Der zweite reale Verbraucher-Steuerpfad nach go-e (D10; Pilot: Heizstab über
+Shelly). Wie bei go-e braucht die **Shelly-Relais-Steuerung keine
+Prüfstand-Freigabe pro Modell**: die lokalen HTTP-APIs beider Generationen sind
+dokumentiert und deterministisch (Gen1 REST `/relay/N?turn=`, Gen2+ RPC
+`Switch.Set`/`Switch.GetStatus`; Produktiv-Integrationen: Home Assistant Core,
+evcc), es gibt keine geratenen Register, und die komplette
+Schreib-→Rücklese-Schleife ist in Software beweisbar
+(`edge-app/core/internal/shelly` gegen `httptest`-Stubs BEIDER Generationen).
+Ein falscher Relais-Befehl schaltet eine ohmsche Last — kein
+Batterie-Gesundheitsrisiko. Deshalb ist `shelly_http` treiberseitig
+zertifiziert und darf hinter den beiden Not-Aus-Schaltern
+(`VP_CONTROL_ENABLED` UND `VP_CONSUMER_CONTROL_ENABLED`, beide Vorgabe AUS)
+live schreiben. Betreiber-Voraussetzungen + Config: [`SHELLY.md`](SHELLY.md).
+
+Der Verbraucher ist ein **Consumer-Entity**: der E2-Arbiter klammert den Wunsch
+(Verbraucher-Band + **Zyklen-Guard** — für einen Heizstab DIE zentrale
+Schutzschicht: Mindestlauf/-pause, Starts/Tag), der Consumer-Control-Loop
+(`agent/shelly_control.go`) schaltet das Relais im erkannten Dialekt und liest
+den Schaltzustand (+ Leistung bei messenden Modellen) zurück. **Jeder
+EIN-Befehl trägt den geräteeigenen Abfall-Timer** (Gen2 `toggle_after`, Gen1
+`timer`; Vorgabe 180 s, laufend neu gestempelt): hört die Box auf zu schreiben
+— Edge tot, WLAN weg — fällt das Relais von selbst ab. Aufhören zu schreiben
+IST der Failsafe (die WMaxLimPct_RvrtTms-Disziplin); zusätzlich schreibt der
+Treiber bei Staleness aktiv AUS (§4.2 `off` — nie das go-e-Neutral, ein Relais
+hat keine eigene Logik, in die man es entlassen könnte).
+
+**Selbst-Service-Vorstufe (D11, OHNE Termin):** „Verbindung testen" auf `:8484`
+erkennt Generation + Messfähigkeit (die D3-Konsequenz steht direkt im
+Assistenten: „misst Leistung" = Stufe 2 vs „ohne Messung — Energie wird
+angenommen" = Stufe 3) und fährt den **Schalttest NUR, wenn das Relais gerade
+AUS ist** (wertgleicher Aus-Befehl + Rücklesung — ein laufender Heizvorgang
+wird NIE unterbrochen; bei EIN: nur Lesen + ehrlicher Hinweis).
+
+**Kurze Geräte-Kontrolle (VERIFY-on-device, am ersten echten Heizstab):**
+1. **Relais schaltet real.** Ein-Befehl → hörbares/messbares Schalten, Last
+   zieht Strom; Aus-Befehl → Last fällt ab. Rücklesung echot (`all_match`) —
+   ein Register-Echo allein wäre kein Beweis, darum zusätzlich die Last
+   beobachten.
+2. **Abfall-Timer-Treue (der Kern der Session).** Bei laufendem Relais den Core
+   stoppen (oder WLAN trennen): das Relais muss binnen ≤ 180 s (Vorgabe) von
+   selbst abfallen. Firmware-Abweichungen beim Timer sind genau das
+   Hardware-Verhalten, das Software nicht beweisen kann.
+3. **Messwert-Plausibilität (nur 1PM/Plug-S-Klasse).** `apower`/`meters.power`
+   gegen Zangenamperemeter/Typenschild (Heizstab ≈ Nennleistung); ein
+   Aus-Relais muss ehrlich 0,0 W melden. Die gemessene Leistung speist
+   Erfüllungs-Ledger (Stufe 2) und Portal — ein grob falscher Wert wäre dort
+   sichtbar.
+4. **Nicht-messende Klasse ehrlich.** Ein Shelly OHNE Messung darf NIRGENDS
+   einen Leistungswert zeigen (Quellen-Zeile „Relais Ein/Aus", Ledger
+   „angenommen (Nennleistung × Zeit)").
+5. **Zyklen-Guard real.** Schnelles Aus→Ein: die Mindestpause hält („wartet -
+   Mindestpause" bis ins Portal), das Relais bleibt aus.
+6. **WLAN-Ausfall-Verhalten.** Während eines Laufs WLAN trennen: Timer-Abfall
+   (Punkt 2); nach Wiederverbindung übernimmt der nächste Re-Assert (≤ 60 s)
+   den aktuellen Sollzustand.
+7. **Passwortschutz.** Ein passwortgeschütztes Shelly wird ehrlich abgelehnt
+   (kein halb funktionierender Treiber) — prüfen, dass die Meldung erscheint.
+8. **Not-Aus.** `VP_CONTROL_ENABLED=false` bzw. `VP_CONSUMER_CONTROL_ENABLED=false`
+   → **null HTTP** an das Relais.
+
+**Abschluss der Session (D11, definiert):** Das Ergebnis ist der **Katalog-Flip
+als eigener Mini-PR** — `certification_status` der Typen `heating-rod` (und
+ggf. `generic-load`) in
+`services/api/src/main/resources/entitytypes/catalog.json` von
+`simulator_only` auf den zertifizierten Stand, plattformweit. Bis dahin bleiben
+die Typen unzertifiziert — der Treiber-Code ändert sich dafür nicht.
+
 ## Checkliste Kostal PLENTICORE (externe Batteriesteuerung, Tier 2)
 
 Der PLENTICORE ist der **einfachste** Steuerfall der Flotte: ein offiziell

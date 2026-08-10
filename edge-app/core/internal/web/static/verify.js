@@ -103,13 +103,33 @@
   function controlCheckLine(check) {
     if (!check) return "";
     if (check.ok) {
+      // A shelly check (gen present) carries its own honest sentence incl.
+      // the detected device; the go-e wording stays verbatim.
+      if (check.gen) return check.message || "Schalt-Schreibtest bestätigt.";
       var line = "Steuer-Schreibtest bestätigt: die Wallbox hat den Schreibbefehl übernommen und zurückgemeldet.";
       if (typeof check.phases_in_use === "number" && check.phases_in_use > 0) {
         line += " Lädt aktuell " + (check.phases_in_use === 1 ? "1-phasig" : check.phases_in_use + "-phasig") + ".";
       }
       return line;
     }
+    if (check.skipped) {
+      // Deliberately not run (shelly: relay on, a running heat cycle is never
+      // interrupted) - an honest state, not a failure.
+      return check.message || "Der Schalttest wurde übersprungen.";
+    }
     return check.message || "Der Steuer-Schreibtest war nicht erfolgreich.";
+  }
+
+  // shellyCapabilityLine names what the detected device CAN (D3): with power
+  // metering the fulfilment proof is Stufe 2 (real measurements); without it
+  // the runtime is confirmed via the relay and the energy is honestly labeled
+  // "angenommen" (Nennleistung x Zeit) - the wizard says so BEFORE anything
+  // is saved.
+  function shellyCapabilityLine(check) {
+    if (!check || typeof check.metering !== "boolean") return "";
+    return check.metering
+      ? "Dieses Shelly misst die Leistung: Laufzeit und Energie werden aus echten Messwerten bestätigt."
+      : "Dieses Shelly misst keine Leistung: die Laufzeit wird über das Relais bestätigt, die Energie wird als angenommen (Nennleistung × Zeit) gekennzeichnet.";
   }
 
   function renderResult(panel, res) {
@@ -119,6 +139,8 @@
       // (confirmed or the named failure) - never silently dropped.
       var line = controlCheckLine(res.control_check);
       if (line) appendPanelNote(panel, line);
+      var cap = shellyCapabilityLine(res.control_check);
+      if (cap) appendPanelNote(panel, cap);
       return;
     }
     var code = (res && res.error_code) || "timeout";

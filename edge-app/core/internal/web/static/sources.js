@@ -15,10 +15,11 @@
   var ROLE_ERZEUGER = "pv-generation";
   var ROLE_NETZ = "grid-meter";
   var ROLE_CONSUMER = "consumer";
-  // Communication of a consumer-only driver (a go-e wallbox). Used to filter the
-  // brand list per role: a consumer picks a consumer brand, an Erzeuger/Netz
-  // picks a generation/meter brand - never mixed.
-  var CONSUMER_COMM = "goe_http_api";
+  // Communications of the consumer-only drivers (go-e wallbox, Shelly relay).
+  // Used to filter the brand list per role: a consumer picks a consumer brand,
+  // an Erzeuger/Netz picks a generation/meter brand - never mixed.
+  var CONSUMER_COMMS = ["goe_http_api", "shelly_http"];
+  function isConsumerComm(c) { return CONSUMER_COMMS.indexOf(c) !== -1; }
 
   function $(id) { return document.getElementById(id); }
   var el = window.VP.el;
@@ -48,6 +49,7 @@
   function commLabel(c) {
     if (c === "solarman_v5") return "Solarman-V5 (WiFi-Datenlogger)";
     if (c === "goe_http_api") return "go-e HTTP-API";
+    if (c === "shelly_http") return "Shelly HTTP-API";
     if (c === "fronius_solar_api") return "Fronius Solar-API";
     if (c === "fronius_sunspec") return "SunSpec (Modbus TCP)";
     return "Modbus TCP";
@@ -73,6 +75,11 @@
     }
     if (typeof lr.load_kw === "number" && isFinite(lr.load_kw)) {
       parts.push("Verbrauch " + window.VP.fmtVal(lr.load_kw, "kW"));
+    }
+    if (typeof lr.relay_on === "boolean") {
+      // A relay consumer (shelly): the switch state is a real fact even on
+      // the non-metering class, which never claims a load value.
+      parts.push("Relais " + (lr.relay_on ? "Ein" : "Aus"));
     }
     return parts;
   }
@@ -251,8 +258,8 @@
   // never offered for a wallbox, nor go-e for a PV source.
   function brandsForRole(role) {
     return (catalog.brands || []).filter(function (b) {
-      var isConsumerBrand = b.communication === CONSUMER_COMM;
-      return role === ROLE_CONSUMER ? isConsumerBrand : !isConsumerBrand;
+      var consumerBrand = isConsumerComm(b.communication);
+      return role === ROLE_CONSUMER ? consumerBrand : !consumerBrand;
     });
   }
 
@@ -418,11 +425,14 @@
     return !!(b && b.communication === "fronius_sunspec");
   }
 
-  // isGoeBrand: the go-e wallbox gets the D11 control short-test on its
-  // "Verbindung testen" (write path proven without disturbing a charge).
-  function isGoeBrand(brandId) {
+  // isConsumerBrand: the consumer drivers (go-e wallbox, Shelly relay) get the
+  // D11 control short-test on their "Verbindung testen" - each proves its
+  // write path without disturbing a running charge/heat cycle (go-e: a
+  // value-identical amp re-write; shelly: an off-write only while the relay
+  // is already off).
+  function isConsumerBrand(brandId) {
     var b = brandById(brandId);
-    return !!(b && b.communication === CONSUMER_COMM);
+    return !!(b && isConsumerComm(b.communication));
   }
 
   /* ---- multi-inverter auto-detection (Fronius Datamanager) ----
@@ -564,7 +574,7 @@
       // D11: a go-e wallbox test ALSO asks for the non-disruptive control
       // short-test (the core re-writes the charger's current amp value and
       // reads it back - proves the write path without touching a charge).
-      if (isGoeBrand(payload.brand)) payload.control_test = true;
+      if (isConsumerBrand(payload.brand)) payload.control_test = true;
       window.VP.testConnection({
         payload: payload,
         panel: $("srcVerify"),

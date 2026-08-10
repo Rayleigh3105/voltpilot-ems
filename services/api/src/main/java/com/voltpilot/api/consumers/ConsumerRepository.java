@@ -105,16 +105,19 @@ public class ConsumerRepository {
             BigDecimal ratedPowerKw, BigDecimal minPowerKw, String levelsJson,
             BigDecimal resolutionKw, String powerRangesJson, String storageRelation,
             String defaultGridEnergyPolicy, boolean allowStorageDischarge, String failsafe,
-            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay) {
+            Integer minOnSeconds, Integer minOffSeconds, Integer maxStartsPerDay,
+            String confirmationChannel) {
         jdbc.update(
                 "INSERT INTO consumer_profile (entity_id, tenant_id, site_id, control_kind, "
                         + "rated_power_kw, min_power_kw, levels_kw, resolution_kw, power_ranges_kw, "
                         + "storage_relation, default_grid_energy_policy, allow_storage_discharge, "
-                        + "failsafe, min_on_seconds, min_off_seconds, max_starts_per_day) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)",
+                        + "failsafe, min_on_seconds, min_off_seconds, max_starts_per_day, "
+                        + "confirmation_channel) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?)",
                 entityId, tenantId, siteId, controlKind, ratedPowerKw, minPowerKw, levelsJson,
                 resolutionKw, powerRangesJson, storageRelation, defaultGridEnergyPolicy,
-                allowStorageDischarge, failsafe, minOnSeconds, minOffSeconds, maxStartsPerDay);
+                allowStorageDischarge, failsafe, minOnSeconds, minOffSeconds, maxStartsPerDay,
+                confirmationChannel);
     }
 
     /**
@@ -226,6 +229,7 @@ public class ConsumerRepository {
     // --- reported edge sources (consumer-options "Verbindung wählen") --------
 
     public record ReportedSource(String sourceId, String label, String brand, String role,
+            boolean measuresPower,
             String health, boolean bound) {}
 
     /**
@@ -235,14 +239,19 @@ public class ConsumerRepository {
      */
     public List<ReportedSource> reportedSources(UUID siteId) {
         return jdbc.query(
+                // load_kw IS NOT NULL = the source PROVABLY measures power (a
+                // non-metering relay never publishes a load; NULL also covers
+                // "not reported yet" - unknown is never claimed as measuring).
                 "SELECT dss.source_id, dss.label, dss.brand, dss.role, dss.health, "
+                        + "dss.load_kw IS NOT NULL AS measures_power, "
                         + "EXISTS (SELECT 1 FROM measurement_point mp "
                         + "        WHERE mp.site_id = dss.site_id "
                         + "          AND mp.edge_source_id = dss.source_id) AS bound "
                         + "FROM device_source_status dss WHERE dss.site_id = ? AND dss.kind = 'source' "
                         + "ORDER BY dss.label NULLS LAST, dss.source_id",
                 (rs, n) -> new ReportedSource(rs.getString("source_id"), rs.getString("label"),
-                        rs.getString("brand"), rs.getString("role"), rs.getString("health"),
+                        rs.getString("brand"), rs.getString("role"),
+                        rs.getBoolean("measures_power"), rs.getString("health"),
                         rs.getBoolean("bound")),
                 siteId);
     }

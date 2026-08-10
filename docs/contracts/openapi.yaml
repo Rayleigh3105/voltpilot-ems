@@ -4122,6 +4122,16 @@ components:
             registry push (guards.limits.min_on_seconds). Null = axis inactive.
         minOffSeconds: { type: integer, nullable: true, description: Cycle-guard minimum off-time. }
         maxStartsPerDay: { type: integer, nullable: true, description: Cycle-guard start budget per site-local day. }
+        confirmationChannel:
+          type: string
+          nullable: true
+          description: >
+            The D3 confirmation channel derived at creation from the bound
+            edge source (Bestätigungshierarchie §9.4): "power_kw" = proven
+            power measurement (Stufe 2 - a metering Shelly 1PM / go-e),
+            "relay_state" = relay readback only (Stufe 3, energy
+            "angenommen"), null = unbound draft or created before this field
+            existed.
     ConsumerRuntimeStatus:
       type: object
       description: >
@@ -4240,6 +4250,13 @@ components:
               label: { type: string }
               brand: { type: string }
               role: { type: string }
+              measuresPower:
+                type: boolean
+                description: >
+                  The source PROVABLY measures power (its reported reading
+                  carries load_kw). false = no proven measurement (a bare
+                  relay, or not reported yet) - the wizard then names the
+                  honest Stufe-3 consequence (energy "angenommen").
               health: { type: string, enum: [ok, stale, never] }
         defaultStorageRelation: { type: string }
         defaultGridEnergyPolicy: { type: string }

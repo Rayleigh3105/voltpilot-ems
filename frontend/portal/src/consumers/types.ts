@@ -106,6 +106,15 @@ export interface Consumer {
   controlActivation: 'not_activated' | 'active' | 'paused';
   hasDraftPolicy: boolean;
   draftPolicyVersion: number | null;
+  /**
+   * The D3 confirmation channel derived at creation from the bound edge
+   * source (services/api ConsumerService): 'power_kw' = proven power
+   * measurement (Stufe 2), 'relay_state' = relay readback only (Stufe 3,
+   * energy "angenommen"), null = unbound draft / a consumer created before
+   * this field existed (then the TYPE default decides, the pre-existing
+   * behavior).
+   */
+  confirmationChannel?: string | null;
 }
 
 export interface ConsumerTypeOption {
@@ -135,6 +144,13 @@ export interface ConsumerReportedSource {
   label: string | null;
   brand: string | null;
   role: string | null;
+  /**
+   * The source PROVABLY measures power (its reported reading carries
+   * load_kw - a metering Shelly 1PM / go-e). false = no proven measurement
+   * (a bare relay, or not reported yet); absent = an older backend (no
+   * claim either way).
+   */
+  measuresPower?: boolean;
   health: 'ok' | 'stale' | 'never';
 }
 
