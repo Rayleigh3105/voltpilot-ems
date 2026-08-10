@@ -25,8 +25,10 @@ import { api, type History, type Site, type SiteEarnings } from '../api';
  */
 
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
+vi.mock('../components/Tagesbild', () => ({
+  Tagesbild: () => <div data-testid="day-chart" />,
+}));
 vi.mock('../HistoryChart', () => ({
-  HistoryDayChart: () => <div data-testid="day-chart" />,
   HistoryEnergieChart: () => <div data-testid="energie-chart" />,
 }));
 
@@ -364,7 +366,7 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
     for (const titel of [
       'So verdient Ihre Anlage · der Markt-Vergleich',
       'Was den Preis gemacht hat',
-      'Speicher & Preis · Tagesnachweis',
+      'Der Tag im Bild · Preis, Speicher, Ertrag',
       'Tagesprotokoll',
     ]) {
       expect(screen.getByRole('button', { name: new RegExp(titel.replace(/[·&]/g, '.')) }))
@@ -376,7 +378,7 @@ describe('Mobil · Erlöse führt mit dem ERGEBNIS (Falz)', () => {
 
   it('öffnet einen Aufklapper mit VOLLEM Inhalt und seinem eigenen Abzeichen', async () => {
     await renderErloese();
-    fireEvent.click(screen.getByRole('button', { name: /Speicher . Preis/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Der Tag im Bild/ }));
     expect(await screen.findByTestId('day-chart')).toBeInTheDocument();
     const koerper = document.querySelector('.vp-welt-disclosure-body');
     expect(within(koerper as HTMLElement).getByText('Gemessen')).toBeInTheDocument();

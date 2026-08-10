@@ -321,6 +321,12 @@ svg [tabindex]:focus-visible {
 .vp-chart.panels {
   height: clamp(340px, 54vw, 460px);
 }
+/* Drei Panels über EINER Zeitachse (das Tagesbild, Stufe 3): Preis · Leistung ·
+   Ertrag. Dieselbe Begründung wie oben, eine Fläche mehr - die flachste
+   (Ertrag) hätte sonst keine ablesbare Höhe mehr. */
+.vp-chart.panels3 {
+  height: clamp(420px, 66vw, 560px);
+}
 
 /* KPI row (hero of the Übersicht) */
 .vp-kpis {

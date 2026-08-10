@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
-import type { History, HistoryRange, ProtocolEvent, Site } from '../api';
+import type { History, HistoryRange, PlantKind, ProtocolEvent, Site } from '../api';
 import { eurAmount } from '../format';
 import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
@@ -43,7 +43,7 @@ import type { AnlageSurface } from '../surface';
 
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
-import { HistoryDayChart } from '../HistoryChart';
+import { Tagesbild, type TagesbildGeldReihe } from '../components/Tagesbild';
 import {
   DeltaZeile,
   KartenKopf,
@@ -81,7 +81,8 @@ import { MiniShareBar } from '../components/MiniChart';
  * 4. **Geplante Speicher-Ersparnis** — bleibt, aber mit eigenem Abzeichen
  *    „Geplant": eine Vorher-Rechnung steht nie unbeschriftet neben einer
  *    gemessenen Zahl (report §7).
- * 5. **Der Tag im Detail** — Speicher & Preis + Tagesprotokoll, wie gehabt.
+ * 5. **Der Tag im Detail** — das Tagesbild (Preis · Speicher · Ertrag über
+ *    EINER Zeitachse) + Tagesprotokoll.
  *
  * Zwei Abrufe, beide über ihren Cache: die Geld-Zahlen aus dem anlagen-scharfen
  * `GET /sites/{id}/earnings` (P3) und — nur für die geplante Ersparnis und den
@@ -155,17 +156,31 @@ function PreisTreiberBody({ zeilen }: { zeilen: PreisZeile[] }) {
   );
 }
 
-/** Der Tagesnachweis „Speicher & Preis" — der Körper, ohne Karte. */
-function SpeicherPreisBody({ history }: { history: History }) {
+/**
+ * Der Tagesnachweis — seit Stufe 3 das TAGESBILD: drei Flächen über EINER
+ * Zeitachse statt eines Einzelbilds mit drei Y-Achsen (F8 verschärft).
+ *
+ * Das gemessene Geld reist mit, weil daraus die dritte Fläche („was dabei
+ * herauskommt") und der Vergleichsanker im Kopf entstehen — es ist DASSELBE
+ * `money`, mit dem die Ergebnis-Karte darüber rechnet, also kann das Bild ihr
+ * nicht widersprechen. Fehlt es, entfällt die Fläche ehrlich.
+ */
+function TagesbildBody({ history, geld, plantKind }: TagesbildBodyProps) {
   return (
     <>
       <ChartSubtitle>
-        Was Ihr Speicher an diesem Tag wirklich getan hat - direkt über dem
-        Börsen-Strompreis, damit Sie sehen, dass er günstig lädt und teuer entlädt.
+        Der ganze Tag in drei Flächen über einer Zeitachse: was Strom gekostet hat,
+        was Ihre Anlage damit gemacht hat und was dabei herausgekommen ist.
       </ChartSubtitle>
-      <HistoryDayChart history={history} />
+      <Tagesbild history={history} geld={geld} plantKind={plantKind} />
     </>
   );
+}
+
+interface TagesbildBodyProps {
+  history: History;
+  geld: TagesbildGeldReihe | null;
+  plantKind: PlantKind;
 }
 
 /** Das Tagesprotokoll — der Körper, ohne Karte. */
@@ -310,6 +325,18 @@ export function ErloeseSection({
     // übernommen hat — dieselbe Wahrheit steht nie zweimal auf einer Seite.
     ohne: verdient?.absorbiert,
   });
+  // Die dritte Fläche des Tagesbilds („was dabei herauskommt") und sein
+  // Vergleichsanker im Kopf kommen aus DEMSELBEN `money`, mit dem die
+  // Ergebnis-Karte darüber rechnet - es gibt keinen zweiten Geld-Rechner, also
+  // kann das Bild der großen Zahl nicht widersprechen.
+  const tagesGeld: TagesbildGeldReihe | null = money
+    ? {
+        savedEur: money.savedEur,
+        baselineEur: money.baselineEur,
+        actualEur: money.actualEur,
+        series: money.series,
+      }
+    : null;
   const vergleichName = vergleichsName(anchor, range, modus);
   // Am Telefon bleibt der Kartenkopf EINE Zeile (sonst rutscht der Titel auf
   // „Ergebni…"); welcher Zeitraum verglichen wird, sagt die Δ-Zeile darunter
@@ -497,7 +524,7 @@ export function ErloeseSection({
                     {a.id === 'speicher-preis' && history && (
                       <>
                         <ProvBadge art="gemessen" />
-                        <SpeicherPreisBody history={history} />
+                        <TagesbildBody history={history} geld={tagesGeld} plantKind={site.plantKind} />
                       </>
                     )}
                     {a.id === 'tagesprotokoll' && history && (
@@ -564,7 +591,7 @@ export function ErloeseSection({
                       <KartenKopf
                         icon="battery"
                         category="battery"
-                        titel="Speicher & Preis"
+                        titel="Der Tag im Bild"
                         art="gemessen"
                         extra={
                           history.plan.length > 0 ? (
@@ -574,7 +601,7 @@ export function ErloeseSection({
                           )
                         }
                       />
-                      <SpeicherPreisBody history={history} />
+                      <TagesbildBody history={history} geld={tagesGeld} plantKind={site.plantKind} />
                     </Card>
                   </section>
                 )}
