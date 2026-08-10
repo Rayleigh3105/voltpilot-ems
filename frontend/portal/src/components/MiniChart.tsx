@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   MINI_HEIGHT,
   SHARE_HEIGHT,
@@ -227,6 +227,48 @@ function MarkBand({
   );
 }
 
+/**
+ * EIN Balken eines GETEILTEN Balkensatzes, gerendert an einer anderen Stelle.
+ *
+ * Der Monats-Streifen ist eine Reihe eigenständiger Knöpfe, kann also keinen
+ * zusammenhängenden Spark enthalten — die Balken müssen trotzdem EINE Skala
+ * teilen, sonst wäre der Vergleich zwischen den Monaten wertlos. Der Aufrufer
+ * rechnet deshalb EINEN {@link miniBars}-Satz über alle Punkte und rendert je
+ * Zelle den Balken mit seinem Index; Form, Farbe und Nulllinie kommen von hier,
+ * damit die Optik nicht neben dem Baustein herläuft.
+ */
+export function MiniBarCell({
+  view,
+  index,
+  className,
+}: {
+  view: MiniBarsView;
+  index: number;
+  className?: string;
+}) {
+  const bar = view.bars[index];
+  if (!bar) return null;
+  return (
+    <span className={cls('vp-mini-cell', className)} aria-hidden="true">
+      {view.hasNegative && (
+        <span className="vp-mini-zero" style={{ top: view.zeroY }} />
+      )}
+      {bar.form !== 'gap' && (
+        <i
+          className={cls(
+            'vp-mini-bar',
+            `is-${bar.form}`,
+            bar.sign < 0 ? 'is-neg' : 'is-pos',
+            bar.emphasis && 'is-on',
+          )}
+          style={{ top: bar.y, height: bar.h }}
+          data-form={bar.form}
+        />
+      )}
+    </span>
+  );
+}
+
 /* ---------------------------------------------------------------------------
  * Linien-Spark
  * ------------------------------------------------------------------------- */
@@ -237,12 +279,15 @@ export function MiniLineSpark({
   size = 'spark',
   ariaLabel,
   className,
+  style,
 }: {
   points: readonly MiniPoint[];
   width?: number;
   size?: MiniHeight;
   ariaLabel: string;
   className?: string;
+  /** Für `--mini-line`, wenn eine Fläche ihre eigene Linienfarbe führt. */
+  style?: CSSProperties;
 }) {
   const height = MINI_HEIGHT[size];
   const view = miniLine(points, { width, height });
@@ -255,6 +300,7 @@ export function MiniLineSpark({
       height={height}
       role="img"
       aria-label={ariaLabel}
+      style={style}
     >
       {/* Dieselbe Regel wie beim Balken: die Nulllinie erscheint, wenn sie
           etwas trennt. */}

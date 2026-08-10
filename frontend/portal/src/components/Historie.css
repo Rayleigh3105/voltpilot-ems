@@ -473,19 +473,15 @@
   font-weight: 600;
 }
 
+/* Bahn, Radius und Höhe kommen seit Stufe 5 aus dem `MiniShareBar`-Baustein
+   (kleinste Höhe); hier bleibt nur die Breite dieser Zeile und ihr Ton. */
 .vp-zl-bar {
   flex: 1 1 120px;
   min-width: 60px;
   max-width: 220px;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--vp-neutral-soft, #eef1f5);
-  overflow: hidden;
 }
 
-.vp-zl-bar > i {
-  display: block;
-  height: 100%;
+.vp-zl-bar .vp-share-fill {
   background: var(--vp-primary-deep, #5a8de8);
 }
 

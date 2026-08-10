@@ -70,6 +70,15 @@
   border-radius: 1px;
 }
 
+/* EIN Balken eines geteilten Satzes (Monats-Chip): dieselbe Optik, nur allein
+   in seiner Zelle. Die Höhe setzt die Fläche, weil sie den Satz gerechnet hat. */
+.vp-mini-cell {
+  position: relative;
+  display: block;
+  align-self: stretch;
+  min-width: 0;
+}
+
 /* Die echte Nulllinie. Sie erscheint nur, wenn sie etwas TRENNT. */
 .vp-mini-zero {
   position: absolute;
@@ -166,7 +175,7 @@
   overflow: visible;
 }
 .vp-mini-line-path {
-  stroke: var(--vp-chart-plan, #1e3a5f);
+  stroke: var(--mini-line, var(--vp-chart-plan, #1e3a5f));
   stroke-width: 1.6;
   stroke-linejoin: round;
   stroke-linecap: round;

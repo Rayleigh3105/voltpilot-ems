@@ -38,6 +38,7 @@ import { ProvBadge } from './HistorieWelt';
 
 import './Historie.css';
 import './PortfolioWelt.css';
+import { MiniLineSpark } from './MiniChart';
 
 /** Eine Karte des Welt-Wechslers auf Portfolio-Ebene. */
 export interface PortfolioSwitchCard {
@@ -293,47 +294,26 @@ export function MiniTrend({
   titel: string;
   farbe?: string;
 }) {
+  // Seit Stufe 5 der geteilte Linien-Baustein. Sein Vertrag IST das, was
+  // dieser Trend vorbildlich schon konnte (Null immer im Bild, Lücken bleiben
+  // Lücken) - er hat es nur verallgemeinert und um die echte Nulllinie
+  // ergänzt, die hier fehlte: ein negativer Trend hing vorher ohne Bezug im
+  // Bild.
   const punkte = werte.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
   if (punkte.length < 2) return <span className="vp-muted">—</span>;
-  const min = Math.min(...punkte, 0);
-  const max = Math.max(...punkte, 0);
-  const spanne = max - min || 1;
-  const w = 80;
-  const h = 18;
-  const dx = werte.length > 1 ? w / (werte.length - 1) : w;
-
-  // Zusammenhängende Segmente: eine Lücke beendet das laufende Segment.
-  const segmente: string[] = [];
-  let aktuell: string[] = [];
-  werte.forEach((v, i) => {
-    if (typeof v !== 'number' || !Number.isFinite(v)) {
-      if (aktuell.length > 1) segmente.push(aktuell.join(' '));
-      aktuell = [];
-      return;
-    }
-    const x = i * dx;
-    const y = h - ((v - min) / spanne) * (h - 2) - 1;
-    aktuell.push(`${x.toFixed(1)},${y.toFixed(1)}`);
-  });
-  if (aktuell.length > 1) segmente.push(aktuell.join(' '));
-  if (segmente.length === 0) return <span className="vp-muted">—</span>;
-
   return (
-    <svg
+    <MiniLineSpark
       className="vp-pf-spark"
-      viewBox={`0 0 ${w} ${h}`}
-      width={w}
-      height={h}
-      role="img"
-      aria-label={titel}
-    >
-      <title>{titel}</title>
-      {segmente.map((p, i) => (
-        <polyline key={i} points={p} fill="none" stroke={farbe} strokeWidth="1.6" />
-      ))}
-    </svg>
+      points={werte.map((value, i) => ({ key: String(i), value: value ?? null }))}
+      width={80}
+      ariaLabel={titel}
+      style={farbe === DEFAULT_TREND_COLOR ? undefined : { ['--mini-line' as string]: farbe }}
+    />
   );
 }
+
+/** Die Haus-Farbe des Portfolio-Trends (der Baustein setzt sie als Vorgabe). */
+const DEFAULT_TREND_COLOR = 'var(--vp-navy, #1e3a5f)';
 
 /**
  * Die Anlagen-Tabelle beider Welten: `.vp-table.responsive` (der Portfolio-

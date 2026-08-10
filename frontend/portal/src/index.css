@@ -2749,6 +2749,14 @@ button.vp-cl-item.is-off .vp-cl-label {
   color: var(--vp-ok-ink, #2e7d32);
   font-variant-numeric: tabular-nums;
 }
+/* Größenkodierung (Stufe 5): die Chips trugen ihre Zahl, aber die Reihe war
+   ohne Zahlenlesen ununterscheidbar. EIN Balkensatz über alle Chips = EINE
+   Skala; der Balken selbst kommt aus dem Mini-Baustein. */
+.vp-mstrip-m .vp-mstrip-bar {
+  width: 100%;
+  height: 18px;
+  align-self: stretch;
+}
 .vp-mstrip-m.on {
   background: var(--vp-paleblue-start, #f0f4ff);
   border-color: var(--vp-primary-deep, #5a8de8);
