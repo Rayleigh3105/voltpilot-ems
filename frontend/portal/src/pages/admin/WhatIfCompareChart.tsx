@@ -1,9 +1,18 @@
-import { BAR, storageBar, STROKE } from '../../chartStyle';
+import { BAR, ghostBar, ghostItem, ghostLine, storageBar, STROKE } from '../../chartStyle';
+import { LADESTAND, vergleichName } from '../../chartCopy';
 import { chartTheme } from '../../chartTheme';
 import { chargeKind, slotBarMark } from '../../schedule';
 import { useEChart } from '../../useEChart';
 import { ChartLegend, type LegendItem } from '../../components/ChartExplain';
 import type { WhatIfResult } from '../../optimizerApi';
+
+/**
+ * Wie die GEISTER-Ebene dieser Fläche heißt (M9). Das Gegenstück ist hier kein
+ * Zeitraum, sondern der Stand, wie er konfiguriert IST — deshalb wird er
+ * benannt statt datiert, aber über dasselbe `chartCopy`-Wort wie jede andere
+ * Überlagerung: „blass gestrichelt" soll auf jeder Fläche dasselbe bedeuten.
+ */
+const BASELINE_NAME = vergleichName('aktuelle Einstellungen');
 
 /**
  * The what-if comparison: the SAME horizon planned twice, drawn once.
@@ -20,6 +29,12 @@ import type { WhatIfResult } from '../../optimizerApi';
  * outline behind them the baseline (the site as configured). Where only pale
  * shows, the change removed a movement; where only solid shows, it added one.
  * The two SoC lines carry the same solid/dashed distinction.
+ *
+ * Seit Stufe 6 ist diese Baseline die GEISTER-EBENE des Hauses
+ * (`chartStyle.GHOST`): dieselbe Kontext-Stärke, dieselbe Strichelung und
+ * dasselbe Alpha wie die Vergleichsperiode der Messwerte- und der Erlöse-Welt.
+ * Sie war vorher heller (0,55 / 0,6) und las sich damit fast als zweiter,
+ * gleichrangiger Plan — genau das ist eine Geister-Ebene nicht.
  */
 export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
   const t = chartTheme();
@@ -112,7 +127,7 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
             {
               // The baseline sits BEHIND as a pale outline: it is context for
               // the variant, never a second thing to read at equal weight.
-              name: 'Aktuelle Einstellungen',
+              name: BASELINE_NAME,
               type: 'bar',
               yAxisIndex: 0,
               data: baselineBattery,
@@ -121,13 +136,10 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               barGap: '-100%',
               z: 1,
               silent: true,
-              itemStyle: {
-                borderRadius: BAR.radius,
-                color: 'transparent',
-                borderColor: t.axis,
-                borderWidth: 1,
-                opacity: 0.55,
-              },
+              // M9: dieselbe Geister-Grammatik wie die Vergleichs-Overlays der
+              // Kundenflächen - eine Baseline ist ein Vergleich, kein zweiter
+              // gleichrangiger Plan. Vorher 0,55 (Balken) / 0,6 (Linie).
+              itemStyle: ghostBar(t.axis),
             },
             {
               name: 'Ihre Regler',
@@ -146,7 +158,7 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
 
             },
             {
-              name: 'Ladestand (Regler)',
+              name: `${LADESTAND} · Ihre Regler`,
               type: 'line',
               yAxisIndex: 1,
               data: variantSoc,
@@ -157,15 +169,15 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               itemStyle: { color: t.soc },
             },
             {
-              name: 'Ladestand (aktuell)',
+              name: `${LADESTAND} · ${BASELINE_NAME}`,
               type: 'line',
               yAxisIndex: 1,
               data: baselineSoc,
               showSymbol: false,
               connectNulls: false,
               z: 4,
-              lineStyle: { color: t.soc, width: STROKE.contextSoft, type: 'dashed', opacity: 0.6 },
-              itemStyle: { color: t.soc },
+              lineStyle: ghostLine(t.soc),
+              itemStyle: ghostItem(t.soc),
             },
           ],
           legend: { show: false },
@@ -181,8 +193,9 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
     { label: 'Ihre Regler · Solarladen', color: t.charge, shape: 'bar', toggleable: false },
     { label: 'Ihre Regler · Netzladen', color: t.gridCharge, shape: 'bar', toggleable: false },
     { label: 'Ihre Regler · Entladen', color: t.charge, shape: 'outline', toggleable: false },
-    { label: 'Aktuelle Einstellungen', color: t.axis, shape: 'outline', toggleable: false },
-    { label: 'Ladestand', color: t.soc, unit: '%', shape: 'line', toggleable: false },
+    { label: BASELINE_NAME, color: t.axis, shape: 'outline', toggleable: false },
+    { label: `${LADESTAND} · Ihre Regler`, color: t.soc, unit: '%', shape: 'line', toggleable: false },
+    { label: `${LADESTAND} · ${BASELINE_NAME}`, color: t.soc, unit: '%', shape: 'dashed', toggleable: false },
   ];
 
   return (

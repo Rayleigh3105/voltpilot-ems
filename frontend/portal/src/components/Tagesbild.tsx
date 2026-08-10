@@ -14,6 +14,7 @@ import {
 } from '../chartStyle';
 import { chartTheme, type ChartTheme } from '../chartTheme';
 import { LADESTAND } from '../chartCopy';
+import { flussSatz, kopf, tooltip, TOOLTIP_CSS, wertZeile } from '../chartTooltip';
 import { preisMarken } from '../preisFenster';
 import { ereignisSpur } from '../historieEreignisse';
 import {
@@ -389,6 +390,8 @@ export function Tagesbild({
           tooltip: {
             trigger: 'axis',
             confine: true,
+            // K7: ein SATZ muss umbrechen duerfen - siehe TOOLTIP_CSS.
+            extraCssText: TOOLTIP_CSS,
             /**
              * ⚠ Aus dem EIMER-INDEX komponiert, nicht aus den `params`: bei
              * mehreren Grids liefert ECharts nur die Serien des überfahrenen
@@ -405,25 +408,23 @@ export function Tagesbild({
                 hour: '2-digit',
                 minute: '2-digit',
               });
-              const zeilen = [`<b>${zeit} Uhr</b>`];
-              const row = (color: string, text: string) =>
-                zeilen.push(
-                  `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>${text}`,
-                );
+              // K7 · der SATZ zuerst: was der Speicher tut und - wenn die
+              // Detailtiefe das Netz zeigt - wohin die Energie geht. Beide
+              // Größen sind GEMESSEN (Historie), also spricht der Satz nur
+              // ihre eigenen Vorzeichen aus und erfindet keine Zuordnung.
+              const satz = flussSatz(
+                {
+                  speicher: speicher[i] ?? null,
+                  netz: zeigeDetail && hatNetz ? (netz[i] ?? null) : null,
+                },
+                (b) => kwText(b),
+              );
+              const zeilen = [kopf(`${zeit} Uhr`), satz.text].filter(
+                (z): z is string => z != null,
+              );
+              const row = (color: string, text: string) => zeilen.push(wertZeile(color, text));
               if (layout.preis.sichtbar && preise[i] != null)
                 row(t.price, `${REIHE.preis}: ${ct(preise[i] as number)}`);
-              const s = speicher[i];
-              if (s != null) {
-                const wort =
-                  s > 0.05 ? REIHE.laden : s < -0.05 ? REIHE.abgeben : 'Speicher hält';
-                const menge = Math.abs(s) < 0.05 ? '' : ` ${kwText(Math.abs(s))}`;
-                row(t.charge, `${wort}${menge}`);
-              }
-              if (zeigeDetail && hatNetz && netz[i] != null) {
-                const n = netz[i] as number;
-                const wort = n >= 0 ? 'Netzbezug' : 'Einspeisung';
-                row(t.flowGridLine, `${wort} ${kwText(Math.abs(n))}`);
-              }
               if (zeigeDetail && hatLadestand && ladestand[i] != null)
                 row(
                   t.soc,
@@ -433,7 +434,7 @@ export function Tagesbild({
                 );
               if (layout.ertrag.sichtbar && ertrag.werte[i] != null)
                 row(t.plan, `${REIHE.ertrag}: ${eur(ertrag.werte[i] as number)}`);
-              return zeilen.join('<br/>');
+              return tooltip(...zeilen);
             },
           },
           xAxis: [0, 1, 2].map((gi) => {

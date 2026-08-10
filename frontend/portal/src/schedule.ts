@@ -1159,6 +1159,50 @@ export function curtailTooltip(slot: {
 }
 
 /**
+ * K7 · Was der Plan in DIESER Viertelstunde vorhat — als Satz, nicht als
+ * Wertepaar.
+ *
+ * Er steht im Fahrplan-Tooltip GANZ OBEN, direkt unter der Uhrzeit: die
+ * Handlung ist die Antwort, die Zahlen darunter sind ihr Beleg. Bis Stufe 5
+ * stand dieselbe Aussage als letzte von neun Zeilen — nach acht Wertzeilen,
+ * die man erst verrechnen musste.
+ *
+ * ⚠ Die Quellen-Zuordnung („eigenen Solarstrom" / „günstigen Strom aus dem
+ * Netz") ist hier BELEGT und keine erfundene Bilanz-Zerlegung: sie kommt aus
+ * {@link chargeKind}, das die geplante Ladeleistung gegen die geplante PV
+ * DIESES Slots prüft (FK3-Semantik) — es ist die Aussage des Optimierers über
+ * seinen eigenen Plan, nicht eine Schätzung über eine Messung. Genau deshalb
+ * darf der Fahrplan einen Satz sagen, den der Live-Verlauf nicht sagen darf.
+ *
+ * Der Rückgabewert landet per `innerHTML` im Tooltip: ausschließlich
+ * Konstanten plus `toLocaleString`-Zahlen (die XSS-Regel der Formatter).
+ */
+export function slotAktionSatz(slot: {
+  batteryKw?: number | null;
+  gridKw?: number | null;
+  pvKw?: number | null;
+  curtailKw?: number | null;
+}): string | null {
+  const bat = slot.batteryKw == null ? null : Number(slot.batteryKw);
+  if (bat == null || !Number.isFinite(bat)) return null;
+  const kind = chargeKind(slot.batteryKw ?? null, slot.gridKw ?? null, slot.pvKw, slot.curtailKw);
+  const menge = `${Math.abs(bat).toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW`;
+  switch (kind) {
+    case 'netzladen':
+      return `Speichert ${menge} günstigen Strom aus dem Netz.`;
+    case 'solarladen':
+      return `Speichert ${menge} eigenen Solarstrom.`;
+    case 'entladen':
+      return `Deckt den Verbrauch mit ${menge} aus dem Speicher.`;
+    case 'ruhe':
+    default:
+      // „hält" ist die ehrliche Aussage über einen Slot ohne Bewegung - eine
+      // Menge dazu wäre 0,0 kW und damit Rauschen.
+      return 'Der Speicher hält seine Ladung.';
+  }
+}
+
+/**
  * Today's PLANNED PV curtailment: how much energy the optimizer plans to hold
  * back and the negative-price loss that WOULD avoid. At negative day-ahead
  * prices exporting COSTS money, so each curtailed kWh in a negative-price slot

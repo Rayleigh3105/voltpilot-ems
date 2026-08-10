@@ -1,4 +1,5 @@
 import type { PeakShaving } from '../api';
+import { NARROW_PX } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { eur, fmtNum } from '../format';
 import { useEChart } from '../useEChart';
@@ -27,7 +28,7 @@ export function PeakHistoryChart({ peak }: { peak: PeakShaving }) {
 
   const ref = useEChart(
     (chart, width) => {
-      const narrow = width < 480;
+      const narrow = width < NARROW_PX;
       const labels = history.map((h) => periodTick(h.periodStart, peak.abrechnung));
       const baseline = history.map((h) => h.baselinePeakKw);
       const held = history.map((h) => h.peakKw);

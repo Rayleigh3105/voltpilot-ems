@@ -1,10 +1,11 @@
 import type { PriceHistory } from './api';
-import { AXIS, FILL, STROKE, withAlpha } from './chartStyle';
+import { AXIS, dayBoundaryStyle, FILL, NARROW_PX, STROKE, withAlpha } from './chartStyle';
 import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { fokusFenster, tagesGrenze, type TagFokus } from './marktpreise';
 import {
   ctReihe,
+  fensterFuerSlot,
   fensterZeilen,
   preisFenster,
   preisMarken,
@@ -12,6 +13,8 @@ import {
   type FensterZeile,
 } from './preisFenster';
 import { useEChart } from './useEChart';
+import { kopf, tooltip, TOOLTIP_CSS } from './chartTooltip';
+
 import './preisFenster.css';
 
 /** ct/kWh (die Kunden-Einheit) + EUR/MWh (das Profi-Detail) für einen Tooltip. */
@@ -119,7 +122,7 @@ export function PriceHistoryChart({
   const ref = useEChart(
     (chart, width) => {
       const t = chartTheme();
-      const narrow = width < 480;
+      const narrow = width < NARROW_PX;
       const { buckets, bucket } = history;
       const isDay = bucket === 'PT15M';
       const weekNarrow = narrow && bucket === 'PT1H';
@@ -159,12 +162,24 @@ export function PriceHistoryChart({
             tooltip: {
               trigger: 'axis',
               confine: true,
+              // K7: ein SATZ muss umbrechen duerfen - siehe TOOLTIP_CSS.
+              extraCssText: TOOLTIP_CSS,
+              /**
+               * K7: der Preis mit seiner BEDEUTUNG statt einer nackten Zahl.
+               * Die Einordnung kommt aus DEMSELBEN `preisFenster`-Ergebnis,
+               * das die Bänder im Bild zeichnet - Tooltip und Schattierung
+               * können sich damit nicht widersprechen. Ohne Fenster (flacher
+               * Tag) bleibt es beim Preis, nie eine erfundene Einordnung.
+               */
               formatter: (params: any[]) => {
                 const p = params[0];
                 if (!p) return '';
-                return `<b>${tooltipHead(p.axisValue, bucket)}</b><br/>${fmtPrice(
-                  p.value == null ? null : Number(p.value),
-                )}`;
+                const f = fensterFuerSlot(fenster, Number(p.dataIndex));
+                const preis = fmtPrice(p.value == null ? null : Number(p.value));
+                return tooltip(
+                  kopf(tooltipHead(p.axisValue, bucket)),
+                  f == null ? preis : `${preis} — ${f.wort}`,
+                );
               },
             },
             dataZoom: zoomFenster
@@ -271,12 +286,7 @@ export function PriceHistoryChart({
                             // F6 (korrigiert): der Börsenpreis für morgen STEHT
                             // FEST - die Tagesgrenze ist eine Referenz-
                             // Haarlinie mit DATUM, keine Prognose-Marke.
-                            lineStyle: {
-                              color: t.axis,
-                              type: 'dashed',
-                              width: STROKE.ref,
-                              opacity: 0.7,
-                            },
+                            lineStyle: dayBoundaryStyle(t),
                             label: {
                               formatter: grenzLabel(times[boundaryIdx]),
                               color: t.axis,

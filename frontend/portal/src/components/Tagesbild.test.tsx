@@ -300,8 +300,26 @@ describe('Tagesbild · der Tooltip liest ALLE Panels', () => {
     // also absichtlich nur ein einziger Eintrag.
     const html = lastOption.tooltip.formatter([{ dataIndex: 2 }]);
     expect(html).toContain(REIHE.preis);
-    expect(html).toContain(REIHE.abgeben);
+    expect(html).toContain('Speicher gibt');
     expect(html).toContain(REIHE.ertrag);
+  });
+
+  it('K7: der Speicher steht als SATZ ganz oben, nicht als Wert-Zeile', () => {
+    renderBild();
+    const html: string = lastOption.tooltip.formatter([{ dataIndex: 2 }]);
+    // Der Satz folgt UNMITTELBAR auf die Uhrzeit - vor jeder Wert-Zeile.
+    const zeilen = html.split('<br/>');
+    expect(zeilen[0]).toMatch(/^<b>/);
+    expect(zeilen[1]).toBe('Speicher gibt 4 kW ab.');
+    // Und er steht GENAU EINMAL da: der frühere Wert-Zeilen-Zwilling
+    // („Speicher gibt ab 4 kW") ist die Doppel-Kolonne, die K7 beendet.
+    expect(html.match(/Speicher gibt/g)).toHaveLength(1);
+  });
+
+  it('K7: der Satz ERFINDET keine Zuordnung — nur eigene Messwerte', () => {
+    renderBild();
+    const html: string = lastOption.tooltip.formatter([{ dataIndex: 2 }]);
+    expect(html).not.toMatch(/in die Batterie|ins Haus|davon/);
   });
 
   it('interpoliert ausschließlich Konstanten und formatierte Zahlen (XSS-Regel)', () => {

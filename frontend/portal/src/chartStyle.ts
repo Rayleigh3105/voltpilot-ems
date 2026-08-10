@@ -153,6 +153,32 @@ export function nowLabel(
   } as const;
 }
 
+/**
+ * Die TAGESGRENZE — die zweite Referenzlinie des Hauses, neben
+ * {@link nowLineStyle}.
+ *
+ * Sie stand in drei Flächen (Fahrplan, Marktpreise, Admin-Plan) Zeichen für
+ * Zeichen dreimal ausgeschrieben; das ist dieselbe Doppelung, die bei der
+ * Jetzt-Linie schon aufgelöst ist. Eine Referenz ist nie eine Serienfarbe, und
+ * sie liegt eine Spur blasser als die Jetzt-Linie: die Tagesgrenze ordnet ein,
+ * die Jetzt-Linie zeigt.
+ *
+ * ⚠ F6 (korrigiert): sie ist eine REFERENZ, keine Prognose-Marke — der
+ * Börsenpreis für morgen steht fest. Die Linie ist deshalb gestrichelt, weil
+ * sie eine GRENZE ist, nicht weil das Dahinter unsicher wäre.
+ */
+export const DAY_BOUNDARY_OPACITY = 0.7;
+
+/** Der `lineStyle` JEDER Tagesgrenze. */
+export function dayBoundaryStyle(t: { axis: string }) {
+  return {
+    color: t.axis,
+    type: 'dashed' as const,
+    width: STROKE.ref,
+    opacity: DAY_BOUNDARY_OPACITY,
+  };
+}
+
 /* ---------------------------------------------------------------------------
  * F4 · Raster sind Haarlinien, Achsen haben keine Linie
  *
@@ -193,6 +219,67 @@ export const FORECAST = {
   /** Eine Prognose ist Kontext, nie die Leitserie. */
   width: STROKE.contextSoft,
 } as const;
+
+/* ---------------------------------------------------------------------------
+ * M9 · Die GEISTER-EBENE — EINE Grammatik für jeden Vergleich
+ *
+ * Drei Flächen legen einen zweiten Zeitraum bzw. einen Gegenentwurf hinter die
+ * Hauptreihen — die Messwerte-Welt (Vorperiode/Vorjahr), der Erlöse-Verlauf
+ * (dieselbe Überlagerung in Geld) und die Admin-Was-wäre-wenn-Vorschau (der
+ * Stand, wie er konfiguriert IST). Sie taten es in drei Dialekten: 0,38 · 0,38 ·
+ * 0,55/0,6, teils mit `contextSoft`, teils mit einem eigenen Rahmen. Das ist
+ * derselbe Wildwuchs, den `STROKE` und `BAR` für die Hauptreihen beendet haben
+ * — nur eine Ebene tiefer und deshalb länger unbemerkt.
+ *
+ * Die Grammatik ist ab hier EINE: Kontext-Strichstärke, gestrichelt, EIN Alpha.
+ * Die FARBE bleibt die der Größe — die Wiedererkennung ist der ganze Punkt
+ * einer Überlagerung —, zurückgenommen wird ausschließlich die Deckkraft.
+ *
+ * ⚠ Der Wert 0,38 ist der gemessene der zwei Kundenflächen und bleibt der
+ * Maßstab; die Admin-Fläche war heller (0,55/0,6) und war damit fast eine
+ * zweite gleichrangige Reihe — genau das soll eine Geister-Ebene nicht sein.
+ * ------------------------------------------------------------------------- */
+export const GHOST = {
+  /** Die ruhigste Kontext-Stufe — ein Vergleich ist nie die Leitserie. */
+  width: STROKE.contextSoft,
+  /** Gestrichelt: der zweite Zeitraum ist nie „auch gemessen, gerade jetzt". */
+  dash: 'dashed' as const,
+  /** DIE eine Deckkraft der Geister-Ebene. */
+  opacity: 0.38,
+} as const;
+
+/**
+ * Der `lineStyle` JEDER Vergleichs-/Baseline-LINIE. `farbe` ist der Ton der
+ * Größe, die verglichen wird — nie ein eigener „Vergleichs-Farbton": zwei
+ * Zeiträume derselben Größe sind dieselbe Größe.
+ */
+export function ghostLine(farbe: string) {
+  return { color: farbe, width: GHOST.width, type: GHOST.dash, opacity: GHOST.opacity };
+}
+
+/**
+ * Der `itemStyle` einer Vergleichs-Reihe (Punkte, Tooltip-Marker) — dieselbe
+ * Deckkraft, damit der Marker im Tooltip nicht kräftiger ist als die Linie, die
+ * er meint.
+ */
+export function ghostItem(farbe: string) {
+  return { color: farbe, opacity: GHOST.opacity };
+}
+
+/**
+ * Ein Vergleichs-BALKEN als Umriss: die Fläche bleibt leer, damit die
+ * Hauptreihe davor lesbar bleibt, und der Rand trägt die Geister-Deckkraft.
+ * Die Admin-Vorschau legt ihre Baseline so hinter die Regler-Balken.
+ */
+export function ghostBar(farbe: string) {
+  return {
+    color: 'transparent',
+    borderColor: farbe,
+    borderWidth: GHOST.width,
+    borderRadius: BAR.radius,
+    opacity: GHOST.opacity,
+  };
+}
 
 /* ---------------------------------------------------------------------------
  * K5 · Der SPEICHER ist EINE Farbe — die Richtung trägt Position + Form + Wort
@@ -351,8 +438,13 @@ export const BASE_SERIES_LIMIT = 3;
 
 /**
  * Unterhalb dieser Container-Breite ist eine Fläche „schmal": Achsennamen
- * kürzen, Ränder straffen, Zweitachsen fallen lassen. Die Zahl war bisher in
- * jeder Chart-Datei einzeln als `width < 480` einkopiert.
+ * kürzen, Ränder straffen, Zweitachsen fallen lassen. Die Zahl stand in jeder
+ * Chart-Datei einzeln als `width < 480`; seit Stufe 6 lesen sie alle von hier.
+ *
+ * ⚠ Zwei Flächen weichen BEGRÜNDET ab und tun das mit einer eigenen Zahl:
+ * das Wetter und die Was-wäre-wenn-Vorschau werden bei 520 px schmal, weil
+ * sie mehr Achsen-Beiwerk tragen. Eine Abweichung ist erlaubt — sie muss nur
+ * eine sein, keine vergessene Kopie.
  */
 export const NARROW_PX = 480;
 

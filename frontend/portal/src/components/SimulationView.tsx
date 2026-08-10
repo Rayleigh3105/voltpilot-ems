@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { ApiError } from '../api';
-import { BAR, storageBar, storageMark, STROKE } from '../chartStyle';
+import { BAR, NARROW_PX, storageBar, storageMark, STROKE } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { useEChart } from '../useEChart';
 import { eurAmount, fmtNum } from '../format';
@@ -207,7 +207,7 @@ function MonthlyChart({ data }: { data: NonNullable<ReturnType<typeof monthlyCha
   const t = chartTheme();
   const ref = useEChart(
     (chart, width) => {
-      const narrow = width < 480;
+      const narrow = width < NARROW_PX;
       chart.setOption(
         {
           textStyle: { fontFamily: t.font, color: t.axis },
@@ -280,7 +280,7 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
   const t = chartTheme();
   const ref = useEChart(
     (chart, width) => {
-      const narrow = width < 480;
+      const narrow = width < NARROW_PX;
       const times = tag.slots.map((s) =>
         new Date(s.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
       );

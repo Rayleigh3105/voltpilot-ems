@@ -8,6 +8,7 @@ import {
   preisKern,
   preisMarken,
   spanneWort,
+  fensterFuerSlot,
 } from './preisFenster';
 
 /** 96 Viertelstunden mit einer Mulde mittags und einer Spitze abends. */
@@ -164,5 +165,24 @@ describe('preisKern · der Satz ist abgeleitet, sonst steht dort der Grund', () 
 describe('ctReihe · EUR/MWh ist die API-Einheit, ct/kWh die des Kunden', () => {
   it('rechnet um und lässt Lücken Lücken', () => {
     expect(ctReihe([120, null, -20, undefined])).toEqual([12, null, -2, null]);
+  });
+});
+
+describe('K7 · das Fenster EINES abgelesenen Slots', () => {
+  const fenster = [
+    { art: 'guenstig' as const, von: 4, bis: 13, wort: 'die günstigsten 2½ Stunden', ct: 1 },
+    { art: 'teuer' as const, von: 40, bis: 49, wort: 'die teuersten 2½ Stunden', ct: 30 },
+  ];
+
+  it('findet das Fenster, in dem der Slot liegt - Grenzen EINSCHLIESSLICH', () => {
+    expect(fensterFuerSlot(fenster, 4)?.art).toBe('guenstig');
+    expect(fensterFuerSlot(fenster, 13)?.art).toBe('guenstig');
+    expect(fensterFuerSlot(fenster, 45)?.art).toBe('teuer');
+  });
+
+  it('behauptet ausserhalb NICHTS - lieber keine Einordnung als eine erfundene', () => {
+    expect(fensterFuerSlot(fenster, 3)).toBeNull();
+    expect(fensterFuerSlot(fenster, 14)).toBeNull();
+    expect(fensterFuerSlot([], 5)).toBeNull();
   });
 });

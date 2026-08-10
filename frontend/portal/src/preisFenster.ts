@@ -305,6 +305,25 @@ export function ctReihe(
   return eurMwh.map((v) => ctFromEurMwh(v == null ? null : Number(v)));
 }
 
+/**
+ * K7 · Das Fenster, in dem EIN abgelesener Slot liegt — oder `null`.
+ *
+ * Damit sagt der Marktpreis-Tooltip nicht nur eine Zahl, sondern was sie
+ * BEDEUTET („3,25 ct/kWh — die günstigsten 2½ Stunden"). Die Aussage ist
+ * belegt, weil sie aus genau derselben {@link preisFenster}-Entscheidung
+ * kommt, die das Band im Bild zeichnet: Tooltip und Schattierung können sich
+ * nicht widersprechen.
+ *
+ * Ohne Fenster (flacher Tag, zu kurzer Ausschnitt) bleibt es `null` — dann
+ * nennt der Tooltip nur den Preis, statt eine Einordnung zu erfinden.
+ */
+export function fensterFuerSlot(
+  fenster: readonly PreisFenster[],
+  index: number,
+): PreisFenster | null {
+  return fenster.find((f) => index >= f.von && index <= f.bis) ?? null;
+}
+
 /* ---------------------------------------------------------------------------
  * Die Wortzeile (K10) — beide Preis-Flächen rendern sie
  * ------------------------------------------------------------------------- */

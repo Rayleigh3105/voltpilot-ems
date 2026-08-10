@@ -4,6 +4,13 @@ import {
   BAR,
   BASE_SERIES_LIMIT,
   FILL,
+  DAY_BOUNDARY_OPACITY,
+  dayBoundaryStyle,
+  GHOST,
+  ghostBar,
+  ghostItem,
+  ghostLine,
+  NARROW_PX,
   NOW,
   nowLabel,
   nowLineStyle,
@@ -13,7 +20,7 @@ import {
   STROKE,
   withAlpha,
 } from './chartStyle';
-import { axisName, AXIS as AXIS_NAME } from './chartCopy';
+import { axisName, AXIS as AXIS_NAME, VERGLEICH, vergleichName, vergleichReihe } from './chartCopy';
 
 /**
  * Die Geometrie-Schicht ist eine REGEL, keine Sammlung freier Zahlen — diese
@@ -152,5 +159,76 @@ describe('chartCopy (K4 · Klartext + Einheit als Wort)', () => {
   it('sagt „Ladestand", nie „SoC"', () => {
     expect(AXIS_NAME.ladestand()).toContain('Ladestand');
     expect(AXIS_NAME.ladestand()).not.toMatch(/SoC/i);
+  });
+});
+
+describe('M9 · die Geister-Ebene ist EINE Grammatik', () => {
+  it('ist Kontext-Stärke, gestrichelt, EIN Alpha', () => {
+    expect(GHOST.width).toBe(STROKE.contextSoft);
+    expect(GHOST.dash).toBe('dashed');
+    expect(GHOST.opacity).toBe(0.38);
+  });
+
+  it('behält die FARBE der Größe — eine Überlagerung erfindet keinen Ton', () => {
+    expect(ghostLine('#2E9E5B').color).toBe('#2E9E5B');
+    expect(ghostItem('#2E9E5B').color).toBe('#2E9E5B');
+    expect(ghostBar('#6c757d').borderColor).toBe('#6c757d');
+  });
+
+  it('gibt Linie, Marker und Balken DIESELBE Deckkraft', () => {
+    for (const s of [ghostLine('#000'), ghostItem('#000'), ghostBar('#000')]) {
+      expect(s.opacity).toBe(GHOST.opacity);
+    }
+  });
+
+  it('lässt einen Vergleichs-BALKEN leer — die Hauptreihe davor bleibt lesbar', () => {
+    expect(ghostBar('#000').color).toBe('transparent');
+    expect(ghostBar('#000').borderRadius).toBe(BAR.radius);
+  });
+
+  it('liegt UNTER der Kontext-Stufe der Hauptreihen - ein Vergleich ist nie Leitserie', () => {
+    expect(GHOST.width).toBeLessThan(STROKE.lead);
+    expect(GHOST.opacity).toBeLessThan(1);
+  });
+});
+
+describe('M9 · und sie heißt überall gleich', () => {
+  it('weist die Ebene mit EINEM Wort aus', () => {
+    expect(vergleichName('Juni 2026')).toBe('Vergleich: Juni 2026');
+    expect(vergleichReihe('Ergebnis', 'Juni 2026')).toBe('Ergebnis · Vergleich: Juni 2026');
+  });
+
+  it('nennt lieber nur das Wort als einen erfundenen Zeitraum', () => {
+    expect(vergleichName()).toBe(VERGLEICH);
+    expect(vergleichName(null)).toBe(VERGLEICH);
+    expect(vergleichName('')).toBe(VERGLEICH);
+    expect(vergleichReihe('Ergebnis')).toBe(`Ergebnis · ${VERGLEICH}`);
+  });
+
+  it('stellt die GRÖSSE voran - die Legende wird nach Größen gelesen', () => {
+    expect(vergleichReihe('Ladestand', 'gestern').startsWith('Ladestand')).toBe(true);
+  });
+});
+
+describe('Feinschliff · eine Referenz ist EINMAL definiert', () => {
+  it('gibt der Tagesgrenze EINEN Stil - vorher stand er dreimal ausgeschrieben', () => {
+    const s = dayBoundaryStyle({ axis: '#6c757d' });
+    expect(s).toEqual({
+      color: '#6c757d',
+      type: 'dashed',
+      width: STROKE.ref,
+      opacity: DAY_BOUNDARY_OPACITY,
+    });
+  });
+
+  it('haelt die Tagesgrenze RUHIGER als die Jetzt-Linie - sie ordnet nur ein', () => {
+    expect(DAY_BOUNDARY_OPACITY).toBeGreaterThan(NOW.inkOpacity);
+    // Beide sind Referenzen, also beide auf der Referenz-Staerke.
+    expect(dayBoundaryStyle({ axis: '#000' }).width).toBe(STROKE.ref);
+    expect(nowLineStyle({ ink: '#000' }).width).toBe(STROKE.ref);
+  });
+
+  it('traegt die Schmal-Grenze als EINE Zahl', () => {
+    expect(NARROW_PX).toBe(480);
   });
 });
