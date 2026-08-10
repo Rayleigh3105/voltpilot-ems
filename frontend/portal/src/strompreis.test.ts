@@ -13,6 +13,8 @@ import {
   planKopplung,
   praemieRuhtNote,
   preisUrteil,
+  kurveBeschreibung,
+  streifenFenster,
   strompreisView,
 } from './strompreis';
 
@@ -298,5 +300,68 @@ describe('gateStrompreis (D1: die Marktpreise-Regel, keine neue Signalmenge)', (
     expect(gateStrompreis([], 'fest')).toBe(false);
     expect(gateStrompreis([peak], 'ohne')).toBe(false);
     expect(gateStrompreis([], null)).toBe(false);
+  });
+});
+
+describe('streifenFenster (Stufe 4: dieselbe Preis-Grammatik wie die Marktseite)', () => {
+  /** Mittags gratis, abends teuer - genug Struktur für zwei Fenster. */
+  const strukturiert = () =>
+    dayPoints((h) => (h >= 12 && h < 14.5 ? -1 : h >= 18 && h < 20.5 ? 21 : 12));
+
+  it('benennt zusammenhängende Fenster MIT Wort und Zeitraum', () => {
+    const view = strompreisView(strukturiert(), DAY(12, 30));
+    const f = streifenFenster(view);
+    expect(f.length).toBeGreaterThan(0);
+    for (const x of f) {
+      expect(x.wort.length).toBeGreaterThan(3);
+      expect(x.zeit).toMatch(/^\d{2}:\d{2}–\d{2}:\d{2}$/);
+      expect(x.bis).toBeGreaterThan(x.von);
+    }
+    expect(f.map((x) => x.art)).toContain('negativ');
+    expect(f.map((x) => x.art)).toContain('teuer');
+  });
+
+  it('nennt nirgends das Fallenwort „Viertel"', () => {
+    const f = streifenFenster(strompreisView(strukturiert(), DAY(12, 30)));
+    expect(f.map((x) => x.wort).join(' ')).not.toMatch(/Viertel/);
+  });
+
+  it('behauptet auf einem flachen Tag gar kein Fenster', () => {
+    const view = strompreisView(dayPoints(() => 12), DAY(12, 30));
+    expect(streifenFenster(view)).toEqual([]);
+  });
+
+  it('greift nie über die Tagesgrenze hinaus', () => {
+    const heute = strukturiert();
+    const morgen = heute.map((p) => ({
+      ...p,
+      ts: new Date(new Date(p.ts).getTime() + 86400_000).toISOString(),
+      end: new Date(new Date(p.end).getTime() + 86400_000).toISOString(),
+      priceEurMwh: -500,
+    }));
+    const view = strompreisView([...heute, ...morgen], DAY(12, 30));
+    expect(view.morgenAb).toBeGreaterThan(0);
+    for (const f of streifenFenster(view)) {
+      expect(f.bis).toBeLessThan(view.morgenAb);
+    }
+  });
+});
+
+describe('kurveBeschreibung (die Kurve war für Vorlesesoftware nicht vorhanden)', () => {
+  it('nennt Zeitraum, Anker und jedes benannte Fenster', () => {
+    const view = strompreisView(
+      dayPoints((h) => (h >= 12 && h < 14.5 ? -1 : h >= 18 && h < 20.5 ? 21 : 12)),
+      DAY(12, 30),
+    );
+    const text = kurveBeschreibung(view);
+    expect(text).toMatch(/^Börsenpreis-Verlauf für heute/);
+    expect(text).toMatch(/Tagestief/);
+    expect(text).toMatch(/Tageshoch/);
+    expect(text).toMatch(/Strom kostet nichts/);
+  });
+
+  it('behauptet ohne Anker und ohne Fenster nur den Zeitraum', () => {
+    const view = strompreisView(dayPoints(() => 12), DAY(12, 30));
+    expect(kurveBeschreibung(view)).toBe('Börsenpreis-Verlauf für heute.');
   });
 });

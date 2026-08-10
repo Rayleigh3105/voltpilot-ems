@@ -78,9 +78,13 @@ export interface CloudPoint {
 /** Local daytime hours where solar generation actually matters. */
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 21;
-/** Below this cloud cover an hour counts as sunny, above CLOUDY as overcast. */
-const SUNNY_MAX_CLOUD = 40;
-const CLOUDY_MIN_CLOUD = 65;
+/**
+ * Below this cloud cover an hour counts as sunny, above CLOUDY as overcast.
+ * EXPORTED weil die benannten Himmelsblöcke (`wetterLeistung.himmelBloecke`)
+ * dieselbe Frage beantworten - zwei Schwellensätze wären zwei Wahrheiten.
+ */
+export const SUNNY_MAX_CLOUD = 40;
+export const CLOUDY_MIN_CLOUD = 65;
 
 function isDaytime(iso: string): boolean {
   const h = new Date(iso).getHours();

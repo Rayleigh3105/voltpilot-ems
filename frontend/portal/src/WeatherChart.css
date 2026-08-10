@@ -1,0 +1,60 @@
+/*
+ * Wetter-Fläche (Chart-Redesign Stufe 4, M16) — komponenten-lokale Styles
+ * (der KomponentenSection/CockpitBlocks-Präzedenzfall; index.css bleibt
+ * unangetastet).
+ *
+ * Der Himmelsstreifen ist HTML, nicht Canvas: so bricht ein Wort nie am
+ * Diagramm-Rand ab, der Streifen bleibt bei jeder Breite lesbar, und die
+ * Blöcke verteilen sich per `flex-grow` exakt nach ihrem Zeitanteil.
+ */
+.vp-himmel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+.vp-himmel-titel {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--vp-text-muted, #667);
+}
+.vp-himmel-bahn {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.vp-himmel-block {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vp-text-muted, #667);
+}
+/* Farbe ist DEKORATION - die Aussage trägt das Wort im Block (K10). */
+.vp-himmel-block.art-sonnig {
+  background: #fff7e8;
+  color: #8a5300;
+}
+.vp-himmel-block.art-wechselnd {
+  background: var(--vp-neutral-soft, #eef1f5);
+}
+.vp-himmel-block.art-bedeckt {
+  background: #dfe4e8;
+  color: #4b5563;
+}
+
+.vp-wetter-temp {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #667);
+}

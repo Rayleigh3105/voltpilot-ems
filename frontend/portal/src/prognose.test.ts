@@ -3,6 +3,13 @@ import type { ForecastAccuracyPoint, ForecastModelId, ForecastModelState } from 
 import {
   abweichung,
   KANDIDAT_EHRLICHKEIT,
+  KEIN_VERGLEICH_GRUND,
+  NOCH_KEINE_BEWERTUNG_GRUND,
+  POLARITAET,
+  VERBESSERUNG_WORT,
+  direktEtikett,
+  kandidatKern,
+  verbesserung,
   kandidatenZeilen,
   KIND_LABELS,
   mittlereMae,
@@ -191,5 +198,88 @@ describe('die Rahmung ist load-bearing', () => {
   it('benennt die zwei Arten ueberall gleich', () => {
     expect(KIND_LABELS.load).toBe('Verbrauchsprognose (Last)');
     expect(KIND_LABELS.pv).toBe('PV-Prognose (Erzeugung)');
+  });
+});
+
+describe('verbesserung (Stufe 4: die Fläche zwischen den Kurven, MIT Wort)', () => {
+  it('zeichnet nur, wo der Kandidat WIRKLICH näher lag', () => {
+    const v = verbesserung([1.0, 0.8, 0.5], [0.6, 0.9, 0.5]);
+    expect(v.unten).toEqual([0.6, null, null]);
+    expect(v.delta[0]).toBeCloseTo(0.4, 6);
+    // Schlechter (0,9 > 0,8) und gleich (0,5) bekommen KEINE Fläche - sie
+    // hieße sonst das Gegenteil dessen, was ihr Wort behauptet.
+    expect(v.delta[1]).toBeNull();
+    expect(v.delta[2]).toBeNull();
+    expect(v.wort).toBe(VERBESSERUNG_WORT);
+  });
+
+  it('lässt eine Lücke eine Lücke - nie eine erfundene 0', () => {
+    const v = verbesserung([1.0, null, 0.5], [null, 0.2, 0.1]);
+    expect(v.unten).toEqual([null, null, 0.1]);
+    expect(v.delta[0]).toBeNull();
+    expect(v.delta[1]).toBeNull();
+  });
+
+  it('benennt nichts, wenn es nichts zu benennen gibt', () => {
+    expect(verbesserung([0.5, 0.5], [0.9, 0.9]).wort).toBeNull();
+    expect(verbesserung([], []).wort).toBeNull();
+  });
+});
+
+describe('POLARITAET (die Aussage, die niemand raten soll)', () => {
+  it('sagt in Worten, dass unten besser ist', () => {
+    expect(POLARITAET.oben).toContain('schlechter');
+    expect(POLARITAET.unten).toContain('besser');
+  });
+});
+
+describe('kandidatKern (K1: abgeleitet, sonst der ehrliche Grund)', () => {
+  const tage = (besser: number, gesamt: number): ForecastAccuracyPoint[] =>
+    Array.from({ length: gesamt }, (_, i) =>
+      punkt(`2026-08-${String(i + 1).padStart(2, '0')}`, 'load-xgb', 'load', 0.5, i < besser ? 0.2 : -0.1),
+    );
+
+  it('nennt die Bilanz und die zwei Ø-Abweichungen als Anker (K8)', () => {
+    const k = kandidatKern(tage(11, 14), 'load-xgb');
+    expect(k.wert).toBe('11 von 14');
+    expect(k.satz).toMatch(/näher an der Wirklichkeit/);
+    expect(k.ton).toBe('ok');
+    // ⚠ NICHT der Ehrlichkeits-Satz: den trägt die Kandidaten-Zeile derselben
+    // Seite schon, und zweimal derselbe Satz ist Rauschen.
+    expect(k.anker).not.toBe(KANDIDAT_EHRLICHKEIT);
+    expect(k.anker).toBeNull(); // ohne aktive Bewertungen kein erfundener Ø
+  });
+
+  it('traegt die Ø-Werte NICHT im Kopf - sie stehen an den Kurven (K2)', () => {
+    // Beide Doppelungen sind hier festgenagelt: die Verdikt-Karte derselben
+    // Seite nennt die Ø-Abweichung schon, die Kandidaten-Zeile den
+    // Ehrlichkeits-Satz.
+    expect(direktEtikett(tage(11, 14), 'load-xgb', false)).toBe(`Kandidat Ø ±0,5${NBSP}kW`);
+    expect(direktEtikett([], 'load-xgb', false)).toBeNull();
+    expect(
+      direktEtikett(
+        Array.from({ length: 3 }, (_, i) =>
+          punkt(`2026-08-0${i + 1}`, 'load-persistence', 'load', 0.8),
+        ),
+        'load-persistence',
+        true,
+      ),
+    ).toBe(`aktiv Ø ±0,8${NBSP}kW`);
+  });
+
+  it('feiert eine MINDERHEIT nicht als Erfolg', () => {
+    expect(kandidatKern(tage(1, 12), 'load-xgb').ton).toBe('calm');
+  });
+
+  it('sagt ohne Kandidaten und ohne Bewertung den GRUND', () => {
+    expect(kandidatKern(tage(3, 5), null)).toMatchObject({
+      satz: null,
+      grund: KEIN_VERGLEICH_GRUND,
+    });
+    const ohneSkill = [punkt('2026-08-01', 'load-xgb', 'load', 0.5, null)];
+    expect(kandidatKern(ohneSkill, 'load-xgb')).toMatchObject({
+      satz: null,
+      grund: NOCH_KEINE_BEWERTUNG_GRUND,
+    });
   });
 });

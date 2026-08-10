@@ -17,11 +17,13 @@ import { NBSP } from '../format';
 import { SitePicker } from '../components/SitePicker';
 import { InfoTip } from '../components/InfoTip';
 import { ChartCardSkeleton, ErrorState } from '../components/States';
+import { ChartHeadline } from '../components/ChartExplain';
 import { ForecastQualityChart } from '../ForecastQualityChart';
 import {
   KANDIDAT_EHRLICHKEIT,
   KIND_LABELS,
   RAHMUNG,
+  kandidatKern,
   kandidatenZeilen,
   mittlereMae,
   skillBilanz,
@@ -353,6 +355,13 @@ export function PrognosePage(props: {
               {(['load', 'pv'] as const).map((kind) => {
                 const points = quality.accuracy.filter((a) => a.kind === kind);
                 if (points.length === 0) return null;
+                // K1: der Satz kommt aus DERSELBEN `skillBilanz`, die auch die
+                // Kandidaten-Zeile nennt - er rueckt nur nach oben. Ohne
+                // Kandidat/ohne Bewertung steht dort der ehrliche Grund.
+                const kandidat =
+                  [...new Set(points.map((p) => p.model))].find(
+                    (m) => m !== activeByKind[kind],
+                  ) ?? null;
                 return (
                   <section className="vp-section" key={kind}>
                     <Card padding="lg" radius="lg">
@@ -368,6 +377,7 @@ export function PrognosePage(props: {
                           (ohne Einfluss auf die Steuerung).
                         </InfoTip>
                       </div>
+                      <ChartHeadline kern={kandidatKern(points, kandidat)} />
                       <ForecastQualityChart
                         points={points}
                         modelLabels={MODEL_LABELS}

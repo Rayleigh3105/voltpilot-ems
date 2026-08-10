@@ -75,31 +75,47 @@
   font-size: 0.86rem;
 }
 
-/* Kurve: das SVG streckt nur BALKEN (preserveAspectRatio none); Texte liegen
-   als HTML-Overlays darüber, damit nichts verzerrt. */
+/* Kurve: die viewBox IST die gemessene Pixelbreite (K11), es wird also nichts
+   mehr gestreckt - deshalb gibt es hier auch keine HTML-Overlay-Kruecke mehr.
+   Die frueheren `.vp-sp-overlay`-Regeln sind mit dem verzerrten SVG entfallen. */
 .vp-sp-curve {
   position: relative;
   min-width: 0;
+  height: 76px;
 }
 .vp-sp-curve svg {
   display: block;
-  width: 100%;
-  height: 76px;
+  max-width: 100%;
 }
-.vp-sp-overlay {
-  position: absolute;
-  font-size: 0.68rem;
-  font-weight: 700;
-  pointer-events: none;
-  white-space: nowrap;
+
+/* K10: jedes benannte Preisfenster traegt sein WORT - eine Hinterlegung, die
+   eine Legende zum Entziffern braucht, fliegt raus. */
+.vp-sp-fenster {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 0.74rem;
+  color: var(--vp-text-muted, #667);
 }
-.vp-sp-overlay.jetzt {
-  bottom: 2px;
-  color: var(--vp-chart-plan, #1e3a5f);
+.vp-sp-fenster-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
-.vp-sp-overlay.morgen {
-  top: 0;
-  color: var(--vp-chart-price, #2f6bd6);
+.vp-sp-fenster-item > i {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.vp-sp-fenster-item.art-guenstig > i,
+.vp-sp-fenster-item.art-negativ > i {
+  background: var(--vp-chart-guenstig, #15803d);
+}
+.vp-sp-fenster-item.art-teuer > i {
+  background: var(--vp-chart-discharge, #e53935);
 }
 
 .vp-sp-anker {

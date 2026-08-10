@@ -108,6 +108,20 @@
   --vp-chart-idle:      #EDEFF2;  /* ruhender Slot (warten/Reserve halten) - bewusst KEIN Serienton */
   --vp-chart-neutral:   #607D8B;  /* benanntes Neutral-Grau fuer Kontext-/Admin-Reihen (= --vp-grid) */
 
+  /* --- Preisfenster-Paar (Chart-Redesign Stufe 4, M3') -------------------
+     Die benannten Preisfenster ("die guenstigsten 2,5 Stunden" / "die
+     teuersten") werden IMMER ZUSAMMEN gezeichnet, also gilt fuer sie das Paar,
+     nicht der Einzelton. Gemessen mit `--pairs all` neben der Preislinie:
+       #2F6BD6 x #15803D x #E53935 -> Normalsicht 26,0 - CVD 6,0 (protan).
+     6,0 liegt in dem Band, das der dataviz-Validator NUR mit Zweitkodierung
+     durchlaesst - und genau die haben diese Fenster per Konstruktion: jedes
+     traegt sein WORT im Bild (K10) und sie liegen nie nebeneinander.
+     Das helle Laden-Gruen #2E9E5B kam dafuer NICHT in Frage (5,4 = harter
+     FAIL) - das ist derselbe Form-entscheidet-die-Stufe-Fall wie bei den
+     `-line`-Tokens darueber. Rot bleibt die Kosten-/Warnfarbe des Hauses
+     (`--vp-chart-discharge`): ein teures Fenster IST eine Kosten-Aussage. */
+  --vp-chart-guenstig:  #15803D;  /* 5,0:1 - guenstiges/negatives Preisfenster */
+
   /* --- Zustands-Ink (Flaechen ausserhalb der Diagramme) ---
      Zwei Toene, die im Portal an vielen Stellen als Literal standen. Sie sind
      bewusst NICHT `--vp-flow-batt-ink` (#166534) bzw. `--vp-flow-pv`: jene

@@ -57,7 +57,12 @@ export const AXIS = {
   temperatur: (narrow = false) => axisName('Temperatur', '°C', narrow),
   bewoelkung: (narrow = false) => axisName('Bewölkung', '%', narrow),
   sonnenstaerke: (narrow = false) => axisName(SONNENSTAERKE, 'W/m²', narrow),
-  abweichung: (narrow = false) => axisName('Ø Abweichung', 'kW', narrow),
+  /**
+   * K4 in Reinform: „Ø kW" liest sich als DURCHSCHNITTSLEISTUNG — gemeint ist
+   * aber, wie weit die Prognose danebenlag. Die Einheit steht deshalb als WORT
+   * da; nur in der schmalen Fassung fällt sie auf ihr Kürzel zurück.
+   */
+  abweichung: (narrow = false) => (narrow ? 'kW' : 'Kilowatt Abweichung'),
 } as const;
 
 /* ---------------------------------------------------------------------------
