@@ -14,6 +14,8 @@
  * fall back to the old import-based derivation.
  */
 
+import type { Kernaussage } from './chartKopf';
+import { storageMark, type StorageMark } from './chartStyle';
 import type { ChartTheme } from './chartTheme';
 import { eurAmount, NBSP } from './format';
 
@@ -71,16 +73,25 @@ export function hasGridCharge(
 }
 
 /**
- * The bar colour of one plan slot, from the shared chart palette: green =
- * Solarladen, türkis = Netzladen, BLAU = Entladen. Discharging deliberately
- * does NOT use the red `discharge` hue (audit F5) - emptying the battery into
- * an expensive hour is how the plant earns money, and red reads as a fault.
- * Red stays reserved for real costs and warnings (Netzbezug, Lastspitzen-Ziel).
+ * Die MARKE eines Plan-Slots (Farbe + Form) aus der geteilten Chart-Sprache:
+ * grün gefüllt = Solarladen, türkis gefüllt = Netzladen, grün als UMRISS =
+ * Entladen. Der Speicher ist EINE Farbe (K5) - Laden und Abgeben sind derselbe
+ * Gegenstand in zwei Zuständen, die Richtung trägt Position (über/unter Null),
+ * Form und Wort. Begründung + Messung in `chartStyle.ts` `storageMark`.
+ *
+ * Entladen nimmt weiterhin ausdrücklich NICHT das rote `discharge` (Audit F5):
+ * die Batterie in eine teure Stunde zu entleeren ist die Art, wie die Anlage
+ * verdient - Rot bleibt echten Kosten und Warnungen vorbehalten.
  */
+export function slotBarMark(kind: ChargeKind, t: ChartTheme): StorageMark {
+  if (kind === 'netzladen') return storageMark('netzladen', t);
+  if (kind === 'entladen') return storageMark('entladen', t);
+  return storageMark('laden', t);
+}
+
+/** Nur die Farbe derselben Marke - für Flächen ohne eigene Form (CSS-Punkte). */
 export function slotBarColor(kind: ChargeKind, t: ChartTheme): string {
-  if (kind === 'netzladen') return t.gridCharge;
-  if (kind === 'entladen') return t.battDischarge;
-  return t.charge;
+  return slotBarMark(kind, t).color;
 }
 
 // ---- Plan freshness (audit F2) ----------------------------------------------
@@ -776,6 +787,54 @@ export function savingsTodayEur(
   );
   if (priced.length === 0) return null;
   return priced.reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
+}
+
+/**
+ * K1/M11 · Die KERNAUSSAGE des Fahrplan-Diagramms — die Zahl, die zählt, plus
+ * ihr Satz, plus der Vergleichsanker (K8).
+ *
+ * ⚠ Sie ist ZUSAMMENGESETZT, nicht neu gerechnet: der Satz ist
+ * {@link planSentence}, die Zahl {@link savingsTodayEur}, der Anker die schon
+ * persistierte Baseline derselben Slots. Es entsteht hier KEINE zweite
+ * Wahrheit — genau das ist die Auflage aus r2 §10, weil ein falsch
+ * abgeleiteter Satz schlimmer wäre als kein Satz.
+ *
+ * Ohne planbare Aussage bleibt `satz` null und `grund` trägt den ehrlichen
+ * Grund — nie ein erfundener Satz, nie eine erfundene 0.
+ */
+export function planKernaussage(
+  slots: (PlanSlotLike & { costEur: number | null; baselineCostEur: number | null })[],
+  kind: PlanWordingKind,
+  now: Date,
+  slotMinutes = 15,
+): Kernaussage {
+  const satz = planSentence(slots, kind, now, slotMinutes);
+  if (satz == null) {
+    return {
+      wert: null,
+      satz: null,
+      grund: 'Für heute liegt noch kein Fahrplan vor.',
+      ton: 'calm',
+    };
+  }
+  const saved = savingsTodayEur(slots, now);
+  const heute = todaySlots(slots, now).filter((s) => s.baselineCostEur != null);
+  const baseline = heute.length
+    ? heute.reduce((sum, s) => sum + (s.baselineCostEur ?? 0), 0)
+    : null;
+  return {
+    // Eine Ersparnis unter dem Totband ist Solver-Rauschen, keine Aussage.
+    wert: saved != null && Math.abs(saved) >= BANKED_DEADBAND_EUR ? eurAmount(saved) : null,
+    satz,
+    grund: null,
+    ton: saved != null && saved > BANKED_DEADBAND_EUR ? 'ok' : 'calm',
+    // K8: keine Zahl ohne Vergleichsanker. Die Baseline („dieselbe Anlage,
+    // Speicher untätig") liegt je Slot im Plan - sie wird nur nie gezeigt.
+    anker:
+      saved != null && baseline != null && Math.abs(saved) >= BANKED_DEADBAND_EUR
+        ? `Ohne Speicher wären es ${eurAmount(baseline)}.`
+        : null,
+  };
 }
 
 // ---- Banked terminal value + horizon-edge honesty (FK2) ----------------------

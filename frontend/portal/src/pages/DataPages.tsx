@@ -997,6 +997,7 @@ export function FahrplanSection({ site }: { site: Site }) {
               }
               selectedIndex={hasWhy ? selSlot : undefined}
               consumers={verbraucherAktiv ? verbraucher : undefined}
+              plantKind={site.plantKind}
             />
             {selSlot != null && slotPanel}
             {/* §14.11: die Verbraucher des angetippten Slots - Ziel + Grund aus

@@ -1299,6 +1299,101 @@ button.vp-cl-item.is-off .vp-cl-label {
   border-top-style: dotted;
   border-top-width: 3px;
 }
+/* K5: die Umriss-Form des Speichers - dieselbe Farbe wie `bar`, nur hohl.
+   „gefüllt = lädt, Umriss = gibt ab"; das WORT daneben trägt es mit. */
+.vp-swatch-outline {
+  width: 15px;
+  height: 11px;
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--sw);
+}
+
+/* ---------------------------------------------------------------------------
+   K1/M11 · Der Kernaussage-Kopf: die Zahl, die zählt, und ihr Satz.
+   Er steht ÜBER dem Diagramm, nicht darunter - das Bild soll den Satz BELEGEN.
+   --------------------------------------------------------------------------- */
+.vp-chart-kern {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--vp-space-2) var(--vp-space-3);
+  margin: 0 0 var(--vp-space-3);
+  font-size: var(--vp-text-sm);
+  line-height: 1.5;
+  color: var(--vp-text-dark);
+  min-width: 0;
+}
+.vp-chart-kern-wert {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--vp-chart-ink, #1a1a1a);
+  white-space: nowrap;
+}
+.vp-chart-kern.is-ok .vp-chart-kern-wert {
+  color: var(--vp-ok-ink, #2e7d32);
+}
+.vp-chart-kern.is-warn .vp-chart-kern-wert {
+  color: var(--vp-warn-ink, #b45309);
+}
+.vp-chart-kern-satz {
+  flex: 1 1 16ch;
+  min-width: 0;
+}
+/* K8: der Vergleichsanker ist die zweite Zeile der Aussage, nicht ihr Gegner. */
+.vp-chart-kern-anker {
+  flex-basis: 100%;
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-meta);
+}
+/* Kein belegbarer Satz: der ehrliche Grund, ruhig und ohne grosse Zahl. */
+.vp-chart-kern.is-grund {
+  display: block;
+  color: var(--vp-text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   K3/M13 · „Mehr anzeigen ▾" - der Umschalter der Detailtiefe.
+   --------------------------------------------------------------------------- */
+.vp-chart-more {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  margin-bottom: var(--vp-space-3);
+  padding: 4px var(--vp-space-3);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-full);
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  font-size: var(--vp-text-sm);
+  line-height: 1.3;
+  cursor: pointer;
+  transition: var(--vp-transition-fast);
+  min-height: 32px;
+  max-width: 100%;
+  min-width: 0;
+}
+.vp-chart-more:hover {
+  border-color: var(--vp-primary-deep);
+}
+.vp-chart-more:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-chart-more-was {
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-meta);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-chart-more svg {
+  flex: 0 0 auto;
+  transition: transform var(--vp-transition-fast);
+}
+.vp-chart-more.is-open svg {
+  transform: rotate(180deg);
+}
 
 /* Insight callout - the chart's takeaway in one sentence. */
 .vp-insight {

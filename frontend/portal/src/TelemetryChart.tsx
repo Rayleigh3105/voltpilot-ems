@@ -1,4 +1,14 @@
 import type { TelemetryPoint } from './api';
+import {
+  AXIS,
+  DIRECT_LABEL_GUTTER_PX,
+  directLabel,
+  FILL,
+  SMOOTH_SERIES,
+  STROKE,
+} from './chartStyle';
+import { endsCollide, useDirectLabels } from './chartKopf';
+import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { ChartInsight, ChartLegend, type LegendItem } from './components/ChartExplain';
 import { fmtNum } from './format';
@@ -26,12 +36,32 @@ function timeLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-/** The four telemetry channels, in draw order (label is the legend/toggle key). */
-const CHANNELS: { label: string; key: keyof TelemetryPoint; tone: keyof ReturnType<typeof chartTheme>; axis: number; unit: string }[] = [
-  { label: 'PV-Erzeugung', key: 'pvPowerKw', tone: 'pv', axis: 0, unit: 'kW' },
-  { label: 'Hausverbrauch', key: 'loadKw', tone: 'load', axis: 0, unit: 'kW' },
-  { label: 'Netz', key: 'powerKw', tone: 'price', axis: 0, unit: 'kW' },
-  { label: 'Batterie-Ladestand', key: 'socPct', tone: 'soc', axis: 1, unit: '%' },
+/**
+ * The four telemetry channels, in draw order (label is the legend/toggle key).
+ *
+ * ⚠ Alle drei kW-Reihen tragen ihre LINIEN-Stufe (F2) - hier sind es Linien,
+ * keine Balken. Und „Netz" lief bis Stufe 1 auf dem PREIS-Blau, direkt neben
+ * dem Haus-Blau: der gemessene Blau-Kollaps dieses Charts (F10). Preis-Blau ist
+ * ab jetzt fuer PREISE reserviert, Netz traegt ueberall den Netz-Ton.
+ */
+const CHANNELS: {
+  label: string;
+  /**
+   * Der KURZE Name für das Etikett am Kurvenende (K2). Ein Etikett steht im
+   * Bild und muss in den rechten Rand passen - „Batterie-Ladestand  95 %"
+   * wurde dort abgeschnitten (im Browser gemessen). Die Legende trägt weiter
+   * den vollen Namen; gleiche Farbe + gleicher Wortanfang machen die Zuordnung.
+   */
+  kurz: string;
+  key: keyof TelemetryPoint;
+  tone: keyof ReturnType<typeof chartTheme>;
+  axis: number;
+  unit: string;
+}[] = [
+  { label: 'PV-Erzeugung', kurz: 'PV', key: 'pvPowerKw', tone: 'pvLine', axis: 0, unit: 'kW' },
+  { label: 'Hausverbrauch', kurz: 'Haus', key: 'loadKw', tone: 'loadLine', axis: 0, unit: 'kW' },
+  { label: 'Netz', kurz: 'Netz', key: 'powerKw', tone: 'flowGridLine', axis: 0, unit: 'kW' },
+  { label: 'Batterie-Ladestand', kurz: 'Ladestand', key: 'socPct', tone: 'soc', axis: 1, unit: '%' },
 ];
 
 export function TelemetryChart({
@@ -57,17 +87,18 @@ export function TelemetryChart({
     (chart, width) => {
       const narrow = width < 480;
       const nowMs = Date.now();
-      const firstMs = points.length ? new Date(points[0].ts).getTime() : nowMs;
       const series = (name: string, key: keyof TelemetryPoint, color: string, axis = 0) => ({
         name,
         type: 'line' as const,
-        smooth: true,
+        ...SMOOTH_SERIES,
         showSymbol: false,
         connectNulls: false,
         yAxisIndex: axis,
-        lineStyle: { width: 2.5, color },
+        // F1-Hierarchie: die drei Leistungs-Kanäle TRAGEN die Aussage, der
+        // Ladestand auf der zweiten Achse ist Kontext.
+        lineStyle: { width: axis === 0 ? STROKE.lead : STROKE.contextSoft, color },
         itemStyle: { color },
-        areaStyle: axis === 0 ? { opacity: 0.06, color } : undefined,
+        areaStyle: axis === 0 ? { opacity: FILL.wash, color } : undefined,
         data: points.map((p) => {
           const raw = p[key] as number | null;
           return [new Date(p.ts).getTime(), key === 'socPct' ? sanitizeSoc(raw) : raw];
@@ -77,39 +108,68 @@ export function TelemetryChart({
       // Only the channels the customer left on (V3 channel-toggle pills). The
       // "Jetzt" marker + shaded past ride the first VISIBLE series so they stay
       // even if PV is toggled off.
+      /** Der letzte gezeichnete Wert einer Reihe - `null`, wenn sie leer endet. */
+      const lastValues = (chans: typeof CHANNELS) =>
+        chans
+          .filter((c) => c.axis === 0)
+          .map((c) => {
+            for (let i = points.length - 1; i >= 0; i -= 1) {
+              const v = points[i][c.key] as number | null;
+              if (v != null) return Number(v);
+            }
+            return null;
+          });
+      /** Die Spannweite der kW-Achse - der Massstab fuer „zu nah beieinander". */
+      const kwValues = points.flatMap((p) =>
+        [p.pvPowerKw, p.loadKw, p.powerKw].filter((v): v is number => v != null),
+      );
+      const span = kwValues.length ? Math.max(...kwValues) - Math.min(...kwValues) : 0;
+
       const visible = CHANNELS.filter((c) => !hidden?.has(c.label));
       const built = visible.map((c) => series(c.label, c.key, t[c.tone] as string, c.axis));
-      if (built.length > 0) {
-        (built[0] as Record<string, unknown>).markArea = {
-          silent: true,
-          itemStyle: { color: t.axis, opacity: 0.06 },
-          data: [[{ xAxis: firstMs }, { xAxis: nowMs }]],
-        };
-        (built[0] as Record<string, unknown>).markLine = {
-          silent: true,
-          symbol: 'none',
-          data: [
-            {
-              xAxis: nowMs,
-              lineStyle: { color: t.price, type: 'solid', width: 2 },
-              label: {
-                formatter: 'Jetzt',
-                color: t.price,
-                position: 'insideEndTop',
-                rotate: 0,
-                align: 'right',
-                padding: [0, 6, 0, 0],
-              },
-            },
-          ],
-        };
+      // K2: Name + aktueller Wert AM Kurvenende statt einer Zuordnungsaufgabe
+      // in der Legende. Die Legende bleibt (sie ist hier zugleich der
+      // Kanal-Umschalter), aber die Zahl steht an der Linie - dort kann sie
+      // ihr nicht mehr widersprechen.
+      const labelled = useDirectLabels(visible.length, width, endsCollide(lastValues(visible), span));
+      if (labelled) {
+        built.forEach((b, i) => {
+          const c = visible[i];
+          Object.assign(
+            b,
+            directLabel(t[c.tone] as string, (p) => {
+              const v = Array.isArray(p.value) ? p.value[1] : p.value;
+              if (v == null) return '';
+              const n = Number(v);
+              return c.unit === '%'
+                ? `${c.kurz}  ${fmtNum(n, '%', 0)}`
+                : `${c.kurz}  ${fmtNum(Math.abs(n), 'kW')}`;
+            }),
+          );
+        });
       }
+      // F5: auf einer Flaeche, die AUSSCHLIESSLICH Vergangenheit zeigt,
+      // entfaellt die Jetzt-Linie SAMT Vergangenheits-Wash. Der rechte Rand IST
+      // jetzt (die x-Achse endet auf `nowMs`), und ein Wash ueber das ganze
+      // Bild plus ein „Jetzt"-Etikett am Rand waren doppeltes Rauschen -
+      // gemessen im Ist-Screenshot des Scouts.
       const showSocAxis = visible.some((c) => c.axis === 1);
 
       chart.setOption(
         {
           textStyle: { fontFamily: t.font, color: t.axis },
-          grid: { top: 30, right: narrow ? 20 : 44, bottom: 8, left: 8, containLabel: true },
+          grid: {
+            top: 30,
+            // K2 braucht rechts Platz fuer das Etikett - sonst schneidet
+            // ECharts es am Canvas-Rand ab (der Baufehler der Revision 1).
+            right: labelled ? DIRECT_LABEL_GUTTER_PX : narrow ? 20 : 44,
+            bottom: 8,
+            // `containLabel` rechnet die Achsen-BESCHRIFTUNG ein, nicht den
+            // Achsen-NAMEN - ohne diesen Rand wird „Leistung (kW)" links
+            // angeschnitten (im Browser gemessen).
+            left: 12,
+            containLabel: true,
+          },
           tooltip: {
             trigger: 'axis',
             confine: true,
@@ -135,26 +195,39 @@ export function TelemetryChart({
             max: nowMs,
             axisLabel: {
               formatter: (v: number) => timeLabel(v),
+              color: t.axis,
+              fontSize: AXIS.fontSize,
               hideOverlap: true,
             },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: [
             {
               type: 'value',
-              name: 'kW',
+              // K4: die Einheit steht nie allein - sie sagt nicht, WAS gemessen
+              // wird, und kW neben kWh unkommentiert ist die haeufigste
+              // Verwechslung im Energie-Portal.
+              name: AXIS_NAME.leistung(narrow),
+              nameTextStyle: { color: t.axis, fontSize: AXIS.nameFontSize, align: 'left' },
               splitLine: { lineStyle: { color: t.grid } },
-              axisLabel: { color: t.axis },
+              axisTick: { show: false },
+              axisLine: { show: false },
+              axisLabel: { color: t.axis, fontSize: AXIS.fontSize },
             },
             {
               type: 'value',
-              name: narrow ? '%' : 'Ladestand %',
+              name: AXIS_NAME.ladestand(narrow),
+              nameTextStyle: { color: t.soc, fontSize: AXIS.nameFontSize },
               min: 0,
               max: 100,
               position: 'right',
               show: showSocAxis,
               splitLine: { show: false },
-              axisLabel: { color: t.soc },
+              axisTick: { show: false },
+              axisLine: { show: false },
+              axisLabel: { color: t.soc, fontSize: AXIS.fontSize },
             },
           ],
           series: built,

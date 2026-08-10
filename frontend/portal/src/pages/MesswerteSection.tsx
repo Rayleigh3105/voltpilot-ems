@@ -7,8 +7,10 @@ import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
 import {
   energieBilanz,
+  messwerteKernaussage,
   summenTitel,
   zeitraumHinweis,
+  zeitraumWort,
   type EnergieFarbe,
   type EnergieSumme,
 } from '../energieBilanz';
@@ -40,7 +42,7 @@ import { useIsPhone } from '../useIsPhone';
 import type { AnlageSurface } from '../surface';
 
 import { InfoTip } from '../components/InfoTip';
-import { ChartSubtitle } from '../components/ChartExplain';
+import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { VerlaufExplorer } from '../components/VerlaufExplorer';
 import { HistoryEnergieChart } from '../HistoryChart';
@@ -94,7 +96,9 @@ function dotColor(key: EnergieFarbe): string {
     gridImport: t.discharge,
     gridExport: t.charge,
     charge: t.charge,
-    battDischarge: t.battDischarge,
+    // K5: der Speicher ist EINE Farbe - die Richtung trägt hier das WORT der
+    // Kachel („Geladen"/„Entladen"), nicht ein zweiter Ton.
+    battDischarge: t.charge,
     soc: t.soc,
   };
   return map[key];
@@ -293,6 +297,15 @@ function EnergieDiagrammKarte({
   // wie gemessene Nullen.
   const ueberlagern =
     ueberlagerungAktiv(modus) && vorher != null && vorher.buckets.length > 0 ? vorher : null;
+  // K1/M11: die Kernaussage der Welt als SATZ über dem Bild - abgeleitet aus
+  // der schon vorhandenen Eigenverbrauchs-Quote plus derselben Quote des
+  // Vergleichszeitraums als Anker (K8). Ohne Quote steht dort der Grund.
+  const vglName = vergleichsName(anchor, range, modus);
+  const kern = messwerteKernaussage(
+    energieBilanz(history),
+    zeitraumWort(range),
+    vorher ? { pct: energieBilanz(vorher).eigenverbrauchPct, name: vglName } : null,
+  );
 
   return (
     <section className="vp-section">
@@ -303,6 +316,7 @@ function EnergieDiagrammKarte({
           art="gemessen"
           extra={isPhone ? undefined : <Badge variant="tint">{raster}</Badge>}
         />
+        <ChartHeadline kern={kern} />
         <ChartSubtitle>{diagrammUntertitel(isDay, isPhone, raster)}</ChartSubtitle>
         <HistoryEnergieChart
           history={history}

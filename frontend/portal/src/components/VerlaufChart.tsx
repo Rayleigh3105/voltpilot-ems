@@ -1,4 +1,5 @@
 import type { ComponentRole } from '../komponenten';
+import { BAR, FILL, nowLabel, nowLineStyle, STROKE } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { useEChart } from '../useEChart';
 import { secondAxisUnit, type VerlaufRange, type VerlaufSeries } from '../verlauf';
@@ -175,13 +176,10 @@ export function VerlaufChart({
           ? {
               silent: true,
               symbol: 'none',
-              lineStyle: { color: t.price, type: 'dashed' as const, width: 1.5 },
-              label: {
-                formatter: 'Jetzt',
-                color: t.price,
-                position: 'insideEndTop' as const,
-                rotate: 0,
-              },
+              // F5: EINE Jetzt-Linie im ganzen Portal - dieser Chart war der
+              // einzige mit einem abweichenden Stil (dashed 1,5 in Preis-Blau).
+              lineStyle: nowLineStyle(t),
+              label: nowLabel(t, 'insideEndTop'),
               data: [{ xAxis: nowIdx }],
             }
           : undefined;
@@ -198,8 +196,9 @@ export function VerlaufChart({
           color: t.axis,
           hideOverlap: true,
         },
-        axisTick: { show: !weekNarrow },
-        axisLine: { lineStyle: { color: t.axisLine } },
+        // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
+        axisTick: { show: false },
+        axisLine: { show: false },
       };
       const yAxis = [
         {
@@ -244,7 +243,7 @@ export function VerlaufChart({
             symbol: 'none',
             silent: true,
             lineStyle: { opacity: 0 },
-            areaStyle: { color, opacity: 0.14 },
+            areaStyle: { color, opacity: FILL.band },
             z: 1,
           },
         );
@@ -258,7 +257,8 @@ export function VerlaufChart({
             type: 'bar',
             yAxisIndex: axisIndexOf(s),
             data: values,
-            barCategoryGap: '30%',
+            barCategoryGap: BAR.categoryGap,
+            barMaxWidth: BAR.maxWidth,
             itemStyle: { color, borderRadius: [2, 2, 0, 0] },
             z: 2,
           });
@@ -272,11 +272,12 @@ export function VerlaufChart({
           symbol: 'none',
           smooth: false,
           connectNulls: false,
-          lineStyle: { color, width: 2.4 },
+          // F1-Hierarchie: die gewaehlten Messwerte SIND die Aussage.
+          lineStyle: { color, width: STROKE.lead },
           itemStyle: { color },
           // One selection keeps its calm filled area; several would overlap into
           // mud, so a comparison draws plain lines.
-          ...(selections.length === 1 ? { areaStyle: { color, opacity: 0.06 } } : {}),
+          ...(selections.length === 1 ? { areaStyle: { color, opacity: FILL.wash } } : {}),
           ...(i === 0 && markLine ? { markLine } : {}),
           z: 2,
         });

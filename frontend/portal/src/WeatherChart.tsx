@@ -1,6 +1,9 @@
 import type { WeatherPoint } from './api';
+import { FILL, nowLabel, nowLineStyle, SMOOTH_SERIES, STROKE } from './chartStyle';
+import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { useEChart } from './useEChart';
+import { ChartLegend, type LegendItem } from './components/ChartExplain';
 import { axisHourLabel, nowMarkerIndex, tooltipHeader } from './weather';
 
 /**
@@ -35,7 +38,7 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
       chart.setOption(
         {
           textStyle: { fontFamily: t.font, color: t.axis },
-          grid: { top: narrow ? 72 : 44, right: narrow ? 12 : 68, bottom: 8, left: 8, containLabel: true },
+          grid: { top: 16, right: narrow ? 12 : 68, bottom: 8, left: 8, containLabel: true },
           tooltip: {
             trigger: 'axis',
             confine: true,
@@ -49,13 +52,11 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
               return lines.join('<br/>');
             },
           },
-          legend: {
-            top: 8,
-            icon: 'roundRect',
-            itemGap: narrow ? 8 : 10,
-            itemWidth: narrow ? 18 : 25,
-            textStyle: { color: t.ink, fontWeight: 600 },
-          },
+          // Die eingebaute echarts-Legende ist WEG: sie war das einzige
+          // Vorkommen im Portal (fuenf Legenden-Regime), zeichnete in Canvas
+          // statt in HTML und sprach keine Einheiten. `ChartLegend` unter dem
+          // Titel ist die eine Grammatik - deshalb faellt hier auch der
+          // Kopfraum im Grid weg, den sie belegte.
           xAxis: {
             type: 'category',
             data: time,
@@ -65,19 +66,21 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
               color: t.axis,
               hideOverlap: true,
             },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: [
             {
               type: 'value',
-              name: '°C',
+              name: AXIS_NAME.temperatur(narrow),
               position: 'left',
               splitLine: { lineStyle: { color: t.grid } },
               axisLabel: { color: t.axis },
             },
             {
               type: 'value',
-              name: narrow ? '' : 'Wolken %',
+              name: narrow ? '' : AXIS_NAME.bewoelkung(false),
               min: 0,
               max: 100,
               position: 'right',
@@ -86,7 +89,10 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
             },
             {
               type: 'value',
-              name: narrow ? '' : 'W/m²',
+              // K4: die Einheit sagt einem Anlagenbetreiber nichts - das WORT
+              // trägt sie. (Die Leitgröße wird in Stufe 4 die erwartete
+              // Leistung der Anlage in kW; hier steht erst die Beschriftung um.)
+              name: narrow ? '' : AXIS_NAME.sonnenstaerke(false),
               position: 'right',
               offset: narrow ? 0 : 56,
               splitLine: { show: false },
@@ -97,10 +103,10 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
             {
               name: 'Temperatur',
               type: 'line',
-              smooth: true,
+              ...SMOOTH_SERIES,
               showSymbol: false,
               yAxisIndex: 0,
-              lineStyle: { width: 2.5, color: t.temp },
+              lineStyle: { width: STROKE.context, color: t.temp },
               itemStyle: { color: t.temp },
               data: num('temperatureC'),
               // Shade the already-elapsed hours and mark "Jetzt" (idiom shared
@@ -109,7 +115,7 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
                 nowIdx > 0
                   ? {
                       silent: true,
-                      itemStyle: { color: t.axis, opacity: 0.08 },
+                      itemStyle: { color: t.axis, opacity: FILL.past },
                       data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
                     }
                   : undefined,
@@ -121,15 +127,10 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
                       data: [
                         {
                           xAxis: nowIdx,
-                          lineStyle: { color: t.price, type: 'solid', width: 2 },
+                          lineStyle: nowLineStyle(t),
                           // rotate: 0 pins the label horizontal (an hourly axis
                           // otherwise renders it rotated along the line).
-                          label: {
-                            formatter: 'Jetzt',
-                            color: t.price,
-                            position: 'insideStartTop',
-                            rotate: 0,
-                          },
+                          label: nowLabel(t, 'insideStartTop'),
                         },
                       ],
                     }
@@ -138,23 +139,23 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
             {
               name: 'Wolken',
               type: 'line',
-              smooth: true,
+              ...SMOOTH_SERIES,
               showSymbol: false,
               yAxisIndex: 1,
-              lineStyle: { width: 1.5, color: t.cloud },
+              lineStyle: { width: STROKE.contextSoft, color: t.cloud },
               itemStyle: { color: t.cloud },
-              areaStyle: { opacity: 0.12, color: t.cloud },
+              areaStyle: { opacity: FILL.wash, color: t.cloud },
               data: num('cloudCoverPct'),
             },
             {
               name: 'Einstrahlung',
               type: 'line',
-              smooth: true,
+              ...SMOOTH_SERIES,
               showSymbol: false,
               yAxisIndex: 2,
-              lineStyle: { width: 2, color: t.pv },
-              itemStyle: { color: t.pv },
-              areaStyle: { opacity: 0.14, color: t.pv },
+              lineStyle: { width: STROKE.lead, color: t.pvLine },
+              itemStyle: { color: t.pvLine },
+              areaStyle: { opacity: FILL.band, color: t.pvLine },
               data: num('ghiWM2'),
             },
           ],
@@ -165,5 +166,20 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
     [points],
   );
 
-  return <div ref={ref} className="vp-chart" />;
+  // EINE Legenden-Grammatik im ganzen Portal: HTML statt Canvas, mit Einheit,
+  // ueber dem Bild. Die Farben sind die aufgeloesten Token, damit Punkt und
+  // Kurve garantiert denselben Ton tragen.
+  const t = chartTheme();
+  const legend: LegendItem[] = [
+    { color: t.pvLine, label: 'Sonnenstärke', unit: 'W/m²', shape: 'area' },
+    { color: t.temp, label: 'Temperatur', unit: '°C', shape: 'line' },
+    { color: t.cloud, label: 'Bewölkung', unit: '%', shape: 'area' },
+  ];
+
+  return (
+    <>
+      <ChartLegend items={legend} />
+      <div ref={ref} className="vp-chart" />
+    </>
+  );
 }

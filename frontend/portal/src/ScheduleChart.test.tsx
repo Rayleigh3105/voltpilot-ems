@@ -9,6 +9,8 @@ import {
   PV_FORECAST_LABEL,
 } from './schedule';
 import type { SchedulePlan, ScheduleSlot } from './api';
+import { BAR, FILL, NOW, STROKE } from './chartStyle';
+import { chartTheme } from './chartTheme';
 
 /**
  * The canvas is echarts' business (jsdom has none), so the chart's ECharts
@@ -362,5 +364,133 @@ describe('ScheduleChart consumer layers (Verbrauchssteuerung §14.11)', () => {
     );
     expect(series('Verbraucher · Stallpumpe')).toBeUndefined();
     expect(screen.queryByText('Stallpumpe')).toBeNull();
+  });
+});
+
+/**
+ * Die GEOMETRIE der Stufe 1 am echten `setOption`-Objekt. Sie ist eine REGEL
+ * (`chartStyle.ts`), keine Sammlung freier Zahlen — geprüft wird deshalb
+ * gegen die Konstanten, nicht gegen Literale: wer eine Stufe bewusst
+ * nachjustiert, ändert sie an EINER Stelle, wer die Regel aufhebt, wird rot.
+ */
+describe('ScheduleChart · die Geometrie der Chart-Sprache', () => {
+  const tag: ScheduleSlot[] = Array.from({ length: 8 }, (_, i) =>
+    slot({
+      start: `2026-07-29T${String(6 + i).padStart(2, '0')}:00:00Z`,
+      batteryKw: i < 4 ? 3 : -3,
+      pvKw: 5,
+      loadKw: 2,
+      socPct: 40 + i,
+    }),
+  );
+
+  it('rahmt die Daten nicht ein: keine Achslinie, keine Ticks (F4)', () => {
+    render(<ScheduleChart plan={plan(tag)} />);
+    expect(lastOption.xAxis.axisLine.show).toBe(false);
+    expect(lastOption.xAxis.axisTick.show).toBe(false);
+    expect(lastOption.yAxis[0].axisLine.show).toBe(false);
+    expect(lastOption.yAxis[0].axisTick.show).toBe(false);
+  });
+
+  it('deckelt die Balkenbreite und lässt eine Fuge (F9)', () => {
+    render(<ScheduleChart plan={plan(tag)} />);
+    const bars = series('Batterie');
+    expect(bars.barMaxWidth).toBe(BAR.maxWidth);
+    expect(bars.barCategoryGap).toBe(BAR.categoryGap);
+  });
+
+  it('zieht die Preislinie auf die KONTEXT-Stufe (F1-Hierarchie)', () => {
+    render(<ScheduleChart plan={plan(tag)} />);
+    expect(series('Börsenpreis').lineStyle.width).toBe(STROKE.context);
+  });
+
+  it('malt die Jetzt-Linie in INK, dünn und gestrichelt - nie in einer Serienfarbe (F5)', () => {
+    // Ein Plan, der JETZT enthält, damit die Marke wirklich gezeichnet wird.
+    const jetzt = new Date();
+    const laufend: ScheduleSlot[] = Array.from({ length: 8 }, (_, i) =>
+      slot({
+        start: new Date(jetzt.getTime() + (i - 4) * 15 * 60_000).toISOString(),
+        batteryKw: 2,
+      }),
+    );
+    render(<ScheduleChart plan={plan(laufend)} />);
+    const marks = series('Batterie').markLine.data;
+    const now = marks.find((m: any) => m.label?.formatter === 'Jetzt');
+    expect(now.lineStyle.width).toBe(STROKE.ref);
+    expect(now.lineStyle.type).toEqual(NOW.dash);
+    expect(now.lineStyle.opacity).toBe(NOW.inkOpacity);
+    // Die Kanten-Falle: ein innenliegendes Label rendert sonst GEDREHT.
+    expect(now.label.rotate).toBe(0);
+  });
+
+  it('malt den Speicher in EINER Farbe und trennt Laden/Abgeben über die Form (K5)', () => {
+    render(<ScheduleChart plan={plan(tag)} />);
+    const t = chartTheme();
+    const daten = series('Batterie').data;
+    // ⚠ Der Stil hängt am DATENELEMENT, nicht als Callback an der Serie:
+    // ECharts wertet auf `series.itemStyle` nur einen Teil der Felder als
+    // Funktion aus (`borderWidth` NICHT), und die Serie zeichnet dann GAR
+    // NICHTS - im Browser aufgefallen, nicht hier. Der Test prüft deshalb
+    // ausdrücklich die Per-Item-Form.
+    const laden = daten[0];
+    const abgeben = daten[4];
+    expect(laden.value).toBeGreaterThan(0);
+    expect(abgeben.value).toBeLessThan(0);
+    // Laden: gefüllt. Abgeben: derselbe Ton als RAND, Füllung = Kartengrund.
+    expect(laden.itemStyle.color).toBe(t.charge);
+    expect(laden.itemStyle.borderWidth).toBe(0);
+    expect(abgeben.itemStyle.color).toBe(t.surface);
+    expect(abgeben.itemStyle.borderColor).toBe(t.charge);
+    expect(abgeben.itemStyle.borderWidth).toBeGreaterThan(0);
+    // Und die Serie trägt KEINEN Callback mehr, der sie unsichtbar machen würde.
+    expect(typeof series('Batterie').itemStyle?.borderWidth).not.toBe('function');
+  });
+
+  it('lässt einen fehlenden Wert eine LÜCKE bleiben, nie eine 0 (Ehrlichkeitsregel)', () => {
+    const mitLuecke = [...tag];
+    mitLuecke[2] = slot({ start: mitLuecke[2].start, batteryKw: null });
+    render(<ScheduleChart plan={plan(mitLuecke)} />);
+    expect(series('Batterie').data[2]).toBeNull();
+  });
+
+  it('schattiert die Vergangenheit nur als Hauch (F5/FILL.past)', () => {
+    const jetzt = new Date();
+    const laufend: ScheduleSlot[] = Array.from({ length: 8 }, (_, i) =>
+      slot({ start: new Date(jetzt.getTime() + (i - 4) * 15 * 60_000).toISOString() }),
+    );
+    render(<ScheduleChart plan={plan(laufend)} />);
+    expect(series('Batterie').markArea.itemStyle.opacity).toBe(FILL.past);
+  });
+
+  it('trägt die Kernaussage als Satz - aber nur mit bekannter Veräußerungsform (K1)', () => {
+    // Ein Plan von HEUTE, sonst hat die Kernaussage nichts zu sagen.
+    const heute = (h: number) => {
+      const d = new Date();
+      d.setHours(h, 0, 0, 0);
+      return d.toISOString();
+    };
+    const heutePlan: ScheduleSlot[] = [
+      slot({ start: heute(12), batteryKw: 4, gridKw: 1, costEur: 0.1, baselineCostEur: 0.6 }),
+      slot({ start: heute(19), batteryKw: -4, gridKw: -1, costEur: 0.2, baselineCostEur: 0.9 }),
+    ];
+    const { rerender } = render(<ScheduleChart plan={plan(heutePlan)} />);
+    // OHNE plantKind: kein Satz. Eine DV-Anlage mit „nutzen" zu beschreiben
+    // wäre ein falsch abgeleiteter Satz - schlimmer als keiner (r2 §10).
+    expect(document.querySelector('.vp-chart-kern')).toBeNull();
+    rerender(<ScheduleChart plan={plan(heutePlan)} plantKind="direktvermarktung" />);
+    const kopf = document.querySelector('.vp-chart-kern');
+    expect(kopf).not.toBeNull();
+    expect(kopf!.textContent).toContain('verkaufen');
+    // K8: keine Zahl ohne Vergleichsanker.
+    expect(kopf!.textContent).toContain('Ohne Speicher');
+  });
+
+  it('sagt ohne Fahrplan für heute den ehrlichen GRUND statt eines Satzes (K1)', () => {
+    // `tag` liegt in der Vergangenheit - es gibt für heute nichts zu sagen.
+    render(<ScheduleChart plan={plan(tag)} plantKind="eigenverbrauch" />);
+    const kopf = document.querySelector('.vp-chart-kern');
+    expect(kopf).not.toBeNull();
+    expect(kopf!.textContent).toBe('Für heute liegt noch kein Fahrplan vor.');
+    expect(kopf!.className).toContain('is-grund');
   });
 });

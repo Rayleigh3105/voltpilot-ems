@@ -10,7 +10,7 @@ vi.stubGlobal(
     disconnect() {}
   },
 );
-import { FahrplanWhyPanel, roleColor } from './FahrplanWhy';
+import { FahrplanWhyPanel, roleColor, roleDotStyle, roleMark } from './FahrplanWhy';
 import { chartTheme } from '../chartTheme';
 import { phases, type WhySlot } from '../fahrplanWhy';
 
@@ -38,15 +38,25 @@ function mkSlots(): WhySlot[] {
   }));
 }
 
-describe('roleColor (the ONE colour language, Konzept §6.6)', () => {
+describe('roleMark (the ONE colour language, Konzept §6.6 + K5)', () => {
   const t = chartTheme();
 
-  it('paints every discharge role in the battery-discharge BLUE, never red', () => {
+  it('gibt jeder Abgabe-Rolle die SPEICHER-Farbe als Umriss, nie Rot', () => {
     for (const role of ['eigenverbrauch', 'verkaufen', 'spitze_kappen'] as const) {
-      expect(roleColor(role, t)).toBe(t.battDischarge);
+      // K5: EINE Farbe für den Speicher - die Richtung trägt die FORM.
+      expect(roleMark(role, t)).toEqual({ color: t.charge, form: 'outline' });
       // Red is reserved for costs/warnings - a discharge must never wear it.
       expect(roleColor(role, t)).not.toBe(t.discharge);
     }
+  });
+
+  it('macht aus der Umriss-Form einen HOHLEN Punkt, aus gefüllt einen vollen', () => {
+    const laden = roleDotStyle(roleMark('pv_speichern', t));
+    const abgeben = roleDotStyle(roleMark('eigenverbrauch', t));
+    expect(laden.background).toBe(t.charge);
+    expect(laden.boxShadow).toBeUndefined();
+    expect(abgeben.background).toBe('transparent');
+    expect(abgeben.boxShadow).toContain(t.charge);
   });
 
   it('keeps the remaining roles on their shipped hues', () => {

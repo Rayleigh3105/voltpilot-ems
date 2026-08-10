@@ -117,9 +117,11 @@ describe('PriceHistoryChart - der Telefon-Fokus', () => {
     expect(s.markArea.data[0][0]).toEqual({ xAxis: 96 });
   });
 
-  it('ist am Rechner byte-gleich wie vorher: EUR/MWh, kein Fenster', () => {
+  it('behält am Rechner das Profi-Detail EUR/MWh - jetzt mit seiner Größe davor', () => {
     render(<PriceHistoryChart history={historie(zweiTage())} />);
-    expect(lastOption.yAxis.name).toBe('EUR/MWh');
+    // K4: die Einheit steht nie allein („kW" sagt nicht, WAS gemessen wird),
+    // aber EUR/MWh bleibt als Profi-Detail am Rechner erhalten.
+    expect(lastOption.yAxis.name).toBe('Preis (EUR/MWh)');
     expect(lastOption.yAxis.axisLabel.formatter).toBeUndefined();
     expect(lastOption.dataZoom).toBeUndefined();
   });
@@ -140,7 +142,8 @@ describe('PriceHistoryChart - der Telefon-Fokus', () => {
       maxEurMwh: 90 + i,
     }));
     render(<PriceHistoryChart history={historie(tage, 'P1D')} fokus="heute" />);
-    expect(lastOption.yAxis.name).toBe('EUR/MWh');
+    // K4: die Einheit steht nie allein - das Profi-Detail EUR/MWh bleibt.
+    expect(lastOption.yAxis.name).toBe('Preis (EUR/MWh)');
     expect(lastOption.dataZoom).toBeUndefined();
   });
 });

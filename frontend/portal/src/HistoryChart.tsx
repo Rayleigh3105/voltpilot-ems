@@ -1,6 +1,23 @@
 import { useRef, useState } from 'react';
 import type { History } from './api';
+import { endsCollide, useDirectLabels } from './chartKopf';
+import { useChartDetail } from './useChartDetail';
+import {
+  BAR,
+  BASE_SERIES_LIMIT,
+  DIRECT_LABEL_GUTTER_PX,
+  directLabel,
+  FILL,
+  nowLabel,
+  nowLineStyle,
+  SMOOTH_SERIES,
+  storageBar,
+  storageMark,
+  STROKE,
+  withAlpha,
+} from './chartStyle';
 import { chartTheme, type ChartTheme } from './chartTheme';
+import { fmtNum } from './format';
 import {
   anzeigeWert,
   energieDiagramm,
@@ -17,7 +34,12 @@ import {
 } from './historieEreignisse';
 import { angleichen, type UeberlagerungLegende } from './historieVergleich';
 import { useEChart } from './useEChart';
-import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
+import {
+  ChartDetailToggle,
+  ChartLegend,
+  ChartInsight,
+  type LegendItem,
+} from './components/ChartExplain';
 import { EreignisSpur, ereignisFarbe } from './components/EreignisSpur';
 import { UeberlagerungLegendeZeile } from './components/HistorieWelt';
 
@@ -101,18 +123,24 @@ function ct(v: number | null): string {
 /**
  * A pure `EnergieFarbe` key -> the resolved chart hex.
  *
- * **Die FORM entscheidet beim Netz mit:** als LINIE (Tages-Ansicht) läuft
- * „Netz" direkt neben der Batterie-Linie, und der helle Netz-Ton war vom
- * Laden-Grün nicht zu trennen (ΔE 9,8, harter FAIL) - dort gilt die dunklere
- * `flowGridLine`-Stufe (ΔE 19,3). Als BALKEN (Woche+) behält es den hellen
- * Grundton, der auch der Energiefluss trägt.
+ * **Die FORM entscheidet mit (F2, „dünn heisst dunkler"):** als LINIE
+ * (Tages-Ansicht) braucht dieselbe Rolle eine dunklere Stufe als als Balken.
+ * Beim NETZ ist das zusätzlich eine Trennungsfrage - der helle Netz-Ton war
+ * vom Laden-Grün nicht zu trennen (ΔE 9,8, harter FAIL), die dunklere
+ * `flowGridLine`-Stufe trennt mit ΔE 19,3. PV und Haus bekommen aus demselben
+ * Grund ihre `-line`-Stufen; als BALKEN (Woche+) behalten alle drei den hellen
+ * Grundton, den auch der Energiefluss trägt.
+ *
+ * ⚠ `battDischarge` ist KEIN eigener Ton mehr: der Speicher ist EINE Farbe
+ * (K5), die Richtung tragen Vorzeichen/Position und das Wort - siehe
+ * `chartStyle.ts` `storageMark`.
  */
 function farbe(t: ChartTheme, key: EnergieFarbe, linie = false): string {
   switch (key) {
     case 'pv':
-      return t.pv;
+      return linie ? t.pvLine : t.pv;
     case 'load':
-      return t.load;
+      return linie ? t.loadLine : t.load;
     case 'grid':
       return linie ? t.flowGridLine : t.flowGrid;
     case 'gridImport':
@@ -120,9 +148,8 @@ function farbe(t: ChartTheme, key: EnergieFarbe, linie = false): string {
     case 'gridExport':
       return t.charge;
     case 'charge':
-      return t.charge;
     case 'battDischarge':
-      return t.battDischarge;
+      return t.charge;
     case 'soc':
     default:
       return t.soc;
@@ -182,13 +209,27 @@ export function HistoryEnergieChart({
   /** Wer oben/unten liegt, in Worten — kommt aus `historieVergleich`. */
   legende?: UeberlagerungLegende | null;
 }) {
+  // K3: der Grundzustand zeigt HÖCHSTENS drei Reihen. Was darüber hinausgeht
+  // (Batterie, Ladestand) liegt hinter „Mehr anzeigen ▾" - weniger
+  // gleichzeitig ist verständlicher, UND es ist die vom dataviz-Validator
+  // vorgeschriebene Antwort auf nicht trennbare Farbpaare („cut series or
+  // facet instead"). Der Zustand wird pro Tab-Sitzung gemerkt.
+  const [tiefe, tiefeUmschalten] = useChartDetail('messwerte.reihen');
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const t = chartTheme();
   const diagramm = energieDiagramm(history);
   // Nur Reihen mit Werten sind überhaupt schaltbar/zeichenbar.
   const vorhanden = diagramm.serien.filter((s) => !s.leer);
   const fehlend = diagramm.serien.filter((s) => s.leer);
-  const sichtbar = vorhanden.filter((s) => !hidden.has(s.label));
+  // Die Reihen jenseits des Grundzustands - benannt, damit der Umschalter
+  // sagt, WAS dahinter liegt (ein „mehr" ohne Inhaltsangabe ist eine
+  // Wundertüte). Ausgeblendet wird nur, was der Kunde nicht selbst ein- oder
+  // ausgeschaltet hat.
+  const tiefereReihen = vorhanden.slice(BASE_SERIES_LIMIT);
+  const sichtbar = vorhanden.filter(
+    (s) =>
+      !hidden.has(s.label) && (tiefe || !tiefereReihen.some((x) => x.label === s.label)),
+  );
   // Die Vergleichsreihen entstehen aus DEMSELBEN `energieDiagramm` - eine
   // zweite Ableitung könnte auseinanderlaufen. Zugeordnet wird über den
   // Reihen-SCHLÜSSEL (nie über die Reihenfolge), am Index ausgerichtet.
@@ -244,6 +285,31 @@ export function HistoryEnergieChart({
         .map((s) => ({ s, v: vglSerien.get(s.key) }))
         .filter((x): x is { s: EnergieSerie; v: EnergieSerie } => x.v != null);
       const nameOf = (s: EnergieSerie) => `${s.label} · ${vglName}`;
+      // K2: Name + Wert AM Kurvenende. Nur auf der TAGES-Ansicht (Linien mit
+      // sichtbarem Ende); die kWh-Balken von Woche+ haben kein Kurvenende, und
+      // eine Vergleichs-Überlagerung verdoppelt jede Reihe - dann bleibt die
+      // Legende der bessere Weg (K2-Rückfall).
+      const linienEnden = sichtbar
+        .filter((x) => x.linie && !x.zweiteAchse)
+        .map((x) => {
+          for (let i = x.werte.length - 1; i >= 0; i -= 1) {
+            const v = x.werte[i];
+            if (v != null) return v;
+          }
+          return null;
+        });
+      const alleWerte = sichtbar
+        .filter((x) => x.linie && !x.zweiteAchse)
+        .flatMap((x) => x.werte.filter((v): v is number => v != null));
+      const spanne = alleWerte.length ? Math.max(...alleWerte) - Math.min(...alleWerte) : 0;
+      const direkt =
+        vglReihen.length === 0 &&
+        sichtbar.every((x) => x.linie) &&
+        useDirectLabels(
+          sichtbar.filter((x) => !x.zweiteAchse).length,
+          width,
+          endsCollide(linienEnden, spanne),
+        );
       const vglLookup = new Map(vglReihen.map((x) => [nameOf(x.s), x.s]));
 
       const serieOption = (s: EnergieSerie, isFirst: boolean) => {
@@ -270,20 +336,17 @@ export function HistoryEnergieChart({
                   data: [
                     {
                       yAxis: 0,
-                      lineStyle: { color: t.axis, width: 1.6, type: 'solid' as const },
+                      // F4: die Nulllinie signierter Flächen ist eine eigene,
+                      // etwas dunklere HAARLINIE - nie ein 1,6-px-Balken.
+                      lineStyle: { color: t.axisLine, width: STROKE.ref, type: 'solid' as const },
                       label: { show: false },
                     },
                     ...(jetztIndex > 0 && jetztIndex < zeiten.length - 1
                       ? [
                           {
                             xAxis: jetztIndex,
-                            lineStyle: { color: t.price, width: 2, type: 'solid' as const },
-                            label: {
-                              formatter: 'Jetzt',
-                              color: t.price,
-                              position: 'insideEndTop' as const,
-                              rotate: 0,
-                            },
+                            lineStyle: nowLineStyle(t),
+                            label: nowLabel(t, 'insideEndTop'),
                           },
                         ]
                       : []),
@@ -296,13 +359,22 @@ export function HistoryEnergieChart({
             ...base,
             ...zeroLine,
             type: 'line' as const,
-            smooth: true,
+            ...SMOOTH_SERIES,
             showSymbol: false,
             connectNulls: false,
+            // F1-Hierarchie: die gemessenen Reihen TRAGEN die Aussage, der
+            // Ladestand auf der zweiten Achse ist Kontext.
             lineStyle: s.zweiteAchse
-              ? { width: 1.8, color, type: 'dotted' as const }
-              : { width: 2.4, color },
-            ...(s.zweiteAchse ? {} : { areaStyle: { opacity: 0.06, color } }),
+              ? { width: STROKE.contextSoft, color, type: 'dotted' as const }
+              : { width: STROKE.lead, color },
+            ...(s.zweiteAchse ? {} : { areaStyle: { opacity: FILL.wash, color } }),
+            ...(direkt && !s.zweiteAchse
+              ? directLabel(color, (p) => {
+                  const v = p.value;
+                  if (v == null) return '';
+                  return `${s.label}  ${fmtNum(Math.abs(Number(v)), einheit)}`;
+                })
+              : {}),
             z: s.zweiteAchse ? 1 : 2,
           };
         }
@@ -310,8 +382,9 @@ export function HistoryEnergieChart({
           ...base,
           ...zeroLine,
           type: 'bar' as const,
-          barMaxWidth: 16,
-          itemStyle: { color, borderRadius: 2 },
+          barMaxWidth: BAR.maxWidth,
+          barCategoryGap: BAR.categoryGap,
+          itemStyle: { color, borderRadius: BAR.radius },
         };
       };
 
@@ -320,7 +393,8 @@ export function HistoryEnergieChart({
           textStyle: { fontFamily: t.font, color: t.axis },
           grid: {
             top: 26,
-            right: brauchtSoc ? (narrow ? 26 : 46) : 12,
+            // K2 braucht rechts Platz fuer das Etikett.
+            right: direkt ? DIRECT_LABEL_GUTTER_PX : brauchtSoc ? (narrow ? 26 : 46) : 12,
             bottom: narrow ? 8 : 34,
             left: 8,
             containLabel: true,
@@ -371,8 +445,9 @@ export function HistoryEnergieChart({
               color: t.axis,
               hideOverlap: true,
             },
-            axisTick: { show: !weekNarrow },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            // F4: kein Rahmen um die Daten - weder Achslinie noch Ticks.
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: [
             {
@@ -420,7 +495,9 @@ export function HistoryEnergieChart({
                   height: 22,
                   bottom: 2,
                   borderColor: t.axisLine,
-                  fillerColor: 'rgba(149,185,255,0.22)',
+                  // Token + Alpha statt eines rgba-Literals (die Hausregel des
+                  // Admin-PlanCharts) - der letzte rgba-Wert der Chart-Schicht.
+                  fillerColor: withAlpha(t.price, FILL.band),
                   handleStyle: { color: t.price },
                   textStyle: { color: t.axis },
                 },
@@ -433,14 +510,14 @@ export function HistoryEnergieChart({
               type: 'line' as const,
               yAxisIndex: s.zweiteAchse ? 1 : 0,
               data: angleichen(v.werte, zeiten.length),
-              smooth: true,
+              ...SMOOTH_SERIES,
               showSymbol: false,
               connectNulls: false,
               z: 0,
               silent: true,
               lineStyle: {
                 color: farbe(t, s.farbe, s.linie),
-                width: 1.6,
+                width: STROKE.contextSoft,
                 type: 'dashed' as const,
                 opacity: VERGLEICH_OPACITY,
               },
@@ -455,7 +532,11 @@ export function HistoryEnergieChart({
     [history, diagramm, sichtbar, vergleich, legende, t],
   );
 
-  const legend: LegendItem[] = vorhanden.map((s) => ({
+  // Die Legende bewirbt nur, was gezeichnet WERDEN KANN: eine Reihe hinter dem
+  // zugeklappten „Mehr anzeigen" ist keine ausgeblendete Reihe, sie ist gar
+  // nicht im Bild - sie in der Legende zu führen wäre ein leeres Versprechen.
+  const legendReihen = tiefe ? vorhanden : vorhanden.slice(0, BASE_SERIES_LIMIT);
+  const legend: LegendItem[] = legendReihen.map((s) => ({
     color: farbe(t, s.farbe, s.linie),
     label: s.label,
     unit: s.vorzeichen ?? s.unit,
@@ -464,6 +545,13 @@ export function HistoryEnergieChart({
 
   return (
     <div>
+      {tiefereReihen.length > 0 && (
+        <ChartDetailToggle
+          open={tiefe}
+          onToggle={tiefeUmschalten}
+          was={tiefereReihen.map((s) => s.label).join(', ')}
+        />
+      )}
       <ChartLegend
         items={legend}
         hidden={hidden}
@@ -541,11 +629,14 @@ export function HistoryDayChart({ history }: { history: History }) {
     if (nowIdx >= 0 && nowIdx < buckets.length - 1)
       markLineData.push({
         xAxis: nowIdx,
-        lineStyle: { color: t.price, type: 'solid', width: 2 },
+        // F5: EINE Jetzt-Linie im ganzen Portal - dünn, gestrichelt, in Ink.
+        // Sie ist eine REFERENZ, nie eine Datenreihe, und trug deshalb zuletzt
+        // zu Unrecht die Preis-Serienfarbe.
+        lineStyle: nowLineStyle(t),
         // `rotate: 0` is load-bearing: on a category axis an inside-positioned
         // markLine label otherwise renders ROTATED along the line (the
         // documented edge-label gotcha) - measured in the browser.
-        label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop', rotate: 0 },
+        label: nowLabel(t, 'insideStartTop'),
       });
 
     chart.setOption(
@@ -586,7 +677,8 @@ export function HistoryDayChart({ history }: { history: History }) {
             color: t.axis,
             hideOverlap: true,
           },
-          axisLine: { lineStyle: { color: t.axisLine } },
+          axisTick: { show: false },
+          axisLine: { show: false },
         },
         yAxis: [
           {
@@ -616,18 +708,22 @@ export function HistoryDayChart({ history }: { history: History }) {
             name: 'Batterie (ist)',
             type: 'bar',
             yAxisIndex: 0,
-            data: battery,
-            barCategoryGap: '8%',
+            // K5: der Speicher ist EINE Farbe. Laden ist gefüllt, Abgeben ein
+            // UMRISS - dazu liegt es unter der Nulllinie und trägt sein Wort in
+            // Legende und Tooltip. Der Stil hängt am DATENELEMENT, nicht als
+            // Callback an der Serie (siehe `storageItemStyle`).
+            data: battery.map((v) =>
+              storageBar(v, storageMark(v != null && v < 0 ? 'entladen' : 'laden', t), t.surface),
+            ),
+            // F9: aus dem Farb-Block werden ablesbare Viertelstunden-Stäbe.
+            barCategoryGap: BAR.categoryGap,
+            barMaxWidth: BAR.maxWidth,
             z: 3,
-            itemStyle: {
-              borderRadius: 2,
-              color: (p: { value: number }) => (Number(p.value) >= 0 ? t.charge : t.battDischarge),
-            },
             markArea:
               nowIdx > 0
                 ? {
                     silent: true,
-                    itemStyle: { color: t.axis, opacity: 0.08 },
+                    itemStyle: { color: t.axis, opacity: FILL.past },
                     data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
                   }
                 : undefined,
@@ -645,7 +741,7 @@ export function HistoryDayChart({ history }: { history: History }) {
                   step: 'middle' as const,
                   symbol: 'none',
                   z: 2,
-                  lineStyle: { color: t.plan, width: 1.5, type: 'dashed' as const },
+                  lineStyle: { color: t.plan, width: STROKE.contextSoft, type: 'dashed' as const },
                   itemStyle: { color: t.plan },
                 },
               ]
@@ -658,7 +754,7 @@ export function HistoryDayChart({ history }: { history: History }) {
             step: 'end',
             symbol: 'none',
             z: 2,
-            lineStyle: { color: t.price, width: 2 },
+            lineStyle: { color: t.price, width: STROKE.context },
             itemStyle: { color: t.price },
             // Die Ereignis-Bänder hängen an DIESER Reihe: die Batterie-Reihe
             // trägt bereits die markArea der vergangenen Stunden.
@@ -669,10 +765,10 @@ export function HistoryDayChart({ history }: { history: History }) {
             type: 'line',
             yAxisIndex: 2,
             data: soc,
-            smooth: true,
+            ...SMOOTH_SERIES,
             symbol: 'none',
             z: 1,
-            lineStyle: { color: t.soc, width: 1.5, type: 'dotted' },
+            lineStyle: { color: t.soc, width: STROKE.contextSoft, type: 'dotted' },
             itemStyle: { color: t.soc },
           },
         ],
@@ -684,7 +780,8 @@ export function HistoryDayChart({ history }: { history: History }) {
   const hasPlan = history.plan.length > 0;
   const legend: LegendItem[] = [
     { color: t.charge, label: 'Batterie lädt', unit: 'kW', shape: 'bar' },
-    { color: t.battDischarge, label: 'Batterie entlädt', unit: 'kW', shape: 'bar' },
+    // K5: dieselbe Farbe, andere FORM - „gefüllt = lädt, Umriss = gibt ab".
+    { color: t.charge, label: 'Batterie entlädt', unit: 'kW', shape: 'outline' },
     ...(hasPlan
       ? [{ color: t.plan, label: 'Geplant (Soll)', unit: 'kW', shape: 'dashed' as const }]
       : []),

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { ApiError } from '../api';
+import { BAR, storageBar, storageMark, STROKE } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { useEChart } from '../useEChart';
 import { eurAmount, fmtNum } from '../format';
@@ -224,7 +225,8 @@ function MonthlyChart({ data }: { data: NonNullable<ReturnType<typeof monthlyCha
             type: 'category',
             data: data.labels,
             axisLabel: { hideOverlap: true, color: t.axis },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: {
             type: 'value',
@@ -232,9 +234,31 @@ function MonthlyChart({ data }: { data: NonNullable<ReturnType<typeof monthlyCha
             splitLine: { lineStyle: { color: t.grid } },
           },
           series: [
-            { name: 'Ohne Speicher', type: 'bar', data: data.ohne, itemStyle: { color: t.load } },
-            { name: 'Standard-Speicher', type: 'bar', data: data.standard, itemStyle: { color: t.cloud } },
-            { name: 'Mit VoltPilot', type: 'bar', data: data.voltpilot, itemStyle: { color: t.pv } },
+            // F9: EIN Breiten-Deckel + Fuge - diese drei Reihen hatten bisher
+            // gar keinen, also wuchsen die Balken mit der Containerbreite.
+            {
+              name: 'Ohne Speicher',
+              type: 'bar',
+              data: data.ohne,
+              barMaxWidth: BAR.maxWidth,
+              barCategoryGap: BAR.categoryGap,
+              barGap: BAR.seriesGap,
+              itemStyle: { color: t.load, borderRadius: BAR.radius },
+            },
+            {
+              name: 'Standard-Speicher',
+              type: 'bar',
+              data: data.standard,
+              barMaxWidth: BAR.maxWidth,
+              itemStyle: { color: t.cloud, borderRadius: BAR.radius },
+            },
+            {
+              name: 'Mit VoltPilot',
+              type: 'bar',
+              data: data.voltpilot,
+              barMaxWidth: BAR.maxWidth,
+              itemStyle: { color: t.pv, borderRadius: BAR.radius },
+            },
           ],
         },
         true,
@@ -273,7 +297,8 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
             type: 'category',
             data: times,
             axisLabel: { hideOverlap: true, color: t.axis },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: [
             {
@@ -293,10 +318,18 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
             {
               name: 'VoltPilot Speicher',
               type: 'bar',
-              data: tag.slots.map((s) => s.batterieVoltpilotKw),
-              itemStyle: {
-                color: (p: { value: number }) => (Number(p.value) >= 0 ? t.charge : t.discharge),
-              },
+              // Dieselbe Speicher-Sprache wie ueberall: EINE Farbe, Umriss =
+              // abgeben. Das Kosten-ROT ist hier raus (F5/F10); der Stil haengt
+              // am DATENELEMENT (siehe `storageItemStyle`).
+              data: tag.slots.map((s) =>
+                storageBar(
+                  s.batterieVoltpilotKw,
+                  storageMark(s.batterieVoltpilotKw < 0 ? 'entladen' : 'laden', t),
+                  t.surface,
+                ),
+              ),
+              barMaxWidth: BAR.maxWidth,
+              barCategoryGap: BAR.categoryGap,
             },
             {
               name: 'Standard-Speicher',
@@ -304,7 +337,7 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
               step: 'middle',
               symbol: 'none',
               data: tag.slots.map((s) => s.batterieStandardKw),
-              lineStyle: { color: t.cloud, width: 1.5, type: 'dashed' },
+              lineStyle: { color: t.cloud, width: STROKE.contextSoft, type: 'dashed' },
             },
             {
               name: 'Börsenpreis',
@@ -313,7 +346,7 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
               symbol: 'none',
               yAxisIndex: 1,
               data: tag.slots.map((s) => Math.round(s.preisEurMwh) / 10),
-              lineStyle: { color: t.price, width: 2 },
+              lineStyle: { color: t.price, width: STROKE.context },
             },
           ],
         },
@@ -327,7 +360,7 @@ function ExampleDayChart({ tag, label }: { tag: BeispielTag; label: string }) {
       <ChartLegend
         items={[
           { color: t.charge, label: 'VoltPilot lädt', unit: 'kW' },
-          { color: t.discharge, label: 'VoltPilot entlädt', unit: 'kW' },
+          { color: t.charge, label: 'VoltPilot entlädt', unit: 'kW', shape: 'outline' },
           { color: t.cloud, label: 'Standard-Speicher', unit: 'kW', shape: 'line' },
           { color: t.price, label: 'Börsenpreis', unit: 'ct/kWh', shape: 'line' },
         ]}
@@ -357,7 +390,8 @@ function SweepChart({ data }: { data: NonNullable<ReturnType<typeof sweepChartDa
             type: 'category',
             data: data.sizes.map((s) => fmtNum(s, 'kWh', 0)),
             axisLabel: { hideOverlap: true, color: t.axis },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: {
             type: 'value',
@@ -373,7 +407,8 @@ function SweepChart({ data }: { data: NonNullable<ReturnType<typeof sweepChartDa
                 symbolSize: i === data.baseIndex ? 14 : 7,
                 itemStyle: i === data.baseIndex ? { color: t.pv, borderColor: t.ink, borderWidth: 2 } : undefined,
               })),
-              lineStyle: { color: t.soc, width: 2 },
+              // F1-Hierarchie: die Sweep-Kurve IST die Aussage der Flaeche.
+              lineStyle: { color: t.soc, width: STROKE.lead },
               itemStyle: { color: t.soc },
             },
           ],

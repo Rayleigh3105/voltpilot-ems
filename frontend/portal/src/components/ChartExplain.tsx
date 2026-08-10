@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
+import { kopfView, type Kernaussage } from '../chartKopf';
 
 /**
  * Self-explaining chart chrome (captain's pain: "it takes me a while to
@@ -15,8 +16,12 @@ import { Icon, type IconName } from '../../designsystem/components/core/Icon';
  * the canvas exactly. Keep these dumb + presentational; charts own the data.
  */
 
-/** How a series is drawn on the canvas, mirrored by the legend swatch. */
-export type SwatchShape = 'bar' | 'line' | 'dashed' | 'dotted' | 'area';
+/**
+ * How a series is drawn on the canvas, mirrored by the legend swatch.
+ * `outline` ist die Umriss-Form des Speichers (K5): dieselbe Farbe wie
+ * `bar`, nur hohl - „gefüllt = lädt, Umriss = gibt ab".
+ */
+export type SwatchShape = 'bar' | 'line' | 'dashed' | 'dotted' | 'area' | 'outline';
 
 export interface LegendItem {
   /** Resolved hex (from chartTheme) so the swatch matches the canvas. */
@@ -49,6 +54,65 @@ function Swatch({ color, shape = 'bar' }: { color: string; shape?: SwatchShape }
 /** One-line "what does this chart show?" caption under a chart title. */
 export function ChartSubtitle({ children }: { children: ReactNode }) {
   return <p className="vp-chart-sub">{children}</p>;
+}
+
+/**
+ * K1/M11 · Der Kernaussage-Kopf: die Zahl, die zählt, und ihr abgeleiteter
+ * Satz — ÜBER dem Diagramm, damit das Bild zum Beleg wird statt zur Aufgabe.
+ *
+ * ⚠ Der Satz kommt IMMER aus einer Ableitung (`planSentence`, `idleReason`,
+ * `proofLine`, `erloesErgebnis`, …), nie aus dieser Datei. Ohne belegbare
+ * Aussage rendert der Kopf den ehrlichen GRUND, und ohne Grund gar nichts —
+ * ein nacktes „—" erklärt nichts (r2 §10, die Regel mit dem größten Risiko).
+ */
+export function ChartHeadline({ kern }: { kern: Kernaussage | null | undefined }) {
+  const v = kopfView(kern);
+  if (v.modus === 'nichts') return null;
+  if (v.modus === 'grund') {
+    return (
+      <p className="vp-chart-kern is-grund" role="note">
+        {v.text}
+      </p>
+    );
+  }
+  return (
+    <p className={`vp-chart-kern is-${v.ton}`}>
+      {v.wert && <strong className="vp-chart-kern-wert">{v.wert}</strong>}
+      <span className="vp-chart-kern-satz">{v.text}</span>
+      {v.anker && <span className="vp-chart-kern-anker">{v.anker}</span>}
+    </p>
+  );
+}
+
+/**
+ * K3/M13 · „Mehr anzeigen ▾" — der Umschalter der Detailtiefe.
+ *
+ * Er nennt, WAS dahinter liegt („Ladestand, Prognosen"), statt nur „mehr":
+ * ein Umschalter ohne Inhaltsangabe ist eine Wundertüte. Der Zustand kommt von
+ * `useChartDetail` (pro Fläche, pro Tab-Sitzung).
+ */
+export function ChartDetailToggle({
+  open,
+  onToggle,
+  was,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  /** Die Reihen dahinter, als Aufzählung („Ladestand, Prognosen"). */
+  was: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`vp-chart-more${open ? ' is-open' : ''}`}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      <span>{open ? 'Weniger anzeigen' : 'Mehr anzeigen'}</span>
+      <span className="vp-chart-more-was">{was}</span>
+      <Icon name="chevron-down" size={14} />
+    </button>
+  );
 }
 
 /**

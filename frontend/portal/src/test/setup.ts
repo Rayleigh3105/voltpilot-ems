@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import { beforeEach } from 'vitest';
 
 // jsdom implements no PointerEvent, so @testing-library falls back to a plain
 // Event and SILENTLY DROPS clientX/clientY - a pointer drag would then be
@@ -43,3 +44,18 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   // @ts-expect-error - deliberately widening the jsdom globals for tests
   globalThis.ResizeObserver = ResizeObserverStub;
 }
+
+// Jeder Test beginnt in einem FRISCHEN Tab. Seit dem Chart-Redesign merken
+// sich mehrere Flächen ihre Detailtiefe in `sessionStorage` (`useChartDetail`,
+// die Fahrplan-Schichten, das Verlauf-Aufklappen) - jsdom teilt den Speicher
+// aber über alle Tests EINER Datei, also würde der Umschalt-Klick des einen
+// Tests den Grundzustand des nächsten verändern. Genau so ist es beim Bau
+// aufgefallen. Tests, die einen Zustand ABSICHTLICH vorbelegen, setzen ihn in
+// ihrem eigenen `beforeEach`/Körper - der läuft nach diesem hier.
+beforeEach(() => {
+  try {
+    sessionStorage.clear();
+  } catch {
+    /* kein Speicher in dieser Umgebung - dann gibt es auch nichts zu leeren. */
+  }
+});

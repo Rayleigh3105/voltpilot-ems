@@ -4,9 +4,9 @@
  * the SLOT PANEL
  * (role + why-sentence + context + binding chips) on tap. All derivation is
  * the pure src/fahrplanWhy.ts - these components only render it. Role colors
- * come from the shipped chartTheme() tokens (green solar / cyan grid / BLUE
- * discharge / grey idle / orange curtail), so band and chart always agree -
- * red stays reserved for costs/warnings and never marks a discharge.
+ * come from the shipped chartTheme() tokens (green solar / cyan grid / green
+ * OUTLINE discharge / grey idle / orange curtail), so band and chart always
+ * agree - red stays reserved for costs/warnings and never marks a discharge.
  * On phones the panel renders as a bottom sheet (CSS), tap targets ≥ 44 px.
  *
  * The former unlabeled PHASE BAND is gone: at 375 px it was colour confetti
@@ -15,6 +15,7 @@
  * `TagesFilm`) replaced it.
  */
 
+import { storageMark, type StorageMark } from '../chartStyle';
 import { chartTheme, type ChartTheme } from '../chartTheme';
 import {
   CURTAIL_PLAN,
@@ -42,27 +43,47 @@ import {
 import './FahrplanWhy.css';
 
 
-/** The band/panel color of a role, from the shared chart palette. */
-export function roleColor(role: SlotRole, t: ChartTheme): string {
+/**
+ * Die MARKE einer Rolle (Farbe + Form) aus der geteilten Chart-Sprache — EINE
+ * Farbsprache an jedem Fahrplan-Bauteil (Balken, Filmzeile, Phasen-Karte).
+ *
+ * Der Speicher ist EINE Farbe (K5): Laden ist gefüllt, Abgeben ein UMRISS,
+ * und das Wort steht in derselben Zeile. Vorher trug „abgeben" ein eigenes
+ * Blau, das gegen das Haus-Blau der Linien-Stufe unter der Normalsicht-Grenze
+ * lag — Messung und Begründung in `chartStyle.ts` `storageMark`.
+ */
+export function roleMark(role: SlotRole, t: ChartTheme): StorageMark {
   switch (role) {
     case 'pv_speichern':
-      return t.charge;
+      return storageMark('laden', t);
     case 'guenstig_laden':
-      return t.gridCharge;
+      return storageMark('netzladen', t);
     case 'eigenverbrauch':
     case 'verkaufen':
     case 'spitze_kappen':
-      // ONE colour for ONE action: discharging is BLUE everywhere (bars, band,
-      // phase card, KPI). Red is reserved for costs/warnings, and a battery
-      // that earns money must never read as a fault.
-      return t.battDischarge;
+      return storageMark('entladen', t);
     case 'abregeln':
-      return t.pv;
+      return { color: t.pv, form: 'filled' };
     default:
       // Ruhe (warten/Reserve halten) traegt bewusst KEINEN Serienton, damit
       // „hier passiert nichts" nie wie eine Handlung aussieht.
-      return t.idle;
+      return { color: t.idle, form: 'filled' };
   }
+}
+
+/** The band/panel color of a role, from the shared chart palette. */
+export function roleColor(role: SlotRole, t: ChartTheme): string {
+  return roleMark(role, t).color;
+}
+
+/**
+ * Der CSS-Stil des Rollen-Punkts. Ein UMRISS ist ein hohler Punkt in derselben
+ * Farbe — die Form trägt die Richtung, sobald die Position es nicht kann (eine
+ * Listenzeile hat kein Über/Unter-Null).
+ */
+export function roleDotStyle(mark: StorageMark): React.CSSProperties {
+  if (mark.form === 'filled') return { background: mark.color };
+  return { background: 'transparent', boxShadow: `inset 0 0 0 2px ${mark.color}` };
 }
 
 function CloseButton({ onClose }: { onClose: () => void }) {
@@ -102,7 +123,11 @@ export function PhaseCard({
         Phase · {phaseRange(phase)} · {phase.slotCount} Viertelstunden
       </div>
       <div className="vp-fw-role">
-        <i style={{ background: phase.kind === 'idle' ? t.idle : roleColor(phase.role, t) }} />
+        <i
+          style={roleDotStyle(
+            phase.kind === 'idle' ? { color: t.idle, form: 'filled' } : roleMark(phase.role, t),
+          )}
+        />
         {roleLabel(phase.role, plantKind, null, false, curtail)}
         {mode && <span className="vp-fw-mode">{mode}</span>}
       </div>
@@ -164,10 +189,11 @@ export function SlotCard({
       </div>
       <div className="vp-fw-role">
         <i
-          style={{
-            background:
-              role === 'warten' || role === 'reserve_halten' ? t.idle : roleColor(role, t),
-          }}
+          style={roleDotStyle(
+            role === 'warten' || role === 'reserve_halten'
+              ? { color: t.idle, form: 'filled' }
+              : roleMark(role, t),
+          )}
         />
         {roleLabel(role, plantKind, slot.slotFlags, false, curtail)}
       </div>

@@ -1,5 +1,6 @@
+import { BAR, storageBar, STROKE } from '../../chartStyle';
 import { chartTheme } from '../../chartTheme';
-import { chargeKind } from '../../schedule';
+import { chargeKind, slotBarMark } from '../../schedule';
 import { useEChart } from '../../useEChart';
 import { ChartLegend, type LegendItem } from '../../components/ChartExplain';
 import type { WhatIfResult } from '../../optimizerApi';
@@ -41,6 +42,19 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
         .map((v) => Math.abs(v));
       const kwMax = kwAbs.length ? Math.max(...kwAbs, 1) : 1;
 
+      /** Die Lade-Art EINES Balkens - `chargeKind` ist die eine Ableitung. */
+
+      const kindOf = (p: { dataIndex: number; value: number | null }) => {
+
+        const slot = slots[p.dataIndex];
+
+        if (slot) return chargeKind(slot.batteryKw, slot.gridKw, slot.pvKw, slot.curtailKw);
+
+        return Number(p.value) >= 0 ? ('solarladen' as const) : ('entladen' as const);
+
+      };
+
+
       chart.setOption(
         {
           textStyle: { fontFamily: t.font, color: t.axis },
@@ -78,7 +92,8 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               color: t.axis,
               hideOverlap: true,
             },
-            axisLine: { lineStyle: { color: t.axisLine } },
+            axisTick: { show: false },
+            axisLine: { show: false },
           },
           yAxis: [
             {
@@ -101,12 +116,13 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               type: 'bar',
               yAxisIndex: 0,
               data: baselineBattery,
-              barCategoryGap: '8%',
+              barCategoryGap: BAR.categoryGap,
+              barMaxWidth: BAR.maxWidth,
               barGap: '-100%',
               z: 1,
               silent: true,
               itemStyle: {
-                borderRadius: 1,
+                borderRadius: BAR.radius,
                 color: 'transparent',
                 borderColor: t.axis,
                 borderWidth: 1,
@@ -117,19 +133,17 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               name: 'Ihre Regler',
               type: 'bar',
               yAxisIndex: 0,
-              data: variantBattery,
-              barCategoryGap: '8%',
+              // Dieselbe Speicher-Sprache wie im Kunden-Fahrplan: EINE Farbe,
+              // Umriss = abgeben. Bis Stufe 1 malte dieser Chart das Entladen
+              // im Kosten-ROT und widersprach damit jeder anderen Flaeche. Der
+              // Stil haengt am DATENELEMENT (siehe `storageItemStyle`).
+              data: variantBattery.map((v, i) =>
+                storageBar(v, slotBarMark(kindOf({ dataIndex: i, value: v }), t), t.surface),
+              ),
+              barCategoryGap: BAR.categoryGap,
+              barMaxWidth: BAR.maxWidth,
               z: 3,
-              itemStyle: {
-                borderRadius: 2,
-                color: (p: { dataIndex: number; value: number | null }) => {
-                  const slot = slots[p.dataIndex];
-                  const kind =
-                    slot && chargeKind(slot.batteryKw, slot.gridKw, slot.pvKw, slot.curtailKw);
-                  if (kind === 'netzladen') return t.gridCharge;
-                  return Number(p.value) >= 0 ? t.charge : t.discharge;
-                },
-              },
+
             },
             {
               name: 'Ladestand (Regler)',
@@ -139,7 +153,7 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               showSymbol: false,
               connectNulls: false,
               z: 5,
-              lineStyle: { color: t.soc, width: 1.6 },
+              lineStyle: { color: t.soc, width: STROKE.context },
               itemStyle: { color: t.soc },
             },
             {
@@ -150,7 +164,7 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
               showSymbol: false,
               connectNulls: false,
               z: 4,
-              lineStyle: { color: t.soc, width: 1.2, type: 'dashed', opacity: 0.6 },
+              lineStyle: { color: t.soc, width: STROKE.contextSoft, type: 'dashed', opacity: 0.6 },
               itemStyle: { color: t.soc },
             },
           ],
@@ -166,15 +180,18 @@ export function WhatIfCompareChart({ result }: { result: WhatIfResult }) {
   const legend: LegendItem[] = [
     { label: 'Ihre Regler · Solarladen', color: t.charge, shape: 'bar', toggleable: false },
     { label: 'Ihre Regler · Netzladen', color: t.gridCharge, shape: 'bar', toggleable: false },
-    { label: 'Ihre Regler · Entladen', color: t.discharge, shape: 'bar', toggleable: false },
-    { label: 'Aktuelle Einstellungen (Umriss)', color: t.axis, shape: 'bar', toggleable: false },
+    { label: 'Ihre Regler · Entladen', color: t.charge, shape: 'outline', toggleable: false },
+    { label: 'Aktuelle Einstellungen', color: t.axis, shape: 'outline', toggleable: false },
     { label: 'Ladestand', color: t.soc, unit: '%', shape: 'line', toggleable: false },
   ];
 
   return (
     <>
-      <div ref={ref} className="vp-chart" />
+      {/* Legende einheitlich UEBER dem Canvas - dies war die einzige Flaeche
+          im Portal, die sie darunter setzte (direkt neben dem Nachbar-Chart
+          derselben Seite, der sie oben trug). */}
       <ChartLegend items={legend} />
+      <div ref={ref} className="vp-chart" />
     </>
   );
 }

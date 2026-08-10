@@ -29,6 +29,7 @@ import {
   planCoversNow,
   planHourBars,
   planInsightParts,
+  planKernaussage,
   planSentence,
   planStaleNote,
   powerAxisMax,
@@ -38,6 +39,7 @@ import {
   savingsTodayEur,
   SLOT_DEADBAND_KW,
   slotBarColor,
+  slotBarMark,
   slotDuty,
   socRange,
   socRangeLine,
@@ -45,7 +47,7 @@ import {
   toggleSeries,
 } from './schedule';
 import { chartTheme, type ChartTheme } from './chartTheme';
-import { NBSP } from './format';
+import { eurAmount, NBSP } from './format';
 
 /**
  * Fahrplan slot-kind derivation: a charging slot whose charge EXCEEDS the
@@ -819,29 +821,105 @@ describe('socRange / socRangeLine', () => {
   });
 });
 
-/** F5: discharging earns money - it must not be painted in the warning red. */
-describe('slotBarColor', () => {
+/**
+ * K5: der Speicher ist EINE Farbe. Laden und Abgeben sind derselbe Gegenstand
+ * in zwei Zuständen; die Richtung tragen Position, FORM und Wort - nicht ein
+ * zweiter Ton, der gegen das Haus-Blau unter der Normalsicht-Grenze lag.
+ * F5 gilt unverändert weiter: Entladen verdient Geld und wird nie rot.
+ */
+describe('slotBarMark / slotBarColor', () => {
   const t = {
     charge: '#2E9E5B',
     gridCharge: '#00ACC1',
-    battDischarge: '#2C5282',
     discharge: '#E53935',
+    surface: '#FFFFFF',
   } as ChartTheme;
 
-  it('paints discharge blue, never the red cost hue', () => {
-    expect(slotBarColor('entladen', t)).toBe(t.battDischarge);
+  it('gibt Laden und Abgeben DIESELBE Farbe und unterscheidet über die Form', () => {
+    expect(slotBarMark('entladen', t)).toEqual({ color: t.charge, form: 'outline' });
+    expect(slotBarMark('solarladen', t)).toEqual({ color: t.charge, form: 'filled' });
+    expect(slotBarColor('entladen', t)).toBe(slotBarColor('solarladen', t));
+  });
+
+  it('malt Entladen nie im Kosten-Rot (F5, unverändert)', () => {
     expect(slotBarColor('entladen', t)).not.toBe(t.discharge);
   });
 
-  it('keeps the charge colours', () => {
-    expect(slotBarColor('solarladen', t)).toBe(t.charge);
-    expect(slotBarColor('netzladen', t)).toBe(t.gridCharge);
+  it('behält Netzladen als EIGENEN Ton - die EEG-Unterscheidung ist compliance-tragend', () => {
+    expect(slotBarMark('netzladen', t)).toEqual({ color: t.gridCharge, form: 'filled' });
+    expect(slotBarColor('netzladen', t)).not.toBe(t.charge);
   });
 
-  it('resolves the real palette to a blue that is not the red token', () => {
-    const real = chartTheme();
-    expect(real.battDischarge).toBe('#2C5282');
-    expect(real.battDischarge).not.toBe(real.discharge);
+  it('führt in der echten Palette keinen Entladen-Ton mehr - er kann nicht zurückkehren', () => {
+    const real = chartTheme() as unknown as Record<string, unknown>;
+    expect(real.battDischarge).toBeUndefined();
+    // Und die Farbe, die statt seiner gilt, ist weiterhin nicht das Kosten-Rot.
+    expect(slotBarColor('entladen', chartTheme())).not.toBe(chartTheme().discharge);
+  });
+});
+
+
+/**
+ * K1/M11: die Kernaussage des Fahrplans. Sie ist ZUSAMMENGESETZT (planSentence
+ * + savingsTodayEur + die persistierte Baseline) - hier wird vor allem
+ * festgenagelt, was sie NICHT behauptet.
+ */
+describe('planKernaussage', () => {
+  const heute = (h: number, min = 0) => {
+    const d = new Date();
+    d.setHours(h, min, 0, 0);
+    return d.toISOString();
+  };
+  const slot = (h: number, batteryKw: number, cost: number, baseline: number) => ({
+    start: heute(h),
+    batteryKw,
+    gridKw: batteryKw > 0 ? 1 : -1,
+    costEur: cost,
+    baselineCostEur: baseline,
+  });
+
+  it('setzt Satz, Zahl und Vergleichsanker aus den vorhandenen Ableitungen zusammen', () => {
+    const slots = [slot(12, 5, 0.1, 0.6), slot(19, -5, 0.2, 0.9)];
+    const k = planKernaussage(slots, 'direktvermarktung', new Date());
+    // Der Satz IST planSentence - keine zweite Formulierung.
+    expect(k.satz).toBe(planSentence(slots, 'direktvermarktung', new Date()));
+    expect(k.satz).toContain('verkaufen');
+    expect(k.wert).toBe(eurAmount(savingsTodayEur(slots, new Date()) ?? 0));
+    // K8: keine Zahl ohne Vergleichsanker - die Baseline liegt im Plan.
+    expect(k.anker).toContain('Ohne Speicher');
+    expect(k.grund).toBeNull();
+    expect(k.ton).toBe('ok');
+  });
+
+  it('sagt ohne Fahrplan den ehrlichen GRUND statt eines erfundenen Satzes', () => {
+    const k = planKernaussage([], 'eigenverbrauch', new Date());
+    expect(k.satz).toBeNull();
+    expect(k.wert).toBeNull();
+    expect(k.grund).toBe('Für heute liegt noch kein Fahrplan vor.');
+  });
+
+  it('nennt keine Zahl und keinen Anker ohne bepreiste Slots - nie eine erfundene 0', () => {
+    const slots = [
+      { start: heute(12), batteryKw: 5, gridKw: 1, costEur: null, baselineCostEur: null },
+      { start: heute(19), batteryKw: -5, gridKw: -1, costEur: null, baselineCostEur: null },
+    ];
+    const k = planKernaussage(slots, 'eigenverbrauch', new Date());
+    expect(k.satz).not.toBeNull();
+    expect(k.wert).toBeNull();
+    expect(k.anker).toBeNull();
+  });
+
+  it('behandelt eine Ersparnis im Rauschen wie keine', () => {
+    const slots = [slot(12, 5, 0.1, 0.1), slot(19, -5, 0.2, 0.2)];
+    const k = planKernaussage(slots, 'eigenverbrauch', new Date());
+    expect(k.wert).toBeNull();
+    expect(k.anker).toBeNull();
+    expect(k.ton).toBe('calm');
+  });
+
+  it('folgt der Veräußerungsform im Wortlaut', () => {
+    const slots = [slot(12, 5, 0.1, 0.6), slot(19, -5, 0.2, 0.9)];
+    expect(planKernaussage(slots, 'eigenverbrauch', new Date()).satz).toContain('nutzen');
   });
 });
 
