@@ -704,8 +704,17 @@ export function ScheduleChart({
                   symbol: 'none',
                   connectNulls: false,
                   z: 4,
-                  lineStyle: { color: t.loadLine, width: FORECAST.width, type: 'dotted' },
-                  itemStyle: { color: t.loadLine },
+                  // ⚠ Der Verbrauch behält im FAHRPLAN den hellen Grundton
+                  // `load`, NICHT die Linien-Stufe `loadLine`: diese Fläche
+                  // zeichnet die Preis-Stufenlinie auf derselben Leinwand, und
+                  // `loadLine` #1D6FD8 liegt gegen das Preis-Blau #2F6BD6 bei
+                  // ΔE 1,3 - praktisch dieselbe Farbe (gemessen, --pairs all).
+                  // Der Grundton hält 11,5 - ebenfalls unter der Grenze, aber
+                  // der BESTEHENDE Zustand, den Stufe 2 STRUKTURELL auflöst
+                  // (F8 verschärft: der Preis bekommt sein eigenes Panel).
+                  // Bis dahin gilt: nicht schlimmer machen.
+                  lineStyle: { color: t.load, width: FORECAST.width, type: 'dotted' },
+                  itemStyle: { color: t.load },
                 },
               ]
             : []),
@@ -750,8 +759,11 @@ export function ScheduleChart({
                   showSymbol: needsPointMarkers(ist),
                   connectNulls: false,
                   z: 5,
-                  lineStyle: { color: t.loadLine, width: STROKE.context },
-                  itemStyle: { color: t.loadLine },
+                  // Siehe die Notiz an der Verbrauchsprognose: im Fahrplan
+                  // bleibt der Verbrauch auf dem hellen Grundton, solange der
+                  // Preis dieselbe Leinwand teilt.
+                  lineStyle: { color: t.load, width: STROKE.context },
+                  itemStyle: { color: t.load },
                 },
               ]
             : []),
@@ -864,7 +876,7 @@ export function ScheduleChart({
       ? [{ color: t.pvLine, label: PV_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
       : []),
     ...(showLoad
-      ? [{ color: t.loadLine, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
+      ? [{ color: t.load, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: false } as LegendItem]
       : []),
     // The measured twins sit next to their forecast (gepunktet = Prognose,
     // durchgezogen = gemessen), so the pairing is obvious.
@@ -872,7 +884,7 @@ export function ScheduleChart({
       ? [{ color: t.pvLine, label: MEASURED_PV_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
       : []),
     ...(showIst
-      ? [{ color: t.loadLine, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
+      ? [{ color: t.load, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: false } as LegendItem]
       : []),
     ...(showSoc
       ? [{ color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed', toggleable: false } as LegendItem]
