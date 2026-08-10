@@ -25,6 +25,7 @@
  *     Diagramm eine Lücke zeichnet statt einer 0-Linie.
  */
 import type { History, HistoryBucket, HistoryRange } from './api';
+import type { Kernaussage } from './chartKopf';
 import { periodLabel } from './periodNav';
 
 /** Ein `chartTheme()`-Schlüssel — die Fläche löst ihn zur Farbe auf. */
@@ -179,6 +180,63 @@ export function energieBilanz(history: History): EnergieBilanz {
     gridCostEur: num(history.totals.gridCostEur),
     gridCostHinweis: gridCostHinweis(history.totals.tarifPriced),
     empty: summen.every((s) => s.kwh == null),
+  };
+}
+
+
+/**
+ * Das Zeitraum-WORT für einen Satz („heute", „in dieser Woche", …). Es ist
+ * bewusst die Formulierung IM Satz, nicht das Kartentitel-Label — deshalb
+ * steht es hier und nicht bei `summenTitel`.
+ */
+export function zeitraumWort(range: HistoryRange): string {
+  if (range === 'day') return 'heute';
+  if (range === 'week') return 'in dieser Woche';
+  if (range === 'month') return 'in diesem Monat';
+  return 'in diesem Jahr';
+}
+
+/**
+ * K1/M11 · Die KERNAUSSAGE der Messwerte-Welt: „71 % Ihrer Sonne haben Sie
+ * selbst genutzt." (der 5-Sekunden-Test des Konzepts, r2 §6 D).
+ *
+ * ⚠ ZUSAMMENGESETZT, nicht neu gerechnet: die Quote ist die schon vorhandene
+ * `eigenverbrauchPct` der Server-Summen, der Vergleichsanker (K8) die Quote
+ * DERSELBEN Größe im Vergleichszeitraum. Ohne Quote steht dort der ehrliche
+ * Grund, nie ein erfundener Satz oder eine erfundene 0.
+ */
+export function messwerteKernaussage(
+  bilanz: EnergieBilanz,
+  zeitraumWort: string,
+  vergleich?: { pct: number | null; name: string } | null,
+): Kernaussage {
+  if (bilanz.empty) {
+    return {
+      wert: null,
+      satz: null,
+      grund: `Für ${zeitraumWort} liegen noch keine Messwerte vor.`,
+      ton: 'calm',
+    };
+  }
+  const pct = bilanz.eigenverbrauchPct;
+  if (pct == null) {
+    // Es gibt Messwerte, aber nicht die Kanäle, aus denen die Quote entsteht -
+    // das ist eine DATENLAGE, keine Aussage über die Anlage.
+    return {
+      wert: null,
+      satz: null,
+      grund: 'Für den Eigenverbrauch fehlen in diesem Zeitraum die Messwerte.',
+      ton: 'calm',
+    };
+  }
+  const vglPct = vergleich?.pct ?? null;
+  return {
+    wert: `${Math.round(pct)} %`,
+    satz: `Ihrer Sonne haben Sie ${zeitraumWort} selbst genutzt.`,
+    grund: null,
+    ton: 'ok',
+    anker:
+      vglPct != null && vergleich ? `${vergleich.name}: ${Math.round(vglPct)} %.` : null,
   };
 }
 

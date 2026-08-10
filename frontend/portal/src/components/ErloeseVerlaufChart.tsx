@@ -1,12 +1,13 @@
 import type { EarningsRange, SiteEarningsBucket, SiteEarningsRange } from '../api';
 import { bucketAxisLabel, bucketTooltipLabel } from '../anlage';
+import type { Kernaussage } from '../chartKopf';
 import { AXIS, BAR, STROKE } from '../chartStyle';
 import { chartTheme } from '../chartTheme';
 import { eurAmount } from '../format';
 import { geldVerlauf, type GeldReihe } from '../erloesKomposition';
 import { angleichen, type UeberlagerungLegende } from '../historieVergleich';
 import { useEChart } from '../useEChart';
-import { ChartInsight, ChartLegend, ChartSubtitle } from './ChartExplain';
+import { ChartHeadline, ChartInsight, ChartLegend, ChartSubtitle } from './ChartExplain';
 import { UeberlagerungLegendeZeile } from './HistorieWelt';
 
 /** Wie blass die Vergleichsperiode liegt (F8) — wie im `HistoryChart`. */
@@ -32,6 +33,7 @@ export function ErloeseVerlaufChart({
   range,
   vergleich,
   legende,
+  kern,
 }: {
   series: SiteEarningsBucket[];
   range: SiteEarningsRange;
@@ -44,6 +46,15 @@ export function ErloeseVerlaufChart({
    */
   vergleich?: SiteEarningsBucket[] | null;
   legende?: UeberlagerungLegende | null;
+  /**
+   * K1/M11 · der Kernaussage-Slot. Er ist hier bewusst LEER: die Ergebnis-Karte
+   * direkt darüber trägt die Zahl des Zeitraums samt Satz und Zurechnung
+   * (`erloesErgebnis`) — sie hier zu wiederholen wäre genau die vierfache
+   * Geld-Aussage, die der Mobil-Umbau abgeschafft hat. Der Slot steht bereit,
+   * falls eine spätere Stufe eine EIGENE Aussage für den Verlauf ableitet
+   * (z. B. „der stärkste Tag war der 14. mit 4,20 €").
+   */
+  kern?: Kernaussage | null;
 }) {
   const view = geldVerlauf(series, range);
   const vglView = vergleich && vergleich.length > 0 ? geldVerlauf(vergleich, range) : null;
@@ -195,6 +206,7 @@ export function ErloeseVerlaufChart({
   const t = chartTheme();
   return (
     <>
+      <ChartHeadline kern={kern} />
       <ChartSubtitle>{view.untertitel}</ChartSubtitle>
       <ChartLegend
         items={[
