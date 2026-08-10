@@ -83,7 +83,8 @@ describe('consumerStatusLine', () => {
       'optimizer_selected_low_cost',
       'consumer_first', 'storage_first', 'guard_rated_power', 'guard_grid_limit',
       'device_offline', 'readback_mismatch', 'signal_stale',
-      'guard_min_on', 'guard_min_off', 'guard_max_starts', 'guard_ramp', 'plan_stale'];
+      'guard_min_on', 'guard_min_off', 'guard_max_starts', 'guard_ramp',
+      'guard_phase_switch', 'plan_stale'];
     for (const r of reasons) {
       expect(CONSUMER_REASON_TEXT[r], `reason ${r}`).toBeTruthy();
     }

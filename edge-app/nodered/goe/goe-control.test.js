@@ -31,6 +31,8 @@ test('the pure mapping matches the shared golden vectors (Go twin lockstep)', ()
     assert.strictEqual(plan.mode, c.expect.mode, c.name + ' mode');
     assert.strictEqual(plan.frc, c.expect.frc, c.name + ' frc');
     assert.strictEqual(plan.amp, c.expect.amp, c.name + ' amp');
+    assert.strictEqual(plan.psm, 'psm' in c.expect ? c.expect.psm : null, c.name + ' psm');
+    assert.strictEqual(plan.holdCode, c.expect.hold || '', c.name + ' hold');
     assert.strictEqual(plan.controlEnabled, c.expect.control_enabled, c.name + ' control_enabled');
     assert.strictEqual(plan.writes.length, c.expect.writes_len, c.name + ' writes_len');
   }
@@ -166,6 +168,73 @@ test('go-e is a CERTIFIED control family', () => {
   assert.strictEqual(C.CERTIFIED_CONTROL_FAMILIES.has('goe_http_api'), true);
 });
 
+// --- D4 phase switching (power ranges / psm) --------------------------------
+
+test('powerRanges derives the two non-convex D4 ranges from the current band', () => {
+  const r = C.powerRanges({ ip: '1.2.3.4', phase_switching: true });
+  // 6..16 A @ 230 V -> 1p [1.38, 3.68], 3p [4.14, 11.04].
+  assert.deepStrictEqual(r, [
+    { phases: 1, min_kw: 1.38, max_kw: 3.68 },
+    { phases: 3, min_kw: 4.14, max_kw: 11.04 },
+  ]);
+  // Without phase switching: ONE range at the configured phase count.
+  const single = C.powerRanges({ ip: '1.2.3.4', phases: 3 });
+  assert.deepStrictEqual(single, [{ phases: 3, min_kw: 4.14, max_kw: 11.04 }]);
+});
+
+test('desiredPhaseMode picks the range and snaps a gap wish DOWN', () => {
+  const cfg = { ip: '1.2.3.4', phase_switching: true };
+  assert.strictEqual(C.desiredPhaseMode(cfg, { setpoint_kw: 11 }), 3);
+  assert.strictEqual(C.desiredPhaseMode(cfg, { setpoint_kw: 4.14 }), 3);
+  assert.strictEqual(C.desiredPhaseMode(cfg, { setpoint_kw: 4.0 }), 1); // gap -> DOWN
+  assert.strictEqual(C.desiredPhaseMode(cfg, { setpoint_kw: 2 }), 1);
+  assert.strictEqual(C.desiredPhaseMode(cfg, { setpoint_kw: 1.0 }), 0); // below smallest
+  assert.strictEqual(C.desiredPhaseMode(cfg, { on_off: true }), 3); // allowed maximum
+  assert.strictEqual(C.desiredPhaseMode(cfg, { setpoint_kw: 11, stale: true }), 0);
+  assert.strictEqual(C.desiredPhaseMode({ ip: '1.2.3.4' }, { setpoint_kw: 11 }), 0); // not switching
+});
+
+test('a paced switch holds restrict-only and names the honest reason', () => {
+  const plan = C.controlPlan(
+    { ip: '1.2.3.4', phase_switching: true },
+    { setpoint_kw: 11, control_enabled: true, phase: { active: 1, switch_allowed: false } },
+  );
+  assert.strictEqual(plan.mode, 'charge');
+  assert.strictEqual(plan.amp, 16); // held at the 1p max (3.68 kW), never more
+  assert.strictEqual(plan.psm, null);
+  assert.strictEqual(plan.holdCode, 'guard_phase_switch');
+  assert.strictEqual(plan.holdReason, 'wartet - Phasenumschaltpause');
+  assert.strictEqual(plan.reason, 'wartet - Phasenumschaltpause');
+});
+
+test('an allowed switch writes psm alongside frc/amp and converts for the NEW mode', () => {
+  const plan = C.controlPlan(
+    { ip: '1.2.3.4', phase_switching: true },
+    { setpoint_kw: 11, control_enabled: true, phase: { active: 1, switch_allowed: true } },
+  );
+  assert.strictEqual(plan.psm, C.PSM.FORCE_3);
+  assert.strictEqual(plan.amp, 15); // 11 kW @ 3x230 floored
+  assert.deepStrictEqual(plan.writes.map((w) => w.key).sort(), ['amp', 'frc', 'psm']);
+  const psmRb = plan.readbacks.find((rb) => rb.key === 'psm');
+  assert.strictEqual(psmRb.expect, C.PSM.FORCE_3);
+});
+
+test('evalReadback asserts a written psm and surfaces the phase position', () => {
+  const plan = C.controlPlan(
+    { ip: '1.2.3.4', phase_switching: true },
+    { setpoint_kw: 11, control_enabled: true, phase: { active: 1, switch_allowed: true } },
+  );
+  const ok = C.evalReadback(plan, statusEcho(2, 15, { psm: 2, pnp: 3 }));
+  assert.strictEqual(ok.all_match, true);
+  assert.strictEqual(ok.phase_switch_mode, 2);
+  assert.strictEqual(ok.phases_in_use, 3);
+  // The charger refusing the switch is a MISMATCH, never a silent success.
+  const bad = C.evalReadback(plan, statusEcho(2, 15, { psm: 1, pnp: 1 }));
+  assert.strictEqual(bad.all_match, false);
+  const psmReg = bad.registers.find((r) => r.key === 'psm');
+  assert.strictEqual(psmReg.match, false);
+});
+
 // --- idle / invalid config --------------------------------------------------
 
 test('no ip -> idle plan (invalid), no writes/readbacks', () => {
@@ -182,7 +251,7 @@ test('setUrl builds /api/set?frc=..&amp=.. and statusUrl the filtered /api/statu
   assert.strictEqual(C.setUrl('192.168.1.42', 0, writes), 'http://192.168.1.42/api/set?frc=2&amp=16');
   assert.strictEqual(C.setUrl('goe.local', 8080, writes), 'http://goe.local:8080/api/set?frc=2&amp=16');
   assert.strictEqual(C.setUrl('x', 0, []), null);
-  assert.strictEqual(C.statusUrl('192.168.1.42', 0), 'http://192.168.1.42/api/status?filter=frc,amp,acu,car,nrg,alw');
+  assert.strictEqual(C.statusUrl('192.168.1.42', 0), 'http://192.168.1.42/api/status?filter=frc,amp,psm,pnp,acu,car,nrg,alw');
 });
 
 test('the readback nrg total-power index matches the read driver (no drift)', () => {

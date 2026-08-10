@@ -98,8 +98,29 @@
     showPanel(panel, "ok", [el("span", { class: "verify-ico", html: SVG_CHECK }), text]);
   }
 
+  // controlCheckLine renders the D11 write short-test verdict (go-e): the
+  // honest one-liner under an OK read panel. "" when no check ran.
+  function controlCheckLine(check) {
+    if (!check) return "";
+    if (check.ok) {
+      var line = "Steuer-Schreibtest bestätigt: die Wallbox hat den Schreibbefehl übernommen und zurückgemeldet.";
+      if (typeof check.phases_in_use === "number" && check.phases_in_use > 0) {
+        line += " Lädt aktuell " + (check.phases_in_use === 1 ? "1-phasig" : check.phases_in_use + "-phasig") + ".";
+      }
+      return line;
+    }
+    return check.message || "Der Steuer-Schreibtest war nicht erfolgreich.";
+  }
+
   function renderResult(panel, res) {
-    if (res && res.ok) { renderOk(panel, res.reading || {}); return; }
+    if (res && res.ok) {
+      renderOk(panel, res.reading || {});
+      // The D11 control short-test rides an OK read: append its honest verdict
+      // (confirmed or the named failure) - never silently dropped.
+      var line = controlCheckLine(res.control_check);
+      if (line) appendPanelNote(panel, line);
+      return;
+    }
     var code = (res && res.error_code) || "timeout";
     var m = MESSAGES[code] || MESSAGES.timeout;
     var body = (res && res.message) ? res.message : m.body;

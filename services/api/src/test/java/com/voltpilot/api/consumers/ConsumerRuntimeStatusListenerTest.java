@@ -130,6 +130,19 @@ class ConsumerRuntimeStatusListenerTest {
     }
 
     @Test
+    void thePhaseSwitchHoldReasonIsKnownAndNeverDiscarded() {
+        // go-e driver (D4): a paced 1p/3p switch reports guard_phase_switch
+        // ("wartet - Phasenumschaltpause") while the wallbox is restrict-only
+        // held in its active range - the honest edge report must survive.
+        List<ConsumerRuntimeStatusRepository.Row> rows = ingest("{\"" + WALLBOX + "\":{"
+                + "\"state\":\"clamped\",\"reason_code\":\"guard_phase_switch\","
+                + "\"actual_kw\":3.6,\"confirmed\":true}}");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).state()).isEqualTo("clamped");
+        assertThat(rows.get(0).reasonCode()).isEqualTo("guard_phase_switch");
+    }
+
+    @Test
     void aForeignEntityIdNeverMintsARow() {
         List<ConsumerRuntimeStatusRepository.Row> rows = ingest("{"
                 + "\"99999999-0000-0000-0000-000000000009\":{\"state\":\"waiting\"},"

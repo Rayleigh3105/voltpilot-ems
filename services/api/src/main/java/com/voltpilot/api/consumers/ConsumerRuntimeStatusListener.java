@@ -79,10 +79,13 @@ public class ConsumerRuntimeStatusListener {
             "waiting", "fulfilled", "clamped", "missed", "unknown");
 
     /**
-     * The §15 reason vocabulary incl. the Inkrement-3 cycle-guard extension
-     * and the Inkrement-6 deadline fallback ({@code flex_deadline_fallback}:
+     * The §15 reason vocabulary incl. the Inkrement-3 cycle-guard extension,
+     * the Inkrement-6 deadline fallback ({@code flex_deadline_fallback}:
      * the DEVICE started the flexible task itself so the deadline holds -
-     * without this word here the honest edge report would be discarded).
+     * without this word here the honest edge report would be discarded) and
+     * the go-e driver's D4 phase-switch pacing ({@code guard_phase_switch}:
+     * the wallbox is restrict-only held in its ACTIVE phase range until the
+     * Umschaltpause elapses - "wartet - Phasenumschaltpause").
      */
     static final Set<String> REASONS = Set.of(
             "vehicle_connected", "fixed_window", "price_below_threshold",
@@ -90,7 +93,8 @@ public class ConsumerRuntimeStatusListener {
             "optimizer_selected_low_cost",
             "consumer_first", "storage_first", "guard_rated_power", "guard_grid_limit",
             "device_offline", "readback_mismatch", "signal_stale",
-            "guard_min_on", "guard_min_off", "guard_max_starts", "guard_ramp", "plan_stale");
+            "guard_min_on", "guard_min_off", "guard_max_starts", "guard_ramp",
+            "guard_phase_switch", "plan_stale");
 
     private final String brokerUrl;
     private final String username;

@@ -56,6 +56,7 @@ export const CONSUMER_REASON_TEXT: Record<string, string> = {
   guard_min_off: 'Mindestpause des Geräts',
   guard_max_starts: 'Maximale Starts für heute erreicht',
   guard_ramp: 'Leistung wird schrittweise angepasst',
+  guard_phase_switch: 'Wartet auf die Phasenumschaltpause',
   plan_stale: 'Kein aktueller Fahrplan',
 };
 

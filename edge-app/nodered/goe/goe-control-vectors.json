@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared golden vectors for the go-e control mapping, read by BOTH goe-control.test.js (JS, the canonical module) and edge-app/core/internal/goe/control_test.go (the Go executor twin). They pin the pure kW->frc/amp tri-state so the two language implementations can never drift - the refCheckChar/EdgeRef + SocPlausible/socPlausible cross-language precedent. Each case: given `config` + `command`, the plan must have the expected mode/frc/amp/controlEnabled and write exactly `writes_len` set-ops. amp=null means no amp is written.",
+  "_comment": "Shared golden vectors for the go-e control mapping, read by BOTH goe-control.test.js (JS, the canonical module) and edge-app/core/internal/goe/control_test.go (the Go executor twin). They pin the pure kW->frc/amp/psm tri-state so the two language implementations can never drift - the refCheckChar/EdgeRef + SocPlausible/socPlausible cross-language precedent. Each case: given `config` + `command`, the plan must have the expected mode/frc/amp/controlEnabled and write exactly `writes_len` set-ops. amp=null means no amp is written. D4 phase switching: `config.phase_switching` + `command.phase` = {active: 1|3|0(unknown), switch_allowed} - `psm` (null|1|2) pins the phase-mode write and `hold` the paced-switch reason code (absent = no hold).",
   "cases": [
     {
       "name": "charge 11.04kW 3x230 -> On @ 16A",
@@ -72,6 +72,60 @@
       "config": { "ip": "1.2.3.4", "phases": 3, "voltage": 230 },
       "command": { "setpoint_kw": 11.04 },
       "expect": { "mode": "charge", "frc": 2, "amp": 16, "control_enabled": false, "writes_len": 0 }
+    },
+    {
+      "name": "phase switching: 11kW while ACTIVE 3p -> plain 3p charge, no psm",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 11, "control_enabled": true, "phase": { "active": 3, "switch_allowed": true } },
+      "expect": { "mode": "charge", "frc": 2, "amp": 15, "psm": null, "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "phase switching: 11kW while ACTIVE 1p, switch PACED -> 1p max + hold, no psm",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 11, "control_enabled": true, "phase": { "active": 1, "switch_allowed": false } },
+      "expect": { "mode": "charge", "frc": 2, "amp": 16, "psm": null, "hold": "guard_phase_switch", "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "phase switching: 11kW while ACTIVE 1p, switch ALLOWED -> psm Force_3 + 3p amp",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 11, "control_enabled": true, "phase": { "active": 1, "switch_allowed": true } },
+      "expect": { "mode": "charge", "frc": 2, "amp": 15, "psm": 2, "control_enabled": true, "writes_len": 3 }
+    },
+    {
+      "name": "phase switching: 2kW while ACTIVE 3p, switch PACED -> Off + hold (3p cannot serve it without overshooting)",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 2, "control_enabled": true, "phase": { "active": 3, "switch_allowed": false } },
+      "expect": { "mode": "off", "frc": 1, "amp": null, "psm": null, "hold": "guard_phase_switch", "control_enabled": true, "writes_len": 1 }
+    },
+    {
+      "name": "phase switching: 2kW while ACTIVE 3p, switch ALLOWED -> psm Force_1 + 1p amp",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 2, "control_enabled": true, "phase": { "active": 3, "switch_allowed": true } },
+      "expect": { "mode": "charge", "frc": 2, "amp": 8, "psm": 1, "control_enabled": true, "writes_len": 3 }
+    },
+    {
+      "name": "phase switching: a GAP wish (4.0kW) on ACTIVE 1p snaps DOWN to the 1p max - never a value between the ranges",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 4.0, "control_enabled": true, "phase": { "active": 1, "switch_allowed": true } },
+      "expect": { "mode": "charge", "frc": 2, "amp": 16, "psm": null, "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "phase switching: UNKNOWN position -> restrict-safe 3p conversion, never a blind psm",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 11, "control_enabled": true, "phase": { "active": 0, "switch_allowed": true } },
+      "expect": { "mode": "charge", "frc": 2, "amp": 15, "psm": null, "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "phase switching: below the smallest range minimum -> Off (no phase question)",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 1.0, "control_enabled": true, "phase": { "active": 3, "switch_allowed": true } },
+      "expect": { "mode": "off", "frc": 1, "amp": null, "psm": null, "control_enabled": true, "writes_len": 1 }
+    },
+    {
+      "name": "phase switching: kill-switch off PLANS the switch but writes nothing",
+      "config": { "ip": "1.2.3.4", "voltage": 230, "phase_switching": true },
+      "command": { "setpoint_kw": 11, "control_enabled": false, "phase": { "active": 1, "switch_allowed": true } },
+      "expect": { "mode": "charge", "frc": 2, "amp": 15, "psm": 2, "control_enabled": false, "writes_len": 0 }
     }
   ]
 }

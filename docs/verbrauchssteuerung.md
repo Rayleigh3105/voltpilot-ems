@@ -1613,8 +1613,11 @@ keinen herstellerspezifischen Sonderpfad.
 Treiber-Reihenfolge nach der Simulator-Scheibe (D10, Pilotanlagen laut Captain-Angabe 09.08.2026 =
 go-e Wallbox + Heizstab über Shelly):
 
-1. **go-e Wallbox** – der erste reale Treiber; der Consumer-Control-Executor mit Readback existiert
-   bereits und baut die Phasenumschaltung mit (D4).
+1. **go-e Wallbox** – der erste reale Treiber; **GEBAUT** (Ampere-Vorgabe `amp`, Freigabe `frc`,
+   Phasenumschaltung D4 über `psm` mit Umschalt-Hysterese/Mindestpausen im zustandsbehafteten
+   `goe.PhaseSwitcher`, Failsafe `release`, D11-Verbindungs-Schreibtest; Details
+   `edge-app/nodered/GOE.md` + `edge-app/AGENTS.md`). Der Typ `wallbox` bleibt bis zur
+   Bench-Session unzertifiziert (Katalog-Flip = eigener Mini-PR, D11).
 2. **Shelly-Heizstab-Treiber** – HTTP-Relais. Ein Shelly **mit** Leistungsmessung liefert
    D3-Bestätigungsstufe 2 (kW-Telemetrie: Laufzeit exakt, Energie integriert); ein Shelly **ohne**
    Leistungsmessung liefert nur Stufe 3 (Relais-Readback: Laufzeit bestätigt, Energie „angenommen“).

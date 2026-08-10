@@ -500,24 +500,70 @@ wie ein Deye-ToU- oder Fronius-Speicher-Schreibbefehl. Deshalb ist `goe_http_api
 live schreiben.
 
 Die Wallbox ist ein **Verbraucher (Consumer)-Entity**: der E2-Arbiter klammert den
-gewünschten Ladesollwert über das Verbraucher-Band und der Consumer-Control-Loop
-(`edge-app/core/internal/agent/consumer_control.go`) setzt ihn physisch (`frc`/`amp`)
-und liest `/api/status` zurück. Steuerschlüssel (go-e-API v2 `apikeys-en.md`):
-`frc` = forceState (Neutral=0, Off=1, On=2), `amp` = requestedCurrent (A).
+gewünschten Ladesollwert über das Verbraucher-Band (plus Zyklen-Guard) und der
+Consumer-Control-Loop (`edge-app/core/internal/agent/consumer_control.go`) setzt ihn
+physisch (`frc`/`amp`, bei aktivierter Phasenumschaltung auch `psm`) und liest
+`/api/status` zurück. Steuerschlüssel: `frc` = forceState (Neutral=0, Off=1, On=2)
+und `amp` = requestedCurrent (A) aus `apikeys-en.md`; **`psm` = phaseSwitchMode
+(Auto=0, Force_1=1, Force_3=2) ist NICHT in der offiziellen Schlüsselliste, aber der
+Schlüssel, mit dem die Produktiv-Integrationen nachweislich umschalten** (evcc
+`charger/go-e.go phases1p3p`; Home-Assistant `marq24/ha-goecharger-api2`) — die
+offizielle Doku kennt die umgebende Phasen-Maschinerie (`fsp` R/W, `mptwt` "min phase
+toggle wait time", `psh` phaseSwitchHysteresis, `pnp` R numberOfPhases). Eine
+Dokumentationslücke, kein geratenes Register (die ha-solarman/Victron-Disziplin) —
+und trotzdem gilt für alles Hardware-Verhaltensabhängige unten: **bench_pending, bis
+die eine echte Session es bestätigt hat.** Betreiber-Voraussetzungen + Config-Felder:
+[`GOE.md`](GOE.md).
+
+**Selbst-Service-Vorstufe (D11, OHNE Termin):** „Verbindung testen" auf `:8484`
+fährt für die go-e zusätzlich den **nicht-disruptiven Steuer-Kurztest** — die
+AKTUELLE Ampere-Vorgabe wird wertgleich neu geschrieben und zurückgelesen
+(semantisches No-op: ein ladendes Auto lädt unverändert weiter; `frc`/`psm` werden
+dabei NIE angefasst). Ein grünes „Steuer-Schreibtest bestätigt" beweist Schreibweg +
+Readback vorab; die Geräte-Session unten prüft dann nur noch das, was Software
+nicht beweisen kann: das reale Verhalten von Schütz, Fahrzeug und Ladeleistung.
 
 **Kurze Geräte-Kontrolle (VERIFY-on-device, an der ersten echten Wallbox — kein voller
 Prüfstand):** dieselbe Ehrlichkeit wie bei jedem Hersteller.
 1. **Phasen/Spannung bestätigen.** Der kW→A-Umrechnung liegt `I = P/(Phasen·Spannung)`
-   zugrunde (Default 3 Phasen @ 230 V). Prüfen, dass die Wallbox auf der erwarteten
-   Phasenzahl lädt (`pnp`/`nrg`-Ströme) — die Phasenzahl ist Config
-   (`driver.connection.phases`), **kein** Schreibbefehl (v2 hat keinen einfachen
-   settbaren Phasen-Schalter-Schlüssel).
+   zugrunde (Default 3 Phasen @ 230 V, bei Phasenumschaltung je aktivem Bereich).
+   Prüfen, dass die Wallbox auf der erwarteten Phasenzahl lädt (`pnp`/`nrg`-Ströme).
 2. **`frc`/`amp`-Semantik bestätigen.** Ein Ladebefehl setzt `frc=On` + `amp` und die
    Rücklesung (`/api/status`) muss `frc`/`amp` echoen (all_match). Ein Nullsollwert →
    `frc=Off`; ein veralteter/fehlender Befehl → `frc=Neutral` (gibt die Kontrolle an die
-   Wallbox-Logik zurück, nie ein hängender Zwangs-Strom).
-3. **Not-Aus.** `VP_CONTROL_ENABLED=false` → **null HTTP** an die Wallbox (die zwei
-   Live-Lesestandorte werden nie angefasst).
+   Wallbox-Logik zurück, nie ein hängender Zwangs-Strom). **Failsafe-`release`
+   real prüfen:** Core stoppen, während die Box lädt → nach dem Neutral fällt die
+   Wallbox in ihre EIGENE Logik zurück (kein hängender Zwangszustand).
+3. **Phasenumschaltung (D4) real bestätigen — der Kern der Session, nur auf
+   umschaltfähiger Hardware** (interner Umschalter, z. B. Gemini flex; Config-Opt-in
+   `phase_switching`):
+   - `psm=2`/`psm=1` wird angenommen UND **der Schütz schaltet wirklich um**
+     (`pnp` folgt, die `nrg`-Phasenströme wandern; ein Register-Echo allein ist
+     kein Beweis — die Klemm-Plateau-Lektion).
+   - **Fahrzeug-Verhalten unter der Umschaltung:** lädt das Auto nach 3p→1p und
+     1p→3p sauber weiter (manche Fahrzeuge brauchen eine Neu-Verhandlung; wie
+     lange dauert sie)?
+   - **Zusammenspiel mit dem geräteeigenen Schutz:** greift `mptwt` (min phase
+     toggle wait) zusätzlich zu unserer Pause (Vorgabe 300 s Pause / 60 s Dwell,
+     `phase_switch_pause_s`/`phase_switch_dwell_s`)? Unsere Pacing-Werte sind
+     bewusst konservativ — an der Session ggf. mit dem realen Verhalten abgleichen,
+     nie unter das Geräte-Minimum senken.
+   - **Readback-Treue der Phasenlage:** meldet `psm` den Modus sofort und `pnp`
+     die tatsächliche Lage erst beim Laden? (Der Switcher adoptiert psm zuerst,
+     pnp als Zweitquelle.)
+4. **Verhalten OHNE Auto:** Befehle bei `car=idle` (kein Fahrzeug) — nimmt die Box
+   `amp`/`frc`/`psm` an und echot sie, ohne Fehlerzustand? Beginnt das Laden nach
+   dem Anstecken mit den zuletzt gesetzten Werten?
+5. **Not-Aus.** `VP_CONTROL_ENABLED=false` bzw. `VP_CONSUMER_CONTROL_ENABLED=false`
+   → **null HTTP** an die Wallbox (die Live-Lesestandorte werden nie angefasst).
+
+**Abschluss der Session (D11, definiert):** Das Ergebnis ist der **Katalog-Flip als
+eigener Mini-PR** — `certification_status` des Typs `wallbox` in
+`services/api/src/main/resources/entitytypes/catalog.json` von `simulator_only` auf
+den zertifizierten Stand, plattformweit (die Zertifizierung ist ein DATEN-Fakt je
+Gerätetyp, kein Anlagen-Schalter; Runbook `docs/verbrauchssteuerung-betrieb.md`).
+Bis dieser PR gemerged ist, bleibt der Typ unzertifiziert — der Treiber-Code ändert
+sich dafür nicht.
 
 ## Checkliste Kostal PLENTICORE (externe Batteriesteuerung, Tier 2)
 

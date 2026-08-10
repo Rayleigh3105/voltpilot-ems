@@ -105,13 +105,20 @@ D10):
    `plan → desired → arbitration → guard → command → readback` hardwarefrei
    (Rig `edge-app/test/e2e-v2-compose.sh`, Szenarien C1–C5).
 2. **Bench-Zertifizierung des Typs (einmalig, plattformweit).**
-   go-e Wallbox zuerst (Consumer-Control-Executor mit Readback existiert;
-   Phasenumschaltung D4), danach Shelly-Heizstab (HTTP-Relais).
+   go-e Wallbox zuerst (der Treiber ist GEBAUT: Consumer-Control-Executor mit
+   Readback, Phasenumschaltung D4 über `psm` mit Umschalt-Hysterese und
+   Mindest-Umschaltpausen, Failsafe `release`, D11-Verbindungs-Schreibtest im
+   Assistenten; Betreiber-Voraussetzungen in
+   [`../edge-app/nodered/GOE.md`](../edge-app/nodered/GOE.md) – lokale HTTP-API
+   v2 aktiviert, feste IP), danach Shelly-Heizstab (HTTP-Relais).
    Ein Shelly **mit** Leistungsmessung liefert D3-Bestätigungsstufe 2
    (kW-Telemetrie), **ohne** nur Stufe 3 (Relais-Readback, Energie „angenommen“).
    Die Bench-Checkliste je Typ steht in
    [`../edge-app/nodered/CONTROL-BENCH.md`](../edge-app/nodered/CONTROL-BENCH.md);
    das Ergebnis wird als PR ins entitytypes-Katalog-Flag geschrieben (§3).
+   Der Software-Anteil ist vollständig gegen In-Process-Stubs bewiesen – die
+   Session prüft nur noch das reale Geräteverhalten (Schütz, Fahrzeug,
+   Readback-Treue, Verhalten ohne Auto).
 3. **Canary-Anlage.**
    Genau eine reale Anlage mit dem frisch zertifizierten Typ scharfschalten
    (§4), 24 h+ beobachten (Erfüllungsnachweis §6, Metriken §7), dann die Fläche
