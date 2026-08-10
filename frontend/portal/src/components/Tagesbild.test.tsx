@@ -103,6 +103,14 @@ function history(over: Partial<History> = {}): History {
     },
     protocol: [],
     plan: [],
+    events: [
+      {
+        type: 'negativpreis',
+        start: '2026-08-10T10:30:00Z',
+        end: '2026-08-10T10:45:00Z',
+        text: 'Der Börsenpreis lag unter null.',
+      },
+    ],
     ...over,
   };
 }
@@ -164,6 +172,30 @@ describe('Tagesbild · die Panel-Struktur (F8 verschärft)', () => {
       (s?.markLine?.data ?? []).filter((m: any) => m?.label?.show === false),
     );
     expect(stille.length).toBeGreaterThan(0);
+  });
+
+  it('setzt auf der beschrifteten Achse KEINEN axisPointer-Schluessel', () => {
+    // ⚠ Im Browser gefunden, nicht im Test: `axisPointer: undefined` ist NICHT
+    // dasselbe wie „kein Schluessel" - ECharts liest daraus kein Teilmodell und
+    // die ganze Flaeche stirbt beim Zeichnen („Cannot set properties of
+    // undefined"). Der Test stubbt `setOption`, also faellt es hier nur als
+    // Struktur auf.
+    renderBild();
+    const beschriftet = lastOption.xAxis[lastOption.xAxis.length - 1];
+    expect('axisPointer' in beschriftet).toBe(false);
+    expect(lastOption.xAxis[0].axisPointer).toEqual({ label: { show: false } });
+  });
+
+  it('traegt Vergangenheits-Schattierung UND Ereignis-Baender auf EINER markArea', () => {
+    // Eine Serie hat genau eine `markArea` - getrennt gedacht verlor eine von
+    // beiden (im Browser: die Baender waren unsichtbar, sobald es ein
+    // Preis-Panel gab).
+    renderBild();
+    const preisFlaechen = serie(REIHE.preis).markArea.data;
+    expect(preisFlaechen.length).toBeGreaterThanOrEqual(2);
+    // Jedes Panel behaelt seine eigene Vergangenheits-Schattierung.
+    expect(serie(REIHE.laden).markArea.data).toHaveLength(1);
+    expect(serie(REIHE.ertrag).markArea.data).toHaveLength(1);
   });
 
   it('trägt über jeder Fläche ihre AUSSAGE, nicht nur eine Einheit', () => {

@@ -13,6 +13,7 @@ import {
   PANEL_TITEL,
   panelLayout,
   preisReihe,
+  REIHE,
   speicherReihe,
   speicherTagSatz,
   tagesbildAussage,
@@ -150,7 +151,7 @@ describe('Panel 3 · die Ertragskurve auf der geteilten Zeitachse', () => {
     // Kurve behauptet keine Auflösung, die das Geld nicht hat.
     expect(r.werte).toEqual([2, 2, 2, 2, 5, 5]);
     expect(r.endEur).toBe(5);
-    expect(r.endText).toBe(`mit VoltPilot 5,00${NBSP}€`);
+    expect(r.endText).toBe(`${REIHE.ertrag} 5,00${NBSP}€`);
     expect(r.vorhanden).toBe(true);
   });
 
@@ -168,6 +169,15 @@ describe('Panel 3 · die Ertragskurve auf der geteilten Zeitachse', () => {
     ]);
     expect(r.endEur).toBe(6);
     expect(r.werte).toEqual([2, 2]);
+  });
+
+  it('nennt die Summenkurve „Ergebnis“ — nie „mit VoltPilot“', () => {
+    // Der K8-Anker im Kopf sagt „Mit VoltPilot verdient X €" und meint das
+    // NETZ-Ergebnis; die Kurve traegt zusaetzlich den Wert des Eigenverbrauchs.
+    // Zwei Zahlen unter EINEM Wort - im Browser sofort sichtbar gewesen.
+    expect(REIHE.ertrag).toBe('Ergebnis');
+    const r = ertragKumuliert(times, [geldEimer('2026-08-10T00:00:00Z', 2)]);
+    expect(r.endText).not.toContain('VoltPilot');
   });
 
   it('ist ohne Geld-Reihe schlicht nicht vorhanden', () => {

@@ -31,6 +31,7 @@ import {
   tagesbildKern,
   titelTopPct,
   type PanelBox,
+  type PanelTitel,
   type TagesbildGeld,
 } from '../tagesbild';
 import { useChartDetail } from '../useChartDetail';
@@ -95,15 +96,18 @@ function grid(box: PanelBox, left: number, right: number) {
 /** Die Überschrift eines Panels — Aussage fett, Einheit als ruhiger Beisatz. */
 function panelTitel(
   box: PanelBox,
-  titel: { text: string; einheit: string },
+  titel: PanelTitel,
   left: number,
   t: ChartTheme,
+  narrow: boolean,
 ) {
   return {
     show: box.sichtbar,
     left,
     top: `${titelTopPct(box)}%`,
-    text: `{a|${titel.text}}  {b|${titel.einheit}}`,
+    text: narrow
+      ? `{a|${titel.text}}`
+      : `{a|${titel.text}}  {b|${titel.einheit}}`,
     textStyle: {
       rich: {
         a: { color: t.ink, fontSize: AXIS.fontSize + 1.5, fontWeight: 700 },
@@ -167,11 +171,15 @@ export function Tagesbild({
       const right = socScale ? PANELS.rightWithSocPx : PANELS.rightPx;
 
       const nowIdx = jetztIndex(times, new Date());
-      const kwAbs = speicher
+      // Die kW-Achse bekommt UNABHAENGIGE Grenzen statt einer symmetrischen
+      // Spanne: ein Tag, der mit 9 kW laedt und mit 3 kW abgibt, verschenkte
+      // sonst die halbe Flaeche an leeren Raum. Die Null bleibt im Bild
+      // (Hausregel 5d) - sie steht nur nicht mehr zwingend in der Mitte.
+      const kwWerte = speicher
         .concat(zeigeDetail ? netz : [])
-        .filter((v): v is number => v != null)
-        .map((v) => Math.abs(v));
-      const kwMax = kwAbs.length ? Math.max(...kwAbs, 1) : 1;
+        .filter((v): v is number => v != null);
+      const kwMax = Math.max(1, ...kwWerte);
+      const kwMin = Math.min(-1, ...kwWerte);
 
       /* ---- Marken: die Linie zieht durch ALLE Panels, das WORT steht EINMAL
        * unten an der Zeitachse (K9). Zwei Fahnen übereinander waren genau der
@@ -197,34 +205,40 @@ export function Tagesbild({
           ]
         : [];
 
-      /** Die Vergangenheits-Schattierung (F5, Hauch) - je Panel einmal. */
+      /** Die Vergangenheits-Schattierung (F5, Hauch) - auf JEDEM Panel. */
       const pastArea =
         nowIdx > 0
           ? {
-              silent: true,
-              itemStyle: { color: t.axis, opacity: FILL.past },
-              data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
+              data: [
+                [
+                  { xAxis: 0, itemStyle: { color: t.axis, opacity: FILL.past } },
+                  { xAxis: nowIdx },
+                ],
+              ],
             }
           : undefined;
 
-      /** Die Ereignis-Bänder (F6) - dieselbe Semantik wie in der Messwerte-Welt. */
-      const baender =
-        spur && spur.chips.length
-          ? {
-              markArea: {
-                silent: true,
-                data: spur.chips
-                  .filter((c) => c.vonIndex >= 0)
-                  .map((c) => [
-                    {
-                      xAxis: c.vonIndex,
-                      itemStyle: { color: ereignisFarbe(t, c.info.farbe), opacity: FILL.event },
-                    },
-                    { xAxis: c.bisIndex },
-                  ]),
-              },
-            }
-          : {};
+      /**
+       * Die Ereignis-Bänder (F6) - dieselbe Semantik wie in der Messwerte-Welt.
+       *
+       * ⚠ Eine Serie trägt GENAU EINE `markArea`, also reisen Vergangenheits-
+       * Schattierung und Ereignis-Bänder auf DERSELBEN Liste. Getrennt gedacht
+       * verlor eine von beiden - im Browser aufgefallen: die Bänder waren
+       * unsichtbar, solange es ein Preis-Panel gab.
+       */
+      const ereignisPaare = (spur?.chips ?? [])
+        .filter((c) => c.vonIndex >= 0)
+        .map((c) => [
+          {
+            xAxis: c.vonIndex,
+            itemStyle: { color: ereignisFarbe(t, c.info.farbe), opacity: FILL.event },
+          },
+          { xAxis: c.bisIndex },
+        ]);
+      const flaechen = (mitEreignissen: boolean) => {
+        const data = [...(pastArea ? pastArea.data : []), ...(mitEreignissen ? ereignisPaare : [])];
+        return data.length ? { markArea: { silent: true, data } } : {};
+      };
 
       // K6: höchstens ZWEI benannte Preis-Marken, Wort UND Zahl - dieselbe
       // Regel, mit der die Marktpreis-Seite ihre Extreme benennt.
@@ -243,7 +257,7 @@ export function Tagesbild({
           z: 2,
           lineStyle: { color: t.price, width: STROKE.lead },
           itemStyle: { color: t.price },
-          markArea: pastArea,
+          ...flaechen(true),
           markLine: stilleMarke.length
             ? { silent: true, symbol: 'none', data: stilleMarke }
             : undefined,
@@ -263,9 +277,15 @@ export function Tagesbild({
                     formatter: m.text,
                     color: t.ink,
                     fontSize: AXIS.fontSize,
-                    position: m.art === 'hoch' ? 'top' : 'bottom',
+                    // BEIDE nach oben: die Tief-Marke liegt an der
+                    // Panel-Unterkante, ein Label darunter landete in der
+                    // Ueberschrift der naechsten Flaeche. Am Telefon ist das
+                    // Preis-Panel nur ~100 px hoch, dort stiess auch das obere
+                    // Label in die Ueberschrift - deshalb rueckt es hinein
+                    // (beides im Browser bei 375 px gemessen).
+                    position: narrow ? 'inside' : 'top',
                     backgroundColor: t.surface,
-                    padding: [2, 4],
+                    padding: [1, 3],
                     borderRadius: 3,
                   },
                 })),
@@ -287,7 +307,7 @@ export function Tagesbild({
         barCategoryGap: BAR.categoryGap,
         barMaxWidth: BAR.maxWidth,
         z: 3,
-        markArea: layout.preis.sichtbar ? undefined : pastArea,
+        ...flaechen(!layout.preis.sichtbar),
         markLine: (layout.ertrag.sichtbar ? stilleMarke : fahnenMarke).length
           ? {
               silent: true,
@@ -295,7 +315,6 @@ export function Tagesbild({
               data: layout.ertrag.sichtbar ? stilleMarke : fahnenMarke,
             }
           : undefined,
-        ...(layout.preis.sichtbar ? {} : baender),
       });
 
       if (zeigeDetail && hatNetz) {
@@ -344,6 +363,7 @@ export function Tagesbild({
           lineStyle: { color: t.plan, width: STROKE.lead },
           itemStyle: { color: t.plan },
           areaStyle: { color: t.plan, opacity: FILL.wash },
+          ...flaechen(false),
           markLine: fahnenMarke.length
             ? { silent: true, symbol: 'none', data: fahnenMarke }
             : undefined,
@@ -357,9 +377,9 @@ export function Tagesbild({
           // überhaupt erst sichtbar (K9).
           axisPointer: { link: [{ xAxisIndex: 'all' }] },
           title: [
-            panelTitel(layout.preis, PANEL_TITEL.preis, left, t),
-            panelTitel(layout.leistung, PANEL_TITEL.leistung, left, t),
-            panelTitel(layout.ertrag, PANEL_TITEL.ertrag, left, t),
+            panelTitel(layout.preis, PANEL_TITEL.preis, left, t, narrow),
+            panelTitel(layout.leistung, PANEL_TITEL.leistung, left, t, narrow),
+            panelTitel(layout.ertrag, PANEL_TITEL.ertrag, left, t, narrow),
           ],
           grid: [
             grid(layout.preis, left, right),
@@ -416,15 +436,16 @@ export function Tagesbild({
               return zeilen.join('<br/>');
             },
           },
-          xAxis: [0, 1, 2].map((gi) => ({
-            type: 'category',
-            gridIndex: gi,
-            data: times,
-            show: gi === 0 ? layout.preis.sichtbar : gi === 1 ? true : layout.ertrag.sichtbar,
-            // Die geteilte Zeitachse wird GENAU EINMAL beschriftet - unten, wo
-            // der Blick ohnehin endet.
-            axisLabel:
-              gi === layout.achseIndex
+          xAxis: [0, 1, 2].map((gi) => {
+            const beschriftet = gi === layout.achseIndex;
+            const achse: Record<string, unknown> = {
+              type: 'category',
+              gridIndex: gi,
+              data: times,
+              show: gi === 0 ? layout.preis.sichtbar : gi === 1 ? true : layout.ertrag.sichtbar,
+              // Die geteilte Zeitachse wird GENAU EINMAL beschriftet - unten,
+              // wo der Blick ohnehin endet.
+              axisLabel: beschriftet
                 ? {
                     formatter: (v: string) =>
                       new Date(v).toLocaleTimeString('de-DE', {
@@ -436,10 +457,18 @@ export function Tagesbild({
                     hideOverlap: true,
                   }
                 : { show: false },
-            axisTick: { show: false },
-            axisLine: { show: false },
-            axisPointer: gi === layout.achseIndex ? undefined : { label: { show: false } },
-          })),
+              axisTick: { show: false },
+              axisLine: { show: false },
+            };
+            // ⚠ Der Schlüssel wird WEGGELASSEN, nicht auf `undefined` gesetzt:
+            // ECharts liest `axisPointer` als Teilmodell und schreibt in dessen
+            // Option - ein vorhandener Schlüssel mit `undefined` liefert kein
+            // Modell und die ganze Fläche stirbt beim Zeichnen
+            // („Cannot set properties of undefined"; im Browser aufgefallen,
+            // nicht im Test - der stubbt `setOption`).
+            if (!beschriftet) achse.axisPointer = { label: { show: false } };
+            return achse;
+          }),
           yAxis: [
             {
               // Panel 1: der Preis, allein auf seiner Skala. Negativpreise sind
@@ -457,7 +486,7 @@ export function Tagesbild({
               // Panel 2: die Leistung, symmetrisch um die Nulllinie.
               type: 'value',
               gridIndex: 1,
-              min: -Math.ceil(kwMax),
+              min: Math.floor(kwMin),
               max: Math.ceil(kwMax),
               splitLine: { lineStyle: { color: t.grid } },
               axisLabel: { color: t.axis, fontSize: AXIS.fontSize },

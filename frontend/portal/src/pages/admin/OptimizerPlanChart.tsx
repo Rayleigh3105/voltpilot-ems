@@ -294,7 +294,7 @@ export function OptimizerPlanChart({
               type: 'value',
               gridIndex: 0,
               show: hatPreis,
-              name: narrow ? undefined : 'Preis (ct/kWh)',
+              name: narrow ? '' : 'Preis (ct/kWh)',
               nameTextStyle: { color: t.axis, align: 'left', fontSize: AXIS.nameFontSize },
               nameGap: 10,
               min: (v: { min: number }) => Math.min(0, v.min),
@@ -307,7 +307,7 @@ export function OptimizerPlanChart({
               // Panel 2: die Leistung, symmetrisch um die Nulllinie.
               type: 'value',
               gridIndex: 1,
-              name: narrow ? undefined : 'Leistung (kW)',
+              name: narrow ? '' : 'Leistung (kW)',
               nameTextStyle: { color: t.axis, align: 'left', fontSize: AXIS.nameFontSize },
               nameGap: 10,
               min: -Math.ceil(kwMax),

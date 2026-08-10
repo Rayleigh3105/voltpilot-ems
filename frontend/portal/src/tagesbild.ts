@@ -68,6 +68,17 @@ export const PANEL_TITEL = {
   ertrag: { text: 'Was dabei herauskommt', einheit: '– Euro, über den Tag aufsummiert' },
 } as const satisfies Record<'preis' | 'leistung' | 'ertrag', PanelTitel>;
 
+/**
+ * Der TEXT einer Panel-Überschrift. Am Telefon fällt der Einheiten-Beisatz weg:
+ * bei 375 px lief er über den Bildrand und kollidierte mit der Preis-Marke
+ * darunter (im Browser gemessen). Die Einheit bleibt sichtbar — sie steht in
+ * JEDER Legendenzeile (K4: die Einheit steht nie allein, aber sie muss auch
+ * nicht zweimal dastehen).
+ */
+export function panelTitelText(titel: PanelTitel, narrow: boolean): string {
+  return narrow ? titel.text : `${titel.text}  ${titel.einheit}`;
+}
+
 /** Die Reihen-Namen — sie sind zugleich die Legendenzeilen und die Etiketten. */
 export const REIHE = {
   preis: 'Börsenpreis',
@@ -76,7 +87,14 @@ export const REIHE = {
   plan: 'Geplant (Soll)',
   ladestand: 'Ladestand',
   netz: 'Netz',
-  ertrag: 'mit VoltPilot',
+  /**
+   * ⚠ Sie heißt „Ergebnis“, nicht „mit VoltPilot“: der Vergleichsanker im
+   * Kopf nennt mit genau diesem Wort das NETZ-Ergebnis (`proofLine`), und das
+   * ist eine ANDERE Zahl als die kumulierte Netto-Kurve (sie trägt zusätzlich
+   * den Wert des Eigenverbrauchs). Zwei Zahlen unter EINEM Wort - im Browser
+   * sofort sichtbar: „7,00 €“ in der Legende neben „3,64 €“ im Kopf.
+   */
+  ertrag: 'Ergebnis',
 } as const;
 
 /** Was hinter „Mehr anzeigen ▾" liegt (K3: der Umschalter nennt seinen Inhalt). */
