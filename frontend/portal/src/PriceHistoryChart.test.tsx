@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { PriceHistoryChart } from './PriceHistoryChart';
 import type { PriceBucket, PriceHistory } from './api';
 
@@ -137,14 +137,15 @@ describe('PriceHistoryChart - der Telefon-Fokus', () => {
     });
   });
 
-  it('benennt am Telefon nur den GEZEIGTEN Tag', () => {
+  it('hinterlegt am Telefon nur den GEZEIGTEN Tag', () => {
     const h = historie(zweiTage());
     render(<PriceHistoryChart history={h} fokus="morgen" />);
-    const bereiche = lastOption.series[0].markArea.data as any[];
-    // Jedes benannte Fenster liegt im Morgen-Ausschnitt (>= 96).
-    const fenster = bereiche.filter((b) => b[0].label?.show);
-    expect(fenster.length).toBeGreaterThan(0);
-    for (const b of fenster) expect(b[0].xAxis).toBeGreaterThanOrEqual(96);
+    const bereiche = (lastOption.series[0].markArea.data as any[]).filter(
+      // die Tagesgrenzen-Toenung laeuft bis zum Reihenende, die Fenster nicht
+      (b) => b[1].xAxis < 191,
+    );
+    expect(bereiche.length).toBeGreaterThan(0);
+    for (const b of bereiche) expect(b[0].xAxis).toBeGreaterThanOrEqual(96);
   });
 });
 
@@ -157,25 +158,35 @@ describe('PriceHistoryChart - die Preis-Grammatik (Stufe 4)', () => {
     expect(lastOption.visualMap).toBeUndefined();
   });
 
-  it('hinterlegt ZUSAMMENHAENGENDE Fenster, jedes MIT seinem Wort im Bild', () => {
+  it('hinterlegt ZUSAMMENHAENGENDE Fenster - EIN Block, kein Kamm', () => {
     render(<PriceHistoryChart history={historie(zweiTage())} fokus="heute" />);
-    const benannt = (lastOption.series[0].markArea.data as any[]).filter(
-      (b) => b[0].label?.show,
+    const bereiche = (lastOption.series[0].markArea.data as any[]).filter(
+      (b) => b[1].xAxis < 191,
     );
-    expect(benannt.length).toBeGreaterThan(0);
-    for (const [start, ende] of benannt) {
-      // EIN Block, kein Kamm aus Einzel-Slots.
+    expect(bereiche.length).toBeGreaterThan(0);
+    for (const [start, ende] of bereiche) {
       expect(ende.xAxis).toBeGreaterThan(start.xAxis);
-      expect(typeof start.label.formatter).toBe('string');
-      expect(start.label.formatter.length).toBeGreaterThan(3);
     }
   });
 
-  it('sagt „Strom kostet nichts" statt „guenstigstes Viertel"', () => {
-    render(<PriceHistoryChart history={historie(zweiTage())} fokus="heute" />);
-    const texte = alleTexte(lastOption);
-    expect(texte).toContain('Strom kostet nichts');
-    expect(texte.join(' ')).not.toMatch(/Viertel/);
+  it('traegt sein WORT unter dem Bild - samt Zeitraum, nie „Viertel" (K10/K4)', () => {
+    const { container } = render(
+      <PriceHistoryChart history={historie(zweiTage())} fokus="heute" />,
+    );
+    const zeile = container.querySelector('.vp-preisfenster');
+    expect(zeile).toBeTruthy();
+    expect(screen.getByText(/Strom kostet nichts · \d{2}:\d{2}–\d{2}:\d{2}/)).toBeTruthy();
+    expect(screen.getByText(/die teuersten 2½ Stunden · \d{2}:\d{2}–\d{2}:\d{2}/)).toBeTruthy();
+    expect(zeile!.textContent ?? '').not.toMatch(/Viertel/);
+    // ⚠ Die Woerter stehen NICHT als markArea-Label im Canvas: ein
+    // 2½-Stunden-Band ist auf 48 Stunden ~40 px breit, sein Wort ~150 px -
+    // zwei solche Etiketten ueberlappten sich prompt gegenseitig UND die
+    // Datums-Beschriftung der Tagesgrenze.
+    const benannt = (lastOption.series[0].markArea.data as any[]).filter(
+      (b) => b[0].label?.show,
+    );
+    expect(benannt).toEqual([]);
+    expect(alleTexte(lastOption).join(' ')).not.toMatch(/Viertel/);
   });
 
   it('setzt hoechstens zwei benannte Marken - je mit Wort UND Zahl', () => {
@@ -235,11 +246,10 @@ describe('PriceHistoryChart - die Preis-Grammatik (Stufe 4)', () => {
 
   it('benennt auf einer FLACHEN Kurve gar kein Fenster', () => {
     const flach = zweiTage().map((b) => ({ ...b, avgEurMwh: 120 }));
-    render(<PriceHistoryChart history={historie(flach)} fokus="heute" />);
-    const benannt = (lastOption.series[0].markArea.data as any[]).filter(
-      (b) => b[0].label?.show,
-    );
-    expect(benannt).toEqual([]);
+    const { container } = render(<PriceHistoryChart history={historie(flach)} fokus="heute" />);
+    expect(container.querySelector('.vp-preisfenster')).toBeNull();
+    // Nur die Tagesgrenzen-Toenung bleibt.
+    expect(lastOption.series[0].markArea.data).toHaveLength(1);
   });
 });
 
@@ -250,6 +260,11 @@ describe('PriceHistoryChart - der Rueckblick (Woche/Monat/Jahr)', () => {
     minEurMwh: 600 + i * 10,
     maxEurMwh: 900 + i * 10,
   }));
+
+  it('traegt im Rueckblick keine Fenster-Zeile', () => {
+    const { container } = render(<PriceHistoryChart history={historie(tage, 'P1D')} />);
+    expect(container.querySelector('.vp-preisfenster')).toBeNull();
+  });
 
   it('bleibt O-Linie plus Min/Max-Band - jetzt in ct/kWh', () => {
     amRechner(<PriceHistoryChart history={historie(tage, 'P1D')} fokus="heute" />);

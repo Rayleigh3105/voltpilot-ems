@@ -73,6 +73,10 @@ describe('ForecastQualityChart (Stufe 4)', () => {
     for (const d of ml) {
       expect(d.label.position).toMatch(/^inside/);
       expect(d.label.rotate).toBe(0);
+      // ⚠ Eine unsichtbare markLine nimmt in ECharts ihr LABEL mit - genau
+      // daran fehlte „↑ schlechter" im ersten Bau.
+      expect(d.lineStyle.opacity).toBeUndefined();
+      expect(d.lineStyle.color).toBeTruthy();
     }
   });
 

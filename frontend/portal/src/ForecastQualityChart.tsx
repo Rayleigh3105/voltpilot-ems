@@ -66,6 +66,14 @@ export function ForecastQualityChart({
         model == null ? days.map(() => null) : days.map((d) => byKey.get(`${model}|${d}`) ?? null);
 
       const aktivWerte = reihe(activeModel);
+      // Der obere Polaritäts-Anker haengt am hoechsten GEZEICHNETEN Wert. Ein
+      // `type: 'max'`-markLine mit unsichtbarer Linie rendert sein Label nicht
+      // zuverlaessig (im Screenshot fehlte „↑ schlechter" ganz) - der Wert wird
+      // deshalb selbst gerechnet und als `yAxis`-Marke gesetzt.
+      const hoechster = Math.max(
+        0,
+        ...points.map((p) => p.maeKw).filter((v): v is number => typeof v === 'number'),
+      );
       const kandidatWerte = reihe(kandidat);
       const flaeche = verbesserung(aktivWerte, kandidatWerte);
       // Die Marke für das Flächen-Wort: der Tag mit dem größten Vorsprung -
@@ -83,7 +91,10 @@ export function ForecastQualityChart({
           // Direktbeschriftung (ohne ihn schneidet ECharts das Etikett ab).
           grid: {
             top: 30,
-            right: narrow ? 12 : DIRECT_LABEL_GUTTER_PX,
+            // Die Etiketten dieser Flaeche sind zweiwortig („Kandidat Ø ±0,54
+            // kW") und damit laenger als der geteilte Vorgabe-Rand - der hat
+            // sie im Screenshot am rechten Canvas-Rand abgeschnitten.
+            right: narrow ? 12 : DIRECT_LABEL_GUTTER_PX + 32,
             bottom: 8,
             left: 8,
             containLabel: true,
@@ -115,6 +126,11 @@ export function ForecastQualityChart({
             // K4: „Ø kW" liest sich als Durchschnittsleistung - hier steht die
             // Einheit als WORT.
             name: AXIS_NAME.abweichung(narrow),
+            // Linksbuendig verankert, sonst haengt die halbe Beschriftung aus
+            // dem Canvas („Kilowatt Abweichung" rendert als „vatt Abweichung").
+            nameLocation: 'end',
+            nameGap: 12,
+            nameTextStyle: { align: 'left' },
             min: 0,
             splitLine: { lineStyle: { color: t.grid } },
             axisTick: { show: false },
@@ -205,8 +221,14 @@ export function ForecastQualityChart({
                       symbol: 'none',
                       data: [
                         {
-                          type: 'max',
-                          lineStyle: { opacity: 0 },
+                          // ⚠ Die Linie ist eine HAARLINIE in Rasterfarbe, NICHT
+                          // `opacity: 0`: eine unsichtbare markLine nimmt in
+                          // ECharts ihr LABEL mit - genau daran fehlte
+                          // „↑ schlechter" im ersten Bau (im Screenshot
+                          // aufgefallen, während „↓ besser" mit sichtbarer
+                          // Linie erschien).
+                          yAxis: hoechster,
+                          lineStyle: { color: t.grid, width: STROKE.ref },
                           label: {
                             formatter: POLARITAET.oben,
                             position: 'insideStartTop',

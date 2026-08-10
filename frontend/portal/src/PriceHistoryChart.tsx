@@ -3,8 +3,16 @@ import { AXIS, FILL, STROKE, withAlpha } from './chartStyle';
 import { AXIS as AXIS_NAME } from './chartCopy';
 import { chartTheme } from './chartTheme';
 import { fokusFenster, tagesGrenze, type TagFokus } from './marktpreise';
-import { ctReihe, preisFenster, preisMarken, type FensterArt } from './preisFenster';
+import {
+  ctReihe,
+  fensterZeilen,
+  preisFenster,
+  preisMarken,
+  type FensterArt,
+  type FensterZeile,
+} from './preisFenster';
 import { useEChart } from './useEChart';
+import './preisFenster.css';
 
 /** ct/kWh (die Kunden-Einheit) + EUR/MWh (das Profi-Detail) für einen Tooltip. */
 function fmtPrice(ct: number | null): string {
@@ -56,6 +64,18 @@ function grenzLabel(iso: string): string {
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
 }
+
+/**
+ * ECharts setzt einen Achsen-NAMEN standardmäßig mittig über die Achse - die
+ * linke Hälfte hängt damit aus dem Canvas, und `containLabel` rechnet ihn NICHT
+ * ein („Preis (ct/kWh)" rendert als „reis (ct/kWh)", im Screenshot aufgefallen).
+ * Linksbündig verankert wächst er nach innen.
+ */
+const ACHSEN_NAME = {
+  nameLocation: 'end' as const,
+  nameGap: 12,
+  nameTextStyle: { align: 'left' as const },
+};
 
 /** Der Ton eines benannten Preisfensters (Token-Paar, siehe `chartTheme`). */
 function fensterFarbe(art: FensterArt, t: ReturnType<typeof chartTheme>): string {
@@ -133,9 +153,9 @@ export function PriceHistoryChart({
         chart.setOption(
           {
             textStyle: { fontFamily: t.font, color: t.axis },
-            // Die Fenster-Wörter und die Marken sitzen OBEN im Bild - ohne
-            // Kopfraum schneidet ECharts sie am Canvas-Rand ab.
-            grid: { top: 44, right: 12, bottom: 8, left: 8, containLabel: true },
+            // Die Marken sitzen OBEN im Bild - ohne Kopfraum schneidet ECharts
+            // sie am Canvas-Rand ab.
+            grid: { top: 34, right: 12, bottom: 8, left: 8, containLabel: true },
             tooltip: {
               trigger: 'axis',
               confine: true,
@@ -180,6 +200,7 @@ export function PriceHistoryChart({
               // trägt sie sich selbst.
               name: AXIS_NAME.preis(narrow),
               type: 'value',
+              ...ACHSEN_NAME,
               splitLine: { lineStyle: { color: t.grid } },
               axisTick: { show: false },
               axisLine: { show: false },
@@ -260,7 +281,7 @@ export function PriceHistoryChart({
                               formatter: grenzLabel(times[boundaryIdx]),
                               color: t.axis,
                               fontSize: AXIS.fontSize,
-                              position: 'insideEndTop',
+                              position: 'insideEndBottom',
                               // Auf einer Kategorie-Achse rendert ECharts eine
                               // Beschriftung sonst GEDREHT an der Linie
                               // entlang - die dokumentierte Kanten-Falle.
@@ -277,25 +298,16 @@ export function PriceHistoryChart({
                 markArea: {
                   silent: true,
                   data: [
-                    // K10: jedes Fenster trägt SEIN WORT im Bild - eine
-                    // Hinterlegung, die eine Legende zum Entziffern braucht,
-                    // fliegt raus.
+                    // ⚠ Die Bänder tragen ihr Wort in der ZEILE unter dem Bild
+                    // (`FensterZeile`), nicht als `markArea`-Label: ein
+                    // 2½-Stunden-Band ist auf einer 48-Stunden-Achse ~40 px
+                    // breit, sein Wort ~150 px - im ersten Bau überlappten sich
+                    // die zwei Etiketten prompt gegenseitig UND die
+                    // Datums-Beschriftung der Tagesgrenze.
                     ...fenster.map((f) => [
                       {
                         xAxis: f.von,
                         itemStyle: { color: withAlpha(fensterFarbe(f.art, t), FILL.speaking) },
-                        label: {
-                          show: true,
-                          position: 'insideTop',
-                          distance: -22,
-                          formatter: f.wort,
-                          color: t.ink,
-                          fontSize: AXIS.fontSize,
-                          fontWeight: 600,
-                          backgroundColor: withAlpha(fensterFarbe(f.art, t), 0.14),
-                          padding: [3, 7],
-                          borderRadius: 999,
-                        },
                       },
                       { xAxis: f.bis },
                     ]),
@@ -384,6 +396,7 @@ export function PriceHistoryChart({
             // K4: die Einheit steht nie allein - ct/kWh ist die Leiteinheit,
             // EUR/MWh bleibt Profi-Detail im Tooltip.
             name: AXIS_NAME.preis(narrow),
+            ...ACHSEN_NAME,
             splitLine: { lineStyle: { color: t.grid } },
             axisTick: { show: false },
             axisLine: { show: false },
@@ -435,5 +448,33 @@ export function PriceHistoryChart({
     [history, fokus],
   );
 
-  return <div ref={ref} className="vp-chart" />;
+  // K10: die Bänder tragen ihr Wort - unmittelbar unter dem Bild, im selben
+  // Block, samt Zeitraum. Ohne Fenster (flacher Tag, Rückblick) erscheint die
+  // Zeile gar nicht.
+  const zeilen: FensterZeile[] =
+    history.bucket === 'PT15M'
+      ? fensterZeilen(
+          preisFenster(
+            ctReihe(history.buckets.map((b) => b.avgEurMwh)),
+            15,
+          ),
+          history.buckets.map((b) => b.ts),
+        )
+      : [];
+
+  return (
+    <>
+      <div ref={ref} className="vp-chart" />
+      {zeilen.length > 0 && (
+        <div className="vp-preisfenster">
+          {zeilen.map((f) => (
+            <span key={f.art} className={`vp-preisfenster-item art-${f.art}`}>
+              <i aria-hidden="true" />
+              {f.wort} · {f.zeit}
+            </span>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }

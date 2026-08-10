@@ -304,3 +304,45 @@ export function ctReihe(
 ): (number | null)[] {
   return eurMwh.map((v) => ctFromEurMwh(v == null ? null : Number(v)));
 }
+
+/* ---------------------------------------------------------------------------
+ * Die Wortzeile (K10) — beide Preis-Flächen rendern sie
+ * ------------------------------------------------------------------------- */
+
+export interface FensterZeile {
+  art: FensterArt;
+  /** „die günstigsten 2½ Stunden". */
+  wort: string;
+  /** „12:00–14:15" — WANN. */
+  zeit: string;
+}
+
+/** „12:00" aus einem Zeitstempel; leer, wenn er unbrauchbar ist. */
+function hhmm(iso: string | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Die Fenster als Wortzeile — Wort UND Zeitraum. Sie steht unmittelbar unter
+ * dem Bild statt IM Canvas: ein 2½-Stunden-Band ist auf einer 48-Stunden-Achse
+ * ~40 px breit, sein Wort ~150 px, und zwei solche Etiketten überlappten sich
+ * im ersten Bau prompt gegenseitig und die Datums-Beschriftung der
+ * Tagesgrenze. Ein Fenster ohne brauchbare Zeitstempel wird ausgelassen, statt
+ * eine leere Spanne zu behaupten.
+ */
+export function fensterZeilen(
+  fenster: readonly PreisFenster[],
+  zeiten: readonly string[],
+): FensterZeile[] {
+  const out: FensterZeile[] = [];
+  for (const f of fenster) {
+    const von = hhmm(zeiten[f.von]);
+    const bis = hhmm(zeiten[f.bis]);
+    if (!von || !bis) continue;
+    out.push({ art: f.art, wort: f.wort, zeit: `${von}–${bis}` });
+  }
+  return out;
+}

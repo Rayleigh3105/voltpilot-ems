@@ -103,8 +103,11 @@ export function WeatherChart({
       chart.setOption(
         {
           textStyle: { fontFamily: t.font, color: t.axis },
+          // Die K6-Marke sitzt ÜBER der stärksten Stunde - und die liegt am
+          // Achsen-Maximum. Ohne Kopfraum schneidet ECharts sie ab (im
+          // Screenshot aufgefallen).
           grid: {
-            top: 16,
+            top: 46,
             right: zeigtSonne && !narrow ? 60 : 12,
             bottom: 8,
             left: 8,
@@ -145,6 +148,12 @@ export function WeatherChart({
             {
               type: 'value',
               name: leitReihe.achse,
+              // ECharts setzt einen Achsen-NAMEN mittig über die Achse - die
+              // linke Hälfte hängt damit aus dem Canvas, und `containLabel`
+              // rechnet ihn NICHT ein. Linksbündig wächst er nach innen.
+              nameLocation: 'end',
+              nameGap: 12,
+              nameTextStyle: { align: 'left' },
               position: 'left',
               min: 0,
               splitLine: { lineStyle: { color: t.grid } },
