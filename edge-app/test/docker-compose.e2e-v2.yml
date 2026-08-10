@@ -14,6 +14,9 @@ services:
       VP_NODERED_ADMIN_URL: "http://nodered:1880"
       VP_NODERED_USER: ${VP_NODERED_USER:-voltpilot}
       VP_NODERED_PASSWORD: ${VP_NODERED_PASSWORD:-}
+      # Verbrauchssteuerung Inkrement 6 (C7): the edge-local deadline fallback
+      # is gated on the consumer master switch (default OFF in production).
+      VP_CONSUMER_CONTROL_ENABLED: "true"
 
   nodered:
     pull_policy: never

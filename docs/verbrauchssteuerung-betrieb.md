@@ -30,7 +30,7 @@ die Scharfschaltung bleibt hinter den vier Flags, alle Standard **AUS**.
 | `VOLTPILOT_CONSUMER_CONTROL_ENABLED` | api | AUS | Aktivierung antwortet ehrlich „Steuerung noch nicht aktiviert“; ein manueller Eingriff wird **notiert + auditiert, aber nicht ans Gerät gesendet**. |
 | `VOLTPILOT_CONSUMER_POLICY_COMPILER_ENABLED` | api | AUS | Zusätzlich: die Policy wird nicht zu einem Edge-Artefakt kompiliert/ausgerollt. |
 | `OPTIMIZER_CONTROLLABLE_LOADS_ENABLED` | optimization | AUS | Auch eine `VOLTPILOT_V2_PLAN_SITES`-geflaggte Anlage erhält einen **verbraucherlosen** v2-Schattenplan, bytegleich zum Vor-Inkrement-2-Modell. |
-| `VP_CONSUMER_CONTROL_ENABLED` | edge (`edge-app/.env`) | AUS | Der Edge sendet **nie** ein Verbraucher-Kommando (Sofortaktion/Fahrplan). `VP_CONTROL_ENABLED` bleibt der globale Not-Aus darüber. |
+| `VP_CONSUMER_CONTROL_ENABLED` | edge (`edge-app/.env`) | AUS | Der Edge sendet **nie** ein Verbraucher-Kommando (Sofortaktion/Fahrplan), und der edge-lokale Deadline-Fallback (Inkrement 6, §13.5) ist vollständig aus - byte-identisches Verhalten. `VP_CONTROL_ENABLED` bleibt der globale Not-Aus darüber. |
 
 **Der Stopppfad ist flag-UNABHÄNGIG (die OTA/Flow-Lehre).**
 Deaktivieren und Pausieren einer Policy ziehen das ausgerollte Artefakt zurück,

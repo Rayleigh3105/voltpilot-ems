@@ -192,6 +192,10 @@ func (a *Agent) arbitrationLoop(ctx context.Context) {
 		}
 		now := time.Now().UTC()
 		a.runPlanExecutors(now)
+		// The deadline fallback decides AFTER the plan executors, so a fresh
+		// plan's market desire is already in place when the fallback withdraws
+		// (Inkrement 6; no-op unless VP_CONSUMER_CONTROL_ENABLED).
+		a.runFlexFallback(now)
 		a.arb.Tick()
 	}
 }

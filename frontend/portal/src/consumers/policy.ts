@@ -7,9 +7,11 @@
  * review (`reviewFacts`) reads the document too, naming every auto-set fact in
  * Klartext (§14.7).
  *
- * Increment 1 authors a DRAFT: there is no compiler/optimizer/edge command yet,
- * so a flexible task carries the honest §14.7 note "Bei Verbindungsausfall kann
- * diese Aufgabe entfallen." until the local deadline fallback (Increment 6).
+ * Since Increment 6 (the edge-local deadline fallback, §13.5/D-20) a flexible
+ * task carries the honest §14.7 promise "Bei Verbindungsausfall startet
+ * VoltPilot die Aufgabe spätestens zur Frist selbst - Schutz- und Netzgrenzen
+ * bleiben wirksam." - the device really does this now (never before
+ * "Frist minus Restbedarf", under ALL guards).
  */
 import type {
   Condition,
@@ -19,6 +21,15 @@ import type {
   PolicyTarget,
   Requirement,
 } from './types';
+
+/**
+ * The §14.7 flexible-task sentence (Increment 6): what the DEVICE really does
+ * on a connection loss - the local deadline fallback starts the task itself,
+ * at the latest at its deadline, with every guard still binding.
+ */
+export const FLEX_FALLBACK_NOTE =
+  'Bei Verbindungsausfall startet VoltPilot die Aufgabe spätestens zur Frist '
+  + 'selbst - Schutz- und Netzgrenzen bleiben wirksam.';
 import type { ConsumerContext, ConsumerDraft } from './questions';
 import { effectiveEnforcement } from './questions';
 import { findSignal } from './signals';
@@ -143,8 +154,9 @@ function requirementSentence(r: Requirement, name: string): string {
   if (storage) parts.push(storage);
 
   if (r.kind === 'flexible_task') {
-    // §14.7: until the local deadline fallback (Increment 6) exists.
-    parts.push('Bei Verbindungsausfall kann diese Aufgabe entfallen.');
+    // §14.7 since Increment 6: the edge-local deadline fallback exists - the
+    // sentence promises exactly what the device does (§13.5), no more, no less.
+    parts.push(FLEX_FALLBACK_NOTE);
   }
   parts.push('Geräteschutz und Netzvorgaben bleiben wirksam.');
   return parts.filter(Boolean).join(' ');

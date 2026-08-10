@@ -449,6 +449,71 @@ class ConsumerApiTest {
     }
 
     @Test
+    void theDeadlineDutyRidesTheRegistryPushAndPauseDropsIt() {
+        // Verbrauchssteuerung Inkrement 6 (D-20): the ACTIVE policy's
+        // required_by_deadline duty rides the registry push as the additive
+        // flex_requirements block - resolved power + command included - and a
+        // PAUSED consumer drops out (the edge fallback must never self-start a
+        // paused device). Real DB: proves the compose SQL + the lifecycle
+        // re-push wiring.
+        String tok = token("demo", "demo");
+        UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        Map<String, Object> c = create(tok, Map.of(
+                "type", "generic-load", "name", "Stallpumpe Fallback",
+                "ratedPowerKw", 2.2, "controlKind", "on_off"));
+        String id = (String) c.get("id");
+        String base = "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id;
+        try {
+            patch(tok, id, Map.of("enabled", true));
+            put(tok, base + "/policy", Map.of("document", Map.of(
+                    "schema_version", "1.0", "entity_id", id, "timezone", "Europe/Berlin",
+                    "requirements", List.of(Map.of(
+                            "id", "pump-daily-hour", "kind", "flexible_task",
+                            "enforcement", "required_by_deadline",
+                            "recurrence", Map.of("days", "daily", "from", "00:00", "to", "24:00"),
+                            "demand", Map.of("runtime_minutes", 60, "contiguous", true),
+                            "target", Map.of("kind", "on_off", "value", true))))));
+            // A DRAFT policy never reaches the push (only ACTIVE composes).
+            patch(tok, id, Map.of("minOffSeconds", 45));
+            assertThat(lastPush()).contains(id).doesNotContain("flex_requirements");
+
+            // Activation is flag-gated in this context; make the policy ACTIVE
+            // the ledger-test way, then re-push via another profile touch.
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("UPDATE consumer_policy SET lifecycle='active' WHERE entity_id = ?",
+                        UUID.fromString(id));
+            } finally {
+                TenantContext.clear();
+            }
+            patch(tok, id, Map.of("minOffSeconds", 60));
+            assertThat(lastPush()).contains("\"flex_requirements\"")
+                    .contains("\"id\":\"pump-daily-hour\"")
+                    .contains("\"days\":\"daily\"")
+                    .contains("\"from\":\"00:00\"")
+                    .contains("\"to\":\"24:00\"")
+                    .contains("\"runtime_minutes\":60")
+                    .contains("\"power_kw\":2.2")
+                    .contains("\"command\":\"on_off\"")
+                    .contains("\"timezone\":\"Europe/Berlin\"");
+
+            // PAUSE re-pushes on its own (Inkrement 6) and the paused
+            // consumer's duty drops out of the compose (enabled=false).
+            assertThat(post(tok, base + "/pause", Map.of()).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(lastPush()).contains(id).doesNotContain("flex_requirements");
+        } finally {
+            delete(tok, id);
+        }
+    }
+
+    private String lastPush() {
+        assertThat(RecordingPublisherConfig.PUSHES).isNotEmpty();
+        return new String(RecordingPublisherConfig.PUSHES
+                .get(RecordingPublisherConfig.PUSHES.size() - 1), StandardCharsets.UTF_8);
+    }
+
+    @Test
     void fulfilmentLedgerIsDerivedFromConfirmedTelemetryAndReadPerConsumer() {
         String tok = token("demo", "demo");
         UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");

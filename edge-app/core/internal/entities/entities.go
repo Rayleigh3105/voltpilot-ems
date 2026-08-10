@@ -107,6 +107,26 @@ type Guards struct {
 	Failsafe Failsafe    `json:"failsafe"`
 }
 
+// FlexRequirement is one ACTIVE required_by_deadline duty of a consumer
+// entity (Verbrauchssteuerung Inkrement 6, D-20; $defs/flex_requirement) -
+// the data the edge-local deadline fallback needs. OPTIONAL + ADDITIVE: an
+// old cloud omits the block, an old edge ignores it. power_kw and command are
+// RESOLVED cloud-side from the policy target + consumer_profile (one truth);
+// the edge never re-derives policy semantics. Validation/semantics live in
+// internal/flexfallback.ParseRequirement.
+type FlexRequirement struct {
+	ID             string   `json:"id"`
+	Timezone       string   `json:"timezone,omitempty"`
+	Days           string   `json:"days"`
+	From           string   `json:"from"`
+	To             string   `json:"to"`
+	RuntimeMinutes *float64 `json:"runtime_minutes,omitempty"`
+	EnergyKwh      *float64 `json:"energy_kwh,omitempty"`
+	Contiguous     *bool    `json:"contiguous,omitempty"`
+	PowerKw        float64  `json:"power_kw"`
+	Command        string   `json:"command"`
+}
+
 // Entity is one registry descriptor.
 type Entity struct {
 	ID           string       `json:"entity_id"`
@@ -122,6 +142,9 @@ type Entity struct {
 	// OWN source readings onto the entity for the LOCAL display (Topology) -
 	// deterministic instead of order-guessing. Empty = not adopted / old cloud.
 	EdgeSourceID string `json:"edge_source_id,omitempty"`
+	// FlexRequirements are the consumer's active deadline duties for the
+	// edge-local fallback (Inkrement 6, D-20). Empty = no fallback.
+	FlexRequirements []FlexRequirement `json:"flex_requirements,omitempty"`
 }
 
 // Registry is the applied entity set of this device.

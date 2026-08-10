@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 )
 
@@ -100,6 +102,13 @@ func (a *Agent) consumersSummary() cloud.ConsumersSummary {
 			entry.ReasonCode = reasonRatedPower
 		case commandedOn:
 			entry.State = runningState(dec.HolderKind, dec.HolderOverride)
+			if dec.HolderKind == string(desired.SourceDeadlineFallback) {
+				// The device started the flexible task ITSELF (Inkrement 6,
+				// §15 vocabulary): honest, machine-readable - the run word
+				// stays running_optimized (a user-wish-rank run, no Pflicht
+				// boost), the reason names the fallback.
+				entry.ReasonCode = flexfallback.ReasonRun
+			}
 		case v.hadEver && !v.fresh:
 			// Nothing commands it AND the device went silent after having
 			// reported - the device truth outranks "waiting" then.

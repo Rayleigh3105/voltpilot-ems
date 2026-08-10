@@ -43,6 +43,7 @@ export const CONSUMER_REASON_TEXT: Record<string, string> = {
   price_below_threshold: 'Günstiger Strompreis',
   soc_above_threshold: 'Speicher ausreichend geladen',
   flex_deadline: 'Frist rückt näher',
+  flex_deadline_fallback: 'Vom Gerät gestartet, damit die Frist hält',
   optimizer_selected_low_cost: 'Von VoltPilot günstig eingeplant',
   consumer_first: 'Verbraucher zuerst',
   storage_first: 'Speicher zuerst',

@@ -78,10 +78,16 @@ public class ConsumerRuntimeStatusListener {
             "disconnected", "offline", "ready", "running_forced", "running_optimized",
             "waiting", "fulfilled", "clamped", "missed", "unknown");
 
-    /** The §15 reason vocabulary incl. the Inkrement-3 cycle-guard extension. */
+    /**
+     * The §15 reason vocabulary incl. the Inkrement-3 cycle-guard extension
+     * and the Inkrement-6 deadline fallback ({@code flex_deadline_fallback}:
+     * the DEVICE started the flexible task itself so the deadline holds -
+     * without this word here the honest edge report would be discarded).
+     */
     static final Set<String> REASONS = Set.of(
             "vehicle_connected", "fixed_window", "price_below_threshold",
-            "soc_above_threshold", "flex_deadline", "optimizer_selected_low_cost",
+            "soc_above_threshold", "flex_deadline", "flex_deadline_fallback",
+            "optimizer_selected_low_cost",
             "consumer_first", "storage_first", "guard_rated_power", "guard_grid_limit",
             "device_offline", "readback_mismatch", "signal_stale",
             "guard_min_on", "guard_min_off", "guard_max_starts", "guard_ramp", "plan_stale");

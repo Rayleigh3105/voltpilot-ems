@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.consumers.ConsumerRepository.ConsumerRow;
 import com.voltpilot.api.consumers.ConsumerRepository.PolicyRow;
 import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowCatalog;
 import com.voltpilot.api.flows.FlowCompiler;
@@ -83,6 +84,7 @@ class ConsumerPolicyActivationBrokerTest {
     private FlowRepository flows;
     private EntityRegistryRepository entities;
     private ConsumerAuditRepository audit;
+    private EntityRegistryService registry;
     private String artifactJson;
 
     @BeforeEach
@@ -91,6 +93,7 @@ class ConsumerPolicyActivationBrokerTest {
         flows = mock(FlowRepository.class);
         entities = mock(EntityRegistryRepository.class);
         audit = mock(ConsumerAuditRepository.class);
+        registry = mock(EntityRegistryService.class);
         artifactJson = Files.readString(Path.of("..", "..", "edge-app", "nodered", "flowc",
                 "testdata", "consumer-reactive.artifact.json"));
         TenantContext.set(TENANT);
@@ -147,7 +150,7 @@ class ConsumerPolicyActivationBrokerTest {
         return new ConsumerPolicyActivationService(repo,
                 new ConsumerPolicyValidator(new ConsumerSignalCatalog()), compiler,
                 windows, provider(flowc), flows, new FlowCatalog(MAPPER), deployments, audit,
-                MAPPER, controlOn, compilerOn,
+                MAPPER, registry, controlOn, compilerOn,
                 Clock.fixed(Instant.parse("2026-08-10T09:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -186,6 +189,9 @@ class ConsumerPolicyActivationBrokerTest {
         verify(flows).markActive(eq(GENERATED_FLOW), eq(3), anyString());
         verify(audit).append(eq(SITE), eq(ENTITY), eq("policy_activated"), eq(POLICY), eq(3),
                 eq("tester"), anyString());
+        // Inkrement 6: activation re-pushes the entity registry so the edge
+        // fallback learns the policy's deadline duties (flex_requirements).
+        verify(registry).pushRegistryBestEffort(SITE);
 
         // The retained deployment set carries the generated artifact.
         JsonNode deployment = MAPPER.readTree(awaitRetained(
@@ -330,6 +336,9 @@ class ConsumerPolicyActivationBrokerTest {
         verify(repo).setEnabled(SITE, ENTITY, false);
         verify(flows).retireActive(GENERATED_FLOW);
         verify(audit).append(eq(SITE), eq(ENTITY), eq("paused"), any(), any(), eq("t"), any());
+        // Inkrement 6: pause re-pushes too - the paused consumer's duty drops
+        // out of the compose, the edge fallback never self-starts it.
+        verify(registry).pushRegistryBestEffort(SITE);
         assertThat(MAPPER.readTree(awaitRetained(
                 FlowDeploymentPublisher.flowsTopic(TENANT, SITE, DEVICE)))
                 .path("artifacts")).isEmpty();

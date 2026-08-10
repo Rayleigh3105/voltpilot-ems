@@ -103,6 +103,9 @@ func (a *Agent) applyEntityRegistry(reg entities.Registry) {
 		a.arb.SetEntities(reg)
 		a.pokeArbitration()
 	}
+	// The deadline-fallback duties follow the registry too (Inkrement 6;
+	// no-op unless VP_CONSUMER_CONTROL_ENABLED is set).
+	a.rebuildFlexRequirements(reg)
 	slog.Info("v2 entity registry applied", "revision", reg.Revision,
 		"entities", len(reg.Entities))
 }
@@ -156,6 +159,10 @@ func (a *Agent) onEntityTelemetry(topic string, payload []byte) {
 	}
 	a.entReadings[id] = entReading{channels: t.Channels, ts: t.Ts, recv: now}
 	a.entMu.Unlock()
+
+	// Confirmed-progress evidence for the deadline fallback (Inkrement 6;
+	// no-op unless VP_CONSUMER_CONTROL_ENABLED and the entity carries duties).
+	a.observeFlexProgress(id, t.Channels, now)
 
 	// Store-and-forward (E1b): the v2 uplink rides the SAME buffer as v1
 	// telemetry - appended with its ORIGINAL observation time, drained by

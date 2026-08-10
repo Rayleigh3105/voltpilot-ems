@@ -66,6 +66,32 @@ public class EntityRegistryRepository {
         return out;
     }
 
+    /** One consumer's ACTIVE policy document + rated power (Inkrement 6). */
+    public record ConsumerFlexSource(String documentJson, BigDecimal ratedPowerKw) {}
+
+    /**
+     * The ACTIVE consumer-policy documents of the site's ENABLED consumers -
+     * the source of the registry push's additive {@code flex_requirements}
+     * block (Verbrauchssteuerung Inkrement 6, D-20). A paused consumer
+     * ({@code enabled=false}) deliberately drops out: the edge fallback must
+     * never self-start a paused device. Rated power rides along so the
+     * compose can resolve on_off/percent targets into a run power (the one
+     * cloud truth).
+     */
+    public java.util.Map<UUID, ConsumerFlexSource> activeConsumerPolicies(UUID siteId) {
+        java.util.Map<UUID, ConsumerFlexSource> out = new java.util.HashMap<>();
+        jdbc.query(
+                "SELECT p.entity_id, p.document::text AS doc, cp.rated_power_kw "
+                        + "FROM consumer_policy p "
+                        + "JOIN consumer_profile cp ON cp.entity_id = p.entity_id "
+                        + "WHERE p.site_id = ? AND p.lifecycle = 'active' AND cp.enabled",
+                rs -> {
+                    out.put(rs.getObject("entity_id", UUID.class), new ConsumerFlexSource(
+                            rs.getString("doc"), rs.getBigDecimal("rated_power_kw")));
+                }, siteId);
+        return out;
+    }
+
     /** The site's v2 entities (entity_type set), stable order. */
     public List<EntityRow> entitiesForSite(UUID siteId) {
         return jdbc.query(

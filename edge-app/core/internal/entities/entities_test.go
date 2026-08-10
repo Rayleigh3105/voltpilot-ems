@@ -176,6 +176,24 @@ func TestParseRegistryPushAcceptsTheConsumerFixture(t *testing.T) {
 	if lcl := load.CycleLimits(); lcl != (guards.CycleLimits{}) {
 		t.Fatalf("generic-load must carry no cycle limits: %+v", lcl)
 	}
+
+	// The Inkrement-6 deadline duty travels as the additive flex_requirements
+	// block (D-20): the pump fixture carries its daily 60-min duty with the
+	// cloud-resolved power + command; the other consumers carry none.
+	if len(load.FlexRequirements) != 1 {
+		t.Fatalf("pump must carry its deadline duty: %+v", load.FlexRequirements)
+	}
+	fr := load.FlexRequirements[0]
+	if fr.ID != "pump-daily-hour" || fr.Days != "daily" || fr.From != "00:00" ||
+		fr.To != "24:00" || fr.Timezone != "Europe/Berlin" ||
+		fr.RuntimeMinutes == nil || *fr.RuntimeMinutes != 60 ||
+		fr.Contiguous == nil || !*fr.Contiguous ||
+		fr.PowerKw != 2.0 || fr.Command != CmdOnOff {
+		t.Fatalf("pump flex requirement wrong: %+v", fr)
+	}
+	if len(wb.FlexRequirements) != 0 || len(rod.FlexRequirements) != 0 {
+		t.Fatal("only the pump carries a deadline duty in the fixture")
+	}
 }
 
 func TestConfigPayloadMatchesTheContractConfigShape(t *testing.T) {

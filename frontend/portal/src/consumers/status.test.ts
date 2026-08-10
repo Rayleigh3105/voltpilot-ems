@@ -58,6 +58,17 @@ describe('consumerStatusLine', () => {
     expect(consumerStatusLine(entry({ confirmed: false })).tone).toBe('warn');
   });
 
+  it('a device-started deadline run reads honestly (Increment 6)', () => {
+    const line = consumerStatusLine({
+      entityId: 'pump-1', state: 'running_optimized',
+      reasonCode: 'flex_deadline_fallback', actualKw: 2.2, confirmed: true,
+      reportedAt: '2026-08-10T21:00:00Z',
+    });
+    expect(line.text).toBe('Läuft · von VoltPilot geplant');
+    expect(line.reason).toBe('Vom Gerät gestartet, damit die Frist hält');
+    expect(line.tone).toBe('ok');
+  });
+
   it('every §14.13 state and every §15 reason has a customer text', () => {
     // The ingest whitelist and this table must cover the same vocabulary -
     // a word the api stores but the portal cannot say would strand the
@@ -68,7 +79,8 @@ describe('consumerStatusLine', () => {
       expect(CONSUMER_STATE_TEXT[s], `state ${s}`).toBeTruthy();
     }
     const reasons = ['vehicle_connected', 'fixed_window', 'price_below_threshold',
-      'soc_above_threshold', 'flex_deadline', 'optimizer_selected_low_cost',
+      'soc_above_threshold', 'flex_deadline', 'flex_deadline_fallback',
+      'optimizer_selected_low_cost',
       'consumer_first', 'storage_first', 'guard_rated_power', 'guard_grid_limit',
       'device_offline', 'readback_mismatch', 'signal_stale',
       'guard_min_on', 'guard_min_off', 'guard_max_starts', 'guard_ramp', 'plan_stale'];
