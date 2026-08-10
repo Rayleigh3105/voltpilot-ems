@@ -418,6 +418,13 @@
     return !!(b && b.communication === "fronius_sunspec");
   }
 
+  // isGoeBrand: the go-e wallbox gets the D11 control short-test on its
+  // "Verbindung testen" (write path proven without disturbing a charge).
+  function isGoeBrand(brandId) {
+    var b = brandById(brandId);
+    return !!(b && b.communication === CONSUMER_COMM);
+  }
+
   /* ---- multi-inverter auto-detection (Fronius Datamanager) ----
      After adding a fronius_sunspec Erzeuger, the same address is probed for
      FURTHER inverter unit ids (bounded scan, read-only). If more inverters
@@ -554,6 +561,10 @@
     $("primGridToggle").addEventListener("change", saveBalance);
     $("srcTestBtn").addEventListener("click", function () {
       var payload = collect();
+      // D11: a go-e wallbox test ALSO asks for the non-disruptive control
+      // short-test (the core re-writes the charger's current amp value and
+      // reads it back - proves the write path without touching a charge).
+      if (isGoeBrand(payload.brand)) payload.control_test = true;
       window.VP.testConnection({
         payload: payload,
         panel: $("srcVerify"),

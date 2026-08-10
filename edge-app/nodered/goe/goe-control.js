@@ -26,23 +26,40 @@
  *   frc  R/W uint8  "forceState (Neutral=0, Off=1, On=2)"       <- the on/off lever
  *   amp  R/W uint8  "requestedCurrent in Ampere, used for       <- the current lever
  *                    display on LED ring and logic calculations"
+ *   psm      uint8  phaseSwitchMode (Auto=0, Force_1=1, Force_3=2) <- the phase lever
  * Readback (status) keys, quoted:
  *   car  R  "carState ... (Unknown/Error=0, Idle=1, Charging=2, WaitCar=3,
  *            Complete=4, Error=5)"
  *   nrg  R  "energy array, U(...), I(...), P(L1,L2,L3,N,Total), pf(...)"  (P in W, v2)
  *   acu  R  "How many ampere is the car allowed to charge now?"  (info only)
  *   alw  R  "Is the car allowed to charge at all now?"           (info only)
+ *   pnp  R  "numberOfPhases"                                     (info only)
  * The set endpoint (http-en.md): GET http://<ip>/api/set?<key>=<value>, values
  * json-encoded (integers plain), multiple keys joined with '&'; the response is
  * a json object with `true` per key on success or a string error message.
  *
+ * psm PROVENANCE (D4): psm is ABSENT from the official apikeys-en.md, but it is
+ * the key the production integrations provably phase-switch go-e chargers with
+ * - evcc (charger/go-e.go phases1p3p: psm=1 for 1-phase, psm=2 for 3-phase)
+ * and Home Assistant (marq24/ha-goecharger-api2, psm in its Config key filter).
+ * The official docs DO document the surrounding phase machinery (fsp R/W
+ * force_single_phase, mptwt "min phase toggle wait time", psh
+ * "phaseSwitchHysteresis", pnp R "numberOfPhases") - a documentation gap, not a
+ * guess (the ha-solarman/Victron secondary-source discipline). Whether a psm
+ * write moves the contactor on a given model stays VERIFY-on-device
+ * (CONTROL-BENCH.md), which is why phase switching is a per-device CONFIG
+ * opt-in (config.phase_switching), never assumed.
+ *
  * PHASE / VOLTAGE: the kW -> ampere conversion needs the number of phases the
- * wallbox charges on and the line voltage. The v2 API does NOT expose a simple,
- * settable phase-switch key (psm/phaseSwitchMode is not in apikeys-en.md; phase
- * selection is the charger's own logic), so this module does NOT write a phase
- * mode - it takes the phase COUNT + voltage as CONFIG (from the entity driver /
- * source connection, defaults 3 phases @ 230 V) purely to convert power->current.
- * That matches the read side, where nrg[11] (~11040 W) == 16 A x 3 x 230 V.
+ * wallbox charges on and the line voltage. Without phase switching the phase
+ * COUNT + voltage are CONFIG (defaults 3 phases @ 230 V), matching the read
+ * side, where nrg[11] (~11040 W) == 16 A x 3 x 230 V. With phase_switching the
+ * count follows the ACTIVE range of the D4 power_ranges (1p ~1.4..3.7 kW / 3p
+ * ~4.2..11 kW at the 6..16 A band): command.phase = { active, switch_allowed }
+ * is the stateful switcher's verdict (the Go core owns the pacing state -
+ * dwell + minimum switch pause, Fahrzeug-Elektronik-Schonung); a paced switch
+ *  clamps into the ACTIVE range or holds Off ("wartet - Phasenumschaltpause"),
+ * and NO value between the ranges ever reaches the device.
  *
  * SAFETY (mirrors inverter-control-routing.js §6, the whole control model):
  *   - controlPlan() is a PURE function - it computes a plan, never does I/O
@@ -65,8 +82,23 @@
 // The go-e HTTP API v2 forceState (frc) enum - facts from apikeys-en.md.
 const FRC = { NEUTRAL: 0, OFF: 1, ON: 2 };
 
-// The status keys we read back after a set (payload-shrinking filter).
-const READBACK_FILTER = 'frc,amp,acu,car,nrg,alw';
+// phaseSwitchMode (psm) enum - the evcc/HA value set (provenance above).
+const PSM = { AUTO: 0, FORCE_1: 1, FORCE_3: 2 };
+
+// The status keys we read back after a set (payload-shrinking filter). psm/pnp
+// carry the phase position (psm = the mode lever, pnp = phases actually used).
+const READBACK_FILTER = 'frc,amp,psm,pnp,acu,car,nrg,alw';
+
+// Phase-switch pacing defaults (D4): conservative, config-adjustable. Enforced
+// by the GO core's stateful switcher (single writer); named here so the two
+// sides share one number set.
+const DEFAULT_PHASE_SWITCH_PAUSE_S = 300;
+const DEFAULT_PHASE_SWITCH_DWELL_S = 60;
+
+// The driver-level hold vocabulary while a phase switch is paced (the
+// CycleGuard reason-code discipline).
+const HOLD_CODE_PHASE_SWITCH = 'guard_phase_switch';
+const HOLD_TEXT_PHASE_SWITCH = 'wartet - Phasenumschaltpause';
 
 // Index of the TOTAL charging power in the nrg array (see goe-api.js; the
 // authoritative decode lives there - this is inlined because the flow embeds
@@ -126,6 +158,53 @@ function powerForCurrent(amp, phases, voltage) {
   return Math.round(((amp * phases * voltage) / 1000) * 1000) / 1000;
 }
 
+/** resolvedBand - the shared current-band/voltage resolution for a config. */
+function resolvedBand(cfg) {
+  const voltage = num(cfg.voltage, DEFAULT_VOLTAGE) > 0 ? num(cfg.voltage, DEFAULT_VOLTAGE) : DEFAULT_VOLTAGE;
+  const minA = Math.max(1, Math.round(num(cfg.min_current_a, DEFAULT_MIN_CURRENT_A)));
+  const maxA = Math.max(minA, Math.round(num(cfg.max_current_a, DEFAULT_MAX_CURRENT_A)));
+  return { voltage, minA, maxA };
+}
+
+/**
+ * powerRanges - the achievable charge-power bands (§4.3 power_ranges_kw shape),
+ * derived from the DEVICE configuration. Without phase_switching ONE range at
+ * the configured phase count; with it the two non-convex D4 ranges (1p and 3p
+ * over the same current band, e.g. 6..16 A @ 230 V -> [1.38,3.68] / [4.14,11.04]).
+ */
+function powerRanges(cfg) {
+  cfg = cfg || {};
+  const { voltage, minA, maxA } = resolvedBand(cfg);
+  const phases = num(cfg.phases, DEFAULT_PHASES) > 0 ? num(cfg.phases, DEFAULT_PHASES) : DEFAULT_PHASES;
+  if (!cfg.phase_switching) {
+    return [{ phases, min_kw: powerForCurrent(minA, phases, voltage), max_kw: powerForCurrent(maxA, phases, voltage) }];
+  }
+  return [
+    { phases: 1, min_kw: powerForCurrent(minA, 1, voltage), max_kw: powerForCurrent(maxA, 1, voltage) },
+    { phases: 3, min_kw: powerForCurrent(minA, 3, voltage), max_kw: powerForCurrent(maxA, 3, voltage) },
+  ];
+}
+
+/**
+ * desiredPhaseMode - the D4 range decision for a charge wish on a
+ * phase-switching config: 3 when the wish reaches the 3p minimum, 1 while it
+ * reaches the 1p minimum (INCLUDING a wish in the gap - it snaps DOWN,
+ * restrict-only), 0 = off / no charge intent / not a switching config.
+ */
+function desiredPhaseMode(cfg, command) {
+  cfg = cfg || {};
+  const cmd = command || {};
+  if (!cfg.phase_switching) return 0;
+  if (cmd.stale === true || cmd.on_off === false) return 0;
+  const hasSetpoint = isFiniteNum(cmd.setpoint_kw);
+  if (!hasSetpoint && cmd.on_off !== true) return 0;
+  if (!hasSetpoint) return 3; // on_off=true without a power: allowed maximum
+  const r = powerRanges(cfg);
+  if (cmd.setpoint_kw >= r[1].min_kw) return 3;
+  if (cmd.setpoint_kw >= r[0].min_kw) return 1;
+  return 0;
+}
+
 /**
  * controlPlan - map a go-e connection config + an arbitrated consumer command
  * onto a pure WRITE PLAN + readback plan.
@@ -170,27 +249,36 @@ function controlPlan(config, command, opts) {
 
   // The readback plan ALWAYS runs (report §5): read every control key back so
   // the UI shows the wallbox's actual state, whether or not we wrote this tick.
-  // frc/amp carry an `expect` iff we wrote them (below); car/nrg/acu/alw are
-  // informational (no match assertion).
+  // frc/amp/psm carry an `expect` iff we wrote them (below); car/nrg/acu/alw/
+  // pnp are informational (no match assertion).
   const readbacks = [
     { key: 'frc', role: 'force_state' },
     { key: 'amp', role: 'requested_current' },
+    { key: 'psm', role: 'phase_switch_mode' },
+    { key: 'pnp', role: 'phases_in_use' },
     { key: 'car', role: 'car_state' },
     { key: 'nrg', role: 'charging_power' },
     { key: 'acu', role: 'allowed_current' },
     { key: 'alw', role: 'charge_allowed' },
   ];
 
-  // Decide the tri-state target (frc/amp) from the command.
+  // Decide the tri-state target (frc/amp, optionally psm) from the command.
   let mode; let frc; let amp = null; let requestedKw = null;
+  let psm = null; let holdCode = ''; let holdReason = '';
   const cmd = command || {};
   const hasSetpoint = isFiniteNum(cmd.setpoint_kw);
   const explicitOff = cmd.on_off === false;
   const stale = cmd.stale === true;
 
+  // The phase count the kW->A conversion runs with; follows the D4 range
+  // decision on a phase-switching config.
+  let convPhases = phases;
+
   if (stale || (!hasSetpoint && cmd.on_off !== true)) {
     // Fail-safe on stale/loss OR a command carrying nothing actionable: hand
-    // control back to the wallbox's own logic. NEVER a stuck forced current.
+    // control back to the wallbox's own logic (the §4.2 release default for
+    // native wallboxes). NEVER a stuck forced current; psm is left untouched -
+    // releasing the charge releases the phase choice with it.
     mode = 'neutral';
     frc = FRC.NEUTRAL;
   } else if (explicitOff) {
@@ -198,9 +286,38 @@ function controlPlan(config, command, opts) {
     mode = 'off';
     frc = FRC.OFF;
   } else {
+    if (cfg.phase_switching) {
+      const desired = desiredPhaseMode(cfg, cmd);
+      const ph = cmd.phase && typeof cmd.phase === 'object' ? cmd.phase : {};
+      const active = num(ph.active, 0);
+      const switchAllowed = ph.switch_allowed === true;
+      if (desired === 0) {
+        convPhases = 3; // below the smallest range: off (no phase question)
+      } else if (active !== 1 && active !== 3) {
+        // Position UNKNOWN: convert at 3 phases - restrict-safe in BOTH cases
+        // (actually 3p: exact; actually 1p: a third of the wish, never more) -
+        // and NEVER write psm blind. The readback fills the position.
+        convPhases = 3;
+      } else if (desired === active) {
+        convPhases = active;
+      } else if (switchAllowed) {
+        // Switch: write psm for the NEW position, convert for it.
+        convPhases = desired;
+        psm = desired === 3 ? PSM.FORCE_3 : PSM.FORCE_1;
+      } else {
+        // Paced (dwell / minimum pause): restrict-only into the ACTIVE range.
+        // 1p serves a bigger wish at its own maximum; 3p cannot serve a wish
+        // below its range minimum without overshooting -> Off until the pause
+        // allows switching down.
+        convPhases = active;
+        holdCode = HOLD_CODE_PHASE_SWITCH;
+        holdReason = HOLD_TEXT_PHASE_SWITCH;
+      }
+    }
+
     // Charge intent. Compute the current from the setpoint; on_off=true with no
     // setpoint means "charge at the allowed maximum" (no power was specified).
-    const wishA = hasSetpoint ? currentForPower(cmd.setpoint_kw, phases, voltage) : maxA;
+    const wishA = hasSetpoint ? currentForPower(cmd.setpoint_kw, convPhases, voltage) : maxA;
     if (wishA < minA) {
       // Below the minimum charge current (incl. a 0 kW setpoint) -> stop.
       mode = 'off';
@@ -209,24 +326,29 @@ function controlPlan(config, command, opts) {
       mode = 'charge';
       frc = FRC.ON;
       amp = Math.min(maxA, wishA);
-      requestedKw = powerForCurrent(amp, phases, voltage);
+      requestedKw = powerForCurrent(amp, convPhases, voltage);
     }
   }
+  if (mode !== 'charge') psm = null; // a psm write only ever accompanies a charge
 
   // The intended writes (always computed so the tests/readback see the full
   // mapping); whether they EXECUTE depends on the kill-switch gate.
   const planned = [{ key: 'frc', value: frc, role: 'force_state' }];
   if (mode === 'charge') planned.push({ key: 'amp', value: amp, role: 'requested_current' });
+  if (psm !== null) planned.push({ key: 'psm', value: psm, role: 'phase_switch_mode' });
 
   // Attach the expected values to the matching readbacks (only what we wrote).
   for (const rb of readbacks) {
     if (rb.key === 'frc') rb.expect = frc;
     if (rb.key === 'amp' && mode === 'charge') rb.expect = amp;
+    if (rb.key === 'psm' && psm !== null) rb.expect = psm;
   }
 
   const out = {
     adapter: 'goe_http_api', family: 'goe_http_api', target,
     certified, controlEnabled, mode, frc, amp, requestedKw,
+    psm, phasesUsed: convPhases,
+    holdCode, holdReason,
     phases, voltage, minA, maxA,
     writes: controlEnabled ? planned : [],
     readbacks,
@@ -234,6 +356,8 @@ function controlPlan(config, command, opts) {
   };
   if (!controlEnabled) {
     out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Modell noch nicht freigegeben';
+  } else if (holdReason) {
+    out.reason = holdReason;
   }
   return out;
 }
@@ -283,7 +407,7 @@ function evalReadback(plan, status) {
 
   let allMatch = wroteKeys.size > 0 ? true : null;
   for (const rb of (plan && plan.readbacks ? plan.readbacks : [])) {
-    if (rb.key !== 'frc' && rb.key !== 'amp') continue;
+    if (rb.key !== 'frc' && rb.key !== 'amp' && rb.key !== 'psm') continue;
     if (!wroteKeys.has(rb.key)) continue; // only assert what we wrote
     const actual = num(st[rb.key], null);
     const match = actual !== null && actual === rb.expect;
@@ -306,6 +430,10 @@ function evalReadback(plan, status) {
     power_kw: powerKw,
     allowed_current: num(st.acu, null),
     allowed: typeof st.alw === 'boolean' ? st.alw : null,
+    // The reported phase position (psm / pnp), absent-not-fabricated: the
+    // switcher and the status surfaces see the CONFIRMED position.
+    phase_switch_mode: num(st.psm, null),
+    phases_in_use: num(st.pnp, null),
   };
 }
 
@@ -329,6 +457,9 @@ function readbackPayload(entityID, ts, plan, verdict) {
     power_kw: verdict.power_kw,
     allowed_current: verdict.allowed_current,
     allowed: verdict.allowed,
+    phase_switch_mode: verdict.phase_switch_mode,
+    phases_in_use: verdict.phases_in_use,
+    hold_code: plan.holdCode || undefined,
     reason: plan.reason,
   };
 }
@@ -417,15 +548,22 @@ function makeExecutor(deps) {
 
 module.exports = {
   FRC,
+  PSM,
   READBACK_FILTER,
   NRG_TOTAL_POWER_IDX,
   DEFAULT_MIN_CURRENT_A,
   DEFAULT_MAX_CURRENT_A,
   DEFAULT_PHASES,
   DEFAULT_VOLTAGE,
+  DEFAULT_PHASE_SWITCH_PAUSE_S,
+  DEFAULT_PHASE_SWITCH_DWELL_S,
+  HOLD_CODE_PHASE_SWITCH,
+  HOLD_TEXT_PHASE_SWITCH,
   CERTIFIED_CONTROL_FAMILIES,
   currentForPower,
   powerForCurrent,
+  powerRanges,
+  desiredPhaseMode,
   controlPlan,
   setUrl,
   statusUrl,

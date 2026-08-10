@@ -208,3 +208,34 @@ func TestConsumersBlockJSONShape(t *testing.T) {
 		t.Fatalf("requirement_progress wire shape wrong: %v", rod)
 	}
 }
+
+// TestConsumersSummaryNamesTheGoePhaseHold: the go-e driver's paced phase
+// switch (D4) surfaces per §15 as clamped + guard_phase_switch - the honest
+// "wartet - Phasenumschaltpause" the cloud/portal render; cleared once the
+// switch executed.
+func TestConsumersSummaryNamesTheGoePhaseHold(t *testing.T) {
+	a := newGateTestAgent(t)
+	a.setEntityIdentity("t", "s", "d")
+	a.applyEntityRegistry(consumerRegistry())
+
+	// The wallbox is commanded to charge; the DRIVER paces a phase switch.
+	a.arb.SubmitInternal(&desired.Desired{
+		EntityID: "wb-1", RequestID: "r1",
+		Source:   desired.Source{Kind: desired.SourcePlanExecutor},
+		Priority: desired.ClassMarket, TTL: 10 * time.Minute,
+		IssuedAt: time.Now().UTC(),
+		Commands: entities.Commands{SetpointKw: f64p(11)}, RequestedType: entities.CmdSetpointKw,
+	})
+	a.noteGoeHold("wb-1", "guard_phase_switch")
+	wb := a.consumersSummary()["wb-1"]
+	if wb.State != "clamped" || wb.ReasonCode != "guard_phase_switch" {
+		t.Fatalf("phase hold must be named (clamped + guard_phase_switch), got %+v", wb)
+	}
+
+	// Switch executed -> the hold clears -> plain running.
+	a.noteGoeHold("wb-1", "")
+	wb = a.consumersSummary()["wb-1"]
+	if wb.State != "running_optimized" || wb.ReasonCode != "" {
+		t.Fatalf("cleared hold must run plainly, got %+v", wb)
+	}
+}

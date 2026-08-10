@@ -97,6 +97,12 @@ func (a *Agent) consumersSummary() cloud.ConsumersSummary {
 			// the hold as the honest reason.
 			entry.State = runningState(dec.HolderKind, dec.HolderOverride)
 			entry.ReasonCode = hold.Code
+		case commandedOn && a.goeHoldFor(v.id) != "":
+			// The DRIVER paces a phase switch (D4, go-e): the setpoint is
+			// restrict-only clamped into the ACTIVE range (or held Off) until
+			// the Umschaltpause elapses - "wartet - Phasenumschaltpause".
+			entry.State = consumerStateClamped
+			entry.ReasonCode = a.goeHoldFor(v.id)
 		case commandedOn && dec.Clamped:
 			entry.State = consumerStateClamped
 			entry.ReasonCode = reasonRatedPower

@@ -22,11 +22,17 @@ type vectorFile struct {
 			OnOff          *bool    `json:"on_off"`
 			ControlEnabled bool     `json:"control_enabled"`
 			Stale          bool     `json:"stale"`
+			Phase          *struct {
+				Active        int  `json:"active"`
+				SwitchAllowed bool `json:"switch_allowed"`
+			} `json:"phase"`
 		} `json:"command"`
 		Expect struct {
 			Mode           string `json:"mode"`
 			Frc            int    `json:"frc"`
 			Amp            *int   `json:"amp"`
+			Psm            *int   `json:"psm"`
+			Hold           string `json:"hold"`
 			ControlEnabled bool   `json:"control_enabled"`
 			WritesLen      int    `json:"writes_len"`
 		} `json:"expect"`
@@ -50,10 +56,14 @@ func TestSharedVectors(t *testing.T) {
 		t.Fatal("no vector cases")
 	}
 	for _, c := range vf.Cases {
-		p := PlanFor(c.Config, Command{
+		cmd := Command{
 			SetpointKw: c.Command.SetpointKw, OnOff: c.Command.OnOff,
 			ControlEnabled: c.Command.ControlEnabled, Stale: c.Command.Stale,
-		})
+		}
+		if c.Command.Phase != nil {
+			cmd.Phase = &PhaseState{Active: c.Command.Phase.Active, SwitchAllowed: c.Command.Phase.SwitchAllowed}
+		}
+		p := PlanFor(c.Config, cmd)
 		if p.Mode != c.Expect.Mode {
 			t.Errorf("%s: mode %q want %q", c.Name, p.Mode, c.Expect.Mode)
 		}
@@ -62,6 +72,12 @@ func TestSharedVectors(t *testing.T) {
 		}
 		if (p.Amp == nil) != (c.Expect.Amp == nil) || (p.Amp != nil && c.Expect.Amp != nil && *p.Amp != *c.Expect.Amp) {
 			t.Errorf("%s: amp %v want %v", c.Name, p.Amp, c.Expect.Amp)
+		}
+		if (p.Psm == nil) != (c.Expect.Psm == nil) || (p.Psm != nil && c.Expect.Psm != nil && *p.Psm != *c.Expect.Psm) {
+			t.Errorf("%s: psm %v want %v", c.Name, p.Psm, c.Expect.Psm)
+		}
+		if p.HoldCode != c.Expect.Hold {
+			t.Errorf("%s: hold %q want %q", c.Name, p.HoldCode, c.Expect.Hold)
 		}
 		if p.ControlEnabled != c.Expect.ControlEnabled {
 			t.Errorf("%s: controlEnabled %v want %v", c.Name, p.ControlEnabled, c.Expect.ControlEnabled)
@@ -97,9 +113,20 @@ func TestNrgIndexIsElevenLikeTheReadDriver(t *testing.T) {
 
 type fakeGoe struct {
 	frc, amp  int
+	psm       int // 0 auto, 1 force-1p, 2 force-3p
 	ignoreSet bool
 	rejectKey string
 	http500   bool
+	omitAmp   bool // status without amp (the not-checkable control-check case)
+	setCalls  int
+}
+
+// phases returns the phase count the fake charges on (psm-driven; auto = 3p).
+func (f *fakeGoe) phases() int {
+	if f.psm == 1 {
+		return 1
+	}
+	return 3
 }
 
 func (f *fakeGoe) handler() http.Handler {
@@ -110,6 +137,7 @@ func (f *fakeGoe) handler() http.Handler {
 		}
 		switch r.URL.Path {
 		case "/api/set":
+			f.setCalls++
 			out := map[string]interface{}{}
 			for k, vs := range r.URL.Query() {
 				if k == f.rejectKey {
@@ -122,6 +150,8 @@ func (f *fakeGoe) handler() http.Handler {
 						f.frc = atoiSafe(vs[0])
 					case "amp":
 						f.amp = atoiSafe(vs[0])
+					case "psm":
+						f.psm = atoiSafe(vs[0])
 					}
 				}
 				out[k] = true
@@ -131,16 +161,25 @@ func (f *fakeGoe) handler() http.Handler {
 			charging := f.frc == 2
 			power := 0
 			if charging {
-				power = f.amp * 3 * 230
+				power = f.amp * f.phases() * 230
 			}
 			car := 4
 			if charging {
 				car = 2
 			}
-			writeJSON(w, map[string]interface{}{
-				"frc": f.frc, "amp": f.amp, "car": car, "alw": true, "acu": 16,
+			pnp := 0
+			if charging {
+				pnp = f.phases()
+			}
+			st := map[string]interface{}{
+				"frc": f.frc, "car": car, "alw": true, "acu": 16,
+				"psm": f.psm, "pnp": pnp,
 				"nrg": []int{230, 230, 230, 0, f.amp, f.amp, f.amp, 0, 0, 0, 0, power, 0, 0, 0, 0},
-			})
+			}
+			if !f.omitAmp {
+				st["amp"] = f.amp
+			}
+			writeJSON(w, st)
 		default:
 			w.WriteHeader(404)
 		}
@@ -308,6 +347,134 @@ func TestParseDriver(t *testing.T) {
 	}
 	if _, ok := ParseDriver([]byte(`not json`)); ok {
 		t.Fatal("malformed driver must be skipped")
+	}
+}
+
+func TestExecutePhaseSwitchWritesPsmAndReadsBack(t *testing.T) {
+	f := &fakeGoe{psm: 1, amp: 6} // charger sits in forced 1-phase
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	cfg := serverConfig(t, srv, Config{PhaseSwitching: true})
+	cmd := Command{SetpointKw: ptrF(11), ControlEnabled: true,
+		Phase: &PhaseState{Active: 1, SwitchAllowed: true}}
+	res := Execute(context.Background(), httpDoer{srv.Client()}, cfg, cmd)
+	if !res.OK || res.Plan.Psm == nil || *res.Plan.Psm != PsmForce3 {
+		t.Fatalf("expected a psm Force_3 write, got %+v", res.Plan)
+	}
+	if f.psm != 2 {
+		t.Fatalf("charger must have received psm=2, got %d", f.psm)
+	}
+	if res.Verdict.AllMatch == nil || !*res.Verdict.AllMatch {
+		t.Fatalf("psm echo must confirm: %+v", res.Verdict)
+	}
+	if res.Verdict.PhaseSwitchMode == nil || *res.Verdict.PhaseSwitchMode != 2 {
+		t.Fatalf("readback must surface the phase mode, got %+v", res.Verdict.PhaseSwitchMode)
+	}
+	// 11 kW @ the NEW 3p position -> 15 A.
+	if res.Plan.Amp == nil || *res.Plan.Amp != 15 || res.Plan.PhasesUsed != 3 {
+		t.Fatalf("conversion must run at the NEW mode: %+v", res.Plan)
+	}
+}
+
+func TestExecutePhaseSwitchRefusedIsAMismatch(t *testing.T) {
+	// A charger that silently keeps its phase mode: the readback must flag it.
+	f := &fakeGoe{psm: 1, ignoreSet: true}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	cfg := serverConfig(t, srv, Config{PhaseSwitching: true})
+	res := Execute(context.Background(), httpDoer{srv.Client()}, cfg,
+		Command{SetpointKw: ptrF(11), ControlEnabled: true, Phase: &PhaseState{Active: 1, SwitchAllowed: true}})
+	if !res.OK {
+		t.Fatalf("expected ok transport, got %+v", res)
+	}
+	if res.Verdict.AllMatch == nil || *res.Verdict.AllMatch {
+		t.Fatalf("an ignored psm must be a mismatch, never a silent success: %+v", res.Verdict)
+	}
+}
+
+func TestFailedExecutePayloadNamesTheError(t *testing.T) {
+	// A transport failure must surface in the readback payload as an honest
+	// error_code with all_match ABSENT (no evidence), never a silent success.
+	cfg := Config{IP: "127.0.0.1", Port: 1}
+	res := Execute(context.Background(), httpDoer{http.DefaultClient}, cfg,
+		Command{SetpointKw: ptrF(11), ControlEnabled: true})
+	b := ReadbackPayload("wb-1", "2026-08-10T10:00:00Z", res)
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["error_code"] != ErrUnreachable {
+		t.Fatalf("payload must name the error, got %v", m)
+	}
+	if _, has := m["all_match"]; has && m["all_match"] != nil {
+		t.Fatalf("failed execute must not claim a match: %v", m["all_match"])
+	}
+}
+
+// --- the D11 control check (non-disruptive write short-test) -----------------
+
+func TestControlCheckWritesTheCurrentAmpAndConfirms(t *testing.T) {
+	f := &fakeGoe{frc: 2, amp: 10, psm: 2}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	cfg := serverConfig(t, srv, Config{})
+	out := ControlCheck(context.Background(), httpDoer{srv.Client()}, cfg)
+	if !out.OK || out.Key != "amp" || out.Value != 10 {
+		t.Fatalf("expected a confirmed amp=10 re-write, got %+v", out)
+	}
+	// The check must be a semantic NO-OP: the charger's state is unchanged.
+	if f.frc != 2 || f.amp != 10 || f.psm != 2 {
+		t.Fatalf("control check must not change anything: %+v", f)
+	}
+	// One set only, amp only (frc/psm are never touched here).
+	if f.setCalls != 1 {
+		t.Fatalf("expected exactly one set, got %d", f.setCalls)
+	}
+	if out.PhaseSwitchMode == nil || *out.PhaseSwitchMode != 2 {
+		t.Fatalf("the check should surface the phase mode, got %+v", out.PhaseSwitchMode)
+	}
+}
+
+func TestControlCheckHonestlyNotCheckableWithoutAmp(t *testing.T) {
+	f := &fakeGoe{omitAmp: true}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	cfg := serverConfig(t, srv, Config{})
+	out := ControlCheck(context.Background(), httpDoer{srv.Client()}, cfg)
+	if out.OK || out.ErrorCode != ErrInvalidResponse {
+		t.Fatalf("no amp -> honestly not checkable, got %+v", out)
+	}
+	if f.setCalls != 0 {
+		t.Fatalf("nothing safe to write -> NO set, got %d", f.setCalls)
+	}
+}
+
+func TestControlCheckRejectedWriteIsNamed(t *testing.T) {
+	f := &fakeGoe{amp: 8, rejectKey: "amp"}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	cfg := serverConfig(t, srv, Config{})
+	out := ControlCheck(context.Background(), httpDoer{srv.Client()}, cfg)
+	if out.OK || out.ErrorCode != ErrInvalidResponse {
+		t.Fatalf("a rejected write must fail honestly, got %+v", out)
+	}
+}
+
+func TestControlCheckUnreachable(t *testing.T) {
+	out := ControlCheck(context.Background(), httpDoer{http.DefaultClient}, Config{IP: "127.0.0.1", Port: 1})
+	if out.OK || out.ErrorCode != ErrUnreachable {
+		t.Fatalf("expected unreachable, got %+v", out)
+	}
+}
+
+func TestRangesDeriveTheD4Bands(t *testing.T) {
+	r := Ranges(Config{IP: "x", PhaseSwitching: true})
+	if len(r) != 2 || r[0].MinKw != 1.38 || r[0].MaxKw != 3.68 || r[1].MinKw != 4.14 || r[1].MaxKw != 11.04 {
+		t.Fatalf("6..16A @230V must yield [1.38,3.68]/[4.14,11.04], got %+v", r)
+	}
+	single := Ranges(Config{IP: "x", Phases: 3})
+	if len(single) != 1 || single[0].Phases != 3 {
+		t.Fatalf("non-switching config must yield ONE range, got %+v", single)
 	}
 }
 

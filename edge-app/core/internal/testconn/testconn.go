@@ -24,6 +24,12 @@ type Request struct {
 	Model      string     `json:"model"`
 	Family     string     `json:"family,omitempty"`
 	Connection Connection `json:"connection"`
+	// ControlTest asks for the ADDITIONAL non-disruptive control short-test
+	// (D11, go-e only today): after a successful read the core re-writes the
+	// charger's CURRENT requested current and reads it back - proving the
+	// write path without changing anything (a charging car keeps charging).
+	// Only honored on an explicit request from the wizard's test button.
+	ControlTest bool `json:"control_test,omitempty"`
 }
 
 // Connection is the transport connection block. It is a superset of the fields
@@ -49,6 +55,25 @@ type Result struct {
 	// exposes one unit id per inverter; convention: inverter number = unit id).
 	// Empty/absent on the plain test-connection round trip.
 	FoundUnits []int `json:"found_units,omitempty"`
+	// ControlCheck is the D11 write short-test verdict (go-e, only when the
+	// request asked for it AND the read succeeded). A failed check never flips
+	// OK - the READ succeeded; the check reports its own honest outcome.
+	ControlCheck *ControlCheck `json:"control_check,omitempty"`
+}
+
+// ControlCheck is the non-disruptive write short-test verdict: the charger's
+// CURRENT requested current was re-written and read back. Message is the
+// German sentence the wizard shows ("Verbindung geprüft" / the honest failure).
+type ControlCheck struct {
+	OK        bool   `json:"ok"`
+	Key       string `json:"key,omitempty"`
+	Value     int    `json:"value,omitempty"`
+	ErrorCode string `json:"error_code,omitempty"`
+	Message   string `json:"message,omitempty"`
+	// PhaseSwitchMode/PhasesInUse: the phase position the charger reported
+	// during the check (absent = not reported; the wizard's D4 capability hint).
+	PhaseSwitchMode *int `json:"phase_switch_mode,omitempty"`
+	PhasesInUse     *int `json:"phases_in_use,omitempty"`
 }
 
 // Error codes (kept in sync with the Node-RED test-read classification and the

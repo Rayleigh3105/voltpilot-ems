@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -284,6 +285,12 @@ type Agent struct {
 	// (agent/consumer_control.go) reads the arbiter's clamped consumer command
 	// for each go-e-backed wallbox entity and drives its physical set+readback.
 	goeDoer goe.Doer
+	// goeHolds carries the go-e driver-level hold reason per entity (today:
+	// guard_phase_switch while a D4 phase switch is paced) for the heartbeat's
+	// consumers block. Written by the consumer-control pass, read by
+	// consumersSummary; own mutex so neither touches the other's locks.
+	goeMu    sync.Mutex
+	goeHolds map[string]string
 
 	// flowDep consumes the retained flow deployment set (agent/flows.go).
 	// Always constructed; without VP_NODERED_ADMIN_URL it verifies + persists
@@ -3143,7 +3150,39 @@ func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
 		}
 		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest, Message: msg}
 	}
-	return a.testReadExchange(sel, req.Role, false, testReadTimeout)
+	res := a.testReadExchange(sel, req.Role, false, testReadTimeout)
+	if res.OK && req.ControlTest && sel.Communication == inverter.CommGoeHTTP {
+		// The D11 write short-test (go-e wallbox): re-write the charger's
+		// CURRENT requested current and read it back - non-disruptive by
+		// construction (a value-identical write), run ONLY on the wizard's
+		// explicit request. It runs in the CORE (the single go-e writer -
+		// Node-RED stays read-only), and it is deliberately independent of the
+		// control flags: the wizard proves the write path BEFORE an operator
+		// arms VP_CONTROL_ENABLED/VP_CONSUMER_CONTROL_ENABLED.
+		res.ControlCheck = a.goeControlCheck(req.Connection)
+	}
+	return res
+}
+
+// goeControlCheck runs the non-disruptive go-e write short-test against the
+// UNSAVED connection form. Never nil: a malformed connection yields the honest
+// invalid_request verdict.
+func (a *Agent) goeControlCheck(conn testconn.Connection) *testconn.ControlCheck {
+	raw, _ := json.Marshal(conn)
+	var cfg goe.Config
+	_ = json.Unmarshal(raw, &cfg)
+	doer := a.goeDoer
+	if doer == nil {
+		doer = goeHTTPDoer{c: &http.Client{Timeout: goeHTTPTimeout}}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), testReadTimeout)
+	defer cancel()
+	out := goe.ControlCheck(ctx, doer, cfg)
+	return &testconn.ControlCheck{
+		OK: out.OK, Key: out.Key, Value: out.Value,
+		ErrorCode: out.ErrorCode, Message: out.Message,
+		PhaseSwitchMode: out.PhaseSwitchMode, PhasesInUse: out.PhasesInUse,
+	}
 }
 
 // probeUnitsTimeout bounds the multi-inverter unit-ID probe round-trip. Wider

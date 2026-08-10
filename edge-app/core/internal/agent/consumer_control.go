@@ -94,19 +94,20 @@ func (a *Agent) startConsumerControl(ctx context.Context) {
 
 // consumerControlLoop drives one go-e control pass per tick (and re-asserts a
 // stable command every goeReassertInterval). Loop-local state (last executed
-// plan fingerprint + last assert time per entity) lives here.
+// plan fingerprint + last assert time + phase switcher per entity) lives here.
 func (a *Agent) consumerControlLoop(ctx context.Context) {
 	t := time.NewTicker(consumerControlTick)
 	defer t.Stop()
 	lastFP := map[string]string{}
 	lastAssert := map[string]time.Time{}
+	switchers := map[string]*goe.PhaseSwitcher{}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 		}
-		a.runGoeControlPass(ctx, a.goeDoer, lastFP, lastAssert, time.Now())
+		a.runGoeControlPass(ctx, a.goeDoer, lastFP, lastAssert, switchers, time.Now())
 	}
 }
 
@@ -116,8 +117,15 @@ func (a *Agent) consumerControlLoop(ctx context.Context) {
 // per-entity readback. Gated on the kill-switch: zero HTTP while control is off.
 // Exported-to-the-package (unexported method) so the integration test drives one
 // deterministic pass without the loop's timing.
+//
+// Phase switching (D4): a phase_switching driver gets a stateful
+// goe.PhaseSwitcher (dwell + minimum switch pause, Fahrzeug-Elektronik-
+// Schonung). The switcher's verdict feeds the pure plan; a paced switch is a
+// restrict-only hold whose reason code lands in a.goeHolds so the heartbeat's
+// consumers block names it ("wartet - Phasenumschaltpause").
 func (a *Agent) runGoeControlPass(ctx context.Context, doer goe.Doer,
-	lastFP map[string]string, lastAssert map[string]time.Time, now time.Time) {
+	lastFP map[string]string, lastAssert map[string]time.Time,
+	switchers map[string]*goe.PhaseSwitcher, now time.Time) {
 	// Gated on BOTH the global inverter kill-switch AND the consumer master
 	// switch (§19 Inkrement 5): a plant with the consumer flags off never issues
 	// a consumer command, byte-for-byte as before the feature.
@@ -138,7 +146,17 @@ func (a *Agent) runGoeControlPass(ctx context.Context, doer goe.Doer,
 		}
 		seen[e.ID] = true
 		cmd := a.goeCommandFor(e.ID)
+		if cfg.PhaseSwitching {
+			sw := switchers[e.ID]
+			if sw == nil {
+				sw = goe.NewPhaseSwitcher(cfg)
+				switchers[e.ID] = sw
+			}
+			ph := sw.Observe(now, goe.DesiredPhaseMode(cfg, cmd))
+			cmd.Phase = &ph
+		}
 		plan := goe.PlanFor(cfg, cmd)
+		a.noteGoeHold(e.ID, plan.HoldCode)
 		fp := goePlanFingerprint(plan)
 		due := now.Sub(lastAssert[e.ID]) >= goeReassertInterval
 		if fp == lastFP[e.ID] && !due {
@@ -147,6 +165,15 @@ func (a *Agent) runGoeControlPass(ctx context.Context, doer goe.Doer,
 		res := goe.Execute(ctx, doer, cfg, cmd)
 		if !res.OK {
 			slog.Warn("go-e control execute failed", "entity", e.ID, "error_code", res.ErrorCode, "msg", res.Message)
+		}
+		if sw := switchers[e.ID]; sw != nil && res.OK {
+			// Feed the CONFIRMED phase position back; record an executed switch
+			// so the pause budget starts (only after a transport-error-free
+			// set - a failed write never burns the pause).
+			if res.Wrote && plan.Psm != nil {
+				sw.NoteSwitchExecuted(now, plan.PhasesUsed)
+			}
+			sw.NoteReadback(res.Verdict.PhaseSwitchMode, res.Verdict.PhasesInUse)
 		}
 		a.publishGoeReadback(e.ID, res, now)
 		lastFP[e.ID] = fp
@@ -157,8 +184,33 @@ func (a *Agent) runGoeControlPass(ctx context.Context, doer goe.Doer,
 		if !seen[id] {
 			delete(lastFP, id)
 			delete(lastAssert, id)
+			delete(switchers, id)
+			a.noteGoeHold(id, "")
 		}
 	}
+}
+
+// noteGoeHold records the driver-level hold reason of one go-e entity (empty =
+// none) for the heartbeat's consumers block. Kept in its own map under goeMu -
+// the consumers summary reads it without touching the loop's local state.
+func (a *Agent) noteGoeHold(entityID, code string) {
+	a.goeMu.Lock()
+	defer a.goeMu.Unlock()
+	if code == "" {
+		delete(a.goeHolds, entityID)
+		return
+	}
+	if a.goeHolds == nil {
+		a.goeHolds = map[string]string{}
+	}
+	a.goeHolds[entityID] = code
+}
+
+// goeHoldFor returns the driver-level hold reason code ("" = none).
+func (a *Agent) goeHoldFor(entityID string) string {
+	a.goeMu.Lock()
+	defer a.goeMu.Unlock()
+	return a.goeHolds[entityID]
 }
 
 // goeCommandFor builds the go-e command from the arbiter's CLAMPED granted
@@ -201,11 +253,17 @@ func (a *Agent) publishGoeReadback(entityID string, res goe.Result, now time.Tim
 }
 
 // goePlanFingerprint identifies a plan's write intent so an unchanged command is
-// not re-written every tick (only on change or the periodic re-assert).
+// not re-written every tick (only on change or the periodic re-assert). psm and
+// the hold code are part of it: a switch becoming due (hold -> psm write) must
+// execute promptly, not wait for the next re-assert.
 func goePlanFingerprint(p goe.Plan) string {
 	amp := "-"
 	if p.Amp != nil {
 		amp = strconv.Itoa(*p.Amp)
 	}
-	return p.Mode + "/" + strconv.Itoa(p.Frc) + "/" + amp + "/" + strconv.FormatBool(p.ControlEnabled)
+	psm := "-"
+	if p.Psm != nil {
+		psm = strconv.Itoa(*p.Psm)
+	}
+	return p.Mode + "/" + strconv.Itoa(p.Frc) + "/" + amp + "/" + psm + "/" + p.HoldCode + "/" + strconv.FormatBool(p.ControlEnabled)
 }

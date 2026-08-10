@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -192,5 +193,71 @@ func TestProbeUnitsTimesOutWhenNoResponder(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("timeout not bounded: %v", elapsed)
+	}
+}
+
+// The D11 control short-test: a go-e test with control_test=true ADDITIONALLY
+// re-writes the charger's current amp value and reads it back - proving the
+// write path without changing anything. The check runs in the CORE (the single
+// go-e writer), independent of the control flags (the wizard proves the path
+// BEFORE arming them); a plain test (no flag) never writes.
+func TestTestConnectionGoeControlCheck(t *testing.T) {
+	fake := &fakeGoeServer{frc: 2, amp: 10, psm: 2}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+	host, port := splitHostPort(t, srv.URL)
+
+	a, addr := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
+	a.goeDoer = goeHTTPDoer{c: srv.Client()}
+	nodeRedStub(t, addr, func(reqID string, _ bool) testconn.Result {
+		return testconn.Result{OK: true, Reading: &testconn.Reading{LoadKw: fptr(6.9)}}
+	})
+
+	req := testconn.Request{
+		Role: "consumer", Brand: "go-e", Model: "goe_http_api",
+		Connection:  testconn.Connection{"ip": host, "port": float64(port)},
+		ControlTest: true,
+	}
+	res := a.TestConnection(req)
+	if !res.OK || res.ControlCheck == nil || !res.ControlCheck.OK {
+		t.Fatalf("expected read + confirmed control check, got %+v (check %+v)", res, res.ControlCheck)
+	}
+	if res.ControlCheck.Key != "amp" || res.ControlCheck.Value != 10 {
+		t.Fatalf("the check must re-write the CURRENT amp (10), got %+v", res.ControlCheck)
+	}
+	// Non-disruptive by construction: the charger state is unchanged.
+	if psm, frc, amp := fake.phaseSnapshot(); psm != 2 || frc != 2 || amp != 10 {
+		t.Fatalf("control check must change NOTHING: psm=%d frc=%d amp=%d", psm, frc, amp)
+	}
+	if res.ControlCheck.PhaseSwitchMode == nil || *res.ControlCheck.PhaseSwitchMode != 2 {
+		t.Fatalf("the check should surface the phase position, got %+v", res.ControlCheck.PhaseSwitchMode)
+	}
+
+	// WITHOUT the flag: byte-identical old behavior - no check, no write.
+	before := fake.setCalls
+	res2 := a.TestConnection(testconn.Request{
+		Role: "consumer", Brand: "go-e", Model: "goe_http_api",
+		Connection: testconn.Connection{"ip": host, "port": float64(port)},
+	})
+	if res2.ControlCheck != nil {
+		t.Fatalf("no control_test flag -> no check, got %+v", res2.ControlCheck)
+	}
+	if fake.setCalls != before {
+		t.Fatalf("a plain test must never write, got %d extra sets", fake.setCalls-before)
+	}
+
+	// A failed check is HONEST but never flips the read result: point the
+	// check at a dead port via a fresh doer.
+	a.goeDoer = goeHTTPDoer{c: srv.Client()}
+	res3 := a.TestConnection(testconn.Request{
+		Role: "consumer", Brand: "go-e", Model: "goe_http_api",
+		Connection:  testconn.Connection{"ip": "127.0.0.1", "port": float64(1)},
+		ControlTest: true,
+	})
+	if !res3.OK || res3.ControlCheck == nil || res3.ControlCheck.OK {
+		t.Fatalf("a failed check must not flip the read result, got %+v (check %+v)", res3, res3.ControlCheck)
+	}
+	if res3.ControlCheck.ErrorCode == "" || res3.ControlCheck.Message == "" {
+		t.Fatalf("a failed check must name its error, got %+v", res3.ControlCheck)
 	}
 }
