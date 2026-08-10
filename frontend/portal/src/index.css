@@ -2581,15 +2581,6 @@ button.vp-cl-item.is-off .vp-cl-label {
      how the plant earns money (audit F5) - the same hue as the chart bars. */
   background: var(--vp-chart-battdischarge, #2c5282);
 }
-.vp-plan-mini-text {
-  margin: var(--vp-space-3) 0 0;
-  font-size: 0.95rem;
-  color: var(--vp-text-dark);
-}
-.vp-plan-mini-text b {
-  color: #2e7d32;
-  font-weight: 700;
-}
 
 /* ============================================================================
    Money-centric "Meine Anlage" v2 (captain 2026-07-07, Deye-Copilot style):
@@ -3364,28 +3355,11 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-flow-pv, #f59e0b);
 }
 
-/* The compact mini bars (phone) with a "Jetzt" marker. */
-.vp-plan-mini-wrap {
-  position: relative;
-  margin-top: var(--vp-space-3);
-}
-.vp-plan-mini-wrap .vp-plan-mini {
-  margin-top: 0;
-}
+/* Der ruhende Balken einer Stunde ohne Batteriebewegung. */
 .vp-plan-mini i.idle {
   align-self: center;
   height: 4px;
   background: var(--vp-border, #e9ecef);
-}
-.vp-plan-mini-now {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  border-radius: 2px;
-  background: #e5484d;
-  opacity: 0.75;
-  pointer-events: none;
 }
 
 /* --- Weitere Erzeuger (additional read-only PV sources, multi-source Anlage) --- */
@@ -4872,117 +4846,6 @@ button.vp-tech-card-h.toggle {
   background: var(--vp-bg-light);
 }
 
-/* ============================================================
-   U4 · Peak-Band lead artifact (Lastspitzenkappung, design §6 Face 2)
-   The peak-face cockpit lead: current ¼-h grid-import mean vs. the Ziel
-   (progress bar + red limit marker) + the PS-4 avoided-peak numbers.
-   ============================================================ */
-.vp-peakband {
-  border-left: 5px solid var(--vp-flow-pv);
-}
-.vp-peakband-top {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-5);
-  flex-wrap: wrap;
-}
-.vp-peakband-now {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.vp-peakband-value {
-  font-family: var(--vp-font-display, inherit);
-  font-weight: 800;
-  font-size: var(--vp-text-stat-sm);
-  color: var(--vp-stat-ink);
-  line-height: 1.1;
-}
-.vp-peakband-value.vp-stale {
-  color: var(--vp-text-gray);
-}
-.vp-peakband-bar-wrap {
-  flex: 1 1 240px;
-  min-width: 0;
-  padding-top: 18px; /* room for the "Ziel" label above the bar */
-}
-.vp-peakband-bar {
-  position: relative;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--vp-bg-light, #f1f3f5);
-  overflow: visible;
-}
-.vp-peakband-fill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 8px 0 0 8px;
-  background: linear-gradient(90deg, #fbbf24, var(--vp-flow-pv));
-  transition: width 0.4s ease;
-}
-.vp-peakband-bar.breach .vp-peakband-fill {
-  border-radius: 8px;
-  background: linear-gradient(90deg, #f87171, #dc2626);
-}
-.vp-peakband-limit {
-  position: absolute;
-  top: -5px;
-  bottom: -5px;
-  width: 2px;
-  background: #dc2626;
-  transform: translateX(-1px);
-}
-.vp-peakband-limit-lbl {
-  position: absolute;
-  top: -18px;
-  transform: translateX(-50%);
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: #dc2626;
-  white-space: nowrap;
-}
-.vp-peakband-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vp-space-5);
-  margin-top: var(--vp-space-4);
-  padding-top: var(--vp-space-3);
-  border-top: 1px solid var(--vp-border);
-}
-.vp-peakband-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.vp-peakband-metric-lbl {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--vp-text-gray);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.vp-peakband-metric-val {
-  font-weight: 700;
-  font-size: 1.15rem;
-  color: var(--vp-stat-ink);
-}
-.vp-peakband-metric-val.good {
-  color: var(--vp-flow-batt);
-}
-.vp-peakband-note {
-  margin: var(--vp-space-3) 0 0;
-}
-@media (max-width: 560px) {
-  .vp-peakband-metrics {
-    gap: var(--vp-space-4);
-  }
-}
-
 /* ---------------------------------------------------------------------------
    Per-source PV breakdown (#524)
    One calm line under the verdict tiles naming WHICH devices the composite
@@ -5204,40 +5067,6 @@ button.vp-tech-card-h.toggle {
   display: block;
   font-size: var(--vp-text-meta);
   color: var(--vp-text-muted, #667);
-}
-
-/* G7 · Skala + Legende unter dem Peak-Band; ohne Ziel wird gar kein Balken
-   gezeichnet (siehe PeakBand.tsx). */
-.vp-peakband-scale {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--vp-space-2);
-  margin-top: 6px;
-  font-size: 0.7rem;
-  color: var(--vp-text-muted, #667);
-  flex-wrap: wrap;
-}
-.vp-peakband-scale-legend {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-.vp-peakband-key {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  margin-left: 6px;
-}
-.vp-peakband-key.fill {
-  background: linear-gradient(90deg, #fbbf24, var(--vp-flow-pv));
-}
-.vp-peakband-key.limit {
-  width: 3px;
-  border-radius: 1px;
-  background: #dc2626;
 }
 
 /* G11 · Bequemere Trefferflächen auf JEDEM Finger-Gerät. `pointer: coarse`
