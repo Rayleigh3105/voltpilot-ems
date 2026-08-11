@@ -192,6 +192,15 @@
                              V2SiteBackfillReconcileWiringTest an der echten
                              application.yml. -->
                         <voltpilot.entities.backfill.reconcile-enabled>false</voltpilot.entities.backfill.reconcile-enabled>
+                        <!-- Der getaktete Abgleich der Bestands-Uebernahme
+                             (Einheitsmodell Stufe 2) ist dieselbe
+                             @Scheduled-Falle - im Testlauf aus, in PRODUKTION an
+                             (application.yml + matchIfMissing). Der Start-Lauf
+                             bleibt an; die Testklassen stossen ihn ausdruecklich
+                             selbst an. Dass die AUSGELIEFERTE Vorgabe AN ist,
+                             prueft ComponentAdoptionWiringTest an der echten
+                             application.yml. -->
+                        <voltpilot.components.adoption.reconcile-enabled>false</voltpilot.components.adoption.reconcile-enabled>
                     </systemPropertyVariables>
                     <environmentVariables>
                         <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>

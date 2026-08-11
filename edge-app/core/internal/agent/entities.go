@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"log/slog"
 	"sort"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/topology"
@@ -318,32 +320,63 @@ func (a *Agent) componentApplySummary() *cloud.ComponentApplySummary {
 }
 
 // localSetupSummary reports the edge-authoritative commissioning view (the
-// :8484 inverter selection + sources) as the heartbeat's local Ist - the
-// cloud reconciles it against its registry, never auto-imports it.
+// :8484 inverter selection + sources) as the heartbeat's local Ist.
+//
+// Since Einheitsmodell Stufe 2 it carries the CONNECTION fields too, so the
+// cloud can take a box-managed plant over as its own Soll without guessing the
+// address of a live read path (Konzept §4.2.1). The values are reported exactly
+// as the box persists them: the takeover writes them back unchanged, the push
+// re-derives the same sources.DeterministicID, and the applier answers "no
+// change" - the whole reason the takeover is a no-op.
+//
+// A field the box does not have stays ABSENT (never a fabricated 0/""), which is
+// what lets the cloud tell "this box does not report connections yet" from "this
+// device has none".
 func (a *Agent) localSetupSummary() []cloud.LocalSetupEntry {
 	var out []cloud.LocalSetupEntry
 	a.invMu.Lock()
 	if a.inv != nil {
 		out = append(out, cloud.LocalSetupEntry{
-			ID:    "inverter",
-			Kind:  "inverter",
-			Brand: a.inv.Brand,
-			Model: a.inv.Model,
-			Label: a.inv.Label,
+			ID:            "inverter",
+			Kind:          "inverter",
+			Brand:         a.inv.Brand,
+			Model:         a.inv.Model,
+			Label:         a.inv.Label,
+			Family:        a.inv.Family,
+			Communication: a.inv.Communication,
+			Connection:    connectionJSON(a.inv.Connection),
 		})
 	}
 	a.invMu.Unlock()
 	for _, s := range a.ListSources() {
 		out = append(out, cloud.LocalSetupEntry{
-			ID:    s.ID,
-			Kind:  "source",
-			Role:  s.Role,
-			Brand: s.Brand,
-			Model: s.Model,
-			Label: s.Label,
+			ID:             s.ID,
+			Kind:           "source",
+			Role:           s.Role,
+			Brand:          s.Brand,
+			Model:          s.Model,
+			Label:          s.Label,
+			Family:         s.Family,
+			Communication:  s.Communication,
+			Connection:     connectionJSON(s.Connection),
+			IntervalS:      s.IntervalS,
+			CapacityKwp:    s.CapacityKwp,
+			RegistryUnitID: s.RegistryUnitID,
 		})
 	}
 	return out
+}
+
+// connectionJSON marshals a transport connection for the heartbeat's local_setup.
+// A failure yields nil (the field is then omitted) rather than a partial object:
+// a takeover must never be offered a connection the box could not even
+// serialize, and a missing one honestly reads as "not reportable".
+func connectionJSON(c inverter.Connection) json.RawMessage {
+	b, err := json.Marshal(c)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // primaryHealthWindow is how long the primary inverter's own reading counts as

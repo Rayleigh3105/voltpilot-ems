@@ -29,7 +29,12 @@ public class EntityRegistryRepository {
             // Vorlage in welcher Fassung, und die wievielte Fassung dieser
             // Komponente gerade gilt.
             String sourceKind, String templateRef, Integer templateVersion,
-            int definitionVersion) {}
+            int definitionVersion,
+            // Einheitsmodell Stufe 2: die MaStR-Referenz des Betreibers. Sie ist
+            // Teil dessen, was die Box als Quelle führt, reiste bis Stufe 2 aber
+            // nicht im Push mit - eine Übernahme hätte sie beim ersten
+            // Rückschreiben still verloren.
+            String registryUnitId) {}
 
     /** The site's battery asset slice the battery-hybrid entity derives from. */
     public record BatteryAsset(UUID deviceId, BigDecimal maxChargeKw, BigDecimal maxDischargeKw,
@@ -39,7 +44,7 @@ public class EntityRegistryRepository {
             "id, role, label, brand, model, family, communication, connection_json::text AS conn, "
                     + "capacity_kwp, device_id, control, entity_type, capabilities::text AS caps, "
                     + "guard_config::text AS guards, edge_source_id, source_kind, template_ref, "
-                    + "template_version, definition_version";
+                    + "template_version, definition_version, registry_unit_id";
 
     private final JdbcTemplate jdbc;
 
@@ -245,6 +250,19 @@ public class EntityRegistryRepository {
                 registryUnitId, edgeSourceId);
     }
 
+    /**
+     * Dreht die Autorität einer Anlage und stempelt den Beleg der Übernahme
+     * (Einheitsmodell Stufe 2). {@code at}/{@code by} {@code null} = der
+     * Rückweg: der Stempel wird gelöscht, damit der getaktete Abgleich die
+     * Anlage wieder betrachtet.
+     */
+    public void markComponentsAdopted(UUID siteId, String authority, java.time.Instant at,
+            String by) {
+        jdbc.update("UPDATE site SET component_authority = ?, components_adopted_at = ?, "
+                        + "components_adopted_by = ? WHERE id = ?",
+                authority, at == null ? null : java.sql.Timestamp.from(at), by, siteId);
+    }
+
     /** Pin an existing entity row to the edge source it was adopted from. */
     public void setEdgeSource(UUID pointId, String edgeSourceId) {
         jdbc.update("UPDATE measurement_point SET edge_source_id = ? WHERE id = ?",
@@ -432,7 +450,8 @@ public class EntityRegistryRepository {
                 rs.getString("source_kind"),
                 rs.getString("template_ref"),
                 (Integer) rs.getObject("template_version"),
-                rs.getInt("definition_version"));
+                rs.getInt("definition_version"),
+                rs.getString("registry_unit_id"));
     }
 
     /**

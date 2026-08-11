@@ -179,7 +179,7 @@ public class EntityStatusListener {
                 rows.add(new ObservedRow(deviceId, e.getKey(), "registry",
                         o.path("entity_type").asText(null), o.path("health").asText(null), null,
                         optInstant(o, "last_telemetry_at"), revision,
-                        arrayJson(o.get("channels")), reportedAt, null, null, null));
+                        arrayJson(o.get("channels")), reportedAt, null, null, null, null));
             }
         }
         JsonNode localSetup = entities.get("local_setup");
@@ -198,7 +198,7 @@ public class EntityStatusListener {
                 rows.add(new ObservedRow(deviceId, "local:" + id, "local",
                         l.path("kind").asText(null), null, textOrNull(l, "label"), null, revision,
                         null, reportedAt, textOrNull(l, "role"), textOrNull(l, "brand"),
-                        textOrNull(l, "model")));
+                        textOrNull(l, "model"), edgeLink(l)));
             }
         }
         TenantContext.set(tenantId);
@@ -246,6 +246,42 @@ public class EntityStatusListener {
     private static String textOrNull(JsonNode node, String field) {
         String v = node.path(field).asText("");
         return v.isBlank() ? null : v;
+    }
+
+    /**
+     * Die VERBINDUNGS-Hälfte eines {@code local_setup}-Eintrags (Einheitsmodell
+     * Stufe 2): der Transport plus die Felder, mit denen die Box das Gerät
+     * wirklich erreicht.
+     *
+     * <p><b>Ein älterer Box-Stand meldet sie nicht</b> - dann entsteht hier
+     * {@code null}, und das heißt „diese Box meldet noch keine Verbindungen",
+     * NIE „dieses Gerät hat keine". Genau daran hängt, dass eine Bestandsanlage
+     * mit alter Software box-verwaltet bleibt statt aus einem halben Ist
+     * übernommen zu werden.
+     *
+     * <p>Ein Eintrag mit Transport ABER ohne Verbindungsobjekt (oder umgekehrt)
+     * wird als unvollständig gespeichert, nicht verworfen: die Übernahme prüft
+     * {@link EntityObservedRepository.EdgeLink#complete()} und lässt die Anlage
+     * dann in Ruhe - der Betreiber soll sehen, was gemeldet wurde.
+     */
+    private EntityObservedRepository.EdgeLink edgeLink(JsonNode l) {
+        String communication = textOrNull(l, "communication");
+        JsonNode connection = l.get("connection");
+        boolean hasConnection = connection != null && connection.isObject()
+                && !connection.isEmpty();
+        if (communication == null && !hasConnection) {
+            return null;
+        }
+        JsonNode interval = l.get("interval_s");
+        JsonNode capacity = l.get("capacity_kwp");
+        return new EntityObservedRepository.EdgeLink(
+                communication,
+                textOrNull(l, "family"),
+                hasConnection ? connection.toString() : null,
+                interval == null || !interval.isNumber() ? null : interval.asInt(),
+                capacity == null || !capacity.isNumber() ? null
+                        : java.math.BigDecimal.valueOf(capacity.asDouble()),
+                textOrNull(l, "registry_unit_id"));
     }
 
     private String arrayJson(JsonNode node) {

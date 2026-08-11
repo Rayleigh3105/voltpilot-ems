@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.ComponentAdoptionService;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.SiteRepository;
@@ -79,13 +80,16 @@ public class AdminEntityRegistryController {
     private final SiteRepository sites;
     private final EntityRegistryRepository repo;
     private final EntityRegistryService service;
+    private final ComponentAdoptionService adoption;
     private final ObjectMapper mapper;
 
     public AdminEntityRegistryController(SiteRepository sites, EntityRegistryRepository repo,
-            EntityRegistryService service, ObjectMapper mapper) {
+            EntityRegistryService service, ComponentAdoptionService adoption,
+            ObjectMapper mapper) {
         this.sites = sites;
         this.repo = repo;
         this.service = service;
+        this.adoption = adoption;
         this.mapper = mapper;
     }
 
@@ -214,6 +218,39 @@ public class AdminEntityRegistryController {
     public void clearHistoryCutover(@PathVariable UUID siteId) {
         requireSite(siteId);
         service.clearHistoryCutover(siteId);
+    }
+
+    /**
+     * Die Bestands-Übernahme JETZT versuchen (Einheitsmodell Stufe 2).
+     *
+     * <p>Sie läuft ohnehin automatisch (Captain-Entscheid E2); diese Route ist
+     * der Support-Hebel, um sie ohne Wartezeit anzustoßen und - vor allem - ihren
+     * GRUND zu sehen: der Ausgang nennt beim Namen, warum eine Anlage noch
+     * box-verwaltet ist („meldet noch nicht, wie ihre Geräte angebunden sind",
+     * „steht nicht im Geräte-Verzeichnis", …). Ohne ihn wäre das Warten
+     * unerklärlich.
+     */
+    @PostMapping("/adopt-from-device")
+    public ComponentAdoptionService.Outcome adoptFromDevice(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return adoption.adoptIfComplete(siteId);
+    }
+
+    /**
+     * Der RÜCKWEG: die Anlage wieder am Gerät verwalten lassen.
+     *
+     * <p>Er existiert für den Fall, dass eine Übernahme in der Praxis klemmt.
+     * Er nimmt AUSSCHLIESSLICH die Autorität zurück - die gespeicherten
+     * Definitionen bleiben stehen (sie sind der Beleg, was übernommen wurde, und
+     * der Weg zurück nach vorn). Der folgende Push trägt das Autoritäts-Feld
+     * nicht mehr, womit der Applier auf der Box strukturell nichts mehr anwendet
+     * und {@code :8484} wieder bedient.
+     */
+    @PostMapping("/revert-to-device")
+    public ComponentAdoptionService.Outcome revertToDevice(@PathVariable UUID siteId,
+            org.springframework.security.core.Authentication auth) {
+        requireSite(siteId);
+        return adoption.revertToBox(siteId, auth == null ? "admin" : auth.getName());
     }
 
     /** Re-push the stored registry (e.g. after a broker outage or re-claim). */

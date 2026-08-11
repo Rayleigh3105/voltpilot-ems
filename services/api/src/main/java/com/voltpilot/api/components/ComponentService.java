@@ -349,8 +349,9 @@ public class ComponentService {
             assets.addPvCapacity(tenantId, siteId, capacity);
         }
         if (entityType != null) {
-            entityRepo.setEntityConfig(id, entityType, defaultCapabilities(role),
-                    defaultGuards(role, req.capacityKwp()));
+            entityRepo.setEntityConfig(id, entityType,
+                    ComponentDefaults.capabilities(mapper, role),
+                    ComponentDefaults.guards(mapper, role, req.capacityKwp()));
         }
         return id;
     }
@@ -438,36 +439,4 @@ public class ComponentService {
         }
     }
 
-    /** Die Messkanäle, die eine Komponente dieser Rolle liefert. */
-    private String defaultCapabilities(String role) {
-        JsonNode caps = switch (role) {
-            case ROLE_ERZEUGER -> mapper.createObjectNode().set("measure",
-                    mapper.createArrayNode().add(measure("pv_power_kw", "kW")));
-            case ROLE_NETZ -> mapper.createObjectNode().set("measure",
-                    mapper.createArrayNode().add(measure("power_kw", "kW")));
-            default -> mapper.createObjectNode().set("measure",
-                    mapper.createArrayNode().add(measure("power_kw", "kW")));
-        };
-        return writeJson(caps);
-    }
-
-    private JsonNode measure(String channel, String unit) {
-        return mapper.createObjectNode().put("channel", channel).put("unit", unit);
-    }
-
-    /**
-     * Die Schutz-Konfiguration. Eine über diesen Weg angelegte Komponente ist
-     * NUR-LESEND ({@code failsafe} measure-only bzw. release) - „Steuern
-     * freigeben" ist der bewusst GETRENNTE Schritt einer späteren Stufe.
-     */
-    private String defaultGuards(String role, BigDecimal capacityKwp) {
-        var guards = mapper.createObjectNode();
-        var limits = guards.putObject("limits");
-        if (ROLE_ERZEUGER.equals(role) && capacityKwp != null) {
-            limits.put("max_generation_kw", capacityKwp.doubleValue());
-        }
-        guards.putObject("failsafe").put("behavior",
-                ROLE_ERZEUGER.equals(role) ? "release" : "measure-only");
-        return writeJson(guards);
-    }
 }
