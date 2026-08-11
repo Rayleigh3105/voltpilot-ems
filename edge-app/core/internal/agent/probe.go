@@ -143,6 +143,20 @@ func (a *Agent) onProbeRequest(payload []byte) {
 // round trip, and the one answer. Off the link's router goroutine (see
 // onProbeRequest).
 func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
+	// ⚠ A QoS1 DUPLICATE of the same probe can arrive while the first one is
+	// still in flight. Non-retained + `requested_at` only stop a LATE
+	// redelivery; a concurrent one would read the customer's device a second
+	// time for one question - exactly what this whole channel is careful about.
+	// The second delivery is therefore dropped: the run already in progress
+	// answers for both, under the correlation id they share.
+	ch := a.claimProbe(req.RequestID)
+	if ch == nil {
+		slog.Warn("Probe: dieselbe Anfrage laeuft bereits - Doppel-Zustellung verworfen",
+			"request_id", req.RequestID)
+		return
+	}
+	defer a.releaseProbe(req.RequestID)
+
 	// Admission per op. The verdicts keep the request's ORDER, so the answer
 	// reads like the question - a refused step stays in its place instead of
 	// disappearing from the list.
@@ -173,7 +187,7 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 	}
 
 	if len(busOps) > 0 {
-		for _, r := range a.probeExchange(req.RequestID, busOps) {
+		for _, r := range a.probeExchange(ch, req.RequestID, busOps) {
 			i, ok := index[r.ID]
 			if !ok {
 				continue // an answer to a step we never asked for
@@ -210,23 +224,11 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 // machinery) - same correlation, same buffered channel so a late answer can
 // never block the bus, same deliberate absence of a retry: a preview that
 // missed its window is re-asked by a second click, not by the box.
-func (a *Agent) probeExchange(requestID string, ops []probeBusOp) []probeBusResult {
+func (a *Agent) probeExchange(ch chan []probeBusResult, requestID string,
+	ops []probeBusOp) []probeBusResult {
 	if a.Bus == nil {
 		return nil
 	}
-	ch := make(chan []probeBusResult, 1)
-	a.probeMu.Lock()
-	if a.probeReads == nil {
-		a.probeReads = map[string]chan []probeBusResult{}
-	}
-	a.probeReads[requestID] = ch
-	a.probeMu.Unlock()
-	defer func() {
-		a.probeMu.Lock()
-		delete(a.probeReads, requestID)
-		a.probeMu.Unlock()
-	}()
-
 	raw, err := json.Marshal(probeBusRequest{RequestID: requestID, Ops: ops})
 	if err != nil {
 		return nil
@@ -242,6 +244,29 @@ func (a *Agent) probeExchange(requestID string, ops []probeBusOp) []probeBusResu
 		slog.Warn("Probe: keine Antwort vom Lese-Flow", "request_id", requestID)
 		return nil
 	}
+}
+
+// claimProbe registers the correlation for one request and hands back its answer
+// channel - or nil when the SAME request is already in flight (see runProbe).
+// The channel is buffered so a late answer can never block the bus.
+func (a *Agent) claimProbe(requestID string) chan []probeBusResult {
+	a.probeMu.Lock()
+	defer a.probeMu.Unlock()
+	if a.probeReads == nil {
+		a.probeReads = map[string]chan []probeBusResult{}
+	}
+	if _, inFlight := a.probeReads[requestID]; inFlight {
+		return nil
+	}
+	ch := make(chan []probeBusResult, 1)
+	a.probeReads[requestID] = ch
+	return ch
+}
+
+func (a *Agent) releaseProbe(requestID string) {
+	a.probeMu.Lock()
+	delete(a.probeReads, requestID)
+	a.probeMu.Unlock()
 }
 
 // onProbeBusResult routes a probe answer from Node-RED to the waiting handler

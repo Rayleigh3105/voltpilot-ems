@@ -627,3 +627,42 @@ func TestProbeHandlerReturnsImmediatelyEvenWhileTheReadIsPending(t *testing.T) {
 		t.Fatalf("and the answer still arrives: %+v", res)
 	}
 }
+
+// ⚠ A QoS1 DUPLICATE arriving while the first run is still in flight must NOT
+// read the customer's device a second time. Non-retained + requested_at only
+// stop a LATE redelivery; this is the concurrent one.
+func TestProbeConcurrentDuplicateDeliveryReadsTheDeviceOnce(t *testing.T) {
+	box := startProbeBox(t)
+	seen := make(chan probeBusRequest, 4)
+	release := make(chan struct{})
+	// A flow that HOLDS its answer, so both deliveries overlap for sure.
+	probeStub(t, box.addr, seen, func(req probeBusRequest) []probeBusResult {
+		<-release
+		return []probeBusResult{{ID: "soc", OK: true, Raw: f64(94), Registers: []int{94}}}
+	})
+
+	payload := probeEnvelope(t, nil) // same request_id both times
+	box.a.onProbeRequest(payload)
+	if req := <-seen; len(req.Ops) != 1 {
+		t.Fatalf("the first delivery must run: %+v", req)
+	}
+	box.a.onProbeRequest(payload)
+
+	close(release)
+	res := box.answer(t)
+	if res == nil || !res.Results[0].OK {
+		t.Fatalf("the run in flight answers for both: %+v", res)
+	}
+	if extra := box.answer(t); extra != nil {
+		t.Fatalf("a duplicate must not produce a second answer: %+v", extra)
+	}
+	select {
+	case req := <-seen:
+		t.Fatalf("the device was read a SECOND time for one question: %+v", req)
+	default:
+	}
+	// ...and once it is done, the same id may of course be used again.
+	if ch := box.a.claimProbe("9f2c41ab77d0e315"); ch == nil {
+		t.Fatalf("a finished probe must release its correlation")
+	}
+}
