@@ -243,7 +243,7 @@ func TestWallboxEntityBuffersUplinkAndArbitratesDesired(t *testing.T) {
 
 	// --- heartbeat observed Ist -------------------------------------------
 	waitFor(t, 25*time.Second, "observed block in heartbeat", func() bool {
-		return cb.statusWith(`"observed":{"`+entWallbox+`":{"entity_type":"wallbox","health":"ok"`)
+		return cb.statusWith(`"observed":{"` + entWallbox + `":{"entity_type":"wallbox","health":"ok"`)
 	})
 
 	// --- outage: v2 samples buffer with ORIGINAL timestamps ---------------

@@ -444,8 +444,8 @@ func TestFlowDeploymentAppliedAndAcked(t *testing.T) {
 		"deployed_at": time.Now().UTC().Format(time.RFC3339),
 		"artifacts": []any{map[string]any{
 			"schema_version": "1.0", "kind": "artifact",
-			"artifact_id": "c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f",
-			"flow_id":     "4e1c2b3a-5d6e-4f70-8123-456789abcdef",
+			"artifact_id":  "c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f",
+			"flow_id":      "4e1c2b3a-5d6e-4f70-8123-456789abcdef",
 			"flow_version": 7, "runtime": "edge",
 			"content_hash": hash,
 			"compiled_at":  "2026-07-18T11:02:33Z", "compiler_version": "1.0.0",
