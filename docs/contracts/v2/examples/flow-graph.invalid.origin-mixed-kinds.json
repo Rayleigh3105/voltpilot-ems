@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "5f2a1c8e-7d34-4b91-a0c6-1234567890ab",
+  "flow_version": 1,
+  "name": "Gerät: Wärmepumpe Keller",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "origin": {
+    "kind": "modbus-device",
+    "point_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+    "definition_version": 1,
+    "policy_id": "11111111-2222-3333-4444-555555555555",
+    "policy_version": 1,
+    "entity_id": "wallbox-1"
+  },
+  "nodes": [
+    {
+      "id": "ch1",
+      "type": "vp.modbus.read",
+      "type_version": "1.0.0",
+      "parameters": {
+        "host": "192.168.40.50",
+        "address": 100,
+        "entity_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+        "channel": "wassertemperatur"
+      }
+    }
+  ],
+  "edges": [],
+  "triggers": [
+    { "id": "takt", "kind": "interval", "every_s": 10 }
+  ]
+}
