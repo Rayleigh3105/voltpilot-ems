@@ -124,6 +124,9 @@ class PortalApiTest {
     @Autowired
     com.voltpilot.api.repo.EdgeVersionRepository edgeVersionRepo;
 
+    @Autowired
+    com.voltpilot.api.rules.RuleEventWriter ruleEventWriter;
+
     // ---- token validation ---------------------------------------------------
 
     @Test
@@ -4880,7 +4883,8 @@ class PortalApiTest {
     @Test
     void edgeVersionIsIngestedFromTheFlowsHeartbeatAndTenantScoped() {
         var listener = new com.voltpilot.api.flows.FlowNodeStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, flowStatusRepo, edgeVersionRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, flowStatusRepo, edgeVersionRepo,
+                ruleEventWriter);
         String topic = "ems/00000000-0000-0000-0000-000000000001/"
                 + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
         String head = "{\"schema_version\":\"1.0\","

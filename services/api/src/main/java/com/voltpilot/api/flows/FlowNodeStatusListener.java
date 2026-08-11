@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.EdgeVersionRepository;
 import com.voltpilot.api.repo.FlowStatusRepository;
+import com.voltpilot.api.rules.RuleEventWriter;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
 import jakarta.annotation.PreDestroy;
@@ -82,6 +83,7 @@ public class FlowNodeStatusListener {
     private final DeviceRepository devices;
     private final FlowStatusRepository flowStatus;
     private final EdgeVersionRepository edgeVersions;
+    private final RuleEventWriter ruleEvents;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -91,13 +93,14 @@ public class FlowNodeStatusListener {
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             DeviceRepository devices, FlowStatusRepository flowStatus,
-            EdgeVersionRepository edgeVersions) {
+            EdgeVersionRepository edgeVersions, RuleEventWriter ruleEvents) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.flowStatus = flowStatus;
         this.edgeVersions = edgeVersions;
+        this.ruleEvents = ruleEvents;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -211,8 +214,14 @@ public class FlowNodeStatusListener {
                 return;
             }
             if (hasFlows) {
-                flowStatus.replaceAcks(deviceId, siteId, parseAcks(flows.get("applied")), reportedAt);
+                List<FlowStatusRepository.Ack> current = parseAcks(flows.get("applied"));
+                List<FlowStatusRepository.Ack> previous =
+                        flowStatus.replaceAcks(deviceId, siteId, current, reportedAt);
                 recordEdgeVersion(deviceId, siteId, flows, reportedAt);
+                // Der VERLAUF der Regel selbst (Einheitsmodell Stufe 5b): nur
+                // die Wechsel im Ack - damit hat auch eine Wenn/Dann-Regel ohne
+                // steuerbare Komponente eine Geschichte. Additiv, nie werfend.
+                ruleEvents.ingestAcks(siteId, previous, current, reportedAt);
             }
             if (hasNodes) {
                 flowStatus.replaceNodeStatuses(deviceId, siteId,

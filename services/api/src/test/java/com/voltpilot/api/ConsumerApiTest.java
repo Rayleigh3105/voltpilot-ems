@@ -102,6 +102,9 @@ class ConsumerApiTest {
     com.voltpilot.api.consumers.ConsumerRequirementLedgerWriter ledgerWriter;
 
     @Autowired
+    com.voltpilot.api.rules.RuleEventWriter ruleEventWriter;
+
+    @Autowired
     com.voltpilot.api.repo.ConsumerRequirementStateRepository requirementStateRepository;
 
     @Autowired
@@ -405,7 +408,7 @@ class ConsumerApiTest {
             // state word discarded.
             ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
                     "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository,
-                    ledgerWriter);
+                    ledgerWriter, ruleEventWriter);
             String topic = "ems/00000000-0000-0000-0000-000000000001/" + BERLIN_SITE + "/"
                     + device + "/status";
             String hb = "{\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
@@ -556,7 +559,7 @@ class ConsumerApiTest {
             // runtime, energy ASSUMED (Nennleistung × Zeit = 3.0 kW × 1.5 h).
             ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
                     "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository,
-                    ledgerWriter);
+                    ledgerWriter, ruleEventWriter);
             String topic = "ems/" + tenantA + "/" + BERLIN_SITE + "/" + device + "/status";
             String hb = "{\"tenant_id\":\"" + tenantA + "\",\"site_id\":\"" + BERLIN_SITE + "\","
                     + "\"device_id\":\"" + device + "\",\"ts\":\"2026-08-10T12:00:00Z\","
@@ -744,6 +747,159 @@ class ConsumerApiTest {
             assertThat(post(other, base + route, Map.of()).getStatusCode())
                     .as(route).isEqualTo(HttpStatus.NOT_FOUND);
         }
+    }
+
+    /**
+     * Das REGEL-PROTOKOLL Ende zu Ende (Einheitsmodell Stufe 5b): aus den
+     * Wechseln des Herzschlags wird ein Verlauf, der Zähler steht je Regel, und
+     * die Ehrlichkeitsregeln halten gegen die ECHTE Datenbank - die erste
+     * Beobachtung erzeugt nichts, ein wiederholter Zustand erzeugt nichts, und
+     * ein fremder Mandant sieht 404.
+     */
+    @Test
+    void ruleEventsRecordOnlyTheChangesAndAreTenantScoped() {
+        String tok = token("demo", "demo");
+        UUID tenantA = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        String device = "00000000-0000-0000-0000-000000000003"; // BERLIN seed inverter
+        Map<String, Object> c = create(tok, Map.of(
+                "type", "heating-rod", "name", "Heizstab Protokoll", "ratedPowerKw", 3.0,
+                "controlKind", "on_off"));
+        String id = (String) c.get("id");
+        String route = "/api/v1/sites/" + BERLIN_SITE + "/rule-events";
+        ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository,
+                ledgerWriter, ruleEventWriter);
+        String topic = "ems/" + tenantA + "/" + BERLIN_SITE + "/" + device + "/status";
+        // Das Protokoll gehört der ANLAGE, und diese Klasse teilt sich eine -
+        // jeder Herzschlag einer Nachbar-Prüfung schreibt hier mit. Wer
+        // handgerechnete Erwartungen hat, RÄUMT den Verlauf vorher ab (die
+        // Haus-Disziplin der Preis-Slots), sonst prüft er die Nachbarn mit.
+        clearRuleProtocol(tenantA);
+        try {
+            patch(tok, id, Map.of("enabled", true));
+            // Eine AKTIVE Verbraucher-Regel: sie ist die V-5-Zuordnung, über die
+            // jedes Ereignis dieser Komponente seine Regel findet.
+            put(tok, "/api/v1/sites/" + BERLIN_SITE + "/consumers/" + id + "/policy", Map.of(
+                    "document", Map.of("schema_version", "1.0", "entity_id", id,
+                            "timezone", "Europe/Berlin", "requirements", List.of(Map.of(
+                                    "id", "rod-window", "kind", "flexible_task",
+                                    "enforcement", "required_by_deadline",
+                                    "recurrence", Map.of("days", "daily", "from", "00:00",
+                                            "to", "24:00"),
+                                    "demand", Map.of("runtime_minutes", 60, "contiguous", true),
+                                    "target", Map.of("kind", "on_off", "value", true))))));
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("UPDATE consumer_policy SET lifecycle='active' WHERE entity_id = ?",
+                        UUID.fromString(id));
+            } finally {
+                TenantContext.clear();
+            }
+
+            // Vor dem ersten Herzschlag: wohlgeformt LEER, kein erfundener Zähler.
+            Map<String, Object> leer = getMap(route, tok);
+            assertThat((List<?>) leer.get("events")).isEmpty();
+            assertThat((List<?>) leer.get("rules")).isEmpty();
+            assertThat(leer.get("accuracySeconds")).isEqualTo(15);
+
+            // 1. Herzschlag: die ERSTE Beobachtung ist kein Ereignis - aber der
+            // Aufzeichnungs-Beginn wird gesetzt (sonst wäre eine 0 gelogen).
+            listener.handle(topic, heartbeat(tenantA, device, id, "waiting",
+                    "\"reason_code\":\"guard_min_off\"").getBytes(StandardCharsets.UTF_8));
+            Map<String, Object> nachErst = getMap(route, tok);
+            assertThat((List<?>) nachErst.get("events")).isEmpty();
+            assertThat(nachErst.get("recordingSince")).isNotNull();
+
+            // 2. Herzschlag: derselbe Zustand, nur ein anderer GRUND - kein Wechsel.
+            listener.handle(topic, heartbeat(tenantA, device, id, "waiting",
+                    "\"reason_code\":\"price_below_threshold\"").getBytes(StandardCharsets.UTF_8));
+            assertThat((List<?>) getMap(route, tok).get("events")).isEmpty();
+
+            // 3. Herzschlag: der Lauf beginnt - DAS ist ein Schaltvorgang.
+            listener.handle(topic, heartbeat(tenantA, device, id, "running_optimized",
+                    "\"actual_kw\":3.0").getBytes(StandardCharsets.UTF_8));
+            // 4. Herzschlag: und endet wieder.
+            listener.handle(topic, heartbeat(tenantA, device, id, "fulfilled", null)
+                    .getBytes(StandardCharsets.UTF_8));
+
+            Map<String, Object> voll = getMap(route, tok);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> events = (List<Map<String, Object>>) voll.get("events");
+            assertThat(events).hasSize(2);
+            // Neueste zuerst.
+            assertThat(events.get(0).get("kind")).isEqualTo("gestoppt");
+            assertThat(events.get(1).get("kind")).isEqualTo("gestartet");
+            assertThat(events.get(1).get("state")).isEqualTo("running_optimized");
+            assertThat(events.get(1).get("previousState")).isEqualTo("waiting");
+            assertThat(((Number) events.get(1).get("actualKw")).doubleValue()).isEqualTo(3.0);
+            // Die Zuordnung ist der Schnappschuss der aktiven Verbraucher-Regel.
+            assertThat(events.get(1).get("ruleKind")).isEqualTo("rezept");
+            assertThat(events.get(1).get("ruleRef")).isEqualTo(id);
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rules = (List<Map<String, Object>>) voll.get("rules");
+            assertThat(rules).hasSize(1);
+            assertThat(rules.get(0).get("ruleRef")).isEqualTo(id);
+            assertThat(rules.get(0).get("lastSwitchedAt")).isNotNull();
+            // Der Speicher hat HEUTE zu zeichnen begonnen, also wird der
+            // Tageszähler NICHT behauptet - die Fläche sagt „seit HH:MM".
+            assertThat(rules.get(0).get("switchedToday")).isNull();
+
+            // Ein Speicher, der den Tag ganz gesehen hat, DARF zählen: den
+            // Beginn künstlich auf gestern setzen und erneut lesen.
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("UPDATE rule_event_recording SET started_at = now() - interval '2 days' "
+                        + "WHERE site_id = ?", UUID.fromString(BERLIN_SITE));
+            } finally {
+                TenantContext.clear();
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> gezaehlt =
+                    (List<Map<String, Object>>) getMap(route, tok).get("rules");
+            assertThat(gezaehlt.get(0).get("switchedToday")).isEqualTo(1);
+
+            // RLS: der fremde Mandant sieht 404, nie den Verlauf.
+            assertThat(rest.exchange(url(route), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            patch(tok, id, Map.of("enabled", false));
+            clearRuleProtocol(tenantA);
+            TenantContext.set(tenantA);
+            try {
+                jdbc.update("DELETE FROM consumer_runtime_status WHERE entity_id = ?",
+                        UUID.fromString(id));
+                jdbc.update("DELETE FROM consumer_requirement_state WHERE entity_id = ?",
+                        UUID.fromString(id));
+                jdbc.update("UPDATE consumer_policy SET lifecycle='retired' WHERE entity_id = ?",
+                        UUID.fromString(id));
+            } finally {
+                TenantContext.clear();
+            }
+            delete(tok, id);
+        }
+    }
+
+    /** Den Verlauf der geteilten Anlage abräumen (siehe die Notiz oben). */
+    private void clearRuleProtocol(UUID tenant) {
+        TenantContext.set(tenant);
+        try {
+            jdbc.update("DELETE FROM rule_event WHERE site_id = ?", UUID.fromString(BERLIN_SITE));
+            jdbc.update("DELETE FROM rule_event_recording WHERE site_id = ?",
+                    UUID.fromString(BERLIN_SITE));
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /** Ein Herzschlag mit genau EINER Verbraucher-Komponente. */
+    private static String heartbeat(UUID tenant, String device, String entityId, String state,
+            String extra) {
+        return "{\"tenant_id\":\"" + tenant + "\",\"site_id\":\"" + BERLIN_SITE + "\","
+                + "\"device_id\":\"" + device + "\","
+                + "\"consumers\":{\"" + entityId + "\":{\"state\":\"" + state + "\""
+                + (extra == null ? "" : "," + extra) + "}}}";
     }
 
     private Map<String, Object> create(String token, Map<String, Object> body) {
