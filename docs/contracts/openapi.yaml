@@ -79,6 +79,12 @@ tags:
       shared derivation is the Go/TS/Java twin
       (docs/contracts/v2/topology-read-model.md). Role ASSIGNMENT is
       platform-admin-only.
+  - name: components
+    description: >
+      Der EINE Anlege-Weg (Einheitsmodell Stufe 1): a component is a TEMPLATE
+      plus its connection plus a role, saved versioned on the customer's own
+      plant. Tenant-fenced by RLS like every /sites/** route (foreign site =>
+      404, never 403); admins reach any plant through the X-Tenant-Id switcher.
   - name: templates
     description: >
       Komponenten-VORLAGEN (Einheitsmodell Stufe 0a, "Vorlagen werden Daten"):
@@ -3134,6 +3140,180 @@ paths:
               schema: { $ref: "#/components/schemas/ComponentTemplate" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Unknown or non-public template. }
+  /api/v1/sites/{siteId}/components:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [components]
+      summary: The plant's components, with the authority + Soll/Ist state.
+      description: >
+        Einheitsmodell Stufe 1. `componentAuthority` says WHO owns this plant's
+        device configuration (`box` | `portal`) - the portal offers the add
+        assistant ONLY on a portal-managed plant, because a Soll saved on a
+        box-managed one would never take effect. `appliedRevision` is what the
+        BOX reported it really applied; `null` means UNKNOWN (older edge, no
+        heartbeat yet), never "did not arrive". A refusal rides NEXT TO the
+        applied revision, never in its place - what runs is still the last
+        configuration that really worked.
+      responses:
+        "200":
+          description: The components.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site (or component) not found for this tenant. }
+    post:
+      tags: [components]
+      summary: Add a component (assistant step 4).
+      description: >
+        Brand/model/family/communication come from the TEMPLATE, never from the
+        body - a client cannot save an inconsistent connection. Requires a
+        PASSED connection test for exactly this plant + template + connection
+        (422 otherwise): since this stage the stored Soll IS the plant's read
+        path, and a typo in the IP makes it blind.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveComponentRequest" }
+      responses:
+        "200":
+          description: The plant's components after the write.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "400": { description: Unknown template or role. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site (or component) not found for this tenant. }
+        "409":
+          description: >
+            Box-managed plant, or the plant already has this component
+            (at most one grid meter / one inverter). German `message`.
+        "422": { description: No passed connection test for this connection. }
+  /api/v1/sites/{siteId}/components/{entityId}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: entityId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [components]
+      summary: Change a component's connection - a NEW version.
+      description: >
+        The previous version stays retrievable. The connection test is required
+        here too: a change can blind a running plant exactly like a first setup.
+        The component's ROLE cannot change (that is a delete plus an add).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveComponentRequest" }
+      responses:
+        "200":
+          description: The plant's components after the write.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site (or component) not found for this tenant. }
+        "409": { description: Box-managed plant, or a role change was attempted. }
+        "422": { description: No passed connection test for this connection. }
+  /api/v1/sites/{siteId}/components/{entityId}/versions:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: entityId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [components]
+      summary: The component's definition versions, newest first.
+      responses:
+        "200":
+          description: The versions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ComponentDefinition" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site (or component) not found for this tenant. }
+  /api/v1/sites/{siteId}/components/{entityId}/versions/{version}/rollback:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: entityId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: version
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    post:
+      tags: [components]
+      summary: Roll a component back to an earlier version.
+      description: >
+        WRITES a new version carrying the old content instead of deleting one -
+        "what ran last week" stays answerable, and the way back is the same way
+        as any other change. No connection test is required: this connection was
+        stored before and passed its test then; demanding a new one would block
+        the way out of a mistake exactly when the device is not answering.
+      responses:
+        "200":
+          description: The plant's components after the rollback.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Unknown component or version. }
+        "409": { description: Box-managed plant. }
+  /api/v1/sites/{siteId}/component-test:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Connection test - the box reads the not-yet-saved device once.
+      description: >
+        Runs the assistant's connection test over the Probe-Kanal
+        (docs/contracts/mqtt-probe.schema.json, op `test_connection`) - the SAME
+        machinery the device's own `:8484` button has always used, generalized
+        to every transport. A SUCCESS also records the receipt that unlocks
+        saving (for exactly this plant + template + connection); a failure
+        records nothing. A timeout is an honest OUTCOME (HTTP 200 with
+        `errorCode: timeout`), not an error. Nothing is persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [templateRef, connection]
+              properties:
+                templateRef: { type: string }
+                role: { type: string, enum: [inverter, pv-generation, grid-meter, consumer] }
+                connection:
+                  type: object
+                  additionalProperties: true
+                  description: The template's transport_schema fields, passed through.
+                deviceId:
+                  type: string
+                  format: uuid
+                  description: >
+                    Optional - the box to ask. Absent means "the plant's single
+                    device"; a plant with several must name one.
+      responses:
+        "200":
+          description: The device's answer (honest outcome, including a timeout).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProbeResult" }
+        "400": { description: Unknown template / malformed request. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site (or component) not found for this tenant. }
+        "409": { description: The plant has no device, or several and none was named. }
+        "503": { description: The plant is not reachable right now. }
   /api/v1/flow-catalog:
     get:
       tags: [flows]
@@ -4326,6 +4506,114 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    SiteComponents:
+      type: object
+      description: >
+        The plant's components plus WHO owns their configuration
+        (Einheitsmodell Stufe 1).
+      required: [componentAuthority, components]
+      properties:
+        componentAuthority:
+          type: string
+          enum: [box, portal]
+          description: >
+            `portal` = the stored Soll IS the plant's read path and the assistant
+            is offered; `box` = the device's own `:8484` page still owns it
+            (every plant that existed before this stage). The server always names
+            an owner - it is never absent.
+        sollRevision:
+          type: string
+          nullable: true
+          description: The last composed registry-push revision. `null` = never pushed.
+        appliedRevision:
+          type: string
+          nullable: true
+          description: >
+            The revision the BOX reported it really applied. `null` = the box has
+            not said anything yet - UNKNOWN, never "did not arrive".
+        appliedAt: { type: string, format: date-time, nullable: true }
+        refusedRevision:
+          type: string
+          nullable: true
+          description: >
+            The box's LAST refusal, NEXT TO (never instead of) `appliedRevision` -
+            what runs is still the last configuration that really worked.
+        refusedReason: { type: string, nullable: true, description: German plain-text reason. }
+        components:
+          type: array
+          items:
+            type: object
+            required: [id, role, definitionVersion, syncStatus]
+            properties:
+              id: { type: string, format: uuid, description: The measurement point / v2 entity id. }
+              role: { type: string, enum: [inverter, pv-generation, grid-meter, consumer] }
+              entityType: { type: string, nullable: true }
+              label: { type: string, nullable: true }
+              brand: { type: string, nullable: true }
+              model: { type: string, nullable: true }
+              family: { type: string, nullable: true }
+              communication: { type: string, nullable: true }
+              connection:
+                type: object
+                nullable: true
+                additionalProperties: true
+                description: The template's transport_schema values, passed through verbatim.
+              sourceKind: { type: string, nullable: true, enum: [builtin, certified, custom, composed] }
+              templateRef: { type: string, nullable: true }
+              templateVersion: { type: integer, nullable: true }
+              definitionVersion: { type: integer, description: Bumped on every saved change; the rollback target. }
+              capacityKwp: { type: number, nullable: true }
+              edgeSourceId: { type: string, nullable: true }
+              syncStatus:
+                type: string
+                enum: [in_sync, pending, unreported]
+                description: >
+                  Derived from Soll vs. the box's reported Ist, never guessed.
+                  `unreported` means the box has not reported - NEVER "the change
+                  was lost".
+    SaveComponentRequest:
+      type: object
+      required: [templateRef, role]
+      properties:
+        templateRef:
+          type: string
+          maxLength: 200
+          description: >
+            The OPAQUE template key. Brand, model, family and the communication
+            method are taken FROM the template, never from the body - a client
+            cannot save an inconsistent connection.
+        role: { type: string, enum: [inverter, pv-generation, grid-meter, consumer] }
+        label: { type: string, nullable: true, maxLength: 200 }
+        connection:
+          type: object
+          additionalProperties: true
+          description: The template's transport_schema fields (ip/port/serial/unit_id/...).
+        capacityKwp: { type: number, nullable: true, description: Producer nameplate (kWp); ignored for other roles. }
+        intervalS: { type: integer, nullable: true, description: Optional read interval; absent = the box default. }
+        note: { type: string, nullable: true, maxLength: 200 }
+    ComponentDefinition:
+      type: object
+      description: >
+        ONE stored version of a component's connection (append-only). `null`
+        everywhere means "this version says nothing about it", never a
+        substitute value.
+      required: [entityId, version, role, createdAt]
+      properties:
+        entityId: { type: string, format: uuid }
+        version: { type: integer }
+        role: { type: string }
+        label: { type: string, nullable: true }
+        brand: { type: string, nullable: true }
+        model: { type: string, nullable: true }
+        family: { type: string, nullable: true }
+        communication: { type: string, nullable: true }
+        connection: { type: object, nullable: true, additionalProperties: true }
+        sourceKind: { type: string, nullable: true }
+        templateRef: { type: string, nullable: true }
+        templateVersion: { type: integer, nullable: true }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string, nullable: true, description: The JWT subject that saved it. }
+        note: { type: string, nullable: true }
     ComponentTemplate:
       type: object
       description: >

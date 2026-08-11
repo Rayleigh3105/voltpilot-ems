@@ -304,9 +304,28 @@ public class ComponentService {
         String label = label(req, template);
         String entityType = ROLE_ENTITY_TYPE.get(role);
 
+        // Wechselrichter und Netz-Zähler sind PLATTFORM-KOMPONIERT: die
+        // Auto-Komposition legt sie beim Geräte-Claim an, dieser Weg füllt ihre
+        // Anbindung. Eine zweite Zeile wäre Doppelzählung (die Topologie
+        // summiert je Rolle).
+        //
+        // ⚠ Die 0-1-Regel hängt an der ANBINDUNG, nicht an der Existenz der
+        // Zeile: die komponierte Zeile ist noch KEIN eingerichtetes Gerät, ein
+        // Zähler MIT Anbindung ist einer. Nur so lässt sich der erste Zähler
+        // anlegen UND der zweite abweisen.
         if (ROLE_INVERTER.equals(role) || ROLE_NETZ.equals(role)) {
             UUID existing = entityRepo.firstEntityOfType(siteId, entityType);
             if (existing != null) {
+                EntityRow row = entityRepo.entityForSite(siteId, existing);
+                if (row != null && row.connectionJson() != null
+                        && !row.connectionJson().isBlank()) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            ROLE_INVERTER.equals(role)
+                                    ? "Diese Anlage hat bereits einen Wechselrichter. Bitte "
+                                            + "bearbeiten Sie ihn statt einen zweiten anzulegen."
+                                    : "Diese Anlage hat bereits einen Netz-Zähler. Es ist nur "
+                                            + "einer möglich.");
+                }
                 return existing;
             }
             if (ROLE_INVERTER.equals(role)) {

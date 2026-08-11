@@ -1,5 +1,5 @@
 -- =============================================================================
--- V20260816000000 - Einheitsmodell Stufe 1: „Ein Anlege-Weg im Portal".
+-- V20260817000000 - Einheitsmodell Stufe 1: „Ein Anlege-Weg im Portal".
 -- ADDITIV: zwei nullbare/vorbelegte Spalten + eine neue Tabelle. Keine
 -- bestehende Anlage aendert dadurch ihr Verhalten - siehe die Datenmigration
 -- unten, die genau das sicherstellt.
