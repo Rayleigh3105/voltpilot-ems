@@ -268,10 +268,12 @@ func ValidateOp(op Op) (code string, message string) {
 		return ErrInvalidRequest, "Es fehlt die Adresse des Geräts."
 	}
 	if !IsPrivateHost(host) {
-		// Wörtlich der Grund, nicht nur die Ablehnung: der Kunde soll die IP
-		// korrigieren, nicht raten, warum das Portal schweigt.
+		// Wörtlich der Grund UND der Weg, nicht nur die Ablehnung: der Kunde
+		// soll die Adresse korrigieren, nicht raten, warum das Portal schweigt.
 		return ErrInvalidRequest,
-			"Die Adresse liegt nicht im eigenen Netz. VoltPilot liest nur Geräte im Heim-/Firmennetz."
+			"Die Adresse liegt nicht im eigenen Netz. Bitte die IP-Adresse des Geräts " +
+				"eintragen (oder einen Namen wie „geraet.local“) - VoltPilot liest nur " +
+				"Geräte im Heim- oder Firmennetz."
 	}
 	if op.Port != nil && (*op.Port < 1 || *op.Port > 65535) {
 		return ErrInvalidRequest, "Der Port liegt außerhalb des gültigen Bereichs."
@@ -442,13 +444,17 @@ func Refused(req Request, id Identity, now time.Time, code, message string) Resu
 //     out, and it is never publicly routable);
 //   - IPv6 loopback (::1), unique-local (fc00::/7) and link-local (fe80::/10),
 //     including an IPv4-mapped address whose v4 half is private;
-//   - a bare hostname (no dot) or an mDNS/.local/.lan/.home.arpa name - the
-//     names a LAN device actually answers to.
+//   - a name with a LAN suffix (.local/.lan/.home/.home.arpa/.internal/.intern) -
+//     the mDNS/router-assigned names a LAN device actually answers to.
 //
-// Everything else - a public IP, a public FQDN - is refused. This is
-// deliberately a WHITELIST: a blacklist of "bad" targets is one new address
-// range away from being wrong, and the cost of being too strict here is a
-// customer typing an IP instead of a name.
+// Everything else is refused - including a BARE hostname without a suffix, and
+// that exclusion is deliberate even though it costs a little convenience: a
+// bare name is resolved by whatever search domains the box happens to have, so
+// it CANNOT be shown to be private from the string alone, and this function
+// would then be promising something it does not check. The rule is a WHITELIST
+// of forms we can actually prove: a blacklist of "bad" targets is one new
+// address range away from being wrong, and the cost of being strict here is a
+// customer typing an IP instead of a nickname.
 func IsPrivateHost(host string) bool {
 	h := strings.TrimSpace(host)
 	if h == "" {
@@ -467,9 +473,6 @@ func IsPrivateHost(host string) bool {
 	lower := strings.ToLower(h)
 	if strings.ContainsAny(lower, " /\\@:") {
 		return false // not a hostname we are willing to interpret
-	}
-	if !strings.Contains(lower, ".") {
-		return true // a bare LAN hostname
 	}
 	for _, suffix := range []string{".local", ".lan", ".home", ".home.arpa", ".internal", ".intern"} {
 		if strings.HasSuffix(lower, suffix) {

@@ -229,7 +229,7 @@ func TestOnlyPrivateTargetsAreProbed(t *testing.T) {
 		"192.168.0.28", "10.0.7.19", "172.16.5.4", "172.31.255.255",
 		"127.0.0.1", "169.254.10.10", "100.72.0.1",
 		"::1", "fd00::1", "fe80::1", "[fd00::5]",
-		"wechselrichter", "wr1.local", "logger.lan", "box.home.arpa", "gw.internal",
+		"wr1.local", "logger.lan", "box.home.arpa", "gw.internal",
 		"192.168.0.28.",
 	}
 	for _, h := range private {
@@ -244,6 +244,11 @@ func TestOnlyPrivateTargetsAreProbed(t *testing.T) {
 		"1.1.1.1", "8.8.8.8", "172.32.0.1", "9.255.255.255", "100.128.0.1",
 		"2001:4860:4860::8888", "example.com", "portal.voltpilot.de",
 		"", "   ", "http://192.168.0.1", "192.168.0.1:502", "user@192.168.0.1",
+		// ⚠ A BARE hostname is refused on purpose: it is resolved by whatever
+		// search domains the box happens to carry, so it cannot be shown to be
+		// private from the string - and a whitelist that cannot prove its own
+		// promise is not one. The refusal names the way out (type the IP).
+		"wechselrichter", "logger",
 	}
 	for _, h := range public {
 		if IsPrivateHost(h) {
