@@ -126,7 +126,8 @@ public class ComponentService {
         return new SiteComponentsDto(authority, soll, applied,
                 ist == null ? null : ist.appliedAt(),
                 ist == null ? null : ist.refusedRevision(),
-                ist == null ? null : ist.refusedReason(), rows);
+                ist == null ? null : ist.refusedReason(),
+                definitions.componentsAdoptedAt(siteId), rows);
     }
 
     /** Die Fassungen EINER Komponente, neueste zuerst. */
