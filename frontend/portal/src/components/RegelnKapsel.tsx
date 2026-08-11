@@ -24,12 +24,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
-import { ApiError, api, type EntityStrategy, type Site, type SiteTopology } from '../api';
+import {
+  ApiError, api,
+  type EntityStrategy, type RuleEvents, type Site, type SiteTopology,
+} from '../api';
 import { PartHead } from './SteuerungParts';
 import { ConsumerOverrideDialog } from './ConsumerOverrideDialog';
 import { NeueRegelDialog } from './NeueRegelDialog';
 import { RegelDrawer } from './RegelDrawer';
 import { RegelKarteView, SofortBanner } from './RegelKarten';
+import { RegelProtokoll } from './RegelProtokoll';
 import { RezeptGalerieView } from './RezeptGalerie';
 import { VerbraucherAnlegenDrawer, VerbraucherRegelDrawer } from './VerbraucherDrawers';
 import { consumersApi } from '../consumers/consumersApi';
@@ -55,6 +59,7 @@ import {
   type RezeptId,
 } from '../regeln/rezepte';
 import { regelDetail } from '../regeln/detail';
+import { protokoll as protokollView } from '../regeln/verlauf';
 import {
   istGenerierteVerbraucherregel,
   regelKarten,
@@ -130,6 +135,7 @@ export function RegelnKapsel({
   const [policies, setPolicies] = useState<Record<string, ConsumerPolicyVersion | null>>({});
   const [acks, setAcks] = useState<FlowDeviceAck[]>([]);
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]>>({});
+  const [ruleEvents, setRuleEvents] = useState<RuleEvents | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const [creating, setCreating] = useState(false);
@@ -153,6 +159,11 @@ export function RegelnKapsel({
     consumersApi.options(site.id).then((o) => alive && setOptions(o)).catch(() => {});
     api.entityStrategies(site.id).then((s) => alive && setStrategies(s ?? {})).catch(() => {});
     consumersApi.status(site.id).then((s) => alive && setStatus(s ?? [])).catch(() => {});
+    // Das Regel-Protokoll (Stufe 5b) - fail-soft wie alles hier: ein
+    // älteres Backend kennt die Route nicht, dann bleibt die Fläche
+    // zeichengleich zu Stufe 5a.
+    api.siteRuleEvents(site.id).then((r) => alive && setRuleEvents(r ?? null))
+      .catch(() => {});
     consumersApi.overrides(site.id).then((o) => alive && setOverrides(o ?? [])).catch(() => {});
     // Die Geräte-Bestätigung je Regel; der Aufruf steht IM Promise, damit auch
     // ein Client ohne diese Route (älteres Backend) nur still nichts liefert.
@@ -203,6 +214,7 @@ export function RegelnKapsel({
     return regelKarten({
       entities,
       rezepte,
+      protokoll: ruleEvents,
       flows: flows
         .filter((f) => !istGenerierteVerbraucherregel(f.latestDocument))
         .map((f) => ({
@@ -215,11 +227,17 @@ export function RegelnKapsel({
           ack: acks.find((a) => a.flowId === f.flowId) ?? null,
         })),
     });
-  }, [flows, acks, consumers, status, fulfillment, overrides, policies, entities]);
+  }, [flows, acks, consumers, status, fulfillment, overrides, policies, entities, ruleEvents]);
 
   const namen = useMemo(
     () => Object.fromEntries(consumers.map((c) => [c.id, c.name])),
     [consumers],
+  );
+  // Das Gesamt-Protokoll spricht die NAMEN der Karten - ein Ereignis ohne
+  // zuordenbare Regel bleibt sichtbar, nennt aber keine (nie eine geratene).
+  const protokoll = useMemo(
+    () => protokollView(ruleEvents, Object.fromEntries(karten.map((k) => [k.key, k.name]))),
+    [ruleEvents, karten],
   );
   const banner = useMemo(() => sofortBanner(overrides, namen), [overrides, namen]);
   const galerie = useMemo(() => rezeptGalerie({ entities, topology }), [entities, topology]);
@@ -457,6 +475,11 @@ export function RegelnKapsel({
             ))}
           </ul>
         )}
+
+        {/* Das kompakte Gesamt-Protokoll - ein Aufklapper unter der Liste,
+            kein eigener Navigationspunkt (5b.6). Es erscheint erst, wenn für
+            diese Anlage überhaupt aufgezeichnet wird. */}
+        {karten.length > 0 && ruleEvents && <RegelProtokoll view={protokoll} />}
       </Card>
 
       {/* --- Der Detail-Einschub ------------------------------------------- */}
@@ -472,6 +495,7 @@ export function RegelnKapsel({
             fulfilment: offenerConsumer ? fulfillment[offenerConsumer.id] ?? null : null,
             versionen: offenerFlow?.versions ?? null,
             aktiveVersion: offenerFlow?.activeVersion ?? null,
+            protokoll: ruleEvents,
           })}
           busy={busy}
           loeschFolgen={loeschFolgen(offeneKarte)}

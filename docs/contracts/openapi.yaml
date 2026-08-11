@@ -4594,6 +4594,14 @@ components:
             Die Genauigkeit, die AN der Flaeche stehen muss: abgeleitet wird
             aus Wechseln im Herzschlag-Takt, ein Wechsel-und-zurueck dazwischen
             ist unsichtbar.
+        countsToday:
+          type: boolean
+          description: >
+            Ob der heutige Tag ueberhaupt zaehlbar ist. Er beantwortet den
+            Fall, den `rules` nicht abbilden kann: eine Regel OHNE jedes
+            Ereignis taucht dort gar nicht auf - ohne dieses Flag muesste die
+            Flaeche den Berliner Tagesbeginn selbst nachrechnen und haette
+            einen Zwilling der Server-Regel.
         rules:
           type: array
           items: { $ref: "#/components/schemas/RuleActivity" }

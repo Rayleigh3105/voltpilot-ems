@@ -1801,6 +1801,56 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
 
 export type { ProfileState, SiteProfile, SiteProfiles } from './profiles';
 
+/**
+ * Ein aufgezeichneter Wechsel aus dem Regel-Protokoll (Stufe 5b). Die Wörter
+ * in `state`/`previousState`/`reasonCode` sind GEMELDETE Wörter - der Ingest
+ * hat unbekannte längst verworfen, die Fläche rendert nie ein geratenes.
+ */
+export interface RuleEvent {
+  id: number;
+  /** Der Schnappschuss der Zuordnung; null = keiner Regel zuzuordnen. */
+  ruleKind: 'rezept' | 'flow' | null;
+  ruleRef: string | null;
+  entityId: string | null;
+  kind: string;
+  state: string | null;
+  previousState: string | null;
+  reasonCode: string | null;
+  /** Der gemessene Wert im Moment des Wechsels; null = nicht gemessen. */
+  actualKw: number | null;
+  detail: string | null;
+  occurredAt: string;
+}
+
+/** Die Zähler EINER Regel. */
+export interface RuleActivity {
+  ruleKind: 'rezept' | 'flow' | null;
+  ruleRef: string | null;
+  /**
+   * STARTS seit Berliner Mitternacht - NULL heißt „nicht belastbar" (der
+   * Speicher zeichnet erst seit heute auf), nie eine erfundene 0.
+   */
+  switchedToday: number | null;
+  lastSwitchedAt: string | null;
+}
+
+export interface RuleEvents {
+  /** Ab wann aufgezeichnet wird; null = für diese Anlage noch gar nicht. */
+  recordingSince: string | null;
+  /**
+   * Ob der heutige Tag überhaupt zählbar ist (der Speicher hat ihn ganz
+   * gesehen). Er beantwortet den Fall, den `rules` nicht abbilden kann: eine
+   * Regel OHNE jedes Ereignis taucht dort gar nicht auf, und ohne dieses Flag
+   * müsste die Fläche den Berliner Tagesbeginn selbst nachrechnen — ein
+   * Zwilling der Server-Regel. Die Entscheidung fällt genau einmal, dort.
+   */
+  countsToday: boolean;
+  /** Die Genauigkeit, die an der Fläche stehen muss (Herzschlag-Takt). */
+  accuracySeconds: number;
+  rules: RuleActivity[];
+  events: RuleEvent[];
+}
+
 export const api = {
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
@@ -1843,6 +1893,14 @@ export const api = {
     request<ControlStatus | undefined>(
       `/api/v1/sites/${siteId}/control-status`,
     ).then((v) => v ?? null),
+  /**
+   * Das REGEL-PROTOKOLL der Anlage (Einheitsmodell Stufe 5b): Zähler je Regel,
+   * Verlauf je Regel und das kompakte Gesamt-Protokoll in EINER Antwort - die
+   * Fläche lädt es einmal und bedient daraus alle drei Orte. Ein älteres
+   * Backend kennt die Route nicht; der Aufrufer holt sie deshalb fail-soft.
+   */
+  siteRuleEvents: (siteId: string) =>
+    request<RuleEvents>(`/api/v1/sites/${siteId}/rule-events`),
   /**
    * Die Abregel-Wahrheit der Anlage (204 → null = kein Beleg → Plan-Wortlaut).
    * Bewusst ein eigener Abruf: die zwei Herzschlag-Blöcke kommen unabhängig

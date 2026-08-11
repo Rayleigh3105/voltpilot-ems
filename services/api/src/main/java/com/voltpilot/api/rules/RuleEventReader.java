@@ -47,6 +47,7 @@ public class RuleEventReader {
                 .toList();
 
         List<RuleEventDto> events = store.events(siteId, MAX_EVENTS);
-        return new RuleEventsDto(recordingSince, RuleEventWriter.ACCURACY_SECONDS, rules, events);
+        return new RuleEventsDto(recordingSince, RuleEventWriter.ACCURACY_SECONDS,
+                zaehlerBelastbar, rules, events);
     }
 }

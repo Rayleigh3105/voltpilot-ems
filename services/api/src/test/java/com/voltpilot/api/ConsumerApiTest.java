@@ -844,6 +844,7 @@ class ConsumerApiTest {
             // Der Speicher hat HEUTE zu zeichnen begonnen, also wird der
             // Tageszähler NICHT behauptet - die Fläche sagt „seit HH:MM".
             assertThat(rules.get(0).get("switchedToday")).isNull();
+            assertThat(voll.get("countsToday")).isEqualTo(Boolean.FALSE);
 
             // Ein Speicher, der den Tag ganz gesehen hat, DARF zählen: den
             // Beginn künstlich auf gestern setzen und erneut lesen.
@@ -854,9 +855,11 @@ class ConsumerApiTest {
             } finally {
                 TenantContext.clear();
             }
+            Map<String, Object> spaeter = getMap(route, tok);
+            assertThat(spaeter.get("countsToday")).isEqualTo(Boolean.TRUE);
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> gezaehlt =
-                    (List<Map<String, Object>>) getMap(route, tok).get("rules");
+                    (List<Map<String, Object>>) spaeter.get("rules");
             assertThat(gezaehlt.get(0).get("switchedToday")).isEqualTo(1);
 
             // RLS: der fremde Mandant sieht 404, nie den Verlauf.

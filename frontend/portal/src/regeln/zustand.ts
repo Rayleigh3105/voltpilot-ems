@@ -40,6 +40,8 @@ import { deployedBadge, type DeployedBadge } from '../flows/rollout';
 import type { FlowDeviceAck } from '../flows/flowsApi';
 import type { EditorEntity, FlowDocument } from '../flows/model';
 import { deriveClaims } from '../flows/model';
+import type { RuleEvents } from '../api';
+import { aktivitaetZeile, karteSchluessel } from './verlauf';
 import { flowSatz, SPEICHER_VORRANG_HINWEIS } from './satz';
 
 /** Der Wohnort des Verlaufs — Stufe 5b, hier ehrlich leer. */
@@ -97,6 +99,12 @@ export interface RegelKarte {
   chips: RegelChip[];
   /** Der statische Erklärsatz (Speicher-Vorrang), sonst null. */
   hinweis: string | null;
+  /**
+   * Die Zähler-Zeile des Regel-Protokolls („heute 3× geschaltet · zuletzt
+   * 14:02"), Stufe 5b. NULL heißt: für diese Regel liegt (noch) nichts
+   * Belastbares vor - dann steht dort NICHTS, nie eine erfundene 0.
+   */
+  aktivitaet: string | null;
   /** Schnellschalter-Stellung. */
   an: boolean;
   /** Die Version, wenn eine ausgerollt/gespeichert ist. */
@@ -133,6 +141,12 @@ export interface RegelKartenInput {
   flows: FlowRegelInput[];
   rezepte: RezeptRegelInput[];
   entities: EditorEntity[];
+  /**
+   * Das Regel-Protokoll der Anlage (Stufe 5b). Fehlt es (älteres Backend, der
+   * Abruf ist fail-soft), tragen die Karten KEINE Zähler-Zeile und die Fläche
+   * ist zeichengleich zu Stufe 5a.
+   */
+  protokoll?: RuleEvents | null;
   now?: Date;
 }
 
@@ -368,6 +382,7 @@ export function flowKarte(input: FlowRegelInput, entities: EditorEntity[]): Rege
     zustand,
     chips,
     hinweis: claimsStorage(input.latestDocument, entities) ? SPEICHER_VORRANG_HINWEIS : null,
+    aktivitaet: null,
     an: active,
     version: active ? input.activeVersion : input.latestVersion,
   };
@@ -386,25 +401,50 @@ export function rezeptKarte(input: RezeptRegelInput, now: Date = new Date()): Re
     zustand: rezeptZustand(input, now),
     chips: rezeptChips(input),
     hinweis: null,
+    aktivitaet: null,
     an: c.controlActivation === 'active',
     version: null,
   };
 }
 
 /**
- * Die Regel-Liste, Aufmerksamkeit zuerst. Innerhalb desselben Rangs
- * alphabetisch — ein „zuletzt geschaltet" gibt es erst mit dem Verlaufsspeicher
- * (Stufe 5b), und eine erfundene Reihenfolge wäre eine erfundene Aussage.
+ * Die Regel-Liste, Aufmerksamkeit zuerst. Innerhalb desselben Rangs entscheidet
+ * seit Stufe 5b der ZULETZT geschaltete zuerst — jetzt gibt es dafür einen
+ * Beleg; ohne ihn bleibt es alphabetisch (eine erfundene Reihenfolge wäre eine
+ * erfundene Aussage).
  */
 export function regelKarten(input: RegelKartenInput): RegelKarte[] {
   const now = input.now ?? new Date();
+  const aktivitaeten = new Map(
+    (input.protokoll?.rules ?? [])
+      .map((r) => [karteSchluessel(r.ruleKind, r.ruleRef), r] as const)
+      .filter((paar): paar is [string, typeof paar[1]] => paar[0] != null),
+  );
+  const zeit = (k: RegelKarte) => {
+    const at = aktivitaeten.get(k.key)?.lastSwitchedAt;
+    const t = at ? new Date(at).getTime() : NaN;
+    return Number.isNaN(t) ? null : t;
+  };
   const karten = [
     ...input.flows.map((f) => flowKarte(f, input.entities)),
     ...input.rezepte.map((r) => rezeptKarte(r, now)),
-  ];
-  return karten.sort(
-    (a, b) => a.zustand.rang - b.zustand.rang || a.name.localeCompare(b.name, 'de'),
-  );
+  ].map((k) => ({
+    ...k,
+    aktivitaet: aktivitaetZeile(
+      aktivitaeten.get(k.key), input.protokoll?.recordingSince,
+      input.protokoll?.countsToday ?? false,
+    ),
+  }));
+  return karten.sort((a, b) => {
+    if (a.zustand.rang !== b.zustand.rang) return a.zustand.rang - b.zustand.rang;
+    // Zuletzt geschaltet zuerst - aber nur zwischen zwei Karten, die BEIDE
+    // einen Beleg tragen; sonst würde eine belegte Karte eine unbelegte
+    // überholen, ohne dass etwas darüber bekannt wäre.
+    const ta = zeit(a);
+    const tb = zeit(b);
+    if (ta != null && tb != null && ta !== tb) return tb - ta;
+    return a.name.localeCompare(b.name, 'de');
+  });
 }
 
 /**

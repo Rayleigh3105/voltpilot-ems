@@ -15,6 +15,13 @@ import java.util.List;
  * aufgezeichnet" STATT eines Zählers; {@code null} heißt, dass für diese
  * Anlage noch gar nicht aufgezeichnet wurde.
  *
+ * <p><b>{@code countsToday} beantwortet dieselbe Frage für eine Regel OHNE
+ * jedes Ereignis.</b> Sie taucht in {@code rules} gar nicht auf (es gibt nichts
+ * zu gruppieren), und ohne dieses Flag könnte die Fläche „noch nie geschaltet"
+ * nicht von „wir haben noch nicht hingesehen" unterscheiden - sie müsste den
+ * Berliner Tagesbeginn selbst nachrechnen und hätte damit einen ZWILLING der
+ * Server-Regel. Es gibt sie genau einmal, hier.
+ *
  * <p><b>Die Genauigkeit steht AN der Fläche, nicht im Kleingedruckten:</b> die
  * Ereignisse werden aus WECHSELN im 15-Sekunden-Herzschlag abgeleitet, sind
  * also auf etwa diesen Takt genau und blind für ein Wechsel-und-zurück
@@ -22,7 +29,7 @@ import java.util.List;
  * Arbitrierungs-Ereignisse (Stufe 5b-2) hebt das später additiv, ohne die
  * Fläche zu ändern.
  */
-public record RuleEventsDto(Instant recordingSince, int accuracySeconds,
+public record RuleEventsDto(Instant recordingSince, int accuracySeconds, boolean countsToday,
         List<RuleActivityDto> rules, List<RuleEventDto> events) {
 
     /**
