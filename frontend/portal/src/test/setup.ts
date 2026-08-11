@@ -45,6 +45,15 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = ResizeObserverStub;
 }
 
+// jsdom implementiert `scrollIntoView` NICHT. Die Steuerung holt ihren
+// Hinweis-Streifen nach jedem `fail(...)` in den Blick (er steht oben, die
+// auslösende Aktion weit darunter) - und zwar in einem `requestAnimationFrame`,
+// also NACH dem Testende. Ohne diesen Stub wirft genau dieser Rückholer nach
+// dem Unmount und lässt die ganze Datei rot werden, obwohl jeder Test grün ist.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function scrollIntoViewStub(): void {};
+}
+
 // Jeder Test beginnt in einem FRISCHEN Tab. Seit dem Chart-Redesign merken
 // sich mehrere Flächen ihre Detailtiefe in `sessionStorage` (`useChartDetail`,
 // die Fahrplan-Schichten, das Verlauf-Aufklappen) - jsdom teilt den Speicher

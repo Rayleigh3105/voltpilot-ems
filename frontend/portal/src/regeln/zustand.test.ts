@@ -145,7 +145,9 @@ describe('Komponenten-Chips + Fehler-Ehrlichkeit', () => {
 
   it('eine Regel, deren Komponente entfernt wurde, bleibt SICHTBAR und rot', () => {
     const karte = flowKarte(flow(), [ENTITIES[0], ENTITIES[1]]);
-    expect(karte.chips[0].label).toBe('Komponente wurde entfernt');
+    // Der Chip benennt die Lücke mit seinem EIGENEN Wort - die Zustands-Zeile
+    // trägt das Urteil, zweimal dieselbe Zeichenkette wäre Rauschen.
+    expect(karte.chips[0].label).toBe('Entfernte Komponente');
     expect(karte.zustand.ton).toBe('error');
     expect(karte.zustand.problem).toBe('Komponente wurde entfernt');
     expect(karte.zustand.rang).toBe(RANK_FEHLER);
@@ -246,6 +248,13 @@ describe('Zustands-Vokabular einer Rezept-Regel', () => {
     expect(z.zeile).toBe('Aktiv');
   });
 
+  it('ein Grund, der den Zustand nur wiederholt, wird NICHT zweimal gesagt', () => {
+    const z = rezeptZustand(rezept({
+      status: status({ state: 'offline', reasonCode: 'device_offline' }),
+    }));
+    expect(z.zeile).toBe('Aktiv · Gerät meldet sich nicht');
+  });
+
   it('der Nachweis-Chip erscheint nur mit Aufgaben und tönt ehrlich', () => {
     const ohne = rezeptKarte(rezept());
     expect(ohne.chips).toHaveLength(1);
@@ -259,6 +268,21 @@ describe('Zustands-Vokabular einer Rezept-Regel', () => {
     }));
     expect(mit.chips[1].label).toBe('Heute: 1 Aufgabe nicht erreicht');
     expect(mit.chips[1].ton).toBe('warn');
+
+    // Grün heisst ERFÜLLT: eine laufende Aufgabe bekommt den ruhigen Chip.
+    const laeuft = rezeptKarte(rezept({
+      fulfilment: { tasks: [
+        { requirementId: 'a', periodStart: '', deadline: '', state: 'running', atRisk: false },
+        { requirementId: 'b', periodStart: '', deadline: '', state: 'fulfilled', atRisk: false },
+      ] },
+    }));
+    expect(laeuft.chips[1].ton).toBe('plain');
+    const fertig = rezeptKarte(rezept({
+      fulfilment: { tasks: [
+        { requirementId: 'a', periodStart: '', deadline: '', state: 'fulfilled', atRisk: false },
+      ] },
+    }));
+    expect(fertig.chips[1].ton).toBe('ok');
   });
 });
 

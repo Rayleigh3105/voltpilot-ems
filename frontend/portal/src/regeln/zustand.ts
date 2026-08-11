@@ -238,7 +238,11 @@ export function rezeptZustand(
   if (c.controlActivation === 'paused') rang = RANK_PAUSIERT;
 
   if (line && line.text !== STATUS_UNKNOWN_TEXT) {
-    const zusatz = compose([line.reason, line.unconfirmed ? 'Ausführung nicht bestätigt' : null]);
+    // Ein Grund, der WÖRTLICH den Zustand wiederholt („Gerät meldet sich nicht
+    // — Gerät meldet sich nicht"), sagt nichts Zweites: er entfällt. Im Browser
+    // aufgefallen, nicht im Unit-Test.
+    const grund = line.reason && line.reason !== line.text ? line.reason : null;
+    const zusatz = compose([grund, line.unconfirmed ? 'Ausführung nicht bestätigt' : null]);
     betrieb = zusatz ? `${line.text} — ${zusatz}` : line.text;
     if (line.tone === 'ok') {
       ton = 'ok';
@@ -298,7 +302,10 @@ export function flowChips(doc: FlowDocument | null, entities: EditorEntity[]): R
       key: claim.entityId,
       // Eine gelöschte Komponente wird BENANNT, nie stillschweigend als Id
       // gerendert - die Regel verschwindet nie still mit ihrer Komponente.
-      label: found?.label?.trim() ? found.label : 'Komponente wurde entfernt',
+      // Ein Chip benennt die Komponente. Ist sie weg, sagt der Chip das mit
+      // seinem EIGENEN Wort - die Zustands-Zeile trägt bereits das Urteil, und
+      // dieselbe Zeichenkette zweimal untereinander liest sich wie ein Fehler.
+      label: found?.label?.trim() ? found.label : 'Entfernte Komponente',
       ton: found ? 'plain' : 'warn',
     });
   }
@@ -312,10 +319,13 @@ export function rezeptChips(input: RezeptRegelInput): RegelChip[] {
   ];
   const summary = fulfilmentSummary(input.fulfilment);
   if (summary.headline) {
+    // Grün heisst ERFÜLLT. Eine laufende Aufgabe ist weder gut noch schlecht -
+    // sie bekommt den ruhigen Chip, nicht den grünen.
+    const alleErfuellt = summary.total > 0 && summary.fulfilled === summary.total;
     chips.push({
       key: `${input.consumer.id}:nachweis`,
       label: `Heute: ${summary.headline}`,
-      ton: summary.missed > 0 || summary.atRisk > 0 ? 'warn' : 'ok',
+      ton: summary.missed > 0 || summary.atRisk > 0 ? 'warn' : (alleErfuellt ? 'ok' : 'plain'),
     });
   }
   return chips;

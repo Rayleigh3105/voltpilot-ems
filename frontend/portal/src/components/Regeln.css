@@ -7,6 +7,14 @@
  * `Profile.css .vp-switch::before`, hier wird sie nur nicht zerdrückt).
  * ------------------------------------------------------------------------- */
 
+/* Der Zustands-Punkt trägt die VIER Töne dieser Fläche. `Steuerung.css` kennt
+   nur `on`/`blocked` (zwei Zustände genügten der alten Zeile); die Doppelklasse
+   gewinnt unabhängig von der Ladereihenfolge - der dokumentierte Footgun. */
+.vp-regel .vp-rowdot.ok { background: var(--vp-flow-batt, #16a34a); }
+.vp-regel .vp-rowdot.warn { background: #b45309; }
+.vp-regel .vp-rowdot.error { background: var(--vp-industry-end, #dc2626); }
+.vp-regel .vp-rowdot.off { background: var(--vp-text-muted, #94a3b8); }
+
 /* --- Die Karten-Liste ---------------------------------------------------- */
 
 .vp-regeln {

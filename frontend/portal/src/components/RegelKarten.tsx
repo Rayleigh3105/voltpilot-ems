@@ -13,6 +13,10 @@
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { RegelKarte } from '../regeln/zustand';
+// Der Schnellschalter ist der Haus-Schalter aus M3 (samt seiner >= 44-px-
+// Trefferfläche über `::before`). Die Datei wird hier MITgeladen, damit die
+// Karte nicht darauf angewiesen ist, dass ein Geschwister sie importiert.
+import './Profile.css';
 import './Regeln.css';
 
 export function RegelKarteView({
