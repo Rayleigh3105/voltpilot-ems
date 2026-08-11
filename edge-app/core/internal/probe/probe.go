@@ -53,8 +53,14 @@ const (
 // it honestly with ErrNotSupported instead of discarding a shape it does not
 // know (see the schema's op_switch_test title).
 const (
-	OpRead       = "read"
-	OpSwitchTest = "switch_test"
+	OpRead = "read"
+	// OpTestConnection is the assistant's connection test, GENERALIZED to every
+	// transport (Einheitsmodell Stufe 1). Unlike OpRead it names the DEVICE
+	// (brand/model/family + the template's connection fields) instead of a
+	// register, and the box picks the matching reader itself - the exact form
+	// the :8484 button has taken since it existed, only asked from the portal.
+	OpTestConnection = "test_connection"
+	OpSwitchTest     = "switch_test"
 )
 
 // TransportModbusTCP is the only transport V1 executes.
@@ -71,6 +77,9 @@ const (
 	ErrInvalidResponse = "invalid_response"
 	ErrImplausible     = "implausible"
 	ErrTimeout         = "timeout"
+	// ErrFroniusAPI - the Fronius Solar API did not answer / TLS problem. Part
+	// of the testconn vocabulary; it can only ever come from a test_connection.
+	ErrFroniusAPI = "fronius_api"
 	// ErrNotSupported - this build does not EXECUTE that op type or transport.
 	// It is a statement about the box, never about the device.
 	ErrNotSupported = "not_supported"
@@ -120,6 +129,15 @@ type Op struct {
 	Scale        *float64 `json:"scale,omitempty"`
 	Offset       *float64 `json:"offset,omitempty"`
 
+	// test_connection only: the DEVICE, in the same shape the local test form
+	// takes. Connection stays raw so the box maps it onto its OWN catalog
+	// connection struct - the field list lives in exactly one place.
+	Brand      string          `json:"brand,omitempty"`
+	Model      string          `json:"model,omitempty"`
+	Family     string          `json:"family,omitempty"`
+	Role       string          `json:"role,omitempty"`
+	Connection json.RawMessage `json:"connection,omitempty"`
+
 	// switch_test only (reserved, never executed in this stage).
 	OnValue         *int `json:"on_value,omitempty"`
 	OffValue        *int `json:"off_value,omitempty"`
@@ -152,6 +170,19 @@ type OpResult struct {
 	Value     *float64 `json:"value,omitempty"`
 	ErrorCode string   `json:"error_code,omitempty"`
 	Message   string   `json:"message,omitempty"`
+	// Reading is the decoded snapshot of a test_connection op. Every field is a
+	// pointer so a channel this device does NOT report is ABSENT - never a
+	// fabricated 0 (the gap-not-zero rule the whole codebase runs on).
+	Reading *Reading `json:"reading,omitempty"`
+}
+
+// Reading is the decoded snapshot of a test_connection op - the same four
+// channels the local test surfaces.
+type Reading struct {
+	PvKw   *float64 `json:"pv_kw,omitempty"`
+	LoadKw *float64 `json:"load_kw,omitempty"`
+	GridKw *float64 `json:"grid_kw,omitempty"`
+	SocPct *float64 `json:"soc_pct,omitempty"`
 }
 
 // Identity is the box's own cloud identity, used for the topic==payload check.
@@ -252,6 +283,8 @@ func ValidateOp(op Op) (code string, message string) {
 	switch op.Op {
 	case OpRead:
 		// falls through to the read validation below
+	case OpTestConnection:
+		return validateTestConnection(op)
 	case OpSwitchTest:
 		// VOLLSTAENDIG spezifiziert, hier NICHT ausgefuehrt. Der Satz sagt, dass
 		// es an dieser Box liegt und nicht am Geraet - und er verspricht nichts
@@ -349,6 +382,54 @@ func validOpID(id string) bool {
 		}
 	}
 	return true
+}
+
+// validateTestConnection admits a connection test. It carries the SAME private
+// target rule as a register read - the whole reason that rule exists (a bug in
+// the portal must never turn the fleet into an outbound port scanner) does not
+// care which op type asks.
+//
+// The host is taken from the connection block's `ip` field, which every
+// transport in the catalog uses for its address. A connection WITHOUT one names
+// no device, and a box that cannot see the address it is about to dial cannot
+// prove the target is private - so both are refused rather than dialled.
+func validateTestConnection(op Op) (string, string) {
+	if strings.TrimSpace(op.Brand) == "" {
+		return ErrInvalidRequest, "Es fehlt die Marke des Geräts."
+	}
+	if len(op.Connection) == 0 {
+		return ErrInvalidRequest, "Es fehlen die Verbindungsdaten des Geräts."
+	}
+	host, ok := ConnectionHost(op.Connection)
+	if !ok {
+		return ErrInvalidRequest, "Es fehlt die Adresse des Geräts."
+	}
+	if !IsPrivateHost(host) {
+		return ErrInvalidRequest,
+			"Die Adresse liegt nicht im eigenen Netz. Bitte die IP-Adresse des Geräts " +
+				"eintragen (oder einen Namen wie „geraet.local“) - VoltPilot liest nur " +
+				"Geräte im Heim- oder Firmennetz."
+	}
+	return "", ""
+}
+
+// ConnectionHost extracts the address from an opaque connection block. ok=false
+// when the block names none - never an empty string that a caller could treat
+// as "no restriction".
+func ConnectionHost(raw json.RawMessage) (string, bool) {
+	var conn struct {
+		IP string `json:"ip"`
+	}
+	if err := json.Unmarshal(raw, &conn); err != nil {
+		return "", false
+	}
+	h := strings.TrimSpace(conn.IP)
+	return h, h != ""
+}
+
+// SucceededReading builds an answered test_connection line.
+func SucceededReading(id string, reading *Reading) OpResult {
+	return OpResult{ID: id, OK: true, Reading: reading}
 }
 
 // EffectivePort returns the op's port with the contract default applied.

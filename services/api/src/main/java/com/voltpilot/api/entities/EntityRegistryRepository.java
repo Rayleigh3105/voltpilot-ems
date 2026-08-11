@@ -24,7 +24,12 @@ public class EntityRegistryRepository {
     public record EntityRow(UUID id, String role, String label, String brand, String model,
             String family, String communication, String connectionJson, BigDecimal capacityKwp,
             UUID deviceId, boolean control, String entityType, String capabilitiesJson,
-            String guardConfigJson, String edgeSourceId) {}
+            String guardConfigJson, String edgeSourceId,
+            // Einheitsmodell Stufe 0a/1: woher die Definition stammt, aus welcher
+            // Vorlage in welcher Fassung, und die wievielte Fassung dieser
+            // Komponente gerade gilt.
+            String sourceKind, String templateRef, Integer templateVersion,
+            int definitionVersion) {}
 
     /** The site's battery asset slice the battery-hybrid entity derives from. */
     public record BatteryAsset(UUID deviceId, BigDecimal maxChargeKw, BigDecimal maxDischargeKw,
@@ -33,12 +38,24 @@ public class EntityRegistryRepository {
     private static final String ROW_COLUMNS =
             "id, role, label, brand, model, family, communication, connection_json::text AS conn, "
                     + "capacity_kwp, device_id, control, entity_type, capabilities::text AS caps, "
-                    + "guard_config::text AS guards, edge_source_id";
+                    + "guard_config::text AS guards, edge_source_id, source_kind, template_ref, "
+                    + "template_version, definition_version";
 
     private final JdbcTemplate jdbc;
 
     public EntityRegistryRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+    }
+
+    /**
+     * WER die Geräte-Konfiguration dieser Anlage besitzt (Einheitsmodell Stufe
+     * 1). {@code null} = die Anlage ist für diesen Mandanten nicht sichtbar.
+     */
+    public String componentAuthority(UUID siteId) {
+        java.util.List<String> rows = jdbc.query(
+                "SELECT component_authority FROM site WHERE id = ?",
+                (rs, n) -> rs.getString(1), siteId);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     /** The consumer cycle-guard limits of one entity (Inkrement 3, D-9). */
@@ -411,6 +428,30 @@ public class EntityRegistryRepository {
                 rs.getString("entity_type"),
                 rs.getString("caps"),
                 rs.getString("guards"),
-                rs.getString("edge_source_id"));
+                rs.getString("edge_source_id"),
+                rs.getString("source_kind"),
+                rs.getString("template_ref"),
+                (Integer) rs.getObject("template_version"),
+                rs.getInt("definition_version"));
+    }
+
+    /**
+     * Die Kennung der ERSTEN Entität dieses Typs (Einheitsmodell Stufe 1), oder
+     * {@code null}. Der Anlege-Weg füllt damit die von der Plattform komponierte
+     * Wechselrichter-/Netz-Zeile, statt eine zweite anzulegen - die Topologie
+     * summiert je Rolle, zwei Zeilen wären Doppelzählung.
+     */
+    public UUID firstEntityOfType(UUID siteId, String entityType) {
+        java.util.List<UUID> rows = jdbc.query(
+                "SELECT id FROM measurement_point WHERE site_id = ? AND entity_type = ? "
+                        + "ORDER BY created_at, id LIMIT 1",
+                (rs, n) -> rs.getObject("id", UUID.class), siteId, entityType);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Die zuletzt komponierte Push-Revision dieser Anlage (das Soll), oder null. */
+    public String registryRevision(UUID siteId) {
+        RegistryState st = registryState(siteId);
+        return st == null ? null : st.revision();
     }
 }

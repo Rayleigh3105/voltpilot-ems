@@ -55,6 +55,7 @@ public class EntityStatusListener {
     private final String password;
     private final DeviceRepository devices;
     private final EntityObservedRepository observed;
+    private final com.voltpilot.api.components.ComponentApplyRepository componentApply;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -63,12 +64,14 @@ public class EntityStatusListener {
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
-            DeviceRepository devices, EntityObservedRepository observed) {
+            DeviceRepository devices, EntityObservedRepository observed,
+            com.voltpilot.api.components.ComponentApplyRepository componentApply) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.observed = observed;
+        this.componentApply = componentApply;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -207,9 +210,37 @@ public class EntityStatusListener {
                 return;
             }
             observed.replaceForDevice(deviceId, tenantId, siteId, reportedAt, rows);
+            ingestComponentApply(entities.get("component_apply"), deviceId, tenantId, siteId,
+                    reportedAt);
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * Der Einheitsmodell-Stufe-1-Block: WELCHE Push-Revision die Box wirklich
+     * angewandt hat, und was sie zuletzt NICHT anwenden konnte.
+     *
+     * <p><b>Abwesend heißt unbekannt.</b> Eine ältere Box sendet den Block gar
+     * nicht - dann entsteht KEINE Zeile, und das Portal sagt „unbekannt" statt
+     * „box-verwaltet" zu behaupten. Ein Wort außerhalb des Vokabulars wird
+     * VERWORFEN statt gespeichert (die Regel des unbekannten Zustands, die
+     * jeder Status-Zuhörer hier trägt).
+     */
+    private void ingestComponentApply(JsonNode block, UUID deviceId, UUID tenantId, UUID siteId,
+            Instant reportedAt) {
+        if (block == null || !block.isObject()) {
+            return;
+        }
+        String authority = block.path("authority").asText("");
+        if (!"portal".equals(authority) && !"box".equals(authority)) {
+            log.warn("component_apply authority '{}' unknown - skipped", authority);
+            return;
+        }
+        componentApply.upsert(deviceId, tenantId, siteId, authority,
+                textOrNull(block, "revision"), optInstant(block, "applied_at"),
+                textOrNull(block, "refused_revision"), textOrNull(block, "refused_reason"),
+                reportedAt);
     }
 
     private static String textOrNull(JsonNode node, String field) {

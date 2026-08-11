@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
@@ -108,6 +109,14 @@ func (a *Agent) applyEntityRegistry(reg entities.Registry) {
 	a.rebuildFlexRequirements(reg)
 	slog.Info("v2 entity registry applied", "revision", reg.Revision,
 		"entities", len(reg.Entities))
+	// Einheitsmodell Stufe 1 - the ONE applier: on a PORTAL-managed plant the
+	// local device configuration (inverter selection + sources.json) is DERIVED
+	// from this push. Deliberately last: the v2 layer above is already
+	// consistent and persisted, so a refusal here can never leave the registry
+	// half-applied. A box-managed plant (every plant that exists today, and
+	// every push from an older cloud) returns immediately - see
+	// agent/component_apply.go.
+	a.applyComponentsFromRegistry(reg)
 }
 
 // publishEntityConfigs republishes the persisted per-entity retained configs
@@ -280,7 +289,32 @@ func (a *Agent) entitiesSummary() *cloud.EntitiesSummary {
 	// The E2 per-entity decision map (holder/granted/all_match) is built
 	// outside entMu - it reads the arbiter and the readback records.
 	sum.Arbitration = a.arbitrationSummary()
+	// Einheitsmodell Stufe 1: the applier's own Ist. Only present once this
+	// plant is portal-managed, so a box-managed plant's heartbeat keeps its
+	// exact pre-Stufe-1 bytes.
+	sum.ComponentApply = a.componentApplySummary()
 	return sum
+}
+
+// componentApplySummary reports WHO owns this plant's device configuration and
+// which push revision the box really derived its local files from. nil on a
+// box-managed plant - a field that is absent can only ever be read as "this box
+// does not do that", which is exactly the truth there.
+func (a *Agent) componentApplySummary() *cloud.ComponentApplySummary {
+	rec := a.componentRecord()
+	if rec.Authority != componentapply.AuthorityPortal {
+		return nil
+	}
+	out := &cloud.ComponentApplySummary{
+		Authority:       rec.Authority,
+		Revision:        rec.Revision,
+		RefusedRevision: rec.Refused,
+		RefusedReason:   rec.RefusedReason,
+	}
+	if !rec.AppliedAt.IsZero() {
+		out.AppliedAt = rec.AppliedAt.UTC().Format(time.RFC3339)
+	}
+	return out
 }
 
 // localSetupSummary reports the edge-authoritative commissioning view (the

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.components.ComponentAuthority;
 import com.voltpilot.api.entities.EntityRegistryRepository.BatteryAsset;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.repo.AssetRepository;
@@ -483,7 +484,8 @@ public class EntityRegistryService {
         // best-effort publish fails or MQTT is not configured (the Soll
         // changed regardless; retained delivery converges later).
         Instant now = clock.instant();
-        byte[] payload = composePush(tenantId, siteId, gateway, now, repo.entitiesForSite(siteId));
+        byte[] payload = composePush(tenantId, siteId, gateway, now, repo.entitiesForSite(siteId),
+                repo.componentAuthority(siteId));
         repo.upsertRegistryState(siteId, tenantId, gateway, now.toString());
         EntityRegistryPublisher pub = publisher.getIfAvailable();
         if (pub == null) {
@@ -618,7 +620,7 @@ public class EntityRegistryService {
         // Compose the entity config from the catalog (same as the bootstrap).
         if (TYPE_PRODUCER.equals(entityType)) {
             EntityRow probe = new EntityRow(pointId, role, label, null, null, null, null, null,
-                    capacity, null, false, null, null, null, edgeSourceId);
+                    capacity, null, false, null, null, null, edgeSourceId, null, null, null, 1);
             repo.setEntityConfig(pointId, TYPE_PRODUCER, write(producerCapabilities(probe)),
                     write(producerGuards(probe)));
             // Only the DELTA on a re-compose - the aggregate still carries what
@@ -944,6 +946,11 @@ public class EntityRegistryService {
     /** The registry_push payload (edge-entity.schema.json $defs/registry_push). */
     byte[] composePush(UUID tenantId, UUID siteId, UUID deviceId, Instant now,
             List<EntityRow> rows) {
+        return composePush(tenantId, siteId, deviceId, now, rows, null);
+    }
+
+    byte[] composePush(UUID tenantId, UUID siteId, UUID deviceId, Instant now,
+            List<EntityRow> rows, String componentAuthority) {
         ObjectNode push = mapper.createObjectNode();
         push.put("schema_version", "1.0");
         push.put("tenant_id", tenantId.toString());
@@ -951,6 +958,14 @@ public class EntityRegistryService {
         push.put("device_id", deviceId.toString());
         push.put("revision", now.toString());
         push.put("published_at", now.toString());
+        // Einheitsmodell Stufe 1: WER die Geräte-Konfiguration dieser Anlage
+        // besitzt. Nur ein ausdrückliches "portal" macht die Box zum Ausführenden
+        // - ABWESEND heißt box, damit ein älterer Cloud-Stand nie versehentlich
+        // als Übernahme gelesen werden kann. Deshalb wird das Feld auch nur dann
+        // gesetzt: eine box-verwaltete Anlage sendet exakt die Bytes von vorher.
+        if (ComponentAuthority.isPortalManaged(componentAuthority)) {
+            push.put("component_authority", ComponentAuthority.PORTAL);
+        }
         // The consumer cycle-guard limits (min-on/min-off/starts per day) live
         // in consumer_profile - the ONE profile truth - and ride the push as
         // guards.limits fields (D-9: limits live in registry config, never in

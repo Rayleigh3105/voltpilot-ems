@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "3a17c0de99b41f26",
+  "answered_at": "2026-08-16T09:12:03Z",
+  "results": [
+    {
+      "id": "wechselrichter",
+      "ok": true,
+      "reading": {
+        "pv_kw": 12.4,
+        "load_kw": 3.1,
+        "grid_kw": -8.9,
+        "soc_pct": 87
+      }
+    }
+  ]
+}
