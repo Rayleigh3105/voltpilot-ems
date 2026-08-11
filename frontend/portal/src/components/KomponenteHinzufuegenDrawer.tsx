@@ -4,6 +4,10 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { Input } from '../../designsystem/components/forms/Input';
 import { api, ApiError, type ComponentTemplate, type SiteComponents } from '../api';
+// Der Assistent bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
+// auf den Import des Wirts zu verlassen liefert einem zweiten Wirt einen
+// ungestylten Assistenten - Türen als nackte Knöpfe, die Schritte als <ol>.
+import './KomponenteAssistent.css';
 import {
   ABSCHLUSS_HINWEIS,
   ROLLEN,
