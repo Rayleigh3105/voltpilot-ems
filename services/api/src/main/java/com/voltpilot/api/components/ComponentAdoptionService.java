@@ -90,7 +90,21 @@ public class ComponentAdoptionService {
     private final com.fasterxml.jackson.databind.ObjectMapper mapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
+    /**
+     * Das {@code @Autowired} ist TRAGEND (die BrokerAuthzReloader-Falle): mit
+     * der paket-sichtbaren Test-Naht darunter und ohne Annotation kann Spring
+     * keinen Injektions-Konstruktor wählen und die api startet gar nicht.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public ComponentAdoptionService(EntityRegistryRepository entityRepo,
+            EntityObservedRepository observed, ComponentDefinitionRepository definitions,
+            ComponentTemplateRepository templates, EntityRegistryService entityRegistry,
+            AssetRepository assets) {
+        this(entityRepo, observed, definitions, templates, entityRegistry, assets,
+                Clock.systemUTC());
+    }
+
+    ComponentAdoptionService(EntityRegistryRepository entityRepo,
             EntityObservedRepository observed, ComponentDefinitionRepository definitions,
             ComponentTemplateRepository templates, EntityRegistryService entityRegistry,
             AssetRepository assets, Clock clock) {
@@ -192,7 +206,7 @@ public class ComponentAdoptionService {
         String label = item.label() == null ? template.modelLabel() : item.label();
 
         UUID entityId = resolvePoint(siteId, tenantId, item, label);
-        String connJson = item.connectionJson();
+        String connJson = withInterval(item.connectionJson(), item.intervalS());
         String sourceKind = BuiltinComponentTemplates.KIND_CERTIFIED.equals(template.kind())
                 ? BuiltinComponentTemplates.KIND_CERTIFIED : BuiltinComponentTemplates.KIND_BUILTIN;
 
@@ -205,6 +219,38 @@ public class ComponentAdoptionService {
         definitions.recordVersion(tenantId, siteId, entityId, version, item.role(), label,
                 template.brand(), template.model(), template.family(), template.communication(),
                 connJson, sourceKind, template.templateRef(), template.version(), ACTOR, NOTE);
+    }
+
+    /**
+     * Legt die Lese-Kadenz IN die gespeicherte Verbindung.
+     *
+     * <p>Das ist keine Bequemlichkeit, sondern die Angleichung an den
+     * Anlege-Weg: {@code ComponentService.driverConnection} legt sie seit Stufe
+     * 1 genau dort ab, und {@code EntityRegistryService.driverBlock} HEBT sie
+     * von dort auf die Treiber-Ebene, wo die Box sie liest. Schriebe die
+     * Übernahme sie woandershin, hätte dieselbe Anlage je nach Entstehungsweg
+     * eine andere Kadenz - und die übernommene verlöre die gepflegte.
+     *
+     * <p>Die Kopie in der Verbindung ist harmlos: die Box ignoriert unbekannte
+     * Verbindungsfelder, und ihre Quellen-Identität hängt nicht daran.
+     */
+    private String withInterval(String connectionJson, Integer intervalS) {
+        if (intervalS == null || intervalS <= 0) {
+            return connectionJson;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(connectionJson);
+            if (!node.isObject()) {
+                return connectionJson;
+            }
+            ((com.fasterxml.jackson.databind.node.ObjectNode) node).put("interval_s", intervalS);
+            return mapper.writeValueAsString(node);
+        } catch (Exception e) {
+            // Eine unlesbare Verbindung kann es hier nicht geben (sie kam als
+            // JSON aus der Datenbank) - und wenn doch, wird sie unverändert
+            // durchgereicht statt verworfen.
+            return connectionJson;
+        }
     }
 
     /** Die Zeile, in die diese übernommene Komponente gehört. */

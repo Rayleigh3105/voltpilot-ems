@@ -252,6 +252,21 @@ voltpilot:
       enabled: ${VOLTPILOT_ENTITIES_BACKFILL_ENABLED:true}
       reconcile-enabled: ${VOLTPILOT_ENTITIES_BACKFILL_RECONCILE_ENABLED:true}
       interval-ms: ${VOLTPILOT_ENTITIES_BACKFILL_INTERVAL_MS:300000}
+  # Einheitsmodell Stufe 2: die BESTANDS-ÜBERNAHME läuft AUTOMATISCH
+  # (Captain-Entscheid E2). Sobald eine box-verwaltete Anlage ihren
+  # Einrichtungs-Stand VOLLSTÄNDIG meldet - also nach dem Box-Update, das die
+  # Verbindungsfelder mitschickt -, wird er als Soll übernommen und die
+  # Autorität dreht auf `portal`. Auf der Box ist das ein No-op (die
+  # Quellen-Kennungen sind deterministisch), es wandert nur der
+  # Bearbeitungs-Ort. `enabled` ist der Not-Aus für das ganze Feature (Start-Lauf
+  # UND Takt), `reconcile-enabled` schaltet NUR den Takt (im Testlauf aus, in
+  # PRODUKTION an - siehe ComponentsSchedulingConfig). Der Rückweg ist die
+  # Admin-Route .../v2-entities/revert-to-device.
+  components:
+    adoption:
+      enabled: ${VOLTPILOT_COMPONENTS_ADOPTION_ENABLED:true}
+      reconcile-enabled: ${VOLTPILOT_COMPONENTS_ADOPTION_RECONCILE_ENABLED:true}
+      interval-ms: ${VOLTPILOT_COMPONENTS_ADOPTION_INTERVAL_MS:300000}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's
