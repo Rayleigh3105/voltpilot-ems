@@ -115,6 +115,19 @@ tags:
       consumer-options + CRUD + policy GET/PUT only; a policy is stored as a
       DRAFT (no compiler / optimizer / edge command yet, so every surface reports
       "Steuerung noch nicht aktiviert").
+  - name: probe
+    description: >
+      Probe-Kanal (Einheitsmodell Stufe 0b): a one-shot "read these registers on
+      my plant, once" - the groundwork every live preview and connection test of
+      the later component assistant will run on. The route publishes a
+      NON-retained request on the device's own v2/probe topic (contract
+      docs/contracts/mqtt-probe.schema.json), waits a few seconds for the
+      answer on v2/probe-result and persists NOTHING. Tenant-scoped like every
+      site endpoint (foreign site = 404 via RLS). It is a READ: the contract's
+      reserved switch_test op belongs to the later release wizard and is
+      refused by the box itself with an honest not_supported. Every rule that
+      can stop a device from being touched - private target, expiry, rate
+      limit - lives ON THE BOX, which is the only party that knows its own LAN.
   - name: flows
     description: >
       Customer flow editor (E3b "Kunden-Freigabe"): a Portal-User builds,
@@ -4170,6 +4183,47 @@ paths:
               schema: { $ref: "#/components/schemas/ConsumerSchedule" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/modbus-probe:
+    post:
+      tags: [probe]
+      summary: Read registers on this plant's device ONCE and show what came back.
+      description: >
+        Einheitsmodell Stufe 0b. The api publishes a NON-retained probe on
+        ems/{tenant}/{site}/{device}/v2/probe (contract
+        docs/contracts/mqtt-probe.schema.json) and waits ~5 s for the device's
+        answer; nothing is stored on either side.
+
+
+        Honesty rules the response carries: a successful line has raw AND value
+        side by side (the pair that makes a scaling mistake visible) plus the
+        raw 16-bit register words; a failed line carries a NAMED German class
+        and no value at all - never a fabricated 0. A device that does not
+        answer in time yields errorCode `timeout` with HTTP 200: that is an
+        honest outcome the assistant renders, not an error.
+
+
+        Which device is asked is never guessed - `deviceId` is optional only
+        while the plant has exactly one device; several devices without a
+        choice is a named 409.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProbeRequest" }
+      responses:
+        "200":
+          description: >
+            The device's answer, or the honest timeout/rate-limit outcome.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProbeResult" }
+        "400": { description: The request form is not readable (validation). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or device not found for this tenant. }
+        "409": { description: The plant has no device, or several and none was chosen. }
+        "503": { description: The plant could not be reached to ask at all. }
   /api/v1/sites/{siteId}/consumer-status:
     get:
       tags: [consumer]
@@ -4377,6 +4431,114 @@ components:
             "relay_state" = relay readback only (Stufe 3, energy
             "angenommen"), null = unbound draft or created before this field
             existed.
+    ProbeRequest:
+      type: object
+      required: [ops]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: >
+            Which of the plant's devices to ask. Optional only while the plant
+            has exactly one - several devices without a choice is a 409, because
+            guessing which box sits on the right LAN segment is not something
+            this api will invent.
+        ops:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items: { $ref: "#/components/schemas/ProbeOp" }
+      example:
+        ops:
+          - id: soc
+            host: 192.168.0.28
+            registerKind: holding
+            address: 588
+            dataType: u16
+    ProbeOp:
+      type: object
+      required: [id, host, registerKind, address, dataType]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,31}$"
+          description: >
+            Maps the answer back onto this question, so it must be unique within
+            the request (the box refuses a duplicate BY NAME).
+        host:
+          type: string
+          maxLength: 253
+          description: >
+            The device's address in the customer's own network. The BOX enforces
+            that it is private (RFC1918/loopback/link-local/ULA/.local) and
+            refuses a public address with a plain-German reason - it does not
+            take the cloud's word for where it may knock.
+        port: { type: integer, minimum: 1, maximum: 65535, default: 502 }
+        unitId: { type: integer, minimum: 0, maximum: 255, default: 1 }
+        registerKind:
+          type: string
+          enum: [holding, input]
+          description: holding = Modbus FC3, input = FC4.
+        address:
+          type: integer
+          minimum: 0
+          maximum: 65535
+          description: >
+            0-BASED. The 4xxxx notation of many manuals means 4-0001 + address;
+            that conversion belongs to the surface, not to this contract.
+        dataType:
+          type: string
+          enum: [u16, s16, u32, s32, float32]
+          description: >
+            Also decides HOW MANY register words are read (1 or 2) - there is
+            deliberately no free quantity field, because a wrong word count
+            returns half a number that looks perfectly plausible.
+        wordOrder: { type: string, enum: [big, little], default: big }
+        scale:
+          type: number
+          description: >
+            DISPLAY only - value = raw * scale + offset. It never changes what is
+            read; the answer carries raw and value side by side.
+        offset: { type: number }
+    ProbeResult:
+      type: object
+      required: [requestId, results]
+      properties:
+        requestId: { type: string }
+        errorCode:
+          type: string
+          enum: [invalid_request, unreachable, no_answer, invalid_response, implausible, timeout, not_supported, rate_limited]
+          description: >
+            Set only when the WHOLE probe was refused (the plant did not answer
+            in time, or its own rate limit bit); `results` is then empty and the
+            reason is stated once.
+        message: { type: string, description: The plain-German sentence. }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/ProbeOpResult" }
+    ProbeOpResult:
+      type: object
+      required: [id, ok]
+      properties:
+        id: { type: string }
+        ok: { type: boolean }
+        raw:
+          type: number
+          description: >
+            The RAW register value before scaling - the number that makes a
+            scaling mistake visible. Absent when the step failed.
+        registers:
+          type: array
+          maxItems: 2
+          items: { type: integer }
+          description: The 16-bit words, so a wrong word order is visible and not merely wrong.
+        value:
+          type: number
+          description: raw * scale + offset. Absent when the step failed - a failure never carries a value.
+        errorCode:
+          type: string
+          enum: [invalid_request, unreachable, no_answer, invalid_response, implausible, timeout, not_supported, rate_limited]
+        message: { type: string }
     ConsumerRuntimeStatus:
       type: object
       description: >

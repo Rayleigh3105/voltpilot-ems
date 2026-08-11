@@ -858,6 +858,41 @@ envelope — implemented exactly:
 - **The verdict is only trustworthy from a QUIET baseline + a LANDED write (fm/vp-deye-sign-fix-v6, 2026-07-25).** Two live-Pilsting defects: (1) `Verdict` judged the ABSOLUTE measured battery power, so the battery's NATURAL activity (a ~31 kW PV-surplus charge) produced a confident verdict unrelated to the command. `calibration.Verdict` now flags `BaselineBusy` (no confident sign/scale) when `|before| > max(0.1, 0.5·|cmd|)` or the baseline is unknown - a ToU command sets absolute power, so absolute-after is fine ONLY from a near-idle baseline. The card also gates the "hat die Batterie sich bewegt?" ROW on `write_readback_ok` for the CURRENT test and marks an idle-phase (stale) test "nicht mehr aktuell" - a stale/never-landed test never shows a confident row again. This makes `CanConfirm*`/`CanCertify` STRICTER, never looser. (2) The MEASURED battery sign was INVERTED - see the read-sign footgun in the Deye-control-WRITE section.
 - **A proven result stays confirmable for a grace window; the test ladder scales to the inverter; the mutations can be admin-gated (fm/vp-calib-ux-t6, 2026-07-27).** Live-pilot UX fixes on the working remote-mode path. (1) **Grace window (Defect 1):** the evidence gate is unchanged (a confirmation still needs a readback-matched test with an OBSERVED same-direction movement), but the movement is a fact about the DEVICE, not about whether the bounded command is still active. `calibration.Session` now LATCHES the best attributable movement while active (`ObserveReading`, also called from `Snapshot`) and keeps it confirmable for `ConfirmGrace` (3 min) after the test auto-reverts - before this the ~2 s revert locked the boxes instantly. `ConfirmSign/ConfirmScale` take `now` (not the live `after`) and confirm against the captured evidence; it invalidates on a new test, abort, disarm, correction (`ResetConfirmations` clears it) or expiry (`ErrEvidenceExpired`). Snapshot carries `evidence_valid`/`evidence_age_seconds`; the card shows "Ergebnis des letzten Tests (vor N s)". `StartTest` now also resets prior confirmations (a new test = fresh proof). (2) **Rated-relative ladder (Defect 2):** `TestStepsForRated(ratedKw, maxKw)` offers ~1/3/5 % of nameplate (rounded 0,1 kW, capped by the authoritative `VP_CALIBRATION_MAX_KW`); on a 30 kW unit 0,3 kW (~1 %) moved nothing. Rated comes from `inverter.Selection.RatedKw` (already published). `NextStepAbove` names the next larger rung in the not-moving hint; unknown rated -> fixed fallback + a card note. (3) **Admin gate (owner scope-change):** `VP_CALIBRATION_ADMIN_SECRET` (`config.CalibrationAdminSecret`) - when set, ONLY the calibration mutation endpoints require the `X-VP-Calibration-Token` header (constant-time compared in the `calGuard` wrapper in `web.go`, 401 before the handler); GET + every other surface stay open; empty = open (non-bricking default). The card prompts for it (sessionStorage, tab-scoped). The TTL/watchdog/magnitude-cap/kill-switch safety net is independent of the token. Proofs: `calibration_test.go` (grace confirm/expiry/invalidation, ladder, next-step), `web_test.go TestCalibrationAdminGate`.
 
+## Probe-Kanal: eine Vorschau darf dem Poll nie den Socket wegnehmen (Stufe 0b)
+
+Vollstaendiges Bild (Vertrag, api-Route, Regeln): root `AGENTS.md` „Probe-Kanal".
+Was HIER gelten muss:
+
+- **`internal/probe` ist die REINE Haelfte** (kein Socket, kein Bus, keine Uhr -
+  jede zeitabhaengige Funktion nimmt `now`, das
+  otaapply/calibration/curtailcal-Muster); `agent/probe.go` ist ausschliesslich
+  die Verdrahtung. Wer eine Regel ergaenzt, ergaenzt sie dort - dann ist sie
+  ohne einen einzigen Container pruefbar.
+- **⚠ Der CORE oeffnet KEINEN eigenen Modbus-Socket.** Die Lesung geht ueber den
+  lokalen Bus (`edge/probe/request|result`) an den Palette-Knoten
+  `vp-modbus-probe`, weil dort `lib/modbus-conn.js` wohnt: EIN in-flight-Vorgang
+  je (host, port) ueber ALLE vp-modbus-Knoten hinweg. Viele Kundengeraete
+  (Solarman-Logger, billige Gateways) bedienen genau einen TCP-Client und
+  verdraengen den laufenden - eine Vorschau mit eigener Verbindung waere also
+  nicht „eine Lesung mehr", sondern der Abbruch des Polls genau des Geraets, auf
+  das der Kunde gerade schaut. `TestProbeNeverDialsTheDeviceFromTheCore` haelt
+  das an einem echten Listener fest, der NIE verbunden werden darf.
+- **Der Knoten ist selbststaendig** (0 Ein-/Ausgaenge, keine Verdrahtung im Tab
+  „Verbindung testen") und traegt KEINE eingebettete Kopie - anders als der
+  test-read-Funktionsknoten gibt es hier also nichts, was driften koennte. Seine
+  Ops laufen NACHEINANDER (sie zielen meist auf dasselbe Geraet; parallel liesse
+  der Fehlschlag eines Schritts den seiner Nachbarn aussehen).
+- **Die Fehler-Klassifikation keyt auf die GESCHLOSSENE Fehlermenge der zwei
+  Module, die uns gehoeren** (`modbus-conn` + `parseReadResponse`) - nicht auf
+  unscharfe Regex ueber errno-Texte. Wird eine dieser Meldungen umformuliert,
+  faellt das in `probe_spec.js` auf, nicht beim Kunden.
+- **Nur Lesen.** Der im Vertrag vorgesehene `switch_test` wird vom CORE mit
+  `not_supported` abgelehnt und erreicht den Bus gar nicht - es gibt auf diesem
+  Pfad keinen Schreibbefehl.
+- Palette **0.6.0**. Die Version hebt nur an, was das Geraet MELDET, also
+  erfuellt sie jede bestehende `min_palette_version` weiterhin; der Knoten ist
+  kein flowc-Katalogtyp, es aendert sich also kein gepinnter Hash.
+
 ## vp-modbus-read (MB-M1): generic Modbus flow read + the shared connection manager
 
 Palette **0.3.0** adds `nodes/vp-modbus-read.js` (catalog type `vp.modbus.read`): a

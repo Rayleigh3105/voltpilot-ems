@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "9f2c41ab77d0e315",
+  "requested_at": "2026-08-11T09:12:00Z",
+  "requested_by": "a1b2c3d4-0000-0000-0000-000000000009",
+  "ops": [
+    {
+      "op": "read",
+      "id": "soc",
+      "transport": "modbus_tcp",
+      "host": "192.168.0.28",
+      "port": 502,
+      "unit_id": 1,
+      "register_kind": "holding",
+      "address": 588,
+      "data_type": "u16"
+    },
+    {
+      "op": "read",
+      "id": "wasser-oben",
+      "transport": "modbus_tcp",
+      "host": "192.168.0.44",
+      "register_kind": "input",
+      "address": 100,
+      "data_type": "s32",
+      "word_order": "little",
+      "scale": 0.1,
+      "offset": -273.15
+    }
+  ]
+}

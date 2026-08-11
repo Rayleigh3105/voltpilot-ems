@@ -41,6 +41,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/shelly"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -226,6 +227,18 @@ type Agent struct {
 	// bus handler never blocks even if the handler already timed out and left.
 	testMu    sync.Mutex
 	testReads map[string]chan testconn.Result
+
+	// probeReads correlates an in-flight Probe-Kanal round-trip
+	// (edge/probe/request -> Node-RED -> edge/probe/result) to the waiting
+	// cloud handler by request id - the same machinery as testReads, on its own
+	// topic pair because a probe reads FREE registers while a test-read reads a
+	// catalog selection. probeLimiter bounds how often this box knocks on a
+	// customer's device on the cloud's behalf (internal/probe).
+	probeMu      sync.Mutex
+	probeReads   map[string]chan []probeBusResult
+	probeLimiter *probe.Limiter
+	// probePublish is the test seam for the cloud answer (nil = the real link).
+	probePublish func(payload []byte) error
 
 	link       *cloud.Link
 	linkCancel context.CancelFunc // cancels the current link's heartbeat goroutine
@@ -474,6 +487,8 @@ func New(cfg config.Config) (*Agent, error) {
 		srcReadings:  map[string]sourceReading{},
 		entReadings:  map[string]entReading{},
 		testReads:    map[string]chan testconn.Result{},
+		probeReads:   map[string]chan []probeBusResult{},
+		probeLimiter: probe.NewLimiter(probe.DefaultRateWindow, probe.DefaultRateBudget),
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
 		envelope:     guards.NewEnvelope(),
 		peak:         guards.NewPeakTracker(),
@@ -642,6 +657,11 @@ func (a *Agent) Start(ctx context.Context) error {
 	// One-shot "Verbindung testen" results from Node-RED (edge/test-read/result),
 	// correlated to the waiting HTTP handler by request id.
 	if err := bus.Subscribe(localbus.TopicTestReadResult, 5, a.onTestReadResult); err != nil {
+		return err
+	}
+	// Probe-Kanal results from Node-RED (edge/probe/result), correlated to the
+	// waiting cloud handler by request id (agent/probe.go).
+	if err := bus.Subscribe(localbus.TopicProbeResult, 11, a.onProbeBusResult); err != nil {
 		return err
 	}
 	// Per-node flow state (Portal v3 M5 Part C, additive + feature-flagged):
@@ -1020,6 +1040,9 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// Portal-Apply: die EINMALIGE Freigabe, jetzt anzuwenden. NICHT
 		// retained - siehe ota_apply_downlink.go.
 		OnApplyRequest: a.onApplyRequest,
+		// Probe-Kanal: die NICHT-retained Einmal-Anfrage, ein Geraet im
+		// Kunden-LAN einmal zu lesen - siehe probe.go.
+		OnProbeRequest: a.onProbeRequest,
 		OnControlCert:  a.onControlCert,
 		// Verbrauchssteuerung §11/§14.13: der manuelle Eingriff. NICHT retained -
 		// siehe override.go.

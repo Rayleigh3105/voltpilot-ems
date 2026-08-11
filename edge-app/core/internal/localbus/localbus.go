@@ -125,6 +125,16 @@ const (
 	// the poll's raw register blocks up, the mirror's learned want set down.
 	TopicRegistersRaw  = "edge/registers/raw"
 	TopicRegistersWant = "edge/registers/want"
+	// TopicProbeRequest/Result are the Probe-Kanal pair (Einheitsmodell Stufe
+	// 0b, contract docs/contracts/mqtt-probe.schema.json): the core hands the
+	// ALREADY-VALIDATED read steps of a cloud probe down, vp-modbus-probe reads
+	// them through the SHARED per-target connection manager (the one queue that
+	// also serializes vp-modbus-read - a preview must never take the running
+	// poll's socket) and answers here. Non-retained in both directions: a stale
+	// preview must not linger on the bus. Read-only - there is no write op on
+	// this pair, and the contract's reserved switch_test never reaches it.
+	TopicProbeRequest = "edge/probe/request"
+	TopicProbeResult  = "edge/probe/result"
 )
 
 // Bus wraps the embedded broker.
