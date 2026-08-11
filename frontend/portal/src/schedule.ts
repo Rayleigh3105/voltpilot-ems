@@ -17,6 +17,7 @@
 import type { Kernaussage } from './chartKopf';
 import { storageMark, type StorageMark } from './chartStyle';
 import type { ChartTheme } from './chartTheme';
+import { proofAnchor } from './fleet';
 import { eurAmount, fmtNum, NBSP } from './format';
 
 /** Matches the chart's "hält" deadband (0.05 kW) so tiny solver noise stays idle. */
@@ -773,6 +774,42 @@ export function todaySlots<T extends { start: string }>(slots: T[], now: Date): 
   return slots.filter((s) => new Date(s.start).toDateString() === day);
 }
 
+/** Was der Fahrplan für heute an Geld vorsieht - drei Zahlen EINER Rechnung. */
+export interface PlannedDayCosts {
+  /** Geplante Stromkosten mit VoltPilot (signierte Kosten, negativ = Erlös). */
+  actualEur: number;
+  /** Dieselben Slots ohne Speicher (signierte Kosten). */
+  baselineEur: number;
+  /** `baselineEur - actualEur` - die Ersparnis, also die DIFFERENZ der zwei. */
+  savedEur: number;
+}
+
+/**
+ * Die drei Geld-Zahlen des heutigen Plans, über die GLEICHE Slot-Menge
+ * gerechnet: nur Viertelstunden, die BEIDE Kosten tragen.
+ *
+ * ⚠ Genau darin liegt der Punkt. Die Ersparnis über den Slots mit beiden
+ * Werten zu summieren, den Anker aber über alle Slots MIT Baseline, mischt
+ * zwei verschiedene Zeitfenster in einen Vergleich - dieselbe Äpfel-Birnen-
+ * Klasse wie „Ersparnis gegen Kosten". Es gibt deshalb nur diese eine
+ * Ableitung, und der Anker rechnet nie eigenständig nach.
+ *
+ * Null, wenn keine Viertelstunde von heute Kosten trägt - „kein Fahrplan"
+ * darf nie als ±0,00 € erscheinen.
+ */
+export function plannedDayCosts(
+  slots: { start: string; costEur: number | null; baselineCostEur: number | null }[],
+  now: Date,
+): PlannedDayCosts | null {
+  const priced = todaySlots(slots, now).filter(
+    (s) => s.costEur != null && s.baselineCostEur != null,
+  );
+  if (priced.length === 0) return null;
+  const actualEur = priced.reduce((sum, s) => sum + (s.costEur ?? 0), 0);
+  const baselineEur = priced.reduce((sum, s) => sum + (s.baselineCostEur ?? 0), 0);
+  return { actualEur, baselineEur, savedEur: baselineEur - actualEur };
+}
+
 /**
  * Today's planned saving vs. the no-battery baseline, summed over the slots
  * with cost data. Null when no slot of today carries costs - "no plan" must
@@ -782,22 +819,50 @@ export function savingsTodayEur(
   slots: { start: string; costEur: number | null; baselineCostEur: number | null }[],
   now: Date,
 ): number | null {
-  const priced = todaySlots(slots, now).filter(
-    (s) => s.costEur != null && s.baselineCostEur != null,
-  );
-  if (priced.length === 0) return null;
-  return priced.reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
+  return plannedDayCosts(slots, now)?.savedEur ?? null;
+}
+
+/**
+ * Der Halbsatz, der die Zahl BENENNT - mit ihrer Richtung im WORT, nie im
+ * Vorzeichen (die `proofLine`/`bankedValueLine`-Disziplin des Hauses: Beträge
+ * sind absolut, die Beschriftung trägt die Richtung).
+ *
+ * Eine negative Ersparnis ist ein realer Fall (der Fahrplan legt Energie in
+ * den Folgetag, oder er hat an diesem Tag wirklich Geld gekostet) und wird
+ * hier ausgesprochen, nie als Gewinn getönt - der Ton bleibt dafür `calm`.
+ */
+export function plannedSavingLabel(kind: PlanWordingKind, savedEur: number): string {
+  if (savedEur >= 0) {
+    return kind === 'direktvermarktung'
+      ? 'verdient der Fahrplan heute mehr'
+      : 'spart der Fahrplan heute ein';
+  }
+  return kind === 'direktvermarktung'
+    ? 'holt der Fahrplan heute weniger heraus als eine ungeregelte Anlage'
+    : 'kostet der Fahrplan heute mehr als ohne Speicher';
+}
+
+/** Kleinschreibung des ersten Zeichens, damit ein Satz eingebettet werden kann. */
+function lowerFirst(s: string): string {
+  return s.length > 0 ? s[0].toLowerCase() + s.slice(1) : s;
 }
 
 /**
  * K1/M11 · Die KERNAUSSAGE des Fahrplan-Diagramms — die Zahl, die zählt, plus
  * ihr Satz, plus der Vergleichsanker (K8).
  *
- * ⚠ Sie ist ZUSAMMENGESETZT, nicht neu gerechnet: der Satz ist
- * {@link planSentence}, die Zahl {@link savingsTodayEur}, der Anker die schon
- * persistierte Baseline derselben Slots. Es entsteht hier KEINE zweite
- * Wahrheit — genau das ist die Auflage aus r2 §10, weil ein falsch
- * abgeleiteter Satz schlimmer wäre als kein Satz.
+ * ⚠ Sie ist ZUSAMMENGESETZT, nicht neu gerechnet: die Aktivität ist
+ * {@link planSentence}, die Zahlen sind {@link plannedDayCosts}, der Anker ist
+ * das `fleet.proofAnchor`-Paar. Es entsteht hier KEINE zweite Wahrheit — genau
+ * das ist die Auflage aus r2 §10, weil ein falsch abgeleiteter Satz schlimmer
+ * wäre als kein Satz.
+ *
+ * ⚠ DIE REGEL, an der die zwei Felder hängen (Kundenbefund 11.08.2026): der
+ * ANKER vergleicht dieselbe Größe wie sich selbst - Kosten gegen Kosten -, und
+ * der SATZ benennt, dass die Zahl darüber die ERSPARNIS ist. Vorher stand über
+ * „Ohne Speicher wären es 1,90 €." die Ersparnis 0,35 €, was sich las, als
+ * mache der Speicher es schlechter. Beide Zahlen waren richtig, der Vergleich
+ * war es nicht. Wer hier eine Zahl ergänzt, sagt dazu, WAS sie ist.
  *
  * Ohne planbare Aussage bleibt `satz` null und `grund` trägt den ehrlichen
  * Grund — nie ein erfundener Satz, nie eine erfundene 0.
@@ -808,8 +873,8 @@ export function planKernaussage(
   now: Date,
   slotMinutes = 15,
 ): Kernaussage {
-  const satz = planSentence(slots, kind, now, slotMinutes);
-  if (satz == null) {
+  const aktivitaet = planSentence(slots, kind, now, slotMinutes);
+  if (aktivitaet == null) {
     return {
       wert: null,
       satz: null,
@@ -817,23 +882,23 @@ export function planKernaussage(
       ton: 'calm',
     };
   }
-  const saved = savingsTodayEur(slots, now);
-  const heute = todaySlots(slots, now).filter((s) => s.baselineCostEur != null);
-  const baseline = heute.length
-    ? heute.reduce((sum, s) => sum + (s.baselineCostEur ?? 0), 0)
-    : null;
+  const geld = plannedDayCosts(slots, now);
+  // Eine Ersparnis unter dem Totband ist Solver-Rauschen, keine Aussage: dann
+  // bleibt es bei der reinen Aktivität, ohne Zahl und ohne Anker (ein Paar
+  // ohne Kopfzahl wäre Rauschen, kein Beleg).
+  const zaehlt = geld != null && Math.abs(geld.savedEur) >= BANKED_DEADBAND_EUR;
+  if (!zaehlt) {
+    return { wert: null, satz: aktivitaet, grund: null, ton: 'calm', anker: null };
+  }
+  const { savedEur, baselineEur, actualEur } = geld;
   return {
-    // Eine Ersparnis unter dem Totband ist Solver-Rauschen, keine Aussage.
-    wert: saved != null && Math.abs(saved) >= BANKED_DEADBAND_EUR ? eurAmount(saved) : null,
-    satz,
+    wert: eurAmount(Math.abs(savedEur)),
+    satz: `${plannedSavingLabel(kind, savedEur)} — ${lowerFirst(aktivitaet)}`,
     grund: null,
-    ton: saved != null && saved > BANKED_DEADBAND_EUR ? 'ok' : 'calm',
-    // K8: keine Zahl ohne Vergleichsanker. Die Baseline („dieselbe Anlage,
-    // Speicher untätig") liegt je Slot im Plan - sie wird nur nie gezeigt.
-    anker:
-      saved != null && baseline != null && Math.abs(saved) >= BANKED_DEADBAND_EUR
-        ? `Ohne Speicher wären es ${eurAmount(baseline)}.`
-        : null,
+    ton: savedEur > 0 ? 'ok' : 'calm',
+    // K8: keine Zahl ohne Vergleichsanker - und der Anker ist das exakte Paar,
+    // dessen DIFFERENZ die Zahl oben ist.
+    anker: proofAnchor(kind, baselineEur, actualEur),
   };
 }
 

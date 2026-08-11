@@ -39,7 +39,7 @@
 
 import type { HistoryBucket, PlantKind, SiteEarningsBucket } from './api';
 import { eurAmount, fmtNum } from './format';
-import { proofLine } from './fleet';
+import { proofAnchor } from './fleet';
 import { PANELS3 } from './chartStyle';
 import type { Kernaussage } from './chartKopf';
 
@@ -379,8 +379,7 @@ export function ohneSpeicherAnker(
   const { baselineEur, actualEur } = geld;
   if (baselineEur == null || actualEur == null) return null;
   if (!Number.isFinite(baselineEur) || !Number.isFinite(actualEur)) return null;
-  const p = proofLine(plantKind, baselineEur, actualEur);
-  return `${p.mitLabel} ${eurAmount(p.mitEur)} · ${p.ohneLabel} ${eurAmount(p.ohneEur)}.`;
+  return proofAnchor(plantKind, baselineEur, actualEur);
 }
 
 /**
