@@ -726,8 +726,13 @@ describe('ScheduleChart · die Geometrie der Chart-Sprache', () => {
     const kopf = document.querySelector('.vp-chart-kern');
     expect(kopf).not.toBeNull();
     expect(kopf!.textContent).toContain('verkaufen');
-    // K8: keine Zahl ohne Vergleichsanker.
-    expect(kopf!.textContent).toContain('Ohne Speicher');
+    // K8: keine Zahl ohne Vergleichsanker - und der Anker vergleicht KOSTEN
+    // gegen KOSTEN, während der Satz die Zahl darüber als Ersparnis benennt
+    // (Kundenbefund 11.08.2026: „0,35 € … Ohne Speicher wären es 1,90 €" las
+    // sich, als mache der Speicher es schlechter).
+    expect(kopf!.textContent).toContain('verdient der Fahrplan heute mehr');
+    expect(kopf!.textContent).toContain('Stromkosten mit VoltPilot');
+    expect(kopf!.textContent).toContain('Ungeregelt wären es');
   });
 
   it('sagt ohne Fahrplan für heute den ehrlichen GRUND statt eines Satzes (K1)', () => {

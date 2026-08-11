@@ -147,6 +147,26 @@ export function proofLine(kind: FleetKind, baselineEur: number, actualEur: numbe
 }
 
 /**
+ * Der K8-Vergleichsanker als EIN Satz: das exakte `proofLine`-PAAR, beide
+ * Seiten beschriftet.
+ *
+ * ⚠ Ein Anker vergleicht IMMER dieselbe Größe. Eine einseitige Formulierung
+ * („Ohne Speicher wären es 1,90 €.") bezieht ihr „es" stillschweigend auf die
+ * Zahl darüber - steht dort eine ERSPARNIS, vergleicht der Satz Ersparnis
+ * gegen Kosten und liest sich, als mache der Speicher es schlechter (echter
+ * Kundenbefund auf der Fahrplan-Seite, 11.08.2026). Deshalb gibt es hier nur
+ * das Paar; wer einen Anker braucht, nimmt diese Funktion.
+ */
+export function proofAnchor(
+  kind: FleetKind,
+  baselineEur: number,
+  actualEur: number,
+): string {
+  const p = proofLine(kind, baselineEur, actualEur);
+  return `${p.mitLabel} ${eurAmount(p.mitEur)} · ${p.ohneLabel} ${eurAmount(p.ohneEur)}.`;
+}
+
+/**
  * Hero fine print for the measured number - plain German, says what the number
  * is (measured values x exchange prices vs. the unregulated plant), handles
  * the Marktprämie for fleets with Direktvermarktung, and dates a "Gesamt" view

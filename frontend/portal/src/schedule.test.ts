@@ -35,6 +35,7 @@ import {
   planStreifenSkala,
   planStreifenTicks,
   planInsightParts,
+  plannedDayCosts,
   planKernaussage,
   planSentence,
   planStaleNote,
@@ -329,6 +330,34 @@ describe('todaySlots / savingsTodayEur', () => {
     expect(
       savingsTodayEur([{ ...slot(10, 0, 2), costEur: null, baselineCostEur: null }], NOW),
     ).toBeNull();
+  });
+
+  it('plannedDayCosts liefert die drei Zahlen EINER Rechnung', () => {
+    const slots = [
+      { ...slot(10, 0, 2), costEur: 0.55, baselineCostEur: 0.9 },
+      { ...slot(11, 0, 2), costEur: 1.0, baselineCostEur: 1.0 },
+    ];
+    const g = plannedDayCosts(slots, NOW)!;
+    expect(g.actualEur).toBeCloseTo(1.55, 10);
+    expect(g.baselineEur).toBeCloseTo(1.9, 10);
+    // Die Ersparnis ist die DIFFERENZ der zwei gezeigten Zahlen, nie eine
+    // eigenständige dritte Größe.
+    expect(g.savedEur).toBeCloseTo(g.baselineEur - g.actualEur, 10);
+    expect(savingsTodayEur(slots, NOW)).toBeCloseTo(g.savedEur, 10);
+  });
+
+  it('plannedDayCosts überspringt eine halbe Zeile - beide Summen über DIESELBEN Slots', () => {
+    const slots = [
+      { ...slot(10, 0, 2), costEur: 0.55, baselineCostEur: 0.9 },
+      { ...slot(11, 0, 2), costEur: null, baselineCostEur: 7.0 },
+    ];
+    const g = plannedDayCosts(slots, NOW)!;
+    expect(g.baselineEur).toBeCloseTo(0.9, 10);
+    expect(g.actualEur).toBeCloseTo(0.55, 10);
+  });
+
+  it('plannedDayCosts ist null ohne bepreiste Viertelstunde', () => {
+    expect(plannedDayCosts([], NOW)).toBeNull();
   });
 });
 
@@ -922,14 +951,77 @@ describe('planKernaussage', () => {
   it('setzt Satz, Zahl und Vergleichsanker aus den vorhandenen Ableitungen zusammen', () => {
     const slots = [slot(12, 5, 0.1, 0.6), slot(19, -5, 0.2, 0.9)];
     const k = planKernaussage(slots, 'direktvermarktung', new Date());
-    // Der Satz IST planSentence - keine zweite Formulierung.
-    expect(k.satz).toBe(planSentence(slots, 'direktvermarktung', new Date()));
+    // Die Aktivität IST planSentence - keine zweite Formulierung; sie wird nur
+    // hinter dem Halbsatz eingebettet, der die Zahl benennt.
+    const aktivitaet = planSentence(slots, 'direktvermarktung', new Date())!;
+    expect(k.satz).toContain(aktivitaet[0].toLowerCase() + aktivitaet.slice(1));
     expect(k.satz).toContain('verkaufen');
     expect(k.wert).toBe(eurAmount(savingsTodayEur(slots, new Date()) ?? 0));
-    // K8: keine Zahl ohne Vergleichsanker - die Baseline liegt im Plan.
-    expect(k.anker).toContain('Ohne Speicher');
+    // K8: keine Zahl ohne Vergleichsanker - die Baseline liegt im Plan. Eine
+    // Direktvermarktungs-Anlage vergleicht sich per proofLine mit der
+    // UNGEREGELTEN Anlage, nicht mit einer fehlenden Batterie.
+    expect(k.anker).toContain('Stromkosten mit VoltPilot');
+    expect(k.anker).toContain('Ungeregelt wären es');
     expect(k.grund).toBeNull();
     expect(k.ton).toBe('ok');
+  });
+
+  /**
+   * Der behobene Kundenbefund (11.08.2026): über „Ohne Speicher wären es
+   * 1,90 €." stand die ERSPARNIS 0,35 € - Ersparnis gegen Kosten, was sich
+   * las, als mache der Speicher es schlechter.
+   */
+  it('vergleicht Kosten gegen Kosten und benennt die Zahl als Ersparnis', () => {
+    // Kosten mit VoltPilot 1,55 €, ohne Speicher 1,90 € => Ersparnis 0,35 €.
+    const slots = [slot(12, 5, 0.55, 0.9), slot(19, -5, 1.0, 1.0)];
+    const k = planKernaussage(slots, 'eigenverbrauch', new Date());
+    expect(k.wert).toBe(eurAmount(0.35));
+    expect(k.satz).toContain('spart der Fahrplan heute ein');
+    // Beide Seiten des Ankers sind KOSTEN, beide beschriftet, und ihre
+    // Differenz ist genau die Zahl oben.
+    expect(k.anker).toBe(
+      `Stromkosten mit VoltPilot ${eurAmount(1.55)} · Ohne Speicher wären es ${eurAmount(1.9)}.`,
+    );
+    // Der alte, einseitige Wortlaut darf nicht zurückkommen.
+    expect(k.anker).not.toMatch(/^Ohne Speicher wären es/);
+  });
+
+  it('nennt eine negative Ersparnis ehrlich und tönt sie nie als Gewinn', () => {
+    // Kosten mit VoltPilot 2,40 €, ohne Speicher 1,90 € => -0,50 €.
+    const slots = [slot(12, 5, 1.4, 0.9), slot(19, -5, 1.0, 1.0)];
+    const k = planKernaussage(slots, 'eigenverbrauch', new Date());
+    // Der Betrag ist absolut, die Richtung steht im Wort.
+    expect(k.wert).toBe(eurAmount(0.5));
+    expect(k.wert).not.toContain('-');
+    expect(k.satz).toContain('kostet der Fahrplan heute mehr als ohne Speicher');
+    expect(k.ton).toBe('calm');
+    expect(k.anker).toBe(
+      `Stromkosten mit VoltPilot ${eurAmount(2.4)} · Ohne Speicher wären es ${eurAmount(1.9)}.`,
+    );
+  });
+
+  it('folgt der Veräußerungsform auch im Halbsatz zur Zahl', () => {
+    const slots = [slot(12, 5, 0.1, 0.6), slot(19, -5, 0.2, 0.9)];
+    expect(planKernaussage(slots, 'direktvermarktung', new Date()).satz).toContain(
+      'verdient der Fahrplan heute mehr',
+    );
+    const teuer = [slot(12, 5, 1.4, 0.9), slot(19, -5, 1.0, 1.0)];
+    expect(planKernaussage(teuer, 'direktvermarktung', new Date()).satz).toContain(
+      'weniger heraus als eine ungeregelte Anlage',
+    );
+  });
+
+  it('rechnet Wert UND Anker über DIESELBEN Slots', () => {
+    // Der zweite Slot trägt nur eine Baseline - er gehört in keine der beiden
+    // Zahlen, sonst verglichen sie verschiedene Zeitfenster.
+    const slots = [
+      slot(12, 5, 0.55, 0.9),
+      { start: heute(19), batteryKw: -5, gridKw: -1, costEur: null, baselineCostEur: 7.0 },
+    ];
+    const k = planKernaussage(slots, 'eigenverbrauch', new Date());
+    expect(k.wert).toBe(eurAmount(0.35));
+    expect(k.anker).toContain(eurAmount(0.9));
+    expect(k.anker).not.toContain(eurAmount(7.9));
   });
 
   it('sagt ohne Fahrplan den ehrlichen GRUND statt eines erfundenen Satzes', () => {
@@ -956,6 +1048,9 @@ describe('planKernaussage', () => {
     expect(k.wert).toBeNull();
     expect(k.anker).toBeNull();
     expect(k.ton).toBe('calm');
+    // Ohne Zahl bleibt es bei der reinen Aktivität - kein benennender Halbsatz
+    // zu einer Zahl, die gar nicht dasteht.
+    expect(k.satz).toBe(planSentence(slots, 'eigenverbrauch', new Date()));
   });
 
   it('folgt der Veräußerungsform im Wortlaut', () => {
