@@ -1,0 +1,39 @@
+{
+  "$comment": "Die GETEILTEN Vektoren der LAN-only-Regel (vp-modbus-baukasten-k6 §2.6): welcher Host-String sich aus sich selbst heraus als 'im eigenen Netz' BELEGEN lässt. Drei Zwillinge lesen diese Datei PER PFAD und müssen je Fall dasselbe Urteil fällen - Go edge-app/core/internal/probe.IsPrivateHost (kanonisch, die Box glaubt der Cloud nichts), Java services/api .../components/SelfBuildDefinition.isPrivateHost, TS frontend/portal/src/selbstbau.ts isPrivateHost. Wer die Regel ändert, ändert alle drei Seiten UND diese Datei zusammen - das ist das Muster von topology-vectors.json / consumer-policy-vectors.json / goe-control-vectors.json.",
+  "$rationale": "Es ist eine WHITELIST der Formen, die wir prüfen können, keine Blacklist der schlechten Ziele: eine Blacklist ist eine Adressklasse davon entfernt, falsch zu sein, und ohne die Regel wäre der Baukasten ein Portscanner, den ein Portal-Fehler aufs offene Internet richten könnte. Ein NACKTER Hostname ist deshalb abgelehnt, obwohl das Bequemlichkeit kostet: er wird über die Suchdomänen der Box aufgelöst, ist also aus der Zeichenkette nicht als privat nachweisbar - die Ablehnung nennt dafür den Weg (die IP eintragen).",
+  "private": [
+    { "host": "192.168.0.28", "why": "RFC1918 192.168/16" },
+    { "host": "10.0.7.19", "why": "RFC1918 10/8" },
+    { "host": "172.16.5.4", "why": "RFC1918 172.16/12 untere Kante" },
+    { "host": "172.31.255.255", "why": "RFC1918 172.16/12 obere Kante" },
+    { "host": "127.0.0.1", "why": "loopback" },
+    { "host": "169.254.10.10", "why": "link-local 169.254/16" },
+    { "host": "100.72.0.1", "why": "CGNAT 100.64/10 - echte Kunden-Router vergeben sie, öffentlich nie routbar" },
+    { "host": "::1", "why": "IPv6 loopback" },
+    { "host": "fd00::1", "why": "IPv6 unique local fc00::/7" },
+    { "host": "fe80::1", "why": "IPv6 link local fe80::/10" },
+    { "host": "[fd00::5]", "why": "IPv6 in Klammern, wie aus einem URL-förmigen Feld" },
+    { "host": "wr1.local", "why": "mDNS-Endung" },
+    { "host": "logger.lan", "why": "Router-Endung" },
+    { "host": "box.home.arpa", "why": "Heimnetz-Endung" },
+    { "host": "gw.internal", "why": "Heimnetz-Endung" },
+    { "host": "192.168.0.28.", "why": "voll qualifizierter Name mit Schlusspunkt" }
+  ],
+  "public": [
+    { "host": "1.1.1.1", "why": "öffentlicher Auflöser" },
+    { "host": "8.8.8.8", "why": "öffentlicher Auflöser" },
+    { "host": "172.32.0.1", "why": "eine Adresse ÜBER dem RFC1918-Block 172.16/12" },
+    { "host": "9.255.255.255", "why": "eine Adresse UNTER dem RFC1918-Block 10/8" },
+    { "host": "100.128.0.1", "why": "über der CGNAT-Obergrenze 100.127.x" },
+    { "host": "2001:4860:4860::8888", "why": "öffentliche IPv6" },
+    { "host": "example.com", "why": "öffentlicher Name" },
+    { "host": "portal.voltpilot.de", "why": "unsere eigene Cloud ist kein LAN-Ziel" },
+    { "host": "", "why": "leer" },
+    { "host": "   ", "why": "nur Leerraum" },
+    { "host": "http://192.168.0.1", "why": "eine URL ist kein Host" },
+    { "host": "192.168.0.1:502", "why": "Port gehört ins eigene Feld" },
+    { "host": "user@192.168.0.1", "why": "Zugangsdaten-Form" },
+    { "host": "wechselrichter", "why": "NACKTER Name - über Suchdomänen aufgelöst, also nicht nachweisbar privat" },
+    { "host": "logger", "why": "NACKTER Name" }
+  ]
+}
