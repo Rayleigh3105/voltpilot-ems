@@ -138,6 +138,20 @@ public class EntityRegistryRepository {
     }
 
     /**
+     * The Anbindungs-Herkunft of every row the automatic composition creates
+     * (Einheitsmodell Stufe 0a, column {@code measurement_point.source_kind}):
+     * these rows come from the site's v1 MASTER DATA, not from a component
+     * template - so they carry no {@code template_ref} and never will.
+     *
+     * <p>Stamped ONLY where the composition CREATES a row. An older composed row
+     * keeps {@code source_kind = NULL} = honestly "unknown" (it was made before
+     * the concept existed); it is deliberately not retro-stamped from the
+     * refresh path, because that same path also refreshes ADOPTED producer rows,
+     * which are not composed - a blanket stamp there would mislabel them.
+     */
+    public static final String SOURCE_KIND_COMPOSED = "composed";
+
+    /**
      * Create the battery-hybrid registry row for the primary inverter
      * (control = TRUE; since E1b control is granted per the type catalog's
      * controllable flag - the v1 control-only-battery CHECK and the
@@ -145,9 +159,10 @@ public class EntityRegistryRepository {
      */
     public UUID createBatteryHybridPoint(UUID tenantId, UUID siteId, String label, UUID deviceId) {
         return jdbc.queryForObject(
-                "INSERT INTO measurement_point (tenant_id, site_id, role, label, device_id, control) "
-                        + "VALUES (?, ?, 'battery-hybrid', ?, ?, TRUE) RETURNING id",
-                UUID.class, tenantId, siteId, label, deviceId);
+                "INSERT INTO measurement_point (tenant_id, site_id, role, label, device_id, "
+                        + "control, source_kind) "
+                        + "VALUES (?, ?, 'battery-hybrid', ?, ?, TRUE, ?) RETURNING id",
+                UUID.class, tenantId, siteId, label, deviceId, SOURCE_KIND_COMPOSED);
     }
 
     /** The site's measurement point of this role, or null when none exists. */
@@ -168,9 +183,10 @@ public class EntityRegistryRepository {
     public UUID createComposedPoint(UUID tenantId, UUID siteId, String role, String label,
             UUID deviceId) {
         return jdbc.queryForObject(
-                "INSERT INTO measurement_point (tenant_id, site_id, role, label, device_id, control) "
-                        + "VALUES (?, ?, ?, ?, ?, FALSE) RETURNING id",
-                UUID.class, tenantId, siteId, role, label, deviceId);
+                "INSERT INTO measurement_point (tenant_id, site_id, role, label, device_id, "
+                        + "control, source_kind) "
+                        + "VALUES (?, ?, ?, ?, ?, FALSE, ?) RETURNING id",
+                UUID.class, tenantId, siteId, role, label, deviceId, SOURCE_KIND_COMPOSED);
     }
 
     /** One entity row of the site, or null (RLS: a foreign site yields null). */

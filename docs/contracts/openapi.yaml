@@ -72,6 +72,17 @@ tags:
       shared derivation is the Go/TS/Java twin
       (docs/contracts/v2/topology-read-model.md). Role ASSIGNMENT is
       platform-admin-only.
+  - name: templates
+    description: >
+      Komponenten-VORLAGEN (Einheitsmodell Stufe 0a, "Vorlagen werden Daten"):
+      the device catalog the LATER one-assistant renders its brand/model choice
+      from. Read-only in this stage and consumed by NOTHING yet - the surfaces
+      still render the edge-side Go catalog. Authenticated + tenant-agnostic
+      (the register is global platform data like edge_release /
+      provisioned_device, no tenant_id, no RLS); the fence is the ORIGIN filter -
+      only `builtin` + `certified` are served, never a `custom` (private
+      per-Anlage) template, which has no tenant fence until Stufe 3. Managing
+      templates (create/version) is Stufe 6 and does not exist here.
   - name: profile
     description: >
       Nutzungsprofil / EMS-Modus (AE7, the second adaptation axis): the usage
@@ -3057,6 +3068,52 @@ paths:
         "400": { description: Bad range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Entity/site not found. }
+  /api/v1/component-templates:
+    get:
+      tags: [templates]
+      summary: The component templates the later add-component assistant renders from.
+      description: >
+        Einheitsmodell Stufe 0a. Newest version per template_ref, sorted by
+        brand then model. ONLY the public origins (`builtin` + `certified`) are
+        served - a `custom` template (private per Anlage, Stufe 3) has no tenant
+        fence on this global table and is therefore never returned.
+        Authenticated, not admin-gated (a template is the device choice the
+        customer sees, not internals). An EMPTY list means the register is empty
+        (the startup mirror did not run), never "there are no devices".
+      responses:
+        "200":
+          description: The public templates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ComponentTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/component-templates/{templateRef}:
+    get:
+      tags: [templates]
+      summary: One component template (newest version).
+      description: >
+        Unknown AND non-public answer identically with 404, so the route never
+        reveals whether a key exists (the enrollment "pending == unknown"
+        discipline).
+      parameters:
+        - name: templateRef
+          in: path
+          required: true
+          description: >
+            The stable, OPAQUE template key (built-in templates use
+            `builtin:<brand>:<model>`). Never parse it - brand/model ride as
+            their own fields.
+          schema: { type: string, pattern: "^[a-z0-9][a-z0-9._:-]{0,127}$" }
+      responses:
+        "200":
+          description: The template.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComponentTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Unknown or non-public template. }
   /api/v1/flow-catalog:
     get:
       tags: [flows]
@@ -4181,6 +4238,87 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    ComponentTemplate:
+      type: object
+      description: >
+        ONE component template (Einheitsmodell Stufe 0a). Built-in templates are
+        the cloud-side DATA rendering of the edge Go catalog
+        (edge-app/core/internal/inverter DefaultCatalog()); the Go catalog stays
+        the truth about what a box can actually read.
+      properties:
+        templateRef:
+          type: string
+          example: "builtin:deye:sun-30k-sg01hp3"
+          description: Stable, OPAQUE key - never parse it.
+        kind: { type: string, enum: [builtin, certified], description: Where the template comes from. }
+        version:
+          type: integer
+          example: 1
+          description: >
+            Definition version. Built-in templates stay at 1 - their version IS
+            the edge software release, not a separate count.
+        brand: { type: string, example: deye }
+        brandLabel: { type: string, example: Deye }
+        model: { type: string, example: sun-30k-sg01hp3 }
+        modelLabel: { type: string, example: SUN-30K-SG01HP3-EU }
+        family:
+          type: string
+          nullable: true
+          example: hybrid_3p
+          description: The decode-profile reference - the bridge to the code that executes it.
+        familyLabel: { type: string, nullable: true }
+        communication: { type: string, example: solarman_v5 }
+        communicationLabel: { type: string, nullable: true }
+        transportSchema:
+          type: array
+          description: >
+            The connection form of this communication - the generic field
+            vocabulary {key,label,type,required,default,help,options}.
+          items: { type: object }
+        channels:
+          type: array
+          nullable: true
+          description: >
+            Channel definitions (register -> plain-text measurement). NULL means
+            "this template does not explain its channels HERE", never "it has
+            none" - a built-in template's channels live in the edge decode
+            profile, so it always carries null. `[]` would be the flat lie that a
+            Deye delivers no measurements.
+          items: { type: object }
+        writes:
+          type: array
+          nullable: true
+          description: >
+            Write definitions (SCHEMA ONLY in this stage - nothing consumes
+            them): register + constants (on_off) or the min/max clamp + safe
+            value (setpoint). NULL by the same rule as `channels` - a built-in
+            template's write path is the control adapter, released by the
+            platform register inverter_control_certification.
+          items: { type: object }
+        ratedKw:
+          type: number
+          nullable: true
+          example: 30
+          description: Nameplate kW. NULL = unknown in the catalog, never 0.
+        controlTier:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: >
+            The brand's declared control PRIMITIVE. It AUTHORIZES NOTHING -
+            kill-switch, certification register and per-plant arming decide
+            whether a write ever goes out.
+        certificationStatus:
+          type: string
+          enum: [builtin, certified, in_certification, not_certified]
+          description: >
+            What the platform vouches for - a DIFFERENT question from `kind`.
+            `builtin` = ships with the edge software (deliberately not
+            "certified", which belongs to the bench).
+        certifiedAt: { type: string, format: date-time, nullable: true }
+        certificationNote: { type: string, nullable: true }
+        note: { type: string, nullable: true, description: Display text for the assistant. }
+        updatedAt: { type: string, format: date-time, nullable: true }
     Consumer:
       type: object
       description: A controllable consumer's master data + control-activation state.
