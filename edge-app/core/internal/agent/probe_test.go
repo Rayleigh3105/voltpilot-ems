@@ -594,3 +594,36 @@ func TestProbeContractExampleIsExecutedAsSpecified(t *testing.T) {
 		t.Fatalf("the fixture's scaling must be applied: %+v", res.Results[1].Value)
 	}
 }
+
+// ⚠ THE ROUTER MUST NOT BLOCK. The cloud link runs paho with
+// SetOrderMatters(true), so incoming downlinks are dispatched SEQUENTIALLY on
+// one goroutine: a probe that waited out its local-bus round trip there would
+// stall the plan, the entity registry, the flow deployment and the OTA
+// assignment for as long as a customer's device stays silent.
+func TestProbeHandlerReturnsImmediatelyEvenWhileTheReadIsPending(t *testing.T) {
+	old := probeExchangeTimeout
+	// Comfortably shorter than the answer wait below, so the assertion is about
+	// the ROUTER returning fast and never about a race between two deadlines.
+	probeExchangeTimeout = 400 * time.Millisecond
+	t.Cleanup(func() { probeExchangeTimeout = old })
+
+	box := startProbeBox(t)
+	seen := make(chan probeBusRequest, 1)
+	probeStub(t, box.addr, seen, nil) // records, never answers
+
+	started := time.Now()
+	box.a.onProbeRequest(probeEnvelope(t, nil))
+	elapsed := time.Since(started)
+
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("the link's message router was blocked for %v - every other "+
+			"downlink would have waited that long", elapsed)
+	}
+	// ...and the work really did happen, so this is not a vacuous test.
+	if req := <-seen; len(req.Ops) != 1 {
+		t.Fatalf("the read still has to reach the flow: %+v", req)
+	}
+	if res := box.answer(t); res == nil || res.Results[0].ErrorCode != probe.ErrTimeout {
+		t.Fatalf("and the answer still arrives: %+v", res)
+	}
+}

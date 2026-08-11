@@ -91,7 +91,20 @@ type probeBusResponse struct {
 	Results   []probeBusResult `json:"results"`
 }
 
-// onProbeRequest handles ONE probe from the cloud.
+// onProbeRequest is the cloud link's handler. It runs the CHEAP gate here and
+// hands the rest to its own goroutine.
+//
+// ⚠ That split is not tidiness, it is required: the link is configured with
+// paho's SetOrderMatters(true), so incoming messages are dispatched
+// SEQUENTIALLY on one router goroutine. Blocking here for the length of a
+// local-bus round trip would stall EVERY other downlink for that time - the
+// plan, the entity registry, the flow deployment, the OTA assignment, the
+// one-shot apply approval. A preview must never be able to do that.
+//
+// What stays synchronous is exactly what costs nothing and must not spawn
+// anything: parsing, the identity and expiry checks, and the rate limit. So a
+// malformed, foreign, expired or throttled request never starts a goroutine at
+// all, and the limiter doubles as the bound on how many can ever be in flight.
 func (a *Agent) onProbeRequest(payload []byte) {
 	now := time.Now()
 	req, err := probe.Parse(payload)
@@ -119,11 +132,17 @@ func (a *Agent) onProbeRequest(payload []byte) {
 	}
 	if a.probeLimiter != nil && !a.probeLimiter.Allow(now) {
 		slog.Warn("Probe: Ratenbegrenzung greift", "request_id", req.RequestID)
-		a.publishProbeResult(probe.Refused(req, id, now,
+		go a.publishProbeResult(probe.Refused(req, id, now,
 			probe.ErrRateLimited, probe.RateLimitedMessage))
 		return
 	}
+	go a.runProbe(req, id)
+}
 
+// runProbe executes an ADMITTED probe: per-op admission, the bounded local-bus
+// round trip, and the one answer. Off the link's router goroutine (see
+// onProbeRequest).
+func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 	// Admission per op. The verdicts keep the request's ORDER, so the answer
 	// reads like the question - a refused step stays in its place instead of
 	// disappearing from the list.
