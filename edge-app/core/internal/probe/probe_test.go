@@ -465,3 +465,97 @@ func TestValidateOpsAddsTheCrossOpUniquenessRule(t *testing.T) {
 		t.Fatalf("no ops, no verdicts")
 	}
 }
+
+// --- Stufe 1: der Verbindungstest, verallgemeinert auf ALLE Transporte ------
+
+func TestTestConnectionCarriesTheSamePrivateTargetRuleAsARegisterRead(t *testing.T) {
+	// Die Regel existiert, damit ein Portal-Fehler die Flotte nie zu einem
+	// Portscanner macht - welcher Op-Typ fragt, ist ihr egal.
+	code, msg := ValidateOp(Op{
+		Op: OpTestConnection, ID: "verbindung", Brand: "deye",
+		Connection: []byte(`{"ip":"8.8.8.8","port":8899}`),
+	})
+	if code != ErrInvalidRequest || !strings.Contains(msg, "eigenen Netz") {
+		t.Fatalf("code=%q msg=%q", code, msg)
+	}
+	code, _ = ValidateOp(Op{
+		Op: OpTestConnection, ID: "verbindung", Brand: "deye",
+		Connection: []byte(`{"ip":"192.168.0.28","port":8899}`),
+	})
+	if code != "" {
+		t.Fatalf("ein privates Ziel muss durchgehen, code=%q", code)
+	}
+}
+
+func TestTestConnectionRefusesWhatItCannotEvenAddress(t *testing.T) {
+	cases := []struct {
+		name string
+		op   Op
+		want string
+	}{
+		{"ohne Marke", Op{Op: OpTestConnection, ID: "a",
+			Connection: []byte(`{"ip":"192.168.0.5"}`)}, "Marke"},
+		{"ohne Verbindung", Op{Op: OpTestConnection, ID: "a", Brand: "deye"}, "Verbindungsdaten"},
+		{"ohne Adresse", Op{Op: OpTestConnection, ID: "a", Brand: "deye",
+			Connection: []byte(`{"port":8899}`)}, "Adresse"},
+		// Ein NACKTER Hostname laesst sich aus der Zeichenkette nicht als
+		// privat belegen - dieselbe Whitelist-Disziplin wie beim Register-Read.
+		{"nackter Hostname", Op{Op: OpTestConnection, ID: "a", Brand: "deye",
+			Connection: []byte(`{"ip":"wechselrichter"}`)}, "eigenen Netz"},
+	}
+	for _, c := range cases {
+		code, msg := ValidateOp(c.op)
+		if code != ErrInvalidRequest || !strings.Contains(msg, c.want) {
+			t.Fatalf("%s: code=%q msg=%q", c.name, code, msg)
+		}
+	}
+}
+
+func TestConnectionHostNeverReportsAnEmptyStringAsATarget(t *testing.T) {
+	if h, ok := ConnectionHost([]byte(`{"ip":"  "}`)); ok || h != "" {
+		t.Fatalf("h=%q ok=%v", h, ok)
+	}
+	if _, ok := ConnectionHost([]byte(`kein json`)); ok {
+		t.Fatal("unlesbare Verbindungsdaten nennen kein Ziel")
+	}
+	h, ok := ConnectionHost([]byte(`{"ip":"192.168.0.28","port":8899}`))
+	if !ok || h != "192.168.0.28" {
+		t.Fatalf("h=%q ok=%v", h, ok)
+	}
+}
+
+func TestTheTestConnectionContractFixturesParseAndAdmit(t *testing.T) {
+	raw, err := os.ReadFile(contractPath("mqtt-probe.valid.test-connection.json"))
+	if err != nil {
+		t.Fatalf("Fixture: %v", err)
+	}
+	req, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(req.Ops) != 1 || req.Ops[0].Op != OpTestConnection || req.Ops[0].Brand != "deye" {
+		t.Fatalf("ops = %+v", req.Ops)
+	}
+	if v := ValidateOps(req.Ops); !v[0].OK() {
+		t.Fatalf("die Fixture muss zugelassen werden: %+v", v[0])
+	}
+
+	raw, err = os.ReadFile(contractPath("mqtt-probe.valid.test-connection-result.json"))
+	if err != nil {
+		t.Fatalf("Ergebnis-Fixture: %v", err)
+	}
+	var res Result
+	if err := json.Unmarshal(raw, &res); err != nil {
+		t.Fatalf("Ergebnis unlesbar: %v", err)
+	}
+	if len(res.Results) != 1 || !res.Results[0].OK || res.Results[0].Reading == nil ||
+		res.Results[0].Reading.PvKw == nil || *res.Results[0].Reading.PvKw != 12.4 {
+		t.Fatalf("Ergebnis = %+v", res.Results)
+	}
+	// Ein Kanal, den das Geraet nicht meldet, FEHLT - er ist nie 0.
+	line := SucceededReading("verbindung", &Reading{PvKw: res.Results[0].Reading.PvKw})
+	out, _ := json.Marshal(line)
+	if strings.Contains(string(out), "load_kw") {
+		t.Fatalf("ein nicht gemeldeter Kanal darf nicht in den Draht: %s", out)
+	}
+}
