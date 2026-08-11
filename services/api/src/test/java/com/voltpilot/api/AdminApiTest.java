@@ -123,6 +123,9 @@ class AdminApiTest {
     com.voltpilot.api.entities.EntityObservedRepository entityObservedRepo;
 
     @Autowired
+    com.voltpilot.api.components.ComponentApplyRepository componentApplyRepo;
+
+    @Autowired
     com.voltpilot.api.entities.V2SiteBackfillRunner backfillRunner;
 
     // ---- (a) admin creates a tenant + a customer user -----------------------
@@ -2332,7 +2335,7 @@ class AdminApiTest {
         // plus the edge-local commissioning view. The battery is deliberately
         // absent from the report (not yet applied on the device).
         var listener = new com.voltpilot.api.entities.EntityStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo, componentApplyRepo);
         String topic = "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/status";
         String heartbeat = "{"
                 + "\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantId + "\","
@@ -2439,7 +2442,7 @@ class AdminApiTest {
         // The edge reports two local sources: a go-e wallbox (consumer) and an
         // AC-coupled PV (producer). Neither has a matching entity yet.
         var listener = new com.voltpilot.api.entities.EntityStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo, componentApplyRepo);
         String topic = "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/status";
         String heartbeat = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantId + "\","
                 + "\"site_id\":\"" + siteId + "\",\"device_id\":\"" + deviceId + "\","
