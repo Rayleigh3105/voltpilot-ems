@@ -176,10 +176,10 @@ const HELP_ITEM: SidebarItem = {
 
 function footItems(): SidebarItem[] {
   return [
-    // Steuerbare Verbraucher (docs/verbrauchssteuerung.md §14.1): a bookmarkable
-    // per-Anlage area, reachable on EVERY Anlage (like Einstellungen) rather
-    // than a permanent main nav entry. Keeps the base group the fixed areas.
-    { key: 'verbraucher', label: 'Verbraucher', icon: 'zap', target: { kind: 'sub', sub: 'verbraucher' }, badge: null },
+    // Der frühere Fuß-Eintrag „Verbraucher" ist mit dem Einheitsmodell
+    // (Stufe 5a) ERSATZLOS entfallen: die Regeln eines Verbrauchers wohnen in
+    // der Kapsel „Regeln" der Steuerung, das Gerät selbst im Anlagen-Modell.
+    // Die Route bleibt als Weiterleitung erhalten (`nav.ts` LEGACY_SUBS).
     { key: 'technik', label: 'Einstellungen', icon: 'settings', target: { kind: 'sub', sub: 'technik' }, badge: null },
     HELP_ITEM,
   ];

@@ -23,7 +23,6 @@ const ALL_SUBS: AnlagenSub[] = [
   'modell',
   'steuerung',
   'lastspitzen',
-  'verbraucher',
 ];
 
 /**

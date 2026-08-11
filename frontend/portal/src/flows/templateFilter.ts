@@ -110,25 +110,33 @@ export function missingReason(
   return `Dafür fehlt Ihrer Anlage noch ${list}.`;
 }
 
-export interface NotFittingTemplate {
-  template: CustomerTemplateDef;
+/**
+ * Alles, was der Filter von einem Angebot braucht: seine Rollen-Voraussetzung.
+ * Bewusst STRUKTURELL statt auf `CustomerTemplateDef` festgenagelt — seit dem
+ * Einheitsmodell (Stufe 5a) benutzt die REZEPT-Galerie denselben Filter, und
+ * zwei Kopien derselben Ausblend-Regel wären zwei Wahrheiten.
+ */
+export type FilterableOffer = Pick<CustomerTemplateDef, 'requiresRoles'>;
+
+export interface NotFittingTemplate<T extends FilterableOffer = CustomerTemplateDef> {
+  template: T;
   /** Was fehlt — die Zeile, die an der eingeblendeten Karte steht. */
   reason: string;
 }
 
-export interface TemplatePartition {
-  fitting: CustomerTemplateDef[];
-  notFitting: NotFittingTemplate[];
+export interface TemplatePartition<T extends FilterableOffer = CustomerTemplateDef> {
+  fitting: T[];
+  notFitting: NotFittingTemplate<T>[];
 }
 
-/** Vorlagen in „passt" und „passt (noch) nicht" trennen. */
-export function partition(
-  templates: CustomerTemplateDef[],
+/** Vorlagen/Rezepte in „passt" und „passt (noch) nicht" trennen. */
+export function partition<T extends FilterableOffer>(
+  templates: T[],
   plant: PlantModel,
-): TemplatePartition {
+): TemplatePartition<T> {
   const have = plantRoles(plant);
-  const fitting: CustomerTemplateDef[] = [];
-  const notFitting: NotFittingTemplate[] = [];
+  const fitting: T[] = [];
+  const notFitting: NotFittingTemplate<T>[] = [];
   for (const template of templates ?? []) {
     const reason = missingReason(template, have);
     if (reason == null) fitting.push(template);
@@ -138,15 +146,33 @@ export function partition(
 }
 
 /**
- * Die gezählte Aufklapp-Zeile („2 weitere passen nicht zu Ihrer Anlage").
- * Null, wenn alles passt — dann gibt es nichts zu verstecken.
+ * Der Wortlaut der gezählten Aufklapp-Zeile. Bewusst ganze SÄTZE statt eines
+ * eingesetzten Substantivs: „1 weitere Vorlage" und „1 weiteres Rezept" haben
+ * verschiedene Artikel, ein Satzbaukasten würde also falsches Deutsch erzeugen.
  */
-export function hiddenDisclosure(part: TemplatePartition): string | null {
+export interface DisclosureWorte {
+  eins: string;
+  viele: (n: number) => string;
+}
+
+const VORLAGEN_WORTE: DisclosureWorte = {
+  eins: '1 weitere Vorlage passt nicht zu Ihrer Anlage',
+  viele: (n) => `${n} weitere Vorlagen passen nicht zu Ihrer Anlage`,
+};
+
+/**
+ * Die gezählte Aufklapp-Zeile („2 weitere passen nicht zu Ihrer Anlage").
+ * Null, wenn alles passt — dann gibt es nichts zu verstecken. Der Wortlaut ist
+ * überschreibbar, damit die Rezept-Galerie dieselbe Regel mit ihrem eigenen
+ * Wort benutzen kann.
+ */
+export function hiddenDisclosure<T extends FilterableOffer>(
+  part: TemplatePartition<T>,
+  worte: DisclosureWorte = VORLAGEN_WORTE,
+): string | null {
   const n = part.notFitting.length;
   if (n === 0) return null;
-  return n === 1
-    ? '1 weitere Vorlage passt nicht zu Ihrer Anlage'
-    : `${n} weitere Vorlagen passen nicht zu Ihrer Anlage`;
+  return n === 1 ? worte.eins : worte.viele(n);
 }
 
 /**
@@ -155,7 +181,9 @@ export function hiddenDisclosure(part: TemplatePartition): string | null {
  * einen Klick tief im Aufklapper zu verstecken. Null, wenn nichts fehlt oder
  * die Gründe sich unterscheiden (dann bleibt der Aufklapper die Wahrheit).
  */
-export function sharedReason(part: TemplatePartition): string | null {
+export function sharedReason<T extends FilterableOffer>(
+  part: TemplatePartition<T>,
+): string | null {
   if (part.notFitting.length === 0) return null;
   const first = part.notFitting[0].reason;
   return part.notFitting.every((n) => n.reason === first) ? first : null;

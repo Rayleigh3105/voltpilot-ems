@@ -102,9 +102,6 @@ const SteuerungSection = lazy(() =>
 const TechnikSection = lazy(() =>
   import('./AnlageTechnik').then((m) => ({ default: m.TechnikSection })),
 );
-const VerbraucherSection = lazy(() =>
-  import('./VerbraucherSection').then((m) => ({ default: m.VerbraucherSection })),
-);
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
 const POLL_MS = 30_000;
@@ -452,7 +449,6 @@ function AnlagenSubPage({
           <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
-        {sub === 'verbraucher' && <VerbraucherSection site={site} />}
         {sub === 'steuerung' && (
           <SteuerungSection
             site={site}
@@ -1268,7 +1264,7 @@ export function AnlageSeite({
               sources={sources}
               pins={siteEntityPins}
               consumers={consumersView}
-              onOpenConsumers={() => onOpenSub('verbraucher')}
+              onOpenConsumers={() => onOpenSub('steuerung')}
               onOpenSub={onOpenSub}
               /* Der Zeitraum steht in der Bilanz-Leiste, direkt über den
                  Zahlen, die er regiert (Konzept §6.3) - nicht mehr als volle

@@ -89,14 +89,14 @@ describe('consumer-rule templates (D7)', () => {
 
   it('deep-link hashes round-trip through the parser', () => {
     const h1 = verbraucherVorlageHash('s-1', 'pv-surplus-consumer');
-    expect(h1).toBe('#/anlage/s-1/verbraucher?vorlage=pv-surplus-consumer');
+    expect(h1).toBe('#/anlage/s-1/steuerung?vorlage=pv-surplus-consumer');
     expect(parseVerbraucherParams(h1)).toEqual({ vorlage: 'pv-surplus-consumer', verbraucher: null });
 
     const h2 = verbraucherRegelHash('s-1', 'c-9');
     expect(parseVerbraucherParams(h2)).toEqual({ vorlage: null, verbraucher: 'c-9' });
 
     // No params = nothing claimed.
-    expect(parseVerbraucherParams('#/anlage/s-1/verbraucher'))
+    expect(parseVerbraucherParams('#/anlage/s-1/steuerung'))
       .toEqual({ vorlage: null, verbraucher: null });
   });
 });

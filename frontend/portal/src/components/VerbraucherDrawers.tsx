@@ -1,34 +1,31 @@
 /**
- * Steuerbare Verbraucher (docs/verbrauchssteuerung.md §14, Increment 1;
- * activation since Inkrement 4). The customer surface for controllable
- * consumers: list them, add one (connected to a reported device OR as a
- * draft), and configure a rule with the guided Regelbaukasten. On an
- * environment WITHOUT the activation flags the builder stores a policy DRAFT
- * and every consumer honestly reads "Steuerung noch nicht aktiviert" -
- * byte-identical to Increment 1; with the flags on, the review page's
- * "Speichern & aktivieren" really activates (validate → compile → rollout),
- * and the row states/pause/resume follow the server-derived truth.
+ * Die zwei EINSCHÜBE der steuerbaren Verbraucher (docs/verbrauchssteuerung.md
+ * §14; Einheitsmodell Stufe 5a).
  *
- * All rule LOGIC is the pure, unit-tested `src/consumers/*` (validate / questions
- * / policy / activation / vorlagen); the React below only renders those
- * derivations. No internal vocabulary reaches the customer (the copy guard
- * scans this file).
+ *  - `VerbraucherAnlegenDrawer` — die Komponente anlegen (verbunden ODER als
+ *    Entwurf). Er ist der „Komponente anlegen"-Ausweg der Rezept-Galerie, damit
+ *    ein Rezept nie in einer Sackgasse endet.
+ *  - `VerbraucherRegelDrawer` — der geführte Regelbaukasten: Absicht wählen,
+ *    Fragenbaum beantworten, prüfen, speichern (bzw. aktivieren).
+ *
+ * Beide lagen bis Stufe 5a auf der eigenen Seite „Verbraucher". Die SEITE ist
+ * aufgelöst (die Regeln wohnen in der Regeln-Kapsel der Steuerung, die Geräte im
+ * Anlagen-Modell); die zwei Einschübe sind WÖRTLICH dieselben geblieben und
+ * werden jetzt von der Steuerung gehostet.
+ *
+ * Alle Regel-LOGIK ist das reine, unit-getestete `src/consumers/*` (validate /
+ * questions / policy / activation); hier wird nur gerendert. Kein internes
+ * Vokabular erreicht den Kunden (der Copy-Wächter scannt diese Datei).
  */
-import { useEffect, useRef, useState } from 'react';
-import { Badge } from '../../designsystem/components/core/Badge';
+import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
-import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import type { EntityStrategy, Site } from '../api';
-import { ApiError, api } from '../api';
+import { ApiError } from '../api';
 import { consumersApi, type CreateConsumerBody } from '../consumers/consumersApi';
-import type {
-  Consumer,
-  ConsumerOptions,
-  ControlKind,
-} from '../consumers/types';
+import type { Consumer, ConsumerOptions, ControlKind } from '../consumers/types';
 import {
   consumerQuestions,
   consumerHasMeasurement,
@@ -41,362 +38,12 @@ import {
 } from '../consumers/questions';
 import { buildPolicyDocument, policySentence, reviewFacts } from '../consumers/policy';
 import { validatePolicy, isValid, type ConsumerFinding } from '../consumers/validate';
-import { consumerStatusLine, type ConsumerRuntimeStatus } from '../consumers/status';
-import { activationBadge, conflictNote, saveButtonLabel } from '../consumers/activation';
-import {
-  fulfilmentSummary,
-  overrideLine,
-  sofortAktionen,
-  SOFORT_LABEL,
-  taskLine,
-  type ConsumerFulfilment,
-  type ManualOverride,
-  type SofortAktion,
-} from '../consumers/fulfillment';
-import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
-import {
-  CONSUMER_TEMPLATE_PREFILL,
-  parseVerbraucherParams,
-  templateConsumer,
-} from '../consumers/vorlagen';
+import { conflictNote, saveButtonLabel } from '../consumers/activation';
 import './Verbraucher.css';
-
-export function VerbraucherSection({ site }: { site: Site }): JSX.Element {
-  const [options, setOptions] = useState<ConsumerOptions | null>(null);
-  const [consumers, setConsumers] = useState<Consumer[] | null>(null);
-  const [status, setStatus] = useState<ConsumerRuntimeStatus[]>([]);
-  const [overrides, setOverrides] = useState<ManualOverride[]>([]);
-  const [fulfillment, setFulfillment] = useState<Record<string, ConsumerFulfilment>>({});
-  const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]>>({});
-  // The Sofortaktion being confirmed (§14.13), or null.
-  const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
-  const [sofortBusy, setSofortBusy] = useState(false);
-  const [error, setError] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [ruleFor, setRuleFor] = useState<Consumer | null>(null);
-  const [rulePrefill, setRulePrefill] = useState<Partial<ConsumerDraft> | null>(null);
-  // The D7 deep link (?vorlage=/?verbraucher=) is consumed exactly ONCE.
-  const deepLinkDone = useRef(false);
-
-  useEffect(() => {
-    let alive = true;
-    setError(false);
-    Promise.all([consumersApi.options(site.id), consumersApi.list(site.id)])
-      .then(([opt, list]) => {
-        if (!alive) return;
-        setOptions(opt);
-        setConsumers(list);
-      })
-      .catch(() => alive && setError(true));
-    // Live states fail SOFT: without evidence (older device, endpoint error)
-    // the surface stays byte-identical to before.
-    consumersApi
-      .status(site.id)
-      .then((s) => alive && setStatus(s ?? []))
-      .catch(() => alive && setStatus([]));
-    // Active manual overrides + per-consumer fulfilment ledger, both fail-soft:
-    // an older backend / a fresh site simply yields nothing new (§9.4 empty state).
-    consumersApi
-      .overrides(site.id)
-      .then((o) => alive && setOverrides(o ?? []))
-      .catch(() => alive && setOverrides([]));
-    consumersApi
-      .list(site.id)
-      .then((list) =>
-        Promise.all(
-          (list ?? []).map((c) =>
-            consumersApi
-              .fulfillment(site.id, c.id)
-              .then((f) => [c.id, f] as const)
-              .catch(() => [c.id, { tasks: [] }] as const),
-          ),
-        ),
-      )
-      .then((pairs) => alive && setFulfillment(Object.fromEntries(pairs)))
-      .catch(() => alive && setFulfillment({}));
-    // Active-flow claims (V-5): fail-soft - without them no conflict is
-    // CLAIMED, the server still refuses an activation truthfully.
-    api
-      .entityStrategies(site.id)
-      .then((s) => alive && setStrategies(s ?? {}))
-      .catch(() => alive && setStrategies({}));
-    return () => {
-      alive = false;
-    };
-  }, [site.id, reloadKey]);
-
-  const reload = () => setReloadKey((k) => k + 1);
-
-  // D7 deep link: a consumer template from the automation gallery opens the
-  // Regelbaukasten prefilled; ?verbraucher= (the origin-badge edit path) opens
-  // the builder for that consumer. Params are stripped after consumption (the
-  // explorer/replaceState pattern) so back/reload does not re-open.
-  useEffect(() => {
-    if (deepLinkDone.current || !consumers) return;
-    const params = parseVerbraucherParams(window.location.hash);
-    if (!params.vorlage && !params.verbraucher) {
-      deepLinkDone.current = true;
-      return;
-    }
-    deepLinkDone.current = true;
-    window.history.replaceState(null, '', window.location.hash.split('?')[0]);
-    if (params.verbraucher) {
-      const c = consumers.find((x) => x.id === params.verbraucher);
-      if (c) setRuleFor(c);
-      return;
-    }
-    const prefill = params.vorlage ? CONSUMER_TEMPLATE_PREFILL[params.vorlage] : undefined;
-    if (!prefill) return;
-    const c = templateConsumer(params.vorlage as string, consumers);
-    if (c) {
-      setRulePrefill(prefill);
-      setRuleFor(c);
-    } else {
-      // No consumer yet: a rule needs one first - open the create wizard.
-      setWizardOpen(true);
-    }
-  }, [consumers]);
-
-  /** Pause/resume (Inkrement 4): the stop half works on EVERY environment. */
-  const pauseConsumer = async (c: Consumer) => {
-    setActionError(null);
-    try {
-      await consumersApi.pause(site.id, c.id);
-      reload();
-    } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : 'Pausieren fehlgeschlagen.');
-    }
-  };
-  const resumeConsumer = async (c: Consumer) => {
-    setActionError(null);
-    try {
-      const out = await consumersApi.resume(site.id, c.id);
-      if (!out.activated) setActionError(out.message);
-      reload();
-    } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : 'Fortsetzen fehlgeschlagen.');
-    }
-  };
-
-  // §14.13 Sofortaktionen: a TTL-bound manual intervention (start/stop) or
-  // "Automatik fortsetzen" (resume). The server records + audits it and, with
-  // the control flag off, honestly reports it was not pushed to the device.
-  const runSofort = async (durationMinutes?: number) => {
-    if (!sofort) return;
-    const { consumer, action } = sofort;
-    setActionError(null);
-    setSofortBusy(true);
-    try {
-      const out =
-        action === 'resume'
-          ? await consumersApi.clearOverride(site.id, consumer.id)
-          : await consumersApi.startOverride(site.id, consumer.id, { action, durationMinutes });
-      if (!out.pushed && out.message) setActionError(out.message);
-      setSofort(null);
-      reload();
-    } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : 'Der Eingriff ist fehlgeschlagen.');
-    } finally {
-      setSofortBusy(false);
-    }
-  };
-
-  return (
-    <section className="vp-verbraucher">
-      <div className="vp-vb-head">
-        <div>
-          <h2>Verbraucher</h2>
-          <p className="vp-vb-intro">
-            Wallbox, Heizstab, Pumpe und andere steuerbare Geräte anlegen und festlegen,
-            wann sie laufen sollen.
-          </p>
-        </div>
-        <Button
-          iconLeft={<Icon name="plus" />}
-          onClick={() => setWizardOpen(true)}
-          disabled={!options}
-        >
-          Verbraucher hinzufügen
-        </Button>
-      </div>
-
-      {error && (
-        <ErrorState message="Die Verbraucher konnten nicht geladen werden." onRetry={reload} />
-      )}
-      {actionError && (
-        <p className="vp-vb-error" role="alert">{actionError}</p>
-      )}
-      {!error && !consumers && <TextSkeleton lines={3} />}
-      {!error && consumers && consumers.length === 0 && (
-        <EmptyState
-          title="Noch keine Verbraucher"
-          description="Legen Sie Ihren ersten steuerbaren Verbraucher an."
-        />
-      )}
-      {!error && consumers && consumers.length > 0 && (
-        <div className="vp-vb-list">
-          {consumers.map((c) => (
-            <ConsumerRow
-              key={c.id}
-              consumer={c}
-              status={status.find((s) => s.entityId === c.id)}
-              anyReported={status.length > 0}
-              override={overrides.find((o) => o.entityId === c.id) ?? null}
-              fulfillment={fulfillment[c.id]}
-              onConfigure={() => setRuleFor(c)}
-              onPause={() => void pauseConsumer(c)}
-              onResume={() => void resumeConsumer(c)}
-              onSofort={(action) => setSofort({ consumer: c, action })}
-            />
-          ))}
-        </div>
-      )}
-
-      {options && (
-        <CreateWizard
-          site={site}
-          options={options}
-          open={wizardOpen}
-          onClose={() => setWizardOpen(false)}
-          onCreated={(created, openRule) => {
-            setWizardOpen(false);
-            reload();
-            if (openRule) setRuleFor(created);
-          }}
-        />
-      )}
-
-      <ConsumerOverrideDialog
-        action={sofort?.action ?? null}
-        consumerName={sofort?.consumer.name ?? ''}
-        effectivePowerKw={sofort ? Number(sofort.consumer.ratedPowerKw) : null}
-        busy={sofortBusy}
-        onConfirm={(m) => void runSofort(m)}
-        onCancel={() => setSofort(null)}
-      />
-
-      {options && ruleFor && (
-        <RuleBuilder
-          site={site}
-          options={options}
-          consumer={ruleFor}
-          prefill={rulePrefill}
-          claims={strategies[ruleFor.id]}
-          onClose={() => {
-            setRuleFor(null);
-            setRulePrefill(null);
-          }}
-          onSaved={() => {
-            setRuleFor(null);
-            setRulePrefill(null);
-            reload();
-          }}
-        />
-      )}
-    </section>
-  );
-}
-
-function ConsumerRow({
-  consumer, status, anyReported, override, fulfillment, onConfigure, onPause, onResume, onSofort,
-}: {
-  consumer: Consumer;
-  status?: ConsumerRuntimeStatus;
-  anyReported: boolean;
-  override: ManualOverride | null;
-  fulfillment?: ConsumerFulfilment;
-  onConfigure: () => void;
-  onPause: () => void;
-  onResume: () => void;
-  onSofort: (action: SofortAktion) => void;
-}): JSX.Element {
-  const connectionLabel = consumer.connection === 'connected' ? 'Verbunden' : 'Noch nicht verbunden';
-  // The live line renders only once ANY device reported states (Inkrement 3):
-  // without evidence the surface is byte-identical to before. A consumer
-  // WITHOUT its own entry while others have one honestly reads "Zustand nicht
-  // bestätigt" - never a guessed live state.
-  const live = anyReported ? consumerStatusLine(status) : null;
-  const badge = activationBadge(consumer);
-  const banner = overrideLine(override);
-  const summary = fulfilmentSummary(fulfillment);
-  const connected = consumer.connection === 'connected';
-  // §14.13 Sofortaktionen: only for a CONNECTED consumer; resume when an
-  // override is running, start+stop otherwise.
-  const actions = sofortAktionen({ connected, hasOverride: banner != null });
-  return (
-    <div className="vp-vb-card">
-      <div className="vp-vb-card-main">
-        <div className="vp-vb-card-name">{consumer.name}</div>
-        <div className="vp-vb-card-sub">
-          {consumer.typeLabel} · {controlKindLabel(consumer.controlKind)}
-          {consumer.hasDraftPolicy && consumer.controlActivation === 'not_activated'
-            ? ' · Regel als Entwurf gespeichert' : ''}
-        </div>
-        {live && (
-          <div className={`vp-vb-live vp-vb-live-${live.tone}`}>
-            <span className="vp-dot" /> {live.text}
-            {live.reason ? ` · ${live.reason}` : ''}
-            {live.unconfirmed ? ' · Ausführung nicht bestätigt' : ''}
-          </div>
-        )}
-        {banner && (
-          <div className="vp-vb-live vp-vb-live-warn">
-            <span className="vp-dot" /> {banner.text}
-          </div>
-        )}
-        {summary.headline && (
-          <div className="vp-vb-heute">
-            Heute: {summary.headline}
-            {fulfillment && fulfillment.tasks.length > 0 && (
-              <ul className="vp-vb-tasks">
-                {fulfillment.tasks.map((t) => {
-                  const l = taskLine(t);
-                  return (
-                    <li key={t.requirementId} className={`vp-vb-task vp-vb-task-${l.tone}`}>
-                      {l.text}
-                      {l.progress ? ` · ${l.progress}` : ''}
-                      {l.confirmation ? ` · ${l.confirmation}` : ''}
-                      {l.atRisk ? ' · Frist gefährdet' : ''}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="vp-vb-card-actions">
-        <Badge variant={connected ? 'ok' : 'off'} dot>
-          {connectionLabel}
-        </Badge>
-        <span className={`vp-vb-not-activated vp-vb-act-${badge.tone}`}>
-          <span className="vp-dot" /> {badge.text}
-        </span>
-        {actions.map((a) => (
-          <Button key={a} variant={a === 'stop' ? 'ghost' : 'outline'} size="sm"
-            onClick={() => onSofort(a)}>
-            {SOFORT_LABEL[a]}
-          </Button>
-        ))}
-        {consumer.controlActivation === 'active' && (
-          <Button variant="ghost" size="sm" onClick={onPause}>Pausieren</Button>
-        )}
-        {consumer.controlActivation === 'paused' && (
-          <Button variant="ghost" size="sm" onClick={onResume}>Fortsetzen</Button>
-        )}
-        <Button variant="outline" size="sm" onClick={onConfigure}>
-          {consumer.hasDraftPolicy ? 'Regel bearbeiten' : 'Regel festlegen'}
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 // --- Part A: create wizard --------------------------------------------------
 
-function CreateWizard({
+export function VerbraucherAnlegenDrawer({
   site, options, open, onClose, onCreated,
 }: {
   site: Site;
@@ -564,7 +211,7 @@ const INTENT_CARDS: { key: Intent; title: string; line: string }[] = [
   { key: 'cheap', title: 'Günstige Energie nutzen', line: 'Nur bei passendem Preis, PV-Überschuss oder Ladestand.' },
 ];
 
-function RuleBuilder({
+export function VerbraucherRegelDrawer({
   site, options, consumer, prefill, claims, onClose, onSaved,
 }: {
   site: Site;
@@ -1221,3 +868,4 @@ function controlKindLabel(k: ControlKind): string {
     default: return 'Ein/Aus';
   }
 }
+

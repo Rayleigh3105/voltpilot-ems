@@ -33,6 +33,10 @@ import {
   KomponenteLoeschenDialog,
   ZuordnungAendernDialog,
 } from '../components/ZuordnungAendern';
+import { ConsumerOverrideDialog } from '../components/ConsumerOverrideDialog';
+import { consumersApi } from '../consumers/consumersApi';
+import type { Consumer } from '../consumers/types';
+import { sofortAktionen, SOFORT_LABEL, type SofortAktion } from '../consumers/fulfillment';
 import { InfoTip } from '../components/InfoTip';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { fmtNum } from '../format';
@@ -89,6 +93,15 @@ export function AnlagenModellSection({
   // Die zwei Bereinigungs-Hebel AN der Komponente (vp-bereinigung-ui-k3).
   const [repin, setRepin] = useState<PlantComponent | null>(null);
   const [remove, setRemove] = useState<PlantComponent | null>(null);
+  /**
+   * Sofortaktion AN DER KOMPONENTE (Einheitsmodell Stufe 5a, 5b.7): EIN
+   * Mechanismus, ZWEI Orte - derselbe Dialog wie im Kopf der Regeln-Kapsel.
+   * Fail-soft: ohne steuerbare Verbraucher (älteres Backend, keine Freigabe)
+   * erscheint gar kein Knopf, nie ein wirkungsloser.
+   */
+  const [consumers, setConsumers] = useState<Consumer[]>([]);
+  const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
+  const [sofortBusy, setSofortBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -110,10 +123,32 @@ export function AnlagenModellSection({
       (s) => active && setSources(s),
       () => active && setSources(null),
     );
+    // Die steuerbaren Verbraucher — nur für die Sofortaktion an der Zeile.
+    consumersApi.list(site.id).then(
+      (list) => active && setConsumers(list ?? []),
+      () => active && setConsumers([]),
+    );
     return () => {
       active = false;
     };
   }, [site.id, reloadKey]);
+
+  const runSofort = async (durationMinutes?: number) => {
+    if (!sofort) return;
+    const { consumer: c, action } = sofort;
+    setSofortBusy(true);
+    try {
+      if (action === 'resume') await consumersApi.clearOverride(site.id, c.id);
+      else await consumersApi.startOverride(site.id, c.id, { action, durationMinutes });
+      setSofort(null);
+    } catch {
+      // Die Fläche ist eine ANZEIGE - ein fehlgeschlagener Eingriff darf sie
+      // nicht in einen Fehlerzustand kippen; der Dialog schließt einfach.
+      setSofort(null);
+    } finally {
+      setSofortBusy(false);
+    }
+  };
 
   const reload = () => setReloadKey((k) => k + 1);
 
@@ -254,6 +289,10 @@ export function AnlagenModellSection({
                   }
                   onRepin={setRepin}
                   onRemove={setRemove}
+                  sofortFor={(c) => consumers.find(
+                    (x) => x.id === c.entityId && x.connection === 'connected',
+                  ) ?? null}
+                  onSofort={(consumer, action) => setSofort({ consumer, action })}
                 />
               ))}
               {model.components.length === 0 && (
@@ -289,6 +328,15 @@ export function AnlagenModellSection({
           <EntitaetenSection site={site} isAdmin={showTechnical} />
         </details>
       )}
+
+      <ConsumerOverrideDialog
+        action={sofort?.action ?? null}
+        consumerName={sofort?.consumer.name ?? ''}
+        effectivePowerKw={sofort ? Number(sofort.consumer.ratedPowerKw) : null}
+        busy={sofortBusy}
+        onConfirm={(m) => void runSofort(m)}
+        onCancel={() => setSofort(null)}
+      />
 
       {assign && (
         <ZuordnenDialog
@@ -446,6 +494,8 @@ function RoleGroupCard({
   actionsFor,
   onRepin,
   onRemove,
+  sofortFor,
+  onSofort,
 }: {
   group: RoleGroup;
   selected: string | null;
@@ -455,6 +505,9 @@ function RoleGroupCard({
   actionsFor: (c: PlantComponent) => ComponentActions;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
+  /** Der steuerbare Verbraucher hinter dieser Komponente, sonst null. */
+  sofortFor: (c: PlantComponent) => Consumer | null;
+  onSofort: (consumer: Consumer, action: SofortAktion) => void;
 }) {
   return (
     <section className={`vp-am-group vp-am-${group.role}`} aria-label={group.label}>
@@ -480,6 +533,8 @@ function RoleGroupCard({
           actions={actionsFor(c)}
           onRepin={onRepin}
           onRemove={onRemove}
+          sofort={sofortFor(c)}
+          onSofort={onSofort}
         />
       ))}
     </section>
@@ -502,6 +557,8 @@ function ComponentRow({
   actions,
   onRepin,
   onRemove,
+  sofort,
+  onSofort,
 }: {
   component: PlantComponent;
   selected: boolean;
@@ -512,6 +569,8 @@ function ComponentRow({
   actions: ComponentActions;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
+  sofort: Consumer | null;
+  onSofort: (consumer: Consumer, action: SofortAktion) => void;
 }) {
   const c = component;
   return (
@@ -594,7 +653,8 @@ function ComponentRow({
 
       {/* Die Bereinigung wohnt hier: an einer gesunden Komponente ruhig im
           Details-Bereich, an einer verwaisten prominent neben der Warnung. */}
-      {(c.channels.length > 0 || (!c.orphaned && (actions.canRepin || actions.canDelete))) && (
+      {(c.channels.length > 0 || sofort != null
+        || (!c.orphaned && (actions.canRepin || actions.canDelete))) && (
         <details className="vp-am-details">
           <summary>
             <Icon name="chevron-right" size={12} /> Details
@@ -605,6 +665,23 @@ function ComponentRow({
                 <span key={ch.raw} title={ch.raw}>
                   {ch.label}
                 </span>
+              ))}
+            </span>
+          )}
+          {/* Sofortaktion (5b.7): derselbe Mechanismus wie im Kopf der
+              Regeln-Kapsel, hier AN der Komponente. Nur für ein verbundenes,
+              steuerbares Gerät - nie ein wirkungsloser Knopf. */}
+          {sofort && (
+            <span className="vp-am-actions">
+              {sofortAktionen({ connected: true, hasOverride: false }).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  className="vp-am-action"
+                  onClick={() => onSofort(sofort, a)}
+                >
+                  <Icon name="zap" size={13} /> {SOFORT_LABEL[a]}
+                </button>
               ))}
             </span>
           )}

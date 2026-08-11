@@ -179,7 +179,7 @@ describe('FlowEditorPage · the review step (audit E-1)', () => {
     await waitFor(() => expect(flowApi.activate).toHaveBeenCalled());
     const strip = await screen.findByTestId('rollout-strip');
     await waitFor(() => expect(strip.textContent)
-      .toMatch(/Ihre Automation läuft jetzt auf dem Gerät/));
+      .toMatch(/Ihre Regel läuft jetzt auf dem Gerät/));
     // The raw server string never reaches the customer, and never twice.
     expect(document.body.textContent).not.toMatch(/Flow aktiviert/);
   });
