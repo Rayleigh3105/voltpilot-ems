@@ -5,6 +5,7 @@ import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -99,8 +100,68 @@ public class ProbePublisher {
         log.debug("published probe {} ({} ops, NON-retained)", requestId, ops.size());
     }
 
-    static byte[] envelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
-            Instant requestedAt, String requestedBy, List<ProbeRequest.Op> ops) {
+    /**
+     * Publish ONE {@code test_connection} probe - the assistant's connection
+     * test, generalized to every transport (Einheitsmodell Stufe 1). Same
+     * envelope, same non-retained/QoS1 discipline; only the op differs, because
+     * this one names the DEVICE instead of a register and the box picks the
+     * matching reader itself.
+     */
+    public synchronized void publishTest(UUID tenantId, UUID siteId, UUID deviceId,
+            String requestId, Instant requestedAt, String requestedBy, String opId,
+            String brand, String model, String family, String role,
+            Map<String, Object> connection) throws Exception {
+        String topic = probeTopic(tenantId, siteId, deviceId);
+        MqttMessage message = new MqttMessage(testEnvelope(tenantId, siteId, deviceId, requestId,
+                requestedAt, requestedBy, opId, brand, model, family, role, connection));
+        message.setQos(1);
+        message.setRetained(false);
+        connected().publish(topic, message);
+        // ⚠ Same rule as the read probe: the customer's LAN address is NOT
+        // logged - it is their network topology, and a wizard step is not worth
+        // a permanent record of where their devices sit.
+        log.debug("published connection test {} (NON-retained)", requestId);
+    }
+
+    static byte[] testEnvelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
+            Instant requestedAt, String requestedBy, String opId, String brand, String model,
+            String family, String role, Map<String, Object> connection) {
+        StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
+        sb.append(",\"ops\":[{\"op\":\"test_connection\"")
+                .append(",\"id\":\"").append(esc(opId)).append('"')
+                .append(",\"brand\":\"").append(esc(brand)).append('"');
+        if (model != null && !model.isBlank()) {
+            sb.append(",\"model\":\"").append(esc(model)).append('"');
+        }
+        if (family != null && !family.isBlank()) {
+            sb.append(",\"family\":\"").append(esc(family)).append('"');
+        }
+        if (role != null && !role.isBlank()) {
+            sb.append(",\"role\":\"").append(esc(role)).append('"');
+        }
+        sb.append(",\"connection\":").append(connectionJson(connection)).append("}]}");
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The connection block, serialized with a mapper on purpose - unlike the
+     * fixed-shape read op this one is the customer's own form, whose fields come
+     * from the template's transport_schema and are UNKNOWN here. Hand-building
+     * it would mean guessing types.
+     */
+    private static String connectionJson(Map<String, Object> connection) {
+        try {
+            return MAPPER.writeValueAsString(connection == null ? Map.of() : connection);
+        } catch (Exception e) {
+            throw new IllegalStateException("cannot serialize probe connection", e);
+        }
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    private static StringBuilder header(UUID tenantId, UUID siteId, UUID deviceId,
+            String requestId, Instant requestedAt, String requestedBy) {
         StringBuilder sb = new StringBuilder(512);
         sb.append("{\"schema_version\":\"1.0\",\"type\":\"probe_request\"")
                 .append(",\"tenant_id\":\"").append(tenantId).append('"')
@@ -111,6 +172,12 @@ public class ProbePublisher {
         if (requestedBy != null && !requestedBy.isBlank()) {
             sb.append(",\"requested_by\":\"").append(esc(requestedBy)).append('"');
         }
+        return sb;
+    }
+
+    static byte[] envelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
+            Instant requestedAt, String requestedBy, List<ProbeRequest.Op> ops) {
+        StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
         sb.append(",\"ops\":[");
         for (int i = 0; i < ops.size(); i++) {
             ProbeRequest.Op op = ops.get(i);

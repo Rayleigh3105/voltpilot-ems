@@ -423,6 +423,31 @@ type EntitiesSummary struct {
 	// master data that has no registry counterpart. The cloud reconciles and
 	// surfaces drift; it never auto-imports.
 	LocalSetup []LocalSetupEntry `json:"local_setup,omitempty"`
+	// ComponentApply is the Einheitsmodell-Stufe-1 Ist of the ONE applier:
+	// WHO owns this plant's device configuration and which push revision the
+	// box really derived its local files from. ADDITIVE and only sent once a
+	// portal-managed push was seen, so a box-managed plant's heartbeat is
+	// byte-identical to before.
+	ComponentApply *ComponentApplySummary `json:"component_apply,omitempty"`
+}
+
+// ComponentApplySummary is the applier's honest Ist (Einheitsmodell Stufe 1).
+//
+// The two revisions are deliberately SEPARATE fields: `revision` is what the
+// box really runs, `refused_revision` is what it could not apply. Collapsing
+// them would force the portal to choose between claiming a refused Soll is live
+// and losing the reason - and the whole point of a refusal is that it stays
+// visible while the last working configuration keeps running.
+type ComponentApplySummary struct {
+	// Authority: "portal" = derived from the cloud push | "box" = local.
+	Authority string `json:"authority"`
+	// Revision that was successfully APPLIED (empty = none yet).
+	Revision  string `json:"revision,omitempty"`
+	AppliedAt string `json:"applied_at,omitempty"`
+	// RefusedRevision/RefusedReason carry the LAST refusal in plain German.
+	// Absent = nothing was refused.
+	RefusedRevision string `json:"refused_revision,omitempty"`
+	RefusedReason   string `json:"refused_reason,omitempty"`
 }
 
 // EntityObserved is one entity's edge-side Ist in the heartbeat (E1b).

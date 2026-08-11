@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -664,5 +665,43 @@ func TestProbeConcurrentDuplicateDeliveryReadsTheDeviceOnce(t *testing.T) {
 	// ...and once it is done, the same id may of course be used again.
 	if ch := box.a.claimProbe("9f2c41ab77d0e315"); ch == nil {
 		t.Fatalf("a finished probe must release its correlation")
+	}
+}
+
+// --- Stufe 1: der Verbindungstest geht durch die BOX-EIGENE Maschinerie ----
+
+func TestAConnectionTestUsesTheSamePathAsTheLocalButton(t *testing.T) {
+	a := newGateTestAgent(t)
+	// Der lokale Test antwortet, ohne dass ein Geraet existiert: ohne
+	// Lese-Flow endet er in seinem eigenen Timeout - und genau DIESES Urteil
+	// muss der Probe-Kanal durchreichen, statt ein eigenes zu erfinden.
+	res := a.runProbeTestConnection(probe.Op{
+		Op: probe.OpTestConnection, ID: "verbindung", Brand: "deye",
+		Model:      "sun-30k-sg01hp3",
+		Connection: []byte(`{"ip":"192.168.0.28","port":8899,"serial":"2985159064","mb_slave_id":1}`),
+	})
+	if res.OK {
+		t.Fatalf("ohne Geraet kann der Test nicht bestehen: %+v", res)
+	}
+	if res.ErrorCode == "" || res.Message == "" {
+		t.Fatalf("jeder Fehlschlag traegt Klasse UND deutschen Satz: %+v", res)
+	}
+	if res.Reading != nil {
+		t.Fatal("ein Fehlschlag traegt NIE einen Messwert")
+	}
+}
+
+func TestAnInvalidSelectionIsRefusedByTheCatalogNotByTheDevice(t *testing.T) {
+	a := newGateTestAgent(t)
+	res := a.runProbeTestConnection(probe.Op{
+		Op: probe.OpTestConnection, ID: "verbindung", Brand: "gibt-es-nicht",
+		Connection: []byte(`{"ip":"192.168.0.28"}`),
+	})
+	if res.OK || res.ErrorCode != probe.ErrInvalidRequest {
+		t.Fatalf("res = %+v", res)
+	}
+	// Der Satz nennt das konkrete Problem, nicht nur „ungueltig".
+	if !strings.Contains(res.Message, "Marke") {
+		t.Fatalf("Grund = %q", res.Message)
 	}
 }

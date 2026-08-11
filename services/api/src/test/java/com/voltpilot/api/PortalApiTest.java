@@ -119,6 +119,9 @@ class PortalApiTest {
     com.voltpilot.api.entities.EntityObservedRepository entityObservedRepo;
 
     @Autowired
+    com.voltpilot.api.components.ComponentApplyRepository componentApplyRepo;
+
+    @Autowired
     com.voltpilot.api.repo.FlowStatusRepository flowStatusRepo;
 
     @Autowired
@@ -2090,7 +2093,7 @@ class PortalApiTest {
         String deviceId = claimDeviceInto(demo, siteId, "edge-repin-01");
 
         var listener = new com.voltpilot.api.entities.EntityStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo, componentApplyRepo);
         String topic = "ems/" + tenantA + "/" + siteId + "/" + deviceId + "/status";
         java.util.function.Consumer<String> report = localSetupJson -> listener.handle(topic,
                 ("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantA + "\",\"site_id\":\""
@@ -2227,7 +2230,7 @@ class PortalApiTest {
         String deviceId = claimDeviceInto(demo, siteId, "edge-clean-01");
 
         var listener = new com.voltpilot.api.entities.EntityStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo, componentApplyRepo);
         String topic = "ems/" + tenantA + "/" + siteId + "/" + deviceId + "/status";
         java.util.function.Consumer<String> report = localSetupJson -> listener.handle(topic,
                 ("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantA + "\",\"site_id\":\""

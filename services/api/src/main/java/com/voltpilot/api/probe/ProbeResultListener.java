@@ -204,6 +204,21 @@ public class ProbeResultListener {
                     continue;
                 }
                 boolean ok = line.path("ok").asBoolean(false);
+                JsonNode readingNode = line.get("reading");
+                if (readingNode != null && readingNode.isObject()) {
+                    // A test_connection line (Einheitsmodell Stufe 1). Its honesty
+                    // rule is the SAME idea as the register read's, applied to what
+                    // this op actually produces: a device that reported not a single
+                    // channel has not been read, whatever the line claims.
+                    ProbeResult.Reading reading = new ProbeResult.Reading(
+                            optDouble(readingNode, "pv_kw"), optDouble(readingNode, "load_kw"),
+                            optDouble(readingNode, "grid_kw"), optDouble(readingNode, "soc_pct"));
+                    boolean any = reading.any();
+                    results.add(new ProbeResult.OpResult(id, ok && any, null, null, null,
+                            ok && any ? null : code(line), ok && any ? null : text(line),
+                            any ? reading : null));
+                    continue;
+                }
                 Double raw = optDouble(line, "raw");
                 Double value = optDouble(line, "value");
                 // The contract's honesty rule, enforced on ARRIVAL: a line

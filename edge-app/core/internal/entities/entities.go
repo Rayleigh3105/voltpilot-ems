@@ -152,6 +152,14 @@ type Registry struct {
 	Revision    string    `json:"revision"`
 	PublishedAt time.Time `json:"published_at"`
 	Entities    []Entity  `json:"entities"`
+	// ComponentAuthority is WHO owns this PLANT's device configuration
+	// (Einheitsmodell Stufe 1, contract registry_push.component_authority):
+	// "portal" = the cloud is the Soll and the box DERIVES its local
+	// inverter/sources files from the driver blocks of this push; anything else
+	// - including ABSENT, which is what an older cloud sends - is "box" and
+	// changes nothing about the local device configuration. The derivation
+	// itself lives in internal/componentapply; this field is only carried.
+	ComponentAuthority string `json:"component_authority,omitempty"`
 }
 
 // Find returns the entity with the given id, or nil.
@@ -198,13 +206,14 @@ type Identity struct {
 // contract).
 func ParseRegistryPush(payload []byte, id Identity) (Registry, []string, error) {
 	var push struct {
-		SchemaVersion string    `json:"schema_version"`
-		TenantID      string    `json:"tenant_id"`
-		SiteID        string    `json:"site_id"`
-		DeviceID      string    `json:"device_id"`
-		Revision      string    `json:"revision"`
-		PublishedAt   time.Time `json:"published_at"`
-		Entities      []Entity  `json:"entities"`
+		SchemaVersion      string    `json:"schema_version"`
+		TenantID           string    `json:"tenant_id"`
+		SiteID             string    `json:"site_id"`
+		DeviceID           string    `json:"device_id"`
+		Revision           string    `json:"revision"`
+		PublishedAt        time.Time `json:"published_at"`
+		ComponentAuthority string    `json:"component_authority"`
+		Entities           []Entity  `json:"entities"`
 	}
 	if err := json.Unmarshal(payload, &push); err != nil {
 		return Registry{}, nil, fmt.Errorf("entity registry push unreadable: %w", err)
@@ -221,7 +230,8 @@ func ParseRegistryPush(payload []byte, id Identity) (Registry, []string, error) 
 		return Registry{}, nil, fmt.Errorf("registry push carries no revision")
 	}
 
-	reg := Registry{Revision: push.Revision, PublishedAt: push.PublishedAt}
+	reg := Registry{Revision: push.Revision, PublishedAt: push.PublishedAt,
+		ComponentAuthority: push.ComponentAuthority}
 	var skipped []string
 	seen := map[string]bool{}
 	for _, e := range push.Entities {
@@ -492,11 +502,21 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 // everything else is inferred from DECLARED config (D-10: capabilities are
 // the foundation - an unknown future type gets safe semantics from what it
 // declares, never from its name).
+// The guard-semantics categories. Exported since Einheitsmodell Stufe 1 so the
+// component applier can key its role derivation on the SAME vocabulary the
+// guard chain uses, instead of re-spelling the strings.
 const (
-	catStorage     = "storage"
-	catProducer    = "producer"
-	catConsumer    = "consumer"
-	catMeasureOnly = "measure-only"
+	CategoryStorage     = "storage"
+	CategoryProducer    = "producer"
+	CategoryConsumer    = "consumer"
+	CategoryMeasureOnly = "measure-only"
+)
+
+const (
+	catStorage     = CategoryStorage
+	catProducer    = CategoryProducer
+	catConsumer    = CategoryConsumer
+	catMeasureOnly = CategoryMeasureOnly
 )
 
 // Category returns the guard-semantics category ("storage"|"producer"|

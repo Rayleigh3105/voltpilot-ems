@@ -6,6 +6,7 @@ import {
   api,
   type Device,
   type Site,
+  type SiteComponents,
   type SiteEntities,
   type SiteSource,
   type SiteTopology,
@@ -43,7 +44,10 @@ import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
 import { anlageRoute, hashForRoute } from '../nav';
 import { EntitaetenSection } from './EntitaetenSection';
+import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
+import { ablehnungText, sollIstText, sollIstTon } from '../komponentenAssistent';
 import '../components/AnlagenModell.css';
+import '../components/KomponenteAssistent.css';
 
 /**
  * Portal v3 · M6 — the Anlagen-Modell, rebuilt to the approved **Variante A**
@@ -102,6 +106,13 @@ export function AnlagenModellSection({
   const [consumers, setConsumers] = useState<Consumer[]>([]);
   const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
   const [sofortBusy, setSofortBusy] = useState(false);
+  /**
+   * Einheitsmodell Stufe 1: der EINE Anlege-Assistent + der Soll/Ist-Stand.
+   * FAIL-SOFT geholt - ein älteres Backend kennt die Route nicht, dann bleibt
+   * die Fläche exakt wie vorher (kein Knopf, keine Stand-Zeile).
+   */
+  const [components, setComponents] = useState<SiteComponents | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -122,6 +133,11 @@ export function AnlagenModellSection({
     api.siteSources(site.id).then(
       (s) => active && setSources(s),
       () => active && setSources(null),
+    );
+    // Der Autoritäts- und Soll/Ist-Stand (Stufe 1), fail-soft.
+    api.siteComponents(site.id).then(
+      (c) => active && setComponents(c),
+      () => active && setComponents(null),
     );
     // Die steuerbaren Verbraucher — nur für die Sofortaktion an der Zeile.
     consumersApi.list(site.id).then(
@@ -193,6 +209,24 @@ export function AnlagenModellSection({
     if (dev) return new Set([dev.id]);
     return null;
   }, [model, selected]);
+
+  /**
+   * Einheitsmodell Stufe 1. Der Assistent erscheint NUR auf einer
+   * portal-verwalteten Anlage: auf einer box-verwalteten Bestandsanlage würde
+   * ein gespeichertes Soll nie wirken, und ein Knopf, der in eine ehrliche
+   * Ablehnung läuft, ist schlechter als kein Knopf.
+   */
+  const portalManaged = components?.componentAuthority === 'portal';
+  const komponentenStand = components
+    ? {
+        text: sollIstText(
+          components.components[0]?.syncStatus,
+          components.components[0]?.definitionVersion ?? 1,
+        ),
+        ton: sollIstTon(components.components[0]?.syncStatus),
+      }
+    : null;
+  const ablehnung = ablehnungText(components?.refusedRevision, components?.refusedReason);
 
   return (
     <div className="vp-modell">
@@ -272,7 +306,26 @@ export function AnlagenModellSection({
               <h3 className="vp-am-head spaced">
                 <Icon name="layers" size={16} /> Komponenten Ihrer Anlage{' '}
                 <span className="vp-am-head-sub">— mit den Werten von jetzt</span>
+                {portalManaged && (
+                  <button
+                    type="button"
+                    className="vp-am-add"
+                    onClick={() => setAddOpen(true)}
+                  >
+                    <Icon name="plus" size={14} /> Komponente hinzufügen
+                  </button>
+                )}
               </h3>
+              {/*
+                Der Stand der GANZEN Anlage: was das Portal gespeichert hat und
+                was die Box davon wirklich anwendet. Eine Ablehnung steht NEBEN
+                dem laufenden Stand, nie an seiner Stelle - es läuft weiter die
+                zuletzt angewandte Fassung.
+              */}
+              {komponentenStand && (
+                <p className={`vp-am-stand is-${komponentenStand.ton}`}>{komponentenStand.text}</p>
+              )}
+              {ablehnung && <p className="vp-am-stand is-warn">{ablehnung}</p>}
               {model.groups.map((g) => (
                 <RoleGroupCard
                   key={g.role}
@@ -346,6 +399,17 @@ export function AnlagenModellSection({
           onClose={() => setAssign(null)}
           onAssigned={() => {
             setAssign(null);
+            reload();
+          }}
+        />
+      )}
+
+      {addOpen && (
+        <KomponenteHinzufuegenDrawer
+          siteId={site.id}
+          onClose={() => setAddOpen(false)}
+          onSaved={(result) => {
+            setComponents(result);
             reload();
           }}
         />

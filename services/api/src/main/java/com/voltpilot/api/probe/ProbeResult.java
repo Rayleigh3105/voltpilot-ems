@@ -28,6 +28,28 @@ public record ProbeResult(String requestId, String errorCode, String message,
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record OpResult(String id, boolean ok, Double raw, List<Integer> registers,
-            Double value, String errorCode, String message) {
+            Double value, String errorCode, String message, Reading reading) {
+
+        /** The register-read shape (no {@code reading}). */
+        public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
+                Double value, String errorCode, String message) {
+            this(id, ok, raw, registers, value, errorCode, message, null);
+        }
+    }
+
+    /**
+     * The decoded snapshot of a {@code test_connection} op (Einheitsmodell
+     * Stufe 1) - the four channels the local test surfaces.
+     *
+     * <p>Every field is boxed and {@code NON_NULL}: a channel this device does
+     * NOT report is ABSENT, never a 0 that reads like a measurement.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Reading(Double pvKw, Double loadKw, Double gridKw, Double socPct) {
+
+        /** Whether the device reported anything at all. */
+        public boolean any() {
+            return pvKw != null || loadKw != null || gridKw != null || socPct != null;
+        }
     }
 }

@@ -23,6 +23,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/componentapply"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlcert"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
@@ -254,6 +255,15 @@ type Agent struct {
 	entIdentity  entities.Identity
 	entAppliedAt time.Time
 	entReadings  map[string]entReading
+
+	// Einheitsmodell Stufe 1 (agent/component_apply.go): WHO owns this plant's
+	// device configuration, and which push revision was last applied. The
+	// configuration itself stays where it always was (invStore + srcStore) -
+	// only the WRITER changes on a portal-managed plant. Absent record = box
+	// managed, which is every plant that exists today.
+	compMu     sync.Mutex
+	compStore  *componentapply.Store
+	compRecord componentapply.Record
 	// entComposed holds the DISPLAY-ONLY local composition of the composed
 	// entities (battery-hybrid/grid-meter/house-load) derived from the gated
 	// composite site sample at onLocalTelemetry - see entities.ComposeLocal.
@@ -465,6 +475,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	cs, err := componentapply.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	// Restore the operator's despike (Ausreißer-Filter) settings, or fall back
 	// to the safe defaults. A corrupt file must not stop the agent booting.
 	despikeCfg := guards.DefaultSettings()
@@ -557,6 +571,11 @@ func New(cfg config.Config) (*Agent, error) {
 	// per-entity retained configs are re-published once the bus is up in Start.
 	a.entStore = es
 	a.restoreEntities()
+	// Einheitsmodell Stufe 1: who owns this plant's device configuration. Loaded
+	// BEFORE the first push of the session, so a portal-managed plant refuses
+	// local edits even while offline.
+	a.compStore = cs
+	a.restoreComponentRecord()
 	// E2 arbitration: the engine is always constructed (no-op without
 	// entities); the persisted v2 plan is restored like the v1 plan cache.
 	a.plan2Store = p2s
@@ -2652,6 +2671,12 @@ func (a *Agent) GetInverter() (inverter.Selection, bool) {
 // Layer 1 picks up the change immediately. A bad request returns a
 // *inverter.ValidationError (the web layer maps it to HTTP 400).
 func (a *Agent) SetInverter(req inverter.SelectionRequest) (inverter.Selection, error) {
+	// Einheitsmodell Stufe 1: on a portal-managed plant the Soll lives in the
+	// portal - two writers on one configuration would make the next push
+	// silently discard whatever was typed here.
+	if err := a.refuseIfPortalManaged(); err != nil {
+		return inverter.Selection{}, err
+	}
 	sel, err := a.invCat.Normalize(req, time.Now())
 	if err != nil {
 		return inverter.Selection{}, err
@@ -3395,6 +3420,9 @@ func newTestReadID() string {
 // web layer maps it to HTTP 400). READ-ONLY by construction: a source never gets
 // a control topic.
 func (a *Agent) AddSource(req sources.Request) (sources.Source, error) {
+	if err := a.refuseIfPortalManaged(); err != nil {
+		return sources.Source{}, err
+	}
 	src, err := sources.Normalize(a.invCat, req, time.Now())
 	if err != nil {
 		return sources.Source{}, err
@@ -3439,6 +3467,9 @@ func (a *Agent) AddSource(req sources.Request) (sources.Source, error) {
 // rollback, aggregation would stop summing the Erzeuger (site load jumps)
 // while Node-RED keeps reading it and a reboot resurrects it.
 func (a *Agent) DeleteSource(id string) error {
+	if err := a.refuseIfPortalManaged(); err != nil {
+		return err
+	}
 	a.srcMu.Lock()
 	var removed *sources.Source
 	for i := range a.srcs {
@@ -3480,6 +3511,9 @@ func (a *Agent) DeleteSource(id string) error {
 // adoption pin (vp-vier-erzeuger-p9). Unknown id -> sources.ErrNotFound; an
 // empty/oversized label -> *sources.ValidationError (HTTP 400 upstream).
 func (a *Agent) RenameSource(id, label string) (sources.Source, error) {
+	if err := a.refuseIfPortalManaged(); err != nil {
+		return sources.Source{}, err
+	}
 	label = strings.TrimSpace(label)
 	if label == "" || len([]rune(label)) > 64 {
 		return sources.Source{}, &sources.ValidationError{

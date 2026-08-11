@@ -116,6 +116,53 @@ public class ProbeService {
     }
 
     /**
+     * Run the assistant's CONNECTION TEST against a plant's device
+     * (Einheitsmodell Stufe 1): one {@code test_connection} op, generalized to
+     * every transport.
+     *
+     * <p>Identical machinery to {@link #probe}: same correlation, same short
+     * wait, same honest timeout outcome, nothing persisted. Only the op differs.
+     *
+     * @param siteId the site, already proven to belong to the current tenant
+     */
+    public ProbeResult testConnection(UUID siteId, UUID deviceId, String opId, String brand,
+            String model, String family, String role, java.util.Map<String, Object> connection,
+            String requestedBy) {
+        UUID tenantId = TenantContext.get();
+        if (tenantId == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        }
+        DeviceDto device = resolveDevice(siteId, deviceId);
+        ProbePublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Prüfung ist derzeit nicht möglich.");
+        }
+        String requestId = newRequestId();
+        CompletableFuture<ProbeResult> future = registry.register(requestId, device.id());
+        try {
+            pub.publishTest(tenantId, siteId, device.id(), requestId, Instant.now(), requestedBy,
+                    opId, brand, model, family, role, connection);
+        } catch (Exception e) {
+            registry.forget(requestId);
+            log.warn("connection test {} could not be published: {}", requestId, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Anlage ist gerade nicht erreichbar. Bitte in einem Moment erneut versuchen.");
+        }
+        try {
+            ProbeResult result = registry.await(future, TIMEOUT);
+            if (result != null) {
+                return result;
+            }
+            return new ProbeResult(requestId, "timeout",
+                    "Die Anlage hat nicht rechtzeitig geantwortet. Bitte erneut versuchen.",
+                    List.of());
+        } finally {
+            registry.forget(requestId);
+        }
+    }
+
+    /**
      * Which box to ask. An explicit device must belong to the site; without one
      * the site's SINGLE device is used, and a site with several is refused by
      * name - guessing which box sits on the right LAN segment would be exactly

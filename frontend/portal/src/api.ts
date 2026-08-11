@@ -872,6 +872,124 @@ export interface EntityLocalSetup {
 }
 
 /** The whole "Geräte & Entitäten" surface for a site. */
+/**
+ * Eine Geräte-VORLAGE (Einheitsmodell Stufe 0a) - woraus der Anlege-Assistent
+ * seine Auswahl UND sein Formular rendert. `transportSchema` ist das
+ * Feld-Vokabular; `channels`/`writes` sind bei eingebauten Vorlagen `null` =
+ * „hier nicht erklärt", nie `[]`.
+ */
+export interface ComponentTemplate {
+  templateRef: string;
+  kind: string;
+  version: number;
+  brand: string;
+  brandLabel: string;
+  model: string;
+  modelLabel: string;
+  family?: string | null;
+  familyLabel?: string | null;
+  communication: string;
+  communicationLabel: string;
+  transportSchema?: TemplateField[] | null;
+  channels?: unknown;
+  writes?: unknown;
+  ratedKw?: number | null;
+  controlTier?: number;
+  certificationStatus?: string | null;
+  note?: string | null;
+}
+
+/** Ein Feld des `transport_schema` einer Vorlage. */
+export interface TemplateField {
+  key: string;
+  label: string;
+  type?: string;
+  required?: boolean;
+  default?: string | number | boolean;
+  help?: string;
+  options?: { value: string | number; label: string }[];
+}
+
+/** Eine gespeicherte Fassung der Anbindung einer Komponente (Stufe 1). */
+export interface ComponentDefinition {
+  entityId: string;
+  version: number;
+  role?: string | null;
+  label?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  family?: string | null;
+  communication?: string | null;
+  connection?: Record<string, unknown> | null;
+  sourceKind?: string | null;
+  templateRef?: string | null;
+  templateVersion?: number | null;
+  createdAt?: string | null;
+  createdBy?: string | null;
+  note?: string | null;
+}
+
+/** Was der Anlege-Assistent speichert. */
+export interface SaveComponentBody {
+  templateRef: string;
+  label?: string;
+  role: string;
+  connection: Record<string, unknown>;
+  capacityKwp?: number;
+  intervalS?: number;
+  note?: string;
+}
+
+/** Die Antwort des Probe-Kanals auf einen Verbindungstest. */
+export interface ProbeAntwort {
+  requestId?: string;
+  errorCode?: string | null;
+  message?: string | null;
+  results?: {
+    id?: string;
+    ok?: boolean;
+    errorCode?: string | null;
+    message?: string | null;
+    reading?: Record<string, unknown> | null;
+  }[];
+}
+
+/**
+ * Die Komponenten einer Anlage samt Autoritäts- und Soll/Ist-Stand
+ * (Einheitsmodell Stufe 1).
+ *
+ * `appliedRevision === null` heißt UNBEKANNT (ältere Box, noch kein
+ * Herzschlag) - nie „nicht angekommen".
+ */
+export interface SiteComponents {
+  componentAuthority: string;
+  sollRevision?: string | null;
+  appliedRevision?: string | null;
+  appliedAt?: string | null;
+  refusedRevision?: string | null;
+  refusedReason?: string | null;
+  components: SiteComponentRow[];
+}
+
+export interface SiteComponentRow {
+  id: string;
+  role?: string | null;
+  entityType?: string | null;
+  label?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  family?: string | null;
+  communication?: string | null;
+  connection?: Record<string, unknown> | null;
+  sourceKind?: string | null;
+  templateRef?: string | null;
+  templateVersion?: number | null;
+  definitionVersion: number;
+  capacityKwp?: number | null;
+  edgeSourceId?: string | null;
+  syncStatus?: string | null;
+}
+
 export interface SiteEntities {
   registry: EntityRegistryState | null;
   entities: SiteEntity[];
@@ -1994,6 +2112,54 @@ export const api = {
   /** The site's v2 "Geräte & Entitäten" surface (Soll/Ist reconciliation). */
   siteEntities: (siteId: string) =>
     request<SiteEntities>(`/api/v1/sites/${siteId}/entities`),
+  /**
+   * Die Geräte-Vorlagen, aus denen der Anlege-Assistent seine Auswahl rendert
+   * (Einheitsmodell Stufe 0a/1). Authentifiziert, nicht anlagenbezogen - eine
+   * Vorlage ist eine Aussage über ein PRODUKT.
+   */
+  componentTemplates: () => request<ComponentTemplate[]>('/api/v1/component-templates'),
+  /** Die Komponenten einer Anlage samt Autoritäts- und Soll/Ist-Stand (Stufe 1). */
+  siteComponents: (siteId: string) =>
+    request<SiteComponents>(`/api/v1/sites/${siteId}/components`),
+  /**
+   * „Verbindung testen": die BOX liest das noch nicht gespeicherte Gerät einmal.
+   * Ein Erfolg hinterlegt zugleich den Beleg, ohne den nicht gespeichert wird
+   * (die Verbindungstest-Pflicht) - deshalb ist es dieselbe Route, nicht zwei.
+   */
+  testComponentConnection: (
+    siteId: string,
+    body: {
+      templateRef: string;
+      role?: string;
+      connection: Record<string, unknown>;
+      deviceId?: string;
+    },
+  ) =>
+    request<ProbeAntwort>(`/api/v1/sites/${siteId}/component-test`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Komponente anlegen (422 ohne bestandenen Verbindungstest). */
+  createComponent: (siteId: string, body: SaveComponentBody) =>
+    request<SiteComponents>(`/api/v1/sites/${siteId}/components`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Verbindung ändern - eine NEUE Fassung; die alte bleibt abrufbar. */
+  updateComponent: (siteId: string, entityId: string, body: SaveComponentBody) =>
+    request<SiteComponents>(`/api/v1/sites/${siteId}/components/${entityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /** Die Fassungen einer Komponente, neueste zuerst. */
+  componentVersions: (siteId: string, entityId: string) =>
+    request<ComponentDefinition[]>(`/api/v1/sites/${siteId}/components/${entityId}/versions`),
+  /** Zurück auf eine frühere Fassung - der Ein-Klick-Weg aus einem falschen Soll. */
+  rollbackComponent: (siteId: string, entityId: string, version: number) =>
+    request<SiteComponents>(
+      `/api/v1/sites/${siteId}/components/${entityId}/versions/${version}/rollback`,
+      { method: 'POST' },
+    ),
   /** AE1 topology read-model (adaptive energy flow + tiles). Empty for un-migrated sites. */
   topology: (siteId: string) => request<SiteTopology>(`/api/v1/sites/${siteId}/topology`),
   /**

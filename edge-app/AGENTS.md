@@ -2385,6 +2385,48 @@ Volles Bild (Migration, Endpunkte, Portal): Root-`AGENTS.md`
   Box keine eigene First-Light-Evidenz hat - genau der Fakt, mit dem Layer 1
   seinen sticky Pfad-Entscheid vorsetzen will.
 
+## Einheitsmodell Stufe 1: der Box-Applier — das Portal wird der SCHREIBER der lokalen Dateien
+
+`internal/componentapply` (rein, keine I/O — jede zeitabhaengige Funktion nimmt `now`, das
+otaapply/calibration/probe-Muster) + `agent/component_apply.go` (ausschliesslich Verdrahtung).
+Cloud-Seite, Migration und die Autoritaets-Regel: Root-`AGENTS.md` „Einheitsmodell Stufe 1".
+Was HIER gelten muss:
+
+- **⚠ DER APPLIER GREIFT NUR AUF EINER PORTAL-VERWALTETEN ANLAGE.** `componentapply.IsPortalManaged`
+  liest `registry.component_authority`, und **ABSENT heisst BOX** (`Authority`: alles, was nicht
+  woertlich `portal` ist). Ein aelterer Cloud-Stand, ein Push ohne das Feld und jede Bestandsanlage
+  laufen damit ZEICHENGLEICH wie vorher — festgenagelt von
+  `TestABoxManagedPlantIsByteIdenticalUnderEveryPush` (keine Datei geschrieben, keine Auswahl
+  geaendert, keine retained Veroeffentlichung).
+- **NIE partiell anwenden.** `Derive` baut den GANZEN Plan (Wechselrichter + Quellen) und verweigert
+  ihn als Ganzes bei zwei Wechselrichtern, doppelten deterministischen IDs oder einer unentscheidbaren
+  Rolle; erst danach schreibt `writeComponentPlan` BEIDE Speicher, und erst danach wird retained
+  veroeffentlicht. Ein halb angewandtes Soll waere ein Geraet, das gegen eine Konfiguration liest, die
+  nirgends steht.
+- **Ein leeres Soll ist KEIN Soll** (`ErrNoConfiguration`): ein Push ohne eine einzige
+  `driver.connection` loescht nichts — er wird als „hier steht nichts zu tun" abgelehnt. Sonst nähme
+  ein unvollstaendiger Push einer laufenden Anlage ihren Lesepfad.
+- **Die angewandte Revision wird PROTOKOLLIERT** (`componentapply.Store` → `<data>/components-applied.json`,
+  atomar tmp+rename, Schema-versioniert wie `calibration-certified.json`; ein Satz aus einer ZUKUENFTIGEN
+  `StateVersion` wird ganz ignoriert). Sie ueberlebt Neustart und Cloud-Ausfall und reist im Herzschlag
+  (`cloud.ComponentApplySummary`) — **eine Ablehnung steht NEBEN der angewandten Revision, nie an ihrer
+  Stelle**: was laeuft, ist weiterhin die zuletzt wirklich angewandte Fassung.
+- **Der lokale Bus ist UNVERAENDERT.** Geschrieben wird durch die BESTEHENDEN `invStore`/`srcStore` und
+  `publishInverterConfig`/`publishSourcesConfig`; `edge/inverter/config`, `edge/sources/config`, das
+  Self-Wiring und die Telemetrie sind byte-identisch — nur der SCHREIBER wechselt. `sources.DeterministicID`
+  bleibt die Identitaet, damit die Uebernahme einer Bestandsbox (Stufe 2) ein No-op ist.
+- **Auf einer portal-verwalteten Anlage lehnt `:8484` die lokale Bearbeitung ab** (`refuseIfPortalManaged`
+  auf `SetInverter`/`AddSource`/`DeleteSource`/`RenameSource`, mit `portalManagedHint`) — **aber erst,
+  nachdem wirklich ein Portal-Push angewandt wurde** (`PortalManagedComponents`), sonst haette eine
+  frisch eingerichtete Box weder das eine noch das andere und stuende in einer Sackgasse.
+- **`probe.OpTestConnection`** ist die Stufe-1-Erweiterung des Probe-Kanals: der Assistent testet eine
+  NOCH NICHT gespeicherte Verbindung ueber dieselbe `Agent.TestConnection`-Maschinerie, die die
+  `:8484`-Taste seit je benutzt — kein zweiter Test, der etwas anderes sagen koennte als das Geraet.
+  Die vier Zulassungsregeln des Kanals (Identitaet, Verfall, privates Ziel, Ratenbegrenzung) gelten
+  woertlich weiter.
+- Beweise: `internal/componentapply` (19, inkl. der Kontrakt-Fixture per PFAD) ·
+  `agent/component_apply_test.go` (8) · `agent/probe_test.go`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

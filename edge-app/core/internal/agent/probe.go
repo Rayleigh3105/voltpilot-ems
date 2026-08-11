@@ -34,6 +34,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
 
 // probeExchangeTimeout bounds ONE probe's local-bus round trip. It is wider
@@ -169,6 +170,15 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 			results[i] = probe.Failed(op.ID, verdicts[i].Code, verdicts[i].Message)
 			continue
 		}
+		if op.Op == probe.OpTestConnection {
+			// SEQUENTIALLY and one at a time on purpose: each connection test is
+			// its own bounded round trip, and several of them usually aim at the
+			// SAME device - running them in parallel would make one step's
+			// failure look like its neighbour's (the probe package's own rule for
+			// its read ops, applied to the ops that cannot be batched).
+			results[i] = a.runProbeTestConnection(op)
+			continue
+		}
 		fc := probeFnReadHolding
 		if op.RegisterKind == "input" {
 			fc = probeFnReadInput
@@ -209,7 +219,7 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 		// Whatever the exchange did not answer at all is a timeout - stated,
 		// never left as a zero value that would read like a successful 0.
 		for i, op := range req.Ops {
-			if verdicts[i].OK() && results[i].ID == "" {
+			if verdicts[i].OK() && op.Op == probe.OpRead && results[i].ID == "" {
 				results[i] = probe.Failed(op.ID, probe.ErrTimeout,
 					"Die Prüfung hat nicht rechtzeitig geantwortet.")
 			}
@@ -323,5 +333,75 @@ func (a *Agent) publishProbeResult(res probe.Result) {
 	if err := link.PublishProbeResult(raw); err != nil {
 		slog.Warn("Probe: Ergebnis konnte nicht gesendet werden",
 			"request_id", res.RequestID, "err", err)
+	}
+}
+
+// runProbeTestConnection answers ONE connection test by handing the form to the
+// box's EXISTING machinery (Agent.TestConnection - the same call the :8484
+// button makes, with the same catalog normalisation, the same socket discipline
+// and the same classified German failures).
+//
+// ⚠ Deliberately NOT a second implementation. If the portal's test and the
+// device's test could disagree, the assistant's "Verbindung geprüft" would be
+// worth nothing; sharing the one path is what makes it worth something. The
+// only thing added here is the mapping onto the contract's op_result.
+func (a *Agent) runProbeTestConnection(op probe.Op) probe.OpResult {
+	var conn testconn.Connection
+	if err := json.Unmarshal(op.Connection, &conn); err != nil {
+		return probe.Failed(op.ID, probe.ErrInvalidRequest,
+			"Die Verbindungsdaten sind nicht lesbar.")
+	}
+	res := a.TestConnection(testconn.Request{
+		Role:       op.Role,
+		Brand:      op.Brand,
+		Model:      op.Model,
+		Family:     op.Family,
+		Connection: conn,
+	})
+	if !res.OK {
+		code, msg := res.ErrorCode, res.Message
+		if code == "" {
+			// The local test always names its class; a build that ever did not
+			// lands in the honest "we do not understand this" bucket rather than
+			// in a fabricated success.
+			code = probe.ErrInvalidResponse
+		}
+		if msg == "" {
+			msg = probeTestMessage(code)
+		}
+		return probe.Failed(op.ID, code, msg)
+	}
+	var reading *probe.Reading
+	if res.Reading != nil {
+		reading = &probe.Reading{
+			PvKw:   res.Reading.PvKw,
+			LoadKw: res.Reading.LoadKw,
+			GridKw: res.Reading.GridKw,
+			SocPct: res.Reading.SocPct,
+		}
+	}
+	return probe.SucceededReading(op.ID, reading)
+}
+
+// probeTestMessage is the fallback German sentence per class, used only when
+// the local test returned a code without its own text (it normally carries one
+// for invalid_request). One table, so a class can never reach the customer as a
+// bare code.
+func probeTestMessage(code string) string {
+	switch code {
+	case probe.ErrUnreachable:
+		return "Das Gerät ist unter dieser Adresse nicht erreichbar."
+	case probe.ErrNoAnswer:
+		return "Das Gerät antwortet nicht (Seriennummer, Unit-ID oder Port prüfen)."
+	case probe.ErrInvalidResponse:
+		return "Die Antwort des Geräts passt nicht zu diesem Modell."
+	case probe.ErrImplausible:
+		return "Das Gerät antwortet, die Messwerte sind aber unplausibel."
+	case probe.ErrFroniusAPI:
+		return "Die Solar-API des Geräts hat nicht geantwortet."
+	case probe.ErrTimeout:
+		return "Die Prüfung hat nicht rechtzeitig geantwortet."
+	default:
+		return "Die Prüfung ist fehlgeschlagen."
 	}
 }

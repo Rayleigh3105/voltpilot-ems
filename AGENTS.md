@@ -530,6 +530,71 @@ Speicher — und sie kommt **ohne eine Zeile Edge-Code** aus.
   ANFANG des Tests ab (die Haus-Disziplin der Preis-Slots), sonst prüft er die Nachbarn mit.
   Portal-Seite in `frontend/portal/AGENTS.md`.
 
+## Einheitsmodell Stufe 1: EIN Anlege-Weg — das Portal wird die Wahrheit über die Geräte
+
+Der Kern des Programms (Scout `data/vp-komponenten-einheit-h2` Teil 4 + Teil 7, Stufenplan Stufe 1):
+Wechselrichter, Erzeuger, Zähler und Verbraucher werden IM PORTAL angelegt, und die Box leitet ihre
+lokalen Dateien daraus ab, statt sie auf `:8484` selbst zu führen. Alles ist ADDITIV — **eine laufende
+Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der Beweis ist ein Test).
+
+- **⚠ DIE TRAGENDE REGEL: die AUTORITÄT hängt an der ANLAGE, und „abwesend" heißt BOX.** `site.component_authority`
+  (Migration `V20260817000000`, Vorgabe `portal` + eine EINMALIGE Daten-Migration, die JEDE bestehende Anlage
+  auf `box` setzt) entscheidet, wer die Geräte-Konfiguration besitzt. Neue Anlagen sind portal-verwaltet,
+  Bestandsanlagen bleiben **unangetastet box-verwaltet** (ihre Übernahme ist Stufe 2). Die Vorgabe steht auf
+  `portal`, weil eine neue Anlage sonst als box-verwaltet entstünde; die Daten-Migration ist der Grund, warum
+  das trotzdem keine Bestandsanlage trifft — **wer die Spalte anfasst, fasst BEIDE Hälften an.** Dieselbe
+  Regel spiegelt der Vertrag (`registry_push.component_authority` ist OPTIONAL, absent = box) und der Edge
+  (`componentapply.Authority`: alles, was nicht wörtlich `portal` ist, ist box) — ein ÄLTERER Cloud-Stand
+  kann damit nie als Übernahme gelesen werden.
+- **Der Assistent ist EINE Route, nicht vier.** `POST /api/v1/sites/{id}/components` (+ `PUT …/{entityId}`,
+  `GET …/{entityId}/versions`, `POST …/versions/{n}/rollback`, `POST …/component-test`) auf
+  `SiteComponentController` — RLS-gefenced wie jede `/sites/**`-Route (kein `@PreAuthorize`, fremde Anlage
+  404, Admins über den `X-Tenant-Id`-Umschalter). **`templateRef` ist OPAK**: Marke, Modell, Familie und die
+  Kommunikationsart holt der Server AUS der Vorlage (Stufe 0a), nie aus dem Rumpf — ein Client kann keine
+  widersprüchliche Anbindung speichern.
+- **⚠ VERBINDUNGSTEST-PFLICHT: ohne bestandenen Test wird nicht gespeichert (422).** Seit dieser Stufe IST das
+  gespeicherte Soll der Lesepfad der Anlage — ein Tippfehler in der IP macht sie blind. `ComponentConnectionReceipts`
+  hält den Beleg 30 min im Speicher, geschlüsselt über einen SHA-256-Fingerabdruck aus (Anlage, templateRef,
+  sortierte Verbindungspaare): **eine geänderte Adresse ist ein anderes Gerät und entwertet den Beleg**. Der
+  Beleg entsteht NUR bei einem strikt bestandenen Test (`ok` + gemeldeter Messwert), nie bei Timeout. Der
+  Test selbst läuft über den Probe-Kanal (Stufe 0b) an dieselbe `testconn`-Maschinerie, die die
+  `:8484`-Taste seit je benutzt — es gibt bewusst keinen zweiten Test, der etwas anderes sagen könnte.
+  **Der Rollback verlangt KEINEN neuen Test**: diese Verbindung war schon einmal gespeichert und hat ihren
+  Test damals bestanden; einen neuen zu fordern versperrte den Rückweg aus einem Fehler genau dann, wenn das
+  Gerät nicht antwortet.
+- **⚠ Die 0-1-Regel keyt auf die VERBINDUNG, nicht auf die Zeile** (`ComponentService.resolveOrCreatePoint`;
+  im Testcontainers-Lauf als echter Defekt gefunden): seit der Auto-Komposition trägt JEDE verbundene Anlage
+  eine synthetisierte `grid-meter`-Zeile, ein „Zeile existiert ⇒ 409" hätte also jeden echten Zähler abgewiesen —
+  und ein „Zeile existiert ⇒ nimm sie" ließ den ZWEITEN Zähler die Verbindung des ersten überschreiben. Also:
+  komponierte Zeile ohne `connection_json` ⇒ ÜBERNEHMEN, Zeile MIT Verbindung ⇒ 409 mit einem eigenen deutschen
+  Satz je Rolle. Wechselrichter und Netz-Zähler bleiben damit serverseitig bei je einem.
+- **Versionen sind APPEND-ONLY** (`component_definition`, PK `(entity_id, version)`, RLS + FORCE): jedes
+  Speichern schreibt eine neue Fassung und hebt `measurement_point.definition_version`; ein Rollback schreibt
+  die ALTE Fassung als NEUE (nie ein Löschen) — „was lief letzte Woche" bleibt beantwortbar.
+- **Der Registry-Push wird für den LESEPFAD autoritativ, OHNE neues Topic:** `EntityRegistryService.composePush`
+  füllt `driver.connection` aus der gespeicherten Fassung und stempelt `component_authority` **NUR bei
+  `portal`** — die Bytes einer box-verwalteten Anlage sind damit unverändert.
+- **Der Box-Applier ist die Geräteseite** (`edge-app/core/internal/componentapply`, rein + `agent/component_apply.go`
+  als reine Verdrahtung): er leitet Wechselrichter-Auswahl und `sources.json` aus dem Push ab, **wendet NIE
+  partiell an** (erst der ganze Plan, dann beide Speicher, dann die retained Veröffentlichung), protokolliert die
+  angewandte Revision (`components-applied.json`, überlebt Neustart und Cloud-Ausfall) und lehnt bei einer
+  box-verwalteten Anlage GAR NICHTS ab — er läuft dort nicht. Der lokale Bus (`edge/inverter/config`,
+  `edge/sources/config`, Self-Wiring, Telemetrie) ist BYTE-IDENTISCH; nur der SCHREIBER der lokalen Dateien
+  wechselt. Deterministische Quellen-IDs (`sources.DeterministicID`) bleiben, damit die Übernahme in Stufe 2
+  ein No-op ist. Details: `edge-app/AGENTS.md`.
+- **Soll/Ist ist DREIWERTIG und wird nie geraten:** `in_sync` · `pending` · `unreported`. **`unreported` heißt
+  „die Box hat sich noch nicht geäußert" — NIE „die Änderung ist verloren"**; eine Ablehnung reist NEBEN der
+  angewandten Revision (`refusedRevision`/`refusedReason`), nie an ihrer Stelle — was läuft, ist weiterhin die
+  zuletzt wirklich angewandte Fassung.
+- **Beweise:** Go `internal/componentapply` (19, inkl. der Kontrakt-Fixture per PFAD) + `agent/component_apply_test.go`
+  (8, u. a. `TestABoxManagedPlantIsByteIdenticalUnderEveryPush` — die Captain-Auflage —, Ablehnung behält alles,
+  leeres Soll löscht nichts, Neustart, lokale Bearbeitung auf einer portal-verwalteten Anlage abgelehnt) ·
+  api `ComponentApiTest` (6, echte DB + Keycloak: die Reise Vorlage→Test→Anlegen mit Fassung 1, ohne Beleg 422,
+  zweiter Netz-Zähler 409, Rollback schreibt eine neue Fassung, RLS 404) · Portal `komponentenAssistent.test.ts` (26)
+  + `KomponenteHinzufuegenDrawer.test.tsx` (9). Portal-Seite in `frontend/portal/AGENTS.md`.
+- **NICHT in dieser Stufe:** Bestands-Übernahme + `:8484`-Ablösung (Stufe 2) · Selbstbau-Kanäle (Stufe 3) ·
+  Schreiben/Schalten und Freigabe (Stufe 4) · Vorlagen-Verwaltung (Stufe 6).
+
 ## Entity lifecycle: edit + delete (Standorte/Geräte/Mandanten/Benutzer/Registry)
 
 Every entity the portal can create can now also be edited and deleted - by customers for their own tenant and by Portal-Admins for any tenant.
