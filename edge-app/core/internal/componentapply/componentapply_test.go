@@ -362,3 +362,50 @@ func TestStoreRoundTripAndFutureVersionIsIgnoredWholesale(t *testing.T) {
 		t.Fatal("eine Datei aus der Zukunft darf nicht als gueltig gelten")
 	}
 }
+
+// --- Die SELBSTBAU-Komponente (Einheitsmodell Stufe 3) ----------------------
+
+const selfBuiltDriver = `{"communication":"modbus_baukasten",
+  "connection":{"transport":{"host":"192.168.1.50","port":502,"unit_id":1},
+    "channels":[{"slug":"wassertemperatur","label":"Wassertemperatur","unit":"°C",
+      "register":{"kind":"holding","address":100,"data_type":"s16","word_order":"big"},
+      "scale":0.1,"offset":0,"min_read_interval_s":10}]}}`
+
+// ⚠ Der eigentliche Grund für den Skip-Zweig: Derive ist alles-oder-nichts.
+// Ohne ihn liefe ein selbstgebauter Sensor in roleFor auf "welche Rolle" - und
+// die Anlage verlöre mit ihrem ERSTEN eigenen Gerät die Anwendung ihres
+// Wechselrichters und aller Quellen.
+func TestASelfBuiltDeviceIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
+	reg := portal(
+		ent("6a1e3d0f-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
+		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
+		ent("aaaa0000-0000-0000-0000-00000000000f", "modbus-generic", selfBuiltDriver),
+	)
+	plan, err := Derive(reg, cat(), now)
+	if err != nil {
+		t.Fatalf("ein Selbstbau-Gerät darf den Push nicht scheitern lassen: %v", err)
+	}
+	if plan.Inverter == nil {
+		t.Fatal("der Wechselrichter fehlt - genau das wäre der Schaden")
+	}
+	if len(plan.Sources) != 1 {
+		t.Fatalf("Quellen = %d, will 1 (der Erzeuger; das Selbstbau-Gerät gehört NICHT dazu)",
+			len(plan.Sources))
+	}
+	for _, s := range plan.Sources {
+		if strings.Contains(s.Communication, "baukasten") {
+			t.Fatalf("ein Selbstbau-Gerät ist in sources.json gelandet: %+v", s)
+		}
+	}
+}
+
+// Eine Anlage, die AUSSCHLIESSLICH Selbstbau-Geräte hat, nennt kein einziges
+// Katalog-Gerät - das ist der dokumentierte „leeres Soll löscht nichts"-Fall,
+// nicht ein Fehler des Kunden.
+func TestAPlantWithOnlySelfBuiltDevicesDerivesNoConfigurationAtAll(t *testing.T) {
+	reg := portal(ent("aaaa0000-0000-0000-0000-00000000000f", "modbus-generic", selfBuiltDriver))
+	_, err := Derive(reg, cat(), now)
+	if !errors.Is(err, ErrNoConfiguration) {
+		t.Fatalf("err = %v, will ErrNoConfiguration", err)
+	}
+}

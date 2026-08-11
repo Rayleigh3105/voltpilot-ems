@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.components.ComponentConnectionReceipts;
 import com.voltpilot.api.components.ComponentService;
+import com.voltpilot.api.components.SelfBuildComponentService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.SiteRepository;
@@ -11,6 +12,10 @@ import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
 import com.voltpilot.api.web.dto.ComponentTestRequest;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
+import com.voltpilot.api.web.dto.SaveSelfBuildRequest;
+import com.voltpilot.api.web.dto.SelfBuildReadRequest;
+import com.voltpilot.api.web.dto.SelfBuildReadResult;
+import com.voltpilot.api.web.dto.SiteComponentTemplateDto;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
 import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
@@ -25,6 +30,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -63,10 +69,12 @@ public class SiteComponentController {
     private final ComponentTemplateRepository templates;
     private final ComponentConnectionReceipts receipts;
     private final ProbeService probes;
+    private final SelfBuildComponentService selfBuild;
 
     public SiteComponentController(SiteRepository sites, ComponentService components,
             ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
-            ProbeService probes) {
+            ProbeService probes, SelfBuildComponentService selfBuild) {
+        this.selfBuild = selfBuild;
         this.sites = sites;
         this.components = components;
         this.templates = templates;
@@ -106,6 +114,74 @@ public class SiteComponentController {
     public SiteComponentsDto rollback(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @PathVariable int version, @AuthenticationPrincipal Jwt jwt) {
         return components.rollback(siteId, entityId, version, subject(jwt));
+    }
+
+    // ---- Die SELBSTBAU-TÜR (Einheitsmodell Stufe 3) -----------------------
+
+    /**
+     * „Jetzt lesen": EIN Kanal, einmal, am echten Gerät - mit Roh- UND
+     * skaliertem Wert nebeneinander (Konzept vp-modbus-baukasten-k6 §2.3).
+     *
+     * <p>Es ist zugleich der Verbindungstest von Schritt 1: ein Erfolg
+     * hinterlegt den Beleg, der das Speichern freigibt. Ein Timeout ist wie
+     * überall auf dieser Fläche ein ehrlicher AUSGANG (HTTP 200 mit
+     * {@code errorCode}), kein Fehler.
+     */
+    @PostMapping("/components/custom/read")
+    public SelfBuildReadResult readCustom(@PathVariable UUID siteId,
+            @Valid @RequestBody SelfBuildReadRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.read(siteId, request.deviceId(), request.connection(), request.channel(),
+                subject(jwt));
+    }
+
+    /** Ein selbst definiertes Modbus-Gerät anlegen. */
+    @PostMapping("/components/custom")
+    public SiteComponentsDto createCustom(@PathVariable UUID siteId,
+            @Valid @RequestBody SaveSelfBuildRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.create(siteId, request, subject(jwt));
+    }
+
+    /** Ein selbst definiertes Gerät ändern - eine NEUE Fassung. */
+    @PutMapping("/components/custom/{entityId}")
+    public SiteComponentsDto updateCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @Valid @RequestBody SaveSelfBuildRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.update(siteId, entityId, request, subject(jwt));
+    }
+
+    /**
+     * Ein selbst definiertes Gerät entfernen - samt seinem Lese-Flow.
+     *
+     * <p>Es ist bewusst eine EIGENE Route und nicht der Entitäts-Löschweg: nur
+     * hier wird auch der generierte Leseplan zurückgezogen, und eine Komponente
+     * ohne Gerät, deren Flow weiterläuft, wäre genau die halbe Wahrheit, die
+     * dieses Modell vermeidet.
+     */
+    @DeleteMapping("/components/custom/{entityId}")
+    public SiteComponentsDto deleteCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.delete(siteId, entityId, subject(jwt));
+    }
+
+    /** Die PRIVATEN Vorlagen dieser Anlage (kein Katalog, kein Teilen). */
+    @GetMapping("/component-templates")
+    public List<SiteComponentTemplateDto> siteTemplates(@PathVariable UUID siteId) {
+        return selfBuild.templates(siteId);
+    }
+
+    /** „Duplizieren": aus einem Gerät wird eine private Vorlage dieser Anlage. */
+    @PostMapping("/components/custom/{entityId}/duplicate")
+    public List<SiteComponentTemplateDto> duplicate(@PathVariable UUID siteId,
+            @PathVariable UUID entityId, @RequestBody(required = false) Map<String, String> body,
+            @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.duplicate(siteId, entityId, body == null ? null : body.get("label"),
+                subject(jwt));
+    }
+
+    /** Eine private Vorlage entfernen. Geräte, die daraus entstanden, bleiben. */
+    @DeleteMapping("/component-templates/{templateRef}")
+    public List<SiteComponentTemplateDto> deleteTemplate(@PathVariable UUID siteId,
+            @PathVariable String templateRef) {
+        return selfBuild.deleteTemplate(siteId, templateRef);
     }
 
     /**

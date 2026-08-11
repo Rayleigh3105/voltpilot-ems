@@ -90,6 +90,16 @@ type Driver struct {
 	Connection    json.RawMessage `json:"connection,omitempty"`
 }
 
+// CommunicationSelfBuild marks a component the CUSTOMER defined themselves in
+// the portal (Einheitsmodell Stufe 3, vp-modbus-baukasten-k6 §2.2). It is the
+// one communication this applier deliberately does NOT turn into a source: such
+// a device is read by its own generated flow, not by the self-wiring tab.
+//
+// ⚠ The value is shared verbatim with the cloud
+// (services/api .../components/SelfBuildDefinition.COMMUNICATION) - change both
+// together, or the box would start refusing pushes it should ignore.
+const CommunicationSelfBuild = "modbus_baukasten"
+
 // Plan is the derived local configuration of one push: at most one primary
 // inverter plus the additional read-only sources, all already validated against
 // the box's own catalog.
@@ -139,6 +149,20 @@ func ParseDriver(e entities.Entity) (Driver, bool, error) {
 	// so it is not part of the read path - and treating it as one would derive a
 	// selection with an empty IP.
 	if len(d.Connection) == 0 {
+		return Driver{}, false, nil
+	}
+	// ⚠ A SELF-BUILT device is not part of the local read path at all, and
+	// skipping it HERE - before the brand check - is load-bearing, not
+	// cosmetic: Derive is all-or-nothing, roleFor does not know the
+	// `modbus-generic` type, and a self-built device carries no brand by
+	// construction. Without this branch ONE customer-defined sensor would sink
+	// the WHOLE push, so a plant would lose the application of its inverter and
+	// every source the moment it defines its first own device.
+	//
+	// Its READ PLAN travels elsewhere: as a generated flow over v2/flows (one
+	// vp-modbus-read per channel, publishing its own per-entity telemetry). The
+	// driver block carries display/context only.
+	if d.Communication == CommunicationSelfBuild {
 		return Driver{}, false, nil
 	}
 	if strings.TrimSpace(d.Brand) == "" {
