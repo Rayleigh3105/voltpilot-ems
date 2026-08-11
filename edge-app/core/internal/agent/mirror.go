@@ -83,8 +83,8 @@ func (a *Agent) onRegistersRaw(_ string, payload []byte) {
 		return // cleared retained topic
 	}
 	var m struct {
-		Ts     string            `json:"ts"`
-		Unit   int               `json:"unit"`
+		Ts     string           `json:"ts"`
+		Unit   int              `json:"unit"`
 		Blocks []mirror.RawBlock `json:"blocks"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {

@@ -157,7 +157,7 @@ func TestMirrorServesBusFedDataAndTogglesViaAPI(t *testing.T) {
 
 	// --- VP map (unit 100): the gated composite telemetry.
 	pub(t, c, localbus.TopicTelemetry, false, map[string]any{
-		"ts":          time.Now().UTC().Format(time.RFC3339),
+		"ts": time.Now().UTC().Format(time.RFC3339),
 		"pv_power_kw": 5.5, "load_kw": 1.2, "power_kw": -3.1, "soc_pct": 87.0, "battery_power_kw": 1.2,
 	})
 	waitFor(t, 5*time.Second, "vp map served", func() bool {
