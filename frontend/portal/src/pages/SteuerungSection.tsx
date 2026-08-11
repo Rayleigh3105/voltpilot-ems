@@ -22,14 +22,12 @@
  * selbst nach.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '../../designsystem/components/core/Button';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { ApiError, api, type EarningsSite, type Site, type SiteAsset } from '../api';
-import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
+import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
-import { NeueAutomationDialog } from '../components/NeueAutomationDialog';
+import { RegelnKapsel } from '../components/RegelnKapsel';
 import { CoOptimizationStrip, PartHead } from '../components/SteuerungParts';
 import { ModusContainer } from '../components/ModusContainer';
 import { EINRICHTUNG_DURCH_VOLTPILOT } from '../moduleSurface';
@@ -41,20 +39,13 @@ import {
   type FlowNodeGovernance,
   type FlowSummary,
 } from '../flows/flowsApi';
-import type { CustomerTemplateDef } from '../flows/customerTemplates';
 import { catalogType, type EditorEntity, type FlowDocument } from '../flows/model';
 import { flowMode, paletteFilterFor, type SteuerungMode } from '../flows/steuerung';
 import {
-  AUS_VERBRAUCHERREGEL,
-  AUTOMATION_CAPSULE_EMPTY,
-  AUTOMATION_CAPSULE_INTRO,
-  AUTOMATION_CAPSULE_TITLE,
-  NEUE_AUTOMATION_LABEL,
   PROFILE_CAPSULE_EMPTY,
   PROFILE_CAPSULE_INTRO,
   PROFILE_CAPSULE_TITLE,
   PROTECTION_INTRO,
-  automationRows,
   coOptimization,
   profileRows,
   protectionItems,
@@ -62,11 +53,6 @@ import {
   type ProfileRow,
   type ReservationInput,
 } from '../steuerungArea';
-import {
-  isConsumerRuleTemplate,
-  verbraucherRegelHash,
-  verbraucherVorlageHash,
-} from '../consumers/vorlagen';
 import { type ProfileState, type SiteProfiles } from '../profiles';
 import {
   activeModes,
@@ -134,7 +120,6 @@ export function SteuerungSection({
    * `steuerung` (`nav.ts` LEGACY_SUBS), landet also auf den zwei Kapseln.
    */
   const [openContainer, setOpenContainer] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -275,12 +260,6 @@ export function SteuerungSection({
   const handleBatterySaved = useCallback((updatedAssets: SiteAsset[]) => {
     setAssets(updatedAssets);
   }, []);
-  const automations = useMemo(
-    () => automationRows(
-      (flows ?? []).filter((f) => flowMode(f.latestDocument ?? EMPTY_DOC) === 'automation'),
-    ),
-    [flows],
-  );
 
   const openFlow = useCallback(
     (flowId: string, version: number, doc: FlowDocument | null) => {
@@ -305,9 +284,8 @@ export function SteuerungSection({
         } else {
           setEditing({ flowId: created.flowId, version: created.flowVersion, palette });
         }
-        setCreating(false);
       } catch (e) {
-        fail(flowFailure(e, 'Der Flow konnte nicht angelegt werden.'));
+        fail(flowFailure(e, 'Die Regel konnte nicht angelegt werden.'));
       } finally {
         setBusy(false);
       }
@@ -315,25 +293,30 @@ export function SteuerungSection({
     [flowApi, fail, flowFailure],
   );
 
-  const useTemplate = useCallback(
-    (def: CustomerTemplateDef) => {
-      // D7 (Inkrement 4): a CONSUMER template is a Verbraucherregel - it opens
-      // the guided Regelbaukasten prefilled instead of emitting a raw flow
-      // (cycle guard, grid policy and enforcement live there).
-      if (isConsumerRuleTemplate(def.id)) {
-        setCreating(false);
-        window.location.hash = verbraucherVorlageHash(site.id, def.id);
-        return;
+  /**
+   * Eine BESTEHENDE Regel wurde im Baukasten überarbeitet: der Server legt beim
+   * Speichern auf einer simulierten/aktiven Version eine NEUE Entwurfs-Version
+   * an - die Antwort trägt sie, also wird sie und nicht die gesendete geöffnet.
+   */
+  const saveEdited = useCallback(
+    async (flowId: string, version: number, name: string, doc: FlowDocument) => {
+      setBusy(true);
+      setError('');
+      try {
+        const saved = await flowApi.save(flowId, version, name, doc);
+        setEditing({
+          flowId: saved.flowId,
+          version: saved.flowVersion,
+          palette: flowMode(doc),
+          view: 'review',
+        });
+      } catch (e) {
+        fail(flowFailure(e, 'Die Regel konnte nicht gespeichert werden.'));
+      } finally {
+        setBusy(false);
       }
-      const res = def.resolve(entities, site.id);
-      if ('reason' in res) {
-        setCreating(false);
-        fail(res.reason);
-        return;
-      }
-      void openSaved(def.name, res.doc, 'automation');
     },
-    [entities, site.id, openSaved, fail],
+    [flowApi, fail, flowFailure],
   );
 
   /** Der Profil-Schalter schreibt NUR den Willen; der Server schaltet frei. */
@@ -482,61 +465,24 @@ export function SteuerungSection({
             </Card>
           </section>
 
-          {/* --- Kapsel 2 · Automationen ---------------------------------- */}
-          <section className="vp-capsule" aria-label={AUTOMATION_CAPSULE_TITLE}>
-            <PartHead title={AUTOMATION_CAPSULE_TITLE} intro={AUTOMATION_CAPSULE_INTRO}>
-              <span className="vp-capsule-action">
-                <Button size="sm" disabled={busy} onClick={() => setCreating(true)}>
-                  {NEUE_AUTOMATION_LABEL}
-                </Button>
-              </span>
-            </PartHead>
-            <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-              {automations.length === 0 ? (
-                <EmptyState
-                  icon="zap"
-                  title="Noch keine Automation"
-                  description={AUTOMATION_CAPSULE_EMPTY}
-                />
-              ) : (
-                <ul className="vp-autorows">
-                  {automations.map((row) => (
-                    <li key={row.flowId} className="vp-autorow">
-                      <span className={`vp-rowdot ${row.tone}`} aria-hidden="true" />
-                      <div className="vp-autorow-text">
-                        <strong>{row.name}</strong>
-                        <p>{row.state}</p>
-                      </div>
-                      {/* D7: eine generierte Verbraucherregel wird HIER nur
-                          beobachtet - bearbeitet wird sie im Regelbaukasten
-                          ihres Verbrauchers, nie im Flow-Editor. */}
-                      {row.fromConsumerRule && (
-                        <Badge variant="off">{AUS_VERBRAUCHERREGEL}</Badge>
-                      )}
-                      <Badge variant={row.active ? 'ok' : 'off'}>v{row.version}</Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => {
-                          if (row.fromConsumerRule) {
-                            window.location.hash = verbraucherRegelHash(
-                              site.id, row.fromConsumerRule.entityId,
-                            );
-                            return;
-                          }
-                          const flow = (flows ?? []).find((f) => f.flowId === row.flowId);
-                          if (flow) openFlow(flow.flowId, flow.latestVersion, flow.latestDocument);
-                        }}
-                      >
-                        Öffnen
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          </section>
+          {/* --- Kapsel 2 · Regeln (Naming Set A) -------------------------- */}
+          <RegelnKapsel
+            site={site}
+            flows={flows}
+            entities={entities}
+            flowApi={flowApi}
+            lockedKinds={lockedCondKinds}
+            lockedHint={EINRICHTUNG_DURCH_VOLTPILOT}
+            busy={busy}
+            onBusy={setBusy}
+            onError={(m) => (m ? fail(m) : setError(''))}
+            onReload={reload}
+            onOpenFlow={openFlow}
+            onBuiltFlow={(name, doc) => void openSaved(name, doc, 'automation')}
+            onEditedFlow={(flowId, version, name, doc) =>
+              void saveEdited(flowId, version, name, doc)}
+            onOpenEditor={() => void openSaved('Neue Regel', null, 'automation')}
+          />
 
           {/* --- Die schmale Schutz-Zeile --------------------------------- */}
           <p className="vp-protline">
@@ -549,18 +495,6 @@ export function SteuerungSection({
             ))}
           </p>
 
-          <NeueAutomationDialog
-            open={creating}
-            onClose={() => setCreating(false)}
-            entities={entities}
-            siteId={site.id}
-            busy={busy}
-            lockedKinds={lockedCondKinds}
-            lockedHint={EINRICHTUNG_DURCH_VOLTPILOT}
-            onUseTemplate={useTemplate}
-            onBuilt={(name, doc) => void openSaved(name, doc, 'automation')}
-            onOpenEditor={() => void openSaved('Neue Automation', null, 'automation')}
-          />
         </>
       )}
     </div>

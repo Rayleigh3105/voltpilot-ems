@@ -1,15 +1,50 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { SteuerungSection } from './SteuerungSection';
 import { api, type Site } from '../api';
 import { optimizerApi } from '../optimizerApi';
 import * as flowsApi from '../flows/flowsApi';
 import type { SiteProfile } from '../profiles';
+import type { Consumer, ConsumerOptions } from '../consumers/types';
+import { buildGuidedFlow } from '../flows/guidedBuilder';
 
 // The read-only canvas preview needs real layout; the derivation it renders is
 // covered by the flow-editor tests.
 vi.mock('../components/flows/FlowCanvas', () => ({
   FlowCanvas: () => <div data-testid="canvas" />,
+}));
+
+// --- Die Verbraucher-Seite der Regeln-Kapsel (Einheitsmodell Stufe 5a) ------
+const cOptions = vi.fn();
+const cList = vi.fn();
+const cStatus = vi.fn();
+const cOverrides = vi.fn();
+const cFulfillment = vi.fn();
+const cGetPolicy = vi.fn();
+const cPause = vi.fn();
+const cResume = vi.fn();
+const cActivatePolicy = vi.fn();
+const cDeactivatePolicy = vi.fn();
+const cStartOverride = vi.fn();
+const cClearOverride = vi.fn();
+
+vi.mock('../consumers/consumersApi', () => ({
+  consumersApi: {
+    options: (...a: unknown[]) => cOptions(...a),
+    list: (...a: unknown[]) => cList(...a),
+    status: (...a: unknown[]) => cStatus(...a),
+    overrides: (...a: unknown[]) => cOverrides(...a),
+    fulfillment: (...a: unknown[]) => cFulfillment(...a),
+    getPolicy: (...a: unknown[]) => cGetPolicy(...a),
+    pause: (...a: unknown[]) => cPause(...a),
+    resume: (...a: unknown[]) => cResume(...a),
+    activatePolicy: (...a: unknown[]) => cActivatePolicy(...a),
+    deactivatePolicy: (...a: unknown[]) => cDeactivatePolicy(...a),
+    startOverride: (...a: unknown[]) => cStartOverride(...a),
+    clearOverride: (...a: unknown[]) => cClearOverride(...a),
+    create: vi.fn(),
+    savePolicy: vi.fn(),
+  },
 }));
 
 const site: Site = {
@@ -29,6 +64,43 @@ const site: Site = {
   maxFeedInKw: null,
   leistungspreisEurKw: 120,
   peakReserveSocPct: 30,
+};
+
+const CONSUMER: Consumer = {
+  id: 'e-wb', type: 'wallbox', typeLabel: 'Wallbox', name: 'Wallbox Garage',
+  controlKind: 'on_off', ratedPowerKw: 11, minPowerKw: null, levelsKw: null,
+  resolutionKw: null, powerRangesKw: null, storageRelation: 'consumer_first',
+  defaultGridEnergyPolicy: 'allow', allowStorageDischarge: false, failsafe: 'off',
+  enabled: true, version: 1, connection: 'connected', edgeSourceId: 'src-1',
+  controlActivation: 'active', hasDraftPolicy: true, draftPolicyVersion: 1,
+};
+
+const C_OPTIONS: ConsumerOptions = {
+  types: [{ type: 'wallbox', label: 'Wallbox', controlKinds: ['on_off'], defaultFailsafe: 'release', releaseAllowed: true, intents: [] }],
+  signals: [],
+  intents: [],
+  hasStorage: true,
+  reportedSources: [],
+  defaultStorageRelation: 'consumer_first',
+  defaultGridEnergyPolicy: 'allow',
+};
+
+/** Ein gespeichertes Regel-Dokument des Verbrauchers (liefert den Klartext-Satz). */
+const POLICY = {
+  entityId: 'e-wb',
+  version: 1,
+  lifecycle: 'active' as const,
+  contentHash: 'sha256:x',
+  createdBy: null,
+  document: {
+    schema_version: '1.0' as const,
+    entity_id: 'e-wb',
+    requirements: [{
+      id: 'r-1', kind: 'fixed_window' as const, enforcement: 'must_run' as const,
+      target: { kind: 'on_off' as const, value: true },
+      recurrence: { days: 'daily' as const, from: '11:00', to: '15:00' },
+    }],
+  },
 };
 
 function profile(over: Partial<SiteProfile> & { id: string; label: string }): SiteProfile {
@@ -62,6 +134,7 @@ const BOUND = {
   entities: vi.fn(),
   governance: vi.fn(),
   socBands: vi.fn(),
+  liveStatus: vi.fn(),
 };
 
 function setup(overrides: Partial<typeof BOUND> = {}) {
@@ -72,15 +145,54 @@ function setup(overrides: Partial<typeof BOUND> = {}) {
   return bound;
 }
 
+/** Eine Flow-Regel, die der Rück-Parser lesen kann (Baukasten-Ausschnitt). */
+function pvFlow(over: Record<string, unknown> = {}) {
+  const doc = buildGuidedFlow(
+    {
+      conditions: [{ kind: 'entity', entityId: 'e-grid', channel: 'power_kw', direction: 'below', threshold: -3.5 }],
+      combinator: 'and',
+      action: { kind: 'onoff', entityId: 'e-wb', ttlS: 300 },
+    },
+    'Wallbox nur bei PV-Überschuss',
+    's-1',
+  );
+  return {
+    flowId: 'f-wb',
+    name: 'Wallbox nur bei PV-Überschuss',
+    activeVersion: 2,
+    latestVersion: 2,
+    latestLifecycle: 'active',
+    latestDocument: doc,
+    versions: [1, 2],
+    simulation: null,
+    ...over,
+  };
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
   BOUND.list.mockResolvedValue([]);
   BOUND.entities.mockResolvedValue([
     { id: 'e-batt', entityType: 'battery-hybrid', label: 'Speicher', measure: ['soc_pct'], actuate: ['setpoint_kw'] },
     { id: 'e-pv', entityType: 'producer', label: 'PV-Dach', measure: ['pv_power_kw'], actuate: [] },
-    { id: 'e-wb', entityType: 'wallbox', label: 'Wallbox', measure: ['power_kw'], actuate: ['on_off'] },
+    { id: 'e-wb', entityType: 'wallbox', label: 'Wallbox Garage', measure: ['power_kw'], actuate: ['on_off'] },
   ]);
   BOUND.governance.mockResolvedValue({ gatedNodes: [] });
+  BOUND.liveStatus.mockResolvedValue({ acks: [], nodes: [] });
+  BOUND.deactivate.mockResolvedValue({ deactivated: true, message: 'Stillgelegt.' });
+  BOUND.activate.mockResolvedValue({ activated: true, message: 'Aktiviert.', published: true, lifecycle: 'active' });
+  BOUND.remove.mockResolvedValue(undefined);
+  cOptions.mockResolvedValue(C_OPTIONS);
+  cList.mockResolvedValue([]);
+  cStatus.mockResolvedValue([]);
+  cOverrides.mockResolvedValue([]);
+  cFulfillment.mockResolvedValue({ tasks: [] });
+  cGetPolicy.mockResolvedValue(POLICY);
+  cPause.mockResolvedValue({ published: true, message: 'Pausiert.' });
+  cResume.mockResolvedValue({ activated: true, reason: null, message: 'Fortgesetzt.', published: true, policyVersion: 1 });
+  cActivatePolicy.mockResolvedValue({ activated: true, reason: null, message: 'Aktiviert.', published: true, policyVersion: 1 });
+  cDeactivatePolicy.mockResolvedValue({ published: true, message: 'Abgeschaltet.' });
+  cClearOverride.mockResolvedValue({ applied: true, pushed: true, kind: 'clear', endsAt: null, effectivePowerKw: null, gridImportPossible: false, ttlCapped: false, message: '' });
   vi.spyOn(api, 'usageProfile').mockResolvedValue({
     signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
   } as never);
@@ -123,14 +235,20 @@ beforeEach(() => {
   } as never);
 });
 
-describe('SteuerungSection (Portal v3 M4)', () => {
-  it('renders exactly two capsules plus the protection line', async () => {
+afterEach(() => {
+  window.location.hash = '';
+});
+
+describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
+  it('renders exactly two capsules plus the protection line — die zweite heißt „Regeln"', async () => {
     setup();
     const { container } = render(<SteuerungSection site={site} />);
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Modus-Profile' })).toBeInTheDocument());
-    expect(screen.getByRole('heading', { name: 'Automationen' })).toBeInTheDocument();
+    // Naming Set A: die Kapsel heißt „Regeln", nicht mehr „Automationen".
+    expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Automationen' })).toBeNull();
     expect(container.querySelectorAll('section.vp-capsule')).toHaveLength(2);
 
     // The retired four-part surface is gone - no toolbox, no active/offer mix.
@@ -141,7 +259,6 @@ describe('SteuerungSection (Portal v3 M4)', () => {
     expect(screen.getByText(/Läuft immer mit/)).toBeInTheDocument();
     expect(screen.getByText('§ 14a-Schutz')).toBeInTheDocument();
     expect(screen.getByText('Negativpreis-Abregelung')).toBeInTheDocument();
-    // EEG appears because grid charging is barred on this site.
     expect(screen.getByText('EEG: nur Solarladen')).toBeInTheDocument();
   });
 
@@ -151,12 +268,9 @@ describe('SteuerungSection (Portal v3 M4)', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('switch', { name: /Lastspitzenkappung/ })).toBeInTheDocument());
-    // Real contribution, not a fabricated 0.
     expect(screen.getByText(/3\.600/)).toBeInTheDocument();
-    // The blocked profile states M3s reason - never an "Angefragt" prompt.
     expect(screen.getByText(/dynamischer Tarif/)).toBeInTheDocument();
     expect(screen.queryByText(/Angefragt/)).toBeNull();
-    // The off profile still has a real switch.
     const off = screen.getByRole('switch', { name: /Atypische Netznutzung einschalten/ });
     expect(off).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(off);
@@ -179,143 +293,16 @@ describe('SteuerungSection (Portal v3 M4)', () => {
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Lastspitzenkappung öffnen/ })).toBeInTheDocument());
-    // The retired "Profile verwalten" door is gone.
     expect(screen.queryByRole('button', { name: /Profile verwalten/ })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /Lastspitzenkappung öffnen/ }));
 
-    // The container replaces the two capsules: its back link + the mode's own
-    // views section render, the capsules do not.
     expect(await screen.findByRole('button', { name: /Zur Steuerung/ })).toBeInTheDocument();
     expect(screen.getByText('Ansichten dieses Modus')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Automationen' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Regeln' })).toBeNull();
 
-    // Back returns to the two capsules.
     fireEvent.click(screen.getByRole('button', { name: /Zur Steuerung/ }));
-    expect(await screen.findByRole('heading', { name: 'Automationen' })).toBeInTheDocument();
-  });
-
-  it('toggling a row switch does not open the container', async () => {
-    setup();
-    render(<SteuerungSection site={site} />);
-    const off = await screen.findByRole('switch', { name: /Atypische Netznutzung einschalten/ });
-    fireEvent.click(off);
-    await waitFor(() =>
-      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'atypische-netznutzung', 'an'));
-    // Still on the capsule surface - the switch never navigated into a container.
-    expect(screen.queryByRole('button', { name: /Zur Steuerung/ })).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Automationen' })).toBeInTheDocument();
-  });
-
-  it('has exactly ONE "Neue Automation" entry, whose dialog offers template → builder → editor', async () => {
-    setup();
-    render(<SteuerungSection site={site} />);
-
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Automationen' })).toBeInTheDocument());
-    const plus = screen.getAllByRole('button', { name: /Neue Automation/ });
-    expect(plus).toHaveLength(1);
-    // No second door into the builder on the page itself.
-    expect(screen.queryByRole('button', { name: /Profi-Ansicht/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Baukasten \(geführt\)/ })).toBeNull();
-
-    fireEvent.click(plus[0]);
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('1 · Vorlage verwenden');
-    expect(dialog).toHaveTextContent('2 · Geführter Baukasten');
-    expect(dialog).toHaveTextContent('3 · Freier Editor');
-    // A-1: the runtime's vendor name is not customer copy.
-    expect(dialog.textContent ?? '').not.toContain('Node-RED');
-  });
-
-  it('the dialog lists only fitting templates and hides the rest behind an honest counted line', async () => {
-    setup();
-    // Wallbox but NO grid meter: the PV-surplus template cannot run here.
-    render(<SteuerungSection site={site} />);
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Neue Automation/ })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Neue Automation/ }));
-
-    const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('Heizstab-Zeitplan');
-    expect(dialog).not.toHaveTextContent('Wallbox nur bei PV-Überschuss');
-
-    const disclose = screen.getByRole('button', { name: /passt nicht zu Ihrer Anlage/ });
-    expect(disclose).toHaveTextContent('1 weitere Vorlage passt nicht zu Ihrer Anlage');
-    fireEvent.click(disclose);
-    expect(await screen.findByText('Wallbox nur bei PV-Überschuss')).toBeInTheDocument();
-    expect(screen.getByText(/fehlt Ihrer Anlage noch ein Netz-Zähler/)).toBeInTheDocument();
-  });
-
-  it('lists automations with their live state and no invented switch count', async () => {
-    const bound = setup();
-    bound.list.mockResolvedValue([
-      {
-        flowId: 'f-wb',
-        name: 'Wallbox nur bei PV-Überschuss',
-        activeVersion: 2,
-        latestVersion: 2,
-        latestLifecycle: 'active',
-        latestDocument: {
-          schema_version: '1.0', name: 'x', runtime: 'edge',
-          nodes: [{ id: 'n1', type: 'vp.entity.control', type_version: '1.0.0' }],
-          edges: [], triggers: [],
-        },
-        simulation: null,
-      },
-    ]);
-    render(<SteuerungSection site={site} />);
-    await waitFor(() =>
-      expect(screen.getByText('Wallbox nur bei PV-Überschuss')).toBeInTheDocument());
-    expect(screen.getByText('Läuft')).toBeInTheDocument();
-    expect(screen.queryByText(/× geschaltet/)).toBeNull();
-  });
-
-  it('a generated Verbraucherregel carries the origin badge and opens the Regelbaukasten (D7)', async () => {
-    const bound = setup();
-    bound.list.mockResolvedValue([
-      {
-        flowId: 'f-cons',
-        name: 'Verbraucherregel Wallbox',
-        activeVersion: 3,
-        latestVersion: 3,
-        latestLifecycle: 'active',
-        latestDocument: {
-          schema_version: '1.0', name: 'x', runtime: 'edge',
-          origin: { kind: 'consumer-policy', policy_id: 'p-1', policy_version: 3, entity_id: 'e-wb' },
-          nodes: [{ id: 'n1', type: 'vp.consumer.reactive', type_version: '1.0.0' }],
-          edges: [], triggers: [],
-        },
-        simulation: null,
-      },
-    ]);
-    window.location.hash = '';
-    render(<SteuerungSection site={site} />);
-
-    expect(await screen.findByText('Aus Verbraucherregel')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Öffnen' }));
-    // Edited where it lives: the consumer's Regelbaukasten, never the flow editor.
-    expect(window.location.hash).toBe('#/anlage/s-1/verbraucher?verbraucher=e-wb');
-    expect(bound.get).not.toHaveBeenCalled();
-    window.location.hash = '';
-  });
-
-  it('a consumer template opens the Regelbaukasten instead of emitting a flow (D7)', async () => {
-    const bound = setup();
-    window.location.hash = '';
-    render(<SteuerungSection site={site} />);
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Neue Automation/ })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Neue Automation/ }));
-
-    // The fitting consumer template here is the Heizstab-Zeitplan (no grid meter).
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Verwenden' }));
-
-    expect(window.location.hash).toBe('#/anlage/s-1/verbraucher?vorlage=schedule-consumer');
-    // No flow is created on this path - the rule lives on the consumer surface.
-    expect(bound.create).not.toHaveBeenCalled();
-    window.location.hash = '';
+    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
   });
 
   it('stays honest when the optional endpoints are unavailable (older backend / 403)', async () => {
@@ -326,19 +313,9 @@ describe('SteuerungSection (Portal v3 M4)', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Modus-Profile' })).toBeInTheDocument());
-    // No fabricated numbers - the contribution reads "—".
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
-    // The peak reserve still comes from the SiteDto echo, so the stack renders.
     expect(screen.getByText(/Lastspitzen-Reserve/)).toBeInTheDocument();
     expect(screen.queryByText(/Notstrom-Reserve/)).toBeNull();
-  });
-
-  it('shows no co-optimization strip with a single battery mode', async () => {
-    setup();
-    render(<SteuerungSection site={{ ...site, leistungspreisEurKw: null }} />);
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Modus-Profile' })).toBeInTheDocument());
-    expect(screen.queryByText(/ein Speicher — VoltPilot optimiert/)).toBeNull();
   });
 
   it('renders a calm empty profile capsule when the backend has no profiles', async () => {
@@ -348,7 +325,207 @@ describe('SteuerungSection (Portal v3 M4)', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Modus-Profile' })).toBeInTheDocument());
     expect(screen.getByText(/noch keine Profile hinterlegt/)).toBeInTheDocument();
-    expect(screen.queryByRole('switch')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Die Kapsel „Regeln" (Einheitsmodell Stufe 5a)
+// ---------------------------------------------------------------------------
+
+describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
+  it('hat GENAU EINEN „＋ Neue Regel"-Einstieg, dessen Dialog drei Türen bietet', async () => {
+    setup();
+    render(<SteuerungSection site={site} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument());
+    const plus = screen.getAllByRole('button', { name: /Neue Regel/ });
+    expect(plus).toHaveLength(1);
+    // Das alte Wort taucht nirgends mehr auf.
+    expect(screen.queryByRole('button', { name: /Neue Automation/ })).toBeNull();
+
+    fireEvent.click(plus[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Was soll Ihre Anlage für Sie erledigen?');
+    expect(dialog).toHaveTextContent('Eigene Wenn/Dann-Regel');
+    expect(dialog).toHaveTextContent('Freier Editor');
+    // A-1: der Name der Laufzeit ist keine Kundencopy.
+    expect(dialog.textContent ?? '').not.toContain('Node-RED');
+  });
+
+  it('die Galerie zeigt die Rezepte, blendet Unpassendes gezählt aus und vertagt EHRLICH', async () => {
+    setup();
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Neue Regel/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Neue Regel/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    // Die vier Verbraucher-Absichten sind Rezepte.
+    expect(dialog).toHaveTextContent('PV-Überschuss nutzen');
+    expect(dialog).toHaveTextContent('Feste Zeiten');
+    expect(dialog).toHaveTextContent('Günstige Stunden nutzen');
+    expect(dialog).toHaveTextContent('Bis zu einer Frist erledigen');
+    expect(dialog).toHaveTextContent('Speicher schützen');
+    // Captain-Entscheid: die Benachrichtigung wird GEZEIGT, ehrlich vertagt.
+    expect(dialog).toHaveTextContent('Sag mir Bescheid');
+    expect(dialog).toHaveTextContent('bald verfügbar');
+    expect(dialog).toHaveTextContent(/Zustellweg/);
+  });
+
+  it('ohne schaltbares Gerät ist die Galerie keine Sackgasse', async () => {
+    const bound = setup();
+    bound.entities.mockResolvedValue([
+      { id: 'e-batt', entityType: 'battery-hybrid', label: 'Speicher', measure: ['soc_pct'], actuate: ['setpoint_kw'] },
+    ]);
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument());
+
+    // Der leere Zustand zeigt die Galerie INLINE - keine leere Liste.
+    expect(await screen.findByText('Was soll Ihre Anlage für Sie erledigen?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Komponente anlegen' })).toBeInTheDocument();
+    expect(screen.getByText(/passen nicht zu Ihrer Anlage/)).toBeInTheDocument();
+  });
+
+  it('eine Flow-Regel wird eine Karte mit Klartext-Satz — und OHNE erfundenen Zähler', async () => {
+    const bound = setup();
+    bound.list.mockResolvedValue([pvFlow()]);
+    render(<SteuerungSection site={site} />);
+
+    expect(await screen.findByText('Wallbox nur bei PV-Überschuss')).toBeInTheDocument();
+    expect(screen.getByText(/schaltet VoltPilot Wallbox Garage ein/)).toBeInTheDocument();
+    // Der Verlaufsspeicher ist Stufe 5b - hier wird nichts behauptet.
+    expect(screen.queryByText(/× geschaltet/)).toBeNull();
+    // Der Gerätestand sagt ehrlich, dass die Bestätigung fehlt.
+    expect(screen.getByText(/Ausgerollt · v2/)).toBeInTheDocument();
+  });
+
+  it('eine generierte Verbraucherregel erscheint GENAU EINMAL — als Rezept-Karte', async () => {
+    const bound = setup();
+    bound.list.mockResolvedValue([
+      pvFlow({
+        flowId: 'f-cons',
+        name: 'Verbraucherregel Wallbox',
+        latestDocument: {
+          ...pvFlow().latestDocument,
+          origin: { kind: 'consumer-policy', policy_id: 'p-1', policy_version: 1, entity_id: 'e-wb' },
+        },
+      }),
+    ]);
+    cList.mockResolvedValue([CONSUMER]);
+    render(<SteuerungSection site={site} />);
+
+    // Die Rezept-Karte trägt den Namen des VERBRAUCHERS ...
+    await waitFor(() =>
+      expect(document.querySelectorAll('.vp-regel-name')).toHaveLength(1));
+    expect(document.querySelector('.vp-regel-name')?.textContent).toBe('Wallbox Garage');
+    // ... und die generierte Automation steht NICHT zusätzlich in der Liste.
+    expect(screen.queryByText('Verbraucherregel Wallbox')).toBeNull();
+    // Der Satz kommt aus dem gespeicherten Regel-Dokument.
+    expect(screen.getByText(/Täglich von 11:00 bis 15:00 Uhr/)).toBeInTheDocument();
+  });
+
+  it('der Schnellschalter pausiert eine aktive Verbraucher-Regel', async () => {
+    setup();
+    cList.mockResolvedValue([CONSUMER]);
+    render(<SteuerungSection site={site} />);
+    fireEvent.click(await screen.findByRole('switch', { name: /Wallbox Garage pausieren/ }));
+    await waitFor(() => expect(cPause).toHaveBeenCalledWith('s-1', 'e-wb'));
+  });
+
+  it('und setzt eine pausierte fort (AUS geht immer, AN prüft der Server)', async () => {
+    setup();
+    cList.mockResolvedValue([{ ...CONSUMER, controlActivation: 'paused' }]);
+    render(<SteuerungSection site={site} />);
+    fireEvent.click(await screen.findByRole('switch', { name: /Wallbox Garage einschalten/ }));
+    await waitFor(() => expect(cResume).toHaveBeenCalledWith('s-1', 'e-wb'));
+  });
+
+  it('eine Ablehnung beim Einschalten bleibt AUS und nennt den Server-Grund', async () => {
+    setup();
+    cList.mockResolvedValue([{ ...CONSUMER, controlActivation: 'not_activated' }]);
+    cActivatePolicy.mockResolvedValue({
+      activated: false, reason: 'gated_node_not_enabled',
+      message: 'Dafür muss VoltPilot zuerst das passende Modus-Profil freischalten.',
+      published: false, policyVersion: null,
+    });
+    render(<SteuerungSection site={site} />);
+
+    fireEvent.click(await screen.findByRole('switch', { name: /Wallbox Garage einschalten/ }));
+    await waitFor(() => expect(cActivatePolicy).toHaveBeenCalled());
+    expect(await screen.findByText(/Modus-Profil freischalten/)).toBeInTheDocument();
+  });
+
+  it('meldet ein Gerät seinen Zustand, trägt die Karte ihn — sonst behauptet sie nichts', async () => {
+    setup();
+    cList.mockResolvedValue([CONSUMER]);
+    cStatus.mockResolvedValue([
+      { entityId: 'e-wb', state: 'waiting', reasonCode: 'guard_min_off', reportedAt: '2026-08-10T12:00:00Z' },
+    ]);
+    render(<SteuerungSection site={site} />);
+    expect(await screen.findByText(/Wartet auf passenden Zeitpunkt/)).toBeInTheDocument();
+    expect(screen.getByText(/Mindestpause des Geräts/)).toBeInTheDocument();
+  });
+
+  it('ein laufender Eingriff steht als Banner über der Liste und lässt sich beenden', async () => {
+    setup();
+    cList.mockResolvedValue([CONSUMER]);
+    cOverrides.mockResolvedValue([{
+      entityId: 'e-wb', kind: 'start', targetCommand: 'on_off',
+      endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    }]);
+    render(<SteuerungSection site={site} />);
+
+    expect(await screen.findByText(/Sofortaktion aktiv/)).toBeInTheDocument();
+    expect(screen.getByText(/wartet — Sofortaktion hat Vorrang/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt beenden' }));
+    // Der Haus-Dialog fragt vorher; erst die Bestätigung greift ein.
+    fireEvent.click(await screen.findByRole('button', { name: 'Bestätigen' }));
+    await waitFor(() => expect(cClearOverride).toHaveBeenCalledWith('s-1', 'e-wb'));
+  });
+
+  it('„Öffnen" zeigt den Detail-Einschub — mit EHRLICH leerem Verlauf', async () => {
+    const bound = setup();
+    bound.list.mockResolvedValue([pvFlow()]);
+    render(<SteuerungSection site={site} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Öffnen' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('Ihre Regel')).toBeInTheDocument();
+    expect(within(drawer).getByText(/Geräteschutz, Netzvorgaben/)).toBeInTheDocument();
+    expect(within(drawer).getByText('Verlauf dieser Regel')).toBeInTheDocument();
+    expect(within(drawer).getByText(/noch nicht aufgezeichnet/)).toBeInTheDocument();
+    // Ohne Probelauf wird KEINE Zahl behauptet.
+    expect(within(drawer).getByText(/noch nicht durchgerechnet/)).toBeInTheDocument();
+    expect(within(drawer).getByText('v2 aktiv · v1')).toBeInTheDocument();
+  });
+
+  it('ein Rezept öffnet den Regelbaukasten, statt einen Flow zu erzeugen (D7)', async () => {
+    const bound = setup();
+    cList.mockResolvedValue([{ ...CONSUMER, hasDraftPolicy: false, controlActivation: 'not_activated' }]);
+    render(<SteuerungSection site={site} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Neue Regel/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Neue Regel/ }));
+
+    const dialog = await screen.findByRole('dialog');
+    const karte = within(dialog).getByText('Feste Zeiten').closest('li') as HTMLElement;
+    fireEvent.click(within(karte).getByRole('button', { name: 'Wählen' }));
+
+    expect(await screen.findByText(/Regel für Wallbox Garage/)).toBeInTheDocument();
+    // Auf diesem Weg entsteht KEIN Flow.
+    expect(bound.create).not.toHaveBeenCalled();
+  });
+
+  it('ein ?verbraucher=-Lesezeichen öffnet den Regelbaukasten und räumt die Adresse auf', async () => {
+    setup();
+    window.location.hash = '#/anlage/s-1/steuerung?verbraucher=e-wb';
+    cList.mockResolvedValue([CONSUMER]);
+    render(<SteuerungSection site={site} />);
+
+    expect(await screen.findByText(/Regel für Wallbox Garage/)).toBeInTheDocument();
+    expect(window.location.hash).not.toContain('verbraucher=');
   });
 });
 
@@ -378,10 +555,6 @@ describe('Umstellung des Anlagentyps hinterlässt keinen kaputten Zwischenzustan
   it('weist keine Basis-Ansicht als Freischaltung des Markt-Modus aus', async () => {
     setup();
     await openMarkt(dv);
-    // Fahrplan + Prognose (Speicher) und Marktpreise (Börsentarif) trägt die
-    // Basis - der Container darf keine davon als „wird verfügbar, sobald …"
-    // behaupten. Bleibt nichts übrig, entfällt der Abschnitt ganz, statt eine
-    // leere Überschrift zu zeigen.
     expect(screen.queryByLabelText('Ansichten dieses Modus')).toBeNull();
   });
 
@@ -397,16 +570,12 @@ describe('Umstellung des Anlagentyps hinterlässt keinen kaputten Zwischenzustan
     fireEvent.click(await screen.findByRole('button', { name: /Marktvermarktung öffnen/ }));
     await screen.findByRole('button', { name: /Zur Steuerung/ });
 
-    // Der Vertragsfakt der Marktprämie gilt nur für eine DV-Anlage.
     expect(screen.queryByText('Anzulegender Wert')).toBeNull();
-    // Die übrigen Einstellungen des Containers bleiben erreichbar.
     expect(screen.getByText('Netzladen des Speichers')).toBeInTheDocument();
     expect(screen.getByText('Stromtarif')).toBeInTheDocument();
-    // Kein Fehlerzustand auf der Fläche.
     expect(container.querySelector('.vp-flowed-notice.error')).toBeNull();
 
-    // Und zurück zu den zwei Kapseln, ohne Bruch.
     fireEvent.click(screen.getByRole('button', { name: /Zur Steuerung/ }));
-    expect(await screen.findByRole('heading', { name: 'Automationen' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
   });
 });

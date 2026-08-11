@@ -364,7 +364,7 @@ function componentSummary(role: ComponentRole, control: boolean, primary: boolea
       return 'Errechnet aus PV, Netz und Speicher — braucht kein eigenes Messgerät';
     case 'consumer':
     default:
-      return control ? 'Schaltbar per Automation' : 'Verbraucher';
+      return control ? 'Schaltbar per Regel' : 'Verbraucher';
   }
 }
 

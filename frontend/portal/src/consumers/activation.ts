@@ -47,7 +47,7 @@ export function conflictNote(
   if (controlActivation === 'active') return null;
   const claim = (claims ?? [])[0];
   if (!claim) return null;
-  return `Dieser Verbraucher wird bereits durch die Automation „${claim.flowName}“ gesteuert. `
+  return `Dieser Verbraucher wird bereits durch die Regel „${claim.flowName}“ gesteuert. `
     + 'Solange sie aktiv ist, kann diese Regel nicht aktiviert werden.';
 }
 

@@ -80,6 +80,47 @@ function emptyCond(readable: EditorEntity[]): CondForm {
   };
 }
 
+/**
+ * Die Umkehrung des Formulars: eine gelesene Regel wird zum Formular-Zustand.
+ * Sie ist die zweite Hälfte des Roundtrip-Gesetzes (`parseGuidedFlow` liefert
+ * das Modell, hier wird es wieder bedienbar) — es entsteht KEIN zweites Format.
+ */
+function ruleToForm(rule: GuidedRule, readable: EditorEntity[]): {
+  conds: CondForm[];
+  combinator: Combinator;
+  actionKind: ActionKind;
+  actionEntity: string;
+  setpointValue: string;
+  message: string;
+} {
+  const conds: CondForm[] = rule.conditions.map((c) => {
+    const base = emptyCond(readable);
+    if (c.kind === 'schedule') {
+      return { ...base, kind: 'schedule', from: c.from, to: c.to, days: c.days };
+    }
+    if (c.kind === 'price') {
+      return { ...base, kind: 'price', direction: c.direction, threshold: String(c.threshold) };
+    }
+    return {
+      ...base,
+      kind: 'entity',
+      entityId: c.entityId,
+      channel: c.channel,
+      direction: c.direction,
+      threshold: String(c.threshold),
+    };
+  });
+  const a = rule.action;
+  return {
+    conds: conds.length > 0 ? conds : [emptyCond(readable)],
+    combinator: rule.combinator,
+    actionKind: a.kind,
+    actionEntity: a.kind === 'notify' ? '' : a.entityId,
+    setpointValue: a.kind === 'setpoint' ? String(a.value) : '',
+    message: a.kind === 'notify' ? a.message : '',
+  };
+}
+
 function parseNum(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === '') return null;
@@ -109,6 +150,8 @@ export function GuidedRuleBuilder({
   lockedKinds = [],
   lockedHint = 'Einrichtung durch VoltPilot',
   allowDiagnosticActions = false,
+  initialRule = null,
+  initialName,
 }: {
   entities: EditorEntity[];
   /** Stamped onto the emitted document so it validates clean before the save. */
@@ -131,6 +174,15 @@ export function GuidedRuleBuilder({
    * technical layer passes true. Default false = never promise delivery.
    */
   allowDiagnosticActions?: boolean;
+  /**
+   * Der EINGANG „mit dieser Regel öffnen" (Einheitsmodell Stufe 5a, 5b.5):
+   * eine bestehende, vom Rück-Parser gelesene Regel füllt das Formular vor.
+   * Der Rück-Parser gibt für alles außerhalb des Baukasten-Ausschnitts ehrlich
+   * `null` — dann öffnet die Fläche den Editor statt hier zu raten.
+   */
+  initialRule?: GuidedRule | null;
+  /** Der bestehende Name der Regel (sonst die Vorgabe). */
+  initialName?: string;
 }) {
   const readable = readableEntities(entities);
   const targets = actionTargets(entities);
@@ -139,17 +191,18 @@ export function GuidedRuleBuilder({
   // front instead of behind a button that answers "Bitte ein Gerät wählen".
   const deadEnd = targets.length === 0 && !allowDiagnosticActions;
 
-  const [name, setName] = useState('Neue Automation');
-  const [conds, setConds] = useState<CondForm[]>([emptyCond(readable)]);
-  const [combinator, setCombinator] = useState<Combinator>('and');
+  const seed = initialRule ? ruleToForm(initialRule, readable) : null;
+  const [name, setName] = useState(initialName?.trim() || 'Neue Regel');
+  const [conds, setConds] = useState<CondForm[]>(seed?.conds ?? [emptyCond(readable)]);
+  const [combinator, setCombinator] = useState<Combinator>(seed?.combinator ?? 'and');
   const [actionKind, setActionKind] = useState<ActionKind>(
     // Pre-select an action that can actually run: with no switchable device the
     // only remaining one is the diagnostic notification (technical layer only).
-    targets.length === 0 && allowDiagnosticActions ? 'notify' : 'onoff',
+    seed?.actionKind ?? (targets.length === 0 && allowDiagnosticActions ? 'notify' : 'onoff'),
   );
-  const [actionEntity, setActionEntity] = useState(targets[0]?.id ?? '');
-  const [setpointValue, setSetpointValue] = useState('');
-  const [message, setMessage] = useState('');
+  const [actionEntity, setActionEntity] = useState(seed?.actionEntity ?? targets[0]?.id ?? '');
+  const [setpointValue, setSetpointValue] = useState(seed?.setpointValue ?? '');
+  const [message, setMessage] = useState(seed?.message ?? '');
   const [error, setError] = useState('');
 
   const setCond = (i: number, patch: Partial<CondForm>) =>
@@ -194,7 +247,7 @@ export function GuidedRuleBuilder({
       }
     }
     const rule: GuidedRule = { conditions, combinator, action };
-    const finalName = name.trim() || 'Neue Automation';
+    const finalName = name.trim() || 'Neue Regel';
     onBuild(finalName, buildGuidedFlow(rule, finalName, siteId));
   };
 
@@ -224,7 +277,7 @@ export function GuidedRuleBuilder({
   return (
     <div className="vp-guided">
       <div className="vp-guided-field">
-        <label htmlFor="guided-name">Name der Automation</label>
+        <label htmlFor="guided-name">Name der Regel</label>
         <input
           id="guided-name"
           className="vp-select"

@@ -11,8 +11,8 @@
  *     Modus-Container (v3.1-M2), in dem Nutzen, Einstellungen, Voraussetzungen
  *     und Ansichten des Modus leben. Der Ko-Optimierungs-Streifen +
  *     `socReservationStack` bilden die Fußzeile dieser Kapsel.
- *  2. **Automationen** (`automationRows`) — je Regel eine Zeile mit ihrem
- *     lebenden Zustand und EINEM „＋ Neue Automation"-Knopf.
+ *  2. **Regeln** (`automationRows`) — je Regel eine Zeile mit ihrem lebenden
+ *     Zustand und EINEM „＋ Neue Regel"-Knopf.
  *
  * Die alte Werkzeugkiste („＋ Modus hinzufügen") ist ERSETZT: Angebote leben
  * ausschließlich in M3s Regal, die zweite Tür in den Editor gibt es nicht mehr.
@@ -477,15 +477,18 @@ export function automationRows(
   });
 }
 
-export const AUTOMATION_CAPSULE_TITLE = 'Automationen';
+/**
+ * Naming Set A (Einheitsmodell, Captain-Entscheid E1): die Kapsel heißt
+ * **„Regeln"**, der Knopf **„＋ Neue Regel"**. „Automation" war das technischere
+ * Wort für dieselbe Sache und ist aus der Kundensicht verschwunden — der
+ * Copy-Wächter (`copy.test.ts`) hält das fest.
+ */
+export const REGEL_CAPSULE_TITLE = 'Regeln';
 
-export const AUTOMATION_CAPSULE_INTRO =
-  'Ihre eigenen Wenn/Dann-Regeln — geprüft, simuliert und erst dann aktiv.';
+export const REGEL_CAPSULE_INTRO =
+  'Was Ihre Anlage von selbst erledigt — geprüft, simuliert und erst dann aktiv.';
 
-export const AUTOMATION_CAPSULE_EMPTY =
-  'Noch keine eigene Regel. Legen Sie eine an — z. B. „Wallbox nur bei PV-Überschuss".';
-
-export const NEUE_AUTOMATION_LABEL = '＋ Neue Automation';
+export const NEUE_REGEL_LABEL = '＋ Neue Regel';
 
 // ---------------------------------------------------------------------------
 // M4 · Die schmale Schutz-Zeile (läuft immer, ohne Profil)

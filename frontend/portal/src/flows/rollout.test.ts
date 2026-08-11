@@ -117,9 +117,9 @@ describe('forkBanner', () => {
 describe('rolloutMessage · audit E-9', () => {
   it('prefers the customer sentence over the server string on success', () => {
     expect(rolloutMessage({ phase: 'fertig', message: 'Flow aktiviert (Version 1).' }))
-      .toBe('Ihre Automation läuft jetzt auf dem Gerät.');
+      .toBe('Ihre Regel läuft jetzt auf dem Gerät.');
     expect(rolloutMessage({ phase: 'fertig' }))
-      .toBe('Ihre Automation läuft jetzt auf dem Gerät.');
+      .toBe('Ihre Regel läuft jetzt auf dem Gerät.');
     expect(rolloutMessage({ phase: 'fertig', message: 'Flow aktiviert (Version 1).' }))
       .not.toMatch(/Flow|Version/);
   });

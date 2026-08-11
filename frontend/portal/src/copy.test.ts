@@ -81,6 +81,13 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
   { re: /\bAngefragt\b/i, why: 'M3: kein „Angefragt" — jedes Profil ist ein direkter Schalter' },
   { re: /in Vorbereitung/, why: 'M3: kein „in Vorbereitung"' },
   { re: /VoltPilot richtet ein/, why: 'M3: keine „VoltPilot richtet ein"-Anfragewand' },
+  // Naming Set A (Einheitsmodell, Captain-Entscheid E1): die Kapsel heißt
+  // „Regeln", der Knopf „＋ Neue Regel". „Automation" war das technischere Wort
+  // für dieselbe Sache und ist aus der Kundensicht verschwunden. Die
+  // WORTGRENZE ist load-bearing: Bezeichner wie `AutomationRow` oder
+  // „Geräte-Automatik" (ein eigener Cockpit-Block, kein Regel-Wort) bleiben
+  // unberührt.
+  { re: /\bAutomation(en)?\b/, why: 'Set A: „Regel" statt „Automation"' },
 ];
 
 /** Every customer-facing portal source file (no tests, no excluded paths). */

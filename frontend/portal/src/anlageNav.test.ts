@@ -26,7 +26,6 @@ const ALL_SUBS: AnlagenSub[] = [
   'modell',
   'steuerung',
   'lastspitzen',
-  'verbraucher',
 ];
 
 const ENTITIES: AnlageSurfaceInput['entities'] = [
@@ -210,10 +209,12 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
     // v3.1-M2 retired the Modus-Profile shelf - modes are containers opened from
     // the Steuerung capsule, so the foot no longer carries a `profile` entry.
     const { foot } = anlageSidebar(PRIVAT);
-    expect(foot.map((i) => i.key)).toEqual(['verbraucher', 'technik', 'hilfe']);
-    expect(foot[0].target).toEqual({ kind: 'sub', sub: 'verbraucher' });
-    expect(foot[1].target).toEqual({ kind: 'sub', sub: 'technik' });
-    expect(foot[2].target).toEqual({ kind: 'help' });
+    // Seit dem Einheitsmodell (Stufe 5a) ist „Verbraucher" KEINE eigene Fläche
+    // mehr: die Regeln wohnen in der Kapsel „Regeln" der Steuerung, das Gerät
+    // im Anlagen-Modell. Der Fuß trägt nur noch Einstellungen + Hilfe.
+    expect(foot.map((i) => i.key)).toEqual(['technik', 'hilfe']);
+    expect(foot[0].target).toEqual({ kind: 'sub', sub: 'technik' });
+    expect(foot[1].target).toEqual({ kind: 'help' });
   });
 });
 
@@ -395,7 +396,6 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     // nirgends sonst steht.
     expect(last.items.map((i) => i.key)).toEqual([
       'wetter',
-      'verbraucher',
       'technik',
       'hilfe',
       'logout',
@@ -447,18 +447,19 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
   });
 
   /**
-   * „Verbraucher" (#363) ist eine EINRICHTUNGS-Fläche wie Einstellungen, keine
+   * Eine FUSS-Fläche (Einstellungen · Hilfe) ist eine EINRICHTUNGS-Fläche, keine
    * tägliche Frage - sie wohnt im Fuß und reist damit ins Blatt, nie in die
    * Leiste. Wer sie später doch in `BOTTOM_PRIORITY` schriebe, bräuchte einen
-   * sechsten Slot; dieser Test hält die Belegung bei fünf.
+   * sechsten Slot; dieser Test hält die Belegung bei fünf. (Bis Stufe 5a war
+   * „Verbraucher" der Beispielfall; seit ihrer Auflösung ist es „Einstellungen".)
    */
-  it('trägt eine Fuß-Fläche wie „Verbraucher" im Blatt, nie in der Leiste', () => {
+  it('trägt eine Fuß-Fläche wie „Einstellungen" im Blatt, nie in der Leiste', () => {
     for (const surface of [ALLE, MARKT, PEAK, PRIVAT, null]) {
       const sidebar = anlageSidebar(surface);
       expect(bottomBarSlots(sidebar)).toHaveLength(5);
-      expect(bottomBarSlots(sidebar).map((s) => s.key)).not.toContain('verbraucher');
+      expect(bottomBarSlots(sidebar).map((s) => s.key)).not.toContain('technik');
       const sheet = moreSheetItems(sidebar).flatMap((g) => g.items.map((i) => i.key));
-      expect(sheet.filter((k) => k === 'verbraucher')).toEqual(['verbraucher']);
+      expect(sheet.filter((k) => k === 'technik')).toEqual(['technik']);
     }
   });
 
@@ -471,7 +472,6 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     const last = groups[groups.length - 1];
     expect(last.items.map((i) => i.key)).toEqual([
       'wetter',
-      'verbraucher',
       'technik',
       'hilfe',
       'add-anlage',
@@ -484,7 +484,6 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     expect(kunde.some((g) => g.label === 'Plattform')).toBe(false);
     expect(kunde.at(-1)?.items.map((i) => i.key)).toEqual([
       'wetter',
-      'verbraucher',
       'technik',
       'hilfe',
       'logout',

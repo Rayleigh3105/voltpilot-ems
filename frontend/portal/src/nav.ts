@@ -44,12 +44,11 @@ export type AnlagenSub =
   | 'technik'
   | 'modell'
   | 'steuerung'
-  | 'lastspitzen'
-  | 'verbraucher';
+  | 'lastspitzen';
 
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'wetter', 'technik', 'modell',
-  'steuerung', 'lastspitzen', 'verbraucher',
+  'steuerung', 'lastspitzen',
 ]);
 
 /**
@@ -63,6 +62,11 @@ const SUBS = new Set<string>([
  * - `live` -> the cockpit itself (`null`) — the Cockpit + Live-Daten merge
  *   (Option A): the Komponenten-Board and the compact Verlauf chart live ON
  *   the Anlagen-Startseite now, so `#/anlage/{id}/live` lands there.
+ * - `verbraucher` -> `steuerung` (Einheitsmodell Stufe 5a): die eigene
+ *   Verbraucher-Seite ist aufgelöst - ihre REGELN wohnen in der Kapsel
+ *   „Regeln" der Steuerung, ihre GERÄTE im Anlagen-Modell. Der Deep-Link
+ *   `?verbraucher=`/`?vorlage=` reist über `canonicalAnlageHash` mit, also
+ *   öffnet ein altes Lesezeichen weiterhin genau seinen Regelbaukasten.
  * - `historie` -> `messwerte` (Historie = zwei Welten, Captain-Struktur H1):
  *   die eine Historie-Seite wurde zu `messwerte` + `erloese`. Die Basis-Welt
  *   erbt die Route, und `canonicalAnlageHash` schreibt die Adresse UNTER
@@ -75,6 +79,7 @@ const LEGACY_SUBS: Record<string, AnlagenSub | null> = {
   profile: 'steuerung',
   live: null,
   historie: 'messwerte',
+  verbraucher: 'steuerung',
 };
 
 /**

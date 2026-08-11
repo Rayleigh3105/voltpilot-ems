@@ -45,24 +45,24 @@ const ORDER: Array<RolloutStep['key']> = ['pruefen', 'simulieren', 'ausrollen'];
 export const ROLLOUT_REASONS: Record<string, string> = {
   compiler_unavailable:
     'Der Rollout ist gerade nicht möglich - bitte versuchen Sie es in einigen Minuten erneut. '
-    + 'Ihre Automation bleibt unverändert gespeichert.',
+    + 'Ihre Regel bleibt unverändert gespeichert.',
   compiler_rejected:
-    'Diese Automation lässt sich so nicht auf Ihr Gerät übertragen. '
+    'Diese Regel lässt sich so nicht auf Ihr Gerät übertragen. '
     + 'Bitte prüfen Sie die markierten Bausteine und versuchen Sie es erneut.',
   gated_node_not_enabled:
-    'Für diese Automation muss VoltPilot zuerst das passende Modus-Profil für Ihre Anlage '
+    'Für diese Regel muss VoltPilot zuerst das passende Modus-Profil für Ihre Anlage '
     + 'freischalten. Schalten Sie das Profil unter „Modus-Profile" ein oder sprechen Sie uns an.',
   peakshaving_not_configured:
     'Für die Lastspitzenkappung fehlen noch Ihre Vertragsdaten (Leistungspreis). '
     + 'VoltPilot hinterlegt sie für Sie - sprechen Sie uns kurz an.',
   activation_disabled:
-    'Automationen können auf dieser Anlage derzeit nicht scharf geschaltet werden. '
-    + 'Ihre Automation bleibt gespeichert - VoltPilot meldet sich dazu bei Ihnen.',
-  already_active: 'Diese Automation läuft bereits auf Ihrem Gerät.',
+    'Regeln können auf dieser Anlage derzeit nicht scharf geschaltet werden. '
+    + 'Ihre Regel bleibt gespeichert - VoltPilot meldet sich dazu bei Ihnen.',
+  already_active: 'Diese Regel läuft bereits auf Ihrem Gerät.',
 };
 
 /** The customer sentence for the happy path - see {@link rolloutMessage}. */
-export const ROLLOUT_DONE_MESSAGE = 'Ihre Automation läuft jetzt auf dem Gerät.';
+export const ROLLOUT_DONE_MESSAGE = 'Ihre Regel läuft jetzt auf dem Gerät.';
 
 /**
  * The honest German sentence for one outcome. A server message wins for every
@@ -80,12 +80,12 @@ export function rolloutMessage(state: RolloutState): string | null {
   const known = state.reason ? ROLLOUT_REASONS[state.reason] : undefined;
   if (known) return known;
   if (state.failedAt === 'pruefen') {
-    return 'Die Automation ist noch nicht vollständig - bitte beheben Sie die markierten Stellen.';
+    return 'Die Regel ist noch nicht vollständig - bitte beheben Sie die markierten Stellen.';
   }
   if (state.failedAt === 'simulieren') {
     return 'Der Probelauf konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.';
   }
-  return 'Der Rollout ist fehlgeschlagen. Ihre bisher laufende Automation bleibt unverändert.';
+  return 'Der Rollout ist fehlgeschlagen. Ihre bisher laufende Regel bleibt unverändert.';
 }
 
 /** The three steps with their current state - the progress UI reads this. */
@@ -142,7 +142,7 @@ export function deployedBadge(input: {
   }
   if (input.ackState === 'unsupported') {
     return {
-      label: `Gerät zu alt für diese Automation · ${version}`,
+      label: `Gerät zu alt für diese Regel · ${version}`,
       tone: 'warn',
       detail: input.ackDetail ?? null,
     };
