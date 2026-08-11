@@ -25,6 +25,16 @@
 .grp-title { font-size: 14.5px; font-weight: 750; color: var(--ink); }
 .grp-note { font-size: 12px; color: var(--muted); }
 
+/* Einheitsmodell Stufe 2: der EINE Satz einer portal-verwalteten Anlage. Ruhig,
+   kein Warnton - dass die Pflege im Portal liegt, ist ein Zustand, keine
+   Stoerung. */
+.portal-managed-note {
+  margin: 0 0 14px; padding: 10px 12px;
+  border: 1px solid var(--line); border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm); background: var(--surface-2, transparent);
+  line-height: 1.45;
+}
+
 /* Source/inverter rows */
 .rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .row {

@@ -12,6 +12,9 @@
 //   VP.gridPart(kw)                signed grid kW -> "Netzbezug/Einspeisung X kW"
 //   VP.lastReadLine(parts, readAtMs, serverNowMs)
 //                                  the shared "Zuletzt gelesen: … · vor X (HH:MM:SS)" line
+//   VP.portalManagedNote(flag)     the ONE sentence a portal-managed plant shows
+//                                  instead of its edit buttons (null = editable)
+//   VP.setPortalManaged(root, flag) hide every edit affordance under root
 (function () {
   "use strict";
 
@@ -261,8 +264,40 @@
     return "Zuletzt gelesen: " + parts.join(" · ") + " – " + fmtAgo(now - readAtMs) + " (" + clock + " Uhr)";
   }
 
+  // Einheitsmodell Stufe 2: auf einer portal-verwalteten Anlage ist diese Seite
+  // ein SPIEGEL. Der Satz sagt, was gilt UND wo es gepflegt wird - eine
+  // Oberfläche, die nur "geht nicht" sagt, wäre eine Sackgasse. Was die Box
+  // physisch braucht (Koppeln, Netzwerk, Steuerungs-Freigabe, Not-Aus,
+  // Messwert-Aufbereitung) bleibt unberührt lokal; nur die GERÄTE-Einrichtung
+  // wandert.
+  var PORTAL_MANAGED_NOTE = "Die Geräte dieser Anlage werden im VoltPilot-Portal "
+    + "gepflegt. Hier sehen Sie, was auf diesem Gerät läuft; ändern lässt es sich "
+    + "im Portal.";
+
+  function portalManagedNote(flag) {
+    return flag ? PORTAL_MANAGED_NOTE : null;
+  }
+
+  // setPortalManaged blendet JEDE Bearbeitungs-Möglichkeit unterhalb von root
+  // aus (Knöpfe tragen dafür data-vp-edit) und zeigt den Hinweis. Sehen bleibt
+  // immer erlaubt - gesperrt wird ausschließlich das Ändern.
+  function setPortalManaged(root, flag, noteId) {
+    if (!root) return;
+    var edits = root.querySelectorAll("[data-vp-edit]");
+    for (var i = 0; i < edits.length; i++) {
+      edits[i].hidden = !!flag;
+    }
+    var note = noteId ? document.getElementById(noteId) : null;
+    if (note) {
+      note.textContent = portalManagedNote(flag) || "";
+      note.hidden = !flag;
+    }
+  }
+
   window.VP = {
     el: el,
+    portalManagedNote: portalManagedNote,
+    setPortalManaged: setPortalManaged,
     statusPill: statusPill,
     testConnection: testConnection,
     probeUnits: probeUnits,

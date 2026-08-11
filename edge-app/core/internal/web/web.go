@@ -55,6 +55,16 @@ type InverterController interface {
 	// "An dieser Adresse wurden N Wechselrichter gefunden" and OFFER creating a
 	// source per found unit - never a silent auto-add.
 	ProbeUnits(testconn.Request) testconn.Result
+	// PortalManagedComponents reports whether this plant's device
+	// configuration is owned by the PORTAL (Einheitsmodell Stufe 2). It is
+	// true only once a portal push was really APPLIED, so a freshly installed
+	// box - which has neither - stays fully operable here.
+	//
+	// The write paths already refuse locally in that state; this exposes it to
+	// the PAGE so the setup areas can render as an honest read-only mirror with
+	// the pointer to the portal, instead of offering buttons that run into a
+	// refusal. Seeing what runs is never gated - only editing moves.
+	PortalManagedComponents() bool
 }
 
 // SourcesController backs the "Energiequellen" surface: the ADDITIONAL read-only
@@ -433,7 +443,13 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	// GET /api/inverter - the option catalog + the current selection (if any),
 	// so the config page can render the form and show what is configured.
 	mux.HandleFunc("GET /api/inverter", func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]any{"catalog": inv.InverterCatalog()}
+		resp := map[string]any{
+			"catalog": inv.InverterCatalog(),
+			// Einheitsmodell Stufe 2: gepflegt wird im Portal, hier wird nur
+			// gespiegelt. Das Feld ist ADDITIV - eine ältere Seite ignoriert es
+			// und verhält sich zeichengleich wie vorher.
+			"portal_managed": inv.PortalManagedComponents(),
+		}
 		if sel, ok := inv.GetInverter(); ok {
 			resp["selection"] = sel
 		} else {
@@ -516,10 +532,11 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			// readings carries each source's last accepted value + read time
 			// ("Zuletzt gelesen"); server_now_ms lets the page compute an honest
 			// "vor X" age against the DEVICE clock, browser skew notwithstanding.
-			"readings":      readings,
-			"server_now_ms": time.Now().UnixMilli(),
-			"catalog":       inv.InverterCatalog(),
-			"balance":       src.GetBalance(),
+			"readings":       readings,
+			"server_now_ms":  time.Now().UnixMilli(),
+			"catalog":        inv.InverterCatalog(),
+			"balance":        src.GetBalance(),
+			"portal_managed": inv.PortalManagedComponents(),
 		})
 	})
 

@@ -1401,3 +1401,51 @@ test("E3: eine Freigabe aus der VoltPilot-Konfiguration wird NICHT als Rücknahm
     C.inverterChange(envOnly, { family: "sunspec", connection: {} },
       { family: "hybrid_3p", connection: {} }), null);
 });
+
+// --- Einheitsmodell Stufe 2: der read-only Spiegel ---------------------------
+
+function vpHelpers(doc) {
+  return load(["verify.js"], { document: doc }).VP;
+}
+
+test("S2: eine portal-verwaltete Anlage sagt, WO gepflegt wird - nicht nur dass es hier nicht geht", () => {
+  const VP = vpHelpers();
+  const note = VP.portalManagedNote(true);
+  assert.ok(note, "eine portal-verwaltete Anlage braucht ihren Satz");
+  assert.match(note, /Portal/, "der Satz nennt den Ort der Pflege");
+  assert.match(note, /läuft/, "und sagt, dass das Sehen hier erhalten bleibt");
+});
+
+test("S2: eine box-verwaltete Anlage behauptet GAR NICHTS", () => {
+  const VP = vpHelpers();
+  // Bestandsfall UND älterer Kern (Feld fehlt -> undefined): beide bedienbar.
+  assert.strictEqual(VP.portalManagedNote(false), null);
+  assert.strictEqual(VP.portalManagedNote(undefined), null);
+});
+
+test("S2: setPortalManaged blendet JEDE Bearbeitung aus - und nur die", () => {
+  // Eine Mini-DOM: zwei Bearbeiten-Knöpfe, ein Anzeige-Element, der Hinweis.
+  const edits = [{ hidden: false }, { hidden: false }];
+  const display = { hidden: false };
+  const note = { hidden: true, textContent: "" };
+  const root = { querySelectorAll(sel) { return sel === "[data-vp-edit]" ? edits : []; } };
+  const doc = fakeDocument();
+  doc.getElementById = (id) => (id === "n" ? note : null);
+
+  const VP = vpHelpers(doc);
+  VP.setPortalManaged(root, true, "n");
+  assert.ok(edits.every((e) => e.hidden), "kein Bearbeiten-Knopf bleibt sichtbar");
+  assert.strictEqual(display.hidden, false, "das Anzeigen bleibt unberührt");
+  assert.strictEqual(note.hidden, false);
+  assert.match(note.textContent, /Portal/);
+
+  // Und der Rückweg blendet alles wieder ein (der Admin-Rückweg der Stufe 2).
+  VP.setPortalManaged(root, false, "n");
+  assert.ok(edits.every((e) => !e.hidden), "box-verwaltet ist wieder voll bedienbar");
+  assert.strictEqual(note.hidden, true);
+});
+
+test("S2: ohne Karte passiert nichts (die Seite ohne Anlage-Bereich darf nicht brechen)", () => {
+  const VP = vpHelpers();
+  VP.setPortalManaged(null, true, "n");
+});
