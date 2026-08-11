@@ -4,6 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { Input } from '../../designsystem/components/forms/Input';
 import { api, ApiError, type ComponentTemplate, type SiteComponents } from '../api';
+import { SelbstbauAssistent } from './SelbstbauAssistent';
 // Der Assistent bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
 // auf den Import des Wirts zu verlassen liefert einem zweiten Wirt einen
 // ungestylten Assistenten - Türen als nackte Knöpfe, die Schritte als <ol>.
@@ -167,7 +168,10 @@ export function KomponenteHinzufuegenDrawer({
         {ladeFehler && <p className="vp-assist-error">{ladeFehler}</p>}
 
         <ol className="vp-assist-steps" aria-label="Schritte">
-          {['Gerät', 'Verbindung', 'Was ist es?', 'Prüfen'].map((s, i) => (
+          {(tuer === 'selbstbau'
+            ? ['Gerät', 'Messwerte', 'Was ist es?', 'Prüfen']
+            : ['Gerät', 'Verbindung', 'Was ist es?', 'Prüfen']
+          ).map((s, i) => (
             <li key={s} className={schritt === i + 1 ? 'is-active' : schritt > i + 1 ? 'is-done' : ''}>
               <span className="vp-assist-step-n">{i + 1}</span>
               {s}
@@ -184,6 +188,15 @@ export function KomponenteHinzufuegenDrawer({
           </div>
         ) : (
           <>
+            {tuer === 'selbstbau' && schritt > 1 ? (
+              <SelbstbauAssistent
+                siteId={siteId}
+                onBack={() => setSchritt(1)}
+                onSaved={onSaved}
+                onDone={onClose}
+              />
+            ) : (
+            <>
             {schritt === 1 && (
               <section>
                 <h3 className="vp-assist-h">Was möchten Sie hinzufügen?</h3>
@@ -198,6 +211,9 @@ export function KomponenteHinzufuegenDrawer({
                       onClick={() => {
                         setTuer(d.id);
                         setBrand(null);
+                        // Die Selbstbau-Tür hat keine Vorlagen-Auswahl - sie
+                        // fragt sofort nach dem Gerät.
+                        if (d.id === 'selbstbau') setSchritt(2);
                       }}
                     >
                       <strong>{d.label}</strong>
@@ -207,7 +223,7 @@ export function KomponenteHinzufuegenDrawer({
                   ))}
                 </div>
 
-                {tuer && brands.length > 0 && (
+                {tuer && tuer !== 'selbstbau' && brands.length > 0 && (
                   <div className="vp-assist-pick">
                     <label htmlFor="assist-brand">Marke</label>
                     <select
@@ -414,6 +430,8 @@ export function KomponenteHinzufuegenDrawer({
                   </Button>
                 </div>
               </section>
+            )}
+            </>
             )}
           </>
         )}

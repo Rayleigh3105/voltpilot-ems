@@ -3314,6 +3314,170 @@ paths:
         "404": { description: Site (or component) not found for this tenant. }
         "409": { description: The plant has no device, or several and none was named. }
         "503": { description: The plant is not reachable right now. }
+  /api/v1/sites/{siteId}/components/custom/read:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: "\u201eJetzt lesen\u201c - read ONE channel of a self-built Modbus device, once."
+      description: >
+        The Einheitsmodell Stufe 3 live preview: the box reads the register over
+        the Probe-Kanal and answers with the RAW and the SCALED value side by
+        side - the moment a scaling mistake becomes visible. It is also the
+        connection test of step 1: a SUCCESS records the receipt that unlocks
+        saving (keyed on the CONNECTION, not the channel, so a changed scale
+        needs no new read while a changed address does). Nothing is persisted;
+        a timeout is an honest OUTCOME (HTTP 200 with `errorCode`), not an
+        error. LAN-only is enforced here AND independently on the box.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SelfBuildReadRequest" }
+      responses:
+        "200":
+          description: The reading, or an honest classified failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SelfBuildReadResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+        "409": { description: The plant has no device, or several and none was named. }
+  /api/v1/sites/{siteId}/components/custom:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Create a SELF-BUILT Modbus device (Einheitsmodell Stufe 3).
+      description: >
+        Creates a normal v2 entity (`modbus-generic`, measure-only) with the
+        customer's plain-text channels, stores the definition as version 1 and
+        compiles + rolls out its generated READ flow through the existing
+        flowc / `v2/flows` machinery. Requires a receipt from a successful
+        `components/custom/read` for this plant + connection (422 otherwise).
+        Only on a PORTAL-managed plant (409 on a box-managed one). This stage
+        creates measuring devices only - switching is a later stage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveSelfBuildRequest" }
+      responses:
+        "200":
+          description: The plant's components, including the new one.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "400": { description: Channel/poll-budget/LAN rule violated - the reason is German. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+        "409": { description: The plant's devices are managed on the box. }
+        "422": { description: No connection test on record for this connection. }
+        "503": { description: The read plan could not be built or distributed. }
+  /api/v1/sites/{siteId}/components/custom/{entityId}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [components]
+      summary: Change a self-built device - a NEW version, the old stays retrievable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveSelfBuildRequest" }
+      responses:
+        "200":
+          description: The plant's components.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "400": { description: Channel/poll-budget/LAN rule violated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+        "422": { description: Not a self-built component, or no connection test on record. }
+    delete:
+      tags: [components]
+      summary: Remove a self-built device - together with its generated read flow.
+      description: >
+        Recorded measurements stay in the history - they WERE measured, and
+        removing a device does not un-measure its past.
+      responses:
+        "200":
+          description: The plant's remaining components.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+        "422": { description: Not a self-built component. }
+  /api/v1/sites/{siteId}/components/custom/{entityId}/duplicate:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: "\u201eDuplizieren\u201c - turn a device into a PRIVATE template of this plant."
+      description: >
+        Captain scope 4 - templates are per plant and private, no catalog, no
+        sharing. The ADDRESS deliberately does not travel: a template describes
+        a device TYPE, not a specimen.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: The plant's private templates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteComponentTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+  /api/v1/sites/{siteId}/component-templates:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [components]
+      summary: The PRIVATE device templates of this plant.
+      description: >
+        Tenant-scoped by RLS (own table `site_component_template`) - a private
+        template is customer data and never appears on the public
+        `/api/v1/component-templates` route, which serves product statements
+        (builtin/certified) only.
+      responses:
+        "200":
+          description: The plant's private templates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteComponentTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/component-templates/{templateRef}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: templateRef, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [components]
+      summary: Remove a private template. Devices created from it stay.
+      responses:
+        "200":
+          description: The plant's remaining private templates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteComponentTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or template not found for this tenant. }
   /api/v1/flow-catalog:
     get:
       tags: [flows]
@@ -4506,6 +4670,106 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    SelfBuildChannel:
+      type: object
+      description: >
+        ONE measured value of a self-built Modbus device. The customer names it
+        in PLAIN TEXT; the channel key is DERIVED server-side (the registry's
+        open channel vocabulary) - a typed key would be a second truth about the
+        same measurement.
+      properties:
+        label: { type: string, maxLength: 120, description: "Plain-text name, e.g. Wassertemperatur." }
+        unit: { type: string, description: "One of the curated units; empty means honestly 'no unit'." }
+        registerKind: { type: string, enum: [holding, input] }
+        address:
+          type: integer
+          minimum: 0
+          maximum: 65535
+          description: "0-based protocol address (40001 in a manual is address 0)."
+        dataType: { type: string, enum: [u16, s16, u32, s32, float32] }
+        wordOrder: { type: string, enum: [big, little], description: "Only meaningful for 32-bit types." }
+        scale: { type: number }
+        offset: { type: number }
+        minReadIntervalS:
+          type: integer
+          minimum: 5
+          maximum: 3600
+          default: 10
+          description: "Poll budget - at most one read per channel per this many seconds."
+    SelfBuildConnection:
+      type: object
+      description: Where the device sits in the customer's own network (LAN-only).
+      properties:
+        host: { type: string, maxLength: 253 }
+        port: { type: integer, minimum: 1, maximum: 65535, default: 502 }
+        unitId: { type: integer, minimum: 0, maximum: 255, default: 1 }
+    SaveSelfBuildRequest:
+      type: object
+      required: [connection, channels]
+      properties:
+        label: { type: string, maxLength: 200 }
+        connection: { $ref: "#/components/schemas/SelfBuildConnection" }
+        channels:
+          type: array
+          maxItems: 16
+          items: { $ref: "#/components/schemas/SelfBuildChannel" }
+        note: { type: string, maxLength: 200 }
+    SelfBuildReadRequest:
+      type: object
+      required: [connection, channel]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: >
+            Optional - the box to ask. Absent means "the plant's single device";
+            a plant with several must name one.
+        connection: { $ref: "#/components/schemas/SelfBuildConnection" }
+        channel: { $ref: "#/components/schemas/SelfBuildChannel" }
+    SelfBuildReadResult:
+      type: object
+      description: >
+        RAW and SCALED side by side, always - that pair is what makes a scaling
+        mistake visible at a glance. Every number is OPTIONAL: a failed read
+        carries NO value, never a 0 that reads like a measurement.
+      required: [ok, receipt]
+      properties:
+        ok: { type: boolean }
+        raw: { type: number, description: "The value as the register delivered it." }
+        registers:
+          type: array
+          items: { type: integer }
+          description: "The raw 16-bit words - a wrong word order becomes visible, not merely wrong."
+        value: { type: number, description: "raw x scale + offset." }
+        unit: { type: string }
+        hint:
+          type: string
+          description: >
+            A plausibility HINT, never a block - a register we consider
+            implausible can be correct on the real device.
+        errorCode:
+          type: string
+          enum: [unreachable, no_answer, invalid_response, implausible, invalid_request, not_supported, rate_limited, timeout]
+        message: { type: string }
+        receipt:
+          type: boolean
+          description: Whether this run unlocks saving (the connection-test duty).
+    SiteComponentTemplate:
+      type: object
+      description: >
+        A PRIVATE device template of one plant ("Duplizieren"). Deliberately not
+        ComponentTemplate - that one describes a PRODUCT (global, builtin or
+        certified); this one is the copy of ONE customer definition, and its
+        channels are mandatory because the channel list IS the template.
+      properties:
+        templateRef: { type: string }
+        version: { type: integer }
+        label: { type: string }
+        communication: { type: string }
+        connection: { type: object, additionalProperties: true }
+        channels: { type: array, items: { $ref: "#/components/schemas/SelfBuildChannel" } }
+        note: { type: string }
+        createdAt: { type: string, format: date-time }
     SiteComponents:
       type: object
       description: >
