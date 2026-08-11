@@ -40,6 +40,7 @@ type Link struct {
 	onFlows           func(payload []byte)
 	onUpdateTarget    func(payload []byte)
 	onApplyRequest    func(payload []byte)
+	onProbeRequest    func(payload []byte)
 	onDesiredDownlink func(payload []byte)
 	onControlCert     func(payload []byte)
 	onConnect         func(connected bool)
@@ -104,6 +105,17 @@ type Options struct {
 	// late, and that is intended: a consent from three hours ago is not a
 	// consent for now.
 	OnApplyRequest func(payload []byte)
+	// OnProbeRequest receives the NON-RETAINED one-shot probe on .../v2/probe
+	// (docs/contracts/mqtt-probe.schema.json, Einheitsmodell Stufe 0b). nil =
+	// the probe channel is not wired.
+	//
+	// ⚠ NON-retained for the same reason as the apply approval, and with the
+	// same second half: the box adopts the envelope's own `requested_at` as the
+	// start of its expiry window instead of the arrival time, so a QoS1 message
+	// the broker redelivers after an outage is already expired when it lands.
+	// Without that, a probe from an hour ago would knock on a customer's device
+	// long after the portal route that asked for it gave up waiting.
+	OnProbeRequest func(payload []byte)
 	// OnDesiredDownlink receives the NON-RETAINED manual override envelope on
 	// .../v2/desired (Verbrauchssteuerung §11/§14.13). nil = not wired. It
 	// carries either a full edge-desired envelope (forwarded to the local bus
@@ -137,8 +149,9 @@ func New(o Options) (*Link, error) {
 		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:  o.OnControlCert,
-		onApplyRequest: o.OnApplyRequest, onDesiredDownlink: o.OnDesiredDownlink,
-		onConnect: o.OnConnect}
+		onApplyRequest: o.OnApplyRequest, onProbeRequest: o.OnProbeRequest,
+		onDesiredDownlink: o.OnDesiredDownlink,
+		onConnect:         o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -255,6 +268,20 @@ func New(o Options) (*Link, error) {
 				l.onApplyRequest(msg.Payload())
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 apply subscribe failed", "topic", applyTopic, "err", tok.Error())
+			}
+		}
+		// Die NICHT-retained Einmal-Anfrage des Probe-Kanals. Aus demselben
+		// Grund wie die Freigabe nicht retained: eine Vorschau, die bei jedem
+		// Reconnect erneut zugestellt wird, klopft beliebig oft an einem
+		// Kundengeraet an.
+		if l.onProbeRequest != nil {
+			probeTopic := l.topic("v2/probe")
+			if tok := c.Subscribe(probeTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				if len(msg.Payload()) > 0 {
+					l.onProbeRequest(msg.Payload())
+				}
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 probe subscribe failed", "topic", probeTopic, "err", tok.Error())
 			}
 		}
 		// The NON-RETAINED manual override envelope (Verbrauchssteuerung §11).
@@ -1050,6 +1077,26 @@ func (l *Link) PublishPurgeRequest(requestedAt time.Time) error {
 	tok := l.client.Publish(l.topic("status"), 1, false, raw)
 	if !tok.WaitTimeout(10 * time.Second) {
 		return fmt.Errorf("purge request publish timed out")
+	}
+	return tok.Error()
+}
+
+// PublishProbeResult answers ONE probe on .../v2/probe-result - NON-retained,
+// QoS1 (contract docs/contracts/mqtt-probe.schema.json).
+//
+// Non-retained is the point on this side too: the answer belongs to the one
+// question that is being waited on right now. A retained answer would be
+// redelivered to every later subscriber and would outlive the portal request
+// that could still make sense of it; the correlation id is held only in the
+// cloud's memory for a few seconds.
+//
+// The caller has already built the contract envelope (internal/probe), so this
+// only puts the bytes on the wire and waits for the QoS1 ack - an answer nobody
+// received is worth knowing about, because the portal route is blocked on it.
+func (l *Link) PublishProbeResult(payload []byte) error {
+	tok := l.client.Publish(l.topic("v2/probe-result"), 1, false, payload)
+	if !tok.WaitTimeout(10 * time.Second) {
+		return fmt.Errorf("probe result publish timed out")
 	}
 	return tok.Error()
 }
