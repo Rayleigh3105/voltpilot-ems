@@ -1,0 +1,40 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-modbus-probe', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 0,
+    outputs: 0,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-modbus-probe'; },
+    paletteLabel: 'vp-modbus-probe'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-modbus-probe">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-modbus-probe">
+  <p>Führt die Register-Prüfung des Probe-Kanals aus: empfängt die bereits vom
+  Core geprüften Leseschritte auf <code>edge/probe/request</code> (nicht
+  retained), liest sie NACHEINANDER über den gemeinsamen
+  Verbindungs-Manager und antwortet auf <code>edge/probe/result</code>.</p>
+  <p>Der Knoten ist selbstständig – er braucht keine Verdrahtung. Er nutzt
+  dieselbe Warteschlange wie <code>vp-modbus-read</code>: EIN Socket je
+  (Host, Port) über alle Knoten hinweg, damit eine Vorschau dem laufenden
+  Poll nie die Verbindung wegnimmt.</p>
+  <p><b>Nur Lesen.</b> Es gibt hier keinen Schreibpfad; den im Vertrag
+  vorgesehenen Schalt-Test lehnt der Core ehrlich ab, er erreicht den Bus gar
+  nicht.</p>
+</script>

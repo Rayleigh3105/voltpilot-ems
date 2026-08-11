@@ -795,7 +795,7 @@
     "type": "tab",
     "label": "Verbindung testen",
     "disabled": false,
-    "info": "VERBINDUNG TESTEN: der \"Verbindung testen\"-Button im Edge-App-Webportal\n(:8484) prueft eine NOCH NICHT GESPEICHERTE Wechselrichter-/Quellen-\nVerbindung. Der Core veroeffentlicht das Formular auf edge/test-read/request\n(nicht retained); dieser Tab liest das Geraet EINMAL ueber denselben\nroute()+decode wie die Selbstverdrahtung und antwortet auf\nedge/test-read/result mit den decodierten Werten oder einem klassifizierten\nFehler. NUR LESEN - schreibt nie, blockiert nie das Speichern.\n\nRouting/Decode: test-read.js + deye/*.js + modbus-tcp.js + fronius/*.js\n(getestet; der Funktionsknoten traegt eingebettete Kopien der Dateien,\ngepinnt von flows-sync.test.js)."
+    "info": "VERBINDUNG TESTEN: der \"Verbindung testen\"-Button im Edge-App-Webportal\n(:8484) prueft eine NOCH NICHT GESPEICHERTE Wechselrichter-/Quellen-\nVerbindung. Der Core veroeffentlicht das Formular auf edge/test-read/request\n(nicht retained); dieser Tab liest das Geraet EINMAL ueber denselben\nroute()+decode wie die Selbstverdrahtung und antwortet auf\nedge/test-read/result mit den decodierten Werten oder einem klassifizierten\nFehler. NUR LESEN - schreibt nie, blockiert nie das Speichern.\n\nRouting/Decode: test-read.js + deye/*.js + modbus-tcp.js + fronius/*.js\n(getestet; der Funktionsknoten traegt eingebettete Kopien der Dateien,\ngepinnt von flows-sync.test.js).\n\nPROBE-KANAL (Einheitsmodell Stufe 0b): derselbe Tab traegt zusaetzlich den\nAusfuehrer der Register-Pruefung AUS DEM PORTAL (vp-modbus-probe). Der Core\nprueft Identitaet, Verfall, privates Ziel und Ratenbegrenzung und reicht\nnur die freigegebenen Leseschritte auf edge/probe/request weiter; der\nKnoten liest sie ueber DIESELBE Warteschlange wie vp-modbus-read und\nantwortet auf edge/probe/result. Auch hier: NUR LESEN."
   },
   {
     "id": "test-note",
@@ -848,6 +848,26 @@
     "core": "cfg-vp-core",
     "x": 790,
     "y": 120,
+    "wires": []
+  },
+  {
+    "id": "probe-note",
+    "type": "comment",
+    "z": "tab-test",
+    "name": "edge/probe/request -> Register lesen (gemeinsame Warteschlange) -> edge/probe/result",
+    "info": "",
+    "x": 470,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "probe-exec",
+    "type": "vp-modbus-probe",
+    "z": "tab-test",
+    "name": "Register-Pruefung aus dem Portal",
+    "core": "cfg-vp-core",
+    "x": 470,
+    "y": 280,
     "wires": []
   },
   {

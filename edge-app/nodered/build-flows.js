@@ -2568,6 +2568,13 @@ const testNodes = [
       'Routing/Decode: test-read.js + deye/*.js + modbus-tcp.js + fronius/*.js',
       '(getestet; der Funktionsknoten traegt eingebettete Kopien der Dateien,',
       'gepinnt von flows-sync.test.js).',
+      '',
+      'PROBE-KANAL (Einheitsmodell Stufe 0b): derselbe Tab traegt zusaetzlich den',
+      'Ausfuehrer der Register-Pruefung AUS DEM PORTAL (vp-modbus-probe). Der Core',
+      'prueft Identitaet, Verfall, privates Ziel und Ratenbegrenzung und reicht',
+      'nur die freigegebenen Leseschritte auf edge/probe/request weiter; der',
+      'Knoten liest sie ueber DIESELBE Warteschlange wie vp-modbus-read und',
+      'antwortet auf edge/probe/result. Auch hier: NUR LESEN.',
     ].join('\n'),
   },
   {
@@ -2586,6 +2593,22 @@ const testNodes = [
   {
     id: 'test-result', type: 'vp-test-result', z: TESTTAB, name: 'Ergebnis an Core', core: 'cfg-vp-core',
     x: 790, y: 120, wires: [],
+  },
+  // Probe-Kanal (Einheitsmodell Stufe 0b): der Ausfuehrer der Register-Pruefung
+  // aus dem PORTAL. Er ist bewusst SELBSTSTAENDIG (keine Ein-/Ausgaenge, keine
+  // Verdrahtung) - die ganze Logik liegt im Palette-Knoten und ist dort
+  // getestet, es gibt also keine eingebettete Kopie, die driften koennte. Er
+  // wohnt hier, weil dies der Tab der EINMAL-Lesungen ist; er teilt sich mit
+  // vp-modbus-read die EINE Warteschlange je (Host, Port), damit eine Vorschau
+  // dem laufenden Poll nie den Socket wegnimmt.
+  {
+    id: 'probe-note', type: 'comment', z: TESTTAB,
+    name: 'edge/probe/request -> Register lesen (gemeinsame Warteschlange) -> edge/probe/result',
+    info: '', x: 470, y: 220, wires: [],
+  },
+  {
+    id: 'probe-exec', type: 'vp-modbus-probe', z: TESTTAB, name: 'Register-Pruefung aus dem Portal',
+    core: 'cfg-vp-core', x: 470, y: 280, wires: [],
   },
 ];
 
