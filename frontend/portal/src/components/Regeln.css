@@ -323,3 +323,66 @@
 
   .vp-regeld-aktionen > * { flex: 1 1 140px; }
 }
+
+/* --- Stufe 5b: das Regel-Protokoll ------------------------------------- */
+
+/* Die Zähler-Zeile an der Karte („heute 3× geschaltet · zuletzt 14:02").
+   Ruhig getönt: sie ist eine Beobachtung, kein Befund. */
+.vp-regel-aktivitaet {
+  margin: 2px 0 0;
+  font-size: .78rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-regel-protokoll {
+  margin-top: 14px;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  padding-top: 10px;
+}
+
+.vp-regel-protokoll > summary {
+  cursor: pointer;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.vp-regel-protokoll-n {
+  font-weight: 500;
+  font-size: .72rem;
+  color: var(--vp-text-muted, #64748b);
+  background: var(--vp-surface-2, #f1f5f9);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.vp-regel-protokoll-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vp-regel-protokoll-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: .78rem;
+  color: var(--vp-text-muted, #64748b);
+  min-width: 0;
+}
+
+.vp-regel-protokoll-list > li > strong {
+  color: var(--vp-text, #0f172a);
+  font-weight: 600;
+}
+
+.vp-regel-protokoll-list > li.ton-warn > span {
+  color: var(--vp-warn-ink, #92400e);
+}

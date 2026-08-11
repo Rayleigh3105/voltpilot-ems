@@ -38,6 +38,9 @@ export function RegelKarteView({
         <strong className="vp-regel-name">{karte.name}</strong>
         <p className="vp-regel-satz">{karte.satz ?? karte.ersatz}</p>
         <p className={`vp-regel-zustand ton-${z.ton}`}>{z.zeile}</p>
+        {/* Die Zähler-Zeile des Regel-Protokolls (Stufe 5b). Ohne Beleg steht
+            hier NICHTS - nie eine erfundene 0. */}
+        {karte.aktivitaet && <p className="vp-regel-aktivitaet">{karte.aktivitaet}</p>}
         {karte.hinweis && <p className="vp-regel-hinweis">{karte.hinweis}</p>}
         {karte.chips.length > 0 && (
           <span className="vp-regel-chips">

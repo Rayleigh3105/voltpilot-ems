@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.rules.RuleEventWriter;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
 import jakarta.annotation.PreDestroy;
@@ -102,6 +103,7 @@ public class ConsumerRuntimeStatusListener {
     private final DeviceRepository devices;
     private final ConsumerRuntimeStatusRepository store;
     private final ConsumerRequirementLedgerWriter ledger;
+    private final RuleEventWriter ruleEvents;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -111,13 +113,14 @@ public class ConsumerRuntimeStatusListener {
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             DeviceRepository devices, ConsumerRuntimeStatusRepository store,
-            ConsumerRequirementLedgerWriter ledger) {
+            ConsumerRequirementLedgerWriter ledger, RuleEventWriter ruleEvents) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.store = store;
         this.ledger = ledger;
+        this.ruleEvents = ruleEvents;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -243,11 +246,17 @@ public class ConsumerRuntimeStatusListener {
             }
             // The device's whole set is replaced - also when every entry was
             // discarded (the device reported, and what it reported was not
-            // storable; keeping stale rows would claim an older truth).
-            store.replaceForDevice(deviceId, siteId, reportedAt, rows);
+            // storable; keeping stale rows would claim an older truth). The
+            // call hands back what it replaced, i.e. the PREVIOUS heartbeat's
+            // set - that is the rule protocol's ALT-gegen-NEU comparison.
+            List<ConsumerRuntimeStatusRepository.Row> previous =
+                    store.replaceForDevice(deviceId, siteId, reportedAt, rows);
             // Derive + upsert the fulfilment ledger from the SAME confirmed
             // telemetry (§9.4) - additive, never throws, tenant context still set.
             ledger.ingest(siteId, rows, reportedAt);
+            // Und den VERLAUF fortschreiben: nur die WECHSEL, nie der Zustand
+            // (Einheitsmodell Stufe 5b) - ebenfalls additiv und nie werfend.
+            ruleEvents.ingestConsumers(siteId, previous, rows, reportedAt);
         } finally {
             TenantContext.clear();
         }

@@ -354,3 +354,107 @@ describe('Ehrlichkeit der Fläche', () => {
     expect(sofortBanner([], {})).toBeNull();
   });
 });
+
+describe('Stufe 5b · das Regel-Protokoll an der Karte', () => {
+  const WALLBOX_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  function protokollFuer(rules: Array<{
+    ruleKind: 'rezept' | 'flow'; ruleRef: string;
+    switchedToday: number | null; lastSwitchedAt: string | null;
+  }>) {
+    return {
+      recordingSince: '2026-08-10T08:00:00Z',
+      accuracySeconds: 15,
+      countsToday: true,
+      rules,
+      events: [],
+    };
+  }
+
+  it('traegt die Zaehler-Zeile an die Karte, die der Server belegt hat', () => {
+    const karten = regelKarten({
+      flows: [flow({ flowId: 'f1', name: 'Wallbox nur bei PV' })],
+      rezepte: [],
+      entities: [],
+      protokoll: protokollFuer([{
+        ruleKind: 'flow', ruleRef: 'f1', switchedToday: 3,
+        lastSwitchedAt: new Date(2026, 7, 11, 14, 2).toISOString(),
+      }]),
+    });
+    expect(karten[0].aktivitaet).toBe('heute 3\u00d7 geschaltet \u00b7 zuletzt 14:02');
+  });
+
+  it('OHNE Protokoll bleibt die Karte zeichengleich zu Stufe 5a', () => {
+    const karten = regelKarten({
+      flows: [flow({ flowId: 'f1', name: 'Regel' })],
+      rezepte: [],
+      entities: [],
+    });
+    expect(karten[0].aktivitaet).toBeNull();
+  });
+
+  it('eine Regel ohne Ereignis nennt die BELEGTE 0, wenn der Tag zaehlbar ist', () => {
+    const karten = regelKarten({
+      flows: [flow({ flowId: 'f1', name: 'Regel' })],
+      rezepte: [],
+      entities: [],
+      // Der Server hat fuer eine ANDERE Regel gezaehlt, fuer diese nicht.
+      protokoll: protokollFuer([{
+        ruleKind: 'flow', ruleRef: 'andere', switchedToday: 5, lastSwitchedAt: null,
+      }]),
+    });
+    // Der Server sagt: der heutige Tag ist zaehlbar. Dann ist die 0 belegt.
+    expect(karten[0].aktivitaet).toBe('heute noch nicht geschaltet');
+  });
+
+  it('ist der Tag NICHT zaehlbar, nennt sie den Beginn statt einer 0', () => {
+    const karten = regelKarten({
+      flows: [flow({ flowId: 'f1', name: 'Regel' })],
+      rezepte: [],
+      entities: [],
+      protokoll: {
+        recordingSince: new Date(2026, 7, 11, 10, 0).toISOString(),
+        accuracySeconds: 15,
+        countsToday: false,
+        rules: [],
+        events: [],
+      },
+    });
+    expect(karten[0].aktivitaet).toBe('seit 10:00 aufgezeichnet');
+    expect(karten[0].aktivitaet).not.toContain('geschaltet');
+  });
+
+  it('sortiert innerhalb desselben Rangs den ZULETZT geschalteten zuerst', () => {
+    const alt = new Date(2026, 7, 11, 9, 0).toISOString();
+    const neu = new Date(2026, 7, 11, 14, 0).toISOString();
+    const karten = regelKarten({
+      flows: [
+        flow({ flowId: 'f-a', name: 'Anton' }),
+        flow({ flowId: 'f-z', name: 'Zacharias' }),
+      ],
+      rezepte: [],
+      entities: [],
+      protokoll: protokollFuer([
+        { ruleKind: 'flow', ruleRef: 'f-a', switchedToday: 1, lastSwitchedAt: alt },
+        { ruleKind: 'flow', ruleRef: 'f-z', switchedToday: 1, lastSwitchedAt: neu },
+      ]),
+    });
+    // Alphabetisch waere Anton zuerst - der Beleg dreht es um.
+    expect(karten.map((k) => k.name)).toEqual(['Zacharias', 'Anton']);
+  });
+
+  it('ohne Beleg auf BEIDEN Seiten bleibt es alphabetisch', () => {
+    const karten = regelKarten({
+      flows: [
+        flow({ flowId: 'f-z', name: 'Zacharias' }),
+        flow({ flowId: 'f-a', name: 'Anton' }),
+      ],
+      rezepte: [],
+      entities: [],
+      protokoll: protokollFuer([
+        { ruleKind: 'flow', ruleRef: 'f-a', switchedToday: 1, lastSwitchedAt: null },
+      ]),
+    });
+    expect(karten.map((k) => k.name)).toEqual(['Anton', 'Zacharias']);
+  });
+});

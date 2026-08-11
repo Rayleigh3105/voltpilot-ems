@@ -34,9 +34,23 @@ public class FlowStatusRepository {
             Instant since, Instant reportedAt) {
     }
 
+    /**
+     * Replace the device's whole ack set, and hand back the PREVIOUS one - the
+     * ALT-gegen-NEU comparison the Stufe-5b rule protocol needs
+     * ({@link com.voltpilot.api.rules.RuleEventWriter}). Taking it from the
+     * {@code DELETE ... RETURNING} is free: the statement scans exactly those
+     * rows anyway, so the hot path keeps its query count.
+     */
     @Transactional
-    public void replaceAcks(UUID deviceId, UUID siteId, List<Ack> acks, Instant reportedAt) {
-        jdbc.update("DELETE FROM flow_device_ack WHERE device_id = ?", deviceId);
+    public List<Ack> replaceAcks(UUID deviceId, UUID siteId, List<Ack> acks, Instant reportedAt) {
+        List<Ack> previous = jdbc.query(
+                "DELETE FROM flow_device_ack WHERE device_id = ? "
+                        + "RETURNING flow_id, flow_version, content_hash, state, detail, "
+                        + "reported_at",
+                (rs, i) -> new Ack(rs.getObject("flow_id", UUID.class), rs.getInt("flow_version"),
+                        rs.getString("content_hash"), rs.getString("state"), rs.getString("detail"),
+                        rs.getTimestamp("reported_at").toInstant()),
+                deviceId);
         for (Ack ack : acks) {
             jdbc.update(
                     "INSERT INTO flow_device_ack (device_id, flow_id, tenant_id, site_id, "
@@ -49,6 +63,7 @@ public class FlowStatusRepository {
                     deviceId, ack.flowId(), siteId, ack.flowVersion(), ack.contentHash(),
                     ack.state(), ack.detail(), Timestamp.from(reportedAt));
         }
+        return previous;
     }
 
     @Transactional

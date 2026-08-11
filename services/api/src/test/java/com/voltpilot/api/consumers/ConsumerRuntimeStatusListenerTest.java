@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.rules.RuleEventWriter;
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -55,7 +56,7 @@ class ConsumerRuntimeStatusListenerTest {
         // The fulfilment-ledger writer is exercised end-to-end in ConsumerApiTest;
         // here it is a no-op mock so this test stays a pure runtime-status parse.
         listener = new ConsumerRuntimeStatusListener("tcp://localhost:1883", "", "", devices, store,
-                mock(ConsumerRequirementLedgerWriter.class));
+                mock(ConsumerRequirementLedgerWriter.class), mock(RuleEventWriter.class));
     }
 
     @SuppressWarnings("unchecked")

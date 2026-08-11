@@ -61,6 +61,13 @@ tags:
       customer-confirmed values onto the site's assets. Tenant-scoped like all
       site endpoints (foreign site = 404 via RLS).
   - name: kpis
+  - name: rules
+    description: >
+      Das Regel-Protokoll (Einheitsmodell Stufe 5b): der Verlaufsspeicher der
+      Regeln einer Anlage. Die drei Momentaufnahmen-Tabellen des Herzschlags
+      werden je Takt ersetzt - dieser Speicher haelt die WECHSEL fest und
+      beantwortet damit "diese Regel hat heute 3x geschaltet". Kundendaten,
+      also mandantenbezogen (RLS) und unter /sites/**, nicht unter /admin/**.
   - name: topology
     description: >
       Anlagen-Topologie-Read-Model (AE1, adaptive EMS-UI): the site as an
@@ -4268,6 +4275,33 @@ paths:
         "204": { description: No reported state yet ("Zustand nicht bestätigt"). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/rule-events:
+    get:
+      tags: [rules]
+      summary: Das Regel-Protokoll der Anlage (Zähler, Verlauf je Regel, Gesamt-Protokoll).
+      description: >
+        Einheitsmodell Stufe 5b (Konzept vp-komponenten-einheit-h2 Teil 5b.6):
+        der Verlaufsspeicher, den die Momentaufnahmen-Tabellen
+        (consumer_runtime_status, flow_device_ack) je Herzschlag wegwerfen.
+        Geschrieben wird AUSSCHLIESSLICH aus WECHSELN im bestehenden
+        Herzschlag-Strom - keine Edge-Änderung, kein neues Topic.
+        Ehrlichkeitsregeln, die jede Fläche kennen muss: `switchedToday` ist
+        NULLABLE (null = der Speicher hat den heutigen Tag nicht ganz gesehen,
+        die Fläche sagt dann "seit HH:MM aufgezeichnet" statt einer 0),
+        `recordingSince` null = für diese Anlage wurde noch gar nicht
+        aufgezeichnet, und `accuracySeconds` nennt die Genauigkeit (der
+        Herzschlag-Takt; ein Wechsel-und-zurück dazwischen ist unsichtbar).
+        Mandantenbezogen über RLS (fremde Anlage = 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Das Protokoll (leer, solange nichts aufgezeichnet wurde).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RuleEvents" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
 components:
   securitySchemes:
     bearerAuth:
@@ -4539,6 +4573,89 @@ components:
           type: string
           enum: [invalid_request, unreachable, no_answer, invalid_response, implausible, timeout, not_supported, rate_limited]
         message: { type: string }
+    RuleEvents:
+      type: object
+      description: >
+        Das Regel-Protokoll einer Anlage - EINE Antwort fuer die drei Flaechen,
+        die es zeigen (Zaehler an der Karte, Ausschnitt im Detail-Einschub,
+        kompaktes Gesamt-Protokoll).
+      properties:
+        recordingSince:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Ab wann fuer diese Anlage aufgezeichnet wird. null = noch gar
+            nicht. Ist er juenger als der heutige Berliner Tagesbeginn, sagt
+            die Flaeche "seit HH:MM aufgezeichnet" statt einer 0.
+        accuracySeconds:
+          type: integer
+          description: >
+            Die Genauigkeit, die AN der Flaeche stehen muss: abgeleitet wird
+            aus Wechseln im Herzschlag-Takt, ein Wechsel-und-zurueck dazwischen
+            ist unsichtbar.
+        countsToday:
+          type: boolean
+          description: >
+            Ob der heutige Tag ueberhaupt zaehlbar ist. Er beantwortet den
+            Fall, den `rules` nicht abbilden kann: eine Regel OHNE jedes
+            Ereignis taucht dort gar nicht auf - ohne dieses Flag muesste die
+            Flaeche den Berliner Tagesbeginn selbst nachrechnen und haette
+            einen Zwilling der Server-Regel.
+        rules:
+          type: array
+          items: { $ref: "#/components/schemas/RuleActivity" }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/RuleEvent" }
+    RuleActivity:
+      type: object
+      description: Die Zaehler EINER Regel.
+      properties:
+        ruleKind:
+          type: string
+          enum: [rezept, flow]
+          description: >
+            Der Schnappschuss der Zuordnung ueber den exklusiven Steuer-Anspruch
+            (V-5), nie geraten.
+        ruleRef:
+          type: string
+          description: Komponenten-Id (rezept) bzw. Flow-Id (flow).
+        switchedToday:
+          type: integer
+          nullable: true
+          description: >
+            STARTS seit Berliner Mitternacht. NULL = nicht belastbar (der
+            Speicher zeichnet erst seit heute auf) - nie eine erfundene 0.
+        lastSwitchedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Der juengste Schaltvorgang (Start ODER Stopp).
+    RuleEvent:
+      type: object
+      description: Ein einzelner aufgezeichneter Wechsel.
+      properties:
+        id: { type: integer, format: int64 }
+        ruleKind: { type: string, nullable: true, enum: [rezept, flow] }
+        ruleRef:
+          type: string
+          nullable: true
+          description: null = ehrlich keiner Regel zuzuordnen (nie eine geratene).
+        entityId: { type: string, format: uuid, nullable: true }
+        kind:
+          type: string
+          enum: [gestartet, gestoppt, zustand, ausgerollt, geraet_problem,
+                 protokoll_gedeckelt]
+        state: { type: string, nullable: true }
+        previousState: { type: string, nullable: true }
+        reasonCode: { type: string, nullable: true }
+        actualKw:
+          type: number
+          nullable: true
+          description: Der gemessene Wert im Moment des Wechsels; null = nicht gemessen.
+        detail: { type: string, nullable: true }
+        occurredAt: { type: string, format: date-time }
     ConsumerRuntimeStatus:
       type: object
       description: >

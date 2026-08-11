@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.EdgeVersionRepository;
 import com.voltpilot.api.repo.FlowStatusRepository;
+import com.voltpilot.api.rules.RuleEventWriter;
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -53,7 +54,7 @@ class FlowNodeStatusListenerTest {
         flowStatus = mock(FlowStatusRepository.class);
         edgeVersions = mock(EdgeVersionRepository.class);
         listener = new FlowNodeStatusListener("tcp://localhost:1883", "", "", devices, flowStatus,
-                edgeVersions);
+                edgeVersions, mock(RuleEventWriter.class));
         when(devices.findById(DEVICE)).thenReturn(Optional.of(device()));
     }
 

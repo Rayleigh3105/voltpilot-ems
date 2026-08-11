@@ -217,6 +217,15 @@ beforeEach(() => {
     ],
   } as never);
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
+  // Das Regel-Protokoll (Stufe 5b) - die Vorgabe ist der Tag der Auslieferung:
+  // aufgezeichnet wird, aber noch kein Wechsel liegt vor.
+  vi.spyOn(api, 'siteRuleEvents').mockResolvedValue({
+    recordingSince: '2026-08-11T06:00:00Z',
+    accuracySeconds: 15,
+    countsToday: true,
+    rules: [],
+    events: [],
+  });
   vi.spyOn(api, 'siteProfiles').mockResolvedValue({
     profiles: [
       profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true }),
@@ -485,6 +494,87 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     await waitFor(() => expect(cClearOverride).toHaveBeenCalledWith('s-1', 'e-wb'));
   });
 
+  // --- Stufe 5b: das Regel-Protokoll ------------------------------------
+
+  /** Ein Protokoll mit einem Start und einem Stopp derselben Flow-Regel. */
+  function protokollMitWechseln() {
+    const heute = (h: number, m: number) => new Date(2026, 7, 11, h, m).toISOString();
+    return {
+      recordingSince: '2026-08-09T06:00:00Z',
+      accuracySeconds: 15,
+      countsToday: true,
+      rules: [{
+        ruleKind: 'flow' as const, ruleRef: 'f-wb',
+        switchedToday: 3, lastSwitchedAt: heute(14, 2),
+      }],
+      events: [
+        {
+          id: 2, ruleKind: 'flow' as const, ruleRef: 'f-wb', entityId: 'e-wb',
+          kind: 'gestoppt', state: 'fulfilled', previousState: 'running_optimized',
+          reasonCode: null, actualKw: null, detail: null, occurredAt: heute(14, 2),
+        },
+        {
+          id: 1, ruleKind: 'flow' as const, ruleRef: 'f-wb', entityId: 'e-wb',
+          kind: 'gestartet', state: 'running_optimized', previousState: 'waiting',
+          reasonCode: 'price_below_threshold', actualKw: 7.4, detail: null,
+          occurredAt: heute(12, 30),
+        },
+      ],
+    };
+  }
+
+  it('die Karte traegt „heute 3x geschaltet - zuletzt 14:02"', async () => {
+    const bound = setup();
+    bound.list.mockResolvedValue([pvFlow()]);
+    vi.spyOn(api, 'siteRuleEvents').mockResolvedValue(protokollMitWechseln());
+    render(<SteuerungSection site={site} />);
+
+    expect(await screen.findByText(/heute 3× geschaltet · zuletzt 14:02/))
+      .toBeInTheDocument();
+  });
+
+  it('der Einschub zeigt den Verlauf DIESER Regel samt Genauigkeit', async () => {
+    const bound = setup();
+    bound.list.mockResolvedValue([pvFlow()]);
+    vi.spyOn(api, 'siteRuleEvents').mockResolvedValue(protokollMitWechseln());
+    render(<SteuerungSection site={site} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Öffnen' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText(/12:30 · gestartet · 7,4/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Günstiger Strompreis/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/14:02 · gestoppt/)).toBeInTheDocument();
+    // Die Genauigkeit steht AN der Flaeche, nicht im Kleingedruckten.
+    expect(within(drawer).getByText(/15-Sekunden-Takt/)).toBeInTheDocument();
+  });
+
+  it('das kompakte Gesamt-Protokoll steht als Aufklapper unter der Liste', async () => {
+    const bound = setup();
+    bound.list.mockResolvedValue([pvFlow()]);
+    vi.spyOn(api, 'siteRuleEvents').mockResolvedValue(protokollMitWechseln());
+    render(<SteuerungSection site={site} />);
+
+    const aufklapper = await screen.findByText('Verlauf');
+    fireEvent.click(aufklapper);
+    // Er nennt je Zeile die REGEL, damit man die Ereignisse zuordnen kann.
+    expect(screen.getAllByText('Wallbox nur bei PV-Überschuss').length)
+      .toBeGreaterThan(1);
+  });
+
+  it('ohne Protokoll (aelteres Backend) ist die Flaeche zeichengleich zu Stufe 5a', async () => {
+    const bound = setup();
+    bound.list.mockResolvedValue([pvFlow()]);
+    vi.spyOn(api, 'siteRuleEvents').mockRejectedValue(new Error('404'));
+    render(<SteuerungSection site={site} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Öffnen' }));
+    const drawer = await screen.findByRole('dialog');
+    // Der 5a-Satz kehrt zurueck - und es gibt weder Zaehler noch Aufklapper.
+    expect(within(drawer).getByText(/wird noch nicht aufgezeichnet/)).toBeInTheDocument();
+    expect(screen.queryByText(/geschaltet/)).toBeNull();
+    expect(screen.queryByText('Verlauf')).toBeNull();
+  });
+
   it('„Öffnen" zeigt den Detail-Einschub — mit EHRLICH leerem Verlauf', async () => {
     const bound = setup();
     bound.list.mockResolvedValue([pvFlow()]);
@@ -495,7 +585,11 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     expect(within(drawer).getByText('Ihre Regel')).toBeInTheDocument();
     expect(within(drawer).getByText(/Geräteschutz, Netzvorgaben/)).toBeInTheDocument();
     expect(within(drawer).getByText('Verlauf dieser Regel')).toBeInTheDocument();
-    expect(within(drawer).getByText(/noch nicht aufgezeichnet/)).toBeInTheDocument();
+    // Stufe 5b: der Speicher zeichnet auf, für DIESE Regel liegt aber noch kein
+    // Wechsel vor - der Einschub sagt beides, statt leer wie ein Ausfall
+    // auszusehen.
+    expect(within(drawer).getByText(/kein Wechsel aufgezeichnet/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/Aufgezeichnet wird seit/)).toBeInTheDocument();
     // Ohne Probelauf wird KEINE Zahl behauptet.
     expect(within(drawer).getByText(/noch nicht durchgerechnet/)).toBeInTheDocument();
     expect(within(drawer).getByText('v2 aktiv · v1')).toBeInTheDocument();

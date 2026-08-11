@@ -47,10 +47,27 @@ public class ConsumerRuntimeStatusRepository {
     /**
      * Replace the device's whole reported set (one row per entity, wholesale
      * per heartbeat). RLS' WITH CHECK stamps every row into the session tenant.
+     *
+     * <p><b>Returns the PREVIOUS set</b> - the rows the wholesale delete just
+     * removed. That is what the Stufe-5b rule protocol compares the new set
+     * against ({@link com.voltpilot.api.rules.RuleEventWriter}), and taking it
+     * from the {@code DELETE ... RETURNING} costs nothing: the statement scans
+     * exactly those rows anyway. Reading them with a separate SELECT first
+     * would be a second query on the hot path.
      */
     @Transactional
-    public void replaceForDevice(UUID deviceId, UUID siteId, Instant reportedAt, List<Row> rows) {
-        jdbc.update("DELETE FROM consumer_runtime_status WHERE device_id = ?", deviceId);
+    public List<Row> replaceForDevice(UUID deviceId, UUID siteId, Instant reportedAt,
+            List<Row> rows) {
+        List<Row> previous = jdbc.query(
+                "DELETE FROM consumer_runtime_status WHERE device_id = ? "
+                        + "RETURNING entity_id, state, reason_code, actual_kw, confirmed, "
+                        + "runtime_seconds_today, starts_today",
+                (rs, i) -> new Row(rs.getObject("entity_id", UUID.class), rs.getString("state"),
+                        rs.getString("reason_code"), (Double) rs.getObject("actual_kw"),
+                        (Boolean) rs.getObject("confirmed"),
+                        (Integer) rs.getObject("runtime_seconds_today"),
+                        (Integer) rs.getObject("starts_today")),
+                deviceId);
         for (Row r : rows) {
             jdbc.update(
                     "INSERT INTO consumer_runtime_status (entity_id, tenant_id, site_id, device_id, "
@@ -69,6 +86,7 @@ public class ConsumerRuntimeStatusRepository {
                     r.confirmed(), r.runtimeSecondsToday(), r.startsToday(),
                     Timestamp.from(reportedAt));
         }
+        return previous;
     }
 
     /** All reported consumer states of a site (empty = no evidence yet). */

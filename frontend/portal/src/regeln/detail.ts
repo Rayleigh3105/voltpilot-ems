@@ -30,7 +30,9 @@ import {
 import type { GuidedRule } from '../flows/guidedBuilder';
 import type { EditorEntity } from '../flows/model';
 import type { FlowSimulationSummary } from '../flows/flowsApi';
+import type { RuleEvents } from '../api';
 import { dannZeile, IMMER_ZEILE, wennZeilen } from './satz';
+import { verlaufAbschnitt } from './verlauf';
 import { VERLAUF_NOCH_NICHT, type RegelKarte } from './zustand';
 
 export interface RegelAbschnitt {
@@ -75,6 +77,11 @@ export interface RegelDetailInput {
   /** Die gespeicherten Versionen (Flow) bzw. die Policy-Version (Rezept). */
   versionen?: number[] | null;
   aktiveVersion?: number | null;
+  /**
+   * Das Regel-Protokoll der Anlage (Stufe 5b). Fehlt es, sagt der Verlauf
+   * ehrlich, dass er noch nicht aufgezeichnet wird — wie in Stufe 5a.
+   */
+  protokoll?: RuleEvents | null;
 }
 
 const VERLAUF_TITEL = 'Verlauf dieser Regel';
@@ -155,11 +162,11 @@ export function regelDetail(input: RegelDetailInput): RegelDetailView {
     dann: rezeptSatz ? null : dann,
     ersatz,
     immer: IMMER_ZEILE,
-    verlauf: {
-      titel: VERLAUF_TITEL,
-      zeilen: [],
-      note: VERLAUF_NOCH_NICHT,
-    },
+    // Seit Stufe 5b gibt es einen Verlaufsspeicher; ohne ihn (älteres Backend,
+    // fail-soft nicht geladen) bleibt es beim ehrlichen Satz aus Stufe 5a.
+    verlauf: input.protokoll
+      ? verlaufAbschnitt(input.protokoll.events, karte.key, input.protokoll)
+      : { titel: VERLAUF_TITEL, zeilen: [], note: VERLAUF_NOCH_NICHT },
     nachweis: nachweisAbschnitt(input),
     versionen: rezept ? null : versionenZeile(input.versionen, input.aktiveVersion),
     bearbeiten: rezept
