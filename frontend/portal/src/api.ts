@@ -961,6 +961,35 @@ export interface ProbeAntwort {
  * `appliedRevision === null` heißt UNBEKANNT (ältere Box, noch kein
  * Herzschlag) - nie „nicht angekommen".
  */
+/**
+ * Die Antwort auf „Jetzt lesen" (Stufe 3). Jede Zahl ist OPTIONAL: ein
+ * Fehlschlag trägt NIE einen Wert - nie eine 0, die sich wie eine Messung
+ * liest.
+ */
+export interface SelbstbauLeseAntwort {
+  ok: boolean;
+  raw?: number | null;
+  registers?: number[] | null;
+  value?: number | null;
+  unit?: string | null;
+  hint?: string | null;
+  errorCode?: string | null;
+  message?: string | null;
+  receipt?: boolean;
+}
+
+/** Eine PRIVATE Geräte-Vorlage einer Anlage („Duplizieren", Stufe 3). */
+export interface SiteComponentTemplate {
+  templateRef: string;
+  version: number;
+  label: string;
+  communication: string;
+  connection?: Record<string, unknown> | null;
+  channels?: unknown[] | null;
+  note?: string | null;
+  createdAt?: string | null;
+}
+
 export interface SiteComponents {
   componentAuthority: string;
   sollRevision?: string | null;
@@ -2159,6 +2188,46 @@ export const api = {
     request<SiteComponents>(
       `/api/v1/sites/${siteId}/components/${entityId}/versions/${version}/rollback`,
       { method: 'POST' },
+    ),
+  /**
+   * „Jetzt lesen" (Einheitsmodell Stufe 3): die BOX liest EINEN Messwert des
+   * noch nicht gespeicherten Geräts einmal und antwortet mit Roh- UND
+   * skaliertem Wert - der Moment, in dem ein Skalierungsfehler sichtbar wird.
+   *
+   * Ein Erfolg hinterlegt zugleich den Beleg, der das Speichern freigibt; er
+   * hängt an der VERBINDUNG, nicht am Messwert, also erzwingt eine geänderte
+   * Skalierung keine neue Lesung, eine geänderte Adresse sehr wohl.
+   */
+  readCustomComponent: (siteId: string, body: Record<string, unknown>) =>
+    request<SelbstbauLeseAntwort>(`/api/v1/sites/${siteId}/components/custom/read`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Ein selbst definiertes Modbus-Gerät anlegen (Stufe 3). */
+  createCustomComponent: (siteId: string, body: Record<string, unknown>) =>
+    request<SiteComponents>(`/api/v1/sites/${siteId}/components/custom`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Ein selbst definiertes Gerät ändern - eine NEUE Fassung. */
+  updateCustomComponent: (siteId: string, entityId: string, body: Record<string, unknown>) =>
+    request<SiteComponents>(`/api/v1/sites/${siteId}/components/custom/${entityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /** Ein selbst definiertes Gerät entfernen - samt seinem Lese-Flow. */
+  deleteCustomComponent: (siteId: string, entityId: string) =>
+    request<SiteComponents>(`/api/v1/sites/${siteId}/components/custom/${entityId}`, {
+      method: 'DELETE',
+    }),
+  /** Die PRIVATEN Vorlagen dieser Anlage (kein Katalog, kein Teilen). */
+  siteComponentTemplates: (siteId: string) =>
+    request<SiteComponentTemplate[]>(`/api/v1/sites/${siteId}/component-templates`),
+  /** „Duplizieren": aus einem Gerät wird eine private Vorlage dieser Anlage. */
+  duplicateCustomComponent: (siteId: string, entityId: string, label?: string) =>
+    request<SiteComponentTemplate[]>(
+      `/api/v1/sites/${siteId}/components/custom/${entityId}/duplicate`,
+      { method: 'POST', body: JSON.stringify({ label }) },
     ),
   /** AE1 topology read-model (adaptive energy flow + tiles). Empty for un-migrated sites. */
   topology: (siteId: string) => request<SiteTopology>(`/api/v1/sites/${siteId}/topology`),

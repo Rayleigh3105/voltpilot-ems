@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "5f2a1c8e-7d34-4b91-a0c6-1234567890ab",
+  "flow_version": 3,
+  "name": "Gerät: Wärmepumpe Keller",
+  "description": "Der GENERIERTE Lese-Flow eines selbst definierten Modbus-Geräts (Einheitsmodell Stufe 3): je Kanal ein vp.modbus.read, gemappt auf die Messkanäle seiner Komponente. Er trägt nur freie Katalog-Bausteine - die origin markiert ihn als plattform-erzeugt, damit das Portal den Geräte-Assistenten öffnet statt des Flow-Editors.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "active",
+  "origin": {
+    "kind": "modbus-device",
+    "point_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+    "definition_version": 3
+  },
+  "nodes": [
+    {
+      "id": "ch1",
+      "type": "vp.modbus.read",
+      "type_version": "1.0.0",
+      "label": "Wassertemperatur Speicher oben",
+      "parameters": {
+        "host": "192.168.40.50",
+        "port": 502,
+        "unit_id": 1,
+        "register_kind": "holding",
+        "address": 100,
+        "data_type": "s16",
+        "word_order": "big",
+        "scale": 0.1,
+        "offset": 0,
+        "min_read_interval_s": 10,
+        "entity_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+        "channel": "wassertemperatur_speicher_oben"
+      }
+    },
+    {
+      "id": "ch2",
+      "type": "vp.modbus.read",
+      "type_version": "1.0.0",
+      "label": "Aufnahmeleistung",
+      "parameters": {
+        "host": "192.168.40.50",
+        "port": 502,
+        "unit_id": 1,
+        "register_kind": "input",
+        "address": 210,
+        "data_type": "u32",
+        "word_order": "little",
+        "scale": 0.001,
+        "offset": 0,
+        "min_read_interval_s": 10,
+        "entity_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+        "channel": "aufnahmeleistung"
+      }
+    }
+  ],
+  "edges": [],
+  "triggers": [
+    { "id": "takt", "kind": "interval", "every_s": 10 }
+  ]
+}

@@ -65,14 +65,16 @@ const fronius: ComponentTemplate = {
 const geprueft: ComponentTemplate = { ...fronius, templateRef: 'certified:x:y', kind: 'certified' };
 
 describe('die drei Türen', () => {
-  it('zeigt die Selbstbau-Tür SICHTBAR, aber ehrlich als noch nicht begehbar', () => {
+  it('öffnet die Selbstbau-Tür - seit Stufe 3 ist sie begehbar', () => {
     const t = tueren([deye]);
     const selbstbau = t.find((d) => d.id === 'selbstbau')!;
-    expect(selbstbau.verfuegbar).toBe(false);
-    expect(selbstbau.bald).toBe('Bald verfügbar.');
-    // Sie ganz wegzulassen ließe einen Kunden ratlos zurück - sie zu zeigen
-    // und zu markieren ist die Form der Rezept-Galerie.
+    expect(selbstbau.verfuegbar).toBe(true);
+    // ⚠ Kein „bald verfügbar" mehr: sie führt jetzt wirklich irgendwohin, und
+    // ein Hinhalte-Satz an einer offenen Tür wäre eine Falschaussage.
+    expect(selbstbau.bald).toBeUndefined();
     expect(selbstbau.label).toContain('Eigenes Gerät');
+    // Sie hängt an KEINER Vorlage - genau deshalb gibt es sie.
+    expect(tueren([]).find((d) => d.id === 'selbstbau')!.verfuegbar).toBe(true);
   });
 
   it('sagt bei leerer Vorlagen-Liste ehrlich, dass sie leer IST', () => {

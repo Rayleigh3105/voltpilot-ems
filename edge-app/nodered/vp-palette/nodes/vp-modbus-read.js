@@ -29,6 +29,7 @@
 const conn = require('../lib/modbus-conn.js');
 const codec = require('../lib/modbus-tcp.js');
 
+var privateHost = require('../lib/private-host');
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const CHANNEL_RE = /^[a-z][a-z0-9_]{0,63}$/;
 const WARN_INTERVAL_MS = 60000;
@@ -82,6 +83,17 @@ module.exports = function (RED) {
 
     if (!host || address === null) {
       node.status({ fill: 'red', shape: 'ring', text: 'Konfiguration ungültig' });
+      return;
+    }
+    // ⚠ LAN-only, auf der BOX geprüft. Portal und api prüfen dieselbe Regel,
+    // bevor ein Gerät gespeichert wird - aber ein ausgerollter Flow ist eine
+    // Anweisung von aussen, und wer eine Verbindung öffnet, prüft ihr Ziel
+    // selbst (die OTA-Sidecar-Disziplin). Der Knoten LIEST dann gar nichts,
+    // statt zu klopfen, und sagt laut warum.
+    if (!privateHost.isPrivateHost(host)) {
+      node.status({ fill: 'red', shape: 'ring', text: privateHost.REFUSAL });
+      node.warn('vp-modbus-read: ' + host + ' liegt nicht nachweisbar im Heimnetz - '
+        + 'es wird nichts gelesen.');
       return;
     }
     if (mapped && !core) {

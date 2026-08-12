@@ -26,6 +26,8 @@ const componentTemplates = vi.fn();
 const siteComponents = vi.fn();
 const testComponentConnection = vi.fn();
 const createComponent = vi.fn();
+const readCustomComponent = vi.fn();
+const createCustomComponent = vi.fn();
 
 vi.mock('../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../api');
@@ -36,6 +38,8 @@ vi.mock('../api', async () => {
       siteComponents: () => siteComponents(),
       testComponentConnection: (...a: unknown[]) => testComponentConnection(...a),
       createComponent: (...a: unknown[]) => createComponent(...a),
+      readCustomComponent: (...a: unknown[]) => readCustomComponent(...a),
+      createCustomComponent: (...a: unknown[]) => createCustomComponent(...a),
     },
   };
 });
@@ -167,10 +171,76 @@ describe('der EINE Anlege-Assistent', () => {
     await screen.findByText('Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät.');
   });
 
-  it('zeigt die Selbstbau-Tür, lässt sie aber nicht anklicken', async () => {
+  it('öffnet die Selbstbau-Tür in ihren eigenen Assistenten', async () => {
     render(<KomponenteHinzufuegenDrawer siteId="s1" onClose={() => {}} onSaved={() => {}} />);
     const tuer = await screen.findByText('Eigenes Gerät (Modbus)');
-    expect(screen.getByText('Bald verfügbar.')).toBeInTheDocument();
-    expect(tuer.closest('button')).toBeDisabled();
+    expect(tuer.closest('button')).toBeEnabled();
+    // ⚠ Kein Hinhalte-Satz mehr an einer offenen Tür.
+    expect(screen.queryByText('Bald verfügbar.')).toBeNull();
+
+    fireEvent.click(tuer);
+    // Sie hat KEINE Vorlagen-Auswahl - sie fragt sofort nach dem Gerät, und
+    // ihre Schrittleiste heißt anders als die der Katalog-Tür.
+    await screen.findByText('Wo steht das Gerät?');
+    expect(screen.queryByLabelText('Marke')).toBeNull();
+    expect(screen.getByText('Messwerte')).toBeInTheDocument();
+  });
+
+  /**
+   * Die ganze Reise der Selbstbau-Tür: ein öffentliches Ziel kommt gar nicht
+   * erst zur Box, ein privates schon - und ohne gelesenen Messwert bleibt der
+   * Weg zu.
+   */
+  it('führt vom Gerät über „Jetzt lesen" bis zum Anlegen', async () => {
+    readCustomComponent.mockResolvedValue({
+      ok: true, raw: 13750, registers: [13750], value: 1375, unit: '°C',
+      hint: 'Diese Temperatur sieht nach einer falschen Skalierung aus.', receipt: true,
+    });
+    createCustomComponent.mockResolvedValue({ components: [] });
+
+    render(<KomponenteHinzufuegenDrawer siteId="s1" onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByText('Eigenes Gerät (Modbus)'));
+    await screen.findByText('Wo steht das Gerät?');
+
+    // Ein öffentliches Ziel wird SOFORT benannt und lässt nicht weiter.
+    fireEvent.change(screen.getByLabelText('Adresse im Netzwerk'), {
+      target: { value: '8.8.8.8' },
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(/nicht nachweisbar/);
+    expect(screen.getByRole('button', { name: 'Weiter' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Adresse im Netzwerk'), {
+      target: { value: '192.168.1.50' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+
+    await screen.findByText('Welche Messwerte liefert das Gerät?');
+    // Ohne gelesenen Messwert ist der Weg zu.
+    expect(screen.getByRole('button', { name: 'Weiter' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Vorlauf' } });
+    fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt lesen' }));
+
+    // Roh UND umgerechnet nebeneinander - der Moment, in dem der Fehler
+    // sichtbar wird -, plus der Hinweis, der NICHTS sperrt.
+    await screen.findByText('13.750');
+    expect(screen.getByText('1.375 °C')).toBeInTheDocument();
+    expect(screen.getByText(/falschen Skalierung/)).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Weiter' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+
+    // Rolle: „Nur messen" ist wählbar, der Verbraucher ehrlich noch nicht.
+    await screen.findByText('Was ist dieses Gerät?');
+    expect(screen.getByText('Schaltbarer Verbraucher').closest('button')).toBeDisabled();
+    expect(screen.getByText(/Energiebilanz/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Komponente anlegen' }));
+    await waitFor(() => expect(createCustomComponent).toHaveBeenCalled());
+    const [, body] = createCustomComponent.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.connection).toMatchObject({ host: '192.168.1.50', port: 502, unitId: 1 });
+    expect(body.channels).toHaveLength(1);
   });
 });

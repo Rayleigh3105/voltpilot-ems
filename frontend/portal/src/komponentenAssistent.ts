@@ -86,13 +86,12 @@ export const ROLLEN: RolleOption[] = [
 /**
  * Die drei Türen aus Schritt 1 (§4.1).
  *
- * **Warum die Selbstbau-Tür SICHTBAR, aber noch nicht begehbar ist:** sie
- * gehört zu einer späteren Stufe. Sie ganz wegzulassen hieße, einen Kunden mit
- * einem exotischen Gerät ratlos zurückzulassen - er wüsste nicht, ob VoltPilot
- * so etwas grundsätzlich kann. Sie hier zu zeigen und ehrlich als „bald
- * verfügbar" zu markieren ist genau die Form, die die Rezept-Galerie für
- * „Sag mir Bescheid" schon benutzt: keine Sackgasse, keine Hinhalte-Floskel,
- * und keine Tür, die ins Leere führt.
+ * Die Selbstbau-Tür ist seit Stufe 3 BEGEHBAR: der Kunde beschreibt sein Gerät
+ * selbst (Adresse, Register, Messwerte) und sieht beim Anlegen echte Werte.
+ * Sie führt in einen EIGENEN Assistenten - ihre Schritte 2-4 fragen etwas
+ * anderes als die der Katalog-Tür (Messwerte statt eines Vorlagen-Formulars),
+ * und in einen Ablauf zu pressen, was verschiedene Fragen stellt, wäre genau
+ * die Verschmelzung, die dieses Konzept vermeidet.
  */
 export type TuerId = 'katalog' | 'vorlage' | 'selbstbau';
 
@@ -127,9 +126,8 @@ export function tueren(templates: ComponentTemplate[]): Tuer[] {
     {
       id: 'selbstbau',
       label: 'Eigenes Gerät (Modbus)',
-      hint: 'Ein Gerät selbst beschreiben: Register, Messwerte, Skalierung.',
-      verfuegbar: false,
-      bald: 'Bald verfügbar.',
+      hint: 'Ein Gerät selbst beschreiben: Adresse, Register, Messwerte - mit Live-Vorschau.',
+      verfuegbar: true,
     },
   ];
 }

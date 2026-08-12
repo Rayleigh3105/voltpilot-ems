@@ -28,6 +28,8 @@ const ajv = new Ajv2020({ strict: false });
 | `flow-graph.invalid.unknown-trigger.json` | flow-graph | **invalid** — trigger `kind: "cron"` is not in the trigger enum |
 | `flow-graph.valid.consumer-reactive.json` | flow-graph | valid — a GENERATED consumer-policy flow (D-19): `origin` marker + one `vp.consumer.reactive` node (must_run availability rule + an ODER mix of a precompiled price window and a hysteresis SoC signal) |
 | `flow-graph.invalid.reactive-without-origin.json` | flow-graph | **invalid** — a `vp.consumer.reactive` node in a document WITHOUT the server-stamped consumer-policy `origin`; schema-conform (JSON Schema cannot express the rule), refused by the validator twins + flowc (D-19) |
+| `flow-graph.valid.modbus-device.json` | flow-graph | valid — the GENERATED read flow of ONE self-built Modbus device (Einheitsmodell Stufe 3): `origin.kind: "modbus-device"` + one free `vp.modbus.read` per channel, each mapped onto its component's measure channel; `flow_version` IS the definition version |
+| `flow-graph.invalid.origin-mixed-kinds.json` | flow-graph | **invalid** — an `origin` carrying the `modbus-device` kind together with the consumer-policy fields; each `origin` branch is closed (`additionalProperties: false`), so a document can never mix the two provenance vocabularies |
 | `flow-artifact.valid.artifact.json` | flow-artifact | valid — one compiled artifact (manifest + nodered-tabs bundle with `@vp-flow` tab marker) |
 | `flow-artifact.valid.deployment.json` | flow-artifact | valid — retained deployment set for one device carrying that artifact |
 | `flow-artifact.invalid.bad-hash.json` | flow-artifact | **invalid** — `content_hash` is not `sha256:<64 hex>` (md5 prefix) |

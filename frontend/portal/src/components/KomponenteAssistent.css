@@ -329,3 +329,113 @@
 .vp-am-stand.is-warn {
   color: #92400e;
 }
+
+/* ---------------------------------------------------------------------------
+ * Die SELBSTBAU-TÜR (Einheitsmodell Stufe 3)
+ *
+ * Eine Messwert-Zeile ist ein kleines Formular in einem Formular, also braucht
+ * sie eine eigene Fläche - sonst verschwimmt sie mit ihren Nachbarn. Alles hier
+ * ist komponenten-lokal; `index.css` bleibt unangetastet.
+ * ------------------------------------------------------------------------- */
+
+.vp-sb-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--vp-space-3, 12px);
+}
+
+/* Am Telefon stapeln sich die Paare - zwei Zahlenfelder nebeneinander sind
+   unter ~360 px nicht mehr bedienbar. */
+@media (max-width: 480px) {
+  .vp-sb-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.vp-sb-row {
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md, 12px);
+  padding: var(--vp-space-4, 16px);
+  margin-bottom: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-sb-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2, 8px);
+  margin-bottom: var(--vp-space-3, 12px);
+}
+
+.vp-sb-del {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--vp-text-muted, #64748b);
+  padding: 10px;
+  margin: -10px;
+  border-radius: 8px;
+  line-height: 0;
+}
+
+.vp-sb-del:hover {
+  color: var(--vp-alert-warn-ink, #b45309);
+}
+
+.vp-sb-profi > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted, #64748b);
+  margin-bottom: var(--vp-space-2, 8px);
+}
+
+.vp-sb-read {
+  margin-top: var(--vp-space-3, 12px);
+}
+
+/* Roh UND umgerechnet nebeneinander - das IST die Aussage dieser Fläche, nicht
+   ihre Dekoration: nur der direkte Vergleich macht einen Skalierungsfehler in
+   einer Sekunde sichtbar. */
+.vp-sb-result {
+  margin-top: var(--vp-space-3, 12px);
+  padding: var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface-muted, #f8fafc);
+}
+
+.vp-sb-result dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--vp-space-3, 12px);
+  margin: 0;
+}
+
+.vp-sb-result dt {
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #64748b);
+  margin: 0 0 2px;
+}
+
+.vp-sb-result dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vp-sb-scaled {
+  color: var(--vp-action, #2c5282);
+}
+
+/* Bernstein, nie rot: ein unplausibler Wert ist ein HINWEIS - er sperrt nichts,
+   und am echten Gerät kann er richtig sein. */
+.vp-sb-hint {
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: 0.85rem;
+  color: var(--vp-alert-warn-ink, #b45309);
+}
+
+.vp-sb-add {
+  margin-bottom: var(--vp-space-4, 16px);
+}
