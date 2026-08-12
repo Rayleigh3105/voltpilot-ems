@@ -46,6 +46,18 @@ public class ComponentDefinitionRepository {
     }
 
     /**
+     * Wann diese Anlage automatisch vom Gerät übernommen wurde, oder
+     * {@code null} (Einheitsmodell Stufe 2). {@code null} heißt „nie
+     * übernommen" - NICHT „box-verwaltet"; die Autorität ist eine eigene Spalte.
+     */
+    public java.time.Instant componentsAdoptedAt(UUID siteId) {
+        List<java.sql.Timestamp> rows = jdbc.query(
+                "SELECT components_adopted_at FROM site WHERE id = ?",
+                (rs, n) -> rs.getTimestamp(1), siteId);
+        return rows.isEmpty() || rows.get(0) == null ? null : rows.get(0).toInstant();
+    }
+
+    /**
      * Schreibt die geltende Anbindung auf den Messpunkt und hebt seine Fassung.
      * Der {@code site_id}-Vergleich ist kein Mandanten-Zaun (den macht RLS) -
      * er verhindert, dass eine Komponente einer ANDEREN Anlage desselben Kunden

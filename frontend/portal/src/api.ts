@@ -997,6 +997,13 @@ export interface SiteComponents {
   appliedAt?: string | null;
   refusedRevision?: string | null;
   refusedReason?: string | null;
+  /**
+   * Wann diese Anlage AUTOMATISCH vom Gerät übernommen wurde (Einheitsmodell
+   * Stufe 2). `null`/absent = nie übernommen - ausdrücklich NICHT dasselbe wie
+   * box-verwaltet (eine neu angelegte Anlage ist portal-verwaltet, ohne je
+   * übernommen worden zu sein).
+   */
+  adoptedAt?: string | null;
   components: SiteComponentRow[];
 }
 

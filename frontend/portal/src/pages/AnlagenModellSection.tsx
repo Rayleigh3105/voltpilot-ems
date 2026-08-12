@@ -45,7 +45,12 @@ import { NO_DATA } from '../nodata';
 import { anlageRoute, hashForRoute } from '../nav';
 import { EntitaetenSection } from './EntitaetenSection';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
-import { ablehnungText, sollIstText, sollIstTon } from '../komponentenAssistent';
+import {
+  ablehnungText,
+  sollIstText,
+  sollIstTon,
+  verwaltungsHinweis,
+} from '../komponentenAssistent';
 import '../components/AnlagenModell.css';
 import '../components/KomponenteAssistent.css';
 
@@ -227,6 +232,14 @@ export function AnlagenModellSection({
       }
     : null;
   const ablehnung = ablehnungText(components?.refusedRevision, components?.refusedReason);
+  /*
+    Einheitsmodell Stufe 2: EIN Satz, der sagt, wo gepflegt wird. Er erscheint
+    nur, wenn es etwas zu erklären gibt - eine Anlage, die immer schon im Portal
+    entstanden ist, schweigt.
+  */
+  const verwaltung = components
+    ? verwaltungsHinweis(components.componentAuthority, components.adoptedAt)
+    : null;
 
   return (
     <div className="vp-modell">
@@ -322,6 +335,7 @@ export function AnlagenModellSection({
                 dem laufenden Stand, nie an seiner Stelle - es läuft weiter die
                 zuletzt angewandte Fassung.
               */}
+              {verwaltung && <p className="vp-am-stand is-unbekannt">{verwaltung}</p>}
               {komponentenStand && (
                 <p className={`vp-am-stand is-${komponentenStand.ton}`}>{komponentenStand.text}</p>
               )}

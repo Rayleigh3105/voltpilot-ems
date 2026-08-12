@@ -2955,6 +2955,51 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/v2-entities/adopt-from-device:
+    post:
+      tags: [admin]
+      summary: Bestands-Übernahme jetzt versuchen (Einheitsmodell Stufe 2).
+      description: >
+        Die Übernahme läuft ohnehin AUTOMATISCH (getakteter Abgleich); diese
+        Route stößt sie ohne Wartezeit an und - vor allem - nennt den GRUND,
+        wenn eine Anlage noch box-verwaltet ist ("meldet noch nicht, wie ihre
+        Geräte angebunden sind", "steht noch nicht in unserem
+        Geräte-Verzeichnis", …). Sie ist ALLES ODER NICHTS: ein unvollständig
+        gemeldetes Ist übernimmt gar nichts.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Ausgang der Prüfung (übernommen oder der Grund dagegen).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComponentAdoptionOutcome" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/v2-entities/revert-to-device:
+    post:
+      tags: [admin]
+      summary: Der RÜCKWEG - die Anlage wieder am Gerät verwalten lassen.
+      description: >
+        Nimmt AUSSCHLIESSLICH die Autorität zurück (component_authority ->
+        box). Die gespeicherten Definitionen bleiben stehen - sie sind der
+        Beleg, was übernommen wurde, und der Weg zurück nach vorn. Der folgende
+        Registry-Push trägt das Autoritäts-Feld dann nicht mehr, womit der
+        Applier auf der Box strukturell nichts mehr anwendet und :8484 wieder
+        bedient. Der Übernahme-Stempel wird gelöscht, damit der getaktete
+        Abgleich die Anlage erneut betrachtet.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Ausgang.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComponentAdoptionOutcome" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
   /api/v1/admin/sites/{siteId}/v2-entities/push:
     post:
       tags: [admin]
@@ -4803,6 +4848,16 @@ components:
             The box's LAST refusal, NEXT TO (never instead of) `appliedRevision` -
             what runs is still the last configuration that really worked.
         refusedReason: { type: string, nullable: true, description: German plain-text reason. }
+        adoptedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Wann diese Anlage AUTOMATISCH vom Gerät übernommen wurde
+            (Einheitsmodell Stufe 2). null = nie übernommen - ausdrücklich NICHT
+            dasselbe wie box-verwaltet: eine neu angelegte Anlage ist
+            portal-verwaltet, ohne je übernommen worden zu sein. Der Zustand
+            steht allein in componentAuthority; dies ist der Beleg.
         components:
           type: array
           items:
@@ -5821,6 +5876,31 @@ components:
                 max: { type: number, nullable: true }
                 last: { type: number, nullable: true }
                 n: { type: integer }
+    ComponentAdoptionOutcome:
+      type: object
+      description: >
+        Der Ausgang eines Übernahme-Versuchs (Einheitsmodell Stufe 2).
+        `verdict` ist maschinenlesbar, `reason` der deutsche Klartext - beide
+        stehen NEBENEINANDER, damit keine Oberfläche einen Satz nach
+        Stichworten durchsuchen muss.
+      properties:
+        verdict:
+          type: string
+          enum: [ADOPTABLE, ALREADY_PORTAL, NO_REPORT, INCOMPLETE_REPORT, UNKNOWN_DEVICE, UNMAPPABLE_ROLE, AMBIGUOUS_INVERTER]
+          description: >
+            ADOPTABLE = übernommen · ALREADY_PORTAL = schon portal-verwaltet ·
+            NO_REPORT = die Box hat sich nie geäußert · INCOMPLETE_REPORT = ein
+            älterer Box-Stand ohne Verbindungsfelder · UNKNOWN_DEVICE = ein
+            gemeldetes Gerät steht nicht im Vorlagen-Register ·
+            UNMAPPABLE_ROLE = eine Rolle ohne eindeutige Geräteart ·
+            AMBIGUOUS_INVERTER = zwei gemeldete Wechselrichter.
+        reason:
+          type: string
+          nullable: true
+          description: Der deutsche Grund; null bei Erfolg.
+        components:
+          type: integer
+          description: Wie viele Komponenten übernommen wurden (0 wenn nicht).
     V2EntityBootstrapResult:
       type: object
       properties:

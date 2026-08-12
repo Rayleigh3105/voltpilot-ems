@@ -66,9 +66,14 @@ type fakeInverter struct {
 	testReq     *testconn.Request // captured last TestConnection request
 	probeResult testconn.Result   // returned by ProbeUnits
 	probeReq    *testconn.Request // captured last ProbeUnits request
+	// portalManaged mirrors the Stufe-2 authority: true = the plant's devices
+	// are maintained in the portal and :8484 is a read-only mirror.
+	portalManaged bool
 }
 
 func (f *fakeInverter) InverterCatalog() inverter.Catalog { return f.cat }
+
+func (f *fakeInverter) PortalManagedComponents() bool { return f.portalManaged }
 
 func (f *fakeInverter) TestConnection(req testconn.Request) testconn.Result {
 	r := req
@@ -3292,3 +3297,86 @@ func TestOtaApplyCardIsServed(t *testing.T) {
 // errApplyRefused steht fuer eine ABLEHNUNG (400), nicht fuer einen Fehler -
 // der fakeOta bildet damit die IsOtaRejection-Regel des Agenten nach.
 var errApplyRefused = errors.New("Auf dieser Box laeuft kein Aktualisierer.")
+
+// TestPortalManagedMirrorIsServedAndHonest nagelt die :8484-Hälfte der
+// Bestands-Übernahme fest (Einheitsmodell Stufe 2).
+//
+// Die Regel dahinter: auf einer portal-verwalteten Anlage ist diese Seite ein
+// read-only SPIEGEL - sie ZEIGT weiter alles, bietet aber keine Bearbeitung an
+// und sagt, wo gepflegt wird. Auf einer box-verwalteten Anlage (dem Bestand und
+// jeder frisch installierten Box) ist sie unverändert voll bedienbar.
+func TestPortalManagedMirrorIsServedAndHonest(t *testing.T) {
+	srv, fi := newServer(t)
+
+	read := func(path string) map[string]any {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+
+	// Bestandsfall: box-verwaltet - beide Endpunkte sagen es, und zwar
+	// ausdrücklich (nicht durch Abwesenheit, sonst könnte die Seite es nicht von
+	// einem älteren Kern unterscheiden).
+	for _, path := range []string{"/api/inverter", "/api/sources"} {
+		if got := read(path)["portal_managed"]; got != false {
+			t.Fatalf("%s: portal_managed = %v, erwartet false", path, got)
+		}
+	}
+
+	// Nach einer Übernahme.
+	fi.portalManaged = true
+	for _, path := range []string{"/api/inverter", "/api/sources"} {
+		if got := read(path)["portal_managed"]; got != true {
+			t.Fatalf("%s: portal_managed = %v, erwartet true", path, got)
+		}
+	}
+
+	// Und die Seite bringt die Teile mit, die den Spiegel ausmachen: den
+	// Hinweis-Platz und die Markierung an JEDER Bearbeitungs-Möglichkeit.
+	resp, err := http.Get(srv.URL + "/einrichten.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(raw)
+	for _, want := range []string{
+		`id="anlagePortalNote"`,
+		// Jeder Knopf, der Geräte-Konfiguration ÄNDERT, trägt die Markierung -
+		// die dynamisch gebauten Zeilen-Knöpfe setzt sources.js.
+		`id="invEditBtn" data-vp-edit`,
+		`id="invSetupBtn" data-vp-edit`,
+		`id="erzAdd" data-vp-edit`,
+		`id="netzAdd" data-vp-edit`,
+		`id="verbAdd" data-vp-edit`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("einrichten.html fehlt %q - der Spiegel wäre unvollständig", want)
+		}
+	}
+	// Der Hinweis steht im NORMAL-Modus: ein Zustand, der die Bearbeitung
+	// wegnimmt, darf nicht hinter dem Technikmodus verschwinden.
+	idx := strings.Index(page, `id="anlagePortalNote"`)
+	line := page[max0(idx-200):idx]
+	if strings.Contains(line, "tech-only") {
+		t.Fatal("der Portal-Hinweis darf nicht Technik-gated sein")
+	}
+}
+
+func max0(i int) int {
+	if i < 0 {
+		return 0
+	}
+	return i
+}

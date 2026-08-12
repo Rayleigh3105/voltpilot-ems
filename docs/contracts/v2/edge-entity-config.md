@@ -119,8 +119,14 @@ mean "nothing to report", never fabricated):
                      "last_telemetry_at": "<RFC3339>", "channels": ["power_kw"] }
   },
   "local_setup": [
-    { "id": "inverter", "kind": "inverter", "brand": "deye", "model": "SUN-12K-SG04LP3-EU" },
-    { "id": "<source id>", "kind": "source", "role": "pv-generation", "brand": "fronius_sunspec" }
+    { "id": "inverter", "kind": "inverter", "brand": "deye", "model": "SUN-12K-SG04LP3-EU",
+      "family": "hybrid_3p", "communication": "solarman_v5",
+      "connection": { "ip": "192.168.0.28", "port": 8899, "serial": "2985159064",
+                      "mb_slave_id": 1, "power_scale": 10 } },
+    { "id": "<source id>", "kind": "source", "role": "pv-generation", "brand": "fronius_sunspec",
+      "family": "sunspec_live", "communication": "fronius_sunspec",
+      "connection": { "ip": "192.168.0.31", "port": 502, "unit_id": 1 },
+      "interval_s": 5, "capacity_kwp": 27 }
   ]
 }
 ```
@@ -130,7 +136,37 @@ mean "nothing to report", never fabricated):
   since boot) and the channels actually seen. This is the edge's honest Ist per entity.
 - **`local_setup`** — the edge-authoritative commissioning view (`:8484` inverter selection +
   sources), reported verbatim so the cloud can SEE edge-side master data that has no registry
-  counterpart. The cloud never auto-imports it; reconciliation surfaces it as drift.
+  counterpart.
+
+### 5.1 `local_setup` connection fields (Einheitsmodell Stufe 2, ADDITIVE)
+
+Until Stufe 2 an entry named WHAT a device is but never HOW it is reached, so the cloud could
+show the box's commissioning Ist but not adopt it: a takeover derived from an incomplete Ist
+would have had to GUESS the address of a live plant's read path. The additive fields below are
+exactly the ones `sources.Source` / `inverter.Selection` persist:
+
+| Feld | gilt für | Bedeutung |
+|---|---|---|
+| `family` | beide | Register-Karte, mit der die Box liest (die Entscheidung ihres EIGENEN Katalogs) |
+| `communication` | beide | Transport (`solarman_v5`, `modbus_tcp`, `fronius_sunspec`, …) — Teil der Quellen-Identität |
+| `connection` | beide | die Transportfelder VERBATIM (ein `inverter.Connection`-Objekt) |
+| `interval_s` | Quelle | Lese-Kadenz |
+| `capacity_kwp` | Quelle | Nennleistung — weitet die physikalische Plausibilitäts-Hülle |
+| `registry_unit_id` | Quelle | die MaStR-Referenz des Betreibers |
+
+**Die Ehrlichkeitsregel, an der die ganze Übernahme hängt: ein Eintrag OHNE `connection` heißt
+„diese Box meldet noch keine Verbindungen" — NIE „dieses Gerät hat keine".** Ein älterer
+Box-Stand lässt die Felder weg; die Cloud darf daraus nur „Übernahme noch nicht möglich"
+folgern und muss die Anlage box-verwaltet lassen. Umgekehrt ignoriert ein älterer Cloud-Stand
+die Felder, und die Box verhält sich zeichengleich wie vorher.
+
+**Warum die Felder EXAKT so reisen müssen:** der Applier baut aus dem zurückgeschriebenen Push
+wieder eine `sources.Source`/`inverter.Selection` und vergleicht sie mit `SameAs` — einer
+STRUKTURGLEICHHEIT über alle Felder. Fehlte eines (die Kadenz, die kWp, die Registernummer),
+wäre die Übernahme kein No-op mehr, sondern eine stille Verschlechterung der laufenden Anlage.
+
+The cloud reconciles the block as drift by default; the automatic takeover of a box-managed
+plant (Stufe 2) is the ONE path that turns it into a Soll, and only when it is complete.
 
 The cloud compares `revision` against the latest push and the `observed` map against the
 registry Soll (api `EntityStatusListener` → `entity_observed_state`); drift is surfaced in the

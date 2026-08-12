@@ -96,6 +96,40 @@ public class ComponentTemplateRepository {
                 ComponentTemplateRepository::map);
     }
 
+    /**
+     * Die neueste Vorlage zu MARKE + MODELL (Einheitsmodell Stufe 2).
+     *
+     * <p>Die Bestands-Übernahme kennt nur, was die Box meldet - Marke und
+     * Modell -, nie eine {@code template_ref}. Und sie DARF die Referenz nicht
+     * selbst zusammensetzen: sie ist per Kontrakt OPAK ({@code builtin:…} ist
+     * heute ihre Form, morgen vielleicht nicht), also wird hier gesucht statt
+     * gebaut.
+     *
+     * <p>Ein leeres Modell ist ein legitimer Fall (Marken mit genau einem
+     * generischen Modell, z. B. go-e oder die Fronius Solar-API), deshalb wird
+     * NULL/leer als „Modell egal" gelesen - aber nur, wenn die Marke dann
+     * eindeutig ist; sonst gäbe es keine Antwort, auf die man bauen könnte.
+     */
+    public Optional<ComponentTemplateDto> findNewestByBrandModel(Collection<String> kinds,
+            String brand, String model) {
+        if (brand == null || brand.isBlank()) {
+            return Optional.empty();
+        }
+        boolean anyModel = model == null || model.isBlank();
+        List<ComponentTemplateDto> hits = read.query(
+                SELECT_NEWEST + "WHERE brand = ?" + (anyModel ? "" : " AND model = ?"),
+                ps -> {
+                    ps.setArray(1, ps.getConnection()
+                            .createArrayOf("text", kinds.toArray(String[]::new)));
+                    ps.setString(2, brand);
+                    if (!anyModel) {
+                        ps.setString(3, model);
+                    }
+                },
+                ComponentTemplateRepository::map);
+        return hits.size() == 1 ? Optional.of(hits.get(0)) : Optional.empty();
+    }
+
     /** Die neueste Fassung EINER Vorlage, sofern ihre Herkunft ausgeliefert wird. */
     public Optional<ComponentTemplateDto> findNewestByRef(Collection<String> kinds, String ref) {
         return read.query(SELECT_NEWEST + "WHERE template_ref = ?",

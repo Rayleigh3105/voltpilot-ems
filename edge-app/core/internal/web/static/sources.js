@@ -117,12 +117,12 @@
     li.appendChild(badge);
 
     var actions = el("span", { class: "row-actions" });
-    var ren = el("button", { type: "button", class: "icon-btn",
+    var ren = el("button", { type: "button", class: "icon-btn", "data-vp-edit": "",
       title: "Umbenennen (Enter speichert, Esc bricht ab)", "aria-label": "Quelle umbenennen",
       html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>' });
     ren.addEventListener("click", function () { startRename(li, s); });
     actions.appendChild(ren);
-    var del = el("button", { type: "button", class: "icon-btn danger", title: "Entfernen", "aria-label": "Quelle entfernen",
+    var del = el("button", { type: "button", class: "icon-btn danger", "data-vp-edit": "", title: "Entfernen", "aria-label": "Quelle entfernen",
       html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>' });
     del.addEventListener("click", function () { removeSource(s); });
     actions.appendChild(del);
@@ -543,6 +543,10 @@
       serverNowMs = data.server_now_ms || 0;
       if (data.balance) balance = data.balance;
       renderGroups(data.sources || []);
+      // NACH renderGroups: die Zeilen-Knöpfe (Umbenennen/Entfernen) entstehen
+      // dort erst, also muss die Sperre danach über die frische Karte laufen.
+      window.VP.setPortalManaged($("anlageCard"), !!data.portal_managed,
+        "anlagePortalNote");
       // The guided commissioning flow counts sources for its step 2; tell it
       // immediately instead of making it wait for its own slow refresh.
       try {

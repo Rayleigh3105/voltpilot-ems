@@ -26,6 +26,12 @@ import java.util.UUID;
  *     Sie steht NEBEN {@code appliedRevision}, nie an seiner Stelle: was läuft,
  *     ist weiterhin die zuletzt angewandte Fassung, und das Gegenteil zu
  *     behaupten wäre die Erfindung, die dieses Haus nicht macht.
+ * @param adoptedAt wann diese Anlage AUTOMATISCH vom Gerät übernommen wurde
+ *     (Einheitsmodell Stufe 2). {@code null} heißt „nie automatisch übernommen"
+ *     und ist ausdrücklich NICHT dasselbe wie box-verwaltet: eine seit Stufe 1
+ *     neu angelegte Anlage ist portal-verwaltet, ohne je übernommen worden zu
+ *     sein. Die Autorität steht allein in {@code componentAuthority}; dies ist
+ *     der Beleg, nicht der Zustand.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record SiteComponentsDto(
@@ -35,6 +41,7 @@ public record SiteComponentsDto(
         Instant appliedAt,
         String refusedRevision,
         String refusedReason,
+        Instant adoptedAt,
         List<ComponentRowDto> components) {
 
     /**

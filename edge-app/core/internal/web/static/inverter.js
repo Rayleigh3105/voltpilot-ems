@@ -497,6 +497,11 @@
       .then(function (data) {
         catalog = data.catalog;
         selection = data.selection || null;
+        // Einheitsmodell Stufe 2: gepflegt wird im Portal, hier wird gespiegelt.
+        // Ein älterer Kern sendet das Feld nicht -> undefined -> bedienbar wie
+        // bisher.
+        window.VP.setPortalManaged($("anlageCard"), !!data.portal_managed,
+          "anlagePortalNote");
         buildForm();
         renderSummary();
         loadStatus();

@@ -18,6 +18,7 @@ import {
   testFehlerText,
   tueren,
   type ComponentTemplate,
+  verwaltungsHinweis,
 } from './komponentenAssistent';
 
 const deye: ComponentTemplate = {
@@ -254,5 +255,37 @@ describe('Soll/Ist', () => {
   it('behauptet ohne Ablehnung nichts', () => {
     expect(ablehnungText(null, 'egal')).toBeNull();
     expect(ablehnungText(undefined, undefined)).toBeNull();
+  });
+});
+
+// --- Einheitsmodell Stufe 2: wo wird gepflegt? -------------------------------
+
+describe('verwaltungsHinweis', () => {
+  it('sagt einer box-verwalteten Anlage, dass sie noch wartet - und dass sie nichts tun muss', () => {
+    const text = verwaltungsHinweis('box', null);
+    expect(text).toBeTruthy();
+    // Ohne diesen Satz wäre die Abwesenheit des Assistenten unerklärlich.
+    expect(text).toMatch(/Box/);
+    expect(text).toMatch(/nichts tun/);
+  });
+
+  it('erklärt eine ÜBERNOMMENE Anlage - inklusive der Zusage, dass am Gerät nichts passiert ist', () => {
+    const text = verwaltungsHinweis('portal', '2026-08-12T09:00:00Z');
+    expect(text).toBeTruthy();
+    expect(text).toMatch(/im Portal gepflegt/);
+    expect(text).toMatch(/nichts geändert/);
+  });
+
+  it('schweigt bei einer Anlage, die immer schon im Portal entstanden ist', () => {
+    // Portal-verwaltet OHNE Übernahme: es gibt nichts zu erklären, also wird
+    // nichts behauptet.
+    expect(verwaltungsHinweis('portal', null)).toBeNull();
+    expect(verwaltungsHinweis('portal', undefined)).toBeNull();
+  });
+
+  it('liest alles, was nicht wörtlich portal ist, als box (die Autoritäts-Regel des Hauses)', () => {
+    for (const authority of [null, undefined, '', 'BOX', 'irgendwas-neues']) {
+      expect(verwaltungsHinweis(authority, null)).toMatch(/Box/);
+    }
   });
 });

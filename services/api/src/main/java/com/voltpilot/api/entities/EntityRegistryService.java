@@ -620,7 +620,8 @@ public class EntityRegistryService {
         // Compose the entity config from the catalog (same as the bootstrap).
         if (TYPE_PRODUCER.equals(entityType)) {
             EntityRow probe = new EntityRow(pointId, role, label, null, null, null, null, null,
-                    capacity, null, false, null, null, null, edgeSourceId, null, null, null, 1);
+                    capacity, null, false, null, null, null, edgeSourceId, null, null, null, 1,
+                    cleanRegistryUnit);
             repo.setEntityConfig(pointId, TYPE_PRODUCER, write(producerCapabilities(probe)),
                     write(producerGuards(probe)));
             // Only the DELTA on a re-compose - the aggregate still carries what
@@ -935,6 +936,15 @@ public class EntityRegistryService {
      * device when linked, else the site's SINGLE claimed device - never a guess
      * between several (the autoLinkBatteryDevice rule).
      */
+    /**
+     * Das Gerät, dem der Push dieser Anlage zugestellt würde, oder {@code null}.
+     * Die Bestands-Übernahme (Stufe 2) fragt es VOR dem Schreiben: eine
+     * Autorität ohne Empfänger wäre genau der Halbzustand, den sie ausschließt.
+     */
+    public UUID gatewayDeviceFor(UUID siteId) {
+        return gatewayDevice(siteId, repo.batteryAsset(siteId));
+    }
+
     private UUID gatewayDevice(UUID siteId, BatteryAsset battery) {
         if (battery != null && battery.deviceId() != null) {
             return battery.deviceId();
@@ -1151,6 +1161,22 @@ public class EntityRegistryService {
      * customer source paths record brand/model only, so this is usually absent
      * in E1a (the edge-side sources.json holds the connection; syncing it up is
      * deferred work).
+     *
+     * <p><b>Einheitsmodell Stufe 2 completed the field set.</b> Until then the
+     * block named the transport but dropped the source MASTER DATA - the read
+     * cadence, the nameplate kWp and the operator's MaStR reference - so the
+     * applier fell back to its defaults: a component saved with a 30 s interval
+     * was polled every 5 s, and a producer's kWp never widened the box's
+     * physical plausibility envelope. That was a silent downgrade even before
+     * this stage; a takeover of a live plant would have made it a REGRESSION of
+     * a running configuration, which is why the fidelity is fixed here and
+     * proven field by field.
+     *
+     * <p><b>The role is deliberately NOT emitted.</b> The applier derives it
+     * from the entity TYPE, and that derivation is the tested path; sending the
+     * v1 {@code measurement_point.role} vocabulary instead would hand the box a
+     * word its {@code roleFor} does not accept ({@code battery-hybrid} vs
+     * {@code inverter}) and refuse the whole plan.
      */
     private ObjectNode driverBlock(EntityRow row) {
         if (row.communication() == null || row.communication().isBlank()) {
@@ -1167,8 +1193,24 @@ public class EntityRegistryService {
         if (row.family() != null) {
             driver.put("family", row.family());
         }
+        if (row.capacityKwp() != null) {
+            driver.put("capacity_kwp", row.capacityKwp().doubleValue());
+        }
+        if (row.registryUnitId() != null && !row.registryUnitId().isBlank()) {
+            driver.put("registry_unit_id", row.registryUnitId());
+        }
         JsonNode conn = parseOr(row.connectionJson(), null);
         if (conn != null && conn.isObject()) {
+            // Die Lese-Kadenz wohnt seit Stufe 1 IM connection_json (der
+            // Anlege-Weg legt sie dort ab). Sie gehört aber auf die
+            // Treiber-Ebene, weil die Box sie dort liest - hier wird sie
+            // gehoben, statt den Schreibpfad der Stufe 1 umzubauen. Die Kopie
+            // in der Verbindung bleibt harmlos liegen: die Box ignoriert
+            // unbekannte Verbindungsfelder.
+            JsonNode interval = conn.get("interval_s");
+            if (interval != null && interval.isNumber()) {
+                driver.put("interval_s", interval.asInt());
+            }
             driver.set("connection", conn);
         }
         return driver;

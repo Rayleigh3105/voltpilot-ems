@@ -461,6 +461,18 @@ type EntityObserved struct {
 }
 
 // LocalSetupEntry is one edge-local commissioning item (inverter or source).
+//
+// Einheitsmodell Stufe 2 completed it: until then it named WHAT a device is
+// (role/brand/model/label) but never HOW it is reached, so the cloud could show
+// the box's commissioning Ist but could not take it over as its own Soll - a
+// takeover derived from an incomplete Ist would have had to GUESS the address of
+// a live plant's read path. The fields below are the missing half, and they are
+// exactly the ones sources.Source / inverter.Selection persist, so the Soll the
+// cloud writes back re-derives byte-identically to what already runs.
+//
+// ADDITIVE in both directions: an older cloud ignores the new fields, and an
+// older box simply omits them - which the cloud must read as "takeover not
+// possible yet", never as "this device has no connection".
 type LocalSetupEntry struct {
 	ID    string `json:"id"`
 	Kind  string `json:"kind"` // inverter | source
@@ -468,6 +480,28 @@ type LocalSetupEntry struct {
 	Brand string `json:"brand,omitempty"`
 	Model string `json:"model,omitempty"`
 	Label string `json:"label,omitempty"`
+
+	// Family is the register-map key the Layer-1 self-wiring routes on. It is
+	// reported even though it is derivable from brand+model, because the box's
+	// OWN catalog decided it - and that decision is what the cloud must mirror.
+	Family string `json:"family,omitempty"`
+	// Communication is the transport (solarman_v5 / modbus_tcp / ...). Part of
+	// the source identity (sources.DeterministicID), so it must travel.
+	Communication string `json:"communication,omitempty"`
+	// Connection carries the transport fields VERBATIM as the box persists them
+	// (an inverter.Connection object). It stays json.RawMessage on purpose - the
+	// entities.Entity.Driver precedent: the field list lives in exactly ONE place
+	// (inverter.Connection), so a transport field added there rides along without
+	// a second mapping table to forget, and the bytes are not reshaped on the way.
+	Connection json.RawMessage `json:"connection,omitempty"`
+	// IntervalS / CapacityKwp / RegistryUnitID are the source's master data.
+	// They are NOT part of the transport identity, but they ARE part of what the
+	// box runs: the interval is the poll cadence, the kWp widens the physical
+	// plausibility envelope, and the registry unit id is the operator's MaStR
+	// reference. Losing one of them in a takeover would be a silent downgrade.
+	IntervalS      int     `json:"interval_s,omitempty"`
+	CapacityKwp    float64 `json:"capacity_kwp,omitempty"`
+	RegistryUnitID string  `json:"registry_unit_id,omitempty"`
 }
 
 // SourcesSummary is the additive status-heartbeat block reporting the

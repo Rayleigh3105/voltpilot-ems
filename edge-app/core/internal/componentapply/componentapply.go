@@ -87,7 +87,12 @@ type Driver struct {
 	Communication string          `json:"communication,omitempty"`
 	CapacityKwp   float64         `json:"capacity_kwp,omitempty"`
 	IntervalS     int             `json:"interval_s,omitempty"`
-	Connection    json.RawMessage `json:"connection,omitempty"`
+	// RegistryUnitID is the operator's MaStR reference for this device. It is
+	// pure master data (never part of the transport identity), but it IS part of
+	// sources.Source - so without it here a Stufe-2 takeover would silently drop
+	// the operator's registry number on the first push back.
+	RegistryUnitID string          `json:"registry_unit_id,omitempty"`
+	Connection     json.RawMessage `json:"connection,omitempty"`
 }
 
 // CommunicationSelfBuild marks a component the CUSTOMER defined themselves in
@@ -268,14 +273,15 @@ func Derive(reg entities.Registry, cat inverter.Catalog, now time.Time) (Plan, e
 		}
 
 		src, err := sources.Normalize(cat, sources.Request{
-			Role:        role,
-			Label:       e.Label,
-			Brand:       d.Brand,
-			Model:       d.Model,
-			Family:      d.Family,
-			Connection:  conn,
-			IntervalS:   d.IntervalS,
-			CapacityKwp: d.CapacityKwp,
+			Role:           role,
+			Label:          e.Label,
+			Brand:          d.Brand,
+			Model:          d.Model,
+			Family:         d.Family,
+			Connection:     conn,
+			IntervalS:      d.IntervalS,
+			CapacityKwp:    d.CapacityKwp,
+			RegistryUnitID: d.RegistryUnitID,
 		}, now)
 		if err != nil {
 			return Plan{}, fmt.Errorf("Gerät %q: %s", e.ID, message(err))

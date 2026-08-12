@@ -416,6 +416,39 @@ export function sollIstTon(syncStatus: string | null | undefined): 'ok' | 'busy'
 }
 
 /**
+ * Der EINE Satz, der sagt, WO die Geräte dieser Anlage gepflegt werden
+ * (Einheitsmodell Stufe 2). Ein Satz, kein Alarm - der Wechsel des
+ * Bearbeitungs-Orts ist ein Zustand, keine Störung.
+ *
+ * Die drei Fälle sind bewusst verschieden:
+ *
+ * - **box-verwaltet:** die Anlage wartet noch (auf einen Box-Stand, der ihre
+ *   Verbindungen meldet). Das wird GESAGT, sonst wäre die Abwesenheit des
+ *   Assistenten unerklärlich - der Kunde sähe nur, dass hier etwas fehlt.
+ * - **portal-verwaltet nach einer ÜBERNAHME:** die Anlage war vorher am Gerät
+ *   eingerichtet; der Satz erklärt den Wechsel und nennt, dass am Gerät nichts
+ *   passiert ist.
+ * - **portal-verwaltet ohne Übernahme:** hier wurde nie woanders gepflegt, also
+ *   gibt es nichts zu erklären - dann SCHWEIGT die Fläche.
+ */
+export function verwaltungsHinweis(
+  componentAuthority: string | null | undefined,
+  adoptedAt: string | null | undefined,
+): string | null {
+  if (componentAuthority !== 'portal') {
+    return (
+      'Die Geräte dieser Anlage werden noch direkt an Ihrer VoltPilot-Box gepflegt. ' +
+      'Sobald die Box ihre Anbindung meldet, übernehmen wir sie hierher - Sie müssen dafür nichts tun.'
+    );
+  }
+  if (!adoptedAt) return null;
+  return (
+    'Die Geräte dieser Anlage werden jetzt hier im Portal gepflegt. ' +
+    'An Ihrer Anlage selbst hat sich dadurch nichts geändert.'
+  );
+}
+
+/**
  * Die Ablehnungs-Zeile der Anlage, wenn die Box ein Soll NICHT anwenden konnte.
  * Sie nennt beides: dass die alte Fassung weiterläuft, UND warum die neue nicht
  * angekommen ist. Nur eines davon zu sagen wäre die Hälfte der Wahrheit.
