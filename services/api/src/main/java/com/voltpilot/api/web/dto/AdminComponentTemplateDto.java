@@ -1,6 +1,5 @@
 package com.voltpilot.api.web.dto;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonRawValue;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -22,8 +21,12 @@ import java.time.Instant;
  * JSON ({@code @JsonRawValue}), damit die Bytes unverändert ankommen; ein
  * {@code null} bleibt ein {@code null} und wird nie zu {@code []} (die
  * Ehrlichkeitsregel der zwei Spalten).
+ *
+ * <p><b>Bewusst OHNE {@code @JsonInclude(NON_NULL)}</b> - wie
+ * {@link ComponentTemplateDto}: dieselbe Vorlage soll in Verwaltung und
+ * Auswahl dieselbe Form haben, und ein {@code null} ist hier eine AUSSAGE
+ * („erklärt es nicht"), kein fehlendes Feld.
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public record AdminComponentTemplateDto(
         String templateRef,
         String kind,

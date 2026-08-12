@@ -29,7 +29,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -180,8 +179,14 @@ public class SiteComponentController {
                 subject(jwt));
     }
 
-    /** Eine private Vorlage umbenennen (Einheitsmodell Stufe 6). */
-    @PatchMapping("/component-templates/{templateRef}")
+    /**
+     * Eine private Vorlage umbenennen (Einheitsmodell Stufe 6).
+     *
+     * <p>VOLLE Darstellung von Name und Notiz: ein leerer Name wird abgelehnt
+     * (eine namenlose Vorlage wäre in der Auswahl nicht unterscheidbar), eine
+     * leere Notiz LÖSCHT sie - die Semantik des Komponenten-Alias.
+     */
+    @PutMapping("/component-templates/{templateRef}")
     public List<SiteComponentTemplateDto> renameTemplate(@PathVariable UUID siteId,
             @PathVariable String templateRef,
             @Valid @RequestBody SiteComponentTemplateRequest body) {
