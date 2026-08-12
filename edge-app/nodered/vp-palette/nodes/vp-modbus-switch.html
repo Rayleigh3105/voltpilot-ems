@@ -1,0 +1,52 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-modbus-switch', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true },
+      entity_id: { value: '' },
+      kind: { value: 'on_off' },
+      host: { value: '' },
+      port: { value: 502 },
+      unit_id: { value: 1 },
+      fc: { value: 16 },
+      address: { value: 0 },
+      on_value: { value: 1 },
+      off_value: { value: 0 },
+      min_value: { value: 0 },
+      max_value: { value: 0 },
+      safe_value: { value: 0 },
+      scale: { value: 1 },
+      offset: { value: 0 },
+      readback_address: { value: null },
+      watchdog_address: { value: null },
+      watchdog_value: { value: 0 }
+    },
+    inputs: 0,
+    outputs: 0,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-modbus-switch'; },
+    paletteLabel: 'vp-modbus-switch'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-modbus-switch">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-modbus-switch">
+  <p>GENERIERT - dieser Knoten wird nie von Hand gesetzt. Er entsteht
+  ausschliesslich aus der Geraete-Freigabe (Einheitsmodell Stufe 4) im
+  generierten Flow seines Geraets und schreibt genau EIN freigegebenes
+  Register.</p>
+  <p>Er abonniert das arbitrierte, geklemmte Kommando
+  <code>edge/entities/{id}/command</code>, schreibt ueber dieselbe
+  Verbindungs-Warteschlange wie die Lese-Knoten desselben Flows und
+  veroeffentlicht seine Ruecklesung auf
+  <code>edge/entities/{id}/readback</code>. Ohne das retained
+  <code>edge/control/gate</code> schreibt er GAR NICHT.</p>
+</script>
