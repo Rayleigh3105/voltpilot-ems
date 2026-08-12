@@ -666,10 +666,16 @@ Alles ist ADDITIV — eine Anlage, die den neuen Weg nicht geht, verhält sich z
   `power_scale`/`control_write_fc`, zwei Wechselrichter hinter EINER IP, kein erfundener Netz-Zähler, der
   ältere Bericht, die Drahtform) · `internal/web` (`portal_managed` + die Spiegel-Struktur) ·
   `jstest/ui.test.js` (4) · api `ComponentAdoptionTest` (10, rein) + `ComponentAdoptionWiringTest` (4) +
-  `ComponentAdoptionApiTest` (4, echte DB + Keycloak, Herzschlag durch den ECHTEN Zuhörer) · Portal
+  `ComponentAdoptionApiTest` (5, echte DB + Keycloak, Herzschlag durch den ECHTEN Zuhörer) · Portal
   `komponentenAssistent.test.ts` (+4).
+- **Warum Stufe 2 und Stufe 3 sich nicht berühren** (beide wurden parallel gebaut): ein SELBSTBAU-Gerät
+  wird von `componentapply.ParseDriver` übersprungen (`communication == CommunicationSelfBuild` — sein
+  Leseplan reist als generierter Flow über `v2/flows`), taucht also nie in `sources.json` und damit nie
+  im `local_setup` auf — **die Übernahme sieht es gar nicht**. Und private Vorlagen wohnen in
+  `site_component_template`; die Vorlagen-Auflösung der Übernahme sucht ausschließlich die öffentlichen
+  Herkunftsarten in `component_template`, kann also nie eine fremde private Vorlage ziehen.
 - **NICHT in dieser Stufe:** Verbraucher-Quellen automatisch übernehmen (ihre Geräteart ist eine
-  Mensch-Entscheidung) · Selbstbau-Kanäle (Stufe 3) · Schreiben/Schalten (Stufe 4) · Vorlagen-Verwaltung (Stufe 6).
+  Mensch-Entscheidung) · Schreiben/Schalten (Stufe 4) · Vorlagen-Verwaltung (Stufe 6).
 
 ## Einheitsmodell Stufe 3: die SELBSTBAU-TÜR — der Kunde legt sein eigenes Modbus-Gerät an
 
