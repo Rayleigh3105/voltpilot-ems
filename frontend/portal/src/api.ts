@@ -966,6 +966,23 @@ export interface ProbeAntwort {
  * Fehlschlag trägt NIE einen Wert - nie eine 0, die sich wie eine Messung
  * liest.
  */
+/** Der Schalt-Beleg einer Antwort des Probe-Kanals (Einheitsmodell Stufe 4). */
+export interface ProbeSwitched {
+  written: number;
+  offAfterS?: number | null;
+  readback?: number | null;
+  readbackMatches?: boolean | null;
+}
+
+/** Das Ergebnis eines gefuehrten Schalt-Tests. */
+export interface SchaltTestAntwort {
+  passed: boolean;
+  ttlSeconds: number;
+  errorCode?: string | null;
+  message?: string | null;
+  switched?: ProbeSwitched | null;
+}
+
 export interface SelbstbauLeseAntwort {
   ok: boolean;
   raw?: number | null;
@@ -2227,6 +2244,33 @@ export const api = {
     request<SiteComponents>(`/api/v1/sites/${siteId}/components/custom/${entityId}`, {
       method: 'DELETE',
     }),
+  /**
+   * Der gefuehrte Schalt-Test (Einheitsmodell Stufe 4). Er schreibt EINMAL; die
+   * Box armiert ihr automatisches Aus, BEVOR sie schreibt.
+   */
+  switchTest: (siteId: string, entityId: string, body: Record<string, unknown>) =>
+    request<SchaltTestAntwort>(
+      `/api/v1/sites/${siteId}/components/custom/${entityId}/switch-test`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  /** Bricht den laufenden Test ab und schreibt den Sicherheitswert sofort. */
+  switchTestCancel: (siteId: string, entityId: string, body: Record<string, unknown>) =>
+    request<SchaltTestAntwort>(
+      `/api/v1/sites/${siteId}/components/custom/${entityId}/switch-test/cancel`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  /** Die Freigabe - nur mit bestandenem Test UND bestaetigter Wirkung. */
+  releaseSwitch: (siteId: string, entityId: string, body: Record<string, unknown>) =>
+    request<SiteComponents>(
+      `/api/v1/sites/${siteId}/components/custom/${entityId}/switch-release`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  /** Nimmt die Freigabe zurueck - das Geraet ist danach wieder ein Sensor. */
+  revokeSwitch: (siteId: string, entityId: string) =>
+    request<SiteComponents>(
+      `/api/v1/sites/${siteId}/components/custom/${entityId}/switch-release`,
+      { method: 'DELETE' },
+    ),
   /** Die PRIVATEN Vorlagen dieser Anlage (kein Katalog, kein Teilen). */
   siteComponentTemplates: (siteId: string) =>
     request<SiteComponentTemplate[]>(`/api/v1/sites/${siteId}/component-templates`),
