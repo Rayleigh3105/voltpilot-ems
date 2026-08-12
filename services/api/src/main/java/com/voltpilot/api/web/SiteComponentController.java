@@ -16,6 +16,7 @@ import com.voltpilot.api.web.dto.SaveSelfBuildRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadResult;
 import com.voltpilot.api.web.dto.SiteComponentTemplateDto;
+import com.voltpilot.api.web.dto.SiteComponentTemplateRequest;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
 import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
@@ -28,6 +29,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -171,10 +173,19 @@ public class SiteComponentController {
     /** „Duplizieren": aus einem Gerät wird eine private Vorlage dieser Anlage. */
     @PostMapping("/components/custom/{entityId}/duplicate")
     public List<SiteComponentTemplateDto> duplicate(@PathVariable UUID siteId,
-            @PathVariable UUID entityId, @RequestBody(required = false) Map<String, String> body,
+            @PathVariable UUID entityId,
+            @Valid @RequestBody(required = false) SiteComponentTemplateRequest body,
             @AuthenticationPrincipal Jwt jwt) {
-        return selfBuild.duplicate(siteId, entityId, body == null ? null : body.get("label"),
+        return selfBuild.duplicate(siteId, entityId, body == null ? null : body.label(),
                 subject(jwt));
+    }
+
+    /** Eine private Vorlage umbenennen (Einheitsmodell Stufe 6). */
+    @PatchMapping("/component-templates/{templateRef}")
+    public List<SiteComponentTemplateDto> renameTemplate(@PathVariable UUID siteId,
+            @PathVariable String templateRef,
+            @Valid @RequestBody SiteComponentTemplateRequest body) {
+        return selfBuild.renameTemplate(siteId, templateRef, body.label(), body.note());
     }
 
     /** Eine private Vorlage entfernen. Geräte, die daraus entstanden, bleiben. */

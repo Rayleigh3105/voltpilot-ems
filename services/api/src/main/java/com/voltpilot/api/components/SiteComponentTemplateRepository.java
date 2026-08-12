@@ -72,6 +72,29 @@ public class SiteComponentTemplateRepository {
                 channelsJson, note, createdBy);
     }
 
+    /**
+     * Benennt eine private Vorlage um und pflegt ihre Notiz (Einheitsmodell
+     * Stufe 6).
+     *
+     * <p><b>Es entsteht KEINE neue Fassung.</b> Eine Vorlage ist ihr Leseplan;
+     * ein Name ändert daran nichts, und eine Fassung je Umbenennung wäre eine
+     * Historie ohne Inhalt (dieselbe Begründung, aus der der Kunden-Alias an
+     * einer Komponente ebenfalls keine Definitions-Fassung erzeugt).
+     *
+     * <p>{@code null} für die Notiz LÖSCHT sie - die Semantik des leeren
+     * Labels der Komponenten-Route: leer heißt „nicht gepflegt", nicht
+     * „unverändert".
+     *
+     * @return wie viele Zeilen betroffen waren ({@code 0} = die Anlage hat
+     *     diese Vorlage nicht - RLS macht daraus dieselbe Antwort wie „gibt es
+     *     nicht", was hier genau richtig ist)
+     */
+    public int rename(UUID siteId, String templateRef, String label, String note) {
+        return jdbc.update("UPDATE site_component_template SET label = ?, note = ?, "
+                + "updated_at = now() WHERE site_id = ? AND template_ref = ?",
+                label, note, siteId, templateRef);
+    }
+
     /** Entfernt eine private Vorlage. */
     public int delete(UUID siteId, String templateRef) {
         return jdbc.update("DELETE FROM site_component_template WHERE site_id = ? "
