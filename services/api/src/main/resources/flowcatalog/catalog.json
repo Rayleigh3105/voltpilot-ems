@@ -33,11 +33,32 @@
       "label": "Strompreis",
       "description": "Day-Ahead-Börsenpreise (15-Minuten-Slots) der Gebotszone der Anlage.",
       "group": "daten",
-      "runtimes": ["edge", "cloud"],
+      "runtimes": [
+        "edge",
+        "cloud"
+      ],
       "inputs": [],
-      "outputs": [{ "name": "prices", "type": "price", "label": "Preise", "unit": "EUR/MWh" }],
+      "outputs": [
+        {
+          "name": "prices",
+          "type": "price",
+          "label": "Preise",
+          "unit": "EUR/MWh"
+        }
+      ],
       "parameters": [
-        { "name": "zone", "kind": "enum", "label": "Gebotszone", "required": false, "options": ["DE-LU", "AT", "CH"], "help": "Leer = Gebotszone der Anlage." }
+        {
+          "name": "zone",
+          "kind": "enum",
+          "label": "Gebotszone",
+          "required": false,
+          "options": [
+            "DE-LU",
+            "AT",
+            "CH"
+          ],
+          "help": "Leer = Gebotszone der Anlage."
+        }
       ]
     },
     {
@@ -46,9 +67,19 @@
       "label": "PV-Prognose",
       "description": "PV-Erzeugungsprognose der Anlage (aktives Prognosemodell, kW je Slot).",
       "group": "daten",
-      "runtimes": ["edge", "cloud"],
+      "runtimes": [
+        "edge",
+        "cloud"
+      ],
       "inputs": [],
-      "outputs": [{ "name": "forecast", "type": "timeseries", "label": "Prognose", "unit": "kW" }],
+      "outputs": [
+        {
+          "name": "forecast",
+          "type": "timeseries",
+          "label": "Prognose",
+          "unit": "kW"
+        }
+      ],
       "parameters": []
     },
     {
@@ -57,12 +88,31 @@
       "label": "Messwert eines Geräts",
       "description": "Liest einen Messwert eines Geräts (z. B. Ladestand des Speichers oder Leistung am Netzanschluss).",
       "group": "daten",
-      "runtimes": ["edge"],
+      "runtimes": [
+        "edge"
+      ],
       "inputs": [],
-      "outputs": [{ "name": "value", "type": "number", "label": "Wert" }],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "label": "Wert"
+        }
+      ],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Gerät", "required": true },
-        { "name": "channel", "kind": "channel", "label": "Messkanal", "required": true, "help": "Muss ein Messwert sein, den dieses Gerät liefert (measure:<Kanal>)." }
+        {
+          "name": "entity_id",
+          "kind": "entityRef",
+          "label": "Gerät",
+          "required": true
+        },
+        {
+          "name": "channel",
+          "kind": "channel",
+          "label": "Messkanal",
+          "required": true,
+          "help": "Muss ein Messwert sein, den dieses Gerät liefert (measure:<Kanal>)."
+        }
       ]
     },
     {
@@ -71,13 +121,54 @@
       "label": "Schwellwert",
       "description": "Wahr, wenn der Eingangswert die Schwelle über- bzw. unterschreitet (mit Hysterese).",
       "group": "logik",
-      "runtimes": ["edge", "cloud"],
-      "inputs": [{ "name": "input", "type": "number", "label": "Wert", "required": true }],
-      "outputs": [{ "name": "result", "type": "bool", "label": "Bedingung" }],
+      "runtimes": [
+        "edge",
+        "cloud"
+      ],
+      "inputs": [
+        {
+          "name": "input",
+          "type": "number",
+          "label": "Wert",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "bool",
+          "label": "Bedingung"
+        }
+      ],
       "parameters": [
-        { "name": "threshold", "kind": "number", "label": "Schwelle", "required": true },
-        { "name": "hysteresis", "kind": "number", "label": "Hysterese", "required": false, "min": 0 },
-        { "name": "direction", "kind": "enum", "label": "Richtung", "required": false, "options": ["above", "below"], "default": "above", "optionLabels": { "above": "über Schwelle", "below": "unter Schwelle" } }
+        {
+          "name": "threshold",
+          "kind": "number",
+          "label": "Schwelle",
+          "required": true
+        },
+        {
+          "name": "hysteresis",
+          "kind": "number",
+          "label": "Hysterese",
+          "required": false,
+          "min": 0
+        },
+        {
+          "name": "direction",
+          "kind": "enum",
+          "label": "Richtung",
+          "required": false,
+          "options": [
+            "above",
+            "below"
+          ],
+          "default": "above",
+          "optionLabels": {
+            "above": "über Schwelle",
+            "below": "unter Schwelle"
+          }
+        }
       ]
     },
     {
@@ -86,13 +177,43 @@
       "label": "Zeitplan",
       "description": "Wahr innerhalb des Zeitfensters (lokale Zeit der Anlage).",
       "group": "logik",
-      "runtimes": ["edge", "cloud"],
+      "runtimes": [
+        "edge",
+        "cloud"
+      ],
       "inputs": [],
-      "outputs": [{ "name": "active", "type": "bool", "label": "Aktiv" }],
+      "outputs": [
+        {
+          "name": "active",
+          "type": "bool",
+          "label": "Aktiv"
+        }
+      ],
       "parameters": [
-        { "name": "from", "kind": "time", "label": "Von", "required": true },
-        { "name": "to", "kind": "time", "label": "Bis", "required": true },
-        { "name": "days", "kind": "enum", "label": "Tage", "required": false, "options": ["alle", "werktage", "wochenende"], "default": "alle" }
+        {
+          "name": "from",
+          "kind": "time",
+          "label": "Von",
+          "required": true
+        },
+        {
+          "name": "to",
+          "kind": "time",
+          "label": "Bis",
+          "required": true
+        },
+        {
+          "name": "days",
+          "kind": "enum",
+          "label": "Tage",
+          "required": false,
+          "options": [
+            "alle",
+            "werktage",
+            "wochenende"
+          ],
+          "default": "alle"
+        }
       ]
     },
     {
@@ -102,9 +223,25 @@
       "description": "Löst aus, wenn die Bedingung wahr wird (steigende Flanke). NUR DIAGNOSE: der einzige Baustein, der ein solches Ereignis annimmt, ist die Benachrichtigung - und die hat noch keinen Zustellweg.",
       "group": "logik",
       "customer_visible": false,
-      "runtimes": ["edge", "cloud"],
-      "inputs": [{ "name": "wenn", "type": "bool", "label": "Wenn", "required": true }],
-      "outputs": [{ "name": "dann", "type": "event", "label": "Dann" }],
+      "runtimes": [
+        "edge",
+        "cloud"
+      ],
+      "inputs": [
+        {
+          "name": "wenn",
+          "type": "bool",
+          "label": "Wenn",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "dann",
+          "type": "event",
+          "label": "Dann"
+        }
+      ],
       "parameters": []
     },
     {
@@ -113,12 +250,38 @@
       "label": "Wert bei Bedingung",
       "description": "Gibt einen festen Zahlenwert aus, je nachdem ob die Bedingung wahr ist - z. B. um einen Sollwert zu setzen.",
       "group": "logik",
-      "runtimes": ["edge", "cloud"],
-      "inputs": [{ "name": "condition", "type": "bool", "label": "Bedingung", "required": true }],
-      "outputs": [{ "name": "value", "type": "number", "label": "Wert" }],
+      "runtimes": [
+        "edge",
+        "cloud"
+      ],
+      "inputs": [
+        {
+          "name": "condition",
+          "type": "bool",
+          "label": "Bedingung",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "label": "Wert"
+        }
+      ],
       "parameters": [
-        { "name": "then_value", "kind": "number", "label": "Wert wenn wahr", "required": true },
-        { "name": "else_value", "kind": "number", "label": "Wert wenn falsch", "required": false }
+        {
+          "name": "then_value",
+          "kind": "number",
+          "label": "Wert wenn wahr",
+          "required": true
+        },
+        {
+          "name": "else_value",
+          "kind": "number",
+          "label": "Wert wenn falsch",
+          "required": false
+        }
       ]
     },
     {
@@ -128,18 +291,71 @@
       "description": "Delegiert den Speicher an die VoltPilot-Co-Optimierung: Arbitrage auf Day-Ahead-Preise, Eigenverbrauch und Vertragsgrenzen im gemeinsamen Optimum.",
       "group": "strategie",
       "gated": true,
-      "runtimes": ["edge"],
+      "runtimes": [
+        "edge"
+      ],
       "inputs": [
-        { "name": "price_in", "type": "price", "label": "Preise", "required": true },
-        { "name": "pv_forecast", "type": "timeseries", "label": "PV-Prognose", "required": false },
-        { "name": "soc", "type": "timeseries", "label": "Ladestand", "required": false }
+        {
+          "name": "price_in",
+          "type": "price",
+          "label": "Preise",
+          "required": true
+        },
+        {
+          "name": "pv_forecast",
+          "type": "timeseries",
+          "label": "PV-Prognose",
+          "required": false
+        },
+        {
+          "name": "soc",
+          "type": "timeseries",
+          "label": "Ladestand",
+          "required": false
+        }
       ],
-      "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
+      "outputs": [
+        {
+          "name": "wunsch",
+          "type": "plan",
+          "label": "Wunsch"
+        }
+      ],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Gerät", "required": true, "entityTypes": ["battery-hybrid"] },
-        { "name": "speicherschonung", "kind": "enum", "label": "Umgang mit dem Speicher", "required": false, "options": ["aggressiv", "ausgewogen", "schonend"], "default": "ausgewogen", "optionLabels": { "aggressiv": "Aggressiv", "ausgewogen": "Ausgewogen", "schonend": "Schonend" } }
+        {
+          "name": "entity_id",
+          "kind": "entityRef",
+          "label": "Ziel-Gerät",
+          "required": true,
+          "entityTypes": [
+            "battery-hybrid"
+          ]
+        },
+        {
+          "name": "speicherschonung",
+          "kind": "enum",
+          "label": "Umgang mit dem Speicher",
+          "required": false,
+          "options": [
+            "aggressiv",
+            "ausgewogen",
+            "schonend"
+          ],
+          "default": "ausgewogen",
+          "optionLabels": {
+            "aggressiv": "Aggressiv",
+            "ausgewogen": "Ausgewogen",
+            "schonend": "Schonend"
+          }
+        }
       ],
-      "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true },
+      "claim_template": {
+        "entity_parameter": "entity_id",
+        "commands": [
+          "setpoint_kw"
+        ],
+        "delegated": true
+      },
       "hint": "Dieser Baustein meldet seinen Wertstrom an die Co-Optimierung - bei mehreren Strategien rechnet VoltPilot das gemeinsame Optimum."
     },
     {
@@ -149,15 +365,42 @@
       "description": "Kappt die Netz-Leistungsspitze (Leistungspreis-Vertrag): der Speicher deckelt den 15-Minuten-Mittelwert des Netzbezugs. Vertragsnah - von VoltPilot eingerichtet.",
       "group": "strategie",
       "gated": true,
-      "runtimes": ["edge"],
+      "runtimes": [
+        "edge"
+      ],
       "inputs": [
-        { "name": "soc", "type": "timeseries", "label": "Ladestand", "required": false }
+        {
+          "name": "soc",
+          "type": "timeseries",
+          "label": "Ladestand",
+          "required": false
+        }
       ],
-      "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
+      "outputs": [
+        {
+          "name": "wunsch",
+          "type": "plan",
+          "label": "Wunsch"
+        }
+      ],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Gerät", "required": true, "entityTypes": ["battery-hybrid"] }
+        {
+          "name": "entity_id",
+          "kind": "entityRef",
+          "label": "Ziel-Gerät",
+          "required": true,
+          "entityTypes": [
+            "battery-hybrid"
+          ]
+        }
       ],
-      "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true },
+      "claim_template": {
+        "entity_parameter": "entity_id",
+        "commands": [
+          "setpoint_kw"
+        ],
+        "delegated": true
+      },
       "hint": "Vertrags-Baustein: braucht das VoltPilot-Messkonzept und den Leistungspreis-Vertrag - Freischaltung durch VoltPilot."
     },
     {
@@ -167,15 +410,42 @@
       "description": "Verlagert Verbrauch/Speicher in die Hochlastzeitfenster-Randzeiten (§19 StromNEV) für ein reduziertes Netzentgelt. Vertragsnah - von VoltPilot eingerichtet.",
       "group": "strategie",
       "gated": true,
-      "runtimes": ["edge"],
+      "runtimes": [
+        "edge"
+      ],
       "inputs": [
-        { "name": "soc", "type": "timeseries", "label": "Ladestand", "required": false }
+        {
+          "name": "soc",
+          "type": "timeseries",
+          "label": "Ladestand",
+          "required": false
+        }
       ],
-      "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
+      "outputs": [
+        {
+          "name": "wunsch",
+          "type": "plan",
+          "label": "Wunsch"
+        }
+      ],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Gerät", "required": true, "entityTypes": ["battery-hybrid"] }
+        {
+          "name": "entity_id",
+          "kind": "entityRef",
+          "label": "Ziel-Gerät",
+          "required": true,
+          "entityTypes": [
+            "battery-hybrid"
+          ]
+        }
       ],
-      "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true },
+      "claim_template": {
+        "entity_parameter": "entity_id",
+        "commands": [
+          "setpoint_kw"
+        ],
+        "delegated": true
+      },
       "hint": "Vertrags-Baustein: braucht die Hochlastzeitfenster des Netzbetreibers - Beratung und Freischaltung durch VoltPilot."
     },
     {
@@ -184,20 +454,70 @@
       "label": "Gerät steuern",
       "description": "Erzeugt Wünsche für ein Gerät - das Gerät entscheidet, und seine Schutzgrenzen klemmen jeden Wunsch (nie Sicherheit, Netz oder Vertrag).",
       "group": "aktion",
-      "runtimes": ["edge"],
-      "inputs": [
-        { "name": "value", "type": "bool", "label": "Ein/Aus", "required": false },
-        { "name": "setpoint", "type": "timeseries", "label": "Sollwert", "required": false },
-        { "name": "plan", "type": "plan", "label": "Wunsch", "required": false }
+      "runtimes": [
+        "edge"
       ],
-      "requires_any_input": ["value", "setpoint", "plan"],
+      "inputs": [
+        {
+          "name": "value",
+          "type": "bool",
+          "label": "Ein/Aus",
+          "required": false
+        },
+        {
+          "name": "setpoint",
+          "type": "timeseries",
+          "label": "Sollwert",
+          "required": false
+        },
+        {
+          "name": "plan",
+          "type": "plan",
+          "label": "Wunsch",
+          "required": false
+        }
+      ],
+      "requires_any_input": [
+        "value",
+        "setpoint",
+        "plan"
+      ],
       "outputs": [],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Gerät", "required": true },
-        { "name": "command", "kind": "enum", "label": "Kommando", "required": true, "options": ["setpoint_kw", "on_off", "limit_kw", "limit_pct", "mode"] },
-        { "name": "ttl_s", "kind": "number", "label": "Wunsch-Gültigkeit (s)", "required": false, "min": 30, "max": 3600, "default": 180 }
+        {
+          "name": "entity_id",
+          "kind": "entityRef",
+          "label": "Gerät",
+          "required": true
+        },
+        {
+          "name": "command",
+          "kind": "enum",
+          "label": "Kommando",
+          "required": true,
+          "options": [
+            "setpoint_kw",
+            "on_off",
+            "limit_kw",
+            "limit_pct",
+            "mode"
+          ]
+        },
+        {
+          "name": "ttl_s",
+          "kind": "number",
+          "label": "Wunsch-Gültigkeit (s)",
+          "required": false,
+          "min": 30,
+          "max": 3600,
+          "default": 180
+        }
       ],
-      "claim_template": { "entity_parameter": "entity_id", "command_parameter": "command", "delegated": false }
+      "claim_template": {
+        "entity_parameter": "entity_id",
+        "command_parameter": "command",
+        "delegated": false
+      }
     },
     {
       "type": "vp.notify.push",
@@ -206,11 +526,26 @@
       "description": "Legt eine Meldung auf dem Gerät ab, wenn der Auslöser feuert. NUR DIAGNOSE: es gibt noch keinen Zustellweg (keine E-Mail, keine Push-Nachricht, keine Anzeige im Portal), deshalb wird dieser Baustein Kundinnen und Kunden nicht angeboten.",
       "group": "aktion",
       "customer_visible": false,
-      "runtimes": ["edge", "cloud"],
-      "inputs": [{ "name": "trigger", "type": "event", "label": "Auslöser", "required": true }],
+      "runtimes": [
+        "edge",
+        "cloud"
+      ],
+      "inputs": [
+        {
+          "name": "trigger",
+          "type": "event",
+          "label": "Auslöser",
+          "required": true
+        }
+      ],
       "outputs": [],
       "parameters": [
-        { "name": "message", "kind": "string", "label": "Nachricht", "required": true }
+        {
+          "name": "message",
+          "kind": "string",
+          "label": "Nachricht",
+          "required": true
+        }
       ]
     },
     {
@@ -220,11 +555,32 @@
       "description": "Der aktuelle Day-Ahead-Börsenpreis der Anlage als Zahl (ct/kWh) - z. B. für „wenn der Börsenpreis unter 10 ct“. GATED: der Preis-Down-Kanal zum Gerät (E4) existiert noch nicht, deshalb richtet VoltPilot preisgesteuerte Automationen ein, statt sie stumm ins Leere laufen zu lassen.",
       "group": "daten",
       "gated": true,
-      "runtimes": ["edge", "cloud"],
+      "runtimes": [
+        "edge",
+        "cloud"
+      ],
       "inputs": [],
-      "outputs": [{ "name": "value", "type": "number", "label": "Preis", "unit": "ct/kWh" }],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "label": "Preis",
+          "unit": "ct/kWh"
+        }
+      ],
       "parameters": [
-        { "name": "zone", "kind": "enum", "label": "Gebotszone", "required": false, "options": ["DE-LU", "AT", "CH"], "help": "Leer = Gebotszone der Anlage." }
+        {
+          "name": "zone",
+          "kind": "enum",
+          "label": "Gebotszone",
+          "required": false,
+          "options": [
+            "DE-LU",
+            "AT",
+            "CH"
+          ],
+          "help": "Leer = Gebotszone der Anlage."
+        }
       ]
     },
     {
@@ -233,12 +589,31 @@
       "label": "Und",
       "description": "Wahr, wenn BEIDE Bedingungen wahr sind - z. B. „PV-Überschuss UND Zeitfenster“.",
       "group": "logik",
-      "runtimes": ["edge", "cloud"],
-      "inputs": [
-        { "name": "a", "type": "bool", "label": "Bedingung A", "required": true },
-        { "name": "b", "type": "bool", "label": "Bedingung B", "required": true }
+      "runtimes": [
+        "edge",
+        "cloud"
       ],
-      "outputs": [{ "name": "result", "type": "bool", "label": "Beide wahr" }],
+      "inputs": [
+        {
+          "name": "a",
+          "type": "bool",
+          "label": "Bedingung A",
+          "required": true
+        },
+        {
+          "name": "b",
+          "type": "bool",
+          "label": "Bedingung B",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "bool",
+          "label": "Beide wahr"
+        }
+      ],
       "parameters": []
     },
     {
@@ -247,12 +622,31 @@
       "label": "Oder",
       "description": "Wahr, wenn MINDESTENS EINE der beiden Bedingungen wahr ist.",
       "group": "logik",
-      "runtimes": ["edge", "cloud"],
-      "inputs": [
-        { "name": "a", "type": "bool", "label": "Bedingung A", "required": true },
-        { "name": "b", "type": "bool", "label": "Bedingung B", "required": true }
+      "runtimes": [
+        "edge",
+        "cloud"
       ],
-      "outputs": [{ "name": "result", "type": "bool", "label": "Eine wahr" }],
+      "inputs": [
+        {
+          "name": "a",
+          "type": "bool",
+          "label": "Bedingung A",
+          "required": true
+        },
+        {
+          "name": "b",
+          "type": "bool",
+          "label": "Bedingung B",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "bool",
+          "label": "Eine wahr"
+        }
+      ],
       "parameters": []
     },
     {
@@ -261,14 +655,43 @@
       "label": "Funktion (Code)",
       "description": "Eigener JavaScript-Code, der NUR auf Ihrem Gerät läuft - mit Zeitwächter und ohne Netzwerkzugriff.",
       "group": "logik",
-      "runtimes": ["edge"],
-      "inputs": [
-        { "name": "in", "type": "number", "label": "Eingang", "required": true }
+      "runtimes": [
+        "edge"
       ],
-      "outputs": [{ "name": "out", "type": "number", "label": "Ausgang" }],
+      "inputs": [
+        {
+          "name": "in",
+          "type": "number",
+          "label": "Eingang",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "number",
+          "label": "Ausgang"
+        }
+      ],
       "parameters": [
-        { "name": "code", "kind": "code", "label": "Code", "required": true, "maxLength": 4000, "help": "JavaScript. `wert` ist der Eingangswert; geben Sie mit `return` eine Zahl zurück (null = nichts weitergeben)." },
-        { "name": "timeout_ms", "kind": "number", "label": "Zeitlimit (ms)", "required": false, "min": 1, "max": 500, "default": 100, "help": "Läuft der Code länger, wird er abgebrochen und der Baustein meldet einen Fehler." }
+        {
+          "name": "code",
+          "kind": "code",
+          "label": "Code",
+          "required": true,
+          "maxLength": 4000,
+          "help": "JavaScript. `wert` ist der Eingangswert; geben Sie mit `return` eine Zahl zurück (null = nichts weitergeben)."
+        },
+        {
+          "name": "timeout_ms",
+          "kind": "number",
+          "label": "Zeitlimit (ms)",
+          "required": false,
+          "min": 1,
+          "max": 500,
+          "default": 100,
+          "help": "Läuft der Code länger, wird er abgebrochen und der Baustein meldet einen Fehler."
+        }
       ],
       "hint": "Läuft ausschließlich auf Ihrem Gerät. Auch dieser Baustein kann ein Gerät nur WÜNSCHEN - die Schutzgrenzen der Anlage begrenzen jeden Befehl."
     },
@@ -280,18 +703,65 @@
       "group": "aktion",
       "generated": true,
       "customer_visible": false,
-      "runtimes": ["edge"],
+      "runtimes": [
+        "edge"
+      ],
       "inputs": [],
       "outputs": [],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Verbraucher", "required": true },
-        { "name": "command", "kind": "enum", "label": "Kommando", "required": true, "options": ["on_off", "setpoint_kw", "mode"] },
-        { "name": "ttl_s", "kind": "number", "label": "Wunsch-Gültigkeit (s)", "required": true, "min": 1, "max": 86400 },
-        { "name": "renew_s", "kind": "number", "label": "Erneuerung (s)", "required": true, "min": 1, "max": 3600 },
-        { "name": "off_delay_s", "kind": "number", "label": "Ausschaltverzögerung (s)", "required": true, "min": 0, "max": 3600 },
-        { "name": "requirements", "kind": "json", "label": "Kompilierte Anforderungen", "required": true }
+        {
+          "name": "entity_id",
+          "kind": "entityRef",
+          "label": "Verbraucher",
+          "required": true
+        },
+        {
+          "name": "command",
+          "kind": "enum",
+          "label": "Kommando",
+          "required": true,
+          "options": [
+            "on_off",
+            "setpoint_kw",
+            "mode"
+          ]
+        },
+        {
+          "name": "ttl_s",
+          "kind": "number",
+          "label": "Wunsch-Gültigkeit (s)",
+          "required": true,
+          "min": 1,
+          "max": 86400
+        },
+        {
+          "name": "renew_s",
+          "kind": "number",
+          "label": "Erneuerung (s)",
+          "required": true,
+          "min": 1,
+          "max": 3600
+        },
+        {
+          "name": "off_delay_s",
+          "kind": "number",
+          "label": "Ausschaltverzögerung (s)",
+          "required": true,
+          "min": 0,
+          "max": 3600
+        },
+        {
+          "name": "requirements",
+          "kind": "json",
+          "label": "Kompilierte Anforderungen",
+          "required": true
+        }
       ],
-      "claim_template": { "entity_parameter": "entity_id", "command_parameter": "command", "delegated": false }
+      "claim_template": {
+        "entity_parameter": "entity_id",
+        "command_parameter": "command",
+        "delegated": false
+      }
     },
     {
       "type": "vp.modbus.read",
@@ -299,24 +769,275 @@
       "label": "Modbus lesen",
       "description": "Liest ein Register eines Modbus-TCP-Geräts im lokalen Netz und gibt den Wert als Zahl aus. Optional wird der Wert als Messwert eines Geräts aufgezeichnet (Diagramm, Historie).",
       "group": "daten",
-      "runtimes": ["edge"],
+      "runtimes": [
+        "edge"
+      ],
       "inputs": [],
-      "outputs": [{ "name": "value", "type": "number", "label": "Wert" }],
+      "outputs": [
+        {
+          "name": "value",
+          "type": "number",
+          "label": "Wert"
+        }
+      ],
       "parameters": [
-        { "name": "host", "kind": "host", "label": "Geräteadresse (IP/Host)", "required": true },
-        { "name": "port", "kind": "number", "label": "Port", "required": false, "min": 1, "max": 65535, "default": 502 },
-        { "name": "unit_id", "kind": "number", "label": "Unit-ID", "required": false, "min": 0, "max": 255, "default": 1 },
-        { "name": "register_kind", "kind": "enum", "label": "Registerart", "required": false, "options": ["holding", "input"], "default": "holding", "optionLabels": { "holding": "Holding-Register (FC3)", "input": "Input-Register (FC4)" } },
-        { "name": "address", "kind": "number", "label": "Registeradresse (0-basiert)", "required": true, "min": 0, "max": 65535, "help": "Protokoll-Adresse, 0-basiert. Handbücher im 4xxxx-Schema: 40001 = Adresse 0." },
-        { "name": "data_type", "kind": "enum", "label": "Datentyp", "required": false, "options": ["u16", "s16", "u32", "s32", "float32"], "default": "u16" },
-        { "name": "word_order", "kind": "enum", "label": "Wortreihenfolge (32-Bit)", "required": false, "options": ["big", "little"], "default": "big", "optionLabels": { "big": "High-Word zuerst (AB CD)", "little": "Low-Word zuerst (CD AB)" } },
-        { "name": "scale", "kind": "number", "label": "Skalierung (×)", "required": false, "default": 1 },
-        { "name": "offset", "kind": "number", "label": "Offset (+)", "required": false, "default": 0 },
-        { "name": "min_read_interval_s", "kind": "number", "label": "Mindestabstand zwischen Lesungen (s)", "required": false, "min": 1, "max": 3600, "default": 5 },
-        { "name": "entity_id", "kind": "entityRef", "label": "Aufzeichnen bei Gerät", "required": false, "help": "Optional: der Wert wird als Messwert dieses Geräts gespeichert (Diagramm, Historie)." },
-        { "name": "channel", "kind": "channel", "label": "Messkanal", "required": false, "help": "z. B. leistung_kw oder wasser_temp_c. Muss beim Gerät als Messwert hinterlegt sein." }
+        {
+          "name": "host",
+          "kind": "host",
+          "label": "Geräteadresse (IP/Host)",
+          "required": true
+        },
+        {
+          "name": "port",
+          "kind": "number",
+          "label": "Port",
+          "required": false,
+          "min": 1,
+          "max": 65535,
+          "default": 502
+        },
+        {
+          "name": "unit_id",
+          "kind": "number",
+          "label": "Unit-ID",
+          "required": false,
+          "min": 0,
+          "max": 255,
+          "default": 1
+        },
+        {
+          "name": "register_kind",
+          "kind": "enum",
+          "label": "Registerart",
+          "required": false,
+          "options": [
+            "holding",
+            "input"
+          ],
+          "default": "holding",
+          "optionLabels": {
+            "holding": "Holding-Register (FC3)",
+            "input": "Input-Register (FC4)"
+          }
+        },
+        {
+          "name": "address",
+          "kind": "number",
+          "label": "Registeradresse (0-basiert)",
+          "required": true,
+          "min": 0,
+          "max": 65535,
+          "help": "Protokoll-Adresse, 0-basiert. Handbücher im 4xxxx-Schema: 40001 = Adresse 0."
+        },
+        {
+          "name": "data_type",
+          "kind": "enum",
+          "label": "Datentyp",
+          "required": false,
+          "options": [
+            "u16",
+            "s16",
+            "u32",
+            "s32",
+            "float32"
+          ],
+          "default": "u16"
+        },
+        {
+          "name": "word_order",
+          "kind": "enum",
+          "label": "Wortreihenfolge (32-Bit)",
+          "required": false,
+          "options": [
+            "big",
+            "little"
+          ],
+          "default": "big",
+          "optionLabels": {
+            "big": "High-Word zuerst (AB CD)",
+            "little": "Low-Word zuerst (CD AB)"
+          }
+        },
+        {
+          "name": "scale",
+          "kind": "number",
+          "label": "Skalierung (×)",
+          "required": false,
+          "default": 1
+        },
+        {
+          "name": "offset",
+          "kind": "number",
+          "label": "Offset (+)",
+          "required": false,
+          "default": 0
+        },
+        {
+          "name": "min_read_interval_s",
+          "kind": "number",
+          "label": "Mindestabstand zwischen Lesungen (s)",
+          "required": false,
+          "min": 1,
+          "max": 3600,
+          "default": 5
+        },
+        {
+          "name": "entity_id",
+          "kind": "entityRef",
+          "label": "Aufzeichnen bei Gerät",
+          "required": false,
+          "help": "Optional: der Wert wird als Messwert dieses Geräts gespeichert (Diagramm, Historie)."
+        },
+        {
+          "name": "channel",
+          "kind": "channel",
+          "label": "Messkanal",
+          "required": false,
+          "help": "z. B. leistung_kw oder wasser_temp_c. Muss beim Gerät als Messwert hinterlegt sein."
+        }
       ],
       "hint": "Profi-Baustein: liest rohe Modbus-Register (0-basierte Adresse, Datentyp, Skalierung). Für den Wechselrichter selbst nutzen Sie „Messwert eines Geräts“."
+    },
+    {
+      "type": "vp.modbus.switch",
+      "type_version": "1.0.0",
+      "label": "Schalter (generiert)",
+      "description": "GENERIERT aus der Geraete-Freigabe eines selbst definierten Modbus-Geraets (Einheitsmodell Stufe 4). Es gibt bewusst KEINEN freien Modbus-Schreib-Baustein: dieser Knoten entsteht nur, wenn der Kunde den gefuehrten Schalt-Test bestanden und die physische Wirkung bestaetigt hat, und er schreibt genau EIN Register mit genau den bei der Freigabe festgelegten Werten. Er lebt im SELBEN generierten Flow wie die Lese-Knoten desselben Geraets und teilt sich deren Verbindungs-Warteschlange - nie ein zweiter TCP-Pfad zum selben Geraet. Im Editor nie anzubieten; Bearbeiten oeffnet den Freigabe-Assistenten der Komponente.",
+      "group": "aktion",
+      "generated": true,
+      "generated_origin": "modbus-device",
+      "customer_visible": false,
+      "runtimes": [
+        "edge"
+      ],
+      "inputs": [],
+      "outputs": [],
+      "parameters": [
+        {
+          "key": "entity_id",
+          "label": "Komponente",
+          "kind": "entity",
+          "required": true
+        },
+        {
+          "key": "kind",
+          "label": "Schalt-Art",
+          "kind": "enum",
+          "options": [
+            "on_off",
+            "setpoint"
+          ],
+          "required": true
+        },
+        {
+          "key": "host",
+          "label": "Adresse",
+          "kind": "host",
+          "required": true
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "kind": "number",
+          "min": 1,
+          "max": 65535,
+          "default": 502
+        },
+        {
+          "key": "unit_id",
+          "label": "Unit-ID",
+          "kind": "number",
+          "min": 0,
+          "max": 255,
+          "default": 1
+        },
+        {
+          "key": "fc",
+          "label": "Schreib-Funktionscode",
+          "kind": "enum",
+          "options": [
+            "5",
+            "6",
+            "16"
+          ],
+          "required": true
+        },
+        {
+          "key": "address",
+          "label": "Registeradresse",
+          "kind": "number",
+          "min": 0,
+          "max": 65535,
+          "required": true
+        },
+        {
+          "key": "on_value",
+          "label": "Ein-Wert",
+          "kind": "number",
+          "min": 0,
+          "max": 65535
+        },
+        {
+          "key": "off_value",
+          "label": "Aus-Wert",
+          "kind": "number",
+          "min": 0,
+          "max": 65535
+        },
+        {
+          "key": "min_value",
+          "label": "Kleinster Sollwert",
+          "kind": "number"
+        },
+        {
+          "key": "max_value",
+          "label": "Groesster Sollwert",
+          "kind": "number"
+        },
+        {
+          "key": "safe_value",
+          "label": "Sicherheitswert",
+          "kind": "number"
+        },
+        {
+          "key": "scale",
+          "label": "Skalierung",
+          "kind": "number",
+          "default": 1
+        },
+        {
+          "key": "offset",
+          "label": "Offset",
+          "kind": "number",
+          "default": 0
+        },
+        {
+          "key": "readback_address",
+          "label": "Ruecklese-Register",
+          "kind": "number",
+          "min": 0,
+          "max": 65535
+        },
+        {
+          "key": "watchdog_address",
+          "label": "Watchdog-Register des Geraets",
+          "kind": "number",
+          "min": 0,
+          "max": 65535
+        },
+        {
+          "key": "watchdog_value",
+          "label": "Watchdog-Wert",
+          "kind": "number",
+          "min": 0,
+          "max": 65535
+        }
+      ],
+      "claim_template": {
+        "entity_parameter": "entity_id",
+        "command_parameter": "kind",
+        "delegated": false
+      }
     }
   ]
 }

@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "5f2a1c8e-7d34-4b91-a0c6-1234567890ab",
+  "flow_version": 4,
+  "name": "Gerät: Heizstab Keller",
+  "description": "Der GENERIERTE Flow eines selbst definierten Modbus-Geraets NACH der Geraete-Freigabe (Einheitsmodell Stufe 4): dieselben Lese-Knoten wie vorher, dazu GENAU EIN vp.modbus.switch. Er lebt bewusst im SELBEN Flow wie die Lesungen - ein zweiter Flow waere ein zweiter TCP-Pfad zum selben Geraet (die Deye-Lektion). Die origin ist unveraendert modbus-device; sie schaltet den Schalt-Baustein frei, und die api kompiliert ihn nur nach bestandenem Schalt-Test.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "active",
+  "origin": {
+    "kind": "modbus-device",
+    "point_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+    "definition_version": 4
+  },
+  "nodes": [
+    {
+      "id": "ch1",
+      "type": "vp.modbus.read",
+      "type_version": "1.0.0",
+      "label": "Wassertemperatur Speicher oben",
+      "parameters": {
+        "host": "192.168.40.50",
+        "port": 502,
+        "unit_id": 1,
+        "register_kind": "holding",
+        "address": 100,
+        "data_type": "s16",
+        "word_order": "big",
+        "scale": 0.1,
+        "offset": 0,
+        "min_read_interval_s": 10,
+        "entity_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+        "channel": "wassertemperatur_speicher_oben"
+      }
+    },
+    {
+      "id": "ch2",
+      "type": "vp.modbus.read",
+      "type_version": "1.0.0",
+      "label": "Aufnahmeleistung",
+      "parameters": {
+        "host": "192.168.40.50",
+        "port": 502,
+        "unit_id": 1,
+        "register_kind": "input",
+        "address": 210,
+        "data_type": "u32",
+        "word_order": "little",
+        "scale": 0.001,
+        "offset": 0,
+        "min_read_interval_s": 10,
+        "entity_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+        "channel": "aufnahmeleistung"
+      }
+    },
+    {
+      "id": "schalter",
+      "type": "vp.modbus.switch",
+      "type_version": "1.0.0",
+      "label": "Heizstab schalten",
+      "parameters": {
+        "entity_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+        "kind": "on_off",
+        "host": "192.168.40.50",
+        "port": 502,
+        "unit_id": 1,
+        "fc": 5,
+        "address": 12,
+        "on_value": 1,
+        "off_value": 0,
+        "readback_address": 12
+      },
+      "claims": [
+        {
+          "entity_id": "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654",
+          "commands": [
+            "on_off"
+          ]
+        }
+      ]
+    }
+  ],
+  "edges": [],
+  "triggers": [
+    {
+      "id": "takt",
+      "kind": "interval",
+      "every_s": 10
+    }
+  ]
+}

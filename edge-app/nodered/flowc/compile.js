@@ -147,12 +147,18 @@ function validate(graph) {
     for (const msg of type.validate(n.parameters || {})) {
       push('V-4', n.type + ': ' + msg, [n.id]);
     }
-    // D-19: generated-only types are valid ONLY in a document the platform
-    // stamped with the consumer-policy origin. The api refuses customer
-    // documents carrying `origin`, so this gate cannot be forged around.
-    if (n.type === 'vp.consumer.reactive'
-        && !(graph.origin && graph.origin.kind === 'consumer-policy')) {
-      push('V-4', n.type + ' ist der generierten Verbraucherregel vorbehalten (origin fehlt)', [n.id]);
+    // D-19: a generated-only type is valid ONLY in a document the platform
+    // stamped with THAT type's origin kind. The api refuses customer documents
+    // carrying `origin`, so this gate cannot be forged around.
+    //
+    // ⚠ The origin kind comes from the CATALOG (`generatedOrigin`), it is not
+    // hardcoded here: Einheitsmodell Stufe 4 added a second generated-only type
+    // (vp.modbus.switch, origin kind `modbus-device`), and a hardcoded
+    // `consumer-policy` would either have let it through everywhere or blocked
+    // it everywhere.
+    if (type.generatedOrigin
+        && !(graph.origin && graph.origin.kind === type.generatedOrigin)) {
+      push('V-4', n.type + ' ist einem generierten Flow vorbehalten (origin fehlt)', [n.id]);
     }
     // D-13: explicit claims must equal the catalog-derived ones.
     const expected = claimsByNode[n.id] || [];

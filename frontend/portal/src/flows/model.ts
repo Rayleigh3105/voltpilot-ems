@@ -365,6 +365,7 @@ const ID_PREFIX: Record<string, string> = {
   'vp.logic.or': 'oder',
   'vp.logic.function': 'code',
   'vp.modbus.read': 'modbus',
+  'vp.modbus.switch': 'schalter',
   'vp.strategy.market': 'markt',
   'vp.entity.control': 'steuern',
   'vp.notify.push': 'melden',

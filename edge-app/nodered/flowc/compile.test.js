@@ -100,6 +100,53 @@ test('pinned content hash of the pv-surplus-heatrod fixture', () => {
   assertPinned(a, 'pinned-hash.txt');
 });
 
+// Einheitsmodell Stufe 4: the GENERATED switch of a self-built device.
+test('the released switch compiles into the DEVICE flow and claims its entity', () => {
+  const graph = fixture('flow-graph.valid.modbus-switch.json');
+  const a = compile(graph);
+  const nodes = a.bundle.nodered_flows;
+  const sw = nodes.find((n) => n.type === 'vp-modbus-switch');
+  assert.ok(sw, 'the switch must be compiled');
+  // It sits in the SAME tab as the read nodes - one flow, one connection queue,
+  // never a second TCP path to the same device.
+  const reads = nodes.filter((n) => n.type === 'vp-modbus-read');
+  assert.strictEqual(reads.length, 2);
+  reads.forEach((r) => assert.strictEqual(r.z, sw.z));
+  // Only the fields the released kind really has: an on/off switch carrying a
+  // min/max would suggest a band nobody released.
+  assert.strictEqual(sw.kind, 'on_off');
+  assert.strictEqual(sw.on_value, 1);
+  assert.strictEqual(sw.off_value, 0);
+  assert.strictEqual(sw.min_value, undefined);
+  assert.strictEqual(sw.safe_value, undefined);
+  // The palette floor lifts, so an older box acks `unsupported` instead of
+  // silently running a flow whose switch node it does not have.
+  assert.strictEqual(a.min_palette_version, '0.7.0');
+  // The switch CLAIMS its entity - the V-5 exclusive control claim is what
+  // stops a second rule from fighting over the device.
+  const req = a.required_entities.find((e) => e.entity_id === graph.origin.point_id);
+  assert.ok(req.capabilities.includes('actuate:on_off'));
+  assertPinned(a, 'pinned-modbus-switch-hash.txt');
+});
+
+test('the switch is refused in a flow that is not its device flow', () => {
+  const graph = fixture('flow-graph.valid.modbus-switch.json');
+  // A customer document can never carry an origin (the api refuses it), so
+  // this is what a hand-built switch would look like.
+  delete graph.origin;
+  assert.throws(() => compile(graph), (e) => {
+    assert.ok(e.findings.some((f) => f.rule === 'V-4' && /vorbehalten/.test(f.message)),
+      JSON.stringify(e.findings));
+    return true;
+  });
+  // ...and so is a switch smuggled into the CONSUMER-policy flow: the origin
+  // kind is per TYPE, not "any generated flow".
+  const other = fixture('flow-graph.valid.modbus-switch.json');
+  other.origin = { kind: 'consumer-policy', policy_id: other.origin.point_id,
+    policy_version: 1, entity_id: 'wallbox-1' };
+  assert.throws(() => compile(other), (e) => e.findings.some((f) => f.rule === 'V-4'));
+});
+
 test('market-battery fixture compiles the delegated strategy as a no-op', () => {
   const graph = fixture('flow-graph.valid.market-battery.json');
   const a = compile(graph);
