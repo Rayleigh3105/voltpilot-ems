@@ -14,7 +14,7 @@
  * geht durch den Haus-Dialog mit einer Folgenliste, die ausdrücklich nennt, was
  * GLEICH bleibt.
  */
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -134,9 +134,12 @@ export function VorlagenPage(): JSX.Element {
                     const h = herkunft(g.kind);
                     const p = pruefstand(neueste.certificationStatus);
                     return (
-                      <>
+                      // ⚠ Der SCHLÜSSEL gehört ans Fragment, nicht an die erste
+                      // Zeile: eine Vorlage rendert ZWEI Geschwister-Zeilen
+                      // (Zeile + Aufklapp-Zeile). Im Browser gefunden, nicht im
+                      // Test - React warnt dort nur auf der Konsole.
+                      <Fragment key={g.templateRef}>
                         <tr
-                          key={g.templateRef}
                           className="vp-row-click"
                           onClick={() =>
                             setOpen(open === g.templateRef ? null : g.templateRef)
@@ -180,7 +183,7 @@ export function VorlagenPage(): JSX.Element {
                           </td>
                         </tr>
                         {open === g.templateRef && (
-                          <tr key={`${g.templateRef}-detail`}>
+                          <tr>
                             <td colSpan={6}>
                               <Fassungen
                                 gruppe={g}
@@ -200,7 +203,7 @@ export function VorlagenPage(): JSX.Element {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>
