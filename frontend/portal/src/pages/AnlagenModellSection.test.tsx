@@ -499,3 +499,86 @@ describe('AnlagenModellSection — Variante A', () => {
     expect(await screen.findByText('Rollen & Zuordnung')).toBeInTheDocument();
   });
 });
+
+describe('der Freigabe-Zustand an der Komponente (Einheitsmodell Stufe 4)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Eine Anlage mit EINEM selbst gebauten Gerät, wahlweise schon freigegeben. */
+  function selbstbau(freigegeben: boolean): SiteEntities {
+    return {
+      registry: null,
+      entities: [
+        {
+          id: 'sb',
+          entityType: freigegeben ? 'modbus-load' : 'modbus-generic',
+          typeLabel: 'Messgerät',
+          role: 'consumer',
+          label: 'Heizstab Keller',
+          control: freigegeben,
+          deviceId: 'gw',
+          capabilities: {
+            measure: [{ channel: 'power_kw', unit: 'kW' }],
+            ...(freigegeben ? { actuate: [{ command: 'on_off' }] } : {}),
+          },
+          guards: null,
+          syncStatus: 'in_sync',
+          observed: {
+            health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '',
+          },
+          edgeSourceId: null,
+        },
+      ],
+      localSetup: [],
+    } as unknown as SiteEntities;
+  }
+
+  function stubSelbstbau(freigegeben: boolean) {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(selbstbau(freigegeben));
+    vi.spyOn(api, 'topology').mockResolvedValue({
+      schemaVersion: '1.0', entities: [], topology: { nodes: [], flows: [] },
+    } as unknown as SiteTopology);
+    vi.spyOn(api, 'siteSources').mockResolvedValue([]);
+    vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
+    vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue({ catalog_version: '1.0.0', types: [] });
+  }
+
+  it('sagt „Nur messen" - ein Gerät ohne Freigabe ist in Ordnung, kein Fehler', async () => {
+    stubSelbstbau(false);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    const zeile = await screen.findByText('Nur messen');
+    expect(zeile).toBeInTheDocument();
+    // Kein Warnton und kein Wort, das nach Defekt klingt.
+    expect(zeile.className).not.toContain('warn');
+    expect(zeile.getAttribute('title')).toContain('liefert Messwerte');
+  });
+
+  it('öffnet den Freigabe-Assistenten von der Komponente aus', async () => {
+    stubSelbstbau(false);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByText('Nur messen');
+    fireEvent.click(screen.getByText('Details'));
+    fireEvent.click(screen.getByRole('button', { name: /Steuern freigeben/ }));
+    // Der Assistent ist ein EIGENER Schritt an der fertigen Komponente.
+    expect(await screen.findByText('Wie wird geschaltet?')).toBeInTheDocument();
+  });
+
+  it('sagt nach der Freigabe, WER sie erteilt hat - und bietet den Rückweg', async () => {
+    stubSelbstbau(true);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    // Selbst gebaut ⇒ die Freigabe kann nur vom Kunden kommen.
+    expect(await screen.findByText('Von Ihnen freigegeben')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Details'));
+    fireEvent.click(screen.getByRole('button', { name: /Steuerung dieses Geräts/ }));
+    expect(await screen.findByRole('button', { name: 'Freigabe zurücknehmen' }))
+      .toBeInTheDocument();
+  });
+
+  it('bietet an einer PLATTFORM-Komponente keinen Selbstbau-Freigabeweg', async () => {
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Speicher' });
+    // Der Speicher ist steuerbar - aber seine Freigabe erteilt VoltPilot, nicht
+    // der Kunde über einen Modbus-Schalt-Test.
+    expect(screen.queryByRole('button', { name: /Steuern freigeben/ })).toBeNull();
+  });
+});

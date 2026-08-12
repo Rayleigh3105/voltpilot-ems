@@ -129,8 +129,13 @@ export function effektiverFc(f: SchaltForm): number {
 }
 
 /**
- * Die Fehler des Formulars - ALLE auf einmal, nie fail-fast: der Kunde soll
+ * Die Fehler des SCHALTERS - ALLE auf einmal, nie fail-fast: der Kunde soll
  * einmal korrigieren, nicht fünfmal.
+ *
+ * ⚠ Getrennt von {@link verbraucherFehler}, weil die zwei Schritte verschiedene
+ * Fragen stellen - und weil sonst der erste Schritt an einem Feld hinge, das
+ * erst der zweite zeigt (ein Knopf, der nie freigibt). Es ist derselbe Schnitt,
+ * den der Server macht (`validate(Switch)` ⟷ `validateConsumer(Consumer)`).
  */
 export function schaltFehler(f: SchaltForm): string[] {
   const e: string[] = [];
@@ -172,10 +177,32 @@ export function schaltFehler(f: SchaltForm): string[] {
     if (scale === null || scale === 0) e.push('Die Skalierung muss eine Zahl ungleich 0 sein.');
     if (!f.einheit.trim()) e.push('Bitte wählen Sie die Einheit des Sollwerts.');
   }
+  return e;
+}
+
+/**
+ * Die Fehler der GERÄTEDATEN (Schritt 2). Die Nennleistung ist Pflicht, weil
+ * aus ihr die Leistungsgrenze entsteht, die vor jedem Schalten bindet - ohne
+ * sie gäbe es keine Verbraucher-Klemme. Die Schonzeiten sind optional: eine
+ * fehlende Achse ist inaktiv, nie eine erfundene Schonung.
+ */
+export function verbraucherFehler(f: SchaltForm): string[] {
+  const e: string[] = [];
   const rated = zahl(f.nennleistung);
   if (rated === null || rated <= 0) {
     e.push('Bitte tragen Sie die Nennleistung des Geräts ein - aus ihr entsteht die '
       + 'Leistungsgrenze, die VoltPilot nie überschreitet.');
+  }
+  for (const [wert, name] of [
+    [f.mindestlaufzeit, 'Die Mindestlaufzeit'],
+    [f.mindestpause, 'Die Mindestpause'],
+  ] as const) {
+    const n = zahl(wert);
+    if (wert.trim() !== '' && (n === null || n < 0)) e.push(`${name} darf nicht negativ sein.`);
+  }
+  const starts = zahl(f.maxStarts);
+  if (f.maxStarts.trim() !== '' && (starts === null || starts < 1)) {
+    e.push('Wenn Sie die Starts begrenzen, muss mindestens einer erlaubt sein.');
   }
   return e;
 }

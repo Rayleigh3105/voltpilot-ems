@@ -10,6 +10,7 @@ import {
   regelAktion,
   schaltFehler,
   schaltRumpf,
+  verbraucherFehler,
   testErgebnis,
   testWertFehler,
   verbraucherRumpf,
@@ -52,10 +53,7 @@ describe('das Formular', () => {
 
   it('nennt jeden Fehler beim Namen und sammelt sie alle', () => {
     const leer = neueSchaltForm();
-    const e = schaltFehler(leer);
-    expect(e.join(' ')).toContain('Registeradresse');
-    expect(e.join(' ')).toContain('Nennleistung');
-    expect(e.length).toBeGreaterThan(1);
+    expect(schaltFehler(leer).join(' ')).toContain('Registeradresse');
 
     expect(schaltFehler({ ...onOff(), einWert: '1', ausWert: '1' }).join(' '))
       .toContain('nie wieder ausschalten');
@@ -67,6 +65,19 @@ describe('das Formular', () => {
     expect(schaltFehler({ ...sollwert(), skalierung: '0' }).join(' ')).toContain('ungleich 0');
     expect(schaltFehler(onOff())).toEqual([]);
     expect(schaltFehler(sollwert())).toEqual([]);
+  });
+
+  it('trennt die Gerätedaten vom Schalter - sonst hinge Schritt 1 an Schritt 2', () => {
+    // Der Schnitt des Servers (`validate` ⟷ `validateConsumer`): ohne ihn wäre
+    // der „Weiter"-Knopf des ersten Schritts nie freizubekommen.
+    const ohneLeistung = { ...onOff(), nennleistung: '' };
+    expect(schaltFehler(ohneLeistung)).toEqual([]);
+    expect(verbraucherFehler(ohneLeistung).join(' ')).toContain('Nennleistung');
+    // Die Schonzeiten sind optional - eine fehlende Achse ist inaktiv.
+    expect(verbraucherFehler(onOff())).toEqual([]);
+    expect(verbraucherFehler({ ...onOff(), mindestpause: '-1' }).join(' '))
+      .toContain('Mindestpause');
+    expect(verbraucherFehler({ ...onOff(), maxStarts: '0' }).join(' ')).toContain('Starts');
   });
 
   it('schickt nur die Felder der gewählten Schalt-Art', () => {

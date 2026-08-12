@@ -9,6 +9,7 @@ import {
   istSelbstbau,
   komponenteAusHash,
   regelBrueckeHash,
+  vorbefuellteAktion,
   vorbefuellteRegel,
   vorbefuellterName,
   type BrueckenKomponente,
@@ -103,5 +104,42 @@ describe('Regel → Gerät', () => {
     expect(GERAET_ANLEGEN_HINWEIS).toContain('eigenes Modbus-Gerät');
     expect(GERAET_ANLEGEN_HINWEIS).toContain('zur Auswahl');
     expect(REGEL_BRUECKE_LABEL).toContain('Regel');
+  });
+});
+
+describe('die Aktion eines FREIGEGEBENEN Schalters (Stufe 4)', () => {
+  const basis = {
+    entityId: 'e-1',
+    label: 'Heizstab',
+    channels: [{ channel: 'power_kw' }],
+  };
+
+  it('bleibt OHNE Freigabe offen - nie eine Aktion, die nichts bewirken kann', () => {
+    expect(vorbefuellteAktion(basis)).toEqual({ kind: 'notify', message: '' });
+    expect(vorbefuellteAktion({ ...basis, schalter: { schaltbar: false, art: 'on_off' } }))
+      .toEqual({ kind: 'notify', message: '' });
+  });
+
+  it('wird bei Ein/Aus zur Schalt-Aktion mit verfallendem Wunsch', () => {
+    const a = vorbefuellteAktion({ ...basis, schalter: { schaltbar: true, art: 'on_off' } });
+    expect(a.kind).toBe('onoff');
+    // Ein Wunsch verfällt IMMER - so zieht der Arbiter ihn selbst zurück.
+    expect(a.kind === 'onoff' && a.ttlS).toBeGreaterThan(0);
+    expect(a.kind === 'onoff' && a.entityId).toBe('e-1');
+  });
+
+  it('nimmt beim Sollwert den kleinsten FREIGEGEBENEN Wert, nie einen geratenen', () => {
+    const a = vorbefuellteAktion({
+      ...basis,
+      schalter: { schaltbar: true, art: 'setpoint', min: 1.5 },
+    });
+    expect(a.kind === 'setpoint' && a.value).toBe(1.5);
+  });
+
+  it('reicht die Aktion in die vorbefüllte Regel durch', () => {
+    const r = vorbefuellteRegel({ ...basis, schalter: { schaltbar: true, art: 'on_off' } })!;
+    expect(r.action.kind).toBe('onoff');
+    // Die Bedingung bleibt der erste Messwert - die Brücke erfindet keine.
+    expect(r.conditions[0]).toMatchObject({ kind: 'entity', channel: 'power_kw' });
   });
 });

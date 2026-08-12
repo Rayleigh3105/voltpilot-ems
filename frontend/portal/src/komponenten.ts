@@ -187,6 +187,30 @@ export interface PlantComponent {
   channels: Messwert[];
   /** Steuerbar (a controllable component — Speicher / Wallbox). */
   control: boolean;
+  /**
+   * Darf VoltPilot dieses Gerät SCHALTEN? (Einheitsmodell Stufe 4.) Die
+   * Tatsache ist die Schreib-Fähigkeit der Entität - genau das, was die
+   * Freigabe schreibt und worauf die Guard-Kette am Gerät keyt; ein Gerät ohne
+   * sie ist ein Sensor. „gesperrt" ist damit ein ZUSTAND, kein Fehler.
+   */
+  schaltbar: boolean;
+  /**
+   * Woher die Freigabe kommt - die drei Vertrauens-Stufen (Konzept
+   * `vp-komponenten-einheit-h2` §3.3). `null` solange nicht geschaltet wird.
+   *
+   * ⚠ Abgeleitet aus der HERKUNFT der Komponente, nie geraten: eine vom Portal
+   * komponierte Zeile (Speicher/Netz/Haus) trägt eine Freigabe, die VoltPilot
+   * am Prüfstand erteilt hat; ein selbst gebautes Gerät kann sie ausschließlich
+   * über den Schalt-Test des Kunden bekommen.
+   */
+  freigabeQuelle: 'pruefstand' | 'vorlage' | 'selbst' | null;
+  /**
+   * Darf der KUNDE das Schalten dieser Komponente selbst freigeben? Nur ein
+   * selbst gebautes Modbus-Gerät - für alles andere erteilt VoltPilot die
+   * Freigabe, und ein Knopf, der dort nichts bewirken kann, wäre einer ins
+   * Leere (die Haus-Regel der Freigabe-Flächen).
+   */
+  freigabeFaehig: boolean;
   /** The maßgebliche (primary) grid measurement. */
   primary: boolean;
   health: ComponentHealth;
@@ -301,6 +325,27 @@ function inferCategory(entityType: string): string {
     default:
       return 'consumer';
   }
+}
+
+/** Der Typ, den die Selbstbau-Tür für ein freigegebenes Schalt-Gerät vergibt. */
+const SELF_BUILT_SWITCH_TYPE = 'modbus-load';
+
+/** Die selbst gebauten Typen - nur sie kennen den Freigabe-Assistenten. */
+const SELF_BUILT_TYPES = new Set(['modbus-generic', SELF_BUILT_SWITCH_TYPE]);
+
+/**
+ * Woher die Freigabe eines schaltbaren Geräts stammt (Einheitsmodell Stufe 4,
+ * die drei Vertrauens-Stufen). Abgeleitet aus der HERKUNFT der Komponente:
+ *
+ * - ein selbst gebautes Gerät kann sie AUSSCHLIESSLICH über den Schalt-Test des
+ *   Kunden bekommen - für beliebige Fremdgeräte ist eine Typ-Zertifizierung
+ *   strukturell unmöglich;
+ * - alles andere trägt eine Freigabe, die VoltPilot erteilt hat (Prüfstand bzw.
+ *   geprüfte Vorlage; die Vorlagen-Stufe unterscheidet erst Stufe 6, solange
+ *   nennen wir die belastbarere der beiden).
+ */
+function freigabeQuelleFor(entityType: string): 'pruefstand' | 'selbst' {
+  return entityType === SELF_BUILT_SWITCH_TYPE ? 'selbst' : 'pruefstand';
 }
 
 /**
@@ -1005,6 +1050,10 @@ export function plantModel(
   for (const e of entities) {
     const role = componentRole(e.entityType, categoryById.get(e.id) ?? null);
     const control = e.control === true;
+    // Die Schreib-Fähigkeit IST die Tatsache: `actuate` ist, was die Freigabe
+    // schreibt und was die Klemme am Gerät prüft. Ein `control`-Flag ohne
+    // Schreibweg wäre eine Behauptung.
+    const schaltbar = (e.capabilities?.actuate?.length ?? 0) > 0;
     const primary = role === 'grid' && isPrimaryGrid(e, topology);
     const caps = capsById.get(e.id) ?? new Map<string, number>();
     // Honesty rule (vp-pin-werte-f8): a PROVEN orphan says „nicht mehr mit
@@ -1041,6 +1090,9 @@ export function plantModel(
         : readingFor(role, caps, role === 'pv' ? (pvByEntity.get(e.id) ?? null) : null),
       channels: componentChannels(e),
       control,
+      schaltbar,
+      freigabeQuelle: schaltbar ? freigabeQuelleFor(e.entityType) : null,
+      freigabeFaehig: SELF_BUILT_TYPES.has(e.entityType),
       primary,
       health,
       measuredVia,
@@ -1068,6 +1120,10 @@ export function plantModel(
         reading: orphaned ? null : readingFor('pv', caps, pvByEntity.get(e.id) ?? null),
         channels: [{ label: channelLabel(PV_CHANNEL), raw: PV_CHANNEL }],
         control: false,
+        // Ein Aspekt schaltet nie selbst - der Schreibweg gehört seinem Träger.
+        schaltbar: false,
+        freigabeQuelle: null,
+        freigabeFaehig: false,
         primary: false,
         health,
         measuredVia: null,

@@ -231,9 +231,12 @@ describe('der EINE Anlege-Assistent', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Weiter' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
-    // Rolle: „Nur messen" ist wählbar, der Verbraucher ehrlich noch nicht.
+    // Rolle: seit Stufe 4 sind BEIDE wählbar - der Verbraucher wird zunächst
+    // ebenfalls nur lesend angelegt, das Schalten gibt ein eigener Schritt frei.
     await screen.findByText('Was ist dieses Gerät?');
-    expect(screen.getByText('Schaltbarer Verbraucher').closest('button')).toBeDisabled();
+    const verbraucher = screen.getByText('Schaltbarer Verbraucher').closest('button')!;
+    expect(verbraucher).toBeEnabled();
+    expect(verbraucher.textContent).toContain('eigenen Schritt frei');
     expect(screen.getByText(/Energiebilanz/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
