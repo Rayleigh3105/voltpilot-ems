@@ -48,10 +48,7 @@ const (
 	TypeResult  = "probe_result"
 )
 
-// Op types. Only OpRead is EXECUTED in this stage; OpSwitchTest is part of the
-// contract so its form is fixed from the start, and a box of this stage answers
-// it honestly with ErrNotSupported instead of discarding a shape it does not
-// know (see the schema's op_switch_test title).
+// Op types.
 const (
 	OpRead = "read"
 	// OpTestConnection is the assistant's connection test, GENERALIZED to every
@@ -60,11 +57,37 @@ const (
 	// register, and the box picks the matching reader itself - the exact form
 	// the :8484 button has taken since it existed, only asked from the portal.
 	OpTestConnection = "test_connection"
-	OpSwitchTest     = "switch_test"
+	// OpSwitchTest and OpSwitchCancel are the only WRITING ops of this channel
+	// (Einheitsmodell Stufe 4): the guided switch test of the release assistant
+	// and its abort. They write exactly the two values the request names, into
+	// exactly the one register it names, with an auto-off armed BEFORE the
+	// write - never a value the box chose and never an address it remembered.
+	OpSwitchTest   = "switch_test"
+	OpSwitchCancel = "switch_cancel"
 )
 
 // TransportModbusTCP is the only transport V1 executes.
 const TransportModbusTCP = "modbus_tcp"
+
+// Modbus function codes a switch op may use. FC16 is the DEFAULT for a holding
+// register, not FC6: a single-register write is ACCEPTED but not ADOPTED by
+// several real devices (the documented Fronius/Deye lesson), so the safe
+// default is the one that provably lands and FC6 stays the explicit fallback.
+const (
+	WriteFCCoil     = 5
+	WriteFCSingle   = 6
+	WriteFCMultiple = 16
+)
+
+// RegisterKindHolding / RegisterKindCoil are the two writable register kinds.
+const (
+	RegisterKindHolding = "holding"
+	RegisterKindCoil    = "coil"
+)
+
+// MaxSwitchTTL mirrors the contract's ttl_s ceiling. A test the customer has to
+// watch is short by construction; a long one would be a control channel.
+const MaxSwitchTTL = 120
 
 // Error codes. The first six are the testconn vocabulary verbatim
 // (edge-app/core/internal/testconn) so one German copy table serves both
@@ -138,11 +161,39 @@ type Op struct {
 	Role       string          `json:"role,omitempty"`
 	Connection json.RawMessage `json:"connection,omitempty"`
 
-	// switch_test only (reserved, never executed in this stage).
+	// switch_test / switch_cancel only.
+	WriteFC         *int `json:"write_fc,omitempty"`
 	OnValue         *int `json:"on_value,omitempty"`
 	OffValue        *int `json:"off_value,omitempty"`
 	TTLSeconds      *int `json:"ttl_s,omitempty"`
 	ReadbackAddress *int `json:"readback_address,omitempty"`
+}
+
+// Writes reports whether this op type WRITES to the device. It is the one
+// place that answers that question, so a new op type cannot silently slip past
+// a caller that only meant to allow reads.
+func (o Op) Writes() bool { return o.Op == OpSwitchTest || o.Op == OpSwitchCancel }
+
+// EffectiveWriteFC returns the function code this switch op writes with, with
+// the contract default applied (coil -> 5, holding -> 16). ValidateOp has
+// already refused an inconsistent pairing, so this never has to guess.
+func (o Op) EffectiveWriteFC() int {
+	if o.WriteFC != nil {
+		return *o.WriteFC
+	}
+	if o.RegisterKind == RegisterKindCoil {
+		return WriteFCCoil
+	}
+	return WriteFCMultiple
+}
+
+// EffectiveTTL returns the switch test's auto-off delay in seconds (0 for a
+// cancel, which has none).
+func (o Op) EffectiveTTL() int {
+	if o.TTLSeconds == nil {
+		return 0
+	}
+	return *o.TTLSeconds
 }
 
 // Result is the edge -> cloud answer.
@@ -170,10 +221,25 @@ type OpResult struct {
 	Value     *float64 `json:"value,omitempty"`
 	ErrorCode string   `json:"error_code,omitempty"`
 	Message   string   `json:"message,omitempty"`
+	// Switched is the outcome of a switch_test / switch_cancel op. It is its OWN
+	// block, never Raw/Value: those are reserved for a READING, and a write that
+	// dresses up as a measurement is the kind of ambiguity false confirmations
+	// grow out of.
+	Switched *Switched `json:"switched,omitempty"`
 	// Reading is the decoded snapshot of a test_connection op. Every field is a
 	// pointer so a channel this device does NOT report is ABSENT - never a
 	// fabricated 0 (the gap-not-zero rule the whole codebase runs on).
 	Reading *Reading `json:"reading,omitempty"`
+}
+
+// Switched reports what a write REALLY wrote and what stood in the register
+// afterwards. Readback/ReadbackMatches travel together: a readback that was not
+// performed is ABSENT, never a "does not match".
+type Switched struct {
+	Written         int   `json:"written"`
+	OffAfterSeconds *int  `json:"off_after_s,omitempty"`
+	Readback        *int  `json:"readback,omitempty"`
+	ReadbackMatches *bool `json:"readback_matches,omitempty"`
 }
 
 // Reading is the decoded snapshot of a test_connection op - the same four
@@ -285,11 +351,8 @@ func ValidateOp(op Op) (code string, message string) {
 		// falls through to the read validation below
 	case OpTestConnection:
 		return validateTestConnection(op)
-	case OpSwitchTest:
-		// VOLLSTAENDIG spezifiziert, hier NICHT ausgefuehrt. Der Satz sagt, dass
-		// es an dieser Box liegt und nicht am Geraet - und er verspricht nichts
-		// ueber einen Zeitpunkt.
-		return ErrNotSupported, "Schalt-Tests führt diese VoltPilot-Box noch nicht aus."
+	case OpSwitchTest, OpSwitchCancel:
+		return validateSwitch(op)
 	default:
 		return ErrNotSupported, "Diesen Prüfschritt kennt diese VoltPilot-Box nicht."
 	}
@@ -413,6 +476,94 @@ func validateTestConnection(op Op) (string, string) {
 	return "", ""
 }
 
+// validateSwitch admits the two WRITING ops. It re-applies every rule a read
+// carries - the reason the private-target rule exists does not care which op
+// asks, and a write is the one that matters most - and adds the rules that only
+// a write has:
+//
+//   - the two VALUES must be stated. The box never chooses a value; it writes
+//     exactly the numbers in this request, which is what makes "kein Wert
+//     ausserhalb des Freigegebenen" a property of the transport and not a
+//     promise of the cloud.
+//   - a COIL takes 0 or 1 and nothing else. A 300 written to a relay coil is a
+//     malformed request, not a device problem.
+//   - the FUNCTION CODE must fit the register kind. FC5 on a holding register
+//     (or FC6/FC16 on a coil) would address a different register file - the
+//     kind of mistake that writes to something nobody looked at.
+//   - a switch_test must carry a bounded ttl_s: the auto-off is the safety net,
+//     and a test without one would be a switch-on with no way back.
+func validateSwitch(op Op) (string, string) {
+	if op.Transport != TransportModbusTCP {
+		return ErrNotSupported, "Diese Verbindungsart kann diese VoltPilot-Box nicht schalten."
+	}
+	host := strings.TrimSpace(op.Host)
+	if host == "" {
+		return ErrInvalidRequest, "Es fehlt die Adresse des Geräts."
+	}
+	if !IsPrivateHost(host) {
+		return ErrInvalidRequest,
+			"Die Adresse liegt nicht im eigenen Netz. Bitte die IP-Adresse des Geräts " +
+				"eintragen (oder einen Namen wie „geraet.local“) - VoltPilot schaltet nur " +
+				"Geräte im Heim- oder Firmennetz."
+	}
+	if op.Port != nil && (*op.Port < 1 || *op.Port > 65535) {
+		return ErrInvalidRequest, "Der Port liegt außerhalb des gültigen Bereichs."
+	}
+	if op.UnitID != nil && (*op.UnitID < 0 || *op.UnitID > 255) {
+		return ErrInvalidRequest, "Die Unit-ID liegt außerhalb des gültigen Bereichs."
+	}
+	if op.RegisterKind != RegisterKindHolding && op.RegisterKind != RegisterKindCoil {
+		return ErrInvalidRequest, "Die Registerart muss „holding“ oder „coil“ sein."
+	}
+	if op.Address == nil || *op.Address < 0 || *op.Address > 65535 {
+		return ErrInvalidRequest, "Die Registeradresse fehlt oder liegt außerhalb des gültigen Bereichs."
+	}
+	if op.WriteFC != nil {
+		switch *op.WriteFC {
+		case WriteFCCoil:
+			if op.RegisterKind != RegisterKindCoil {
+				return ErrInvalidRequest, "Funktionscode 5 schreibt eine Spule, nicht ein Register."
+			}
+		case WriteFCSingle, WriteFCMultiple:
+			if op.RegisterKind != RegisterKindHolding {
+				return ErrInvalidRequest, "Die Funktionscodes 6 und 16 schreiben ein Register, keine Spule."
+			}
+		default:
+			return ErrInvalidRequest, "Der Schreib-Funktionscode muss 5, 6 oder 16 sein."
+		}
+	}
+	if op.OffValue == nil {
+		return ErrInvalidRequest, "Es fehlt der Aus- bzw. Sicherheitswert."
+	}
+	values := []*int{op.OffValue}
+	if op.Op == OpSwitchTest {
+		if op.OnValue == nil {
+			return ErrInvalidRequest, "Es fehlt der Wert, der im Test geschrieben werden soll."
+		}
+		values = append(values, op.OnValue)
+		if op.TTLSeconds == nil {
+			return ErrInvalidRequest, "Es fehlt die Testdauer - ohne sie gäbe es kein automatisches Aus."
+		}
+		if *op.TTLSeconds < 1 || *op.TTLSeconds > MaxSwitchTTL {
+			return ErrInvalidRequest, "Die Testdauer muss zwischen 1 und 120 Sekunden liegen."
+		}
+	} else if op.OnValue != nil || op.TTLSeconds != nil {
+		return ErrInvalidRequest, "Ein Abbruch schreibt nur den Aus-Wert - er kennt weder Ein-Wert noch Testdauer."
+	}
+	for _, v := range values {
+		if *v < 0 || *v > 65535 {
+			return ErrInvalidRequest, "Ein Schaltwert liegt außerhalb des gültigen Bereichs."
+		}
+		if op.RegisterKind == RegisterKindCoil && *v != 0 && *v != 1 {
+			return ErrInvalidRequest, "Eine Spule kennt nur 0 und 1."
+		}
+	}
+	if op.ReadbackAddress != nil && (*op.ReadbackAddress < 0 || *op.ReadbackAddress > 65535) {
+		return ErrInvalidRequest, "Die Rücklese-Adresse liegt außerhalb des gültigen Bereichs."
+	}
+	return "", ""
+}
+
 // ConnectionHost extracts the address from an opaque connection block. ok=false
 // when the block names none - never an empty string that a caller could treat
 // as "no restriction".
@@ -425,6 +576,19 @@ func ConnectionHost(raw json.RawMessage) (string, bool) {
 	}
 	h := strings.TrimSpace(conn.IP)
 	return h, h != ""
+}
+
+// SucceededSwitch builds an answered switch line. The caller passes what it
+// ACTUALLY wrote, so the answer can never claim a value the device never saw.
+func SucceededSwitch(id string, written int, offAfter *int, readback *int) OpResult {
+	sw := &Switched{Written: written, OffAfterSeconds: offAfter}
+	if readback != nil {
+		v := *readback
+		sw.Readback = &v
+		m := v == written
+		sw.ReadbackMatches = &m
+	}
+	return OpResult{ID: id, OK: true, Switched: sw}
 }
 
 // SucceededReading builds an answered test_connection line.

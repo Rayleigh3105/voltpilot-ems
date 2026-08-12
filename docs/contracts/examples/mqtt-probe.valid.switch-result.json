@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "0011223344556677",
+  "answered_at": "2026-08-12T09:14:31Z",
+  "results": [
+    {
+      "id": "relais-1",
+      "ok": true,
+      "switched": {
+        "written": 1,
+        "off_after_s": 30,
+        "readback": 1,
+        "readback_matches": true
+      }
+    }
+  ]
+}

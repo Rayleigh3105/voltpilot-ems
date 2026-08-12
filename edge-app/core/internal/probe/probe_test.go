@@ -62,18 +62,42 @@ func TestContractExamplesAreParsedAsSpecified(t *testing.T) {
 		t.Fatalf("scaling lost: %v", got)
 	}
 
-	// The reserved op type parses and is REFUSED honestly, not discarded.
+	// The two WRITING ops parse and are ADMITTED (Einheitsmodell Stufe 4), and
+	// the defaults the contract states are the ones the box would really use.
+	for _, name := range []string{"mqtt-probe.valid.switch-test.json",
+		"mqtt-probe.valid.switch-setpoint.json", "mqtt-probe.valid.switch-cancel.json"} {
+		raw, err = os.ReadFile(contractPath(name))
+		if err != nil {
+			t.Fatalf("read fixture %s: %v", name, err)
+		}
+		sw := mustParse(t, raw)
+		if code, msg := ValidateOp(sw.Ops[0]); code != "" {
+			t.Fatalf("%s must be admitted, got %q %q", name, code, msg)
+		}
+		if !sw.Ops[0].Writes() {
+			t.Fatalf("%s: a switch op must report that it writes", name)
+		}
+	}
 	raw, err = os.ReadFile(contractPath("mqtt-probe.valid.switch-test.json"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	sw := mustParse(t, raw)
-	code, msg := ValidateOp(sw.Ops[0])
-	if code != ErrNotSupported {
-		t.Fatalf("switch_test must be not_supported, got %q", code)
+	coil := mustParse(t, raw).Ops[0]
+	// A coil defaults to FC5 - it is not stated in the fixture, and guessing a
+	// register function code would address a different register file entirely.
+	if got := coil.EffectiveWriteFC(); got != WriteFCCoil {
+		t.Fatalf("coil default write fc: want %d, got %d", WriteFCCoil, got)
 	}
-	if msg == "" {
-		t.Fatalf("a refusal without a sentence is a riddle")
+	if got := coil.EffectiveTTL(); got != 30 {
+		t.Fatalf("ttl: want 30, got %d", got)
+	}
+	raw, err = os.ReadFile(contractPath("mqtt-probe.invalid.switch-test-without-ttl.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	noTTL := mustParse(t, raw)
+	if code, _ := ValidateOp(noTTL.Ops[0]); code != ErrInvalidRequest {
+		t.Fatalf("a switch test without ttl must be invalid_request, got %q", code)
 	}
 
 	// The RESULT fixture is the answer shape the cloud consumes; parsing it
@@ -265,15 +289,8 @@ func TestOnlyPrivateTargetsAreProbed(t *testing.T) {
 }
 
 func TestValidateOpRefusalsAreNamedAndOrdered(t *testing.T) {
-	// The reserved op is answered as "this box cannot", never as "broken
+	// An unknown op type is answered as "this box cannot", never as "broken
 	// request" - even when its other fields would also be wrong.
-	sw := readOp("192.168.0.28")
-	sw.Op = OpSwitchTest
-	sw.Host = "8.8.8.8"
-	if code, _ := ValidateOp(sw); code != ErrNotSupported {
-		t.Fatalf("switch_test must read as not_supported first, got %q", code)
-	}
-	// An unknown op type likewise.
 	unknown := readOp("192.168.0.28")
 	unknown.Op = "erfinde-etwas"
 	if code, _ := ValidateOp(unknown); code != ErrNotSupported {
@@ -557,5 +574,125 @@ func TestTheTestConnectionContractFixturesParseAndAdmit(t *testing.T) {
 	out, _ := json.Marshal(line)
 	if strings.Contains(string(out), "load_kw") {
 		t.Fatalf("ein nicht gemeldeter Kanal darf nicht in den Draht: %s", out)
+	}
+}
+
+// TestSwitchAdmissionCarriesEveryReadRuleAndItsOwn is the safety heart of the
+// writing ops: everything a READ must satisfy still holds (the reason the
+// private-target rule exists does not care which op asks - and a write is the
+// one that matters most), plus the rules only a write has.
+func TestSwitchAdmissionCarriesEveryReadRuleAndItsOwn(t *testing.T) {
+	base := func() Op {
+		p, u, a := 502, 2, 7
+		on, off, ttl := 1, 0, 30
+		return Op{Op: OpSwitchTest, ID: "relais", Transport: TransportModbusTCP,
+			Host: "192.168.0.28", Port: &p, UnitID: &u, RegisterKind: RegisterKindCoil,
+			Address: &a, OnValue: &on, OffValue: &off, TTLSeconds: &ttl}
+	}
+	if code, _ := ValidateOp(base()); code != "" {
+		t.Fatalf("the baseline switch test must be admitted, got %q", code)
+	}
+
+	ptr := func(v int) *int { return &v }
+	cases := []struct {
+		name string
+		mut  func(*Op)
+		want string
+	}{
+		// The read rules, re-applied.
+		{"public target is refused", func(o *Op) { o.Host = "8.8.8.8" }, ErrInvalidRequest},
+		{"a bare hostname cannot be proven private", func(o *Op) { o.Host = "relais" }, ErrInvalidRequest},
+		{"no host at all", func(o *Op) { o.Host = "  " }, ErrInvalidRequest},
+		{"an unsupported transport is about the BOX", func(o *Op) { o.Transport = "solarman_v5" }, ErrNotSupported},
+		{"port out of range", func(o *Op) { o.Port = ptr(0) }, ErrInvalidRequest},
+		{"unit out of range", func(o *Op) { o.UnitID = ptr(999) }, ErrInvalidRequest},
+		{"address out of range", func(o *Op) { o.Address = ptr(70000) }, ErrInvalidRequest},
+		// The write-only rules.
+		{"an input register cannot be written", func(o *Op) { o.RegisterKind = "input" }, ErrInvalidRequest},
+		{"a coil knows only 0 and 1", func(o *Op) { o.OnValue = ptr(300) }, ErrInvalidRequest},
+		{"FC6 does not write a coil", func(o *Op) { o.WriteFC = ptr(WriteFCSingle) }, ErrInvalidRequest},
+		{"an unknown function code", func(o *Op) { o.WriteFC = ptr(3) }, ErrInvalidRequest},
+		{"no value to write", func(o *Op) { o.OnValue = nil }, ErrInvalidRequest},
+		{"no safe value to fall back to", func(o *Op) { o.OffValue = nil }, ErrInvalidRequest},
+		{"no test duration means no auto-off", func(o *Op) { o.TTLSeconds = nil }, ErrInvalidRequest},
+		{"a test longer than the ceiling", func(o *Op) { o.TTLSeconds = ptr(MaxSwitchTTL + 1) }, ErrInvalidRequest},
+		{"a test of zero seconds", func(o *Op) { o.TTLSeconds = ptr(0) }, ErrInvalidRequest},
+		{"readback address out of range", func(o *Op) { o.ReadbackAddress = ptr(70000) }, ErrInvalidRequest},
+	}
+	for _, c := range cases {
+		op := base()
+		c.mut(&op)
+		if code, msg := ValidateOp(op); code != c.want {
+			t.Errorf("%s: want %q, got %q", c.name, c.want, code)
+		} else if msg == "" {
+			t.Errorf("%s: a refusal without a sentence is a riddle", c.name)
+		}
+	}
+
+	// FC5 on a holding register addresses a different register file.
+	reg := base()
+	reg.RegisterKind = RegisterKindHolding
+	reg.WriteFC = ptr(WriteFCCoil)
+	if code, _ := ValidateOp(reg); code != ErrInvalidRequest {
+		t.Fatalf("FC5 on a holding register must be refused, got %q", code)
+	}
+	// A holding register defaults to FC16, NOT FC6 - the documented
+	// "accepted but not adopted" lesson.
+	reg.WriteFC = nil
+	reg.OnValue, reg.OffValue = ptr(3000), ptr(0)
+	if code, _ := ValidateOp(reg); code != "" {
+		t.Fatalf("a setpoint test must be admitted, got %q", code)
+	}
+	if got := reg.EffectiveWriteFC(); got != WriteFCMultiple {
+		t.Fatalf("holding default write fc: want %d, got %d", WriteFCMultiple, got)
+	}
+
+	// A cancel writes ONLY the off value - it carries neither an on value nor a
+	// duration, because it has no auto-off to arm.
+	cancel := base()
+	cancel.Op = OpSwitchCancel
+	cancel.OnValue, cancel.TTLSeconds = nil, nil
+	if code, _ := ValidateOp(cancel); code != "" {
+		t.Fatalf("a cancel must be admitted, got %q", code)
+	}
+	if cancel.EffectiveTTL() != 0 {
+		t.Fatalf("a cancel has no ttl")
+	}
+	withOn := cancel
+	withOn.OnValue = ptr(1)
+	if code, _ := ValidateOp(withOn); code != ErrInvalidRequest {
+		t.Fatalf("a cancel carrying an on value must be refused, got %q", code)
+	}
+}
+
+// TestSwitchResultNeverClaimsAReadbackItDidNotTake pins the honesty of the
+// answer shape: a readback that was not performed is ABSENT, never a "does not
+// match", and a write NEVER travels as a measurement.
+func TestSwitchResultNeverClaimsAReadbackItDidNotTake(t *testing.T) {
+	ttl := 30
+	res := SucceededSwitch("relais", 1, &ttl, nil)
+	if res.Switched == nil || res.Switched.Written != 1 {
+		t.Fatalf("the written value must be reported verbatim: %#v", res.Switched)
+	}
+	if res.Switched.Readback != nil || res.Switched.ReadbackMatches != nil {
+		t.Fatalf("a readback that never happened must be absent")
+	}
+	if res.Raw != nil || res.Value != nil || res.Reading != nil {
+		t.Fatalf("a write must never dress up as a measurement")
+	}
+	if got := *res.Switched.OffAfterSeconds; got != 30 {
+		t.Fatalf("off_after_s: want 30, got %d", got)
+	}
+
+	match := SucceededSwitch("relais", 1, nil, &[]int{1}[0])
+	if !*match.Switched.ReadbackMatches {
+		t.Fatalf("an equal readback matches")
+	}
+	miss := SucceededSwitch("relais", 1, nil, &[]int{0}[0])
+	if *miss.Switched.ReadbackMatches {
+		t.Fatalf("a differing readback must not claim a match")
+	}
+	if miss.Switched.OffAfterSeconds != nil {
+		t.Fatalf("a cancel reports no auto-off")
 	}
 }

@@ -235,6 +235,13 @@ type Agent struct {
 	// topic pair because a probe reads FREE registers while a test-read reads a
 	// catalog selection. probeLimiter bounds how often this box knocks on a
 	// customer's device on the cloud's behalf (internal/probe).
+	// The guided switch test (Einheitsmodell Stufe 4). switchTimers holds at
+	// most ONE pending auto-off per written register - a second test on the same
+	// register replaces the first, so no revert can ever be orphaned.
+	switchMu      sync.Mutex
+	switchTimers  map[string]*time.Timer
+	switchWaiters map[string]chan []switchBusResult
+
 	probeMu      sync.Mutex
 	probeReads   map[string]chan []probeBusResult
 	probeLimiter *probe.Limiter
@@ -683,6 +690,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(localbus.TopicProbeResult, 11, a.onProbeBusResult); err != nil {
 		return err
 	}
+	if err := bus.Subscribe(localbus.TopicSwitchResult, 14, a.onSwitchBusResult); err != nil {
+		return err
+	}
 	// Per-node flow state (Portal v3 M5 Part C, additive + feature-flagged):
 	// the handler itself no-ops unless VP_FLOW_NODE_STATUS_ENABLED is set, so
 	// subscribing always is free and the block simply stays absent.
@@ -695,6 +705,11 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.publishInverterConfig()
 	// Same for the additional-source config: Node-RED self-wires a read of each.
 	a.publishSourcesConfig()
+	// The retained plant-wide control gate a Node-RED executor reads instead of
+	// the box's env (Einheitsmodell Stufe 4). Published at boot and never again
+	// unless the flags could have changed - they come from the environment, so
+	// in practice once per process.
+	a.publishControlGate()
 	// Modbus-Datenspiegel: raw-block subscription + retained want republish +
 	// (if enabled) the read-only LAN listener.
 	if err := a.startMirror(); err != nil {

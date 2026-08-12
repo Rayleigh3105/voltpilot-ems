@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "0011223344556677",
+  "requested_at": "2026-08-12T09:14:30Z",
+  "ops": [
+    {
+      "op": "switch_test",
+      "id": "relais-1",
+      "transport": "modbus_tcp",
+      "host": "10.0.7.19",
+      "register_kind": "coil",
+      "address": 0,
+      "on_value": 1,
+      "off_value": 0
+    }
+  ]
+}

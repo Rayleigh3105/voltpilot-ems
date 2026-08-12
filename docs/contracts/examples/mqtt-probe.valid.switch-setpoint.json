@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "00112233445566778899aabb",
+  "requested_at": "2026-08-12T09:14:30Z",
+  "requested_by": "kunde@example.de",
+  "ops": [
+    {
+      "op": "switch_test",
+      "id": "sollwert",
+      "transport": "modbus_tcp",
+      "host": "192.168.40.50",
+      "port": 502,
+      "unit_id": 1,
+      "register_kind": "holding",
+      "write_fc": 16,
+      "address": 4100,
+      "on_value": 3000,
+      "off_value": 0,
+      "ttl_s": 30,
+      "readback_address": 4100
+    }
+  ]
+}

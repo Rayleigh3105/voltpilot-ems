@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/mqtt-probe.schema.json",
   "title": "Cloud <-> Edge Probe-Kanal (Einheitsmodell Stufe 0b, Konzepte vp-komponenten-einheit-h2 §8 / vp-modbus-baukasten-k6 §2.5)",
-  "description": "Die EINMAL-ANFRAGE, mit der die Cloud die Box bittet, ein Geraet im KUNDEN-LAN einmal zu lesen - der Unterbau, aus dem spaeter jede Live-Vorschau und jeder Verbindungstest des Anlege-Assistenten lebt. Zwei Nachrichten im per-Geraet-ACL-gedeckten v2/#-Teilbaum (D-2, KEINE Broker-Aenderung): die Anfrage auf .../v2/probe (Cloud -> Edge) und die Antwort auf .../v2/probe-result (Edge -> Cloud), korreliert ueber request_id.\n\nWAS ER IST: der Transport fuer genau das, was die :8484-Taste 'Verbindung testen' seit je box-lokal tut (testconn/test-read) - nur angestossen aus dem Portal. Er liest, er zeigt Roh- UND dekodierten Wert, und er nennt jeden Fehlschlag beim Namen (dieselben deutschen Klassen wie testconn).\n\nWAS ER NICHT IST: eine Steuerung. In dieser Stufe fuehrt die Box AUSSCHLIESSLICH den Op-Typ 'read' aus. Der Op-Typ 'switch_test' ist hier VOLLSTAENDIG spezifiziert und wird von der Box VALIDIERT, aber NICHT ausgefuehrt - sie antwortet ehrlich mit error_code 'not_supported'. Er gehoert zum Freigabe-Assistenten (Stufe 4), und ein Vertrag, der ihn erst dann kennt, haette eine Box im Feld, die eine ihr unbekannte Form still verwirft statt sie zu benennen.\n\nWARUM NICHT-RETAINED (dieselbe tragende Entscheidung wie bei der Einmal-Freigabe mqtt-ota-apply): eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt - eine Einmal-Anfrage, die beim naechsten Reconnect wieder erscheint, waere keine, sie liesse das Kunden-Geraet beliebig oft erneut anklopfen.\n\nNICHT-retained allein genuegt NICHT: das Geraet haelt eine dauerhafte Sitzung (cleanSession=false), der Broker darf eine QoS1-Nachricht also NACHLIEFERN. Die zweite Haelfte ist requested_at - die Box uebernimmt diesen Stempel als Beginn ihres Fensters (60 s) statt des Empfangs-Zeitpunkts, eine nachgelieferte Anfrage ist bei ihrer Ankunft also bereits verfallen und wird VERWORFEN statt ausgefuehrt. Die aufrufende Portal-Route hat da laengst mit einem kurzen Timeout aufgegeben; eine verspaetete Lesung waere ein Klopfen an einer Kundenanlage, das niemand mehr erwartet.\n\nDAS ZIEL MUSS IM PRIVATEN NETZ LIEGEN. Die Box prueft host SELBST - sie glaubt der Cloud nichts (die OTA-Sidecar-Disziplin) - und akzeptiert nur, was sie auch BELEGEN kann: eine IP in einem privaten Bereich oder einen Namen mit LAN-Endung. Ein nackter Hostname wird bewusst abgelehnt, weil er ueber die Suchdomaenen der Box aufgeloest wird und sich aus der Zeichenkette nicht als privat nachweisen laesst; eine oeffentliche Adresse ist eine ehrliche Ablehnung. Ohne diese Regel waere der Probe-Kanal ein Portscanner, den ein Portal-Fehler auf das offene Internet richten koennte.\n\nSTUFE 1 (Einheitsmodell, 'Ein Anlege-Weg im Portal'): der Kanal traegt zusaetzlich den Op-Typ 'test_connection' - den Verbindungstest des Anlege-Assistenten, VERALLGEMEINERT AUF ALLE TRANSPORTE. Er ist ausdruecklich KEIN zweiter Mechanismus: er reicht genau die Form, die die :8484-Taste 'Verbindung testen' seit je box-lokal entgegennimmt (brand/model/family + connection), an dieselbe Box-Maschinerie weiter (testconn/test-read) und gibt deren Urteil zurueck. Damit kann der Assistent JEDES Katalog-Geraet pruefen (Solarman-V5, Fronius Solar-API, Fronius SunSpec, generisches Modbus, go-e, Shelly, KOSTAL) und nicht nur ein einzelnes Modbus-Register. Der Op-Typ 'read' bleibt unveraendert der Weg fuer die REGISTER-Vorschau des Selbstbaus (Stufe 3).",
+  "description": "Die EINMAL-ANFRAGE, mit der die Cloud die Box bittet, ein Geraet im KUNDEN-LAN einmal zu lesen - der Unterbau, aus dem spaeter jede Live-Vorschau und jeder Verbindungstest des Anlege-Assistenten lebt. Zwei Nachrichten im per-Geraet-ACL-gedeckten v2/#-Teilbaum (D-2, KEINE Broker-Aenderung): die Anfrage auf .../v2/probe (Cloud -> Edge) und die Antwort auf .../v2/probe-result (Edge -> Cloud), korreliert ueber request_id.\n\nWAS ER IST: der Transport fuer genau das, was die :8484-Taste 'Verbindung testen' seit je box-lokal tut (testconn/test-read) - nur angestossen aus dem Portal. Er liest, er zeigt Roh- UND dekodierten Wert, und er nennt jeden Fehlschlag beim Namen (dieselben deutschen Klassen wie testconn).\n\nSTUFE 4 ('Steuern freigeben'): der Kanal traegt seit dieser Stufe zusaetzlich die zwei SCHREIBENDEN Op-Typen 'switch_test' und 'switch_cancel' - den begrenzten Schalt-Test des Freigabe-Assistenten und seinen Abbruch. Sie sind die EINZIGEN Schreibvorgaenge dieses Kanals, und sie sind eng gefuehrt: genau EIN Register, genau die zwei in der Anfrage genannten Werte, ein Auto-Aus, der VOR dem Schreiben armiert wird, und dieselben vier Zulassungsregeln (Identitaet, Verfall, belegbar privates Ziel, Ratenbegrenzung) wie eine Lesung. Eine Box, die sie nicht ausfuehrt (aelterer Stand), antwortet weiterhin ehrlich mit 'not_supported' - ein Vertrag, der eine Form erst spaeter kennt, haette eine Box im Feld, die sie still verwirft statt sie zu benennen.\n\nWAS ER NICHT IST: ein Steuerungs-Kanal. Der Dauerbetrieb eines freigegebenen Schalters laeuft NIE hierueber, sondern ueber die normale Kette Wunsch -> Arbitrierung -> Klemme/Zyklen-Guard -> Executor auf dem Entitaets-Kommando-Topic. Dieser Kanal beantwortet eine Frage von JETZT.\n\nWARUM NICHT-RETAINED (dieselbe tragende Entscheidung wie bei der Einmal-Freigabe mqtt-ota-apply): eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt - eine Einmal-Anfrage, die beim naechsten Reconnect wieder erscheint, waere keine, sie liesse das Kunden-Geraet beliebig oft erneut anklopfen.\n\nNICHT-retained allein genuegt NICHT: das Geraet haelt eine dauerhafte Sitzung (cleanSession=false), der Broker darf eine QoS1-Nachricht also NACHLIEFERN. Die zweite Haelfte ist requested_at - die Box uebernimmt diesen Stempel als Beginn ihres Fensters (60 s) statt des Empfangs-Zeitpunkts, eine nachgelieferte Anfrage ist bei ihrer Ankunft also bereits verfallen und wird VERWORFEN statt ausgefuehrt. Die aufrufende Portal-Route hat da laengst mit einem kurzen Timeout aufgegeben; eine verspaetete Lesung waere ein Klopfen an einer Kundenanlage, das niemand mehr erwartet.\n\nDAS ZIEL MUSS IM PRIVATEN NETZ LIEGEN. Die Box prueft host SELBST - sie glaubt der Cloud nichts (die OTA-Sidecar-Disziplin) - und akzeptiert nur, was sie auch BELEGEN kann: eine IP in einem privaten Bereich oder einen Namen mit LAN-Endung. Ein nackter Hostname wird bewusst abgelehnt, weil er ueber die Suchdomaenen der Box aufgeloest wird und sich aus der Zeichenkette nicht als privat nachweisen laesst; eine oeffentliche Adresse ist eine ehrliche Ablehnung. Ohne diese Regel waere der Probe-Kanal ein Portscanner, den ein Portal-Fehler auf das offene Internet richten koennte.\n\nSTUFE 1 (Einheitsmodell, 'Ein Anlege-Weg im Portal'): der Kanal traegt zusaetzlich den Op-Typ 'test_connection' - den Verbindungstest des Anlege-Assistenten, VERALLGEMEINERT AUF ALLE TRANSPORTE. Er ist ausdruecklich KEIN zweiter Mechanismus: er reicht genau die Form, die die :8484-Taste 'Verbindung testen' seit je box-lokal entgegennimmt (brand/model/family + connection), an dieselbe Box-Maschinerie weiter (testconn/test-read) und gibt deren Urteil zurueck. Damit kann der Assistent JEDES Katalog-Geraet pruefen (Solarman-V5, Fronius Solar-API, Fronius SunSpec, generisches Modbus, go-e, Shelly, KOSTAL) und nicht nur ein einzelnes Modbus-Register. Der Op-Typ 'read' bleibt unveraendert der Weg fuer die REGISTER-Vorschau des Selbstbaus (Stufe 3).",
   "x-topics": {
     "probe_request": "ems/{tenant_id}/{site_id}/{device_id}/v2/probe  (Cloud -> Edge, QoS1, NICHT retained)",
     "probe_result": "ems/{tenant_id}/{site_id}/{device_id}/v2/probe-result  (Edge -> Cloud, QoS1, NICHT retained)"
@@ -85,6 +85,9 @@
               },
               {
                 "$ref": "#/$defs/op_switch_test"
+              },
+              {
+                "$ref": "#/$defs/op_switch_cancel"
               }
             ]
           }
@@ -228,8 +231,8 @@
     },
     "op_switch_test": {
       "type": "object",
-      "title": "op 'switch_test' - VORGESEHEN, in dieser Stufe NICHT AUSGEFUEHRT",
-      "description": "Der begrenzte Schalt-Test des spaeteren Freigabe-Assistenten (Stufe 4): ein Register wird kurz auf on_value gesetzt und faellt per Auto-Aus (Watchdog auf der Box) von selbst auf off_value zurueck. Er steht hier, damit die Form von Anfang an EINE ist - eine Box dieser Stufe VALIDIERT ihn und antwortet ehrlich mit 'not_supported', statt eine ihr unbekannte Form still zu verwerfen. Es gibt in dieser Stufe KEINEN Schreibpfad; ein Geraet, das ihn ausfuehren wird, braucht zusaetzlich die Freigabe je Geraet+Register aus Stufe 4.",
+      "title": "op 'switch_test' - der begrenzte Schalt-Test des Freigabe-Assistenten (Stufe 4)",
+      "description": "Ein Register wird kurz auf on_value gesetzt und faellt per Auto-Aus von selbst auf off_value zurueck. Der Auto-Aus wird auf der Box ARMIERT, BEVOR geschrieben wird - nie danach: ein Watchdog, den erst der erfolgreiche Schreibvorgang aufzieht, existiert genau dann nicht, wenn er gebraucht wird.\n\nZWEI SCHALT-ARTEN, EINE FORM: bei einem Ein/Aus-Geraet sind on_value/off_value die zwei bei der Freigabe festgelegten Konstanten; bei einem Sollwert-Geraet ist on_value der vom Kunden gewaehlte Testwert (die Cloud hat ihn VORHER gegen die freigegebene Min/Max-Klemme geprueft und in den Rohwert des Registers umgerechnet) und off_value der Sicherheitswert. Die Box kennt den Unterschied bewusst NICHT - sie schreibt genau die zwei Zahlen, die in dieser Anfrage stehen, und keine dritte.\n\nDER TEST IST KEINE FREIGABE. Er beweist die Verdrahtung; die Freigabe je Geraet+Register entsteht erst in der Cloud, nachdem der Kunde die physische Wirkung bestaetigt hat.",
       "additionalProperties": false,
       "required": [
         "op",
@@ -282,17 +285,25 @@
           "minimum": 0,
           "maximum": 65535
         },
+        "write_fc": {
+          "enum": [
+            5,
+            6,
+            16
+          ],
+          "description": "Der Modbus-Funktionscode des Schreibvorgangs. Weggelassen bedeutet: coil -> 5, holding -> 16. FC16 ist die Voreinstellung fuers Register, weil ein FC6 auf manchen Geraeten ANGENOMMEN, aber nicht UEBERNOMMEN wird (die belegte Fronius-/Deye-Lektion) - FC6 bleibt der ausdrueckliche Rueckfall. Ein Funktionscode, der nicht zur Registerart passt (5 auf holding, 6/16 auf coil), ist invalid_request."
+        },
         "on_value": {
           "type": "integer",
           "minimum": 0,
           "maximum": 65535,
-          "description": "Die EINE Konstante, die eingeschaltet werden darf. Kein freier Wert zur Laufzeit."
+          "description": "Der EINE Wert, der in diesem Test geschrieben werden darf - bei Ein/Aus die Ein-Konstante, beim Sollwert der von der Cloud gegen die Klemme gepruefte Testwert als Rohwert. Kein freier Wert zur Laufzeit. Bei register_kind 'coil' sind nur 0 und 1 zulaessig."
         },
         "off_value": {
           "type": "integer",
           "minimum": 0,
           "maximum": 65535,
-          "description": "Die Konstante, auf die der Auto-Aus zurueckfaellt."
+          "description": "Die Konstante, auf die der Auto-Aus zurueckfaellt - bei Ein/Aus die Aus-Konstante, beim Sollwert der Sicherheitswert."
         },
         "ttl_s": {
           "type": "integer",
@@ -305,6 +316,79 @@
           "minimum": 0,
           "maximum": 65535,
           "description": "Optionales Register, aus dem der tatsaechliche Zustand zurueckgelesen wird."
+        }
+      }
+    },
+    "op_switch_cancel": {
+      "type": "object",
+      "title": "op 'switch_cancel' - den laufenden Schalt-Test SOFORT beenden",
+      "description": "Der Abbruch-Knopf des Freigabe-Assistenten: der Auto-Aus-Watchdog wird gestoppt und off_value SOFORT geschrieben, statt die Restlaufzeit abzuwarten. Er nennt das Register vollstaendig noch einmal, statt sich auf einen gemerkten Zustand der Box zu verlassen - so wirkt er auch, wenn die Box zwischendurch neu gestartet ist und ihr Watchdog gar nicht mehr existiert (genau der Fall, in dem das Geraet sonst eingeschaltet stehenbliebe).",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id",
+        "transport",
+        "host",
+        "register_kind",
+        "address",
+        "off_value"
+      ],
+      "properties": {
+        "op": {
+          "const": "switch_cancel"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+        },
+        "transport": {
+          "const": "modbus_tcp"
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 502
+        },
+        "unit_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 1
+        },
+        "register_kind": {
+          "enum": [
+            "holding",
+            "coil"
+          ]
+        },
+        "address": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "write_fc": {
+          "enum": [
+            5,
+            6,
+            16
+          ]
+        },
+        "off_value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Der Aus- bzw. Sicherheitswert, der jetzt geschrieben wird."
+        },
+        "readback_address": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
         }
       }
     },
@@ -405,6 +489,38 @@
           "type": "string",
           "maxLength": 400,
           "description": "Der deutsche Klartext-Satz. Bei invalid_request nennt er das konkret fehlende/falsche Feld."
+        },
+        "switched": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "written"
+          ],
+          "description": "Nur bei op 'switch_test'/'switch_cancel': was WIRKLICH geschrieben wurde und was danach im Register stand. Es ist ein EIGENER Block, weil ein Schalt-Ergebnis keinen Messwert traegt - `raw`/`value` sind fuer eine LESUNG reserviert, und ein Schreibvorgang, der sich als Messwert ausgibt, waere die Art von Doppeldeutigkeit, aus der falsche Bestaetigungen entstehen.",
+          "properties": {
+            "written": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Der Rohwert, den die Box geschrieben hat - immer genau on_value bzw. off_value der Anfrage."
+            },
+            "off_after_s": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 120,
+              "description": "Nur bei 'switch_test': in wie vielen Sekunden der Auto-Aus greift. Er ist zu diesem Zeitpunkt bereits ARMIERT."
+            },
+            "readback": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Der zurueckgelesene Registerwert - nur wenn readback_address genannt war UND die Lesung gelungen ist. Sonst FEHLT er (nie eine erfundene 0)."
+            },
+            "readback_matches": {
+              "type": "boolean",
+              "description": "Ob der zurueckgelesene Wert dem geschriebenen entspricht. Fehlt zusammen mit readback - eine nicht durchgefuehrte Ruecklesung ist kein 'passt nicht'."
+            }
+          }
         },
         "reading": {
           "type": "object",
