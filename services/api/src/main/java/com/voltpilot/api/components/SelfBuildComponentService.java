@@ -585,7 +585,7 @@ public class SelfBuildComponentService {
      * geänderte Adresse ist ein anderes Gerät, ein geänderter Ein-Wert eine
      * andere Zusage - beides entwertet den Test.
      */
-    static Map<String, Object> switchReceiptFields(UUID entityId, Transport t,
+    public static Map<String, Object> switchReceiptFields(UUID entityId, Transport t,
             SwitchDefinition.NormalizedSwitch s) {
         Map<String, Object> m = new LinkedHashMap<>(receiptFields(t));
         m.put("entity", entityId.toString());

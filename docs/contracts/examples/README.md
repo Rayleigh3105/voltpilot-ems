@@ -12,7 +12,7 @@ fixtures cover, and the fixtures are read by REAL test code - never decoration:
 | `ota-release-manifest.*` | `../ota-release-manifest.schema.json` | `edge-app/core/internal/otaverify/verify_test.go` (`TestContractExamplesParseAsSpecified` - the REAL device-side parser reads the same bytes) |
 | `mqtt-ota-target.*` | `../mqtt-ota-target.schema.json` | `edge-app/core/internal/agent/ota_target_test.go` (`TestContractExampleEnvelopeIsParsedAsSpecified` - the REAL device-side envelope parser reads the same bytes) |
 | `mqtt-ota-apply.*` | `../mqtt-ota-apply.schema.json` | `edge-app/core/internal/agent/ota_apply_downlink_test.go` (`TestContractExampleApprovalIsParsedAsSpecified` - the REAL device-side approval parser reads the same bytes) |
-| `mqtt-probe.*` | `../mqtt-probe.schema.json` | `edge-app/core/internal/probe/probe_test.go` (`TestContractExamplesAreParsedAsSpecified` - the REAL device-side probe parser reads the same bytes, incl. the reserved `switch_test` op and the result shape) |
+| `mqtt-probe.*` | `../mqtt-probe.schema.json` | `edge-app/core/internal/probe/probe_test.go` (`TestContractExamplesAreParsedAsSpecified` - the REAL device-side probe parser reads the same bytes, incl. the `switch_test`/`switch_cancel` ops of the release assistant and the `switched` result block) |
 
 Moving or renaming a fixture breaks those tests deliberately: the file path is
 part of the contract check.
@@ -82,9 +82,13 @@ would make a fixture invalid for the wrong reason):
   words to fetch. Guessing wrong on a 32-bit register does not fail loudly: it
   returns half a number that looks perfectly plausible, which is exactly the
   class of error the live preview exists to make visible. The two valid request
-  fixtures show the two op types the contract knows - `read` (the only one this
-  stage EXECUTES) and the reserved `switch_test`, which a box of this stage
-  validates and answers honestly with `not_supported` instead of silently
-  discarding a form it does not know; `mqtt-probe.valid.result.json` shows the
-  answer's honesty rule in one document: a successful line carries raw AND
-  decoded value side by side, a failed one carries a named class and NO value.
+  fixtures show the op types the contract knows - `read`, plus the
+  `switch_test`/`switch_cancel` pair of the release assistant (Stufe 4), which
+  a box EXECUTES bounded: it arms its automatic off BEFORE it writes, and the
+  cancel restates the register in full instead of relying on a remembered state.
+  `mqtt-probe.invalid.switch-test-without-ttl.json` is a test without `ttl_s` -
+  an unbounded write to a customer device, which is exactly what the op may
+  never be. `mqtt-probe.valid.result.json` shows the answer's honesty rule in
+  one document: a successful line carries raw AND decoded value side by side, a
+  failed one carries a named class and NO value; a switch answer carries its own
+  `switched` block instead, because a switch result is not a measurement.

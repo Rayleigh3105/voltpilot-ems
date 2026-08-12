@@ -8,6 +8,7 @@ import com.voltpilot.api.components.ComponentConnectionReceipts;
 import com.voltpilot.api.components.SelfBuildComponentService;
 import com.voltpilot.api.components.SelfBuildDefinition;
 import com.voltpilot.api.components.SelfBuildFlowCompiler;
+import com.voltpilot.api.components.SwitchDefinition;
 import com.voltpilot.api.flows.FlowCompilerHttp;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.io.IOException;
@@ -409,6 +410,185 @@ class SelfBuildComponentApiTest {
         return json.readTree(res.getBody()).path("message").asText();
     }
 
+    // -- Die FREIGABE (Einheitsmodell Stufe 4) ------------------------------
+
+    /**
+     * ⚠ Die Sicherheitseigenschaft dieser Stufe: eine Freigabe entsteht NUR aus
+     * einem bestandenen Test auf GENAU dieser Schalt-Definition PLUS der
+     * Bestätigung, dass der Kunde die Wirkung gesehen hat. Der Test beweist,
+     * dass das Register erreichbar ist; die Bestätigung, dass das RICHTIGE
+     * Gerät reagiert hat - eines allein reicht für keine der beiden Aussagen.
+     *
+     * <p>Der Rest der Reise: vor der Freigabe ist das Gerät ein Sensor (keine
+     * Schreib-Fähigkeit), danach trägt es Fähigkeit + Klemme, und die Rücknahme
+     * macht es SOFORT wieder zum Sensor.
+     */
+    @Test
+    void aSwitchIsReleasedOnlyWithAPassedTestAndConfirmedEffectAndTheRevokeIsImmediate()
+            throws Exception {
+        String customer = token("demo", "demo");
+        String stranger = token("demo2", "demo2");
+        UUID site = createSiteWithDevice(customer, "Selbstbau-Freigabe", "sb-frei-01");
+        try {
+            UUID entity = createDevice(customer, site, "Heizstab", channel("Leistung", 40));
+            String path = "/api/v1/sites/" + site + "/components/custom/" + entity;
+
+            // Vor der Freigabe: ein SENSOR - keine Schreib-Fähigkeit, kein
+            // Schalt-Typ. Das ist der Zustand, den die Fläche „nur messen" nennt.
+            JsonNode before = componentNamed(get("/api/v1/sites/" + site + "/components",
+                    customer).getBody(), "Heizstab");
+            assertThat(before.path("entityType").asText()).isEqualTo("modbus-generic");
+
+            // (a) OHNE Test: abgelehnt, und der Grund NENNT den fehlenden Test.
+            ResponseEntity<String> ohneTest = post(path + "/switch-release", customer,
+                    Map.of("switchDef", onOffSwitch(), "consumer", consumer(),
+                            "physicallyConfirmed", true));
+            assertThat(ohneTest.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(json.readTree(ohneTest.getBody()).path("message").asText())
+                    .contains("Schalt-Test");
+
+            recordSwitchReceipt(site, entity);
+
+            // (b) MIT Test, aber OHNE bestätigte Wirkung: ebenfalls abgelehnt -
+            // ein erreichbares Register ist noch kein bewiesenes Gerät.
+            ResponseEntity<String> ohneBeleg = post(path + "/switch-release", customer,
+                    Map.of("switchDef", onOffSwitch(), "consumer", consumer(),
+                            "physicallyConfirmed", false));
+            assertThat(ohneBeleg.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(json.readTree(ohneBeleg.getBody()).path("message").asText())
+                    .contains("Wirkung am Gerät");
+
+            // (c) Beides: die Freigabe greift.
+            ResponseEntity<String> frei = post(path + "/switch-release", customer,
+                    Map.of("switchDef", onOffSwitch(), "consumer", consumer(),
+                            "physicallyConfirmed", true));
+            assertThat(frei.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode after = componentNamed(frei.getBody(), "Heizstab");
+            assertThat(after.path("entityType").asText()).isEqualTo("modbus-load");
+
+            JsonNode entities = json.readTree(
+                    get("/api/v1/sites/" + site + "/entities", customer).getBody())
+                    .path("entities");
+            JsonNode released = entityById(entities, entity);
+            // Die Schreib-Fähigkeit IST die Tatsache, auf die Portal und Box keyen.
+            assertThat(released.path("capabilities").path("actuate")).hasSize(1);
+            assertThat(released.path("capabilities").path("actuate").get(0).path("command")
+                    .asText()).isEqualTo("on_off");
+            // Und die Klemme, die VOR dem Executor bindet (Leitplanke 5).
+            JsonNode limits = released.path("guards").path("limits");
+            assertThat(limits.path("max_consumption_kw").asDouble()).isEqualTo(3.5);
+            assertThat(limits.path("min_off_seconds").asInt()).isEqualTo(600);
+
+            // (d) Die Rücknahme ist SOFORT wirksam: wieder ein Sensor.
+            ResponseEntity<String> zurueck = delete(path + "/switch-release", customer);
+            assertThat(zurueck.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(componentNamed(zurueck.getBody(), "Heizstab").path("entityType").asText())
+                    .isEqualTo("modbus-generic");
+            JsonNode sensor = entityById(json.readTree(
+                    get("/api/v1/sites/" + site + "/entities", customer).getBody())
+                    .path("entities"), entity);
+            assertThat(sensor.path("capabilities").path("actuate").isMissingNode()
+                    || sensor.path("capabilities").path("actuate").isEmpty()).isTrue();
+
+            // (e) Die AUDIT-Spur: jeder Schreibvorgang an einer Kundenanlage
+            // hinterlässt sie - eine Freigabe ist nur so glaubwürdig wie das,
+            // was vor ihr nachweisbar passiert ist.
+            assertThat(auditTypes(site, entity))
+                    .contains("switch_released", "switch_revoked");
+
+            // (f) RLS: ein fremder Mandant erreicht keine der Routen.
+            assertThat(post(path + "/switch-release", stranger,
+                    Map.of("switchDef", onOffSwitch(), "consumer", consumer(),
+                            "physicallyConfirmed", true)).getStatusCode())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(delete(path + "/switch-release", stranger).getStatusCode())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(post(path + "/switch-test", stranger,
+                    Map.of("switchDef", onOffSwitch())).getStatusCode())
+                    .isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * ⚠ Der Beleg hängt an der DEFINITION, nicht am Gerät: eine geänderte
+     * Adresse ist ein anderes Register, ein geänderter Ein-Wert eine andere
+     * Zusage - beides entwertet den Test. Sonst könnte man ein harmloses
+     * Register testen und ein ganz anderes freigeben.
+     */
+    @Test
+    void aChangedSwitchDefinitionInvalidatesTheTestReceipt() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSiteWithDevice(customer, "Selbstbau-Beleg", "sb-beleg-01");
+        try {
+            UUID entity = createDevice(customer, site, "Pumpe", channel("Leistung", 40));
+            String path = "/api/v1/sites/" + site + "/components/custom/" + entity;
+            recordSwitchReceipt(site, entity);
+
+            Map<String, Object> anderes = new LinkedHashMap<>(onOffSwitch());
+            anderes.put("address", 9);
+            ResponseEntity<String> res = post(path + "/switch-release", customer,
+                    Map.of("switchDef", anderes, "consumer", consumer(),
+                            "physicallyConfirmed", true));
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(json.readTree(res.getBody()).path("message").asText())
+                    .contains("Schalt-Test");
+
+            // Und eine unmögliche Definition wird gar nicht erst zum Test:
+            // Ein- und Aus-Wert gleich hieße, nie wieder ausschalten zu können.
+            Map<String, Object> kaputt = new LinkedHashMap<>(onOffSwitch());
+            kaputt.put("offValue", 1);
+            ResponseEntity<String> bad = post(path + "/switch-test", customer,
+                    Map.of("switchDef", kaputt));
+            assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(json.readTree(bad.getBody()).path("message").asText())
+                    .contains("nie wieder ausschalten");
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    private void recordSwitchReceipt(UUID site, UUID entity) {
+        SwitchDefinition.NormalizedSwitch sw =
+                SwitchDefinition.validate(switchRecord()).value();
+        receipts.record(site, SelfBuildComponentService.SWITCH_RECEIPT_REF,
+                SelfBuildComponentService.switchReceiptFields(entity,
+                        new SelfBuildDefinition.Transport("192.168.1.50", 502, 1), sw));
+    }
+
+    /** Die Schalt-Definition als Record - der Zwilling von {@link #onOffSwitch()}. */
+    private static SwitchDefinition.Switch switchRecord() {
+        return new SwitchDefinition.Switch("on_off", "coil", 3, null, 1, 0,
+                null, null, null, null, null, null, null, null, null);
+    }
+
+    private static Map<String, Object> onOffSwitch() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("kind", "on_off");
+        m.put("registerKind", "coil");
+        m.put("address", 3);
+        m.put("onValue", 1);
+        m.put("offValue", 0);
+        return m;
+    }
+
+    private static Map<String, Object> consumer() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("ratedPowerKw", 3.5);
+        m.put("minOnSeconds", 300);
+        m.put("minOffSeconds", 600);
+        m.put("maxStartsPerDay", 4);
+        return m;
+    }
+
+    private static JsonNode entityById(JsonNode entities, UUID id) {
+        for (JsonNode e : entities) {
+            if (id.toString().equals(e.path("id").asText())) return e;
+        }
+        throw new AssertionError("Entität " + id + " nicht in der Antwort");
+    }
+
     private UUID createDevice(String token, UUID site, String label, Map<String, Object> channel)
             throws Exception {
         recordReceipt(site, "192.168.1.50");
@@ -500,6 +680,20 @@ class SelfBuildComponentApiTest {
     }
 
     /** Aufräumen per Superuser - Testanlagen dürfen die Demo-Flotte nicht verschieben. */
+    /** Die Ereignis-Arten der Audit-Spur dieser Komponente, in Reihenfolge. */
+    private List<String> auditTypes(UUID siteId, UUID entityId) {
+        List<String> out = new ArrayList<>();
+        try (Connection c = superuser(); Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(
+                        "SELECT event_type FROM consumer_audit_event WHERE site_id = '" + siteId
+                        + "' AND entity_id = '" + entityId + "' ORDER BY id")) {
+            while (rs.next()) out.add(rs.getString(1));
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
+        return out;
+    }
+
     private void deleteSite(UUID siteId) {
         try (Connection c = superuser(); Statement st = c.createStatement()) {
             st.execute("DELETE FROM site WHERE id = '" + siteId + "'");
