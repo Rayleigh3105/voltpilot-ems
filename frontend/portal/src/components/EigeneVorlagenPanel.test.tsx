@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const siteComponentTemplates = vi.fn();
+const siteComponents = vi.fn();
+const duplicateCustomComponent = vi.fn();
 const renameSiteComponentTemplate = vi.fn();
 const deleteSiteComponentTemplate = vi.fn();
 
@@ -11,6 +13,9 @@ vi.mock('../api', async () => {
     ...actual,
     api: {
       siteComponentTemplates: (s: string) => siteComponentTemplates(s),
+      siteComponents: (s: string) => siteComponents(s),
+      duplicateCustomComponent: (s: string, e: string, l?: string) =>
+        duplicateCustomComponent(s, e, l),
       renameSiteComponentTemplate: (s: string, r: string, b: unknown) =>
         renameSiteComponentTemplate(s, r, b),
       deleteSiteComponentTemplate: (s: string, r: string) => deleteSiteComponentTemplate(s, r),
@@ -34,6 +39,8 @@ describe('EigeneVorlagenPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     siteComponentTemplates.mockResolvedValue([VORLAGE]);
+    siteComponents.mockResolvedValue({ components: [] });
+    duplicateCustomComponent.mockResolvedValue([VORLAGE]);
     renameSiteComponentTemplate.mockResolvedValue([{ ...VORLAGE, label: 'Wärmepumpe Keller' }]);
     deleteSiteComponentTemplate.mockResolvedValue([]);
   });
@@ -104,6 +111,33 @@ describe('EigeneVorlagenPanel', () => {
     render(<EigeneVorlagenPanel siteId="s1" onAnlegen={vi.fn()} />);
     await screen.findByText('Wärmepumpe (Vorlage)');
     expect(screen.queryByRole('button', { name: /Gerät daraus anlegen/ })).not.toBeInTheDocument();
+  });
+
+  it('aus einem selbst gebauten Gerät wird eine Vorlage - mit vorgeschlagenem Namen', async () => {
+    siteComponents.mockResolvedValue({
+      components: [
+        { id: 'e1', label: 'Wärmepumpe', sourceKind: 'custom' },
+        { id: 'e2', label: 'Deye', sourceKind: 'builtin' },
+      ],
+    });
+    render(<EigeneVorlagenPanel siteId="s1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Aus einem Gerät/ }));
+
+    // Nur SELBST gebaute Geräte stehen zur Wahl.
+    const wahl = screen.getByLabelText('Gerät') as HTMLSelectElement;
+    expect(wahl.options).toHaveLength(1);
+    expect(screen.getByLabelText('Name der Vorlage')).toHaveValue('Wärmepumpe (Vorlage)');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vorlage anlegen' }));
+    await waitFor(() =>
+      expect(duplicateCustomComponent).toHaveBeenCalledWith('s1', 'e1', 'Wärmepumpe (Vorlage)'),
+    );
+  });
+
+  it('ohne selbst gebautes Gerät gibt es keinen Duplizieren-Knopf', async () => {
+    render(<EigeneVorlagenPanel siteId="s1" />);
+    await screen.findByText('Wärmepumpe (Vorlage)');
+    expect(screen.queryByRole('button', { name: /Aus einem Gerät/ })).not.toBeInTheDocument();
   });
 
   it('ein Ladefehler blockiert das Anlagen-Modell nicht', async () => {

@@ -24,12 +24,6 @@
   function $(id) { return document.getElementById(id); }
   var el = window.VP.el;
 
-  function roleLabel(role) {
-    if (role === ROLE_NETZ) return "Netz-Zähler";
-    if (role === ROLE_CONSUMER) return "Verbraucher";
-    return "Erzeuger";
-  }
-
   var catalog = null;
   var statuses = {};       // source id -> "ok"|"warn"|"pending"
   var readings = {};       // source id -> {pv_kw?, power_kw?, read_at_ms} ("Zuletzt gelesen")

@@ -15,6 +15,7 @@ import {
   type SiteTopology,
 } from '../api';
 import { channelLabel, commandLabel } from '../channels';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { deviceName } from '../entityLabel';
 import {
@@ -305,30 +306,28 @@ function EntityCard({
   onDeleted: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  // ⚠ Einheitsmodell Stufe 6: EIN Haus-Dialog statt zweier nativer Rückfragen
+  // hintereinander - die zweite beschrieb die kWp-Folge in einem
+  // `\n\n`-Fließtext, den niemand liest.
+  const [ask, setAsk] = useState(false);
+  const [purge, setPurge] = useState(false);
   const verdict = syncVerdict(entity.syncStatus);
   const measures = measureChannels(entity);
   const actuates = actuateCommands(entity);
   const guards = guardRows(entity);
   const pills = topology ? rolePillsFor(entity.id, topology) : [];
 
+  // Composed rows keep their measurement point by default (re-adoption
+  // re-composes it). Purging deletes the point outright, releases its kWp from
+  // the aggregate and frees its source pin (the duplicate-CLEANUP lever,
+  // vp-vier-erzeuger-p9).
+  const composedPoint = entity.role === 'pv-generation' || entity.role === 'grid-meter';
+
   async function remove() {
-    if (!window.confirm(`Entität „${entity.label ?? entity.typeLabel}" wirklich entfernen?`)) return;
-    // Composed rows keep their measurement point by default (re-adoption
-    // re-composes it). The second confirm is the duplicate-CLEANUP lever
-    // (vp-vier-erzeuger-p9): purging deletes the point outright, releases its
-    // kWp from the aggregate and frees its source pin.
-    const composedPoint = entity.role === 'pv-generation' || entity.role === 'grid-meter';
-    const purgePoint =
-      composedPoint &&
-      window.confirm(
-        'Auch den Messpunkt endgültig löschen?\n\nOK = endgültig löschen (kWp wird aus der '
-          + 'Anlagen-Summe entfernt, die Quelle wird für eine neue Zuordnung frei).\n'
-          + 'Abbrechen = nur die Entität entfernen; der Messpunkt bleibt für eine erneute '
-          + 'Übernahme erhalten.',
-      );
+    setAsk(false);
     setBusy(true);
     try {
-      await entitiesApi.remove(siteId, entity.id, { purgePoint });
+      await entitiesApi.remove(siteId, entity.id, { purgePoint: composedPoint && purge });
       onDeleted();
     } catch {
       setBusy(false);
@@ -431,11 +430,51 @@ function EntityCard({
           <Button variant="ghost" onClick={onEdit}>
             <Icon name="pencil" size={14} /> Bearbeiten
           </Button>
-          <Button variant="ghost" className="vp-btn-danger" onClick={remove} disabled={busy}>
+          <Button
+            variant="ghost"
+            className="vp-btn-danger"
+            onClick={() => {
+              setPurge(false);
+              setAsk(true);
+            }}
+            disabled={busy}
+          >
             <Icon name="trash" size={14} /> Entfernen
           </Button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={ask}
+        title="Komponente entfernen?"
+        intro={`„${entity.label ?? entity.typeLabel}" verschwindet aus dem Anlagen-Modell.`}
+        consequences={[
+          'Die aufgezeichneten Messwerte bleiben erhalten.',
+          composedPoint
+            ? 'Der Messpunkt bleibt bestehen — eine erneute Übernahme stellt die Komponente wieder her.'
+            : 'Die Zuordnung zum gemeldeten Gerät wird gelöst.',
+        ]}
+        confirmLabel="Entfernen"
+        tone="danger"
+        busy={busy}
+        onCancel={() => setAsk(false)}
+        onConfirm={() => void remove()}
+        extra={
+          composedPoint ? (
+            <label className="vp-entity-purge">
+              <input
+                type="checkbox"
+                checked={purge}
+                onChange={(e) => setPurge(e.target.checked)}
+              />
+              <span>
+                Messpunkt endgültig löschen — die kWp verlassen die Anlagen-Summe, und das
+                gemeldete Gerät wird für eine neue Zuordnung frei.
+              </span>
+            </label>
+          ) : undefined
+        }
+      />
     </div>
   );
 }

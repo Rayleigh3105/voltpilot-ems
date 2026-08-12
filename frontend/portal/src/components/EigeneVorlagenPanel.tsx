@@ -18,12 +18,13 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
-import { ApiError, api, type SiteComponentTemplate } from '../api';
+import { ApiError, api, type SiteComponentTemplate, type SiteComponents } from '../api';
 import {
   KEINE_ADRESSE,
   kopfSatz,
   loeschFolgen,
   nameFehler,
+  vorschlagsName,
   zeilen,
   type VorlagenZeile,
 } from '../eigeneVorlagen';
@@ -46,6 +47,12 @@ export function EigeneVorlagenPanel({
   const [nameError, setNameError] = useState<string | null>(null);
   const [ask, setAsk] = useState<VorlagenZeile | null>(null);
   const [busy, setBusy] = useState(false);
+  // „Duplizieren": die Stufe-3-Route existierte, hatte im Portal aber keinen
+  // einzigen Aufrufer - der Weg IN eine eigene Vorlage war unerreichbar.
+  const [quellen, setQuellen] = useState<{ id: string; label: string }[]>([]);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupId, setDupId] = useState('');
+  const [dupName, setDupName] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -56,6 +63,19 @@ export function EigeneVorlagenPanel({
         // Fail-soft: eine Anlage ohne eigene Vorlagen ist der Normalfall, und
         // ein Ladefehler darf das Anlagen-Modell nicht blockieren.
         if (alive) setList([]);
+      });
+    api
+      .siteComponents(siteId)
+      .then((c: SiteComponents) => {
+        if (!alive) return;
+        setQuellen(
+          c.components
+            .filter((r) => r.sourceKind === 'custom')
+            .map((r) => ({ id: r.id, label: r.label ?? 'Eigenes Gerät' })),
+        );
+      })
+      .catch(() => {
+        /* Ohne die Liste fehlt nur der Duplizieren-Knopf, nicht die Fläche. */
       });
     return () => {
       alive = false;
@@ -108,7 +128,66 @@ export function EigeneVorlagenPanel({
       <header>
         <h3>Meine Vorlagen</h3>
         <p className="vp-muted">{kopfSatz(rows.length)}</p>
+        {quellen.length > 0 && !dupOpen && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              const erste = quellen[0];
+              setDupId(erste.id);
+              setDupName(vorschlagsName(erste.label));
+              setDupOpen(true);
+            }}
+          >
+            ＋ Aus einem Gerät eine Vorlage machen
+          </Button>
+        )}
       </header>
+
+      {dupOpen && (
+        <div className="vp-ev-edit vp-ev-dup">
+          <label className="vp-field">
+            <span className="vp-field-label">Gerät</span>
+            <select
+              value={dupId}
+              onChange={(e) => {
+                setDupId(e.target.value);
+                const q = quellen.find((x) => x.id === e.target.value);
+                if (q) setDupName(vorschlagsName(q.label));
+              }}
+            >
+              {quellen.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Input
+            label="Name der Vorlage"
+            value={dupName}
+            onChange={(e) => setDupName(e.target.value)}
+            hint={KEINE_ADRESSE}
+          />
+          <div className="vp-ev-actions">
+            <Button variant="ghost" size="sm" onClick={() => setDupOpen(false)}>
+              Abbrechen
+            </Button>
+            <Button
+              size="sm"
+              disabled={busy || !dupId}
+              onClick={async () => {
+                const ok = await run(() =>
+                  api.duplicateCustomComponent(siteId, dupId, dupName.trim() || undefined),
+                );
+                if (ok) setDupOpen(false);
+              }}
+            >
+              Vorlage anlegen
+            </Button>
+          </div>
+        </div>
+      )}
 
       {fehler && <div className="vp-alert vp-alert-err">{fehler}</div>}
 
