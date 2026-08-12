@@ -130,6 +130,7 @@ public class SelfBuildComponentService {
     public SiteComponentsDto create(UUID siteId, SaveSelfBuildRequest req, String subject) {
         requireSite(siteId);
         requirePortalManaged(siteId);
+        requireGateway(siteId);
         Result def = requireValid(req);
         requireTested(siteId, def.transport());
 
@@ -151,6 +152,7 @@ public class SelfBuildComponentService {
             String subject) {
         requireSite(siteId);
         requirePortalManaged(siteId);
+        requireGateway(siteId);
         EntityRow existing = requireSelfBuilt(siteId, entityId);
         Result def = requireValid(req);
         requireTested(siteId, def.transport());
@@ -350,6 +352,23 @@ public class SelfBuildComponentService {
         return def;
     }
 
+    /**
+     * Ohne verbundenes Gerät gibt es keine Box, die lesen könnte - und damit
+     * nichts, wohin der Leseplan ausgerollt werden kann.
+     *
+     * <p>⚠ Die Prüfung steht VORNE, obwohl der Rollout am Ende ohnehin
+     * scheitern würde: dort wäre sie ein 503 „konnte nicht verteilt werden",
+     * also eine Aussage über eine Störung, wo in Wahrheit eine Voraussetzung
+     * fehlt. Der Satz ist wörtlich der des Probe-Kanals, damit dieselbe Lücke
+     * überall gleich heißt.
+     */
+    private void requireGateway(UUID siteId) {
+        if (entityRepo.siteDeviceIds(siteId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Diese Anlage hat noch kein verbundenes Gerät, das lesen könnte.");
+        }
+    }
+
     private void requireTested(UUID siteId, Transport transport) {
         if (!receipts.has(siteId, RECEIPT_REF, receiptFields(transport))) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -410,7 +429,19 @@ public class SelfBuildComponentService {
      *
      * <p>Ein Compiler-Ausfall ist ein 503 und lässt nichts zurück: eine
      * Komponente ohne Leseplan wäre eine Zeile, die ein Gerät verspricht, das
-     * nichts liefert.
+     * nichts liefert. Der Compiler wird deshalb VOR dem ersten Schreibvorgang
+     * gefragt.
+     *
+     * <p><b>⚠ Das VERTEILEN ist dagegen best-effort</b> - wie der
+     * Registry-Push eine Zeile weiter. Zwei Gründe: {@code republishForSite}
+     * meldet {@code false} auch dann, wenn gar kein Broker konfiguriert ist
+     * (die Vorgabe ohne {@code voltpilot.provisioning.*}), das wäre also ein
+     * Fehler über eine Umgebung statt über diese Anfrage; und an dieser Stelle
+     * sind Definition, Fassung und aktiver Flow bereits geschrieben - ein
+     * Wurf danach BEHAUPTET ein Scheitern über eine Komponente, die es gibt,
+     * und der nächste Versuch liefe in einen 409. Der ehrliche Ort dafür ist
+     * das dreiwertige Soll/Ist: {@code unreported} heißt „die Box hat sich
+     * noch nicht geäußert", NIE „die Änderung ist verloren".
      */
     private void deployReadFlow(UUID siteId, UUID tenantId, UUID entityId, int version,
             String label, Result def) {
@@ -442,9 +473,8 @@ public class SelfBuildComponentService {
         flows.retireActive(flowId);
         flows.markActive(flowId, version, artifact.toString());
         if (!deployments.republishForSite(siteId)) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Der Lese-Plan konnte nicht an Ihre VoltPilot-Box verteilt werden - bitte "
-                            + "später erneut versuchen.");
+            log.warn("self-build read flow for {} stored but not distributed to site {} - the "
+                    + "component reads as 'unreported' until the next publish", entityId, siteId);
         }
     }
 

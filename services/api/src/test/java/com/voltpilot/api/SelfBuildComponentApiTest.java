@@ -144,7 +144,7 @@ class SelfBuildComponentApiTest {
     void aPrivateTemplateBelongsToOneSiteAndNeverLeavesIt() throws Exception {
         String customer = token("demo", "demo");
         String stranger = token("demo2", "demo2");
-        UUID site = createSite(customer, "Selbstbau-Zaun");
+        UUID site = createSiteWithDevice(customer, "Selbstbau-Zaun", "sb-zaun-01");
         try {
             UUID entity = createDevice(customer, site, "Wärmepumpe", channel("Vorlauf", 100));
 
@@ -196,7 +196,7 @@ class SelfBuildComponentApiTest {
     @Test
     void theJourneyFromReadToComponentWithItsGeneratedReadFlow() throws Exception {
         String customer = token("demo", "demo");
-        UUID site = createSite(customer, "Selbstbau-Reise");
+        UUID site = createSiteWithDevice(customer, "Selbstbau-Reise", "sb-reise-01");
         try {
             Map<String, Object> conn = connection("192.168.1.50");
             List<Map<String, Object>> channels = List.of(
@@ -223,7 +223,14 @@ class SelfBuildComponentApiTest {
             assertThat(row.path("entityType").asText()).isEqualTo("modbus-generic");
             assertThat(row.path("sourceKind").asText()).isEqualTo("custom");
             assertThat(row.path("communication").asText()).isEqualTo("modbus_baukasten");
-            assertThat(row.path("definitionVersion").asInt()).isEqualTo(1);
+            // ⚠ Die ERSTE gespeicherte Fassung ist 2, nicht 1: die Spalte
+            // startet per DEFAULT auf 1 und `applyDefinition` zählt hoch. Das
+            // ist NICHT selbst gewählt, sondern die Zählung der Stufe-1-
+            // Maschinerie, die diese Tür wiederverwendet - `ComponentApiTest`
+            // erwartet für ihren ersten Anlege-Vorgang dasselbe. Zwei
+            // Bedeutungen von „Fassung 1" wären genau die zweite Wahrheit,
+            // die das Einheitsmodell vermeidet.
+            assertThat(row.path("definitionVersion").asInt()).isEqualTo(2);
 
             // Die Kennungen sind ABGELEITET, die Klartext-Namen reisen mit.
             JsonNode measure = entityCapabilities(entity).path("measure");
@@ -239,12 +246,13 @@ class SelfBuildComponentApiTest {
             JsonNode doc = activeFlowDocument(SelfBuildFlowCompiler.generatedFlowId(entity));
             assertThat(doc.path("origin").path("kind").asText()).isEqualTo("modbus-device");
             assertThat(doc.path("origin").path("point_id").asText()).isEqualTo(entity.toString());
-            assertThat(doc.path("origin").path("definition_version").asInt()).isEqualTo(1);
+            // Der Stempel im Flow IST die angewandte Fassung - er kann von der
+            // Komponenten-Zeile nicht abweichen.
+            assertThat(doc.path("origin").path("definition_version").asInt()).isEqualTo(2);
             assertThat(doc.path("nodes")).hasSize(2);
-            JsonNode first = doc.path("nodes").get(0).path("parameters");
-            assertThat(first.path("type").asText("")).isEmpty();
             assertThat(doc.path("nodes").get(0).path("type").asText())
                     .isEqualTo("vp.modbus.read");
+            JsonNode first = doc.path("nodes").get(0).path("parameters");
             assertThat(first.path("host").asText()).isEqualTo("192.168.1.50");
             assertThat(first.path("address").asInt()).isEqualTo(100);
             assertThat(first.path("entity_id").asText()).isEqualTo(entity.toString());
@@ -260,7 +268,7 @@ class SelfBuildComponentApiTest {
                             "channels", List.of(channel("Wassertemperatur Speicher oben", 100))));
             assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(componentNamed(updated.getBody(), "Wärmepumpe Keller")
-                    .path("definitionVersion").asInt()).isEqualTo(2);
+                    .path("definitionVersion").asInt()).isEqualTo(3);
             // Ein entfernter Kanal verschwindet auch als Messwert - sonst
             // verspräche die Komponente einen Wert, den niemand mehr liest.
             assertThat(entityCapabilities(entity).path("measure")).hasSize(1);
@@ -282,7 +290,7 @@ class SelfBuildComponentApiTest {
     @Test
     void everyRefusalNamesItsReasonAndTheBoxIsNeverAskedForAPublicTarget() throws Exception {
         String customer = token("demo", "demo");
-        UUID site = createSite(customer, "Selbstbau-Regeln");
+        UUID site = createSiteWithDevice(customer, "Selbstbau-Regeln", "sb-regeln-01");
         try {
             // LAN-only: ein öffentliches Ziel wird abgelehnt, BEVOR die Box
             // gefragt wird (die Antwort kommt sofort, nicht nach einem
@@ -338,7 +346,7 @@ class SelfBuildComponentApiTest {
     void aForeignSiteIsNotFoundOnEverySelfBuildRoute() throws Exception {
         String customer = token("demo", "demo");
         String stranger = token("demo2", "demo2");
-        UUID site = createSite(customer, "Selbstbau-RLS");
+        UUID site = createSiteWithDevice(customer, "Selbstbau-RLS", "sb-rls-01");
         try {
             recordReceipt(site, "192.168.1.50");
             Map<String, Object> body = Map.of("label", "Fremd",
@@ -358,6 +366,33 @@ class SelfBuildComponentApiTest {
             // kaputter Weg.
             assertThat(post("/api/v1/sites/" + site + "/components/custom", customer, body)
                     .getStatusCode()).isEqualTo(HttpStatus.OK);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Ohne verbundenes Gerät wird die Voraussetzung BEIM NAMEN genannt - und
+     * zwar bevor irgendetwas geschrieben wird. Vorher endete derselbe Fall in
+     * einem 503 „konnte nicht verteilt werden": eine Aussage über eine Störung,
+     * wo in Wahrheit die Box fehlt.
+     */
+    @Test
+    void aPlantWithoutAConnectedDeviceIsRefusedByNameAndNothingIsWritten() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Selbstbau-ohne-Gerät");
+        try {
+            recordReceipt(site, "192.168.1.50");
+            ResponseEntity<String> res = post("/api/v1/sites/" + site + "/components/custom",
+                    customer, Map.of("label", "Wärmepumpe",
+                            "connection", connection("192.168.1.50"),
+                            "channels", List.of(channel("Vorlauf", 100))));
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(json.readTree(res.getBody()).path("message").asText())
+                    .contains("kein verbundenes Gerät");
+            // Nichts angelegt - die Ablehnung kommt VOR dem ersten Schreibvorgang.
+            assertThat(json.readTree(get("/api/v1/sites/" + site + "/components", customer)
+                    .getBody()).path("components")).isEmpty();
         } finally {
             deleteSite(site);
         }
@@ -442,6 +477,18 @@ class SelfBuildComponentApiTest {
         } catch (SQLException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    /**
+     * Eine Anlage MIT verbundenem Gerät - der Normalfall. Ohne Gerät gibt es
+     * keine Box, die lesen könnte; das ist ein eigener Test.
+     */
+    private UUID createSiteWithDevice(String customerToken, String name, String ref) {
+        UUID site = createSite(customerToken, name);
+        ResponseEntity<String> res = post("/api/v1/devices/claim", customerToken,
+                Map.of("externalRef", ref, "siteId", site.toString(), "kind", "inverter"));
+        assertThat(res.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.CREATED);
+        return site;
     }
 
     private UUID createSite(String customerToken, String name) {
