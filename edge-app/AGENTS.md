@@ -2427,6 +2427,35 @@ Was HIER gelten muss:
 - Beweise: `internal/componentapply` (19, inkl. der Kontrakt-Fixture per PFAD) ·
   `agent/component_apply_test.go` (8) · `agent/probe_test.go`.
 
+## ⚠ Ein SELBSTBAU-Gerät darf den Registry-Push nie scheitern lassen (Einheitsmodell Stufe 3)
+
+`componentapply.Derive` ist alles-oder-nichts, und `roleFor` kennt den Typ
+`modbus-generic` nicht. Ohne einen ausdrücklichen Skip hätte **EIN** vom Kunden
+selbst definiertes Modbus-Gerät den GANZEN Push scheitern lassen — die Anlage
+verlöre also mit ihrem ersten eigenen Gerät die Anwendung ihres Wechselrichters
+und aller Quellen. Der Skip sitzt deshalb in `ParseDriver`, **vor** der
+Marken-Prüfung (ein Selbstbau-Gerät trägt per Konstruktion keine Marke), und
+liefert `ok=false` = „dieses Gerät liest diese Box nicht" — dieselbe Semantik wie
+beim Vor-Stufe-1-Treiber ohne Verbindung.
+
+- `componentapply.CommunicationSelfBuild` (`modbus_baukasten`) ist wörtlich mit
+  der Cloud geteilt (`SelfBuildDefinition.COMMUNICATION`) — **beide zusammen
+  ändern**, sonst beginnt die Box Pushes abzulehnen, die sie ignorieren sollte.
+- Sein LESEPLAN reist im FLOW, nicht in `sources.json`: je Kanal ein
+  `vp-modbus-read`, das seine Telemetrie selbst je Entität publiziert. Der
+  `driver`-Block trägt hier nur Anzeige/Kontext.
+- Eine Anlage mit AUSSCHLIESSLICH Selbstbau-Geräten ergibt `ErrNoConfiguration` —
+  der dokumentierte „leeres Soll löscht nichts"-Fall, kein Fehler des Kunden.
+- **Der Palette-Knoten prüft die LAN-Regel unabhängig noch einmal**
+  (`vp-palette/lib/private-host.js`, verdrahtet in `vp-modbus-read.js`): ein
+  ausgerollter Flow ist eine Anweisung von aussen, und wer eine Verbindung
+  öffnet, prüft ihr Ziel selbst (die OTA-Sidecar-Disziplin). Ein nicht
+  nachweisbar privates Ziel wird gar nicht erst angeklopft — der Knoten liest
+  NICHTS und sagt laut warum. Es ist der vierte Zwilling derselben Regel; alle
+  vier lesen `docs/contracts/lan-host-vectors.json`.
+- Beweise: `componentapply_test.go` (der Skip rettet Wechselrichter + Quellen,
+  „nur Selbstbau ⇒ ErrNoConfiguration"), `vp-palette/test/private_host_spec.js`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
