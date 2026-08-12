@@ -658,15 +658,32 @@ eine Anlage ohne selbst gebautes Gerät verhält sich zeichengleich wie vorher.
   Der Flow wird VOR dem ersten Schreibvorgang kompiliert (das `ConsumerPolicyActivationService`-
   Muster) — eine Komponente, deren Leseplan nicht gebaut werden konnte, verspräche ein Gerät, das
   nichts liefert.
+- **⚠ Der COMPILER ist ein harter 503, das VERTEILEN ist best-effort — und die Reihenfolge ist der
+  Grund** (im Testlauf als echter Defekt gefunden): `FlowActivationService.republishForSite` meldet
+  `false` AUCH dann, wenn gar kein Broker konfiguriert ist (die Vorgabe ohne
+  `voltpilot.provisioning.*`) — daraus einen Fehler zu machen wäre eine Aussage über die UMGEBUNG
+  statt über die Anfrage, und der Wurf käme NACH dem Schreiben von Definition, Fassung und aktivem
+  Flow, behauptete also ein Scheitern über eine Komponente, die es gibt (der nächste Versuch liefe
+  in einen 409). Also: alles, was scheitern darf, wird VOR dem ersten Schreibvorgang gefragt
+  (Gateway-Gerät → 409 mit dem Satz des Probe-Kanals, Compiler → 503), das Verteilen danach ist
+  best-effort mit lautem WARN wie der Registry-Push daneben. Der ehrliche Ort dafür ist das
+  dreiwertige Soll/Ist: `unreported` heißt „die Box hat sich noch nicht geäußert", NIE „die
+  Änderung ist verloren".
+- **⚠ Die ERSTE gespeicherte Fassung ist 2, nicht 1** — `measurement_point.definition_version` steht
+  per `DEFAULT 1` und `applyDefinition` zählt hoch. Das ist die Zählung der Stufe-1-Maschinerie,
+  die diese Tür wiederverwendet (`ComponentApiTest` erwartet für ihren ersten Anlege-Vorgang
+  dasselbe); zwei Bedeutungen von „Fassung 1" wären genau die zweite Wahrheit, die das
+  Einheitsmodell vermeidet.
 - **Nur „Nur messen" (Sensor).** Der Typ ist `modbus-generic`/measure-only, die Box ist damit
   strukturell unfähig, so ein Gerät zu schalten; Schalten samt Freigabe-Test ist Stufe 4, und bis
   dahin gibt es keinen halben Schreibpfad, den man später absichern müsste. **Bilanz-Ehrlichkeit:**
   ein Selbstbau-Sensor ist ein Topologie-Knoten mit eigenen Messwerten und geht NICHT in die
   Energiebilanz ein — der Assistent sagt das in einem Satz.
 - **Beweise:** rein `SelfBuildDefinitionTest` (12, inkl. der geteilten Vektoren) · Testcontainers
-  `SelfBuildComponentApiTest` (4: der Besitzer-Zaun in beide Richtungen + „custom nie öffentlich",
+  `SelfBuildComponentApiTest` (5: der Besitzer-Zaun in beide Richtungen + „custom nie öffentlich",
   die Reise Lesen→Anlegen→aktiver Flow→Ändern→Löschen, Poll-Budget/Kanal-Form/LAN mit deutschem
-  Grund, RLS 404 auf jeder Route) · Go `componentapply` (der Skip + „nur Selbstbau ⇒
+  Grund, eine Anlage OHNE verbundenes Gerät wird beim Namen genannt und schreibt nichts,
+  RLS 404 auf jeder Route) · Go `componentapply` (der Skip + „nur Selbstbau ⇒
   ErrNoConfiguration") · Portal `selbstbau.test.ts` (20) + `selbstbauBruecke.test.ts` (11) +
   `KomponenteHinzufuegenDrawer.test.tsx`. Portal-Seite in `frontend/portal/AGENTS.md`.
 - **NICHT in dieser Stufe:** Schalten/Sollwert + Freigabe-Test (Stufe 4) · weitere Anbindungs-Arten
