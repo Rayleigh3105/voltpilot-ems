@@ -163,6 +163,7 @@ class ComponentAdoptionApiTest {
         UUID site = createSite(customer, "Übernahme-Anlage");
         try {
             UUID device = claim(customer, site, "edge-uebernahme-1");
+            saveBattery(customer, site);
             // Der Bestandsfall: die Migration setzt jede beim Deploy existierende
             // Anlage auf box. Eine im Test frisch angelegte ist portal, also wird
             // sie hier auf den Bestandszustand gesetzt.
@@ -186,7 +187,10 @@ class ComponentAdoptionApiTest {
             // 4 · Jede gemeldete Komponente hat ihre Anbindung - der
             //     Wechselrichter füllt die komponierte battery-hybrid-Zeile,
             //     die Erzeuger sind an ihre Quellen-Kennung gepinnt.
-            JsonNode inverter = byRole(list, "inverter");
+            // Die Anbindung landet in der von der Plattform KOMPONIERTEN Zeile
+            // (Rolle im v1-Vokabular `battery-hybrid`), nicht in einer zweiten -
+            // die Topologie summiert je Rolle, zwei Zeilen wären Doppelzählung.
+            JsonNode inverter = byRole(list, "battery-hybrid");
             assertThat(inverter.get("communication").asText()).isEqualTo("solarman_v5");
             assertThat(inverter.get("connection").get("serial").asText())
                     .isEqualTo("2985159064");
@@ -219,10 +223,10 @@ class ComponentAdoptionApiTest {
             // 6 · Und die Übernahme ist idempotent: ein zweiter Lauf sieht die
             //     Anlage bereits portal-verwaltet und fasst nichts an.
             int versionVorher = byRole(getJson("/api/v1/sites/" + site + "/components", customer),
-                    "inverter").get("definitionVersion").asInt();
+                    "battery-hybrid").get("definitionVersion").asInt();
             runner.run();
             assertThat(byRole(getJson("/api/v1/sites/" + site + "/components", customer),
-                    "inverter").get("definitionVersion").asInt())
+                    "battery-hybrid").get("definitionVersion").asInt())
                     .as("ein zweiter Lauf schreibt keine weitere Fassung")
                     .isEqualTo(versionVorher);
         } finally {
@@ -236,6 +240,7 @@ class ComponentAdoptionApiTest {
         UUID site = createSite(customer, "Alte-Box-Anlage");
         try {
             UUID device = claim(customer, site, "edge-uebernahme-2");
+            saveBattery(customer, site);
             setAuthority(site, ComponentAuthority.BOX);
 
             // Genau die Form eines Stands VOR dieser Stufe: Marke und Modell,
@@ -269,6 +274,7 @@ class ComponentAdoptionApiTest {
         UUID site = createSite(customer, "Halb-gemeldete-Anlage");
         try {
             UUID device = claim(customer, site, "edge-uebernahme-3");
+            saveBattery(customer, site);
             setAuthority(site, ComponentAuthority.BOX);
 
             // Wechselrichter vollständig, ein Erzeuger ohne Verbindung.
@@ -306,6 +312,7 @@ class ComponentAdoptionApiTest {
         UUID site = createSite(customer, "Rückweg-Anlage");
         try {
             UUID device = claim(customer, site, "edge-uebernahme-4");
+            saveBattery(customer, site);
             setAuthority(site, ComponentAuthority.BOX);
             heartbeat(site, device, fullReport());
             assertThat(adoptAsTenant(site).adopted()).isTrue();
@@ -326,7 +333,7 @@ class ComponentAdoptionApiTest {
 
             // Die Definitionen bleiben stehen - sie sind der Beleg, WAS
             // übernommen wurde, und der Weg zurück nach vorn.
-            assertThat(byRole(list, "inverter").get("connection").get("serial").asText())
+            assertThat(byRole(list, "battery-hybrid").get("connection").get("serial").asText())
                     .isEqualTo("2985159064");
 
             // Und der Push trägt das Autoritäts-Feld nicht mehr: der Applier auf
@@ -338,6 +345,45 @@ class ComponentAdoptionApiTest {
                     url("/api/v1/admin/sites/" + site + "/v2-entities/revert-to-device"),
                     HttpMethod.POST, new HttpEntity<>(null, bearer(customer)), String.class)
                     .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Ohne Speicher-Stammsatz gibt es keine komponierte {@code battery-hybrid}-
+     * Zeile, in die die Anbindung des Wechselrichters gehört.
+     *
+     * <p>Die Übernahme ERFINDET dann keine - sie lehnt ab und nennt den Weg,
+     * wörtlich wie der Anlege-Weg der Stufe 1. Eine selbst gebaute Zeile wäre
+     * eine zweite Wahrheit neben der, die der Rest des Systems aus dem
+     * Speicher-Asset komponiert (und die Steuer-Zeile der Anlage ist).
+     */
+    @Test
+    void aPlantWithoutBatteryMasterDataIsRefusedInsteadOfInventingARow() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Anlage-ohne-Speicher");
+        try {
+            UUID device = claim(customer, site, "edge-uebernahme-5");
+            // ABSICHTLICH KEIN saveBattery.
+            setAuthority(site, ComponentAuthority.BOX);
+            heartbeat(site, device, fullReport());
+
+            ComponentAdoptionRunner.RunSummary summary = runner.run();
+            assertThat(summary.failed())
+                    .as("ein fehlender Stammsatz ist ein WARTEN, kein Fehlschlag")
+                    .isZero();
+
+            JsonNode list = getJson("/api/v1/sites/" + site + "/components", customer);
+            assertThat(list.get("componentAuthority").asText()).isEqualTo(ComponentAuthority.BOX);
+            for (JsonNode row : list.get("components")) {
+                assertThat(row.path("role").asText())
+                        .as("es wurde keine Wechselrichter-Zeile erfunden")
+                        .isNotEqualTo("inverter");
+                assertThat(row.has("connection"))
+                        .as("alles oder nichts - auch die Erzeuger bleiben unberührt")
+                        .isFalse();
+            }
         } finally {
             deleteSite(site);
         }
@@ -446,6 +492,24 @@ class ComponentAdoptionApiTest {
             }
         }
         return out;
+    }
+
+    /**
+     * Die Eckdaten des Speichers - wie sie eine echte Batterie-Anlage hat.
+     *
+     * <p>Sie sind hier PFLICHT, nicht Beiwerk: aus dem Speicher-Stammsatz
+     * komponiert die Plattform die {@code battery-hybrid}-Zeile, in die die
+     * Übernahme die Anbindung des Wechselrichters schreibt. Ohne sie lehnt die
+     * Übernahme ab - genau wie der Anlege-Weg der Stufe 1 (siehe
+     * {@code aPlantWithoutBatteryMasterDataIsRefusedInsteadOfInventingARow}).
+     * Der Aufruf löst zugleich die Auto-Komposition aus (#385).
+     */
+    private void saveBattery(String customerToken, UUID siteId) {
+        ResponseEntity<String> res = rest.exchange(url("/api/v1/sites/" + siteId + "/battery"),
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("capacityKwh", 30, "maxChargeKw", 15,
+                        "maxDischargeKw", 15), bearer(customerToken)), String.class);
+        assertThat(res.getStatusCode()).as("Speicher speichern").isEqualTo(HttpStatus.OK);
     }
 
     private UUID claim(String customerToken, UUID siteId, String ref) {

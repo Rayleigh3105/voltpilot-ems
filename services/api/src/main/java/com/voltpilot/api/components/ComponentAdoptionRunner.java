@@ -144,6 +144,13 @@ public class ComponentAdoptionRunner {
                 } else {
                     waiting++;
                 }
+            } catch (ComponentAdoptionService.NotAdoptableException e) {
+                // Eine Bedingung, die erst beim Schreiben feststeht (z. B. der
+                // fehlende Speicher-Stammsatz). Kein Fehlschlag, sondern ein
+                // WARTEN - die Anlage ist unverändert box-verwaltet.
+                waiting++;
+                log.info("Bestands-Übernahme: Anlage {} (\"{}\") wartet noch: {}", c.siteId(),
+                        c.name(), e.getMessage());
             } catch (RuntimeException e) {
                 failed++;
                 log.warn("Bestands-Übernahme: Anlage {} bleibt am Gerät verwaltet: {}", c.siteId(),

@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.ComponentAdoption;
 import com.voltpilot.api.components.ComponentAdoptionService;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
@@ -233,7 +234,15 @@ public class AdminEntityRegistryController {
     @PostMapping("/adopt-from-device")
     public ComponentAdoptionService.Outcome adoptFromDevice(@PathVariable UUID siteId) {
         requireSite(siteId);
-        return adoption.adoptIfComplete(siteId);
+        try {
+            return adoption.adoptIfComplete(siteId);
+        } catch (ComponentAdoptionService.NotAdoptableException e) {
+            // Die Ausnahme hat die Übernahme zurückgerollt (alles oder nichts);
+            // hier wird sie zu genau dem ehrlichen Ausgang, den auch der
+            // getaktete Lauf protokolliert.
+            return new ComponentAdoptionService.Outcome(
+                    ComponentAdoption.Verdict.INCOMPLETE_REPORT, e.getMessage(), 0);
+        }
     }
 
     /**

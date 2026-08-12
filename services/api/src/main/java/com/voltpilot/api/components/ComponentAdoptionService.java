@@ -253,13 +253,30 @@ public class ComponentAdoptionService {
         }
     }
 
+    /**
+     * ⚠ Die ROLLE eines {@code measurement_point} folgt dem v1-Vokabular
+     * ({@code battery-hybrid}/{@code pv-generation}/{@code grid-meter}), NICHT
+     * dem des Assistenten (dort heißt der Wechselrichter {@code inverter}).
+     *
+     * <p>Nur die eine Stelle unterscheidet sich, und genau sie ist wichtig: die
+     * DB-Bedingung {@code control = FALSE OR role = 'battery-hybrid'} und jede
+     * Rollen-Abfrage des Bestands lesen dieses Vokabular. Die FASSUNG in
+     * {@code component_definition} behält dagegen die Assistenten-Rolle - dort
+     * schreibt der Anlege-Weg sie ebenso, und beide Wege müssen dieselbe
+     * Historie erzeugen.
+     */
+    private static String pointRole(String entityType, String assistantRole) {
+        return "battery-hybrid".equals(entityType) ? "battery-hybrid" : assistantRole;
+    }
+
     /** Die Zeile, in die diese übernommene Komponente gehört. */
     private UUID resolvePoint(UUID siteId, UUID tenantId, ComponentAdoption.Item item,
             String label) {
+        String role = pointRole(item.entityType(), item.role());
         if (item.edgeSourceId() != null) {
             EntityRow pinned = entityRepo.pointByEdgeSource(siteId, item.edgeSourceId());
             if (pinned != null) {
-                entityRepo.updateAdoptedPoint(pinned.id(), item.role(), label, item.capacityKwp(),
+                entityRepo.updateAdoptedPoint(pinned.id(), role, label, item.capacityKwp(),
                         item.registryUnitId());
                 ensureEntityConfig(pinned, item);
                 return pinned.id();
@@ -272,7 +289,16 @@ public class ComponentAdoptionService {
             }
             return composed;
         }
-        UUID created = entityRepo.createAdoptedPoint(tenantId, siteId, item.role(), label, false,
+        if (ComponentService.ROLE_INVERTER.equals(item.role())) {
+            // Ohne komponierte battery-hybrid-Zeile fehlt der Anlage der
+            // Speicher-Stammsatz, aus dem sie entsteht - genau wie der
+            // Anlege-Weg lehnt die Übernahme das ab, statt eine Zeile zu
+            // erfinden, die der Rest des Systems aus dem Asset komponiert.
+            // ALLES ODER NICHTS: die Ausnahme rollt die ganze Übernahme zurück.
+            throw new NotAdoptableException("Für diese Anlage ist noch kein Wechselrichter "
+                    + "angelegt. Bitte tragen Sie zuerst die Eckdaten des Speichers ein.");
+        }
+        UUID created = entityRepo.createAdoptedPoint(tenantId, siteId, role, label, false,
                 item.template().brand(), item.capacityKwp(), item.registryUnitId(),
                 item.edgeSourceId());
         // Eine neu entstandene Erzeuger-Zeile bringt ihre kWp in die
@@ -318,6 +344,18 @@ public class ComponentAdoptionService {
         entityRepo.setEntityConfig(row.id(), item.entityType(),
                 ComponentDefaults.capabilities(mapper, item.role()),
                 ComponentDefaults.guards(mapper, item.role(), item.capacityKwp()));
+    }
+
+    /**
+     * Die Anlage lässt sich (noch) nicht übernehmen, und das steht erst beim
+     * SCHREIBEN fest (die reine Regel kennt die Datenbank nicht). Sie rollt die
+     * Transaktion zurück - alles oder nichts - und wird vom Aufrufer in einen
+     * ehrlichen Ausgang übersetzt.
+     */
+    public static class NotAdoptableException extends RuntimeException {
+        public NotAdoptableException(String reason) {
+            super(reason);
+        }
     }
 
     /**
