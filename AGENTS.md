@@ -625,7 +625,7 @@ Alles ist ADDITIV — eine Anlage, die den neuen Weg nicht geht, verhält sich z
   Felder, die `sources.Source`/`inverter.Selection` speichern. **Ein Eintrag OHNE `connection` heißt „diese Box
   meldet noch keine Verbindungen", NIE „dieses Gerät hat keine"** — daran hängt, dass eine Bestandsanlage mit
   alter Software box-verwaltet BLEIBT statt aus einem halben Ist übernommen zu werden. Gespeichert in
-  `entity_observed_state` (Migration `V20260818000000`, additive Spalten `edge_communication`/`edge_family`/
+  `entity_observed_state` (Migration `V20260819000000`, additive Spalten `edge_communication`/`edge_family`/
   `edge_connection`/`edge_interval_s`/`edge_capacity_kwp`/`edge_registry_unit_id`; kein Backfill — die Tabelle
   wird je Herzschlag ersetzt und heilt sich selbst).
 - **Die Regeln sind REIN** (`components/ComponentAdoption`, Docker-frei geprüft — das

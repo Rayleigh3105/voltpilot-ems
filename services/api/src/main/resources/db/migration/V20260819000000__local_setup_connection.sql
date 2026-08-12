@@ -1,5 +1,5 @@
 -- =============================================================================
--- V20260818000000 - die VERBINDUNGSFELDER des gemeldeten Ist + der Beleg der
+-- V20260819000000 - die VERBINDUNGSFELDER des gemeldeten Ist + der Beleg der
 -- Bestands-Übernahme (Einheitsmodell Stufe 2, Konzept vp-komponenten-einheit-h2
 -- §4.2). ADDITIV: ohne diese Spalten verhält sich alles zeichengleich wie vorher.
 -- -----------------------------------------------------------------------------
