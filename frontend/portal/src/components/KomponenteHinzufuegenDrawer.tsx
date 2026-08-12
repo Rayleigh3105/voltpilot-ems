@@ -3,7 +3,13 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, type ComponentTemplate, type SiteComponents } from '../api';
+import {
+  api,
+  ApiError,
+  type ComponentTemplate,
+  type SiteComponents,
+  type SiteComponentTemplate,
+} from '../api';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 // Der Assistent bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
 // auf den Import des Wirts zu verlassen liefert einem zweiten Wirt einen
@@ -50,15 +56,22 @@ export function KomponenteHinzufuegenDrawer({
   siteId,
   onClose,
   onSaved,
+  vorlage,
 }: {
   siteId: string;
   onClose: () => void;
   onSaved: (result: SiteComponents) => void;
+  /**
+   * Einheitsmodell Stufe 6: aus einer EIGENEN Vorlage ein Gerät machen. Mit
+   * ihr startet der Assistent direkt in der Selbstbau-Tür, vorbefüllt - die
+   * Tür-Auswahl wäre dann eine Frage, die der Kunde schon beantwortet hat.
+   */
+  vorlage?: SiteComponentTemplate | null;
 }) {
   const [templates, setTemplates] = useState<ComponentTemplate[] | null>(null);
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
-  const [schritt, setSchritt] = useState<1 | 2 | 3 | 4>(1);
-  const [tuer, setTuer] = useState<TuerId | null>(null);
+  const [schritt, setSchritt] = useState<1 | 2 | 3 | 4>(vorlage ? 2 : 1);
+  const [tuer, setTuer] = useState<TuerId | null>(vorlage ? 'selbstbau' : null);
   const [brand, setBrand] = useState<string | null>(null);
   const [template, setTemplate] = useState<ComponentTemplate | null>(null);
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>({});
@@ -191,7 +204,8 @@ export function KomponenteHinzufuegenDrawer({
             {tuer === 'selbstbau' && schritt > 1 ? (
               <SelbstbauAssistent
                 siteId={siteId}
-                onBack={() => setSchritt(1)}
+                vorlage={vorlage}
+                onBack={() => (vorlage ? onClose() : setSchritt(1))}
                 onSaved={onSaved}
                 onDone={onClose}
               />

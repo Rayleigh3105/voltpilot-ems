@@ -7,6 +7,7 @@ import {
   type Device,
   type Site,
   type SiteComponents,
+  type SiteComponentTemplate,
   type SiteEntities,
   type SiteSource,
   type SiteTopology,
@@ -44,6 +45,7 @@ import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
 import { anlageRoute, hashForRoute } from '../nav';
 import { EntitaetenSection } from './EntitaetenSection';
+import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
 import {
   ablehnungText,
@@ -118,6 +120,9 @@ export function AnlagenModellSection({
    */
   const [components, setComponents] = useState<SiteComponents | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Einheitsmodell Stufe 6: aus einer EIGENEN Vorlage ein Gerät machen - der
+  // Assistent öffnet dann direkt in der Selbstbau-Tür, vorbefüllt.
+  const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -367,6 +372,14 @@ export function AnlagenModellSection({
                   Noch keine Komponente — ordnen Sie ein gemeldetes Gerät zu.
                 </p>
               )}
+              {/*
+                Einheitsmodell Stufe 6: die EIGENEN Vorlagen dieser Anlage. Sie
+                wohnen bei den Komponenten, weil sie aus einer entstehen und zu
+                einer führen - und nur dort, wo das Portal die Geräte verwaltet.
+              */}
+              {portalManaged && (
+                <EigeneVorlagenPanel siteId={site.id} onAnlegen={setVorlage} />
+              )}
             </section>
 
             {/* 4 · Die Fußzeile: Schutz-Satz + wo die Komponenten wieder auftauchen. */}
@@ -418,10 +431,14 @@ export function AnlagenModellSection({
         />
       )}
 
-      {addOpen && (
+      {(addOpen || vorlage) && (
         <KomponenteHinzufuegenDrawer
           siteId={site.id}
-          onClose={() => setAddOpen(false)}
+          vorlage={vorlage}
+          onClose={() => {
+            setAddOpen(false);
+            setVorlage(null);
+          }}
           onSaved={(result) => {
             setComponents(result);
             reload();

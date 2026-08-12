@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, type SiteComponents } from '../api';
+import { api, ApiError, type SiteComponents, type SiteComponentTemplate } from '../api';
+import { prefill } from '../eigeneVorlagen';
 import {
   ADDRESS_HELP,
   BILANZ_HINWEIS,
@@ -48,20 +49,38 @@ export function SelbstbauAssistent({
   onBack,
   onSaved,
   onDone,
+  vorlage,
 }: {
   siteId: string;
   onBack: () => void;
   onSaved: (result: SiteComponents) => void;
   onDone: () => void;
+  /**
+   * Einheitsmodell Stufe 6: eine EIGENE Vorlage befüllt Anschluss und
+   * Messwerte vor.
+   *
+   * ⚠ Die ADRESSE bleibt leer - eine Vorlage beschreibt einen Gerätetyp, kein
+   * Exemplar; sie zu raten ließe das zweite Gerät auf das erste zeigen. Und
+   * weil die Adresse fehlt, ist der Verbindungstest-Beleg per Konstruktion
+   * noch nicht erbracht: der Kunde liest ohnehin zuerst.
+   */
+  vorlage?: SiteComponentTemplate | null;
 }) {
+  const start = vorlage ? prefill(vorlage) : null;
   const [schritt, setSchritt] = useState<1 | 2 | 3 | 4>(1);
-  const [verbindung, setVerbindung] = useState<VerbindungForm>(neueVerbindung());
-  const [zeilen, setZeilen] = useState<MesswertZeile[]>([neueZeile()]);
+  const [verbindung, setVerbindung] = useState<VerbindungForm>(
+    start ? { host: '', port: start.port, unitId: start.unitId } : neueVerbindung(),
+  );
+  const [zeilen, setZeilen] = useState<MesswertZeile[]>(
+    start && start.zeilen.length
+      ? start.zeilen.map((z) => ({ ...neueZeile(), ...z }))
+      : [neueZeile()],
+  );
   const [ergebnisse, setErgebnisse] = useState<Record<string, LeseErgebnis>>({});
   const [laufend, setLaufend] = useState<string | null>(null);
   const [beleg, setBeleg] = useState(false);
   const [rolle, setRolle] = useState<SelbstbauRolle>('sensor');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(start?.label ?? '');
   const [speichern, setSpeichern] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [fertig, setFertig] = useState(false);
