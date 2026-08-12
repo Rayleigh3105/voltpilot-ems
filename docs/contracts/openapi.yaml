@@ -1702,9 +1702,9 @@ paths:
               type: object
               required: [capacityKwh, maxChargeKw, maxDischargeKw]
               properties:
-                capacityKwh: { type: number, description: Usable battery capacity (kWh), > 0. }
-                maxChargeKw: { type: number, description: Max charge power (kW), > 0. }
-                maxDischargeKw: { type: number, description: Max discharge power (kW), > 0. }
+                capacityKwh: { type: number, description: "Usable battery capacity (kWh), > 0." }
+                maxChargeKw: { type: number, description: "Max charge power (kW), > 0." }
+                maxDischargeKw: { type: number, description: "Max discharge power (kW), > 0." }
                 roundtripEfficiencyPct:
                   type: number
                   nullable: true
@@ -3510,6 +3510,31 @@ paths:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       - { name: templateRef, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [components]
+      summary: Rename a private template (Einheitsmodell Stufe 6).
+      description: >
+        FULL representation of name and note. A blank name is refused (a
+        nameless template cannot be told apart in the picker); an ABSENT note
+        CLEARS it - the semantics of the component alias. No new version is
+        created: a template IS its read plan, and a name changes nothing about
+        it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteComponentTemplateRequest" }
+      responses:
+        "200":
+          description: The plant's private templates after the rename.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteComponentTemplate" }
+        "400": { description: Blank name. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or template not found for this tenant. }
     delete:
       tags: [components]
       summary: Remove a private template. Devices created from it stay.
@@ -3523,6 +3548,139 @@ paths:
                 items: { $ref: "#/components/schemas/SiteComponentTemplate" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or template not found for this tenant. }
+  /api/v1/admin/component-templates:
+    get:
+      tags: [admin]
+      summary: EVERY template version, incl. the withdrawn ones (Stufe 6).
+      description: >
+        Einheitsmodell Stufe 6, platform-admin only. Unlike the customer-facing
+        `/api/v1/component-templates` (newest SELECTABLE version per key) this
+        answers the operator question: which versions exist, who entered them,
+        and how many components of the fleet stand on that key
+        (`usedByComponents`). Read through the BYPASSRLS admin role - the
+        register is global (no tenant_id, no RLS), the endpoint is the fence.
+      responses:
+        "200":
+          description: All versions, sorted by brand/model, newest version first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminComponentTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a Portal-Admin. }
+    post:
+      tags: [admin]
+      summary: Enter a NEW checked template (version 1) - as DATA, not a release.
+      description: >
+        The key is DERIVED from brand + model (`certified:<brand>:<model>`) and
+        deliberately NOT a request field - it is opaque by contract. `channels`
+        and `writes` are absent = "this template does not explain it here"; an
+        EMPTY array is REFUSED instead of silently nulled (it would claim
+        "delivers no measurements" / "cannot switch anything"). A template that
+        carries a write definition must be `certified`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveComponentTemplateRequest" }
+      responses:
+        "201":
+          description: The stored version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminComponentTemplate" }
+        "400": { description: Rejected, with a German reason naming every fault. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a Portal-Admin. }
+        "409": { description: The key already exists - add a version instead. }
+  /api/v1/admin/component-templates/{templateRef}/versions:
+    parameters:
+      - { name: templateRef, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      summary: Add a new VERSION of an existing checked template.
+      description: >
+        A version is never overwritten - "what ran last week" must stay
+        answerable. Brand and model belong to the key and cannot change (409).
+        BUILT-IN templates are refused (409): they belong to the startup mirror
+        of the Go catalog and a hand edit would be gone at the next restart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveComponentTemplateRequest" }
+      responses:
+        "201":
+          description: The new version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminComponentTemplate" }
+        "400": { description: Rejected, with a German reason. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a Portal-Admin. }
+        "404": { description: Unknown template. }
+        "409": { description: Built-in, or brand/model changed. }
+  /api/v1/admin/component-templates/{templateRef}/versions/{version}/withdraw:
+    parameters:
+      - { name: templateRef, in: path, required: true, schema: { type: string } }
+      - { name: version, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [admin]
+      summary: Take a version out of the assistant's choice (NOT a delete).
+      description: >
+        Withdrawing NEVER breaks a component: the version snapshot on
+        `measurement_point` carries no foreign key, so a running component keeps
+        its version and history. Only the CHOICE changes - and because the
+        filter sits INSIDE the version pick, withdrawing version 2 falls BACK to
+        version 1. Reversible via `/restore`. There is deliberately no delete.
+      responses:
+        "200":
+          description: The withdrawn version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminComponentTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a Portal-Admin. }
+        "404": { description: Unknown version. }
+        "409": { description: Built-in templates are not editable here. }
+  /api/v1/admin/component-templates/{templateRef}/versions/{version}/restore:
+    parameters:
+      - { name: templateRef, in: path, required: true, schema: { type: string } }
+      - { name: version, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [admin]
+      summary: Put a withdrawn version back into the choice.
+      responses:
+        "200":
+          description: The restored version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminComponentTemplate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a Portal-Admin. }
+        "404": { description: Unknown version. }
+        "409": { description: Built-in templates are not editable here. }
+  /api/v1/admin/component-fleet:
+    get:
+      tags: [admin]
+      summary: The component world of the WHOLE fleet, one row per plant (Stufe 6).
+      description: >
+        Einheitsmodell Stufe 6, platform-admin only, READ-ONLY - it creates no
+        new write path. It answers the three operating questions that were only
+        answerable per plant before: where devices are maintained
+        (`componentAuthority`), where the components come from (`sources`), and
+        where Soll differs from Ist (`syncStatus`, the SAME derivation the
+        customer surface uses). Where the box reported nothing the field is
+        ABSENT - "unknown", never 0 and never "not arrived".
+      responses:
+        "200":
+          description: One row per plant across every tenant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminComponentFleet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a Portal-Admin. }
   /api/v1/flow-catalog:
     get:
       tags: [flows]
@@ -4815,6 +4973,126 @@ components:
         channels: { type: array, items: { $ref: "#/components/schemas/SelfBuildChannel" } }
         note: { type: string }
         createdAt: { type: string, format: date-time }
+    SiteComponentTemplateRequest:
+      type: object
+      description: >
+        Name and note of a PRIVATE template (Einheitsmodell Stufe 6). Both
+        optional on duplicate (the derived "... (Vorlage)" fills in); the rename
+        route requires a non-blank name.
+      properties:
+        label: { type: string, maxLength: 200 }
+        note: { type: string, maxLength: 200 }
+    SaveComponentTemplateRequest:
+      type: object
+      description: >
+        A checked template VERSION (Einheitsmodell Stufe 6). There is
+        deliberately NO templateRef field - the key is derived from brand +
+        model and is opaque by contract.
+      required: [brand, brandLabel, model, modelLabel, communication, transportSchema, certificationStatus]
+      properties:
+        brand: { type: string, maxLength: 64, pattern: "^[a-z][a-z0-9_]{0,63}$" }
+        brandLabel: { type: string, maxLength: 120 }
+        model: { type: string, maxLength: 64, pattern: "^[a-z][a-z0-9_]{0,63}$" }
+        modelLabel: { type: string, maxLength: 120 }
+        family: { type: string, maxLength: 64, description: "Decode-profile reference; absent for a template without one." }
+        familyLabel: { type: string, maxLength: 120 }
+        communication:
+          type: string
+          enum: [modbus_tcp, solarman_v5, fronius_solar_api, fronius_sunspec, goe_http_api, shelly_http]
+        communicationLabel: { type: string, maxLength: 160 }
+        transportSchema:
+          type: array
+          minItems: 1
+          description: "The connection form fields {key,label,type,required,default,help,options}."
+          items: { type: object, additionalProperties: true }
+        channels:
+          type: array
+          description: >
+            ABSENT = "this template does not explain it here". An EMPTY array is
+            REFUSED - it would claim "delivers no measurements".
+          items: { type: object, additionalProperties: true }
+        writes:
+          type: array
+          description: >
+            ABSENT = not explained here; an EMPTY array is REFUSED. Every entry
+            needs its `safe_value` (what is written on silence or a revocation)
+            and, per kind, the constants (`on_off`) or the clamp (`setpoint`).
+            A template with writes must be `certified`.
+          items: { type: object, additionalProperties: true }
+        ratedKw: { type: number, minimum: 0, exclusiveMinimum: true, description: "Absent = unknown. Never 0." }
+        controlTier: { type: integer, minimum: 0, maximum: 3 }
+        certificationStatus:
+          type: string
+          enum: [certified, in_certification, not_certified]
+          description: >
+            `builtin` is deliberately NOT settable - that word says "ships with
+            the edge software" and a hand-entered template never will.
+        certificationNote: { type: string, maxLength: 500 }
+        note: { type: string, maxLength: 500 }
+    AdminComponentTemplate:
+      allOf:
+        - $ref: "#/components/schemas/ComponentTemplate"
+        - type: object
+          description: >
+            The operator view of ONE template version. `withdrawnAt == null`
+            means "selectable"; a withdrawn version is NOT deleted - the
+            components using it run on unchanged.
+          properties:
+            createdAt: { type: string, format: date-time }
+            createdBy: { type: string }
+            withdrawnAt: { type: string, format: date-time, nullable: true }
+            withdrawnBy: { type: string, nullable: true }
+            usedByComponents:
+              type: integer
+              description: How many components of the whole fleet stand on this KEY.
+    AdminComponentFleet:
+      type: object
+      required: [sites]
+      properties:
+        sites:
+          type: array
+          items:
+            type: object
+            required: [siteId, siteName, tenantId, tenantName, componentAuthority, componentCount, syncStatus]
+            properties:
+              siteId: { type: string, format: uuid }
+              siteName: { type: string }
+              tenantId: { type: string, format: uuid }
+              tenantName: { type: string }
+              componentAuthority: { type: string, enum: [box, portal] }
+              componentsAdoptedAt:
+                type: string
+                format: date-time
+                description: The RECEIPT of an automatic adoption - absent is not the same as box-managed.
+              componentsAdoptedBy: { type: string }
+              componentCount: { type: integer }
+              sources:
+                type: object
+                description: "Origin of the connections. `unknown` = the row predates templates - no invented origin."
+                properties:
+                  builtin: { type: integer }
+                  certified: { type: integer }
+                  custom: { type: integer }
+                  composed: { type: integer }
+                  unknown: { type: integer }
+              privateTemplates: { type: integer }
+              syncStatus: { type: string, enum: [in_sync, pending, unreported] }
+              refusedRevision: { type: string }
+              refusedReason: { type: string }
+              appliedAt: { type: string, format: date-time }
+              write:
+                type: object
+                description: The three release levels of the concept in ONE place.
+                properties:
+                  controlPoints: { type: integer }
+                  platformActivated: { type: integer }
+                  templateWrites: { type: integer }
+                  certSource:
+                    type: string
+                    enum: [env, device, platform]
+                    description: What the DEVICE reports. Absent = unknown, NEVER "not certified".
+                  platformCertVerdict: { type: string }
+                  platformCertModel: { type: string }
     SiteComponents:
       type: object
       description: >

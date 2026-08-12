@@ -296,6 +296,33 @@ public class SelfBuildComponentService {
         return templates.forSite(siteId);
     }
 
+    /**
+     * Benennt eine private Vorlage um (Einheitsmodell Stufe 6).
+     *
+     * <p>Der erste Name entsteht beim Duplizieren automatisch („… (Vorlage)");
+     * ohne diesen Weg müsste ein Kunde die Vorlage löschen und neu anlegen, um
+     * sie „Wärmepumpe Keller" zu nennen - und verlöre dabei nichts als den
+     * Namen, was den Umweg besonders sinnlos macht.
+     *
+     * <p>Ein leerer Name wird abgelehnt: eine namenlose Vorlage wäre in der
+     * Auswahl nicht unterscheidbar. Eine leere Notiz LÖSCHT die Notiz.
+     */
+    @Transactional
+    public List<SiteComponentTemplateDto> renameTemplate(UUID siteId, String templateRef,
+            String label, String note) {
+        requireSite(siteId);
+        String name = label == null ? "" : label.trim();
+        if (name.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Bitte geben Sie der Vorlage einen Namen.");
+        }
+        String text = note == null || note.isBlank() ? null : note.trim();
+        if (templates.rename(siteId, templateRef, name, text) == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Vorlage nicht gefunden.");
+        }
+        return templates.forSite(siteId);
+    }
+
     /** Entfernt eine private Vorlage. Geräte, die daraus entstanden, bleiben. */
     @Transactional
     public List<SiteComponentTemplateDto> deleteTemplate(UUID siteId, String templateRef) {

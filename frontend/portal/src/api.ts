@@ -2236,6 +2236,27 @@ export const api = {
       `/api/v1/sites/${siteId}/components/custom/${entityId}/duplicate`,
       { method: 'POST', body: JSON.stringify({ label }) },
     ),
+  /**
+   * Eine eigene Vorlage umbenennen (Einheitsmodell Stufe 6). VOLLE Darstellung
+   * von Name und Notiz: eine ausgelassene Notiz LÖSCHT sie, ein leerer Name
+   * wird abgelehnt. Es entsteht KEINE neue Fassung - eine Vorlage IST ihr
+   * Leseplan, und ein Name ändert daran nichts.
+   */
+  renameSiteComponentTemplate: (
+    siteId: string,
+    templateRef: string,
+    body: { label: string; note?: string | null },
+  ) =>
+    request<SiteComponentTemplate[]>(
+      `/api/v1/sites/${siteId}/component-templates/${encodeURIComponent(templateRef)}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
+  /** Eine eigene Vorlage entfernen. Geräte, die daraus entstanden, bleiben. */
+  deleteSiteComponentTemplate: (siteId: string, templateRef: string) =>
+    request<SiteComponentTemplate[]>(
+      `/api/v1/sites/${siteId}/component-templates/${encodeURIComponent(templateRef)}`,
+      { method: 'DELETE' },
+    ),
   /** AE1 topology read-model (adaptive energy flow + tiles). Empty for un-migrated sites. */
   topology: (siteId: string) => request<SiteTopology>(`/api/v1/sites/${siteId}/topology`),
   /**

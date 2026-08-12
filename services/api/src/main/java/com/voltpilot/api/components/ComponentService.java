@@ -421,8 +421,15 @@ public class ComponentService {
      *   <li>{@code pending} - es liegt eine neuere Fassung an, die die Box noch
      *       nicht angewandt hat.</li>
      * </ul>
+     *
+     * <p><b>⚠ Öffentlich, weil die Flotten-Sicht der Stufe 6 sie MITBENUTZT</b>
+     * ({@code AdminComponentFleetController}). Dieselbe Frage darf nicht zwei
+     * Antworten haben - eine zweite Ableitung im Admin-Aggregat wäre genau die
+     * Doppeldeutigkeit, gegen die das ganze Einheitsmodell gebaut ist (das
+     * {@code worstStatus}-Muster, nur richtig herum: EINE Stelle statt zweier
+     * wortgleicher Kopien).
      */
-    static String syncStatus(String soll, String applied) {
+    public static String syncStatus(String soll, String applied) {
         if (applied == null || applied.isBlank()) {
             return "unreported";
         }

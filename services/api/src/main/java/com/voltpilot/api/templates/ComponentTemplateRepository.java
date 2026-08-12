@@ -66,11 +66,19 @@ public class ComponentTemplateRepository {
      * Vorlagen kann ich gerade wählen", nicht „welche Fassungen gab es je".
      * {@code DISTINCT ON} ist dafür das Haus-Idiom (die Splice-Abfragen der
      * Historie/Erlöse nutzen es genauso).
+     *
+     * <p><b>⚠ Zurückgezogene Fassungen fallen VOR der Auswahl heraus</b>
+     * (Einheitsmodell Stufe 6, {@code V20260820000000}), nicht danach. Nur so
+     * fällt eine zurückgezogene Fassung 2 auf Fassung 1 ZURÜCK - genau die
+     * Handlung, die man nach einem Fehler braucht. Stünde der Filter außen,
+     * wäre die Vorlage nach einer Rücknahme ganz verschwunden, obwohl es eine
+     * gültige ältere Fassung gibt.
      */
     private static final String SELECT_NEWEST =
             "SELECT " + READ_COLUMNS + " FROM ("
                     + "  SELECT DISTINCT ON (template_ref) " + READ_COLUMNS
-                    + "  FROM component_template WHERE kind = ANY (?) "
+                    + "  FROM component_template "
+                    + "  WHERE kind = ANY (?) AND withdrawn_at IS NULL "
                     + "  ORDER BY template_ref, version DESC"
                     + ") t ";
 

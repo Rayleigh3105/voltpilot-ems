@@ -1,0 +1,120 @@
+/*
+ * „Meine Vorlagen" (Einheitsmodell Stufe 6) - komponenten-lokal, damit
+ * `index.css` unangetastet bleibt (das Haus-Muster seit den Regel-Karten).
+ * Das Bauteil importiert diese Datei SELBST: wer sich auf den Import eines
+ * Geschwisters verlässt, rendert im zweiten Wirt nackte Knöpfe.
+ */
+
+.vp-eigenevorlagen {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--vp-border);
+}
+
+.vp-eigenevorlagen > header h3 {
+  margin: 0 0 0.15rem;
+  font-size: var(--vp-text-h4, 1rem);
+}
+
+.vp-eigenevorlagen > header p {
+  margin: 0 0 0.75rem;
+}
+
+.vp-ev-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vp-ev-list > li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+}
+
+/* min-width: 0 - sonst sprengt ein langer Name die Zeile aus der Karte. */
+.vp-ev-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.vp-ev-main > span {
+  font-size: var(--vp-text-sm, 0.85rem);
+}
+
+.vp-ev-note {
+  font-style: italic;
+}
+
+.vp-ev-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+/*
+ * Sichtbar 30 px, Trefferfläche >= 44 px über ::before - das `.vp-switch`-
+ * Muster: ein 44-px-KASTEN würde die dicht stehenden Zeilen auseinanderziehen.
+ */
+.vp-ev-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: transparent;
+  color: var(--vp-action);
+  cursor: pointer;
+}
+
+.vp-ev-icon::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+
+.vp-ev-icon:hover {
+  background: var(--vp-surface-2, rgba(0, 0, 0, 0.04));
+}
+
+.vp-ev-del {
+  color: var(--vp-danger-ink, #b3261e);
+}
+
+.vp-ev-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.vp-ev-hint {
+  margin: 0.6rem 0 0;
+  font-size: var(--vp-text-sm, 0.85rem);
+}
+
+@media (max-width: 560px) {
+  .vp-ev-list > li {
+    align-items: flex-start;
+  }
+
+  .vp-ev-actions {
+    width: 100%;
+  }
+}

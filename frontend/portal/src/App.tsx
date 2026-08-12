@@ -99,6 +99,14 @@ const SteuerungsFreigabePage = lazy(() =>
     default: m.SteuerungsFreigabePage,
   })),
 );
+const VorlagenPage = lazy(() =>
+  import('./pages/admin/VorlagenPage').then((m) => ({ default: m.VorlagenPage })),
+);
+const KomponentenFlottePage = lazy(() =>
+  import('./pages/admin/KomponentenFlottePage').then((m) => ({
+    default: m.KomponentenFlottePage,
+  })),
+);
 
 export default function App({
   initialAuth,
@@ -947,6 +955,8 @@ function UnifiedPortal() {
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'geraetetypen' && isAdmin && <GeraetetypenPage />}
           {page === 'steuerungs-freigabe' && isAdmin && <SteuerungsFreigabePage />}
+          {page === 'vorlagen' && isAdmin && <VorlagenPage />}
+          {page === 'komponenten-flotte' && isAdmin && <KomponentenFlottePage />}
           {page === 'flows' && isAdmin && <FlowsPage tenants={tenants} />}
           </LazyBoundary>
         </>

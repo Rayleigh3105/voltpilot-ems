@@ -5553,3 +5553,28 @@ button.vp-tech-card-h.toggle {
   font-size: 0.85rem;
   line-height: 1.5;
 }
+
+/*
+ * Einheitsmodell Stufe 6: die EINE zusätzliche Entscheidung im Folgen-Dialog
+ * („Messpunkt endgültig löschen?"). Sie ersetzt eine zweite native Rückfrage,
+ * deren Folgen in einem `\n\n`-Fließtext standen.
+ */
+.vp-entity-purge {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  font-size: var(--vp-text-sm);
+  cursor: pointer;
+}
+
+.vp-entity-purge input {
+  margin-top: 0.15rem;
+  flex: 0 0 auto;
+}
+
+.vp-entity-purge span {
+  min-width: 0;
+}

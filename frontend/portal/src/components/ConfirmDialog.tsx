@@ -1,3 +1,4 @@
+import type React from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
@@ -30,6 +31,7 @@ export function ConfirmDialog({
   busy,
   onConfirm,
   onCancel,
+  extra,
 }: {
   open: boolean;
   title: string;
@@ -47,6 +49,14 @@ export function ConfirmDialog({
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /**
+   * EINE zusätzliche Entscheidung im selben Dialog (z. B. „auch endgültig
+   * löschen?"). Optional und ohne sie byte-identisch - sie existiert, weil
+   * eine zweite Rückfrage HINTEREINANDER genau das ist, was der Dialog
+   * abschafft: der Nutzer entscheidet dann über Folgen, die er nicht mehr
+   * sieht.
+   */
+  extra?: React.ReactNode;
 }) {
   if (!open) return null;
   const danger = tone === 'danger';
@@ -87,6 +97,7 @@ export function ConfirmDialog({
           </li>
         ))}
       </ul>
+      {extra}
     </Drawer>
   );
 }

@@ -6,6 +6,8 @@ import {
   type Site,
 } from '../api';
 import type { DeviceApply, DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
+import type { AdminVorlage } from '../adminVorlagen';
+import type { FlottenAnlage } from '../adminKomponentenFlotte';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -249,6 +251,30 @@ export interface ControlActivation {
   note: string | null;
 }
 
+/**
+ * Die Eingabe einer geprüften Vorlagen-Fassung. KEIN `templateRef` - der
+ * Schlüssel wird serverseitig aus Marke + Modell abgeleitet und ist opak.
+ */
+export interface SaveComponentTemplateInput {
+  brand: string;
+  brandLabel: string;
+  model: string;
+  modelLabel: string;
+  family?: string | null;
+  familyLabel?: string | null;
+  communication: string;
+  communicationLabel?: string | null;
+  transportSchema: unknown[];
+  /** ABSENT lassen, wenn die Vorlage es nicht erklärt - `[]` lehnt der Server ab. */
+  channels?: unknown[];
+  writes?: unknown[];
+  ratedKw?: number | null;
+  controlTier?: number;
+  certificationStatus: string;
+  certificationNote?: string | null;
+  note?: string | null;
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -482,4 +508,39 @@ export const adminApi = {
    */
   requestApply: (deviceId: string) =>
     request<void>(`/api/v1/admin/devices/${deviceId}/apply`, { method: 'POST' }),
+
+  // ── Einheitsmodell Stufe 6: Vorlagen-Verwaltung + Komponenten-Flotte ──────
+  // Bewusst mandantenlos: das Vorlagen-Register ist global (eine Aussage über
+  // ein PRODUKT), und die Flotten-Sicht spannt über alle Mandanten. Der
+  // X-Tenant-Id-Umschalter gilt hier also nicht - der Zaun ist die Rolle.
+
+  /** ALLE Fassungen aller Vorlagen, inklusive der zurückgezogenen. */
+  listComponentTemplates: () =>
+    request<AdminVorlage[]>('/api/v1/admin/component-templates'),
+
+  /** Eine NEUE geprüfte Vorlage (Fassung 1). Der Schlüssel wird abgeleitet. */
+  createComponentTemplate: (input: SaveComponentTemplateInput) =>
+    request<AdminVorlage>('/api/v1/admin/component-templates', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  /** Eine neue FASSUNG - die alte bleibt abrufbar. */
+  addComponentTemplateVersion: (templateRef: string, input: SaveComponentTemplateInput) =>
+    request<AdminVorlage>(
+      `/api/v1/admin/component-templates/${encodeURIComponent(templateRef)}/versions`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+
+  /** Aus der Auswahl nehmen bzw. wieder freigeben - nie ein Löschen. */
+  setComponentTemplateWithdrawn: (templateRef: string, version: number, withdrawn: boolean) =>
+    request<AdminVorlage>(
+      `/api/v1/admin/component-templates/${encodeURIComponent(templateRef)}/versions/${version}/` +
+        (withdrawn ? 'withdraw' : 'restore'),
+      { method: 'POST' },
+    ),
+
+  /** Die Komponenten-Welt der ganzen Flotte, read-only. */
+  componentFleet: () =>
+    request<{ sites: FlottenAnlage[] }>('/api/v1/admin/component-fleet').then((r) => r.sites),
 };
