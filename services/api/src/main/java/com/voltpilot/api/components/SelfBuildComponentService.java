@@ -17,6 +17,8 @@ import com.voltpilot.api.flows.FlowCompilerException;
 import com.voltpilot.api.flows.FlowDeployment;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.probe.ProbeRequest;
+import com.voltpilot.api.consumers.ConsumerAuditRepository;
+import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
 import com.voltpilot.api.repo.SiteRepository;
@@ -87,6 +89,24 @@ public class SelfBuildComponentService {
      */
     public static final String RECEIPT_REF = "custom:modbus";
 
+    /** Die Anfrage eines Schalt-Tests bzw. seines Abbruchs. */
+    public record SwitchTestRequest(SwitchDefinition.Switch switchDef, Double testValue) {
+    }
+
+    /**
+     * Das Ergebnis eines Schalt-Tests. {@code passed} ist bewusst SCHMAL: es
+     * heisst „der Schreibvorgang ist belegt", nie „das Geraet hat getan, was es
+     * soll" - das kann nur der Mensch davor bestaetigen.
+     */
+    public record SwitchTestResult(boolean passed, int ttlSeconds, String errorCode,
+            String message, ProbeResult.Switched switched) {
+    }
+
+    /** Die Freigabe: die Definition, die Verbraucher-Eckdaten, die Bestaetigung. */
+    public record SwitchReleaseRequest(SwitchDefinition.Switch switchDef,
+            SwitchDefinition.Consumer consumer, Boolean physicallyConfirmed) {
+    }
+
     private final SiteRepository sites;
     private final EntityRegistryRepository entityRepo;
     private final EntityRegistryService entityRegistry;
@@ -99,6 +119,7 @@ public class SelfBuildComponentService {
     private final FlowActivationService deployments;
     private final ObjectProvider<FlowCompiler> flowc;
     private final ProbeService probes;
+    private final ConsumerAuditRepository audit;
     private final ObjectMapper mapper;
 
     public SelfBuildComponentService(SiteRepository sites, EntityRegistryRepository entityRepo,
@@ -107,7 +128,7 @@ public class SelfBuildComponentService {
             SiteComponentTemplateRepository templates, SelfBuildFlowCompiler compiler,
             FlowRepository flows, FlowActivationService deployments,
             ObjectProvider<FlowCompiler> flowc, ProbeService probes,
-            ObjectMapper mapper) {
+            ConsumerAuditRepository audit, ObjectMapper mapper) {
         this.sites = sites;
         this.entityRepo = entityRepo;
         this.entityRegistry = entityRegistry;
@@ -120,6 +141,7 @@ public class SelfBuildComponentService {
         this.deployments = deployments;
         this.flowc = flowc;
         this.probes = probes;
+        this.audit = audit;
         this.mapper = mapper;
     }
 
@@ -418,6 +440,336 @@ public class SelfBuildComponentService {
         return m;
     }
 
+    // ---- Steuern freigeben (Einheitsmodell Stufe 4) -----------------------
+
+    /**
+     * Der geführte Schalt-Test: schreibt EINMAL den freigegebenen Wert und
+     * lässt die Box das automatische Aus armieren.
+     *
+     * <p>Er speichert NICHTS ausser dem Beleg - was getestet wurde, ist erst
+     * mit der Bestätigung des Kunden eine Freigabe. Der Beleg haengt am
+     * FINGERABDRUCK der Schalt-Definition (Verbindung + Register + Werte +
+     * Art): eine geaenderte Adresse ist ein anderes Geraet, ein geaenderter
+     * Ein-Wert eine andere Zusage - beides entwertet den Test, wie eine
+     * geaenderte Verbindung den Verbindungstest entwertet.
+     */
+    @Transactional(readOnly = true)
+    public SwitchTestResult switchTest(UUID siteId, UUID entityId, SwitchTestRequest req,
+            String subject) {
+        requireSite(siteId);
+        EntityRow row = requireSelfBuilt(siteId, entityId);
+        SwitchDefinition.NormalizedSwitch sw = requireValidSwitch(req.switchDef());
+        Transport transport = storedTransport(row);
+        String valueError = SwitchDefinition.testValueError(sw, req.testValue());
+        if (valueError != null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, valueError);
+        }
+        int raw = SwitchDefinition.testRaw(sw, req.testValue());
+        ProbeResult res = probes.switchOp(siteId, null,
+                new ProbePublisher.SwitchOp("switch_test", "schalten", transport.host(),
+                        transport.effectivePort(), transport.effectiveUnitId(), sw.registerKind(),
+                        sw.address(), sw.writeFc(), raw, sw.safeRaw(),
+                        SwitchDefinition.TEST_TTL_S, sw.readbackAddress()),
+                subject);
+        boolean passed = switchPassed(res);
+        if (passed) {
+            receipts.record(siteId, SWITCH_RECEIPT_REF, switchReceiptFields(entityId, transport, sw));
+        }
+        // Ein Schreibvorgang an einer Kundenanlage bekommt seine Spur, auch
+        // wenn er scheitert - eine Freigabe ist nur so glaubwuerdig wie das,
+        // was vor ihr nachweisbar passiert ist.
+        audit.append(siteId, entityId, "switch_tested", null, null, subject,
+                (passed ? "bestanden" : "fehlgeschlagen") + ", Wert " + raw);
+        return new SwitchTestResult(passed, SwitchDefinition.TEST_TTL_S,
+                res.errorCode(), res.message(), switchedOf(res));
+    }
+
+    /** Bricht den laufenden Test ab und schreibt den Sicherheitswert SOFORT. */
+    @Transactional(readOnly = true)
+    public SwitchTestResult switchCancel(UUID siteId, UUID entityId, SwitchTestRequest req,
+            String subject) {
+        requireSite(siteId);
+        EntityRow row = requireSelfBuilt(siteId, entityId);
+        SwitchDefinition.NormalizedSwitch sw = requireValidSwitch(req.switchDef());
+        Transport transport = storedTransport(row);
+        ProbeResult res = probes.switchOp(siteId, null,
+                new ProbePublisher.SwitchOp("switch_cancel", "schalten", transport.host(),
+                        transport.effectivePort(), transport.effectiveUnitId(), sw.registerKind(),
+                        sw.address(), sw.writeFc(), null, sw.safeRaw(), null,
+                        sw.readbackAddress()),
+                subject);
+        return new SwitchTestResult(false, 0, res.errorCode(), res.message(), switchedOf(res));
+    }
+
+    /**
+     * Die FREIGABE. Sie braucht beides: einen bestandenen Test auf GENAU dieser
+     * Schalt-Definition und die Bestätigung, dass der Kunde die Wirkung am
+     * Gerät gesehen hat. Erst danach wird die Komponente ein schaltbares Gerät
+     * (Typ, Fähigkeit, Verbraucher-Profil) und der Schalter in ihren Flow
+     * kompiliert.
+     */
+    @Transactional
+    public SiteComponentsDto switchRelease(UUID siteId, UUID entityId, SwitchReleaseRequest req,
+            String subject) {
+        requireSite(siteId);
+        requirePortalManaged(siteId);
+        EntityRow row = requireSelfBuilt(siteId, entityId);
+        SwitchDefinition.NormalizedSwitch sw = requireValidSwitch(req.switchDef());
+        List<String> consumerErrors = SwitchDefinition.validateConsumer(req.consumer());
+        if (!consumerErrors.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    String.join(" ", consumerErrors));
+        }
+        Transport transport = storedTransport(row);
+        boolean tested = receipts.has(siteId, SWITCH_RECEIPT_REF,
+                switchReceiptFields(entityId, transport, sw));
+        String refusal = SwitchDefinition.requireRelease(tested,
+                Boolean.TRUE.equals(req.physicallyConfirmed()));
+        if (refusal != null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, refusal);
+        }
+
+        UUID tenantId = TenantContext.get();
+        // Der Typ wechselt von „Messgerät" zu „eigenes Schaltgerät": erst damit
+        // ist die Entität auf der Box KEIN drop-everything mehr, und erst damit
+        // greifen Verbraucher-Klemme und Zyklen-Guard im Arbiter.
+        entityRepo.setEntityConfig(entityId, SWITCHABLE_ENTITY_TYPE,
+                switchCapabilities(row, sw).toString(), switchGuards(req.consumer()).toString());
+        writeSwitch(siteId, tenantId, entityId, row, sw, req.consumer(), subject,
+                "Schalten freigegeben");
+        audit.append(siteId, entityId, "switch_released", null, null, subject,
+                sw.kind() + " auf Register " + sw.address());
+        return components.list(siteId);
+    }
+
+    /**
+     * Nimmt die Freigabe zurück. Das Gerät ist danach wieder ein Sensor: der
+     * Schalt-Knoten verschwindet aus dem Flow, die Fähigkeit aus der Entität,
+     * und damit stoppen die Regeln, die auf ihn zeigten.
+     *
+     * <p>Die Definition BLEIBT gespeichert - eine Rücknahme ist keine
+     * Beweisvernichtung, und wer erneut freigeben will, soll nicht alles neu
+     * eintippen. Nur der TEST-Beleg fällt, denn er gehörte zu einem Zustand,
+     * den es nicht mehr gibt.
+     */
+    @Transactional
+    public SiteComponentsDto switchRevoke(UUID siteId, UUID entityId, String subject) {
+        requireSite(siteId);
+        requirePortalManaged(siteId);
+        EntityRow row = requireSelfBuilt(siteId, entityId);
+        UUID tenantId = TenantContext.get();
+        entityRepo.setEntityConfig(entityId, SelfBuildDefinition.ENTITY_TYPE,
+                capabilities(storedChannels(row)).toString(), guards().toString());
+        writeSwitch(siteId, tenantId, entityId, row, null, null, subject,
+                "Freigabe zurückgenommen");
+        audit.append(siteId, entityId, "switch_revoked", null, null, subject, null);
+        return components.list(siteId);
+    }
+
+
+    // ---- Helfer der Freigabe ----------------------------------------------
+
+    /** Der Typ, den ein freigegebenes Gerät trägt (entitytypes-Katalog). */
+    private static final String SWITCHABLE_ENTITY_TYPE = "modbus-load";
+
+    /**
+     * Der Beleg-Schlüssel des SCHALT-Tests. Bewusst ein anderer als der des
+     * Lese-Tests: ein gelesener Messwert beweist nichts über einen Schalter,
+     * und ein Beleg, der für beides gälte, wäre genau die Verwechslung, die
+     * eine Freigabe nicht haben darf.
+     */
+    public static final String SWITCH_RECEIPT_REF = "custom:switch";
+
+    /**
+     * Woran der Beleg hängt: die Verbindung UND die ganze Schalt-Zusage. Eine
+     * geänderte Adresse ist ein anderes Gerät, ein geänderter Ein-Wert eine
+     * andere Zusage - beides entwertet den Test.
+     */
+    static Map<String, Object> switchReceiptFields(UUID entityId, Transport t,
+            SwitchDefinition.NormalizedSwitch s) {
+        Map<String, Object> m = new LinkedHashMap<>(receiptFields(t));
+        m.put("entity", entityId.toString());
+        m.put("kind", s.kind());
+        m.put("register_kind", s.registerKind());
+        m.put("address", s.address());
+        m.put("fc", s.writeFc());
+        m.put("on", s.onValue());
+        m.put("off", s.offValue());
+        m.put("min", s.minValue());
+        m.put("max", s.maxValue());
+        m.put("safe", s.safeValue());
+        m.put("scale", s.scale());
+        m.put("offset", s.offset());
+        return m;
+    }
+
+    private SwitchDefinition.NormalizedSwitch requireValidSwitch(SwitchDefinition.Switch raw) {
+        SwitchDefinition.Result r = SwitchDefinition.validate(raw);
+        if (!r.ok()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.join(" ", r.errors()));
+        }
+        return r.value();
+    }
+
+    /**
+     * Die Verbindung kommt aus der GESPEICHERTEN Definition, nie aus dem
+     * Anfrage-Rumpf: ein Schalt-Test darf nur das Gerät erreichen, das dieser
+     * Komponente gehört - sonst wäre die Route ein freier Schreibbefehl an
+     * jede LAN-Adresse (Leitplanke 1, „keine Adresse zur Laufzeit").
+     */
+    private Transport storedTransport(EntityRow row) {
+        JsonNode def = parseDefinition(row);
+        JsonNode t = def.path("transport");
+        String host = t.path("host").asText("");
+        if (host.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Für diese Komponente ist keine Verbindung gespeichert.");
+        }
+        return new Transport(host, t.path("port").asInt(502), t.path("unit_id").asInt(1));
+    }
+
+    private List<NormalizedChannel> storedChannels(EntityRow row) {
+        List<NormalizedChannel> out = new ArrayList<>();
+        for (JsonNode c : parseDefinition(row).path("channels")) {
+            JsonNode reg = c.path("register");
+            out.add(new NormalizedChannel(c.path("slug").asText(), c.path("label").asText(),
+                    c.path("unit").asText(""), reg.path("kind").asText("holding"),
+                    reg.path("address").asInt(), reg.path("data_type").asText("u16"),
+                    reg.path("word_order").asText("big"), c.path("scale").asDouble(1),
+                    c.path("offset").asDouble(0),
+                    c.path("min_read_interval_s").asInt(SelfBuildDefinition.DEFAULT_INTERVAL_S)));
+        }
+        return out;
+    }
+
+    /** Die gespeicherte Schalt-Definition, oder {@code null} ohne Freigabe. */
+    private SwitchDefinition.NormalizedSwitch storedSwitch(EntityRow row) {
+        JsonNode sw = parseDefinition(row).path("switch");
+        if (!sw.isObject() || !sw.path("freigabe").isObject()) {
+            return null;
+        }
+        SwitchDefinition.Result r = SwitchDefinition.validate(new SwitchDefinition.Switch(
+                sw.path("kind").asText(), sw.path("register_kind").asText(),
+                sw.path("address").asInt(), sw.path("write_fc").asInt(),
+                sw.has("on_value") ? sw.get("on_value").asInt() : null,
+                sw.has("off_value") ? sw.get("off_value").asInt() : null,
+                sw.has("min_value") ? sw.get("min_value").asDouble() : null,
+                sw.has("max_value") ? sw.get("max_value").asDouble() : null,
+                sw.has("safe_value") ? sw.get("safe_value").asDouble() : null,
+                sw.has("scale") ? sw.get("scale").asDouble() : null,
+                sw.has("offset") ? sw.get("offset").asDouble() : null,
+                sw.path("unit").asText(""),
+                sw.has("readback_address") ? sw.get("readback_address").asInt() : null,
+                sw.has("watchdog_address") ? sw.get("watchdog_address").asInt() : null,
+                sw.has("watchdog_value") ? sw.get("watchdog_value").asInt() : null));
+        return r.ok() ? r.value() : null;
+    }
+
+    private JsonNode parseDefinition(EntityRow row) {
+        try {
+            String json = row.connectionJson();
+            return json == null || json.isBlank() ? mapper.createObjectNode()
+                    : mapper.readTree(json);
+        } catch (Exception e) {
+            return mapper.createObjectNode();
+        }
+    }
+
+    /** Ein Test gilt nur als bestanden, wenn die Box den Schreibvorgang MELDET. */
+    private static boolean switchPassed(ProbeResult res) {
+        if (res.errorCode() != null || res.results() == null || res.results().isEmpty()) {
+            return false;
+        }
+        ProbeResult.OpResult line = res.results().get(0);
+        // Ein Rücklesen, das WIDERSPRICHT, ist kein bestandener Test - ohne
+        // Rücklese-Register gibt es keines, dann trägt die Bestätigung des
+        // Kunden allein.
+        if (line.switched() != null && Boolean.FALSE.equals(line.switched().readbackMatches())) {
+            return false;
+        }
+        return line.ok() && line.switched() != null;
+    }
+
+    private static ProbeResult.Switched switchedOf(ProbeResult res) {
+        if (res.results() == null || res.results().isEmpty()) {
+            return null;
+        }
+        return res.results().get(0).switched();
+    }
+
+    /**
+     * Die Fähigkeiten eines freigegebenen Geräts: die Messkanäle wie bisher,
+     * PLUS genau das eine Kommando der Schalt-Art. Es ist diese Liste, die auf
+     * der Box aus einem drop-everything-Sensor einen steuerbaren Verbraucher
+     * macht.
+     */
+    private ObjectNode switchCapabilities(EntityRow row, SwitchDefinition.NormalizedSwitch sw) {
+        ObjectNode caps = (ObjectNode) capabilities(storedChannels(row));
+        ArrayNode actuate = caps.putArray("actuate");
+        ObjectNode a = actuate.addObject();
+        if (SwitchDefinition.KIND_SETPOINT.equals(sw.kind())) {
+            a.put("command", "setpoint_kw");
+            a.put("min", sw.minValue());
+            a.put("max", sw.maxValue());
+        } else {
+            a.put("command", "on_off");
+        }
+        return caps;
+    }
+
+    /**
+     * Klemme + Zyklen-Zeiten (Leitplanke 4). Sie stehen in
+     * {@code guards.limits} und damit in DEM Block, den der Registry-Push
+     * ohnehin trägt und aus dem der Arbiter seine Verbraucher-Klemme und den
+     * {@code guards.CycleGuard} baut - der Baukasten fügt dem Steuerungsmodell
+     * keine neue Semantik hinzu, er füllt die vorhandene.
+     */
+    private ObjectNode switchGuards(SwitchDefinition.Consumer c) {
+        ObjectNode g = mapper.createObjectNode();
+        ObjectNode limits = g.putObject("limits");
+        limits.put("max_consumption_kw", c.ratedPowerKw());
+        if (c.minOnSeconds() != null) {
+            limits.put("min_on_seconds", c.minOnSeconds());
+        }
+        if (c.minOffSeconds() != null) {
+            limits.put("min_off_seconds", c.minOffSeconds());
+        }
+        if (c.maxStartsPerDay() != null) {
+            limits.put("max_starts_per_day", c.maxStartsPerDay());
+        }
+        // Ohne frischen Befehl faellt das Geraet aus - die Shelly-Regel: ein
+        // Relais hat keine eigene Logik, in die es sich entlassen liesse.
+        g.putObject("failsafe").put("behavior", "off");
+        return g;
+    }
+
+    /**
+     * Schreibt die Definition MIT (oder ohne) Schalter als neue Fassung und
+     * rollt den Flow neu aus. Dieselbe Maschinerie wie jedes andere Speichern -
+     * eine Freigabe ist eine Definitions-Aenderung, keine Sonderoperation.
+     */
+    private void writeSwitch(UUID siteId, UUID tenantId, UUID entityId, EntityRow row,
+            SwitchDefinition.NormalizedSwitch sw, SwitchDefinition.Consumer consumer,
+            String subject, String note) {
+        Transport transport = storedTransport(row);
+        List<NormalizedChannel> channels = storedChannels(row);
+        String label = row.label() == null ? "Eigenes Gerät" : row.label();
+        String definitionJson = definitionJson(new Result(List.of(), transport, channels), sw,
+                consumer, subject);
+        int version = definitions.applyDefinition(siteId, entityId, label, null, null, null,
+                SelfBuildDefinition.COMMUNICATION, definitionJson,
+                SelfBuildDefinition.SOURCE_KIND, null, null);
+        if (version == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
+        }
+        definitions.recordVersion(tenantId, siteId, entityId, version,
+                sw == null ? SelfBuildDefinition.ENTITY_TYPE : SWITCHABLE_ENTITY_TYPE, label,
+                null, null, null, SelfBuildDefinition.COMMUNICATION, definitionJson,
+                SelfBuildDefinition.SOURCE_KIND, null, null, subject, note);
+        deployFlow(siteId, tenantId, entityId, version, label, transport, channels, sw);
+        entityRegistry.pushRegistryBestEffort(siteId);
+    }
+
     // ---- Schreiben --------------------------------------------------------
 
     /**
@@ -472,8 +824,15 @@ public class SelfBuildComponentService {
      */
     private void deployReadFlow(UUID siteId, UUID tenantId, UUID entityId, int version,
             String label, Result def) {
+        deployFlow(siteId, tenantId, entityId, version, label, def.transport(), def.channels(),
+                null);
+    }
+
+    private void deployFlow(UUID siteId, UUID tenantId, UUID entityId, int version, String label,
+            Transport transport, List<NormalizedChannel> channels,
+            SwitchDefinition.NormalizedSwitch released) {
         ObjectNode document = compiler.compile(siteId, tenantId, entityId, version, label,
-                def.transport(), def.channels());
+                transport, channels, released);
         FlowCompiler compilerBean = flowc.getIfAvailable();
         if (compilerBean == null) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
@@ -514,6 +873,75 @@ public class SelfBuildComponentService {
      * dagegen im Flow, nicht hier.
      */
     private String definitionJson(Result def) {
+        return definitionJson(def, null, null, null);
+    }
+
+    /**
+     * Die gespeicherte Definition, seit Stufe 4 optional MIT Schalter. Der
+     * Freigabe-Block {@code switch.freigabe} traegt wer/wann - er IST der
+     * Nachweis, und weil er in der Definition wohnt, traegt ihn die
+     * Fassungs-Historie ohne Zutun mit: „was war am 3. freigegeben" ist eine
+     * Frage an die Fassung.
+     */
+    private String definitionJson(Result def, SwitchDefinition.NormalizedSwitch sw,
+            SwitchDefinition.Consumer consumer, String subject) {
+        ObjectNode root = (ObjectNode) parseJson(definitionJsonRaw(def));
+        if (sw != null) {
+            ObjectNode n = root.putObject("switch");
+            n.put("kind", sw.kind());
+            n.put("register_kind", sw.registerKind());
+            n.put("address", sw.address());
+            n.put("write_fc", sw.writeFc());
+            if (SwitchDefinition.KIND_ON_OFF.equals(sw.kind())) {
+                n.put("on_value", sw.onValue());
+                n.put("off_value", sw.offValue());
+            } else {
+                n.put("min_value", sw.minValue());
+                n.put("max_value", sw.maxValue());
+                n.put("safe_value", sw.safeValue());
+                n.put("scale", sw.scale());
+                n.put("offset", sw.offset());
+                n.put("unit", sw.unit());
+            }
+            if (sw.readbackAddress() != null) {
+                n.put("readback_address", sw.readbackAddress());
+            }
+            if (sw.watchdogAddress() != null) {
+                n.put("watchdog_address", sw.watchdogAddress());
+                n.put("watchdog_value", sw.watchdogValue());
+            }
+            if (consumer != null) {
+                ObjectNode c = n.putObject("consumer");
+                c.put("rated_power_kw", consumer.ratedPowerKw());
+                if (consumer.minOnSeconds() != null) {
+                    c.put("min_on_seconds", consumer.minOnSeconds());
+                }
+                if (consumer.minOffSeconds() != null) {
+                    c.put("min_off_seconds", consumer.minOffSeconds());
+                }
+                if (consumer.maxStartsPerDay() != null) {
+                    c.put("max_starts_per_day", consumer.maxStartsPerDay());
+                }
+                if (consumer.powerChannel() != null && !consumer.powerChannel().isBlank()) {
+                    c.put("power_channel", consumer.powerChannel().trim());
+                }
+            }
+            ObjectNode f = n.putObject("freigabe");
+            f.put("released_at", java.time.Instant.now().toString());
+            f.put("released_by", subject == null ? "" : subject);
+        }
+        return root.toString();
+    }
+
+    private JsonNode parseJson(String json) {
+        try {
+            return mapper.readTree(json);
+        } catch (Exception e) {
+            return mapper.createObjectNode();
+        }
+    }
+
+    private String definitionJsonRaw(Result def) {
         ObjectNode root = mapper.createObjectNode();
         root.put("schema_version", "1.0");
         ObjectNode transport = root.putObject("transport");

@@ -123,6 +123,64 @@ public class ProbePublisher {
         log.debug("published connection test {} (NON-retained)", requestId);
     }
 
+    /**
+     * Publish ONE WRITING op - the guided switch test or its cancel
+     * (Einheitsmodell Stufe 4). Same envelope, same non-retained/QoS1
+     * discipline; the box arms its auto-off BEFORE it writes, so a lost answer
+     * can never leave a device switched on.
+     */
+    public synchronized void publishSwitch(UUID tenantId, UUID siteId, UUID deviceId,
+            String requestId, Instant requestedAt, String requestedBy, SwitchOp op)
+            throws Exception {
+        String topic = probeTopic(tenantId, siteId, deviceId);
+        MqttMessage message = new MqttMessage(switchEnvelope(tenantId, siteId, deviceId, requestId,
+                requestedAt, requestedBy, op));
+        message.setQos(1);
+        message.setRetained(false);
+        connected().publish(topic, message);
+        // ⚠ The customer's LAN address is NOT logged here either - and a write
+        // is exactly the record someone would want; the audit trail names WHO
+        // and WHAT, never WHERE in their network.
+        log.debug("published switch op {} ({}, NON-retained)", requestId, op.op());
+    }
+
+    /**
+     * One writing op. It carries the two values verbatim, because the box is
+     * meant to have nothing left to decide.
+     */
+    public record SwitchOp(String op, String id, String host, Integer port, Integer unitId,
+            String registerKind, int address, Integer writeFc, Integer onValue, int offValue,
+            Integer ttlSeconds, Integer readbackAddress) {
+    }
+
+    static byte[] switchEnvelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
+            Instant requestedAt, String requestedBy, SwitchOp op) {
+        StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
+        sb.append(",\"ops\":[{\"op\":\"").append(esc(op.op())).append('"')
+                .append(",\"transport\":\"modbus_tcp\"")
+                .append(",\"id\":\"").append(esc(op.id())).append('"')
+                .append(",\"host\":\"").append(esc(op.host().trim())).append('"')
+                .append(",\"port\":").append(op.port() == null ? 502 : op.port())
+                .append(",\"unit_id\":").append(op.unitId() == null ? 1 : op.unitId())
+                .append(",\"register_kind\":\"").append(esc(op.registerKind())).append('"')
+                .append(",\"address\":").append(op.address());
+        if (op.writeFc() != null) {
+            sb.append(",\"write_fc\":").append(op.writeFc());
+        }
+        if (op.onValue() != null) {
+            sb.append(",\"on_value\":").append(op.onValue());
+        }
+        sb.append(",\"off_value\":").append(op.offValue());
+        if (op.ttlSeconds() != null) {
+            sb.append(",\"ttl_s\":").append(op.ttlSeconds());
+        }
+        if (op.readbackAddress() != null) {
+            sb.append(",\"readback_address\":").append(op.readbackAddress());
+        }
+        sb.append("}]}");
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
     static byte[] testEnvelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
             Instant requestedAt, String requestedBy, String opId, String brand, String model,
             String family, String role, Map<String, Object> connection) {

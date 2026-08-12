@@ -219,6 +219,26 @@ public class ProbeResultListener {
                             any ? reading : null));
                     continue;
                 }
+                JsonNode switchedNode = line.get("switched");
+                if (switchedNode != null && switchedNode.isObject()) {
+                    // A switch line (Einheitsmodell Stufe 4). It carries NO
+                    // measurement, so the register-read honesty rule below
+                    // (raw AND value or it is not a reading) must not run on it -
+                    // it would demote every successful write to a failure.
+                    Integer written = optInt(switchedNode, "written");
+                    if (ok && written == null) {
+                        // A write that cannot say WHAT it wrote is not a write we
+                        // are willing to report as one.
+                        ok = false;
+                    }
+                    Integer rb = optInt(switchedNode, "readback");
+                    results.add(new ProbeResult.OpResult(id, ok, null, null, null,
+                            ok ? null : code(line), ok ? null : text(line), null,
+                            ok ? new ProbeResult.Switched(written,
+                                    optInt(switchedNode, "off_after_s"), rb,
+                                    rb == null ? null : rb.equals(written)) : null));
+                    continue;
+                }
                 Double raw = optDouble(line, "raw");
                 Double value = optDouble(line, "value");
                 // The contract's honesty rule, enforced on ARRIVAL: a line
@@ -239,6 +259,15 @@ public class ProbeResultListener {
         }
         registry.complete(deviceId, requestId,
                 new ProbeResult(requestId, code(json), text(json), results));
+    }
+
+    private static Integer optInt(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        if (v == null || !v.isNumber()) {
+            return null;
+        }
+        int i = v.asInt();
+        return i >= 0 && i <= 65535 ? i : null;
     }
 
     private static List<Integer> registers(JsonNode line) {

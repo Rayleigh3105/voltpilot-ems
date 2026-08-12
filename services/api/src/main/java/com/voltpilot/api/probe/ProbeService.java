@@ -163,6 +163,54 @@ public class ProbeService {
     }
 
     /**
+     * Run ONE writing op - the guided switch test or its cancel (Einheitsmodell
+     * Stufe 4). Deliberately the SAME machinery as a read: same correlation,
+     * same 5-second wait, same honest timeout. What makes it a write is only
+     * which op the box gets, and the box arms its auto-off before performing it.
+     *
+     * <p>A TIMEOUT here is a genuinely awkward outcome and is reported as such
+     * rather than as a failure: the write may well have landed and only its
+     * answer got lost - the box's watchdog covers exactly that, and the surface
+     * says "unklar", never "hat nicht geschaltet".
+     */
+    public ProbeResult switchOp(UUID siteId, UUID deviceId, ProbePublisher.SwitchOp op,
+            String requestedBy) {
+        UUID tenantId = TenantContext.get();
+        if (tenantId == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        }
+        DeviceDto device = resolveDevice(siteId, deviceId);
+        ProbePublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Der Schalt-Test ist derzeit nicht möglich.");
+        }
+        String requestId = newRequestId();
+        CompletableFuture<ProbeResult> future = registry.register(requestId, device.id());
+        try {
+            pub.publishSwitch(tenantId, siteId, device.id(), requestId, Instant.now(),
+                    requestedBy, op);
+        } catch (Exception e) {
+            registry.forget(requestId);
+            log.warn("switch op {} could not be published: {}", requestId, e.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Die Anlage ist gerade nicht erreichbar. Bitte in einem Moment erneut versuchen.");
+        }
+        try {
+            ProbeResult result = registry.await(future, TIMEOUT);
+            if (result != null) {
+                return result;
+            }
+            return new ProbeResult(requestId, "timeout",
+                    "Die Anlage hat nicht rechtzeitig geantwortet. Falls das Gerät doch "
+                            + "geschaltet hat, fällt es von selbst wieder zurück.",
+                    List.of());
+        } finally {
+            registry.forget(requestId);
+        }
+    }
+
+    /**
      * Which box to ask. An explicit device must belong to the site; without one
      * the site's SINGLE device is used, and a site with several is refused by
      * name - guessing which box sits on the right LAN segment would be exactly
