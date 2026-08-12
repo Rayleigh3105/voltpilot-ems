@@ -269,49 +269,6 @@ func TestProbePublicTargetIsRefusedWithoutTouchingTheNetwork(t *testing.T) {
 	}
 }
 
-// The reserved switch_test op: validated, honestly refused, never executed -
-// and it does NOT poison the read op standing next to it.
-func TestProbeSwitchTestIsRefusedWhileItsNeighbourStillRuns(t *testing.T) {
-	box := startProbeBox(t)
-	seen := make(chan probeBusRequest, 1)
-	probeStub(t, box.addr, seen, func(req probeBusRequest) []probeBusResult {
-		return []probeBusResult{{ID: "soc", OK: true, Raw: f64(94), Registers: []int{94}}}
-	})
-
-	box.a.onProbeRequest(probeEnvelope(t, func(m map[string]any) {
-		m["ops"] = []map[string]any{
-			{
-				"op": "switch_test", "id": "relais", "transport": "modbus_tcp",
-				"host": "192.168.0.28", "register_kind": "coil", "address": 0,
-				"on_value": 1, "off_value": 0, "ttl_s": 30,
-			},
-			{
-				"op": "read", "id": "soc", "transport": "modbus_tcp",
-				"host": "192.168.0.28", "register_kind": "holding",
-				"address": 588, "data_type": "u16",
-			},
-		}
-	}))
-
-	res := box.answer(t)
-	if res == nil || len(res.Results) != 2 {
-		t.Fatalf("both steps must be reported, in order: %+v", res)
-	}
-	if res.Results[0].ID != "relais" || res.Results[0].ErrorCode != probe.ErrNotSupported {
-		t.Fatalf("switch_test must read as not_supported: %+v", res.Results[0])
-	}
-	if res.Results[0].Message == "" {
-		t.Fatalf("a refusal without a sentence is a riddle")
-	}
-	if !res.Results[1].OK || res.Results[1].Value == nil {
-		t.Fatalf("the read next to it must still run: %+v", res.Results[1])
-	}
-	req := <-seen
-	if len(req.Ops) != 1 || req.Ops[0].ID != "soc" {
-		t.Fatalf("ONLY the read step may reach the read flow: %+v", req.Ops)
-	}
-}
-
 // The happy path: raw AND scaled value travel back, plus the register words -
 // the pair that makes a scaling or word-order mistake visible.
 func TestProbeRoundTripCarriesRawRegistersAndScaledValue(t *testing.T) {

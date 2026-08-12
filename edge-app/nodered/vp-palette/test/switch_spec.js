@@ -23,13 +23,19 @@ const switchNode = require('../nodes/vp-modbus-switch.js');
  */
 function gateway(opts) {
   const o = opts || {};
-  const state = { holding: new Map(), coils: new Map(), concurrent: 0, maxConcurrent: 0, writes: [] };
+  const state = {
+    holding: new Map(), coils: new Map(), inFlight: 0, maxInFlight: 0, writes: [],
+  };
   const server = net.createServer((sock) => {
-    state.concurrent++;
-    state.maxConcurrent = Math.max(state.maxConcurrent, state.concurrent);
-    sock.on('close', () => { state.concurrent--; });
     sock.on('error', () => {});
     sock.on('data', (buf) => {
+      // ⚠ Gezaehlt werden ANFRAGEN, nicht Sockets: ein Client, der seinen
+      // Socket zerstoert hat, taucht serverseitig erst beim naechsten
+      // Event-Loop-Durchlauf als geschlossen auf - unter Last zaehlte das
+      // einen laengst beendeten Vorgang als zweiten mit. Die Regel lautet
+      // „ein Vorgang je Ziel", und genau das misst dieser Zaehler.
+      state.inFlight++;
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
       const txid = buf.readUInt16BE(0);
       const unit = buf[6];
       const fn = buf[7];
@@ -39,7 +45,10 @@ function gateway(opts) {
         head.writeUInt16BE(txid, 0);
         head.writeUInt16BE(0, 2);
         head.writeUInt16BE(body.length, 4);
-        setTimeout(() => { try { sock.write(Buffer.concat([head, body])); } catch (e) {} }, o.delayMs || 5);
+        setTimeout(() => {
+          state.inFlight--;
+          try { sock.write(Buffer.concat([head, body])); } catch (e) {}
+        }, o.delayMs || 5);
       };
       if (fn === 0x05) {
         const on = buf.readUInt16BE(10) === 0xff00;
@@ -114,7 +123,7 @@ describe('vp-modbus switch nodes', function () {
       conn.readRegisters(plan),
       sw.runWrite({ id: 'b', host: '127.0.0.1', port, unit_id: 1, fc: codec.FN_WRITE_MULTIPLE, address: 100, value: 9 }, sw.liveDeps),
     ]);
-    assert.strictEqual(gw.maxConcurrent, 1, 'a switch must never open a second socket');
+    assert.strictEqual(gw.maxInFlight, 1, 'a switch must never run a second operation in parallel');
     gw.server.close();
   });
 
