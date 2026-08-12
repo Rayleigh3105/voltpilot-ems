@@ -32,6 +32,8 @@ export type PageId =
   | 'edge-updates'
   | 'optimizer'
   | 'geraetetypen'
+  | 'vorlagen'
+  | 'komponenten-flotte'
   | 'steuerungs-freigabe'
   | 'flows';
 
@@ -186,6 +188,11 @@ export const PLATFORM_PAGES: PageDef[] = [
   // am Pruefstand freigegeben, jede Anlage wird einzeln scharfgeschaltet.
   { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'settings', adminOnly: true },
   { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
+  // Einheitsmodell Stufe 6: eine geprüfte Gerätevorlage entsteht als DATENSATZ
+  // (kein Software-Release), und die Komponenten-Welt der Flotte ist an EINER
+  // Stelle sichtbar statt nur je Anlage.
+  { id: 'vorlagen', label: 'Gerätevorlagen', icon: 'layers', adminOnly: true },
+  { id: 'komponenten-flotte', label: 'Komponenten', icon: 'cpu', adminOnly: true },
 ];
 
 /** "Meine Anlage" for 0-1 Anlagen, "Meine Anlagen" from 2 (the fleet list). */

@@ -46,6 +46,8 @@ const EXCLUDED = [
   '/adminFleet.ts',
   '/adminPulse.ts',
   '/onboardingFunnel.ts',
+  '/adminVorlagen.ts',
+  '/adminKomponentenFlotte.ts',
   '/pages/EntitaetenSection.',
   '/entities.ts',
   '/entitiesApi.ts',
@@ -162,7 +164,14 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
    * genau das fällt hier auf, nicht erst im Portal.
    */
   it('the admin-only pure layers are really admin-only', () => {
-    const adminOnly = ['adminEdgeUpdates', 'adminFleet', 'adminPulse', 'onboardingFunnel'];
+    const adminOnly = [
+      'adminEdgeUpdates',
+      'adminFleet',
+      'adminPulse',
+      'onboardingFunnel',
+      'adminVorlagen',
+      'adminKomponentenFlotte',
+    ];
     const offenders: string[] = [];
     for (const file of walk(SRC)) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
