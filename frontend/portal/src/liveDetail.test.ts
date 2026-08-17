@@ -65,6 +65,21 @@ describe('liveChip — R4: ONE freshness truth, three honest states', () => {
     // ("wartet auf erste Daten") — a chip would be noise, never rendered.
     expect(liveChip('stale', null, NOW)).toBeNull();
   });
+
+  // Herzogau 17.08.2026: um 17:55 stand ein 12:27-Bild da, und der Chip sagte
+  // nur „keine aktuellen Daten" - zwei Minuten oder fünf Stunden alt war nicht
+  // unterscheidbar. Der Chip nennt jetzt den MESSZEITPUNKT, statisch.
+  it('stale + wirklich alt: der Chip nennt den Messzeitpunkt', () => {
+    const alt = new Date(NOW.getTime() - 5 * 3600_000).toISOString();
+    const chip = liveChip('stale', alt, NOW)!;
+    expect(chip.tone).toBe('off');
+    expect(chip.label).toContain('keine aktuellen Daten');
+    expect(chip.label).toContain('Stand:');
+    // Statisch = eine Uhrzeit, nie eine Dauer ("vor 5 Std.") - die wäre nur so
+    // lange wahr, wie die Seite sie nachrechnet.
+    expect(chip.label).toContain('Uhr');
+    expect(chip.label).not.toContain('vor ');
+  });
 });
 
 describe('initialVerlaufOpen — Q2: collapsed by default, remembered per session', () => {

@@ -693,6 +693,48 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 - **Die BRÜCKE ist VERDRAHTET (Anforderung 9) — `selbstbauBruecke.ts` hat seit Stufe 4 echte Aufrufer.** Sender ist die Komponenten-Karte (`AnlagenModellSection` `ComponentRow`, Callback-Prop `onRegelBruecke` nach dem `onFreigabe`/`onRepin`-Muster — die Zeile navigiert nie selbst); Empfänger ist `RegelnKapsel` über einen EIGENEN Deep-Link-Effekt. **Er hängt an `entities`, nicht an `consumers`** — der Verbraucher-Deep-Link daneben wartet auf `consumers`, und eine Anlage mit einem selbst gebauten Gerät hat oft gar keinen; die Brücke käme dort nie an. `brueckenKomponente(EditorEntity)` ist die Editor-Sicht: **`schaltbar` folgt dem SCHREIBWEG (`actuate`)**, nie einem Flag. Die Klemme (`min`) fehlt in der Editor-Sicht, der Sollwert startet deshalb bei 0 — sicher, weil der Executor restrict-only auf die freigegebene Spanne klemmt und der Kunde den Wert im Baukasten sieht, bevor irgendetwas gespeichert wird. `NeueRegelDialog` nimmt dafür `initialRule`/`initialName` und öffnet dann SOFORT im Baukasten (die Galerie davor wäre ein Schritt, den der Kunde schon getroffen hat).
 - **Die BRÜCKE zur Regel-Welt (Anforderung 9): `selbstbauBruecke.vorbefuellteAktion`.** Ein FREIGEGEBENER Schalter wird die AKTION der vorbefüllten Regel; ohne Freigabe bleibt sie offen (leere Benachrichtigung). Entschieden wird das über dasselbe `regelAktion`, das auch die Komponenten-Karte fragt. Der Wunsch trägt IMMER eine TTL — so zieht der Arbiter ihn selbst zurück, wenn die Bedingung endet; und beim Sollwert wird der KLEINSTE freigegebene Wert vorbelegt, weil er der einzige ist, den wir aus der Freigabe WISSEN.
 
+## Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf
+
+Drei Regeln aus der Herzogau-Untersuchung (Reports `vp-herzogau-runde2-m6` §4.2/§4.5 und
+`vp-nacht-ruhe-warum-q8` §0, Captain-Freigabe 17.08.2026). Sie beantworten dieselbe Frage in
+drei Flächen: **eine Oberfläche darf nie mehr behaupten, als gemessen wurde.**
+
+- **⚠ Der Daten-Alter-Ausweis ist STATISCH eine Uhrzeit, nie eine Dauer** (`src/datenAlter.ts`,
+  die EINE Regel — nie kopieren). Das Cockpit rendert konstruktionsbedingt den JÜNGSTEN
+  vorhandenen Messwert, egal wie alt er ist; um 17:55 stand deshalb ein 12:27-Bild als
+  frisches Live-Bild da, mit grünen Frische-Punkten. Jede „JETZT/Gemessen"-Fläche nennt jetzt
+  den MESSZEITPUNKT (`Stand: 12:27 Uhr`), sobald der Wert das 5-Minuten-Live-Fenster
+  (`ONLINE_WINDOW_MS` — zwei Fenster wären zwei Wahrheiten) verlassen hat: der Kopf-Chip
+  (`liveDetail.liveChip`, `stale`-Fall), `PvBreakdownLine` und `PvCompositionDetails`.
+  **Innerhalb des Fensters gibt es KEINEN Ausweis** — kein Dauer-Zeitstempel-Rauschen, die
+  Fläche ist dann zeichengleich zu vorher. Eine Dauer („vor 5 Std.") ist nur so lange wahr,
+  wie die Seite sie nachrechnet, und genau das tut eine eingefrorene Seite nicht — die
+  PR-279-Lehre aus `src/liveness.ts`; `now` entscheidet ausschließlich, OB der Ausweis
+  erscheint, und Zustand und Bezugszeit werden im selben Render gesetzt.
+- **⚠ Das Alter kann nur aus dem ZEITSTEMPEL kommen, nie aus der Farbe.** Die Frische-Punkte
+  der PV-Zeilen färben sich aus `SiteSource.health` — dem zuletzt GEMELDETEN Zustand, der auf
+  einem stundenalten Datensatz grün stehen bleibt (`device_source_status` wird je Herzschlag
+  ersetzt, die Marke stammt vom Schreibzeitpunkt). Deshalb tragen `PvBreakdown.asOf` und
+  `PvComposition.asOf` den jüngsten `readAt` (ersatzweise `reportedAt`) der beitragenden
+  Messstellen; ohne verwertbaren Zeitstempel bleiben sie `null` statt „jetzt" zu erfinden.
+- **⚠ `null` ist eine Lücke, `0` eine gemessene Null — die beiden dürfen nie gleich aussehen.**
+  `pvSources` prüfte nur gegen `null`, also stand „Deye Heizhaus 0,0 kW" als selbstbewusster
+  Anteil neben zwei produzierenden Fronius. Die geteilte Regel ist
+  `pvSources.noGenerationNote`/`isMeasuredZero` (v1-Aufteilung UND die PV-Zusammensetzung der
+  migrierten Anlage rufen sie): eine gemessene 0 neben produzierenden Geschwistern bekommt
+  `NO_GENERATION_NOTE` („liefert gerade keine Erzeugung") — **kein Alarm, kein Rot: 0 ist ein
+  Zustand, kein Fehler**. **Nachts, wenn alle 0 melden, wird NICHTS gekennzeichnet** (sonst
+  stünde die Zeile jede Nacht an jedem Gerät); in der v1-Aufteilung ist das strukturell
+  erfüllt, weil sie ohne einen einzigen erzeugenden Teil gar nicht rendert. Eine Zeile mit
+  EIGENEM Grund (z. B. „noch keiner Komponente zugeordnet") behält ihn — er sagt mehr.
+- **⚠ Verkauft wird, was den NETZANSCHLUSS verlässt, nicht was die Batterie verlässt.**
+  `schedule.planSentence` nannte bei Direktvermarktung JEDE Entladung „verkaufen", auch reine
+  Lastdeckung: die Herzogauer Nacht-Balken lagen weit unter dem Hausverbrauch, der Fahrplan
+  plante dort Netz-BEZUG. `netExports` liest die NETTO-Netzenergie des Laufs (Σ `gridKw`·dt),
+  sonst heißt es „den Verbrauch decken"; ohne geplanten Netzwert (ältere Plan-Zeilen) gilt die
+  vorsichtigere, immer wahre Aussage statt eines behaupteten Erlöses, und Eigenverbrauch
+  spricht unverändert „nutzen".
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
