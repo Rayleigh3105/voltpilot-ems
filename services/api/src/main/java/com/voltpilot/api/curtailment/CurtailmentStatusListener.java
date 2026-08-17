@@ -2,6 +2,7 @@ package com.voltpilot.api.curtailment;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.repo.CurtailmentStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -110,6 +111,7 @@ public class CurtailmentStatusListener {
     private final String password;
     private final DeviceRepository devices;
     private final CurtailmentStatusRepository curtailmentStatus;
+    private final CommandLogWriter commandLog;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -118,12 +120,14 @@ public class CurtailmentStatusListener {
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
-            DeviceRepository devices, CurtailmentStatusRepository curtailmentStatus) {
+            DeviceRepository devices, CurtailmentStatusRepository curtailmentStatus,
+            CommandLogWriter commandLog) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.curtailmentStatus = curtailmentStatus;
+        this.commandLog = commandLog;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -238,7 +242,7 @@ public class CurtailmentStatusListener {
                         tenantId);
                 return;
             }
-            curtailmentStatus.upsert(siteId, new CurtailmentStatusDto(deviceId, units, certified,
+            CurtailmentStatusDto row = new CurtailmentStatusDto(deviceId, units, certified,
                     curtail.path("control_enabled").asBoolean(false),
                     curtail.path("active").asBoolean(false),
                     optDouble(curtail, "applied_cap_kw"),
@@ -246,7 +250,12 @@ public class CurtailmentStatusListener {
                     curtail.path("possible_override").asBoolean(false),
                     checkedAt(curtail),
                     exportGuard(curtail.get("export_guard")),
-                    deviceExportLimit(curtail)));
+                    deviceExportLimit(curtail));
+            curtailmentStatus.upsert(siteId, row);
+            // Und den VERLAUF fortschreiben (Kommando-Transparenz V1): der
+            // Abregel-Schreibweg ist ein EIGENER Strom neben dem Batterie-
+            // Sollwert - die zwei beschreiben verschiedene Geraete-Register.
+            commandLog.ingestCurtailment(siteId, deviceId, row, row.checkedAt());
         } finally {
             TenantContext.clear();
         }

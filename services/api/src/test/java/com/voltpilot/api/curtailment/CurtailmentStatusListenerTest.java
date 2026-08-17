@@ -50,7 +50,8 @@ class CurtailmentStatusListenerTest {
         store = mock(CurtailmentStatusRepository.class);
         when(devices.findById(DEVICE)).thenReturn(Optional.of(new DeviceDto(
                 DEVICE, SITE, "demo-inverter-01", "inverter", null, "active", Instant.now(), Instant.now())));
-        listener = new CurtailmentStatusListener("tcp://localhost:1883", "", "", devices, store);
+        listener = new CurtailmentStatusListener("tcp://localhost:1883", "", "", devices, store,
+                mock(com.voltpilot.api.command.CommandLogWriter.class));
     }
 
     /** One heartbeat in; the captured upsert row out. */

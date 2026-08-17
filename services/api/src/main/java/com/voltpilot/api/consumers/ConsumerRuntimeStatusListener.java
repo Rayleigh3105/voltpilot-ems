@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.rules.RuleEventWriter;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -104,6 +105,7 @@ public class ConsumerRuntimeStatusListener {
     private final ConsumerRuntimeStatusRepository store;
     private final ConsumerRequirementLedgerWriter ledger;
     private final RuleEventWriter ruleEvents;
+    private final CommandLogWriter commandLog;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -113,7 +115,8 @@ public class ConsumerRuntimeStatusListener {
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             DeviceRepository devices, ConsumerRuntimeStatusRepository store,
-            ConsumerRequirementLedgerWriter ledger, RuleEventWriter ruleEvents) {
+            ConsumerRequirementLedgerWriter ledger, RuleEventWriter ruleEvents,
+            CommandLogWriter commandLog) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
@@ -121,6 +124,7 @@ public class ConsumerRuntimeStatusListener {
         this.store = store;
         this.ledger = ledger;
         this.ruleEvents = ruleEvents;
+        this.commandLog = commandLog;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -257,6 +261,11 @@ public class ConsumerRuntimeStatusListener {
             // Und den VERLAUF fortschreiben: nur die WECHSEL, nie der Zustand
             // (Einheitsmodell Stufe 5b) - ebenfalls additiv und nie werfend.
             ruleEvents.ingestConsumers(siteId, previous, rows, reportedAt);
+            // Und den KOMMANDO-Verlauf: hier NUR die Bestaetigungs-Dimension.
+            // Start/Stopp stehen schon im Regel-Protokoll, und dieselbe Sache
+            // zweimal zu speichern erzeugte zwei Wahrheiten ueber ein Ereignis
+            // - die Seite verbindet stattdessen beide Stroeme.
+            commandLog.ingestConsumers(siteId, deviceId, rows, reportedAt);
         } finally {
             TenantContext.clear();
         }

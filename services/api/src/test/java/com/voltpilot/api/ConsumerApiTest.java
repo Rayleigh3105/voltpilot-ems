@@ -105,6 +105,9 @@ class ConsumerApiTest {
     com.voltpilot.api.rules.RuleEventWriter ruleEventWriter;
 
     @Autowired
+    com.voltpilot.api.command.CommandLogWriter commandLogWriter;
+
+    @Autowired
     com.voltpilot.api.repo.ConsumerRequirementStateRepository requirementStateRepository;
 
     @Autowired
@@ -408,7 +411,7 @@ class ConsumerApiTest {
             // state word discarded.
             ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
                     "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository,
-                    ledgerWriter, ruleEventWriter);
+                    ledgerWriter, ruleEventWriter, commandLogWriter);
             String topic = "ems/00000000-0000-0000-0000-000000000001/" + BERLIN_SITE + "/"
                     + device + "/status";
             String hb = "{\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
@@ -559,7 +562,7 @@ class ConsumerApiTest {
             // runtime, energy ASSUMED (Nennleistung × Zeit = 3.0 kW × 1.5 h).
             ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
                     "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository,
-                    ledgerWriter, ruleEventWriter);
+                    ledgerWriter, ruleEventWriter, commandLogWriter);
             String topic = "ems/" + tenantA + "/" + BERLIN_SITE + "/" + device + "/status";
             String hb = "{\"tenant_id\":\"" + tenantA + "\",\"site_id\":\"" + BERLIN_SITE + "\","
                     + "\"device_id\":\"" + device + "\",\"ts\":\"2026-08-10T12:00:00Z\","
@@ -768,7 +771,7 @@ class ConsumerApiTest {
         String route = "/api/v1/sites/" + BERLIN_SITE + "/rule-events";
         ConsumerRuntimeStatusListener listener = new ConsumerRuntimeStatusListener(
                 "tcp://localhost:1883", "", "", deviceRepository, runtimeStatusRepository,
-                ledgerWriter, ruleEventWriter);
+                ledgerWriter, ruleEventWriter, commandLogWriter);
         String topic = "ems/" + tenantA + "/" + BERLIN_SITE + "/" + device + "/status";
         // Das Protokoll gehört der ANLAGE, und diese Klasse teilt sich eine -
         // jeder Herzschlag einer Nachbar-Prüfung schreibt hier mit. Wer

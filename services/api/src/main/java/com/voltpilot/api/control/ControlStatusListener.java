@@ -2,6 +2,7 @@ package com.voltpilot.api.control;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.repo.ControlStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -67,6 +68,7 @@ public class ControlStatusListener {
     private final String password;
     private final DeviceRepository devices;
     private final ControlStatusRepository controlStatus;
+    private final CommandLogWriter commandLog;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -75,12 +77,14 @@ public class ControlStatusListener {
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
-            DeviceRepository devices, ControlStatusRepository controlStatus) {
+            DeviceRepository devices, ControlStatusRepository controlStatus,
+            CommandLogWriter commandLog) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.controlStatus = controlStatus;
+        this.commandLog = commandLog;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -185,14 +189,31 @@ public class ControlStatusListener {
                 log.warn("control status for unknown device {} (tenant {}) skipped", deviceId, tenantId);
                 return;
             }
+            ControlStatusRepository.Execution execution = execution(json, control);
+            ControlStatusRepository.CertState cert = certState(control);
+            String mismatchRoles = joinRoles(control.get("mismatch_roles"));
             controlStatus.upsert(deviceId, siteId,
                     optDouble(control, "commanded_kw"), optDouble(control, "confirmed_kw"),
                     control.path("all_match").asBoolean(false),
                     control.path("control_enabled").asBoolean(false),
                     control.path("certified").asBoolean(false),
-                    joinRoles(control.get("mismatch_roles")),
+                    mismatchRoles,
                     optInstant(control, "slot_start"), checkedAt(control),
-                    execution(json, control), certState(control));
+                    execution, cert);
+            // Und den VERLAUF fortschreiben (Kommando-Transparenz V1): nur die
+            // HALTEPERIODE, nie der Zustand - additiv und nie werfend.
+            // `possible_conflict` reist nur hier durch: die Momentaufnahme
+            // speichert es nicht, und der Verlauf soll dafuer keine Spalte in
+            // einer fremden Tabelle erzwingen.
+            commandLog.ingestControl(siteId, deviceId, new CommandLogWriter.ControlFacts(
+                    optDouble(control, "commanded_kw"),
+                    control.path("all_match").asBoolean(false),
+                    control.path("control_enabled").asBoolean(false),
+                    control.path("certified").asBoolean(false),
+                    mismatchRoles, optText(control, "control_path"),
+                    control.path("possible_conflict").asBoolean(false),
+                    execution.mode(), execution.plannedKw(), cert.source()),
+                    checkedAt(control));
         } finally {
             TenantContext.clear();
         }
