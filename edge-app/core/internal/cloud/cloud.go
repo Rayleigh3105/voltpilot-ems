@@ -971,6 +971,29 @@ type CurtailmentSummary struct {
 	// anchor. An older cloud ignores it (the api reads the heartbeat as a
 	// JsonNode), so this is safe to add without any cloud change.
 	ExportGuard *ExportGuardSummary `json:"export_guard,omitempty"`
+
+	// DeviceExportLimitKw is the feed-in limit the INVERTER ITSELF holds, read
+	// from its own register at most once a day („Grenzen & Wächter" Stufe 0,
+	// Vierer #4). At Anlage Herzogau the Deye held an installer cap of 33,0 kW
+	// while 70 kW were configured in the portal, and nobody could see it.
+	//
+	// It rides HERE next to ExportGuard on purpose: the two are the two limits
+	// at the same grid connection point, and a DISCREPANCY statement needs BOTH
+	// halves - co-locating them means they arrive together or not at all, under
+	// one block. Its FRESHNESS is separate though (see DeviceExportLimitReadAt):
+	// CheckedAt is the curtailment units' readback stamp and would claim a
+	// recency this once-a-day register does not have.
+	//
+	// KNOWN BOUNDARY, inherited from the block: a plant with NO
+	// curtailment-capable unit sends no `curtailment` block at all, so it
+	// reports no device limit either. Absent therefore means "not reported",
+	// never "the device has no limit".
+	DeviceExportLimitKw *float64 `json:"device_export_limit_kw,omitempty"`
+	// DeviceExportLimitRegister is WHERE the value came from ("0x00e7") - a
+	// number without its origin is not evidence.
+	DeviceExportLimitRegister string `json:"device_export_limit_register,omitempty"`
+	// DeviceExportLimitReadAt is its OWN freshness anchor (RFC3339).
+	DeviceExportLimitReadAt string `json:"device_export_limit_read_at,omitempty"`
 }
 
 // ExportGuardSummary is the heartbeat half of the dynamic feed-in limitation.

@@ -18,6 +18,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
 // initMirror builds the mirror server from the persisted settings (called
@@ -83,8 +84,8 @@ func (a *Agent) onRegistersRaw(_ string, payload []byte) {
 		return // cleared retained topic
 	}
 	var m struct {
-		Ts     string           `json:"ts"`
-		Unit   int              `json:"unit"`
+		Ts     string            `json:"ts"`
+		Unit   int               `json:"unit"`
 		Blocks []mirror.RawBlock `json:"blocks"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
@@ -101,6 +102,16 @@ func (a *Agent) onRegistersRaw(_ string, payload []byte) {
 		}
 	}
 	a.mir.UpdateRaw(ts, m.Unit, m.Blocks)
+	// The DEVICE'S OWN feed-in limit rides ALONG in these very bytes („Grenzen &
+	// Wächter" Stufe 0): the poll appends its register to the existing read plan
+	// at most once a day, so there is no second listener and no extra socket.
+	// nil = the register was not in this cycle (the normal case) or cannot be
+	// read honestly for this family - the previous value then STAYS, because
+	// "we did not read it now" is not "the limit went away".
+	if info := a.noteDeviceExportLimit(ts, m.Unit, m.Blocks); info != nil {
+		a.State.Update(func(s *state.Snapshot) { s.DeviceExportLimit = info })
+		slog.Info("device export limit read", "register", info.Register, "kw", info.LimitKw)
+	}
 }
 
 // onMirrorWant persists + republishes a changed learned want set. Runs on

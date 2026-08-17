@@ -322,3 +322,42 @@ test('route keeps explicit kostal connection values and gates unknown families i
   assert.strictEqual(idle.adapter, 'idle');
   assert.match(idle.reason, /Kostal-Familie/);
 });
+
+// --- die GERÄTE-EIGENE Einspeisegrenze („Grenzen & Wächter" Stufe 0) ---------
+
+test('exportLimitRegister kennt hybrid_3p und AUSDRÜCKLICH nicht hybrid_1p', () => {
+  // hybrid_3p: „Grid Max Export power" 0x00E7, Skala 10 (Register = W / 10) -
+  // in Herzogau live gelesen: raw 3300 = 33,0 kW.
+  assert.deepStrictEqual(routing.exportLimitRegister('hybrid_3p'), { addr: 0x00e7, scale: 10 });
+  // hybrid_1p: dort IST die Grenze „Max Sell Power" (0x00F5) - das Register,
+  // das unser eigener Entlade-Hebel schreibt. Es zu lesen hieße, unseren
+  // Befehl als „Grenze des Geräts" zu melden.
+  assert.strictEqual(routing.exportLimitRegister('hybrid_1p'), null);
+  for (const f of ['string', 'micro', 'sunspec', 'fronius_solar_api', 'kostal_plenticore', '']) {
+    assert.strictEqual(routing.exportLimitRegister(f), null, f + ' hat kein belastbares Register');
+  }
+});
+
+test('shouldReadExportLimit liest höchstens einmal am Tag - und beim Start', () => {
+  const now = 1_800_000_000_000;
+  // Noch nie versucht (frischer Kontext / nach einem Neustart): fällig.
+  assert.strictEqual(routing.shouldReadExportLimit('hybrid_3p', undefined, now), true);
+  assert.strictEqual(routing.shouldReadExportLimit('hybrid_3p', 0, now), true);
+  assert.strictEqual(routing.shouldReadExportLimit('hybrid_3p', 'gestern', now), true);
+  // Gerade versucht: nicht wieder.
+  assert.strictEqual(routing.shouldReadExportLimit('hybrid_3p', now - 1000, now), false);
+  assert.strictEqual(
+    routing.shouldReadExportLimit('hybrid_3p', now - routing.EXPORT_LIMIT_INTERVAL_MS + 1, now),
+    false,
+  );
+  // Einen Tag später wieder.
+  assert.strictEqual(
+    routing.shouldReadExportLimit('hybrid_3p', now - routing.EXPORT_LIMIT_INTERVAL_MS, now),
+    true,
+  );
+  // Eine Uhr, die ZURÜCK gesprungen ist, darf das Lesen nicht einen Tag lang
+  // aussperren (ein Pi ohne gepufferte Uhr springt beim ersten NTP-Abgleich).
+  assert.strictEqual(routing.shouldReadExportLimit('hybrid_3p', now + 60_000, now), true);
+  // Eine Familie ohne belastbares Register wird nie gelesen, egal wie alt.
+  assert.strictEqual(routing.shouldReadExportLimit('hybrid_1p', undefined, now), false);
+});

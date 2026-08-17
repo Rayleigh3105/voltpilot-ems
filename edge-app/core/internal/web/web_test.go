@@ -3001,6 +3001,25 @@ func TestFeedInWatchdogStateIsVisibleWithoutTechnikmodus(t *testing.T) {
 	if !strings.Contains(get("/betrieb.js"), "export_guard") {
 		t.Error("betrieb.js: does not read the watchdog state")
 	}
+
+	// „Grenzen & Wächter" Stufe 0: the limit the DEVICE itself holds sits next to
+	// the watchdog - the same quantity at the same grid connection point, only set
+	// by somebody else. The SENTENCE is always visible; only its REGISTER (the
+	// evidence) is Technikmodus.
+	devIdx := strings.Index(page, `id="curtailDevice"`)
+	if devIdx < 0 {
+		t.Fatal("index.html: the device's own feed-in limit line is missing")
+	}
+	if strings.Contains(page[cardIdx:devIdx], "tech-only") {
+		t.Error("index.html: the device-limit SENTENCE must not sit inside a tech-only block")
+	}
+	regIdx := strings.Index(page, `id="curtailDeviceReg"`)
+	if regIdx < 0 || !strings.Contains(page[devIdx:regIdx+40], "tech-only") {
+		t.Error("index.html: the register line is the evidence and belongs behind Technikmodus")
+	}
+	if !strings.Contains(ctrl, "deriveDeviceExportLimit") {
+		t.Error("control.js: the pure device-limit derivation must stay exported for the unit tests")
+	}
 }
 
 // TestCurtailEndpoints exercises the /api/curtail surface against the fake

@@ -103,6 +103,14 @@ type Snapshot struct {
 	// whether it can actually reach a device.
 	ExportGuard *ExportGuardInfo `json:"export_guard,omitempty"`
 
+	// DeviceExportLimit is the feed-in limit the INVERTER ITSELF holds - a
+	// foreign truth inside the customer's device that we READ (never write) from
+	// its own register, at most once a day („Grenzen & Wächter" Stufe 0). nil =
+	// not read: an older poll, a family whose register map has no trustworthy
+	// feed-in cap, or simply not read yet. Never a fabricated 0, and never "the
+	// device has no limit".
+	DeviceExportLimit *DeviceExportLimitInfo `json:"device_export_limit,omitempty"`
+
 	InverterLink     string    `json:"inverter_link"` // "up" | "down" | "" (unknown)
 	InverterLinkSeen time.Time `json:"inverter_link_seen,omitzero"`
 
@@ -291,6 +299,27 @@ type ExportGuardInfo struct {
 	// PARTIAL case, where the watchdog works but cannot pull back every inverter.
 	Effective bool   `json:"effective"`
 	Reach     string `json:"reach,omitempty"`
+}
+
+// DeviceExportLimitInfo is the feed-in limit the INVERTER ITSELF holds, read
+// from its own register and never written („Grenzen & Wächter" Stufe 0, Vierer
+// #4). At Anlage Herzogau the Deye held an installer cap of 33,0 kW in 0x00E7
+// while 70 kW were configured in the portal - a discrepancy that stayed
+// invisible through two investigation rounds because nobody read the register.
+//
+// It has its OWN timestamp because it ages on a completely different clock than
+// everything else on this snapshot: the register is read at most once a day (one
+// socket, no extra poll cadence), so borrowing another block's freshness would
+// claim a recency it does not have.
+type DeviceExportLimitInfo struct {
+	// LimitKw is the limit the device currently holds, in kW at the grid
+	// connection point. A value of 0 is a VALUE ("may not feed in at all").
+	LimitKw float64 `json:"limit_kw"`
+	// Register is WHERE it came from ("0x00e7") - a number without its origin is
+	// not evidence, and the later raw view renders it.
+	Register string `json:"register"`
+	// ReadAt is when the poll delivered this word.
+	ReadAt time.Time `json:"read_at"`
 }
 
 // PlatformCertInfo is the platform register's verdict for the SELECTED inverter

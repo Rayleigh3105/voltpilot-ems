@@ -999,6 +999,64 @@ test("Einspeise-Waechter: ohne erreichbares Geraet ist er NICHT wirksam - und sa
   assert.match(d.text, /an KEIN Gerät geschrieben/);
 });
 
+/* == control.js: die Grenze IM GERAET („Grenzen & Waechter" Stufe 0) == */
+//
+// Eine fremde Wahrheit im Wechselrichter des Kunden: die Box LIEST sein
+// Register (0x00E7 auf hybrid_3p) und schreibt es nie. In Herzogau hielt der
+// Deye 33,0 kW, waehrend im Portal 70 kW hinterlegt waren - zwei
+// Untersuchungsrunden lang unsichtbar, weil niemand nachsah.
+
+function deviceLimitFor(state) {
+  return load(["control.js"]).VPControl.deriveDeviceExportLimit(state);
+}
+
+const DEVICE_LIMIT = { limit_kw: 33, register: "0x00e7", read_at: "2026-08-17T04:12:00Z" };
+
+test("Geraete-Grenze: ohne gemeldeten Wert gibt es keine Aussage", () => {
+  assert.strictEqual(deviceLimitFor({}), null);
+  assert.strictEqual(deviceLimitFor({ device_export_limit: {} }), null);
+  // Auch ein Register ohne Zahl behauptet nichts.
+  assert.strictEqual(deviceLimitFor({ device_export_limit: { register: "0x00e7" } }), null);
+});
+
+test("Geraete-Grenze: der Herzogau-Wert wird als SATZ gerendert, das Register als Beleg", () => {
+  const d = deviceLimitFor({ device_export_limit: DEVICE_LIMIT });
+  assert.match(d.text, /begrenzt die Einspeisung am Netzpunkt auf 33,0 kW/);
+  assert.strictEqual(d.register, "0x00e7");
+  assert.strictEqual(d.limitKw, 33);
+});
+
+test("Geraete-Grenze: 0 kW ist ein WERT, keine Luecke", () => {
+  const d = deviceLimitFor({ device_export_limit: { limit_kw: 0, register: "0x00e7" } });
+  assert.ok(d, "0 kW heisst 'darf gar nicht einspeisen' und muss stehen");
+  assert.match(d.text, /auf 0,0 kW/);
+});
+
+test("Geraete-Grenze: sie ERSCHEINT, auch ohne Waechter und ohne Abregel-Einheit", () => {
+  // Genau die Konstellation eines Deye-Standorts ohne Fronius: der Waechter
+  // schweigt (keine Grenze hinterlegt), die Karte gaebe es sonst nicht - und
+  // die Grenze im Geraet ist dann DIE Aussage, nicht eine Nebenzeile.
+  const alone = curtailFor({ device_export_limit: DEVICE_LIMIT });
+  assert.ok(alone, "ohne die Karte waere die Grenze unsichtbar");
+  assert.match(alone.text, /auf 33,0 kW/);
+  assert.strictEqual(alone.units.length, 0);
+  assert.strictEqual(alone.deviceLimit, null, "sie steht als Kartensatz, nicht doppelt darunter");
+});
+
+test("Geraete-Grenze: neben dem Waechter steht sie als eigene Zeile", () => {
+  const both = curtailFor({
+    export_guard: GUARD_LIMITING,
+    device_export_limit: DEVICE_LIMIT
+  });
+  assert.ok(both.exportGuard, "der Waechter traegt weiter die Kartenaussage");
+  assert.ok(both.deviceLimit, "die Grenze im Geraet steht daneben");
+  assert.match(both.deviceLimit.text, /auf 33,0 kW/);
+});
+
+test("Geraete-Grenze: ohne beides bleibt die Karte verborgen (byte-gleiche Seite)", () => {
+  assert.strictEqual(curtailFor({}), null);
+});
+
 test("Einspeise-Waechter: eine unwirksame Wache ueberstimmt eine ruhige Abregel-Zeile", () => {
   // Ohne Einheiten gaebe es die Karte gar nicht - MIT Grenze existiert sie
   // genau dafuer, das zu sagen.

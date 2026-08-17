@@ -530,20 +530,53 @@
     };
   }
 
+  /* ------------------------------------------------------------------
+     Die Einspeisegrenze, die der WECHSELRICHTER SELBST hält („Grenzen &
+     Wächter" Stufe 0): eine fremde Wahrheit im Gerät, die die Box aus dessen
+     eigenem Register LIEST und nie schreibt.
+
+     In Herzogau hielt der Deye 33,0 kW in 0x00E7, während im Portal 70 kW
+     hinterlegt waren - zwei Untersuchungsrunden lang unsichtbar, weil das
+     Register niemand las.
+
+     Das REGISTER steht bewusst hinter dem Technikmodus (die Zeile selbst nie):
+     „auf 33,0 kW begrenzt" ist die Aussage, „0x00e7" der Beleg dafür.
+     ------------------------------------------------------------------ */
+  function deriveDeviceExportLimit(s) {
+    var d = s && s.device_export_limit;
+    if (!d || typeof d.limit_kw !== "number") return null;
+    return {
+      text: "Ihr Wechselrichter begrenzt die Einspeisung am Netzpunkt auf "
+        + nf1.format(d.limit_kw) + " kW.",
+      register: d.register || "",
+      limitKw: d.limit_kw
+    };
+  }
+
   function deriveCurtail(s) {
     var eg = deriveExportGuard(s);
+    var dl = deriveDeviceExportLimit(s);
     var d = deriveCurtailUnits(s);
     if (!d) {
-      // No curtailment-capable unit at all. Without a feed-in limit there is
-      // nothing to say and the card stays hidden (byte-identical page); WITH
-      // one, the card exists precisely to say that the limit reaches nothing.
-      if (!eg) return null;
+      // No curtailment-capable unit at all. Without a feed-in limit AND without
+      // a device limit there is nothing to say and the card stays hidden
+      // (byte-identical page); WITH a limit, the card exists precisely to say
+      // which one holds - and, for the watchdog, that it reaches nothing.
+      if (!eg && !dl) return null;
       return {
-        tone: eg.tone, units: [], title: eg.title, text: eg.text,
-        showTable: false, exportGuard: eg
+        tone: eg ? eg.tone : "muted",
+        units: [],
+        title: eg ? eg.title : "Einspeisegrenze im Gerät",
+        text: eg ? eg.text : dl.text,
+        showTable: false,
+        exportGuard: eg,
+        // With no watchdog the device limit IS the card's sentence; repeating it
+        // below would be noise.
+        deviceLimit: eg ? dl : null
       };
     }
     d.exportGuard = eg;
+    d.deviceLimit = dl;
     if (eg && !eg.effective) d.tone = "warn";
     return d;
   }
@@ -693,6 +726,20 @@
       show(exp, showExp);
       if (showExp) exp.textContent = d.exportGuard.text;
     }
+    // Die Grenze IM Gerät steht daneben - dieselbe Größe am selben Netzpunkt,
+    // nur von jemand anderem gesetzt. Das REGISTER ist der Beleg und bleibt
+    // Technikmodus; die Aussage steht immer.
+    var dev = $("curtailDevice");
+    if (dev) {
+      show(dev, !!d.deviceLimit);
+      if (d.deviceLimit) dev.textContent = d.deviceLimit.text;
+    }
+    var devReg = $("curtailDeviceReg");
+    if (devReg) {
+      var showReg = !!(d.deviceLimit && d.deviceLimit.register);
+      show(devReg, showReg);
+      if (showReg) devReg.textContent = "Register " + d.deviceLimit.register;
+    }
     show($("curtailTech"), !!(d.units && d.units.length));
     renderCurtailUnits(d.units);
   }
@@ -761,6 +808,7 @@
     deriveAbsorb: deriveAbsorb,
     deriveCurtail: deriveCurtail,
     deriveExportGuard: deriveExportGuard,
+    deriveDeviceExportLimit: deriveDeviceExportLimit,
     trackStateSince: trackStateSince,
     ROLE_LABEL: ROLE_LABEL,
     PATH_LABEL: PATH_LABEL
