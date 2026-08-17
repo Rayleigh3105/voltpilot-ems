@@ -214,7 +214,7 @@ public class ScheduleRepository {
                 // into a claimed false.
                 rs.getObject("cover_load_from_battery", Boolean.class),
                 rs.getObject("charge_from_surplus_only", Boolean.class),
-                // Erklärbarkeit Stufe 1 (V20260822000000): only ever set on a
+                // Erklärbarkeit Stufe 1 (V20260823000000): only ever set on a
                 // RESTING slot - null elsewhere is the honest "no margin", not
                 // a missing value.
                 rs.getString("why_next_best"),

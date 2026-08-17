@@ -35,7 +35,7 @@ import java.util.UUID;
  * switches to the honest fallback wording then. Null on pre-feature runs or
  * runs whose explain layer was off - the display degrades to today's view.
  *
- * <p><b>Erklärbarkeit Stufe 1</b> (migration V20260822000000, Konzept
+ * <p><b>Erklärbarkeit Stufe 1</b> (migration V20260823000000, Konzept
  * vp-warum-erklaerbar-e2 §4.2 A/B) - WHERE the value of stored energy came
  * from, the fact the 17.08.2026 customer needed and nobody could state:
  * {@code whyTerminalAnchor} names the branch that anchored it

@@ -128,7 +128,7 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
     phase only on an explicit ``True``, so both non-true states render exactly
     today's view.
 
-    The Erklaerbarkeit-Stufe-1 facts (api migration V20260822000000) follow the
+    The Erklaerbarkeit-Stufe-1 facts (api migration V20260823000000) follow the
     same two patterns: ``why_terminal_anchor``/``why_refill_free_pct`` are
     RUN-level (repeated per row, like ``terminal_value_eur_per_kwh``) and say
     WHERE the value of stored energy came from; ``why_next_best``/
