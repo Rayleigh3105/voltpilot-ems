@@ -198,4 +198,17 @@ describe('die Rücknahme', () => {
     await waitFor(() => expect(revokeSwitch).toHaveBeenCalledWith('s-1', 'e-1'));
     expect(onChanged).toHaveBeenCalled();
   });
+
+  it('fragt den Watchdog-WERT erst, wenn es ein Watchdog-Register gibt', () => {
+    mount();
+    fireEvent.click(screen.getByText('Optionale Register'));
+    // Ohne Register wäre ein Wert eine Angabe ins Leere.
+    expect(screen.queryByLabelText('Watchdog-Wert')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Watchdog-Register des Geräts'), {
+      target: { value: '99' },
+    });
+    // Ein Watchdog, in den immer 0 geschrieben wird, ist bei den meisten
+    // Geräten kein Lebenszeichen - der Wert gehört zur Adresse.
+    expect(screen.getByLabelText('Watchdog-Wert')).toBeInTheDocument();
+  });
 });

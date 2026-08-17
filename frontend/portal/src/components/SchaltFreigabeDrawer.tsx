@@ -412,6 +412,23 @@ export function SchaltFreigabeDrawer({
                           im Takt.
                         </p>
                       </div>
+                      {/* Der Wert gehört zur Adresse: ein Watchdog-Register, in
+                          das immer 0 geschrieben wird, ist bei den meisten
+                          Geräten kein Lebenszeichen. Leer = 0, wie bisher. */}
+                      {form.watchdogAdresse.trim() !== '' && (
+                        <div className="vp-assist-field">
+                          <label htmlFor="fg-wdv">Watchdog-Wert</label>
+                          <Input
+                            id="fg-wdv"
+                            type="number"
+                            value={form.watchdogWert}
+                            onChange={(e) => setzeForm({ watchdogWert: e.target.value })}
+                          />
+                          <p className="vp-assist-help">
+                            Der Wert, den VoltPilot in dieses Register schreibt. Leer = 0.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </details>
 
