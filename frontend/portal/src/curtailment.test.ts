@@ -333,6 +333,19 @@ describe('exportGuardView · der Einspeisewächter („Grenzen & Wächter" Stufe
     expect(v!.line).toContain(`70,0${NBSP}kW`);
   });
 
+  it('nennt kein Alter, wenn der Zeitstempel unbrauchbar ist', () => {
+    // Die Grenze GILT weiterhin - nur ihre Bezugszeit ist unbekannt, und
+    // „zuletzt gemeldet Invalid Date" wäre schlechter als gar keine Angabe.
+    const v = exportGuardView(
+      status({ exportGuard: herzogauGuard(), checkedAt: 'gestern' }),
+      NOW,
+    );
+
+    expect(v).not.toBeNull();
+    expect(v!.agoNote).toBe('');
+    expect(v!.line).toContain('an KEIN Gerät geschrieben');
+  });
+
   it('nennt die Diskrepanz Gerät-gegen-hinterlegt beim Namen', () => {
     // Der Herzogau-Befund: der Deye hielt 33 kW in 0x00E7, hinterlegt waren 70.
     const v = exportGuardView(

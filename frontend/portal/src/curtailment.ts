@@ -319,8 +319,11 @@ export function exportGuardView(
   const head = `Einspeisegrenze ${fmtNum(g.limitKw, 'kW', 1)}`;
   const line = sentence ? `${head}. ${sentence}` : `${head}.`;
 
+  // Ein UNBRAUCHBARER Zeitstempel ist kein Alter: dann wird gar keines genannt,
+  // statt „zuletzt gemeldet Invalid Date" zu rendern (die Zeile selbst bleibt —
+  // die Grenze gilt, nur ihre Bezugszeit ist unbekannt).
   const ageMs = now.getTime() - new Date(status!.checkedAt).getTime();
-  const stale = Number.isNaN(ageMs) || ageMs > CURTAIL_STALE_MS;
+  const stale = Number.isFinite(ageMs) && ageMs > CURTAIL_STALE_MS;
 
   return {
     line,
