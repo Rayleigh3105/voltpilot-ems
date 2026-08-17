@@ -12,6 +12,7 @@ import {
   pfadWort,
   periodenSatz,
   rohBlick,
+  rohWert,
   spanne,
   stromLabel,
   zyklenWort,
@@ -165,8 +166,11 @@ describe('die Ehrlichkeitsregeln', () => {
       .toContain('Aufzeichnung hat noch nicht begonnen');
   });
 
-  it('nennt eine nur gelesene Komponente beim Namen (F4)', () => {
-    expect(leerSatz(history({ writes: false }), true)).toBe(NUR_LESEN);
+  it('nennt eine nur gelesene Komponente beim Namen (F4) - und sagt es EINMAL', () => {
+    // Der Kopf trägt den Satz; die Leer-Zeile schliesst an, statt ihn zu
+    // wiederholen (im Browser aufgefallen: er stand zweimal untereinander).
+    expect(NUR_LESEN).toContain('nur gelesen');
+    expect(leerSatz(history({ writes: false }), true)).toBe('Deshalb ist dieser Verlauf leer.');
     // Ohne gewählte Komponente wäre der Satz eine Aussage über die ganze
     // Anlage - dort steht die neutrale Auskunft.
     expect(leerSatz(history({ writes: false }), false)).toContain('kein Befehl');
@@ -228,6 +232,14 @@ describe('periodenSatz - was befohlen wurde', () => {
 });
 
 describe('rohBlick - die Technischen Details (F1: für ALLE)', () => {
+  it('nennt auch im Roh-Blick die Richtung als WORT, nie ein nacktes Minus', () => {
+    expect(rohWert(-6.5, 'batterie')).toBe('6,5\u00a0kW Entladen');
+    expect(rohWert(4.2, 'batterie')).toBe('4,2\u00a0kW Laden');
+    expect(rohWert(0, 'batterie')).toContain('Pause');
+    // Eine Einspeise-Kappe hat keine Richtung - sie ist eine Obergrenze.
+    expect(rohWert(17.6, 'abregelung')).toBe('17,6\u00a0kW');
+  });
+
   it('zeigt Schreibweg, kW und die abweichenden Rollen in Klartext', () => {
     const rows = rohBlick(periode({
       verdict: 'abweichend',

@@ -346,10 +346,10 @@ export function rohBlick(e: CommandEntry): RohZeile[] {
   const pfad = pfadWort(e.path);
   if (pfad) out.push({ label: 'Schreibweg', wert: pfad });
   if (e.commandedKwFirst != null) {
-    out.push({ label: 'Befohlen (zuerst)', wert: fmtNum(e.commandedKwFirst, 'kW') });
+    out.push({ label: 'Befohlen (zuerst)', wert: rohWert(e.commandedKwFirst, e.stream) });
   }
   if (e.commandedKwLast != null) {
-    out.push({ label: 'Befohlen (zuletzt)', wert: fmtNum(e.commandedKwLast, 'kW') });
+    out.push({ label: 'Befohlen (zuletzt)', wert: rohWert(e.commandedKwLast, e.stream) });
   }
   const d = e.detail;
   if (d?.mismatchRoles) {
@@ -368,6 +368,22 @@ export function rohBlick(e: CommandEntry): RohZeile[] {
     out.push({ label: 'Schreibzyklen', wert: zyklenWort(e) });
   }
   return out;
+}
+
+/**
+ * Ein befohlener Wert im Roh-Blick: Betrag + RICHTUNGSWORT, nie ein nacktes
+ * Minus (die `live.ts`-Konvention gilt auch hier - „-6,5 kW" beantwortet nicht,
+ * ob geladen oder entladen wurde). Für die Einspeise-Begrenzung ist der Wert
+ * eine Kappe und hat keine Richtung.
+ */
+export function rohWert(kw: number, stream: string): string {
+  if (stream !== 'batterie') {
+    return fmtNum(kw, 'kW');
+  }
+  const dir = batteryDirection(kw);
+  const betrag = fmtNum(Math.abs(kw), 'kW');
+  if (dir === 'pausieren') return `${betrag} (Pause)`;
+  return `${betrag} ${dir === 'laden' ? 'Laden' : 'Entladen'}`;
 }
 
 /** „—" mit Grund, nie eine erfundene Zahl (§9 Regel 3). */
@@ -398,7 +414,9 @@ export function leerSatz(history: CommandHistory | null, gefiltert: boolean): st
     return 'Für diesen Zeitraum liegt uns nichts vor - die Aufzeichnung hat noch nicht begonnen.';
   }
   if (!history.writes && gefiltert) {
-    return NUR_LESEN;
+    // Der Kopf trägt hier schon NUR_LESEN - denselben Satz noch einmal zu
+    // sagen ist keine zweite Auskunft, sondern Rauschen.
+    return 'Deshalb ist dieser Verlauf leer.';
   }
   return 'In diesem Zeitraum wurde an dieses Gerät kein Befehl geschickt.';
 }
