@@ -34,6 +34,22 @@ import java.util.UUID;
  * operator enforce the physical limit regardless) - the portal's §14a copy
  * switches to the honest fallback wording then. Null on pre-feature runs or
  * runs whose explain layer was off - the display degrades to today's view.
+ *
+ * <p><b>Erklärbarkeit Stufe 1</b> (migration V20260822000000, Konzept
+ * vp-warum-erklaerbar-e2 §4.2 A/B) - WHERE the value of stored energy came
+ * from, the fact the 17.08.2026 customer needed and nobody could state:
+ * {@code whyTerminalAnchor} names the branch that anchored it
+ * ({@code einspeisewert} = a surplus slot's forgone feed-in |
+ * {@code bezugspreis} = a deficit slot's avoided grid import, the trüb-horizon
+ * case | {@code marktpreis} = cheapest refill where grid charging is allowed |
+ * {@code vorgabe} = env-pinned, nothing derived), and
+ * {@code whyRefillFreePct} how much of the battery's usable band the horizon
+ * refills for FREE (0-100) - the summer statement "morgen füllt Ihr Überschuss
+ * den Speicher ohnehin". Both null when the explain layer was off, on
+ * pre-feature runs, and (for the share) when there is no usable band to
+ * measure against - never a fabricated 0, which would read as "the horizon
+ * offers nothing". An anchor word this portal does not know is IGNORED by the
+ * consumer, never guessed at.
  */
 public record SchedulePlanDto(
         UUID planId,
@@ -46,10 +62,13 @@ public record SchedulePlanDto(
         BigDecimal socEndPct,
         BigDecimal peakTargetKw,
         Boolean fallback14a,
+        String whyTerminalAnchor,
+        BigDecimal whyRefillFreePct,
         List<ScheduleSlotDto> slots) {
 
     public static SchedulePlanDto empty() {
         return new SchedulePlanDto(
-                null, null, null, 15, null, null, null, null, null, null, List.of());
+                null, null, null, 15, null, null, null, null, null, null, null, null,
+                List.of());
     }
 }

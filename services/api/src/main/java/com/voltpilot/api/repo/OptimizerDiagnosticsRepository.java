@@ -48,7 +48,9 @@ public class OptimizerDiagnosticsRepository {
             BigDecimal wearCostEur,
             BigDecimal storedValueCtKwh,
             String slotRole,
-            String slotFlags) {
+            String slotFlags,
+            String whyNextBest,
+            BigDecimal whyNextBestMarginCt) {
     }
 
     /**
@@ -170,7 +172,8 @@ public class OptimizerDiagnosticsRepository {
         return jdbc.query(
                 "SELECT time, battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh,"
                         + " cost_eur, baseline_cost_eur, curtail_kw, wear_cost_eur,"
-                        + " stored_value_ct_kwh, slot_role, slot_flags "
+                        + " stored_value_ct_kwh, slot_role, slot_flags,"
+                        + " why_next_best, why_next_best_margin_ct "
                         + "FROM schedule WHERE site_id = ? AND generated_at = ? ORDER BY time",
                 (rs, i) -> new SlotRow(
                         rs.getTimestamp("time").toInstant(),
@@ -186,7 +189,9 @@ public class OptimizerDiagnosticsRepository {
                         rs.getBigDecimal("wear_cost_eur"),
                         rs.getBigDecimal("stored_value_ct_kwh"),
                         rs.getString("slot_role"),
-                        rs.getString("slot_flags")),
+                        rs.getString("slot_flags"),
+                        rs.getString("why_next_best"),
+                        rs.getBigDecimal("why_next_best_margin_ct")),
                 siteId, Timestamp.from(generatedAt));
     }
 

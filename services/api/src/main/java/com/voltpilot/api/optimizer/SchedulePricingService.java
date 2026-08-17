@@ -63,7 +63,8 @@ public class SchedulePricingService {
         }
         return new SchedulePlanDto(plan.planId(), plan.deviceId(), plan.generatedAt(),
                 plan.slotMinutes(), plan.savingsEur(), plan.bankedValueEur(), plan.socStartPct(),
-                plan.socEndPct(), plan.peakTargetKw(), plan.fallback14a(), priced);
+                plan.socEndPct(), plan.peakTargetKw(), plan.fallback14a(),
+                plan.whyTerminalAnchor(), plan.whyRefillFreePct(), priced);
     }
 
     private static BigDecimal ct(Double value) {

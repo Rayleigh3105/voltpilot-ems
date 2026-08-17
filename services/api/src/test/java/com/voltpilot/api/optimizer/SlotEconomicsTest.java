@@ -422,4 +422,40 @@ class SlotEconomicsTest {
                     .doesNotContain("Preisunterschied").doesNotContain("kleiner als");
         }
     }
+
+    /**
+     * Erklärbarkeit Stufe 1 (§4.4): sobald der Lauf den Treiber EXPORTIERT hat,
+     * darf der Betreiber-Blick ihn nennen - und zwar denselben, den die
+     * Kundenfläche nennt (dieselben Spalten, kein zweiter Rechenweg). Der
+     * Gleichstand wird als Gleichstand ausgesprochen, statt eine Abwägung als
+     * Sicherheit zu verkleiden.
+     */
+    @Test
+    void idleWhyTextNamesTheExportedNextBestAndCallsATieATie() {
+        // Der 17.08.: Deckung ist die nächstbeste Option und exakt gleichwertig.
+        assertThat(SlotEconomics.whyText("ruhe", 0.0, 0.0, null, 32.5, 7.9, 23.5,
+                "decken", 0.0))
+                .contains("weder Laden noch Entladen eingeplant")
+                .contains("Nächstbeste Option: Verbrauch aus dem Speicher decken")
+                .contains("praktisch gleichwertig");
+        // Eine klare Entscheidung nennt ihren Abstand.
+        assertThat(SlotEconomics.whyText("ruhe", 0.0, 0.0, null, 32.5, 7.9, 23.5,
+                "verkaufen", -3.1))
+                .contains("Nächstbeste Option: Einspeisen")
+                .contains("3,1 ct/kWh schlechter");
+        // OHNE Fakt bleibt der Satz zeichengleich zur Stufe 0 - der Zweig ist
+        // ohne seine Gates unerreichbar, in BEIDEN Richtungen.
+        String stufe0 = SlotEconomics.whyText("ruhe", 0.0, 0.0, null, 32.5, 7.9, 23.5);
+        assertThat(SlotEconomics.whyText("ruhe", 0.0, 0.0, null, 32.5, 7.9, 23.5,
+                "decken", null)).isEqualTo(stufe0);
+        assertThat(SlotEconomics.whyText("ruhe", 0.0, 0.0, null, 32.5, 7.9, 23.5,
+                null, 0.0)).isEqualTo(stufe0);
+        // Ein Wort, das dieser Stand nicht kennt, wird IGNORIERT, nie geraten.
+        assertThat(SlotEconomics.whyText("ruhe", 0.0, 0.0, null, 32.5, 7.9, 23.5,
+                "zeitreisen", -1.0)).isEqualTo(stufe0);
+        assertThat(SlotEconomics.nextBestLabel("zeitreisen")).isNull();
+        // Und der Zweig gehört der RUHE: eine aktive Rolle bekommt ihn nie.
+        assertThat(SlotEconomics.whyText("entladen", -5.0, 2.0, null, 28.0, 18.5, 12.3,
+                "decken", -2.0)).doesNotContain("Nächstbeste");
+    }
 }

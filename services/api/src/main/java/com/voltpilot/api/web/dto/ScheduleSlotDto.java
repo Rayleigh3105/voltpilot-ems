@@ -98,6 +98,21 @@ import java.util.List;
  * not evaluated (pre-feature run, duty switch off), false = evaluated and no
  * duty - the portal marks a phase only on an explicit true, so both non-true
  * states render exactly today's view.
+ *
+ * <p><b>Erklärbarkeit Stufe 1</b> (migration V20260822000000, Konzept
+ * vp-warum-erklaerbar-e2 §4.2 C): {@code whyNextBest} is the best action this
+ * RESTING slot rejected ({@code decken} | {@code verkaufen} |
+ * {@code solar_speichern} | {@code netzladen}) and {@code whyNextBestMarginCt}
+ * its disadvantage in ct/kWh (always &lt;= 0). Together they are the KNAPPHEIT
+ * of the decision - whether it was close or clear, and against what. A margin
+ * of ~0 is a TIE and the surface must say so; on 17.08.2026 it was
+ * algebraically exactly 0,000 ct/kWh while the displayed sentence claimed a
+ * price-spread cause. Both null on an ACTIVE slot (at the optimum the chosen
+ * action's marginal benefit is 0 - a number there would be noise), when NO
+ * alternative was physically admissible (an empty battery on an EEG plant in a
+ * PV-less slot could do nothing else - honestly not a margin), and on runs
+ * whose explain layer was off: the portal then stays observational, which is
+ * exactly the Stufe-0 behaviour.
  */
 public record ScheduleSlotDto(
         Instant start,
@@ -121,7 +136,9 @@ public record ScheduleSlotDto(
         BigDecimal measuredLoadKw,
         BigDecimal measuredPvKw,
         Boolean coverLoadFromBattery,
-        Boolean chargeFromSurplusOnly) {
+        Boolean chargeFromSurplusOnly,
+        String whyNextBest,
+        BigDecimal whyNextBestMarginCt) {
 
     /** The same slot with its decision prices filled in (P0 Textwahrheit). */
     public ScheduleSlotDto withPrices(
@@ -130,7 +147,8 @@ public record ScheduleSlotDto(
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
                 importPriceCtKwh, exportValueCtKwh, importPriceSource,
-                measuredLoadKw, measuredPvKw, coverLoadFromBattery, chargeFromSurplusOnly);
+                measuredLoadKw, measuredPvKw, coverLoadFromBattery, chargeFromSurplusOnly,
+                whyNextBest, whyNextBestMarginCt);
     }
 
     /**
@@ -143,6 +161,7 @@ public record ScheduleSlotDto(
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
                 importPriceCtKwh, exportValueCtKwh, importPriceSource,
-                measuredLoadKw, measuredPvKw, coverLoadFromBattery, chargeFromSurplusOnly);
+                measuredLoadKw, measuredPvKw, coverLoadFromBattery, chargeFromSurplusOnly,
+                whyNextBest, whyNextBestMarginCt);
     }
 }

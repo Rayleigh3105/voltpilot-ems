@@ -1,0 +1,66 @@
+-- =============================================================================
+-- V20260822000000 - Erklärbarkeit Stufe 1 „Der Echtheits-Kern": persist the
+-- DECISION DRIVERS the optimizer used to discard (Konzept
+-- data/vp-warum-erklaerbar-e2 §4.2/§4.3; Captain-Entscheide F1-F6, 17.08.2026).
+-- -----------------------------------------------------------------------------
+-- Stufe 0 (V-nothing, portal-only) removed the invented causes: where no fact
+-- carried a driver, the surfaces went observational. This level supplies the
+-- facts, so the TRUE causes can be told again - and only those.
+--
+-- The gap it closes is precise. The role vocabulary (V20260723030000) describes
+-- the RESULT of a slot ("warten"), never its DRIVER, and rest has structurally
+-- several (spread too small · value of stored energy above every use · an exact
+-- tie · full · reserve). Two derivations already KNEW the missing halves and
+-- threw them away: derive_terminal_value_eur_per_kwh returned a bare float, and
+-- explain.py fetched the LP reduced costs only to discard them.
+--
+--   why_terminal_anchor      - RUN fact (repeated per row, the
+--                              terminal_value_eur_per_kwh pattern): WHICH
+--                              branch anchored the value of stored energy.
+--                              Closed vocabulary: einspeisewert (surplus slot -
+--                              the forgone feed-in) · bezugspreis (deficit slot
+--                              - the avoided grid import; THE trueb-horizon
+--                              case of 17.08.) · marktpreis (grid charging
+--                              allowed - cheapest refill) · vorgabe (env-pinned,
+--                              nothing derived). Additive - a new branch is a
+--                              new TEXT value, never a migration, and a
+--                              consumer that does not know a word ignores it.
+--   why_refill_free_pct      - RUN fact: how much of the battery's USABLE band
+--                              the horizon refills for free (surplus in slots
+--                              whose export value is <= 0), 0-100. Carries the
+--                              summer statement "tomorrow's own surplus refills
+--                              it anyway". NULL = not evaluable (no usable
+--                              band), never a fabricated 0 - a 0 means "the
+--                              horizon offers nothing", a different claim.
+--   why_next_best            - SLOT fact, only ever set on a RESTING slot: the
+--                              best action the slot REJECTED (decken |
+--                              verkaufen | solar_speichern | netzladen). Only
+--                              physically ADMISSIBLE alternatives are named - a
+--                              margin against an impossible action would be an
+--                              invented regret.
+--   why_next_best_margin_ct  - SLOT fact: that alternative's disadvantage in
+--                              ct/kWh, always <= 0. |margin| ~ 0 is a TIE and
+--                              the surfaces must say so ("beides wäre gerade
+--                              fast gleich gut") instead of dressing an
+--                              abwägung up as certainty - on 17.08. the margin
+--                              was algebraically exactly 0,000 ct/kWh.
+--
+-- All nullable, deliberately: NULL = pre-feature rows or a run whose explain
+-- layer was off (OPTIMIZER_EXPLAIN_ENABLED=false) / degraded. Consumers then
+-- render exactly the Stufe-0 view - the observational sentence - never a
+-- fabricated cause. ACTIVE slots carry no next-best on purpose: at the optimum
+-- the marginal benefit of the CHOSEN action is 0, so a number there would be
+-- noise; their story is the phase's EUR.
+--
+-- Typed columns instead of JSONB (repo discipline; SQL-aggregatable; trivial
+-- JDBC mapping). No RLS change: the existing schedule policies + the
+-- column-agnostic SELECT grant (V20260701020000) cover new columns. The frozen
+-- MQTT schedule contract is untouched - the why never goes to the edge, and the
+-- Ersparnis-Simulation keeps running explain_plan=False. Bootstrap mirror:
+-- infra/local/timescale/04-schedule.sql (kept in sync).
+-- =============================================================================
+
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS why_terminal_anchor TEXT;
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS why_refill_free_pct NUMERIC(5, 1);
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS why_next_best TEXT;
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS why_next_best_margin_ct NUMERIC(12, 4);

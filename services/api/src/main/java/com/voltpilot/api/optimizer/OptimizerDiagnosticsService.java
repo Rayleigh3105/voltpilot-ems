@@ -167,7 +167,8 @@ public class OptimizerDiagnosticsService {
                     storedCt,
                     label,
                     SlotEconomics.whyText(label, batteryKw, gridKw, curtailKw,
-                            importCt.get(i), exportCt.get(i), storedCt),
+                            importCt.get(i), exportCt.get(i), storedCt,
+                            row.whyNextBest(), toDouble(row.whyNextBestMarginCt())),
                     row.slotRole(),
                     splitFlags(row.slotFlags())));
         }
