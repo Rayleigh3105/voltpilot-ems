@@ -1957,6 +1957,38 @@ The customer-facing automation editor + the production GO-LIVE of flow activatio
 
 **Historie v2** (captain-agreed deferred scope, deliberately NOT in v1): CO2 balance, milestones, PDF export, peak analysis; also a per-tenant timezone (v1 pins period boundaries to Europe/Berlin) and separating battery-to-grid export in the Eigenverbrauch formula. Forecasting ML beyond the shadow-mode foundation (quantile objectives/uncertainty bands, per-Bundesland holidays, a full ML PV model beyond residual correction, promotion *proposals* - the registry, XGBoost challengers, daily evaluation and Prognosequalität are BUILT, see "Shadow-mode forecasting"); MaStR follow-ups (AT/CH registry adapters behind the same PlantRegistryClient port, a manual kWp/orientation entry fallback in the link drawer for unregistered plants, re-sync/refresh automation - the SEE lookup+confirm+apply v1 is BUILT, see its section); direct-marketing provider integrations; portal KPIs endpoint; self-registration hardening (email verification and captcha - SMTP would also unlock self-service password reset, today recovery is the support reset in the Benutzer page; registration rate limiting, Keycloak brute-force lockout, the support password reset, and the onboarding wizard are built - see the portal + auth sections; `VOLTPILOT_REGISTRATION_ENABLED=false` stays the off-switch for closed platforms); optimizer extensions (the per-site EEG grid-charging switch is **BUILT** - see "Per-site grid-charging switch"; the "davon Arbitrage-Gewinn" hero split is **BUILT** too - see "Arbitrage-Ausweis"; still open: peak-shaving/capacity tariffs, multi-battery sites, dynamic supplier tariffs, feed-in spreads, plan-vs-actual KPIs from the persisted `schedule` runs); live telemetry channel (WS/SSE - the portal still polls REST); mTLS zero-touch follow-ups (the HTTPS **first-boot enrollment is BUILT** - see its section; the **api-triggered broker authz reload right after a grant write/removal is now BUILT** too - see "Broker authz auto-reload"; `tools/pki/reload-broker-authz.sh` (`emqx ctl conf reload` does NOT re-read the ACL file) is kept as the deploy/cron backstop; remaining: email/ops alerting on issuance anomalies, and moving the plain-MQTT provisioning hello onto a bootstrap-cert 8883 path so the dev listener can close in prod); real Modbus/SunSpec hardware I/O (only the simulator exists today); Cloud/K8s/Hetzner manifests + GitOps; Prometheus/Grafana/Loki/OTel; Mender OTA. The **live ingest pipe now works** (EMQX -> ingest -> Redpanda -> writer -> TimescaleDB; see its section) - remaining hardening there: a malformed-message dead-letter topic (today is log+skip) and MQTT mTLS/authn on the EMQX ingress (the unique index on `telemetry (device_id, time)` backing the writer's idempotent insert is BUILT - api migration `V20260712000000`, which also made the rollup aggregates NULL-safe: `greatest(x, 0)` coerced an absent channel to 0, understating mixed buckets and fabricating grid=0 for generation-only sites; the same fix is in-sync in `HistoryRepository` and `SeriesRepository`, and the purge path is race-hardened - watermark-bounded purge DELETE + a `FOR SHARE` device-row lock in the writer's insert transaction). Core-schema Flyway migrations run in `services/api` (RLS enforced), and `services/market-data` (`day_ahead_prices`) and `services/forecast` (`forecast` hypertable, V3) ship their own migrations; a unified migration-version scheme across services is still to be reconciled.
 
+## Erklärbarkeit Stufe 0: die Echtheits-Regel für Begründungs-Sätze
+
+Konzept `data/vp-warum-erklaerbar-e2` (§4.1/§4.4/§10), Captain-Freigabe 17.08.2026. Bindend für
+JEDE Fläche, die erklärt, warum der Optimierer so entschieden hat:
+
+> **Ein Satz, der eine URSACHE behauptet, muss an einem exportierten Entscheidungs-Fakt hängen,
+> der genau diese Ursache trägt. Trägt kein Fakt sie, sagt die Fläche nur die BEOBACHTUNG.**
+
+Der Anlass war ein plausibler, aber unechter Satz über einem ruhenden Speicher („der
+Preisunterschied ist kleiner als Verluste und Verschleiß") — arithmetisch richtig, kausal falsch,
+und eine mehrstündige Untersuchung teuer. Die Regel ist die Verallgemeinerung dreier bestehender
+Hausregeln (`idleReason` „null when the optimizer recorded nothing", K1 „ohne belegbare Aussage
+der GRUND, ohne Grund NICHTS", und die Ingest-Regel „ein Wort, das wir nicht verstehen, darf kein
+Satz werden").
+
+- **Der Grund, warum die Klasse überhaupt entstand:** `explain.py`s Rollen-Klassifikation
+  beschreibt das ERGEBNIS (idle ⇒ `warten`), nie den TREIBER — und für Ruhe gibt es strukturell
+  mehrere, von denen nur zwei als Flag exportiert sind. **Neue Rollen/Flags erben dieses Problem:
+  wer eine Rolle hinzufügt, prüft, ob ihr Satz aus ihren FAKTEN folgt oder nur plausibel ist.**
+- **`optimizer/SlotEconomics.whyText`s Ruhe-Zweig ist der api-Anteil** (der Betreiber-Blick hätte
+  am 17.08. dieselbe falsche Geschichte erzählt): er nennt jetzt die Beobachtung plus die eine
+  Zahl, die wirklich vorliegt (λ), **ohne Kausal-Verknüpfung** — die Kunden-Zwillinge in
+  `frontend/portal/src/{fahrplanWhy,schedule}.ts` wurden im selben Zug entschärft, und der Zweig
+  hat seither einen eigenen Wächter-Test in `SlotEconomicsTest`.
+- **Der strukturelle Schutz ist `frontend/portal/src/begruendung.test.ts`** — er ruft jede
+  Ableitung mit FAKTEN-FREIER Eingabe auf und verbietet im Ergebnis Kausal-Vokabular (plus je
+  kausalem Zweig ein „Gates absent ⇒ unerreichbar"-Test). Details + die bewussten Ausnahmen
+  stehen in `frontend/portal/AGENTS.md`.
+- **NICHT in dieser Stufe:** der Export der drei fehlenden Treiber-Fakten (Anker des
+  Speicherwerts, Knappheit/Marge aus den schon geholten reduced costs, Morgen-Ausblick) — das ist
+  Stufe 1 und ein eigener Auftrag; Stufe 0 verhindert nur, dass sie erfunden werden.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
