@@ -472,14 +472,16 @@ public class SelfBuildComponentService {
                         SwitchDefinition.TEST_TTL_S, sw.readbackAddress()),
                 subject);
         boolean passed = switchPassed(res);
+        String evidence = switchEvidence(res, raw);
         if (passed) {
-            receipts.record(siteId, SWITCH_RECEIPT_REF, switchReceiptFields(entityId, transport, sw));
+            receipts.record(siteId, SWITCH_RECEIPT_REF,
+                    switchReceiptFields(entityId, transport, sw), evidence);
         }
         // Ein Schreibvorgang an einer Kundenanlage bekommt seine Spur, auch
         // wenn er scheitert - eine Freigabe ist nur so glaubwuerdig wie das,
         // was vor ihr nachweisbar passiert ist.
         audit.append(siteId, entityId, "switch_tested", null, null, subject,
-                (passed ? "bestanden" : "fehlgeschlagen") + ", Wert " + raw);
+                (passed ? "bestanden" : "fehlgeschlagen") + ", " + evidence);
         return new SwitchTestResult(passed, SwitchDefinition.TEST_TTL_S,
                 res.errorCode(), res.message(), switchedOf(res));
     }
@@ -521,8 +523,11 @@ public class SelfBuildComponentService {
                     String.join(" ", consumerErrors));
         }
         Transport transport = storedTransport(row);
-        boolean tested = receipts.has(siteId, SWITCH_RECEIPT_REF,
-                switchReceiptFields(entityId, transport, sw));
+        Map<String, Object> receiptFields = switchReceiptFields(entityId, transport, sw);
+        boolean tested = receipts.has(siteId, SWITCH_RECEIPT_REF, receiptFields);
+        // Die Evidenz stammt aus dem BESTANDENEN Test, nicht aus dem Aufruf -
+        // ein Nachweis, den der Client behaupten darf, ist keiner.
+        String evidence = receipts.evidence(siteId, SWITCH_RECEIPT_REF, receiptFields);
         String refusal = SwitchDefinition.requireRelease(tested,
                 Boolean.TRUE.equals(req.physicallyConfirmed()));
         if (refusal != null) {
@@ -535,10 +540,11 @@ public class SelfBuildComponentService {
         // greifen Verbraucher-Klemme und Zyklen-Guard im Arbiter.
         entityRepo.setEntityConfig(entityId, SWITCHABLE_ENTITY_TYPE,
                 switchCapabilities(row, sw).toString(), switchGuards(req.consumer()).toString());
-        writeSwitch(siteId, tenantId, entityId, row, sw, req.consumer(), subject,
+        writeSwitch(siteId, tenantId, entityId, row, sw, req.consumer(), subject, evidence,
                 "Schalten freigegeben");
         audit.append(siteId, entityId, "switch_released", null, null, subject,
-                sw.kind() + " auf Register " + sw.address());
+                sw.kind() + " auf Register " + sw.address()
+                        + (evidence == null ? "" : " (" + evidence + ")"));
         return components.list(siteId);
     }
 
@@ -560,7 +566,7 @@ public class SelfBuildComponentService {
         UUID tenantId = TenantContext.get();
         entityRepo.setEntityConfig(entityId, SelfBuildDefinition.ENTITY_TYPE,
                 capabilities(storedChannels(row)).toString(), guards().toString());
-        writeSwitch(siteId, tenantId, entityId, row, null, null, subject,
+        writeSwitch(siteId, tenantId, entityId, row, null, null, subject, null,
                 "Freigabe zurückgenommen");
         audit.append(siteId, entityId, "switch_revoked", null, null, subject, null);
         return components.list(siteId);
@@ -690,6 +696,29 @@ public class SelfBuildComponentService {
         return line.ok() && line.switched() != null;
     }
 
+    /**
+     * Die EVIDENZ eines Schalt-Tests, server-seitig aus dem Ergebnis gebildet
+     * (Anforderung 3: wer/wann/Evidenz).
+     *
+     * <p>Sie sagt nur, was das Geraet wirklich geantwortet hat: den
+     * geschriebenen Rohwert und - wenn es ein Rueckleseregister gibt - was
+     * zurueckkam. Ohne Rueckleseregister wird KEIN Rueckleseergebnis behauptet;
+     * dort traegt die Bestaetigung des Kunden allein.
+     */
+    private static String switchEvidence(ProbeResult res, int raw) {
+        ProbeResult.Switched sw = switchedOf(res);
+        StringBuilder b = new StringBuilder("Wert ").append(raw);
+        if (sw != null && sw.readback() != null) {
+            b.append(", zurueckgelesen ").append(sw.readback());
+            if (sw.readbackMatches() != null) {
+                b.append(Boolean.TRUE.equals(sw.readbackMatches()) ? " (passt)" : " (weicht ab)");
+            }
+        } else {
+            b.append(", ohne Rueckleseregister");
+        }
+        return b.toString();
+    }
+
     private static ProbeResult.Switched switchedOf(ProbeResult res) {
         if (res.results() == null || res.results().isEmpty()) {
             return null;
@@ -750,12 +779,12 @@ public class SelfBuildComponentService {
      */
     private void writeSwitch(UUID siteId, UUID tenantId, UUID entityId, EntityRow row,
             SwitchDefinition.NormalizedSwitch sw, SwitchDefinition.Consumer consumer,
-            String subject, String note) {
+            String subject, String evidence, String note) {
         Transport transport = storedTransport(row);
         List<NormalizedChannel> channels = storedChannels(row);
         String label = row.label() == null ? "Eigenes Gerät" : row.label();
         String definitionJson = definitionJson(new Result(List.of(), transport, channels), sw,
-                consumer, subject);
+                consumer, subject, evidence);
         int version = definitions.applyDefinition(siteId, entityId, label, null, null, null,
                 SelfBuildDefinition.COMMUNICATION, definitionJson,
                 SelfBuildDefinition.SOURCE_KIND, null, null);
@@ -873,18 +902,18 @@ public class SelfBuildComponentService {
      * dagegen im Flow, nicht hier.
      */
     private String definitionJson(Result def) {
-        return definitionJson(def, null, null, null);
+        return definitionJson(def, null, null, null, null);
     }
 
     /**
      * Die gespeicherte Definition, seit Stufe 4 optional MIT Schalter. Der
-     * Freigabe-Block {@code switch.freigabe} traegt wer/wann - er IST der
-     * Nachweis, und weil er in der Definition wohnt, traegt ihn die
+     * Freigabe-Block {@code switch.freigabe} traegt wer/wann/Evidenz - er IST
+     * der Nachweis, und weil er in der Definition wohnt, traegt ihn die
      * Fassungs-Historie ohne Zutun mit: „was war am 3. freigegeben" ist eine
      * Frage an die Fassung.
      */
     private String definitionJson(Result def, SwitchDefinition.NormalizedSwitch sw,
-            SwitchDefinition.Consumer consumer, String subject) {
+            SwitchDefinition.Consumer consumer, String subject, String evidence) {
         ObjectNode root = (ObjectNode) parseJson(definitionJsonRaw(def));
         if (sw != null) {
             ObjectNode n = root.putObject("switch");
@@ -929,6 +958,12 @@ public class SelfBuildComponentService {
             ObjectNode f = n.putObject("freigabe");
             f.put("released_at", java.time.Instant.now().toString());
             f.put("released_by", subject == null ? "" : subject);
+            // Die EVIDENZ des bestandenen Tests (Anforderung 3). Sie wird nur
+            // gesetzt, wenn es sie gibt - ein leeres Feld waere die Behauptung
+            // eines Nachweises, den niemand gefuehrt hat.
+            if (evidence != null && !evidence.isBlank()) {
+                f.put("evidence", evidence);
+            }
         }
         return root.toString();
     }

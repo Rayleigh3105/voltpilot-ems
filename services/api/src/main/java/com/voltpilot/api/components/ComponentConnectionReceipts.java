@@ -59,7 +59,15 @@ public class ComponentConnectionReceipts {
      */
     private static final int MAX_ENTRIES = 5000;
 
-    private final Map<String, Instant> issued = new ConcurrentHashMap<>();
+    /**
+     * Ein Beleg: WANN er entstand und - seit Einheitsmodell Stufe 4 - die
+     * server-seitig ermittelte EVIDENZ des Tests. Sie ist optional, weil der
+     * Verbindungstest (Stufe 1) keine hat: dort IST der Messwert die Antwort.
+     */
+    record Receipt(Instant at, String evidence) {
+    }
+
+    private final Map<String, Receipt> issued = new ConcurrentHashMap<>();
     private final Clock clock;
 
     /**
@@ -82,8 +90,31 @@ public class ComponentConnectionReceipts {
 
     /** Hinterlegt den Beleg eines bestandenen Tests. */
     public void record(UUID siteId, String templateRef, Map<String, Object> connection) {
+        record(siteId, templateRef, connection, null);
+    }
+
+    /**
+     * Hinterlegt den Beleg MIT seiner Evidenz (Stufe 4). Die Evidenz wird
+     * server-seitig aus dem Testergebnis gebildet, nie vom Aufrufer geliefert -
+     * ein Nachweis, den der Client behaupten darf, ist keiner.
+     */
+    public void record(UUID siteId, String templateRef, Map<String, Object> connection,
+            String evidence) {
         prune();
-        issued.put(key(siteId, templateRef, connection), clock.instant());
+        issued.put(key(siteId, templateRef, connection), new Receipt(clock.instant(), evidence));
+    }
+
+    /**
+     * Die Evidenz des gueltigen Belegs, sonst {@code null}. Sie folgt derselben
+     * Verfalls-Regel wie {@link #has} - eine Evidenz ohne gueltigen Beleg gibt
+     * es nicht.
+     */
+    public String evidence(UUID siteId, String templateRef, Map<String, Object> connection) {
+        if (!has(siteId, templateRef, connection)) {
+            return null;
+        }
+        Receipt r = issued.get(key(siteId, templateRef, connection));
+        return r == null ? null : r.evidence();
     }
 
     /**
@@ -92,10 +123,11 @@ public class ComponentConnectionReceipts {
      */
     public boolean has(UUID siteId, String templateRef, Map<String, Object> connection) {
         String k = key(siteId, templateRef, connection);
-        Instant at = issued.get(k);
-        if (at == null) {
+        Receipt r = issued.get(k);
+        if (r == null) {
             return false;
         }
+        Instant at = r.at();
         if (Duration.between(at, clock.instant()).compareTo(TTL) > 0) {
             issued.remove(k);
             return false;
@@ -126,11 +158,11 @@ public class ComponentConnectionReceipts {
     /** Entfernt abgelaufene Belege und deckelt die Menge. */
     private void prune() {
         Instant now = clock.instant();
-        issued.entrySet().removeIf(e -> Duration.between(e.getValue(), now).compareTo(TTL) > 0);
+        issued.entrySet().removeIf(e -> Duration.between(e.getValue().at(), now).compareTo(TTL) > 0);
         if (issued.size() < MAX_ENTRIES) {
             return;
         }
-        Iterator<Map.Entry<String, Instant>> it = issued.entrySet().iterator();
+        Iterator<Map.Entry<String, Receipt>> it = issued.entrySet().iterator();
         while (it.hasNext() && issued.size() >= MAX_ENTRIES) {
             it.next();
             it.remove();
