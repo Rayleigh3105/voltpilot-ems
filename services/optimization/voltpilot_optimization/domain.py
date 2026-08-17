@@ -24,6 +24,7 @@ from uuid import UUID
 
 from voltpilot_optimization.config import (
     DEFAULT_WEAR_COST_CT_PER_KWH,
+    TERMINAL_VALUE_COVER_NOW_DISCOUNT_EUR_MWH,
     TERMINAL_VALUE_MARGIN_EUR_PER_KWH,
     terminal_value_quantile,
 )
@@ -247,9 +248,22 @@ def derive_terminal_value_eur_per_kwh(
         refill_eur_mwh = [min(imp, exp) for imp, exp in zip(import_prices, export_values)]
     else:
         # S2: surplus slot -> refill = forgone feed-in; deficit slot -> no PV
-        # to refill from, the stored kWh's worth is the avoided import.
+        # to refill from, the stored kWh's worth is the avoided import - MINUS
+        # the cover-now discount: covering a LATER night is worth a hair less
+        # than covering TONIGHT, else a flat tariff makes the two an exact tie
+        # that the prefer-idle tie-break freezes into "hold forever while the
+        # house imports" (Herzogau 17.08.2026; see config).
+        # Discount only where der Bezug wirklich teurer ist als der
+        # Einspeisewert (die Tie-Klasse); bei imp <= exp (symmetrisches
+        # `ohne`) bleibt der Branch ein exaktes No-op wie vor S2 dokumentiert.
         refill_eur_mwh = [
-            exp if pv_kw[t] > load_kw[t] else imp
+            exp
+            if pv_kw[t] > load_kw[t]
+            else (
+                imp - TERMINAL_VALUE_COVER_NOW_DISCOUNT_EUR_MWH
+                if imp > exp
+                else imp
+            )
             for t, (imp, exp) in enumerate(zip(import_prices, export_values))
         ]
     quantile = terminal_value_quantile(env)
