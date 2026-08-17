@@ -31,7 +31,7 @@ import { RegelnKapsel } from '../components/RegelnKapsel';
 import { CoOptimizationStrip, PartHead } from '../components/SteuerungParts';
 import { ModusContainer } from '../components/ModusContainer';
 import { EINRICHTUNG_DURCH_VOLTPILOT } from '../moduleSurface';
-import { anlageRoute, hashForRoute, pageRoute, type AnlagenSub } from '../nav';
+import { anlageRoute, befehleHash, hashForRoute, pageRoute, type AnlagenSub } from '../nav';
 import type { NavTarget } from '../anlageNav';
 import { optimizerApi } from '../optimizerApi';
 import {
@@ -483,6 +483,16 @@ export function SteuerungSection({
               void saveEdited(flowId, version, name, doc)}
             onOpenEditor={() => void openSaved('Neue Regel', null, 'automation')}
           />
+
+          {/* --- Der BEFEHLS-VERLAUF (Kommando-Transparenz V1, F2) ---------
+              Der zweite Einstieg neben der Komponenten-Karte: „was schickt
+              VoltPilot wirklich an meine Geräte?" gehört neben die Frage
+              „was steuert eigentlich?". Ohne gewählte Komponente zeigt die
+              Seite den Verlauf der ganzen Anlage. */}
+          <p className="vp-protline">
+            <Icon name="shield" size={14} />
+            <a href={befehleHash(site.id)}>Befehle an Ihre Geräte ansehen →</a>
+          </p>
 
           {/* --- Die schmale Schutz-Zeile --------------------------------- */}
           <p className="vp-protline">

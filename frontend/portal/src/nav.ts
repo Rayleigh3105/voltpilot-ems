@@ -46,11 +46,12 @@ export type AnlagenSub =
   | 'technik'
   | 'modell'
   | 'steuerung'
-  | 'lastspitzen';
+  | 'lastspitzen'
+  | 'befehle';
 
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'wetter', 'technik', 'modell',
-  'steuerung', 'lastspitzen',
+  'steuerung', 'lastspitzen', 'befehle',
 ]);
 
 /**
@@ -331,4 +332,27 @@ export function pageRoute(page: PageId): Route {
 /** Route of one Anlage's page (or one of its subpages). */
 export function anlageRoute(siteId: string, sub: AnlagenSub | null = null): Route {
   return { page: 'anlagen', siteId, sub };
+}
+
+/**
+ * Die Adresse der BEFEHLE-Seite einer Komponente (Kommando-Transparenz V1,
+ * Captain-Entscheid F2: eine eigene Unterseite je Komponente).
+ *
+ * Die Komponente reist als HASH-PARAMETER (`?komponente=`, das
+ * `historieHash`/`settingsNav`-Muster) - `parseRoute` schneidet den
+ * Query-Teil ohnehin ab, die Route bleibt also `befehle`, und ein Lesezeichen
+ * öffnet exakt dieselbe Komponente wieder. Ohne Komponente zeigt die Seite
+ * den Verlauf der ganzen Anlage.
+ */
+export function befehleHash(siteId: string, entityId?: string | null): string {
+  const base = `#/anlage/${siteId}/befehle`;
+  return entityId ? `${base}?komponente=${encodeURIComponent(entityId)}` : base;
+}
+
+/** Die Komponente aus einem `?komponente=`-Hash, oder null. */
+export function parseBefehleKomponente(hash: string): string | null {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (rest.length === 0) return null;
+  const value = new URLSearchParams(rest.join('?')).get('komponente');
+  return value && value.trim() ? value.trim() : null;
 }

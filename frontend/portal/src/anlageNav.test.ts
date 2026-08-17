@@ -26,6 +26,10 @@ const ALL_SUBS: AnlagenSub[] = [
   'modell',
   'steuerung',
   'lastspitzen',
+  // Die Befehle-Seite gehört einer KOMPONENTE (Kommando-Transparenz V1, F2) -
+  // sie hat deshalb keinen Seitenleisten-Eintrag, muss aber wie `wetter` über
+  // das Blatt erreichbar bleiben.
+  'befehle',
 ];
 
 const ENTITIES: AnlageSurfaceInput['entities'] = [
@@ -396,6 +400,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     // nirgends sonst steht.
     expect(last.items.map((i) => i.key)).toEqual([
       'wetter',
+      'befehle',
       'technik',
       'hilfe',
       'logout',
@@ -472,6 +477,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     const last = groups[groups.length - 1];
     expect(last.items.map((i) => i.key)).toEqual([
       'wetter',
+      'befehle',
       'technik',
       'hilfe',
       'add-anlage',
@@ -484,6 +490,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     expect(kunde.some((g) => g.label === 'Plattform')).toBe(false);
     expect(kunde.at(-1)?.items.map((i) => i.key)).toEqual([
       'wetter',
+      'befehle',
       'technik',
       'hilfe',
       'logout',
@@ -630,6 +637,7 @@ describe('no orphaned view: every AnlagenSub is mounted exactly once', () => {
         ...sidebar.groups.flatMap((g) => g.items.map((i) => i.key)),
         ...sidebar.foot.map((i) => i.key),
         'wetter',
+        'befehle',
       ];
       expect([...new Set(together)].sort()).toEqual([...new Set(navKeys)].sort());
     }

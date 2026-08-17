@@ -223,6 +223,18 @@ const VIEW_ITEMS: Partial<Record<DeepViewId, Omit<SidebarItem, 'badge'>>> = {
 /** The deep view that has no nav entry but must stay reachable (phone sheet). */
 const SHEET_ONLY_ITEMS: SidebarItem[] = [
   { key: 'wetter', label: 'Wetter', icon: 'sun', target: { kind: 'sub', sub: 'wetter' }, badge: null },
+  // Die BEFEHLE-Seite gehört einer KOMPONENTE (Kommando-Transparenz V1, F2):
+  // ihre Einstiege sind die Komponenten-Karte und die Steuerung, wo die
+  // Komponente schon feststeht. Ein Seitenleisten-Eintrag hätte keine - und
+  // orphan darf sie trotzdem nicht sein, also trägt das Blatt sie (die
+  // `wetter`-Disziplin). Ohne Komponente zeigt sie die ganze Anlage.
+  {
+    key: 'befehle',
+    label: 'Befehle an Geräte',
+    icon: 'shield',
+    target: { kind: 'sub', sub: 'befehle' },
+    badge: null,
+  },
 ];
 
 const MODE_TONES: Record<ModeKind, ModeTone> = {
