@@ -170,6 +170,12 @@ export interface JetztHeldView {
 export interface JetztInput {
   /** Der Slot, der JETZT läuft (`control.controlReasonSlot`); null = außerhalb. */
   slot: WhySlot | null;
+  /**
+   * Das PLAN-FENSTER, gegen das der Wert gespeicherter Energie verglichen wird
+   * (W6, Erklärbarkeit Stufe 0). Optional - ohne Fenster bleibt der Ruhe-Grund
+   * beobachtend statt einen Preis zu behaupten, den niemand geliefert hat.
+   */
+  slots?: WhySlot[];
   /** Der jüngste Rücklese-Zustand des Geräts; null = noch keiner. */
   control: ControlStatus | null;
   /** true, sobald die Anlage überhaupt gesteuert wird (Plan mit Gerät). */
@@ -340,7 +346,7 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
   // Die Beleg-Lage gilt NUR für den laufenden Slot und NUR, wenn dort
   // abgeregelt werden soll - sonst ist sie CURTAIL_PLAN, also Fix-1-Verhalten.
   const curtail = curtailTruthForSlot(input.curtail, role);
-  const reason = slot ? slotWhy(slot, plantKind, curtail) : null;
+  const reason = slot ? slotWhy(slot, plantKind, curtail, input.slots ?? []) : null;
   // ... und der Steuerungs-Zustand aus der BESTEHENDEN Ableitung der Karte.
   const strip = controlStrip(input.control, now, input.expectControl, reason);
 

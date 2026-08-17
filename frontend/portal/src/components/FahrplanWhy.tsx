@@ -173,7 +173,9 @@ export function SlotCard({
 }) {
   const t = chartTheme();
   const role = slot.slotRole as SlotRole;
-  const why = slotWhy(slot, plantKind, curtail);
+  // Das Plan-Fenster reist mit: es ist der Maßstab des λ-über-Fenster-Zweigs
+  // (W6) - ohne es bleibt der Ruhe-Satz beobachtend.
+  const why = slotWhy(slot, plantKind, curtail, slots);
   const rows = slotContextRows(slot, slots);
   const chips = bindingChips(slot.slotFlags, curtail);
   const phase = phases.find((p) => index >= p.startIdx && index <= p.endIdx) ?? null;

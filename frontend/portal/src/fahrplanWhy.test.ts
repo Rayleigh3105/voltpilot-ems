@@ -360,8 +360,10 @@ describe('slotWhy (per-slot customer sentence)', () => {
     ).toBe(
       'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.',
     );
+    // Ohne belegten Treiber BEOBACHTEND (Erklärbarkeit Stufe 0) - der frühere
+    // Satz behauptete die Spannen-Ursache, ohne einen Preis anzusehen.
     expect(slotWhy({ ...base, slotRole: 'warten' }, 'eigenverbrauch')).toBe(
-      'Gerade lohnt sich weder Laden noch Entladen: Der Preisunterschied ist kleiner als Umwandlungsverluste und Batterie-Verschleiß. Nichtstun ist jetzt das Wirtschaftlichste.',
+      'Der Speicher wartet – für diese Viertelstunde ist weder Laden noch Entladen eingeplant.',
     );
   });
 
@@ -607,7 +609,7 @@ describe('phaseEurLine + phaseRange + labels', () => {
       phaseWhy(mkPhase({ role: 'reserve_halten', kind: 'idle', driver: 'lastspitze' }), 'eigenverbrauch'),
     ).toContain('Reserve für die Lastspitzenkappung');
     expect(phaseWhy(mkPhase({ role: 'warten', kind: 'idle', driver: null }), 'eigenverbrauch')).toContain(
-      'kein Einsatz',
+      'weder Laden noch Entladen eingeplant',
     );
     expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch')).toContain(
       'der Plan sieht vor, die PV zu drosseln',

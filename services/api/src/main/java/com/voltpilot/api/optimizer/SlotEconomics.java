@@ -451,7 +451,21 @@ public final class SlotEconomics {
                                     + "mehr wert als sofortige Einspeisung zu %.1f ct/kWh.",
                             batteryKw, storedCt, exportCt)
                     : String.format(Locale.GERMANY, "Speichert %.1f kW PV-Überschuss.", batteryKw);
-            default -> "Speicher ruht: kein Zyklus, dessen Ertrag Verschleiß und Verluste deckt.";
+            // BEOBACHTEND, nicht kausal (Erklärbarkeit Stufe 0, Konzept
+            // vp-warum-erklaerbar-e2 §3.2/§4.1 - der Betreiber-Blick übernimmt
+            // dieselbe Entschärfung wie die Kundenfläche): Ruhe hat strukturell
+            // mehrere Treiber (Spanne zu klein · Wert gespeicherter Energie über
+            // jedem Nutzwert · exakter Gleichstand · voll · Reserve), und keiner
+            // davon ist AUS DIESEM SLOT allein belegbar. Der frühere Satz
+            // behauptete die Spannen-Ursache; am 17.08. war sie arithmetisch
+            // richtig und kausal falsch. Genannt wird die Beobachtung plus die
+            // eine Zahl, die wirklich vorliegt - ohne Kausal-Verknüpfung.
+            default -> storedCt != null
+                    ? String.format(Locale.GERMANY,
+                            "Speicher ruht: weder Laden noch Entladen eingeplant. "
+                                    + "Wert gespeicherter Energie ≈ %.1f ct/kWh.",
+                            storedCt)
+                    : "Speicher ruht: weder Laden noch Entladen eingeplant.";
         };
         if (curtailKw != null && curtailKw > CURTAIL_DEADBAND_KW) {
             if (exportCt != null && exportCt < 0) {

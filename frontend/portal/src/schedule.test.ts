@@ -492,7 +492,7 @@ describe('planSentence', () => {
         'mehr als der höchste Preis heute (20,0 ct/kWh).',
     );
     expect(planSentence(idle('warten'), 'eigenverbrauch', NOW)).toBe(
-      'Der Speicher wartet heute - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.',
+      'Der Speicher wartet heute - weder Laden noch Entladen ist eingeplant.',
     );
   });
 });
@@ -867,7 +867,7 @@ describe('planInsightParts', () => {
         planInsightParts([why(3, 'warten', null, 12.0, 200)], NOW),
       );
       expect(s).toBe(
-        'Der Speicher wartet - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.',
+        'Der Speicher wartet - weder Laden noch Entladen ist in diesem Zeitraum eingeplant.',
       );
     });
 
