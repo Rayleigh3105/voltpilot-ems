@@ -204,6 +204,20 @@ TERMINAL_VALUE_QUANTILE_ENV = "OPTIMIZER_TERMINAL_VALUE_QUANTILE"
 #: Economically negligible by construction: 1e-4 ct/kWh.
 TERMINAL_VALUE_MARGIN_EUR_PER_KWH = 1e-6
 
+#: "Jetzt-statt-später"-Abschlag auf die DEFIZIT-Einträge der EEG-Refill-Serie
+#: (Herzogau 17.08.2026): ein Defizit-Slot bewertet die gespeicherte kWh mit dem
+#: vermiedenen Bezug einer SPÄTEREN Nacht. Ohne Abschlag ist "heute decken" vs.
+#: "halten und später decken" bei flachem Bezugspreis ein EXAKTER Gleichstand
+#: (v_end = eta*(imp - wear) macht die Deckungs-Marge algebraisch 0,000), den
+#: der Prefer-idle-Tie-Break zur Dauer-Ruhe kippt - der Speicher stand bei 86 %
+#: neben einem 4,2-kW-Nachtbezug zu 25 ct. Der Abschlag macht das Decken des
+#: EIGENEN Verbrauchs strikt vorzugswürdig (Robustheit + jede künftige
+#: Auffüll-Gelegenheit macht es auch kassenwirksam besser), OHNE den
+#: S2-Winterschutz zu lockern: ein VERKAUF braucht weiterhin export >
+#: import - Abschlag, was kein Spot-Peak unter dem Bezugspreis erreicht.
+#: 0,2 ct/kWh: ~500x über der Tie-Break-Skala, weit unter jedem echten Signal.
+TERMINAL_VALUE_COVER_NOW_DISCOUNT_EUR_MWH = 2.0
+
 #: Fixed platform override of the terminal energy value (ct per stored kWh);
 #: unset/blank = derive from the horizon's prices.
 TERMINAL_VALUE_OVERRIDE_ENV = "OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH"

@@ -24,6 +24,7 @@ from uuid import uuid4
 import pytest
 
 from voltpilot_optimization.config import (
+    TERMINAL_VALUE_COVER_NOW_DISCOUNT_EUR_MWH,
     TERMINAL_VALUE_MARGIN_EUR_PER_KWH,
     terminal_value_override_eur_per_kwh,
     terminal_value_quantile,
@@ -302,10 +303,15 @@ def test_eeg_anchor_carries_the_avoided_import_when_nothing_refills(monkeypatch)
         export_eur_mwh=[82.0] * n,
         pv_kw=[0.0] * n,
     )
-    capped = ETA * (
-        430.0 / 1000.0 - WEAR_EUR_MWH / 1000.0 - TERMINAL_VALUE_MARGIN_EUR_PER_KWH
+    # The deficit entries carry the avoided import MINUS the cover-now discount
+    # (Herzogau 17.08.2026: without it, covering tonight vs holding was an
+    # exact tie frozen to "hold" by the idle tie-break). The dispersion guard
+    # no longer binds here - the discounted anchor already sits below best use.
+    expected = ETA * (
+        (430.0 - TERMINAL_VALUE_COVER_NOW_DISCOUNT_EUR_MWH) / 1000.0
+        - WEAR_EUR_MWH / 1000.0
     )
-    assert winter.effective_terminal_value_eur_per_kwh() == pytest.approx(capped, rel=1e-12)
+    assert winter.effective_terminal_value_eur_per_kwh() == pytest.approx(expected, rel=1e-12)
     # strictly below the best in-horizon use - the guard survives S2
     assert winter.effective_terminal_value_eur_per_kwh() < ETA * (430.0 - WEAR_EUR_MWH) / 1000.0
     # and far above the pre-S2 export-only anchor
@@ -336,7 +342,11 @@ def test_eeg_winter_day_banks_stored_energy_for_the_house_instead_of_selling_out
         )
     )
     assert all(s.grid_kw >= -1e-6 for s in plan.slots), "kein Ausverkauf ins Netz"
-    assert plan.slots[-1].soc_kwh > 5.0, "the bulk is banked for tomorrow's Bezug"
+    # Since the cover-now discount the battery SERVES the house instead of
+    # banking past it: the drain equals the day's house coverage (0.2 kW),
+    # and still not a single slot exports below the Bezugspreis.
+    covered = sum(-s.battery_kw * 0.25 for s in plan.slots if s.battery_kw < 0)
+    assert covered == pytest.approx(0.2 * 24 / ETA, rel=0.10), "Entladung == Hausdeckung"
 
     dumped = solve(
         _asymmetric_eeg_input(
@@ -492,3 +502,46 @@ def test_override_env_resolves_ct_to_eur_and_validates(monkeypatch):
     monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH", "garbage")
     with pytest.raises(ValueError):
         terminal_value_override_eur_per_kwh()
+
+
+@needs_highs
+def test_flat_tariff_eeg_covers_the_night_instead_of_freezing():
+    """Herzogau 17.08.2026 ~20:45 (scout vp-nacht-ruhe-warum-q8): Fest-Tarif
+    (flacher Bezug 25 ct) ueber jedem Spot-Peak, EEG-Modus, SoC 86 %, morgen
+    tief bedeckt (<30 % Ueberschuss-Slots -> das Quantil landet AUF dem
+    Bezugspreis). Ohne den Cover-now-Abschlag ist "heute Nacht decken" vs.
+    "halten und spaeter decken" ein EXAKTER Gleichstand (Marge algebraisch
+    0,000 ct/kWh), den der Prefer-idle-Tie-Break zur Dauer-Ruhe kippt - der
+    Speicher stand bei 86 % neben einem laufenden Nachtbezug. Mit Abschlag
+    wird der Verbrauch aus dem Speicher gedeckt und trotzdem NICHTS unter dem
+    Bezugspreis verkauft (der S2-Winterschutz haelt)."""
+    n = 96
+    # Spot ~ echte Kurve 17./18.08.: Abend 19-22 ct, Nacht-Tal 15, Morgen 20,
+    # Mittag 13 - alles UNTER dem flachen Bezugspreis 25 ct.
+    spot = (
+        [190.0] * 4 + [219.0] * 8 + [200.0] * 8 + [170.0] * 8 + [150.0] * 16
+        + [190.0] * 12 + [160.0] * 8 + [133.0] * 20 + [150.0] * 12
+    )
+    assert len(spot) == n
+    # Truebtag-Glocke morgen: Spitze 1,2 kW bei Slot ~64, Ueberschuss nur dort
+    # (Last 0,5 kW flach) -> deutlich unter 30 % der Slots.
+    pv = [0.0] * n
+    for i in range(52, 76):
+        pv[i] = round(max(0.0, 1.2 - abs(i - 64) * 0.11), 3)
+    plan = solve(
+        _asymmetric_eeg_input(
+            spot=spot,
+            import_eur_mwh=[250.0] * n,
+            export_eur_mwh=spot,
+            pv_kw=pv,
+            load_kw=0.5,
+            soc0_kwh=0.86 * BATTERY.capacity_kwh,
+        )
+    )
+    # Die Nacht (die ersten 40 Slots, vor der PV-Glocke) wird aus dem Speicher
+    # gedeckt - nicht bei 86 % geruht, waehrend das Haus importiert.
+    covered = sum(-s.battery_kw * 0.25 for s in plan.slots[:40] if s.battery_kw < 0)
+    deficit = 0.5 * 40 * 0.25
+    assert covered >= 0.9 * deficit, "die Nacht wird aus dem Speicher gedeckt"
+    # ... und NICHTS wird unter dem Bezugspreis verkauft (S2-Schutz intakt).
+    assert all(s.grid_kw >= -1e-6 for s in plan.slots), "kein Verkauf ins Netz"
