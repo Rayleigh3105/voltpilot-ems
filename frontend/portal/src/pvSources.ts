@@ -12,9 +12,15 @@
  *  - a point without a PV reading is NOT a zero part - it is left out of the
  *    parts and named in a note, so the shown parts always sum to what they say;
  *  - a stale point keeps its last value but is flagged (freshness dot), never
- *    silently presented as live.
+ *    silently presented as live;
+ *  - a point reporting exactly 0 while a sibling generates SAYS SO
+ *    ({@link NO_GENERATION_NOTE}) instead of standing there as a confident,
+ *    unexplained "0,0 kW" (Herzogau 17.08.2026 — the customer read that row as
+ *    "VoltPilot claims my inverter is dead"). `null` stays a gap, 0 stays a
+ *    measured zero; the two must never look the same.
  */
 import type { SiteSource } from './api';
+import { newestTs } from './datenAlter';
 import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
 
@@ -24,6 +30,38 @@ const PV_DEADBAND_KW = 0.05;
 /** Show the breakdown only when it actually explains something (2+ parts). */
 const MIN_PARTS = 2;
 
+/**
+ * Die eine ruhige Zusatzzeile für einen Erzeuger, der GEMESSEN nichts liefert,
+ * während ein Geschwister erzeugt. Bewusst kein Alarm und kein Rot: **0 ist ein
+ * Zustand, kein Fehler** (Wolke, abgeschalteter String, Nacht auf einem
+ * Ost-West-Dach) — die Zeile ordnet die Null nur ein, statt sie stumm neben
+ * produzierende Nachbarn zu stellen.
+ */
+export const NO_GENERATION_NOTE = 'liefert gerade keine Erzeugung';
+
+/**
+ * Ob eine gemessene Zahl innerhalb des PV-Totbands liegt, also „keine
+ * Erzeugung" bedeutet. `null` (= kein Messwert) ist ausdrücklich KEINE Null und
+ * wird hier nie so behandelt.
+ */
+export function isMeasuredZero(kw: number | null | undefined): boolean {
+  return kw != null && Number.isFinite(kw) && Math.abs(kw) <= PV_DEADBAND_KW;
+}
+
+/**
+ * Die Zusatzzeile für EINEN Wert, gegeben ob irgendein Geschwister gerade
+ * erzeugt. **Nachts, wenn alle 0 melden, gibt es KEINE Kennzeichnung** — sonst
+ * stünde sie jede Nacht an jedem Gerät und wäre damit wertlos. Geteilt von der
+ * v1-Aufteilung und der PV-Zusammensetzung der migrierten Anlage, damit
+ * dieselbe Lage nicht zwei verschiedene Sätze bekommt.
+ */
+export function noGenerationNote(
+  kw: number | null | undefined,
+  anySiblingGenerates: boolean,
+): string | null {
+  return anySiblingGenerates && isMeasuredZero(kw) ? NO_GENERATION_NOTE : null;
+}
+
 /** One named part of the composite PV figure. */
 export interface PvPart {
   id: string;
@@ -32,6 +70,11 @@ export interface PvPart {
   kw: number;
   /** ok = live | stale = last known value | never = no reading yet. */
   health: SiteSource['health'];
+  /**
+   * Ruhige Einordnung einer gemessenen Null neben produzierenden Geschwistern
+   * ({@link NO_GENERATION_NOTE}), sonst `null`.
+   */
+  note: string | null;
 }
 
 export interface PvBreakdown {
@@ -43,6 +86,17 @@ export interface PvBreakdown {
    * Never hidden - a missing part is why the sum may trail the site figure.
    */
   note: string | null;
+  /**
+   * Der jüngste Messzeitpunkt der gezeigten Teile (`readAt`, ersatzweise
+   * `reportedAt`) — die Bezugszeit für den Daten-Alter-Ausweis „Stand: HH:MM".
+   * `null`, wenn kein Teil einen verwertbaren Zeitstempel trägt.
+   *
+   * **Warum die Aufteilung ihre EIGENE Bezugszeit braucht:** ihre Punkte färben
+   * sich aus `health`, und das ist der zuletzt GEMELDETE Zustand — er steht
+   * grün auf einem stundenalten Datensatz weiter (Herzogau 17:55). Das Alter
+   * kann also nur aus dem Zeitstempel kommen, nie aus der Farbe.
+   */
+  asOf: string | null;
 }
 
 /**
@@ -75,6 +129,7 @@ export function pvBreakdown(sources: SiteSource[] | null | undefined): PvBreakdo
   const producers = sources.filter((s) => s.role !== 'grid-meter' && s.role !== 'consumer');
   const parts: PvPart[] = [];
   const silent: string[] = [];
+  const stamps: (string | null)[] = [];
   for (const s of producers) {
     if (s.pvKw == null) {
       // No PV reading: either it does not measure PV at all (then it has never
@@ -82,12 +137,25 @@ export function pvBreakdown(sources: SiteSource[] | null | undefined): PvBreakdo
       if (s.health !== 'never') silent.push(sourceLabel(s));
       continue;
     }
-    parts.push({ id: s.sourceId, label: sourceLabel(s), kw: s.pvKw, health: s.health });
+    parts.push({
+      id: s.sourceId,
+      label: sourceLabel(s),
+      kw: s.pvKw,
+      health: s.health,
+      // Erst gefüllt, wenn die ganze Liste steht - ob eine Null erklärt werden
+      // muss, hängt an den GESCHWISTERN.
+      note: null,
+    });
+    stamps.push(s.readAt ?? s.reportedAt ?? null);
   }
   const generating = parts.filter((p) => Math.abs(p.kw) > PV_DEADBAND_KW);
   if (parts.length < MIN_PARTS || generating.length < 1) return null;
+  // Hier steht fest, dass mindestens ein Teil erzeugt (sonst wäre oben `null`
+  // zurückgegangen) - die Nacht-Ausnahme ist damit strukturell erfüllt, nicht
+  // nur zugesagt.
+  for (const p of parts) p.note = noGenerationNote(p.kw, true);
   const totalKw = parts.reduce((sum, p) => sum + p.kw, 0);
-  return { totalKw, parts, note: noteFor(silent) };
+  return { totalKw, parts, note: noteFor(silent), asOf: newestTs(stamps) };
 }
 
 function noteFor(silent: string[]): string | null {

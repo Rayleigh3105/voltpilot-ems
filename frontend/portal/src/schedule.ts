@@ -1442,14 +1442,48 @@ interface PlanRun {
   to: Date;
   energy: number;
   gridEnergy: number;
+  /**
+   * Die NETTO-Netzenergie des Laufs in kWh, mit dem Vorzeichen des Fahrplans
+   * (+ = Bezug, − = Einspeisung). Sie entscheidet, ob eine Entladung wirklich
+   * VERKAUFT — siehe {@link netExports}.
+   */
+  gridNetEnergy: number;
+}
+
+/**
+ * Kilowattstunden-Totband der Netto-Netzbilanz eines Laufs. Unterhalb davon ist
+ * der Netzanschluss ausgeglichen und es wird nichts verkauft; abgeleitet aus
+ * dem kW-Totband des Hauses über eine Viertelstunde.
+ */
+const NET_EXPORT_DEADBAND_KWH = 0.05;
+
+/**
+ * Verkauft dieser Lauf wirklich? Nur, wenn er NETTO einspeist.
+ *
+ * **Der behobene Anzeige-Defekt (Herzogau 17.08.2026, Report
+ * `vp-nacht-ruhe-warum-q8` §0):** Bei Direktvermarktung hieß JEDE Entladung
+ * „verkaufen" — auch eine reine Lastdeckung. Die drei Nacht-Balken der Anlage
+ * lagen weit UNTER dem Hausverbrauch, der Fahrplan plante in genau diesen
+ * Slots also Netz-BEZUG; die Kopfzeile sagte trotzdem „nachts verkaufen".
+ * Verkauft wird, was den Netzanschluss verlässt, nicht was die Batterie
+ * verlässt — und das steht im geplanten `gridKw`, nicht im `batteryKw`.
+ *
+ * Ohne verwertbares `gridKw` (ältere Plan-Zeilen) bleibt die Netto-Bilanz 0,
+ * der Lauf gilt also NICHT als Verkauf: lieber die vorsichtigere, immer wahre
+ * Aussage „Verbrauch decken" als ein behaupteter Erlös.
+ */
+function netExports(run: PlanRun): boolean {
+  return run.gridNetEnergy < -NET_EXPORT_DEADBAND_KWH;
 }
 
 /**
  * ONE plain-German sentence describing today's plan (the Anlagen-Seite's
  * Fahrplan preview, captain mockup: "Mittags laden, abends verkaufen
  * (17–20 Uhr)."): the dominant charge and discharge windows by energy, worded
- * by daypart. Direktvermarktung discharges to "verkaufen", Eigenverbrauch to
- * "nutzen"; a mostly grid-fed charge window says "günstig laden". Null when
+ * by daypart. Direktvermarktung discharges to "verkaufen" only when the window
+ * NET EXPORTS (else "den Verbrauch decken" — see {@link netExports}),
+ * Eigenverbrauch to "nutzen"; a mostly grid-fed charge window says "günstig
+ * laden". Null when
  * today has no plan slots; an all-idle day says the battery holds its charge.
  */
 export function planSentence(
@@ -1466,7 +1500,15 @@ export function planSentence(
   const runs = planRuns(today, slotMinutes);
   const charge = dominantRun(runs, 'laden');
   const discharge = dominantRun(runs, 'entladen');
-  const verb = kind === 'direktvermarktung' ? 'verkaufen' : 'nutzen';
+  // „verkaufen" nur, wenn der Lauf NETTO einspeist (siehe `netExports`) - eine
+  // Entladung unterhalb des Hausverbrauchs deckt den Verbrauch, sie verkauft
+  // nichts. Eigenverbrauch sagt unverändert „nutzen".
+  const verb =
+    kind === 'direktvermarktung'
+      ? discharge && netExports(discharge)
+        ? 'verkaufen'
+        : 'den Verbrauch decken'
+      : 'nutzen';
 
   if (charge && discharge) {
     const chargeWord = charge.gridEnergy > charge.energy / 2 ? 'günstig laden' : 'laden';
@@ -1513,9 +1555,14 @@ function planRuns(sorted: PlanSlotLike[], slotMinutes: number): PlanRun[] {
     const end = new Date(start.getTime() + slotMinutes * 60_000);
     const kw = Math.abs(Number(s.batteryKw ?? 0));
     const energy = (kw * slotMinutes) / 60;
+    // Netto-Netzenergie MIT Vorzeichen (+ Bezug / − Einspeisung). Ein Slot ohne
+    // geplanten Netzwert zählt 0 - er behauptet weder Bezug noch Einspeisung.
+    const gridKw = s.gridKw == null || !Number.isFinite(s.gridKw) ? 0 : Number(s.gridKw);
+    const gridNet = (gridKw * slotMinutes) / 60;
     if (current && current.dir === dir && start.getTime() - current.to.getTime() <= maxGapMs) {
       current.to = end;
       current.energy += energy;
+      current.gridNetEnergy += gridNet;
       if (k === 'netzladen') current.gridEnergy += energy;
     } else {
       current = {
@@ -1524,6 +1571,7 @@ function planRuns(sorted: PlanSlotLike[], slotMinutes: number): PlanRun[] {
         to: end,
         energy,
         gridEnergy: k === 'netzladen' ? energy : 0,
+        gridNetEnergy: gridNet,
       };
       runs.push(current);
     }

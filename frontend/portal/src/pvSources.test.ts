@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { SiteSource } from './api';
-import { breakdownLine, healthTitle, pvBreakdown, sourceLabel } from './pvSources';
+import {
+  breakdownLine,
+  healthTitle,
+  isMeasuredZero,
+  NO_GENERATION_NOTE,
+  pvBreakdown,
+  sourceLabel,
+} from './pvSources';
 
 const NBSP = ' ';
 
@@ -90,6 +97,68 @@ describe('pvBreakdown', () => {
         src({ sourceId: 'a', pvKw: 0 }),
       ]),
     ).toBeNull();
+  });
+});
+
+// Herzogau 17.08.2026 (`vp-herzogau-runde2-m6` §4.5): „Deye Heizhaus 0,0 kW"
+// stand als selbstbewusster Anteil neben zwei produzierenden Fronius - mit
+// grünem Punkt und ohne jede Einordnung. Der Kunde las das als „VoltPilot
+// behauptet, mein Wechselrichter sei tot".
+describe('pvBreakdown — die gemessene Null wird EINGEORDNET', () => {
+  it('eine 0 neben produzierenden Geschwistern bekommt die ruhige Zeile', () => {
+    const b = pvBreakdown([
+      src({ sourceId: 'deye', kind: 'primary', role: null, label: 'Deye Heizhaus', pvKw: 0 }),
+      src({ sourceId: 'a', label: 'Fronius West', pvKw: 4.0 }),
+      src({ sourceId: 'b', label: 'Fronius Ost', pvKw: 4.6 }),
+    ])!;
+    expect(b.parts.find((p) => p.label === 'Deye Heizhaus')!.note).toBe(NO_GENERATION_NOTE);
+    // Kein Alarm-Wortschatz: 0 ist ein Zustand, kein Fehler.
+    expect(NO_GENERATION_NOTE).not.toMatch(/fehler|störung|defekt|ausfall/i);
+    // Die produzierenden Geschwister bekommen KEINE Zeile.
+    expect(b.parts.filter((p) => p.note != null)).toHaveLength(1);
+    // Die Summe bleibt unangetastet - die Zeile ordnet ein, sie rechnet nicht.
+    expect(b.totalKw).toBeCloseTo(8.6, 9);
+  });
+
+  it('nachts (alle 0) gibt es GAR KEINE Aufteilung, also auch keine Kennzeichnung', () => {
+    expect(
+      pvBreakdown([
+        src({ sourceId: 'deye', kind: 'primary', role: null, pvKw: 0 }),
+        src({ sourceId: 'a', pvKw: 0 }),
+        src({ sourceId: 'b', pvKw: 0 }),
+      ]),
+    ).toBeNull();
+  });
+
+  it('`null` bleibt eine Lücke und wird nie zur gemessenen Null', () => {
+    const b = pvBreakdown([
+      src({ sourceId: 'deye', kind: 'primary', role: null, label: 'Deye', pvKw: null }),
+      src({ sourceId: 'a', label: 'Fronius West', pvKw: 4.0 }),
+      src({ sourceId: 'b', label: 'Fronius Ost', pvKw: 4.6 }),
+    ])!;
+    // Der ungelesene Erzeuger ist KEIN Teil (keine 0-Zeile), sondern benannt.
+    expect(b.parts.map((p) => p.label)).toEqual(['Fronius West', 'Fronius Ost']);
+    expect(b.note).toContain('Deye');
+    expect(b.parts.every((p) => p.note == null)).toBe(true);
+    expect(isMeasuredZero(null)).toBe(false);
+    expect(isMeasuredZero(0)).toBe(true);
+    // Ein Wert im Totband gilt als Null, ein echter Beitrag nicht.
+    expect(isMeasuredZero(0.02)).toBe(true);
+    expect(isMeasuredZero(0.4)).toBe(false);
+  });
+
+  it('trägt den jüngsten Messzeitpunkt als Bezugszeit des Alters-Ausweises', () => {
+    const b = pvBreakdown([
+      src({ sourceId: 'deye', kind: 'primary', role: null, pvKw: 0, readAt: '2026-08-17T10:00:00Z' }),
+      src({ sourceId: 'a', pvKw: 4.0, readAt: '2026-08-17T10:27:00Z' }),
+    ])!;
+    expect(b.asOf).toBe('2026-08-17T10:27:00Z');
+    // Ohne `readAt` fällt es auf den Meldezeitpunkt zurück, nie auf „jetzt".
+    const ohne = pvBreakdown([
+      src({ sourceId: 'deye', kind: 'primary', role: null, pvKw: 0 }),
+      src({ sourceId: 'a', pvKw: 4.0 }),
+    ])!;
+    expect(ohne.asOf).toBe('2026-07-21T10:00:00Z');
   });
 });
 

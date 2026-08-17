@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SiteSource, SiteTopology, TopologyEntity } from './api';
 import { pvComposition, shareOf, UNASSIGNED_NOTE } from './pvComposition';
+import { NO_GENERATION_NOTE } from './pvSources';
 import type { EntityPin } from './pvReconcile';
 import type { FlowMember } from './topology';
 
@@ -383,5 +384,58 @@ describe('pvComposition · one vocabulary, no crossed labels', () => {
     // Every component row can be renamed; a loose source row cannot (assign it
     // to a component first).
     expect(c.parts.every((p) => p.entityId != null || p.note === UNASSIGNED_NOTE)).toBe(true);
+  });
+});
+
+// Fix 2 auf der MIGRIERTEN Fläche: dieselbe Lage, derselbe Satz. Ohne das
+// wäre die Regel nur auf der v1-Aufteilung wahr - und genau die sehen die
+// wenigsten Anlagen, seit sich das Anlagen-Modell selbst komponiert.
+describe('pvComposition — die gemessene Null wird EINGEORDNET', () => {
+  const members: FlowMember[] = [
+    { entity_id: 'deye', label: 'Deye Heizhaus', value_kw: 0 },
+    { entity_id: 'west', label: 'Fronius West', value_kw: 4.0 },
+    { entity_id: 'ost', label: 'Fronius Ost', value_kw: 4.6 },
+  ];
+  const entities = [
+    entity({ id: 'deye', label: 'Deye Heizhaus' }),
+    entity({ id: 'west', label: 'Fronius West' }),
+    entity({ id: 'ost', label: 'Fronius Ost' }),
+  ];
+
+  it('eine 0 neben produzierenden Geschwistern bekommt die ruhige Zeile', () => {
+    const c = pvComposition(topo(members, entities), null)!;
+    const deye = c.parts.find((p) => p.label === 'Deye Heizhaus')!;
+    expect(deye.kw).toBe(0);
+    expect(deye.note).toBe(NO_GENERATION_NOTE);
+    expect(c.parts.filter((p) => p.note != null)).toHaveLength(1);
+    // Die Summe bleibt exakt die Summe der Teile - die Zeile ordnet nur ein.
+    expect(c.totalKw).toBeCloseTo(8.6, 9);
+  });
+
+  it('nachts (alle 0) wird NICHTS gekennzeichnet', () => {
+    const nacht = members.map((m) => ({ ...m, value_kw: 0 }));
+    const c = pvComposition(topo(nacht, entities), null)!;
+    expect(c.parts.every((p) => p.note == null)).toBe(true);
+  });
+
+  it('ein eigener Grund der Zeile gewinnt - er sagt mehr als die Null', () => {
+    const pins: EntityPin[] = [
+      { id: 'deye', edgeSourceId: 'sDeye', orphanedPin: true },
+      { id: 'west', edgeSourceId: 'sWest' },
+      { id: 'ost', edgeSourceId: 'sOst' },
+    ];
+    const c = pvComposition(topo(members, entities), null, pins)!;
+    const deye = [...c.parts, ...c.unmeasured].find((p) => p.label === 'Deye Heizhaus')!;
+    expect(deye.note).toContain('nicht mehr');
+  });
+
+  it('trägt den jüngsten Messzeitpunkt als Bezugszeit des Alters-Ausweises', () => {
+    const c = pvComposition(topo(members, entities), [
+      src({ sourceId: 'a', pvKw: 4.0, readAt: '2026-08-17T10:00:00Z' }),
+      src({ sourceId: 'b', pvKw: 4.6, readAt: '2026-08-17T10:27:00Z' }),
+    ])!;
+    expect(c.asOf).toBe('2026-08-17T10:27:00Z');
+    // Ohne Quellen wird kein Zeitpunkt erfunden.
+    expect(pvComposition(topo(members, entities), null)!.asOf).toBeNull();
   });
 });

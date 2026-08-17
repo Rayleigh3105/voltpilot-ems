@@ -401,6 +401,41 @@ describe('planSentence', () => {
     );
   });
 
+  // Herzogau 17.08.2026 (`vp-nacht-ruhe-warum-q8` §0): die drei Nacht-Balken
+  // lagen WEIT unter dem Hausverbrauch - der Fahrplan plante in genau diesen
+  // Slots Netz-BEZUG. Die Kopfzeile sagte trotzdem „nachts verkaufen".
+  it('DV: eine Entladung UNTER der Hauslast deckt den Verbrauch, sie verkauft nicht', () => {
+    // Entladung 3 kW, aber der Netzanschluss bezieht weiter 4 kW -> netto
+    // Import, es verlässt nichts den Netzverknüpfungspunkt.
+    const slots = [...hours(11, 14, 4, -3), ...hours(23, 24, -3, 4)];
+    expect(planSentence(slots, 'direktvermarktung', NOW)).toBe(
+      'Mittags laden, nachts den Verbrauch decken (23–24 Uhr).',
+    );
+    expect(planSentence(hours(23, 24, -3, 4), 'direktvermarktung', NOW)).toBe(
+      'Nachts den Verbrauch decken (23–24 Uhr).',
+    );
+  });
+
+  it('DV: erst der NETTO-Export macht daraus einen Verkauf', () => {
+    expect(planSentence(hours(17, 20, -5, -5), 'direktvermarktung', NOW)).toBe(
+      'Abends verkaufen (17–20 Uhr).',
+    );
+    // Ein ausgeglichener Netzanschluss ist kein Verkauf (Totband).
+    expect(planSentence(hours(17, 20, -5, 0), 'direktvermarktung', NOW)).toBe(
+      'Abends den Verbrauch decken (17–20 Uhr).',
+    );
+    // Ohne geplanten Netzwert (ältere Plan-Zeilen) bleibt die vorsichtigere,
+    // immer wahre Aussage stehen statt eines behaupteten Erlöses.
+    expect(planSentence(hours(17, 20, -5, null), 'direktvermarktung', NOW)).toBe(
+      'Abends den Verbrauch decken (17–20 Uhr).',
+    );
+    // Eigenverbrauch spricht unverändert „nutzen" - die Regel gilt nur dem
+    // Verkaufs-Wort.
+    expect(planSentence(hours(17, 20, -5, 4), 'eigenverbrauch', NOW)).toBe(
+      'Abends nutzen (17–20 Uhr).',
+    );
+  });
+
   it('picks the DOMINANT window by energy, not the first one', () => {
     const slots = [
       ...hours(7, 8, -1, 0), // small morning discharge

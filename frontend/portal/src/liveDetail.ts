@@ -12,6 +12,7 @@ import type { HistoryTotals, SiteTopology } from './api';
 import type { LiveState } from './adaptiveLive';
 import type { LiveSnapshot } from './live';
 import { energyLabel } from './anlage';
+import { standLabel } from './datenAlter';
 import { fmtRelative } from './format';
 import type { LivePulsRow, TodayLine } from './livePuls';
 import { isReportedTotal } from './nodata';
@@ -52,9 +53,18 @@ export interface LiveChip {
  * - `live`      — the honest "Stand vor X".
  * - `site-only` — the Anlage delivers, the per-device breakdown does not yet:
  *                 the chip SAYS so (no greying — the values below are real).
- * - `stale`     — "keine aktuellen Daten"; with no known sample at all the
- *                 chip stays away entirely (the status sentence carries the
- *                 story, e.g. "wartet auf erste Daten").
+ * - `stale`     — "keine aktuellen Daten · Stand: 12:27 Uhr"; with no known
+ *                 sample at all the chip stays away entirely (the status
+ *                 sentence carries the story, e.g. "wartet auf erste Daten").
+ *
+ * **Der Daten-Alter-Ausweis im `stale`-Fall (Herzogau 17.08.2026,
+ * `datenAlter.ts`):** bis hierher sagte der Chip NUR „keine aktuellen Daten" —
+ * die Zahlen darunter blieben trotzdem stehen, und niemand konnte sehen, ob
+ * sie zwei Minuten oder fünf Stunden alt waren. Er nennt jetzt den
+ * MESSZEITPUNKT, statisch: eine Dauer wäre nur so lange wahr, wie die Seite
+ * sie nachrechnet, und genau das tut eine eingefrorene Seite nicht (die
+ * PR-279-Lehre, siehe `liveness.ts`). Im frischen Fenster bleibt die knappe
+ * relative Form — dort ist sie kurzlebig und nie irreführend.
  */
 export function liveChip(
   state: LiveState,
@@ -71,7 +81,9 @@ export function liveChip(
         : 'Einzelne Geräte melden noch nichts',
     };
   }
-  return stand ? { tone: 'off', label: 'keine aktuellen Daten' } : null;
+  if (!stand) return null;
+  const at = standLabel(latestTs, now);
+  return { tone: 'off', label: at ? `keine aktuellen Daten · ${at}` : 'keine aktuellen Daten' };
 }
 
 /** sessionStorage key remembering the "Verlauf ▾" disclosure (owner Q2). */

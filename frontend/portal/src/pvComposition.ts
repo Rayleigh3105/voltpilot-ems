@@ -37,6 +37,7 @@
  * Pure + framework-free (unit-tested in pvComposition.test.ts).
  */
 import type { SiteSource, SiteTopology, TopologyEntity } from './api';
+import { newestTs } from './datenAlter';
 import { deviceName, technicalDeviceName } from './entityLabel';
 import {
   reconcileProducerPv,
@@ -46,7 +47,7 @@ import {
   type EntityPin,
 } from './pvReconcile';
 import type { FlowMember } from './topology';
-import { sourceLabel } from './pvSources';
+import { isMeasuredZero, noGenerationNote, sourceLabel } from './pvSources';
 
 const PV_ROLE = 'pv';
 
@@ -97,6 +98,15 @@ export interface PvComposition {
   /** parts + unmeasured. 1 = nothing to explain. */
   deviceCount: number;
   origin: PvValueOrigin;
+  /**
+   * Der jüngste Messzeitpunkt der beitragenden Messstellen — die Bezugszeit für
+   * den Daten-Alter-Ausweis „Stand: HH:MM" (`datenAlter.ts`). `null`, wenn kein
+   * Zeitstempel vorliegt (dann wird keiner erfunden). Die Frische-Punkte der
+   * Zeilen färben sich aus `health`, dem zuletzt GEMELDETEN Zustand — der steht
+   * grün auf einem stundenalten Datensatz weiter, das Alter kann also nur aus
+   * dem Zeitstempel kommen.
+   */
+  asOf: string | null;
 }
 
 function round3(v: number): number {
@@ -261,7 +271,26 @@ export function pvComposition(
   if (deviceCount === 0) return null;
   const totalKw =
     parts.length === 0 ? null : round3(parts.reduce((sum, p) => sum + (p.kw as number), 0));
-  return { totalKw, parts, unmeasured, deviceCount, origin };
+  // Eine GEMESSENE Null neben produzierenden Geschwistern wird eingeordnet
+  // statt als selbstbewusster „0,0 kW" stehen gelassen (Herzogau 17.08.2026);
+  // nachts, wenn alle 0 melden, gibt es keine Kennzeichnung. Dieselbe geteilte
+  // Regel wie in der v1-Aufteilung - eine Lage, ein Satz. Eine Zeile, die
+  // schon einen eigenen Grund trägt (z. B. „noch nicht zugeordnet"), behält
+  // ihn: er sagt mehr als die Null.
+  const anyGenerating = parts.some((p) => p.kw != null && !isMeasuredZero(p.kw));
+  if (anyGenerating) {
+    for (const p of parts) {
+      if (p.note == null) p.note = noGenerationNote(p.kw, true);
+    }
+  }
+  return {
+    totalKw,
+    parts,
+    unmeasured,
+    deviceCount,
+    origin,
+    asOf: newestTs(list.map((s) => s.readAt ?? s.reportedAt ?? null)),
+  };
 }
 
 /** The part's share of the total (0..1), for the proportional bar. 0 without a total. */

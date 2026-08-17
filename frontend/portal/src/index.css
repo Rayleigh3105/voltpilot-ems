@@ -5044,6 +5044,24 @@ button.vp-tech-card-h.toggle {
   font-size: 0.8rem;
   color: var(--vp-text-gray);
 }
+/* Die ruhige Einordnung einer gemessenen Null neben produzierenden
+   Geschwistern — bewusst kein Alarm und kein Rot: 0 ist ein Zustand, kein
+   Fehler (`pvSources.NO_GENERATION_NOTE`). */
+.vp-pvsplit-hint {
+  font-size: 0.78rem;
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+/* Der Daten-Alter-Ausweis „Stand: 12:27 Uhr" — er erscheint erst, wenn die
+   Werte das Live-Fenster verlassen haben, und nennt STATISCH den
+   Messzeitpunkt (`src/datenAlter.ts`). Auch hier keine Warnfarbe: die Fläche
+   sagt, WANN gemessen wurde, sie meldet keine Störung. */
+.vp-pvsplit-stand {
+  margin: var(--vp-space-2) 0 0;
+  font-size: 0.8rem;
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
 
 /* ============================================================
    M1 · Anlage-scoped shell nav — MOVED to `src/shell/Shell.css`
