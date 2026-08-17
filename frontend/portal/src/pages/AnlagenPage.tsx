@@ -944,7 +944,10 @@ export function AnlageSeite({
     ? surplusWhy(activePlanSlot, planKind, nextChargeStart(planSlots, now))
     : null;
   const baseReason = activePlanSlot
-    ? slotWhy(activePlanSlot, planKind, controlCurtail, planSlots)
+    ? // Die LAUF-Fakten reisen mit (Erklärbarkeit Stufe 1): der Ruhe-Grund der
+      // Steuerungs-Zeile nennt denselben Treiber wie die Fahrplan-Seite - EIN
+      // Generator, EIN Satz, kein zweiter Wortlaut.
+      slotWhy(activePlanSlot, planKind, controlCurtail, planSlots, plan)
     : null;
   const controlReason = surplusReason ?? baseReason;
   // Teil 3: der nächste geplante Einsatz - im Ruhefall als eigene Ausblick-Zeile.

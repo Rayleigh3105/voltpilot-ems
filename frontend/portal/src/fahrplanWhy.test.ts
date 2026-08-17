@@ -239,7 +239,7 @@ describe('slotWhy (per-slot customer sentence)', () => {
         'eigenverbrauch',
       ),
     ).toBe(
-      'Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt 41,2 ct/kWh (Börsenpreis 31,5 + Netzentgelte/Abgaben 9,7) – mehr als der Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
+      'Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt 41,2 ct/kWh (Börsenpreis 31,5 + Netzentgelte/Abgaben 9,7) – 12,9 ct/kWh mehr als der Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
     );
   });
 
@@ -259,7 +259,7 @@ describe('slotWhy (per-slot customer sentence)', () => {
       'direktvermarktung',
     );
     expect(sentence).toBe(
-      'Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt 32,5 ct/kWh (Börsenpreis 21,2 + Netzentgelte/Abgaben 11,3) – mehr als der Wert gespeicherter Energie (≈ 21,5 ct/kWh).',
+      'Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt 32,5 ct/kWh (Börsenpreis 21,2 + Netzentgelte/Abgaben 11,3) – 11,0 ct/kWh mehr als der Wert gespeicherter Energie (≈ 21,5 ct/kWh).',
     );
     // The claim it makes is the one the numbers support.
     expect(sentence).not.toContain('Börsenpreis 21,2 ct/kWh');
@@ -332,7 +332,7 @@ describe('slotWhy (per-slot customer sentence)', () => {
         'eigenverbrauch',
       ),
     ).toBe(
-      'Lädt günstig aus dem Netz: Netzstrom kostet Sie jetzt 15,8 ct/kWh (Börsenpreis 5,8 + Netzentgelte/Abgaben 10,0) – weniger als der Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
+      'Lädt günstig aus dem Netz: Netzstrom kostet Sie jetzt 15,8 ct/kWh (Börsenpreis 5,8 + Netzentgelte/Abgaben 10,0) – 12,5 ct/kWh weniger als der Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
     );
     // Without the Bezugspreis the sentence stays number-free (never spot).
     const old = slotWhy(

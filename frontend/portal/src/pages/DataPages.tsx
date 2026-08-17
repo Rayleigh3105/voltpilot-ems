@@ -886,6 +886,9 @@ export function FahrplanSection({ site }: { site: Site }) {
       jetztHeld({
         slot: controlReasonSlot(slots, now, slotMinutes),
         slots,
+        // Die LAUF-Fakten des jüngsten Laufs (Erklärbarkeit Stufe 1): der
+        // Held liest denselben Plan, den das Gerät gerade ausführt.
+        planFacts: plan,
         control,
         // Steuerbar ist die Anlage genau dann, wenn der Plan ein Gerät hat -
         // dieselbe Regel wie auf dem Cockpit (`batteryLinked`).
@@ -905,6 +908,7 @@ export function FahrplanSection({ site }: { site: Site }) {
       slotMinutes,
       control,
       curtail,
+      plan,
       plan?.deviceId,
       snapshot,
       snapshotFresh,
@@ -947,6 +951,7 @@ export function FahrplanSection({ site }: { site: Site }) {
       selectedPhase={null}
       selectedSlot={selSlot}
       curtail={curtail}
+      planFacts={plan}
       currentSlotIndex={activeSlotIdx}
       onClose={closePanel}
     />
