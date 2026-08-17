@@ -885,6 +885,7 @@ export function FahrplanSection({ site }: { site: Site }) {
     () =>
       jetztHeld({
         slot: controlReasonSlot(slots, now, slotMinutes),
+        slots,
         control,
         // Steuerbar ist die Anlage genau dann, wenn der Plan ein Gerät hat -
         // dieselbe Regel wie auf dem Cockpit (`batteryLinked`).

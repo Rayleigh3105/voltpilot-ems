@@ -943,7 +943,9 @@ export function AnlageSeite({
   const surplusReason = activePlanSlot
     ? surplusWhy(activePlanSlot, planKind, nextChargeStart(planSlots, now))
     : null;
-  const baseReason = activePlanSlot ? slotWhy(activePlanSlot, planKind, controlCurtail) : null;
+  const baseReason = activePlanSlot
+    ? slotWhy(activePlanSlot, planKind, controlCurtail, planSlots)
+    : null;
   const controlReason = surplusReason ?? baseReason;
   // Teil 3: der nächste geplante Einsatz - im Ruhefall als eigene Ausblick-Zeile.
   const controlOutlook = planOutlook(planSlots, now);
