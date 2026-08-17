@@ -4810,6 +4810,10 @@ class PortalApiTest {
                 + "\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"online\":true,";
         String curtailUrl = url("/api/v1/sites/" + BERLIN_SITE + "/curtailment-status");
         HttpEntity<Void> demo = new HttpEntity<>(bearer(token("demo", "demo")));
+        // The row belongs to the SITE, and this class shares the Berlin one: the
+        // "no evidence yet" assertion below must be about THIS subject, not about
+        // JUnit's method order.
+        exec("DELETE FROM device_curtailment_status WHERE site_id = '" + BERLIN_SITE + "'");
 
         // A heartbeat WITHOUT the block changes nothing: no evidence, no claim.
         listener.handle(topic, (head + "\"control\":{\"commanded_kw\":0,\"confirmed_kw\":0,"
@@ -4870,6 +4874,127 @@ class PortalApiTest {
         ResponseEntity<Map> still = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
         assertThat(still.getBody().get("units")).isEqualTo(2);
         assertThat(still.getBody().get("possibleOverride")).isEqualTo(true);
+    }
+
+    /**
+     * „Grenzen &amp; Wächter" Stufe 0: der EINSPEISEWÄCHTER und die Grenze IM
+     * GERÄT reisen im SELBEN Block und werden cloud-seitig endlich gelesen.
+     *
+     * <p>Die Box sendet den {@code export_guard}-Block seit ihrem Bau in JEDEM
+     * Herzschlag - geltende Grenze, kommandierte Kappe, und ob sie überhaupt an
+     * ein Gerät geschrieben werden kann. Niemand las ihn, also war „welche
+     * Einspeisegrenze hält die Box, und wirkt sie?" nur per Wartungstunnel
+     * beantwortbar: zwei Untersuchungsrunden an Anlage Herzogau.
+     *
+     * <p>Der Block hier ist die LIVE-Momentaufnahme dieser Anlage vom
+     * 17.08.2026, 18:19 - Grenze 70 kW bekannt, Kappe 76,9 kW berechnet, und an
+     * KEIN Gerät geschrieben, weil keiner der zwei Wechselrichter freigegeben
+     * ist. Dazu der Deye-Deckel von 33,0 kW aus 0x00E7, der zwei Runden lang
+     * unsichtbar war.
+     */
+    @Test
+    void theExportGuardAndTheDevicesOwnLimitAreIngestedAndTenantScoped() {
+        // ⚠ Die Abregel-Zeile gehört der ANLAGE, und diese Klasse teilt sich die
+        // Berliner (die Haus-Disziplin der geteilten Anlage): der Nachbar-Test
+        // beginnt mit einem 204 „noch kein Beleg". Also am ANFANG UND am ENDE
+        // abräumen, damit keine JUnit-Reihenfolge das Ergebnis entscheidet.
+        exec("DELETE FROM device_curtailment_status WHERE site_id = '" + BERLIN_SITE + "'");
+        try {
+            theExportGuardJourney();
+        } finally {
+            exec("DELETE FROM device_curtailment_status WHERE site_id = '" + BERLIN_SITE + "'");
+        }
+    }
+
+    private void theExportGuardJourney() {
+        var listener = new com.voltpilot.api.curtailment.CurtailmentStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, curtailmentStatusRepo);
+        String topic = "ems/00000000-0000-0000-0000-000000000001/"
+                + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
+        String head = "{\"schema_version\":\"1.0\","
+                + "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"online\":true,";
+        String curtailUrl = url("/api/v1/sites/" + BERLIN_SITE + "/curtailment-status");
+        HttpEntity<Void> demo = new HttpEntity<>(bearer(token("demo", "demo")));
+
+        // (1) Ein Herzschlag OHNE die zwei Blöcke: die Zeile entsteht, aber
+        //     nichts wird über eine Grenze behauptet. Das ist der Zustand JEDER
+        //     Anlage vor dieser Stufe - und der einer älteren Edge nach ihr.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":0,"
+                + "\"control_enabled\":true,\"active\":false,"
+                + "\"checked_at\":\"2026-08-17T16:10:00Z\"}}").getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> bare = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        assertThat(bare.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(bare.getBody().get("exportGuard")).isNull();
+        assertThat(bare.getBody().get("deviceExportLimit")).isNull();
+
+        // (2) Die Herzogau-Momentaufnahme, wörtlich.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":0,"
+                + "\"control_enabled\":true,\"active\":false,"
+                + "\"checked_at\":\"2026-08-17T16:19:00Z\","
+                + "\"device_export_limit_kw\":33.0,"
+                + "\"device_export_limit_register\":\"0x00e7\","
+                + "\"device_export_limit_read_at\":\"2026-08-17T04:12:00Z\","
+                + "\"export_guard\":{\"limit_kw\":70,\"state\":\"ueberwacht\","
+                + "\"reason\":\"Die Einspeisung liegt bei 0,0 kW von 70,0 kW.\","
+                + "\"cap_kw\":76.927,\"limiting\":false,\"blind\":false,"
+                + "\"effective\":false,"
+                + "\"reach\":\"Kein Wechselrichter ist für die Abregelung freigegeben (0 von 2).\"}}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> live = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> guard = (Map<String, Object>) live.getBody().get("exportGuard");
+        assertThat(guard).isNotNull();
+        assertThat(((Number) guard.get("limitKw")).doubleValue()).isEqualTo(70.0);
+        assertThat(guard.get("state")).isEqualTo("ueberwacht");
+        assertThat(((Number) guard.get("capKw")).doubleValue()).isEqualTo(76.927);
+        assertThat(guard.get("limiting")).isEqualTo(false);
+        // DAS Feld, für das es den Block gibt: die Kappe erreicht kein Gerät.
+        assertThat(guard.get("effective")).isEqualTo(false);
+        assertThat((String) guard.get("reach")).contains("freigegeben (0 von 2)");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> dev = (Map<String, Object>) live.getBody().get("deviceExportLimit");
+        assertThat(dev).isNotNull();
+        assertThat(((Number) dev.get("limitKw")).doubleValue()).isEqualTo(33.0);
+        assertThat(dev.get("register")).isEqualTo("0x00e7");
+        // Der EIGENE Frische-Anker: das Register wird höchstens täglich gelesen,
+        // es darf sich checkedAt nie ausleihen.
+        assertThat((String) dev.get("readAt")).startsWith("2026-08-17T04:12");
+
+        // (3) Fremder Mandant sieht die Anlage gar nicht -> RLS 404.
+        assertThat(rest.exchange(curtailUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // (4) Die Zeile wird je Herzschlag ERSETZT: ein Wächter, der verschwindet,
+        //     darf kein altes Urteil auf Vorrat behalten - und ein UNBEKANNTES
+        //     Zustands-Wort verwirft den ganzen Block statt einen Satz zu
+        //     speichern, den keine Fläche einordnen kann.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":2,"
+                + "\"control_enabled\":true,\"active\":true,\"all_match\":true,"
+                + "\"checked_at\":\"2026-08-17T16:25:00Z\","
+                + "\"export_guard\":{\"limit_kw\":70,\"state\":\"tanzt\",\"effective\":true}}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> replaced = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        assertThat(replaced.getBody().get("exportGuard")).isNull();
+        assertThat(replaced.getBody().get("deviceExportLimit")).isNull();
+        assertThat(replaced.getBody().get("certifiedUnits")).isEqualTo(2);
+
+        // (5) Und wirkt der Wächter, sagt er das ebenso ehrlich - ohne Lücken-Satz.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":2,"
+                + "\"control_enabled\":true,\"active\":true,\"all_match\":true,"
+                + "\"checked_at\":\"2026-08-17T16:30:00Z\","
+                + "\"export_guard\":{\"limit_kw\":70,\"state\":\"regelt\","
+                + "\"reason\":\"Die Einspeisung wird auf 67,3 kW begrenzt.\","
+                + "\"cap_kw\":67.3,\"limiting\":true,\"effective\":true}}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> working = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> ok = (Map<String, Object>) working.getBody().get("exportGuard");
+        assertThat(ok.get("effective")).isEqualTo(true);
+        assertThat(ok.get("limiting")).isEqualTo(true);
+        assertThat(ok.get("reach")).isNull();
     }
 
     /**

@@ -22,6 +22,10 @@
  */
 const fs = require('fs');
 const path = require('path');
+// The router's register facts come STRAIGHT from the routing module (not a
+// hand-copied literal) so the inlined flow body can never drift from the tested
+// table - the same reason the codecs are embedded rather than retyped.
+const routing = require('./inverter-routing');
 
 const OUT = path.join(__dirname, 'flows.json');
 const prev = JSON.parse(fs.readFileSync(OUT, 'utf8'));
@@ -119,6 +123,30 @@ const routerFunc = [
   "      const i = (flow.get('mirror_want_rr') || 0) % ok.length;",
   "      flow.set('mirror_want_rr', i + 1);",
   "      msg.deye.reads.push({ start: ok[i].start, count: ok[i].count, learned: true });",
+  "    }",
+  "  }",
+  // Die GERÄTE-EIGENE Einspeisegrenze („Grenzen & Wächter" Stufe 0): EIN
+  // zusätzlicher FC3-Umlauf höchstens einmal am Tag, angehängt an denselben
+  // Leseplan und damit denselben Socket + dieselbe Sperre, die Steuer-Schreib-
+  // vorgängen weicht. Nur Familien mit einem Register, das WIR nicht selbst
+  // beschreiben (siehe DEYE_EXPORT_LIMIT in inverter-routing.js) - sonst
+  // meldeten wir unseren eigenen Befehl als „Grenze des Geräts".
+  // Der Zeitstempel wird beim VERSUCH gesetzt (der Router sieht das Ergebnis
+  // nicht); ein Fehlschlag wird morgen erneut versucht, und die Oberfläche sagt
+  // bis dahin ehrlich „unbekannt". Ein Neustart leert den Kontext, also kommt
+  // nach jedem Neustart ein frischer Wert.
+  "  const EXPORT_LIMIT_REGS = " + JSON.stringify(routing.DEYE_EXPORT_LIMIT) + ";",
+  "  const EXPORT_LIMIT_INTERVAL_MS = " + routing.EXPORT_LIMIT_INTERVAL_MS + ";",
+  "  const elReg = EXPORT_LIMIT_REGS[sel.family];",
+  "  if (elReg) {",
+  "    const elKey = 'export_limit_at:' + cfg.ip + ':' + port;",
+  "    const elLast = Number(flow.get(elKey));",
+  "    const elNow = Date.now();",
+  "    const elDue = !Number.isFinite(elLast) || elLast <= 0",
+  "      || elNow < elLast || elNow - elLast >= EXPORT_LIMIT_INTERVAL_MS;",
+  "    if (elDue) {",
+  "      flow.set(elKey, elNow);",
+  "      msg.deye.reads.push({ start: elReg.addr, count: 1, export_limit: true });",
   "    }",
   "  }",
   "  node.status({ fill: 'blue', shape: 'dot', text: 'Deye ' + sel.family + ' -> Solarman-V5' });",

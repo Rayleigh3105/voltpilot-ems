@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ControlStrip } from './ControlStrip';
 import type { ControlStripView } from '../control';
+import type { ExportGuardView } from '../curtailment';
 
 function view(over: Partial<ControlStripView> = {}): ControlStripView {
   return {
@@ -13,6 +14,18 @@ function view(over: Partial<ControlStripView> = {}): ControlStripView {
     execution: null,
     curtailment: null,
     outlook: null,
+    ...over,
+  };
+}
+
+function guard(over: Partial<ExportGuardView> = {}): ExportGuardView {
+  return {
+    line:
+      'Einspeisegrenze 70,0 kW. Kein Wechselrichter ist für die Abregelung freigegeben ' +
+      '(0 von 2) - die Einspeisegrenze wird berechnet, aber an KEIN Gerät geschrieben.',
+    tone: 'warn',
+    agoNote: '',
+    deviceLimitLine: null,
     ...over,
   };
 }
@@ -83,6 +96,63 @@ describe('ControlStrip', () => {
     it('behauptet keinen Grund, wenn der Plan keinen aufgezeichnet hat', () => {
       const { container } = render(<ControlStrip view={view()} variant="bare" />);
       expect(container.querySelector('.vp-control-reason')).toBeNull();
+    });
+  });
+
+  describe('Einspeisewächter („Grenzen & Wächter" Stufe 0)', () => {
+    it('rendert die Wächter-Zeile in BEIDEN Varianten', () => {
+      for (const variant of ['card', 'bare'] as const) {
+        const { container, unmount } = render(
+          <ControlStrip view={view()} variant={variant} guard={guard()} />,
+        );
+        expect(container.querySelector('.vp-guard-line.tone-warn')?.textContent).toContain(
+          'an KEIN Gerät geschrieben',
+        );
+        unmount();
+      }
+    });
+
+    it('rendert den Streifen AUCH ohne Steuerzeile - der Wächter hängt nicht an ihr', () => {
+      // Genau die Herzogau-Konstellation: ein Gerät ohne Batterie-Rücklesung
+      // liefert keine Steuerzeile, hält aber sehr wohl eine Einspeisegrenze.
+      const { container } = render(<ControlStrip view={null} guard={guard()} />);
+      expect(container.querySelector('.vp-guard-line')).not.toBeNull();
+      // Kein Punkt, kein Satz über die Batterie - nur der Wächter.
+      expect(container.querySelector('.vp-control-dot')).toBeNull();
+      expect(container.textContent).toContain('Steuerung');
+    });
+
+    it('rendert GAR NICHTS, wenn weder Steuerung noch Wächter etwas melden', () => {
+      const { container } = render(<ControlStrip view={null} guard={null} />);
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('hängt das Alter an, sobald der Block nicht mehr frisch ist', () => {
+      const { container } = render(
+        <ControlStrip view={view()} guard={guard({ agoNote: 'zuletzt gemeldet vor 12 Min.' })} />,
+      );
+      expect(container.querySelector('.vp-guard-ago')?.textContent).toContain('vor 12');
+    });
+
+    it('zeigt die Diskrepanz zum Geräte-Limit als eigene Zeile', () => {
+      const { container } = render(
+        <ControlStrip
+          view={view()}
+          guard={guard({
+            deviceLimitLine:
+              'Ihr Wechselrichter begrenzt die Einspeisung am Netzpunkt auf 33,0 kW — ' +
+              'hinterlegt sind 70,0 kW.',
+          })}
+        />,
+      );
+      const lines = container.querySelectorAll('.vp-guard-line');
+      expect(lines).toHaveLength(2);
+      expect(lines[1].textContent).toContain('33,0');
+    });
+
+    it('behauptet ohne Wächter nichts über eine Einspeisegrenze', () => {
+      const { container } = render(<ControlStrip view={view()} />);
+      expect(container.querySelector('.vp-guard-line')).toBeNull();
     });
   });
 });

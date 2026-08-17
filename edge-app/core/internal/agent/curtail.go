@@ -810,7 +810,19 @@ func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 	// a feed-in limit but no curtailable inverter therefore states that case
 	// locally - on :8484 and in the log - where the commissioning operator is
 	// standing, and not in the fleet view.
-	if g := a.State.Get().ExportGuard; g != nil {
+	snap := a.State.Get()
+	// The DEVICE'S OWN feed-in limit („Grenzen & Wächter" Stufe 0) rides along
+	// the same way: straight from the Snapshot the raw-register path wrote, with
+	// its OWN read timestamp. Absent = not read (older poll, a family whose
+	// register map has no trustworthy cap, or simply not read yet) - never a
+	// fabricated 0 and never "the device has no limit".
+	if d := snap.DeviceExportLimit; d != nil {
+		kw := d.LimitKw
+		sum.DeviceExportLimitKw = &kw
+		sum.DeviceExportLimitRegister = d.Register
+		sum.DeviceExportLimitReadAt = d.ReadAt.Format(time.RFC3339Nano)
+	}
+	if g := snap.ExportGuard; g != nil {
 		sum.ExportGuard = &cloud.ExportGuardSummary{
 			LimitKw:   g.LimitKw,
 			State:     g.State,

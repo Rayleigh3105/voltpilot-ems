@@ -26,7 +26,7 @@
 //   3. Nur ein ausdrückliches `allMatch === true` ist eine Bestätigung —
 //      `null` heißt „nichts angewandt", nicht „widersprochen".
 import type { CurtailmentStatus } from './api';
-import { fmtNum } from './format';
+import { fmtNum, fmtRelative } from './format';
 
 /** Die vier Zustände der Beleg-Lage (Stufe 3 hat zwei Ausprägungen). */
 export type CurtailStufe = 'plan' | 'nicht_umgesetzt' | 'ausgefuehrt' | 'uebersteuert';
@@ -255,4 +255,113 @@ export function curtailActionPhrase(truth: CurtailTruth): string {
 /** Der Bindungs-Chip des Slot-Panels. */
 export function curtailChipLabel(truth: CurtailTruth): string {
   return truth.stufe === 'ausgefuehrt' ? 'Drosselung aktiv' : 'Drosselung geplant';
+}
+
+// ---------------------------------------------------------------------------
+// „Grenzen & Wächter" Stufe 0 — der EINSPEISEWÄCHTER und die Grenze IM GERÄT
+// ---------------------------------------------------------------------------
+//
+// Warum das NICHT im `curtailTruth`-Filter oben lebt: die Abregel-Wahrheit gilt
+// für die LAUFENDE Viertelstunde und nur, wenn dort abgeregelt werden soll. Der
+// Einspeisewächter ist eine STEHENDE Aussage über die Anlage — welche Grenze
+// gilt, und erreicht sie überhaupt ein Gerät. Sie durch den Slot-Filter zu
+// schicken hieße, sie 23 von 24 Stunden zu verschweigen; genau das machte die
+// Frage „welche Einspeisegrenze hält die Box?" zu einer Tunnel-Sitzung.
+//
+// Drei Regeln, die hier tragen:
+//   1. Die SÄTZE kommen aus der Box (`reach`/`reason`, geschrieben in
+//      `guards.ExportLimiter`) und werden DURCHGEREICHT, nicht neu formuliert —
+//      sonst benennen `:8484` und Portal dasselbe Urteil verschieden.
+//   2. Ein VERALTETER Block verschweigt nichts, er bekommt sein Alter dazu
+//      („zuletzt gemeldet vor 12 Min.") — eine stehende Grenze verschwindet
+//      nicht, weil die Box kurz still ist, aber sie darf auch nicht so tun,
+//      als wäre die Aussage von jetzt.
+//   3. Die Diskrepanz-Zeile behauptet nichts, was auch UNSER eigenes Kommando
+//      sein könnte (siehe `deviceLimitLine`).
+
+/** Die Zeilen des Wächters — abgeleitet, nie roh weitergereicht. */
+export interface ExportGuardView {
+  /** Die ruhige Hauptzeile („Einspeisegrenze 70,0 kW. …"). */
+  line: string;
+  /** `warn`, sobald die Grenze nicht (voll) wirkt oder blind geregelt wird. */
+  tone: 'ok' | 'warn';
+  /** „zuletzt gemeldet vor 12 Min." — leer, solange der Block frisch ist. */
+  agoNote: string;
+  /**
+   * Die Diskrepanz zwischen der Grenze IM GERÄT und der hinterlegten Grenze;
+   * null, wenn keine belegbar ist.
+   */
+  deviceLimitLine: string | null;
+}
+
+/**
+ * Ab dieser Abweichung ist eine Grenzen-Differenz eine Aussage und kein
+ * Rundungsrest — dasselbe 0,05-kW-Totband wie überall im Portal.
+ */
+const LIMIT_DEADBAND_KW = 0.05;
+
+/**
+ * Die Zeilen des Einspeisewächters, oder null wenn die Box keinen gemeldet hat
+ * (ältere Edge, oder für die Anlage ist gar keine Einspeisegrenze hinterlegt).
+ * Null heißt „wir wissen es nicht" — nie „es gibt keine Grenze".
+ */
+export function exportGuardView(
+  status: CurtailmentStatus | null | undefined,
+  now: Date = new Date(),
+): ExportGuardView | null {
+  const g = status?.exportGuard;
+  if (!g || !Number.isFinite(Number(g.limitKw))) return null;
+
+  // Der Satz der Box: die REICHWEITE gewinnt, wenn es eine Lücke gibt. Sie ist
+  // die schärfere Aussage — eine Grenze, die kein Gerät erreicht, ist keine,
+  // egal wie sauber sie berechnet wurde.
+  const sentence = (g.reach ?? '').trim() || (g.reason ?? '').trim();
+  const head = `Einspeisegrenze ${fmtNum(g.limitKw, 'kW', 1)}`;
+  const line = sentence ? `${head}. ${sentence}` : `${head}.`;
+
+  // Ein UNBRAUCHBARER Zeitstempel ist kein Alter: dann wird gar keines genannt,
+  // statt „zuletzt gemeldet Invalid Date" zu rendern (die Zeile selbst bleibt —
+  // die Grenze gilt, nur ihre Bezugszeit ist unbekannt).
+  const ageMs = now.getTime() - new Date(status!.checkedAt).getTime();
+  const stale = Number.isFinite(ageMs) && ageMs > CURTAIL_STALE_MS;
+
+  return {
+    line,
+    // `blind` ist Warnung, weil dann nicht mehr gegen eine frische Messung am
+    // Netzpunkt geregelt wird (Halten / Zusammenziehen / Sicherheitskappe).
+    tone: !g.effective || g.reach != null || g.blind ? 'warn' : 'ok',
+    agoNote: stale ? `zuletzt gemeldet ${fmtRelative(status!.checkedAt, now)}` : '',
+    deviceLimitLine: deviceLimitLine(status),
+  };
+}
+
+/**
+ * „Ihr Wechselrichter begrenzt die Einspeisung am Netzpunkt auf 33,0 kW —
+ * hinterlegt sind 70,0 kW." Null, solange sich das nicht BELEGEN lässt.
+ *
+ * Drei Bedingungen, und die dritte ist die, die man beim Aufräumen zerstören
+ * würde:
+ *   1. beide Hälften gemeldet (sonst gibt es nichts zu vergleichen),
+ *   2. die Grenze im Gerät liegt spürbar UNTER der hinterlegten,
+ *   3. **sie ist nicht unser eigenes Kommando.** Auf dem alten ToU-Steuerpfad
+ *      kann VoltPilot dasselbe Register selbst mit einer Fahrplan-Kappe
+ *      beschreiben. Liegt unsere kommandierte Kappe auf oder unter dem
+ *      gelesenen Wert, könnte der niedrige Registerinhalt von uns stammen —
+ *      dann wird geschwiegen, statt dem Gerät etwas anzulasten, das wir selbst
+ *      getan haben.
+ */
+function deviceLimitLine(status: CurtailmentStatus | null | undefined): string | null {
+  const g = status?.exportGuard;
+  const d = status?.deviceExportLimit;
+  if (!g || !d) return null;
+  const device = Number(d.limitKw);
+  const configured = Number(g.limitKw);
+  if (!Number.isFinite(device) || !Number.isFinite(configured)) return null;
+  if (device >= configured - LIMIT_DEADBAND_KW) return null;
+  const cap = g.capKw == null ? null : Number(g.capKw);
+  if (cap != null && Number.isFinite(cap) && cap <= device + LIMIT_DEADBAND_KW) return null;
+  return (
+    `Ihr Wechselrichter begrenzt die Einspeisung am Netzpunkt auf ` +
+    `${fmtNum(device, 'kW', 1)} — hinterlegt sind ${fmtNum(configured, 'kW', 1)}.`
+  );
 }

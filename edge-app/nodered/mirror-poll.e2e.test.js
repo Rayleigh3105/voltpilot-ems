@@ -42,6 +42,16 @@ const SEL = {
   connection: { ip: '127.0.0.1', serial: String(SERIAL), mb_slave_id: 1 },
 };
 
+// Die TAEGLICHE Lesung der geraete-eigenen Einspeisegrenze („Grenzen & Waechter"
+// Stufe 0) haengt sich ebenfalls an den Leseplan und ist auf einem frischen
+// Flow-Kontext faellig. Die Spiegel-Tests stempeln sie deshalb als soeben
+// versucht, damit ihr Gegenstand (die gelernten Bloecke) isoliert bleibt; ihr
+// eigenes Verhalten steht im letzten Test dieser Datei.
+const exportLimitStamped = (extra = {}) => ({
+  ['export_limit_at:' + SEL.connection.ip + ':8899']: Date.now(),
+  ...extra,
+});
+
 // --- a minimal in-process Solarman-V5 logger (FC3 reads only) ----------------
 const V5_RESP_PREAMBLE = 14;
 
@@ -138,10 +148,10 @@ async function pollOnce(flowStore, port) {
 test('learned blocks ride the poll AFTER the primary blocks, one per cycle round-robin', async () => {
   const { server, port, reads } = await startLogger();
   try {
-    const flowStore = {
+    const flowStore = exportLimitStamped({
       inverter_config: SEL,
       mirror_want: [{ start: 0x0060, count: 4 }, { start: 0x0100, count: 2 }],
-    };
+    });
     // Cycle 1: identity + measurement block, THEN learned block A.
     let out = await pollOnce(flowStore, port);
     assert.ok(out, 'poll cycle 1 completed');
@@ -164,7 +174,7 @@ test('learned blocks ride the poll AFTER the primary blocks, one per cycle round
 test('a refused learned block becomes an error block and never aborts the primary poll', async () => {
   const { server, port, reads } = await startLogger({ exceptionFrom: [0x0f00] });
   try {
-    const flowStore = { inverter_config: SEL, mirror_want: [{ start: 0x0f00, count: 4 }] };
+    const flowStore = exportLimitStamped({ inverter_config: SEL, mirror_want: [{ start: 0x0f00, count: 4 }] });
     const out = await pollOnce(flowStore, port);
     assert.ok(out, 'poll survived the refused learned block');
     assert.strictEqual(out.deye.blocks.length, 3, 'primary blocks + the error block');
@@ -197,6 +207,48 @@ test('a fresh control-write intent skips the WHOLE cycle - learned block include
     const out = await pollOnce(flowStore, port);
     assert.strictEqual(out, null, 'read yielded to the announced write');
     assert.strictEqual(reads.length, 0, 'NOT ONE socket operation - consumer demand cannot displace a write');
+  } finally {
+    server.close();
+  }
+});
+
+// „Grenzen & Wächter" Stufe 0: die geraete-eigene Einspeisegrenze reitet EINMAL
+// AM TAG auf demselben Leseplan mit - ein zusaetzlicher FC3-Umlauf, kein
+// zweiter Socket. Was hier zaehlt: dass der Umlauf wirklich stattfindet, dass
+// der gelesene Registerwert BYTE-getreu in der retained Rohnachricht ankommt
+// (aus der der Core ihn dekodiert - `agent/device_export_limit_test.go`), und
+// dass die Lastgarantie haelt: die folgenden Polls tragen ihn NICHT.
+test('die Einspeisegrenze des Geraets wird taeglich mitgelesen - und nur taeglich', async () => {
+  const { server, port, reads } = await startLogger();
+  try {
+    const flowStore = { inverter_config: SEL };
+
+    // Erster Poll nach dem (Neu-)Start: der Zusatz-Umlauf laeuft, NACH den
+    // Primaerbloecken.
+    let out = await pollOnce(flowStore, port);
+    assert.ok(out, 'poll cycle 1 completed');
+    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024c, 0x00e7],
+      'die Grenze wird LETZTES gelesen, nach den Messwerten');
+    assert.deepStrictEqual(reads[2], { addr: 0x00e7, count: 1 }, 'genau EIN Register');
+
+    // Der Wert reist byte-getreu weiter (der Logger serviert Wert = Adresse).
+    const block = out.deye.blocks[2];
+    assert.strictEqual(block.start, 0x00e7);
+    assert.deepStrictEqual(J(block.regs), [0x00e7]);
+    const shaped = await runNode(MIRROR_RAW, out, flowStore);
+    const raw = shaped && shaped.payload;
+    assert.ok(raw, 'die Rohnachricht wird gebaut');
+    const carried = raw.blocks.filter((b) => b.start === 0x00e7);
+    assert.strictEqual(carried.length, 1, 'der Core bekommt den Block genau einmal');
+    assert.deepStrictEqual(J(carried[0].regs), [0x00e7]);
+
+    // Die folgenden Polls tragen ihn NICHT - das ist die Lastgarantie.
+    for (let i = 0; i < 3; i += 1) {
+      reads.length = 0;
+      out = await pollOnce(flowStore, port);
+      assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024c],
+        'kein zweiter Umlauf am selben Tag');
+    }
   } finally {
     server.close();
   }

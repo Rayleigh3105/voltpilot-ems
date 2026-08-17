@@ -73,7 +73,14 @@ test('flow router matches inverter-routing.route() for solarman_v5', () => {
   assert.strictEqual(outMsg.deye.cfg.invert_grid_sign, expected.connection.invert_grid_sign);
   assert.strictEqual(outMsg.deye.cfg.invert_batt_sign, expected.connection.invert_batt_sign);
   assert.strictEqual(outMsg.deye.cfg.power_scale, expected.connection.power_scale);
-  assert.deepStrictEqual(outMsg.deye.reads, expected.reads);
+  // The PRIMARY plan leads unchanged; the daily export-limit block („Grenzen &
+  // Wächter" Stufe 0) is appended on a fresh flow context and carries the
+  // MODULE's register facts - so this drift guard now covers the address+scale
+  // twin too (a wrong address or scale here is a 10x-wrong customer number).
+  assert.deepStrictEqual(outMsg.deye.reads.slice(0, expected.reads.length), expected.reads);
+  const elReg = routing.exportLimitRegister(sel.family);
+  assert.deepStrictEqual(outMsg.deye.reads.slice(expected.reads.length),
+    [{ start: elReg.addr, count: 1, export_limit: true }]);
 });
 
 test('flow router matches inverter-routing.route() for modbus_tcp', () => {
@@ -205,11 +212,20 @@ const MIRROR_SEL = {
   connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 },
 };
 
+// The DAILY export-limit read („Grenzen & Wächter" Stufe 0) also appends one
+// block, and it is DUE on a fresh flow context - so the mirror tests below
+// pre-stamp it as just-attempted to keep their subject isolated. Its own
+// behaviour is pinned in the dedicated tests further down.
+const exportLimitStamped = (extra = {}) => ({
+  ['export_limit_at:' + MIRROR_SEL.connection.ip + ':' + MIRROR_SEL.connection.port]: Date.now(),
+  ...extra,
+});
+
 test('router merges AT MOST ONE learned block per cycle, round-robin, after the primary blocks', () => {
-  const flow = {
+  const flow = exportLimitStamped({
     inverter_config: MIRROR_SEL,
     mirror_want: [{ start: 0x0060, count: 4 }, { start: 0x0100, count: 2 }],
-  };
+  });
   const primary = routing.route(routing.parseConfig(MIRROR_SEL)).reads;
 
   // Cycle 1: primary blocks first, then EXACTLY ONE learned block.
@@ -230,7 +246,7 @@ test('router merges AT MOST ONE learned block per cycle, round-robin, after the 
 });
 
 test('router clamps learned blocks and NEVER polls the control window 1100-1121', () => {
-  const flow = {
+  const flow = exportLimitStamped({
     inverter_config: MIRROR_SEL,
     // One garbage entry, one control-window block, one oversized block, plus
     // more blocks than the cap - the sanitizer must survive all of it.
@@ -240,7 +256,7 @@ test('router clamps learned blocks and NEVER polls the control window 1100-1121'
       { start: 'x', count: 2 },           // garbage -> skipped
       { start: 0x0060, count: 500 },      // oversized -> clamped to 64
     ],
-  };
+  });
   const primary = routing.route(routing.parseConfig(MIRROR_SEL)).reads;
   const { ret } = runFunctionNode(byId['auto-router'].func, { flow });
   const reads = ret[0].deye.reads;
@@ -249,7 +265,7 @@ test('router clamps learned blocks and NEVER polls the control window 1100-1121'
 });
 
 test('router with an EMPTY want list emits the byte-identical primary plan', () => {
-  const flow = { inverter_config: MIRROR_SEL, mirror_want: [] };
+  const flow = exportLimitStamped({ inverter_config: MIRROR_SEL, mirror_want: [] });
   const { ret } = runFunctionNode(byId['auto-router'].func, { flow });
   assert.deepStrictEqual(ret[0].deye.reads, routing.route(routing.parseConfig(MIRROR_SEL)).reads);
 });
@@ -1248,4 +1264,57 @@ test('flow auto-control-exec-kostal gates on register 1080 and writes only 1034'
   for (const forbidden of ['1038', '1040', '1042', '1044']) {
     assert.ok(!func.includes(forbidden), 'the executor must never mention register ' + forbidden);
   }
+});
+
+// --- die GERÄTE-EIGENE Einspeisegrenze („Grenzen & Wächter" Stufe 0) ---------
+//
+// EIN zusätzlicher FC3-Umlauf höchstens einmal am Tag, an denselben Leseplan
+// angehängt (Ein-Socket-Gesetz). Was hier am meisten wert ist: dass wir das
+// Register einer Familie, die WIR selbst beschreiben, nie lesen - sonst
+// meldeten wir unseren eigenen Befehl als „Grenze des Geräts".
+
+test('der Leseplan trägt die Einspeisegrenze GENAU EINMAL pro Tag', () => {
+  const flow = { inverter_config: MIRROR_SEL };
+  const elReg = routing.exportLimitRegister('hybrid_3p');
+  const primary = routing.route(routing.parseConfig(MIRROR_SEL)).reads;
+
+  // Erster Poll nach dem (Neu-)Start: fällig.
+  let { ret } = runFunctionNode(byId['auto-router'].func, { flow });
+  assert.deepStrictEqual(ret[0].deye.reads.slice(primary.length),
+    [{ start: elReg.addr, count: 1, export_limit: true }]);
+
+  // Die folgenden Polls tragen ihn NICHT - genau das ist die Lastgarantie.
+  for (let i = 0; i < 5; i += 1) {
+    ({ ret } = runFunctionNode(byId['auto-router'].func, { flow }));
+    assert.deepStrictEqual(ret[0].deye.reads, primary, 'kein zweiter Umlauf am selben Tag');
+  }
+
+  // Einen Tag später wieder.
+  flow['export_limit_at:' + MIRROR_SEL.connection.ip + ':' + MIRROR_SEL.connection.port] =
+    Date.now() - routing.EXPORT_LIMIT_INTERVAL_MS - 1;
+  ({ ret } = runFunctionNode(byId['auto-router'].func, { flow }));
+  assert.strictEqual(ret[0].deye.reads.length, primary.length + 1);
+});
+
+test('eine Familie, deren Register WIR beschreiben, wird NIE gelesen', () => {
+  // hybrid_1p: dort IST die Einspeisegrenze „Max Sell Power" (0x00F5), das
+  // Register unseres eigenen Entlade-Hebels. Lesen wäre die Behauptung, unser
+  // Befehl sei die Grenze des Geräts.
+  const sel = {
+    ...MIRROR_SEL,
+    family: 'hybrid_1p',
+  };
+  const primary = routing.route(routing.parseConfig(sel)).reads;
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  assert.deepStrictEqual(ret[0].deye.reads, primary);
+  assert.strictEqual(routing.exportLimitRegister('hybrid_1p'), null);
+});
+
+test('die Registerkarte des Flows ist die des Moduls', () => {
+  // Der Router bekommt die Tabelle beim Generieren aus inverter-routing.js
+  // eingesetzt - dieser Test hält fest, dass sie dort auch WIRKLICH steht.
+  const func = byId['auto-router'].func;
+  assert.ok(func.includes(JSON.stringify(routing.DEYE_EXPORT_LIMIT)),
+    'DEYE_EXPORT_LIMIT wörtlich im Router');
+  assert.ok(func.includes(String(routing.EXPORT_LIMIT_INTERVAL_MS)));
 });

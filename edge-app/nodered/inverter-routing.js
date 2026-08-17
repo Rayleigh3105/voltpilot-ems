@@ -162,6 +162,70 @@ function parseConfig(input) {
  *
  * `sel` may be null (nothing selected yet) -> idle.
  */
+// --- the DEVICE'S OWN feed-in limit (read once a day) ------------------------
+//
+// „Grenzen & Wächter" Stufe 0 / Vierer #4: at Anlage Herzogau the Deye held an
+// installer cap of 33,0 kW in register 0x00E7 while 70 kW were configured in the
+// portal - invisible through two investigation rounds because nobody read the
+// register (scout vp-herzogau-runde2-m6 §3 K1). We READ it, never write it.
+//
+// ⚠ ONE SOCKET LAW: this adds NO new TCP path and NO extra poll cadence. The
+// register rides the family's EXISTING sequential read plan as one extra FC3
+// round trip, at most once per EXPORT_LIMIT_INTERVAL_MS - the same discipline
+// the Modbus mirror's learned blocks already follow (at most ONE per cycle,
+// appended AFTER the primary blocks, inside the same sv5 lock that yields to
+// control writes).
+//
+// ⚠ THE TABLE IS A CROSS-SIDE TWIN of `exportLimitRegisters` in
+// edge-app/core/internal/inverter/exportlimit.go (which DECODES the word the
+// poll brings back). Address AND scale must match or the value is off by 10x -
+// change both together; the Go test reads THIS file by path and compares.
+//
+// ⚠ WHY hybrid_1p IS DELIBERATELY ABSENT - the honesty rule of the feature:
+// there the feed-in-cap register IS „Max Sell Power" (0x00F5), which our own
+// discharge lever WRITES (inverter-control-routing.js DEYE_CONTROL_REG). Reading
+// it back would report OUR commanded value as „the limit the device itself
+// holds". A family we cannot read honestly reports nothing, and every surface
+// then says „unbekannt" instead of a fabricated foreign truth.
+const DEYE_EXPORT_LIMIT = {
+  // „Grid Max Export power", a DEDICATED cap separate from maxSellPower
+  // (0x008F). Fixed scale 10 (register = W / 10) on both the LV and HV lines.
+  hybrid_3p: { addr: 0x00e7, scale: 10 },
+};
+
+/** At most one read per 24 h - a device's installer cap does not move hourly. */
+const EXPORT_LIMIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The family's own feed-in-cap register, or null when we cannot read it
+ * honestly (see DEYE_EXPORT_LIMIT).
+ */
+function exportLimitRegister(family) {
+  const r = DEYE_EXPORT_LIMIT[family];
+  return r ? { addr: r.addr, scale: r.scale } : null;
+}
+
+/**
+ * Should THIS poll cycle carry the export-limit read?
+ *
+ * `lastAt` is the timestamp of the last attempt (a flow-context value; absent /
+ * unusable = never attempted). Deliberately gated on the ATTEMPT, not on a
+ * success: the router does not see the result, and the socket-load guarantee is
+ * what matters - at most one extra round trip per day. A failed read is
+ * therefore retried tomorrow, and the surfaces honestly say „unbekannt" until
+ * then. A Node-RED restart clears the volatile context, so a fresh value
+ * arrives on the first poll after every restart - bounded and useful.
+ */
+function shouldReadExportLimit(family, lastAt, now) {
+  if (!exportLimitRegister(family)) return false;
+  const t = Number(lastAt);
+  if (!Number.isFinite(t) || t <= 0) return true;
+  const nowMs = Number(now);
+  if (!Number.isFinite(nowMs)) return false;
+  // A clock that jumped BACKWARDS must not lock the read out for a day.
+  return nowMs < t || nowMs - t >= EXPORT_LIMIT_INTERVAL_MS;
+}
+
 function route(sel) {
   if (!sel) return { adapter: 'idle', reason: 'keine Auswahl' };
 
@@ -344,6 +408,10 @@ module.exports = {
   DEFAULT_GOE_PORT,
   DEFAULT_KOSTAL_PORT,
   DEFAULT_KOSTAL_UNIT_ID,
+  DEYE_EXPORT_LIMIT,
+  EXPORT_LIMIT_INTERVAL_MS,
+  exportLimitRegister,
+  shouldReadExportLimit,
   parseConfig,
   route,
 };

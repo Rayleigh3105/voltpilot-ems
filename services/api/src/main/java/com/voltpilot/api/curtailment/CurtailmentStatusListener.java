@@ -5,11 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.CurtailmentStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.web.dto.CurtailmentStatusDto;
 import com.voltpilot.api.web.dto.DeviceDto;
+import com.voltpilot.api.web.dto.DeviceExportLimitDto;
+import com.voltpilot.api.web.dto.ExportGuardDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
@@ -39,6 +43,18 @@ import org.springframework.stereotype.Component;
  * said "die PV wird gedrosselt" next to a measured 16,6 kW feed-in (scout
  * {@code vp-pilsting-abregeln}). Zero edge change was needed here.
  *
+ * <p><b>Since „Grenzen &amp; Wächter" Stufe 0 it also ingests the two LIMIT
+ * statements riding in the same block</b> (scout
+ * {@code vp-kommando-transparenz-k3} §7 Stufe 0, Herzogau Runde 2 §7 points
+ * 3+4): the live feed-in watchdog ({@code export_guard} - which limit the box
+ * holds and whether it reaches any device at all) and the limit the INVERTER
+ * ITSELF holds ({@code device_export_limit_kw}). The first needed no edge
+ * change whatsoever - the box had been sending it in every heartbeat since it
+ * was built while the cloud read NOTHING of it, which is why the question
+ * "welche Einspeisegrenze hält die Box?" cost two investigation rounds through
+ * a maintenance tunnel. Both are ADDITIVE: a heartbeat without them stores
+ * NULLs and every surface stays byte-identical to before.
+ *
  * <p><b>A SIBLING listener, not an extension of
  * {@link com.voltpilot.api.control.ControlStatusListener}</b>: that one returns
  * early when the heartbeat carries no {@code control} block, and the two blocks
@@ -66,6 +82,28 @@ public class CurtailmentStatusListener {
      * and the number reaches the customer as "X von Y Wechselrichtern".
      */
     private static final int MAX_UNITS = 64;
+    /**
+     * The feed-in watchdog's state vocabulary (edge {@code guards.ExportState}).
+     * A word outside it is DROPPED together with its whole guard block - the
+     * {@code RolloutStates}/{@code UpdateStatusListener} rule: a word we do not
+     * understand must not become a sentence, and a reason without a state the
+     * portal can classify is exactly such a sentence. {@code aus} is
+     * deliberately absent: the device omits the block entirely then.
+     */
+    private static final Set<String> GUARD_STATES =
+            Set.of("ueberwacht", "regelt", "haelt", "zieht_zusammen", "sicherheitskappe");
+    /**
+     * A sanity bound on the German sentences the device writes. They are
+     * operator-facing copy, not a data channel; a novel-length payload is a
+     * defect and must not become an unbounded column.
+     */
+    private static final int MAX_SENTENCE = 500;
+    /**
+     * A sanity bound on any feed-in figure (kW at the grid connection point).
+     * A value outside it is a decode defect, not a plant - and it would reach
+     * the customer as "Ihr Wechselrichter begrenzt auf X kW".
+     */
+    private static final double MAX_KW = 100_000d;
 
     private final String brokerUrl;
     private final String username;
@@ -200,16 +238,102 @@ public class CurtailmentStatusListener {
                         tenantId);
                 return;
             }
-            curtailmentStatus.upsert(deviceId, siteId, units, certified,
+            curtailmentStatus.upsert(siteId, new CurtailmentStatusDto(deviceId, units, certified,
                     curtail.path("control_enabled").asBoolean(false),
                     curtail.path("active").asBoolean(false),
                     optDouble(curtail, "applied_cap_kw"),
                     optBoolean(curtail, "all_match"),
                     curtail.path("possible_override").asBoolean(false),
-                    checkedAt(curtail));
+                    checkedAt(curtail),
+                    exportGuard(curtail.get("export_guard")),
+                    deviceExportLimit(curtail)));
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * The live feed-in watchdog block, or null when the device did not report a
+     * usable one („Grenzen &amp; Wächter" Stufe 0).
+     *
+     * <p>Two things make it null rather than partially stored, and both are
+     * honesty rules rather than defensiveness: an unknown {@code state} word
+     * (see {@link #GUARD_STATES}) and a missing/implausible {@code limit_kw} - a
+     * watchdog without its limit is not a limit statement, and the number is
+     * exactly what the customer reads ("Einspeisegrenze 70 kW").
+     */
+    private static ExportGuardDto exportGuard(JsonNode guard) {
+        if (guard == null || !guard.isObject()) {
+            return null;
+        }
+        String state = guard.path("state").asText("");
+        if (!GUARD_STATES.contains(state)) {
+            return null;
+        }
+        Double limit = optDouble(guard, "limit_kw");
+        if (limit == null || !plausibleKw(limit)) {
+            return null;
+        }
+        Double cap = optDouble(guard, "cap_kw");
+        if (cap != null && !plausibleKw(cap)) {
+            cap = null; // an implausible cap is dropped ALONE - the limit still stands
+        }
+        return new ExportGuardDto(limit, state, sentence(guard, "reason"), cap,
+                guard.path("limiting").asBoolean(false),
+                guard.path("blind").asBoolean(false),
+                // effective ABSENT is the honest "not effective": the device
+                // always sends it (no omitempty), so an absent field can only
+                // mean an older/unknown shape - and claiming reach we did not
+                // measure is the one mistake this whole block exists to prevent.
+                guard.path("effective").asBoolean(false),
+                sentence(guard, "reach"));
+    }
+
+    /**
+     * The limit the INVERTER ITSELF holds, or null when the device did not
+     * report it (older edge, a family whose register map has no trustworthy
+     * feed-in-cap register, or simply not read yet - the register is read at
+     * most once a day).
+     *
+     * <p>All three parts are required together: a value without its read time
+     * would claim a freshness it does not have, and one without its register
+     * would be a number without its origin (the DB CHECK mirrors this).
+     */
+    private static DeviceExportLimitDto deviceExportLimit(JsonNode curtail) {
+        Double kw = optDouble(curtail, "device_export_limit_kw");
+        if (kw == null || !plausibleKw(kw)) {
+            return null;
+        }
+        String register = curtail.path("device_export_limit_register").asText("").trim();
+        if (register.isEmpty() || register.length() > 32) {
+            return null;
+        }
+        JsonNode at = curtail.get("device_export_limit_read_at");
+        if (at == null || at.isNull() || at.asText("").isBlank()) {
+            return null;
+        }
+        try {
+            return new DeviceExportLimitDto(kw, register, Instant.parse(at.asText()));
+        } catch (Exception e) {
+            return null; // an unparseable read time is no freshness at all
+        }
+    }
+
+    /** A feed-in figure in kW that can describe a real grid connection point. */
+    private static boolean plausibleKw(double kw) {
+        return Double.isFinite(kw) && kw >= 0 && kw <= MAX_KW;
+    }
+
+    /**
+     * One of the device's German sentences, trimmed and bounded; null when it is
+     * absent or blank (the surfaces treat null as "say nothing", never as "").
+     */
+    private static String sentence(JsonNode node, String field) {
+        String raw = node.path(field).asText("").trim();
+        if (raw.isEmpty()) {
+            return null;
+        }
+        return raw.length() <= MAX_SENTENCE ? raw : raw.substring(0, MAX_SENTENCE);
     }
 
     /** A non-negative, sanity-bounded unit count; anything else reads as 0. */

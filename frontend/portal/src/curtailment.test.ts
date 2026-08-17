@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CurtailmentStatus } from './api';
+import type { CurtailmentStatus, ExportGuard } from './api';
 import {
   CURTAIL_PLAN,
   CURTAIL_STALE_MS,
@@ -10,6 +10,7 @@ import {
   curtailTruth,
   curtailTruthForSlot,
   curtailWarnLine,
+  exportGuardView,
   hasCurtailEvidence,
   releaseNote,
 } from './curtailment';
@@ -40,6 +41,34 @@ function status(over: Partial<CurtailmentStatus> = {}): CurtailmentStatus {
     allMatch: true,
     possibleOverride: false,
     checkedAt: new Date(NOW.getTime() - 13_000).toISOString(),
+    // „Grenzen & Wächter" Stufe 0: per Vorgabe NICHT gemeldet, damit jeder
+    // Bestands-Fall hier weiter den Zustand OHNE die neuen Blöcke prüft.
+    exportGuard: null,
+    deviceExportLimit: null,
+    ...over,
+  };
+}
+
+/**
+ * Der Wächter-Block wie ihn die Box in Herzogau am 17.08.2026, 18:19 WÖRTLICH
+ * gemeldet hat (`vp-herzogau-runde2-m6/live-snapshot-1818/state.json`): 70 kW
+ * bekannt, 76,9 kW kommandiert - und an KEIN Gerät geschrieben.
+ */
+function herzogauGuard(over: Partial<ExportGuard> = {}): ExportGuard {
+  return {
+    limitKw: 70,
+    state: 'ueberwacht',
+    reason:
+      'Die Einspeisung liegt bei 0,0 kW von 70,0 kW - die Erzeuger sind vorsorglich auf ' +
+      '76,9 kW begrenzt, greifen dort aber nicht an (Erzeugung 8,3 kW).',
+    capKw: 76.927,
+    limiting: false,
+    blind: false,
+    effective: false,
+    reach:
+      'Kein Wechselrichter ist für die Abregelung freigegeben (0 von 2) - die ' +
+      'Einspeisegrenze wird berechnet, aber an KEIN Gerät geschrieben. Sie ist damit ' +
+      'nicht wirksam.',
     ...over,
   };
 }
@@ -227,5 +256,178 @@ describe('curtailWarnLine · der bernsteine Satz', () => {
     expect(curtailWarnLine(curtailTruth(status({ possibleOverride: true }), NOW), 16.6)).toContain(
       'hält die Begrenzung aber nicht',
     );
+  });
+});
+
+describe('exportGuardView · der Einspeisewächter („Grenzen & Wächter" Stufe 0)', () => {
+  it('sagt ohne gemeldeten Wächter GAR NICHTS', () => {
+    // Kein Block, keine Aussage - „wir wissen es nicht" ist nie „es gibt keine
+    // Grenze". Genau das ist der Zustand JEDER Anlage vor dieser Stufe.
+    expect(exportGuardView(null, NOW)).toBeNull();
+    expect(exportGuardView(status(), NOW)).toBeNull();
+  });
+
+  it('benennt die Herzogau-Lage: Grenze bekannt, wirkt aber nirgends', () => {
+    const v = exportGuardView(status({ certifiedUnits: 0, exportGuard: herzogauGuard() }), NOW);
+
+    expect(v).not.toBeNull();
+    expect(v!.line).toContain(`70,0${NBSP}kW`);
+    // Der Satz der BOX wird durchgereicht, nicht neu formuliert - sonst
+    // benennen `:8484` und Portal dasselbe Urteil verschieden.
+    expect(v!.line).toContain('an KEIN Gerät geschrieben');
+    expect(v!.line).toContain('(0 von 2)');
+    expect(v!.tone).toBe('warn');
+    expect(v!.agoNote).toBe('');
+  });
+
+  it('ist ruhig, wenn die Grenze jedes Gerät erreicht', () => {
+    const v = exportGuardView(
+      status({
+        exportGuard: herzogauGuard({
+          effective: true,
+          reach: null,
+          limiting: true,
+          capKw: 67.3,
+          state: 'regelt',
+          reason: 'Die Einspeisung wird auf 67,3 kW begrenzt.',
+        }),
+      }),
+      NOW,
+    );
+
+    expect(v!.tone).toBe('ok');
+    // Ohne Reichweiten-Lücke trägt der Zustands-Satz der Box die Aussage.
+    expect(v!.line).toContain('Die Einspeisung wird auf 67,3 kW begrenzt.');
+  });
+
+  it('warnt, sobald blind geregelt wird - auch bei voller Reichweite', () => {
+    const v = exportGuardView(
+      status({
+        exportGuard: herzogauGuard({
+          effective: true,
+          reach: null,
+          blind: true,
+          state: 'haelt',
+          reason: 'Die Messung am Netzverknüpfungspunkt fehlt - die Kappe wird gehalten.',
+        }),
+      }),
+      NOW,
+    );
+
+    expect(v!.tone).toBe('warn');
+  });
+
+  it('lässt eine STEHENDE Grenze nicht verschwinden, sondern nennt ihr Alter', () => {
+    // Eine Grenze verschwindet nicht, weil die Box kurz still ist - aber sie
+    // darf auch nicht so tun, als wäre die Aussage von jetzt.
+    const v = exportGuardView(
+      status({
+        exportGuard: herzogauGuard(),
+        checkedAt: new Date(NOW.getTime() - CURTAIL_STALE_MS - 60_000).toISOString(),
+      }),
+      NOW,
+    );
+
+    expect(v).not.toBeNull();
+    expect(v!.agoNote).toContain('zuletzt gemeldet');
+    expect(v!.line).toContain(`70,0${NBSP}kW`);
+  });
+
+  it('nennt kein Alter, wenn der Zeitstempel unbrauchbar ist', () => {
+    // Die Grenze GILT weiterhin - nur ihre Bezugszeit ist unbekannt, und
+    // „zuletzt gemeldet Invalid Date" wäre schlechter als gar keine Angabe.
+    const v = exportGuardView(
+      status({ exportGuard: herzogauGuard(), checkedAt: 'gestern' }),
+      NOW,
+    );
+
+    expect(v).not.toBeNull();
+    expect(v!.agoNote).toBe('');
+    expect(v!.line).toContain('an KEIN Gerät geschrieben');
+  });
+
+  it('nennt die Diskrepanz Gerät-gegen-hinterlegt beim Namen', () => {
+    // Der Herzogau-Befund: der Deye hielt 33 kW in 0x00E7, hinterlegt waren 70.
+    const v = exportGuardView(
+      status({
+        certifiedUnits: 0,
+        exportGuard: herzogauGuard(),
+        deviceExportLimit: {
+          limitKw: 33,
+          register: '0x00e7',
+          readAt: new Date(NOW.getTime() - 3_600_000).toISOString(),
+        },
+      }),
+      NOW,
+    );
+
+    expect(v!.deviceLimitLine).toBe(
+      `Ihr Wechselrichter begrenzt die Einspeisung am Netzpunkt auf 33,0${NBSP}kW — ` +
+        `hinterlegt sind 70,0${NBSP}kW.`,
+    );
+  });
+
+  it('schweigt, wenn Gerät und Portal übereinstimmen', () => {
+    const v = exportGuardView(
+      status({
+        exportGuard: herzogauGuard(),
+        deviceExportLimit: {
+          limitKw: 70,
+          register: '0x00e7',
+          readAt: NOW.toISOString(),
+        },
+      }),
+      NOW,
+    );
+
+    expect(v!.deviceLimitLine).toBeNull();
+  });
+
+  it('lastet dem Gerät NICHT unsere eigene Kappe an', () => {
+    // Auf dem alten ToU-Pfad kann VoltPilot dasselbe Register selbst mit einer
+    // Fahrplan-Kappe beschreiben. Liegt unsere kommandierte Kappe auf oder
+    // unter dem gelesenen Wert, könnte der niedrige Registerinhalt von uns
+    // stammen - dann wird geschwiegen.
+    const v = exportGuardView(
+      status({
+        exportGuard: herzogauGuard({ capKw: 20, limiting: true }),
+        deviceExportLimit: {
+          limitKw: 20,
+          register: '0x00e7',
+          readAt: NOW.toISOString(),
+        },
+      }),
+      NOW,
+    );
+
+    expect(v!.deviceLimitLine).toBeNull();
+  });
+
+  it('braucht beide Hälften für eine Diskrepanz', () => {
+    // Ohne gemeldete Geräte-Grenze gibt es nichts zu vergleichen ...
+    expect(
+      exportGuardView(status({ exportGuard: herzogauGuard() }), NOW)!.deviceLimitLine,
+    ).toBeNull();
+    // ... und ohne Wächter fehlt der Bezugswert (dann gibt es gar keine Zeile).
+    expect(
+      exportGuardView(
+        status({
+          deviceExportLimit: { limitKw: 33, register: '0x00e7', readAt: NOW.toISOString() },
+        }),
+        NOW,
+      ),
+    ).toBeNull();
+  });
+
+  it('nennt eine Geräte-Grenze von 0 kW - das ist ein Wert, keine Lücke', () => {
+    const v = exportGuardView(
+      status({
+        exportGuard: herzogauGuard(),
+        deviceExportLimit: { limitKw: 0, register: '0x00e7', readAt: NOW.toISOString() },
+      }),
+      NOW,
+    );
+
+    expect(v!.deviceLimitLine).toContain(`0,0${NBSP}kW`);
   });
 });
