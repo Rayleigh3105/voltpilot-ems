@@ -332,7 +332,14 @@ export function phaseWhy(
         return 'Der Speicher hält Ladung als Reserve für die Lastspitzenkappung zurück.';
       return 'Der Speicher hält Ladung als Reserve zurück.';
     case 'warten':
-      return 'Der Speicher wartet – kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.';
+      // BEOBACHTEND, nicht kausal (Erklärbarkeit Stufe 0, Konzept
+      // vp-warum-erklaerbar-e2 §4.1): die Rolle `warten` beschreibt das
+      // ERGEBNIS, nie den TREIBER - für sie gibt es strukturell mehrere
+      // (Spanne zu klein · λ über jedem Nutzwert · exakter Gleichstand · voll ·
+      // Reserve), und nur zwei davon sind heute als Fakt exportiert. Der frühere
+      // Satz behauptete die Spannen-Ursache und lag am 17.08. arithmetisch
+      // richtig und kausal falsch. Ohne Fakt wird die Beobachtung gesagt.
+      return 'Der Speicher wartet – in dieser Phase ist weder Laden noch Entladen eingeplant.';
     case 'abregeln':
       return curtail.stufe === 'ausgefuehrt'
         ? 'Einspeisen würde bei negativen Preisen Geld kosten – die PV wird deshalb gedrosselt.'
@@ -436,6 +443,30 @@ function importPricePhrase(slot: WhySlot, imp: number): string {
   return detail ? `${ctFmt(imp)} ${detail}` : ctFmt(imp);
 }
 
+/** Auf die ANGEZEIGTE Genauigkeit (0,1 ct) runden - siehe `bestPriceCt`. */
+function round1(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+/**
+ * Der höchste Börsenpreis im Plan-Fenster (ct/kWh); null ohne Preise.
+ *
+ * Gerundet auf die ANGEZEIGTE Genauigkeit, damit ein „liegt unter"-Satz immer
+ * wörtlich stimmt - genau die Disziplin des Schwester-Zweigs
+ * `schedule.idleReason` (`stored_value_above_peak`), aus dem dieser Zweig an
+ * den Slot gewandert ist (W6).
+ */
+function bestPriceCt(slots: WhySlot[]): number | null {
+  let best: number | null = null;
+  for (const s of slots) {
+    if (s.priceEurMwh == null) continue;
+    const ct = Number(s.priceEurMwh) / 10;
+    if (!Number.isFinite(ct)) continue;
+    if (best == null || ct > best) best = ct;
+  }
+  return best == null ? null : round1(best);
+}
+
 /** Ø spot price over the plan's priced slots (ct/kWh); null without prices. */
 export function dayAvgPriceCt(slots: WhySlot[]): number | null {
   let sum = 0;
@@ -457,11 +488,17 @@ export function dayAvgPriceCt(slots: WhySlot[]): number | null {
  *
  * `curtail` wie bei {@link roleLabel}: ohne Beleg (Standard) exakt der
  * Plan-Wortlaut aus Fix 1.
+ *
+ * `slots` ist das PLAN-FENSTER, gegen das der Wert gespeicherter Energie
+ * verglichen wird (W6, Erklärbarkeit Stufe 0). Es ist OPTIONAL: ohne das
+ * Fenster (oder ohne λ) entfällt der Zweig und der Satz bleibt beobachtend -
+ * nie ein Vergleich gegen einen Preis, den niemand geliefert hat.
  */
 export function slotWhy(
   slot: WhySlot,
   kind: PlanWordingKind,
   curtail: CurtailTruth = CURTAIL_PLAN,
+  slots: WhySlot[] = [],
 ): string | null {
   const role = slot.slotRole;
   if (role == null || !ROLE_SET.has(role)) return null;
@@ -517,7 +554,25 @@ export function slotWhy(
         return 'Der Speicher ist voll. Er entlädt wieder, sobald es sich lohnt – meist am Abend, wenn der Strompreis steigt.';
       if (flags.includes('soc_floor'))
         return 'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.';
-      return 'Gerade lohnt sich weder Laden noch Entladen: Der Preisunterschied ist kleiner als Umwandlungsverluste und Batterie-Verschleiß. Nichtstun ist jetzt das Wirtschaftlichste.';
+      {
+        // W6 (Erklärbarkeit Stufe 0): der λ-über-Fenster-Zweig aus
+        // `schedule.idleReason` an der Viertelstunde. Er ist der EINZIGE
+        // kausale Zweig dieser Rolle und hängt an ZWEI exportierten Fakten -
+        // dem Wert gespeicherter Energie UND dem besten Preis des Fensters;
+        // fehlt einer, ist er unerreichbar. Verglichen wird auf der ANGEZEIGTEN
+        // Genauigkeit, damit das „liegt unter" wörtlich stimmt; Gleichstand ist
+        // kein Grund, sondern ehrlich nur Warten.
+        const best = bestPriceCt(slots);
+        if (lam != null && best != null && round1(lam) > best) {
+          const tail =
+            kind === 'direktvermarktung'
+              ? 'Verkaufen wäre jetzt ein Verlustgeschäft.'
+              : 'Einspeisen brächte jetzt weniger, als die Energie später wert ist.';
+          return `Der Speicher wartet: Der höchste Börsenpreis im Zeitraum (${ctFmt(best)}) liegt unter dem Wert gespeicherter Energie (≈ ${ctFmt(round1(lam))}) – ${tail}`;
+        }
+      }
+      // Ohne belegten Treiber: BEOBACHTEND (siehe {@link phaseWhy}).
+      return 'Der Speicher wartet – für diese Viertelstunde ist weder Laden noch Entladen eingeplant.';
     case 'abregeln': {
       // Gegenwart NUR mit Ausführungs-Beleg (PR 3); ohne ihn der
       // Plan-Wortlaut aus Fix 1, unverändert.

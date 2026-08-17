@@ -395,4 +395,31 @@ class SlotEconomicsTest {
         assertThat(SlotEconomics.whyText("ruhe", 0.0, -3.0, 4.0, null, 5.0, null))
                 .contains("Einspeisebegrenzung");
     }
+
+    /**
+     * Der WARUM-WÄCHTER des Betreiber-Blicks (Erklärbarkeit Stufe 0, Konzept
+     * vp-warum-erklaerbar-e2 §3.2 Beleg 3 / §4.4): der Ruhe-Zweig hat keinen aus
+     * diesem Slot belegbaren Treiber, also darf er keine Ursache behaupten. Der
+     * frühere Satz („kein Zyklus, dessen Ertrag Verschleiß und Verluste deckt")
+     * hätte am 17.08.2026 dieselbe falsche Geschichte erzählt wie die
+     * Kundenfläche - nur mit der λ-Zahl daneben, aus der ein Experte die
+     * Wahrheit hätte rechnen müssen.
+     */
+    @Test
+    void idleWhyTextStatesTheObservationAndNeverAFabricatedCause() {
+        String ohneZahlen = SlotEconomics.whyText("ruhe", 0.0, 0.0, null, null, null, null);
+        assertThat(ohneZahlen).isEqualTo("Speicher ruht: weder Laden noch Entladen eingeplant.");
+
+        // Was VORLIEGT, wird genannt - aber ohne Kausal-Verknüpfung.
+        String mitLambda = SlotEconomics.whyText("ruhe", 0.0, 0.0, null, 32.5, 7.9, 23.5);
+        assertThat(mitLambda).contains("weder Laden noch Entladen eingeplant")
+                .contains("23,5 ct/kWh");
+
+        // Kein Kausal-Vokabular in beiden Fassungen.
+        for (String satz : new String[] { ohneZahlen, mitLambda }) {
+            assertThat(satz).doesNotContain("weil").doesNotContain("deshalb")
+                    .doesNotContain("lohn").doesNotContain("deckt")
+                    .doesNotContain("Preisunterschied").doesNotContain("kleiner als");
+        }
+    }
 }

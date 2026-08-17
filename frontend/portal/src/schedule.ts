@@ -666,10 +666,13 @@ function idleParts(slots: IdleSlotLike[]): InsightPart[] {
       },
     ];
   }
+  // BEOBACHTEND, nicht kausal (Erklärbarkeit Stufe 0): der `warten`-Zweig hat
+  // strukturell mehrere Treiber, und nur zwei davon sind exportiert (voll,
+  // Reserve). Der λ-über-Fenster-Treiber steht als eigener Zweig darüber.
   return [
     { text: 'Der Speicher ' },
     { text: 'wartet', strong: true },
-    { text: ' - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.' },
+    { text: ' - weder Laden noch Entladen ist in diesem Zeitraum eingeplant.' },
   ];
 }
 
@@ -1539,7 +1542,8 @@ export function planSentence(
       `bewertet, mehr als der höchste Preis heute (${ctLabel(reason.bestCt)}).`
     );
   }
-  return 'Der Speicher wartet heute - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.';
+  // Beobachtend wie `idleParts` - ohne exportierten Treiber keine Ursache.
+  return 'Der Speicher wartet heute - weder Laden noch Entladen ist eingeplant.';
 }
 
 /** Contiguous same-direction windows; gaps of up to 30 min idle are bridged. */
