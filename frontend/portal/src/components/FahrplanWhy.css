@@ -170,3 +170,51 @@
     padding-bottom: calc(var(--vp-space-4) + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/*
+ * LESEHÖHE (c): der Technik-Blick (Erklärbarkeit Stufe 1 §5.3, Captain-Entscheid
+ * F1 - aufklappbar für ALLE Kunden). Bewusst RUHIG: die tragenden Terme sind
+ * eine Vertiefung, keine zweite Überschrift, deshalb dieselbe `vp-fw-kv`-Liste
+ * wie oben, nur oberhalb einer Haarlinie und mit gedämpftem Auslöser. Die
+ * Trefferfläche des Auslösers ist ≥ 44 px hoch (Touch-Regel des Hauses).
+ */
+.vp-fw-technik {
+  margin-top: var(--vp-space-2);
+  border-top: 1px solid var(--vp-border);
+}
+
+.vp-fw-technik > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 0 10px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-fw-technik > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-fw-technik > summary::after {
+  content: '▾';
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+
+.vp-fw-technik[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.vp-fw-technik > summary:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #2c5282);
+  outline-offset: 2px;
+}
+
+.vp-fw-technik .vp-fw-kv {
+  margin-bottom: var(--vp-space-2);
+}

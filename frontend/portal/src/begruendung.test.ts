@@ -38,10 +38,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BEGRUENDUNGEN,
   KNOWN_ROLES,
+  ankerSatz,
+  margeSatz,
   phaseWhy,
+  slotContextRows,
   slotWhy,
   surplusWhy,
+  technikRows,
   type PlanPhase,
   type SlotRole,
   type WhySlot,
@@ -85,6 +90,10 @@ function faktenfrei(role: SlotRole): WhySlot {
     importPriceCtKwh: null,
     exportValueCtKwh: null,
     importPriceSource: null,
+    // Erklärbarkeit Stufe 1: auch die neuen Treiber sind hier ABWESEND - der
+    // Wächter prüft ja gerade, dass ohne sie nichts behauptet wird.
+    whyNextBest: null,
+    whyNextBestMarginCt: null,
   };
 }
 
@@ -209,5 +218,65 @@ describe('Warum-Wächter: der EINE kausale Ruhe-Zweig hängt an seinen Gates (W6
     const gleich: WhySlot[] = [{ ...faktenfrei('verkaufen'), priceEurMwh: 235 }];
     const satz = slotWhy(lam, 'direktvermarktung', undefined, gleich) as string;
     expect(satz).not.toContain('Börsenpreis');
+  });
+});
+
+/**
+ * ERKLÄRBARKEIT STUFE 1: die neuen Zweige FÜTTERN den Wächter, sie umgehen ihn
+ * nicht. Jeder von ihnen darf sprechen - aber nur, wenn die Fakten aus
+ * {@link BEGRUENDUNGEN} wirklich vorliegen; fehlt eines, ist er unerreichbar
+ * und die Fläche fällt auf die beobachtende Stufe-0-Fassung zurück.
+ */
+describe('Warum-Wächter: die Stufe-1-Zweige hängen an ihren Gates', () => {
+  const KAUSALE_ZWEIGE = ['anker_bezugspreis', 'gleichstand', 'marge_klar'];
+
+  it('die geprüften Zweige stehen in der Gate-Tabelle', () => {
+    // Wer einen kausalen Zweig ergänzt, ohne ihn einzutragen, hat keinen
+    // Negativ-Test - und genau das soll hier auffallen.
+    for (const id of KAUSALE_ZWEIGE) {
+      expect(BEGRUENDUNGEN.map((b) => b.id)).toContain(id);
+    }
+  });
+
+  it('der Anker-Satz ist ohne Anker ODER ohne λ unerreichbar', () => {
+    const mitLam = { ...faktenfrei('warten'), storedValueCtKwh: 23.5 };
+    // Beide Gates: der Satz entsteht.
+    expect(ankerSatz(mitLam, { whyTerminalAnchor: 'bezugspreis' })).not.toBeNull();
+    // Je EINES fehlt: nichts.
+    expect(ankerSatz(mitLam, { whyTerminalAnchor: null })).toBeNull();
+    expect(ankerSatz(mitLam, null)).toBeNull();
+    expect(ankerSatz(faktenfrei('warten'), { whyTerminalAnchor: 'bezugspreis' })).toBeNull();
+  });
+
+  it('der Margen-Satz ist ohne Name ODER ohne Marge unerreichbar', () => {
+    const beides = {
+      ...faktenfrei('warten'),
+      whyNextBest: 'decken',
+      whyNextBestMarginCt: 0,
+    };
+    expect(margeSatz(beides, 'eigenverbrauch')).not.toBeNull();
+    expect(margeSatz({ ...beides, whyNextBestMarginCt: null }, 'eigenverbrauch')).toBeNull();
+    expect(margeSatz({ ...beides, whyNextBest: null }, 'eigenverbrauch')).toBeNull();
+  });
+
+  it('die Auffüll-Aussage entsteht nur zu einer exportierten Quote', () => {
+    const mitLam = { ...faktenfrei('warten'), storedValueCtKwh: 23.5 };
+    const ohne = ankerSatz(mitLam, { whyTerminalAnchor: 'bezugspreis' }) as string;
+    expect(ohne).not.toContain('kaum nach');
+    expect(ohne).not.toContain('ohnehin wieder');
+    const mit = ankerSatz(mitLam, {
+      whyTerminalAnchor: 'bezugspreis',
+      whyRefillFreePct: 0,
+    }) as string;
+    expect(mit).toContain('kaum nach');
+  });
+
+  it('Lesehöhen (b) und (c) erfinden ohne Fakten keine Zeile', () => {
+    const nackt = faktenfrei('warten');
+    // (b): ohne jeden Wert bleibt die Kontextliste leer.
+    expect(slotContextRows(nackt, [], null)).toEqual([]);
+    // (c): nur die ehrliche Aussage „keine Bindung erfasst" - kein λ, kein
+    // Anker, keine Marge, keine erfundene 0.
+    expect(technikRows(nackt, null)).toEqual([{ label: 'Bindungen', value: 'keine' }]);
   });
 });

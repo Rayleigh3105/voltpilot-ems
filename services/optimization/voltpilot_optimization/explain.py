@@ -118,6 +118,22 @@ class SlotDuals:
     mu_eur_kw: float | None  # peak-pressure allocation; None = module off
 
 
+#: The alternative a RESTING slot rejected - the closed vocabulary of
+#: :attr:`SlotWhy.next_best` (Erklaerbarkeit Stufe 1 §4.2 C). Each name is one
+#: physically ADMISSIBLE action the battery could have taken in the slot; the
+#: margin says how much worse it would have been per AC kWh.
+NEXT_BEST_DECKEN = "decken"  # discharge to cover the house's own deficit
+NEXT_BEST_VERKAUFEN = "verkaufen"  # discharge into the grid
+NEXT_BEST_SOLAR_SPEICHERN = "solar_speichern"  # charge the PV surplus
+NEXT_BEST_NETZLADEN = "netzladen"  # charge from the grid
+
+#: Below this the next-best margin is a TIE, not a decision (0.05 ct/kWh - the
+#: display precision of lambda, so a "Gleichstand" claim is literally true at
+#: the accuracy the surfaces show). Consumers turn it into their own word; the
+#: export deliberately carries no extra flag (§4.2 C).
+NEXT_BEST_TIE_CT = 0.05
+
+
 @dataclass(frozen=True)
 class SlotWhy:
     """The persisted why-facts of one plan slot (data contract §5.1)."""
@@ -127,6 +143,12 @@ class SlotWhy:
     stored_value_ct_kwh: float  # lambda, rounded to 0.1 ct (degeneracy rounding)
     grid_value_ct_kwh: float  # pi, rounded to 0.1 ct
     peak_pressure_eur_kw: float | None  # mu; None when the peak module is off
+    #: The best REJECTED action of a resting slot and its disadvantage in
+    #: ct/kWh (<= 0). Both None on an ACTIVE slot - there the marginal benefit
+    #: of the chosen action is 0 by construction (it is at the optimum), so a
+    #: "next best" number would be noise; its story is the phase's EUR.
+    next_best: str | None = None
+    next_best_margin_ct: float | None = None
 
 
 def explain(
@@ -149,6 +171,7 @@ def explain(
     for t in range(inp.slots):
         flags = _binding_flags(model, inp, primal[t], fallback_14a)
         role = _classify_role(inp, primal[t], flags, duals[t])
+        next_best, margin_ct = next_best_alternative(inp, t, primal[t], flags, duals[t])
         whys.append(
             SlotWhy(
                 slot_role=role,
@@ -163,9 +186,91 @@ def explain(
                         4,
                     )
                 ),
+                next_best=next_best,
+                next_best_margin_ct=margin_ct,
             )
         )
     return whys
+
+
+def next_best_alternative(
+    inp: OptimizationInput,
+    t: int,
+    s: "_SlotPrimal",
+    flags: list[str],
+    duals: SlotDuals,
+) -> tuple[str | None, float | None]:
+    """The best action a RESTING slot rejected, and its disadvantage in ct/kWh.
+
+    The Stufe-1 "Knappheit" export (§4.2 C): the role vocabulary describes the
+    RESULT (idle => ``warten``), never the DRIVER, and for rest there are
+    structurally several. This is the missing one - whether the decision was
+    close (a tie the surfaces must call a tie) or clear, and against WHAT.
+
+    Computed from the pinned stationarity identities the tests already hold
+    (``test_explain.py``), in the site's OWN customer prices rather than the
+    LP's ``pi``: moving one AC kWh costs ``wear`` either way, charging stores
+    ``eta`` kWh worth ``lambda`` each, discharging drains ``1/eta``. So
+
+      decken           = import_price - lambda/eta - wear
+      verkaufen        = export_value - lambda/eta - wear
+      solar_speichern  = eta*lambda   - export_value - wear
+      netzladen        = eta*lambda   - import_price - wear
+
+    ``pi`` (the LP dual) equals the relevant customer price except where §14a
+    or the peak module DEFORM the slot; using the customer price keeps the
+    exported margin explainable, and the LP identity is cross-checked in the
+    tests instead. At a resting optimum every admissible gain is <= 0; the
+    largest (least negative) one is the next best, and the reduced costs the
+    LP already yields are only a cross-check because a fixed ``is_charging``
+    gate makes one side of them degenerate.
+
+    ONLY physically admissible alternatives are offered - a margin against an
+    action the slot could never take would be an invented regret: charging
+    needs SoC headroom (and, in EEG mode, real PV surplus), discharging needs
+    energy above the floor, ``netzladen`` needs the grid-charge permission,
+    and ``decken`` needs a house deficit to cover (otherwise the marginal
+    discharge exports, which is ``verkaufen``).
+
+    Returns ``(None, None)`` for an active slot, and when no alternative is
+    admissible at all - "nothing else was possible" is honestly not a margin.
+    """
+    if abs(s.battery_kw) > SLOT_DEADBAND_KW:
+        return None, None
+    p = inp.battery
+    eta = p.one_way_efficiency
+    wear = p.wear_cost_eur_per_kwh_each_way
+    lam = duals.lambda_eur_kwh
+    imp = inp.import_prices[t] / 1000.0
+    exp = inp.export_values[t] / 1000.0
+
+    can_charge = "soc_max" not in flags and p.max_charge_kw > 0.0
+    can_discharge = "soc_floor" not in flags and p.max_discharge_kw > 0.0
+    # PV the battery could still absorb this slot (the solver's own solar-only
+    # bound); in merchant mode the grid can always supply a charge.
+    surplus_kw = max(inp.pv_kw[t] - s.curtail_kw, 0.0) - max(inp.load_kw[t], 0.0)
+    deficit_kw = max(inp.load_kw[t], 0.0) - max(inp.pv_kw[t] - s.curtail_kw, 0.0)
+
+    options: list[tuple[str, float]] = []
+    if can_discharge:
+        if deficit_kw > SLOT_DEADBAND_KW:
+            options.append((NEXT_BEST_DECKEN, imp - lam / eta - wear))
+        else:
+            options.append((NEXT_BEST_VERKAUFEN, exp - lam / eta - wear))
+    if can_charge:
+        if surplus_kw > SLOT_DEADBAND_KW:
+            options.append((NEXT_BEST_SOLAR_SPEICHERN, eta * lam - exp - wear))
+        if inp.netzladen_erlaubt:
+            options.append((NEXT_BEST_NETZLADEN, eta * lam - imp - wear))
+    if not options:
+        return None, None
+    # Ties by name, so the pick is deterministic across runs of an identical
+    # horizon (the plan itself must never depend on it - this is display only).
+    name, gain = max(options, key=lambda o: (o[1], o[0]))
+    # The margin is a DISADVANTAGE: never report a positive one. A resting
+    # optimum cannot have one; a hair above zero is solver tolerance, and
+    # claiming "the rejected option was better" would be plainly wrong.
+    return name, round(min(gain, 0.0) * 100.0, 1)
 
 
 def _check_constraint_inventory(model: ConcreteModel) -> None:

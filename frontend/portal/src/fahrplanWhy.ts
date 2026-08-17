@@ -101,7 +101,261 @@ export interface WhySlot {
   coverLoadFromBattery?: boolean | null;
   /** Der Ladeseiten-Spiegel: nur den gemessenen Solar-Überschuss laden. */
   chargeFromSurplusOnly?: boolean | null;
+  /**
+   * Erklärbarkeit Stufe 1 (§4.2 C): die beste Handlung, die dieser RUHENDE
+   * Slot verworfen hat. Vokabular {@link KNOWN_NEXT_BEST}; ein unbekanntes
+   * Wort wird IGNORIERT, nie geraten.
+   */
+  whyNextBest?: string | null;
+  /** Ihr Nachteil in ct/kWh (<= 0). Ohne sie gilt der Name als abwesend. */
+  whyNextBestMarginCt?: number | null;
 }
+
+// ---- Erklärbarkeit Stufe 1: die exportierten Entscheidungs-Treiber ---------
+//
+// Konzept `data/vp-warum-erklaerbar-e2` §4.2/§4.4. Stufe 0 hat die unechten
+// Ursachen entfernt - wo kein Fakt einen Treiber trug, wurde die Fläche
+// beobachtend. Diese Stufe liefert die Fakten, also dürfen die ECHTEN Ursachen
+// wieder gesagt werden: WORAN der Wert gespeicherter Energie ankert (der
+// 17.08.-Trüb-Fall), wie viel der Horizont gratis nachfüllt, und wie KNAPP die
+// Ruhe-Entscheidung war (Gleichstand vs. klare Sache).
+
+/** Das Anker-Vokabular des Solvers (§4.2 A) - additiv, unbekannt ⇒ ignoriert. */
+export const KNOWN_ANCHORS = [
+  'einspeisewert',
+  'bezugspreis',
+  'marktpreis',
+  'vorgabe',
+] as const;
+
+export type TerminalAnchor = (typeof KNOWN_ANCHORS)[number];
+
+/**
+ * Die Anker, über die sich überhaupt etwas AUSSAGEN lässt. `vorgabe` fehlt
+ * bewusst: eine env-gepinnte Zahl hat keinen Anker, sie IST einer - über sie
+ * kann die Fläche nichts erklären, also gibt {@link terminalAnchor} dort null
+ * zurück und der Zweig ist typ-seitig unerreichbar.
+ */
+export type DerivedAnchor = Exclude<TerminalAnchor, 'vorgabe'>;
+
+const ANCHOR_SET = new Set<string>(KNOWN_ANCHORS);
+
+/** Das Vokabular der verworfenen Handlungen (§4.2 C). */
+export const KNOWN_NEXT_BEST = [
+  'decken',
+  'verkaufen',
+  'solar_speichern',
+  'netzladen',
+] as const;
+
+export type NextBestKind = (typeof KNOWN_NEXT_BEST)[number];
+
+const NEXT_BEST_SET = new Set<string>(KNOWN_NEXT_BEST);
+
+/**
+ * Unterhalb dieses Betrags ist die Marge ein GLEICHSTAND, keine Entscheidung
+ * (ct/kWh) - die Anzeige-Genauigkeit des Speicherwerts, damit ein
+ * „gleichwertig" auf der gezeigten Genauigkeit wörtlich stimmt. Zwilling von
+ * `explain.NEXT_BEST_TIE_CT` (Optimizer) und `SlotEconomics.NEXT_BEST_TIE_CT`
+ * (api) - **alle drei zusammen ändern**.
+ */
+export const NEXT_BEST_TIE_CT = 0.05;
+
+/**
+ * Ab dieser Grenze füllt der Horizont den Speicher so wenig von selbst nach,
+ * dass „aufheben" die richtige Beschreibung ist - und ab der oberen so viel,
+ * dass „füllt sich ohnehin wieder" gilt. ANZEIGE-Schwellen über einer
+ * exportierten Zahl, die im Satz IMMER daneben steht (der Kunde kann sie also
+ * nachprüfen); dazwischen wird schlicht nichts über die Auffüllung behauptet.
+ */
+export const REFILL_LOW_PCT = 20;
+export const REFILL_HIGH_PCT = 60;
+
+/** Die Lauf-Fakten, die der Plan trägt (§4.2 A/B) - alle optional. */
+export interface PlanWhyFacts {
+  whyTerminalAnchor?: string | null;
+  whyRefillFreePct?: number | null;
+}
+
+/**
+ * Der Anker des Speicherwerts, sofern dieser Portal-Stand ihn KENNT. Ein neues
+ * Solver-Wort degradiert zur beobachtenden Ansicht (das
+ * `ROLE_SET`/`RolloutStates`-Konsumenten-Muster), nie zu einem geratenen Satz.
+ * `vorgabe` liefert bewusst `null`: eine env-gepinnte Zahl hat keinen Anker,
+ * über den sich etwas aussagen ließe.
+ */
+export function terminalAnchor(plan?: PlanWhyFacts | null): DerivedAnchor | null {
+  const raw = plan?.whyTerminalAnchor ?? null;
+  if (raw == null || !ANCHOR_SET.has(raw) || raw === 'vorgabe') return null;
+  return raw as DerivedAnchor;
+}
+
+/** Die freie Auffüll-Quote in Prozent, oder null (nie eine erfundene 0). */
+export function refillFreePct(plan?: PlanWhyFacts | null): number | null {
+  const v = plan?.whyRefillFreePct;
+  return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+}
+
+/** Name UND Marge sind EINE Aussage: fehlt eine Hälfte, gilt beides als leer. */
+export function nextBestOf(
+  slot: WhySlot,
+): { kind: NextBestKind; marginCt: number; tie: boolean } | null {
+  const kind = slot.whyNextBest ?? null;
+  const margin = slot.whyNextBestMarginCt;
+  if (kind == null || !NEXT_BEST_SET.has(kind)) return null;
+  if (margin == null || !Number.isFinite(Number(margin))) return null;
+  const marginCt = Number(margin);
+  return {
+    kind: kind as NextBestKind,
+    marginCt,
+    tie: Math.abs(marginCt) <= NEXT_BEST_TIE_CT,
+  };
+}
+
+/** Die verworfene Handlung als Verbalphrase (Satz-Anfang, groß). */
+function nextBestPhrase(kind: NextBestKind, plantKind: PlanWordingKind): string {
+  switch (kind) {
+    case 'decken':
+      return 'Den Verbrauch jetzt aus dem Speicher zu decken';
+    case 'verkaufen':
+      return plantKind === 'direktvermarktung' ? 'Jetzt zu verkaufen' : 'Jetzt einzuspeisen';
+    case 'solar_speichern':
+      return 'Den Solar-Überschuss jetzt zu speichern';
+    case 'netzladen':
+      return 'Jetzt aus dem Netz zu laden';
+  }
+}
+
+/** Dieselbe Handlung als kurzes Substantiv (Lesehöhe b/c). */
+export function nextBestLabel(kind: NextBestKind, plantKind: PlanWordingKind): string {
+  switch (kind) {
+    case 'decken':
+      return 'Verbrauch aus dem Speicher decken';
+    case 'verkaufen':
+      return plantKind === 'direktvermarktung' ? 'Verkaufen' : 'Einspeisen';
+    case 'solar_speichern':
+      return 'Solar-Überschuss speichern';
+    case 'netzladen':
+      return 'Aus dem Netz laden';
+  }
+}
+
+/**
+ * Der KNAPPHEITS-Halbsatz einer Ruhe-Entscheidung (F2 + F6). Ein Gleichstand
+ * wird als Gleichstand ausgesprochen - eine Erklärung darf nie Sicherheit
+ * vortäuschen, wo eine Abwägung war -, und der Zusatz benennt unsere
+ * dokumentierte Tie-Break-POLITIK als Politik, nicht als Ökonomie: bei
+ * Gleichstand bevorzugt der Solver ausdrücklich das Ruhen (Speicherschonung),
+ * das ist eine Entscheidung von uns und keine Rechnung.
+ */
+export function margeSatz(slot: WhySlot, plantKind: PlanWordingKind): string | null {
+  const nb = nextBestOf(slot);
+  if (nb == null) return null;
+  const phrase = nextBestPhrase(nb.kind, plantKind);
+  if (nb.tie) {
+    return `${phrase} wäre gerade praktisch gleichwertig (±0,0 ct/kWh) – VoltPilot wählt dann die schonendere Option und lässt den Speicher ruhen.`;
+  }
+  // Die Verbalphrase trägt ihr „jetzt" schon - ein zweites wäre Stottern
+  // („Jetzt zu verkaufen wäre jetzt 3,1 ct/kWh schlechter", im Browser gesehen).
+  return `${phrase} wäre ${ctFmt(Math.abs(nb.marginCt))} schlechter.`;
+}
+
+/**
+ * Der ANKER-Satz: woher der Wert gespeicherter Energie kommt (§4.2 A/B) - der
+ * Kern, der am 17.08. gefehlt hat. Er hängt an ZWEI Fakten (Anker + λ); ohne
+ * einen von beiden ist er unerreichbar, und die Auffüll-Aussage kommt nur
+ * dazu, wenn die exportierte Quote sie trägt.
+ */
+export function ankerSatz(slot: WhySlot, plan?: PlanWhyFacts | null): string | null {
+  const anchor = terminalAnchor(plan);
+  const lam = slot.storedValueCtKwh == null ? null : round1(Number(slot.storedValueCtKwh));
+  if (anchor == null || lam == null) return null;
+  const refill = refillFreePct(plan);
+  const nachfuellen =
+    refill == null
+      ? ''
+      : refill <= REFILL_LOW_PCT
+        ? ` Aus eigenem Überschuss füllt er sich im Fahrplan-Zeitraum kaum nach (≈ ${pctFmt(refill)} der nutzbaren Kapazität).`
+        : refill >= REFILL_HIGH_PCT
+          ? ` Ihr eigener Überschuss füllt ihn im Fahrplan-Zeitraum ohnehin wieder auf (≈ ${pctFmt(refill)} der nutzbaren Kapazität).`
+          : '';
+  switch (anchor) {
+    case 'bezugspreis':
+      return `Der Speicher hebt seine Ladung für die kommenden Stunden auf: Sie ersetzt später Netzbezug und ist damit ≈ ${ctFmt(lam)} wert.${nachfuellen}`;
+    case 'einspeisewert':
+      return `Der Wert gespeicherter Energie (≈ ${ctFmt(lam)}) bemisst sich an der Einspeisung, die sie ersetzt.${nachfuellen}`;
+    case 'marktpreis':
+      return `Der Wert gespeicherter Energie (≈ ${ctFmt(lam)}) bemisst sich am günstigsten Nachkauf im Fahrplan-Zeitraum.${nachfuellen}`;
+  }
+}
+
+/**
+ * DIE GATE-TABELLE (§4.4 Punkt 1): jeder kausale Zweig nennt die Fakten, an
+ * denen er hängt. Sie ist Dokumentation UND Prüfgegenstand - der Warum-Wächter
+ * (`begruendung.test.ts`) fährt je Eintrag einen Negativ-Test „Gates absent ⇒
+ * Zweig unerreichbar", und wer einen Zweig hinzufügt, ohne ihn hier
+ * einzutragen, hat keinen.
+ */
+export interface Begruendung {
+  id: string;
+  /** Die Fakten, ohne die der Zweig nicht entstehen darf. */
+  gates: string[];
+  /** Was der Zweig behauptet (eine Zeile, für Menschen). */
+  aussage: string;
+}
+
+export const BEGRUENDUNGEN: Begruendung[] = [
+  {
+    id: 'anker_bezugspreis',
+    gates: ['plan.whyTerminalAnchor=bezugspreis', 'slot.storedValueCtKwh'],
+    aussage: 'Der Speicher hebt die Ladung auf, weil sie später Netzbezug ersetzt.',
+  },
+  {
+    id: 'anker_einspeisewert',
+    gates: ['plan.whyTerminalAnchor=einspeisewert', 'slot.storedValueCtKwh'],
+    aussage: 'Der Wert bemisst sich an der Einspeisung, die die Energie ersetzt.',
+  },
+  {
+    id: 'anker_marktpreis',
+    gates: ['plan.whyTerminalAnchor=marktpreis', 'slot.storedValueCtKwh'],
+    aussage: 'Der Wert bemisst sich am günstigsten Nachkauf im Zeitraum.',
+  },
+  {
+    id: 'auffuellung_gering',
+    gates: ['plan.whyRefillFreePct<=REFILL_LOW_PCT'],
+    aussage: 'Der Horizont füllt den Speicher kaum von selbst nach.',
+  },
+  {
+    id: 'auffuellung_hoch',
+    gates: ['plan.whyRefillFreePct>=REFILL_HIGH_PCT'],
+    aussage: 'Der eigene Überschuss füllt den Speicher ohnehin wieder auf.',
+  },
+  {
+    id: 'gleichstand',
+    gates: ['slot.whyNextBest', 'slot.whyNextBestMarginCt', '|Marge|<=NEXT_BEST_TIE_CT'],
+    aussage: 'Beides wäre gleichwertig - die Ruhe-Präferenz (Politik) entscheidet.',
+  },
+  {
+    id: 'marge_klar',
+    gates: ['slot.whyNextBest', 'slot.whyNextBestMarginCt', '|Marge|>NEXT_BEST_TIE_CT'],
+    aussage: 'Die verworfene Handlung wäre um die genannte Marge schlechter.',
+  },
+  {
+    id: 'lambda_ueber_fenster',
+    gates: ['slot.storedValueCtKwh', 'bester Börsenpreis im Plan-Fenster'],
+    aussage: 'Verkaufen läge unter dem Wert gespeicherter Energie (W6).',
+  },
+  {
+    id: 'netzladen_differenz',
+    gates: ['slot.importPriceCtKwh', 'slot.storedValueCtKwh', 'imp < λ'],
+    aussage: 'Der Bezugspreis liegt unter dem Wert gespeicherter Energie (W5).',
+  },
+  {
+    id: 'eigenverbrauch_differenz',
+    gates: ['slot.importPriceCtKwh', 'slot.storedValueCtKwh', 'imp > λ'],
+    aussage: 'Der Bezugspreis liegt über dem Wert gespeicherter Energie.',
+  },
+];
 
 export type PhaseKind = 'charge' | 'discharge' | 'idle' | 'curtail';
 
@@ -395,6 +649,22 @@ function numFmt(v: number): string {
   return v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
+/** de-DE "13 %" - whole percent, the accuracy the refill share is exported at. */
+function pctFmt(v: number): string {
+  return `${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`;
+}
+
+/**
+ * Der bezifferte Abstand zweier im SELBEN Satz gezeigter ct-Zahlen ("4,2
+ * ct/kWh ") - der Kunde kann ihn nachrechnen. Auf der ANGEZEIGTEN Genauigkeit
+ * gerundet, damit er zu den genannten Zahlen passt; unter der Genauigkeit
+ * entfällt er ersatzlos (leerer String), statt „0,0 ct/kWh" zu behaupten.
+ */
+function abstand(hoeher: number, niedriger: number): string {
+  const d = round1(round1(hoeher) - round1(niedriger));
+  return d >= 0.1 ? `${ctFmt(d)} ` : '';
+}
+
 /** Spot price of a slot in ct/kWh, null-safe. */
 function spotCt(slot: WhySlot): number | null {
   return slot.priceEurMwh == null ? null : Number(slot.priceEurMwh) / 10;
@@ -499,6 +769,7 @@ export function slotWhy(
   kind: PlanWordingKind,
   curtail: CurtailTruth = CURTAIL_PLAN,
   slots: WhySlot[] = [],
+  plan?: PlanWhyFacts | null,
 ): string | null {
   const role = slot.slotRole;
   if (role == null || !ROLE_SET.has(role)) return null;
@@ -519,8 +790,12 @@ export function slotWhy(
       const imp = importCt(slot);
       if (imp == null || lam == null) return 'Lädt günstig aus dem Netz für die teuren Stunden.';
       const head = `Lädt günstig aus dem Netz: Netzstrom kostet Sie jetzt ${importPricePhrase(slot, imp)}`;
+      // W5 (Stufe 1): der ABSTAND wird beziffert, nicht nur behauptet - und
+      // zwar als Differenz der zwei Zahlen, die im selben Satz stehen, also
+      // vom Kunden nachrechenbar. Unter der Anzeige-Genauigkeit entfällt er
+      // („0,0 ct/kWh günstiger" wäre keine Auskunft).
       return imp < lam
-        ? `${head} – weniger als der Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
+        ? `${head} – ${abstand(lam, imp)}weniger als der Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
         : `${head}.`;
     }
     case 'eigenverbrauch': {
@@ -530,7 +805,7 @@ export function slotWhy(
       }
       const head = `Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt ${importPricePhrase(slot, imp)}`;
       return imp > lam
-        ? `${head} – mehr als der Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
+        ? `${head} – ${abstand(imp, lam)}mehr als der Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
         : `${head}.`;
     }
     case 'verkaufen': {
@@ -554,6 +829,20 @@ export function slotWhy(
         return 'Der Speicher ist voll. Er entlädt wieder, sobald es sich lohnt – meist am Abend, wenn der Strompreis steigt.';
       if (flags.includes('soc_floor'))
         return 'Der Speicher hat seine Schutz-Reserve erreicht. Er lädt automatisch wieder, sobald Ihre PV mehr liefert als das Haus braucht – oder der Strompreis günstig genug ist.';
+      {
+        // W1 (Erklärbarkeit Stufe 1): der ECHTE Treiber der Ruhe, aus den
+        // exportierten Fakten - woher der Wert gespeicherter Energie kommt
+        // (Anker + Auffüll-Quote) und wie knapp die Entscheidung war. Genau
+        // diese vier Zahlen fehlten am 17.08., und die Vorlage füllte die
+        // Lücke mit einer Spannen-Ursache, die niemand geprüft hatte. Beide
+        // Halbsätze sind EINZELN gegated: es wird nur zusammengesetzt, was
+        // wirklich vorliegt.
+        const anker = ankerSatz(slot, plan);
+        const marge = margeSatz(slot, kind);
+        if (anker && marge) return `${anker} ${marge}`;
+        if (anker) return anker;
+        if (marge) return `Der Speicher wartet. ${marge}`;
+      }
       {
         // W6 (Erklärbarkeit Stufe 0): der λ-über-Fenster-Zweig aus
         // `schedule.idleReason` an der Viertelstunde. Er ist der EINZIGE
@@ -673,7 +962,12 @@ export interface ContextRow {
  * Wert gespeicherter Energie. Rows whose value is absent are omitted -
  * "—"-discipline, never a fabricated number.
  */
-export function slotContextRows(slot: WhySlot, slots: WhySlot[]): ContextRow[] {
+export function slotContextRows(
+  slot: WhySlot,
+  slots: WhySlot[],
+  plan?: PlanWhyFacts | null,
+  kind: PlanWordingKind = 'eigenverbrauch',
+): ContextRow[] {
   const rows: ContextRow[] = [];
   const price = spotCt(slot);
   if (price != null) {
@@ -682,6 +976,12 @@ export function slotContextRows(slot: WhySlot, slots: WhySlot[]): ContextRow[] {
       label: 'Börsenpreis',
       value: avg != null ? `${ctFmt(price)} · Ø ${ctFmt(avg)}` : ctFmt(price),
     });
+  }
+  // P0-Textwahrheit: was eine bezogene kWh diesen Standort WIRKLICH kostet -
+  // die Zahl, mit der der Optimierer entschieden hat.
+  const imp = importCt(slot);
+  if (imp != null) {
+    rows.push({ label: 'Netzstrom kostet Sie jetzt', value: importPricePhrase(slot, imp) });
   }
   if (slot.pvKw != null) {
     rows.push({
@@ -696,13 +996,134 @@ export function slotContextRows(slot: WhySlot, slots: WhySlot[]): ContextRow[] {
     });
   }
   if (slot.storedValueCtKwh != null) {
+    // Lesehöhe (b), Stufe 1: λ stand hier schon immer - NEU ist sein WARUM.
+    // Der Zusatz kommt ausschließlich aus dem exportierten Anker; ohne ihn
+    // bleibt die Zeile wortgleich wie vor dieser Stufe.
+    const anchor = terminalAnchor(plan);
+    const woher =
+      anchor === 'bezugspreis'
+        ? ' · so viel, weil sie später Netzbezug ersetzt'
+        : anchor === 'einspeisewert'
+          ? ' · bemessen an der Einspeisung, die sie ersetzt'
+          : anchor === 'marktpreis'
+            ? ' · bemessen am günstigsten Nachkauf'
+            : '';
     rows.push({
       label: 'Wert gespeicherter Energie',
-      value: `≈ ${ctFmt(Number(slot.storedValueCtKwh))}`,
+      value: `≈ ${ctFmt(Number(slot.storedValueCtKwh))}${woher}`,
+    });
+  }
+  const refill = refillFreePct(plan);
+  if (refill != null) {
+    rows.push({
+      label: 'Füllt sich von selbst nach',
+      value: `≈ ${pctFmt(refill)} der nutzbaren Kapazität`,
+    });
+  }
+  const nb = nextBestOf(slot);
+  if (nb != null) {
+    rows.push({
+      label: 'Nächstbeste Option',
+      value: nb.tie
+        ? `${nextBestLabel(nb.kind, kind)} – praktisch gleichwertig (±0,0 ct/kWh)`
+        : `${nextBestLabel(nb.kind, kind)} – ${ctFmt(Math.abs(nb.marginCt))} schlechter`,
+    });
+  }
+  // W7: in dieser Viertelstunde ist der Watt-Wert eine VORHERSAGE, keine
+  // feste Anweisung - deshalb kann Netzbezug entstehen, obwohl der Speicher
+  // lädt. Nur bei einem ausdrücklichen true (die Dreiwertigkeit der Pflicht).
+  if (slot.chargeFromSurplusOnly === true) {
+    rows.push({
+      label: 'In dieser Viertelstunde',
+      value:
+        'lädt der Speicher nur den gemessenen Solar-Überschuss – Ihr Haus bezieht seine Last parallel aus dem Netz',
+    });
+  } else if (slot.coverLoadFromBattery === true) {
+    rows.push({
+      label: 'In dieser Viertelstunde',
+      value: 'folgt der Speicher dem gemessenen Hausverbrauch – der Plan-Wert ist eine Vorhersage',
     });
   }
   return rows;
 }
+
+/**
+ * LESEHÖHE (c), der Technik-Blick (§5.3, Captain-Entscheid F1: für ALLE Kunden
+ * aufklappbar, wie der Roh-Blick der Kommando-Transparenz). Die tragenden
+ * Terme EINES Slots, alle aus der Persistenz - nichts wird hier gerechnet, und
+ * eine Zeile entsteht nur zu einer Zahl, die wirklich vorliegt („—"-Disziplin).
+ *
+ * Vokabular wie im Betreiber-Blick etabliert („Wert gespeicherter Energie" für
+ * λ); NIE „Dual/Schattenpreis/MILP" - das ist Kundensicht, auch wenn sie
+ * technisch ist.
+ */
+export function technikRows(
+  slot: WhySlot,
+  plan?: (PlanWhyFacts & { fallback14a?: boolean | null }) | null,
+  kind: PlanWordingKind = 'eigenverbrauch',
+): ContextRow[] {
+  // Die ROLLE steht bewusst NICHT hier: sie ist die Überschrift der Karte
+  // direkt darüber (das Mockup in §5.3 zeigt einen eigenständigen Block).
+  // Dieselbe Aussage zweimal auf einer Karte ist das dokumentierte
+  // Anti-Muster des Hauses.
+  const rows: ContextRow[] = [];
+  if (slot.storedValueCtKwh != null) {
+    const anchor = terminalAnchor(plan);
+    const anker = anchor == null ? '' : ` · Anker: ${ANCHOR_LABEL[anchor]}`;
+    rows.push({
+      label: 'λ Wert gespeicherter Energie',
+      value: `${ctFmt(round1(Number(slot.storedValueCtKwh)))}${anker}`,
+    });
+  }
+  if (slot.gridValueCtKwh != null) {
+    rows.push({
+      label: 'π Energiewert am Netzpunkt',
+      value: ctFmt(round1(Number(slot.gridValueCtKwh))),
+    });
+  }
+  if (slot.peakPressureEurKw != null && Number(slot.peakPressureEurKw) > 0) {
+    rows.push({
+      label: 'μ Leistungspreis-Anteil',
+      value: `${Number(slot.peakPressureEurKw).toLocaleString('de-DE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} €/kW`,
+    });
+  }
+  const refill = refillFreePct(plan);
+  if (refill != null) {
+    rows.push({
+      label: 'Freie PV-Auffüllung im Zeitraum',
+      value: `${pctFmt(refill)} der nutzbaren Kapazität`,
+    });
+  }
+  const nb = nextBestOf(slot);
+  if (nb != null) {
+    rows.push({
+      label: 'Marge der verworfenen Option',
+      value: nb.tie
+        ? `${nextBestLabel(nb.kind, kind)} ±0,0 ct/kWh → Gleichstand, Ruhe-Präferenz (Schonung) entscheidet`
+        : `${nextBestLabel(nb.kind, kind)} −${ctFmt(Math.abs(nb.marginCt))}`,
+    });
+  }
+  // Die Bindungen stehen als CHIPS über dem Aufklapper - hier steht nur die
+  // Aussage, die dort strukturell fehlt: dass KEINE erfasst wurde. („Keine
+  // Chips" heißt sonst mehrdeutig „keine Bindung" oder „nicht aufgezeichnet".)
+  if (bindingChips(slot.slotFlags).length === 0) {
+    rows.push({ label: 'Bindungen', value: 'keine' });
+  }
+  if (plan?.fallback14a != null) {
+    rows.push({ label: 'Netzgrenze §14a eingeplant', value: plan.fallback14a ? 'nein' : 'ja' });
+  }
+  return rows;
+}
+
+/** Der Anker als Kundenwort (Technik-Blick + Lesehöhe b). */
+const ANCHOR_LABEL: Record<DerivedAnchor, string> = {
+  bezugspreis: 'vermiedener Netzbezug',
+  einspeisewert: 'entgangene Einspeisung',
+  marktpreis: 'günstigster Nachkauf',
+};
 
 // ---- Binding chips --------------------------------------------------------
 

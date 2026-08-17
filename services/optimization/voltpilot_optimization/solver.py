@@ -628,10 +628,28 @@ def _with_explanation(
                 charge_surplus_to_battery=(
                     _charge_surplus_to_battery(inp, t, slot, why) if absorb else None
                 ),
+                # Erklaerbarkeit Stufe 1 (§4.2 C): what a RESTING slot rejected
+                # and by how much - pure presentation, never an input to a
+                # setpoint.
+                why_next_best=why.next_best,
+                why_next_best_margin_ct=why.next_best_margin_ct,
             )
             for t, (slot, why) in enumerate(zip(plan.slots, whys))
         ]
-        return replace(plan, slots=slots, fallback_14a=fallback_14a)
+        # Erklaerbarkeit Stufe 1 (§4.2 A/B): the run-level origin of the
+        # stored-energy value. It comes from the SAME derivation the objective
+        # credited above (effective_terminal_value), so the explanation can
+        # never describe a different number than the one that decided.
+        tv = inp.effective_terminal_value()
+        return replace(
+            plan,
+            slots=slots,
+            fallback_14a=fallback_14a,
+            why_terminal_anchor=tv.anchor_kind,
+            why_refill_free_pct=(
+                None if tv.refill_free_pct is None else round(tv.refill_free_pct, 1)
+            ),
+        )
     except Exception:
         logger.warning(
             "explain.failed - plan returned without why-fields",

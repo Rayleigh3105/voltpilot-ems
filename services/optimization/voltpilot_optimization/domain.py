@@ -151,7 +151,54 @@ class BatteryParams:
         return min(floor, initial_soc_kwh)
 
 
-def derive_terminal_value_eur_per_kwh(
+#: The anchor a terminal value came from - the closed vocabulary of
+#: :attr:`TerminalValue.anchor_kind` (Erklaerbarkeit Stufe 1 §4.2 A). It is the
+#: CUSTOMER-relevant half of the derivation: whether the stored kWh is priced
+#: against the feed-in it forgoes, against the grid import it avoids (the
+#: trueb-horizon case that froze Herzogau), against the cheapest purchase, or
+#: not derived at all.
+ANCHOR_EINSPEISEWERT = "einspeisewert"  # surplus slot: the forgone feed-in
+ANCHOR_BEZUGSPREIS = "bezugspreis"  # deficit slot: the avoided grid import
+ANCHOR_MARKTPREIS = "marktpreis"  # grid charging allowed: cheapest refill
+ANCHOR_VORGABE = "vorgabe"  # env-pinned override, nothing derived
+
+
+@dataclass(frozen=True)
+class TerminalValue:
+    """The terminal energy value AND the facts that produced it.
+
+    The Erklaerbarkeit-Stufe-1 answer to the §3.3 export gap: the derivation
+    knew everything the 17.08. customer needed - which branch supplied the
+    anchor, how much free PV refill the horizon offers, whether the dispersion
+    guard capped it - and returned only a float, so every driver was discarded
+    and the surfaces filled the hole with plausibility.
+
+    ``anchor_kind`` is one of the ``ANCHOR_*`` constants. ``refill_free_pct``
+    is step 2's free-refill share of the usable band in percent (0-100), or
+    ``None`` when the band is not evaluable (a zero/negative usable band) -
+    never a fabricated 0. ``guard_capped`` records whether step 3 bound; it is
+    a solver-internal fact and deliberately NOT persisted (the anchor carries
+    the customer-relevant statement, cf. §4.2 "Nicht exportiert").
+    """
+
+    v_end: float
+    anchor_kind: str
+    refill_free_pct: float | None
+    guard_capped: bool
+
+
+def derive_terminal_value_eur_per_kwh(**kwargs) -> float:
+    """The P3 terminal energy value per STORED kWh (the number the objective
+    credits) - :func:`derive_terminal_value` reduced to its value.
+
+    Kept as the callers' entry point so the solver, the co-optimizer twin and
+    the golden suite are untouched by the Stufe-1 export: there is still ONE
+    derivation, it just also RETURNS what it knew all along.
+    """
+    return derive_terminal_value(**kwargs).v_end
+
+
+def derive_terminal_value(
     *,
     import_prices: list[float],
     export_values: list[float],
@@ -164,7 +211,7 @@ def derive_terminal_value_eur_per_kwh(
     wear_eur_per_kwh_each_way: float,
     grid_charge_allowed: bool,
     env=None,
-) -> float:
+) -> TerminalValue:
     """The P3 terminal energy value per STORED kWh, derived from the horizon.
 
     THE ONE derivation, shared by the v1 :class:`OptimizationInput` and the
@@ -246,6 +293,9 @@ def derive_terminal_value_eur_per_kwh(
     # 1. Charge-side (replacement) anchor.
     if grid_charge_allowed:
         refill_eur_mwh = [min(imp, exp) for imp, exp in zip(import_prices, export_values)]
+        # The refill channel is the market either way (buy, or forgo selling) -
+        # ONE customer statement, so the per-slot split below is not made here.
+        anchor_kinds = [ANCHOR_MARKTPREIS] * n
     else:
         # S2: surplus slot -> refill = forgone feed-in; deficit slot -> no PV
         # to refill from, the stored kWh's worth is the avoided import - MINUS
@@ -266,27 +316,45 @@ def derive_terminal_value_eur_per_kwh(
             )
             for t, (imp, exp) in enumerate(zip(import_prices, export_values))
         ]
+        # WHICH branch a slot's entry came from - carried alongside the price so
+        # the quantile pick below names its own origin instead of re-deriving it
+        # from a value that both branches can produce.
+        anchor_kinds = [
+            ANCHOR_EINSPEISEWERT if pv_kw[t] > load_kw[t] else ANCHOR_BEZUGSPREIS
+            for t in range(n)
+        ]
     quantile = terminal_value_quantile(env)
-    anchor = sorted(refill_eur_mwh)[int(quantile * (n - 1))]
+    # Sorted TOGETHER, so the reported kind belongs to the very entry that
+    # became the anchor. Ties sort by kind name, which is arbitrary but stable -
+    # and where two branches priced the same, either statement is true.
+    ordered = sorted(zip(refill_eur_mwh, anchor_kinds))
+    anchor, anchor_kind = ordered[int(quantile * (n - 1))]
     v_end = max(0.0, eta * (anchor / 1000.0 - wear))
 
     # 2. Free-PV refill cap: surplus the battery could absorb in slots where
     #    feeding in earns nothing (or costs money), so storing it is free.
+    refill_free_pct: float | None = None
     if usable_band_kwh > 0.0:
         free_kwh = sum(
             min(max(pv_kw[t] - load_kw[t], 0.0), max_charge_kw) * slot_hours
             for t in range(n)
             if export_values[t] <= 0.0
         )
-        v_end *= 1.0 - min(1.0, free_kwh / usable_band_kwh)
+        free_share = min(1.0, free_kwh / usable_band_kwh)
+        refill_free_pct = 100.0 * free_share
+        v_end *= 1.0 - free_share
 
     # 3. Strict-dispersion guard: never at or above the best in-horizon use.
     best_use = max(max(imp, exp) for imp, exp in zip(import_prices, export_values))
-    v_end = min(
-        v_end,
-        eta * (best_use / 1000.0 - wear - TERMINAL_VALUE_MARGIN_EUR_PER_KWH),
+    guard = eta * (best_use / 1000.0 - wear - TERMINAL_VALUE_MARGIN_EUR_PER_KWH)
+    guard_capped = guard < v_end
+    v_end = min(v_end, guard)
+    return TerminalValue(
+        v_end=max(0.0, v_end),
+        anchor_kind=anchor_kind,
+        refill_free_pct=refill_free_pct,
+        guard_capped=guard_capped,
     )
-    return max(0.0, v_end)
 
 
 @dataclass(frozen=True)
@@ -426,11 +494,23 @@ class OptimizationInput:
         :func:`derive_terminal_value_eur_per_kwh` (see there, and the P3
         section of :mod:`voltpilot_optimization.config`, for the derivation).
         """
+        return self.effective_terminal_value(env).v_end
+
+    def effective_terminal_value(self, env=None) -> TerminalValue:
+        """The same number PLUS the facts that produced it (Erklaerbarkeit
+        Stufe 1): which anchor priced it, how much free PV refill the horizon
+        offers, whether the dispersion guard bound. An env-pinned override
+        derives nothing, so it honestly reports :data:`ANCHOR_VORGABE`."""
         if self.terminal_value_eur_per_kwh is not None:
-            return self.terminal_value_eur_per_kwh
+            return TerminalValue(
+                v_end=self.terminal_value_eur_per_kwh,
+                anchor_kind=ANCHOR_VORGABE,
+                refill_free_pct=None,
+                guard_capped=False,
+            )
         p = self.battery
         soc0 = p.clamp_soc_kwh(self.initial_soc_kwh)
-        return derive_terminal_value_eur_per_kwh(
+        return derive_terminal_value(
             import_prices=self.import_prices,
             export_values=self.export_values,
             pv_kw=self.pv_kw,
@@ -505,6 +585,16 @@ class PlanSlot:
     stored_value_ct_kwh: float | None = None  # lambda: value of a stored kWh
     grid_value_ct_kwh: float | None = None  # pi: energy value at the grid point
     peak_pressure_eur_kw: float | None = None  # mu: Leistungspreis allocation
+    # ---- Erklaerbarkeit Stufe 1: the KNAPPHEIT of a resting decision --------
+    # (Konzept vp-warum-erklaerbar-e2 §4.2 C.) The best action this RESTING
+    # slot rejected and its disadvantage in ct/kWh (<= 0), so a surface can
+    # say WHY it rests instead of filling the role's several possible drivers
+    # with plausibility - and can call an exact tie a tie. Both None on active
+    # slots (their marginal benefit is 0 at the optimum) and whenever the
+    # explain layer is off. Vocabulary: voltpilot_optimization.explain
+    # NEXT_BEST_*.
+    why_next_best: str | None = None
+    why_next_best_margin_ct: float | None = None
     # ---- Price-aware in-slot trim (2026-07-30) --------------------------------
     # True = grid-charging in THIS slot is uneconomic (the slot's import price
     # exceeds the marginal value of one more stored kWh), so the edge must clamp
@@ -601,6 +691,16 @@ class SchedulePlan:
     # explain layer together with the per-slot why-fields; None = explain
     # off/failed or a pre-feature plan.
     fallback_14a: bool | None = None
+    # ---- Erklaerbarkeit Stufe 1: WHERE the stored-energy value comes from ---
+    # (Konzept vp-warum-erklaerbar-e2 §4.2 A/B, run-level facts repeated per
+    # slot row in persistence - the terminal_value pattern.) The anchor branch
+    # (domain ANCHOR_*) and the horizon's free-PV refill share of the usable
+    # band in percent. Together they are the sentence the 17.08. customer
+    # needed and nobody could say: "der Speicher hebt die Ladung auf, weil
+    # morgen kaum Sonne gemeldet ist". None = explain off / pre-feature plan /
+    # not evaluable - the surfaces then stay observational.
+    why_terminal_anchor: str | None = None
+    why_refill_free_pct: float | None = None
 
     @property
     def cost_eur(self) -> float:

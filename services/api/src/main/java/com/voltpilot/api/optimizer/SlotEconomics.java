@@ -411,13 +411,73 @@ public final class SlotEconomics {
     }
 
     /**
+     * Below this the next-best margin is a TIE, not a decision (ct/kWh) - the
+     * display precision of the stored-energy value, so a "Gleichstand" claim
+     * is literally true at the accuracy shown. MUST mirror the optimizer's
+     * {@code explain.NEXT_BEST_TIE_CT} and the portal's
+     * {@code fahrplanWhy.NEXT_BEST_TIE_CT} - change all three together.
+     */
+    public static final double NEXT_BEST_TIE_CT = 0.05;
+
+    /**
+     * The optimizer's next-best vocabulary as the OPERATOR reads it
+     * (Erklärbarkeit Stufe 1 §4.2 C; the customer twin lives in the portal's
+     * {@code fahrplanWhy}). An unknown word yields {@code null} - a solver
+     * that grows a new alternative must not make this side guess at it.
+     */
+    static String nextBestLabel(String nextBest) {
+        if (nextBest == null) {
+            return null;
+        }
+        return switch (nextBest) {
+            case "decken" -> "Verbrauch aus dem Speicher decken";
+            case "verkaufen" -> "Einspeisen";
+            case "solar_speichern" -> "PV-Überschuss speichern";
+            case "netzladen" -> "aus dem Netz laden";
+            default -> null;
+        };
+    }
+
+    /**
+     * The rest branch's KNAPPHEIT clause (Erklärbarkeit Stufe 1): what the
+     * resting slot rejected and by how much. It is the one thing the old
+     * default sentence claimed and could not know - so it is stated ONLY from
+     * the exported facts, and an exact tie is named a tie instead of being
+     * dressed up as a decision. Null whenever a fact is missing or unknown.
+     */
+    static String nextBestClause(String nextBest, Double marginCt) {
+        String label = nextBestLabel(nextBest);
+        if (label == null || marginCt == null) {
+            return null;
+        }
+        if (Math.abs(marginCt) <= NEXT_BEST_TIE_CT) {
+            return String.format(Locale.GERMANY,
+                    " Nächstbeste Option: %s - praktisch gleichwertig (±0,0 ct/kWh).", label);
+        }
+        return String.format(Locale.GERMANY,
+                " Nächstbeste Option: %s (%.1f ct/kWh schlechter).", label, Math.abs(marginCt));
+    }
+
+    /**
      * ONE plain-German sentence explaining the slot's decision from its real
      * economics (the brief's "warum" ask). Composed from the already-computed
      * fields; degrades to a number-free sentence when a needed value is null
      * instead of inventing one.
+     *
+     * <p>Since Erklärbarkeit Stufe 1 the REST branch carries the exported
+     * next-best facts when the run has them (§4.4: "der Admin darf technischer
+     * formulieren, aber nie etwas ANDERES behaupten") - the same driver the
+     * customer surface names, from the same columns.
      */
     public static String whyText(String label, Double batteryKw, Double gridKw,
             Double curtailKw, Double importCt, Double exportCt, Double storedCt) {
+        return whyText(label, batteryKw, gridKw, curtailKw, importCt, exportCt, storedCt,
+                null, null);
+    }
+
+    public static String whyText(String label, Double batteryKw, Double gridKw,
+            Double curtailKw, Double importCt, Double exportCt, Double storedCt,
+            String nextBest, Double nextBestMarginCt) {
         String base = switch (label) {
             case "entladen" -> {
                 double kw = Math.abs(batteryKw != null ? batteryKw : 0);
@@ -460,12 +520,16 @@ public final class SlotEconomics {
             // behauptete die Spannen-Ursache; am 17.08. war sie arithmetisch
             // richtig und kausal falsch. Genannt wird die Beobachtung plus die
             // eine Zahl, die wirklich vorliegt - ohne Kausal-Verknüpfung.
-            default -> storedCt != null
-                    ? String.format(Locale.GERMANY,
-                            "Speicher ruht: weder Laden noch Entladen eingeplant. "
-                                    + "Wert gespeicherter Energie ≈ %.1f ct/kWh.",
-                            storedCt)
-                    : "Speicher ruht: weder Laden noch Entladen eingeplant.";
+            default -> {
+                String rest = storedCt != null
+                        ? String.format(Locale.GERMANY,
+                                "Speicher ruht: weder Laden noch Entladen eingeplant. "
+                                        + "Wert gespeicherter Energie ≈ %.1f ct/kWh.",
+                                storedCt)
+                        : "Speicher ruht: weder Laden noch Entladen eingeplant.";
+                String clause = nextBestClause(nextBest, nextBestMarginCt);
+                yield clause == null ? rest : rest + clause;
+            }
         };
         if (curtailKw != null && curtailKw > CURTAIL_DEADBAND_KW) {
             if (exportCt != null && exportCt < 0) {

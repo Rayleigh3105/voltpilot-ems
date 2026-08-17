@@ -56,6 +56,10 @@ CREATE TABLE IF NOT EXISTS schedule (
     fallback_14a      BOOLEAN,                  -- run is the advisory no-§14a build (V20260723030000)
     cover_load_from_battery  BOOLEAN,           -- in-slot duty: follow the measured house (V20260802010000)
     charge_from_surplus_only BOOLEAN,           -- in-slot duty: charge only the measured surplus (V20260802010000)
+    why_terminal_anchor TEXT,                   -- run: which branch anchored the stored-energy value (V20260823000000)
+    why_refill_free_pct NUMERIC(5, 1),          -- run: free PV refill share of the usable band, 0-100 (V20260823000000)
+    why_next_best     TEXT,                     -- resting slot: the best REJECTED action (V20260823000000)
+    why_next_best_margin_ct NUMERIC(12, 4),     -- its disadvantage in ct/kWh, <= 0 (V20260823000000)
     PRIMARY KEY (site_id, generated_at, time)
 );
 

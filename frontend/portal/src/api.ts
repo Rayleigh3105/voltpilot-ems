@@ -363,6 +363,25 @@ export interface ScheduleSlot {
    * `coverLoadFromBattery`.
    */
   chargeFromSurplusOnly?: boolean | null;
+  /**
+   * Erklärbarkeit Stufe 1 (Konzept vp-warum-erklaerbar-e2 §4.2 C): die beste
+   * Handlung, die dieser RUHENDE Slot VERWORFEN hat - `decken` | `verkaufen` |
+   * `solar_speichern` | `netzladen`. Genannt wird nur, was physisch zulässig
+   * war; ein Wort, das dieser Stand nicht kennt, wird IGNORIERT statt geraten.
+   * Null auf einem AKTIVEN Slot (dessen Grenznutzen ist am Optimum 0), wenn
+   * gar nichts anderes möglich war, und auf Läufen ohne Erklär-Schicht -
+   * die Fläche bleibt dann beobachtend (Stufe 0).
+   */
+  whyNextBest?: string | null;
+  /**
+   * Wie viel SCHLECHTER diese verworfene Handlung gewesen wäre, in ct/kWh -
+   * immer <= 0. Ein Betrag unter `NEXT_BEST_TIE_CT` ist ein GLEICHSTAND und
+   * wird als solcher ausgesprochen, nie als Entscheidung verkleidet: am
+   * 17.08.2026 war er algebraisch exakt 0,000 ct/kWh, während der angezeigte
+   * Satz eine Spannen-Ursache behauptete. Null genau dort, wo auch
+   * `whyNextBest` null ist - Name und Marge sind EINE Aussage.
+   */
+  whyNextBestMarginCt?: number | null;
 }
 
 export interface SchedulePlan {
@@ -399,6 +418,22 @@ export interface SchedulePlan {
    * pre-feature rows (the why-layer then stays hidden anyway).
    */
   fallback14a: boolean | null;
+  /**
+   * Erklärbarkeit Stufe 1 (§4.2 A): WORAN der Wert gespeicherter Energie
+   * ankerte - `einspeisewert` (Überschuss-Slot: die entgangene Einspeisung) |
+   * `bezugspreis` (Defizit-Slot: der vermiedene Netzbezug - der Trüb-Fall vom
+   * 17.08.) | `marktpreis` (Netzladen erlaubt: günstigster Bezug) | `vorgabe`
+   * (env-gepinnt, nichts abgeleitet). Ein LAUF-Fakt, also am Plan und nicht
+   * je Slot. Null ohne Erklär-Schicht / auf Vor-Feature-Läufen.
+   */
+  whyTerminalAnchor?: string | null;
+  /**
+   * Wie viel der NUTZBAREN Kapazität der Horizont gratis wieder auffüllt
+   * (0-100) - der Sommer-Satz „morgen füllt Ihr Überschuss den Speicher
+   * ohnehin". Null, wenn es nichts zu bemessen gab; **nie eine erfundene 0**,
+   * die als „der Horizont bietet nichts" gelesen würde.
+   */
+  whyRefillFreePct?: number | null;
   slots: ScheduleSlot[];
 }
 

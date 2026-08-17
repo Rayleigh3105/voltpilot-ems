@@ -46,7 +46,13 @@ import {
   type CurtailTruth,
 } from './curtailment';
 import { flowConflict, type FlowConflictInput } from './flowConflict';
-import { roleLabel, slotWhy, type SlotRole, type WhySlot } from './fahrplanWhy';
+import {
+  roleLabel,
+  slotWhy,
+  type PlanWhyFacts,
+  type SlotRole,
+  type WhySlot,
+} from './fahrplanWhy';
 import { fmtNum, fmtRelative } from './format';
 import { PROVENIENZ } from './historieWelten';
 import type { LiveSnapshot } from './live';
@@ -176,6 +182,13 @@ export interface JetztInput {
    * beobachtend statt einen Preis zu behaupten, den niemand geliefert hat.
    */
   slots?: WhySlot[];
+  /**
+   * Die LAUF-Fakten des Plans (Erklärbarkeit Stufe 1 §4.2 A/B): woran der Wert
+   * gespeicherter Energie ankert und wie viel der Horizont gratis nachfüllt.
+   * Optional - ohne sie bleibt der Ruhe-Grund exakt die Stufe-0-Fassung, denn
+   * ohne Anker gibt es keinen Treiber zu nennen.
+   */
+  planFacts?: PlanWhyFacts | null;
   /** Der jüngste Rücklese-Zustand des Geräts; null = noch keiner. */
   control: ControlStatus | null;
   /** true, sobald die Anlage überhaupt gesteuert wird (Plan mit Gerät). */
@@ -346,7 +359,9 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
   // Die Beleg-Lage gilt NUR für den laufenden Slot und NUR, wenn dort
   // abgeregelt werden soll - sonst ist sie CURTAIL_PLAN, also Fix-1-Verhalten.
   const curtail = curtailTruthForSlot(input.curtail, role);
-  const reason = slot ? slotWhy(slot, plantKind, curtail, input.slots ?? []) : null;
+  const reason = slot
+    ? slotWhy(slot, plantKind, curtail, input.slots ?? [], input.planFacts)
+    : null;
   // ... und der Steuerungs-Zustand aus der BESTEHENDEN Ableitung der Karte.
   const strip = controlStrip(input.control, now, input.expectControl, reason);
 

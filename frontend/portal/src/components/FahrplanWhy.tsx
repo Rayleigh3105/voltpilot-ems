@@ -36,7 +36,9 @@ import {
   roleLabel,
   slotContextRows,
   slotWhy,
+  technikRows,
   type PlanPhase,
+  type PlanWhyFacts,
   type SlotRole,
   type WhySlot,
 } from '../fahrplanWhy';
@@ -159,6 +161,7 @@ export function SlotCard({
   plantKind,
   slotMinutes,
   curtail = CURTAIL_PLAN,
+  planFacts = null,
   onClose,
 }: {
   slot: WhySlot;
@@ -169,14 +172,21 @@ export function SlotCard({
   slotMinutes: number;
   /** Wie bei {@link PhaseCard}: nur für die LAUFENDE Viertelstunde gesetzt. */
   curtail?: CurtailTruth;
+  /**
+   * Die LAUF-Fakten (Erklärbarkeit Stufe 1): Anker des Speicherwerts, freie
+   * Auffüll-Quote, §14a-Ersatzbau. Ohne sie rendert die Karte zeichengleich
+   * wie in Stufe 0 - kein Anker-Satz, kein Technik-Blick-Anker.
+   */
+  planFacts?: (PlanWhyFacts & { fallback14a?: boolean | null }) | null;
   onClose: () => void;
 }) {
   const t = chartTheme();
   const role = slot.slotRole as SlotRole;
   // Das Plan-Fenster reist mit: es ist der Maßstab des λ-über-Fenster-Zweigs
   // (W6) - ohne es bleibt der Ruhe-Satz beobachtend.
-  const why = slotWhy(slot, plantKind, curtail, slots);
-  const rows = slotContextRows(slot, slots);
+  const why = slotWhy(slot, plantKind, curtail, slots, planFacts);
+  const rows = slotContextRows(slot, slots, planFacts, plantKind);
+  const technik = technikRows(slot, planFacts, plantKind);
   const chips = bindingChips(slot.slotFlags, curtail);
   const phase = phases.find((p) => index >= p.startIdx && index <= p.endIdx) ?? null;
   const phaseEur = phase ? phaseEurLine(phase) : null;
@@ -229,6 +239,26 @@ export function SlotCard({
           {phaseEur ? ` · ${phaseEur}` : ''}
         </p>
       )}
+      {/*
+        LESEHÖHE (c), der Technik-Blick - aufklappbar für ALLE Kunden
+        (Captain-Entscheid F1, konsistent mit dem Roh-Blick der
+        Kommando-Transparenz: Transparenz IST das Produktversprechen). Er
+        ZEIGT nur, was der Lauf wirklich aufgezeichnet hat; ohne Terme gibt es
+        ihn gar nicht - ein leerer Aufklapper wäre ein Versprechen ohne Inhalt.
+      */}
+      {technik.length > 0 && (
+        <details className="vp-fw-technik">
+          <summary>Technische Details</summary>
+          <dl className="vp-fw-kv">
+            {technik.map((r) => (
+              <span key={r.label} style={{ display: 'contents' }}>
+                <dt>{r.label}</dt>
+                <dd>{r.value}</dd>
+              </span>
+            ))}
+          </dl>
+        </details>
+      )}
     </div>
   );
 }
@@ -246,6 +276,7 @@ export function FahrplanWhyPanel({
   selectedPhase,
   selectedSlot,
   curtail,
+  planFacts = null,
   currentSlotIndex = -1,
   onClose,
 }: {
@@ -255,6 +286,8 @@ export function FahrplanWhyPanel({
   slotMinutes: number;
   selectedPhase: number | null;
   selectedSlot: number | null;
+  /** Die LAUF-Fakten des Plans (Erklärbarkeit Stufe 1) - siehe {@link SlotCard}. */
+  planFacts?: (PlanWhyFacts & { fallback14a?: boolean | null }) | null;
   /** Die Abregel-Beleg-Lage des Geräts; ohne sie bleibt alles Plan-Wortlaut. */
   curtail?: CurtailTruth | null;
   /**
@@ -288,6 +321,7 @@ export function FahrplanWhyPanel({
         plantKind={plantKind}
         slotMinutes={slotMinutes}
         curtail={curtailTruthForSlot(curtail, slot.slotRole, selectedSlot === currentSlotIndex)}
+        planFacts={planFacts}
         onClose={onClose}
       />
     );

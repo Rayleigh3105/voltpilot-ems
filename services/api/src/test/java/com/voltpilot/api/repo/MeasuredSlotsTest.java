@@ -114,6 +114,7 @@ class MeasuredSlotsTest {
         return new ScheduleSlotDto(start, new BigDecimal("-4.332"), new BigDecimal("2.8"),
                 new BigDecimal("77"), new BigDecimal("21.2"), null, null, null,
                 new BigDecimal("12.0"), new BigDecimal("4.33"), "eigenverbrauch", List.of(),
-                null, null, null, null, null, null, null, null, Boolean.TRUE, null);
+                null, null, null, null, null, null, null, null, Boolean.TRUE, null,
+                null, null);
     }
 }

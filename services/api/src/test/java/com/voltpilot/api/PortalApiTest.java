@@ -1040,6 +1040,13 @@ class PortalApiTest {
         assertThat(first.get("gridValueCtKwh")).isNull();
         assertThat(first.get("peakPressureEurKw")).isNull();
         assertThat(res.getBody().get("fallback14a")).isNull();
+        // ... and the same for the Erklaerbarkeit-Stufe-1 facts: no anchor, no
+        // free-refill share, no next-best margin. A run that recorded no driver
+        // must not grow one on the way to the portal.
+        assertThat(res.getBody().get("whyTerminalAnchor")).isNull();
+        assertThat(res.getBody().get("whyRefillFreePct")).isNull();
+        assertThat(first.get("whyNextBest")).isNull();
+        assertThat(first.get("whyNextBestMarginCt")).isNull();
         // P0 "Textwahrheit": the slot carries the price the optimizer DECIDED
         // with, recomposed from spot + this site's master data (SlotEconomics),
         // plus which rule priced it. Berlin has no tariff/Preisblatt maintained,
@@ -1086,11 +1093,19 @@ class PortalApiTest {
         // layer now writes), the decision facts surface on the customer
         // endpoint: role, split binding flags, the exact stored/grid values,
         // the peak pressure and the run-level fallback marker.
+        // The Erklaerbarkeit-Stufe-1 facts ride the SAME update (V20260823000000):
+        // the run-level anchor + free-refill share are written on EVERY row (the
+        // terminal_value pattern), the next-best margin only on the RESTING slot -
+        // here the second one, and the first (active) slot stays honestly empty.
         exec("UPDATE schedule SET terminal_value_eur_per_kwh = 0.18, "
                 + "slot_role = 'guenstig_laden', slot_flags = 'charge_cap,peak_defining', "
                 + "stored_value_ct_kwh = 24.2, grid_value_ct_kwh = 10.1, "
-                + "peak_pressure_eur_kw = 1.25, fallback_14a = FALSE "
+                + "peak_pressure_eur_kw = 1.25, fallback_14a = FALSE, "
+                + "why_terminal_anchor = 'bezugspreis', why_refill_free_pct = 13.0 "
                 + "WHERE plan_id = 'aaaaaaaa-0000-0000-0000-000000000002'");
+        exec("UPDATE schedule SET why_next_best = 'decken', why_next_best_margin_ct = 0.0 "
+                + "WHERE plan_id = 'aaaaaaaa-0000-0000-0000-000000000002' "
+                + "AND battery_kw < 0");
         ResponseEntity<Map<String, Object>> banked = rest.exchange(
                 url("/api/v1/sites/" + BERLIN_SITE + "/schedule"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo", "demo"))),
@@ -1108,6 +1123,21 @@ class PortalApiTest {
         assertThat(((Number) whyFirst.get("storedValueCtKwh")).doubleValue()).isEqualTo(24.2);
         assertThat(((Number) whyFirst.get("gridValueCtKwh")).doubleValue()).isEqualTo(10.1);
         assertThat(((Number) whyFirst.get("peakPressureEurKw")).doubleValue()).isEqualTo(1.25);
+        // Erklaerbarkeit Stufe 1: WHERE the value of stored energy came from -
+        // the fact the 17.08.2026 customer needed and nobody could state. It is
+        // a RUN fact, so it answers on the plan, not per slot.
+        assertThat(banked.getBody()).containsEntry("whyTerminalAnchor", "bezugspreis");
+        assertThat(((Number) banked.getBody().get("whyRefillFreePct")).doubleValue())
+                .isEqualTo(13.0);
+        // ... and the KNAPPHEIT reaches the slot that actually rested, while the
+        // active one stays empty (its marginal benefit is 0 by construction).
+        @SuppressWarnings("unchecked")
+        Map<String, Object> whySecond =
+                (Map<String, Object>) ((List<?>) banked.getBody().get("slots")).get(1);
+        assertThat(whyFirst.get("whyNextBest")).isNull();
+        assertThat(whyFirst.get("whyNextBestMarginCt")).isNull();
+        assertThat(whySecond).containsEntry("whyNextBest", "decken");
+        assertThat(((Number) whySecond.get("whyNextBestMarginCt")).doubleValue()).isEqualTo(0.0);
 
         // A site with no plan yet: empty but well-formed (tenant B's own site).
         ResponseEntity<Map<String, Object>> empty = rest.exchange(

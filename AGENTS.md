@@ -1848,7 +1848,7 @@ The automated proof is against the SIMULATOR only (`edge-app/test/e2e-compose.sh
 Erste Stufe der Kommando-Transparenz (Scout `data/vp-kommando-transparenz-k3` §7 Stufe 0 + §8; Herzogau Runde 2 §2/§7 Punkte 3+4; Captain-Freigabe 17.08.2026). Sie schafft cloud-seitige SICHTBARKEIT für die zwei Grenzen am Netzverknüpfungspunkt und **keinen einzigen neuen Schreibpfad**; alles ist additiv, eine ältere Box und ein älteres Portal verhalten sich zeichengleich wie vorher.
 
 - **Der Anlass, weil die Fehlerklasse wiederkommt: die Box sendet den `export_guard`-Block seit ihrem Bau in JEDEM Herzschlag — und cloud-seitig las ihn NIEMAND** (0 Treffer in `services/api` + `frontend`, doppelt geprüft 17.08.). „Welche Einspeisegrenze hält die Box, und wirkt sie überhaupt?" war damit nur per Wartungstunnel beantwortbar und hat ZWEI Untersuchungsrunden gekostet. Teil A ist deshalb rein Cloud — **kein Edge-Release**, nur ein Lesepfad. Dieselbe Klasse wie der `curtailment`-Block eine Sektion höher (dort mit derselben Lehre); wer ein additives Herzschlag-Feld baut, baut den Leser mit.
-- **Speicher: additive Spalten an `device_curtailment_status`** (Migration `V20260822000000`) statt einer eigenen Tabelle — beide Aussagen kommen aus dem SELBEN Block, werden je Herzschlag als Ganzes ersetzt und beschreiben denselben Wirkpfad; eine zweite Tabelle hätte einen zweiten Zuhörer, einen zweiten Lesepfad und eine zweite Wahrheit über dieselbe Momentaufnahme erzeugt. **Alle Spalten NULLABLE OHNE DEFAULT** (`guard_*` + `device_export_limit_*`): NULL heißt „hat die Box nicht gemeldet", nie 0. Das Zustands-Vokabular steht zusätzlich als DB-CHECK, die Geräte-Grenze als Beides-oder-keines-CHECK.
+- **Speicher: additive Spalten an `device_curtailment_status`** (Migration `V20260823000000`) statt einer eigenen Tabelle — beide Aussagen kommen aus dem SELBEN Block, werden je Herzschlag als Ganzes ersetzt und beschreiben denselben Wirkpfad; eine zweite Tabelle hätte einen zweiten Zuhörer, einen zweiten Lesepfad und eine zweite Wahrheit über dieselbe Momentaufnahme erzeugt. **Alle Spalten NULLABLE OHNE DEFAULT** (`guard_*` + `device_export_limit_*`): NULL heißt „hat die Box nicht gemeldet", nie 0. Das Zustands-Vokabular steht zusätzlich als DB-CHECK, die Geräte-Grenze als Beides-oder-keines-CHECK.
 - **Ingest im BESTEHENDEN `CurtailmentStatusListener`** (er liest den Nachbarblock ohnehin — kein siebtes Geschwister auf `ems/+/+/+/status`, kein neues Flag, das im gitops-Repo nachgezogen werden müsste). Drei Ehrlichkeitsregeln, jede gegen einen konkreten Fehlgriff: ein **unbekanntes `state`-Wort verwirft den GANZEN Wächter-Block** (das `RolloutStates`-/`UpdateStatusListener`-Muster — ein deutscher Satz, den keine Fläche klassifizieren kann, darf keine Aussage werden), eine **fehlende oder unplausible `limit_kw` ebenso** (ein Wächter ohne seine Grenze ist keine Grenzen-Aussage, und die Zahl IST der Kundensatz), und die **Geräte-Grenze braucht alle drei Teile** (Wert + Register + Lesezeit) oder gar keinen.
 - **⚠ `effective` ABWESEND liest als `false`.** Die Box sendet es IMMER (kein `omitempty`), ein fehlendes Feld kann also nur „älterer/unbekannter Umfang" heißen — und eine Reichweite zu behaupten, die niemand gemessen hat, ist genau der Fehler, für den es diesen Block gibt.
 - **Feldnamen für die Folge-Crew** (V1 der Transparenz-Seite dockt hier an): `CurtailmentStatusDto.exportGuard` (`ExportGuardDto`: limitKw · state · reason · capKw · limiting · blind · **effective** · reach) und `CurtailmentStatusDto.deviceExportLimit` (`DeviceExportLimitDto`: limitKw · register · readAt). Geschrieben/gelesen über EINE Shape (`CurtailmentStatusRepository.upsert(siteId, dto)`); die Flotten-Sicht (`AdminFleetRepository.curtailmentPerSite`) nutzt DENSELBEN Mapper + `COLUMNS`, also können Puls und Anlagen-Fläche über dieselbe Zeile nichts Verschiedenes behaupten. In `openapi.yaml` (`ExportGuard`, `DeviceExportLimit`).
@@ -2078,6 +2078,57 @@ Satz werden").
 - **NICHT in dieser Stufe:** der Export der drei fehlenden Treiber-Fakten (Anker des
   Speicherwerts, Knappheit/Marge aus den schon geholten reduced costs, Morgen-Ausblick) — das ist
   Stufe 1 und ein eigener Auftrag; Stufe 0 verhindert nur, dass sie erfunden werden.
+
+## Erklärbarkeit Stufe 1 „Der Echtheits-Kern": die Treiber werden EXPORTIERT
+
+Der Auftrag der Regel oben: Stufe 0 hat die unechten Ursachen entfernt, diese Stufe liefert die
+FAKTEN — also dürfen die echten Ursachen wieder gesagt werden, und nur die (Konzept
+`data/vp-warum-erklaerbar-e2` §4/§5, Captain-Entscheide F1 Technik-Blick für alle · F2 Gleichstand
+aussprechen · F6 Politik als Politik benennen). Alles additiv: ein Lauf ohne die Felder rendert
+zeichengleich die beobachtende Stufe-0-Fassung.
+
+- **⚠ Zwei Ableitungen WUSSTEN alles und gaben es nicht heraus — das war die ganze Lücke.**
+  `derive_terminal_value_eur_per_kwh` kannte beim Rechnen den Anker-Zweig und die freie
+  Auffüll-Quote und gab einen `float` zurück; `explain.py` holte die reduced costs und VERWARF sie.
+  Jetzt liefert **`domain.derive_terminal_value` ein `TerminalValue`-Objekt** (`v_end` ·
+  `anchor_kind` · `refill_free_pct` · `guard_capped`), und der alte float-Einstiegspunkt ist seine
+  Reduktion auf den Wert — **es bleibt EINE Ableitung**, die v1 und Co-Optimizer-Zwilling weiter
+  teilen, und kein Aufrufer musste angefasst werden.
+- **VIER additive nullable Spalten** (Migration `V20260823000000`, Spiegel in
+  `infra/local/timescale/04-schedule.sql`): die zwei RUN-Fakten `why_terminal_anchor` (geschlossenes
+  Vokabular `einspeisewert` · `bezugspreis` · `marktpreis` · `vorgabe`) und `why_refill_free_pct`
+  je Zeile wiederholt (das `terminal_value`-Muster), die zwei SLOT-Fakten `why_next_best` +
+  `why_next_best_margin_ct` **nur auf einem RUHENDEN Slot**. NULL überall = Erklär-Schicht aus oder
+  Vor-Feature-Lauf. Der frozen MQTT-Kontrakt ist unberührt (das Warum erreicht die Box nie), die
+  Ersparnis-Simulation fährt weiter `explain_plan=False`, und die **Golden-Suite ist unverändert
+  grün** — ein eigener Test beweist die Byte-Identität der Setpoints mit und ohne Export.
+- **⚠ Die Marge ist ANALYTISCH gerechnet, nicht aus den reduced costs gelesen — und das ist eine
+  Konstruktions-Entscheidung, keine Bequemlichkeit.** Im Fix-and-relax-LP ist `is_charging` FIXIERT,
+  also klemmt das `charge_gate` die Ladeseite eines ruhenden Slots auf 0 und ihre reduced cost ist
+  degeneriert. `explain.next_best_alternative` rechnet deshalb aus den gepinnten
+  Stationaritäts-Identitäten in den KUNDEN-Preisen (`decken = imp − λ/η − wear`, `verkaufen = exp −
+  λ/η − wear`, `solar_speichern = η·λ − exp − wear`, `netzladen = η·λ − imp − wear`); der Kreuz-Check
+  gegen `−rc/dt` läuft im Test auf der ENTLADE-Seite, wo die rc belastbar ist.
+- **Es werden nur ZULÄSSIGE Alternativen genannt** — Laden braucht SoC-Luft (und im EEG-Modus echten
+  PV-Überschuss), Entladen Energie über dem Boden, `netzladen` die Netzlade-Freigabe, `decken` ein
+  Haus-Defizit. Eine Marge gegen eine unmögliche Handlung wäre ein erfundenes Bedauern: eine leere
+  Batterie an einer EEG-Anlage in einem PV-losen Slot bekommt deshalb **gar keine** (beide Felder
+  null), und eine positive Marge wird nie berichtet.
+- **Der Betreiber-Blick nennt denselben Treiber aus denselben Spalten** (`SlotEconomics.whyText`
+  bekam eine 9-stellige Überladung + `nextBestClause`; `OptimizerDiagnosticsRepository.SlotRow`
+  trägt die zwei Slot-Fakten) — kein zweiter Rechenweg, und ein Wort außerhalb des Vokabulars wird
+  IGNORIERT statt geraten. **`NEXT_BEST_TIE_CT` (0,05 ct) lebt DREIMAL** — `explain` (Optimizer),
+  `SlotEconomics` (api), `fahrplanWhy` (Portal): **alle drei zusammen ändern.**
+- **Abnahme (§4.5), als Test gepinnt:** der 17.08.-Abend meldet jetzt Anker `bezugspreis`, freie
+  Auffüllung 0 % und je ruhendem Slot `decken` mit Marge **0,0 ct = Gleichstand** — genau die vier
+  Fakten, die gefehlt haben; der sonnige Normaltag meldet `einspeisewert` + 62 %. Beweise:
+  `tests/test_why_facts.py` (19, u. a. Byte-Identität + der rc-Kreuz-Check),
+  `SlotEconomicsTest.idleWhyTextNamesTheExportedNextBestAndCallsATieATie`,
+  `PortalApiTest.scheduleEndpointReturnsLatestPlanTenantScoped` (Lesepfad + NULL-Degradation).
+  Portal-Seite (die drei Lesehöhen, die Gate-Tabelle, der gefütterte Wächter) in
+  `frontend/portal/AGENTS.md`.
+- **NICHT in dieser Stufe:** die „Lage"-Zeile mit Tages-Bogen und Morgen-Ausblick (Stufe 2), die
+  Abregel-/Grenzen-Verzweigung (Stufe 3) und die Eingaben-Diff-Zeile (Stufe 4, F3 zurückgestellt).
 
 ## Maintaining this file
 
