@@ -13,6 +13,7 @@ import {
   vorbefuellteRegel,
   vorbefuellterName,
   type BrueckenKomponente,
+  brueckenKomponente,
 } from './selbstbauBruecke';
 
 const waermepumpe: BrueckenKomponente = {
@@ -141,5 +142,47 @@ describe('die Aktion eines FREIGEGEBENEN Schalters (Stufe 4)', () => {
     expect(r.action.kind).toBe('onoff');
     // Die Bedingung bleibt der erste Messwert - die Brücke erfindet keine.
     expect(r.conditions[0]).toMatchObject({ kind: 'entity', channel: 'power_kw' });
+  });
+});
+
+describe('brueckenKomponente (die Editor-Sicht der Brücke)', () => {
+  it('leitet den Schalter aus dem SCHREIBWEG ab, nie aus einem Flag', () => {
+    const k = brueckenKomponente({
+      id: 'e-9', label: 'Heizstab', measure: ['temperatur'], actuate: ['on_off'],
+    });
+    expect(k.schalter).toEqual({ schaltbar: true, art: 'on_off' });
+    expect(k.channels).toEqual([{ channel: 'temperatur' }]);
+  });
+
+  it('erkennt den Sollwert am Schreibweg', () => {
+    const k = brueckenKomponente({
+      id: 'e-9', label: 'Pumpe', measure: ['leistung'], actuate: ['setpoint_kw'],
+    });
+    expect(k.schalter?.art).toBe('setpoint');
+  });
+
+  it('behauptet OHNE Schreibweg keinen Schalter - und die Aktion bleibt offen', () => {
+    const k = brueckenKomponente({
+      id: 'e-9', label: 'Fühler', measure: ['temperatur'], actuate: [],
+    });
+    expect(k.schalter).toBeNull();
+    expect(vorbefuellteAktion(k)).toEqual({ kind: 'notify', message: '' });
+  });
+
+  it('ergibt ohne Messwert KEINE Regel - der Absprung wäre eine Sackgasse', () => {
+    const k = brueckenKomponente({ id: 'e-9', label: 'X', measure: [], actuate: ['on_off'] });
+    expect(bietetRegelBruecke(k)).toBe(false);
+    expect(vorbefuellteRegel(k)).toBeNull();
+  });
+
+  it('baut aus einer freigegebenen Komponente eine gültige Regel', () => {
+    const k = brueckenKomponente({
+      id: 'e-9', label: 'Heizstab', measure: ['temperatur'], actuate: ['on_off'],
+    });
+    const regel = vorbefuellteRegel(k)!;
+    const doc = buildGuidedFlow(regel, vorbefuellterName(k), 'site-1');
+    // Der Beweis, dass die Vorbefüllung wirklich trägt: sie geht durch den
+    // ECHTEN Emitter und wieder zurück.
+    expect(parseGuidedFlow(doc)).not.toBeNull();
   });
 });

@@ -137,6 +137,37 @@ export function vorbefuellterName(k: BrueckenKomponente): string {
   return k.label.trim() === '' ? 'Neue Regel' : `${k.label.trim()}: neue Regel`;
 }
 
+/**
+ * Die Komponente, wie die Brücke sie sieht, aus einer Editor-Entität.
+ *
+ * Der Absprung kommt auf der Regel-Seite an, wo nur die Editor-Sicht vorliegt
+ * (`measure`/`actuate`). **`schaltbar` folgt dem SCHREIBWEG**, nicht einem
+ * Flag: genau `actuate` ist das, was die Freigabe erteilt und worauf die
+ * Guard-Kette am Gerät keyt - eine Entität ohne Schreibweg kann nichts
+ * schalten, egal was sonst wo steht.
+ *
+ * ⚠ Die Klemme (`min`) steht in der Editor-Sicht NICHT zur Verfügung, der
+ * Sollwert startet deshalb bei 0. Das ist sicher, nicht geraten: der Executor
+ * klemmt restrict-only auf die freigegebene Spanne, und der Kunde sieht den
+ * Wert im Baukasten, bevor irgendetwas gespeichert wird.
+ */
+export function brueckenKomponente(e: {
+  id: string;
+  label: string;
+  measure: string[];
+  actuate: string[];
+}): BrueckenKomponente {
+  const schaltbar = e.actuate.length > 0;
+  return {
+    entityId: e.id,
+    label: e.label,
+    channels: e.measure.map((channel) => ({ channel })),
+    schalter: schaltbar
+      ? { schaltbar: true, art: e.actuate.some((a) => a.startsWith('setpoint')) ? 'setpoint' : 'on_off' }
+      : null,
+  };
+}
+
 /** Liest den `?komponente=`-Parameter aus einer Adresse (leer = nicht gesetzt). */
 export function komponenteAusHash(hash: string): string | null {
   const q = hash.indexOf('?');

@@ -32,6 +32,11 @@ import { livenessReference } from '../liveness';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
 import { SchaltFreigabeDrawer } from '../components/SchaltFreigabeDrawer';
 import { freigabeZustand } from '../schaltFreigabe';
+import {
+  REGEL_BRUECKE_LABEL,
+  bietetRegelBruecke,
+  regelBrueckeHash,
+} from '../selbstbauBruecke';
 import { UmbenennenDialog } from '../components/UmbenennenDialog';
 import {
   KomponenteLoeschenDialog,
@@ -357,6 +362,9 @@ export function AnlagenModellSection({
                   onSelect={setSelected}
                   onRename={setRename}
                   onFreigabe={setFreigabe}
+                  onRegelBruecke={(c) => {
+                    window.location.hash = regelBrueckeHash(site.id, c.entityId);
+                  }}
                   actionsFor={(c) =>
                     componentActions(
                       c,
@@ -604,6 +612,7 @@ function RoleGroupCard({
   onSelect,
   onRename,
   onFreigabe,
+  onRegelBruecke,
   actionsFor,
   onRepin,
   onRemove,
@@ -616,6 +625,7 @@ function RoleGroupCard({
   onSelect: (id: string | null) => void;
   onRename?: (c: PlantComponent) => void;
   onFreigabe?: (c: PlantComponent) => void;
+  onRegelBruecke?: (c: PlantComponent) => void;
   actionsFor: (c: PlantComponent) => ComponentActions;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
@@ -645,6 +655,7 @@ function RoleGroupCard({
           onSelect={() => onSelect(selected === c.id ? null : c.id)}
           onRename={onRename}
           onFreigabe={onFreigabe}
+          onRegelBruecke={onRegelBruecke}
           actions={actionsFor(c)}
           onRepin={onRepin}
           onRemove={onRemove}
@@ -670,6 +681,7 @@ function ComponentRow({
   onSelect,
   onRename,
   onFreigabe,
+  onRegelBruecke,
   actions,
   onRepin,
   onRemove,
@@ -683,6 +695,8 @@ function ComponentRow({
   onSelect: () => void;
   onRename?: (c: PlantComponent) => void;
   onFreigabe?: (c: PlantComponent) => void;
+  /** Die Brücke (Stufe 4, Anforderung 9): Regel mit dieser Komponente erstellen. */
+  onRegelBruecke?: (c: PlantComponent) => void;
   actions: ComponentActions;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
@@ -822,6 +836,25 @@ function ComponentRow({
               <button type="button" className="vp-am-action" onClick={() => onFreigabe(c)}>
                 <Icon name="zap" size={13} />
                 {c.schaltbar ? 'Steuerung dieses Geräts' : 'Steuern freigeben'}
+              </button>
+            </span>
+          )}
+          {/* Die BRÜCKE (Stufe 4, Anforderung 9): ein freigegebener Schalter ist
+              danach die AKTION der vorbefüllten Regel. Sie wird nur angeboten,
+              wo es etwas zu bedingen gibt - ohne Messwert wäre der Absprung eine
+              Sackgasse mit Extraschritt. */}
+          {onRegelBruecke && bietetRegelBruecke({
+            entityId: c.entityId,
+            label: c.label,
+            channels: c.channels.map((m) => ({ channel: m.raw })),
+          }) && (
+            <span className="vp-am-actions">
+              <button
+                type="button"
+                className="vp-am-action"
+                onClick={() => onRegelBruecke(c)}
+              >
+                <Icon name="zap" size={13} /> {REGEL_BRUECKE_LABEL}
               </button>
             </span>
           )}

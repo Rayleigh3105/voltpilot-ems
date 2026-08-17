@@ -573,6 +573,19 @@ describe('der Freigabe-Zustand an der Komponente (Einheitsmodell Stufe 4)', () =
       .toBeInTheDocument();
   });
 
+  it('führt von der Komponente in den vorbefüllten Regel-Einstieg (Brücke)', async () => {
+    stubSelbstbau(true);
+    const hash = window.location.hash;
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByText('Von Ihnen freigegeben');
+    fireEvent.click(screen.getByText('Details'));
+    fireEvent.click(screen.getByRole('button', { name: /Regel mit dieser Komponente erstellen/ }));
+    // Die Brücke ist ein ABSPRUNG mit Vorbefüllung, nie eine gemeinsame
+    // Leinwand: sie adressiert die Steuerung mit DIESER Komponente.
+    expect(window.location.hash).toContain('/steuerung?komponente=');
+    window.location.hash = hash;
+  });
+
   it('bietet an einer PLATTFORM-Komponente keinen Selbstbau-Freigabeweg', async () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
