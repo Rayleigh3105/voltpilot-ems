@@ -720,3 +720,20 @@
     margin-left: 4px;
   }
 }
+
+/* --- Der Freigabe-ZUSTAND an der Komponente (Einheitsmodell Stufe 4) ----- */
+
+/* „gesperrt" ist ein ZUSTAND, kein Fehler: der neutrale Ton ist deshalb der
+   ruhige Grau-Ton der Herkunfts-Zeile, nie ein Warnton. */
+.vp-am-freigabe {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--vp-text-muted, #64748b);
+  white-space: nowrap;
+}
+
+.vp-am-freigabe.is-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+}

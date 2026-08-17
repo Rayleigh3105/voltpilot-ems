@@ -165,14 +165,27 @@ public class FlowGraphValidator {
                                 + "\" nicht verfügbar."));
             }
             // D-19: a generated-only catalog type is valid ONLY in a document
-            // the platform stamped with the consumer-policy origin. The flow
-            // save API refuses customer documents carrying `origin`, so this
-            // gate cannot be forged around.
-            if (type.path("generated").asBoolean(false)
-                    && !"consumer-policy".equals(doc.path("origin").path("kind").asText())) {
-                findings.add(FlowValidationFinding.error("V-4", List.of(id), List.of(),
-                        "Baustein \"" + label(type) + "\" ist der generierten Verbraucherregel "
-                                + "vorbehalten."));
+            // the platform stamped with THAT type's origin kind. The flow save
+            // API refuses customer documents carrying `origin`, so this gate
+            // cannot be forged around.
+            //
+            // ⚠ The origin kind is CATALOG DATA (`generated_origin`), not a
+            // constant: Einheitsmodell Stufe 4 added a second generated-only
+            // type (vp.modbus.switch, origin kind "modbus-device"), and a
+            // hardcoded "consumer-policy" would have let it into every flow or
+            // into none. `generated_origin_label` keeps the refusal SPECIFIC -
+            // it names WHICH generated flow the block belongs to, so a customer
+            // never reads a generic "einem generierten Flow vorbehalten".
+            // A generated type without an origin kind is a catalog bug and
+            // fails CLOSED (never a silent default onto someone else's origin).
+            if (type.path("generated").asBoolean(false)) {
+                String want = type.path("generated_origin").asText("");
+                if (want.isEmpty() || !want.equals(doc.path("origin").path("kind").asText())) {
+                    String owner = type.path("generated_origin_label")
+                            .asText("einem generierten Flow");
+                    findings.add(FlowValidationFinding.error("V-4", List.of(id), List.of(),
+                            "Baustein \"" + label(type) + "\" ist " + owner + " vorbehalten."));
+                }
             }
             // D-19: the D-5 override lever is reserved for the generated
             // artifact - vp.entity.control never carries it, whatever the

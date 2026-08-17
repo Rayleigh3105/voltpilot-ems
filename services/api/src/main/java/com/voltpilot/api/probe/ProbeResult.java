@@ -28,13 +28,34 @@ public record ProbeResult(String requestId, String errorCode, String message,
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record OpResult(String id, boolean ok, Double raw, List<Integer> registers,
-            Double value, String errorCode, String message, Reading reading) {
+            Double value, String errorCode, String message, Reading reading, Switched switched) {
 
-        /** The register-read shape (no {@code reading}). */
+        /** The register-read shape (no {@code reading}, no {@code switched}). */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
                 Double value, String errorCode, String message) {
-            this(id, ok, raw, registers, value, errorCode, message, null);
+            this(id, ok, raw, registers, value, errorCode, message, null, null);
         }
+
+        /** The connection-test shape. */
+        public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
+                Double value, String errorCode, String message, Reading reading) {
+            this(id, ok, raw, registers, value, errorCode, message, reading, null);
+        }
+    }
+
+    /**
+     * The outcome of a {@code switch_test} / {@code switch_cancel} op
+     * (Einheitsmodell Stufe 4). Its OWN block, never {@code raw}/{@code value}:
+     * those are reserved for a READING, and a write dressed up as a measurement
+     * is the ambiguity false confirmations grow out of.
+     *
+     * <p>{@code readback}/{@code readbackMatches} travel together and are
+     * boxed: a readback that was not performed is ABSENT, never a "does not
+     * match".
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Switched(Integer written, Integer offAfterS, Integer readback,
+            Boolean readbackMatches) {
     }
 
     /**

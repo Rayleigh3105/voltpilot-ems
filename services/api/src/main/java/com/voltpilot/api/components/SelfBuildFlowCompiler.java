@@ -40,6 +40,7 @@ public class SelfBuildFlowCompiler {
     /** Der Katalog-Baustein, aus dem ein Selbstbau-Gerät liest. */
     private static final String READ_NODE = "vp.modbus.read";
     private static final String READ_NODE_VERSION = "1.0.0";
+    private static final String SWITCH_NODE = "vp.modbus.switch";
 
     private final ObjectMapper mapper;
 
@@ -68,6 +69,27 @@ public class SelfBuildFlowCompiler {
      */
     public ObjectNode compile(UUID siteId, UUID tenantId, UUID entityId, int version, String label,
             Transport transport, List<NormalizedChannel> channels) {
+        return compile(siteId, tenantId, entityId, version, label, transport, channels, null);
+    }
+
+    /**
+     * Baut das Flow-Dokument, seit Einheitsmodell Stufe 4 optional MIT dem
+     * freigegebenen Schalter.
+     *
+     * <p>⚠ Der Schalter kommt in DENSELBEN Flow wie die Lese-Knoten, nicht in
+     * einen zweiten: zwei Flows auf einem Gerät wären zwei TCP-Pfade dorthin,
+     * und genau das ist die Kollision, an der schon einmal ein ganzer
+     * Lesezyklus gestorben ist. Die {@code origin} bleibt unverändert
+     * {@code modbus-device} - sie ist es, die flowc den generated-only
+     * Schalt-Baustein überhaupt erlaubt.
+     *
+     * @param released die freigegebene Schalt-Definition, oder {@code null}
+     *     solange nichts freigegeben ist - dann entsteht KEIN Schalt-Knoten,
+     *     und das Gerät ist auf der Box strukturell ein Sensor.
+     */
+    public ObjectNode compile(UUID siteId, UUID tenantId, UUID entityId, int version, String label,
+            Transport transport, List<NormalizedChannel> channels,
+            SwitchDefinition.NormalizedSwitch released) {
         ObjectNode doc = mapper.createObjectNode();
         doc.put("schema_version", "1.0");
         doc.put("flow_id", generatedFlowId(entityId).toString());
@@ -113,6 +135,42 @@ public class SelfBuildFlowCompiler {
 
         // Ein Lese-Flow hat keine Verdrahtung: jeder Kanal steht für sich, und
         // der Auslöser wird von flowc an JEDEN auslösbaren Knoten gehängt.
+        if (released != null) {
+            ObjectNode node = nodes.addObject();
+            node.put("id", "schalter");
+            node.put("type", SWITCH_NODE);
+            node.put("type_version", READ_NODE_VERSION);
+            node.put("label", "Schalten");
+            ObjectNode p = node.putObject("parameters");
+            p.put("entity_id", entityId.toString());
+            p.put("kind", released.kind());
+            p.put("host", transport.host().trim());
+            p.put("port", transport.effectivePort());
+            p.put("unit_id", transport.effectiveUnitId());
+            p.put("fc", released.writeFc());
+            p.put("address", released.address());
+            if (SwitchDefinition.KIND_ON_OFF.equals(released.kind())) {
+                p.put("on_value", released.onValue());
+                p.put("off_value", released.offValue());
+            } else {
+                p.put("min_value", released.minValue());
+                p.put("max_value", released.maxValue());
+                p.put("safe_value", released.safeValue());
+                p.put("scale", released.scale());
+                p.put("offset", released.offset());
+            }
+            if (released.readbackAddress() != null) {
+                p.put("readback_address", released.readbackAddress());
+            }
+            if (released.watchdogAddress() != null) {
+                p.put("watchdog_address", released.watchdogAddress());
+                p.put("watchdog_value", released.watchdogValue());
+            }
+            ObjectNode claim = node.putArray("claims").addObject();
+            claim.put("entity_id", entityId.toString());
+            claim.putArray("commands").add(SwitchDefinition.KIND_SETPOINT.equals(released.kind())
+                    ? "setpoint_kw" : "on_off");
+        }
         doc.putArray("edges");
 
         ObjectNode trigger = doc.putArray("triggers").addObject();

@@ -155,11 +155,21 @@ function checkNodes(doc: FlowDocument, findings: FlowFinding[]): Map<string, Flo
         `Baustein "${type.label}" ist in der Laufzeit "${doc.runtime}" nicht verfügbar.`));
     }
     // D-19: a generated-only catalog type is valid ONLY in a document the
-    // platform stamped with the consumer-policy origin (the flow save API
-    // refuses customer documents carrying `origin`, so this cannot be forged).
-    if (type.generated === true && doc.origin?.kind !== 'consumer-policy') {
-      findings.push(error('V-4', [node.id], [],
-        `Baustein "${type.label}" ist der generierten Verbraucherregel vorbehalten.`));
+    // platform stamped with THAT type's origin kind (the flow save API refuses
+    // customer documents carrying `origin`, so this cannot be forged).
+    //
+    // ⚠ Twin of FlowGraphValidator.java - the origin kind is CATALOG DATA
+    // (`generated_origin`), never a constant: Einheitsmodell Stufe 4 added a
+    // second generated-only type (vp.modbus.switch, origin `modbus-device`),
+    // and the hardcoded 'consumer-policy' here would have refused every valid
+    // switch document. Missing origin = catalog bug = fail CLOSED.
+    if (type.generated === true) {
+      const want = type.generated_origin ?? '';
+      if (want === '' || want !== doc.origin?.kind) {
+        const owner = type.generated_origin_label ?? 'einem generierten Flow';
+        findings.push(error('V-4', [node.id], [],
+          `Baustein "${type.label}" ist ${owner} vorbehalten.`));
+      }
     }
     // D-19: the D-5 override lever is reserved for the generated artifact.
     if (node.type === 'vp.entity.control'

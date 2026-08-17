@@ -266,6 +266,108 @@ function parseReadResponse(buf, opts = {}) {
   return regs;
 }
 
+const FN_WRITE_COIL = 0x05;
+const FN_READ_COILS = 0x01;
+
+/**
+ * buildWriteCoilRequest - a Modbus-TCP "write single coil" (fn 0x05) frame.
+ * Relay boards are very often coil-driven, and a coil is the ONE Modbus object
+ * whose wire form is not the value itself: 0xFF00 means ON, 0x0000 means OFF.
+ * Writing a plain 1 into that field is the classic mistake - the device sees an
+ * undefined value and, depending on firmware, either refuses or does nothing.
+ * `on` is therefore a BOOLEAN here, never a number the caller could get wrong.
+ */
+function buildWriteCoilRequest({ txid = 0, unitId = 1, addr, on }) {
+  const buf = Buffer.alloc(12);
+  buf.writeUInt16BE(txid & 0xffff, 0);
+  buf.writeUInt16BE(0x0000, 2);
+  buf.writeUInt16BE(6, 4);
+  buf[6] = unitId & 0xff;
+  buf[7] = FN_WRITE_COIL;
+  buf.writeUInt16BE(addr & 0xffff, 8);
+  buf.writeUInt16BE(on ? 0xff00 : 0x0000, 10);
+  return buf;
+}
+
+/**
+ * parseWriteCoilResponse - validate a Modbus-TCP fn-0x05 echo and return
+ * { addr, on }. Like every write echo it only proves the request was ACCEPTED;
+ * whether the relay really moved is settled by the readback, never by the echo.
+ */
+function parseWriteCoilResponse(buf, opts = {}) {
+  if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf);
+  if (buf.length < 12) throw new Error('Modbus-Schreibantwort zu kurz');
+  const txid = buf.readUInt16BE(0);
+  const proto = buf.readUInt16BE(2);
+  const unit = buf[6];
+  const fn = buf[7];
+  if (proto !== 0) throw new Error('unerwartete Protokoll-ID ' + proto);
+  if (opts.expectTxid !== undefined && (opts.expectTxid & 0xffff) !== txid) {
+    throw new Error('Transaktions-ID weicht ab: ' + txid);
+  }
+  if (opts.expectUnit !== undefined && (opts.expectUnit & 0xff) !== unit) {
+    throw new Error('Unit-ID weicht ab: ' + unit);
+  }
+  if (fn & 0x80) {
+    throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16).padStart(2, '0'));
+  }
+  if (fn !== FN_WRITE_COIL) {
+    throw new Error('unerwartete Modbus-Funktion 0x' + fn.toString(16).padStart(2, '0'));
+  }
+  return { addr: buf.readUInt16BE(8), on: buf.readUInt16BE(10) === 0xff00 };
+}
+
+/**
+ * buildReadCoilsRequest - a Modbus-TCP "read coils" (fn 0x01) frame. The
+ * readback half of a coil write: a coil cannot be read with fn 0x03, so a
+ * switch test on a relay needs its own read.
+ */
+function buildReadCoilsRequest({ txid = 0, unitId = 1, addr, count = 1 }) {
+  const buf = Buffer.alloc(12);
+  buf.writeUInt16BE(txid & 0xffff, 0);
+  buf.writeUInt16BE(0x0000, 2);
+  buf.writeUInt16BE(6, 4);
+  buf[6] = unitId & 0xff;
+  buf[7] = FN_READ_COILS;
+  buf.writeUInt16BE(addr & 0xffff, 8);
+  buf.writeUInt16BE(count & 0xffff, 10);
+  return buf;
+}
+
+/**
+ * parseReadCoilsResponse - the fn-0x01 reply as 0/1 per coil, LSB first inside
+ * each byte (the Modbus packing). Returns numbers so a coil readback compares
+ * to a written 0/1 without a second convention.
+ */
+function parseReadCoilsResponse(buf, opts = {}) {
+  if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf);
+  if (buf.length < 9) throw new Error('Modbus-Antwort zu kurz');
+  const txid = buf.readUInt16BE(0);
+  const proto = buf.readUInt16BE(2);
+  const unit = buf[6];
+  const fn = buf[7];
+  if (proto !== 0) throw new Error('unerwartete Protokoll-ID ' + proto);
+  if (opts.expectTxid !== undefined && (opts.expectTxid & 0xffff) !== txid) {
+    throw new Error('Transaktions-ID weicht ab: ' + txid);
+  }
+  if (opts.expectUnit !== undefined && (opts.expectUnit & 0xff) !== unit) {
+    throw new Error('Unit-ID weicht ab: ' + unit);
+  }
+  if (fn & 0x80) {
+    throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16).padStart(2, '0'));
+  }
+  if (fn !== FN_READ_COILS) {
+    throw new Error('unerwartete Modbus-Funktion 0x' + fn.toString(16).padStart(2, '0'));
+  }
+  const byteCount = buf[8];
+  if (buf.length < 9 + byteCount) throw new Error('Modbus-Antwort unvollstaendig');
+  const bits = [];
+  for (let i = 0; i < byteCount * 8; i++) {
+    bits.push((buf[9 + (i >> 3)] >> (i & 7)) & 1);
+  }
+  return bits;
+}
+
 const FN_WRITE_MULTIPLE = 0x10;
 
 /**
@@ -340,6 +442,12 @@ function parseWriteMultipleResponse(buf, opts = {}) {
 module.exports = {
   FN_READ_HOLDING,
   FN_READ_INPUT,
+  FN_READ_COILS,
+  FN_WRITE_COIL,
+  buildWriteCoilRequest,
+  parseWriteCoilResponse,
+  buildReadCoilsRequest,
+  parseReadCoilsResponse,
   FN_WRITE_SINGLE,
   FN_WRITE_MULTIPLE,
   PROFILES,

@@ -741,6 +741,107 @@ const TYPES = {
     },
   },
 
+  // vp.modbus.switch (Einheitsmodell Stufe 4): the GENERATED-ONLY switch
+  // executor of a self-built Modbus device. There is deliberately no free
+  // Modbus WRITE building block - this node exists only after the per-device
+  // release (guided switch test + the customer's confirmation of the physical
+  // effect), and the api is its single author. `generatedOrigin` makes
+  // compile.js refuse it in any document that is not the device's own
+  // origin-stamped flow.
+  //
+  // It writes ONE register: either the two released on/off constants, or a
+  // value inside the released min/max clamp with the released scale/offset. It
+  // lives in the SAME flow as that device's read nodes and shares their
+  // per-target queue - never a second TCP path to one device.
+  'vp.modbus.switch': {
+    version: '1.0.0',
+    label: 'Schalter (generiert)',
+    runtimes: ['edge'],
+    minPalette: '0.7.0',
+    generatedOrigin: 'modbus-device',
+    ports: { in: {}, out: {} },
+    validate(p) {
+      const errs = [];
+      if (!p || typeof p !== 'object') return ['Parameter fehlen'];
+      if (typeof p.entity_id !== 'string' || !p.entity_id) errs.push('entity_id fehlt');
+      const kind = p.kind;
+      if (kind !== 'on_off' && kind !== 'setpoint') errs.push('kind muss on_off oder setpoint sein');
+      if (typeof p.host !== 'string' || !p.host.trim()) errs.push('host fehlt');
+      if (!Number.isInteger(p.address) || p.address < 0 || p.address > 65535) {
+        errs.push('address muss 0..65535 sein');
+      }
+      const fc = Number(p.fc);
+      if (fc !== 5 && fc !== 6 && fc !== 16) errs.push('fc muss 5, 6 oder 16 sein');
+      const reg16 = (v, name) => {
+        if (!Number.isInteger(v) || v < 0 || v > 65535) errs.push(name + ' muss 0..65535 sein');
+      };
+      if (kind === 'on_off') {
+        reg16(p.on_value, 'on_value');
+        reg16(p.off_value, 'off_value');
+        if (fc === 5 && ![0, 1].includes(p.on_value)) errs.push('eine Spule kennt nur 0 und 1');
+        if (fc === 5 && ![0, 1].includes(p.off_value)) errs.push('eine Spule kennt nur 0 und 1');
+      } else if (kind === 'setpoint') {
+        if (fc === 5) errs.push('ein Sollwert braucht ein Register, keine Spule');
+        if (!num(p.min_value) || !num(p.max_value) || !num(p.safe_value)) {
+          errs.push('ein Sollwert braucht min_value, max_value und safe_value');
+        } else if (p.min_value > p.max_value) {
+          errs.push('min_value darf nicht groesser als max_value sein');
+        }
+        if (p.scale !== undefined && (!num(p.scale) || p.scale === 0)) {
+          errs.push('scale muss eine Zahl ungleich 0 sein');
+        }
+      }
+      return errs;
+    },
+    // The switch WRITES to its entity, so it claims it - the V-5 exclusive
+    // control claim is what stops a second rule from fighting over the device.
+    requires(p) {
+      if (p && p.entity_id) {
+        return [{ entity_id: p.entity_id, capabilities: [p.kind === 'setpoint' ? 'actuate:setpoint_kw' : 'actuate:on_off'] }];
+      }
+      return [];
+    },
+    claims(p) {
+      if (!p || !p.entity_id) return [];
+      return [{ entity_id: p.entity_id, commands: [p.kind === 'setpoint' ? 'setpoint_kw' : 'on_off'] }];
+    },
+    compile(ctx, node) {
+      const p = node.parameters || {};
+      const out = {
+        id: ctx.nrId(node.id),
+        type: 'vp-modbus-switch',
+        z: ctx.tabId,
+        name: node.label || 'Schalter',
+        core: ctx.coreId,
+        entity_id: p.entity_id,
+        kind: p.kind === 'setpoint' ? 'setpoint' : 'on_off',
+        host: p.host,
+        port: Number.isInteger(p.port) ? p.port : 502,
+        unit_id: Number.isInteger(p.unit_id) ? p.unit_id : 1,
+        fc: Number(p.fc),
+        address: p.address,
+        scale: num(p.scale) ? p.scale : 1,
+        offset: num(p.offset) ? p.offset : 0,
+      };
+      // Only the fields the released kind really has travel: a setpoint node
+      // carrying an on_value would suggest a constant nobody released.
+      if (out.kind === 'on_off') {
+        out.on_value = p.on_value;
+        out.off_value = p.off_value;
+      } else {
+        out.min_value = p.min_value;
+        out.max_value = p.max_value;
+        out.safe_value = p.safe_value;
+      }
+      if (Number.isInteger(p.readback_address)) out.readback_address = p.readback_address;
+      if (Number.isInteger(p.watchdog_address)) {
+        out.watchdog_address = p.watchdog_address;
+        out.watchdog_value = Number.isInteger(p.watchdog_value) ? p.watchdog_value : 0;
+      }
+      return [out];
+    },
+  },
+
   'vp.strategy.market': strategyType('Marktoptimierung', STRATEGY_INPUTS.market),
   'vp.strategy.peakshaving': strategyType('Lastspitzenkappung', STRATEGY_INPUTS.peakshaving),
   'vp.strategy.atypical-grid': strategyType('Atypische Netznutzung', STRATEGY_INPUTS.atypicalGrid),
@@ -759,6 +860,7 @@ const TYPES = {
   // short continuously renewed TTL; the core's 4-h cap holds).
   'vp.consumer.reactive': {
     version: '1.0.0',
+    generatedOrigin: 'consumer-policy',
     runtimes: ['edge'],
     minPalette: '0.5.0',
     triggerable: true,

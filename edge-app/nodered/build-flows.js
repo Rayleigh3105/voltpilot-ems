@@ -2574,7 +2574,7 @@ const testNodes = [
       'prueft Identitaet, Verfall, privates Ziel und Ratenbegrenzung und reicht',
       'nur die freigegebenen Leseschritte auf edge/probe/request weiter; der',
       'Knoten liest sie ueber DIESELBE Warteschlange wie vp-modbus-read und',
-      'antwortet auf edge/probe/result. Auch hier: NUR LESEN.',
+      'antwortet auf edge/probe/result. Auch hier: nur EINMAL-Vorgaenge - Lesen, und seit Stufe 4 der gefuehrte Schalt-Test (armiertes Auto-Aus, ein Register).',
     ].join('\n'),
   },
   {
@@ -2609,6 +2609,21 @@ const testNodes = [
   {
     id: 'probe-exec', type: 'vp-modbus-probe', z: TESTTAB, name: 'Register-Pruefung aus dem Portal',
     core: 'cfg-vp-core', x: 470, y: 280, wires: [],
+  },
+  // Der gefuehrte SCHALT-TEST des Freigabe-Assistenten (Einheitsmodell Stufe 4)
+  // ist ein EIGENER, ebenfalls selbststaendiger Knoten - nicht eine Erweiterung
+  // des Lese-Knotens darueber. Dessen Read-only-Eigenschaft ist damit eine
+  // Eigenschaft des CODES statt einer Konvention, und jeder Schreibvorgang
+  // wohnt in genau einem Knoten. Beide teilen sich dieselbe Warteschlange je
+  // (Host, Port), ein Schalt-Test nimmt dem laufenden Poll also nie den Socket.
+  {
+    id: 'switch-note', type: 'comment', z: TESTTAB,
+    name: 'edge/switch/request -> EIN freigegebenes Register schreiben -> edge/switch/result',
+    info: '', x: 470, y: 340, wires: [],
+  },
+  {
+    id: 'switch-exec', type: 'vp-modbus-switch-test', z: TESTTAB,
+    name: 'Schalt-Test aus dem Portal', core: 'cfg-vp-core', x: 470, y: 400, wires: [],
   },
 ];
 

@@ -40,7 +40,12 @@ class FlowGraphValidatorTest {
             "heatrod-cellar", new EntityCapabilities(Set.of(), Set.of("on_off")),
             "wallbox-1", new EntityCapabilities(Set.of("power_kw"), Set.of("on_off", "setpoint_kw")),
             "pv-roof-east", new EntityCapabilities(Set.of("pv_power_kw"), Set.of("limit_pct"), true),
-            "modbus-meter-1", new EntityCapabilities(Set.of("leistung_kw"), Set.of()));
+            "modbus-meter-1", new EntityCapabilities(Set.of("leistung_kw"), Set.of()),
+            // Einheitsmodell Stufe 4: the released self-built switch of the
+            // flow-graph.valid.modbus-switch fixture.
+            "9c1e5d70-4a2b-4c8f-b3d1-fedcba987654", new EntityCapabilities(
+                    Set.of("wassertemperatur_speicher_oben", "aufnahmeleistung"),
+                    Set.of("on_off")));
 
     private static JsonNode fixture(String name) throws IOException {
         return MAPPER.readTree(Files.readString(
@@ -113,6 +118,30 @@ class FlowGraphValidatorTest {
         assertThat(errors(findings)).contains("V-4");
         assertThat(findings.stream().map(FlowValidationFinding::message))
                 .anyMatch(m -> m.contains("generierten Verbraucherregel vorbehalten"));
+    }
+
+    @Test
+    void modbusSwitchFixtureValidatesCleanOnlyWithItsOwnOrigin() throws IOException {
+        // Einheitsmodell Stufe 4: the SECOND generated-only type. Its origin
+        // kind is `modbus-device`, NOT `consumer-policy` - a validator that
+        // hardcodes the consumer-policy origin refuses this perfectly valid
+        // document, and one that hardcodes nothing lets the switch into any
+        // flow. The refusal must NAME which generated flow owns the block.
+        ObjectNode doc = (ObjectNode) fixture("flow-graph.valid.modbus-switch.json");
+        assertThat(errors(validate(doc))).isEmpty();
+
+        ObjectNode noOrigin = (ObjectNode) fixture("flow-graph.valid.modbus-switch.json");
+        noOrigin.remove("origin");
+        List<FlowValidationFinding> findings = validate(noOrigin);
+        assertThat(errors(findings)).contains("V-4");
+        assertThat(findings.stream().map(FlowValidationFinding::message))
+                .anyMatch(m -> m.contains("generierten Ger\u00e4te-Flow vorbehalten"));
+
+        // ...and the two origin kinds are NOT interchangeable: a switch
+        // smuggled into a consumer-policy document is refused as well.
+        ObjectNode foreign = (ObjectNode) fixture("flow-graph.valid.modbus-switch.json");
+        foreign.putObject("origin").put("kind", "consumer-policy");
+        assertThat(errors(validate(foreign))).contains("V-4");
     }
 
     @Test

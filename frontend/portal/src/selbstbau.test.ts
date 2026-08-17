@@ -171,12 +171,21 @@ describe('„Jetzt lesen"', () => {
 });
 
 describe('Rolle + Zusammenfassung', () => {
-  it('bietet in dieser Stufe NUR „Nur messen" an und sagt das ehrlich', () => {
+  it('bietet seit Stufe 4 BEIDE Rollen an - und verspricht dabei kein Schalten', () => {
     const sensor = ROLLEN.find((r) => r.id === 'sensor')!;
     const verbraucher = ROLLEN.find((r) => r.id === 'verbraucher')!;
     expect(sensor.verfuegbar).toBe(true);
-    expect(verbraucher.verfuegbar).toBe(false);
-    expect(verbraucher.bald).toBe('Bald verfügbar.');
+    expect(verbraucher.verfuegbar).toBe(true);
+    expect(verbraucher.bald).toBeUndefined();
+    // Der Hinweis sagt die Zwei-Schritt-Wahrheit: hier wird ANGELEGT, das
+    // Schalten erteilt danach der eigene Freigabe-Schritt.
+    expect(verbraucher.hint).toContain('eigenen Schritt frei');
+  });
+
+  it('behauptet in der Zusammenfassung nie ein Schalten, das noch nicht freigegeben ist', () => {
+    const zeile = pruefen('Heizstab', { host: '192.168.0.5', port: '502', unitId: '1' }, [],
+      'verbraucher').find((r) => r.label === 'Art')!;
+    expect(zeile.wert).toContain('liest zunächst nur');
   });
 
   it('nennt in der Bilanz-Zusage, was sich NICHT ändert', () => {

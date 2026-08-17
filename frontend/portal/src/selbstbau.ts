@@ -78,10 +78,12 @@ export type RolleOption = {
 };
 
 /**
- * In dieser Stufe gibt es NUR „Nur messen". Der schaltbare Verbraucher ist
- * sichtbar und ehrlich als „bald verfügbar" markiert - dasselbe Muster wie die
- * Selbstbau-Tür selbst in Stufe 1: keine Sackgasse, keine Hinhalte-Floskel, und
- * kein Knopf, der ins Leere führt.
+ * Beide Rollen sind seit Einheitsmodell Stufe 4 wählbar. Der schaltbare
+ * Verbraucher entsteht dabei in ZWEI Schritten, und das ist Absicht: hier wird
+ * er ANGELEGT (und ist zunächst ein Sensor), das Schalten gibt danach der
+ * eigene Freigabe-Schritt an der fertigen Komponente frei. Ein Gerät anlegen
+ * und ihm Schreibrechte auf ein fremdes Register geben sind zwei Entscheidungen
+ * und sollen sich nicht wie eine anfühlen.
  */
 export const ROLLEN: RolleOption[] = [
   {
@@ -93,9 +95,9 @@ export const ROLLEN: RolleOption[] = [
   {
     id: 'verbraucher',
     label: 'Schaltbarer Verbraucher',
-    hint: 'Ein Gerät, das VoltPilot ein- und ausschalten darf.',
-    verfuegbar: false,
-    bald: 'Bald verfügbar.',
+    hint: 'Ein Gerät, das VoltPilot ein- und ausschalten darf. Zuerst wird es angelegt und liest '
+      + 'nur; das Schalten geben Sie danach in einem eigenen Schritt frei.',
+    verfuegbar: true,
   },
 ];
 
@@ -319,10 +321,19 @@ export function pruefen(
   name: string,
   verbindung: VerbindungForm,
   zeilen: MesswertZeile[],
+  rolle: SelbstbauRolle = 'sensor',
 ): PruefZeile[] {
   const rows: PruefZeile[] = [
     { label: 'Name', wert: name.trim() === '' ? 'Eigenes Modbus-Gerät' : name.trim() },
-    { label: 'Art', wert: 'Nur messen (Sensor)' },
+    // ⚠ Auch ein „schaltbarer Verbraucher" entsteht ZUNAECHST nur lesend - die
+    // Zusammenfassung darf kein Schalten versprechen, das erst der eigene
+    // Freigabe-Schritt erteilt.
+    {
+      label: 'Art',
+      wert: rolle === 'verbraucher'
+        ? 'Schaltbarer Verbraucher - liest zunächst nur; Schalten geben Sie danach frei'
+        : 'Nur messen (Sensor)',
+    },
     {
       label: 'Adresse',
       wert: `${verbindung.host.trim()}:${verbindung.port.trim() || '502'} · Unit ${

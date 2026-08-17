@@ -163,6 +163,45 @@ public class SiteComponentController {
         return selfBuild.delete(siteId, entityId, subject(jwt));
     }
 
+    // ---- Steuern freigeben (Einheitsmodell Stufe 4) -----------------------
+
+    /**
+     * Der gefuehrte Schalt-Test: schreibt EINMAL, laesst die Box das
+     * automatische Aus armieren und speichert nur den Beleg. Er ist noch keine
+     * Freigabe - die entsteht erst mit der Bestaetigung des Kunden.
+     */
+    @PostMapping("/components/custom/{entityId}/switch-test")
+    public SelfBuildComponentService.SwitchTestResult switchTest(@PathVariable UUID siteId,
+            @PathVariable UUID entityId,
+            @RequestBody SelfBuildComponentService.SwitchTestRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.switchTest(siteId, entityId, request, subject(jwt));
+    }
+
+    /** Bricht den laufenden Test ab und schreibt den Sicherheitswert SOFORT. */
+    @PostMapping("/components/custom/{entityId}/switch-test/cancel")
+    public SelfBuildComponentService.SwitchTestResult switchCancel(@PathVariable UUID siteId,
+            @PathVariable UUID entityId,
+            @RequestBody SelfBuildComponentService.SwitchTestRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.switchCancel(siteId, entityId, request, subject(jwt));
+    }
+
+    /** Die Freigabe - nur mit bestandenem Test UND bestaetigter Wirkung. */
+    @PostMapping("/components/custom/{entityId}/switch-release")
+    public SiteComponentsDto switchRelease(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @RequestBody SelfBuildComponentService.SwitchReleaseRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.switchRelease(siteId, entityId, request, subject(jwt));
+    }
+
+    /** Nimmt die Freigabe zurueck - das Geraet ist danach wieder ein Sensor. */
+    @DeleteMapping("/components/custom/{entityId}/switch-release")
+    public SiteComponentsDto switchRevoke(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @AuthenticationPrincipal Jwt jwt) {
+        return selfBuild.switchRevoke(siteId, entityId, subject(jwt));
+    }
+
     /** Die PRIVATEN Vorlagen dieser Anlage (kein Katalog, kein Teilen). */
     @GetMapping("/component-templates")
     public List<SiteComponentTemplateDto> siteTemplates(@PathVariable UUID siteId) {

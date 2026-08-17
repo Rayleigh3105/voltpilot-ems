@@ -132,9 +132,28 @@ const (
 	// also serializes vp-modbus-read - a preview must never take the running
 	// poll's socket) and answers here. Non-retained in both directions: a stale
 	// preview must not linger on the bus. Read-only - there is no write op on
-	// this pair, and the contract's reserved switch_test never reaches it.
+	// this pair; the WRITING switch ops travel on their own pair below, so
+	// vp-modbus-probe stays read-only BY CONSTRUCTION and not by convention.
 	TopicProbeRequest = "edge/probe/request"
 	TopicProbeResult  = "edge/probe/result"
+	// TopicSwitchRequest/Result are the guided SWITCH TEST pair (Einheitsmodell
+	// Stufe 4): the core hands ONE already-admitted write down (register,
+	// function code and the single value it may write), vp-modbus-switch-test
+	// performs it through the SAME shared per-target connection manager as every
+	// read - one socket law for reading and switching - and answers here.
+	//
+	// A SEPARATE pair on purpose: it keeps every write in exactly one node, so
+	// the read node's "no write path exists here" stays a property of the code.
+	// Non-retained in both directions - a switch order that reappears on the
+	// next reconnect would be the opposite of a one-shot test.
+	TopicSwitchRequest = "edge/switch/request"
+	TopicSwitchResult  = "edge/switch/result"
+	// TopicControlGate is the RETAINED plant-wide control gate the core owns:
+	// {control_enabled, consumer_control_enabled}. A Node-RED executor cannot
+	// read the box's env, and the per-entity command's `control_enabled` field
+	// carries the INVERTER certification - a plant with no certified inverter
+	// would wrongly block a released switch. Fail-closed: no message, no write.
+	TopicControlGate = "edge/control/gate"
 )
 
 // Bus wraps the embedded broker.

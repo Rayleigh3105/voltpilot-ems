@@ -439,3 +439,154 @@
 .vp-sb-add {
   margin-bottom: var(--vp-space-4, 16px);
 }
+
+/* --- Der FREIGABE-Assistent (Einheitsmodell Stufe 4) -------------------- */
+
+/* Der Zwilling von `.vp-assist-field label` für eine Gruppe, die kein
+   einzelnes Feld beschriftet (die Schalt-Art sind zwei Radios). */
+.vp-assist-lbl {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.vp-freigabe-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  margin: 0 0 var(--vp-space-4, 16px);
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #64748b);
+  counter-reset: fgstep;
+}
+
+.vp-freigabe-steps li::before {
+  counter-increment: fgstep;
+  content: counter(fgstep) '. ';
+}
+
+.vp-freigabe-steps li.is-now {
+  color: var(--vp-action, #2c5282);
+  font-weight: 700;
+}
+
+.vp-freigabe-arten {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.vp-freigabe-art {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.6rem;
+  align-items: start;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-freigabe-art.is-on {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-surface-alt, #f8fafc);
+}
+
+.vp-freigabe-art input {
+  grid-row: 1 / 3;
+  margin-top: 0.2rem;
+}
+
+.vp-freigabe-art span {
+  font-size: 0.8rem;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
+/* Die Folgenliste steht VOR dem Test, nicht danach - sie ist die Zusage,
+   auf die der Kunde gleich klickt. */
+.vp-freigabe-folgen {
+  margin: 0 0 var(--vp-space-4, 16px);
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+}
+
+.vp-freigabe-folgen li {
+  margin-bottom: 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+/* Bernstein, nie rot: die fehlende Geräte-Abschaltung ist eine EIGENSCHAFT
+   des Geräts, kein Fehler - aber sie muss stehen bleiben. */
+.vp-freigabe-totmann {
+  margin: var(--vp-space-3, 12px) 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-alert-warn-bg, #fffbeb);
+  color: var(--vp-alert-warn-ink, #b45309);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-freigabe-testrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: var(--vp-space-3, 12px);
+}
+
+.vp-freigabe-test {
+  margin-bottom: var(--vp-space-3, 12px);
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-surface-alt, #f8fafc);
+  font-size: 0.85rem;
+}
+
+.vp-freigabe-test p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-freigabe-test ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.vp-freigabe-test.is-bestanden {
+  background: var(--vp-alert-ok-bg, #f0fdf4);
+}
+
+/* Ein TIMEOUT ist „unklar", nie „fehlgeschlagen" - deshalb derselbe ruhige
+   Bernstein-Ton wie ein Hinweis, nicht das Rot eines Fehlers. */
+.vp-freigabe-test.is-unklar {
+  background: var(--vp-alert-warn-bg, #fffbeb);
+  color: var(--vp-alert-warn-ink, #b45309);
+}
+
+.vp-freigabe-test.is-fehlgeschlagen {
+  background: var(--vp-alert-err-bg, #fef2f2);
+  color: var(--vp-alert-err-ink, #b91c1c);
+}
+
+.vp-freigabe-beleg {
+  margin-top: 0.4rem !important;
+  color: var(--vp-action, #2c5282);
+  font-weight: 600;
+}
+
+.vp-freigabe-confirm {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin-bottom: var(--vp-space-4, 16px);
+  font-size: 0.85rem;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-freigabe-confirm input {
+  margin-top: 0.2rem;
+  flex: none;
+}

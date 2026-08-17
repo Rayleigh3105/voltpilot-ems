@@ -148,11 +148,24 @@ export interface CatalogType {
    */
   customer_visible?: boolean;
   /**
-   * D-19: true = the type exists ONLY in platform-GENERATED documents (the
-   * consumer-policy compiler); no palette ever offers it, and the validator
-   * refuses it in a document without the consumer-policy origin.
+   * D-19: true = the type exists ONLY in platform-GENERATED documents; no
+   * palette ever offers it, and the validator refuses it in a document that
+   * does not carry THIS type's `generated_origin` kind.
    */
   generated?: boolean;
+  /**
+   * The `origin.kind` a document must carry for this generated type to be
+   * valid (`consumer-policy`, `modbus-device`, ...). CATALOG DATA, never a
+   * constant - there is more than one generated-only type. Absent on a
+   * generated type = catalog bug; the validator then fails closed.
+   */
+  generated_origin?: string;
+  /**
+   * German dative naming WHICH generated flow owns this type, used verbatim in
+   * the refusal ("... ist <owner> vorbehalten."), so the message stays
+   * specific instead of collapsing to a generic "einem generierten Flow".
+   */
+  generated_origin_label?: string;
   runtimes: string[];
   inputs: CatalogPort[];
   outputs: CatalogPort[];
@@ -365,6 +378,7 @@ const ID_PREFIX: Record<string, string> = {
   'vp.logic.or': 'oder',
   'vp.logic.function': 'code',
   'vp.modbus.read': 'modbus',
+  'vp.modbus.switch': 'schalter',
   'vp.strategy.market': 'markt',
   'vp.entity.control': 'steuern',
   'vp.notify.push': 'melden',

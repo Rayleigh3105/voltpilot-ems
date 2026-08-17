@@ -1,0 +1,37 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-modbus-switch-test', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 0,
+    outputs: 0,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-modbus-switch-test'; },
+    paletteLabel: 'vp-modbus-switch-test'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-modbus-switch-test">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-cog"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-modbus-switch-test">
+  <p>Fuehrt den gefuehrten Schalt-Test des Freigabe-Assistenten aus
+  (Einheitsmodell Stufe 4). Er abonniert <code>edge/switch/request</code> und
+  antwortet auf <code>edge/switch/result</code>.</p>
+  <p>Der Knoten entscheidet NICHTS: Register, Werte und Zulaessigkeit hat der
+  Core bereits geprueft, und das automatische Aus ist dort armiert, BEVOR
+  dieser Knoten den Befehl bekommt. Geschrieben wird ueber dieselbe
+  Verbindungs-Warteschlange wie jede Lesung - ein Test nimmt dem laufenden Poll
+  nie den Socket weg.</p>
+</script>

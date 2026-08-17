@@ -38,7 +38,7 @@
     },
     "origin": {
       "type": "object",
-      "description": "OPTIONAL provenance marker of a GENERATED flow (D-19): present exactly when the platform derived this document from another source of truth. SERVER-STAMPED ONLY - the flow save API refuses customer documents carrying it, so origin can never be forged to unlock generated-only node types (vp.consumer.reactive and its compiler-stamped override). A generated flow is not separately editable; portals open the owning builder instead. Two sources exist: a consumer policy (docs/verbrauchssteuerung.md §13.2) and a self-built Modbus device (vp-modbus-baukasten-k6 §2.2). The `kind` discriminates; each shape is closed, so a document may never mix the two vocabularies.",
+      "description": "OPTIONAL provenance marker of a GENERATED flow (D-19): present exactly when the platform derived this document from another source of truth. SERVER-STAMPED ONLY - the flow save API refuses customer documents carrying it, so origin can never be forged to unlock generated-only node types. Which kinds a generated-only type unlocks is CATALOG DATA (`generated_origin`), never a constant: today `consumer-policy` owns vp.consumer.reactive and its compiler-stamped override, `modbus-device` owns vp.modbus.switch. The two are NOT interchangeable - a type is valid only under ITS OWN origin kind. A generated flow is not separately editable; portals open the owning builder instead. Two sources exist: a consumer policy (docs/verbrauchssteuerung.md §13.2) and a self-built Modbus device (vp-modbus-baukasten-k6 §2.2). The `kind` discriminates; each shape is closed, so a document may never mix the two vocabularies.",
       "oneOf": [
         {
           "title": "consumer-policy",
@@ -54,7 +54,7 @@
         },
         {
           "title": "modbus-device",
-          "description": "The generated READ flow of ONE self-built Modbus device (Einheitsmodell Stufe 3). It carries only free catalog nodes (vp.modbus.read), so the origin does not unlock anything - it marks the flow as platform-owned so portals open the device assistant instead of the flow editor, and it names the definition version the read plan was compiled from.",
+          "description": "The generated flow of ONE self-built Modbus device: its read plan (Einheitsmodell Stufe 3) plus - once the customer has passed the guided switch test and confirmed the physical effect - the generated executor vp.modbus.switch (Einheitsmodell Stufe 4). This origin therefore DOES unlock a generated-only type, and it is the only kind that unlocks it; there is deliberately no free Modbus WRITE block. It also marks the flow as platform-owned so portals open the device assistant instead of the flow editor, and it names the definition version the plan was compiled from.",
           "type": "object",
           "required": ["kind", "point_id", "definition_version"],
           "additionalProperties": false,

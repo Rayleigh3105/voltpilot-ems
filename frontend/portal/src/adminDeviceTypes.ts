@@ -20,6 +20,12 @@ export const CERT_STATUS: Record<string, CertView> = {
   in_certification: { label: 'In Zertifizierung', tone: 'warn' },
   simulator_only: { label: 'Nur Simulator', tone: 'off' },
   not_certified: { label: 'Nicht zertifiziert', tone: 'off' },
+  // Einheitsmodell Stufe 4: eine Geräteart, deren Freigabe strukturell JE GERÄT
+  // erfolgt (der geführte Schalt-Test) - eine Prüfstands-Zertifizierung ist für
+  // frei definierte Geräte unmöglich, es gibt kein Modell auf einem Tisch.
+  // Deshalb ein eigenes Wort statt „nicht zertifiziert": das läse sich wie ein
+  // fehlender Lauf, den jemand nachholen könnte.
+  per_device: { label: 'Freigabe je Gerät', tone: 'ok' },
 };
 
 /** Ein unbekannter Status behauptet NICHTS (nie „zertifiziert"). */

@@ -29,13 +29,26 @@
       "composed": true,
       "default_failsafe": "self-consumption",
       "default_measure": [
-        { "channel": "soc_pct", "unit": "%" },
-        { "channel": "battery_power_kw", "unit": "kW" },
-        { "channel": "pv_power_kw", "unit": "kW" }
+        {
+          "channel": "soc_pct",
+          "unit": "%"
+        },
+        {
+          "channel": "battery_power_kw",
+          "unit": "kW"
+        },
+        {
+          "channel": "pv_power_kw",
+          "unit": "kW"
+        }
       ],
       "default_actuate": [
-        { "command": "setpoint_kw" },
-        { "command": "limit_kw" }
+        {
+          "command": "setpoint_kw"
+        },
+        {
+          "command": "limit_kw"
+        }
       ]
     },
     {
@@ -45,8 +58,20 @@
       "controllable": true,
       "composed": true,
       "default_failsafe": "release",
-      "default_measure": [{ "channel": "pv_power_kw", "unit": "kW" }],
-      "default_actuate": [{ "command": "limit_kw" }, { "command": "limit_pct" }]
+      "default_measure": [
+        {
+          "channel": "pv_power_kw",
+          "unit": "kW"
+        }
+      ],
+      "default_actuate": [
+        {
+          "command": "limit_kw"
+        },
+        {
+          "command": "limit_pct"
+        }
+      ]
     },
     {
       "type": "grid-meter",
@@ -55,7 +80,12 @@
       "controllable": false,
       "composed": true,
       "default_failsafe": "measure-only",
-      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_measure": [
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        }
+      ],
       "default_actuate": []
     },
     {
@@ -65,7 +95,12 @@
       "controllable": false,
       "composed": true,
       "default_failsafe": "measure-only",
-      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_measure": [
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        }
+      ],
       "default_actuate": []
     },
     {
@@ -79,13 +114,26 @@
       "composed": false,
       "default_failsafe": "release",
       "default_measure": [
-        { "channel": "power_kw", "unit": "kW" },
-        { "channel": "energy_kwh", "unit": "kWh" }
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        },
+        {
+          "channel": "energy_kwh",
+          "unit": "kWh"
+        }
       ],
       "default_actuate": [
-        { "command": "setpoint_kw", "min": 0 },
-        { "command": "on_off" },
-        { "command": "limit_kw" }
+        {
+          "command": "setpoint_kw",
+          "min": 0
+        },
+        {
+          "command": "on_off"
+        },
+        {
+          "command": "limit_kw"
+        }
       ]
     },
     {
@@ -98,11 +146,23 @@
       "controllable": true,
       "composed": false,
       "default_failsafe": "off",
-      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_measure": [
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        }
+      ],
       "default_actuate": [
-        { "command": "on_off" },
-        { "command": "setpoint_kw", "min": 0 },
-        { "command": "limit_kw" }
+        {
+          "command": "on_off"
+        },
+        {
+          "command": "setpoint_kw",
+          "min": 0
+        },
+        {
+          "command": "limit_kw"
+        }
       ]
     },
     {
@@ -115,11 +175,23 @@
       "controllable": true,
       "composed": false,
       "default_failsafe": "off",
-      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_measure": [
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        }
+      ],
       "default_actuate": [
-        { "command": "on_off" },
-        { "command": "setpoint_kw", "min": 0 },
-        { "command": "limit_kw" }
+        {
+          "command": "on_off"
+        },
+        {
+          "command": "setpoint_kw",
+          "min": 0
+        },
+        {
+          "command": "limit_kw"
+        }
       ]
     },
     {
@@ -132,11 +204,22 @@
       "controllable": true,
       "composed": false,
       "default_failsafe": "off",
-      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_measure": [
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        }
+      ],
       "default_actuate": [
-        { "command": "on_off" },
-        { "command": "limit_kw" },
-        { "command": "limit_pct" }
+        {
+          "command": "on_off"
+        },
+        {
+          "command": "limit_kw"
+        },
+        {
+          "command": "limit_pct"
+        }
       ]
     },
     {
@@ -148,6 +231,23 @@
       "default_failsafe": "measure-only",
       "default_measure": [],
       "default_actuate": []
+    },
+    {
+      "type": "modbus-load",
+      "certification_status": "per_device",
+      "certified_at": null,
+      "certification_notes": "Die Freigabe erfolgt JE GERAET ueber den gefuehrten Schalt-Test (Einheitsmodell Stufe 4), nicht je Typ: fuer frei definierte Geraete ist eine Pruefstands-Zertifizierung strukturell unmoeglich - es gibt kein Modell, das man auf einen Tisch stellen koennte. Der Betreiber-Not-Aus und das Verbraucher-Flag gelten unveraendert.",
+      "label": "Eigenes Schaltgeraet (Modbus)",
+      "category": "consumer",
+      "controllable": true,
+      "composed": false,
+      "default_failsafe": "off",
+      "default_measure": [],
+      "default_actuate": [
+        {
+          "command": "on_off"
+        }
+      ]
     }
   ]
 }

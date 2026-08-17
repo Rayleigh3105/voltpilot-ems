@@ -30,6 +30,13 @@ import {
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { livenessReference } from '../liveness';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
+import { SchaltFreigabeDrawer } from '../components/SchaltFreigabeDrawer';
+import { freigabeZustand } from '../schaltFreigabe';
+import {
+  REGEL_BRUECKE_LABEL,
+  bietetRegelBruecke,
+  regelBrueckeHash,
+} from '../selbstbauBruecke';
 import { UmbenennenDialog } from '../components/UmbenennenDialog';
 import {
   KomponenteLoeschenDialog,
@@ -101,6 +108,7 @@ export function AnlagenModellSection({
   const [selected, setSelected] = useState<string | null>(null);
   const [assign, setAssign] = useState<AdoptableSource | null>(null);
   const [rename, setRename] = useState<PlantComponent | null>(null);
+  const [freigabe, setFreigabe] = useState<PlantComponent | null>(null);
   // Die zwei Bereinigungs-Hebel AN der Komponente (vp-bereinigung-ui-k3).
   const [repin, setRepin] = useState<PlantComponent | null>(null);
   const [remove, setRemove] = useState<PlantComponent | null>(null);
@@ -353,6 +361,10 @@ export function AnlagenModellSection({
                   highlighted={highlightedComponents}
                   onSelect={setSelected}
                   onRename={setRename}
+                  onFreigabe={setFreigabe}
+                  onRegelBruecke={(c) => {
+                    window.location.hash = regelBrueckeHash(site.id, c.entityId);
+                  }}
                   actionsFor={(c) =>
                     componentActions(
                       c,
@@ -443,6 +455,19 @@ export function AnlagenModellSection({
             setComponents(result);
             reload();
           }}
+        />
+      )}
+
+      {freigabe && (
+        <SchaltFreigabeDrawer
+          open
+          siteId={site.id}
+          entityId={freigabe.entityId}
+          komponentenName={freigabe.label}
+          bereitsFreigegeben={freigabe.schaltbar}
+          leistungJetztKw={freigabe.reading?.unit === 'kW' ? freigabe.reading.value : null}
+          onClose={() => setFreigabe(null)}
+          onChanged={reload}
         />
       )}
 
@@ -586,6 +611,8 @@ function RoleGroupCard({
   highlighted,
   onSelect,
   onRename,
+  onFreigabe,
+  onRegelBruecke,
   actionsFor,
   onRepin,
   onRemove,
@@ -597,6 +624,8 @@ function RoleGroupCard({
   highlighted: Set<string> | null;
   onSelect: (id: string | null) => void;
   onRename?: (c: PlantComponent) => void;
+  onFreigabe?: (c: PlantComponent) => void;
+  onRegelBruecke?: (c: PlantComponent) => void;
   actionsFor: (c: PlantComponent) => ComponentActions;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
@@ -625,6 +654,8 @@ function RoleGroupCard({
           dim={highlighted != null && !highlighted.has(c.id)}
           onSelect={() => onSelect(selected === c.id ? null : c.id)}
           onRename={onRename}
+          onFreigabe={onFreigabe}
+          onRegelBruecke={onRegelBruecke}
           actions={actionsFor(c)}
           onRepin={onRepin}
           onRemove={onRemove}
@@ -649,6 +680,8 @@ function ComponentRow({
   dim,
   onSelect,
   onRename,
+  onFreigabe,
+  onRegelBruecke,
   actions,
   onRepin,
   onRemove,
@@ -661,6 +694,9 @@ function ComponentRow({
   dim: boolean;
   onSelect: () => void;
   onRename?: (c: PlantComponent) => void;
+  onFreigabe?: (c: PlantComponent) => void;
+  /** Die Brücke (Stufe 4, Anforderung 9): Regel mit dieser Komponente erstellen. */
+  onRegelBruecke?: (c: PlantComponent) => void;
   actions: ComponentActions;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
@@ -694,6 +730,19 @@ function ComponentRow({
               {CONTROL_BADGE}
             </span>
           )}
+          {/* Der FREIGABE-Zustand (Einheitsmodell Stufe 4, Anforderung 8): EINE
+              Anzeige über alle drei Vertrauens-Stufen - und „gesperrt" ist ein
+              ZUSTAND, kein Fehler, deshalb der ruhige Ton. Er steht nur, wo er
+              etwas aussagt: an einem Gerät, das schaltet oder es könnte. */}
+          {(c.schaltbar || c.freigabeFaehig) && (() => {
+            const z = freigabeZustand({ schaltbar: c.schaltbar, quelle: c.freigabeQuelle });
+            return (
+              <span className={`vp-am-freigabe is-${z.ton}`} title={z.satz}>
+                <Icon name={z.ton === 'ok' ? 'zap' : 'shield'} size={12} />
+                {z.wort}
+              </span>
+            );
+          })()}
           <span>{c.summary}</span>
         </span>
         {/* Identity churn (vp-vier-erzeuger-p9): the pinned device vanished from
@@ -748,7 +797,7 @@ function ComponentRow({
 
       {/* Die Bereinigung wohnt hier: an einer gesunden Komponente ruhig im
           Details-Bereich, an einer verwaisten prominent neben der Warnung. */}
-      {(c.channels.length > 0 || sofort != null
+      {(c.channels.length > 0 || sofort != null || (c.freigabeFaehig && onFreigabe != null)
         || (!c.orphaned && (actions.canRepin || actions.canDelete))) && (
         <details className="vp-am-details">
           <summary>
@@ -778,6 +827,35 @@ function ComponentRow({
                   <Icon name="zap" size={13} /> {SOFORT_LABEL[a]}
                 </button>
               ))}
+            </span>
+          )}
+          {/* Die Freigabe ist ein EIGENER, bewusst getrennter Schritt an der
+              fertigen Komponente - nie ein fünfter Schritt des Anlege-Wegs. */}
+          {c.freigabeFaehig && onFreigabe && (
+            <span className="vp-am-actions">
+              <button type="button" className="vp-am-action" onClick={() => onFreigabe(c)}>
+                <Icon name="zap" size={13} />
+                {c.schaltbar ? 'Steuerung dieses Geräts' : 'Steuern freigeben'}
+              </button>
+            </span>
+          )}
+          {/* Die BRÜCKE (Stufe 4, Anforderung 9): ein freigegebener Schalter ist
+              danach die AKTION der vorbefüllten Regel. Sie wird nur angeboten,
+              wo es etwas zu bedingen gibt - ohne Messwert wäre der Absprung eine
+              Sackgasse mit Extraschritt. */}
+          {onRegelBruecke && bietetRegelBruecke({
+            entityId: c.entityId,
+            label: c.label,
+            channels: c.channels.map((m) => ({ channel: m.raw })),
+          }) && (
+            <span className="vp-am-actions">
+              <button
+                type="button"
+                className="vp-am-action"
+                onClick={() => onRegelBruecke(c)}
+              >
+                <Icon name="zap" size={13} /> {REGEL_BRUECKE_LABEL}
+              </button>
             </span>
           )}
           {!c.orphaned && (actions.canRepin || actions.canDelete) && (

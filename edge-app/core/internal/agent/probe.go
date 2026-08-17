@@ -170,6 +170,13 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 			results[i] = probe.Failed(op.ID, verdicts[i].Code, verdicts[i].Message)
 			continue
 		}
+		if op.Writes() {
+			// The two WRITING ops run inline and one at a time, like a connection
+			// test: each is its own bounded round trip, and the auto-off
+			// bookkeeping has to stay in step with what was really sent.
+			results[i] = a.runSwitchOp(op)
+			continue
+		}
 		if op.Op == probe.OpTestConnection {
 			// SEQUENTIALLY and one at a time on purpose: each connection test is
 			// its own bounded round trip, and several of them usually aim at the

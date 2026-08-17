@@ -21,6 +21,7 @@ import type { SiteTopology } from '../api';
 import { GuidedRuleBuilder } from './GuidedRuleBuilder';
 import { RezeptGalerieView } from './RezeptGalerie';
 import type { EditorEntity, FlowDocument } from '../flows/model';
+import type { GuidedRule } from '../flows/guidedBuilder';
 import { showTechnicalLayer } from '../rollen';
 import { rezeptGalerie, type RezeptId } from '../regeln/rezepte';
 import './Steuerung.css';
@@ -42,6 +43,8 @@ export function NeueRegelDialog({
   onKomponenteAnlegen,
   onBuilt,
   onOpenEditor,
+  initialRule = null,
+  initialName,
 }: {
   open: boolean;
   onClose: () => void;
@@ -59,6 +62,14 @@ export function NeueRegelDialog({
   onBuilt: (name: string, doc: FlowDocument) => void;
   /** Der freie Editor mit einer leeren Fläche. */
   onOpenEditor: () => void;
+  /**
+   * Einheitsmodell Stufe 4, Anforderung 9 (die Brücke): eine VORBEFÜLLTE Regel
+   * öffnet den Baukasten sofort - die Galerie davor wäre ein Zwischenschritt,
+   * den der Kunde schon getroffen hat, als er die Komponente wählte. Absent =
+   * der unveränderte Drei-Türen-Weg.
+   */
+  initialRule?: GuidedRule | null;
+  initialName?: string;
 }) {
   const [guided, setGuided] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
@@ -74,7 +85,7 @@ export function NeueRegelDialog({
 
   return (
     <Drawer open onClose={close} title="Neue Regel" icon={<Icon name="zap" size={20} />}>
-      {guided ? (
+      {guided || initialRule ? (
         <GuidedRuleBuilder
           entities={entities}
           siteId={siteId}
@@ -82,7 +93,11 @@ export function NeueRegelDialog({
           lockedKinds={lockedKinds}
           lockedHint={lockedHint}
           allowDiagnosticActions={showTechnicalLayer()}
-          onCancel={() => setGuided(false)}
+          initialRule={initialRule ?? undefined}
+          initialName={initialName}
+          // Mit einer Vorbefüllung gibt es KEINEN Weg „zurück zur Galerie":
+          // der Kunde kam aus seiner Komponente, dorthin führt Abbrechen.
+          onCancel={() => (initialRule ? close() : setGuided(false))}
           onBuild={(name, doc) => {
             setGuided(false);
             onBuilt(name, doc);

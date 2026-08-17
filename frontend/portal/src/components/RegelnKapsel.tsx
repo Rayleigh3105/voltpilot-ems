@@ -43,6 +43,12 @@ import type { ConsumerRuntimeStatus } from '../consumers/status';
 import type { ConsumerFulfilment, ManualOverride, SofortAktion } from '../consumers/fulfillment';
 import { policySentence } from '../consumers/policy';
 import { parseVerbraucherParams, templateConsumer } from '../consumers/vorlagen';
+import {
+  brueckenKomponente,
+  komponenteAusHash,
+  vorbefuellteRegel,
+  vorbefuellterName,
+} from '../selbstbauBruecke';
 import { buildGuidedFlow, parseGuidedFlow, type GuidedRule } from '../flows/guidedBuilder';
 import type { BoundFlowApi, FlowDeviceAck, FlowSummary } from '../flows/flowsApi';
 import type { EditorEntity, FlowDocument } from '../flows/model';
@@ -148,7 +154,11 @@ export function RegelnKapsel({
   { flow: FlowSummary; rule: GuidedRule } | null>(null);
   const [eingreifen, setEingreifen] = useState(false);
   const [sofort, setSofort] = useState<{ consumer: Consumer; action: SofortAktion } | null>(null);
+  /** Die Brücke (Stufe 4, Anforderung 9): eine aus einer Komponente vorbefüllte Regel. */
+  const [komponentenRegel, setKomponentenRegel] =
+    useState<{ rule: GuidedRule; name: string } | null>(null);
   const deepLinkDone = useRef(false);
+  const brueckeDone = useRef(false);
 
   const reloadConsumers = useCallback(() => setReloadKey((k) => k + 1), []);
 
@@ -271,6 +281,35 @@ export function RegelnKapsel({
       setWizard(true);
     }
   }, [consumers]);
+
+  // --- Die BRÜCKE: `?komponente=` (Stufe 4, Anforderung 9) -------------------
+  //
+  // Bewusst ein EIGENER Effekt neben dem Verbraucher-Deep-Link: der wartet auf
+  // `consumers`, und eine Anlage mit einem selbst gebauten Gerät hat oft gar
+  // keinen Verbraucher - die Brücke käme dort nie an. Sie hängt an `entities`,
+  // weil die vorbefüllte Bedingung aus den MESSWERTEN der Komponente entsteht.
+  useEffect(() => {
+    if (brueckeDone.current || entities.length === 0) return;
+    const entityId = komponenteAusHash(window.location.hash);
+    if (!entityId) {
+      brueckeDone.current = true;
+      return;
+    }
+    brueckeDone.current = true;
+    window.history.replaceState(null, '', window.location.hash.split('?')[0]);
+    const e = entities.find((x) => x.id === entityId);
+    if (!e) return;
+    const k = brueckenKomponente(e);
+    const rule = vorbefuellteRegel(k);
+    // Ohne Messwert gibt es nichts zu bedingen - dann öffnet der normale
+    // Drei-Türen-Weg, nie ein Baukasten ohne wählbare Größe.
+    if (!rule) {
+      setCreating(true);
+      return;
+    }
+    setKomponentenRegel({ rule, name: vorbefuellterName(k) });
+    setCreating(true);
+  }, [entities]);
 
   // --- Ein Rezept wählen ----------------------------------------------------
   const waehleRezept = useCallback((id: RezeptId) => {
@@ -548,13 +587,15 @@ export function RegelnKapsel({
       {/* --- Die drei Türen ------------------------------------------------- */}
       <NeueRegelDialog
         open={creating}
-        onClose={() => setCreating(false)}
+        onClose={() => { setCreating(false); setKomponentenRegel(null); }}
         entities={entities}
         topology={topology}
         siteId={site.id}
         busy={busy}
         lockedKinds={lockedKinds}
         lockedHint={lockedHint}
+        initialRule={komponentenRegel?.rule ?? null}
+        initialName={komponentenRegel?.name}
         onRezept={waehleRezept}
         onKomponenteAnlegen={() => {
           setCreating(false);
@@ -562,6 +603,7 @@ export function RegelnKapsel({
         }}
         onBuilt={(name, doc) => {
           setCreating(false);
+          setKomponentenRegel(null);
           onBuiltFlow(name, doc);
         }}
         onOpenEditor={() => {

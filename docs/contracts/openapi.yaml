@@ -3456,6 +3456,106 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or component not found for this tenant. }
         "422": { description: Not a self-built component. }
+  /api/v1/sites/{siteId}/components/custom/{entityId}/switch-test:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: The guided switch test - writes ONCE, bounded by an on-device auto-off.
+      description: >
+        Einheitsmodell Stufe 4. The box ARMS its automatic off BEFORE it writes,
+        so a lost answer can never leave the device on. This is not a release
+        yet: it records the receipt the release then requires, keyed to THIS
+        exact switch definition - a changed address is a different register and
+        invalidates it. A timeout is an honest OUTCOME (200 with errorCode),
+        never an error: the write may have landed and only its answer got lost.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SwitchTestRequest" }
+      responses:
+        "200":
+          description: The outcome of the test - passed, or a named refusal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SwitchTestResult" }
+        "400": { description: The switch definition is impossible (German reason). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+        "422": { description: Test value outside the released clamp, or not a self-built device. }
+  /api/v1/sites/{siteId}/components/custom/{entityId}/switch-test/cancel:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Abort the running test - writes the off/safe value IMMEDIATELY.
+      description: >
+        Restates the register in full instead of relying on a remembered state
+        on the box, so an abort works even after a restart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SwitchTestRequest" }
+      responses:
+        "200":
+          description: The outcome of the abort.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SwitchTestResult" }
+        "400": { description: The switch definition is impossible (German reason). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+  /api/v1/sites/{siteId}/components/custom/{entityId}/switch-release:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: Release switching - only with a PASSED test AND the confirmed effect.
+      description: >
+        The test proves the register is reachable; the confirmation proves the
+        RIGHT device reacted - neither alone carries both statements. On
+        success the component becomes a switchable device (type, capability,
+        consumer clamp) and the switch is compiled into its device flow. The
+        device release REPLACES the type certification, which is structurally
+        impossible for arbitrary self-built devices; it never replaces the
+        operator emergency stop.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SwitchReleaseRequest" }
+      responses:
+        "200":
+          description: The plant's components, with this one now switchable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "400": { description: Switch or consumer data invalid (German reason). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+        "422": { description: No passed test on THIS definition, or the effect was not confirmed. }
+    delete:
+      tags: [components]
+      summary: Revoke the release - the device is a sensor again, immediately.
+      description: >
+        The switch node leaves the flow, the capability leaves the component,
+        and the rules pointing at it stop. The DEFINITION stays stored - a
+        revoke is not evidence destruction - but the test receipt falls, because
+        it belonged to a state that no longer exists.
+      responses:
+        "200":
+          description: The plant's components, with this one measuring only.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteComponents" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or component not found for this tenant. }
+        "422": { description: Not a self-built component. }
   /api/v1/sites/{siteId}/components/custom/{entityId}/duplicate:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -4917,6 +5017,105 @@ components:
           maxItems: 16
           items: { $ref: "#/components/schemas/SelfBuildChannel" }
         note: { type: string, maxLength: 200 }
+    SwitchDefinition:
+      type: object
+      description: >
+        ONE write register per device, with a FIXED kind. `on_off` may only ever
+        write the two constants fixed here; `setpoint` only values inside the
+        min/max clamp, plus a `safeValue` for silence and revocation. There is
+        no value outside the released one, and no address at runtime.
+      required: [kind, registerKind, address]
+      properties:
+        kind: { type: string, enum: [on_off, setpoint] }
+        registerKind: { type: string, enum: [coil, holding] }
+        address: { type: integer, minimum: 0, maximum: 65535, description: "0-based." }
+        writeFc:
+          type: integer
+          enum: [5, 6, 16]
+          description: >
+            Derived when absent - 5 for a coil, otherwise 16. FC16 is the
+            register default, NOT FC6: several real devices accept a
+            single-register write and never adopt it (the Fronius/Deye lesson).
+        onValue: { type: integer, minimum: 0, maximum: 65535 }
+        offValue: { type: integer, minimum: 0, maximum: 65535 }
+        minValue: { type: number }
+        maxValue: { type: number }
+        safeValue:
+          type: number
+          description: Written on withdrawal, staleness or revocation.
+        scale: { type: number }
+        offset: { type: number }
+        unit: { type: string, maxLength: 16 }
+        readbackAddress:
+          type: integer
+          minimum: 0
+          maximum: 65535
+          description: Optional - when present the write is read back and compared.
+        watchdogAddress:
+          type: integer
+          minimum: 0
+          maximum: 65535
+          description: >
+            Optional. A generic Modbus device has NO built-in deadman; if yours
+            offers a watchdog register, the executor serves it on every tick.
+            Empty by default - never coerced.
+        watchdogValue: { type: integer, minimum: 0, maximum: 65535 }
+    SwitchConsumer:
+      type: object
+      description: >
+        The consumer facts the clamp and the cycle guard are built from - they
+        bind BEFORE the executor. Only the rated power is required: a missing
+        cycle axis is inactive, never an invented protection.
+      required: [ratedPowerKw]
+      properties:
+        ratedPowerKw: { type: number, exclusiveMinimum: 0 }
+        minOnSeconds: { type: integer, minimum: 0 }
+        minOffSeconds: { type: integer, minimum: 0 }
+        maxStartsPerDay: { type: integer, minimum: 1 }
+        powerChannel: { type: string }
+    SwitchTestRequest:
+      type: object
+      required: [switchDef]
+      properties:
+        switchDef: { $ref: "#/components/schemas/SwitchDefinition" }
+        testValue:
+          type: number
+          description: >
+            Required for `setpoint` and it MUST lie inside the clamp - it is
+            never silently clamped, or the customer would confirm a different
+            test than the one they ran. Ignored for `on_off`.
+    SwitchTestResult:
+      type: object
+      required: [passed, ttlSeconds]
+      properties:
+        passed: { type: boolean }
+        ttlSeconds:
+          type: integer
+          description: After this the device falls back BY ITSELF - the box armed it first.
+        errorCode:
+          type: string
+          description: >
+            A named class, never invented - `timeout` is an honest outcome, not
+            a failure.
+        message: { type: string }
+        switched:
+          type: object
+          description: >
+            Present only on a real write. A failed operation carries NO value.
+          properties:
+            written: { type: integer }
+            offAfterS: { type: integer }
+            readback: { type: integer }
+            readbackMatches: { type: boolean }
+    SwitchReleaseRequest:
+      type: object
+      required: [switchDef, consumer, physicallyConfirmed]
+      properties:
+        switchDef: { $ref: "#/components/schemas/SwitchDefinition" }
+        consumer: { $ref: "#/components/schemas/SwitchConsumer" }
+        physicallyConfirmed:
+          type: boolean
+          description: The customer saw the right device react. Anything but true refuses.
     SelfBuildReadRequest:
       type: object
       required: [connection, channel]
