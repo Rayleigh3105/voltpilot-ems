@@ -222,7 +222,8 @@ describe('Abnahme: der sonnige Normaltag erzählt die andere Wahrheit', () => {
     expect(satz).toContain('ohnehin wieder auf');
     expect(satz).toContain('62 %');
     // Eine KLARE Entscheidung wird beziffert, nicht als Gleichstand verkleidet.
-    expect(satz).toContain('3,1 ct/kWh schlechter');
+    expect(satz).toContain('Jetzt zu verkaufen wäre 3,1 ct/kWh schlechter');
+    expect(satz).not.toMatch(/wäre jetzt/);
     expect(satz).not.toContain('gleichwertig');
   });
 

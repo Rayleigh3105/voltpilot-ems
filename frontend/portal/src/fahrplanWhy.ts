@@ -255,7 +255,9 @@ export function margeSatz(slot: WhySlot, plantKind: PlanWordingKind): string | n
   if (nb.tie) {
     return `${phrase} wäre gerade praktisch gleichwertig (±0,0 ct/kWh) – VoltPilot wählt dann die schonendere Option und lässt den Speicher ruhen.`;
   }
-  return `${phrase} wäre jetzt ${ctFmt(Math.abs(nb.marginCt))} schlechter.`;
+  // Die Verbalphrase trägt ihr „jetzt" schon - ein zweites wäre Stottern
+  // („Jetzt zu verkaufen wäre jetzt 3,1 ct/kWh schlechter", im Browser gesehen).
+  return `${phrase} wäre ${ctFmt(Math.abs(nb.marginCt))} schlechter.`;
 }
 
 /**
