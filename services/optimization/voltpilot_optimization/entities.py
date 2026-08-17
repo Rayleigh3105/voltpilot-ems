@@ -53,10 +53,12 @@ from datetime import datetime
 from uuid import UUID
 
 from voltpilot_optimization.domain import (
+    ANCHOR_VORGABE,
     BatteryParams,
     OptimizationInput,
     SLOT_MINUTES,
-    derive_terminal_value_eur_per_kwh,
+    TerminalValue,
+    derive_terminal_value,
 )
 
 # The mqtt-schedule-2.0 contract's entity_id pattern (MQTT-topic-safe).
@@ -517,11 +519,25 @@ class CoOptimizationInput:
         the v1 input uses, fed the ENTITY's efficiency, wear, usable band and
         EFFECTIVE grid-charge permission - so the N=1 adapter reproduces the v1
         value bit for bit by sharing the derivation, not by duplicating it."""
+        return self.effective_terminal_value(storage, env).v_end
+
+    def effective_terminal_value(
+        self, storage: StorageEntity, env=None
+    ) -> TerminalValue:
+        """The per-entity twin of
+        :meth:`~voltpilot_optimization.domain.OptimizationInput.effective_terminal_value`
+        - the same number plus the Erklaerbarkeit-Stufe-1 facts, inherited from
+        the ONE shared derivation."""
         if self.terminal_value_eur_per_kwh is not None:
-            return self.terminal_value_eur_per_kwh
+            return TerminalValue(
+                v_end=self.terminal_value_eur_per_kwh,
+                anchor_kind=ANCHOR_VORGABE,
+                refill_free_pct=None,
+                guard_capped=False,
+            )
         p = storage.params
         soc0 = p.clamp_soc_kwh(storage.initial_soc_kwh)
-        return derive_terminal_value_eur_per_kwh(
+        return derive_terminal_value(
             import_prices=self.import_prices,
             export_values=self.export_values,
             pv_kw=[self.total_pv_kw(t) for t in range(self.slots)],

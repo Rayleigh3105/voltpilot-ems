@@ -63,9 +63,11 @@ INSERT INTO schedule
      terminal_value_eur_per_kwh, peak_target_kw,
      slot_role, slot_flags, stored_value_ct_kwh, grid_value_ct_kwh,
      peak_pressure_eur_kw, fallback_14a,
-     cover_load_from_battery, charge_from_surplus_only)
+     cover_load_from_battery, charge_from_surplus_only,
+     why_terminal_anchor, why_refill_free_pct,
+     why_next_best, why_next_best_margin_ct)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s)
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -89,7 +91,11 @@ DO UPDATE SET
     peak_pressure_eur_kw = EXCLUDED.peak_pressure_eur_kw,
     fallback_14a      = EXCLUDED.fallback_14a,
     cover_load_from_battery = EXCLUDED.cover_load_from_battery,
-    charge_from_surplus_only = EXCLUDED.charge_from_surplus_only;
+    charge_from_surplus_only = EXCLUDED.charge_from_surplus_only,
+    why_terminal_anchor = EXCLUDED.why_terminal_anchor,
+    why_refill_free_pct = EXCLUDED.why_refill_free_pct,
+    why_next_best = EXCLUDED.why_next_best,
+    why_next_best_margin_ct = EXCLUDED.why_next_best_margin_ct;
 """
 
 
@@ -121,6 +127,15 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
     pre-feature run) and ``False`` = evaluated, no duty. The portal marks a
     phase only on an explicit ``True``, so both non-true states render exactly
     today's view.
+
+    The Erklaerbarkeit-Stufe-1 facts (api migration V20260822000000) follow the
+    same two patterns: ``why_terminal_anchor``/``why_refill_free_pct`` are
+    RUN-level (repeated per row, like ``terminal_value_eur_per_kwh``) and say
+    WHERE the value of stored energy came from; ``why_next_best``/
+    ``why_next_best_margin_ct`` are per-slot and only ever set on a RESTING
+    slot. NULL everywhere means the explain layer was off or the run predates
+    the columns - the surfaces then stay observational, which is exactly the
+    Stufe-0 behaviour, never a fabricated cause.
     """
     return [
         (
@@ -150,6 +165,10 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             plan.fallback_14a,
             slot.cover_load_from_battery,
             slot.charge_from_surplus_only,
+            plan.why_terminal_anchor,
+            plan.why_refill_free_pct,
+            slot.why_next_best,
+            slot.why_next_best_margin_ct,
         )
         for slot in plan.slots
     ]
