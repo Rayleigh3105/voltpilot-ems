@@ -56,7 +56,8 @@ class ConsumerRuntimeStatusListenerTest {
         // The fulfilment-ledger writer is exercised end-to-end in ConsumerApiTest;
         // here it is a no-op mock so this test stays a pure runtime-status parse.
         listener = new ConsumerRuntimeStatusListener("tcp://localhost:1883", "", "", devices, store,
-                mock(ConsumerRequirementLedgerWriter.class), mock(RuleEventWriter.class));
+                mock(ConsumerRequirementLedgerWriter.class), mock(RuleEventWriter.class),
+                mock(com.voltpilot.api.command.CommandLogWriter.class));
     }
 
     @SuppressWarnings("unchecked")

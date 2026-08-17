@@ -1540,6 +1540,101 @@ export interface DeviceExportLimit {
 }
 
 /**
+ * Der KOMMANDO-VERLAUF einer Anlage bzw. EINER Komponente
+ * (Kommando-Transparenz V1, Konzept `vp-kommando-transparenz-k3` §6.3) - EINE
+ * Antwort für Kopf, „Gerade jetzt", „Grenzen & Wächter", Tages-Film und
+ * Fußnote.
+ *
+ * **`recordingSince` ist der Grund, warum ein leerer Verlauf nicht gelogen
+ * ist:** `null` heißt „für diese Anlage wurde noch gar nicht aufgezeichnet" -
+ * davor wird NICHTS behauptet, auch nichts Entlastendes.
+ *
+ * **`writes: false` ist die F4-Antwort:** an diese Komponente geht kein
+ * einziger Befehl, sie wird nur gelesen. Der SATZ dazu wohnt in
+ * `src/befehle.ts`; hier steht die Tatsache.
+ */
+export interface CommandHistory {
+  recordingSince: string | null;
+  /** Der Herzschlag-Takt - ein Wechsel-und-zurück dazwischen ist unsichtbar. */
+  accuracySeconds: number;
+  from: string;
+  to: string;
+  entityId: string | null;
+  entityLabel: string | null;
+  writes: boolean;
+  /** Der Deckel hat gegriffen - ältere Zeilen fehlen. */
+  truncated: boolean;
+  /** Älteste zuerst (der Tages-Film läuft vorwärts). */
+  entries: CommandEntry[];
+  control: ControlStatus | null;
+  curtailment: CurtailmentStatus | null;
+}
+
+/** Das Rücklese-Urteil. ⚠ `keine_antwort` ist NIE `abweichend`. */
+export type CommandVerdict =
+  | 'bestaetigt'
+  | 'abweichend'
+  | 'keine_antwort'
+  | 'prueft'
+  | 'unbestaetigt';
+
+export type CommandEventKind =
+  | 'notaus_ein'
+  | 'notaus_aus'
+  | 'freigabe_erteilt'
+  | 'freigabe_widerrufen'
+  | 'luecke'
+  | 'verlauf_gedeckelt';
+
+/**
+ * Eine HALTEPERIODE (`kind: 'periode'`) oder ein Punkt-Ereignis
+ * (`kind: 'ereignis'`, dann trägt `eventKind` seine Art).
+ *
+ * Jedes Feld darf fehlen und ein fehlendes heißt „nicht gemessen", nie 0 -
+ * insbesondere sind die vier `cycles*` in V1 IMMER `null` (aus
+ * 15-Sekunden-Momentaufnahmen lässt sich die Zahl der 10-Sekunden-
+ * Schreibvorgänge nicht ableiten).
+ */
+export interface CommandEntry {
+  id: number;
+  stream: 'batterie' | 'abregelung' | 'verbraucher' | 'waechter' | string;
+  kind: 'periode' | 'ereignis';
+  eventKind: CommandEventKind | string | null;
+  startedAt: string;
+  /** null = die Periode LÄUFT noch. */
+  endedAt: string | null;
+  mode: string | null;
+  path: string | null;
+  whyKind: 'fahrplan' | 'sicherung' | string | null;
+  whyRef: string | null;
+  commandedKwFirst: number | null;
+  commandedKwLast: number | null;
+  commandedKwMin: number | null;
+  commandedKwMax: number | null;
+  verdict: CommandVerdict | string | null;
+  cycles: number | null;
+  cyclesConfirmed: number | null;
+  cyclesNoAnswer: number | null;
+  cyclesMismatch: number | null;
+  controlEnabled: boolean | null;
+  released: boolean | null;
+  foreignInfluence: boolean | null;
+  entityId: string | null;
+  source: 'cloud_abgeleitet' | 'geraet' | string;
+  /** Der Roh-Blick (F1: für ALLE Kunden aufklappbar). */
+  detail: CommandDetail | null;
+}
+
+export interface CommandDetail {
+  mismatchRoles: string | null;
+  certSource: string | null;
+  units: number | null;
+  certifiedUnits: number | null;
+  state: string | null;
+  reasonCode: string | null;
+}
+
+/**
  * Verbraucher-Slots des jüngsten Co-Optimizer-Laufs (Verbrauchssteuerung
  * Inkrement 2, §14.11 Fahrplan-Layer). SHADOW: Zeilen existieren nur für
  * Anlagen, die der Optimierer co-plant; ohne Lauf ist das Dokument leer und
@@ -2143,6 +2238,20 @@ export const api = {
     request<CurtailmentStatus | undefined>(
       `/api/v1/sites/${siteId}/curtailment-status`,
     ).then((v) => v ?? null),
+  /**
+   * Der KOMMANDO-VERLAUF (Kommando-Transparenz V1): der Zeitraum EINER
+   * Komponente - oder der ganzen Anlage, wenn keine gewählt ist. Ein älteres
+   * Backend kennt die Route nicht; der Aufrufer holt sie deshalb fail-soft.
+   */
+  commandHistory: (
+    siteId: string,
+    opts: { entity?: string | null; range?: 'day' | 'week'; at?: string | null } = {},
+  ) => {
+    const q = new URLSearchParams({ range: opts.range ?? 'day' });
+    if (opts.entity) q.set('entity', opts.entity);
+    if (opts.at) q.set('at', opts.at);
+    return request<CommandHistory>(`/api/v1/sites/${siteId}/command-history?${q}`);
+  },
   /**
    * Verbraucher-Slots des jüngsten Co-Optimizer-Laufs für den Fahrplan-Layer
    * (Inkrement 2, SHADOW). Leeres Dokument = der Normalzustand einer nicht

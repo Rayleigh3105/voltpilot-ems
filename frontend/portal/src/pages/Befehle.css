@@ -1,0 +1,209 @@
+/* Die BEFEHLE-Seite (Kommando-Transparenz V1). Komponenten-lokal wie
+   `Einstellungen.css` - `index.css` bleibt unangetastet.
+
+   Der TON trägt hier immer ein WORT neben sich (`vp-befehl-urteil` bzw. der
+   Satz selbst); die Farbe ist Verstärkung, nie die Aussage. Und `info` ist
+   bewusst BERNSTEIN, nicht rot: Schweigen ist eine Lücke, kein bewiesener
+   Defekt (die PR-280-Lehre). */
+
+.vp-befehle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-befehle-kopf {
+  margin: 4px 0 2px;
+  font-weight: 600;
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-befehle-readonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-2, #f7fafc);
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.9rem;
+}
+
+.vp-befehle-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+/* -- Der Tages-Film ------------------------------------------------------ */
+
+.vp-befehle-film {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.vp-befehl {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0 10px 12px;
+  border-left: 3px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-befehl + .vp-befehl {
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-befehl.is-ok {
+  border-left-color: var(--vp-flow-batt, #2e9e5b);
+}
+
+.vp-befehl.is-warn {
+  border-left-color: var(--vp-alert-warn, #d97706);
+}
+
+.vp-befehl.is-info {
+  border-left-color: var(--vp-alert-warn, #d97706);
+  border-left-style: dashed;
+}
+
+/* Die laufende Periode ist die einzige, die sich noch bewegt - sie bekommt
+   das Wort „ab HH:MM" UND den kräftigen Balken. */
+.vp-befehl.is-jetzt {
+  background: var(--vp-surface-2, #f7fafc);
+}
+
+.vp-befehl-zeit {
+  flex: 0 0 auto;
+  min-width: 92px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted, #4a5568);
+  padding-top: 1px;
+}
+
+.vp-befehl-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.vp-befehl-satz {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-befehl-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 3px;
+  font-size: 0.82rem;
+}
+
+.vp-befehl-urteil {
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-befehl.is-ok .vp-befehl-urteil {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+.vp-befehl.is-warn .vp-befehl-urteil {
+  color: var(--vp-alert-warn, #d97706);
+}
+
+/* -- Der Roh-Blick (F1: für ALLE Kunden) --------------------------------- */
+
+.vp-befehl-roh {
+  margin-top: 6px;
+}
+
+.vp-befehl-roh > summary {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--vp-link, #2c5282);
+  list-style: none;
+  padding: 4px 0;
+}
+
+.vp-befehl-roh > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-befehl-roh[open] > summary svg {
+  transform: rotate(90deg);
+}
+
+.vp-befehl-roh dl {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+}
+
+.vp-befehl-roh dl > div {
+  display: contents;
+}
+
+.vp-befehl-roh dt {
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-befehl-roh dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* -- Die Fussnote der Ehrlichkeit ---------------------------------------- */
+
+.vp-befehle-fuss {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.85rem;
+}
+
+.vp-befehle-fuss li + li {
+  margin-top: 4px;
+}
+
+/* Am Telefon stapelt die Zeit über ihrem Satz - eine 92-px-Spalte neben einem
+   Satz lässt bei 375 px nichts mehr übrig. */
+@media (max-width: 560px) {
+  .vp-befehl {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .vp-befehl-zeit {
+    min-width: 0;
+  }
+}
+
+/* Das Strom-Etikett steht nur auf der anlagen-weiten Ansicht - dort mischen
+   sich Speicher, Einspeise-Begrenzung und Geräte, und ohne Etikett wäre
+   nicht zu erkennen, worüber eine Zeile spricht. */
+.vp-befehl-strom {
+  display: inline-block;
+  margin-bottom: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f7fafc);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  font-size: 0.74rem;
+  color: var(--vp-text-muted, #4a5568);
+}

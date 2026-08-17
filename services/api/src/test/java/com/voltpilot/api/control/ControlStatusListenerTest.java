@@ -50,7 +50,8 @@ class ControlStatusListenerTest {
         store = mock(ControlStatusRepository.class);
         when(devices.findById(DEVICE)).thenReturn(Optional.of(new DeviceDto(
                 DEVICE, SITE, "demo-inverter-01", "inverter", null, "active", Instant.now(), Instant.now())));
-        listener = new ControlStatusListener("tcp://localhost:1883", "", "", devices, store);
+        listener = new ControlStatusListener("tcp://localhost:1883", "", "", devices, store,
+                mock(com.voltpilot.api.command.CommandLogWriter.class));
     }
 
     private ControlStatusRepository.Execution ingest(String controlBlock, String controlSource) {

@@ -101,6 +101,9 @@ class PortalApiTest {
     int port;
 
     @Autowired
+    com.voltpilot.api.command.CommandLogWriter commandLogWriter;
+
+    @Autowired
     TestRestTemplate rest;
 
     @Autowired
@@ -4724,7 +4727,7 @@ class PortalApiTest {
     @Test
     void controlStatusIsIngestedFromHeartbeatAndTenantScoped() {
         var listener = new com.voltpilot.api.control.ControlStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, controlStatusRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, controlStatusRepo, commandLogWriter);
         String topic = "ems/00000000-0000-0000-0000-000000000001/"
                 + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
 
@@ -4801,7 +4804,7 @@ class PortalApiTest {
     @Test
     void curtailmentStatusIsIngestedFromHeartbeatAndTenantScoped() {
         var listener = new com.voltpilot.api.curtailment.CurtailmentStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, curtailmentStatusRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, curtailmentStatusRepo, commandLogWriter);
         String topic = "ems/00000000-0000-0000-0000-000000000001/"
                 + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
         String head = "{\"schema_version\":\"1.0\","
@@ -4908,7 +4911,7 @@ class PortalApiTest {
 
     private void theExportGuardJourney() {
         var listener = new com.voltpilot.api.curtailment.CurtailmentStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, curtailmentStatusRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, curtailmentStatusRepo, commandLogWriter);
         String topic = "ems/00000000-0000-0000-0000-000000000001/"
                 + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
         String head = "{\"schema_version\":\"1.0\","
@@ -5072,7 +5075,7 @@ class PortalApiTest {
     @Test
     void controlStatusCarriesTheInSlotExecutionTruthAndDegradesForAnOlderEdge() {
         var listener = new com.voltpilot.api.control.ControlStatusListener(
-                "tcp://localhost:1883", "", "", deviceRepo, controlStatusRepo);
+                "tcp://localhost:1883", "", "", deviceRepo, controlStatusRepo, commandLogWriter);
         String topic = "ems/00000000-0000-0000-0000-000000000001/"
                 + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
         String head = "{\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","

@@ -50,7 +50,8 @@ import { InfoTip } from '../components/InfoTip';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
-import { anlageRoute, hashForRoute } from '../nav';
+import { BEFEHLE_LABEL } from '../befehle';
+import { anlageRoute, befehleHash, hashForRoute } from '../nav';
 import { EntitaetenSection } from './EntitaetenSection';
 import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
@@ -357,6 +358,7 @@ export function AnlagenModellSection({
                 <RoleGroupCard
                   key={g.role}
                   group={g}
+                  siteId={site.id}
                   selected={selected}
                   highlighted={highlightedComponents}
                   onSelect={setSelected}
@@ -607,6 +609,7 @@ function DeviceCard({
 /** One role group ("PV-Erzeugung · Σ 44,9 kW") with its component rows. */
 function RoleGroupCard({
   group,
+  siteId,
   selected,
   highlighted,
   onSelect,
@@ -620,6 +623,8 @@ function RoleGroupCard({
   onSofort,
 }: {
   group: RoleGroup;
+  /** Für den Absprung in den Befehls-Verlauf einer Komponente. */
+  siteId: string;
   selected: string | null;
   highlighted: Set<string> | null;
   onSelect: (id: string | null) => void;
@@ -649,6 +654,7 @@ function RoleGroupCard({
         <ComponentRow
           key={c.id}
           component={c}
+          siteId={siteId}
           selected={selected === c.id}
           highlight={highlighted != null && highlighted.has(c.id)}
           dim={highlighted != null && !highlighted.has(c.id)}
@@ -675,6 +681,7 @@ const PARAGRAF_14A =
 /** One Komponente: name, Herkunft, Steuer-Abzeichen, Live-Wert. */
 function ComponentRow({
   component,
+  siteId,
   selected,
   highlight,
   dim,
@@ -689,6 +696,8 @@ function ComponentRow({
   onSofort,
 }: {
   component: PlantComponent;
+  /** Für den Absprung in den Befehls-Verlauf DIESER Komponente. */
+  siteId: string;
   selected: boolean;
   highlight: boolean;
   dim: boolean;
@@ -797,7 +806,8 @@ function ComponentRow({
 
       {/* Die Bereinigung wohnt hier: an einer gesunden Komponente ruhig im
           Details-Bereich, an einer verwaisten prominent neben der Warnung. */}
-      {(c.channels.length > 0 || sofort != null || (c.freigabeFaehig && onFreigabe != null)
+      {(c.channels.length > 0 || sofort != null || c.entityId != null
+        || (c.freigabeFaehig && onFreigabe != null)
         || (!c.orphaned && (actions.canRepin || actions.canDelete))) && (
         <details className="vp-am-details">
           <summary>
@@ -856,6 +866,18 @@ function ComponentRow({
               >
                 <Icon name="zap" size={13} /> {REGEL_BRUECKE_LABEL}
               </button>
+            </span>
+          )}
+          {/* Der BEFEHLS-VERLAUF (Kommando-Transparenz V1, F2/F4): an JEDER
+              echten Komponente, auch an einer nur gelesenen - dort IST „wir
+              schicken nichts" die Antwort, die zwei Untersuchungsrunden
+              gekostet hat. Die PV-Aspekt-Zeile hat keine eigene Entität und
+              bekommt deshalb keinen. */}
+          {c.entityId && (
+            <span className="vp-am-actions">
+              <a className="vp-am-action" href={befehleHash(siteId, c.entityId)}>
+                <Icon name="shield" size={13} /> {BEFEHLE_LABEL}
+              </a>
             </span>
           )}
           {!c.orphaned && (actions.canRepin || actions.canDelete) && (

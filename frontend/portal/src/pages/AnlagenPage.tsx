@@ -22,7 +22,13 @@ import {
 import { BATTERY_NO_DEVICE_WARNING, composeSiteSentence, siteLiveFresh, siteSnapshot } from '../fleet';
 import { plantKindLabel } from '../format';
 import { DEFAULT_EARNINGS_RANGE } from '../anlage';
-import { anlageRoute, pageRoute, type AnlagenSub, type Route } from '../nav';
+import {
+  anlageRoute,
+  pageRoute,
+  parseBefehleKomponente,
+  type AnlagenSub,
+  type Route,
+} from '../nav';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
@@ -101,6 +107,9 @@ const SteuerungSection = lazy(() =>
 );
 const TechnikSection = lazy(() =>
   import('./AnlageTechnik').then((m) => ({ default: m.TechnikSection })),
+);
+const BefehleSection = lazy(() =>
+  import('./BefehleSection').then((m) => ({ default: m.BefehleSection })),
 );
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
@@ -449,6 +458,11 @@ function AnlagenSubPage({
           <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
+        {/* Die BEFEHLE-Seite gehört einer KOMPONENTE - sie kommt als
+            Hash-Parameter, damit jedes Lesezeichen dieselbe wieder öffnet. */}
+        {sub === 'befehle' && (
+          <BefehleSection site={site} entityId={parseBefehleKomponente(window.location.hash)} />
+        )}
         {sub === 'steuerung' && (
           <SteuerungSection
             site={site}
