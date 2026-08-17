@@ -29,7 +29,7 @@ import { useScrolledPast } from '../useScrolledPast';
 import { useWake } from '../useWake';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip, nextChargeStart, planOutlook } from '../control';
-import { curtailTruth, curtailTruthForSlot } from '../curtailment';
+import { curtailTruth, curtailTruthForSlot, exportGuardView } from '../curtailment';
 import { flowConflict, flowConflictCandidate, stepFlowConflict } from '../flowConflict';
 import { todaySlots } from '../schedule';
 import { slotWhy, surplusWhy } from '../fahrplanWhy';
@@ -958,6 +958,14 @@ export function AnlageSeite({
     controlOutlook,
     surplusReason != null,
   );
+  // Der EINSPEISEWÄCHTER („Grenzen & Wächter" Stufe 0): eine STEHENDE Aussage
+  // über die Anlage - welche Einspeisegrenze gilt, wirkt sie überhaupt, und
+  // hält der Wechselrichter selbst eine engere. Bewusst NICHT durch
+  // `curtailTruthForSlot` gefiltert (das gilt der laufenden Viertelstunde) und
+  // bewusst unabhängig von `controlView`: ein Gerät ohne Batterie-Rücklesung
+  // liefert keine Steuerzeile, hält aber sehr wohl eine Grenze - genau die
+  // Konstellation, die in Herzogau zwei Untersuchungsrunden gekostet hat.
+  const guardView = exportGuardView(curtailStatus, now);
 
   // Flussabgleich (Scout `vp-verkauf-praemisse-s8` §3): der Speicherknoten-Haken
   // hängt am `controlStrip`-healthy - aber eine register-bestätigte, nicht
@@ -1296,8 +1304,8 @@ export function AnlageSeite({
                  was bestätigt der Wechselrichter). Er entfällt NICHT: er ist
                  die einzige Fläche, die einen abweichenden Sollwert meldet. */
               footer={
-                !isPhone && controlView ? (
-                  <ControlStrip view={controlView} variant="bare" />
+                !isPhone && (controlView || guardView) ? (
+                  <ControlStrip view={controlView} variant="bare" guard={guardView} />
                 ) : null
               }
             />
@@ -1324,8 +1332,8 @@ export function AnlageSeite({
               zuerst, dann der Preis, der ihn erklärt); die Kacheln folgen
               darunter. Am Rechner bleibt die Reihenfolge der Bühne. */}
           {isPhone && fahrplanRow}
-          {isPhone && controlView && (
-            <ControlStrip view={controlView} variant="card" />
+          {isPhone && (controlView || guardView) && (
+            <ControlStrip view={controlView} variant="card" guard={guardView} />
           )}
           {isPhone && strompreisRow}
 

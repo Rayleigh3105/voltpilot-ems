@@ -37,6 +37,14 @@ import java.util.UUID;
  *   <li>{@code checkedAt} - the newest per-unit readback timestamp, the
  *       freshness anchor. A stale block is NO evidence: the portal then falls
  *       back to its plan wording.
+ *   <li>{@code exportGuard} - „Grenzen &amp; Wächter" Stufe 0: the live feed-in
+ *       watchdog (which limit the box holds, and whether it reaches any device
+ *       at all). Null = not reported (older edge / no feed-in limit
+ *       configured), never a fabricated "no limit".
+ *   <li>{@code deviceExportLimit} - the limit the INVERTER ITSELF holds, read
+ *       from its own register at most once a day. Null = not reported. It has
+ *       its OWN read timestamp because it ages on a completely different clock
+ *       than {@code checkedAt}.
  * </ul>
  *
  * <p>No row at all (204) = an older edge or a plant without a curtailment
@@ -45,5 +53,6 @@ import java.util.UUID;
  */
 public record CurtailmentStatusDto(UUID deviceId, int units, int certifiedUnits,
         boolean controlEnabled, boolean active, Double appliedCapKw, Boolean allMatch,
-        boolean possibleOverride, Instant checkedAt) {
+        boolean possibleOverride, Instant checkedAt, ExportGuardDto exportGuard,
+        DeviceExportLimitDto deviceExportLimit) {
 }

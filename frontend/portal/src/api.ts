@@ -1475,6 +1475,68 @@ export interface CurtailmentStatus {
   possibleOverride: boolean;
   /** Der jüngste Rücklese-Zeitpunkt — der Frische-Anker. */
   checkedAt: string;
+  /**
+   * Der EINSPEISEWÄCHTER („Grenzen & Wächter" Stufe 0). `null` = die Box hat
+   * ihn nicht gemeldet (ältere Edge, oder für die Anlage ist gar keine
+   * Einspeisegrenze hinterlegt) — nie „es gibt keine Grenze".
+   */
+  exportGuard: ExportGuard | null;
+  /**
+   * Die Einspeisegrenze, die der WECHSELRICHTER SELBST hält. `null` = nicht
+   * gemeldet (ältere Edge, Familie ohne belastbares Register, oder noch nicht
+   * gelesen) — nie eine erfundene 0.
+   */
+  deviceExportLimit: DeviceExportLimit | null;
+}
+
+/**
+ * Der live laufende Einspeisewächter, wie die Box ihn in JEDEM Herzschlag
+ * meldet — und wie ihn cloud-seitig bis zu dieser Stufe niemand las. Genau
+ * deshalb war „welche Einspeisegrenze hält die Box, und wirkt sie überhaupt?"
+ * nur per Wartungstunnel zu beantworten (Herzogau, zwei Untersuchungsrunden).
+ *
+ * **`effective` ist das Feld, für das es den Block gibt:** ein Wächter, der
+ * eine perfekte Kappe berechnet und sie NIRGENDS hinschreibt, muss das laut
+ * sagen, statt eine Anlage an einen Schutz glauben zu lassen, den sie nicht hat.
+ */
+export interface ExportGuard {
+  /** Die für die Anlage geltende Einspeisegrenze, wie die BOX sie kennt. */
+  limitKw: number;
+  /** Das maschinenlesbare Wort NEBEN dem deutschen Satz. */
+  state: 'ueberwacht' | 'regelt' | 'haelt' | 'zieht_zusammen' | 'sicherheitskappe';
+  /**
+   * Der deutsche Satz der Box zu genau diesem Zustand. Er wird EINMAL auf dem
+   * Gerät geschrieben — das Portal reicht ihn durch, statt ihn neu zu
+   * formulieren, damit `:8484` und Portal dasselbe Urteil nie anders benennen.
+   */
+  reason: string | null;
+  /** Die kommandierte anlagenweite PV-Kappe; null = keine (nie eine 0). */
+  capKw: number | null;
+  /** Die Kappe hält die Erzeuger gerade wirklich zurück. */
+  limiting: boolean;
+  /** Das Urteil entstand NICHT aus einer frischen Messung am Netzpunkt. */
+  blind: boolean;
+  /** false = die Kappe erreicht KEIN Gerät. */
+  effective: boolean;
+  /** Der deutsche Satz, der die Lücke benennt; null wenn es keine gibt. */
+  reach: string | null;
+}
+
+/**
+ * Die Einspeisegrenze, die im WECHSELRICHTER selbst eingestellt ist — eine
+ * fremde Wahrheit im Gerät, die die Box liest und nie schreibt. In Herzogau
+ * hielt der Deye 33,0 kW (Register 0x00E7), während im Portal 70 kW hinterlegt
+ * waren; zwei Runden lang unsichtbar, weil niemand das Register las.
+ */
+export interface DeviceExportLimit {
+  limitKw: number;
+  /** Woher der Wert stammt („0x00e7") — eine Zahl ohne Herkunft ist kein Beleg. */
+  register: string;
+  /**
+   * Der EIGENE Frische-Anker: das Register wird höchstens einmal täglich
+   * gelesen (Ein-Socket-Gesetz), darf sich also nie `checkedAt` ausleihen.
+   */
+  readAt: string;
 }
 
 /**

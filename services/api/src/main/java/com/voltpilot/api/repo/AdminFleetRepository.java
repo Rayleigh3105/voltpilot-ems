@@ -201,28 +201,23 @@ public class AdminFleetRepository {
     }
 
     /**
-     * Der jüngste Abregel-Beleg je Anlage. {@code all_match} bleibt DREIWERTIG
-     * ({@code getObject(..., Boolean.class)}): „nichts angewandt" darf nie als
-     * „das Rücklesen widersprach" gelesen werden.
+     * Der jüngste Abregel-Beleg je Anlage - inklusive des Einspeisewächters und
+     * der geräte-eigenen Einspeisegrenze („Grenzen &amp; Wächter" Stufe 0).
+     * {@code all_match} bleibt DREIWERTIG ({@code getObject(..., Boolean.class)}):
+     * „nichts angewandt" darf nie als „das Rücklesen widersprach" gelesen werden.
+     *
+     * <p>Gelesen und abgebildet über {@link CurtailmentStatusRepository#COLUMNS}
+     * / {@code map} (dasselbe Paket): die Flotten-Sicht und der Anlagen-Lesepfad
+     * dürfen über DIESELBE Zeile nicht Verschiedenes behaupten.
      */
     public Map<UUID, CurtailmentStatusDto> curtailmentPerSite() {
         Map<UUID, CurtailmentStatusDto> out = new HashMap<>();
         jdbc.query(
-                "SELECT DISTINCT ON (site_id) site_id, device_id, units, certified_units, "
-                        + "control_enabled, active, applied_cap_kw, all_match, possible_override, "
-                        + "checked_at FROM device_curtailment_status "
-                        + "ORDER BY site_id, checked_at DESC",
+                "SELECT DISTINCT ON (site_id) site_id, " + CurtailmentStatusRepository.COLUMNS
+                        + " FROM device_curtailment_status ORDER BY site_id, checked_at DESC",
                 rs -> {
-                    out.put(rs.getObject("site_id", UUID.class), new CurtailmentStatusDto(
-                            rs.getObject("device_id", UUID.class),
-                            rs.getInt("units"),
-                            rs.getInt("certified_units"),
-                            rs.getBoolean("control_enabled"),
-                            rs.getBoolean("active"),
-                            (Double) rs.getObject("applied_cap_kw"),
-                            rs.getObject("all_match", Boolean.class),
-                            rs.getBoolean("possible_override"),
-                            rs.getTimestamp("checked_at").toInstant()));
+                    out.put(rs.getObject("site_id", UUID.class),
+                            CurtailmentStatusRepository.map(rs));
                 });
         return out;
     }

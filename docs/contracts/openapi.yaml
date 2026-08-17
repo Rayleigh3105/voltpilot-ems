@@ -7834,6 +7834,41 @@ components:
         allMatch: { type: boolean, nullable: true, description: "Over the APPLYING units' readbacks; null = nothing applied. Only true is a confirmation - null must never be read as a disagreement." }
         possibleOverride: { type: boolean, description: "A unit's MEASURED power exceeds its cap after the settle window, so a foreign controller may be overriding the limit (Modbus has the lowest priority on Fronius)." }
         checkedAt: { type: string, format: date-time, description: "Newest per-unit readback timestamp - the freshness anchor. A stale block is NO evidence; the portal falls back to its plan wording." }
+        exportGuard: { allOf: [{ $ref: "#/components/schemas/ExportGuard" }], nullable: true, description: "„Grenzen & Wächter\" Stufe 0: the live feed-in watchdog. null = not reported (older edge, or no feed-in limit configured) - never a fabricated \"no limit\"." }
+        deviceExportLimit: { allOf: [{ $ref: "#/components/schemas/DeviceExportLimit" }], nullable: true, description: "The feed-in limit the INVERTER ITSELF holds. null = not reported (older edge, a family without a trustworthy register, or not read yet)." }
+    ExportGuard:
+      type: object
+      description: >
+        The live feed-in watchdog ("dynamische Einspeisebegrenzung") as the
+        device reports it in every heartbeat. The box has been sending this
+        block since it was built and the cloud read none of it, so the question
+        "which feed-in limit does the box hold, and does it reach any device at
+        all?" was only answerable through a maintenance tunnel - it cost two
+        investigation rounds at Anlage Herzogau. `effective` is the field the
+        block exists for: a watchdog that computes a perfect cap and writes it
+        NOWHERE must say so instead of letting a plant believe in a protection
+        it does not have.
+      properties:
+        limitKw: { type: number, description: "The feed-in limit at the grid connection point AS THE BOX KNOWS IT." }
+        state: { type: string, enum: [ueberwacht, regelt, haelt, zieht_zusammen, sicherheitskappe], description: "The machine-readable word NEXT TO the German sentence; a word outside this vocabulary is dropped at ingest together with its whole block." }
+        reason: { type: string, nullable: true, description: "The device's own German sentence for exactly that state - written ONCE on the device, so the :8484 card and the portal can never word the same verdict differently." }
+        capKw: { type: number, nullable: true, description: "The plant-level PV cap the watchdog currently commands; null = none (never a fabricated 0)." }
+        limiting: { type: boolean, description: "The cap is actually holding the producers back right now." }
+        blind: { type: boolean, description: "The verdict was NOT formed from a fresh connection-point measurement (hold / contract / safe cap)." }
+        effective: { type: boolean, description: "false = the cap can reach NO device at all." }
+        reach: { type: string, nullable: true, description: "Names the gap in German; null when the cap reaches every unit." }
+    DeviceExportLimit:
+      type: object
+      description: >
+        The feed-in limit the INVERTER ITSELF holds - a foreign truth inside the
+        customer's device, READ (never written) by the box. At Anlage Herzogau
+        the Deye held an installer cap of 33,0 kW in register 0x00E7 while 70 kW
+        were configured in the portal; the discrepancy was invisible for two
+        investigation rounds because nobody read the register.
+      properties:
+        limitKw: { type: number, description: "The limit the device currently holds." }
+        register: { type: string, description: "WHERE it came from (\"0x00e7\") - a number without its origin is not evidence." }
+        readAt: { type: string, format: date-time, description: "Its OWN freshness anchor: the register is read at most once a day (one socket, no extra poll cadence), so it must never borrow checkedAt." }
     SiteSource:
       type: object
       description: >
