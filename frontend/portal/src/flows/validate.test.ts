@@ -27,6 +27,15 @@ const ENTITIES: EditorEntity[] = [
   { id: 'heatrod-cellar', entityType: 'producer', label: 'Heizstab', measure: [], actuate: ['on_off'] },
   { id: 'pv-roof-east', entityType: 'producer', label: 'PV Ost', measure: ['pv_power_kw'], actuate: ['limit_pct'] },
   { id: 'modbus-meter-1', entityType: 'modbus-generic', label: 'Zähler', measure: ['leistung_kw'], actuate: [] },
+  // Einheitsmodell Stufe 4: the released self-built switch of the
+  // flow-graph.valid.modbus-switch fixture (two read channels + one on/off).
+  {
+    id: '9c1e5d70-4a2b-4c8f-b3d1-fedcba987654',
+    entityType: 'modbus-load',
+    label: 'Heizstab Keller',
+    measure: ['wassertemperatur_speicher_oben', 'aufnahmeleistung'],
+    actuate: ['on_off'],
+  },
 ];
 
 const EXAMPLES = resolve(process.cwd(), '../../docs/contracts/v2/examples');
@@ -95,6 +104,29 @@ describe('contract fixtures (executable contract)', () => {
     expect(errors(findings)).toContain('V-4');
     expect(findings.map((f) => f.message).join(' '))
       .toContain('generierten Verbraucherregel vorbehalten');
+  });
+
+  it.skipIf(!haveFixtures)('modbus-switch fixture validates clean ONLY with ITS OWN origin', () => {
+    // Einheitsmodell Stufe 4: the SECOND generated-only type. Its origin kind
+    // is `modbus-device`, NOT `consumer-policy` - a validator that hardcodes
+    // the consumer-policy origin refuses this perfectly valid document, and
+    // one that hardcodes nothing lets the switch into any flow. The refusal
+    // must NAME which generated flow owns the block.
+    const doc = fixture('flow-graph.valid.modbus-switch.json');
+    expect(errors(validateFlow(doc, ENTITIES))).toEqual([]);
+
+    const noOrigin = fixture('flow-graph.valid.modbus-switch.json');
+    delete (noOrigin as { origin?: unknown }).origin;
+    const findings = validateFlow(noOrigin, ENTITIES);
+    expect(errors(findings)).toContain('V-4');
+    expect(findings.map((f) => f.message).join(' '))
+      .toContain('generierten Geräte-Flow vorbehalten');
+
+    // ...and a switch smuggled into a CONSUMER-POLICY document is refused too:
+    // the origin kinds are not interchangeable.
+    const foreign = fixture('flow-graph.valid.modbus-switch.json');
+    (foreign as { origin?: unknown }).origin = { kind: 'consumer-policy' };
+    expect(errors(validateFlow(foreign, ENTITIES))).toContain('V-4');
   });
 
   it.skipIf(!haveFixtures)('override on vp.entity.control is reserved (D-19)', () => {

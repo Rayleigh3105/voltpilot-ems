@@ -702,6 +702,8 @@
       "description": "GENERIERT vom Consumer-Policy-Compiler (D-19): die kompilierte reaktive Verbraucherregel - lokale Signale mit Frische und Hysterese, vorberechnete Preisfenster, Ausschaltverzögerung. Nur in server-gestempelten Dokumenten mit consumer-policy-origin gültig; im Editor nie anzubieten, Bearbeiten öffnet den Verbraucher-Regelbaukasten.",
       "group": "aktion",
       "generated": true,
+      "generated_origin": "consumer-policy",
+      "generated_origin_label": "der generierten Verbraucherregel",
       "customer_visible": false,
       "runtimes": [
         "edge"
@@ -906,6 +908,7 @@
       "group": "aktion",
       "generated": true,
       "generated_origin": "modbus-device",
+      "generated_origin_label": "dem generierten Geräte-Flow",
       "customer_visible": false,
       "runtimes": [
         "edge"
@@ -914,13 +917,13 @@
       "outputs": [],
       "parameters": [
         {
-          "key": "entity_id",
+          "name": "entity_id",
           "label": "Komponente",
           "kind": "entity",
           "required": true
         },
         {
-          "key": "kind",
+          "name": "kind",
           "label": "Schalt-Art",
           "kind": "enum",
           "options": [
@@ -930,13 +933,13 @@
           "required": true
         },
         {
-          "key": "host",
+          "name": "host",
           "label": "Adresse",
           "kind": "host",
           "required": true
         },
         {
-          "key": "port",
+          "name": "port",
           "label": "Port",
           "kind": "number",
           "min": 1,
@@ -944,7 +947,7 @@
           "default": 502
         },
         {
-          "key": "unit_id",
+          "name": "unit_id",
           "label": "Unit-ID",
           "kind": "number",
           "min": 0,
@@ -952,7 +955,7 @@
           "default": 1
         },
         {
-          "key": "fc",
+          "name": "fc",
           "label": "Schreib-Funktionscode",
           "kind": "enum",
           "options": [
@@ -963,7 +966,7 @@
           "required": true
         },
         {
-          "key": "address",
+          "name": "address",
           "label": "Registeradresse",
           "kind": "number",
           "min": 0,
@@ -971,62 +974,62 @@
           "required": true
         },
         {
-          "key": "on_value",
+          "name": "on_value",
           "label": "Ein-Wert",
           "kind": "number",
           "min": 0,
           "max": 65535
         },
         {
-          "key": "off_value",
+          "name": "off_value",
           "label": "Aus-Wert",
           "kind": "number",
           "min": 0,
           "max": 65535
         },
         {
-          "key": "min_value",
+          "name": "min_value",
           "label": "Kleinster Sollwert",
           "kind": "number"
         },
         {
-          "key": "max_value",
+          "name": "max_value",
           "label": "Groesster Sollwert",
           "kind": "number"
         },
         {
-          "key": "safe_value",
+          "name": "safe_value",
           "label": "Sicherheitswert",
           "kind": "number"
         },
         {
-          "key": "scale",
+          "name": "scale",
           "label": "Skalierung",
           "kind": "number",
           "default": 1
         },
         {
-          "key": "offset",
+          "name": "offset",
           "label": "Offset",
           "kind": "number",
           "default": 0
         },
         {
-          "key": "readback_address",
+          "name": "readback_address",
           "label": "Ruecklese-Register",
           "kind": "number",
           "min": 0,
           "max": 65535
         },
         {
-          "key": "watchdog_address",
+          "name": "watchdog_address",
           "label": "Watchdog-Register des Geraets",
           "kind": "number",
           "min": 0,
           "max": 65535
         },
         {
-          "key": "watchdog_value",
+          "name": "watchdog_value",
           "label": "Watchdog-Wert",
           "kind": "number",
           "min": 0,

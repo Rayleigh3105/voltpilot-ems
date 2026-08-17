@@ -173,13 +173,18 @@ public class FlowGraphValidator {
             // constant: Einheitsmodell Stufe 4 added a second generated-only
             // type (vp.modbus.switch, origin kind "modbus-device"), and a
             // hardcoded "consumer-policy" would have let it into every flow or
-            // into none.
+            // into none. `generated_origin_label` keeps the refusal SPECIFIC -
+            // it names WHICH generated flow the block belongs to, so a customer
+            // never reads a generic "einem generierten Flow vorbehalten".
+            // A generated type without an origin kind is a catalog bug and
+            // fails CLOSED (never a silent default onto someone else's origin).
             if (type.path("generated").asBoolean(false)) {
-                String want = type.path("generated_origin").asText("consumer-policy");
-                if (!want.equals(doc.path("origin").path("kind").asText())) {
+                String want = type.path("generated_origin").asText("");
+                if (want.isEmpty() || !want.equals(doc.path("origin").path("kind").asText())) {
+                    String owner = type.path("generated_origin_label")
+                            .asText("einem generierten Flow");
                     findings.add(FlowValidationFinding.error("V-4", List.of(id), List.of(),
-                            "Baustein \"" + label(type) + "\" ist einem generierten Flow "
-                                    + "vorbehalten."));
+                            "Baustein \"" + label(type) + "\" ist " + owner + " vorbehalten."));
                 }
             }
             // D-19: the D-5 override lever is reserved for the generated
