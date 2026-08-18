@@ -16,6 +16,7 @@ import {
 } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
 import {
+  redirectAdminToPlattform,
   redirectOverviewToAnlage,
   redirectToPortfolio,
   showOverviewNav,
@@ -26,6 +27,7 @@ import {
   anlageRoute,
   canonicalAnlageHash,
   hashForRoute,
+  isBootHash,
   isPortfolioPage,
   pageRoute,
   PLATFORM_PAGES,
@@ -605,6 +607,28 @@ function UnifiedPortal() {
     void reload();
   }, [reload, tenantId]);
 
+  // Admin-Umbau Stufe 1 (Captain-Entscheid F1): ein Admin-Boot OHNE Ziel
+  // landet auf der PLATTFORM-ÜBERSICHT statt auf der Kunden-Übersicht, die
+  // ohne gewählten Mandanten praktisch leer ist. Sie ist als „täglicher
+  // erster Blick" gebaut (Q1) - der Admin soll auf ihr aufwachen.
+  //
+  // ⚠ Nur der LEERE Boot-Hash, und genau EINMAL: der Nav-Punkt „Übersicht"
+  // bleibt für Admins bedienbar, ein Deep-Link (auch `#/uebersicht`) wird nie
+  // umgeleitet. `replace()` hält den Verlauf sauber (Zurück verlässt die App,
+  // statt hierher zurückzuspringen) - dieselbe Mechanik wie die
+  // Endkunden-/Betreiber-Weiterleitungen darunter. Sie läuft VOR dem Laden,
+  // also greift die Portfolio-Weiterleitung danach nicht mehr (ein Admin, der
+  // einen Betreiber-Mandanten gewählt hat, erreicht das Portfolio weiterhin
+  // über die Seitenleiste).
+  const bootHash = useRef(isBootHash(window.location.hash));
+  useEffect(() => {
+    if (!bootHash.current) return;
+    bootHash.current = false;
+    if (!redirectAdminToPlattform({ isAdmin, bootHash: true })) return;
+    window.location.replace(hashForRoute(pageRoute('plattform-uebersicht')));
+    setRoute(pageRoute('plattform-uebersicht'));
+  }, [isAdmin]);
+
   // U0 shell frame: a customer WITHOUT a fleet level (endkunde below 2
   // Anlagen - the single-plant merge, captain decision 2, 2026-07-07) has NO
   // "Übersicht"; any landing there (default boot hash, old bookmark) forwards
@@ -950,7 +974,9 @@ function UnifiedPortal() {
           {page === 'benutzer' && isAdmin && (
             <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
           )}
-          {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
+          {page === 'geraete-registry' && isAdmin && (
+            <GeraeteRegistryPage onJumpToTenant={jumpToTenant} onNavigate={navigate} />
+          )}
           {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage onNavigate={navigate} />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'geraetetypen' && isAdmin && <GeraetetypenPage />}

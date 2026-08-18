@@ -54,6 +54,15 @@ if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function scrollIntoViewStub(): void {};
 }
 
+// jsdom implementiert `window.scrollTo` ebenfalls nicht, wirft dort aber nur
+// eine „Not implemented"-Meldung ins stderr. Jede Fläche, die eine Navigation
+// als Navigation behandelt (Seitenwechsel, Listen-/Detail-Wechsel), ruft es -
+// ohne Stub steht die Meldung zwischen den Testergebnissen und macht echte
+// Fehler schwerer zu finden.
+if (typeof window !== 'undefined') {
+  window.scrollTo = function scrollToStub(): void {};
+}
+
 // Jeder Test beginnt in einem FRISCHEN Tab. Seit dem Chart-Redesign merken
 // sich mehrere Flächen ihre Detailtiefe in `sessionStorage` (`useChartDetail`,
 // die Fahrplan-Schichten, das Verlauf-Aufklappen) - jsdom teilt den Speicher

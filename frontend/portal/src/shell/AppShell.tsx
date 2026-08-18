@@ -9,7 +9,7 @@ import type { Tenant } from '../admin/adminApi';
 import {
   anlagenLabel,
   MAIN_PAGES,
-  PLATFORM_PAGES,
+  PLATFORM_GROUPS,
   PORTFOLIO_PAGE,
   PORTFOLIO_WELT_PAGES,
   pageLabel,
@@ -346,20 +346,35 @@ export function AppShell({
         ))}
         {anlageNav}
         {isAdmin && (
+          // Admin-Umbau Stufe 1 „Ordnung": die elf flachen Punkte sind vier
+          // benannte Gruppen hinter der LANDUNG (Plattform-Übersicht). Die
+          // Gruppierung ist reine Präsentation - keine Route ändert sich, und
+          // die Reihenfolge erzählt jetzt die Arbeit statt der Baugeschichte.
           <>
             <div className="vp-nav-group-label">
               <span className="vp-nav-lbl">Plattform</span>
             </div>
-            {PLATFORM_PAGES.map((p) => (
-              <NavItem
-                key={p.id}
-                icon={<Icon name={p.icon} size={18} />}
-                label={<span className="vp-nav-lbl">{p.label}</span>}
-                title={p.label}
-                active={page === p.id}
-                count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
-                onClick={() => onNavigate(p.id)}
-              />
+            {PLATFORM_GROUPS.map((group) => (
+              <div className="vp-navgroup" key={group.key}>
+                {/* Die Landung trägt keine eigene Überschrift - sie steht schon
+                    unter „Plattform" und braucht keine zweite Zeile. */}
+                {group.label && (
+                  <div className="vp-nav-group-label vp-nav-sublabel">
+                    <span className="vp-nav-lbl">{group.label}</span>
+                  </div>
+                )}
+                {group.pages.map((p) => (
+                  <NavItem
+                    key={p.id}
+                    icon={<Icon name={p.icon} size={18} />}
+                    label={<span className="vp-nav-lbl">{p.label}</span>}
+                    title={p.label}
+                    active={page === p.id}
+                    count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
+                    onClick={() => onNavigate(p.id)}
+                  />
+                ))}
+              </div>
             ))}
           </>
         )}

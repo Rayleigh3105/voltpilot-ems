@@ -480,3 +480,86 @@ describe('AppShell: die Leiste der Flotten-Ebene', () => {
     );
   });
 });
+
+/**
+ * Admin-Umbau Stufe 1 „Ordnung": die Plattform-Gruppe ist nicht mehr eine
+ * flache Liste aus elf Punkten, sondern die Landung plus vier benannte
+ * Gruppen. Geprüft wird die ORDNUNG in der Schale - die Mengen-Invarianten
+ * liegen in `nav.test.ts`.
+ */
+describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
+  const adminProps = {
+    ...baseProps,
+    isAdmin: true,
+    showOverview: true,
+    showAddAnlage: false,
+    onAddAnlage: vi.fn(),
+  };
+
+  function sidebarLabels() {
+    const nav = screen.getByLabelText('Hauptnavigation');
+    return [...nav.querySelectorAll('.vp-nav-group-label .vp-nav-lbl')].map((n) => n.textContent);
+  }
+
+  it('rendert „Plattform" plus die vier Gruppen-Überschriften in Arbeits-Reihenfolge', () => {
+    render(
+      <AppShell {...adminProps}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(sidebarLabels()).toEqual([
+      'Plattform',
+      'Flotte',
+      'Anlagen-Werkzeuge',
+      'Katalog',
+      'Kunden',
+    ]);
+  });
+
+  it('stellt die Landung OHNE eigene Überschrift an die Spitze', () => {
+    render(
+      <AppShell {...adminProps}>
+        <div>content</div>
+      </AppShell>,
+    );
+    const nav = screen.getByLabelText('Hauptnavigation');
+    const gruppen = [...nav.querySelectorAll('.vp-navgroup')];
+    // Die erste Gruppe ist die Landung: ein Eintrag, keine Zwischenüberschrift.
+    expect(gruppen[0].querySelector('.vp-nav-sublabel')).toBeNull();
+    expect(gruppen[0].textContent).toContain('Plattform-Übersicht');
+    // Und die Gruppen darunter tragen ihre Überschrift.
+    expect(gruppen[1].querySelector('.vp-nav-sublabel')?.textContent).toBe('Flotte');
+  });
+
+  it('behält jeden Punkt bedienbar und den Mandanten-Zähler', () => {
+    const onNavigate = vi.fn();
+    render(
+      <AppShell
+        {...adminProps}
+        onNavigate={onNavigate}
+        tenants={[
+          { id: 't-1', name: 'A', segment: 'CI', plan: 'basic', betriebsart: null, betriebsartEffective: 'endkunde' as const, createdAt: '2026-01-01T00:00:00Z' },
+        ]}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+    for (const label of ['Geräte', 'Edge-Updates', 'Steuerungs-Freigabe', 'Gerätetypen',
+      'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten', 'Benutzer']) {
+      expect(screen.getByTitle(label)).toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByTitle('Geräte'));
+    expect(onNavigate).toHaveBeenCalledWith('geraete-registry');
+    expect(screen.getByTitle('Mandanten').textContent).toContain('1');
+  });
+
+  it('zeigt einem Kunden keine einzige Plattform-Gruppe', () => {
+    render(
+      <AppShell {...baseProps} showAddAnlage={false} onAddAnlage={vi.fn()}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(sidebarLabels()).not.toContain('Plattform');
+    expect(screen.queryByTitle('Geräte')).toBeNull();
+  });
+});

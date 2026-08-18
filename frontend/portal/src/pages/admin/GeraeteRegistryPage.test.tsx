@@ -6,6 +6,8 @@ const listPendingEnrollments = vi.fn();
 
 const listDevices = vi.fn();
 const edgeUpdates = vi.fn();
+const controlCandidates = vi.fn();
+const fleet = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -13,12 +15,15 @@ vi.mock('../../admin/adminApi', () => ({
     listPendingEnrollments: () => listPendingEnrollments(),
     listDevices: () => listDevices(),
     edgeUpdates: () => edgeUpdates(),
+    controlCandidates: () => controlCandidates(),
     provisionDevice: vi.fn(),
     deleteProvisionedDevice: vi.fn(),
     setUpdateTarget: vi.fn(),
     revertUpdateTarget: vi.fn(),
   },
 }));
+
+vi.mock('../../admin/fleetApi', () => ({ fleetApi: { fleet: () => fleet() } }));
 
 const { GeraeteRegistryPage } = await import('./GeraeteRegistryPage');
 
@@ -56,6 +61,12 @@ const PRINTED = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // ⚠ jsdom teilt `window.location.hash` über ALLE Tests einer Datei - ohne
+  // diesen Reset öffnet der `?geraet=`-Parameter des vorigen Tests die
+  // Detailseite, und der folgende Test findet seine Tabelle nicht mehr.
+  window.location.hash = '';
+  controlCandidates.mockResolvedValue([]);
+  fleet.mockResolvedValue({ sites: [], releases: [] });
   listProvisionedDevices.mockResolvedValue([DEVICE]);
   listPendingEnrollments.mockResolvedValue([]);
   // Das Inventar ist die VEREINIGUNG: die verbundene Aufkleber-ID, eine echte
@@ -146,27 +157,39 @@ describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', ()
     expect(table).not.toHaveTextContent('9b37439a02c1');
   });
 
-  it('öffnet den GETEILTEN Geräte-Drawer aus der Zeile', async () => {
+  it('öffnet die GERÄTE-DETAILSEITE aus der Zeile - adressierbar', async () => {
+    // Admin-Umbau Stufe 2: die Zeile führt auf die Vollansicht, nicht mehr in
+    // den Drawer (der bleibt der Schnellblick am Wellen-Board).
     render(<GeraeteRegistryPage />);
     const table = await screen.findByTestId('devices');
     fireEvent.click(within(table).getByText('Auernheim'));
 
-    const drawer = await screen.findByRole('dialog');
-    expect(drawer).toHaveTextContent('edge-k2m4pqj');
-    expect(drawer).toHaveTextContent('Identität');
-    expect(drawer).toHaveTextContent('gekreuzt');
-    // Der Drawer der ANDEREN Seite ist derselbe - er kann hier zuweisen.
-    expect(within(drawer).getByRole('button', { name: 'Release zuweisen' }))
-      .toBeInTheDocument();
-    // Und er sagt, dass eine `edge-`Referenz NICHT aus der Registry kommt -
-    // das ist der Normalfall der Bestandsflotte, kein Mangel.
-    expect(drawer).toHaveTextContent('selbst erzeugte Referenz');
-    // Derselbe Drawer beantwortet von HIER aus auch: wann wurde der gezeigte
-    // Ist-Stand gemeldet, und entspricht er dem Soll? Beides kommt aus
-    // demselben `FleetRow`, egal über welche Seite der Drawer öffnet.
-    expect(drawer).toHaveTextContent('Ist gemeldet');
-    expect(within(drawer).getByTestId('drawer-confirmed'))
-      .toHaveTextContent('Ist entspricht dem Soll');
+    expect(await screen.findByRole('heading', { name: 'edge-k2m4pqj' })).toBeInTheDocument();
+    // Die REFERENZ steht in der Adresse - ein Lesezeichen darauf überlebt
+    // Unclaim/Re-Claim, eine Geräte-UUID täte das nicht.
+    expect(window.location.hash).toContain('geraet=edge-k2m4pqj');
+    // Die Sektionen, die es im Drawer nie gab.
+    expect(screen.getByRole('heading', { name: /Grenzen & Wächter/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Steuerung/ })).toBeInTheDocument();
+    // Zuweisen kann sie wie der Drawer.
+    expect(screen.getByRole('button', { name: 'Release zuweisen' })).toBeInTheDocument();
+    // Und zurück in die Liste.
+    fireEvent.click(screen.getByRole('button', { name: /Alle Geräte/ }));
+    expect(await screen.findByTestId('devices')).toBeInTheDocument();
+    expect(window.location.hash).not.toContain('geraet=');
+  });
+
+  it('öffnet ein Lesezeichen direkt auf der Detailseite', async () => {
+    window.location.hash = '#/geraete-registry?geraet=edge-k2m4pqj';
+    render(<GeraeteRegistryPage />);
+    expect(await screen.findByRole('heading', { name: 'edge-k2m4pqj' })).toBeInTheDocument();
+    expect(screen.queryByTestId('devices')).toBeNull();
+  });
+
+  it('sagt bei einer unbekannten Referenz, dass es sie nicht gibt', async () => {
+    window.location.hash = '#/geraete-registry?geraet=VP-GIBT-ES-NICHT';
+    render(<GeraeteRegistryPage />);
+    expect(await screen.findByText(/keinen Eintrag/)).toBeInTheDocument();
   });
 
   it('bietet der noch unverbundenen ID keine Zuweisung an', async () => {

@@ -16,6 +16,18 @@ import {
 import { MAIN_PAGES, PLATFORM_PAGES, type AnlagenSub } from './nav';
 import { anlageSurface, type AnlageSurface, type AnlageSurfaceInput } from './surface';
 
+/**
+ * Die Plattform-Seiten, wie das Telefon-Blatt sie trägt - über ALLE
+ * Plattform-Gruppen hinweg, in Blatt-Reihenfolge. Der Wächter prüft damit
+ * die Vollständigkeit, nicht die Gruppierung: eine Umsortierung der Gruppen
+ * ist erlaubt, eine verlorene Seite nicht.
+ */
+function platformSheetKeys(groups: { key: string; items: { key: string }[] }[]): string[] {
+  return groups
+    .filter((g) => g.key.startsWith('plattform'))
+    .flatMap((g) => g.items.map((i) => i.key));
+}
+
 /** Every AnlagenSub that exists - the "nothing is orphaned" ground truth. */
 const ALL_SUBS: AnlagenSub[] = [
   'fahrplan',
@@ -472,8 +484,11 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     // Am Telefon gibt es seit Stufe 1 keine zweite Menü-Tür - also muss ALLES,
     // was die Kopfzeile bzw. die Seitenleiste trägt, hier ankommen.
     const groups = moreSheetItems(anlageSidebar(PRIVAT), { isAdmin: true, showAddAnlage: true });
-    const platform = groups.find((g) => g.label === 'Plattform');
-    expect(platform?.items.map((i) => i.key)).toEqual(PLATFORM_PAGES.map((p) => p.id));
+    // Seit dem Admin-Umbau (Stufe 1) faltet das Blatt die GRUPPEN der
+    // Plattform-Navigation mit - die Landung unter „Plattform", jede weitere
+    // unter ihrem eigenen Namen. Geprüft wird die Vereinigung: keine Seite darf
+    // dabei verloren gehen, und keine darf doppelt stehen.
+    expect(platformSheetKeys(groups)).toEqual(PLATFORM_PAGES.map((p) => p.id));
     const last = groups[groups.length - 1];
     expect(last.items.map((i) => i.key)).toEqual([
       'wetter',
@@ -487,7 +502,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     // Ein Kunde ohne zweite Anlage bekommt keinen „＋"-Eintrag, und keine
     // Plattform-Gruppe.
     const kunde = moreSheetItems(anlageSidebar(PRIVAT), { isAdmin: false, showAddAnlage: false });
-    expect(kunde.some((g) => g.label === 'Plattform')).toBe(false);
+    expect(platformSheetKeys(kunde)).toEqual([]);
     expect(kunde.at(-1)?.items.map((i) => i.key)).toEqual([
       'wetter',
       'befehle',
@@ -563,9 +578,7 @@ describe('fleetBarSlots / fleetSheetGroups - die Leiste über der Anlage', () =>
 
   it('trägt im Blatt die Plattform-Gruppe und die Kopfzeilen-Aktionen', () => {
     const groups = fleetSheetGroups(FLOTTE, { isAdmin: true, showAddAnlage: true });
-    expect(groups.find((g) => g.label === 'Plattform')?.items.map((i) => i.key)).toEqual(
-      PLATFORM_PAGES.map((p) => p.id),
-    );
+    expect(platformSheetKeys(groups)).toEqual(PLATFORM_PAGES.map((p) => p.id));
     expect(groups.at(-1)?.items.map((i) => i.key)).toEqual(['hilfe', 'add-anlage', 'logout']);
   });
 
