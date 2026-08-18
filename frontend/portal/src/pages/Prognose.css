@@ -116,3 +116,88 @@
 .vp-pq-fold-body > p:last-child {
   margin-bottom: 0;
 }
+
+/* ---------- Der Prognose-Schalter + der Beleg (18.08.2026) ---------- */
+
+/* Der aufklappbare BELEG unter „X von Y genauer" - dieselbe Aufklapper-Optik
+   wie die Erklaer-Falten oben, nur enger, weil er in einer Karte sitzt. */
+.vp-pq-beleg {
+  margin-top: var(--vp-space-2);
+  border-top: 1px solid var(--vp-border);
+}
+.vp-pq-beleg > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-muted, #6c757d);
+  padding: 12px 0; /* 44-px-Trefferflaeche */
+}
+.vp-pq-beleg > summary::-webkit-details-marker {
+  display: none;
+}
+.vp-pq-beleg > summary svg {
+  transition: transform 0.15s ease;
+  flex: 0 0 auto;
+}
+.vp-pq-beleg[open] > summary svg {
+  transform: rotate(180deg);
+}
+.vp-pq-beleg-body {
+  padding-bottom: var(--vp-space-3);
+  /* Die Tabelle darf nie die Seite schieben - sie scrollt in sich. */
+  overflow-x: auto;
+}
+.vp-pq-beleg-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--vp-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.vp-pq-beleg-tabelle th,
+.vp-pq-beleg-tabelle td {
+  text-align: left;
+  padding: 6px 8px 6px 0;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--vp-border);
+}
+.vp-pq-beleg-tabelle th {
+  font-weight: 600;
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-pq-beleg-tabelle tr:last-child td {
+  border-bottom: none;
+}
+.vp-pq-sieg {
+  font-weight: 600;
+  color: var(--vp-ok, #1a7f5a);
+}
+
+/* Der Knopf plus sein Einwand - der Grund steht VOR dem Klick, nie danach. */
+.vp-pq-aktion {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+  margin-top: var(--vp-space-3);
+}
+.vp-pq-aktion .vp-note {
+  margin: 0;
+}
+
+/* Die Umstellungs-Historie am aktiven Modell. */
+.vp-pq-historie {
+  margin: var(--vp-space-1) 0 0;
+  padding-left: var(--vp-space-5);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-pq-fehler {
+  margin: 0 0 var(--vp-space-3);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-danger, #b3261e);
+}

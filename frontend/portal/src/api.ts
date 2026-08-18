@@ -671,7 +671,12 @@ export interface ForecastAccuracyPoint {
   maeKw: number;
   nmaePct: number | null;
   biasKw: number | null;
-  /** 1 - mae/mae_baseline; positive = better than the baseline; null for the baseline. */
+  /**
+   * 1 - mae/mae_reference; positiv = genauer als das AKTIVE Modell dieser Art,
+   * null für den Maßstab selbst. (Solange nichts befördert ist, IST das aktive
+   * Modell das Basismodell - die Zahlen sind unverändert; nach einer
+   * Beförderung tauschen die Rollen sauber.)
+   */
   skillVsBaseline: number | null;
   nSlots: number;
 }
@@ -685,6 +690,12 @@ export interface PlanAccuracyPoint {
 }
 
 export interface ForecastQuality {
+  /**
+   * Das Modell, dessen Prognosen der Optimierer konsumiert - server-seitig mit
+   * DERSELBEN Präzedenz aufgelöst, die der Optimierer nutzt (Portal-Wahl >
+   * Umgebungs-Vorgabe). Nach einer Beförderung steht hier sofort das neue
+   * Modell.
+   */
   activeLoadModel: ForecastModelId;
   activePvModel: ForecastModelId;
   models: ForecastModelState[];

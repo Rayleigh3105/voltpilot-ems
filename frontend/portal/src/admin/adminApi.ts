@@ -8,6 +8,7 @@ import {
 import type { DeviceApply, DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
 import type { AdminVorlage } from '../adminVorlagen';
 import type { FlottenAnlage } from '../adminKomponentenFlotte';
+import type { ModellWahlZustand } from '../prognose';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -543,4 +544,21 @@ export const adminApi = {
   /** Die Komponenten-Welt der ganzen Flotte, read-only. */
   componentFleet: () =>
     request<{ sites: FlottenAnlage[] }>('/api/v1/admin/component-fleet').then((r) => r.sites),
+
+  /**
+   * Der Prognose-Schalter: welches Modell je Prognoseart plant, woher die Wahl
+   * kommt, und die Umstellungs-Historie. PLATTFORMWEIT, nicht je Anlage.
+   */
+  forecastModels: () => request<ModellWahlZustand>('/api/v1/admin/forecast-models'),
+
+  /**
+   * „Kandidat übernehmen" - ab dem nächsten Planungslauf plant dieses Modell.
+   * Der Rückweg ist derselbe Aufruf in die Gegenrichtung; die Umstellung wird
+   * append-only protokolliert (von->zu, wer, wann).
+   */
+  promoteForecastModel: (kind: 'load' | 'pv', model: string) =>
+    request<ModellWahlZustand>('/api/v1/admin/forecast-models', {
+      method: 'POST',
+      body: JSON.stringify({ kind, model }),
+    }),
 };
