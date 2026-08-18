@@ -1093,7 +1093,7 @@ class PortalApiTest {
         // layer now writes), the decision facts surface on the customer
         // endpoint: role, split binding flags, the exact stored/grid values,
         // the peak pressure and the run-level fallback marker.
-        // The Erklaerbarkeit-Stufe-1 facts ride the SAME update (V20260823000000):
+        // The Erklaerbarkeit-Stufe-1 facts ride the SAME update (V20260824000000):
         // the run-level anchor + free-refill share are written on EVERY row (the
         // terminal_value pattern), the next-best margin only on the RESTING slot -
         // here the second one, and the first (active) slot stays honestly empty.

@@ -99,7 +99,7 @@ import java.util.List;
  * duty - the portal marks a phase only on an explicit true, so both non-true
  * states render exactly today's view.
  *
- * <p><b>Erklärbarkeit Stufe 1</b> (migration V20260823000000, Konzept
+ * <p><b>Erklärbarkeit Stufe 1</b> (migration V20260824000000, Konzept
  * vp-warum-erklaerbar-e2 §4.2 C): {@code whyNextBest} is the best action this
  * RESTING slot rejected ({@code decken} | {@code verkaufen} |
  * {@code solar_speichern} | {@code netzladen}) and {@code whyNextBestMarginCt}
