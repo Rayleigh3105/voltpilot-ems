@@ -974,7 +974,9 @@ function UnifiedPortal() {
           {page === 'benutzer' && isAdmin && (
             <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
           )}
-          {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
+          {page === 'geraete-registry' && isAdmin && (
+            <GeraeteRegistryPage onJumpToTenant={jumpToTenant} onNavigate={navigate} />
+          )}
           {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage onNavigate={navigate} />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
           {page === 'geraetetypen' && isAdmin && <GeraetetypenPage />}

@@ -11,9 +11,11 @@ import { ApiError } from '../../api';
 import {
   adminApi,
   type AdminDeviceRow,
+  type ControlCandidate,
   type PendingEnrollment,
   type ProvisionedDevice,
 } from '../../admin/adminApi';
+import { fleetApi, type AdminFleetSite } from '../../admin/fleetApi';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
@@ -26,7 +28,10 @@ import {
   stateLabel,
   type EdgeUpdates,
 } from '../../adminEdgeUpdates';
-import { GeraeteDrawer } from './GeraeteDrawer';
+import { geraetView } from '../../adminGeraet';
+import { anlageRoute, geraetHash, parseGeraetRef, pageRoute, type PageId, type Route }
+  from '../../nav';
+import { GeraetSeite } from './GeraetSeite';
 
 /**
  * Plattform → **Geräte**: das INVENTAR über den ganzen Lebenszyklus (UX-Konzept
@@ -49,14 +54,37 @@ import { GeraeteDrawer } from './GeraeteDrawer';
  * Eine Zeile öffnet den EINEN Geräte-Drawer, den auch die Update-Seite
  * benutzt — ein Gerät hat genau einen Ort.
  */
-export function GeraeteRegistryPage() {
+export function GeraeteRegistryPage({
+  onJumpToTenant,
+  onNavigate,
+}: {
+  /** Sprung in den Mandanten-Kontext (Kundensicht der Anlage / ihre Befehle). */
+  onJumpToTenant?: (tenantId: string, target: Route) => void;
+  onNavigate?: (target: Route | PageId) => void;
+} = {}) {
   const [devices, setDevices] = useState<ProvisionedDevice[] | null>(null);
   const [fleet, setFleet] = useState<AdminDeviceRow[] | null>(null);
+  // Admin-Umbau Stufe 2: die GERÄTE-DETAILSEITE als Vollansicht derselben
+  // Route (`?geraet=<referenz>`). Der Parameter ist der Zustand - ein
+  // Lesezeichen darauf öffnet exakt dieses Gerät wieder.
+  const [geraetRef, setGeraetRef] = useState<string | null>(() =>
+    parseGeraetRef(window.location.hash),
+  );
+  // Die zwei ZUSÄTZLICHEN Reads der Detailseite - erst geladen, wenn wirklich
+  // ein Gerät geöffnet wird; die Liste soll sie nicht bezahlen. Beide
+  // FAIL-SOFT in EIGENEN Zuständen: ihr Ausfall lässt die Sektionen ehrlich
+  // leer, statt die ganze Seite unbenutzbar zu machen.
+  const [sites, setSites] = useState<AdminFleetSite[] | null>(null);
+  const [candidates, setCandidates] = useState<ControlCandidate[] | null>(null);
+  const [detailGeladen, setDetailGeladen] = useState(false);
+  // Die Bezugszeit der gezeigten Belege. Zustand und Bezugszeit werden
+  // GEMEINSAM gesetzt (`liveness.ts`) - sonst verfällt ein stehender
+  // Schnappschuss gegen eine weiterlaufende Uhr zu „meldet sich nicht".
+  const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
   // Releases + Journal für den geteilten Drawer (Zuweisung + Historie). FAIL-
   // SOFT in einem EIGENEN Zustand: fällt der Abruf aus, bleibt das Inventar
   // benutzbar, der Drawer zeigt dann eben keine Zuweisung.
   const [updates, setUpdates] = useState<EdgeUpdates | null>(null);
-  const [openRef, setOpenRef] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingEnrollment[] | null>(null);
   // Getrennt von `pending === null` (= lädt noch), damit ein Fehlschlag als
@@ -74,6 +102,7 @@ export function GeraeteRegistryPage() {
   async function reload() {
     setError(null);
     setLoadError(null);
+    setFetchedAt(Date.now());
     try {
       setDevices(await adminApi.listProvisionedDevices());
     } catch (e) {
@@ -127,16 +156,162 @@ export function GeraeteRegistryPage() {
     void reload();
   }, []);
 
+  // Die Adresse ist der Zustand: ein Deep-Link, ein Klick auf den Nav-Punkt
+  // (der den Parameter abräumt) und ein von Hand editierter Hash führen alle
+  // durch DIESELBE Stelle.
+  useEffect(() => {
+    const onHash = () => setGeraetRef(parseGeraetRef(window.location.hash));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  // Die zwei Detail-Reads GENAU EINMAL, sobald wirklich ein Gerät geöffnet
+  // wird - und beide einzeln fail-soft.
+  useEffect(() => {
+    if (!geraetRef || detailGeladen) return;
+    setDetailGeladen(true);
+    void (async () => {
+      try {
+        setSites((await fleetApi.fleet()).sites);
+      } catch {
+        setSites(null);
+      }
+      try {
+        setCandidates(await adminApi.controlCandidates());
+      } catch {
+        setCandidates(null);
+      }
+    })();
+  }, [geraetRef, detailGeladen]);
+
+  /** Ein Gerät öffnen bzw. schließen - `replaceState`, damit die Adresse
+   *  Lesezeichen-fähig bleibt, ohne einen Verlaufseintrag je Zeilenklick zu
+   *  erzeugen (die Explorer-Disziplin des `?m=`-Parameters). */
+  function oeffneGeraet(ref: string | null) {
+    window.history.replaceState(null, '', geraetHash(ref));
+    setGeraetRef(ref);
+    window.scrollTo({ top: 0 });
+  }
+
+  /** Die Freigabe-Rückfrage - von der LISTE und von der Detailseite geteilt,
+   *  damit beide Wege dieselbe Folgenliste zeigen. */
+  function applyDialog() {
+    if (!applying) return null;
+
+    const row = (fleet ?? []).find((d) => d.externalRef === applying);
+    if (!row || !row.deviceId) return null;
+    const view = applyView(row);
+    return (
+      <ConfirmDialog
+        open
+        title="Release jetzt auf dem Gerät anwenden?"
+        intro={`${row.siteName ?? row.externalRef}: `
+          + `${row.soll ?? 'das zugewiesene Release'} wird angewandt.`}
+        consequences={[
+          'Das Gerät startet seine Dienste neu - die Anlage ist dabei kurz ohne '
+            + 'VoltPilot-Steuerung und fällt in ihr eigenes Verhalten zurück.',
+          'Es ist GENAU EINE Freigabe für GENAU DIESES Release: sie gilt 15 Minuten und '
+            + 'wird danach nicht nachgeliefert.',
+          'Das Gerät prüft die Signatur weiterhin selbst und wendet nur an, wenn alle '
+            + 'seine Bedingungen erfüllt sind - Selbsttest und automatische Rücknahme '
+            + 'inklusive.',
+          'Automatische Updates werden dadurch NICHT eingeschaltet.',
+          ...(view.warn ? [`Achtung: ${view.warn}`] : []),
+        ]}
+        confirmLabel="Jetzt freigeben"
+        busy={busy}
+        onCancel={() => setApplying(null)}
+        onConfirm={() => {
+          const id = row.deviceId as string;
+          setApplying(null);
+          setBusy(true);
+          void (async () => {
+            try {
+              await adminApi.requestApply(id);
+              await reload();
+            } catch (e) {
+              setError(e instanceof ApiError ? e.message
+                : 'Die Freigabe ist fehlgeschlagen.');
+            } finally {
+              setBusy(false);
+            }
+          })();
+        }}
+      />
+    );
+  }
+
   const registerButton = (
     <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
       Geräte-ID registrieren
     </Button>
   );
 
+  // Admin-Umbau Stufe 2: eine geöffnete Referenz ERSETZT die Liste durch die
+  // Vollansicht - dieselbe Route, ein Parameter mehr. Der Drawer bleibt der
+  // Schnellblick am Wellen-Board der Update-Seite; hier führt die Zeile direkt
+  // auf die Detailseite, weil das ihr natürlicher Vollblick ist.
+  const detail = geraetRef
+    ? geraetView(
+        {
+          ref: geraetRef,
+          devices: fleet,
+          sites,
+          candidates,
+          releases: updates?.releases ?? [],
+          journal: updates?.journal ?? [],
+        },
+        new Date(fetchedAt),
+      )
+    : null;
+
+  if (geraetRef) {
+    const row = detail?.device ?? null;
+    return (
+      <>
+        {error && <div className="vp-alert vp-alert-err">{error}</div>}
+        <GeraetSeite
+          view={detail}
+          busy={busy}
+          onZurueck={() => oeffneGeraet(null)}
+          onJumpToTenant={(tenantId, siteId, sub) =>
+            onJumpToTenant?.(tenantId, anlageRoute(siteId, sub ?? null))
+          }
+          onNavigateSteuerung={() => onNavigate?.(pageRoute('steuerungs-freigabe'))}
+          onAssign={row?.deviceId ? async (releaseSeq, channel, pinned) => {
+            setBusy(true);
+            try {
+              await adminApi.setUpdateTarget(row.deviceId as string,
+                { releaseSeq, channel, pinned });
+              await reload();
+            } catch (e) {
+              setError(e instanceof ApiError ? e.message : 'Die Zuweisung ist fehlgeschlagen.');
+            } finally {
+              setBusy(false);
+            }
+          } : undefined}
+          onRevert={row?.deviceId && row.soll ? async () => {
+            setBusy(true);
+            try {
+              await adminApi.revertUpdateTarget(row.deviceId as string);
+              await reload();
+            } catch (e) {
+              setError(e instanceof ApiError ? e.message : 'Die Rücknahme ist fehlgeschlagen.');
+            } finally {
+              setBusy(false);
+            }
+          } : undefined}
+          onApply={row?.deviceId && row.soll ? () => setApplying(row.externalRef) : undefined}
+        />
+        {applyDialog()}
+      </>
+    );
+  }
+
   return (
     <>
       <AdminPageHead
-        icon="list"
+        icon="cpu"
         category="primary"
         title="Geräte"
         description="Jedes Gerät über seinen ganzen Lebenszyklus: gedruckte Aufkleber-IDs und die verbundene Flotte in EINER Tabelle. Eine Zeile öffnet das Gerät."
@@ -164,99 +339,13 @@ export function GeraeteRegistryPage() {
         <DeviceInventory
           fleet={fleet}
           releases={updates?.releases ?? []}
-          onOpen={setOpenRef}
+          onOpen={oeffneGeraet}
           onRemove={setRemoving}
           registerButton={registerButton}
         />
       )}
 
-      {openRef && (() => {
-        // Der EINE Drawer, denselben den die Update-Seite öffnet.
-        const row = (fleet ?? []).find((d) => d.externalRef === openRef);
-        if (!row) return null;
-        return (
-          <GeraeteDrawer
-            device={row}
-            releases={updates?.releases ?? []}
-            journal={updates?.journal ?? []}
-            busy={busy}
-            onClose={() => setOpenRef(null)}
-            onAssign={row.deviceId ? async (releaseSeq, channel, pinned) => {
-              setBusy(true);
-              try {
-                await adminApi.setUpdateTarget(row.deviceId as string,
-                  { releaseSeq, channel, pinned });
-                await reload();
-                setOpenRef(null);
-              } catch (e) {
-                setError(e instanceof ApiError ? e.message : 'Die Zuweisung ist fehlgeschlagen.');
-              } finally {
-                setBusy(false);
-              }
-            } : undefined}
-            onRevert={row.deviceId && row.soll ? async () => {
-              setBusy(true);
-              try {
-                await adminApi.revertUpdateTarget(row.deviceId as string);
-                await reload();
-                setOpenRef(null);
-              } catch (e) {
-                setError(e instanceof ApiError ? e.message : 'Die Rücknahme ist fehlgeschlagen.');
-              } finally {
-                setBusy(false);
-              }
-            } : undefined}
-            onApply={row.deviceId && row.soll
-              ? async () => setApplying(row.externalRef)
-              : undefined}
-          />
-        );
-      })()}
-
-      {applying && (() => {
-        const row = (fleet ?? []).find((d) => d.externalRef === applying);
-        if (!row || !row.deviceId) return null;
-        const view = applyView(row);
-        return (
-          <ConfirmDialog
-            open
-            title="Release jetzt auf dem Gerät anwenden?"
-            intro={`${row.siteName ?? row.externalRef}: `
-              + `${row.soll ?? 'das zugewiesene Release'} wird angewandt.`}
-            consequences={[
-              'Das Gerät startet seine Dienste neu - die Anlage ist dabei kurz ohne '
-                + 'VoltPilot-Steuerung und fällt in ihr eigenes Verhalten zurück.',
-              'Es ist GENAU EINE Freigabe für GENAU DIESES Release: sie gilt 15 Minuten und '
-                + 'wird danach nicht nachgeliefert.',
-              'Das Gerät prüft die Signatur weiterhin selbst und wendet nur an, wenn alle '
-                + 'seine Bedingungen erfüllt sind - Selbsttest und automatische Rücknahme '
-                + 'inklusive.',
-              'Automatische Updates werden dadurch NICHT eingeschaltet.',
-              ...(view.warn ? [`Achtung: ${view.warn}`] : []),
-            ]}
-            confirmLabel="Jetzt freigeben"
-            busy={busy}
-            onCancel={() => setApplying(null)}
-            onConfirm={() => {
-              const id = row.deviceId as string;
-              setApplying(null);
-              setOpenRef(null);
-              setBusy(true);
-              void (async () => {
-                try {
-                  await adminApi.requestApply(id);
-                  await reload();
-                } catch (e) {
-                  setError(e instanceof ApiError ? e.message
-                    : 'Die Freigabe ist fehlgeschlagen.');
-                } finally {
-                  setBusy(false);
-                }
-              })();
-            }}
-          />
-        );
-      })()}
+      {applyDialog()}
 
       {removing && (
         <ConfirmDialog

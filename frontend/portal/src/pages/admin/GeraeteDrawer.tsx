@@ -3,6 +3,8 @@ import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { deviceKindLabel, fmtRelative } from '../../format';
+import { REGISTRY_AUFKLEBER, REGISTRY_SELBST } from '../../adminGeraet';
+import { geraetHash } from '../../nav';
 import { versionLabel } from '../../onboardingFunnel';
 import {
   actorLabel,
@@ -112,6 +114,16 @@ export function GeraeteDrawer({
         {[device.tenantName, device.externalRef].filter(Boolean).join(' · ')}
       </p>
 
+      {/* Admin-Umbau Stufe 2: der Drawer bleibt der SCHNELLBLICK (mitten im
+          Rollout will niemand die Fläche verlieren) - die Vollansicht mit
+          Steuerung, Grenzen, Quellen und Anlagen-Kontext ist einen Klick
+          entfernt und adressierbar. */}
+      <p className="vp-text-sm">
+        <a className="vp-linklike" href={geraetHash(device.externalRef)}>
+          Geräteseite öffnen →
+        </a>
+      </p>
+
       <h4>Identität</h4>
       <dl className="vp-kv-list">
         <dt>Referenz</dt>
@@ -127,9 +139,7 @@ export function GeraeteDrawer({
           {/* Eine `edge-`Referenz läuft per Konstruktion an der
               Aufkleber-Registry vorbei - das ist der Normalfall der
               Bestandsflotte und ausdrücklich kein Mangel. */}
-          {device.provisioned === false
-            ? 'Nicht aus der Aufkleber-Registry (selbst erzeugte Referenz)'
-            : 'Aufkleber-ID registriert'}
+          {device.provisioned === false ? REGISTRY_SELBST : REGISTRY_AUFKLEBER}
         </dd>
         {device.note && (
           <>

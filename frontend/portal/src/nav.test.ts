@@ -4,9 +4,11 @@ import {
   anlageRoute,
   canonicalAnlageHash,
   hashForRoute,
+  geraetHash,
   isBootHash,
   pageLabel,
   pageRoute,
+  parseGeraetRef,
   parseRoute,
   PLATFORM_GROUPS,
   PLATFORM_PAGES,
@@ -348,5 +350,34 @@ describe('isBootHash', () => {
     for (const h of ['#/uebersicht', '#uebersicht', '#/anlage/s-1', '#/plattform-uebersicht']) {
       expect(isBootHash(h)).toBe(false);
     }
+  });
+});
+
+/**
+ * Die GERÄTE-DETAILSEITE (Stufe 2, F2). Sie ist ein HASH-PARAMETER auf der
+ * Geräte-Route - der Router bleibt unangetastet, und die Referenz als
+ * Schlüssel überlebt Unclaim/Re-Claim.
+ */
+describe('geraetHash / parseGeraetRef', () => {
+  it('schreibt und liest dieselbe Referenz zurück', () => {
+    expect(parseGeraetRef(geraetHash('edge-k2m4pqj'))).toBe('edge-k2m4pqj');
+    expect(parseGeraetRef(geraetHash('VP-DEMO-0001'))).toBe('VP-DEMO-0001');
+  });
+
+  it('lässt die Route dabei die Geräte-Seite bleiben', () => {
+    expect(parseRoute(geraetHash('edge-k2m4pqj'))).toEqual(route('geraete-registry'));
+  });
+
+  it('räumt den Parameter, wenn nichts geöffnet ist', () => {
+    expect(geraetHash(null)).toBe('#/geraete-registry');
+    expect(geraetHash('   ')).toBe('#/geraete-registry');
+    expect(parseGeraetRef('#/geraete-registry')).toBeNull();
+    expect(parseGeraetRef('')).toBeNull();
+  });
+
+  it('kodiert eine Referenz, die Sonderzeichen trägt', () => {
+    const ref = 'edge-a b';
+    expect(geraetHash(ref)).toContain('edge-a%20b');
+    expect(parseGeraetRef(geraetHash(ref))).toBe(ref);
   });
 });

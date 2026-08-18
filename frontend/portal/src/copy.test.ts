@@ -48,6 +48,7 @@ const EXCLUDED = [
   '/onboardingFunnel.ts',
   '/adminVorlagen.ts',
   '/adminKomponentenFlotte.ts',
+  '/adminGeraet.ts',
   '/pages/EntitaetenSection.',
   '/entities.ts',
   '/entitiesApi.ts',
@@ -171,6 +172,7 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'onboardingFunnel',
       'adminVorlagen',
       'adminKomponentenFlotte',
+      'adminGeraet',
     ];
     const offenders: string[] = [];
     for (const file of walk(SRC)) {

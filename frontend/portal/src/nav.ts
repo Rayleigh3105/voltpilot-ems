@@ -443,3 +443,27 @@ export function parseBefehleKomponente(hash: string): string | null {
   const value = new URLSearchParams(rest.join('?')).get('komponente');
   return value && value.trim() ? value.trim() : null;
 }
+
+/**
+ * Die Adresse der GERÄTE-DETAILSEITE (Admin-Umbau Stufe 2, Captain-Entscheid
+ * F2): `#/geraete-registry?geraet=<referenz>`.
+ *
+ * Das Muster ist das von {@link befehleHash} - ein HASH-PARAMETER, keine
+ * eigene `PageId`: `parseRoute` schneidet den Query-Teil ohnehin ab, die Route
+ * bleibt also die Geräte-Seite, und ein Lesezeichen öffnet exakt dasselbe
+ * Gerät wieder. **Der Schlüssel ist die REFERENZ, nicht die Geräte-UUID** -
+ * sie überlebt Unclaim/Re-Claim (der dokumentierte Identitäts-Drift), also
+ * überlebt auch das Lesezeichen.
+ */
+export function geraetHash(ref?: string | null): string {
+  const base = '#/geraete-registry';
+  return ref && ref.trim() ? `${base}?geraet=${encodeURIComponent(ref.trim())}` : base;
+}
+
+/** Die Geräte-Referenz aus einem `?geraet=`-Hash, oder null. */
+export function parseGeraetRef(hash: string): string | null {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (rest.length === 0) return null;
+  const value = new URLSearchParams(rest.join('?')).get('geraet');
+  return value && value.trim() ? value.trim() : null;
+}
