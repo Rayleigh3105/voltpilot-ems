@@ -144,11 +144,14 @@ voltpilot:
   # on claim, publish the retained provision/{ref}/config to the broker so a
   # waiting device is configured immediately. Best-effort; off by default so
   # unit tests and broker-less setups are unaffected (compose turns it on).
-  # Shadow-mode forecasting (docs/forecasting.md): which model's forecasts the
-  # OPTIMIZER consumes per kind. The api only DISPLAYS these ("live" badge in
-  # Prognosequalität) - keep them in sync with the forecast-collector and
+  # Shadow-mode forecasting (docs/forecasting.md): the DEFAULT model per kind.
+  # Since the portal promotion switch these are step 2 of a three-step
+  # precedence that ForecastModelService resolves and every consumer shares:
+  # the newest row in forecast_model_choice wins, else this env value, else the
+  # registry baseline. Keep them in sync with the forecast-collector and
   # optimizer env (compose passes the same variables to all three). Promotion
-  # of a challenger = the captain flips these; never automatic.
+  # of a challenger is a deliberate act on /api/v1/admin/forecast-models;
+  # never automatic.
   forecast:
     active-load-model: ${VOLTPILOT_ACTIVE_LOAD_MODEL:load-persistence}
     active-pv-model: ${VOLTPILOT_ACTIVE_PV_MODEL:pv-physical}
