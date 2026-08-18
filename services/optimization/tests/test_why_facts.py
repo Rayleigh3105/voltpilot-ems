@@ -120,6 +120,32 @@ def truebe_nacht(n: int = 96) -> OptimizationInput:
     )
 
 
+def truebe_nacht_mit_abendspitze(n: int = 96) -> OptimizationInput:
+    """The same cloudy horizon, but on a DYNAMIC tariff whose evening is
+    genuinely more expensive - so a part of the charge is honestly reserved
+    and the plan really does rest with a charged battery.
+
+    Needed since the Jetzt-Vorzug (captain 2026-08-18,
+    ``solver.EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW``): on a FLAT tariff a rest at
+    a covering TIE no longer happens - the plan now spends the tie on covering,
+    which is the whole point. A rest with a charged battery therefore needs a
+    reason, and here it is the SoC path (covering the cheap slots early would
+    starve the expensive evening), while the marginal trade in the resting slot
+    itself stays the same tie the export must report as one."""
+    pv = [0.0] * n
+    for t in range(40, 60):
+        pv[t] = 0.6
+    return make_input(
+        n=n,
+        pv=pv,
+        load=2.0,
+        spot=50.0,
+        import_price=[250.0] * 72 + [420.0] * 24,
+        export_value=50.0,
+        netzladen_erlaubt=False,
+    )
+
+
 def sonniger_tag(n: int = 96) -> OptimizationInput:
     """The ordinary summer day: a real PV bell, a spot curve with a midday
     trough - the horizon whose own surplus refills the battery for free."""
@@ -293,24 +319,55 @@ def test_an_active_slot_reports_no_next_best():
 
 
 @needs_highs
-def test_the_17_08_evening_reports_the_tie_it_really_was():
-    # The acceptance case (§4.5): a trueb horizon anchors on the Bezugspreis,
-    # and covering the house now vs. later is EXACTLY equivalent - the driver
-    # the "Preisunterschied" sentence hid. Every fact the Stufe-1 sentence
-    # needs is present, and the margin is a tie rather than a decision.
+def test_the_17_08_evening_spends_the_tie_on_covering_and_still_explains_why():
+    """The acceptance case (§4.5), as it reads AFTER the Jetzt-Vorzug (captain
+    2026-08-18): a trueb horizon still anchors on the Bezugspreis with no free
+    refill on offer - those two run facts ARE the answer to "why is a stored
+    kWh worth 23 ct here" and the derivation used to throw both away. What
+    changed is the ACT: covering now vs. later is still the same money, and
+    ``solver.EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW`` now spends that tie on the
+    house instead of resting. So the evening no longer rests with a charged
+    battery at all - it reads ``eigenverbrauch`` ("deckt Ihren Verbrauch"),
+    which is exactly the honest driver, and every remaining rest is at the
+    floor where there is nothing left to compare against."""
     plan = solve(truebe_nacht())
     assert plan.why_terminal_anchor == ANCHOR_BEZUGSPREIS
     assert plan.why_refill_free_pct == 0.0
-    # The slots that rest with energy still in the battery - the captain's
-    # 20:45. (Once the plan has drawn the battery down to its floor there is
-    # honestly nothing left to compare against; that case is its own test.)
+    resting_with_charge = [
+        s for s in plan.slots
+        if s.slot_role == "warten" and "soc_floor" not in (s.slot_flags or ())
+    ]
+    assert not resting_with_charge, (
+        "the flat-tariff tie is spent on covering, never parked - a rest here "
+        "would be the 2026-08-18 defect"
+    )
+    covering = [s for s in plan.slots if s.slot_role == "eigenverbrauch"]
+    assert covering, "the night is served from the battery"
+    # And it is served from the FIRST slot on - the Jetzt-Vorzug is a timing
+    # statement, so the first slot must be one of them.
+    assert plan.slots[0].slot_role == "eigenverbrauch"
+
+
+@needs_highs
+def test_a_reserved_rest_names_decken_and_calls_the_tie_a_tie():
+    """The export's C-facts on a rest that is genuinely right: with a real
+    evening peak the plan holds a part of its charge back (covering the cheap
+    slots early would starve the expensive ones), and the resting slot reports
+    what it rejected - covering - and that the marginal trade itself was a TIE,
+    not a decision. Since the Jetzt-Vorzug this is where that reading lives:
+    on a flat tariff the plan no longer rests at such a tie."""
+    plan = solve(truebe_nacht_mit_abendspitze())
+    assert plan.why_terminal_anchor == ANCHOR_BEZUGSPREIS
     resting = [
         s for s in plan.slots
         if s.slot_role == "warten" and "soc_floor" not in (s.slot_flags or ())
     ]
-    assert resting, "the evening must actually rest with a charged battery"
+    assert resting, "the plan must actually rest with a charged battery"
     assert all(s.why_next_best == NEXT_BEST_DECKEN for s in resting)
     assert all(abs(s.why_next_best_margin_ct) <= NEXT_BEST_TIE_CT for s in resting)
+    # The reserve is real: the expensive evening is served from the battery.
+    evening = plan.slots[72:]
+    assert -sum(min(s.battery_kw, 0.0) for s in evening) * 0.25 > 5.0
 
 
 @needs_highs
@@ -459,7 +516,10 @@ def test_the_committed_plan_is_byte_identical_with_and_without_the_export():
 
 @needs_highs
 def test_persistence_carries_the_run_facts_on_every_row_and_the_slot_facts_per_slot():
-    plan = solve(truebe_nacht())
+    # The reserved-rest horizon: it carries BOTH kinds of row (a resting slot
+    # with a margin, an active one without). The flat-tariff twin no longer
+    # rests with a charged battery since the Jetzt-Vorzug.
+    plan = solve(truebe_nacht_mit_abendspitze())
     rows = plan_rows(plan)
     # The four new columns are the last four of the tuple, in the INSERT's
     # order: anchor, refill share, next best, margin.

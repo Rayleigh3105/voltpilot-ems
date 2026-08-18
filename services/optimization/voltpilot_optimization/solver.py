@@ -162,8 +162,26 @@ Design decisions, deliberately:
   stays cleanly sub-dominant: prefer-idle decides WHETHER to cycle, early-charge
   only WHEN a justified charge is placed - and being a positive penalty on
   charge (minimized at charge = 0) it pushes the same way as prefer-idle, so it
-  can never reward spurious cycling. Discharge is untouched. Full magnitude /
-  no-circular-effect argument at the constant.
+  can never reward spurious cycling. Full magnitude / no-circular-effect
+  argument at the constant.
+- **A FOURTH tie-break on discharge TIMING** (``EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW``,
+  the exact mirror of the third one; captain decision 2026-08-18 "erst dein
+  Verbrauch, dann der Rest") places an otherwise cost-equal DISCHARGE as EARLY
+  as possible - the "Jetzt-Vorzug" INSIDE the horizon, twin of the
+  ``TERMINAL_VALUE_COVER_NOW_DISCOUNT_EUR_MWH`` discount that breaks the same
+  tie at the horizon EDGE (see :mod:`voltpilot_optimization.config`). On a flat
+  retail tariff every deficit slot avoids the SAME import price, so "cover the
+  09:15 block load" and "cover the 22:00 evening load" are algebraically
+  identical and HiGHS picked arbitrarily: measured at Anlage Pilsting on
+  2026-08-18 the battery sat idle at 17 % through a 25-kW block load, importing
+  15-23 kW at 25 ct for three hours, and spent the very same energy later.
+  Covering earlier is weakly dominant in reality (a later refill opportunity
+  can only add value, never remove it) and strictly more ROBUST, the same
+  argument the early-charge sibling rests on. Same 1e-7 scale and the same
+  no-circular-effect property (a positive penalty on discharge, minimized at
+  discharge = 0, so it pushes with prefer-idle and can never reward a discharge
+  the economics have not already justified). Full magnitude / sell-timing
+  argument at the constant.
 
 - **The per-site grid-charging switch (``netzladen_erlaubt``, captain decision
   2026-07-07; PV-bus semantics per FK3, captain decision 2026-07-16)** is
@@ -312,6 +330,50 @@ BATTERY_WEAR_TIEBREAK_EUR_PER_KW = 1e-6
 #   The MIP gap is 1e-9 (below), so a realistic fill (tens of kW over several
 #   slots, ~1e-6 EUR of accumulated weight difference) is resolved decisively.
 EARLY_CHARGE_TIEBREAK_EUR_PER_KW = 1e-7
+
+# Tie-break penalty on the TIMING of battery DISCHARGE - the exact mirror of
+# the charge-timing tie-break above (captain decision 2026-08-18: "ab dann gilt
+# durchgehend: erst dein Verbrauch, dann der Rest"). Same shape, same scale: a
+# per-slot penalty on discharge that GROWS linearly with the slot's position in
+# the horizon, so under otherwise cost-equal plans the EARLIEST discharge
+# placement wins.
+#
+# The tie it breaks (Anlage Pilsting/Herzogau, 2026-08-18 morning): on a FLAT
+# retail tariff every deficit slot avoids the SAME import price, so "cover the
+# 09:15 block load" and "cover the 22:00 evening load" are the same money down
+# to the last digit - the plan discharges the same total either way, and only
+# the PLACEMENT is degenerate. HiGHS placed it late: the battery sat at 17 %
+# (not the 5 % floor) through a 25-30 kW block load and imported 15-23 kW at
+# 25 ct for three hours, then spent the identical energy in the evening. This
+# term is the INSIDE-the-horizon twin of TERMINAL_VALUE_COVER_NOW_DISCOUNT_
+# EUR_MWH (config.py), which breaks the same tie at the horizon EDGE ("cover
+# now vs. hold past the horizon"); together they make "cover your own load as
+# soon as you can" the strict preference everywhere. Economically: covering
+# earlier is weakly dominant - a refill opportunity arriving later can only add
+# value to the freed capacity, never take any away.
+#
+# Magnitude and the interplay (this is the FOURTH tie-break, and its ordering
+# against the three above must stay deterministic):
+# - Same 1e-7 as its charge twin, i.e. 10x SMALLER than the two 1e-6 siblings,
+#   so the separation of duties holds: prefer-idle decides WHETHER to cycle
+#   (1e-6 dominates), the timing tie-breaks only decide WHEN. It is a POSITIVE
+#   penalty on discharge (minimized at discharge = 0), so it pushes in the SAME
+#   direction as prefer-idle and can never reward spurious cycling - it only
+#   front-loads a discharge the economics have already justified.
+# - No circularity with the charge twin: charge and discharge are mutually
+#   exclusive per slot (the is_charging binary) and both terms are positive
+#   penalties on their OWN variable, so neither can pay for the other.
+# - Its price-equivalent at the last slot is 1e-7 / (dt/1000) = ~4e-4 EUR/MWh,
+#   ~25x below the 0.01 EUR/MWh resolution of real day-ahead prices, so any
+#   genuinely better later slot still wins - real economics are never
+#   overridden, only exact ties broken.
+# - On SELL timing (the S2 winter guard's neighbourhood) it is therefore inert
+#   wherever the export value differs at all between two slots: a real price
+#   peak keeps the sale. It never LOWERS the bar for selling - the decision
+#   "sell at all" is made by export value vs. terminal value + wear, and this
+#   penalty only ever makes discharging (hence selling) marginally more
+#   expensive, i.e. it pushes the same way as the S2 guard, never against it.
+EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW = 1e-7
 
 # MIP optimality tolerances (scout vp-fahrplan-idle-n7, "latent defect found in
 # passing"). HiGHS defaults to mip_rel_gap = 1e-4, i.e. on a ~10 EUR objective
@@ -516,6 +578,9 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             + CURTAIL_TIEBREAK_EUR_PER_KW * m.curtail[t]
             + BATTERY_WEAR_TIEBREAK_EUR_PER_KW * (m.charge[t] + m.discharge[t])
             + EARLY_CHARGE_TIEBREAK_EUR_PER_KW * (t / max(n - 1, 1)) * m.charge[t]
+            + EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW
+            * (t / max(n - 1, 1))
+            * m.discharge[t]
             for t in m.T
         )
         + peak_cost
