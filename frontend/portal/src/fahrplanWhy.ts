@@ -341,6 +341,21 @@ export const BEGRUENDUNGEN: Begruendung[] = [
     aussage: 'Die verworfene Handlung wäre um die genannte Marge schlechter.',
   },
   {
+    // Erklärbarkeit Stufe 2: die zwei kausalen Halbsätze der „Lage"-Zeile
+    // (`fahrplanLage.speicherHalbsatz`). Sie sagen dieselbe Sache wie
+    // {@link ankerSatz}, nur kürzer und auf morgen bezogen - und hängen
+    // deshalb an DENSELBEN Fakten. Eine zweite Wahrheit über denselben Fakt
+    // wäre genau das, was das Haus vermeidet.
+    id: 'lage_aufheben',
+    gates: ['plan.whyTerminalAnchor=bezugspreis', 'plan.whyRefillFreePct<=REFILL_LOW_PCT'],
+    aussage: 'Der Speicher hebt seine Ladung für die kommenden Abende auf.',
+  },
+  {
+    id: 'lage_auffuellung',
+    gates: ['plan.whyRefillFreePct>=REFILL_HIGH_PCT'],
+    aussage: 'Der eigene Überschuss füllt den Speicher ohnehin wieder auf.',
+  },
+  {
     id: 'lambda_ueber_fenster',
     gates: ['slot.storedValueCtKwh', 'bester Börsenpreis im Plan-Fenster'],
     aussage: 'Verkaufen läge unter dem Wert gespeicherter Energie (W6).',

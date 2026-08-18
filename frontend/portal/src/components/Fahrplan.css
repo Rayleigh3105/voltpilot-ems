@@ -551,3 +551,39 @@
 .vp-verbraucher-grund {
   color: var(--vp-text-muted, #6c757d);
 }
+
+/* ---- Die „Lage"-Zeile (Erklärbarkeit Stufe 2) --------------------------- */
+/*
+ * Bewusst RUHIG: zwei Sätze, ein Bedingungs-Satz, eine Herkunftszeile - sie
+ * steht zwischen dem Helden und dem Film und darf keinem von beiden die
+ * Aufmerksamkeit nehmen. Kein Farbträger, kein Alarm: sie beschreibt eine
+ * Erwartung, keinen Befund.
+ */
+.vp-lage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-lage-satz {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--vp-text, #212529);
+  overflow-wrap: anywhere;
+}
+.vp-lage-bedingung {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-lage-quelle {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+@media (max-width: 720px) {
+  .vp-lage-satz {
+    font-size: 0.9rem;
+  }
+}

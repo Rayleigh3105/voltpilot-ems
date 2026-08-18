@@ -133,3 +133,52 @@ export function weatherWhy(points: CloudPoint[], now: Date): string | null {
     ? 'Stark bewölkt - heute wenig Solarertrag.'
     : 'Wechselnd bewölkt - durchwachsene PV-Erträge.';
 }
+
+// ---- Der Morgen-Ausblick (Erklärbarkeit Stufe 2, Konzept §6) ---------------
+
+/**
+ * Wie der morgige Tag am Himmel aussieht. Bewusst nur DREI Wörter - dieselbe
+ * Dreiteilung, die {@link weatherWhy} für heute zieht, nur über das Fenster
+ * von morgen.
+ */
+export type TomorrowSky = 'sonnig' | 'wechselnd' | 'bewoelkt';
+
+/**
+ * Unter so vielen bewerteten Tagstunden gibt es kein Bild von morgen - dann
+ * wird geschwiegen statt aus zwei Stunden ein Tagesurteil zu machen.
+ */
+export const TOMORROW_MIN_HOURS = 4;
+
+/**
+ * Das WETTER-WORT für morgen (Konzept `data/vp-warum-erklaerbar-e2` §6).
+ *
+ * Es beantwortet ausdrücklich NUR die Himmels-Frage; die Energie-Zahlen der
+ * „Lage"-Zeile kommen woanders her - nämlich aus den PV-/Last-Eingaben, mit
+ * denen der Fahrplan wirklich gerechnet hat (`fahrplanLage.ts`). Aus
+ * Bewölkung und kWp eine zweite Erzeugungsprognose zu rechnen ist im Haus
+ * ausdrücklich verboten (`wetterLeistung.ts`), und diese Trennung ist der
+ * Grund, warum hier ein WORT und keine Leistung zurückkommt.
+ *
+ * Die Schwellen sind {@link SUNNY_MAX_CLOUD}/{@link CLOUDY_MIN_CLOUD} - kein
+ * zweiter Schwellensatz, sonst gäbe es zwei Wahrheiten über denselben Himmel.
+ * Gemittelt wird über die TAGSTUNDEN von morgen (dieselbe
+ * `DAY_START_HOUR`/`DAY_END_HOUR`-Definition wie heute); reicht die Vorhersage
+ * nicht so weit oder trägt sie keine Bewölkung, kommt `null` zurück und die
+ * Fläche sagt über morgen schlicht nichts.
+ */
+export function weatherWhyTomorrow(points: CloudPoint[], now: Date): TomorrowSky | null {
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toDateString();
+  const clouds = points
+    .filter(
+      (p) =>
+        p.cloudCoverPct != null &&
+        isDaytime(p.ts) &&
+        new Date(p.ts).toDateString() === tomorrow,
+    )
+    .map((p) => p.cloudCoverPct as number);
+  if (clouds.length < TOMORROW_MIN_HOURS) return null;
+  const avg = clouds.reduce((s, c) => s + c, 0) / clouds.length;
+  if (avg <= SUNNY_MAX_CLOUD) return 'sonnig';
+  if (avg >= CLOUDY_MIN_CLOUD) return 'bewoelkt';
+  return 'wechselnd';
+}
