@@ -1,5 +1,5 @@
 -- =============================================================================
--- V20260823000000 - Erklärbarkeit Stufe 1 „Der Echtheits-Kern": persist the
+-- V20260824000000 - Erklärbarkeit Stufe 1 „Der Echtheits-Kern": persist the
 -- DECISION DRIVERS the optimizer used to discard (Konzept
 -- data/vp-warum-erklaerbar-e2 §4.2/§4.3; Captain-Entscheide F1-F6, 17.08.2026).
 -- -----------------------------------------------------------------------------
