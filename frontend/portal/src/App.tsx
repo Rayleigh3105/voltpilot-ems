@@ -26,6 +26,8 @@ import { AppShell } from './shell/AppShell';
 import {
   anlageRoute,
   canonicalAnlageHash,
+  canonicalPlatformHash,
+  isGeraeteBereich,
   hashForRoute,
   isBootHash,
   isPortfolioPage,
@@ -78,23 +80,16 @@ const PlattformUebersichtPage = lazy(() =>
     default: m.PlattformUebersichtPage,
   })),
 );
-const BenutzerPage = lazy(() =>
-  import('./pages/admin/BenutzerPage').then((m) => ({ default: m.BenutzerPage })),
-);
-const GeraeteRegistryPage = lazy(() =>
-  import('./pages/admin/GeraeteRegistryPage').then((m) => ({ default: m.GeraeteRegistryPage })),
-);
-const EdgeUpdatesPage = lazy(() =>
-  import('./pages/admin/EdgeUpdatesPage').then((m) => ({ default: m.EdgeUpdatesPage })),
+// Stufe 3: EIN Nav-Punkt „Geräte" mit zwei Tabs - beide Routen rendern denselben
+// Bereich, also gibt es auch nur einen Lade-Einstieg.
+const GeraeteBereich = lazy(() =>
+  import('./pages/admin/GeraeteBereich').then((m) => ({ default: m.GeraeteBereich })),
 );
 const OptimizerPage = lazy(() =>
   import('./pages/admin/OptimizerPage').then((m) => ({ default: m.OptimizerPage })),
 );
 const FlowsPage = lazy(() =>
   import('./pages/admin/FlowsPage').then((m) => ({ default: m.FlowsPage })),
-);
-const GeraetetypenPage = lazy(() =>
-  import('./pages/admin/GeraetetypenPage').then((m) => ({ default: m.GeraetetypenPage })),
 );
 const SteuerungsFreigabePage = lazy(() =>
   import('./pages/admin/SteuerungsFreigabePage').then((m) => ({
@@ -515,7 +510,9 @@ function UnifiedPortal() {
   // `replaceState` erzeugt keinen Verlaufseintrag und kein `hashchange`; die
   // geparste Route ist ohnehin dieselbe.
   useEffect(() => {
-    const canonical = canonicalAnlageHash(window.location.hash);
+    const canonical =
+      canonicalAnlageHash(window.location.hash)
+      ?? canonicalPlatformHash(window.location.hash);
     if (canonical) window.history.replaceState(null, '', canonical);
   }, [route]);
 
@@ -971,15 +968,10 @@ function UnifiedPortal() {
               onJumpToTenant={jumpToTenant}
             />
           )}
-          {page === 'benutzer' && isAdmin && (
-            <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
+          {isGeraeteBereich(page) && isAdmin && (
+            <GeraeteBereich page={page} onNavigate={navigate} onJumpToTenant={jumpToTenant} />
           )}
-          {page === 'geraete-registry' && isAdmin && (
-            <GeraeteRegistryPage onJumpToTenant={jumpToTenant} onNavigate={navigate} />
-          )}
-          {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage onNavigate={navigate} />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
-          {page === 'geraetetypen' && isAdmin && <GeraetetypenPage />}
           {page === 'steuerungs-freigabe' && isAdmin && <SteuerungsFreigabePage />}
           {page === 'vorlagen' && isAdmin && <VorlagenPage />}
           {page === 'komponenten-flotte' && isAdmin && <KomponentenFlottePage />}
@@ -1041,10 +1033,10 @@ function PickTenantNotice({
   return (
     <Card padding="lg" radius="lg">
       <div className="vp-empty">
-        <h3>Mandanten-Kontext wählen</h3>
+        <h3>Mandanten wählen</h3>
         <p>
-          Diese Seite zeigt Kundendaten. Wählen Sie oben im Kontext-Umschalter einen
-          Mandanten (oder hier direkt), um dessen Portal-Ansicht zu sehen.
+          Diese Seite zeigt Kundendaten. Wählen Sie oben im Mandanten-Umschalter einen
+          Mandanten (oder hier direkt), um dessen Ansicht zu sehen.
         </p>
         <div style={{ display: 'flex', gap: 'var(--vp-space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
           {tenants.slice(0, 6).map((t) => (

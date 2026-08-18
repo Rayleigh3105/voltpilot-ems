@@ -10,6 +10,7 @@ import {
   anlagenLabel,
   MAIN_PAGES,
   PLATFORM_GROUPS,
+  navPageFor,
   PORTFOLIO_PAGE,
   PORTFOLIO_WELT_PAGES,
   pageLabel,
@@ -369,7 +370,10 @@ export function AppShell({
                     icon={<Icon name={p.icon} size={18} />}
                     label={<span className="vp-nav-lbl">{p.label}</span>}
                     title={p.label}
-                    active={page === p.id}
+                    // Seit Stufe 3 leuchtet der BEREICH, nicht die Seite: der
+                    // Tab „Updates" gehört zu „Geräte", also darf die Leiste
+                    // dort nicht ins Nichts zeigen.
+                    active={navPageFor(page) === p.id}
                     count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
                     onClick={() => onNavigate(p.id)}
                   />
@@ -473,10 +477,10 @@ export function AppShell({
             // api.ts). The leading building icon + trailing caret make it
             // unmistakably THE Mandanten control and clearly a dropdown.
             // Customers get no chip: their tenant is fixed by the login.
-            <span className="vp-context" title="Mandanten-Kontext wechseln">
+            <span className="vp-context" title="Mandanten-Umschalter">
               <Icon name="building" size={16} className="vp-context-ic" />
               <select
-                aria-label="Mandanten-Kontext"
+                aria-label="Mandanten-Umschalter"
                 value={tenantOverride ?? ''}
                 onChange={(e) => onTenantChange(e.target.value || null)}
               >

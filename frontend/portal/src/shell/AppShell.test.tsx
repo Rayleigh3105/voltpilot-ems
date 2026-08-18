@@ -66,7 +66,7 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    const select = screen.getByLabelText('Mandanten-Kontext');
+    const select = screen.getByLabelText('Mandanten-Umschalter');
     expect(select).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Alle Mandanten' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Stadtwerke Musterstadt' })).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.queryByLabelText('Mandanten-Kontext')).toBeNull();
+    expect(screen.queryByLabelText('Mandanten-Umschalter')).toBeNull();
   });
 });
 
@@ -388,7 +388,10 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     );
     const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
     expect(sheet.textContent).toContain('Plattform');
-    expect(sheet.textContent).toContain('Edge-Updates');
+    // Seit Stufe 3 ist „Edge-Updates" ein TAB von „Geräte" - im Blatt steht
+    // der Bereich, nicht sein Tab (der wäre ein zweiter Weg zum selben Ort).
+    expect(sheet.textContent).toContain('Geräte');
+    expect(sheet.textContent).not.toContain('Edge-Updates');
   });
 
   it('the foot Hilfe entry opens an honest help panel, never a dead link', () => {
@@ -544,13 +547,30 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
         <div>content</div>
       </AppShell>,
     );
-    for (const label of ['Geräte', 'Edge-Updates', 'Steuerungs-Freigabe', 'Gerätetypen',
-      'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten', 'Benutzer']) {
+    for (const label of ['Geräte', 'Steuerungs-Freigabe',
+      'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten']) {
       expect(screen.getByTitle(label)).toBeInTheDocument();
     }
+    // Die drei gefalteten Punkte sind aus der LEISTE verschwunden - ihre
+    // Flächen leben als Tab (Updates), als Sektion (Gerätetypen) bzw. im
+    // Mandanten-Drawer (Benutzer) weiter.
+    expect(screen.queryByTitle('Edge-Updates')).toBeNull();
+    expect(screen.queryByTitle('Gerätetypen')).toBeNull();
+    expect(screen.queryByTitle('Benutzer')).toBeNull();
     fireEvent.click(screen.getByTitle('Geräte'));
     expect(onNavigate).toHaveBeenCalledWith('geraete-registry');
     expect(screen.getByTitle('Mandanten').textContent).toContain('1');
+  });
+
+  it('lässt „Geräte" auch auf dem Tab Updates leuchten', () => {
+    render(
+      <AppShell {...adminProps} page="edge-updates">
+        <div>content</div>
+      </AppShell>,
+    );
+    // Ein Tab darf die Leiste nie ins Nichts zeigen lassen: der Bereich ist
+    // aktiv, sonst wüsste der Betreiber nicht, wo er steht.
+    expect(screen.getByTitle('Geräte').className).toContain('active');
   });
 
   it('zeigt einem Kunden keine einzige Plattform-Gruppe', () => {

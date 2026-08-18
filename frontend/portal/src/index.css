@@ -3586,6 +3586,14 @@ button.vp-tech-card-h.toggle {
 .vp-btn-danger {
   color: var(--vp-industry-end);
 }
+/* Admin-Umbau Stufe 3: die Tab-Leiste EINES Plattform-Bereichs (heute
+   „Geräte": Inventar · Updates). Bewusst das Haus-Segment `.vp-seg` - die
+   Konsole soll keine zweite Umschalt-Sprache lernen -, nur mit dem Abstand
+   zum Seitenkopf darunter. Die Doppelklasse gewinnt unabhängig von der
+   Ladereihenfolge (dieselbe Disziplin wie `.vp-seg.vp-seg-compact`). */
+.vp-seg.vp-bereich-tabs {
+  margin-bottom: var(--vp-space-4);
+}
 /* Title + one explaining sentence INSIDE a padding-0 table card (the shared
    .vp-section-head is a flex row for h2 + actions and carries no padding, so it
    cannot sit inside one). Used wherever an admin page stacks several titled

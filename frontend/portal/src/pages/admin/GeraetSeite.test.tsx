@@ -178,7 +178,7 @@ describe('GeraetSeite - die Vollansicht EINES Geräts (Admin-Umbau Stufe 2)', ()
     );
   });
 
-  it('springt in die Kundensicht und auf die Befehle DERSELBEN Anlage', () => {
+  it('springt in die Mandanten-Ansicht und auf die Befehle DERSELBEN Anlage', () => {
     const onJumpToTenant = vi.fn();
     render(<GeraetSeite {...base} view={view()} onJumpToTenant={onJumpToTenant} />);
     fireEvent.click(screen.getByRole('button', { name: /Zur Anlage/ }));

@@ -95,7 +95,7 @@ export interface GeraetKopf {
   kontext: string;
   /** Die Lebendigkeit aus der Telemetrie - der Zustands-Pill. */
   lebendigkeit: { label: string; tone: Tone; detail: string };
-  /** „Zur Anlage (Kundensicht)" - null, solange kein Mandant/keine Anlage feststeht. */
+  /** „Zur Anlage (Mandanten-Ansicht)" - null, solange kein Mandant/keine Anlage feststeht. */
   sprungAnlage: { tenantId: string; siteId: string } | null;
   /** „Befehle ansehen" (Kommando-Transparenz) - dieselbe Bedingung. */
   sprungBefehle: { tenantId: string; siteId: string } | null;

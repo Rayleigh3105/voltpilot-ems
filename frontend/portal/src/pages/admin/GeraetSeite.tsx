@@ -38,7 +38,7 @@ export function GeraetSeite({
   view: GeraetView | null;
   busy: boolean;
   onZurueck: () => void;
-  /** Sprung in die Kundensicht dieser Anlage (bzw. auf ihre Befehle-Seite). */
+  /** Sprung in die Mandanten-Ansicht dieser Anlage (bzw. auf ihre Befehle-Seite). */
   onJumpToTenant: (tenantId: string, siteId: string, sub?: 'befehle') => void;
   onNavigateSteuerung: () => void;
   onAssign?: (releaseSeq: number, channel: string, pinned: boolean) => Promise<void>;
@@ -99,7 +99,7 @@ export function GeraetSeite({
                 onJumpToTenant(kopf.sprungAnlage!.tenantId, kopf.sprungAnlage!.siteId)
               }
             >
-              Zur Anlage (Kundensicht)
+              Zur Anlage (Mandanten-Ansicht)
             </Button>
             {kopf.sprungBefehle && (
               <Button

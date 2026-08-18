@@ -20,7 +20,7 @@
  * ALLE Ableitung/Copy ist das reine `src/controlCertification.ts`
  * (unit-getestet); diese Seite lädt und rendert nur.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -41,7 +41,9 @@ import {
   registerSummary,
   revokeConsequences,
 } from '../../controlCertification';
+import { parseSektion } from '../../nav';
 import { AdminPageHead } from './AdminPageHead';
+import { GeraetetypenSektion } from './GeraetetypenSektion';
 
 export function SteuerungsFreigabePage(): JSX.Element {
   const [register, setRegister] = useState<ControlCertification[] | null>(null);
@@ -72,6 +74,17 @@ export function SteuerungsFreigabePage(): JSX.Element {
   }, [reloadKey]);
 
   const reload = () => setReloadKey((k) => k + 1);
+
+  // Ein Lesezeichen auf die stillgelegte Gerätetypen-Seite landet über
+  // `canonicalPlatformHash` hier - mit `?sektion=geraetetypen`. Ohne den Sprung
+  // stünde der Kunde oben auf einer Seite, deren Inhalt er nicht sucht.
+  const sektionRef = useRef<string | null>(parseSektion(window.location.hash));
+  useEffect(() => {
+    const sektion = sektionRef.current;
+    if (!sektion || !register || !plants) return;
+    sektionRef.current = null;
+    document.getElementById(`sektion-${sektion}`)?.scrollIntoView({ block: 'start' });
+  }, [register, plants]);
 
   async function run(action: () => Promise<unknown>): Promise<void> {
     setBusy(true);
@@ -251,6 +264,10 @@ export function SteuerungsFreigabePage(): JSX.Element {
           </section>
         </>
       )}
+
+      {/* Stufe 3 (F4): dieselbe Frage, andere Geräteklasse - read-only, mit
+          eigenem fail-soft Abruf. */}
+      <GeraetetypenSektion />
 
       <ConfirmDialog
         open={revoking != null}

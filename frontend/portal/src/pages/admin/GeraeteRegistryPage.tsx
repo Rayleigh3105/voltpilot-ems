@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -57,10 +57,18 @@ import { GeraetSeite } from './GeraetSeite';
 export function GeraeteRegistryPage({
   onJumpToTenant,
   onNavigate,
+  tabs,
 }: {
-  /** Sprung in den Mandanten-Kontext (Kundensicht der Anlage / ihre Befehle). */
+  /** Sprung in die Mandanten-Ansicht der Anlage (bzw. auf ihre Befehle). */
   onJumpToTenant?: (tenantId: string, target: Route) => void;
   onNavigate?: (target: Route | PageId) => void;
+  /**
+   * Die Tab-Leiste des Geräte-Bereichs (Stufe 3), vom Wirt `GeraeteBereich`.
+   * Sie erscheint NUR über der Liste: die Geräte-Detailseite ist eine Ebene
+   * TIEFER und hat ihren eigenen Zurück-Weg - ein Bereichs-Umschalter über
+   * einem einzelnen Gerät läse sich, als wechselte er dessen Ansicht.
+   */
+  tabs?: ReactNode;
 } = {}) {
   const [devices, setDevices] = useState<ProvisionedDevice[] | null>(null);
   const [fleet, setFleet] = useState<AdminDeviceRow[] | null>(null);
@@ -310,6 +318,7 @@ export function GeraeteRegistryPage({
 
   return (
     <>
+      {tabs}
       <AdminPageHead
         icon="cpu"
         category="primary"

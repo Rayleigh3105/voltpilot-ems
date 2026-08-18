@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -84,7 +84,18 @@ function StateChip({ state }: { state: string }) {
  * nie „fehlgeschlagen", Prozente laufen über die erreichbare Menge, und jede
  * rote Zeile trägt ihren Grund.
  */
-export function EdgeUpdatesPage({ onNavigate }: { onNavigate?: (target: Route) => void } = {}) {
+export function EdgeUpdatesPage({
+  onNavigate,
+  tabs,
+}: {
+  onNavigate?: (target: Route) => void;
+  /**
+   * Die Tab-Leiste des Geräte-Bereichs (Stufe 3). Sie kommt vom Wirt
+   * `GeraeteBereich` und wird hier nur PLATZIERT - ohne sie (Direktaufruf,
+   * Test) rendert die Seite unverändert wie vorher.
+   */
+  tabs?: ReactNode;
+} = {}) {
   const [data, setData] = useState<EdgeUpdates | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -168,6 +179,7 @@ export function EdgeUpdatesPage({ onNavigate }: { onNavigate?: (target: Route) =
 
   return (
     <>
+      {tabs}
       <AdminPageHead
         icon="refresh-cw"
         category="industry"

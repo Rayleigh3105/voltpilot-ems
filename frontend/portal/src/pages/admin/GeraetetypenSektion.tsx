@@ -1,24 +1,29 @@
-/**
- * Plattform → **Gerätetypen** (Inkrement 5 / D11): die read-only Freigabe-Liste
- * der steuerbaren Gerätetypen. Wahrheitsquelle ist der entitytypes-Katalog
- * (`GET /api/v1/admin/consumer-device-types`) - eine Zertifizierung gilt
- * plattformweit je Typ (das CERTIFIED-FAMILIES-Muster), nicht je Mandant, und
- * wird als PR gesetzt, der das Katalog-Flag umlegt. **Kein Schalter auf dieser
- * Fläche.** Ehrlich zum heutigen Anfangszustand: nur der Simulator, kein realer
- * Typ.
- *
- * ALLE Ableitung/Copy ist das reine `src/adminDeviceTypes.ts` (unit-getestet);
- * diese Seite lädt und rendert nur.
- */
 import { useEffect, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Card } from '../../../designsystem/components/core/Card';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { adminApi, type ConsumerDeviceType } from '../../admin/adminApi';
 import { certDetail, certSummary, certView, deviceTypeRows } from '../../adminDeviceTypes';
-import { AdminPageHead } from './AdminPageHead';
 
-export function GeraetetypenPage(): JSX.Element {
+/**
+ * Steuerungs-Freigabe → Sektion **„Steuerbare Gerätetypen"** (Admin-Umbau
+ * Stufe 3, Konzept `vp-admin-neu-konzept-a9` §3.3, Captain-Entscheid F4).
+ *
+ * Sie war bis Stufe 3 ein eigener Nav-Punkt, beantwortet aber DIESELBE
+ * Betreiber-Frage wie die Seite, auf der sie jetzt steht - „was darf die
+ * Plattform steuern?" -, nur für die andere Geräteklasse: Wechselrichter-
+ * Modelle oben (Register + Scharfschaltung, schreibbar), Verbraucher-Typen
+ * hier (Katalog-Stand, read-only). Zwei fast gleich klingende Nav-Punkte für
+ * eine Frage waren der Befund; ein Ort ist die Antwort.
+ *
+ * **Sie lädt SELBST und fail-soft.** Der Katalog ist ein eigener Endpunkt -
+ * hinge er im `Promise.all` der Seite, risse sein Ausfall die beiden
+ * Wechselrichter-Abschnitte mit, die davon gar nicht abhängen.
+ *
+ * ALLE Ableitung/Copy ist das reine `src/adminDeviceTypes.ts`
+ * (unit-getestet); diese Sektion rendert nur.
+ */
+export function GeraetetypenSektion(): JSX.Element {
   const [types, setTypes] = useState<ConsumerDeviceType[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -38,12 +43,12 @@ export function GeraetetypenPage(): JSX.Element {
   const rows = types ? deviceTypeRows(types) : [];
 
   return (
-    <div className="vp-admin-page">
-      <AdminPageHead
-        icon="cpu"
-        title="Steuerbare Gerätetypen"
-        description="Der plattformweite Freigabe-Stand je Gerätetyp. Zertifizierung gilt für alle Kunden und wird einmalig per Bench-Session freigegeben - hier gibt es nichts umzuschalten."
-      />
+    <section className="vp-admin-sec" id="sektion-geraetetypen">
+      <h2 className="vp-admin-sec-head">Steuerbare Gerätetypen</h2>
+      <p className="vp-cert-summary">
+        Der plattformweite Freigabe-Stand je Gerätetyp. Zertifizierung gilt für alle Kunden und
+        wird einmalig per Bench-Session freigegeben - hier gibt es nichts umzuschalten.
+      </p>
 
       {failed && (
         <ErrorState
@@ -51,7 +56,7 @@ export function GeraetetypenPage(): JSX.Element {
           onRetry={() => setReloadKey((k) => k + 1)}
         />
       )}
-      {!failed && !types && <TableSkeleton rows={4} />}
+      {!failed && !types && <TableSkeleton rows={3} />}
       {!failed && types && types.length === 0 && (
         <EmptyState
           title="Noch keine steuerbaren Gerätetypen"
@@ -93,6 +98,6 @@ export function GeraetetypenPage(): JSX.Element {
           </table>
         </Card>
       )}
-    </div>
+    </section>
   );
 }

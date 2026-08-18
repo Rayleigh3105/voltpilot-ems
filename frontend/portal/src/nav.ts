@@ -27,11 +27,9 @@ export type PageId =
   | 'prognose'
   | 'plattform-uebersicht'
   | 'mandanten'
-  | 'benutzer'
   | 'geraete-registry'
   | 'edge-updates'
   | 'optimizer'
-  | 'geraetetypen'
   | 'vorlagen'
   | 'komponenten-flotte'
   | 'steuerungs-freigabe'
@@ -218,19 +216,16 @@ export const PLATFORM_GROUPS: PlatformGroup[] = [
       // mehr nur die Manufacturing-Registry (die echte Flotte kam dort gar
       // nicht vor). Die Id bleibt, damit jedes Lesezeichen und jeder Deep-Link
       // gilt.
+      // Seit Stufe 3 „Zusammenwachsen" ist das EIN Bereich mit zwei Tabs
+      // (`GERAETE_BEREICH`): Inventar + Updates. Der Nav-Punkt ist einer, die
+      // zwei Routen bleiben beide gültig.
       { id: 'geraete-registry', label: 'Geräte', icon: 'cpu', adminOnly: true },
-      // OTA Stufe 2: Releases, der laufende Rollout und das Audit-Journal.
-      { id: 'edge-updates', label: 'Edge-Updates', icon: 'refresh-cw', adminOnly: true },
       // Das PLATTFORM-Gedaechtnis der Steuerungs-Freigabe: ein Modell wird
       // EINMAL am Pruefstand freigegeben, jede Anlage wird einzeln
-      // scharfgeschaltet.
+      // scharfgeschaltet. Seit Stufe 3 wohnen die steuerbaren GERÄTETYPEN als
+      // dritte Sektion hier - dieselbe Frage („was dürfen wir steuern?"), nur
+      // für die andere Geräteklasse.
       { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'shield', adminOnly: true },
-      // Inkrement 5 / D11: die read-only Freigabe-Liste der steuerbaren
-      // Gerätetypen - Wahrheitsquelle ist der entitytypes-Katalog (kein
-      // Schalter). Sie beantwortet dieselbe Frage wie die Steuerungs-Freigabe
-      // („was dürfen wir steuern?"), nur für die andere Geräteklasse - deshalb
-      // steht sie direkt daneben.
-      { id: 'geraetetypen', label: 'Gerätetypen', icon: 'sliders', adminOnly: true },
     ],
   },
   {
@@ -256,19 +251,84 @@ export const PLATFORM_GROUPS: PlatformGroup[] = [
     key: 'kunden',
     label: 'Kunden',
     pages: [
+      // Seit Stufe 4 „Feinschliff" trägt der Mandanten-Drawer die VOLLE
+      // Benutzer-Verwaltung (inkl. Passwort-Reset), deshalb ist „Benutzer"
+      // kein eigener Punkt mehr - die alte Route bleibt als Legacy gültig.
       { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
-      { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
     ],
   },
 ];
 
+/** Ein Tab eines Plattform-BEREICHS (Stufe 3): eine eigene Route, ein Ort. */
+export interface BereichTab {
+  id: PageId;
+  label: string;
+}
+
 /**
- * Die flache Liste aller Plattform-Seiten - ABGELEITET aus den Gruppen, damit
- * es genau EINE Wahrheit über die Menge gibt. Jeder Bestandsleser (der
- * Admin-Zaun in `App.tsx`, `ALL_PAGES`, das Telefon-Blatt) bleibt unverändert
- * gültig; die Gruppierung ist reine PRÄSENTATION und ändert keine Route.
+ * Der Bereich **Geräte** (Admin-Umbau Stufe 3 „Zusammenwachsen",
+ * Captain-Entscheid F3): EIN Nav-Punkt mit zwei Tabs - **Inventar** (der
+ * Lebenszyklus je Box) und **Updates** (die Rollout-Kampagne).
+ *
+ * **Die revidierte Entscheidung, mit Begründung:** `vp-admin-geraete-ux-k2` §4
+ * hatte die Voll-Fusion abgelehnt („zwei Job-Familien mit verschiedener
+ * Kadenz auf einer Fläche" ergäbe eine Tabellen-Wand). Das Argument gilt
+ * weiter - es richtet sich aber gegen EINE SEITE, nicht gegen EINEN ORT. Beide
+ * Flächen bleiben inhaltlich, wie sie sind; nur ihr Ort wird einer.
+ *
+ * **Beide Routen bleiben ECHTE `PageId`s, kein Redirect** (§6.3): ein
+ * Lesezeichen auf `#/edge-updates` landet auf dem Tab Updates, und der
+ * programmatische Sprung des Flotten-Pulses (`onNavigate('edge-updates')`)
+ * funktioniert unverändert. Nur die NAVIGATION zeigt einen Punkt - welchen,
+ * beantwortet {@link navPageFor}.
  */
-export const PLATFORM_PAGES: PageDef[] = PLATFORM_GROUPS.flatMap((g) => g.pages);
+export const GERAETE_BEREICH: { host: PageId; tabs: BereichTab[] } = {
+  host: 'geraete-registry',
+  tabs: [
+    { id: 'geraete-registry', label: 'Inventar' },
+    { id: 'edge-updates', label: 'Updates' },
+  ],
+};
+
+/**
+ * Plattform-Seiten, die als TAB eines Bereichs leben statt als eigener
+ * Nav-Punkt. Sie sind vollwertige Routen (Lesezeichen, Deep-Links, der
+ * Admin-Zaun in `App.tsx`) und stehen deshalb in {@link PLATFORM_PAGES} - nur
+ * eben nicht in {@link PLATFORM_GROUPS}, das die NAVIGATION beschreibt.
+ */
+export const PLATFORM_TAB_PAGES: PageDef[] = [
+  // OTA Stufe 2: Releases, der laufende Rollout und das Audit-Journal.
+  { id: 'edge-updates', label: 'Edge-Updates', icon: 'refresh-cw', adminOnly: true },
+];
+
+/**
+ * Die flache Liste aller Plattform-Seiten: die Nav-Gruppen PLUS die Tab-Seiten.
+ * Sie ist die EINE Wahrheit über die MENGE der Plattform-Routen und trägt
+ * jeden Bestandsleser (den Admin-Zaun in `App.tsx`, `ALL_PAGES`); die Gruppen
+ * beschreiben davon nur die PRÄSENTATION.
+ *
+ * **Der Unterschied ist tragend:** stünde `edge-updates` nur in den Gruppen,
+ * verlöre die Seite mit Stufe 3 ihren Admin-Zaun - ein Nicht-Admin käme über
+ * `#/edge-updates` durch.
+ */
+export const PLATFORM_PAGES: PageDef[] = [
+  ...PLATFORM_GROUPS.flatMap((g) => g.pages),
+  ...PLATFORM_TAB_PAGES,
+];
+
+/**
+ * Der Nav-Punkt, unter dem eine Seite WOHNT - für die Hervorhebung in der
+ * Schale. Für jede Seite sie selbst; für einen Tab sein Bereich (Tab Updates
+ * lässt „Geräte" leuchten, nicht nichts).
+ */
+export function navPageFor(page: PageId): PageId {
+  return GERAETE_BEREICH.tabs.some((t) => t.id === page) ? GERAETE_BEREICH.host : page;
+}
+
+/** Gehört diese Seite in den Geräte-Bereich (= ist sie einer seiner Tabs)? */
+export function isGeraeteBereich(page: PageId): boolean {
+  return GERAETE_BEREICH.tabs.some((t) => t.id === page);
+}
 
 /** "Meine Anlage" for 0-1 Anlagen, "Meine Anlagen" from 2 (the fleet list). */
 export function anlagenLabel(siteCount: number | null): string {
@@ -309,6 +369,65 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
   standorte: 'technik',
   geraete: 'technik',
 };
+
+/**
+ * Stillgelegte PLATTFORM-Seiten, die in eine andere Seite GEFALTET wurden -
+ * das `LEGACY_ROUTES`-Muster auf Seiten-Ebene (Admin-Umbau Stufe 3/4, §6.3).
+ *
+ * **Der Unterschied zu einem TAB:** `edge-updates` bleibt eine ECHTE `PageId`
+ * (sie rendert den Geräte-Bereich mit ihrem Tab), weil auch programmatische
+ * Sprünge - der Flotten-Puls ruft `onNavigate('edge-updates')` - unverändert
+ * funktionieren müssen. Eine Seite HIER dagegen existiert nicht mehr; ihr
+ * Hash wird auf die aufnehmende Seite umgeschrieben, mitsamt dem
+ * SEKTIONS-Anker, damit ein Lesezeichen genau dort landet, wo sein Inhalt
+ * jetzt wohnt.
+ */
+const LEGACY_PLATFORM_PAGES: Record<string, { page: PageId; sektion?: string }> = {
+  // Stufe 3: dieselbe Betreiber-Frage („was dürfen wir steuern?"), nur für die
+  // andere Geräteklasse - deshalb eine Sektion der Steuerungs-Freigabe.
+  geraetetypen: { page: 'steuerungs-freigabe', sektion: 'geraetetypen' },
+  // Stufe 4 (F5): die Benutzer wohnen im Mandanten-Drawer. Es gibt hier
+  // ausdrücklich KEINEN Sektions-Anker - die alte Seite begann mit einer
+  // Mandanten-AUSWAHL, und welchen der Betreiber gemeint hat, weiß der Hash
+  // nicht; er landet deshalb auf der Liste, wo er ihn wählt.
+  benutzer: { page: 'mandanten' },
+};
+
+/**
+ * Die kanonische Adresse einer stillgelegten PLATTFORM-Seite, sonst null.
+ * Der Aufrufer schreibt sie per `history.replaceState` (kein Verlaufseintrag,
+ * kein `hashchange` - die geparste Route ist ohnehin identisch), genau wie
+ * bei {@link canonicalAnlageHash}.
+ */
+export function canonicalPlatformHash(hash: string): string | null {
+  const head = hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean)[0] ?? '';
+  const target = LEGACY_PLATFORM_PAGES[head];
+  if (!target) return null;
+  return target.sektion
+    ? `#/${target.page}?sektion=${encodeURIComponent(target.sektion)}`
+    : `#/${target.page}`;
+}
+
+/**
+ * Die Adresse einer SEKTION einer Plattform-Seite (`?sektion=<id>`) - das
+ * Hash-Parameter-Muster von {@link befehleHash}/{@link geraetHash}:
+ * `parseRoute` schneidet den Query-Teil ohnehin ab, die Route bleibt also die
+ * Seite, und ein Lesezeichen öffnet exakt dieselbe Sektion wieder.
+ */
+export function sektionHash(page: PageId, sektion?: string | null): string {
+  const base = `#/${page}`;
+  return sektion && sektion.trim()
+    ? `${base}?sektion=${encodeURIComponent(sektion.trim())}`
+    : base;
+}
+
+/** Die Sektion aus einem `?sektion=`-Hash, oder null. */
+export function parseSektion(hash: string): string | null {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  if (rest.length === 0) return null;
+  const value = new URLSearchParams(rest.join('?')).get('sektion');
+  return value && value.trim() ? value.trim() : null;
+}
 
 /**
  * The self-registration route (`#register` / `#/register`): the "Konto
@@ -361,6 +480,12 @@ export function parseRoute(hash: string): Route {
   }
   if (head in LEGACY_ROUTES) {
     return { page: 'anlagen', siteId: null, sub: LEGACY_ROUTES[head] };
+  }
+  // Eine gefaltete Plattform-Seite landet auf ihrer AUFNEHMENDEN Seite - der
+  // Anker reist über `canonicalPlatformHash` in die Adresse (die Route selbst
+  // trägt ihn nicht, sie ist ja dieselbe Seite).
+  if (head in LEGACY_PLATFORM_PAGES) {
+    return { page: LEGACY_PLATFORM_PAGES[head].page, siteId: null, sub: null };
   }
   if (PAGE_IDS.has(head)) {
     return { page: head as PageId, siteId: null, sub: null };
