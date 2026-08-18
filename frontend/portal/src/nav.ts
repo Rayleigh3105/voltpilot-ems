@@ -27,7 +27,6 @@ export type PageId =
   | 'prognose'
   | 'plattform-uebersicht'
   | 'mandanten'
-  | 'benutzer'
   | 'geraete-registry'
   | 'edge-updates'
   | 'optimizer'
@@ -252,8 +251,10 @@ export const PLATFORM_GROUPS: PlatformGroup[] = [
     key: 'kunden',
     label: 'Kunden',
     pages: [
+      // Seit Stufe 4 „Feinschliff" trägt der Mandanten-Drawer die VOLLE
+      // Benutzer-Verwaltung (inkl. Passwort-Reset), deshalb ist „Benutzer"
+      // kein eigener Punkt mehr - die alte Route bleibt als Legacy gültig.
       { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
-      { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
     ],
   },
 ];
@@ -385,6 +386,11 @@ const LEGACY_PLATFORM_PAGES: Record<string, { page: PageId; sektion?: string }> 
   // Stufe 3: dieselbe Betreiber-Frage („was dürfen wir steuern?"), nur für die
   // andere Geräteklasse - deshalb eine Sektion der Steuerungs-Freigabe.
   geraetetypen: { page: 'steuerungs-freigabe', sektion: 'geraetetypen' },
+  // Stufe 4 (F5): die Benutzer wohnen im Mandanten-Drawer. Es gibt hier
+  // ausdrücklich KEINEN Sektions-Anker - die alte Seite begann mit einer
+  // Mandanten-AUSWAHL, und welchen der Betreiber gemeint hat, weiß der Hash
+  // nicht; er landet deshalb auf der Liste, wo er ihn wählt.
+  benutzer: { page: 'mandanten' },
 };
 
 /**

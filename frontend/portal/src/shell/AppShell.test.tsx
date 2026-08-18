@@ -66,7 +66,7 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    const select = screen.getByLabelText('Mandanten-Kontext');
+    const select = screen.getByLabelText('Mandanten-Umschalter');
     expect(select).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Alle Mandanten' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Stadtwerke Musterstadt' })).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.queryByLabelText('Mandanten-Kontext')).toBeNull();
+    expect(screen.queryByLabelText('Mandanten-Umschalter')).toBeNull();
   });
 });
 
@@ -548,13 +548,15 @@ describe('AppShell Plattform-Gruppen (Admin-Umbau Stufe 1)', () => {
       </AppShell>,
     );
     for (const label of ['Geräte', 'Steuerungs-Freigabe',
-      'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten', 'Benutzer']) {
+      'Optimizer', 'Flows', 'Gerätevorlagen', 'Komponenten', 'Mandanten']) {
       expect(screen.getByTitle(label)).toBeInTheDocument();
     }
-    // Die zwei in Stufe 3 gefalteten Punkte sind aus der LEISTE verschwunden -
-    // ihre Flächen leben als Tab bzw. als Sektion weiter.
+    // Die drei gefalteten Punkte sind aus der LEISTE verschwunden - ihre
+    // Flächen leben als Tab (Updates), als Sektion (Gerätetypen) bzw. im
+    // Mandanten-Drawer (Benutzer) weiter.
     expect(screen.queryByTitle('Edge-Updates')).toBeNull();
     expect(screen.queryByTitle('Gerätetypen')).toBeNull();
+    expect(screen.queryByTitle('Benutzer')).toBeNull();
     fireEvent.click(screen.getByTitle('Geräte'));
     expect(onNavigate).toHaveBeenCalledWith('geraete-registry');
     expect(screen.getByTitle('Mandanten').textContent).toContain('1');

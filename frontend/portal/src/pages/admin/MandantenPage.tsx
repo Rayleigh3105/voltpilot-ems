@@ -21,12 +21,15 @@ import { DangerZone } from '../../components/DangerZone';
 import { EmptyState, ErrorState, TextSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
 import { CreateUserDrawer } from './CreateUserDrawer';
+import { EditUserDrawer, ResetPasswordDrawer } from './UserDrawers';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { RowMenu } from '../../components/RowMenu';
 import type { PageId } from '../../nav';
 
 /**
  * Plattform → Mandanten: the same list + add-drawer + detail-drawer pattern as
  * Standorte/Geräte, backed by the platform-admin API. The detail drawer shows
- * the tenant's users + sites and offers "In Portal-Ansicht springen", which
+ * the tenant's users + sites and offers "In Mandanten-Ansicht springen", which
  * sets the tenant switcher and renders the customer pages for that tenant.
  */
 export function MandantenPage({
@@ -53,7 +56,7 @@ export function MandantenPage({
         icon="building"
         category="industry"
         title="Mandanten"
-        description="Kunden (Mandanten) plattformweit verwalten. Zeile öffnen für Benutzer und Anlagen - oder oben über den Kontext-Umschalter in die Portal-Ansicht eines Mandanten springen."
+        description="Mandanten plattformweit verwalten. Zeile öffnen für Benutzer und Anlagen - oder oben über den Mandanten-Umschalter in die Ansicht eines Mandanten springen."
         actions={addButton}
       />
 
@@ -284,6 +287,12 @@ function TenantDetailDrawer({
   // failed load shows a retryable ErrorState instead of permanent skeletons.
   const [loadError, setLoadError] = useState<string | null>(null);
   const [userDrawer, setUserDrawer] = useState(false);
+  // Stufe 4 (F5): die Benutzer-Verwaltung ist hier VOLLSTÄNDIG - inklusive des
+  // Passwort-Resets, des einen Support-Hebels. Er lag bis dahin allein auf der
+  // eigenen Benutzer-Seite, während dieser Drawer die andere Hälfte trug.
+  const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [resetUser, setResetUser] = useState<AdminUser | null>(null);
+  const [confirmUser, setConfirmUser] = useState<{ user: AdminUser; kind: 'disable' | 'delete' } | null>(null);
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [editing, setEditing] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -313,14 +322,30 @@ function TenantDetailDrawer({
   }, [tenant.id]);
 
   async function disable(u: AdminUser) {
-    if (!window.confirm(`Benutzer „${u.username}“ wirklich deaktivieren? Die Person kann sich danach nicht mehr anmelden.`)) {
-      return;
-    }
     try {
       await adminApi.disableUser(tenant.id, u.id);
       await reload();
     } catch (e) {
       setError(e instanceof ApiError ? `Deaktivieren fehlgeschlagen: ${e.message}` : 'Fehler');
+    }
+  }
+
+  /**
+   * Der Löschweg der stillgelegten Benutzer-Seite, wörtlich übernommen - inkl.
+   * der Selbst-Sperre des Servers (409: das eigene Konto ist nicht löschbar).
+   */
+  async function remove(u: AdminUser) {
+    try {
+      await adminApi.deleteUser(tenant.id, u.id);
+      await reload();
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? 'Sie können Ihr eigenes Konto nicht löschen.'
+          : e instanceof ApiError
+            ? `Löschen fehlgeschlagen: ${e.message}`
+            : 'Fehler',
+      );
     }
   }
 
@@ -419,7 +444,7 @@ function TenantDetailDrawer({
               Schließen
             </Button>
             <Button variant="primary" onClick={() => onJumpToTenant(tenant.id, 'uebersicht')}>
-              In Portal-Ansicht springen →
+              In Mandanten-Ansicht springen →
             </Button>
           </>
         }
@@ -474,7 +499,12 @@ function TenantDetailDrawer({
         ) : users.length === 0 ? (
           <p className="vp-muted">Noch keine Benutzer für diesen Mandanten.</p>
         ) : (
-          <table className="vp-table" style={{ marginBottom: 'var(--vp-space-5)' }}>
+          <table className="vp-table responsive" style={{ marginBottom: 'var(--vp-space-5)' }}>
+            {/* `responsive` + `data-label`: seit Stufe 4 ist DAS hier die
+                einzige Benutzer-Verwaltung, und vier Spalten samt
+                Aktions-Menü messen am Telefon 499 px in einem 374-px-Einschub
+                (gemessen). Die Haus-Tabelle klappt unter 720 px zu
+                Etikett/Wert-Karten. */}
             <thead>
               <tr>
                 <th>Benutzername</th>
@@ -486,23 +516,38 @@ function TenantDetailDrawer({
             <tbody>
               {users.map((u) => (
                 <tr key={u.id}>
-                  <td className="vp-mono">{u.username}</td>
-                  <td>{u.email ?? '-'}</td>
-                  <td>
+                  <td data-label="Benutzername" className="vp-mono">{u.username}</td>
+                  <td data-label="E-Mail">{u.email ?? '-'}</td>
+                  <td data-label="Status">
                     <Badge variant={u.enabled ? 'ok' : 'off'} dot>
                       {u.enabled ? 'aktiv' : 'deaktiviert'}
                     </Badge>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
-                    {u.enabled ? (
-                      <Button variant="ghost" size="sm" onClick={() => disable(u)}>
-                        Deaktivieren
-                      </Button>
-                    ) : (
-                      <Button variant="ghost" size="sm" onClick={() => enable(u)}>
-                        Aktivieren
-                      </Button>
-                    )}
+                  <td data-label="" style={{ textAlign: 'right' }}>
+                    <RowMenu
+                      label={`Aktionen für ${u.username}`}
+                      items={[
+                        { label: 'Bearbeiten', icon: 'pencil', onClick: () => setEditUser(u) },
+                        {
+                          label: 'Passwort zurücksetzen',
+                          icon: 'refresh-cw',
+                          onClick: () => setResetUser(u),
+                        },
+                        u.enabled
+                          ? {
+                              label: 'Deaktivieren',
+                              icon: 'x',
+                              onClick: () => setConfirmUser({ user: u, kind: 'disable' }),
+                            }
+                          : { label: 'Aktivieren', icon: 'check', onClick: () => enable(u) },
+                        {
+                          label: 'Löschen',
+                          icon: 'trash',
+                          danger: true,
+                          onClick: () => setConfirmUser({ user: u, kind: 'delete' }),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -552,9 +597,9 @@ function TenantDetailDrawer({
         )}
 
         <div className="vp-alert vp-alert-info" style={{ marginTop: 'var(--vp-space-5)' }}>
-          Über den Kontext-Umschalter oben (oder den Knopf unten) sehen Sie Anlagen,
+          Über den Mandanten-Umschalter oben (oder den Knopf unten) sehen Sie Anlagen,
           Geräte und Übersicht dieses Mandanten - dieselben Seiten wie der Kunde, nur
-          mit gesetztem Mandanten-Kontext.
+          mit gewähltem Mandanten.
         </div>
 
         <DangerZone
@@ -579,6 +624,63 @@ function TenantDetailDrawer({
         onClose={() => setUserDrawer(false)}
         tenant={tenant}
         onCreated={() => void reload()}
+      />
+      {editUser && (
+        <EditUserDrawer
+          key={editUser.id}
+          tenant={tenant}
+          user={editUser}
+          onClose={() => setEditUser(null)}
+          onSaved={() => {
+            setEditUser(null);
+            void reload();
+          }}
+        />
+      )}
+      {resetUser && (
+        <ResetPasswordDrawer
+          key={resetUser.id}
+          tenant={tenant}
+          user={resetUser}
+          onClose={() => setResetUser(null)}
+        />
+      )}
+      {/* Die zwei Rückfragen im HAUS-MUSTER statt eines nativen `confirm`:
+          sie stehen in einem Drawer, der schon eine Folgenliste kennt
+          (`DangerZone` darunter), und ein System-Popup daneben wäre die
+          schwächste Rückfrage der Fläche. */}
+      <ConfirmDialog
+        open={confirmUser != null}
+        tone="danger"
+        title={
+          confirmUser?.kind === 'delete' ? 'Benutzer löschen?' : 'Benutzer deaktivieren?'
+        }
+        intro={
+          confirmUser?.kind === 'delete'
+            ? `Das Konto „${confirmUser?.user.username}" wird endgültig entfernt.`
+            : `„${confirmUser?.user.username}" kann sich danach nicht mehr anmelden.`
+        }
+        consequences={
+          confirmUser?.kind === 'delete'
+            ? [
+                'Der Zugang wird dauerhaft gelöscht - das lässt sich nicht rückgängig machen.',
+                'Die Anlagen und Daten des Mandanten bleiben unberührt.',
+                'Ein neuer Zugang für dieselbe Person ist jederzeit wieder anlegbar.',
+              ]
+            : [
+                'Die Anmeldung wird gesperrt; laufende Sitzungen enden beim nächsten Aufruf.',
+                'Das Konto bleibt bestehen - Aktivieren stellt den Zugang sofort wieder her.',
+                'Die Anlagen und Daten des Mandanten bleiben unberührt.',
+              ]
+        }
+        confirmLabel={confirmUser?.kind === 'delete' ? 'Benutzer löschen' : 'Deaktivieren'}
+        onCancel={() => setConfirmUser(null)}
+        onConfirm={() => {
+          const c = confirmUser;
+          setConfirmUser(null);
+          if (!c) return;
+          void (c.kind === 'delete' ? remove(c.user) : disable(c.user));
+        }}
       />
       <CreateSiteDrawer
         open={siteDrawer}
@@ -654,7 +756,7 @@ function TenantEditForm({
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="edit-tenant-betriebsart" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Betriebsart (Portal-Ansicht)
+            Betriebsart (Navigation des Kunden)
           </label>
           <select
             id="edit-tenant-betriebsart"
@@ -662,13 +764,14 @@ function TenantEditForm({
             value={betriebsart}
             onChange={(e) => setBetriebsart(e.target.value)}
           >
-            <option value="">Automatisch (aus Segment abgeleitet)</option>
+            <option value="">Automatisch (nach Anzahl Anlagen)</option>
             <option value="endkunde">Endkunde (Cockpit für die eigene Anlage)</option>
             <option value="betreiber">Betreiber (Flotten-/Portfolio-Ansicht)</option>
           </select>
           <p className="vp-muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-            Bestimmt die Navigation des Kundenportals. Automatisch: B2C →
-            Endkunde, CI → Betreiber.
+            Bestimmt die Navigation des Kundenportals. Automatisch heißt: ab
+            zwei Anlagen die Flotten-Ansicht, sonst das Cockpit - das Segment
+            wird dafür ausdrücklich NICHT herangezogen.
           </p>
         </div>
       </div>

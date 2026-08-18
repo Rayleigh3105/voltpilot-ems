@@ -59,7 +59,7 @@ export function GeraeteRegistryPage({
   onNavigate,
   tabs,
 }: {
-  /** Sprung in den Mandanten-Kontext (Kundensicht der Anlage / ihre Befehle). */
+  /** Sprung in die Mandanten-Ansicht der Anlage (bzw. auf ihre Befehle). */
   onJumpToTenant?: (tenantId: string, target: Route) => void;
   onNavigate?: (target: Route | PageId) => void;
   /**

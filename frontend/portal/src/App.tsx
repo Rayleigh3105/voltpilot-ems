@@ -80,9 +80,6 @@ const PlattformUebersichtPage = lazy(() =>
     default: m.PlattformUebersichtPage,
   })),
 );
-const BenutzerPage = lazy(() =>
-  import('./pages/admin/BenutzerPage').then((m) => ({ default: m.BenutzerPage })),
-);
 // Stufe 3: EIN Nav-Punkt „Geräte" mit zwei Tabs - beide Routen rendern denselben
 // Bereich, also gibt es auch nur einen Lade-Einstieg.
 const GeraeteBereich = lazy(() =>
@@ -971,9 +968,6 @@ function UnifiedPortal() {
               onJumpToTenant={jumpToTenant}
             />
           )}
-          {page === 'benutzer' && isAdmin && (
-            <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
-          )}
           {isGeraeteBereich(page) && isAdmin && (
             <GeraeteBereich page={page} onNavigate={navigate} onJumpToTenant={jumpToTenant} />
           )}
@@ -1039,10 +1033,10 @@ function PickTenantNotice({
   return (
     <Card padding="lg" radius="lg">
       <div className="vp-empty">
-        <h3>Mandanten-Kontext wählen</h3>
+        <h3>Mandanten wählen</h3>
         <p>
-          Diese Seite zeigt Kundendaten. Wählen Sie oben im Kontext-Umschalter einen
-          Mandanten (oder hier direkt), um dessen Portal-Ansicht zu sehen.
+          Diese Seite zeigt Kundendaten. Wählen Sie oben im Mandanten-Umschalter einen
+          Mandanten (oder hier direkt), um dessen Ansicht zu sehen.
         </p>
         <div style={{ display: 'flex', gap: 'var(--vp-space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
           {tenants.slice(0, 6).map((t) => (

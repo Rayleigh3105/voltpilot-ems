@@ -51,7 +51,11 @@ describe('parseRoute', () => {
     expect(parseRoute('#/marktpreise')).toEqual(route('marktpreise'));
     expect(parseRoute('#/prognose')).toEqual(route('prognose'));
     expect(parseRoute('#/mandanten')).toEqual(route('mandanten'));
-    expect(parseRoute('#/benutzer')).toEqual(route('benutzer'));
+    // Stufe 4 (F5): „Benutzer" ist im Mandanten-Drawer aufgegangen - das
+    // Lesezeichen bleibt gültig und landet auf der Mandanten-Liste, wo der
+    // Betreiber seinen Kunden wählt.
+    expect(parseRoute('#/benutzer')).toEqual(route('mandanten'));
+    expect(canonicalPlatformHash('#/benutzer')).toBe('#/mandanten');
     expect(parseRoute('#/geraete-registry')).toEqual(route('geraete-registry'));
   });
 

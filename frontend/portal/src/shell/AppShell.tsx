@@ -477,10 +477,10 @@ export function AppShell({
             // api.ts). The leading building icon + trailing caret make it
             // unmistakably THE Mandanten control and clearly a dropdown.
             // Customers get no chip: their tenant is fixed by the login.
-            <span className="vp-context" title="Mandanten-Kontext wechseln">
+            <span className="vp-context" title="Mandanten-Umschalter">
               <Icon name="building" size={16} className="vp-context-ic" />
               <select
-                aria-label="Mandanten-Kontext"
+                aria-label="Mandanten-Umschalter"
                 value={tenantOverride ?? ''}
                 onChange={(e) => onTenantChange(e.target.value || null)}
               >
