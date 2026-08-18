@@ -218,3 +218,82 @@
 .vp-fw-technik .vp-fw-kv {
   margin-bottom: var(--vp-space-2);
 }
+
+/* ---------------------------------------------------------------------------
+   „Grenzen am Netzanschluss" — Erklärbarkeit Stufe 3 („Grenzen als Gründe")
+
+   Ruhig, nie ein Alarm: eine geltende Grenze ist ein ZUSTAND, kein Fehler
+   (dieselbe Haltung wie „gesperrt = Nur messen" bei der Freigabe). Der URHEBER
+   steht als eigenes Element vor dem Satz — er ist die Antwort auf „drosselt IHR
+   meine Anlage?" und darf nicht im Fließtext untergehen.
+   --------------------------------------------------------------------------- */
+
+.vp-fw-grenzen {
+  margin-top: var(--vp-space-2);
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-2, #f8f9fb);
+  min-width: 0;
+}
+
+.vp-fw-grenzen > h4 {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--vp-muted, #6c757d);
+  text-transform: none;
+}
+
+.vp-fw-grenzen > ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vp-fw-grenzen > ul > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  min-width: 0;
+}
+
+.vp-fw-urheber {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 0.72rem;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--vp-surface, #fff);
+  border: 1px solid var(--vp-border);
+  color: var(--vp-muted, #6c757d);
+  white-space: nowrap;
+}
+
+.vp-fw-grenzen > ul > li > span:last-child {
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-verweis {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 44px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--vp-link, #2c5282);
+  text-decoration: none;
+}
+
+.vp-fw-verweis:hover {
+  text-decoration: underline;
+}

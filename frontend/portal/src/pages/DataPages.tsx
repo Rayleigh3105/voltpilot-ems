@@ -908,6 +908,15 @@ export function FahrplanSection({ site }: { site: Site }) {
   // widersprechen. Sie gilt nur für den laufenden Slot: die Panels filtern
   // darauf über den Index (`curtailTruthForSlot`).
   const curtail = useMemo(() => curtailTruth(curtailStatus, now), [curtailStatus, now]);
+  // Erklärbarkeit Stufe 3 „Grenzen als Gründe": die Fakten, die NICHT in der
+  // Viertelstunde stehen - die gepflegte Einspeisegrenze der Anlage und der
+  // s0-Block der Box (Einspeisewächter + die Grenze IM GERÄT). Beide optional;
+  // ohne sie nennt der Abregel-Satz seine Ursache ohne Zahl und der
+  // Grenzen-Block bleibt aus.
+  const grenzen = useMemo(
+    () => ({ maxFeedInKw: site.maxFeedInKw, curtailment: curtailStatus }),
+    [site.maxFeedInKw, curtailStatus],
+  );
   const activeSlot = controlReasonSlot(slots, now, slotMinutes);
   // `controlReasonSlot` liefert ein Element DIESES Arrays zurück, `indexOf` ist
   // also exakt - und es gibt keine zweite „welcher Slot läuft"-Regel.
@@ -971,6 +980,8 @@ export function FahrplanSection({ site }: { site: Site }) {
       selectedPhase={selPhase}
       selectedSlot={null}
       curtail={curtail}
+      grenzen={grenzen}
+      siteId={site.id}
       currentSlotIndex={activeFilmIdx}
       onClose={closePanel}
     />
@@ -985,6 +996,8 @@ export function FahrplanSection({ site }: { site: Site }) {
       selectedSlot={selSlot}
       curtail={curtail}
       planFacts={plan}
+      grenzen={grenzen}
+      siteId={site.id}
       currentSlotIndex={activeSlotIdx}
       onClose={closePanel}
     />

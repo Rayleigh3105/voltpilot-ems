@@ -24,6 +24,14 @@ import {
   type CurtailTruth,
 } from '../curtailment';
 import { Icon } from '../../designsystem/components/core/Icon';
+import {
+  GRENZEN_TITEL,
+  grenzenView,
+  leitgrund,
+  type GrenzenKontext,
+  type GrenzenSlot,
+} from '../grenzenWarum';
+import { befehleHash } from '../nav';
 import type { PlanWordingKind } from '../schedule';
 import {
   bindingChips,
@@ -31,6 +39,7 @@ import {
   phaseEurAmount,
   phaseEurLine,
   phaseEurNote,
+  phaseGrenzen,
   phaseRange,
   phaseWhy,
   roleLabel,
@@ -96,11 +105,70 @@ function CloseButton({ onClose }: { onClose: () => void }) {
   );
 }
 
+/**
+ * „Grenzen am Netzanschluss" (Erklärbarkeit Stufe 3, §5.4/§8): wo eine Grenze
+ * diese Viertelstunde bzw. Phase WIRKLICH geformt hat, steht sie hier MIT ihrem
+ * Urheber - plus die fremde Wahrheit im Gerät und der Querverweis auf die
+ * Befehle-Seite. Rendert GAR NICHTS, wenn nichts belegt ist.
+ *
+ * Bewusst nur die Grenzen AM NETZANSCHLUSS: die VoltPilot-eigenen Schutzgrenzen
+ * (Reserve, SoC-Fenster, EEG-Solarladen) tragen ihre Chips schon direkt daneben,
+ * und dieselbe Aussage zweimal auf einer Karte ist das Anti-Muster des Hauses.
+ */
+function GrenzenBlock({
+  slot,
+  grenzen,
+  siteId,
+  imSatzGenannt = false,
+}: {
+  slot: GrenzenSlot;
+  grenzen?: GrenzenKontext | null;
+  siteId?: string | null;
+  /**
+   * true, wenn der Warum-Satz der Karte den LEITGRUND schon wörtlich trägt
+   * (Rolle `abregeln`) - dann lässt der Block ihn aus. Nichts steht zweimal.
+   */
+  imSatzGenannt?: boolean;
+}) {
+  const view = grenzenView(
+    slot,
+    grenzen,
+    imSatzGenannt ? (leitgrund(slot, grenzen)?.id ?? null) : null,
+  );
+  if (view == null) return null;
+  return (
+    <div className="vp-fw-grenzen">
+      <h4>{GRENZEN_TITEL}</h4>
+      <ul>
+        {view.gruende.map((g) => (
+          <li key={g.id}>
+            <span className="vp-fw-urheber">{g.urheberLabel}</span>
+            <span>{g.text}</span>
+          </li>
+        ))}
+        {view.geraet && (
+          <li>
+            <span className="vp-fw-urheber">Ihr Gerät</span>
+            <span>{view.geraet}</span>
+          </li>
+        )}
+      </ul>
+      {siteId && (
+        <a className="vp-fw-verweis" href={befehleHash(siteId)}>
+          <Icon name="shield" size={13} /> {view.verweis} →
+        </a>
+      )}
+    </div>
+  );
+}
+
 /** The phase card: Zeitraum · was · 1-sentence why · sign-honest phase-€. */
 export function PhaseCard({
   phase,
   plantKind,
   curtail = CURTAIL_PLAN,
+  grenzen = null,
+  siteId = null,
   onClose,
 }: {
   phase: PlanPhase;
@@ -112,6 +180,10 @@ export function PhaseCard({
    * künftigen Phase wäre eine Behauptung über die Zukunft.
    */
   curtail?: CurtailTruth;
+  /** Die Grenzen-Fakten (Stufe 3); ohne sie ist die Karte zeichengleich. */
+  grenzen?: GrenzenKontext | null;
+  /** Für den Querverweis auf die Befehle-Seite; ohne ihn kein Link. */
+  siteId?: string | null;
   onClose: () => void;
 }) {
   const t = chartTheme();
@@ -130,14 +202,20 @@ export function PhaseCard({
             phase.kind === 'idle' ? { color: t.idle, form: 'filled' } : roleMark(phase.role, t),
           )}
         />
-        {roleLabel(phase.role, plantKind, null, false, curtail)}
+        {roleLabel(phase.role, plantKind, phase.limits?.flags ?? null, false, curtail)}
         {mode && <span className="vp-fw-mode">{mode}</span>}
       </div>
-      <p className="vp-fw-why">{phaseWhy(phase, plantKind, curtail)}</p>
+      <p className="vp-fw-why">{phaseWhy(phase, plantKind, curtail, grenzen)}</p>
       {/* Die Ausführungs-Wahrheit der Abregelung - nur mit Beleg. */}
       {curtailExecutionNote(curtail) && (
         <p className="vp-fw-exec">{curtailExecutionNote(curtail)}</p>
       )}
+      <GrenzenBlock
+        slot={phaseGrenzen(phase)}
+        grenzen={grenzen}
+        siteId={siteId}
+        imSatzGenannt={phase.role === 'abregeln'}
+      />
       {eur && (
         <p className="vp-fw-eur">
           Beitrag dieser Phase:{' '}
@@ -162,6 +240,8 @@ export function SlotCard({
   slotMinutes,
   curtail = CURTAIL_PLAN,
   planFacts = null,
+  grenzen = null,
+  siteId = null,
   onClose,
 }: {
   slot: WhySlot;
@@ -178,13 +258,21 @@ export function SlotCard({
    * wie in Stufe 0 - kein Anker-Satz, kein Technik-Blick-Anker.
    */
   planFacts?: (PlanWhyFacts & { fallback14a?: boolean | null }) | null;
+  /**
+   * Die Grenzen-Fakten (Erklärbarkeit Stufe 3): die gepflegte Einspeisegrenze
+   * der Anlage + der s0-Block der Box. Ohne sie nennt der Abregel-Satz seine
+   * Ursache weiterhin ohne Zahl und der Grenzen-Block bleibt aus.
+   */
+  grenzen?: GrenzenKontext | null;
+  /** Für den Querverweis auf die Befehle-Seite; ohne ihn kein Link. */
+  siteId?: string | null;
   onClose: () => void;
 }) {
   const t = chartTheme();
   const role = slot.slotRole as SlotRole;
   // Das Plan-Fenster reist mit: es ist der Maßstab des λ-über-Fenster-Zweigs
   // (W6) - ohne es bleibt der Ruhe-Satz beobachtend.
-  const why = slotWhy(slot, plantKind, curtail, slots, planFacts);
+  const why = slotWhy(slot, plantKind, curtail, slots, planFacts, grenzen);
   const rows = slotContextRows(slot, slots, planFacts, plantKind);
   const technik = technikRows(slot, planFacts, plantKind);
   const chips = bindingChips(slot.slotFlags, curtail);
@@ -214,6 +302,12 @@ export function SlotCard({
       {curtailExecutionNote(curtail) && (
         <p className="vp-fw-exec">{curtailExecutionNote(curtail)}</p>
       )}
+      <GrenzenBlock
+        slot={slot}
+        grenzen={grenzen}
+        siteId={siteId}
+        imSatzGenannt={role === 'abregeln'}
+      />
       {rows.length > 0 && (
         <dl className="vp-fw-kv">
           {rows.map((r) => (
@@ -277,6 +371,8 @@ export function FahrplanWhyPanel({
   selectedSlot,
   curtail,
   planFacts = null,
+  grenzen = null,
+  siteId = null,
   currentSlotIndex = -1,
   onClose,
 }: {
@@ -288,6 +384,10 @@ export function FahrplanWhyPanel({
   selectedSlot: number | null;
   /** Die LAUF-Fakten des Plans (Erklärbarkeit Stufe 1) - siehe {@link SlotCard}. */
   planFacts?: (PlanWhyFacts & { fallback14a?: boolean | null }) | null;
+  /** Die Grenzen-Fakten (Erklärbarkeit Stufe 3) - siehe {@link SlotCard}. */
+  grenzen?: GrenzenKontext | null;
+  /** Die Anlage, deren Befehle-Seite der Querverweis öffnet. */
+  siteId?: string | null;
   /** Die Abregel-Beleg-Lage des Geräts; ohne sie bleibt alles Plan-Wortlaut. */
   curtail?: CurtailTruth | null;
   /**
@@ -306,6 +406,8 @@ export function FahrplanWhyPanel({
         phase={phase}
         plantKind={plantKind}
         curtail={curtailTruthForSlot(curtail, phase.role, isCurrent)}
+        grenzen={grenzen}
+        siteId={siteId}
         onClose={onClose}
       />
     );
@@ -322,6 +424,8 @@ export function FahrplanWhyPanel({
         slotMinutes={slotMinutes}
         curtail={curtailTruthForSlot(curtail, slot.slotRole, selectedSlot === currentSlotIndex)}
         planFacts={planFacts}
+        grenzen={grenzen}
+        siteId={siteId}
         onClose={onClose}
       />
     );

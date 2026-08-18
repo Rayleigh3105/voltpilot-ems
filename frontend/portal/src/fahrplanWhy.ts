@@ -24,6 +24,12 @@ import {
   type CurtailTruth,
 } from './curtailment';
 import { eurAmount, fmtNum } from './format';
+import {
+  leitgrund,
+  type GrenzenGrund,
+  type GrenzenKontext,
+  type GrenzenSlot,
+} from './grenzenWarum';
 import type { PlanWordingKind } from './schedule';
 
 // ---- The slot-role vocabulary (report §6) ---------------------------------
@@ -370,6 +376,40 @@ export const BEGRUENDUNGEN: Begruendung[] = [
     gates: ['slot.importPriceCtKwh', 'slot.storedValueCtKwh', 'imp > λ'],
     aussage: 'Der Bezugspreis liegt über dem Wert gespeicherter Energie.',
   },
+  // Erklärbarkeit Stufe 3 „Grenzen als Gründe" (§5.4): die Abregel-Ursachen.
+  // Die Rolle `abregeln` behauptete bis dahin IMMER den negativen Börsenpreis -
+  // eine Ein-Ursachen-Aussage über eine Mehr-Ursachen-Entscheidung. Jeder Zweig
+  // hängt jetzt an seinem exportierten Fakt; trägt keiner, sagt die Fläche die
+  // BEOBACHTUNG („der Plan sieht vor, die Einspeisung zu drosseln").
+  {
+    id: 'grenze_14a',
+    gates: ['slot.slotFlags enthält grid_limit_14a'],
+    aussage: 'Der Netzbetreiber begrenzt gerade den Netzanschluss (§ 14a).',
+  },
+  {
+    id: 'grenze_einspeisung',
+    gates: ['slot.slotFlags enthält feed_in_cap'],
+    aussage: 'Die Einspeisegrenze der Anlage begrenzt die PV.',
+  },
+  {
+    id: 'grenze_negativpreis',
+    gates: ['slot.priceEurMwh < 0'],
+    aussage: 'Einspeisen würde beim negativen Börsenpreis Geld kosten.',
+  },
+  {
+    // Die FREMDE Wahrheit im Gerät. Sie hängt an beiden Hälften des s0-Blocks
+    // UND daran, dass die niedrigere Grenze NICHT unsere eigene Kappe sein
+    // kann - die Regel wohnt in `curtailment.deviceLimitLine` und wird hier
+    // durchgereicht, nie neu formuliert.
+    id: 'grenze_geraet',
+    gates: [
+      'curtailment.exportGuard.limitKw',
+      'curtailment.deviceExportLimit.limitKw',
+      'Gerät < hinterlegt',
+      'nicht unsere eigene capKw',
+    ],
+    aussage: 'Der Wechselrichter begrenzt die Einspeisung selbst enger.',
+  },
 ];
 
 export type PhaseKind = 'charge' | 'discharge' | 'idle' | 'curtail';
@@ -394,6 +434,41 @@ export interface PlanPhase {
   eur: number | null;
   kind: PhaseKind;
   driver: ModeDriver;
+  /**
+   * Erklärbarkeit Stufe 3: die Grenzen-Fakten der Phase, aggregiert aus ihren
+   * Slots ({@link phases} setzt sie IMMER). Optional, damit ältere Aufrufer und
+   * Test-Attrappen eine Phase weiterhin ohne sie bauen können - ohne sie bleibt
+   * {@link phaseWhy} beobachtend, also zeichengleich zur Stufe davor.
+   */
+  limits?: PhaseLimits;
+}
+
+/**
+ * Die Grenzen einer PHASE. Eine Phase hat keine eigenen Bindungs-Flags - sie
+ * erbt die VEREINIGUNG der Flags ihrer Slots, und als Preis den TIEFSTEN
+ * Börsenpreis (der Negativpreis-Fakt ist „irgendwo in dieser Phase lag der
+ * Preis unter null"; ein Mittelwert würde ihn verschlucken).
+ */
+export interface PhaseLimits {
+  /** Nur die Grenz-Flags am Netzanschluss - `grid_limit_14a`/`feed_in_cap`. */
+  flags: string[];
+  /** Der tiefste Börsenpreis der Phase in EUR/MWh; null ohne Preise. */
+  minPriceEurMwh: number | null;
+}
+
+/** Die Bindungs-Flags, die eine Grenze AM NETZANSCHLUSS belegen (Stufe 3). */
+const LIMIT_FLAGS = new Set<string>(['grid_limit_14a', 'feed_in_cap']);
+
+/**
+ * Die Phase als {@link GrenzenSlot} - dieselbe Verzweigung wie ein Slot, damit
+ * Phasen-Karte und Slot-Panel über dieselbe Grenze nichts Verschiedenes sagen
+ * können. Exportiert, weil die Phasen-Karte den Grenzen-Block daraus baut.
+ */
+export function phaseGrenzen(phase: PlanPhase): GrenzenSlot {
+  return {
+    slotFlags: phase.limits?.flags ?? null,
+    priceEurMwh: phase.limits?.minPriceEurMwh ?? null,
+  };
 }
 
 const ROLE_KIND: Record<SlotRole, PhaseKind> = {
@@ -462,6 +537,10 @@ export function phases(slots: WhySlot[], slotMinutes = 15): PlanPhase[] {
     let anyPeakPressure = false;
     let reservePeak = false;
     let reserveBackup = false;
+    // Erklärbarkeit Stufe 3: die Grenzen-Fakten der Phase (Vereinigung der
+    // Flags, tiefster Preis) - siehe {@link PhaseLimits}.
+    const limitFlags: string[] = [];
+    let minPrice: number | null = null;
     for (let i = r.start; i <= r.end; i++) {
       const s = slots[i];
       if (s.costEur != null && s.baselineCostEur != null) {
@@ -472,6 +551,11 @@ export function phases(slots: WhySlot[], slotMinutes = 15): PlanPhase[] {
       for (const f of s.slotFlags ?? []) {
         if (f === 'reserve_peak') reservePeak = true;
         if (f === 'reserve_backup') reserveBackup = true;
+        if (LIMIT_FLAGS.has(f) && !limitFlags.includes(f)) limitFlags.push(f);
+      }
+      if (s.priceEurMwh != null && Number.isFinite(Number(s.priceEurMwh))) {
+        const p = Number(s.priceEurMwh);
+        if (minPrice == null || p < minPrice) minPrice = p;
       }
     }
     const lastStart = new Date(slots[r.end].start).getTime();
@@ -485,6 +569,7 @@ export function phases(slots: WhySlot[], slotMinutes = 15): PlanPhase[] {
       eur,
       kind: ROLE_KIND[r.role],
       driver: phaseDriver(r.role, anyPeakPressure, reservePeak, reserveBackup),
+      limits: { flags: limitFlags, minPriceEurMwh: minPrice },
     };
   });
 }
@@ -526,6 +611,17 @@ export function driverLabel(driver: ModeDriver): string | null {
 // ---- Labels + copy per role (report §6, D3 vocabulary) --------------------
 
 /**
+ * Der Klammer-Zusatz des Abregel-Titels aus den BELEGTEN Grenz-Flags. Ohne
+ * eines bleibt es beim etablierten Rollennamen (siehe {@link roleLabel}).
+ */
+function curtailAnlass(flags?: string[] | null): string {
+  const f = flags ?? [];
+  if (f.includes('grid_limit_14a')) return 'Netzgrenze §14a';
+  if (f.includes('feed_in_cap')) return 'Einspeisegrenze';
+  return 'Negativpreis';
+}
+
+/**
  * Full customer label of a role (the panel headline).
  *
  * `framed` = der umgebende Satz sagt bereits „Geplant ist gerade: …", dann
@@ -546,7 +642,13 @@ export function roleLabel(
   switch (role) {
     case 'abregeln':
       // Gegenwart NUR mit Beleg - sonst der Plan-Wortlaut aus Fix 1.
-      return curtailRoleLabel(curtail, framed);
+      // Der Klammer-Zusatz folgt seit Erklärbarkeit Stufe 3 dem BELEGTEN
+      // Grenz-Flag (§5.4): eine vom Netzbetreiber angeordnete Drosselung als
+      // „(Negativpreis)" zu betiteln, wäre genau der Widerspruch zwischen
+      // Überschrift und Satz, den die Stufe beseitigt. Ohne Flag bleibt der
+      // etablierte §6-Rollenname stehen - die URSACHE trägt der Satz darunter,
+      // und der ist seit Stufe 3 fakten-gebunden.
+      return curtailRoleLabel(curtail, framed, curtailAnlass(flags));
     case 'reserve_halten': {
       const f = flags ?? [];
       if (f.includes('reserve_backup')) return 'Reserve halten (Notstrom)';
@@ -578,6 +680,7 @@ export function phaseWhy(
   phase: PlanPhase,
   kind: PlanWordingKind,
   curtail: CurtailTruth = CURTAIL_PLAN,
+  grenzen?: GrenzenKontext | null,
 ): string {
   switch (phase.role) {
     case 'pv_speichern':
@@ -610,10 +713,40 @@ export function phaseWhy(
       // richtig und kausal falsch. Ohne Fakt wird die Beobachtung gesagt.
       return 'Der Speicher wartet – in dieser Phase ist weder Laden noch Entladen eingeplant.';
     case 'abregeln':
-      return curtail.stufe === 'ausgefuehrt'
-        ? 'Einspeisen würde bei negativen Preisen Geld kosten – die PV wird deshalb gedrosselt.'
-        : 'Einspeisen würde bei negativen Preisen Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
+      // Erklärbarkeit Stufe 3 (§5.4): die Ursache kommt aus dem BELEGTEN
+      // Leitgrund der Phase, nie mehr pauschal aus dem Negativpreis - der
+      // Solver regelt auch an der Einspeisegrenze und an §14a ab. Ohne Beleg
+      // die BEOBACHTUNG.
+      return abregelSatz(leitgrund(phaseGrenzen(phase), grenzen), curtail, 'phase');
   }
+}
+
+/**
+ * Der Abregel-Satz: BELEGTER Leitgrund + was der Plan tut. Ohne Grund bleibt
+ * nur die Beobachtung übrig - der frühere Satz behauptete IMMER den negativen
+ * Börsenpreis und war damit eine Ein-Ursachen-Aussage über eine
+ * Mehr-Ursachen-Entscheidung (Konzept §5.4 / `begruendung.test.ts`).
+ */
+function abregelSatz(
+  grund: GrenzenGrund | null,
+  curtail: CurtailTruth,
+  scope: 'slot' | 'phase',
+): string {
+  const done = curtail.stufe === 'ausgefuehrt';
+  const wo = scope === 'slot' ? 'in dieser Viertelstunde' : 'in dieser Phase';
+  if (grund == null) {
+    return done
+      ? `Die Einspeisung wird ${wo} gedrosselt.`
+      : `Der Plan sieht vor, die Einspeisung ${wo} zu drosseln.`;
+  }
+  if (grund.id === 'negativpreis') {
+    const tail = done
+      ? 'die PV wird deshalb gedrosselt.'
+      : 'der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
+    // Der Grund-Satz endet auf einem Punkt - für den Anschluss ersetzt.
+    return `${grund.text.replace(/\.$/, '')} – ${tail}`;
+  }
+  return grund.text;
 }
 
 /**
@@ -785,6 +918,7 @@ export function slotWhy(
   curtail: CurtailTruth = CURTAIL_PLAN,
   slots: WhySlot[] = [],
   plan?: PlanWhyFacts | null,
+  grenzen?: GrenzenKontext | null,
 ): string | null {
   const role = slot.slotRole;
   if (role == null || !ROLE_SET.has(role)) return null;
@@ -877,17 +1011,10 @@ export function slotWhy(
       }
       // Ohne belegten Treiber: BEOBACHTEND (siehe {@link phaseWhy}).
       return 'Der Speicher wartet – für diese Viertelstunde ist weder Laden noch Entladen eingeplant.';
-    case 'abregeln': {
-      // Gegenwart NUR mit Ausführungs-Beleg (PR 3); ohne ihn der
-      // Plan-Wortlaut aus Fix 1, unverändert.
-      const done = curtail.stufe === 'ausgefuehrt';
-      const tail = done
-        ? 'die PV wird deshalb gedrosselt.'
-        : 'der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.';
-      return price != null && price < 0
-        ? `Einspeisen würde beim negativen Börsenpreis (${ctFmt(price)}) Geld kosten – ${tail}`
-        : `Einspeisen würde bei negativen Preisen Geld kosten – ${tail}`;
-    }
+    case 'abregeln':
+      // Erklärbarkeit Stufe 3 (§5.4): §14a → Einspeisegrenze → Negativpreis →
+      // BEOBACHTUNG. Gegenwart weiterhin nur mit Ausführungs-Beleg (PR 3).
+      return abregelSatz(leitgrund(slot, grenzen), curtail, 'slot');
   }
   return null;
 }

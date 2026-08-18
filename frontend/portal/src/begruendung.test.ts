@@ -33,10 +33,12 @@
  *   keine Ursache. Kausal sind dort nur die zwei Speicher-Halbsätze, und die
  *   stehen unten in der Gate-Tabelle.
  * - „Einspeisen würde bei negativen Preisen Geld kosten" (Rolle `abregeln`):
- *   das IST eine Ein-Ursachen-Aussage über eine Mehr-Ursachen-Entscheidung
- *   (der Solver regelt auch an der Einspeisegrenze ab) — sie gehört zu W4 und
- *   damit ausdrücklich in Stufe 3 („Grenzen als Gründe"), nicht in Stufe 0.
- *   Wer sie dort verzweigt, nimmt sie hier ins Vokabular auf.
+ *   das WAR eine Ein-Ursachen-Aussage über eine Mehr-Ursachen-Entscheidung
+ *   (der Solver regelt auch an der Einspeisegrenze ab). Stufe 3 („Grenzen als
+ *   Gründe") hat sie verzweigt, also steht sie SEITHER im Vokabular unten — der
+ *   Wortlaut ohne Zahl gehört keinem Fakt. Die fakten-gebundene Fassung nennt
+ *   den Börsenpreis im SINGULAR („beim negativen Börsenpreis"), hängt also an
+ *   `slot.priceEurMwh < 0` und ist damit erlaubt.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -56,6 +58,7 @@ import {
   type WhySlot,
 } from './fahrplanWhy';
 import { lageView, speicherHalbsatz, type LageSlot } from './fahrplanLage';
+import { grenzenView, gruende, leitgrund } from './grenzenWarum';
 import { planInsightParts, planSentence, type PlanSlotLike } from './schedule';
 
 /**
@@ -75,6 +78,11 @@ const KAUSAL: { re: RegExp; was: string }[] = [
   { re: /zu (klein|gering|teuer|günstig|niedrig|hoch)\b/i, was: 'zu klein/teuer/…' },
   { re: /Nichtstun/i, was: 'Nichtstun' },
   { re: /wirtschaftlichste/i, was: 'wirtschaftlichste' },
+  // Erklärbarkeit Stufe 3: der pauschale Abregel-Grund. Die PLURAL-Form
+  // („bei negativen Preisen") war der Fallback, der jede Drosselung dem Markt
+  // zuschrieb; die fakten-gebundene Fassung steht im Singular und trägt ihre
+  // Zahl, matcht hier also nicht.
+  { re: /bei negativen Preisen/i, was: 'bei negativen Preisen (pauschal)' },
 ];
 
 function kausaleVokabeln(text: string): string[] {
@@ -240,6 +248,11 @@ describe('Warum-Wächter: die Stufe-1-Zweige hängen an ihren Gates', () => {
     // Erklärbarkeit Stufe 2
     'lage_aufheben',
     'lage_auffuellung',
+    // Erklärbarkeit Stufe 3
+    'grenze_14a',
+    'grenze_einspeisung',
+    'grenze_negativpreis',
+    'grenze_geraet',
   ];
 
   it('die geprüften Zweige stehen in der Gate-Tabelle', () => {
@@ -346,5 +359,60 @@ describe('Warum-Wächter: die Lage-Zeile erfindet keine Ursache', () => {
 
   it('ohne eine einzige belegte Aussage entsteht die Zeile gar nicht', () => {
     expect(lageView({ slots: [], now: NOW })).toBeNull();
+  });
+});
+
+/**
+ * ERKLÄRBARKEIT STUFE 3: die Abregel-Verzweigung. Jede der drei Ursachen hängt
+ * an ihrem exportierten Fakt; ohne einen davon sagt die Fläche nur, was der
+ * Plan TUT. Der Gerätelimit-Satz hängt zusätzlich an beiden Hälften des
+ * s0-Blocks - und daran, dass die engere Grenze nicht unser eigenes Kommando
+ * sein kann.
+ */
+describe('Warum-Wächter: die Stufe-3-Grenzen hängen an ihren Gates', () => {
+  const abregeln = faktenfrei('abregeln');
+
+  it('nennt OHNE Flag und OHNE Negativpreis keine Ursache', () => {
+    for (const kind of KINDS) {
+      const satz = slotWhy(abregeln, kind) as string;
+      expect(satz).toBe('Der Plan sieht vor, die Einspeisung in dieser Viertelstunde zu drosseln.');
+      expect(kausaleVokabeln(satz), `abregeln behauptet ohne Fakt: "${satz}"`).toEqual([]);
+    }
+    expect(leitgrund(abregeln)).toBeNull();
+    expect(gruende(abregeln)).toEqual([]);
+  });
+
+  it('§14a ist ohne sein Flag unerreichbar - und mit ihm der Leitgrund', () => {
+    expect(leitgrund({ ...abregeln, slotFlags: ['soc_max'] })).toBeNull();
+    const g = leitgrund({ ...abregeln, slotFlags: ['grid_limit_14a'] });
+    expect(g?.id).toBe('netzgrenze_14a');
+    expect(g?.urheberLabel).toBe('Ihr Netzbetreiber');
+  });
+
+  it('die Einspeisegrenze nennt ihre Zahl NUR aus dem Kontext, die Ursache auch ohne', () => {
+    const slot = { ...abregeln, slotFlags: ['feed_in_cap'] };
+    // Das FLAG ist der Fakt - die Ursache steht auch ohne gepflegte Grenze.
+    expect(leitgrund(slot)?.text).toContain('nur eine begrenzte Leistung');
+    // Mit der gepflegten Grenze kommt die Zahl dazu, nie eine erfundene.
+    expect(leitgrund(slot, { maxFeedInKw: 70 })?.text).toContain('70,0');
+  });
+
+  it('der Negativpreis-Zweig ist ohne einen negativen Preis unerreichbar', () => {
+    expect(leitgrund({ ...abregeln, priceEurMwh: 40 })).toBeNull();
+    expect(leitgrund({ ...abregeln, priceEurMwh: -21 })?.id).toBe('negativpreis');
+  });
+
+  it('der FREMDE Auftrag führt vor unserer eigenen Ökonomie', () => {
+    const beides = { ...abregeln, slotFlags: ['grid_limit_14a'], priceEurMwh: -21 };
+    expect(leitgrund(beides)?.id).toBe('netzgrenze_14a');
+    // Verschwiegen wird der zweite Grund nie - er steht im Block daneben.
+    expect(gruende(beides).map((g) => g.id)).toEqual(['netzgrenze_14a', 'negativpreis']);
+  });
+
+  it('der Grenzen-Block entsteht nur zu einer geformten Viertelstunde', () => {
+    expect(grenzenView(faktenfrei('warten'))).toBeNull();
+    // Geformt, aber ohne belegten Grund UND ohne Geräte-Grenze: nichts zu sagen.
+    expect(grenzenView({ ...abregeln, slotFlags: ['curtailing'] })).toBeNull();
+    expect(grenzenView({ ...abregeln, slotFlags: ['feed_in_cap'] })).not.toBeNull();
   });
 });

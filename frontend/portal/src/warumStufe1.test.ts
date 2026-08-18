@@ -120,7 +120,8 @@ describe('Stufe 1: die Gate-Tabelle ist vollständig und ehrlich', () => {
   it('jeder Eintrag nennt seine Gates und seine Aussage', () => {
     expect(BEGRUENDUNGEN.length).toBeGreaterThan(0);
     for (const b of BEGRUENDUNGEN) {
-      expect(b.id).toMatch(/^[a-z_]+$/);
+      // Kleinbuchstaben + Ziffern (Stufe 3 trägt `grenze_14a`).
+      expect(b.id).toMatch(/^[a-z0-9_]+$/);
       expect(b.gates.length).toBeGreaterThan(0);
       expect(b.aussage.length).toBeGreaterThan(10);
     }
