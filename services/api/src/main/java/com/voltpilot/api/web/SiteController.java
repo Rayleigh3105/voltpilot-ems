@@ -5,6 +5,8 @@ import com.voltpilot.api.history.HistoryService;
 import com.voltpilot.api.optimizer.SchedulePricingService;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
+import com.voltpilot.api.forecast.ForecastModelService;
+import com.voltpilot.api.forecast.ForecastModels;
 import com.voltpilot.api.repo.ForecastQualityRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
@@ -35,9 +37,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -78,8 +80,7 @@ public class SiteController {
     private final CurtailmentStatusRepository curtailmentStatus;
     private final DeviceSourceStatusRepository sourceStatus;
     private final SchedulePricingService schedulePricing;
-    private final String activeLoadModel;
-    private final String activePvModel;
+    private final ForecastModelService forecastModels;
 
     public SiteController(
             SiteRepository sites,
@@ -95,8 +96,7 @@ public class SiteController {
             CurtailmentStatusRepository curtailmentStatus,
             DeviceSourceStatusRepository sourceStatus,
             SchedulePricingService schedulePricing,
-            @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
-            @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
+            ForecastModelService forecastModels) {
         this.sites = sites;
         this.devices = devices;
         this.series = series;
@@ -110,8 +110,7 @@ public class SiteController {
         this.curtailmentStatus = curtailmentStatus;
         this.sourceStatus = sourceStatus;
         this.schedulePricing = schedulePricing;
-        this.activeLoadModel = activeLoadModel;
-        this.activePvModel = activePvModel;
+        this.forecastModels = forecastModels;
     }
 
     @GetMapping
@@ -361,6 +360,9 @@ public class SiteController {
         }
         int window = Math.min(Math.max(days, 1), 90);
         LocalDate since = LocalDate.now(HistoryRange.ZONE).minusDays(window);
+        Map<String, String> effective = forecastModels.activeModels();
+        String activeLoadModel = effective.get(ForecastModels.KIND_LOAD);
+        String activePvModel = effective.get(ForecastModels.KIND_PV);
         Set<String> active = Set.of(activeLoadModel, activePvModel);
         return new ForecastQualityDto(
                 activeLoadModel,

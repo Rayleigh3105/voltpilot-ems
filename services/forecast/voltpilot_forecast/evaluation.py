@@ -16,9 +16,12 @@ DDL and shown plainly in the portal):
   darkness) rather than a division blow-up.
 * **Bias (kW)** - mean signed error (forecast - actual): shows systematic
   over-/under-forecasting that MAE alone hides.
-* **Skill vs baseline** - ``1 - mae_model / mae_baseline``; positive means the
-  model beat the baseline that day, 0 means equal, negative means worse. NULL
-  when the baseline's MAE is ~0 (nothing to beat) or the baseline is missing.
+* **Skill vs the ACTIVE model** - ``1 - mae_model / mae_reference``; positive
+  means the model beat the model that actually plans that day, 0 means equal,
+  negative means worse. NULL for the reference itself, when its MAE is ~0
+  (nothing to beat), or when it is missing. (While nothing is promoted the
+  active model IS the baseline, so this is byte-identical to the pre-switch
+  behaviour; after a promotion the roles swap cleanly.)
 
 Which prediction counts: per slot, each model's FRESHEST prediction issued at
 or before the slot start (``run_at <= time``) - exactly the value the
@@ -89,11 +92,15 @@ def forecast_metrics(
 def skill_vs_baseline(
     model_mae_kw: float, baseline_mae_kw: float | None
 ) -> float | None:
-    """``1 - mae_model / mae_baseline`` (positive = model better), or ``None``.
+    """``1 - mae_model / mae_reference`` (positive = model better), or ``None``.
 
-    ``None`` when the baseline is missing or its MAE is ~0 - a quotient
-    against (near-)zero would only produce noise, and "the baseline was
+    ``None`` when the reference is missing or its MAE is ~0 - a quotient
+    against (near-)zero would only produce noise, and "the reference was
     already perfect" is not a meaningful thing to beat.
+
+    The REFERENCE is the kind's ACTIVE model (see ``evaluate.evaluate_day``);
+    while nothing is promoted that IS the baseline, so the parameter keeps its
+    historical name and every stored number stays byte-identical.
     """
     if baseline_mae_kw is None or baseline_mae_kw <= _SKILL_FLOOR_KW:
         return None
