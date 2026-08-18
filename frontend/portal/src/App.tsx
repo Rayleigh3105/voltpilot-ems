@@ -26,6 +26,8 @@ import { AppShell } from './shell/AppShell';
 import {
   anlageRoute,
   canonicalAnlageHash,
+  canonicalPlatformHash,
+  isGeraeteBereich,
   hashForRoute,
   isBootHash,
   isPortfolioPage,
@@ -81,20 +83,16 @@ const PlattformUebersichtPage = lazy(() =>
 const BenutzerPage = lazy(() =>
   import('./pages/admin/BenutzerPage').then((m) => ({ default: m.BenutzerPage })),
 );
-const GeraeteRegistryPage = lazy(() =>
-  import('./pages/admin/GeraeteRegistryPage').then((m) => ({ default: m.GeraeteRegistryPage })),
-);
-const EdgeUpdatesPage = lazy(() =>
-  import('./pages/admin/EdgeUpdatesPage').then((m) => ({ default: m.EdgeUpdatesPage })),
+// Stufe 3: EIN Nav-Punkt „Geräte" mit zwei Tabs - beide Routen rendern denselben
+// Bereich, also gibt es auch nur einen Lade-Einstieg.
+const GeraeteBereich = lazy(() =>
+  import('./pages/admin/GeraeteBereich').then((m) => ({ default: m.GeraeteBereich })),
 );
 const OptimizerPage = lazy(() =>
   import('./pages/admin/OptimizerPage').then((m) => ({ default: m.OptimizerPage })),
 );
 const FlowsPage = lazy(() =>
   import('./pages/admin/FlowsPage').then((m) => ({ default: m.FlowsPage })),
-);
-const GeraetetypenPage = lazy(() =>
-  import('./pages/admin/GeraetetypenPage').then((m) => ({ default: m.GeraetetypenPage })),
 );
 const SteuerungsFreigabePage = lazy(() =>
   import('./pages/admin/SteuerungsFreigabePage').then((m) => ({
@@ -515,7 +513,9 @@ function UnifiedPortal() {
   // `replaceState` erzeugt keinen Verlaufseintrag und kein `hashchange`; die
   // geparste Route ist ohnehin dieselbe.
   useEffect(() => {
-    const canonical = canonicalAnlageHash(window.location.hash);
+    const canonical =
+      canonicalAnlageHash(window.location.hash)
+      ?? canonicalPlatformHash(window.location.hash);
     if (canonical) window.history.replaceState(null, '', canonical);
   }, [route]);
 
@@ -974,12 +974,10 @@ function UnifiedPortal() {
           {page === 'benutzer' && isAdmin && (
             <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
           )}
-          {page === 'geraete-registry' && isAdmin && (
-            <GeraeteRegistryPage onJumpToTenant={jumpToTenant} onNavigate={navigate} />
+          {isGeraeteBereich(page) && isAdmin && (
+            <GeraeteBereich page={page} onNavigate={navigate} onJumpToTenant={jumpToTenant} />
           )}
-          {page === 'edge-updates' && isAdmin && <EdgeUpdatesPage onNavigate={navigate} />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
-          {page === 'geraetetypen' && isAdmin && <GeraetetypenPage />}
           {page === 'steuerungs-freigabe' && isAdmin && <SteuerungsFreigabePage />}
           {page === 'vorlagen' && isAdmin && <VorlagenPage />}
           {page === 'komponenten-flotte' && isAdmin && <KomponentenFlottePage />}

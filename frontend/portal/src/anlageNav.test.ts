@@ -13,7 +13,7 @@ import {
   type SidebarGroup,
   type SidebarItem,
 } from './anlageNav';
-import { MAIN_PAGES, PLATFORM_PAGES, type AnlagenSub } from './nav';
+import { MAIN_PAGES, PLATFORM_GROUPS, type AnlagenSub } from './nav';
 import { anlageSurface, type AnlageSurface, type AnlageSurfaceInput } from './surface';
 
 /**
@@ -488,7 +488,14 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     // Plattform-Navigation mit - die Landung unter „Plattform", jede weitere
     // unter ihrem eigenen Namen. Geprüft wird die Vereinigung: keine Seite darf
     // dabei verloren gehen, und keine darf doppelt stehen.
-    expect(platformSheetKeys(groups)).toEqual(PLATFORM_PAGES.map((p) => p.id));
+    //
+    // Verglichen wird gegen die NAV-Gruppen, nicht gegen `PLATFORM_PAGES`:
+    // seit Stufe 3 enthält die flache Liste zusätzlich die TAB-Seiten
+    // (`edge-updates`), und die erreicht man über ihren Bereich - ein eigener
+    // Blatt-Eintrag stünde neben seinem Wirt und führte zweimal zum selben Ort.
+    expect(platformSheetKeys(groups)).toEqual(
+      PLATFORM_GROUPS.flatMap((g) => g.pages).map((p) => p.id),
+    );
     const last = groups[groups.length - 1];
     expect(last.items.map((i) => i.key)).toEqual([
       'wetter',
@@ -578,7 +585,9 @@ describe('fleetBarSlots / fleetSheetGroups - die Leiste über der Anlage', () =>
 
   it('trägt im Blatt die Plattform-Gruppe und die Kopfzeilen-Aktionen', () => {
     const groups = fleetSheetGroups(FLOTTE, { isAdmin: true, showAddAnlage: true });
-    expect(platformSheetKeys(groups)).toEqual(PLATFORM_PAGES.map((p) => p.id));
+    expect(platformSheetKeys(groups)).toEqual(
+      PLATFORM_GROUPS.flatMap((g) => g.pages).map((p) => p.id),
+    );
     expect(groups.at(-1)?.items.map((i) => i.key)).toEqual(['hilfe', 'add-anlage', 'logout']);
   });
 

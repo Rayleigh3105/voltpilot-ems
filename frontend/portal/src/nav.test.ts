@@ -12,6 +12,13 @@ import {
   parseRoute,
   PLATFORM_GROUPS,
   PLATFORM_PAGES,
+  PLATFORM_TAB_PAGES,
+  GERAETE_BEREICH,
+  navPageFor,
+  isGeraeteBereich,
+  canonicalPlatformHash,
+  sektionHash,
+  parseSektion,
   type AnlagenSub,
   type Route,
 } from './nav';
@@ -299,11 +306,24 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
     ]);
   });
 
-  it('verliert keine Seite: die flache Liste IST die Vereinigung der Gruppen', () => {
-    expect(PLATFORM_PAGES).toEqual(PLATFORM_GROUPS.flatMap((g) => g.pages));
-    // Und jede Seite steht in GENAU EINER Gruppe.
+  it('verliert keine Seite: die flache Liste sind die Gruppen PLUS die Tab-Seiten', () => {
+    expect(PLATFORM_PAGES).toEqual([
+      ...PLATFORM_GROUPS.flatMap((g) => g.pages),
+      ...PLATFORM_TAB_PAGES,
+    ]);
+    // Und jede Seite steht GENAU EINMAL darin - eine Tab-Seite darf nie
+    // zusätzlich als Nav-Punkt auftauchen.
     const ids = PLATFORM_PAGES.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('fencet auch die TAB-Seiten: sie stehen in der flachen Liste, nicht in der Nav', () => {
+    // Der Admin-Zaun in `App.tsx` prüft gegen `PLATFORM_PAGES`. Stünde
+    // `edge-updates` nur in den Gruppen, käme ein Nicht-Admin über
+    // `#/edge-updates` ungefencet durch.
+    expect(PLATFORM_PAGES.some((p) => p.id === 'edge-updates')).toBe(true);
+    expect(PLATFORM_GROUPS.flatMap((g) => g.pages).some((p) => p.id === 'edge-updates'))
+      .toBe(false);
   });
 
   it('hält jede Plattform-Route gültig (kein Lesezeichen bricht)', () => {
@@ -312,10 +332,6 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
       // Beide Hash-Schreibweisen, wie überall im Router.
       expect(parseRoute(`#${p.id}`)).toEqual(route(p.id));
     }
-    // Die zwei Punkte, die Stufe 3 zusammenlegt, sind HEUTE noch eigene
-    // Seiten - ihre Ids dürfen dabei nicht verschwinden.
-    expect(PLATFORM_PAGES.some((p) => p.id === 'edge-updates')).toBe(true);
-    expect(PLATFORM_PAGES.some((p) => p.id === 'geraetetypen')).toBe(true);
   });
 
   it('gibt jedem Punkt ein EIGENES Icon (die Doppel-Icons waren das Anhäng-Symptom)', () => {
@@ -323,10 +339,62 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
     expect(new Set(icons).size).toBe(icons.length);
   });
 
-  it('stellt die künftigen Nachbarn schon nebeneinander (Stufe 3 wird ein Entfernen)', () => {
+  it('hat die zwei gefalteten Punkte aus der Navigation genommen (Stufe 3)', () => {
     const flotte = PLATFORM_GROUPS.find((g) => g.key === 'flotte')!.pages.map((p) => p.id);
-    expect(flotte.indexOf('edge-updates')).toBe(flotte.indexOf('geraete-registry') + 1);
-    expect(flotte.indexOf('geraetetypen')).toBe(flotte.indexOf('steuerungs-freigabe') + 1);
+    expect(flotte).toEqual(['geraete-registry', 'steuerungs-freigabe']);
+  });
+
+  it('lässt den Tab „Updates" den Nav-Punkt „Geräte" leuchten', () => {
+    // Der Bereich ist EIN Ort; der Tab darf die Leiste nicht ins Nichts zeigen
+    // lassen. Jede andere Seite bleibt sie selbst.
+    expect(navPageFor('edge-updates')).toBe('geraete-registry');
+    expect(navPageFor('geraete-registry')).toBe('geraete-registry');
+    expect(navPageFor('mandanten')).toBe('mandanten');
+    expect(isGeraeteBereich('edge-updates')).toBe(true);
+    expect(isGeraeteBereich('geraete-registry')).toBe(true);
+    expect(isGeraeteBereich('optimizer')).toBe(false);
+  });
+
+  it('nennt die zwei Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
+    expect(GERAETE_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
+      ['geraete-registry', 'Inventar'],
+      ['edge-updates', 'Updates'],
+    ]);
+    // Der Wirt IST einer der Tabs - sonst wäre der Bereich ohne Auswahl leer.
+    expect(GERAETE_BEREICH.tabs.some((t) => t.id === GERAETE_BEREICH.host)).toBe(true);
+  });
+
+  it('behält beide Routen des Bereichs (kein Redirect, auch nicht programmatisch)', () => {
+    // `edge-updates` ist bewusst KEIN Legacy-Redirect: der Flotten-Puls
+    // navigiert programmatisch dorthin, und ein Lesezeichen soll auf dem Tab
+    // Updates landen, nicht auf dem Inventar.
+    expect(parseRoute('#/edge-updates')).toEqual(route('edge-updates'));
+    expect(parseRoute('#/geraete-registry')).toEqual(route('geraete-registry'));
+  });
+
+  it('faltet die Gerätetypen in die Steuerungs-Freigabe - MIT ihrem Anker', () => {
+    expect(parseRoute('#/geraetetypen')).toEqual(route('steuerungs-freigabe'));
+    expect(parseRoute('#geraetetypen')).toEqual(route('steuerungs-freigabe'));
+    // Ohne den Anker landete das Lesezeichen oben auf einer Seite, deren
+    // Inhalt es gar nicht sucht.
+    expect(canonicalPlatformHash('#/geraetetypen'))
+      .toBe('#/steuerungs-freigabe?sektion=geraetetypen');
+    expect(parseSektion(canonicalPlatformHash('#/geraetetypen')!)).toBe('geraetetypen');
+    // Eine Seite, die es noch gibt, wird NIE umgeschrieben.
+    expect(canonicalPlatformHash('#/steuerungs-freigabe')).toBeNull();
+    expect(canonicalPlatformHash('#/edge-updates')).toBeNull();
+  });
+
+  it('sektionHash/parseSektion: der Anker ist ein Parameter, nie eine eigene Route', () => {
+    expect(sektionHash('steuerungs-freigabe', 'geraetetypen'))
+      .toBe('#/steuerungs-freigabe?sektion=geraetetypen');
+    // Ohne Sektion bleibt es die nackte Seite.
+    expect(sektionHash('steuerungs-freigabe')).toBe('#/steuerungs-freigabe');
+    expect(sektionHash('steuerungs-freigabe', '  ')).toBe('#/steuerungs-freigabe');
+    // Und die Route ist in JEDEM Fall dieselbe Seite.
+    expect(parseRoute(sektionHash('steuerungs-freigabe', 'geraetetypen')))
+      .toEqual(route('steuerungs-freigabe'));
+    expect(parseSektion('#/steuerungs-freigabe')).toBeNull();
   });
 
   it('behält die Beschriftungen, die Lesezeichen und Copy schon kennen', () => {

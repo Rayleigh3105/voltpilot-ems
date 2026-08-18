@@ -186,6 +186,19 @@ describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', ()
     expect(screen.queryByTestId('devices')).toBeNull();
   });
 
+  it('zeigt die Bereichs-Tabs über der Liste, aber NICHT über einem Gerät', async () => {
+    // Stufe 3: die Leiste gehört dem Bereich. Die Detailseite ist eine Ebene
+    // TIEFER und hat ihren eigenen Zurück-Weg - ein Bereichs-Umschalter über
+    // einem einzelnen Gerät läse sich, als wechselte er dessen Ansicht.
+    render(<GeraeteRegistryPage tabs={<div data-testid="tabs">Tabs</div>} />);
+    const table = await screen.findByTestId('devices');
+    expect(screen.getByTestId('tabs')).toBeInTheDocument();
+
+    fireEvent.click(within(table).getByText('Auernheim'));
+    expect(await screen.findByRole('heading', { name: 'edge-k2m4pqj' })).toBeInTheDocument();
+    expect(screen.queryByTestId('tabs')).toBeNull();
+  });
+
   it('sagt bei einer unbekannten Referenz, dass es sie nicht gibt', async () => {
     window.location.hash = '#/geraete-registry?geraet=VP-GIBT-ES-NICHT';
     render(<GeraeteRegistryPage />);

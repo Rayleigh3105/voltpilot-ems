@@ -10,6 +10,7 @@ import {
   anlagenLabel,
   MAIN_PAGES,
   PLATFORM_GROUPS,
+  navPageFor,
   PORTFOLIO_PAGE,
   PORTFOLIO_WELT_PAGES,
   pageLabel,
@@ -369,7 +370,10 @@ export function AppShell({
                     icon={<Icon name={p.icon} size={18} />}
                     label={<span className="vp-nav-lbl">{p.label}</span>}
                     title={p.label}
-                    active={page === p.id}
+                    // Seit Stufe 3 leuchtet der BEREICH, nicht die Seite: der
+                    // Tab „Updates" gehört zu „Geräte", also darf die Leiste
+                    // dort nicht ins Nichts zeigen.
+                    active={navPageFor(page) === p.id}
                     count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
                     onClick={() => onNavigate(p.id)}
                   />
