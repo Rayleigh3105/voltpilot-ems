@@ -360,7 +360,13 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
   // abgeregelt werden soll - sonst ist sie CURTAIL_PLAN, also Fix-1-Verhalten.
   const curtail = curtailTruthForSlot(input.curtail, role);
   const reason = slot
-    ? slotWhy(slot, plantKind, curtail, input.slots ?? [], input.planFacts)
+    ? // Erklärbarkeit Stufe 3: die Grenzen-Fakten, die nicht in der
+      // Viertelstunde stehen. `maxFeedInKw` liegt hier ohnehin (der
+      // Flussabgleich braucht es), also nennt der Abregel-Satz des Helden die
+      // Einspeisegrenze mit ihrer Zahl - ohne einen zweiten Eingang.
+      slotWhy(slot, plantKind, curtail, input.slots ?? [], input.planFacts, {
+        maxFeedInKw: input.maxFeedInKw,
+      })
     : null;
   // ... und der Steuerungs-Zustand aus der BESTEHENDEN Ableitung der Karte.
   const strip = controlStrip(input.control, now, input.expectControl, reason);

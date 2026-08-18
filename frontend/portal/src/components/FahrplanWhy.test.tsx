@@ -147,3 +147,165 @@ describe('FahrplanWhyPanel', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+/**
+ * ERKLÄRBARKEIT STUFE 3 („Grenzen als Gründe"): der Block „Grenzen am
+ * Netzanschluss" am Warum-Ort - Ursache MIT Urheber, die fremde Wahrheit im
+ * Gerät und der Querverweis auf die Befehle-Seite.
+ */
+describe('Grenzen am Netzanschluss (Erklärbarkeit Stufe 3)', () => {
+  /** Ein Plan, dessen mittlere Phase an der Einspeisegrenze abregelt. */
+  function grenzSlots(): WhySlot[] {
+    const slots = mkSlots();
+    for (let i = 8; i < 16; i++) {
+      slots[i] = {
+        ...slots[i],
+        slotRole: 'abregeln',
+        batteryKw: 0,
+        curtailKw: 12,
+        slotFlags: ['feed_in_cap', 'curtailing'],
+      };
+    }
+    return slots;
+  }
+
+  const herzogau = {
+    deviceId: 'd1',
+    units: 2,
+    certifiedUnits: 2,
+    controlEnabled: true,
+    active: false,
+    appliedCapKw: null,
+    allMatch: null,
+    possibleOverride: false,
+    checkedAt: '2026-08-18T10:00:00Z',
+    exportGuard: {
+      limitKw: 70,
+      state: 'ueberwacht' as const,
+      reason: null,
+      capKw: null,
+      limiting: false,
+      blind: false,
+      effective: true,
+      reach: null,
+    },
+    deviceExportLimit: { limitKw: 33, register: '0x00e7', readAt: '2026-08-18T04:00:00Z' },
+  };
+
+  const panel = (extra: Record<string, unknown>) => {
+    const slots = grenzSlots();
+    return render(
+      <FahrplanWhyPanel
+        phases={phases(slots)}
+        slots={slots}
+        plantKind="eigenverbrauch"
+        slotMinutes={15}
+        selectedPhase={null}
+        selectedSlot={10}
+        onClose={() => {}}
+        {...extra}
+      />,
+    );
+  };
+
+  it('nennt die Grenze als GRUND und daneben die fremde Wahrheit im Gerät', () => {
+    panel({ grenzen: { maxFeedInKw: 70, curtailment: herzogau }, siteId: 's1' });
+    // Die Ursache steht im Warum-Satz - MIT der gepflegten Zahl.
+    expect(screen.getByText(/höchstens 70,0 kW einspeisen/)).toBeInTheDocument();
+    // … und GENAU EINMAL: der Block wiederholt den Leitgrund nicht.
+    expect(screen.queryAllByText(/höchstens 70,0/)).toHaveLength(1);
+    expect(screen.getByText('Grenzen am Netzanschluss')).toBeInTheDocument();
+    // Der Herzogau-Satz, wörtlich aus `curtailment.deviceLimitLine`.
+    expect(screen.getByText('Ihr Gerät')).toBeInTheDocument();
+    expect(screen.getByText(/begrenzt die Einspeisung am Netzpunkt auf 33,0/)).toBeInTheDocument();
+  });
+
+  it('nennt die Grenze MIT Urheber, wo der Satz sie nicht trägt', () => {
+    // Ein VERKAUFENDER Slot am Einspeise-Cap: seine Rolle erklärt die Grenze
+    // nicht, also ist der Block die einzige Erklärung - rollen-unabhängig.
+    const slots = mkSlots();
+    slots[20] = { ...slots[20], slotRole: 'verkaufen', slotFlags: ['feed_in_cap'] };
+    render(
+      <FahrplanWhyPanel
+        phases={phases(slots)}
+        slots={slots}
+        plantKind="direktvermarktung"
+        slotMinutes={15}
+        selectedPhase={null}
+        selectedSlot={20}
+        grenzen={{ maxFeedInKw: 70 }}
+        siteId="s1"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText('Ihre Anmeldung')).toBeInTheDocument();
+    expect(screen.getByText(/höchstens 70,0/)).toBeInTheDocument();
+  });
+
+  it('nennt die Phase in der Fuß-Zeile mit DERSELBEN Ursache wie die Überschrift', () => {
+    // Im Browser aufgefallen: „Teil der Phase «Einspeisung pausieren
+    // (Negativpreis)»" stand unter der Überschrift „(Einspeisegrenze)".
+    panel({ grenzen: { maxFeedInKw: 70, curtailment: herzogau }, siteId: 's1' });
+    expect(screen.queryByText(/\(Negativpreis\)/)).toBeNull();
+    expect(screen.getAllByText(/Einspeisung pausieren \(Einspeisegrenze\)/).length).toBe(2);
+  });
+
+  it('verweist auf die Befehle-Seite dieser Anlage', () => {
+    panel({ grenzen: { maxFeedInKw: 70, curtailment: herzogau }, siteId: 's1' });
+    const link = screen.getByRole('link', { name: /Befehle ansehen/ });
+    expect(link).toHaveAttribute('href', '#/anlage/s1/befehle');
+  });
+
+  it('zeigt ohne Anlage keinen Link (nie ein Verweis ins Leere)', () => {
+    panel({ grenzen: { maxFeedInKw: 70, curtailment: herzogau } });
+    expect(screen.getByText('Grenzen am Netzanschluss')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Befehle ansehen/ })).toBeNull();
+  });
+
+  it('rendert auf einem älteren Lauf OHNE Flags zeichengleich wie vor Stufe 3', () => {
+    const slots = grenzSlots().map((s) =>
+      s.slotRole === 'abregeln' ? { ...s, slotFlags: null } : s,
+    );
+    render(
+      <FahrplanWhyPanel
+        phases={phases(slots)}
+        slots={slots}
+        plantKind="eigenverbrauch"
+        slotMinutes={15}
+        selectedPhase={null}
+        selectedSlot={10}
+        grenzen={{ maxFeedInKw: 70, curtailment: herzogau }}
+        siteId="s1"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.queryByText('Grenzen am Netzanschluss')).toBeNull();
+    // Der Satz bleibt dann beobachtend - er behauptet keine der drei Ursachen.
+    expect(
+      screen.getByText('Der Plan sieht vor, die Einspeisung in dieser Viertelstunde zu drosseln.'),
+    ).toBeInTheDocument();
+  });
+
+  it('trägt den Block auch an der PHASE - dieselbe Grenze, derselbe Wortlaut', () => {
+    const slots = grenzSlots();
+    render(
+      <FahrplanWhyPanel
+        phases={phases(slots)}
+        slots={slots}
+        plantKind="eigenverbrauch"
+        slotMinutes={15}
+        selectedPhase={1}
+        selectedSlot={null}
+        grenzen={{ maxFeedInKw: 70, curtailment: herzogau }}
+        siteId="s1"
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText('Grenzen am Netzanschluss')).toBeInTheDocument();
+    expect(screen.getByText(/höchstens 70,0/)).toBeInTheDocument();
+    expect(screen.getByText(/begrenzt die Einspeisung am Netzpunkt auf 33,0/)).toBeInTheDocument();
+    // Und der Rollen-Titel folgt der belegten Ursache, statt „(Negativpreis)"
+    // über einem Satz zu behaupten, der die Einspeisegrenze nennt.
+    expect(screen.getByText(/Einspeisung pausieren \(Einspeisegrenze\)/)).toBeInTheDocument();
+  });
+});

@@ -234,12 +234,23 @@ export function curtailWarnLine(
  *
  * `framed` = der umgebende Satz sagt schon „Geplant ist gerade: …", dann
  * entfällt der „— geplant"-Zusatz (sonst stünde es zweimal in einer Zeile).
+ *
+ * `anlass` ist der Klammer-Zusatz und folgt seit Erklärbarkeit Stufe 3 dem
+ * BELEGTEN Leitgrund (`fahrplanWhy.roleLabel` leitet ihn aus den
+ * Bindungs-Flags ab): eine vom Netzbetreiber angeordnete Drosselung als
+ * „(Negativpreis)" zu betiteln, wäre genau der Widerspruch zwischen
+ * Überschrift und Satz, den diese Stufe beseitigt. Ohne belegtes Flag bleibt
+ * die Vorgabe der etablierte §6-Rollenname.
  */
-export function curtailRoleLabel(truth: CurtailTruth, framed = false): string {
+export function curtailRoleLabel(
+  truth: CurtailTruth,
+  framed = false,
+  anlass = 'Negativpreis',
+): string {
   const base = 'Einspeisung pausier';
-  if (truth.stufe === 'ausgefuehrt') return `${base}t (Negativpreis)`;
-  if (truth.stufe === 'uebersteuert') return `${base}en (Negativpreis) — nicht gehalten`;
-  return `${base}en (Negativpreis)${framed ? '' : ' — geplant'}`;
+  if (truth.stufe === 'ausgefuehrt') return `${base}t (${anlass})`;
+  if (truth.stufe === 'uebersteuert') return `${base}en (${anlass}) — nicht gehalten`;
+  return `${base}en (${anlass})${framed ? '' : ' — geplant'}`;
 }
 
 /**
@@ -339,6 +350,11 @@ export function exportGuardView(
  * „Ihr Wechselrichter begrenzt die Einspeisung am Netzpunkt auf 33,0 kW —
  * hinterlegt sind 70,0 kW." Null, solange sich das nicht BELEGEN lässt.
  *
+ * ⚠ DIE EINE STELLE, an der dieser Satz entsteht — seit Erklärbarkeit Stufe 3
+ * („Grenzen als Gründe") liest ihn auch der Warum-Ort (`grenzenWarum`), und er
+ * wird dort DURCHGEREICHT, nie neu formuliert: zwei Formulierungen für dasselbe
+ * Urteil wären zwei Urteile.
+ *
  * Drei Bedingungen, und die dritte ist die, die man beim Aufräumen zerstören
  * würde:
  *   1. beide Hälften gemeldet (sonst gibt es nichts zu vergleichen),
@@ -350,7 +366,7 @@ export function exportGuardView(
  *      dann wird geschwiegen, statt dem Gerät etwas anzulasten, das wir selbst
  *      getan haben.
  */
-function deviceLimitLine(status: CurtailmentStatus | null | undefined): string | null {
+export function deviceLimitLine(status: CurtailmentStatus | null | undefined): string | null {
   const g = status?.exportGuard;
   const d = status?.deviceExportLimit;
   if (!g || !d) return null;

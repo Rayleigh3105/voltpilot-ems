@@ -380,8 +380,18 @@ describe('slotWhy (per-slot customer sentence)', () => {
     expect(slotWhy({ ...base, slotRole: 'abregeln', priceEurMwh: -21 }, 'eigenverbrauch')).toBe(
       'Einspeisen würde beim negativen Börsenpreis (-2,1 ct/kWh) Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.',
     );
+  });
+
+  // Erklärbarkeit Stufe 3: OHNE belegte Ursache wird keine behauptet. Der
+  // frühere Satz nannte den negativen Preis auch dann, wenn der Lauf gar keinen
+  // trug - eine Ein-Ursachen-Aussage über eine Mehr-Ursachen-Entscheidung.
+  it('abregeln bleibt ohne belegte Ursache BEOBACHTEND', () => {
     expect(slotWhy({ ...base, slotRole: 'abregeln', priceEurMwh: null }, 'eigenverbrauch')).toBe(
-      'Einspeisen würde bei negativen Preisen Geld kosten – der Plan sieht vor, die PV zu drosseln, statt draufzuzahlen.',
+      'Der Plan sieht vor, die Einspeisung in dieser Viertelstunde zu drosseln.',
+    );
+    // Ein POSITIVER Preis belegt den Negativpreis-Zweig genauso wenig.
+    expect(slotWhy({ ...base, slotRole: 'abregeln', priceEurMwh: 40 }, 'eigenverbrauch')).toBe(
+      'Der Plan sieht vor, die Einspeisung in dieser Viertelstunde zu drosseln.',
     );
   });
 
@@ -611,12 +621,24 @@ describe('phaseEurLine + phaseRange + labels', () => {
     expect(phaseWhy(mkPhase({ role: 'warten', kind: 'idle', driver: null }), 'eigenverbrauch')).toContain(
       'weder Laden noch Entladen eingeplant',
     );
-    expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch')).toContain(
-      'der Plan sieht vor, die PV zu drosseln',
+    // Ohne belegte Ursache beobachtend (Erklärbarkeit Stufe 3) …
+    expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch')).toBe(
+      'Der Plan sieht vor, die Einspeisung in dieser Phase zu drosseln.',
     );
     expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch')).not.toContain(
       'wird gedrosselt',
     );
+    // … mit dem exportierten Preis-Fakt nennt sie ihn.
+    expect(
+      phaseWhy(
+        mkPhase({
+          role: 'abregeln',
+          kind: 'curtail',
+          limits: { flags: [], minPriceEurMwh: -21 },
+        }),
+        'eigenverbrauch',
+      ),
+    ).toContain('der Plan sieht vor, die PV zu drosseln');
   });
 
   it('roleLabel carries the §6 customer vocabulary', () => {
@@ -659,8 +681,21 @@ describe('phaseEurLine + phaseRange + labels', () => {
     expect(roleLabel('abregeln', 'eigenverbrauch', null, false, done)).toBe(
       'Einspeisung pausiert (Negativpreis)',
     );
-    expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch', done)).toContain(
-      'die PV wird deshalb gedrosselt',
+    expect(
+      phaseWhy(
+        mkPhase({
+          role: 'abregeln',
+          kind: 'curtail',
+          limits: { flags: [], minPriceEurMwh: -21 },
+        }),
+        'eigenverbrauch',
+        done,
+      ),
+    ).toContain('die PV wird deshalb gedrosselt');
+    // Ohne belegte Ursache bleibt auch MIT Beleg nur die Beobachtung - nur die
+    // ZEITFORM wechselt (Gegenwart), nie die Ursache.
+    expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch', done)).toBe(
+      'Die Einspeisung wird in dieser Phase gedrosselt.',
     );
     const curtailSlot: WhySlot = {
       start: new Date(2026, 6, 23, 12, 0).toISOString(),

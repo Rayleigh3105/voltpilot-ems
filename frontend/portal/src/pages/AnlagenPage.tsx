@@ -960,8 +960,13 @@ export function AnlageSeite({
   const baseReason = activePlanSlot
     ? // Die LAUF-Fakten reisen mit (Erklärbarkeit Stufe 1): der Ruhe-Grund der
       // Steuerungs-Zeile nennt denselben Treiber wie die Fahrplan-Seite - EIN
-      // Generator, EIN Satz, kein zweiter Wortlaut.
-      slotWhy(activePlanSlot, planKind, controlCurtail, planSlots, plan)
+      // Generator, EIN Satz, kein zweiter Wortlaut. Erklärbarkeit Stufe 3
+      // reicht dazu die Grenzen-Fakten durch (Einspeisegrenze der Anlage + der
+      // s0-Block der Box), damit ein Abregel-Slot hier dieselbe Ursache nennt.
+      slotWhy(activePlanSlot, planKind, controlCurtail, planSlots, plan, {
+        maxFeedInKw: site.maxFeedInKw,
+        curtailment: curtailStatus,
+      })
     : null;
   const controlReason = surplusReason ?? baseReason;
   // Teil 3: der nächste geplante Einsatz - im Ruhefall als eigene Ausblick-Zeile.
