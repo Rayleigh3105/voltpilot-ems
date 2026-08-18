@@ -11,6 +11,7 @@ import {
   nowMarkerIndex,
   tooltipHeader,
   weatherWhy,
+  weatherWhyTomorrow,
 } from './weather';
 
 /** Hourly UTC points like the weather API returns (run day starts 00:00 UTC). */
@@ -119,5 +120,50 @@ describe('weatherWhy (the live-zone PV "why" one-liner)', () => {
     expect(weatherWhy(clouds(10, [90, 85, 95, 80]), NOW)).toBe(
       'Stark bewölkt - heute wenig Solarertrag.',
     );
+  });
+});
+
+describe('weatherWhyTomorrow (Erklärbarkeit Stufe 2: das Wetter-WORT für morgen)', () => {
+  const NOW = new Date(2026, 6, 7, 20, 45); // 7. Juli, 20:45 Berlin
+
+  /** Bewölkung je Tagstunde eines Tages (`day` = Tag im Juli). */
+  function clouds(day: number, from: number, list: (number | null)[]) {
+    return list.map((c, i) => ({
+      ts: new Date(2026, 6, day, from + i, 0).toISOString(),
+      cloudCoverPct: c,
+    }));
+  }
+
+  it('liefert das Wort aus den MORGIGEN Tagstunden', () => {
+    expect(weatherWhyTomorrow(clouds(8, 8, [10, 15, 20, 25, 30]), NOW)).toBe('sonnig');
+    expect(weatherWhyTomorrow(clouds(8, 8, [95, 90, 100, 88, 92]), NOW)).toBe('bewoelkt');
+    expect(weatherWhyTomorrow(clouds(8, 8, [50, 55, 45, 60, 50]), NOW)).toBe('wechselnd');
+  });
+
+  it('nutzt DIESELBEN Schwellen wie der Heute-Satz', () => {
+    // Genau auf der Sonnen-Schwelle ist es noch sonnig, ein Prozent darüber nicht.
+    expect(weatherWhyTomorrow(clouds(8, 8, [40, 40, 40, 40]), NOW)).toBe('sonnig');
+    expect(weatherWhyTomorrow(clouds(8, 8, [41, 41, 41, 41]), NOW)).toBe('wechselnd');
+    // Und genau auf der Wolken-Schwelle ist es bewölkt.
+    expect(weatherWhyTomorrow(clouds(8, 8, [65, 65, 65, 65]), NOW)).toBe('bewoelkt');
+  });
+
+  it('sagt über morgen NICHTS, wenn die Vorhersage nicht so weit reicht', () => {
+    expect(weatherWhyTomorrow([], NOW)).toBeNull();
+    // Nur HEUTE - der morgige Tag ist unbekannt.
+    expect(weatherWhyTomorrow(clouds(7, 8, [10, 10, 10, 10, 10]), NOW)).toBeNull();
+    // Zu wenige bewertete Stunden von morgen.
+    expect(weatherWhyTomorrow(clouds(8, 8, [10, 10]), NOW)).toBeNull();
+    // Punkte ohne Bewölkung zählen nicht.
+    expect(weatherWhyTomorrow(clouds(8, 8, [null, null, null, null, null]), NOW)).toBeNull();
+  });
+
+  it('wertet nur die TAGSTUNDEN von morgen - die Nacht sagt nichts über Solar', () => {
+    // Nachts klar, tagsüber dicht: das Urteil ist bewölkt.
+    const nacht = clouds(8, 0, [0, 0, 0, 0, 0, 0]);
+    const tag = clouds(8, 8, [95, 95, 95, 95]);
+    expect(weatherWhyTomorrow([...nacht, ...tag], NOW)).toBe('bewoelkt');
+    // Nur Nachtstunden: kein Urteil.
+    expect(weatherWhyTomorrow(nacht, NOW)).toBeNull();
   });
 });

@@ -17,6 +17,7 @@ vi.mock('../ScheduleChart', () => ({
 }));
 
 const controlStatus = vi.fn();
+const weather = vi.fn();
 const curtailmentStatus = vi.fn();
 const schedule = vi.fn();
 const telemetry = vi.fn();
@@ -34,6 +35,8 @@ vi.mock('../api', async (importOriginal) => {
       // must render byte-identical without consumer slots.
       consumerSchedule: () =>
         Promise.resolve({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),
+      // Erklärbarkeit Stufe 2: die „Lage"-Zeile liest das Wetter FAIL-SOFT.
+      weather: (...a: unknown[]) => weather(...a),
     },
   };
 });
@@ -138,6 +141,9 @@ beforeEach(() => {
   // Ohne Abregel-Beleg (204) - die Fläche bleibt beim Plan-Wortlaut.
   curtailmentStatus.mockResolvedValue(null);
   telemetry.mockResolvedValue(POINTS);
+  // Ohne Vorhersage (der Normalfall der übrigen Fälle) fehlt nur das
+  // Himmels-Wort - die Seite bleibt sonst zeichengleich.
+  weather.mockResolvedValue({ runAt: null, points: [] });
 });
 
 describe('FahrplanSection · die vier Blöcke', () => {
@@ -360,5 +366,129 @@ describe('FahrplanSection · der Film zeigt den ganzen Tag', () => {
     await waitFor(() => expect(container.querySelector('.vp-film')).toBeTruthy());
     expect(container.querySelectorAll('.vp-film-li.is-done')).toHaveLength(0);
     expect(screen.getByText('Heute noch')).toBeInTheDocument();
+  });
+});
+
+/**
+ * ERKLÄRBARKEIT STUFE 2 „Die Lage": die Zeile zwischen Held und Film erzählt den
+ * Tages-Bogen und den Morgen-Ausblick - und NUR, wenn die Eingaben des Laufs sie
+ * tragen. Die Regel-Vollständigkeit liegt in `fahrplanLage.test.ts`; hier wird
+ * geprüft, dass sie am richtigen Ort steht, ihre Fakten wirklich aus dem
+ * geladenen Plan zieht und ohne sie ersatzlos verschwindet.
+ */
+describe('FahrplanSection · die „Lage"-Zeile', () => {
+  const HEUTE = new Date();
+
+  /** Ein GANZER heutiger Tag mit Mittagstal - Zeitzonen-unabhängig gebaut. */
+  function talPlan(): SchedulePlan {
+    const base = plan();
+    const slots = [];
+    for (let h = 0; h < 24; h++) {
+      for (let q = 0; q < 4; q++) {
+        const start = new Date(
+          HEUTE.getFullYear(),
+          HEUTE.getMonth(),
+          HEUTE.getDate(),
+          h,
+          q * 15,
+        );
+        const mittags = h >= 11 && h < 16;
+        const rand = (h >= 6 && h < 11) || (h >= 16 && h < 22);
+        slots.push(
+          slot({
+            start: start.toISOString(),
+            priceEurMwh: mittags ? 140 : rand ? 206 : 180,
+            batteryKw: mittags ? 8 : rand ? -6 : 0,
+          }),
+        );
+      }
+    }
+    return { ...base, slots };
+  }
+
+  /** Ein Lauf, der bis morgen Abend reicht - mit den Prognosen von morgen. */
+  function mitMorgen(): SchedulePlan {
+    const base = talPlan();
+    const morgen = [];
+    for (let h = 0; h < 21; h++) {
+      for (let q = 0; q < 4; q++) {
+        const start = new Date(
+          HEUTE.getFullYear(),
+          HEUTE.getMonth(),
+          HEUTE.getDate() + 1,
+          h,
+          q * 15,
+        );
+        const tag = h >= 8 && h < 17;
+        morgen.push(
+          slot({ start: start.toISOString(), pvKw: tag ? 0.6 : 0, loadKw: 1, batteryKw: 0 }),
+        );
+      }
+    }
+    return { ...base, slots: [...base.slots, ...morgen] };
+  }
+
+  it('steht ZWISCHEN dem Helden und dem Film und erzählt den Tages-Bogen', async () => {
+    schedule.mockResolvedValue(talPlan());
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-lage')).toBeTruthy());
+    expect(container.querySelector('.vp-lage')!.textContent).toContain('mittags am günstigsten');
+    // Die Reihenfolge der Blöcke: Held → Lage → Film.
+    const blocks = [...container.querySelectorAll('.vp-jetzt, .vp-lage, .vp-film')];
+    expect(
+      blocks.map((b) =>
+        ['vp-jetzt', 'vp-lage', 'vp-film'].find((c) => b.classList.contains(c)),
+      ),
+    ).toEqual(['vp-jetzt', 'vp-lage', 'vp-film']);
+  });
+
+  it('nennt den Morgen-Ausblick aus den PLAN-Eingaben und das Wetter-Wort', async () => {
+    schedule.mockResolvedValue(mitMorgen());
+    weather.mockResolvedValue({
+      runAt: null,
+      points: Array.from({ length: 12 }, (_, i) => ({
+        ts: new Date(
+          HEUTE.getFullYear(),
+          HEUTE.getMonth(),
+          HEUTE.getDate() + 1,
+          7 + i,
+        ).toISOString(),
+        temperatureC: null,
+        cloudCoverPct: 96,
+        ghiWM2: null,
+        dniWM2: null,
+        dhiWM2: null,
+      })),
+    });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() =>
+      expect(container.querySelector('.vp-lage')?.textContent).toContain('Solar-Überschuss'),
+    );
+    const text = container.querySelector('.vp-lage')!.textContent!;
+    expect(text).toContain('kaum Sonne');
+    expect(text).toContain('alle 15 Minuten');
+  });
+
+  it('verschwindet ersatzlos, wenn der Lauf nichts Belegtes trägt', async () => {
+    // Kein Preisbogen, keine Prognosen, und der Horizont reicht bis morgen -
+    // also gibt es weder einen Bogen noch einen Ausblick noch den Horizont-Satz.
+    const nackt = mitMorgen();
+    schedule.mockResolvedValue({
+      ...nackt,
+      slots: nackt.slots.map((s) => ({ ...s, priceEurMwh: null, pvKw: null, loadKw: null })),
+    });
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-jetzt')).toBeTruthy());
+    expect(container.querySelector('.vp-lage')).toBeNull();
+  });
+
+  it('überlebt einen Ausfall des Wetter-Abrufs (fail-soft)', async () => {
+    schedule.mockResolvedValue(talPlan());
+    weather.mockRejectedValue(new Error('down'));
+    const { container } = render(<FahrplanSection site={SITE} />);
+    await waitFor(() => expect(container.querySelector('.vp-lage')).toBeTruthy());
+    const text = container.querySelector('.vp-lage')!.textContent!;
+    expect(text).toContain('mittags am günstigsten');
+    expect(text).not.toContain('Wettervorhersage');
   });
 });

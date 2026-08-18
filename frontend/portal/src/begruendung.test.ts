@@ -28,6 +28,10 @@
  *   `verkaufen`): die Rolle SELBST ist der exportierte Fakt, und der Solver
  *   vergibt sie genau dort, wo diese Ungleichung seine Optimalitätsbedingung
  *   ist. Die Aussage folgt also aus dem Fakt, statt ihn zu ersetzen.
+ * - Die BEOBACHTUNGEN der „Lage"-Zeile (Preisbogen, erwartete kWh): sie
+ *   berichten, was der Fahrplan gerechnet bzw. geplant HAT - sie behaupten
+ *   keine Ursache. Kausal sind dort nur die zwei Speicher-Halbsätze, und die
+ *   stehen unten in der Gate-Tabelle.
  * - „Einspeisen würde bei negativen Preisen Geld kosten" (Rolle `abregeln`):
  *   das IST eine Ein-Ursachen-Aussage über eine Mehr-Ursachen-Entscheidung
  *   (der Solver regelt auch an der Einspeisegrenze ab) — sie gehört zu W4 und
@@ -51,6 +55,7 @@ import {
   type SlotRole,
   type WhySlot,
 } from './fahrplanWhy';
+import { lageView, speicherHalbsatz, type LageSlot } from './fahrplanLage';
 import { planInsightParts, planSentence, type PlanSlotLike } from './schedule';
 
 /**
@@ -228,7 +233,14 @@ describe('Warum-Wächter: der EINE kausale Ruhe-Zweig hängt an seinen Gates (W6
  * und die Fläche fällt auf die beobachtende Stufe-0-Fassung zurück.
  */
 describe('Warum-Wächter: die Stufe-1-Zweige hängen an ihren Gates', () => {
-  const KAUSALE_ZWEIGE = ['anker_bezugspreis', 'gleichstand', 'marge_klar'];
+  const KAUSALE_ZWEIGE = [
+    'anker_bezugspreis',
+    'gleichstand',
+    'marge_klar',
+    // Erklärbarkeit Stufe 2
+    'lage_aufheben',
+    'lage_auffuellung',
+  ];
 
   it('die geprüften Zweige stehen in der Gate-Tabelle', () => {
     // Wer einen kausalen Zweig ergänzt, ohne ihn einzutragen, hat keinen
@@ -278,5 +290,61 @@ describe('Warum-Wächter: die Stufe-1-Zweige hängen an ihren Gates', () => {
     // (c): nur die ehrliche Aussage „keine Bindung erfasst" - kein λ, kein
     // Anker, keine Marge, keine erfundene 0.
     expect(technikRows(nackt, null)).toEqual([{ label: 'Bindungen', value: 'keine' }]);
+  });
+});
+
+/**
+ * ERKLÄRBARKEIT STUFE 2: die „Lage"-Zeile berichtet BEOBACHTUNGEN (Preisbogen,
+ * erwartete kWh) und behauptet über den Speicher nur, was die Stufe-1-Lauf-
+ * Fakten tragen. Ohne sie bleibt sie beobachtend - und ohne jede Aussage
+ * entsteht sie gar nicht.
+ */
+describe('Warum-Wächter: die Lage-Zeile erfindet keine Ursache', () => {
+  const NOW = new Date(2026, 7, 17, 20, 45);
+
+  /** Ein voller Tag mit Preisbogen, aber OHNE jeden Lauf-Fakt. */
+  function faktenfreierTag(): LageSlot[] {
+    const out: LageSlot[] = [];
+    for (let h = 0; h < 24; h++) {
+      for (let q = 0; q < 4; q++) {
+        const mittags = h >= 11 && h < 16;
+        out.push({
+          start: new Date(2026, 7, 17, h, q * 15).toISOString(),
+          batteryKw: mittags ? 8 : -6,
+          priceEurMwh: mittags ? 140 : 205,
+        });
+      }
+    }
+    return out;
+  }
+
+  it('sagt ohne Lauf-Fakten nur, was Preise und Plan zeigen', () => {
+    const view = lageView({ slots: faktenfreierTag(), now: NOW });
+    expect(view).not.toBeNull();
+    const text = `${view?.bogen ?? ''} ${view?.ausblick ?? ''} ${view?.bedingung ?? ''}`;
+    expect(kausaleVokabeln(text), `Lage-Zeile behauptet ohne Fakt: "${text}"`).toEqual([]);
+    // Und über den Speicher wird gar nichts behauptet.
+    expect(view?.ausblick ?? '').not.toContain('hebt seine Ladung');
+    expect(view?.ausblick ?? '').not.toContain('ohnehin wieder');
+  });
+
+  it('der Aufhebe-Satz ist ohne Anker ODER ohne Auffüll-Quote unerreichbar', () => {
+    expect(
+      speicherHalbsatz({ whyTerminalAnchor: 'bezugspreis', whyRefillFreePct: 0 }),
+    ).not.toBeNull();
+    expect(speicherHalbsatz({ whyRefillFreePct: 0 })).toBeNull();
+    expect(speicherHalbsatz({ whyTerminalAnchor: 'bezugspreis' })).toBeNull();
+    expect(speicherHalbsatz(null)).toBeNull();
+  });
+
+  it('der Auffüll-Satz ist ohne exportierte Quote unerreichbar', () => {
+    expect(speicherHalbsatz({ whyTerminalAnchor: 'einspeisewert' })).toBeNull();
+    expect(
+      speicherHalbsatz({ whyTerminalAnchor: 'einspeisewert', whyRefillFreePct: 62 }),
+    ).toContain('ohnehin wieder auf');
+  });
+
+  it('ohne eine einzige belegte Aussage entsteht die Zeile gar nicht', () => {
+    expect(lageView({ slots: [], now: NOW })).toBeNull();
   });
 });

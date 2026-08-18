@@ -38,7 +38,9 @@ import { FALLBACK_14A_NOTE, FORECAST_FOOTNOTE, phases } from '../fahrplanWhy';
 import { FahrplanWhyPanel } from '../components/FahrplanWhy';
 import { filmKicker, filmRows, naechsterEinsatz } from '../fahrplanFilm';
 import { jetztHeld } from '../fahrplanJetzt';
+import { lageView } from '../fahrplanLage';
 import { JetztHeld, TagesFilm } from '../components/FahrplanJetzt';
+import { FahrplanLage } from '../components/FahrplanLage';
 import { flowConflictCandidate, stepFlowConflict } from '../flowConflict';
 import { controlReasonSlot } from '../control';
 import { curtailTruth } from '../curtailment';
@@ -736,6 +738,11 @@ export function FahrplanSection({ site }: { site: Site }) {
   // Co-Optimizer-Laufs, FAIL-SOFT - eine ältere api / eine nicht geflaggte
   // Anlage liefert nichts, und der Fahrplan bleibt byte-identisch.
   const [consumerPlan, setConsumerPlan] = useState<ConsumerSchedule | null>(null);
+  // Erklärbarkeit Stufe 2 „Die Lage": die Wetter-Vorhersage der Anlage, EINMAL
+  // je Anlage und FAIL-SOFT geholt. Sie liefert ausschließlich das WORT für
+  // morgen (`weatherWhyTomorrow`); jede kWh-Zahl kommt aus den Plan-Eingaben.
+  // Ohne sie fehlt der Himmels-Satz, sonst ändert sich nichts.
+  const [wetter, setWetter] = useState<WeatherForecast | null>(null);
 
   const siteId = site.id;
   const loadLive = useCallback(() => {
@@ -791,6 +798,23 @@ export function FahrplanSection({ site }: { site: Site }) {
     };
   }, [siteId]);
 
+  useEffect(() => {
+    let active = true;
+    setWetter(null);
+    try {
+      api
+        .weather(siteId)
+        .then((w) => active && setWetter(w))
+        .catch(() => active && setWetter(null));
+    } catch {
+      // Dieselbe Fail-soft-Disziplin wie oben: eine api-Attrappe ohne die
+      // Methode darf die Seite nicht mitreißen.
+    }
+    return () => {
+      active = false;
+    };
+  }, [siteId]);
+
   const slots = plan?.slots ?? [];
   const slotMinutes = plan?.slotMinutes ?? 15;
   // Auf das Slot-Raster DIESES Plans ausgerichtet (Zeitstempel, nie Index);
@@ -826,6 +850,15 @@ export function FahrplanSection({ site }: { site: Site }) {
   // FK2: banked terminal value + horizon-edge hint (pure derivations).
   const banked = bankedValueLine(plan?.bankedValueEur);
   const horizonNote = horizonHint(slots, now, slotMinutes);
+  // Die „Lage"-Zeile (Erklärbarkeit Stufe 2): Tages-Bogen + Morgen-Ausblick aus
+  // den Eingaben DIESES Laufs. Sie liest die Slots des jüngsten Laufs (nicht
+  // den Tages-Splice - der ist aus vielen Läufen genäht und trägt deshalb weder
+  // einen Anker noch eine Prognose, die zu EINEM Lauf gehört) und liefert null,
+  // sobald es nichts Belegtes zu sagen gibt; dann rendert die Karte gar nicht.
+  const lage = useMemo(
+    () => lageView({ slots, slotMinutes, plan, weather: wetter?.points, now }),
+    [slots, slotMinutes, plan, wetter, now],
+  );
 
   // Block 2 - der GANZE Tag, wenn der Splice ihn trägt. Die Warum-Ebene ist
   // per Konstruktion alles-oder-nichts (`phases()` liefert [] sobald EIN Slot
@@ -996,6 +1029,11 @@ export function FahrplanSection({ site }: { site: Site }) {
           {staleNote}
         </div>
       )}
+
+      {/* ---- Die „Lage"-Zeile: was heute läuft und was morgen erwartet wird ----
+          Zwischen Held und Film, und NUR hier (F4) - das Cockpit behält seine
+          knappe Kurzfassung. Ohne belegte Aussage rendert sie gar nicht. */}
+      {lage && <FahrplanLage view={lage} />}
 
       {/* ---- Block 2: der Film des Tages (F3) ---- */}
       {hasFilm && (
