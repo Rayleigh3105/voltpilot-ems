@@ -9,8 +9,9 @@ import java.util.List;
  * lifecycle of every model that has run (incl. challengers still collecting
  * training data), the daily error/skill series from the evaluation, and the
  * daily plan-vs-actual economics. All rows come from RLS-scoped tables; the
- * active model ids come from the api's own configuration (the same env the
- * optimizer reads), never from client input.
+ * active model ids are resolved SERVER-side by {@code ForecastModelService}
+ * with the same precedence the optimizer uses (portal promotion choice &gt;
+ * env default), never from client input.
  */
 public record ForecastQualityDto(
         String activeLoadModel,
@@ -47,7 +48,13 @@ public record ForecastQualityDto(
             Double maeKw,
             Double nmaePct,
             Double biasKw,
-            /** 1 - mae/mae_baseline; positive = better than the baseline; null for the baseline. */
+            /**
+             * {@code 1 - mae/mae_reference}; positive = better than the ACTIVE
+             * model of that kind, null for the reference itself. The column
+             * keeps its historical name ({@code skill_vs_baseline}) - while
+             * nothing is promoted the active model IS the baseline, so the
+             * numbers are unchanged; after a promotion the roles swap.
+             */
             Double skillVsBaseline,
             Integer nSlots) {
     }
