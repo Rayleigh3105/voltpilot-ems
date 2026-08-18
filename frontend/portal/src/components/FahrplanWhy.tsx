@@ -329,7 +329,14 @@ export function SlotCard({
       )}
       {phase && (
         <p className="vp-fw-phline">
-          Teil der Phase „{roleLabel(phase.role, plantKind)}“ ({phaseRange(phase)})
+          {/*
+            Die Phase trägt IHRE Grenz-Flags mit, sonst stünde hier
+            „(Negativpreis)" unter einer Überschrift, die „(Einspeisegrenze)"
+            sagt - zwei Titel für dieselbe Phase auf EINER Karte (im Browser
+            aufgefallen, nicht im Test).
+          */}
+          Teil der Phase „{roleLabel(phase.role, plantKind, phase.limits?.flags ?? null)}“ (
+          {phaseRange(phase)})
           {phaseEur ? ` · ${phaseEur}` : ''}
         </p>
       )}

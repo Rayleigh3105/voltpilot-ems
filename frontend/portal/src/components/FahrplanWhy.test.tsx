@@ -242,6 +242,14 @@ describe('Grenzen am Netzanschluss (Erklärbarkeit Stufe 3)', () => {
     expect(screen.getByText(/höchstens 70,0/)).toBeInTheDocument();
   });
 
+  it('nennt die Phase in der Fuß-Zeile mit DERSELBEN Ursache wie die Überschrift', () => {
+    // Im Browser aufgefallen: „Teil der Phase «Einspeisung pausieren
+    // (Negativpreis)»" stand unter der Überschrift „(Einspeisegrenze)".
+    panel({ grenzen: { maxFeedInKw: 70, curtailment: herzogau }, siteId: 's1' });
+    expect(screen.queryByText(/\(Negativpreis\)/)).toBeNull();
+    expect(screen.getAllByText(/Einspeisung pausieren \(Einspeisegrenze\)/).length).toBe(2);
+  });
+
   it('verweist auf die Befehle-Seite dieser Anlage', () => {
     panel({ grenzen: { maxFeedInKw: 70, curtailment: herzogau }, siteId: 's1' });
     const link = screen.getByRole('link', { name: /Befehle ansehen/ });
