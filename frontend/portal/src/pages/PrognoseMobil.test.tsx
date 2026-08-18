@@ -140,7 +140,12 @@ describe('Prognosequalität - Mobil-Fassung', () => {
 
     const schatten = screen.getByText('So funktioniert der Schattenbetrieb').closest('details');
     expect(schatten).not.toBeNull();
-    expect(schatten?.textContent).toContain('keinerlei Einfluss');
+    // Der Aufklapper beschreibt seit dem Prognose-Schalter (18.08.2026) die
+    // ENTSCHEIDUNG und ihre Folgen; der Mechanismus („beeinflusst nichts")
+    // steht jetzt dort, wo die Kandidaten stehen - am Telefon in
+    // KANDIDAT_EHRLICHKEIT, oben eigens geprüft.
+    expect(schatten?.textContent).toContain('nie automatisch aktiv');
+    expect(schatten?.textContent).toContain('Rückweg');
 
     // Die load-bearing Rahmung bleibt SICHTBAR, nicht im Aufklapper.
     const rahmung = screen.getByText(/2 Prognosearten/);

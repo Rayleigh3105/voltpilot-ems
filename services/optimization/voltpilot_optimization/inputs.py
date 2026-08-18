@@ -93,19 +93,55 @@ ACTIVE_PV_MODEL_ENV = "VOLTPILOT_ACTIVE_PV_MODEL"
 BASELINE_MODEL_BY_KIND = {"load": "load-persistence", "pv": "pv-physical"}
 
 
-def active_model(kind: str, env=None) -> str:
+def load_model_choices(dsn: str) -> dict:
+    """The stored PORTAL choice per kind (empty = never promoted in the portal).
+
+    Since the promotion switch (Captain 18.08.2026) the active model is DATA:
+    the append-only ``forecast_model_choice`` table (api migration
+    V20260825000000) carries the newest decision per kind. Reading it is one
+    cheap indexed row per kind, and the CYCLE reads it ONCE
+    (:func:`voltpilot_optimization.engine.run_cycle`) and hands the result to
+    every site - never once per site.
+
+    Never raises: a missing table or an unreachable DB degrades to "no choice",
+    i.e. exactly the pre-switch env behaviour (see
+    :mod:`voltpilot_forecast.model_choice`).
+    """
+    from voltpilot_forecast import model_choice
+
+    return {kind.value: model for kind, model in model_choice.load_choices_dsn(dsn).items()}
+
+
+def active_model(kind: str, env=None, choices=None) -> str:
     """The forecast model id whose rows this optimizer consumes for ``kind``.
 
-    Delegates to :func:`voltpilot_forecast.registry.active_model`, the sibling
-    that feeds the collector/portal, so both sides validate the configured id
-    identically: an unknown or wrong-kind id (a promotion typo like ``load_xgb``
-    or a PV id under the load env) raises ``ValueError`` here instead of being
-    silently accepted - which would find zero stored rows and quietly revert the
-    optimizer to its persistence baseline while the portal still shows the
-    challenger as "live" (a promotion that is a no-op with no error). Imported
-    lazily, mirroring :mod:`voltpilot_optimization.fallback`, so solver-only
-    installs without the forecast package are unaffected.
+    **Precedence (the binding contract, worded identically in migration
+    V20260825000000, the api's ForecastModelService and
+    :mod:`voltpilot_forecast.model_choice`): the stored portal choice wins,
+    else the environment variable, else the registry default (the baseline).**
+    The env variable therefore stays the DEFAULT, not a competitor - a fleet
+    that never touches the switch is indistinguishable from before it existed.
+
+    ``choices`` is the per-cycle read of :func:`load_model_choices` (``None`` =
+    env only). A stored id is already validated on the write path AND
+    re-validated when loaded (an unknown one is discarded there, never adopted),
+    so anything arriving here is a known id of the right kind.
+
+    The env branch delegates to :func:`voltpilot_forecast.registry.active_model`,
+    the sibling that feeds the collector/portal, so both sides validate the
+    configured id identically: an unknown or wrong-kind id (a promotion typo
+    like ``load_xgb`` or a PV id under the load env) raises ``ValueError`` here
+    instead of being silently accepted - which would find zero stored rows and
+    quietly revert the optimizer to its persistence baseline while the portal
+    still shows the challenger as "live" (a promotion that is a no-op with no
+    error). Imported lazily, mirroring :mod:`voltpilot_optimization.fallback`,
+    so solver-only installs without the forecast package are unaffected.
     """
+    if choices:
+        chosen = choices.get(kind)
+        if chosen:
+            return chosen
+
     from voltpilot_forecast import registry
     from voltpilot_forecast.domain import ForecastKind
 
@@ -363,6 +399,7 @@ def gather_inputs(
     site: BatterySite,
     now: datetime,
     horizon_slots: int = SLOTS_24H,
+    model_choices: dict | None = None,
 ) -> OptimizationInput:
     """Assemble the slot-aligned :class:`OptimizationInput` for one site.
 
@@ -371,7 +408,13 @@ def gather_inputs(
     contiguous prefix covered by day-ahead prices (prices are the binding
     input - without a price a slot cannot be optimized). Raises
     :class:`SkipSite` when coverage is below :data:`MIN_HORIZON_SLOTS`.
+
+    ``model_choices`` is the cycle's ONE read of the portal's active-model
+    choice (:func:`load_model_choices`); ``None`` means "load it here", which
+    is what the single-site callers (what-if, on-demand replan) do.
     """
+    if model_choices is None:
+        model_choices = load_model_choices(dsn)
     now = ensure_utc(now)
     slot_starts = horizon_slot_starts(now, horizon_slots)
     prices = _load_prices(dsn, site.bidding_zone, slot_starts)
@@ -389,10 +432,10 @@ def gather_inputs(
     slot_starts = slot_starts[:covered]
 
     load_kw, _ = _forecast_or_fallback(
-        dsn, site, "load", "load_kw", slot_starts, now
+        dsn, site, "load", "load_kw", slot_starts, now, model_choices
     )
     pv_kw, pv_used_fallback = _forecast_or_fallback(
-        dsn, site, "pv", "pv_power_kw", slot_starts, now
+        dsn, site, "pv", "pv_power_kw", slot_starts, now, model_choices
     )
     pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
 
@@ -619,6 +662,7 @@ def _forecast_or_fallback(
     telemetry_column: str,
     slot_starts: list[datetime],
     now: datetime,
+    model_choices: dict | None = None,
 ) -> tuple[list[float], bool]:
     """The ACTIVE model's latest stored forecast run when it covers the
     horizon, else the persistence baseline over recent telemetry (never fails:
@@ -629,7 +673,7 @@ def _forecast_or_fallback(
     night-floor distinctly (the collector<->optimizer 15-min race, §4a of the
     scout report - visible in monitoring before it silently degrades plans)."""
     stored = _load_forecast(
-        dsn, site.site_id, kind, active_model(kind), slot_starts[0]
+        dsn, site.site_id, kind, active_model(kind, choices=model_choices), slot_starts[0]
     )
     if all(s in stored for s in slot_starts):
         return [stored[s] for s in slot_starts], False

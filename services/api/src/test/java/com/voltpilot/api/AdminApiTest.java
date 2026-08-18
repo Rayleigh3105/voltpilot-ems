@@ -1489,6 +1489,157 @@ class AdminApiTest {
                 String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    // ---- der Prognose-Schalter (Captain-Auftrag 18.08.2026) ------------------
+
+    /**
+     * „Kandidat übernehmen" als Endpunkt: ein Portal-Admin stellt das aktive
+     * Prognosemodell um, die Umstellung trägt ihre Papier-Spur (von-&gt;zu, wer,
+     * wann), die KUNDEN-Seite zeigt danach sofort das neue Modell als „live" -
+     * und der Rückweg ist derselbe Aufruf in die Gegenrichtung.
+     *
+     * <p>Der Rollen-Zaun ist Teil desselben Tests, weil er die eigentliche
+     * Sicherheits-Aussage ist: die Wahl gilt PLATTFORMWEIT, ein Kunde darf sie
+     * also nie stellen können.
+     */
+    @Test
+    void theForecastPromotionSwitchIsAdminOnlyAuditedAndVisibleToTheCustomer() {
+        String admin = token("admin", "admin");
+        String customer = token("demo", "demo");
+        String url = url("/api/v1/admin/forecast-models");
+
+        // (1) Vor jeder Umstellung: die Umgebung (bzw. der Registry-Default)
+        //     entscheidet, und die Fläche SAGT das - „env", nie „portal".
+        Map<String, Object> before = getForecastModels(admin);
+        List<Map<String, Object>> kinds = kindsOf(before);
+        assertThat(kinds).hasSize(2);
+        Map<String, Object> load = kindOf(kinds, "load");
+        assertThat(load.get("activeModel")).isEqualTo("load-persistence");
+        assertThat(load.get("source")).isEqualTo("env");
+        assertThat(load.get("envDefault")).isEqualTo("load-persistence");
+        assertThat(load.get("setByName")).isNull();
+        assertThat(load.get("setAt")).isNull();
+        assertThat(load.get("selectable"))
+                .isEqualTo(List.of("load-persistence", "load-xgb"));
+        assertThat((List<?>) before.get("history")).isEmpty();
+
+        // (2) Der Kunde kommt an den Schalter nicht heran - weder lesend noch
+        //     schreibend (die Wahl ist plattformweit, nicht anlagenbezogen).
+        assertThat(rest.exchange(url, HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(url, HttpMethod.POST,
+                new HttpEntity<>(Map.of("kind", "load", "model", "load-xgb"), bearer(customer)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(url, HttpMethod.GET, HttpEntity.EMPTY, String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(queryLong("SELECT count(*) FROM forecast_model_choice")).isZero();
+
+        // (3) Der Klick: der Kandidat übernimmt.
+        Map<String, Object> after = promoteModel(admin, "load", "load-xgb");
+        Map<String, Object> promoted = kindOf(kindsOf(after), "load");
+        assertThat(promoted.get("activeModel")).isEqualTo("load-xgb");
+        assertThat(promoted.get("source")).isEqualTo("portal");
+        assertThat(promoted.get("envDefault")).isEqualTo("load-persistence");
+        assertThat(promoted.get("setByName")).isEqualTo("admin");
+        assertThat(promoted.get("setAt")).isNotNull();
+        // Die ANDERE Prognoseart bleibt unberührt - ein Schalter je Art.
+        assertThat(kindOf(kindsOf(after), "pv").get("activeModel")).isEqualTo("pv-physical");
+
+        // (4) Die Papier-Spur: von->zu, wer, wann - in der Tabelle, die zugleich
+        //     der Zustand ist (append-only, deshalb kein zweites Journal).
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> history = (List<Map<String, Object>>) after.get("history");
+        assertThat(history).hasSize(1);
+        assertThat(history.get(0)).containsEntry("kind", "load")
+                .containsEntry("model", "load-xgb")
+                .containsEntry("previousModel", "load-persistence")
+                .containsEntry("setByName", "admin");
+        assertThat(history.get(0).get("setAt")).isNotNull();
+        // Der Urheber ist ZUSÄTZLICH das JWT-Subject (die maschinenstabile
+        // Identität) - der Anzeige-Name allein wäre keine Papier-Spur.
+        assertThat(queryLong(
+                "SELECT count(*) FROM forecast_model_choice WHERE set_by <> 'admin'"))
+                .isEqualTo(1);
+
+        // (5) Die KUNDEN-Seite folgt sofort: dieselbe Anlage, neues „live".
+        Map<String, Object> quality = forecastQuality(customer, BERLIN_SITE);
+        assertThat(quality.get("activeLoadModel")).isEqualTo("load-xgb");
+        assertThat(quality.get("activePvModel")).isEqualTo("pv-physical");
+
+        // (6) Derselbe Knopf in die Gegenrichtung - der Rückweg bleibt offen.
+        Map<String, Object> reverted = promoteModel(admin, "load", "load-persistence");
+        assertThat(kindOf(kindsOf(reverted), "load").get("activeModel"))
+                .isEqualTo("load-persistence");
+        // ... und bleibt „portal": es IST eine Entscheidung, auch wenn sie
+        // zufällig auf denselben Wert wie die Umgebung fällt.
+        assertThat(kindOf(kindsOf(reverted), "load").get("source")).isEqualTo("portal");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> history2 = (List<Map<String, Object>>) reverted.get("history");
+        assertThat(history2).hasSize(2);
+        assertThat(history2.get(0)).containsEntry("model", "load-persistence")
+                .containsEntry("previousModel", "load-xgb");
+        assertThat(forecastQuality(customer, BERLIN_SITE).get("activeLoadModel"))
+                .isEqualTo("load-persistence");
+
+        // (7) Jede Ablehnung ist ein deutscher Satz UND schreibt nichts.
+        long rows = queryLong("SELECT count(*) FROM forecast_model_choice");
+        assertRefused(admin, Map.of("kind", "load", "model", "pv-physical"),
+                HttpStatus.BAD_REQUEST, "andere Prognoseart");
+        assertRefused(admin, Map.of("kind", "load", "model", "load_xgb"),
+                HttpStatus.BAD_REQUEST, "Unbekanntes Prognosemodell");
+        assertRefused(admin, Map.of("kind", "waerme", "model", "load-xgb"),
+                HttpStatus.BAD_REQUEST, "Prognoseart");
+        assertRefused(admin, Map.of("kind", "load", "model", "load-persistence"),
+                HttpStatus.CONFLICT, "plant bereits");
+        assertThat(queryLong("SELECT count(*) FROM forecast_model_choice")).isEqualTo(rows);
+
+        exec("DELETE FROM forecast_model_choice");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> getForecastModels(String adminToken) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/admin/forecast-models"), HttpMethod.GET,
+                new HttpEntity<>(bearer(adminToken)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    private Map<String, Object> promoteModel(String adminToken, String kind, String model) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/admin/forecast-models"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("kind", kind, "model", model), bearer(adminToken)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    private void assertRefused(
+            String adminToken, Map<String, ?> body, HttpStatus status, String needle) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/admin/forecast-models"), HttpMethod.POST,
+                new HttpEntity<>(body, bearer(adminToken)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(status);
+        assertThat(String.valueOf(res.getBody().get("message"))).contains(needle);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> kindsOf(Map<String, Object> body) {
+        return (List<Map<String, Object>>) body.get("kinds");
+    }
+
+    private static Map<String, Object> kindOf(List<Map<String, Object>> kinds, String kind) {
+        return kinds.stream().filter(k -> kind.equals(k.get("kind"))).findFirst().orElseThrow();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> forecastQuality(String token, String siteId) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/forecast-quality"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     /**

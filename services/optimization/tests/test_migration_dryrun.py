@@ -69,7 +69,7 @@ def _run(inp, *, flag_site_id, monkeypatch):
     site = _site_for(inp)
     monkeypatch.setattr(engine, "load_battery_sites", lambda dsn: [site])
     monkeypatch.setattr(
-        engine, "gather_inputs", lambda dsn, s, now, horizon_slots: inp
+        engine, "gather_inputs", lambda dsn, s, now, horizon_slots, model_choices=None: inp
     )
     if flag_site_id is not None:
         monkeypatch.setenv("VOLTPILOT_V2_PLAN_SITES", str(flag_site_id))
@@ -163,7 +163,9 @@ def test_unmigrated_site_in_a_mixed_fleet_sees_no_v2_traffic(monkeypatch):
 
     monkeypatch.setattr(engine, "load_battery_sites", lambda dsn: [site_a, site_b])
     monkeypatch.setattr(
-        engine, "gather_inputs", lambda dsn, s, now, horizon_slots: inputs[s.site_id]
+        engine,
+        "gather_inputs",
+        lambda dsn, s, now, horizon_slots, model_choices=None: inputs[s.site_id],
     )
     monkeypatch.setenv("VOLTPILOT_V2_PLAN_SITES", str(site_a.site_id))
 

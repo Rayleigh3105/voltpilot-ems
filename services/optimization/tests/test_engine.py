@@ -72,7 +72,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(
         engine,
         "gather_inputs",
-        lambda dsn, site, now, horizon_slots: synthetic_inputs(site, now),
+        lambda dsn, site, now, horizon_slots, model_choices=None: synthetic_inputs(site, now),
     )
     return sites
 
@@ -157,7 +157,7 @@ def test_autolink_makes_a_previously_unpublished_site_publish(monkeypatch):
 
     monkeypatch.setattr(
         engine, "gather_inputs",
-        lambda dsn, s, now, horizon_slots: synthetic_inputs(s, now),
+        lambda dsn, s, now, horizon_slots, model_choices=None: synthetic_inputs(s, now),
     )
 
     # Before the auto-link: battery unlinked -> plan persisted, nothing published.
@@ -182,7 +182,7 @@ def test_autolink_makes_a_previously_unpublished_site_publish(monkeypatch):
 def test_skip_site_does_not_sink_the_cycle(monkeypatch):
     good, bad = make_site(), make_site()
 
-    def gather(dsn, site, now, horizon_slots):
+    def gather(dsn, site, now, horizon_slots, model_choices=None):
         if site is bad:
             raise SkipSite("only 3 priced slots")
         return synthetic_inputs(site, now)
@@ -199,7 +199,7 @@ def test_skip_site_does_not_sink_the_cycle(monkeypatch):
 def test_infeasible_grid_limit_degrades_to_unconstrained_plan(monkeypatch):
     site = make_site()
 
-    def gather(dsn, s, now, horizon_slots):
+    def gather(dsn, s, now, horizon_slots, model_choices=None):
         inp = synthetic_inputs(s, now)
         # 50 kW of load against a 1 kW cap: infeasible with the limit enforced.
         return OptimizationInput(

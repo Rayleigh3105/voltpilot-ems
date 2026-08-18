@@ -291,3 +291,301 @@ export function direktEtikett(
   if (!m) return null;
   return `${istAktiv ? 'aktiv' : 'Kandidat'} Ø ${abweichung(m.mae)}`;
 }
+
+/* ---------------------------------------------------------------------------
+ * Der Prognose-Schalter + die Erklärbarkeit des Schattenbetriebs
+ * (Captain-Auftrag 18.08.2026: „einen Schalter im Portal dafür machen und den
+ * Schattenbetrieb für den Benutzer erklärbarer machen")
+ *
+ * Der Befund war, dass die Seite eine ZAHL zeigte („in 7 von 10 Bewertungen
+ * genauer"), aus der eine HANDLUNG folgt - und weder die Zahl belegte, woher
+ * sie kommt, noch gab es die Handlung. Beides ist hier rein abgeleitet; die
+ * Fläche rendert nur.
+ *
+ * ⚠ Ehrlichkeitsregel, die alles hier trägt: die Liste unten zeigt EXAKT die
+ * Tage, die der Zähler zählt (`skillBilanz`) - sonst hätte die Seite zwei
+ * Wahrheiten über dieselben zehn Bewertungen. Deshalb filtert sie auf
+ * `skillVsBaseline != null` und liest den Gewinner aus dem VORZEICHEN des
+ * gespeicherten Vergleichs, statt die zwei Fehlerwerte neu gegeneinander zu
+ * rechnen; die Fehler stehen als BELEG daneben.
+ * ------------------------------------------------------------------------- */
+
+/** Der Erklär-Kopf in zwei Sätzen - was Schattenbetrieb überhaupt ist. */
+export const SCHATTEN_ERKLAERUNG = [
+  'Ein lernender Kandidat rechnet jede Viertelstunde parallel mit und stellt eigene Prognosen - er beeinflusst dabei keinen einzigen Fahrplan.',
+  'Jede Nacht wird nachgerechnet, wer näher an den echten Messwerten lag; erst dieser Vergleich begründet eine Umstellung.',
+] as const;
+
+/**
+ * Das PRINZIP-Kärtchen am Seitenfuß („So funktioniert der Schattenbetrieb").
+ *
+ * Es beschreibt bewusst NICHT noch einmal den Mechanismus - den sagt
+ * {@link SCHATTEN_ERKLAERUNG} direkt bei den Kandidaten -, sondern die
+ * ENTSCHEIDUNG und ihre Folgen: wer umstellt, was sich dann ändert, und dass
+ * der Rückweg offen bleibt. (Vor dem Schalter stand hier die Erklärung; sie ist
+ * an den Ort gewandert, an dem die Frage entsteht, damit es nicht zwei
+ * Fassungen desselben Satzes gibt.)
+ *
+ * EINE Quelle für Rechner UND Telefon-Aufklapper.
+ */
+export const SCHATTEN_PRINZIP = [
+  'Ein Kandidat wird nie automatisch aktiv. Die Umstellung ist eine bewusste Entscheidung von VoltPilot anhand genau der Bewertungen, die auf dieser Seite stehen.',
+  'Nach einer Umstellung planen alle Fahrpläne ab dem nächsten Planungslauf mit dem neuen Modell - spätestens 15 Minuten später. Das bisherige Modell verschwindet dabei nicht: es rechnet im Schatten weiter und wird weiter jede Nacht bewertet.',
+  'Deshalb ist der Rückweg jederzeit offen, und es bleibt nachvollziehbar, welches Modell Ihre Anlage seit wann plant.',
+] as const;
+
+/** Die Zeile ÜBER den Merkmalsgewichten - sie ordnet die Prozente ein. */
+export const MERKMALE_EINLEITUNG =
+  'Worauf das Modell achtet - Anteil am gelernten Urteil:';
+
+/** Die Metrik der Liste, ehrlich benannt (kein „Genauigkeit in %"). */
+export const BEWERTUNG_METRIK =
+  'Ø Abweichung je Tag (kW) - je Viertelstunde gegen den Messwert, dann gemittelt.';
+
+/** Eine Zeile der Beleg-Liste: ein bewerteter Tag. */
+export interface BewertungsZeile {
+  /** ISO-Tag, wie er aus der Bewertung kommt. */
+  day: string;
+  /** „18.08.2026". */
+  datum: string;
+  /** Ø Abweichung des Kandidaten an diesem Tag. */
+  kandidatMae: number;
+  /** Ø Abweichung des aktiven Modells - `null`, wenn nicht bewertet. */
+  aktivMae: number | null;
+  /** Wer an diesem Tag näher lag. `null` = kein Urteil möglich. */
+  gewinner: 'kandidat' | 'aktiv' | 'gleich' | null;
+}
+
+function datum(day: string): string {
+  const [y, m, d] = day.split('-');
+  return y && m && d ? `${d}.${m}.${y}` : day;
+}
+
+/**
+ * Die letzten `tage` Bewertungen als BELEG für „X von Y genauer" - dieselben
+ * Tage, in derselben Reihenfolge (neueste zuerst), die {@link skillBilanz}
+ * zählt.
+ *
+ * Der Gewinner kommt aus dem Vorzeichen des GESPEICHERTEN Vergleichs
+ * (`skillVsBaseline`), nicht aus einem neuen Vergleich der zwei kW-Werte: der
+ * Server hat verglichen, die Fläche belegt. Fehlt der Wert des aktiven Modells
+ * für einen Tag, steht dort „—" statt einer erfundenen Zahl.
+ */
+export function bewertungsListe(
+  accuracy: readonly ForecastAccuracyPoint[],
+  kandidat: ForecastModelId | null,
+  aktiv: ForecastModelId,
+  tage = 10,
+): BewertungsZeile[] {
+  if (!kandidat) return [];
+  const aktivMaeByDay = new Map<string, number>();
+  for (const a of accuracy) {
+    if (a.model === aktiv) aktivMaeByDay.set(a.day, a.maeKw);
+  }
+  return accuracy
+    .filter((a) => a.model === kandidat && a.skillVsBaseline != null)
+    .sort((a, b) => (a.day < b.day ? 1 : -1))
+    .slice(0, tage)
+    .map((a) => {
+      const skill = a.skillVsBaseline ?? 0;
+      return {
+        day: a.day,
+        datum: datum(a.day),
+        kandidatMae: a.maeKw,
+        aktivMae: aktivMaeByDay.get(a.day) ?? null,
+        gewinner: skill > 0 ? 'kandidat' : skill < 0 ? 'aktiv' : 'gleich',
+      } satisfies BewertungsZeile;
+    });
+}
+
+/** Die Zeile über der Liste: „In 7 von 10 Bewertungen war der Kandidat genauer." */
+export function bewertungsBilanzSatz(zeilen: readonly BewertungsZeile[]): string | null {
+  if (zeilen.length === 0) return null;
+  const besser = zeilen.filter((z) => z.gewinner === 'kandidat').length;
+  return `In ${besser} von ${zeilen.length} ${
+    zeilen.length === 1 ? 'Bewertung' : 'Bewertungen'
+  } war der Kandidat genauer.`;
+}
+
+/* ---- der Schalter ---------------------------------------------------------- */
+
+/** Der Zustand einer Prognoseart im Schalter (Server-Antwort, 1:1). */
+export interface ModellWahl {
+  kind: 'load' | 'pv';
+  activeModel: ForecastModelId;
+  source: 'portal' | 'env';
+  envDefault: ForecastModelId;
+  setByName: string | null;
+  setAt: string | null;
+  selectable: ForecastModelId[];
+}
+
+export interface ModellWahlHistorie {
+  kind: 'load' | 'pv';
+  model: ForecastModelId;
+  previousModel: ForecastModelId | null;
+  setByName: string | null;
+  setAt: string;
+}
+
+export interface ModellWahlZustand {
+  kinds: ModellWahl[];
+  history: ModellWahlHistorie[];
+}
+
+/**
+ * Die Rolle-plus-Herkunft-Zeile am AKTIVEN Modell: „aktiv seit 18.08.2026,
+ * umgestellt von max" bzw. „aktiv (Standardmodell dieser Anlage)".
+ *
+ * Ohne Namen steht dort „von einem Portal-Admin" - eine nackte Kennung ist
+ * kein Urheber, den ein Mensch liest, und den Namen zu erfinden wäre schlimmer.
+ */
+export function rolleZeile(wahl: ModellWahl | null): string {
+  if (!wahl || wahl.source !== 'portal' || !wahl.setAt) {
+    return 'Aktiv - das ausgelieferte Standardmodell dieser Prognoseart.';
+  }
+  const wer = wahl.setByName ? `von ${wahl.setByName}` : 'von einem Portal-Admin';
+  return `Aktiv seit ${datum(wahl.setAt.slice(0, 10))}, umgestellt ${wer}.`;
+}
+
+/** Die Historie einer Art als lesbare Zeilen, neueste zuerst. */
+export function historieZeilen(
+  zustand: ModellWahlZustand | null,
+  kind: 'load' | 'pv',
+  labels: Record<string, string>,
+  grenze = 5,
+): string[] {
+  if (!zustand) return [];
+  return zustand.history
+    .filter((h) => h.kind === kind)
+    .slice(0, grenze)
+    .map((h) => {
+      const wer = h.setByName ? h.setByName : 'ein Portal-Admin';
+      const von = h.previousModel ? labels[h.previousModel] ?? h.previousModel : null;
+      const zu = labels[h.model] ?? h.model;
+      return von
+        ? `${datum(h.setAt.slice(0, 10))}: ${von} → ${zu} (${wer})`
+        : `${datum(h.setAt.slice(0, 10))}: auf ${zu} umgestellt (${wer})`;
+    });
+}
+
+/** Der Zustand des „Kandidat übernehmen"-Knopfes. */
+export interface UebernahmeKnopf {
+  /** Ob der Knopf überhaupt angeboten wird. */
+  sichtbar: boolean;
+  label: string;
+  /** Deaktiviert-Grund, sonst `null`. */
+  grund: string | null;
+}
+
+/**
+ * Ein Knopf, der strukturell nichts bewirken kann, wird NICHT angeboten - und
+ * wo er angeboten wird, steht der Einwand VOR dem Klick (die
+ * `applyView`-Disziplin der Edge-Updates).
+ *
+ * Ein sammelnder Kandidat hat noch keine einzige Prognose abgegeben; ihn zu
+ * übernehmen hieße, den Optimierer auf eine leere Reihe zu setzen. Deshalb ist
+ * der Knopf dort da, aber gesperrt - mit dem echten Grund.
+ */
+export function uebernahmeKnopf(
+  kandidat: ForecastModelState,
+  bewertungen: readonly BewertungsZeile[],
+  darfSchalten: boolean,
+): UebernahmeKnopf {
+  if (!darfSchalten) return { sichtbar: false, label: '', grund: null };
+  if (kandidat.status === 'collecting') {
+    const tag = kandidat.daysCollected ?? 0;
+    const soll = kandidat.daysRequired ?? 21;
+    return {
+      sichtbar: true,
+      label: 'Kandidat übernehmen',
+      grund: `Noch keine Prognosen - der Kandidat sammelt Daten (Tag ${tag} von ${soll}).`,
+    };
+  }
+  if (bewertungen.length === 0) {
+    return {
+      sichtbar: true,
+      label: 'Kandidat übernehmen',
+      grund: 'Noch keine Tagesbewertung - es gibt nichts, worauf sich eine Umstellung stützen könnte.',
+    };
+  }
+  return { sichtbar: true, label: 'Kandidat übernehmen', grund: null };
+}
+
+/** Der Bestätigungs-Dialog: was passiert, was gleich bleibt, wie es zurückgeht. */
+export interface UebernahmeDialog {
+  titel: string;
+  intro: string;
+  folgen: string[];
+  bestaetigen: string;
+}
+
+/**
+ * Die Folgenliste im Haus-Muster (`ConfirmDialog`): sie nennt ausdrücklich
+ * auch, was GLEICH bleibt - sonst liest sich jedes Umlegen wie ein Lockern der
+ * Regeln - und dass der Rückweg offen ist.
+ *
+ * ⚠ Sie sagt „alle Anlagen": die Wahl gilt plattformweit (die Semantik der
+ * abgelösten Umgebungsvariablen). Ein Klick auf einer Anlagen-Seite darf nie
+ * wie eine Entscheidung für DIESE Anlage aussehen.
+ */
+export function uebernahmeDialog(
+  kandidatLabel: string,
+  aktivLabel: string,
+  artLabel: string,
+): UebernahmeDialog {
+  return {
+    titel: 'Kandidat übernehmen?',
+    intro: `„${kandidatLabel}" wird das aktive Modell für die ${artLabel}.`,
+    folgen: [
+      'Ab dem nächsten Planungslauf - spätestens in 15 Minuten - rechnen alle Fahrpläne mit diesem Modell.',
+      `„${aktivLabel}" lernt im Schatten weiter und wird weiter jede Nacht bewertet.`,
+      'Sie können jederzeit zurücktauschen - mit demselben Knopf in die Gegenrichtung.',
+      'Aufgezeichnete Messwerte, Fahrpläne und Bewertungen bleiben unverändert; es wird nichts neu trainiert.',
+      'Die Umstellung gilt für alle Anlagen der Plattform und wird mit Zeitpunkt und Urheber protokolliert.',
+    ],
+    bestaetigen: 'Übernehmen',
+  };
+}
+
+/** Der Rücktausch-Dialog - derselbe Knopf, andere Richtung, andere Folgen. */
+export function ruecktauschDialog(
+  zielLabel: string,
+  aktivLabel: string,
+  artLabel: string,
+): UebernahmeDialog {
+  return {
+    titel: 'Zurücktauschen?',
+    intro: `„${zielLabel}" wird wieder das aktive Modell für die ${artLabel}.`,
+    folgen: [
+      'Ab dem nächsten Planungslauf rechnen alle Fahrpläne wieder mit diesem Modell.',
+      `„${aktivLabel}" rechnet danach im Schatten weiter - seine Bewertung läuft ohne Lücke weiter.`,
+      'Auch der Rücktausch wird mit Zeitpunkt und Urheber protokolliert.',
+    ],
+    bestaetigen: 'Zurücktauschen',
+  };
+}
+
+/**
+ * Ist die Umstellung auf `model` ein RÜCKTAUSCH? Wahr, sobald dieses Modell
+ * dieser Art schon einmal aktiv war (es taucht in der Historie als
+ * abgelöstes Modell auf). Die Dialoge unterscheiden sich, weil sich die
+ * Handlung unterscheidet - „übernehmen" ist ein Schritt nach vorn,
+ * „zurücktauschen" die Rücknahme davon.
+ */
+export function istRuecktausch(
+  zustand: ModellWahlZustand | null,
+  kind: 'load' | 'pv',
+  model: ForecastModelId,
+): boolean {
+  if (!zustand) return false;
+  return zustand.history.some((h) => h.kind === kind && h.previousModel === model);
+}
+
+/** Die Wahl einer Art aus dem Schalter-Zustand (`null` = nicht geladen). */
+export function wahlFuer(
+  zustand: ModellWahlZustand | null,
+  kind: 'load' | 'pv',
+): ModellWahl | null {
+  return zustand?.kinds.find((k) => k.kind === kind) ?? null;
+}

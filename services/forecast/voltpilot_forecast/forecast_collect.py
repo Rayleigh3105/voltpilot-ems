@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
-from voltpilot_forecast import registry
+from voltpilot_forecast import model_choice, registry
 from voltpilot_forecast.domain import (
     ForecastKind,
     GeoLocation,
@@ -494,10 +494,15 @@ def main(argv: list[str] | None = None) -> int:
         )
     # Log the active models once: the collector runs ALL models either way, but
     # this line is the operator's confirmation of what the optimizer consumes.
+    # It resolves the FULL precedence (portal choice > env > baseline, see
+    # voltpilot_forecast.model_choice) - printing the raw env would be a lie on
+    # a fleet that used the promotion switch. A DB blip degrades to env here
+    # exactly like everywhere else.
+    _active = model_choice.active_models(env, model_choice.load_choices_dsn(dsn))
     logger.info(
         "collect.active_models load=%s pv=%s",
-        registry.active_model(ForecastKind.LOAD, env),
-        registry.active_model(ForecastKind.PV, env),
+        _active[ForecastKind.LOAD],
+        _active[ForecastKind.PV],
     )
 
     if args.command == "fetch":

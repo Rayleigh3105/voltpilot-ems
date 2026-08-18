@@ -20,15 +20,34 @@ import { ChartCardSkeleton, ErrorState } from '../components/States';
 import { ChartHeadline } from '../components/ChartExplain';
 import { ForecastQualityChart } from '../ForecastQualityChart';
 import {
+  BEWERTUNG_METRIK,
   KANDIDAT_EHRLICHKEIT,
   KIND_LABELS,
+  MERKMALE_EINLEITUNG,
   RAHMUNG,
+  SCHATTEN_ERKLAERUNG,
+  SCHATTEN_PRINZIP,
+  bewertungsBilanzSatz,
+  bewertungsListe,
+  historieZeilen,
+  istRuecktausch,
   kandidatKern,
   kandidatenZeilen,
   mittlereMae,
+  rolleZeile,
+  ruecktauschDialog,
   skillBilanz,
+  uebernahmeDialog,
+  uebernahmeKnopf,
   verdikt,
+  wahlFuer,
+  type BewertungsZeile,
+  type ModellWahlZustand,
 } from '../prognose';
+import { adminApi } from '../admin/adminApi';
+import { showTechnicalLayer } from '../rollen';
+import { Button } from '../../designsystem/components/core/Button';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useIsPhone } from '../useIsPhone';
 import './Prognose.css';
 
@@ -93,10 +112,70 @@ export function PrognosePage(props: {
     };
   }, [site?.id, reloadKey]);
 
+  /*
+   * Der Prognose-Schalter (Captain-Auftrag 18.08.2026). Er ist PLATTFORMWEIT
+   * und deshalb ein Admin-Endpunkt; die Fläche zeigt ihn über den EINEN
+   * Technik-Schalter des Hauses (`showTechnicalLayer`, M7) - ein Kunde sieht
+   * die Erklärung und die Belege, aber keinen Knopf, den der Server ihm
+   * ohnehin mit 403 verweigern würde.
+   */
+  const darfSchalten = showTechnicalLayer();
+  const [wahl, setWahl] = useState<ModellWahlZustand | null>(null);
+  const [schalten, setSchalten] = useState<{ kind: 'load' | 'pv'; model: ForecastModelId } | null>(
+    null,
+  );
+  const [busy, setBusy] = useState(false);
+  const [schaltFehler, setSchaltFehler] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!darfSchalten) return;
+    let active = true;
+    // Fail-soft: ohne den Schalter-Zustand bleibt die Seite vollständig
+    // benutzbar, sie zeigt dann nur Rolle/Historie nicht.
+    adminApi
+      .forecastModels()
+      .then((w) => active && setWahl(w))
+      .catch(() => active && setWahl(null));
+    return () => {
+      active = false;
+    };
+  }, [darfSchalten, reloadKey]);
+
   const challengers = useMemo(
     () => (quality?.models ?? []).filter((m) => !m.active),
     [quality],
   );
+  const dialog = useMemo(() => {
+    if (!schalten) return null;
+    const kandidatLabel = modelLabel(schalten.model);
+    const aktivLabel = modelLabel(
+      schalten.kind === 'load'
+        ? (quality?.activeLoadModel ?? 'load-persistence')
+        : (quality?.activePvModel ?? 'pv-physical'),
+    );
+    const art = KIND_LABELS[schalten.kind];
+    return istRuecktausch(wahl, schalten.kind, schalten.model)
+      ? ruecktauschDialog(kandidatLabel, aktivLabel, art)
+      : uebernahmeDialog(kandidatLabel, aktivLabel, art);
+  }, [schalten, wahl, quality]);
+
+  async function uebernehmen() {
+    if (!schalten) return;
+    setBusy(true);
+    setSchaltFehler(null);
+    try {
+      setWahl(await adminApi.promoteForecastModel(schalten.kind, schalten.model));
+      setSchalten(null);
+      // Die Kunden-Sicht („live") folgt derselben Auflösung - also neu holen,
+      // statt sie hier zu erraten.
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setSchaltFehler(e instanceof ApiError ? e.message : 'Die Umstellung ist fehlgeschlagen.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const activeByKind = useMemo(() => {
     if (!quality) return {} as Record<'load' | 'pv', ForecastModelId>;
     return { load: quality.activeLoadModel, pv: quality.activePvModel };
@@ -288,6 +367,22 @@ export function PrognosePage(props: {
                                 : 'Ø Abweichung (noch keine Bewertung)'
                             }
                           />
+                          {/* Rolle + Herkunft: „seit wann, umgestellt von wem" -
+                              nach einer Beförderung ist genau das die Frage. */}
+                          {darfSchalten && (
+                            <>
+                              <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
+                                {rolleZeile(wahlFuer(wahl, kind))}
+                              </p>
+                              {historieZeilen(wahl, kind, MODEL_LABELS).length > 0 && (
+                                <ul className="vp-pq-historie">
+                                  {historieZeilen(wahl, kind, MODEL_LABELS).map((z) => (
+                                    <li key={z}>{z}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -320,12 +415,25 @@ export function PrognosePage(props: {
                       positivem Skill.
                     </InfoTip>
                   </div>
-                  <p className="vp-muted" style={{ margin: '0 0 var(--vp-space-4)' }}>
+                  {/* Der Erklär-Kopf: WAS Schattenbetrieb ist, in zwei Sätzen -
+                      der Captain konnte sich unter „Lernende Kandidaten"
+                      zunächst nichts vorstellen. */}
+                  {SCHATTEN_ERKLAERUNG.map((satz) => (
+                    <p key={satz} style={{ margin: '0 0 var(--vp-space-2)', maxWidth: '74ch' }}>
+                      {satz}
+                    </p>
+                  ))}
+                  <p className="vp-muted" style={{ margin: 'var(--vp-space-2) 0 var(--vp-space-4)' }}>
                     Zu jeder der beiden Prognosen kann höchstens ein Kandidat mitlernen. Er
                     wird gegen genau das aktive Modell derselben Art bewertet - der
                     Verbrauchs-Kandidat gegen die Verbrauchsprognose, der PV-Kandidat gegen
                     die PV-Prognose.
                   </p>
+                  {schaltFehler && (
+                    <p className="vp-pq-fehler" role="alert">
+                      {schaltFehler}
+                    </p>
+                  )}
 
                   {challengers.length === 0 ? (
                     <div className="vp-empty">
@@ -343,6 +451,9 @@ export function PrognosePage(props: {
                           key={m.model}
                           state={m}
                           accuracy={quality.accuracy}
+                          activeModel={activeByKind[m.kind]}
+                          darfSchalten={darfSchalten}
+                          onPromote={() => setSchalten({ kind: m.kind, model: m.model })}
                         />
                       ))}
                     </div>
@@ -406,15 +517,45 @@ export function PrognosePage(props: {
                       <h2>Lernende Kandidaten</h2>
                       <Badge variant="tint">Schattenbetrieb</Badge>
                     </div>
-                    {kandidatenZeilen(challengers, quality.accuracy).map((z) => (
-                      <div key={z.model} className="vp-pq-kandidat">
-                        <span>{z.art}</span>
-                        <span className={`vp-pq-stand ton-${z.ton}`}>{z.stand}</span>
-                      </div>
-                    ))}
+                    {kandidatenZeilen(challengers, quality.accuracy).map((z) => {
+                      const m = challengers.find((c) => c.model === z.model)!;
+                      const zeilen = bewertungsListe(
+                        quality.accuracy,
+                        m.model,
+                        activeByKind[m.kind],
+                      );
+                      return (
+                        <div key={z.model}>
+                          <div className="vp-pq-kandidat">
+                            <span>{z.art}</span>
+                            <span className={`vp-pq-stand ton-${z.ton}`}>{z.stand}</span>
+                          </div>
+                          <BewertungsBeleg zeilen={zeilen} />
+                          <UebernahmeAktion
+                            state={m}
+                            zeilen={zeilen}
+                            darfSchalten={darfSchalten}
+                            onClick={() => setSchalten({ kind: m.kind, model: m.model })}
+                          />
+                        </div>
+                      );
+                    })}
+                    {schaltFehler && (
+                      <p className="vp-pq-fehler" role="alert">
+                        {schaltFehler}
+                      </p>
+                    )}
                     <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
                       {KANDIDAT_EHRLICHKEIT}
                     </p>
+                    {/* Am Telefon ist das der Ort für „seit wann, von wem" -
+                        die Karten „Aktive Modelle" gibt es hier nicht. */}
+                    {darfSchalten &&
+                      (['load', 'pv'] as const).map((kind) => (
+                        <p key={kind} className="vp-note" style={{ marginTop: 'var(--vp-space-1)' }}>
+                          {KIND_LABELS[kind]}: {rolleZeile(wahlFuer(wahl, kind))}
+                        </p>
+                      ))}
                   </Card>
                 </section>
               )}
@@ -448,16 +589,14 @@ export function PrognosePage(props: {
                     </IconTile>
                     <h2>So funktioniert der Schattenbetrieb</h2>
                   </div>
-                  <p style={{ margin: 0, maxWidth: '70ch' }}>
-                    Neue Prognosemodelle laufen zunächst nur im Hintergrund mit: Sie
-                    erstellen jeden Tag ihre eigenen Vorhersagen, haben aber{' '}
-                    <strong>keinerlei Einfluss</strong> auf die Steuerung Ihrer Anlage.
-                    Jede Nacht wird nachgerechnet, welches Modell näher an den echten
-                    Messwerten lag. Erst wenn ein Kandidat über längere Zeit nachweislich
-                    genauer ist, schalten wir ihn bewusst frei - automatisch passiert das
-                    nie. So bleibt jederzeit nachvollziehbar, welches Modell Ihre Anlage
-                    plant und warum.
-                  </p>
+                  {SCHATTEN_PRINZIP.map((satz, i) => (
+                    <p
+                      key={satz}
+                      style={{ margin: i === 0 ? 0 : 'var(--vp-space-3) 0 0', maxWidth: '70ch' }}
+                    >
+                      {satz}
+                    </p>
+                  ))}
                 </Card>
               </section>
               )}
@@ -502,15 +641,9 @@ export function PrognosePage(props: {
                         So funktioniert der Schattenbetrieb
                       </summary>
                       <div className="vp-pq-fold-body">
-                        <p>
-                          Neue Prognosemodelle laufen zunächst nur im Hintergrund mit: Sie
-                          erstellen jeden Tag ihre eigenen Vorhersagen, haben aber{' '}
-                          <strong>keinerlei Einfluss</strong> auf die Steuerung Ihrer
-                          Anlage. Jede Nacht wird nachgerechnet, welches Modell näher an den
-                          echten Messwerten lag. Erst wenn ein Kandidat über längere Zeit
-                          nachweislich genauer ist, schalten wir ihn bewusst frei -
-                          automatisch passiert das nie.
-                        </p>
+                        {SCHATTEN_PRINZIP.map((satz) => (
+                          <p key={satz}>{satz}</p>
+                        ))}
                       </div>
                     </details>
                   </Card>
@@ -520,6 +653,21 @@ export function PrognosePage(props: {
           )}
         </>
       )}
+
+      {/* Die Rückfrage im Haus-Muster: eine FOLGENLISTE, die auch nennt, was
+          GLEICH bleibt und dass der Rückweg offen ist. */}
+      {dialog && (
+        <ConfirmDialog
+          open
+          title={dialog.titel}
+          intro={dialog.intro}
+          consequences={dialog.folgen}
+          confirmLabel={dialog.bestaetigen}
+          busy={busy}
+          onConfirm={uebernehmen}
+          onCancel={() => setSchalten(null)}
+        />
+      )}
     </>
   );
 }
@@ -527,12 +675,19 @@ export function PrognosePage(props: {
 function ChallengerCard({
   state,
   accuracy,
+  activeModel,
+  darfSchalten,
+  onPromote,
 }: {
   state: ForecastModelState;
   accuracy: ForecastAccuracyPoint[];
+  activeModel: ForecastModelId;
+  darfSchalten: boolean;
+  onPromote: () => void;
 }) {
   const collecting = state.status === 'collecting';
   const record = skillBilanz(accuracy, state.model);
+  const zeilen = bewertungsListe(accuracy, state.model, activeModel);
   const progress =
     collecting && state.daysCollected != null && state.daysRequired
       ? Math.min(100, Math.round((state.daysCollected / state.daysRequired) * 100))
@@ -606,6 +761,8 @@ function ChallengerCard({
                 } genauer als das aktive Modell.`
               : 'Rechnet mit - die erste Tagesbewertung folgt nach dem nächsten vollen Tag.'}
           </p>
+          {/* Der BELEG zu genau dieser Zahl - dieselben Tage, aufklappbar. */}
+          <BewertungsBeleg zeilen={zeilen} />
           <p className="vp-muted" style={{ margin: '0 0 var(--vp-space-2)', fontSize: 'var(--vp-text-sm)' }}>
             {state.trainedAt
               ? `Zuletzt trainiert am ${new Date(state.trainedAt).toLocaleDateString('de-DE', {
@@ -621,7 +778,7 @@ function ChallengerCard({
           {state.featureImportance.length > 0 && (
             <>
               <p style={{ margin: 'var(--vp-space-2) 0 var(--vp-space-1)', fontWeight: 600, fontSize: 'var(--vp-text-sm)' }}>
-                Worauf das Modell besonders achtet:
+                {MERKMALE_EINLEITUNG}
               </p>
               <ul style={{ margin: 0, paddingLeft: 'var(--vp-space-5)' }}>
                 {state.featureImportance.slice(0, 5).map((fi) => (
@@ -637,6 +794,101 @@ function ChallengerCard({
           )}
         </>
       )}
+      {/* Der Schalter - in BEIDEN Zuständen, denn ein gesperrter Knopf MIT
+          Grund ist die ehrliche Antwort auf „warum kann ich nicht?". */}
+      <UebernahmeAktion
+        state={state}
+        zeilen={zeilen}
+        darfSchalten={darfSchalten}
+        onClick={onPromote}
+      />
+    </div>
+  );
+}
+
+/**
+ * Der BELEG unter „X von Y genauer": die letzten zehn Tagesbewertungen mit
+ * beiden Fehlerwerten und der Gewinner-Markierung.
+ *
+ * Es sind GENAU die Tage, die der Zähler zählt (`bewertungsListe` filtert auf
+ * dieselbe Bedingung wie `skillBilanz`), und der Gewinner kommt aus dem
+ * gespeicherten Vergleich - die Fläche belegt, sie rechnet nicht nach. Die
+ * Metrik steht ausgeschrieben darüber: „Ø Abweichung je Tag (kW)", nie eine
+ * erfundene „Genauigkeit in %".
+ */
+function BewertungsBeleg({ zeilen }: { zeilen: BewertungsZeile[] }) {
+  if (zeilen.length === 0) return null;
+  return (
+    <details className="vp-pq-beleg">
+      <summary>
+        <Icon name="chevron-down" size={14} />
+        Die letzten {zeilen.length} Bewertungen ansehen
+      </summary>
+      <div className="vp-pq-beleg-body">
+        {/* Der Zähler und die Liste stammen aus DENSELBEN Zeilen - hier stehen
+            sie nebeneinander, damit man das sehen kann. */}
+        <p style={{ margin: '0 0 var(--vp-space-1)', fontWeight: 600 }}>
+          {bewertungsBilanzSatz(zeilen)}
+        </p>
+        <p className="vp-note" style={{ marginTop: 0 }}>{BEWERTUNG_METRIK}</p>
+        <table className="vp-pq-beleg-tabelle">
+          <thead>
+            <tr>
+              <th scope="col">Tag</th>
+              <th scope="col">Kandidat</th>
+              <th scope="col">Aktiv</th>
+              <th scope="col">Näher dran</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zeilen.map((z) => (
+              <tr key={z.day}>
+                <td>{z.datum}</td>
+                <td>{kw(z.kandidatMae)}</td>
+                <td>{z.aktivMae == null ? '—' : kw(z.aktivMae)}</td>
+                <td>
+                  {z.gewinner === 'kandidat' ? (
+                    <span className="vp-pq-sieg">Kandidat</span>
+                  ) : z.gewinner === 'aktiv' ? (
+                    <span className="vp-muted">aktives Modell</span>
+                  ) : (
+                    <span className="vp-muted">gleichauf</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
+/**
+ * Der Schalter selbst: ein Knopf, der NICHT angeboten wird, wo er strukturell
+ * nichts bewirken kann, und der seinen Einwand VOR dem Klick nennt (die
+ * `applyView`-Disziplin). Der Dialog dahinter gehört der Seite, damit es
+ * genau einen gibt.
+ */
+function UebernahmeAktion({
+  state,
+  zeilen,
+  darfSchalten,
+  onClick,
+}: {
+  state: ForecastModelState;
+  zeilen: BewertungsZeile[];
+  darfSchalten: boolean;
+  onClick: () => void;
+}) {
+  const knopf = uebernahmeKnopf(state, zeilen, darfSchalten);
+  if (!knopf.sichtbar) return null;
+  return (
+    <div className="vp-pq-aktion">
+      <Button variant="outline" size="sm" onClick={onClick} disabled={knopf.grund != null}>
+        {knopf.label}
+      </Button>
+      {knopf.grund && <span className="vp-note">{knopf.grund}</span>}
     </div>
   );
 }

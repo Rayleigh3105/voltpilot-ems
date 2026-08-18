@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { ForecastAccuracyPoint, ForecastModelId, ForecastModelState } from './api';
 import {
+  BEWERTUNG_METRIK,
+  MERKMALE_EINLEITUNG,
+  SCHATTEN_ERKLAERUNG,
+  SCHATTEN_PRINZIP,
   abweichung,
+  bewertungsBilanzSatz,
+  bewertungsListe,
+  historieZeilen,
+  istRuecktausch,
+  rolleZeile,
+  ruecktauschDialog,
+  uebernahmeDialog,
+  uebernahmeKnopf,
+  wahlFuer,
+  type ModellWahl,
+  type ModellWahlZustand,
   KANDIDAT_EHRLICHKEIT,
   KEIN_VERGLEICH_GRUND,
   NOCH_KEINE_BEWERTUNG_GRUND,
@@ -281,5 +296,217 @@ describe('kandidatKern (K1: abgeleitet, sonst der ehrliche Grund)', () => {
       satz: null,
       grund: NOCH_KEINE_BEWERTUNG_GRUND,
     });
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * Der Prognose-Schalter + die Erklärbarkeit (Captain-Auftrag 18.08.2026)
+ * ----------------------------------------------------------------------- */
+
+function wahl(p: Partial<ModellWahl> & { kind: 'load' | 'pv' }): ModellWahl {
+  return {
+    activeModel: 'load-persistence',
+    source: 'env',
+    envDefault: 'load-persistence',
+    setByName: null,
+    setAt: null,
+    selectable: ['load-persistence', 'load-xgb'],
+    ...p,
+  };
+}
+
+describe('bewertungsListe', () => {
+  const accuracy = [
+    punkt('2026-08-18', 'load-xgb', 'load', 0.4, 0.5),
+    punkt('2026-08-18', 'load-persistence', 'load', 0.8),
+    punkt('2026-08-17', 'load-xgb', 'load', 0.9, -0.125),
+    punkt('2026-08-17', 'load-persistence', 'load', 0.8),
+    punkt('2026-08-16', 'load-xgb', 'load', 0.8, 0),
+    punkt('2026-08-16', 'load-persistence', 'load', 0.8),
+  ];
+
+  it('belegt „X von Y" mit GENAU den Tagen, die der Zaehler zaehlt', () => {
+    const zeilen = bewertungsListe(accuracy, 'load-xgb', 'load-persistence');
+    const bilanz = skillBilanz(accuracy, 'load-xgb', 10);
+    expect(zeilen).toHaveLength(bilanz!.gesamt);
+    expect(zeilen.filter((z) => z.gewinner === 'kandidat')).toHaveLength(bilanz!.besser);
+    expect(bewertungsBilanzSatz(zeilen)).toBe('In 1 von 3 Bewertungen war der Kandidat genauer.');
+  });
+
+  it('liest den Gewinner aus dem gespeicherten Vergleich, nicht aus einem neuen', () => {
+    const zeilen = bewertungsListe(accuracy, 'load-xgb', 'load-persistence');
+    expect(zeilen.map((z) => [z.datum, z.gewinner])).toEqual([
+      ['18.08.2026', 'kandidat'],
+      ['17.08.2026', 'aktiv'],
+      ['16.08.2026', 'gleich'],
+    ]);
+    // Die zwei Fehlerwerte stehen als BELEG daneben.
+    expect(zeilen[0].kandidatMae).toBe(0.4);
+    expect(zeilen[0].aktivMae).toBe(0.8);
+  });
+
+  it('erfindet keinen Wert des aktiven Modells, wenn er fuer den Tag fehlt', () => {
+    const zeilen = bewertungsListe(
+      [punkt('2026-08-18', 'load-xgb', 'load', 0.4, 0.5)],
+      'load-xgb',
+      'load-persistence',
+    );
+    expect(zeilen[0].aktivMae).toBeNull();
+  });
+
+  it('ohne Kandidat und ohne Bewertung gibt es keine Liste und keinen Satz', () => {
+    expect(bewertungsListe(accuracy, null, 'load-persistence')).toEqual([]);
+    expect(bewertungsBilanzSatz([])).toBeNull();
+  });
+
+  it('zeigt nur die juengsten N Bewertungen, neueste zuerst', () => {
+    const viele = Array.from({ length: 14 }, (_, i) =>
+      punkt(`2026-08-${String(i + 1).padStart(2, '0')}`, 'load-xgb', 'load', 0.5, 0.1),
+    );
+    const zeilen = bewertungsListe(viele, 'load-xgb', 'load-persistence');
+    expect(zeilen).toHaveLength(10);
+    expect(zeilen[0].datum).toBe('14.08.2026');
+  });
+});
+
+describe('rolleZeile', () => {
+  it('nennt bei einer Portal-Umstellung seit wann und von wem', () => {
+    expect(
+      rolleZeile(
+        wahl({
+          kind: 'load',
+          activeModel: 'load-xgb',
+          source: 'portal',
+          setByName: 'max',
+          setAt: '2026-08-18T09:30:00Z',
+        }),
+      ),
+    ).toBe('Aktiv seit 18.08.2026, umgestellt von max.');
+  });
+
+  it('sagt ohne Namen „von einem Portal-Admin", nie eine nackte Kennung', () => {
+    expect(
+      rolleZeile(
+        wahl({ kind: 'load', source: 'portal', setByName: null, setAt: '2026-08-18T09:30:00Z' }),
+      ),
+    ).toContain('von einem Portal-Admin');
+  });
+
+  it('nennt das ausgelieferte Standardmodell als solches', () => {
+    expect(rolleZeile(wahl({ kind: 'load' }))).toContain('Standardmodell');
+    expect(rolleZeile(null)).toContain('Standardmodell');
+  });
+});
+
+describe('uebernahmeKnopf', () => {
+  const bewertet = [
+    { day: '2026-08-18', datum: '18.08.2026', kandidatMae: 0.4, aktivMae: 0.8, gewinner: 'kandidat' as const },
+  ];
+
+  it('wird ohne Schaltrecht gar nicht angeboten', () => {
+    const k = uebernahmeKnopf(kandidat({ model: 'load-xgb' }), bewertet, false);
+    expect(k.sichtbar).toBe(false);
+  });
+
+  it('ist offen, sobald es eine Bewertung gibt', () => {
+    const k = uebernahmeKnopf(kandidat({ model: 'load-xgb' }), bewertet, true);
+    expect(k).toEqual({ sichtbar: true, label: 'Kandidat übernehmen', grund: null });
+  });
+
+  it('sperrt einen sammelnden Kandidaten MIT dem echten Grund', () => {
+    const k = uebernahmeKnopf(
+      kandidat({ model: 'load-xgb', status: 'collecting', daysCollected: 14, daysRequired: 21 }),
+      [],
+      true,
+    );
+    expect(k.sichtbar).toBe(true);
+    expect(k.grund).toBe('Noch keine Prognosen - der Kandidat sammelt Daten (Tag 14 von 21).');
+  });
+
+  it('sperrt ohne jede Tagesbewertung - eine Umstellung braucht ihren Beleg', () => {
+    const k = uebernahmeKnopf(kandidat({ model: 'load-xgb' }), [], true);
+    expect(k.grund).toContain('Noch keine Tagesbewertung');
+  });
+});
+
+describe('uebernahmeDialog', () => {
+  it('nennt die Folge, was GLEICH bleibt und den Rueckweg', () => {
+    const d = uebernahmeDialog('Lernendes Verbrauchsmodell', 'Vergleichsmodell', 'Verbrauchsprognose');
+    expect(d.intro).toContain('Lernendes Verbrauchsmodell');
+    expect(d.folgen.join(' ')).toContain('nächsten Planungslauf');
+    expect(d.folgen.join(' ')).toContain('Schatten weiter');
+    expect(d.folgen.join(' ')).toContain('zurücktauschen');
+    // ⚠ Der Klick gilt PLATTFORMWEIT - das darf die Folgenliste nie verschweigen.
+    expect(d.folgen.join(' ')).toContain('alle Anlagen');
+    expect(d.folgen.join(' ')).toContain('protokolliert');
+  });
+
+  it('der Ruecktausch ist ein eigener Dialog, weil er eine andere Handlung ist', () => {
+    const d = ruecktauschDialog('Vergleichsmodell', 'Lernendes Verbrauchsmodell', 'Verbrauchsprognose');
+    expect(d.titel).toBe('Zurücktauschen?');
+    expect(d.bestaetigen).toBe('Zurücktauschen');
+  });
+});
+
+describe('istRuecktausch / wahlFuer / historieZeilen', () => {
+  const zustand: ModellWahlZustand = {
+    kinds: [
+      wahl({ kind: 'load', activeModel: 'load-xgb', source: 'portal', setByName: 'max', setAt: '2026-08-18T09:00:00Z' }),
+      wahl({ kind: 'pv', activeModel: 'pv-physical', envDefault: 'pv-physical', selectable: ['pv-physical', 'pv-residual-xgb'] }),
+    ],
+    history: [
+      { kind: 'load', model: 'load-xgb', previousModel: 'load-persistence', setByName: 'max', setAt: '2026-08-18T09:00:00Z' },
+    ],
+  };
+
+  it('erkennt den Rueckweg an der Historie derselben Art', () => {
+    expect(istRuecktausch(zustand, 'load', 'load-persistence')).toBe(true);
+    expect(istRuecktausch(zustand, 'load', 'load-xgb')).toBe(false);
+    expect(istRuecktausch(zustand, 'pv', 'pv-physical')).toBe(false);
+    expect(istRuecktausch(null, 'load', 'load-persistence')).toBe(false);
+  });
+
+  it('findet die Wahl je Art und gibt ohne Zustand null', () => {
+    expect(wahlFuer(zustand, 'load')?.activeModel).toBe('load-xgb');
+    expect(wahlFuer(null, 'load')).toBeNull();
+  });
+
+  it('schreibt die Historie als von -> zu mit Urheber', () => {
+    const labels = {
+      'load-persistence': 'Vergleichsmodell',
+      'load-xgb': 'Lernendes Verbrauchsmodell',
+    };
+    expect(historieZeilen(zustand, 'load', labels)).toEqual([
+      '18.08.2026: Vergleichsmodell → Lernendes Verbrauchsmodell (max)',
+    ]);
+    expect(historieZeilen(zustand, 'pv', labels)).toEqual([]);
+  });
+});
+
+describe('die Erklaer-Texte', () => {
+  it('sagen in zwei Saetzen, was Schattenbetrieb ist - und dass er nichts steuert', () => {
+    expect(SCHATTEN_ERKLAERUNG).toHaveLength(2);
+    expect(SCHATTEN_ERKLAERUNG[0]).toContain('beeinflusst');
+    expect(SCHATTEN_ERKLAERUNG[1]).toContain('Nacht');
+  });
+
+  it('ordnen die Merkmalsgewichte ein und benennen die Metrik ehrlich', () => {
+    expect(MERKMALE_EINLEITUNG).toContain('Anteil');
+    // Keine erfundene „Genauigkeit in %": die Metrik ist die Abweichung in kW.
+    expect(BEWERTUNG_METRIK).toContain('kW');
+    expect(BEWERTUNG_METRIK).toContain('Viertelstunde');
+  });
+});
+
+describe('SCHATTEN_PRINZIP', () => {
+  it('beschreibt die ENTSCHEIDUNG und ihre Folgen, nicht noch einmal den Mechanismus', () => {
+    const text = SCHATTEN_PRINZIP.join(' ');
+    expect(text).toContain('nie automatisch aktiv');
+    expect(text).toContain('nächsten Planungslauf');
+    expect(text).toContain('Schatten weiter');
+    expect(text).toContain('Rückweg');
+    // ⚠ Keine Doppelung des Erklär-Kopfes - sonst stehen zwei Fassungen
+    // desselben Satzes auf einer Seite und driften auseinander.
+    expect(text).not.toContain(SCHATTEN_ERKLAERUNG[1]);
   });
 });

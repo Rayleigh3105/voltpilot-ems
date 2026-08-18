@@ -3,7 +3,7 @@
 For a given Europe/Berlin day and every site it computes:
 
 * per model: forecast-vs-actual metrics (MAE kW, nMAE %, bias, skill vs the
-  kind's baseline) into ``forecast_accuracy``;
+  kind's ACTIVE model) into ``forecast_accuracy``;
 * the plan economics (realized vs planned vs no-battery-baseline cost) into
   ``plan_accuracy``.
 
@@ -27,7 +27,7 @@ import logging
 import os
 from datetime import date, datetime, timedelta, timezone
 
-from voltpilot_forecast import registry
+from voltpilot_forecast import model_choice
 from voltpilot_forecast.domain import ForecastKind, ensure_utc
 from voltpilot_forecast.evaluation import (
     BERLIN,
@@ -176,10 +176,26 @@ def _site_zone(cur, site_id: str) -> str:
 # ---- the evaluation pass -------------------------------------------------------
 
 def evaluate_day(
-    conn, repository: QualityRepository, day: date
+    conn, repository: QualityRepository, day: date, env=None
 ) -> tuple[int, int]:
-    """Evaluate every site for one Berlin day; returns (#accuracy, #plan) rows."""
+    """Evaluate every site for one Berlin day; returns (#accuracy, #plan) rows.
+
+    ⚠ **The skill reference is the ACTIVE model, not the baseline.** Skill
+    answers exactly one question - "was this model closer to reality than the
+    one that actually plans?" - and the portal has always WORDED it that way
+    ("genauer als das aktive Modell"). While nothing is promoted, active ==
+    baseline and every number is byte-identical to before; after a promotion
+    the ROLES SWAP cleanly: the promoted model becomes the reference (skill
+    NULL - it IS the yardstick) and the demoted one gets a skill number again.
+    Keying on the baseline instead would leave the demoted model permanently
+    skill-NULL, i.e. the candidate panel would go blank the moment someone used
+    the promotion switch. The COLUMN keeps its name (``skill_vs_baseline``) -
+    an applied migration is immutable.
+    """
     start, end = berlin_day_bounds(day)
+    active = model_choice.active_models(
+        os.environ if env is None else env, model_choice.load_choices(conn)
+    )
     accuracy_rows = 0
     plan_rows = 0
     with conn.cursor() as cur:
@@ -188,7 +204,7 @@ def evaluate_day(
                 actuals = _actuals(cur, site_id, _KIND_COLUMNS[kind], start, end)
                 if not actuals:
                     continue
-                baseline_id = registry.baseline_model(kind)
+                reference_id = active[kind]
                 models = _models_with_predictions(cur, site_id, kind.value, start, end)
                 metrics_by_model = {}
                 for model in models:
@@ -198,16 +214,16 @@ def evaluate_day(
                     metrics = forecast_metrics(predictions, actuals)
                     if metrics is not None:
                         metrics_by_model[model] = metrics
-                baseline_mae = (
-                    metrics_by_model[baseline_id].mae_kw
-                    if baseline_id in metrics_by_model
+                reference_mae = (
+                    metrics_by_model[reference_id].mae_kw
+                    if reference_id in metrics_by_model
                     else None
                 )
                 for model, metrics in metrics_by_model.items():
                     skill = (
                         None
-                        if model == baseline_id
-                        else skill_vs_baseline(metrics.mae_kw, baseline_mae)
+                        if model == reference_id
+                        else skill_vs_baseline(metrics.mae_kw, reference_mae)
                     )
                     repository.upsert_accuracy(
                         AccuracyRecord(

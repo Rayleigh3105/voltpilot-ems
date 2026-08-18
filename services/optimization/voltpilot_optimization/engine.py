@@ -29,6 +29,7 @@ from voltpilot_optimization.inputs import (
     SkipSite,
     gather_inputs,
     load_battery_sites,
+    load_model_choices,
 )
 from voltpilot_optimization.persistence import ScheduleRepository
 from voltpilot_optimization.publisher import SchedulePublisher
@@ -70,6 +71,7 @@ def plan_site(
     v2_publisher: PlanV2Publisher | None = None,
     v2_sites: frozenset | None = None,
     v2_repository: SitePlanRepository | None = None,
+    model_choices: dict | None = None,
 ) -> SchedulePlan:
     """Plan one site end to end. Raises :class:`SkipSite` when un-plannable.
 
@@ -78,8 +80,13 @@ def plan_site(
     per mqtt-schedule 2.0 on the retained v2 topic - the E13a shadow phase.
     The v1 path above stays byte-identical for every site (flagged ones
     dual-publish); a v2 shadow failure only logs, never sinks the v1 plan.
+
+    ``model_choices`` is the cycle's ONE read of the portal's active forecast
+    model (:func:`voltpilot_optimization.inputs.load_model_choices`); ``None``
+    lets ``gather_inputs`` load it itself, which is what the single-site
+    on-demand replan does.
     """
-    inp = gather_inputs(dsn, site, now, horizon_slots)
+    inp = gather_inputs(dsn, site, now, horizon_slots, model_choices=model_choices)
     plan_id = uuid4()
     try:
         plan = optimize(inp, plan_id, now)
@@ -192,6 +199,10 @@ def run_cycle(
         logger.warning("cycle.no_battery_sites", extra={"context": {}})
         return summary
     v2_sites = v2_plan_site_ids()
+    # ONE read of the portal's active-model choice for the whole cycle - the
+    # choice is platform-wide (exactly the semantics of the env vars it
+    # replaced), so re-reading it per site would be N identical queries.
+    model_choices = load_model_choices(dsn)
     for site in sites:
         try:
             plan = plan_site(
@@ -204,6 +215,7 @@ def run_cycle(
                 v2_publisher=v2_publisher,
                 v2_sites=v2_sites,
                 v2_repository=v2_repository,
+                model_choices=model_choices,
             )
             summary.planned.append(plan)
         except SkipSite as exc:

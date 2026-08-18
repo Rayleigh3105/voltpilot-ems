@@ -287,8 +287,11 @@ services:
       KEYCLOAK_API_CLIENT_ID: ${KEYCLOAK_API_CLIENT_ID:-voltpilot-api}
       KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET:-voltpilot-api-dev-secret}
       VOLTPILOT_CORS_ALLOWED_ORIGINS: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:-http://localhost:5173}
-      # Which forecast model is LIVE per kind (display in Prognosequalität) -
-      # keep in sync with forecast-collector + optimizer (same .env variables).
+      # Which forecast model is LIVE per kind. Since the portal promotion
+      # switch (docs/forecasting.md) these are the DEFAULT: a row in
+      # forecast_model_choice wins over them. Keep them in sync with
+      # forecast-collector + optimizer (same .env variables) - all three
+      # resolve the SAME precedence, so they cannot disagree.
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
       # Api-side mirror of the optimizer's platform tunables (admin optimizer
@@ -551,8 +554,8 @@ services:
       FORECAST_HORIZON_HOURS: ${FORECAST_HORIZON_HOURS:-24}
       # Challenger self-gate: full telemetry days required before training.
       VOLTPILOT_ML_MIN_DAYS: ${VOLTPILOT_ML_MIN_DAYS:-21}
-      # Which model the OPTIMIZER consumes (promotion = captain flips these on
-      # BOTH forecast-collector and optimizer; defaults are the baselines).
+      # Which model the OPTIMIZER consumes by DEFAULT (a portal promotion in
+      # forecast_model_choice wins over these; defaults are the baselines).
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
 
@@ -596,8 +599,10 @@ services:
       MQTT_PORT: "1883"
       OPTIMIZER_INTERVAL_SECONDS: ${OPTIMIZER_INTERVAL_SECONDS:-900}
       OPTIMIZER_HORIZON_HOURS: ${OPTIMIZER_HORIZON_HOURS:-24}
-      # Shadow-mode forecasting: the optimizer reads ONLY this model's rows
-      # from the forecast hypertable (keep in sync with forecast-collector).
+      # Shadow-mode forecasting: the optimizer reads ONLY the ACTIVE model's
+      # rows from the forecast hypertable. These are the DEFAULT - a portal
+      # promotion (forecast_model_choice) wins; the optimizer reads that choice
+      # ONCE per cycle. Keep in sync with forecast-collector.
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
       # Optimizer-redesign Stage 1 tunables (services/optimization config.py):

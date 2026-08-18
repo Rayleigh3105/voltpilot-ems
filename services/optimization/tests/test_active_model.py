@@ -8,8 +8,11 @@ parameters, and prove:
 * with the default env, the baselines' values reach the optimizer while the
   challengers' (deliberately absurd) values do not - a challenger can never
   influence a plan while in shadow;
-* flipping ``VOLTPILOT_ACTIVE_LOAD_MODEL`` (the promotion act) switches the
-  consumed rows - and nothing else.
+* flipping ``VOLTPILOT_ACTIVE_LOAD_MODEL`` switches the consumed rows - and
+  nothing else;
+* since the PORTAL promotion switch (Captain 18.08.2026) a stored row in
+  ``forecast_model_choice`` beats the env, and NO row leaves every path
+  byte-identical to before the switch existed.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ from uuid import UUID
 import pytest
 
 from voltpilot_optimization.domain import BatteryParams, horizon_slot_starts
-from voltpilot_optimization.inputs import BatterySite, gather_inputs
+from voltpilot_optimization.inputs import BatterySite, SkipSite, gather_inputs
 
 NOW = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
 SITE = UUID("00000000-0000-0000-0000-000000000002")
@@ -36,6 +39,11 @@ MODEL_VALUES = {
     ("pv", "pv-physical"): 0.5,
     ("pv", "pv-residual-xgb"): 888.0,
 }
+
+
+#: The stored portal choice the fake DB answers with (rows of (kind, model)).
+#: Empty = the pre-switch world: nothing stored, the env decides.
+STORED_CHOICE: list[tuple[str, str]] = []
 
 
 class _FakeCursor:
@@ -53,7 +61,10 @@ class _FakeCursor:
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
-        if "FROM day_ahead_prices" in sql:
+        if "FROM forecast_model_choice" in sql:
+            CHOICE_QUERIES.append(sql)
+            self._rows = list(STORED_CHOICE)
+        elif "FROM day_ahead_prices" in sql:
             self._rows = [(ts, "PT15M", 100.0) for ts in self.slot_starts]
         elif "FROM forecast" in sql:
             # Per-slot freshest of ONE model (B1: the in-progress first slot
@@ -80,6 +91,10 @@ class _FakeCursor:
         return self._rows
 
 
+#: Every choice query the fake saw - the "read once per cycle" proof.
+CHOICE_QUERIES: list[str] = []
+
+
 class _FakeConnection:
     def __enter__(self):
         return self
@@ -90,9 +105,14 @@ class _FakeConnection:
     def cursor(self):
         return _FakeCursor()
 
+    def rollback(self):  # pragma: no cover - only on the degradation path
+        pass
+
 
 @pytest.fixture()
 def fake_psycopg(monkeypatch):
+    STORED_CHOICE.clear()
+    CHOICE_QUERIES.clear()
     module = SimpleNamespace(connect=lambda dsn: _FakeConnection())
     monkeypatch.setitem(sys.modules, "psycopg", module)
     return module
@@ -220,3 +240,74 @@ def test_in_progress_first_slot_still_consumes_the_stored_forecast(monkeypatch):
     assert inp.slot_starts[0] <= NOW
     assert inp.load_kw == [2.0] + [1.0] * (SLOTS - 1)
     assert inp.pv_kw == [0.25] + [0.5] * (SLOTS - 1)
+
+
+# ---------------------------------------------------------------------------
+# Der Portal-Schalter (Captain 18.08.2026): die Wahl ist ein DATENSATZ.
+# Präzedenz: gespeicherte Zeile > Umgebungsvariable > Registry-Default.
+# ---------------------------------------------------------------------------
+
+def test_without_a_stored_row_the_plan_input_is_byte_identical(fake_psycopg, monkeypatch):
+    """Die Rückwärts-Sicherheit: ohne Zeile ist der Schalter unsichtbar."""
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_LOAD_MODEL", raising=False)
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+    assert STORED_CHOICE == []
+
+    inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+    assert inp.load_kw == [1.0] * SLOTS
+    assert inp.pv_kw == [0.5] * SLOTS
+
+
+def test_a_stored_choice_beats_the_environment(fake_psycopg, monkeypatch):
+    """Genau richtig herum: ein späterer Env-Edit darf die bewusste
+    Portal-Entscheidung nicht stillschweigend zurücknehmen."""
+    monkeypatch.setenv("VOLTPILOT_ACTIVE_LOAD_MODEL", "load-persistence")
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+    STORED_CHOICE.extend([("load", "load-xgb"), ("pv", "pv-residual-xgb")])
+
+    inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+    assert inp.load_kw == [999.0] * SLOTS  # der befoerderte Kandidat
+    assert inp.pv_kw == [888.0] * SLOTS
+
+
+def test_a_hand_written_unusable_row_never_reaches_the_plan(fake_psycopg, monkeypatch):
+    """Sie wird verworfen, nicht uebernommen - und der Lauf faellt auf die
+    Umgebung zurueck statt auf null gespeicherte Prognosezeilen."""
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_LOAD_MODEL", raising=False)
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+    STORED_CHOICE.append(("load", "pv-physical"))  # art-fremd
+
+    inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+    assert inp.load_kw == [1.0] * SLOTS  # das Basismodell, nie 888/999
+
+
+def test_the_cycle_reads_the_choice_once_for_the_whole_fleet(fake_psycopg, monkeypatch):
+    """Die Wahl ist plattformweit (die Semantik der abgeloesten Env-Variablen),
+    also waere ein Read je Anlage N identische Abfragen."""
+    from voltpilot_optimization import engine
+    from voltpilot_optimization.inputs import load_model_choices
+
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_LOAD_MODEL", raising=False)
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+    STORED_CHOICE.append(("load", "load-xgb"))
+
+    sites = [_site(), _site(), _site()]
+    monkeypatch.setattr(engine, "load_battery_sites", lambda dsn: sites)
+    seen: list = []
+
+    def gather(dsn, site, now, horizon_slots, model_choices=None):
+        seen.append(model_choices)
+        raise SkipSite("nicht plannbar - wir pruefen nur die Weitergabe")
+
+    monkeypatch.setattr(engine, "gather_inputs", gather)
+    monkeypatch.setattr(engine, "SkipSite", SkipSite)
+
+    engine.run_cycle("postgresql://fake", None, None, now=NOW)
+
+    assert len(CHOICE_QUERIES) == 1, "eine Abfrage je LAUF, nicht je Anlage"
+    assert seen == [{"load": "load-xgb"}] * 3
+    # ... und der Einzel-Aufrufer (what-if / on-demand replan) laedt sie selbst.
+    assert load_model_choices("postgresql://fake") == {"load": "load-xgb"}

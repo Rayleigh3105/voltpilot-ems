@@ -1496,15 +1496,17 @@ paths:
       description: >
         The shadow-mode forecasting transparency view (docs/forecasting.md):
         which forecast model is LIVE per kind (activeLoadModel/activePvModel,
-        resolved from server config - the same env the optimizer reads), the
+        resolved server-side with the SAME precedence the optimizer uses -
+        the portal promotion choice wins, else the env default), the
         lifecycle of every model that has run on the site (challengers report
         "collecting: day X of N" while their self-gate is unmet; trained models
         carry trainedAt/trainRows and the top feature importances with
         plain-German labels), the per-model daily error series (MAE kW, nMAE %,
-        bias, skill vs the baseline - positive = better) computed by the daily
-        evaluation job, and the daily plan-vs-actual economics. Challenger
-        promotion is NEVER automatic; it is an operator env flip informed by
-        this data. All rows come from RLS-scoped tables - a foreign site is a
+        bias, skill vs the ACTIVE model - positive = better) computed by the
+        daily evaluation job, and the daily plan-vs-actual economics.
+        Challenger promotion is NEVER automatic; it is a deliberate
+        platform-admin act on /api/v1/admin/forecast-models, informed by this
+        data. All rows come from RLS-scoped tables - a foreign site is a
         404; a fresh site yields empty (but well-formed) lists.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2127,6 +2129,62 @@ paths:
         "400": { description: Unknown device, or it was not armed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { description: Not a platform-admin. }
+  /api/v1/admin/forecast-models:
+    get:
+      tags: [admin]
+      summary: Welches Prognosemodell plant gerade (der Schalter-Zustand)?
+      description: >
+        Der Zustand des Prognose-Schalters (Captain-Auftrag 18.08.2026): je
+        Prognoseart (load/pv) das AKTIVE Modell, WOHER die Wahl kommt
+        (portal = eine Zeile in forecast_model_choice, env = die
+        Umgebungsvariable bzw. der Registry-Default), der Umgebungs-Vorgabewert,
+        wer wann umgestellt hat und die wählbare Menge - plus die append-only
+        Umstellungs-Historie (von->zu). Die Wahl gilt PLATTFORMWEIT, nicht je
+        Anlage - genau die Semantik der abgelösten Umgebungsvariablen.
+        Platform-admin only.
+      responses:
+        "200":
+          description: Der Schalter-Zustand.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ForecastModelChoice" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Nur für Portal-Admins. }
+    post:
+      tags: [admin]
+      summary: Kandidat übernehmen (das aktive Prognosemodell umstellen).
+      description: >
+        Stellt das aktive Modell EINER Prognoseart um. Ab dem nächsten
+        Planungslauf konsumiert der Optimierer die Prognosereihen dieses
+        Modells; das bisherige Modell rechnet unverändert im Schatten weiter
+        und wird weiter täglich bewertet, der Rückweg ist derselbe Aufruf in
+        die Gegenrichtung. Die Umstellung ist append-only protokolliert
+        (von->zu, JWT-Subject, Zeitpunkt). Es wird nichts trainiert und kein
+        Gerät erreicht. Ablehnungen tragen einen deutschen {message}-Körper:
+        400 = unbekannte Art / unbekanntes Modell / Modell einer anderen Art,
+        409 = dieses Modell plant bereits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, model]
+              properties:
+                kind: { type: string, enum: [load, pv] }
+                model:
+                  type: string
+                  enum: [load-persistence, load-xgb, pv-physical, pv-residual-xgb]
+      responses:
+        "200":
+          description: Der neue Schalter-Zustand (inkl. der neuen Journal-Zeile).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ForecastModelChoice" }
+        "400": { description: Unbekannte Prognoseart bzw. unpassendes Modell. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Nur für Portal-Admins. }
+        "409": { description: Dieses Modell plant bereits. }
   /api/v1/admin/edge-releases:
     get:
       tags: [admin]
@@ -8409,6 +8467,45 @@ components:
               start: { type: string, format: date-time }
               end: { type: string, format: date-time, description: Exclusive. }
               text: { type: string, description: Plain-German statement without a time. }
+    ForecastModelChoice:
+      type: object
+      description: >
+        Der Zustand des Prognose-Schalters. PLATTFORMWEIT, nicht je Anlage -
+        genau die Semantik der abgelösten Umgebungsvariablen. Die Tabelle
+        dahinter ist append-only und damit zugleich das Audit-Journal.
+      properties:
+        kinds:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [load, pv] }
+              activeModel: { type: string, example: load-xgb, description: Das Modell, dessen Prognosen der Optimierer konsumiert. }
+              source:
+                type: string
+                enum: [portal, env]
+                description: >
+                  portal = jemand hat entschieden (eine Zeile in
+                  forecast_model_choice); env = der ausgelieferte Vorgabewert.
+                  Der Unterschied wird nie geraten.
+              envDefault: { type: string, description: Was ohne Portal-Wahl gälte. }
+              setByName: { type: string, nullable: true, description: "Anzeige-Name des Umstellers; null = nicht im Token (die Fläche sagt dann „von einem Portal-Admin\")." }
+              setAt: { type: string, format: date-time, nullable: true, description: "null = nie umgestellt (Quelle env)." }
+              selectable:
+                type: array
+                items: { type: string }
+                description: Alle Modelle dieser Art - die wählbare Menge.
+        history:
+          type: array
+          description: Die Umstellungen, NEUESTE zuerst (append-only).
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [load, pv] }
+              model: { type: string }
+              previousModel: { type: string, nullable: true, description: "null = die erste Umstellung dieser Art." }
+              setByName: { type: string, nullable: true }
+              setAt: { type: string, format: date-time }
     ForecastQuality:
       type: object
       description: >
@@ -8457,7 +8554,7 @@ components:
               maeKw: { type: number, description: Mean absolute error over the day's evaluated 15-min slots. }
               nmaePct: { type: number, nullable: true, description: MAE / mean absolute actual x 100; null on all-zero days. }
               biasKw: { type: number, nullable: true, description: Mean signed error (forecast - actual). }
-              skillVsBaseline: { type: number, nullable: true, description: "1 - mae/mae_baseline; positive = better than the baseline; null for the baseline itself." }
+              skillVsBaseline: { type: number, nullable: true, description: "1 - mae/mae_reference; positive = better than the ACTIVE model of that kind; null for the reference itself. (While nothing is promoted the active model IS the baseline, so the numbers are unchanged; after a promotion the roles swap.)" }
               nSlots: { type: integer }
         planAccuracy:
           type: array
