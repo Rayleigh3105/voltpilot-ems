@@ -109,3 +109,23 @@ export function redirectOverviewToAnlage(i: ShellInput): boolean {
 export function redirectToPortfolio(i: ShellInput): boolean {
   return showPortfolioNav(i);
 }
+
+/**
+ * Landet dieser Aufruf auf der PLATTFORM-ÜBERSICHT statt auf der
+ * Kunden-Übersicht? (Admin-Umbau Stufe 1, Captain-Entscheid F1.)
+ *
+ * Ein Admin-Boot rendert bis hierher die KUNDEN-Übersicht - ohne gewählten
+ * Mandanten praktisch leer -, während die Plattform-Übersicht, die als
+ * „täglicher erster Blick" gebaut wurde (Captain-Entscheid Q1), einen Klick
+ * entfernt lag. Der Admin soll auf seiner Landung aufwachen.
+ *
+ * ⚠ Die Bedingung ist der LEERE Boot-Hash, nicht „die Übersicht ist offen":
+ * ein Admin hat den Nav-Punkt „Übersicht" weiterhin und muss ihn anklicken
+ * können, ohne sofort weitergeleitet zu werden. Deshalb entscheidet
+ * ausschließlich, ob der Aufruf überhaupt ein Ziel genannt hat - ein
+ * Deep-Link (auch `#/uebersicht`) bleibt unangetastet, und die Weiterleitung
+ * läuft genau EINMAL je Sitzung (der Aufrufer merkt sich das).
+ */
+export function redirectAdminToPlattform(i: { isAdmin: boolean; bootHash: boolean }): boolean {
+  return i.isAdmin && i.bootHash;
+}

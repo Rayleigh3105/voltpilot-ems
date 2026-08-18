@@ -4,9 +4,12 @@ import {
   anlageRoute,
   canonicalAnlageHash,
   hashForRoute,
+  isBootHash,
   pageLabel,
   pageRoute,
   parseRoute,
+  PLATFORM_GROUPS,
+  PLATFORM_PAGES,
   type AnlagenSub,
   type Route,
 } from './nav';
@@ -266,3 +269,84 @@ describe('zwei Welten: die Historie-Route leitet MIT Parametern weiter', () => {
 function route(page: Route['page']): Route {
   return { page, siteId: null, sub: null };
 }
+
+/**
+ * Admin-Umbau Stufe 1 „Ordnung" (Konzept `vp-admin-neu-konzept-a9` §3.1,
+ * Captain-Entscheid F1). Die Gruppierung ist reine PRÄSENTATION - geprüft wird
+ * deshalb vor allem, dass sie NICHTS verändert: keine Route, keine Seite, kein
+ * Lesezeichen.
+ */
+describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
+  it('führt mit der Landung und dann den vier Aufgaben-Gruppen', () => {
+    expect(PLATFORM_GROUPS.map((g) => g.key)).toEqual([
+      'landing',
+      'flotte',
+      'anlagen-werkzeuge',
+      'katalog',
+      'kunden',
+    ]);
+    // Die Landung trägt bewusst KEINE eigene Überschrift - sie steht schon
+    // unter dem „Plattform"-Label der Schale.
+    expect(PLATFORM_GROUPS[0].label).toBeNull();
+    expect(PLATFORM_GROUPS[0].pages.map((p) => p.id)).toEqual(['plattform-uebersicht']);
+    expect(PLATFORM_GROUPS.slice(1).map((g) => g.label)).toEqual([
+      'Flotte',
+      'Anlagen-Werkzeuge',
+      'Katalog',
+      'Kunden',
+    ]);
+  });
+
+  it('verliert keine Seite: die flache Liste IST die Vereinigung der Gruppen', () => {
+    expect(PLATFORM_PAGES).toEqual(PLATFORM_GROUPS.flatMap((g) => g.pages));
+    // Und jede Seite steht in GENAU EINER Gruppe.
+    const ids = PLATFORM_PAGES.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('hält jede Plattform-Route gültig (kein Lesezeichen bricht)', () => {
+    for (const p of PLATFORM_PAGES) {
+      expect(parseRoute(hashForRoute(pageRoute(p.id)))).toEqual(route(p.id));
+      // Beide Hash-Schreibweisen, wie überall im Router.
+      expect(parseRoute(`#${p.id}`)).toEqual(route(p.id));
+    }
+    // Die zwei Punkte, die Stufe 3 zusammenlegt, sind HEUTE noch eigene
+    // Seiten - ihre Ids dürfen dabei nicht verschwinden.
+    expect(PLATFORM_PAGES.some((p) => p.id === 'edge-updates')).toBe(true);
+    expect(PLATFORM_PAGES.some((p) => p.id === 'geraetetypen')).toBe(true);
+  });
+
+  it('gibt jedem Punkt ein EIGENES Icon (die Doppel-Icons waren das Anhäng-Symptom)', () => {
+    const icons = PLATFORM_PAGES.map((p) => p.icon);
+    expect(new Set(icons).size).toBe(icons.length);
+  });
+
+  it('stellt die künftigen Nachbarn schon nebeneinander (Stufe 3 wird ein Entfernen)', () => {
+    const flotte = PLATFORM_GROUPS.find((g) => g.key === 'flotte')!.pages.map((p) => p.id);
+    expect(flotte.indexOf('edge-updates')).toBe(flotte.indexOf('geraete-registry') + 1);
+    expect(flotte.indexOf('geraetetypen')).toBe(flotte.indexOf('steuerungs-freigabe') + 1);
+  });
+
+  it('behält die Beschriftungen, die Lesezeichen und Copy schon kennen', () => {
+    expect(pageLabel('geraete-registry')).toBe('Geräte');
+    expect(pageLabel('steuerungs-freigabe')).toBe('Steuerungs-Freigabe');
+    expect(pageLabel('plattform-uebersicht')).toBe('Plattform-Übersicht');
+  });
+});
+
+/**
+ * `isBootHash` trennt „ohne Ziel gestartet" von „ausdrücklich zur Übersicht" -
+ * die Bedingung der Admin-Landung (F1). `parseRoute` kann das nicht: es bildet
+ * beides auf `uebersicht` ab.
+ */
+describe('isBootHash', () => {
+  it('ist wahr für den nackten Boot-Hash', () => {
+    for (const h of ['', '#', '#/', '#?x=1']) expect(isBootHash(h)).toBe(true);
+  });
+
+  it('ist falsch, sobald der Aufruf ein Ziel nennt - auch die Übersicht', () => {
+    for (const h of ['#/uebersicht', '#uebersicht', '#/anlage/s-1', '#/plattform-uebersicht']) {
+      expect(isBootHash(h)).toBe(false);
+    }
+  });
+});

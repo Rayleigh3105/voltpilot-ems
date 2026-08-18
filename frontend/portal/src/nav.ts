@@ -159,42 +159,116 @@ export function isPortfolioPage(page: PageId): boolean {
 }
 
 /**
- * Die Plattform-Gruppe. Sie führt seit dem Admin-Umbau (Stufe 1) mit der
- * **Plattform-Übersicht** - dem Flotten-Puls über ALLE Mandanten (Captain-
- * Entscheid Q1: ein eigener Nav-Punkt, die Mandanten-Seite bleibt reine
- * Verwaltung). Alles darunter ist Verwaltung bzw. Diagnose EINER Anlage.
+ * Eine benannte Gruppe der Plattform-Navigation (Admin-Umbau Stufe 1
+ * „Ordnung", Konzept `vp-admin-neu-konzept-a9` §3.1, Captain-Entscheid F1).
+ *
+ * Die Plattform-Gruppe war auf ELF flache Punkte gewachsen, weil jede
+ * Ausbaustufe einen Punkt ANGEHÄNGT statt eingeordnet hat - die Reihenfolge
+ * erzählte die Baugeschichte statt der Arbeit. Die Gruppen leiten sich aus den
+ * belegten Abläufen ab (§2), nicht aus der Datenmodell-Nachbarschaft.
+ *
+ * `label: null` heißt „führt die Gruppe an, ohne eigene Überschrift" - das ist
+ * die LANDUNG (Plattform-Übersicht), die schon unter dem „Plattform"-Label der
+ * Schale steht und keine zweite Zeile über sich braucht.
  */
-export const PLATFORM_PAGES: PageDef[] = [
+export interface PlatformGroup {
+  key: string;
+  label: string | null;
+  pages: PageDef[];
+}
+
+/**
+ * Die Plattform-Navigation, gruppiert nach dem, was ein Betreiber TUT.
+ *
+ * Sie führt mit der **Plattform-Übersicht** - dem Flotten-Puls über ALLE
+ * Mandanten (Captain-Entscheid Q1: ein eigener Nav-Punkt, die Mandanten-Seite
+ * bleibt reine Verwaltung) und seit Stufe 1 auch die LANDUNG eines
+ * Admin-Boots. Darunter vier Gruppen: die Flotte betreiben · eine Anlage tief
+ * diagnostizieren · den Katalog pflegen · Kunden verwalten.
+ *
+ * **Zwei Punkte stehen hier bewusst schon an ihrem KÜNFTIGEN Platz, obwohl sie
+ * eigene Nav-Punkte bleiben:** „Edge-Updates" neben „Geräte" (in Stufe 3 wird
+ * es dessen zweiter Tab) und „Gerätetypen" neben „Steuerungs-Freigabe" (in
+ * Stufe 3 wird es dessen dritte Sektion). Damit ist Stufe 3 ein reines
+ * Entfernen dieser zwei Einträge und kein zweites Umsortieren.
+ *
+ * **Icons sind entdoppelt** (§1.5 B2): innerhalb dieser Liste trägt jeder Punkt
+ * ein eigenes Icon - wer die Leiste scannt, konnte vorher vier Punkte nicht
+ * unterscheiden (`settings` zweimal, `cpu` zweimal).
+ */
+export const PLATFORM_GROUPS: PlatformGroup[] = [
   {
-    id: 'plattform-uebersicht',
-    label: 'Plattform-Übersicht',
-    icon: 'dashboard',
-    adminOnly: true,
+    key: 'landing',
+    label: null,
+    pages: [
+      {
+        id: 'plattform-uebersicht',
+        label: 'Plattform-Übersicht',
+        icon: 'dashboard',
+        adminOnly: true,
+      },
+    ],
   },
-  { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
-  { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
-  // E4: „Geräte", nicht mehr „Geräte-Registry" - die Seite ist seit dem
-  // Konsolidierungs-Umbau das INVENTAR über den ganzen Lebenszyklus, nicht mehr
-  // nur die Manufacturing-Registry (die echte Flotte kam dort gar nicht vor).
-  // Die Id bleibt, damit jedes Lesezeichen und jeder Deep-Link gilt.
-  { id: 'geraete-registry', label: 'Geräte', icon: 'list', adminOnly: true },
-  // OTA Stufe 2: Releases, der laufende Rollout, die Flotten-Matrix und das
-  // Audit-Journal - die EINE neue Seite dieser Stufe (Scout §7.1).
-  { id: 'edge-updates', label: 'Edge-Updates', icon: 'refresh-cw', adminOnly: true },
-  { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
-  // Inkrement 5 / D11: die read-only Freigabe-Liste der steuerbaren
-  // Gerätetypen - Wahrheitsquelle ist der entitytypes-Katalog (kein Schalter).
-  { id: 'geraetetypen', label: 'Gerätetypen', icon: 'cpu', adminOnly: true },
-  // Das PLATTFORM-Gedaechtnis der Steuerungs-Freigabe: ein Modell wird EINMAL
-  // am Pruefstand freigegeben, jede Anlage wird einzeln scharfgeschaltet.
-  { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'settings', adminOnly: true },
-  { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
-  // Einheitsmodell Stufe 6: eine geprüfte Gerätevorlage entsteht als DATENSATZ
-  // (kein Software-Release), und die Komponenten-Welt der Flotte ist an EINER
-  // Stelle sichtbar statt nur je Anlage.
-  { id: 'vorlagen', label: 'Gerätevorlagen', icon: 'layers', adminOnly: true },
-  { id: 'komponenten-flotte', label: 'Komponenten', icon: 'cpu', adminOnly: true },
+  {
+    key: 'flotte',
+    label: 'Flotte',
+    pages: [
+      // E4: „Geräte", nicht mehr „Geräte-Registry" - die Seite ist seit dem
+      // Konsolidierungs-Umbau das INVENTAR über den ganzen Lebenszyklus, nicht
+      // mehr nur die Manufacturing-Registry (die echte Flotte kam dort gar
+      // nicht vor). Die Id bleibt, damit jedes Lesezeichen und jeder Deep-Link
+      // gilt.
+      { id: 'geraete-registry', label: 'Geräte', icon: 'cpu', adminOnly: true },
+      // OTA Stufe 2: Releases, der laufende Rollout und das Audit-Journal.
+      { id: 'edge-updates', label: 'Edge-Updates', icon: 'refresh-cw', adminOnly: true },
+      // Das PLATTFORM-Gedaechtnis der Steuerungs-Freigabe: ein Modell wird
+      // EINMAL am Pruefstand freigegeben, jede Anlage wird einzeln
+      // scharfgeschaltet.
+      { id: 'steuerungs-freigabe', label: 'Steuerungs-Freigabe', icon: 'shield', adminOnly: true },
+      // Inkrement 5 / D11: die read-only Freigabe-Liste der steuerbaren
+      // Gerätetypen - Wahrheitsquelle ist der entitytypes-Katalog (kein
+      // Schalter). Sie beantwortet dieselbe Frage wie die Steuerungs-Freigabe
+      // („was dürfen wir steuern?"), nur für die andere Geräteklasse - deshalb
+      // steht sie direkt daneben.
+      { id: 'geraetetypen', label: 'Gerätetypen', icon: 'sliders', adminOnly: true },
+    ],
+  },
+  {
+    key: 'anlagen-werkzeuge',
+    label: 'Anlagen-Werkzeuge',
+    pages: [
+      { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
+      { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
+    ],
+  },
+  {
+    key: 'katalog',
+    label: 'Katalog',
+    pages: [
+      // Einheitsmodell Stufe 6: eine geprüfte Gerätevorlage entsteht als
+      // DATENSATZ (kein Software-Release), und die Komponenten-Welt der Flotte
+      // ist an EINER Stelle sichtbar statt nur je Anlage.
+      { id: 'vorlagen', label: 'Gerätevorlagen', icon: 'layers', adminOnly: true },
+      { id: 'komponenten-flotte', label: 'Komponenten', icon: 'list', adminOnly: true },
+    ],
+  },
+  {
+    key: 'kunden',
+    label: 'Kunden',
+    pages: [
+      { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
+      { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
+    ],
+  },
 ];
+
+/**
+ * Die flache Liste aller Plattform-Seiten - ABGELEITET aus den Gruppen, damit
+ * es genau EINE Wahrheit über die Menge gibt. Jeder Bestandsleser (der
+ * Admin-Zaun in `App.tsx`, `ALL_PAGES`, das Telefon-Blatt) bleibt unverändert
+ * gültig; die Gruppierung ist reine PRÄSENTATION und ändert keine Route.
+ */
+export const PLATFORM_PAGES: PageDef[] = PLATFORM_GROUPS.flatMap((g) => g.pages);
 
 /** "Meine Anlage" for 0-1 Anlagen, "Meine Anlagen" from 2 (the fleet list). */
 export function anlagenLabel(siteCount: number | null): string {
@@ -245,6 +319,19 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
 export function isRegisterRoute(): boolean {
   const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
   return raw === 'register';
+}
+
+/**
+ * Nennt dieser Hash ein ZIEL, oder ist es der nackte Boot-Hash?
+ *
+ * `parseRoute` beantwortet die Frage nicht: es bildet den leeren Hash UND
+ * jeden unbekannten Hash auf `uebersicht` ab, ein Aufrufer könnte „ohne Ziel
+ * gestartet" also nicht von „ausdrücklich zur Übersicht" unterscheiden. Genau
+ * daran hängt die Admin-Landung (Stufe 1, F1): weitergeleitet wird nur ein
+ * zielloser Start, ein Deep-Link und ein Klick auf „Übersicht" nie.
+ */
+export function isBootHash(hash: string): boolean {
+  return hash.replace(/^#\/?/, '').split('?')[0].trim() === '';
 }
 
 /** Parse a location hash (e.g. "#/anlage/abc/live") into a Route. Pure. */

@@ -43,7 +43,7 @@
  * discipline).
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import { PLATFORM_PAGES, type AnlagenSub, type PageId } from './nav';
+import { PLATFORM_GROUPS, type AnlagenSub, type PageId } from './nav';
 import type { ActiveMode, AnlageSurface, DeepViewId, ModeKind } from './surface';
 
 /**
@@ -441,20 +441,26 @@ function accountItems(extras: ShellExtras): SidebarItem[] {
   return items;
 }
 
-/** The Plattform group as sheet entries — a PROJECTION of `PLATFORM_PAGES`. */
-function platformGroup(): SidebarGroup {
-  return {
-    key: 'plattform',
-    label: 'Plattform',
+/**
+ * Die Plattform-Gruppen als Blatt-Einträge — eine PROJEKTION von
+ * `PLATFORM_GROUPS`, damit die Faltung am Telefon dieselbe Ordnung zeigt wie
+ * die Seitenleiste (Admin-Umbau Stufe 1). Die LANDUNG trägt dabei das
+ * „Plattform"-Label, jede weitere Gruppe ihr eigenes — im Blatt gibt es keine
+ * zweite Ebene, also wäre eine Überschrift ohne Einträge nur Lärm.
+ */
+function platformGroups(): SidebarGroup[] {
+  return PLATFORM_GROUPS.map((group) => ({
+    key: `plattform-${group.key}`,
+    label: group.label ?? 'Plattform',
     tone: null,
-    items: PLATFORM_PAGES.map((p) => ({
+    items: group.pages.map((p) => ({
       key: p.id,
       label: p.label,
       icon: p.icon,
       target: { kind: 'page', page: p.id } as NavTarget,
       badge: null,
     })),
-  };
+  }));
 }
 
 /**
@@ -478,7 +484,7 @@ export function moreSheetItems(
     const items = mode.items.filter((i) => !inBottom.has(i.key));
     if (items.length > 0) groups.push({ ...mode, items });
   }
-  if (extras.isAdmin) groups.push(platformGroup());
+  if (extras.isAdmin) groups.push(...platformGroups());
   groups.push({
     key: 'mehr',
     label: 'Mehr',
@@ -542,7 +548,7 @@ export function fleetSheetGroups(
   if (rest.length > 0) {
     groups.push({ key: 'ebene', label: 'Alle Anlagen', tone: null, items: rest });
   }
-  if (extras.isAdmin) groups.push(platformGroup());
+  if (extras.isAdmin) groups.push(...platformGroups());
   groups.push({
     key: 'mehr',
     label: 'Mehr',

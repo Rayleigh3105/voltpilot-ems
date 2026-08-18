@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isBetreiberShell,
   isFleetShell,
+  redirectAdminToPlattform,
   redirectOverviewToAnlage,
   redirectToPortfolio,
   showOverviewNav,
@@ -131,5 +132,24 @@ describe('HIGH-1: an UNSET frame is deploy-day neutral (pre-deploy audit)', () =
 
   it('only an explicit betreiber override opens the Portfolio shell', () => {
     expect(showPortfolioNav({ ...base, betriebsart: 'betreiber', siteCount: 1 })).toBe(true);
+  });
+});
+
+/**
+ * Admin-Umbau Stufe 1 (F1): der Admin wacht auf seiner Landung auf - aber nur,
+ * wenn der Aufruf gar kein Ziel genannt hat.
+ */
+describe('redirectAdminToPlattform', () => {
+  it('leitet einen ziellosen Admin-Boot auf die Plattform-Übersicht', () => {
+    expect(redirectAdminToPlattform({ isAdmin: true, bootHash: true })).toBe(true);
+  });
+
+  it('lässt einen Deep-Link in Ruhe - auch `#/uebersicht`', () => {
+    expect(redirectAdminToPlattform({ isAdmin: true, bootHash: false })).toBe(false);
+  });
+
+  it('fasst einen Kunden nie an', () => {
+    expect(redirectAdminToPlattform({ isAdmin: false, bootHash: true })).toBe(false);
+    expect(redirectAdminToPlattform({ isAdmin: false, bootHash: false })).toBe(false);
   });
 });
