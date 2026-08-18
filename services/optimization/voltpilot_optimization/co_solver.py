@@ -139,6 +139,7 @@ from voltpilot_optimization.solver import (
     BATTERY_WEAR_TIEBREAK_EUR_PER_KW,
     CURTAIL_TIEBREAK_EUR_PER_KW,
     EARLY_CHARGE_TIEBREAK_EUR_PER_KW,
+    EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW,
     MIP_ABS_GAP,
     _solve,
 )
@@ -152,7 +153,7 @@ from voltpilot_optimization.solver import (
 #   real economics  (>= ~1e-4 EUR per decision at 0.1 EUR/MWh price deltas)
 #     >> CONSUMER_PREFERENCE_TIEBREAK_EUR_PER_KW (1e-5)
 #     >> CURTAIL/BATTERY_WEAR tie-breaks          (1e-6)
-#     >> EARLY_CHARGE/EARLY_LOAD tie-breaks       (1e-7)
+#     >> EARLY_CHARGE/EARLY_DISCHARGE/EARLY_LOAD  (1e-7)
 #     >> STAGE_FIX_TOLERANCE                      (1e-6, stage-objective units)
 #     >> MIP_ABS_GAP / MIP_REL_GAP                (1e-9)
 #
@@ -407,6 +408,11 @@ def build_co_model(
             + EARLY_CHARGE_TIEBREAK_EUR_PER_KW
             * (t / max(n - 1, 1))
             * sum(m.charge[e, t] for e in E)
+            # Discharge-timing tie-break (cover-now, captain 2026-08-18), the
+            # summation-generalized twin of the v1 term - same lockstep rule.
+            + EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW
+            * (t / max(n - 1, 1))
+            * sum(m.discharge[e, t] for e in E)
             for t in m.T
         )
         + module_cost

@@ -216,6 +216,18 @@ TERMINAL_VALUE_MARGIN_EUR_PER_KWH = 1e-6
 #: S2-Winterschutz zu lockern: ein VERKAUF braucht weiterhin export >
 #: import - Abschlag, was kein Spot-Peak unter dem Bezugspreis erreicht.
 #: 0,2 ct/kWh: ~500x über der Tie-Break-Skala, weit unter jedem echten Signal.
+#:
+#: DIESE Konstante bricht den Gleichstand an der HORIZONT-KANTE ("jetzt decken
+#: vs. halten und NACH dem Horizont decken"). Den Zwilling IM HORIZONT-INNEREN
+#: ("Defizit-Slot t1 decken vs. Defizit-Slot t2 decken" - bei flachem Bezug
+#: exakt dieselbe Ersparnis, also reine Platzierungs-Degeneration) bricht
+#: ``solver.EARLY_DISCHARGE_TIEBREAK_EUR_PER_KW``. Die beiden greifen an
+#: verschiedenen Stellen und widersprechen sich nicht: der Abschlag hier macht
+#: das Decken überhaupt strikt vorzugswürdig (+0,2 ct/kWh Marge), der
+#: Tie-Break dort ordnet die dadurch gerechtfertigte Entladung nach ZEIT
+#: (früheste zuerst). Zusammen gilt durchgehend "erst dein Verbrauch, dann der
+#: Rest" (Captain 18.08.2026). Skalen bewusst getrennt: 2,0 EUR/MWh hier
+#: (Entscheidung ob) gegen ~4e-4 EUR/MWh dort (Entscheidung wann).
 TERMINAL_VALUE_COVER_NOW_DISCOUNT_EUR_MWH = 2.0
 
 #: Fixed platform override of the terminal energy value (ct per stored kWh);
