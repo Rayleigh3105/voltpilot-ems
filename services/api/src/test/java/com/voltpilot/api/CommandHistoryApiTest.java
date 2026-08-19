@@ -384,28 +384,39 @@ class CommandHistoryApiTest {
     void derMitternachtsGrenzSlotGehoertZumVortagUndNichtInDenHeuteTab() {
         ControlStatusListener listener = controlListener();
         // 23:45:03 Berliner Zeit des 11.08. - die letzte Viertelstunde des Tages.
+        // ⚠ Die Folge-Herzschläge sind PFLICHT und liegen bewusst unter
+        // CommandLog.GAP_AFTER (5 min): ein Sprung von 23:45 auf 00:00 wäre eine
+        // LÜCKE, die Periode würde schon um 23:45:03 geschlossen und überquerte
+        // Mitternacht nie - der Test wäre dann aus dem FALSCHEN Grund grün.
         listener.handle(TOPIC, control("2026-08-11T21:45:03Z", -3.7, true, true, true, "plan",
                 -3.7, "[]"));
+        for (String weiter : List.of("2026-08-11T21:49:03Z", "2026-08-11T21:53:03Z",
+                "2026-08-11T21:57:03Z")) {
+            listener.handle(TOPIC, control(weiter, -3.7, true, true, true, "plan", -3.7, "[]"));
+        }
         // 00:00:07 Berliner Zeit des 12.08.: neuer Plan-Sollwert. Die Periode des
         // Vortags wird HIER geschlossen - sieben Sekunden nach Mitternacht.
         listener.handle(TOPIC, control("2026-08-11T22:00:07Z", 1.0, true, true, true, "plan",
                 1.0, "[]"));
-        listener.handle(TOPIC, control("2026-08-11T22:15:05Z", 2.0, true, true, true, "plan",
+        listener.handle(TOPIC, control("2026-08-11T22:03:07Z", 2.0, true, true, true, "plan",
                 2.0, "[]"));
 
-        List<Map<String, Object>> heute = entries(read(null, "2026-08-12"));
-        // Der Tag beginnt mit SEINEM ersten Slot, nicht mit dem des Vortags.
-        assertThat(heute).hasSize(2);
-        assertThat(heute.get(0).get("startedAt")).asString().startsWith("2026-08-11T22:00:07");
-        assertThat(heute.get(1).get("startedAt")).asString().startsWith("2026-08-11T22:15:05");
-        assertThat(heute).noneMatch(e -> String.valueOf(e.get("startedAt"))
-                .startsWith("2026-08-11T21:45:03"));
-
-        // Und er ist nicht verschwunden: im Fenster des Vortags steht er.
+        // Der Grenz-Slot muss WIRKLICH über Mitternacht ragen, sonst prüft der
+        // Rest nichts: er beginnt am 11.08. und endet nach 22:00:00Z.
         List<Map<String, Object>> gestern = entries(read(null, "2026-08-11"));
         assertThat(gestern).hasSize(1);
         assertThat(gestern.get(0).get("startedAt")).asString().startsWith("2026-08-11T21:45:03");
         assertThat(gestern.get(0).get("endedAt")).asString().startsWith("2026-08-11T22:00:07");
+
+        // Und der Tag beginnt trotzdem mit SEINEM ersten Slot, nicht mit dem des
+        // Vortags - und ohne eine Lücken-Zeile, die es hier nicht gibt.
+        List<Map<String, Object>> heute = entries(read(null, "2026-08-12"));
+        assertThat(heute).hasSize(2);
+        assertThat(heute.get(0).get("startedAt")).asString().startsWith("2026-08-11T22:00:07");
+        assertThat(heute.get(1).get("startedAt")).asString().startsWith("2026-08-11T22:03:07");
+        assertThat(heute).noneMatch(e -> String.valueOf(e.get("startedAt"))
+                .startsWith("2026-08-11T21:45:03"));
+        assertThat(heute).allMatch(e -> CommandLog.KIND_PERIODE.equals(e.get("kind")));
     }
 
     /**

@@ -1955,6 +1955,13 @@ weshalb diese Stufe dessen Muster wörtlich übernimmt.
   nur gelesen"): abgeleitet aus dem `control`-Flag ODER einer nicht-leeren `actuate`-Fähigkeit; ohne
   beides ist die Komponente nur-lesend, und genau das darf die Seite dann sagen. Der SATZ wohnt im
   Portal (`src/befehle.ts`), hier steht die Tatsache.
+- **⚠ Für Tests, die eine Periode über MITTERNACHT (oder über irgendeine Grenze) tragen sollen: die
+  Herzschläge müssen enger liegen als `GAP_AFTER` (5 min).** Ein Sprung von 23:45 direkt auf 00:00
+  ist eine LÜCKE — die Periode wird dann an ihrem letzten belegten Zeitpunkt (23:45) geschlossen und
+  überquert Mitternacht NIE; ein Grenzfall-Test wäre damit aus dem falschen Grund grün (beim Bau von
+  `derMitternachtsGrenzSlotGehoertZumVortagUndNichtInDenHeuteTab` genau so passiert). Der Test hält
+  seither vier Herzschläge im 4-Minuten-Takt und prüft ZUERST, dass der Slot wirklich über
+  Mitternacht ragt.
 - **⚠ Für Tests:** die Zeit kommt aus dem HERZSCHLAG (`control.checked_at` bzw. `ts`), eine Lücke
   lässt sich also ohne eine Sekunde Wartezeit nachstellen — aber die Leseroute klemmt ihr Fenster auf
   JETZT, ein Herzschlag mit einem Zeitstempel in der Zukunft ist damit unsichtbar (in der Nacht
