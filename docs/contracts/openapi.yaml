@@ -81,16 +81,22 @@ tags:
   - name: register-write
     description: >
       Einmaliges Beschreiben eines Geraete-Registers ueber das Portal (Konzept
-      vp-reg-schreib-konzept-p8, Stufe 1 "Der Portal-Trigger"): erst den
+      vp-reg-schreib-konzept-p8, Stufen 1-3): erst den
       Ist-Wert LESEN (die Vorschau ueber DIESELBE Lane, ueber die geschrieben
       wuerde - sie beweist damit, dass der Weg offen ist), dann EINMAL
       schreiben, danach ein Beleg mit Rueckleseprobe. Jeder Schreibvorgang
       hinterlaesst eine append-only Papier-Spur (register_write_event) mit
       beweisbarer Herkunft und den VERBATIM getippten Begriffen.
-      WELCHES Register eine Box ausfuehrt, entscheidet die BOX (Stufe 1: genau
-      das Deye-Installateur-Register 0x00E7 mit Wertdeckel 7000) - die Cloud
-      entscheidet nur, WER welche Anlage erreicht. Kundendaten, also
-      mandantenbezogen (RLS) und unter /sites/**, nicht unter /admin/**.
+      WELCHES Register eine Box ausfuehrt, entscheidet die BOX (seit Stufe 2
+      ueber LANE-Regeln statt einer Adress-Allowlist) - die Cloud entscheidet
+      nur, WER welche Anlage erreicht. Kundendaten, also mandantenbezogen (RLS)
+      und unter /sites/**, nicht unter /admin/**.
+      Seit Stufe 3 "Bis zum Endkunden" faehrt der ENDKUNDE dieselbe Strecke auf
+      seiner eigenen Anlage (Reichweite = RLS, Herkunft `kunde` im Journal); die
+      Rollen unterscheiden nur die Reichweite, nie die Register. Der
+      plattformweite NOT-AUS ist voltpilot.register-write.enabled: auf false
+      refuesieren die zwei SCHREIBENDEN Routen mit 503 und deutschem Grund,
+      waehrend Ziel-Liste, Register-Wissen und VERLAUF lesbar bleiben.
   - name: topology
     description: >
       Anlagen-Topologie-Read-Model (AE1, adaptive EMS-UI): the site as an
@@ -5182,7 +5188,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage oder Geraet nicht gefunden. }
         "409": { description: Die Anlage hat kein oder mehr als ein Geraet - das Ziel wird nie geraten. }
-        "503": { description: Die Anlage ist gerade nicht erreichbar. Es wurde nichts angefordert. }
+        "503": { description: "Die Anlage ist gerade nicht erreichbar (nichts angefordert) - ODER das Register-Schreiben ist plattformweit abgeschaltet (voltpilot.register-write.enabled=false); der deutsche Grund unterscheidet die beiden." }
   /api/v1/sites/{siteId}/register-write:
     post:
       tags: [register-write]
@@ -5218,7 +5224,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage oder Geraet nicht gefunden. }
         "409": { description: Die Anlage hat kein oder mehr als ein Geraet. }
-        "503": { description: Die Anlage ist gerade nicht erreichbar. Es wurde NICHTS geschrieben. }
+        "503": { description: "Die Anlage ist gerade nicht erreichbar (es wurde NICHTS geschrieben) - ODER das Register-Schreiben ist plattformweit abgeschaltet; der deutsche Grund unterscheidet die beiden." }
   /api/v1/sites/{siteId}/register-write/targets:
     get:
       tags: [register-write]

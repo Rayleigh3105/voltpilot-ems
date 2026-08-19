@@ -7,6 +7,10 @@ import {
   adresseFehler,
   beleg,
   bestaetigenLabel,
+  bestaetigungsFolgen,
+  EXPERTE_INTRO,
+  kundenRegisterZugang,
+  VERANTWORTUNG,
   journalSatz,
   journalTon,
   herkunftWort,
@@ -270,12 +274,14 @@ describe('der Geräte-Picker nennt jedes Gerät - auch das ohne Schreibweg', () 
   });
 
   it('leitet aus der Wahl genau die Ziel-Felder ab - nie einen erfundenen Host', () => {
-    expect(zielInput(t())).toEqual({ lane: 'primary' });
+    // Seit Stufe 3 reist die Geräte-Kennung des GEWÄHLTEN Ziels mit (siehe den
+    // eigenen Fall unten) - der Rest ist unverändert.
+    expect(zielInput(t())).toEqual({ deviceId: 'd-1', lane: 'primary' });
     expect(zielInput(t({ lane: 'entity', entityId: 'e-1' })))
-      .toEqual({ lane: 'entity', entityId: 'e-1' });
+      .toEqual({ deviceId: 'd-1', lane: 'entity', entityId: 'e-1' });
     expect(zielInput(t({ lane: 'lan', entityId: null, host: '192.168.0.44',
       port: 1502, unitId: 3 })))
-      .toEqual({ lane: 'lan', host: '192.168.0.44', port: 1502, unitId: 3 });
+      .toEqual({ deviceId: 'd-1', lane: 'lan', host: '192.168.0.44', port: 1502, unitId: 3 });
     expect(zielInput(null)).toEqual({});
   });
 
@@ -330,5 +336,72 @@ describe('EEPROM-Ehrlichkeit und Einheiten', () => {
     expect(bestaetigenLabel('0x00E7', '7000', 70, null))
       .toBe('Jetzt schreiben: 0x00e7 = 7000');
     expect(bestaetigenLabel('0x1234', '5', null)).toBe('Jetzt schreiben: 0x1234 = 5');
+  });
+});
+
+describe('Stufe 3: die Kunden-Fläche', () => {
+  const t = (patch: Partial<RegisterWriteTarget> = {}): RegisterWriteTarget => ({
+    lane: 'primary', deviceId: 'd-1', entityId: null, label: 'Deye SUN-30K',
+    brand: 'deye', model: 'sun-30k', family: 'hybrid_3p', communication: 'solarman_v5',
+    host: '192.168.0.28', port: 8899, unitId: 1, writable: true, reason: null, ...patch,
+  });
+  const dev = (patch: Partial<{ id: string; siteId: string; name: string | null;
+    externalRef: string }> = {}) => ({
+    id: 'dev-1', siteId: 'site-1', name: null, externalRef: 'edge-abcdefj', ...patch,
+  });
+
+  it('bietet die Strecke nur an, wo ein Gerät sie ausführen könnte', () => {
+    const ohne = kundenRegisterZugang([], 'site-1');
+    expect(ohne.moeglich).toBe(false);
+    expect(ohne.deviceId).toBeNull();
+    // Ein Knopf, der strukturell nichts bewirken kann, wird NICHT angeboten -
+    // stattdessen steht dort sein Grund.
+    expect(ohne.grund).toContain('Sobald ein Gerät');
+
+    // Ein Gerät einer FREMDEN Anlage zählt nicht: der Auftrag ginge sonst an
+    // eine Box, die diese Anlage gar nicht kennt.
+    expect(kundenRegisterZugang([dev({ siteId: 'site-2' })], 'site-1').moeglich).toBe(false);
+    expect(kundenRegisterZugang(undefined, 'site-1').moeglich).toBe(false);
+  });
+
+  it('wählt das Gerät der Anlage vor und benennt es lesbar', () => {
+    const mit = kundenRegisterZugang([dev({ siteId: 'site-2' }), dev()], 'site-1');
+    expect(mit).toMatchObject({ moeglich: true, grund: null, deviceId: 'dev-1' });
+    expect(mit.geraetName).toBe('edge-abcdefj');
+    expect(kundenRegisterZugang([dev({ name: 'Box Scheune' })], 'site-1').geraetName)
+      .toBe('Box Scheune');
+    // Ein leerer Name ist kein Name.
+    expect(kundenRegisterZugang([dev({ name: '   ' })], 'site-1').geraetName)
+      .toBe('edge-abcdefj');
+  });
+
+  it('⚠ die Rückfrage trägt den VERANTWORTUNGS-Satz, und zwar zuletzt', () => {
+    const folgen = bestaetigungsFolgen();
+    // Er steht in der Folgenliste, nicht nur als Kleingedrucktes im Formular:
+    // die Rückfrage ist der Moment, in dem ein Mensch die Folgen abwägt.
+    expect(folgen).toContain(VERANTWORTUNG);
+    expect(folgen[folgen.length - 1]).toBe(VERANTWORTUNG);
+    // Sie nennt auch, was GLEICH bleibt - eine reine Gefahrenliste liest sich
+    // wie ein Formular zum Wegklicken.
+    expect(folgen.some((f) => f.includes('protokolliert'))).toBe(true);
+    expect(folgen.some((f) => f.includes('GENAU EINMAL'))).toBe(true);
+  });
+
+  it('der Kunde erfährt VOR dem Aufklappen, worum es geht', () => {
+    expect(EXPERTE_INTRO).toContain('genau einmal');
+    expect(EXPERTE_INTRO).toContain('protokolliert');
+  });
+
+  it('⚠ jedes Ziel schickt seine eigene Geräte-Kennung mit', () => {
+    // Auf der Anlagen-Fläche kann eine Anlage mehrere Boxen haben: welche den
+    // Auftrag ausführt, darf nicht davon abhängen, welche zuerst geladen wurde.
+    expect(zielInput(t({ deviceId: 'dev-2' })))
+      .toEqual({ deviceId: 'dev-2', lane: 'primary' });
+    expect(zielInput(t({ lane: 'entity', entityId: 'ent-9', deviceId: 'dev-3' })))
+      .toEqual({ deviceId: 'dev-3', lane: 'entity', entityId: 'ent-9' });
+    expect(zielInput(t({ lane: 'lan', host: '192.168.0.44', port: 502, unitId: 3,
+      deviceId: 'dev-4' })))
+      .toEqual({ deviceId: 'dev-4', lane: 'lan', host: '192.168.0.44', port: 502, unitId: 3 });
+    expect(zielInput(null)).toEqual({});
   });
 });

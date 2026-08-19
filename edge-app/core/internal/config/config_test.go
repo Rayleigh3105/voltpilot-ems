@@ -259,19 +259,33 @@ func TestControlEnvOverrides(t *testing.T) {
 	}
 }
 
-// The narrow installer write (0x00E7) is OFF by default and can only be turned
-// on deliberately - the default IS the feature (internal/installerwrite).
-func TestInstallerWriteFlagDefaultsOff(t *testing.T) {
+// Der Einmal-Schreibpfad ist SEIT STUFE 3 („Bis zum Endkunden", D2) per Vorgabe
+// AN - der Portal-Konsument existiert ohnehin erst ab diesem Release, das Flag
+// schuetzte also genau die Canary-Phase. Er bleibt trotzdem ein echter Schalter:
+// ein ausdrueckliches "false" nimmt EINER Box den ganzen Pfad wieder.
+func TestInstallerWriteFlagDefaultsOnSinceTheCustomerRelease(t *testing.T) {
 	clearEnv(t)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.InstallerWriteEnabled {
-		t.Fatal("VP_INSTALLER_WRITE_ENABLED must default to false")
+	if !cfg.InstallerWriteEnabled {
+		t.Fatal("VP_INSTALLER_WRITE_ENABLED must default to true since Stufe 3")
 	}
-	if Defaults().InstallerWriteEnabled {
-		t.Fatal("the built-in default must be false too")
+	if !Defaults().InstallerWriteEnabled {
+		t.Fatal("the built-in default must be true too")
+	}
+	// Das AUSSCHALTEN ist die Aussage, die diese Stufe schuldig bleibt, wenn sie
+	// sie nicht prueft: der Not-Aus je Box muss weiterhin greifen.
+	for _, off := range []string{"false", "FALSE", "0"} {
+		t.Setenv("VP_INSTALLER_WRITE_ENABLED", off)
+		cfg, err = Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.InstallerWriteEnabled {
+			t.Fatalf("%q must turn the path OFF again", off)
+		}
 	}
 	for _, on := range []string{"true", "TRUE", "1"} {
 		t.Setenv("VP_INSTALLER_WRITE_ENABLED", on)
@@ -280,18 +294,21 @@ func TestInstallerWriteFlagDefaultsOff(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !cfg.InstallerWriteEnabled {
-			t.Fatalf("%q should enable it", on)
+			t.Fatalf("%q must leave it enabled", on)
 		}
 	}
-	// Anything else stays OFF - a typo must never open the path.
-	for _, off := range []string{"false", "0", "ja", "yes"} {
-		t.Setenv("VP_INSTALLER_WRITE_ENABLED", off)
+	// ⚠ Ein GESETZTES Wort ausserhalb des Vokabulars schaltet AUS, nicht auf die
+	// Vorgabe zurueck (boolEnv) - dieselbe fail-closed Richtung wie bei
+	// VP_CONTROL_ENABLED. Ein Tippfehler nimmt der Box also den Schreibpfad; er
+	// oeffnet ihn nie.
+	for _, typo := range []string{"ja", "yes", "on"} {
+		t.Setenv("VP_INSTALLER_WRITE_ENABLED", typo)
 		cfg, err = Load()
 		if err != nil {
 			t.Fatal(err)
 		}
 		if cfg.InstallerWriteEnabled {
-			t.Fatalf("%q must NOT enable it", off)
+			t.Fatalf("%q must NOT keep the path open", typo)
 		}
 	}
 }

@@ -1,5 +1,5 @@
 // Die REINE Ableitung des Register-Drawers (Konzept `vp-reg-schreib-konzept-p8`
-// §2.3, Stufe 1 „Der Portal-Trigger").
+// §2.3, Stufen 1-3 - seit Stufe 3 „Bis zum Endkunden" auch die Kunden-Fläche).
 //
 // Sie ENTSCHEIDET nichts: ob eine Adresse freigegeben ist, ob der Wert im Band
 // liegt und ob die laufende Steuerung das Register gerade besitzt, entscheidet
@@ -70,10 +70,42 @@ export const EEPROM_HINWEIS =
   'Dieses Register wird dauerhaft im Gerät gespeichert. Es wird genau EINMAL '
   + 'geschrieben - kein automatisches Auffrischen, kein zweiter Versuch.';
 
-/** Der Verantwortungs-Satz. */
+/**
+ * Der VERANTWORTUNGS-SATZ (Stufe 3 „Bis zum Endkunden", Konzept §2.3).
+ *
+ * ⚠ Er ist die Gegenleistung für die Freiheit, nicht ihr Kleingedrucktes: der
+ * Kunde darf JEDES Register seines Geräts beschreiben, weil die Abstufung eine
+ * der Reichweite ist und keine der Register - und genau deshalb muss VOR dem
+ * Klick stehen, dass niemand diesen Wert für ihn prüft. Er gilt für JEDE
+ * Herkunft (auch VoltPilot schreibt auf eigene Verantwortung ins Kundengerät);
+ * ein zweiter, milderer Satz für die eigene Mannschaft wäre die gefährlichere
+ * Variante.
+ */
 export const VERANTWORTUNG =
   'Sie schreiben auf eigene Verantwortung in Ihr Gerät. Ein falsches Register '
   + 'kann das Gerät fehlkonfigurieren. VoltPilot prüft diesen Wert nicht.';
+
+/**
+ * Die FOLGENLISTE der Rückfrage - das Haus-Muster des `ConfirmDialog`.
+ *
+ * ⚠ Der Verantwortungs-Satz steht HIER und nicht nur als Kleingedrucktes im
+ * Formular: die Rückfrage ist der Moment, in dem ein Mensch die Folgen
+ * abwägt, und eine Eigenverantwortungs-Erklärung, die er beim Scrollen
+ * überliest, ist keine. Er kommt ZULETZT, weil er die Zusammenfassung der drei
+ * Zeilen darüber ist, nicht eine vierte Einzelheit.
+ *
+ * Sie nennt auch, was GLEICH bleibt (die Papier-Spur) - eine Folgenliste, die
+ * nur Gefahren aufzählt, liest sich wie ein Formular zum Wegklicken.
+ */
+export function bestaetigungsFolgen(): string[] {
+  return [
+    'Das Register wird GENAU EINMAL beschrieben - kein zweiter Versuch.',
+    'Der Wert bleibt dauerhaft im Gerät gespeichert, bis ihn jemand ändert.',
+    'Hat sich der Ist-Wert seit der Vorschau geändert, verweigert das Gerät.',
+    'Der Vorgang wird mit Ihrem Namen und Ihrem Grund dauerhaft protokolliert.',
+    VERANTWORTUNG,
+  ];
+}
 
 /** Der Satz, der nach einer ausgebliebenen Quittung gilt. */
 export const ZUSTAND_UNBEKANNT =
@@ -497,21 +529,34 @@ export function registerKenntnis(ziel: ZielSicht | null): string | null {
     + 'Rohwert - Name und Umrechnung fehlen, geschrieben werden kann trotzdem.';
 }
 
-/** Was der Aufruf als Ziel mitschickt - aus dem gewählten Eintrag abgeleitet. */
+/**
+ * Was der Aufruf als Ziel mitschickt - aus dem gewählten Eintrag abgeleitet.
+ *
+ * ⚠ Die GERÄTE-KENNUNG reist seit Stufe 3 mit (jedes Ziel trägt sie). Auf der
+ * Geräteseite war sie überflüssig - dort IST das Gerät die Seite -, auf der
+ * Anlagen-Fläche des Kunden ist sie tragend: eine Anlage kann mehrere Boxen
+ * haben, und welche den Auftrag ausführt, darf nicht davon abhängen, welche
+ * die Fläche zufällig als erste geladen hat.
+ */
 export function zielInput(t: RegisterWriteTarget | null): {
-  lane?: string; entityId?: string; host?: string; port?: number; unitId?: number;
+  deviceId?: string; lane?: string; entityId?: string;
+  host?: string; port?: number; unitId?: number;
 } {
   if (!t) return {};
-  if (t.lane === 'entity' && t.entityId) return { lane: 'entity', entityId: t.entityId };
+  const geraet = t.deviceId ? { deviceId: t.deviceId } : {};
+  if (t.lane === 'entity' && t.entityId) {
+    return { ...geraet, lane: 'entity', entityId: t.entityId };
+  }
   if (t.lane === 'lan') {
     return {
+      ...geraet,
       lane: 'lan',
       ...(t.host ? { host: t.host } : {}),
       ...(t.port != null ? { port: t.port } : {}),
       ...(t.unitId != null ? { unitId: t.unitId } : {}),
     };
   }
-  return { lane: 'primary' };
+  return { ...geraet, lane: 'primary' };
 }
 
 /** Die Eingabe einer FREI getippten LAN-Adresse - Form, nie Netz-Wahrheit. */
@@ -523,3 +568,61 @@ export function freieAdresseFehler(host: string): string | null {
   // Wahrheit über ein Netz, das dieses Portal nie gesehen hat.
   return null;
 }
+
+// ── Stufe 3: die KUNDEN-Fläche ───────────────────────────────────────────────
+
+/**
+ * Der Zugang der KUNDEN-Fläche: an welches Gerät dieser Anlage ginge ein
+ * Auftrag, wenn der Kunde nichts weiter wählt?
+ *
+ * ⚠ Sie ist die anlagen-scharfe Schwester von {@link registerZugang} (dort ist
+ * das Gerät die Seite, hier ist es die Anlage) und folgt derselben Regel: ein
+ * Knopf, der strukturell nichts bewirken kann, wird NICHT angeboten - er trägt
+ * stattdessen seinen Grund.
+ *
+ * ⚠ Der Mandant reist hier bewusst NICHT mit. Ein Kunde erreicht seine eigene
+ * Anlage über den RLS-Zaun; der `X-Tenant-Id`-Umschalter gilt nur einem
+ * Portal-Admin, und ihn hier zu stempeln hieße, einen Kopf zu schicken, den der
+ * Server für dieses Token ohnehin ignoriert.
+ */
+export interface KundenRegisterZugang {
+  moeglich: boolean;
+  /** Der Grund, wenn nicht - nie ein stiller leerer Bereich. */
+  grund: string | null;
+  /**
+   * Das VORGEWÄHLTE Gerät. Auf einer Anlage mit mehreren Boxen entscheidet
+   * danach der Ziel-Picker (jedes Ziel trägt seine eigene Geräte-Kennung mit,
+   * siehe {@link zielInput}) - dieses hier ist nur der Ausgangspunkt.
+   */
+  deviceId: string | null;
+  geraetName: string | null;
+}
+
+export function kundenRegisterZugang(
+  devices: { id: string; siteId: string; name?: string | null; externalRef: string }[] | undefined,
+  siteId: string,
+): KundenRegisterZugang {
+  const eigene = (devices ?? []).filter((d) => d.siteId === siteId);
+  const erstes = eigene[0];
+  if (!erstes) {
+    return {
+      moeglich: false,
+      grund: 'Sobald ein Gerät mit dieser Anlage verbunden ist, können Sie hier '
+        + 'einzelne Geräte-Register lesen und schreiben.',
+      deviceId: null,
+      geraetName: null,
+    };
+  }
+  return {
+    moeglich: true,
+    grund: null,
+    deviceId: erstes.id,
+    geraetName: erstes.name?.trim() || erstes.externalRef,
+  };
+}
+
+/** Der ruhige Einleitungssatz des Experten-Aufklappers. */
+export const EXPERTE_INTRO =
+  'Für Fachleute: ein einzelnes Register Ihres Geräts aus der Ferne lesen und - '
+  + 'nach einer Vorschau - genau einmal beschreiben. Jeder Schreibvorgang wird '
+  + 'dauerhaft protokolliert.';

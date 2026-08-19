@@ -55,6 +55,8 @@ import { anlageRoute, befehleHash, hashForRoute } from '../nav';
 import { EntitaetenSection } from './EntitaetenSection';
 import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
+import { RegisterWriteDrawer } from '../components/RegisterWriteDrawer';
+import { EXPERTE_INTRO, kundenRegisterZugang } from '../registerWrite';
 import {
   ablehnungText,
   sollIstText,
@@ -326,6 +328,7 @@ export function AnlagenModellSection({
                   />
                 </>
               )}
+              <RegisterExperte site={site} devices={devices} />
             </section>
 
             {/* 3 · Die Komponenten — mit Live-Werten wie im Cockpit. */}
@@ -528,6 +531,56 @@ const HEALTH_TONE: Record<ComponentHealth, 'ok' | 'warn' | 'off'> = {
   // H2: „noch keine Rückmeldung" is grey, never green.
   unknown: 'off',
 };
+
+/**
+ * Der EXPERTEN-Aufklapper der Kunden-Fläche (Konzept
+ * `vp-reg-schreib-konzept-p8` §2.7, Stufe 3 „Bis zum Endkunden").
+ *
+ * ⚠ Er hostet DENSELBEN `RegisterWriteDrawer` wie die Plattform-Geräteseite -
+ * es gibt genau EINE Zwei-Schritt-Strecke, also können Kunde und VoltPilot über
+ * denselben Vorgang nie Verschiedenes sehen, und der Verantwortungs-Satz steht
+ * per Konstruktion auf beiden Wegen. Die Rollen unterscheiden nur die
+ * REICHWEITE (wessen Anlagen), nie die Register; der Zaun ist RLS auf dem
+ * Server, hier steht keine zweite Regel.
+ *
+ * Bewusst ein ruhiger Aufklapper und kein prominenter Knopf: die Freiheit ist
+ * da, die Fläche bleibt ruhig. Ohne verbundenes Gerät nennt er den GRUND,
+ * statt einen Knopf anzubieten, der strukturell nichts bewirken kann.
+ */
+function RegisterExperte({ site, devices }: { site: Site; devices?: Device[] }) {
+  const [offen, setOffen] = useState(false);
+  const zugang = kundenRegisterZugang(devices, site.id);
+
+  return (
+    <details className="vp-am-experte" data-testid="am-register-experte">
+      <summary>
+        <Icon name="chevron-right" size={12} /> Experten-Werkzeuge
+      </summary>
+      <p className="vp-text-sm">{EXPERTE_INTRO}</p>
+      {zugang.moeglich ? (
+        <button
+          type="button"
+          className="vp-am-action"
+          onClick={() => setOffen(true)}
+          data-testid="am-regwrite"
+        >
+          <Icon name="pencil" size={13} /> Register schreiben
+        </button>
+      ) : (
+        <p className="vp-muted vp-text-sm" data-testid="am-regwrite-grund">{zugang.grund}</p>
+      )}
+      {offen && zugang.moeglich && (
+        <RegisterWriteDrawer
+          open
+          siteId={site.id}
+          deviceId={zugang.deviceId as string}
+          geraetName={zugang.geraetName as string}
+          onClose={() => setOffen(false)}
+        />
+      )}
+    </details>
+  );
+}
 
 /** The devices behind the box + the "Neues Gerät gefunden" call to action. */
 function DeviceStrip({
