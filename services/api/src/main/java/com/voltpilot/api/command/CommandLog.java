@@ -371,6 +371,43 @@ public final class CommandLog {
         return now.atZone(ZONE).toLocalDate().atStartOfDay(ZONE).toInstant();
     }
 
+    /**
+     * <b>DIE KONVENTION DES FENSTERS: eine Zeile gehört zum Tag ihres STARTS.</b>
+     *
+     * <p>Der Anlass (19.08.2026): der „Heute"-Tab begann um 17:26 mit dem Slot
+     * „23:45–00:00" - der letzten Viertelstunde des VORTAGS. Sie geriet auf zwei
+     * Wegen hinein, und beide sind mit dieser einen Regel erschlagen: die
+     * Fenster-Abfrage nahm eine Periode, die GENAU auf {@code from} endete
+     * (halb-offenes Fenster falsch abgebildet: {@code >=} statt {@code >}), und
+     * sie nahm die reale Überlappung von wenigen Sekunden, mit der jede
+     * Mitternachts-Periode in den Folgetag hineinragt - der Optimierer wechselt
+     * den Plan-Sollwert um 00:00, geschlossen wird sie erst vom NÄCHSTEN
+     * Herzschlag.
+     *
+     * <p><b>Diese Methode ist die Untergrenze, ab der eine VOR dem Fenster
+     * begonnene Periode noch in das Fenster gehört</b> - nämlich dann, wenn sie
+     * dort mindestens einen Herzschlag lang wirklich in Kraft war. Der Abstand
+     * ist deshalb {@link #ACCURACY_SECONDS}: das ist die Auflösung, mit der
+     * dieser Verlauf überhaupt beobachtet wird und die die Fläche dem Kunden
+     * NENNT. Eine Periode, deren ganze Anwesenheit im Tag kürzer ist als ein
+     * einziger Herzschlag, ist nach dem eigenen Massstab dieses Features keine
+     * Aussage über diesen Tag.
+     *
+     * <p><b>Nicht ersetzt wird damit die Überlappung selbst</b>: eine Periode,
+     * die um 22:00 des Vortags begann und heute um 06:00 endet, war heute
+     * stundenlang in Kraft und MUSS sichtbar bleiben - sonst begänne der Film
+     * mit einem unerklärten Loch, und ein Tag, an dem gar nichts umschaltet,
+     * behauptete „es wurde nichts geschickt". Sie ist bloss als das kenntlich zu
+     * machen, was sie ist (die Fläche stellt ihr Datum voran).
+     *
+     * <p>Der Tages-Deckel zählt seit jeher nach {@code started_at}
+     * ({@code CommandLogRepository.countSince}); genau diese Asymmetrie zur
+     * Leseroute war der Fehler.
+     */
+    public static Instant carryInAfter(Instant windowStart) {
+        return windowStart.plusSeconds(ACCURACY_SECONDS);
+    }
+
     private static boolean blank(String s) {
         return s == null || s.isBlank();
     }

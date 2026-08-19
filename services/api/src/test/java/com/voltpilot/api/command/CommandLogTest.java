@@ -233,6 +233,27 @@ class CommandLogTest {
         assertThat(CommandLog.berlinDayStart(at)).isEqualTo(Instant.parse("2026-08-17T22:00:00Z"));
     }
 
+    /**
+     * Die Konvention „eine Zeile gehört zum Tag ihres STARTS": der Abstand ist
+     * GENAU die Herzschlag-Auflösung, mit der dieser Verlauf beobachtet wird -
+     * eine andere Zahl wäre eine erfundene Schwelle.
+     */
+    @Test
+    void dieMitternachtsGrenzeIstGenauEinHerzschlagBreit() {
+        Instant tagesbeginn = Instant.parse("2026-08-18T22:00:00Z"); // 00:00 Berlin, 19.08.
+
+        Instant grenze = CommandLog.carryInAfter(tagesbeginn);
+
+        assertThat(grenze).isEqualTo(Instant.parse("2026-08-18T22:00:15Z"));
+        assertThat(java.time.Duration.between(tagesbeginn, grenze).getSeconds())
+                .isEqualTo(CommandLog.ACCURACY_SECONDS);
+        // Der Slot des Vortags schliesst beim ERSTEN Herzschlag nach Mitternacht
+        // und liegt damit nicht mehr im Fenster; eine Periode, die stundenlang
+        // in den Tag hineinreicht, sehr wohl.
+        assertThat(Instant.parse("2026-08-18T22:00:07Z")).isBefore(grenze);
+        assertThat(Instant.parse("2026-08-19T04:00:00Z")).isAfter(grenze);
+    }
+
     // -- Hilfen ---------------------------------------------------------------
 
     private static Observation obs(String mode, String planRef, String verdict) {

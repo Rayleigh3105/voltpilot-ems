@@ -1930,20 +1930,48 @@ weshalb diese Stufe dessen Muster wörtlich übernimmt.
   Sekunde nie Verschiedenes behaupten können. Mit `entity` kommen IHRE Zeilen PLUS die
   gerätebezogenen (`entity_id IS NULL`) — die betreffen den Schreibweg, über den sie gesteuert wird.
   Nur Tag und Woche: ein Monat wäre ein Fenster, das der Deckel ohnehin kappt.
+- **⚠ DIE FENSTER-KONVENTION: eine Zeile gehört zum Tag ihres STARTS** (`CommandLog.carryInAfter`,
+  Captain-Meldung 19.08.2026). Der „Heute"-Tab begann um 17:26 mit dem Slot „23:45-00:00" — der
+  letzten Viertelstunde des VORTAGS. Sie geriet auf ZWEI Wegen hinein, und beide sind mit derselben
+  Regel erschlagen: die Abfrage nahm eine Periode, die GENAU auf `from` endete (halb-offenes Fenster
+  falsch abgebildet, `ended_at >= from` statt `>`), und sie nahm die reale Überlappung von Sekunden,
+  mit der JEDE Mitternachts-Periode in den Folgetag ragt (der Optimierer wechselt den Plan-Sollwert
+  um 00:00, geschlossen wird die Periode erst vom NÄCHSTEN Herzschlag). Das Prädikat hat deshalb
+  DREI Zweige: `started_at >= from` (im Fenster begonnen — gehört immer dazu, auch nach vier
+  Sekunden), `ended_at IS NULL` (läuft noch, beschreibt die Gegenwart) oder
+  `ended_at > from + ACCURACY_SECONDS`. **Der Abstand ist GENAU die Herzschlag-Auflösung** (15 s — die Zahl, die die
+  Fläche dem Kunden ohnehin nennt): eine Periode, deren ganze Anwesenheit im Tag kürzer ist als ein
+  Herzschlag, ist nach dem eigenen Massstab dieses Features keine Aussage über diesen Tag; eine, die
+  von 22:00 bis 06:00 durchläuft, sehr wohl — sie zu streichen risse ein unerklärtes Loch in den
+  Film, und ein Tag ohne einen einzigen Wechsel behauptete „es wurde nichts geschickt". Verloren ist
+  nichts: der Grenz-Slot steht im Fenster des Vortags. **Der Tages-Deckel zählte seit jeher nach
+  `started_at` (`countSince`) — genau diese Asymmetrie zur Leseroute war der Fehler.**
+- **⚠ Eine 2-Stunden-Verschiebung an der Ingest-Naht wurde GEPRÜFT und ausgeschlossen** (dieselbe
+  Meldung, zweite Vermutung): die Spalten sind `TIMESTAMPTZ`, der Edge stempelt RFC-3339 mit Zone,
+  `Instant.parse` nimmt beide Formen, JDBC und Jackson reisen zonenrein. Gepinnt von
+  `derZeitstempelReistUnverschobenDurchIngestSpeicherUndAntwort` (ein Herzschlag mit `+02:00` kommt
+  als derselbe UTC-Zeitpunkt zurück) — wer das Symptom erneut untersucht, misst hier nicht noch mal.
 - **`writes: false` ist die F4-Antwort** („VoltPilot sendet an dieses Gerät keine Befehle — es wird
   nur gelesen"): abgeleitet aus dem `control`-Flag ODER einer nicht-leeren `actuate`-Fähigkeit; ohne
   beides ist die Komponente nur-lesend, und genau das darf die Seite dann sagen. Der SATZ wohnt im
   Portal (`src/befehle.ts`), hier steht die Tatsache.
+- **⚠ Für Tests, die eine Periode über MITTERNACHT (oder über irgendeine Grenze) tragen sollen: die
+  Herzschläge müssen enger liegen als `GAP_AFTER` (5 min).** Ein Sprung von 23:45 direkt auf 00:00
+  ist eine LÜCKE — die Periode wird dann an ihrem letzten belegten Zeitpunkt (23:45) geschlossen und
+  überquert Mitternacht NIE; ein Grenzfall-Test wäre damit aus dem falschen Grund grün (beim Bau von
+  `derMitternachtsGrenzSlotGehoertZumVortagUndNichtInDenHeuteTab` genau so passiert). Der Test hält
+  seither vier Herzschläge im 4-Minuten-Takt und prüft ZUERST, dass der Slot wirklich über
+  Mitternacht ragt.
 - **⚠ Für Tests:** die Zeit kommt aus dem HERZSCHLAG (`control.checked_at` bzw. `ts`), eine Lücke
   lässt sich also ohne eine Sekunde Wartezeit nachstellen — aber die Leseroute klemmt ihr Fenster auf
   JETZT, ein Herzschlag mit einem Zeitstempel in der Zukunft ist damit unsichtbar (in der Nacht
   gemessen: „heute 10:00 UTC" liegt um 00:37 Berliner Zeit noch in der Zukunft). Und das Abräumen
   der Tabelle im Test braucht einen **Mandanten-Kontext** — ohne `app.tenant_id` ist RLS
   default-deny und das DELETE ein STILLES No-op.
-- **Beweise:** `CommandLogTest` (17, rein) · `CommandHistoryApiTest` (4, echte DB + Keycloak: die
+- **Beweise:** `CommandLogTest` (18, rein) · `CommandHistoryApiTest` (7, echte DB + Keycloak: die
   Reise Perioden/Wechsel/Fehlschlag/Lücke/Not-Aus, die Abregelung als eigener Strom mit
   dreiwertigem Urteil, der Verbraucher-Ersatz, der Mandanten-Zaun und „ein alter Herzschlag schreibt
-  nichts") · Portal `befehle.test.ts` (22) + `BefehleSection.test.tsx` (6). Portal-Seite in
+  nichts") · Portal `befehle.test.ts` (26) + `BefehleSection.test.tsx` (6). Portal-Seite in
   `frontend/portal/AGENTS.md`.
 - **NICHT in V1** (die Stufen 2/3 des Konzepts): der Präzisions-Uplink vom Gerät (`internal/cmdlog`,
   Herzschlag-Block `command_log`, Zyklen-Zähler + Register-Detail, `source='geraet'`) und das

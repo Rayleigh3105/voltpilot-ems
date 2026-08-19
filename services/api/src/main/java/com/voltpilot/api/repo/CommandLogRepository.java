@@ -248,13 +248,34 @@ public class CommandLogRepository {
      * <p>Der Deckel greift am NEUESTEN Ende (die Abfrage sortiert absteigend und
      * dreht danach um): wer einen vollen Tag ansieht, will nie die letzten
      * Stunden verlieren.
+     *
+     * <p><b>Die drei Zweige des Fenster-Prädikats sind die Konvention „eine
+     * Zeile gehört zum Tag ihres STARTS"</b> (ausführlich an
+     * {@link CommandLog#carryInAfter}):
+     *
+     * <ol>
+     *   <li>{@code started_at >= from} - im Fenster BEGONNEN, gehört immer dazu
+     *       (auch eine Periode, die nach vier Sekunden wieder endete).</li>
+     *   <li>{@code ended_at IS NULL} - sie LÄUFT noch und beschreibt damit die
+     *       Gegenwart, egal wann sie begann.</li>
+     *   <li>{@code ended_at > carry-in} - sie begann vorher und war im Fenster
+     *       mindestens einen Herzschlag lang wirklich in Kraft.</li>
+     * </ol>
+     *
+     * <p>Was dadurch HERAUSFÄLLT, ist genau der gemeldete Fall: die letzte
+     * Viertelstunde des Vortags, die um Sekunden über Mitternacht ragt (und die
+     * frühere Fassung nahm sie sogar bei {@code ended_at == from} mit - ein
+     * halb-offenes Fenster hat dort kein Element). Sie ist nicht verloren: im
+     * „Gestern"-Fenster steht sie an ihrem Platz.
      */
     public List<Row> entries(UUID siteId, UUID entityId, UUID deviceId, Instant from, Instant to,
             int limit) {
         StringBuilder sql = new StringBuilder("SELECT " + COLUMNS + " FROM device_command_log "
-                + "WHERE site_id = ? AND started_at < ? AND (ended_at IS NULL OR ended_at >= ?)");
+                + "WHERE site_id = ? AND started_at < ? "
+                + "AND (started_at >= ? OR ended_at IS NULL OR ended_at > ?)");
         List<Object> args = new java.util.ArrayList<>(
-                List.of(siteId, Timestamp.from(to), Timestamp.from(from)));
+                List.of(siteId, Timestamp.from(to), Timestamp.from(from),
+                        Timestamp.from(CommandLog.carryInAfter(from))));
         if (entityId != null) {
             sql.append(" AND (entity_id = ?");
             args.add(entityId);

@@ -24,6 +24,23 @@ import type { CommandEntry, CommandHistory } from './api';
 import { batteryDirection, CONTROL_DEADBAND_KW } from './control';
 import { fmtNum } from './format';
 
+/**
+ * Die Plattform-Zeitzone. Sie ist HIER festgenagelt, weil der Server sein
+ * Fenster in genau dieser Zone aufspannt ({@code HistoryRange.ZONE}): würde die
+ * Fläche in der Browser-Zone rendern, begänne der „Heute"-Tab eines Lesers
+ * ausserhalb der DACH-Zone sichtbar nicht um 00:00 - dieselbe Regel wie in
+ * `anlage.ts`/`fleet.ts`/`strompreis.ts`.
+ */
+const ZONE = 'Europe/Berlin';
+
+/** Der Berliner Kalendertag eines Zeitpunkts („2026-08-19"), oder null. */
+function berlinTag(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('sv-SE', { timeZone: ZONE });
+}
+
 /** Der Ton einer Zeile - er steuert Farbe UND das Wort daneben. */
 export type BefehlTon = 'ok' | 'warn' | 'info' | 'ruhig';
 
@@ -31,7 +48,11 @@ export type BefehlTon = 'ok' | 'warn' | 'info' | 'ruhig';
 export interface BefehlZeile {
   id: number;
   art: 'periode' | 'ereignis';
-  /** „06:10–09:30" bzw. „17:55" - immer Ortszeit des Lesers. */
+  /**
+   * „06:10–09:30" bzw. „17:55" - IMMER Europe/Berlin, die Zone, in der der
+   * Server sein Fenster aufspannt; eine Zeile, die vor dem Fenster begann,
+   * trägt zusätzlich ihr Datum („18.08. 22:00–06:00").
+   */
   zeit: string;
   /** Der Satz, den der Kunde liest. */
   satz: string;
@@ -168,6 +189,7 @@ export function aufzeichnungSeit(recordingSince: string | null): string {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
+    timeZone: ZONE,
   })}`;
 }
 
@@ -211,21 +233,27 @@ export function pfadWort(pfad: string | null | undefined): string | null {
  */
 export function film(history: CommandHistory | null, now: number): BefehlZeile[] {
   if (!history) return [];
+  // Der ERSTE Tag des Fensters. Er ist der Bezug, gegen den eine Zeile
+  // entscheidet, ob sie ihr Datum mitnennen muss - ohne ihn läse sich eine
+  // Zeile, die vor dem Fenster begann, als hätte sie HEUTE um 23:45 begonnen
+  // (der 19.08.2026 gemeldete Fall).
+  const fensterTag = berlinTag(history.from);
   const out: BefehlZeile[] = [];
   for (const e of history.entries) {
-    const zeile = e.kind === 'ereignis' ? ereignisZeile(e) : periodenZeile(e, now);
+    const zeile =
+      e.kind === 'ereignis' ? ereignisZeile(e, fensterTag) : periodenZeile(e, now, fensterTag);
     if (zeile) out.push(zeile);
   }
   return out;
 }
 
-function ereignisZeile(e: CommandEntry): BefehlZeile | null {
+function ereignisZeile(e: CommandEntry, fensterTag: string | null): BefehlZeile | null {
   const wort = e.eventKind == null ? null : EREIGNIS[e.eventKind];
   if (!wort) return null; // nie ein geratenes Ereignis
   return {
     id: e.id,
     art: 'ereignis',
-    zeit: spanne(e.startedAt, e.endedAt, false),
+    zeit: spanne(e.startedAt, e.endedAt, false, fensterTag),
     satz: wort.satz,
     urteil: null,
     ton: wort.ton,
@@ -236,13 +264,13 @@ function ereignisZeile(e: CommandEntry): BefehlZeile | null {
   };
 }
 
-function periodenZeile(e: CommandEntry, now: number): BefehlZeile {
+function periodenZeile(e: CommandEntry, now: number, fensterTag: string | null): BefehlZeile {
   const laufend = e.endedAt == null;
   const urteil = e.verdict == null ? null : URTEIL[e.verdict] ?? null;
   return {
     id: e.id,
     art: 'periode',
-    zeit: spanne(e.startedAt, e.endedAt, laufend),
+    zeit: spanne(e.startedAt, e.endedAt, laufend, fensterTag),
     satz: periodenSatz(e),
     urteil: urteil?.wort ?? null,
     ton: periodenTon(e, urteil?.ton ?? null),
@@ -391,17 +419,55 @@ export function zyklenWort(e: CommandEntry): string {
   return e.cycles == null ? '— (zählen wir noch nicht mit)' : String(e.cycles);
 }
 
-/** „06:10–09:30", „ab 18:30" (laufend) oder „17:55" (Punkt-Ereignis). */
-export function spanne(startedAt: string, endedAt: string | null, laufend: boolean): string {
-  const von = uhr(startedAt);
+/**
+ * „06:10–09:30", „ab 18:30" (laufend) oder „17:55" (Punkt-Ereignis) - und
+ * „18.08. 22:00–06:00", wenn die Zeile an einem ANDEREN Tag begann als dem
+ * ersten Tag des Fensters.
+ *
+ * <b>Das Datum ist eine Ehrlichkeitsregel, kein Schmuck</b> (19.08.2026): eine
+ * Zeile, die vor dem Fenster begann, trug im „Heute"-Tab nur „22:00" - und das
+ * las sich als HEUTE 22:00, also als Zukunft. Datiert wird bewusst nur der
+ * BEGINN und nur gegen den ersten Tag des Fensters: das Ende liegt per
+ * Konstruktion im Fenster, und ein zweites Datum wäre Rauschen.
+ *
+ * @param fensterTag der erste Berliner Kalendertag des Fensters („2026-08-19");
+ *                   `null` = kein Bezug bekannt, dann wird nie datiert (nie ein
+ *                   geratenes Datum).
+ */
+export function spanne(startedAt: string, endedAt: string | null, laufend: boolean,
+    fensterTag: string | null = null): string {
+  const von = tagUndUhr(startedAt, fensterTag);
   if (laufend) return `ab ${von}`;
   if (!endedAt) return von;
   const bis = uhr(endedAt);
-  return bis === von ? von : `${von}–${bis}`;
+  // Punkt-Ereignis: Beginn == Ende, dann nur EIN Zeitpunkt. Verglichen werden
+  // die nackten Uhrzeiten - „18.08. 23:45" ist nie gleich „23:45", und die
+  // Zeile läse sich sonst als Spanne von sich selbst auf sich selbst.
+  if (bis === uhr(startedAt) && berlinTag(startedAt) === berlinTag(endedAt)) {
+    return von;
+  }
+  return `${von}–${bis}`;
+}
+
+/** Uhrzeit, ggf. mit vorangestelltem Datum (siehe {@link spanne}). */
+function tagUndUhr(iso: string, fensterTag: string | null): string {
+  const zeit = uhr(iso);
+  const tag = berlinTag(iso);
+  if (!fensterTag || !tag || tag === fensterTag) return zeit;
+  const datum = new Date(iso).toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: ZONE,
+  });
+  return `${datum} ${zeit}`;
 }
 
 function uhr(iso: string): string {
-  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString('de-DE', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: ZONE,
+  });
 }
 
 /**
