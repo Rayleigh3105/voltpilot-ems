@@ -494,13 +494,17 @@ def main(argv: list[str] | None = None) -> int:
         )
     # Log the active models once: the collector runs ALL models either way, but
     # this line is the operator's confirmation of what the optimizer consumes.
-    # It resolves the FULL precedence (portal choice > env > baseline, see
+    # It resolves the platform precedence (platform choice > env > baseline, see
     # voltpilot_forecast.model_choice) - printing the raw env would be a lie on
     # a fleet that used the promotion switch. A DB blip degrades to env here
     # exactly like everywhere else.
+    #
+    # ⚠ This is the fleet DEFAULT, not "what every plant plans with": since the
+    # per-plant switch (Captain 19.08.2026) a site can carry its own choice, and
+    # the line says so rather than claiming a fleet-wide truth it no longer has.
     _active = model_choice.active_models(env, model_choice.load_choices_dsn(dsn))
     logger.info(
-        "collect.active_models load=%s pv=%s",
+        "collect.active_models load=%s pv=%s (Vorgabe; je Anlage überstimmbar)",
         _active[ForecastKind.LOAD],
         _active[ForecastKind.PV],
     )

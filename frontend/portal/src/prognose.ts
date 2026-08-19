@@ -329,8 +329,8 @@ export const SCHATTEN_ERKLAERUNG = [
  * EINE Quelle für Rechner UND Telefon-Aufklapper.
  */
 export const SCHATTEN_PRINZIP = [
-  'Ein Kandidat wird nie automatisch aktiv. Die Umstellung ist eine bewusste Entscheidung von VoltPilot anhand genau der Bewertungen, die auf dieser Seite stehen.',
-  'Nach einer Umstellung planen alle Fahrpläne ab dem nächsten Planungslauf mit dem neuen Modell - spätestens 15 Minuten später. Das bisherige Modell verschwindet dabei nicht: es rechnet im Schatten weiter und wird weiter jede Nacht bewertet.',
+  'Ein Kandidat wird nie automatisch aktiv. Die Umstellung ist eine bewusste Entscheidung - für genau diese Anlage, anhand genau der Bewertungen, die auf dieser Seite stehen.',
+  'Nach einer Umstellung plant der Fahrplan dieser Anlage ab dem nächsten Planungslauf mit dem neuen Modell - spätestens 15 Minuten später. Alle anderen Anlagen bleiben unverändert, und das bisherige Modell verschwindet nicht: es rechnet im Schatten weiter und wird weiter jede Nacht bewertet.',
   'Deshalb ist der Rückweg jederzeit offen, und es bleibt nachvollziehbar, welches Modell Ihre Anlage seit wann plant.',
 ] as const;
 
@@ -409,11 +409,26 @@ export function bewertungsBilanzSatz(zeilen: readonly BewertungsZeile[]): string
 
 /* ---- der Schalter ---------------------------------------------------------- */
 
-/** Der Zustand einer Prognoseart im Schalter (Server-Antwort, 1:1). */
+/**
+ * Die HERKUNFT des aktiven Modells einer Anlage - die drei Stufen der
+ * Präzedenz (api-Migration V20260826000000):
+ *
+ *  - `anlage`    · jemand hat das FÜR DIESE ANLAGE entschieden,
+ *  - `plattform` · sie folgt der Vorgabe von VoltPilot,
+ *  - `env`       · sie folgt dem ausgelieferten Standardmodell.
+ *
+ * Der Unterschied ist die Aussage „das hat jemand für diese Anlage entschieden"
+ * vs. „so ist es vorgegeben"; er wird nie geraten, sondern kommt vom Server.
+ */
+export type ModellHerkunft = 'anlage' | 'plattform' | 'env';
+
+/** Der Zustand einer Prognoseart im ANLAGEN-Schalter (Server-Antwort, 1:1). */
 export interface ModellWahl {
   kind: 'load' | 'pv';
   activeModel: ForecastModelId;
-  source: 'portal' | 'env';
+  source: ModellHerkunft;
+  /** Was ohne eigene Wahl DIESER Anlage gälte (Plattform-Vorgabe bzw. Env). */
+  platformDefault: ForecastModelId;
   envDefault: ForecastModelId;
   setByName: string | null;
   setAt: string | null;
@@ -429,26 +444,80 @@ export interface ModellWahlHistorie {
 }
 
 export interface ModellWahlZustand {
+  siteId: string;
   kinds: ModellWahl[];
   history: ModellWahlHistorie[];
 }
 
 /**
- * Die Rolle-plus-Herkunft-Zeile am AKTIVEN Modell: „aktiv seit 18.08.2026,
- * umgestellt von max" bzw. „aktiv (Standardmodell dieser Anlage)".
- *
- * Ohne Namen steht dort „von einem Portal-Admin" - eine nackte Kennung ist
- * kein Urheber, den ein Mensch liest, und den Namen zu erfinden wäre schlimmer.
+ * Der PLATTFORMWEITE Schalter (`/api/v1/admin/forecast-models`, admin-only) -
+ * er setzt die VORGABE für jede Anlage ohne eigene Wahl und ist damit ein
+ * anderer Gegenstand als {@link ModellWahl}. Eigener Typ, damit die zwei nie
+ * verwechselt werden: `portal` heißt dort „plattformweit gesetzt", nicht
+ * „für diese Anlage".
  */
-export function rolleZeile(wahl: ModellWahl | null): string {
-  if (!wahl || wahl.source !== 'portal' || !wahl.setAt) {
-    return 'Aktiv - das ausgelieferte Standardmodell dieser Prognoseart.';
-  }
-  const wer = wahl.setByName ? `von ${wahl.setByName}` : 'von einem Portal-Admin';
-  return `Aktiv seit ${datum(wahl.setAt.slice(0, 10))}, umgestellt ${wer}.`;
+export interface PlattformModellWahl {
+  kind: 'load' | 'pv';
+  activeModel: ForecastModelId;
+  source: 'portal' | 'env';
+  envDefault: ForecastModelId;
+  setByName: string | null;
+  setAt: string | null;
+  selectable: ForecastModelId[];
 }
 
-/** Die Historie einer Art als lesbare Zeilen, neueste zuerst. */
+export interface PlattformModellWahlZustand {
+  kinds: PlattformModellWahl[];
+  history: ModellWahlHistorie[];
+}
+
+/**
+ * Die Rolle-plus-Herkunft-Zeile am AKTIVEN Modell - sie beantwortet die eine
+ * Frage, die nach einer Umstellung entsteht: „wer hat das entschieden, und gilt
+ * es für MEINE Anlage?"
+ *
+ * Drei Sätze für die drei Herkünfte (die Präzedenz der api-Migration
+ * V20260826000000), damit man eine EIGENE Wahl von einer Vorgabe unterscheiden
+ * kann, ohne die Rolle des Betrachters zu kennen. Ohne Namen bleibt es bei „im
+ * Portal umgestellt" - eine nackte Kennung ist kein Urheber, den ein Mensch
+ * liest, und den Namen zu erfinden wäre schlimmer.
+ */
+export function rolleZeile(wahl: ModellWahl | null): string {
+  if (!wahl) return 'Aktiv - das ausgelieferte Standardmodell dieser Prognoseart.';
+  if (wahl.source === 'anlage' && wahl.setAt) {
+    const wer = wahl.setByName ? `umgestellt von ${wahl.setByName}` : 'im Portal umgestellt';
+    return `Aktiv für diese Anlage seit ${datum(wahl.setAt.slice(0, 10))}, ${wer}.`;
+  }
+  if (wahl.source === 'plattform') {
+    return 'Aktiv - die Vorgabe von VoltPilot für alle Anlagen ohne eigene Wahl.';
+  }
+  return 'Aktiv - das ausgelieferte Standardmodell dieser Prognoseart.';
+}
+
+/**
+ * Die Betreiber-Zeile „Plattform-Vorgabe wäre: …" - für einen Portal-Admin die
+ * Antwort auf „steht diese Anlage auf der Vorgabe oder hat sie eine eigene
+ * Wahl?" (Anforderung 6).
+ *
+ * `null`, solange die Anlage der Vorgabe FOLGT - dann sagt {@link rolleZeile}
+ * das bereits, und dieselbe Aussage zweimal auf einer Karte ist die
+ * dokumentierte Doppelung. Sie erscheint also genau dort, wo die Anlage
+ * abweicht.
+ */
+export function plattformVorgabeZeile(
+  wahl: ModellWahl | null,
+  labels: Record<string, string>,
+): string | null {
+  if (!wahl || wahl.source !== 'anlage') return null;
+  const vorgabe = labels[wahl.platformDefault] ?? wahl.platformDefault;
+  return `Plattform-Vorgabe wäre: ${vorgabe}.`;
+}
+
+/**
+ * Die Historie einer Art als lesbare Zeilen, neueste zuerst - der Verlauf
+ * DIESER Anlage. Seit dem Anlagen-Schalter kann der Urheber jeder sein, der
+ * Zugriff auf die Anlage hat, nicht nur ein Portal-Admin.
+ */
 export function historieZeilen(
   zustand: ModellWahlZustand | null,
   kind: 'load' | 'pv',
@@ -460,7 +529,7 @@ export function historieZeilen(
     .filter((h) => h.kind === kind)
     .slice(0, grenze)
     .map((h) => {
-      const wer = h.setByName ? h.setByName : 'ein Portal-Admin';
+      const wer = h.setByName ? h.setByName : 'unbekannt';
       const von = h.previousModel ? labels[h.previousModel] ?? h.previousModel : null;
       const zu = labels[h.model] ?? h.model;
       return von
@@ -469,47 +538,65 @@ export function historieZeilen(
     });
 }
 
+/**
+ * Wie viele TAGE dieses Modell auf DIESER Anlage bewertet wurde - der Beleg,
+ * auf den sich eine Umstellung stützen kann.
+ *
+ * ⚠ Gezählt wird JEDE Bewertung, nicht nur die mit einem Skill-Wert (das tut
+ * {@link skillBilanz}, die eine andere Frage beantwortet): der MASSSTAB einer
+ * Art - also das gerade aktive Modell - trägt per Konstruktion keinen Skill,
+ * und ein RÜCKTAUSCH auf ein Modell, das gestern noch geplant hat, darf nicht
+ * daran scheitern, dass es als Maßstab keine Skill-Zeile bekam. Wortgleich mit
+ * der Server-Sperre (`ForecastQualityRepository.evaluatedDays`).
+ */
+export function bewerteteTage(
+  accuracy: readonly ForecastAccuracyPoint[],
+  model: ForecastModelId,
+): number {
+  return accuracy.filter((a) => a.model === model).length;
+}
+
 /** Der Zustand des „Kandidat übernehmen"-Knopfes. */
 export interface UebernahmeKnopf {
-  /** Ob der Knopf überhaupt angeboten wird. */
-  sichtbar: boolean;
   label: string;
   /** Deaktiviert-Grund, sonst `null`. */
   grund: string | null;
 }
 
 /**
- * Ein Knopf, der strukturell nichts bewirken kann, wird NICHT angeboten - und
- * wo er angeboten wird, steht der Einwand VOR dem Klick (die
- * `applyView`-Disziplin der Edge-Updates).
+ * Der Knopf wird JEDEM angeboten, der die Anlage erreicht - die Wahl gilt nur
+ * für DIESE Anlage, und sie gehört dem, dem die Anlage gehört (Captain-Auftrag
+ * 19.08.2026; die frühere `showTechnicalLayer`-Schranke ist gefallen).
  *
- * Ein sammelnder Kandidat hat noch keine einzige Prognose abgegeben; ihn zu
- * übernehmen hieße, den Optimierer auf eine leere Reihe zu setzen. Deshalb ist
- * der Knopf dort da, aber gesperrt - mit dem echten Grund.
+ * Wo er angeboten wird, steht der Einwand VOR dem Klick (die
+ * `applyView`-Disziplin der Edge-Updates), und jeder Einwand ist SERVER-seitig
+ * ein zweites Mal geprüft - dem Client zu glauben wäre keine Prüfung. Ein
+ * sammelnder Kandidat hat noch keine einzige Prognose abgegeben, ein Modell
+ * ohne Tagesbewertung nichts, worauf sich eine Umstellung stützen könnte;
+ * beides würde den Optimierer auf eine leere Reihe setzen.
  */
 export function uebernahmeKnopf(
   kandidat: ForecastModelState,
-  bewertungen: readonly BewertungsZeile[],
-  darfSchalten: boolean,
+  /** Bewertete Tage DIESES Modells auf DIESER Anlage ({@link bewerteteTage}). */
+  bewertet: number,
 ): UebernahmeKnopf {
-  if (!darfSchalten) return { sichtbar: false, label: '', grund: null };
   if (kandidat.status === 'collecting') {
     const tag = kandidat.daysCollected ?? 0;
     const soll = kandidat.daysRequired ?? 21;
     return {
-      sichtbar: true,
       label: 'Kandidat übernehmen',
       grund: `Noch keine Prognosen - der Kandidat sammelt Daten (Tag ${tag} von ${soll}).`,
     };
   }
-  if (bewertungen.length === 0) {
+  if (bewertet === 0) {
     return {
-      sichtbar: true,
       label: 'Kandidat übernehmen',
-      grund: 'Noch keine Tagesbewertung - es gibt nichts, worauf sich eine Umstellung stützen könnte.',
+      grund:
+        'Noch keine Tagesbewertung für diese Anlage - es gibt nichts, worauf sich'
+        + ' eine Umstellung stützen könnte.',
     };
   }
-  return { sichtbar: true, label: 'Kandidat übernehmen', grund: null };
+  return { label: 'Kandidat übernehmen', grund: null };
 }
 
 /** Der Bestätigungs-Dialog: was passiert, was gleich bleibt, wie es zurückgeht. */
@@ -525,24 +612,29 @@ export interface UebernahmeDialog {
  * auch, was GLEICH bleibt - sonst liest sich jedes Umlegen wie ein Lockern der
  * Regeln - und dass der Rückweg offen ist.
  *
- * ⚠ Sie sagt „alle Anlagen": die Wahl gilt plattformweit (die Semantik der
- * abgelösten Umgebungsvariablen). Ein Klick auf einer Anlagen-Seite darf nie
- * wie eine Entscheidung für DIESE Anlage aussehen.
+ * ⚠ Sie sagt „nur für diese Anlage": die Wahl ist seit dem 19.08.2026
+ * anlagenbezogen (sie revidiert die plattformweite Semantik des Vortages). Eine
+ * Folgenliste, die „alle Anlagen der Plattform" behauptet, wäre auf einer
+ * Mehr-Anlagen-Flotte schlicht falsch - und genau der Satz, der einen Kunden
+ * vom Klicken abhält.
  */
 export function uebernahmeDialog(
   kandidatLabel: string,
   aktivLabel: string,
   artLabel: string,
+  anlageLabel?: string | null,
 ): UebernahmeDialog {
+  const anlage = anlageLabel ? `„${anlageLabel}"` : 'dieser Anlage';
   return {
     titel: 'Kandidat übernehmen?',
-    intro: `„${kandidatLabel}" wird das aktive Modell für die ${artLabel}.`,
+    intro: `„${kandidatLabel}" wird das aktive Modell für die ${artLabel} von ${anlage}.`,
     folgen: [
-      'Ab dem nächsten Planungslauf - spätestens in 15 Minuten - rechnen alle Fahrpläne mit diesem Modell.',
+      `Ab dem nächsten Planungslauf - spätestens in 15 Minuten - rechnet der Fahrplan von ${anlage} mit diesem Modell.`,
+      'Die Umstellung gilt NUR für diese Anlage; alle anderen Anlagen bleiben unverändert.',
       `„${aktivLabel}" lernt im Schatten weiter und wird weiter jede Nacht bewertet.`,
       'Sie können jederzeit zurücktauschen - mit demselben Knopf in die Gegenrichtung.',
       'Aufgezeichnete Messwerte, Fahrpläne und Bewertungen bleiben unverändert; es wird nichts neu trainiert.',
-      'Die Umstellung gilt für alle Anlagen der Plattform und wird mit Zeitpunkt und Urheber protokolliert.',
+      'Die Umstellung wird mit Zeitpunkt und Urheber protokolliert.',
     ],
     bestaetigen: 'Übernehmen',
   };
@@ -553,12 +645,15 @@ export function ruecktauschDialog(
   zielLabel: string,
   aktivLabel: string,
   artLabel: string,
+  anlageLabel?: string | null,
 ): UebernahmeDialog {
+  const anlage = anlageLabel ? `„${anlageLabel}"` : 'dieser Anlage';
   return {
     titel: 'Zurücktauschen?',
-    intro: `„${zielLabel}" wird wieder das aktive Modell für die ${artLabel}.`,
+    intro: `„${zielLabel}" wird wieder das aktive Modell für die ${artLabel} von ${anlage}.`,
     folgen: [
-      'Ab dem nächsten Planungslauf rechnen alle Fahrpläne wieder mit diesem Modell.',
+      `Ab dem nächsten Planungslauf rechnet der Fahrplan von ${anlage} wieder mit diesem Modell.`,
+      'Auch das gilt nur für diese Anlage; alle anderen bleiben unverändert.',
       `„${aktivLabel}" rechnet danach im Schatten weiter - seine Bewertung läuft ohne Lücke weiter.`,
       'Auch der Rücktausch wird mit Zeitpunkt und Urheber protokolliert.',
     ],

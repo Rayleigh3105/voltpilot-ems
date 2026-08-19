@@ -2,6 +2,7 @@ import { AuthRedirectError, freshToken } from './auth';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { ProfileState, SiteProfiles } from './profiles';
 import type { Topology } from './topology';
+import type { ModellWahlZustand } from './prognose';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
@@ -691,10 +692,10 @@ export interface PlanAccuracyPoint {
 
 export interface ForecastQuality {
   /**
-   * Das Modell, dessen Prognosen der Optimierer konsumiert - server-seitig mit
-   * DERSELBEN Präzedenz aufgelöst, die der Optimierer nutzt (Portal-Wahl >
-   * Umgebungs-Vorgabe). Nach einer Beförderung steht hier sofort das neue
-   * Modell.
+   * Das Modell, dessen Prognosen der Optimierer FÜR DIESE ANLAGE konsumiert -
+   * server-seitig mit DERSELBEN Präzedenz aufgelöst, die der Optimierer nutzt
+   * (Anlagen-Wahl > Plattform-Vorgabe > Umgebung). Nach einer Umstellung steht
+   * hier sofort das neue Modell.
    */
   activeLoadModel: ForecastModelId;
   activePvModel: ForecastModelId;
@@ -2614,6 +2615,27 @@ export const api = {
     ),
   forecastQuality: (siteId: string, days = 30) =>
     request<ForecastQuality>(`/api/v1/sites/${siteId}/forecast-quality?days=${days}`),
+
+  /**
+   * Der Prognose-Schalter DIESER Anlage: welches Modell je Prognoseart sie
+   * plant, woher die Wahl kommt (eigene · Plattform-Vorgabe · Standardmodell)
+   * und ihre Umstellungs-Historie. Mandantenbezogen wie jede `/sites/**`-Route
+   * - eine fremde Anlage ist 404.
+   */
+  siteForecastModels: (siteId: string) =>
+    request<ModellWahlZustand>(`/api/v1/sites/${siteId}/forecast-models`),
+
+  /**
+   * „Kandidat übernehmen" FÜR DIESE ANLAGE - ab dem nächsten Planungslauf plant
+   * sie mit diesem Modell, alle anderen Anlagen bleiben unverändert. Der
+   * Rückweg ist derselbe Aufruf in die Gegenrichtung; die Umstellung wird
+   * append-only protokolliert (von->zu, wer, wann).
+   */
+  promoteSiteForecastModel: (siteId: string, kind: 'load' | 'pv', model: string) =>
+    request<ModellWahlZustand>(`/api/v1/sites/${siteId}/forecast-models`, {
+      method: 'POST',
+      body: JSON.stringify({ kind, model }),
+    }),
   /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
   history: (siteId: string, range: HistoryRange, at: string) =>
     request<History>(`/api/v1/sites/${siteId}/history?range=${range}&at=${at}`),

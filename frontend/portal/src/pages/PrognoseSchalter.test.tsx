@@ -4,16 +4,20 @@ import type { ForecastQuality } from '../api';
 import type { ModellWahlZustand } from '../prognose';
 
 /**
- * Der Prognose-Schalter auf RENDER-Ebene (Captain-Auftrag 18.08.2026). Die
- * Ableitungen sind in `prognose.test.ts` erschöpfend geprüft - hier geht es um
- * die vier Dinge, die nur die Fläche beantworten kann:
+ * Der Prognose-Schalter auf RENDER-Ebene (Captain-Auftrag 18.08.2026, revidiert
+ * am 19.08.2026: die Wahl gilt JE ANLAGE, und jeder Kunde trifft sie für seine
+ * eigenen Anlagen selbst). Die Ableitungen sind in `prognose.test.ts`
+ * erschöpfend geprüft - hier geht es um die fünf Dinge, die nur die Fläche
+ * beantworten kann:
  *
- *  1. ein Kunde sieht die Erklärung und die Belege, aber KEINEN Knopf,
- *  2. ein Admin sieht ihn, und der Dialog nennt die Folgen (inkl. „alle
- *     Anlagen" und dem Rückweg),
- *  3. der Klick ruft genau EINEN Endpunkt mit Art + Modell,
+ *  1. ein KUNDE sieht den Knopf auf seiner eigenen Anlage (das Rollen-Gate ist
+ *     für diesen Knopf gefallen),
+ *  2. der Dialog nennt die Folgen - inklusive „nur für diese Anlage" und dem
+ *     Rückweg -, und NIE „alle Anlagen der Plattform",
+ *  3. der Klick ruft genau EINEN Endpunkt, mit der ANLAGE + Art + Modell,
  *  4. ein sammelnder Kandidat bekommt einen gesperrten Knopf MIT Grund - und
- *     eine Ablehnung des Servers erscheint als deutscher Satz, nicht als Stille.
+ *     eine Ablehnung des Servers erscheint als deutscher Satz, nicht als Stille,
+ *  5. ein Portal-Admin sieht zusätzlich die Plattform-Vorgabe.
  */
 
 vi.mock('../ForecastQualityChart', () => ({
@@ -21,22 +25,20 @@ vi.mock('../ForecastQualityChart', () => ({
 }));
 
 const forecastQualityMock = vi.fn();
+const forecastModelsMock = vi.fn();
+const promoteMock = vi.fn();
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>();
   return {
     ...actual,
-    api: { ...actual.api, forecastQuality: (...a: unknown[]) => forecastQualityMock(...a) },
+    api: {
+      ...actual.api,
+      forecastQuality: (...a: unknown[]) => forecastQualityMock(...a),
+      siteForecastModels: (...a: unknown[]) => forecastModelsMock(...a),
+      promoteSiteForecastModel: (...a: unknown[]) => promoteMock(...a),
+    },
   };
 });
-
-const forecastModelsMock = vi.fn();
-const promoteMock = vi.fn();
-vi.mock('../admin/adminApi', () => ({
-  adminApi: {
-    forecastModels: () => forecastModelsMock(),
-    promoteForecastModel: (...a: unknown[]) => promoteMock(...a),
-  },
-}));
 
 const technicalLayer = vi.fn();
 vi.mock('../rollen', async (importOriginal) => {
@@ -89,11 +91,13 @@ const QUALITY: ForecastQuality = {
 };
 
 const WAHL: ModellWahlZustand = {
+  siteId: 'site-1',
   kinds: [
     {
       kind: 'load',
       activeModel: 'load-persistence',
       source: 'env',
+      platformDefault: 'load-persistence',
       envDefault: 'load-persistence',
       setByName: null,
       setAt: null,
@@ -103,6 +107,7 @@ const WAHL: ModellWahlZustand = {
       kind: 'pv',
       activeModel: 'pv-physical',
       source: 'env',
+      platformDefault: 'pv-physical',
       envDefault: 'pv-physical',
       setByName: null,
       setAt: null,
@@ -141,7 +146,9 @@ describe('Prognosequalität - der Schalter', () => {
     forecastQualityMock.mockResolvedValue(QUALITY);
     forecastModelsMock.mockResolvedValue(WAHL);
     promoteMock.mockResolvedValue(WAHL);
-    technicalLayer.mockReturnValue(true);
+    // Der Normalfall dieser Datei ist ein KUNDE - der Knopf hängt nicht mehr
+    // an der Rolle.
+    technicalLayer.mockReturnValue(false);
   });
   afterEach(() => {
     vi.clearAllMocks();
@@ -167,19 +174,21 @@ describe('Prognosequalität - der Schalter', () => {
     expect(screen.getByText(/Ø Abweichung je Tag \(kW\)/)).toBeInTheDocument();
   });
 
-  it('zeigt einem KUNDEN keinen Knopf - der Server verweigerte ihn ohnehin', async () => {
+  it('zeigt einem KUNDEN den Knopf auf SEINER Anlage', async () => {
     technicalLayer.mockReturnValue(false);
     rendere();
     await screen.findByText('Lernende Kandidaten');
 
-    expect(screen.queryByRole('button', { name: 'Kandidat übernehmen' })).not.toBeInTheDocument();
-    expect(forecastModelsMock).not.toHaveBeenCalled();
-    // Die Erklärung und der Beleg bleiben ihm.
+    // Das Gate ist für DIESEN Knopf gefallen - die Wahl gilt nur für diese
+    // Anlage, und die gehört ihm.
+    expect(screen.getAllByRole('button', { name: 'Kandidat übernehmen' })).toHaveLength(2);
+    expect(forecastModelsMock).toHaveBeenCalledWith('site-1');
+    // Die Erklärung und der Beleg bleiben ihm ebenfalls.
     expect(screen.getByText(/beeinflusst dabei keinen einzigen Fahrplan/)).toBeInTheDocument();
     expect(screen.getByText(/Die letzten 2 Bewertungen ansehen/)).toBeInTheDocument();
   });
 
-  it('nennt vor dem Klick die Folgen - inklusive „alle Anlagen" und Rückweg', async () => {
+  it('nennt vor dem Klick die Folgen - „nur für diese Anlage" und den Rückweg', async () => {
     rendere();
     await screen.findByText('Lernende Kandidaten');
 
@@ -190,18 +199,22 @@ describe('Prognosequalität - der Schalter', () => {
     expect(dialog.getByText(/nächsten Planungslauf/)).toBeInTheDocument();
     expect(dialog.getByText(/lernt im Schatten weiter/)).toBeInTheDocument();
     expect(dialog.getByText(/jederzeit zurücktauschen/)).toBeInTheDocument();
-    expect(dialog.getByText(/alle Anlagen der Plattform/)).toBeInTheDocument();
+    expect(dialog.getByText(/NUR für diese Anlage/)).toBeInTheDocument();
+    // ⚠ Die alte, plattformweite Zusage darf nirgends stehengeblieben sein.
+    expect(dialog.queryByText(/alle Anlagen der Plattform/)).not.toBeInTheDocument();
+    // Die Anlage wird beim Namen genannt - in der Einleitung UND in der Folge.
+    expect(dialog.getAllByText(/Sonnenhof Weber/).length).toBeGreaterThan(0);
     // Nichts passiert, solange nicht bestätigt wurde.
     expect(promoteMock).not.toHaveBeenCalled();
   });
 
-  it('stellt auf Bestätigung genau EINE Art auf genau EIN Modell um', async () => {
+  it('stellt auf Bestätigung genau DIESE Anlage auf genau EIN Modell um', async () => {
     rendere();
     await screen.findByText('Lernende Kandidaten');
     fireEvent.click(screen.getAllByRole('button', { name: 'Kandidat übernehmen' })[0]);
     fireEvent.click(await screen.findByRole('button', { name: 'Übernehmen' }));
 
-    await waitFor(() => expect(promoteMock).toHaveBeenCalledWith('load', 'load-xgb'));
+    await waitFor(() => expect(promoteMock).toHaveBeenCalledWith('site-1', 'load', 'load-xgb'));
     expect(promoteMock).toHaveBeenCalledTimes(1);
   });
 
@@ -228,35 +241,39 @@ describe('Prognosequalität - der Schalter', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('plant bereits');
   });
 
-  it('sagt am aktiven Modell, seit wann es plant und wer umgestellt hat', async () => {
-    forecastModelsMock.mockResolvedValue({
-      kinds: [
-        {
-          kind: 'load',
-          activeModel: 'load-xgb',
-          source: 'portal',
-          envDefault: 'load-persistence',
-          setByName: 'max',
-          setAt: '2026-08-18T09:30:00Z',
-          selectable: ['load-persistence', 'load-xgb'],
-        },
-        WAHL.kinds[1],
-      ],
-      history: [
-        {
-          kind: 'load',
-          model: 'load-xgb',
-          previousModel: 'load-persistence',
-          setByName: 'max',
-          setAt: '2026-08-18T09:30:00Z',
-        },
-      ],
-    } satisfies ModellWahlZustand);
+  const UMGESTELLT: ModellWahlZustand = {
+    siteId: 'site-1',
+    kinds: [
+      {
+        kind: 'load',
+        activeModel: 'load-xgb',
+        source: 'anlage',
+        platformDefault: 'load-persistence',
+        envDefault: 'load-persistence',
+        setByName: 'max',
+        setAt: '2026-08-18T09:30:00Z',
+        selectable: ['load-persistence', 'load-xgb'],
+      },
+      WAHL.kinds[1],
+    ],
+    history: [
+      {
+        kind: 'load',
+        model: 'load-xgb',
+        previousModel: 'load-persistence',
+        setByName: 'max',
+        setAt: '2026-08-18T09:30:00Z',
+      },
+    ],
+  };
+
+  it('sagt am aktiven Modell, seit wann es FÜR DIESE ANLAGE plant und wer umgestellt hat', async () => {
+    forecastModelsMock.mockResolvedValue(UMGESTELLT);
     rendere();
     await screen.findByText('Aktive Modelle');
 
     expect(
-      await screen.findByText('Aktiv seit 18.08.2026, umgestellt von max.'),
+      await screen.findByText('Aktiv für diese Anlage seit 18.08.2026, umgestellt von max.'),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -266,6 +283,22 @@ describe('Prognosequalität - der Schalter', () => {
     // Die ANDERE Art bleibt ehrlich beim Standardmodell.
     expect(
       screen.getByText('Aktiv - das ausgelieferte Standardmodell dieser Prognoseart.'),
+    ).toBeInTheDocument();
+  });
+
+  it('zeigt die Plattform-Vorgabe nur dem Betreiber, und nur bei Abweichung', async () => {
+    forecastModelsMock.mockResolvedValue(UMGESTELLT);
+    rendere();
+    await screen.findByText('Aktive Modelle');
+    // Der Kunde braucht sie nicht - sie ist eine Betreiber-Auskunft.
+    expect(
+      screen.queryByText(/Plattform-Vorgabe wäre/),
+    ).not.toBeInTheDocument();
+
+    technicalLayer.mockReturnValue(true);
+    rendere();
+    expect(
+      await screen.findByText('Plattform-Vorgabe wäre: Vergleichsmodell (Vortageswert).'),
     ).toBeInTheDocument();
   });
 });

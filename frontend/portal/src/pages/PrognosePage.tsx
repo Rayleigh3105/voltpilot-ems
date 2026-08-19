@@ -27,6 +27,7 @@ import {
   RAHMUNG,
   SCHATTEN_ERKLAERUNG,
   SCHATTEN_PRINZIP,
+  bewerteteTage,
   bewertungsBilanzSatz,
   bewertungsListe,
   historieZeilen,
@@ -34,6 +35,7 @@ import {
   kandidatKern,
   kandidatenZeilen,
   mittlereMae,
+  plattformVorgabeZeile,
   rolleZeile,
   ruecktauschDialog,
   skillBilanz,
@@ -44,7 +46,6 @@ import {
   type BewertungsZeile,
   type ModellWahlZustand,
 } from '../prognose';
-import { adminApi } from '../admin/adminApi';
 import { showTechnicalLayer } from '../rollen';
 import { Button } from '../../designsystem/components/core/Button';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -113,13 +114,13 @@ export function PrognosePage(props: {
   }, [site?.id, reloadKey]);
 
   /*
-   * Der Prognose-Schalter (Captain-Auftrag 18.08.2026). Er ist PLATTFORMWEIT
-   * und deshalb ein Admin-Endpunkt; die Fläche zeigt ihn über den EINEN
-   * Technik-Schalter des Hauses (`showTechnicalLayer`, M7) - ein Kunde sieht
-   * die Erklärung und die Belege, aber keinen Knopf, den der Server ihm
-   * ohnehin mit 403 verweigern würde.
+   * Der Prognose-Schalter (Captain-Auftrag 19.08.2026). Er gilt JE ANLAGE und
+   * gehört dem, dem die Anlage gehört - es gibt hier deshalb KEIN Rollen-Gate
+   * mehr; die Route ist mandantenbezogen wie jede `/sites/**`-Route (eine
+   * fremde Anlage ist 404). Der Technik-Schalter des Hauses steuert nur noch,
+   * ob die Plattform-Vorgabe als Betreiber-Hinweis danebensteht.
    */
-  const darfSchalten = showTechnicalLayer();
+  const istBetreiber = showTechnicalLayer();
   const [wahl, setWahl] = useState<ModellWahlZustand | null>(null);
   const [schalten, setSchalten] = useState<{ kind: 'load' | 'pv'; model: ForecastModelId } | null>(
     null,
@@ -128,18 +129,21 @@ export function PrognosePage(props: {
   const [schaltFehler, setSchaltFehler] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!darfSchalten) return;
+    if (!site) {
+      setWahl(null);
+      return;
+    }
     let active = true;
     // Fail-soft: ohne den Schalter-Zustand bleibt die Seite vollständig
     // benutzbar, sie zeigt dann nur Rolle/Historie nicht.
-    adminApi
-      .forecastModels()
+    api
+      .siteForecastModels(site.id)
       .then((w) => active && setWahl(w))
       .catch(() => active && setWahl(null));
     return () => {
       active = false;
     };
-  }, [darfSchalten, reloadKey]);
+  }, [site?.id, reloadKey]);
 
   const challengers = useMemo(
     () => (quality?.models ?? []).filter((m) => !m.active),
@@ -155,16 +159,16 @@ export function PrognosePage(props: {
     );
     const art = KIND_LABELS[schalten.kind];
     return istRuecktausch(wahl, schalten.kind, schalten.model)
-      ? ruecktauschDialog(kandidatLabel, aktivLabel, art)
-      : uebernahmeDialog(kandidatLabel, aktivLabel, art);
-  }, [schalten, wahl, quality]);
+      ? ruecktauschDialog(kandidatLabel, aktivLabel, art, site?.name)
+      : uebernahmeDialog(kandidatLabel, aktivLabel, art, site?.name);
+  }, [schalten, wahl, quality, site?.name]);
 
   async function uebernehmen() {
-    if (!schalten) return;
+    if (!schalten || !site) return;
     setBusy(true);
     setSchaltFehler(null);
     try {
-      setWahl(await adminApi.promoteForecastModel(schalten.kind, schalten.model));
+      setWahl(await api.promoteSiteForecastModel(site.id, schalten.kind, schalten.model));
       setSchalten(null);
       // Die Kunden-Sicht („live") folgt derselben Auflösung - also neu holen,
       // statt sie hier zu erraten.
@@ -368,12 +372,21 @@ export function PrognosePage(props: {
                             }
                           />
                           {/* Rolle + Herkunft: „seit wann, umgestellt von wem" -
-                              nach einer Beförderung ist genau das die Frage. */}
-                          {darfSchalten && (
+                              nach einer Umstellung ist genau das die Frage. Sie
+                              gehört dem KUNDEN: es ist seine Anlage und seine
+                              Entscheidung. Nur die Plattform-Vorgabe daneben
+                              ist eine Betreiber-Auskunft. */}
+                          {wahl && (
                             <>
                               <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
                                 {rolleZeile(wahlFuer(wahl, kind))}
                               </p>
+                              {istBetreiber
+                                && plattformVorgabeZeile(wahlFuer(wahl, kind), MODEL_LABELS) && (
+                                <p className="vp-note" style={{ marginTop: 'var(--vp-space-1)' }}>
+                                  {plattformVorgabeZeile(wahlFuer(wahl, kind), MODEL_LABELS)}
+                                </p>
+                              )}
                               {historieZeilen(wahl, kind, MODEL_LABELS).length > 0 && (
                                 <ul className="vp-pq-historie">
                                   {historieZeilen(wahl, kind, MODEL_LABELS).map((z) => (
@@ -452,7 +465,6 @@ export function PrognosePage(props: {
                           state={m}
                           accuracy={quality.accuracy}
                           activeModel={activeByKind[m.kind]}
-                          darfSchalten={darfSchalten}
                           onPromote={() => setSchalten({ kind: m.kind, model: m.model })}
                         />
                       ))}
@@ -533,8 +545,7 @@ export function PrognosePage(props: {
                           <BewertungsBeleg zeilen={zeilen} />
                           <UebernahmeAktion
                             state={m}
-                            zeilen={zeilen}
-                            darfSchalten={darfSchalten}
+                            bewertet={bewerteteTage(quality.accuracy, m.model)}
                             onClick={() => setSchalten({ kind: m.kind, model: m.model })}
                           />
                         </div>
@@ -550,7 +561,7 @@ export function PrognosePage(props: {
                     </p>
                     {/* Am Telefon ist das der Ort für „seit wann, von wem" -
                         die Karten „Aktive Modelle" gibt es hier nicht. */}
-                    {darfSchalten &&
+                    {wahl &&
                       (['load', 'pv'] as const).map((kind) => (
                         <p key={kind} className="vp-note" style={{ marginTop: 'var(--vp-space-1)' }}>
                           {KIND_LABELS[kind]}: {rolleZeile(wahlFuer(wahl, kind))}
@@ -676,13 +687,11 @@ function ChallengerCard({
   state,
   accuracy,
   activeModel,
-  darfSchalten,
   onPromote,
 }: {
   state: ForecastModelState;
   accuracy: ForecastAccuracyPoint[];
   activeModel: ForecastModelId;
-  darfSchalten: boolean;
   onPromote: () => void;
 }) {
   const collecting = state.status === 'collecting';
@@ -798,8 +807,7 @@ function ChallengerCard({
           Grund ist die ehrliche Antwort auf „warum kann ich nicht?". */}
       <UebernahmeAktion
         state={state}
-        zeilen={zeilen}
-        darfSchalten={darfSchalten}
+        bewertet={bewerteteTage(accuracy, state.model)}
         onClick={onPromote}
       />
     </div>
@@ -865,24 +873,21 @@ function BewertungsBeleg({ zeilen }: { zeilen: BewertungsZeile[] }) {
 }
 
 /**
- * Der Schalter selbst: ein Knopf, der NICHT angeboten wird, wo er strukturell
- * nichts bewirken kann, und der seinen Einwand VOR dem Klick nennt (die
- * `applyView`-Disziplin). Der Dialog dahinter gehört der Seite, damit es
- * genau einen gibt.
+ * Der Schalter selbst: er steht JEDEM offen, der die Anlage erreicht (die Wahl
+ * gilt nur für sie), und nennt seinen Einwand VOR dem Klick (die
+ * `applyView`-Disziplin). Der Dialog dahinter gehört der Seite, damit es genau
+ * einen gibt.
  */
 function UebernahmeAktion({
   state,
-  zeilen,
-  darfSchalten,
+  bewertet,
   onClick,
 }: {
   state: ForecastModelState;
-  zeilen: BewertungsZeile[];
-  darfSchalten: boolean;
+  bewertet: number;
   onClick: () => void;
 }) {
-  const knopf = uebernahmeKnopf(state, zeilen, darfSchalten);
-  if (!knopf.sichtbar) return null;
+  const knopf = uebernahmeKnopf(state, bewertet);
   return (
     <div className="vp-pq-aktion">
       <Button variant="outline" size="sm" onClick={onClick} disabled={knopf.grund != null}>

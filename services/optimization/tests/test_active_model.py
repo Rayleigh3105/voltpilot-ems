@@ -12,7 +12,10 @@ parameters, and prove:
   nothing else;
 * since the PORTAL promotion switch (Captain 18.08.2026) a stored row in
   ``forecast_model_choice`` beats the env, and NO row leaves every path
-  byte-identical to before the switch existed.
+  byte-identical to before the switch existed;
+* since the PER-PLANT switch (Captain 19.08.2026) a row in
+  ``site_forecast_model_choice`` beats that platform default - **for that site
+  only**, which is the acceptance criterion of the whole feature.
 """
 
 from __future__ import annotations
@@ -41,9 +44,13 @@ MODEL_VALUES = {
 }
 
 
-#: The stored portal choice the fake DB answers with (rows of (kind, model)).
+#: The stored PLATFORM choice the fake DB answers with (rows of (kind, model)).
 #: Empty = the pre-switch world: nothing stored, the env decides.
 STORED_CHOICE: list[tuple[str, str]] = []
+
+#: The stored PER-SITE choices (rows of (site_id, kind, model)). Empty = every
+#: plant follows the platform default, i.e. the pre-19.08. world.
+STORED_SITE_CHOICE: list[tuple[str, str, str]] = []
 
 
 class _FakeCursor:
@@ -61,7 +68,13 @@ class _FakeCursor:
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
-        if "FROM forecast_model_choice" in sql:
+        # ⚠ The per-site table name CONTAINS neither "FROM forecast_model_choice"
+        # nor "FROM site " - but it does start with "site_", so a naive
+        # "FROM site" branch elsewhere would swallow it. Match it first.
+        if "FROM site_forecast_model_choice" in sql:
+            CHOICE_QUERIES.append(sql)
+            self._rows = list(STORED_SITE_CHOICE)
+        elif "FROM forecast_model_choice" in sql:
             CHOICE_QUERIES.append(sql)
             self._rows = list(STORED_CHOICE)
         elif "FROM day_ahead_prices" in sql:
@@ -112,6 +125,7 @@ class _FakeConnection:
 @pytest.fixture()
 def fake_psycopg(monkeypatch):
     STORED_CHOICE.clear()
+    STORED_SITE_CHOICE.clear()
     CHOICE_QUERIES.clear()
     module = SimpleNamespace(connect=lambda dsn: _FakeConnection())
     monkeypatch.setitem(sys.modules, "psycopg", module)
@@ -284,11 +298,11 @@ def test_a_hand_written_unusable_row_never_reaches_the_plan(fake_psycopg, monkey
     assert inp.load_kw == [1.0] * SLOTS  # das Basismodell, nie 888/999
 
 
-def test_the_cycle_reads_the_choice_once_for_the_whole_fleet(fake_psycopg, monkeypatch):
-    """Die Wahl ist plattformweit (die Semantik der abgeloesten Env-Variablen),
-    also waere ein Read je Anlage N identische Abfragen."""
+def test_the_cycle_reads_the_choices_once_for_the_whole_fleet(fake_psycopg, monkeypatch):
+    """Zwei kleine Abfragen je LAUF (Plattform-Vorgabe + die Anlagen mit eigener
+    Wahl), nie N identische je Anlage - aufgeloest wird dann PRO Anlage."""
     from voltpilot_optimization import engine
-    from voltpilot_optimization.inputs import load_model_choices
+    from voltpilot_optimization.inputs import load_model_choices, site_model_choices
 
     monkeypatch.delenv("VOLTPILOT_ACTIVE_LOAD_MODEL", raising=False)
     monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
@@ -307,7 +321,87 @@ def test_the_cycle_reads_the_choice_once_for_the_whole_fleet(fake_psycopg, monke
 
     engine.run_cycle("postgresql://fake", None, None, now=NOW)
 
-    assert len(CHOICE_QUERIES) == 1, "eine Abfrage je LAUF, nicht je Anlage"
-    assert seen == [{"load": "load-xgb"}] * 3
+    assert len(CHOICE_QUERIES) == 2, "zwei Abfragen je LAUF, nicht je Anlage"
+    assert len(seen) == 3
+    assert all(s is seen[0] for s in seen), "dasselbe Objekt an jede Anlage"
+    assert site_model_choices(seen[0], SITE) == {"load": "load-xgb"}
     # ... und der Einzel-Aufrufer (what-if / on-demand replan) laedt sie selbst.
-    assert load_model_choices("postgresql://fake") == {"load": "load-xgb"}
+    choices = load_model_choices("postgresql://fake")
+    assert site_model_choices(choices, SITE) == {"load": "load-xgb"}
+
+
+# ---------------------------------------------------------------------------
+# Der ANLAGEN-Schalter (Captain 19.08.2026): die Wahl gilt je Anlage.
+# Praezedenz: Anlagen-Zeile > Plattform-Zeile > Umgebungsvariable > Default.
+# ---------------------------------------------------------------------------
+
+#: Eine zweite Anlage - der Nachbar, der unveraendert bleiben MUSS.
+SITE_B = UUID("00000000-0000-0000-0000-0000000000bb")
+
+
+def _site_b() -> BatterySite:
+    site = _site()
+    return BatterySite(
+        tenant_id=site.tenant_id,
+        site_id=SITE_B,
+        device_id=None,
+        bidding_zone=site.bidding_zone,
+        battery=site.battery,
+        netzladen_erlaubt=True,
+    )
+
+
+def test_without_a_site_row_the_plan_input_is_byte_identical(fake_psycopg, monkeypatch):
+    """Die Rueckwaerts-Sicherheit der zweiten Stufe."""
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_LOAD_MODEL", raising=False)
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+    assert STORED_SITE_CHOICE == []
+
+    inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+    assert inp.load_kw == [1.0] * SLOTS
+    assert inp.pv_kw == [0.5] * SLOTS
+
+
+def test_a_site_choice_beats_the_platform_default_for_that_site_only(
+    fake_psycopg, monkeypatch
+):
+    """DAS Abnahmekriterium: nur DIESE Anlage plant mit dem Kandidaten."""
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_LOAD_MODEL", raising=False)
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+    STORED_CHOICE.append(("load", "load-persistence"))
+    STORED_SITE_CHOICE.append((str(SITE), "load", "load-xgb"))
+
+    a = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+    assert a.load_kw == [999.0] * SLOTS  # der befoerderte Kandidat
+
+    # Der FAKE liefert Prognosezeilen nur fuer SITE, also prueft die Nachbarin
+    # ihre Auflösung ueber die Wahl-Ebene statt ueber die Reihe.
+    from voltpilot_optimization.inputs import load_model_choices, site_model_choices
+
+    choices = load_model_choices("postgresql://fake")
+    assert site_model_choices(choices, SITE) == {"load": "load-xgb"}
+    assert site_model_choices(choices, SITE_B) == {"load": "load-persistence"}
+
+
+def test_a_site_choice_beats_the_environment_too(fake_psycopg, monkeypatch):
+    monkeypatch.setenv("VOLTPILOT_ACTIVE_LOAD_MODEL", "load-persistence")
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+    STORED_SITE_CHOICE.append((str(SITE), "pv", "pv-residual-xgb"))
+
+    inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+    assert inp.pv_kw == [888.0] * SLOTS    # die Anlagen-Wahl
+    assert inp.load_kw == [1.0] * SLOTS    # die Umgebung, unveraendert
+
+
+def test_a_hand_written_unusable_site_row_never_reaches_the_plan(
+    fake_psycopg, monkeypatch
+):
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_LOAD_MODEL", raising=False)
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+    STORED_SITE_CHOICE.append((str(SITE), "load", "pv-physical"))  # art-fremd
+
+    inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+    assert inp.load_kw == [1.0] * SLOTS  # das Basismodell, nie 888/999

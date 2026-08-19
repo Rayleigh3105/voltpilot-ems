@@ -1492,14 +1492,17 @@ class AdminApiTest {
     // ---- der Prognose-Schalter (Captain-Auftrag 18.08.2026) ------------------
 
     /**
-     * „Kandidat übernehmen" als Endpunkt: ein Portal-Admin stellt das aktive
-     * Prognosemodell um, die Umstellung trägt ihre Papier-Spur (von-&gt;zu, wer,
-     * wann), die KUNDEN-Seite zeigt danach sofort das neue Modell als „live" -
-     * und der Rückweg ist derselbe Aufruf in die Gegenrichtung.
+     * Die PLATTFORM-VORGABE des Prognosemodells als Endpunkt: ein Portal-Admin
+     * stellt sie um, die Umstellung trägt ihre Papier-Spur (von-&gt;zu, wer,
+     * wann), jede Anlage OHNE eigene Wahl zeigt danach sofort das neue Modell
+     * als „live" - und der Rückweg ist derselbe Aufruf in die Gegenrichtung.
      *
      * <p>Der Rollen-Zaun ist Teil desselben Tests, weil er die eigentliche
-     * Sicherheits-Aussage ist: die Wahl gilt PLATTFORMWEIT, ein Kunde darf sie
-     * also nie stellen können.
+     * Sicherheits-Aussage ist: die VORGABE gilt für die ganze Flotte, ein Kunde
+     * darf sie also nie stellen können. Seine eigene Anlage stellt er über die
+     * mandantenbezogene Route {@code /sites/{id}/forecast-models} um (Captain
+     * 19.08.2026, bewiesen von {@code PortalApiTest}), und eine Anlage mit
+     * EIGENER Wahl folgt der Vorgabe hier ausdrücklich NICHT.
      */
     @Test
     void theForecastPromotionSwitchIsAdminOnlyAuditedAndVisibleToTheCustomer() {
@@ -1522,8 +1525,9 @@ class AdminApiTest {
                 .isEqualTo(List.of("load-persistence", "load-xgb"));
         assertThat((List<?>) before.get("history")).isEmpty();
 
-        // (2) Der Kunde kommt an den Schalter nicht heran - weder lesend noch
-        //     schreibend (die Wahl ist plattformweit, nicht anlagenbezogen).
+        // (2) Der Kunde kommt an die VORGABE nicht heran - weder lesend noch
+        //     schreibend (sie gilt der ganzen Flotte). Seine eigene Anlage
+        //     stellt er über /sites/{id}/forecast-models um.
         assertThat(rest.exchange(url, HttpMethod.GET, new HttpEntity<>(bearer(customer)),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(rest.exchange(url, HttpMethod.POST,
@@ -1564,6 +1568,19 @@ class AdminApiTest {
         Map<String, Object> quality = forecastQuality(customer, BERLIN_SITE);
         assertThat(quality.get("activeLoadModel")).isEqualTo("load-xgb");
         assertThat(quality.get("activePvModel")).isEqualTo("pv-physical");
+
+        // (5b) ... ABER eine Anlage mit EIGENER Wahl bleibt bei ihr. Die
+        //      Präzedenz ist Anlage > Plattform, sonst nähme der Betreiber dem
+        //      Kunden stillschweigend seine Entscheidung ab.
+        exec("INSERT INTO site_forecast_model_choice (site_id, tenant_id, model_kind,"
+                + " model_id, previous_model_id, set_by, set_by_name) VALUES ("
+                + "'" + BERLIN_SITE + "', '00000000-0000-0000-0000-000000000001',"
+                + " 'load', 'load-persistence', 'load-xgb', 'demo', 'demo')");
+        assertThat(forecastQuality(customer, BERLIN_SITE).get("activeLoadModel"))
+                .isEqualTo("load-persistence");
+        exec("DELETE FROM site_forecast_model_choice WHERE site_id = '" + BERLIN_SITE + "'");
+        assertThat(forecastQuality(customer, BERLIN_SITE).get("activeLoadModel"))
+                .isEqualTo("load-xgb");
 
         // (6) Derselbe Knopf in die Gegenrichtung - der Rückweg bleibt offen.
         Map<String, Object> reverted = promoteModel(admin, "load", "load-persistence");

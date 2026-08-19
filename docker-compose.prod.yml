@@ -398,7 +398,8 @@ services:
       VOLTPILOT_CORS_ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN in .env}
       # Which forecast model is LIVE per kind. Since the portal promotion
       # switch (docs/forecasting.md) these are the DEFAULT: a row in
-      # forecast_model_choice wins over them. Keep in sync with the forecast +
+      # site_forecast_model_choice (je Anlage) bzw. forecast_model_choice
+      # (plattformweit) wins over them. Keep in sync with the forecast +
       # optimization services (same .env vars) - all three resolve the SAME
       # precedence, so they cannot disagree.
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
@@ -786,7 +787,8 @@ services:
       OPTIMIZER_HORIZON_HOURS: ${OPTIMIZER_HORIZON_HOURS:-24}
       # Shadow-mode forecasting: the optimizer reads ONLY the ACTIVE model's
       # rows from the forecast hypertable. These are the DEFAULT - a portal
-      # promotion (forecast_model_choice) wins; the optimizer reads that choice
+      # promotion wins - per PLANT (site_forecast_model_choice) over the
+      # platform default (forecast_model_choice); the optimizer reads both
       # ONCE per cycle. Keep in sync with the forecast service.
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}

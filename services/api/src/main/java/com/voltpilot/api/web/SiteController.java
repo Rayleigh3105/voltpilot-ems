@@ -344,12 +344,14 @@ public class SiteController {
     }
 
     /**
-     * "Prognosequalität" for a site: which forecast model is live per kind
-     * (from the api's config - the same env the optimizer reads), every
-     * model's lifecycle incl. challengers still collecting training data, the
-     * daily error/skill series computed by the evaluation job, and the daily
-     * plan-vs-actual economics. All from RLS-scoped tables - a foreign site
-     * is a 404; a fresh site yields empty (but well-formed) lists.
+     * "Prognosequalität" for a site: which forecast model is live per kind -
+     * resolved SERVER-side for THIS site with the same precedence the optimizer
+     * uses (site choice &gt; platform default &gt; env, migration
+     * V20260826000000) -, every model's lifecycle incl. challengers still
+     * collecting training data, the daily error/skill series computed by the
+     * evaluation job, and the daily plan-vs-actual economics. All from
+     * RLS-scoped tables - a foreign site is a 404; a fresh site yields empty
+     * (but well-formed) lists.
      */
     @GetMapping("/{siteId}/forecast-quality")
     public ForecastQualityDto forecastQuality(
@@ -360,7 +362,7 @@ public class SiteController {
         }
         int window = Math.min(Math.max(days, 1), 90);
         LocalDate since = LocalDate.now(HistoryRange.ZONE).minusDays(window);
-        Map<String, String> effective = forecastModels.activeModels();
+        Map<String, String> effective = forecastModels.activeModels(siteId);
         String activeLoadModel = effective.get(ForecastModels.KIND_LOAD);
         String activePvModel = effective.get(ForecastModels.KIND_PV);
         Set<String> active = Set.of(activeLoadModel, activePvModel);

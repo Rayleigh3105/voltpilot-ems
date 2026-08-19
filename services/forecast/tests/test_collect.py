@@ -260,8 +260,13 @@ class _EvalCursor:
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
-        if "FROM forecast_model_choice" in sql:
-            # The promotion switch (V20260825000000): absent by default, so the
+        if "FROM site_forecast_model_choice" in sql:
+            # The PER-PLANT switch (V20260826000000): absent by default.
+            # ⚠ This branch MUST come before the plain "FROM site" one - the
+            # table name contains it as a substring.
+            self._rows = list(self._db.get("site_model_choice", []))
+        elif "FROM forecast_model_choice" in sql:
+            # The platform default (V20260825000000): absent by default, so the
             # evaluator falls back to the env exactly as before.
             self._rows = list(self._db.get("model_choice", []))
         elif "FROM site WHERE id" in sql:

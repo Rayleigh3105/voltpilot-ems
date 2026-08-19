@@ -191,15 +191,23 @@ def evaluate_day(
     skill-NULL, i.e. the candidate panel would go blank the moment someone used
     the promotion switch. The COLUMN keeps its name (``skill_vs_baseline``) -
     an applied migration is immutable.
+
+    ⚠ **The reference is resolved PER SITE** (Captain 19.08.2026): since the
+    per-plant switch, two plants of the same fleet can legitimately plan with
+    different models, so a fleet-wide reference would score one of them against
+    a model it does not use. The choices are read ONCE for the whole pass and
+    then applied per site - a read per site would be N identical queries.
     """
     start, end = berlin_day_bounds(day)
-    active = model_choice.active_models(
-        os.environ if env is None else env, model_choice.load_choices(conn)
-    )
+    environment = os.environ if env is None else env
+    choices = model_choice.load_all(conn)
     accuracy_rows = 0
     plan_rows = 0
     with conn.cursor() as cur:
         for tenant_id, site_id in _sites(cur):
+            active = model_choice.active_models(
+                environment, choices.for_site(site_id)
+            )
             for kind in ForecastKind:
                 actuals = _actuals(cur, site_id, _KIND_COLUMNS[kind], start, end)
                 if not actuals:

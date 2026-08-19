@@ -95,6 +95,42 @@ public class ForecastQualityRepository {
                 siteId, since);
     }
 
+    /**
+     * Der Lebenszyklus-Zustand EINES Modells auf DIESER Anlage
+     * ({@code collecting} | {@code ready}), {@code null} wenn es hier noch nie
+     * gelaufen ist.
+     *
+     * <p>Er ist der SERVER-seitige Beleg für die erste Sperre des
+     * „Kandidat übernehmen"-Knopfes: ein sammelnder Kandidat hat noch keine
+     * einzige Prognose abgegeben, ihn zu übernehmen hieße, den Optimierer auf
+     * eine leere Reihe zu setzen. Die Fläche nennt denselben Grund vor dem
+     * Klick - dem Client zu glauben wäre keine Prüfung.
+     */
+    public String modelStatus(UUID siteId, String model) {
+        List<String> rows = jdbc.query(
+                "SELECT status FROM forecast_model_state "
+                        + "WHERE site_id = ? AND model = ?",
+                (rs, i) -> rs.getString("status"),
+                siteId, model);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Wie viele TAGE dieses Modell auf DIESER Anlage schon bewertet wurde - der
+     * Beleg, auf den sich eine Umstellung stützen kann.
+     *
+     * <p>Gezählt wird jede Bewertung, nicht nur die mit einem Skill-Wert: der
+     * Maßstab selbst (das gerade aktive Modell) trägt per Konstruktion keinen
+     * Skill, und ein RÜCKTAUSCH auf ein Modell, das gestern noch geplant hat,
+     * darf nicht daran scheitern, dass es als Maßstab keine Skill-Zeile bekam.
+     */
+    public int evaluatedDays(UUID siteId, String model) {
+        Integer n = jdbc.queryForObject(
+                "SELECT count(*) FROM forecast_accuracy WHERE site_id = ? AND model = ?",
+                Integer.class, siteId, model);
+        return n == null ? 0 : n;
+    }
+
     private List<FeatureImportanceDto> parseImportance(String json) {
         if (json == null || json.isBlank()) {
             return List.of();

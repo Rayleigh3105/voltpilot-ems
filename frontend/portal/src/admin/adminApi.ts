@@ -8,7 +8,7 @@ import {
 import type { DeviceApply, DeviceTrust, EdgeUpdates } from '../adminEdgeUpdates';
 import type { AdminVorlage } from '../adminVorlagen';
 import type { FlottenAnlage } from '../adminKomponentenFlotte';
-import type { ModellWahlZustand } from '../prognose';
+import type { PlattformModellWahlZustand } from '../prognose';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -546,18 +546,19 @@ export const adminApi = {
     request<{ sites: FlottenAnlage[] }>('/api/v1/admin/component-fleet').then((r) => r.sites),
 
   /**
-   * Der Prognose-Schalter: welches Modell je Prognoseart plant, woher die Wahl
-   * kommt, und die Umstellungs-Historie. PLATTFORMWEIT, nicht je Anlage.
+   * Die PLATTFORM-VORGABE des Prognosemodells: was für jede Anlage gilt, die
+   * keine eigene Wahl getroffen hat. Sie ist NICHT die Antwort auf „was plant
+   * Anlage X" - dafür ist `api.siteForecastModels(siteId)` da (Captain-Auftrag
+   * 19.08.2026).
    */
-  forecastModels: () => request<ModellWahlZustand>('/api/v1/admin/forecast-models'),
+  forecastModels: () => request<PlattformModellWahlZustand>('/api/v1/admin/forecast-models'),
 
   /**
-   * „Kandidat übernehmen" - ab dem nächsten Planungslauf plant dieses Modell.
-   * Der Rückweg ist derselbe Aufruf in die Gegenrichtung; die Umstellung wird
-   * append-only protokolliert (von->zu, wer, wann).
+   * Setzt die Plattform-Vorgabe. Eine Anlage mit EIGENER Wahl bleibt davon
+   * unberührt - die Präzedenz ist Anlage > Plattform > Umgebung.
    */
   promoteForecastModel: (kind: 'load' | 'pv', model: string) =>
-    request<ModellWahlZustand>('/api/v1/admin/forecast-models', {
+    request<PlattformModellWahlZustand>('/api/v1/admin/forecast-models', {
       method: 'POST',
       body: JSON.stringify({ kind, model }),
     }),
