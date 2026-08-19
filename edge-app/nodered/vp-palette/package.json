@@ -1,7 +1,7 @@
 {
   "name": "@voltpilot/node-red-vp-palette",
-  "version": "0.7.0",
-  "description": "VoltPilot Edge-App Node-RED-Palette: vp-telemetrie, vp-sollwert, vp-status, vp-inverter-config, vp-sources-config und vp-quelle verbinden die Kunden-I/O-Flows mit dem lokalen Bus des VoltPilot Core-Agenten; ab 0.2.0 zusaetzlich die v2-Flow-Runtime-Knoten vp-desired (Wunsch/Arbitrierung), vp-entity-read, vp-feed und vp-notify; ab 0.3.0 der generische Modbus-TCP-Lese-Knoten vp-modbus-read (MB-M1); ab 0.4.0 vp-register-raw und vp-register-want (Modbus-Datenspiegel); ab 0.5.0 der generierte Verbraucherregel-Knoten vp-consumer-policy (Verbrauchssteuerung Inkrement 4, D-19); ab 0.6.0 der Ausfuehrer des Probe-Kanals vp-modbus-probe (Einheitsmodell Stufe 0b); ab 0.7.0 die beiden SCHREIBENDEN Knoten vp-modbus-switch-test (gefuehrter Schalt-Test) und der generierte vp-modbus-switch (Einheitsmodell Stufe 4).",
+  "version": "0.8.0",
+  "description": "VoltPilot Edge-App Node-RED-Palette: vp-telemetrie, vp-sollwert, vp-status, vp-inverter-config, vp-sources-config und vp-quelle verbinden die Kunden-I/O-Flows mit dem lokalen Bus des VoltPilot Core-Agenten; ab 0.2.0 zusaetzlich die v2-Flow-Runtime-Knoten vp-desired (Wunsch/Arbitrierung), vp-entity-read, vp-feed und vp-notify; ab 0.3.0 der generische Modbus-TCP-Lese-Knoten vp-modbus-read (MB-M1); ab 0.4.0 vp-register-raw und vp-register-want (Modbus-Datenspiegel); ab 0.5.0 der generierte Verbraucherregel-Knoten vp-consumer-policy (Verbrauchssteuerung Inkrement 4, D-19); ab 0.6.0 der Ausfuehrer des Probe-Kanals vp-modbus-probe (Einheitsmodell Stufe 0b); ab 0.7.0 die beiden SCHREIBENDEN Knoten vp-modbus-switch-test (gefuehrter Schalt-Test) und der generierte vp-modbus-switch (Einheitsmodell Stufe 4). ab 0.8.0 das Paar vp-installer-write-request/-result: der bewusst ENGE Fernschreibpfad fuer GENAU EIN Deye-Installateur-Register (0x00E7 Grid Max Export power).",
   "license": "UNLICENSED",
   "private": true,
   "keywords": [
@@ -33,7 +33,9 @@
       "vp-consumer-policy": "nodes/vp-consumer-policy.js",
       "vp-modbus-probe": "nodes/vp-modbus-probe.js",
       "vp-modbus-switch-test": "nodes/vp-modbus-switch-test.js",
-      "vp-modbus-switch": "nodes/vp-modbus-switch.js"
+      "vp-modbus-switch": "nodes/vp-modbus-switch.js",
+      "vp-installer-write-request": "nodes/vp-installer-write-request.js",
+      "vp-installer-write-result": "nodes/vp-installer-write-result.js"
     }
   },
   "dependencies": {

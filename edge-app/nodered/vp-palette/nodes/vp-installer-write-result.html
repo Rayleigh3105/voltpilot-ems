@@ -1,0 +1,37 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-installer-write-result', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 1,
+    outputs: 0,
+    align: 'right',
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-installer-write-result'; },
+    paletteLabel: 'vp-installer-write-result'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-installer-write-result">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-installer-write-result">
+  <p>Meldet das Ergebnis des einmaligen Installateur-Schreibauftrags an den
+  VoltPilot Core-Agenten (<code>edge/installer-write/result</code>, nicht
+  retained), korreliert über <code>request_id</code>.</p>
+  <p><code>msg.payload</code>: <code>{ request_id, ok, before?, after?, wrote,
+  error_code?, message? }</code>. <code>before</code>/<code>after</code> sind die
+  Rohwerte des Registers vor und nach dem Schreiben; sie fehlen, wenn nicht
+  gelesen werden konnte – eine 0 ist ein WERT, keine Abwesenheit.</p>
+</script>

@@ -62,6 +62,13 @@ services:
       # in der Weboberflaeche; das Port-Mapping unten muss denselben Wert
       # nutzen). Der Spiegel selbst ist standardmaessig AUS (mirror.json).
       VP_MIRROR_PORT: ${VP_MIRROR_PORT:-502}
+      # Der bewusst ENGE Fernschreibpfad fuer GENAU EIN Deye-Installateur-
+      # Register: 0x00E7 „Grid Max Export power" (die Einspeisegrenze, die
+      # sonst nur im Installateur-Menue vor Ort erreichbar ist). Standard
+      # 'false' = die :8484-Endpunkte antworten 404 und der Pfad existiert
+      # nach aussen nicht. Fuer ein Wartungsfenster gezielt einschalten und
+      # danach wieder ausschalten - es ist KEINE Flotten-Faehigkeit.
+      VP_INSTALLER_WRITE_ENABLED: ${VP_INSTALLER_WRITE_ENABLED:-false}
       # Dev-only escape hatches (skip enrollment / plain-MQTT cloud). Leave
       # EMPTY on customer devices - see README.
       VP_DEV_TENANT_ID: ${VP_DEV_TENANT_ID:-}

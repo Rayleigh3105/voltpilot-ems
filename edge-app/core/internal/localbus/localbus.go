@@ -50,6 +50,20 @@
 //	edge/test-read/result   Layer 1 -> core   NOT retained. The one-shot result:
 //	                {request_id, ok, error_code?, reading?{pv_kw?,load_kw?,
 //	                 grid_kw?,soc_pct?}}. Correlated to the request by request_id.
+//	edge/installer-write/request  core -> Layer 1   NOT retained. ONE already
+//	                admitted write of the ONE allowlisted Deye installer
+//	                register 0x00E7 („Grid Max Export power"):
+//	                {request_id, mode:"dry_run"|"apply", register:"0x00e7",
+//	                 addr, value}. The core has already checked the feature
+//	                flag, the family allowlist, the value ceiling and the
+//	                operator's confirm token - the node re-checks address and
+//	                bound and has nothing else to decide.
+//	edge/installer-write/result   Layer 1 -> core   NOT retained. The answer:
+//	                {request_id, ok, before?, after?, wrote, error_code?,
+//	                 message?}. NON-RETAINED IN BOTH DIRECTIONS is load-bearing:
+//	                a write order that reappeared on the next reconnect would be
+//	                the exact opposite of a one-shot installer write, and this
+//	                register lives in EEPROM.
 //	edge/registers/raw   Layer 1 -> core   RETAINED. The raw register blocks
 //	                the inverter poll read this cycle, byte-faithful, for the
 //	                Modbus-Datenspiegel (internal/mirror):
@@ -148,6 +162,16 @@ const (
 	// next reconnect would be the opposite of a one-shot test.
 	TopicSwitchRequest = "edge/switch/request"
 	TopicSwitchResult  = "edge/switch/result"
+	// TopicInstallerWriteRequest/Result are the ONE-SHOT INSTALLER WRITE pair
+	// (the 0x00E7 „Grid Max Export power" remote lever, internal/installerwrite).
+	//
+	// A SEPARATE pair on purpose, exactly like the switch-test pair above: it
+	// keeps this write in one node, so „the read poll has no write path" stays a
+	// property of the code. It rides the SAME per-(host,port) flow-context lock
+	// as the Deye poll and the control executor (same tab -> shared flow ctx),
+	// so the one-socket law holds without a second connection to the logger.
+	TopicInstallerWriteRequest = "edge/installer-write/request"
+	TopicInstallerWriteResult  = "edge/installer-write/result"
 	// TopicControlGate is the RETAINED plant-wide control gate the core owns:
 	// {control_enabled, consumer_control_enabled}. A Node-RED executor cannot
 	// read the box's env, and the per-entity command's `control_enabled` field

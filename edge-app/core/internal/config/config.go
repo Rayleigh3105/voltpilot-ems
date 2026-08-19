@@ -81,6 +81,21 @@ type Config struct {
 	// site's netzladen_erlaubt flag; kept off by default on-device.
 	GridChargeAllowed bool `json:"grid_charge_allowed"`
 
+	// InstallerWriteEnabled opens the deliberately NARROW remote write path for
+	// ONE Deye installer register: 0x00E7 „Grid Max Export power" (see
+	// internal/installerwrite). Default FALSE, and that default is the feature:
+	// without it the :8484 endpoints answer 404, nothing subscribes, nothing is
+	// published, and the box behaves byte-identically to before the feature. It
+	// is switched on per maintenance window in the compose .env
+	// (VP_INSTALLER_WRITE_ENABLED) and switched off again afterwards - it is NOT
+	// a fleet-wide capability.
+	//
+	// It is independent of ControlEnabled/ControlCertifiedFamilies on purpose:
+	// those gate the CONTINUOUS battery-dispatch loop, this is a single,
+	// operator-confirmed EEPROM write of one commissioning value. Neither
+	// widens the other.
+	InstallerWriteEnabled bool `json:"installer_write_enabled"`
+
 	// CalibrationMaxKw is the HARD magnitude cap for the First-Light calibration
 	// step (the very first real write to a live customer battery, done BEFORE the
 	// family is certified): a calibration test setpoint is capped to
@@ -336,6 +351,7 @@ func applyEnv(cfg *Config) {
 	boolEnv("VP_CONTROL_ENABLED", &cfg.ControlEnabled)
 	boolEnv("VP_CONSUMER_CONTROL_ENABLED", &cfg.ConsumerControlEnabled)
 	boolEnv("VP_GRID_CHARGE_ALLOWED", &cfg.GridChargeAllowed)
+	boolEnv("VP_INSTALLER_WRITE_ENABLED", &cfg.InstallerWriteEnabled)
 	boolEnv("VP_FLOW_NODE_STATUS_ENABLED", &cfg.FlowNodeStatusEnabled)
 	str("VP_NODERED_ADMIN_URL", &cfg.NodeRedAdminURL)
 	str("VP_NODERED_USER", &cfg.NodeRedUser)

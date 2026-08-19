@@ -193,6 +193,85 @@ function resolveControlTier(selection) {
   return inferTierFromCommunication(selection ? selection.communication : '');
 }
 
+// --- the NARROW installer write: ONE register, 0x00E7 -------------------------
+//
+// „Grid Max Export power" (dec. 231) is the inverter's OWN feed-in cap - the
+// value an installer normally only reaches through the device's installer menu
+// ON SITE. At Anlage Herzogau the Deye held 33,0 kW there while 70 kW were
+// registered, and raising it meant an appointment. This is the remote lever for
+// exactly that one number.
+//
+// ⚠ IT IS NOT A REGISTER-WRITE API, AND THAT IS THE DESIGN. There is no
+// address parameter: `installerWriteRoute` hard-codes the address, derives the
+// scale from the family's OWN read-side table and refuses everything else. A
+// future „just one more register" is a code change with its own review.
+//
+// ⚠ WHY IT REUSES `DEYE_CONTROL_REG[...].exportLimit` (and demands it differ
+// from `maxSellPower`): on hybrid_3p 0x00E7 is a DEDICATED cap, but on
+// hybrid_1p the feed-in cap register IS „Max Sell Power" (0x00F5) - the register
+// OUR OWN discharge lever writes. Writing it from here would fight the control
+// loop, so that family is refused by the same rule that already keeps it out of
+// the READ path (inverter-routing.js DEYE_EXPORT_LIMIT).
+//
+// ⚠ FC16, not FC6, for the same measured reason as every other Deye control
+// write: many Deye firmwares behind the Solarman logger ACCEPT an FC6 frame and
+// never apply it (see resolveDeyeWriteFc). `connection.control_write_fc: 6`
+// flips back, exactly like the control path.
+const INSTALLER_WRITE_ADDR = 0x00e7; // the ONE allowlisted address
+const INSTALLER_WRITE_MAX_RAW = 7000; // 70,0 kW at scale 10 - a POLICY ceiling
+
+/**
+ * installerWriteRoute - map a parsed Selection + an ALREADY ADMITTED request
+ * onto the one-shot installer write plan. Pure, like every other route.
+ *
+ *   sel: the parsed edge/inverter/config (inverter-routing.parseConfig output)
+ *   req: { mode: 'dry_run'|'apply', addr, value }
+ *
+ * Returns { ok: false, reason } or:
+ *   { ok: true, adapter: 'solarman_v5', target, connection:{ip,port,serial,
+ *     mb_slave_id}, apply, addr, value, scale, kw, read:{fc:3,addr,count:1},
+ *     write:{fc,addr,value} }   // write ABSENT on a dry run
+ */
+function installerWriteRoute(sel, req) {
+  if (!sel) return { ok: false, reason: 'Es ist kein Wechselrichter eingerichtet.' };
+  if (sel.communication !== COMM_SOLARMAN) {
+    return { ok: false, reason: 'Dieser Wechselrichter wird nicht über den Solarman-Logger gelesen; der Fernschreibpfad steht nur dort zur Verfügung.' };
+  }
+  const reg = DEYE_CONTROL_REG[sel.family];
+  if (!reg || reg.exportLimit !== INSTALLER_WRITE_ADDR || reg.exportLimit === reg.maxSellPower) {
+    return { ok: false, reason: 'Für diese Wechselrichter-Familie ist das Register 0x00e7 nicht freigegeben.' };
+  }
+  const r = req || {};
+  const addr = Number(r.addr);
+  if (addr !== INSTALLER_WRITE_ADDR) {
+    return { ok: false, reason: 'Es ist ausschließlich das Register 0x00e7 freigegeben.' };
+  }
+  const value = Number(r.value);
+  if (!isFiniteNum(value) || !Number.isInteger(value) || value <= 0 || value > INSTALLER_WRITE_MAX_RAW) {
+    return { ok: false, reason: 'Der Wert liegt außerhalb des freigegebenen Bereichs (1 bis ' + INSTALLER_WRITE_MAX_RAW + ').' };
+  }
+  const conn = sel.connection || {};
+  const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';
+  if (!ip) return { ok: false, reason: 'Für den Wechselrichter ist keine IP-Adresse hinterlegt.' };
+  const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
+  const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
+  const scale = reg.exportLimitScale;
+  const out = {
+    ok: true, adapter: 'solarman_v5', family: sel.family,
+    target: ip + ':' + port,
+    connection: { ip, port, serial: conn.serial, mb_slave_id: slaveId },
+    apply: r.mode === 'apply',
+    addr: INSTALLER_WRITE_ADDR, value, scale, kw: (value * scale) / 1000,
+    // The read is the SAME on both stages: a dry run reports the Ist-value, a
+    // real write reads before AND after. One register, FC3.
+    read: { fc: 3, addr: INSTALLER_WRITE_ADDR, count: 1 },
+  };
+  if (out.apply) {
+    out.write = { fc: resolveDeyeWriteFc(conn), addr: INSTALLER_WRITE_ADDR, value };
+  }
+  return out;
+}
+
 /**
  * controlRoute - map a parsed Selection + a setpoint command onto a WRITE PLAN.
  *
@@ -2016,6 +2095,9 @@ module.exports = {
   deyeProgram1Displaced,
   resolveControlTier,
   deviceGrant,
+  INSTALLER_WRITE_ADDR,
+  INSTALLER_WRITE_MAX_RAW,
+  installerWriteRoute,
   controlRoute,
   controlRelease,
   setpointStale,

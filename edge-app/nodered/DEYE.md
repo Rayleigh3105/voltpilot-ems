@@ -498,12 +498,128 @@ ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EI
 
 ---
 
+## Einspeisegrenze aus der Ferne anheben (Register `0x00E7`)
+
+Der **einzige** Fernschreibpfad auf ein Installateur-Register: `0x00E7`
+„Grid Max Export power" (dez. 231, Holding-Register, Skala ×10 → W) - die
+Einspeisegrenze, die der Wechselrichter selbst hält und die sonst nur im
+Installateur-Menü **vor Ort** erreichbar ist.
+
+**Wofür.** In Herzogau hielt der Deye 33,0 kW (`raw 3300`), während im Portal
+70 kW hinterlegt waren; das Anheben kostete einen Vor-Ort-Termin. Damit geht es
+per `curl` - und **nur diese eine Zahl**.
+
+**Was es ausdrücklich NICHT ist.** Kein allgemeines Register-Schreib-API: die
+Adresse, die Skala und die Obergrenze stehen fest im Code (Politik-Schicht
+`edge-app/core/internal/installerwrite`, Draht-Plan
+`nodered/inverter-control-routing.js installerWriteRoute`, und der Flow-Knoten
+prüft beides noch einmal selbst). Ein weiteres Register wäre eine Code-Änderung
+mit eigenem Review, nie ein Parameter.
+
+### Einschalten (nur für das Wartungsfenster)
+
+In der `.env` des Geräts:
+
+```
+VP_INSTALLER_WRITE_ENABLED=true
+```
+
+dann `docker compose up -d core`. **Standard ist `false`** - ohne den Schalter
+antworten beide Endpunkte mit `404`, es wird nichts abonniert und nichts
+veröffentlicht: die Box verhält sich zeichengleich wie ohne das Feature. Nach
+dem Fenster wieder ausschalten - es ist **keine Flotten-Fähigkeit**.
+
+### Ablauf: erst Probelauf, dann Bestätigung
+
+Beide Aufrufe gehen an den Wartungszugang `:8484`. Der **Schreib**-Aufruf liegt
+hinter demselben Betreiber-Kennwort wie die Kalibrierung
+(`VP_CALIBRATION_ADMIN_SECRET` → Kopfzeile `X-VP-Calibration-Token`; ohne
+gesetztes Kennwort entfällt die Kopfzeile).
+
+**1. Probelauf** (Standard - liest nur, schreibt NICHTS):
+
+```bash
+curl -sS http://<geraet>:8484/api/installer-write \
+  -H 'Content-Type: application/json' \
+  -H 'X-VP-Calibration-Token: <betreiber-kennwort>' \
+  -d '{"register":"0x00E7","value":7000}'
+```
+
+```json
+{
+  "plan": { "register": "0x00e7", "addr": 231, "value": 7000, "kw": 70, "apply": false },
+  "before": 3300, "before_kw": 33,
+  "result": "dry_run",
+  "message": "Probelauf - es wurde NICHTS geschrieben. Ist-Wert: 3300 (33,0 kW). Geschrieben würde: 7000 (70,0 kW). Zum wirklichen Schreiben die Anfrage mit \"mode\": \"apply\" und \"confirm\": \"0X00E7=7000\" wiederholen."
+}
+```
+
+**2. Wirklich schreiben** - braucht `mode` **und** die wörtliche Bestätigung
+(sie nennt Register **und** Wert, damit eine ältere Bestätigung nie einen
+anderen Wert autorisiert):
+
+```bash
+curl -sS http://<geraet>:8484/api/installer-write \
+  -H 'Content-Type: application/json' \
+  -H 'X-VP-Calibration-Token: <betreiber-kennwort>' \
+  -d '{"register":"0x00E7","value":7000,"mode":"apply","confirm":"0x00E7=7000"}'
+```
+
+```json
+{ "before": 3300, "after": 7000, "after_kw": 70, "accepted": true,
+  "result": "applied",
+  "message": "Der Wechselrichter hat 70,0 kW übernommen (Register 0x00e7 = 7000)." }
+```
+
+Optional lässt sich der Ist-Wert als **Vorbedingung** mitgeben
+(`"expected_before": 3300`): stimmt er beim Lesen nicht mehr, wird **nichts**
+geschrieben (`"result": "precondition"`). Nützlich, wenn zwischen Ablesen und
+Bestätigen Zeit vergangen ist.
+
+**3. Protokoll ansehen** (unauthentifiziert, nur lesend):
+
+```bash
+curl -sS http://<geraet>:8484/api/installer-write | jq
+```
+
+Es zeigt den Schalter, das eine freigegebene Register, ob **diese** Anlage
+qualifiziert - und die Schreib-Historie (Zeitpunkt, vorher, angefordert,
+nachher, Quelle), **neueste zuerst**. Sie liegt in
+`<datenverzeichnis>/installer-write.json` und **überlebt einen Neustart**.
+
+### Grenzen und Regeln
+
+| Regel | Wert / Verhalten |
+|---|---|
+| Register | ausschließlich `0x00E7`; jede andere Adresse → `400` |
+| Wert | `0 < value ≤ 7000` (= 70,0 kW); `0` wird abgelehnt (das hieße „gar keine Einspeisung") |
+| Familie | nur `hybrid_3p`. **`hybrid_1p` ist bewusst gesperrt**: dort IST die Einspeisegrenze „Max Sell Power" (`0x00F5`) - das Register, das unser eigener Entlade-Hebel schreibt |
+| Transport | nur über den Solarman-Logger gelesene Geräte |
+| Versuche | **genau EIN** Schreibversuch je Bestätigung. Kein Retry, kein Auffrischen - `0x00E7` liegt im **EEPROM**, jeder Schreibvorgang kostet einen Schreibzyklus |
+| Funktionscode | **FC16** (write-multiple) - viele Deye-Firmwares nehmen einen FC6-Rahmen an und übernehmen ihn nie; `control_write_fc: 6` in der Verbindung schaltet zurück |
+| Socket | derselbe Poll-/Steuerungs-Socket (Ein-Socket-Gesetz). Ist der Logger gerade belegt, wird **verschoben, nicht gedrängelt** → `"error_code": "busy"`, nichts geschrieben |
+| Rücklesung | ~2 s nach dem Schreiben; `accepted` ist **nur** wahr, wenn das Register den angeforderten Wert zurückliest |
+
+**Wenn die Antwort ausbleibt** (`"result": "failed"`, `error_code`
+`write_unconfirmed` oder `timeout`): der Schreibbefehl kann angekommen sein und
+nur seine Antwort verloren haben. Es wird **nicht** automatisch wiederholt -
+einen Probelauf fahren, den Ist-Wert ansehen und dann entscheiden. Der Versuch
+steht so oder so im Protokoll.
+
+**Wirkung im Betrieb.** Eine bestätigte Rücklesung frischt sofort die auf
+`:8484` und im Portal gemeldete „Einspeisegrenze des Geräts" auf (dasselbe Feld,
+das sonst der tägliche Lesevorgang füllt) - man muss nicht bis zum nächsten Tag
+warten.
+
+---
+
 ## Siehe auch
 
 - [`CUSTOM-INVERTER.md`](CUSTOM-INVERTER.md) - der lokale Bus-Kontrakt (Messwert-Payload, Einheiten/Vorzeichen, QoS/Kadenz).
 - [`deye/solarman-v5.js`](deye/solarman-v5.js) + [`deye/solarman-v5.test.js`](deye/solarman-v5.test.js) - der getestete Solarman-V5-Rahmen + Modbus-Codec (empfohlener Transport).
 - [`deye/solarman-probe.js`](deye/solarman-probe.js) - das eigenständige Hardware-Testskript (Operator, auf der Edge-VM).
 - [`deye/deye-decode.js`](deye/deye-decode.js) + [`deye/deye-decode.test.js`](deye/deye-decode.test.js) - getestete Registerkarten, Parser und Decode (beide Methoden).
+- [`MODBUS-SPIEGEL.md`](../MODBUS-SPIEGEL.md) - der Nur-Lese-Datenspiegel auf `:502` (ein GANZ anderer Pfad: er schreibt strukturell nie).
 - [`edge-app/README.md`](../README.md) - Edge-App-Überblick, vp-palette, "Einen neuen Kunden verdrahten".
 - <https://github.com/StephanJoubert/home_assistant_solarman>, <https://github.com/jmccrohan/pysolarmanv5> - die Solarman-V5-Referenzen.
 - <https://github.com/s10l/deye-logger-at-cmd> - die `deye`-CLI (Fallback-Transport).

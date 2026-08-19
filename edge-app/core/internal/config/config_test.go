@@ -18,6 +18,7 @@ func clearEnv(t *testing.T) {
 		"VP_CONTROL_ENABLED", "VP_GRID_CHARGE_ALLOWED", "VP_CONTROL_CERTIFIED_FAMILIES",
 		"VP_RECONCILE_INTERVAL_SECONDS", "VP_UNCLAIM_CONFIRM_MINUTES", "VP_UNCLAIM_CONFIRM_POLLS",
 		"VP_CALIBRATION_MAX_KW", "VP_CALIBRATION_TTL_SECONDS",
+		"VP_INSTALLER_WRITE_ENABLED",
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -255,5 +256,42 @@ func TestControlEnvOverrides(t *testing.T) {
 	}
 	if cfg.ControlCertified("micro") {
 		t.Fatal("micro should not be certified")
+	}
+}
+
+// The narrow installer write (0x00E7) is OFF by default and can only be turned
+// on deliberately - the default IS the feature (internal/installerwrite).
+func TestInstallerWriteFlagDefaultsOff(t *testing.T) {
+	clearEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.InstallerWriteEnabled {
+		t.Fatal("VP_INSTALLER_WRITE_ENABLED must default to false")
+	}
+	if Defaults().InstallerWriteEnabled {
+		t.Fatal("the built-in default must be false too")
+	}
+	for _, on := range []string{"true", "TRUE", "1"} {
+		t.Setenv("VP_INSTALLER_WRITE_ENABLED", on)
+		cfg, err = Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !cfg.InstallerWriteEnabled {
+			t.Fatalf("%q should enable it", on)
+		}
+	}
+	// Anything else stays OFF - a typo must never open the path.
+	for _, off := range []string{"false", "0", "ja", "yes"} {
+		t.Setenv("VP_INSTALLER_WRITE_ENABLED", off)
+		cfg, err = Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.InstallerWriteEnabled {
+			t.Fatalf("%q must NOT enable it", off)
+		}
 	}
 }

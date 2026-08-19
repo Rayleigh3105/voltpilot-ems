@@ -1953,3 +1953,181 @@ test('PILSTING e2e: the decided path is STICKY - one contrary definitive verdict
     server.close();
   }
 });
+
+// --- the NARROW installer write: ONE register, 0x00E7 ------------------------
+//
+// „Grid Max Export power" is the inverter's OWN feed-in cap - normally only
+// reachable through the installer menu ON SITE. These drive the ACTUAL flow node
+// (auto-installer-exec, taken from flows.json) against the same in-process
+// Solarman-V5 logger, so the whole wire path is proven: FC3 read -> FC16 write
+// -> settle -> FC3 read-back.
+const INSTALLER_EXEC = byId['auto-installer-exec'].func;
+
+const INSTALLER_SEL = {
+  schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', control_tier: 3,
+  communication: 'solarman_v5',
+  connection: { ip: '127.0.0.1', serial: '2985159064', mb_slave_id: 1, power_scale: 10 },
+};
+
+// A fast settle so the test does not wait the production 2 s.
+function installerFlow(port, extra) {
+  return Object.assign({
+    inverter_config: Object.assign({}, INSTALLER_SEL, {
+      connection: Object.assign({}, INSTALLER_SEL.connection, { port }),
+    }),
+    installer_settle_ms: 10,
+  }, extra || {});
+}
+
+test('installer write e2e: a dry run READS 0x00E7 and writes nothing at all', async () => {
+  // The captain's Herzogau state: the installer cap sits at 33,0 kW.
+  const { server, port, store, writes } = await startSolarmanServer({ 0x00e7: 3300 });
+  try {
+    const flowStore = installerFlow(port);
+    const out = await runExec(INSTALLER_EXEC,
+      { payload: { request_id: 'iw-1', mode: 'dry_run', register: '0x00e7', addr: 0x00e7, value: 7000 } },
+      {}, flowStore);
+    assert.ok(out, 'the dry run must answer');
+    assert.strictEqual(out.payload.request_id, 'iw-1');
+    assert.strictEqual(out.payload.ok, true);
+    assert.strictEqual(out.payload.wrote, false);
+    assert.strictEqual(out.payload.before, 3300, 'it reports the Ist-value');
+    // null, not 0: „not read\u201c and „read as 0\u201c are different facts (0 is a
+    // legitimate value of this register - „may not feed in at all\u201c).
+    assert.strictEqual(out.payload.after, null);
+    assert.deepStrictEqual(writes, [], 'a dry run touches NOTHING');
+    assert.strictEqual(store[0x00e7], 3300);
+    // The one-socket lock is handed back in every exit.
+    assert.ok(!flowStore['sv5_busy:127.0.0.1:' + port]);
+    assert.ok(!flowStore['sv5_write_want:127.0.0.1:' + port]);
+  } finally {
+    server.close();
+  }
+});
+
+test('installer write e2e: the confirmed write lands ONCE as FC16 and reads back 70,0 kW', async () => {
+  const { server, port, store, writes } = await startSolarmanServer({ 0x00e7: 3300 });
+  try {
+    const flowStore = installerFlow(port);
+    const out = await runExec(INSTALLER_EXEC,
+      { payload: { request_id: 'iw-2', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000 } },
+      {}, flowStore);
+    assert.strictEqual(out.payload.ok, true);
+    assert.strictEqual(out.payload.wrote, true);
+    assert.strictEqual(out.payload.before, 3300);
+    assert.strictEqual(out.payload.after, 7000, '70,0 kW at scale 10');
+    // EXACTLY ONE write, to EXACTLY that register, over FC16 (the Deye default).
+    assert.deepStrictEqual(writes, [{ reg: 0x00e7, value: 7000, fc: 0x10 }]);
+    assert.strictEqual(store[0x00e7], 7000);
+    assert.ok(!flowStore['sv5_busy:127.0.0.1:' + port], 'the socket is handed back');
+  } finally {
+    server.close();
+  }
+});
+
+test('installer write e2e: a device that swallows the write is an honest MISMATCH, never a claimed success', async () => {
+  // dropWrites models a logger that acknowledges but never applies - the
+  // documented Deye/Fronius failure shape.
+  const { server, port, writes } = await startSolarmanServer({ 0x00e7: 3300 }, { dropWrites: true });
+  try {
+    const out = await runExec(INSTALLER_EXEC,
+      { payload: { request_id: 'iw-3', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000 } },
+      {}, installerFlow(port));
+    assert.strictEqual(out.payload.ok, true, 'the exchange itself succeeded');
+    assert.strictEqual(out.payload.wrote, true);
+    assert.strictEqual(out.payload.after, 3300, 'the register did not move - the CORE turns this into a mismatch');
+    assert.deepStrictEqual(writes, [], 'and the device really never took it');
+  } finally {
+    server.close();
+  }
+});
+
+test('installer write e2e: the node refuses a foreign register / an over-ceiling value WITHOUT touching the device', async () => {
+  const { server, port, writes } = await startSolarmanServer({ 0x00e7: 3300, 0x0028: 100 });
+  try {
+    for (const req of [
+      { request_id: 'iw-4', mode: 'apply', addr: 0x0028, value: 50 },      // another register
+      { request_id: 'iw-5', mode: 'apply', addr: 0x00e7, value: 7001 },    // above the ceiling
+      { request_id: 'iw-6', mode: 'apply', addr: 0x00e7, value: 0 },       // "0 is not a raise"
+    ]) {
+      const out = await runExec(INSTALLER_EXEC, { payload: req }, {}, installerFlow(port));
+      assert.strictEqual(out.payload.ok, false, JSON.stringify(req));
+      assert.strictEqual(out.payload.wrote, false);
+      assert.strictEqual(out.payload.error_code, 'invalid_request');
+      assert.ok(out.payload.message && out.payload.message.length > 10, 'a refusal names its reason');
+    }
+    // A family whose 0x00E7 is OUR OWN discharge lever is refused too.
+    const oneP = installerFlow(port);
+    oneP.inverter_config = Object.assign({}, oneP.inverter_config, { family: 'hybrid_1p' });
+    const out = await runExec(INSTALLER_EXEC,
+      { payload: { request_id: 'iw-7', mode: 'apply', addr: 0x00e7, value: 7000 } }, {}, oneP);
+    assert.strictEqual(out.payload.ok, false);
+    assert.deepStrictEqual(writes, [], 'not a single byte reached the inverter');
+  } finally {
+    server.close();
+  }
+});
+
+test('installer write e2e: it YIELDS to an in-flight read instead of opening a second socket', async () => {
+  const { server, port, writes } = await startSolarmanServer({ 0x00e7: 3300 });
+  try {
+    const flowStore = installerFlow(port);
+    // Someone else holds the ONE socket and never lets go within our budget.
+    flowStore['sv5_busy:127.0.0.1:' + port] = Date.now();
+    flowStore.sv5_acquire_ms = 250;
+    flowStore.sv5_acquire_poll_ms = 50;
+    const warns = [];
+    const out = await runExec(INSTALLER_EXEC,
+      { payload: { request_id: 'iw-8', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000 } },
+      {}, flowStore, warns);
+    assert.strictEqual(out.payload.ok, false);
+    assert.strictEqual(out.payload.error_code, 'busy');
+    assert.strictEqual(out.payload.wrote, false, 'a deferred attempt must never claim a write');
+    assert.deepStrictEqual(writes, [], 'and nothing was written');
+    assert.ok(warns.some((w) => /belegt/i.test(w)), 'a starved write is audible in the log');
+    // It released its own intent so the read poll resumes.
+    assert.ok(!flowStore['sv5_write_want:127.0.0.1:' + port]);
+  } finally {
+    server.close();
+  }
+});
+
+test('installer write e2e: an unreachable device fails honestly and never claims a write', async () => {
+  const { server, port } = await startSolarmanServer({ 0x00e7: 3300 });
+  server.close();
+  const out = await runExec(INSTALLER_EXEC,
+    { payload: { request_id: 'iw-9', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000 } },
+    {}, installerFlow(port));
+  assert.strictEqual(out.payload.ok, false);
+  assert.strictEqual(out.payload.wrote, false, 'the write frame never left');
+  assert.strictEqual(out.payload.error_code, 'unreachable');
+});
+
+test('installer write e2e: a stale expected_before aborts BEFORE the write frame leaves', async () => {
+  // The register moved to 5000 since the trigger read it; the order still
+  // expects 3300.
+  const { server, port, store, writes } = await startSolarmanServer({ 0x00e7: 5000 });
+  try {
+    const out = await runExec(INSTALLER_EXEC,
+      { payload: { request_id: 'iw-10', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000, expected_before: 3300 } },
+      {}, installerFlow(port));
+    assert.strictEqual(out.payload.ok, false);
+    assert.strictEqual(out.payload.error_code, 'precondition');
+    assert.strictEqual(out.payload.wrote, false, 'the write frame never left');
+    assert.strictEqual(out.payload.before, 5000, 'the refusal reports what it FOUND');
+    assert.ok(/5000/.test(out.payload.message) && /3300/.test(out.payload.message),
+      'the message names both the reality and the expectation');
+    assert.deepStrictEqual(writes, []);
+    assert.strictEqual(store[0x00e7], 5000, 'the device is untouched');
+
+    // The MATCHING expectation goes through - the guard blocks staleness, not writes.
+    const ok = await runExec(INSTALLER_EXEC,
+      { payload: { request_id: 'iw-11', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000, expected_before: 5000 } },
+      {}, installerFlow(port));
+    assert.strictEqual(ok.payload.ok, true);
+    assert.strictEqual(ok.payload.after, 7000);
+    assert.deepStrictEqual(writes, [{ reg: 0x00e7, value: 7000, fc: 0x10 }]);
+  } finally {
+    server.close();
+  }
+});
