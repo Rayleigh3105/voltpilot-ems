@@ -97,7 +97,7 @@ func TestOnlyTheFamilyWhose0x00E7IsADedicatedCapMayBeWritten(t *testing.T) {
 		if AllowedFamily(fam) {
 			t.Fatalf("family %q must NOT be allowed", fam)
 		}
-		if _, err := Admit(fam, Request{Value: 7000, Mode: ModeApply, Confirm: ConfirmToken(7000)}); err == nil {
+		if _, err := Admit(fam, Request{Value: 7000, Mode: ModeApply, Confirm: ConfirmToken(RegisterAddr, 7000)}); err == nil {
 			t.Fatalf("family %q: expected refusal", fam)
 		}
 	}
@@ -121,7 +121,7 @@ func TestANamedRegisterMustBeTheAllowlistedOne(t *testing.T) {
 // Every refusal is a ValidationError carrying a German sentence a curl user can
 // act on - never a bare error.
 func TestEveryRefusalCarriesAGermanSentence(t *testing.T) {
-	_, err := Admit("hybrid_1p", Request{Value: 7000, Mode: ModeApply, Confirm: ConfirmToken(7000)})
+	_, err := Admit("hybrid_1p", Request{Value: 7000, Mode: ModeApply, Confirm: ConfirmToken(RegisterAddr, 7000)})
 	var ve *ValidationError
 	if !errors.As(err, &ve) || ve.Msg == "" {
 		t.Fatalf("expected a ValidationError with a message, got %v", err)
@@ -129,7 +129,7 @@ func TestEveryRefusalCarriesAGermanSentence(t *testing.T) {
 }
 
 func TestConfirmTokenNamesRegisterAndValue(t *testing.T) {
-	if got := ConfirmToken(7000); got != "0X00E7=7000" && got != "0x00E7=7000" {
+	if got := ConfirmToken(RegisterAddr, 7000); got != "0X00E7=7000" && got != "0x00E7=7000" {
 		t.Fatalf("token: %q", got)
 	}
 }
@@ -143,9 +143,10 @@ func TestTheAuditLogSurvivesAReopenAndIsNewestFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	before, after := 3300, 7000
+	kw := 70.0
 	for i, e := range []Entry{
 		{Register: RegisterLabel, Before: &before, Requested: 5000, Result: ResultMismatch, Source: "wartungszugang"},
-		{Register: RegisterLabel, Before: &before, Requested: 7000, After: &after, Kw: 70, Result: ResultApplied, Source: "wartungszugang"},
+		{Register: RegisterLabel, Before: &before, Requested: 7000, After: &after, Kw: &kw, Result: ResultApplied, Source: "wartungszugang"},
 	} {
 		e.At = time.Date(2026, 8, 19, 10, i, 0, 0, time.UTC)
 		if err := l.Append(e); err != nil {

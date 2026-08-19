@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "type": "register_write_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "3c7e91a0b4d62f58",
+  "requested_at": "2026-08-19T14:11:02Z",
+  "requested_by": "8f1c0a2e-5b3d-4f77-9a10-2c6b7d9e1f04",
+  "mode": "schreiben",
+  "target": {
+    "kind": "entity",
+    "entity_id": "00000000-0000-0000-0000-0000000000aa"
+  },
+  "register": { "kind": "coil", "address": 3 },
+  "value": 1,
+  "confirm": "0X0003=1"
+}

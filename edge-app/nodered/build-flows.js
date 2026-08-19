@@ -2656,17 +2656,33 @@ const testNodes = [
     id: 'switch-exec', type: 'vp-modbus-switch-test', z: TESTTAB,
     name: 'Schalt-Test aus dem Portal', core: 'cfg-vp-core', x: 470, y: 400, wires: [],
   },
+  // Der EINMAL-Schreiber der schlichten Modbus-TCP-Lane (Register schreiben
+  // ueber das Portal, Stufe 2: Komponente bzw. freie LAN-Adresse). Ebenfalls
+  // ein EIGENER, selbststaendiger Knoten - und OHNE automatisches Aus, denn
+  // hier ist das Stehenbleiben der Zweck. Er teilt sich dieselbe Warteschlange
+  // je (Host, Port) mit Poll, Vorschau und Schalt-Test.
+  {
+    id: 'regwrite-note', type: 'comment', z: TESTTAB,
+    name: 'edge/register-write/request -> EIN Register lesen/schreiben -> edge/register-write/result',
+    info: '', x: 470, y: 460, wires: [],
+  },
+  {
+    id: 'regwrite-exec', type: 'vp-register-write', z: TESTTAB,
+    name: 'Registerauftrag aus dem Portal', core: 'cfg-vp-core', x: 470, y: 520, wires: [],
+  },
 ];
 
 const fn = (id, name, func, outputs, wires) => ({
   id, type: 'function', z: TAB, name, func, outputs, noerr: 0, initialize: '', finalize: '', libs: [], x: 0, y: 0, wires,
 });
 
-// --- the NARROW installer write executor: ONE register, 0x00E7 ---------------
+// --- the one-shot register write executor of the SOLARMAN lane --------------
 //
-// „Grid Max Export power" is the inverter's OWN feed-in cap - normally only
-// reachable through the installer menu ON SITE. This node is the remote lever
-// for exactly that one number, and for nothing else.
+// „Grid Max Export power" (0x00E7) is the inverter's OWN feed-in cap - normally
+// only reachable through the installer menu ON SITE - and it is the register
+// this path was built for. Since Stufe 2 („Freie Register") the address
+// allowlist is GONE and LANE rules took its place; the reasoning lives with the
+// planner in inverter-control-routing.installerWriteRoute.
 //
 // ⚠ IT LIVES IN THIS TAB ON PURPOSE. Node-RED's `flow` context is PER TAB, and
 // the one-socket lock (`sv5_busy:`/`sv5_write_want:`) is flow context - a node
@@ -2681,16 +2697,17 @@ const fn = (id, name, func, outputs, wires) => ({
 // exactly the window another writer could slip into. Mismatch => the write frame
 // never leaves, and the answer carries both the expectation and the reality.
 //
-// ⚠ EXACTLY ONE ATTEMPT. No retry loop, no periodic refresh - 0x00E7 is an
-// EEPROM register and every write costs a write cycle. It carries no dwell/
-// write-on-change bookkeeping either: the core sends one request, this runs one
-// attempt and answers once.
+// ⚠ EXACTLY ONE ATTEMPT. No retry loop, no periodic refresh - an installer
+// register lives in EEPROM and every write costs a write cycle. It carries no
+// dwell/write-on-change bookkeeping either: the core sends one request, this
+// runs one attempt and answers once.
 //
-// ⚠ IT RE-CHECKS THE ALLOWLIST, though the core already did. „No generic
-// register write exists here" must be a property of THIS code, not a promise
-// about its caller: the plan is built by an INLINE COPY of
-// inverter-control-routing.installerWriteRoute (pinned by flows-sync.test.js),
-// which hard-codes the address, the ceiling and the FC16-by-default convention.
+// ⚠ IT RE-CHECKS THE LANE RULES, though the core already did. „This node writes
+// only what it was handed, over the transport it belongs to" must be a property
+// of THIS code, not a promise about its caller: the plan is built by an INLINE
+// COPY of inverter-control-routing.installerWriteRoute (pinned by
+// flows-sync.test.js), which owns the transport rule, the register-word bounds
+// and the FC16-by-default convention.
 const installerWriteFunc = [
   "// Installateur-Register 0x00E7 (Grid Max Export power) EINMALIG lesen bzw.",
   "// schreiben. Kein Retry, kein Auffrischen (EEPROM!). Ein Socket - dieselbe",
@@ -2702,28 +2719,32 @@ const installerWriteFunc = [
   "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); return reply({ ok: false, wrote: false, error_code: 'invalid_request', message: 'Die Node-RED-Konfiguration ist unvollstaendig (functionGlobalContext.net).' }); }",
   "const __SV5 = " + embedModule('deye/solarman-v5.js') + ";",
   "// SYNCED COPY of inverter-control-routing.installerWriteRoute + the two",
-  "// constants it hard-codes (flows-sync.test.js pins it against the module).",
+  "// constants it names (flows-sync.test.js pins it against the module).",
   "const INSTALLER_WRITE_ADDR = 0x00e7;",
-  "const INSTALLER_WRITE_MAX_RAW = 7000;",
+  "const REGISTER_WORD_MAX = 0xffff;",
   "const DEYE_CONTROL_REG = " + JSON.stringify(controlRouting.DEYE_CONTROL_REG) + ";",
   "const resolveDeyeWriteFc = (conn) => { const v = conn ? conn.control_write_fc : undefined; return (v === 6 || v === '6') ? 6 : 16; };",
   "const isFiniteNum = (v) => typeof v === 'number' && isFinite(v);",
   "function installerWriteRoute(sel, r) {",
   "  if (!sel) return { ok: false, reason: 'Es ist kein Wechselrichter eingerichtet.' };",
   "  if (sel.communication !== 'solarman_v5') return { ok: false, reason: 'Dieser Wechselrichter wird nicht ueber den Solarman-Logger gelesen; der Fernschreibpfad steht nur dort zur Verfuegung.' };",
-  "  const reg = DEYE_CONTROL_REG[sel.family];",
-  "  if (!reg || reg.exportLimit !== INSTALLER_WRITE_ADDR || reg.exportLimit === reg.maxSellPower) return { ok: false, reason: 'Fuer diese Wechselrichter-Familie ist das Register 0x00e7 nicht freigegeben.' };",
-  "  const addr = Number((r || {}).addr);",
-  "  if (addr !== INSTALLER_WRITE_ADDR) return { ok: false, reason: 'Es ist ausschliesslich das Register 0x00e7 freigegeben.' };",
-  "  const value = Number((r || {}).value);",
-  "  if (!isFiniteNum(value) || !Number.isInteger(value) || value <= 0 || value > INSTALLER_WRITE_MAX_RAW) return { ok: false, reason: 'Der Wert liegt ausserhalb des freigegebenen Bereichs (1 bis ' + INSTALLER_WRITE_MAX_RAW + ').' };",
+  "  const rq = r || {};",
+  "  const addr = Number(rq.addr);",
+  "  if (!isFiniteNum(addr) || !Number.isInteger(addr) || addr < 0 || addr > REGISTER_WORD_MAX) return { ok: false, reason: 'Die Adresse ist kein Register (0 bis ' + REGISTER_WORD_MAX + ').' };",
+  "  const apply = rq.mode === 'apply';",
+  "  const raw = Number(rq.value);",
+  "  const wordOk = isFiniteNum(raw) && Number.isInteger(raw) && raw >= 0 && raw <= REGISTER_WORD_MAX;",
+  "  if (apply && !wordOk) return { ok: false, reason: 'Der Wert ist kein Registerwort (0 bis ' + REGISTER_WORD_MAX + ').' };",
+  "  const value = wordOk ? raw : 0;",
   "  const conn = sel.connection || {};",
   "  const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';",
   "  if (!ip) return { ok: false, reason: 'Fuer den Wechselrichter ist keine IP-Adresse hinterlegt.' };",
   "  const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;",
   "  const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;",
-  "  const out = { ok: true, adapter: 'solarman_v5', family: sel.family, target: ip + ':' + port, connection: { ip, port, serial: conn.serial, mb_slave_id: slaveId }, apply: (r || {}).mode === 'apply', addr: INSTALLER_WRITE_ADDR, value, scale: reg.exportLimitScale, kw: (value * reg.exportLimitScale) / 1000, read: { fc: 3, addr: INSTALLER_WRITE_ADDR, count: 1 } };",
-  "  if (out.apply) out.write = { fc: resolveDeyeWriteFc(conn), addr: INSTALLER_WRITE_ADDR, value };",
+  "  const reg = DEYE_CONTROL_REG[sel.family];",
+  "  const out = { ok: true, adapter: 'solarman_v5', family: sel.family, target: ip + ':' + port, connection: { ip, port, serial: conn.serial, mb_slave_id: slaveId }, apply, addr, value, read: { fc: 3, addr, count: 1 } };",
+  "  if (reg && reg.exportLimit === addr && reg.exportLimit !== reg.maxSellPower) { out.scale = reg.exportLimitScale; out.kw = (value * reg.exportLimitScale) / 1000; }",
+  "  if (apply) out.write = { fc: resolveDeyeWriteFc(conn), addr, value };",
   "  return out;",
   "}",
   "const plan = installerWriteRoute(flow.get('inverter_config') || null, req);",
@@ -2754,7 +2775,8 @@ const installerWriteFunc = [
   "        // ⚠ before/after travel EVEN on a failure: a write whose answer got",
   "        // lost is exactly the case the audit entry must record honestly.",
   "        resolve(reply({ ok: false, wrote, before, after, error_code: err.vpCode || (wrote ? 'write_unconfirmed' : 'unreachable'), message: err.vpMsg || ((wrote ? 'Der Schreibbefehl ging hinaus, das Ergebnis ist aber unbestaetigt: ' : 'Der Wechselrichter war nicht erreichbar: ') + err.message) })); return; }",
-  "      node.status({ fill: 'green', shape: 'dot', text: wrote ? ('0x00e7 = ' + after) : ('0x00e7 ist ' + before) });",
+  "      const label = '0x' + plan.addr.toString(16).padStart(4, '0');",
+  "      node.status({ fill: 'green', shape: 'dot', text: wrote ? (label + ' = ' + after) : (label + ' ist ' + before) });",
   "      resolve(reply({ ok: true, wrote, before, after })); };",
   "    const t = setTimeout(() => finish(new Error('Zeitueberschreitung')), 25000);",
   "    sock.once('error', (e) => finish(e));",
@@ -2927,7 +2949,7 @@ const autoNodes = [
     name: 'Installateur-Schreibauftrag vom Core', core: 'cfg-vp-core',
     x: 240, y: 900, wires: [['auto-installer-exec']],
   },
-  Object.assign(fn('auto-installer-exec', 'Installateur-Register 0x00E7 lesen/schreiben', installerWriteFunc, 1, [['auto-installer-res']]), { x: 620, y: 900 }),
+  Object.assign(fn('auto-installer-exec', 'Installateur-Register lesen/schreiben', installerWriteFunc, 1, [['auto-installer-res']]), { x: 620, y: 900 }),
   { id: 'auto-installer-res', type: 'vp-installer-write-result', z: TAB, name: 'Ergebnis an Core', core: 'cfg-vp-core', x: 950, y: 900, wires: [] },
 ];
 

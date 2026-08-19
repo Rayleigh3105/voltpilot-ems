@@ -1,0 +1,42 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-register-write', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 0,
+    outputs: 0,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-register-write'; },
+    paletteLabel: 'vp-register-write'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-register-write">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-register-write">
+  <p>Führt den EINMALIGEN Registerauftrag einer Komponente oder einer freien
+  LAN-Adresse aus: empfängt den bereits vom Core geprüften Auftrag auf
+  <code>edge/register-write/request</code> (nicht retained), liest den Ist-Wert,
+  vergleicht optional <code>expected_before</code>, schreibt GENAU EINMAL, lässt
+  das Gerät setzen und liest zurück; die Antwort geht auf
+  <code>edge/register-write/result</code>.</p>
+  <p>Der Knoten ist selbstständig – er braucht keine Verdrahtung. Er nutzt
+  dieselbe Warteschlange wie <code>vp-modbus-read</code> und
+  <code>vp-modbus-switch</code>: EIN Socket je (Host, Port) über alle Knoten
+  hinweg.</p>
+  <p><b>Kein automatisches Aus.</b> Anders als der geführte Schalt-Test bleibt
+  der geschriebene Wert stehen – das ist der Zweck. Es gibt genau EINEN Versuch,
+  kein Auffrischen und keinen zweiten Anlauf.</p>
+</script>

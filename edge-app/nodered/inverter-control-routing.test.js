@@ -1897,29 +1897,61 @@ test('installer write: the Herzogau case (3300 -> 7000) plans one FC16 write plu
   assert.strictEqual(legacy.write.fc, 6, 'control_write_fc: 6 flips back, exactly like the control path');
 });
 
-test('installer write: only 0x00E7, only 1..7000, only a Solarman-read Deye whose cap is DEDICATED', () => {
-  // A different address is refused - there is no generic register write here.
-  for (const addr of [0x0028, 0x008f, 0x00f5, 1109, 40]) {
-    assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'apply', addr, value: 100 }).ok, false, 'addr ' + addr);
+test('installer write: since Stufe 2 the LANE rules replace the address allowlist', () => {
+  // ⚠ THE ALLOWLIST IS GONE ON PURPOSE (Konzept vp-reg-schreib-konzept-p8 §2.8
+  // Stufe 2 „Freie Register"): every register word is plannable, and what still
+  // refuses is what THIS planner can actually judge - the transport and the
+  // bounds of a register word.
+  for (const addr of [0x0000, 0x0028, 0x008f, 0x00e7, 0x00f5, 1109, 40, 0xffff]) {
+    assert.strictEqual(
+      C.installerWriteRoute(iwSel(), { mode: 'apply', addr, value: 100 }).ok, true, 'addr ' + addr,
+    );
   }
-  // The value ceiling (70,0 kW) and the „0 is not a raise" rule.
-  for (const value of [-1, 0, 7001, 65535, 1.5, NaN]) {
-    assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value }).ok, false, 'value ' + value);
+  for (const addr of [-1, 0x10000, 1.5, NaN, undefined, 'e7']) {
+    assert.strictEqual(
+      C.installerWriteRoute(iwSel(), { mode: 'apply', addr, value: 100 }).ok, false, 'addr ' + addr,
+    );
   }
-  assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, true);
-  assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value: 1 }).ok, true);
+  // A register word is 0..65535 - INCLUDING 0 and 65535, which are values here.
+  // (The „0 is not a raise" rule belongs to the :8484 button's narrow scope, not
+  // to a free register.)
+  for (const value of [0, 1, 7000, 7001, 65535]) {
+    assert.strictEqual(
+      C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x1234, value }).ok, true, 'value ' + value,
+    );
+  }
+  for (const value of [-1, 65536, 1.5, NaN, undefined]) {
+    assert.strictEqual(
+      C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x1234, value }).ok, false, 'value ' + value,
+    );
+  }
+  // A DRY RUN needs no value at all - it writes nothing.
+  assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'dry_run', addr: 0x1234 }).ok, true);
 
-  // ⚠ hybrid_1p: there 0x00E7 does not exist and the feed-in cap IS „Max Sell
-  // Power" (0x00F5) - the register OUR OWN discharge lever writes. Refused.
+  // ⚠ A UNIT IS ONLY EVER CLAIMED WHERE THE READ TABLE STATES ONE. A free
+  // register gets NO scale and NO kW - an invented unit is exactly the mistake
+  // the whole two-step flow exists to prevent.
+  const free = C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x1234, value: 100 });
+  assert.ok(!('scale' in free) && !('kw' in free), 'no invented unit for an unknown register');
+  const known = C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value: 7000 });
+  assert.strictEqual(known.scale, 10);
+  assert.strictEqual(known.kw, 70);
+  // ⚠ hybrid_1p: there the feed-in cap IS „Max Sell Power" (0x00F5), the
+  // register OUR OWN discharge lever writes - so no unit is claimed for it
+  // either. That it is REFUSED while the control loop really holds it is the
+  // core's self-conflict lock (internal/registerwrite.ControlOwns), judged
+  // against the LIVE readback instead of a static family table.
   assert.strictEqual(
     C.DEYE_CONTROL_REG.hybrid_1p.exportLimit, C.DEYE_CONTROL_REG.hybrid_1p.maxSellPower,
-    'the premise of the hybrid_1p refusal',
+    'the premise of the no-unit rule on hybrid_1p',
   );
-  assert.strictEqual(C.installerWriteRoute(iwSel({ family: 'hybrid_1p' }), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false);
-  for (const family of ['string', 'micro', 'sunspec', 'sunspec_live', 'kostal_bi', 'erfunden']) {
-    assert.strictEqual(C.installerWriteRoute(iwSel({ family }), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false, family);
-  }
-  // Another transport has no path here at all.
+  const onePhase = C.installerWriteRoute(iwSel({ family: 'hybrid_1p' }),
+    { mode: 'apply', addr: 0x00f5, value: 7000 });
+  assert.strictEqual(onePhase.ok, true);
+  assert.ok(!('scale' in onePhase), 'no unit where the cap is our own control register');
+
+  // Another transport has no path here at all - a component on plain Modbus-TCP
+  // has its OWN executor (vp-register-write), which owns the other socket.
   assert.strictEqual(C.installerWriteRoute(iwSel({ communication: 'modbus_tcp' }), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false);
   // No selection / no address.
   assert.strictEqual(C.installerWriteRoute(null, { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false);
@@ -1927,11 +1959,18 @@ test('installer write: only 0x00E7, only 1..7000, only a Solarman-read Deye whos
 });
 
 test('installer write: every refusal names a reason, and the route is a PURE plan', () => {
-  const bad = C.installerWriteRoute(iwSel({ family: 'hybrid_1p' }), { mode: 'apply', addr: 0x00e7, value: 7000 });
-  assert.ok(typeof bad.reason === 'string' && bad.reason.length > 10, 'a refusal must be explainable');
-  assert.ok(!('write' in bad) && !('read' in bad), 'a refused route plans nothing');
-  // The two allowlist facts are exported so the flow copy + the Go side can be
-  // pinned against them.
+  for (const bad of [
+    C.installerWriteRoute(iwSel({ communication: 'modbus_tcp' }), { mode: 'apply', addr: 0x00e7, value: 7000 }),
+    C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x10000, value: 1 }),
+    C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value: 65536 }),
+    C.installerWriteRoute(null, { mode: 'apply', addr: 0x00e7, value: 7000 }),
+  ]) {
+    assert.ok(typeof bad.reason === 'string' && bad.reason.length > 10, 'a refusal must be explainable');
+    assert.ok(!('write' in bad) && !('read' in bad), 'a refused route plans nothing');
+  }
+  // The register this path was built for stays EXPORTED - the flow copy, the Go
+  // side and the local button's narrow ceiling are pinned against it.
   assert.strictEqual(C.INSTALLER_WRITE_ADDR, 0x00e7);
   assert.strictEqual(C.INSTALLER_WRITE_MAX_RAW, 7000);
+  assert.strictEqual(C.REGISTER_WORD_MAX, 0xffff);
 });

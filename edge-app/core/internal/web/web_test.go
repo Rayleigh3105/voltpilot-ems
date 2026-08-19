@@ -3476,7 +3476,7 @@ func TestInstallerWritePathIsAbsentWithoutTheFeatureFlag(t *testing.T) {
 func TestInstallerWriteRoutesForwardAndMapEveryRefusal(t *testing.T) {
 	before, after := 3300, 7000
 	admitted, err := installerwrite.Admit("hybrid_3p", installerwrite.Request{
-		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(7000),
+		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 	})
 	if err != nil {
 		t.Fatal(err)

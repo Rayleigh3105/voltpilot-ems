@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/mqtt-register-write.schema.json",
-  "title": "Cloud <-> Edge Register-Schreibkanal (Konzept vp-reg-schreib-konzept-p8 §2.2, Stufe 1 „Der Portal-Trigger\")",
-  "description": "Der EINMAL-SCHREIB aus dem Portal: die Cloud bittet die Box, EIN Register eines Geraets einmal zu lesen (mode 'lesen' = die Vorschau) bzw. einmal zu beschreiben (mode 'schreiben'), und bekommt Ist-Wert, Rueckgelesenes und ein Urteil zurueck. Zwei Nachrichten im per-Geraet-ACL-gedeckten v2/#-Teilbaum (D-2, KEINE Broker-Aenderung): .../v2/register-write (Cloud -> Edge) und .../v2/register-write-result (Edge -> Cloud), korreliert ueber request_id.\n\nWAS ER IST: der ZWEITE TRIGGER auf denselben Einmal-Schreib-Kern, den die Box seit `edge-app/core/internal/installerwrite` besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`). Der erste Trigger ist die lokale :8484-Wartungs-Taste. Es gibt bewusst KEINEN zweiten Schreibweg, den man spaeter getrennt absichern muesste (die Portal-Apply-Doktrin aus mqtt-ota-apply).\n\nWAS ER NICHT IST: ein Steuerungs-Kanal und keine Register-Schreib-API. WELCHE Adresse eine Box ausfuehrt, entscheidet allein die Box (Stufe 1: genau das Deye-Installateur-Register 0x00E7 mit Wertdeckel 7000). Der Umschlag ist ROUTING, nie Autoritaet - die Box glaubt der Cloud nichts, was sie selbst pruefen kann (die OTA-Sidecar-Disziplin).\n\nWARUM EIN EIGENER KANAL statt einer Erweiterung des Probe-Kanals (bewusste Entscheidung): (a) der Probe-Kopf verspricht 'no-persistence - er beantwortet eine Frage von JETZT', dieser Kanal erzeugt eine DAUERHAFTE Konfig-Aenderung mit PFLICHT-Journal; (b) die Schreib-Ops des Probe-Kanals tragen strukturell einen Auto-Aus (TTL <= 120 s) - hier ist das Stehenbleiben der Zweck; (c) die Primaer-Lane (Solarman-V5 ueber die Steuer-Arbitrierung) passt nicht in Probes `transport: modbus_tcp`-Form. Geteilt werden die REGELN (Identitaet, requested_at-Fenster, LAN-Whitelist, Ratenbegrenzung, Fehlerklassen), nicht die Topics.\n\nWARUM NICHT-RETAINED (dieselbe tragende Entscheidung wie bei mqtt-ota-apply und beim Probe-Kanal): eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt - ein Einmal-Schreib, der beim naechsten Reconnect wieder erscheint, waere keiner, sondern ein Schreibzyklus je Reconnect auf einem EEPROM-Register.\n\nNICHT-retained allein genuegt NICHT: das Geraet haelt eine dauerhafte Sitzung (cleanSession=false), der Broker darf eine QoS1-Nachricht also NACHLIEFERN. Die zweite Haelfte ist requested_at - die Box uebernimmt diesen Stempel als Beginn ihres Fensters (60 s) statt des Empfangs-Zeitpunkts, eine nachgelieferte Anfrage ist bei ihrer Ankunft also bereits verfallen und wird VERWORFEN. Die dritte Haelfte ist die zuletzt ausgefuehrte request_id, die sich die Box merkt: dieselbe Anfrage kann nie zweimal schreiben. Es gibt NIRGENDS einen Nachhol-Speicher (Captain-Entscheid 4: „nur live\").",
+  "title": "Cloud <-> Edge Register-Schreibkanal (Konzept vp-reg-schreib-konzept-p8 §2.2, Stufe 1 „Der Portal-Trigger\" + Stufe 2 „Freie Register\")",
+  "description": "Der EINMAL-SCHREIB aus dem Portal: die Cloud bittet die Box, EIN Register eines Geraets einmal zu lesen (mode 'lesen' = die Vorschau) bzw. einmal zu beschreiben (mode 'schreiben'), und bekommt Ist-Wert, Rueckgelesenes und ein Urteil zurueck. Zwei Nachrichten im per-Geraet-ACL-gedeckten v2/#-Teilbaum (D-2, KEINE Broker-Aenderung): .../v2/register-write (Cloud -> Edge) und .../v2/register-write-result (Edge -> Cloud), korreliert ueber request_id.\n\nWAS ER IST: der ZWEITE TRIGGER auf denselben Einmal-Schreib-Kern, den die Box seit `edge-app/core/internal/installerwrite` besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`). Der erste Trigger ist die lokale :8484-Wartungs-Taste. Es gibt bewusst KEINEN zweiten Schreibweg, den man spaeter getrennt absichern muesste (die Portal-Apply-Doktrin aus mqtt-ota-apply).\n\nWAS ER NICHT IST: ein Steuerungs-Kanal und keine Register-Schreib-API. WELCHE Adresse eine Box ausfuehrt, entscheidet allein die Box (seit Stufe 2 „Freie Register\": jedes Holding-Register bzw. jede Spule, Wert 0..65535 - was refused wird, sind die Regeln, die die Box selbst pruefen kann: Transport, Registerwort, privates Ziel, und das EINE harte refused_control_owned). Der Umschlag ist ROUTING, nie Autoritaet - die Box glaubt der Cloud nichts, was sie selbst pruefen kann (die OTA-Sidecar-Disziplin).\n\nWARUM EIN EIGENER KANAL statt einer Erweiterung des Probe-Kanals (bewusste Entscheidung): (a) der Probe-Kopf verspricht 'no-persistence - er beantwortet eine Frage von JETZT', dieser Kanal erzeugt eine DAUERHAFTE Konfig-Aenderung mit PFLICHT-Journal; (b) die Schreib-Ops des Probe-Kanals tragen strukturell einen Auto-Aus (TTL <= 120 s) - hier ist das Stehenbleiben der Zweck; (c) die Primaer-Lane (Solarman-V5 ueber die Steuer-Arbitrierung) passt nicht in Probes `transport: modbus_tcp`-Form. Geteilt werden die REGELN (Identitaet, requested_at-Fenster, LAN-Whitelist, Ratenbegrenzung, Fehlerklassen), nicht die Topics.\n\nWARUM NICHT-RETAINED (dieselbe tragende Entscheidung wie bei mqtt-ota-apply und beim Probe-Kanal): eine retained Nachricht wird bei JEDEM Verbindungsaufbau erneut zugestellt - ein Einmal-Schreib, der beim naechsten Reconnect wieder erscheint, waere keiner, sondern ein Schreibzyklus je Reconnect auf einem EEPROM-Register.\n\nNICHT-retained allein genuegt NICHT: das Geraet haelt eine dauerhafte Sitzung (cleanSession=false), der Broker darf eine QoS1-Nachricht also NACHLIEFERN. Die zweite Haelfte ist requested_at - die Box uebernimmt diesen Stempel als Beginn ihres Fensters (60 s) statt des Empfangs-Zeitpunkts, eine nachgelieferte Anfrage ist bei ihrer Ankunft also bereits verfallen und wird VERWORFEN. Die dritte Haelfte ist die zuletzt ausgefuehrte request_id, die sich die Box merkt: dieselbe Anfrage kann nie zweimal schreiben. Es gibt NIRGENDS einen Nachhol-Speicher (Captain-Entscheid 4: „nur live\").",
   "x-topics": {
     "register_write_request": "ems/{tenant_id}/{site_id}/{device_id}/v2/register-write  (Cloud -> Edge, QoS1, NICHT retained)",
     "register_write_result": "ems/{tenant_id}/{site_id}/{device_id}/v2/register-write-result  (Edge -> Cloud, QoS1, NICHT retained)"
@@ -80,7 +80,7 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 65535,
-          "description": "Der ROHE Registerwert (kein kW). Nur bei mode 'schreiben'. Er ist bewusst roh: der Mensch schaut auf das Register, also ist die Zahl, die er uebergibt, auch die Zahl, die landet - zwischen Absicht und EEPROM sitzt keine Einheiten-Umrechnung. Fuer eine Spule sind 0 und 1 die einzigen sinnvollen Werte."
+          "description": "Der ROHE Registerwert (kein kW). Nur bei mode 'schreiben'. Er ist bewusst roh: der Mensch schaut auf das Register, also ist die Zahl, die er uebergibt, auch die Zahl, die landet - zwischen Absicht und EEPROM sitzt keine Einheiten-Umrechnung. Fuer eine Spule sind 0 und 1 die EINZIGEN zulaessigen Werte; alles andere wird als refused_policy abgelehnt, statt einen Schreibrahmen fuer eine Zahl hinauszuschicken, die es dort nicht geben kann."
         },
         "expected_before": {
           "type": "integer",
@@ -97,7 +97,7 @@
     },
     "target": {
       "title": "Das Ziel des Schreibvorgangs (drei Lanes, ein Vokabular)",
-      "description": "Stufe 1 FUEHRT AUS: 'primary'. Die beiden anderen Lanes sind VOLLSTAENDIG spezifiziert und werden VALIDIERT, aber noch nicht ausgefuehrt - eine Box antwortet dort ehrlich mit not_supported. Das ist dieselbe bewusste Entscheidung wie beim Probe-Kanal (op_switch_test in Stufe 0b): ein Vertrag, der eine Form erst spaeter kennt, haette eine Box im Feld, die sie STILL verwirft statt sie zu benennen.",
+      "description": "Seit Stufe 2 fuehrt die Box ALLE DREI Lanes aus. Die Asymmetrie zwischen ihnen IST die Sicherheit: bei 'primary' nennt die Cloud NICHTS und die Box nimmt ihren eigenen konfigurierten Wechselrichter; bei 'entity' nennt sie nur eine Kennung und die Box loest den Endpunkt aus IHRER angewandten Definition auf; nur bei 'lan' reist der Endpunkt - und genau deshalb ist es die einzige Lane, deren Ziel die Box selbst pruefen muss (LAN-Whitelist, zweimal: in den reinen Regeln und noch einmal in dem Knoten, der den Socket oeffnet). Ein aelterer Stand antwortet auf eine Lane, die er nicht ausfuehrt, weiterhin ehrlich mit not_supported - nie ein stilles Verwerfen.",
       "oneOf": [
         {
           "type": "object",
@@ -111,7 +111,7 @@
         },
         {
           "type": "object",
-          "title": "Lane 'entity' - eine Komponente der Anlage (Stufe 2)",
+          "title": "Lane 'entity' - eine Komponente der Anlage",
           "additionalProperties": false,
           "required": ["kind", "entity_id"],
           "properties": {
@@ -122,7 +122,7 @@
         },
         {
           "type": "object",
-          "title": "Lane 'lan' - eine freie Adresse im Kunden-LAN (Stufe 2)",
+          "title": "Lane 'lan' - eine freie Adresse im Kunden-LAN",
           "additionalProperties": false,
           "required": ["kind", "host"],
           "properties": {
@@ -230,9 +230,9 @@
         "busy"
       ],
       "x-meanings": {
-        "not_supported": "Diese Box fuehrt diese FORM nicht aus - eine Lane, die sie (noch) nicht kennt, oder ein Transport, ueber den sie nicht schreibt. Ein aelterer Stand antwortet damit ehrlich, statt still zu verwerfen.",
+        "not_supported": "Diese Box fuehrt diese FORM nicht aus - eine Lane, die sie (noch) nicht kennt, ein Transport, ueber den sie nicht schreibt (eine Spule ueber den Solarman-Logger; eine Komponente, die selbst am Solarman-Logger haengt und deshalb auf die primaere Lane gehoert), oder eine Komponente, die auf diesem Geraet nicht eingerichtet ist. Ein aelterer Stand antwortet damit ehrlich, statt still zu verwerfen.",
         "gate_disabled": "Der Schreibpfad ist auf dieser Box nicht scharfgeschaltet (Feature-Gate aus).",
-        "refused_policy": "Die Box fuehrt diese ADRESSE oder diesen WERT nicht aus (Stufe 1: ausschliesslich 0x00E7, 0 < Wert <= 7000). Bewusst getrennt von not_supported: das eine sagt 'diese Box kann das nicht', das andere 'diese Box darf das nicht'.",
+        "refused_policy": "Die Box fuehrt diese ADRESSE oder diesen WERT nicht aus. Seit Stufe 2 ist das Register frei, also bleiben die Regeln, die eine Anfrage in sich falsch machen: kein Registerwort (0..65535), eine Spule mit einem anderen Wert als 0/1, ein Funktionscode, der nicht zur Registerart passt, oder eine fehlende/falsche Bestaetigung. Bewusst getrennt von not_supported: das eine sagt 'diese Box kann das nicht', das andere 'diese Box darf das nicht'.",
         "refused_control_owned": "Das Register gehoert gerade der laufenden Steuerung. Die EINE harte Ablehnung dieses Kanals - siehe x-semantics.self-conflict.",
         "refused_expected_before": "Der Ist-Wert hat sich seit der Vorschau geaendert. Nichts wurde geschrieben; das ist ein Erfolg des Waechters, kein Fehler.",
         "busy": "Auf diesem Geraet laeuft bereits ein Einmal-Schreibvorgang. Zwei ueberlappende Schreibvorgaenge auf EIN EEPROM-Register sind das eine, was dieser Pfad nie tun darf."

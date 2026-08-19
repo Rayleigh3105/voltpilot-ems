@@ -8,13 +8,13 @@
 // internal/calibration. The split is the point: every rule that can REFUSE a
 // portal write is provable without a single container or device.
 //
-// ⚠ IT IS THE SECOND TRIGGER, NOT A SECOND PATH. What it produces is an
-// installerwrite.Request that goes through the SAME two layers the :8484
-// maintenance endpoint uses - POLICY (installerwrite.Admit: the allowlist, the
-// value ceiling, the confirm rule) and MECHANISM (Agent.WriteOnce). There is
-// deliberately no way from here to a register nobody admitted; the portal-apply
-// doctrine, word for word ("es gibt keinen zweiten Weg zum Anwenden, den man
-// später getrennt absichern müsste").
+// ⚠ IT IS THE SECOND TRIGGER, NOT A SECOND PATH. What it produces goes through
+// the SAME two layers the :8484 maintenance endpoint uses - POLICY
+// (installerwrite.AdmitExpert since Stufe 2: the free register with its value
+// range and the confirm rule; Admit stays the narrow scope of the local button)
+// and MECHANISM (Agent.WriteOnce). There is deliberately no way from here to a
+// register nobody admitted; the portal-apply doctrine, word for word ("es gibt
+// keinen zweiten Weg zum Anwenden, den man später getrennt absichern müsste").
 //
 // The refusals this package owns, and why each exists:
 //
@@ -32,9 +32,18 @@
 //   - REPLAY - the same request_id is executed AT MOST ONCE. Non-retained plus
 //     the window stop a LATE redelivery; this stops a concurrent or immediate
 //     one (the mqtt-ota-apply token pattern).
-//   - LANE - Stufe 1 executes `primary` only. `entity` and `lan` are in the
-//     contract and are ANSWERED with not_supported, never silently dropped: a
-//     box in the field must be able to NAME a form it cannot run yet.
+//   - LANE - all three lanes of the contract are EXECUTED since Stufe 2
+//     („Freie Register"): `primary` (the box resolves its own inverter),
+//     `entity` (the box resolves the transport from ITS applied definition -
+//     the cloud names only the id, so it can never redirect a write to a
+//     foreign host) and `lan` (an explicit address, which is why the LAN
+//     whitelist below applies to it). A form this box cannot run is still
+//     ANSWERED with not_supported, never silently dropped.
+//   - PRIVATE TARGET - the `lan` lane's host must be PROVABLY private, judged by
+//     the probe channel's own whitelist (probe.IsPrivateHost, the five-consumer
+//     rule of docs/contracts/lan-host-vectors.json - a fifth CONSUMER, not a
+//     fifth twin). A bare hostname is refused because it resolves through the
+//     box's search domains and cannot be proven private from the string.
 //   - SELF-CONFLICT - a register the RUNNING control loop currently commands is
 //     refused. That is not a restriction of freedom but honesty about the
 //     receipt: our own executor would overwrite the value within seconds, or
@@ -51,6 +60,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 )
 
 // SchemaVersion is the only accepted contract version.
@@ -119,9 +130,14 @@ const (
 	MsgRateLimited = "Zu viele Schreib-Anfragen in kurzer Zeit. Bitte einen Moment warten " +
 		"und erneut versuchen."
 	MsgGateDisabled     = "Der Register-Schreibpfad ist auf diesem Gerät nicht freigeschaltet."
-	MsgLaneNotSupported = "Diese Box kann derzeit nur den primären Wechselrichter beschreiben."
-	MsgCoilNotSupported = "Diese Box beschreibt derzeit nur Holding-Register, keine Spulen."
-	MsgBusy             = "Auf diesem Gerät läuft bereits ein Schreibvorgang. Bitte einen " +
+	MsgLaneUnknown      = "Unbekanntes Ziel."
+	MsgEntityMissing    = "Für die Komponente fehlt die Kennung."
+	MsgCoilNotSupported = "Über den Solarman-Logger lassen sich nur Holding-Register " +
+		"beschreiben, keine Spulen."
+	MsgHostNotPrivate = "Das Ziel liegt nicht nachweisbar im Kunden-Netz. Bitte die " +
+		"IP-Adresse des Geräts eintragen (ein bloßer Gerätename lässt sich nicht als " +
+		"privat nachweisen)."
+	MsgBusy = "Auf diesem Gerät läuft bereits ein Schreibvorgang. Bitte einen " +
 		"Moment warten."
 	MsgControlOwned = "Dieses Register gehört gerade der laufenden Steuerung; Ihr Wert würde " +
 		"binnen Sekunden überschrieben bzw. beim Zurückgeben zurückgedreht."
@@ -150,12 +166,17 @@ type Request struct {
 }
 
 // Target is WHERE the order goes.
+//
+// Port/UnitID are POINTERS for the same reason the probe channel's op uses them:
+// on Modbus-TCP a unit id of 0 is a legitimate address, so „not given" and
+// „given as 0" must not collapse - only the first one takes the contract's
+// default (the probe.Op.EffectiveUnit precedent).
 type Target struct {
 	Kind     string `json:"kind"`
 	EntityID string `json:"entity_id"`
 	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	UnitID   int    `json:"unit_id"`
+	Port     *int   `json:"port"`
+	UnitID   *int   `json:"unit_id"`
 }
 
 // Reg is the addressed register.
@@ -300,27 +321,57 @@ type Verdict struct {
 func (v Verdict) OK() bool { return v.Code == "" }
 
 // Admissible decides whether this box will EXECUTE the order at all - the rules
-// that are about the FORM and this box's capabilities, before any policy about
-// the register itself.
+// about the LANE and the shape of its target, before any policy about the
+// register itself.
 //
 // It deliberately does NOT judge the address or the value: that is
-// installerwrite.Admit's job, and duplicating it here would be a second policy
-// that can drift from the one the local trigger obeys.
+// installerwrite.AdmitExpert's job, and duplicating it here would be a second
+// policy that can drift from the one the local trigger obeys.
+//
+// ⚠ THE COIL RULE IS A PROPERTY OF THE LANE, NOT OF THE BOX. The Solarman-V5
+// framing carries the holding-register functions only, so a coil on the primary
+// inverter is honestly „not supported"; on plain Modbus-TCP (component / free
+// LAN) FC1/FC5 exist and a coil is executed like any other object. Saying „this
+// box does not do coils" would be false for two of the three lanes.
 func (r Request) Admissible() Verdict {
 	switch r.Target.Kind {
 	case LanePrimary:
-		// The one lane Stufe 1 executes.
-	case LaneEntity, LaneLAN:
-		// Named, never silently dropped: a box in the field must be able to say
-		// "I cannot do that (yet)" instead of leaving the portal in a timeout.
-		return Verdict{ErrNotSupported, MsgLaneNotSupported}
+		if r.Register.Kind != KindHolding {
+			return Verdict{ErrNotSupported, MsgCoilNotSupported}
+		}
+	case LaneEntity:
+		if strings.TrimSpace(r.Target.EntityID) == "" {
+			return Verdict{ErrInvalidRequest, MsgEntityMissing}
+		}
+	case LaneLAN:
+		// ⚠ The ONLY lane whose endpoint the cloud names, so it is the only one
+		// whose endpoint the box has to judge: whoever opens a connection checks
+		// its target themselves (the OTA-sidecar discipline). The palette node
+		// checks it a SECOND time before it dials.
+		if !probe.IsPrivateHost(r.Target.Host) {
+			return Verdict{ErrInvalidRequest, MsgHostNotPrivate}
+		}
 	default:
-		return Verdict{ErrInvalidRequest, "Unbekanntes Ziel."}
-	}
-	if r.Register.Kind != KindHolding {
-		return Verdict{ErrNotSupported, MsgCoilNotSupported}
+		return Verdict{ErrInvalidRequest, MsgLaneUnknown}
 	}
 	return Verdict{}
+}
+
+// EffectivePort / EffectiveUnit are the contract's documented defaults for the
+// free-LAN lane. They live here, not in the agent, so the value the box dials is
+// the value the pure rules judged.
+func (t Target) EffectivePort() int {
+	if t.Port == nil || *t.Port <= 0 || *t.Port > 0xffff {
+		return 502
+	}
+	return *t.Port
+}
+
+func (t Target) EffectiveUnit() int {
+	if t.UnitID == nil || *t.UnitID < 0 || *t.UnitID > 255 {
+		return 1
+	}
+	return *t.UnitID
 }
 
 // ControlOwns reports whether the RUNNING control loop currently commands this

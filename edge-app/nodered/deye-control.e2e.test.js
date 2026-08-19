@@ -2042,13 +2042,28 @@ test('installer write e2e: a device that swallows the write is an honest MISMATC
   }
 });
 
-test('installer write e2e: the node refuses a foreign register / an over-ceiling value WITHOUT touching the device', async () => {
-  const { server, port, writes } = await startSolarmanServer({ 0x00e7: 3300, 0x0028: 100 });
+test('installer write e2e: since Stufe 2 a FREE register lands, and only a non-word is refused', async () => {
+  const { server, port, writes } = await startSolarmanServer({ 0x00e7: 3300, 0x1234: 12 });
   try {
+    // ⚠ THE HANDOVER ITSELF: another register is no longer refused - the address
+    // allowlist was replaced by LANE rules (Konzept §2.8 Stufe 2), and what a
+    // customer may write is decided by the CLOUD's reach plus the core's
+    // self-conflict lock, not by a static table in this node.
+    const ok = await runExec(INSTALLER_EXEC,
+      { payload: { request_id: 'iw-4', mode: 'apply', addr: 0x1234, value: 65535 } },
+      {}, installerFlow(port));
+    assert.strictEqual(ok.payload.ok, true, JSON.stringify(ok.payload));
+    assert.strictEqual(ok.payload.wrote, true);
+    assert.strictEqual(ok.payload.after, 65535);
+    assert.deepStrictEqual(writes, [{ reg: 0x1234, value: 65535, fc: 16 }],
+      'exactly one FC16 write, at the requested address');
+
+    // What still refuses is what THIS node can judge without the device: a value
+    // or an address that is not a register word at all.
+    writes.length = 0;
     for (const req of [
-      { request_id: 'iw-4', mode: 'apply', addr: 0x0028, value: 50 },      // another register
-      { request_id: 'iw-5', mode: 'apply', addr: 0x00e7, value: 7001 },    // above the ceiling
-      { request_id: 'iw-6', mode: 'apply', addr: 0x00e7, value: 0 },       // "0 is not a raise"
+      { request_id: 'iw-5', mode: 'apply', addr: 0x00e7, value: 65536 },
+      { request_id: 'iw-6', mode: 'apply', addr: 0x10000, value: 1 },
     ]) {
       const out = await runExec(INSTALLER_EXEC, { payload: req }, {}, installerFlow(port));
       assert.strictEqual(out.payload.ok, false, JSON.stringify(req));
@@ -2056,11 +2071,11 @@ test('installer write e2e: the node refuses a foreign register / an over-ceiling
       assert.strictEqual(out.payload.error_code, 'invalid_request');
       assert.ok(out.payload.message && out.payload.message.length > 10, 'a refusal names its reason');
     }
-    // A family whose 0x00E7 is OUR OWN discharge lever is refused too.
-    const oneP = installerFlow(port);
-    oneP.inverter_config = Object.assign({}, oneP.inverter_config, { family: 'hybrid_1p' });
+    // A device read over ANOTHER transport has no path through this node at all.
+    const other = installerFlow(port);
+    other.inverter_config = Object.assign({}, other.inverter_config, { communication: 'modbus_tcp' });
     const out = await runExec(INSTALLER_EXEC,
-      { payload: { request_id: 'iw-7', mode: 'apply', addr: 0x00e7, value: 7000 } }, {}, oneP);
+      { payload: { request_id: 'iw-7', mode: 'apply', addr: 0x00e7, value: 7000 } }, {}, other);
     assert.strictEqual(out.payload.ok, false);
     assert.deepStrictEqual(writes, [], 'not a single byte reached the inverter');
   } finally {
