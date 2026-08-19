@@ -1951,8 +1951,12 @@ besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`, erster Trigger: die lo
   argumentierte Abweichung von der Konzept-Empfehlung („Vorgabe false im Code, true in BEIDEN
   Composes"). Ein per Vorgabe ausgeschaltetes Flag muss im gitops-Repo nachgezogen werden, und genau
   diese Klasse hat schon einmal einen stillen Produktions-Ausfall gekostet (die OTA-Listener-Falle).
-  Der Verzicht kostet nichts, weil die eigentliche Scharfschaltung fail-closed auf dem GERÄT sitzt
-  (`VP_INSTALLER_WRITE_ENABLED`, Vorgabe AUS): eine nicht armierte Box antwortet `gate_disabled`.
+  Der Verzicht kostete in den Stufen 1/2 nichts, weil die eigentliche Scharfschaltung fail-closed auf
+  dem GERÄT sass (`VP_INSTALLER_WRITE_ENABLED`, damals Vorgabe AUS): eine nicht armierte Box
+  antwortete `gate_disabled`. **⚠ Seit Stufe 3 ist das GERÄTE-Flag per Vorgabe AN (D2), dieser
+  Schalter ist damit der EINZIGE plattformweite Hebel — und er wirkt seither im DIENST statt an der
+  Route: abgeschaltet refüsieren nur die zwei SCHREIBENDEN Schritte mit 503 und deutschem Grund,
+  während der VERLAUF lesbar bleibt** (siehe den Stufe-3-Abschnitt).
   Publisher/Zuhörer reiten auf `voltpilot.provisioning.*` (derselbe Broker wie Probe/Provisionierung/
   OTA) — kein weiteres Transport-Flag. Fristen: `voltpilot.register-write.{read,write}-timeout`.
 - **Der BOX-KONSUMENT ist der zweite ADAPTER, kein zweiter Pfad.** `edge-app/core/internal/registerwrite`
@@ -2115,6 +2119,57 @@ denen er sein Ziel wählt.
   (8, davon 2 neu: der Picker samt Register-Wissen über einen ECHTEN Herzschlag,
   und die zwei Lanes bis auf den Draht inkl. Schreibzähler und der drei
   Lane-Ablehnungen). Portal-Seite in `frontend/portal/AGENTS.md`.
+
+## Register schreiben über das Portal, Stufe 3 „Bis zum Endkunden"
+
+Die dritte Stufe des Konzepts `data/vp-reg-schreib-konzept-p8` (§2.8 Stufenplan; Captain-Entscheide
+**D1 = freie LAN-Adresse auch für Endkunden · D2 = Box-Flag-Vorgabe AN, Cloud-Kill-Switch bleibt ·
+D4 = `betreiber-admin` GAR NICHT**). Sie fügt **keinen neuen Schreibpfad** hinzu: der Endkunde fährt
+auf seiner eigenen Anlage GENAU DIE Zwei-Schritt-Strecke, die die Plattform-Geräteseite seit Stufe 1
+fährt — Reichweite ist RLS, Herkunft im Journal ist `kunde`, und die Rollen unterscheiden weiterhin
+nur, WESSEN Anlagen jemand erreicht, nie WELCHE Register.
+
+- **Portal-seitig entsteht NICHTS Zweites.** Der Kunden-Aufklapper im Anlagen-Modell hostet den
+  BESTEHENDEN `RegisterWriteDrawer` (Konzept §2.7); es gibt weiterhin eine Zwei-Schritt-Strecke, eine
+  Warnklassen-Tabelle, eine Beleg-Ableitung. Damit ist der Verantwortungs-Satz per Konstruktion auf
+  beiden Wegen derselbe. Details + die Ehrlichkeitsregeln der Fläche: `frontend/portal/AGENTS.md`.
+- **D1-Folge:** der Kunde bekommt denselben Geräte-Picker UND die freie LAN-Adresse. Sie ist LAN-only,
+  und **belegbar privat ist sie NUR, weil die BOX es prüft** (`probe.IsPrivateHost` + die geteilten
+  Vektoren) — im Portal steht ausdrücklich keine zweite Wahrheit über ein Netz, das es nie gesehen hat.
+- **⚠ D2-Folge, und sie ist die tragende Umkehrung dieser Stufe: das GERÄTE-Flag
+  `VP_INSTALLER_WRITE_ENABLED` steht per Vorgabe AN** (`edge-app/core/internal/config`, beide
+  Edge-Composes + `install.sh` im Lockstep). Bis Stufe 2 war es die eigentliche Sicherung („eine nicht
+  armierte Box antwortet `gate_disabled`"); ab hier ist es das NICHT mehr, also musste der
+  plattformweite Hebel ein echter werden — siehe den nächsten Punkt. **Wirksam wird die Umstellung
+  erst mit dem NÄCHSTEN Edge-Release und dem Rollout des Captains**; eine laufende Box behält ihr
+  Image und ihr `.env`.
+- **⚠ Der Cloud-Not-Aus `voltpilot.register-write.enabled` wirkt seit dieser Stufe im DIENST, nicht an
+  der Route.** Vorher nahm `@ConditionalOnProperty` dem Controller die Bohne: die Routen
+  antworteten mit einem nackten **404** — zeichengleich mit der Antwort des Mandanten-Zauns auf eine
+  FREMDE Anlage (ein Kunde hätte in seiner eigenen Anlage einen Fehler gesucht, den es nicht gab) —
+  und der VERLAUF verschwand mit, obwohl das Journal genau dann interessant ist, wenn jemand den
+  Not-Aus gedrückt hat. Jetzt refüsieren nur die zwei SCHREIBENDEN Schritte, mit **503** und einem
+  deutschen Grund, der die PLATTFORM nennt; `targets`, das Register-Wissen und `history` bleiben
+  lesbar. Die Prüfung ist die ERSTE Anweisung beider Schritte — kein Ziel wird aufgelöst, keine Runde
+  zum Broker gedreht, keine Journal-Zeile geschrieben. Vorgabe unverändert AN (die gitops-Falle), in
+  BEIDEN Composes gesetzt.
+- **D4-Folge:** die im Konzept optionale Realm-Rolle `betreiber-admin` entfällt ERSATZLOS — zwei
+  Stufen (Endkunde · Plattform-Admin) reichen, und `RegisterWriteService.Actor.origin()` leitet die
+  Herkunft weiterhin allein aus den validierten Realm-Rollen ab.
+- **⚠ Ein auf `main` schon STALER Go-Test wurde mitrepariert** (`agent.TestPolicyRefusalsComeFrom
+  TheSharedCoreVerbatim`): sein Vektor war „Wert 9000 > Deckel 7000", und Stufe 2 hat genau diesen
+  Deckel für den Portal-Kanal abgelöst (`AdmitExpert` lässt 0..65535 frei; der Deckel gehört allein
+  der engen `:8484`-Taste). Der Auftrag lief seither in den Bus statt in eine Politik-Ablehnung und
+  der Test lief in seinen 10-s-Timeout. Der Vektor ist jetzt ein **Funktionscode-Widerspruch**
+  (FC5 auf ein Holding-Register), über den dieselbe geteilte Schicht urteilt — und der Test prüft
+  zusätzlich, dass der deutsche Satz WÖRTLICH aus `installerwrite` kommt.
+- **Beweise:** rein `RegisterWriteKillSwitchTest` (3: beide Schritte 503 mit deutschem Grund, KEIN
+  Mitspieler berührt, Verlauf bleibt lesbar, eingeschaltet kommt die Ablehnung von weiter unten) ·
+  Go `config_test.go` (Vorgabe AN, `false` schaltet EINE Box wieder aus, ein Tippfehler schliesst) ·
+  Portal `registerWrite.test.ts` (+5) / `RegisterWriteDrawer.test.tsx` (+2) /
+  `AnlagenModellSection.test.tsx` (+2). Im echten Chrome bei 1440 und 375 durchgespielt: Aufklapper →
+  Ziel → Ist-Wert → Wert + Pflicht-Grund → Rückfrage mit dem Verantwortungs-Satz; 0 px horizontaler
+  Überlauf, keine Konsolenmeldungen.
 
 ## Kommando-Transparenz V1 „Der Verlauf": was VoltPilot an ein Gerät schickt, ist kundensichtbar
 

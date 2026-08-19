@@ -737,3 +737,46 @@
 .vp-am-freigabe.is-ok {
   color: var(--vp-flow-batt-ink, #166534);
 }
+
+/* --- Der EXPERTEN-Aufklapper der Kunden-Fläche (Stufe 3 „Bis zum Endkunden") -
+   Ruhig und zugeklappt: die Freiheit ist da, die Fläche bleibt es auch. Er
+   übernimmt bewusst die Aufklapp-Sprache der Komponenten-Details, damit die
+   Seite keine zweite Klapp-Grammatik lernt. */
+.vp-am-experte {
+  margin-top: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-am-experte > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* ≥44 px Trefferfläche über das ::before-Muster des Hauses - der Text selbst
+     bleibt klein, damit der Aufklapper nicht wie ein Angebot wirkt. */
+  position: relative;
+  padding: 4px 0;
+  font-size: 0.74rem;
+  color: var(--vp-text-gray, #6b7280);
+  cursor: pointer;
+  list-style: none;
+}
+
+.vp-am-experte > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-am-experte > summary::before {
+  content: '';
+  position: absolute;
+  inset: -12px -8px;
+}
+
+.vp-am-experte[open] > summary svg {
+  transform: rotate(90deg);
+}
+
+.vp-am-experte > p {
+  margin: var(--vp-space-2) 0;
+  max-width: 62ch;
+  color: var(--vp-text-gray, #6b7280);
+}

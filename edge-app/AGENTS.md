@@ -2653,12 +2653,27 @@ Anheben kostete einen Vor-Ort-Termin. Betreiber-Ablauf + curl-Beispiele:
   Eintrag, den eine spätere Untersuchung braucht. Ein Probelauf wird NICHT
   protokolliert (es gibt kein „nachher", und ein Log der Lesevorgänge begrübe
   die Schreibvorgänge).
-- **Zwei Tore vor allem anderen:** `VP_INSTALLER_WRITE_ENABLED` (Vorgabe AUS →
-  beide Endpunkte `404`, nichts wird veröffentlicht, die Box ist byte-identisch
-  zu vorher; in BEIDEN Composes weitergereicht - Lockstep) und für den SCHREIB-
-  Aufruf das bestehende Betreiber-Kennwort (`calGuard`,
-  `X-VP-Calibration-Token`). Die Nur-Lese-Sicht bleibt offen wie
+- **Zwei Tore vor allem anderen:** `VP_INSTALLER_WRITE_ENABLED` (auf `false`
+  antworten beide Endpunkte `404`, nichts wird veröffentlicht, die Box ist
+  byte-identisch zu vorher; in BEIDEN Composes + `install.sh` weitergereicht -
+  Lockstep) und für den SCHREIB-Aufruf das bestehende Betreiber-Kennwort
+  (`calGuard`, `X-VP-Calibration-Token`). Die Nur-Lese-Sicht bleibt offen wie
   `GET /api/calibration`.
+- **⚠ Das Flag ist SEIT „Bis zum Endkunden" (Stufe 3, Captain-Entscheid D2) per
+  Vorgabe AN.** Bis dahin war es AUS und die Vorgabe WAR das Feature - eine
+  Canary-Box wurde je Wartungsfenster armiert. Der Portal-Konsument existiert
+  ohnehin erst ab dem Kunden-Release, das Flag schützte also genau die
+  Canary-Phase; was den Pfad seither trägt, ist die Kette, die IMMER läuft
+  (Identität über Broker-ACL + mTLS-CN, das `requested_at`-Fenster, die
+  LAN-Whitelist, die Selbstkonflikt-Sperre, die Einmaligkeit, das
+  Wartungs-Passwort an der lokalen Tür) plus der Cloud-Not-Aus der Plattform
+  (`voltpilot.register-write.enabled` am api, der mit deutschem Grund
+  refüsiert). Es bleibt ein echter Schalter: ein ausdrückliches `false` nimmt
+  EINER Box den ganzen Pfad wieder. **Fail-closed wie jedes bool-Flag hier: ein
+  GESETZTES Wort außerhalb von `true`/`1` schaltet AUS**, nie auf die Vorgabe
+  zurück (`boolEnv`) - ein Tippfehler kann den Pfad also nur schließen.
+  **Wirksam wird die Umstellung erst mit dem NÄCHSTEN Edge-Release** (eine
+  laufende Box behält ihr `.env` und ihr Image).
 - **Eine bestätigte Rücklesung frischt `Snapshot.DeviceExportLimit` auf** -
   dasselbe Feld, das sonst der tägliche Lesevorgang füllt (EINE Wahrheit über
   die Grenze des Geräts, aufgefrischt von dem, der zuletzt gelesen hat).

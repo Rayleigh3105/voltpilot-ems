@@ -15,6 +15,7 @@ import {
   adresseFehler,
   beleg,
   bestaetigenLabel,
+  bestaetigungsFolgen,
   freieAdresseFehler,
   journalSatz,
   klasseTon,
@@ -402,12 +403,7 @@ export function RegisterWriteDrawer({
         open={frage}
         title="Register jetzt schreiben"
         intro={bestaetigenLabel(adresse, wert || '0', skaliert(), ist?.scaleUnit ?? null)}
-        consequences={[
-          'Das Register wird GENAU EINMAL beschrieben - kein zweiter Versuch.',
-          'Der Wert bleibt dauerhaft im Gerät gespeichert, bis ihn jemand ändert.',
-          'Hat sich der Ist-Wert seit der Vorschau geändert, verweigert das Gerät.',
-          'Der Vorgang wird mit Ihrem Namen und Ihrem Grund dauerhaft protokolliert.',
-        ]}
+        consequences={bestaetigungsFolgen()}
         confirmLabel="Jetzt schreiben"
         tone="danger"
         busy={busy}

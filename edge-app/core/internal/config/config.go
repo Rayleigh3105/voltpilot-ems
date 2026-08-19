@@ -81,14 +81,25 @@ type Config struct {
 	// site's netzladen_erlaubt flag; kept off by default on-device.
 	GridChargeAllowed bool `json:"grid_charge_allowed"`
 
-	// InstallerWriteEnabled opens the deliberately NARROW remote write path for
-	// ONE Deye installer register: 0x00E7 „Grid Max Export power" (see
-	// internal/installerwrite). Default FALSE, and that default is the feature:
-	// without it the :8484 endpoints answer 404, nothing subscribes, nothing is
-	// published, and the box behaves byte-identically to before the feature. It
-	// is switched on per maintenance window in the compose .env
-	// (VP_INSTALLER_WRITE_ENABLED) and switched off again afterwards - it is NOT
-	// a fleet-wide capability.
+	// InstallerWriteEnabled opens the one-shot register write path - both of its
+	// triggers, because it is ONE feature with two doors: the local :8484
+	// maintenance endpoint (behind the operator password) and the portal
+	// downlink `v2/register-write` (internal/registerwrite -> installerwrite).
+	//
+	// ⚠ DEFAULT TRUE SINCE „Bis zum Endkunden" (Stufe 3, Captain-Entscheid D2).
+	// Until then it was FALSE and the default WAS the feature: a canary box was
+	// armed per maintenance window. That default has done its job - the portal
+	// consumer only exists from the customer release on, so the flag protected
+	// exactly the canary phase and nothing else. What carries the path from here
+	// is NOT this flag but the chain that is always on: identity (broker ACL +
+	// mTLS CN), the requested_at window, the LAN whitelist, the self-conflict
+	// lock, the one-shot rule, the operator password on the local door - and the
+	// PLATFORM's own kill switch in the cloud (`voltpilot.register-write.enabled`
+	// in services/api), which refuses with a reason instead of going silent.
+	//
+	// It stays a real switch: VP_INSTALLER_WRITE_ENABLED=false turns the whole
+	// path off on ONE box again (the :8484 endpoints answer 404, the downlink
+	// answers `gate_disabled` instead of writing).
 	//
 	// It is independent of ControlEnabled/ControlCertifiedFamilies on purpose:
 	// those gate the CONTINUOUS battery-dispatch loop, this is a single,
@@ -213,11 +224,16 @@ func Defaults() Config {
 		ControlEnabled:           true, // ON by default; the certification allowlist is the per-device gate
 		ControlCertifiedFamilies: []string{"sunspec"},
 		GridChargeAllowed:        false,
-		CalibrationMaxKw:         1.0,              // small: the first live write must be tiny (report §5.7)
-		CalibrationTTLSeconds:    30,               // auto-revert to neutral fast; the write never latches
-		CalibrationTTL:           30 * time.Second, // derived; Load() recomputes it from the seconds
-		MirrorAdvertisePort:      502,              // lockstep with the compose mapping ${VP_MIRROR_PORT:-502}:1502
-		NodeRedUser:              "voltpilot",
+		// Stufe 3 „Bis zum Endkunden" (D2): AN im Kunden-Release. Siehe das
+		// Feld - der Schutz sind Identität, Fenster, LAN-Whitelist,
+		// Selbstkonflikt-Sperre, Einmaligkeit und der Cloud-Not-Aus, nie dieses
+		// Flag; VP_INSTALLER_WRITE_ENABLED=false schaltet es je Box wieder aus.
+		InstallerWriteEnabled: true,
+		CalibrationMaxKw:      1.0,              // small: the first live write must be tiny (report §5.7)
+		CalibrationTTLSeconds: 30,               // auto-revert to neutral fast; the write never latches
+		CalibrationTTL:        30 * time.Second, // derived; Load() recomputes it from the seconds
+		MirrorAdvertisePort:   502,              // lockstep with the compose mapping ${VP_MIRROR_PORT:-502}:1502
+		NodeRedUser:           "voltpilot",
 	}
 }
 

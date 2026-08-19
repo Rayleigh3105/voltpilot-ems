@@ -52,6 +52,31 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>Der Mandanten-Zaun ist der des Aufrufers: {@code /api/v1/sites/**} ist
  * RLS-gefenced, und der Controller beweist die Zugehörigkeit der Anlage, BEVOR
  * eine Kennung hier ankommt.
+ *
+ * <p><b>⚠ DER CLOUD-NOT-AUS WOHNT HIER, NICHT AN DER ROUTE</b> (Stufe 3 „Bis
+ * zum Endkunden"). Bis Stufe 2 nahm {@code @ConditionalOnProperty} dem
+ * Controller die Bohne, sobald {@code voltpilot.register-write.enabled} auf
+ * {@code false} stand - die Routen verschwanden und antworteten mit einem
+ * nackten <b>404</b>. Das war aus zwei Gründen die falsche Abschaltung:
+ * <ul>
+ *   <li>ein 404 ist auf diesem Pfad schon vergeben - so antwortet der
+ *       RLS-Zaun auf eine FREMDE Anlage. Der Not-Aus sah damit exakt aus wie
+ *       „diese Anlage gehört Ihnen nicht", und ein Kunde hätte in seiner
+ *       eigenen Anlage einen Fehler gesucht, den es nicht gab;</li>
+ *   <li>er nahm den VERLAUF mit. Das Schreiben abzuschalten darf nie die
+ *       Papier-Spur verstecken - das Journal ist genau dann interessant, wenn
+ *       jemand den Not-Aus gedrückt hat.</li>
+ * </ul>
+ * Seither refüsieren nur noch die zwei SCHREIBENDEN Schritte, mit <b>503</b>
+ * und einem deutschen Grund; {@code targets}, das Register-Wissen und
+ * {@code history} bleiben lesbar. Die Prüfung ist die ERSTE Anweisung beider
+ * Schritte - kein Ziel wird aufgelöst, keine Runde zum Broker gedreht, keine
+ * Journal-Zeile geschrieben.
+ *
+ * <p>Er ist seit Stufe 3 zugleich der EINZIGE plattformweite Hebel: das
+ * Geräte-Flag {@code VP_INSTALLER_WRITE_ENABLED} steht im Kunden-Release per
+ * Vorgabe AN (Captain-Entscheid D2), es ist also nicht mehr die Sicherung,
+ * für die es in Stufe 1 gehalten wurde.
  */
 @Service
 public class RegisterWriteService {
@@ -68,6 +93,7 @@ public class RegisterWriteService {
     private final ObjectProvider<RegisterWritePublisher> publisher;
     private final Duration readTimeout;
     private final Duration writeTimeout;
+    private final boolean enabled;
 
     /**
      * @param readTimeout  wie lange das Portal auf die Vorschau wartet. Kurz:
@@ -81,13 +107,21 @@ public class RegisterWriteService {
      *                     der Zustand UNBEKANNT (nie „nicht geschrieben"), und
      *                     die Quittung landet trotzdem im Journal, sobald sie
      *                     eintrifft.
+     * @param enabled      der plattformweite NOT-AUS. Vorgabe AN - ein per
+     *                     Vorgabe ausgeschaltetes Flag müsste im gitops-Repo
+     *                     nachgezogen werden, und genau diese Klasse hat diesem
+     *                     Repo schon einen stillen Produktions-Ausfall gekostet
+     *                     (die OTA-Listener-Falle). Auf {@code false} gesetzt
+     *                     refüsieren Vorschau und Schreibvorgang mit deutschem
+     *                     Grund; gelesen werden darf weiter.
      */
     public RegisterWriteService(DeviceRepository devices, RegisterKnowledge knowledge,
             RegisterWriteTargets targets, RegisterWriteRegistry registry,
             RegisterWriteEventRepository journal,
             ObjectProvider<RegisterWritePublisher> publisher,
             @Value("${voltpilot.register-write.read-timeout:PT20S}") Duration readTimeout,
-            @Value("${voltpilot.register-write.write-timeout:PT45S}") Duration writeTimeout) {
+            @Value("${voltpilot.register-write.write-timeout:PT45S}") Duration writeTimeout,
+            @Value("${voltpilot.register-write.enabled:true}") boolean enabled) {
         this.devices = devices;
         this.knowledge = knowledge;
         this.targets = targets;
@@ -96,6 +130,7 @@ public class RegisterWriteService {
         this.publisher = publisher;
         this.readTimeout = readTimeout;
         this.writeTimeout = writeTimeout;
+        this.enabled = enabled;
     }
 
     /** Wer handelt - ausschließlich aus dem validierten Token abgeleitet. */
@@ -162,6 +197,7 @@ public class RegisterWriteService {
      * würde die Schreibvorgänge begraben, für die das Journal existiert.
      */
     public Outcome preview(UUID siteId, Command cmd, Actor actor) {
+        requireEnabled();
         UUID tenantId = requireTenant();
         // Die FORM zuerst: ein offensichtlicher Tippfehler wird als Tippfehler
         // gemeldet, nicht als Geräte-Problem - und er kostet keine Broker-Runde
@@ -194,6 +230,7 @@ public class RegisterWriteService {
      * Tipp-Zwang - Captain: „ohne Hürden") und schreibt die Papier-Spur.
      */
     public Outcome write(UUID siteId, Command cmd, Actor actor) {
+        requireEnabled();
         UUID tenantId = requireTenant();
         // Erst die FORM, dann das Ziel: dieselbe Reihenfolge wie bei der
         // Vorschau, damit ein Tippfehler nie als Geräte-Problem erscheint.
@@ -345,6 +382,24 @@ public class RegisterWriteService {
                     "Der Register-Schreibpfad ist derzeit nicht verfügbar.");
         }
         return pub;
+    }
+
+    /**
+     * Der plattformweite NOT-AUS - die ERSTE Anweisung beider schreibender
+     * Schritte, damit ein abgeschaltetes Feature weder ein Ziel auflöst noch
+     * eine Runde zum Broker dreht noch eine Journal-Zeile hinterlässt.
+     *
+     * <p>503, nicht 404: ein 404 ist auf diesem Pfad die Antwort des
+     * Mandanten-Zauns auf eine FREMDE Anlage, und die zwei Zustände dürfen nie
+     * gleich aussehen. Der Satz sagt, dass es an der PLATTFORM liegt und nicht
+     * an dieser Anlage - sonst sucht ein Kunde den Fehler bei sich.
+     */
+    private void requireEnabled() {
+        if (!enabled) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Das Schreiben von Registern ist auf dieser Plattform vorübergehend "
+                            + "abgeschaltet. Es liegt nicht an Ihrer Anlage.");
+        }
     }
 
     private static UUID requireTenant() {

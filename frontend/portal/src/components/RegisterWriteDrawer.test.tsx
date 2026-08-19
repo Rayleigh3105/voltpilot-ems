@@ -303,3 +303,52 @@ describe('der Register-Drawer fährt die Zwei-Schritt-Strecke', () => {
     expect(text).not.toContain('kW');
   });
 });
+
+describe('Stufe 3: der Verantwortungs-Satz steht in der Rückfrage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    registerWriteHistory.mockResolvedValue([]);
+    registerWriteTargets.mockResolvedValue([target()]);
+  });
+
+  it('⚠ nennt die Eigenverantwortung IM Bestätigungsschritt, nicht nur im Formular', async () => {
+    registerWritePreview.mockResolvedValue(outcome());
+    mount();
+    await lesen();
+
+    fireEvent.change(screen.getByLabelText(/Neuer Rohwert/), { target: { value: '7000' } });
+    fireEvent.change(screen.getByLabelText(/Grund \(Pflicht\)/),
+      { target: { value: 'Freigabe des Netzbetreibers' } });
+    fireEvent.click(screen.getByTestId('regwrite-schreiben'));
+
+    // Die Rückfrage ist der Moment, in dem ein Mensch die Folgen abwägt - eine
+    // Eigenverantwortungs-Erklärung, die er beim Scrollen überliest, ist keine.
+    const folgen = await screen.findByTestId('confirm-consequences');
+    expect(folgen.textContent).toContain('auf eigene Verantwortung');
+    expect(folgen.textContent).toContain('VoltPilot prüft diesen Wert nicht');
+    // Und sie nennt weiter, was GLEICH bleibt.
+    expect(folgen.textContent).toContain('protokolliert');
+    // Ohne Klick ist NICHTS geschrieben.
+    expect(registerWrite).not.toHaveBeenCalled();
+  });
+
+  it('schickt die Geräte-Kennung des GEWÄHLTEN Ziels mit', async () => {
+    registerWriteTargets.mockResolvedValue([
+      target(),
+      target({ lane: 'lan', deviceId: 'd-2', entityId: null, label: 'Zähler Halle',
+        family: null, communication: 'modbus_tcp', host: '192.168.0.44', port: 502,
+        unitId: 3 }),
+    ]);
+    registerWritePreview.mockResolvedValue(outcome());
+    mount();
+    await zielWaehlen('Zähler Halle');
+    fireEvent.click(screen.getByText('Ist-Wert lesen'));
+    await waitFor(() => expect(registerWritePreview).toHaveBeenCalled());
+
+    // Auf einer Anlage mit mehreren Boxen darf nicht die zufällig erste den
+    // Auftrag ausführen.
+    expect(registerWritePreview.mock.calls[0][1]).toMatchObject({
+      deviceId: 'd-2', lane: 'lan', host: '192.168.0.44', port: 502, unitId: 3,
+    });
+  });
+});

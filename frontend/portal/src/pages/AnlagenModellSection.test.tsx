@@ -595,3 +595,37 @@ describe('der Freigabe-Zustand an der Komponente (Einheitsmodell Stufe 4)', () =
     expect(screen.queryByRole('button', { name: /Steuern freigeben/ })).toBeNull();
   });
 });
+
+describe('Stufe 3 „Bis zum Endkunden": der Register-Drawer der Kunden-Fläche', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('bietet dem KUNDEN den Experten-Aufklapper - ohne Admin-Rolle', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    vi.spyOn(api, 'registerWriteTargets').mockResolvedValue([]);
+    vi.spyOn(api, 'registerWriteHistory').mockResolvedValue([]);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    // Ruhig und zugeklappt: die Freiheit ist da, die Fläche bleibt es auch.
+    const aufklapper = await screen.findByTestId('am-register-experte');
+    expect(aufklapper.tagName).toBe('DETAILS');
+    expect((aufklapper as HTMLDetailsElement).open).toBe(false);
+
+    fireEvent.click(screen.getByTestId('am-regwrite'));
+    // Es ist DERSELBE Drawer wie auf der Plattform-Geräteseite - eine zweite
+    // Strecke könnte über denselben Vorgang etwas anderes behaupten.
+    expect(await screen.findByTestId('regwrite')).toBeInTheDocument();
+    // Die freie LAN-Adresse steht dem Kunden offen (Captain-Entscheid D1).
+    expect(screen.getByText('Freie Adresse im Netzwerk')).toBeInTheDocument();
+  });
+
+  it('nennt ohne verbundenes Gerät den GRUND statt eines wirkungslosen Knopfes', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    render(<AnlagenModellSection site={site} devices={[]} />);
+
+    await screen.findByTestId('am-register-experte');
+    expect(screen.queryByTestId('am-regwrite')).toBeNull();
+    expect(screen.getByTestId('am-regwrite-grund').textContent).toContain('Sobald ein Gerät');
+  });
+});

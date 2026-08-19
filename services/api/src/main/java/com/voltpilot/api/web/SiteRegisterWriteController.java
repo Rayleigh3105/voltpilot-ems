@@ -13,7 +13,6 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -61,17 +60,26 @@ import org.springframework.web.server.ResponseStatusException;
  * per Vorgabe ausgeschaltetes Flag muss im gitops-Repo nachgezogen werden, und
  * genau diese Klasse hat dieses Repo schon einmal einen stillen
  * Produktions-Ausfall gekostet (die OTA-Listener-Falle) - der Probe-Kanal
- * vermeidet sie aus demselben Grund. Der Verzicht kostet hier NICHTS, weil die
- * eigentliche Scharfschaltung auf dem GERÄT sitzt und fail-closed ist
- * ({@code VP_INSTALLER_WRITE_ENABLED}, Vorgabe AUS): eine nicht armierte Box
- * antwortet {@code gate_disabled} und schreibt nichts. Dieses Flag ist also der
- * NOT-AUS der Plattform (auf {@code false} setzen entfernt die Routen ganz),
- * nicht ihre Sicherung.
+ * vermeidet sie aus demselben Grund.
+ *
+ * <p><b>Er WIRKT seit Stufe 3 im Dienst, nicht an der Route</b>
+ * ({@link RegisterWriteService}): abgeschaltet refüsieren nur die zwei
+ * SCHREIBENDEN Schritte mit <b>503</b> und deutschem Grund, während Ziel-Liste,
+ * Register-Wissen und VERLAUF lesbar bleiben. Vorher nahm
+ * {@code @ConditionalOnProperty} dem Controller die Bohne - die Routen
+ * antworteten dann mit einem nackten 404, also zeichengleich mit der Antwort
+ * des Mandanten-Zauns auf eine FREMDE Anlage, und die Papier-Spur verschwand
+ * mit. Das war die falsche Abschaltung: das Journal ist genau dann
+ * interessant, wenn jemand den Not-Aus gedrückt hat.
+ *
+ * <p>Er ist seit Stufe 3 zugleich der EINZIGE plattformweite Hebel - das
+ * Geräte-Flag {@code VP_INSTALLER_WRITE_ENABLED} steht im Kunden-Release per
+ * Vorgabe AN (Captain-Entscheid D2). Die Sicherung des Pfades sind weiterhin
+ * Identität (Broker-ACL + mTLS-CN), Zeitfenster, LAN-Whitelist,
+ * Selbstkonflikt-Sperre und Einmaligkeit auf dem Gerät.
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/register-write")
-@ConditionalOnProperty(name = "voltpilot.register-write.enabled", havingValue = "true",
-        matchIfMissing = true)
 public class SiteRegisterWriteController {
 
     private static final String PLATFORM_ADMIN_AUTHORITY = "ROLE_platform-admin";

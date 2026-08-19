@@ -250,14 +250,28 @@ func TestPolicyRefusalsComeFromTheSharedCoreVerbatim(t *testing.T) {
 	box := startPortalBox(t, true)
 	installerStub(t, box.addr, nil, nil)
 
+	// ⚠ Der Vektor ist SEIT STUFE 2 ein Funktionscode-Widerspruch, nicht mehr
+	// „ueber 7000": der Portal-Kanal laeuft seither ueber den EXPERTEN-Umfang
+	// (installerwrite.AdmitExpert), und dort ist der Wert 0..65535 frei - der
+	// Deckel 7000 gehoert allein der engen :8484-Taste. Ein FC5 auf ein
+	// Holding-Register bleibt dagegen ein Widerspruch, ueber den GENAU DIESE
+	// gemeinsame Schicht urteilt.
 	box.a.onRegisterWrite(box.order(t, "schreiben", "9f2c41ab77d05e51", map[string]any{
-		"value": 9000, "confirm": "0X00E7=9000"}))
+		"write_fc": 5}))
 	res := box.await(t)
 	if res.ErrorCode != registerwrite.ErrRefusedPolicy {
-		t.Fatalf("ueber der Obergrenze muss die Politik greifen: %+v", res)
+		t.Fatalf("ein FC-Widerspruch muss die Politik greifen lassen: %+v", res)
 	}
 	if res.Message == "" || res.BeforeRaw != nil {
 		t.Fatalf("die Ablehnung nennt ihren Grund und traegt keinen Wert: %+v", res)
+	}
+	// VERBATIM aus dem geteilten Kern - eine zweite Formulierung hier liesse die
+	// zwei Trigger dieselbe Ablehnung verschieden benennen.
+	if _, err := installerwrite.AdmitExpert(installerwrite.ExpertRequest{
+		Kind: "holding", Addr: 231, Value: 7000, Apply: true,
+		Confirm: "0x00e7=7000", WriteFC: 5,
+	}); err == nil || err.Error() != res.Message {
+		t.Fatalf("der Satz muss WOERTLICH aus installerwrite kommen: %q vs %v", res.Message, err)
 	}
 	// Eine Spule fuehrt diese Stufe nicht aus - benannt, nie still.
 	box.a.onRegisterWrite(box.order(t, "lesen", "9f2c41ab77d05e52", map[string]any{
