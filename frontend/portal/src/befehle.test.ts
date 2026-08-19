@@ -368,3 +368,63 @@ describe('Zeit + Fussnote', () => {
     expect(BEFEHLE_LABEL).toBe('Befehle an dieses Gerät');
   });
 });
+
+describe('der VIERTE Strom `register`', () => {
+  function registerZeile(over: Partial<CommandEntry> = {}): CommandEntry {
+    return {
+      ...periode(),
+      id: -7,
+      stream: 'register',
+      kind: 'ereignis',
+      eventKind: 'register_geschrieben',
+      startedAt: T0,
+      endedAt: T1,
+      source: 'portal',
+      register: {
+        id: 7, requestId: 'abc', source: 'portal', deviceId: 'd', deviceRef: 'edge-1',
+        lane: 'primaer', targetLabel: 'Deye SUN-30K · 192.168.0.28', registerKind: 'holding',
+        address: 231, addressHex: '0x00e7', addressInput: '0x00E7', valueInput: '7000',
+        note: 'Freigabe des Netzbetreibers', valueRaw: 7000, expectedBefore: 3300,
+        registerLabel: 'Einspeisegrenze am Netzanschluss',
+        registerClass: 'netz_compliance', scaleNote: 'Rohwert × 0,01 = 70,0 kW',
+        origin: 'voltpilot', actorName: 'M. Vogt', actorRole: 'platform-admin',
+        viaTenantSwitcher: true, requestedAt: T0, beforeRaw: 3300, afterRaw: 7000,
+        adopted: true, outcome: 'uebernommen', reason: null, answeredAt: T1,
+      },
+      ...over,
+    };
+  }
+
+  it('rendert den Vorgang samt Herkunft - denselben Satz wie der Drawer', () => {
+    const [z] = film(history({ entries: [registerZeile()] }), Date.parse(T1));
+    expect(z.strom).toBe('Register');
+    expect(z.art).toBe('ereignis');
+    expect(z.satz).toMatch(/von 3300 auf 7000 geschrieben/);
+    expect(z.satz).toMatch(/durch VoltPilot \(M. Vogt\)/);
+    expect(z.ton).toBe('ok');
+    expect(z.herkunft).toBe('über das Portal ausgelöst');
+  });
+
+  it('zeigt die getippten Begriffe VERBATIM im Roh-Blick', () => {
+    const [z] = film(history({ entries: [registerZeile()] }), Date.parse(T1));
+    expect(z.roh).toContainEqual({ label: 'Eingetippte Adresse', wert: '0x00E7' });
+    expect(z.roh).toContainEqual({ label: 'Grund', wert: 'Freigabe des Netzbetreibers' });
+  });
+
+  it('lässt eine Zeile OHNE den Block wortlos aus', () => {
+    // Ein älteres Backend kennt das Feld nicht - dann behauptet die Fläche
+    // nichts, statt eine leere Zeile zu zeigen.
+    const ohne = registerZeile({ register: null });
+    expect(film(history({ entries: [ohne] }), Date.parse(T1))).toHaveLength(0);
+  });
+
+  it('nennt einen Vor-Ort-Vorgang als solchen', () => {
+    const zeile = registerZeile({
+      source: 'geraet',
+      register: { ...registerZeile().register!, origin: 'geraet', actorName: null },
+    });
+    const [z] = film(history({ entries: [zeile] }), Date.parse(T1));
+    expect(z.satz).toMatch(/vor Ort am Gerät/);
+    expect(z.herkunft).toBe('vom Gerät gemeldet');
+  });
+});

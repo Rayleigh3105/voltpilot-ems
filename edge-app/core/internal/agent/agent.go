@@ -44,6 +44,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/registerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/shelly"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -259,6 +260,18 @@ type Agent struct {
 	probeLimiter *probe.Limiter
 	// probePublish is the test seam for the cloud answer (nil = the real link).
 	probePublish func(payload []byte) error
+
+	// The PORTAL trigger of the same one-shot write (agent/register_write.go;
+	// contract docs/contracts/mqtt-register-write.schema.json). registerSeen is
+	// the replay guard - non-retained plus the `requested_at` window stop a LATE
+	// redelivery, this stops an immediate one, and on an EEPROM register that
+	// distinction is a write cycle. registerLimiter is deliberately TIGHTER than
+	// the probe channel's, for the same reason.
+	registerMu      sync.Mutex
+	registerSeen    map[string]time.Time
+	registerLimiter *registerwrite.Limiter
+	// registerPublish is the test seam for the cloud answer (nil = the real link).
+	registerPublish func(payload []byte) error
 
 	link       *cloud.Link
 	linkCancel context.CancelFunc // cancels the current link's heartbeat goroutine
@@ -527,6 +540,8 @@ func New(cfg config.Config) (*Agent, error) {
 		testReads:    map[string]chan testconn.Result{},
 		probeReads:   map[string]chan []probeBusResult{},
 		probeLimiter: probe.NewLimiter(probe.DefaultRateWindow, probe.DefaultRateBudget),
+		registerLimiter: registerwrite.NewLimiter(
+			registerwrite.DefaultRateWindow, registerwrite.DefaultRateBudget),
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
 		envelope:     guards.NewEnvelope(),
 		peak:         guards.NewPeakTracker(),
@@ -1101,7 +1116,10 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// Probe-Kanal: die NICHT-retained Einmal-Anfrage, ein Geraet im
 		// Kunden-LAN einmal zu lesen - siehe probe.go.
 		OnProbeRequest: a.onProbeRequest,
-		OnControlCert:  a.onControlCert,
+		// Register schreiben ueber das Portal: der ZWEITE Trigger auf den
+		// Einmal-Schreib-Kern. NICHT retained - siehe register_write.go.
+		OnRegisterWrite: a.onRegisterWrite,
+		OnControlCert:   a.onControlCert,
 		// Verbrauchssteuerung §11/§14.13: der manuelle Eingriff. NICHT retained -
 		// siehe override.go.
 		OnDesiredDownlink: a.onDesiredDownlink,
@@ -1167,7 +1185,8 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.logControlGateDivergence(snap)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
-					a.curtailmentSummary(), a.updateSummary(), a.consumersSummary()); err != nil {
+					a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
+					a.registerWritesSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():

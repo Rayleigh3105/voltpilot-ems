@@ -41,6 +41,7 @@ type Link struct {
 	onUpdateTarget    func(payload []byte)
 	onApplyRequest    func(payload []byte)
 	onProbeRequest    func(payload []byte)
+	onRegisterWrite   func(payload []byte)
 	onDesiredDownlink func(payload []byte)
 	onControlCert     func(payload []byte)
 	onConnect         func(connected bool)
@@ -116,6 +117,19 @@ type Options struct {
 	// Without that, a probe from an hour ago would knock on a customer's device
 	// long after the portal route that asked for it gave up waiting.
 	OnProbeRequest func(payload []byte)
+	// OnRegisterWrite receives the NON-RETAINED one-shot register order on
+	// .../v2/register-write (docs/contracts/mqtt-register-write.schema.json,
+	// „Register schreiben ueber das Portal"). nil = the portal trigger is not
+	// wired.
+	//
+	// ⚠ NON-retained for the same reason as the apply approval and the probe -
+	// and here it weighs MORE: a retained write order would be redelivered on
+	// EVERY reconnect, i.e. one EEPROM write cycle per reconnect on a
+	// customer's inverter. The second half is the same too: the box adopts the
+	// envelope's own `requested_at` as the start of its window, so a QoS1
+	// message the broker redelivers after an outage is already expired when it
+	// lands - and the third is the request_id the box remembers as executed.
+	OnRegisterWrite func(payload []byte)
 	// OnDesiredDownlink receives the NON-RETAINED manual override envelope on
 	// .../v2/desired (Verbrauchssteuerung §11/§14.13). nil = not wired. It
 	// carries either a full edge-desired envelope (forwarded to the local bus
@@ -150,6 +164,7 @@ func New(o Options) (*Link, error) {
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:  o.OnControlCert,
 		onApplyRequest: o.OnApplyRequest, onProbeRequest: o.OnProbeRequest,
+		onRegisterWrite:   o.OnRegisterWrite,
 		onDesiredDownlink: o.OnDesiredDownlink,
 		onConnect:         o.OnConnect}
 
@@ -282,6 +297,20 @@ func New(o Options) (*Link, error) {
 				}
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 probe subscribe failed", "topic", probeTopic, "err", tok.Error())
+			}
+		}
+		// Der NICHT-retained Einmal-Schreibauftrag aus dem Portal. Aus
+		// demselben Grund nicht retained wie Freigabe und Vorschau - und hier
+		// waere ein Replay teurer als anderswo: jeder Reconnect kostete einen
+		// EEPROM-Schreibzyklus auf einem Kundengeraet.
+		if l.onRegisterWrite != nil {
+			regTopic := l.topic("v2/register-write")
+			if tok := c.Subscribe(regTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				if len(msg.Payload()) > 0 {
+					l.onRegisterWrite(msg.Payload())
+				}
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 register-write subscribe failed", "topic", regTopic, "err", tok.Error())
 			}
 		}
 		// The NON-RETAINED manual override envelope (Verbrauchssteuerung §11).
@@ -557,6 +586,50 @@ type SourceEntry struct {
 // consumer entities sends NO block (the heartbeat stays byte-identical); the
 // cloud ingests it with its OWN sibling listener and discards unknown state/
 // reason words instead of storing them.
+// RegisterWritesSummary is the additive `register_writes` heartbeat block: the
+// box's OWN audit of one-shot installer-register writes, reported so the cloud
+// journal shows a write that was made AT THE DEVICE too (Konzept
+// vp-reg-schreib-konzept-p8, Captain-Entscheid D6).
+//
+// ⚠ It closes the "two truths about one operation" gap the concept names (§2.9
+// point 7): the box's book and the cloud's book are correlated by `request_id`,
+// and without this uplink a local write existed in ONE of them only - the
+// Befehle-Seite would have had to say "Vor-Ort-Schreibvorgaenge erscheinen hier
+// nicht". The cloud dedupes on (request_id, event), so re-reporting the same
+// entry in every heartbeat is a no-op, and a PORTAL-triggered write - which the
+// cloud already recorded - simply matches what is there.
+//
+// Bounded and short-lived on purpose: only the newest few entries of the last
+// day travel, so a normal heartbeat carries NO block at all (an installer write
+// is a rare, deliberate act).
+type RegisterWritesSummary struct {
+	// ReportedAt is when the edge assembled this view (RFC 3339).
+	ReportedAt string `json:"reported_at"`
+	// Entries are the newest first. Never nil when the block is present.
+	Entries []RegisterWriteEntry `json:"entries"`
+}
+
+// RegisterWriteEntry is ONE audited write. Before/After are POINTERS: "not
+// read" and "read as 0" are different facts, and 0 is a legitimate value of a
+// feed-in limit ("may not feed in at all").
+type RegisterWriteEntry struct {
+	RequestID string `json:"request_id"`
+	At        string `json:"at"`
+	// Register is the operator-facing spelling the box recorded ("0x00e7") -
+	// verbatim, so the cloud journal shows what the device's own book shows.
+	Register  string `json:"register"`
+	Before    *int   `json:"before,omitempty"`
+	Requested int    `json:"requested"`
+	After     *int   `json:"after,omitempty"`
+	// Result is the box's own outcome word (dry_run|applied|mismatch|failed|
+	// precondition); Message carries its German sentence.
+	Result  string `json:"result"`
+	Message string `json:"message,omitempty"`
+	// Source names WHICH trigger asked - the local maintenance access or the
+	// portal. The cloud maps it onto its own two-value vocabulary.
+	Source string `json:"source"`
+}
+
 type ConsumersSummary map[string]ConsumerRuntime
 
 // ConsumerRuntime is one consumer entity's edge runtime state.
@@ -1039,7 +1112,8 @@ type ExportGuardSummary struct {
 func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary,
 	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary,
 	flowNodes *FlowNodeStatusSummary, curtail *CurtailmentSummary,
-	update *UpdateSummary, consumers ConsumersSummary) error {
+	update *UpdateSummary, consumers ConsumersSummary,
+	registerWrites *RegisterWritesSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -1076,6 +1150,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 			sources.Entries = sources.Entries[:maxSourceEntries]
 		}
 		payload["sources"] = sources
+	}
+	if registerWrites != nil && len(registerWrites.Entries) > 0 {
+		payload["register_writes"] = registerWrites
 	}
 	if flowNodes != nil && len(flowNodes.Nodes) > 0 {
 		if len(flowNodes.Nodes) > maxFlowNodeStates {
@@ -1179,6 +1256,26 @@ func (l *Link) PublishProbeResult(payload []byte) error {
 	tok := l.client.Publish(l.topic("v2/probe-result"), 1, false, payload)
 	if !tok.WaitTimeout(10 * time.Second) {
 		return fmt.Errorf("probe result publish timed out")
+	}
+	return tok.Error()
+}
+
+// PublishRegisterWriteResult answers ONE register order on
+// .../v2/register-write-result - NON-retained, QoS1 (contract
+// docs/contracts/mqtt-register-write.schema.json).
+//
+// Non-retained on this side too: the answer belongs to the ONE order being
+// waited on right now. A retained receipt would be redelivered to every later
+// subscriber and would outlive the portal request that could still make sense
+// of it - and the durable record of what happened is the cloud JOURNAL, not a
+// message sitting on a broker.
+//
+// The caller has already built the contract envelope (internal/registerwrite),
+// so this only puts the bytes on the wire and waits for the QoS1 ack.
+func (l *Link) PublishRegisterWriteResult(payload []byte) error {
+	tok := l.client.Publish(l.topic("v2/register-write-result"), 1, false, payload)
+	if !tok.WaitTimeout(10 * time.Second) {
+		return fmt.Errorf("register write result publish timed out")
 	}
 	return tok.Error()
 }

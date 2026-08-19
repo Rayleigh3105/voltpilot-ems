@@ -11,6 +11,8 @@ import {
   type Zeile,
 } from '../../adminGeraet';
 import type { Tone } from '../../adminFleet';
+import { registerZugang } from '../../registerWrite';
+import { RegisterWriteDrawer } from '../../components/RegisterWriteDrawer';
 
 /**
  * Die GERÄTE-DETAILSEITE - der Anker des Admin-Umbaus (Stufe 2, Konzept
@@ -292,6 +294,11 @@ export function GeraetSeite({
           )}
         </Sektion>
 
+        {/* ── Register (Experte) ────────────────────────────────────────── */}
+        <Sektion titel="Register (Experte)" icon="pencil">
+          <RegisterSektion device={view.device} />
+        </Sektion>
+
         {/* ── Verbindung & Onboarding ───────────────────────────────────── */}
         <Sektion titel="Verbindung & Onboarding" icon="link">
           <Zeilen zeilen={verbindung.zeilen} />
@@ -323,6 +330,47 @@ export function GeraetSeite({
   );
 }
 
+/**
+ * Die Register-Strecke der Plattform-Geräteseite (Konzept
+ * `vp-reg-schreib-konzept-p8` §2.7).
+ *
+ * Sie ist bewusst ein ruhiger EXPERTEN-Aufklapper, kein prominenter Knopf: die
+ * Freiheit ist da, die Fläche bleibt es auch. Der eigentliche Weg (Ist lesen →
+ * Vorschau → bestätigen → Beleg) wohnt im geteilten Drawer, damit die Kunden-
+ * Fläche der Stufe 3 exakt denselben benutzt.
+ */
+function RegisterSektion({ device }: { device: GeraetView['device'] }) {
+  const [offen, setOffen] = useState(false);
+  const zugang = registerZugang(device);
+
+  return (
+    <>
+      <p className="vp-text-sm">
+        Ein einzelnes Geräte-Register aus der Ferne lesen und - nach einer
+        Vorschau - genau einmal beschreiben. Jeder Schreibvorgang wird dauerhaft
+        protokolliert und erscheint im Befehle-Verlauf der Anlage.
+      </p>
+      {zugang.moeglich ? (
+        <Button variant="outline" onClick={() => setOffen(true)} data-testid="geraet-regwrite">
+          Register schreiben
+        </Button>
+      ) : (
+        <p className="vp-muted vp-text-sm" data-testid="geraet-regwrite-grund">{zugang.grund}</p>
+      )}
+      {offen && zugang.moeglich && (
+        <RegisterWriteDrawer
+          open
+          siteId={zugang.siteId as string}
+          deviceId={zugang.deviceId as string}
+          tenantId={zugang.tenantId ?? undefined}
+          geraetName={device.label ?? device.externalRef}
+          onClose={() => setOffen(false)}
+        />
+      )}
+    </>
+  );
+}
+
 function Zurueck({ onZurueck }: { onZurueck: () => void }) {
   return (
     <button type="button" className="vp-linklike vp-geraet-back" onClick={onZurueck}>
@@ -337,7 +385,7 @@ function Sektion({
   children,
 }: {
   titel: string;
-  icon: 'refresh-cw' | 'shield' | 'settings' | 'link' | 'history';
+  icon: 'refresh-cw' | 'shield' | 'settings' | 'link' | 'history' | 'pencil';
   children: React.ReactNode;
 }) {
   return (

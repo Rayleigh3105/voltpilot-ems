@@ -2678,6 +2678,48 @@ Anheben kostete einen Vor-Ort-Termin. Betreiber-Ablauf + curl-Beispiele:
   Ablehnungen ohne Geräte-Kontakt, belegter Socket, unerreichbar, veraltete
   Vorbedingung) · `vp-palette/test/nodes_spec.js`.
 
+## Der ZWEITE Trigger auf denselben Einmal-Schreib-Kern: der Portal-Downlink
+
+`internal/registerwrite` (rein) + `agent/register_write.go` (nur Verdrahtung).
+Vertrag, Journal und Portal-Seite: root `AGENTS.md` „Register schreiben über
+das Portal, Stufe 1". Was HIER gelten muss:
+
+- **⚠ ES IST EIN ADAPTER, KEIN ZWEITER SCHREIBWEG.** Er ruft dieselbe POLITIK
+  (`installerwrite.Admit` - Allowlist `0x00E7`, Wertdeckel 7000, Bestätigungs-
+  Regel, `expected_before`) und denselben MECHANISMUS (`Agent.WriteOnce`) wie
+  die `:8484`-Taste. Ein `installerwrite.AdmittedWrite` entsteht nirgendwo
+  sonst und hat ausschliesslich unexportierte Felder - kein Adapter kann den
+  Mechanismus auf ein Register seiner Wahl richten. Wer hier einen eigenen
+  Schreibpfad einzieht, muss jedes Tor ein zweites Mal absichern.
+- **⚠ Genau ZWEI Ablehnungen sind STUMM** (fremde Identität, verfallener
+  Auftrag) - alles andere wird BEANTWORTET. Eine Ablehnung, die niemand sieht,
+  ist ein Rätsel (die Canary-Soak-Lehre): eine nicht armierte Box antwortet
+  `gate_disabled`, eine nicht ausgeführte Lane `not_supported`, die Politik
+  `refused_policy` mit dem deutschen Satz VERBATIM aus `Admit`.
+- **Drei Sicherungen gegen ein Replay**, nicht eine: nicht-retained (Vertrag),
+  das `requested_at`-Fenster (60 s, ab dem Stempel des Umschlags - nicht ab dem
+  Empfang) und der `request_id`-Merker (gegen eine Doppelzustellung INNERHALB
+  des Fensters). Auf einem EEPROM-Register ist jede davon einen Schreibzyklus
+  wert.
+- **⚠ Der teure Teil läuft in EINER eigenen Goroutine**, nicht auf dem
+  Router-Faden des Links: paho ist mit `SetOrderMatters(true)` konfiguriert,
+  ein blockierender Handler stallt also JEDEN anderen Downlink (Plan,
+  Registry, Flows, OTA-Zuweisung, Freigabe) für die Dauer eines Schreibvorgangs.
+  Synchron bleibt nur, was nichts kostet und nichts starten darf: Parsen,
+  Identität, Verfall, Replay, Rate.
+- **Die SELBSTKONFLIKT-SPERRE liest den Beleg, nicht eine Vermutung**
+  (`registerOwnedByControl`): die Adressen des NEUESTEN Steuer-Rücklesens plus
+  die Frage, ob die Steuerung überhaupt schreibt (Not-Aus + Zertifizierung, im
+  KERN und im Rücklesen). Ohne Rücklesen wird NICHTS behauptet - ein erfundener
+  Konflikt verweigerte einen legitimen Schreibvorgang.
+- **D6:** ein LOKALER Schreibvorgang mintet sich in `recordInstallerWrite` seine
+  eigene `request_id` - sonst wäre genau der Vorgang unkorrelierbar, den
+  niemand in der Cloud sieht. Der Herzschlag trägt das Buch additiv
+  (`registerWritesSummary`, höchstens 5 Einträge des letzten Tages), eine Box
+  ohne Schreibvorgang sendet GAR KEINEN Block.
+- Beweise: `internal/registerwrite` (11, inkl. der Kontrakt-Fixtures per PFAD) ·
+  `agent/register_write_test.go` (7) · `internal/cloud/status_test.go`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

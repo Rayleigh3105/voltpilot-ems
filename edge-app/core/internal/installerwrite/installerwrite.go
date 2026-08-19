@@ -311,8 +311,15 @@ func (r WriteOnceResult) OK() bool { return r.ErrorCode == "" }
 // only question that matters afterwards: who moved this register, when, from
 // what to what, and did it stick.
 type Entry struct {
-	At       time.Time `json:"at"`
-	Register string    `json:"register"`
+	At time.Time `json:"at"`
+	// RequestID is the CROSS KEY to the cloud journal (`register_write_event`):
+	// a portal-triggered write carries the id of the order that caused it, so
+	// the box's book and the cloud's book describe the same operation under the
+	// same key and a manipulated one contradicts the other. A LOCAL write gets
+	// one only when the heartbeat uplink reports it (Konzept §2.9 point 7);
+	// empty = not (yet) correlated.
+	RequestID string `json:"request_id,omitempty"`
+	Register  string `json:"register"`
 	// Before/After follow the WriteOnceResult pointer discipline.
 	Before    *int    `json:"before,omitempty"`
 	Requested int     `json:"requested"`
