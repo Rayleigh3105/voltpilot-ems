@@ -273,11 +273,88 @@ describe('rohBlick - die Technischen Details (F1: für ALLE)', () => {
   });
 });
 
+/**
+ * Fuehrt `body` unter einer anderen Browser-Zeitzone aus. Node uebernimmt eine
+ * Aenderung von `process.env.TZ` sofort; die Wachhund-Zusicherung im Test
+ * stellt sicher, dass der Fall wirklich geprueft wird und nicht still
+ * durchrutscht, falls der Laufzeit-Wechsel je aufhoert zu wirken.
+ */
+function withTz<T>(tz: string, body: () => T): T {
+  const vorher = process.env.TZ;
+  process.env.TZ = tz;
+  try {
+    return body();
+  } finally {
+    process.env.TZ = vorher;
+  }
+}
+
 describe('Zeit + Fussnote', () => {
   it('formatiert Spanne, Punkt und laufende Periode verschieden', () => {
     expect(spanne(T0, T1, false)).toMatch(/\d{2}:\d{2}–\d{2}:\d{2}/);
     expect(spanne(T0, T0, false)).toMatch(/^\d{2}:\d{2}$/);
     expect(spanne(T0, null, true)).toMatch(/^ab \d{2}:\d{2}$/);
+  });
+
+  it('rendert IMMER Europe/Berlin, egal in welcher Zone der Browser laeuft', () => {
+    // 21:45 UTC ist 23:45 Berliner Sommerzeit - genau der Grenz-Slot des
+    // gemeldeten Falls. Vor dem Fix las ein Browser in UTC dort „21:45".
+    const grenze = '2026-08-18T21:45:00Z';
+    withTz('UTC', () => {
+      // Wachhund: ohne wirksamen Zonen-Wechsel prueft der Fall nichts.
+      expect(new Date(grenze).getHours()).toBe(21);
+      expect(spanne(grenze, null, false)).toBe('23:45');
+    });
+    withTz('America/New_York', () => {
+      expect(spanne(grenze, null, false)).toBe('23:45');
+    });
+  });
+
+  it('datiert einen Beginn VOR dem Fenster, damit er nicht als heute liest', () => {
+    // Der gemeldete Fall: eine Zeile, die gestern 23:45 begann, stand im
+    // „Heute"-Tab als „23:45" - also scheinbar in der Zukunft.
+    const heute = '2026-08-19';
+    expect(spanne('2026-08-18T21:45:00Z', '2026-08-18T22:00:07Z', false, heute))
+      .toBe('18.08. 23:45–00:00');
+    expect(spanne('2026-08-18T20:00:00Z', null, true, heute)).toBe('ab 18.08. 22:00');
+    // Ein Punkt-Ereignis bleibt EIN Zeitpunkt, auch datiert.
+    expect(spanne('2026-08-18T21:45:00Z', '2026-08-18T21:45:00Z', false, heute))
+      .toBe('18.08. 23:45');
+  });
+
+  it('datiert NICHT, was am Tag des Fensters begann - und nie ohne Bezug', () => {
+    const heute = '2026-08-19';
+    expect(spanne('2026-08-19T06:00:00Z', '2026-08-19T07:00:00Z', false, heute))
+      .toBe('08:00–09:00');
+    // Ohne Fenster-Tag wird nie ein Datum erfunden.
+    expect(spanne('2026-08-18T21:45:00Z', '2026-08-18T22:00:07Z', false, null))
+      .toBe('23:45–00:00');
+  });
+
+  it('gibt dem Film den Fenster-Tag mit, statt jede Zeile gleich zu behandeln', () => {
+    const zeilen = film(
+      history({
+        // Das Fenster ist der Berliner 19.08. (ab 22:00 UTC des Vortags).
+        from: '2026-08-18T22:00:00Z',
+        to: '2026-08-19T15:26:00Z',
+        entries: [
+          periode({
+            id: 1,
+            startedAt: '2026-08-18T20:00:00Z',
+            endedAt: '2026-08-19T04:00:00Z',
+          }),
+          periode({
+            id: 2,
+            startedAt: '2026-08-19T06:00:00Z',
+            endedAt: '2026-08-19T06:15:00Z',
+          }),
+        ],
+      }),
+      Date.parse('2026-08-19T15:26:00Z'),
+    );
+    // Die vor dem Fenster begonnene Zeile traegt ihr Datum, die von heute nicht.
+    expect(zeilen[0].zeit).toBe('18.08. 22:00–06:00');
+    expect(zeilen[1].zeit).toBe('08:00–08:15');
   });
 
   it('sagt Aufbewahrung, Prüfraster und was V1 NICHT weiss', () => {

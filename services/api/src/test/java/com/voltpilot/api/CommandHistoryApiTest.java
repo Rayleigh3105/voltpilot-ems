@@ -369,7 +369,110 @@ class CommandHistoryApiTest {
         assertThat(entries(body)).isEmpty();
     }
 
+    /**
+     * DER GEMELDETE FALL (19.08.2026, Anlage Pilsting/Herzogau): der „Heute"-Tab
+     * begann um 17:26 mit dem Slot „23:45-00:00", direkt gefolgt von
+     * „00:00-00:15". Die 23:45-Zeile ist die LETZTE Viertelstunde des VORTAGS -
+     * sie ragt nur um Sekunden über Mitternacht, weil der Plan-Sollwert um 00:00
+     * wechselt und die Periode erst der NÄCHSTE Herzschlag schliesst.
+     *
+     * <p>Die Konvention (siehe {@link CommandLog#carryInAfter}): eine Zeile
+     * gehört zum Tag ihres STARTS. Sie ist damit nicht verloren, sie steht im
+     * Fenster des Vortags - und genau das prüft dieser Test in beide Richtungen.
+     */
+    @Test
+    void derMitternachtsGrenzSlotGehoertZumVortagUndNichtInDenHeuteTab() {
+        ControlStatusListener listener = controlListener();
+        // 23:45:03 Berliner Zeit des 11.08. - die letzte Viertelstunde des Tages.
+        listener.handle(TOPIC, control("2026-08-11T21:45:03Z", -3.7, true, true, true, "plan",
+                -3.7, "[]"));
+        // 00:00:07 Berliner Zeit des 12.08.: neuer Plan-Sollwert. Die Periode des
+        // Vortags wird HIER geschlossen - sieben Sekunden nach Mitternacht.
+        listener.handle(TOPIC, control("2026-08-11T22:00:07Z", 1.0, true, true, true, "plan",
+                1.0, "[]"));
+        listener.handle(TOPIC, control("2026-08-11T22:15:05Z", 2.0, true, true, true, "plan",
+                2.0, "[]"));
+
+        List<Map<String, Object>> heute = entries(read(null, "2026-08-12"));
+        // Der Tag beginnt mit SEINEM ersten Slot, nicht mit dem des Vortags.
+        assertThat(heute).hasSize(2);
+        assertThat(heute.get(0).get("startedAt")).asString().startsWith("2026-08-11T22:00:07");
+        assertThat(heute.get(1).get("startedAt")).asString().startsWith("2026-08-11T22:15:05");
+        assertThat(heute).noneMatch(e -> String.valueOf(e.get("startedAt"))
+                .startsWith("2026-08-11T21:45:03"));
+
+        // Und er ist nicht verschwunden: im Fenster des Vortags steht er.
+        List<Map<String, Object>> gestern = entries(read(null, "2026-08-11"));
+        assertThat(gestern).hasSize(1);
+        assertThat(gestern.get(0).get("startedAt")).asString().startsWith("2026-08-11T21:45:03");
+        assertThat(gestern.get(0).get("endedAt")).asString().startsWith("2026-08-11T22:00:07");
+    }
+
+    /**
+     * Die andere Hälfte derselben Konvention: eine Anweisung, die WIRKLICH in
+     * den Tag hineinreicht, muss sichtbar bleiben - sonst begänne der Film mit
+     * einem unerklärten Loch, und ein Tag ohne einen einzigen Wechsel behauptete
+     * „es wurde nichts geschickt".
+     *
+     * <p>Gesät wird hier direkt, weil je Gerät und Strom nur EINE Periode offen
+     * sein darf - die vier Randfälle sind über Herzschläge nicht in einem Zug
+     * herstellbar. Geprüft wird der LESEPFAD, und dort liegt der Fix.
+     */
+    @Test
+    void eineDurchlaufendeUndEineLaufendeAnweisungBleibenImFenster() {
+        // Fenster des 12.08.: [2026-08-11T22:00:00Z, 2026-08-12T22:00:00Z)
+        asTenantA(() -> {
+            // (a) begann gestern 22:00, endete heute 06:00 - stundenlang in Kraft.
+            seedPeriod("2026-08-11T20:00:00Z", "2026-08-12T04:00:00Z", -1.0);
+            // (b) endete GENAU auf der Fenstergrenze - ein halb-offenes Fenster
+            //     hat dort kein Element (der Off-by-one der alten Abfrage).
+            seedPeriod("2026-08-11T18:00:00Z", "2026-08-11T22:00:00Z", -2.0);
+            // (c) der Mitternachts-Grenzslot: sieben Sekunden Überlappung.
+            seedPeriod("2026-08-11T21:50:00Z", "2026-08-11T22:00:07Z", -3.0);
+            // (d) läuft noch - sie beschreibt die Gegenwart, egal wann sie begann.
+            seedPeriod("2026-08-11T21:59:00Z", null, -4.0);
+        });
+
+        List<Double> gezeigt = entries(read(null, "2026-08-12")).stream()
+                .map(e -> (Double) e.get("commandedKwFirst")).toList();
+
+        assertThat(gezeigt).containsExactlyInAnyOrder(-1.0, -4.0);
+    }
+
+    /**
+     * Die zweite Vermutung des Berichts - eine Zwei-Stunden-Verschiebung an der
+     * Ingest-Naht - ist damit ausgeschlossen: ein Herzschlag, der seinen
+     * Zeitstempel MIT Zonen-Versatz meldet, kommt als derselbe Zeitpunkt zurück.
+     * Die Spalten sind {@code TIMESTAMPTZ}, der Weg ist zonenrein.
+     */
+    @Test
+    void derZeitstempelReistUnverschobenDurchIngestSpeicherUndAntwort() {
+        // 10:30 Berliner Sommerzeit = 08:30 UTC.
+        controlListener().handle(TOPIC, control("2026-08-12T10:30:00+02:00", -5.0, true, true,
+                true, "plan", -5.0, "[]"));
+
+        List<Map<String, Object>> heute = entries(read(null, "2026-08-12"));
+        assertThat(heute).hasSize(1);
+        assertThat(heute.get(0).get("startedAt")).asString().startsWith("2026-08-12T08:30:00");
+    }
+
     // -- Hilfen ---------------------------------------------------------------
+
+    /**
+     * Eine Halteperiode direkt setzen (Mandanten-Kontext ist Pflicht - ohne
+     * {@code app.tenant_id} verweigert die RLS-Policy das INSERT).
+     */
+    private void seedPeriod(String startedAt, String endedAt, double commandedKw) {
+        jdbc.update("INSERT INTO device_command_log (tenant_id, site_id, device_id, stream, kind, "
+                + "started_at, ended_at, last_seen_at, mode, commanded_kw_first, source) VALUES ("
+                + "NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?::uuid, ?::uuid, '"
+                + CommandLog.STREAM_BATTERIE + "', '" + CommandLog.KIND_PERIODE + "', "
+                + "?::timestamptz, ?::timestamptz, ?::timestamptz, 'plan', ?, '"
+                + CommandLog.SOURCE_CLOUD + "')",
+                BERLIN_SITE, DEVICE, startedAt, endedAt,
+                endedAt == null ? startedAt : endedAt, commandedKw);
+    }
+
 
     private ControlStatusListener controlListener() {
         return new ControlStatusListener("tcp://localhost:1883", "", "", deviceRepo,
