@@ -16,7 +16,7 @@
 //     lässt (die PR-280-Lehre).
 //  3. Was den Schreibvorgang verhindern WIRD, steht VOR dem Klick.
 //  4. Ein Wort außerhalb des Vokabulars erzeugt KEINE Behauptung.
-import type { RegisterWriteEvent, RegisterWriteOutcome } from './api';
+import type { RegisterWriteEvent, RegisterWriteOutcome, RegisterWriteTarget } from './api';
 
 /** Die drei Warnklassen des Register-Wissens. */
 export type RegisterKlasse = 'netz_compliance' | 'bekannt' | 'unbekannt';
@@ -123,11 +123,18 @@ export function adresseEcho(eingabe: string): string | null {
   return `0x${n.toString(16).padStart(4, '0')} · dezimal ${n}`;
 }
 
-/** Ein Rohwert samt seiner Umrechnung, wo eine Skala bekannt ist. */
+/**
+ * Ein Rohwert samt seiner Umrechnung, wo eine Skala bekannt ist.
+ *
+ * ⚠ Die EINHEIT kommt vom Server (`scaleUnit`) und wird NIE geraten: ein
+ * Register ohne bekannte Skala zeigt nur die rohe Zahl, denn ein „kW" hinter
+ * einem Wert, der Ampere oder Prozent bedeutet, wäre die gefährlichste
+ * Beschriftung dieses ganzen Pfades.
+ */
 export function wertAnzeige(raw: number | null, skaliert: number | null,
-  einheit = 'kW'): string | null {
+  einheit: string | null = null): string | null {
   if (raw == null) return null;
-  if (skaliert == null) return String(raw);
+  if (skaliert == null || !einheit) return String(raw);
   return `${raw} (${skaliert.toLocaleString('de-DE', {
     minimumFractionDigits: 1, maximumFractionDigits: 1,
   })} ${einheit})`;
@@ -147,6 +154,10 @@ export interface VorschauSicht {
   klasse: string;
   klasseWort: string | null;
   warnung: string | null;
+  /** Der Betreiber-Hinweis des Register-Wissens, oder null. */
+  hinweis: string | null;
+  /** „heute bereits 2× geschrieben" - oder null, wenn heute noch nichts war. */
+  schreibzaehler: string | null;
   /** Der Ist-Wert, der als Wächter mitreist. */
   expectedBefore: number | null;
 }
@@ -161,17 +172,20 @@ export interface VorschauSicht {
 export function vorschau(out: RegisterWriteOutcome): VorschauSicht {
   const gelesen = out.ok && out.beforeRaw != null;
   const klasse = out.registerClass ?? 'unbekannt';
+  const einheit = out.scaleUnit ?? null;
   return {
     gelesen,
-    istText: wertAnzeige(out.beforeRaw, out.beforeScaled),
+    istText: wertAnzeige(out.beforeRaw, out.beforeScaled, einheit),
     satz: gelesen
-      ? `Ist-Wert: ${wertAnzeige(out.beforeRaw, out.beforeScaled)}`
+      ? `Ist-Wert: ${wertAnzeige(out.beforeRaw, out.beforeScaled, einheit)}`
       : (out.message ?? 'Der Ist-Wert konnte nicht gelesen werden.'),
     ton: gelesen ? 'ok' : fehlerTon(out.errorCode),
     notizPflicht: out.noteRequired,
     klasse,
     klasseWort: klasseWort(klasse),
     warnung: klasseWarnung(klasse),
+    hinweis: out.registerNote ?? null,
+    schreibzaehler: schreibzaehler(out.writesToday),
     expectedBefore: out.beforeRaw,
   };
 }
@@ -181,17 +195,17 @@ export function vorschau(out: RegisterWriteOutcome): VorschauSicht {
  * darauf, nicht daneben.
  */
 export function bestaetigenLabel(adresse: string, wert: string,
-  skaliert: number | null): string {
+  skaliert: number | null, einheit: string | null = null): string {
   const n = parseRegisterZahl(adresse);
   const hex = n == null ? adresse.trim() : `0x${n.toString(16).padStart(4, '0')}`;
   const w = parseRegisterZahl(wert);
   const roh = w == null ? wert.trim() : String(w);
-  const einheit = skaliert == null
+  const umgerechnet = skaliert == null || !einheit
     ? ''
     : ` (${skaliert.toLocaleString('de-DE', {
       minimumFractionDigits: 1, maximumFractionDigits: 1,
-    })} kW)`;
-  return `Jetzt schreiben: ${hex} = ${roh}${einheit}`;
+    })} ${einheit})`;
+  return `Jetzt schreiben: ${hex} = ${roh}${umgerechnet}`;
 }
 
 /** Der Beleg nach dem Schreibvorgang. */
@@ -208,8 +222,9 @@ export interface BelegSicht {
  * „nicht geschrieben".
  */
 export function beleg(out: RegisterWriteOutcome): BelegSicht {
-  const vorher = wertAnzeige(out.beforeRaw, out.beforeScaled);
-  const nachher = wertAnzeige(out.afterRaw, out.afterScaled);
+  const einheit = out.scaleUnit ?? null;
+  const vorher = wertAnzeige(out.beforeRaw, out.beforeScaled, einheit);
+  const nachher = wertAnzeige(out.afterRaw, out.afterScaled, einheit);
   switch (out.outcome) {
     case 'uebernommen':
       return {
@@ -379,4 +394,132 @@ export function registerZugang(row: {
     };
   }
   return { moeglich: true, grund: null, siteId, deviceId, tenantId };
+}
+
+// ── Stufe 2: das ZIEL wird gewählt ───────────────────────────────────────────
+
+/**
+ * ⚠ DER SCHREIBZÄHLER IST EINE INFORMATION, KEINE SPERRE (Konzept §2.9 Punkt 3).
+ * Ein Installateur-Register liegt im EEPROM, und jeder Schreibvorgang kostet
+ * einen Schreibzyklus - wer das weiß, schreibt nicht dreimal probeweise. Ist
+ * heute noch nichts geschehen, wird auch nichts gesagt: eine „0×"-Zeile wäre
+ * Lärm ohne Aussage.
+ */
+export function schreibzaehler(anzahl: number | null | undefined): string | null {
+  if (anzahl == null || anzahl <= 0) return null;
+  return anzahl === 1
+    ? 'Dieses Register wurde heute bereits einmal geschrieben.'
+    : `Dieses Register wurde heute bereits ${anzahl}× geschrieben.`;
+}
+
+/** Ein Ziel des Pickers, wie die Fläche es zeigt. */
+export interface ZielSicht {
+  lane: string;
+  /** Der Schlüssel, unter dem die Fläche das Ziel wiederfindet. */
+  key: string;
+  titel: string;
+  /** „Deye · 192.168.0.28:8899 · Unit 1" - was davon bekannt ist. */
+  unterzeile: string | null;
+  /** Der Satz der Lane („Der Wechselrichter, den die Anlage selbst kennt"). */
+  laneWort: string;
+  waehlbar: boolean;
+  /** Warum nicht - immer gesetzt, wenn nicht wählbar. */
+  grund: string | null;
+  /** Ob die Plattform die Bedeutung der Register dieses Ziels kennt. */
+  kenntRegister: boolean;
+}
+
+/** Das Lane-Wort in Kundendeutsch. Ein unbekanntes bleibt ohne Behauptung. */
+export function laneWort(lane: string): string {
+  switch (lane) {
+    case 'primary':
+      return 'Wechselrichter der Anlage';
+    case 'entity':
+      return 'Komponente';
+    case 'lan':
+      return 'Gerät im Netzwerk';
+    default:
+      return 'Ziel';
+  }
+}
+
+/** Der Schlüssel eines Ziels - stabil über einen Neu-Abruf hinweg. */
+export function zielKey(t: RegisterWriteTarget): string {
+  if (t.lane === 'entity' && t.entityId) return `entity:${t.entityId}`;
+  if (t.lane === 'lan') return `lan:${t.host ?? ''}:${t.port ?? 502}#${t.unitId ?? 1}`;
+  return `primary:${t.deviceId}`;
+}
+
+/**
+ * Die Ziel-Liste des Pickers.
+ *
+ * ⚠ EIN ZIEL OHNE SCHREIBWEG WIRD GEZEIGT, NICHT VERSTECKT - mit seinem Grund.
+ * Es wegzulassen erzeugte die Frage „warum fehlt mein Gerät?" und beantwortete
+ * sie nirgends; das ist derselbe Schutz-durch-Information, aus dem auch die
+ * Warnklassen nichts sperren.
+ */
+export function ziele(targets: RegisterWriteTarget[]): ZielSicht[] {
+  return targets.map((t) => ({
+    lane: t.lane,
+    key: zielKey(t),
+    titel: t.label,
+    unterzeile: zielUnterzeile(t),
+    laneWort: laneWort(t.lane),
+    waehlbar: t.writable,
+    grund: t.writable ? null : t.reason,
+    kenntRegister: !!t.family,
+  }));
+}
+
+function zielUnterzeile(t: RegisterWriteTarget): string | null {
+  const teile: string[] = [];
+  const geraet = [t.brand, t.model].filter(Boolean).join(' ').trim();
+  if (geraet) teile.push(geraet);
+  if (t.host) {
+    teile.push(t.port ? `${t.host}:${t.port}` : t.host);
+  }
+  if (t.unitId != null) teile.push(`Unit ${t.unitId}`);
+  return teile.length ? teile.join(' · ') : null;
+}
+
+/**
+ * Der Satz über die Registerkenntnis EINES Ziels.
+ *
+ * ⚠ „VoltPilot kennt die Register dieses Geräts nicht" ist eine AUSSAGE und
+ * keine Warnung vor dem Schreiben: geschrieben werden darf trotzdem (die
+ * Freiheit IST der Kern dieser Stufe), nur eben ohne Klartext-Namen und ohne
+ * Umrechnung. Ein erfundener Name wäre die Alternative - und die gefährlichere.
+ */
+export function registerKenntnis(ziel: ZielSicht | null): string | null {
+  if (!ziel) return null;
+  if (ziel.kenntRegister) return null;
+  return 'VoltPilot kennt die Register dieses Geräts nicht. Sie sehen nur den '
+    + 'Rohwert - Name und Umrechnung fehlen, geschrieben werden kann trotzdem.';
+}
+
+/** Was der Aufruf als Ziel mitschickt - aus dem gewählten Eintrag abgeleitet. */
+export function zielInput(t: RegisterWriteTarget | null): {
+  lane?: string; entityId?: string; host?: string; port?: number; unitId?: number;
+} {
+  if (!t) return {};
+  if (t.lane === 'entity' && t.entityId) return { lane: 'entity', entityId: t.entityId };
+  if (t.lane === 'lan') {
+    return {
+      lane: 'lan',
+      ...(t.host ? { host: t.host } : {}),
+      ...(t.port != null ? { port: t.port } : {}),
+      ...(t.unitId != null ? { unitId: t.unitId } : {}),
+    };
+  }
+  return { lane: 'primary' };
+}
+
+/** Die Eingabe einer FREI getippten LAN-Adresse - Form, nie Netz-Wahrheit. */
+export function freieAdresseFehler(host: string): string | null {
+  const t = host.trim();
+  if (!t) return 'Bitte die IP-Adresse des Geräts eintragen.';
+  if (/\s/.test(t)) return 'Eine Adresse enthält keine Leerzeichen.';
+  // ⚠ Ob sie belegbar PRIVAT ist, prüft die BOX - hier steht keine zweite
+  // Wahrheit über ein Netz, das dieses Portal nie gesehen hat.
+  return null;
 }

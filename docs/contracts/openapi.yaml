@@ -5219,6 +5219,52 @@ paths:
         "404": { description: Anlage oder Geraet nicht gefunden. }
         "409": { description: Die Anlage hat kein oder mehr als ein Geraet. }
         "503": { description: Die Anlage ist gerade nicht erreichbar. Es wurde NICHTS geschrieben. }
+  /api/v1/sites/{siteId}/register-write/targets:
+    get:
+      tags: [register-write]
+      summary: Der Geraete-Picker - welche Geraete als Ziel in Frage kommen.
+      description: >
+        Es entsteht KEINE neue Wahrheit: die Liste kommt aus dem, was die BOX
+        ueber ihre Einrichtung meldet (local_setup) und aus den
+        portal-verwalteten Komponenten. Ein Geraet OHNE Schreibweg wird
+        GENANNT (`writable: false` + `reason`), nie verschwiegen - es
+        wegzulassen erzeugte die Frage "warum fehlt mein Geraet?" und
+        beantwortete sie nirgends. `writable` ist eine ANZEIGE-Hilfe, kein
+        Tor: was wirklich geht, entscheidet das Geraet.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die Ziele dieser Anlage.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RegisterWriteTarget" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage nicht gefunden. }
+  /api/v1/sites/{siteId}/register-write/register-knowledge:
+    get:
+      tags: [register-write]
+      summary: Das kuratierte Register-Wissen (reine Anzeige).
+      description: >
+        Der Nachschlage-Teil des Experten-Modus: je Register-FAMILIE die
+        bekannten Register mit Klartext-Namen, Warnklasse und - wo bekannt -
+        Skala und Einheit. Es entscheidet NICHTS und sperrt nichts; ein
+        Register, das hier fehlt, ist schreibbar und heisst ehrlich
+        "unbekannt".
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Das Verzeichnis, Familie fuer Familie.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RegisterKnowledgeFamily" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage nicht gefunden. }
   /api/v1/sites/{siteId}/register-write/history:
     get:
       tags: [register-write]
@@ -5288,6 +5334,31 @@ components:
             Das Ziel-Geraet. Ohne Angabe entscheidet das EINZIGE Geraet der
             Anlage; eine Anlage mit mehreren wird beim Namen genannt (409) -
             das Ziel wird nie geraten.
+        lane:
+          type: string
+          enum: [primary, entity, lan]
+          default: primary
+          description: >
+            WELCHES Ziel (Stufe 2). Die Asymmetrie ist die Sicherheit: bei
+            `primary` nennt die Cloud NICHTS und die Box nimmt ihren eigenen
+            Wechselrichter; bei `entity` reist NUR die Kennung, den Transport
+            loest die Box aus IHRER angewandten Definition auf; nur bei `lan`
+            reist der Endpunkt - und nur dort prueft die Box ihn selbst
+            (LAN-Whitelist). Ein aelterer Client, der nichts schickt, arbeitet
+            zeichengleich wie in Stufe 1 weiter.
+        entityId:
+          type: string
+          format: uuid
+          description: "Die Komponente - nur bei lane=entity, dann PFLICHT."
+        host:
+          type: string
+          maxLength: 253
+          description: >
+            Die freie LAN-Adresse - nur bei lane=lan, dann PFLICHT. Ob sie
+            belegbar privat ist, prueft die BOX; hier steht keine zweite
+            Wahrheit ueber ein Netz, das die api nie gesehen hat.
+        port: { type: integer, minimum: 1, maximum: 65535, default: 502 }
+        unitId: { type: integer, minimum: 0, maximum: 255, default: 1 }
         registerKind: { type: string, enum: [holding, coil], default: holding }
         address:
           type: string
@@ -5340,9 +5411,69 @@ components:
         registerLabel: { type: string, nullable: true, description: "null = VoltPilot kennt dieses Register nicht (nie ein erfundener Name)." }
         registerClass: { type: string, enum: [netz_compliance, bekannt, unbekannt] }
         scaleNote: { type: string, nullable: true }
+        registerNote:
+          type: string
+          nullable: true
+          description: >
+            Der Betreiber-Hinweis des Register-Wissens ("gehoert zur laufenden
+            Steuerung", "Skalierung haengt an der Bauart") - oder null.
+        scaleUnit: { type: string, nullable: true, description: "Die Einheit des skalierten Werts; null = keine bekannte Skala." }
         noteRequired: { type: boolean }
         confirm: { type: string, nullable: true, description: "Der Bestaetigungs-Token, den dieser Schreibvorgang getragen hat." }
+        writesToday:
+          type: integer
+          description: >
+            Wie oft dieses Register auf diesem Geraet HEUTE schon angefordert
+            wurde (Berliner Tag). EEPROM-Ehrlichkeit statt einer Sperre;
+            gezaehlt werden ANFORDERUNGEN, nicht Quittungen - ein
+            Schreibvorgang, dessen Antwort verloren ging, kann angekommen sein.
+        lane: { type: string, enum: [primary, entity, lan] }
         at: { type: string, format: date-time }
+    RegisterWriteTarget:
+      type: object
+      description: >
+        Ein Ziel des Geraete-Pickers. Ein Geraet ohne Schreibweg steht MIT
+        seinem Grund hier - genannt statt verschwiegen.
+      properties:
+        lane: { type: string, enum: [primary, entity, lan] }
+        deviceId: { type: string, format: uuid }
+        entityId: { type: string, format: uuid, nullable: true, description: "Nur bei lane=entity." }
+        label: { type: string }
+        brand: { type: string, nullable: true }
+        model: { type: string, nullable: true }
+        family:
+          type: string
+          nullable: true
+          description: >
+            Die Register-Familie, aus der das Register-Wissen spricht. null =
+            die Box hat sie (noch) nicht gemeldet - dann bleibt jedes Register
+            dort ehrlich "unbekannt" statt mit einer fremden Bedeutung
+            beschriftet zu werden.
+        communication: { type: string, nullable: true }
+        host: { type: string, nullable: true }
+        port: { type: integer, nullable: true }
+        unitId: { type: integer, nullable: true }
+        writable: { type: boolean, description: "ANZEIGE-Hilfe, keine Zusage - die Box entscheidet." }
+        reason: { type: string, nullable: true, description: "Warum nicht - immer gesetzt, wenn writable false ist." }
+    RegisterKnowledgeFamily:
+      type: object
+      description: "Eine Register-Familie des kuratierten Verzeichnisses."
+      properties:
+        family: { type: string }
+        brand: { type: string, nullable: true }
+        label: { type: string, nullable: true }
+        registers:
+          type: array
+          items:
+            type: object
+            properties:
+              address: { type: integer }
+              addressHex: { type: string }
+              label: { type: string }
+              clazz: { type: string, enum: [netz_compliance, bekannt, unbekannt] }
+              scale: { type: number, nullable: true }
+              unit: { type: string, nullable: true, description: "Eine Skala kommt NUR mit ihrer Einheit." }
+              note: { type: string, nullable: true }
     RegisterWriteEvent:
       type: object
       description: >

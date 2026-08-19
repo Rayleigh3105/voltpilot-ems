@@ -1,0 +1,191 @@
+{
+  "schema_version": "1.0",
+  "_source": "Deye-Erstbestand. Die Register-FAKTEN stammen aus dem Repo, nicht aus dem Netz: edge-app/nodered/inverter-control-routing.js (DEYE_CONTROL_REG, DEYE_REMOTE_*) und edge-app/nodered/DEYE.md. Wer dort etwas aendert, aendert es hier mit - sonst behauptet das Portal einen Namen, den das Geraet nicht traegt.",
+  "families": [
+    {
+      "family": "hybrid_3p",
+      "brand": "deye",
+      "label": "Deye Hybrid 3-phasig (SUN-*-SG04LP3 / SG01HP3)",
+      "registers": [
+        {
+          "address": 231,
+          "label": "Einspeisegrenze am Netzanschluss (Grid Max Export power)",
+          "class": "netz_compliance",
+          "scale": 0.01,
+          "unit": "kW",
+          "note": "Der Wert, den der Wechselrichter selbst als Einspeisegrenze haelt. Er gehoert zur Netz-Anmeldung der Anlage."
+        },
+        {
+          "address": 143,
+          "label": "Maximale Verkaufsleistung (Max Sell Power)",
+          "class": "netz_compliance",
+          "note": "Begrenzt die Einspeisung. Die Skalierung haengt an der HV/LV-Bauart und wird vom Geraet erkannt - deshalb wird hier kein kW-Wert umgerechnet."
+        },
+        {
+          "address": 141,
+          "label": "Energie-Muster (Battery First 0 / Load First 1)",
+          "class": "bekannt",
+          "note": "Gehoert zur laufenden Batteriesteuerung: solange sie aktiv ist, wird ein Schreibvorgang abgelehnt."
+        },
+        {
+          "address": 142,
+          "label": "Betriebsart (Export First 0 / Zero Export To Load 1 / Zero Export To CT 2)",
+          "class": "bekannt",
+          "note": "Gehoert zur laufenden Batteriesteuerung: solange sie aktiv ist, wird ein Schreibvorgang abgelehnt."
+        },
+        {
+          "address": 145,
+          "label": "Ueberschuss verkaufen (Solar Sell, 0/1)",
+          "class": "bekannt"
+        },
+        {
+          "address": 146,
+          "label": "Zeitsteuerung aktiv + Wochentage (Time of Use; 0x00FF = ganze Woche)",
+          "class": "bekannt"
+        },
+        {
+          "address": 148,
+          "label": "Zeitfenster 1 Startzeit (HHMM)",
+          "class": "bekannt"
+        },
+        {
+          "address": 154,
+          "label": "Zeitfenster 1 Leistung",
+          "class": "bekannt",
+          "note": "Die Skalierung haengt an der HV/LV-Bauart und wird vom Geraet erkannt."
+        },
+        {
+          "address": 166,
+          "label": "Zeitfenster 1 Ziel-Ladestand",
+          "class": "bekannt",
+          "scale": 1,
+          "unit": "%"
+        },
+        {
+          "address": 172,
+          "label": "Zeitfenster 1 Laden aus (0 Aus / 1 Netz / 2 Generator / 3 beides)",
+          "class": "bekannt"
+        },
+        {
+          "address": 108,
+          "label": "Maximaler Ladestrom der Batterie",
+          "class": "bekannt",
+          "scale": 1,
+          "unit": "A"
+        },
+        {
+          "address": 109,
+          "label": "Maximaler Entladestrom der Batterie",
+          "class": "bekannt",
+          "scale": 1,
+          "unit": "A"
+        },
+        {
+          "address": 0,
+          "label": "Geraete-Kennung (LV/HV-Bauart)",
+          "class": "bekannt",
+          "note": "Nur lesen. Aus diesem Register erkennt die Box, ob die Leistungswerte in Watt oder Dekawatt stehen."
+        },
+        {
+          "address": 1100,
+          "label": "Fernsteuerung aktiv (Remote Mode)",
+          "class": "bekannt",
+          "note": "Gehoert zur laufenden Batteriesteuerung: solange sie aktiv ist, wird ein Schreibvorgang abgelehnt."
+        },
+        {
+          "address": 1101,
+          "label": "Fernsteuerung: Totmann-Frist",
+          "class": "bekannt",
+          "scale": 1,
+          "unit": "s",
+          "note": "Laeuft sie ab, gibt der Wechselrichter die Steuerung von selbst zurueck."
+        },
+        {
+          "address": 1109,
+          "label": "Fernsteuerung: Batterie-Sollwert (Promille der Nennleistung, vorzeichenbehaftet)",
+          "class": "bekannt",
+          "note": "Gehoert zur laufenden Batteriesteuerung: solange sie aktiv ist, wird ein Schreibvorgang abgelehnt."
+        },
+        {
+          "address": 1121,
+          "label": "Fernsteuerung: Zustand (nur lesen)",
+          "class": "bekannt"
+        }
+      ]
+    },
+    {
+      "family": "hybrid_1p",
+      "brand": "deye",
+      "label": "Deye Hybrid 1-phasig (SUN-*-SG03LP1)",
+      "registers": [
+        {
+          "address": 245,
+          "label": "Einspeisegrenze / Maximale Verkaufsleistung (Max Sell Power)",
+          "class": "netz_compliance",
+          "scale": 0.001,
+          "unit": "kW",
+          "note": "Auf dieser Baureihe IST die Verkaufsleistung die Einspeisegrenze - und genau dieses Register beschreibt auch die VoltPilot-Batteriesteuerung. Solange sie aktiv ist, wird ein Schreibvorgang abgelehnt."
+        },
+        {
+          "address": 243,
+          "label": "Energie-Muster (Battery First 0 / Load First 1)",
+          "class": "bekannt",
+          "note": "Gehoert zur laufenden Batteriesteuerung: solange sie aktiv ist, wird ein Schreibvorgang abgelehnt."
+        },
+        {
+          "address": 244,
+          "label": "Betriebsart (Export First 0 / Zero Export To Load 1 / Zero Export To CT 2)",
+          "class": "bekannt",
+          "note": "Gehoert zur laufenden Batteriesteuerung: solange sie aktiv ist, wird ein Schreibvorgang abgelehnt."
+        },
+        {
+          "address": 247,
+          "label": "Ueberschuss verkaufen (Solar Sell, 0/1)",
+          "class": "bekannt"
+        },
+        {
+          "address": 248,
+          "label": "Zeitsteuerung aktiv + Wochentage (Time of Use; 0x00FF = ganze Woche)",
+          "class": "bekannt"
+        },
+        {
+          "address": 250,
+          "label": "Zeitfenster 1 Startzeit (HHMM)",
+          "class": "bekannt"
+        },
+        {
+          "address": 256,
+          "label": "Zeitfenster 1 Leistung",
+          "class": "bekannt",
+          "note": "Die Skalierung haengt an der Bauart und wird vom Geraet erkannt."
+        },
+        {
+          "address": 268,
+          "label": "Zeitfenster 1 Ziel-Ladestand",
+          "class": "bekannt",
+          "scale": 1,
+          "unit": "%"
+        },
+        {
+          "address": 274,
+          "label": "Zeitfenster 1 Laden aus (0 Aus / 1 Netz / 2 Generator / 3 beides)",
+          "class": "bekannt"
+        },
+        {
+          "address": 210,
+          "label": "Maximaler Ladestrom der Batterie",
+          "class": "bekannt",
+          "scale": 1,
+          "unit": "A"
+        },
+        {
+          "address": 211,
+          "label": "Maximaler Entladestrom der Batterie",
+          "class": "bekannt",
+          "scale": 1,
+          "unit": "A"
+        }
+      ]
+    }
+  ]
+}

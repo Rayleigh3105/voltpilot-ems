@@ -1705,14 +1705,64 @@ export interface RegisterWriteOutcome {
   registerLabel: string | null;
   registerClass: string;
   scaleNote: string | null;
+  /** Der Betreiber-Hinweis des Register-Wissens, oder null. */
+  registerNote?: string | null;
+  /** Die Einheit des skalierten Werts; null = keine bekannte Skala. */
+  scaleUnit?: string | null;
   noteRequired: boolean;
   confirm: string | null;
+  /**
+   * Wie oft dieses Register auf diesem Gerät HEUTE schon angefordert wurde
+   * (Berliner Tag) - EEPROM-Ehrlichkeit statt einer Sperre.
+   */
+  writesToday?: number;
+  lane?: string;
   at: string;
+}
+
+/** Ein Ziel des Geräte-Pickers (Stufe 2). */
+export interface RegisterWriteTarget {
+  lane: 'primary' | 'entity' | 'lan' | string;
+  deviceId: string;
+  entityId: string | null;
+  label: string;
+  brand: string | null;
+  model: string | null;
+  family: string | null;
+  communication: string | null;
+  host: string | null;
+  port: number | null;
+  unitId: number | null;
+  /** ANZEIGE-Hilfe, keine Zusage - die Box entscheidet. */
+  writable: boolean;
+  reason: string | null;
+}
+
+/** Eine Register-Familie des kuratierten Verzeichnisses (reine Anzeige). */
+export interface RegisterKnowledgeFamily {
+  family: string;
+  brand: string | null;
+  label: string | null;
+  registers: {
+    address: number;
+    addressHex: string;
+    label: string;
+    clazz: string;
+    scale: number | null;
+    unit: string | null;
+    note: string | null;
+  }[];
 }
 
 /** Was der Mensch im Register-Drawer eingetragen hat - ROH. */
 export interface RegisterWriteInput {
   deviceId?: string;
+  /** Das gewählte Ziel; absent = primary (zeichengleich zu Stufe 1). */
+  lane?: string;
+  entityId?: string;
+  host?: string;
+  port?: number;
+  unitId?: number;
   registerKind?: string;
   address: string;
   value?: string;
@@ -2571,6 +2621,15 @@ export const api = {
       body: JSON.stringify(body),
       ...(tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
     }),
+  /** Schritt 0: WELCHE Geräte dieser Anlage als Ziel in Frage kommen. */
+  registerWriteTargets: (siteId: string, tenantId?: string) =>
+    request<RegisterWriteTarget[]>(`/api/v1/sites/${siteId}/register-write/targets`,
+      tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
+  /** Das kuratierte Register-Wissen - reine Anzeige, entscheidet nichts. */
+  registerKnowledge: (siteId: string, tenantId?: string) =>
+    request<RegisterKnowledgeFamily[]>(
+      `/api/v1/sites/${siteId}/register-write/register-knowledge`,
+      tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
   /** Der Verlauf - dieselben Zeilen, die die Befehle-Seite einmischt. */
   registerWriteHistory: (siteId: string, deviceId?: string, tenantId?: string) =>
     request<RegisterWriteEvent[]>(

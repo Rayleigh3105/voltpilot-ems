@@ -4,7 +4,10 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
-import { ApiError, api, type RegisterWriteEvent, type RegisterWriteOutcome } from '../api';
+import {
+  ApiError, api,
+  type RegisterWriteEvent, type RegisterWriteOutcome, type RegisterWriteTarget,
+} from '../api';
 import {
   EEPROM_HINWEIS,
   VERANTWORTUNG,
@@ -12,12 +15,20 @@ import {
   adresseFehler,
   beleg,
   bestaetigenLabel,
+  freieAdresseFehler,
   journalSatz,
   klasseTon,
+  registerKenntnis,
   vorschau,
   wertFehler,
+  ziele,
+  zielInput,
+  zielKey,
 } from '../registerWrite';
 import { ConfirmDialog } from './ConfirmDialog';
+
+/** Der Schlüssel der FREI getippten Adresse - keine Zeile des Pickers. */
+const FREI = 'frei';
 
 /**
  * Der Register-Drawer: die ZWEI-SCHRITT-STRECKE aus dem Konzept
@@ -32,6 +43,12 @@ import { ConfirmDialog } from './ConfirmDialog';
  * <p>Er RENDERT nur: jeder Satz, jede Warnklasse und jedes Urteil liegt in der
  * reinen `src/registerWrite.ts` - dieselbe Quelle, aus der die Befehle-Seite
  * ihren vierten Strom formuliert.
+ *
+ * <p><b>Seit Stufe 2 beginnt er mit dem ZIEL</b> (Konzept §2.3): auf einer
+ * Anlage mit mehreren Geräten ist das Ziel eine bewusste Auswahl, nie ein
+ * Default im Verborgenen. Ein Gerät OHNE Schreibweg steht mit seinem Grund in
+ * der Liste - es wegzulassen erzeugte die Frage „warum fehlt mein Gerät?" und
+ * beantwortete sie nirgends.
  */
 export function RegisterWriteDrawer({
   open,
@@ -49,6 +66,11 @@ export function RegisterWriteDrawer({
   geraetName: string;
   onClose: () => void;
 }) {
+  const [targets, setTargets] = useState<RegisterWriteTarget[]>([]);
+  const [zielKeyState, setZielKey] = useState<string | null>(null);
+  const [freierHost, setFreierHost] = useState('');
+  const [freierPort, setFreierPort] = useState('502');
+  const [freieUnit, setFreieUnit] = useState('1');
   const [adresse, setAdresse] = useState('0x00E7');
   const [wert, setWert] = useState('');
   const [notiz, setNotiz] = useState('');
@@ -62,6 +84,17 @@ export function RegisterWriteDrawer({
   useEffect(() => {
     if (!open) return;
     let abgebrochen = false;
+    // Der Picker ist Beiwerk in dem Sinne, dass die primäre Lane auch ohne ihn
+    // funktioniert - ein Fehlschlag darf die Strecke also nie blockieren.
+    api.registerWriteTargets(siteId, tenantId)
+      .then((rows) => { if (!abgebrochen) setTargets(rows); })
+      .catch(() => { if (!abgebrochen) setTargets([]); });
+    return () => { abgebrochen = true; };
+  }, [open, siteId, tenantId]);
+
+  useEffect(() => {
+    if (!open) return;
+    let abgebrochen = false;
     api.registerWriteHistory(siteId, deviceId, tenantId)
       .then((rows) => { if (!abgebrochen) setVerlauf(rows); })
       // Der Verlauf ist Beiwerk - er darf die Strecke nie blockieren.
@@ -71,6 +104,19 @@ export function RegisterWriteDrawer({
 
   if (!open) return null;
 
+  const zielListe = ziele(targets);
+  const gewaehltesTarget = targets.find((t) => zielKey(t) === zielKeyState) ?? null;
+  const gewaehlt = zielListe.find((z) => z.key === zielKeyState) ?? null;
+  // ⚠ „frei" ist keine Zeile des Pickers, sondern die ausdrückliche Wahl einer
+  // Adresse, die niemand eingerichtet hat - deshalb ihr eigener Schalter.
+  const freiGewaehlt = zielKeyState === FREI;
+  const hostMangel = freiGewaehlt ? freieAdresseFehler(freierHost) : null;
+  const kenntnis = freiGewaehlt
+    ? 'VoltPilot kennt die Register dieses Geräts nicht. Sie sehen nur den '
+      + 'Rohwert - Name und Umrechnung fehlen, geschrieben werden kann trotzdem.'
+    : registerKenntnis(gewaehlt);
+  const zielBereit = freiGewaehlt ? !hostMangel : !!gewaehlt?.waehlbar;
+
   const adrMangel = adresseFehler(adresse);
   const sicht = ist ? vorschau(ist) : null;
   const wertMangel = wert.trim() ? wertFehler(wert) : null;
@@ -78,6 +124,10 @@ export function RegisterWriteDrawer({
   const notizFehlt = !!sicht?.notizPflicht && !notiz.trim();
   const kannSchreiben = !!sicht?.gelesen && !!wert.trim() && !wertMangel && !notizFehlt;
   const bel = ergebnis && ergebnis.mode === 'schreiben' ? beleg(ergebnis) : null;
+
+  function zielGewaehlt(key: string) {
+    felderGeaendert(() => setZielKey(key));
+  }
 
   function felderGeaendert(patch: () => void) {
     patch();
@@ -94,7 +144,7 @@ export function RegisterWriteDrawer({
     setErgebnis(null);
     try {
       setIst(await api.registerWritePreview(siteId,
-        { deviceId, address: adresse.trim() }, tenantId));
+        { deviceId, address: adresse.trim(), ...zielFelder() }, tenantId));
     } catch (e) {
       setIst(null);
       setFehler(e instanceof ApiError ? e.message : 'Der Ist-Wert konnte nicht gelesen werden.');
@@ -110,6 +160,7 @@ export function RegisterWriteDrawer({
     try {
       const out = await api.registerWrite(siteId, {
         deviceId,
+        ...zielFelder(),
         address: adresse.trim(),
         value: wert.trim(),
         expectedBefore: sicht?.expectedBefore ?? null,
@@ -124,6 +175,33 @@ export function RegisterWriteDrawer({
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Der SKALIERTE neue Wert - nur wo der Server eine Skala genannt hat. Er wird
+   * hier NICHT gerechnet, sondern aus der bekannten Skala des Ist-Werts
+   * abgeleitet; ohne sie steht auf dem Knopf nur die rohe Zahl.
+   */
+  function skaliert(): number | null {
+    if (!ist || ist.beforeRaw == null || ist.beforeScaled == null) return null;
+    const roh = Number.parseInt(wert.trim(), wert.trim().toLowerCase().startsWith('0x') ? 16 : 10);
+    if (!Number.isFinite(roh) || ist.beforeRaw === 0) return null;
+    return (ist.beforeScaled / ist.beforeRaw) * roh;
+  }
+
+  /** Was als Ziel mitreist - aus der Auswahl, nie geraten. */
+  function zielFelder() {
+    if (freiGewaehlt) {
+      const port = Number.parseInt(freierPort, 10);
+      const unit = Number.parseInt(freieUnit, 10);
+      return {
+        lane: 'lan',
+        host: freierHost.trim(),
+        ...(Number.isFinite(port) ? { port } : {}),
+        ...(Number.isFinite(unit) ? { unitId: unit } : {}),
+      };
+    }
+    return zielInput(gewaehltesTarget);
   }
 
   return (
@@ -142,7 +220,81 @@ export function RegisterWriteDrawer({
           <p className="vp-assist-sub">{geraetName}</p>
 
           {/* ── Schritt 1: Ziel & Register ─────────────────────────────── */}
-          <h4>1 · Register wählen und Ist-Wert lesen</h4>
+          <h4>1 · Ziel wählen</h4>
+          <ul className="vp-regwrite-ziele" data-testid="regwrite-ziele">
+            {zielListe.map((z) => (
+              <li key={z.key}>
+                <label>
+                  <input
+                    type="radio"
+                    name="regwrite-ziel"
+                    value={z.key}
+                    checked={zielKeyState === z.key}
+                    disabled={!z.waehlbar}
+                    onChange={() => zielGewaehlt(z.key)}
+                  />
+                  <span>
+                    <strong>{z.titel}</strong>
+                    <span className="vp-muted vp-text-sm"> · {z.laneWort}</span>
+                    {z.unterzeile && (
+                      <span className="vp-muted vp-text-sm"><br />{z.unterzeile}</span>
+                    )}
+                    {z.grund && (
+                      <span className="vp-text-sm" data-testid="regwrite-ziel-grund">
+                        <br />{z.grund}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </li>
+            ))}
+            <li>
+              <label>
+                <input
+                  type="radio"
+                  name="regwrite-ziel"
+                  value={FREI}
+                  checked={freiGewaehlt}
+                  onChange={() => zielGewaehlt(FREI)}
+                />
+                <span>
+                  <strong>Freie Adresse im Netzwerk</strong>
+                  <span className="vp-muted vp-text-sm"> · Experte</span>
+                </span>
+              </label>
+            </li>
+          </ul>
+          {freiGewaehlt && (
+            <div className="vp-regwrite-frei" data-testid="regwrite-frei">
+              <Input
+                label="IP-Adresse im Kunden-Netz"
+                value={freierHost}
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  felderGeaendert(() => setFreierHost(e.target.value))}
+                hint="Nur Adressen im eigenen Netz - das Gerät prüft das selbst."
+                error={hostMangel ?? undefined}
+              />
+              <Input
+                label="Port"
+                value={freierPort}
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  felderGeaendert(() => setFreierPort(e.target.value))}
+                hint="Vorgabe 502."
+              />
+              <Input
+                label="Unit-ID"
+                value={freieUnit}
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  felderGeaendert(() => setFreieUnit(e.target.value))}
+                hint="Vorgabe 1."
+              />
+            </div>
+          )}
+          {kenntnis && zielBereit && (
+            <p className="vp-text-sm" data-testid="regwrite-kenntnis">{kenntnis}</p>
+          )}
+
+          <h4>2 · Register wählen und Ist-Wert lesen</h4>
           <Input
             label="Registeradresse"
             value={adresse}
@@ -151,7 +303,12 @@ export function RegisterWriteDrawer({
             hint={adresseEcho(adresse) ?? 'Dezimal (231) oder hexadezimal (0x00E7).'}
             error={adrMangel ?? undefined}
           />
-          <Button variant="outline" onClick={lesen} disabled={busy || !!adrMangel}>
+          <Button
+            variant="outline"
+            onClick={lesen}
+            disabled={busy || !!adrMangel || !zielBereit}
+            data-testid="regwrite-lesen"
+          >
             Ist-Wert lesen
           </Button>
 
@@ -175,13 +332,21 @@ export function RegisterWriteDrawer({
                   {sicht.warnung}
                 </p>
               )}
+              {sicht.hinweis && (
+                <p className="vp-text-sm" data-testid="regwrite-hinweis">{sicht.hinweis}</p>
+              )}
+              {sicht.schreibzaehler && (
+                <p className="vp-text-sm" data-testid="regwrite-zaehler">
+                  {sicht.schreibzaehler}
+                </p>
+              )}
             </div>
           )}
 
           {/* ── Schritt 2: Vorschau & Bestätigen ───────────────────────── */}
           {sicht?.gelesen && (
             <>
-              <h4>2 · Neuen Wert eintragen und bestätigen</h4>
+              <h4>3 · Neuen Wert eintragen und bestätigen</h4>
               <Input
                 label="Neuer Rohwert"
                 value={wert}
@@ -204,7 +369,7 @@ export function RegisterWriteDrawer({
                 disabled={busy || !kannSchreiben}
                 data-testid="regwrite-schreiben"
               >
-                {bestaetigenLabel(adresse, wert || '0', null)}
+                {bestaetigenLabel(adresse, wert || '0', skaliert(), ist?.scaleUnit ?? null)}
               </Button>
             </>
           )}
@@ -236,7 +401,7 @@ export function RegisterWriteDrawer({
       <ConfirmDialog
         open={frage}
         title="Register jetzt schreiben"
-        intro={bestaetigenLabel(adresse, wert || '0', null)}
+        intro={bestaetigenLabel(adresse, wert || '0', skaliert(), ist?.scaleUnit ?? null)}
         consequences={[
           'Das Register wird GENAU EINMAL beschrieben - kein zweiter Versuch.',
           'Der Wert bleibt dauerhaft im Gerät gespeichert, bis ihn jemand ändert.',

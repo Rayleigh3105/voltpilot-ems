@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.ComponentApplyRepository;
+import com.voltpilot.api.entities.EntityObservedRepository;
+import com.voltpilot.api.entities.EntityStatusListener;
+import com.voltpilot.api.repo.DeviceRepository;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -125,14 +129,35 @@ class RegisterWriteApiTest {
     @Autowired
     TestRestTemplate rest;
 
+    // Der ECHTE Zuhörer wird im Test von Hand gebaut (er hängt sonst an einem
+    // Broker, den dieser Test nicht braucht) - mit den ECHTEN Repositories.
+    @Autowired
+    DeviceRepository deviceRepo;
+
+    @Autowired
+    EntityObservedRepository observedRepo;
+
+    @Autowired
+    ComponentApplyRepository componentApplyRepo;
+
     private final ObjectMapper json = new ObjectMapper();
 
-    /** Der komplette Anwendungsfall: 0x00E7 von 33,0 auf 70,0 kW, ohne SSH. */
+    /**
+     * Der komplette Anwendungsfall: 0x00E7 von 33,0 auf 70,0 kW, ohne SSH.
+     *
+     * <p><b>⚠ Die kW-Zahl hängt an der gemeldeten FAMILIE</b> (Stufe 2): erst
+     * der Herzschlag sagt der Cloud, dass hier ein dreiphasiger Deye antwortet -
+     * ohne ihn bliebe die vorsichtige Warnung, aber ohne Namen und ohne
+     * Umrechnung.
+     */
     @Test
     void theTwoStepJourneyWritesTheRegisterAndLeavesAProvableTrail() throws Exception {
         String customer = token("demo", "demo");
         UUID site = createSite(customer, "Register-Anlage");
         UUID device = claim(customer, site, "edge-regwrite-e2e-01");
+        // Die Box meldet ihre Einrichtung - erst DARAUS weiß die Cloud, welche
+        // Register-Familie hier antwortet, und damit, was 0x00E7 bedeutet.
+        heartbeat(site, device);
 
         try (DeviceStub stub = new DeviceStub()) {
             stub.answerWith(req -> {
@@ -427,7 +452,202 @@ class RegisterWriteApiTest {
         assertThat(garbage.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * STUFE 2: der Geräte-Picker, das Register-Wissen JE FAMILIE, die
+     * Komponenten-Lane und der Schreibzähler - in einer Reise, weil sie
+     * zusammen die eine Frage beantworten, die Schritt 1 stellt: „auf welches
+     * Gerät schreibe ich hier eigentlich, und was ist das für ein Register?"
+     */
+    @Test
+    void thePickerNamesEveryDeviceAndTheKnowledgeSpeaksPerFamily() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Register-Anlage Stufe 2");
+        UUID device = claim(customer, site, "edge-regwrite-s2-01");
+
+        // Vor dem Herzschlag weiß die Cloud NICHTS über die Einrichtung - das
+        // Ziel bleibt trotzdem wählbar (die primäre Lane nennt keinen Endpunkt).
+        List<Map<String, Object>> before = targets(customer, site);
+        assertThat(before).hasSize(1);
+        assertThat(before.get(0).get("lane")).isEqualTo("primary");
+        assertThat(before.get(0).get("family")).as("keine erfundene Familie").isNull();
+        assertThat(before.get(0).get("writable")).isEqualTo(true);
+
+        heartbeat(site, device);
+
+        List<Map<String, Object>> after = targets(customer, site);
+        Map<String, Object> primary = after.stream()
+                .filter(t -> "primary".equals(t.get("lane"))).findFirst().orElseThrow();
+        assertThat(primary.get("family")).isEqualTo("hybrid_3p");
+        assertThat(primary.get("host")).isEqualTo("192.168.0.28");
+        assertThat(primary.get("writable")).isEqualTo(true);
+        // Die go-e-Wallbox wird GENANNT - mit Grund, nie verschwiegen.
+        Map<String, Object> wallbox = after.stream()
+                .filter(t -> "goe_http_api".equals(t.get("communication"))).findFirst()
+                .orElseThrow();
+        assertThat(wallbox.get("writable")).isEqualTo(false);
+        assertThat(wallbox.get("reason").toString()).contains("Modbus");
+
+        // Das Verzeichnis ist DATEN und spricht je Familie.
+        ResponseEntity<List<Map<String, Object>>> knowledge = rest.exchange(
+                url("/api/v1/sites/" + site + "/register-write/register-knowledge"),
+                HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(knowledge.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(knowledge.getBody()).extracting(f -> f.get("family"))
+                .contains("hybrid_3p", "hybrid_1p");
+
+        try (DeviceStub stub = new DeviceStub()) {
+            stub.answerWith(req -> ok(site, device, req, 3300, null));
+
+            // ⚠ Die Klasse folgt der FAMILIE: 0x008D ist auf hybrid_3p bekannt.
+            ResponseEntity<Map<String, Object>> known = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x008D"));
+            stub.awaitRequest();
+            assertThat(known.getBody().get("registerClass")).isEqualTo("bekannt");
+            assertThat(known.getBody().get("registerLabel").toString()).contains("Energie-Muster");
+            assertThat(known.getBody().get("noteRequired")).isEqualTo(false);
+            // Und die Vorschau nennt Roh UND skaliert, wo eine Skala bekannt ist.
+            ResponseEntity<Map<String, Object>> limit = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "address", "231"));
+            stub.awaitRequest();
+            assertThat(limit.getBody().get("beforeRaw")).isEqualTo(3300);
+            assertThat(limit.getBody().get("beforeScaled")).isEqualTo(33.0);
+            assertThat(limit.getBody().get("scaleUnit")).isEqualTo("kW");
+            assertThat(limit.getBody().get("noteRequired")).isEqualTo(true);
+            assertThat(limit.getBody().get("writesToday")).isEqualTo(0);
+        }
+    }
+
+    /**
+     * Die zwei NEUEN Lanes reisen bis auf den Draht - und die Cloud nennt bei
+     * der Komponente NUR die Kennung, damit ein Auftrag nie auf einen fremden
+     * Host umgelenkt werden kann.
+     */
+    @Test
+    void theTwoNewLanesReachTheDeviceAndTheWriteCounterIsHonest() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Register-Anlage Lanes");
+        UUID device = claim(customer, site, "edge-regwrite-s2-02");
+        UUID entity = UUID.randomUUID();
+
+        try (DeviceStub stub = new DeviceStub()) {
+            stub.answerWith(req -> ok(site, device, req, 0, 1));
+
+            // --- Lane „lan": der Endpunkt reist, weil es keinen anderen Weg gibt
+            ResponseEntity<Map<String, Object>> lan = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "lane", "lan",
+                            "host", "192.168.0.44", "port", 1502, "unitId", 3,
+                            "registerKind", "coil", "address", "3"));
+            assertThat(lan.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode asked = stub.awaitRequest();
+            assertThat(asked.path("target").path("kind").asText()).isEqualTo("lan");
+            assertThat(asked.path("target").path("host").asText()).isEqualTo("192.168.0.44");
+            assertThat(asked.path("target").path("port").asInt()).isEqualTo(1502);
+            assertThat(asked.path("target").path("unit_id").asInt()).isEqualTo(3);
+            assertThat(asked.path("register").path("kind").asText()).isEqualTo("coil");
+            // ⚠ Ein fremdes Gerät hat keine Familie - also KEIN Name, nie ein
+            // Deye-Etikett auf einem Kunden-Modbus-Gerät.
+            assertThat(lan.getBody().get("registerLabel")).isNull();
+            assertThat(lan.getBody().get("registerClass")).isEqualTo("unbekannt");
+
+            // --- Lane „entity": es reist NUR die Kennung
+            ResponseEntity<Map<String, Object>> comp = post(
+                    "/api/v1/sites/" + site + "/register-write", customer,
+                    Map.of("deviceId", device.toString(), "lane", "entity",
+                            "entityId", entity.toString(),
+                            "registerKind", "coil", "address", "3", "value", "1"));
+            assertThat(comp.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode order = stub.awaitRequest();
+            assertThat(order.path("target").path("kind").asText()).isEqualTo("entity");
+            assertThat(order.path("target").path("entity_id").asText())
+                    .isEqualTo(entity.toString());
+            assertThat(order.path("target").has("host"))
+                    .as("die Cloud nennt bei einer Komponente NIE einen Host").isFalse();
+            assertThat(order.path("confirm").asText()).isEqualTo("0X0003=1");
+
+            // Der Schreibzähler zählt ANFORDERUNGEN dieses Registers - und nur
+            // dieses: die Vorschau oben hat NICHTS protokolliert.
+            ResponseEntity<Map<String, Object>> again = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "lane", "entity",
+                            "entityId", entity.toString(),
+                            "registerKind", "coil", "address", "3"));
+            stub.awaitRequest();
+            assertThat(again.getBody().get("writesToday"))
+                    .as("heute bereits einmal geschrieben").isEqualTo(1);
+            ResponseEntity<Map<String, Object>> other = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x1234"));
+            stub.awaitRequest();
+            assertThat(other.getBody().get("writesToday"))
+                    .as("ein anderes Register hat seinen eigenen Zähler").isEqualTo(0);
+        }
+
+        // Eine Lane ohne ihre Pflichtangabe ist eine kaputte Anfrage - und sie
+        // fällt, BEVOR irgendetwas den Broker erreicht.
+        assertThat(post("/api/v1/sites/" + site + "/register-write/preview", customer,
+                Map.of("deviceId", device.toString(), "lane", "entity", "address", "1"))
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(post("/api/v1/sites/" + site + "/register-write/preview", customer,
+                Map.of("deviceId", device.toString(), "lane", "lan", "address", "1"))
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(post("/api/v1/sites/" + site + "/register-write/preview", customer,
+                Map.of("deviceId", device.toString(), "lane", "mond", "address", "1"))
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
     // ── Helfer ────────────────────────────────────────────────────────────
+
+    /** Eine Quittung in der Form des Kontrakts. */
+    private String ok(UUID site, UUID device, JsonNode req, int before, Integer after) {
+        boolean write = "schreiben".equals(req.get("mode").asText());
+        return "{\"schema_version\":\"1.0\",\"type\":\"register_write_result\""
+                + ",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + site + "\""
+                + ",\"device_id\":\"" + device + "\",\"request_id\":\""
+                + req.get("request_id").asText() + "\""
+                + ",\"answered_at\":\"2026-08-19T14:02:49Z\""
+                + ",\"mode\":\"" + req.get("mode").asText() + "\",\"ok\":true"
+                + ",\"before_raw\":" + before
+                + (write && after != null
+                        ? ",\"after_raw\":" + after + ",\"wrote\":true,\"adopted\":true" : "")
+                + ",\"message\":\"ok\"}";
+    }
+
+    /**
+     * Schickt einen Herzschlag durch den ECHTEN Zuhörer - also über genau die
+     * Form, die auf dem Draht liegt, statt über einen Test-Nachbau des Ingests.
+     */
+    private void heartbeat(UUID site, UUID device) {
+        EntityStatusListener listener = new EntityStatusListener("tcp://unused", "", "",
+                deviceRepo, observedRepo, componentApplyRepo);
+        String localSetup = """
+                [{"id":"inverter","kind":"inverter","role":"inverter","brand":"deye",
+                  "model":"sun-30k-sg01hp3","label":"Deye SUN-30K","family":"hybrid_3p",
+                  "communication":"solarman_v5",
+                  "connection":{"ip":"192.168.0.28","port":8899,"serial":"2985159064",
+                                "mb_slave_id":1}},
+                 {"id":"src-goe-1","kind":"source","role":"consumer","brand":"go-e",
+                  "model":"charger","label":"Wallbox Hof","communication":"goe_http_api",
+                  "connection":{"ip":"192.168.0.50"}}]""";
+        String payload = """
+                {"schema_version":"1.0","tenant_id":"%s","site_id":"%s","device_id":"%s",
+                 "entities":{"revision":"r-ist","count":0,"ids":[],"local_setup":%s}}"""
+                .formatted(TENANT_A, site, device, localSetup);
+        listener.handle("ems/%s/%s/%s/status".formatted(TENANT_A, site, device),
+                payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private List<Map<String, Object>> targets(String token, UUID site) {
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/sites/" + site + "/register-write/targets"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
 
     private Map<String, Object> awaitOutcome(String token, UUID site, String outcome)
             throws Exception {

@@ -22,6 +22,20 @@ import java.util.UUID;
  *
  * @param deviceId       das Ziel-Gerät; ohne Angabe entscheidet das einzige
  *                       Gerät der Anlage, mehrere werden beim Namen genannt.
+ * @param lane           {@code primary} (Vorgabe), {@code entity} oder
+ *                       {@code lan} - die WAHL des Ziels, nie ein Default im
+ *                       Verborgenen. Ein älterer Client, der nichts schickt,
+ *                       arbeitet zeichengleich wie in Stufe 1 weiter.
+ * @param entityId       die Komponente (nur Lane {@code entity}). Es reist NUR
+ *                       die Kennung - den Transport löst die Box aus ihrer
+ *                       eigenen angewandten Definition auf, damit ein Auftrag
+ *                       nie auf einen fremden Host umgelenkt werden kann.
+ * @param host           die freie LAN-Adresse (nur Lane {@code lan}). Ob sie
+ *                       belegbar privat ist, prüft die BOX - hier steht keine
+ *                       zweite Wahrheit über ein Netz, das die api nie gesehen
+ *                       hat.
+ * @param port           Vorgabe 502 (nur Lane {@code lan}).
+ * @param unitId         Vorgabe 1 (nur Lane {@code lan}).
  * @param registerKind   {@code holding} (Vorgabe) oder {@code coil}.
  * @param address        die getippte Adresse, dezimal oder {@code 0x}-hex.
  * @param value          der getippte ROHWERT (kein kW) - nur beim Schreiben.
@@ -36,6 +50,11 @@ import java.util.UUID;
  */
 public record RegisterWriteRequest(
         UUID deviceId,
+        @Size(max = 16) String lane,
+        UUID entityId,
+        @Size(max = 253) String host,
+        @Min(1) @Max(65535) Integer port,
+        @Min(0) @Max(255) Integer unitId,
         @Size(max = 16) String registerKind,
         @NotBlank @Size(max = 16) String address,
         @Size(max = 16) String value,

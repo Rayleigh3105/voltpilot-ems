@@ -5764,3 +5764,42 @@ button.vp-tech-card-h.toggle {
   font-size: var(--vp-text-sm, 0.875rem);
   color: var(--vp-text-muted, #6b7280);
 }
+/* Der Geräte-Picker (Stufe 2). Ein Ziel OHNE Schreibweg bleibt SICHTBAR und
+   lesbar - nur nicht wählbar: es wegzublenden erzeugte die Frage „warum fehlt
+   mein Gerät?" und beantwortete sie nirgends. */
+.vp-regwrite-ziele {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+}
+.vp-regwrite-ziele label {
+  display: flex;
+  gap: var(--vp-space-2, 8px);
+  align-items: flex-start;
+  padding: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 10px);
+  cursor: pointer;
+}
+.vp-regwrite-ziele input:disabled + span {
+  color: var(--vp-text-muted, #6b7280);
+}
+.vp-regwrite-ziele label:has(input:disabled) {
+  cursor: default;
+  background: var(--vp-surface-subtle, #f6f7f9);
+}
+.vp-regwrite-ziele label:has(input:checked) {
+  border-color: var(--vp-brand, #6c8cff);
+  box-shadow: 0 0 0 1px var(--vp-brand, #6c8cff) inset;
+}
+.vp-regwrite-frei {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+  padding: var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-subtle, #f6f7f9);
+}

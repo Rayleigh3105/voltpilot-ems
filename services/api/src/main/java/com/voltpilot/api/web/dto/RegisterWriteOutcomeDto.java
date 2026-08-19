@@ -18,10 +18,19 @@ import java.time.Instant;
  * @param confirm   der Bestätigungs-Token, den dieser Schreibvorgang getragen
  *                  hat (nur beim Schreiben) - er steht im Beleg, damit sichtbar
  *                  ist, was genau autorisiert wurde.
+ * @param registerNote der Betreiber-Hinweis des Register-Wissens, oder
+ *                  {@code null} - etwa „gehört zur laufenden Steuerung".
+ * @param scaleUnit die Einheit des skalierten Werts, oder {@code null}: ein
+ *                  Register ohne bekannte Skala bekommt NIE eine erfundene.
+ * @param writesToday wie oft dieses Register auf diesem Gerät HEUTE schon
+ *                  angefordert wurde (Berliner Tag) - EEPROM-Ehrlichkeit statt
+ *                  einer Sperre.
+ * @param lane      welches Ziel dieser Schritt gemeint hat.
  */
 public record RegisterWriteOutcomeDto(String requestId, String mode, boolean ok, String outcome,
         Integer beforeRaw, Integer afterRaw, Double beforeScaled, Double afterScaled,
         Boolean adopted, String errorCode, String message, String targetLabel, int address,
         String addressHex, String registerLabel, String registerClass, String scaleNote,
-        boolean noteRequired, String confirm, Instant at) {
+        String registerNote, String scaleUnit, boolean noteRequired, String confirm,
+        int writesToday, String lane, Instant at) {
 }

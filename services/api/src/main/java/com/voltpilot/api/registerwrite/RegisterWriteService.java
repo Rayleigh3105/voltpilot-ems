@@ -61,6 +61,8 @@ public class RegisterWriteService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final DeviceRepository devices;
+    private final RegisterKnowledge knowledge;
+    private final RegisterWriteTargets targets;
     private final RegisterWriteRegistry registry;
     private final RegisterWriteEventRepository journal;
     private final ObjectProvider<RegisterWritePublisher> publisher;
@@ -80,12 +82,15 @@ public class RegisterWriteService {
      *                     die Quittung landet trotzdem im Journal, sobald sie
      *                     eintrifft.
      */
-    public RegisterWriteService(DeviceRepository devices, RegisterWriteRegistry registry,
+    public RegisterWriteService(DeviceRepository devices, RegisterKnowledge knowledge,
+            RegisterWriteTargets targets, RegisterWriteRegistry registry,
             RegisterWriteEventRepository journal,
             ObjectProvider<RegisterWritePublisher> publisher,
             @Value("${voltpilot.register-write.read-timeout:PT20S}") Duration readTimeout,
             @Value("${voltpilot.register-write.write-timeout:PT45S}") Duration writeTimeout) {
         this.devices = devices;
+        this.knowledge = knowledge;
+        this.targets = targets;
         this.registry = registry;
         this.journal = journal;
         this.publisher = publisher;
@@ -112,17 +117,43 @@ public class RegisterWriteService {
         }
     }
 
-    /** Was der Aufrufer will - roh, wie er es getippt hat. */
-    public record Command(UUID deviceId, String registerKind, String addressInput,
-            String valueInput, Integer expectedBefore, Integer writeFc, String note) {
+    /**
+     * Was der Aufrufer will - roh, wie er es getippt hat, plus das gewählte ZIEL.
+     *
+     * <p><b>Die Lane ist eine WAHL, kein Default im Verborgenen</b> (Konzept
+     * §2.3): {@code null}/leer heißt {@code primary}, also der Wechselrichter,
+     * den die Box selbst auflöst - dieselbe Vorgabe wie in Stufe 1, damit ein
+     * älterer Client zeichengleich weiterarbeitet.
+     */
+    public record Command(UUID deviceId, String lane, UUID entityId, String host, Integer port,
+            Integer unitId, String registerKind, String addressInput, String valueInput,
+            Integer expectedBefore, Integer writeFc, String note) {
+
+        /** Die normalisierte Lane - unbekannte Wörter sind eine kaputte Anfrage. */
+        public String laneOrDefault() {
+            String l = lane == null ? "" : lane.trim().toLowerCase(java.util.Locale.ROOT);
+            return l.isEmpty() ? RegisterWriteTargets.LANE_PRIMARY : l;
+        }
     }
 
-    /** Das Ergebnis EINES Schritts, wie es die Oberfläche rendert. */
+    /**
+     * Das Ergebnis EINES Schritts, wie es die Oberfläche rendert.
+     *
+     * @param registerNote  der Betreiber-Hinweis des Register-Wissens (etwa
+     *                      „gehört zur laufenden Steuerung"), oder {@code null}.
+     * @param scaleUnit     die Einheit des SKALIERTEN Werts, oder {@code null} -
+     *                      ein Register ohne bekannte Skala bekommt NIE eine
+     *                      erfundene Einheit.
+     * @param writesToday   wie oft dieses Register auf diesem Gerät HEUTE schon
+     *                      geschrieben wurde (Berliner Tag) - EEPROM-Ehrlichkeit
+     *                      statt einer Sperre.
+     */
     public record Outcome(String requestId, String mode, boolean ok, String outcome,
             Integer beforeRaw, Integer afterRaw, Double beforeScaled, Double afterScaled,
             Boolean adopted, String errorCode, String message, String targetLabel,
             int address, String addressHex, String registerLabel, String registerClass,
-            String scaleNote, boolean noteRequired, String confirm, Instant requestedAt) {
+            String scaleNote, String registerNote, String scaleUnit, boolean noteRequired,
+            String confirm, int writesToday, String lane, Instant requestedAt) {
     }
 
     /**
@@ -137,19 +168,24 @@ public class RegisterWriteService {
         // (die Probe-Kanal-Regel).
         int address = address(cmd.addressInput());
         String kind = registerKind(cmd.registerKind());
-        RegisterKnowledge.Known known = RegisterKnowledge.of(address);
+        String lane = lane(cmd);
         DeviceDto device = resolveDevice(siteId, cmd.deviceId());
+        RegisterKnowledge.Known known = knowledge.of(
+                targets.familyFor(siteId, device.id(), lane, cmd.entityId()), address);
 
         String requestId = newRequestId();
         Instant requestedAt = Instant.now();
         RegisterWritePublisher.Order order = new RegisterWritePublisher.Order(
-                RegisterWriteResult.MODE_READ, RegisterWritePublisher.Order.LANE_PRIMARY, null,
-                null, null, null, kind, address, null, null, null, null);
+                RegisterWriteResult.MODE_READ, lane, cmd.entityId(), cmd.host(), cmd.port(),
+                cmd.unitId(), kind, address, null, null, null, null);
 
         RegisterWriteResult result = exchange(tenantId, siteId, device, requestId, requestedAt,
                 actor, order, readTimeout,
                 "Die Anlage hat den Ist-Wert nicht rechtzeitig gemeldet. Bitte erneut versuchen.");
-        return outcome(result, address, known, null);
+        // ⚠ Die Schreibzahl gehört in SCHRITT 1: „heute bereits 2x geschrieben"
+        // ist eine Information VOR dem Klick, kein Nachtrag im Beleg.
+        return outcome(result, address, known, null, lane,
+                journal.countWritesToday(siteId, device.id(), address));
     }
 
     /**
@@ -163,25 +199,29 @@ public class RegisterWriteService {
         // Vorschau, damit ein Tippfehler nie als Geräte-Problem erscheint.
         int address = address(cmd.addressInput());
         String kind = registerKind(cmd.registerKind());
-        RegisterKnowledge.Known known = RegisterKnowledge.of(address);
+        String lane = lane(cmd);
         int value = RegisterKnowledge.parseValue(cmd.valueInput()).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Der Wert ist keine Registerzahl (0 bis 65535, dezimal oder 0x-hexadezimal)."));
         String note = trimToNull(cmd.note());
+        DeviceDto device = resolveDevice(siteId, cmd.deviceId());
+        RegisterKnowledge.Known known = knowledge.of(
+                targets.familyFor(siteId, device.id(), lane, cmd.entityId()), address);
+        // D5: die Notiz-PFLICHT hängt an der KLASSE, und die Klasse hängt an der
+        // Familie - deshalb erst hier, wenn das Ziel aufgelöst ist.
         if (known.noteRequired() && note == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Dieses Register betrifft die Netz-Anmeldung der Anlage. Bitte tragen Sie "
                             + "den Grund ein (z. B. die Freigabe des Netzbetreibers).");
         }
-        DeviceDto device = resolveDevice(siteId, cmd.deviceId());
 
         String requestId = newRequestId();
         Instant requestedAt = Instant.now();
         String confirm = RegisterKnowledge.confirmToken(address, value);
-        String targetLabel = targetLabel(device);
+        String targetLabel = targetLabel(siteId, device, lane, cmd);
         RegisterWritePublisher.Order order = new RegisterWritePublisher.Order(
-                RegisterWriteResult.MODE_WRITE, RegisterWritePublisher.Order.LANE_PRIMARY, null,
-                null, null, null, kind, address, cmd.writeFc(), value, cmd.expectedBefore(),
+                RegisterWriteResult.MODE_WRITE, lane, cmd.entityId(), cmd.host(), cmd.port(),
+                cmd.unitId(), kind, address, cmd.writeFc(), value, cmd.expectedBefore(),
                 confirm);
 
         RegisterWritePublisher pub = requirePublisher();
@@ -201,7 +241,7 @@ public class RegisterWriteService {
         // aktenkundig, auch wenn diese api gleich abstürzt.
         journal.recordRequest(new RegisterWriteEventRepository.Request(
                 requestId, RegisterWriteEventRepository.SOURCE_PORTAL, siteId, device.id(),
-                device.externalRef(), RegisterWritePublisher.Order.LANE_PRIMARY, null, targetLabel,
+                device.externalRef(), lane, cmd.entityId(), targetLabel,
                 kind, address, cmd.writeFc(), cmd.addressInput().trim(), cmd.valueInput().trim(),
                 note, value, cmd.expectedBefore(), known.label(), known.clazz(),
                 known.scaleNote(value), actor.origin(), actor.subject(), actor.name(),
@@ -226,7 +266,8 @@ public class RegisterWriteService {
         }
         // Die Quittungs-Zeile schreibt der Zuhörer - unabhängig davon, ob hier
         // noch jemand wartet.
-        return outcome(result, address, known, value);
+        return outcome(result, address, known, value, lane,
+                journal.countWritesToday(siteId, device.id(), address));
     }
 
     /** Der Verlauf der Schreibvorgänge dieser Anlage (optional je Gerät). */
@@ -261,16 +302,40 @@ public class RegisterWriteService {
     }
 
     private Outcome outcome(RegisterWriteResult r, int address, RegisterKnowledge.Known known,
-            Integer requestedValue) {
+            Integer requestedValue, String lane, int writesToday) {
         return new Outcome(r.requestId(), r.mode(), r.ok(), r.outcome(), r.beforeRaw(),
                 r.afterRaw(), known.scaled(r.beforeRaw()), known.scaled(r.afterRaw()),
                 r.adopted(), r.errorCode(), r.message(), r.targetLabel(), address,
                 RegisterKnowledge.hex(address), known.label(), known.clazz(),
                 known.scaleNote(requestedValue == null ? r.beforeRaw() : requestedValue),
-                known.noteRequired(),
+                known.note(), known.scaleUnit(), known.noteRequired(),
                 requestedValue == null ? null
                         : RegisterKnowledge.confirmToken(address, requestedValue),
-                Instant.now());
+                writesToday, lane, Instant.now());
+    }
+
+    /**
+     * Die gewählte Lane - ein unbekanntes Wort ist eine kaputte Anfrage, nie ein
+     * stiller Rückfall auf die primäre (der würde einen Schreibvorgang auf ein
+     * ANDERES Gerät umlenken, als der Mensch gewählt hat).
+     */
+    private static String lane(Command cmd) {
+        String lane = cmd.laneOrDefault();
+        if (!RegisterWriteTargets.LANE_PRIMARY.equals(lane)
+                && !RegisterWriteTargets.LANE_ENTITY.equals(lane)
+                && !RegisterWriteTargets.LANE_LAN.equals(lane)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unbekanntes Ziel.");
+        }
+        if (RegisterWriteTargets.LANE_ENTITY.equals(lane) && cmd.entityId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Für die Komponente fehlt die Kennung.");
+        }
+        if (RegisterWriteTargets.LANE_LAN.equals(lane)
+                && (cmd.host() == null || cmd.host().isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Für die freie Adresse fehlt der Host.");
+        }
+        return lane;
     }
 
     private RegisterWritePublisher requirePublisher() {
@@ -317,9 +382,29 @@ public class RegisterWriteService {
      * kommt. Die Box echot in ihrer Quittung ihr eigenes, genaueres Label
      * (Modell, Host, Unit); beides steht nebeneinander im Journal.
      */
-    private static String targetLabel(DeviceDto device) {
+    private String targetLabel(UUID siteId, DeviceDto device, String lane, Command cmd) {
         String name = device.name() == null || device.name().isBlank()
                 ? device.externalRef() : device.name();
+        if (RegisterWriteTargets.LANE_LAN.equals(lane)) {
+            return "Freie Adresse · " + cmd.host().trim()
+                    + (cmd.port() == null ? "" : ":" + cmd.port())
+                    + (cmd.unitId() == null ? "" : " · Unit " + cmd.unitId());
+        }
+        if (RegisterWriteTargets.LANE_ENTITY.equals(lane)) {
+            // Der Klartext-Name ist KOSMETIK - er darf einen Schreibvorgang nie
+            // verhindern. Die Box echot ihr eigenes, genaueres Label ohnehin.
+            try {
+                return targets.forSite(siteId).stream()
+                        .filter(t -> cmd.entityId().equals(t.entityId()))
+                        .map(t -> "Komponente „" + t.label() + "\"")
+                        .findFirst()
+                        .orElse("Komponente · " + cmd.entityId());
+            } catch (RuntimeException e) {
+                log.warn("component label for {} could not be resolved: {}",
+                        cmd.entityId(), e.getMessage());
+                return "Komponente · " + cmd.entityId();
+            }
+        }
         return "Primärer Wechselrichter · " + name;
     }
 
