@@ -2,10 +2,15 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
+	pahomqtt "github.com/eclipse/paho.mqtt.golang"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/registerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
@@ -333,7 +338,285 @@ func installerRequest(value int, apply bool, expected *int) installerwrite.Reque
 	req := installerwrite.Request{Value: value, ExpectedBefore: expected}
 	if apply {
 		req.Mode = installerwrite.ModeApply
-		req.Confirm = installerwrite.ConfirmToken(value)
+		req.Confirm = installerwrite.ConfirmToken(installerwrite.RegisterAddr, value)
 	}
 	return req
+}
+
+// --- Stufe 2 „Freie Register": die Lane-Regeln loesen die Allowlist ab -------
+
+// registerStub spielt den Palette-Knoten der schlichten Modbus-TCP-Lane
+// (edge/register-write/*). Er antwortet in DERSELBEN Form wie der
+// Solarman-Knoten - genau der Punkt: der Kern hat EINE Ergebnis-Form je Lane.
+func registerStub(t *testing.T, busAddr string, seen chan<- installerBusRequest,
+	answer func(req installerBusRequest) installerBusResult) {
+	t.Helper()
+	opts := pahomqtt.NewClientOptions().
+		AddBroker("tcp://" + busAddr).
+		SetClientID("test-register-stub").
+		SetConnectTimeout(5 * time.Second)
+	client := pahomqtt.NewClient(opts)
+	if tok := client.Connect(); !tok.WaitTimeout(10*time.Second) || tok.Error() != nil {
+		t.Fatalf("stub connect: %v", tok.Error())
+	}
+	t.Cleanup(func() { client.Disconnect(100) })
+	tok := client.Subscribe(localbus.TopicRegisterWriteRequest, 1,
+		func(_ pahomqtt.Client, msg pahomqtt.Message) {
+			var req installerBusRequest
+			if json.Unmarshal(msg.Payload(), &req) != nil || req.RequestID == "" {
+				return
+			}
+			if seen != nil {
+				select {
+				case seen <- req:
+				default:
+				}
+			}
+			if answer == nil {
+				return
+			}
+			res := answer(req)
+			res.RequestID = req.RequestID
+			raw, _ := json.Marshal(res)
+			client.Publish(localbus.TopicRegisterWriteResult, 1, false, raw)
+		})
+	if !tok.WaitTimeout(5*time.Second) || tok.Error() != nil {
+		t.Fatalf("stub subscribe: %v", tok.Error())
+	}
+}
+
+// ⚠ DIE ABLOESUNG SELBST: ein FREIES Register auf der primaeren Lane wird
+// ausgefuehrt - die harte 0x00E7-Allowlist ist weg, und was bleibt, sind die
+// Regeln, die diese Schicht wirklich beurteilen kann.
+func TestAFreeRegisterIsWrittenOnThePrimaryLane(t *testing.T) {
+	box := startPortalBox(t, true)
+	seen := make(chan installerBusRequest, 4)
+	before, after := 12, 34
+	installerStub(t, box.addr, seen, func(req installerBusRequest) installerBusResult {
+		if req.Mode == installerwrite.ModeApply {
+			return installerBusResult{OK: true, Before: &before, After: &after, Wrote: true}
+		}
+		return installerBusResult{OK: true, Before: &before}
+	})
+
+	box.a.onRegisterWrite(box.order(t, "schreiben", "11aa22bb33cc44dd", map[string]any{
+		"register": map[string]any{"kind": "holding", "address": 0x1234},
+		"value":    34,
+		"confirm":  "0X1234=34",
+	}))
+	res := box.await(t)
+	if !res.OK || res.AfterRaw == nil || *res.AfterRaw != 34 {
+		t.Fatalf("ein freies Register muss geschrieben werden: %+v", res)
+	}
+	req := <-seen
+	if req.Addr != 0x1234 || req.Value != 34 || req.Kind != installerwrite.KindHolding {
+		t.Fatalf("der Auftrag erreicht den Knoten unveraendert: %+v", req)
+	}
+	// ⚠ Und ein Register OHNE bekannte Skala bekommt KEINE erfundene Einheit -
+	// das Audit-Protokoll traegt dann gar keine kW-Zahl.
+	entries := box.a.installerLog.List()
+	if len(entries) != 1 {
+		t.Fatalf("genau ein Protokoll-Eintrag erwartet, got %d", len(entries))
+	}
+	if entries[0].Kw != nil {
+		t.Fatalf("ein freies Register hat keine Einheit: %+v", *entries[0].Kw)
+	}
+	if entries[0].Register != "0x1234" {
+		t.Fatalf("das Protokoll nennt die geschriebene Adresse: %q", entries[0].Register)
+	}
+}
+
+// Die Wertgrenze der :8484-Taste (7000) gilt fuer den PORTAL-Kanal NICHT mehr -
+// dort ist ein Registerwort 0..65535, und 0 ist ein WERT.
+func TestTheExpertScopeAcceptsEveryRegisterWordAndRefusesTheRest(t *testing.T) {
+	box := startPortalBox(t, true)
+	before := 1
+	installerStub(t, box.addr, nil, func(req installerBusRequest) installerBusResult {
+		return installerBusResult{OK: true, Before: &before, After: &req.Value, Wrote: true}
+	})
+	for i, value := range []int{0, 7001, 65535} {
+		box.a.onRegisterWrite(box.order(t, "schreiben", regReqID(i), map[string]any{
+			"register": map[string]any{"kind": "holding", "address": 0x40},
+			"value":    value,
+			"confirm":  installerwrite.ConfirmToken(0x40, value),
+		}))
+		if res := box.await(t); !res.OK {
+			t.Fatalf("Wert %d ist ein Registerwort: %+v", value, res)
+		}
+	}
+	// Ausserhalb des Wortes: die POLITIK lehnt ab, mit deutschem Grund.
+	box.a.onRegisterWrite(box.order(t, "schreiben", regReqID(9), map[string]any{
+		"register": map[string]any{"kind": "holding", "address": 0x40},
+		"value":    65536,
+		"confirm":  "0X0040=65536",
+	}))
+	res := box.await(t)
+	if res.OK || res.ErrorCode != registerwrite.ErrRefusedPolicy || res.Message == "" {
+		t.Fatalf("65536 ist kein Registerwort: %+v", res)
+	}
+}
+
+// Die Komponenten-Lane: die Cloud nennt NUR die Kennung, die Box loest Host,
+// Port und Unit aus IHRER angewandten Definition auf.
+func TestTheEntityLaneResolvesTheEndpointFromTheBoxOwnDefinition(t *testing.T) {
+	box := startPortalBox(t, true)
+	entityID := "00000000-0000-0000-0000-0000000000aa"
+	box.a.entMu.Lock()
+	box.a.entRegistry = entities.Registry{Entities: []entities.Entity{{
+		ID: entityID, Type: "modbus-generic", Label: "Lüftung Keller",
+		Driver: json.RawMessage(`{"communication":"modbus_baukasten",` +
+			`"connection":{"ip":"192.168.0.44","port":1502,"unit_id":3}}`),
+	}}}
+	box.a.entMu.Unlock()
+
+	seen := make(chan installerBusRequest, 4)
+	before, after := 0, 1
+	registerStub(t, box.addr, seen, func(req installerBusRequest) installerBusResult {
+		return installerBusResult{OK: true, Before: &before, After: &after, Wrote: true}
+	})
+
+	box.a.onRegisterWrite(box.order(t, "schreiben", "aaaabbbbccccdddd", map[string]any{
+		"target":   map[string]any{"kind": "entity", "entity_id": entityID},
+		"register": map[string]any{"kind": "coil", "address": 3},
+		"value":    1,
+		"confirm":  "0X0003=1",
+	}))
+	res := box.await(t)
+	if !res.OK {
+		t.Fatalf("die Komponenten-Lane wird ausgefuehrt: %+v", res)
+	}
+	req := <-seen
+	if req.Host != "192.168.0.44" || req.Port != 1502 || req.UnitID != 3 {
+		t.Fatalf("der Endpunkt kommt aus der Definition der Box: %+v", req)
+	}
+	if req.Kind != installerwrite.KindCoil || req.WriteFC != 0 {
+		t.Fatalf("eine Spule reist als Spule, der Funktionscode bleibt dem Ausfuehrer: %+v", req)
+	}
+	// Das Ziel-Echo nennt die Komponente beim Namen - auf einer Anlage mit
+	// mehreren Geraeten ist das Ziel eine bewusste Wahl.
+	if !containsSub(res.TargetLabel, "Lüftung Keller") || !containsSub(res.TargetLabel, "192.168.0.44") {
+		t.Fatalf("das Ziel-Echo nennt Komponente und Endpunkt: %q", res.TargetLabel)
+	}
+
+	// Eine unbekannte Kennung wird BENANNT abgelehnt, nie still verworfen.
+	box.a.onRegisterWrite(box.order(t, "lesen", "1111222233334444", map[string]any{
+		"target": map[string]any{"kind": "entity",
+			"entity_id": "00000000-0000-0000-0000-0000000000ff"}}))
+	if res := box.await(t); res.OK || res.ErrorCode != registerwrite.ErrNotSupported {
+		t.Fatalf("eine unbekannte Komponente wird benannt abgelehnt: %+v", res)
+	}
+}
+
+// ⚠ Eine Komponente, die ueber den Solarman-Logger gelesen wird, gehoert auf die
+// PRIMAERE Lane - dieser Socket gehoert dem Wechselrichter-Tab, und ein zweiter
+// Anspruch darauf ist genau das, was das Ein-Socket-Gesetz verbietet.
+func TestASolarmanComponentIsNamedNotSilentlyRedirected(t *testing.T) {
+	box := startPortalBox(t, true)
+	entityID := "00000000-0000-0000-0000-0000000000bb"
+	box.a.entMu.Lock()
+	box.a.entRegistry = entities.Registry{Entities: []entities.Entity{{
+		ID: entityID, Type: "battery-hybrid",
+		Driver: json.RawMessage(`{"communication":"solarman_v5",` +
+			`"connection":{"ip":"192.168.0.28","serial":"2985159064","mb_slave_id":1}}`),
+	}}}
+	box.a.entMu.Unlock()
+	registerStub(t, box.addr, nil, func(installerBusRequest) installerBusResult {
+		t.Error("die Solarman-Komponente darf den Modbus-Knoten nie erreichen")
+		return installerBusResult{}
+	})
+	box.a.onRegisterWrite(box.order(t, "lesen", "5555666677778888", map[string]any{
+		"target": map[string]any{"kind": "entity", "entity_id": entityID}}))
+	res := box.await(t)
+	if res.OK || res.ErrorCode != registerwrite.ErrNotSupported ||
+		!containsSub(res.Message, "primären Wechselrichter") {
+		t.Fatalf("der Weg wird GENANNT: %+v", res)
+	}
+}
+
+// Die freie LAN-Lane: der Endpunkt reist, weil es keinen anderen Weg gibt ihn
+// zu nennen - und genau deshalb prueft die Box ihn selbst.
+func TestTheFreeLanLaneWritesAPrivateTargetAndRefusesEveryOther(t *testing.T) {
+	box := startPortalBox(t, true)
+	seen := make(chan installerBusRequest, 4)
+	before, after := 7, 9
+	registerStub(t, box.addr, seen, func(installerBusRequest) installerBusResult {
+		return installerBusResult{OK: true, Before: &before, After: &after, Wrote: true}
+	})
+
+	box.a.onRegisterWrite(box.order(t, "schreiben", "9999888877776666", map[string]any{
+		"target":   map[string]any{"kind": "lan", "host": "192.168.0.99"},
+		"register": map[string]any{"kind": "holding", "address": 9},
+		"value":    9,
+		"confirm":  "0X0009=9",
+	}))
+	if res := box.await(t); !res.OK || res.AfterRaw == nil || *res.AfterRaw != 9 {
+		t.Fatalf("eine private Adresse wird beschrieben: %+v", res)
+	}
+	req := <-seen
+	// Die Vorgaben des Kontrakts stehen bei den REINEN Regeln, nicht hier.
+	if req.Host != "192.168.0.99" || req.Port != 502 || req.UnitID != 1 {
+		t.Fatalf("Port/Unit folgen den Kontrakt-Vorgaben: %+v", req)
+	}
+
+	// Ein oeffentliches Ziel wird abgelehnt, BEVOR irgendetwas angeklopft wird.
+	box.a.onRegisterWrite(box.order(t, "lesen", "4444333322221111", map[string]any{
+		"target": map[string]any{"kind": "lan", "host": "8.8.8.8"}}))
+	res := box.await(t)
+	if res.OK || res.ErrorCode != registerwrite.ErrInvalidRequest ||
+		res.Message != registerwrite.MsgHostNotPrivate {
+		t.Fatalf("ein oeffentliches Ziel wird nie angeklopft: %+v", res)
+	}
+	select {
+	case req := <-seen:
+		t.Fatalf("der Knoten haette nichts sehen duerfen: %+v", req)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// ⚠ Die Selbstkonflikt-Sperre gilt dem GERAET, nicht der Zahl: dieselbe Adresse
+// auf einem eigenen Modbus-Geraet des Kunden ist ein voellig anderes Register.
+func TestTheSelfConflictLockIsScopedToTheControlledDevice(t *testing.T) {
+	box := startPortalBox(t, true)
+	box.a.State.Update(func(s *state.Snapshot) {
+		s.ControlEnabled = true
+		s.ControlCertified = true
+		s.Control = &state.ControlInfo{
+			ControlEnabled: true, Certified: true,
+			Registers: []state.ControlRegister{{Addr: 0x00e7, Role: "export_limit"}},
+		}
+	})
+	seen := make(chan installerBusRequest, 4)
+	before, after := 1, 2
+	registerStub(t, box.addr, seen, func(installerBusRequest) installerBusResult {
+		return installerBusResult{OK: true, Before: &before, After: &after, Wrote: true}
+	})
+	installerStub(t, box.addr, nil, func(installerBusRequest) installerBusResult {
+		t.Error("das gesperrte Register darf den Wechselrichter nie erreichen")
+		return installerBusResult{}
+	})
+
+	// Auf der primaeren Lane: gesperrt.
+	box.a.onRegisterWrite(box.order(t, "lesen", "0011223344556677", nil))
+	if res := box.await(t); res.OK || res.ErrorCode != registerwrite.ErrRefusedControlOwned {
+		t.Fatalf("die laufende Steuerung besitzt 0x00E7: %+v", res)
+	}
+	// DIESELBE Adresse auf einem fremden Geraet im LAN: frei.
+	box.a.onRegisterWrite(box.order(t, "schreiben", "7766554433221100", map[string]any{
+		"target":  map[string]any{"kind": "lan", "host": "192.168.0.77"},
+		"value":   2,
+		"confirm": "0X00E7=2",
+	}))
+	if res := box.await(t); !res.OK {
+		t.Fatalf("ein fremdes Geraet teilt keine Register mit unserer Steuerung: %+v", res)
+	}
+	if req := <-seen; req.Host != "192.168.0.77" {
+		t.Fatalf("der Auftrag ging ans richtige Geraet: %+v", req)
+	}
+}
+
+// regReqID mints a DISTINCT correlation id in the contract's shape
+// (^[0-9a-f]{16,64}$) - the replay guard would otherwise refuse the second call
+// of a loop.
+func regReqID(i int) string {
+	return fmt.Sprintf("abcdef0123456%03d", i)
 }

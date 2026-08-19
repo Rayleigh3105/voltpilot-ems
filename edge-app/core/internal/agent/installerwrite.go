@@ -61,10 +61,21 @@ type installerBusRequest struct {
 	Register  string `json:"register"`
 	Addr      int    `json:"addr"`
 	Value     int    `json:"value"`
+	// Kind is „holding" or „coil". Absent/empty means holding, so a node of an
+	// older image reads an unchanged message.
+	Kind string `json:"kind,omitempty"`
+	// WriteFC pins the Modbus write function code; 0 = the executor decides.
+	WriteFC int `json:"write_fc,omitempty"`
 	// ExpectedBefore is compared ON THE DEVICE, inside the one socket session
 	// that also reads and writes - so there is no read-then-write window
 	// another writer could slip into.
 	ExpectedBefore *int `json:"expected_before,omitempty"`
+	// Host/Port/UnitID are set ONLY on the plain Modbus-TCP lane (the component
+	// and free-LAN targets of Stufe 2); the Solarman executor ignores them
+	// because it resolves its endpoint from the inverter configuration.
+	Host   string `json:"host,omitempty"`
+	Port   int    `json:"port,omitempty"`
+	UnitID int    `json:"unit_id,omitempty"`
 }
 
 // installerBusResult is the node's answer. Before/After are POINTERS: „not
@@ -92,13 +103,34 @@ type installerBusResult struct {
 //
 // It never audits and never phrases an operator sentence: those belong to the
 // trigger that knows who asked.
+// ⚠ SINCE STUFE 2 IT SERVES TWO TRANSPORTS, and the dispatch is the whole
+// difference between them:
+//
+//	Solarman-V5   the PRIMARY inverter. The endpoint is resolved by the flow that
+//	              already polls it; the request carries no host, so nothing can
+//	              redirect this write to another device.
+//	Modbus-TCP    a COMPONENT of the plant or a free LAN address (Stufe 2). Here
+//	              the endpoint travels, because there is no other way to name it -
+//	              which is exactly why the LAN whitelist is checked twice (pure
+//	              rules in internal/registerwrite, and again in the palette node
+//	              that opens the socket).
+//
+// Both ride the ONE per-target queue of their executor, so a write never
+// displaces the running poll of the very device the customer is watching.
 func (a *Agent) WriteOnce(target installerwrite.Target, w installerwrite.AdmittedWrite) (installerwrite.WriteOnceResult, error) {
-	// The transport is part of the mechanism: this write rides the Deye
-	// Solarman-V5 poll's socket, so a device read over another transport has no
-	// path here at all.
-	if target.Communication != inverter.CommSolarmanV5 {
+	topic := localbus.TopicInstallerWriteRequest
+	switch {
+	case target.Communication == inverter.CommSolarmanV5:
+		if w.Kind() == installerwrite.KindCoil {
+			return installerwrite.WriteOnceResult{}, &installerwrite.ValidationError{
+				Msg: "Über den Solarman-Logger lassen sich nur Holding-Register beschreiben, keine Spulen.",
+			}
+		}
+	case target.Communication == inverter.CommModbusTCP && strings.TrimSpace(target.Host) != "":
+		topic = localbus.TopicRegisterWriteRequest
+	default:
 		return installerwrite.WriteOnceResult{}, &installerwrite.ValidationError{
-			Msg: "Dieser Wechselrichter wird nicht über den Solarman-Logger gelesen; der Fernschreibpfad steht nur dort zur Verfügung.",
+			Msg: "Dieses Gerät wird nicht über einen Weg gelesen, auf dem geschrieben werden kann (Solarman-Logger oder Modbus-TCP).",
 		}
 	}
 
@@ -115,7 +147,7 @@ func (a *Agent) WriteOnce(target installerwrite.Target, w installerwrite.Admitte
 		a.installerMu.Unlock()
 	}()
 
-	res := a.installerExchange(w)
+	res := a.installerExchange(topic, target, w)
 	if res == nil {
 		return installerwrite.WriteOnceResult{
 			ErrorCode: installerwrite.ErrCodeTimeout,
@@ -141,7 +173,8 @@ func (a *Agent) WriteOnce(target installerwrite.Target, w installerwrite.Admitte
 
 // installerExchange publishes the ONE op and waits for its ONE answer. nil =
 // nothing came back in time.
-func (a *Agent) installerExchange(w installerwrite.AdmittedWrite) *installerBusResult {
+func (a *Agent) installerExchange(topic string, target installerwrite.Target,
+	w installerwrite.AdmittedWrite) *installerBusResult {
 	if a.Bus == nil {
 		return nil
 	}
@@ -166,11 +199,13 @@ func (a *Agent) installerExchange(w installerwrite.AdmittedWrite) *installerBusR
 	raw, _ := json.Marshal(installerBusRequest{
 		RequestID: id, Mode: mode,
 		Register: w.Register(), Addr: w.Addr(), Value: w.Value(),
+		Kind: w.Kind(), WriteFC: w.WriteFC(),
 		ExpectedBefore: w.ExpectedBefore(),
+		Host:           strings.TrimSpace(target.Host), Port: target.Port, UnitID: target.UnitID,
 	})
 	// NON-retained: a write order that reappeared on the next reconnect would
 	// not be a one-shot write.
-	if err := a.Bus.Publish(localbus.TopicInstallerWriteRequest, raw, false); err != nil {
+	if err := a.Bus.Publish(topic, raw, false); err != nil {
 		slog.Warn("installer write could not be published", "err", err)
 		return nil
 	}
@@ -325,7 +360,7 @@ func probeMessage(before *int, w installerwrite.AdmittedWrite) string {
 	return fmt.Sprintf(
 		"Probelauf - es wurde NICHTS geschrieben. Ist-Wert: %s. Geschrieben würde: %d (%s kW). "+
 			"Zum wirklichen Schreiben die Anfrage mit \"mode\": \"apply\" und \"confirm\": \"%s\" wiederholen.",
-		cur, w.Value(), kwString(w.Kw()), installerwrite.ConfirmToken(w.Value()))
+		cur, w.Value(), kwString(w.Kw()), installerwrite.ConfirmToken(w.Addr(), w.Value()))
 }
 
 // recordInstallerWrite appends the persistent audit entry. A failing log write
@@ -359,7 +394,7 @@ func (a *Agent) recordInstallerWriteFrom(w installerwrite.AdmittedWrite,
 		Before:    out.Before,
 		Requested: w.Value(),
 		After:     out.After,
-		Kw:        w.Kw(),
+		Kw:        kwOrNil(w),
 		Result:    out.Result,
 		Message:   out.Message,
 		Source:    src,
@@ -390,6 +425,17 @@ func (a *Agent) noteInstallerExportLimit(raw int) {
 		ReadAt:   time.Now().UTC(),
 	}
 	a.State.Update(func(s *state.Snapshot) { s.DeviceExportLimit = info })
+}
+
+// kwOrNil carries the scaled value into the audit entry ONLY where a scale is
+// known. A free register has none, and „0,0 kW" beside a raw word would be an
+// invented unit.
+func kwOrNil(w installerwrite.AdmittedWrite) *float64 {
+	if !w.KwKnown() {
+		return nil
+	}
+	kw := w.Kw()
+	return &kw
 }
 
 // kwString renders kW the way the German copy expects (one decimal, comma).

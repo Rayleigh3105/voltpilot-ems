@@ -147,29 +147,100 @@ func TestExpiryCountsFromTheEnvelopesOwnStamp(t *testing.T) {
 	}
 }
 
-// Die zwei Lanes der Stufe 2 werden BENANNT, nie still verworfen - eine Box im
-// Feld muss sagen koennen, dass sie eine Form (noch) nicht ausfuehrt.
-func TestTheUnbuiltLanesAreNamedNotDropped(t *testing.T) {
+// Stufe 2 FUEHRT alle drei Lanes aus - und jede bringt genau die Regeln mit,
+// die zu IHREM Ziel gehoeren.
+func TestAllThreeLanesAreExecutedWithTheirOwnRules(t *testing.T) {
+	primary, _ := Parse(order(ModeRead, nil))
+	if v := primary.Admissible(); !v.OK() {
+		t.Fatalf("die primaere Lane bleibt ausfuehrbar: %+v", v)
+	}
 	entity, _ := Parse(order(ModeRead, map[string]any{
 		"target": map[string]any{"kind": LaneEntity,
 			"entity_id": "00000000-0000-0000-0000-0000000000aa"}}))
-	if v := entity.Admissible(); v.Code != ErrNotSupported || v.Message == "" {
-		t.Fatalf("die Komponenten-Lane muss benannt abgelehnt werden: %+v", v)
+	if v := entity.Admissible(); !v.OK() {
+		t.Fatalf("die Komponenten-Lane wird ausgefuehrt: %+v", v)
+	}
+	// Ohne Kennung gibt es nichts aufzuloesen - eine kaputte Anfrage, kein
+	// Geraete-Problem.
+	noID, _ := Parse(order(ModeRead, map[string]any{
+		"target": map[string]any{"kind": LaneEntity, "entity_id": "   "}}))
+	if v := noID.Admissible(); v.Code != ErrInvalidRequest || v.Message != MsgEntityMissing {
+		t.Fatalf("eine Komponente ohne Kennung ist eine kaputte Anfrage: %+v", v)
 	}
 	lan, _ := Parse(order(ModeRead, map[string]any{
 		"target": map[string]any{"kind": LaneLAN, "host": "192.168.0.44"}}))
-	if v := lan.Admissible(); v.Code != ErrNotSupported {
-		t.Fatalf("die freie Lane muss benannt abgelehnt werden: %+v", v)
+	if v := lan.Admissible(); !v.OK() {
+		t.Fatalf("die freie Lane wird ausgefuehrt: %+v", v)
 	}
 	unknown, _ := Parse(order(ModeRead, map[string]any{
 		"target": map[string]any{"kind": "mond"}}))
 	if v := unknown.Admissible(); v.Code != ErrInvalidRequest {
 		t.Fatalf("ein unbekanntes Ziel ist eine kaputte Anfrage: %+v", v)
 	}
-	coil, _ := Parse(order(ModeRead, map[string]any{
-		"register": map[string]any{"kind": KindCoil, "address": 4}}))
-	if v := coil.Admissible(); v.Code != ErrNotSupported {
-		t.Fatalf("Spulen fuehrt diese Stufe nicht aus: %+v", v)
+}
+
+// ⚠ Die LAN-Whitelist gilt fuer die EINE Lane, deren Ziel die Cloud benennt -
+// und ein nackter Geraetename wird abgelehnt, weil er sich aus der Zeichenkette
+// nicht als privat NACHWEISEN laesst.
+func TestTheFreeLaneOnlyAcceptsAProvablyPrivateTarget(t *testing.T) {
+	for _, host := range []string{"192.168.0.44", "10.1.2.3", "nas.local", "[fd00::1]"} {
+		req, _ := Parse(order(ModeRead, map[string]any{
+			"target": map[string]any{"kind": LaneLAN, "host": host}}))
+		if v := req.Admissible(); !v.OK() {
+			t.Fatalf("%q ist belegbar privat: %+v", host, v)
+		}
+	}
+	for _, host := range []string{"8.8.8.8", "example.com", "wechselrichter", ""} {
+		req, _ := Parse(order(ModeRead, map[string]any{
+			"target": map[string]any{"kind": LaneLAN, "host": host}}))
+		if v := req.Admissible(); v.Code != ErrInvalidRequest || v.Message != MsgHostNotPrivate {
+			t.Fatalf("%q darf nicht angeklopft werden: %+v", host, v)
+		}
+	}
+}
+
+// ⚠ Die Spulen-Regel ist eine Eigenschaft der LANE, nicht der Box: die
+// Solarman-V5-Rahmen kennen nur die Holding-Funktionen, auf schlichtem
+// Modbus-TCP gibt es FC1/FC5.
+func TestCoilsAreRefusedOnlyWhereTheTransportHasNone(t *testing.T) {
+	coil := map[string]any{"kind": KindCoil, "address": 4}
+	primary, _ := Parse(order(ModeRead, map[string]any{"register": coil}))
+	if v := primary.Admissible(); v.Code != ErrNotSupported || v.Message != MsgCoilNotSupported {
+		t.Fatalf("eine Spule ueber den Solarman-Logger geht nicht: %+v", v)
+	}
+	lan, _ := Parse(order(ModeRead, map[string]any{
+		"register": coil,
+		"target":   map[string]any{"kind": LaneLAN, "host": "192.168.0.44"}}))
+	if v := lan.Admissible(); !v.OK() {
+		t.Fatalf("auf Modbus-TCP ist eine Spule ein Objekt wie jedes andere: %+v", v)
+	}
+	entity, _ := Parse(order(ModeRead, map[string]any{
+		"register": coil,
+		"target": map[string]any{"kind": LaneEntity,
+			"entity_id": "00000000-0000-0000-0000-0000000000aa"}}))
+	if v := entity.Admissible(); !v.OK() {
+		t.Fatalf("eine Komponente kann eine Spule tragen: %+v", v)
+	}
+}
+
+// Port und Unit-ID haben die Vorgaben des Kontrakts - und sie leben bei den
+// REINEN Regeln, damit die Box genau das waehlt, was hier beurteilt wurde.
+func TestTheFreeLaneFallsBackToTheContractDefaults(t *testing.T) {
+	bare := Target{Kind: LaneLAN, Host: "192.168.0.44"}
+	if bare.EffectivePort() != 502 || bare.EffectiveUnit() != 1 {
+		t.Fatalf("Vorgaben 502/1 erwartet, got %d/%d", bare.EffectivePort(), bare.EffectiveUnit())
+	}
+	port, unit := 1502, 3
+	named := Target{Kind: LaneLAN, Host: "192.168.0.44", Port: &port, UnitID: &unit}
+	if named.EffectivePort() != 1502 || named.EffectiveUnit() != 3 {
+		t.Fatal("genannte Werte gewinnen")
+	}
+	// Unit 0 ist auf Modbus-TCP eine gueltige Adresse (Broadcast/Gateway) und
+	// wird deshalb NICHT auf 1 gehoben.
+	zeroUnit := 0
+	zero := Target{Kind: LaneLAN, Host: "192.168.0.44", UnitID: &zeroUnit}
+	if zero.EffectiveUnit() != 0 {
+		t.Fatalf("Unit 0 ist ein Wert, keine Abwesenheit: %d", zero.EffectiveUnit())
 	}
 }
 
@@ -242,6 +313,31 @@ func TestContractExamplesAreParsedAsSpecified(t *testing.T) {
 	// verfallen - und genau das ist richtig so.
 	if !write.Expired(time.Now(), DefaultWindow) {
 		t.Fatal("ein Beispiel von 2026 darf heute nicht mehr ausfuehrbar sein")
+	}
+
+	// Die zwei Lanes der Stufe 2 - beide werden GEPARST und beide sind
+	// ausfuehrbar; die Cloud nennt bei der Komponente nur die Kennung.
+	entity, err := Parse(read("mqtt-register-write.valid.entity-coil.json"))
+	if err != nil {
+		t.Fatalf("das Komponenten-Beispiel muss parsen: %v", err)
+	}
+	if entity.Target.Kind != LaneEntity || entity.Target.EntityID == "" ||
+		entity.Target.Host != "" || entity.Register.Kind != KindCoil {
+		t.Fatalf("Komponenten-Beispiel nicht wie spezifiziert: %+v", entity)
+	}
+	if v := entity.Admissible(); !v.OK() {
+		t.Fatalf("das Komponenten-Beispiel wird ausgefuehrt: %+v", v)
+	}
+	lan, err := Parse(read("mqtt-register-write.valid.lan-preview.json"))
+	if err != nil {
+		t.Fatalf("das LAN-Beispiel muss parsen: %v", err)
+	}
+	if lan.Apply() || lan.Target.Kind != LaneLAN || lan.Target.Host != "192.168.0.44" ||
+		lan.Target.EffectivePort() != 1502 || lan.Target.EffectiveUnit() != 3 {
+		t.Fatalf("LAN-Beispiel nicht wie spezifiziert: %+v", lan.Target)
+	}
+	if v := lan.Admissible(); !v.OK() {
+		t.Fatalf("das LAN-Beispiel wird ausgefuehrt: %+v", v)
 	}
 
 	if _, err := Parse(read("mqtt-register-write.invalid.write-without-confirm.json")); err == nil {

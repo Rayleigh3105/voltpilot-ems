@@ -172,6 +172,18 @@ const (
 	// so the one-socket law holds without a second connection to the logger.
 	TopicInstallerWriteRequest = "edge/installer-write/request"
 	TopicInstallerWriteResult  = "edge/installer-write/result"
+	// TopicRegisterWriteRequest/Result are the ONE-SHOT write pair of the PLAIN
+	// MODBUS-TCP lane (Einheitsmodell Stufe 4's write mechanics WITHOUT the
+	// auto-off, driven by the portal's register channel - Konzept
+	// vp-reg-schreib-konzept-p8 §2.8 Stufe 2). It is a SEPARATE pair from
+	// edge/installer-write/* on purpose: that one addresses the primary inverter
+	// over the Solarman logger and resolves its endpoint from the inverter
+	// configuration, this one carries an explicit host/port/unit. Same message
+	// SHAPE, so the core has one result type for every lane; different executor,
+	// because the socket disciplines differ (flow-context lock vs. the palette's
+	// per-target connection manager).
+	TopicRegisterWriteRequest = "edge/register-write/request"
+	TopicRegisterWriteResult  = "edge/register-write/result"
 	// TopicControlGate is the RETAINED plant-wide control gate the core owns:
 	// {control_enabled, consumer_control_enabled}. A Node-RED executor cannot
 	// read the box's env, and the per-entity command's `control_enabled` field

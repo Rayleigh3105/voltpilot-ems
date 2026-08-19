@@ -10,9 +10,13 @@
 //
 // ⚠ TRIGGER AND POLICY ARE SEPARATE LAYERS, AND THAT SEPARATION IS THE POINT:
 //
-//	POLICY (here)      Admit() - the only constructor of an AdmittedWrite. It
-//	                   hard-codes the address, the scale, the value ceiling and
-//	                   the two-stage confirm rule.
+//	POLICY (here)      Admit() - the NARROW scope of the :8484 maintenance
+//	                   button: it hard-codes the address, the scale, the value
+//	                   ceiling and the two-stage confirm rule. Its sibling
+//	                   AdmitExpert() (expert.go) is the PORTAL channel's scope -
+//	                   a free holding register or coil. They share the confirm
+//	                   token, the expected_before bound and the one AdmittedWrite
+//	                   type; there is still no third way to build one.
 //	MECHANISM (agent)  Agent.WriteOnce(Target, AdmittedWrite) - trigger-agnostic:
 //	                   read, optionally write ONCE, read back, report
 //	                   {before, after, adopted}. It knows no allowlist and no
@@ -21,10 +25,11 @@
 //	                   downlink is a SECOND ADAPTER over the same two layers -
 //	                   not a refactoring.
 //
-// ⚠ IT IS STILL NOT A REGISTER-WRITE API. `AdmittedWrite`'s fields are
-// UNEXPORTED, so no adapter anywhere can point the mechanism at a register of
-// its choosing - it can only pass on what Admit produced. A future „just one
-// more register" is a code change here, with its own review, never a parameter.
+// ⚠ `AdmittedWrite`'s fields stay UNEXPORTED, so no adapter anywhere can point
+// the mechanism at a register of its choosing - it can only pass on what an
+// Admit function produced. Widening what may be admitted is a code change HERE,
+// with its own review, never a parameter: expert.go is exactly such a change,
+// announced by the previous one.
 //
 // The gates, all here and all fail-closed:
 //
@@ -85,6 +90,14 @@ const MaxKw = float64(MaxRaw) * ScaleW / 1000
 // one 16-bit word, nothing more.
 const maxRegisterWord = 0xffff
 
+// KindHolding / KindCoil are the two Modbus object classes a write can address.
+// The narrow export-limit scope only ever produces KindHolding; the EXPERT scope
+// (expert.go) admits both.
+const (
+	KindHolding = "holding"
+	KindCoil    = "coil"
+)
+
 // ModeDry / ModeApply are the two stages. Absent/unknown = ModeDry: the safe
 // stage is what you get when you say nothing.
 const (
@@ -130,11 +143,22 @@ var ErrBusy = errors.New("installer write already in flight")
 // It is a TYPE rather than an implicit assumption so a second trigger addresses
 // the same mechanism without changing it.
 type Target struct {
-	// Family is the register-map family (the allowlist keys on it).
+	// Family is the register-map family (the narrow allowlist keys on it).
 	Family string `json:"family"`
 	// Communication is the transport the box reads this device over; the
 	// mechanism rides that transport's socket.
 	Communication string `json:"communication"`
+	// Host/Port/UnitID address a device on the PLAIN Modbus-TCP lane (a
+	// component of the plant, or a free LAN address). They are EMPTY for the
+	// primary Solarman lane, where the box resolves the endpoint itself and the
+	// cloud deliberately names neither host nor unit.
+	Host   string `json:"host,omitempty"`
+	Port   int    `json:"port,omitempty"`
+	UnitID int    `json:"unit_id,omitempty"`
+	// Label is the box's own ECHO of where it wrote, in plain words. On a plant
+	// with several devices the target is a deliberate choice, never a default in
+	// the dark.
+	Label string `json:"label,omitempty"`
 }
 
 // Request is the operator's (or a future trigger's) input. `Value` is the RAW
@@ -164,20 +188,39 @@ type Request struct {
 // on purpose: only Admit constructs one, so the mechanism can never be pointed
 // at a register or a value nobody admitted.
 type AdmittedWrite struct {
-	register       string
-	addr           int
-	value          int
-	kw             float64
+	register string
+	// kind is KindHolding or KindCoil. The narrow export-limit scope only ever
+	// produces a holding register; the EXPERT scope (expert.go) admits both.
+	kind  string
+	addr  int
+	value int
+	// kw is the scaled reading of `value` where a scale is KNOWN (the export
+	// limit). It is a POINTER because a free register has no scale at all, and a
+	// fabricated „0,0 kW" next to a raw word would be an invented unit.
+	kw *float64
+	// writeFC pins the Modbus write function code; 0 = the executor decides
+	// (coil -> 5, holding -> 16, the measured FC16-by-default Deye lesson).
+	writeFC        int
 	apply          bool
 	expectedBefore *int
 }
 
-// Register/Addr/Value/Kw/Apply/ExpectedBefore expose the admitted facts to the
-// mechanism and the surfaces - read-only by construction.
+// Register/Kind/Addr/Value/Kw/Apply/ExpectedBefore expose the admitted facts to
+// the mechanism and the surfaces - read-only by construction.
 func (w AdmittedWrite) Register() string { return w.register }
+func (w AdmittedWrite) Kind() string     { return w.kind }
 func (w AdmittedWrite) Addr() int        { return w.addr }
 func (w AdmittedWrite) Value() int       { return w.value }
-func (w AdmittedWrite) Kw() float64      { return w.kw }
+
+// Kw is the scaled value where a scale is known, and 0 otherwise - ALWAYS ask
+// KwKnown before rendering it. „0,0 kW" is a value, „no scale" is an absence.
+func (w AdmittedWrite) Kw() float64 { return valueOrZero(w.kw) }
+
+// KwKnown reports whether this register has a known scale at all.
+func (w AdmittedWrite) KwKnown() bool { return w.kw != nil }
+
+// WriteFC is the pinned Modbus write function code (0 = the executor decides).
+func (w AdmittedWrite) WriteFC() int { return w.writeFC }
 
 // Apply is false for a dry run: the mechanism then READS the register and
 // writes nothing at all.
@@ -190,20 +233,40 @@ func (w AdmittedWrite) ExpectedBefore() *int { return w.expectedBefore }
 // exported fields, so this is the ONE place its shape is defined.
 func (w AdmittedWrite) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
-		Register       string  `json:"register"`
-		Addr           int     `json:"addr"`
-		Value          int     `json:"value"`
-		Kw             float64 `json:"kw"`
-		Apply          bool    `json:"apply"`
-		ExpectedBefore *int    `json:"expected_before,omitempty"`
-	}{w.register, w.addr, w.value, w.kw, w.apply, w.expectedBefore})
+		Register       string   `json:"register"`
+		Kind           string   `json:"kind"`
+		Addr           int      `json:"addr"`
+		Value          int      `json:"value"`
+		Kw             *float64 `json:"kw,omitempty"`
+		WriteFC        int      `json:"write_fc,omitempty"`
+		Apply          bool     `json:"apply"`
+		ExpectedBefore *int     `json:"expected_before,omitempty"`
+	}{w.register, w.kind, w.addr, w.value, w.kw, w.writeFC, w.apply, w.expectedBefore})
 }
 
 // ConfirmToken is the exact string a real write must carry. It names BOTH the
 // register and the value, so a confirm copied from an earlier, different attempt
 // does not authorise this one.
-func ConfirmToken(value int) string {
-	return fmt.Sprintf("%s=%d", strings.ToUpper(RegisterLabel), value)
+//
+// ⚠ It is the SHARED protocol of both scopes and of both triggers: the cloud
+// builds the very same string (RegisterKnowledge.confirmToken) and the box
+// compares it. For the export limit it renders byte-identically to what it
+// always did („0X00E7=7000").
+func ConfirmToken(addr, value int) string {
+	return fmt.Sprintf("%s=%d", strings.ToUpper(HexLabel(addr)), value)
+}
+
+// HexLabel is the canonical display spelling of an address („0x00e7"). One
+// spelling everywhere: audit log, confirm token and the cloud journal.
+func HexLabel(addr int) string {
+	return fmt.Sprintf("0x%04x", addr)
+}
+
+func valueOrZero(v *float64) float64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 // KwFor converts a raw word to kW at the grid connection point.
@@ -252,16 +315,18 @@ func Admit(family string, req Request) (AdmittedWrite, error) {
 	}
 	apply := strings.TrimSpace(req.Mode) == ModeApply
 	if apply {
-		want := ConfirmToken(req.Value)
+		want := ConfirmToken(RegisterAddr, req.Value)
 		if !strings.EqualFold(strings.TrimSpace(req.Confirm), want) {
 			return AdmittedWrite{}, refuse("Zum Schreiben wird die ausdrückliche Bestätigung \"confirm\": \"%s\" benötigt.", want)
 		}
 	}
+	kw := KwFor(req.Value)
 	w := AdmittedWrite{
 		register: RegisterLabel,
+		kind:     KindHolding,
 		addr:     RegisterAddr,
 		value:    req.Value,
-		kw:       KwFor(req.Value),
+		kw:       &kw,
 		apply:    apply,
 	}
 	if req.ExpectedBefore != nil {
@@ -269,6 +334,13 @@ func Admit(family string, req Request) (AdmittedWrite, error) {
 		w.expectedBefore = &v
 	}
 	return w, nil
+}
+
+// equalFold compares two confirm tokens the way both scopes do: trimmed, and
+// case-insensitive (the hex digits are the only part where case is a matter of
+// taste).
+func equalFold(got, want string) bool {
+	return strings.EqualFold(strings.TrimSpace(got), want)
 }
 
 // sameRegister accepts the register named in any of the spellings an operator
@@ -321,10 +393,12 @@ type Entry struct {
 	RequestID string `json:"request_id,omitempty"`
 	Register  string `json:"register"`
 	// Before/After follow the WriteOnceResult pointer discipline.
-	Before    *int    `json:"before,omitempty"`
-	Requested int     `json:"requested"`
-	After     *int    `json:"after,omitempty"`
-	Kw        float64 `json:"kw"`
+	Before    *int `json:"before,omitempty"`
+	Requested int  `json:"requested"`
+	After     *int `json:"after,omitempty"`
+	// Kw is the scaled requested value where a scale is KNOWN - absent for a
+	// free register, never a fabricated 0,0.
+	Kw *float64 `json:"kw,omitempty"`
 	// Result is one of the Result* codes; Message carries the German sentence.
 	Result  string `json:"result"`
 	Message string `json:"message,omitempty"`

@@ -54,6 +54,12 @@ would make a fixture invalid for the wrong reason):
   down the bytes (a tampered layer then fails the pull itself). A manifest that
   says "run whatever `:latest` points at today" would be a signed statement
   about mutable content - the one thing the signature is supposed to prevent.
+- `mqtt-register-write.valid.entity-coil.json` - die Komponenten-Lane mit einer
+  Spule (Stufe 2): die Cloud nennt NUR die `entity_id`, den Endpunkt loest die
+  Box aus ihrer eigenen angewandten Definition auf.
+- `mqtt-register-write.valid.lan-preview.json` - die freie LAN-Lane als
+  VORSCHAU (Stufe 2): der Endpunkt reist, weil es keinen anderen Weg gibt ihn zu
+  nennen - und genau deshalb prueft die Box ihn selbst.
 - `mqtt-register-write.invalid.write-without-confirm.json` - `mode: "schreiben"`
   without the `confirm` token. The two-stage rule is the whole protocol of this
   channel: a preview reads, and only an envelope that names REGISTER AND VALUE

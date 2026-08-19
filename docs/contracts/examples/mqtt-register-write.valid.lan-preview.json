@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "type": "register_write_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "5d0182bcae43917f",
+  "requested_at": "2026-08-19T14:12:30Z",
+  "requested_by": "8f1c0a2e-5b3d-4f77-9a10-2c6b7d9e1f04",
+  "mode": "lesen",
+  "target": {
+    "kind": "lan",
+    "host": "192.168.0.44",
+    "port": 1502,
+    "unit_id": 3
+  },
+  "register": { "kind": "holding", "address": 4660 }
+}

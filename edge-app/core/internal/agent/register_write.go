@@ -28,11 +28,15 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/registerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
@@ -118,23 +122,33 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 	// ⚠ DIE SELBSTKONFLIKT-SPERRE - die EINE harte Ablehnung dieses Kanals, und
 	// sie greift schon in der VORSCHAU: „wuerde abgelehnt" gehoert in Schritt 1,
 	// nie erst nach dem Klick des Menschen.
-	if a.registerOwnedByControl(req.Register.Address) {
+	if a.registerOwnedByControl(req.Target, req.Register.Address) {
 		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
 			registerwrite.ErrRefusedControlOwned, registerwrite.MsgControlOwned))
 		return
 	}
 
-	target := a.installerTarget()
-	admitted, err := installerwrite.Admit(target.Family, installerwrite.Request{
-		Value:          valueOr(req.Value, 1),
-		Mode:           stage(req),
+	target, verdict := a.resolveRegisterTarget(req)
+	if !verdict.OK() {
+		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
+			verdict.Code, verdict.Message))
+		return
+	}
+	admitted, err := installerwrite.AdmitExpert(installerwrite.ExpertRequest{
+		Kind:           req.Register.Kind,
+		Addr:           req.Register.Address,
+		Value:          valueOr(req.Value, 0),
+		Apply:          req.Apply(),
 		Confirm:        req.Confirm,
 		ExpectedBefore: req.ExpectedBefore,
+		WriteFC:        intOr(req.WriteFC, 0),
+		Scale:          a.registerScale(target, req.Register),
 	})
 	if err != nil {
-		// POLITIK: die Allowlist, der Wertdeckel, die Bestaetigungs-Regel. Der
-		// deutsche Satz kommt VERBATIM von dort - eine zweite Formulierung hier
-		// liesse die zwei Trigger dieselbe Ablehnung verschieden benennen.
+		// POLITIK: Registerart, Wertebereich, Funktionscode, die
+		// Bestaetigungs-Regel. Der deutsche Satz kommt VERBATIM von dort - eine
+		// zweite Formulierung hier liesse die zwei Trigger dieselbe Ablehnung
+		// verschieden benennen.
 		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
 			registerwrite.ErrRefusedPolicy, err.Error()))
 		return
@@ -161,7 +175,10 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 	if admitted.Apply() {
 		a.recordInstallerWriteFrom(admitted, out, registerSource(req), req.RequestID)
 	}
-	if out.Accepted && out.After != nil {
+	// Nur der PRIMAER-Wechselrichter traegt die Einspeisegrenze, die jede
+	// Oberflaeche als „die Grenze im Geraet" zeigt - ein fremdes Geraet auf
+	// derselben Adresse darf sie nie ueberschreiben.
+	if out.Accepted && out.After != nil && req.Target.Kind == registerwrite.LanePrimary {
 		a.noteInstallerExportLimit(*out.After)
 	}
 	if !res.OK() {
@@ -176,7 +193,123 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 		adopted = &v
 	}
 	a.publishRegisterWriteResult(registerwrite.NewResult(req, id, time.Now(),
-		res.Before, res.After, &wrote, adopted, a.registerTargetLabel(target), out.Message))
+		res.Before, res.After, &wrote, adopted, target.Label, out.Message))
+}
+
+// resolveRegisterTarget turns the order's LANE into a concrete write target.
+//
+// ⚠ THE ASYMMETRY IS THE SECURITY, and it is why the three lanes are three
+// lanes and not one parameterised one:
+//
+//	primary   the cloud names NOTHING - the box takes its own configured
+//	          inverter. A crafted order cannot redirect this write.
+//	entity    the cloud names only an ID; the ENDPOINT comes from the box's own
+//	          applied definition. Same property, one indirection further.
+//	lan       the cloud names the endpoint, so it is the only lane whose target
+//	          the box has to judge - and it does (registerwrite.Admissible's LAN
+//	          whitelist, plus a second check in the node that dials).
+func (a *Agent) resolveRegisterTarget(req registerwrite.Request) (installerwrite.Target, registerwrite.Verdict) {
+	switch req.Target.Kind {
+	case registerwrite.LanePrimary:
+		t := a.installerTarget()
+		t.Label = a.primaryTargetLabel()
+		return t, registerwrite.Verdict{}
+	case registerwrite.LaneLAN:
+		host := strings.TrimSpace(req.Target.Host)
+		port, unit := req.Target.EffectivePort(), req.Target.EffectiveUnit()
+		return installerwrite.Target{
+			Communication: inverter.CommModbusTCP,
+			Host:          host, Port: port, UnitID: unit,
+			Label: fmt.Sprintf("Freie Adresse · %s:%d · Unit %d", host, port, unit),
+		}, registerwrite.Verdict{}
+	case registerwrite.LaneEntity:
+		return a.entityWriteTarget(req.Target.EntityID)
+	default:
+		return installerwrite.Target{},
+			registerwrite.Verdict{Code: registerwrite.ErrInvalidRequest,
+				Message: registerwrite.MsgLaneUnknown}
+	}
+}
+
+// entityWriteTarget resolves a COMPONENT of the plant from the applied entity
+// registry - never from the order.
+//
+// ⚠ It deliberately does NOT go through componentapply.ParseDriver: that one
+// SKIPS a self-built device (its read plan travels as a generated flow, so it is
+// not part of sources.json), and a self-built Modbus device is exactly the kind
+// of component a customer wants to write to. What matters here is only whether
+// the component names a reachable Modbus-TCP endpoint.
+func (a *Agent) entityWriteTarget(entityID string) (installerwrite.Target, registerwrite.Verdict) {
+	a.entMu.Lock()
+	ent := a.entRegistry.Find(strings.TrimSpace(entityID))
+	a.entMu.Unlock()
+	if ent == nil {
+		return installerwrite.Target{}, registerwrite.Verdict{Code: registerwrite.ErrNotSupported,
+			Message: "Diese Komponente ist auf dem Gerät nicht eingerichtet."}
+	}
+	var d struct {
+		Communication string              `json:"communication"`
+		Connection    inverter.Connection `json:"connection"`
+	}
+	if len(ent.Driver) == 0 || json.Unmarshal(ent.Driver, &d) != nil {
+		return installerwrite.Target{}, registerwrite.Verdict{Code: registerwrite.ErrNotSupported,
+			Message: "Für diese Komponente ist keine Anbindung hinterlegt."}
+	}
+	// A component read over the Solarman logger belongs to the PRIMARY lane -
+	// that socket is owned by the inverter tab, and a second claimant on it is
+	// exactly what the one-socket law forbids. Named, never silently redirected.
+	if d.Communication == inverter.CommSolarmanV5 {
+		return installerwrite.Target{}, registerwrite.Verdict{Code: registerwrite.ErrNotSupported,
+			Message: "Diese Komponente wird über den Solarman-Logger gelesen. Bitte den " +
+				"primären Wechselrichter als Ziel wählen."}
+	}
+	host := strings.TrimSpace(d.Connection.IP)
+	if host == "" {
+		return installerwrite.Target{}, registerwrite.Verdict{Code: registerwrite.ErrNotSupported,
+			Message: "Für diese Komponente ist keine IP-Adresse hinterlegt."}
+	}
+	if !probe.IsPrivateHost(host) {
+		return installerwrite.Target{}, registerwrite.Verdict{Code: registerwrite.ErrInvalidRequest,
+			Message: registerwrite.MsgHostNotPrivate}
+	}
+	port := d.Connection.Port
+	if port <= 0 || port > 0xffff {
+		port = 502
+	}
+	unit := d.Connection.UnitID
+	if unit <= 0 {
+		unit = d.Connection.MbSlaveID
+	}
+	if unit < 0 || unit > 255 {
+		unit = 1
+	}
+	label := strings.TrimSpace(ent.Label)
+	if label == "" {
+		label = ent.ID
+	}
+	return installerwrite.Target{
+		Communication: inverter.CommModbusTCP,
+		Host:          host, Port: port, UnitID: unit,
+		Label: fmt.Sprintf("Komponente „%s\" · %s:%d · Unit %d", label, host, port, unit),
+	}, registerwrite.Verdict{}
+}
+
+// registerScale hands the EXPERT policy a known scale, and only a known one.
+//
+// The box knows exactly one register's scale by itself: the feed-in limit of its
+// own inverter family (the READ-side table). Everything else stays unscaled -
+// the cloud's register knowledge renders the customer-facing unit, and the box
+// inventing one would be a second, drifting truth about a foreign device.
+func (a *Agent) registerScale(target installerwrite.Target, reg registerwrite.Reg) *float64 {
+	if target.Host != "" || reg.Kind != installerwrite.KindHolding {
+		return nil
+	}
+	r, ok := inverter.ExportLimitRegisterFor(target.Family)
+	if !ok || r.Addr != reg.Address {
+		return nil
+	}
+	kwPerRaw := float64(installerwrite.ScaleW) / 1000
+	return &kwPerRaw
 }
 
 // stage maps the CONTRACT's stage word onto the mechanism's own. It is the ONE
@@ -188,10 +321,18 @@ func stage(req registerwrite.Request) string {
 	return installerwrite.ModeDry
 }
 
-// valueOr is the dry-run's placeholder: a preview carries no value, but Admit
-// insists on a plausible one (0 is refused as an obvious mis-entry). It never
-// reaches a register - a dry run writes nothing.
+// valueOr is the dry-run's placeholder: a preview carries no value at all. Under
+// the EXPERT scope 0 is a legitimate register word, so the placeholder is 0 and
+// nothing is refused for it - it never reaches a register anyway, because a dry
+// run writes nothing.
 func valueOr(v *int, fallback int) int {
+	if v == nil {
+		return fallback
+	}
+	return *v
+}
+
+func intOr(v *int, fallback int) int {
 	if v == nil {
 		return fallback
 	}
@@ -234,7 +375,14 @@ func mechanismCode(code string) string {
 // writing right now - and only counts them while control is really live (kill
 // switch AND certification). Without a readback there is nothing to prove, and
 // nothing is claimed: an invented conflict would refuse a legitimate write.
-func (a *Agent) registerOwnedByControl(address int) bool {
+func (a *Agent) registerOwnedByControl(target registerwrite.Target, address int) bool {
+	// ⚠ THE LOCK IS ABOUT ONE DEVICE, NOT ONE ADDRESS. The readback names the
+	// registers our executor writes ON THE PRIMARY INVERTER; the same number on a
+	// customer's own Modbus device is a completely unrelated register, and
+	// refusing it would be an invented conflict.
+	if !a.targetIsPrimary(target) {
+		return false
+	}
 	snap := a.State.Get()
 	info := snap.Control
 	if info == nil {
@@ -254,10 +402,28 @@ func controlLive(snap state.Snapshot, info *state.ControlInfo) bool {
 	return snap.ControlEnabled && snap.ControlCertified && info.ControlEnabled && info.Certified
 }
 
-// registerTargetLabel is the box's own ECHO of where it wrote - full, because
-// on a plant with several devices the target is a deliberate choice and never a
+// targetIsPrimary reports whether this order addresses the very device our own
+// control executor writes: the primary lane by definition, and an entity/LAN
+// target that resolves to the primary's own endpoint (a customer may reach the
+// same inverter over plain Modbus-TCP).
+func (a *Agent) targetIsPrimary(target registerwrite.Target) bool {
+	if target.Kind == registerwrite.LanePrimary {
+		return true
+	}
+	a.invMu.Lock()
+	inv := a.inv
+	a.invMu.Unlock()
+	if inv == nil {
+		return false
+	}
+	ip := strings.TrimSpace(inv.Connection.IP)
+	return ip != "" && strings.EqualFold(ip, strings.TrimSpace(target.Host))
+}
+
+// primaryTargetLabel is the box's own ECHO of where it wrote - full, because on
+// a plant with several devices the target is a deliberate choice and never a
 // default in the dark.
-func (a *Agent) registerTargetLabel(target installerwrite.Target) string {
+func (a *Agent) primaryTargetLabel() string {
 	a.invMu.Lock()
 	inv := a.inv
 	a.invMu.Unlock()

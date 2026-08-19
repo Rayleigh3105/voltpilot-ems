@@ -732,6 +732,12 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(localbus.TopicInstallerWriteResult, 15, a.onInstallerWriteResult); err != nil {
 		return err
 	}
+	// The SAME handler serves the plain Modbus-TCP lane (Stufe 2): one waiter
+	// map, one result shape, two transports - so a lane added later cannot grow
+	// a second correlation mechanism that drifts from this one.
+	if err := bus.Subscribe(localbus.TopicRegisterWriteResult, 15, a.onInstallerWriteResult); err != nil {
+		return err
+	}
 	// Per-node flow state (Portal v3 M5 Part C, additive + feature-flagged):
 	// the handler itself no-ops unless VP_FLOW_NODE_STATUS_ENABLED is set, so
 	// subscribing always is free and the block simply stays absent.

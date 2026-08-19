@@ -34,6 +34,11 @@ func startInstallerBox(t *testing.T, on bool) *installerBox {
 	if err := a.Bus.Subscribe(localbus.TopicInstallerWriteResult, 15, a.onInstallerWriteResult); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
+	// DASSELBE Handler-Paar fuer die schlichte Modbus-TCP-Lane (Stufe 2) - wie
+	// in agent.go: eine Warteschlange, eine Ergebnis-Form, zwei Transporte.
+	if err := a.Bus.Subscribe(localbus.TopicRegisterWriteResult, 15, a.onInstallerWriteResult); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
 	if _, err := a.SetInverter(inverter.SelectionRequest{
 		Brand: "deye", Model: "sun-30k-sg01hp3",
 		Connection: inverter.Connection{IP: "192.168.0.28", Serial: "2985159064", MbSlaveID: 1, PowerScale: 10},
@@ -112,7 +117,7 @@ func TestTheDryRunReadsAndTheConfirmedCallWritesExactlyOnce(t *testing.T) {
 	if out.Before == nil || *out.Before != 3300 {
 		t.Fatalf("dry run must report the Ist-value: %#v", out.Before)
 	}
-	if !containsSub(out.Message, installerwrite.ConfirmToken(7000)) {
+	if !containsSub(out.Message, installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000)) {
 		t.Fatalf("the dry run must print the confirm token, got %q", out.Message)
 	}
 	if n := len(box.a.installerLog.List()); n != 0 {
@@ -175,7 +180,7 @@ func TestANotAdoptedValueIsAMismatchAndIsAudited(t *testing.T) {
 		return installerBusResult{OK: true, Before: regPtr(3300), After: regPtr(3300), Wrote: true}
 	})
 	out, err := box.a.InstallerWrite(installerwrite.Request{
-		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(7000),
+		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 	}, "test")
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -201,7 +206,7 @@ func TestASilentDeviceIsAnHonestFailureAndIsAudited(t *testing.T) {
 	box := startInstallerBox(t, true)
 	installerStub(t, box.addr, nil, nil) // sees it, answers nothing
 	out, err := box.a.InstallerWrite(installerwrite.Request{
-		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(7000),
+		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 	}, "test")
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -234,7 +239,7 @@ func TestARefusedFamilyNeverReachesTheBus(t *testing.T) {
 		return installerBusResult{OK: true, Before: regPtr(0)}
 	})
 	_, err := box.a.InstallerWrite(installerwrite.Request{
-		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(7000),
+		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 	}, "test")
 	var ve *installerwrite.ValidationError
 	if !errors.As(err, &ve) {
@@ -280,14 +285,14 @@ func TestASecondWriteWhileOneIsInFlightIsRefused(t *testing.T) {
 	go func() {
 		close(started)
 		_, _ = box.a.InstallerWrite(installerwrite.Request{
-			Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(7000),
+			Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 		}, "test")
 		close(done)
 	}()
 	<-started
 	time.Sleep(200 * time.Millisecond)
 	_, err := box.a.InstallerWrite(installerwrite.Request{
-		Value: 6000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(6000),
+		Value: 6000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 6000),
 	}, "test")
 	if !errors.Is(err, installerwrite.ErrBusy) {
 		t.Fatalf("expected ErrBusy, got %v", err)
@@ -317,7 +322,7 @@ func TestWriteOnceIsTriggerAgnosticAndAuditsNothing(t *testing.T) {
 		return installerBusResult{OK: true, Before: regPtr(3300), After: regPtr(req.Value), Wrote: true}
 	})
 	admitted, err := installerwrite.Admit("hybrid_3p", installerwrite.Request{
-		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(7000),
+		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -364,7 +369,7 @@ func TestAStalePreconditionRefusesWithoutWriting(t *testing.T) {
 	})
 	stale := 3300
 	out, err := box.a.InstallerWrite(installerwrite.Request{
-		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(7000),
+		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 		ExpectedBefore: &stale,
 	}, "test")
 	if err != nil {
@@ -388,7 +393,7 @@ func TestAStalePreconditionRefusesWithoutWriting(t *testing.T) {
 	// The matching expectation goes through.
 	fresh := 5000
 	out, err = box.a.InstallerWrite(installerwrite.Request{
-		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(7000),
+		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
 		ExpectedBefore: &fresh,
 	}, "test")
 	if err != nil || !out.Accepted {

@@ -1356,6 +1356,14 @@ test('flow installer-write planner matches installerWriteRoute() for every vecto
     [sel, { mode: 'apply', addr: 0x00e7, value: 0 }],
     [sel, { mode: 'apply', addr: 0x00e7, value: 7001 }],
     [null, { mode: 'apply', addr: 0x00e7, value: 7000 }],
+    // Stufe 2 „Freie Register": a free address, both bounds of a register word,
+    // a dry run WITHOUT a value, and the two shapes that are still refused.
+    [sel, { mode: 'apply', addr: 0x1234, value: 100 }],
+    [sel, { mode: 'apply', addr: 0x0000, value: 65535 }],
+    [sel, { mode: 'dry_run', addr: 0x1234 }],
+    [sel, { mode: 'apply', addr: 0x10000, value: 1 }],
+    [sel, { mode: 'apply', addr: 0x1234, value: 65536 }],
+    [Object.assign({}, sel, { family: 'hybrid_1p' }), { mode: 'apply', addr: 0x00f5, value: 7000 }],
   ];
   for (const [s, r] of vectors) {
     const inline = JSON.parse(JSON.stringify(route(s, r)));
@@ -1368,10 +1376,12 @@ test('flow installer-write planner matches installerWriteRoute() for every vecto
   }
 });
 
-test('flow installer-write node pins the ONE address and the ceiling', () => {
+test('flow installer-write node pins the register-word bound and the socket lock', () => {
   const src = byId['auto-installer-exec'].func;
-  assert.ok(src.includes('const INSTALLER_WRITE_ADDR = 0x00e7;'), 'the address is hard-coded, never a parameter');
-  assert.ok(src.includes('const INSTALLER_WRITE_MAX_RAW = 7000;'), 'the ceiling is hard-coded');
+  // Since Stufe 2 the address is FREE; what stays pinned is the bound of a
+  // register word - the one thing this planner can judge without the device.
+  assert.ok(src.includes('const REGISTER_WORD_MAX = 0xffff;'), 'the register-word bound is hard-coded');
+  assert.strictEqual(controlRouting.REGISTER_WORD_MAX, 0xffff);
   assert.strictEqual(controlRouting.INSTALLER_WRITE_ADDR, 0x00e7);
   assert.strictEqual(controlRouting.INSTALLER_WRITE_MAX_RAW, 7000);
   // It must share the ONE socket lock of this tab - a second lock would be a
