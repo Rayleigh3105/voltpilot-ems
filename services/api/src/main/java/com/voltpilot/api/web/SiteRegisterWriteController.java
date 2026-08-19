@@ -1,11 +1,14 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.registerwrite.RegisterKnowledge;
 import com.voltpilot.api.registerwrite.RegisterWriteEvents;
 import com.voltpilot.api.registerwrite.RegisterWriteService;
+import com.voltpilot.api.registerwrite.RegisterWriteTargets;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.RegisterWriteEventDto;
 import com.voltpilot.api.web.dto.RegisterWriteOutcomeDto;
 import com.voltpilot.api.web.dto.RegisterWriteRequest;
+import com.voltpilot.api.web.dto.RegisterWriteTargetDto;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -76,10 +79,44 @@ public class SiteRegisterWriteController {
 
     private final SiteRepository sites;
     private final RegisterWriteService service;
+    private final RegisterWriteTargets targets;
+    private final RegisterKnowledge knowledge;
 
-    public SiteRegisterWriteController(SiteRepository sites, RegisterWriteService service) {
+    public SiteRegisterWriteController(SiteRepository sites, RegisterWriteService service,
+            RegisterWriteTargets targets, RegisterKnowledge knowledge) {
         this.sites = sites;
         this.service = service;
+        this.targets = targets;
+        this.knowledge = knowledge;
+    }
+
+    /**
+     * Schritt 0: WELCHE Geräte dieser Anlage überhaupt als Ziel in Frage kommen.
+     *
+     * <p>Es entsteht keine neue Wahrheit - die Liste kommt aus dem, was die Box
+     * über ihre Einrichtung meldet, und aus den portal-verwalteten Komponenten.
+     * Ein Gerät ohne Schreibweg wird GENANNT (mit Grund), nie verschwiegen.
+     */
+    @GetMapping("/targets")
+    public List<RegisterWriteTargetDto> targets(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return targets.forSite(siteId).stream()
+                .map(t -> new RegisterWriteTargetDto(t.lane(), t.deviceId(), t.entityId(),
+                        t.label(), t.brand(), t.model(), t.family(), t.communication(), t.host(),
+                        t.port(), t.unitId(), t.writable(), t.reason()))
+                .toList();
+    }
+
+    /**
+     * Das Register-WISSEN als Ganzes - der Nachschlage-Teil des Experten-Modus.
+     *
+     * <p>Reine ANZEIGE: es entscheidet nichts, es sperrt nichts. Was eine Box
+     * ausführt, prüft die Box.
+     */
+    @GetMapping("/register-knowledge")
+    public List<RegisterKnowledge.FamilyView> knowledge(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return knowledge.catalog();
     }
 
     /** Schritt 1: den Ist-Wert lesen. Schreibt nichts und protokolliert nichts. */
@@ -115,16 +152,18 @@ public class SiteRegisterWriteController {
     }
 
     private static RegisterWriteService.Command command(RegisterWriteRequest b) {
-        return new RegisterWriteService.Command(b.deviceId(), b.registerKind(), b.address(),
-                b.value(), b.expectedBefore(), b.writeFc(), b.note());
+        return new RegisterWriteService.Command(b.deviceId(), b.lane(), b.entityId(), b.host(),
+                b.port(), b.unitId(), b.registerKind(), b.address(), b.value(),
+                b.expectedBefore(), b.writeFc(), b.note());
     }
 
     private static RegisterWriteOutcomeDto toDto(RegisterWriteService.Outcome o) {
         return new RegisterWriteOutcomeDto(o.requestId(), o.mode(), o.ok(), o.outcome(),
                 o.beforeRaw(), o.afterRaw(), o.beforeScaled(), o.afterScaled(), o.adopted(),
                 o.errorCode(), o.message(), o.targetLabel(), o.address(), o.addressHex(),
-                o.registerLabel(), o.registerClass(), o.scaleNote(), o.noteRequired(),
-                o.confirm(), o.requestedAt());
+                o.registerLabel(), o.registerClass(), o.scaleNote(), o.registerNote(),
+                o.scaleUnit(), o.noteRequired(), o.confirm(), o.writesToday(), o.lane(),
+                o.requestedAt());
     }
 
     private void requireSite(UUID siteId) {

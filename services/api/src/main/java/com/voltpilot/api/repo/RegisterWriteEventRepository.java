@@ -97,6 +97,30 @@ public class RegisterWriteEventRepository {
     }
 
     /**
+     * Wie oft dieses Register auf diesem Gerät HEUTE schon angefordert wurde -
+     * die EEPROM-Ehrlichkeit des Drawers (Konzept §2.3: „heute bereits 2x
+     * geschrieben"), ausdrücklich statt einer Sperre.
+     *
+     * <p><b>Gezählt werden ANFORDERUNGEN, nicht Quittungen</b>, und das ist die
+     * ehrliche Richtung: ein Schreibvorgang, dessen Antwort verloren ging, kann
+     * angekommen sein - ihn nicht mitzuzählen würde die Zahl kleiner machen, als
+     * das EEPROM sie erlebt hat. Ein Probelauf steht gar nicht im Journal.
+     *
+     * <p>Der Tag ist der BERLINER Kalendertag - dieselbe Zeitrechnung, in der
+     * jede andere Tagesgröße dieses Hauses gezählt wird.
+     */
+    public int countWritesToday(UUID siteId, UUID deviceId, int address) {
+        Integer n = jdbc.queryForObject(
+                "SELECT count(*) FROM register_write_event "
+                        + "WHERE site_id = ? AND device_id = ? AND address = ? "
+                        + "AND event = '" + EVENT_REQUESTED + "' "
+                        + "AND (requested_at AT TIME ZONE 'Europe/Berlin')::date "
+                        + "= (now() AT TIME ZONE 'Europe/Berlin')::date",
+                Integer.class, siteId, deviceId, address);
+        return n == null ? 0 : n;
+    }
+
+    /**
      * Die Vorgänge einer Anlage, NEUESTE zuerst, je Vorgang zu EINER Zeile
      * gefaltet. Optional auf ein Gerät eingegrenzt.
      *

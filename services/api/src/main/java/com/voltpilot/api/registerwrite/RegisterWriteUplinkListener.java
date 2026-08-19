@@ -74,6 +74,8 @@ public class RegisterWriteUplinkListener {
     private final String password;
     private final RegisterWriteEventRepository journal;
     private final DeviceRepository devices;
+    private final RegisterKnowledge knowledge;
+    private final RegisterWriteTargets targets;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -82,12 +84,15 @@ public class RegisterWriteUplinkListener {
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
-            RegisterWriteEventRepository journal, DeviceRepository devices) {
+            RegisterWriteEventRepository journal, DeviceRepository devices,
+            RegisterKnowledge knowledge, RegisterWriteTargets targets) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.journal = journal;
         this.devices = devices;
+        this.knowledge = knowledge;
+        this.targets = targets;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -244,10 +249,16 @@ public class RegisterWriteUplinkListener {
         String source = portal
                 ? RegisterWriteEventRepository.SOURCE_PORTAL
                 : RegisterWriteEventRepository.SOURCE_DEVICE;
-        RegisterKnowledge.Known known = RegisterKnowledge.of(address);
+        // ⚠ Die Familie entscheidet, was ein Register BEDEUTET (auf hybrid_1p ist
+        // dieselbe Zahl ein anderes Register mit anderer Skala). Ohne gemeldete
+        // Familie bleibt der Eintrag ehrlich „unbekannt" - ein Deye-Name auf ein
+        // fremdes Gerät zu stempeln waere die schlechteste Auskunft dieses Pfades.
+        RegisterKnowledge.Known known = knowledge.of(
+                targets.primaryFamily(siteId, device.id()), address);
 
         journal.recordRequest(new RegisterWriteEventRepository.Request(
-                requestId, source, siteId, device.id(), device.externalRef(), "primaer", null,
+                requestId, source, siteId, device.id(), device.externalRef(),
+                RegisterWriteTargets.LANE_PRIMARY, null,
                 targetLabel(device), "holding", address, null,
                 // Die Box hat kein Formular: was sie AUFGEZEICHNET hat, IST hier
                 // die verbatim Eingabe.

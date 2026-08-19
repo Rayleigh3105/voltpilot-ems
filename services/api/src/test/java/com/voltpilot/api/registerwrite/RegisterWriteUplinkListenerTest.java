@@ -37,14 +37,22 @@ class RegisterWriteUplinkListenerTest {
     private RegisterWriteEventRepository journal;
     private RegisterWriteUplinkListener listener;
 
+    private RegisterWriteTargets targets;
+
     @BeforeEach
     void setUp() {
         journal = mock(RegisterWriteEventRepository.class);
         DeviceRepository devices = mock(DeviceRepository.class);
         when(devices.findById(DEVICE)).thenReturn(Optional.of(new DeviceDto(DEVICE, SITE,
                 "edge-herzogau-01", "inverter", null, "active", Instant.now(), Instant.now())));
+        // Das ECHTE Register-Wissen; die FAMILIE kommt aus dem Ziel-Aufloeser -
+        // ohne sie ist jedes Register ehrlich „unbekannt" (siehe den eigenen
+        // Fall weiter unten).
+        targets = mock(RegisterWriteTargets.class);
+        when(targets.primaryFamily(SITE, DEVICE)).thenReturn("hybrid_3p");
         listener = new RegisterWriteUplinkListener("tcp://localhost:1883", "", "",
-                journal, devices);
+                journal, devices,
+                new RegisterKnowledge(new com.fasterxml.jackson.databind.ObjectMapper()), targets);
     }
 
     private void ingest(String entries) {
@@ -166,5 +174,30 @@ class RegisterWriteUplinkListenerTest {
                 + "]}}").getBytes(StandardCharsets.UTF_8));
 
         verify(journal, never()).recordRequest(any());
+    }
+
+    /**
+     * ⚠ OHNE GEMELDETE FAMILIE WIRD KEIN NAME BEHAUPTET. Eine Box, die ihre
+     * Einrichtung (noch) nicht gemeldet hat, bekommt einen Journal-Eintrag ohne
+     * Namen und ohne Umrechnung; die vorsichtige WARNUNG der Adresse bleibt
+     * (siehe RegisterKnowledgeTest) - ein Deye-Name auf einem fremden Geraet
+     * waere eine Luege, eine verschwundene Warnung ein Risiko.
+     */
+    @Test
+    void withoutAReportedFamilyTheEntryClaimsNoName() {
+        when(targets.primaryFamily(SITE, DEVICE)).thenReturn(null);
+
+        ingest(entry("aabbccdd11223399", "applied",
+                ",\"before\":3300,\"after\":7000"));
+
+        ArgumentCaptor<RegisterWriteEventRepository.Request> req =
+                ArgumentCaptor.forClass(RegisterWriteEventRepository.Request.class);
+        verify(journal).recordRequest(req.capture());
+        assertThat(req.getValue().registerLabel()).isNull();
+        assertThat(req.getValue().scaleNote()).isNull();
+        // Die TATSACHEN bleiben trotzdem vollstaendig - der Vorgang ist
+        // aktenkundig, nur seine Bedeutung ist offen.
+        assertThat(req.getValue().address()).isEqualTo(231);
+        assertThat(req.getValue().valueRaw()).isEqualTo(7000);
     }
 }

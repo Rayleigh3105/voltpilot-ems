@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { RegisterWriteEvent, RegisterWriteOutcome } from './api';
+import type {
+  RegisterWriteEvent, RegisterWriteOutcome, RegisterWriteTarget,
+} from './api';
 import {
   adresseEcho,
   adresseFehler,
@@ -16,6 +18,13 @@ import {
   wertAnzeige,
   wertFehler,
   ZUSTAND_UNBEKANNT,
+  freieAdresseFehler,
+  laneWort,
+  registerKenntnis,
+  schreibzaehler,
+  ziele,
+  zielInput,
+  zielKey,
 } from './registerWrite';
 
 function outcome(patch: Partial<RegisterWriteOutcome> = {}): RegisterWriteOutcome {
@@ -25,7 +34,8 @@ function outcome(patch: Partial<RegisterWriteOutcome> = {}): RegisterWriteOutcom
     adopted: null, errorCode: null, message: null, targetLabel: null,
     address: 231, addressHex: '0x00e7',
     registerLabel: 'Einspeisegrenze am Netzanschluss', registerClass: 'netz_compliance',
-    scaleNote: null, noteRequired: true, confirm: null, at: '2026-08-19T14:02:00Z',
+    scaleNote: null, registerNote: null, scaleUnit: 'kW', noteRequired: true,
+    confirm: null, writesToday: 0, lane: 'primary', at: '2026-08-19T14:02:00Z',
     ...patch,
   };
 }
@@ -74,8 +84,8 @@ describe('die Eingabe wird nie geraten', () => {
 
 describe('was nicht gemessen ist, wird nicht behauptet', () => {
   it('rendert Rohwert und Umrechnung nebeneinander', () => {
-    expect(wertAnzeige(3300, 33)).toBe('3300 (33,0 kW)');
-    expect(wertAnzeige(7000, 70)).toBe('7000 (70,0 kW)');
+    expect(wertAnzeige(3300, 33, 'kW')).toBe('3300 (33,0 kW)');
+    expect(wertAnzeige(7000, 70, 'kW')).toBe('7000 (70,0 kW)');
   });
 
   it('erfindet ohne bekannte Skala KEINE Einheit', () => {
@@ -85,7 +95,7 @@ describe('was nicht gemessen ist, wird nicht behauptet', () => {
   it('zeigt gar nichts, wo nichts gelesen wurde', () => {
     expect(wertAnzeige(null, null)).toBeNull();
     // Eine 0 ist ein WERT („gar keine Einspeisung erlaubt"), keine Abwesenheit.
-    expect(wertAnzeige(0, 0)).toBe('0 (0,0 kW)');
+    expect(wertAnzeige(0, 0, 'kW')).toBe('0 (0,0 kW)');
   });
 });
 
@@ -141,9 +151,9 @@ describe('die Vorschau ist der erste Schritt - ohne sie gibt es keinen zweiten',
 
 describe('der Bestätigen-Knopf trägt den vollen Satz', () => {
   it('nennt Register, Rohwert und die Umrechnung', () => {
-    expect(bestaetigenLabel('0x00E7', '7000', 70))
+    expect(bestaetigenLabel('0x00E7', '7000', 70, 'kW'))
       .toBe('Jetzt schreiben: 0x00e7 = 7000 (70,0 kW)');
-    expect(bestaetigenLabel('231', '7000', 70))
+    expect(bestaetigenLabel('231', '7000', 70, 'kW'))
       .toBe('Jetzt schreiben: 0x00e7 = 7000 (70,0 kW)');
   });
 
@@ -222,5 +232,103 @@ describe('die Journal-Zeile nennt Vorgang UND Urheber', () => {
     const e = event({ outcome: 'unbekannt', adopted: null, afterRaw: null });
     expect(journalSatz(e)).toMatch(/ohne Rückmeldung, Zustand unbekannt/);
     expect(journalTon(e)).toBe('info');
+  });
+});
+
+// ── Stufe 2: das ZIEL, der Zähler, die Einheit ──────────────────────────────
+
+describe('der Geräte-Picker nennt jedes Gerät - auch das ohne Schreibweg', () => {
+  const t = (patch: Partial<RegisterWriteTarget> = {}): RegisterWriteTarget => ({
+    lane: 'primary', deviceId: 'd-1', entityId: null, label: 'Deye SUN-30K',
+    brand: 'deye', model: 'sun-30k', family: 'hybrid_3p', communication: 'solarman_v5',
+    host: '192.168.0.28', port: 8899, unitId: 1, writable: true, reason: null, ...patch,
+  });
+
+  it('zeigt Lane, Endpunkt und - wo es nicht geht - den Grund', () => {
+    const [primary, wallbox] = ziele([
+      t(),
+      t({ lane: 'entity', entityId: 'e-1', label: 'Wallbox Hof', family: null,
+        communication: 'goe_http_api', host: '192.168.0.50', port: null, unitId: null,
+        writable: false, reason: 'Dieses Gerät spricht kein Modbus.' }),
+    ]);
+    expect(primary.laneWort).toBe('Wechselrichter der Anlage');
+    expect(primary.unterzeile).toBe('deye sun-30k · 192.168.0.28:8899 · Unit 1');
+    expect(primary.waehlbar).toBe(true);
+    expect(primary.grund).toBeNull();
+    expect(primary.kenntRegister).toBe(true);
+
+    expect(wallbox.laneWort).toBe('Komponente');
+    expect(wallbox.waehlbar).toBe(false);
+    expect(wallbox.grund).toContain('kein Modbus');
+    // ⚠ Ohne Familie kennt die Plattform die Register dieses Geräts nicht - und
+    // sie SAGT das, statt einen Namen zu erfinden.
+    expect(wallbox.kenntRegister).toBe(false);
+  });
+
+  it('behauptet zu einer unbekannten Lane nichts', () => {
+    expect(laneWort('mond')).toBe('Ziel');
+  });
+
+  it('leitet aus der Wahl genau die Ziel-Felder ab - nie einen erfundenen Host', () => {
+    expect(zielInput(t())).toEqual({ lane: 'primary' });
+    expect(zielInput(t({ lane: 'entity', entityId: 'e-1' })))
+      .toEqual({ lane: 'entity', entityId: 'e-1' });
+    expect(zielInput(t({ lane: 'lan', entityId: null, host: '192.168.0.44',
+      port: 1502, unitId: 3 })))
+      .toEqual({ lane: 'lan', host: '192.168.0.44', port: 1502, unitId: 3 });
+    expect(zielInput(null)).toEqual({});
+  });
+
+  it('gibt jedem Ziel einen stabilen Schlüssel', () => {
+    expect(zielKey(t())).toBe('primary:d-1');
+    expect(zielKey(t({ lane: 'entity', entityId: 'e-1' }))).toBe('entity:e-1');
+    expect(zielKey(t({ lane: 'lan', host: '192.168.0.44', port: 1502, unitId: 3 })))
+      .toBe('lan:192.168.0.44:1502#3');
+  });
+
+  it('sagt zu einem Gerät ohne bekannte Register, dass geschrieben trotzdem geht', () => {
+    const [unbekannt] = ziele([t({ family: null })]);
+    const satz = registerKenntnis(unbekannt);
+    expect(satz).toContain('kennt die Register dieses Geräts nicht');
+    expect(satz).toContain('geschrieben werden kann trotzdem');
+    expect(registerKenntnis(ziele([t()])[0])).toBeNull();
+  });
+
+  it('prüft an der freien Adresse nur die FORM - nie das Netz', () => {
+    expect(freieAdresseFehler('')).toContain('IP-Adresse');
+    expect(freieAdresseFehler('192.168.0 44')).toContain('Leerzeichen');
+    // ⚠ Ob eine Adresse belegbar PRIVAT ist, entscheidet die BOX - hier steht
+    // keine zweite Wahrheit über ein Netz, das dieses Portal nie gesehen hat.
+    expect(freieAdresseFehler('8.8.8.8')).toBeNull();
+    expect(freieAdresseFehler('192.168.0.44')).toBeNull();
+  });
+});
+
+describe('EEPROM-Ehrlichkeit und Einheiten', () => {
+  it('sagt den Schreibzähler nur, wenn es etwas zu sagen gibt', () => {
+    expect(schreibzaehler(0)).toBeNull();
+    expect(schreibzaehler(null)).toBeNull();
+    expect(schreibzaehler(undefined)).toBeNull();
+    expect(schreibzaehler(1)).toContain('bereits einmal');
+    expect(schreibzaehler(3)).toContain('bereits 3×');
+  });
+
+  it('⚠ hängt NIE eine erfundene Einheit an einen Rohwert', () => {
+    expect(wertAnzeige(3300, 33, 'kW')).toBe('3300 (33,0 kW)');
+    expect(wertAnzeige(3300, 33, 'A')).toBe('3300 (33,0 A)');
+    // Ohne Einheit bleibt der Rohwert der Rohwert - auch wenn eine Zahl daneben
+    // stünde: „kW" hinter einem Ampere-Register wäre die gefährlichste
+    // Beschriftung dieses ganzen Pfades.
+    expect(wertAnzeige(3300, 33, null)).toBe('3300');
+    expect(wertAnzeige(3300, null, 'kW')).toBe('3300');
+    expect(wertAnzeige(null, 33, 'kW')).toBeNull();
+  });
+
+  it('der Bestätigen-Knopf rechnet nur um, wo eine Einheit bekannt ist', () => {
+    expect(bestaetigenLabel('0x00E7', '7000', 70, 'kW'))
+      .toBe('Jetzt schreiben: 0x00e7 = 7000 (70,0 kW)');
+    expect(bestaetigenLabel('0x00E7', '7000', 70, null))
+      .toBe('Jetzt schreiben: 0x00e7 = 7000');
+    expect(bestaetigenLabel('0x1234', '5', null)).toBe('Jetzt schreiben: 0x1234 = 5');
   });
 });
