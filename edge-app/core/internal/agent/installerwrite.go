@@ -332,12 +332,29 @@ func probeMessage(before *int, w installerwrite.AdmittedWrite) string {
 // must never fail the operation the entry describes - the write already
 // happened - so it is logged loudly and swallowed.
 func (a *Agent) recordInstallerWrite(w installerwrite.AdmittedWrite, out installerwrite.Outcome, by string) {
+	// A LOCAL write has no cloud order, so it mints its own correlation id -
+	// otherwise the heartbeat uplink (D6) could not report it, and the one
+	// write nobody in the cloud can see would be the one made on site.
+	a.recordInstallerWriteFrom(w, out, by, newRegisterWriteID())
+}
+
+// recordInstallerWriteFrom is the same audit entry with the PORTAL trigger's
+// extra fact: the `request_id` of the order that caused it.
+//
+// ⚠ It is the CROSS KEY between the two books (concept §2.5 point 4): the box's
+// own audit and the cloud journal (`register_write_event`) record the same
+// operation under the same id, so a manipulated book contradicts the other. A
+// LOCAL write has no cloud order and therefore no id - it gets one only when
+// the Herzschlag-Uplink reports it (D6), where the box mints it itself.
+func (a *Agent) recordInstallerWriteFrom(w installerwrite.AdmittedWrite,
+	out installerwrite.Outcome, by, requestID string) {
 	src := strings.TrimSpace(by)
 	if src == "" {
 		src = "wartungszugang"
 	}
 	e := installerwrite.Entry{
 		At:        time.Now().UTC(),
+		RequestID: strings.TrimSpace(requestID),
 		Register:  w.Register(),
 		Before:    out.Before,
 		Requested: w.Value(),

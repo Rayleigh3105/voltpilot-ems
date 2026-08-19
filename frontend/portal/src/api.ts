@@ -1642,9 +1642,87 @@ export type CommandEventKind =
  * 15-Sekunden-Momentaufnahmen lässt sich die Zahl der 10-Sekunden-
  * Schreibvorgänge nicht ableiten).
  */
+
+/**
+ * EIN Vorgang aus dem append-only Register-Journal, zu einer Zeile gefaltet
+ * (Konzept `vp-reg-schreib-konzept-p8` §2.5).
+ *
+ * Die HERKUNFT steht an der Zeile, weil genau das die Frage ist, die dieses
+ * Journal beantworten muss: `kunde`/`voltpilot` sind über ein validiertes Token
+ * beweisbare Identitäten, `geraet` ist der Wartungszugang an der Box - für den
+ * es cloud-seitig KEINE Identität gibt, und genau das sagt das Wort.
+ */
+export interface RegisterWriteEvent {
+  id: number;
+  requestId: string;
+  source: 'portal' | 'geraet' | string;
+  deviceId: string | null;
+  deviceRef: string | null;
+  lane: string | null;
+  targetLabel: string | null;
+  registerKind: string | null;
+  address: number | null;
+  addressHex: string | null;
+  /** VERBATIM, wie getippt. */
+  addressInput: string | null;
+  valueInput: string | null;
+  note: string | null;
+  valueRaw: number | null;
+  expectedBefore: number | null;
+  registerLabel: string | null;
+  registerClass: 'netz_compliance' | 'bekannt' | 'unbekannt' | string | null;
+  scaleNote: string | null;
+  origin: 'kunde' | 'voltpilot' | 'geraet' | string | null;
+  actorName: string | null;
+  actorRole: string | null;
+  viaTenantSwitcher: boolean;
+  requestedAt: string;
+  beforeRaw: number | null;
+  afterRaw: number | null;
+  /** DREIWERTIG: null = keine Aussage, false = nicht übernommen, true = übernommen. */
+  adopted: boolean | null;
+  outcome: string | null;
+  reason: string | null;
+  answeredAt: string | null;
+}
+
+/** Das Ergebnis EINES Schritts der Zwei-Schritt-Strecke. */
+export interface RegisterWriteOutcome {
+  requestId: string;
+  mode: 'lesen' | 'schreiben' | string;
+  ok: boolean;
+  outcome: string;
+  beforeRaw: number | null;
+  afterRaw: number | null;
+  beforeScaled: number | null;
+  afterScaled: number | null;
+  adopted: boolean | null;
+  errorCode: string | null;
+  message: string | null;
+  targetLabel: string | null;
+  address: number;
+  addressHex: string;
+  registerLabel: string | null;
+  registerClass: string;
+  scaleNote: string | null;
+  noteRequired: boolean;
+  confirm: string | null;
+  at: string;
+}
+
+/** Was der Mensch im Register-Drawer eingetragen hat - ROH. */
+export interface RegisterWriteInput {
+  deviceId?: string;
+  registerKind?: string;
+  address: string;
+  value?: string;
+  expectedBefore?: number | null;
+  note?: string;
+}
+
 export interface CommandEntry {
   id: number;
-  stream: 'batterie' | 'abregelung' | 'verbraucher' | 'waechter' | string;
+  stream: 'batterie' | 'abregelung' | 'verbraucher' | 'waechter' | 'register' | string;
   kind: 'periode' | 'ereignis';
   eventKind: CommandEventKind | string | null;
   startedAt: string;
@@ -1667,9 +1745,15 @@ export interface CommandEntry {
   released: boolean | null;
   foreignInfluence: boolean | null;
   entityId: string | null;
-  source: 'cloud_abgeleitet' | 'geraet' | string;
+  source: 'cloud_abgeleitet' | 'geraet' | 'portal' | string;
   /** Der Roh-Blick (F1: für ALLE Kunden aufklappbar). */
   detail: CommandDetail | null;
+  /**
+   * NUR auf den Zeilen des vierten Stroms `register`: der gefaltete Vorgang aus
+   * dem Journal. Ein älteres Backend lässt das Feld weg - dann gibt es die
+   * Zeile ohnehin nicht (das Strom-Wort ist ihm auch unbekannt).
+   */
+  register?: RegisterWriteEvent | null;
 }
 
 export interface CommandDetail {
@@ -2466,6 +2550,34 @@ export const api = {
    * Der gefuehrte Schalt-Test (Einheitsmodell Stufe 4). Er schreibt EINMAL; die
    * Box armiert ihr automatisches Aus, BEVOR sie schreibt.
    */
+  /**
+   * Schritt 1 der Register-Strecke: den Ist-Wert LESEN. Schreibt nichts und
+   * hinterlässt keine Spur.
+   *
+   * `tenantId` stampft den `X-Tenant-Id`-Kopf NUR für diesen Aufruf - die
+   * Plattform-Geräteseite kennt den Mandanten der Zeile, und den globalen
+   * Umschalter unter den Füßen des Admins zu verstellen wäre ein Seiteneffekt.
+   */
+  registerWritePreview: (siteId: string, body: RegisterWriteInput, tenantId?: string) =>
+    request<RegisterWriteOutcome>(`/api/v1/sites/${siteId}/register-write/preview`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      ...(tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
+    }),
+  /** Schritt 2: der EINE Schreibvorgang - mit Beleg und Papier-Spur. */
+  registerWrite: (siteId: string, body: RegisterWriteInput, tenantId?: string) =>
+    request<RegisterWriteOutcome>(`/api/v1/sites/${siteId}/register-write`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      ...(tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {}),
+    }),
+  /** Der Verlauf - dieselben Zeilen, die die Befehle-Seite einmischt. */
+  registerWriteHistory: (siteId: string, deviceId?: string, tenantId?: string) =>
+    request<RegisterWriteEvent[]>(
+      `/api/v1/sites/${siteId}/register-write/history`
+        + (deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : ''),
+      tenantId ? { headers: { 'X-Tenant-Id': tenantId } } : {},
+    ),
   switchTest: (siteId: string, entityId: string, body: Record<string, unknown>) =>
     request<SchaltTestAntwort>(
       `/api/v1/sites/${siteId}/components/custom/${entityId}/switch-test`,

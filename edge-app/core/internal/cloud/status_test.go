@@ -139,7 +139,7 @@ func TestHeartbeatCarriesTheVersionWithoutAnyFlowsBlock(t *testing.T) {
 
 	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
 		&UpdateSummary{Backend: UpdateBackendCompose,
-			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil); err != nil {
+			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,7 +186,7 @@ func TestHeartbeatCarriesTheVersionAlongsideTheFlowsBlock(t *testing.T) {
 	}
 	if err := link.PublishStatus("schedule", nil, nil, nil, flows, nil, nil, nil,
 		&UpdateSummary{Backend: UpdateBackendCompose,
-			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil); err != nil {
+			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -205,12 +205,13 @@ func TestHeartbeatCarriesTheVersionAlongsideTheFlowsBlock(t *testing.T) {
 
 // TestHeartbeatOmitsAnUnknownVersionInsteadOfSendingAnEmptyOne: a link built
 // without a build stamp reports nothing rather than an empty string - the
-// cloud must be able to tell "unbekannt" from "a version called ''".
+// cloud must be able to tell "unbekannt" from "a version called ”".
 func TestHeartbeatOmitsAnUnknownVersionInsteadOfSendingAnEmptyOne(t *testing.T) {
 	sink := startStatusSink(t)
 	link := connectedLink(t, sink, "")
 
-	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -258,5 +259,53 @@ func TestPublishUpdateStateIsTheDurableTransitionReport(t *testing.T) {
 	}
 	if upd["state"] != "applying" || upd["target"] != "edge-2026.08.0" {
 		t.Fatalf("update block = %v, want the applying transition", upd)
+	}
+}
+
+// Der D6-Uplink: die Box meldet ihr eigenes Schreib-Audit - und eine Box, die
+// nie geschrieben hat, sendet GAR KEINEN Block (ein leerer waere eine Aussage
+// ueber einen Vorgang, den es nicht gab).
+func TestHeartbeatCarriesTheRegisterWriteAuditOnlyWhenThereIsOne(t *testing.T) {
+	sink := startStatusSink(t)
+	link := connectedLink(t, sink, "edge-2026.08.1")
+
+	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		&RegisterWritesSummary{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := sink.last(t)["register_writes"]; ok {
+		t.Fatal("ein leerer Block darf nicht gesendet werden")
+	}
+
+	before, after := 3300, 7000
+	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		&RegisterWritesSummary{
+			ReportedAt: "2026-08-19T14:05:00Z",
+			Entries: []RegisterWriteEntry{{
+				RequestID: "aabbccdd11223344", At: "2026-08-19T14:02:49Z",
+				Register: "0x00e7", Before: &before, Requested: 7000, After: &after,
+				Result: "applied", Source: "wartungszugang",
+			}},
+		}); err != nil {
+		t.Fatal(err)
+	}
+	got := sink.last(t)
+	block, ok := got["register_writes"].(map[string]any)
+	if !ok {
+		t.Fatalf("der Block fehlt: %v", got["register_writes"])
+	}
+	entries, ok := block["entries"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("genau ein Eintrag erwartet: %v", block["entries"])
+	}
+	e := entries[0].(map[string]any)
+	if e["request_id"] != "aabbccdd11223344" || e["register"] != "0x00e7" {
+		t.Fatalf("der Kreuz-Schluessel muss mitreisen: %v", e)
+	}
+	if e["before"].(float64) != 3300 || e["after"].(float64) != 7000 {
+		t.Fatalf("Vorher/Nachher muessen mitreisen: %v", e)
+	}
+	if e["source"] != "wartungszugang" {
+		t.Fatalf("die Herkunft muss den Trigger nennen: %v", e["source"])
 	}
 }

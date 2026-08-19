@@ -5730,3 +5730,37 @@ button.vp-tech-card-h.toggle {
   text-align: right;
   font-weight: var(--vp-weight-regular, 400);
 }
+
+/* ── Register schreiben (Experten-Drawer) ─────────────────────────────────
+   Der Drawer benutzt bewusst die Haus-Bausteine (Input/Button/ConfirmDialog);
+   hier steht nur der senkrechte Takt und die zwei Belegkästen. */
+.vp-regwrite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+}
+.vp-regwrite h4 {
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: var(--vp-text-sm, 0.875rem);
+  color: var(--vp-text-muted, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.vp-regwrite-ist,
+.vp-regwrite-beleg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-subtle, #f6f7f9);
+}
+.vp-regwrite-verlauf ul {
+  margin: var(--vp-space-2, 8px) 0 0;
+  padding-left: 1.1em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--vp-text-sm, 0.875rem);
+  color: var(--vp-text-muted, #6b7280);
+}

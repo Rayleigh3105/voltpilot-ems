@@ -1875,7 +1875,7 @@ Erste Stufe der Kommando-Transparenz (Scout `data/vp-kommando-transparenz-k3` §
 - **Portal:** die reine `frontend/portal/src/curtailment.ts` `exportGuardView` reicht die deutschen Sätze der Box DURCH (nie neu formuliert — `:8484` und Portal dürfen dasselbe Urteil nicht anders benennen) und wird von `ControlStrip` gerendert; die Diskrepanz-Zeile („Gerät 33 kW / hinterlegt 70 kW") lastet dem Gerät ausdrücklich NICHT unsere eigene Kappe an. Details in `frontend/portal/AGENTS.md`.
 - **Beweise:** `CurtailmentStatusListenerTest` (+8, u. a. der Live-Block wörtlich, unbekanntes Wort, unvollständige Geräte-Grenze, 0 kW als WERT) · Testcontainers `PortalApiTest.theExportGuardAndTheDevicesOwnLimitAreIngestedAndTenantScoped` (echte DB: kein Block ⇒ keine Behauptung, die Herzogau-Momentaufnahme, RLS 404, je-Herzschlag-Ersetzung, wirkender Wächter ohne Lücken-Satz) · Edge `inverter/exportlimit_test.go` + `agent/device_export_limit_test.go` + `mirror-poll.e2e.test.js` · Portal `curtailment.test.ts` (+10) + `ControlStrip.test.tsx` (+6).
 
-## Register schreiben über das Portal, Stufe 1 „Der Portal-Trigger" (Cloud-Hälfte)
+## Register schreiben über das Portal, Stufe 1 „Der Portal-Trigger"
 
 Konzept `data/vp-reg-schreib-konzept-p8` (Captain-Vorentscheidungen + D1–D6 vom 19.08.2026). Ein
 Register einer Kundenanlage aus der Ferne beschreiben — der Auslöser ist das Deye-Installateur-
@@ -1955,6 +1955,43 @@ besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`, erster Trigger: die lo
   (`VP_INSTALLER_WRITE_ENABLED`, Vorgabe AUS): eine nicht armierte Box antwortet `gate_disabled`.
   Publisher/Zuhörer reiten auf `voltpilot.provisioning.*` (derselbe Broker wie Probe/Provisionierung/
   OTA) — kein weiteres Transport-Flag. Fristen: `voltpilot.register-write.{read,write}-timeout`.
+- **Der BOX-KONSUMENT ist der zweite ADAPTER, kein zweiter Pfad.** `edge-app/core/internal/registerwrite`
+  (rein: Parsen, Identität, Verfall, Lane, Rate, Selbstkonflikt — das
+  `internal/probe`-Muster) + `agent/register_write.go` (nur Verdrahtung) reichen an GENAU die zwei
+  Schichten weiter, die die `:8484`-Taste benutzt: `installerwrite.Admit` (POLITIK) und
+  `Agent.WriteOnce` (MECHANISMUS). Ein `AdmittedWrite` entsteht nirgendwo sonst, seine Felder sind
+  unexportiert — es gibt strukturell keinen Weg an der Allowlist vorbei.
+- **⚠ STUMM sind genau ZWEI Ablehnungen:** eine fremde Identität (eine Antwort bestätigte einem
+  falsch adressierten Absender die Existenz dieses Geräts) und ein verfallener Auftrag (die
+  Portal-Route hat längst aufgegeben, und eine nachgelieferte QoS1-Nachricht kostete sonst einen
+  weiteren EEPROM-Zyklus). Alles andere wird BEANTWORTET — eine Ablehnung, die niemand sieht, ist
+  ein Rätsel (die Canary-Soak-Lehre des OTA-Pfads). Dazu ein `request_id`-Merker als DRITTE
+  Sicherung neben „nicht retained" und dem Fenster: eine Doppelzustellung INNERHALB des Fensters
+  schreibt nie zweimal.
+- **⚠ Die SELBSTKONFLIKT-SPERRE ist BELEGT, nicht geraten:** `registerwrite.ControlOwns` prüft die
+  Adressen des NEUESTEN Steuer-Rücklesens (`state.ControlInfo.Registers[].Addr`) — also genau die
+  Register, die unser eigener Executor gerade schreibt — UND ob die Steuerung überhaupt läuft
+  (Not-Aus + Zertifizierung, im Kern und im Rücklesen). Auf `hybrid_3p` gehört `0x00E7` dazu, sobald
+  der Plan abregelt (der ToU-Pfad schreibt die Einspeise-Kappe dorthin) und solange eine ToU-Sitzung
+  ihren Installateurs-Snapshot hält — die zwei Fälle, in denen ein „übernommen ✓" still
+  zurückgedreht würde. Bei INAKTIVER Steuerung sind dieselben Register frei.
+- **D6: die lokalen Schreibvorgänge erreichen das Journal** (`cloud.RegisterWritesSummary` im
+  Herzschlag → `RegisterWriteUplinkListener` → dieselben zwei Journal-Zeilen mit `source='geraet'`,
+  `origin='geraet'`). Ein lokaler Schreibvorgang **mintet sich seine eigene `request_id`**, sonst
+  wäre genau der Vorgang unkorrelierbar, den niemand in der Cloud sieht. Gemeldet wird das GANZE
+  Buch (auch portal-getriggerte Einträge): der eindeutige Index macht die Wiederholung zum No-op,
+  und ging eine Quittung verloren, füllt das Buch der Box die Lücke. Der Zuhörer reitet
+  ausdrücklich auf `voltpilot.provisioning.enabled` statt auf einem eigenen, per Vorgabe
+  ausgeschalteten Flag (die gitops-Falle) — das Feature ist als EINE Einheit an oder aus.
+- **Portal:** die reine `src/registerWrite.ts` ist die EINE Textschicht (Warnklassen, Eingabe-Regeln,
+  Vorschau, Beleg, Journal-Satz); `components/RegisterWriteDrawer.tsx` rendert die Zwei-Schritt-
+  Strecke (Ist lesen → Vorschau → Haus-`ConfirmDialog` mit Folgenliste → Beleg + Verlauf), gehostet
+  von der Plattform-Geräteseite als ruhiger Experten-Abschnitt „Register (Experte)". **Ein Knopf,
+  der strukturell nichts bewirken kann, wird nicht angeboten** (`registerZugang` — eine gedruckte,
+  noch nicht verbundene Aufkleber-ID nennt stattdessen den Grund). Der vierte Strom `register` der
+  Befehle-Seite formuliert seinen Satz aus DERSELBEN `journalSatz` — zwei Formulierungen über
+  denselben Vorgang wären zwei Wahrheiten. ⚠ Ein nacktes Hex-Wort (`E7`) wird NIE geraten, weil
+  „231" dann mehrdeutig wäre.
 - **Beweise:** rein `RegisterKnowledgeTest` (7) · `RegisterWritePublisherTest` (5, die Umschläge
   gegen die Kontrakt-Fixtures PER PFAD) · `RegisterWriteResultListenerTest` (7, u. a. „eine Quittung
   wird auch dann protokolliert, wenn niemand mehr wartet", „ein Probelauf nie", „ein erfundenes
@@ -1962,7 +1999,12 @@ besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`, erster Trigger: die lo
   EMQX + DB + Keycloak: die ganze Reise Vorschau→Bestätigen→Beleg mit verbatim Eingaben, die
   Notiz-Pflicht ohne einen einzigen Byte auf dem Draht, die Vorschau ohne Spur, Schweigen =
   `unbekannt` samt verspäteter Quittung, der vierte Strom, der Mandanten-Zaun und die
-  Admin-Herkunft über den Umschalter).
+  Admin-Herkunft über den Umschalter) + `RegisterWriteUplinkListenerTest` (7, der D6-Ingest) ·
+  Go `internal/registerwrite` (11, inkl. der Kontrakt-Fixtures PER PFAD) +
+  `agent/register_write_test.go` (7: die Reise durch den GETEILTEN Kern, die zwei stummen
+  Ablehnungen, das geschlossene Tor, die Selbstkonflikt-Sperre schon in der Vorschau, GENAU ein
+  Versuch, der D6-Block) + `cloud/status_test.go` · Portal `registerWrite.test.ts` (23) +
+  `RegisterWriteDrawer.test.tsx` (8) + `befehle.test.ts` (+4) + `GeraetSeite.test.tsx` (+2).
 
 ## Kommando-Transparenz V1 „Der Verlauf": was VoltPilot an ein Gerät schickt, ist kundensichtbar
 

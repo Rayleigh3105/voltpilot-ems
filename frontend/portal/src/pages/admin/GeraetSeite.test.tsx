@@ -156,6 +156,7 @@ describe('GeraetSeite - die Vollansicht EINES Geräts (Admin-Umbau Stufe 2)', ()
       'Vertrauen',
       'Steuerung',
       'Grenzen & Wächter',
+      'Register \\(Experte\\)',
       'Verbindung & Onboarding',
       'Verlauf',
     ]) {
@@ -271,5 +272,24 @@ describe('GeraetSeite - die Vollansicht EINES Geräts (Admin-Umbau Stufe 2)', ()
     // Nie ein stilles Nichts: beide Sektionen sagen, warum sie leer sind.
     expect(screen.getByText(/noch nicht gemeldet/)).toBeInTheDocument();
     expect(screen.getByText(/weder einen Einspeisewächter/)).toBeInTheDocument();
+  });
+
+  it('bietet die Register-Strecke an - und nur, wo sie etwas bewirken kann', () => {
+    render(<GeraetSeite {...base} view={view()} />);
+    expect(screen.getByTestId('geraet-regwrite')).toBeInTheDocument();
+    expect(screen.queryByTestId('geraet-regwrite-grund')).toBeNull();
+  });
+
+  it('nennt statt eines wirkungslosen Knopfes den Grund', () => {
+    // Eine gedruckte, noch nicht verbundene Aufkleber-ID hat kein Geraet, an das
+    // ein Auftrag gehen koennte.
+    const gedruckt: AdminDeviceRow = {
+      ...BOX, deviceId: null as unknown as string, siteId: null as unknown as string,
+      tenantId: null as unknown as string, provisioned: true,
+    };
+    render(<GeraetSeite {...base} view={view({ devices: [gedruckt] })} />);
+    expect(screen.queryByTestId('geraet-regwrite')).toBeNull();
+    expect(screen.getByTestId('geraet-regwrite-grund'))
+      .toHaveTextContent(/noch mit keinem Gerät verbunden/);
   });
 });
