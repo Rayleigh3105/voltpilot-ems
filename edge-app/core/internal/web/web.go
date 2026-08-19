@@ -22,6 +22,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/neutralcal"
@@ -234,6 +235,27 @@ type OtaController interface {
 	OtaSetAutonomy(enabled bool, by string) (otaapply.Autonomy, error)
 }
 
+// InstallerWriteController backs the deliberately NARROW remote installer
+// write: ONE Deye register, 0x00E7 „Grid Max Export power" (the feed-in cap an
+// installer normally only reaches through the inverter's own menu on site).
+// The agent implements it; internal/installerwrite carries every gate.
+//
+// It is NOT a register-write API: there is no address parameter anywhere on
+// this interface, the value ceiling is a constant, and a real write needs the
+// operator's exact confirm token. When InstallerWriteEnabled() is false the
+// routes answer 404 - the path does not exist from outside.
+type InstallerWriteController interface {
+	// InstallerWriteEnabled is the feature flag (VP_INSTALLER_WRITE_ENABLED).
+	InstallerWriteEnabled() bool
+	// InstallerWriteView is the switch state, the one allowlisted register and
+	// the persistent audit log.
+	InstallerWriteView() installerwrite.View
+	// InstallerWrite runs ONE stage: a dry run (read + report) or, with the
+	// confirm token, exactly ONE write followed by a read-back. A
+	// *installerwrite.ValidationError is a 400; installerwrite.ErrBusy is a 409.
+	InstallerWrite(installerwrite.Request, string) (installerwrite.Outcome, error)
+}
+
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
 // its own clock drifts from the edge device's, plus the derived onboarding-gate
@@ -329,7 +351,8 @@ func envelope(st *state.Store, topo TopologyController, ac ActiveControlControll
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	despike DespikeController, hist *history.Ring, pl PlanController,
 	src SourcesController, topo TopologyController, ac ActiveControlController,
-	cal CalibrationController, mir MirrorController, ota OtaController) http.Handler {
+	cal CalibrationController, mir MirrorController, ota OtaController,
+	iw InstallerWriteController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -1037,6 +1060,67 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		writeJSON(w, http.StatusOK, au)
 	}))
+
+	// --- the narrow installer write: ONE Deye register, 0x00E7 -----------------
+	//
+	// „Grid Max Export power" is the inverter's OWN feed-in cap, normally only
+	// reachable through the installer menu on site. Raising a plant from its
+	// commissioning value to its registered connection limit used to need an
+	// appointment; these two routes are the remote lever for exactly that one
+	// number - and for nothing else (internal/installerwrite carries the gates).
+	//
+	// installerGate makes the whole path VANISH when the feature flag is off:
+	// 404, not 403, because a disabled feature should not even confirm its own
+	// existence. It is the FIRST thing checked, before the maintenance password.
+	installerGate := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !iw.InstallerWriteEnabled() {
+				writeJSON(w, http.StatusNotFound, map[string]any{
+					"error": "Der Installateur-Schreibpfad ist auf diesem Gerät nicht eingeschaltet.",
+				})
+				return
+			}
+			h(w, r)
+		}
+	}
+
+	// GET /api/installer-write - the switch state, the ONE allowlisted register
+	// and the persistent audit log (newest first). Read-only, so it is NOT
+	// behind the maintenance password - the same rule the calibration surface
+	// follows (GET /api/calibration is open, the mutations are guarded).
+	mux.HandleFunc("GET /api/installer-write", installerGate(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, iw.InstallerWriteView())
+	}))
+
+	// POST /api/installer-write - ONE stage. Without "mode":"apply" it is a DRY
+	// RUN: the register is read, nothing is written, and the answer names the
+	// exact confirm token the real write needs. Behind the SAME maintenance
+	// password as every other physical-control mutation (calGuard).
+	mux.HandleFunc("POST /api/installer-write", installerGate(calGuard(func(w http.ResponseWriter, r *http.Request) {
+		var req installerwrite.Request
+		if !readBody(r, &req) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		out, err := iw.InstallerWrite(req, "wartungszugang")
+		if err != nil {
+			var ve *installerwrite.ValidationError
+			switch {
+			case errors.As(err, &ve):
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg})
+			case errors.Is(err, installerwrite.ErrBusy):
+				writeJSON(w, http.StatusConflict, map[string]any{
+					"error": "Es läuft bereits ein Schreibvorgang auf diesem Register. Bitte das Ergebnis abwarten.",
+				})
+			default:
+				writeJSON(w, http.StatusInternalServerError, map[string]any{
+					"error": "Der Schreibvorgang konnte nicht ausgeführt werden.",
+				})
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+	})))
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		snap := st.Get()

@@ -25,6 +25,8 @@ const vpTestRequest = require('../nodes/vp-test-request.js');
 const vpTestResult = require('../nodes/vp-test-result.js');
 const vpRegisterRaw = require('../nodes/vp-register-raw.js');
 const vpRegisterWant = require('../nodes/vp-register-want.js');
+const vpInstallerWriteRequest = require('../nodes/vp-installer-write-request.js');
+const vpInstallerWriteResult = require('../nodes/vp-installer-write-result.js');
 
 helper.init(require.resolve('node-red'));
 
@@ -450,6 +452,37 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpTestRequest.parse(Buffer.from(JSON.stringify({ request_id: 'x', connection: {} }))), null); // no ip
   });
 
+  it('vp-installer-write-request admits ONLY 0x00E7 and only 1..7000', function () {
+    const ok = vpInstallerWriteRequest.parse(Buffer.from(JSON.stringify({
+      request_id: 'iw-1', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000,
+    })));
+    assert.strictEqual(ok.value, 7000);
+    assert.strictEqual(vpInstallerWriteRequest.ALLOWED_ADDR, 0x00e7);
+    assert.strictEqual(vpInstallerWriteRequest.MAX_VALUE, 7000);
+    // ⚠ The node refuses on its OWN, without trusting the core: a generic
+    // register write must be impossible here even if the caller asks for one.
+    const bad = [
+      { request_id: 'x', mode: 'apply', addr: 0x0028, value: 100 },   // another register
+      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: 7001 },  // above the ceiling
+      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: 0 },     // "0 is not a raise"
+      { request_id: 'x', mode: 'apply', addr: 0x00e7, value: 1.5 },   // not a register word
+      { request_id: 'x', mode: 'schreib', addr: 0x00e7, value: 100 }, // unknown stage
+      { mode: 'apply', addr: 0x00e7, value: 100 },                    // uncorrelatable
+    ];
+    for (const b of bad) {
+      assert.strictEqual(vpInstallerWriteRequest.parse(Buffer.from(JSON.stringify(b))), null, JSON.stringify(b));
+    }
+    assert.strictEqual(vpInstallerWriteRequest.parse(Buffer.from('kein json')), null);
+  });
+
+  it('vp-installer-write-result keeps a 0 reading as a VALUE and an unread one as null', function () {
+    const r = vpInstallerWriteResult.shape({ request_id: 'iw-1', ok: true, before: 0, wrote: true });
+    assert.strictEqual(r.before, 0, 'a 0 register is „darf gar nicht einspeisen", not an absence');
+    assert.strictEqual(r.after, null, 'an unread register stays null, never a fabricated 0');
+    assert.strictEqual(r.wrote, true);
+    assert.strictEqual(vpInstallerWriteResult.shape({ ok: true }), null, 'no request_id -> uncorrelatable');
+  });
+
   it('vp-test-result passes through a valid result and drops one without request_id', function () {
     const ok = vpTestResult.shape({ request_id: 'tr-1', ok: true, reading: { pv_kw: 4.8 } });
     assert.strictEqual(ok.request_id, 'tr-1');
@@ -869,6 +902,69 @@ describe('nodes against a local-bus stand-in', function () {
           }), { qos: 1, retain: false }, function () { pub.end(); });
         }, 300);
       });
+    });
+  });
+
+  it('vp-installer-write-request emits the one-shot write order (and drops an inadmissible one)', function (done) {
+    const flow = coreFlow([
+      { id: 'iwr1', type: 'vp-installer-write-request', core: 'core1', wires: [['h1']] },
+      { id: 'h1', type: 'helper' },
+    ]);
+    helper.load([vpCore, vpInstallerWriteRequest], flow, function () {
+      const h1 = helper.getNode('h1');
+      const seen = [];
+      h1.on('input', function (msg) { seen.push(msg); });
+      const pub = mqtt.connect('mqtt://127.0.0.1:' + port);
+      pub.on('connect', function () {
+        setTimeout(function () {
+          // A foreign register must never reach the flow...
+          pub.publish('edge/installer-write/request', JSON.stringify({
+            request_id: 'iw-bad', mode: 'apply', addr: 0x0028, value: 50,
+          }), { qos: 1, retain: false });
+          // ...while the allowlisted one does.
+          pub.publish('edge/installer-write/request', JSON.stringify({
+            request_id: 'iw-ok', mode: 'apply', register: '0x00e7', addr: 0x00e7, value: 7000,
+          }), { qos: 1, retain: false }, function () { pub.end(); });
+        }, 300);
+      });
+      setTimeout(function () {
+        try {
+          assert.strictEqual(seen.length, 1, 'exactly the admissible order is emitted');
+          assert.strictEqual(seen[0].request_id, 'iw-ok');
+          assert.strictEqual(seen[0].payload.value, 7000);
+          done();
+        } catch (e) {
+          done(e);
+        }
+      }, 900);
+    });
+  });
+
+  it('vp-installer-write-result publishes on edge/installer-write/result, never retained', function (done) {
+    const flow = coreFlow([
+      { id: 'iwres1', type: 'vp-installer-write-result', core: 'core1' },
+    ]);
+    broker.subscribe('edge/installer-write/result', function (packet, cb) {
+      cb();
+      const m = JSON.parse(packet.payload.toString());
+      try {
+        assert.strictEqual(m.request_id, 'iw-1');
+        assert.strictEqual(m.before, 3300);
+        assert.strictEqual(m.after, 7000);
+        assert.strictEqual(m.wrote, true);
+        // ⚠ A retained write result would be replayed on every reconnect - the
+        // opposite of a one-shot installer write.
+        assert.strictEqual(packet.retain, false);
+        done();
+      } catch (e) {
+        done(e);
+      }
+    }, function () {});
+    helper.load([vpCore, vpInstallerWriteResult], flow, function () {
+      const n = helper.getNode('iwres1');
+      setTimeout(function () {
+        n.receive({ payload: { request_id: 'iw-1', ok: true, before: 3300, after: 7000, wrote: true } });
+      }, 300);
     });
   });
 

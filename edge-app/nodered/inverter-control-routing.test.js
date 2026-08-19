@@ -1862,3 +1862,76 @@ test('kostal: the tier dispatch reaches the adapter even without control_tier on
   assert.strictEqual(other.adapter, 'vendor_ems');
   assert.deepStrictEqual(other.writes, []);
 });
+
+// --- the NARROW installer write: ONE register, 0x00E7 -------------------------
+//
+// „Grid Max Export power" is the inverter's OWN feed-in cap - the value an
+// installer normally only reaches through the device menu on site. These pin
+// that the route stays a ONE-REGISTER lever and refuses everything else.
+
+const iwSel = (over) => Object.assign({
+  schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', control_tier: 3,
+  communication: 'solarman_v5',
+  connection: { ip: '192.168.0.28', serial: '2985159064', mb_slave_id: 1, power_scale: 10 },
+}, over || {});
+
+test('installer write: the Herzogau case (3300 -> 7000) plans one FC16 write plus a read-back', () => {
+  const dry = C.installerWriteRoute(iwSel(), { mode: 'dry_run', addr: 0x00e7, value: 7000 });
+  assert.strictEqual(dry.ok, true);
+  assert.strictEqual(dry.apply, false);
+  assert.ok(!dry.write, 'a dry run plans NO write at all');
+  assert.deepStrictEqual(dry.read, { fc: 3, addr: 0x00e7, count: 1 });
+  assert.strictEqual(dry.scale, 10);
+  assert.strictEqual(dry.kw, 70);
+  assert.strictEqual(dry.target, '192.168.0.28:8899');
+
+  const apply = C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value: 7000 });
+  assert.strictEqual(apply.apply, true);
+  // FC16 by default - the measured Deye convention (resolveDeyeWriteFc): many
+  // firmwares ACCEPT an FC6 frame and never apply it.
+  assert.deepStrictEqual(apply.write, { fc: 16, addr: 0x00e7, value: 7000 });
+  const legacy = C.installerWriteRoute(
+    iwSel({ connection: { ip: '192.168.0.28', serial: '2985159064', mb_slave_id: 1, control_write_fc: 6 } }),
+    { mode: 'apply', addr: 0x00e7, value: 7000 },
+  );
+  assert.strictEqual(legacy.write.fc, 6, 'control_write_fc: 6 flips back, exactly like the control path');
+});
+
+test('installer write: only 0x00E7, only 1..7000, only a Solarman-read Deye whose cap is DEDICATED', () => {
+  // A different address is refused - there is no generic register write here.
+  for (const addr of [0x0028, 0x008f, 0x00f5, 1109, 40]) {
+    assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'apply', addr, value: 100 }).ok, false, 'addr ' + addr);
+  }
+  // The value ceiling (70,0 kW) and the „0 is not a raise" rule.
+  for (const value of [-1, 0, 7001, 65535, 1.5, NaN]) {
+    assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value }).ok, false, 'value ' + value);
+  }
+  assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, true);
+  assert.strictEqual(C.installerWriteRoute(iwSel(), { mode: 'apply', addr: 0x00e7, value: 1 }).ok, true);
+
+  // ⚠ hybrid_1p: there 0x00E7 does not exist and the feed-in cap IS „Max Sell
+  // Power" (0x00F5) - the register OUR OWN discharge lever writes. Refused.
+  assert.strictEqual(
+    C.DEYE_CONTROL_REG.hybrid_1p.exportLimit, C.DEYE_CONTROL_REG.hybrid_1p.maxSellPower,
+    'the premise of the hybrid_1p refusal',
+  );
+  assert.strictEqual(C.installerWriteRoute(iwSel({ family: 'hybrid_1p' }), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false);
+  for (const family of ['string', 'micro', 'sunspec', 'sunspec_live', 'kostal_bi', 'erfunden']) {
+    assert.strictEqual(C.installerWriteRoute(iwSel({ family }), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false, family);
+  }
+  // Another transport has no path here at all.
+  assert.strictEqual(C.installerWriteRoute(iwSel({ communication: 'modbus_tcp' }), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false);
+  // No selection / no address.
+  assert.strictEqual(C.installerWriteRoute(null, { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false);
+  assert.strictEqual(C.installerWriteRoute(iwSel({ connection: { serial: 'x' } }), { mode: 'apply', addr: 0x00e7, value: 7000 }).ok, false);
+});
+
+test('installer write: every refusal names a reason, and the route is a PURE plan', () => {
+  const bad = C.installerWriteRoute(iwSel({ family: 'hybrid_1p' }), { mode: 'apply', addr: 0x00e7, value: 7000 });
+  assert.ok(typeof bad.reason === 'string' && bad.reason.length > 10, 'a refusal must be explainable');
+  assert.ok(!('write' in bad) && !('read' in bad), 'a refused route plans nothing');
+  // The two allowlist facts are exported so the flow copy + the Go side can be
+  // pinned against them.
+  assert.strictEqual(C.INSTALLER_WRITE_ADDR, 0x00e7);
+  assert.strictEqual(C.INSTALLER_WRITE_MAX_RAW, 7000);
+});

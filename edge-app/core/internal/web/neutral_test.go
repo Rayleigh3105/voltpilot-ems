@@ -59,7 +59,7 @@ func newNeutralTestServer(t *testing.T, fc *fakeCalibration, fo *fakeOta) *httpt
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
 		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{},
-		fc, &fakeMirror{}, fo))
+		fc, &fakeMirror{}, fo, &fakeInstallerWrite{}))
 	t.Cleanup(srv.Close)
 	return srv
 }

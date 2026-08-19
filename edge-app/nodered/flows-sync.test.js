@@ -1318,3 +1318,66 @@ test('die Registerkarte des Flows ist die des Moduls', () => {
     'DEYE_EXPORT_LIMIT wörtlich im Router');
   assert.ok(func.includes(String(routing.EXPORT_LIMIT_INTERVAL_MS)));
 });
+
+// The "Installateur-Register 0x00E7 lesen/schreiben" node (auto-installer-exec)
+// carries a synced COPY of inverter-control-routing.installerWriteRoute(). This
+// is the drift guard that matters most on this path: a divergence could widen
+// the one-register allowlist or the value ceiling without anyone noticing.
+//
+// The body performs I/O, so it cannot simply be run - instead the copied
+// PLANNER is extracted from the node source and evaluated on its own, then
+// compared to the module for the same vectors.
+function inlineInstallerPlanner() {
+  const src = byId['auto-installer-exec'].func;
+  const start = src.indexOf('const INSTALLER_WRITE_ADDR');
+  const end = src.indexOf("const plan = installerWriteRoute(");
+  assert.ok(start >= 0 && end > start, 'the inlined planner must be findable in the node body');
+  const sandbox = { Number, isFinite, JSON, Math };
+  vm.createContext(sandbox);
+  new vm.Script(src.slice(start, end) + '\nthis.__route = installerWriteRoute;').runInContext(sandbox);
+  return sandbox.__route;
+}
+
+test('flow installer-write planner matches installerWriteRoute() for every vector', () => {
+  const route = inlineInstallerPlanner();
+  const sel = {
+    schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5',
+    connection: { ip: '192.168.0.28', serial: '2985159064', mb_slave_id: 1 },
+  };
+  const vectors = [
+    [sel, { mode: 'dry_run', addr: 0x00e7, value: 7000 }],
+    [sel, { mode: 'apply', addr: 0x00e7, value: 7000 }],
+    [sel, { mode: 'apply', addr: 0x00e7, value: 3300 }],
+    [Object.assign({}, sel, { connection: Object.assign({}, sel.connection, { control_write_fc: 6 }) }), { mode: 'apply', addr: 0x00e7, value: 7000 }],
+    [Object.assign({}, sel, { family: 'hybrid_1p' }), { mode: 'apply', addr: 0x00e7, value: 7000 }],
+    [Object.assign({}, sel, { family: 'string' }), { mode: 'apply', addr: 0x00e7, value: 100 }],
+    [Object.assign({}, sel, { communication: 'modbus_tcp' }), { mode: 'apply', addr: 0x00e7, value: 100 }],
+    [sel, { mode: 'apply', addr: 0x0028, value: 100 }],
+    [sel, { mode: 'apply', addr: 0x00e7, value: 0 }],
+    [sel, { mode: 'apply', addr: 0x00e7, value: 7001 }],
+    [null, { mode: 'apply', addr: 0x00e7, value: 7000 }],
+  ];
+  for (const [s, r] of vectors) {
+    const inline = JSON.parse(JSON.stringify(route(s, r)));
+    const module = JSON.parse(JSON.stringify(controlRouting.installerWriteRoute(s, r)));
+    // The German reasons are re-spelled without umlaut escapes in the flow copy
+    // (a Node-RED function body is JSON), so compare the DECISION, not the prose.
+    delete inline.reason; delete module.reason;
+    assert.deepStrictEqual(inline, module, JSON.stringify(r));
+    assert.strictEqual(route(s, r).ok, controlRouting.installerWriteRoute(s, r).ok);
+  }
+});
+
+test('flow installer-write node pins the ONE address and the ceiling', () => {
+  const src = byId['auto-installer-exec'].func;
+  assert.ok(src.includes('const INSTALLER_WRITE_ADDR = 0x00e7;'), 'the address is hard-coded, never a parameter');
+  assert.ok(src.includes('const INSTALLER_WRITE_MAX_RAW = 7000;'), 'the ceiling is hard-coded');
+  assert.strictEqual(controlRouting.INSTALLER_WRITE_ADDR, 0x00e7);
+  assert.strictEqual(controlRouting.INSTALLER_WRITE_MAX_RAW, 7000);
+  // It must share the ONE socket lock of this tab - a second lock would be a
+  // second TCP client on a logger that serves exactly one.
+  assert.ok(src.includes("'sv5_busy:'") && src.includes("'sv5_write_want:'"),
+    'the installer write must use the SAME per-(host,port) lock as poll + control');
+  // The node must live in the SAME tab as the poll (flow context is per tab).
+  assert.strictEqual(byId['auto-installer-exec'].z, byId['auto-solarman'].z);
+});

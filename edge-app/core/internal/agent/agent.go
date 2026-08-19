@@ -35,6 +35,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
@@ -241,6 +242,17 @@ type Agent struct {
 	switchMu      sync.Mutex
 	switchTimers  map[string]*time.Timer
 	switchWaiters map[string]chan []switchBusResult
+
+	// The narrow installer write (agent/installerwrite.go): ONE Deye register,
+	// 0x00E7. installerBusy is the one-shot guard - two overlapping writes to
+	// one EEPROM register is the single thing this path must never do -,
+	// installerWaiters correlates the round trip, and installerLog is the
+	// audit trail that survives a restart. The first three are guarded by
+	// installerMu; the log has its own lock and is safe alone.
+	installerMu      sync.Mutex
+	installerBusy    bool
+	installerWaiters map[string]chan installerBusResult
+	installerLog     *installerwrite.Log
 
 	probeMu      sync.Mutex
 	probeReads   map[string]chan []probeBusResult
@@ -486,6 +498,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	iwl, err := installerwrite.NewLog(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	// Restore the operator's despike (Ausreißer-Filter) settings, or fall back
 	// to the safe defaults. A corrupt file must not stop the agent booting.
 	despikeCfg := guards.DefaultSettings()
@@ -505,6 +521,7 @@ func New(cfg config.Config) (*Agent, error) {
 		srcStore:     ss,
 		balStore:     bs,
 		mirStore:     ms,
+		installerLog: iwl,
 		srcReadings:  map[string]sourceReading{},
 		entReadings:  map[string]entReading{},
 		testReads:    map[string]chan testconn.Result{},
@@ -691,6 +708,13 @@ func (a *Agent) Start(ctx context.Context) error {
 		return err
 	}
 	if err := bus.Subscribe(localbus.TopicSwitchResult, 14, a.onSwitchBusResult); err != nil {
+		return err
+	}
+	// The narrow installer write's answer (edge/installer-write/result). The
+	// SUBSCRIPTION is unconditional and free - nothing is ever published on the
+	// request topic unless the feature flag is on, so an unflagged box simply
+	// never sees a message here.
+	if err := bus.Subscribe(localbus.TopicInstallerWriteResult, 15, a.onInstallerWriteResult); err != nil {
 		return err
 	}
 	// Per-node flow state (Portal v3 M5 Part C, additive + feature-flagged):

@@ -26,6 +26,9 @@ const path = require('path');
 // hand-copied literal) so the inlined flow body can never drift from the tested
 // table - the same reason the codecs are embedded rather than retyped.
 const routing = require('./inverter-routing');
+// The installer-write executor's register facts come STRAIGHT from the control
+// routing module (never a hand-copied literal) - same reason as the router's.
+const controlRouting = require('./inverter-control-routing');
 
 const OUT = path.join(__dirname, 'flows.json');
 const prev = JSON.parse(fs.readFileSync(OUT, 'utf8'));
@@ -2659,6 +2662,136 @@ const fn = (id, name, func, outputs, wires) => ({
   id, type: 'function', z: TAB, name, func, outputs, noerr: 0, initialize: '', finalize: '', libs: [], x: 0, y: 0, wires,
 });
 
+// --- the NARROW installer write executor: ONE register, 0x00E7 ---------------
+//
+// „Grid Max Export power" is the inverter's OWN feed-in cap - normally only
+// reachable through the installer menu ON SITE. This node is the remote lever
+// for exactly that one number, and for nothing else.
+//
+// ⚠ IT LIVES IN THIS TAB ON PURPOSE. Node-RED's `flow` context is PER TAB, and
+// the one-socket lock (`sv5_busy:`/`sv5_write_want:`) is flow context - a node
+// in another tab would get its OWN lock, i.e. a SECOND TCP client on a logger
+// that serves exactly one. So the installer write sits next to the poll and the
+// control executor and shares their lock: it announces write intent (the read
+// yields), waits out an in-flight read, and releases in every exit.
+//
+// ⚠ THE PRECONDITION IS CHECKED HERE, INSIDE THE ONE SOCKET SESSION. An
+// optional `expected_before` says „write only while the register still reads X";
+// comparing it in the core would mean a read, a hand-back and a second claim -
+// exactly the window another writer could slip into. Mismatch => the write frame
+// never leaves, and the answer carries both the expectation and the reality.
+//
+// ⚠ EXACTLY ONE ATTEMPT. No retry loop, no periodic refresh - 0x00E7 is an
+// EEPROM register and every write costs a write cycle. It carries no dwell/
+// write-on-change bookkeeping either: the core sends one request, this runs one
+// attempt and answers once.
+//
+// ⚠ IT RE-CHECKS THE ALLOWLIST, though the core already did. „No generic
+// register write exists here" must be a property of THIS code, not a promise
+// about its caller: the plan is built by an INLINE COPY of
+// inverter-control-routing.installerWriteRoute (pinned by flows-sync.test.js),
+// which hard-codes the address, the ceiling and the FC16-by-default convention.
+const installerWriteFunc = [
+  "// Installateur-Register 0x00E7 (Grid Max Export power) EINMALIG lesen bzw.",
+  "// schreiben. Kein Retry, kein Auffrischen (EEPROM!). Ein Socket - dieselbe",
+  "// Sperre wie Lese-Poll und Steuerung (gleicher Tab = gleicher flow-Kontext).",
+  "const net = global.get('net');",
+  "const req = msg.payload || {};",
+  "const reply = (o) => ({ payload: Object.assign({ request_id: req.request_id }, o) });",
+  "if (!req.request_id) { node.status({ fill: 'yellow', shape: 'ring', text: 'ohne request_id verworfen' }); return null; }",
+  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); return reply({ ok: false, wrote: false, error_code: 'invalid_request', message: 'Die Node-RED-Konfiguration ist unvollstaendig (functionGlobalContext.net).' }); }",
+  "const __SV5 = " + embedModule('deye/solarman-v5.js') + ";",
+  "// SYNCED COPY of inverter-control-routing.installerWriteRoute + the two",
+  "// constants it hard-codes (flows-sync.test.js pins it against the module).",
+  "const INSTALLER_WRITE_ADDR = 0x00e7;",
+  "const INSTALLER_WRITE_MAX_RAW = 7000;",
+  "const DEYE_CONTROL_REG = " + JSON.stringify(controlRouting.DEYE_CONTROL_REG) + ";",
+  "const resolveDeyeWriteFc = (conn) => { const v = conn ? conn.control_write_fc : undefined; return (v === 6 || v === '6') ? 6 : 16; };",
+  "const isFiniteNum = (v) => typeof v === 'number' && isFinite(v);",
+  "function installerWriteRoute(sel, r) {",
+  "  if (!sel) return { ok: false, reason: 'Es ist kein Wechselrichter eingerichtet.' };",
+  "  if (sel.communication !== 'solarman_v5') return { ok: false, reason: 'Dieser Wechselrichter wird nicht ueber den Solarman-Logger gelesen; der Fernschreibpfad steht nur dort zur Verfuegung.' };",
+  "  const reg = DEYE_CONTROL_REG[sel.family];",
+  "  if (!reg || reg.exportLimit !== INSTALLER_WRITE_ADDR || reg.exportLimit === reg.maxSellPower) return { ok: false, reason: 'Fuer diese Wechselrichter-Familie ist das Register 0x00e7 nicht freigegeben.' };",
+  "  const addr = Number((r || {}).addr);",
+  "  if (addr !== INSTALLER_WRITE_ADDR) return { ok: false, reason: 'Es ist ausschliesslich das Register 0x00e7 freigegeben.' };",
+  "  const value = Number((r || {}).value);",
+  "  if (!isFiniteNum(value) || !Number.isInteger(value) || value <= 0 || value > INSTALLER_WRITE_MAX_RAW) return { ok: false, reason: 'Der Wert liegt ausserhalb des freigegebenen Bereichs (1 bis ' + INSTALLER_WRITE_MAX_RAW + ').' };",
+  "  const conn = sel.connection || {};",
+  "  const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';",
+  "  if (!ip) return { ok: false, reason: 'Fuer den Wechselrichter ist keine IP-Adresse hinterlegt.' };",
+  "  const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;",
+  "  const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;",
+  "  const out = { ok: true, adapter: 'solarman_v5', family: sel.family, target: ip + ':' + port, connection: { ip, port, serial: conn.serial, mb_slave_id: slaveId }, apply: (r || {}).mode === 'apply', addr: INSTALLER_WRITE_ADDR, value, scale: reg.exportLimitScale, kw: (value * reg.exportLimitScale) / 1000, read: { fc: 3, addr: INSTALLER_WRITE_ADDR, count: 1 } };",
+  "  if (out.apply) out.write = { fc: resolveDeyeWriteFc(conn), addr: INSTALLER_WRITE_ADDR, value };",
+  "  return out;",
+  "}",
+  "const plan = installerWriteRoute(flow.get('inverter_config') || null, req);",
+  "if (!plan.ok) { node.status({ fill: 'yellow', shape: 'ring', text: 'abgelehnt' }); node.warn('Installateur-Schreibpfad abgelehnt: ' + plan.reason); return reply({ ok: false, wrote: false, error_code: 'invalid_request', message: plan.reason }); }",
+  "const target = plan.target;",
+  "const busyKey = 'sv5_busy:' + target;",
+  "const wantKey = 'sv5_write_want:' + target;",
+  "const now = Date.now();",
+  "// Announce write intent so the frequent short read yields, then WAIT OUT an",
+  "// in-flight read - the same acquire discipline as the control executor.",
+  "flow.set(wantKey, now);",
+  "const STALE_MS = 30000;",
+  "const ACQUIRE_MS = Number(flow.get('sv5_acquire_ms')) > 0 ? Number(flow.get('sv5_acquire_ms')) : 12000;",
+  "const POLL_MS = Number(flow.get('sv5_acquire_poll_ms')) > 0 ? Number(flow.get('sv5_acquire_poll_ms')) : 300;",
+  "// The device needs a moment to adopt an EEPROM value before it reads back.",
+  "const SETTLE_MS = Number(flow.get('installer_settle_ms')) >= 0 ? Number(flow.get('installer_settle_ms')) : 2000;",
+  "const sleep = (ms) => new Promise((r) => setTimeout(r, ms));",
+  "const acquire = async () => { const start = Date.now(); for (;;) { const bs = flow.get(busyKey) || 0; if (!bs || Date.now() - bs >= STALE_MS) { flow.set(busyKey, Date.now()); return true; } if (Date.now() - start >= ACQUIRE_MS) return false; node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt - warte' }); await sleep(POLL_MS); } };",
+  "return acquire().then((got) => {",
+  "  if (!got) { flow.set(wantKey, 0); node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt' }); node.warn('Installateur-Schreibpfad: Logger belegt (' + target + ') - Anfrage nicht ausgefuehrt'); return reply({ ok: false, wrote: false, error_code: 'busy', message: 'Der Wechselrichter-Logger war belegt. Bitte in einem Moment erneut versuchen - es wurde NICHTS geschrieben.' }); }",
+  "  let seq = context.get('sv5_ctrl_seq') || 0;",
+  "  return new Promise((resolve) => {",
+  "    const sock = new net.Socket(); sock.setNoDelay(true);",
+  "    let done = false, acc = Buffer.alloc(0), pending = null;",
+  "    let before = null, after = null, wrote = false;",
+  "    const finish = (err) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); flow.set(wantKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ }",
+  "      if (err) { node.status({ fill: 'red', shape: 'ring', text: err.message }); node.warn('Installateur-Schreibpfad fehlgeschlagen (' + target + '): ' + err.message);",
+  "        // ⚠ before/after travel EVEN on a failure: a write whose answer got",
+  "        // lost is exactly the case the audit entry must record honestly.",
+  "        resolve(reply({ ok: false, wrote, before, after, error_code: err.vpCode || (wrote ? 'write_unconfirmed' : 'unreachable'), message: err.vpMsg || ((wrote ? 'Der Schreibbefehl ging hinaus, das Ergebnis ist aber unbestaetigt: ' : 'Der Wechselrichter war nicht erreichbar: ') + err.message) })); return; }",
+  "      node.status({ fill: 'green', shape: 'dot', text: wrote ? ('0x00e7 = ' + after) : ('0x00e7 ist ' + before) });",
+  "      resolve(reply({ ok: true, wrote, before, after })); };",
+  "    const t = setTimeout(() => finish(new Error('Zeitueberschreitung')), 25000);",
+  "    sock.once('error', (e) => finish(e));",
+  "    const txn = (frame, parse) => new Promise((res, rej) => { pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(frame); });",
+  "    sock.on('data', (chunk) => { acc = Buffer.concat([acc, chunk]); let need; try { need = __SV5.expectedFrameLength(acc); } catch (e) { if (pending) { const p = pending; pending = null; p.rej(e); } return; } if (need !== null && acc.length >= need && pending) { const p = pending; pending = null; const f = acc.slice(0, need); acc = acc.slice(need); try { p.res(p.parse(f)); } catch (e) { p.rej(e); } } });",
+  "    const nextSeq = () => { seq = (seq + 1) & 0xffff; return seq; };",
+  "    const readOnce = () => txn(__SV5.buildReadRequest({ loggerSerial: plan.connection.serial, sequence: nextSeq(), slaveId: plan.connection.mb_slave_id, startReg: plan.read.addr, count: 1 }), (f) => { const regs = __SV5.readRegistersFromResponse(f, { expectFn: 3 }); return (regs && regs.length) ? (regs[0] & 0xffff) : null; });",
+  "    sock.connect(plan.connection.port, plan.connection.ip, () => {",
+  "      (async () => {",
+  "        before = await readOnce();",
+  "        if (!plan.apply) { context.set('sv5_ctrl_seq', seq); finish(null); return; }",
+  "        // Optimistic guard: the caller decided against a value it read a",
+  "        // moment (or a portal round trip) ago. If the register moved since,",
+  "        // NOTHING is written - a stale decision must not overwrite a newer one.",
+  "        if (req.expected_before !== undefined && req.expected_before !== null && before !== req.expected_before) {",
+  "          context.set('sv5_ctrl_seq', seq);",
+  "          finish(Object.assign(new Error('Vorbedingung nicht erfuellt'), { vpCode: 'precondition',",
+  "            vpMsg: 'Das Register steht inzwischen auf ' + (before === null ? 'einem nicht lesbaren Wert' : before) + ', erwartet wurde ' + req.expected_before + '. Es wurde NICHTS geschrieben.' }));",
+  "          return;",
+  "        }",
+  "        // ONE attempt. From here on the write may have landed even if the",
+  "        // answer is lost, so `wrote` is set BEFORE the frame goes out.",
+  "        wrote = true;",
+  "        const frame = plan.write.fc === 6",
+  "          ? __SV5.buildWriteSingleRequest({ loggerSerial: plan.connection.serial, sequence: nextSeq(), slaveId: plan.connection.mb_slave_id, reg: plan.write.addr, value: plan.write.value })",
+  "          : __SV5.buildWriteMultipleRequest({ loggerSerial: plan.connection.serial, sequence: nextSeq(), slaveId: plan.connection.mb_slave_id, startReg: plan.write.addr, values: [plan.write.value] });",
+  "        await txn(frame, (f) => __SV5.readWriteResultFromResponse(f, { expectFn: plan.write.fc }));",
+  "        await sleep(SETTLE_MS);",
+  "        after = await readOnce();",
+  "        context.set('sv5_ctrl_seq', seq);",
+  "        finish(null);",
+  "      })().catch((e) => finish(e));",
+  "    });",
+  "  });",
+  "});",
+].join('\n');
+
 const autoNodes = [
   {
     id: TAB, type: 'tab', label: 'Wechselrichter (automatisch)', disabled: false,
@@ -2782,6 +2915,20 @@ const autoNodes = [
     topic: '', payload: '', payloadType: 'date', x: 150, y: 780, wires: [['auto-control-recover']],
   },
   Object.assign(fn('auto-control-recover', 'Absturz-Wiederherstellung', crashRecoveryFunc, 1, [['auto-control-exec-deye']]), { x: 400, y: 780 }),
+  // The NARROW installer write (0x00E7). In THIS tab because the one-socket lock
+  // is flow context - see the installerWriteFunc header.
+  {
+    id: 'auto-installer-note', type: 'comment', z: TAB,
+    name: 'Installateur-Register 0x00E7 (Einspeisegrenze des Geraets): EINMALIG lesen/schreiben, gleiche Socket-Sperre wie Poll + Steuerung',
+    info: '', x: 520, y: 860, wires: [],
+  },
+  {
+    id: 'auto-installer-req', type: 'vp-installer-write-request', z: TAB,
+    name: 'Installateur-Schreibauftrag vom Core', core: 'cfg-vp-core',
+    x: 240, y: 900, wires: [['auto-installer-exec']],
+  },
+  Object.assign(fn('auto-installer-exec', 'Installateur-Register 0x00E7 lesen/schreiben', installerWriteFunc, 1, [['auto-installer-res']]), { x: 620, y: 900 }),
+  { id: 'auto-installer-res', type: 'vp-installer-write-result', z: TAB, name: 'Ergebnis an Core', core: 'cfg-vp-core', x: 950, y: 900, wires: [] },
 ];
 
 // --- Simulator tab control path (the safe write->readback proof vs edge/sim) --
