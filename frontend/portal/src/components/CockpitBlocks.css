@@ -233,6 +233,54 @@
   margin-top: var(--vp-space-4, 16px);
 }
 
+/* --- Der SENKRECHTE TAKT des Cockpit-Stapels ------------------------------
+ *
+ * Bis hierher brachte JEDER Block seinen eigenen Aussenabstand mit — und drei
+ * brachten gar keinen (`.vp-widgets`, `.vp-strompreis`, `.vp-fp-band`). Im
+ * Browser gemessen (1440 px): Kacheln → Börsenpreis → Fahrplan standen mit
+ * **0 px** aneinander, während Hero/Komponenten/Zustand 16 px hielten; am
+ * Telefon klaffte umgekehrt eine 40-px-Lücke vor der Steuerungs-Karte. Der
+ * Takt gehört deshalb dem STAPEL, nicht den Bausteinen: EIN `gap` hier, und
+ * die mitgebrachten Abstände werden innerhalb des Stapels neutralisiert.
+ * Ein neuer Block kann seinen Abstand damit nicht mehr vergessen.
+ *
+ * Die Selektoren sind absichtlich zweistufig (`.vp-cockpit-stack > .x`): sie
+ * schlagen die einklassigen Regeln der Bausteine unabhängig davon, in welcher
+ * Reihenfolge die komponenten-lokalen Stylesheets gebündelt werden. Ausserhalb
+ * des Stapels (Portfolio-Raster, Dash-Grid) bleiben die Bausteine unberührt.
+ * `position: fixed`-Kinder (der Telefon-Sticky-Kopf) sind aus dem Fluss und
+ * bekommen deshalb keine eigene Zeile.
+ * ------------------------------------------------------------------------- */
+
+.vp-cockpit-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+.vp-cockpit-stack > * {
+  min-width: 0;
+}
+.vp-cockpit-stack > .vp-cockpit-hero,
+.vp-cockpit-stack > .vp-komponenten,
+.vp-cockpit-stack > .vp-cockpit-health,
+.vp-cockpit-stack > .vp-stack-foot,
+.vp-cockpit-stack > .vp-section,
+.vp-cockpit-stack > .vp-mob-row,
+.vp-cockpit-stack > * > .vp-mob-money {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Am Telefon bleibt der Takt der Mobil-Fassung (12 px, `--vp-space-3`) — die
+   Karten stehen dort dichter, das war eine bewusste Entscheidung des
+   Mobil-Umbaus und wird hier nur vereinheitlicht, nicht aufgeweitet. */
+@media (max-width: 720px) {
+  .vp-cockpit-stack {
+    gap: var(--vp-space-3, 12px);
+  }
+}
+
 /* ==========================================================================
  * Portal v3 · M2 — Live-Cockpit: Hero + Widget-Raster + Widget-Modal.
  *
@@ -498,7 +546,9 @@
 .vp-widgets {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--vp-space-3, 12px);
+  /* Derselbe Takt wie der Stapel (`.vp-cockpit-stack`) — eine Kachel-Reihe
+     darf nicht enger stehen als die Bloecke, zwischen denen sie liegt. */
+  gap: var(--vp-space-4, 16px);
   min-width: 0;
 }
 
@@ -517,11 +567,15 @@
 .vp-widget {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  /* Innenrhythmus wie die Design-System-`KpiCard` (0,25 rem zwischen Label,
+     Zahl und Unterzeile, 1,25/1,5 rem Innenabstand): die Kachel ist genau so
+     eine Kennzahl-Kachel und stand mit 12/2 px sichtbar enger als jede Karte,
+     neben der sie liegt. */
+  gap: var(--vp-space-1, 4px);
   align-items: flex-start;
   min-width: 0;
   min-height: 88px;
-  padding: var(--vp-space-3, 12px);
+  padding: var(--vp-space-4, 16px) var(--vp-space-5, 24px);
   border: 1px solid var(--vp-border, #e2e8f0);
   border-left: 4px solid var(--widget-hue, var(--vp-primary, #95b9ff));
   border-radius: var(--vp-radius-md, 10px);
