@@ -1493,6 +1493,207 @@ class PortalApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * Der Prognose-Schalter JE ANLAGE (Captain-Auftrag 19.08.2026, er revidiert
+     * die plattformweite Semantik des Vortages): der KUNDE stellt seine eigene
+     * Anlage um, ab dem nächsten Planungslauf plant NUR sie mit dem Kandidaten,
+     * und der Rückweg ist derselbe Aufruf in die Gegenrichtung.
+     *
+     * <p>Der Zaun ist Teil desselben Tests, weil er die eigentliche
+     * Sicherheits-Aussage ist: eine FREMDE Anlage ist 404 (RLS, nie 403), und
+     * jede Sperre der Oberfläche wird hier SERVER-seitig ein zweites Mal
+     * geprüft - dem Client zu glauben wäre keine Prüfung.
+     *
+     * <p>Zwei EIGENE Anlagen, damit die Fixtures der Nachbar-Tests unberührt
+     * bleiben; beide werden am Ende wieder abgeräumt.
+     */
+    @Test
+    void theForecastModelSwitchIsPerPlantCustomerOwnedAndGuardedByEvidence() {
+        String demo = token("demo", "demo");
+        String tenantA = "'00000000-0000-0000-0000-000000000001'";
+        String eigene = createSite(demo, "Prognose Werk Eigen", "DE-LU", "eigenverbrauch");
+        String nachbar = createSite(demo, "Prognose Werk Nachbar", "DE-LU", "eigenverbrauch");
+        try {
+            // Beide Anlagen tragen denselben Modell-Bestand: eine rechnende
+            // Kandidatin (load-xgb) und eine, die noch SAMMELT (pv-residual-xgb).
+            for (String site : List.of(eigene, nachbar)) {
+                exec("INSERT INTO forecast_model_state (tenant_id, site_id, model, kind, status,"
+                        + " days_collected, days_required, feature_importance, updated_at) VALUES "
+                        + "(" + tenantA + ", '" + site + "', 'load-persistence', 'load', 'ready',"
+                        + " NULL, NULL, '[]'::jsonb, now()), "
+                        + "(" + tenantA + ", '" + site + "', 'load-xgb', 'load', 'ready',"
+                        + " NULL, NULL, '[]'::jsonb, now()), "
+                        + "(" + tenantA + ", '" + site + "', 'pv-residual-xgb', 'pv', 'collecting',"
+                        + " 14, 21, '[]'::jsonb, now())");
+                exec("INSERT INTO forecast_accuracy (day, tenant_id, site_id, model, kind,"
+                        + " mae_kw, nmae_pct, bias_kw, skill_vs_baseline, n_slots) VALUES "
+                        + "(current_date - 1, " + tenantA + ", '" + site + "',"
+                        + " 'load-persistence', 'load', 0.8, 40.0, 0.1, NULL, 96), "
+                        + "(current_date - 1, " + tenantA + ", '" + site + "',"
+                        + " 'load-xgb', 'load', 0.4, 20.0, -0.05, 0.5, 96)");
+            }
+
+            // (1) Vor jeder Umstellung folgt die Anlage der VORGABE, und die
+            //     Fläche SAGT das - „env", nie „anlage".
+            Map<String, Object> before = siteForecastModels(demo, eigene);
+            assertThat(before).containsEntry("siteId", eigene);
+            Map<String, Object> load = kindOfSite(before, "load");
+            assertThat(load).containsEntry("activeModel", "load-persistence")
+                    .containsEntry("source", "env")
+                    .containsEntry("platformDefault", "load-persistence")
+                    .containsEntry("envDefault", "load-persistence")
+                    .containsEntry("setByName", null)
+                    .containsEntry("setAt", null);
+            assertThat(load.get("selectable")).isEqualTo(List.of("load-persistence", "load-xgb"));
+            assertThat((List<?>) before.get("history")).isEmpty();
+
+            // (2) Der Klick des KUNDEN - kein Admin nötig, kein 403.
+            Map<String, Object> after = promoteSiteModel(demo, eigene, "load", "load-xgb");
+            Map<String, Object> promoted = kindOfSite(after, "load");
+            assertThat(promoted).containsEntry("activeModel", "load-xgb")
+                    .containsEntry("source", "anlage")
+                    .containsEntry("platformDefault", "load-persistence")
+                    .containsEntry("setByName", "demo");
+            assertThat(promoted.get("setAt")).isNotNull();
+            // Die ANDERE Prognoseart bleibt unberührt - ein Schalter je Art.
+            assertThat(kindOfSite(after, "pv")).containsEntry("activeModel", "pv-physical")
+                    .containsEntry("source", "env");
+
+            // (3) Die Papier-Spur JE ANLAGE: von->zu, wer, wann.
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> history = (List<Map<String, Object>>) after.get("history");
+            assertThat(history).hasSize(1);
+            assertThat(history.get(0)).containsEntry("kind", "load")
+                    .containsEntry("model", "load-xgb")
+                    .containsEntry("previousModel", "load-persistence")
+                    .containsEntry("setByName", "demo");
+            assertThat(queryLong("SELECT count(*) FROM site_forecast_model_choice"
+                    + " WHERE site_id = '" + eigene + "' AND set_by <> 'demo'")).isEqualTo(1);
+
+            // (4) DAS Abnahmekriterium: nur DIESE Anlage plant mit dem Kandidaten.
+            assertThat(forecastQualityOf(demo, eigene))
+                    .containsEntry("activeLoadModel", "load-xgb")
+                    .containsEntry("activePvModel", "pv-physical");
+            assertThat(forecastQualityOf(demo, nachbar))
+                    .containsEntry("activeLoadModel", "load-persistence");
+            assertThat(kindOfSite(siteForecastModels(demo, nachbar), "load"))
+                    .containsEntry("source", "env");
+
+            // (5) Der Rückweg ist jederzeit offen - derselbe Aufruf, andere
+            //     Richtung. Er bleibt „anlage": es IST eine Entscheidung, auch
+            //     wenn sie zufällig auf die Vorgabe fällt.
+            Map<String, Object> reverted =
+                    promoteSiteModel(demo, eigene, "load", "load-persistence");
+            assertThat(kindOfSite(reverted, "load"))
+                    .containsEntry("activeModel", "load-persistence")
+                    .containsEntry("source", "anlage");
+            assertThat((List<?>) reverted.get("history")).hasSize(2);
+            assertThat(forecastQualityOf(demo, eigene))
+                    .containsEntry("activeLoadModel", "load-persistence");
+
+            // (6) Jede Ablehnung ist ein deutscher Satz UND schreibt nichts -
+            //     inklusive der zwei Sperren, die die Oberfläche vor dem Klick
+            //     nennt (sammelnder Kandidat, keine Tagesbewertung).
+            long rows = queryLong("SELECT count(*) FROM site_forecast_model_choice");
+            refuseSitePromotion(demo, eigene, "load", "pv-physical",
+                    HttpStatus.BAD_REQUEST, "andere Prognoseart");
+            refuseSitePromotion(demo, eigene, "load", "load_xgb",
+                    HttpStatus.BAD_REQUEST, "Unbekanntes Prognosemodell");
+            refuseSitePromotion(demo, eigene, "waerme", "load-xgb",
+                    HttpStatus.BAD_REQUEST, "Prognoseart");
+            refuseSitePromotion(demo, eigene, "load", "load-persistence",
+                    HttpStatus.CONFLICT, "plant diese Anlage bereits");
+            refuseSitePromotion(demo, eigene, "pv", "pv-residual-xgb",
+                    HttpStatus.CONFLICT, "sammelt für diese Anlage noch Daten");
+            // Ein Modell, das auf dieser Anlage noch nie bewertet wurde.
+            exec("DELETE FROM forecast_accuracy WHERE site_id = '" + eigene + "'"
+                    + " AND model = 'load-xgb'");
+            refuseSitePromotion(demo, eigene, "load", "load-xgb",
+                    HttpStatus.CONFLICT, "noch keine Tagesbewertung");
+            assertThat(queryLong("SELECT count(*) FROM site_forecast_model_choice"))
+                    .isEqualTo(rows);
+
+            // (7) Der Zaun: eine FREMDE Anlage ist 404 (RLS), nie 403 - lesend
+            //     wie schreibend -, und anonym ist es 401.
+            String demo2 = token("demo2", "demo2");
+            assertThat(rest.exchange(url("/api/v1/sites/" + eigene + "/forecast-models"),
+                    HttpMethod.GET, new HttpEntity<>(bearer(demo2)), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(rest.exchange(url("/api/v1/sites/" + eigene + "/forecast-models"),
+                    HttpMethod.POST,
+                    new HttpEntity<>(Map.of("kind", "load", "model", "load-xgb"), bearer(demo2)),
+                    String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(rest.exchange(url("/api/v1/sites/" + eigene + "/forecast-models"),
+                    HttpMethod.GET, HttpEntity.EMPTY, String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(queryLong("SELECT count(*) FROM site_forecast_model_choice"))
+                    .isEqualTo(rows);
+
+            // (8) Eine gelöschte Anlage nimmt ihr Journal MIT - obwohl die
+            //     App-Rolle auf dieser Tabelle gar kein DELETE hat. Das trägt
+            //     der FK-Kaskaden-Pfad: eine referenzielle Aktion läuft als
+            //     Eigentümer der Tabelle und umgeht Rechte UND FORCE-RLS.
+            //     Ohne diesen Beweis wäre das Löschen einer Anlage ein
+            //     „permission denied for table" auf einem Kunden-Pfad.
+            assertThat(queryLong("SELECT count(*) FROM site_forecast_model_choice"
+                    + " WHERE site_id = '" + eigene + "'")).isEqualTo(2);
+            assertThat(rest.exchange(url("/api/v1/sites/" + eigene), HttpMethod.DELETE,
+                    new HttpEntity<>(bearer(demo)), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+            assertThat(queryLong("SELECT count(*) FROM site_forecast_model_choice"
+                    + " WHERE site_id = '" + eigene + "'")).isZero();
+        } finally {
+            for (String site : List.of(eigene, nachbar)) {
+                exec("DELETE FROM site_forecast_model_choice WHERE site_id = '" + site + "'");
+                exec("DELETE FROM forecast_accuracy WHERE site_id = '" + site + "'");
+                exec("DELETE FROM forecast_model_state WHERE site_id = '" + site + "'");
+                exec("DELETE FROM site WHERE id = '" + site + "'");
+            }
+        }
+    }
+
+    private Map<String, Object> siteForecastModels(String token, String siteId) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/forecast-models"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    private Map<String, Object> promoteSiteModel(
+            String token, String siteId, String kind, String model) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/forecast-models"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("kind", kind, "model", model), bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    private void refuseSitePromotion(String token, String siteId, String kind, String model,
+            HttpStatus status, String needle) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/forecast-models"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("kind", kind, "model", model), bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(status);
+        assertThat(String.valueOf(res.getBody().get("message"))).contains(needle);
+    }
+
+    private Map<String, Object> forecastQualityOf(String token, String siteId) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/forecast-quality"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> kindOfSite(Map<String, Object> body, String kind) {
+        return ((List<Map<String, Object>>) body.get("kinds")).stream()
+                .filter(k -> kind.equals(k.get("kind"))).findFirst().orElseThrow();
+    }
+
     // ---- Historie: rollups, totals, formulas, Tagesprotokoll, plan-vs-actual --
 
     /**

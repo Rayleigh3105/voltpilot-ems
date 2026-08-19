@@ -50,6 +50,46 @@ class ForecastModelsTest {
                 .isEqualTo(ForecastModels.LOAD_XGB);
     }
 
+    /**
+     * Die VOLLE Präzedenz der Migration V20260826000000 (Captain-Auftrag
+     * 19.08.2026): <b>Anlagen-Wahl &gt; Plattform-Vorgabe &gt; Umgebung &gt;
+     * Basismodell</b>. Sie ist das Abnahmekriterium des ganzen Umbaus - nur
+     * DIESE Anlage plant mit dem Kandidaten.
+     */
+    @Test
+    void theSiteChoiceBeatsThePlatformDefaultWhichBeatsTheEnvironment() {
+        // Anlage gewinnt über Plattform UND Umgebung.
+        assertThat(ForecastModels.resolve(
+                        ForecastModels.KIND_LOAD, "load-xgb", "load-persistence", "load-persistence"))
+                .isEqualTo(ForecastModels.LOAD_XGB);
+        // Ohne Anlagen-Wahl gilt die Plattform-Vorgabe ...
+        assertThat(ForecastModels.resolve(
+                        ForecastModels.KIND_LOAD, null, "load-xgb", "load-persistence"))
+                .isEqualTo(ForecastModels.LOAD_XGB);
+        // ... ohne beide die Umgebung ...
+        assertThat(ForecastModels.resolve(ForecastModels.KIND_LOAD, null, null, "load-xgb"))
+                .isEqualTo(ForecastModels.LOAD_XGB);
+        // ... und ohne alles das Basismodell (die Rückwärts-Sicherheit).
+        assertThat(ForecastModels.resolve(ForecastModels.KIND_LOAD, null, null, null))
+                .isEqualTo(ForecastModels.LOAD_PERSISTENCE);
+    }
+
+    @Test
+    void anUnusableSiteChoiceFallsThroughToTheNextStageNeverToTheBaseline() {
+        // Eine von Hand eingetragene, art-fremde Anlagen-Zeile darf die
+        // Plattform-Vorgabe nicht mit ins Nichts reißen.
+        assertThat(ForecastModels.resolve(
+                        ForecastModels.KIND_LOAD, "pv-physical", "load-xgb", null))
+                .isEqualTo(ForecastModels.LOAD_XGB);
+        assertThat(ForecastModels.resolve(
+                        ForecastModels.KIND_LOAD, "load_xgb", null, "load-xgb"))
+                .isEqualTo(ForecastModels.LOAD_XGB);
+        // Die alte Drei-Argument-Form ist die Zwei-Stufen-Auflösung - sie bleibt
+        // gültig, damit der plattformweite Schalter unverändert weiterläuft.
+        assertThat(ForecastModels.resolve(ForecastModels.KIND_PV, "pv-residual-xgb", null))
+                .isEqualTo(ForecastModels.PV_RESIDUAL_XGB);
+    }
+
     @Test
     void theVocabularyIsTheOneSharedWithTheForecastRegistry() {
         assertThat(ForecastModels.kinds()).containsExactly("load", "pv");

@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.forecast.ModelChoice;
 import com.voltpilot.api.web.dto.ForecastModelChoiceDto.ChoiceEventDto;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -33,12 +34,12 @@ public class AdminForecastModelChoiceRepository {
     }
 
     /** Die aktuelle Wahl je Art, samt Urheber - dieselbe Abfrage wie der Kundenpfad. */
-    public Map<String, Choice> current() {
-        Map<String, Choice> out = new HashMap<>();
+    public Map<String, ModelChoice> current() {
+        Map<String, ModelChoice> out = new HashMap<>();
         jdbc.query(ForecastModelChoiceRepository.CURRENT_SQL, rs -> {
             out.put(
                     rs.getString("model_kind"),
-                    new Choice(
+                    new ModelChoice(
                             rs.getString("model_kind"),
                             rs.getString("model_id"),
                             rs.getString("previous_model_id"),
@@ -71,16 +72,6 @@ public class AdminForecastModelChoiceRepository {
                         + "(model_kind, model_id, previous_model_id, set_by, set_by_name) "
                         + "VALUES (?, ?, ?, ?, ?)",
                 kind, model, previous, setBy, setByName);
-    }
-
-    /** Eine Zeile der Historie - der aktuelle Stand einer Art. */
-    public record Choice(
-            String kind,
-            String model,
-            String previousModel,
-            String setBy,
-            String setByName,
-            Instant setAt) {
     }
 
     private static Instant toInstant(Timestamp ts) {

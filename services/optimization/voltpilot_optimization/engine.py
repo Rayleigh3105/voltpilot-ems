@@ -71,7 +71,7 @@ def plan_site(
     v2_publisher: PlanV2Publisher | None = None,
     v2_sites: frozenset | None = None,
     v2_repository: SitePlanRepository | None = None,
-    model_choices: dict | None = None,
+    model_choices=None,
 ) -> SchedulePlan:
     """Plan one site end to end. Raises :class:`SkipSite` when un-plannable.
 
@@ -82,9 +82,9 @@ def plan_site(
     dual-publish); a v2 shadow failure only logs, never sinks the v1 plan.
 
     ``model_choices`` is the cycle's ONE read of the portal's active forecast
-    model (:func:`voltpilot_optimization.inputs.load_model_choices`); ``None``
-    lets ``gather_inputs`` load it itself, which is what the single-site
-    on-demand replan does.
+    models (:func:`voltpilot_optimization.inputs.load_model_choices`, platform
+    default + the per-site choices); ``None`` lets ``gather_inputs`` load them
+    itself, which is what the single-site on-demand replan does.
     """
     inp = gather_inputs(dsn, site, now, horizon_slots, model_choices=model_choices)
     plan_id = uuid4()
@@ -199,9 +199,10 @@ def run_cycle(
         logger.warning("cycle.no_battery_sites", extra={"context": {}})
         return summary
     v2_sites = v2_plan_site_ids()
-    # ONE read of the portal's active-model choice for the whole cycle - the
-    # choice is platform-wide (exactly the semantics of the env vars it
-    # replaced), so re-reading it per site would be N identical queries.
+    # ONE read of the portal's active-model choices for the whole cycle: the
+    # platform default plus every site that carries its own (Captain
+    # 19.08.2026). Both are small indexed reads; re-reading them per site would
+    # be N identical queries. `gather_inputs` resolves them PER SITE.
     model_choices = load_model_choices(dsn)
     for site in sites:
         try:

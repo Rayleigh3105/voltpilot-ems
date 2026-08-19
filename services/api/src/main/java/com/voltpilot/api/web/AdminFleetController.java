@@ -1,6 +1,8 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.fleet.FleetPflege;
+import com.voltpilot.api.forecast.ForecastModelService;
+import com.voltpilot.api.forecast.ForecastModels;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.AdminFleetRepository;
 import com.voltpilot.api.repo.AdminFleetRepository.DeviceStats;
@@ -29,7 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -85,15 +86,11 @@ public class AdminFleetController {
     private static final int FORECAST_LOOKBACK_DAYS = 14;
 
     private final AdminFleetRepository fleet;
-    private final String activeLoadModel;
-    private final String activePvModel;
+    private final ForecastModelService forecastModels;
 
-    public AdminFleetController(AdminFleetRepository fleet,
-            @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
-            @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
+    public AdminFleetController(AdminFleetRepository fleet, ForecastModelService forecastModels) {
         this.fleet = fleet;
-        this.activeLoadModel = activeLoadModel;
-        this.activePvModel = activePvModel;
+        this.forecastModels = forecastModels;
     }
 
     @GetMapping
@@ -114,9 +111,13 @@ public class AdminFleetController {
         Map<UUID, BigDecimal> pvCapacity = fleet.pvCapacityPerSite();
         Map<UUID, PvPeak> pvPeak = fleet.pvPeakPerSite(now.minus(PV_PEAK_LOOKBACK));
 
+        // Die UNTERSTE Präzedenz-Stufe (Umgebungs-Vorgabe, validiert - eine
+        // krumme Env-Variable fällt auf das Basismodell zurück statt gar nichts
+        // zu treffen); die zwei Journale darüber löst die Abfrage JE ANLAGE auf.
         List<ForecastRow> forecastRows = fleet.forecastAccuracy(
                 LocalDate.now(HistoryRange.ZONE).minusDays(FORECAST_LOOKBACK_DAYS),
-                List.of(activeLoadModel, activePvModel));
+                List.of(forecastModels.envDefault(ForecastModels.KIND_LOAD),
+                        forecastModels.envDefault(ForecastModels.KIND_PV)));
         Map<UUID, List<FleetForecastDto>> forecast = FleetPflege.forecastChecks(forecastRows);
 
         List<FleetSiteDto> out = new ArrayList<>(siteRows.size());

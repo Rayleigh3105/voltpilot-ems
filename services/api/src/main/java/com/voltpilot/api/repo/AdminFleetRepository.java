@@ -374,30 +374,43 @@ public class AdminFleetRepository {
 
     /**
      * Die Prognosequalität je Anlage und Prognoseart über das Fenster: der
-     * Mittelwert des normierten Fehlers ({@code nmae_pct}) der AKTIVEN Modelle.
+     * Mittelwert des normierten Fehlers ({@code nmae_pct}) des Modells, das
+     * DIESE Anlage wirklich plant.
      *
      * <p>Normiert, weil nur er über verschieden große Anlagen vergleichbar ist -
      * ein MAE in kW wächst mit der Anlage. {@code nmae_pct} ist an
      * Null-Tagen NULL (dokumentiert in der Auswertung) und wird deshalb
      * übersprungen statt als 0 gewertet; eine Anlage ohne einen einzigen
      * bewerteten Tag ist abwesend.
+     *
+     * <p><b>⚠ Das aktive Modell wird JE ANLAGE aufgelöst, in EINER Abfrage</b>
+     * (Captain-Auftrag 19.08.2026): seit dem Anlagen-Schalter können zwei
+     * Anlagen derselben Flotte legitim verschieden planen, und ein
+     * flottenweiter Filter würde eine von ihnen mit dem Fehler ihres
+     * SCHATTEN-Modells in den Ausreißer-Vergleich schicken. Die Präzedenz ist
+     * dieselbe wie überall - Anlagen-Wahl &gt; Plattform-Vorgabe &gt;
+     * Umgebungs-Vorgabe (die der Aufrufer als {@code envModels} übergibt) -,
+     * nur hier als {@code COALESCE} über die zwei append-only Journale statt in
+     * Java, damit es bei N Anlagen bei EINER Abfrage bleibt. Eine von Hand
+     * eingetragene, unbekannte Id findet dann schlicht keine Zeilen: die Anlage
+     * ist abwesend, nie mit einer fremden Zahl vertreten.
      */
-    public List<ForecastRow> forecastAccuracy(LocalDate since, List<String> activeModels) {
-        if (activeModels.isEmpty()) {
+    public List<ForecastRow> forecastAccuracy(LocalDate since, List<String> envModels) {
+        if (envModels.size() != 2) {
             return List.of();
         }
         List<ForecastRow> out = new ArrayList<>();
-        String placeholders = String.join(", ", java.util.Collections.nCopies(activeModels.size(), "?"));
-        Object[] args = new Object[activeModels.size() + 1];
-        args[0] = since;
-        for (int i = 0; i < activeModels.size(); i++) {
-            args[i + 1] = activeModels.get(i);
-        }
         jdbc.query(
-                "SELECT site_id, kind, avg(nmae_pct) AS nmae, count(*) AS days "
-                        + "FROM forecast_accuracy "
-                        + "WHERE day >= ? AND nmae_pct IS NOT NULL AND model IN (" + placeholders + ") "
-                        + "GROUP BY site_id, kind",
+                "SELECT fa.site_id, fa.kind, avg(fa.nmae_pct) AS nmae, count(*) AS days "
+                        + "FROM forecast_accuracy fa "
+                        + "WHERE fa.day >= ? AND fa.nmae_pct IS NOT NULL AND fa.model = COALESCE("
+                        + "(SELECT sc.model_id FROM site_forecast_model_choice sc "
+                        + " WHERE sc.site_id = fa.site_id AND sc.model_kind = fa.kind "
+                        + " ORDER BY sc.id DESC LIMIT 1), "
+                        + "(SELECT pc.model_id FROM forecast_model_choice pc "
+                        + " WHERE pc.model_kind = fa.kind ORDER BY pc.id DESC LIMIT 1), "
+                        + "CASE fa.kind WHEN 'load' THEN ? ELSE ? END) "
+                        + "GROUP BY fa.site_id, fa.kind",
                 rs -> {
                     BigDecimal nmae = rs.getBigDecimal("nmae");
                     if (nmae != null) {
@@ -405,7 +418,7 @@ public class AdminFleetRepository {
                                 rs.getString("kind"), nmae.doubleValue(), rs.getInt("days")));
                     }
                 },
-                args);
+                since, envModels.get(0), envModels.get(1));
         return out;
     }
 }

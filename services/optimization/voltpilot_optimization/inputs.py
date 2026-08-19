@@ -93,15 +93,19 @@ ACTIVE_PV_MODEL_ENV = "VOLTPILOT_ACTIVE_PV_MODEL"
 BASELINE_MODEL_BY_KIND = {"load": "load-persistence", "pv": "pv-physical"}
 
 
-def load_model_choices(dsn: str) -> dict:
-    """The stored PORTAL choice per kind (empty = never promoted in the portal).
+def load_model_choices(dsn: str):
+    """The stored PORTAL choices - the platform default AND the per-site ones.
 
-    Since the promotion switch (Captain 18.08.2026) the active model is DATA:
-    the append-only ``forecast_model_choice`` table (api migration
-    V20260825000000) carries the newest decision per kind. Reading it is one
-    cheap indexed row per kind, and the CYCLE reads it ONCE
+    Since the promotion switch (Captain 18.08.2026) the active model is DATA,
+    and since the per-plant switch (Captain 19.08.2026) that decision lives per
+    SITE: ``site_forecast_model_choice`` (api migration V20260826000000) beats
+    ``forecast_model_choice`` (V20260825000000), which is the fleet DEFAULT.
+    Reading both is two cheap indexed queries, and the CYCLE reads them ONCE
     (:func:`voltpilot_optimization.engine.run_cycle`) and hands the result to
     every site - never once per site.
+
+    Returns a :class:`voltpilot_forecast.model_choice.ModelChoices`; resolve it
+    for one site with :meth:`~...ModelChoices.for_site`.
 
     Never raises: a missing table or an unreachable DB degrades to "no choice",
     i.e. exactly the pre-switch env behaviour (see
@@ -109,7 +113,19 @@ def load_model_choices(dsn: str) -> dict:
     """
     from voltpilot_forecast import model_choice
 
-    return {kind.value: model for kind, model in model_choice.load_choices_dsn(dsn).items()}
+    return model_choice.load_all_dsn(dsn)
+
+
+def site_model_choices(choices, site_id) -> dict:
+    """The choices in force for ONE site, as ``{kind_str: model_id}``.
+
+    The kind-string keying is deliberate: :func:`active_model` and every caller
+    in this package speak the wire vocabulary (``"load"``/``"pv"``), so the
+    ``ForecastKind`` enum stays inside :mod:`voltpilot_forecast`.
+    """
+    if choices is None:
+        return {}
+    return {kind.value: model for kind, model in choices.for_site(site_id).items()}
 
 
 def active_model(kind: str, env=None, choices=None) -> str:
@@ -122,10 +138,11 @@ def active_model(kind: str, env=None, choices=None) -> str:
     The env variable therefore stays the DEFAULT, not a competitor - a fleet
     that never touches the switch is indistinguishable from before it existed.
 
-    ``choices`` is the per-cycle read of :func:`load_model_choices` (``None`` =
-    env only). A stored id is already validated on the write path AND
-    re-validated when loaded (an unknown one is discarded there, never adopted),
-    so anything arriving here is a known id of the right kind.
+    ``choices`` is the SITE-resolved mapping ``{kind_str: model_id}`` produced
+    by :func:`site_model_choices` from the per-cycle read (``None``/empty = env
+    only). A stored id is already validated on the write path AND re-validated
+    when loaded (an unknown one is discarded there, never adopted), so anything
+    arriving here is a known id of the right kind.
 
     The env branch delegates to :func:`voltpilot_forecast.registry.active_model`,
     the sibling that feeds the collector/portal, so both sides validate the
@@ -399,7 +416,7 @@ def gather_inputs(
     site: BatterySite,
     now: datetime,
     horizon_slots: int = SLOTS_24H,
-    model_choices: dict | None = None,
+    model_choices=None,
 ) -> OptimizationInput:
     """Assemble the slot-aligned :class:`OptimizationInput` for one site.
 
@@ -410,11 +427,13 @@ def gather_inputs(
     :class:`SkipSite` when coverage is below :data:`MIN_HORIZON_SLOTS`.
 
     ``model_choices`` is the cycle's ONE read of the portal's active-model
-    choice (:func:`load_model_choices`); ``None`` means "load it here", which
-    is what the single-site callers (what-if, on-demand replan) do.
+    choices (:func:`load_model_choices`); ``None`` means "load it here", which
+    is what the single-site callers (what-if, on-demand replan) do. It is
+    resolved for THIS site here - the site's own choice beats the fleet default.
     """
     if model_choices is None:
         model_choices = load_model_choices(dsn)
+    site_choices = site_model_choices(model_choices, site.site_id)
     now = ensure_utc(now)
     slot_starts = horizon_slot_starts(now, horizon_slots)
     prices = _load_prices(dsn, site.bidding_zone, slot_starts)
@@ -432,10 +451,10 @@ def gather_inputs(
     slot_starts = slot_starts[:covered]
 
     load_kw, _ = _forecast_or_fallback(
-        dsn, site, "load", "load_kw", slot_starts, now, model_choices
+        dsn, site, "load", "load_kw", slot_starts, now, site_choices
     )
     pv_kw, pv_used_fallback = _forecast_or_fallback(
-        dsn, site, "pv", "pv_power_kw", slot_starts, now, model_choices
+        dsn, site, "pv", "pv_power_kw", slot_starts, now, site_choices
     )
     pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
 
@@ -662,7 +681,7 @@ def _forecast_or_fallback(
     telemetry_column: str,
     slot_starts: list[datetime],
     now: datetime,
-    model_choices: dict | None = None,
+    site_choices: dict | None = None,
 ) -> tuple[list[float], bool]:
     """The ACTIVE model's latest stored forecast run when it covers the
     horizon, else the persistence baseline over recent telemetry (never fails:
@@ -673,7 +692,7 @@ def _forecast_or_fallback(
     night-floor distinctly (the collector<->optimizer 15-min race, §4a of the
     scout report - visible in monitoring before it silently degrades plans)."""
     stored = _load_forecast(
-        dsn, site.site_id, kind, active_model(kind, choices=model_choices), slot_starts[0]
+        dsn, site.site_id, kind, active_model(kind, choices=site_choices), slot_starts[0]
     )
     if all(s in stored for s in slot_starts):
         return [stored[s] for s in slot_starts], False

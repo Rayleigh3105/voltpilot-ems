@@ -90,11 +90,30 @@ public final class ForecastModels {
      * führt, für das es keine gespeicherten Prognosezeilen gibt.
      */
     public static String resolve(String kind, String choice, String envValue) {
-        if (belongsTo(kind, choice)) {
-            return choice;
+        return resolve(kind, null, choice, envValue);
+    }
+
+    /**
+     * Dieselbe Auflösung mit der ANLAGEN-Wahl an der Spitze - die bindende
+     * Präzedenz der Migration V20260826000000 (Captain-Auftrag 19.08.2026):
+     * <b>Anlagen-Wahl &gt; Plattform-Vorgabe &gt; Umgebungsvariable &gt;
+     * Registry-Default</b>.
+     *
+     * <p>Sie steht wortgleich in {@code voltpilot_forecast.model_choice}, damit
+     * api und Optimierer über dieselbe Anlage nie Verschiedenes behaupten
+     * können. Ohne eine einzige Zeile ist jeder Pfad byte-identisch zu vorher -
+     * das ist die Rückwärts-Sicherheit, auf die sich die Tests berufen.
+     */
+    public static String resolve(
+            String kind, String siteChoice, String platformChoice, String envValue) {
+        if (belongsTo(kind, siteChoice)) {
+            return siteChoice.trim();
+        }
+        if (belongsTo(kind, platformChoice)) {
+            return platformChoice.trim();
         }
         if (belongsTo(kind, envValue)) {
-            return envValue;
+            return envValue.trim();
         }
         return baselineOf(kind);
     }

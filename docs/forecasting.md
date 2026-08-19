@@ -8,7 +8,7 @@ The decision layer (the battery-dispatch MILP in `services/optimization`) never 
 1. **Every prediction is tagged.** Each forecaster carries a stable model id (`voltpilot_forecast/registry.py`); every persisted row in the `forecast` hypertable carries that id in its `model` column.
 2. **Exactly one model per kind is active.** The optimizer consumes ONLY the active model's rows; everything else runs in **shadow** - predicting and persisting every cycle exactly like the active model, influencing nothing.
 3. **A challenger must prove itself on recorded history.** The daily evaluation compares every model's predictions against telemetry actuals and stores the result (`forecast_accuracy`), including a skill score vs the baseline.
-4. **Promotion is a human act.** There is NO automatic promotion. Since 18.08.2026 it is **one button in the portal** (Prognosequalität → „Kandidat übernehmen", platform-admin only) instead of an env flip on three containers; the same page shows the evidence the decision rests on, in plain German.
+4. **Promotion is a human act, PER PLANT.** There is NO automatic promotion. Since 18.08.2026 it is **one button in the portal** (Prognosequalität → „Kandidat übernehmen") instead of an env flip on three containers, and since 19.08.2026 the decision belongs to the **plant** and to its **owner**: which model fits best depends on the individual plant (load profile, weather, storage size), so a candidate that wins on a commercial yard can lose on a single-family house. The same page shows the evidence the decision rests on, in plain German.
 
 ## The models
 
@@ -66,17 +66,22 @@ Stored in `forecast_accuracy`, one row per site x model x **Europe/Berlin day** 
 
 ## Promotion (and rollback)
 
-**Der Weg ist das Portal.** Prognosequalität → der Kandidat einer Prognoseart → „Kandidat übernehmen" (nur Portal-Admins; die Bestätigung nennt die Folgen). Ab dem nächsten Planungslauf - spätestens 15 Minuten später - konsumiert der Optimierer die Prognosereihen des neuen Modells; das abgelöste Modell rechnet unverändert im Schatten weiter und wird weiter täglich bewertet. **Der Rückweg ist derselbe Knopf in die Gegenrichtung** - es geht keine Historie verloren, und ein zurückgetauschtes Modell hat sofort wieder seine Bewertung.
+**Der Weg ist das Portal, und er gehört dem Kunden.** Prognosequalität → der Kandidat einer Prognoseart → „Kandidat übernehmen" (jeder, der die Anlage erreicht; die Bestätigung nennt die Folgen und sagt ausdrücklich, dass sie **nur für diese Anlage** gelten). Ab dem nächsten Planungslauf - spätestens 15 Minuten später - konsumiert der Optimierer die Prognosereihen des neuen Modells **für genau diese Anlage**; alle anderen bleiben unverändert, und das abgelöste Modell rechnet im Schatten weiter und wird weiter täglich bewertet. **Der Rückweg ist derselbe Knopf in die Gegenrichtung** - es geht keine Historie verloren, und ein zurückgetauschtes Modell hat sofort wieder seine Bewertung.
 
-Technisch dahinter: `POST /api/v1/admin/forecast-models {kind, model}` schreibt eine Zeile in die globale, **append-only** Tabelle `forecast_model_choice` (api-Migration `V20260825000000`). Sie ist zugleich das Audit-Journal - jede Zeile trägt von→zu, das JWT-Subject des Umstellers, seinen Anzeige-Namen und den Zeitpunkt; „was gilt gerade" ist die jüngste Zeile je Art.
+Technisch dahinter: `POST /api/v1/sites/{siteId}/forecast-models {kind, model}` schreibt eine Zeile in die mandantengebundene, **append-only** Tabelle `site_forecast_model_choice` (api-Migration `V20260826000000`). Sie ist zugleich das Audit-Journal - jede Zeile trägt von→zu, das JWT-Subject des Umstellers, seinen Anzeige-Namen und den Zeitpunkt; „was gilt gerade" ist die jüngste Zeile je (Anlage, Art). Der Zaun ist Postgres-RLS: eine fremde Anlage ist **404**, nie 403; ein Portal-Admin erreicht jede Anlage über den `X-Tenant-Id`-Umschalter auf demselben Pfad.
 
-**Die Präzedenz ist der ganze Vertrag** und steht wortgleich in der Migration, in `ForecastModelService` (api), in `voltpilot_forecast/model_choice.py` und in `voltpilot_optimization/inputs.py`:
+**Die zwei Sperren der Oberfläche werden SERVER-seitig ein zweites Mal geprüft** - ein Kandidat, der auf DIESER Anlage noch sammelt, und ein Modell ohne eine einzige Tagesbewertung auf ihr sind je ein 409 mit deutschem Grund. Beide schützen vor derselben Sache: einer Umstellung auf ein Modell, für das es hier keine Prognosezeilen gibt (der Optimierer fiele dann still auf seine Persistenz-Baseline zurück, während das Portal das neue Modell als „live" zeigt).
 
-1. die jüngste Zeile in `forecast_model_choice` je Art - sie gewinnt,
-2. sonst die Umgebungsvariable (`VOLTPILOT_ACTIVE_LOAD_MODEL` / `VOLTPILOT_ACTIVE_PV_MODEL`),
-3. sonst der Registry-Default (das Basismodell).
+Die plattformweite `POST /api/v1/admin/forecast-models` (platform-admin, `forecast_model_choice`, Migration `V20260825000000`) bleibt bestehen - sie setzt seither die **VORGABE** für jede Anlage ohne eigene Wahl.
 
-Ohne eine einzige Zeile ist damit jeder Pfad **byte-identisch** zu vorher. Umgekehrt heißt es: auf einer umgestellten Flotte ist ein späterer Env-Edit **wirkungslos** - genau richtig, denn sonst nähme ein Redeploy die bewusste Portal-Entscheidung stillschweigend zurück. Wer wirklich zur Umgebung zurück will, stellt im Portal auf den Env-Wert zurück (dann steht dort dieselbe Modell-Id, die Quelle bleibt aber ehrlich „portal": es IST eine Entscheidung).
+**Die Präzedenz ist der ganze Vertrag** und steht wortgleich in beiden Migrationen, in `ForecastModels.resolve` (api), in `voltpilot_forecast/model_choice.py` und in `voltpilot_optimization/inputs.py`:
+
+1. die jüngste Zeile in `site_forecast_model_choice` je (Anlage, Art) - sie gewinnt,
+2. sonst die jüngste Zeile in `forecast_model_choice` je Art (die Plattform-Vorgabe),
+3. sonst die Umgebungsvariable (`VOLTPILOT_ACTIVE_LOAD_MODEL` / `VOLTPILOT_ACTIVE_PV_MODEL`),
+4. sonst der Registry-Default (das Basismodell).
+
+Ohne eine einzige Zeile ist damit jeder Pfad **byte-identisch** zu vorher. Umgekehrt heißt es: auf einer umgestellten Anlage ist ein späterer Env-Edit **wirkungslos**, und auch ein Betreiber-Klick auf die Plattform-Vorgabe nimmt ihr die Entscheidung nicht ab - genau richtig, denn sonst nähme ein Redeploy bzw. ein fremder Klick die bewusste Entscheidung stillschweigend zurück. Wer wirklich zur Vorgabe zurück will, stellt im Portal auf denselben Modell-Wert zurück (dann steht dort dieselbe Modell-Id, die Quelle bleibt aber ehrlich „anlage": es IST eine Entscheidung).
 
 Der Env-Weg bleibt als **Vorgabe** für frische Deployments bestehen:
 
@@ -86,9 +91,11 @@ VOLTPILOT_ACTIVE_LOAD_MODEL=load-xgb      # default: load-persistence
 VOLTPILOT_ACTIVE_PV_MODEL=pv-physical     # default: pv-physical
 ```
 
-Dieselben Werte auf allen drei Verbrauchern setzen - `forecast-collector`/`forecast`, `optimizer`/`optimization` und `api` - und die Container neu erzeugen. Alle drei lösen dieselbe Präzedenz auf und lesen dieselbe Tabelle, können also nicht auseinanderlaufen; der Optimierer liest sie **einmal je Lauf** für die ganze Flotte.
+Dieselben Werte auf allen drei Verbrauchern setzen - `forecast-collector`/`forecast`, `optimizer`/`optimization` und `api` - und die Container neu erzeugen. Alle drei lösen dieselbe Präzedenz auf und lesen dieselben zwei Tabellen, können also nicht auseinanderlaufen; der Optimierer liest sie **einmal je Lauf** (zwei kleine indizierte Abfragen) und löst sie dann **pro Anlage** auf - nie ein Read je Anlage.
 
-Eine Beförderung sollte durch `forecast_accuracy` gedeckt sein (klar positiver Skill an den meisten der letzten 14+ bewerteten Tage, möglichst über beide Lastsaisons) - die Prognosequalität-Seite legt genau diese Tage als aufklappbare Liste offen, und eine direkte SQL-Abfrage erzählt dieselbe Geschichte.
+Eine Beförderung sollte durch `forecast_accuracy` **dieser Anlage** gedeckt sein (klar positiver Skill an den meisten der letzten 14+ bewerteten Tage, möglichst über beide Lastsaisons) - die Prognosequalität-Seite legt genau diese Tage als aufklappbare Liste offen, und eine direkte SQL-Abfrage erzählt dieselbe Geschichte.
+
+⚠ **Der Skill-Maßstab ist das AKTIVE Modell der jeweiligen ANLAGE**, nicht das der Flotte: seit dem Anlagen-Schalter können zwei Anlagen desselben Mandanten legitim verschieden planen, und ein flottenweiter Maßstab würde eine von ihnen gegen ein Modell bewerten, das sie gar nicht benutzt (`evaluate.evaluate_day` löst ihn je Anlage auf).
 
 ## Storage (all owned by api Flyway `V20260701040000`)
 
@@ -98,7 +105,8 @@ Eine Beförderung sollte durch `forecast_accuracy` gedeckt sein (klar positiver 
 | `forecast_model_state` | site x model | tenant-scoped, portal reads |
 | `forecast_accuracy` | site x model x Berlin day | tenant-scoped, portal reads |
 | `plan_accuracy` | site x Berlin day | tenant-scoped, portal reads |
-| `forecast_model_choice` (V20260825000000) | kind x Umstellung (append-only) | none - PLATTFORM-weit, wie `edge_release`; App-Rolle nur SELECT |
+| `forecast_model_choice` (V20260825000000) | kind x Umstellung (append-only) | none - die PLATTFORM-Vorgabe, wie `edge_release`; App-Rolle nur SELECT |
+| `site_forecast_model_choice` (V20260826000000) | site x kind x Umstellung (append-only) | tenant-scoped + FORCE - es ist eine Entscheidung über EINE Kundenanlage; App-Rolle SELECT+INSERT, kein UPDATE/DELETE |
 
 The collector/evaluator write as the trusted backend role and stamp `tenant_id` from the owning site (the weather-collector pattern); the api reads through the RLS-scoped app role.
 Version coordination and the bootstrap mirrors are documented in AGENTS.md and in the migration headers.

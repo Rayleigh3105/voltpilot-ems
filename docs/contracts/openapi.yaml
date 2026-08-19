@@ -1496,17 +1496,20 @@ paths:
       description: >
         The shadow-mode forecasting transparency view (docs/forecasting.md):
         which forecast model is LIVE per kind (activeLoadModel/activePvModel,
-        resolved server-side with the SAME precedence the optimizer uses -
-        the portal promotion choice wins, else the env default), the
+        resolved server-side FOR THIS SITE with the SAME precedence the
+        optimizer uses - the site's own choice wins, else the platform default,
+        else the env default), the
         lifecycle of every model that has run on the site (challengers report
         "collecting: day X of N" while their self-gate is unmet; trained models
         carry trainedAt/trainRows and the top feature importances with
         plain-German labels), the per-model daily error series (MAE kW, nMAE %,
         bias, skill vs the ACTIVE model - positive = better) computed by the
         daily evaluation job, and the daily plan-vs-actual economics.
-        Challenger promotion is NEVER automatic; it is a deliberate
-        platform-admin act on /api/v1/admin/forecast-models, informed by this
-        data. All rows come from RLS-scoped tables - a foreign site is a
+        Challenger promotion is NEVER automatic; it is a deliberate act on
+        /api/v1/sites/{siteId}/forecast-models - by the customer, for their own
+        plant - informed by this data. The platform-wide
+        /api/v1/admin/forecast-models sets only the DEFAULT for plants without
+        their own choice. All rows come from RLS-scoped tables - a foreign site is a
         404; a fresh site yields empty (but well-formed) lists.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -1523,6 +1526,73 @@ paths:
               schema: { $ref: "#/components/schemas/ForecastQuality" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/forecast-models:
+    get:
+      tags: [forecast-quality]
+      summary: Welches Prognosemodell plant DIESE Anlage (der Schalter-Zustand)?
+      description: >
+        Der Prognose-Schalter EINER Anlage (Captain-Auftrag 19.08.2026 - er
+        revidiert die plattformweite Semantik von /api/v1/admin/forecast-models
+        vom Vortag): je Prognoseart (load/pv) das Modell, das DIESE Anlage
+        plant, WOHER die Wahl kommt (anlage = eine Zeile in
+        site_forecast_model_choice, plattform = die Vorgabe von VoltPilot,
+        env = das ausgelieferte Standardmodell), die Plattform-Vorgabe und der
+        Umgebungs-Vorgabewert, wer wann umgestellt hat und die wählbare Menge -
+        plus die append-only Umstellungs-Historie DIESER Anlage.
+        Mandantenbezogen wie jede /sites/**-Route: KEIN platform-admin nötig,
+        Authentifizierung + Postgres-RLS sind der Zaun, eine fremde Anlage ist
+        404 (nie 403). Portal-Admins erreichen jede Anlage über den
+        X-Tenant-Id-Umschalter auf demselben Pfad.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Der Schalter-Zustand dieser Anlage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteForecastModels" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+    post:
+      tags: [forecast-quality]
+      summary: Kandidat übernehmen - für DIESE Anlage.
+      description: >
+        Stellt das aktive Modell EINER Prognoseart FÜR DIESE ANLAGE um. Ab dem
+        nächsten Planungslauf konsumiert der Optimierer die Prognosereihen
+        dieses Modells - nur für sie; alle anderen Anlagen bleiben unverändert.
+        Das bisherige Modell rechnet im Schatten weiter und wird weiter täglich
+        bewertet, der Rückweg ist derselbe Aufruf in die Gegenrichtung. Die
+        Umstellung ist append-only protokolliert (von->zu, JWT-Subject,
+        Zeitpunkt). Es wird nichts trainiert und kein Gerät erreicht.
+        Ablehnungen tragen einen deutschen {message}-Körper: 400 = unbekannte
+        Art / unbekanntes Modell / Modell einer anderen Art; 409 = das Modell
+        plant diese Anlage bereits, ODER es sammelt für sie noch Daten, ODER es
+        hat für sie noch keine Tagesbewertung (die zwei Sperren, die die
+        Oberfläche vor dem Klick nennt, werden hier ein zweites Mal geprüft).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, model]
+              properties:
+                kind: { type: string, enum: [load, pv] }
+                model:
+                  type: string
+                  enum: [load-persistence, load-xgb, pv-physical, pv-residual-xgb]
+      responses:
+        "200":
+          description: Der neue Schalter-Zustand (inkl. der neuen Journal-Zeile).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteForecastModels" }
+        "400": { description: Unbekannte Prognoseart bzw. unpassendes Modell. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+        "409": { description: Plant bereits, sammelt noch, oder ohne Tagesbewertung. }
   /api/v1/sites/{siteId}/assets:
     get:
       tags: [registry]
@@ -2132,15 +2202,16 @@ paths:
   /api/v1/admin/forecast-models:
     get:
       tags: [admin]
-      summary: Welches Prognosemodell plant gerade (der Schalter-Zustand)?
+      summary: Die PLATTFORM-VORGABE des Prognosemodells (der Schalter-Zustand).
       description: >
-        Der Zustand des Prognose-Schalters (Captain-Auftrag 18.08.2026): je
-        Prognoseart (load/pv) das AKTIVE Modell, WOHER die Wahl kommt
-        (portal = eine Zeile in forecast_model_choice, env = die
+        Der Zustand des plattformweiten Prognose-Schalters (Captain-Auftrag
+        18.08.2026): je Prognoseart (load/pv) das VORGABE-Modell, WOHER sie
+        kommt (portal = eine Zeile in forecast_model_choice, env = die
         Umgebungsvariable bzw. der Registry-Default), der Umgebungs-Vorgabewert,
         wer wann umgestellt hat und die wählbare Menge - plus die append-only
-        Umstellungs-Historie (von->zu). Die Wahl gilt PLATTFORMWEIT, nicht je
-        Anlage - genau die Semantik der abgelösten Umgebungsvariablen.
+        Umstellungs-Historie (von->zu). Seit dem 19.08.2026 ist das die VORGABE
+        für jede Anlage OHNE eigene Wahl, nicht die Antwort auf „was plant
+        Anlage X" - dafür ist /api/v1/sites/{siteId}/forecast-models da.
         Platform-admin only.
       responses:
         "200":
@@ -2152,11 +2223,12 @@ paths:
         "403": { description: Nur für Portal-Admins. }
     post:
       tags: [admin]
-      summary: Kandidat übernehmen (das aktive Prognosemodell umstellen).
+      summary: Die Plattform-Vorgabe einer Prognoseart umstellen.
       description: >
-        Stellt das aktive Modell EINER Prognoseart um. Ab dem nächsten
-        Planungslauf konsumiert der Optimierer die Prognosereihen dieses
-        Modells; das bisherige Modell rechnet unverändert im Schatten weiter
+        Stellt die VORGABE einer Prognoseart um - sie gilt für jede Anlage OHNE
+        eigene Wahl (eine Anlage mit eigener Zeile bleibt unberührt). Ab dem
+        nächsten Planungslauf konsumiert der Optimierer dort die Prognosereihen
+        dieses Modells; das bisherige Modell rechnet unverändert im Schatten weiter
         und wird weiter täglich bewertet, der Rückweg ist derselbe Aufruf in
         die Gegenrichtung. Die Umstellung ist append-only protokolliert
         (von->zu, JWT-Subject, Zeitpunkt). Es wird nichts trainiert und kein
@@ -8470,9 +8542,10 @@ components:
     ForecastModelChoice:
       type: object
       description: >
-        Der Zustand des Prognose-Schalters. PLATTFORMWEIT, nicht je Anlage -
-        genau die Semantik der abgelösten Umgebungsvariablen. Die Tabelle
-        dahinter ist append-only und damit zugleich das Audit-Journal.
+        Der Zustand des PLATTFORMWEITEN Prognose-Schalters - die Vorgabe für
+        jede Anlage ohne eigene Wahl (die anlagenbezogene Antwort ist
+        SiteForecastModels). Die Tabelle dahinter ist append-only und damit
+        zugleich das Audit-Journal.
       properties:
         kinds:
           type: array
@@ -8504,6 +8577,48 @@ components:
               kind: { type: string, enum: [load, pv] }
               model: { type: string }
               previousModel: { type: string, nullable: true, description: "null = die erste Umstellung dieser Art." }
+              setByName: { type: string, nullable: true }
+              setAt: { type: string, format: date-time }
+    SiteForecastModels:
+      type: object
+      description: >
+        Der Zustand des Prognose-Schalters EINER Anlage (Migration
+        V20260826000000). Die Tabelle dahinter ist append-only und damit
+        zugleich das Audit-Journal dieser Anlage.
+      properties:
+        siteId: { type: string, format: uuid }
+        kinds:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [load, pv] }
+              activeModel: { type: string, example: load-xgb, description: Das Modell, dessen Prognosen der Optimierer FÜR DIESE ANLAGE konsumiert. }
+              source:
+                type: string
+                enum: [anlage, plattform, env]
+                description: >
+                  anlage = jemand hat das für DIESE Anlage entschieden (eine
+                  Zeile in site_forecast_model_choice); plattform = sie folgt
+                  der Vorgabe von VoltPilot; env = dem ausgelieferten
+                  Standardmodell. Der Unterschied wird nie geraten.
+              platformDefault: { type: string, description: Was ohne eigene Wahl DIESER Anlage gälte. }
+              envDefault: { type: string, description: Was ohne jede Portal-Wahl gälte. }
+              setByName: { type: string, nullable: true, description: "Anzeige-Name des Umstellers; null = nicht im Token (die Fläche sagt dann „im Portal umgestellt\")." }
+              setAt: { type: string, format: date-time, nullable: true, description: "null = für diese Anlage nie umgestellt." }
+              selectable:
+                type: array
+                items: { type: string }
+                description: Alle Modelle dieser Art - die wählbare Menge.
+        history:
+          type: array
+          description: Die Umstellungen DIESER Anlage, NEUESTE zuerst (append-only).
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [load, pv] }
+              model: { type: string }
+              previousModel: { type: string, nullable: true, description: "null = die erste Umstellung dieser Anlage und Art." }
               setByName: { type: string, nullable: true }
               setAt: { type: string, format: date-time }
     ForecastQuality:
