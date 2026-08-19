@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "type": "register_write_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "9f2c41ab77d05e16",
+  "requested_at": "2026-08-19T14:04:00Z",
+  "mode": "schreiben",
+  "target": { "kind": "primary" },
+  "register": { "kind": "holding", "address": 231 },
+  "value": 7000
+}

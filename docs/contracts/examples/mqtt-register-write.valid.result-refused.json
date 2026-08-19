@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "type": "register_write_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "9f2c41ab77d05e15",
+  "answered_at": "2026-08-19T14:03:10Z",
+  "mode": "lesen",
+  "ok": false,
+  "error_code": "refused_control_owned",
+  "message": "Dieses Register gehört gerade der laufenden Steuerung; Ihr Wert würde binnen Sekunden überschrieben werden."
+}

@@ -4,13 +4,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
+import com.voltpilot.api.registerwrite.RegisterWriteEvents;
 import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
 import com.voltpilot.api.repo.CurtailmentStatusRepository;
+import com.voltpilot.api.repo.RegisterWriteEventRepository;
 import com.voltpilot.api.web.dto.CommandHistoryDto;
 import com.voltpilot.api.web.dto.CommandHistoryDto.CommandDetailDto;
 import com.voltpilot.api.web.dto.CommandHistoryDto.CommandEntryDto;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -36,18 +40,33 @@ public class CommandLogReader {
      */
     static final int MAX_ENTRIES = 500;
 
+    /**
+     * Der Deckel des VIERTEN Stroms. Er ist klein, weil ein Einmal-Schreibvorgang
+     * ein seltenes Ereignis ist - und er ist ein EIGENER Deckel, damit eine
+     * gesprächige Halteperioden-Liste die wenigen Register-Zeilen nie verdrängt.
+     */
+    static final int MAX_REGISTER_ENTRIES = 50;
+
+    /** Das Strom-Wort des vierten Stroms (Konzept vp-reg-schreib-konzept-p8 §2.5). */
+    static final String STREAM_REGISTER = "register";
+    /** Die Ereignis-Art seiner Zeilen - ein Punkt-Ereignis, keine Halteperiode. */
+    static final String EVENT_REGISTER_WRITE = "register_geschrieben";
+
     private final CommandLogRepository store;
     private final EntityRegistryRepository entities;
     private final ControlStatusRepository controlStatus;
     private final CurtailmentStatusRepository curtailmentStatus;
+    private final RegisterWriteEventRepository registerWrites;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public CommandLogReader(CommandLogRepository store, EntityRegistryRepository entities,
-            ControlStatusRepository controlStatus, CurtailmentStatusRepository curtailmentStatus) {
+            ControlStatusRepository controlStatus, CurtailmentStatusRepository curtailmentStatus,
+            RegisterWriteEventRepository registerWrites) {
         this.store = store;
         this.entities = entities;
         this.controlStatus = controlStatus;
         this.curtailmentStatus = curtailmentStatus;
+        this.registerWrites = registerWrites;
     }
 
     /**
@@ -70,10 +89,27 @@ public class CommandLogReader {
             // jüngsten Zeilen sind die, die niemand verlieren will.
             rows = rows.subList(rows.size() - MAX_ENTRIES, rows.size());
         }
+        // Der vierte Strom hat seinen EIGENEN Deckel, damit eine gespraechige
+        // Halteperioden-Liste die wenigen Register-Zeilen nie verdraengt - und
+        // greift er, sagt dieselbe `truncated`-Fahne es.
+        List<RegisterWriteEventRepository.Entry> writes =
+                registerWrites.between(siteId, deviceId, from, to, MAX_REGISTER_ENTRIES + 1);
+        if (writes.size() > MAX_REGISTER_ENTRIES) {
+            // Gekappt wird am AELTESTEN Ende (die Liste kommt neueste-zuerst).
+            writes = writes.subList(0, MAX_REGISTER_ENTRIES);
+            truncated = true;
+        }
+        List<CommandEntryDto> entries = new ArrayList<>(
+                rows.stream().map(CommandLogReader::toDto).toList());
+        entries.addAll(registerEntries(writes));
+        // Chronologisch, damit der Film EINE Zeitachse hat; ein fehlender Beginn
+        // (den es hier nicht geben kann) sortiert ans Ende statt zu werfen.
+        entries.sort(Comparator.comparing(CommandEntryDto::startedAt,
+                Comparator.nullsLast(Comparator.naturalOrder())));
         return new CommandHistoryDto(store.recordingSince(siteId).orElse(null),
                 CommandLog.ACCURACY_SECONDS, from, to, entityId,
                 entity == null ? null : entity.label(), writes(entity), truncated,
-                rows.stream().map(CommandLogReader::toDto).toList(),
+                entries,
                 controlStatus.latestForSite(siteId).orElse(null),
                 curtailmentStatus.latestForSite(siteId).orElse(null));
     }
@@ -117,6 +153,43 @@ public class CommandLogReader {
         }
     }
 
+    /**
+     * Der VIERTE Strom {@code register}: die Einmal-Schreibvorgänge auf
+     * Geräte-Register, zur LESEZEIT eingemischt (Konzept
+     * {@code vp-reg-schreib-konzept-p8} §2.5).
+     *
+     * <p><b>Es gibt bewusst KEINE Doppel-Speicherung.</b> Die Wahrheit steht
+     * genau einmal, im append-only Journal {@code register_write_event}; die
+     * Befehle-Seite liest sie mit, statt sie in {@code device_command_log} zu
+     * kopieren - zwei Bücher über dasselbe Ereignis wären zwei Wahrheiten.
+     *
+     * <p>Sie sind PUNKT-Ereignisse, keine Halteperioden: ein Register-Schreiben
+     * hat einen Zeitpunkt und ein Ergebnis, keine Dauer, in der es „gehalten"
+     * würde. {@code endedAt} trägt deshalb den Zeitpunkt der Quittung und ist
+     * {@code null}, solange keine da ist - nicht „läuft noch", sondern „es ist
+     * noch nichts zurückgekommen".
+     *
+     * <p>Bei einer Anfrage auf EINE Komponente werden die Vorgänge ihres Geräts
+     * gezeigt: sie betreffen den Schreibweg, über den diese Komponente gesteuert
+     * wird - dieselbe Regel, nach der auch die gerätebezogenen Kommando-Zeilen
+     * mitkommen.
+     *
+     * <p>⚠ Die {@code id} ist NEGATIV: die beiden Ströme kommen aus zwei
+     * Sequenzen, und die Fläche schlüsselt ihre Zeilen darauf. Ohne die
+     * Spiegelung könnten sich eine Halteperiode und ein Register-Vorgang
+     * dieselbe Kennung teilen und im Portal einander überschreiben.
+     */
+    private static List<CommandEntryDto> registerEntries(
+            List<RegisterWriteEventRepository.Entry> writes) {
+        return writes.stream()
+                .map(e -> new CommandEntryDto(-e.id(), STREAM_REGISTER, "ereignis",
+                        EVENT_REGISTER_WRITE, e.requestedAt(), e.answeredAt(), null, null, null,
+                        null, null, null, null, null, null, null, null, null, null, null, null,
+                        null, null, e.source(), null,
+                        RegisterWriteEvents.toDto(e)))
+                .toList();
+    }
+
     private static CommandEntryDto toDto(CommandLogRepository.Row r) {
         CommandLog.Detail d = r.detail();
         return new CommandEntryDto(r.id(), r.stream(), r.kind(), r.eventKind(), r.startedAt(),
@@ -126,6 +199,7 @@ public class CommandLogReader {
                 r.controlEnabled(), r.released(), r.foreignInfluence(),
                 r.entityId() == null ? null : r.entityId().toString(), r.source(),
                 d == null ? null : new CommandDetailDto(d.mismatchRoles(), d.certSource(),
-                        d.units(), d.certifiedUnits(), d.state(), d.reasonCode()));
+                        d.units(), d.certifiedUnits(), d.state(), d.reasonCode()),
+                null);
     }
 }

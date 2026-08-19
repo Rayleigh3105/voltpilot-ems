@@ -78,6 +78,19 @@ tags:
       ohne eine einzige Edge-Aenderung. READ-ONLY: es entsteht kein
       Schreibpfad zu einem Geraet. Kundendaten, also mandantenbezogen (RLS)
       und unter /sites/**, nicht unter /admin/**.
+  - name: register-write
+    description: >
+      Einmaliges Beschreiben eines Geraete-Registers ueber das Portal (Konzept
+      vp-reg-schreib-konzept-p8, Stufe 1 "Der Portal-Trigger"): erst den
+      Ist-Wert LESEN (die Vorschau ueber DIESELBE Lane, ueber die geschrieben
+      wuerde - sie beweist damit, dass der Weg offen ist), dann EINMAL
+      schreiben, danach ein Beleg mit Rueckleseprobe. Jeder Schreibvorgang
+      hinterlaesst eine append-only Papier-Spur (register_write_event) mit
+      beweisbarer Herkunft und den VERBATIM getippten Begriffen.
+      WELCHES Register eine Box ausfuehrt, entscheidet die BOX (Stufe 1: genau
+      das Deye-Installateur-Register 0x00E7 mit Wertdeckel 7000) - die Cloud
+      entscheidet nur, WER welche Anlage erreicht. Kundendaten, also
+      mandantenbezogen (RLS) und unter /sites/**, nicht unter /admin/**.
   - name: topology
     description: >
       Anlagen-Topologie-Read-Model (AE1, adaptive EMS-UI): the site as an
@@ -5137,6 +5150,104 @@ paths:
         "400": { description: Unbekannter Zeitraum. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage oder Komponente nicht gefunden. }
+  /api/v1/sites/{siteId}/register-write/preview:
+    post:
+      tags: [register-write]
+      summary: Schritt 1 - den Ist-Wert eines Registers lesen (Vorschau).
+      description: >
+        Liest das Register EINMAL ueber die Schreib-Lane und liefert Roh- UND
+        (wo eine Skala bekannt ist) skalierten Wert plus die Warnklasse. Es wird
+        NICHTS geschrieben und NICHTS protokolliert - eine Lesung aendert nichts,
+        und ein Protokoll der Lesungen wuerde die Schreibvorgaenge begraben, fuer
+        die das Journal existiert.
+        Weil die Vorschau ueber DIESELBE Lane laeuft, beweist sie mit, dass der
+        Schreibweg offen ist: eine Ablehnung ("die Steuerung besitzt dieses
+        Register gerade") erscheint hier, nie erst nach dem Klick.
+        Ein Ausbleiben der Antwort ist ein ehrlicher AUSGANG (200 mit
+        `errorCode: timeout`), kein Fehler.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterWriteRequest" }
+      responses:
+        "200":
+          description: Das Ergebnis der Vorschau (auch ein benannter Fehlschlag ist 200).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisterWriteOutcome" }
+        "400": { description: Adresse oder Registerart nicht lesbar. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage oder Geraet nicht gefunden. }
+        "409": { description: Die Anlage hat kein oder mehr als ein Geraet - das Ziel wird nie geraten. }
+        "503": { description: Die Anlage ist gerade nicht erreichbar. Es wurde nichts angefordert. }
+  /api/v1/sites/{siteId}/register-write:
+    post:
+      tags: [register-write]
+      summary: Schritt 2 - der EINE Schreibvorgang, mit Beleg und Papier-Spur.
+      description: >
+        Schreibt das Register GENAU EINMAL (kein Retry, kein Auffrischen - es
+        liegt im EEPROM) und liest ~2 s spaeter zurueck.
+        `expectedBefore` reist als Waechter mit: hat sich der Ist-Wert seit der
+        Vorschau geaendert, verweigert die Box, statt blind zu ueberschreiben.
+        Die Bestaetigung des Downlink-Kontrakts baut der SERVER aus Adresse und
+        Wert (Protokoll-Sicherheit, kein Tipp-Zwang).
+        `note` ist PFLICHT bei Registern der Klasse `netz_compliance` (in Stufe 1
+        also bei 0x00E7) und sonst freiwillig; sie wandert VERBATIM ins Journal.
+        Reihenfolge: erst veroeffentlichen, dann protokollieren - scheitert schon
+        das Veroeffentlichen (503), entsteht KEINE Zeile, die eine Anforderung
+        behauptet, die es nie gab.
+        Bleibt die Quittung aus, ist der Ausgang `unbekannt` - ausdruecklich NICHT
+        "nicht geschrieben"; die Quittung landet im Journal, sobald sie eintrifft.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterWriteRequest" }
+      responses:
+        "200":
+          description: Der Beleg (auch eine Ablehnung der Box ist 200 mit ihrem deutschen Grund).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegisterWriteOutcome" }
+        "400": { description: Wert/Adresse nicht lesbar, oder die Pflicht-Notiz fehlt. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage oder Geraet nicht gefunden. }
+        "409": { description: Die Anlage hat kein oder mehr als ein Geraet. }
+        "503": { description: Die Anlage ist gerade nicht erreichbar. Es wurde NICHTS geschrieben. }
+  /api/v1/sites/{siteId}/register-write/history:
+    get:
+      tags: [register-write]
+      summary: Der Verlauf der Register-Schreibvorgaenge dieser Anlage.
+      description: >
+        Dieselben Journal-Zeilen, die die Befehle-Seite als vierten Strom
+        `register` einmischt - je Vorgang zu EINER Zeile gefaltet (Anforderung +
+        Ergebnis, verbunden ueber `requestId`). Neueste zuerst.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: deviceId
+          in: query
+          required: false
+          description: Nur die Vorgaenge EINES Geraets.
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: Der Verlauf (leer, solange nie geschrieben wurde).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RegisterWriteEvent" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage nicht gefunden. }
 components:
   securitySchemes:
     bearerAuth:
@@ -5161,6 +5272,115 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    RegisterWriteRequest:
+      type: object
+      description: >
+        Was der Mensch im Register-Drawer eingetragen hat - ROH.
+        Adresse und Wert sind absichtlich Zeichenketten: das Journal speichert
+        sie VERBATIM, damit spaeter belegbar ist, was jemand wirklich getippt
+        hat ("231" vs "0x00E7"), und nicht nur unsere Normalisierung.
+      required: [address]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+          description: >
+            Das Ziel-Geraet. Ohne Angabe entscheidet das EINZIGE Geraet der
+            Anlage; eine Anlage mit mehreren wird beim Namen genannt (409) -
+            das Ziel wird nie geraten.
+        registerKind: { type: string, enum: [holding, coil], default: holding }
+        address:
+          type: string
+          maxLength: 16
+          description: "Dezimal (231) oder hexadezimal (0x00E7). Ein nacktes E7 wird bewusst NICHT als Hex geraten."
+        value:
+          type: string
+          maxLength: 16
+          description: "Der ROHE Registerwert (kein kW). Nur beim Schreiben; dieselbe Schreibweise wie die Adresse."
+        expectedBefore:
+          type: integer
+          minimum: 0
+          maximum: 65535
+          description: "Der Ist-Wert der Vorschau. Er wird AUF DEM GERAET verglichen, in derselben Socket-Sitzung, in der gelesen und geschrieben wird."
+        writeFc:
+          type: integer
+          enum: [5, 6, 16]
+          description: "Leer lassen: dann entscheidet die Box (Spule 5, Holding 16). FC16 ist die Vorauswahl, weil viele Firmwares einen FC6-Rahmen ANNEHMEN und nie uebernehmen."
+        note:
+          type: string
+          maxLength: 500
+          description: "Der Grund, verbatim ins Journal. PFLICHT bei Registerklasse netz_compliance (Captain-Entscheid D5), sonst freiwillig."
+    RegisterWriteOutcome:
+      type: object
+      description: >
+        Das Ergebnis EINES Schritts. Jedes Zahlenfeld darf fehlen, und ein
+        fehlendes heisst "nicht gemessen", nie 0 - bei einer Einspeisegrenze
+        waere 0 ein WERT ("gar keine Einspeisung erlaubt").
+      properties:
+        requestId: { type: string }
+        mode: { type: string, enum: [lesen, schreiben] }
+        ok: { type: boolean }
+        outcome:
+          type: string
+          enum: [gelesen, uebernommen, nicht_uebernommen, abgelehnt, fehler, unbekannt]
+          description: "`unbekannt` ist die ehrliche Antwort auf Schweigen und ausdruecklich NICHT 'nicht geschrieben'."
+        beforeRaw: { type: integer, nullable: true }
+        afterRaw: { type: integer, nullable: true }
+        beforeScaled: { type: number, nullable: true, description: "Nur wo eine Skala bekannt ist - nie eine erfundene Einheit." }
+        afterScaled: { type: number, nullable: true }
+        adopted:
+          type: boolean
+          nullable: true
+          description: "DREIWERTIG: null = keine Aussage (Vorschau, ausgebliebene Quittung), false = angenommen aber NICHT uebernommen, true = zurueckgelesen."
+        errorCode: { type: string, nullable: true, description: "Eine der geschlossenen Klassen des Downlink-Kontrakts; ein unbekanntes Wort wird verworfen." }
+        message: { type: string, nullable: true }
+        targetLabel: { type: string, nullable: true, description: "WOHIN die Box geschrieben hat - ihr eigenes Echo." }
+        address: { type: integer }
+        addressHex: { type: string }
+        registerLabel: { type: string, nullable: true, description: "null = VoltPilot kennt dieses Register nicht (nie ein erfundener Name)." }
+        registerClass: { type: string, enum: [netz_compliance, bekannt, unbekannt] }
+        scaleNote: { type: string, nullable: true }
+        noteRequired: { type: boolean }
+        confirm: { type: string, nullable: true, description: "Der Bestaetigungs-Token, den dieser Schreibvorgang getragen hat." }
+        at: { type: string, format: date-time }
+    RegisterWriteEvent:
+      type: object
+      description: >
+        EIN Vorgang aus dem append-only Journal, zu einer Zeile gefaltet.
+        Die Herkunft steht an der Zeile: `kunde`/`voltpilot` sind ueber ein
+        validiertes Token beweisbare Identitaeten, `geraet` ist der
+        Wartungszugang an der Box - fuer den es cloud-seitig KEINE Identitaet
+        gibt, und genau das sagt das Wort.
+      properties:
+        id: { type: integer, format: int64 }
+        requestId: { type: string, description: "Der Kreuz-Schluessel zum persistenten Audit AUF der Box." }
+        source: { type: string, enum: [portal, geraet] }
+        deviceId: { type: string, nullable: true }
+        deviceRef: { type: string, nullable: true }
+        lane: { type: string, nullable: true }
+        targetLabel: { type: string, nullable: true }
+        registerKind: { type: string, nullable: true }
+        address: { type: integer, nullable: true }
+        addressHex: { type: string, nullable: true }
+        addressInput: { type: string, nullable: true, description: "VERBATIM, wie getippt." }
+        valueInput: { type: string, nullable: true, description: "VERBATIM, wie getippt." }
+        note: { type: string, nullable: true, description: "VERBATIM." }
+        valueRaw: { type: integer, nullable: true }
+        expectedBefore: { type: integer, nullable: true }
+        registerLabel: { type: string, nullable: true }
+        registerClass: { type: string, nullable: true }
+        scaleNote: { type: string, nullable: true }
+        origin: { type: string, enum: [kunde, voltpilot, geraet], nullable: true }
+        actorName: { type: string, nullable: true, description: "Anzeige-Name, nie die Autoritaet." }
+        actorRole: { type: string, nullable: true }
+        viaTenantSwitcher: { type: boolean }
+        requestedAt: { type: string, format: date-time }
+        beforeRaw: { type: integer, nullable: true }
+        afterRaw: { type: integer, nullable: true }
+        adopted: { type: boolean, nullable: true }
+        outcome: { type: string, nullable: true }
+        reason: { type: string, nullable: true, description: "Der deutsche Satz der Box, verbatim." }
+        answeredAt: { type: string, format: date-time, nullable: true }
     SelfBuildChannel:
       type: object
       description: >
@@ -5888,12 +6108,20 @@ components:
         (kind=ereignis, dann traegt eventKind seine Art).
       properties:
         id: { type: integer, format: int64 }
-        stream: { type: string, enum: [batterie, abregelung, verbraucher, waechter] }
+        stream:
+          type: string
+          enum: [batterie, abregelung, verbraucher, waechter, register]
+          description: >
+            `register` ist der VIERTE Strom: die Einmal-Schreibvorgaenge auf
+            Geraete-Register, zur Lesezeit aus dem append-only Journal
+            register_write_event eingemischt (KEINE Doppel-Speicherung). Ein
+            aelteres Portal kennt das Wort nicht und laesst die Zeile wortlos
+            aus - die Unbekannt-bleibt-ohne-Behauptung-Regel.
         kind: { type: string, enum: [periode, ereignis] }
         eventKind:
           type: string
           nullable: true
-          enum: [notaus_ein, notaus_aus, freigabe_erteilt, freigabe_widerrufen, luecke, verlauf_gedeckelt]
+          enum: [notaus_ein, notaus_aus, freigabe_erteilt, freigabe_widerrufen, luecke, verlauf_gedeckelt, register_geschrieben]
         startedAt: { type: string, format: date-time }
         endedAt:
           type: string
@@ -5924,7 +6152,13 @@ components:
         released: { type: boolean, nullable: true }
         foreignInfluence: { type: boolean, nullable: true }
         entityId: { type: string, format: uuid, nullable: true }
-        source: { type: string, enum: [cloud_abgeleitet, geraet] }
+        source:
+          type: string
+          enum: [cloud_abgeleitet, geraet, portal]
+          description: >
+            Die Herkunft der Zeile. `portal` gehoert dem Strom `register`: der
+            Schreibvorgang wurde ueber das Portal ausgeloest (gegenueber
+            `geraet` = am Wartungszugang der Box).
         detail:
           type: object
           nullable: true
@@ -5936,6 +6170,12 @@ components:
             certifiedUnits: { type: integer, nullable: true }
             state: { type: string, nullable: true }
             reasonCode: { type: string, nullable: true }
+        register:
+          allOf: [{ $ref: "#/components/schemas/RegisterWriteEvent" }]
+          nullable: true
+          description: >
+            NUR auf den Zeilen des Stroms `register` gesetzt: der gefaltete
+            Vorgang aus dem Journal (Anforderung + Ergebnis).
     RuleEvents:
       type: object
       description: >

@@ -51,6 +51,12 @@ public record CommandHistoryDto(Instant recordingSince, int accuracySeconds, Ins
      * @param endedAt {@code null} = die Periode LÄUFT noch.
      * @param verdict das Rücklese-Urteil; {@code keine_antwort} ist ausdrücklich
      *                nicht {@code abweichend} (Schweigen ist eine Lücke).
+     * @param register NUR auf den Zeilen des vierten Stroms {@code register}
+     *                gesetzt: der gefaltete Vorgang aus dem append-only Journal
+     *                {@code register_write_event}. Es gibt KEINE Doppel-Speicherung -
+     *                die Befehle-Seite mischt dieselben Zeilen zur Lesezeit ein.
+     *                Ein älteres Portal kennt das Strom-Wort nicht und lässt die
+     *                Zeile wortlos aus (die Unbekannt-bleibt-ohne-Behauptung-Regel).
      * @param source  {@code cloud_abgeleitet} (V1) oder {@code geraet} (Stufe 2)
      *                - die Herkunft steht an der Zeile, damit die Fläche nie
      *                mehr behauptet, als ihre Quelle hergibt.
@@ -61,7 +67,7 @@ public record CommandHistoryDto(Instant recordingSince, int accuracySeconds, Ins
             Double commandedKwMax, String verdict, Integer cycles, Integer cyclesConfirmed,
             Integer cyclesNoAnswer, Integer cyclesMismatch, Boolean controlEnabled,
             Boolean released, Boolean foreignInfluence, String entityId, String source,
-            CommandDetailDto detail) {
+            CommandDetailDto detail, RegisterWriteEventDto register) {
     }
 
     /**

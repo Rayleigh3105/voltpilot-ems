@@ -13,6 +13,7 @@ fixtures cover, and the fixtures are read by REAL test code - never decoration:
 | `mqtt-ota-target.*` | `../mqtt-ota-target.schema.json` | `edge-app/core/internal/agent/ota_target_test.go` (`TestContractExampleEnvelopeIsParsedAsSpecified` - the REAL device-side envelope parser reads the same bytes) |
 | `mqtt-ota-apply.*` | `../mqtt-ota-apply.schema.json` | `edge-app/core/internal/agent/ota_apply_downlink_test.go` (`TestContractExampleApprovalIsParsedAsSpecified` - the REAL device-side approval parser reads the same bytes) |
 | `mqtt-probe.*` | `../mqtt-probe.schema.json` | `edge-app/core/internal/probe/probe_test.go` (`TestContractExamplesAreParsedAsSpecified` - the REAL device-side probe parser reads the same bytes, incl. the `switch_test`/`switch_cancel` ops of the release assistant and the `switched` result block) |
+| `mqtt-register-write.*` | `../mqtt-register-write.schema.json` | `services/api/src/test/java/com/voltpilot/api/registerwrite/RegisterWritePublisherTest.java` (the REAL cloud-side envelope builder is compared BYTE-FOR-FIELD against the request fixtures) and `.../RegisterWriteResultListenerTest.java` (the REAL cloud-side result parser reads the result fixtures); the device-side parser reads the same bytes in `edge-app/core/internal/registerwrite` |
 
 Moving or renaming a fixture breaks those tests deliberately: the file path is
 part of the contract check.
@@ -53,6 +54,13 @@ would make a fixture invalid for the wrong reason):
   down the bytes (a tampered layer then fails the pull itself). A manifest that
   says "run whatever `:latest` points at today" would be a signed statement
   about mutable content - the one thing the signature is supposed to prevent.
+- `mqtt-register-write.invalid.write-without-confirm.json` - `mode: "schreiben"`
+  without the `confirm` token. The two-stage rule is the whole protocol of this
+  channel: a preview reads, and only an envelope that names REGISTER AND VALUE
+  again may write. Without it a request that merely LOOKS like a preview (a
+  replayed body, a client that forgot which stage it was in) would burn an EEPROM
+  write cycle on a customer's inverter - so the schema refuses it before any box
+  ever sees it, and the box's own `Admit` refuses it a second time.
 - `mqtt-ota-target.invalid.manifest-without-signature.json` - the envelope
   carries `manifest_b64` but no `signature_b64`. Bytes without their detached
   signature are a release that merely CALLS itself signed: the device would

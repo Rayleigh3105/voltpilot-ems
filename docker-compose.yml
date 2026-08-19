@@ -326,6 +326,12 @@ services:
       # Consumer runtime status (Verbrauchssteuerung Inkrement 3, D9): the
       # heartbeat consumers block -> consumer_runtime_status.
       VOLTPILOT_CONSUMERS_MQTT_LISTENER_ENABLED: "true"
+      # Register schreiben ueber das Portal (Stufe 1 "Der Portal-Trigger"):
+      # der CLOUD-NOT-AUS. Vorgabe AN - die eigentliche Scharfschaltung sitzt
+      # fail-closed auf dem GERAET (VP_INSTALLER_WRITE_ENABLED, Vorgabe AUS),
+      # eine nicht armierte Box antwortet `gate_disabled` und schreibt nichts.
+      # Auf "false" gesetzt verschwinden die zwei Routen ganz.
+      VOLTPILOT_REGISTER_WRITE_ENABLED: "${VOLTPILOT_REGISTER_WRITE_ENABLED:-true}"
       # Verbrauchssteuerung Inkrement 4: the consumer-policy activation gates,
       # BOTH default OFF (tests/rig only; Produktivierung ist Inkrement 5). The
       # stop paths (deactivate/pause + retained-artifact retraction) ignore

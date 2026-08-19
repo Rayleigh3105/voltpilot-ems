@@ -1875,6 +1875,95 @@ Erste Stufe der Kommando-Transparenz (Scout `data/vp-kommando-transparenz-k3` §
 - **Portal:** die reine `frontend/portal/src/curtailment.ts` `exportGuardView` reicht die deutschen Sätze der Box DURCH (nie neu formuliert — `:8484` und Portal dürfen dasselbe Urteil nicht anders benennen) und wird von `ControlStrip` gerendert; die Diskrepanz-Zeile („Gerät 33 kW / hinterlegt 70 kW") lastet dem Gerät ausdrücklich NICHT unsere eigene Kappe an. Details in `frontend/portal/AGENTS.md`.
 - **Beweise:** `CurtailmentStatusListenerTest` (+8, u. a. der Live-Block wörtlich, unbekanntes Wort, unvollständige Geräte-Grenze, 0 kW als WERT) · Testcontainers `PortalApiTest.theExportGuardAndTheDevicesOwnLimitAreIngestedAndTenantScoped` (echte DB: kein Block ⇒ keine Behauptung, die Herzogau-Momentaufnahme, RLS 404, je-Herzschlag-Ersetzung, wirkender Wächter ohne Lücken-Satz) · Edge `inverter/exportlimit_test.go` + `agent/device_export_limit_test.go` + `mirror-poll.e2e.test.js` · Portal `curtailment.test.ts` (+10) + `ControlStrip.test.tsx` (+6).
 
+## Register schreiben über das Portal, Stufe 1 „Der Portal-Trigger" (Cloud-Hälfte)
+
+Konzept `data/vp-reg-schreib-konzept-p8` (Captain-Vorentscheidungen + D1–D6 vom 19.08.2026). Ein
+Register einer Kundenanlage aus der Ferne beschreiben — der Auslöser ist das Deye-Installateur-
+Register `0x00E7` von 33,0 auf 70,0 kW anzuheben, ohne Vor-Ort-Termin. **Diese Stufe ist der ZWEITE
+TRIGGER auf denselben Einmal-Schreib-Kern**, den die Box seit `edge-app/core/internal/installerwrite`
+besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`, erster Trigger: die lokale `:8484`-Taste) —
+**kein zweiter Schreibweg**, den man später getrennt absichern müsste (die Portal-Apply-Doktrin).
+
+- **Der Kontrakt ist EIGEN, nicht eine Probe-Erweiterung** (`docs/contracts/mqtt-register-write.schema.json`
+  + 4 gültige/1 ungültige Fixture): der Probe-Kopf verspricht „no-persistence — er beantwortet eine
+  Frage von JETZT", und seine Schreib-Ops tragen strukturell einen Auto-Aus. Hier ist das
+  Stehenbleiben der Zweck und ein Journal Pflicht. Geteilt werden die REGELN (Identität,
+  `requested_at`-Fenster, LAN-Whitelist, Ratenbegrenzung, Fehlerklassen), nicht die Topics —
+  `ems/{t}/{s}/{d}/v2/register-write(-result)` im `v2/#`-Teilbaum, den die per-Gerät-ACL längst deckt
+  (D-2, **keine Broker-Änderung**).
+- **⚠ NICHT-RETAINED wiegt hier schwerer als anderswo:** eine retained Nachricht wird bei JEDEM
+  Verbindungsaufbau erneut zugestellt — ein retained Schreib-Auftrag wäre ein EEPROM-Schreibzyklus je
+  Reconnect. Die zweite Hälfte ist `requested_at` (die Box übernimmt den Stempel als Fensterbeginn,
+  eine nachgelieferte Anfrage ist bei Ankunft verfallen), die dritte die `request_id`, die sich die
+  Box als zuletzt ausgeführte merkt. **Es gibt NIRGENDS einen Nachhol-Speicher** (Captain-Entscheid 4:
+  „nur live").
+- **Drei Lanes im Vertrag, EINE ausgeführt.** `primary` führt Stufe 1 aus; `entity` und `lan` sind
+  VOLLSTÄNDIG spezifiziert und werden validiert, aber mit `not_supported` beantwortet — die
+  Probe-Kanal-Entscheidung wörtlich („ein Vertrag, der eine Form erst später kennt, hätte eine Box im
+  Feld, die sie STILL verwirft statt sie zu benennen").
+- **Zwei Routen + eine Lesesicht** (`SiteRegisterWriteController`, `/api/v1/sites/{id}/register-write`
+  `/preview` · POST · `/history`): mandantenbezogen wie jede `/sites/**`-Route — **KEIN
+  `@PreAuthorize`**, Authentifizierung + RLS sind der Zaun, fremde Anlage **404**. Es ist bewusst
+  schon die KUNDEN-Route, obwohl in Stufe 1 nur die Plattform-Geräteseite sie rendert: Stufe 3 nutzt
+  exakt dieselbe, eine zweite admin-gegatete Tür hätte später getrennt abgesichert werden müssen.
+  Die Rollen unterscheiden nur die REICHWEITE (wessen Anlagen), nie die Register.
+- **⚠ Jede POLITIK gehört der BOX.** Der api validiert die FORM (Adresse/Wert 0..65535, Registerart)
+  und löst auf, WER gefragt wird — ob die Adresse freigegeben ist (Stufe 1: nur `0x00E7`, Wert
+  0 < raw ≤ 7000), ob das Ziel im Kunden-LAN steht und ob die laufende Steuerung das Register gerade
+  besitzt, entscheidet das Gerät. Eine zweite Politik hier wäre eine zweite Wahrheit über ein LAN,
+  das der api nie gesehen hat. **Die EINE Regel, die cloud-seitig lebt, ist die Notiz-Pflicht (D5):**
+  bei Registerklasse `netz_compliance` — in Stufe 1 also bei `0x00E7` — ist die Notiz Pflicht, für
+  jede Herkunft; sie steht hier, weil die KLASSE hier entschieden wird. Reine Warnung, **kein
+  Bestätigungs-Häkchen** (D3).
+- **⚠ `RegisterKnowledge` ist in Stufe 1 auf die ADRESSE hart verdrahtet.** Die volle
+  Warnklassen-Taxonomie (ein Daten-Verzeichnis nach dem `entitytypes/catalog.json`-Muster) kommt in
+  Stufe 2 und muss dann JE FAMILIE sprechen: auf `hybrid_1p` ist die Einspeisegrenze ein ANDERES
+  Register mit ANDERER Skala (`0x00F5`, Skala 1) — und genau das schreibt dort unser eigener
+  Steuerpfad. Folgenlos, solange die Box eine solche Familie ohnehin ablehnt (`AllowedFamily`).
+- **Das Journal ist die Papier-Spur, und es sind ZWEI Zeilen je Vorgang** (`register_write_event`,
+  Migration `V20260827000000`; RLS + FORCE, App-Rolle SELECT+INSERT, UPDATE/DELETE REVOKED — das
+  `rule_event`/`site_forecast_model_choice`-Muster; ⚠ das BIGSERIAL braucht sein eigenes
+  `GRANT USAGE ON SEQUENCE`): `angefordert` trägt WER/WOHIN/WAS samt der **verbatim getippten
+  Begriffe** (`address_input`/`value_input`/`note` — steht später die Frage „ich habe 231 getippt,
+  nicht 0x00E7", zeigt das Journal die exakte Zeichenkette), `quittung`/`keine_quittung` trägt das
+  Ergebnis. Eine UPDATE-Spalte wäre ein nachträglich änderbares Journal, also keins. Verbunden über
+  `request_id` — denselben Schlüssel, unter dem die Box ihr eigenes Audit führt (zwei unabhängige
+  Bücher, kreuz-prüfbar). Jeder INSERT ist `ON CONFLICT (request_id, event) DO NOTHING`, damit eine
+  QoS1-Doppelzustellung und der D6-Herzschlag keine zweite Zeile erzeugen.
+- **⚠ Die Reihenfolge ist tragend: erst VERÖFFENTLICHEN, dann protokollieren** (die OTA-Apply-Doktrin).
+  Scheitert schon das Veröffentlichen (503), entsteht KEINE Zeile, die eine Anforderung behauptet,
+  die es nie gab; gelingt es, steht die Anforderungs-Zeile — auch wenn die api danach abstürzt. Ein
+  Schreibvorgang ist damit nie spurlos. **Eine VORSCHAU protokolliert gar nichts**: sie ändert nichts,
+  und ein Protokoll der Lesungen würde die Schreibvorgänge begraben, für die es das Journal gibt
+  (dieselbe Entscheidung wie im Box-Audit).
+- **⚠ Der Quittungs-Zuhörer persistiert UNABHÄNGIG vom wartenden Request-Thread** (anders als der
+  Probe-Zuhörer, der nichts speichert): der Aufruf hat nach Sekunden aufgegeben und „Zustand
+  unbekannt" gesagt — trifft die Quittung später doch ein, ist das Journal der Ort, an dem sie
+  sichtbar wird. **Schweigen ist NIE „nicht geschrieben"** (die PR-280-Lehre); der Ausgang heißt
+  wörtlich `unbekannt`, und die Oberfläche verlangt vor einem erneuten Schreibvorgang eine neue
+  Ist-Lesung.
+- **Der vierte Strom `register`** wird zur LESEZEIT in `GET /sites/{id}/command-history` eingemischt
+  (`CommandLogReader.registerEntries`) — **KEINE Doppel-Speicherung**, die Wahrheit steht genau
+  einmal im Journal. Punkt-Ereignisse (`kind='ereignis'`, `eventKind='register_geschrieben'`), und
+  ⚠ ihre `id` ist NEGATIV, weil die beiden Ströme aus zwei Sequenzen kommen und die Fläche darauf
+  schlüsselt. Ein älteres Portal kennt das Strom-Wort nicht und lässt die Zeile wortlos aus.
+- **⚠ Der Cloud-Kill-Switch `voltpilot.register-write.enabled` ist im CODE per Vorgabe AN** — eine
+  argumentierte Abweichung von der Konzept-Empfehlung („Vorgabe false im Code, true in BEIDEN
+  Composes"). Ein per Vorgabe ausgeschaltetes Flag muss im gitops-Repo nachgezogen werden, und genau
+  diese Klasse hat schon einmal einen stillen Produktions-Ausfall gekostet (die OTA-Listener-Falle).
+  Der Verzicht kostet nichts, weil die eigentliche Scharfschaltung fail-closed auf dem GERÄT sitzt
+  (`VP_INSTALLER_WRITE_ENABLED`, Vorgabe AUS): eine nicht armierte Box antwortet `gate_disabled`.
+  Publisher/Zuhörer reiten auf `voltpilot.provisioning.*` (derselbe Broker wie Probe/Provisionierung/
+  OTA) — kein weiteres Transport-Flag. Fristen: `voltpilot.register-write.{read,write}-timeout`.
+- **Beweise:** rein `RegisterKnowledgeTest` (7) · `RegisterWritePublisherTest` (5, die Umschläge
+  gegen die Kontrakt-Fixtures PER PFAD) · `RegisterWriteResultListenerTest` (7, u. a. „eine Quittung
+  wird auch dann protokolliert, wenn niemand mehr wartet", „ein Probelauf nie", „ein erfundenes
+  Fehlerwort erreicht keinen Kunden") · Testcontainers `RegisterWriteApiTest` (6, echtes
+  EMQX + DB + Keycloak: die ganze Reise Vorschau→Bestätigen→Beleg mit verbatim Eingaben, die
+  Notiz-Pflicht ohne einen einzigen Byte auf dem Draht, die Vorschau ohne Spur, Schweigen =
+  `unbekannt` samt verspäteter Quittung, der vierte Strom, der Mandanten-Zaun und die
+  Admin-Herkunft über den Umschalter).
+
 ## Kommando-Transparenz V1 „Der Verlauf": was VoltPilot an ein Gerät schickt, ist kundensichtbar
 
 Konzept `data/vp-kommando-transparenz-k3` (Captain-Entscheide F1–F5 vom 17.08.2026). Der Anlass ist

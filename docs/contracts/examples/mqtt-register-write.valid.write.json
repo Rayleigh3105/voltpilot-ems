@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "type": "register_write_request",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "9f2c41ab77d05e14",
+  "requested_at": "2026-08-19T14:02:44Z",
+  "requested_by": "8f1c0a2e-5b3d-4f77-9a10-2c6b7d9e1f04",
+  "mode": "schreiben",
+  "target": { "kind": "primary" },
+  "register": { "kind": "holding", "address": 231 },
+  "write_fc": 16,
+  "value": 7000,
+  "expected_before": 3300,
+  "confirm": "0X00E7=7000"
+}

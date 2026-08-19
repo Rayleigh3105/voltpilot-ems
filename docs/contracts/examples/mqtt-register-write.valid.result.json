@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "type": "register_write_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "9f2c41ab77d05e14",
+  "answered_at": "2026-08-19T14:02:49Z",
+  "mode": "schreiben",
+  "ok": true,
+  "before_raw": 3300,
+  "after_raw": 7000,
+  "wrote": true,
+  "adopted": true,
+  "target_label": "Deye SUN-30K-SG01HP3 · 192.168.0.28 · Unit 1",
+  "message": "Der Wechselrichter hat 70,0 kW übernommen (Register 0x00e7 = 7000)."
+}
