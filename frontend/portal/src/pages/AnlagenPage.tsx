@@ -1281,8 +1281,14 @@ export function AnlageSeite({
            Fahrplan-Zeile. Darunter das Widget-Raster: eine kompakte Kachel
            je Block/Modus, die WIRKLICH etwas beisteuert - ein Tipp öffnet
            ihr Modal (Jetzt | Verlauf). Was kein Modus und keine Quelle
-           beisteuert, erscheint nicht - auch nicht als leere Karte. */
-        <>
+           beisteuert, erscheint nicht - auch nicht als leere Karte.
+
+           Der senkrechte Takt gehoert dem STAPEL, nicht den Bausteinen
+           (`.vp-cockpit-stack` in CockpitBlocks.css): vorher brachte jeder
+           Block seinen eigenen Aussenabstand mit und drei brachten gar keinen,
+           also standen Kacheln, Boersenpreis und Fahrplan mit 0 px
+           aneinander. */
+        <div className="vp-cockpit-stack">
           {sticky && <MobileStickyHead head={sticky} shown={scrolledPastMoney} />}
 
           {ovSite == null ? (
@@ -1399,7 +1405,7 @@ export function AnlageSeite({
               />
             </div>
           )}
-        </>
+        </div>
       ) : (
         /* ===== Ehrlicher Endzustand: Anlage MIT Daten, ohne Komponenten ====
            Captain-Nachtrag 06.08.2026 §3: der automatische v2-Backfill
