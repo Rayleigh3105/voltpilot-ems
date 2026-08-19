@@ -1,0 +1,579 @@
+package com.voltpilot.api;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import dasniko.testcontainers.keycloak.KeycloakContainer;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * Die Zwei-Schritt-Strecke „Register schreiben" gegen echtes TimescaleDB +
+ * Keycloak + EMQX (Konzept {@code vp-reg-schreib-konzept-p8}, Stufe 1).
+ *
+ * <p>Was hier bewiesen wird:
+ * <ol>
+ *   <li>Die vollständige Reise: Vorschau → Bestätigen → Beleg, vertragsförmig
+ *       auf dem EIGENEN Topic des Geräts, mit Roh- UND skaliertem Wert.</li>
+ *   <li>Die Papier-Spur ist BEWEISBAR: Herkunft aus dem Token, die getippten
+ *       Begriffe VERBATIM, Anforderung und Quittung als zwei Zeilen.</li>
+ *   <li>Die Notiz ist bei {@code netz_compliance} PFLICHT (D5) - und eine
+ *       Ablehnung erreicht das Gerät NIE und hinterlässt KEINE Zeile.</li>
+ *   <li>Eine Vorschau hinterlässt keine Spur - sie ändert nichts.</li>
+ *   <li>Schweigen heißt {@code unbekannt}, nie „nicht geschrieben" - und die
+ *       später eintreffende Quittung landet trotzdem im Journal.</li>
+ *   <li>Der vierte Strom {@code register} trägt dieselben Zeilen in den
+ *       Kommando-Verlauf, ohne sie ein zweites Mal zu speichern.</li>
+ *   <li>Der Mandanten-Zaun: fremde Anlage 404, anonym 401 - das Gerät wird
+ *       dabei nie gefragt; ein Admit über den Umschalter ist als
+ *       {@code voltpilot} kenntlich.</li>
+ * </ol>
+ */
+@Testcontainers(disabledWithoutDocker = true)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("local")
+class RegisterWriteApiTest {
+
+    private static final String APP_USER = "voltpilot_app";
+    private static final String APP_PW = "voltpilot_app_test_pw";
+    private static final String TENANT_A = "00000000-0000-0000-0000-000000000001";
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
+            DockerImageName.parse("timescale/timescaledb:2.17.2-pg16")
+                    .asCompatibleSubstituteFor("postgres"))
+            .withDatabaseName("voltpilot")
+            .withUsername("voltpilot")
+            .withPassword("voltpilot_dev_pw");
+
+    @Container
+    static final KeycloakContainer KEYCLOAK =
+            new KeycloakContainer("quay.io/keycloak/keycloak:26.0.5")
+                    .withRealmImportFile("keycloak/voltpilot-realm.json");
+
+    @Container
+    static final GenericContainer<?> EMQX =
+            new GenericContainer<>(DockerImageName.parse("emqx/emqx:5.8.3"))
+                    .withExposedPorts(1883)
+                    .waitingFor(Wait.forLogMessage(".*is running now.*", 1)
+                            .withStartupTimeout(Duration.ofMinutes(2)));
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", () -> APP_USER);
+        registry.add("spring.datasource.password", () -> APP_PW);
+        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.user", POSTGRES::getUsername);
+        registry.add("spring.flyway.password", POSTGRES::getPassword);
+        registry.add("spring.flyway.placeholders.appDbUser", () -> APP_USER);
+        registry.add("spring.flyway.placeholders.appDbPassword", () -> APP_PW);
+
+        String realm = KEYCLOAK.getAuthServerUrl() + "/realms/voltpilot";
+        registry.add("voltpilot.security.oidc.enabled", () -> "true");
+        registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> realm);
+        registry.add("spring.security.oauth2.resourceserver.jwt.jwk-set-uri",
+                () -> realm + "/protocol/openid-connect/certs");
+
+        registry.add("voltpilot.provisioning.enabled", () -> "true");
+        registry.add("voltpilot.provisioning.broker-url",
+                () -> "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883));
+        // Kurze Fristen: der Testlauf soll die Schweigen-Regel beweisen, nicht
+        // 45 Sekunden lang warten.
+        registry.add("voltpilot.register-write.read-timeout", () -> "PT3S");
+        registry.add("voltpilot.register-write.write-timeout", () -> "PT3S");
+    }
+
+    @LocalServerPort
+    int port;
+
+    @Autowired
+    TestRestTemplate rest;
+
+    private final ObjectMapper json = new ObjectMapper();
+
+    /** Der komplette Anwendungsfall: 0x00E7 von 33,0 auf 70,0 kW, ohne SSH. */
+    @Test
+    void theTwoStepJourneyWritesTheRegisterAndLeavesAProvableTrail() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Register-Anlage");
+        UUID device = claim(customer, site, "edge-regwrite-e2e-01");
+
+        try (DeviceStub stub = new DeviceStub()) {
+            stub.answerWith(req -> {
+                String id = req.get("request_id").asText();
+                boolean write = "schreiben".equals(req.get("mode").asText());
+                return "{\"schema_version\":\"1.0\",\"type\":\"register_write_result\""
+                        + ",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + site + "\""
+                        + ",\"device_id\":\"" + device + "\",\"request_id\":\"" + id + "\""
+                        + ",\"answered_at\":\"2026-08-19T14:02:49Z\""
+                        + ",\"mode\":\"" + req.get("mode").asText() + "\",\"ok\":true"
+                        + ",\"before_raw\":3300"
+                        + (write ? ",\"after_raw\":7000,\"wrote\":true,\"adopted\":true" : "")
+                        + ",\"target_label\":\"Deye SUN-30K-SG01HP3 · 192.168.0.28 · Unit 1\""
+                        + ",\"message\":\"" + (write ? "Übernommen." : "Gelesen.") + "\"}";
+            });
+
+            // --- Schritt 1: den Ist-Wert lesen -------------------------------
+            ResponseEntity<Map<String, Object>> preview = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x00E7"));
+            assertThat(preview.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+            JsonNode asked = stub.awaitRequest();
+            assertThat(stub.lastTopic).isEqualTo(
+                    "ems/" + TENANT_A + "/" + site + "/" + device + "/v2/register-write");
+            assertThat(asked.get("type").asText()).isEqualTo("register_write_request");
+            assertThat(asked.get("mode").asText()).isEqualTo("lesen");
+            assertThat(asked.get("register").get("address").asInt()).isEqualTo(231);
+            assertThat(asked.get("target").get("kind").asText()).isEqualTo("primary");
+            // Die Vorschau schreibt nichts - der Umschlag trägt weder Wert noch
+            // Bestätigung.
+            assertThat(asked.has("value")).isFalse();
+            assertThat(asked.has("confirm")).isFalse();
+            // requested_at ist die zweite Hälfte von „nicht retained".
+            assertThat(asked.get("requested_at").asText()).isNotBlank();
+
+            Map<String, Object> p = preview.getBody();
+            assertThat(p.get("beforeRaw")).isEqualTo(3300);
+            assertThat(((Number) p.get("beforeScaled")).doubleValue()).isEqualTo(33.0);
+            assertThat(p.get("registerClass")).isEqualTo("netz_compliance");
+            assertThat(p.get("noteRequired")).isEqualTo(true);
+            assertThat(p.get("outcome")).isEqualTo("gelesen");
+
+            // --- Schritt 2: bestätigen ---------------------------------------
+            ResponseEntity<Map<String, Object>> write = post(
+                    "/api/v1/sites/" + site + "/register-write", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x00E7",
+                            "value", "7000", "expectedBefore", 3300,
+                            "note", "Freigabe des Netzbetreibers vom 18.08."));
+            assertThat(write.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+            JsonNode order = stub.awaitRequest();
+            assertThat(order.get("mode").asText()).isEqualTo("schreiben");
+            assertThat(order.get("value").asInt()).isEqualTo(7000);
+            assertThat(order.get("expected_before").asInt())
+                    .as("der Wächter reist automatisch mit").isEqualTo(3300);
+            assertThat(order.get("confirm").asText())
+                    .as("die Bestätigung nennt Register UND Wert").isEqualTo("0X00E7=7000");
+
+            Map<String, Object> w = write.getBody();
+            assertThat(w.get("outcome")).isEqualTo("uebernommen");
+            assertThat(w.get("adopted")).isEqualTo(true);
+            assertThat(w.get("afterRaw")).isEqualTo(7000);
+            assertThat(((Number) w.get("afterScaled")).doubleValue()).isEqualTo(70.0);
+            assertThat((String) w.get("targetLabel")).contains("192.168.0.28");
+
+            // --- Der Beleg: EIN gefalteter Vorgang mit beweisbarer Herkunft ---
+            List<Map<String, Object>> trail = history(customer, site);
+            assertThat(trail).hasSize(1);
+            Map<String, Object> e = trail.get(0);
+            assertThat(e.get("origin")).isEqualTo("kunde");
+            assertThat(e.get("source")).isEqualTo("portal");
+            assertThat(e.get("actorName")).isEqualTo("demo");
+            assertThat(e.get("viaTenantSwitcher")).isEqualTo(false);
+            // Die VERBATIM getippten Begriffe - nicht unsere Normalisierung.
+            assertThat(e.get("addressInput")).isEqualTo("0x00E7");
+            assertThat(e.get("valueInput")).isEqualTo("7000");
+            assertThat(e.get("note")).isEqualTo("Freigabe des Netzbetreibers vom 18.08.");
+            assertThat(e.get("address")).isEqualTo(231);
+            assertThat(e.get("addressHex")).isEqualTo("0x00e7");
+            assertThat(e.get("registerClass")).isEqualTo("netz_compliance");
+            assertThat(e.get("beforeRaw")).isEqualTo(3300);
+            assertThat(e.get("afterRaw")).isEqualTo(7000);
+            assertThat(e.get("adopted")).isEqualTo(true);
+            assertThat(e.get("outcome")).isEqualTo("uebernommen");
+            assertThat(e.get("deviceRef")).isEqualTo("edge-regwrite-e2e-01");
+
+            // --- Der vierte Strom trägt dieselbe Zeile, ohne sie zu kopieren --
+            ResponseEntity<Map<String, Object>> hist = get(
+                    "/api/v1/sites/" + site + "/command-history", customer);
+            assertThat(hist.getStatusCode()).isEqualTo(HttpStatus.OK);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> entries =
+                    (List<Map<String, Object>>) hist.getBody().get("entries");
+            List<Map<String, Object>> register = entries.stream()
+                    .filter(x -> "register".equals(x.get("stream"))).toList();
+            assertThat(register).hasSize(1);
+            assertThat(register.get(0).get("kind")).isEqualTo("ereignis");
+            assertThat(register.get(0).get("eventKind")).isEqualTo("register_geschrieben");
+            assertThat(register.get(0).get("source")).isEqualTo("portal");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> nested = (Map<String, Object>) register.get(0).get("register");
+            assertThat(nested.get("requestId")).isEqualTo(e.get("requestId"));
+            assertThat(nested.get("outcome")).isEqualTo("uebernommen");
+        }
+    }
+
+    /**
+     * D5: bei einem Register der Netz-Anmeldung ist die Notiz PFLICHT - und die
+     * Ablehnung fällt, BEVOR irgendetwas das Haus verlässt.
+     */
+    @Test
+    void theNetzComplianceNoteIsMandatoryAndNothingLeavesTheHouseWithoutIt() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Notiz-Anlage");
+        UUID device = claim(customer, site, "edge-regwrite-e2e-note");
+
+        try (DeviceStub stub = new DeviceStub()) {
+            stub.answerWith(req -> null); // zeichnet auf, antwortet nie
+
+            ResponseEntity<Map<String, Object>> refused = post(
+                    "/api/v1/sites/" + site + "/register-write", customer,
+                    Map.of("deviceId", device.toString(), "address", "231", "value", "7000"));
+            assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(refused.getBody().get("message").toString())
+                    .contains("Netz-Anmeldung");
+
+            assertThat(stub.seen.poll(1, TimeUnit.SECONDS))
+                    .as("eine abgewiesene Anfrage erreicht das Gerät nie").isNull();
+            assertThat(history(customer, site))
+                    .as("und hinterlässt keine Zeile, die eine Anforderung behauptet").isEmpty();
+
+            // Ein unbekanntes Register verlangt KEINE Notiz - die Pflicht hängt
+            // an der Klasse, nicht am Feature.
+            ResponseEntity<Map<String, Object>> other = post(
+                    "/api/v1/sites/" + site + "/register-write", customer,
+                    Map.of("deviceId", device.toString(), "address", "1234", "value", "1"));
+            assertThat(other.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(stub.awaitRequest().get("register").get("address").asInt())
+                    .isEqualTo(1234);
+        }
+    }
+
+    /**
+     * Schweigen ist NIE „nicht geschrieben" - und eine Sekunden später
+     * eintreffende Quittung ist trotzdem aktenkundig.
+     */
+    @Test
+    void silenceIsUnknownAndALateReceiptStillLands() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Stumme Register-Anlage");
+        UUID device = claim(customer, site, "edge-regwrite-e2e-silent");
+
+        try (DeviceStub stub = new DeviceStub()) {
+            stub.answerWith(req -> null);
+
+            ResponseEntity<Map<String, Object>> write = post(
+                    "/api/v1/sites/" + site + "/register-write", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x00E7", "value", "7000",
+                            "note", "Netzbetreiber-Freigabe liegt vor"));
+            assertThat(write.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(write.getBody().get("outcome")).isEqualTo("unbekannt");
+            assertThat(write.getBody().get("errorCode")).isEqualTo("timeout");
+            assertThat(write.getBody().get("message").toString()).contains("unbekannt");
+
+            List<Map<String, Object>> trail = history(customer, site);
+            assertThat(trail).hasSize(1);
+            assertThat(trail.get(0).get("outcome")).isEqualTo("unbekannt");
+            assertThat(trail.get(0).get("adopted"))
+                    .as("ohne Quittung gibt es keine Aussage über die Übernahme").isNull();
+
+            // Die verspätete Quittung: der Zuhörer persistiert sie UNABHÄNGIG
+            // vom längst aufgegebenen Request-Thread.
+            String requestId = (String) trail.get(0).get("requestId");
+            stub.publish("ems/" + TENANT_A + "/" + site + "/" + device
+                            + "/v2/register-write-result",
+                    "{\"schema_version\":\"1.0\",\"type\":\"register_write_result\""
+                            + ",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + site + "\""
+                            + ",\"device_id\":\"" + device + "\""
+                            + ",\"request_id\":\"" + requestId + "\""
+                            + ",\"answered_at\":\"2026-08-19T14:09:00Z\""
+                            + ",\"mode\":\"schreiben\",\"ok\":true,\"before_raw\":3300"
+                            + ",\"after_raw\":7000,\"wrote\":true,\"adopted\":true}");
+
+            Map<String, Object> folded = awaitOutcome(customer, site, "uebernommen");
+            assertThat(folded.get("adopted")).isEqualTo(true);
+            assertThat(folded.get("afterRaw")).isEqualTo(7000);
+            assertThat(folded.get("requestId")).isEqualTo(requestId);
+        }
+    }
+
+    /** Eine Vorschau ändert nichts - und hinterlässt deshalb auch keine Spur. */
+    @Test
+    void aPreviewLeavesNoTrail() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Vorschau-Anlage");
+        UUID device = claim(customer, site, "edge-regwrite-e2e-preview");
+
+        try (DeviceStub stub = new DeviceStub()) {
+            stub.answerWith(req -> "{\"schema_version\":\"1.0\""
+                    + ",\"type\":\"register_write_result\",\"tenant_id\":\"" + TENANT_A + "\""
+                    + ",\"site_id\":\"" + site + "\",\"device_id\":\"" + device + "\""
+                    + ",\"request_id\":\"" + req.get("request_id").asText() + "\""
+                    + ",\"answered_at\":\"2026-08-19T14:02:49Z\",\"mode\":\"lesen\""
+                    + ",\"ok\":true,\"before_raw\":3300}");
+
+            post("/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x00E7"));
+            post("/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x00E7"));
+
+            assertThat(history(customer, site))
+                    .as("ein Protokoll der Lesungen würde die Schreibvorgänge begraben")
+                    .isEmpty();
+        }
+    }
+
+    /** Der Mandanten-Zaun - und die Herkunft eines Admins ist kenntlich. */
+    @Test
+    void theTenantFenceHoldsAndAnAdminsOriginIsNamed() throws Exception {
+        String owner = token("demo", "demo");
+        UUID site = createSite(owner, "Zaun-Anlage");
+        UUID device = claim(owner, site, "edge-regwrite-e2e-fence");
+
+        try (DeviceStub stub = new DeviceStub()) {
+            stub.answerWith(req -> "{\"schema_version\":\"1.0\""
+                    + ",\"type\":\"register_write_result\",\"tenant_id\":\"" + TENANT_A + "\""
+                    + ",\"site_id\":\"" + site + "\",\"device_id\":\"" + device + "\""
+                    + ",\"request_id\":\"" + req.get("request_id").asText() + "\""
+                    + ",\"answered_at\":\"2026-08-19T14:02:49Z\""
+                    + ",\"mode\":\"" + req.get("mode").asText() + "\",\"ok\":true"
+                    + ",\"before_raw\":3300,\"after_raw\":7000,\"wrote\":true,\"adopted\":true}");
+
+            // Fremder Kunde: 404 (nie 403 - RLS macht die Anlage unsichtbar).
+            String stranger = token("demo2", "demo2");
+            ResponseEntity<Map<String, Object>> foreign = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", stranger,
+                    Map.of("address", "0x00E7"));
+            assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+            ResponseEntity<String> anonymous = rest.exchange(
+                    url("/api/v1/sites/" + site + "/register-write/preview"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("address", "0x00E7"), jsonHeaders()), String.class);
+            assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+            assertThat(stub.seen.poll(1, TimeUnit.SECONDS))
+                    .as("ein abgewiesener Aufrufer erreicht das Gerät nie").isNull();
+
+            // Der Admin über den Umschalter: dieselbe Route, aber die Herkunft
+            // steht als voltpilot in der Papier-Spur.
+            String admin = token("admin", "admin");
+            ResponseEntity<Map<String, Object>> byAdmin = rest.exchange(
+                    url("/api/v1/sites/" + site + "/register-write"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("deviceId", device.toString(), "address", "0x00E7",
+                            "value", "7000", "note", "Anhebung nach Netzbetreiber-Freigabe"),
+                            switcher(admin)),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(byAdmin.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(byAdmin.getBody().get("outcome")).isEqualTo("uebernommen");
+
+            List<Map<String, Object>> trail = history(owner, site);
+            assertThat(trail).hasSize(1);
+            assertThat(trail.get(0).get("origin")).isEqualTo("voltpilot");
+            assertThat(trail.get(0).get("actorRole")).isEqualTo("platform-admin");
+            assertThat(trail.get(0).get("viaTenantSwitcher")).isEqualTo(true);
+        }
+    }
+
+    /** Welches Gerät geschrieben wird, wird nie geraten. */
+    @Test
+    void theTargetDeviceIsResolvedOrNamed() {
+        String customer = token("demo", "demo");
+        UUID empty = createSite(customer, "Anlage ohne Gerät");
+        ResponseEntity<Map<String, Object>> none = post(
+                "/api/v1/sites/" + empty + "/register-write/preview", customer,
+                Map.of("address", "0x00E7"));
+        assertThat(none.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        UUID site = createSite(customer, "Anlage mit zwei Geräten");
+        claim(customer, site, "edge-regwrite-e2e-x");
+        claim(customer, site, "edge-regwrite-e2e-y");
+        ResponseEntity<Map<String, Object>> ambiguous = post(
+                "/api/v1/sites/" + site + "/register-write/preview", customer,
+                Map.of("address", "0x00E7"));
+        assertThat(ambiguous.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(ambiguous.getBody().get("message").toString()).contains("mehrere Geräte");
+
+        // Eine unlesbare Adresse fällt sofort, ohne Broker-Runde.
+        ResponseEntity<Map<String, Object>> garbage = post(
+                "/api/v1/sites/" + empty + "/register-write/preview", customer,
+                Map.of("address", "E7"));
+        assertThat(garbage.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    // ── Helfer ────────────────────────────────────────────────────────────
+
+    private Map<String, Object> awaitOutcome(String token, UUID site, String outcome)
+            throws Exception {
+        for (int i = 0; i < 40; i++) {
+            List<Map<String, Object>> trail = history(token, site);
+            if (!trail.isEmpty() && outcome.equals(trail.get(0).get("outcome"))) {
+                return trail.get(0);
+            }
+            Thread.sleep(150);
+        }
+        throw new AssertionError("die verspätete Quittung erreichte das Journal nie");
+    }
+
+    /** Ein Gerät, das auf seinem eigenen Register-Topic zuhört und quittiert. */
+    private final class DeviceStub implements AutoCloseable {
+        private final MqttClient client;
+        final BlockingQueue<JsonNode> seen = new ArrayBlockingQueue<>(8);
+        volatile String lastTopic;
+
+        DeviceStub() throws Exception {
+            client = new MqttClient("tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883),
+                    "dev-" + UUID.randomUUID(), new MemoryPersistence());
+            MqttConnectOptions options = new MqttConnectOptions();
+            options.setCleanSession(true);
+            client.connect(options);
+        }
+
+        void answerWith(AnswerFn fn) throws Exception {
+            client.subscribe("ems/+/+/+/v2/register-write", 1, (topic, msg) -> {
+                JsonNode req = json.readTree(new String(msg.getPayload(), StandardCharsets.UTF_8));
+                lastTopic = topic;
+                seen.offer(req);
+                String answer = fn.answer(req);
+                if (answer != null) {
+                    publish(topic + "-result", answer);
+                }
+            });
+        }
+
+        void publish(String topic, String payload) {
+            try {
+                MqttMessage out = new MqttMessage(payload.getBytes(StandardCharsets.UTF_8));
+                out.setQos(1);
+                out.setRetained(false);
+                client.publish(topic, out);
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+        }
+
+        JsonNode awaitRequest() throws Exception {
+            JsonNode req = seen.poll(15, TimeUnit.SECONDS);
+            assertThat(req).as("die Anfrage erreicht das Gerät").isNotNull();
+            return req;
+        }
+
+        @Override
+        public void close() {
+            try {
+                client.disconnect();
+                client.close();
+            } catch (Exception ignored) {
+                // ein verschwindender Stellvertreter ist kein Testfehler
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface AnswerFn {
+        String answer(JsonNode request) throws Exception;
+    }
+
+    private List<Map<String, Object>> history(String token, UUID site) {
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/sites/" + site + "/register-write/history"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    private UUID createSite(String token, String name) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(url("/api/v1/sites"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("name", name), bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return UUID.fromString((String) res.getBody().get("id"));
+    }
+
+    private UUID claim(String token, UUID siteId, String ref) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(url("/api/v1/devices/claim"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId.toString(), "externalRef", ref),
+                        bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return UUID.fromString((String) res.getBody().get("id"));
+    }
+
+    private ResponseEntity<Map<String, Object>> post(String path, String token, Object body) {
+        return rest.exchange(url(path), HttpMethod.POST,
+                new HttpEntity<>(body, bearer(token)), new ParameterizedTypeReference<>() {});
+    }
+
+    private ResponseEntity<Map<String, Object>> get(String path, String token) {
+        return rest.exchange(url(path), HttpMethod.GET, new HttpEntity<>(bearer(token)),
+                new ParameterizedTypeReference<>() {});
+    }
+
+    private String url(String path) {
+        return "http://localhost:" + port + path;
+    }
+
+    private static HttpHeaders jsonHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
+    }
+
+    private static HttpHeaders bearer(String token) {
+        HttpHeaders headers = jsonHeaders();
+        headers.setBearerAuth(token);
+        return headers;
+    }
+
+    private static HttpHeaders switcher(String adminToken) {
+        HttpHeaders headers = bearer(adminToken);
+        headers.set("X-Tenant-Id", TENANT_A);
+        return headers;
+    }
+
+    private String token(String username, String password) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "password");
+        form.add("client_id", "voltpilot-api");
+        form.add("client_secret", "voltpilot-api-dev-secret");
+        form.add("username", username);
+        form.add("password", password);
+        form.add("scope", "openid");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = new TestRestTemplate().postForObject(
+                KEYCLOAK.getAuthServerUrl() + "/realms/voltpilot/protocol/openid-connect/token",
+                new HttpEntity<>(form, headers), Map.class);
+        assertThat(body).as("token response").containsKey("access_token");
+        return (String) body.get("access_token");
+    }
+}
