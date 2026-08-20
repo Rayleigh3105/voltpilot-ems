@@ -28,6 +28,7 @@ import {
   pageRoute,
   parseBefehleKomponente,
   type AnlagenSub,
+  type GeraetTarget,
   type Route,
 } from '../nav';
 import { useFreshnessPoll } from '../useFreshnessPoll';
@@ -99,6 +100,9 @@ const ErloeseSection = lazy(() =>
 );
 const AnlagenModellSection = lazy(() =>
   import('./AnlagenModellSection').then((m) => ({ default: m.AnlagenModellSection })),
+);
+const GeraetSeiteSection = lazy(() =>
+  import('./GeraetSeiteSection').then((m) => ({ default: m.GeraetSeiteSection })),
 );
 const LadevorgaengeSection = lazy(() =>
   import('./LadevorgaengeSection').then((m) => ({ default: m.LadevorgaengeSection })),
@@ -197,6 +201,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
       devices={props.devices}
       devicesFetchedAt={props.devicesFetchedAt ?? null}
       sub={route.sub}
+      geraet={route.geraet ?? null}
       isAdmin={isAdmin}
       surface={props.surface ?? null}
       onBack={() => onNavigate(anlageRoute(site.id))}
@@ -408,6 +413,7 @@ function AnlagenSubPage({
   devices,
   devicesFetchedAt,
   sub,
+  geraet,
   isAdmin,
   surface,
   onBack,
@@ -419,6 +425,8 @@ function AnlagenSubPage({
   devices: Device[];
   devicesFetchedAt: number | null;
   sub: AnlagenSub;
+  /** Nur bei `sub === 'geraet'`: WELCHES Gerät die Adresse nennt. */
+  geraet: GeraetTarget | null;
   isAdmin: boolean;
   surface: AnlageSurface | null;
   onBack: () => void;
@@ -460,6 +468,19 @@ function AnlagenSubPage({
           Server-Antwort, nie gegen eine weiterlaufende Uhr (`liveness.ts`). */}
         {sub === 'modell' && (
           <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
+        )}
+        {sub === 'geraet' && geraet && (
+          <GeraetSeiteSection
+            site={site}
+            boxRef={geraet.ref}
+            geraetId={geraet.geraetId}
+            devices={devices}
+            devicesFetchedAt={devicesFetchedAt}
+            onDeviceRemoved={() => {
+              onOpenSub('modell');
+              onReload(site.id);
+            }}
+          />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
         {sub === 'ladevorgaenge' && <LadevorgaengeSection site={site} />}

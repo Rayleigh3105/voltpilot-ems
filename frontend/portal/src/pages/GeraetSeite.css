@@ -1,0 +1,400 @@
+/* Die GERÄTE-DETAILSEITE der Anlagen-Zentrale (Stufe 1 PR 1a).
+   Komponenten-lokal wie `Befehle.css`/`Einstellungen.css` - `index.css` bleibt
+   unangetastet.
+
+   Zwei Regeln des Hauses stecken hier drin: jede Zustands-FARBE trägt ihr WORT
+   daneben (der Punkt ist Verstärkung, nie die Aussage), und jedes flexible Kind
+   bekommt `min-width: 0` - eine lange Adresse oder ein langer Kundenname darf
+   die Seite nie seitlich schieben. */
+
+.vp-geraet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-geraet-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  /* ≥44px Trefferfläche - der Rückweg ist der meistgenutzte Weg der Seite. */
+  min-height: 44px;
+  padding: 6px 6px 6px 2px;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.vp-geraet-back:hover {
+  color: var(--vp-link, #2c5282);
+}
+
+/* --- Kopf ---------------------------------------------------------------- */
+
+.vp-geraet-kopf h1 {
+  margin: 0 0 8px;
+  /* `--vp-text-h2` sind 2,5rem und schrien am Telefon (die GeraetSeite-Lehre
+     der Plattform-Konsole) - deshalb skaliert. */
+  font-size: clamp(1.35rem, 3.2vw, 1.9rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.92rem;
+}
+
+.vp-geraet-kennung {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--vp-surface-2, #f7fafc);
+  font-size: 0.82rem;
+}
+
+/* Der Zustands-Pill. Die drei Töne sind die des Hauses; das WORT steht immer
+   daneben, die Farbe verstärkt es nur. */
+.vp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface, #fff);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-pill small {
+  font-weight: 500;
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-pill-ok {
+  border-color: var(--vp-flow-batt, #2e9e5b);
+  background: var(--vp-flow-batt-soft, #eaf7ef);
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+.vp-pill-warn {
+  border-color: var(--vp-warn, #d97706);
+  background: var(--vp-warn-soft, #fef3c7);
+  color: var(--vp-warn-ink, #92400e);
+}
+
+.vp-pill-off,
+.vp-pill-info {
+  background: var(--vp-surface-2, #f7fafc);
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-geraet-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--vp-flow-batt-soft, #eaf7ef);
+  color: var(--vp-flow-batt-ink, #166534);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* --- Sektionen ----------------------------------------------------------- */
+
+.vp-geraet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--vp-space-4, 16px);
+  align-items: start; /* sonst zieht die längste Karte die kurzen auf ihre Höhe */
+  min-width: 0;
+}
+
+.vp-geraet-sec {
+  min-width: 0;
+}
+
+.vp-geraet-sec.breit {
+  grid-column: 1 / -1;
+}
+
+.vp-geraet-sec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-geraet-sec-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-geraet-sec-sub {
+  margin-left: auto;
+  font-size: 0.8rem;
+}
+
+/* --- Label/Wert-Zeilen --------------------------------------------------- */
+
+.vp-geraet-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
+}
+
+.vp-geraet-kv > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 34%) 1fr;
+  gap: 4px 14px;
+  min-width: 0;
+}
+
+.vp-geraet-kv dt {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.88rem;
+  min-width: 0;
+}
+
+.vp-geraet-kv dd {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+}
+
+.vp-geraet-kv dd small {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.8rem;
+}
+
+.vp-geraet-kv > div.is-warn dd > span:first-child {
+  color: var(--vp-warn-ink, #92400e);
+  font-weight: 600;
+}
+
+.vp-geraet-kv > div.is-off dd > span:first-child {
+  color: var(--vp-text-muted, #4a5568);
+}
+
+/* --- Live-Kacheln -------------------------------------------------------- */
+
+.vp-geraet-kacheln {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.vp-geraet-kachel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-2, #f7fafc);
+}
+
+.vp-geraet-kachel .l {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.78rem;
+}
+
+.vp-geraet-kachel .v {
+  font-size: 1.15rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-kachel .w {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.75rem;
+}
+
+/* --- Die Geräte AN der Box ----------------------------------------------- */
+
+.vp-geraet-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-geraet-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  /* ≥44px Trefferfläche - die Zeile IST der Weg auf die Geräteseite. */
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: var(--vp-radius-md, 10px);
+  color: inherit;
+  text-decoration: none;
+}
+
+.vp-geraet-zeile:hover {
+  background: var(--vp-surface-2, #f7fafc);
+}
+
+.vp-geraet-zeile .nm {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-zeile .ty,
+.vp-geraet-zeile .st {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.84rem;
+  min-width: 0;
+}
+
+.vp-geraet-zeile .st {
+  margin-left: auto;
+}
+
+/* --- Komponenten-Zeilen -------------------------------------------------- */
+
+.vp-geraet-komps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-geraet-komp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+  padding: 10px 4px;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-geraet-komp:first-child {
+  border-top: none;
+}
+
+.vp-geraet-rolle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--role-soft, var(--vp-surface-2, #f7fafc));
+  color: var(--role, var(--vp-text-muted, #4a5568));
+  flex: none;
+}
+
+.vp-geraet-komp .tx {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.vp-geraet-komp .nm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-komp .s {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.84rem;
+  min-width: 0;
+}
+
+.vp-geraet-komp .val {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.vp-geraet-komp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--vp-link, #2c5282);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+/* --- Diagnose ------------------------------------------------------------ */
+
+.vp-geraet-diagnose {
+  margin-top: 14px;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  padding-top: 10px;
+}
+
+.vp-geraet-diagnose > summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.85rem;
+  list-style: none;
+}
+
+.vp-geraet-diagnose > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-geraet-diagnose[open] > summary svg {
+  transform: rotate(90deg);
+}
+
+@media (max-width: 720px) {
+  /* Am Telefon werden aus Label/Wert-Paaren gestapelte Zeilen - zwei Spalten
+     quetschen den Wert sonst auf Null (die `.vp-technik`-Lehre). */
+  .vp-geraet-kv > div {
+    grid-template-columns: 1fr;
+  }
+
+  .vp-geraet-zeile .st {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+
+  .vp-geraet-komp .val {
+    margin-left: auto;
+  }
+}
