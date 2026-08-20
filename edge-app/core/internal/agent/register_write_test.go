@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,9 +28,11 @@ type portalBox struct {
 
 // startPortalBox is startInstallerBox plus the cloud identity and the publish
 // seam, so a test asserts on the CONTRACT BYTES the box would put on the wire.
-func startPortalBox(t *testing.T, on bool) *portalBox {
+// Wie dort gibt es KEINEN Armierungs-Schritt - die Vorgabe-Konfiguration ist
+// die Konfiguration jeder Kundenbox.
+func startPortalBox(t *testing.T) *portalBox {
 	t.Helper()
-	box := startInstallerBox(t, on)
+	box := startInstallerBox(t)
 	answers := make(chan registerwrite.Result, 8)
 	box.a.registerPublish = func(payload []byte) error {
 		var res registerwrite.Result
@@ -102,7 +105,7 @@ func (b *portalBox) silent(t *testing.T, why string) {
 // liest zurueck - beides ueber den Bus zum Flow-Knoten, nie ueber einen eigenen
 // Socket des Kerns.
 func TestThePortalTriggerPreviewsThenWritesOnceThroughTheSharedCore(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	seen := make(chan installerBusRequest, 4)
 	before, after := 3300, 7000
 	installerStub(t, box.addr, seen, func(req installerBusRequest) installerBusResult {
@@ -162,7 +165,7 @@ func TestThePortalTriggerPreviewsThenWritesOnceThroughTheSharedCore(t *testing.T
 // verfallener Auftrag (die Portal-Route hat laengst aufgegeben, und eine
 // nachgelieferte QoS1-Nachricht wuerde sonst einen EEPROM-Zyklus kosten).
 func TestAForeignOrAnExpiredOrderIsDiscardedSilentlyAndNeverReachesTheDevice(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	seen := make(chan installerBusRequest, 4)
 	installerStub(t, box.addr, seen, nil)
 
@@ -184,29 +187,53 @@ func TestAForeignOrAnExpiredOrderIsDiscardedSilentlyAndNeverReachesTheDevice(t *
 	}
 }
 
-// Ein nicht armiertes Geraet ANTWORTET ehrlich, statt zu schweigen - sonst saehe
-// der Betreiber einen Timeout und suchte den Fehler im Netz.
-func TestAnUnarmedBoxRefusesLoudlyAndWritesNothing(t *testing.T) {
-	box := startPortalBox(t, false) // Feature-Gate AUS
+// ⚠ ES GIBT KEINEN ARMIERUNGS-SCHRITT (Captain-Korrektur 20.08.2026, D2
+// KORRIGIERT). Frueher stand hier der Beweis „ein nicht armiertes Geraet
+// antwortet gate_disabled"; jetzt ist der Beweis, dass eine Box mit der REINEN
+// Vorgabe-Konfiguration - ohne jede gesetzte Umgebungsvariable - den Auftrag
+// ausfuehrt. Der plattformweite Hebel ist der Cloud-Not-Aus am api (der mit
+// deutschem Grund refuesiert, siehe RegisterWriteKillSwitchTest), die Tore sind
+// Identitaet, Fenster, Einmaligkeit, Lane-Politik und Selbstkonflikt-Sperre -
+// und sie laufen alle in DIESER Datei.
+func TestThePathNeedsNoArmingStepOnTheBox(t *testing.T) {
+	box := startPortalBox(t)
+	// Struktur-Waechter: die Konfiguration traegt gar kein Feld mehr, mit dem
+	// sich der Pfad armieren liesse - eine Wieder-Einfuehrung faellt hier auf.
+	raw, err := json.Marshal(box.a.Cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "installer_write") {
+		t.Fatalf("es darf kein Armierungs-Feld mehr geben: %s", raw)
+	}
 	seen := make(chan installerBusRequest, 2)
-	installerStub(t, box.addr, seen, nil)
+	before, after := 3300, 7000
+	installerStub(t, box.addr, seen, func(req installerBusRequest) installerBusResult {
+		return installerBusResult{OK: true, Before: &before, After: &after, Wrote: true}
+	})
 
 	box.a.onRegisterWrite(box.order(t, "schreiben", "9f2c41ab77d05e31", nil))
 	res := box.await(t)
-	if res.OK || res.ErrorCode != registerwrite.ErrGateDisabled || res.Message == "" {
-		t.Fatalf("das geschlossene Tor muss benannt werden: %+v", res)
+	if !res.OK || res.ErrorCode != "" {
+		t.Fatalf("ohne Armierung muss der Auftrag laufen: %+v", res)
+	}
+	if res.Adopted == nil || !*res.Adopted || res.AfterRaw == nil || *res.AfterRaw != 7000 {
+		t.Fatalf("der Schreibvorgang muss uebernommen gemeldet werden: %+v", res)
 	}
 	select {
 	case got := <-seen:
-		t.Fatalf("ein nicht armiertes Geraet darf nichts schreiben: %+v", got)
-	case <-time.After(300 * time.Millisecond):
+		if got.Mode != "apply" || got.Addr != 0x00e7 || got.Value != 7000 {
+			t.Fatalf("das Geraet muss den Auftrag sehen: %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("das Geraet wurde nie erreicht")
 	}
 }
 
 // Die Selbstkonflikt-Sperre greift schon in der VORSCHAU: „wuerde abgelehnt"
 // gehoert in Schritt 1, nie erst nach dem Klick des Menschen.
 func TestARegisterTheRunningControlOwnsIsRefusedAlreadyInThePreview(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	seen := make(chan installerBusRequest, 2)
 	installerStub(t, box.addr, seen, nil)
 
@@ -247,7 +274,7 @@ func TestARegisterTheRunningControlOwnsIsRefusedAlreadyInThePreview(t *testing.T
 // Die POLITIK bleibt beim gemeinsamen Kern: derselbe deutsche Satz wie an der
 // lokalen Taste, keine zweite Formulierung.
 func TestPolicyRefusalsComeFromTheSharedCoreVerbatim(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	installerStub(t, box.addr, nil, nil)
 
 	// ⚠ Der Vektor ist SEIT STUFE 2 ein Funktionscode-Widerspruch, nicht mehr
@@ -284,7 +311,7 @@ func TestPolicyRefusalsComeFromTheSharedCoreVerbatim(t *testing.T) {
 // Dieselbe Anfrage darf nie zweimal schreiben - die dritte Sicherung neben
 // „nicht retained" und dem Fenster.
 func TestTheSameOrderNeverWritesTwice(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	seen := make(chan installerBusRequest, 4)
 	before, after := 3300, 7000
 	installerStub(t, box.addr, seen, func(req installerBusRequest) installerBusResult {
@@ -312,7 +339,7 @@ func TestTheSameOrderNeverWritesTwice(t *testing.T) {
 // D6: die lokalen Schreibvorgaenge erreichen das Cloud-Journal - und ein Geraet,
 // das nie geschrieben hat, sendet GAR KEINEN Block.
 func TestTheHeartbeatCarriesTheBoxesOwnWriteAuditOrNothingAtAll(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	if sum := box.a.registerWritesSummary(); sum != nil {
 		t.Fatalf("ohne Schreibvorgang gibt es keinen Block: %+v", sum)
 	}
@@ -403,7 +430,7 @@ func registerStub(t *testing.T, busAddr string, seen chan<- installerBusRequest,
 // ausgefuehrt - die harte 0x00E7-Allowlist ist weg, und was bleibt, sind die
 // Regeln, die diese Schicht wirklich beurteilen kann.
 func TestAFreeRegisterIsWrittenOnThePrimaryLane(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	seen := make(chan installerBusRequest, 4)
 	before, after := 12, 34
 	installerStub(t, box.addr, seen, func(req installerBusRequest) installerBusResult {
@@ -443,7 +470,7 @@ func TestAFreeRegisterIsWrittenOnThePrimaryLane(t *testing.T) {
 // Die Wertgrenze der :8484-Taste (7000) gilt fuer den PORTAL-Kanal NICHT mehr -
 // dort ist ein Registerwort 0..65535, und 0 ist ein WERT.
 func TestTheExpertScopeAcceptsEveryRegisterWordAndRefusesTheRest(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	before := 1
 	installerStub(t, box.addr, nil, func(req installerBusRequest) installerBusResult {
 		return installerBusResult{OK: true, Before: &before, After: &req.Value, Wrote: true}
@@ -473,7 +500,7 @@ func TestTheExpertScopeAcceptsEveryRegisterWordAndRefusesTheRest(t *testing.T) {
 // Die Komponenten-Lane: die Cloud nennt NUR die Kennung, die Box loest Host,
 // Port und Unit aus IHRER angewandten Definition auf.
 func TestTheEntityLaneResolvesTheEndpointFromTheBoxOwnDefinition(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	entityID := "00000000-0000-0000-0000-0000000000aa"
 	box.a.entMu.Lock()
 	box.a.entRegistry = entities.Registry{Entities: []entities.Entity{{
@@ -525,7 +552,7 @@ func TestTheEntityLaneResolvesTheEndpointFromTheBoxOwnDefinition(t *testing.T) {
 // PRIMAERE Lane - dieser Socket gehoert dem Wechselrichter-Tab, und ein zweiter
 // Anspruch darauf ist genau das, was das Ein-Socket-Gesetz verbietet.
 func TestASolarmanComponentIsNamedNotSilentlyRedirected(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	entityID := "00000000-0000-0000-0000-0000000000bb"
 	box.a.entMu.Lock()
 	box.a.entRegistry = entities.Registry{Entities: []entities.Entity{{
@@ -550,7 +577,7 @@ func TestASolarmanComponentIsNamedNotSilentlyRedirected(t *testing.T) {
 // Die freie LAN-Lane: der Endpunkt reist, weil es keinen anderen Weg gibt ihn
 // zu nennen - und genau deshalb prueft die Box ihn selbst.
 func TestTheFreeLanLaneWritesAPrivateTargetAndRefusesEveryOther(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	seen := make(chan installerBusRequest, 4)
 	before, after := 7, 9
 	registerStub(t, box.addr, seen, func(installerBusRequest) installerBusResult {
@@ -590,7 +617,7 @@ func TestTheFreeLanLaneWritesAPrivateTargetAndRefusesEveryOther(t *testing.T) {
 // ⚠ Die Selbstkonflikt-Sperre gilt dem GERAET, nicht der Zahl: dieselbe Adresse
 // auf einem eigenen Modbus-Geraet des Kunden ist ein voellig anderes Register.
 func TestTheSelfConflictLockIsScopedToTheControlledDevice(t *testing.T) {
-	box := startPortalBox(t, true)
+	box := startPortalBox(t)
 	box.a.State.Update(func(s *state.Snapshot) {
 		s.ControlEnabled = true
 		s.ControlCertified = true

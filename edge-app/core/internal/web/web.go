@@ -242,13 +242,11 @@ type OtaController interface {
 //
 // It is NOT a register-write API: there is no address parameter anywhere on
 // this interface, the value ceiling is a constant, and a real write needs the
-// operator's exact confirm token. When InstallerWriteEnabled() is false the
-// routes answer 404 - the path does not exist from outside.
+// operator's exact confirm token. There is no arming step - the routes exist on
+// every box; the WRITE sits behind the operator password (calGuard).
 type InstallerWriteController interface {
-	// InstallerWriteEnabled is the feature flag (VP_INSTALLER_WRITE_ENABLED).
-	InstallerWriteEnabled() bool
-	// InstallerWriteView is the switch state, the one allowlisted register and
-	// the persistent audit log.
+	// InstallerWriteView is the one allowlisted register and the persistent
+	// audit log.
 	InstallerWriteView() installerwrite.View
 	// InstallerWrite runs ONE stage: a dry run (read + report) or, with the
 	// confirm token, exactly ONE write followed by a read-back. A
@@ -1069,34 +1067,25 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	// appointment; these two routes are the remote lever for exactly that one
 	// number - and for nothing else (internal/installerwrite carries the gates).
 	//
-	// installerGate makes the whole path VANISH when the feature flag is off:
-	// 404, not 403, because a disabled feature should not even confirm its own
-	// existence. It is the FIRST thing checked, before the maintenance password.
-	installerGate := func(h http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			if !iw.InstallerWriteEnabled() {
-				writeJSON(w, http.StatusNotFound, map[string]any{
-					"error": "Der Installateur-Schreibpfad ist auf diesem Gerät nicht eingeschaltet.",
-				})
-				return
-			}
-			h(w, r)
-		}
-	}
-
-	// GET /api/installer-write - the switch state, the ONE allowlisted register
-	// and the persistent audit log (newest first). Read-only, so it is NOT
-	// behind the maintenance password - the same rule the calibration surface
-	// follows (GET /api/calibration is open, the mutations are guarded).
-	mux.HandleFunc("GET /api/installer-write", installerGate(func(w http.ResponseWriter, r *http.Request) {
+	// ⚠ ES GIBT KEIN FEATURE-GATE (Captain-Korrektur 20.08.2026): die Routen
+	// existieren auf JEDER Box, ohne Armierung und ohne 404-Zustand. Was den
+	// Pfad traegt, sind die inhaltlichen Tore - das Betreiber-Kennwort an
+	// dieser Tuer (calGuard), Register-Allowlist, Wertgrenze, die
+	// Zwei-Schritt-Bestaetigung, expected_before und die Einmaligkeit.
+	//
+	// GET /api/installer-write - the ONE allowlisted register and the
+	// persistent audit log (newest first). Read-only, so it is NOT behind the
+	// maintenance password - the same rule the calibration surface follows
+	// (GET /api/calibration is open, the mutations are guarded).
+	mux.HandleFunc("GET /api/installer-write", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, iw.InstallerWriteView())
-	}))
+	})
 
 	// POST /api/installer-write - ONE stage. Without "mode":"apply" it is a DRY
 	// RUN: the register is read, nothing is written, and the answer names the
 	// exact confirm token the real write needs. Behind the SAME maintenance
 	// password as every other physical-control mutation (calGuard).
-	mux.HandleFunc("POST /api/installer-write", installerGate(calGuard(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/installer-write", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		var req installerwrite.Request
 		if !readBody(r, &req) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
@@ -1120,7 +1109,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			return
 		}
 		writeJSON(w, http.StatusOK, out)
-	})))
+	}))
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		snap := st.Get()

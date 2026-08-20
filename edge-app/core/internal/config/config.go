@@ -81,32 +81,6 @@ type Config struct {
 	// site's netzladen_erlaubt flag; kept off by default on-device.
 	GridChargeAllowed bool `json:"grid_charge_allowed"`
 
-	// InstallerWriteEnabled opens the one-shot register write path - both of its
-	// triggers, because it is ONE feature with two doors: the local :8484
-	// maintenance endpoint (behind the operator password) and the portal
-	// downlink `v2/register-write` (internal/registerwrite -> installerwrite).
-	//
-	// ⚠ DEFAULT TRUE SINCE „Bis zum Endkunden" (Stufe 3, Captain-Entscheid D2).
-	// Until then it was FALSE and the default WAS the feature: a canary box was
-	// armed per maintenance window. That default has done its job - the portal
-	// consumer only exists from the customer release on, so the flag protected
-	// exactly the canary phase and nothing else. What carries the path from here
-	// is NOT this flag but the chain that is always on: identity (broker ACL +
-	// mTLS CN), the requested_at window, the LAN whitelist, the self-conflict
-	// lock, the one-shot rule, the operator password on the local door - and the
-	// PLATFORM's own kill switch in the cloud (`voltpilot.register-write.enabled`
-	// in services/api), which refuses with a reason instead of going silent.
-	//
-	// It stays a real switch: VP_INSTALLER_WRITE_ENABLED=false turns the whole
-	// path off on ONE box again (the :8484 endpoints answer 404, the downlink
-	// answers `gate_disabled` instead of writing).
-	//
-	// It is independent of ControlEnabled/ControlCertifiedFamilies on purpose:
-	// those gate the CONTINUOUS battery-dispatch loop, this is a single,
-	// operator-confirmed EEPROM write of one commissioning value. Neither
-	// widens the other.
-	InstallerWriteEnabled bool `json:"installer_write_enabled"`
-
 	// CalibrationMaxKw is the HARD magnitude cap for the First-Light calibration
 	// step (the very first real write to a live customer battery, done BEFORE the
 	// family is certified): a calibration test setpoint is capped to
@@ -224,16 +198,11 @@ func Defaults() Config {
 		ControlEnabled:           true, // ON by default; the certification allowlist is the per-device gate
 		ControlCertifiedFamilies: []string{"sunspec"},
 		GridChargeAllowed:        false,
-		// Stufe 3 „Bis zum Endkunden" (D2): AN im Kunden-Release. Siehe das
-		// Feld - der Schutz sind Identität, Fenster, LAN-Whitelist,
-		// Selbstkonflikt-Sperre, Einmaligkeit und der Cloud-Not-Aus, nie dieses
-		// Flag; VP_INSTALLER_WRITE_ENABLED=false schaltet es je Box wieder aus.
-		InstallerWriteEnabled: true,
-		CalibrationMaxKw:      1.0,              // small: the first live write must be tiny (report §5.7)
-		CalibrationTTLSeconds: 30,               // auto-revert to neutral fast; the write never latches
-		CalibrationTTL:        30 * time.Second, // derived; Load() recomputes it from the seconds
-		MirrorAdvertisePort:   502,              // lockstep with the compose mapping ${VP_MIRROR_PORT:-502}:1502
-		NodeRedUser:           "voltpilot",
+		CalibrationMaxKw:         1.0,              // small: the first live write must be tiny (report §5.7)
+		CalibrationTTLSeconds:    30,               // auto-revert to neutral fast; the write never latches
+		CalibrationTTL:           30 * time.Second, // derived; Load() recomputes it from the seconds
+		MirrorAdvertisePort:      502,              // lockstep with the compose mapping ${VP_MIRROR_PORT:-502}:1502
+		NodeRedUser:              "voltpilot",
 	}
 }
 
@@ -367,7 +336,6 @@ func applyEnv(cfg *Config) {
 	boolEnv("VP_CONTROL_ENABLED", &cfg.ControlEnabled)
 	boolEnv("VP_CONSUMER_CONTROL_ENABLED", &cfg.ConsumerControlEnabled)
 	boolEnv("VP_GRID_CHARGE_ALLOWED", &cfg.GridChargeAllowed)
-	boolEnv("VP_INSTALLER_WRITE_ENABLED", &cfg.InstallerWriteEnabled)
 	boolEnv("VP_FLOW_NODE_STATUS_ENABLED", &cfg.FlowNodeStatusEnabled)
 	str("VP_NODERED_ADMIN_URL", &cfg.NodeRedAdminURL)
 	str("VP_NODERED_USER", &cfg.NodeRedUser)

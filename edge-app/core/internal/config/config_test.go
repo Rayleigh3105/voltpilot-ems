@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -18,7 +19,6 @@ func clearEnv(t *testing.T) {
 		"VP_CONTROL_ENABLED", "VP_GRID_CHARGE_ALLOWED", "VP_CONTROL_CERTIFIED_FAMILIES",
 		"VP_RECONCILE_INTERVAL_SECONDS", "VP_UNCLAIM_CONFIRM_MINUTES", "VP_UNCLAIM_CONFIRM_POLLS",
 		"VP_CALIBRATION_MAX_KW", "VP_CALIBRATION_TTL_SECONDS",
-		"VP_INSTALLER_WRITE_ENABLED",
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -259,56 +259,31 @@ func TestControlEnvOverrides(t *testing.T) {
 	}
 }
 
-// Der Einmal-Schreibpfad ist SEIT STUFE 3 („Bis zum Endkunden", D2) per Vorgabe
-// AN - der Portal-Konsument existiert ohnehin erst ab diesem Release, das Flag
-// schuetzte also genau die Canary-Phase. Er bleibt trotzdem ein echter Schalter:
-// ein ausdrueckliches "false" nimmt EINER Box den ganzen Pfad wieder.
-func TestInstallerWriteFlagDefaultsOnSinceTheCustomerRelease(t *testing.T) {
+// ⚠ DER EINMAL-SCHREIBPFAD HAT KEIN FLAG MEHR (Captain-Korrektur 20.08.2026).
+// Es gibt keine Armierung je Box, also darf auch keine Umgebungsvariable ihn
+// wieder schliessen: eine Box, die "VP_INSTALLER_WRITE_ENABLED=false" gesetzt
+// hat, verhaelt sich zeichengleich wie jede andere. Der plattformweite Hebel
+// ist der Cloud-Not-Aus (voltpilot.register-write.enabled am api), die Tore
+// sind Betreiber-Kennwort, Identitaet, Fenster, LAN-Whitelist,
+// Selbstkonflikt-Sperre und Einmaligkeit.
+func TestTheOneShotWritePathHasNoEnvironmentSwitchLeft(t *testing.T) {
 	clearEnv(t)
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.InstallerWriteEnabled {
-		t.Fatal("VP_INSTALLER_WRITE_ENABLED must default to true since Stufe 3")
-	}
-	if !Defaults().InstallerWriteEnabled {
-		t.Fatal("the built-in default must be true too")
-	}
-	// Das AUSSCHALTEN ist die Aussage, die diese Stufe schuldig bleibt, wenn sie
-	// sie nicht prueft: der Not-Aus je Box muss weiterhin greifen.
-	for _, off := range []string{"false", "FALSE", "0"} {
-		t.Setenv("VP_INSTALLER_WRITE_ENABLED", off)
-		cfg, err = Load()
+	for _, v := range []string{"false", "FALSE", "0", "true", "ja"} {
+		t.Setenv("VP_INSTALLER_WRITE_ENABLED", v)
+		cfg, err := Load()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cfg.InstallerWriteEnabled {
-			t.Fatalf("%q must turn the path OFF again", off)
-		}
-	}
-	for _, on := range []string{"true", "TRUE", "1"} {
-		t.Setenv("VP_INSTALLER_WRITE_ENABLED", on)
-		cfg, err = Load()
+		// Es gibt kein Feld mehr, das der Wert treffen koennte; der Beweis ist,
+		// dass die geladene Konfiguration byte-gleich zu der ohne die Variable
+		// bleibt.
+		os.Unsetenv("VP_INSTALLER_WRITE_ENABLED")
+		bare, err := Load()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !cfg.InstallerWriteEnabled {
-			t.Fatalf("%q must leave it enabled", on)
-		}
-	}
-	// ⚠ Ein GESETZTES Wort ausserhalb des Vokabulars schaltet AUS, nicht auf die
-	// Vorgabe zurueck (boolEnv) - dieselbe fail-closed Richtung wie bei
-	// VP_CONTROL_ENABLED. Ein Tippfehler nimmt der Box also den Schreibpfad; er
-	// oeffnet ihn nie.
-	for _, typo := range []string{"ja", "yes", "on"} {
-		t.Setenv("VP_INSTALLER_WRITE_ENABLED", typo)
-		cfg, err = Load()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cfg.InstallerWriteEnabled {
-			t.Fatalf("%q must NOT keep the path open", typo)
+		if !reflect.DeepEqual(cfg, bare) {
+			t.Fatalf("%q must change nothing, got a different config", v)
 		}
 	}
 }

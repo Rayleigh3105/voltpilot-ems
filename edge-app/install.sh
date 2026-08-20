@@ -394,18 +394,6 @@ services:
       # in der Weboberflaeche; das Port-Mapping unten muss denselben Wert
       # nutzen). Der Spiegel selbst ist standardmaessig AUS (mirror.json).
       VP_MIRROR_PORT: \${VP_MIRROR_PORT:-502}
-      # Der Einmal-Schreibpfad auf ein Geraete-Register - EIN Feature, ZWEI
-      # Tueren: die lokale :8484-Taste (hinter dem Wartungs-Passwort) und der
-      # Portal-Downlink v2/register-write. Standard 'true' SEIT Stufe 3 „Bis
-      # zum Endkunden" (D2): der Portal-Konsument existiert ohnehin erst ab
-      # diesem Release, das Flag schuetzte also genau die Canary-Phase. Was den
-      # Pfad traegt, sind Identitaet (Broker-ACL + mTLS-CN), das Zeitfenster,
-      # die LAN-Whitelist, die Selbstkonflikt-Sperre, die Einmaligkeit, das
-      # Wartungs-Passwort an der lokalen Tuer - und der Cloud-Not-Aus der
-      # Plattform (VOLTPILOT_REGISTER_WRITE_ENABLED am api).
-      # 'false' nimmt EINER Box den ganzen Pfad wieder: die :8484-Endpunkte
-      # antworten 404, der Downlink antwortet mit gate_disabled.
-      VP_INSTALLER_WRITE_ENABLED: \${VP_INSTALLER_WRITE_ENABLED:-true}
       # Dev-only escape hatches (skip enrollment / plain-MQTT cloud). Leave
       # EMPTY on customer devices - the installer never sets them.
       VP_DEV_TENANT_ID: \${VP_DEV_TENANT_ID:-}

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -23,13 +24,13 @@ type installerBox struct {
 	addr string
 }
 
-// startInstallerBox is a box with the feature ON and a Deye hybrid_3p selected -
-// the constellation the whole path exists for.
-func startInstallerBox(t *testing.T, on bool) *installerBox {
+// startInstallerBox is a box with a Deye hybrid_3p selected - the constellation
+// the whole path exists for. There is NO arming step: the config is the plain
+// default, so the path exists on every box (Captain-Korrektur 20.08.2026).
+func startInstallerBox(t *testing.T) *installerBox {
 	t.Helper()
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
-	cfg.InstallerWriteEnabled = on
 	a, addr := startBusOnlyAgent(t, cfg)
 	if err := a.Bus.Subscribe(localbus.TopicInstallerWriteResult, 15, a.onInstallerWriteResult); err != nil {
 		t.Fatalf("subscribe: %v", err)
@@ -93,7 +94,7 @@ func regPtr(v int) *int { return &v }
 // A dry run reads and writes NOTHING; the confirmed call writes exactly once and
 // reports the read-back.
 func TestTheDryRunReadsAndTheConfirmedCallWritesExactlyOnce(t *testing.T) {
-	box := startInstallerBox(t, true)
+	box := startInstallerBox(t)
 	seen := make(chan installerBusRequest, 8)
 	installerStub(t, box.addr, seen, func(req installerBusRequest) installerBusResult {
 		if req.Mode == installerwrite.ModeDry {
@@ -175,7 +176,7 @@ func TestTheDryRunReadsAndTheConfirmedCallWritesExactlyOnce(t *testing.T) {
 // A write the device did not adopt is a MISMATCH, and it is audited - the case
 // an investigation needs most.
 func TestANotAdoptedValueIsAMismatchAndIsAudited(t *testing.T) {
-	box := startInstallerBox(t, true)
+	box := startInstallerBox(t)
 	installerStub(t, box.addr, nil, func(req installerBusRequest) installerBusResult {
 		return installerBusResult{OK: true, Before: regPtr(3300), After: regPtr(3300), Wrote: true}
 	})
@@ -203,7 +204,7 @@ func TestASilentDeviceIsAnHonestFailureAndIsAudited(t *testing.T) {
 	installerWriteTimeout = 300 * time.Millisecond
 	t.Cleanup(func() { installerWriteTimeout = prev })
 
-	box := startInstallerBox(t, true)
+	box := startInstallerBox(t)
 	installerStub(t, box.addr, nil, nil) // sees it, answers nothing
 	out, err := box.a.InstallerWrite(installerwrite.Request{
 		Value: 7000, Mode: installerwrite.ModeApply, Confirm: installerwrite.ConfirmToken(installerwrite.RegisterAddr, 7000),
@@ -222,7 +223,7 @@ func TestASilentDeviceIsAnHonestFailureAndIsAudited(t *testing.T) {
 // The allowlist is enforced BEFORE anything reaches the bus: a family whose
 // 0x00E7 is our own discharge lever never sees a request.
 func TestARefusedFamilyNeverReachesTheBus(t *testing.T) {
-	box := startInstallerBox(t, true)
+	box := startInstallerBox(t)
 	if _, err := box.a.SetInverter(inverter.SelectionRequest{
 		Brand: "deye", Model: "sun-12k-sg04lp3", Family: "hybrid_3p",
 		Connection: inverter.Connection{IP: "192.168.0.28", Serial: "2985159064", MbSlaveID: 1, PowerScale: 1},
@@ -255,18 +256,21 @@ func TestARefusedFamilyNeverReachesTheBus(t *testing.T) {
 	}
 }
 
-// The GET view names the switch, the one register and whether THIS plant
-// qualifies - so an operator sees the refusal before typing a value.
-func TestTheViewReportsTheSwitchAndTheAllowlist(t *testing.T) {
-	off := startInstallerBox(t, false)
-	if v := off.a.InstallerWriteView(); v.Enabled {
-		t.Fatalf("the flag defaults OFF")
-	}
-	on := startInstallerBox(t, true)
-	v := on.a.InstallerWriteView()
-	if !v.Enabled || !v.Allowed || v.Family != "hybrid_3p" ||
+// The GET view names the one register and whether THIS plant qualifies - so an
+// operator sees the refusal before typing a value. It carries NO switch state:
+// there is nothing to arm (Captain-Korrektur 20.08.2026).
+func TestTheViewReportsTheAllowlistAndNoSwitch(t *testing.T) {
+	v := startInstallerBox(t).a.InstallerWriteView()
+	if !v.Allowed || v.Family != "hybrid_3p" ||
 		v.Register != installerwrite.RegisterLabel || v.MaxRaw != installerwrite.MaxRaw || v.ScaleW != installerwrite.ScaleW {
 		t.Fatalf("view: %#v", v)
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(`"enabled"`)) {
+		t.Fatalf("the view must not carry a switch any more: %s", raw)
 	}
 }
 
@@ -277,7 +281,7 @@ func TestASecondWriteWhileOneIsInFlightIsRefused(t *testing.T) {
 	installerWriteTimeout = 900 * time.Millisecond
 	t.Cleanup(func() { installerWriteTimeout = prev })
 
-	box := startInstallerBox(t, true)
+	box := startInstallerBox(t)
 	installerStub(t, box.addr, nil, nil) // never answers, so the first call stays in flight
 
 	started := make(chan struct{})
@@ -317,7 +321,7 @@ func containsSub(hay, needle string) bool {
 // test is what makes „a later trigger is a second adapter, not a refactoring"
 // checkable rather than asserted.
 func TestWriteOnceIsTriggerAgnosticAndAuditsNothing(t *testing.T) {
-	box := startInstallerBox(t, true)
+	box := startInstallerBox(t)
 	installerStub(t, box.addr, nil, func(req installerBusRequest) installerBusResult {
 		return installerBusResult{OK: true, Before: regPtr(3300), After: regPtr(req.Value), Wrote: true}
 	})
@@ -354,7 +358,7 @@ func TestWriteOnceIsTriggerAgnosticAndAuditsNothing(t *testing.T) {
 // session: a stale decision must not overwrite a newer value, and the refusal
 // says what it found.
 func TestAStalePreconditionRefusesWithoutWriting(t *testing.T) {
-	box := startInstallerBox(t, true)
+	box := startInstallerBox(t)
 	seen := make(chan installerBusRequest, 4)
 	installerStub(t, box.addr, seen, func(req installerBusRequest) installerBusResult {
 		// The device moved on: it reads 5000, not the expected 3300.

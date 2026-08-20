@@ -106,14 +106,16 @@ func (a *Agent) onRegisterWrite(payload []byte) {
 
 // runRegisterWrite executes an ADMITTED order off the link's router goroutine.
 func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Identity) {
-	// Das FEATURE-GATE gilt fuer BEIDE Tueren - ein Feature, zwei Trigger. Eine
-	// nicht armierte Box antwortet ehrlich, statt zu schweigen: sonst saehe der
-	// Betreiber einen Timeout und suchte den Fehler im Netz.
-	if !a.Cfg.InstallerWriteEnabled {
-		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
-			registerwrite.ErrGateDisabled, registerwrite.MsgGateDisabled))
-		return
-	}
+	// ⚠ HIER STEHT KEIN FEATURE-GATE (Captain-Korrektur 20.08.2026, D2
+	// KORRIGIERT). Der Einmal-Schreibpfad ist auf jeder Box verfuegbar; was ihn
+	// traegt, sind die INHALTLICHEN Tore, die IMMER laufen: Identitaet
+	// (Broker-ACL + mTLS-CN, oben geprueft), das requested_at-Fenster, die
+	// Einmaligkeit, die Ratenbegrenzung, die Lane-Politik (Wertgrenzen,
+	// LAN-Whitelist), die Selbstkonflikt-Sperre und die Zwei-Schritt-Strecke -
+	// plus der Cloud-Not-Aus der Plattform (voltpilot.register-write.enabled am
+	// api), der mit deutschem Grund refuesiert statt zu schweigen. Eine
+	// Armierung je Box gab es nur in der Canary-Phase; sie war nie das, was den
+	// Pfad sicher macht.
 	if v := req.Admissible(); !v.OK() {
 		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
 			v.Code, v.Message))

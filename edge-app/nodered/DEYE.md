@@ -516,18 +516,17 @@ Adresse, die Skala und die Obergrenze stehen fest im Code (Politik-Schicht
 prüft beides noch einmal selbst). Ein weiteres Register wäre eine Code-Änderung
 mit eigenem Review, nie ein Parameter.
 
-### Einschalten (nur für das Wartungsfenster)
+### Es gibt nichts einzuschalten
 
-In der `.env` des Geräts:
-
-```
-VP_INSTALLER_WRITE_ENABLED=true
-```
-
-dann `docker compose up -d core`. **Standard ist `false`** - ohne den Schalter
-antworten beide Endpunkte mit `404`, es wird nichts abonniert und nichts
-veröffentlicht: die Box verhält sich zeichengleich wie ohne das Feature. Nach
-dem Fenster wieder ausschalten - es ist **keine Flotten-Fähigkeit**.
+Der Pfad ist auf **jeder** Box verfügbar - kein Env-Schalter, keine
+Freischaltung, kein `404`-Zustand (Captain-Korrektur 20.08.2026). Das frühere
+`VP_INSTALLER_WRITE_ENABLED` gehörte zur Canary-Phase und ist ersatzlos
+entfallen; was den Pfad trägt, sind die Tore unten (Register-Allowlist,
+Wertgrenze, Zwei-Schritt-Bestätigung, `expected_before`, genau **ein** Versuch)
+plus das **Betreiber-Kennwort** am Schreib-Aufruf. Der einzige plattformweite
+Hebel ist der **Cloud-Not-Aus** `VOLTPILOT_REGISTER_WRITE_ENABLED` am api - auf
+`false` refüsieren die beiden schreibenden Portal-Schritte mit `503` und
+deutschem Grund (der Verlauf bleibt lesbar).
 
 ### Ablauf: erst Probelauf, dann Bestätigung
 
@@ -582,7 +581,7 @@ Bestätigen Zeit vergangen ist.
 curl -sS http://<geraet>:8484/api/installer-write | jq
 ```
 
-Es zeigt den Schalter, das eine freigegebene Register, ob **diese** Anlage
+Es zeigt das eine freigegebene Register, ob **diese** Anlage
 qualifiziert - und die Schreib-Historie (Zeitpunkt, vorher, angefordert,
 nachher, Quelle), **neueste zuerst**. Sie liegt in
 `<datenverzeichnis>/installer-write.json` und **überlebt einen Neustart**.

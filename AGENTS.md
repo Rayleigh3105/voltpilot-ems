@@ -1953,10 +1953,11 @@ besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`, erster Trigger: die lo
   diese Klasse hat schon einmal einen stillen Produktions-Ausfall gekostet (die OTA-Listener-Falle).
   Der Verzicht kostete in den Stufen 1/2 nichts, weil die eigentliche Scharfschaltung fail-closed auf
   dem GERÄT sass (`VP_INSTALLER_WRITE_ENABLED`, damals Vorgabe AUS): eine nicht armierte Box
-  antwortete `gate_disabled`. **⚠ Seit Stufe 3 ist das GERÄTE-Flag per Vorgabe AN (D2), dieser
-  Schalter ist damit der EINZIGE plattformweite Hebel — und er wirkt seither im DIENST statt an der
-  Route: abgeschaltet refüsieren nur die zwei SCHREIBENDEN Schritte mit 503 und deutschem Grund,
-  während der VERLAUF lesbar bleibt** (siehe den Stufe-3-Abschnitt).
+  antwortete `gate_disabled`. **⚠ Seit der Captain-Korrektur vom 20.08.2026 gibt es dieses
+  Geräte-Flag GAR NICHT MEHR (D2 KORRIGIERT — ersatzlos entfernt), dieser Schalter ist damit der
+  EINZIGE plattformweite Hebel — und er wirkt im DIENST statt an der Route: abgeschaltet refüsieren
+  nur die zwei SCHREIBENDEN Schritte mit 503 und deutschem Grund, während der VERLAUF lesbar
+  bleibt** (siehe den Stufe-3-Abschnitt).
   Publisher/Zuhörer reiten auf `voltpilot.provisioning.*` (derselbe Broker wie Probe/Provisionierung/
   OTA) — kein weiteres Transport-Flag. Fristen: `voltpilot.register-write.{read,write}-timeout`.
 - **Der BOX-KONSUMENT ist der zweite ADAPTER, kein zweiter Pfad.** `edge-app/core/internal/registerwrite`
@@ -2136,13 +2137,21 @@ nur, WESSEN Anlagen jemand erreicht, nie WELCHE Register.
 - **D1-Folge:** der Kunde bekommt denselben Geräte-Picker UND die freie LAN-Adresse. Sie ist LAN-only,
   und **belegbar privat ist sie NUR, weil die BOX es prüft** (`probe.IsPrivateHost` + die geteilten
   Vektoren) — im Portal steht ausdrücklich keine zweite Wahrheit über ein Netz, das es nie gesehen hat.
-- **⚠ D2-Folge, und sie ist die tragende Umkehrung dieser Stufe: das GERÄTE-Flag
-  `VP_INSTALLER_WRITE_ENABLED` steht per Vorgabe AN** (`edge-app/core/internal/config`, beide
-  Edge-Composes + `install.sh` im Lockstep). Bis Stufe 2 war es die eigentliche Sicherung („eine nicht
-  armierte Box antwortet `gate_disabled`"); ab hier ist es das NICHT mehr, also musste der
-  plattformweite Hebel ein echter werden — siehe den nächsten Punkt. **Wirksam wird die Umstellung
-  erst mit dem NÄCHSTEN Edge-Release und dem Rollout des Captains**; eine laufende Box behält ihr
-  Image und ihr `.env`.
+- **⚠ D2-Folge, und sie ist die tragende Umkehrung dieser Stufe: auf der Box gibt es KEIN
+  Feature-Flag mehr.** Bis Stufe 2 war `VP_INSTALLER_WRITE_ENABLED` die eigentliche Sicherung („eine
+  nicht armierte Box antwortet `gate_disabled`"); Stufe 3 drehte seine Vorgabe auf AN, und die
+  **Captain-Korrektur vom 20.08.2026 (D2 KORRIGIERT) hat es ERSATZLOS entfernt** — aus
+  `edge-app/core/internal/config`, aus beiden Edge-Composes und aus `install.sh`. Der
+  Einmal-Schreibpfad (lokale `:8484`-Tür UND Portal-Downlink-Konsument) ist damit auf jeder Box
+  immer verfügbar, ohne Armierung und ohne `404`-Zustand; der plattformweite Hebel musste deshalb
+  ein echter werden — siehe den nächsten Punkt. **Unverändert gelten ALLE inhaltlichen Tore**
+  (Zwei-Schritt-Strecke, `expected_before`, Einmaligkeit, Lane-Politik inkl. Wertgrenzen /
+  Selbstkonflikt-Sperre / LAN-only, das Betreiber-Kennwort `calGuard` an der lokalen Tür, RLS/JWT auf
+  dem Portal-Weg, Box-Audit + D6-Uplink). Das Wort `gate_disabled` bleibt im KONTRAKT und in der
+  Cloud-Whitelist, weil eine Box mit ÄLTEREM Image es noch senden kann; kein aktueller Build erzeugt
+  es. **Wirksam wird die Umstellung erst mit dem NÄCHSTEN Edge-Release** — eine laufende Box behält
+  ihr Image und ihr `.env` (ein dort gesetztes `VP_INSTALLER_WRITE_ENABLED` wird vom neuen Build
+  schlicht ignoriert).
 - **⚠ Der Cloud-Not-Aus `voltpilot.register-write.enabled` wirkt seit dieser Stufe im DIENST, nicht an
   der Route.** Vorher nahm `@ConditionalOnProperty` dem Controller die Bohne: die Routen
   antworteten mit einem nackten **404** — zeichengleich mit der Antwort des Mandanten-Zauns auf eine
@@ -2165,7 +2174,10 @@ nur, WESSEN Anlagen jemand erreicht, nie WELCHE Register.
   zusätzlich, dass der deutsche Satz WÖRTLICH aus `installerwrite` kommt.
 - **Beweise:** rein `RegisterWriteKillSwitchTest` (3: beide Schritte 503 mit deutschem Grund, KEIN
   Mitspieler berührt, Verlauf bleibt lesbar, eingeschaltet kommt die Ablehnung von weiter unten) ·
-  Go `config_test.go` (Vorgabe AN, `false` schaltet EINE Box wieder aus, ein Tippfehler schliesst) ·
+  Go `config_test.go` (es gibt keinen Umgebungs-Schalter mehr — jeder Wert lässt die Konfiguration
+  byte-gleich), `agent/register_write_test.go` („der Pfad braucht keinen Armierungs-Schritt" +
+  Struktur-Wächter gegen ein wieder eingeführtes Feld), `web/web_test.go` (die Routen existieren
+  ohne Armierung, der Schreib-Aufruf bleibt hinter dem Betreiber-Kennwort) ·
   Portal `registerWrite.test.ts` (+5) / `RegisterWriteDrawer.test.tsx` (+2) /
   `AnlagenModellSection.test.tsx` (+2). Im echten Chrome bei 1440 und 375 durchgespielt: Aufklapper →
   Ziel → Ist-Wert → Wert + Pflicht-Grund → Rückfrage mit dem Verantwortungs-Satz; 0 px horizontaler
