@@ -174,6 +174,14 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       'adminKomponentenFlotte',
       'adminGeraet',
     ];
+    // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
+    // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor
+    // `showTechnicalLayer()` (das M7-Muster der Installateur-Ansicht). Genau
+    // diese zwei Dateien dürfen die reinen Schichten deshalb hereinziehen;
+    // damit die Ausnahme kein Loch wird, wird das Tor GEPRÜFT statt geglaubt.
+    const GATE = 'showTechnicalLayer(';
+    const ADMIN_BLOCK = 'components/AdminGeraetKarten.tsx';
+    const rollenGehostet = [ADMIN_BLOCK, 'pages/GeraetSeiteSection.tsx'];
     const offenders: string[] = [];
     for (const file of walk(SRC)) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
@@ -182,10 +190,19 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       if (rel.startsWith('pages/admin/') || rel.startsWith('admin/')) continue;
       if (adminOnly.some((m) => rel === `${m}.ts`)) continue;
       const code = readFileSync(file, 'utf8');
+      // ⚠ Auf dem KOMMENTAR-freien Text: ein Tor, das nur in einem Kommentar
+      // erwähnt wird, ist keines (beim Mutationstest genau so aufgefallen).
+      const gated = stripComments(code).includes(GATE);
       for (const m of adminOnly) {
-        if (new RegExp(`from '[^']*\\b${m}'`).test(code)) {
-          offenders.push(`${rel} importiert ${m}`);
-        }
+        if (!new RegExp(`from '[^']*\\b${m}'`).test(code)) continue;
+        // Der Block SELBST ist die Plattform-Sicht; seine Wirte tragen das Tor.
+        if (rel === ADMIN_BLOCK) continue;
+        if (rollenGehostet.includes(rel) && gated) continue;
+        offenders.push(`${rel} importiert ${m}`);
+      }
+      // Und wer die Plattform-Sicht RENDERT, muss das Tor tragen.
+      if (/from '[^']*\bAdminGeraetKarten'/.test(code) && !gated) {
+        offenders.push(`${rel} rendert die Plattform-Sicht OHNE ${GATE})`);
       }
     }
     expect(offenders, offenders.join('\n')).toEqual([]);

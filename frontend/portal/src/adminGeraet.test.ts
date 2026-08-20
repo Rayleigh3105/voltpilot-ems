@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findeGeraet,
   geraetView,
+  kundenGeraetZiel,
   lebendigkeit,
   REGISTRY_AUFKLEBER,
   REGISTRY_SELBST,
@@ -386,5 +387,25 @@ describe('verlauf', () => {
 
   it('gibt einer unverbundenen ID NICHT das Flotten-Journal', () => {
     expect(verlauf(GEDRUCKT, JOURNAL)).toEqual([]);
+  });
+});
+
+describe('kundenGeraetZiel', () => {
+  it('führt ein verbundenes Gerät auf die Geräteseite SEINER Anlage - über den Mandanten', () => {
+    expect(kundenGeraetZiel(BOX)).toEqual({
+      tenantId: 't1',
+      siteId: 's1',
+      ref: 'edge-k2m4pqj',
+    });
+  });
+
+  it('führt eine gedruckte, noch nicht verbundene ID NIRGENDWOHIN - sie bleibt Zeile', () => {
+    expect(kundenGeraetZiel(GEDRUCKT)).toBeNull();
+  });
+
+  it('springt nie ohne Mandant oder Anlage - die Adresse wäre nicht auflösbar', () => {
+    expect(kundenGeraetZiel({ ...BOX, tenantId: null })).toBeNull();
+    expect(kundenGeraetZiel({ ...BOX, siteId: null })).toBeNull();
+    expect(kundenGeraetZiel(null)).toBeNull();
   });
 });

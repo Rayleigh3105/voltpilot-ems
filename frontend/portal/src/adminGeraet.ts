@@ -577,3 +577,30 @@ export function verlauf(device: AdminDeviceRow, journal: JournalEntry[]): Journa
   if (!device.deviceId) return [];
   return journal.filter((e) => e.deviceId === device.deviceId).slice(0, VERLAUF_MAX);
 }
+
+// ---------------------------------------------------------------------------
+// Der Weg in die KUNDEN-Geräteseite
+// ---------------------------------------------------------------------------
+
+/**
+ * Wohin ein Klick auf ein Gerät der Plattform-Liste führt (Anlagen-Zentrale
+ * Stufe 1 PR 1f).
+ *
+ * Ein VERBUNDENES Gerät hat seit dieser Stufe genau EINEN Ort: die
+ * Geräte-Detailseite seiner Anlage. Der Weg dorthin führt über den
+ * Mandanten-Umschalter - die Seite liegt hinter dem RLS-Zaun, also muss der
+ * Mandant gesetzt sein, bevor die Adresse gilt.
+ *
+ * **Eine gedruckte, noch nicht verbundene Aufkleber-ID hat KEINE Geräteseite**
+ * (es gibt kein Gerät, über das etwas zu sagen wäre) - sie bekommt `null` und
+ * bleibt Zeile der Plattform-Liste mit ihrer eigenen Vollansicht. Dasselbe für
+ * eine Zeile, der Mandant oder Anlage fehlt: ein Sprung ohne beides landete auf
+ * einer Adresse, die niemand auflösen kann.
+ */
+export function kundenGeraetZiel(
+  device: AdminDeviceRow | null | undefined,
+): { tenantId: string; siteId: string; ref: string } | null {
+  if (!device?.deviceId) return null;
+  if (!device.siteId || !device.tenantId) return null;
+  return { tenantId: device.tenantId, siteId: device.siteId, ref: device.externalRef };
+}

@@ -3090,9 +3090,16 @@ ausschließlich Lesepfade, die es längst gibt (`/devices` · `/entities` ·
   Schlüssel ist die REFERENZ, nicht die Geräte-UUID** — sie überlebt
   Unclaim/Re-Claim, also überlebt auch jedes Lesezeichen. Additiv: eine Adresse
   ohne Referenz fällt auf die Zentrale zurück, nie ein 404.
-- **Kunde und Plattform-Admin sehen DIESELBE Seite** (Vorentscheidung V1); die
-  Admin-Karten kommen additiv hinter dem EINEN Tor
-  `rollen.showTechnicalLayer()`, nie als zweite Fläche.
+- **Kunde und Plattform-Admin sehen DIESELBE Seite** (Vorentscheidung V1): die
+  Admin-Karten sind seit PR 1f nach `components/AdminGeraetKarten.tsx`
+  HERAUSGELÖST und haben ZWEI Wirte — die Plattform-Geräteseite und, hinter dem
+  EINEN Tor `rollen.showTechnicalLayer()`, die Kunden-Geräteseite; nie eine
+  zweite Fläche und nie eine zweite Kopie (sonst wäre jede Handlung samt ihrer
+  Rückfrage zweimal zu pflegen). **Die Plattform-Liste FÜHRT dorthin:** ein
+  verbundenes Gerät wird über den Mandanten-Umschalter auf seine Geräteseite
+  weitergeleitet, eine gedruckte, noch nicht verbundene Aufkleber-ID
+  ausdrücklich NICHT — sie behält ihre Plattform-Vollansicht, weil es kein
+  Gerät gibt, über das etwas zu sagen wäre.
 - **NICHT in dieser Stufe** (Stufe 3, Konsolidierung): es wird nichts
   abgerissen — die Plattform-Geräteseite, der Register-Aufklapper der Zentrale
   und die Installateur-Ansicht bleiben unverändert stehen.

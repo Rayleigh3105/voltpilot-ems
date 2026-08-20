@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -28,7 +28,7 @@ import {
   stateLabel,
   type EdgeUpdates,
 } from '../../adminEdgeUpdates';
-import { geraetView } from '../../adminGeraet';
+import { geraetView, kundenGeraetZiel } from '../../adminGeraet';
 import { anlageRoute, geraetHash, parseGeraetRef, pageRoute, type PageId, type Route }
   from '../../nav';
 import { GeraetSeite } from './GeraetSeite';
@@ -106,6 +106,10 @@ export function GeraeteRegistryPage({
   const [removing, setRemoving] = useState<string | null>(null);
   // Die Referenz des Geräts, für das gerade eine Anwendung freigegeben wird.
   const [applying, setApplying] = useState<string | null>(null);
+
+  // Der Sprung-Rückruf, stabil gehalten für den Weiterleitungs-Effekt unten.
+  const jumpRef = useRef(onJumpToTenant);
+  jumpRef.current = onJumpToTenant;
 
   async function reload() {
     setError(null);
@@ -272,6 +276,24 @@ export function GeraeteRegistryPage({
         new Date(fetchedAt),
       )
     : null;
+
+  // Anlagen-Zentrale Stufe 1 (PR 1f): ein VERBUNDENES Gerät hat seit dieser
+  // Stufe genau EINEN Ort - seine Geräteseite in der Mandanten-Ansicht. Die
+  // Plattform-Liste bleibt der Einstieg und FÜHRT dorthin, statt eine zweite
+  // Vollansicht desselben Geräts danebenzustellen. Eine gedruckte, noch nicht
+  // verbundene Aufkleber-ID hat keine Geräteseite und behält ihre eigene.
+  const ziel = kundenGeraetZiel(detail?.device);
+  useEffect(() => {
+    if (!ziel) return;
+    jumpRef.current?.(ziel.tenantId, {
+      page: 'anlagen',
+      siteId: ziel.siteId,
+      sub: 'geraet',
+      geraet: { ref: ziel.ref, geraetId: null },
+    });
+    // Der Sprung-Rückruf liegt in einer Ref: ein Wirt, der ihn inline erzeugt,
+    // würde den Effekt sonst bei JEDEM Render neu auslösen.
+  }, [ziel?.tenantId, ziel?.siteId, ziel?.ref]);
 
   if (geraetRef) {
     const row = detail?.device ?? null;

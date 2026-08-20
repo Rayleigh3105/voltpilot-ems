@@ -113,7 +113,9 @@
 
 .vp-geraet-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* min(...) ist tragend: eine nackte 320-px-Untergrenze überläuft, sobald das
+     Raster in einem gepolsterten Wirt steht (Telefon + Aufklapper). */
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--vp-space-4, 16px);
   align-items: start; /* sonst zieht die längste Karte die kurzen auf ihre Höhe */
   min-width: 0;
@@ -557,4 +559,46 @@
   .vp-geraet-register .vp-regklasse {
     margin-left: 0;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Die PLATTFORM-Sicht (Anlagen-Zentrale Stufe 1, PR 1f)
+
+   Additiv hinter dem EINEN Rollen-Tor (M7): ein Kunde sieht sie nie. Sie ist
+   ein eigener, BENANNTER Aufklapper - dieselbe Form wie die Installateur-Ansicht
+   des Anlagen-Modells -, damit die Wiederholung des Software-Stands eine zweite
+   LESEHÖHE ist und keine Doppelung auf derselben Karte.
+--------------------------------------------------------------------------- */
+
+.vp-geraet-admin {
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 12px);
+  background: #fff;
+  padding: 0;
+}
+
+.vp-geraet-admin > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--vp-space-3);
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.vp-geraet-admin > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-geraet-admin[open] > summary {
+  border-bottom: 1px solid var(--vp-border, #e5e7eb);
+}
+
+.vp-geraet-admin > .vp-geraet-grid {
+  padding: var(--vp-space-3);
+}
+
+.vp-geraet-admin > .vp-alert {
+  margin: 0 var(--vp-space-3) var(--vp-space-3);
 }
