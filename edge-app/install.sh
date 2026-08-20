@@ -390,6 +390,15 @@ services:
       # 'false' (getrennt vom Wechselrichter-Not-Aus). Siehe Runbook
       # docs/verbrauchssteuerung-betrieb.md.
       VP_CONSUMER_CONTROL_ENABLED: \${VP_CONSUMER_CONTROL_ENABLED:-false}
+      # OCPP-Ladepunkte (Lastmanagement). Vorgabe AUS: ohne diesen Schalter
+      # bindet die Box keinen Websocket-Server und verhaelt sich zeichengleich
+      # wie vor dem Feature. Der Zugangs-Zaun ist die Freigabeliste der
+      # Charge-Point-Kennungen; die LEBENDE Zuteilung braucht zusaetzlich
+      # VP_CONTROL_ENABLED und VP_CONSUMER_CONTROL_ENABLED.
+      VP_OCPP_ENABLED: \${VP_OCPP_ENABLED:-false}
+      # LAN-Port, auf dem die Ladesaeulen die Box anwaehlen (muss mit dem
+      # Port-Mapping unten uebereinstimmen).
+      VP_OCPP_PORT: \${VP_OCPP_PORT:-8887}
       # Host-Port des Modbus-Datenspiegels (NUR fuer die Anzeige der Adresse
       # in der Weboberflaeche; das Port-Mapping unten muss denselben Wert
       # nutzen). Der Spiegel selbst ist standardmaessig AUS (mirror.json).
@@ -412,6 +421,10 @@ services:
       # statt am Ein-Client-Solarman-Logger. Container-Port fest 1502; ohne
       # aktivierten Spiegel lauscht nichts (Verbindung wird abgewiesen).
       - "\${VP_MIRROR_PORT:-502}:1502"
+      # OCPP: die Ladesaeulen waehlen die Box hier an
+      # (ws://<box>:8887/ocpp/<Kennung>). LAN-only wie :8484 - nie oeffentlich
+      # erreichbar machen. Ohne VP_OCPP_ENABLED lauscht nichts.
+      - "\${VP_OCPP_PORT:-8887}:8887"
 
   nodered:
     image: \${VP_EDGE_NODERED_IMAGE:-${NODERED_REPO}:\${VP_EDGE_IMAGE_TAG:-latest}}

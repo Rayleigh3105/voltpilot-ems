@@ -148,6 +148,11 @@ type Snapshot struct {
 	// first curtailment readback arrives; read-only display + heartbeat proof.
 	CurtailUnits []CurtailUnit `json:"curtail_units,omitempty"`
 
+	// Ocpp is the OCPP charge-point picture (nil while VP_OCPP_ENABLED is off,
+	// which is the default - the box then behaves as it did before the
+	// feature existed).
+	Ocpp *OcppInfo `json:"ocpp,omitempty"`
+
 	// DataPurge tracks a data purge ("Datenaufzeichnungen löschen") triggered
 	// on this device: nil when none is in flight or everything is confirmed.
 	DataPurge *DataPurgeInfo `json:"data_purge,omitempty"`
@@ -508,4 +513,107 @@ func (s *Store) Get() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.snap
+}
+
+// --- OCPP charge points (Ladepunkte) ---
+//
+// Plain mirror types, like CurtailUnit above: the state snapshot stays a
+// dependency-light view every surface can render, and the agent maps the
+// csms/lastmgmt facts into it.
+
+// OcppInfo is the whole charge-point picture. nil on the snapshot = the
+// feature flag is off and the box behaves as it did before it existed.
+type OcppInfo struct {
+	Enabled   bool   `json:"enabled"`
+	Listening bool   `json:"listening"`
+	Error     string `json:"error,omitempty"`
+	// Endpoint is the BASE url an operator types into a station; the full one
+	// carries the station's own ChargePointId after it.
+	Endpoint string `json:"endpoint,omitempty"`
+
+	// ControlEnabled reports whether the LIVE allocation may be written.
+	//
+	// ⚠ It is a SEPARATE gate from Enabled: the protective profiles (the
+	// station cap and the safe default) are installed whenever the server
+	// runs, because they only ever REDUCE. The live allocation additionally
+	// needs the plant's control switches. When it is off, ControlNote says so
+	// - a refusal nobody can see is a riddle (the OTA canary-soak lesson).
+	ControlEnabled bool   `json:"control_enabled"`
+	ControlNote    string `json:"control_note,omitempty"`
+
+	// The site's own numbers, so a surface can show the arithmetic rather than
+	// a bare budget.
+	GridLimitKw    float64 `json:"grid_limit_kw"`
+	HouseReserveKw float64 `json:"house_reserve_kw"`
+	MarginPct      float64 `json:"margin_pct"`
+	MinPowerKw     float64 `json:"min_power_kw"`
+	BudgetKw       float64 `json:"budget_kw"`
+	// ReservedKw is held back for charge points the box cannot currently
+	// reach: they are holding their own safe default, and their cars may be
+	// taking it, so that power is not ours to hand out. 0 while every station
+	// is reachable. The allocatable budget is BudgetKw - ReservedKw.
+	ReservedKw  float64 `json:"reserved_kw,omitempty"`
+	AllocatedKw float64 `json:"allocated_kw"`
+	// MeasuredKw is the sum of what the stations REPORT drawing right now.
+	// nil = not one connector reported a measurement - never a fabricated 0.
+	MeasuredKw *float64 `json:"measured_kw,omitempty"`
+
+	// SafeDefaultKw is the emergency per-connector limit currently derived,
+	// with the terms it came from so the customer can be shown the sum.
+	SafeDefaultKw    float64 `json:"safe_default_kw"`
+	SafeDefaultNote  string  `json:"safe_default_note,omitempty"`
+	SafeDefaultHolds bool    `json:"safe_default_holds"`
+	SafeWorstCaseKw  float64 `json:"safe_worst_case_kw"`
+	MaxHouseLoadKw   float64 `json:"max_house_load_kw"`
+	ConnectorCount   int     `json:"connector_count"`
+
+	Chargers []OcppCharger `json:"chargers"`
+}
+
+// OcppCharger is one charge point for the surface.
+type OcppCharger struct {
+	ID        string `json:"id"`
+	Label     string `json:"label,omitempty"`
+	Priority  bool   `json:"priority,omitempty"`
+	Connected bool   `json:"connected"`
+	// Vendor/Model/Firmware are the station's own words. DISPLAY ONLY - no
+	// mechanism anywhere branches on them (the herstellerneutral rule).
+	Vendor   string `json:"vendor,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Firmware string `json:"firmware,omitempty"`
+	// Ready is true once the two permanent profiles are installed. Note names
+	// the reason when it is not - never an unexplained "not ready".
+	Ready      bool            `json:"ready"`
+	Note       string          `json:"note,omitempty"`
+	LastSeenMs int64           `json:"last_seen_ms,omitempty"`
+	Connectors []OcppConnector `json:"connectors,omitempty"`
+}
+
+// OcppConnector is one plug.
+type OcppConnector struct {
+	ID     int    `json:"id"`
+	Status string `json:"status,omitempty"`
+	// Charging reports whether this plug claims budget right now.
+	Charging bool `json:"charging"`
+	// AllocatedKw is what the load management granted (0 while paused);
+	// nil = this plug is not part of the current decision at all.
+	AllocatedKw *float64 `json:"allocated_kw,omitempty"`
+	// Reason / ReasonText are the allocator's machine word and its German
+	// sentence (see lastmgmt.Text).
+	Reason     string `json:"reason,omitempty"`
+	ReasonText string `json:"reason_text,omitempty"`
+	// NextTurnMs is when a waiting plug is estimated to get its turn (0 = not
+	// computable, and then the surface must say nothing).
+	NextTurnMs int64 `json:"next_turn_ms,omitempty"`
+	// PowerKw / EnergyKwh / SocPct are what the station MEASURED. Absent =
+	// not reported, never a fabricated 0.
+	PowerKw   *float64 `json:"power_kw,omitempty"`
+	EnergyKwh *float64 `json:"energy_kwh,omitempty"`
+	SocPct    *float64 `json:"soc_pct,omitempty"`
+	// CommandStatus / Readback carry the station's own answers: an accepted
+	// command is not a command in force.
+	CommandStatus string `json:"command_status,omitempty"`
+	Readback      string `json:"readback,omitempty"`
+	ReadbackNote  string `json:"readback_note,omitempty"`
+	SessionSince  int64  `json:"session_since_ms,omitempty"`
 }
