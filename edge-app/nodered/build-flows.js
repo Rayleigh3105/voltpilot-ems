@@ -29,6 +29,10 @@ const routing = require('./inverter-routing');
 // The installer-write executor's register facts come STRAIGHT from the control
 // routing module (never a hand-copied literal) - same reason as the router's.
 const controlRouting = require('./inverter-control-routing');
+// Die WARTESCHLANGE des einen Wechselrichter-Sockets: Schluessel + Zeitfenster
+// kommen aus dem getesteten Modul, nie als Zahl in den Knotenrumpf getippt
+// (dieselbe Disziplin wie die Registerkarten oben; flows-sync.test.js pinnt es).
+const bus = require('./bus-arbitration');
 
 const OUT = path.join(__dirname, 'flows.json');
 const prev = JSON.parse(fs.readFileSync(OUT, 'utf8'));
@@ -1304,6 +1308,19 @@ const controlExecSolarmanFunc = [
   "const wantKey = 'sv5_write_want:' + target;",
   "const calKey = 'sv5_write_cal:' + target;",
   "const deferKey = 'sv5_write_defers:' + target;",
+  // Die WARTESCHLANGE (bus-arbitration.js): ein Einmal-Auftrag reserviert den Bus
+  // unter SEINEM eigenen Schluessel - dieser Executor loescht ihn nie (der alte
+  // gemeinsame sv5_write_want war Befund 1 des Vorfalls vom 20.08.2026) - und
+  // bekommt ihn beim Beenden dieser Runde UEBERGEBEN.
+  "const oneKey = '" + bus.KEY_ONESHOT('') + "' + target;",
+  "const grantKey = '" + bus.KEY_GRANT('') + "' + target;",
+  "const RESERVE_TTL_MS = " + bus.ONESHOT_RESERVE_TTL_MS + ";",
+  "const GRANT_TTL_MS = " + bus.ONESHOT_GRANT_TTL_MS + ";",
+  "// UEBERGABE: wer den Socket freigibt, entlaesst ihn nicht ins Rennen, sondern",
+  "// haendigt ihn einer noch gueltigen Reservierung aus - das ist die 'eingereihte",
+  "// Ausfuehrung direkt nach Abschluss der laufenden Steuerrunde'. Steuer-Vorrang",
+  "// bleibt: hier wird nichts abgebrochen und nichts zurueckgewiesen.",
+  "const handover = () => { const r = flow.get(oneKey) || null; const rt = (r && Number(r.at) > 0) ? Number(r.at) : 0; if (rt && Date.now() - rt < RESERVE_TTL_MS) flow.set(grantKey, { id: r.id, at: Date.now() }); };",
   "const isCal = (msg.setpoint && msg.setpoint.source === 'calibration') || ctrl.calibration === true;",
   "if (toWrite.length > 0) { flow.set(wantKey, now); if (isCal) flow.set(calKey, now); }",
   "const STALE_MS = 30000;",
@@ -1316,7 +1333,11 @@ const controlExecSolarmanFunc = [
   "const sleep = (ms) => new Promise((r) => setTimeout(r, ms));",
   "// Win the socket: claim it as soon as it is free/stale, waiting out an in-flight read",
   "// up to ACQUIRE_MS. Returns false only if we could not win it in time.",
-  "const acquire = async () => { const start = Date.now(); for (;;) { const bs = flow.get(busyKey) || 0; if (!bs || Date.now() - bs >= STALE_MS) { flow.set(busyKey, Date.now()); return true; } if (Date.now() - start >= ACQUIRE_MS) return false; node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt - warte auf freien Sozket' }); await sleep(POLL_MS); } };",
+  "// Win the socket - but NEVER jump a running handover: a grant addressed to a",
+  "// one-shot order counts as busy and is WAITED OUT inside this executor's own,",
+  "// unchanged budget. That is the whole cost of the queue for the control path:",
+  "// a delay of one one-shot round, never a refusal and never an abort.",
+  "const acquire = async () => { const start = Date.now(); for (;;) { const tn = Date.now(); const g = flow.get(grantKey) || null; const gLive = !!(g && Number(g.at) > 0 && tn - Number(g.at) < GRANT_TTL_MS); const bs = flow.get(busyKey) || 0; if (!gLive && (!bs || tn - bs >= STALE_MS)) { flow.set(busyKey, tn); return true; } if (tn - start >= ACQUIRE_MS) return false; node.status({ fill: 'blue', shape: 'ring', text: gLive ? 'Einmal-Auftrag hat den Bus - warte' : 'Logger belegt - warte auf freien Sozket' }); await sleep(POLL_MS); } };",
   "return acquire().then((gotSock) => {",
   "  if (!gotSock) {",
   "    // Could not win the socket within the budget: DEFER one setpoint tick. COUNT it",
@@ -1335,7 +1356,7 @@ const controlExecSolarmanFunc = [
   "  const sock = new net.Socket(); sock.setNoDelay(true);",
   "  let done = false, acc = Buffer.alloc(0), pending = null;",
   "  let lastReqHex = '', lastRespHex = '';",
-  "  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); flow.set(wantKey, 0); flow.set(calKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); warnRL('err', 'Deye-Steuerung fehlgeschlagen (' + target + '): ' + err.message); if (err.requestHex || err.responseHex) { const v = err.v5 || {}; const hdr = (v.frameType !== undefined) ? (' Controlcode=0x' + (v.controlCode || 0).toString(16) + ' Seq=' + (v.sequence || 0) + ' Logger=' + (v.loggerSerial || 0) + ' Frametyp=0x' + (v.frameType || 0).toString(16) + '/' + v.frameTypeLabel + ' Status=0x' + (v.status || 0).toString(16)) : ''; diagRL('Deye-Steuerung Rohframe (' + target + '): Anfrage=[' + (err.requestHex || '?') + '] Antwort=[' + (err.responseHex || '?') + ']' + hdr); } resolve(null); } else { flow.set(deferKey, 0); resolve(okMsg); } };",
+  "  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); handover(); flow.set(busyKey, 0); flow.set(wantKey, 0); flow.set(calKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); warnRL('err', 'Deye-Steuerung fehlgeschlagen (' + target + '): ' + err.message); if (err.requestHex || err.responseHex) { const v = err.v5 || {}; const hdr = (v.frameType !== undefined) ? (' Controlcode=0x' + (v.controlCode || 0).toString(16) + ' Seq=' + (v.sequence || 0) + ' Logger=' + (v.loggerSerial || 0) + ' Frametyp=0x' + (v.frameType || 0).toString(16) + '/' + v.frameTypeLabel + ' Status=0x' + (v.status || 0).toString(16)) : ''; diagRL('Deye-Steuerung Rohframe (' + target + '): Anfrage=[' + (err.requestHex || '?') + '] Antwort=[' + (err.responseHex || '?') + ']' + hdr); } resolve(null); } else { flow.set(deferKey, 0); resolve(okMsg); } };",
   "  const t = setTimeout(() => finish(new Error('Timeout')), 12000);",
   "  sock.once('error', (e) => finish(e));",
   "  const txn = (frame, parse) => new Promise((res, rej) => { lastReqHex = __SV5.hexdump(frame); pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(frame); });",
@@ -2685,11 +2706,19 @@ const fn = (id, name, func, outputs, wires) => ({
 // planner in inverter-control-routing.installerWriteRoute.
 //
 // ⚠ IT LIVES IN THIS TAB ON PURPOSE. Node-RED's `flow` context is PER TAB, and
-// the one-socket lock (`sv5_busy:`/`sv5_write_want:`) is flow context - a node
-// in another tab would get its OWN lock, i.e. a SECOND TCP client on a logger
-// that serves exactly one. So the installer write sits next to the poll and the
-// control executor and shares their lock: it announces write intent (the read
-// yields), waits out an in-flight read, and releases in every exit.
+// the one-socket lock (`sv5_busy:`) is flow context - a node in another tab
+// would get its OWN lock, i.e. a SECOND TCP client on a logger that serves
+// exactly one. So the installer write sits next to the poll and the control
+// executor and shares their lock.
+//
+// ⚠ AND SINCE 20.08.2026 IT TAKES A TICKET (bus-arbitration.js). It RESERVES
+// the bus under its own key (`sv5_oneshot:`), the read poll stands down for a
+// bounded number of ticks, and whoever holds the socket HANDS IT OVER
+// (`sv5_grant:`) when its round finishes - so between this order and its slot
+// there is at most ONE running socket round. Before that it merely announced
+// intent on the SHARED `sv5_write_want:` flag, which the control executor
+// cleared at the end of every round: the order was starved, the core gave up
+// after 30 s and the portal read `timeout` on a perfectly healthy plant.
 //
 // ⚠ THE PRECONDITION IS CHECKED HERE, INSIDE THE ONE SOCKET SESSION. An
 // optional `expected_before` says „write only while the register still reads X";
@@ -2751,26 +2780,44 @@ const installerWriteFunc = [
   "if (!plan.ok) { node.status({ fill: 'yellow', shape: 'ring', text: 'abgelehnt' }); node.warn('Installateur-Schreibpfad abgelehnt: ' + plan.reason); return reply({ ok: false, wrote: false, error_code: 'invalid_request', message: plan.reason }); }",
   "const target = plan.target;",
   "const busyKey = 'sv5_busy:' + target;",
-  "const wantKey = 'sv5_write_want:' + target;",
+  "// ⚠ RESERVIERT wird unter einem EIGENEN Schluessel, nicht mehr unter der",
+  "// gemeinsamen Absichts-Fahne sv5_write_want: die loeschte der Steuer-Executor",
+  "// am Ende JEDER Runde, und damit verschwand die Absicht eines noch WARTENDEN",
+  "// Einmal-Auftrags (Befund 1, Pilsting 20.08.2026). Seither fasst kein anderer",
+  "// Schreiber diesen Schluessel an - und dieser Knoten keinen fremden.",
+  "const oneKey = '" + bus.KEY_ONESHOT('') + "' + target;",
+  "const grantKey = '" + bus.KEY_GRANT('') + "' + target;",
+  "const ticket = String(req.request_id);",
   "const now = Date.now();",
-  "// Announce write intent so the frequent short read yields, then WAIT OUT an",
-  "// in-flight read - the same acquire discipline as the control executor.",
-  "flow.set(wantKey, now);",
+  "flow.set(oneKey, { id: ticket, at: now });",
   "const STALE_MS = 30000;",
-  "const ACQUIRE_MS = Number(flow.get('sv5_acquire_ms')) > 0 ? Number(flow.get('sv5_acquire_ms')) : 12000;",
-  "const POLL_MS = Number(flow.get('sv5_acquire_poll_ms')) > 0 ? Number(flow.get('sv5_acquire_poll_ms')) : 300;",
+  "const RESERVE_TTL_MS = " + bus.ONESHOT_RESERVE_TTL_MS + ";",
+  "const GRANT_TTL_MS = " + bus.ONESHOT_GRANT_TTL_MS + ";",
+  "// ⚠ DIE ZEITFENSTER-KETTE (bus-arbitration.js): Warten + Arbeiten muessen",
+  "// zusammen UNTER der Schranke des Kerns bleiben (installerWriteTimeout, 30 s),",
+  "// sonst meldet die Cloud `timeout`, waehrend dieser Knoten noch arbeitet - und",
+  "// seine Antwort faellt in einen laengst vergessenen Wartenden (Befund 3).",
+  "const ACQUIRE_MS = Number(flow.get('sv5_acquire_ms')) > 0 ? Number(flow.get('sv5_acquire_ms')) : " + bus.ONESHOT_ACQUIRE_MS + ";",
+  "// Eng getaktet: das blinde Fenster zwischen Freigabe und Zugriff ist genau die",
+  "// Zeit, in der ein Inject-Takt (Lesen 5 s, Steuern 10 s) sich vordraengeln kann.",
+  "const POLL_MS = Number(flow.get('sv5_acquire_poll_ms')) > 0 ? Number(flow.get('sv5_acquire_poll_ms')) : 50;",
   "// The device needs a moment to adopt an EEPROM value before it reads back.",
   "const SETTLE_MS = Number(flow.get('installer_settle_ms')) >= 0 ? Number(flow.get('installer_settle_ms')) : 2000;",
   "const sleep = (ms) => new Promise((r) => setTimeout(r, ms));",
-  "const acquire = async () => { const start = Date.now(); for (;;) { const bs = flow.get(busyKey) || 0; if (!bs || Date.now() - bs >= STALE_MS) { flow.set(busyKey, Date.now()); return true; } if (Date.now() - start >= ACQUIRE_MS) return false; node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt - warte' }); await sleep(POLL_MS); } };",
+  "// Die Reservierung wird bei JEDEM Wartetakt aufgefrischt - sie gilt genau so",
+  "// lange, wie hier wirklich gewartet wird. Stirbt der Knoten, verfaellt sie und",
+  "// der Bus gehoert wieder allen: eine Reservierung darf ihn nie festhalten.",
+  "// Eine an UNS gerichtete Uebergabe schlaegt alles andere; eine an jemand",
+  "// anderen gerichtete ist eine Sperre, die wir abwarten.",
+  "const acquire = async () => { const start = Date.now(); for (;;) { const tn = Date.now(); flow.set(oneKey, { id: ticket, at: tn }); const g = flow.get(grantKey) || null; const gAt = (g && Number(g.at) > 0) ? Number(g.at) : 0; const gLive = gAt > 0 && tn - gAt < GRANT_TTL_MS; const mine = gLive && g.id === ticket; const bs = flow.get(busyKey) || 0; if (mine || (!gLive && (!bs || tn - bs >= STALE_MS))) { flow.set(busyKey, tn); if (mine) flow.set(grantKey, 0); return true; } if (tn - start >= ACQUIRE_MS) return false; node.status({ fill: 'blue', shape: 'ring', text: gLive ? 'anderer Auftrag hat den Bus - warte' : 'Logger belegt - warte' }); await sleep(POLL_MS); } };",
   "return acquire().then((got) => {",
-  "  if (!got) { flow.set(wantKey, 0); node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt' }); node.warn('Installateur-Schreibpfad: Logger belegt (' + target + ') - Anfrage nicht ausgefuehrt'); return reply({ ok: false, wrote: false, error_code: 'busy', message: 'Der Wechselrichter-Logger war belegt. Bitte in einem Moment erneut versuchen - es wurde NICHTS geschrieben.' }); }",
+  "  if (!got) { flow.set(oneKey, 0); node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt' }); node.warn('Installateur-Schreibpfad: Logger belegt (' + target + ') nach ' + ACQUIRE_MS + ' ms - Anfrage nicht ausgefuehrt'); return reply({ ok: false, wrote: false, error_code: 'busy', message: 'Der Wechselrichter-Logger war belegt. Bitte in einem Moment erneut versuchen - es wurde NICHTS geschrieben.' }); }",
   "  let seq = context.get('sv5_ctrl_seq') || 0;",
   "  return new Promise((resolve) => {",
   "    const sock = new net.Socket(); sock.setNoDelay(true);",
   "    let done = false, acc = Buffer.alloc(0), pending = null;",
   "    let before = null, after = null, wrote = false;",
-  "    const finish = (err) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); flow.set(wantKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ }",
+  "    const finish = (err) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); flow.set(oneKey, 0); const g2 = flow.get(grantKey); if (g2 && g2.id === ticket) flow.set(grantKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ }",
   "      if (err) { node.status({ fill: 'red', shape: 'ring', text: err.message }); node.warn('Installateur-Schreibpfad fehlgeschlagen (' + target + '): ' + err.message);",
   "        // ⚠ before/after travel EVEN on a failure: a write whose answer got",
   "        // lost is exactly the case the audit entry must record honestly.",
@@ -2778,7 +2825,7 @@ const installerWriteFunc = [
   "      const label = '0x' + plan.addr.toString(16).padStart(4, '0');",
   "      node.status({ fill: 'green', shape: 'dot', text: wrote ? (label + ' = ' + after) : (label + ' ist ' + before) });",
   "      resolve(reply({ ok: true, wrote, before, after })); };",
-  "    const t = setTimeout(() => finish(new Error('Zeitueberschreitung')), 25000);",
+  "    const t = setTimeout(() => finish(new Error('Zeitueberschreitung')), " + bus.ONESHOT_SOCKET_MS + ");",
   "    sock.once('error', (e) => finish(e));",
   "    const txn = (frame, parse) => new Promise((res, rej) => { pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(frame); });",
   "    sock.on('data', (chunk) => { acc = Buffer.concat([acc, chunk]); let need; try { need = __SV5.expectedFrameLength(acc); } catch (e) { if (pending) { const p = pending; pending = null; p.rej(e); } return; } if (need !== null && acc.length >= need && pending) { const p = pending; pending = null; const f = acc.slice(0, need); acc = acc.slice(need); try { p.res(p.parse(f)); } catch (e) { p.rej(e); } } });",

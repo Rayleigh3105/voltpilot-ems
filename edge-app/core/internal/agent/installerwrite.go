@@ -46,10 +46,26 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
-// installerWriteTimeout bounds ONE local-bus round trip. Wider than the
-// test-read exchange because the node may wait out an in-flight poll for the
-// socket, then read, write, settle ~2 s and read again. A var so tests can
-// shorten it.
+// installerWriteTimeout bounds ONE local-bus round trip.
+//
+// ⚠ ES IST DIE MITTLERE SCHRANKE EINER KETTE, KEINE INTERNE ZAHL, und die Kette
+// war GERISSEN (Produktionsvorfall Pilsting/Herzogau, 20.08.2026, Box
+// edge-45gz7da). Der Node-RED-Knoten durfte 12 s auf den Wechselrichter-Bus
+// warten UND danach 25 s am Socket verbringen - zusammen 37 s, waehrend der Kern
+// hier nach 30 s aufgibt. Auf einer belegten Anlage meldete die Cloud deshalb
+// `timeout`, obwohl der Knoten Sekunden spaeter korrekt geantwortet haette - in
+// einen laengst vergessenen Wartenden hinein (`onInstallerWriteResult` verwirft
+// eine Antwort ohne Wartenden). Die Kette lautet:
+//
+//	Knoten: bus-arbitration.ONESHOT_ACQUIRE_MS + ONESHOT_SOCKET_MS  (15 s + 12 s)
+//	   <  KERN: installerWriteTimeout                               (30 s)
+//	   <  CLOUD: voltpilot.register-write.{read,write}-timeout       (PT40S/PT60S)
+//
+// Die untere Haelfte nagelt `edge-app/nodered/flows-sync.test.js` fest („die
+// Zeitfenster-Kette"), die obere `RegisterWriteBudgetTest` in services/api. Wer
+// eine der drei Zahlen anfasst, fasst die Nachbarn an.
+//
+// Eine Var, damit Tests sie verkuerzen koennen.
 var installerWriteTimeout = 30 * time.Second
 
 // installerBusRequest is what reaches Node-RED. It carries the ALREADY ADMITTED
@@ -228,7 +244,16 @@ func (a *Agent) onInstallerWriteResult(_ string, payload []byte) {
 	ch := a.installerWaiters[m.RequestID]
 	a.installerMu.Unlock()
 	if ch == nil {
-		return // unknown / already-timed-out request
+		// ⚠ EINE VERSPAETETE ANTWORT WIRD BENANNT, nicht still verworfen. Genau
+		// diese Stille war 2026-08-20 die zweite Haelfte des Raetsels: der Kern
+		// hatte nach 30 s `timeout` gemeldet, der Knoten antwortete danach
+		// korrekt - und im Protokoll stand davon nichts. Wer einen Antwort-Pfad
+		// baut, protokolliert seinen Ausgang (die Regel des Portal-Triggers,
+		// hier auf den lokalen Bus angewandt).
+		slog.Warn("Installateur-Schreibpfad: Antwort ohne Wartenden verworfen "+
+			"(zu spaet oder doppelt) - das Zeitbudget des Knotens pruefen",
+			"request_id", m.RequestID, "budget", installerWriteTimeout)
+		return
 	}
 	select {
 	case ch <- m:

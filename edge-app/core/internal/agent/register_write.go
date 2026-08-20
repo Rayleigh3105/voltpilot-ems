@@ -140,8 +140,71 @@ func (a *Agent) onRegisterWrite(payload []byte) {
 	go a.runRegisterWrite(req, id)
 }
 
-// runRegisterWrite executes an ADMITTED order off the link's router goroutine.
+// runRegisterWrite is the RECEIPT GUARANTEE around the execution: an order this
+// box ACCEPTED ends with EXACTLY ONE result, always.
+//
+// ⚠ WARUM ES DIESE HUELLE GIBT (Produktionsvorfall 20.08.2026): im Protokoll der
+// Box stand fuer einen angenommenen Auftrag (491de871…, 20:08:55Z) eine
+// „Auftrag angenommen"-Zeile und danach NICHTS - kein Ergebnis, keine
+// Ablehnung. Aus der Cloud ist das ununterscheidbar von „die Box hat den
+// Auftrag nie bekommen", und genau diese Mehrdeutigkeit hat schon einmal eine
+// ganze Untersuchungsrunde gekostet. „Jeder Zweig antwortet" war bis dahin eine
+// Eigenschaft, die man sich Zeile fuer Zeile ERLESEN musste; hier ist sie eine
+// Eigenschaft des CODES.
+//
+// Sie deckt drei Faelle ab, die ein neuer Zweig sonst still wieder aufreissen
+// koennte: ein `return` ohne Antwort, ein doppeltes Antworten (der Kontrakt
+// kennt genau ein Ergebnis je request_id) - und einen PANIC.
+//
+// ⚠ DER PANIC WIRD BEWUSST AUFGEFANGEN, und das ist eine Abwaegung: ein Panic
+// in dieser Goroutine risse sonst den GANZEN Edge-Kern einer Kundenanlage mit
+// sich (Telemetrie, Fahrplan-Ausfuehrung, Schutzgrenzen) - wegen eines
+// Register-Vorschau-Klicks. Er wird deshalb LAUT protokolliert (ERROR mit dem
+// Panic-Wert) und ehrlich beantwortet, statt verschluckt zu werden.
 func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Identity) {
+	var answered bool
+	answer := func(res registerwrite.Result) {
+		if answered {
+			return
+		}
+		answered = true
+		a.publishRegisterWriteResult(res)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("Register-Schreiben: Ausfuehrung abgestuerzt",
+				"request_id", req.RequestID, "panic", r)
+			answer(registerwrite.Refused(req, id, time.Now(),
+				registerwrite.ErrInvalidResponse, registerwrite.MsgCrashed))
+			return
+		}
+		// Erreicht diese Zeile mit `answered == false`, hat ein Zweig ohne
+		// Antwort zurueckgegeben. Das ist ein Fehler DIESER Datei - er wird
+		// benannt, nicht verschwiegen.
+		if !answered {
+			slog.Error("Register-Schreiben: Ausfuehrung ohne Ergebnis beendet - "+
+				"das ist ein Fehler im Geraete-Code, kein Zustand der Anlage",
+				"request_id", req.RequestID)
+			answer(registerwrite.Refused(req, id, time.Now(),
+				registerwrite.ErrInvalidResponse, registerwrite.MsgNoOutcome))
+		}
+	}()
+	registerExecute(a, req, id, answer)
+}
+
+// registerExecute is the TEST SEAM over the execution itself (the
+// installerWriteTimeout / registerWriteWindow precedent): a test swaps it to
+// prove that the receipt guarantee above holds even when the execution panics
+// or returns without answering. Production always runs the real one.
+var registerExecute = func(a *Agent, req registerwrite.Request, id registerwrite.Identity,
+	answer func(registerwrite.Result)) {
+	a.executeRegisterWrite(req, id, answer)
+}
+
+// executeRegisterWrite runs an ADMITTED order off the link's router goroutine.
+// It answers through `answer`, which publishes AT MOST ONCE.
+func (a *Agent) executeRegisterWrite(req registerwrite.Request, id registerwrite.Identity,
+	answer func(registerwrite.Result)) {
 	// ⚠ HIER STEHT KEIN FEATURE-GATE (Captain-Korrektur 20.08.2026, D2
 	// KORRIGIERT). Der Einmal-Schreibpfad ist auf jeder Box verfuegbar; was ihn
 	// traegt, sind die INHALTLICHEN Tore, die IMMER laufen: Identitaet
@@ -153,7 +216,7 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 	// Armierung je Box gab es nur in der Canary-Phase; sie war nie das, was den
 	// Pfad sicher macht.
 	if v := req.Admissible(); !v.OK() {
-		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
+		answer(registerwrite.Refused(req, id, time.Now(),
 			v.Code, v.Message))
 		return
 	}
@@ -161,14 +224,14 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 	// sie greift schon in der VORSCHAU: „wuerde abgelehnt" gehoert in Schritt 1,
 	// nie erst nach dem Klick des Menschen.
 	if a.registerOwnedByControl(req.Target, req.Register.Address) {
-		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
+		answer(registerwrite.Refused(req, id, time.Now(),
 			registerwrite.ErrRefusedControlOwned, registerwrite.MsgControlOwned))
 		return
 	}
 
 	target, verdict := a.resolveRegisterTarget(req)
 	if !verdict.OK() {
-		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
+		answer(registerwrite.Refused(req, id, time.Now(),
 			verdict.Code, verdict.Message))
 		return
 	}
@@ -187,7 +250,7 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 		// Bestaetigungs-Regel. Der deutsche Satz kommt VERBATIM von dort - eine
 		// zweite Formulierung hier liesse die zwei Trigger dieselbe Ablehnung
 		// verschieden benennen.
-		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
+		answer(registerwrite.Refused(req, id, time.Now(),
 			registerwrite.ErrRefusedPolicy, err.Error()))
 		return
 	}
@@ -202,7 +265,7 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 		if code == registerwrite.ErrBusy {
 			msg = registerwrite.MsgBusy
 		}
-		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(), code, msg))
+		answer(registerwrite.Refused(req, id, time.Now(), code, msg))
 		return
 	}
 
@@ -220,7 +283,7 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 		a.noteInstallerExportLimit(*out.After)
 	}
 	if !res.OK() {
-		a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
+		answer(registerwrite.Refused(req, id, time.Now(),
 			mechanismCode(res.ErrorCode), out.Message))
 		return
 	}
@@ -230,7 +293,7 @@ func (a *Agent) runRegisterWrite(req registerwrite.Request, id registerwrite.Ide
 		v := res.Adopted
 		adopted = &v
 	}
-	a.publishRegisterWriteResult(registerwrite.NewResult(req, id, time.Now(),
+	answer(registerwrite.NewResult(req, id, time.Now(),
 		res.Before, res.After, &wrote, adopted, target.Label, out.Message))
 }
 

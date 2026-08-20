@@ -25,6 +25,8 @@ const path = require('node:path');
 
 const controlRouting = require('./inverter-control-routing');
 const SV5 = require('./deye/solarman-v5');
+// Die Zeitfenster der Bus-Warteschlange - dieselbe Quelle, die die Knoten tragen.
+const bus = require('./bus-arbitration');
 
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
@@ -2142,6 +2144,180 @@ test('installer write e2e: a stale expected_before aborts BEFORE the write frame
     assert.strictEqual(ok.payload.ok, true);
     assert.strictEqual(ok.payload.after, 7000);
     assert.deepStrictEqual(writes, [{ reg: 0x00e7, value: 7000, fc: 0x10 }]);
+  } finally {
+    server.close();
+  }
+});
+
+// --- DIE WARTESCHLANGE: eine Einmal-Lesung unter aktiver Steuerlast ----------
+//
+// Der Produktionsvorfall (Box edge-45gz7da, Anlage Pilsting/Herzogau, 20.08.2026
+// 20:08-20:10Z): das Portal fragte den Ist-Wert von 0x00E7 ab, die Box nahm den
+// Auftrag an ("Auftrag angenommen (lesen, lane primary, register 231)") - und
+// 30 s spaeter meldete sie `timeout`. Die ganze Kette davor lief; es scheiterte
+// AUSSCHLIESSLICH die Slot-Vergabe am einen Logger-Socket, waehrend Steuerung
+// (~10 s) und Lese-Poll (5 s) ihn belegten. Am Vormittag ging derselbe Weg ueber
+// dieselbe Taste sofort - der UNTERSCHIED war nicht der Ausloeser, sondern die
+// LAST: abends steuert die Anlage in die Abendspitze.
+//
+// Diese vier Tests fahren genau diese Konstellation gegen einen echten
+// Ein-Klient-Logger auf einem GETEILTEN Flow-Kontext.
+
+// A one-shot request/msg, and the flow store the three nodes share.
+function oneShotMsg(id, port, extra) {
+  return { payload: Object.assign({ request_id: id, mode: 'dry_run', register: '0x00e7', addr: 0x00e7 }, extra || {}) };
+}
+
+test('EINMAL-LESUNG UNTER STEUERLAST: sie kommt durch, waehrend Poll und Steuerung takten', async () => {
+  const { server, port, state } = await startSingleClientSolarmanServer({ 0x00e7: 3300 }, { latencyMs: 25 });
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
+      async (plan) => {
+        plan.connection.port = port;
+        // ONE flow context for all three nodes - exactly the production tab.
+        const sharedFlow = installerFlow(port);
+        sharedFlow.sv5_acquire_poll_ms = 10; // the test's own cadence, not a product change
+
+        const readCtx = {};
+        const ctrlCtx = {};
+        let ticking = true;
+        // The plant is BUSY: the read poll (5 s) and the control executor (~10 s)
+        // keep taking the socket, compressed here into a tight loop so the
+        // one-shot really has to queue for it.
+        // ⚠ OHNE PAUSE, und das ist der Punkt: Lese-Poll und Steuer-Executor sind
+        // INJECT-getrieben und pruefen die Sperre EINMAL synchron, waehrend ein
+        // Wartender nur alle paar Millisekunden nachsieht. Genau dieses Rennen
+        // verliert ein Auftrag ohne Warteschlange - deshalb greift der naechste
+        // Takt hier sofort zu, statt zu schlafen.
+        const ticker = (async () => {
+          let n = 0;
+          while (ticking) {
+            n += 1;
+            await runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow);
+            if (n % 2 === 0) {
+              await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, ctrlCtx, sharedFlow);
+            }
+          }
+        })();
+
+        const started = Date.now();
+        const out = await runExec(INSTALLER_EXEC, oneShotMsg('rw-load-1', port), {}, sharedFlow);
+        const took = Date.now() - started;
+        ticking = false;
+        await ticker;
+
+        assert.strictEqual(out.payload.ok, true,
+          'die Einmal-Lesung muss durchkommen, nicht `busy`/`timeout`: ' + JSON.stringify(out.payload));
+        assert.strictEqual(out.payload.before, 3300, 'und sie liefert den ECHTEN Ist-Wert');
+        assert.strictEqual(out.payload.wrote, false, 'eine Vorschau schreibt nichts');
+        // ⚠ Die eigentliche Zusage: sie wartet BEGRENZT, nicht bis der Kern aufgibt.
+        assert.ok(took < 15000,
+          'die Lesung kam nach ' + took + ' ms durch - unter dem Warte-Budget des Knotens');
+        assert.strictEqual(state.sawConcurrent, false,
+          'und NIE eine zweite Verbindung zum Ein-Klient-Logger');
+        // Aufgeraeumt: weder Reservierung noch Uebergabe bleiben liegen.
+        assert.ok(!sharedFlow['sv5_oneshot:127.0.0.1:' + port], 'die Reservierung ist zurueckgegeben');
+        assert.ok(!sharedFlow['sv5_busy:127.0.0.1:' + port], 'der Socket ist zurueckgegeben');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('BEFUND 1: eine Steuerrunde loescht die Reservierung des Einmal-Auftrags NICHT mehr', async () => {
+  // Vorher teilten sich Steuerung und Einmal-Auftrag die Absichts-Fahne
+  // sv5_write_want; der Steuer-Executor setzt sie am Ende JEDER Runde (und beim
+  // Verschieben) auf 0 - und loeschte damit die Absicht eines noch WARTENDEN
+  // Einmal-Auftrags. Der Lese-Poll, der genau auf diese Fahne zurueckritt, nahm
+  // sich den Socket danach wieder.
+  const { server, port } = await startSingleClientSolarmanServer({ 0x00e7: 3300 });
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
+      async (plan) => {
+        plan.connection.port = port;
+        const target = '127.0.0.1:' + port;
+        const sharedFlow = installerFlow(port);
+        // Ein Einmal-Auftrag wartet (die Reservierung, die der Knoten legt).
+        sharedFlow['sv5_oneshot:' + target] = { id: 'rw-keep-1', at: Date.now() };
+
+        // Eine volle Steuerrunde laeuft durch.
+        const ctrlOut = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, {}, sharedFlow);
+        assert.ok(ctrlOut, 'die Steuerrunde ist gelaufen (sie wird nie abgebrochen)');
+
+        const res = sharedFlow['sv5_oneshot:' + target];
+        assert.ok(res && res.id === 'rw-keep-1', 'die Reservierung steht noch: ' + JSON.stringify(res));
+        // Und sie hat die UEBERGABE hinterlassen - das ist die „eingereihte
+        // Ausfuehrung direkt nach Abschluss der laufenden Steuerrunde".
+        const grant = sharedFlow['sv5_grant:' + target];
+        assert.ok(grant && grant.id === 'rw-keep-1', 'die Steuerrunde uebergibt den Socket: ' + JSON.stringify(grant));
+
+        // Der Lese-Poll faellt der Uebergabe nicht in den Ruecken.
+        const readOut = await runExec(READ_POLL, deyeReadMsg(port), {}, sharedFlow);
+        assert.strictEqual(readOut, null, 'der Lese-Poll tritt fuer die Uebergabe zurueck');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('BEFUND 2: beim Freigeben wird UEBERGEBEN, statt den Socket ins Rennen zu entlassen', async () => {
+  const { server, port, state } = await startSingleClientSolarmanServer({ 0x00e7: 3300 }, { latencyMs: 20 });
+  try {
+    const target = '127.0.0.1:' + port;
+    const sharedFlow = installerFlow(port);
+    sharedFlow.sv5_acquire_poll_ms = 10;
+
+    // Der Lese-Poll haelt den Socket; der Einmal-Auftrag reserviert und wartet.
+    const readDone = runExec(READ_POLL, deyeReadMsg(port), {}, sharedFlow);
+    await waitFor(() => !!sharedFlow['sv5_busy:' + target]);
+    const oneDone = runExec(INSTALLER_EXEC, oneShotMsg('rw-hand-1', port), {}, sharedFlow);
+    await waitFor(() => !!sharedFlow['sv5_oneshot:' + target]);
+
+    const out = await oneDone;
+    await readDone;
+    assert.strictEqual(out.payload.ok, true, JSON.stringify(out.payload));
+    assert.strictEqual(out.payload.before, 3300, 'der Einmal-Auftrag hat wirklich gelesen');
+    assert.strictEqual(state.sawConcurrent, false, 'nie zwei Klienten am Ein-Klient-Logger');
+    assert.ok(!sharedFlow['sv5_grant:' + target], 'die Uebergabe ist eingeloest und geraeumt');
+  } finally {
+    server.close();
+  }
+});
+
+test('eine TOTE Reservierung kann den Bus nicht festhalten', async () => {
+  // Die Kehrseite der Zusage: ein abgestuerzter Einmal-Auftrag darf Telemetrie
+  // und Steuerung nicht aushungern. Reservierung und Uebergabe verfallen.
+  const { server, port } = await startSingleClientSolarmanServer({ 0x00e7: 3300 });
+  try {
+    const target = '127.0.0.1:' + port;
+    const sharedFlow = installerFlow(port);
+
+    // (a) eine verfallene Reservierung haelt den Lese-Poll nicht auf
+    sharedFlow['sv5_oneshot:' + target] = { id: 'dead', at: Date.now() - bus.ONESHOT_RESERVE_TTL_MS - 1 };
+    const read1 = await runExec(READ_POLL, deyeReadMsg(port), {}, sharedFlow);
+    assert.ok(read1, 'eine verfallene Reservierung wird ignoriert');
+
+    // (b) eine LEBENDE haelt ihn auf - aber nur GEBUNDEN, dann erzwingt er und sagt es
+    const warns = [];
+    for (let i = 0; i < bus.ONESHOT_READ_YIELD_TICKS; i += 1) {
+      sharedFlow['sv5_oneshot:' + target] = { id: 'stuck', at: Date.now() };
+      const r = await runExec(READ_POLL, deyeReadMsg(port), {}, sharedFlow, warns);
+      assert.strictEqual(r, null, 'Takt ' + (i + 1) + ': der Lese-Poll tritt zurueck');
+    }
+    sharedFlow['sv5_oneshot:' + target] = { id: 'stuck', at: Date.now() };
+    const forced = await runExec(READ_POLL, deyeReadMsg(port), {}, sharedFlow, warns);
+    assert.ok(forced, 'nach der Schranke liest er wieder - die Telemetrie verhungert nie');
+    assert.ok(warns.some((w) => /erzwungen/.test(w)), 'und er sagt es: ' + JSON.stringify(warns));
+
+    // (c) eine verfallene UEBERGABE blockiert die Steuerung nicht
+    sharedFlow['sv5_oneshot:' + target] = 0;
+    sharedFlow['sv5_grant:' + target] = { id: 'ghost', at: Date.now() - bus.ONESHOT_GRANT_TTL_MS - 1 };
+    const read2 = await runExec(READ_POLL, deyeReadMsg(port), {}, sharedFlow);
+    assert.ok(read2, 'eine verfallene Uebergabe wird ignoriert');
   } finally {
     server.close();
   }
