@@ -559,6 +559,14 @@ describe('geraetSeite · die Ladesäule', () => {
     expect(zeile(v.software, 'Firmware der Säule')?.wert).toBe('1.4.2');
   });
 
+  it('nennt die OCPP-Kennung, nie unser internes cp-Präfix', () => {
+    const v = geraetSeite(input({ geraetId: 'cp-CARPORT-1', charging }));
+    expect(v.kopf.kennung).toBe('CARPORT-1');
+    // Eine Säule trägt keine Komponenten-Konfiguration - also behauptet die
+    // Seite auch keinen Pflege-Ort für sie.
+    expect(v.kopf.pflegeOrt).toBeNull();
+  });
+
   it('reiht die Säule in die Geräte-Liste der Box ein', () => {
     const v = geraetSeite(input({ charging }));
     expect(v.boxGeraete.map((g) => g.geraetId)).toContain('cp-CARPORT-1');

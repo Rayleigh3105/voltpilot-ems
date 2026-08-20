@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { IconName } from '../../designsystem/components/core/Icon';
 import {
   api,
   type Device,
@@ -13,23 +12,27 @@ import {
   type SiteTopology,
 } from '../api';
 import {
-  COMPONENT_ROLE_ICONS,
   CONTROL_BADGE,
   EDGE_BOX_HINT,
   GUARD_FOOTNOTE,
   componentActions,
-  edgeBoxLine,
   plantModel,
   reconnectCandidates,
   type ComponentActions,
   type ComponentHealth,
   type PlantComponent,
-  type PlantDevice,
-  type RoleGroup,
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
-import { livenessReference } from '../liveness';
-import { boxRefOf, geraetAdressierbar } from '../geraetSeite';
+import { boxRefOf } from '../geraetSeite';
+import {
+  HINZUFUEGEN_LABEL,
+  LISTE_TITEL,
+  REGISTER_VERWEIS,
+  zentraleListe,
+  zentraleSatz,
+  type GeraeteKarte,
+} from '../zentraleListe';
+import type { SiteCharging } from '../ladepunkte';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
 import { SchaltFreigabeDrawer } from '../components/SchaltFreigabeDrawer';
 import { freigabeZustand } from '../schaltFreigabe';
@@ -52,7 +55,7 @@ import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
 import { BEFEHLE_LABEL } from '../befehle';
-import { anlageRoute, befehleHash, geraetSeiteHash, hashForRoute } from '../nav';
+import { anlageRoute, befehleHash, hashForRoute } from '../nav';
 import { EntitaetenSection } from './EntitaetenSection';
 import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
@@ -107,9 +110,14 @@ export function AnlagenModellSection({
   const [data, setData] = useState<SiteEntities | null>(null);
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
+  /**
+   * Die Ladesäulen (§13 R7) - FAIL-SOFT: ein älteres Backend kennt die Route
+   * nicht, dann fehlt schlicht ihre Karte. Ohne sie war eine Säule bis hierher
+   * eine Komponente ohne Messwert (die dokumentierte „bekannte Grenze").
+   */
+  const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [selected, setSelected] = useState<string | null>(null);
   const [assign, setAssign] = useState<AdoptableSource | null>(null);
   const [rename, setRename] = useState<PlantComponent | null>(null);
   const [freigabe, setFreigabe] = useState<PlantComponent | null>(null);
@@ -156,6 +164,10 @@ export function AnlagenModellSection({
       (s) => active && setSources(s),
       () => active && setSources(null),
     );
+    api.siteChargers(site.id).then(
+      (c) => active && setCharging(c),
+      () => active && setCharging(null),
+    );
     // Der Autoritäts- und Soll/Ist-Stand (Stufe 1), fail-soft.
     api.siteComponents(site.id).then(
       (c) => active && setComponents(c),
@@ -195,48 +207,36 @@ export function AnlagenModellSection({
     [data, topology, sources],
   );
 
-  // The ONE VoltPilot-Box (Captain-Korrektur): every reported device hangs off
-  // it. Without a claimed device nothing is invented.
-  const box = useMemo(() => {
-    if (!model) return null;
-    const at = livenessReference(devicesFetchedAt, Date.now());
-    return edgeBoxLine(
-      (devices ?? []).filter((d) => d.siteId === site.id),
-      model.devices.length,
-      at == null ? undefined : new Date(at),
-    );
-  }, [devices, devicesFetchedAt, site.id, model]);
-
   /**
    * Die Referenz der EINEN Box - der Schlüssel jeder Geräteseite. Ohne sie
    * (keine oder mehrere Boxen) wird KEIN Weg angeboten, statt einen zu raten.
    */
   const boxRef = useMemo(() => boxRefOf(devices, site.id), [devices, site.id]);
 
+  /** Die vereinte Liste (§13) - EIN Aufruf, alles Übrige rendert nur. */
+  const karten = useMemo(
+    () =>
+      model
+        ? zentraleListe({
+            siteId: site.id,
+            model,
+            devices: (devices ?? []).filter((d) => d.siteId === site.id),
+            devicesFetchedAt,
+            boxRef,
+            localSetup: data?.localSetup ?? null,
+            sources,
+            charging,
+          })
+        : [],
+    [model, site.id, devices, devicesFetchedAt, boxRef, data, sources, charging],
+  );
+  const satz = useMemo(() => zentraleSatz(karten), [karten]);
+
   const isEmpty =
     model != null &&
     model.devices.length === 0 &&
     model.components.length === 0 &&
     model.newlyReported.length === 0;
-
-  // Which components/devices are highlighted by the current selection.
-  const highlightedComponents = useMemo(() => {
-    if (!model || selected == null) return null;
-    const dev = model.devices.find((d) => d.id === selected);
-    if (dev) return new Set(dev.componentIds);
-    const comp = model.components.find((c) => c.id === selected);
-    if (comp) return new Set([comp.id]);
-    return null;
-  }, [model, selected]);
-
-  const highlightedDevices = useMemo(() => {
-    if (!model || selected == null) return null;
-    const comp = model.components.find((c) => c.id === selected);
-    if (comp) return new Set(comp.deviceIds);
-    const dev = model.devices.find((d) => d.id === selected);
-    if (dev) return new Set([dev.id]);
-    return null;
-  }, [model, selected]);
 
   /**
    * Einheitsmodell Stufe 1. Der Assistent erscheint NUR auf einer
@@ -282,107 +282,40 @@ export function AnlagenModellSection({
 
         {model && !isEmpty && (
           <>
-            {/* 1 · Der Kopfsatz ist die Antwort auf „richtig erkannt?". */}
-            <p className={`vp-am-headline${model.headline.tone === 'warn' ? ' warn' : ''}`}>
-              <span
-                className={`vp-health-dot vp-health-${
-                  model.headline.tone === 'warn' ? 'warn' : 'ok'
-                }`}
-              />
-              <span>{model.headline.text}</span>
-            </p>
-
-            {/* 2 · Die EINE VoltPilot-Box — darunter hängen die Geräte. */}
-            <section aria-label="Ihre Geräte">
-              {box && (
-                <div className="vp-am-box">
-                  <span className="vp-am-box-title">
-                    <span className={`vp-health-dot vp-health-${HEALTH_TONE[box.health]}`} />
-                    <Icon name="wifi" size={16} />
-                    {box.label}
-                  </span>
-                  <span className="vp-am-box-sub">{box.summary}</span>
-                  <span className="vp-am-box-hint">{EDGE_BOX_HINT}</span>
-                  {/* Die Box hat seit der Anlagen-Zentrale eine eigene Seite -
-                      Cloud-Link, Software, ihre Geräte und die Gefahrenzone. */}
-                  {boxRef && (
-                    <a className="vp-am-details-link" href={geraetSeiteHash(site.id, boxRef)}>
-                      Details zur Box <Icon name="chevron-right" size={13} />
-                    </a>
-                  )}
-                  <div className="vp-am-behind">
-                    <h3 className="vp-am-head">
-                      <Icon name="cpu" size={16} /> Geräte an Ihrer Box{' '}
-                      <span className="vp-am-head-sub">
-                        — antippen markiert, was ein Gerät misst
-                      </span>
-                    </h3>
-                    <DeviceStrip
-                      model={model}
-                      siteId={site.id}
-                      boxRef={boxRef}
-                      selected={selected}
-                      highlightedDevices={highlightedDevices}
-                      onSelect={setSelected}
-                      onAssign={setAssign}
-                    />
-                  </div>
-                </div>
+            {/* 1 · EIN Satz über die Gesundheit + der EINE Anlege-Knopf (D6).
+                Die frühere Vier-Zahlen-Kopfzeile ist ersetzt: die Zahlen stehen
+                in den Karten darunter, hier steht die Antwort auf „geht es
+                meiner Anlage gut?". */}
+            <div className="vp-am-kopf">
+              <p className={`vp-am-headline${satz.ton === 'warn' ? ' warn' : ''}`}>
+                <span className={`vp-health-dot vp-health-${satz.ton}`} />
+                <span>{satz.text}</span>
+              </p>
+              {portalManaged && (
+                <button type="button" className="vp-am-add" onClick={() => setAddOpen(true)}>
+                  <Icon name="plus" size={14} /> {HINZUFUEGEN_LABEL}
+                </button>
               )}
-              {!box && (
-                <>
-                  <h3 className="vp-am-head">
-                    <Icon name="cpu" size={16} /> Ihre Geräte{' '}
-                    <span className="vp-am-head-sub">— antippen markiert, was ein Gerät misst</span>
-                  </h3>
-                  <DeviceStrip
-                    model={model}
-                    siteId={site.id}
-                    boxRef={boxRef}
-                    selected={selected}
-                    highlightedDevices={highlightedDevices}
-                    onSelect={setSelected}
-                    onAssign={setAssign}
-                  />
-                </>
-              )}
-              <RegisterExperte site={site} devices={devices} />
-            </section>
+            </div>
 
-            {/* 3 · Die Komponenten — mit Live-Werten wie im Cockpit. */}
-            <section aria-label="Komponenten">
-              <h3 className="vp-am-head spaced">
-                <Icon name="layers" size={16} /> Komponenten Ihrer Anlage{' '}
-                <span className="vp-am-head-sub">— mit den Werten von jetzt</span>
-                {portalManaged && (
-                  <button
-                    type="button"
-                    className="vp-am-add"
-                    onClick={() => setAddOpen(true)}
-                  >
-                    <Icon name="plus" size={14} /> Komponente hinzufügen
-                  </button>
-                )}
-              </h3>
-              {/*
-                Der Stand der GANZEN Anlage: was das Portal gespeichert hat und
-                was die Box davon wirklich anwendet. Eine Ablehnung steht NEBEN
-                dem laufenden Stand, nie an seiner Stelle - es läuft weiter die
-                zuletzt angewandte Fassung.
-              */}
+            {/* 2 · EINE Liste: je Gerät eine Karte, je Komponente eine Zeile
+                darin (§13 R1/R2). Die frühere Doppelung - dasselbe Ding einmal
+                als Geräte-Kachel und einmal als Komponenten-Zeile - ist damit
+                strukturell aufgelöst. */}
+            <section aria-label={LISTE_TITEL} className="vp-am-liste">
+              <p className="vp-am-box-hint">{EDGE_BOX_HINT}</p>
               {verwaltung && <p className="vp-am-stand is-unbekannt">{verwaltung}</p>}
               {komponentenStand && (
                 <p className={`vp-am-stand is-${komponentenStand.ton}`}>{komponentenStand.text}</p>
               )}
               {ablehnung && <p className="vp-am-stand is-warn">{ablehnung}</p>}
-              {model.groups.map((g) => (
-                <RoleGroupCard
-                  key={g.role}
-                  group={g}
+
+              {karten.map((k) => (
+                <GeraeteKarteView
+                  key={k.id}
+                  karte={k}
                   siteId={site.id}
-                  selected={selected}
-                  highlighted={highlightedComponents}
-                  onSelect={setSelected}
+                  onAssign={setAssign}
                   onRename={setRename}
                   onFreigabe={setFreigabe}
                   onRegelBruecke={(c) => {
@@ -396,28 +329,28 @@ export function AnlagenModellSection({
                   }
                   onRepin={setRepin}
                   onRemove={setRemove}
-                  sofortFor={(c) => consumers.find(
-                    (x) => x.id === c.entityId && x.connection === 'connected',
-                  ) ?? null}
+                  sofortFor={(c) =>
+                    consumers.find((x) => x.id === c.entityId && x.connection === 'connected') ??
+                    null
+                  }
                   onSofort={(consumer, action) => setSofort({ consumer, action })}
                 />
               ))}
-              {model.components.length === 0 && (
-                <p className="vp-note">
-                  Noch keine Komponente — ordnen Sie ein gemeldetes Gerät zu.
-                </p>
-              )}
+
+              <RegisterExperte site={site} devices={devices} />
+
               {/*
                 Einheitsmodell Stufe 6: die EIGENEN Vorlagen dieser Anlage. Sie
-                wohnen bei den Komponenten, weil sie aus einer entstehen und zu
-                einer führen - und nur dort, wo das Portal die Geräte verwaltet.
+                wohnen bei den Geräten, weil sie aus einem entstehen und zu
+                einem führen - und nur dort, wo das Portal die Geräte verwaltet.
               */}
-              {portalManaged && (
-                <EigeneVorlagenPanel siteId={site.id} onAnlegen={setVorlage} />
-              )}
+              {portalManaged && <EigeneVorlagenPanel siteId={site.id} onAnlegen={setVorlage} />}
             </section>
 
-            {/* 4 · Die Fußzeile: Schutz-Satz + wo die Komponenten wieder auftauchen. */}
+            {/* 3 · Die Fußzeile: Schutz-Satz, wo die Komponenten wieder
+                auftauchen - und der EINE Register-Verweis (§6.2). Rollen-Summen
+                stehen bewusst NICHT hier (R8): die Zentrale beantwortet „WAS ist
+                meine Anlage", nicht „wie viel gerade". */}
             <div className="vp-am-foot">
               {GUARD_FOOTNOTE}
               <div className="vp-am-links">
@@ -426,6 +359,7 @@ export function AnlagenModellSection({
                 <a href={hashForRoute(anlageRoute(site.id, 'messwerte'))}>→ Messwerte</a>
                 <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>→ Steuerung</a>
               </div>
+              <p className="vp-am-register-hint">{REGISTER_VERWEIS}</p>
             </div>
           </>
         )}
@@ -600,106 +534,16 @@ function RegisterExperte({ site, devices }: { site: Site; devices?: Device[] }) 
   );
 }
 
-/** The devices behind the box + the "Neues Gerät gefunden" call to action. */
-function DeviceStrip({
-  model,
+/**
+ * EINE Karte der vereinten Liste: ein GERÄT als Rahmen, seine Komponenten als
+ * ZEILEN (§13 R1/R2). Die Zeile ist wörtlich die von vorher - Umbenennen,
+ * Zuordnung ändern, Löschen, Freigabe, „Regel erstellen" und Befehle bleiben an
+ * ihr, nur der Ort wechselt.
+ */
+function GeraeteKarteView({
+  karte,
   siteId,
-  boxRef,
-  selected,
-  highlightedDevices,
-  onSelect,
   onAssign,
-}: {
-  model: ReturnType<typeof plantModel>;
-  siteId: string;
-  /** Die Referenz der EINEN Box; null = kein Weg auf eine Geräteseite. */
-  boxRef: string | null;
-  selected: string | null;
-  highlightedDevices: Set<string> | null;
-  onSelect: (id: string | null) => void;
-  onAssign: (s: AdoptableSource) => void;
-}) {
-  return (
-    <div className="vp-am-devstrip">
-      {model.devices.map((d) => (
-        <DeviceCard
-          key={d.id}
-          device={d}
-          href={
-            boxRef && geraetAdressierbar(d.id) ? geraetSeiteHash(siteId, boxRef, d.id) : null
-          }
-          selected={selected === d.id}
-          dim={highlightedDevices != null && !highlightedDevices.has(d.id)}
-          onSelect={() => onSelect(selected === d.id ? null : d.id)}
-        />
-      ))}
-      {model.newlyReported.map((s) => (
-        <button key={s.id} type="button" className="vp-am-dev new" onClick={() => onAssign(s)}>
-          <span className="vp-am-dev-name">
-            <Icon name="plus" size={16} /> Neues Gerät gefunden
-          </span>
-          <span className="vp-am-dev-sub">„{s.summary}“ meldet sich —</span>
-          <span className="vp-am-dev-cta">jetzt zuordnen</span>
-        </button>
-      ))}
-      {model.devices.length === 0 && model.newlyReported.length === 0 && (
-        <p className="vp-note">Noch kein Gerät gemeldet.</p>
-      )}
-    </div>
-  );
-}
-
-/** One physical box behind the VoltPilot-Box. */
-function DeviceCard({
-  device,
-  href,
-  selected,
-  dim,
-  onSelect,
-}: {
-  device: PlantDevice;
-  /** Die Adresse seiner Geräteseite; null = es gibt keine (siehe `geraetAdressierbar`). */
-  href: string | null;
-  selected: boolean;
-  dim: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    /* Die Karte ist ein CONTAINER, kein Knopf: das Antippen markiert weiterhin,
-       was das Gerät misst, und „Details" führt auf seine Seite - ein Link IM
-       Knopf wäre ungültiges Markup. */
-    <div className={`vp-am-dev${selected ? ' selected' : ''}${dim ? ' dim' : ''}`}>
-      <button type="button" className="vp-am-dev-btn" aria-pressed={selected} onClick={onSelect}>
-        <span className="vp-am-dev-name">
-          <span className={`vp-health-dot vp-health-${HEALTH_TONE[device.health]}`} />
-          {device.label}
-        </span>
-        <span className="vp-am-dev-sub">{device.state}</span>
-        <span className="vp-am-dev-sub">{device.summary}</span>
-        {device.roles.length > 0 && (
-          <span className="vp-am-roledots" aria-hidden="true">
-            {device.roles.map((r) => (
-              <i key={r} className={`vp-am-roledot vp-am-${r}`} />
-            ))}
-          </span>
-        )}
-      </button>
-      {href && (
-        <a className="vp-am-details-link" href={href} aria-label={`Details zu „${device.label}"`}>
-          Details <Icon name="chevron-right" size={13} />
-        </a>
-      )}
-    </div>
-  );
-}
-
-/** One role group ("PV-Erzeugung · Σ 44,9 kW") with its component rows. */
-function RoleGroupCard({
-  group,
-  siteId,
-  selected,
-  highlighted,
-  onSelect,
   onRename,
   onFreigabe,
   onRegelBruecke,
@@ -709,53 +553,68 @@ function RoleGroupCard({
   sofortFor,
   onSofort,
 }: {
-  group: RoleGroup;
-  /** Für den Absprung in den Befehls-Verlauf einer Komponente. */
+  karte: GeraeteKarte;
   siteId: string;
-  selected: string | null;
-  highlighted: Set<string> | null;
-  onSelect: (id: string | null) => void;
+  onAssign: (s: AdoptableSource) => void;
   onRename?: (c: PlantComponent) => void;
   onFreigabe?: (c: PlantComponent) => void;
   onRegelBruecke?: (c: PlantComponent) => void;
   actionsFor: (c: PlantComponent) => ComponentActions;
   onRepin: (c: PlantComponent) => void;
   onRemove: (c: PlantComponent) => void;
-  /** Der steuerbare Verbraucher hinter dieser Komponente, sonst null. */
   sofortFor: (c: PlantComponent) => Consumer | null;
   onSofort: (consumer: Consumer, action: SofortAktion) => void;
 }) {
+  const k = karte;
   return (
-    <section className={`vp-am-group vp-am-${group.role}`} aria-label={group.label}>
-      <div className="vp-am-group-head">
-        <Icon
-          name={COMPONENT_ROLE_ICONS[group.role] as IconName}
-          size={18}
-          className="vp-am-group-icon"
-        />
-        <span className="vp-am-group-title">{group.label}</span>
-        {group.headline && <span className="vp-am-group-sum">{group.headline}</span>}
-        {group.note && <span className="vp-am-group-note">{group.note}</span>}
+    <section className={`vp-am-karte is-${k.art}`} aria-label={k.titel}>
+      <div className="vp-am-karte-head">
+        <span className={`vp-health-dot vp-health-${k.ton}`} />
+        <span className="nm">{k.titel}</span>
+        <span className="ty">{k.untertitel}</span>
+        <span className={`st${k.ton === 'warn' ? ' warn' : ''}`}>{k.zustand}</span>
+        {/* Ein Weg, der strukturell nirgends hinführt, wird gar nicht erst
+            angeboten - stattdessen steht bei „neu" die Übernahme. */}
+        {/* ⚠ „Geräteseite", nicht „Details": die Komponenten-ZEILE in derselben
+            Karte hat ihren eigenen „Details"-Aufklapper - zweimal dasselbe Wort
+            auf einer Karte für zwei verschiedene Ziele wäre genau die
+            Doppeldeutigkeit, die die Haus-Regel verbietet. Es benennt zudem das
+            ZIEL statt eine Geste. */}
+        {k.href && (
+          <a className="vp-am-karte-go" href={k.href}>
+            Geräteseite <Icon name="chevron-right" size={14} />
+          </a>
+        )}
+        {k.art === 'neu' && k.quelle && (
+          <button
+            type="button"
+            className="vp-am-karte-go"
+            onClick={() => onAssign(k.quelle as AdoptableSource)}
+          >
+            Übernehmen <Icon name="chevron-right" size={14} />
+          </button>
+        )}
       </div>
-      {group.components.map((c) => (
-        <ComponentRow
-          key={c.id}
-          component={c}
-          siteId={siteId}
-          selected={selected === c.id}
-          highlight={highlighted != null && highlighted.has(c.id)}
-          dim={highlighted != null && !highlighted.has(c.id)}
-          onSelect={() => onSelect(selected === c.id ? null : c.id)}
-          onRename={onRename}
-          onFreigabe={onFreigabe}
-          onRegelBruecke={onRegelBruecke}
-          actions={actionsFor(c)}
-          onRepin={onRepin}
-          onRemove={onRemove}
-          sofort={sofortFor(c)}
-          onSofort={onSofort}
-        />
-      ))}
+      {k.zusatz && <p className="vp-am-karte-sub">{k.zusatz}</p>}
+      {k.komponenten.length > 0 && (
+        <div className="vp-am-karte-rows">
+          {k.komponenten.map((c) => (
+            <ComponentRow
+              key={c.id}
+              component={c}
+              siteId={siteId}
+              onRename={onRename}
+              onFreigabe={onFreigabe}
+              onRegelBruecke={onRegelBruecke}
+              actions={actionsFor(c)}
+              onRepin={onRepin}
+              onRemove={onRemove}
+              sofort={sofortFor(c)}
+              onSofort={onSofort}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -769,10 +628,6 @@ const PARAGRAF_14A =
 function ComponentRow({
   component,
   siteId,
-  selected,
-  highlight,
-  dim,
-  onSelect,
   onRename,
   onFreigabe,
   onRegelBruecke,
@@ -785,10 +640,6 @@ function ComponentRow({
   component: PlantComponent;
   /** Für den Absprung in den Befehls-Verlauf DIESER Komponente. */
   siteId: string;
-  selected: boolean;
-  highlight: boolean;
-  dim: boolean;
-  onSelect: () => void;
   onRename?: (c: PlantComponent) => void;
   onFreigabe?: (c: PlantComponent) => void;
   /** Die Brücke (Stufe 4, Anforderung 9): Regel mit dieser Komponente erstellen. */
@@ -801,16 +652,17 @@ function ComponentRow({
 }) {
   const c = component;
   return (
-    <div className={`vp-am-comp${selected || highlight ? ' hl' : ''}${dim ? ' dim' : ''}`}>
+    <div className="vp-am-comp">
       <div className="vp-am-comp-main">
         <span className="vp-am-comp-name">
-          {/* The name is the control: a real button (keyboard + touch), because
-              the row also hosts a pencil and a Details fold — nesting those in
-              one big button would be invalid markup. */}
-          <button type="button" className="vp-am-comp-btn" aria-pressed={selected} onClick={onSelect}>
+          {/* Seit der vereinten Liste (§13) ist der Name reiner TEXT: das
+              frühere „Antippen markiert, was ein Gerät misst" ist überflüssig -
+              was ein Gerät misst, steht jetzt IN seiner Karte. Ein Knopf ohne
+              Wirkung wäre schlechter als keiner. */}
+          <span className="vp-am-comp-btn">
             <span className={`vp-health-dot vp-health-${HEALTH_TONE[c.health]}`} />
             {c.label}
-          </button>
+          </span>
           {c.primary && <InfoTip title="Maßgebliche Messung">{PARAGRAF_14A}</InfoTip>}
         </span>
         <span className="vp-am-comp-sub">

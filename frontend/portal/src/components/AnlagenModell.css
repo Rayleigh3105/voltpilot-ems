@@ -830,3 +830,160 @@
 .vp-am-box .vp-am-details-link {
   margin-top: 8px;
 }
+
+/* ==========================================================================
+   Die VEREINTE „Ihre Geräte"-Liste (Konzept §13 Revision 2, D6)
+
+   Geräte sind der RAHMEN, Komponenten die ZEILEN. Der frühere Einstieg
+   stapelte drei Karten und zeigte dieselbe Sache zweimal (Geräte-Kachel +
+   Komponenten-Zeile); jetzt gibt es einen Satz, eine Liste, einen Knopf.
+
+   Die BOX führt, die Geräte an ihr sitzen in einer leichten Einrückung - die
+   Captain-Korrektur „die EINE Box, darunter hängen die Geräte" als STRUKTUR,
+   nicht als Text.
+   ========================================================================== */
+
+.vp-am-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-space-2) var(--vp-space-3);
+  margin-bottom: var(--vp-space-4);
+  min-width: 0;
+}
+
+.vp-am-kopf .vp-am-headline {
+  margin: 0;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.vp-am-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-am-karte {
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 12px);
+  background: #fff;
+  padding: var(--vp-space-3);
+  min-width: 0;
+}
+
+/* Die Box führt und ist getönt; die Geräte an ihr rücken ein. */
+.vp-am-karte.is-box {
+  background: var(--vp-tint);
+}
+
+.vp-am-karte.is-geraet,
+.vp-am-karte.is-ladepunkt {
+  margin-left: var(--vp-space-3);
+  border-left: 2px solid var(--vp-border, #e5e7eb);
+}
+
+/* Die zwei AUSNAHME-Karten: gestrichelt, damit sie als Aufgabe lesbar sind -
+   die Farbe allein trägt die Aussage nie, das Wort steht in der Kopfzeile. */
+.vp-am-karte.is-neu {
+  border-style: dashed;
+  background: var(--vp-tint);
+}
+
+.vp-am-karte.is-verwaist {
+  border-style: dashed;
+  border-color: var(--vp-warn, #d97706);
+  background: var(--vp-warn-soft, #fef3c7);
+}
+
+.vp-am-karte-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-am-karte-head .nm {
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-am-karte-head .ty,
+.vp-am-karte-head .st {
+  font-size: 0.8rem;
+  color: var(--vp-text-gray, #6b7280);
+  min-width: 0;
+}
+
+.vp-am-karte-head .st {
+  margin-left: auto;
+}
+
+.vp-am-karte-head .st.warn {
+  color: #7a4a05;
+  font-weight: 600;
+}
+
+.vp-am-karte-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  /* ≥44px Trefferfläche über ::before, ohne die Kopfzeile auseinanderzuziehen
+     (das `.vp-switch`-Muster). */
+  position: relative;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--vp-link, #2c5282);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vp-am-karte-go::before {
+  content: '';
+  position: absolute;
+  inset: -12px -8px;
+}
+
+.vp-am-karte-go:hover {
+  text-decoration: underline;
+}
+
+.vp-am-karte-sub {
+  margin: var(--vp-space-1) 0 0;
+  font-size: 0.78rem;
+  color: var(--vp-text-gray, #6b7280);
+  overflow-wrap: anywhere;
+}
+
+.vp-am-karte-rows {
+  margin-top: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-am-register-hint {
+  margin: var(--vp-space-2) 0 0;
+  font-size: 0.78rem;
+  color: var(--vp-text-gray, #6b7280);
+}
+
+@media (max-width: 640px) {
+  /* Am Telefon kostet die Einrückung Breite, ohne die Struktur besser zu
+     erzählen - die Reihenfolge tut es dort selbst. */
+  .vp-am-karte.is-geraet,
+  .vp-am-karte.is-ladepunkt {
+    margin-left: 0;
+  }
+
+  .vp-am-karte-head .st {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}

@@ -174,6 +174,9 @@ function stub() {
   // The installer panel (EntitaetenSection) also reads these — fail-soft, but
   // stub them so an admin render is quiet.
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
+  // Die Säulen der vereinten Liste (§13 R7) - fail-soft, aber gestubbt, damit
+  // ein Render nicht auf einen echten Abruf wartet.
+  vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
   vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue({ catalog_version: '1.0.0', types: [] });
 }
 
@@ -182,83 +185,80 @@ const FORBIDDEN = /Entität|Messpunkt|Quelle|Mess-Einheit|Kanal/;
 describe('AnlagenModellSection — Variante A', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('leads with the Kopfsatz and shows the ONE box with its devices behind it', async () => {
+  it('führt mit EINEM Gesundheits-Satz und der EINEN Box (Revision 2)', async () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    // 1 · der Kopfsatz beantwortet „richtig erkannt?" in einer Zeile.
-    expect(
-      await screen.findByText(/VoltPilot kennt Ihre Anlage als 4 Komponenten, gemessen von 2 Geräten/),
-    ).toBeInTheDocument();
+    // 1 · EIN Satz statt der früheren Vier-Zahlen-Kopfzeile.
+    expect(await screen.findByText(/Box verbunden/)).toBeInTheDocument();
+    // Die frühere Zähl-Kopfzeile ist ERSATZLOS weg.
+    expect(screen.queryByText(/VoltPilot kennt Ihre Anlage als/)).toBeNull();
 
-    // 2 · die EINE VoltPilot-Box ist der Vermittler; die Geräte hängen an ihr.
-    expect(screen.getByText('VoltPilot-Box VP-ABC123')).toBeInTheDocument();
-    expect(screen.getByText('Verbunden · empfängt Messwerte von 2 Geräten')).toBeInTheDocument();
+    // 2 · die EINE Box führt die Liste an.
+    const liste = screen.getByRole('region', { name: 'Ihre Geräte' });
+    expect(within(liste).getByRole('region', { name: 'VoltPilot-Box VP-ABC123' })).toBeInTheDocument();
     expect(screen.getByText(/einzige Verbindung zu VoltPilot/)).toBeInTheDocument();
-    // Never a second "box": the inverters read as devices behind it.
-    expect(screen.getAllByText(/VoltPilot-Box/)).toHaveLength(2); // name + hint sentence
-    const strip = screen.getByRole('region', { name: 'Ihre Geräte' });
-    expect(within(strip).getByRole('button', { name: /Deye SUN-30K/ })).toBeInTheDocument();
-
-    // The device verb sub-line replaces the old „liefert N Messwerte".
-    expect(screen.queryByText(/liefert \d+ Messwert/)).toBeNull();
   });
 
-  it('renders the role groups with live values that add up', async () => {
+  it('macht aus Gerät UND Komponente EINE Karte - die Doppelung ist weg', async () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    const pv = await screen.findByRole('region', { name: 'PV-Erzeugung' });
-    // 21,2 (Fronius, from /sources) + 5,8 (the hybrid's own modules) = 27,0
-    expect(pv.textContent).toContain('21,2');
-    expect(pv.textContent).toContain('5,8');
-    expect(pv.textContent).toContain('Σ 27,0');
-    // Herkunft per component.
-    expect(pv.textContent).toContain('misst selbst');
-    expect(pv.textContent).toContain('gemessen über Deye SUN-30K');
+    // Der Fronius: EINE Karte (technischer Name) mit EINER Zeile (Kundenname).
+    const fronius = await screen.findByRole('region', { name: 'Fronius Anlage' });
+    expect(fronius.textContent).toContain('PV-Wechselrichter');
+    expect(fronius.textContent).toContain('21,2');
 
-    // The battery: SoC on the row, power in the headline.
-    const storage = screen.getByRole('region', { name: 'Speicher' });
-    expect(storage.textContent).toContain('76,0');
-    expect(storage.textContent).toContain('geladen');
-    expect(storage.textContent).toContain('lädt 9,3');
-    // Steuern ist ein Abzeichen, kein Nebensatz.
-    expect(storage.textContent).toContain('Wird von VoltPilot gesteuert');
-
-    // The grid: a direction WORD, never a minus sign.
-    const grid = screen.getByRole('region', { name: 'Netzanschluss' });
-    expect(grid.textContent).toContain('Einspeisung 30,0');
-    expect(grid.textContent).not.toContain('-30,0');
-    expect(grid.textContent).not.toContain('−30,0');
+    // Der Hybrid trägt EHRLICH mehrere Zeilen - EIN Gerät, vier Komponenten.
+    const deye = screen.getByRole('region', { name: 'Deye SUN-30K' });
+    expect(deye.textContent).toContain('Hybrid-Wechselrichter');
+    expect(deye.textContent).toContain('Netzanschluss');
+    expect(deye.textContent).toContain('Solarmodule');
+    // Die Richtung bleibt ein WORT, nie ein Minus.
+    expect(deye.textContent).toContain('Einspeisung');
+    expect(deye.textContent).not.toContain('-30,0');
+    expect(deye.textContent).not.toContain('−30,0');
+    // Der Speicher-Zustand bleibt an seiner Zeile.
+    expect(deye.textContent).toContain('76,0');
+    expect(deye.textContent).toContain('Wird von VoltPilot gesteuert');
   });
 
-  it('highlights a device on click and the third column is gone', async () => {
+  it('führt von jeder Karte auf ihre Geräteseite - und nie ins Leere', async () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    const strip = await screen.findByRole('region', { name: 'Ihre Geräte' });
-    const device = within(strip).getByRole('button', { name: /Deye SUN-30K/ });
-    expect(device).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(device);
-    expect(device).toHaveAttribute('aria-pressed', 'true');
+    const deye = await screen.findByRole('region', { name: 'Deye SUN-30K' });
+    expect(within(deye).getByRole('link', { name: /Geräteseite/ })).toHaveAttribute(
+      'href',
+      '#/anlage/s-1/geraet/VP-ABC123/inv',
+    );
+    // Die „Neues Gerät"-Karte hat KEINE Seite - dort steht die Übernahme.
+    const neu = screen.getByRole('region', { name: 'Neues Gerät gefunden' });
+    expect(within(neu).queryByRole('link', { name: /Geräteseite/ })).toBeNull();
+    expect(within(neu).getByRole('button', { name: /Übernehmen/ })).toBeInTheDocument();
+  });
 
-    // Die aufgelöste dritte Spalte („Ihre Anlage" mit fünf Erklärkarten).
-    expect(screen.queryByRole('region', { name: 'Ihre Anlage' })).toBeNull();
-    expect(screen.queryByText('Cockpit & Energiefluss')).toBeNull();
-    // …ihr Rest lebt in der Fußzeile.
-    expect(screen.getByText('→ Messwerte')).toHaveAttribute('href', '#/anlage/s-1/messwerte');
-    expect(screen.getByText('→ Steuerung')).toHaveAttribute('href', '#/anlage/s-1/steuerung');
-    expect(screen.getByText(/Schutzgrenzen/)).toBeInTheDocument();
-    // …und „Guard-Kette" ist raus.
-    expect(screen.queryByText(/Guard-Kette/)).toBeNull();
+  it('hat KEINE Rollen-Gruppen und KEINE Summen mehr (R8)', async () => {
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
+    // Die Rollen-Gruppen sind in den Karten aufgegangen…
+    expect(screen.queryByRole('region', { name: 'PV-Erzeugung' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Speicher' })).toBeNull();
+    // …und die Σ-Kopfzahlen wohnen im Cockpit, nicht hier.
+    expect(screen.queryByText(/Σ/)).toBeNull();
+    // Das „Antippen markiert"-Versprechen ist ersatzlos weg.
+    expect(screen.queryByText(/antippen markiert/i)).toBeNull();
+    // Der Register-Weg wird als EIN Satz genannt.
+    expect(screen.getByText(/auf der Seite des jeweiligen Geräts/)).toBeInTheDocument();
   });
 
   it('shows the newly reported device and opens the one-move assign dialog', async () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    const found = await screen.findByText('Neues Gerät gefunden');
-    fireEvent.click(found);
+    const neu = await screen.findByRole('region', { name: 'Neues Gerät gefunden' });
+    fireEvent.click(within(neu).getByRole('button', { name: /Übernehmen/ }));
     expect(await screen.findByText('Gerät zuordnen')).toBeInTheDocument();
     expect(screen.getByText('Was misst dieses Gerät?')).toBeInTheDocument();
     // The guided type for a go-e source is a Wallbox.
@@ -293,7 +293,8 @@ describe('AnlagenModellSection — Variante A', () => {
     vi.spyOn(entitiesApi, 'adopt').mockRejectedValue(new ApiError(403, 'Forbidden'));
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    fireEvent.click(await screen.findByText('Neues Gerät gefunden'));
+    const neu = await screen.findByRole('region', { name: 'Neues Gerät gefunden' });
+    fireEvent.click(within(neu).getByRole('button', { name: /Übernehmen/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Fertig' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/VoltPilot/));
   });
@@ -408,15 +409,19 @@ describe('AnlagenModellSection — Variante A', () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    const storage = await screen.findByRole('region', { name: 'Speicher' });
-    expect(within(storage).queryByRole('button', { name: /Komponente löschen/ })).toBeNull();
-    expect(within(storage).queryByRole('button', { name: /Zuordnung ändern/ })).toBeNull();
+    // Der Speicher ist eine ZEILE in der Karte seines Geräts (§13 R2) - die
+    // Zusicherung gilt der ZEILE, nicht der Karte: ein echter Netz-Zähler in
+    // derselben Karte darf seine Hebel behalten.
+    await screen.findByRole('region', { name: 'Deye SUN-30K' });
+    const speicher = screen.getByText('Speicher').closest('.vp-am-comp') as HTMLElement;
+    expect(within(speicher).queryByRole('button', { name: /Komponente löschen/ })).toBeNull();
+    expect(within(speicher).queryByRole('button', { name: /Zuordnung ändern/ })).toBeNull();
   });
 
   it('uses no forbidden customer vocabulary in the customer view', async () => {
     stub();
     const { container } = render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    await screen.findByRole('region', { name: 'Komponenten' });
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
     expect(FORBIDDEN.test(container.textContent ?? '')).toBe(false);
   });
 
@@ -426,7 +431,7 @@ describe('AnlagenModellSection — Variante A', () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    await screen.findByRole('region', { name: 'Komponenten' });
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
     expect(screen.queryByText(/Installateur-Ansicht/)).toBeNull();
     expect(screen.queryByText('Rollen & Zuordnung')).toBeNull();
     // Naming your own plant is not a technical act (concept
@@ -441,7 +446,7 @@ describe('AnlagenModellSection — Variante A', () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    await screen.findByRole('region', { name: 'Komponenten' });
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
     const named = screen
       .getAllByRole('button', { name: /umbenennen/ })
       .map((b) => b.getAttribute('aria-label'));
@@ -467,7 +472,7 @@ describe('AnlagenModellSection — Variante A', () => {
       deviceId: null,
     });
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    await screen.findByRole('region', { name: 'Komponenten' });
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
 
     fireEvent.click(screen.getByRole('button', { name: /„Netzanschluss“ umbenennen/ }));
     const field = await screen.findByLabelText('Eigener Name');
@@ -493,7 +498,7 @@ describe('AnlagenModellSection — Variante A', () => {
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
     // The customer picture is still there…
-    await screen.findByRole('region', { name: 'Komponenten' });
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
     // …plus the installer panel added on top.
     expect(screen.getByText(/Installateur-Ansicht/)).toBeInTheDocument();
     expect(await screen.findByText('Rollen & Zuordnung')).toBeInTheDocument();
@@ -539,6 +544,7 @@ describe('der Freigabe-Zustand an der Komponente (Einheitsmodell Stufe 4)', () =
     } as unknown as SiteTopology);
     vi.spyOn(api, 'siteSources').mockResolvedValue([]);
     vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
+    vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
     vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue({ catalog_version: '1.0.0', types: [] });
   }
 
@@ -589,7 +595,7 @@ describe('der Freigabe-Zustand an der Komponente (Einheitsmodell Stufe 4)', () =
   it('bietet an einer PLATTFORM-Komponente keinen Selbstbau-Freigabeweg', async () => {
     stub();
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    await screen.findByRole('region', { name: 'Speicher' });
+    await screen.findByRole('region', { name: 'Deye SUN-30K' });
     // Der Speicher ist steuerbar - aber seine Freigabe erteilt VoltPilot, nicht
     // der Kunde über einen Modbus-Schalt-Test.
     expect(screen.queryByRole('button', { name: /Steuern freigeben/ })).toBeNull();
