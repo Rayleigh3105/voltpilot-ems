@@ -1,6 +1,7 @@
 package com.voltpilot.api.registerwrite;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -92,6 +94,34 @@ class RegisterWritePublisherTest {
         assertThat(env.has("write_fc")).isFalse();
     }
 
+    /**
+     * ⚠ Der Stempel muss die FORM haben, die die BOX parst - und die Fixtures
+     * sehen sie nie (Produktionsvorfall 20.08.2026).
+     *
+     * <p>Jede andere Prüfung dieses Umschlags reicht einen Fixture-Instant
+     * herein ({@code 2026-08-19T14:02:11Z}, sekundengenau). {@code Instant.now()}
+     * gibt aber Mikrosekunden aus, und die Box parst mit Gos
+     * {@code time.Parse(time.RFC3339, …)} - fällt der Parse durch, gilt der
+     * Auftrag als VERFALLEN und wird auf einem älteren Box-Stand STILL
+     * verworfen. Genau diese Klasse Stille war zwei Runden lang
+     * ununterscheidbar von „nie angekommen", also wird die echte Form hier
+     * festgenagelt statt nur „nicht leer".
+     */
+    @Test
+    void theStampCarriesTheShapeTheBoxParses() {
+        JsonNode env = envelopeAt(Instant.now(), new RegisterWritePublisher.Order(
+                RegisterWriteResult.MODE_READ, RegisterWritePublisher.Order.LANE_PRIMARY,
+                null, null, null, null, "holding", 231, null, null, null, null));
+
+        String stamp = env.get("requested_at").asText();
+        // RFC3339 mit SEKUNDEN (Go verlangt sie; Instant.toString() lässt sie
+        // weg, wenn Sekunde UND Nanos 0 sind) plus optionalem Bruchteil, Zulu.
+        assertThat(stamp).matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?Z$");
+        // Und er ist wirklich JETZT - ein Stempel, der schon bei der Ankunft
+        // verfallen wäre, macht das Fenster zur Sperre.
+        assertThat(Instant.parse(stamp)).isCloseTo(Instant.now(), within(5, ChronoUnit.SECONDS));
+    }
+
     @Test
     void theTwoLanesStufeTwoWillExecuteAreAlreadyOnTheWire() {
         // Vollständig spezifiziert, damit eine Box im Feld eine ihr unbekannte
@@ -126,9 +156,13 @@ class RegisterWritePublisherTest {
     }
 
     private JsonNode envelope(RegisterWritePublisher.Order order) {
+        return envelopeAt(Instant.parse("2026-08-19T14:02:11Z"), order);
+    }
+
+    private JsonNode envelopeAt(Instant requestedAt, RegisterWritePublisher.Order order) {
         try {
             return mapper.readTree(RegisterWritePublisher.envelope(TENANT, SITE, DEVICE,
-                    "0011223344556677", Instant.parse("2026-08-19T14:02:11Z"), "sub-1", order));
+                    "0011223344556677", requestedAt, "sub-1", order));
         } catch (Exception e) {
             throw new AssertionError(e);
         }

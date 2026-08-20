@@ -125,6 +125,18 @@ func (a *Agent) onRegisterWrite(payload []byte) {
 			registerwrite.ErrRateLimited, registerwrite.MsgRateLimited))
 		return
 	}
+	// ⚠ EIN ANGENOMMENER AUFTRAG WIRD PROTOKOLLIERT (Produktionsvorfall
+	// 20.08.2026). Bis hierher schwieg der GLUECKLICHE Pfad vollstaendig: nur
+	// Ablehnungen loggten, und ein Probelauf hinterlaesst per Konstruktion auch
+	// im Audit nichts (das fuehrt nur echte Schreibvorgaenge). Damit war „ist
+	// der Auftrag ueberhaupt angekommen?" aus dem Geraet heraus UNBEANTWORTBAR -
+	// die leere Audit-Liste sieht bei einem funktionierenden Probelauf exakt so
+	// aus wie bei einem Auftrag, der nie ankam. Genau diese Mehrdeutigkeit hat
+	// eine Untersuchungsrunde gekostet. Es ist die Kehrseite derselben Regel,
+	// aus der jede Ablehnung sichtbar sein muss: Stille ist kein Beleg.
+	slog.Info("Register-Schreiben: Auftrag angenommen",
+		"request_id", req.RequestID, "modus", req.Mode, "lane", req.Target.Kind,
+		"register", req.Register.Address)
 	go a.runRegisterWrite(req, id)
 }
 
@@ -521,7 +533,13 @@ func (a *Agent) publishRegisterWriteResult(res registerwrite.Result) {
 	if err := link.PublishRegisterWriteResult(raw); err != nil {
 		slog.Warn("Register-Schreiben: Ergebnis konnte nicht gesendet werden",
 			"request_id", res.RequestID, "err", err)
+		return
 	}
+	// Der AUSGANG, nicht nur der Fehlschlag: wer einen Antwort-Pfad baut,
+	// protokolliert sein Ergebnis - sonst ist aus dem Geraeteprotokoll allein
+	// nicht zu sehen, ob geantwortet wurde (dieselbe Lehre wie oben).
+	slog.Info("Register-Schreiben: Ergebnis gesendet",
+		"request_id", res.RequestID, "ok", res.OK, "error_code", res.ErrorCode)
 }
 
 // --- D6: die lokalen Schreibvorgaenge erreichen das Cloud-Journal ------------
