@@ -300,6 +300,16 @@ voltpilot:
   # pattern/broker settings as `control`. Display-only. Off by default.
   sources:
     mqtt-listener-enabled: ${VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED:false}
+  # Lastmanagement Stufe 3: ingest the heartbeat `chargers` block (the site's
+  # charging budget + every OCPP charge point with its connectors) into
+  # device_charging_budget / device_charge_point / device_charge_connector, so
+  # the portal can answer "which station is charging, and why is the third one
+  # waiting?" without opening the box's own :8484 page. Same listener
+  # pattern/broker settings as `sources`. Display-only - the budget itself is
+  # decided on the box (the connection limit is physical, its watchdog must not
+  # hang off the WAN). Off by default; both composes turn it on.
+  chargers:
+    mqtt-listener-enabled: ${VOLTPILOT_CHARGERS_MQTT_LISTENER_ENABLED:false}
   # OTA Stufe 0 „Sehen": ingest the heartbeat's TOP-LEVEL `version` field plus
   # the additive `update` block into device_update_status, so the fleet view
   # knows which build every box runs - including the boxes on which no
