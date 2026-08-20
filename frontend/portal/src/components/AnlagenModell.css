@@ -780,3 +780,53 @@
   max-width: 62ch;
   color: var(--vp-text-gray, #6b7280);
 }
+
+/* --- Der Weg auf die GERÄTESEITE (Anlagen-Zentrale Stufe 1) ---------------
+   Die Karte ist seit der Zentrale ein CONTAINER: das Antippen markiert
+   weiterhin, was ein Gerät misst, „Details" führt auf seine Seite. Ein Link im
+   Knopf wäre ungültiges Markup, also stehen sie nebeneinander.
+   Angeboten wird der Link NUR, wo er wirklich hinführt (`geraetAdressierbar`). */
+
+.vp-am-dev-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-am-details-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  align-self: flex-start;
+  /* ≥44px Trefferfläche, ohne die Karte auseinanderzuziehen (das
+     `.vp-switch::before`-Muster). */
+  position: relative;
+  margin-top: 6px;
+  color: var(--vp-link, #2c5282);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.vp-am-details-link::before {
+  content: '';
+  position: absolute;
+  inset: -12px -8px;
+}
+
+.vp-am-details-link:hover {
+  text-decoration: underline;
+}
+
+.vp-am-box .vp-am-details-link {
+  margin-top: 8px;
+}

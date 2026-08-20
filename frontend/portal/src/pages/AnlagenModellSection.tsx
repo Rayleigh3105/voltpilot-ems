@@ -29,6 +29,7 @@ import {
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { livenessReference } from '../liveness';
+import { boxRefOf, geraetAdressierbar } from '../geraetSeite';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
 import { SchaltFreigabeDrawer } from '../components/SchaltFreigabeDrawer';
 import { freigabeZustand } from '../schaltFreigabe';
@@ -51,7 +52,7 @@ import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
 import { BEFEHLE_LABEL } from '../befehle';
-import { anlageRoute, befehleHash, hashForRoute } from '../nav';
+import { anlageRoute, befehleHash, geraetSeiteHash, hashForRoute } from '../nav';
 import { EntitaetenSection } from './EntitaetenSection';
 import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
@@ -206,6 +207,12 @@ export function AnlagenModellSection({
     );
   }, [devices, devicesFetchedAt, site.id, model]);
 
+  /**
+   * Die Referenz der EINEN Box - der Schlüssel jeder Geräteseite. Ohne sie
+   * (keine oder mehrere Boxen) wird KEIN Weg angeboten, statt einen zu raten.
+   */
+  const boxRef = useMemo(() => boxRefOf(devices, site.id), [devices, site.id]);
+
   const isEmpty =
     model != null &&
     model.devices.length === 0 &&
@@ -296,6 +303,13 @@ export function AnlagenModellSection({
                   </span>
                   <span className="vp-am-box-sub">{box.summary}</span>
                   <span className="vp-am-box-hint">{EDGE_BOX_HINT}</span>
+                  {/* Die Box hat seit der Anlagen-Zentrale eine eigene Seite -
+                      Cloud-Link, Software, ihre Geräte und die Gefahrenzone. */}
+                  {boxRef && (
+                    <a className="vp-am-details-link" href={geraetSeiteHash(site.id, boxRef)}>
+                      Details zur Box <Icon name="chevron-right" size={13} />
+                    </a>
+                  )}
                   <div className="vp-am-behind">
                     <h3 className="vp-am-head">
                       <Icon name="cpu" size={16} /> Geräte an Ihrer Box{' '}
@@ -305,6 +319,8 @@ export function AnlagenModellSection({
                     </h3>
                     <DeviceStrip
                       model={model}
+                      siteId={site.id}
+                      boxRef={boxRef}
                       selected={selected}
                       highlightedDevices={highlightedDevices}
                       onSelect={setSelected}
@@ -321,6 +337,8 @@ export function AnlagenModellSection({
                   </h3>
                   <DeviceStrip
                     model={model}
+                    siteId={site.id}
+                    boxRef={boxRef}
                     selected={selected}
                     highlightedDevices={highlightedDevices}
                     onSelect={setSelected}
@@ -585,12 +603,17 @@ function RegisterExperte({ site, devices }: { site: Site; devices?: Device[] }) 
 /** The devices behind the box + the "Neues Gerät gefunden" call to action. */
 function DeviceStrip({
   model,
+  siteId,
+  boxRef,
   selected,
   highlightedDevices,
   onSelect,
   onAssign,
 }: {
   model: ReturnType<typeof plantModel>;
+  siteId: string;
+  /** Die Referenz der EINEN Box; null = kein Weg auf eine Geräteseite. */
+  boxRef: string | null;
   selected: string | null;
   highlightedDevices: Set<string> | null;
   onSelect: (id: string | null) => void;
@@ -602,6 +625,9 @@ function DeviceStrip({
         <DeviceCard
           key={d.id}
           device={d}
+          href={
+            boxRef && geraetAdressierbar(d.id) ? geraetSeiteHash(siteId, boxRef, d.id) : null
+          }
           selected={selected === d.id}
           dim={highlightedDevices != null && !highlightedDevices.has(d.id)}
           onSelect={() => onSelect(selected === d.id ? null : d.id)}
@@ -626,36 +652,44 @@ function DeviceStrip({
 /** One physical box behind the VoltPilot-Box. */
 function DeviceCard({
   device,
+  href,
   selected,
   dim,
   onSelect,
 }: {
   device: PlantDevice;
+  /** Die Adresse seiner Geräteseite; null = es gibt keine (siehe `geraetAdressierbar`). */
+  href: string | null;
   selected: boolean;
   dim: boolean;
   onSelect: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className={`vp-am-dev${selected ? ' selected' : ''}${dim ? ' dim' : ''}`}
-      aria-pressed={selected}
-      onClick={onSelect}
-    >
-      <span className="vp-am-dev-name">
-        <span className={`vp-health-dot vp-health-${HEALTH_TONE[device.health]}`} />
-        {device.label}
-      </span>
-      <span className="vp-am-dev-sub">{device.state}</span>
-      <span className="vp-am-dev-sub">{device.summary}</span>
-      {device.roles.length > 0 && (
-        <span className="vp-am-roledots" aria-hidden="true">
-          {device.roles.map((r) => (
-            <i key={r} className={`vp-am-roledot vp-am-${r}`} />
-          ))}
+    /* Die Karte ist ein CONTAINER, kein Knopf: das Antippen markiert weiterhin,
+       was das Gerät misst, und „Details" führt auf seine Seite - ein Link IM
+       Knopf wäre ungültiges Markup. */
+    <div className={`vp-am-dev${selected ? ' selected' : ''}${dim ? ' dim' : ''}`}>
+      <button type="button" className="vp-am-dev-btn" aria-pressed={selected} onClick={onSelect}>
+        <span className="vp-am-dev-name">
+          <span className={`vp-health-dot vp-health-${HEALTH_TONE[device.health]}`} />
+          {device.label}
         </span>
+        <span className="vp-am-dev-sub">{device.state}</span>
+        <span className="vp-am-dev-sub">{device.summary}</span>
+        {device.roles.length > 0 && (
+          <span className="vp-am-roledots" aria-hidden="true">
+            {device.roles.map((r) => (
+              <i key={r} className={`vp-am-roledot vp-am-${r}`} />
+            ))}
+          </span>
+        )}
+      </button>
+      {href && (
+        <a className="vp-am-details-link" href={href} aria-label={`Details zu „${device.label}"`}>
+          Details <Icon name="chevron-right" size={13} />
+        </a>
       )}
-    </button>
+    </div>
   );
 }
 

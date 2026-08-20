@@ -46,11 +46,12 @@ export type AnlagenSub =
   | 'steuerung'
   | 'lastspitzen'
   | 'ladevorgaenge'
-  | 'befehle';
+  | 'befehle'
+  | 'geraet';
 
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'wetter', 'technik', 'modell',
-  'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle',
+  'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle', 'geraet',
 ]);
 
 /**
@@ -96,6 +97,27 @@ export interface Route {
   page: PageId;
   siteId: string | null;
   sub: AnlagenSub | null;
+  /**
+   * Nur bei `sub === 'geraet'` gesetzt: WELCHES Gerät die Adresse nennt
+   * (Anlagen-Zentrale Stufe 1). Absent bei jeder anderen Route - `toEqual`
+   * ignoriert ein `undefined`-Feld, also bleibt jede bestehende
+   * Routen-Zusicherung unverändert gültig.
+   */
+  geraet?: GeraetTarget;
+}
+
+/**
+ * Das Ziel einer Geräte-Detailseite: die REFERENZ der VoltPilot-Box, dahinter
+ * optional die Kennung eines Geräts AN ihr (`inverter` = das Hauptgerät,
+ * `src-…` = eine gemeldete Quelle, `cp-…` = eine OCPP-Säule).
+ *
+ * **Der Schlüssel ist die Referenz, nicht die Geräte-UUID** - sie überlebt
+ * Unclaim/Re-Claim (der dokumentierte Identitäts-Drift), also überlebt auch
+ * jedes Lesezeichen darauf (die `geraetHash`-Disziplin).
+ */
+export interface GeraetTarget {
+  ref: string;
+  geraetId: string | null;
 }
 
 export interface PageDef {
@@ -470,6 +492,19 @@ export function parseRoute(hash: string): Route {
           ? (raw as AnlagenSub)
           : null
       : null;
+    // Die Geräteseite ist die EINZIGE Unterseite mit weiteren Abschnitten:
+    // `…/geraet/{ref}[/{geraetId}]`. Ohne Referenz gibt es kein Gerät, also
+    // fällt sie auf die Zentrale zurück - nie ein 404 (die `parseRoute`-Regel).
+    if (sub === 'geraet') {
+      const ref = segments[3];
+      if (!ref) return { page: 'anlagen', siteId: segments[1], sub: 'modell' };
+      return {
+        page: 'anlagen',
+        siteId: segments[1],
+        sub: 'geraet',
+        geraet: { ref: decodeURIComponent(ref), geraetId: segments[4] ? decodeURIComponent(segments[4]) : null },
+      };
+    }
     return { page: 'anlagen', siteId: segments[1], sub };
   }
   // Die Portfolio-Ebene ist zweistufig: `#/portfolio` (Landung) und
@@ -525,6 +560,9 @@ export function canonicalAnlageHash(hash: string): string | null {
 /** The canonical hash of a route (what goes into window.location.hash). */
 export function hashForRoute(route: Route): string {
   if (route.page === 'anlagen' && route.siteId) {
+    if (route.sub === 'geraet' && route.geraet) {
+      return geraetSeiteHash(route.siteId, route.geraet.ref, route.geraet.geraetId);
+    }
     return route.sub
       ? `#/anlage/${route.siteId}/${route.sub}`
       : `#/anlage/${route.siteId}`;
@@ -592,4 +630,26 @@ export function parseGeraetRef(hash: string): string | null {
   if (rest.length === 0) return null;
   const value = new URLSearchParams(rest.join('?')).get('geraet');
   return value && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Die Adresse der GERÄTE-DETAILSEITE in der Anlagen-Zentrale (Konzept
+ * `vp-anlagen-zentrale-konzept-h6` §7.1): `#/anlage/{siteId}/geraet/{ref}` für
+ * die VoltPilot-Box, `…/{geraetId}` für ein Gerät DAHINTER.
+ *
+ * Anders als {@link geraetHash} (die Plattform-Geräteseite, ein
+ * Hash-Parameter) sind Referenz und Gerät hier echte Pfad-Abschnitte: die
+ * Seite gehört zur ANLAGE, also gehört sie in ihren Pfad. Beide Werte werden
+ * kodiert - eine Referenz ist per Kontrakt topic-sicher, eine Säulen-Kennung
+ * (`cp-<ChargePointId>`) muss es nicht sein.
+ */
+export function geraetSeiteHash(
+  siteId: string,
+  ref: string,
+  geraetId?: string | null,
+): string {
+  const base = `#/anlage/${siteId}/geraet/${encodeURIComponent(ref)}`;
+  return geraetId && geraetId.trim()
+    ? `${base}/${encodeURIComponent(geraetId.trim())}`
+    : base;
 }

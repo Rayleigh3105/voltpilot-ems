@@ -42,6 +42,10 @@ const ALL_SUBS: AnlagenSub[] = [
   // sie hat deshalb keinen Seitenleisten-Eintrag, muss aber wie `wetter` über
   // das Blatt erreichbar bleiben.
   'befehle',
+  // ⚠ `geraet` steht bewusst NICHT hier: die Geräte-Detailseite braucht eine
+  // Geräte-Referenz im Pfad, ein Navigationspunkt könnte sie gar nicht
+  // erzeugen. Sie ist eine Ebene UNTER dem Anlagen-Modell und hebt es hervor
+  // (`activeAreaKey`), erreichbar ausschließlich von dort.
 ];
 
 const ENTITIES: AnlageSurfaceInput['entities'] = [
@@ -683,6 +687,8 @@ describe('activeAreaKey / activeKeyForPage - ONE highlight rule', () => {
   it('maps the cockpit and every sub onto its own entry', () => {
     expect(activeAreaKey(null)).toBe('cockpit');
     expect(activeAreaKey('modell')).toBe('anlagen-modell');
+    // Die Geräteseite hebt ihren WIRT hervor - sie hat keinen eigenen Punkt.
+    expect(activeAreaKey('geraet')).toBe('anlagen-modell');
     for (const sub of ['messwerte', 'erloese', 'steuerung', 'fahrplan', 'lastspitzen', 'wetter', 'technik'] as const) {
       expect(activeAreaKey(sub)).toBe(sub);
     }

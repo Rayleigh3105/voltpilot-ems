@@ -5,6 +5,7 @@ import {
   canonicalAnlageHash,
   hashForRoute,
   geraetHash,
+  geraetSeiteHash,
   isBootHash,
   pageLabel,
   pageRoute,
@@ -192,6 +193,51 @@ describe('M1: no route breaks when the tab bar is retired', () => {
     for (const sub of ALL_SUBS) {
       expect(parseRoute(`#/anlage/s-1/${sub}`)).toEqual({ page: 'anlagen', siteId: 's-1', sub });
     }
+  });
+
+  /**
+   * Die GERÄTE-DETAILSEITE der Anlagen-Zentrale (Stufe 1): zwei zusätzliche
+   * Abschnitte, ADDITIV - jede bestehende Adresse ist unverändert gültig.
+   */
+  it('liest die zwei zusätzlichen Abschnitte der Geräteseite', () => {
+    expect(parseRoute('#/anlage/s-1/geraet/edge-45gz7da')).toEqual({
+      page: 'anlagen',
+      siteId: 's-1',
+      sub: 'geraet',
+      geraet: { ref: 'edge-45gz7da', geraetId: null },
+    });
+    expect(parseRoute('#/anlage/s-1/geraet/edge-45gz7da/inverter')).toEqual({
+      page: 'anlagen',
+      siteId: 's-1',
+      sub: 'geraet',
+      geraet: { ref: 'edge-45gz7da', geraetId: 'inverter' },
+    });
+    // Eine Säulen-Kennung darf kodiert sein - sie ist keine topic-sichere Referenz.
+    expect(parseRoute('#/anlage/s-1/geraet/edge-1/cp-CARPORT%201')?.geraet).toEqual({
+      ref: 'edge-1',
+      geraetId: 'cp-CARPORT 1',
+    });
+  });
+
+  it('fällt OHNE Referenz auf die Zentrale zurück - nie ins Leere', () => {
+    expect(parseRoute('#/anlage/s-1/geraet')).toEqual({
+      page: 'anlagen',
+      siteId: 's-1',
+      sub: 'modell',
+    });
+  });
+
+  it('schreibt die Geräteseite als Hash zurück (Rundlauf)', () => {
+    for (const geraetId of [null, 'inverter', 'cp-CARPORT 1']) {
+      const hash = geraetSeiteHash('s-1', 'edge-45gz7da', geraetId);
+      expect(parseRoute(hash).geraet).toEqual({ ref: 'edge-45gz7da', geraetId });
+      expect(hashForRoute(parseRoute(hash))).toBe(hash);
+    }
+  });
+
+  it('trägt das Geräte-Feld NUR auf der Geräteseite', () => {
+    expect(parseRoute('#/anlage/s-1/modell').geraet).toBeUndefined();
+    expect(parseRoute('#/uebersicht').geraet).toBeUndefined();
   });
 
   it('still redirects the retired top-level hashes into the Anlage', () => {
