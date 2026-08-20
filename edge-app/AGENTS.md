@@ -2802,6 +2802,71 @@ Geraete-Picker, Warnklassen): root `AGENTS.md`. Was HIER gelten muss:
   die geraete-bezogene Sperre) · `vp-palette/test/register_write_spec.js` (10) ·
   `nodered/inverter-control-routing.test.js` + `flows-sync.test.js`.
 
+## OCPP-Ladepunkte: das CSMS läuft auf der BOX (`internal/csms`)
+
+Stufe 0 des Lastmanagement-Konzepts (`data/vp-ocpp-lastmgmt-konzept-w4`,
+Captain-Entscheide E1–E5). Die Box ist das **Central System** — die Ladesäulen
+wählen SIE an, nicht umgekehrt. Der Grund ist der Konzept-Kern: die
+Anschlussgrenze ist eine PHYSISCHE Grenze, ihr Wächter darf nicht am WAN
+hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
+
+- **⚠ HERSTELLERNEUTRAL ist eine Konstruktions-Eigenschaft, kein Versprechen**
+  (Konzept §0, VERBINDLICH): die Identität einer Säule ist ihre
+  **OCPP-ChargePointId** und sonst nichts. `vendor`/`model`/`firmware`/`serial`
+  werden als SELBSTAUSKUNFT der Station aufgezeichnet und nur ANGEZEIGT — kein
+  Code verzweigt auf sie. `TestVendorStringsNeverReachTheMechanism` nagelt das
+  fest: zwei Stationen mit völlig verschiedenen Herstellerangaben erzeugen nach
+  dem Ausblenden der Anzeige-Felder einen **byte-gleichen** Zustand.
+  `DataTransfer` — die Tür, durch die Hersteller-Logik in ein CSMS kommt —
+  antwortet deshalb ausdrücklich `UnknownVendorId`.
+- **Die Bibliothek wohnt in GENAU zwei Dateien.** `lorenzodonini/ocpp-go` (MIT)
+  wird ausschließlich in `internal/csms/ocppmap.go` (+ dem Options-Durchreichen
+  in `csms.go`) importiert; alles darüber sieht nur einfache Go-Typen
+  (`csms.Snapshot`). Ein Versions-Sprung oder der spätere 2.0.1-Adapter (E3:
+  1.6J zuerst) ist damit eine Änderung INNERHALB dieses Pakets — das
+  `DayAheadPriceSource`/`PlantRegistryClient`-Muster des Hauses.
+- **⚠ Der `ocpp-go`-CLIENT hängt seine eigene Id an die Basis-URL an**
+  (`ocppj.Client.Start`), eine ECHTE Säule wird dagegen mit der VOLLEN URL
+  konfiguriert. Deshalb gibt es beides: `Endpoint(host)` (Basis, für den
+  in-process-Testclient) und `EndpointFor(host, id)` (das Kopier-Feld der
+  Einrichtungs-Fläche).
+- **Pairing = Freigabeliste, nie TOFU.** Nur eine vom Betreiber EINGETRAGENE
+  ChargePointId wird zugelassen, und zwar schon beim Websocket-Upgrade
+  (`SetNewChargingStationValidationHandler`) — eine unbekannte Station erreicht
+  keinen einzigen Handler und wird LAUT protokolliert. `Remove` ist ein
+  Widerruf: die Verbindung wird gekappt und ein Wiederverbinden scheitert.
+- **⚠ Ein Verbindungsabriss löscht die aufgezeichnete Sitzung NICHT.** Ein
+  toter Socket sagt nichts darüber, was die Säule physisch tut; „alles gestoppt"
+  wäre eine Behauptung, die niemand gemessen hat. Sicher ist das durch den
+  OCPP-EIGENEN Totmann (die `duration` des TxProfile) — die Säule fällt von
+  selbst auf ihr hinterlegtes Default zurück. Es wechselt nur `Connected`,
+  worauf jede Fläche schlüsselt.
+- **⚠ Transaktions-Ids werden PERSISTIERT** (`chargers.json` trägt neben der
+  Freigabeliste den Zähler). Eine Box, die sie beim Neustart vergisst, vergibt
+  eine Id neu, die eine Säule für eine LAUFENDE Sitzung noch hält.
+- **Der Messwert-Parser ist rein und kennt die Fallen** (`meter.go`,
+  Vektor-Tests): ein FEHLENDES `measurand` IST das Energieregister
+  (Spec-Vorgabe), eine fehlende Einheit ist W bzw. Wh (nie „kilo"), ein
+  PRO-PHASE-Wert ist nicht die Summe (ein unphasierter Wert gewinnt immer,
+  sonst werden genau L1+L2+L3 summiert), und ein unbrauchbarer Wert wird
+  VERWORFEN und GEZÄHLT, nie als 0 gespeichert. **Die SoC-Bandbreite ist hier
+  `[0,100]`, nicht `(0,100]` wie beim Batterie-Wechselrichter** — ein Auto
+  kommt legitim mit 0 % an, während dort die 0 „Logger erreicht das Gerät
+  nicht" hieß.
+- **Flags:** `VP_OCPP_ENABLED` (Vorgabe AUS — eine Box ohne Ladepunkt zahlt
+  nichts) und `VP_OCPP_PORT` (8887). Bewusst UNABHÄNGIG von
+  `VP_CONTROL_ENABLED`/`VP_CONSUMER_CONTROL_ENABLED`: die zwei sperren SCHREIB-
+  Pfade auf ein Gerät, dieser einen SERVER, den Stationen anwählen.
+- **⚠ LAN-only ist Umgebung, nicht Code:** die Bibliothek bindet `:port` auf
+  allen Schnittstellen (keine Bind-Adresse wählbar) — die Grenze sind
+  Compose-Port-Mapping + Host-Firewall, genau wie bei `:8484` und dem
+  Node-RED-Editor, plus die Freigabeliste.
+- **Scope-Zaun (E4): Lastmanagement pur.** `Authorize` akzeptiert JEDEN Tag —
+  es gibt keine Abrechnung, kein Eichrecht, kein Roaming und keine
+  Nutzerverwaltung, auf die sich eine Entscheidung stützen könnte, und ein
+  erfundenes „Invalid" hielte ein Kundenauto aus einem Grund an, den wir
+  erfunden haben. Sitzungen sind BETRIEBS-, keine Abrechnungsdaten.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
