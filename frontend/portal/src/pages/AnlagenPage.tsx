@@ -26,6 +26,7 @@ import { DEFAULT_EARNINGS_RANGE } from '../anlage';
 import {
   anlageRoute,
   pageRoute,
+  parseBefehleGeraet,
   parseBefehleKomponente,
   type AnlagenSub,
   type GeraetTarget,
@@ -487,7 +488,11 @@ function AnlagenSubPage({
         {/* Die BEFEHLE-Seite gehört einer KOMPONENTE - sie kommt als
             Hash-Parameter, damit jedes Lesezeichen dieselbe wieder öffnet. */}
         {sub === 'befehle' && (
-          <BefehleSection site={site} entityId={parseBefehleKomponente(window.location.hash)} />
+          <BefehleSection
+            site={site}
+            entityId={parseBefehleKomponente(window.location.hash)}
+            geraetRef={parseBefehleGeraet(window.location.hash)}
+          />
         )}
         {sub === 'steuerung' && (
           <SteuerungSection

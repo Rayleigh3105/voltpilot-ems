@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { GeraetSeiteSection } from './GeraetSeiteSection';
 import {
   api,
+  type CommandHistory,
   type Device,
   type Site,
   type SiteEntities,
@@ -149,7 +150,58 @@ const sources: SiteSource[] = [
   },
 ];
 
-function stub(over: { entities?: () => Promise<SiteEntities> } = {}) {
+/**
+ * Der Verlauf DIESES Geräts (Sektion F). Voreinstellung: die Box, eine
+ * bestätigte Batterie-Periode.
+ */
+function commands(over: Partial<CommandHistory> = {}): CommandHistory {
+  return {
+    recordingSince: '2026-08-01T00:00:00Z',
+    accuracySeconds: 15,
+    from: '2026-08-16T00:00:00Z',
+    to: '2026-08-16T12:00:00Z',
+    entityId: null,
+    entityLabel: null,
+    deviceRef: 'edge-45gz7da',
+    deviceIsBox: true,
+    writes: true,
+    truncated: false,
+    entries: [
+      {
+        id: 1,
+        stream: 'batterie',
+        kind: 'periode',
+        eventKind: null,
+        startedAt: '2026-08-16T10:00:00Z',
+        endedAt: '2026-08-16T10:30:00Z',
+        mode: 'plan',
+        path: 'remote',
+        whyKind: null,
+        whyRef: null,
+        commandedKwFirst: -6.5,
+        commandedKwLast: -6.5,
+        commandedKwMin: -6.5,
+        commandedKwMax: -6.5,
+        verdict: 'bestaetigt',
+        cycles: null,
+        cyclesConfirmed: null,
+        cyclesNoAnswer: null,
+        cyclesMismatch: null,
+        controlEnabled: true,
+        released: true,
+        foreignInfluence: false,
+        entityId: 'batt',
+        source: 'cloud_abgeleitet',
+        detail: null,
+      },
+    ],
+    control: null,
+    curtailment: null,
+    ...over,
+  };
+}
+
+function stub(over: { entities?: () => Promise<SiteEntities>; commands?: CommandHistory } = {}) {
   vi.spyOn(api, 'siteEntities').mockImplementation(
     over.entities ?? (() => Promise.resolve(entities)),
   );
@@ -180,6 +232,7 @@ function stub(over: { entities?: () => Promise<SiteEntities> } = {}) {
   ]);
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
+  vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
 }
 
 describe('GeraetSeiteSection', () => {
@@ -288,5 +341,52 @@ describe('GeraetSeiteSection', () => {
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
     const back = await screen.findByRole('link', { name: /Zurück zum Anlagen-Modell/ });
     expect(back.getAttribute('href')).toBe('#/anlage/s-1/modell');
+  });
+
+  it('zeigt die Befehle DIESES Geräts und führt auf die volle Liste', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
+
+    expect(await screen.findByText('Befehle an dieses Gerät')).toBeInTheDocument();
+    // Der Server entscheidet, was zu diesem Gerät gehört - die Fläche fragt ihn
+    // mit der Adresse, unter der die Seite geöffnet wurde.
+    expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'edge-45gz7da' });
+    const alle = screen.getByRole('link', { name: /Alle anzeigen/ });
+    expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle?geraet=edge-45gz7da');
+    // Die Box trägt jede Zeile - der Grenz-Satz gehört ihr nicht.
+    expect(screen.queryByText(/Anlagenweite Befehle/)).not.toBeInTheDocument();
+  });
+
+  it('erklärt an einem Gerät HINTER der Box, wo die anlagenweiten Befehle stehen', async () => {
+    stub({ commands: commands({ deviceIsBox: false, deviceRef: 'src-7c1e9a2b', entries: [] }) });
+    render(
+      <GeraetSeiteSection
+        site={site}
+        boxRef="edge-45gz7da"
+        geraetId="src-7c1e9a2b"
+        devices={[box]}
+      />,
+    );
+    expect(await screen.findByText(/Anlagenweite Befehle/)).toBeInTheDocument();
+    // Ohne Zeile steht der GRUND da, nie ein leerer Kasten.
+    expect(screen.getByText(/kein Befehl geschickt/)).toBeInTheDocument();
+  });
+
+  it('sagt die F4-Antwort, wenn an dieses Gerät gar nicht geschrieben wird', async () => {
+    stub({ commands: commands({ writes: false, entries: [] }) });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
+    expect(await screen.findByText(/nur gelesen/)).toBeInTheDocument();
+  });
+
+  it('bleibt bedienbar, wenn der Verlauf ausfällt', async () => {
+    stub();
+    vi.spyOn(api, 'commandHistory').mockRejectedValue(new Error('down'));
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
+    // Die Sektion bleibt - sie sagt, dass noch nicht aufgezeichnet wurde,
+    // statt eine leere Behauptung zu machen.
+    expect(await screen.findByText('Befehle an dieses Gerät')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText(/Aufzeichnung hat noch nicht begonnen/)).toBeInTheDocument(),
+    );
   });
 });

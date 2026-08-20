@@ -149,10 +149,7 @@ public class CommandLogRepository {
      * Ereignis: Verschwinden ist kein Stopp.
      */
     public void closeOpenExcept(UUID deviceId, String stream, Collection<UUID> keep) {
-        // Als Array-LITERAL, nicht als Java-Array: der Treiber muss den
-        // Elementtyp sonst erraten, und ein leeres Array hätte gar keinen.
-        String literal = "{" + keep.stream().map(UUID::toString)
-                .collect(java.util.stream.Collectors.joining(",")) + "}";
+        String literal = uuidArray(keep);
         jdbc.update("UPDATE device_command_log SET ended_at = last_seen_at "
                 + "WHERE device_id = ? AND stream = ? AND kind = '" + CommandLog.KIND_PERIODE
                 + "' AND ended_at IS NULL AND entity_id IS NOT NULL "
@@ -270,12 +267,8 @@ public class CommandLogRepository {
      */
     public List<Row> entries(UUID siteId, UUID entityId, UUID deviceId, Instant from, Instant to,
             int limit) {
-        StringBuilder sql = new StringBuilder("SELECT " + COLUMNS + " FROM device_command_log "
-                + "WHERE site_id = ? AND started_at < ? "
-                + "AND (started_at >= ? OR ended_at IS NULL OR ended_at > ?)");
-        List<Object> args = new java.util.ArrayList<>(
-                List.of(siteId, Timestamp.from(to), Timestamp.from(from),
-                        Timestamp.from(CommandLog.carryInAfter(from))));
+        StringBuilder sql = window(siteId, from, to);
+        List<Object> args = windowArgs(siteId, from, to);
         if (entityId != null) {
             sql.append(" AND (entity_id = ?");
             args.add(entityId);
@@ -285,6 +278,68 @@ public class CommandLogRepository {
             }
             sql.append(')');
         }
+        return finish(sql, args, limit);
+    }
+
+    /**
+     * Derselbe Ausschnitt, aber auf EIN GERÄT eingegrenzt (Anlagen-Zentrale
+     * Stufe 1, Konzept {@code vp-anlagen-zentrale-konzept-h6} §7.4).
+     *
+     * <p>Zwei Fälle, und ihr Unterschied ist eine AUSSAGE, keine Bequemlichkeit:
+     *
+     * <ul>
+     *   <li><b>Die BOX</b> ({@code entityIds == null}): sie IST der Schreibweg
+     *       dieser Anlage - jede Zeile ihres Geräts gehört ihr, auch die
+     *       gerätebezogenen ohne Komponente (die Abregelung).</li>
+     *   <li><b>Ein Gerät HINTER der Box</b> ({@code entityIds != null}): nur die
+     *       Zeilen SEINER Komponenten. Eine gerätebezogene Zeile beschreibt den
+     *       Schreibweg der ganzen Box (die Abregelung liest EIN Rücklesen über
+     *       ALLE Einheiten zurück) - sie einem von drei Wechselrichtern
+     *       zuzuschreiben wäre eine erfundene Zuordnung. Sie steht auf der Seite
+     *       der Box, und die Fläche sagt das.</li>
+     * </ul>
+     *
+     * <p>Eine LEERE Menge ist ein gültiger Eingang: ein gemeldetes Gerät, dem
+     * noch keine Komponente zugeordnet ist, hat ehrlich keine Zeile - das ist
+     * kein Fehler und wird nicht zu „alle Zeilen der Anlage" aufgeweitet.
+     */
+    public List<Row> entriesForDevice(UUID siteId, UUID deviceId, List<UUID> entityIds,
+            Instant from, Instant to, int limit) {
+        StringBuilder sql = window(siteId, from, to);
+        List<Object> args = windowArgs(siteId, from, to);
+        if (entityIds == null) {
+            sql.append(" AND device_id = ?");
+            args.add(deviceId);
+        } else {
+            sql.append(" AND entity_id = ANY(?::uuid[])");
+            args.add(uuidArray(entityIds));
+        }
+        return finish(sql, args, limit);
+    }
+
+    /**
+     * Als Array-LITERAL, nicht als Java-Array: der Treiber müsste den Elementtyp
+     * sonst erraten, und ein leeres Array hätte gar keinen (dieselbe Stelle wie
+     * in {@link #closeOpenExcept}).
+     */
+    static String uuidArray(Collection<UUID> ids) {
+        return "{" + ids.stream().map(UUID::toString)
+                .collect(java.util.stream.Collectors.joining(",")) + "}";
+    }
+
+    private static StringBuilder window(UUID siteId, Instant from, Instant to) {
+        return new StringBuilder("SELECT " + COLUMNS + " FROM device_command_log "
+                + "WHERE site_id = ? AND started_at < ? "
+                + "AND (started_at >= ? OR ended_at IS NULL OR ended_at > ?)");
+    }
+
+    private static List<Object> windowArgs(UUID siteId, Instant from, Instant to) {
+        return new java.util.ArrayList<>(
+                List.of(siteId, Timestamp.from(to), Timestamp.from(from),
+                        Timestamp.from(CommandLog.carryInAfter(from))));
+    }
+
+    private List<Row> finish(StringBuilder sql, List<Object> args, int limit) {
         sql.append(" ORDER BY started_at DESC, id DESC LIMIT ?");
         args.add(limit);
         List<Row> rows = jdbc.query(sql.toString(), (rs, i) -> map(rs), args.toArray());

@@ -398,3 +398,84 @@
     margin-left: auto;
   }
 }
+
+/* --- F · Befehle an dieses Gerät ---------------------------------------- */
+
+.vp-geraet-readonly {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.9rem;
+}
+
+.vp-geraet-befehle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-geraet-befehl {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--vp-radius-md, 10px);
+  border-left: 3px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface-2, #f7fafc);
+}
+
+/* Die vier Töne des Hauses. Die Farbe VERSTÄRKT nur - das WORT steht in der
+   Zeile, und `keine_antwort` ist nie `abweichend` (die k3-Regel). */
+.vp-geraet-befehl.is-ok {
+  border-left-color: var(--vp-flow-batt, #2e9e5b);
+}
+
+.vp-geraet-befehl.is-warn {
+  border-left-color: var(--vp-warn, #d97706);
+}
+
+.vp-geraet-befehl.is-info {
+  border-left-color: var(--vp-action, #2c5282);
+}
+
+.vp-geraet-befehl .zeit {
+  flex: none;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+
+.vp-geraet-befehl .tx {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-geraet-befehl .tx p {
+  margin: 0;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-befehl .strom,
+.vp-geraet-befehl .urteil {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 720px) {
+  /* Am Telefon stapelt die Zeit über ihrem Satz - zwei Spalten quetschen den
+     Satz sonst auf wenige Zeichen (die `.vp-technik`-Lehre). */
+  .vp-geraet-befehl {
+    flex-direction: column;
+    gap: 2px;
+  }
+}

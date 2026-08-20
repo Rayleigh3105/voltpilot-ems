@@ -5356,6 +5356,21 @@ paths:
             Geraets (entityId null) - die betreffen den Schreibweg, ueber den
             sie gesteuert wird, und waeren sonst nirgends sichtbar.
           schema: { type: string, format: uuid }
+        - name: device
+          in: query
+          required: false
+          description: >
+            Das GERAET (Anlagen-Zentrale Stufe 1): die Referenz der VoltPilot-Box,
+            die vom Edge gemeldete Quellen-Kennung eines Geraets dahinter
+            (`inverter`, `src-...`) oder `cp-<ChargePointId>` einer Ladesaeule.
+            Die BOX bekommt jede Zeile ihres Geraets - auch die geraetebezogenen
+            ohne Komponente (die Abregelung), denn sie IST der Schreibweg der
+            Anlage. Ein Geraet DAHINTER bekommt nur die Zeilen SEINER
+            Komponenten: eine anlagenweite Abregelung einem von drei
+            Wechselrichtern zuzuschreiben waere eine erfundene Zuordnung.
+            Unbekannte Adresse = 404; zusammen mit `entity` = 400 (zwei
+            verschiedene Fragen).
+          schema: { type: string }
         - name: range
           in: query
           required: false
@@ -6441,10 +6456,25 @@ components:
         to: { type: string, format: date-time }
         entityId: { type: string, format: uuid, nullable: true }
         entityLabel: { type: string, nullable: true }
+        deviceRef:
+          type: string
+          nullable: true
+          description: >
+            Echo des `device`-Filters; null = die ganze Anlage bzw. eine einzelne
+            Komponente. Die Antwort traegt bewusst KEINEN Geraete-NAMEN - den
+            bildet das Portal aus seiner einen Namensableitung.
+        deviceIsBox:
+          type: boolean
+          nullable: true
+          description: >
+            true = die VoltPilot-Box (jede Zeile ihres Geraets), false = ein
+            Geraet dahinter (nur die Zeilen seiner Komponenten), null = nicht
+            gefiltert. Ein Server-Fakt, damit die Flaeche ihn nicht raten muss.
         writes:
           type: boolean
           description: >
-            false = an diese Komponente geht kein Befehl, sie wird nur gelesen.
+            false = an diese Komponente bzw. dieses Geraet geht kein Befehl, es
+            wird nur gelesen.
         truncated:
           type: boolean
           description: Der Deckel hat gegriffen - aeltere Zeilen fehlen.

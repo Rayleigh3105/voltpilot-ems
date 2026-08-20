@@ -57,7 +57,7 @@ public class CommandLogReader {
     private final ControlStatusRepository controlStatus;
     private final CurtailmentStatusRepository curtailmentStatus;
     private final RegisterWriteEventRepository registerWrites;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper SHARED = new ObjectMapper();
 
     public CommandLogReader(CommandLogRepository store, EntityRegistryRepository entities,
             ControlStatusRepository controlStatus, CurtailmentStatusRepository curtailmentStatus,
@@ -79,10 +79,26 @@ public class CommandLogReader {
      *                 das ein 404 wird.
      */
     public CommandHistoryDto forSite(UUID siteId, UUID entityId, Instant from, Instant to) {
+        return forSite(siteId, entityId, null, from, to);
+    }
+
+    /**
+     * Derselbe Verlauf, auf Wunsch auf EIN GERÄT eingegrenzt (Anlagen-Zentrale
+     * Stufe 1, §7.4).
+     *
+     * <p>Komponente und Gerät schließen sich aus - der Aufrufer lässt gar nicht
+     * beides zu; hier gewinnt die Komponente, weil sie die engere Frage ist.
+     *
+     * @param scope das aufgelöste Gerät, oder {@code null} für die ganze Anlage.
+     */
+    public CommandHistoryDto forSite(UUID siteId, UUID entityId, DeviceScopes.Scope scope,
+            Instant from, Instant to) {
         EntityRow entity = entityId == null ? null : entities.entityForSite(siteId, entityId);
         UUID deviceId = entity == null ? null : entity.deviceId();
-        List<CommandLogRepository.Row> rows =
-                store.entries(siteId, entityId, deviceId, from, to, MAX_ENTRIES + 1);
+        List<CommandLogRepository.Row> rows = scope == null
+                ? store.entries(siteId, entityId, deviceId, from, to, MAX_ENTRIES + 1)
+                : store.entriesForDevice(siteId, scope.deviceId(), scope.entityIds(), from, to,
+                        MAX_ENTRIES + 1);
         boolean truncated = rows.size() > MAX_ENTRIES;
         if (truncated) {
             // Gekappt wird am ÄLTESTEN Ende: die Liste kommt aufsteigend an, die
@@ -92,8 +108,13 @@ public class CommandLogReader {
         // Der vierte Strom hat seinen EIGENEN Deckel, damit eine gespraechige
         // Halteperioden-Liste die wenigen Register-Zeilen nie verdraengt - und
         // greift er, sagt dieselbe `truncated`-Fahne es.
-        List<RegisterWriteEventRepository.Entry> writes =
-                registerWrites.between(siteId, deviceId, from, to, MAX_REGISTER_ENTRIES + 1);
+        List<RegisterWriteEventRepository.Entry> writes = scope == null
+                ? registerWrites.between(siteId, deviceId, from, to, MAX_REGISTER_ENTRIES + 1)
+                : scope.box()
+                        ? registerWrites.between(siteId, scope.deviceId(), from, to,
+                                MAX_REGISTER_ENTRIES + 1)
+                        : registerWrites.betweenForEntities(siteId, scope.entityIds(), from, to,
+                                MAX_REGISTER_ENTRIES + 1);
         if (writes.size() > MAX_REGISTER_ENTRIES) {
             // Gekappt wird am AELTESTEN Ende (die Liste kommt neueste-zuerst).
             writes = writes.subList(0, MAX_REGISTER_ENTRIES);
@@ -108,7 +129,9 @@ public class CommandLogReader {
                 Comparator.nullsLast(Comparator.naturalOrder())));
         return new CommandHistoryDto(store.recordingSince(siteId).orElse(null),
                 CommandLog.ACCURACY_SECONDS, from, to, entityId,
-                entity == null ? null : entity.label(), writes(entity), truncated,
+                entity == null ? null : entity.label(), scope == null ? null : scope.ref(),
+                scope == null ? null : scope.box(),
+                scope != null ? scope.writes() : writes(entity), truncated,
                 entries,
                 controlStatus.latestForSite(siteId).orElse(null),
                 curtailmentStatus.latestForSite(siteId).orElse(null));
@@ -130,21 +153,23 @@ public class CommandLogReader {
      * behauptet nichts.
      */
     private boolean writes(EntityRow entity) {
-        if (entity == null) {
-            return false;
-        }
-        if (entity.control()) {
-            return true;
-        }
-        return hasActuate(entity.capabilitiesJson());
+        return entity != null && writesTo(entity.control(), entity.capabilitiesJson());
     }
 
-    private boolean hasActuate(String capabilitiesJson) {
+    /**
+     * Die EINE Regel, ob an eine Komponente überhaupt geschrieben wird - geteilt
+     * mit {@link DeviceScopes}, damit eine Komponente und ihr Gerät darüber nie
+     * Verschiedenes behaupten.
+     */
+    static boolean writesTo(boolean control, String capabilitiesJson) {
+        if (control) {
+            return true;
+        }
         if (capabilitiesJson == null || capabilitiesJson.isBlank()) {
             return false;
         }
         try {
-            JsonNode actuate = mapper.readTree(capabilitiesJson).get("actuate");
+            JsonNode actuate = SHARED.readTree(capabilitiesJson).get("actuate");
             return actuate != null && actuate.isArray() && !actuate.isEmpty();
         } catch (Exception e) {
             // Unlesbare Fähigkeiten sind kein Beleg für einen Schreibweg - und

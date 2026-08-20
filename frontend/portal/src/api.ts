@@ -1623,6 +1623,18 @@ export interface CommandHistory {
   to: string;
   entityId: string | null;
   entityLabel: string | null;
+  /**
+   * Echo des Geräte-Filters; null = die ganze Anlage bzw. eine Komponente. Die
+   * Antwort trägt bewusst KEINEN Geräte-NAMEN - den bildet `entityLabel.ts`
+   * `deviceName`, und ein zweiter wäre ein Zwilling, der abdriften kann.
+   */
+  deviceRef?: string | null;
+  /**
+   * true = die Box (jede Zeile ihres Geräts), false = ein Gerät dahinter (nur
+   * die Zeilen seiner Komponenten), null/absent = nicht gefiltert. **Ein
+   * SERVER-Fakt** - die Fläche darf ihn nicht raten.
+   */
+  deviceIsBox?: boolean | null;
   writes: boolean;
   /** Der Deckel hat gegriffen - ältere Zeilen fehlen. */
   truncated: boolean;
@@ -2489,10 +2501,21 @@ export const api = {
    */
   commandHistory: (
     siteId: string,
-    opts: { entity?: string | null; range?: 'day' | 'week'; at?: string | null } = {},
+    opts: {
+      entity?: string | null;
+      /**
+       * Das GERÄT (Anlagen-Zentrale Stufe 1): die Referenz der Box, eine
+       * gemeldete Quellen-Kennung oder `cp-<ChargePointId>`. Schliesst
+       * `entity` aus - der Server antwortet auf beides mit 400.
+       */
+      device?: string | null;
+      range?: 'day' | 'week';
+      at?: string | null;
+    } = {},
   ) => {
     const q = new URLSearchParams({ range: opts.range ?? 'day' });
     if (opts.entity) q.set('entity', opts.entity);
+    else if (opts.device) q.set('device', opts.device);
     if (opts.at) q.set('at', opts.at);
     return request<CommandHistory>(`/api/v1/sites/${siteId}/command-history?${q}`);
   },

@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   anlagenLabel,
   anlageRoute,
+  befehleGeraetHash,
+  befehleHash,
+  parseBefehleGeraet,
+  parseBefehleKomponente,
   canonicalAnlageHash,
   hashForRoute,
   geraetHash,
@@ -497,5 +501,35 @@ describe('geraetHash / parseGeraetRef', () => {
     const ref = 'edge-a b';
     expect(geraetHash(ref)).toContain('edge-a%20b');
     expect(parseGeraetRef(geraetHash(ref))).toBe(ref);
+  });
+});
+
+/**
+ * Der Geräte-Filter der Befehle-Seite (Anlagen-Zentrale Stufe 1,
+ * Captain-Entscheid D3: die Seite bleibt, die Geräteseite zeigt die gefilterte
+ * Sicht).
+ */
+describe('befehleGeraetHash - das Gerät als Hash-Parameter', () => {
+  it('trägt das Gerät und findet es wieder', () => {
+    const h = befehleGeraetHash('s-1', 'src-7c1e9a2b');
+    expect(h).toBe('#/anlage/s-1/befehle?geraet=src-7c1e9a2b');
+    expect(parseBefehleGeraet(h)).toBe('src-7c1e9a2b');
+    // Eine Referenz mit Sonderzeichen überlebt den Weg.
+    const ref = 'cp-CARPORT 1';
+    expect(parseBefehleGeraet(befehleGeraetHash('s-1', ref))).toBe(ref);
+  });
+
+  it('lässt die Route dabei die Befehle-Seite bleiben', () => {
+    expect(parseRoute(befehleGeraetHash('s-1', 'inverter')))
+      .toEqual({ page: 'anlagen', siteId: 's-1', sub: 'befehle' });
+  });
+
+  it('hält Komponente und Gerät auseinander - zwei Fragen, zwei Parameter', () => {
+    // Der Server lehnt beides zusammen mit 400 ab; die zwei Adressen können es
+    // deshalb gar nicht erst gemeinsam ausdrücken.
+    expect(parseBefehleGeraet(befehleHash('s-1', 'e-1'))).toBeNull();
+    expect(parseBefehleKomponente(befehleGeraetHash('s-1', 'inverter'))).toBeNull();
+    expect(parseBefehleGeraet('#/anlage/s-1/befehle')).toBeNull();
+    expect(parseBefehleGeraet('#/anlage/s-1/befehle?geraet=%20%20')).toBeNull();
   });
 });

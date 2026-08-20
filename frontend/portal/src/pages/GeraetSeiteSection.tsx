@@ -3,6 +3,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
+  type CommandHistory,
   type ControlStatus,
   type CurtailmentStatus,
   type Device,
@@ -27,7 +28,15 @@ import type { IconName } from '../../designsystem/components/core/Icon';
 import { unclaimConsequences } from '../components/DeviceDrawers';
 import { DangerZone } from '../components/DangerZone';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, geraetSeiteHash, hashForRoute } from '../nav';
+import { anlageRoute, befehleGeraetHash, geraetSeiteHash, hashForRoute } from '../nav';
+import {
+  ANLAGENWEITE_BEFEHLE,
+  aufzeichnungSeit,
+  BEFEHLE_LABEL,
+  genauigkeitsSatz,
+  geraeteAusschnitt,
+  NUR_LESEN,
+} from '../befehle';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { NO_DATA } from '../nodata';
 import '../components/AnlagenModell.css';
@@ -85,6 +94,7 @@ export function GeraetSeiteSection({
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]> | null>(null);
+  const [commands, setCommands] = useState<CommandHistory | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -120,6 +130,9 @@ export function GeraetSeiteSection({
     soft(api.edgeVersions(), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
     soft(api.entityStrategies(site.id), setStrategies);
+    // Sektion F: der Verlauf DIESES Geräts. Der Server entscheidet, was zu ihm
+    // gehört (`?device=`) - die Fläche schneidet nichts selbst zurecht.
+    soft(api.commandHistory(site.id, { device: geraetId ?? geraeteRef }), setCommands);
     setNow(Date.now());
     return () => {
       active = false;
@@ -283,6 +296,13 @@ export function GeraetSeiteSection({
               </Sektion>
             )}
 
+            <BefehleSektion
+              siteId={site.id}
+              geraetRef={geraetId ?? geraeteRef}
+              history={commands}
+              now={now}
+            />
+
             <Sektion titel="Steuerungs-Bezüge" icon="shield">
               <ZeilenListe zeilen={view.steuerung} />
             </Sektion>
@@ -309,6 +329,71 @@ export function GeraetSeiteSection({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * F · Befehle an dieses Gerät (Anlagen-Zentrale Stufe 1, Konzept §7.4).
+ *
+ * <p>Sie zeigt die JÜNGSTEN Zeilen des heutigen Tages und führt für alles
+ * Weitere auf die Befehle-Seite (Captain-Entscheid D3: die Seite bleibt, die
+ * Geräteseite zeigt die gefilterte Sicht) - es entsteht also keine zweite
+ * Verlaufs-Fläche, nur ein Ausschnitt derselben.
+ *
+ * <p><b>Sie erfindet keinen Satz:</b> Zeilen, Leer-Satz und Aufzeichnungs-Beginn
+ * kommen aus der reinen `src/befehle.ts`, die auch die Befehle-Seite rendert.
+ * Was zu diesem Gerät gehört, entscheidet der SERVER (`?device=`).
+ */
+function BefehleSektion({
+  siteId,
+  geraetRef,
+  history,
+  now,
+}: {
+  siteId: string;
+  geraetRef: string;
+  history: CommandHistory | null;
+  now: number;
+}) {
+  const ausschnitt = geraeteAusschnitt(history, now, 5);
+  return (
+    <Sektion titel={BEFEHLE_LABEL} icon="activity" breit>
+      {/* Die F4-Antwort: an dieses Gerät geht gar kein Befehl. Sie steht VOR
+          der Liste, damit ein leerer Verlauf nicht als Zufall gelesen wird. */}
+      {history && !history.writes && (
+        <p className="vp-geraet-readonly">
+          <Icon name="shield" size={15} /> {NUR_LESEN}
+        </p>
+      )}
+      {ausschnitt.zeilen.length > 0 && (
+        <ol className="vp-geraet-befehle">
+          {ausschnitt.zeilen.map((z) => (
+            <li key={z.id} className={`vp-geraet-befehl is-${z.ton}`}>
+              <span className="zeit">{z.zeit}</span>
+              <div className="tx">
+                {z.strom && <span className="strom">{z.strom}</span>}
+                <p>{z.satz}</p>
+                {z.urteil && <span className="urteil">{z.urteil}</span>}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      {ausschnitt.leer && <p className="vp-note">{ausschnitt.leer}</p>}
+      <p className="vp-note">
+        {aufzeichnungSeit(history?.recordingSince ?? null)}
+        {' · '}
+        {genauigkeitsSatz(history?.accuracySeconds ?? 15)}
+      </p>
+      {/* Die Grenze wird ERKLÄRT, nicht nur gezogen (§7.4): eine anlagenweite
+          Abregelung liest EIN Rücklesen über ALLE Einheiten zurück - sie einem
+          von mehreren Geräten zuzuschreiben wäre eine erfundene Zuordnung. */}
+      {history?.deviceIsBox === false && <p className="vp-note">{ANLAGENWEITE_BEFEHLE}</p>}
+      <a className="vp-geraet-komp-link" href={befehleGeraetHash(siteId, geraetRef)}>
+        {ausschnitt.weitere > 0 ? `Alle anzeigen (${ausschnitt.weitere} weitere)` : 'Alle anzeigen'}
+        <Icon name="chevron-right" size={14} />
+      </a>
+    </Sektion>
   );
 }
 

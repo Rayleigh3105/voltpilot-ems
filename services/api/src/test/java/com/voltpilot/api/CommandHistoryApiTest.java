@@ -152,6 +152,9 @@ class CommandHistoryApiTest {
     @Autowired
     CommandLogWriter commandLog;
 
+    @Autowired
+    com.voltpilot.api.repo.DeviceSourceStatusRepository sourceStatusRepo;
+
     @BeforeEach
     void clearHistory() {
         // Die Anlage ist geteilt: ohne dieses Abräumen prüfte jeder Test die
@@ -329,6 +332,86 @@ class CommandHistoryApiTest {
         assertThat(perioden).noneMatch(e -> CommandLog.KIND_EREIGNIS.equals(e.get("kind")));
         // Ein Verbraucher WIRD geschrieben - die Fläche darf das sagen.
         assertThat(read(entityId, "2026-08-16").get("writes")).isEqualTo(Boolean.TRUE);
+    }
+
+    /**
+     * DER GERÄTE-FILTER (Anlagen-Zentrale Stufe 1, §7.4): dieselbe Anlage, drei
+     * Adressen, drei verschiedene Antworten - und die Grenze dazwischen ist eine
+     * AUSSAGE, keine Bequemlichkeit.
+     *
+     * <p>Die BOX ist der Schreibweg der Anlage: sie bekommt jede Zeile ihres
+     * Geräts, auch die gerätebezogene Abregelung. Ein Gerät DAHINTER bekommt nur
+     * die Zeilen SEINER Komponenten - eine anlagenweite Abregelung (EIN
+     * Rücklesen über ALLE Einheiten) einem von mehreren Wechselrichtern
+     * zuzuschreiben wäre eine erfundene Zuordnung.
+     */
+    @Test
+    void derGeraeteFilterTrenntDieBoxVonDenGeraetenDahinter() {
+        String tok = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> created = exchange(HttpMethod.POST,
+                "/api/v1/sites/" + BERLIN_SITE + "/consumers", tok, Map.of(
+                        "type", "heating-rod", "name", "Heizstab Geräte-Filter",
+                        "ratedPowerKw", 3.0, "controlKind", "on_off",
+                        "edgeSourceId", "src-heizstab"));
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String entityId = (String) created.getBody().get("id");
+        clearHistory();
+
+        // Eine gemeldete Quelle OHNE Komponente - das Gerät gibt es, es hat nur
+        // noch keine Zuordnung.
+        asTenantA(() -> sourceStatusRepo.replaceForDevice(java.util.UUID.fromString(DEVICE),
+                java.util.UUID.fromString(TENANT_A), java.util.UUID.fromString(BERLIN_SITE),
+                java.time.Instant.parse("2026-08-16T10:00:00Z"),
+                List.of(new com.voltpilot.api.repo.DeviceSourceStatusRepository.SourceRow(
+                        "src-fronius-1", "source", "pv-generation", null, "fronius_sunspec",
+                        "Eco 27.0-3-S", 21.2, null, null, "ok",
+                        java.time.Instant.parse("2026-08-16T10:00:00Z")))));
+
+        // Zwei Ströme: der Verbraucher hängt an SEINER Komponente, die
+        // Abregelung ist gerätebezogen (entity_id IS NULL).
+        consumerListener().handle(TOPIC, consumers("2026-08-16T10:00:00Z", entityId,
+                "running_optimized", "true"));
+        consumerListener().handle(TOPIC, consumers("2026-08-16T10:00:15Z", entityId,
+                "running_optimized", "true"));
+        curtailListener().handle(TOPIC, curtail("2026-08-16T10:00:00Z", 2, 2, true, 30.0, true));
+        curtailListener().handle(TOPIC, curtail("2026-08-16T10:00:15Z", 2, 2, true, 30.0, true));
+
+        // 1. Die BOX unter ihrer Referenz: BEIDE Ströme.
+        Map<String, Object> box = readDevice("demo-inverter-01");
+        assertThat(box.get("deviceRef")).isEqualTo("demo-inverter-01");
+        // Box oder Gerät dahinter ist ein SERVER-Fakt - die Fläche rät ihn nie.
+        assertThat(box.get("deviceIsBox")).isEqualTo(Boolean.TRUE);
+        assertThat(streams(box)).contains(CommandLog.STREAM_VERBRAUCHER,
+                CommandLog.STREAM_ABREGELUNG);
+
+        // 2. Das Gerät HINTER der Box: nur seine Komponente - die anlagenweite
+        //    Abregelung wird ihm NICHT zugeschrieben.
+        Map<String, Object> geraet = readDevice("src-heizstab");
+        assertThat(streams(geraet)).containsExactly(CommandLog.STREAM_VERBRAUCHER);
+        assertThat(geraet.get("writes")).isEqualTo(Boolean.TRUE);
+        assertThat(geraet.get("deviceIsBox")).isEqualTo(Boolean.FALSE);
+        assertThat(entries(geraet)).allMatch(e -> entityId.equals(e.get("entityId")));
+
+        // 3. Gemeldet, aber ohne Komponente: ehrlich LEER - nie „alle Zeilen".
+        Map<String, Object> ohne = readDevice("src-fronius-1");
+        assertThat(entries(ohne)).isEmpty();
+        assertThat(ohne.get("writes")).isEqualTo(Boolean.FALSE);
+        assertThat(ohne.get("recordingSince")).isNotNull();
+
+        // 4. Die Grenzen: unbekannte Adresse 404, Komponente UND Gerät 400,
+        //    fremde Anlage 404 (nie 403).
+        assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
+                        + "/command-history?device=gibt-es-nicht"),
+                HttpMethod.GET, new HttpEntity<>(bearer(tok)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/command-history?entity="
+                        + entityId + "&device=src-heizstab"),
+                HttpMethod.GET, new HttpEntity<>(bearer(tok)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.exchange(url("/api/v1/sites/" + HAMBURG_SITE
+                        + "/command-history?device=demo-inverter-01"),
+                HttpMethod.GET, new HttpEntity<>(bearer(tok)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     /**
@@ -528,6 +611,23 @@ class CommandHistoryApiTest {
                 + "\",\"device_id\":\"" + DEVICE + "\",\"ts\":\"" + ts + "\",\"consumers\":{\""
                 + entityId + "\":{\"state\":\"" + state + "\",\"confirmed\":" + confirmed
                 + ",\"actual_kw\":3.0}}}").getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** Der Verlauf, auf EIN Gerät eingegrenzt (der neue `?device=`-Filter). */
+    private Map<String, Object> readDevice(String device) {
+        String path = "/api/v1/sites/" + BERLIN_SITE + "/command-history?range=day&at=2026-08-16"
+                + "&device=" + device;
+        ResponseEntity<Map<String, Object>> res = rest.exchange(url(path), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    /** Die Ströme einer Antwort, ohne Doppel - die Frage ist „welche kommen vor". */
+    private static List<String> streams(Map<String, Object> body) {
+        return entries(body).stream().map(e -> (String) e.get("stream")).distinct().sorted()
+                .toList();
     }
 
     private Map<String, Object> read(String entityId, String at) {

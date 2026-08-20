@@ -3,14 +3,17 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type CommandHistory, type Site } from '../api';
 import {
+  ANLAGENWEITE_BEFEHLE,
   aufzeichnungSeit,
   deckelSatz,
   film,
   fussnote,
+  geraetKopfSatz,
   kopfSatz,
   leerSatz,
   NUR_LESEN,
 } from '../befehle';
+import { technicalDeviceName } from '../entityLabel';
 import { ControlStrip } from '../components/ControlStrip';
 import { ErrorState, Skeleton } from '../components/States';
 import { controlStrip } from '../control';
@@ -41,22 +44,62 @@ import './Befehle.css';
 export function BefehleSection({
   site,
   entityId,
+  geraetRef = null,
 }: {
   site: Site;
   /** Die gewählte Komponente; null = die ganze Anlage. */
   entityId: string | null;
+  /**
+   * Das gewählte GERÄT (Anlagen-Zentrale Stufe 1, `?geraet=`); null = keins.
+   * Es schliesst `entityId` aus - der Server lehnt beides mit 400 ab, deshalb
+   * gewinnt hier die Komponente und das Gerät reist gar nicht erst mit.
+   */
+  geraetRef?: string | null;
 }) {
   const [range, setRange] = useState<'day' | 'week'>('day');
   const [history, setHistory] = useState<CommandHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
+  const [geraetName, setGeraetName] = useState<string | null>(null);
+  // Ein Gerät und eine Komponente sind zwei verschiedene Fragen; der Server
+  // lehnt beides zusammen ab, also gewinnt hier die engere.
+  const geraet = entityId ? null : geraetRef;
+
+  // Der NAME des Geräts kommt aus dem gemeldeten Einrichtungs-Stand, nicht aus
+  // der Verlaufs-Antwort: sie trägt bewusst keinen (ein zweiter Namensbildner
+  // wäre ein Zwilling, der abdriften kann). Fail-soft - ohne ihn steht die
+  // Adresse da, nie ein geratener Name.
+  useEffect(() => {
+    if (!geraet) {
+      setGeraetName(null);
+      return;
+    }
+    let active = true;
+    api.siteEntities(site.id).then(
+      (e) => {
+        if (!active) return;
+        const setup = (e.localSetup ?? []).find((l) => l.id === geraet);
+        setGeraetName(setup
+          ? technicalDeviceName({
+              edgeLabel: setup.label ?? null,
+              brand: setup.brand ?? null,
+              model: setup.model ?? null,
+            })
+          : null);
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, geraet]);
 
   useEffect(() => {
     let active = true;
     setHistory(null);
     setError(null);
-    api.commandHistory(site.id, { entity: entityId, range }).then(
+    api.commandHistory(site.id, { entity: entityId, device: geraet, range }).then(
       (h) => {
         if (!active) return;
         setHistory(h);
@@ -67,13 +110,13 @@ export function BefehleSection({
     return () => {
       active = false;
     };
-  }, [site.id, entityId, range, reloadKey]);
+  }, [site.id, entityId, geraet, range, reloadKey]);
 
   // Der Verlauf altert: der stille Takt holt ihn nach, und der Zustand wird
   // ZUSAMMEN mit seiner Bezugszeit gesetzt (die `liveness.ts`-Lehre) - ein
   // Fehlschlag lässt beides unberührt stehen.
   useFreshnessPoll(() => {
-    api.commandHistory(site.id, { entity: entityId, range }).then(
+    api.commandHistory(site.id, { entity: entityId, device: geraet, range }).then(
       (h) => {
         setHistory(h);
         setNow(Date.now());
@@ -97,16 +140,30 @@ export function BefehleSection({
             steht bewusst NICHT darin: diese Antwort trägt ihn nicht, und ein
             geratener wäre schlimmer als keiner. */}
         <p className="vp-befehle-kopf">
-          {kopfSatz({
-            komponente: history?.entityLabel ?? null,
-            geraet: null,
-            pfad: schreibweg(history),
-          })}
+          {geraet
+            ? geraetKopfSatz({
+                geraet: geraetName ?? geraet,
+                // Box oder Gerät dahinter ist ein SERVER-Fakt (`deviceIsBox`) -
+                // ein älteres Backend meldet ihn nicht, dann wird nichts
+                // behauptet und der neutrale Satz steht da.
+                box: history?.deviceIsBox === true,
+                pfad: schreibweg(history),
+              })
+            : kopfSatz({
+                komponente: history?.entityLabel ?? null,
+                geraet: null,
+                pfad: schreibweg(history),
+              })}
         </p>
         <p className="vp-note">{aufzeichnungSeit(history?.recordingSince ?? null)}</p>
         {/* F4: die Herzogau-Antwort. Sie kostet fast nichts und beantwortet
             „drosselt ihr?" für jedes Gerät der Anlage. */}
-        {history && entityId && !history.writes && (
+        {/* Die Grenze wird ERKLÄRT, nicht nur gezogen: eine anlagenweite
+            Abregelung gehört der Box, nicht einem von mehreren Geräten. */}
+        {history?.deviceIsBox === false && (
+          <p className="vp-note">{ANLAGENWEITE_BEFEHLE}</p>
+        )}
+        {history && (entityId || geraet) && !history.writes && (
           <p className="vp-befehle-readonly">
             <Icon name="shield" size={15} /> {NUR_LESEN}
           </p>
@@ -145,7 +202,7 @@ export function BefehleSection({
         {error && <ErrorState message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
         {!error && !history && <Skeleton height={120} />}
         {!error && history && zeilen.length === 0 && (
-          <p className="vp-muted">{leerSatz(history, entityId != null)}</p>
+          <p className="vp-muted">{leerSatz(history, entityId != null || geraet != null)}</p>
         )}
         {!error && history && zeilen.length > 0 && (
           <ol className="vp-befehle-film">
