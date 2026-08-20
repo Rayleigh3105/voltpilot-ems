@@ -1704,6 +1704,21 @@ test("die Ladebudget-Zeile zeigt BEIDE Wahrheiten - sonst liest die Drosselung w
   assert.strictEqual(O.sourceCapLine(null), "");
 });
 
+test("der Fahrplan-Deckel NENNT sich - und schweigt, wo er nicht greift", () => {
+  const O = ocppMod();
+  // Bindet er, sagt er es: eine Begrenzung ohne Namen liest sich wie ein Defekt.
+  assert.match(
+    O.planCapLine({ plan_limit_binds: true, plan_limit_kw: 80 }),
+    /Fahrplan hält gerade die Lastspitze.*80 kW/);
+  // Ein gemeldeter, aber NICHT bindender Deckel ist keine Auskunft.
+  assert.strictEqual(O.planCapLine({ plan_limit_binds: false, plan_limit_kw: 400 }), "");
+  // Und ein fehlender Plan ist ausdrücklich kein Grund für einen Satz: dann
+  // gilt die lokale Logik unverändert (fail-open).
+  assert.strictEqual(O.planCapLine({ plan_limit_binds: true }), "");
+  assert.strictEqual(O.planCapLine({}), "");
+  assert.strictEqual(O.planCapLine(null), "");
+});
+
 test("„Jetzt voll laden“ wird nur angeboten, wo es etwas ändern KANN", () => {
   const O = ocppMod();
   const on = { surplus_active: true };

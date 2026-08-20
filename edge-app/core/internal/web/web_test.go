@@ -3916,7 +3916,7 @@ func TestTheLadepunktSurfaceIsServed(t *testing.T) {
 	}
 	op := get("/index.html")
 	for _, want := range []string{`id="ocppOpCard"`, `id="ocppOpBudget"`, `id="ocppOpSource"`,
-		`id="ocppOpSurplus"`, `id="ocppOpError"`, `id="ocppOpRows"`, `id="ocppOpIdle"`, `src="ocpp.js"`} {
+		`id="ocppOpSurplus"`, `id="ocppOpPlan"`, `id="ocppOpError"`, `id="ocppOpRows"`, `id="ocppOpIdle"`, `src="ocpp.js"`} {
 		if !strings.Contains(op, want) {
 			t.Fatalf("index.html is missing %s", want)
 		}

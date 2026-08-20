@@ -206,6 +206,18 @@
     return line + ".";
   }
 
+  // planCapLine names the FAHRPLAN lane when it is what holds the vehicles
+  // back (Stufe 4, Weg A). Ohne bindenden Deckel steht dort NICHTS: eine
+  // Begrenzung, die gerade nicht greift, ist keine Auskunft - und ein
+  // fehlender Plan ist ausdrücklich kein Grund für einen Satz, weil dann die
+  // lokale Logik unverändert gilt.
+  function planCapLine(o) {
+    if (!o || !o.plan_limit_binds) return "";
+    if (o.plan_limit_kw === null || o.plan_limit_kw === undefined) return "";
+    return "Der Fahrplan hält gerade die Lastspitze - dafür bleiben den " +
+      "Fahrzeugen in dieser Viertelstunde " + fmt1(o.plan_limit_kw) + " kW.";
+  }
+
   // boostConsequences is the Haus-Folgenliste of „Jetzt voll laden" - the four
   // points of the approved dialog, WORD FOR WORD, including the one that says
   // what does NOT change.
@@ -243,6 +255,7 @@
     surplusLine: surplusLine,
     surplusTone: surplusTone,
     sourceCapLine: sourceCapLine,
+    planCapLine: planCapLine,
     boostConsequences: boostConsequences,
     boostable: boostable,
     budgetSourceLine: budgetSourceLine,
@@ -407,6 +420,11 @@
     var cap = D.sourceCapLine(o);
     txt("ocppOpSurplus", cap);
     show("ocppOpSurplus", !!cap);
+    // Und WER gerade deckelt, wenn es der Fahrplan ist: eine Begrenzung ohne
+    // Namen liest sich wie ein Defekt (die Canary-Soak-Lehre).
+    var planCap = D.planCapLine(o);
+    txt("ocppOpPlan", planCap);
+    show("ocppOpPlan", !!planCap);
     var note = D.controlNote(o);
     txt("ocppOpNote", note);
     show("ocppOpNote", !!note);

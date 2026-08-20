@@ -113,6 +113,11 @@ const (
 	// A minute covers several telemetry samples and meter-value cycles, and it
 	// is the same order as guards.ExportReleaseWindow on the export side.
 	BudgetSmoothWindow = 60 * time.Second
+	// PlanLimitFreshWindow is how long a plan-derived ceiling survives without
+	// being renewed. It is generous against the executor's own cadence and
+	// FAIL-OPEN when it runs out: a ceiling nobody is refreshing is not a
+	// ceiling this lane keeps defending (see ObservePlanLimit).
+	PlanLimitFreshWindow = 90 * time.Second
 	// BudgetStepKw is the ABSOLUTE floor under the out-of-band reaction (see
 	// urgentDropKw): below one kilowatt nothing is worth waking the executor
 	// for, however small the site is.
@@ -157,6 +162,13 @@ type BudgetVerdict struct {
 	// Blind is true whenever the verdict was NOT formed from a fresh
 	// measurement (holding / contracting / safe).
 	Blind bool `json:"blind,omitempty"`
+	// PlanLimitKw is what the FAHRPLAN leaves the vehicles in the running
+	// quarter (kW) - the peak-shaving target of the cloud, projected onto the
+	// rest of this quarter hour and reduced by the site's other load. nil =
+	// kein Fahrplan-Deckel (kein Ziel, kein frischer Plan, keine Messung).
+	PlanLimitKw *float64 `json:"plan_limit_kw,omitempty"`
+	// PlanLimitBinds is true when that ceiling is what caps the vehicles.
+	PlanLimitBinds bool `json:"plan_limit_binds,omitempty"`
 	// Capped is true when the measured budget was cut back to the connection's
 	// own planable power (see the cap in measuredBudget).
 	Capped bool `json:"capped,omitempty"`
@@ -202,6 +214,12 @@ type BudgetTracker struct {
 	// hold and then contract it)
 	curValid bool
 	cur      float64
+	// planLimit is the newest plan-derived SITE import allowance for the
+	// running quarter, planLimitAt when it was handed in. Both are cleared the
+	// moment the agent stops feeding them - see ObservePlanLimit.
+	planLimit   float64
+	planLimitAt time.Time
+	havePlan    bool
 	// planable and marginKw are remembered from the last Budget() call so
 	// Observe can judge urgency without the caller having to hand it the
 	// settings.
@@ -340,6 +358,56 @@ func (t *BudgetTracker) ObserveGridLimit(kw float64) {
 	t.mu.Unlock()
 }
 
+// ObservePlanLimit arms the FAHRPLAN lane: allowedImportKw is what the SITE
+// may still average over the rest of the running quarter hour so the cloud's
+// peak-shaving target holds (guards.PeakTracker.AllowedImport). The vehicles'
+// share of it is worked out in Budget(), where the site's other load is known.
+//
+// ⚠ FAIL-OPEN IS THE WHOLE POINT (Captain 20.08.2026). The lane exists only
+// while it is being fed: no plan, a STALE plan, no peak target or no
+// measurement means the agent calls ClearPlanLimit and the local logic applies
+// UNCHANGED - a vehicle must never stand still because a plan is missing, and
+// in doubt it charges. The expiry below is the second half of that promise: a
+// wedged caller cannot leave a ceiling standing.
+//
+// ⚠ Note the deliberate ASYMMETRY to the battery guard: plan.PeakImportLimit
+// is staleness-INDEPENDENT there, because the battery keeps defending the last
+// known target at no cost. Here the same stale target could leave a car
+// standing, so this lane drops it.
+func (t *BudgetTracker) ObservePlanLimit(ts time.Time, allowedImportKw float64) {
+	if !budgetFinite(allowedImportKw) || allowedImportKw < 0 {
+		t.ClearPlanLimit()
+		return
+	}
+	t.mu.Lock()
+	t.planLimit, t.planLimitAt, t.havePlan = allowedImportKw, ts, true
+	t.mu.Unlock()
+}
+
+// ClearPlanLimit drops the Fahrplan lane - the local logic then applies
+// unchanged.
+func (t *BudgetTracker) ClearPlanLimit() {
+	t.mu.Lock()
+	t.havePlan, t.planLimit, t.planLimitAt = false, 0, time.Time{}
+	t.mu.Unlock()
+}
+
+// planCapLocked is what the Fahrplan leaves the vehicles, or ok=false when the
+// lane is not armed (or its value has expired). Caller holds t.mu.
+func (t *BudgetTracker) planCapLocked(now time.Time, rest float64) (float64, bool) {
+	if !t.havePlan || t.planLimitAt.IsZero() {
+		return 0, false
+	}
+	age := now.Sub(t.planLimitAt)
+	if age < 0 {
+		age = 0
+	}
+	if age > PlanLimitFreshWindow {
+		return 0, false
+	}
+	return round3(math.Max(0, t.planLimit-rest)), true
+}
+
 // Budget evaluates the charging budget for now.
 func (t *BudgetTracker) Budget(now time.Time, set Settings) BudgetVerdict {
 	set = set.WithDefaults()
@@ -403,6 +471,15 @@ func (t *BudgetTracker) Budget(now time.Time, set Settings) BudgetVerdict {
 		res.SiteLoadKw = &rest
 		kw := measuredBudget(planable, rest)
 		res.Capped = rest < -1e-9
+		// ⚠ Der FAHRPLAN-Deckel wirkt NUR hier, im gemessenen Zweig, und nur
+		// nach unten: die statischen und blinden Zweige bleiben unberührt
+		// (fail-open by construction), und der Deckel kann nichts anheben.
+		if cap, ok := t.planCapLocked(now, rest); ok {
+			res.PlanLimitKw = &cap
+			if cap < kw {
+				kw, res.PlanLimitBinds = cap, true
+			}
+		}
 		t.cur, t.curValid = kw, true
 		res.Mode, res.Kw = BudgetMeasured, kw
 		res.Reason = measuredReason(res, set)
@@ -544,6 +621,11 @@ func measuredReason(v BudgetVerdict, set Settings) string {
 		b.WriteString(" Der Netzbetreiber begrenzt den Anschluss gerade auf ")
 		b.WriteString(kwText(*v.Section14aKw))
 		b.WriteString(" kW (§ 14a) — diese Grenze gilt vor der hinterlegten Anschlussgrenze.")
+	}
+	if v.PlanLimitBinds && v.PlanLimitKw != nil {
+		b.WriteString(" Der Fahrplan hält gerade die Lastspitze — dafür bleiben den Fahrzeugen in dieser Viertelstunde ")
+		b.WriteString(kwText(*v.PlanLimitKw))
+		b.WriteString(" kW.")
 	}
 	if v.Capped {
 		b.WriteString(" Der Standort speist gerade ein; mehr als der Anschluss trägt wird trotzdem nicht verplant.")
