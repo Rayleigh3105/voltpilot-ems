@@ -500,6 +500,112 @@
          of the single-client Solarman logger. A NORMAL-mode customer control
          (the accordion row + toggle are never Technik-gated); learned blocks
          and freshness detail stay behind Technikmodus. -->
+    <!-- ==================== Ladepunkte (OCPP) ====================
+         Die Richtung ist umgedreht und der erste Satz sagt es: die Ladesäule
+         wählt die BOX an. Deshalb zeigt die Box hier eine Adresse und eine
+         Kennung zum Kopieren - und trägt die Kennung vorher ein, damit eine
+         fremde Säule gar nicht erst hereinkommt. Ohne VP_OCPP_ENABLED
+         erscheint die Gruppe GAR NICHT.
+
+         ⚠ Sie ist die einzige BEDINGTE Gruppe der Seite und wird deshalb
+         `hidden` ausgeliefert: die vier festen Gruppen sind die Zusage der
+         Seite ("eine fertig eingerichtete gesunde Anlage zeigt vier ruhige
+         Zeilen"), und eine fünfte Zeile auf jeder Anlage OHNE Ladesäulen wäre
+         genau das Rauschen, das der Umbau beseitigt hat. ocpp.js blendet sie
+         ein, sobald die Box wirklich Ladepunkte annimmt. -->
+    <div class="acc-group" id="ladepunkte" data-group="ladepunkte" hidden>
+      <h2 class="acc-h">
+        <button type="button" class="card acc-head" aria-expanded="false" aria-controls="ladepunkteBody">
+          <span class="acc-dot off" aria-hidden="true"></span>
+          <span class="acc-text">
+            <span class="acc-title">Ladepunkte</span>
+            <span class="acc-summary">Ladesäulen &amp; Lastmanagement</span>
+          </span>
+          <svg class="acc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </h2>
+      <div class="acc-body" id="ladepunkteBody" hidden>
+        <section class="card set-card" id="ocppCard">
+          <div class="set-card-head">
+            <h2 class="set-title">Ladesäulen</h2>
+          </div>
+
+          <div id="ocppOn">
+            <p class="set-desc">Ladesäulen verbinden sich <strong>selbst</strong> mit dieser Box.
+              Tragen Sie die Kennung der Säule hier ein und stellen Sie an der Säule
+              die untenstehende Adresse ein - danach meldet sie sich von allein.</p>
+
+            <div class="mirror-endpoint">
+              <span>Adresse für die Ladesäule:</span>
+              <code id="ocppEndpoint">–</code>
+            </div>
+            <p class="form-error" id="ocppServerNote" hidden></p>
+            <p class="set-desc" id="ocppControlNote" hidden></p>
+
+            <ul class="rows" id="ocppList"></ul>
+            <p class="set-desc" id="ocppEmpty" hidden>Noch keine Ladesäule eingetragen.</p>
+
+            <form id="ocppAddForm" class="inv-edit-form" novalidate>
+              <label>Kennung der Ladesäule (Charge-Point-ID)
+                <input id="ocppAddId" required placeholder="z. B. SAEULE-1">
+              </label>
+              <label>Name (frei wählbar)
+                <input id="ocppAddLabel" placeholder="z. B. Hof Nord">
+              </label>
+              <label>Nennleistung je Stecker (kW, optional)
+                <input id="ocppAddRated" inputmode="decimal" placeholder="z. B. 240">
+              </label>
+              <label>Zahl der Stecker (optional, 0 = von der Säule übernehmen)
+                <input id="ocppAddConnectors" inputmode="numeric" placeholder="0">
+              </label>
+              <label class="mirror-toggle-row" for="ocppAddPriority">
+                <input type="checkbox" id="ocppAddPriority">
+                <span>Vorrang: diese Säule lädt zuerst voll, die anderen teilen sich fair den Rest</span>
+              </label>
+              <p class="form-error" id="ocppAddError" hidden></p>
+              <button type="submit" class="btn">Ladepunkt eintragen</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="card set-card" id="ocppSettingsCard">
+          <div class="set-card-head">
+            <h2 class="set-title">Grenzen des Standorts</h2>
+          </div>
+          <p class="set-desc">Aus diesen Angaben ergibt sich das Ladebudget - und das
+            Sicherheitsprofil, auf das jede Säule zurückfällt, wenn die Box ausfällt.</p>
+          <form id="ocppSettingsForm" class="inv-edit-form" novalidate>
+            <label>Anschlussgrenze (kW)
+              <input id="ocppGridLimit" inputmode="decimal" placeholder="z. B. 277">
+            </label>
+            <label>Für das Gebäude reserviert (kW)
+              <input id="ocppHouseReserve" inputmode="decimal" placeholder="0">
+            </label>
+            <label>Sicherheitsabstand (%)
+              <input id="ocppMargin" inputmode="decimal" placeholder="10">
+            </label>
+            <label>Mindestleistung je Ladevorgang (kW)
+              <input id="ocppMinPower" inputmode="decimal" placeholder="z. B. 30">
+              <span class="field-help">Darunter wird nicht zugeteilt, sondern pausiert -
+                ein Fahrzeug lädt unterhalb seiner Mindestleistung gar nicht.</span>
+            </label>
+            <label>Wechsel-Takt beim Warten (Minuten)
+              <input id="ocppRotation" inputmode="numeric" placeholder="15">
+            </label>
+            <label>Höchste bekannte Gebäudelast (kW)
+              <input id="ocppMaxHouse" inputmode="decimal" placeholder="z. B. 180">
+              <span class="field-help">Nur für das Sicherheitsprofil: es muss auch dann
+                halten, wenn alle Stecker gleichzeitig darauf zurückfallen.</span>
+            </label>
+            <p class="form-error" id="ocppSettingsError" hidden></p>
+            <button type="submit" class="btn">Speichern</button>
+          </form>
+          <p class="set-desc">Ladebudget: <strong id="ocppBudget">–</strong></p>
+          <p class="set-desc" id="ocppFailsafe"></p>
+        </section>
+      </div>
+    </div>
+
     <div class="acc-group" id="datenfreigabe" data-group="datenfreigabe">
       <h2 class="acc-h">
         <button type="button" class="card acc-head" aria-expanded="false" aria-controls="datenfreigabeBody">
@@ -806,6 +912,7 @@
   <script src="calibration.js"></script>
   <script src="curtail.js"></script>
   <script src="neutral.js"></script>
+  <script src="ocpp.js"></script>
   <script src="ota.js"></script>
   <script src="einrichten.js"></script>
 </body>

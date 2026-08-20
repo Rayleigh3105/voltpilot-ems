@@ -19,11 +19,13 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/neutralcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaapply"
@@ -342,6 +344,27 @@ func envelope(st *state.Store, topo TopologyController, ac ActiveControlControll
 	}
 }
 
+// OcppController backs the "Ladepunkte" surface: the OCPP charge points the
+// box knows, the site's load-management settings and the two edits an
+// operator makes there (register a station, maintain the site limits). The
+// agent implements it.
+//
+// It is READ + SETUP only: there is no endpoint here that commands a charging
+// limit. Limits come from the load management alone, so a surface can never
+// become a second, unarbitrated writer to a customer's charge point.
+type OcppController interface {
+	// OcppView is everything the page renders (nil = the feature is off).
+	OcppView() *state.OcppInfo
+	// OcppChargers is the persisted allowlist.
+	OcppChargers() []csms.Charger
+	// OcppSettings is the site's load-management configuration.
+	OcppSettings() lastmgmt.Settings
+	OcppAddCharger(csms.AddRequest) (csms.Charger, error)
+	OcppUpdateCharger(id string, req csms.UpdateRequest) (csms.Charger, error)
+	OcppRemoveCharger(id string) error
+	OcppSaveSettings(lastmgmt.SettingsRequest) (lastmgmt.Settings, error)
+}
+
 // Handler builds the HTTP mux: the single-page UI, the state JSON it polls, the
 // live telemetry history + stream (for the dashboard charts), the cached
 // dispatch plan (Fahrplan view), the inverter-selection API, the data-purge
@@ -350,7 +373,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	despike DespikeController, hist *history.Ring, pl PlanController,
 	src SourcesController, topo TopologyController, ac ActiveControlController,
 	cal CalibrationController, mir MirrorController, ota OtaController,
-	iw InstallerWriteController) http.Handler {
+	iw InstallerWriteController, ocpp OcppController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -1111,6 +1134,72 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		writeJSON(w, http.StatusOK, out)
 	}))
 
+	// --- OCPP charge points (Ladepunkte) ---------------------------------
+	//
+	// READ + SETUP only. There is deliberately no endpoint that commands a
+	// charging limit: limits come from the load management alone, so this
+	// surface can never become a second, unarbitrated writer to a customer's
+	// charge point.
+	mux.HandleFunc("GET /api/ocpp", func(w http.ResponseWriter, r *http.Request) {
+		view := ocpp.OcppView()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ocpp":          view,
+			"chargers":      ocpp.OcppChargers(),
+			"settings":      ocppSettingsView(ocpp.OcppSettings()),
+			"server_now_ms": time.Now().UnixMilli(),
+		})
+	})
+
+	mux.HandleFunc("POST /api/ocpp/chargers", func(w http.ResponseWriter, r *http.Request) {
+		var req csms.AddRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "ungültige Anfrage", http.StatusBadRequest)
+			return
+		}
+		c, err := ocpp.OcppAddCharger(req)
+		if err != nil {
+			ocppError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, c)
+	})
+
+	mux.HandleFunc("PUT /api/ocpp/chargers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var req csms.UpdateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "ungültige Anfrage", http.StatusBadRequest)
+			return
+		}
+		c, err := ocpp.OcppUpdateCharger(r.PathValue("id"), req)
+		if err != nil {
+			ocppError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, c)
+	})
+
+	mux.HandleFunc("DELETE /api/ocpp/chargers/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if err := ocpp.OcppRemoveCharger(r.PathValue("id")); err != nil {
+			ocppError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	mux.HandleFunc("POST /api/ocpp/settings", func(w http.ResponseWriter, r *http.Request) {
+		var req lastmgmt.SettingsRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "ungültige Anfrage", http.StatusBadRequest)
+			return
+		}
+		set, err := ocpp.OcppSaveSettings(req)
+		if err != nil {
+			ocppError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, ocppSettingsView(set))
+	})
+
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		snap := st.Get()
 		otaView := ota.OtaTarget()
@@ -1149,4 +1238,41 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// ocppError maps the two error classes the OCPP layer produces onto HTTP, the
+// way every other setup surface of this app does: a German ValidationError is
+// a 400 the form can render, an unknown id is a 404, everything else a 500.
+func ocppError(w http.ResponseWriter, err error) {
+	var ve *csms.ValidationError
+	if errors.As(err, &ve) {
+		http.Error(w, ve.Msg, http.StatusBadRequest)
+		return
+	}
+	var lve *lastmgmt.ValidationError
+	if errors.As(err, &lve) {
+		http.Error(w, lve.Msg, http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, csms.ErrNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
+// ocppSettingsView renders the load-management settings for the form. The
+// rotation is shown in MINUTES because that is what an operator types and
+// reads, and the derived budget rides along so the page never re-derives it
+// (one arithmetic, one answer).
+func ocppSettingsView(set lastmgmt.Settings) map[string]any {
+	return map[string]any{
+		"grid_limit_kw":     set.GridLimitKw,
+		"house_reserve_kw":  set.HouseReserveKw,
+		"margin_pct":        set.MarginPct,
+		"min_power_kw":      set.MinPowerKw,
+		"rotation_minutes":  int(set.RotationPeriod / time.Minute),
+		"max_house_load_kw": set.MaxHouseLoadKw,
+		"budget_kw":         set.BudgetKw(),
+	}
 }

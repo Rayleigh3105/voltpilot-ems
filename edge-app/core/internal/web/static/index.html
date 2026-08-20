@@ -303,6 +303,21 @@
       </div>
     </section>
 
+    <!-- Ladepunkte: was gerade laedt und warum jemand wartet. Die Karte
+         erscheint nur, wenn die Anbindung eingeschaltet ist - eine leere
+         Ladepunkt-Karte auf einer Anlage ohne Ladesaeulen waere Rauschen. -->
+    <section class="card" id="ocppOpCard" hidden>
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--bg-2);color:var(--muted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 22V10a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v12"/><path d="M5 22h12"/><path d="M9 4h4"/><path d="M17 12h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2"/></svg></span>Ladepunkte</h3>
+      </div>
+      <div class="ctrl-summary">
+        <strong id="ocppOpBudget">–</strong>
+        <p class="ctrl-reason" id="ocppOpNote" hidden></p>
+      </div>
+      <ul class="rows" id="ocppOpRows"></ul>
+      <p class="ctrl-reason" id="ocppOpIdle" hidden>Gerade lädt niemand.</p>
+    </section>
+
     <!-- ◆ Technik: Betrieb & Status detail (the summary above already says it
          in one sentence), the market/peak guard, and what is running. -->
     <div class="area-title tech-only">◆ Technik · Betriebsdetails</div>
@@ -394,6 +409,7 @@
   <script src="plan.js"></script>
   <script src="control.js"></script>
   <script src="active-control.js"></script>
+  <script src="ocpp.js"></script>
   <script src="betrieb.js"></script>
   <script src="dashboard.js"></script>
 </body>

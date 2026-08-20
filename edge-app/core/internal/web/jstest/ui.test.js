@@ -1507,3 +1507,124 @@ test("S2: ohne Karte passiert nichts (die Seite ohne Anlage-Bereich darf nicht b
   const VP = vpHelpers();
   VP.setPortalManaged(null, true, "n");
 });
+
+/* ============================ Ladepunkte (OCPP) ============================ */
+
+function ocppMod() {
+  return load(["ocpp.js"]).VPOcpp;
+}
+
+test("the endpoint copy field uses the address the BROWSER reached the box on", () => {
+  const O = ocppMod();
+  // The box does not know which name the LAN reaches it under, so the host
+  // comes from the browser and only the PORT (the box's own setting) from the
+  // server. A fabricated hostname on a copy field is worse than none.
+  assert.strictEqual(
+    O.endpointFor("ws://:8887/ocpp", "voltpilot-box.local:8484", "SAEULE-1"),
+    "ws://voltpilot-box.local:8887/ocpp/SAEULE-1");
+  assert.strictEqual(
+    O.endpointFor("ws://:8887/ocpp", "192.168.1.20:8484", ""),
+    "ws://192.168.1.20:8887/ocpp");
+  // Without a browser host it degrades to what the box said rather than
+  // inventing one.
+  assert.strictEqual(O.endpointFor("ws://<box>:8887/ocpp", "", "A"), "ws://<box>:8887/ocpp/A");
+  assert.strictEqual(O.endpointFor("", "h:1", "A"), "");
+});
+
+test("the budget line never claims a measurement nobody reported", () => {
+  const O = ocppMod();
+  const base = { enabled: true, listening: true, budget_kw: 82.3, allocated_kw: 82.3 };
+
+  assert.strictEqual(O.budgetLine(base), "82,3 von 82,3 kW vergeben.");
+  assert.match(O.budgetLine({ ...base, measured_kw: 79.8 }), /gemessen 79,8 kW/);
+  // A held-back share for unreachable stations is NAMED, not silently
+  // subtracted: the arithmetic on the page has to add up.
+  assert.match(O.budgetLine({ ...base, reserved_kw: 48.5 }), /48,5 kW für nicht erreichbare/);
+  // An unconfigured site says so instead of showing a 0-kW budget as if it
+  // were a decision.
+  assert.match(O.budgetLine({ enabled: true, listening: true, budget_kw: 0 }), /keine Anschlussgrenze/);
+  // A server that did not come up is a fault and is named.
+  assert.match(O.budgetLine({ enabled: true, listening: false, error: "Port belegt" }), /Port belegt/);
+  assert.strictEqual(O.budgetLine({ enabled: false }), "");
+  assert.strictEqual(O.budgetLine(null), "");
+});
+
+test("the failsafe line shows the ARITHMETIC, and refuses to invent one", () => {
+  const O = ocppMod();
+  const line = O.failsafeLine({
+    enabled: true, safe_default_kw: 15, connector_count: 6,
+    max_house_load_kw: 180, safe_worst_case_kw: 270, grid_limit_kw: 277,
+    safe_default_holds: true,
+  });
+  // The mockups' own sum, with each term labelled so it can be checked:
+  // 6 × 15 kW + 180 kW Gebäudelast = 270 kW < 277 kW Anschlussgrenze ✓
+  assert.match(line, /6 × 15 kW \+ 180 kW Gebäudelast = 270 kW < 277 kW Anschlussgrenze ✓/);
+  assert.match(line, /Fällt die Box aus/);
+
+  // Not computable -> the REASON, never a friendly zero.
+  assert.strictEqual(
+    O.failsafeLine({ enabled: true, safe_default_kw: 0, safe_default_note: "Noch kein Stecker bekannt." }),
+    "Noch kein Stecker bekannt.");
+  assert.strictEqual(O.failsafeLine({ enabled: false }), "");
+});
+
+test("a charging row says the state first, and a waiting one says WHY", () => {
+  const O = ocppMod();
+  const now = 1_000_000;
+
+  assert.strictEqual(
+    O.connectorLine({ charging: true, reason: "laedt", allocated_kw: 41.15, power_kw: 40.2, soc_pct: 64 }, now),
+    "lädt · 40,2 kW (zugeteilt 41,2 kW) · Fahrzeug 64 %");
+  // No measurement reported -> the allocation alone, never a fabricated 0 kW.
+  assert.strictEqual(
+    O.connectorLine({ charging: true, reason: "laedt", allocated_kw: 41.15 }, now),
+    "lädt (zugeteilt 41,2 kW)");
+
+  // A waiting vehicle carries its reason AND, when computable, its turn.
+  assert.strictEqual(
+    O.connectorLine({ charging: true, reason: "wartet_budget", reason_text: "wartet — Budget vergeben", allocated_kw: 0, next_turn_ms: now + 120_000 }, now),
+    "wartet — Budget vergeben · dran in ca. 2 Min.");
+  // Without a computable turn it promises nothing.
+  assert.strictEqual(
+    O.connectorLine({ charging: true, reason: "unter_mindestleistung", reason_text: "wartet — die verfügbare Leistung reicht für diesen Ladepunkt nicht aus", allocated_kw: 0 }, now),
+    "wartet — die verfügbare Leistung reicht für diesen Ladepunkt nicht aus");
+  // A turn already in the past is not shown as a countdown.
+  assert.strictEqual(
+    O.connectorLine({ charging: true, reason: "wartet_budget", reason_text: "wartet", allocated_kw: 0, next_turn_ms: now - 1 }, now),
+    "wartet");
+
+  assert.strictEqual(O.connectorLine({ charging: false, status: "Available" }, now), "frei");
+  assert.strictEqual(O.connectorLine(null, now), "");
+});
+
+test("a disconnected station's line names the CONSEQUENCE, not just the fact", () => {
+  const O = ocppMod();
+  // "getrennt" alone would leave an operator guessing whether the cars stopped.
+  assert.match(O.chargerNote({ connected: false }), /Sicherheitsprofil/);
+  assert.strictEqual(O.chargerNote({ connected: false, note: "eigener Grund" }), "eigener Grund");
+  assert.match(O.chargerNote({ connected: true, ready: false }), /eingerichtet/);
+  // A ready station shows what it SAID about itself - display only.
+  assert.strictEqual(
+    O.chargerNote({ connected: true, ready: true, model: "DC-240", vendor: "AnyVendor", firmware: "1.2.3" }),
+    "DC-240 · AnyVendor · Firmware 1.2.3");
+});
+
+test("the second gate is visible: a refusal nobody can see is a riddle", () => {
+  const O = ocppMod();
+  assert.strictEqual(O.controlNote({ enabled: true, listening: true, control_enabled: true }), "");
+  assert.strictEqual(
+    O.controlNote({ enabled: true, listening: true, control_enabled: false, control_note: "Die Verbrauchersteuerung ist noch nicht freigegeben." }),
+    "Die Verbrauchersteuerung ist noch nicht freigegeben.");
+  // Even without a server-side note the surface says SOMETHING.
+  assert.notStrictEqual(O.controlNote({ enabled: true, listening: true, control_enabled: false }), "");
+});
+
+test("removing a charge point names what STAYS, not only what goes", () => {
+  const O = ocppMod();
+  const msg = O.removalConsequences("Hof Nord");
+  assert.match(msg, /Hof Nord/);
+  // A removed station is not a stopped one - it keeps its safe profile and
+  // charges slowly on. Hiding that makes the next support call a mystery.
+  assert.match(msg, /Sicherheitsprofil/);
+  assert.match(msg, /nicht beendet/);
+});
