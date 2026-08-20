@@ -78,8 +78,10 @@ class UsageProfileDeriverTest {
     void isProfileGuardsTheSettableVocabulary() {
         assertThat(UsageProfileDeriver.isProfile("arbitrage")).isTrue();
         assertThat(UsageProfileDeriver.isProfile("peak")).isTrue();
-        // private is derived-only, NOT a settable override (report §3.3).
+        // private und laden sind ABGELEITET, nie wählbar (report §3.3 bzw.
+        // Lastmanagement Stufe 3).
         assertThat(UsageProfileDeriver.isProfile("private")).isFalse();
+        assertThat(UsageProfileDeriver.isProfile("laden")).isFalse();
         assertThat(UsageProfileDeriver.isProfile("grey")).isFalse();
         assertThat(UsageProfileDeriver.isProfile(null)).isFalse();
     }
@@ -92,7 +94,8 @@ class UsageProfileDeriverTest {
         String plantKind = s.path("plant_kind").isNull() ? null : s.path("plant_kind").asText(null);
         String override = s.path("override").isNull() ? null : s.path("override").asText(null);
         return new Signals(s.path("has_storage").asBoolean(), s.path("has_pv").asBoolean(),
-                s.path("has_controllable_consumer").asBoolean(), nodes, plantKind,
+                s.path("has_controllable_consumer").asBoolean(),
+                s.path("has_charge_point").asBoolean(), nodes, plantKind,
                 s.path("has_leistungspreis").asBoolean(), override);
     }
 }

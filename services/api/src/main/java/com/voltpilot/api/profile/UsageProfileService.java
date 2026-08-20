@@ -2,6 +2,7 @@ package com.voltpilot.api.profile;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.profile.UsageProfileDeriver.Emphasis;
@@ -87,12 +88,21 @@ public class UsageProfileService {
      * {@code actuate} list: a consumer-category entity nobody can switch (the
      * synthesized {@code house-load}) must never light up device-automation
      * affordances.
+     *
+     * <p>{@code hasChargePoint} is the Lastmanagement-Stufe-3 signal and keys on
+     * the entity TYPE, not a capability: a Ladepunkt is recognisable as a thing,
+     * and its measure channels ({@code power_kw}) are the same ones every other
+     * consumer has.
      */
     Signals signals(UUID siteId, SiteDto site) {
         boolean hasStorage = false;
         boolean hasPv = false;
         boolean hasControllableConsumer = false;
+        boolean hasChargePoint = false;
         for (EntityRegistryRepository.EntityRow row : entities.entitiesForSite(siteId)) {
+            if (ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType())) {
+                hasChargePoint = true;
+            }
             EntityTypeCatalog.EntityType type = catalog.find(row.entityType());
             String category = type == null ? "" : type.category();
             for (String role : measuredRoles(category, row.capabilitiesJson())) {
@@ -108,8 +118,9 @@ public class UsageProfileService {
                 hasControllableConsumer = true;
             }
         }
-        return new Signals(hasStorage, hasPv, hasControllableConsumer, activeStrategyNodeTypes(siteId),
-                site.plantKind(), site.leistungspreisEurKw() != null, site.usageProfileOverride());
+        return new Signals(hasStorage, hasPv, hasControllableConsumer, hasChargePoint,
+                activeStrategyNodeTypes(siteId), site.plantKind(),
+                site.leistungspreisEurKw() != null, site.usageProfileOverride());
     }
 
     /** The topology roles this entity's measure channels resolve to. */

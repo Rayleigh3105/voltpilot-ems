@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -182,6 +183,111 @@ class ChargerApiTest {
         } finally {
             deleteSite(site);
         }
+    }
+
+
+    /**
+     * Die Anschlussgrenze wird im PORTAL gepflegt (Stufe 3, PR 12) - und der
+     * Modus „Ladepark-Lastmanagement" steht als viertes Regal-Profil da,
+     * abgeleitet aus dem, was die Anlage WIRKLICH hat.
+     */
+    @Test
+    void theConnectionLimitIsMaintainedInThePortalAndTheShelfProfileFollowsThePlant()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Konfiguration");
+        try {
+            UUID device = claim(customer, site, "edge-ladepark-2");
+
+            // 0 · Ohne gepflegte Grenze ist die Antwort ehrlich leer - nie eine 0.
+            JsonNode empty = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            assertThat(empty.get("gridLimitKw").isNull()).isTrue();
+            assertThat(empty.get("priorityChargePointIds")).isEmpty();
+
+            // ... und das Regal-Profil ist da, aber NICHT aktiv: es hat sich
+            // keine Säule gemeldet, und die Karte sagt genau das.
+            JsonNode card = profileCard(customer, site);
+            assertThat(card.get("label").asText()).isEqualTo("Ladepark-Lastmanagement");
+            assertThat(card.get("active").asBoolean()).isFalse();
+            assertThat(card.get("gatedNodeTypes"))
+                    .as("Lastmanagement ist SCHUTZ, keine Marktteilnahme - nichts freizuschalten")
+                    .isEmpty();
+            assertThat(card.get("requirements").get(0).get("met").asBoolean()).isFalse();
+
+            // 1 · Eine Säule meldet sich -> der Modus ist ABGELEITET aktiv (eine
+            //     Anlage, die Autos lädt, deren Karte aber "aus" sagt, wäre eine
+            //     Falschaussage), und die fehlende Grenze wird BENANNT.
+            heartbeat(site, device, twoStations());
+            card = profileCard(customer, site);
+            assertThat(card.get("derivedActive").asBoolean()).isTrue();
+            assertThat(card.get("active").asBoolean()).isTrue();
+            assertThat(card.get("blockedReason").asText()).contains("Anschlussgrenze");
+
+            // 2 · Der Aktivieren-Dialog speichert die Anschlussgrenze.
+            JsonNode saved = putJson("/api/v1/sites/" + site + "/charging-config", customer,
+                    Map.of("gridLimitKw", 277));
+            assertThat(saved.get("gridLimitKw").asDouble()).isEqualTo(277.0);
+            assertThat(saved.hasNonNull("updatedBy")).as("die Papier-Spur steht").isTrue();
+            assertThat(profileCard(customer, site).get("blockedReason").isNull())
+                    .as("mit Grenze und Säule ist nichts mehr im Weg").isTrue();
+
+            // 3 · Die Vorrang-Wahl - und die PATCH-Semantik: sie fasst die
+            //     Anschlussgrenze nicht an.
+            JsonNode withPriority = putJson("/api/v1/sites/" + site + "/charging-config", customer,
+                    Map.of("priorityChargePointIds", List.of("saeule-2")));
+            assertThat(withPriority.get("gridLimitKw").asDouble()).isEqualTo(277.0);
+            assertThat(withPriority.get("priorityChargePointIds")).hasSize(1);
+
+            // 4 · Eine Säule, die es nicht gibt, wird ABGELEHNT statt still
+            //     gespeichert - sonst fände den Tippfehler nie wieder jemand.
+            ResponseEntity<String> unknown = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config"), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("priorityChargePointIds", List.of("gibt-es-nicht")),
+                            bearer(customer)),
+                    String.class);
+            assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(unknown.getBody()).contains("kennt keine Ladesäule");
+            // Und eine Grenze von 0 ebenso: ohne Grenze lädt gar nichts.
+            ResponseEntity<String> zero = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config"), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("gridLimitKw", 0), bearer(customer)), String.class);
+            assertThat(zero.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            // ... beide Ablehnungen haben NICHTS verändert.
+            assertThat(getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .get("gridLimitKw").asDouble()).isEqualTo(277.0);
+
+            // 5 · Der Mandanten-Zaun gilt auf beiden Verben.
+            ResponseEntity<String> foreignRead = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+            assertThat(foreignRead.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            ResponseEntity<String> foreignWrite = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config"), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("gridLimitKw", 1), bearer(token("demo2", "demo2"))),
+                    String.class);
+            assertThat(foreignWrite.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /** Die „lastmanagement"-Karte des Regals. */
+    private JsonNode profileCard(String token, UUID site) throws Exception {
+        JsonNode shelf = getJson("/api/v1/sites/" + site + "/profiles", token);
+        for (JsonNode p : shelf.get("profiles")) {
+            if ("lastmanagement".equals(p.get("id").asText())) {
+                return p;
+            }
+        }
+        throw new AssertionError("das Regal kennt kein Lastmanagement-Profil: " + shelf);
+    }
+
+    private JsonNode putJson(String path, String token, Map<String, Object> body) throws Exception {
+        ResponseEntity<String> res = rest.exchange(url(path), HttpMethod.PUT,
+                new HttpEntity<>(body, bearer(token)), String.class);
+        assertThat(res.getStatusCode()).as("PUT %s -> %s", path, res.getBody())
+                .isEqualTo(HttpStatus.OK);
+        return json.readTree(res.getBody());
     }
 
     /** Wie viele Komponenten vom Typ Ladepunkt die Anlage trägt. */

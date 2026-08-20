@@ -2,6 +2,7 @@ package com.voltpilot.api.profile;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.chargers.ChargingConfigRepository;
 import com.voltpilot.api.flows.FlowCatalog;
 import com.voltpilot.api.flows.FlowService;
 import com.voltpilot.api.flows.FlowTemplateService;
@@ -65,11 +66,13 @@ public class SiteProfileService {
     private final FlowTemplateService templates;
     private final FlowCatalog catalog;
     private final ObjectMapper mapper;
+    private final ChargingConfigRepository chargingConfigs;
 
     public SiteProfileService(SiteRepository sites, SiteProfileStateRepository states,
             UsageProfileService usageProfiles, FlowGatedNodeRepository gatedNodes,
             FlowRepository flows, FlowService flowService, FlowTemplateService templates,
-            FlowCatalog catalog, ObjectMapper mapper) {
+            FlowCatalog catalog, ObjectMapper mapper,
+            ChargingConfigRepository chargingConfigs) {
         this.sites = sites;
         this.states = states;
         this.usageProfiles = usageProfiles;
@@ -79,6 +82,7 @@ public class SiteProfileService {
         this.templates = templates;
         this.catalog = catalog;
         this.mapper = mapper;
+        this.chargingConfigs = chargingConfigs;
     }
 
     // -- read ---------------------------------------------------------------
@@ -182,6 +186,14 @@ public class SiteProfileService {
     }
 
     private void switchOff(UUID siteId, UUID tenantId, Profile profile) {
+        if (profile.strategyType() == null) {
+            // Ein Profil OHNE Strategie-Knoten (Lastmanagement) hat keinen Flow,
+            // den man stilllegen könnte, und nichts freigeschaltetes, das man
+            // schließen müsste - der gespeicherte Zustand IST die ganze
+            // Abschaltung. Die SCHUTZ-Wirkung auf der Box bleibt: sie hört nicht
+            // auf, den Anschluss zu bewachen, weil eine Karte auf "aus" steht.
+            return;
+        }
         for (FlowVersionRow row : flows.versionsForSite(siteId)) {
             if ("active".equals(row.lifecycle()) && carries(row, profile.strategyType())) {
                 flowService.deactivate(siteId, row.flowId());
@@ -201,8 +213,13 @@ public class SiteProfileService {
      */
     private boolean derivedActive(Profile profile, SiteDto site, Signals signals,
             Set<String> activeStrategyTypes) {
-        boolean strategyNode = signals.activeStrategyNodeTypes().contains(profile.strategyType())
-                || activeStrategyTypes.contains(profile.strategyType());
+        // ⚠ Erst prüfen, DANN fragen: `Set.copyOf`/`Set.of` werfen bei
+        // `contains(null)` eine NullPointerException, und ein Profil OHNE
+        // Strategie-Knoten (Lastmanagement) hätte damit das ganze Regal in
+        // einen 500 gerissen - für JEDE Anlage, auch ohne Ladepunkt.
+        boolean strategyNode = profile.strategyType() != null
+                && (signals.activeStrategyNodeTypes().contains(profile.strategyType())
+                        || activeStrategyTypes.contains(profile.strategyType()));
         switch (profile.id()) {
             case SiteProfileCatalog.MARKTVERMARKTUNG:
                 return isDirektvermarktung(site)
@@ -210,6 +227,13 @@ public class SiteProfileService {
                         || strategyNode;
             case SiteProfileCatalog.LASTSPITZENKAPPUNG:
                 return signals.hasLeistungspreis() || strategyNode;
+            case SiteProfileCatalog.LASTMANAGEMENT:
+                // Es gibt keinen Strategie-Knoten: der Verteiler LÄUFT auf der
+                // Box, sobald eine Säule da ist. Der Modus ist damit abgeleitet
+                // aktiv, sobald die Anlage einen Ladepunkt hat - eine Anlage,
+                // die Autos lädt, deren Karte aber "aus" sagt, wäre eine
+                // Falschaussage über eine laufende Anlage.
+                return signals.hasChargePoint();
             default:
                 return strategyNode;
         }
@@ -237,6 +261,12 @@ public class SiteProfileService {
                 chips.add(new SiteProfilesDto.Requirement("Leistungspreis hinterlegt",
                         signals.hasLeistungspreis()));
                 chips.add(new SiteProfilesDto.Requirement("Speicher", signals.hasStorage()));
+                break;
+            case SiteProfileCatalog.LASTMANAGEMENT:
+                chips.add(new SiteProfilesDto.Requirement("Ladepunkt verbunden",
+                        signals.hasChargePoint()));
+                chips.add(new SiteProfilesDto.Requirement("Anschlussgrenze hinterlegt",
+                        chargingConfigs.forSite(site.id()).gridLimitKw() != null));
                 break;
             default:
                 chips.add(new SiteProfilesDto.Requirement("Leistungsmessung",
@@ -273,6 +303,14 @@ public class SiteProfileService {
                             + "Ihre Lastspitze nicht bewerten und kappt sie noch nicht.";
                 }
                 return "Ohne Speicher lässt sich Ihre Lastspitze nicht kappen.";
+            case SiteProfileCatalog.LASTMANAGEMENT:
+                if (!met(requirements, 0)) {
+                    return "Es hat sich noch keine Ladesäule gemeldet. Sobald eine verbunden ist, "
+                            + "verteilt VoltPilot die verfügbare Leistung Ihres Netzanschlusses "
+                            + "auf die ladenden Fahrzeuge.";
+                }
+                return "Ihre Anschlussgrenze ist noch nicht hinterlegt - ohne sie gibt VoltPilot "
+                        + "keine Ladeleistung frei. Sie steht in Ihrem Netzanschlussvertrag.";
             default:
                 // A generic honest fallback: every requirement chip is derived,
                 // so name the first unmet one.
@@ -297,6 +335,11 @@ public class SiteProfileService {
             case SiteProfileCatalog.LASTSPITZENKAPPUNG:
                 return new SiteProfilesDto.Unlocks(List.of("lastspitzen", "erloes-historie"),
                         List.of("peak-band"), "lastspitzen");
+            case SiteProfileCatalog.LASTMANAGEMENT:
+                // KEIN Geld-Strom: ein Ladepark rechnet nichts ab (Scope-Zaun
+                // E4) - "Erlöse" fehlt auf dieser Anlage auch in der Navigation.
+                return new SiteProfilesDto.Unlocks(List.of("ladevorgaenge"),
+                        List.of("lade-budget"), null);
             default:
                 return new SiteProfilesDto.Unlocks(List.of(), List.of(), null);
         }

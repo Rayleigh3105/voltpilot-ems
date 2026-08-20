@@ -1135,8 +1135,9 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnProbeRequest: a.onProbeRequest,
 		// Register schreiben ueber das Portal: der ZWEITE Trigger auf den
 		// Einmal-Schreib-Kern. NICHT retained - siehe register_write.go.
-		OnRegisterWrite: a.onRegisterWrite,
-		OnControlCert:   a.onControlCert,
+		OnRegisterWrite:  a.onRegisterWrite,
+		OnControlCert:    a.onControlCert,
+		OnChargingConfig: a.onChargingConfig,
 		// Verbrauchssteuerung §11/§14.13: der manuelle Eingriff. NICHT retained -
 		// siehe override.go.
 		OnDesiredDownlink: a.onDesiredDownlink,

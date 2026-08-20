@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/mqtt-charging-config.schema.json",
+  "title": "Cloud -> Edge Lastmanagement-Konfiguration (Anschlussgrenze + Vorrang)",
+  "description": "RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/charging-config. Lastmanagement Stufe 3, Konzept `vp-ocpp-lastmgmt-konzept-w4` §5 / PR 12.\n\nDAS DOKUMENT IST EIN WUNSCH, KEINE VERTEILUNG. Es traegt genau das, was der Kunde im Portal ueber SEINEN Anschluss entscheidet: die Anschlussgrenze und welche Saeulen Vorrang haben. GERECHNET und DURCHGESETZT wird weiter auf der Box (internal/lastmgmt) - die Anschlussgrenze ist eine physische Grenze, ihr Waechter darf nicht am WAN haengen (E1). Die Cloud kann damit einen Ladepark einrichten, ohne dass jemand im LAN am Geraet steht; sie kann ihn nicht steuern.\n\nRETAINED ist der ganze Mechanismus: eine Box, die beim Speichern offline war, holt ihre Einstellung beim naechsten Verbindungsaufbau selbst ab - genau wie bei Provisionierung, Zuweisung und Steuerungs-Zertifizierung. Das Topic liegt im `v2/#`-Teilbaum, den die per-Geraet-ACL laengst abdeckt (D-2): KEINE Broker-Aenderung.\n\nPATCH-SEMANTIK, und sie ist tragend: ein ABWESENDES Feld BEHAELT den Wert der Box. Das Portal besitzt heute nur die Anschlussgrenze und die Vorrang-Wahl; Sicherheitsabstand, Mindestleistung und die hoechste Gebaeudelast bleiben Einstellungen der Box (`:8484`), und ein Dokument, das sie stillschweigend auf eine Vorgabe zuruecksetzte, waere ein Datenverlust ohne Absicht.\n\nEine LEERE retained Nachricht nimmt das Dokument zurueck (Unclaim) - danach gilt wieder allein, was auf der Box gepflegt ist.",
+  "type": "object",
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "published_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "description": "Vertragsversion; ein Geraet, das sie nicht kennt, VERWIRFT das Dokument (fail-closed) und behaelt seine eigenen Einstellungen."
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Muss der Identitaet des Topics entsprechen - das Geraet prueft das nach (die Regel von Telemetrie/purge_data/Zuweisung/Apply)."
+    },
+    "grid_limit_kw": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 100000,
+      "description": "Die Anschlussgrenze am Netzverknuepfungspunkt in kW, wie der Kunde sie im Portal gepflegt hat.\n\nABWESEND heisst 'das Portal hat dazu nichts zu sagen' und die Box behaelt ihre eigene Zahl - es heisst NIE 'keine Grenze'. Eine 0 ist deshalb ausgeschlossen: ohne Grenze ist das Budget der Box 0 und es laedt nichts, und das waere eine Aussage, die niemand treffen wollte."
+    },
+    "priority_charge_point_ids": {
+      "type": "array",
+      "description": "Die OCPP-ChargePointIds der VORRANG-Saeulen (z. B. fuer Einsatz- oder Dienstfahrzeuge). Vorrang ist ein RANG, kein Freibrief: die Gruppe wird zuerst und auf ihre volle Nachfrage bedient, der Rest teilt fair - aber sie wird selbst vom Budget gedeckelt und kann den Anschluss so wenig ueberschreiten wie jede andere.\n\nEine LEERE Liste ist eine gueltige AUSSAGE ('keine Saeule hat Vorrang') und wird angewandt; ABWESEND heisst dagegen 'das Portal aeussert sich nicht' und die Box behaelt ihre Wahl.",
+      "maxItems": 64,
+      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+    },
+    "published_at": { "type": "string", "format": "date-time" }
+  }
+}

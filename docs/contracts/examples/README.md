@@ -106,3 +106,15 @@ would make a fixture invalid for the wrong reason):
   one document: a successful line carries raw AND decoded value side by side, a
   failed one carries a named class and NO value; a switch answer carries its own
   `switched` block instead, because a switch result is not a measurement.
+
+## `mqtt-charging-config` (Lastmanagement Stufe 3)
+
+Die Lastmanagement-Konfiguration, die das Portal an die Box schickt. Die zwei
+gültigen Fixtures zeigen die PATCH-Semantik, die den Vertrag trägt: das erste
+setzt Anschlussgrenze UND Vorrang, das zweite nennt NUR eine leere Vorrang-Liste
+— eine leere Liste ist eine AUSSAGE („keine Säule hat Vorrang") und wird
+angewandt, während die abwesende Anschlussgrenze bedeutet, dass die Box ihre
+eigene Zahl behält. `mqtt-charging-config.invalid.grenze-null.json` ist eine
+Grenze von 0: ohne Grenze ist das Budget der Box 0 und es lädt nichts, also wäre
+das eine Aussage, die niemand treffen wollte — abwesend heißt „dazu sagt das
+Portal nichts", nie „keine Grenze".

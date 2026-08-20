@@ -173,8 +173,11 @@ class SiteProfileApiTest {
         JsonNode shelf = customer(profilesPath(), HttpMethod.GET, demo, null).getBody();
         // Eigenverbrauch is no longer a shelf profile (report vp-nacht-bezug-e7
         // §3.3) - it is base behaviour, not a selectable card.
+        // "lastmanagement" ist seit Lastmanagement Stufe 3 das vierte Regal-
+        // Profil (Konzept §5.2). Es hat KEINEN Strategie-Knoten - Lastmanagement
+        // ist Schutz, keine Marktteilnahme - und schaltet deshalb nichts frei.
         assertThat(ids(shelf)).containsExactly("marktvermarktung",
-                "lastspitzenkappung", "atypische-netznutzung");
+                "lastspitzenkappung", "atypische-netznutzung", "lastmanagement");
         for (JsonNode card : shelf.path("profiles")) {
             assertThat(card.path("state").isNull())
                     .as("no row => derived default, the pre-M3 behaviour").isTrue();

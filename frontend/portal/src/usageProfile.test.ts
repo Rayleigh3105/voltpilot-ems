@@ -22,6 +22,7 @@ interface RawSignals {
   has_controllable_consumer: boolean;
   active_strategy_node_types: string[];
   plant_kind: string | null;
+  has_charge_point: boolean;
   has_leistungspreis: boolean;
   override: string | null;
 }
@@ -43,6 +44,7 @@ function signals(s: RawSignals): ProfileSignals {
     hasStorage: s.has_storage,
     hasPv: s.has_pv,
     hasControllableConsumer: s.has_controllable_consumer,
+    hasChargePoint: s.has_charge_point,
     activeStrategyNodeTypes: s.active_strategy_node_types,
     plantKind: s.plant_kind,
     hasLeistungspreis: s.has_leistungspreis,
@@ -65,7 +67,7 @@ describe('usageProfile deriver (shared vectors)', () => {
 });
 
 describe('usageProfile emphasis map (shared vectors)', () => {
-  for (const profile of ['arbitrage', 'peak', 'private']) {
+  for (const profile of ['arbitrage', 'peak', 'laden', 'private']) {
     it(profile, () => {
       expect(emphasisFor(profile)).toEqual(vectors.emphasis[profile]);
     });
@@ -81,6 +83,8 @@ describe('usageProfile helpers', () => {
     expect(isUsageProfile('arbitrage')).toBe(true);
     expect(isUsageProfile('peak')).toBe(true);
     expect(isUsageProfile('private')).toBe(false);
+    // laden ist ebenfalls ABGELEITET, nie wählbar (Lastmanagement Stufe 3).
+    expect(isUsageProfile('laden')).toBe(false);
     expect(isUsageProfile('grey')).toBe(false);
     expect(isUsageProfile(null)).toBe(false);
   });
@@ -89,6 +93,9 @@ describe('usageProfile helpers', () => {
     expect(strategyNodeType('arbitrage')).toBe('vp.strategy.market');
     expect(strategyNodeType('peak')).toBe('vp.strategy.peakshaving');
     expect(strategyNodeType('private')).toBeNull();
+    // Lastmanagement ist SCHUTZ, keine Marktteilnahme - es gibt keinen
+    // Strategie-Knoten und damit auch keinen Starter-Flow (Konzept §5.2).
+    expect(strategyNodeType('laden')).toBeNull();
     expect(strategyNodeType('grey')).toBeNull();
   });
 });
