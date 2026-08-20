@@ -1299,6 +1299,7 @@ Der Anlass war eine Produktionsstörung (06./07.08.2026): eine DNS-Fehlleitung l
 (cd edge-app/core && go test ./...)                          # Go 1.24+; incl. in-process mTLS integration test
 (cd edge-app/nodered/vp-palette && npm install && npm test)  # vp-palette node tests
 edge-app/test/e2e-compose.sh                                 # isolated compose e2e (Docker; own project/ports)
+edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-Rig (L1-L5; Docker-FREI, nur Go + curl)
 ```
 
 Health endpoints on the JVM services are mapped to root: `GET /health` (Spring Boot Actuator).
@@ -2660,6 +2661,45 @@ Migration:** die drei Ursachen liegen seit je in der Persistenz (`slot_flags` mi
   Abregelung verursachen kann, trägt es in `frontend/portal/src/grenzenWarum.ts` nach —
   sonst fällt sein Fall stillschweigend auf die Beobachtung zurück (was ehrlich, aber
   weniger hilfreich ist). Portal-Details in `frontend/portal/AGENTS.md`.
+
+## OCPP-Lastmanagement (Ladepunkte): Stufe 0+1 „MVP statisch"
+
+Die Box ist das **Central System**, das die Ladesäulen anwählen — die
+Anschlussgrenze ist eine PHYSISCHE Grenze, ihr Wächter darf nicht am WAN
+hängen (Konzept `data/vp-ocpp-lastmgmt-konzept-w4`, Captain-Entscheide E1–E5;
+Flächen `data/vp-ocpp-mockups-r5`). Alles liegt in `edge-app/core`, die Cloud
+ist unbeteiligt (Portal/Herzschlag sind Stufe 3). **Alle Details und die
+Fallstricke stehen in [`edge-app/AGENTS.md`](edge-app/AGENTS.md)**; hier nur,
+was jede Session wissen muss:
+
+- **Vier Pakete:** `internal/csms` (OCPP 1.6J CSMS, `lorenzodonini/ocpp-go`
+  **MIT** in GENAU zwei Dateien gekapselt), `internal/lastmgmt` (die reine
+  Verteilung + die Ausfall-Profil-Ableitung), `agent/ocpp.go` (der Executor),
+  `internal/ocppsim` + `cmd/vp-ocpp-sim` (der Ladesäulen-Simulator).
+- **⚠ HERSTELLERNEUTRAL ist Konstruktion** (Konzept §0, VERBINDLICH): Identität
+  ist die OCPP-ChargePointId; `vendor`/`model`/`firmware` werden nur ANGEZEIGT,
+  kein Code verzweigt auf sie, und `DataTransfer` antwortet `UnknownVendorId`.
+- **⚠ Der Totmann ist OCPPs eigener:** permanente `ChargePointMaxProfile` +
+  `TxDefaultProfile`, die lebende Zuteilung nur als `TxProfile` mit kurzer
+  `duration`. Stirbt die Box, fällt jede Säule VON SELBST auf ihr
+  Sicherheitsprofil zurück — dafür muss nichts von uns funktionieren.
+- **⚠ Drei Schalter, zwei Tore:** `VP_OCPP_ENABLED` (Vorgabe AUS) startet den
+  Server und hinterlegt die SCHÜTZENDEN Profile; die LEBENDE Zuteilung braucht
+  zusätzlich `VP_CONTROL_ENABLED ∧ VP_CONSUMER_CONTROL_ENABLED`. Ohne sie
+  läuft die Anlage sicher auf `n × Sicherheitsprofil`, und die `:8484`-Fläche
+  sagt welcher Schalter fehlt.
+- **Scope-Zaun (E4): Lastmanagement pur** — keine Abrechnung, kein Eichrecht,
+  kein OCPI, kein RFID; `Authorize` akzeptiert, Sitzungen sind BETRIEBSdaten.
+- **Katalog-Typ `ev-charger` („Ladepunkt")**, additiv, Kommando
+  ausschließlich `limit_kw`, Status ehrlich `simulator_only` — der Flip auf
+  zertifiziert braucht EINE beaufsichtigte Bench-Session je Säulen-TYP
+  (CONTROL-BENCH.md, die Deye-/go-e-Disziplin).
+- **Beweis:** `edge-app/test/e2e-ocpp.sh` (L1–L5, **Docker-frei**) misst an den
+  simulierten Zählerwerten, nie an Quittungen. Der MVP ist damit
+  simulator-bewiesen — eine echte Säule braucht die Bench-Session.
+- **NICHT gebaut:** dynamisches Budget am gemessenen Netzbezug (Stufe 2),
+  Cloud-Sichtbarkeit/Portal/Betriebsprofil (Stufe 3), PV-Überschuss +
+  Optimierer-Kopplung (Stufe 4).
 
 ## Maintaining this file
 

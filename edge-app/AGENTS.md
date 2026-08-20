@@ -2932,6 +2932,32 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   erfundenes „Invalid" hielte ein Kundenauto aus einem Grund an, den wir
   erfunden haben. Sitzungen sind BETRIEBS-, keine Abrechnungsdaten.
 
+## Das Lastmanagement-Rig `test/e2e-ocpp.sh`: Docker-frei, und es misst
+
+Die Faelle L1-L5 des Konzepts (§6.2) gegen den ECHTEN Kern und ECHTE
+OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
+
+- **⚠ Jede Zusicherung liest, was eine Saeule ZIEHEN WUERDE**, abgeleitet aus
+  den Ladeprofilen, die der Kern ihr wirklich installiert hat — nie eine
+  Quittung. Der Simulator loest den OCPP-Profil-Stapel selbst auf
+  (`internal/ocppsim`), also ist „das Budget wird gehalten" eine MESSUNG.
+- **⚠ Bewusst OHNE Docker** (anders als die `e2e-*-compose.sh`-Rigs): hier
+  laeuft alles als Prozess, das Rig ist also auf jedem Rechner mit Go
+  reproduzierbar und braucht kein gebautes Image. Die Cloud-URL zeigt bewusst
+  ins Leere — das Lastmanagement ist per Konstruktion offline-faehig, und das
+  Rig zeigt genau das.
+- **⚠ Das Rig prueft die ZUSAGE, nie die BESETZUNG.** WELCHE zwei Fahrzeuge
+  bedient werden, entscheidet die Rotation; ein Rig, das eine bestimmte Saeule
+  festnagelt, prueft einen Zufall und wird flakey (genau so beim ersten Lauf
+  passiert). Geprueft wird deshalb: „genau zwei laden", „keiner haengt unter
+  der Mindestleistung", „der Standort bleibt unter dem Budget", „der Wartende
+  nennt seinen Grund".
+- **L4 ist der Totmann-Beweis und er dauert:** der Kern wird GETOETET, dann
+  laeuft das TxProfile (120 s) ab und die Saeule faellt VON SELBST auf ihr
+  Sicherheitsprofil. Die zweite Haelfte ist genauso wichtig — sie laedt
+  WEITER: ein Totmann, der den Ladevorgang abwuergt, waere kein Schutz,
+  sondern ein Ausfall.
+
 ## Die `:8484`-Ladepunkt-Flaeche ist die EINZIGE bedingte Accordion-Gruppe
 
 - **⚠ Die Gruppe „Ladepunkte" wird `hidden` AUSGELIEFERT und von `ocpp.js`
