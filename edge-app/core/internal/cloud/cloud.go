@@ -579,6 +579,150 @@ type SourceEntry struct {
 	ReadAt string `json:"read_at,omitempty"`
 }
 
+// ChargersSummary is the additive status-heartbeat block reporting the site's
+// OCPP charge points and the load-management budget they share (Stufe 3 of the
+// Lastmanagement concept, `vp-ocpp-lastmgmt-konzept-w4` §5.3). It is the EIGHTH
+// sibling block on the status topic and, like every one before it, pure added
+// VISIBILITY: the cloud sees what the box decided, it never decides.
+//
+// ⚠ The block is the box's OWN view, verbatim. Budget, allocation, the safe
+// default and every German sentence are written ONCE, in internal/lastmgmt, and
+// only repeated here - the :8484 card and the portal must never word the same
+// verdict differently, and only the box knows the numbers behind it.
+//
+// A box with no charge points sends NO block at all, so a plant without a
+// charging station keeps a byte-identical heartbeat. Bounded by
+// maxChargerEntries / maxChargerConnectors so a misconfigured plant can never
+// inflate the heartbeat.
+type ChargersSummary struct {
+	// ReportedAt is when the edge assembled this view (RFC 3339).
+	ReportedAt string `json:"reported_at"`
+
+	// --- the site half: the budget every station shares ---
+
+	// Enabled mirrors VP_OCPP_ENABLED (the server), ControlEnabled whether the
+	// LIVE allocation may be written at all. They are DIFFERENT gates: without
+	// the second the plant runs on n x safe default, which is safe but not
+	// optimised - and ControlNote says so, because a refusal nobody can see is
+	// a riddle.
+	Enabled        bool   `json:"enabled"`
+	ControlEnabled bool   `json:"control_enabled"`
+	ControlNote    string `json:"control_note,omitempty"`
+
+	// GridLimitKw is the maintained Anschlussgrenze, MarginPct the safety
+	// margin taken FROM it, MinPowerKw the allocation floor below which nothing
+	// is granted (pausing beats starving).
+	GridLimitKw float64 `json:"grid_limit_kw"`
+	MarginPct   float64 `json:"margin_pct"`
+	MinPowerKw  float64 `json:"min_power_kw"`
+	// BudgetKw is what may be handed to vehicles right now, AllocatedKw what
+	// the current plan granted, ReservedKw what is held back for stations the
+	// box cannot reach (they hold their own default and their cars may take
+	// it - "blind never means unlimited", the import twin of the export guard).
+	BudgetKw    float64 `json:"budget_kw"`
+	AllocatedKw float64 `json:"allocated_kw"`
+	ReservedKw  float64 `json:"reserved_kw,omitempty"`
+	// MeasuredKw is what the stations REPORT drawing. nil = not one connector
+	// reported a measurement - never a fabricated 0.
+	MeasuredKw *float64 `json:"measured_kw,omitempty"`
+	// SiteLoadKw / SiteGridKw are the rest of the site and the newest measured
+	// grid power the budget was formed from (Stufe 2). Both nil while the
+	// budget is static or blind - never a fabricated measurement.
+	SiteLoadKw *float64 `json:"site_load_kw,omitempty"`
+	SiteGridKw *float64 `json:"site_grid_kw,omitempty"`
+	// BudgetMode is the machine-readable stage (statisch | gemessen | haelt |
+	// zieht_zusammen | sicherheitsbudget) and BudgetNote its German sentence.
+	// BudgetBlind is true whenever the budget was NOT formed from a fresh
+	// measurement.
+	BudgetMode  string `json:"budget_mode,omitempty"`
+	BudgetNote  string `json:"budget_note,omitempty"`
+	BudgetBlind bool   `json:"budget_blind,omitempty"`
+	// EffLimitKw is the connection limit actually in force (the maintained one
+	// or the observed §14a envelope, whichever is tighter).
+	EffLimitKw float64 `json:"eff_limit_kw,omitempty"`
+
+	// SafeDefaultKw is the per-connector emergency limit currently installed in
+	// the stations, with the terms it was derived from so a surface can show
+	// the customer the sum instead of a bare number.
+	SafeDefaultKw   float64 `json:"safe_default_kw"`
+	SafeDefaultNote string  `json:"safe_default_note,omitempty"`
+	// SafeDefaultHolds is the invariant itself: connectors x default + the
+	// worst building load ever measured stays under the connection limit. A
+	// false here is a SITE fact no charging default can repair, and it must
+	// reach the cloud - saying "holds" would be a comfortable lie about a
+	// customer's fuse.
+	SafeDefaultHolds bool    `json:"safe_default_holds"`
+	SafeWorstCaseKw  float64 `json:"safe_worst_case_kw,omitempty"`
+	MaxHouseLoadKw   float64 `json:"max_house_load_kw,omitempty"`
+	ConnectorCount   int     `json:"connector_count"`
+
+	// Chargers are the registered charge points, id-sorted. Never nil when the
+	// block is present.
+	Chargers []ChargerEntry `json:"chargers"`
+}
+
+// maxChargerEntries / maxChargerConnectors bound the block. A charging park of
+// this size is far beyond anything one box manages; the caps exist so a
+// misconfigured allowlist cannot inflate every heartbeat.
+const (
+	maxChargerEntries    = 16
+	maxChargerConnectors = 8
+)
+
+// ChargerEntry is one charge point. Vendor / Model / Firmware are the station's
+// OWN words, recorded and DISPLAYED only - the herstellerneutral rule (concept
+// §0, VERBINDLICH): no mechanism anywhere branches on them.
+type ChargerEntry struct {
+	ID        string `json:"id"`
+	Label     string `json:"label,omitempty"`
+	Priority  bool   `json:"priority,omitempty"`
+	Connected bool   `json:"connected"`
+	Vendor    string `json:"vendor,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Firmware  string `json:"firmware,omitempty"`
+	// Ready is true once the two PERMANENT profiles (station cap + safe
+	// default) are installed; Note names the reason when they are not - never
+	// an unexplained "not ready".
+	Ready bool   `json:"ready"`
+	Note  string `json:"note,omitempty"`
+	// LastSeen is the newest message of ANY kind from this station (RFC 3339);
+	// empty = it has never spoken to this box.
+	LastSeen   string                  `json:"last_seen,omitempty"`
+	Connectors []ChargerConnectorEntry `json:"connectors,omitempty"`
+}
+
+// ChargerConnectorEntry is one plug: one vehicle, one claimant on the budget.
+type ChargerConnectorEntry struct {
+	ID     int    `json:"id"`
+	Status string `json:"status,omitempty"`
+	// Charging reports whether this plug claims budget right now.
+	Charging bool `json:"charging"`
+	// AllocatedKw is what the load management granted (0 while paused);
+	// nil = this plug is not part of the current decision at all.
+	AllocatedKw *float64 `json:"allocated_kw,omitempty"`
+	// Reason is the allocator's machine word and ReasonText its German
+	// sentence - both from internal/lastmgmt, never re-worded here.
+	Reason     string `json:"reason,omitempty"`
+	ReasonText string `json:"reason_text,omitempty"`
+	// NextTurn is when a waiting plug is estimated to get its turn (RFC 3339);
+	// empty = not computable, and then the surface must say nothing.
+	NextTurn string `json:"next_turn,omitempty"`
+	// PowerKw / EnergyKwh / SocPct are what the station MEASURED. Absent =
+	// not reported, never a fabricated 0.
+	PowerKw   *float64 `json:"power_kw,omitempty"`
+	EnergyKwh *float64 `json:"energy_kwh,omitempty"`
+	SocPct    *float64 `json:"soc_pct,omitempty"`
+	// CommandStatus is the station's own answer to the last limit, Readback the
+	// GetCompositeSchedule verdict (ok | abweichend | unbekannt): an accepted
+	// command is not a command in force (the PR-280 lesson on OCPP).
+	CommandStatus string `json:"command_status,omitempty"`
+	Readback      string `json:"readback,omitempty"`
+	ReadbackNote  string `json:"readback_note,omitempty"`
+	// SessionSince is when the running transaction started (RFC 3339); empty =
+	// no session on this plug.
+	SessionSince string `json:"session_since,omitempty"`
+}
+
 // ConsumersSummary is the additive status-heartbeat block reporting the edge
 // runtime state of every CONTROLLABLE consumer entity (Verbrauchssteuerung
 // Inkrement 3, D9/§15.1): per entity {state, reason_code, actual_kw,
@@ -1100,8 +1244,9 @@ type ExportGuardSummary struct {
 // errors are returned but the caller does not retry status. `control` is the
 // optional control confirmation, `entities` the optional v2 entity-registry
 // ack, `flows` the optional flow-deployment ack, `sources` the optional
-// per-measurement-point Ist, `update` the optional OTA block (nil = omit the
-// block - all additive, schema_version stays "1.0").
+// per-measurement-point Ist, `update` the optional OTA block, `chargers` the
+// optional OCPP charge-point + load-management block (nil = omit the block -
+// all additive, schema_version stays "1.0").
 //
 // The top-level `version` is NOT optional in that sense: it rides every
 // heartbeat from the link's build stamp (OTA Stufe 0, scout
@@ -1113,7 +1258,7 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary,
 	flowNodes *FlowNodeStatusSummary, curtail *CurtailmentSummary,
 	update *UpdateSummary, consumers ConsumersSummary,
-	registerWrites *RegisterWritesSummary) error {
+	registerWrites *RegisterWritesSummary, chargers *ChargersSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -1153,6 +1298,12 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if registerWrites != nil && len(registerWrites.Entries) > 0 {
 		payload["register_writes"] = registerWrites
+	}
+	if chargers != nil && len(chargers.Chargers) > 0 {
+		if len(chargers.Chargers) > maxChargerEntries {
+			chargers.Chargers = chargers.Chargers[:maxChargerEntries]
+		}
+		payload["chargers"] = chargers
 	}
 	if flowNodes != nil && len(flowNodes.Nodes) > 0 {
 		if len(flowNodes.Nodes) > maxFlowNodeStates {

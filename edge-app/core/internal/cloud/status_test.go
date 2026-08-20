@@ -139,7 +139,7 @@ func TestHeartbeatCarriesTheVersionWithoutAnyFlowsBlock(t *testing.T) {
 
 	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
 		&UpdateSummary{Backend: UpdateBackendCompose,
-			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil, nil); err != nil {
+			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,7 +186,7 @@ func TestHeartbeatCarriesTheVersionAlongsideTheFlowsBlock(t *testing.T) {
 	}
 	if err := link.PublishStatus("schedule", nil, nil, nil, flows, nil, nil, nil,
 		&UpdateSummary{Backend: UpdateBackendCompose,
-			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil, nil); err != nil {
+			Current: "edge-2026.08.0+3bf8c0380000", State: UpdateStateIdle}, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -211,7 +211,7 @@ func TestHeartbeatOmitsAnUnknownVersionInsteadOfSendingAnEmptyOne(t *testing.T) 
 	link := connectedLink(t, sink, "")
 
 	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil); err != nil {
+		nil, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -270,7 +270,7 @@ func TestHeartbeatCarriesTheRegisterWriteAuditOnlyWhenThereIsOne(t *testing.T) {
 	link := connectedLink(t, sink, "edge-2026.08.1")
 
 	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		&RegisterWritesSummary{}); err != nil {
+		&RegisterWritesSummary{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := sink.last(t)["register_writes"]; ok {
@@ -286,7 +286,7 @@ func TestHeartbeatCarriesTheRegisterWriteAuditOnlyWhenThereIsOne(t *testing.T) {
 				Register: "0x00e7", Before: &before, Requested: 7000, After: &after,
 				Result: "applied", Source: "wartungszugang",
 			}},
-		}); err != nil {
+		}, nil); err != nil {
 		t.Fatal(err)
 	}
 	got := sink.last(t)

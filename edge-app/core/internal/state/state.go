@@ -600,6 +600,28 @@ type OcppInfo struct {
 	Chargers []OcppCharger `json:"chargers"`
 }
 
+// HasReportedChargePoint reports whether at least one REGISTERED charge point
+// has ever spoken to this box. It is the charge-point half of the
+// commissioning gate (Lastmanagement Stufe 3, concept §5.1: a Ladepark box has
+// no inverter, so the gate must ask "does SOME component deliver data").
+//
+// ⚠ It keys on "has ever been seen", not on the live socket: a station that
+// flaps must not re-lock a commissioning step that was already passed, and a
+// BootNotification IS the connection proof for a charge point. It lives HERE,
+// on the snapshot, so the web gate and the heartbeat cannot drift into two
+// answers to one question.
+func (s Snapshot) HasReportedChargePoint() bool {
+	if s.Ocpp == nil {
+		return false
+	}
+	for _, c := range s.Ocpp.Chargers {
+		if c.LastSeenMs > 0 || c.Connected {
+			return true
+		}
+	}
+	return false
+}
+
 // OcppCharger is one charge point for the surface.
 type OcppCharger struct {
 	ID        string `json:"id"`

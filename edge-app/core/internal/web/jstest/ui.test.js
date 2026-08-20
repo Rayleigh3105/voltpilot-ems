@@ -1661,3 +1661,75 @@ test("removing a charge point names what STAYS, not only what goes", () => {
   assert.match(msg, /Sicherheitsprofil/);
   assert.match(msg, /nicht beendet/);
 });
+
+/* ====== commissioning.js: der Ladepark hat keinen Wechselrichter ====== */
+
+test("commissioning: eine Anlage NUR aus Ladepunkten wird trotzdem geführt", () => {
+  // Vor Stufe 3 hing Schritt 1 am Wechselrichter — eine Ladepark-Box wäre für
+  // immer auf "Noch kein Wechselrichter ausgewählt" stehen geblieben, obwohl
+  // ihre tragende Komponente längst Autos lädt.
+  const res = stepsFor({
+    pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
+    inverter: null, claim_unlocked: true, charge_point_connected: true,
+    ocpp: {
+      chargers: [
+        { id: "saeule-1", connected: true, last_seen_ms: NOW,
+          connectors: [{ id: 1, power_kw: 41 }, { id: 2 }] },
+        { id: "saeule-2", connected: true, last_seen_ms: NOW, connectors: [{ id: 1 }] }
+      ]
+    }
+  });
+  const [one, , portal, mess] = res.steps;
+  assert.strictEqual(one.title, "Ladepunkt verbinden");
+  assert.strictEqual(one.state, "done");
+  assert.match(one.detail, /2 Ladesäulen/);
+  assert.strictEqual(one.action.href, "#ladepunkte");
+  // Der Portal-Schritt ist der offene, nicht Schritt 1.
+  assert.strictEqual(portal.state, "active");
+  assert.strictEqual(res.activeNum, 3);
+  // Messwerte kommen aus den Säulen — `last_telemetry` bliebe hier für immer
+  // leer, und "noch keine Messwerte" wäre die falscheste aller Aussagen.
+  assert.strictEqual(mess.state, "done");
+  assert.match(mess.detail, /Ladesäulen/);
+});
+
+test("commissioning: eine eingetragene, aber stumme Säule ist NICHT verbunden", () => {
+  const res = stepsFor({
+    pairing_state: "warte_auf_beanspruchung", inverter: null,
+    claim_unlocked: false, charge_point_connected: false,
+    ocpp: { chargers: [{ id: "saeule-1", connectors: [] }] }
+  });
+  const [one, , portal, mess] = res.steps;
+  assert.strictEqual(one.title, "Ladepunkt verbinden");
+  assert.strictEqual(one.state, "active");
+  // Der Grund NENNT den Weg: die Säule wählt uns an, nicht umgekehrt.
+  assert.match(one.cause, /wählt dieses Gerät selbst an/);
+  assert.strictEqual(portal.state, "todo");
+  assert.match(portal.cause, /Ladesäule/);
+  assert.strictEqual(mess.state, "todo");
+});
+
+test("commissioning: ohne Ladepunkte ändert sich KEIN Wort", () => {
+  // Der Wächter gegen eine schleichende Verschlechterung jeder Bestandsbox:
+  // dieselbe Eingabe wie oben, nur ohne ocpp-Block.
+  const base = {
+    pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
+    inverter: { configured: true, label: "Deye" }, inverter_link: "up",
+    last_telemetry: iso(6), claim_unlocked: true
+  };
+  // JSON-Rundlauf: `load()` baut je Aufruf einen eigenen vm-Realm, dessen
+  // Objekt-Prototypen deepStrictEqual sonst auseinanderhält (die dokumentierte
+  // vm-Realm-Falle des Hauses).
+  const plain = JSON.parse(JSON.stringify(stepsFor(base, 2).steps));
+  const withEmptyOcpp = JSON.parse(JSON.stringify(stepsFor({ ...base, ocpp: { chargers: [] } }, 2).steps));
+  assert.deepStrictEqual(withEmptyOcpp, plain);
+  assert.strictEqual(plain[0].title, "Wechselrichter verbinden");
+  // Und eine Anlage MIT Wechselrichter, die zusätzlich eine Säule hat, bleibt
+  // eine Wechselrichter-Anlage: Schritt 1 spricht weiter von ihm.
+  const both = stepsFor({
+    ...base,
+    ocpp: { chargers: [{ id: "s1", connected: true, last_seen_ms: NOW }] },
+    charge_point_connected: true
+  }, 2);
+  assert.strictEqual(both.steps[0].title, "Wechselrichter verbinden");
+});

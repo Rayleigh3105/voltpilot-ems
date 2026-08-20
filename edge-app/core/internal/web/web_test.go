@@ -700,25 +700,24 @@ func TestStateExposesBufferDataLoss(t *testing.T) {
 	}
 }
 
+// gateBody is the onboarding-gate half of /api/state.
+type gateBody struct {
+	Ref                  string `json:"ref"`
+	OnboardingStep       string `json:"onboarding_step"`
+	InverterConnected    bool   `json:"inverter_connected"`
+	ChargePointConnected bool   `json:"charge_point_connected"`
+	ClaimUnlocked        bool   `json:"claim_unlocked"`
+}
+
 // getState fetches /api/state and decodes the onboarding-gate fields.
-func getState(t *testing.T, srv *httptest.Server) struct {
-	Ref               string `json:"ref"`
-	OnboardingStep    string `json:"onboarding_step"`
-	InverterConnected bool   `json:"inverter_connected"`
-	ClaimUnlocked     bool   `json:"claim_unlocked"`
-} {
+func getState(t *testing.T, srv *httptest.Server) gateBody {
 	t.Helper()
 	resp, err := http.Get(srv.URL + "/api/state")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var body struct {
-		Ref               string `json:"ref"`
-		OnboardingStep    string `json:"onboarding_step"`
-		InverterConnected bool   `json:"inverter_connected"`
-		ClaimUnlocked     bool   `json:"claim_unlocked"`
-	}
+	var body gateBody
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
@@ -3902,5 +3901,76 @@ func TestTheLadepunktSurfaceIsServed(t *testing.T) {
 	}
 	if js := get("/ocpp.js"); !strings.Contains(js, "VPOcpp") {
 		t.Fatal("ocpp.js is not served")
+	}
+}
+
+// A LADEPARK box has no inverter at all, and before Lastmanagement Stufe 3 the
+// commissioning gate keyed on one alone - so a plant made of charge points plus
+// a grid meter could never reveal its reference and could never be claimed.
+// The gate now asks "does SOME component deliver data": a REGISTERED charge
+// point that has reported itself opens it, and nothing else changes.
+func TestOnboardingGateOpensForACharginParkWithoutAnInverter(t *testing.T) {
+	st := state.New("edge-ladepark", "test")
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
+	defer srv.Close()
+
+	// (a) A registered station that has NEVER spoken keeps the gate shut - a
+	// name on an allowlist is not a component that delivers data.
+	st.Update(func(s *state.Snapshot) {
+		s.Ocpp = &state.OcppInfo{Enabled: true, Listening: true,
+			Chargers: []state.OcppCharger{{ID: "saeule-1"}}}
+	})
+	b := getState(t, srv)
+	if b.ChargePointConnected || b.ClaimUnlocked || b.OnboardingStep != "inverter" {
+		t.Fatalf("a never-seen station must not open the gate: %+v", b)
+	}
+	if b.Ref != "" {
+		t.Fatalf("reference must stay withheld, got %q", b.Ref)
+	}
+
+	// (b) The station reports itself -> the gate opens, WITHOUT ever claiming
+	// an inverter is connected.
+	st.Update(func(s *state.Snapshot) {
+		s.Ocpp.Chargers[0].LastSeenMs = time.Now().UnixMilli()
+		s.Ocpp.Chargers[0].Connected = true
+	})
+	b = getState(t, srv)
+	if !b.ChargePointConnected || !b.ClaimUnlocked || b.OnboardingStep != "claim" {
+		t.Fatalf("a reporting station must open the gate: %+v", b)
+	}
+	if b.InverterConnected {
+		t.Fatal("there is no inverter on this plant - the gate must not claim one")
+	}
+	if b.Ref != "edge-ladepark" {
+		t.Fatalf("reference must be revealed once unlocked, got %q", b.Ref)
+	}
+
+	// (c) The station drops off the websocket. The gate stays OPEN: a step that
+	// was passed must not re-lock because a socket flapped.
+	st.Update(func(s *state.Snapshot) { s.Ocpp.Chargers[0].Connected = false })
+	b = getState(t, srv)
+	if !b.ChargePointConnected || !b.ClaimUnlocked {
+		t.Fatalf("a flapping socket must not re-lock the gate: %+v", b)
+	}
+}
+
+// A plant with an inverter is BYTE-IDENTICAL to before the generalisation: the
+// charge-point signal is false, and a box with neither component stays locked.
+func TestTheGateGeneralisationChangesNothingWithoutChargePoints(t *testing.T) {
+	st := state.New("edge-classic", "test")
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
+	defer srv.Close()
+
+	b := getState(t, srv)
+	if b.ChargePointConnected || b.ClaimUnlocked || b.OnboardingStep != "inverter" {
+		t.Fatalf("empty box: %+v", b)
+	}
+	st.Update(func(s *state.Snapshot) {
+		s.Inverter = configuredInverter()
+		s.LastTelemetry = time.Now().UTC()
+	})
+	b = getState(t, srv)
+	if !b.InverterConnected || b.ChargePointConnected || b.OnboardingStep != "claim" {
+		t.Fatalf("inverter plant: %+v", b)
 	}
 }
