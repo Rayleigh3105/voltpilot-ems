@@ -4,6 +4,8 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
   type CommandHistory,
+  type DeviceExportLimit,
+  type RegisterKnowledgeFamily,
   type RegisterWriteEvent,
   type RegisterWriteTarget,
   type ControlStatus,
@@ -31,6 +33,11 @@ import { unclaimConsequences } from '../components/DeviceDrawers';
 import { DangerZone } from '../components/DangerZone';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, befehleGeraetHash, geraetSeiteHash, hashForRoute } from '../nav';
+import {
+  QUELLE_WORT,
+  registerSicht,
+} from '../geraetRegister';
+import { klasseTon, klasseWort } from '../registerWrite';
 import {
   EXPERTE_INTRO,
   geraeteVerlauf,
@@ -95,6 +102,12 @@ export function GeraetSeiteSection({
   /** Nach einem Unclaim: die Schale lädt neu und verlässt die Seite. */
   onDeviceRemoved?: () => void;
 }) {
+  // Die BOX dieser Adresse - der Schlüssel, unter dem jedes Journal dieses
+  // Geräts liegt (geschrieben wird immer über sie). Früh abgeleitet, weil die
+  // Abrufe sie brauchen.
+  const boxDevice = (devices ?? []).find(
+    (d) => d.siteId === site.id && d.externalRef === geraeteRef,
+  );
   const [data, setData] = useState<SiteEntities | null>(null);
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
@@ -106,6 +119,8 @@ export function GeraetSeiteSection({
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]> | null>(null);
   const [commands, setCommands] = useState<CommandHistory | null>(null);
   const [targets, setTargets] = useState<RegisterWriteTarget[] | null>(null);
+  const [writes, setWrites] = useState<RegisterWriteEvent[] | null>(null);
+  const [knowledge, setKnowledge] = useState<RegisterKnowledgeFamily[] | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -152,6 +167,11 @@ export function GeraetSeiteSection({
     // sagen, der in einem der beiden Fälle falsch ist. Ein Fehlschlag ist hier
     // eine LEERE Ziel-Liste - dann sagt sie ehrlich, dass kein Schreibweg
     // bekannt ist.
+    // Sektion D: die gelesenen Register kommen AUS DEM BESTAND - das Journal
+    // trägt die einzigen Rohwörter, die es heute gibt, das Register-Wissen den
+    // Namen (nie einen ohne bekannte Familie).
+    soft(api.registerWriteHistory(site.id, boxDevice?.id), setWrites);
+    soft(api.registerKnowledge(site.id), setKnowledge);
     void api.registerWriteTargets(site.id).then(
       (rows) => {
         if (active) setTargets(rows);
@@ -164,7 +184,7 @@ export function GeraetSeiteSection({
     return () => {
       active = false;
     };
-  }, [site.id, geraeteRef, geraetId, reloadKey]);
+  }, [site.id, geraeteRef, geraetId, boxDevice?.id, reloadKey]);
 
   // Der stille Takt: Zustand UND Bezugszeit werden ZUSAMMEN gesetzt, ein
   // Fehlschlag lässt beides unberührt (die `liveness.ts`-Lehre).
@@ -213,7 +233,7 @@ export function GeraetSeiteSection({
     sources, components, control, curtailment, edgeVersions, charging, strategies, model, now,
   ]);
 
-  const box = (devices ?? []).find((d) => d.siteId === site.id && d.externalRef === geraeteRef);
+  const box = boxDevice;
 
   return (
     <div className="vp-geraet">
@@ -323,6 +343,21 @@ export function GeraetSeiteSection({
               </Sektion>
             )}
 
+            <GeleseneRegisterSektion
+              art={view.art}
+              exportLimit={view.art === 'hauptgeraet'
+                ? curtailment?.deviceExportLimit ?? null
+                : null}
+              writes={writes}
+              source={(sources ?? []).find((s) => s.sourceId === geraetId) ?? null}
+              familie={(targets ?? []).find((t) => (geraetId
+                ? t.entityId != null && view.komponenten.some((c) => c.entityId === t.entityId)
+                : t.lane === 'primary'))?.family ?? null}
+              knowledge={knowledge}
+              entityIds={view.komponenten.map((c) => c.entityId)}
+              now={now}
+            />
+
             <RegisterSektion
               siteId={site.id}
               boxDeviceId={box?.id ?? null}
@@ -365,6 +400,86 @@ export function GeraetSeiteSection({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * D · Gelesene Register (Anlagen-Zentrale Stufe 1, Konzept §7.3).
+ *
+ * <p>Sie zeigt, was die Box von DIESEM Gerät liest - roh und dekodiert, jeder
+ * Wert mit seiner Frische. **Die Zeilen entstehen aus dem BESTAND** (Journal,
+ * Einspeisegrenze, laufende Messungen); jede Ehrlichkeitsregel steckt in der
+ * reinen `geraetRegister.ts`, hier wird nur gerendert.
+ */
+function GeleseneRegisterSektion({
+  art,
+  exportLimit,
+  writes,
+  source,
+  familie,
+  knowledge,
+  entityIds,
+  now,
+}: {
+  art: string;
+  exportLimit: DeviceExportLimit | null;
+  writes: RegisterWriteEvent[] | null;
+  source: SiteSource | null;
+  familie: string | null;
+  knowledge: RegisterKnowledgeFamily[] | null;
+  entityIds: string[];
+  now: number;
+}) {
+  const sicht = registerSicht({
+    art,
+    exportLimit,
+    // Dieselbe Grenze wie beim Kommando-Verlauf: die Box hat jeden Vorgang,
+    // ein Gerät dahinter nur die seiner Komponenten.
+    writes: geraeteVerlauf(writes ?? [], { box: art === 'box', entityIds }),
+    source,
+    familie,
+    knowledge,
+    now,
+  });
+  return (
+    <Sektion titel="Gelesene Register" icon="list" breit>
+      {sicht.zeilen.length > 0 && (
+        <table className="vp-table responsive vp-geraet-register">
+          <thead>
+            <tr>
+              <th>Register</th>
+              <th>Bedeutung</th>
+              <th>Roh</th>
+              <th>Dekodiert</th>
+              <th>Gelesen</th>
+              <th>Quelle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sicht.zeilen.map((z) => (
+              <tr key={z.key}>
+                <td data-label="Register">{z.register ?? NO_DATA}</td>
+                <td data-label="Bedeutung">
+                  {z.bedeutung}
+                  {/* Die Warnklasse trägt ihr WORT, nie nur eine Farbe. */}
+                  {klasseWort(z.klasse) && (
+                    <span className={`vp-regklasse is-${klasseTon(z.klasse)}`}>
+                      {klasseWort(z.klasse)}
+                    </span>
+                  )}
+                </td>
+                <td data-label="Roh">{z.roh}</td>
+                <td data-label="Dekodiert">{z.dekodiert}</td>
+                <td data-label="Gelesen">{z.gelesen}</td>
+                <td data-label="Quelle">{QUELLE_WORT[z.quelle]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {sicht.leer && <p className="vp-note">{sicht.leer}</p>}
+      {sicht.hinweis && <p className="vp-note">{sicht.hinweis}</p>}
+    </Sektion>
   );
 }
 
