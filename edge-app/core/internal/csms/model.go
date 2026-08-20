@@ -269,6 +269,43 @@ func (c ChargerState) ActiveConnectors() []Connector {
 	return out
 }
 
+// ChargingTotal is the power the site's charge points are MEASURED drawing
+// right now, plus whether that number is COMPLETE.
+//
+// It exists for the Stufe-2 dynamic budget, whose control law subtracts exactly
+// this from the measured grid power (internal/lastmgmt/budget.go). Two rules,
+// and both of them are load-bearing there:
+//
+//   - Only CONNECTED stations count. A station we cannot reach is holding its
+//     own safe default and its cars may be taking it — but that draw is already
+//     inside the measured grid power, and NOT adding it back is what makes it
+//     count as building load. Conservative, and stable.
+//   - A connector that claims budget but reports no FRESH measurement makes the
+//     whole number INCOMPLETE. Guessing its draw (or calling it zero) is what
+//     turns the budget loop into an oscillator; the caller's staged fallback is
+//     stable and honest instead.
+//
+// A negative measured power is clamped to 0 — a charge point does not export,
+// and letting a bogus negative INFLATE the add-back would loosen the budget.
+func (s Snapshot) ChargingTotal(now time.Time, maxAge time.Duration) (kw float64, complete bool) {
+	complete = true
+	for _, c := range s.Chargers {
+		if !c.Connected {
+			continue
+		}
+		for _, con := range c.ActiveConnectors() {
+			if con.PowerKw == nil || con.MeteredAt.IsZero() || now.Sub(con.MeteredAt) > maxAge {
+				complete = false
+				continue
+			}
+			if p := *con.PowerKw; p > 0 {
+				kw += p
+			}
+		}
+	}
+	return kw, complete
+}
+
 // ChargerByID returns the state of one charge point, or false.
 func (s Snapshot) ChargerByID(id string) (ChargerState, bool) {
 	for _, c := range s.Chargers {

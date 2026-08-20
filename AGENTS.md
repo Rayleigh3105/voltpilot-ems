@@ -2662,7 +2662,7 @@ Migration:** die drei Ursachen liegen seit je in der Persistenz (`slot_flags` mi
   sonst fällt sein Fall stillschweigend auf die Beobachtung zurück (was ehrlich, aber
   weniger hilfreich ist). Portal-Details in `frontend/portal/AGENTS.md`.
 
-## OCPP-Lastmanagement (Ladepunkte): Stufe 0+1 „MVP statisch"
+## OCPP-Lastmanagement (Ladepunkte): Stufe 0-2
 
 Die Box ist das **Central System**, das die Ladesäulen anwählen — die
 Anschlussgrenze ist eine PHYSISCHE Grenze, ihr Wächter darf nicht am WAN
@@ -2694,12 +2694,19 @@ was jede Session wissen muss:
   ausschließlich `limit_kw`, Status ehrlich `simulator_only` — der Flip auf
   zertifiziert braucht EINE beaufsichtigte Bench-Session je Säulen-TYP
   (CONTROL-BENCH.md, die Deye-/go-e-Disziplin).
+- **Stufe 2 — das Budget FOLGT dem gemessenen Netzanschluss**
+  (`internal/lastmgmt/budget.go`, der Import-Zwilling von
+  `guards/exportlimit.go`): `budget = planbar − (gemessener Netzbezug −
+  gemessene Ladeleistung)`, §14a most-restrictive-wins. **Die gemessene
+  Ladeleistung MUSS zurückaddiert werden, sonst schwingt die Schleife**, und
+  eine unvollständige Messung ist keine Messung. Die Fail-Safe-Kette ist die
+  UMKEHRUNG jedes ökonomischen Guards (halten → zusammenziehen → sicheres
+  Budget, nie freigeben); **ohne Messung ist alles byte-gleich Stufe 1**.
 - **Beweis:** `edge-app/test/e2e-ocpp.sh` (L1–L5, **Docker-frei**) misst an den
   simulierten Zählerwerten, nie an Quittungen. Der MVP ist damit
   simulator-bewiesen — eine echte Säule braucht die Bench-Session.
-- **NICHT gebaut:** dynamisches Budget am gemessenen Netzbezug (Stufe 2),
-  Cloud-Sichtbarkeit/Portal/Betriebsprofil (Stufe 3), PV-Überschuss +
-  Optimierer-Kopplung (Stufe 4).
+- **NICHT gebaut:** Cloud-Sichtbarkeit/Portal/Betriebsprofil (Stufe 3),
+  PV-Überschuss + Optimierer-Kopplung (Stufe 4).
 
 ## Maintaining this file
 

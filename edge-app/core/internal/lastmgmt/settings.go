@@ -42,6 +42,9 @@ type SettingsRequest struct {
 	MinPowerKw      *float64 `json:"min_power_kw,omitempty"`
 	RotationMinutes *int     `json:"rotation_minutes,omitempty"`
 	MaxHouseLoadKw  *float64 `json:"max_house_load_kw,omitempty"`
+	// StaticBudget switches the dynamic (measured) budget off for this site —
+	// see Settings.StaticBudget.
+	StaticBudget *bool `json:"static_budget,omitempty"`
 }
 
 // storedSettings is the on-disk shape. RotationPeriod is persisted in minutes
@@ -54,6 +57,10 @@ type storedSettings struct {
 	MinPowerKw      float64 `json:"min_power_kw"`
 	RotationMinutes int     `json:"rotation_minutes"`
 	MaxHouseLoadKw  float64 `json:"max_house_load_kw"`
+	// StaticBudget is written only when it is set: an absent field is the
+	// intended default (use the measurement when there is one), so an older
+	// file and a fresh box read the same way.
+	StaticBudget bool `json:"static_budget,omitempty"`
 }
 
 // SchemaVersion of lastmgmt.json.
@@ -68,6 +75,7 @@ func (s Settings) stored() storedSettings {
 		MinPowerKw:      s.MinPowerKw,
 		RotationMinutes: int(s.RotationPeriod / time.Minute),
 		MaxHouseLoadKw:  s.MaxHouseLoadKw,
+		StaticBudget:    s.StaticBudget,
 	}
 }
 
@@ -79,6 +87,7 @@ func (st storedSettings) settings() Settings {
 		MinPowerKw:     st.MinPowerKw,
 		RotationPeriod: time.Duration(st.RotationMinutes) * time.Minute,
 		MaxHouseLoadKw: st.MaxHouseLoadKw,
+		StaticBudget:   st.StaticBudget,
 	}.WithDefaults()
 }
 
@@ -131,6 +140,9 @@ func (s Settings) Apply(req SettingsRequest) (Settings, error) {
 			return s, invalid("Die höchste bekannte Gebäudelast muss zwischen 0 und %g kW liegen.", float64(maxGridLimitKw))
 		}
 		out.MaxHouseLoadKw = v
+	}
+	if req.StaticBudget != nil {
+		out.StaticBudget = *req.StaticBudget
 	}
 	out = out.WithDefaults()
 	if out.HouseReserveKw > out.GridLimitKw && out.GridLimitKw > 0 {
