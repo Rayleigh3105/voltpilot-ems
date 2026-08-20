@@ -597,10 +597,19 @@
               <span class="field-help">Nur für das Sicherheitsprofil: es muss auch dann
                 halten, wenn alle Stecker gleichzeitig darauf zurückfallen.</span>
             </label>
+            <label class="mirror-toggle-row" for="ocppStaticBudget">
+              <input type="checkbox" id="ocppStaticBudget">
+              <span>Festes Ladebudget: die Messung am Netzanschluss nicht verwenden.
+                Normalerweise folgt das Ladebudget dem gemessenen Netzanschluss - was
+                das Gebäude gerade nicht braucht, dürfen die Fahrzeuge laden; ohne
+                Messung gilt ohnehin die oben reservierte Leistung.</span>
+            </label>
             <p class="form-error" id="ocppSettingsError" hidden></p>
             <button type="submit" class="btn">Speichern</button>
           </form>
           <p class="set-desc">Ladebudget: <strong id="ocppBudget">–</strong></p>
+          <p class="set-desc" id="ocppBudgetSource" hidden><span class="row-dot off" id="ocppBudgetDot"></span>
+            <span id="ocppBudgetSourceText"></span></p>
           <p class="set-desc" id="ocppFailsafe"></p>
         </section>
       </div>

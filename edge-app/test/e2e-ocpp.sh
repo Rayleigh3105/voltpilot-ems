@@ -14,6 +14,8 @@
 #   L4  der KERN STIRBT -> das Profil läuft ab -> die Säulen fallen von SELBST
 #       auf ihr Sicherheitsprofil zurück (der Totmann)
 #   L5  Budget < n × Mindestleistung -> pausieren + Rotation statt aushungern
+#   L6  (Stufe 2) das Budget FOLGT dem gemessenen Netzanschluss - und bei
+#       Messausfall wird gehalten und zusammengezogen, nie freigegeben
 #
 # Bewusst OHNE Docker: alles hier läuft als Prozess, also ist das Rig auf jedem
 # Rechner mit Go reproduzierbar und braucht kein gebautes Image.
@@ -25,6 +27,7 @@ cd "$(dirname "$0")/.."
 
 WORK="$(mktemp -d)"
 CORE_PID=""
+NETZ_PID=""
 declare -a SIM_PIDS=()
 
 # Hohe, unwahrscheinliche Ports: das Rig darf einen laufenden Stack nie stören.
@@ -34,12 +37,14 @@ OCPP_PORT=28587
 S1_STATUS=127.0.0.1:28591
 S2_STATUS=127.0.0.1:28592
 S3_STATUS=127.0.0.1:28593
+NETZ_STATUS=127.0.0.1:28594
 
 BOX="http://127.0.0.1:${WEB_PORT}"
 
 cleanup() {
   echo "--- cleanup"
   for pid in "${SIM_PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
+  [ -n "$NETZ_PID" ] && kill "$NETZ_PID" 2>/dev/null || true
   [ -n "$CORE_PID" ] && kill "$CORE_PID" 2>/dev/null || true
   wait 2>/dev/null || true
   rm -rf "$WORK"
@@ -86,6 +91,18 @@ charging_count() {
   echo "$n"
 }
 
+# site_near <soll> <toleranz> - zieht der ganze Standort ungefaehr so viel?
+site_near() { nearly "$(site_kw)" "$1" "$2"; }
+
+# ocpp_json - NUR der ocpp-Block der Antwort.
+#
+# ⚠ Seit Stufe 2 traegt die Antwort ZWEI Felder namens budget_kw: das LEBENDE
+# Budget im ocpp-Block und das, was die Einstellungen allein ergaeben. Ein
+# blosses grep haenge damit am Zufall der Feld-Reihenfolge.
+ocpp_json()   { curl -sf "${BOX}/api/ocpp" | sed -e 's/.*"ocpp":{//' -e 's/,"settings":{.*//'; }
+budget_kw()   { ocpp_json | sed -n 's/.*"budget_kw":\([0-9.]*\).*/\1/p' | head -1; }
+budget_mode() { ocpp_json | sed -n 's/.*"budget_mode":"\([a-z_]*\)".*/\1/p' | head -1; }
+
 waitfor() { # waitfor <sekunden> <beschreibung> <kommando...>
   local secs="$1" what="$2"; shift 2
   local deadline=$(( $(date +%s) + secs ))
@@ -100,6 +117,7 @@ echo "=== OCPP-Lastmanagement-Rig ==="
 echo "--- bauen"
 ( cd core && go build -o "$WORK/vp-edge-core" ./cmd/vp-edge-core )
 ( cd core && go build -o "$WORK/vp-ocpp-sim" ./cmd/vp-ocpp-sim )
+( cd core && go build -o "$WORK/vp-netz-sim" ./cmd/vp-netz-sim )
 
 echo "--- Kern starten (Ladepunkte AN, Steuerung freigegeben)"
 mkdir -p "$WORK/data"
@@ -124,7 +142,7 @@ echo "--- Standort einrichten (das Szenario der abgenommenen Mockups)"
 curl -sf -X POST "${BOX}/api/ocpp/settings" -H 'Content-Type: application/json' \
   -d '{"grid_limit_kw":277,"house_reserve_kw":167,"margin_pct":10,"min_power_kw":30,"rotation_minutes":15,"max_house_load_kw":180}' >/dev/null \
   || fail "Standort-Einstellungen abgelehnt"
-BUDGET=$(curl -sf "${BOX}/api/ocpp" | sed -n 's/.*"budget_kw":\([0-9.]*\).*/\1/p' | head -1)
+BUDGET=$(budget_kw)
 nearly "$BUDGET" 82.3 0.05 || fail "Budget ist $BUDGET kW, erwartet 82,3 kW"
 pass "Budget 82,3 kW (der Sicherheitsabstand kommt von der Anschlussgrenze, dann erst das Gebäude)"
 
@@ -208,6 +226,64 @@ TOTAL=$(site_kw)
 nearly "$TOTAL" 82.3 0.5 || fail "L3: nach dem Abstecken zieht der Standort $TOTAL kW, erwartet 82,3"
 pass "L3: die freigewordene Leistung ist wieder verteilt, niemand wartet mehr (Standort $TOTAL kW)"
 
+# ---------------------------------------------------------------- L6
+echo "--- L6: das Budget folgt dem GEMESSENEN Netzanschluss (Stufe 2)"
+# Der simulierte Netz-Zaehler meldet den VERKNUEPFUNGSPUNKT: Gebaeudelast PLUS
+# das, was die Saeulen gerade ziehen (er LIEST ihren Zug, wie ein echter Zaehler
+# ihn sieht) - auf demselben lokalen Bus, ueber den eine Layer-1-Verdrahtung
+# einen Netz-Zaehler meldet. Es gibt also keinen Test-Hebel, nur den echten Weg.
+"$WORK/vp-netz-sim" --bus "127.0.0.1:${BUS_PORT}" --status "$NETZ_STATUS" \
+  --house 20 --charger "http://${S1_STATUS}/status" --charger "http://${S2_STATUS}/status" \
+  >"$WORK/netz.log" 2>&1 &
+NETZ_PID=$!
+waitfor 20 "der Netz-Zaehler meldet sich" curl -sf "http://${NETZ_STATUS}/status"
+
+# 249,3 kW planbar - 20 kW uebriger Standortbezug = 229,3 kW Ladebudget.
+l6_measured() { [ "$(budget_mode)" = "gemessen" ] && nearly "$(budget_kw)" 229.3 0.6; }
+waitfor 90 "das Budget folgt der Messung" l6_measured
+waitfor 90 "die Fahrzeuge haben die freie Leistung uebernommen" site_near 229.3 1.0
+TOTAL=$(site_kw)
+nearly "$TOTAL" 229.3 1.0 || fail "L6: der Standort zieht $TOTAL kW, erwartet 229,3"
+pass "L6a: die gemessenen 20 kW Gebaeudelast ersetzen die gepflegten 167 kW - $TOTAL kW statt 82,3 kW"
+
+# Eine Maschine im Gebaeude geht an: 100 kW. 249,3 - 100 = 149,3 kW.
+curl -sf -X POST "http://${NETZ_STATUS}/set?house=100" >/dev/null
+l6_step() { nearly "$(budget_kw)" 149.3 0.6; }
+waitfor 90 "das Budget zieht sich zusammen" l6_step
+waitfor 90 "die Fahrzeuge sind heruntergeregelt" site_near 149.3 1.0
+TOTAL=$(site_kw)
+nearly "$TOTAL" 149.3 1.0 || fail "L6: nach dem Lastsprung zieht der Standort $TOTAL kW, erwartet 149,3"
+# Und der Anschluss haelt: Gebaeude + Laden bleibt unter der planbaren Leistung.
+SITE=$(awk -v c="$TOTAL" 'BEGIN{print 100+c}')
+awk -v s="$SITE" 'BEGIN{exit (s<=249.9)?0:1}' \
+  || fail "L6: der Verknuepfungspunkt traegt $SITE kW - ueber den planbaren 249,3 kW"
+pass "L6b: Lastsprung im Gebaeude -> Budget $TOTAL kW, Verknuepfungspunkt $SITE kW unter 249,3"
+
+# Der Zaehler faellt aus. BLIND HEISST NIE UNBEGRENZT: das Budget wird
+# GEHALTEN, nicht auf die 229,3 kW von vorhin freigegeben.
+kill "$NETZ_PID"; wait "$NETZ_PID" 2>/dev/null || true; NETZ_PID=""
+sleep 45   # laenger als das Frische-Fenster (30 s)
+MODE=$(budget_mode); HELD=$(budget_kw)
+[ "$MODE" = "haelt" ] || fail "L6: nach dem Messausfall ist der Modus '$MODE', erwartet 'haelt'"
+nearly "$HELD" 149.3 0.6 || fail "L6: das Budget wurde auf $HELD kW freigegeben statt gehalten"
+pass "L6c: Messausfall -> das Budget wird bei $HELD kW GEHALTEN, nicht freigegeben"
+
+# Und wenn das Halten nicht mehr vertretbar ist, wird auf das SICHERE Budget
+# zusammengezogen (249,3 - hoechste bekannte Gebaeudelast 180 = 69,3 kW).
+# Geprueft wird die BEWEGUNG, nicht ein Schwellwert: zwei Messungen, und die
+# zweite muss spuerbar tiefer liegen - ein Schwellwert waere schon eine Sekunde
+# nach Beginn der Kontraktion erfuellt und wuerde nichts beweisen.
+l6_contracting() { [ "$(budget_mode)" = "zieht_zusammen" ]; }
+waitfor 180 "das Budget beginnt sich zusammenzuziehen" l6_contracting
+FROM=$(budget_kw)
+sleep 25
+TO=$(budget_kw)
+awk -v a="$FROM" -v b="$TO" 'BEGIN{exit (b<a-3)?0:1}' \
+  || fail "L6: das Budget bewegt sich nicht ($FROM -> $TO kW)"
+awk -v b="$TO" 'BEGIN{exit (b>=69.2)?0:1}' \
+  || fail "L6: das Budget ist unter das sichere Budget gefallen ($TO kW < 69,3)"
+pass "L6d: ohne Messung wird zusammengezogen ($FROM -> $TO kW, Ziel 69,3) - nie freigegeben"
+
 # ---------------------------------------------------------------- L4
 echo "--- L4: der Totmann - die Box stirbt"
 S1_BEFORE=$(drawn $S1_STATUS 1)
@@ -229,4 +305,4 @@ awk -v d="$S1_AFTER" 'BEGIN{exit (d>1)?0:1}' || fail "L4: die Säule hat aufgeh�
 pass "L4: die Box ist tot, die Säule begrenzt sich SELBST auf 24,25 kW - und lädt weiter"
 
 echo
-echo "== Rig OK: L1 · L2 · L3 · L4 · L5 =="
+echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L4 =="

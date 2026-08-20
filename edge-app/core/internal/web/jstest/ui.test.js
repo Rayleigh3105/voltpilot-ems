@@ -1619,6 +1619,39 @@ test("the second gate is visible: a refusal nobody can see is a riddle", () => {
   assert.notStrictEqual(O.controlNote({ enabled: true, listening: true, control_enabled: false }), "");
 });
 
+test("the budget names WHERE it came from - and never re-words the box's verdict", () => {
+  const O = ocppMod();
+  // ⚠ The sentence is written ONCE, in the box (lastmgmt/budget.go), and
+  // travels verbatim: two renderings of the same verdict must not be able to
+  // word it differently, and only the box knows the numbers behind it.
+  const note = "Das Ladebudget folgt der Messung am Netzanschluss: 249,3 kW planbar − 20,0 kW übriger Standortbezug = 229,3 kW.";
+  assert.strictEqual(
+    O.budgetSourceLine({ enabled: true, listening: true, budget_mode: "gemessen", budget_note: note }),
+    note);
+  // Nothing to say -> nothing said.
+  assert.strictEqual(O.budgetSourceLine({ enabled: true, listening: true, budget_mode: "statisch" }), "");
+  assert.strictEqual(O.budgetSourceLine({ enabled: true, listening: false, budget_note: note }), "");
+  assert.strictEqual(O.budgetSourceLine({ enabled: false, budget_note: note }), "");
+  assert.strictEqual(O.budgetSourceLine(null), "");
+});
+
+test("a BLIND budget stage reads as a warning even while it still charges", () => {
+  const O = ocppMod();
+  // Measured = the healthy state.
+  assert.strictEqual(O.budgetSourceTone({ enabled: true, budget_mode: "gemessen" }), "ok");
+  // Every blind stage is a warning: the budget is being held or pulled in, and
+  // the operator's lever is the measurement.
+  for (const mode of ["haelt", "zieht_zusammen", "sicherheitsbudget"]) {
+    assert.strictEqual(O.budgetSourceTone({ enabled: true, budget_mode: mode }), "warn", mode);
+  }
+  // Static is honest, not broken - and an unknown word never becomes a
+  // warning we invented.
+  assert.strictEqual(O.budgetSourceTone({ enabled: true, budget_mode: "statisch" }), "off");
+  assert.strictEqual(O.budgetSourceTone({ enabled: true, budget_mode: "irgendwas" }), "off");
+  assert.strictEqual(O.budgetSourceTone({ enabled: false }), "off");
+  assert.strictEqual(O.budgetSourceTone(null), "off");
+});
+
 test("removing a charge point names what STAYS, not only what goes", () => {
   const O = ocppMod();
   const msg = O.removalConsequences("Hof Nord");

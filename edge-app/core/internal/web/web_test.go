@@ -3789,6 +3789,27 @@ func TestOcppSettingsRoundTripThroughTheRoute(t *testing.T) {
 	if got["rotation_minutes"] != float64(15) {
 		t.Fatalf("an untouched field was reset: %+v", got)
 	}
+	// Stufe 2: the dynamic budget is on unless the operator turns it off, and
+	// the switch survives the route in both directions.
+	if got["static_budget"] != false {
+		t.Fatalf("the dynamic budget must be the default: %+v", got["static_budget"])
+	}
+	resp2, err := http.Post(srv.URL+"/api/ocpp/settings", "application/json",
+		strings.NewReader(`{"static_budget":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	var back map[string]any
+	if err := json.NewDecoder(resp2.Body).Decode(&back); err != nil {
+		t.Fatal(err)
+	}
+	if back["static_budget"] != true {
+		t.Fatalf("the operator's switch was dropped: %+v", back)
+	}
+	if b, _ := back["grid_limit_kw"].(float64); b != 277 {
+		t.Fatalf("an untouched field was reset by the switch: %+v", back)
+	}
 }
 
 // TestRemovingAnUnknownChargerIs404 - and a known one really goes.
@@ -3865,13 +3886,16 @@ func TestTheLadepunktSurfaceIsServed(t *testing.T) {
 		// The conditional group: hidden in the served markup, unhidden by
 		// ocpp.js only when the box really accepts charge points.
 		`data-group="ladepunkte" hidden`,
+		// Stufe 2: where the budget came from, and the operator's switch.
+		`id="ocppBudgetSource"`, `id="ocppBudgetSourceText"`, `id="ocppBudgetDot"`,
+		`id="ocppStaticBudget"`,
 	} {
 		if !strings.Contains(setup, want) {
 			t.Fatalf("einrichten.html is missing %s", want)
 		}
 	}
 	op := get("/index.html")
-	for _, want := range []string{`id="ocppOpCard"`, `id="ocppOpBudget"`, `id="ocppOpRows"`, `id="ocppOpIdle"`, `src="ocpp.js"`} {
+	for _, want := range []string{`id="ocppOpCard"`, `id="ocppOpBudget"`, `id="ocppOpSource"`, `id="ocppOpRows"`, `id="ocppOpIdle"`, `src="ocpp.js"`} {
 		if !strings.Contains(op, want) {
 			t.Fatalf("index.html is missing %s", want)
 		}

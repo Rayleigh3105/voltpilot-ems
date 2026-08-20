@@ -2702,9 +2702,11 @@ was jede Session wissen muss:
   eine unvollständige Messung ist keine Messung. Die Fail-Safe-Kette ist die
   UMKEHRUNG jedes ökonomischen Guards (halten → zusammenziehen → sicheres
   Budget, nie freigeben); **ohne Messung ist alles byte-gleich Stufe 1**.
-- **Beweis:** `edge-app/test/e2e-ocpp.sh` (L1–L5, **Docker-frei**) misst an den
-  simulierten Zählerwerten, nie an Quittungen. Der MVP ist damit
-  simulator-bewiesen — eine echte Säule braucht die Bench-Session.
+- **Beweis:** `edge-app/test/e2e-ocpp.sh` (L1–L6, **Docker-frei**) misst an den
+  simulierten Zählerwerten, nie an Quittungen — L6 fährt den dynamischen Fall
+  gegen einen simulierten Netz-Zähler (`cmd/vp-netz-sim`), inklusive Messausfall.
+  Der MVP ist damit simulator-bewiesen — eine echte Säule braucht die
+  Bench-Session.
 - **NICHT gebaut:** Cloud-Sichtbarkeit/Portal/Betriebsprofil (Stufe 3),
   PV-Überschuss + Optimierer-Kopplung (Stufe 4).
 
