@@ -247,6 +247,27 @@ func NewID() string {
 // instead. Labels/intervals/kWp are display/master data and deliberately NOT
 // part of the identity.
 func DeterministicID(s Source) string {
+	sum := sha256.Sum256([]byte(TransportIdentity(s)))
+	id := make([]byte, 8)
+	for i := range id {
+		id[i] = idAlphabet[int(sum[i])%len(idAlphabet)]
+	}
+	return "src-" + string(id)
+}
+
+// TransportIdentity is WHICH PHYSICAL DEVICE a source is: role + communication
+// + address + the per-transport discriminator, rendered as one stable string.
+// DeterministicID is nothing but its hash - the two can therefore never drift,
+// which is why every "is this the same box?" question in this codebase is asked
+// HERE and not by re-listing the fields somewhere else.
+//
+// It exists as its own exported function because a second consumer needs the
+// question WITHOUT the answer: componentapply must recognise a device it
+// already runs in order to KEEP that device's local id (see its Derive), and
+// comparing derived ids alone cannot do that - a plant whose sources were
+// created before the deterministic ids existed carries random ones, and
+// re-minting them is exactly what tears a portal pin apart.
+func TransportIdentity(s Source) string {
 	parts := []string{s.Role, s.Communication, strings.TrimSpace(s.Connection.IP),
 		strconv.Itoa(s.Connection.Port)}
 	switch s.Communication {
@@ -260,12 +281,7 @@ func DeterministicID(s Source) string {
 		// each channel is its own physical measurement point.
 		parts = append(parts, strconv.Itoa(s.Connection.Channel))
 	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
-	id := make([]byte, 8)
-	for i := range id {
-		id[i] = idAlphabet[int(sum[i])%len(idAlphabet)]
-	}
-	return "src-" + string(id)
+	return strings.Join(parts, "\n")
 }
 
 // TopicPrefix is the local-bus namespace additional sources publish their

@@ -29,12 +29,26 @@
 //     portal has not been filled in yet would be exactly the "ein falsches Soll
 //     legt den Lesepfad einer Live-Anlage lahm" risk the concept names.
 //
-//   - IDENTITY IS DERIVED, NEVER INVENTED. A source's id is
+//   - A DEVICE THAT ALREADY RUNS HERE KEEPS ITS IDENTITY. A source id is
 //     sources.DeterministicID over its transport identity - the SAME function
-//     :8484 uses - so a plant whose Ist is taken over as Soll re-derives
-//     byte-identically to what already runs, and the box quits with "no change".
-//     Two drivers with the identical transport identity are an ambiguous Soll and
-//     are refused by name, never silently collapsed.
+//     :8484 uses - BUT only for a device this box does not already run. Whenever
+//     the derived transport identity (sources.TransportIdentity) matches a source
+//     that is configured right now, that source's OWN id is kept, whatever it
+//     looks like. Two drivers with the identical transport identity are an
+//     ambiguous Soll and are refused by name, never silently collapsed.
+//
+//     ⚠ This is the load-bearing half, and it was learned the hard way
+//     (Anlage Pilsting/Herzogau, Update edge-2026.08.5 -> .10): deterministic
+//     ids were introduced WITHOUT migrating the existing ones - deliberately,
+//     because re-minting a live source's id orphans the portal's adoption pin
+//     (measurement_point.edge_source_id). Every plant commissioned before that
+//     therefore carries RANDOM ids to this day. The takeover re-derived them
+//     deterministically, rewrote sources.json, and the very devices that kept
+//     delivering measurements reappeared in the portal as "Neues Gerät gefunden"
+//     while their components read "nicht mehr mit einem gemeldeten Gerät
+//     verbunden". Deriving an id for a device that already HAS one locally is
+//     inventing an identity, not deriving it - so the box now recognises the
+//     device first and only mints an id for one it has never seen.
 package componentapply
 
 import (
@@ -224,9 +238,19 @@ func roleFor(e entities.Entity, d Driver) (string, error) {
 // the cloud's word for what it can read. A model the cloud believes in but this
 // build does not know is a refusal with the catalog's own German message - the
 // honest "diese Box kann das (noch) nicht", never a silently mis-read device.
-func Derive(reg entities.Registry, cat inverter.Catalog, now time.Time) (Plan, error) {
+//
+// `current` is what this box runs RIGHT NOW. It is an input, not decoration:
+// a derived device that is already configured here keeps that configuration's
+// id (see keepLocalIDs and the fourth rule at the top of this file), which is
+// what makes the takeover a no-op on a plant whose ids predate
+// sources.DeterministicID. Pass nil only where there is genuinely nothing
+// running.
+func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Source,
+	now time.Time) (Plan, error) {
 	plan := Plan{Revision: reg.Revision}
-	byID := map[string]string{} // deterministic source id -> entity id that claimed it
+	keep := keepLocalIDs(current)
+	byFingerprint := map[string]string{} // transport identity -> entity id that claimed it
+	taken := map[string]bool{}           // ids already handed out in THIS plan
 	var invEntity string
 
 	// Registry order is the cloud's; sort by entity id so the derived source
@@ -286,13 +310,31 @@ func Derive(reg entities.Registry, cat inverter.Catalog, now time.Time) (Plan, e
 		if err != nil {
 			return Plan{}, fmt.Errorf("Gerät %q: %s", e.ID, message(err))
 		}
-		src.ID = sources.DeterministicID(src)
-		if other, clash := byID[src.ID]; clash {
+		// The clash check keys on the TRANSPORT IDENTITY, not on the final id:
+		// two entities describing the same physical device are ambiguous even
+		// when one of them would inherit a local id.
+		fingerprint := sources.TransportIdentity(src)
+		if other, clash := byFingerprint[fingerprint]; clash {
 			return Plan{}, fmt.Errorf(
 				"zwei Geräte (%q und %q) haben dieselbe Verbindung - so ist nicht entscheidbar, "+
 					"welches gemeint ist", other, e.ID)
 		}
-		byID[src.ID] = e.ID
+		byFingerprint[fingerprint] = e.ID
+		src.ID = sources.DeterministicID(src)
+		if local, ok := keep[fingerprint]; ok && !taken[local] {
+			src.ID = local
+		}
+		// Zwei Geräte dürfen sich NIE eine Kennung teilen (sie teilten sich
+		// sonst einen Messwert-Strom). Erreichbar nur über eine
+		// Hash-Kollision zweier verschiedener Transport-Identitäten - vor
+		// dieser Regel fing das die Kennungs-Kollision oben ab, deshalb bleibt
+		// die Ablehnung hier stehen statt still zu verschwinden.
+		if taken[src.ID] {
+			return Plan{}, fmt.Errorf(
+				"zwei Geräte teilen sich die Kennung %q - so ist nicht entscheidbar, "+
+					"welches gemeint ist", src.ID)
+		}
+		taken[src.ID] = true
 		plan.Sources = append(plan.Sources, src)
 	}
 
@@ -300,6 +342,45 @@ func Derive(reg entities.Registry, cat inverter.Catalog, now time.Time) (Plan, e
 		return Plan{}, ErrNoConfiguration
 	}
 	return plan, nil
+}
+
+// keepLocalIDs maps the transport identity of every CURRENTLY configured source
+// onto the id it runs under, so a derivation can recognise a device instead of
+// re-identifying it.
+//
+// Two deliberate refusals to guess:
+//
+//   - AMBIGUITY YIELDS NOTHING. Two local sources with the identical transport
+//     identity are not a valid setup (AddSource only produces them through its
+//     loud collision fallback). Picking one of them would be a coin toss about
+//     which cloud pin survives, so the fingerprint is dropped entirely and the
+//     derived device gets its deterministic id. The one exception is the source
+//     that ALREADY carries that deterministic id - it is by construction the one
+//     a re-derivation would have addressed anyway.
+//   - AN ID IS NEVER HANDED OUT TWICE. Derive additionally skips a preserved id
+//     that a previous entity of the same plan already took (astronomically
+//     unlikely with a random id, but a duplicate id in sources.json would make
+//     two devices share one reading stream).
+func keepLocalIDs(current []sources.Source) map[string]string {
+	byFingerprint := map[string][]sources.Source{}
+	for _, s := range current {
+		fp := sources.TransportIdentity(s)
+		byFingerprint[fp] = append(byFingerprint[fp], s)
+	}
+	keep := make(map[string]string, len(byFingerprint))
+	for fp, list := range byFingerprint {
+		if len(list) == 1 {
+			keep[fp] = list[0].ID
+			continue
+		}
+		for _, s := range list {
+			if s.ID == sources.DeterministicID(s) {
+				keep[fp] = s.ID
+				break
+			}
+		}
+	}
+	return keep
 }
 
 // message unwraps the German customer-facing text of a catalog/sources

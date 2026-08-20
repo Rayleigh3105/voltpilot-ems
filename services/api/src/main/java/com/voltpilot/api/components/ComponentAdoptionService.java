@@ -25,13 +25,20 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <h2>Warum das gefahrlos ist - die No-op-Eigenschaft</h2>
  *
- * <p>Die Übernahme schreibt zurück, was die Box ohnehin fährt. Weil die
- * Quellen-Kennung DETERMINISTISCH aus der Transport-Identität entsteht
- * ({@code sources.DeterministicID}), leitet der Applier aus dem daraus
- * erzeugten Push exakt dieselbe {@code sources.json} und dieselbe
+ * <p>Die Übernahme schreibt zurück, was die Box ohnehin fährt: der Applier
+ * leitet aus dem erzeugten Push exakt dieselbe {@code sources.json} und dieselbe
  * Wechselrichter-Auswahl ab, die schon laufen - er antwortet „keine Änderung"
  * ({@code Plan.SameAs}), schreibt keine Datei und veröffentlicht nichts neu.
  * Physisch passiert NICHTS; nur der Bearbeitungs-Ort wandert.
+ *
+ * <p><b>⚠ Die frühere Begründung war zu eng.</b> Sie lautete „weil die
+ * Quellen-Kennung deterministisch aus der Transport-Identität entsteht" - und
+ * {@code sources.DeterministicID} kam bewusst OHNE Migration, also trägt jede vor
+ * PR 270 eingerichtete Anlage bis heute ZUFÄLLIGE Kennungen, die die Ableitung neu
+ * vergab. Genau daran riss die Anlage Pilsting/Herzogau beim Update
+ * edge-2026.08.5 -&gt; .10 ihre beiden Fronius-Bindungen auf. Seither behält der
+ * Applier die Kennung jedes Geräts, das die Box SCHON FÄHRT; die schon gerissenen
+ * Anlagen heilt {@link ComponentRebindService}.
  *
  * <p>Das gilt aber nur, wenn WIRKLICH jedes Feld zurückreist - {@code SameAs}
  * ist eine Strukturgleichheit über ALLE Felder. Deshalb trägt die Übernahme

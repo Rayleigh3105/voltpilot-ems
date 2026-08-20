@@ -68,7 +68,7 @@ func TestDeriveBuildsInverterPlusSourcesFromTheDriverBlocks(t *testing.T) {
 		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
 		ent("7b2f4e10-0000-0000-0000-000000000003", entities.TypeGridMeter, meterDriver),
 	)
-	plan, err := Derive(reg, cat(), now)
+	plan, err := Derive(reg, cat(), nil, now)
 	if err != nil {
 		t.Fatalf("Derive: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestDeriveBuildsInverterPlusSourcesFromTheDriverBlocks(t *testing.T) {
 
 func TestSourceIdsAreDeterministicSoATakeoverIsANoOp(t *testing.T) {
 	reg := portal(ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver))
-	plan, err := Derive(reg, cat(), now)
+	plan, err := Derive(reg, cat(), nil, now)
 	if err != nil {
 		t.Fatalf("Derive: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestSourceIdsAreDeterministicSoATakeoverIsANoOp(t *testing.T) {
 		t.Fatalf("id = %q, will %q", plan.Sources[0].ID, want)
 	}
 	// Und sie ist ueber zwei Ableitungen hinweg stabil.
-	again, _ := Derive(reg, cat(), now.Add(time.Hour))
+	again, _ := Derive(reg, cat(), nil, now.Add(time.Hour))
 	if again.Sources[0].ID != want {
 		t.Fatal("die Quellen-Id darf sich zwischen zwei Ableitungen nie aendern")
 	}
@@ -124,8 +124,8 @@ func TestDeriveIsStableRegardlessOfPushOrder(t *testing.T) {
 		ent("bbbb0000-0000-0000-0000-000000000002", entities.TypeGridMeter, meterDriver),
 	)
 	b := portal(a.Entities[1], a.Entities[0])
-	pa, _ := Derive(a, cat(), now)
-	pb, _ := Derive(b, cat(), now)
+	pa, _ := Derive(a, cat(), nil, now)
+	pb, _ := Derive(b, cat(), nil, now)
 	if len(pa.Sources) != 2 || pa.Sources[0].ID != pb.Sources[0].ID ||
 		pa.Sources[1].ID != pb.Sources[1].ID {
 		t.Fatal("dieselbe Menge in anderer Reihenfolge muss dieselbe Liste ergeben")
@@ -144,7 +144,7 @@ func TestAnEntityWithoutAReachableDriverIsSkippedNotFailed(t *testing.T) {
 		ent("eeee0000-0000-0000-0000-000000000005", entities.TypeProducer,
 			`{"brand":"fronius_sunspec","model":"fronius-eco-27-3-s"}`),
 	)
-	plan, err := Derive(reg, cat(), now)
+	plan, err := Derive(reg, cat(), nil, now)
 	if err != nil {
 		t.Fatalf("Derive: %v", err)
 	}
@@ -154,11 +154,11 @@ func TestAnEntityWithoutAReachableDriverIsSkippedNotFailed(t *testing.T) {
 }
 
 func TestAPushWithoutAnyDeviceIsNotAnInstructionToClearAnything(t *testing.T) {
-	_, err := Derive(portal(ent("x1", entities.TypeGridMeter, "")), cat(), now)
+	_, err := Derive(portal(ent("x1", entities.TypeGridMeter, "")), cat(), nil, now)
 	if !errors.Is(err, ErrNoConfiguration) {
 		t.Fatalf("err = %v, will ErrNoConfiguration", err)
 	}
-	_, err = Derive(portal(), cat(), now)
+	_, err = Derive(portal(), cat(), nil, now)
 	if !errors.Is(err, ErrNoConfiguration) {
 		t.Fatalf("leerer Push: err = %v, will ErrNoConfiguration", err)
 	}
@@ -172,7 +172,7 @@ func TestOneUntranslatableDriverRefusesTheWHOLEDerivation(t *testing.T) {
 		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer,
 			`{"role":"pv-generation","brand":"gibt-es-nicht","connection":{"ip":"192.168.0.9"}}`),
 	)
-	plan, err := Derive(reg, cat(), now)
+	plan, err := Derive(reg, cat(), nil, now)
 	if err == nil {
 		t.Fatal("eine unbekannte Marke muss die GANZE Ableitung verweigern")
 	}
@@ -190,7 +190,7 @@ func TestTwoInvertersAreRefusedByName(t *testing.T) {
 		ent("aaaa0000-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
 		ent("bbbb0000-0000-0000-0000-000000000002", entities.TypeBatteryHybrid, deyeDriver),
 	)
-	if _, err := Derive(reg, cat(), now); err == nil ||
+	if _, err := Derive(reg, cat(), nil, now); err == nil ||
 		!strings.Contains(err.Error(), "zwei Wechselrichter") {
 		t.Fatalf("err = %v", err)
 	}
@@ -201,7 +201,7 @@ func TestTwoDevicesWithTheSameTransportAreAnAmbiguousSoll(t *testing.T) {
 		ent("aaaa0000-0000-0000-0000-000000000001", entities.TypeProducer, froniusDriver),
 		ent("bbbb0000-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
 	)
-	_, err := Derive(reg, cat(), now)
+	_, err := Derive(reg, cat(), nil, now)
 	if err == nil || !strings.Contains(err.Error(), "dieselbe Verbindung") {
 		t.Fatalf("err = %v", err)
 	}
@@ -210,14 +210,14 @@ func TestTwoDevicesWithTheSameTransportAreAnAmbiguousSoll(t *testing.T) {
 func TestAnUndecidableRoleIsRefusedNeverGuessed(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-000000000001", "modbus-generic",
 		`{"brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.5"}}`))
-	_, err := Derive(reg, cat(), now)
+	_, err := Derive(reg, cat(), nil, now)
 	if err == nil || !strings.Contains(err.Error(), "welche Rolle") {
 		t.Fatalf("err = %v", err)
 	}
 	// Mit ausdruecklicher Rolle geht es - geraten wird nie.
 	reg = portal(ent("aaaa0000-0000-0000-0000-000000000001", "modbus-generic",
 		`{"role":"consumer","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.5"}}`))
-	plan, err := Derive(reg, cat(), now)
+	plan, err := Derive(reg, cat(), nil, now)
 	if err != nil || plan.Sources[0].Role != sources.RoleConsumer {
 		t.Fatalf("plan=%+v err=%v", plan, err)
 	}
@@ -226,7 +226,7 @@ func TestAnUndecidableRoleIsRefusedNeverGuessed(t *testing.T) {
 func TestAnUnknownRoleWordIsRefused(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-000000000001", entities.TypeProducer,
 		`{"role":"wallbox","brand":"generic_modbus","connection":{"ip":"192.168.0.5"}}`))
-	if _, err := Derive(reg, cat(), now); err == nil ||
+	if _, err := Derive(reg, cat(), nil, now); err == nil ||
 		!strings.Contains(err.Error(), "unbekannte Rolle") {
 		t.Fatalf("err = %v", err)
 	}
@@ -237,7 +237,7 @@ func TestAConsumerCategoryEntityDerivesTheConsumerRole(t *testing.T) {
 		`{"brand":"go-e","model":"goe_http_api","communication":"goe_http_api",
 		  "connection":{"ip":"192.168.0.77"}}`)
 	e.Capabilities.Actuate = []entities.ActuateCap{{Command: entities.CmdOnOff}}
-	plan, err := Derive(portal(e), cat(), now)
+	plan, err := Derive(portal(e), cat(), nil, now)
 	if err != nil || plan.Sources[0].Role != sources.RoleConsumer {
 		t.Fatalf("plan=%+v err=%v", plan, err)
 	}
@@ -250,9 +250,9 @@ func TestSameAsIgnoresTimestampsSoARedeliveryChangesNothing(t *testing.T) {
 		ent("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
 		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
 	)
-	first, _ := Derive(reg, cat(), now)
+	first, _ := Derive(reg, cat(), nil, now)
 	// Eine Stunde spaeter erneut zugestellt: andere Zeitstempel, gleiche Geraete.
-	second, _ := Derive(reg, cat(), now.Add(time.Hour))
+	second, _ := Derive(reg, cat(), nil, now.Add(time.Hour))
 	if !second.SameAs(first.Inverter, first.Sources) {
 		t.Fatal("ein unveraenderter Push muss als „keine Aenderung\" erkannt werden")
 	}
@@ -263,24 +263,24 @@ func TestSameAsSeesEveryRealChange(t *testing.T) {
 		ent("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid, deyeDriver),
 		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
 	)
-	plan, _ := Derive(base, cat(), now)
+	plan, _ := Derive(base, cat(), nil, now)
 
 	changed := portal(
 		ent("5f0d2c9e-0000-0000-0000-000000000001", entities.TypeBatteryHybrid,
 			strings.Replace(deyeDriver, "192.168.0.28", "192.168.0.99", 1)),
 		base.Entities[1],
 	)
-	other, _ := Derive(changed, cat(), now)
+	other, _ := Derive(changed, cat(), nil, now)
 	if other.SameAs(plan.Inverter, plan.Sources) {
 		t.Fatal("eine geaenderte IP ist eine Aenderung")
 	}
 
-	fewer, _ := Derive(portal(base.Entities[0]), cat(), now)
+	fewer, _ := Derive(portal(base.Entities[0]), cat(), nil, now)
 	if fewer.SameAs(plan.Inverter, plan.Sources) {
 		t.Fatal("ein entferntes Geraet ist eine Aenderung")
 	}
 
-	onlySources, _ := Derive(portal(base.Entities[1]), cat(), now)
+	onlySources, _ := Derive(portal(base.Entities[1]), cat(), nil, now)
 	if onlySources.SameAs(plan.Inverter, plan.Sources) {
 		t.Fatal("ein entfallener Wechselrichter ist eine Aenderung")
 	}
@@ -306,7 +306,7 @@ func TestTheContractFixtureDerivesTheWholePlant(t *testing.T) {
 	if !IsPortalManaged(reg) {
 		t.Fatal("die Fixture ist portal-verwaltet")
 	}
-	plan, err := Derive(reg, cat(), now)
+	plan, err := Derive(reg, cat(), nil, now)
 	if err != nil {
 		t.Fatalf("Derive: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestASelfBuiltDeviceIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
 		ent("6a1e3d0f-0000-0000-0000-000000000002", entities.TypeProducer, froniusDriver),
 		ent("aaaa0000-0000-0000-0000-00000000000f", "modbus-generic", selfBuiltDriver),
 	)
-	plan, err := Derive(reg, cat(), now)
+	plan, err := Derive(reg, cat(), nil, now)
 	if err != nil {
 		t.Fatalf("ein Selbstbau-Gerät darf den Push nicht scheitern lassen: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestASelfBuiltDeviceIsSkippedAndNeverSinksTheWholePush(t *testing.T) {
 // nicht ein Fehler des Kunden.
 func TestAPlantWithOnlySelfBuiltDevicesDerivesNoConfigurationAtAll(t *testing.T) {
 	reg := portal(ent("aaaa0000-0000-0000-0000-00000000000f", "modbus-generic", selfBuiltDriver))
-	_, err := Derive(reg, cat(), now)
+	_, err := Derive(reg, cat(), nil, now)
 	if !errors.Is(err, ErrNoConfiguration) {
 		t.Fatalf("err = %v, will ErrNoConfiguration", err)
 	}

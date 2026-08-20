@@ -57,8 +57,12 @@ public class ComponentAdoptionRunner {
     /** Was ein Lauf getan hat (für Log + Tests). */
     public record RunSummary(int considered, int adopted, int waiting, int failed) {}
 
+    /** Was ein Heil-Lauf getan hat (für Log + Tests). */
+    public record RebindSummary(int considered, int rebound, int failed) {}
+
     private final JdbcTemplate adminJdbc;
     private final ComponentAdoptionService adoption;
+    private final ComponentRebindService rebind;
     private final boolean enabled;
     private final boolean reconcileEnabled;
 
@@ -69,12 +73,13 @@ public class ComponentAdoptionRunner {
      */
     @org.springframework.beans.factory.annotation.Autowired
     public ComponentAdoptionRunner(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
-            ComponentAdoptionService adoption,
+            ComponentAdoptionService adoption, ComponentRebindService rebind,
             @Value("${voltpilot.components.adoption.enabled:true}") boolean enabled,
             @Value("${voltpilot.components.adoption.reconcile-enabled:true}")
             boolean reconcileEnabled) {
         this.adminJdbc = adminJdbc;
         this.adoption = adoption;
+        this.rebind = rebind;
         this.enabled = enabled;
         this.reconcileEnabled = reconcileEnabled;
     }
@@ -110,6 +115,7 @@ public class ComponentAdoptionRunner {
     }
 
     private void runQuietly(String trigger) {
+        healQuietly(trigger);
         try {
             RunSummary summary = run();
             if (summary.adopted() > 0 || summary.failed() > 0) {
@@ -160,6 +166,73 @@ public class ComponentAdoptionRunner {
             }
         }
         return new RunSummary(candidates.size(), adopted, waiting, failed);
+    }
+
+    /**
+     * Der HEIL-Lauf: gerissene Geräte-Bindungen wiederherstellen.
+     *
+     * <p>Er läuft VOR der Übernahme und für JEDE Anlage - auch die schon
+     * portal-verwalteten, denn genau dort ist der Riss entstanden (Anlage
+     * Pilsting/Herzogau, Update edge-2026.08.5 -&gt; .10). Ein Fehlschlag darf
+     * die Übernahme nie aufhalten: beide sind unabhängige Selbstheilungen.
+     */
+    private void healQuietly(String trigger) {
+        try {
+            RebindSummary summary = heal();
+            if (summary.rebound() > 0 || summary.failed() > 0) {
+                log.info("Geräte-Bindungen ({}): {} Anlage(n) mit verwaistem Pin betrachtet, "
+                        + "{} Bindung(en) wiederhergestellt, {} fehlgeschlagen", trigger,
+                        summary.considered(), summary.rebound(), summary.failed());
+            }
+        } catch (RuntimeException e) {
+            log.error("Wiederherstellung der Geräte-Bindungen ({}) fehlgeschlagen, alle "
+                    + "Zuordnungen bleiben unverändert: {}", trigger, e.toString(), e);
+        }
+    }
+
+    /** Betrachtet jede Anlage mit verwaistem Pin; wirft nie je Anlage. */
+    public RebindSummary heal() {
+        List<Candidate> candidates = withOrphanedPins();
+        int rebound = 0;
+        int failed = 0;
+        for (Candidate c : candidates) {
+            try {
+                TenantContext.set(c.tenantId());
+                rebound += rebind.rebindOrphanedPins(c.siteId()).rebound();
+            } catch (RuntimeException e) {
+                failed++;
+                log.warn("Geräte-Bindungen: Anlage {} bleibt unverändert: {}", c.siteId(),
+                        e.toString());
+            } finally {
+                TenantContext.clear();
+            }
+        }
+        return new RebindSummary(candidates.size(), rebound, failed);
+    }
+
+    /**
+     * Anlagen, auf denen mindestens eine Komponente an eine Kennung gepinnt ist,
+     * die KEIN gemeldetes Gerät mehr trägt - und deren Box überhaupt etwas
+     * meldet.
+     *
+     * <p>Die zweite Bedingung ist kein Detail: eine Box, die (noch) nichts
+     * meldet - offline, älterer Stand -, hat keine verwaisten Pins, sondern
+     * unbekannte. Sie hier zu betrachten wäre ein Lauf über die halbe Flotte,
+     * der nie etwas tun kann.
+     */
+    List<Candidate> withOrphanedPins() {
+        return adminJdbc.query(
+                "SELECT DISTINCT s.id, s.tenant_id, s.name, s.created_at FROM site s "
+                        + "JOIN measurement_point mp ON mp.site_id = s.id "
+                        + "  AND mp.edge_source_id IS NOT NULL "
+                        + "WHERE EXISTS (SELECT 1 FROM entity_observed_state o "
+                        + "  WHERE o.site_id = s.id AND o.source = 'local') "
+                        + "AND NOT EXISTS (SELECT 1 FROM entity_observed_state o2 "
+                        + "  WHERE o2.site_id = s.id AND o2.source = 'local' "
+                        + "  AND o2.entity_id = 'local:' || mp.edge_source_id) "
+                        + "ORDER BY s.created_at, s.id",
+                (rs, n) -> new Candidate(rs.getObject("id", UUID.class),
+                        rs.getObject("tenant_id", UUID.class), rs.getString("name")));
     }
 
     /**
