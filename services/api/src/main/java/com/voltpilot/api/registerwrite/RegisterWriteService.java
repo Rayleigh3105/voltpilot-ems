@@ -38,6 +38,17 @@ import org.springframework.web.server.ResponseStatusException;
  * ({@code edge-app/core/internal/installerwrite}). Eine zweite Politik hier wäre
  * eine zweite Wahrheit über ein LAN, das dieser Dienst nie gesehen hat.
  *
+ * <p><b>⚠ DIE ADRESSE IST NICHT DAS ZIEL</b> (Produktionsvorfall 20.08.2026).
+ * Der Auftrag reist auf dem Pfad EINER Geräte-Kennung, und dort hört genau der
+ * Core zu, der sich unter ihr angemeldet hat; WELCHES Gerät beschrieben wird,
+ * steht im {@code target}-Feld der Nutzlast. Landet ein NICHT-retainter Auftrag
+ * auf einer Geräte-Zeile ohne Core, ist er spurlos weg - kein Abonnent, keine
+ * Ablehnung, keine Zeile in irgendeinem Protokoll. Deshalb wird die Adresse
+ * seither aus dem gewählten ZIEL abgeleitet statt aus der Behauptung des
+ * Aufrufers, und eine wahrscheinliche Verwechslung wird BENANNT (nie
+ * abgewiesen - Schweigen ist eine Lücke, kein Beweis); die Regel steht rein in
+ * {@link RegisterWriteGateway}.
+ *
  * <p><b>Die EINE Regel, die hier lebt, ist die Notiz-Pflicht (D5):</b> bei
  * Registerklasse {@code netz_compliance} - in Stufe 1 also bei {@code 0x00E7} -
  * ist die Notiz Pflicht, für jede Herkunft. Sie steht hier, weil die KLASSE hier
@@ -256,7 +267,8 @@ public class RegisterWriteService {
         int address = address(cmd.addressInput());
         String kind = registerKind(cmd.registerKind());
         String lane = lane(cmd);
-        DeviceDto device = resolveDevice(siteId, cmd.deviceId());
+        Addressed addressed = resolveDevice(siteId, lane, cmd);
+        DeviceDto device = addressed.device();
         RegisterKnowledge.Known known = knowledge.of(
                 targets.familyFor(siteId, device.id(), lane, cmd.entityId()), address);
 
@@ -267,7 +279,7 @@ public class RegisterWriteService {
                 cmd.unitId(), kind, address, null, null, null, null);
 
         RegisterWriteResult result = exchange(tenantId, siteId, device, requestId, requestedAt,
-                actor, order, readTimeout, false);
+                actor, order, readTimeout, false, addressed.note());
         // ⚠ Die Schreibzahl gehört in SCHRITT 1: „heute bereits 2x geschrieben"
         // ist eine Information VOR dem Klick, kein Nachtrag im Beleg.
         return outcome(result, address, known, null, lane,
@@ -291,7 +303,8 @@ public class RegisterWriteService {
                 new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Der Wert ist keine Registerzahl (0 bis 65535, dezimal oder 0x-hexadezimal)."));
         String note = trimToNull(cmd.note());
-        DeviceDto device = resolveDevice(siteId, cmd.deviceId());
+        Addressed addressed = resolveDevice(siteId, lane, cmd);
+        DeviceDto device = addressed.device();
         RegisterKnowledge.Known known = knowledge.of(
                 targets.familyFor(siteId, device.id(), lane, cmd.entityId()), address);
         // D5: die Notiz-PFLICHT hängt an der KLASSE, und die Klasse hängt an der
@@ -343,7 +356,7 @@ public class RegisterWriteService {
         if (result == null) {
             // Schweigen ist NIE „nicht geschrieben" (die PR-280-Lehre).
             result = RegisterWriteResult.silent(requestId, RegisterWriteResult.MODE_WRITE,
-                    silenceMessage(device, writeTimeout, true));
+                    silenceMessage(device, writeTimeout, true, addressed.note()));
             journal.recordOutcome(new RegisterWriteEventRepository.Receipt(requestId,
                     RegisterWriteEventRepository.EVENT_SILENT,
                     RegisterWriteEventRepository.SOURCE_PORTAL, siteId, device.id(), null, null,
@@ -364,7 +377,7 @@ public class RegisterWriteService {
 
     private RegisterWriteResult exchange(UUID tenantId, UUID siteId, DeviceDto device,
             String requestId, Instant requestedAt, Actor actor, RegisterWritePublisher.Order order,
-            Duration timeout, boolean write) {
+            Duration timeout, boolean write, String note) {
         RegisterWritePublisher pub = requirePublisher();
         CompletableFuture<RegisterWriteResult> future = registry.register(requestId, device.id());
         try {
@@ -382,7 +395,7 @@ public class RegisterWriteService {
             return result != null
                     ? result
                     : RegisterWriteResult.silent(requestId, order.mode(),
-                            silenceMessage(device, timeout, write));
+                            silenceMessage(device, timeout, write, note));
         } finally {
             registry.forget(requestId);
         }
@@ -394,9 +407,15 @@ public class RegisterWriteService {
      * gebildet, damit er die Lebendigkeit von JETZT nennt und eine verspätete
      * Quittung, die inzwischen eingetroffen ist, mitzählt.
      */
-    private String silenceMessage(DeviceDto device, Duration budget, boolean write) {
+    private String silenceMessage(DeviceDto device, Duration budget, boolean write, String note) {
         String reason = RegisterWriteSilence.message(write, device.lastSeenAt(), Instant.now(),
                 budget, registry.lastLateAnswer(device.id()));
+        if (note != null) {
+            // Der Verwechslungs-Verdacht der Adressierung gehört in GENAU diesen
+            // Satz: er ist die einzige Stelle, an der ein Mensch das Schweigen
+            // erklärt bekommt.
+            reason = reason + " " + note;
+        }
         log.warn("register write to device {} stayed silent for {}: {}",
                 device.id(), budget, reason);
         return reason;
@@ -528,29 +547,109 @@ public class RegisterWriteService {
     }
 
     /**
-     * Welches Gerät gefragt wird, wird NIE geraten (die
-     * {@code ProbeService}-Regel): ein ausdrückliches Gerät muss zur Anlage
-     * gehören, ohne Angabe entscheidet das EINZIGE Gerät, und eine Anlage mit
-     * mehreren wird beim Namen genannt.
+     * WELCHE BOX GEFRAGT WIRD - die Adresse des Auftrags.
+     *
+     * <p>Die Regel selbst ist rein und Docker-frei geprüft
+     * ({@link RegisterWriteGateway}); hier steht nur, WOHER sie ihre zwei
+     * Eingaben bekommt: die Geräte-Zeilen dieser Anlage (RLS-gefenced) und -
+     * wenn das gewählte Ziel eine gemeldete Komponente bzw. Quelle ist - das
+     * Gerät, das sie MELDET.
+     *
+     * <p><b>⚠ Das Topic folgt dem ZIEL, nicht der {@code deviceId} des
+     * Aufrufers</b> (Produktionsvorfall 20.08.2026): auf dem Auftrags-Topic hört
+     * ausschließlich der Core zu, der sich unter dieser Kennung angemeldet hat,
+     * und ein NICHT-retainter Auftrag auf einer Zeile ohne Abonnent ist spurlos
+     * weg. Eine überstimmte Angabe wird LAUT protokolliert - sie ist ein
+     * Hinweis, dass eine Oberfläche das Ziel und die Adresse verwechselt.
      */
-    private DeviceDto resolveDevice(UUID siteId, UUID requested) {
+    private Addressed resolveDevice(UUID siteId, String lane, Command cmd) {
         List<DeviceDto> ofSite = devices.findAll().stream()
                 .filter(d -> siteId.equals(d.siteId()))
                 .toList();
-        if (requested != null) {
-            return ofSite.stream().filter(d -> requested.equals(d.id())).findFirst()
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                            "Gerät nicht gefunden."));
+        UUID owner = reportingDevice(siteId, lane, cmd);
+        RegisterWriteGateway.Choice choice = RegisterWriteGateway.choose(
+                ofSite.stream()
+                        .map(d -> new RegisterWriteGateway.Device(d.id(), deviceLabel(d),
+                                d.lastSeenAt()))
+                        .toList(),
+                owner, cmd.deviceId(), Instant.now());
+        if (!choice.ok()) {
+            // 404 bleibt 404 (der Mandanten-/Anlagen-Zaun spricht so), alles
+            // andere ist ein Konflikt der ANFRAGE.
+            HttpStatus status = RegisterWriteGateway.DEVICE_NOT_FOUND.equals(choice.refusal())
+                    ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
+            throw new ResponseStatusException(status, choice.refusal());
         }
-        if (ofSite.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Diese Anlage hat noch kein verbundenes Gerät.");
+        if (choice.overruled()) {
+            log.warn("register write target belongs to device {} - the request named {}; "
+                    + "publishing to the REPORTING device (a non-retained order on a device "
+                    + "without a core would be dropped silently)",
+                    choice.device().id(), cmd.deviceId());
         }
-        if (ofSite.size() > 1) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Diese Anlage hat mehrere Geräte. Bitte wählen Sie aus, welches schreiben soll.");
+        if (choice.note() != null) {
+            log.warn("register write addressed to device {}: {}", choice.device().id(),
+                    choice.note());
         }
-        return ofSite.get(0);
+        UUID id = choice.device().id();
+        return new Addressed(
+                ofSite.stream().filter(d -> id.equals(d.id())).findFirst().orElseThrow(),
+                choice.note());
+    }
+
+    /** Das adressierte Gerät plus der Verwechslungs-Verdacht, falls es einen gibt. */
+    private record Addressed(DeviceDto device, String note) {
+    }
+
+    /**
+     * Das Gerät, das das gewählte Ziel MELDET - oder {@code null}, wenn die
+     * Plattform es nicht kennt.
+     *
+     * <p>Die primäre Lane hat per Definition keins (das Ziel IST das Gerät); eine
+     * frei getippte LAN-Adresse hat eins, sobald sie eine GEMELDETE Quelle
+     * trifft, und sonst nicht. Wo keins bekannt ist, bleibt die Angabe des
+     * Aufrufers die Adresse - abgesichert durch den Verwechslungs-Verdacht.
+     */
+    private UUID reportingDevice(UUID siteId, String lane, Command cmd) {
+        if (RegisterWriteTargets.LANE_PRIMARY.equals(lane)) {
+            return null;
+        }
+        try {
+            return targets.forSite(siteId).stream()
+                    .filter(t -> ownsTarget(t, lane, cmd))
+                    .map(RegisterWriteTargets.Target::deviceId)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst().orElse(null);
+        } catch (RuntimeException e) {
+            // Die Ableitung ist eine VERBESSERUNG der Adresse, kein Tor: fällt
+            // sie aus, bleibt es bei der Angabe des Aufrufers.
+            log.warn("reporting device for the chosen target could not be resolved: {}",
+                    e.getMessage());
+            return null;
+        }
+    }
+
+    private static boolean ownsTarget(RegisterWriteTargets.Target t, String lane, Command cmd) {
+        if (!lane.equals(t.lane())) {
+            return false;
+        }
+        if (RegisterWriteTargets.LANE_ENTITY.equals(lane)) {
+            return cmd.entityId() != null && cmd.entityId().equals(t.entityId());
+        }
+        return cmd.host() != null && t.host() != null
+                && cmd.host().trim().equalsIgnoreCase(t.host().trim())
+                && port(cmd.port()) == port(t.port()) && unit(cmd.unitId()) == unit(t.unitId());
+    }
+
+    private static int port(Integer p) {
+        return p == null || p <= 0 || p > 0xffff ? 502 : p;
+    }
+
+    private static int unit(Integer u) {
+        return u == null || u < 0 || u > 255 ? 1 : u;
+    }
+
+    private static String deviceLabel(DeviceDto d) {
+        return d.name() == null || d.name().isBlank() ? d.externalRef() : d.name();
     }
 
     private static String trimToNull(String s) {

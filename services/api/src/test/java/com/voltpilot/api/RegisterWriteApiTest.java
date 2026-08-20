@@ -709,6 +709,114 @@ class RegisterWriteApiTest {
      * Schickt einen Herzschlag durch den ECHTEN Zuhörer - also über genau die
      * Form, die auf dem Draht liegt, statt über einen Test-Nachbau des Ingests.
      */
+    /**
+     * DIE ADRESSE IST NICHT DAS ZIEL - die Herzogau-Form, mit der
+     * ANTI-KOINZIDENZ-REGEL (Produktionsvorfall 20.08.2026).
+     *
+     * <p>Der Auftrag reist auf dem Pfad EINER Geräte-Kennung, und dort hört
+     * genau der Core zu, der sich unter ihr angemeldet hat. Landet er auf einer
+     * Geräte-Zeile ohne Core, ist er NICHT-retained und damit spurlos weg: kein
+     * Abonnent, keine Ablehnung, keine Zeile in irgendeinem Protokoll - auf
+     * beiden Seiten. Genau diese Stille hat zwei Untersuchungsrunden gekostet.
+     *
+     * <p><b>⚠ WARUM ES BISHER KEIN TEST SAH:</b> der Stellvertreter oben
+     * abonniert die WILDCARD {@code ems/+/+/+/v2/register-write} und antwortet
+     * auf dem Topic, das ankam - er hätte einen Auftrag auf JEDER Kennung
+     * beantwortet. Auf der Go-Seite ruft {@code agent/register_write_test.go}
+     * den Handler DIREKT auf, das Abonnement des Cloud-Links kommt dort gar
+     * nicht vor. Und die einzige Anlage im Test hatte GENAU EIN Gerät, also
+     * fielen richtige und falsche Antwort ohnehin zusammen. <b>Dieser Test hält
+     * deshalb drei Kennungen AUSEINANDER</b> (die meldende Box, eine zweite
+     * Geräte-Zeile, die sich nie gemeldet hat, und die Entitäts-Kennung des
+     * Ziels) und lässt den Stellvertreter NUR auf dem Pfad der Box zuhören.
+     */
+    @Test
+    void theOrderIsAddressedToTheREPORTINGBoxAndNeverToASilentDeviceRow() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Herzogau-Adressierung");
+        // Die BOX: sie meldet ihre Einrichtung UND hat Telemetrie geschickt -
+        // hinter dieser Zeile steckt nachweislich ein Core.
+        UUID box = claim(customer, site, "edge-regwrite-addr-box");
+        heartbeat(site, box);
+        markAsReporting(site, box);
+        // Eine ZWEITE Geräte-Zeile derselben Anlage, die sich NIE gemeldet hat.
+        UUID silent = claim(customer, site, "edge-regwrite-addr-silent");
+        assertThat(silent).isNotEqualTo(box);
+
+        String boxRequestTopic = "ems/" + TENANT_A + "/" + site + "/" + box + "/v2/register-write";
+
+        try (DeviceStub stub = new DeviceStub()) {
+            // NUR das Topic der Box - kein Echo, keine Wildcard.
+            stub.answerOnlyOn(boxRequestTopic, boxRequestTopic + "-result", req ->
+                    "{\"schema_version\":\"1.0\",\"type\":\"register_write_result\""
+                            + ",\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + site + "\""
+                            + ",\"device_id\":\"" + box + "\""
+                            + ",\"request_id\":\"" + req.get("request_id").asText() + "\""
+                            + ",\"mode\":\"lesen\",\"ok\":true,\"before_raw\":3300"
+                            + ",\"message\":\"Gelesen.\"}");
+
+            // --- (1) Das Ziel gewinnt über die Angabe des Aufrufers ----------
+            // Der Aufrufer benennt die STILLE Zeile, das gewählte Ziel ist aber
+            // die Wallbox, die die BOX meldet. Vor dem Fix landete der Auftrag
+            // auf dem Pfad der stillen Zeile - niemand hörte zu.
+            ResponseEntity<Map<String, Object>> viaTarget = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", silent.toString(), "lane", "lan",
+                            "host", "192.168.0.50", "address", "0x00E7"));
+            assertThat(viaTarget.getStatusCode()).isEqualTo(HttpStatus.OK);
+            stub.awaitRequest();
+            assertThat(stub.lastTopic).as("der Auftrag liegt auf dem Pfad der MELDENDEN Box")
+                    .isEqualTo(boxRequestTopic);
+            assertThat(viaTarget.getBody().get("beforeRaw")).isEqualTo(3300);
+
+            // --- (2) Auf der primären Lane trägt die Adresse der Aufrufer ----
+            // Dort gibt es kein meldendes Gerät, aus dem sie sich ableiten
+            // ließe. Der Auftrag geht trotzdem hinaus - Schweigen ist eine
+            // Lücke, kein Beweis -, aber der Verwechslungs-Verdacht steht im
+            // Schweige-Grund und nennt die Box, die sich wirklich meldet.
+            ResponseEntity<Map<String, Object>> dead = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", silent.toString(), "address", "0x00E7"));
+            assertThat(dead.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(dead.getBody().get("outcome")).isEqualTo("unbekannt");
+            assertThat((String) dead.getBody().get("message"))
+                    .contains("noch nie bei VoltPilot gemeldet")
+                    .contains("edge-regwrite-addr-box");
+            assertThat(stub.sawNothing())
+                    .as("die Box hört auf diesem Pfad nicht zu").isTrue();
+
+            // --- (3) Der Normalfall bleibt, was er war ----------------------
+            ResponseEntity<Map<String, Object>> normal = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", box.toString(), "address", "0x00E7"));
+            assertThat(normal.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode asked = stub.awaitRequest();
+            assertThat(stub.lastTopic).isEqualTo(boxRequestTopic);
+            assertThat(asked.get("device_id").asText())
+                    .as("Topic und Nutzlast nennen dasselbe Gerät").isEqualTo(box.toString());
+            assertThat(asked.get("target").get("kind").asText()).isEqualTo("primary");
+        }
+    }
+
+    /**
+     * Macht aus einer Geräte-Zeile eine BOX: eine angekommene Telemetrie-Zeile
+     * ist der Beleg, dass hinter ihr ein Core läuft (die
+     * {@code received_at}-Regel des Hauses - ANKUNFT, nie Beobachtungszeit).
+     * Geschrieben als Superuser, weil das im Betrieb der Writer tut.
+     */
+    private void markAsReporting(UUID site, UUID device) throws Exception {
+        try (java.sql.Connection c = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.PreparedStatement ps = c.prepareStatement(
+                        "INSERT INTO telemetry (time, tenant_id, site_id, device_id, received_at) "
+                                + "VALUES (now(), ?::uuid, ?::uuid, ?::uuid, now())")) {
+            ps.setString(1, TENANT_A);
+            ps.setString(2, site.toString());
+            ps.setString(3, device.toString());
+            ps.executeUpdate();
+        }
+    }
+
     private void heartbeat(UUID site, UUID device) {
         EntityStatusListener listener = new EntityStatusListener("tcp://unused", "", "",
                 deviceRepo, observedRepo, componentApplyRepo);
@@ -774,6 +882,35 @@ class RegisterWriteApiTest {
                     publish(topic + "-result", answer);
                 }
             });
+        }
+
+        /**
+         * Ein Gerät, das GENAU EIN Topic abonniert und auf SEINEM eigenen
+         * antwortet - die einzige Form, in der ein Stellvertreter die ADRESSE
+         * überhaupt prüfen kann.
+         *
+         * <p><b>⚠ Die Wildcard-Variante darüber kann das NICHT</b>
+         * (Produktionsvorfall 20.08.2026): sie hört auf jedem Geräte-Pfad zu und
+         * echot auf den, der ankam - ein Auftrag, der auf der Kennung eines
+         * ANDEREN Geräts landet, wird dort also beantwortet und der Test bleibt
+         * grün. Die echte Box abonniert exakt ihr eigenes Topic
+         * ({@code edge-app/core/internal/cloud} {@code Link.topic}); ein
+         * NICHT-retainter Auftrag daneben ist spurlos weg.
+         */
+        void answerOnlyOn(String requestTopic, String resultTopic, AnswerFn fn) throws Exception {
+            client.subscribe(requestTopic, 1, (topic, msg) -> {
+                JsonNode req = json.readTree(new String(msg.getPayload(), StandardCharsets.UTF_8));
+                lastTopic = topic;
+                seen.offer(req);
+                String answer = fn.answer(req);
+                if (answer != null) {
+                    publish(resultTopic, answer);
+                }
+            });
+        }
+
+        boolean sawNothing() throws Exception {
+            return seen.poll(1, TimeUnit.SECONDS) == null;
         }
 
         void publish(String topic, String payload) {
