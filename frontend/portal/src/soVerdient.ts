@@ -32,6 +32,12 @@
 import type { SiteEarnings, SiteEarningsRange } from './api';
 import { marktVergleich, type PreisZeile, type PreisZeileId, preisTreiber } from './erloesKomposition';
 import { marktpraemie, praemieMonat, type MarktpraemieView } from './marktpraemie';
+import { capTextLength } from './svgText';
+
+/** Die Haus-Textkappung; hier RE-EXPORTIERT, damit die Aufrufer dieses Bildes
+ *  sie weiterhin von hier beziehen können (sie wohnt neutral in `svgText.ts`,
+ *  weil das Struktur-Schaltbild dieselbe Disziplin braucht). */
+export { capTextLength };
 
 // ---------------------------------------------------------------------------
 // Vokabular
@@ -558,16 +564,6 @@ export function spreadChips<T extends { y: number }>(chips: T[]): T[] {
   return chips;
 }
 
-/**
- * Schätzt, ob eine Zeile in ihr Fenster passt, und liefert die Kappbreite —
- * `undefined`, solange sie bequem passt. Die Schätzung ist absichtlich grob und
- * eher großzügig: sie darf lieber einmal zu oft kappen als eine Zeile über den
- * Rand laufen lassen.
- */
-export function capTextLength(text: string, fontSize: number, max: number): number | undefined {
-  const geschaetzt = text.length * fontSize * 0.66;
-  return geschaetzt > max ? max : undefined;
-}
 
 /**
  * Baut das ganze Bild aus den echten Zahlen. Die Funktion ist rein — genau

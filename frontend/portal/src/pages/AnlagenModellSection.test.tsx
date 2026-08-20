@@ -619,3 +619,76 @@ describe('Der Register-Weg wohnt seit der Geräteseite DORT (Zentrale Stufe 1, �
     expect(screen.getAllByText(/auf der Seite des jeweiligen Geräts/)).toHaveLength(1);
   });
 });
+
+/**
+ * Anlagen-Zentrale Stufe 2: der Reiter „Schaltbild" — er ist eine ZWEITE
+ * Sicht auf denselben Lesesatz, kein zweiter Einstieg.
+ */
+describe('AnlagenModellSection — der Reiter „Schaltbild" (Stufe 2)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState(null, '', '/');
+  });
+
+  /** Der Rechner-Fall: `matchMedia` sagt „mindestens 1024 px". */
+  function alsDesktop(desktop: boolean) {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('min-width') ? desktop : !desktop,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      onchange: null,
+      dispatchEvent: () => false,
+    }));
+  }
+
+  it('zeigt den Reiter am Rechner und öffnet das Bild über denselben Lesesatz', async () => {
+    stub();
+    alsDesktop(true);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    const reiter = await screen.findByRole('tab', { name: 'Schaltbild' });
+    fireEvent.click(reiter);
+
+    // Die Struktur ist da …
+    expect(await screen.findByLabelText('Struktur-Schaltbild Ihrer Anlage')).toBeInTheDocument();
+    expect(screen.getByText('KOMPONENTEN')).toBeInTheDocument();
+    // … und die Liste ist ausgeblendet, nicht entfernt (ein Reiter, zwei Sichten).
+    expect(screen.getByLabelText('Ihre Geräte')).toHaveAttribute('hidden');
+    // Ein Lesezeichen öffnet exakt diese Ansicht wieder.
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell?ansicht=schaltbild`);
+  });
+
+  it('nennt eine LÜCKE im Bild, statt sie zu füllen', async () => {
+    stub();
+    alsDesktop(true);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Schaltbild' }));
+    expect(await screen.findByText(/LAN-Adresse Ihrer Box/)).toBeInTheDocument();
+    expect(screen.getByText(/Stromwandler am Netzanschluss/)).toBeInTheDocument();
+  });
+
+  it('gibt es am TELEFON gar nicht — dort IST die Liste die Struktur', async () => {
+    stub();
+    alsDesktop(false);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell?ansicht=schaltbild`);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    expect(await screen.findByLabelText('Ihre Geräte')).not.toHaveAttribute('hidden');
+    expect(screen.queryByRole('tab', { name: 'Schaltbild' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Struktur-Schaltbild Ihrer Anlage')).not.toBeInTheDocument();
+  });
+
+  it('springt von einer Komponente im Bild zurück zu IHRER Zeile in der Liste', async () => {
+    stub();
+    alsDesktop(true);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Schaltbild' }));
+    const bild = await screen.findByLabelText('Struktur-Schaltbild Ihrer Anlage');
+    const knopf = within(bild).getAllByRole('button')[0];
+    fireEvent.click(knopf);
+    // Der Klick führt IN die Liste zurück (das Bild erklärt, die Zeile handelt).
+    await waitFor(() => expect(screen.getByLabelText('Ihre Geräte')).not.toHaveAttribute('hidden'));
+    expect(document.querySelector('[data-komponente]')).toBeTruthy();
+  });
+});
