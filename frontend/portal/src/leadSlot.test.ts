@@ -47,6 +47,26 @@ describe('leadBlock - the M3 N-ary lead rule (peak -> money -> flow)', () => {
   });
 
   it('the candidate list IS the documented priority', () => {
-    expect(LEAD_CANDIDATES).toEqual(['peak-band', 'erloes-komposition', 'energiefluss']);
+    // `lade-budget` steht ZULETZT und führt damit nur, wenn es sonst nichts zu
+    // führen gibt - die reine Ladepark-Anlage, die gar keinen Energiefluss-Block
+    // bekommt (Lastmanagement Stufe 3, Mockups §2 Entscheidung 1).
+    expect(LEAD_CANDIDATES).toEqual([
+      'peak-band',
+      'erloes-komposition',
+      'energiefluss',
+      'lade-budget',
+    ]);
+  });
+
+  it('das Ladebudget führt NUR ohne anderen Kandidaten', () => {
+    expect(leadBlock([{ id: 'lade-budget', title: 'Ladeleistung', order: 5, from: null }])).toBe(
+      'lade-budget',
+    );
+    expect(
+      leadBlock([
+        { id: 'lade-budget', title: 'Ladeleistung', order: 5, from: null },
+        { id: 'energiefluss', title: 'Energiefluss', order: 30, from: null },
+      ]),
+    ).toBe('energiefluss');
   });
 });

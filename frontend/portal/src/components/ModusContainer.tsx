@@ -67,6 +67,8 @@ const TONE_BY_ID: Record<string, string> = {
   lastspitzenkappung: 'peak',
   eigenverbrauch: 'eigen',
   'atypische-netznutzung': 'atyp',
+  // Ladepunkte sind die Verbraucher-Rolle des Hauses (Mockups §2 Entscheidung 3).
+  lastmanagement: 'laden',
 };
 
 export interface ModusContainerProps {

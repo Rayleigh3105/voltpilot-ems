@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
@@ -43,6 +44,7 @@ class ChargerStatusListenerTest {
     private DeviceRepository devices;
     private DeviceChargerStatusRepository store;
     private ChargerComponentComposer composer;
+    private CommandLogWriter commandLog;
     private ChargerStatusListener listener;
 
     @BeforeEach
@@ -55,8 +57,11 @@ class ChargerStatusListenerTest {
                 "edge-ladepark", "inverter", null, "active", Instant.now(), Instant.now())));
         ObjectProvider<ChargerComponentComposer> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(composer);
+        commandLog = mock(CommandLogWriter.class);
+        ObjectProvider<CommandLogWriter> logProvider = mock(ObjectProvider.class);
+        when(logProvider.getIfAvailable()).thenReturn(commandLog);
         listener = new ChargerStatusListener("tcp://localhost:1883", "", "", devices, store,
-                provider);
+                provider, logProvider);
     }
 
     /** Ein Herzschlag hinein, die geschriebenen Zeilen heraus. */
@@ -200,6 +205,41 @@ class ChargerStatusListenerTest {
         Captured c = ingest(b.toString());
         assertThat(c.chargers()).hasSize(16);
         assertThat(c.chargers().get(0).connectors()).hasSize(8);
+    }
+
+    /**
+     * Der Kommando-Verlauf bekommt eine Periode je SÄULE - aber nur für eine,
+     * die eine Komponente trägt: der Schlüssel dieser Tabelle ist eine
+     * Komponenten-Id, und eine erfundene wäre eine zweite Identität.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theCommandLogGetsOnePeriodPerBoundStation() {
+        UUID entityId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+        when(store.entityIdsByChargePoint(DEVICE)).thenReturn(java.util.Map.of("saeule-1", entityId));
+        ingest(mockupBlock());
+        ArgumentCaptor<List<CommandLogWriter.ChargerFacts>> facts =
+                ArgumentCaptor.forClass(List.class);
+        verify(commandLog).ingestChargers(eq(SITE), eq(DEVICE), facts.capture(), any());
+        assertThat(facts.getValue()).hasSize(1);
+        CommandLogWriter.ChargerFacts f = facts.getValue().get(0);
+        assertThat(f.entityId()).isEqualTo(entityId);
+        assertThat(f.charging()).isTrue();
+        // Die Grenze der SÄULE ist die Summe ihrer Stecker (41 + 0).
+        assertThat(f.allocatedKw()).isEqualTo(41.0);
+        assertThat(f.reason()).isEqualTo("laedt");
+        assertThat(f.confirmed()).isTrue();
+    }
+
+    /** Ohne Komponente wird die Säule im Verlauf AUSGELASSEN, nie geraten. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void anUnboundStationIsLeftOutOfTheCommandLog() {
+        ingest(mockupBlock());
+        ArgumentCaptor<List<CommandLogWriter.ChargerFacts>> facts =
+                ArgumentCaptor.forClass(List.class);
+        verify(commandLog).ingestChargers(eq(SITE), eq(DEVICE), facts.capture(), any());
+        assertThat(facts.getValue()).isEmpty();
     }
 
     /** Eine Säule ohne Kennung ist keine Säule - sie wird ausgelassen, nie geraten. */

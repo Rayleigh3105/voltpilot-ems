@@ -13,6 +13,7 @@ import {
   type SurfaceEntity,
   type SurfaceFlow,
 } from './surface';
+import { leadBlock } from './leadSlot';
 
 // ---------------------------------------------------------------------------
 // Fixtures — the five Ausprägungen of report §3
@@ -811,5 +812,57 @@ describe('M3-Overlay: `profileStates` ist rein additiv', () => {
     expect(aus.modes.map((m) => m.kind)).toEqual(
       ohne.modes.map((m) => m.kind).filter((k) => k !== 'marktvermarktung'),
     );
+  });
+});
+
+/* ============ Ladepark-Lastmanagement (Lastmanagement Stufe 3) ============ */
+
+describe('surface · Ladepark', () => {
+  const charger = { id: 'c1', entityType: 'ev-charger', label: 'Hof Nord' };
+  const battery = {
+    id: 'b1',
+    entityType: 'battery-hybrid',
+    capabilities: { measure: [{ channel: 'soc_pct' }, { channel: 'pv_power_kw' }] },
+  };
+
+  it('ein Ladepunkt aktiviert den Modus - ohne Strategie-Knoten', () => {
+    const modes = activeModes({ entities: [charger] });
+    const lade = modes.find((m) => m.kind === 'lastmanagement')!;
+    expect(lade).toBeTruthy();
+    expect(lade.signals).toEqual(['charge-point']);
+    // Es gibt keinen Flow dahinter: Lastmanagement ist SCHUTZ, keine
+    // Marktteilnahme - also auch keine "Flow öffnen"-Affordanz.
+    expect(lade.flowRef).toBeNull();
+    expect(lade.manifest.steuerungCard.action).toBe('none');
+  });
+
+  it('trägt KEINEN Geld-Strom - ein Ladepark rechnet nichts ab (E4)', () => {
+    const lade = activeModes({ entities: [charger] }).find((m) => m.kind === 'lastmanagement')!;
+    expect(lade.manifest.moneyStreams).toEqual([]);
+    expect(lade.manifest.deepViews).toEqual(['ladevorgaenge']);
+    expect(lade.manifest.cockpitBlock?.id).toBe('lade-budget');
+  });
+
+  it('die Nur-Ladepunkte-Anlage bekommt KEINEN Energiefluss - das Band führt', () => {
+    const surface = anlageSurface({ entities: [charger] });
+    const ids = surface.cockpitBlocks.map((b) => b.id);
+    expect(ids).toContain('lade-budget');
+    expect(ids).not.toContain('energiefluss');
+    expect(leadBlock(surface.cockpitBlocks)).toBe('lade-budget');
+  });
+
+  it('auf einer Misch-Anlage führt weiter der Fluss, das Band ist die Kachel', () => {
+    const surface = anlageSurface({ entities: [charger, battery] });
+    const ids = surface.cockpitBlocks.map((b) => b.id);
+    expect(ids).toContain('energiefluss');
+    expect(ids).toContain('lade-budget');
+    expect(leadBlock(surface.cockpitBlocks)).toBe('energiefluss');
+  });
+
+  it('ohne Ladepunkt ändert sich NICHTS', () => {
+    const surface = anlageSurface({ entities: [battery] });
+    expect(surface.modes.some((m) => m.kind === 'lastmanagement')).toBe(false);
+    expect(surface.cockpitBlocks.some((b) => b.id === 'lade-budget')).toBe(false);
+    expect(surface.cockpitBlocks.some((b) => b.id === 'energiefluss')).toBe(true);
   });
 });

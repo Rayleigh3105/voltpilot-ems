@@ -145,6 +145,7 @@
 .vp-nav-group-label.tone-eigen .vp-mode-dot {
   background: var(--vp-flow-batt);
 }
+.vp-nav-group-label.tone-laden .vp-mode-dot,
 .vp-nav-group-label.tone-atyp .vp-mode-dot,
 .vp-nav-group-label.tone-automation .vp-mode-dot {
   background: var(--vp-flow-load);

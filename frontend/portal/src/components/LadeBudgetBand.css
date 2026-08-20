@@ -1,0 +1,68 @@
+/* Das Budget-Band (Lastmanagement Stufe 3, Mockups Fläche 1). */
+.vp-lade-band { display: grid; gap: 8px; }
+
+.vp-lade-band-headline {
+  font-size: 1.6rem;
+  font-weight: 650;
+  color: var(--vp-navy, #1a365d);
+}
+
+.vp-lade-band-track {
+  position: relative;
+  display: flex;
+  height: 20px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--vp-surface-2, #eef1f4);
+}
+
+.vp-lade-seg { display: block; height: 100%; }
+.vp-lade-seg.seg-gebaeude { background: var(--vp-slate, #64748b); }
+/* Laden = Verbraucher-Rolle (Mockups §2 Entscheidung 3). */
+.vp-lade-seg.seg-laden { background: var(--vp-flow-load, #8b5cf6); }
+.vp-lade-seg.seg-frei { background: transparent; }
+.vp-lade-seg.hatched,
+.vp-lade-key.hatched {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(100, 116, 139, 0.45) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+/* ROT ist AUSSCHLIESSLICH die Grenze - nie eine Serienfarbe. */
+.vp-lade-limit {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--vp-danger, #dc2626);
+}
+
+.vp-lade-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+  color: var(--vp-muted, #64748b);
+}
+.vp-lade-legend li { display: inline-flex; align-items: center; gap: 6px; }
+
+.vp-lade-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--vp-surface-2, #eef1f4);
+  display: inline-block;
+}
+.vp-lade-key.seg-gebaeude { background: var(--vp-slate, #64748b); }
+.vp-lade-key.seg-laden { background: var(--vp-flow-load, #8b5cf6); }
+.vp-lade-key.limit { background: var(--vp-danger, #dc2626); }
+
+.vp-lade-band-line { margin: 0; color: var(--vp-ink, #0f172a); }
+.vp-lade-band-source { margin: 0; font-size: 0.9rem; color: var(--vp-muted, #64748b); }
+.vp-lade-band-source.blind { color: var(--vp-warn-ink, #92400e); }

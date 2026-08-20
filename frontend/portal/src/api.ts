@@ -1,6 +1,8 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { ProfileState, SiteProfiles } from './profiles';
+import type { ChargingConfig, SiteCharging } from './ladepunkte';
+export type { ChargingConfig, SiteCharging } from './ladepunkte';
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
@@ -2403,6 +2405,30 @@ export const api = {
     request<ControlStatus | undefined>(
       `/api/v1/sites/${siteId}/control-status`,
     ).then((v) => v ?? null),
+  /**
+   * Die LADEPUNKTE der Anlage: das Budget, das sie sich teilen, und je Säule
+   * ihre Stecker (Lastmanagement Stufe 3). Jede Zahl und jeder deutsche Satz
+   * stammt aus der Box und wird nur weitergereicht. `budget: null` + leere
+   * Liste ist der ehrliche Zustand einer Anlage ohne Ladesäulen.
+   */
+  siteChargers: (siteId: string) =>
+    request<SiteCharging>(`/api/v1/sites/${siteId}/chargers`),
+  /** Die im Portal gepflegte Anschlussgrenze + Vorrang-Wahl. */
+  chargingConfig: (siteId: string) =>
+    request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config`),
+  /**
+   * Speichert Anschlussgrenze und/oder Vorrang - PATCH-Semantik: ein NICHT
+   * übergebenes Feld behält seinen Wert (ein Dialog, der nur den Vorrang
+   * stellt, darf die Grenze nicht löschen).
+   */
+  saveChargingConfig: (
+    siteId: string,
+    body: { gridLimitKw?: number; priorityChargePointIds?: string[] },
+  ) =>
+    request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   /**
    * Das REGEL-PROTOKOLL der Anlage (Einheitsmodell Stufe 5b): Zähler je Regel,
    * Verlauf je Regel und das kompakte Gesamt-Protokoll in EINER Antwort - die

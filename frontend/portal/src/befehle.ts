@@ -84,6 +84,7 @@ const STROM: Record<string, string> = {
   batterie: 'Speicher',
   abregelung: 'Einspeise-Begrenzung',
   verbraucher: 'Gerät',
+  ladepunkt: 'OCPP-Ladeprofil',
   waechter: 'Einspeisewächter',
   register: 'Register',
 };
@@ -369,6 +370,16 @@ function handlung(e: CommandEntry): string {
         : 'Einspeisung begrenzt';
     }
     return 'Keine Einspeise-Begrenzung';
+  }
+  if (e.stream === 'ladepunkt') {
+    // Der Ladepunkt-Strom nennt die GRENZE, die die Box der Säule hinterlegt
+    // hat - nie eine Wirkung. Was das Fahrzeug daraus gemacht hat, steht auf
+    // der Ladevorgangs-Liste.
+    const kw = spanneKw(e);
+    if (e.mode === 'laedt') {
+      return kw ? `Ladelimit ${kw}` : 'Ladefreigabe erteilt';
+    }
+    return kw ? `Ladelimit ${kw} - kein Fahrzeug angesteckt` : 'Kein Ladevorgang';
   }
   if (e.stream === 'verbraucher') {
     // Der Verbraucher-Strom trägt NUR die Bestätigungs-Dimension: was das

@@ -2,6 +2,7 @@ package com.voltpilot.api.chargers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.command.CommandLogWriter;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
@@ -14,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -79,6 +81,7 @@ public class ChargerStatusListener {
     private final DeviceRepository devices;
     private final DeviceChargerStatusRepository chargerStatus;
     private final ObjectProvider<ChargerComponentComposer> composer;
+    private final ObjectProvider<CommandLogWriter> commandLog;
     private final ObjectMapper mapper = new ObjectMapper();
     private final Object lock = new Object();
     private MqttClient client;
@@ -88,13 +91,15 @@ public class ChargerStatusListener {
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             DeviceRepository devices, DeviceChargerStatusRepository chargerStatus,
-            ObjectProvider<ChargerComponentComposer> composer) {
+            ObjectProvider<ChargerComponentComposer> composer,
+            ObjectProvider<CommandLogWriter> commandLog) {
         this.brokerUrl = brokerUrl;
         this.username = username;
         this.password = password;
         this.devices = devices;
         this.chargerStatus = chargerStatus;
         this.composer = composer;
+        this.commandLog = commandLog;
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -226,6 +231,14 @@ public class ChargerStatusListener {
             }
             chargerStatus.replaceForDevice(deviceId, tenantId, siteId, reportedAt, budget,
                     chargers);
+            // Der Kommando-Verlauf: je Säule eine laufende Periode über die
+            // Grenze, die die Box ihr hinterlegt hat. Nie werfend - der
+            // Verlauf ist die Kür, der Ist-Zustand die Pflicht.
+            CommandLogWriter log = commandLog.getIfAvailable();
+            if (log != null) {
+                log.ingestChargers(siteId, deviceId, chargerFacts(deviceId, chargers,
+                        budget.controlEnabled()), reportedAt);
+            }
             // Die Säule wird zur KOMPONENTE, sobald sie sich gemeldet hat - das
             // Bestands-Übernahme-Muster, telemetrie-getrieben und NIE werfend:
             // ein Ladepunkt, der lädt, ist wichtiger als sein Modell-Eintrag.
@@ -236,6 +249,50 @@ public class ChargerStatusListener {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * Die Verlaufs-Fakten je Säule. Die Entitäts-Id kommt aus der GESPEICHERTEN
+     * Bindung (die Komposition läuft eine Zeile darüber), damit der Verlauf
+     * dieselbe Komponente meint wie das Anlagen-Modell; eine Säule ohne
+     * Komponente wird ausgelassen statt mit einer erfundenen Id geführt.
+     */
+    private List<CommandLogWriter.ChargerFacts> chargerFacts(UUID deviceId,
+            List<ChargePointRow> chargers, boolean controlEnabled) {
+        Map<String, UUID> bound = chargerStatus.entityIdsByChargePoint(deviceId);
+        List<CommandLogWriter.ChargerFacts> out = new ArrayList<>();
+        for (ChargePointRow c : chargers) {
+            UUID entityId = bound.get(c.chargePointId());
+            if (entityId == null) {
+                continue;
+            }
+            double allocated = 0;
+            boolean charging = false;
+            Boolean confirmed = null;
+            String reason = null;
+            for (ConnectorRow con : c.connectors()) {
+                if (con.allocatedKw() != null) {
+                    allocated += con.allocatedKw();
+                }
+                if (con.charging()) {
+                    charging = true;
+                }
+                // Das Rücklese-Urteil der Säule: ein „abweichend" an EINEM
+                // Stecker ist die schärfere Aussage und gewinnt; ohne jede
+                // Antwort bleibt es dreiwertig null (eine Lücke, kein Nein).
+                if ("abweichend".equals(con.readback())) {
+                    confirmed = Boolean.FALSE;
+                } else if ("ok".equals(con.readback()) && confirmed == null) {
+                    confirmed = Boolean.TRUE;
+                }
+                if (reason == null && con.reason() != null) {
+                    reason = con.reason();
+                }
+            }
+            out.add(new CommandLogWriter.ChargerFacts(entityId, charging, allocated, reason,
+                    confirmed, controlEnabled));
+        }
+        return out;
     }
 
     private static BudgetRow budget(JsonNode b) {

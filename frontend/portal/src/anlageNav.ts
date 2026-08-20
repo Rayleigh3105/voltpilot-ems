@@ -62,7 +62,7 @@ export type NavTarget =
   | { kind: 'action'; action: 'add-anlage' | 'logout' };
 
 /** The colour key of a mode group's dot; resolved to a token in Shell.css. */
-export type ModeTone = 'markt' | 'peak' | 'eigen' | 'atyp' | 'automation';
+export type ModeTone = 'markt' | 'peak' | 'eigen' | 'atyp' | 'laden' | 'automation';
 
 /** One sidebar / bottom-bar / sheet entry. */
 export interface SidebarItem {
@@ -218,6 +218,12 @@ const VIEW_ITEMS: Partial<Record<DeepViewId, Omit<SidebarItem, 'badge'>>> = {
     icon: 'trending-up',
     target: { kind: 'sub', sub: 'lastspitzen' },
   },
+  ladevorgaenge: {
+    key: 'ladevorgaenge',
+    label: 'Ladevorgänge',
+    icon: 'zap',
+    target: { kind: 'sub', sub: 'ladevorgaenge' },
+  },
 };
 
 /** The deep view that has no nav entry but must stay reachable (phone sheet). */
@@ -238,6 +244,9 @@ const SHEET_ONLY_ITEMS: SidebarItem[] = [
 ];
 
 const MODE_TONES: Record<ModeKind, ModeTone> = {
+  // Der Ladepark trägt den Verbraucher-Ton des Hauses: Ladepunkte sind die
+  // Verbraucher-Rolle (Mockups §2 Entscheidung 3, Violett `--vp-flow-load`).
+  lastmanagement: 'laden',
   marktvermarktung: 'markt',
   lastspitzenkappung: 'peak',
   'atypische-netznutzung': 'atyp',
