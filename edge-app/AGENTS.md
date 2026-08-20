@@ -2952,6 +2952,21 @@ OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
   passiert). Geprueft wird deshalb: „genau zwei laden", „keiner haengt unter
   der Mindestleistung", „der Standort bleibt unter dem Budget", „der Wartende
   nennt seinen Grund".
+- **L6 ist der Stufe-2-Beweis und er misst genauso.** Der simulierte
+  Netz-Zaehler (`cmd/vp-netz-sim`) meldet den VERKNUEPFUNGSPUNKT auf dem
+  lokalen Bus — Gebaeudelast plus das, was die Saeulen ziehen, und er LIEST
+  ihren Zug ueber ihre Status-Endpunkte, wie ein echter Zaehler ihn sieht. Das
+  Rig muss die beiden also nicht von Hand synchron halten, und es gibt keinen
+  Test-Hebel: der Weg ist der echte (`edge/telemetry` -> `onLocalTelemetry` ->
+  `agent.ocppObserve`). Geprueft wird die ganze Kette: das Budget folgt der
+  Messung, ein Lastsprung im Gebaeude regelt die Fahrzeuge herunter UND der
+  Verknuepfungspunkt bleibt unter der planbaren Leistung, der Zaehler faellt
+  aus -> GEHALTEN statt freigegeben -> zusammengezogen auf das sichere Budget.
+- **⚠ Der Lastsprung im Rig ist bewusst REALISTISCH gewaehlt** (20 -> 100 kW
+  Gebaeude bei 2-s-Kadenz), nicht maximal: die Despike-Schwelle der Box haelt
+  einen groesseren Sprung ein paar Messwerte lang zurueck, und dann prueft das
+  Rig das Despike-Tor statt des Lastmanagements. Wer die Zahlen anhebt, misst
+  etwas anderes als er glaubt.
 - **L4 ist der Totmann-Beweis und er dauert:** der Kern wird GETOETET, dann
   laeuft das TxProfile (120 s) ab und die Saeule faellt VON SELBST auf ihr
   Sicherheitsprofil. Die zweite Haelfte ist genauso wichtig — sie laedt
@@ -2976,6 +2991,17 @@ OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
   Ladegrenze setzt — Grenzen kommen allein aus dem Lastmanagement, damit diese
   Flaeche nie ein zweiter, unarbitrierter Schreiber auf eine Kundenanlage wird.
   `TestThereIsNoRouteThatCommandsAChargingLimit` ist der strukturelle Waechter.
+- **⚠ Die Stufen-Zeile (Stufe 2) WIEDERHOLT den Satz der Box, sie formuliert
+  ihn nie neu** (`VPOcpp.budgetSourceLine` reicht `budget_note` durch): der
+  deutsche Satz wird EINMAL geschrieben, in `lastmgmt/budget.go`, wie beim
+  Einspeise-Waechter — zwei Renderings desselben Urteils koennten es sonst
+  verschieden sagen, und nur die Box kennt die Zahlen dahinter. `budgetSourceTone`
+  faerbt nur: jede BLINDE Stufe ist eine Warnung, „statisch" ist ehrlich und
+  kein Fehler, und ein unbekanntes Wort wird nie zu einer erfundenen Warnung.
+- **Die Einrichten-Seite zeigt das LEBENDE Budget** (`ocpp.budget_kw`), nicht
+  das, was die Einstellungen allein ergaeben (`settings.budget_kw`) — seit
+  Stufe 2 sind das zwei Zahlen, und eine Einrichtungsseite, die eine andere
+  nennt als die Betriebskarte, waeren zwei Wahrheiten ueber eine Groesse.
 - Jede Ableitung liegt rein in `window.VPOcpp` (`jstest/ui.test.js`): die
   Budget-Zeile behauptet nie einen Messwert, den niemand gemeldet hat; die
   Ausfall-Zeile zeigt die RECHNUNG statt einer nackten Zahl und wiederholt

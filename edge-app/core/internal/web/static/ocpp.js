@@ -59,6 +59,34 @@
     return line + ".";
   }
 
+  // budgetSourceLine says WHERE the budget came from - the Stufe-2 stages.
+  //
+  // ⚠ The German sentence is NEVER written here: it is written ONCE in the box
+  // (internal/lastmgmt/budget.go) and travels verbatim, exactly like the
+  // feed-in watchdog's. Two renderings of the same verdict must not be able to
+  // word it differently, and only the box knows the numbers behind it.
+  function budgetSourceLine(o) {
+    if (!o || !o.enabled || !o.listening) return "";
+    return o.budget_note || "";
+  }
+
+  // budgetSourceTone maps the stage onto the page's dot vocabulary. A blind
+  // stage is a WARNING even while it still charges: the budget is being held or
+  // pulled in, and the operator's lever is the measurement.
+  function budgetSourceTone(o) {
+    if (!o || !o.enabled) return "off";
+    switch (o.budget_mode) {
+      case "gemessen":
+        return "ok";
+      case "haelt":
+      case "zieht_zusammen":
+      case "sicherheitsbudget":
+        return "warn";
+      default:
+        return "off"; // statisch - honest, just not measured
+    }
+  }
+
   // failsafeLine shows the customer the ARITHMETIC behind the emergency
   // profile rather than a bare number, exactly as the approved mockups do.
   // Without a computable value it repeats the reason - never a friendly zero.
@@ -135,6 +163,8 @@
 
   global.VPOcpp = {
     endpointFor: endpointFor,
+    budgetSourceLine: budgetSourceLine,
+    budgetSourceTone: budgetSourceTone,
     removalConsequences: removalConsequences,
     budgetLine: budgetLine,
     failsafeLine: failsafeLine,
@@ -227,8 +257,21 @@
       setVal("ocppMinPower", data.settings.min_power_kw);
       setVal("ocppRotation", data.settings.rotation_minutes);
       setVal("ocppMaxHouse", data.settings.max_house_load_kw);
+      var sw = $("ocppStaticBudget");
+      if (sw) sw.checked = !!data.settings.static_budget;
     }
-    if (data.settings) txt("ocppBudget", (Math.round(data.settings.budget_kw * 10) / 10).toString().replace(".", ",") + " kW");
+    // ⚠ The LIVE budget, not the one these settings alone would yield: since
+    // Stufe 2 the two differ whenever the box measures its connection point,
+    // and a setup page showing a different number than the operating card
+    // would be two truths about one figure.
+    if (o.budget_kw !== undefined) {
+      txt("ocppBudget", (Math.round(o.budget_kw * 10) / 10).toString().replace(".", ",") + " kW");
+    }
+    var src = D.budgetSourceLine(o);
+    txt("ocppBudgetSourceText", src);
+    show("ocppBudgetSource", !!src);
+    var dot = $("ocppBudgetDot");
+    if (dot) dot.className = "row-dot " + D.budgetSourceTone(o);
   }
 
   function setVal(id, v) { var e = $(id); if (e) e.value = (v === 0 ? "" : String(v).replace(".", ",")); }
@@ -248,6 +291,12 @@
     show("ocppOpCard", on);
     if (!on) return;
     txt("ocppOpBudget", D.budgetLine(o));
+    // The stage sentence, verbatim from the box. NO colour on this page: the
+    // Betrieb view has no dot vocabulary, and the sentence carries the meaning
+    // on its own (the house rule that a state is always a WORD, never a hue).
+    var src = D.budgetSourceLine(o);
+    txt("ocppOpSource", src);
+    show("ocppOpSource", !!src);
     var note = D.controlNote(o);
     txt("ocppOpNote", note);
     show("ocppOpNote", !!note);
@@ -331,6 +380,7 @@
           min_power_kw: numVal("ocppMinPower"),
           rotation_minutes: numVal("ocppRotation"),
           max_house_load_kw: numVal("ocppMaxHouse"),
+          static_budget: !!(($("ocppStaticBudget") || {}).checked),
         };
         post("/api/ocpp/settings", body, "ocppSettingsError", function () {
           lastSettings = null;

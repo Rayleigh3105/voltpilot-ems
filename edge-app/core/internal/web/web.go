@@ -1265,6 +1265,11 @@ func ocppError(w http.ResponseWriter, err error) {
 // rotation is shown in MINUTES because that is what an operator types and
 // reads, and the derived budget rides along so the page never re-derives it
 // (one arithmetic, one answer).
+//
+// ⚠ `budget_kw` here is what THESE SETTINGS ALONE yield. Since Stufe 2 the
+// budget actually in force may follow the measured connection point instead -
+// that one is `ocpp.budget_kw` (with `ocpp.budget_mode`/`budget_note` saying
+// where it came from), and it is the one every surface shows.
 func ocppSettingsView(set lastmgmt.Settings) map[string]any {
 	return map[string]any{
 		"grid_limit_kw":     set.GridLimitKw,
@@ -1273,6 +1278,7 @@ func ocppSettingsView(set lastmgmt.Settings) map[string]any {
 		"min_power_kw":      set.MinPowerKw,
 		"rotation_minutes":  int(set.RotationPeriod / time.Minute),
 		"max_house_load_kw": set.MaxHouseLoadKw,
+		"static_budget":     set.StaticBudget,
 		"budget_kw":         set.BudgetKw(),
 	}
 }
