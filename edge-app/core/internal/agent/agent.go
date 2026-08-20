@@ -1503,7 +1503,9 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// of the feed-in watchdog above and shares its inverted fail-safe rule:
 	// blind never means unlimited. A box without charge points has no runtime
 	// and this costs nothing.
-	a.ocppObserve(ts, measurements)
+	// battKw is passed EXPLICITLY - it is not in `measurements` (see the parse
+	// above: it is an internal channel, never a published one).
+	a.ocppObserve(ts, measurements, battKw)
 
 	// While the device is removed (unclaimed) in the cloud, the local dashboard
 	// stays fully alive (guard reading, history ring, KPIs below) but the

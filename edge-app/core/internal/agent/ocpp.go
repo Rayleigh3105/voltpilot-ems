@@ -416,7 +416,7 @@ func (a *Agent) ocppReadback(ctx context.Context, snap csms.Snapshot, now time.T
 // smaller than it is.
 //
 // It costs nothing on a box without charge points: a.ocpp is nil then.
-func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64) {
+func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64, battKw *float64) {
 	rt := a.ocpp
 	if rt == nil {
 		return
@@ -441,10 +441,16 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64) {
 	// ("the battery is taking nothing"), which is what cars-first needs to
 	// know. A site whose flows never publish the channel reports nothing and
 	// both priorities collapse into the measured status quo.
-	if b, ok := measurements["battery_power_kw"]; ok {
+	//
+	// ⚠ It is handed in EXPLICITLY, never read out of `measurements`: the
+	// battery channel is deliberately NOT a published measurement (see the
+	// parse in onLocalTelemetry), so a map lookup would silently always miss
+	// and the storage arbitration would be dead on every real box. Found by
+	// the rig, not by a unit test - the tests fed the map by hand.
+	if battKw != nil {
 		m.HaveBattery = true
-		if b > 0 {
-			m.BatteryChargeKw = b
+		if *battKw > 0 {
+			m.BatteryChargeKw = *battKw
 		}
 	}
 	if rt.budget.ObserveM(ts, m) {

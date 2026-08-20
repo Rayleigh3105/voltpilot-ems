@@ -1381,7 +1381,7 @@ Der Anlass war eine Produktionsstörung (06./07.08.2026): eine DNS-Fehlleitung l
 (cd edge-app/core && go test ./...)                          # Go 1.24+; incl. in-process mTLS integration test
 (cd edge-app/nodered/vp-palette && npm install && npm test)  # vp-palette node tests
 edge-app/test/e2e-compose.sh                                 # isolated compose e2e (Docker; own project/ports)
-edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-Rig (L1-L5; Docker-FREI, nur Go + curl)
+edge-app/test/e2e-ocpp.sh                                    # OCPP-Lastmanagement-Rig (L1-L9; Docker-FREI, nur Go + curl)
 ```
 
 Health endpoints on the JVM services are mapped to root: `GET /health` (Spring Boot Actuator).
@@ -2843,7 +2843,7 @@ was jede Session wissen muss:
   eine unvollständige Messung ist keine Messung. Die Fail-Safe-Kette ist die
   UMKEHRUNG jedes ökonomischen Guards (halten → zusammenziehen → sicheres
   Budget, nie freigeben); **ohne Messung ist alles byte-gleich Stufe 1**.
-- **Beweis:** `edge-app/test/e2e-ocpp.sh` (L1–L6, **Docker-frei**) misst an den
+- **Beweis:** `edge-app/test/e2e-ocpp.sh` (L1–L9, **Docker-frei**) misst an den
   simulierten Zählerwerten, nie an Quittungen — L6 fährt den dynamischen Fall
   gegen einen simulierten Netz-Zähler (`cmd/vp-netz-sim`), inklusive Messausfall.
   Der MVP ist damit simulator-bewiesen — eine echte Säule braucht die
@@ -3006,6 +3006,21 @@ ERTEILT die Einmal-Freigabe.
   geschlossenes Vokabular geprüft und sonst VERWORFEN** (die Regel des
   `ChargerStatusListener`), jeder fehlende Messwert bleibt NULL — ein Ladepunkt,
   der nichts meldet, hat nachweislich keinen Überschuss von 0.
+- **⚠ Der Speicher-Kanal wird als ARGUMENT durchgereicht, nie aus der
+  Messwert-Karte gelesen** (`agent.ocppObserve(ts, measurements, battKw)`):
+  `onLocalTelemetry` legt `battery_power_kw` bewusst NICHT in die Karte (interner
+  Kanal, kein veröffentlichter Messwert), eine Suche dort ging also auf jeder
+  echten Box ins Leere und die Speicher-Arbitrierung war TOT — während die
+  Unit-Tests ihre Karte von Hand füllten und grün blieben. **Am Rig gefunden
+  (L8), nicht im Test**; der Wächter ist seither
+  `TestTheBatteryReachesTheSurplusSplitThroughTheRealTelemetryPath` (echter
+  Telemetrie-Weg, mutationsgeprüft).
+- **Rig (Docker-frei, `edge-app/test/e2e-ocpp.sh`):** L7 „Nur Sonnenstrom"
+  deckelt auf den gemessenen Überschuss, während die physische Bahn offen steht
+  (die niedrigere gewinnt) und der Verknüpfungspunkt danach bei 0 kW steht ·
+  L8 dieselbe Sonne, umgelegte Priorität, 80 → 120 kW AN DEN SÄULEN · L9 die
+  Übersteuerung gilt GENAU EINEM Ladevorgang, der Anschluss hält, die Rücknahme
+  stellt die Priorität wieder her.
 - **Beweise:** `ChargingConfigPublisherTest` (+1: die Wahl reist, Abwesenheit ist
   nicht `schnell`) · `ChargingBoostPublisherTest` (5: die Draht-Form gegen die
   Kontrakt-Fixtures, nicht-retained, der Stempel) · `ChargerStatusListenerTest`

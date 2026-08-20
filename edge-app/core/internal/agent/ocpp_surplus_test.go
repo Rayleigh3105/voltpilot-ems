@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppsim"
 )
@@ -42,10 +43,15 @@ func measureSurplus(t *testing.T, a *Agent, houseKw, pvKw, battKw float64, stati
 	})
 	now := time.Now().UTC()
 	charging, _ := a.ocpp.srv.Snapshot().ChargingTotal(now, ocppMeterMaxAge)
+	// ⚠ Die Batterie wird als ARGUMENT uebergeben, nicht ueber die Messwert-
+	// Karte: genau so kommt sie auch im Betrieb an (onLocalTelemetry parst sie
+	// als internen Kanal). Dass die Verdrahtung wirklich haelt, prueft
+	// TestTheBatteryReachesTheSurplusSplitThroughTheRealTelemetryPath - hier
+	// wird die REGEL geprueft, dort der WEG.
+	batt := battKw
 	a.ocppObserve(now, map[string]float64{
-		"power_kw":         houseKw + battKw + charging - pvKw,
-		"battery_power_kw": battKw,
-	})
+		"power_kw": houseKw + battKw + charging - pvKw,
+	}, &batt)
 }
 
 // TestNurSonnenstromCapsTheVehiclesAtTheMeasuredSurplus is the headline of the
@@ -296,4 +302,92 @@ func ocppConnectorView(t *testing.T, a *Agent, chargerID string, connector int) 
 	}
 	t.Fatalf("connector %s#%d not in the view", chargerID, connector)
 	return out
+}
+
+// TestTheBatteryReachesTheSurplusSplitThroughTheRealTelemetryPath is the guard
+// for the seam every other test in this file skips.
+//
+// ⚠ Der Kanal `battery_power_kw` wird in `onLocalTelemetry` bewusst NICHT in
+// die Messwert-Karte gelegt (er ist ein interner Kanal, kein veroeffentlichter
+// Messwert). Die Speicher-Arbitrierung las ihn aber genau von dort - sie war
+// damit auf JEDER echten Box tot, waehrend die Tests hier ihre Karte von Hand
+// fuellten und gruen blieben. Aufgefallen ist es am Rig (L8), nicht im Test.
+// Dieser Fall faehrt deshalb den ECHTEN Weg: rohe Telemetrie hinein, und die
+// Frage ist allein, ob der Speicher in der Aufteilung ankommt.
+func TestTheBatteryReachesTheSurplusSplitThroughTheRealTelemetryPath(t *testing.T) {
+	a := fullOcppAgent(t)
+	ocppSite(t, a, 0)
+	ocppPolicy(t, a, lastmgmt.PolicySolarOnly, lastmgmt.StorageBeforeCars)
+
+	// Kleine Schritte aus dem kalten Start: der Despiker haelt einen grossen
+	// Sprung zwischen zwei Messungen fest, und dieser Fall prueft die
+	// VERDRAHTUNG, nicht die Regel.
+	//
+	// Der Standort speist 10 kW ein, waehrend der Speicher 4 kW nimmt: der
+	// ganze Ueberschuss ist also 14 kW, und die Fahrzeuge bekommen bei
+	// „Speicher vor Auto" die 10 kW, die uebrig bleiben.
+	for i := 0; i < 2; i++ {
+		a.onLocalTelemetry("edge/telemetry",
+			[]byte(`{"power_kw":-10,"battery_power_kw":4}`))
+	}
+
+	v := a.ocpp.budget.Surplus(time.Now().UTC(),
+		lastmgmt.PolicySolarOnly, lastmgmt.StorageBeforeCars)
+	if !v.Active || v.Mode != lastmgmt.SurplusMeasured {
+		t.Fatalf("die Quellen-Bahn misst nicht (%q / %s)", v.Mode, v.Reason)
+	}
+	if v.BatteryKw == nil {
+		t.Fatal("der Speicher ist in der Aufteilung nicht angekommen - " +
+			"genau der Fehler, den das Rig gefunden hat")
+	}
+	nearKw(t, "der gemeldete Speicher", *v.BatteryKw, 4)
+	if v.TotalKw == nil {
+		t.Fatal("ohne Gesamt-Ueberschuss kann keine Prioritaet etwas bewegen")
+	}
+	nearKw(t, "der ganze Ueberschuss", *v.TotalKw, 14)
+	nearKw(t, "was den Fahrzeugen bleibt", v.Kw, 10)
+
+	// Und die Gegenprobe: dieselbe Messung OHNE den Kanal darf keinen Speicher
+	// behaupten - unbekannt ist nie eine gemessene Null.
+	b := fullOcppAgent(t)
+	ocppSite(t, b, 0)
+	ocppPolicy(t, b, lastmgmt.PolicySolarOnly, lastmgmt.StorageBeforeCars)
+	for i := 0; i < 2; i++ {
+		b.onLocalTelemetry("edge/telemetry", []byte(`{"power_kw":-10}`))
+	}
+	w := b.ocpp.budget.Surplus(time.Now().UTC(),
+		lastmgmt.PolicySolarOnly, lastmgmt.StorageBeforeCars)
+	if w.BatteryKw != nil {
+		t.Fatalf("ohne gemeldeten Kanal wird ein Speicher behauptet (%v kW)", *w.BatteryKw)
+	}
+	nearKw(t, "ohne Speicher ist der ganze Ueberschuss das, was ankommt", w.Kw, 10)
+}
+
+// fullOcppAgent baut einen VOLLSTAENDIGEN Agenten (nicht die schmale
+// Test-Attrappe der uebrigen Faelle): nur er hat die Gates, durch die eine
+// echte Telemetrie-Nachricht laeuft - und genau darum geht es hier.
+func fullOcppAgent(t *testing.T) *Agent {
+	t.Helper()
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.OcppEnabled = true
+	cfg.OcppPort = 0
+	cfg.ControlEnabled = true
+	cfg.ConsumerControlEnabled = true
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ Ein EIGENER, kuendbarer Kontext: `Stop()` wartet auf die Goroutinen des
+	// Agenten, und die OCPP-Schleife endet allein an ihrem Kontext. Mit
+	// context.Background() wartet der Test hier fuer immer. Aufraeumer laufen
+	// LIFO, also wird zuerst gekuendigt und dann gestoppt.
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := a.startOcpp(ctx); err != nil {
+		cancel()
+		t.Fatalf("startOcpp: %v", err)
+	}
+	t.Cleanup(a.Stop)
+	t.Cleanup(cancel)
+	return a
 }

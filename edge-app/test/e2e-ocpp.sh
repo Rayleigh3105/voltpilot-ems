@@ -16,6 +16,12 @@
 #   L5  Budget < n × Mindestleistung -> pausieren + Rotation statt aushungern
 #   L6  (Stufe 2) das Budget FOLGT dem gemessenen Netzanschluss - und bei
 #       Messausfall wird gehalten und zusammengezogen, nie freigegeben
+#   L7  (Stufe 4) „Nur Sonnenstrom" deckelt auf den GEMESSENEN Überschuss -
+#       und die niedrigere der beiden Bahnen gewinnt
+#   L8  (Stufe 4) die zwei Prioritäten bewegen WIRKLICH Leistung: „Speicher
+#       vor Auto" gegen „Auto vor Speicher", an den Säulen gemessen
+#   L9  (Stufe 4) „Jetzt voll laden" nimmt GENAU EINEN Ladevorgang aus der
+#       Quellen-Bahn - und der Anschluss hält trotzdem
 #
 # Bewusst OHNE Docker: alles hier läuft als Prozess, also ist das Rig auf jedem
 # Rechner mit Go reproduzierbar und braucht kein gebautes Image.
@@ -102,6 +108,23 @@ site_near() { nearly "$(site_kw)" "$1" "$2"; }
 ocpp_json()   { curl -sf "${BOX}/api/ocpp" | sed -e 's/.*"ocpp":{//' -e 's/,"settings":{.*//'; }
 budget_kw()   { ocpp_json | sed -n 's/.*"budget_kw":\([0-9.]*\).*/\1/p' | head -1; }
 budget_mode() { ocpp_json | sed -n 's/.*"budget_mode":"\([a-z_]*\)".*/\1/p' | head -1; }
+# Die Quellen-Bahn (Stufe 4) - dieselbe Antwort, andere Felder.
+surplus_kw()      { ocpp_json | sed -n 's/.*"surplus_kw":\([0-9.]*\).*/\1/p' | head -1; }
+surplus_mode()    { ocpp_json | sed -n 's/.*"surplus_mode":"\([a-z_]*\)".*/\1/p' | head -1; }
+surplus_total()   { ocpp_json | sed -n 's/.*"surplus_total_kw":\([0-9.]*\).*/\1/p' | head -1; }
+source_alloc()    { ocpp_json | sed -n 's/.*"source_allocated_kw":\([0-9.]*\).*/\1/p' | head -1; }
+# policy <wort> [speicher-prioritaet] - die Wahl des Kunden setzen.
+policy() {
+  local body="{\"surplus_policy\":\"$1\""
+  [ -n "${2:-}" ] && body="${body},\"storage_priority\":\"$2\""
+  curl -sf -X POST "${BOX}/api/ocpp/settings" -H 'Content-Type: application/json' \
+    -d "${body}}" >/dev/null || fail "Quellen-Wahl '$1' abgelehnt"
+}
+
+# surplus_state - die Quellen-Bahn in einer Zeile (fuer Fehlermeldungen).
+surplus_state() {
+  echo "Ueberschuss: kw=$(surplus_kw) total=$(surplus_total) modus=$(surplus_mode) budget=$(budget_kw)/$(budget_mode) Saeulen=$(site_kw)"
+}
 
 waitfor() { # waitfor <sekunden> <beschreibung> <kommando...>
   local secs="$1" what="$2"; shift 2
@@ -284,6 +307,137 @@ awk -v b="$TO" 'BEGIN{exit (b>=69.2)?0:1}' \
   || fail "L6: das Budget ist unter das sichere Budget gefallen ($TO kW < 69,3)"
 pass "L6d: ohne Messung wird zusammengezogen ($FROM -> $TO kW, Ziel 69,3) - nie freigegeben"
 
+# ---------------------------------------------------------------- L7
+echo "--- L7: (Stufe 4) „Nur Sonnenstrom\" deckelt auf den gemessenen Überschuss"
+# Der Zaehler meldet den VERKNUEPFUNGSPUNKT. Eine NEGATIVE Gebaeudelast ist die
+# PV: waehrend nichts laedt, speist der Standort 120 kW ein - genau der
+# Ueberschuss, aus dem die Quellen-Bahn abgeleitet wird.
+#
+# ⚠ Die Rechnung ist stabil, obwohl die Autos gleich daran ziehen: der Rest des
+# Standorts ist `Netz - Laden`, und beide Haelften stammen aus DEMSELBEN
+# Augenblick (das ist der Grund, warum die Box sie am Telemetrie-Chokepoint
+# paart). Ziehen die Autos 120 kW, meldet der Zaehler 0 - der Rest bleibt -120.
+"$WORK/vp-netz-sim" --bus "127.0.0.1:${BUS_PORT}" --status "$NETZ_STATUS" \
+  --house -120 --battery 0 \
+  --charger "http://${S1_STATUS}/status" --charger "http://${S2_STATUS}/status" \
+  >"$WORK/netz2.log" 2>&1 &
+NETZ_PID=$!
+waitfor 20 "der Netz-Zaehler meldet wieder" curl -sf "http://${NETZ_STATUS}/status"
+policy nur_sonne speicher_vor_auto
+
+l7_ready() { [ "$(surplus_mode)" = "gemessen" ] && nearly "$(surplus_kw)" 120 1.0; }
+waitfor 200 "der Ueberschuss wird gemessen" l7_ready || { surplus_state; exit 1; }
+SURPLUS=$(surplus_kw); PHYS=$(budget_kw)
+# ⚠ Die physische Bahn steht bei den planbaren 249,3 kW, NICHT bei 369 kW: das
+# Budget wird bewusst nie ueber die planbare Leistung des Anschlusses gehoben,
+# auch wenn der Standort gerade einspeist (measuredBudget - eine Wolke nimmt
+# den Ueberschuss in Sekunden, und kein Sekunden-Regelkreis folgt dem). Der
+# Fall beweist nur dann etwas, wenn sie DEUTLICH groesser ist als die Sonne.
+awk -v p="$PHYS" -v s="$SURPLUS" 'BEGIN{exit (p>s+50)?0:1}' \
+  || fail "L7: die physische Bahn ist $PHYS kW gegen $SURPLUS kW Sonne - zu nah beieinander, der Fall beweist nichts"
+waitfor 120 "die Fahrzeuge laden aus dem Ueberschuss" site_near 120 1.5
+TOTAL=$(site_kw)
+nearly "$TOTAL" 120 1.5 || fail "L7: der Standort zieht $TOTAL kW, erwartet den Ueberschuss 120"
+pass "L7: $TOTAL kW aus $SURPLUS kW Sonne - die niedrigere der beiden Bahnen gewinnt (physisch waeren $PHYS kW erlaubt)"
+
+# Und der Standort kauft dabei NICHTS: Gebaeude + Laden = -120 + 120 = 0.
+#
+# ⚠ Gewartet, nicht einmal gemessen: der Zaehler veroeffentlicht alle 2 s und
+# LIEST den Zug der Saeulen - waehrend die Fahrzeuge von der vorigen Stufe
+# herunterfahren, ist sein Wert kurz von gestern. Geprueft wird der Zustand,
+# in dem die Anlage zur Ruhe kommt, nicht ein Augenblick der Rampe.
+grid_meter_kw() { curl -sf "http://${NETZ_STATUS}/status" | sed -n 's/.*"grid_kw":\([-0-9.e]*\).*/\1/p'; }
+l7_no_import() { awk -v g="$(grid_meter_kw)" 'BEGIN{exit (g<=1.5)?0:1}'; }
+waitfor 90 "der Verknuepfungspunkt kommt zur Ruhe" l7_no_import
+GRID=$(grid_meter_kw)
+awk -v g="$GRID" 'BEGIN{exit (g<=1.5)?0:1}' \
+  || fail "L7: der Verknuepfungspunkt bezieht $GRID kW - „Nur Sonnenstrom\" hat Netzstrom gekauft"
+pass "L7b: der Verknuepfungspunkt steht bei $GRID kW - es wurde kein Netzstrom gekauft"
+
+# ---------------------------------------------------------------- L8
+echo "--- L8: (Stufe 4) die zwei Prioritaeten bewegen WIRKLICH Leistung"
+# Jetzt nimmt der Speicher 40 kW von der Sonne: PV 120 - Speicher 40 = 80 kW
+# Einspeisung, waehrend nichts laedt.
+#
+# ⚠ Der Zaehler bildet den Speicher NICHT nach, wie er auf die Klemme reagiert -
+# das Rig ist kein Physik-Simulator. Es misst genau das, was es messen soll: wie
+# viel die Box den AUTOS zugesteht, wenn der Kunde die Reihenfolge umlegt.
+curl -sf -X POST "http://${NETZ_STATUS}/set?house=-80&battery=40" >/dev/null
+# ⚠ Grosszuegige Fristen, und zwar aus einem BENANNTEN Grund: der Rest des
+# Standorts wird als MAXIMUM ueber ein 60-s-Fenster genommen (BudgetSmoothWindow),
+# und waehrend die Fahrzeuge herunterfahren liest der Zaehler ihren Zug kurz zu
+# hoch. Beides UNTERSCHAETZT den Ueberschuss - die Bahn ist konservativ, nie
+# grosszuegig. Geprueft wird der Zustand, in dem die Anlage zur Ruhe kommt.
+l8_storage_first() { nearly "$(surplus_kw)" 80 1.0 && nearly "$(surplus_total)" 120 1.0; }
+waitfor 200 "der Speicher hat Vorrang" l8_storage_first || { surplus_state; exit 1; }
+waitfor 120 "die Fahrzeuge folgen dem Rest" site_near 80 1.5
+FIRST=$(site_kw)
+nearly "$FIRST" 80 1.5 || fail "L8: mit „Speicher vor Auto\" ziehen die Fahrzeuge $FIRST kW, erwartet 80"
+pass "L8a: „Speicher vor Auto\" - der Speicher nimmt 40 kW, die Fahrzeuge bekommen $FIRST kW von 120"
+
+policy nur_sonne auto_vor_speicher
+l8_cars_first() { nearly "$(surplus_kw)" 120 1.0; }
+waitfor 200 "die Fahrzeuge haben Vorrang" l8_cars_first || { surplus_state; exit 1; }
+waitfor 120 "die Fahrzeuge holen sich den GANZEN Ueberschuss" site_near 120 1.5
+SECOND=$(site_kw)
+nearly "$SECOND" 120 1.5 || fail "L8: mit „Auto vor Speicher\" ziehen die Fahrzeuge $SECOND kW, erwartet 120"
+awk -v a="$FIRST" -v b="$SECOND" 'BEGIN{exit (b>a+20)?0:1}' \
+  || fail "L8: die Wahl bewegt nichts ($FIRST -> $SECOND kW)"
+pass "L8b: „Auto vor Speicher\" - dieselbe Sonne, $FIRST -> $SECOND kW an den Saeulen"
+
+# ---------------------------------------------------------------- L9
+echo "--- L9: (Stufe 4) „Jetzt voll laden\" nimmt GENAU EINEN Ladevorgang heraus"
+policy nur_sonne speicher_vor_auto
+waitfor 200 "zurueck auf dem Ueberschuss-Deckel" site_near 80 1.5
+BEFORE_1=$(drawn $S1_STATUS 1)
+curl -sf -X POST "${BOX}/api/ocpp/boost" -H 'Content-Type: application/json' \
+  -d '{"charge_point_id":"SAEULE-1","connector_id":1}' | grep -q '"active":true' \
+  || fail "L9: die Uebersteuerung wurde nicht angenommen"
+
+# Der uebersteuerte Ladevorgang konkurriert nicht mehr um den Ueberschuss - er
+# wird aus der PHYSISCHEN Bahn bedient und darf dafuer Netzstrom ziehen.
+# 249,3 kW planbar minus die 80 kW, die der andere aus der Sonne bekommt.
+l9_boosted() { awk -v d="$(drawn $S1_STATUS 1)" 'BEGIN{exit (d>120)?0:1}'; }
+waitfor 120 "der uebersteuerte Ladevorgang zieht hoch" l9_boosted
+BOOSTED=$(drawn $S1_STATUS 1); OTHER=$(drawn $S2_STATUS 1)
+awk -v d="$BOOSTED" 'BEGIN{exit (d>120)?0:1}' \
+  || fail "L9: der uebersteuerte Ladevorgang zieht nur $BOOSTED kW"
+# Und der ANDERE ist NICHT mit freigegeben - eine Uebersteuerung gilt GENAU
+# EINEM Ladevorgang. Er bleibt hoechstens auf seinem Anteil der Sonne; nimmt
+# der uebersteuerte Ladevorgang die physische Bahn ganz in Anspruch, bleibt
+# unter der Mindestleistung nichts uebrig und er PAUSIERT - aushungern gibt es
+# hier nicht (L2/L5), und der Grund steht dabei.
+awk -v d="$OTHER" 'BEGIN{exit (d<=85)?0:1}' \
+  || fail "L9: der zweite Ladevorgang zieht $OTHER kW - die Uebersteuerung hat die ganze Anlage freigegeben"
+if awk -v d="${OTHER:-0}" 'BEGIN{exit (d<0.5)?0:1}'; then
+  curl -sf "${BOX}/api/ocpp" | grep -q '"reason":"wartet' \
+    || fail "L9: der zweite Ladevorgang steht still, ohne seinen Grund zu nennen"
+  OTHER_NOTE="er pausiert mit genanntem Grund"
+else
+  awk -v d="$OTHER" 'BEGIN{exit (d>=29.9)?0:1}' \
+    || fail "L9: der zweite Ladevorgang hungert bei $OTHER kW (unter der Mindestleistung)"
+  OTHER_NOTE="er laedt weiter mit $OTHER kW"
+fi
+# Der Anschluss haelt trotzdem: Gebaeude + Laden bleibt unter den planbaren 249,3 kW.
+GRID=$(grid_meter_kw)
+awk -v g="$GRID" 'BEGIN{exit (g<=249.9)?0:1}' \
+  || fail "L9: der Verknuepfungspunkt traegt $GRID kW - ueber den planbaren 249,3 kW"
+pass "L9a: uebersteuert $BOOSTED kW (vorher $BEFORE_1), der andere ist NICHT mitfreigegeben ($OTHER_NOTE), Anschluss $GRID kW"
+
+# Zuruecknehmen - und die eigene Prioritaet des Kunden gilt wieder.
+curl -sf -X POST "${BOX}/api/ocpp/boost" -H 'Content-Type: application/json' \
+  -d '{"charge_point_id":"SAEULE-1","connector_id":1,"cancel":true}' >/dev/null \
+  || fail "L9: die Uebersteuerung liess sich nicht zuruecknehmen"
+waitfor 120 "die Prioritaet gilt wieder" site_near 80 2.0
+AFTER=$(site_kw)
+nearly "$AFTER" 80 2.0 || fail "L9: nach der Ruecknahme zieht der Standort $AFTER kW, erwartet den Ueberschuss 80"
+pass "L9b: zurueckgenommen - der Standort steht wieder bei $AFTER kW auf der Sonne"
+
+# Fuer L4 zaehlt die PHYSISCHE Bahn: der Totmann wird ohne Quellen-Deckel
+# geprueft (er ist eine Eigenschaft der Saeule, nicht der Oekonomie).
+policy schnell
+kill "$NETZ_PID"; wait "$NETZ_PID" 2>/dev/null || true; NETZ_PID=""
+
 # ---------------------------------------------------------------- L4
 echo "--- L4: der Totmann - die Box stirbt"
 S1_BEFORE=$(drawn $S1_STATUS 1)
@@ -305,4 +459,4 @@ awk -v d="$S1_AFTER" 'BEGIN{exit (d>1)?0:1}' || fail "L4: die Säule hat aufgeh�
 pass "L4: die Box ist tot, die Säule begrenzt sich SELBST auf 24,25 kW - und lädt weiter"
 
 echo
-echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L4 =="
+echo "== Rig OK: L1 · L2 · L3 · L5 · L6 · L7 · L8 · L9 · L4 =="
