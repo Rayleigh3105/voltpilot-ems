@@ -5729,6 +5729,15 @@ components:
         deviceId: { type: string, nullable: true }
         deviceRef: { type: string, nullable: true }
         lane: { type: string, nullable: true }
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Die Komponente der Lane `komponente` (sonst null) - die einzige
+            Zuordnung, mit der sich ein Vorgang einem Geraet HINTER der Box
+            zuschreiben laesst. Primaere Lane und frei getippte Adresse gehoeren
+            dem Schreibweg der BOX.
         targetLabel: { type: string, nullable: true }
         registerKind: { type: string, nullable: true }
         address: { type: integer, nullable: true }

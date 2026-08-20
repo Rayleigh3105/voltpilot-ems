@@ -4,6 +4,11 @@ import type {
 } from './api';
 import {
   adresseEcho,
+  geraeteVerlauf,
+  geraetRegisterZugang,
+  KEIN_SCHREIBWEG,
+  REGISTER_AUF_DER_GERAETESEITE,
+  zielKey,
   adresseFehler,
   beleg,
   bestaetigenLabel,
@@ -403,5 +408,77 @@ describe('Stufe 3: die Kunden-Fläche', () => {
       deviceId: 'dev-4' })))
       .toEqual({ deviceId: 'dev-4', lane: 'lan', host: '192.168.0.44', port: 502, unitId: 3 });
     expect(zielInput(null)).toEqual({});
+  });
+});
+
+/**
+ * Anlagen-Zentrale Stufe 1 §7.5: das Register-Werkzeug wohnt am GERÄT - mit
+ * vorgewähltem Ziel und dem Verlauf DIESES Geräts.
+ */
+describe('der Register-Weg der Geräteseite', () => {
+  const t = (patch: Partial<RegisterWriteTarget> = {}): RegisterWriteTarget => ({
+    lane: 'primary', deviceId: 'd-1', entityId: null, label: 'Deye SUN-30K',
+    brand: 'deye', model: 'sun-30k', family: 'hybrid_3p', communication: 'solarman_v5',
+    host: '192.168.0.28', port: 8899, unitId: 1, writable: true, reason: null, ...patch,
+  });
+  const primary = t();
+  const fronius = t({ lane: 'entity', entityId: 'e-1', label: 'Dach Süd', family: null,
+    communication: 'fronius_sunspec', host: '192.168.254.30', port: 502 });
+
+  it('wählt auf der BOX die primäre Lane vor', () => {
+    const z = geraetRegisterZugang([primary, fronius],
+      { box: true, deviceId: 'd-1', entityIds: [] });
+    expect(z.moeglich).toBe(true);
+    expect(z.vorwahl).toBe(zielKey(primary));
+  });
+
+  it('wählt an einem Gerät DAHINTER seine Komponente vor - nie die Box', () => {
+    const z = geraetRegisterZugang([primary, fronius],
+      { box: false, deviceId: null, entityIds: ['e-1'] });
+    expect(z.vorwahl).toBe(zielKey(fronius));
+  });
+
+  it('nennt den Grund statt eines wirkungslosen Knopfes', () => {
+    // Gar kein Ziel zu diesem Gerät.
+    const ohne = geraetRegisterZugang([primary],
+      { box: false, deviceId: null, entityIds: ['e-1'] });
+    expect(ohne.moeglich).toBe(false);
+    expect(ohne.grund).toBe(KEIN_SCHREIBWEG);
+    expect(ohne.vorwahl).toBeNull();
+
+    // Ein Ziel, aber ohne Schreibweg: der Grund kommt vom SERVER, nie von uns.
+    const gesperrt = geraetRegisterZugang(
+      [primary, { ...fronius, writable: false, reason: 'Dieses Gerät spricht kein Modbus.' }],
+      { box: false, deviceId: null, entityIds: ['e-1'] },
+    );
+    expect(gesperrt.moeglich).toBe(false);
+    expect(gesperrt.grund).toBe('Dieses Gerät spricht kein Modbus.');
+  });
+
+  it('grenzt den Verlauf wie den Kommando-Verlauf ein', () => {
+    const e = (id: number, entityId: string | null): RegisterWriteEvent => ({
+      id, requestId: `r-${id}`, source: 'portal', deviceId: 'd-1', deviceRef: 'edge-1',
+      lane: entityId ? 'entity' : 'primary', entityId, targetLabel: null, registerKind: 'holding',
+      address: 231, addressHex: '0x00E7', addressInput: '0x00E7', valueInput: '700', note: null,
+      valueRaw: 700, expectedBefore: 330, registerLabel: null, registerClass: null,
+      scaleNote: null, origin: 'kunde', actorName: null, actorRole: null,
+      viaTenantSwitcher: false, requestedAt: '2026-08-20T10:00:00Z', beforeRaw: 330,
+      afterRaw: 700, adopted: true, outcome: 'ok', reason: null,
+      answeredAt: '2026-08-20T10:00:05Z',
+    });
+    const rows = [e(1, null), e(2, 'e-1'), e(3, 'e-2')];
+    // Die BOX hat jeden Vorgang ihres Geräts - sie IST der Schreibweg.
+    expect(geraeteVerlauf(rows, { box: true, entityIds: ['e-1'] })).toHaveLength(3);
+    // Ein Gerät dahinter nur die Vorgänge SEINER Komponenten; die primäre Lane
+    // gehört der Box, ihm zugeschrieben wäre sie eine erfundene Zuordnung.
+    expect(geraeteVerlauf(rows, { box: false, entityIds: ['e-1'] }).map((r) => r.id))
+      .toEqual([2]);
+    // Ein älteres Backend meldet keine Komponente: dann wird NICHTS zugeordnet.
+    expect(geraeteVerlauf([{ ...e(4, null), entityId: undefined }],
+      { box: false, entityIds: ['e-1'] })).toHaveLength(0);
+  });
+
+  it('verweist von der Zentrale auf die Geräteseite, statt zu verdoppeln', () => {
+    expect(REGISTER_AUF_DER_GERAETESEITE).toContain('Geräteseite');
   });
 });

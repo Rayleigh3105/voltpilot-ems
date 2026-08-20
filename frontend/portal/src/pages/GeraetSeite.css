@@ -479,3 +479,30 @@
     gap: 2px;
   }
 }
+
+/* --- E · Register schreiben ---------------------------------------------- */
+
+/* Die Sektions-Aktion ist ein echter Knopf, nicht die Text-Aktion einer
+   Komponenten-Zeile: sie ist DIE Handlung dieser Sektion, und am Telefon muss
+   sie mit dem Daumen zu treffen sein (≥44 px, ohne `::before`-Trick, weil hier
+   Platz dafür ist). */
+.vp-geraet-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: var(--vp-space-2, 8px);
+  padding: 0 14px;
+  border-radius: var(--vp-radius-md, 10px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-action, #2c5282);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vp-geraet-btn:hover {
+  background: var(--vp-surface-2, #f7fafc);
+}

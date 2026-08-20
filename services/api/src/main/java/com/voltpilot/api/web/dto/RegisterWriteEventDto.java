@@ -15,9 +15,17 @@ import java.time.Instant;
  *
  * <p>{@code addressInput}/{@code valueInput}/{@code note} sind die vom Menschen
  * getippten Begriffe, VERBATIM.
+ *
+ * <p>{@code entityId} ist die KOMPONENTE der Lane „komponente" (sonst null) -
+ * die einzige Zuordnung, mit der sich ein Vorgang einem Gerät HINTER der Box
+ * zuschreiben lässt. Ein Vorgang auf der primären Lane oder auf einer frei
+ * getippten Adresse gehört dem Schreibweg der BOX; ihn einem einzelnen Gerät
+ * anzulasten wäre eine erfundene Zuordnung (dieselbe Grenze wie beim
+ * Kommando-Verlauf).
  */
 public record RegisterWriteEventDto(long id, String requestId, String source, String deviceId,
-        String deviceRef, String lane, String targetLabel, String registerKind, Integer address,
+        String deviceRef, String lane, String entityId, String targetLabel, String registerKind,
+        Integer address,
         String addressHex, String addressInput, String valueInput, String note, Integer valueRaw,
         Integer expectedBefore, String registerLabel, String registerClass, String scaleNote,
         String origin, String actorName, String actorRole, boolean viaTenantSwitcher,

@@ -1686,6 +1686,11 @@ export interface RegisterWriteEvent {
   deviceId: string | null;
   deviceRef: string | null;
   lane: string | null;
+  /**
+   * Die KOMPONENTE der Lane „komponente" (sonst null) - die einzige Zuordnung,
+   * mit der sich ein Vorgang einem Gerät HINTER der Box zuschreiben lässt.
+   */
+  entityId?: string | null;
   targetLabel: string | null;
   registerKind: string | null;
   address: number | null;
