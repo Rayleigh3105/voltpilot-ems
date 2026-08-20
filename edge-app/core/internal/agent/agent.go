@@ -2300,6 +2300,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.Trim = nil
 			s.Follow = nil
 			s.Absorb = nil
+			s.CarsFirstCapKw = nil
 			s.ExportGuard = exportGuard
 		})
 		a.trim.Release()
@@ -2410,6 +2411,31 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// reads a deliberate correction as "setpoint not adopted".
 	absorbed := a.absorb.Apply(now, kw, p.ActiveChargeSurplusToBattery(now), limits, r)
 	kw = absorbed.Kw
+
+	// „AUTO VOR SPEICHER" (OCPP-Lastmanagement Stufe 4, internal/lastmgmt/
+	// surplus.go): the customer decided their VEHICLES get the PV surplus
+	// before the battery does. That choice is only a RULE if the battery
+	// actually yields - otherwise both would claim the same kilowatts and the
+	// site would import the difference, which is exactly what „Nur
+	// Sonnenstrom" promises never happens.
+	//
+	// ⚠ RESTRICT-ONLY and CHARGE-ONLY: it caps a POSITIVE command at what is
+	// left of the MEASURED surplus once the vehicles took their share (never
+	// what they were ALLOCATED - an allocation a car does not use must not be
+	// taken from the storage). It never raises anything, never touches a
+	// discharge and never flips a direction, so every guard above it - rated
+	// band, SoC window, EEG solar-only, §14a - holds a fortiori, and the peak
+	// guard below can only lower it further. Inactive without the choice,
+	// without a charging vehicle or without a fresh measurement: a blind cap
+	// would be a guess about a customer's storage. It runs LAST of the charge
+	// corrections because the absorption above RAISES to the surplus, and with
+	// cars-first that surplus is not the battery's to take.
+	var carsFirstCap *float64
+	if cap, ok := a.OcppBatteryChargeCap(now); ok && kw > cap {
+		v := cap
+		carsFirstCap = &v
+		kw = cap
+	}
 
 	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
 	// wall-clock quarter hour's projected mean import threatens the target,
@@ -2570,6 +2596,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Trim = trimInfo
 		s.Follow = followInfo
 		s.Absorb = absorbInfo
+		s.CarsFirstCapKw = carsFirstCap
 		s.ExportGuard = exportGuard
 	})
 }

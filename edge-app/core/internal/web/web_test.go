@@ -3633,15 +3633,25 @@ func TestInstallerWriteMutationIsBehindTheMaintenancePassword(t *testing.T) {
 // fakeOcpp is a tiny in-memory OcppController: the routes are what is under
 // test here, not the executor.
 type fakeOcpp struct {
-	view     *state.OcppInfo
-	chargers []csms.Charger
-	set      lastmgmt.Settings
-	addErr   error
-	setErr   error
-	removed  []string
+	view      *state.OcppInfo
+	chargers  []csms.Charger
+	set       lastmgmt.Settings
+	addErr    error
+	setErr    error
+	removed   []string
+	boosts    []lastmgmt.BoostRequest
+	boostErr  error
+	boostNote string
 }
 
-func (f *fakeOcpp) OcppView() *state.OcppInfo       { return f.view }
+func (f *fakeOcpp) OcppView() *state.OcppInfo { return f.view }
+func (f *fakeOcpp) OcppBoost(r lastmgmt.BoostRequest) (lastmgmt.BoostResult, error) {
+	if f.boostErr != nil {
+		return lastmgmt.BoostResult{}, f.boostErr
+	}
+	f.boosts = append(f.boosts, r)
+	return lastmgmt.BoostResult{Key: r.ChargePointID, Active: !r.Cancel, Note: f.boostNote}, nil
+}
 func (f *fakeOcpp) OcppChargers() []csms.Charger    { return f.chargers }
 func (f *fakeOcpp) OcppSettings() lastmgmt.Settings { return f.set.WithDefaults() }
 func (f *fakeOcpp) OcppAddCharger(r csms.AddRequest) (csms.Charger, error) {
@@ -3888,19 +3898,63 @@ func TestTheLadepunktSurfaceIsServed(t *testing.T) {
 		// Stufe 2: where the budget came from, and the operator's switch.
 		`id="ocppBudgetSource"`, `id="ocppBudgetSourceText"`, `id="ocppBudgetDot"`,
 		`id="ocppStaticBudget"`,
+		// Stufe 4: the customer's SOURCE choice (the three priorities) and,
+		// only where a storage really reports, who gets the surplus first.
+		`name="ocppPolicy"`, `value="nur_sonne"`, `value="sonne_zuerst"`, `value="schnell"`,
+		`name="ocppStorage"`, `value="speicher_vor_auto"`, `value="auto_vor_speicher"`,
+		`id="ocppStorageRow"`, `id="ocppSurplus"`, `id="ocppSurplusText"`, `id="ocppSurplusDot"`,
 	} {
 		if !strings.Contains(setup, want) {
 			t.Fatalf("einrichten.html is missing %s", want)
 		}
 	}
+	// ⚠ The storage question is served HIDDEN: it only means something on a
+	// plant that HAS a storage, and only the box knows whether one reports -
+	// asking about a device that is not there would be noise.
+	if !strings.Contains(setup, `id="ocppStorageRow" hidden`) {
+		t.Fatal("the storage question must be served hidden")
+	}
 	op := get("/index.html")
-	for _, want := range []string{`id="ocppOpCard"`, `id="ocppOpBudget"`, `id="ocppOpSource"`, `id="ocppOpRows"`, `id="ocppOpIdle"`, `src="ocpp.js"`} {
+	for _, want := range []string{`id="ocppOpCard"`, `id="ocppOpBudget"`, `id="ocppOpSource"`,
+		`id="ocppOpSurplus"`, `id="ocppOpError"`, `id="ocppOpRows"`, `id="ocppOpIdle"`, `src="ocpp.js"`} {
 		if !strings.Contains(op, want) {
 			t.Fatalf("index.html is missing %s", want)
 		}
 	}
 	if js := get("/ocpp.js"); !strings.Contains(js, "VPOcpp") {
 		t.Fatal("ocpp.js is not served")
+	}
+}
+
+// TestTheBoostRouteOverridesOneSessionAndNothingElse: „Jetzt voll laden" is the
+// ONE customer action of this surface that moves an allocation - and it moves
+// exactly one session's SOURCE, never a limit (the structural guard above still
+// holds: no route commands a charging limit).
+func TestTheBoostRouteOverridesOneSessionAndNothingElse(t *testing.T) {
+	f := &fakeOcpp{boostNote: "Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten weiter."}
+	srv := ocppServer(t, f)
+	post := func(body string) int {
+		t.Helper()
+		resp, err := http.Post(srv.URL+"/api/ocpp/boost", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := post(`{"charge_point_id":"SAEULE-1","connector_id":1}`); code != 200 {
+		t.Fatalf("boost answered %d", code)
+	}
+	if code := post(`{"charge_point_id":"SAEULE-1","connector_id":1,"cancel":true}`); code != 200 {
+		t.Fatalf("cancel answered %d", code)
+	}
+	if len(f.boosts) != 2 || f.boosts[0].Cancel || !f.boosts[1].Cancel {
+		t.Fatalf("the two calls did not reach the box: %+v", f.boosts)
+	}
+	// A refusal arrives as a German {message}, like every other setup surface.
+	f.boostErr = &lastmgmt.ValidationError{Msg: "An diesem Stecker läuft gerade kein Ladevorgang."}
+	if code := post(`{"charge_point_id":"SAEULE-1","connector_id":9}`); code != http.StatusBadRequest {
+		t.Fatalf("a refusal answered %d, want 400", code)
 	}
 }
 

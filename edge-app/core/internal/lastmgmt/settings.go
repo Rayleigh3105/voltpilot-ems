@@ -45,6 +45,11 @@ type SettingsRequest struct {
 	// StaticBudget switches the dynamic (measured) budget off for this site —
 	// see Settings.StaticBudget.
 	StaticBudget *bool `json:"static_budget,omitempty"`
+	// SurplusPolicy / StoragePriority are the Stufe-4 source choice (see
+	// surplus.go). Pointers like every other field: an absent one KEEPS what
+	// is stored.
+	SurplusPolicy   *string `json:"surplus_policy,omitempty"`
+	StoragePriority *string `json:"storage_priority,omitempty"`
 }
 
 // storedSettings is the on-disk shape. RotationPeriod is persisted in minutes
@@ -61,6 +66,10 @@ type storedSettings struct {
 	// intended default (use the measurement when there is one), so an older
 	// file and a fresh box read the same way.
 	StaticBudget bool `json:"static_budget,omitempty"`
+	// Stufe 4. Both are omitted while they hold their default, so an older
+	// file and a fresh box read identically.
+	SurplusPolicy   string `json:"surplus_policy,omitempty"`
+	StoragePriority string `json:"storage_priority,omitempty"`
 }
 
 // SchemaVersion of lastmgmt.json.
@@ -76,18 +85,22 @@ func (s Settings) stored() storedSettings {
 		RotationMinutes: int(s.RotationPeriod / time.Minute),
 		MaxHouseLoadKw:  s.MaxHouseLoadKw,
 		StaticBudget:    s.StaticBudget,
+		SurplusPolicy:   string(s.SurplusPolicy),
+		StoragePriority: string(s.StoragePriority),
 	}
 }
 
 func (st storedSettings) settings() Settings {
 	return Settings{
-		GridLimitKw:    st.GridLimitKw,
-		HouseReserveKw: st.HouseReserveKw,
-		MarginPct:      st.MarginPct,
-		MinPowerKw:     st.MinPowerKw,
-		RotationPeriod: time.Duration(st.RotationMinutes) * time.Minute,
-		MaxHouseLoadKw: st.MaxHouseLoadKw,
-		StaticBudget:   st.StaticBudget,
+		GridLimitKw:     st.GridLimitKw,
+		HouseReserveKw:  st.HouseReserveKw,
+		MarginPct:       st.MarginPct,
+		MinPowerKw:      st.MinPowerKw,
+		RotationPeriod:  time.Duration(st.RotationMinutes) * time.Minute,
+		MaxHouseLoadKw:  st.MaxHouseLoadKw,
+		StaticBudget:    st.StaticBudget,
+		SurplusPolicy:   SurplusPolicy(st.SurplusPolicy),
+		StoragePriority: StoragePriority(st.StoragePriority),
 	}.WithDefaults()
 }
 
@@ -143,6 +156,26 @@ func (s Settings) Apply(req SettingsRequest) (Settings, error) {
 	}
 	if req.StaticBudget != nil {
 		out.StaticBudget = *req.StaticBudget
+	}
+	// ⚠ An unknown word is REFUSED here, not normalized: this is the operator
+	// typing, and a silent fallback would leave them believing they set
+	// something they did not. NormalizePolicy's tolerance is for the READ
+	// path, where a corrupt file must never stop a fleet.
+	if req.SurplusPolicy != nil {
+		v := SurplusPolicy(*req.SurplusPolicy)
+		if NormalizePolicy(v) != v {
+			return s, invalid("Unbekannte Überschuss-Priorität %q. Erlaubt sind %q, %q und %q.",
+				*req.SurplusPolicy, PolicySolarOnly, PolicySolarFirst, PolicyFast)
+		}
+		out.SurplusPolicy = v
+	}
+	if req.StoragePriority != nil {
+		v := StoragePriority(*req.StoragePriority)
+		if NormalizeStorage(v) != v {
+			return s, invalid("Unbekannte Speicher-Priorität %q. Erlaubt sind %q und %q.",
+				*req.StoragePriority, StorageBeforeCars, CarsBeforeStorage)
+		}
+		out.StoragePriority = v
 	}
 	out = out.WithDefaults()
 	if out.HouseReserveKw > out.GridLimitKw && out.GridLimitKw > 0 {

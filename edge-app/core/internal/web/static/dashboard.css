@@ -589,3 +589,30 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
   .cal-btn.abort { margin-left: 0; width: 100%; }
   .cal-test-btns .cal-btn { flex: 1 1 auto; }
 }
+
+/* --- Ladepunkte auf Betrieb: die Zeilen ------------------------------------
+   ⚠ The `.rows`/`.row-*` shapes live in inverter.css, which index.html does
+   NOT load - so the Stufe-3 charging rows rendered as bare bullets with the
+   name and its state run together ("Stecker 1wartet — …"). Scoped to
+   #ocppOpRows so nothing else on Betrieb is touched. */
+#ocppOpRows { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+#ocppOpRows .row {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--line, #E1E8F0); border-radius: 12px; padding: 10px 12px;
+}
+#ocppOpRows .row-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: #B4C0CF; }
+#ocppOpRows .row-dot.ok { background: var(--ok, #12A150); }
+#ocppOpRows .row-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; }
+#ocppOpRows .row-name { font-size: 13.8px; font-weight: 700; }
+#ocppOpRows .row-meta { font-size: 12.8px; color: var(--muted, #5C6B7A); }
+
+/* The one inline action of the Ladepunkt rows on Betrieb („Jetzt voll laden",
+   OCPP-Lastmanagement Stufe 4). It overrides the customer's own SOURCE
+   priority for ONE running charge - never a limit, never another vehicle's
+   priority, which is exactly what its confirm dialog promises. */
+.btn-inline {
+  flex: none; border: 1px solid var(--line, #E1E8F0); background: var(--bg-1, #fff);
+  color: var(--ink, #16202B); border-radius: 999px; padding: 5px 12px;
+  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+.btn-inline:hover { background: var(--bg-2, #EEF2F7); }

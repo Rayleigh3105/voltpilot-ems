@@ -604,12 +604,53 @@
                 das Gebäude gerade nicht braucht, dürfen die Fahrzeuge laden; ohne
                 Messung gilt ohnehin die oben reservierte Leistung.</span>
             </label>
+            <fieldset class="ocpp-choice">
+              <legend>PV-Überschussladen</legend>
+              <p class="field-help">Ihre Fahrzeuge laden bevorzugt mit Sonnenstrom, der
+                sonst ins Netz fließen würde. Reicht der Überschuss nicht, entscheidet
+                Ihre Priorität, ob Netzstrom dazukommt. Gilt für alle Säulen - einen
+                einzelnen Ladevorgang übersteuern Sie an seiner Zeile mit
+                „Jetzt voll laden“.</p>
+              <label class="mirror-toggle-row" for="ocppPolicySchnell">
+                <input type="radio" name="ocppPolicy" id="ocppPolicySchnell" value="schnell">
+                <span><strong>Schnell laden</strong> - volle verfügbare Leistung, Quelle
+                  egal. Die Anschlussgrenze gilt natürlich weiter.</span>
+              </label>
+              <label class="mirror-toggle-row" for="ocppPolicyZuerst">
+                <input type="radio" name="ocppPolicy" id="ocppPolicyZuerst" value="sonne_zuerst">
+                <span><strong>Sonne zuerst, Netz wenn nötig</strong> - der Überschuss wird
+                  immer zuerst genutzt. Netzstrom kommt nur dazu, wenn ein Fahrzeug sonst
+                  stehen bliebe.</span>
+              </label>
+              <label class="mirror-toggle-row" for="ocppPolicyNurSonne">
+                <input type="radio" name="ocppPolicy" id="ocppPolicyNurSonne" value="nur_sonne">
+                <span><strong>Nur Sonnenstrom</strong> - geladen wird ausschließlich Ihr
+                  Überschuss. Zieht eine Wolke auf, pausiert das Laden, statt Netzstrom
+                  zu kaufen.</span>
+              </label>
+            </fieldset>
+            <fieldset class="ocpp-choice" id="ocppStorageRow" hidden>
+              <legend>Wer bekommt den Überschuss zuerst?</legend>
+              <label class="mirror-toggle-row" for="ocppStorageSpeicher">
+                <input type="radio" name="ocppStorage" id="ocppStorageSpeicher" value="speicher_vor_auto">
+                <span><strong>Speicher vor Auto</strong> - der Speicher nimmt den
+                  Überschuss zuerst, die Fahrzeuge bekommen, was übrig bleibt.</span>
+              </label>
+              <label class="mirror-toggle-row" for="ocppStorageAuto">
+                <input type="radio" name="ocppStorage" id="ocppStorageAuto" value="auto_vor_speicher">
+                <span><strong>Auto vor Speicher</strong> - die Fahrzeuge bekommen den
+                  Überschuss zuerst; der Speicher wird währenddessen auf den Rest
+                  begrenzt.</span>
+              </label>
+            </fieldset>
             <p class="form-error" id="ocppSettingsError" hidden></p>
             <button type="submit" class="btn">Speichern</button>
           </form>
           <p class="set-desc">Ladebudget: <strong id="ocppBudget">–</strong></p>
           <p class="set-desc" id="ocppBudgetSource" hidden><span class="row-dot off" id="ocppBudgetDot"></span>
             <span id="ocppBudgetSourceText"></span></p>
+          <p class="set-desc" id="ocppSurplus" hidden><span class="row-dot off" id="ocppSurplusDot"></span>
+            <span id="ocppSurplusText"></span></p>
           <p class="set-desc" id="ocppFailsafe"></p>
         </section>
       </div>
