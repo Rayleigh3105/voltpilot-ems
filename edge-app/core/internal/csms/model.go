@@ -83,8 +83,21 @@ type Charger struct {
 	// Priority marks a Vorrang-Säule (Captain decision, mockups §2b): it is
 	// served to its full demand FIRST, the rest share what remains fairly.
 	// It is a rank, never a bypass — every limit still binds.
-	Priority bool      `json:"priority,omitempty"`
-	AddedAt  time.Time `json:"added_at"`
+	Priority bool `json:"priority,omitempty"`
+	// RatedKw is the station's rated power PER CONNECTOR, as declared by the
+	// operator. 0 = unknown, and then the site budget is the only ceiling —
+	// an honest "we do not know" rather than a guessed nameplate.
+	RatedKw float64 `json:"rated_kw,omitempty"`
+	// MinKw is this station's own minimum useful charging power. 0 = use the
+	// site-wide Mindestleistung. It exists because a DC park's 30 kW figure
+	// must not make an AC box on the same site unservable.
+	MinKw float64 `json:"min_kw,omitempty"`
+	// Connectors is the operator-declared plug count. 0 = learn it from the
+	// station's own StatusNotifications. It matters BEFORE the first one
+	// arrives, because the emergency default is divided by the plug count of
+	// the WHOLE site — and a count that is too low makes that default too big.
+	Connectors int       `json:"connectors,omitempty"`
+	AddedAt    time.Time `json:"added_at"`
 }
 
 // Session is one running transaction on one connector.
@@ -114,6 +127,26 @@ type Connector struct {
 	EnergyKwh *float64  `json:"energy_kwh,omitempty"`
 	SocPct    *float64  `json:"soc_pct,omitempty"`
 	MeteredAt time.Time `json:"metered_at,omitzero"`
+
+	// --- the live allocation, as commanded and as read back ---
+
+	// CommandedKw is the limit the CSMS last told this connector to hold.
+	// nil = nothing was ever commanded, which is NOT a limit of 0.
+	CommandedKw *float64 `json:"commanded_kw,omitempty"`
+	// CommandStatus is the station's own answer to the last SetChargingProfile
+	// ("Accepted"/"Rejected"/"NotSupported"), or a German reason when the
+	// request never got an answer. Never empty after a command: silence is a
+	// state, not an absence (the PR-280 lesson).
+	CommandStatus string    `json:"command_status,omitempty"`
+	CommandedAt   time.Time `json:"commanded_at,omitzero"`
+	// Readback / ReadbackKw / ReadbackNote carry the GetCompositeSchedule
+	// verdict: ok | abweichend | unbekannt (see CompareReadback). An accepted
+	// command whose readback says something else is NOT in force, and the
+	// difference must be visible rather than assumed away.
+	Readback     string    `json:"readback,omitempty"`
+	ReadbackKw   *float64  `json:"readback_kw,omitempty"`
+	ReadbackNote string    `json:"readback_note,omitempty"`
+	ReadbackAt   time.Time `json:"readback_at,omitzero"`
 }
 
 // ChargerState is the LIVE view of one charge point: its declared identity
@@ -143,6 +176,24 @@ type ChargerState struct {
 	Status string `json:"status,omitempty"`
 
 	Connectors []Connector `json:"connectors,omitempty"`
+
+	// --- Smart-Charging setup (see profiles.go) ---
+
+	// Capabilities is what the station reported about its Smart-Charging
+	// support. Capabilities.Read false = it has not answered yet, which is
+	// different from "it cannot".
+	Capabilities Capabilities `json:"capabilities"`
+	// MaxKw / DefaultKw are the two PERMANENT profiles currently installed:
+	// the whole-station cap and the safe per-connector default a station falls
+	// back to when the box goes silent. nil = not installed (yet).
+	MaxKw     *float64 `json:"max_kw,omitempty"`
+	DefaultKw *float64 `json:"default_kw,omitempty"`
+	// CommissionedAt is when the two permanent profiles were last installed
+	// successfully; CommissionError names the failure when they were not.
+	// One of the two is always meaningful — a station that is neither set up
+	// nor explained is the state this field exists to prevent.
+	CommissionedAt  time.Time `json:"commissioned_at,omitzero"`
+	CommissionError string    `json:"commission_error,omitempty"`
 }
 
 // ConnectorByID returns the connector with the given id, or nil.
@@ -172,6 +223,50 @@ type Snapshot struct {
 	Port    int    `json:"port,omitempty"`
 
 	Chargers []ChargerState `json:"chargers"`
+}
+
+// ConnectorCount is how many plugs the site has, as best it is known: the
+// operator's declaration or the station's own reports, whichever is LARGER.
+//
+// ⚠ The max is deliberate and it is a safety choice: the emergency default is
+// the free power DIVIDED by this number, so under-counting makes every
+// station's fallback too big. Over-counting only makes it smaller.
+func (s Snapshot) ConnectorCount() int {
+	total := 0
+	for _, c := range s.Chargers {
+		n := len(c.Connectors)
+		if c.Connectors2Declared() > n {
+			n = c.Connectors2Declared()
+		}
+		total += n
+	}
+	return total
+}
+
+// Connectors2Declared is the operator-declared plug count (0 = not declared).
+// The odd name keeps it apart from the Connectors slice of live state.
+func (c ChargerState) Connectors2Declared() int { return c.Charger.Connectors }
+
+// ActiveConnectors returns the connectors of one station that currently claim
+// budget: a live transaction in a charging-ish status (see ChargingStatus).
+func (c ChargerState) ActiveConnectors() []Connector {
+	var out []Connector
+	for _, con := range c.Connectors {
+		if con.Session == nil {
+			continue
+		}
+		// A session whose connector reports a NON-charging status (Finishing,
+		// Available after a lost StopTransaction, Faulted) is not drawing and
+		// must not hold an allocation. An EMPTY status is treated as active:
+		// a station that never sent a StatusNotification but did open a
+		// transaction IS charging, and starving it over a missing message
+		// would be our bug, not its.
+		if con.Status != "" && !ChargingStatus(con.Status) {
+			continue
+		}
+		out = append(out, con)
+	}
+	return out
 }
 
 // ChargerByID returns the state of one charge point, or false.

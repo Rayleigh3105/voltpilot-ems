@@ -19,6 +19,7 @@ import (
 
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+	"github.com/lorenzodonini/ocpp-go/ocpp1.6/smartcharging"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/lorenzodonini/ocpp-go/ws"
 )
@@ -240,4 +241,159 @@ func mapSamples(in []types.SampledValue) []SampledReading {
 		})
 	}
 	return out
+}
+
+// --- Smart Charging + configuration, CSMS -> station ---
+//
+// ocpp-go sends every CSMS-initiated request asynchronously with a callback.
+// `await` turns one into a synchronous, context-bounded call, which is what
+// the orchestration above wants: every command has an answer, a named refusal
+// or a timeout — never an open end.
+
+func await[T any](ctx context.Context, send func(cb func(T, error)) error) (T, error) {
+	var zero T
+	type result struct {
+		v   T
+		err error
+	}
+	ch := make(chan result, 1)
+	err := send(func(v T, err error) {
+		select {
+		case ch <- result{v, err}:
+		default:
+		}
+	})
+	if err != nil {
+		return zero, err
+	}
+	select {
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	case r := <-ch:
+		return r.v, r.err
+	}
+}
+
+// toOcppProfile maps our plain profile onto the library's type. It is the ONLY
+// place the wire shape is built.
+func toOcppProfile(p ChargingProfile) *types.ChargingProfile {
+	period := types.NewChargingSchedulePeriod(0, p.LimitKw)
+	// The limit unit is WATTS: our model is kW and the station's is W.
+	period.Limit = p.LimitKw * 1000
+	schedule := types.NewChargingSchedule(types.ChargingRateUnitWatts, period)
+	schedule.StartSchedule = types.NewDateTime(p.StartsAt)
+	if p.Duration > 0 {
+		d := int(p.Duration / time.Second)
+		schedule.Duration = &d
+	}
+	out := types.NewChargingProfile(p.ID, p.StackLevel,
+		types.ChargingProfilePurposeType(p.Purpose), types.ChargingProfileKindAbsolute, schedule)
+	if p.TransactionID > 0 {
+		out.TransactionId = p.TransactionID
+	}
+	return out
+}
+
+func (t *transport) setChargingProfile(ctx context.Context, id string, connectorID int, p ChargingProfile) (string, error) {
+	conf, err := await(ctx, func(cb func(*smartcharging.SetChargingProfileConfirmation, error)) error {
+		return t.cs.SetChargingProfile(id, cb, connectorID, toOcppProfile(p))
+	})
+	if err != nil {
+		return "", err
+	}
+	if conf == nil {
+		return "", errors.New("leere Antwort auf SetChargingProfile")
+	}
+	return string(conf.Status), nil
+}
+
+func (t *transport) clearChargingProfile(ctx context.Context, id string, profileID int) (string, error) {
+	conf, err := await(ctx, func(cb func(*smartcharging.ClearChargingProfileConfirmation, error)) error {
+		return t.cs.ClearChargingProfile(id, cb, func(r *smartcharging.ClearChargingProfileRequest) {
+			r.Id = &profileID
+		})
+	})
+	if err != nil {
+		return "", err
+	}
+	if conf == nil {
+		return "", errors.New("leere Antwort auf ClearChargingProfile")
+	}
+	return string(conf.Status), nil
+}
+
+func (t *transport) getCompositeSchedule(ctx context.Context, id string, connectorID int, d time.Duration) (CompositeSchedule, error) {
+	conf, err := await(ctx, func(cb func(*smartcharging.GetCompositeScheduleConfirmation, error)) error {
+		return t.cs.GetCompositeSchedule(id, cb, connectorID, int(d/time.Second),
+			func(r *smartcharging.GetCompositeScheduleRequest) {
+				r.ChargingRateUnit = types.ChargingRateUnitWatts
+			})
+	})
+	if err != nil {
+		return CompositeSchedule{}, err
+	}
+	if conf == nil {
+		return CompositeSchedule{}, errors.New("leere Antwort auf GetCompositeSchedule")
+	}
+	out := CompositeSchedule{
+		Accepted:  conf.Status == smartcharging.GetCompositeScheduleStatusAccepted,
+		Connector: connectorID,
+	}
+	if conf.ScheduleStart != nil {
+		out.StartsAt = conf.ScheduleStart.Time
+	}
+	// The FIRST period is what applies now; a station may report a whole
+	// staircase, and reading a later step as "the current limit" would be a
+	// claim about the future.
+	if sch := conf.ChargingSchedule; sch != nil && len(sch.ChargingSchedulePeriod) > 0 {
+		limit := sch.ChargingSchedulePeriod[0].Limit
+		switch sch.ChargingRateUnit {
+		case types.ChargingRateUnitWatts:
+			kw := limit / 1000
+			out.LimitKw = &kw
+		default:
+			// An answer in amperes cannot be converted without voltage and
+			// phase count - see Capabilities.Usable. Reporting it as kW would
+			// be exactly the guess this feature refuses to make, so the
+			// readback stays honestly unknown.
+		}
+	}
+	return out, nil
+}
+
+func (t *transport) getConfiguration(ctx context.Context, id string, keys []string) (map[string]string, []string, error) {
+	conf, err := await(ctx, func(cb func(*core.GetConfigurationConfirmation, error)) error {
+		return t.cs.GetConfiguration(id, cb, keys)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if conf == nil {
+		return nil, nil, errors.New("leere Antwort auf GetConfiguration")
+	}
+	values := map[string]string{}
+	for _, kv := range conf.ConfigurationKey {
+		if kv.Value != nil {
+			values[kv.Key] = *kv.Value
+		} else {
+			values[kv.Key] = ""
+		}
+	}
+	return values, conf.UnknownKey, nil
+}
+
+func (t *transport) changeConfiguration(ctx context.Context, id, key, value string) (string, error) {
+	conf, err := await(ctx, func(cb func(*core.ChangeConfigurationConfirmation, error)) error {
+		return t.cs.ChangeConfiguration(id, cb, key, value)
+	})
+	if err != nil {
+		return "", err
+	}
+	if conf == nil {
+		return "", errors.New("leere Antwort auf ChangeConfiguration")
+	}
+	if conf.Status != core.ConfigurationStatusAccepted && conf.Status != core.ConfigurationStatusRebootRequired {
+		return string(conf.Status), fmt.Errorf("die Ladesäule hat die Einstellung %s abgelehnt (%s)", key, conf.Status)
+	}
+	return string(conf.Status), nil
 }

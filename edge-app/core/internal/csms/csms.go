@@ -327,34 +327,65 @@ func (s *Server) Remove(id string) error {
 	return nil
 }
 
-// Update changes the operator-editable fields (label, Vorrang). Identity and
-// everything the station reported stay untouched.
-func (s *Server) Update(id string, label *string, priority *bool) (Charger, error) {
+// UpdateRequest carries the operator-editable fields. Every field is a
+// POINTER: an absent field KEEPS the stored value (the PATCH semantics the
+// house uses on every settings surface), so a form that saves one knob never
+// resets the rest.
+type UpdateRequest struct {
+	Label      *string  `json:"label,omitempty"`
+	Priority   *bool    `json:"priority,omitempty"`
+	RatedKw    *float64 `json:"rated_kw,omitempty"`
+	MinKw      *float64 `json:"min_kw,omitempty"`
+	Connectors *int     `json:"connectors,omitempty"`
+}
+
+// Update changes the operator-editable fields. Identity (the ChargePointId)
+// and everything the station reported about itself stay untouched.
+func (s *Server) Update(id string, req UpdateRequest) (Charger, error) {
 	s.mu.Lock()
 	c, ok := s.chargers[id]
 	if !ok {
 		s.mu.Unlock()
 		return Charger{}, ErrNotFound
 	}
-	if label != nil {
-		l := strings.TrimSpace(*label)
+	// Validate against a COPY so a refusal changes nothing.
+	next := c.Charger
+	if req.Label != nil {
+		l := strings.TrimSpace(*req.Label)
 		if l == "" {
 			l = id
 		}
-		if len([]rune(l)) > 120 {
-			s.mu.Unlock()
-			return Charger{}, invalid("Der Name der Ladesäule ist zu lang (höchstens 120 Zeichen).")
-		}
-		c.Label = l
+		next.Label = l
 	}
-	if priority != nil {
-		c.Priority = *priority
+	if req.Priority != nil {
+		next.Priority = *req.Priority
 	}
+	if req.RatedKw != nil {
+		next.RatedKw = *req.RatedKw
+	}
+	if req.MinKw != nil {
+		next.MinKw = *req.MinKw
+	}
+	if req.Connectors != nil {
+		next.Connectors = *req.Connectors
+	}
+	// Reuse the ONE validation path: the same rules must hold whether a
+	// charger is created or edited.
+	checked, err := NormalizeAdd(AddRequest{
+		ID: id, Label: next.Label, Priority: next.Priority,
+		RatedKw: next.RatedKw, MinKw: next.MinKw, Connectors: next.Connectors,
+	}, nil, next.AddedAt)
+	if err != nil {
+		s.mu.Unlock()
+		return Charger{}, err
+	}
+	checked.AddedAt = next.AddedAt
+	c.Charger = checked
 	out := c.Charger
-	list, next := s.listLocked()
+	list, nextTx := s.listLocked()
 	s.mu.Unlock()
 
-	if err := s.store.Save(list, next); err != nil {
+	if err := s.store.Save(list, nextTx); err != nil {
 		return Charger{}, err
 	}
 	s.notifyChanged()

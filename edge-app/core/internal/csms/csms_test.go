@@ -26,10 +26,22 @@ func quiet() *slog.Logger {
 // startServer boots a real CSMS on a free port with the given ids allowed.
 func startServer(t *testing.T, ids ...string) (*csms.Server, string) {
 	t.Helper()
+	return startServerWithClock(t, nil, ids...)
+}
+
+// startServerWithClock is startServer with an injected clock.
+//
+// ⚠ A test that also gives the SIMULATED STATION a fake clock must pass the
+// SAME one here: the profile's start time comes from the server and its expiry
+// is judged by the station, so two clocks that drift apart make a profile look
+// expired the moment it is written (which is exactly how this bit once).
+func startServerWithClock(t *testing.T, now func() time.Time, ids ...string) (*csms.Server, string) {
+	t.Helper()
 	s, err := csms.New(csms.Options{
 		Enabled: true,
 		DataDir: t.TempDir(),
 		Log:     quiet(),
+		Now:     now,
 	})
 	if err != nil {
 		t.Fatalf("new: %v", err)
