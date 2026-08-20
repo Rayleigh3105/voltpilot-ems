@@ -76,6 +76,23 @@ type Config struct {
 	// ControlEnabled is also true. Default "sunspec" (proven against the
 	// simulator); a Deye family is added ONLY after its model is bench-verified.
 	ControlCertifiedFamilies []string `json:"control_certified_families"`
+	// OcppEnabled is the OCPP-Ladepunkt feature flag (VP_OCPP_ENABLED, default
+	// FALSE). Off = the CSMS websocket server never binds a port and the box
+	// behaves byte-for-byte as before the feature — a box that never gets a
+	// charge point pays nothing for it. It is INDEPENDENT of ControlEnabled /
+	// ConsumerControlEnabled on purpose: those two gate writes to an inverter
+	// and to a consumer device; this one gates a SERVER the stations dial, and
+	// its own dead-man's switch lives in the OCPP charging profiles.
+	OcppEnabled bool `json:"ocpp_enabled"`
+	// OcppPort is the LAN port the charge points connect to
+	// (ws://<box>:<port>/ocpp/<ChargePointId>). 8887 is the OCPP-J convention.
+	//
+	// ⚠ LAN-ONLY posture, same as :8484 and the Node-RED editor: the library
+	// binds every interface, so the compose port mapping + the host firewall
+	// are the boundary. The second boundary is the ID allowlist (chargers.json)
+	// — an unregistered station is refused at the websocket upgrade.
+	OcppPort int `json:"ocpp_port"`
+
 	// GridChargeAllowed permits the (Deye ToU) grid-charge bit. Default FALSE =
 	// EEG-compliant (an EEG plant must never grid-charge). Authoritatively the
 	// site's netzladen_erlaubt flag; kept off by default on-device.
@@ -198,6 +215,8 @@ func Defaults() Config {
 		ControlEnabled:           true, // ON by default; the certification allowlist is the per-device gate
 		ControlCertifiedFamilies: []string{"sunspec"},
 		GridChargeAllowed:        false,
+		OcppEnabled:              false, // opt-in; a box without charge points pays nothing
+		OcppPort:                 8887,
 		CalibrationMaxKw:         1.0,              // small: the first live write must be tiny (report §5.7)
 		CalibrationTTLSeconds:    30,               // auto-revert to neutral fast; the write never latches
 		CalibrationTTL:           30 * time.Second, // derived; Load() recomputes it from the seconds
@@ -336,6 +355,8 @@ func applyEnv(cfg *Config) {
 	boolEnv("VP_CONTROL_ENABLED", &cfg.ControlEnabled)
 	boolEnv("VP_CONSUMER_CONTROL_ENABLED", &cfg.ConsumerControlEnabled)
 	boolEnv("VP_GRID_CHARGE_ALLOWED", &cfg.GridChargeAllowed)
+	boolEnv("VP_OCPP_ENABLED", &cfg.OcppEnabled)
+	num("VP_OCPP_PORT", &cfg.OcppPort)
 	boolEnv("VP_FLOW_NODE_STATUS_ENABLED", &cfg.FlowNodeStatusEnabled)
 	str("VP_NODERED_ADMIN_URL", &cfg.NodeRedAdminURL)
 	str("VP_NODERED_USER", &cfg.NodeRedUser)
