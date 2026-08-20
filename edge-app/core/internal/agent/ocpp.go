@@ -49,19 +49,30 @@ const (
 	// that has been unreachable for an hour must not write 180 lines about it
 	// (the OTA-blocker lesson - log on CHANGE, then rarely).
 	ocppLogInterval = 5 * time.Minute
+	// ocppMeterMaxAge is how old a connector's own MeterValues sample may be
+	// and still count toward the measured charging power. Sized at three times
+	// the cadence we ask a station for (csms.DefaultMeterInterval, 10 s), so a
+	// single missed report is absorbed while a station that stopped metering is
+	// noticed within half a minute.
+	ocppMeterMaxAge = 3 * csms.DefaultMeterInterval
 )
 
 // ocppRuntime holds everything the executor needs. nil while the feature is off.
 type ocppRuntime struct {
 	srv   *csms.Server
 	store *lastmgmt.Store
+	// budget is the Stufe-2 dynamic budget tracker: it is fed from the
+	// telemetry choke point (ocppObserve) and asked once per pass. On a site
+	// that never measures anything it hands back exactly the static Stufe-1
+	// budget, so it is on the path unconditionally.
+	budget *lastmgmt.BudgetTracker
+	// wake carries an out-of-band "re-decide now" from the telemetry path, so
+	// a building load step does not have to wait out a full tick.
+	wake chan struct{}
 
 	mu       sync.Mutex
 	settings lastmgmt.Settings
 	plan     *lastmgmt.Plan
-	// reserved is the power held back for stations we cannot reach (see
-	// ocppStep) — never allocated, and shown so the arithmetic adds up.
-	reserved float64
 	// commissioned fingerprints what a station was last set up WITH, so a
 	// reconnect or a changed site limit re-commissions and nothing else does.
 	commissioned map[string]string
@@ -102,6 +113,8 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	}
 	rt := &ocppRuntime{
 		srv: srv, store: store, settings: set,
+		budget:       lastmgmt.NewBudgetTracker(),
+		wake:         make(chan struct{}, 1),
 		commissioned: map[string]string{},
 		lastReadback: map[string]time.Time{},
 		lastErrLog:   map[string]time.Time{},
@@ -146,6 +159,10 @@ func (a *Agent) ocppLoop(ctx context.Context) {
 			// A station connected, a session started or a measurement moved:
 			// re-decide at once rather than waiting out the tick. The channel
 			// coalesces, so a burst costs one extra pass.
+		case <-rt.wake:
+			// The connection point demands a MEANINGFULLY smaller budget (a
+			// machine in the building switched on). Waiting out the tick would
+			// leave the site over its planned import for up to 20 s.
 		}
 	}
 }
@@ -163,6 +180,13 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// The emergency default is a SITE-wide figure: it is the free power
 	// divided by ALL the site's plugs, so a station arriving changes it for
 	// everyone - and everyone must be re-commissioned with the new value.
+	//
+	// ⚠ The two PERMANENT profiles are derived from the MAINTAINED connection
+	// limit, deliberately not from the §14a envelope the live budget honours: a
+	// dimming event is temporary, and folding it into a profile that outlives
+	// the box would leave a station permanently throttled by a limit that
+	// expired hours ago - besides re-commissioning every station on every
+	// envelope change. §14a binds the LIVE allocation, where it belongs.
 	safe := lastmgmt.DeriveSafeDefault(set.GridLimitKw, effectiveMaxHouseLoad(set), snap.ConnectorCount())
 	planable := set.GridLimitKw * (1 - set.MarginPct/100)
 
@@ -172,6 +196,9 @@ func (a *Agent) ocppStep(ctx context.Context) {
 		}
 		a.ocppCommission(ctx, c, planable, safe, now)
 	}
+
+	// THE BUDGET (see ocppBudget: one derivation, shared with the surface).
+	verdict, reserved := a.ocppBudget(now, set, snap, safe)
 
 	// ⚠ WHAT WE CANNOT SEE IS STILL DRAWING. A station whose websocket is
 	// down is NOT charging nothing: it is holding its own safe default, and
@@ -184,25 +211,55 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// exportlimit doctrine: blind never means unlimited. Pessimistic on
 	// purpose — an unplugged connector on a dead station reserves power it is
 	// not using, and that is the correct direction to be wrong in.
-	reserved := 0.0
-	if safe.Computable {
-		reserved = safe.PerConnectorKw * float64(ocppUnreachableConnectors(snap))
-	}
-	allocSet := set
-	allocSet.HouseReserveKw += reserved
+	//
+	// ⚠ …EXCEPT while the budget is MEASURED — see ocppBudget.
+	allocKw := ocppAllocatable(verdict, reserved)
 
-	sessions, byKey := ocppSessions(snap, allocSet)
+	sessions, byKey := ocppSessions(snap, allocKw)
 	plan := lastmgmt.Decide(lastmgmt.Input{
-		Settings: allocSet, Sessions: sessions, Previous: rt.previousPlan(), Now: now,
+		Settings: set, Sessions: sessions, BudgetKw: &allocKw,
+		Previous: rt.previousPlan(), Now: now,
 	})
 	rt.setPlan(&plan)
-	rt.setReserved(reserved)
 
 	if allowed, _ := a.ocppControlAllowed(); allowed {
 		a.ocppApply(ctx, plan, byKey, now)
 	}
 	a.ocppReadback(ctx, snap, now)
 	a.publishOcppState()
+}
+
+// ocppBudget is THE budget derivation, and it is deliberately shared by the
+// executor and the surface: the page must never show a different number than
+// the one the stations were given (one arithmetic, one answer). It is safe to
+// call from either side — lastmgmt.BudgetTracker.Budget is idempotent for a
+// given moment, so a render evaluates exactly what the next pass would.
+//
+// ⚠ WHAT WE CANNOT SEE IS STILL DRAWING: an unreachable station holds its own
+// safe default and its cars may be taking it, so that share is RESERVED out of
+// the budget (the import-side twin of the exportlimit doctrine, blind never
+// means unlimited). EXCEPT while the budget is MEASURED — then that draw is
+// already inside the measured grid power, where it counts as building load and
+// has therefore already shrunk the budget; reserving on top would subtract the
+// same power twice, over-conservative in a way no surface could explain ("4 ×
+// 24 kW held back for stations that are drawing nothing"). Between two samples
+// its draw can still rise, which the very next sample contracts the budget for,
+// and the engineering margin covers the gap. Every blind stage gets it back.
+func (a *Agent) ocppBudget(now time.Time, set lastmgmt.Settings, snap csms.Snapshot, safe lastmgmt.SafeDefault) (lastmgmt.BudgetVerdict, float64) {
+	verdict := a.ocpp.budget.Budget(now, set)
+	reserved := 0.0
+	if safe.Computable && !verdict.Measured() {
+		reserved = safe.PerConnectorKw * float64(ocppUnreachableConnectors(snap))
+	}
+	return verdict, reserved
+}
+
+// ocppAllocatable is what is left to hand out.
+func ocppAllocatable(v lastmgmt.BudgetVerdict, reservedKw float64) float64 {
+	if kw := v.Kw - reservedKw; kw > 0 {
+		return kw
+	}
+	return 0
 }
 
 // ocppCommission installs the two permanent profiles when the station is new,
@@ -334,6 +391,40 @@ func (a *Agent) ocppReadback(ctx context.Context, snap csms.Snapshot, now time.T
 	}
 }
 
+// ocppObserve feeds the dynamic budget from the ONE telemetry choke point
+// (agent.onLocalTelemetry), with the SAME gated composite `power_kw` every
+// other guard on this box reads — so the charge-point budget and the export
+// watchdog can never disagree about what the connection point is doing.
+//
+// ⚠ The two halves of the control law are paired HERE, at telemetry cadence,
+// not at decision time: the grid sample already CONTAINS the charge points'
+// draw, so it has to be paired with the charging power of the same moment. Ask
+// again 20 s later and a ramping vehicle would make the rest of the site look
+// smaller than it is.
+//
+// It costs nothing on a box without charge points: a.ocpp is nil then.
+func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64) {
+	rt := a.ocpp
+	if rt == nil {
+		return
+	}
+	// ⚠ Only a REPORTED §14a envelope is passed on. A `grid_limit_kw` of 0
+	// means zero kilowatts (the documented guards.Reading footgun) — only an
+	// ABSENT channel means unknown, and inventing one would cap a site the grid
+	// operator never capped.
+	if kw, ok := measurements["grid_limit_kw"]; ok {
+		rt.budget.ObserveGridLimit(kw)
+	}
+	grid, ok := measurements["power_kw"]
+	if !ok {
+		return
+	}
+	charging, complete := rt.srv.Snapshot().ChargingTotal(ts, ocppMeterMaxAge)
+	if rt.budget.Observe(ts, grid, charging, complete) {
+		rt.nudge()
+	}
+}
+
 // ocppClaim links an allocator key back to the station it belongs to.
 type ocppClaim struct {
 	chargerID     string
@@ -341,11 +432,13 @@ type ocppClaim struct {
 	transactionID int
 }
 
-// ocppSessions turns the CSMS snapshot into allocator input.
-func ocppSessions(snap csms.Snapshot, set lastmgmt.Settings) ([]lastmgmt.Session, map[string]ocppClaim) {
+// ocppSessions turns the CSMS snapshot into allocator input. budgetKw is the
+// allocatable budget, used only as the honest ceiling for a station that
+// declares no rating of its own.
+func ocppSessions(snap csms.Snapshot, budgetKw float64) ([]lastmgmt.Session, map[string]ocppClaim) {
 	var out []lastmgmt.Session
 	byKey := map[string]ocppClaim{}
-	budget := set.BudgetKw()
+	budget := budgetKw
 	for _, c := range snap.Chargers {
 		if !c.Connected {
 			// ⚠ A station we cannot reach gets no allocation - but it is NOT
@@ -442,16 +535,13 @@ func (rt *ocppRuntime) setPlan(p *lastmgmt.Plan) {
 	rt.mu.Unlock()
 }
 
-func (rt *ocppRuntime) setReserved(kw float64) {
-	rt.mu.Lock()
-	rt.reserved = kw
-	rt.mu.Unlock()
-}
-
-func (rt *ocppRuntime) currentReserved() float64 {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	return rt.reserved
+// nudge asks the executor to re-decide out of band. Non-blocking: the channel
+// coalesces, so a burst of measurements costs one extra pass.
+func (rt *ocppRuntime) nudge() {
+	select {
+	case rt.wake <- struct{}{}:
+	default:
+	}
 }
 
 // logThrottled runs fn at most once per ocppLogInterval per key. A station
@@ -485,6 +575,7 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 	plan := rt.previousPlan()
 	allowed, note := a.ocppControlAllowed()
 	safe := lastmgmt.DeriveSafeDefault(set.GridLimitKw, effectiveMaxHouseLoad(set), snap.ConnectorCount())
+	verdict, reserved := a.ocppBudget(time.Now().UTC(), set, snap, safe)
 
 	info := &state.OcppInfo{
 		Enabled: snap.Enabled, Listening: snap.Listening, Error: snap.Error,
@@ -492,13 +583,25 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		ControlEnabled: allowed, ControlNote: note,
 		GridLimitKw: set.GridLimitKw, HouseReserveKw: set.HouseReserveKw,
 		MarginPct: set.MarginPct, MinPowerKw: set.MinPowerKw,
-		BudgetKw:       set.BudgetKw(),
-		ReservedKw:     rt.currentReserved(),
+		BudgetKw:       verdict.Kw,
+		ReservedKw:     reserved,
 		MaxHouseLoadKw: effectiveMaxHouseLoad(set),
 		ConnectorCount: snap.ConnectorCount(),
 		SafeDefaultKw:  safe.PerConnectorKw, SafeDefaultNote: safe.Reason,
 		SafeDefaultHolds: safe.Holds, SafeWorstCaseKw: safe.WorstCaseKw,
-		Chargers: []state.OcppCharger{},
+		StaticBudget: set.StaticBudget,
+		BudgetMode:   string(verdict.Mode),
+		BudgetNote:   verdict.Reason,
+		BudgetBlind:  verdict.Blind,
+		EffLimitKw:   verdict.LimitKw,
+		Grid14aKw:    verdict.Section14aKw,
+		Grid14aBinds: verdict.Section14aBinds,
+		SiteLoadKw:   verdict.SiteLoadKw,
+		SiteGridKw:   verdict.GridKw,
+		Chargers:     []state.OcppCharger{},
+	}
+	if verdict.MeasurementAge > 0 {
+		info.MeasurementAgeS = int(verdict.MeasurementAge / time.Second)
 	}
 	if plan != nil {
 		info.AllocatedKw = plan.AllocatedKw

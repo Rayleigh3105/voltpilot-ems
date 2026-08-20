@@ -1496,6 +1496,13 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		}
 	}
 
+	// Feed the OCPP charging budget with the SAME gated composite connection
+	// point (Stufe 2, internal/lastmgmt/budget.go). It is the IMPORT-side twin
+	// of the feed-in watchdog above and shares its inverted fail-safe rule:
+	// blind never means unlimited. A box without charge points has no runtime
+	// and this costs nothing.
+	a.ocppObserve(ts, measurements)
+
 	// While the device is removed (unclaimed) in the cloud, the local dashboard
 	// stays fully alive (guard reading, history ring, KPIs below) but the
 	// store-and-forward buffer is NOT grown: there is no claimed identity to

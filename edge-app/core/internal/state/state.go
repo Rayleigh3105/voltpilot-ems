@@ -567,6 +567,36 @@ type OcppInfo struct {
 	MaxHouseLoadKw   float64 `json:"max_house_load_kw"`
 	ConnectorCount   int     `json:"connector_count"`
 
+	// --- Stufe 2: where BudgetKw came from (internal/lastmgmt/budget.go) ---
+
+	// StaticBudget echoes the operator's switch: true = the dynamic budget is
+	// off for this site and the maintained numbers decide alone.
+	StaticBudget bool `json:"static_budget,omitempty"`
+	// BudgetMode is the machine-readable stage (statisch | gemessen | haelt |
+	// zieht_zusammen | sicherheitsbudget) and BudgetNote its German sentence,
+	// written ONCE in the tracker so the card and the cloud cannot word the
+	// same verdict differently.
+	BudgetMode string `json:"budget_mode,omitempty"`
+	BudgetNote string `json:"budget_note,omitempty"`
+	// BudgetBlind is true whenever the budget was NOT formed from a fresh
+	// measurement (holding / contracting / safe).
+	BudgetBlind bool `json:"budget_blind,omitempty"`
+	// EffLimitKw is the connection limit actually in force: the maintained
+	// Anschlussgrenze, or the observed §14a envelope when that is tighter.
+	EffLimitKw float64 `json:"eff_limit_kw,omitempty"`
+	// Grid14aKw is that observed envelope; nil = never reported, which is NOT
+	// a limit of zero. Grid14aBinds says whether it is what caps the site.
+	Grid14aKw    *float64 `json:"grid_14a_kw,omitempty"`
+	Grid14aBinds bool     `json:"grid_14a_binds,omitempty"`
+	// SiteLoadKw is the rest of the site (everything but the charge points) the
+	// budget was computed from; SiteGridKw the newest measured grid power
+	// (+ import). Both nil while the budget is static or blind - never a
+	// fabricated measurement.
+	SiteLoadKw *float64 `json:"site_load_kw,omitempty"`
+	SiteGridKw *float64 `json:"site_grid_kw,omitempty"`
+	// MeasurementAgeS is how old the newest usable measurement is (seconds).
+	MeasurementAgeS int `json:"measurement_age_s,omitempty"`
+
 	Chargers []OcppCharger `json:"chargers"`
 }
 

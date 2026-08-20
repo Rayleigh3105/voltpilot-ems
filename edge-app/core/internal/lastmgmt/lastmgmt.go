@@ -110,8 +110,19 @@ type Settings struct {
 	// RotationPeriod is how long a waiting vehicle waits before the queue turns.
 	RotationPeriod time.Duration
 	// MaxHouseLoadKw is the HIGHEST building load known for this site. It is
-	// used for NOTHING but the Ausfall-Profil arithmetic — see SafeDefault.
+	// used for the Ausfall-Profil arithmetic (see SafeDefault) and, since
+	// Stufe 2, as the blind assumption of the dynamic budget (see budget.go).
 	MaxHouseLoadKw float64
+	// StaticBudget switches the Stufe-2 dynamic budget OFF for this site: the
+	// budget then comes from HouseReserveKw alone, whatever the connection
+	// point measures.
+	//
+	// ⚠ The flag is deliberately NEGATIVE so its zero value is the intended
+	// default ("use the measurement when there is one"). It needs no pointer
+	// and no WithDefaults entry, so an operator's explicit "off" can never be
+	// overwritten by a defaulting pass — and a site with no measurement is
+	// byte-identical either way (budget.go's BudgetStatic branch).
+	StaticBudget bool
 }
 
 // Defaults. Every one of them is a starting point the operator may move; none
@@ -153,12 +164,7 @@ func (s Settings) WithDefaults() Settings {
 // it is taken at the connection.
 func (s Settings) BudgetKw() float64 {
 	s = s.WithDefaults()
-	planable := s.GridLimitKw * (1 - s.MarginPct/100)
-	free := planable - s.HouseReserveKw
-	if free <= 0 {
-		return 0
-	}
-	return round3(free)
+	return budgetUnder(s.GridLimitKw, s)
 }
 
 // Allocation is what ONE session may draw.
@@ -224,6 +230,11 @@ type Input struct {
 	Pacing   Pacing
 	// Previous is the last decision, for pacing continuity. nil on the first.
 	Previous *Plan
+	// BudgetKw overrides the budget derived from Settings. It is how Stufe 2
+	// hands in the MEASURED budget (see budget.go) and how the executor
+	// subtracts the share it holds back for stations it cannot reach. nil =
+	// derive it from the settings, which is exactly Stufe 1.
+	BudgetKw *float64
 	Now      time.Time
 }
 
@@ -233,6 +244,9 @@ func Decide(in Input) Plan {
 	set := in.Settings.WithDefaults()
 	pacing := in.Pacing.WithDefaults()
 	budget := set.BudgetKw()
+	if in.BudgetKw != nil {
+		budget = round3(math.Max(0, *in.BudgetKw))
+	}
 
 	plan := Plan{BudgetKw: budget, Allocations: []Allocation{}}
 	if len(in.Sessions) == 0 {

@@ -99,3 +99,52 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 	near(t, "budget survives", back.BudgetKw(), 82.3)
 }
+
+// TestTheDynamicBudgetIsOnUnlessTheOperatorTurnsItOff: the switch's zero value
+// must be the intended default, so a fresh box and an older lastmgmt.json both
+// read "use the measurement when there is one".
+func TestTheDynamicBudgetIsOnUnlessTheOperatorTurnsItOff(t *testing.T) {
+	dir := t.TempDir()
+	st, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	set, _, err := st.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if set.StaticBudget {
+		t.Fatal("a box nobody configured must use its measurement")
+	}
+
+	on := true
+	next, err := set.Apply(SettingsRequest{GridLimitKw: ptrF(277), StaticBudget: &on})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if !next.StaticBudget {
+		t.Fatal("the operator's choice was dropped")
+	}
+	if err := st.Save(next); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	back, _, err := st.Load()
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if !back.StaticBudget {
+		t.Fatal("the choice did not survive the round trip")
+	}
+	// An absent field KEEPS it (PATCH semantics).
+	kept, err := back.Apply(SettingsRequest{MinPowerKw: ptrF(11)})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if !kept.StaticBudget {
+		t.Fatal("an unrelated edit reset the switch")
+	}
+	off := false
+	if v, err := kept.Apply(SettingsRequest{StaticBudget: &off}); err != nil || v.StaticBudget {
+		t.Fatalf("the switch must be reversible: %+v %v", v, err)
+	}
+}
