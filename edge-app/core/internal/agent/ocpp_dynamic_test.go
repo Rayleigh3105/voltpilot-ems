@@ -36,7 +36,7 @@ func measureSite(t *testing.T, a *Agent, houseKw float64, stations ...*ocppsim.S
 	// executor's own loop is re-allocating in the background.
 	now := time.Now().UTC()
 	charging, _ := a.ocpp.srv.Snapshot().ChargingTotal(now, ocppMeterMaxAge)
-	a.ocppObserve(now, map[string]float64{"power_kw": houseKw + charging})
+	a.ocppObserve(now, map[string]float64{"power_kw": houseKw + charging}, nil)
 }
 
 // TestTheMeasuredBudgetReplacesTheMaintainedReserveAtTheStations is the
@@ -152,7 +152,7 @@ func TestAChargingConnectorThatStopsMeteringFallsBackInsteadOfOscillating(t *tes
 	})
 
 	// The station never publishes a meter value, so the pairing is impossible.
-	a.ocppObserve(time.Now().UTC(), map[string]float64{"power_kw": 60})
+	a.ocppObserve(time.Now().UTC(), map[string]float64{"power_kw": 60}, nil)
 	a.ocppStep(context.Background())
 
 	info := a.State.Get().Ocpp
@@ -227,7 +227,7 @@ func TestTheGridOperatorsEnvelopeReachesTheStations(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	charging, _ := a.ocpp.srv.Snapshot().ChargingTotal(now, ocppMeterMaxAge)
-	a.ocppObserve(now, map[string]float64{"power_kw": 20 + charging, "grid_limit_kw": 100})
+	a.ocppObserve(now, map[string]float64{"power_kw": 20 + charging, "grid_limit_kw": 100}, nil)
 	a.ocppStep(context.Background())
 
 	info := a.State.Get().Ocpp
@@ -275,7 +275,7 @@ func TestABuildingLoadStepWakesTheExecutorOutOfBand(t *testing.T) {
 func TestTheFlagOffMeansNoBudgetTrackerAtAll(t *testing.T) {
 	a := &Agent{}
 	// The telemetry choke point calls this on EVERY sample.
-	a.ocppObserve(time.Now().UTC(), map[string]float64{"power_kw": 42})
+	a.ocppObserve(time.Now().UTC(), map[string]float64{"power_kw": 42}, nil)
 	if a.ocpp != nil {
 		t.Fatal("no runtime must exist with the flag off")
 	}

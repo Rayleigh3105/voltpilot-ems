@@ -13,6 +13,10 @@
 //
 // Dev/rig tool. Never in a customer image, never on a customer device.
 //
+// A NEGATIVE building load is how the rig models PV: the connection point then
+// EXPORTS while nothing charges, which is exactly the surplus the Stufe-4
+// source lane is derived from (internal/lastmgmt/surplus.go).
+//
 //	vp-netz-sim --bus 127.0.0.1:1884 --status 127.0.0.1:9201 --house 20
 package main
 
@@ -21,6 +25,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -50,14 +55,19 @@ func main() {
 		house    = flag.Float64("house", 20, "building load in kW (everything but the charge points)")
 		charging = flag.Float64("charging", 0, "charge-point draw in kW to add on top")
 		limit    = flag.Float64("grid-limit", 0, "observed §14a envelope in kW (0 = report none)")
-		every    = flag.Duration("interval", 2*time.Second, "how often the measurement is published")
+		// ⚠ NaN, not 0: a battery power of 0 is a MEASUREMENT ("the storage is
+		// taking nothing"), and the Stufe-4 surplus split needs to tell that
+		// apart from "this site never reports the channel". Only an ABSENT
+		// channel means unknown - the drop-don't-fabricate rule of the house.
+		battery = flag.Float64("battery", math.NaN(), "measured battery power in kW (+ = charging; unset = the site does not report the channel)")
+		every   = flag.Duration("interval", 2*time.Second, "how often the measurement is published")
 	)
 	var chargers chargerList
 	flag.Var(&chargers, "charger", "status URL of a simulated charge point whose draw this meter sees (repeatable)")
 	flag.Parse()
 
 	var mu sync.Mutex
-	cur := struct{ house, charging, limit float64 }{*house, *charging, *limit}
+	cur := struct{ house, charging, limit, battery float64 }{*house, *charging, *limit, *battery}
 
 	opts := mqtt.NewClientOptions().
 		AddBroker("tcp://" + *bus).
@@ -96,6 +106,9 @@ func main() {
 		if cur.limit > 0 {
 			payload["grid_limit_kw"] = cur.limit
 		}
+		if !math.IsNaN(cur.battery) {
+			payload["battery_power_kw"] = cur.battery
+		}
 		mu.Unlock()
 		raw, _ := json.Marshal(payload)
 		cli.Publish("edge/telemetry", 1, false, raw)
@@ -117,6 +130,7 @@ func main() {
 		out := map[string]float64{
 			"house_kw": cur.house, "charging_kw": cur.charging,
 			"grid_kw": cur.house + cur.charging, "grid_limit_kw": cur.limit,
+			"battery_kw": cur.battery,
 		}
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
@@ -134,6 +148,9 @@ func main() {
 		}
 		if v, ok := floatParam(r, "grid_limit"); ok {
 			cur.limit = v
+		}
+		if v, ok := floatParam(r, "battery"); ok {
+			cur.battery = v
 		}
 		mu.Unlock()
 		publish()

@@ -2968,7 +2968,7 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
 
 ## Das Lastmanagement-Rig `test/e2e-ocpp.sh`: Docker-frei, und es misst
 
-Die Faelle L1-L5 des Konzepts (§6.2) gegen den ECHTEN Kern und ECHTE
+Die Faelle L1-L9 des Konzepts (§6.2) gegen den ECHTEN Kern und ECHTE
 OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
 
 - **⚠ Jede Zusicherung liest, was eine Saeule ZIEHEN WUERDE**, abgeleitet aus
@@ -3001,6 +3001,44 @@ OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
   einen groesseren Sprung ein paar Messwerte lang zurueck, und dann prueft das
   Rig das Despike-Tor statt des Lastmanagements. Wer die Zahlen anhebt, misst
   etwas anderes als er glaubt.
+- **L7-L9 sind der Stufe-4-Beweis, und sie messen an den SAEULEN.** Der
+  Netz-Zaehler bekam dafuer genau zwei Dinge: eine NEGATIVE Gebaeudelast (so
+  speist der Standort ein, waehrend nichts laedt — das ist die PV des Rigs) und
+  ein optionales `battery_power_kw`. **⚠ Die Vorgabe des Batterie-Flags ist
+  NaN, nicht 0:** eine gemessene Null ist die Aussage „der Speicher nimmt
+  nichts", und genau die braucht „Auto vor Speicher"; nur ein ABWESENDER Kanal
+  heisst unbekannt.
+  - **L7** deckelt bei „Nur Sonnenstrom" auf den gemessenen Ueberschuss,
+    waehrend die physische Bahn weit offen steht — und der Verknuepfungspunkt
+    steht danach bei 0 kW: es wurde nachweislich kein Netzstrom gekauft.
+  - **L8** legt die Prioritaet um und misst dieselbe Sonne zweimal:
+    80 -> 120 kW an den Saeulen. **⚠ Der Zaehler bildet den Speicher NICHT
+    nach, wie er auf die Klemme reagiert** — das Rig ist kein Physik-Simulator;
+    es misst, wie viel die Box den AUTOS zugesteht.
+  - **L9** uebersteuert GENAU EINEN Ladevorgang: er zieht aus der physischen
+    Bahn hoch, der andere ist nicht mitfreigegeben (er behaelt hoechstens
+    seinen Sonnen-Anteil, und wenn nichts mehr uebrig ist, PAUSIERT er mit
+    genanntem Grund statt zu hungern), der Anschluss haelt, und die Ruecknahme
+    stellt die Prioritaet des Kunden wieder her.
+  - **⚠ Grosszuegige Fristen mit Grund:** der Rest des Standorts wird als
+    MAXIMUM ueber 60 s genommen, und waehrend die Fahrzeuge herunterfahren
+    liest der Zaehler ihren Zug kurz zu hoch. Beides UNTERSCHAETZT den
+    Ueberschuss — die Bahn ist konservativ, nie grosszuegig; geprueft wird der
+    Zustand, in dem die Anlage zur Ruhe kommt.
+- **⚠ Und L8 hat einen echten Defekt gefunden, den KEIN Unit-Test sehen
+  konnte:** die Speicher-Arbitrierung las `battery_power_kw` aus der
+  Messwert-Karte — aber `onLocalTelemetry` legt diesen Kanal dort BEWUSST NIE
+  hinein (er ist ein interner Kanal, kein veroeffentlichter Messwert). Die
+  Arbitrierung war damit auf JEDER echten Box tot, waehrend die Tests ihre
+  Karte von Hand fuellten und gruen blieben. Der Wert wird seither als
+  ARGUMENT uebergeben (`ocppObserve(ts, measurements, battKw)`), und
+  `TestTheBatteryReachesTheSurplusSplitThroughTheRealTelemetryPath` faehrt
+  dafuer den ECHTEN Weg. **Wer einen Kanal aus `measurements` liest, prueft
+  zuerst, ob er dort ueberhaupt ankommt.**
+- **⚠ Ein Testfall, der den VOLLEN Agenten braucht** (nur er hat die Gates des
+  Telemetrie-Pfads), braucht einen KUENDBAREN Kontext fuer `startOcpp`:
+  `Stop()` wartet auf die Goroutinen des Agenten, und die OCPP-Schleife endet
+  allein an ihrem Kontext — mit `context.Background()` haengt der Test.
 - **L4 ist der Totmann-Beweis und er dauert:** der Kern wird GETOETET, dann
   laeuft das TxProfile (120 s) ab und die Saeule faellt VON SELBST auf ihr
   Sicherheitsprofil. Die zweite Haelfte ist genauso wichtig — sie laedt
