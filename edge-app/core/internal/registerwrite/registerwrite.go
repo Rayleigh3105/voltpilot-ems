@@ -28,7 +28,10 @@
 //     matters MORE here than anywhere else: the box holds a durable session, so
 //     the broker may REDELIVER a QoS1 message after an outage - and a redelivered
 //     WRITE order would spend another EEPROM write cycle on a customer's
-//     inverter. Also silent: the portal route gave up long ago.
+//     inverter. It is NOT EXECUTED - but since 20.08.2026 it IS ANSWERED
+//     (`invalid_request`, naming BOTH clocks). The execution ban is what
+//     protects the EEPROM; the silence protected nothing and hid the one cause
+//     nobody can see from the cloud - two clocks that have drifted apart.
 //   - REPLAY - the same request_id is executed AT MOST ONCE. Non-retained plus
 //     the window stop a LATE redelivery; this stops a concurrent or immediate
 //     one (the mqtt-ota-apply token pattern).
@@ -147,6 +150,33 @@ const (
 		"binnen Sekunden überschrieben bzw. beim Zurückgeben zurückgedreht."
 	MsgReplayed = "Diese Anfrage wurde bereits ausgeführt."
 )
+
+// MsgInvalidRequest turns a FORM error into the sentence the portal shows.
+//
+// ⚠ It exists because a form error used to be answered with SILENCE, and from
+// the cloud that is indistinguishable from „the box never got it" - the exact
+// ambiguity that cost a whole investigation round on 20.08.2026. The parser's
+// own German reason travels with it: it is the most precise thing anyone knows
+// about that order.
+func MsgInvalidRequest(reason error) string {
+	if reason == nil {
+		return "Der Auftrag ist nicht ausführbar."
+	}
+	return "Der Auftrag ist nicht ausführbar: " + reason.Error() + "."
+}
+
+// ExpiredMessage names BOTH clocks, because that is the only way the reader can
+// tell the two causes apart: a QoS1 message the broker redelivered LATE, or two
+// clocks that have drifted apart (a box without a buffered RTC). Neither is
+// visible from the cloud, and until 20.08.2026 an expired order was dropped in
+// complete silence, so neither was visible at all.
+func ExpiredMessage(r Request, now time.Time, window time.Duration) string {
+	return "Der Auftrag war bei Ankunft bereits abgelaufen (angefordert " +
+		strings.TrimSpace(r.RequestedAt) + ", hier ist es " +
+		now.UTC().Format(time.RFC3339) + ", Fenster " + window.String() +
+		"). Es wurde nichts gelesen und nichts geschrieben. Wenn das wiederholt " +
+		"auftritt, gehen die Uhren von Portal und Gerät auseinander."
+}
 
 // Request is one order as it arrives from the cloud.
 type Request struct {
@@ -285,6 +315,21 @@ func validRequestID(id string) bool {
 
 // Apply reports whether this order is the REAL write (as opposed to the preview).
 func (r Request) Apply() bool { return r.Mode == ModeWrite }
+
+// Answerable reports whether a REJECTED order can still be ANSWERED, i.e.
+// whether the cloud would be able to make sense of the answer at all.
+//
+// ⚠ It is deliberately strict, and each condition is a rule of this channel:
+// the identity must be OURS (answering a mis-addressed sender would confirm this
+// device exists - the one refusal that stays silent forever), the correlation id
+// must have the contract's shape (the cloud drops an answer it cannot correlate)
+// and the stage must be one of the two known words (the cloud drops a result
+// whose mode it does not know). Everything that passes all three is worth
+// answering - silence there is a riddle, not a protection.
+func (r Request) Answerable(id Identity) bool {
+	return r.Matches(id) && validRequestID(r.RequestID) &&
+		(r.Mode == ModeRead || r.Mode == ModeWrite)
+}
 
 // Matches reports whether the order's payload identity is this box's own.
 // A mismatch is discarded, never answered.

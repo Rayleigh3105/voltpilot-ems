@@ -81,6 +81,28 @@ import org.springframework.web.server.ResponseStatusException;
  * Zeitfenster, Zwei-Schritt-Bestätigung, {@code expected_before}, Einmaligkeit,
  * Lane-Politik (Wertgrenzen, LAN-Whitelist) und die Selbstkonflikt-Sperre auf
  * dem Gerät - plus RLS/JWT auf diesem Weg.
+ *
+ * <p><b>⚠ DIE ZEITFENSTER-INVARIANTE (Produktionsvorfall 20.08.2026, die
+ * Ursache): das Warte-Budget der CLOUD muss GRÖSSER sein als die Schranke, mit
+ * der die BOX ihre eigene Runde begrenzt.</b> Die Box bindet EINEN
+ * Bus-Rundlauf an {@code installerWriteTimeout} = 30 s
+ * ({@code edge-app/core/internal/agent/installerwrite.go}) - so lange darf ein
+ * Lesen dauern, weil der Node-RED-Knoten hinter der EINEN Warteschlange je
+ * (Host, Port) auf den laufenden Poll wartet, bevor er überhaupt lesen kann.
+ * Die Vorschau wartete aber nur <b>20 s</b>: jede Anlage, deren Bus gerade
+ * belegt war, lief damit strukturell ins Leere - die Box antwortete korrekt
+ * (gemessen: 22 s, Ist-Wert 3300 = 33,0 kW), die api hatte die Korrelation da
+ * längst vergessen, und die Oberfläche behauptete „die Anlage hat nicht
+ * geantwortet" - obwohl genau sie geliefert hatte. Der lokale
+ * {@code :8484}-Knopf funktionierte durchgehend, weil sein HTTP-Handler die
+ * vollen 30 s abwartet; dieser Widerspruch (lokal geht es, aus dem Portal nie)
+ * war der eigentliche Hinweis.
+ *
+ * <p>Wer eine der beiden Zahlen anfasst, fasst BEIDE an: {@link #BOX_ROUND_TRIP}
+ * ist die hier notierte Schranke des Geräts, und {@code RegisterWriteBudgetTest}
+ * nagelt fest, dass beide Vorgaben darüber liegen. Ein zu kleines Budget ist
+ * nicht „ein bisschen ungeduldig", sondern ein Feature, das auf jeder belegten
+ * Anlage nie funktioniert.
  */
 @Service
 public class RegisterWriteService {
@@ -88,6 +110,16 @@ public class RegisterWriteService {
     private static final Logger log = LoggerFactory.getLogger(RegisterWriteService.class);
 
     private static final SecureRandom RANDOM = new SecureRandom();
+
+    /**
+     * Die Schranke, mit der die BOX ihren eigenen Bus-Rundlauf begrenzt
+     * ({@code installerWriteTimeout} in
+     * {@code edge-app/core/internal/agent/installerwrite.go}). Sie steht hier
+     * als NOTIERTE Tatsache, nicht als Konfiguration: die Cloud kann sie nicht
+     * setzen, sie muss sie nur überbieten (siehe die Zeitfenster-Invariante im
+     * Klassen-Javadoc).
+     */
+    public static final Duration BOX_ROUND_TRIP = Duration.ofSeconds(30);
 
     private final DeviceRepository devices;
     private final RegisterKnowledge knowledge;
@@ -100,17 +132,17 @@ public class RegisterWriteService {
     private final boolean enabled;
 
     /**
-     * @param readTimeout  wie lange das Portal auf die Vorschau wartet. Kurz:
-     *                     dahinter steht ein Knopf, und ein Assistent, der eine
-     *                     halbe Minute hängt, ist schlimmer als einer, der „hat
-     *                     nicht rechtzeitig geantwortet" sagt.
+     * @param readTimeout  wie lange das Portal auf die Vorschau wartet.
+     *                     <b>⚠ MUSS ÜBER {@link #BOX_ROUND_TRIP} LIEGEN</b> -
+     *                     siehe die Invariante im Klassen-Javadoc. Vorgabe
+     *                     PT40S.
      * @param writeTimeout wie lange auf die Quittung eines echten
-     *                     Schreibvorgangs gewartet wird - spürbar länger, weil
-     *                     die Box dafür auf den laufenden Poll wartet, schreibt,
-     *                     ~2 s setzen lässt und erneut liest. Läuft er ab, ist
-     *                     der Zustand UNBEKANNT (nie „nicht geschrieben"), und
-     *                     die Quittung landet trotzdem im Journal, sobald sie
-     *                     eintrifft.
+     *                     Schreibvorgangs gewartet wird - dieselbe Invariante,
+     *                     mit mehr Luft, weil die Box in DERSELBEN Runde liest,
+     *                     schreibt, ~2 s setzen lässt und erneut liest. Läuft er
+     *                     ab, ist der Zustand UNBEKANNT (nie „nicht
+     *                     geschrieben"), und die Quittung landet trotzdem im
+     *                     Journal, sobald sie eintrifft.
      * @param enabled      der plattformweite NOT-AUS. Vorgabe AN - ein per
      *                     Vorgabe ausgeschaltetes Flag müsste im gitops-Repo
      *                     nachgezogen werden, und genau diese Klasse hat diesem
@@ -123,8 +155,8 @@ public class RegisterWriteService {
             RegisterWriteTargets targets, RegisterWriteRegistry registry,
             RegisterWriteEventRepository journal,
             ObjectProvider<RegisterWritePublisher> publisher,
-            @Value("${voltpilot.register-write.read-timeout:PT20S}") Duration readTimeout,
-            @Value("${voltpilot.register-write.write-timeout:PT45S}") Duration writeTimeout,
+            @Value("${voltpilot.register-write.read-timeout:PT40S}") Duration readTimeout,
+            @Value("${voltpilot.register-write.write-timeout:PT60S}") Duration writeTimeout,
             @Value("${voltpilot.register-write.enabled:true}") boolean enabled) {
         this.devices = devices;
         this.knowledge = knowledge;
@@ -135,6 +167,21 @@ public class RegisterWriteService {
         this.readTimeout = readTimeout;
         this.writeTimeout = writeTimeout;
         this.enabled = enabled;
+        // ⚠ Ein Budget unterhalb der Geräte-Schranke macht das Feature auf jeder
+        // belegten Anlage unbrauchbar (siehe die Zeitfenster-Invariante). Es
+        // wird nicht stillschweigend korrigiert - eine Vorgabe, die jemand
+        // bewusst gesetzt hat, gehört ihm -, aber es wird LAUT gesagt.
+        warnIfTooShort("read-timeout", readTimeout);
+        warnIfTooShort("write-timeout", writeTimeout);
+    }
+
+    private static void warnIfTooShort(String name, Duration budget) {
+        if (budget.compareTo(BOX_ROUND_TRIP) <= 0) {
+            log.warn("voltpilot.register-write.{}={} liegt NICHT über der Geräte-Schranke von {} "
+                    + "- eine Anlage, deren Wechselrichter-Bus gerade belegt ist, kann in diesem "
+                    + "Fenster nicht antworten und jede Anfrage läuft in einen Timeout.",
+                    name, budget, BOX_ROUND_TRIP);
+        }
     }
 
     /** Wer handelt - ausschließlich aus dem validierten Token abgeleitet. */
@@ -220,8 +267,7 @@ public class RegisterWriteService {
                 cmd.unitId(), kind, address, null, null, null, null);
 
         RegisterWriteResult result = exchange(tenantId, siteId, device, requestId, requestedAt,
-                actor, order, readTimeout,
-                "Die Anlage hat den Ist-Wert nicht rechtzeitig gemeldet. Bitte erneut versuchen.");
+                actor, order, readTimeout, false);
         // ⚠ Die Schreibzahl gehört in SCHRITT 1: „heute bereits 2x geschrieben"
         // ist eine Information VOR dem Klick, kein Nachtrag im Beleg.
         return outcome(result, address, known, null, lane,
@@ -276,7 +322,7 @@ public class RegisterWriteService {
             // eine Anforderung behauptet, die es nie gab.
             log.warn("register write {} could not be published: {}", requestId, e.getMessage());
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Die Anlage ist gerade nicht erreichbar. Es wurde nichts geschrieben.");
+                    RegisterWriteSilence.NOT_PUBLISHED);
         }
         // ERST veröffentlichen, DANN protokollieren - ab hier ist der Vorgang
         // aktenkundig, auch wenn diese api gleich abstürzt.
@@ -297,8 +343,7 @@ public class RegisterWriteService {
         if (result == null) {
             // Schweigen ist NIE „nicht geschrieben" (die PR-280-Lehre).
             result = RegisterWriteResult.silent(requestId, RegisterWriteResult.MODE_WRITE,
-                    "Es kam keine Rückmeldung. Der Zustand ist unbekannt - bitte den Ist-Wert "
-                            + "erneut lesen, bevor Sie noch einmal schreiben.");
+                    silenceMessage(device, writeTimeout, true));
             journal.recordOutcome(new RegisterWriteEventRepository.Receipt(requestId,
                     RegisterWriteEventRepository.EVENT_SILENT,
                     RegisterWriteEventRepository.SOURCE_PORTAL, siteId, device.id(), null, null,
@@ -319,7 +364,7 @@ public class RegisterWriteService {
 
     private RegisterWriteResult exchange(UUID tenantId, UUID siteId, DeviceDto device,
             String requestId, Instant requestedAt, Actor actor, RegisterWritePublisher.Order order,
-            Duration timeout, String silenceMessage) {
+            Duration timeout, boolean write) {
         RegisterWritePublisher pub = requirePublisher();
         CompletableFuture<RegisterWriteResult> future = registry.register(requestId, device.id());
         try {
@@ -330,16 +375,31 @@ public class RegisterWriteService {
             log.warn("register write request {} could not be published: {}",
                     requestId, e.getMessage());
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Die Anlage ist gerade nicht erreichbar. Bitte in einem Moment erneut versuchen.");
+                    RegisterWriteSilence.NOT_PUBLISHED);
         }
         try {
             RegisterWriteResult result = registry.await(future, timeout);
             return result != null
                     ? result
-                    : RegisterWriteResult.silent(requestId, order.mode(), silenceMessage);
+                    : RegisterWriteResult.silent(requestId, order.mode(),
+                            silenceMessage(device, timeout, write));
         } finally {
             registry.forget(requestId);
         }
+    }
+
+    /**
+     * WARUM nichts kam - die drei unterscheidbaren Fälle (siehe
+     * {@link RegisterWriteSilence}). Der Grund wird erst NACH dem Timeout
+     * gebildet, damit er die Lebendigkeit von JETZT nennt und eine verspätete
+     * Quittung, die inzwischen eingetroffen ist, mitzählt.
+     */
+    private String silenceMessage(DeviceDto device, Duration budget, boolean write) {
+        String reason = RegisterWriteSilence.message(write, device.lastSeenAt(), Instant.now(),
+                budget, registry.lastLateAnswer(device.id()));
+        log.warn("register write to device {} stayed silent for {}: {}",
+                device.id(), budget, reason);
+        return reason;
     }
 
     private Outcome outcome(RegisterWriteResult r, int address, RegisterKnowledge.Known known,

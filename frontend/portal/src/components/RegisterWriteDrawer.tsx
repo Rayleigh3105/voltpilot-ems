@@ -10,6 +10,8 @@ import {
 } from '../api';
 import {
   EEPROM_HINWEIS,
+  LESE_DAUER_HINWEIS,
+  LESE_LAEUFT,
   VERANTWORTUNG,
   adresseEcho,
   adresseFehler,
@@ -80,6 +82,9 @@ export function RegisterWriteDrawer({
   const [verlauf, setVerlauf] = useState<RegisterWriteEvent[]>([]);
   const [frage, setFrage] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Eigener Zustand fuer die LESUNG: waehrend eines Schreibvorgangs ist `busy`
+  // ebenfalls gesetzt, und „Wird gelesen …" waere dann schlicht falsch.
+  const [liest, setLiest] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
 
   useEffect(() => {
@@ -141,6 +146,7 @@ export function RegisterWriteDrawer({
 
   async function lesen() {
     setBusy(true);
+    setLiest(true);
     setFehler(null);
     setErgebnis(null);
     try {
@@ -151,6 +157,7 @@ export function RegisterWriteDrawer({
       setFehler(e instanceof ApiError ? e.message : 'Der Ist-Wert konnte nicht gelesen werden.');
     } finally {
       setBusy(false);
+      setLiest(false);
     }
   }
 
@@ -310,8 +317,13 @@ export function RegisterWriteDrawer({
             disabled={busy || !!adrMangel || !zielBereit}
             data-testid="regwrite-lesen"
           >
-            Ist-Wert lesen
+            {liest ? LESE_LAEUFT : 'Ist-Wert lesen'}
           </Button>
+          {liest && (
+            <p className="vp-text-sm vp-muted" data-testid="regwrite-lesedauer">
+              {LESE_DAUER_HINWEIS}
+            </p>
+          )}
 
           {sicht && (
             <div className="vp-regwrite-ist" data-testid="regwrite-ist">

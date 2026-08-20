@@ -195,6 +195,29 @@ voltpilot:
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}
+  # Register schreiben ueber das Portal (Konzept vp-reg-schreib-konzept-p8).
+  # Publisher und Quittungs-Zuhoerer reiten auf voltpilot.provisioning.* oben -
+  # dieses Feature hat bewusst KEINEN eigenen Transport-Schalter.
+  #
+  # ⚠ DIE ZEITFENSTER-INVARIANTE (Produktionsvorfall 20.08.2026): beide Budgets
+  # muessen GROESSER sein als die Schranke, mit der die BOX ihren eigenen
+  # Bus-Rundlauf begrenzt (installerWriteTimeout = 30 s in
+  # edge-app/core/internal/agent/installerwrite.go). Der frueher hier
+  # eingebaute Vorgabewert von 20 s lag DARUNTER: auf jeder Anlage, deren
+  # Wechselrichter-Bus gerade mit dem laufenden Poll belegt war, gab die api
+  # auf, BEVOR das Geraet ueberhaupt antworten konnte - die Box antwortete
+  # korrekt nach 22 s, die Korrelation war da schon vergessen. Wer eine der
+  # beiden Zahlen anfasst, fasst beide an; RegisterWriteBudgetTest nagelt die
+  # Invariante fest.
+  #
+  # `enabled` ist der plattformweite NOT-AUS: false laesst nur die zwei
+  # SCHREIBENDEN Schritte mit 503 und deutschem Grund refuesieren, der Verlauf
+  # bleibt lesbar. Vorgabe AN (die gitops-Falle: ein per Vorgabe
+  # ausgeschaltetes Flag muss im gitops-Repo nachgezogen werden).
+  register-write:
+    enabled: ${VOLTPILOT_REGISTER_WRITE_ENABLED:true}
+    read-timeout: ${VOLTPILOT_REGISTER_WRITE_READ_TIMEOUT:PT40S}
+    write-timeout: ${VOLTPILOT_REGISTER_WRITE_WRITE_TIMEOUT:PT60S}
   # Device-initiated data purge (docs/contracts/mqtt-data-purge.schema.json):
   # subscribe ems/+/+/+/status for purge_request messages published by the edge
   # ("Datenaufzeichnungen löschen" on its local web app) and run the same purge

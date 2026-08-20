@@ -873,6 +873,16 @@ jede Warnklasse und jedes Urteil liegt in der reinen Schicht.
   Ohne Schreibvorgang heute wird auch nichts gesagt - eine „0×"-Zeile wäre Lärm.
 - Der Picker ist fail-soft: ein Fehlschlag der Ziel-Liste blockiert die Strecke
   nie (die primäre Lane funktioniert auch ohne ihn).
+- **⚠ EIN LANGER VORGANG SAGT SICH AN** (`LESE_LAEUFT` + `LESE_DAUER_HINWEIS`,
+  Produktionsvorfall 20.08.2026). Eine Lesung darf bis zu einer halben Minute
+  dauern — der Modbus-Knoten der Box hängt hinter der EINEN Warteschlange je
+  Ziel und muss erst den laufenden Poll abwarten; die Cloud wartet seither
+  entsprechend länger (Zeitfenster-Invariante, root `AGENTS.md`). Ein bloß
+  ausgegrauter Knopf über 40 Sekunden liest sich als Defekt — genau dieser
+  Eindruck entstand, als das Budget noch zu kurz war und der Vorgang wie ein
+  Fehler aussah, während er in Wahrheit lief. Der Lese-Zustand hat deshalb einen
+  EIGENEN Schalter (`liest`): während eines Schreibvorgangs ist `busy` ebenfalls
+  gesetzt, und „Wird gelesen …" wäre dort schlicht falsch.
 - Beweise: `registerWrite.test.ts` (+13) · `RegisterWriteDrawer.test.tsx` (+6:
   Ziel-Pflicht, das genannte Gerät ohne Weg, „nur die Kennung, nie ein Host",
   die freie Adresse, Zähler + Hinweis, keine erfundene Einheit).

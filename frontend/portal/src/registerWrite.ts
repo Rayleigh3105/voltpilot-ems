@@ -621,6 +621,22 @@ export function kundenRegisterZugang(
   };
 }
 
+/**
+ * ⚠ EIN LANGER VORGANG MUSS SICH ANSAGEN (Produktionsvorfall 20.08.2026).
+ *
+ * Die Box darf für EINE Lesung bis zu einer halben Minute brauchen: ihr
+ * Modbus-Knoten hängt hinter der EINEN Warteschlange je Ziel und muss erst den
+ * laufenden Poll abwarten. Das Portal wartet deshalb länger als der Reflex
+ * vermuten lässt - und eine Fläche, die dabei nur einen ausgegrauten Knopf
+ * zeigt, wirkt kaputt. Genau dieser Eindruck ist entstanden, als das Budget
+ * noch ZU KURZ war: der Vorgang sah wie ein Fehler aus, während er in Wahrheit
+ * gerade lief.
+ */
+export const LESE_LAEUFT = 'Wird gelesen …';
+export const LESE_DAUER_HINWEIS =
+  'Das kann bis zu einer halben Minute dauern - der Wechselrichter wird gerade '
+  + 'ausgelesen, und Ihre Anfrage stellt sich dahinter an.';
+
 /** Der ruhige Einleitungssatz des Experten-Aufklappers. */
 export const EXPERTE_INTRO =
   'Für Fachleute: ein einzelnes Register Ihres Geräts aus der Ferne lesen und - '
