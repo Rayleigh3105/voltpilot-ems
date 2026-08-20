@@ -9,6 +9,8 @@ import {
   initialeVerbindung,
   marken,
   messwerte,
+  nameHilfe,
+  nameVorschau,
   pruefen,
   rolleVerfuegbar,
   sollIstText,
@@ -17,6 +19,8 @@ import {
   testErgebnis,
   testFehlerText,
   tueren,
+  uebernahmeHinweis,
+  type ComponentMatch,
   type ComponentTemplate,
   verwaltungsHinweis,
 } from './komponentenAssistent';
@@ -287,5 +291,71 @@ describe('verwaltungsHinweis', () => {
     for (const authority of [null, undefined, '', 'BOX', 'irgendwas-neues']) {
       expect(verwaltungsHinweis(authority, null)).toMatch(/Box/);
     }
+  });
+});
+
+// --- Alias-Kontinuität: die verwaiste Komponente wird ÜBERNOMMEN --------------
+// Live-Fall Anlage Pilsting/Herzogau, 20.08.2026 (Captain: „beim neu hinzufügen
+// sind die Aliase jetzt weg").
+
+describe('Übernahme statt Verdopplung', () => {
+  const benannt: ComponentMatch = {
+    entityId: 'wr1',
+    label: 'Fronius Anlage WR1',
+    role: 'pv-generation',
+    brand: 'fronius_sunspec',
+    model: 'fronius-eco-27-3-s',
+    orphaned: true,
+  };
+
+  it('nameVorschau: ein leeres Feld ÜBERSCHREIBT den Kundennamen nie', () => {
+    expect(nameVorschau(fronius, '', benannt)).toBe('Fronius Anlage WR1');
+    expect(nameVorschau(fronius, '   ', benannt)).toBe('Fronius Anlage WR1');
+  });
+
+  it('nameVorschau: ein getippter Name gewinnt', () => {
+    expect(nameVorschau(fronius, ' Dach Süd ', benannt)).toBe('Dach Süd');
+  });
+
+  it('nameVorschau: ohne Übernahme und ohne Eingabe steht der Modellname als Vorschau', () => {
+    expect(nameVorschau(fronius, '', null)).toBe(fronius.modelLabel);
+    expect(nameVorschau(fronius, '', { entityId: 'x', label: null })).toBe(fronius.modelLabel);
+  });
+
+  it('uebernahmeHinweis nennt den bisherigen Namen und sagt, was erhalten bleibt', () => {
+    const text = uebernahmeHinweis(benannt, fronius)!;
+    expect(text).toContain('Fronius Anlage WR1');
+    expect(text).toMatch(/Verbindung zu diesem Gerät war unterbrochen/);
+    expect(text).toMatch(/statt eine zweite anzulegen/);
+    expect(text).toMatch(/Name, Verlauf und Zuordnungen bleiben erhalten/);
+  });
+
+  it('uebernahmeHinweis erfindet keinen Namen, wenn die Zeile keinen trägt', () => {
+    const text = uebernahmeHinweis({ entityId: 'x', label: null, orphaned: false }, fronius)!;
+    expect(text).toMatch(/eine Komponente, die Sie schon angelegt haben/);
+    expect(text).toMatch(/noch keinem Gerät zugeordnet/);
+    expect(text).not.toContain('„"');
+  });
+
+  it('ohne Übernahme wird nichts behauptet', () => {
+    expect(uebernahmeHinweis(null, fronius)).toBeNull();
+    expect(uebernahmeHinweis(undefined, fronius)).toBeNull();
+  });
+
+  it('nameHilfe sagt, was ein LEERES Feld bedeutet', () => {
+    expect(nameHilfe(benannt)).toContain('Fronius Anlage WR1');
+    expect(nameHilfe(benannt)).toMatch(/Leer lassen/);
+    expect(nameHilfe(null)).toMatch(/Marke und Modell/);
+  });
+
+  it('pruefen zeigt die Übernahme - und die Namens-Vorschau, die daraus folgt', () => {
+    const rows = pruefen(fronius, 'pv-generation', '', {}, benannt);
+    expect(rows.find((r) => r.label === 'Komponente')?.wert)
+      .toBe('Vorhandene Komponente wird wieder verbunden');
+    expect(rows.find((r) => r.label === 'Name')?.wert).toBe('Fronius Anlage WR1');
+    // Ohne Übernahme bleibt die Liste unverändert (kein neuer Eintrag).
+    const ohne = pruefen(fronius, 'pv-generation', '', {});
+    expect(ohne.some((r) => r.label === 'Komponente')).toBe(false);
+    expect(ohne.find((r) => r.label === 'Name')?.wert).toBe(fronius.modelLabel);
   });
 });

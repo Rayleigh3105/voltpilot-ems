@@ -210,22 +210,31 @@ public class ComponentAdoptionService {
      */
     private void adoptOne(UUID siteId, UUID tenantId, ComponentAdoption.Item item) {
         ComponentTemplateDto template = item.template();
-        String label = item.label() == null ? template.modelLabel() : item.label();
+        // ⚠ Der von der BOX gemeldete Name ist aus Sicht des Portals ABGELEITET:
+        // er darf einen leeren Namen füllen, aber niemals den Namen ersetzen,
+        // den der Kunde seiner Komponente gegeben hat (Alias-Kontinuität,
+        // Live-Fall Herzogau 20.08.2026).
+        String derived = item.label() == null ? template.modelLabel() : item.label();
 
-        UUID entityId = resolvePoint(siteId, tenantId, item, label);
+        UUID entityId = resolvePoint(siteId, tenantId, item, derived);
+        EntityRow current = entityRepo.entityForSite(siteId, entityId);
+        String label = ComponentLabels.toWrite(current == null ? null : current.label(), null,
+                derived);
         String connJson = withInterval(item.connectionJson(), item.intervalS());
         String sourceKind = BuiltinComponentTemplates.KIND_CERTIFIED.equals(template.kind())
                 ? BuiltinComponentTemplates.KIND_CERTIFIED : BuiltinComponentTemplates.KIND_BUILTIN;
 
-        int version = definitions.applyDefinition(siteId, entityId, label, template.brand(),
-                template.model(), template.family(), template.communication(), connJson,
-                sourceKind, template.templateRef(), template.version());
-        if (version == 0) {
+        ComponentDefinitionRepository.Applied applied = definitions.applyDefinition(siteId,
+                entityId, label, template.brand(), template.model(), template.family(),
+                template.communication(), connJson, sourceKind, template.templateRef(),
+                template.version());
+        if (applied == null) {
             throw new IllegalStateException("adopted component vanished: " + entityId);
         }
-        definitions.recordVersion(tenantId, siteId, entityId, version, item.role(), label,
-                template.brand(), template.model(), template.family(), template.communication(),
-                connJson, sourceKind, template.templateRef(), template.version(), ACTOR, NOTE);
+        definitions.recordVersion(tenantId, siteId, entityId, applied.version(), item.role(),
+                applied.label(), template.brand(), template.model(), template.family(),
+                template.communication(), connJson, sourceKind, template.templateRef(),
+                template.version(), ACTOR, NOTE);
     }
 
     /**
@@ -283,8 +292,9 @@ public class ComponentAdoptionService {
         if (item.edgeSourceId() != null) {
             EntityRow pinned = entityRepo.pointByEdgeSource(siteId, item.edgeSourceId());
             if (pinned != null) {
-                entityRepo.updateAdoptedPoint(pinned.id(), role, label, item.capacityKwp(),
-                        item.registryUnitId());
+                entityRepo.updateAdoptedPoint(pinned.id(), role,
+                        ComponentLabels.toWrite(pinned.label(), null, label),
+                        item.capacityKwp(), item.registryUnitId());
                 ensureEntityConfig(pinned, item);
                 return pinned.id();
             }
@@ -295,6 +305,50 @@ public class ComponentAdoptionService {
                 entityRepo.setEdgeSource(composed, item.edgeSourceId());
             }
             return composed;
+        }
+        // ⚠ Die VERWAISTE Zeile desselben Geräts übernehmen, statt eine zweite
+        // daneben anzulegen (Live-Fall Herzogau, 20.08.2026). Ohne diese Sprosse
+        // strandete der Kundenname („Fronius Anlage WR1") auf der alten Zeile,
+        // die neue trug den vom Gerät gemeldeten Namen - und die kWp der Anlage
+        // zählten doppelt. Die Regel entscheidet nur EINDEUTIGE Fälle; sonst
+        // bleibt es beim Anlegen und der manuelle Weg („Wieder verbinden").
+        UUID takeover = ComponentTakeover.match(takeoverCandidates(siteId),
+                reportedSourceIds(siteId),
+                new ComponentTakeover.Incoming(role, item.template().brand(),
+                        item.template().model(), item.template().communication(),
+                        item.connectionJson(), item.registryUnitId()),
+                mapper);
+        if (takeover != null) {
+            EntityRow row = entityRepo.entityForSite(siteId, takeover);
+            // ⚠ Auf einer ÜBERNOMMENEN Zeile heißt ein NICHT gemeldetes Feld
+            // „nichts ändern", nie „löschen": kWp und MaStR-Referenz sind vom
+            // BETREIBER gepflegte Stammdaten, und eine Box, die sie nicht
+            // (mehr) meldet, ist kein Grund, sie zu verlieren.
+            java.math.BigDecimal kwp = item.capacityKwp() != null || row == null
+                    ? item.capacityKwp() : row.capacityKwp();
+            String mastr = item.registryUnitId() != null || row == null
+                    ? item.registryUnitId() : row.registryUnitId();
+            log.warn("Bestands-Übernahme: das gemeldete Gerät {} der Anlage {} wird auf die "
+                    + "verwaiste Komponente {} (\"{}\") übernommen statt neu angelegt",
+                    item.edgeSourceId(), siteId, takeover, row == null ? null : row.label());
+            // Die kWp NUR als Differenz - die Zeile steckt mit ihrem alten Wert
+            // schon in der Anlagen-Summe (das `adopt`-Muster).
+            if (ComponentService.ROLE_ERZEUGER.equals(item.role()) && row != null) {
+                java.math.BigDecimal delta = orZero(kwp).subtract(orZero(row.capacityKwp()));
+                if (delta.signum() != 0) {
+                    assets.addPvCapacity(tenantId, siteId, delta);
+                }
+            }
+            entityRepo.updateAdoptedPoint(takeover, role,
+                    ComponentLabels.toWrite(row == null ? null : row.label(), null, label),
+                    kwp, mastr);
+            if (item.edgeSourceId() != null) {
+                entityRepo.setEdgeSource(takeover, item.edgeSourceId());
+            }
+            if (row != null) {
+                ensureEntityConfig(row, item);
+            }
+            return takeover;
         }
         if (ComponentService.ROLE_INVERTER.equals(item.role())) {
             // Ohne komponierte battery-hybrid-Zeile fehlt der Anlage der
@@ -319,6 +373,33 @@ public class ComponentAdoptionService {
                 ComponentDefaults.capabilities(mapper, item.role()),
                 ComponentDefaults.guards(mapper, item.role(), item.capacityKwp()));
         return created;
+    }
+
+    /** Alle Zeilen der Anlage, wie die Übernahme-Regel sie sieht. */
+    private java.util.List<ComponentTakeover.Existing> takeoverCandidates(UUID siteId) {
+        java.util.List<ComponentTakeover.Existing> out = new java.util.ArrayList<>();
+        for (EntityRow row : entityRepo.pointsForSite(siteId)) {
+            out.add(new ComponentTakeover.Existing(row.id(), row.role(), row.brand(), row.model(),
+                    row.communication(), row.connectionJson(), row.registryUnitId(),
+                    row.edgeSourceId()));
+        }
+        return out;
+    }
+
+    /** Die Quellen-Kennungen, die die Box GERADE meldet. */
+    private java.util.Set<String> reportedSourceIds(UUID siteId) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (EntityObservedRepository.ObservedRow row : observed.forSite(siteId)) {
+            if ("local".equals(row.source()) && row.entityId() != null
+                    && row.entityId().startsWith("local:")) {
+                out.add(row.entityId().substring("local:".length()));
+            }
+        }
+        return out;
+    }
+
+    private static java.math.BigDecimal orZero(java.math.BigDecimal v) {
+        return v == null ? java.math.BigDecimal.ZERO : v;
     }
 
     /**

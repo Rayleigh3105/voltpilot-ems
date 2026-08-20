@@ -3,6 +3,7 @@ import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { ProfileState, SiteProfiles } from './profiles';
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
+import type { ComponentMatch } from './komponentenAssistent';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
@@ -2541,6 +2542,23 @@ export const api = {
     },
   ) =>
     request<ProbeAntwort>(`/api/v1/sites/${siteId}/component-test`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /**
+   * „Kennen wir dieses Gerät schon?" - die verwaiste Komponente, die ein
+   * Speichern ÜBERNEHMEN würde (Alias-Kontinuität, Live-Fall Herzogau).
+   *
+   * <p>Die Entscheidung fällt AUF DEM SERVER, mit derselben Regel, die
+   * `createComponent` danach fährt; hier wird nichts nachgerechnet. `204` (kein
+   * Treffer) kommt als `undefined` an und heißt „es entsteht eine neue
+   * Komponente" - ein völlig normaler Ausgang, nie ein Fehler.
+   */
+  matchComponent: (
+    siteId: string,
+    body: { templateRef: string; role: string; connection: Record<string, unknown> },
+  ) =>
+    request<ComponentMatch | undefined>(`/api/v1/sites/${siteId}/component-match`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

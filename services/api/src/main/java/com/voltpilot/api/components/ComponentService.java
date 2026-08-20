@@ -2,6 +2,7 @@ package com.voltpilot.api.components;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.entities.EntityObservedRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
@@ -12,6 +13,7 @@ import com.voltpilot.api.templates.BuiltinComponentTemplates;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
+import com.voltpilot.api.web.dto.ComponentMatchDto;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
@@ -85,6 +87,8 @@ public class ComponentService {
     private final SiteRepository sites;
     private final MeasurementPointRepository points;
     private final EntityRegistryRepository entityRepo;
+    /** Nur zum LESEN, was die Box gerade meldet - die Übernahme-Regel braucht es. */
+    private final EntityObservedRepository observed;
     private final EntityRegistryService entityRegistry;
     private final ComponentDefinitionRepository definitions;
     private final ComponentApplyRepository applyState;
@@ -97,10 +101,11 @@ public class ComponentService {
             EntityRegistryRepository entityRepo, EntityRegistryService entityRegistry,
             ComponentDefinitionRepository definitions, ComponentApplyRepository applyState,
             ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
-            AssetRepository assets) {
+            AssetRepository assets, EntityObservedRepository observed) {
         this.sites = sites;
         this.points = points;
         this.entityRepo = entityRepo;
+        this.observed = observed;
         this.entityRegistry = entityRegistry;
         this.definitions = definitions;
         this.applyState = applyState;
@@ -214,16 +219,17 @@ public class ComponentService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "Diese Fassung gibt es nicht.");
         }
-        int newVersion = definitions.applyDefinition(siteId, entityId, old.label(), old.brand(),
-                old.model(), old.family(), old.communication(), old.connection(), old.sourceKind(),
-                old.templateRef(), old.templateVersion());
-        if (newVersion == 0) {
+        ComponentDefinitionRepository.Applied applied = definitions.applyDefinition(siteId,
+                entityId, old.label(), old.brand(), old.model(), old.family(),
+                old.communication(), old.connection(), old.sourceKind(), old.templateRef(),
+                old.templateVersion());
+        if (applied == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
-        definitions.recordVersion(TenantContext.get(), siteId, entityId, newVersion, old.role(),
-                old.label(), old.brand(), old.model(), old.family(), old.communication(),
-                old.connection(), old.sourceKind(), old.templateRef(), old.templateVersion(),
-                subject, "Zurück auf Fassung " + version);
+        definitions.recordVersion(TenantContext.get(), siteId, entityId, applied.version(),
+                old.role(), applied.label(), old.brand(), old.model(), old.family(),
+                old.communication(), old.connection(), old.sourceKind(), old.templateRef(),
+                old.templateVersion(), subject, "Zurück auf Fassung " + version);
         entityRegistry.pushRegistryBestEffort(siteId);
         return list(siteId);
     }
@@ -302,7 +308,6 @@ public class ComponentService {
      */
     private UUID resolveOrCreatePoint(UUID siteId, UUID tenantId, String role,
             SaveComponentRequest req, ComponentTemplateDto template) {
-        String label = label(req, template);
         String entityType = ROLE_ENTITY_TYPE.get(role);
 
         // Wechselrichter und Netz-Zähler sind PLATTFORM-KOMPONIERT: die
@@ -344,8 +349,49 @@ public class ComponentService {
         }
 
         BigDecimal capacity = ROLE_ERZEUGER.equals(role) ? req.capacityKwp() : null;
-        UUID id = points.create(tenantId, siteId, role, label, template.brand(), template.model(),
-                capacity, null);
+
+        // ⚠ Erst die VERWAISTE Zeile desselben Geräts suchen, dann anlegen
+        // (Alias-Kontinuität, Live-Fall Herzogau 20.08.2026). „Komponente
+        // hinzufügen" legte bisher IMMER eine neue Zeile an - auch wenn genau
+        // dieses Gerät daneben verwaist lag. Das Ergebnis war eine namenlose
+        // Parallel-Komponente, während der Kundenname auf der alten Zeile
+        // strandete. Die Regel entscheidet nur EINDEUTIGE Fälle.
+        UUID takeover = findTakeover(siteId, role, template, req);
+        if (takeover != null) {
+            EntityRow row = entityRepo.entityForSite(siteId, takeover);
+            // ⚠ Auf einer ÜBERNOMMENEN Zeile heißt ein leeres optionales Feld
+            // „nichts ändern", nie „löschen" - dieselbe Regel wie beim Namen.
+            // Sonst räumte ein Anlege-Formular ohne kWp-Angabe die gepflegte
+            // Nennleistung und die MaStR-Referenz des Kunden ab.
+            BigDecimal kwp = capacity != null || row == null ? capacity : row.capacityKwp();
+            String mastr = row == null ? null : row.registryUnitId();
+            if (ROLE_ERZEUGER.equals(role) && row != null) {
+                // Nur die DIFFERENZ - die Zeile steckt mit ihrem alten Wert
+                // schon in der Anlagen-Summe.
+                BigDecimal delta = orZero(kwp).subtract(orZero(row.capacityKwp()));
+                if (delta.signum() != 0) {
+                    assets.addPvCapacity(tenantId, siteId, delta);
+                }
+            }
+            // ⚠ Der Name folgt der EINEN Regel: getippt gewinnt, sonst bleibt
+            // der Kundenname stehen - ein leer gelassenes Namensfeld darf ihn
+            // nie durch den Modellnamen der Vorlage ersetzen.
+            entityRepo.updateAdoptedPoint(takeover, role,
+                    ComponentLabels.toWrite(row == null ? null : row.label(), req.label(),
+                            template.modelLabel()),
+                    kwp, mastr);
+            if (row != null && (row.entityType() == null || row.entityType().isBlank())
+                    && entityType != null) {
+                entityRepo.setEntityConfig(takeover, entityType,
+                        ComponentDefaults.capabilities(mapper, role),
+                        ComponentDefaults.guards(mapper, role, req.capacityKwp()));
+            }
+            return takeover;
+        }
+
+        UUID id = points.create(tenantId, siteId, role,
+                ComponentLabels.toWrite(null, req.label(), template.modelLabel()),
+                template.brand(), template.model(), capacity, null);
         if (ROLE_ERZEUGER.equals(role)) {
             assets.addPvCapacity(tenantId, siteId, capacity);
         }
@@ -357,6 +403,71 @@ public class ComponentService {
         return id;
     }
 
+    /**
+     * Der VORSCHLAG vor dem Klick: welche vorhandene Komponente dieses Gerät
+     * übernehmen würde. Genau dieselbe Regel, die {@link #create} danach fährt -
+     * die Fläche kann also nichts anderes ankündigen, als hinterher passiert.
+     *
+     * @return die Komponente, oder {@code null} wenn eine neue entstünde
+     */
+    public ComponentMatchDto match(UUID siteId, String rawRole, String templateRef,
+            Map<String, Object> connection) {
+        requireSite(siteId);
+        String role = requireRole(rawRole);
+        ComponentTemplateDto template = requireTemplate(templateRef);
+        UUID hit = findTakeover(siteId, role, template,
+                new SaveComponentRequest(templateRef, null, role, connection, null, null, null));
+        if (hit == null) {
+            return null;
+        }
+        EntityRow row = entityRepo.entityForSite(siteId, hit);
+        if (row == null) {
+            return null;
+        }
+        boolean orphaned = row.edgeSourceId() != null && !row.edgeSourceId().isBlank();
+        return new ComponentMatchDto(row.id(), row.label(), row.role(), row.brand(), row.model(),
+                orphaned);
+    }
+
+    /**
+     * Die EINE verwaiste Komponente, in die dieses Gerät gehört - oder
+     * {@code null}. Der Zaun ist bewusst eng: nur die Rollen, die dieser Weg
+     * überhaupt neu anlegt (Wechselrichter und Netz-Zähler haben ihre
+     * komponierte Zeile schon), und nur ein EINDEUTIGER Treffer.
+     */
+    private UUID findTakeover(UUID siteId, String role, ComponentTemplateDto template,
+            SaveComponentRequest req) {
+        if (!ROLE_ERZEUGER.equals(role) && !ROLE_CONSUMER.equals(role)) {
+            return null;
+        }
+        List<ComponentTakeover.Existing> candidates = new java.util.ArrayList<>();
+        for (EntityRow row : entityRepo.pointsForSite(siteId)) {
+            candidates.add(new ComponentTakeover.Existing(row.id(), row.role(), row.brand(),
+                    row.model(), row.communication(), row.connectionJson(), row.registryUnitId(),
+                    row.edgeSourceId()));
+        }
+        return ComponentTakeover.match(candidates, reportedSourceIds(siteId),
+                new ComponentTakeover.Incoming(role, template.brand(), template.model(),
+                        template.communication(), writeJson(req.connection()), null),
+                mapper);
+    }
+
+    /** Die Quellen-Kennungen, die die Box GERADE meldet. */
+    private java.util.Set<String> reportedSourceIds(UUID siteId) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (EntityObservedRepository.ObservedRow row : observed.forSite(siteId)) {
+            if ("local".equals(row.source()) && row.entityId() != null
+                    && row.entityId().startsWith("local:")) {
+                out.add(row.entityId().substring("local:".length()));
+            }
+        }
+        return out;
+    }
+
+    private static BigDecimal orZero(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
+    }
+
     /** Schreibt die geltende Anbindung + ihre Fassung in die Historie. */
     private void writeDefinition(UUID siteId, UUID tenantId, UUID entityId, String role,
             SaveComponentRequest req, ComponentTemplateDto template,
@@ -364,17 +475,21 @@ public class ComponentService {
         String connJson = writeJson(driverConnection(connection, req));
         String sourceKind = SOURCE_KIND_CERTIFIED.equals(template.kind())
                 ? SOURCE_KIND_CERTIFIED : SOURCE_KIND_BUILTIN;
-        String label = label(req, template);
-        int version = definitions.applyDefinition(siteId, entityId, label, template.brand(),
-                template.model(), template.family(), template.communication(), connJson,
-                sourceKind, template.templateRef(), template.version());
-        if (version == 0) {
+        EntityRow stored = entityRepo.entityForSite(siteId, entityId);
+        String label = ComponentLabels.toWrite(stored == null ? null : stored.label(), req.label(),
+                template.modelLabel());
+        ComponentDefinitionRepository.Applied applied = definitions.applyDefinition(siteId,
+                entityId, label, template.brand(), template.model(), template.family(),
+                template.communication(), connJson, sourceKind, template.templateRef(),
+                template.version());
+        if (applied == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
         String note = req.note() == null || req.note().isBlank() ? defaultNote : req.note().trim();
-        definitions.recordVersion(tenantId, siteId, entityId, version, role, label,
-                template.brand(), template.model(), template.family(), template.communication(),
-                connJson, sourceKind, template.templateRef(), template.version(), subject, note);
+        definitions.recordVersion(tenantId, siteId, entityId, applied.version(), role,
+                applied.label(), template.brand(), template.model(), template.family(),
+                template.communication(), connJson, sourceKind, template.templateRef(),
+                template.version(), subject, note);
     }
 
     /**
@@ -391,11 +506,6 @@ public class ComponentService {
             out.put("interval_s", req.intervalS());
         }
         return out;
-    }
-
-    private static String label(SaveComponentRequest req, ComponentTemplateDto template) {
-        String l = req.label() == null ? "" : req.label().trim();
-        return l.isEmpty() ? template.modelLabel() : l;
     }
 
     private static String roleOf(EntityRow row) {

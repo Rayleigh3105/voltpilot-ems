@@ -28,6 +28,7 @@ const testComponentConnection = vi.fn();
 const createComponent = vi.fn();
 const readCustomComponent = vi.fn();
 const createCustomComponent = vi.fn();
+const matchComponent = vi.fn();
 
 vi.mock('../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../api');
@@ -40,6 +41,7 @@ vi.mock('../api', async () => {
       createComponent: (...a: unknown[]) => createComponent(...a),
       readCustomComponent: (...a: unknown[]) => readCustomComponent(...a),
       createCustomComponent: (...a: unknown[]) => createCustomComponent(...a),
+      matchComponent: (...a: unknown[]) => matchComponent(...a),
     },
   };
 });
@@ -70,6 +72,7 @@ describe('der EINE Anlege-Assistent', () => {
       results: [{ id: 'verbindung', ok: true, reading: { pvKw: 12.4, socPct: 87 } }],
     });
     createComponent.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    matchComponent.mockResolvedValue(undefined);
   });
 
   it('rendert die Verbindungsfelder AUS dem transport_schema der Vorlage', async () => {
@@ -245,5 +248,89 @@ describe('der EINE Anlege-Assistent', () => {
     const [, body] = createCustomComponent.mock.calls[0] as [string, Record<string, unknown>];
     expect(body.connection).toMatchObject({ host: '192.168.1.50', port: 502, unitId: 1 });
     expect(body.channels).toHaveLength(1);
+  });
+
+  // --- Alias-Kontinuität (Live-Fall Herzogau, 20.08.2026) --------------------
+
+  it('füllt das Namensfeld NICHT mit dem Modellnamen vor', async () => {
+    // Genau diese Vorbefüllung hat den Kundennamen überschrieben: sie wurde
+    // mitgeschickt und sah für den Server aus wie eine Eingabe.
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Weiter' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(await screen.findByText('Weiterer Erzeuger'));
+
+    const name = (await screen.findByLabelText('Name')) as HTMLInputElement;
+    expect(name.value).toBe('');
+    expect(name.placeholder).toBe(template.modelLabel);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await screen.findByText('Prüfen & anlegen');
+    fireEvent.click(screen.getByRole('button', { name: 'Komponente anlegen' }));
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1].label).toBeUndefined();
+  });
+
+  it('kündigt die ÜBERNAHME der vorhandenen Komponente an, bevor gespeichert wird', async () => {
+    matchComponent.mockResolvedValue({
+      entityId: 'wr1',
+      label: 'Fronius Anlage WR1',
+      role: 'pv-generation',
+      orphaned: true,
+    });
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Weiter' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(await screen.findByText('Weiterer Erzeuger'));
+
+    // Der Vorschlag steht VOR dem Klick, mit dem Namen, den der Kunde kennt.
+    const hinweis = await screen.findByText(/statt eine zweite anzulegen/);
+    expect(hinweis).toHaveTextContent('Fronius Anlage WR1');
+    // Und die Hilfe darunter sagt, was ein LEERES Feld bedeutet.
+    expect(screen.getByText(/Leer lassen behält den bisherigen Namen/))
+      .toHaveTextContent('Fronius Anlage WR1');
+    expect((screen.getByLabelText('Name') as HTMLInputElement).placeholder)
+      .toBe('Fronius Anlage WR1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await screen.findByText('Prüfen & anlegen');
+    expect(screen.getByText('Vorhandene Komponente wird wieder verbunden')).toBeInTheDocument();
+  });
+
+  it('entwertet den Übernahme-Vorschlag, sobald die Verbindung sich ändert', async () => {
+    matchComponent.mockResolvedValue({ entityId: 'wr1', label: 'Fronius Anlage WR1' });
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Weiter' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(await screen.findByText('Weiterer Erzeuger'));
+    await screen.findByText(/statt eine zweite anzulegen/);
+
+    // Zurück in die Verbindung, eine andere Adresse - das ist ein anderes Gerät.
+    fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
+    fireEvent.change(await screen.findByLabelText(/IP-Adresse/), {
+      target: { value: '192.168.0.99' },
+    });
+    expect(screen.queryByText(/statt eine zweite anzulegen/)).toBeNull();
+  });
+
+  it('bleibt ohne die Vorschlags-Route unverändert (älteres Backend)', async () => {
+    matchComponent.mockRejectedValue(new ApiError(404, 'nicht gefunden'));
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung testen' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Weiter' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(await screen.findByText('Weiterer Erzeuger'));
+    await screen.findByLabelText('Name');
+    // Kein Vorschlag, keine Störung - der Assistent läuft weiter wie vorher.
+    expect(screen.queryByText(/statt eine zweite anzulegen/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await screen.findByText('Prüfen & anlegen');
   });
 });

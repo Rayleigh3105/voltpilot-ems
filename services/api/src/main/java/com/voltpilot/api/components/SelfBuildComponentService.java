@@ -785,12 +785,13 @@ public class SelfBuildComponentService {
         String label = row.label() == null ? "Eigenes Gerät" : row.label();
         String definitionJson = definitionJson(new Result(List.of(), transport, channels), sw,
                 consumer, subject, evidence);
-        int version = definitions.applyDefinition(siteId, entityId, label, null, null, null,
-                SelfBuildDefinition.COMMUNICATION, definitionJson,
-                SelfBuildDefinition.SOURCE_KIND, null, null);
-        if (version == 0) {
+        ComponentDefinitionRepository.Applied applied = definitions.applyDefinition(siteId,
+                entityId, label, null, null, null, SelfBuildDefinition.COMMUNICATION,
+                definitionJson, SelfBuildDefinition.SOURCE_KIND, null, null);
+        if (applied == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
+        int version = applied.version();
         definitions.recordVersion(tenantId, siteId, entityId, version,
                 sw == null ? SelfBuildDefinition.ENTITY_TYPE : SWITCHABLE_ENTITY_TYPE, label,
                 null, null, null, SelfBuildDefinition.COMMUNICATION, definitionJson,
@@ -812,12 +813,13 @@ public class SelfBuildComponentService {
     private void write(UUID siteId, UUID tenantId, UUID entityId, Result def, String label,
             String note, String subject, String defaultNote) {
         String definitionJson = definitionJson(def);
-        int version = definitions.applyDefinition(siteId, entityId, label, null, null, null,
-                SelfBuildDefinition.COMMUNICATION, definitionJson,
-                SelfBuildDefinition.SOURCE_KIND, null, null);
-        if (version == 0) {
+        ComponentDefinitionRepository.Applied applied = definitions.applyDefinition(siteId,
+                entityId, label, null, null, null, SelfBuildDefinition.COMMUNICATION,
+                definitionJson, SelfBuildDefinition.SOURCE_KIND, null, null);
+        if (applied == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
+        int version = applied.version();
         String text = note == null || note.isBlank() ? defaultNote : note.trim();
         // Die Rolle der Zeile IST ihr Entitätstyp (die Konvention jeder
         // v2-nativen Entität) - die Fassungs-Historie erfindet dafür kein

@@ -352,13 +352,18 @@ export function pruefen(
   rolle: KomponentenRolle,
   name: string,
   verbindung: Record<string, unknown>,
+  /** Die verwaiste Komponente, die dieses Gerät übernimmt (Alias-Kontinuität). */
+  uebernahme?: ComponentMatch | null,
 ): PruefZeile[] {
   const rows: PruefZeile[] = [
-    { label: 'Name', wert: name.trim() === '' ? template.modelLabel : name.trim() },
+    { label: 'Name', wert: nameVorschau(template, name, uebernahme) },
     { label: 'Gerät', wert: `${template.brandLabel} ${template.modelLabel}` },
     { label: 'Art', wert: ROLLEN.find((r) => r.id === rolle)?.label ?? rolle },
     { label: 'Verbindung', wert: template.communicationLabel },
   ];
+  if (uebernahme) {
+    rows.splice(1, 0, { label: 'Komponente', wert: UEBERNAHME_ZEILE });
+  }
   for (const f of felder(template)) {
     const v = verbindung[f.key];
     if (v === undefined || v === null || String(v).trim() === '') continue;
@@ -382,6 +387,89 @@ function anzeigeWert(field: TemplateField, value: unknown): string {
  * Box muss es noch anwenden. Ein „fertig", das eine Zustellung behauptet, die
  * niemand gemessen hat, wäre genau die Erfindung, die dieses Haus vermeidet.
  */
+
+// ---------------------------------------------------------------------------
+// Alias-Kontinuität: eine verwaiste Komponente wird ÜBERNOMMEN, nicht verdoppelt
+// (Live-Fall Herzogau, 20.08.2026 - Captain: „beim neu hinzufügen sind die
+// Aliase jetzt weg").
+// ---------------------------------------------------------------------------
+
+/**
+ * Die vorhandene Komponente, die der Server bei diesem Gerät übernehmen würde.
+ * Sie kommt VOM SERVER (`POST /sites/{id}/component-match`) - die Regel, welche
+ * Zeile das ist, wohnt dort und wird hier NIE nachgerechnet: ein zweiter
+ * Fingerabdruck in TypeScript würde von ihr abdriften (die Haus-Regel der
+ * Zwillinge, hier bewusst vermieden statt gepinnt).
+ */
+export type ComponentMatch = {
+  entityId: string;
+  label?: string | null;
+  role?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  /** Hatte eine Bindung, die gerissen ist (statt nie einer zugeordnet gewesen). */
+  orphaned?: boolean | null;
+};
+
+/** Die Zeile in der Prüfen-Liste, wenn übernommen statt angelegt wird. */
+export const UEBERNAHME_ZEILE = 'Vorhandene Komponente wird wieder verbunden';
+
+/**
+ * Der Name, den die Komponente NACH dem Speichern trägt.
+ *
+ * <p>Die Regel spiegelt den Server (`COALESCE(NULLIF(?,''), label)`): ein leer
+ * gelassenes Feld ÜBERSCHREIBT nichts. Deshalb ist das Feld auch nicht mehr mit
+ * dem Modellnamen vorbefüllt - genau diese Vorbefüllung hat den Kundennamen
+ * überschrieben.
+ */
+export function nameVorschau(
+  template: ComponentTemplate,
+  name: string,
+  uebernahme?: ComponentMatch | null,
+): string {
+  const getippt = name.trim();
+  if (getippt !== '') return getippt;
+  const bisher = uebernahme?.label?.trim();
+  if (bisher) return bisher;
+  return template.modelLabel;
+}
+
+/**
+ * Der Satz über dem Namensfeld, wenn eine vorhandene Komponente übernommen wird -
+ * oder `null`, wenn wirklich eine neue entsteht.
+ *
+ * <p>Er BEHAUPTET nie einen Namen, den es nicht gibt: eine Zeile ohne
+ * Kundennamen wird über Marke und Modell benannt, nie über eine erfundene
+ * Bezeichnung.
+ */
+export function uebernahmeHinweis(
+  uebernahme: ComponentMatch | null | undefined,
+  template: ComponentTemplate | null,
+): string | null {
+  if (!uebernahme) return null;
+  const name = uebernahme.label?.trim();
+  const wer = name
+    ? `Ihre bisherige Komponente „${name}"`
+    : 'eine Komponente, die Sie schon angelegt haben';
+  const grund = uebernahme.orphaned
+    ? 'Ihre Verbindung zu diesem Gerät war unterbrochen'
+    : 'sie ist noch keinem Gerät zugeordnet';
+  const geraet = template ? `${template.brandLabel} ${template.modelLabel}` : 'Dieses Gerät';
+  return (
+    `${geraet} ist vermutlich ${wer} - ${grund}. ` +
+    'Wir verbinden sie wieder, statt eine zweite anzulegen: Name, Verlauf und ' +
+    'Zuordnungen bleiben erhalten.'
+  );
+}
+
+/** Die Hilfe unter dem Namensfeld - sie sagt, was ein LEERES Feld bedeutet. */
+export function nameHilfe(uebernahme?: ComponentMatch | null): string {
+  return uebernahme?.label?.trim()
+    ? `Leer lassen behält den bisherigen Namen „${uebernahme.label.trim()}".`
+    : 'So heißt die Komponente in Ihrer Anlage. Leer lassen ist in Ordnung - dann '
+        + 'benennen wir sie nach Marke und Modell.';
+}
+
 export const ABSCHLUSS_HINWEIS =
   'Gespeichert. Ihre VoltPilot-Box übernimmt die Änderung, sobald sie das nächste Mal ' +
   'verbunden ist - der Stand steht an der Komponente.';

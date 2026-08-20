@@ -291,11 +291,20 @@ public class EntityRegistryRepository {
      * Re-point an adopted measurement point at a (possibly changed) role and
      * master data before its entity config is re-composed. Only rows created by
      * adoption carry an {@code edge_source_id}, so the role is ours to maintain.
+     *
+     * <p><b>⚠ Der NAME wird nur GEFÜLLT, nie überschrieben</b> (Alias-Kontinuität,
+     * Live-Fall Herzogau 20.08.2026). Seit der Label-Hygiene (V20260812000000)
+     * heißt {@code label != NULL} „von einem Menschen vergeben"; ein automatischer
+     * Lauf (die Bestands-Übernahme meldet den NAMEN DER BOX) darf so einen Namen
+     * niemals ersetzen. Ein leerer/absenter Wert behält den gespeicherten Namen -
+     * gelöscht wird ein Name ausschließlich über {@link #updateLabel}, den
+     * ausdrücklichen Weg des Kunden.
      */
     public void updateAdoptedPoint(UUID pointId, String role, String label,
             BigDecimal capacityKwp, String registryUnitId) {
         jdbc.update(
-                "UPDATE measurement_point SET role = ?, label = ?, capacity_kwp = ?, "
+                "UPDATE measurement_point SET role = ?, "
+                        + "label = COALESCE(NULLIF(?::text, \'\'), label), capacity_kwp = ?, "
                         + "registry_unit_id = ? WHERE id = ?",
                 role, label, capacityKwp, registryUnitId, pointId);
     }
