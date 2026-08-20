@@ -2653,27 +2653,26 @@ Anheben kostete einen Vor-Ort-Termin. Betreiber-Ablauf + curl-Beispiele:
   Eintrag, den eine spätere Untersuchung braucht. Ein Probelauf wird NICHT
   protokolliert (es gibt kein „nachher", und ein Log der Lesevorgänge begrübe
   die Schreibvorgänge).
-- **Zwei Tore vor allem anderen:** `VP_INSTALLER_WRITE_ENABLED` (auf `false`
-  antworten beide Endpunkte `404`, nichts wird veröffentlicht, die Box ist
-  byte-identisch zu vorher; in BEIDEN Composes + `install.sh` weitergereicht -
-  Lockstep) und für den SCHREIB-Aufruf das bestehende Betreiber-Kennwort
-  (`calGuard`, `X-VP-Calibration-Token`). Die Nur-Lese-Sicht bleibt offen wie
-  `GET /api/calibration`.
-- **⚠ Das Flag ist SEIT „Bis zum Endkunden" (Stufe 3, Captain-Entscheid D2) per
-  Vorgabe AN.** Bis dahin war es AUS und die Vorgabe WAR das Feature - eine
-  Canary-Box wurde je Wartungsfenster armiert. Der Portal-Konsument existiert
-  ohnehin erst ab dem Kunden-Release, das Flag schützte also genau die
-  Canary-Phase; was den Pfad seither trägt, ist die Kette, die IMMER läuft
-  (Identität über Broker-ACL + mTLS-CN, das `requested_at`-Fenster, die
-  LAN-Whitelist, die Selbstkonflikt-Sperre, die Einmaligkeit, das
-  Wartungs-Passwort an der lokalen Tür) plus der Cloud-Not-Aus der Plattform
-  (`voltpilot.register-write.enabled` am api, der mit deutschem Grund
-  refüsiert). Es bleibt ein echter Schalter: ein ausdrückliches `false` nimmt
-  EINER Box den ganzen Pfad wieder. **Fail-closed wie jedes bool-Flag hier: ein
-  GESETZTES Wort außerhalb von `true`/`1` schaltet AUS**, nie auf die Vorgabe
-  zurück (`boolEnv`) - ein Tippfehler kann den Pfad also nur schließen.
-  **Wirksam wird die Umstellung erst mit dem NÄCHSTEN Edge-Release** (eine
-  laufende Box behält ihr `.env` und ihr Image).
+- **⚠ ES GIBT KEIN FEATURE-FLAG MEHR (Captain-Korrektur 20.08.2026, D2
+  KORRIGIERT).** `VP_INSTALLER_WRITE_ENABLED` ist ERSATZLOS entfallen - im
+  Go-Core, in BEIDEN Composes und in `install.sh`: der Einmal-Schreibpfad ist
+  auf **jeder** Box verfügbar, für BEIDE Türen, ohne Armierung und ohne
+  `404`-Zustand. Das Flag gehörte zur Canary-Phase (der Portal-Konsument
+  existiert ohnehin erst ab dem Kunden-Release) und war nie das, was den Pfad
+  sicher macht. **Unverändert tragen ihn die INHALTLICHEN Tore:** die
+  Zwei-Schritt-Strecke (Probelauf → wörtliche Bestätigung), `expected_before`,
+  die Einmaligkeit, die Register-Allowlist + Wertgrenze bzw. die Lane-Politik
+  des Portal-Wegs (Wertgrenzen, Selbstkonflikt-Sperre, LAN-only), das
+  **Betreiber-Kennwort** am lokalen Schreib-Aufruf (`calGuard`,
+  `X-VP-Calibration-Token`; die Nur-Lese-Sicht bleibt offen wie
+  `GET /api/calibration`), Identität + `requested_at`-Fenster + RLS/JWT auf dem
+  Portal-Weg, das Box-Audit + der D6-Uplink - und der **Cloud-Not-Aus der
+  Plattform** (`voltpilot.register-write.enabled` am api) als Betriebs-Notbremse,
+  die mit deutschem Grund refüsiert statt zu schweigen.
+- **⚠ `gate_disabled` bleibt trotzdem im KONTRAKT** (`error_code`-Enum,
+  `registerwrite.ErrGateDisabled`) und in der Cloud-Whitelist: eine Box mit
+  ÄLTEREM Image kann das Wort noch senden, und die Cloud muss es weiter
+  verstehen. Kein aktueller Build erzeugt es.
 - **Eine bestätigte Rücklesung frischt `Snapshot.DeviceExportLimit` auf** -
   dasselbe Feld, das sonst der tägliche Lesevorgang füllt (EINE Wahrheit über
   die Grenze des Geräts, aufgefrischt von dem, der zuletzt gelesen hat).
@@ -2684,8 +2683,10 @@ Anheben kostete einen Vor-Ort-Termin. Betreiber-Ablauf + curl-Beispiele:
   Bestätigung, GENAU ein Versuch, Nicht-Übernahme, stilles Gerät, gesperrte
   Familie erreicht den Bus nie, Einmal-Wächter, `WriteOnce` ist
   trigger-agnostisch und protokolliert NICHTS, veraltete Vorbedingung) ·
-  `internal/web` (Flag-Tor 404, Kennwort-Tor, Fehler-Abbildung) ·
-  `internal/config` (Vorgabe AUS) · `nodered/inverter-control-routing.test.js` +
+  `internal/web` (die Routen existieren OHNE Armierung, Kennwort-Tor,
+  Fehler-Abbildung) · `internal/config` (es gibt keinen Umgebungs-Schalter mehr:
+  jeder Wert lässt die Konfiguration byte-gleich) ·
+  `nodered/inverter-control-routing.test.js` +
   `flows-sync.test.js` (die eingebettete Kopie == das Modul, Adresse/Obergrenze
   gepinnt, gleicher Tab wie der Poll) · `nodered/deye-control.e2e.test.js`
   (echter In-Process-Solarman-Logger: Probelauf schreibt nichts, die Bestätigung
@@ -2708,9 +2709,10 @@ das Portal, Stufe 1". Was HIER gelten muss:
   Schreibpfad einzieht, muss jedes Tor ein zweites Mal absichern.
 - **⚠ Genau ZWEI Ablehnungen sind STUMM** (fremde Identität, verfallener
   Auftrag) - alles andere wird BEANTWORTET. Eine Ablehnung, die niemand sieht,
-  ist ein Rätsel (die Canary-Soak-Lehre): eine nicht armierte Box antwortet
-  `gate_disabled`, eine nicht ausgeführte Lane `not_supported`, die Politik
-  `refused_policy` mit dem deutschen Satz VERBATIM aus `Admit`.
+  ist ein Rätsel (die Canary-Soak-Lehre): eine nicht ausgeführte Lane antwortet
+  `not_supported`, die Politik `refused_policy` mit dem deutschen Satz VERBATIM
+  aus `Admit`. (`gate_disabled` gibt es seit dem Wegfall des Flags nur noch im
+  Kontrakt - siehe oben.)
 - **Drei Sicherungen gegen ein Replay**, nicht eine: nicht-retained (Vertrag),
   das `requested_at`-Fenster (60 s, ab dem Stempel des Umschlags - nicht ab dem
   Empfang) und der `request_id`-Merker (gegen eine Doppelzustellung INNERHALB
@@ -2733,7 +2735,9 @@ das Portal, Stufe 1". Was HIER gelten muss:
   (`registerWritesSummary`, höchstens 5 Einträge des letzten Tages), eine Box
   ohne Schreibvorgang sendet GAR KEINEN Block.
 - Beweise: `internal/registerwrite` (11, inkl. der Kontrakt-Fixtures per PFAD) ·
-  `agent/register_write_test.go` (7) · `internal/cloud/status_test.go`.
+  `agent/register_write_test.go` (7, darunter „der Pfad braucht keinen
+  Armierungs-Schritt" samt Struktur-Wächter gegen ein wieder eingeführtes
+  Konfigurations-Feld) · `internal/cloud/status_test.go`.
 
 ## Stufe 2 „Freie Register": die Allowlist wird durch LANE-Regeln abgeloest
 

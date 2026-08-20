@@ -73,10 +73,14 @@ import org.springframework.web.server.ResponseStatusException;
  * Schritte - kein Ziel wird aufgelöst, keine Runde zum Broker gedreht, keine
  * Journal-Zeile geschrieben.
  *
- * <p>Er ist seit Stufe 3 zugleich der EINZIGE plattformweite Hebel: das
- * Geräte-Flag {@code VP_INSTALLER_WRITE_ENABLED} steht im Kunden-Release per
- * Vorgabe AN (Captain-Entscheid D2), es ist also nicht mehr die Sicherung,
- * für die es in Stufe 1 gehalten wurde.
+ * <p>Er ist zugleich der EINZIGE plattformweite Hebel: auf der Box gibt es seit
+ * der Captain-Korrektur vom 20.08.2026 (D2 KORRIGIERT) KEIN Feature-Flag mehr -
+ * das frühere {@code VP_INSTALLER_WRITE_ENABLED} ist ersatzlos entfallen, der
+ * Einmal-Schreibpfad ist dort immer verfügbar. Die Sicherung des Pfades sind
+ * unverändert die inhaltlichen Tore: Identität (Broker-ACL + mTLS-CN),
+ * Zeitfenster, Zwei-Schritt-Bestätigung, {@code expected_before}, Einmaligkeit,
+ * Lane-Politik (Wertgrenzen, LAN-Whitelist) und die Selbstkonflikt-Sperre auf
+ * dem Gerät - plus RLS/JWT auf diesem Weg.
  */
 @Service
 public class RegisterWriteService {

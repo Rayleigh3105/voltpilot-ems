@@ -2,6 +2,7 @@ package web
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -268,24 +269,18 @@ func (f *fakeMirror) SetMirror(req mirror.SettingsRequest) (mirror.Status, error
 // fakeOta is the OTA Stufe 2 controller double: it records what the supervised
 // apply reported back and hands out a canned target view.
 // fakeInstallerWrite is the InstallerWriteController double: the narrow 0x00E7
-// installer write. Default = flag OFF, so every pre-existing test sees the
-// routes as 404 - which IS the production default, and proves the whole path is
-// inert without VP_INSTALLER_WRITE_ENABLED.
+// installer write. There is no arming flag any more (Captain-Korrektur
+// 20.08.2026) - the routes exist on every box, and the WRITE is guarded by the
+// operator password.
 type fakeInstallerWrite struct {
-	enabled bool
-	view    installerwrite.View
-	out     installerwrite.Outcome
-	err     error
-	calls   []installerwrite.Request
-	by      []string
+	view  installerwrite.View
+	out   installerwrite.Outcome
+	err   error
+	calls []installerwrite.Request
+	by    []string
 }
 
-func (f *fakeInstallerWrite) InstallerWriteEnabled() bool { return f.enabled }
-func (f *fakeInstallerWrite) InstallerWriteView() installerwrite.View {
-	v := f.view
-	v.Enabled = f.enabled
-	return v
-}
+func (f *fakeInstallerWrite) InstallerWriteView() installerwrite.View { return f.view }
 func (f *fakeInstallerWrite) InstallerWrite(req installerwrite.Request, by string) (installerwrite.Outcome, error) {
 	f.calls = append(f.calls, req)
 	f.by = append(f.by, by)
@@ -3442,19 +3437,28 @@ func installerServer(t *testing.T, iw *fakeInstallerWrite, cal CalibrationContro
 	return srv
 }
 
-// WITHOUT the feature flag the path does not exist from outside: 404 on both
-// routes, and the controller is never asked to do anything.
-func TestInstallerWritePathIsAbsentWithoutTheFeatureFlag(t *testing.T) {
-	iw := &fakeInstallerWrite{} // enabled defaults to false = the production default
+// ⚠ THE PATH EXISTS ON EVERY BOX (Captain-Korrektur 20.08.2026). There used to
+// be a feature flag whose OFF state made both routes 404; that arming existed
+// for the canary phase and was never what makes the path safe. So: a plain
+// controller with nothing switched on answers BOTH routes, and the WRITE is
+// carried by the operator password (proven next door) - never by a 404.
+func TestInstallerWritePathExistsWithoutAnyArmingStep(t *testing.T) {
+	iw := &fakeInstallerWrite{
+		view: installerwrite.View{Register: installerwrite.RegisterLabel, MaxRaw: installerwrite.MaxRaw},
+	}
 	srv := installerServer(t, iw, nil)
 
 	r, err := http.Get(srv.URL + "/api/installer-write")
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.Body.Close()
-	if r.StatusCode != http.StatusNotFound {
-		t.Fatalf("GET must be 404 while the flag is off, got %d", r.StatusCode)
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("GET must exist without any arming, got %d", r.StatusCode)
+	}
+	raw, _ := io.ReadAll(r.Body)
+	if bytes.Contains(raw, []byte(`"enabled"`)) {
+		t.Fatalf("the view must not carry a switch any more: %s", raw)
 	}
 
 	resp, err := http.Post(srv.URL+"/api/installer-write", "application/json",
@@ -3463,11 +3467,11 @@ func TestInstallerWritePathIsAbsentWithoutTheFeatureFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("POST must be 404 while the flag is off, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST must reach the controller, got %d", resp.StatusCode)
 	}
-	if len(iw.calls) != 0 {
-		t.Fatalf("the flag gate must run BEFORE the controller, got %d calls", len(iw.calls))
+	if len(iw.calls) != 1 {
+		t.Fatalf("the controller must be asked exactly once, got %d calls", len(iw.calls))
 	}
 }
 
@@ -3482,7 +3486,6 @@ func TestInstallerWriteRoutesForwardAndMapEveryRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	iw := &fakeInstallerWrite{
-		enabled: true,
 		view: installerwrite.View{
 			Register: installerwrite.RegisterLabel, MaxRaw: installerwrite.MaxRaw,
 			Family: "hybrid_3p", Allowed: true,
@@ -3509,7 +3512,7 @@ func TestInstallerWriteRoutesForwardAndMapEveryRefusal(t *testing.T) {
 	if err := json.NewDecoder(r.Body).Decode(&view); err != nil {
 		t.Fatal(err)
 	}
-	if !view.Enabled || view.Register != installerwrite.RegisterLabel || len(view.Entries) != 1 {
+	if view.Register != installerwrite.RegisterLabel || len(view.Entries) != 1 {
 		t.Fatalf("view: %#v", view)
 	}
 
@@ -3563,7 +3566,7 @@ func TestInstallerWriteRoutesForwardAndMapEveryRefusal(t *testing.T) {
 // mutation; the read-only view stays open (the calibration rule).
 func TestInstallerWriteMutationIsBehindTheMaintenancePassword(t *testing.T) {
 	const secret = "geheim-123"
-	iw := &fakeInstallerWrite{enabled: true}
+	iw := &fakeInstallerWrite{}
 	srv := installerServer(t, iw, &fakeCalibration{adminSecret: secret})
 
 	post := func(tok string) *http.Response {

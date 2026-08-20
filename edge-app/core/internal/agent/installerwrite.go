@@ -238,16 +238,11 @@ func (a *Agent) onInstallerWriteResult(_ string, payload []byte) {
 
 // --- ADAPTER: the :8484 maintenance trigger ---------------------------------
 
-// InstallerWriteEnabled reports the feature flag. The HTTP surface answers 404
-// when it is false, so the path does not exist from outside.
-func (a *Agent) InstallerWriteEnabled() bool { return a.Cfg.InstallerWriteEnabled }
-
-// InstallerWriteView is the GET payload: the switch, the ONE register this path
-// may touch, whether THIS plant qualifies, and the persistent audit log.
+// InstallerWriteView is the GET payload: the ONE register this path may touch,
+// whether THIS plant qualifies, and the persistent audit log.
 func (a *Agent) InstallerWriteView() installerwrite.View {
 	target := a.installerTarget()
 	return installerwrite.View{
-		Enabled:  a.Cfg.InstallerWriteEnabled,
 		Register: installerwrite.RegisterLabel,
 		MaxRaw:   installerwrite.MaxRaw,
 		MaxKw:    installerwrite.MaxKw,

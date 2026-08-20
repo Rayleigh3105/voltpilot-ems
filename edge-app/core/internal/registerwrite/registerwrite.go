@@ -98,13 +98,17 @@ const (
 // word outside this set rather than passing it on, so an invented code never
 // reaches a customer - which means a code invented here would simply vanish.
 const (
-	ErrInvalidRequest        = "invalid_request"
-	ErrUnreachable           = "unreachable"
-	ErrNoAnswer              = "no_answer"
-	ErrInvalidResponse       = "invalid_response"
-	ErrTimeout               = "timeout"
-	ErrNotSupported          = "not_supported"
-	ErrRateLimited           = "rate_limited"
+	ErrInvalidRequest  = "invalid_request"
+	ErrUnreachable     = "unreachable"
+	ErrNoAnswer        = "no_answer"
+	ErrInvalidResponse = "invalid_response"
+	ErrTimeout         = "timeout"
+	ErrNotSupported    = "not_supported"
+	ErrRateLimited     = "rate_limited"
+	// ErrGateDisabled/MsgGateDisabled are CONTRACT vocabulary only - since the
+	// Captain-Korrektur of 20.08.2026 there is no per-box arming, so no current
+	// build emits them. They stay because an OLDER box in the field still can,
+	// and the cloud must keep understanding the word.
 	ErrGateDisabled          = "gate_disabled"
 	ErrRefusedPolicy         = "refused_policy"
 	ErrRefusedControlOwned   = "refused_control_owned"

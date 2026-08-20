@@ -327,12 +327,12 @@ services:
       # heartbeat consumers block -> consumer_runtime_status.
       VOLTPILOT_CONSUMERS_MQTT_LISTENER_ENABLED: "true"
       # Register schreiben ueber das Portal: der CLOUD-NOT-AUS. Vorgabe AN.
-      # Seit Stufe 3 "Bis zum Endkunden" ist er der EINZIGE plattformweite
-      # Hebel - das Geraete-Flag VP_INSTALLER_WRITE_ENABLED steht im
-      # Kunden-Release per Vorgabe AN (D2). Auf "false" gesetzt refuesieren die
-      # zwei SCHREIBENDEN Schritte mit 503 und deutschem Grund; Ziel-Liste,
-      # Register-Wissen und VERLAUF bleiben lesbar - das Schreiben
-      # abzuschalten darf die Papier-Spur nie verstecken.
+      # Er ist der EINZIGE plattformweite Hebel - auf der Box gibt es seit der
+      # Captain-Korrektur vom 20.08.2026 KEIN Feature-Flag mehr (D2
+      # KORRIGIERT), der Einmal-Schreibpfad ist dort immer verfuegbar. Auf
+      # "false" gesetzt refuesieren die zwei SCHREIBENDEN Schritte mit 503 und
+      # deutschem Grund; Ziel-Liste, Register-Wissen und VERLAUF bleiben lesbar
+      # - das Schreiben abzuschalten darf die Papier-Spur nie verstecken.
       VOLTPILOT_REGISTER_WRITE_ENABLED: "${VOLTPILOT_REGISTER_WRITE_ENABLED:-true}"
       # Verbrauchssteuerung Inkrement 4: the consumer-policy activation gates,
       # BOTH default OFF (tests/rig only; Produktivierung ist Inkrement 5). The

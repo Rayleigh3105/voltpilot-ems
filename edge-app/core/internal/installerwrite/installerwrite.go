@@ -33,23 +33,28 @@
 //
 // The gates, all here and all fail-closed:
 //
-//  1. FEATURE FLAG (VP_INSTALLER_WRITE_ENABLED, default OFF). Checked by the
-//     adapter BEFORE anything here runs; without it the HTTP surface answers 404
-//     and this package is dead code. A box that never sets it behaves
-//     byte-identically to before the feature.
-//  2. REGISTER ALLOWLIST - the family must resolve, through the EXISTING
+//  1. REGISTER ALLOWLIST - the family must resolve, through the EXISTING
 //     inverter.ExportLimitRegisterFor table, to address 0x00E7. See
 //     `AllowedFamily` for why that table (and not a new one) is the right gate.
-//  3. VALUE CEILING - 0 < raw <= MaxRaw (70,0 kW). A 0 would forbid feed-in
+//  2. VALUE CEILING - 0 < raw <= MaxRaw (70,0 kW). A 0 would forbid feed-in
 //     entirely and is refused as an obvious mis-entry, not silently written.
-//  4. TWO STAGES - the default is a DRY RUN (read the register, report what
+//  3. TWO STAGES - the default is a DRY RUN (read the register, report what
 //     would be written). A real write needs the exact confirm token.
-//  5. OPTIONAL PRECONDITION - `expected_before` lets a caller say „only write if
+//  4. OPTIONAL PRECONDITION - `expected_before` lets a caller say „only write if
 //     the register still reads X". Compared ON THE DEVICE inside the one socket
 //     session, so there is no read-then-write window someone else can slip into.
-//  6. ONE ATTEMPT - the mechanism performs exactly one write per admitted
+//  5. ONE ATTEMPT - the mechanism performs exactly one write per admitted
 //     request. There is no retry loop and no periodic refresh: 0x00E7 lives in
 //     EEPROM, and every write costs a write cycle.
+//
+// ⚠ THERE IS NO FEATURE FLAG (Captain-Korrektur 20.08.2026). Until then the
+// adapter checked VP_INSTALLER_WRITE_ENABLED first and the path could be armed
+// per box; that arming existed for the canary phase and was never what makes
+// the path safe. What carries it are the gates above plus the ones the trigger
+// owns - the operator password on the local :8484 door, identity + window +
+// LAN whitelist + self-conflict lock on the portal downlink - and the
+// PLATFORM's own kill switch in the cloud (`voltpilot.register-write.enabled`
+// in services/api), which refuses with a German reason instead of going silent.
 package installerwrite
 
 import (
@@ -423,10 +428,9 @@ type Outcome struct {
 	Accepted bool `json:"accepted"`
 }
 
-// View is the GET payload: the switch state, the one register this path may
-// touch, and the audit log (newest first).
+// View is the GET payload: the one register this path may touch, and the audit
+// log (newest first). There is no switch state - the path is not armed per box.
 type View struct {
-	Enabled  bool    `json:"enabled"`
 	Register string  `json:"register"`
 	MaxRaw   int     `json:"max_raw"`
 	MaxKw    float64 `json:"max_kw"`

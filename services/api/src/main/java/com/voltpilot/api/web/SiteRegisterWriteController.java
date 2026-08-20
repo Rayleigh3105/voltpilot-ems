@@ -72,11 +72,12 @@ import org.springframework.web.server.ResponseStatusException;
  * mit. Das war die falsche Abschaltung: das Journal ist genau dann
  * interessant, wenn jemand den Not-Aus gedrückt hat.
  *
- * <p>Er ist seit Stufe 3 zugleich der EINZIGE plattformweite Hebel - das
- * Geräte-Flag {@code VP_INSTALLER_WRITE_ENABLED} steht im Kunden-Release per
- * Vorgabe AN (Captain-Entscheid D2). Die Sicherung des Pfades sind weiterhin
- * Identität (Broker-ACL + mTLS-CN), Zeitfenster, LAN-Whitelist,
- * Selbstkonflikt-Sperre und Einmaligkeit auf dem Gerät.
+ * <p>Er ist zugleich der EINZIGE plattformweite Hebel - auf der Box gibt es
+ * seit der Captain-Korrektur vom 20.08.2026 (D2 KORRIGIERT) KEIN Feature-Flag
+ * mehr; das frühere {@code VP_INSTALLER_WRITE_ENABLED} ist ersatzlos entfallen.
+ * Die Sicherung des Pfades sind weiterhin Identität (Broker-ACL + mTLS-CN),
+ * Zeitfenster, LAN-Whitelist, Selbstkonflikt-Sperre und Einmaligkeit auf dem
+ * Gerät.
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/register-write")
