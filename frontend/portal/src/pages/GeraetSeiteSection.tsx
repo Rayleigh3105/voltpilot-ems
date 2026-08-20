@@ -4,6 +4,8 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
   type CommandHistory,
+  type RegisterWriteEvent,
+  type RegisterWriteTarget,
   type ControlStatus,
   type CurtailmentStatus,
   type Device,
@@ -29,6 +31,14 @@ import { unclaimConsequences } from '../components/DeviceDrawers';
 import { DangerZone } from '../components/DangerZone';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, befehleGeraetHash, geraetSeiteHash, hashForRoute } from '../nav';
+import {
+  EXPERTE_INTRO,
+  geraeteVerlauf,
+  KEIN_SCHREIBWEG,
+  geraetRegisterZugang,
+  type GeraetRegisterZugang,
+} from '../registerWrite';
+import { RegisterWriteDrawer } from '../components/RegisterWriteDrawer';
 import {
   ANLAGENWEITE_BEFEHLE,
   aufzeichnungSeit,
@@ -95,6 +105,7 @@ export function GeraetSeiteSection({
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]> | null>(null);
   const [commands, setCommands] = useState<CommandHistory | null>(null);
+  const [targets, setTargets] = useState<RegisterWriteTarget[] | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -133,6 +144,22 @@ export function GeraetSeiteSection({
     // Sektion F: der Verlauf DIESES Geräts. Der Server entscheidet, was zu ihm
     // gehört (`?device=`) - die Fläche schneidet nichts selbst zurecht.
     soft(api.commandHistory(site.id, { device: geraetId ?? geraeteRef }), setCommands);
+    // Sektion E: die Ziele des Register-Werkzeugs. Ohne sie gibt es keinen
+    // Knopf - nie einen, der ins Leere führt.
+    //
+    // ⚠ Bewusst NICHT über `soft`: dort fallen „lädt noch" und „Abruf
+    // gescheitert" in denselben Zustand, und die Sektion müsste einen Satz
+    // sagen, der in einem der beiden Fälle falsch ist. Ein Fehlschlag ist hier
+    // eine LEERE Ziel-Liste - dann sagt sie ehrlich, dass kein Schreibweg
+    // bekannt ist.
+    void api.registerWriteTargets(site.id).then(
+      (rows) => {
+        if (active) setTargets(rows);
+      },
+      () => {
+        if (active) setTargets([]);
+      },
+    );
     setNow(Date.now());
     return () => {
       active = false;
@@ -296,6 +323,15 @@ export function GeraetSeiteSection({
               </Sektion>
             )}
 
+            <RegisterSektion
+              siteId={site.id}
+              boxDeviceId={box?.id ?? null}
+              geraetName={view.kopf.titel}
+              box={view.art === 'box'}
+              entityIds={view.komponenten.map((c) => c.entityId)}
+              targets={targets}
+            />
+
             <BefehleSektion
               siteId={site.id}
               geraetRef={geraetId ?? geraeteRef}
@@ -329,6 +365,81 @@ export function GeraetSeiteSection({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * E · Register schreiben (Anlagen-Zentrale Stufe 1, Konzept §7.5).
+ *
+ * <p>Sie hostet DENSELBEN `RegisterWriteDrawer` wie die Zentrale und die
+ * Plattform-Geräteseite - **es entsteht keine zweite Strecke**, nur ein
+ * dritter Wirt mit VORGEWÄHLTEM Ziel. Jede Regel aus `vp-reg-schreib-konzept-p8`
+ * gilt wörtlich weiter: Zwei-Schritt-Strecke, Vorschau nie journalisiert,
+ * Notiz-Pflicht, Verantwortungs-Satz in der Rückfrage, Cloud-Not-Aus.
+ *
+ * <p><b>Ein Knopf, der strukturell nichts bewirken kann, wird nicht
+ * angeboten</b> - dort steht der Grund des Servers (die `applyView`-Regel).
+ */
+function RegisterSektion({
+  siteId,
+  boxDeviceId,
+  geraetName,
+  box,
+  entityIds,
+  targets,
+}: {
+  siteId: string;
+  boxDeviceId: string | null;
+  geraetName: string;
+  box: boolean;
+  entityIds: string[];
+  targets: RegisterWriteTarget[] | null;
+}) {
+  const [offen, setOffen] = useState(false);
+  // ⚠ Geschrieben wird IMMER über die Box - sie hält die Verbindung zum Gerät.
+  // Ohne sie gibt es kein Ziel und damit keinen Knopf.
+  const zugang: GeraetRegisterZugang = targets == null
+    // Noch nicht geladen: es wird NICHTS behauptet - weder ein Weg noch sein
+    // Fehlen.
+    ? { moeglich: false, grund: null, vorwahl: null }
+    : boxDeviceId
+      ? geraetRegisterZugang(targets, { box, deviceId: box ? boxDeviceId : null, entityIds })
+      // Ohne beanspruchte Box gibt es kein Gerät, über das geschrieben würde.
+      : { moeglich: false, grund: KEIN_SCHREIBWEG, vorwahl: null };
+  const verlaufFilter = useMemo(
+    () => (rows: RegisterWriteEvent[]) => geraeteVerlauf(rows, { box, entityIds }),
+    [box, entityIds.join('|')],
+  );
+
+  return (
+    <Sektion titel="Register schreiben" icon="pencil" breit>
+      <p className="vp-text-sm">{EXPERTE_INTRO}</p>
+      {zugang.moeglich ? (
+        <button
+          type="button"
+          className="vp-geraet-btn"
+          onClick={() => setOffen(true)}
+          data-testid="geraet-regwrite"
+        >
+          <Icon name="pencil" size={13} /> Register schreiben
+        </button>
+      ) : (
+        <p className="vp-muted vp-text-sm" data-testid="geraet-regwrite-grund">
+          {zugang.grund ?? 'Die Ziele dieses Geräts werden geladen …'}
+        </p>
+      )}
+      {offen && boxDeviceId && (
+        <RegisterWriteDrawer
+          open
+          siteId={siteId}
+          deviceId={boxDeviceId}
+          geraetName={geraetName}
+          vorwahl={zugang.vorwahl}
+          verlaufFilter={verlaufFilter}
+          onClose={() => setOffen(false)}
+        />
+      )}
+    </Sektion>
   );
 }
 

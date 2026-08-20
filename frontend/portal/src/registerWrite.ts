@@ -642,3 +642,91 @@ export const EXPERTE_INTRO =
   'Für Fachleute: ein einzelnes Register Ihres Geräts aus der Ferne lesen und - '
   + 'nach einer Vorschau - genau einmal beschreiben. Jeder Schreibvorgang wird '
   + 'dauerhaft protokolliert.';
+
+// ── Anlagen-Zentrale Stufe 1: das Register auf der GERÄTESEITE ───────────────
+
+/**
+ * Der Zugang der GERÄTESEITE (Konzept `vp-anlagen-zentrale-konzept-h6` §7.5):
+ * hat GENAU DIESES Gerät einen Schreibweg - und welches Ziel ist dann
+ * vorgewählt?
+ *
+ * ⚠ Die Vorwahl ist der ganze Zweck: auf einer Anlage mit mehreren Geräten
+ * ist „Register schreiben" ohne sie eine Einladung, das falsche zu treffen.
+ * Vorgewählt wird nur, was BELEGT zu diesem Gerät gehört - die primäre Lane
+ * auf der Box, die Komponente eines Geräts dahinter. **Geraten wird nie:** ohne
+ * passendes Ziel gibt es keine Vorwahl (der Picker öffnet dann wie bisher).
+ *
+ * ⚠ Und ein Knopf, der strukturell nichts bewirken kann, wird NICHT angeboten
+ * (die `applyView`-Regel des Hauses) - er trägt stattdessen den Grund, den der
+ * Server nennt (`targets.reason`), nie einen erfundenen.
+ */
+export interface GeraetRegisterZugang {
+  moeglich: boolean;
+  /** Der Grund, wenn nicht - nie ein stiller leerer Bereich. */
+  grund: string | null;
+  /** Der Schlüssel des vorgewählten Ziels, oder null. */
+  vorwahl: string | null;
+}
+
+/** Der Satz, wenn zu diesem Gerät gar kein Ziel bekannt ist. */
+export const KEIN_SCHREIBWEG =
+  'Für dieses Gerät kennt VoltPilot keinen Schreibweg. Register lassen sich nur '
+  + 'an Geräten schreiben, deren Anbindung die Anlage kennt.';
+
+export function geraetRegisterZugang(
+  targets: RegisterWriteTarget[],
+  opts: { box: boolean; deviceId: string | null; entityIds: string[] },
+): GeraetRegisterZugang {
+  const passend = opts.box
+    // Die BOX schreibt über ihre primäre Lane - das Gerät, das die Anlage
+    // selbst kennt.
+    ? targets.filter((t) => t.lane === 'primary'
+        && (!opts.deviceId || t.deviceId === opts.deviceId))
+    // Ein Gerät DAHINTER über die Komponente, die auf ihm gepinnt ist. Die
+    // freie LAN-Adresse ist bewusst KEINE Vorwahl: dass ein Ziel unter dieser
+    // Adresse dieses Gerät IST, weiß nur die Box.
+    : targets.filter((t) => t.lane === 'entity' && t.entityId
+        && opts.entityIds.includes(t.entityId));
+  if (passend.length === 0) {
+    return { moeglich: false, grund: KEIN_SCHREIBWEG, vorwahl: null };
+  }
+  const schreibbar = passend.find((t) => t.writable);
+  if (!schreibbar) {
+    // Der Server sagt, warum - und nur er. Ein selbst formulierter Grund wäre
+    // eine zweite Wahrheit über eine Fähigkeit, die die Box meldet.
+    return { moeglich: false, grund: passend[0].reason ?? KEIN_SCHREIBWEG, vorwahl: null };
+  }
+  return { moeglich: true, grund: null, vorwahl: zielKey(schreibbar) };
+}
+
+/**
+ * Der VERLAUF dieses Geräts aus dem Journal der Anlage.
+ *
+ * ⚠ Die Grenze ist wörtlich die des Kommando-Verlaufs (PR 1b): die **BOX** hat
+ * jeden Vorgang ihres Geräts - sie IST der Schreibweg -, ein Gerät **dahinter**
+ * nur die Vorgänge SEINER Komponenten. Ein Vorgang auf der primären Lane oder
+ * auf einer frei getippten Adresse trägt keine Komponente; ihn einem einzelnen
+ * Gerät anzulasten wäre eine erfundene Zuordnung.
+ *
+ * <p>Gefiltert wird hier, weil die Route je GERÄT liefert (die Box) - und die
+ * Box ist bei einem Gerät dahinter genau die richtige Abfrage.
+ */
+export function geraeteVerlauf(
+  rows: RegisterWriteEvent[],
+  opts: { box: boolean; entityIds: string[] },
+): RegisterWriteEvent[] {
+  if (opts.box) return rows;
+  return rows.filter((r) => !!r.entityId && opts.entityIds.includes(r.entityId));
+}
+
+/**
+ * Der Verweis, der die Zentrale entlastet: das Register-Werkzeug wohnt seit der
+ * Geräteseite DORT, wo das Gerät wohnt.
+ *
+ * ⚠ Er ERSETZT den Aufklapper der Zentrale, statt ihn zu verdoppeln - zwei
+ * Einstiege in dieselbe Zwei-Schritt-Strecke wären zwei Orte, an denen dieselbe
+ * Sicherheits-Zusage gepflegt werden müsste.
+ */
+export const REGISTER_AUF_DER_GERAETESEITE =
+  'Einzelne Geräte-Register lesen und schreiben: auf der Seite des jeweiligen '
+  + 'Geräts („Geräteseite").';

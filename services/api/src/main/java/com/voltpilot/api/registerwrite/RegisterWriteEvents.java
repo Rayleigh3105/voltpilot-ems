@@ -19,6 +19,7 @@ public final class RegisterWriteEvents {
     public static RegisterWriteEventDto toDto(RegisterWriteEventRepository.Entry e) {
         return new RegisterWriteEventDto(e.id(), e.requestId(), e.source(),
                 e.deviceId() == null ? null : e.deviceId().toString(), e.deviceRef(), e.lane(),
+                e.entityId() == null ? null : e.entityId().toString(),
                 e.targetLabel(), e.registerKind(), e.address(),
                 e.address() == null ? null : RegisterKnowledge.hex(e.address()),
                 e.addressInput(), e.valueInput(), e.note(), e.valueRaw(), e.expectedBefore(),

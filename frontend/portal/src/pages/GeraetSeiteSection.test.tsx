@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { GeraetSeiteSection } from './GeraetSeiteSection';
 import {
   api,
   type CommandHistory,
   type Device,
+  type RegisterWriteTarget,
   type Site,
   type SiteEntities,
   type SiteSource,
@@ -201,7 +202,33 @@ function commands(over: Partial<CommandHistory> = {}): CommandHistory {
   };
 }
 
-function stub(over: { entities?: () => Promise<SiteEntities>; commands?: CommandHistory } = {}) {
+/**
+ * Die Ziele des Register-Werkzeugs: die primäre Lane der Box und die Komponente
+ * hinter ihr (die Fronius-Quelle).
+ */
+function targets(over: Partial<RegisterWriteTarget>[] = []): RegisterWriteTarget[] {
+  const basis: RegisterWriteTarget[] = [
+    {
+      lane: 'primary', deviceId: 'gw', entityId: null, label: 'Deye SUN-30K',
+      brand: 'deye', model: 'SUN-30K-SG01HP3-EU', family: 'hybrid_3p',
+      communication: 'solarman_v5', host: '192.168.0.28', port: 8899, unitId: 1,
+      writable: true, reason: null,
+    },
+    {
+      lane: 'entity', deviceId: 'gw', entityId: 'fr1', label: 'Dach Süd',
+      brand: 'fronius_sunspec', model: 'Eco 27.0-3-S', family: null,
+      communication: 'fronius_sunspec', host: '192.168.254.30', port: 502, unitId: 1,
+      writable: true, reason: null,
+    },
+  ];
+  return over.length ? basis.map((t, i) => ({ ...t, ...(over[i] ?? {}) })) : basis;
+}
+
+function stub(over: {
+  entities?: () => Promise<SiteEntities>;
+  commands?: CommandHistory;
+  targets?: RegisterWriteTarget[];
+} = {}) {
   vi.spyOn(api, 'siteEntities').mockImplementation(
     over.entities ?? (() => Promise.resolve(entities)),
   );
@@ -233,6 +260,8 @@ function stub(over: { entities?: () => Promise<SiteEntities>; commands?: Command
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
+  vi.spyOn(api, 'registerWriteTargets').mockResolvedValue(over.targets ?? targets());
+  vi.spyOn(api, 'registerWriteHistory').mockResolvedValue([]);
 }
 
 describe('GeraetSeiteSection', () => {
@@ -388,5 +417,35 @@ describe('GeraetSeiteSection', () => {
     await waitFor(() =>
       expect(screen.getByText(/Aufzeichnung hat noch nicht begonnen/)).toBeInTheDocument(),
     );
+  });
+
+  /**
+   * E · Register schreiben: die Strecke ist NICHT verschwunden, sie wohnt jetzt
+   * am Gerät - mit VORGEWÄHLTEM Ziel, und für den KUNDEN (ohne Admin-Rolle).
+   */
+  it('bietet dem Kunden das Register-Werkzeug mit vorgewähltem Ziel', async () => {
+    stub();
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+
+    fireEvent.click(await screen.findByTestId('geraet-regwrite'));
+    // Es ist DERSELBE Drawer wie überall - eine zweite Strecke könnte über
+    // denselben Vorgang etwas anderes behaupten.
+    const drawer = await screen.findByTestId('regwrite');
+    // Vorgewählt ist die Komponente DIESES Geräts, nicht die Box.
+    await waitFor(() =>
+      expect((within(drawer).getByLabelText(/Dach Süd/) as HTMLInputElement).checked).toBe(true),
+    );
+  });
+
+  it('nennt den Grund, wenn dieses Gerät keinen Schreibweg hat', async () => {
+    stub({ targets: [targets()[0]] });
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+    // Ein Knopf, der strukturell nichts bewirken kann, wird nicht angeboten.
+    expect(await screen.findByTestId('geraet-regwrite-grund')).toBeInTheDocument();
+    expect(screen.queryByTestId('geraet-regwrite')).toBeNull();
   });
 });

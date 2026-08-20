@@ -235,6 +235,10 @@ class RegisterWriteApiTest {
             assertThat(e.get("actorName")).isEqualTo("demo");
             assertThat(e.get("viaTenantSwitcher")).isEqualTo(false);
             // Die VERBATIM getippten Begriffe - nicht unsere Normalisierung.
+            // ⚠ Ein Vorgang der PRIMÄREN Lane trägt KEINE Komponente: er gehört
+            // dem Schreibweg der Box, und ihn einem einzelnen Gerät dahinter
+            // anzulasten wäre eine erfundene Zuordnung (Anlagen-Zentrale Stufe 1).
+            assertThat(e.get("entityId")).isNull();
             assertThat(e.get("addressInput")).isEqualTo("0x00E7");
             assertThat(e.get("valueInput")).isEqualTo("7000");
             assertThat(e.get("note")).isEqualTo("Freigabe des Netzbetreibers vom 18.08.");
@@ -656,6 +660,18 @@ class RegisterWriteApiTest {
             assertThat(order.path("target").has("host"))
                     .as("die Cloud nennt bei einer Komponente NIE einen Host").isFalse();
             assertThat(order.path("confirm").asText()).isEqualTo("0X0003=1");
+
+            // ⚠ Die KOMPONENTE steht im Journal (Anlagen-Zentrale Stufe 1): sie
+            // ist die einzige Zuordnung, mit der sich ein Vorgang einem Gerät
+            // HINTER der Box zuschreiben lässt. Ein Vorgang der primären Lane
+            // trägt sie NICHT - er gehört dem Schreibweg der Box, und ihn einem
+            // einzelnen Gerät anzulasten wäre eine erfundene Zuordnung.
+            List<Map<String, Object>> journal = history(customer, site);
+            assertThat(journal.stream()
+                    .filter(r -> "entity".equals(r.get("lane")))
+                    .map(r -> r.get("entityId")))
+                    .containsOnly(entity.toString());
+            assertThat(journal).as("nur der Schreibvorgang, nie eine Vorschau").hasSize(1);
 
             // Der Schreibzähler zählt ANFORDERUNGEN dieses Registers - und nur
             // dieses: die Vorschau oben hat NICHTS protokolliert.

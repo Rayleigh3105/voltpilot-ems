@@ -3147,6 +3147,12 @@ byte-gleich wie vorher.
   `RegisterWriteEventRepository.betweenForEntities` ordnet über `entity_id` zu,
   also über die Lane „komponente". Ein Vorgang auf der primären Lane oder einer
   frei getippten Adresse gehört dem Schreibweg der BOX und erscheint dort.
+- **Dieselbe Grenze gilt dem REGISTER-Journal** (Anlagen-Zentrale Stufe 1 PR 1c):
+  `RegisterWriteEventDto` trägt seit dieser Stufe additiv `entityId` — die Lane
+  „komponente" ist die einzige Zuordnung, mit der sich ein Vorgang einem Gerät
+  HINTER der Box zuschreiben lässt; primäre Lane und frei getippte Adresse
+  gehören dem Schreibweg der BOX. Gepinnt in `RegisterWriteApiTest` (Entity-Lane
+  trägt die Komponente, primäre Lane trägt `null`).
 - **Beweis:** `CommandHistoryApiTest.derGeraeteFilterTrenntDieBoxVonDenGeraetenDahinter`
   (echte DB: Box sieht beide Ströme, das Gerät dahinter nur seine Komponente,
   gemeldet-ohne-Komponente ehrlich leer, unbekannte Adresse 404, Komponente +

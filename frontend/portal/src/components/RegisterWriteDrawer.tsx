@@ -59,6 +59,8 @@ export function RegisterWriteDrawer({
   deviceId,
   tenantId,
   geraetName,
+  vorwahl = null,
+  verlaufFilter,
   onClose,
 }: {
   open: boolean;
@@ -67,6 +69,19 @@ export function RegisterWriteDrawer({
   /** Der Mandant der Anlage - er stampft den Umschalter-Kopf NUR für diese Aufrufe. */
   tenantId?: string;
   geraetName: string;
+  /**
+   * Der Schlüssel eines VORGEWÄHLTEN Ziels (Anlagen-Zentrale Stufe 1, §7.5).
+   * Er wird nur übernommen, wenn er wirklich zu einem gelieferten Ziel gehört -
+   * eine Vorwahl ins Leere wäre schlimmer als keine, weil sie den ersten
+   * Schritt als erledigt aussehen ließe.
+   */
+  vorwahl?: string | null;
+  /**
+   * Der VERLAUFS-Filter der Geräteseite: er grenzt das Journal der Box auf die
+   * Vorgänge DIESES Geräts ein. Ohne ihn (Kunden-/Plattform-Fläche) steht das
+   * ganze Journal der Box da - das ist dort die richtige Menge.
+   */
+  verlaufFilter?: (rows: RegisterWriteEvent[]) => RegisterWriteEvent[];
   onClose: () => void;
 }) {
   const [targets, setTargets] = useState<RegisterWriteTarget[]>([]);
@@ -93,20 +108,28 @@ export function RegisterWriteDrawer({
     // Der Picker ist Beiwerk in dem Sinne, dass die primäre Lane auch ohne ihn
     // funktioniert - ein Fehlschlag darf die Strecke also nie blockieren.
     api.registerWriteTargets(siteId, tenantId)
-      .then((rows) => { if (!abgebrochen) setTargets(rows); })
+      .then((rows) => {
+        if (abgebrochen) return;
+        setTargets(rows);
+        // ⚠ Nur eine Vorwahl übernehmen, die es WIRKLICH gibt - und nur, solange
+        // der Mensch noch nichts gewählt hat (sein Klick gewinnt immer).
+        setZielKey((jetzt) => (jetzt ?? (vorwahl && rows.some((t) => zielKey(t) === vorwahl)
+          ? vorwahl
+          : null)));
+      })
       .catch(() => { if (!abgebrochen) setTargets([]); });
     return () => { abgebrochen = true; };
-  }, [open, siteId, tenantId]);
+  }, [open, siteId, tenantId, vorwahl]);
 
   useEffect(() => {
     if (!open) return;
     let abgebrochen = false;
     api.registerWriteHistory(siteId, deviceId, tenantId)
-      .then((rows) => { if (!abgebrochen) setVerlauf(rows); })
+      .then((rows) => { if (!abgebrochen) setVerlauf(verlaufFilter ? verlaufFilter(rows) : rows); })
       // Der Verlauf ist Beiwerk - er darf die Strecke nie blockieren.
       .catch(() => { if (!abgebrochen) setVerlauf([]); });
     return () => { abgebrochen = true; };
-  }, [open, siteId, deviceId, tenantId, ergebnis]);
+  }, [open, siteId, deviceId, tenantId, ergebnis, verlaufFilter]);
 
   if (!open) return null;
 
