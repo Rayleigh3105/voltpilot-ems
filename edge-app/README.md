@@ -100,6 +100,31 @@ The structure is always the same: selection → self-wired read → `vp-telemetr
 
 **LAN-Logger nicht aus dem Container erreichbar?** Manche WiFi-Logger (Deye/Solarman-Dongle, UDP 48899) antworten dem Bridge-Container nicht (UDP-über-NAT). Fix: Node-RED aufs Host-Netz - `docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d` (Override `docker-compose.hostnet.yml`). Details + Caveats in [`DEPLOY.md`](DEPLOY.md#lan-logger-nicht-aus-dem-container-erreichbar-host-networking).
 
+## OCPP-Ladepunkte (Lastmanagement)
+
+Die Box kann das **Central System** sein, das Ladesäulen anwählen
+(`ws://<box>:8887/ocpp/<Kennung>`), und verteilt das Ladebudget des
+Netzanschlusses dynamisch und fair auf die ladenden Fahrzeuge. Einschalten mit
+`VP_OCPP_ENABLED=true`; eingerichtet wird alles auf `:8484` → **Einrichten →
+Ladepunkte** (Adresse + Kennung kopieren, Anschlussgrenze pflegen).
+
+Drei Dinge, die man wissen sollte:
+
+- **Nur eingetragene Kennungen kommen herein.** Eine Ladesäule, die nicht in
+  der Liste steht, wird schon beim Verbindungsaufbau abgewiesen. Der Port ist
+  **LAN-only** wie `:8484` — nie öffentlich erreichbar machen.
+- **Die Verteilung braucht zusätzlich** `VP_CONTROL_ENABLED` **und**
+  `VP_CONSUMER_CONTROL_ENABLED`. Ohne sie hält jede Säule ihr hinterlegtes
+  Sicherheitsprofil — sicher, nur nicht optimiert, und die Oberfläche sagt es.
+- **Fällt die Box aus, begrenzt sich jede Säule selbst** (das OCPP-eigene
+  Ladeprofil läuft ab) und lädt langsamer weiter. Die Zahl dafür wird aus
+  Anschlussgrenze, höchster bekannter Gebäudelast und Steckerzahl abgeleitet
+  und auf der Fläche vorgerechnet.
+
+Der Stand ist **simulator-bewiesen** (`./test/e2e-ocpp.sh`); eine echte Säule
+braucht je Typ eine beaufsichtigte Bench-Session, bevor sie „zertifiziert"
+heißt — dieselbe Disziplin wie bei Deye und go-e.
+
 ## Konfiguration
 
 See [`.env.example`](.env.example). Everything is optional; the dev escape hatches (`VP_DEV_*`: fixed identity skips enrollment, `VP_DEV_CLOUD_URL` = plain-MQTT cloud) exist for development/e2e ONLY and must stay empty on customer devices.
@@ -122,6 +147,12 @@ node --test nodered/*.test.js nodered/deye/*.test.js
 # Isolated compose e2e (own project name/ports; sim -> nodered -> core ->
 # stand-in cloud broker; retained schedule -> guards -> sim setpoint write)
 ./test/e2e-compose.sh
+
+# OCPP-Lastmanagement-Rig (L1-L5), DOCKER-FREI: der echte Kern + echte
+# simulierte Ladesaeulen ueber echte Websockets. Gemessen wird, was eine
+# Saeule ZIEHEN wuerde - nie eine Quittung. Enthaelt den Totmann-Beweis:
+# der Kern wird getoetet, die Saeule begrenzt sich SELBST und laedt weiter.
+./test/e2e-ocpp.sh
 ```
 
 Multi-arch image build (arm64 for Pi + amd64):

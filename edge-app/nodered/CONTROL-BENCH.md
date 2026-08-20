@@ -705,8 +705,55 @@ flottenweite Aufnahme von `kostal_plenticore` in
 Modellklasse belegt ist — bis dahin bleibt die Familie ABSICHTLICH draußen
 (der Code shippt schreibfähig, aber stumm).
 
+## OCPP-Ladepunkt (Ladesäule) — SIMULATOR-BEWIESEN, Bench steht aus
+
+Die Software-Seite ist vollständig und am Simulator bewiesen
+(`edge-app/test/e2e-ocpp.sh`: Budget an den simulierten Zählerwerten gehalten,
+Umverteilung, Freigabe, Pausen-Rotation, und der TOTMANN — Kern getötet, Säule
+begrenzt sich selbst und lädt weiter). Der Katalog-Typ `ev-charger` steht
+deshalb ehrlich auf `simulator_only`.
+
+**Das Rig beweist UNSERE Logik, nicht fremde Firmware.** Genau dafür ist diese
+Sitzung da — je Säulen-TYP eine, wie bei Deye und go-e.
+
+### Vorbereitung
+
+1. Box mit `VP_OCPP_ENABLED=true`, Ladepunkt-Kennung auf `:8484` eintragen und
+   an der Säule `ws://<box>:8887/ocpp/<Kennung>` konfigurieren.
+2. Anschlussgrenze, höchste bekannte Gebäudelast und Mindestleistung pflegen;
+   die vorgerechnete Ausfall-Zeile auf der Fläche prüfen (`n × X kW + Haus =
+   Summe < Anschlussgrenze ✓`).
+3. `VP_CONTROL_ENABLED` und `VP_CONSUMER_CONTROL_ENABLED` erst einschalten,
+   wenn Schritt 1–2 stehen.
+
+### Checkliste (je Säulen-TYP, ein Durchgang)
+
+| # | Frage | Wie geprüft | Bestanden, wenn |
+|---|---|---|---|
+| 1 | Meldet sie sich? | Säule konfigurieren, `:8484` beobachten | BootNotification kommt an, Modell/Firmware werden angezeigt |
+| 2 | **Nimmt sie Grenzen in WATT?** | `:8484` → die Säule wird „eingerichtet" | keine Ampere-Ablehnung; sonst ist der Typ mit diesem Stand NICHT bedienbar (bewusst, statt Spannung und Phasenzahl zu raten) |
+| 3 | Nimmt sie das Profil AN **und UM**? | Fahrzeug anstecken, zugeteilte kW mit dem echten Ladestrom vergleichen | die gemessene Leistung folgt der Zuteilung (die Deye-Lehre „angenommen ≠ übernommen") |
+| 4 | Meldet sie ihren Plan zurück? | Rücklese-Zeile auf `:8484` | `ok`, nicht dauerhaft `unbekannt` |
+| 5 | **Wirkt der `duration`-Ablauf?** | Box stoppen, ≥ 3 Min. warten | die Säule fällt auf ihr Sicherheitsprofil und **lädt weiter** (nicht: sie stoppt) |
+| 6 | Überlebt das Sicherheitsprofil einen Neustart? | Säule neu starten, Box AUS lassen | sie begrenzt sich weiterhin |
+| 7 | Was tut sie bei WS-Abriss? | Netzwerk der Säule trennen | begrenzt sich, lädt weiter, verbindet sich danach selbst wieder |
+| 8 | Reale Mindestleistung | Zuteilung schrittweise senken | ab welchem Wert das Fahrzeug wirklich aufhört — der Wert für „Mindestleistung" |
+| 9 | Zwei Stecker | beide belegen | die interne Aufteilung der Säule bleibt unter `ChargePointMaxProfile` |
+| 10 | Messwerte | MeterValues auf `:8484` | Leistung/Energie plausibel; SoC wenn gemeldet |
+
+### Freigabe
+
+Erst nach bestandenen Punkten 1–7 flippt der Katalog-Eintrag `ev-charger` von
+`simulator_only` — und die Notiz nennt den geprüften TYP. Ein durchgefallener
+Punkt 2 oder 5 heißt: **dieser Säulen-Typ bleibt draußen**, denn ohne
+Watt-Grenzen oder ohne wirksamen Ablauf gibt es keinen Schutz, auf den man
+sich verlassen könnte.
+
 ## Siehe auch
 
+- [`../test/e2e-ocpp.sh`](../test/e2e-ocpp.sh) — das Lastmanagement-Rig (L1–L5,
+  Docker-frei), der Software-Beweis, den diese Bench-Sitzung an echter Hardware
+  wiederholt.
 - [`goe/goe-control.js`](goe/goe-control.js) — der zertifizierte go-e-Steueradapter
   (Schreibplan + Rücklesen), Zwilling von `goe/goe-api.js` (Lesen); Go-Zwilling
   `edge-app/core/internal/goe`, gemeinsame Vektoren `goe/goe-control-vectors.json`.

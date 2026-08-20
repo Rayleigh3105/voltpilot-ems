@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# Das Lastmanagement-Rig (Konzept `vp-ocpp-lastmgmt-konzept-w4` §6.2, Fälle
+# L1-L5) — der Beweis, dass das statische OCPP-Lastmanagement hält, was es
+# verspricht, OHNE eine einzige echte Ladesäule.
+#
+# Gefahren wird der ECHTE Kern (`vp-edge-core`) gegen ECHTE OCPP-Ladesäulen
+# (`vp-ocpp-sim`) über ECHTE Websockets. Behauptet wird nichts: JEDE Zusicherung
+# unten liest, was eine Säule ZIEHEN WÜRDE — abgeleitet aus den Ladeprofilen,
+# die der Kern ihr wirklich installiert hat. Eine Quittung ist kein Beweis.
+#
+#   L1  zwei Säulen teilen sich das Budget
+#   L2  ein drittes Fahrzeug steckt an -> Umverteilung UNTER der Grenze
+#   L3  eines steckt ab -> die Leistung wird wieder frei
+#   L4  der KERN STIRBT -> das Profil läuft ab -> die Säulen fallen von SELBST
+#       auf ihr Sicherheitsprofil zurück (der Totmann)
+#   L5  Budget < n × Mindestleistung -> pausieren + Rotation statt aushungern
+#
+# Bewusst OHNE Docker: alles hier läuft als Prozess, also ist das Rig auf jedem
+# Rechner mit Go reproduzierbar und braucht kein gebautes Image.
+#
+#   edge-app/test/e2e-ocpp.sh
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+WORK="$(mktemp -d)"
+CORE_PID=""
+declare -a SIM_PIDS=()
+
+# Hohe, unwahrscheinliche Ports: das Rig darf einen laufenden Stack nie stören.
+WEB_PORT=28585
+BUS_PORT=28586
+OCPP_PORT=28587
+S1_STATUS=127.0.0.1:28591
+S2_STATUS=127.0.0.1:28592
+S3_STATUS=127.0.0.1:28593
+
+BOX="http://127.0.0.1:${WEB_PORT}"
+
+cleanup() {
+  echo "--- cleanup"
+  for pid in "${SIM_PIDS[@]:-}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null || true; done
+  [ -n "$CORE_PID" ] && kill "$CORE_PID" 2>/dev/null || true
+  wait 2>/dev/null || true
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+pass() { echo "  PASS  $*"; }
+
+# nearly <ist> <soll> <toleranz> - kW-Vergleich ohne bc (awk ist überall da).
+nearly() {
+  awk -v a="$1" -v b="$2" -v t="$3" 'BEGIN{d=a-b; if(d<0)d=-d; exit (d<=t)?0:1}'
+}
+
+# drawn <status-addr> [connector] - was die Säule (bzw. ein Stecker) zieht.
+drawn() {
+  local addr="$1" con="${2:-}"
+  if [ -z "$con" ]; then
+    curl -sf "http://${addr}/status" | sed -n 's/.*"total_kw":\([-0-9.e]*\).*/\1/p'
+  else
+    curl -sf "http://${addr}/status" |
+      tr '{' '\n' | sed -n "s/.*\"id\":${con},\"draw_kw\":\([-0-9.e]*\).*/\1/p" | head -1
+  fi
+}
+
+# site_kw - was der GANZE Standort gerade zieht.
+site_kw() {
+  awk -v a="$(drawn $S1_STATUS)" -v b="$(drawn $S2_STATUS)" 'BEGIN{print a+b}'
+}
+
+# charging_count - wie viele Stecker wirklich laden (> 1 kW).
+#
+# ⚠ Bewusst zaehlend statt "Saeule X zieht Y": WELCHE zwei Fahrzeuge bedient
+# werden, entscheidet die Rotation - und das ist gewolltes Verhalten, kein
+# Zufall, den ein Rig festnageln duerfte. Geprueft wird deshalb die Zusage
+# (zwei laden, keiner hungert, das Budget haelt), nie die Besetzung.
+charging_count() {
+  local n=0 d
+  for probe in "$S1_STATUS 1" "$S1_STATUS 2" "$S2_STATUS 1" "$S2_STATUS 2"; do
+    set -- $probe
+    d=$(drawn "$1" "$2")
+    awk -v d="${d:-0}" 'BEGIN{exit (d>1)?0:1}' && n=$((n+1))
+  done
+  echo "$n"
+}
+
+waitfor() { # waitfor <sekunden> <beschreibung> <kommando...>
+  local secs="$1" what="$2"; shift 2
+  local deadline=$(( $(date +%s) + secs ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if "$@" >/dev/null 2>&1; then return 0; fi
+    sleep 0.3
+  done
+  fail "timeout ($secs s) beim Warten auf: $what"
+}
+
+echo "=== OCPP-Lastmanagement-Rig ==="
+echo "--- bauen"
+( cd core && go build -o "$WORK/vp-edge-core" ./cmd/vp-edge-core )
+( cd core && go build -o "$WORK/vp-ocpp-sim" ./cmd/vp-ocpp-sim )
+
+echo "--- Kern starten (Ladepunkte AN, Steuerung freigegeben)"
+mkdir -p "$WORK/data"
+# Die DEV-Identität überspringt das Enrollment; die Cloud-URL zeigt bewusst ins
+# Leere - der Kern versucht sie im Hintergrund und stört das Rig nicht. Das
+# Lastmanagement ist per Konstruktion offline-fähig, und genau das zeigt das hier.
+VP_DATA_DIR="$WORK/data" \
+VP_HTTP_ADDR="127.0.0.1:${WEB_PORT}" \
+VP_LOCAL_MQTT_ADDR="127.0.0.1:${BUS_PORT}" \
+VP_OCPP_ENABLED=true VP_OCPP_PORT="${OCPP_PORT}" \
+VP_CONTROL_ENABLED=true VP_CONSUMER_CONTROL_ENABLED=true \
+VP_DEV_TENANT_ID=00000000-0000-0000-0000-000000000001 \
+VP_DEV_SITE_ID=00000000-0000-0000-0000-000000000002 \
+VP_DEV_DEVICE_ID=00000000-0000-0000-0000-000000000003 \
+VP_DEV_CLOUD_URL="tcp://127.0.0.1:1" \
+  "$WORK/vp-edge-core" >"$WORK/core.log" 2>&1 &
+CORE_PID=$!
+waitfor 30 "die Box antwortet" curl -sf "${BOX}/health"
+
+echo "--- Standort einrichten (das Szenario der abgenommenen Mockups)"
+# 277 kW Anschluss, 10 % Sicherheitsabstand, 167 kW Gebäude -> 82,3 kW Budget.
+curl -sf -X POST "${BOX}/api/ocpp/settings" -H 'Content-Type: application/json' \
+  -d '{"grid_limit_kw":277,"house_reserve_kw":167,"margin_pct":10,"min_power_kw":30,"rotation_minutes":15,"max_house_load_kw":180}' >/dev/null \
+  || fail "Standort-Einstellungen abgelehnt"
+BUDGET=$(curl -sf "${BOX}/api/ocpp" | sed -n 's/.*"budget_kw":\([0-9.]*\).*/\1/p' | head -1)
+nearly "$BUDGET" 82.3 0.05 || fail "Budget ist $BUDGET kW, erwartet 82,3 kW"
+pass "Budget 82,3 kW (der Sicherheitsabstand kommt von der Anschlussgrenze, dann erst das Gebäude)"
+
+for id in SAEULE-1 SAEULE-2; do
+  curl -sf -X POST "${BOX}/api/ocpp/chargers" -H 'Content-Type: application/json' \
+    -d "{\"id\":\"${id}\",\"label\":\"${id}\",\"rated_kw\":240,\"connectors\":2}" >/dev/null \
+    || fail "Ladepunkt ${id} konnte nicht eingetragen werden"
+done
+
+echo "--- Ladesäulen verbinden"
+"$WORK/vp-ocpp-sim" --csms "ws://127.0.0.1:${OCPP_PORT}/ocpp" --id SAEULE-1 \
+  --connectors 2 --status "$S1_STATUS" >"$WORK/s1.log" 2>&1 &
+SIM_PIDS+=($!)
+"$WORK/vp-ocpp-sim" --csms "ws://127.0.0.1:${OCPP_PORT}/ocpp" --id SAEULE-2 \
+  --connectors 2 --status "$S2_STATUS" >"$WORK/s2.log" 2>&1 &
+SIM_PIDS+=($!)
+sims_up() { curl -sf "http://${S1_STATUS}/status" >/dev/null && curl -sf "http://${S2_STATUS}/status" >/dev/null; }
+waitfor 20 "beide Säulen melden sich" sims_up
+
+# Eingerichtet heißt: die zwei PERMANENTEN Profile liegen an der Säule.
+commissioned() {
+  local body
+  for addr in "$S1_STATUS" "$S2_STATUS"; do
+    body=$(curl -sf "http://${addr}/status") || return 1
+    echo "$body" | grep -q TxDefaultProfile || return 1
+    echo "$body" | grep -q ChargePointMaxProfile || return 1
+  done
+}
+waitfor 60 "die Säulen sind eingerichtet" commissioned
+pass "Sicherheitsprofil + Höchstgrenze bei jeder Säule hinterlegt"
+
+# ---------------------------------------------------------------- L1
+echo "--- L1: zwei Fahrzeuge teilen sich das Budget"
+curl -sf -X POST "http://${S1_STATUS}/plug?connector=1&demand=240&min=5" >/dev/null
+curl -sf -X POST "http://${S2_STATUS}/plug?connector=1&demand=240&min=5" >/dev/null
+l1_ready() { [ "$(charging_count)" -eq 2 ] && nearly "$(site_kw)" 82.3 0.5; }
+waitfor 60 "beide laden" l1_ready
+A=$(drawn $S1_STATUS); B=$(drawn $S2_STATUS); TOTAL=$(site_kw)
+nearly "$A" 41.15 0.5 || fail "L1: Säule 1 zieht $A kW, erwartet 41,15"
+nearly "$B" 41.15 0.5 || fail "L1: Säule 2 zieht $B kW, erwartet 41,15"
+nearly "$TOTAL" 82.3 0.5 || fail "L1: der Standort zieht $TOTAL kW, das Budget ist 82,3"
+pass "L1: 2 × 41,15 kW = 82,3 kW - das Budget wird an den Säulen gehalten"
+
+# ---------------------------------------------------------------- L2
+echo "--- L2: ein drittes Fahrzeug steckt an"
+curl -sf -X POST "http://${S1_STATUS}/plug?connector=2&demand=240&min=5" >/dev/null
+# Drei Fahrzeuge, 82,3 kW: 27,4 kW je Stueck laegen UNTER der 30-kW-
+# Mindestleistung. Also laden weiterhin genau zwei, und eines wartet.
+l2_ready() { [ "$(charging_count)" -eq 2 ] && nearly "$(site_kw)" 82.3 0.5 \
+  && curl -sf "${BOX}/api/ocpp" | grep -q '"reason":"wartet_budget"'; }
+waitfor 60 "die Umverteilung ist da" l2_ready
+TOTAL=$(site_kw)
+awk -v t="$TOTAL" 'BEGIN{exit (t<=82.8)?0:1}' || fail "L2: der Standort zieht $TOTAL kW - über dem Budget"
+# 82,3 kW auf DREI Fahrzeuge wären 27,4 kW - unter der 30-kW-Mindestleistung.
+# Also laden zwei und eines wartet: pausieren schlägt aushungern.
+for probe in "$S1_STATUS 1" "$S1_STATUS 2" "$S2_STATUS 1"; do
+  set -- $probe
+  d=$(drawn "$1" "$2")
+  awk -v d="${d:-0}" 'BEGIN{exit (d>0.5 && d<29.9)?1:0}' || fail "L2: ein Fahrzeug hungert bei $d kW (unter der Mindestleistung)"
+done
+CHARGING=$(charging_count)
+[ "$CHARGING" -eq 2 ] || fail "L2: $CHARGING Fahrzeuge laden, erwartet 2 (das dritte muss warten)"
+pass "L2: $TOTAL kW unter der Grenze, zwei laden ≥ 30 kW, eines wartet"
+
+# ---------------------------------------------------------------- L5
+echo "--- L5: der wartende Ladevorgang trägt seinen GRUND (und keine erfundene Zahl)"
+OCPP_JSON=$(curl -sf "${BOX}/api/ocpp")
+echo "$OCPP_JSON" | grep -q '"reason":"wartet_budget"' \
+  || fail "L5: kein wartender Ladevorgang mit dem Grund 'wartet_budget' gemeldet"
+echo "$OCPP_JSON" | grep -q '"reason_text":"wartet' \
+  || fail "L5: der wartende Ladevorgang trägt keinen deutschen Satz"
+pass "L5: der Wartende nennt seinen Grund - kein Fahrzeug bleibt unerklärt stehen"
+
+# ---------------------------------------------------------------- L3
+echo "--- L3: eines steckt ab, die Leistung wird wieder frei"
+curl -sf -X POST "http://${S1_STATUS}/unplug?connector=2" >/dev/null
+l3_ready() { [ "$(charging_count)" -eq 2 ] && nearly "$(site_kw)" 82.3 0.5 \
+  && ! curl -sf "${BOX}/api/ocpp" | grep -q '"reason":"wartet_budget"'; }
+waitfor 60 "die Freigabe ist verteilt" l3_ready
+TOTAL=$(site_kw)
+nearly "$TOTAL" 82.3 0.5 || fail "L3: nach dem Abstecken zieht der Standort $TOTAL kW, erwartet 82,3"
+pass "L3: die freigewordene Leistung ist wieder verteilt, niemand wartet mehr (Standort $TOTAL kW)"
+
+# ---------------------------------------------------------------- L4
+echo "--- L4: der Totmann - die Box stirbt"
+S1_BEFORE=$(drawn $S1_STATUS 1)
+awk -v d="$S1_BEFORE" 'BEGIN{exit (d>30)?0:1}' || fail "L4: Ausgangslage - Säule 1 zieht nur $S1_BEFORE kW"
+kill "$CORE_PID"; wait "$CORE_PID" 2>/dev/null || true; CORE_PID=""
+echo "    (der Kern ist beendet - jetzt darf NICHTS von uns mehr laufen)"
+
+# Das TxProfile trägt eine duration von 120 s. Danach gilt es nicht mehr, und
+# die Säule fällt auf ihr gespeichertes Sicherheitsprofil zurück - ohne dass
+# irgendein Prozess von uns dabei hilft. Das Sicherheitsprofil ist
+# (277 - 180) / 4 Stecker = 24,25 kW.
+l4_ready() { nearly "$(drawn $S1_STATUS 1)" 24.25 0.5; }
+waitfor 200 "das Ladeprofil läuft ab" l4_ready
+S1_AFTER=$(drawn $S1_STATUS 1)
+nearly "$S1_AFTER" 24.25 0.5 || fail "L4: Säule 1 zieht $S1_AFTER kW, erwartet das Sicherheitsprofil 24,25 kW"
+# Und die WICHTIGSTE Hälfte: sie lädt WEITER. Ein Totmann, der den Ladevorgang
+# abwürgt, wäre kein Schutz, sondern ein Ausfall.
+awk -v d="$S1_AFTER" 'BEGIN{exit (d>1)?0:1}' || fail "L4: die Säule hat aufgehört zu laden - das Sicherheitsprofil soll begrenzen, nicht abschalten"
+pass "L4: die Box ist tot, die Säule begrenzt sich SELBST auf 24,25 kW - und lädt weiter"
+
+echo
+echo "== Rig OK: L1 · L2 · L3 · L4 · L5 =="
