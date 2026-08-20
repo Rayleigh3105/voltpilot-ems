@@ -228,6 +228,7 @@ function stub(over: {
   entities?: () => Promise<SiteEntities>;
   commands?: CommandHistory;
   targets?: RegisterWriteTarget[];
+  writes?: RegisterWriteEvent[];
 } = {}) {
   vi.spyOn(api, 'siteEntities').mockImplementation(
     over.entities ?? (() => Promise.resolve(entities)),
@@ -261,7 +262,16 @@ function stub(over: {
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
   vi.spyOn(api, 'registerWriteTargets').mockResolvedValue(over.targets ?? targets());
-  vi.spyOn(api, 'registerWriteHistory').mockResolvedValue([]);
+  vi.spyOn(api, 'registerWriteHistory').mockResolvedValue(over.writes ?? []);
+  vi.spyOn(api, 'registerKnowledge').mockResolvedValue([
+    {
+      family: 'hybrid_3p', brand: 'deye', label: 'Deye 3-phasig',
+      registers: [{
+        address: 231, addressHex: '0x00E7', label: 'Einspeisegrenze',
+        clazz: 'netz_compliance', scale: 10, unit: 'kW', note: null,
+      }],
+    },
+  ]);
 }
 
 describe('GeraetSeiteSection', () => {
@@ -447,5 +457,40 @@ describe('GeraetSeiteSection', () => {
     // Ein Knopf, der strukturell nichts bewirken kann, wird nicht angeboten.
     expect(await screen.findByTestId('geraet-regwrite-grund')).toBeInTheDocument();
     expect(screen.queryByTestId('geraet-regwrite')).toBeNull();
+  });
+
+  /**
+   * D · Gelesene Register: die Sicht entsteht aus dem BESTAND - und die
+   * Roh-Spalte bleibt ehrlich leer, wo kein Wort über die Leitung kam.
+   */
+  it('zeigt die gelesenen Register mit ihrer Frische - und sagt die Grenze', async () => {
+    stub({
+      commands: commands({ deviceIsBox: false }),
+      writes: [{
+        id: 7, requestId: 'r-7', source: 'portal', deviceId: 'gw', deviceRef: 'edge-45gz7da',
+        lane: 'entity', entityId: 'fr1', targetLabel: 'Dach Süd', registerKind: 'holding',
+        address: 231, addressHex: '0x00E7', addressInput: '0x00E7', valueInput: '7000',
+        note: null, valueRaw: 7000, expectedBefore: 3300, registerLabel: 'Einspeisegrenze',
+        registerClass: 'netz_compliance', scaleNote: 'Rohwert × 0.01 = 70,0 kW', origin: 'kunde',
+        actorName: 'demo', actorRole: null, viaTenantSwitcher: false,
+        requestedAt: FRISCH, beforeRaw: 3300, afterRaw: 7000, adopted: true,
+        outcome: 'ok', reason: null, answeredAt: FRISCH,
+      }],
+    });
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+
+    expect(await screen.findByText('Gelesene Register')).toBeInTheDocument();
+    // Das Rohwort des Schreibvorgangs - das einzige, das es heute gibt.
+    await waitFor(() => expect(screen.getByText('7000')).toBeInTheDocument());
+    // Die Warnklasse trägt ihr WORT, nie nur eine Farbe.
+    expect(screen.getByText('Netz-Anmeldung')).toBeInTheDocument();
+  });
+
+  it('sagt an der BOX, dass sie selbst keine Register hat', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
+    expect(await screen.findByText(/kein Modbus-Gerät/)).toBeInTheDocument();
   });
 });

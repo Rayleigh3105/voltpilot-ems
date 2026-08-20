@@ -506,3 +506,55 @@
 .vp-geraet-btn:hover {
   background: var(--vp-surface-2, #f7fafc);
 }
+
+/* --- D · Gelesene Register ----------------------------------------------- */
+
+.vp-geraet-register {
+  width: 100%;
+  min-width: 0;
+}
+
+.vp-geraet-register td,
+.vp-geraet-register th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Die Warnklasse steht als WORT neben der Bedeutung - die Farbe verstärkt sie
+   nur (die Haus-Regel: nie Farbe allein). */
+.vp-regklasse {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f7fafc);
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.vp-regklasse.is-warn {
+  background: var(--vp-warn-soft, #fef3c7);
+  color: var(--vp-warn-ink, #92400e);
+}
+
+.vp-regklasse.is-danger {
+  background: var(--vp-danger-soft, #fee2e2);
+  color: var(--vp-danger-ink, #991b1b);
+}
+
+@media (max-width: 720px) {
+  /* ⚠ Die Haus-Tabelle klappt am Telefon zu Etikett/Wert-Zeilen (`display:flex`,
+     `space-between`). Der Klassen-Chip trägt `white-space: nowrap` und kann
+     darin nicht schrumpfen - „Netz-Anmeldung" stand deshalb über dem rechten
+     Rand (im Browser gemessen). Er bekommt hier seine eigene Zeile; die
+     dokumentierte `nowrap`-Falle des Hauses. */
+  .vp-geraet-register td {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+
+  .vp-geraet-register .vp-regklasse {
+    margin-left: 0;
+  }
+}
