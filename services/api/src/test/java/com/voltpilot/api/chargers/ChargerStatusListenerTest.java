@@ -1,0 +1,213 @@
+package com.voltpilot.api.chargers;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.voltpilot.api.repo.DeviceChargerStatusRepository;
+import com.voltpilot.api.repo.DeviceChargerStatusRepository.BudgetRow;
+import com.voltpilot.api.repo.DeviceChargerStatusRepository.ChargePointRow;
+import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.web.dto.DeviceDto;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
+
+/**
+ * Der Parser des additiven {@code chargers}-Herzschlag-Blocks (Lastmanagement
+ * Stufe 3) - ein REINER Test, er läuft ohne Docker (die Reise durch die echte
+ * Datenbank steht in {@code ChargerApiTest}).
+ *
+ * <p>Was er schützt: aus jedem Feld hier wird ein Kundensatz über eine
+ * Kundenanlage. Ein unbekanntes Wort darf keiner werden, und ein fehlender
+ * Messwert darf nie als 0 erscheinen - ein Ladepunkt, der nichts meldet, lädt
+ * nicht nachweislich nichts.
+ */
+class ChargerStatusListenerTest {
+
+    private static final UUID TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID SITE = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final UUID DEVICE = UUID.fromString("00000000-0000-0000-0000-000000000003");
+    private static final String TOPIC = "ems/" + TENANT + "/" + SITE + "/" + DEVICE + "/status";
+
+    private DeviceRepository devices;
+    private DeviceChargerStatusRepository store;
+    private ChargerComponentComposer composer;
+    private ChargerStatusListener listener;
+
+    @BeforeEach
+    @SuppressWarnings("unchecked")
+    void setUp() {
+        devices = mock(DeviceRepository.class);
+        store = mock(DeviceChargerStatusRepository.class);
+        composer = mock(ChargerComponentComposer.class);
+        when(devices.findById(DEVICE)).thenReturn(Optional.of(new DeviceDto(DEVICE, SITE,
+                "edge-ladepark", "inverter", null, "active", Instant.now(), Instant.now())));
+        ObjectProvider<ChargerComponentComposer> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(composer);
+        listener = new ChargerStatusListener("tcp://localhost:1883", "", "", devices, store,
+                provider);
+    }
+
+    /** Ein Herzschlag hinein, die geschriebenen Zeilen heraus. */
+    private Captured ingest(String block) {
+        listener.handle(TOPIC, envelope(block).getBytes(StandardCharsets.UTF_8));
+        ArgumentCaptor<BudgetRow> budget = ArgumentCaptor.forClass(BudgetRow.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChargePointRow>> chargers = ArgumentCaptor.forClass(List.class);
+        verify(store).replaceForDevice(eq(DEVICE), eq(TENANT), eq(SITE), any(), budget.capture(),
+                chargers.capture());
+        return new Captured(budget.getValue(), chargers.getValue());
+    }
+
+    private record Captured(BudgetRow budget, List<ChargePointRow> chargers) {}
+
+    private static String envelope(String block) {
+        return "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"online\":true," + block + "}";
+    }
+
+    /** Das Beispiel-Szenario der abgenommenen Mockups, als Block. */
+    private static String mockupBlock() {
+        return "\"chargers\":{"
+                + "\"reported_at\":\"2026-08-20T11:24:00Z\","
+                + "\"enabled\":true,\"control_enabled\":true,"
+                + "\"grid_limit_kw\":277,\"margin_pct\":10,\"min_power_kw\":30,"
+                + "\"budget_kw\":82.3,\"allocated_kw\":82,\"measured_kw\":79,"
+                + "\"site_load_kw\":167,\"site_grid_kw\":246,"
+                + "\"budget_mode\":\"gemessen\",\"budget_note\":\"Das Budget folgt der Messung.\","
+                + "\"eff_limit_kw\":277,\"safe_default_kw\":15,\"safe_default_holds\":true,"
+                + "\"safe_worst_case_kw\":270,\"max_house_load_kw\":180,\"connector_count\":6,"
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"label\":\"Hof Nord\",\"connected\":true,"
+                + "\"vendor\":\"Midapower\",\"model\":\"DC-240\",\"ready\":true,"
+                + "\"last_seen\":\"2026-08-20T11:23:55Z\",\"connectors\":["
+                + "{\"id\":1,\"status\":\"Charging\",\"charging\":true,\"allocated_kw\":41,"
+                + "\"reason\":\"laedt\",\"reason_text\":\"lädt\",\"power_kw\":40,\"soc_pct\":62,"
+                + "\"command_status\":\"Accepted\",\"readback\":\"ok\","
+                + "\"session_since\":\"2026-08-20T10:41:00Z\"},"
+                + "{\"id\":2,\"status\":\"Preparing\",\"charging\":false,\"allocated_kw\":0,"
+                + "\"reason\":\"wartet_budget\",\"reason_text\":\"wartet - Budget vergeben\","
+                + "\"next_turn\":\"2026-08-20T11:26:00Z\"}]}]}";
+    }
+
+    @Test
+    void theWholeBlockIsStoredWithTheBoxOwnWords() {
+        Captured c = ingest(mockupBlock());
+        assertThat(c.budget().budgetKw()).isEqualTo(82.3);
+        assertThat(c.budget().connectorCount()).isEqualTo(6);
+        assertThat(c.budget().safeDefaultHolds()).isTrue();
+        // ⚠ Der deutsche Satz wird DURCHGEREICHT, nie neu formuliert.
+        assertThat(c.budget().budgetNote()).isEqualTo("Das Budget folgt der Messung.");
+        assertThat(c.chargers()).hasSize(1);
+        ChargePointRow p = c.chargers().get(0);
+        assertThat(p.chargePointId()).isEqualTo("saeule-1");
+        assertThat(p.label()).isEqualTo("Hof Nord");
+        assertThat(p.vendor()).isEqualTo("Midapower");
+        assertThat(p.connectors()).hasSize(2);
+        assertThat(p.connectors().get(0).powerKw()).isEqualTo(40);
+        assertThat(p.connectors().get(0).socPct()).isEqualTo(62);
+        assertThat(p.connectors().get(0).sessionSince())
+                .isEqualTo(Instant.parse("2026-08-20T10:41:00Z"));
+        // Der Wartende trägt seinen Grund UND seinen geschätzten Termin.
+        assertThat(p.connectors().get(1).reasonText()).isEqualTo("wartet - Budget vergeben");
+        assertThat(p.connectors().get(1).nextTurn())
+                .isEqualTo(Instant.parse("2026-08-20T11:26:00Z"));
+        // Und die Säule wird zur Komponente - ohne einen Klick.
+        verify(composer).ensureComposed(SITE, DEVICE);
+    }
+
+    @Test
+    void aMissingMeasurementStaysNullAndIsNeverZero() {
+        Captured c = ingest("\"chargers\":{\"chargers\":[{\"id\":\"saeule-still\","
+                + "\"connectors\":[{\"id\":1,\"status\":\"Available\"}]}]}");
+        var con = c.chargers().get(0).connectors().get(0);
+        assertThat(con.powerKw()).isNull();
+        assertThat(con.energyKwh()).isNull();
+        assertThat(con.socPct()).isNull();
+        assertThat(con.allocatedKw()).isNull();
+        assertThat(con.sessionSince()).isNull();
+        assertThat(c.budget().measuredKw()).isNull();
+        assertThat(c.budget().siteGridKw()).isNull();
+        // Ein nicht gemeldetes Urteil ist auch keins: dreiwertig, nicht false.
+        assertThat(c.budget().safeDefaultHolds()).isNull();
+    }
+
+    @Test
+    void aWordOutsideTheOcppVocabularyIsDroppedNotStored() {
+        Captured c = ingest("\"chargers\":{\"chargers\":[{\"id\":\"saeule-1\",\"connectors\":["
+                + "{\"id\":1,\"status\":\"Ladend\",\"readback\":\"vielleicht\"},"
+                + "{\"id\":2,\"status\":\"Faulted\",\"readback\":\"abweichend\"}]}]}");
+        var unknown = c.chargers().get(0).connectors().get(0);
+        var known = c.chargers().get(0).connectors().get(1);
+        // Verworfen, nicht gespeichert: der Stecker behält "kein Zustand
+        // gemeldet" statt einen erfundenen zu bekommen.
+        assertThat(unknown.status()).isNull();
+        assertThat(unknown.readback()).isNull();
+        assertThat(known.status()).isEqualTo("Faulted");
+        assertThat(known.readback()).isEqualTo("abweichend");
+    }
+
+    @Test
+    void aHeartbeatWithoutTheBlockChangesNothing() {
+        listener.handle(TOPIC, envelope("\"soc_pct\":42").getBytes(StandardCharsets.UTF_8));
+        verify(store, never()).replaceForDevice(any(), any(), any(), any(), any(), any());
+        verify(composer, never()).ensureComposed(any(), any());
+    }
+
+    @Test
+    void aSpoofedIdentityNeverReachesTheStore() {
+        UUID other = UUID.fromString("00000000-0000-0000-0000-0000000000ff");
+        String payload = "{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + other + "\",\"chargers\":{\"chargers\":[{\"id\":\"x\"}]}}";
+        listener.handle(TOPIC, payload.getBytes(StandardCharsets.UTF_8));
+        verify(store, never()).replaceForDevice(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void anUnknownDeviceIsSkipped() {
+        when(devices.findById(DEVICE)).thenReturn(Optional.empty());
+        listener.handle(TOPIC, envelope(mockupBlock()).getBytes(StandardCharsets.UTF_8));
+        verify(store, never()).replaceForDevice(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void theBlockIsBoundedSoAMisconfiguredPlantCannotInflateIt() {
+        StringBuilder b = new StringBuilder("\"chargers\":{\"chargers\":[");
+        for (int i = 0; i < 40; i++) {
+            if (i > 0) {
+                b.append(',');
+            }
+            b.append("{\"id\":\"s").append(i).append("\",\"connectors\":[");
+            for (int c = 0; c < 20; c++) {
+                if (c > 0) {
+                    b.append(',');
+                }
+                b.append("{\"id\":").append(c).append("}");
+            }
+            b.append("]}");
+        }
+        b.append("]}");
+        Captured c = ingest(b.toString());
+        assertThat(c.chargers()).hasSize(16);
+        assertThat(c.chargers().get(0).connectors()).hasSize(8);
+    }
+
+    /** Eine Säule ohne Kennung ist keine Säule - sie wird ausgelassen, nie geraten. */
+    @Test
+    void anEntryWithoutAChargePointIdIsSkipped() {
+        Captured c = ingest("\"chargers\":{\"chargers\":[{\"label\":\"namenlos\"},"
+                + "{\"id\":\"saeule-1\"}]}");
+        assertThat(c.chargers()).hasSize(1);
+        assertThat(c.chargers().get(0).chargePointId()).isEqualTo("saeule-1");
+    }
+}

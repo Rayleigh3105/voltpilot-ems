@@ -847,6 +847,30 @@ paths:
                 items: { $ref: "#/components/schemas/SiteSource" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/chargers:
+    get:
+      tags: [sites]
+      summary: Die Ladepunkte der Anlage und das Budget, das sie sich teilen.
+      description: >
+        Das Standort-Ladebudget und jede OCPP-Ladesäule mit ihren Steckern, aus
+        dem additiven `chargers`-Block des Geräte-Herzschlags (Lastmanagement
+        Stufe 3). Jede Zahl und jeder deutsche Satz stammt aus der BOX und wird
+        nur weitergereicht - dort wird entschieden, hier nur gezeigt (die
+        Anschlussgrenze ist eine physische Grenze, ihr Wächter darf nicht am WAN
+        hängen). READ-ONLY: es gibt bewusst keine Route, die eine Ladegrenze
+        setzt. RLS-gefenced (fremde Anlage 404, Admins über den
+        `X-Tenant-Id`-Umschalter); `budget: null` mit leerer Liste ist der
+        ehrliche Zustand einer Anlage ohne Ladesäulen - nie ein Budget von 0.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Budget + Ladepunkte (beides leer ohne gemeldeten Block).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteCharging" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/supply-price:
     get:
       tags: [sites]
@@ -8627,6 +8651,89 @@ components:
         health: { type: string, enum: [ok, stale, never] }
         readAt: { type: string, format: date-time, nullable: true }
         reportedAt: { type: string, format: date-time }
+    SiteCharging:
+      type: object
+      description: >
+        Die Ladepunkt-Sicht EINER Anlage: das geteilte Budget + die Säulen.
+      properties:
+        budget: { allOf: [{ $ref: "#/components/schemas/ChargingBudget" }], nullable: true }
+        chargers:
+          type: array
+          items: { $ref: "#/components/schemas/ChargePoint" }
+    ChargingBudget:
+      type: object
+      description: >
+        Das Standort-Budget, wie die Box es gerechnet hat. Alle Messwert-Felder
+        sind nullable - kein Messwert ist NIE eine 0.
+      properties:
+        deviceId: { type: string, format: uuid }
+        enabled: { type: boolean, description: "Der OCPP-Server der Box läuft." }
+        controlEnabled: { type: boolean, description: "Die LEBENDE Zuteilung darf geschrieben werden; ohne sie fährt die Anlage auf n x Sicherheitsprofil." }
+        controlNote: { type: string, nullable: true, description: "Warum nicht - eine Verweigerung, die niemand sieht, ist ein Rätsel." }
+        gridLimitKw: { type: number, nullable: true, description: "Die gepflegte Anschlussgrenze." }
+        marginPct: { type: number, nullable: true, description: "Sicherheitsabstand, genommen VON der Anschlussgrenze." }
+        minPowerKw: { type: number, nullable: true, description: "Unter dieser Leistung wird pausiert statt ausgehungert." }
+        budgetKw: { type: number, nullable: true }
+        allocatedKw: { type: number, nullable: true }
+        reservedKw: { type: number, nullable: true, description: "Zurückgehalten für Säulen, die die Box nicht erreicht." }
+        measuredKw: { type: number, nullable: true, description: "Was die Säulen wirklich ziehen." }
+        siteLoadKw: { type: number, nullable: true }
+        siteGridKw: { type: number, nullable: true }
+        budgetMode: { type: string, nullable: true, enum: [statisch, gemessen, haelt, zieht_zusammen, sicherheitsbudget] }
+        budgetNote: { type: string, nullable: true, description: "Der deutsche Satz der Box, unverändert." }
+        budgetBlind: { type: boolean }
+        effLimitKw: { type: number, nullable: true, description: "Die wirksame Grenze (gepflegt oder §14a, die engere)." }
+        safeDefaultKw: { type: number, nullable: true, description: "Das Ausfall-Profil je Stecker." }
+        safeDefaultNote: { type: string, nullable: true }
+        safeDefaultHolds: { type: boolean, nullable: true, description: "Stecker x Ausfall-Profil + höchste Gebäudelast bleibt unter der Grenze. null = nicht gemeldet." }
+        safeWorstCaseKw: { type: number, nullable: true }
+        maxHouseLoadKw: { type: number, nullable: true }
+        connectorCount: { type: integer }
+        reportedAt: { type: string, format: date-time }
+    ChargePoint:
+      type: object
+      description: >
+        Eine Ladesäule. Hersteller/Modell/Firmware sind SELBSTAUSKUNFT der
+        Station und ausschließlich zur Anzeige (herstellerneutral: kein
+        Mechanismus verzweigt auf sie).
+      properties:
+        deviceId: { type: string, format: uuid }
+        chargePointId: { type: string, description: "Die OCPP-ChargePointId - DIE Identität." }
+        label: { type: string, nullable: true }
+        priority: { type: boolean, description: "Vorrang-Säule: lädt zuerst voll, der Rest teilt fair." }
+        connected: { type: boolean }
+        vendor: { type: string, nullable: true }
+        model: { type: string, nullable: true }
+        firmware: { type: string, nullable: true }
+        ready: { type: boolean, description: "Die zwei dauerhaften Schutzprofile sind hinterlegt." }
+        note: { type: string, nullable: true, description: "Warum nicht bereit - nie ein unerklärtes Nein." }
+        lastSeen: { type: string, format: date-time, nullable: true }
+        entityId: { type: string, format: uuid, nullable: true, description: "Die Komponente, die die Plattform für diese Säule komponiert hat." }
+        reportedAt: { type: string, format: date-time }
+        connectors:
+          type: array
+          items: { $ref: "#/components/schemas/ChargeConnector" }
+    ChargeConnector:
+      type: object
+      description: >
+        Ein Stecker: ein Fahrzeug, ein Anspruch auf das Budget. Ein nicht
+        gemeldeter Messwert bleibt null, nie 0; ein Zustandswort außerhalb des
+        OCPP-1.6-Vokabulars wird beim Ingest verworfen statt gespeichert.
+      properties:
+        connectorId: { type: integer }
+        status: { type: string, nullable: true, enum: [Available, Preparing, Charging, SuspendedEVSE, SuspendedEV, Finishing, Reserved, Unavailable, Faulted] }
+        charging: { type: boolean }
+        allocatedKw: { type: number, nullable: true, description: "Was das Lastmanagement zugeteilt hat (0 = pausiert); null = nicht Teil der Entscheidung." }
+        reason: { type: string, nullable: true, description: "Das Maschinenwort des Verteilers." }
+        reasonText: { type: string, nullable: true, description: "Sein deutscher Satz, unverändert." }
+        nextTurn: { type: string, format: date-time, nullable: true, description: "Geschätzter Termin des Wartenden; null = nichts behaupten." }
+        powerKw: { type: number, nullable: true }
+        energyKwh: { type: number, nullable: true }
+        socPct: { type: number, nullable: true, description: "Der Fahrzeug-Ladestand, wenn die Säule ihn meldet (DC meist, AC praktisch nie)." }
+        commandStatus: { type: string, nullable: true, description: "Die Antwort der Säule auf die letzte Grenze." }
+        readback: { type: string, nullable: true, enum: [ok, abweichend, unbekannt], description: "Ein angenommener Befehl ist kein Befehl in Kraft." }
+        readbackNote: { type: string, nullable: true }
+        sessionSince: { type: string, format: date-time, nullable: true }
     SupplyPrice:
       type: object
       description: >
