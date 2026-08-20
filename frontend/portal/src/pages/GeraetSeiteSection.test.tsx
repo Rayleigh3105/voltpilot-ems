@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { GeraetSeiteSection } from './GeraetSeiteSection';
+import * as auth from '../auth';
+import { adminApi } from '../admin/adminApi';
+import { fleetApi } from '../admin/fleetApi';
 import {
   api,
   type CommandHistory,
@@ -492,5 +495,88 @@ describe('GeraetSeiteSection', () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
     expect(await screen.findByText(/kein Modbus-Gerät/)).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PR 1f: die PLATTFORM-Sicht auf DERSELBEN Seite (M7-Rollen-Tor)
+// ---------------------------------------------------------------------------
+
+describe('GeraetSeiteSection · Plattform-Sicht', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function stubAdmin() {
+    vi.spyOn(adminApi, 'listDevices').mockResolvedValue([
+      {
+        deviceId: 'gw',
+        externalRef: 'edge-45gz7da',
+        label: 'Pilsting',
+        siteId: 's-1',
+        siteName: 'Pilsting',
+        tenantId: 't-1',
+        tenantName: 'Kunde',
+        kind: 'inverter',
+        ist: 'edge-2026.08.1-9b37439a02c1',
+        soll: 'edge-2026.08.1',
+        sollSeq: 14,
+        channel: 'stable',
+        pinned: false,
+        state: 'bestaetigt',
+        reason: null,
+        blocker: null,
+        lastSeenAt: FRISCH,
+        reportedAt: FRISCH,
+        provisioned: false,
+        note: null,
+        provisionedAt: null,
+      },
+    ]);
+    vi.spyOn(fleetApi, 'fleet').mockResolvedValue({
+      sites: [],
+      releases: [],
+      journal: [],
+      kpi: null,
+    } as never);
+    vi.spyOn(adminApi, 'controlCandidates').mockResolvedValue([]);
+    vi.spyOn(adminApi, 'edgeUpdates').mockResolvedValue({
+      releases: [],
+      journal: [],
+      rollout: null,
+      fleet: [],
+      kpi: null,
+    } as never);
+  }
+
+  it('zeigt dem KUNDEN keine Plattform-Sicht', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    stubAdmin();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
+    await screen.findByRole('heading', { level: 1 });
+    expect(screen.queryByTestId('geraet-admin')).toBeNull();
+    // Und die Admin-Reads werden gar nicht erst geholt.
+    expect(adminApi.listDevices).not.toHaveBeenCalled();
+  });
+
+  it('zeigt dem PLATTFORM-ADMIN dieselbe Seite PLUS die Plattform-Sicht', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
+    stub();
+    stubAdmin();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
+    const block = await screen.findByTestId('geraet-admin');
+    expect(within(block).getByText(/Plattform-Sicht/)).toBeTruthy();
+    // Die Kunden-Sektionen bleiben unverändert daneben stehen.
+    expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
+  });
+
+  it('bleibt ohne Admin-Daten stehen - eine gescheiterte Plattform-Sicht kippt die Seite nicht', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
+    stub();
+    vi.spyOn(adminApi, 'listDevices').mockRejectedValue(new Error('down'));
+    vi.spyOn(fleetApi, 'fleet').mockRejectedValue(new Error('down'));
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
+    await screen.findByRole('heading', { level: 1 });
+    await waitFor(() => expect(adminApi.listDevices).toHaveBeenCalled());
+    expect(screen.queryByTestId('geraet-admin')).toBeNull();
   });
 });

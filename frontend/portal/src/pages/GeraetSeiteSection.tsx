@@ -3,6 +3,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
+  ApiError,
   type CommandHistory,
   type DeviceExportLimit,
   type RegisterKnowledgeFamily,
@@ -32,7 +33,7 @@ import type { IconName } from '../../designsystem/components/core/Icon';
 import { unclaimConsequences } from '../components/DeviceDrawers';
 import { DangerZone } from '../components/DangerZone';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, befehleGeraetHash, geraetSeiteHash, hashForRoute } from '../nav';
+import { anlageRoute, befehleGeraetHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
 import {
   QUELLE_WORT,
   registerSicht,
@@ -55,6 +56,11 @@ import {
   NUR_LESEN,
 } from '../befehle';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { showTechnicalLayer } from '../rollen';
+import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
+import { geraetView, type GeraetView } from '../adminGeraet';
+import { adminApi } from '../admin/adminApi';
+import { fleetApi } from '../admin/fleetApi';
 import { NO_DATA } from '../nodata';
 import '../components/AnlagenModell.css';
 import './GeraetSeite.css';
@@ -121,6 +127,11 @@ export function GeraetSeiteSection({
   const [targets, setTargets] = useState<RegisterWriteTarget[] | null>(null);
   const [writes, setWrites] = useState<RegisterWriteEvent[] | null>(null);
   const [knowledge, setKnowledge] = useState<RegisterKnowledgeFamily[] | null>(null);
+  // Die PLATTFORM-Sicht: vier zusätzliche Reads, die es NUR hinter dem einen
+  // Tor überhaupt gibt (M7 `showTechnicalLayer`) - ein Kunde holt sie nie.
+  const [adminView, setAdminView] = useState<GeraetView | null>(null);
+  const [adminBusy, setAdminBusy] = useState(false);
+  const [adminFehler, setAdminFehler] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -181,10 +192,54 @@ export function GeraetSeiteSection({
       },
     );
     setNow(Date.now());
+    if (showTechnicalLayer()) {
+      // Fail-soft und ALLES-ODER-NICHTS: ohne die Geräte-Zeile gibt es keine
+      // Admin-Sicht - die Ableitung braucht sie, und eine halbe Sicht wäre
+      // eine Aussage über ein Gerät, das wir nicht vollständig kennen.
+      void Promise.all([
+        adminApi.listDevices(),
+        fleetApi.fleet(),
+        adminApi.controlCandidates().catch(() => null),
+        adminApi.edgeUpdates().catch(() => null),
+      ]).then(
+        ([devs, flotte, candidates, updates]) => {
+          if (!active) return;
+          setAdminView(geraetView({
+            ref: geraeteRef,
+            devices: devs,
+            sites: flotte.sites,
+            candidates,
+            releases: updates?.releases ?? [],
+            journal: updates?.journal ?? [],
+          }, new Date()));
+        },
+        () => {
+          if (active) setAdminView(null);
+        },
+      );
+    }
     return () => {
       active = false;
     };
   }, [site.id, geraeteRef, geraetId, boxDevice?.id, reloadKey]);
+
+  /**
+   * Eine Admin-Handlung: ausführen, dann die Seite neu laden. Ein Fehlschlag
+   * wird BENANNT - eine Handlung, die still nichts tut, ist die schlechteste
+   * Rückmeldung.
+   */
+  async function adminAktion(fn: () => Promise<unknown>) {
+    setAdminBusy(true);
+    setAdminFehler(null);
+    try {
+      await fn();
+      setReloadKey((k) => k + 1);
+    } catch (e) {
+      setAdminFehler(e instanceof ApiError ? e.message : 'Die Aktion ist fehlgeschlagen.');
+    } finally {
+      setAdminBusy(false);
+    }
+  }
 
   // Der stille Takt: Zustand UND Bezugszeit werden ZUSAMMEN gesetzt, ein
   // Fehlschlag lässt beides unberührt (die `liveness.ts`-Lehre).
@@ -390,6 +445,39 @@ export function GeraetSeiteSection({
               )}
             </Sektion>
           </div>
+
+          {/* Die PLATTFORM-Sicht: additiv, hinter dem EINEN Tor (M7). Ein Kunde
+              sieht sie nie - und weil sie in ihrem eigenen, benannten Aufklapper
+              steht, ist die Wiederholung des Software-Stands eine bewusste
+              zweite LESEHÖHE, keine Doppelung auf derselben Karte (dasselbe
+              Muster wie die Installateur-Ansicht der Zentrale). */}
+          {showTechnicalLayer() && adminView && (
+            <details className="vp-geraet-admin" data-testid="geraet-admin">
+              <summary>
+                <Icon name="shield" size={16} /> Plattform-Sicht (Admin)
+              </summary>
+              <AdminGeraetKarten
+                view={adminView}
+                busy={adminBusy}
+                onNavigateSteuerung={() => {
+                  window.location.hash = hashForRoute(pageRoute('steuerungs-freigabe'));
+                }}
+                onAssign={adminView.device.deviceId ? async (releaseSeq, channel, pinned) => {
+                  await adminAktion(() => adminApi.setUpdateTarget(
+                    adminView.device.deviceId as string, { releaseSeq, channel, pinned }));
+                } : undefined}
+                onRevert={adminView.device.deviceId && adminView.device.soll ? async () => {
+                  await adminAktion(() => adminApi.revertUpdateTarget(
+                    adminView.device.deviceId as string));
+                } : undefined}
+                onApply={adminView.device.deviceId && adminView.device.soll ? () => {
+                  void adminAktion(() => adminApi.requestApply(
+                    adminView.device.deviceId as string));
+                } : undefined}
+              />
+              {adminFehler && <p className="vp-alert vp-alert-err">{adminFehler}</p>}
+            </details>
+          )}
 
           {view.gefahrenzone && box && (
             <Card padding="lg" radius="lg">

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listProvisionedDevices = vi.fn();
@@ -239,5 +239,39 @@ describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', ()
     // Umkehrbarkeit gehört dazu - sonst liest sich das Entfernen endgültiger,
     // als es ist.
     expect(list).toHaveTextContent('umkehrbar');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PR 1f: ein VERBUNDENES Gerät hat genau EINEN Ort
+// ---------------------------------------------------------------------------
+
+describe('GeraeteRegistryPage · Weg in die Geräteseite', () => {
+  it('führt ein verbundenes Gerät in die Mandanten-Ansicht seiner Anlage', async () => {
+    const jump = vi.fn();
+    window.location.hash = '#/geraete-registry?geraet=edge-k2m4pqj';
+    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
+
+    await waitFor(() => expect(jump).toHaveBeenCalled());
+    // Der Mandant wird MITgesetzt - die Seite liegt hinter dem RLS-Zaun.
+    expect(jump.mock.calls[0][0]).toBe('t1');
+    expect(jump.mock.calls[0][1]).toEqual({
+      page: 'anlagen',
+      siteId: 's1',
+      sub: 'geraet',
+      // Die REFERENZ ist der Schlüssel, nie die Geräte-UUID.
+      geraet: { ref: 'edge-k2m4pqj', geraetId: null },
+    });
+  });
+
+  it('führt eine gedruckte, noch unverbundene ID NIRGENDWOHIN - sie behält ihre Zeile', async () => {
+    const jump = vi.fn();
+    window.location.hash = '#/geraete-registry?geraet=VP-DEMO-0002';
+    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
+
+    // Ihre Plattform-Vollansicht steht (es gibt kein Gerät, in das man springen
+    // könnte) - und es wird kein Mandant umgeschaltet.
+    expect(await screen.findByRole('heading', { name: 'VP-DEMO-0002' })).toBeInTheDocument();
+    expect(jump).not.toHaveBeenCalled();
   });
 });
