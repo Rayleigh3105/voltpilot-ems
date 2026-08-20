@@ -75,6 +75,17 @@ public class ChargerStatusListener {
     /** Das Rücklese-Urteil des CSMS. */
     private static final Set<String> READBACK = Set.of("ok", "abweichend", "unbekannt");
 
+    /**
+     * Das Vokabular der Stufe-4-Quellen-Bahn. Wie {@link #STATUS} / {@link
+     * #READBACK} GESCHLOSSEN: ein Wort, das wir nicht verstehen, darf kein
+     * gespeicherter Zustand werden.
+     */
+    private static final Set<String> POLICIES = Set.of("nur_sonne", "sonne_zuerst", "schnell");
+
+    private static final Set<String> STORAGE = Set.of("speicher_vor_auto", "auto_vor_speicher");
+
+    private static final Set<String> SURPLUS_MODES = Set.of("aus", "gemessen", "nicht_belegbar");
+
     private final String brokerUrl;
     private final String username;
     private final String password;
@@ -307,7 +318,17 @@ public class ChargerStatusListener {
                 optDouble(b, "eff_limit_kw"), optDouble(b, "safe_default_kw"),
                 textOrNull(b, "safe_default_note"), optBool(b, "safe_default_holds"),
                 optDouble(b, "safe_worst_case_kw"), optDouble(b, "max_house_load_kw"),
-                b.path("connector_count").asInt(0));
+                b.path("connector_count").asInt(0),
+                // ⚠ Stufe 4: ein Wort ausserhalb des Vokabulars wird VERWORFEN
+                // statt gespeichert - der Stecker behaelt damit "nicht
+                // gemeldet" statt eine erfundene Wahl (die Regel dieses
+                // Zuhoerers, hier auf die Quellen-Bahn angewandt).
+                vocabulary(b, "surplus_policy", POLICIES),
+                vocabulary(b, "storage_priority", STORAGE),
+                b.path("surplus_active").asBoolean(false), optDouble(b, "surplus_kw"),
+                vocabulary(b, "surplus_mode", SURPLUS_MODES), textOrNull(b, "surplus_note"),
+                b.path("surplus_blind").asBoolean(false), optDouble(b, "surplus_total_kw"),
+                optDouble(b, "surplus_battery_kw"), optDouble(b, "source_allocated_kw"));
     }
 
     private static List<ConnectorRow> connectors(JsonNode list) {
@@ -329,7 +350,8 @@ public class ChargerStatusListener {
                     optInstant(con, "next_turn"), optDouble(con, "power_kw"),
                     optDouble(con, "energy_kwh"), optDouble(con, "soc_pct"),
                     textOrNull(con, "command_status"), vocabulary(con, "readback", READBACK),
-                    textOrNull(con, "readback_note"), optInstant(con, "session_since")));
+                    textOrNull(con, "readback_note"), optInstant(con, "session_since"),
+                    con.path("boost").asBoolean(false)));
         }
         return out;
     }

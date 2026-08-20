@@ -77,12 +77,17 @@ public class ChargingConfigPublisher {
      *                    sich nicht und die Box behält ihre eigene Zahl
      * @param priorities  die Vorrang-Säulen (leer = ausdrücklich keine), oder
      *                    null = keine Aussage
+     * @param surplusPolicy die Überschuss-Priorität des Kunden, oder null =
+     *                    keine Aussage (NIE dasselbe wie „schnell")
+     * @param storagePriority wer den Überschuss zuerst bekommt, oder null
      * @return false, wenn der Broker nicht erreichbar war (best-effort)
      */
     public synchronized boolean publish(UUID tenantId, UUID siteId, UUID deviceId,
-            Double gridLimitKw, List<String> priorities, Instant publishedAt) {
+            Double gridLimitKw, List<String> priorities, String surplusPolicy,
+            String storagePriority, Instant publishedAt) {
         String topic = configTopic(tenantId, siteId, deviceId);
-        byte[] payload = document(tenantId, siteId, deviceId, gridLimitKw, priorities, publishedAt);
+        byte[] payload = document(tenantId, siteId, deviceId, gridLimitKw, priorities,
+                surplusPolicy, storagePriority, publishedAt);
         try {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
@@ -126,7 +131,8 @@ public class ChargingConfigPublisher {
      * keine ChargePointId den JSON-Rahmen sprengen kann.
      */
     static byte[] document(UUID tenantId, UUID siteId, UUID deviceId, Double gridLimitKw,
-            List<String> priorities, Instant publishedAt) {
+            List<String> priorities, String surplusPolicy, String storagePriority,
+            Instant publishedAt) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"schema_version\":\"1.0\"")
                 .append(",\"tenant_id\":\"").append(tenantId).append('"')
@@ -145,6 +151,17 @@ public class ChargingConfigPublisher {
                 sb.append('"').append(esc(priorities.get(i))).append('"');
             }
             sb.append(']');
+        }
+        // ⚠ Stufe 4: dieselbe Regel wie oben - ABWESEND heisst "das Portal
+        // aeussert sich nicht" und die Box behaelt ihre Wahl. Es heisst NIE
+        // "schnell": das waere eine eigene Aussage des Kunden ("keine
+        // Quellen-Politik"), und die beiden zu verschmelzen liesse eine aeltere
+        // Cloud ein "Nur Sonnenstrom" still fallen lassen.
+        if (surplusPolicy != null && !surplusPolicy.isBlank()) {
+            sb.append(",\"surplus_policy\":\"").append(esc(surplusPolicy)).append('"');
+        }
+        if (storagePriority != null && !storagePriority.isBlank()) {
+            sb.append(",\"storage_priority\":\"").append(esc(storagePriority)).append('"');
         }
         sb.append(",\"published_at\":\"").append(publishedAt).append("\"}");
         return sb.toString().getBytes(StandardCharsets.UTF_8);

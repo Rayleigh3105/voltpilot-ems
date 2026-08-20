@@ -105,3 +105,55 @@ func priorityOf(t *testing.T, a *Agent, id string) bool {
 	t.Fatalf("unbekannte Saeule %s", id)
 	return false
 }
+
+// --- Stufe 4: the two SOURCE choices ride the same document ----------------
+
+// chargingCfgAgent is a box with OCPP on and a known cloud identity.
+func chargingCfgAgent(t *testing.T) *Agent {
+	t.Helper()
+	a := ocppAgent(t, nil)
+	a.entMu.Lock()
+	a.entIdentity = entities.Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
+	a.entMu.Unlock()
+	return a
+}
+
+// TestThePortalCanSetTheSourceChoiceAndAbsenceKeepsIt is the PATCH promise of
+// the two new fields.
+func TestThePortalCanSetTheSourceChoiceAndAbsenceKeepsIt(t *testing.T) {
+	a := chargingCfgAgent(t)
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","surplus_policy":"nur_sonne","storage_priority":"auto_vor_speicher",
+	  "published_at":"2026-08-20T13:24:00Z"}`))
+	set := a.OcppSettings()
+	if set.SurplusPolicy != lastmgmt.PolicySolarOnly || set.StoragePriority != lastmgmt.CarsBeforeStorage {
+		t.Fatalf("the portal's choice did not arrive: %+v", set)
+	}
+	// A later document that says nothing about the source KEEPS it - the whole
+	// point of PATCH, and the reason absent is not the same as „schnell".
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","grid_limit_kw":300,"published_at":"2026-08-20T13:30:00Z"}`))
+	set = a.OcppSettings()
+	if set.SurplusPolicy != lastmgmt.PolicySolarOnly || set.StoragePriority != lastmgmt.CarsBeforeStorage {
+		t.Fatalf("an absent field must keep the customer's choice: %+v", set)
+	}
+	if set.GridLimitKw != 300 {
+		t.Fatalf("the limit of the same document must apply: %v", set.GridLimitKw)
+	}
+}
+
+// TestAnUnknownSourceWordChangesNOTHING - a document we cannot read must never
+// become a setting, and it must not half-apply either.
+func TestAnUnknownSourceWordChangesNOTHING(t *testing.T) {
+	a := chargingCfgAgent(t)
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","grid_limit_kw":277,"surplus_policy":"hoffentlich",
+	  "published_at":"2026-08-20T13:24:00Z"}`))
+	set := a.OcppSettings()
+	if set.GridLimitKw != 0 {
+		t.Fatalf("a refused document must not apply its OTHER fields either: %v", set.GridLimitKw)
+	}
+	if set.SurplusPolicy != lastmgmt.PolicyFast {
+		t.Fatalf("the box keeps its own choice: %q", set.SurplusPolicy)
+	}
+}

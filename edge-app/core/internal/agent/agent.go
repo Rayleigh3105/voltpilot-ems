@@ -1138,6 +1138,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnRegisterWrite:  a.onRegisterWrite,
 		OnControlCert:    a.onControlCert,
 		OnChargingConfig: a.onChargingConfig,
+		OnChargingBoost:  a.onChargingBoost,
 		// Verbrauchssteuerung §11/§14.13: der manuelle Eingriff. NICHT retained -
 		// siehe override.go.
 		OnDesiredDownlink: a.onDesiredDownlink,

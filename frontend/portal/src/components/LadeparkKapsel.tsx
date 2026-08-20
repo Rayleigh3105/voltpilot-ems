@@ -7,17 +7,30 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { fmtNum } from '../format';
 import {
   aktivierenFolgen,
+  asPolicy,
+  asStorage,
   chargerName,
   GRENZE_FEHLT,
   grenzeFehler,
+  kombinationsStreifen,
   LADEPARK_LINE,
+  POLICY_DEFAULT,
+  POLICY_FOOTER,
+  POLICY_HELP,
+  POLICY_LABEL,
   PV_UEBERSCHUSS_LINE,
   PV_UEBERSCHUSS_OHNE_PV,
+  STORAGE_HELP,
+  STORAGE_LABEL,
+  surplusLine,
+  ueberschussVerfuegbar,
   VERTEILUNG_TEXT,
   VORRANG_OHNE_AUSWAHL,
   VORRANG_TEXT,
   type ChargingConfig,
   type SiteCharging,
+  type StoragePriority,
+  type SurplusPolicy,
 } from '../ladepunkte';
 import './LadeparkKapsel.css';
 
@@ -68,10 +81,23 @@ export function LadeparkKapsel({
   }, [site.id]);
 
   const limit = config?.gridLimitKw ?? null;
+  const verfuegbar = ueberschussVerfuegbar(hasPv, charging);
+  // ⚠ Nicht gewählt ist NICHT „schnell": die Karte zeigt die Vorgabe INNERHALB
+  // der Karte, und erst ein Klick macht daraus eine gespeicherte Aussage.
+  const policy = asPolicy(config?.surplusPolicy) ?? POLICY_DEFAULT;
+  const storage = asStorage(config?.storagePriority) ?? 'speicher_vor_auto';
+  const hasStorage = charging.budget?.surplusBatteryKw != null;
+  const boxLine = surplusLine(charging.budget);
+  const kombi = kombinationsStreifen(charging.budget);
   const priorities = new Set(config?.priorityChargePointIds ?? []);
   const inputError = draft.trim() === '' ? null : grenzeFehler(draft);
 
-  async function save(body: { gridLimitKw?: number; priorityChargePointIds?: string[] }) {
+  async function save(body: {
+    gridLimitKw?: number;
+    priorityChargePointIds?: string[];
+    surplusPolicy?: SurplusPolicy;
+    storagePriority?: StoragePriority;
+  }) {
     setBusy(true);
     setError(null);
     try {
@@ -107,19 +133,66 @@ export function LadeparkKapsel({
             </div>
             <p>{LADEPARK_LINE}</p>
           </article>
-          <article className="vp-ladepark-card off">
+          <article className={`vp-ladepark-card${verfuegbar ? '' : ' off'}`}>
             <div className="vp-ladepark-card-head">
               <h3>PV-Überschussladen</h3>
-              <Badge variant="off">nicht verfügbar</Badge>
+              <Badge variant={verfuegbar ? 'ok' : 'off'}>
+                {verfuegbar ? 'aktiv' : 'nicht verfügbar'}
+              </Badge>
             </div>
             <p>{PV_UEBERSCHUSS_LINE}</p>
-            <p className="vp-ladepark-reason">
-              {hasPv
-                ? 'Für Ladepunkte kann VoltPilot den Sonnenstrom heute noch nicht bevorzugen - Ihre Anschlussgrenze wird trotzdem jederzeit gehalten.'
-                : PV_UEBERSCHUSS_OHNE_PV}
-            </p>
+            {!verfuegbar && <p className="vp-ladepark-reason">{PV_UEBERSCHUSS_OHNE_PV}</p>}
+            {verfuegbar && (
+              <>
+                <fieldset className="vp-ladepark-choice">
+                  <legend>Ihre Priorität</legend>
+                  {(['nur_sonne', 'sonne_zuerst', 'schnell'] as SurplusPolicy[]).map((p) => (
+                    <label key={p} className="vp-ladepark-radio">
+                      <input
+                        type="radio"
+                        name="vp-surplus-policy"
+                        value={p}
+                        checked={policy === p}
+                        disabled={busy}
+                        onChange={() => void save({ surplusPolicy: p })}
+                      />
+                      <span>
+                        <strong>{POLICY_LABEL[p]}</strong> - {POLICY_HELP[p]}
+                      </span>
+                    </label>
+                  ))}
+                  <p className="vp-ladepark-hint">{POLICY_FOOTER}</p>
+                </fieldset>
+                {/* ⚠ Die Speicher-Frage erscheint NUR, wo es einen Speicher gibt -
+                    sonst wäre sie eine Frage über ein Gerät, das nicht da ist. */}
+                {hasStorage && (
+                  <fieldset className="vp-ladepark-choice">
+                    <legend>Wer bekommt den Überschuss zuerst?</legend>
+                    {(['speicher_vor_auto', 'auto_vor_speicher'] as StoragePriority[]).map((v) => (
+                      <label key={v} className="vp-ladepark-radio">
+                        <input
+                          type="radio"
+                          name="vp-storage-priority"
+                          value={v}
+                          checked={storage === v}
+                          disabled={busy}
+                          onChange={() => void save({ storagePriority: v })}
+                        />
+                        <span>
+                          <strong>{STORAGE_LABEL[v]}</strong> - {STORAGE_HELP[v]}
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+                {/* Der Satz der BOX über die laufende Bahn, unverändert. */}
+                {boxLine && <p className="vp-ladepark-managed">{boxLine}</p>}
+              </>
+            )}
           </article>
         </div>
+
+        {kombi && <p className="vp-ladepark-kombi">{kombi}</p>}
 
         <div className="vp-ladepark-row">
           <div>

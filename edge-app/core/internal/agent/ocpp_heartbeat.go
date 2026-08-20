@@ -49,7 +49,19 @@ func (a *Agent) chargersSummary() *cloud.ChargersSummary {
 		SafeWorstCaseKw:  info.SafeWorstCaseKw,
 		MaxHouseLoadKw:   info.MaxHouseLoadKw,
 		ConnectorCount:   info.ConnectorCount,
-		Chargers:         make([]cloud.ChargerEntry, 0, len(info.Chargers)),
+
+		SurplusPolicy:     info.SurplusPolicy,
+		StoragePriority:   info.StoragePriority,
+		SurplusActive:     info.SurplusActive,
+		SurplusKw:         info.SurplusKw,
+		SurplusMode:       info.SurplusMode,
+		SurplusNote:       info.SurplusNote,
+		SurplusBlind:      info.SurplusBlind,
+		SurplusTotalKw:    info.SurplusTotalKw,
+		SurplusBatteryKw:  info.SurplusBatteryKw,
+		SourceAllocatedKw: info.SourceAllocatedKw,
+
+		Chargers: make([]cloud.ChargerEntry, 0, len(info.Chargers)),
 	}
 	for _, c := range info.Chargers {
 		out.Chargers = append(out.Chargers, chargerEntry(c))
@@ -80,6 +92,7 @@ func chargerEntry(c state.OcppCharger) cloud.ChargerEntry {
 			Readback:      con.Readback,
 			ReadbackNote:  con.ReadbackNote,
 			SessionSince:  msTime(con.SessionSince),
+			Boost:         con.Boost,
 		})
 	}
 	return e

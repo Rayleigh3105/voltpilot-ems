@@ -38,6 +38,8 @@ export interface ChargeConnector {
   readback?: string | null;
   readbackNote?: string | null;
   sessionSince?: string | null;
+  /** An diesem Stecker läuft „Jetzt voll laden" (Stufe 4). */
+  boost?: boolean;
 }
 
 export interface ChargePoint {
@@ -56,6 +58,12 @@ export interface ChargePoint {
   reportedAt?: string | null;
   connectors?: ChargeConnector[] | null;
 }
+
+/** Die drei QUELLEN-Prioritäten des Kunden (Stufe 4, Mockups §2b). */
+export type SurplusPolicy = 'nur_sonne' | 'sonne_zuerst' | 'schnell';
+
+/** Wer den Sonnenüberschuss zuerst bekommt. */
+export type StoragePriority = 'speicher_vor_auto' | 'auto_vor_speicher';
 
 export interface ChargingBudget {
   deviceId: string;
@@ -81,6 +89,17 @@ export interface ChargingBudget {
   safeWorstCaseKw?: number | null;
   maxHouseLoadKw?: number | null;
   connectorCount: number;
+  // --- Stufe 4: die QUELLEN-Bahn, so wie die BOX sie fährt ---
+  surplusPolicy?: string | null;
+  storagePriority?: string | null;
+  surplusActive?: boolean;
+  surplusKw?: number | null;
+  surplusMode?: string | null;
+  surplusNote?: string | null;
+  surplusBlind?: boolean;
+  surplusTotalKw?: number | null;
+  surplusBatteryKw?: number | null;
+  sourceAllocatedKw?: number | null;
   reportedAt?: string | null;
 }
 
@@ -93,8 +112,23 @@ export interface SiteCharging {
 export interface ChargingConfig {
   gridLimitKw: number | null;
   priorityChargePointIds: string[];
+  /**
+   * Die QUELLEN-Wahl (Stufe 4). null = der Kunde hat nichts gewählt und die Box
+   * behält ihre eigene Einstellung - das ist NICHT dasselbe wie `schnell`.
+   */
+  surplusPolicy?: SurplusPolicy | null;
+  storagePriority?: StoragePriority | null;
   updatedAt?: string | null;
   updatedBy?: string | null;
+}
+
+/** Die Antwort auf „Jetzt voll laden". */
+export interface ChargingBoostResult {
+  chargePointId: string;
+  connectorId: number;
+  active: boolean;
+  requestedAt?: string | null;
+  note: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +222,14 @@ export interface LadevorgangRow {
   tone: LadeTone;
   /** Der Grund, wo es einen gibt - der Satz der Box, unverändert. */
   reason: string | null;
+  /**
+   * Das MASCHINEN-Wort desselben Grundes (`kein_ueberschuss`, `budget`, …).
+   * Es steht NEBEN dem deutschen Satz, damit keine Fläche einen deutschen Satz
+   * nach Stichworten durchsuchen muss - die Haus-Regel des `target_verdict`.
+   * Ein Wort, das dieser Portal-Stand nicht kennt, reist als Datum mit und
+   * begründet nichts.
+   */
+  reasonCode: string | null;
   /** Gemessene Leistung; null = die Säule meldet keine (nie eine 0). */
   powerKw: number | null;
   /** Zugeteilt; null = dieser Stecker ist nicht Teil der Entscheidung. */
@@ -198,6 +240,11 @@ export interface LadevorgangRow {
   /** „dran in ca. 2 Min." - null, wenn kein Termin berechenbar ist. */
   nextTurn: string | null;
   priority: boolean;
+  /** Der Stecker, an dem dieser Ladevorgang hängt - für „Jetzt voll laden". */
+  chargePointId: string;
+  connectorId: number;
+  /** Diese Ladung läuft auf Wunsch des Kunden, ohne die Quellen-Bahn. */
+  boost: boolean;
 }
 
 /** Der Name einer Säule: der vergebene, sonst ihre Kennung (nie erfunden). */
@@ -233,12 +280,18 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
   const charging = con.charging && (power == null || power > 0.05);
   const faulted = con.status === 'Faulted' || con.status === 'Unavailable';
   let word = 'frei';
+  // Das Wort OHNE den Übersteuerungs-Zusatz: der Verteiler kennt „Jetzt voll
+  // laden" nicht und meldet für dieselbe Sekunde weiter „lädt".
+  let baseWord = 'frei';
   let tone: LadeTone = 'ruhig';
   if (faulted) {
     word = 'Störung an der Säule';
     tone = 'stoerung';
   } else if (charging) {
-    word = 'lädt';
+    // ⚠ Eine übersteuerte Ladung SAGT es: eine volle Ladung, die niemand
+    // angefordert hat, wäre ein stiller Bruch der eigenen Priorität des Kunden.
+    word = con.boost ? 'lädt voll auf Ihren Wunsch' : 'lädt';
+    baseWord = 'lädt';
     tone = 'laedt';
   } else if (con.sessionSince) {
     word = 'wartet';
@@ -250,14 +303,23 @@ function rowFor(c: ChargePoint, con: ChargeConnector, nowMs?: number): Ladevorga
     tone,
     // ⚠ Der Grund wird nur genannt, wenn er MEHR sagt als das Wort: der
     // Verteiler nennt einen ladenden Stecker selbst „lädt", und die Zeile
-    // zweimal dasselbe sagen zu lassen ist Rauschen, kein Beleg.
-    reason: sameWord(con.reasonText, word) ? null : text(con.reasonText),
+    // zweimal dasselbe sagen zu lassen ist Rauschen, kein Beleg. Verglichen
+    // wird auch gegen das BASIS-Wort - eine übersteuerte Ladung trägt sonst
+    // „lädt" unter „lädt voll auf Ihren Wunsch".
+    reason:
+      sameWord(con.reasonText, word) || sameWord(con.reasonText, baseWord)
+        ? null
+        : text(con.reasonText),
+    reasonCode: text(con.reason),
     powerKw: power,
     allocatedKw: allocated,
     socPct: num(con.socPct),
     since: con.sessionSince ? `seit ${clock(con.sessionSince)}` : null,
     nextTurn: turnIn(con.nextTurn, nowMs),
     priority: c.priority === true,
+    chargePointId: c.chargePointId,
+    connectorId: con.connectorId,
+    boost: con.boost === true,
   };
 }
 
@@ -351,6 +413,130 @@ export const VORRANG_TEXT =
 
 export const VORRANG_OHNE_AUSWAHL =
   'Zurzeit hat keine Säule Vorrang - alle fair. Mit Vorrang lädt die gewählte Säule zuerst voll; die Wartezeit der anderen steigt, und genau das sagen wir dort dann ehrlich an.';
+
+// ---------------------------------------------------------------------------
+// PV-Überschussladen (Stufe 4) - Mockups §2a/§2b, Texte WÖRTLICH
+// ---------------------------------------------------------------------------
+
+/** Die Kunden-Wörter der drei Prioritäten. Sie leben HIER und nirgends sonst. */
+export const POLICY_LABEL: Record<SurplusPolicy, string> = {
+  nur_sonne: 'Nur Sonnenstrom',
+  sonne_zuerst: 'Sonne zuerst, Netz wenn günstig',
+  schnell: 'Schnell laden',
+};
+
+export const POLICY_HELP: Record<SurplusPolicy, string> = {
+  nur_sonne:
+    'Geladen wird ausschließlich Ihr Überschuss. Zieht eine Wolke auf, pausiert das Laden, statt Netzstrom zu kaufen.',
+  sonne_zuerst:
+    'Der Überschuss wird immer zuerst genutzt. Netzstrom kommt nur dazu, wenn ein Fahrzeug sonst stehen bliebe - so werden Fahrzeuge planbar voll.',
+  schnell: 'Volle verfügbare Leistung, Quelle egal. Die Anschlussgrenze gilt natürlich weiter.',
+};
+
+/** Die Vorgabe INNERHALB der Karte - nicht die einer Anlage, die nie gefragt wurde. */
+export const POLICY_DEFAULT: SurplusPolicy = 'sonne_zuerst';
+
+export const POLICY_FOOTER =
+  'Gilt für alle Säulen. Einen einzelnen Ladevorgang übersteuern Sie an seiner Zeile mit „Jetzt voll laden".';
+
+export const STORAGE_LABEL: Record<StoragePriority, string> = {
+  speicher_vor_auto: 'Speicher vor Auto',
+  auto_vor_speicher: 'Auto vor Speicher',
+};
+
+export const STORAGE_HELP: Record<StoragePriority, string> = {
+  speicher_vor_auto:
+    'Der Speicher nimmt den Überschuss zuerst; die Fahrzeuge bekommen, was übrig bleibt.',
+  auto_vor_speicher:
+    'Die Fahrzeuge bekommen den Überschuss zuerst; der Speicher wird währenddessen auf den Rest begrenzt.',
+};
+
+/** Ein Wort, das wir nicht kennen, wird NICHT zu einer Auswahl. */
+export function asPolicy(v: string | null | undefined): SurplusPolicy | null {
+  return v === 'nur_sonne' || v === 'sonne_zuerst' || v === 'schnell' ? v : null;
+}
+
+export function asStorage(v: string | null | undefined): StoragePriority | null {
+  return v === 'speicher_vor_auto' || v === 'auto_vor_speicher' ? v : null;
+}
+
+/**
+ * Der SATZ der Box über die Quellen-Bahn, unverändert durchgereicht.
+ *
+ * ⚠ Er entsteht EINMAL im Lastmanagement der Box; nur sie kennt die Zahlen
+ * dahinter, und zwei Renderings desselben Urteils könnten es sonst verschieden
+ * sagen (die Regel des Einspeise-Wächters, hier ein weiteres Mal).
+ */
+export function surplusLine(budget: ChargingBudget | null): string | null {
+  return text(budget?.surplusNote);
+}
+
+/**
+ * Der KOMBINATIONS-STREIFEN (Mockups §2b, wörtlich): wie die zwei Bahnen
+ * ineinandergreifen, mit den ECHTEN Zahlen dieser Anlage.
+ *
+ * Ohne aktive Quellen-Bahn gibt es nichts zu kombinieren - dann ist es EINE
+ * Grenze, und ein Streifen über zwei wäre erfunden.
+ */
+export function kombinationsStreifen(budget: ChargingBudget | null): string | null {
+  if (!budget || budget.surplusActive !== true) return null;
+  const quelle = num(budget.surplusKw);
+  const physisch = num(budget.budgetKw);
+  if (quelle == null || physisch == null) return null;
+  return (
+    'So greifen sie ineinander: Das Lastmanagement begrenzt, WIE VIEL insgesamt fließen darf ' +
+    `(jetzt ${KW(physisch)} physisch möglich). Das Überschussladen bestimmt, WOHER der Strom ` +
+    `kommt (jetzt ${KW(quelle)} aus Ihrer Sonne). Es gilt immer die niedrigere Grenze - und ` +
+    'keine von beiden kann die Anschlussgrenze oder den Ausfall-Schutz aufweichen.'
+  );
+}
+
+/**
+ * Wie viel der aktuellen Ladeleistung die Sonne deckt.
+ *
+ * ⚠ Es ist eine STANDORT-Aussage, nie eine Solarquote je Fahrzeug: Strom ist am
+ * Hub nicht etikettiert (Mockups §1a). null, solange nichts gedeckt wird.
+ */
+export function sonnenDeckung(budget: ChargingBudget | null): string | null {
+  const kw = num(budget?.sourceAllocatedKw);
+  if (kw == null || kw <= 0.05) return null;
+  return `${KW(kw)} davon deckt gerade Ihre Sonne`;
+}
+
+/** Ohne PV ist die Karte SICHTBAR ausgegraut - mit Grund, nie versteckt. */
+export function ueberschussVerfuegbar(hasPv: boolean, charging: SiteCharging): boolean {
+  return hasPv && charging.chargers.length > 0;
+}
+
+// --- „Jetzt voll laden" ----------------------------------------------------
+
+/**
+ * Der Knopf wird NUR angeboten, wo er etwas ändern kann: ein laufender
+ * Ladevorgang, den die Quellen-Bahn wirklich zurückhält. Ein Knopf, der
+ * strukturell nichts bewirkt, ist Lärm.
+ */
+export function boostbar(budget: ChargingBudget | null, row: LadevorgangRow): boolean {
+  if (!budget || budget.surplusActive !== true) return false;
+  if (row.boost) return false;
+  // ⚠ Geprüft wird das MASCHINEN-Wort, nie der deutsche Satz: der trägt bei
+  // „kein Überschuss" zusätzlich die Priorität und passte auf keinen Vergleich.
+  return row.tone === 'laedt' || row.reasonCode === 'kein_ueberschuss' || row.word === 'wartet';
+}
+
+/**
+ * Die Folgenliste des Haus-Dialogs (Mockups §2b, WÖRTLICH) - inklusive der zwei
+ * Punkte, die sagen, was GLEICH bleibt.
+ */
+export function boostFolgen(): string[] {
+  return [
+    'Dieser Ladevorgang lädt ab sofort mit voller verfügbarer Leistung - auch mit Netzstrom.',
+    'Ihre Überschuss-Priorität bleibt für alle anderen Ladevorgänge unverändert.',
+    'Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten weiter - daran ändert dieser Knopf nichts.',
+    'Gilt, bis das Fahrzeug voll ist, längstens 4 Stunden - danach gilt wieder Ihre Priorität.',
+  ];
+}
+
+export const BOOST_INTRO = 'Sie übersteuern Ihre Überschuss-Priorität für diesen einen Ladevorgang.';
 
 /**
  * Der Ausfall-Schutz in drei Schritten - und der dritte trägt die RECHNUNG,

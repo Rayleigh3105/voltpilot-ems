@@ -11,8 +11,19 @@ import {
   grenzeFehler,
   idleLine,
   ladevorgangRows,
+  asPolicy,
+  asStorage,
+  BOOST_INTRO,
+  boostbar,
+  boostFolgen,
+  kombinationsStreifen,
+  POLICY_DEFAULT,
+  POLICY_LABEL,
   PV_UEBERSCHUSS_OHNE_PV,
+  sonnenDeckung,
+  surplusLine,
   turnIn,
+  ueberschussVerfuegbar,
   type ChargePoint,
   type ChargingBudget,
 } from './ladepunkte';
@@ -271,5 +282,188 @@ describe('Anlagen-Modell', () => {
     // Seine Leistung verteilt das Lastmanagement auf der Box - nicht eine Regel.
     expect(charger.summary).toContain('das Lastmanagement');
     expect(charger.summary).not.toContain('Regel');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stufe 4: PV-Überschussladen + „Jetzt voll laden"
+// ---------------------------------------------------------------------------
+
+/** Zwei Säulen: eine lädt, eine wartet ohne Überschuss. */
+const surplusChargers: ChargePoint[] = [
+  saeule({
+    connectors: [
+      { connectorId: 1, charging: true, powerKw: 45, allocatedKw: 45, reason: 'laedt' },
+      {
+        connectorId: 2,
+        charging: false,
+        sessionSince: '2026-08-20T12:41:00Z',
+        reason: 'kein_ueberschuss',
+        reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)',
+      },
+    ],
+  }),
+];
+
+/** Dieselbe Anlage, eine Ausbaustufe später: mit Sonne und einer Übersteuerung. */
+const surplusBudget: ChargingBudget = {
+  ...budget,
+  budgetKw: 197,
+  surplusPolicy: 'nur_sonne',
+  storagePriority: 'auto_vor_speicher',
+  surplusActive: true,
+  surplusKw: 110,
+  surplusMode: 'gemessen',
+  surplusNote: 'Ihre Priorität: Nur Sonnenstrom. Für die Fahrzeuge stehen gerade 110,0 kW zur Verfügung.',
+  surplusTotalKw: 130,
+  surplusBatteryKw: 20,
+  sourceAllocatedKw: 89,
+};
+
+describe('die Quellen-Bahn wird DURCHGEREICHT, nie neu formuliert', () => {
+  it('nennt den Satz der Box unverändert', () => {
+    // ⚠ Er entsteht EINMAL im Lastmanagement der Box; nur sie kennt die Zahlen
+    // dahinter, und zwei Renderings dürfen dasselbe Urteil nicht verschieden sagen.
+    expect(surplusLine(surplusBudget)).toBe(surplusBudget.surplusNote);
+    expect(surplusLine(budget)).toBeNull();
+    expect(surplusLine(null)).toBeNull();
+  });
+
+  it('zeigt BEIDE Wahrheiten - sonst liest die Drosselung wie ein Defekt', () => {
+    const streifen = kombinationsStreifen(surplusBudget);
+    expect(streifen).toMatch(/197 kW physisch möglich/);
+    expect(streifen).toMatch(/110 kW aus Ihrer Sonne/);
+    expect(streifen).toMatch(/niedrigere Grenze/);
+    // Ohne Quellen-Bahn gibt es nichts zu kombinieren - EINE Grenze ist EINE.
+    expect(kombinationsStreifen(budget)).toBeNull();
+    expect(kombinationsStreifen(null)).toBeNull();
+  });
+
+  it('sagt die Sonnen-Deckung als STANDORT-Aussage, nie je Fahrzeug', () => {
+    expect(sonnenDeckung(surplusBudget)).toBe('89 kW davon deckt gerade Ihre Sonne');
+    // Deckt sie nichts, wird nichts behauptet - nie eine erfundene 0.
+    expect(sonnenDeckung({ ...surplusBudget, sourceAllocatedKw: 0 })).toBeNull();
+    expect(sonnenDeckung(budget)).toBeNull();
+  });
+});
+
+describe('die Prioritäten-Wahl', () => {
+  it('kennt genau die drei Wörter des Vertrags', () => {
+    expect(asPolicy('nur_sonne')).toBe('nur_sonne');
+    expect(asPolicy('schnell')).toBe('schnell');
+    // Ein Wort, das wir nicht kennen, wird NICHT zu einer Auswahl.
+    expect(asPolicy('hoffentlich')).toBeNull();
+    expect(asPolicy(null)).toBeNull();
+    expect(asStorage('auto_vor_speicher')).toBe('auto_vor_speicher');
+    expect(asStorage('irgendwas')).toBeNull();
+  });
+
+  it('hat „Sonne zuerst" als Vorgabe INNERHALB der Karte', () => {
+    // ⚠ Nicht dieselbe Vorgabe wie die einer Anlage, die nie gefragt wurde: die
+    // ist „schnell" (gar keine Quellen-Bahn) und lebt auf der BOX.
+    expect(POLICY_DEFAULT).toBe('sonne_zuerst');
+    expect(POLICY_LABEL[POLICY_DEFAULT]).toMatch(/Sonne zuerst/);
+  });
+
+  it('blendet die Karte ohne PV aus - sichtbar, mit Grund', () => {
+    const charging = { budget: surplusBudget, chargers: surplusChargers };
+    expect(ueberschussVerfuegbar(true, charging)).toBe(true);
+    expect(ueberschussVerfuegbar(false, charging)).toBe(false);
+    expect(PV_UEBERSCHUSS_OHNE_PV).toMatch(/keine PV/);
+  });
+});
+
+describe('„Jetzt voll laden"', () => {
+  const rows = ladevorgangRows(surplusChargers);
+
+  it('wird nur angeboten, wo es etwas ändern KANN', () => {
+    const laden = rows.find((r) => r.tone === 'laedt')!;
+    expect(boostbar(surplusBudget, laden)).toBe(true);
+    // Ohne Quellen-Bahn gibt es nichts zu übersteuern.
+    expect(boostbar(budget, laden)).toBe(false);
+    expect(boostbar(null, laden)).toBe(false);
+    // Und ein schon übersteuerter Ladevorgang bekommt den anderen Knopf.
+    expect(boostbar(surplusBudget, { ...laden, boost: true })).toBe(false);
+  });
+
+  it('sagt in der Folgenliste auch, was GLEICH bleibt', () => {
+    const folgen = boostFolgen();
+    expect(BOOST_INTRO).toMatch(/diesen einen Ladevorgang/);
+    expect(folgen.join(' ')).toMatch(/auch mit Netzstrom/);
+    // Die zwei Punkte, die eine Übersteuerung ehrlich machen.
+    expect(folgen.join(' ')).toMatch(/für alle anderen Ladevorgänge unverändert/);
+    expect(folgen.join(' ')).toMatch(/Anschlussgrenze.*gelten weiter/);
+    expect(folgen.join(' ')).toMatch(/längstens 4 Stunden/);
+  });
+
+  it('macht eine übersteuerte Ladung in ihrer Zeile SICHTBAR', () => {
+    const boosted = ladevorgangRows([
+      saeule({ connectors: [{ connectorId: 1, charging: true, powerKw: 50, boost: true }] }),
+    ]);
+    // Eine volle Ladung, die niemand angefordert hat, wäre ein stiller Bruch
+    // der eigenen Priorität des Kunden.
+    expect(boosted[0].word).toBe('lädt voll auf Ihren Wunsch');
+    expect(boosted[0].boost).toBe(true);
+    // Und die Zeile weiß, WELCHEN Ladevorgang sie meint.
+    expect(boosted[0].chargePointId).toBe('saeule-1');
+    expect(boosted[0].connectorId).toBe(1);
+  });
+
+  it('sagt „lädt" nicht noch einmal unter „lädt voll auf Ihren Wunsch"', () => {
+    // Der Verteiler kennt die Übersteuerung nicht und meldet für dieselbe
+    // Sekunde weiter seinen eigenen Grund - im echten Browser aufgefallen.
+    const boosted = ladevorgangRows([
+      saeule({
+        connectors: [
+          {
+            connectorId: 1,
+            charging: true,
+            powerKw: 50,
+            boost: true,
+            reason: 'laedt',
+            reasonText: 'lädt',
+          },
+        ],
+      }),
+    ]);
+    expect(boosted[0].word).toBe('lädt voll auf Ihren Wunsch');
+    expect(boosted[0].reason).toBeNull();
+    // Ein Grund, der MEHR sagt, bleibt selbstverständlich stehen.
+    const anders = ladevorgangRows([
+      saeule({
+        connectors: [
+          {
+            connectorId: 1,
+            charging: true,
+            powerKw: 50,
+            boost: true,
+            reasonText: 'lädt mit reduzierter Leistung',
+          },
+        ],
+      }),
+    ]);
+    expect(anders[0].reason).toBe('lädt mit reduzierter Leistung');
+  });
+
+  it('prüft das MASCHINEN-Wort, nie den deutschen Satz', () => {
+    // Der Satz der Box trägt bei „kein Überschuss" zusätzlich die Priorität -
+    // ein Vergleich gegen ihn hätte NIE getroffen.
+    const wartend = ladevorgangRows([
+      saeule({
+        connectors: [
+          {
+            connectorId: 1,
+            charging: false,
+            reason: 'kein_ueberschuss',
+            reasonText: 'wartet — kein Überschuss (Ihre Priorität: Nur Sonnenstrom)',
+          },
+        ],
+      }),
+    ]);
+    expect(wartend[0].reasonCode).toBe('kein_ueberschuss');
+    expect(wartend[0].reason).toMatch(/Ihre Priorität/);
+    expect(boostbar(surplusBudget, wartend[0])).toBe(true);
+    // Ein Wort, das dieser Stand nicht kennt, begründet nichts.
+    expect(boostbar(surplusBudget, { ...wartend[0], reasonCode: 'neues_wort' })).toBe(false);
   });
 });

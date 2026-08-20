@@ -1399,6 +1399,7 @@ The edge flows are exercised end-to-end against the simulator (not a unit test):
 - `mqtt-provisioning.schema.json` - the zero-touch onboarding handshake (`provision/{ref}/hello` -> retained `provision/{ref}/config`); ADDITIVE, the frozen telemetry/schedule contracts are untouched. See "Zero-touch device onboarding".
 - `mqtt-ota-target.schema.json` - the Cloud -> Edge OTA assignment (retained QoS1 on `ems/{t}/{s}/{d}/v2/update`, OTA Stufe 2): the SIGNED manifest bytes travel base64-encoded so they arrive BYTE FOR BYTE (the signature goes over exactly them); the envelope itself is UNSIGNED and therefore routing/diagnostics only - every decision comes from the verified manifest. ADDITIVE: an older device never subscribes and the message sits unread. See "OTA Stufe 2".
 - `mqtt-ota-apply.schema.json` - the Cloud -> Edge ONE-SHOT apply approval (NON-retained QoS1 on `ems/{t}/{s}/{d}/v2/apply`, „Portal-Apply"): word for word the approval the operator used to give at the device's own `:8484` button, with another transport - it opens ONLY the first gate of the device's apply decision, for ONE release and ONE operation, and expires after 15 minutes. **NON-retained is load-bearing** (retained would be redelivered on every reconnect, so a one-shot approval would not be one), and `requested_at` is its second half: the device adopts that stamp as the start of its window instead of the arrival time, so a QoS1 message the broker redelivers late is already expired. ADDITIVE: an older device never subscribes. See „Admin-UX-Umbau P3".
+- `mqtt-charging-boost.schema.json` - die Cloud -> Edge EINMAL-Freigabe „Jetzt voll laden" (NICHT-retained QoS1 auf `ems/{t}/{s}/{d}/v2/charging-boost`, OCPP-Lastmanagement Stufe 4): wortgleich die Übersteuerung, die der Kunde an der `:8484`-Taste gibt, mit einem anderen Transport - sie nimmt GENAU EINEN Ladevorgang von der Quellen-Politik aus und rührt Anschlussgrenze, Sicherheitsabstand, §14a und das Ausfall-Profil NICHT an. **NICHT-retained ist tragend** (eine retained Übersteuerung käme bei jedem Verbindungsaufbau erneut, wäre also keine Einmal-Freigabe), und `requested_at` ist die zweite Hälfte: die Box übernimmt den Stempel als Beginn ihres Fensters statt des Empfangs-Zeitpunkts, eine nachgelieferte QoS1-Nachricht ist bei der Ankunft also abgelaufen. ADDITIV: eine ältere Box abonniert das Topic nie. Siehe „OCPP-Lastmanagement Stufe 4".
 - `mqtt-data-purge.schema.json` - the device data purge ("Datenaufzeichnungen löschen"): edge -> cloud `purge_request` on the EXISTING status up-topic, cloud -> edge RETAINED `purge_data` command on the EXISTING command down-topic (no ACL change); ADDITIVE. See "Device data purge".
 - **`docs/contracts/examples/`** - the executable v1 fixtures (2 valid + 1 invalid per covered schema, the v2 discipline; `examples/README.md` says WHY each invalid one is invalid, since the schemas are `additionalProperties:false` and a `_why` key would invalidate for the wrong reason). Read BY PATH from real tests - `services/optimization/tests/test_contract.py` (jsonschema, both directions, plus a fixture-vs-publisher check) and `edge-app/core/internal/plan/plan_test.go` (the Go executor parses the same bytes) - so moving a fixture breaks the contract check deliberately.
 - `openapi.yaml` - portal API. The auth/sites/devices/telemetry/prices/weather/schedule/history and claim endpoints are **implemented** in `services/api`; KPIs are still a stub. Keep this file in sync when changing those endpoints.
@@ -2966,6 +2967,53 @@ zur Box kommt (Konzept §5.2, PR 11/12). Alles additiv.
   Edge `internal/chargingcfg` (7, inkl. der Fixtures PER PFAD) +
   `agent/charging_config_test.go` (3: PATCH, fremdes/kaputtes Dokument ändert
   nichts, eine Box ohne OCPP überlebt es).
+
+## OCPP-Lastmanagement Stufe 4: PV-Überschussladen und „Jetzt voll laden" aus dem Portal
+
+Die Cloud-Hälfte der letzten Stufe (Konzept `data/vp-ocpp-lastmgmt-konzept-w4`
+§2.8, Mockups `data/vp-ocpp-mockups-r5`; Captain-Entscheide: **die Prioritäten
+wählt der KUNDE · die Übersteuerung DARF Netzstrom ziehen · KEIN Feature-Flag**).
+Budget und Verteilung bleiben unverändert auf der Box (die Anschlussgrenze ist
+eine physische Grenze, E1); die Cloud PFLEGT die Wahl, SIEHT das Ergebnis und
+ERTEILT die Einmal-Freigabe.
+
+- **Die QUELLEN-Wahl reist auf dem BESTEHENDEN retained Dokument**
+  (`mqtt-charging-config.schema.json` additiv um `surplus_policy` /
+  `storage_priority` erweitert, `schema_version` bleibt 1.0) — kein zweites
+  Topic, keine Broker-Änderung, dieselbe PATCH-Semantik. **⚠ `null` heißt „dazu
+  sagt das Portal nichts" und ist NIE `schnell`**: das erste gespeicherte
+  Dokument einer Anlage darf ihr nicht still die auf `:8484` gepflegte Politik
+  nehmen. Gespeichert in `site_charging_config` (Migration `V20260831000000`,
+  zwei Spalten mit CHECK-Vokabular), geschrieben über denselben
+  `saveSourceChoice`-Upsert wie die Grenze, validiert mit deutschem Grund.
+- **„Jetzt voll laden" ist eine EINMAL-Freigabe, kein Zustand**
+  (`ChargingBoostService` + `ChargingBoostPublisher` +
+  `POST /api/v1/sites/{siteId}/charging-boost`, RLS-gefenced wie jede
+  `/sites/**`-Route — kein `@PreAuthorize`, fremde Anlage 404). **⚠ Reihenfolge:
+  erst VERÖFFENTLICHEN, dann protokollieren** (die OTA-Apply-Doktrin) — geht die
+  Nachricht nicht hinaus (503), darf keine Zeile eine Freigabe behaupten, die es
+  nie gab. Ein Stecker ohne laufende Sitzung ist ein benannter 409; die
+  Höchstdauer (4 h) prüfen BEIDE Seiten.
+- **⚠ Die Cloud entscheidet NICHTS über den Ladevorgang.** Ob der Stecker
+  existiert, ob dort wirklich geladen wird und wie die Freigabe im Verteiler
+  wirkt, entscheidet die Box (`Agent.OcppBoost` — derselbe Kern, den die
+  `:8484`-Taste ruft). Es gibt also weiterhin GENAU EINEN Übersteuerungs-Pfad.
+- **Der Rückkanal ist additiv am BESTEHENDEN `chargers`-Block:** je Standort die
+  Quellen-Wahl, der gemessene Überschuss (gesamt / an den Speicher / an die
+  Fahrzeuge), der Modus (`gemessen`/`nicht_belegbar`) und der deutsche Satz der
+  Box; je Stecker das Flag `boost`. Gespeichert in `device_charging_budget` /
+  `device_charge_connector` (dieselbe Migration), **jedes Wort gegen ein
+  geschlossenes Vokabular geprüft und sonst VERWORFEN** (die Regel des
+  `ChargerStatusListener`), jeder fehlende Messwert bleibt NULL — ein Ladepunkt,
+  der nichts meldet, hat nachweislich keinen Überschuss von 0.
+- **Beweise:** `ChargingConfigPublisherTest` (+1: die Wahl reist, Abwesenheit ist
+  nicht `schnell`) · `ChargingBoostPublisherTest` (5: die Draht-Form gegen die
+  Kontrakt-Fixtures, nicht-retained, der Stempel) · `ChargerStatusListenerTest`
+  (+3: die Überschuss-Felder, das verworfene Wort, der ältere Herzschlag) ·
+  `ChargerApiTest` (+1, echtes EMQX: die Wahl wird gespeichert und zugestellt,
+  „Jetzt voll laden" erreicht GENAU EINEN Ladevorgang, alle Ablehnungen ohne
+  Wirkung, Mandanten-Zaun) · Edge `internal/chargingboost` +
+  `agent/charging_boost_test.go`. Portal-Seite in `frontend/portal/AGENTS.md`.
 
 ## Maintaining this file
 
