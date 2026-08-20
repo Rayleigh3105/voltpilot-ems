@@ -602,9 +602,32 @@ export function befehleHash(siteId: string, entityId?: string | null): string {
 
 /** Die Komponente aus einem `?komponente=`-Hash, oder null. */
 export function parseBefehleKomponente(hash: string): string | null {
+  return befehleParam(hash, 'komponente');
+}
+
+/**
+ * Die Adresse der BEFEHLE-Seite eines GERÄTS (Anlagen-Zentrale Stufe 1,
+ * Konzept `vp-anlagen-zentrale-konzept-h6` §7.4, Captain-Entscheid D3: die
+ * Befehle-Seite bleibt, die Geräteseite zeigt die gefilterte Sicht).
+ *
+ * Bewusst eine EIGENE Funktion neben {@link befehleHash} statt eines zweiten
+ * Arguments: Komponente und Gerät sind zwei verschiedene Fragen, und der
+ * Server lehnt beides zusammen mit 400 ab - eine Signatur, die sie gleichzeitig
+ * annimmt, lüde genau dazu ein.
+ */
+export function befehleGeraetHash(siteId: string, geraetRef: string): string {
+  return `#/anlage/${siteId}/befehle?geraet=${encodeURIComponent(geraetRef)}`;
+}
+
+/** Das Gerät aus einem `?geraet=`-Hash, oder null. */
+export function parseBefehleGeraet(hash: string): string | null {
+  return befehleParam(hash, 'geraet');
+}
+
+function befehleParam(hash: string, name: string): string | null {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
   if (rest.length === 0) return null;
-  const value = new URLSearchParams(rest.join('?')).get('komponente');
+  const value = new URLSearchParams(rest.join('?')).get(name);
   return value && value.trim() ? value.trim() : null;
 }
 

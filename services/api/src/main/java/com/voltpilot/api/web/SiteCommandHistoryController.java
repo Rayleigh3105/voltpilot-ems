@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.command.CommandLogReader;
+import com.voltpilot.api.command.DeviceScopes;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.CommandHistoryDto;
@@ -51,15 +52,19 @@ public class SiteCommandHistoryController {
 
     private final SiteRepository sites;
     private final CommandLogReader reader;
+    private final DeviceScopes scopes;
 
-    public SiteCommandHistoryController(SiteRepository sites, CommandLogReader reader) {
+    public SiteCommandHistoryController(SiteRepository sites, CommandLogReader reader,
+            DeviceScopes scopes) {
         this.sites = sites;
         this.reader = reader;
+        this.scopes = scopes;
     }
 
     @GetMapping("/command-history")
     public CommandHistoryDto commandHistory(@PathVariable UUID siteId,
             @RequestParam(name = "entity", required = false) UUID entityId,
+            @RequestParam(name = "device", required = false) String device,
             @RequestParam(name = "range", defaultValue = "day") String range,
             @RequestParam(name = "at", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at) {
@@ -71,12 +76,23 @@ public class SiteCommandHistoryController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Unbekannter Zeitraum - erlaubt sind 'day' und 'week'.");
         }
+        if (entityId != null && device != null) {
+            // Zwei verschiedene Fragen - „was ging an DIESE Komponente" und „was
+            // ging an DIESES Gerät". Eine still zu bevorzugen hiesse, eine der
+            // beiden Antworten unter dem falschen Etikett auszugeben.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Bitte entweder eine Komponente oder ein Gerät wählen, nicht beides.");
+        }
         if (entityId != null && !reader.entityExists(siteId, entityId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
+        DeviceScopes.Scope scope = device == null ? null : scopes.resolve(siteId, device);
+        if (device != null && scope == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
+        }
         LocalDate anchor = at != null ? at : LocalDate.now(HistoryRange.ZONE);
         HistoryRange.Window window = parsed.window(anchor);
-        return reader.forSite(siteId, entityId, window.from(), clampToNow(window.to()));
+        return reader.forSite(siteId, entityId, scope, window.from(), clampToNow(window.to()));
     }
 
     /**

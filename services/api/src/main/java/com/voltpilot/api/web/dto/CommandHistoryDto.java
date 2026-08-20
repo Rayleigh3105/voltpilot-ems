@@ -17,6 +17,16 @@ import java.util.UUID;
  * belastende. {@code null} heisst, dass für diese Anlage noch gar nicht
  * aufgezeichnet wurde.
  *
+ * <p><b>{@code deviceRef} ist der Echo des Geräte-Filters</b> (Anlagen-Zentrale
+ * Stufe 1): {@code null} = die ganze Anlage bzw. eine einzelne Komponente, sonst
+ * die Adresse, auf die eingegrenzt wurde. Die Antwort trägt bewusst KEINEN
+ * Geräte-NAMEN - den bildet das Portal aus seiner einen Namensableitung
+ * ({@code entityLabel.deviceName}), und ein zweiter hier wäre ein Zwilling, der
+ * abdriften kann. {@code deviceIsBox} unterscheidet die BOX (sie ist der
+ * Schreibweg der Anlage und trägt jede Zeile) vom Gerät DAHINTER (nur die Zeilen
+ * seiner Komponenten) - die Fläche darf das nicht raten, deshalb ist es ein
+ * Server-Fakt; {@code null} = gar nicht gefiltert.
+ *
  * <p><b>{@code writes} ist die F4-Antwort.</b> false = an diese Komponente geht
  * kein einziger Befehl, sie wird nur gelesen - genau die Frage
  * („drosselt IHR meine Anlage?"), die zwei Untersuchungsrunden gekostet hat.
@@ -34,8 +44,8 @@ import java.util.UUID;
  * Schreibzyklen-Zähler. Der Präzisions-Uplink (Stufe 2) hebt beides additiv.
  */
 public record CommandHistoryDto(Instant recordingSince, int accuracySeconds, Instant from,
-        Instant to, UUID entityId, String entityLabel, boolean writes, boolean truncated,
-        List<CommandEntryDto> entries, ControlStatusDto control,
+        Instant to, UUID entityId, String entityLabel, String deviceRef, Boolean deviceIsBox,
+        boolean writes, boolean truncated, List<CommandEntryDto> entries, ControlStatusDto control,
         CurtailmentStatusDto curtailment) {
 
     /**

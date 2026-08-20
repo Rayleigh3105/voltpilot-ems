@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandEntry, CommandHistory } from './api';
 import {
+  ANLAGENWEITE_BEFEHLE,
   aufzeichnungSeit,
   BEFEHLE_LABEL,
   deckelSatz,
   film,
   fussnote,
+  geraetKopfSatz,
+  geraeteAusschnitt,
   kopfSatz,
   leerSatz,
   NUR_LESEN,
@@ -426,5 +429,60 @@ describe('der VIERTE Strom `register`', () => {
     const [z] = film(history({ entries: [zeile] }), Date.parse(T1));
     expect(z.satz).toMatch(/vor Ort am Gerät/);
     expect(z.herkunft).toBe('vom Gerät gemeldet');
+  });
+});
+
+describe('die GERÄTE-Sicht (Anlagen-Zentrale Stufe 1)', () => {
+  it('unterscheidet die Box vom Gerät dahinter - das ist eine Aussage', () => {
+    // Die Box IST der Schreibweg der Anlage: jede Zeile gehört ihr.
+    expect(geraetKopfSatz({ geraet: 'VoltPilot-Box Pilsting', box: true, pfad: 'remote' }))
+      .toBe('VoltPilot-Box Pilsting · alle Befehle dieser Anlage.');
+    // Ein Gerät dahinter trägt nur SEINE - und sagt das.
+    expect(geraetKopfSatz({ geraet: 'Deye SUN-30K', box: false, pfad: null }))
+      .toBe('Deye SUN-30K · nur die Befehle an dieses Gerät.');
+    // Der Schreibweg gewinnt, wo er bekannt ist; ein unbekannter bleibt weg.
+    expect(geraetKopfSatz({ geraet: 'Deye SUN-30K', box: false, pfad: 'tou' }))
+      .toContain('Zeitprogramm des Wechselrichters');
+    expect(geraetKopfSatz({ geraet: 'Deye SUN-30K', box: false, pfad: 'quatsch' }))
+      .toBe('Deye SUN-30K · nur die Befehle an dieses Gerät.');
+  });
+
+  it('nennt ohne Namen das Gerät neutral statt zu raten', () => {
+    expect(geraetKopfSatz({ geraet: null, box: false, pfad: null }))
+      .toBe('Dieses Gerät · nur die Befehle an dieses Gerät.');
+  });
+
+  it('erklärt die Grenze, statt sie nur zu ziehen', () => {
+    // Eine anlagenweite Abregelung gehört der Box - der Satz sagt, WO sie steht.
+    expect(ANLAGENWEITE_BEFEHLE).toContain('Abregelung');
+    expect(ANLAGENWEITE_BEFEHLE).toContain('Box');
+  });
+
+  it('kappt den Ausschnitt am ÄLTESTEN Ende und SAGT, dass gekappt wurde', () => {
+    const entries = [1, 2, 3, 4, 5, 6, 7].map((n) =>
+      periode({ id: n, startedAt: `2026-08-16T0${n}:00:00Z`, endedAt: `2026-08-16T0${n}:30:00Z` }),
+    );
+    const v = geraeteAusschnitt(history({ entries }), Date.parse('2026-08-16T12:00:00Z'), 5);
+    expect(v.zeilen).toHaveLength(5);
+    // Wer auf ein Gerät schaut, will die LETZTEN Befehle sehen.
+    expect(v.zeilen[v.zeilen.length - 1].id).toBe(7);
+    expect(v.weitere).toBe(2);
+    expect(v.leer).toBeNull();
+  });
+
+  it('sagt bei leerem Ausschnitt den EHRLICHEN Grund', () => {
+    // Aufgezeichnet, aber nichts geschickt.
+    const leer = geraeteAusschnitt(history({ entries: [] }), Date.now(), 5);
+    expect(leer.zeilen).toHaveLength(0);
+    expect(leer.leer).toMatch(/kein Befehl geschickt/);
+    // Noch gar nicht hingesehen - die entlastende Aussage wäre erfunden.
+    const nie = geraeteAusschnitt(history({ entries: [], recordingSince: null }), Date.now(), 5);
+    expect(nie.leer).toMatch(/Aufzeichnung hat noch nicht begonnen/);
+    // Ein Gerät, an das gar nicht geschrieben wird: der Kopf trägt NUR_LESEN,
+    // die Liste wiederholt ihn nicht.
+    const nurLesen = geraeteAusschnitt(
+      history({ entries: [], writes: false }), Date.now(), 5,
+    );
+    expect(nurLesen.leer).toBe('Deshalb ist dieser Verlauf leer.');
   });
 });

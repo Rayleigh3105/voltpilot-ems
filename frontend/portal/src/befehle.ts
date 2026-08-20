@@ -173,11 +173,20 @@ export const NUR_LESEN =
 export function fussnote(accuracySeconds: number): string[] {
   return [
     'Der Verlauf wird 90 Tage aufbewahrt, danach gelöscht.',
-    `Ihr Gerät prüft laufend, ob der Befehl gehalten wird; aufgezeichnet wird das im `
-      + `${accuracySeconds}-Sekunden-Raster - ein Wechsel und zurück dazwischen bleibt unsichtbar.`,
+    genauigkeitsSatz(accuracySeconds),
     'Wie oft geschrieben wurde, zählen wir noch nicht mit - das kommt mit einem '
       + 'späteren Geräte-Update.',
   ];
+}
+
+/**
+ * Die GENAUIGKEIT in einem Satz - er steht auf der Befehle-Seite in der Fußnote
+ * und auf der Geräteseite direkt unter dem Ausschnitt. **Eine Quelle**, damit
+ * die zwei Flächen nie verschiedene Raster behaupten.
+ */
+export function genauigkeitsSatz(accuracySeconds: number): string {
+  return `Ihr Gerät prüft laufend, ob der Befehl gehalten wird; aufgezeichnet wird das im `
+    + `${accuracySeconds}-Sekunden-Raster - ein Wechsel und zurück dazwischen bleibt unsichtbar.`;
 }
 
 /**
@@ -216,6 +225,60 @@ export function kopfSatz(input: {
     teile.push(pfad);
   }
   return `${teile.join(' · ')}.`;
+}
+
+/**
+ * Der Kopfsatz der GERÄTE-Sicht (Anlagen-Zentrale Stufe 1, §7.4). Er nennt das
+ * Gerät und - nur bei einem Gerät hinter der Box - dass hier ausschliesslich
+ * SEINE Befehle stehen.
+ *
+ * ⚠ Der Unterschied zwischen Box und Gerät ist eine AUSSAGE: die Box IST der
+ * Schreibweg der Anlage (jede Zeile gehört ihr, auch die anlagenweite
+ * Abregelung), ein Gerät dahinter trägt nur die Zeilen seiner Komponenten. Wer
+ * das gleich formuliert, behauptet an einem von drei Wechselrichtern eine
+ * Abregelung, die der ganzen Anlage gilt.
+ */
+export function geraetKopfSatz(input: {
+  geraet: string | null;
+  box: boolean;
+  pfad: string | null;
+}): string {
+  const name = input.geraet ?? 'Dieses Gerät';
+  if (input.box) {
+    return `${name} · alle Befehle dieser Anlage.`;
+  }
+  const pfad = pfadWort(input.pfad);
+  return pfad ? `${name} · ${pfad}.` : `${name} · nur die Befehle an dieses Gerät.`;
+}
+
+/**
+ * Der Verweis, der die Grenze ERKLÄRT, statt sie nur zu ziehen: die
+ * anlagenweiten Befehle (allen voran die Abregelung, die EIN Rücklesen über
+ * ALLE Einheiten zurückliest) stehen auf der Seite der Box.
+ */
+export const ANLAGENWEITE_BEFEHLE =
+  'Anlagenweite Befehle - zum Beispiel die Abregelung - stehen auf der Seite Ihrer VoltPilot-Box.';
+
+/**
+ * Der AUSSCHNITT für die Geräteseite (§7.4): die jüngsten Zeilen des Zeitraums
+ * plus die zwei Sätze, die eine leere Liste ehrlich machen.
+ *
+ * <p>Gekappt wird am ÄLTESTEN Ende - wer auf ein Gerät schaut, will die
+ * letzten Befehle sehen -, und dass gekappt wurde, SAGT die Fläche
+ * (`weitere`), statt still zu kürzen.
+ */
+export function geraeteAusschnitt(history: CommandHistory | null, now: number, max: number): {
+  zeilen: BefehlZeile[];
+  weitere: number;
+  leer: string | null;
+} {
+  const alle = film(history, now);
+  const zeilen = alle.length > max ? alle.slice(alle.length - max) : alle;
+  return {
+    zeilen,
+    weitere: Math.max(0, alle.length - zeilen.length),
+    leer: zeilen.length === 0 ? leerSatz(history, true) : null,
+  };
 }
 
 /** Der Schreibweg als Etikett; ein unbekannter bleibt ungenannt. */

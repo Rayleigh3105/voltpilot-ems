@@ -129,7 +129,7 @@ public class RegisterWriteEventRepository {
      * genau dieselbe Arbeit in einer schwerer lesbaren Sprache täte.
      */
     public List<Entry> recent(UUID siteId, UUID deviceId, int limit) {
-        return query(siteId, deviceId, null, null, limit);
+        return query(siteId, deviceId, null, null, null, limit);
     }
 
     /**
@@ -142,10 +142,28 @@ public class RegisterWriteEventRepository {
      * ihres Starts gehören.
      */
     public List<Entry> between(UUID siteId, UUID deviceId, Instant from, Instant to, int limit) {
-        return query(siteId, deviceId, from, to, limit);
+        return query(siteId, deviceId, null, from, to, limit);
     }
 
-    private List<Entry> query(UUID siteId, UUID deviceId, Instant from, Instant to, int limit) {
+    /**
+     * Dieselben Vorgänge, aber auf die KOMPONENTEN eines Geräts hinter der Box
+     * eingegrenzt (Anlagen-Zentrale Stufe 1).
+     *
+     * <p>Zugeordnet wird ausschließlich über {@code entity_id} - also über die
+     * Lane „komponente". Ein Vorgang auf der primären Lane oder auf einer frei
+     * getippten Adresse trägt keine Komponente; er gehört dem Schreibweg der
+     * BOX und erscheint dort, statt hier einem Gerät zugeschrieben zu werden,
+     * über das er nichts aussagt.
+     *
+     * <p>Eine LEERE Menge liefert ehrlich nichts (nie „alle Vorgänge").
+     */
+    public List<Entry> betweenForEntities(UUID siteId, List<UUID> entityIds, Instant from,
+            Instant to, int limit) {
+        return query(siteId, null, entityIds, from, to, limit);
+    }
+
+    private List<Entry> query(UUID siteId, UUID deviceId, List<UUID> entityIds, Instant from,
+            Instant to, int limit) {
         // Das Limit greift auf VORGÄNGEN, nicht auf Zeilen: ein Vorgang mit
         // Quittung darf nicht seinen Kopf verlieren, nur weil die Grenze mitten
         // zwischen seinen zwei Zeilen lag.
@@ -156,6 +174,10 @@ public class RegisterWriteEventRepository {
         if (deviceId != null) {
             inner.append(" AND device_id = ?");
             args.add(deviceId);
+        }
+        if (entityIds != null) {
+            inner.append(" AND entity_id = ANY(?::uuid[])");
+            args.add(CommandLogRepository.uuidArray(entityIds));
         }
         if (from != null) {
             inner.append(" AND requested_at >= ?");

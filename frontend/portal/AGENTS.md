@@ -1028,6 +1028,15 @@ je Ebene einen Test).
   - **⚠ Ein Ladepunkt nennt seine OCPP-Kennung, nie das interne `cp-`-Präfix** (das ist ein reiner Adress-Schlüssel), und er trägt keinen Pflege-Ort — eine Säule hat keine Komponenten-Konfiguration.
   - Gemessen in Chrome (echtes `emulate`) bei **1440** und **375**: 0 px horizontaler Überlauf, 0 überstehende Elemente, Karten-Aktion ≥ 44 px Trefferfläche, keine Konsolenmeldungen.
 
+- **Sektion F „Befehle an dieses Gerät" + die gefilterte Befehle-Seite (Anlagen-Zentrale Stufe 1 PR 1b, Konzept §7.4, Captain-Entscheid D3).** Die Geräteseite zeigt die JÜNGSTEN fünf Zeilen ihres Geräts und führt für alles Weitere auf `#/anlage/{id}/befehle?geraet=<ref>` — **es entsteht keine zweite Verlaufs-Fläche, nur ein Ausschnitt derselben** (`befehle.geraeteAusschnitt`, dieselbe reine `film()`-Ableitung wie die Seite).
+  - **Was zu einem Gerät gehört, entscheidet der SERVER** (`?device=`, Root-`AGENTS.md`) — die Fläche schneidet nichts selbst zurecht. Sie ERKLÄRT die Grenze aber: `ANLAGENWEITE_BEFEHLE` steht an einem Gerät hinter der Box („eine Abregelung gilt der ganzen Anlage und steht auf der Seite Ihrer Box"), und **ob es die Box ist, kommt als Server-Fakt** (`CommandHistory.deviceIsBox`) — aus `cp-`/`src-`-Präfixen zu raten wäre genau die erfundene Aussage, die der Filter vermeidet.
+  - **`geraetKopfSatz({geraet, box, pfad})`** ist der eine Kopfsatz beider Flächen; ein älteres Backend ohne `deviceIsBox` bekommt den neutralen Satz statt einer Behauptung.
+  - **Der NAME des Geräts kommt aus dem gemeldeten Einrichtungs-Stand** (`localSetup` → `entityLabel.technicalDeviceName`), NIE aus der Verlaufs-Antwort — sie trägt bewusst keinen, ein zweiter Namensbildner wäre ein Zwilling. Fail-soft: ohne ihn steht die Adresse da.
+  - **`befehleGeraetHash`/`parseBefehleGeraet` sind EIGENE Funktionen neben `befehleHash`** (das `?komponente=`-Muster): Komponente und Gerät sind zwei Fragen, der Server lehnt beides zusammen mit 400 ab — eine Signatur, die sie gleichzeitig annimmt, lüde dazu ein. Die Seite lässt die Komponente gewinnen und schickt das Gerät gar nicht erst mit.
+  - Die **Genauigkeit** (`genauigkeitsSatz`) steht in BEIDEN Flächen aus EINER Quelle - die Sektion zeigt Rücklese-Urteile („vom Gerät bestätigt"), also gehört das 15-Sekunden-Raster daneben, und zwei Formulierungen wären zwei Raster.
+  - Der Abruf ist wie jeder Nebenabruf der Geräteseite **fail-soft**: fällt er aus, bleibt die Sektion stehen und sagt „die Aufzeichnung hat noch nicht begonnen", statt eine leere Behauptung zu machen.
+  - Gemessen in Chrome (echtes `emulate`) bei **1440** und **375**: 0 px horizontaler Überlauf, „Alle anzeigen" ≥ 44 px Trefferfläche, keine Konsolenmeldungen; am Telefon stapeln Zeit und Satz.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

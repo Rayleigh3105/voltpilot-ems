@@ -141,4 +141,67 @@ describe('BefehleSection', () => {
     await waitFor(() =>
       expect(screen.getByText(/Verlauf nicht abrufbar/)).toBeInTheDocument());
   });
+
+  /**
+   * Der Geräte-Filter (Anlagen-Zentrale Stufe 1, D3): dieselbe Seite,
+   * eingegrenzt auf EIN Gerät. Der NAME kommt aus dem gemeldeten
+   * Einrichtungs-Stand, nicht aus der Verlaufs-Antwort - sie trägt bewusst
+   * keinen.
+   */
+  it('grenzt auf ein GERÄT ein und nennt es bei seinem Namen', async () => {
+    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({
+      entityId: null,
+      entityLabel: null,
+      deviceRef: 'src-7c1e9a2b',
+      deviceIsBox: false,
+      entries: [periode()],
+    }));
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      registry: null,
+      entities: [],
+      localSetup: [
+        {
+          id: 'src-7c1e9a2b',
+          kind: 'source',
+          role: 'pv-generation',
+          brand: 'fronius_sunspec',
+          model: 'Eco 27.0-3-S',
+          label: null,
+          reportedAt: '2026-08-16T10:00:00Z',
+          adoptedEntityId: null,
+        },
+      ],
+      staleOnDevice: [],
+    } as never);
+
+    render(<BefehleSection site={site} entityId={null} geraetRef="src-7c1e9a2b" />);
+
+    await waitFor(() =>
+      expect(api.commandHistory).toHaveBeenCalledWith('s1', {
+        entity: null,
+        device: 'src-7c1e9a2b',
+        range: 'day',
+      }),
+    );
+    // Der Name kommt aus dem gemeldeten Einrichtungs-Stand (Marke + Kurzmodell),
+    // der Schreibweg aus den Zeilen - beides ohne einen zweiten Namensbildner.
+    await waitFor(() =>
+      expect(screen.getByText(/Fronius Eco .* · Fernsteuer-Register\./)).toBeInTheDocument());
+    // Die Grenze wird ERKLÄRT: die anlagenweiten Befehle gehören der Box.
+    expect(screen.getByText(/Anlagenweite Befehle/)).toBeInTheDocument();
+  });
+
+  it('lässt die Komponente gewinnen - zwei Fragen, nie beide zugleich', async () => {
+    vi.spyOn(api, 'commandHistory').mockResolvedValue(history());
+    render(<BefehleSection site={site} entityId="e1" geraetRef="src-7c1e9a2b" />);
+    // Der Server lehnt beides zusammen mit 400 ab; das Gerät reist gar nicht
+    // erst mit, statt sich auf eine Fehlermeldung zu verlassen.
+    await waitFor(() =>
+      expect(api.commandHistory).toHaveBeenCalledWith('s1', {
+        entity: 'e1',
+        device: null,
+        range: 'day',
+      }),
+    );
+  });
 });
