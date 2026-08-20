@@ -278,6 +278,17 @@ type stateEnvelope struct {
 	// the envelope entirely so the UI cannot accidentally reveal it (the
 	// belt-and-suspenders half of the enforcement).
 	ClaimUnlocked bool `json:"claim_unlocked"`
+	// ChargePointConnected is the SECOND way through the gate (Lastmanagement
+	// Stufe 3, concept §5.1): a charging park has no inverter at all, and a box
+	// whose gate keys on one alone could never be commissioned. It is true once
+	// at least one REGISTERED charge point has spoken to this box - a
+	// BootNotification IS the connection proof for a charge point (the
+	// assistant's "Verbindungstest" is exactly that).
+	//
+	// ⚠ It is ADDITIVE and never loosens the inverter rule: a plant WITH an
+	// inverter is byte-identical to before, and a plant with neither component
+	// stays locked, which is the honest state of a box that measures nothing.
+	ChargePointConnected bool `json:"charge_point_connected"`
 
 	// Topology is the additive AE1 Anlagen-Topologie-Read-Model: the site's v2
 	// entities aggregated into role-grouped hub nodes + directed flows (the
@@ -309,23 +320,33 @@ func paired(pairingState string) bool {
 }
 
 // deriveOnboarding computes the gate signals from a snapshot: the inverter is
-// "connected" only when it is configured AND has delivered at least one reading.
-func deriveOnboarding(snap state.Snapshot) (step string, inverterConnected, claimUnlocked bool) {
+// "connected" only when it is configured AND has delivered at least one reading;
+// a charge point counts once it has reported itself to this box.
+//
+// ⚠ The gate asks "does SOME component deliver data", not "does the inverter"
+// (Lastmanagement concept §5.1): a Ladepark box has no inverter, so the
+// inverter-only rule would have locked it out of commissioning forever. The
+// generalisation is strictly ADDITIVE - the inverter branch is untouched and a
+// plant without either component stays locked, exactly as before.
+func deriveOnboarding(snap state.Snapshot) (step string, inverterConnected, chargePointConnected,
+	claimUnlocked bool) {
 	inverterConfigured := snap.Inverter != nil && snap.Inverter.Configured
 	inverterConnected = inverterConfigured && !snap.LastTelemetry.IsZero()
+	chargePointConnected = snap.HasReportedChargePoint()
+	componentConnected := inverterConnected || chargePointConnected
 	switch {
 	case paired(snap.PairingState):
-		return "done", inverterConnected, true
-	case inverterConnected:
-		return "claim", inverterConnected, true
+		return "done", inverterConnected, chargePointConnected, true
+	case componentConnected:
+		return "claim", inverterConnected, chargePointConnected, true
 	default:
-		return "inverter", inverterConnected, false
+		return "inverter", inverterConnected, chargePointConnected, false
 	}
 }
 
 func envelope(st *state.Store, topo TopologyController, ac ActiveControlController) stateEnvelope {
 	snap := st.Get()
-	step, invConnected, claimUnlocked := deriveOnboarding(snap)
+	step, invConnected, cpConnected, claimUnlocked := deriveOnboarding(snap)
 	// Withhold the reference until the claim step is unlocked, so the portal
 	// reference cannot leak into the UI before the inverter is proven to work.
 	// The device's own enrollment uses the ref from its config, not this
@@ -334,13 +355,14 @@ func envelope(st *state.Store, topo TopologyController, ac ActiveControlControll
 		snap.Ref = ""
 	}
 	return stateEnvelope{
-		Snapshot:          snap,
-		ServerNowMs:       time.Now().UnixMilli(),
-		InverterConnected: invConnected,
-		OnboardingStep:    step,
-		ClaimUnlocked:     claimUnlocked,
-		Topology:          topo.Topology(),
-		ActiveControl:     ac.ActiveControl(),
+		Snapshot:             snap,
+		ServerNowMs:          time.Now().UnixMilli(),
+		InverterConnected:    invConnected,
+		ChargePointConnected: cpConnected,
+		OnboardingStep:       step,
+		ClaimUnlocked:        claimUnlocked,
+		Topology:             topo.Topology(),
+		ActiveControl:        ac.ActiveControl(),
 	}
 }
 

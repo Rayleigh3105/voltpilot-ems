@@ -48,15 +48,42 @@
 
     var configured = !!(s.inverter && s.inverter.configured);
     var label = (s.inverter && s.inverter.label) || "Wechselrichter";
+    // ⚠ Ein LADEPARK hat keinen Wechselrichter. Solange keine Ladesäule
+    // eingetragen ist, bleibt jeder Satz hier unverändert (jede Bestandsbox
+    // sieht exakt dieselben vier Schritte); sobald eine eingetragen ist, ist
+    // SIE die tragende Komponente und Schritt 1 spricht von ihr.
+    var chargers = (s.ocpp && s.ocpp.chargers) || [];
+    var chargePark = chargers.length > 0 && !configured;
+    var chargerSeen = !!s.charge_point_connected;
     var telAge = ageSeconds(s.last_telemetry, nowMs);
     var everDelivered = telAge != null;
     var fresh = everDelivered && telAge < FRESH_SECONDS;
     var linkDown = s.inverter_link === "down";
     var isPaired = paired(s.pairing_state);
 
-    // --- 1 Wechselrichter verbinden ---
+    // --- 1 Wechselrichter verbinden (bzw. Ladepunkt, auf einem Ladepark) ---
     var one;
-    if (configured && everDelivered) {
+    if (chargePark) {
+      var seen = 0;
+      for (var ci = 0; ci < chargers.length; ci++) {
+        if (chargers[ci].last_seen_ms || chargers[ci].connected) seen++;
+      }
+      if (chargerSeen) {
+        one = {
+          state: "done",
+          detail: seen === 1 ? "1 Ladesäule hat sich gemeldet." : seen + " Ladesäulen haben sich gemeldet.",
+          cause: ""
+        };
+      } else {
+        one = {
+          state: "active",
+          detail: chargers.length === 1 ? "1 Ladesäule eingetragen." : chargers.length + " Ladesäulen eingetragen.",
+          cause: "Noch hat sich keine Ladesäule gemeldet. Die Säule wählt dieses Gerät selbst an — bitte die angezeigte Adresse und Kennung in der Säule eintragen."
+        };
+      }
+      one.key = "inverter"; one.num = 1; one.title = "Ladepunkt verbinden";
+      one.action = { label: one.state === "done" ? "Ladepunkte ansehen" : "Zu den Ladepunkten", href: "#ladepunkte", ghost: one.state === "done" };
+    } else if (configured && everDelivered) {
       one = { state: "done", detail: label + " liefert Messwerte.", cause: "" };
     } else if (configured) {
       one = {
@@ -73,19 +100,21 @@
         cause: "Ohne Wechselrichter empfängt dieses Gerät keine Messwerte."
       };
     }
-    one.key = "inverter"; one.num = 1; one.title = "Wechselrichter verbinden";
-    one.action = one.state === "done"
-      ? { label: "Ändern", href: "#wechselrichter", ghost: true }
-      : { label: configured ? "Verbindung prüfen" : "Wechselrichter auswählen", href: "#wechselrichter" };
+    if (!chargePark) {
+      one.key = "inverter"; one.num = 1; one.title = "Wechselrichter verbinden";
+      one.action = one.state === "done"
+        ? { label: "Ändern", href: "#wechselrichter", ghost: true }
+        : { label: configured ? "Verbindung prüfen" : "Wechselrichter auswählen", href: "#wechselrichter" };
+    }
 
     // --- 2 Erzeuger / Zähler erfassen ---
     // Optional by nature: a plant with one inverter needs none. It is only
     // "todo" while step 1 is unfinished - it must never block the flow.
     var two;
-    if (!(configured && everDelivered)) {
+    if (one.state !== "done") {
       two = {
         state: "todo",
-        detail: "Erst den Wechselrichter verbinden.",
+        detail: chargePark ? "Erst einen Ladepunkt verbinden." : "Erst den Wechselrichter verbinden.",
         cause: ""
       };
     } else if (sourceCount > 0) {
@@ -126,15 +155,42 @@
       three = {
         state: "todo",
         detail: "Noch gesperrt.",
-        cause: "Die Referenz-ID wird erst angezeigt, wenn der Wechselrichter tatsächlich Daten liefert - so wird nie ein Gerät gekoppelt, das gar nichts misst."
+        cause: chargePark
+          ? "Die Referenz-ID wird erst angezeigt, wenn sich eine Ladesäule wirklich gemeldet hat - so wird nie ein Gerät gekoppelt, das gar nichts misst."
+          : "Die Referenz-ID wird erst angezeigt, wenn der Wechselrichter tatsächlich Daten liefert - so wird nie ein Gerät gekoppelt, das gar nichts misst."
       };
     }
     three.key = "portal"; three.num = 3; three.title = "Mit dem Portal koppeln";
     three.action = three.state === "todo" ? null : { label: "Zur Kopplung", href: "#portal", ghost: three.state === "done" };
 
     // --- 4 Messwerte prüfen ("Daten kommen an") ---
+    // ⚠ Auf einem Ladepark misst kein Wechselrichter: die Messwerte kommen aus
+    // den Ladesäulen selbst. `last_telemetry` bliebe dort für immer leer, und
+    // "noch keine Messwerte" wäre die falscheste aller Aussagen über eine
+    // Anlage, die gerade Autos lädt.
     var four;
-    if (fresh) {
+    if (chargePark) {
+      var meters = 0;
+      for (var mi = 0; mi < chargers.length; mi++) {
+        var cons = chargers[mi].connectors || [];
+        for (var mj = 0; mj < cons.length; mj++) {
+          if (cons[mj].power_kw != null) meters++;
+        }
+      }
+      if (meters > 0) {
+        four = { state: "done", detail: "Messwerte kommen aus den Ladesäulen.", cause: "" };
+      } else if (chargerSeen) {
+        four = {
+          state: "done",
+          detail: "Keine Ladevorgänge - keine Messwerte.",
+          cause: "Eine Ladesäule meldet Leistung erst, während sie lädt. Das ist der Normalfall, solange kein Fahrzeug angesteckt ist."
+        };
+      } else {
+        four = { state: "todo", detail: "Noch keine Messwerte.", cause: "" };
+      }
+      four.key = "messwerte"; four.num = 4; four.title = "Messwerte prüfen";
+      four.action = chargerSeen ? { label: "Werte ansehen", href: "index.html", ghost: true } : null;
+    } else if (fresh) {
       four = { state: "done", detail: "Aktuelle Messwerte kommen an.", cause: "" };
     } else if (everDelivered) {
       four = {
@@ -147,8 +203,10 @@
     } else {
       four = { state: "todo", detail: "Noch keine Messwerte.", cause: "" };
     }
-    four.key = "messwerte"; four.num = 4; four.title = "Messwerte prüfen";
-    four.action = everDelivered ? { label: "Werte ansehen", href: "index.html", ghost: true } : null;
+    if (!chargePark) {
+      four.key = "messwerte"; four.num = 4; four.title = "Messwerte prüfen";
+      four.action = everDelivered ? { label: "Werte ansehen", href: "index.html", ghost: true } : null;
+    }
 
     var steps = [one, two, three, four];
     var doneCount = 0, activeNum = null;
