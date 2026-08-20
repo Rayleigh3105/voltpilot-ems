@@ -68,9 +68,31 @@ public class EntityController {
      *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet").
      *  {@code label} is ONLY the operator-given name (may be null); brand/model
      *  ride separately so consumers build display names via their own fallback
-     *  chain (name > brand+model > id), never from a concatenation. */
+     *  chain (name > brand+model > id), never from a concatenation.
+     *
+     *  <p><b>Die sechs Verbindungsfelder (Anlagen-Zentrale Stufe 2, PR 2b)</b>
+     *  sagen, WIE die Box dieses Gerät erreicht. Sie liegen seit
+     *  {@code V20260819000000} in {@code entity_observed_state.edge_*} und
+     *  wurden bis hierher nur von der Bestands-Übernahme gelesen - die Flächen
+     *  mussten ihre Adressen aus {@code /register-write/targets} bzw. den
+     *  gespeicherten Komponenten-Definitionen zusammensuchen. Derselbe Inhalt,
+     *  zwei Pfade: das Struktur-Schaltbild UND die Geräteseite beschriften ihre
+     *  Kanten jetzt aus DIESEM einen.
+     *
+     *  <p><b>Die Ehrlichkeitsregel ist die von {@code EdgeLink}:</b> {@code null}
+     *  heißt „diese Box meldet (noch) keine Verbindungen" - NIE „dieses Gerät
+     *  hat keine". Ein älterer Box-Stand lässt die Felder weg, und daraus darf
+     *  nur „Weg unbekannt" folgen, nie eine erfundene Adresse.
+     *
+     *  <p>{@code unitId} ist die Modbus-Adresse, wie der jeweilige Transport sie
+     *  nennt ({@code unit_id} bzw. beim Solarman-Weg {@code mb_slave_id}) - EIN
+     *  Feld, weil es dieselbe Sache ist; {@code serial} ist die Logger-Nummer
+     *  des Solarman-Wegs, die auf einer box-verwalteten Anlage nirgendwo sonst
+     *  vorliegt. */
     public record LocalSetupDto(String id, String kind, String role, String brand, String model,
-            String label, Instant reportedAt, String adoptedEntityId) {}
+            String label, Instant reportedAt, String adoptedEntityId, String communication,
+            String family, String host, Integer port, Integer unitId, String serial,
+            Integer intervalS) {}
 
     public record RegistrySummaryDto(String revision, Instant composedAt, UUID deviceId,
             String reportedRevision, Instant reportedAt) {}
@@ -137,9 +159,18 @@ public class EntityController {
         for (ObservedRow row : localRows) {
             String sourceId = row.entityId().replaceFirst("^local:", "");
             reportedSourceIds.add(sourceId);
+            EntityObservedRepository.EdgeLink link = row.edgeLink();
+            JsonNode conn = link == null ? null : parse(link.connectionJson());
             localSetup.add(new LocalSetupDto(sourceId, row.entityType(), row.edgeRole(),
                     row.edgeBrand(), row.edgeModel(), row.label(), row.reportedAt(),
-                    adoptedBySource.get(sourceId)));
+                    adoptedBySource.get(sourceId),
+                    link == null ? null : blankToNull(link.communication()),
+                    link == null ? null : blankToNull(link.family()),
+                    connText(conn, "ip", "host"), connInt(conn, "port"),
+                    // EIN Feld für dieselbe Sache: der Solarman-Weg nennt die
+                    // Modbus-Adresse `mb_slave_id`, jeder andere `unit_id`.
+                    connInt(conn, "unit_id", "mb_slave_id"), connText(conn, "serial"),
+                    link == null ? null : link.intervalS()));
         }
 
         List<EntityDto> entities = new ArrayList<>();
@@ -219,6 +250,42 @@ public class EntityController {
                     : SYNC_PENDING;
         }
         return SYNC_UNREPORTED;
+    }
+
+    /**
+     * Ein Textfeld des gemeldeten Verbindungs-Blocks, unter dem ersten Namen,
+     * den dieser Transport benutzt - sonst {@code null}. Ein leerer String ist
+     * keine Adresse und wird deshalb wie „nicht gemeldet" behandelt.
+     */
+    private static String connText(JsonNode conn, String... names) {
+        if (conn == null || !conn.isObject()) {
+            return null;
+        }
+        for (String name : names) {
+            JsonNode v = conn.get(name);
+            if (v != null && v.isTextual() && !v.asText().isBlank()) {
+                return v.asText().trim();
+            }
+        }
+        return null;
+    }
+
+    /** Dasselbe für eine Zahl. {@code null} = nicht gemeldet, nie eine 0. */
+    private static Integer connInt(JsonNode conn, String... names) {
+        if (conn == null || !conn.isObject()) {
+            return null;
+        }
+        for (String name : names) {
+            JsonNode v = conn.get(name);
+            if (v != null && v.isNumber()) {
+                return v.asInt();
+            }
+        }
+        return null;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 
     private JsonNode parse(String json) {
