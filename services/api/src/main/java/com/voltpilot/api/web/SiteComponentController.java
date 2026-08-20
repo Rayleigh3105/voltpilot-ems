@@ -9,6 +9,7 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.templates.BuiltinComponentTemplates;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
+import com.voltpilot.api.web.dto.ComponentMatchDto;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
 import com.voltpilot.api.web.dto.ComponentTestRequest;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
@@ -271,6 +272,29 @@ public class SiteComponentController {
             receipts.record(siteId, template.templateRef(), connection);
         }
         return result;
+    }
+
+    /**
+     * „Kennen wir dieses Gerät schon?": die verwaiste Komponente, die ein
+     * Speichern ÜBERNEHMEN würde - der Vorschlag VOR dem Klick
+     * (Alias-Kontinuität, Live-Fall Herzogau 20.08.2026).
+     *
+     * <p>Er existiert, damit der Assistent sagen kann „Das ist vermutlich Ihre
+     * bisherige ‚Fronius Anlage WR1'" statt stillschweigend eine namenlose
+     * Parallel-Komponente anzulegen. Die ENTSCHEIDUNG bleibt beim Server: es ist
+     * wörtlich dieselbe Regel, die {@code create} danach fährt - ein zweiter
+     * Fingerabdruck im Portal würde von ihr abdriften.
+     *
+     * <p>Er ändert NICHTS: kein Schreibvorgang, kein Beleg, keine Nachricht an
+     * die Box. Kein Treffer ist {@code 204}, nie ein Fehler - „es entsteht eine
+     * neue Komponente" ist ein völlig normaler Ausgang.
+     */
+    @PostMapping("/component-match")
+    public ResponseEntity<ComponentMatchDto> match(@PathVariable UUID siteId,
+            @Valid @RequestBody ComponentTestRequest request) {
+        ComponentMatchDto hit = components.match(siteId, request.role(), request.templateRef(),
+                request.connection());
+        return hit == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(hit);
     }
 
     /**

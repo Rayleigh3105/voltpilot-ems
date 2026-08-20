@@ -1225,4 +1225,33 @@ describe('orphaned pins + reconnect candidates', () => {
       { entityId: 'wb', label: 'Wallbox' },
     ]);
   });
+
+  // Alias-Kontinuität (Live-Fall Herzogau, 20.08.2026): eine Komponente OHNE
+  // Pin ist genau der Fall, für den es „Wieder verbinden" gibt - vorher fiel
+  // sie heraus (`orphanedPin` ist dort null, nicht true) und der Dialog bot nur
+  // „Als neue Komponente anlegen" an: die namenlose Parallel-Komponente.
+  it('reconnectCandidates also offers a component that carries no pin at all', () => {
+    const source: AdoptableSource = {
+      id: 'src-new',
+      role: 'pv-generation',
+      brand: 'fronius_sunspec',
+      model: 'fronius-eco-27-3-s',
+      label: 'Fronius',
+      roleLabel: 'PV-Erzeuger',
+      summary: 'Fronius',
+      suggestedType: 'producer',
+    };
+    const unpinned = entity('wr3', 'producer', {
+      typeLabel: 'Erzeuger',
+      label: 'Dach Süd',
+      edgeSourceId: null,
+      orphanedPin: null,
+      deviceId: null,
+    });
+    expect(reconnectCandidates(source, [unpinned, healthyWr2])).toEqual([
+      { entityId: 'wr3', label: 'Dach Süd' },
+    ]);
+    // Eine LEBENDE Bindung bleibt draußen - sie gehört einem anderen Gerät.
+    expect(reconnectCandidates(source, [healthyWr2])).toEqual([]);
+  });
 });

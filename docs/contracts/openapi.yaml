@@ -3518,6 +3518,63 @@ paths:
         "404": { description: Site (or component) not found for this tenant. }
         "409": { description: The plant has no device, or several and none was named. }
         "503": { description: The plant is not reachable right now. }
+  /api/v1/sites/{siteId}/component-match:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [components]
+      summary: "Does this device already have a component? (the suggestion BEFORE the click)"
+      description: >
+        Answers ONE question: would saving this device TAKE OVER an existing,
+        orphaned component - and what is it called? It runs the very same rule
+        `POST /components` runs afterwards (`ComponentTakeover`), so the
+        assistant can say "this is probably your existing 'Fronius Anlage WR1'"
+        instead of silently minting a nameless parallel component (Alias
+        continuity, live case Herzogau 20.08.2026). It changes NOTHING - no
+        write, no receipt, no message to the box. NO match is 204, never an
+        error: "a new component is created" is a perfectly normal outcome.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [templateRef, role, connection]
+              properties:
+                templateRef: { type: string }
+                role: { type: string, enum: [inverter, pv-generation, grid-meter, consumer] }
+                connection:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: The component that would be taken over.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entityId, role, orphaned]
+                properties:
+                  entityId: { type: string, format: uuid }
+                  label:
+                    type: string
+                    nullable: true
+                    description: >
+                      The customer's own name, or null - then the row carries no
+                      human-given name and the surface derives one from brand +
+                      model instead of inventing one.
+                  role: { type: string }
+                  brand: { type: string, nullable: true }
+                  model: { type: string, nullable: true }
+                  orphaned:
+                    type: boolean
+                    description: >
+                      true = it HAD a binding that broke; false = it was never
+                      assigned to a device.
+        "204": { description: No match - saving would create a new component. }
+        "400": { description: Unknown template / role. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/components/custom/read:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }

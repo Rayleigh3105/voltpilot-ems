@@ -706,10 +706,20 @@ export function deleteConsequences(
 
 /**
  * Existing components a newly reported source most likely IS (vp-vier-
- * erzeuger-p9): entities whose pin is PROVEN orphaned (their old source id
- * vanished — the delete+re-add churn) and whose type matches what the source
- * would be adopted as. The Zuordnen dialog leads with „Wieder verbinden" for
- * these — re-adopting would mint a duplicate (the Pilsting ghost).
+ * erzeuger-p9): components of the matching type that have NO LIVING BINDING —
+ * either their pin is PROVEN orphaned (`orphanedPin === true`, the delete+
+ * re-add churn) or they carry no pin at all. The Zuordnen dialog leads with
+ * „Wieder verbinden" for these — adopting again would mint a duplicate (the
+ * Pilsting ghost) and strand the customer's own name on the old row.
+ *
+ * <p><b>⚠ Ein Punkt OHNE Pin gehört dazu</b> (Alias-Kontinuität, Live-Fall
+ * Herzogau 20.08.2026). Er entsteht auf drei Wegen, und alle drei sind genau
+ * der Fall, für den es diese Liste gibt: die von der Plattform komponierte
+ * Zeile, die ihr erstes Gerät noch sucht; eine über den Anlege-Assistenten
+ * angelegte Komponente, die noch keine Kennung getragen hat; und die Zeile,
+ * deren Pin beim Tauschen freigegeben wurde. Vorher fielen alle drei heraus
+ * (`orphanedPin` ist dort `null`, nicht `true`), und der Dialog bot nur „Als
+ * neue Komponente anlegen" an - die namenlose Parallel-Komponente.
  */
 export function reconnectCandidates(
   source: AdoptableSource,
@@ -718,7 +728,11 @@ export function reconnectCandidates(
   const type = source.suggestedType ?? suggestEntityType(source.role, source.brand);
   if (!type) return [];
   return entities
-    .filter((e) => e.orphanedPin === true && e.entityType === type)
+    .filter(
+      (e) =>
+        e.entityType === type
+        && (e.orphanedPin === true || e.edgeSourceId == null || e.edgeSourceId === ''),
+    )
     .map((e) => ({
       entityId: e.id,
       label: componentLabel(e.label, componentRole(e.entityType, null), e.typeLabel),

@@ -590,3 +590,17 @@
   margin-top: 0.2rem;
   flex: none;
 }
+
+/* Alias-Kontinuität: „Das ist vermutlich Ihre bisherige …" - ein RUHIGER
+   Hinweis, kein Alarm: es passiert genau das Richtige, der Kunde soll es nur
+   wissen, bevor er klickt. */
+.vp-assist-uebernahme {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--vp-radius-md, 12px);
+  border-left: 3px solid var(--vp-brand, #6a8dff);
+  background: rgba(106, 141, 255, 0.09);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}

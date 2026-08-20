@@ -23,11 +23,14 @@ import {
   felder,
   initialeVerbindung,
   marken,
+  nameHilfe,
   pruefen,
   rolleVerfuegbar,
   templatesFuerTuer,
   testErgebnis,
   tueren,
+  uebernahmeHinweis,
+  type ComponentMatch,
   type KomponentenRolle,
   type TemplateField,
   type TestErgebnis,
@@ -84,6 +87,11 @@ export function KomponenteHinzufuegenDrawer({
   const [fehler, setFehler] = useState<string | null>(null);
   const [fertig, setFertig] = useState(false);
   const [vorhandene, setVorhandene] = useState<string[]>([]);
+  /**
+   * Die vorhandene Komponente, die dieses Gerät übernimmt - VOM SERVER, nie
+   * hier abgeleitet (Alias-Kontinuität). `null` = es entsteht eine neue.
+   */
+  const [uebernahme, setUebernahme] = useState<ComponentMatch | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -116,7 +124,12 @@ export function KomponenteHinzufuegenDrawer({
   function waehleTemplate(t: ComponentTemplate) {
     setTemplate(t);
     setVerbindung(initialeVerbindung(t));
-    setName(t.modelLabel);
+    // ⚠ NICHT mit dem Modellnamen vorbefüllen (Alias-Kontinuität, Live-Fall
+    // Herzogau 20.08.2026): ein vorbefülltes Feld wird mitgeschickt und
+    // überschreibt beim Übernehmen den Namen, den der Kunde vergeben hat. Leer
+    // heißt „nichts ändern" - der Modellname steht als Platzhalter daneben.
+    setName('');
+    setUebernahme(null);
     setTestZustand('ungeprueft');
     setTestText(null);
     setSchritt(2);
@@ -127,6 +140,11 @@ export function KomponenteHinzufuegenDrawer({
     // Jede Änderung entwertet den Beleg - genau das ist der Sinn der Pflicht.
     setTestZustand('ungeprueft');
     setTestText(null);
+    // ⚠ Und sie entwertet den ÜBERNAHME-Vorschlag: er gilt GENAU dieser
+    // Verbindung. Eine andere Adresse ist ein anderes Gerät - ein
+    // stehengebliebener Vorschlag würde eine Komponente ankündigen, die der
+    // Server danach gar nicht mehr übernimmt.
+    setUebernahme(null);
   }
 
   async function testen() {
@@ -170,6 +188,31 @@ export function KomponenteHinzufuegenDrawer({
       setFehler(e instanceof ApiError ? e.message : 'Speichern ist fehlgeschlagen.');
     } finally {
       setSpeichern(false);
+    }
+  }
+
+  /**
+   * Die Rolle wählen - und den Server fragen, ob dieses Gerät schon eine
+   * Komponente hat. Fehlschlag = kein Vorschlag (fail-soft): ein älteres
+   * Backend kennt die Route nicht, und ohne Vorschlag verhält sich der
+   * Assistent exakt wie vorher.
+   */
+  async function waehleRolle(r: KomponentenRolle) {
+    setRolle(r);
+    setUebernahme(null);
+    if (!template) return;
+    try {
+      const hit = await api.matchComponent(siteId, {
+        templateRef: template.templateRef,
+        role: r,
+        connection: verbindung,
+      });
+      setUebernahme(hit ?? null);
+    } catch {
+      // Fail-soft: ein älteres Backend kennt die Route nicht. Ohne Vorschlag
+      // verhält sich der Assistent exakt wie vorher - eine Fehlermeldung wäre
+      // hier eine Störung ohne Folge.
+      setUebernahme(null);
     }
   }
 
@@ -375,7 +418,7 @@ export function KomponenteHinzufuegenDrawer({
                       key={r.id}
                       type="button"
                       className={`vp-assist-role${rolle === r.id ? ' is-on' : ''}`}
-                      onClick={() => setRolle(r.id)}
+                      onClick={() => void waehleRolle(r.id)}
                     >
                       <strong>{r.label}</strong>
                       <span>{r.hint}</span>
@@ -386,14 +429,20 @@ export function KomponenteHinzufuegenDrawer({
                   <>
                     <p className="vp-assist-balance">{bilanzHinweis(rolle)}</p>
                     {!rollenStatus.ok && <p className="vp-assist-error">{rollenStatus.grund}</p>}
+                    {uebernahmeHinweis(uebernahme, template) && (
+                      <p className="vp-assist-uebernahme">
+                        {uebernahmeHinweis(uebernahme, template)}
+                      </p>
+                    )}
                     <div className="vp-assist-field">
                       <label htmlFor="assist-name">Name</label>
                       <Input
                         id="assist-name"
                         value={name}
+                        placeholder={uebernahme?.label?.trim() || template.modelLabel}
                         onChange={(e) => setName(e.target.value)}
                       />
-                      <p className="vp-assist-help">So heißt die Komponente in Ihrer Anlage.</p>
+                      <p className="vp-assist-help">{nameHilfe(uebernahme)}</p>
                     </div>
                     {rolle === 'pv-generation' && (
                       <div className="vp-assist-field">
@@ -426,7 +475,7 @@ export function KomponenteHinzufuegenDrawer({
               <section>
                 <h3 className="vp-assist-h">Prüfen &amp; anlegen</h3>
                 <dl className="vp-assist-check">
-                  {pruefen(template, rolle, name, verbindung).map((row) => (
+                  {pruefen(template, rolle, name, verbindung, uebernahme).map((row) => (
                     <div key={row.label}>
                       <dt>{row.label}</dt>
                       <dd>{row.wert}</dd>

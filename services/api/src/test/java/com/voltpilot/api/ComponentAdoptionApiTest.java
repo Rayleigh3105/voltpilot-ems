@@ -15,6 +15,7 @@ import com.voltpilot.api.entities.EntityStatusListener;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -130,6 +131,9 @@ class ComponentAdoptionApiTest {
 
     @Autowired
     ComponentApplyRepository applyRepo;
+
+    @Autowired
+    com.voltpilot.api.components.ComponentConnectionReceipts receipts;
 
     @Autowired
     DeviceRepository devices;
@@ -478,6 +482,349 @@ class ComponentAdoptionApiTest {
         } finally {
             deleteSite(site);
         }
+    }
+
+    /**
+     * ALIAS-KONTINUITÄT über ALLE DREI Reparatur-/Anlege-Strecken (Live-Fall
+     * Anlage Pilsting/Herzogau, 20.08.2026 - Captain: „beim neu hinzufügen sind
+     * die Aliase jetzt weg").
+     *
+     * <p>Der Kunde nennt seine beiden Wechselrichter „Fronius Anlage WR1" und
+     * „Dach Nord". Danach reißt die Identität - und der Name muss JEDEN Weg
+     * überleben, auf dem die Bindung repariert oder das Gerät neu angelegt wird:
+     *
+     * <ol>
+     *   <li><b>Auto-Rebind</b> (PR 425, der getaktete Abgleich),</li>
+     *   <li><b>„Wieder verbinden"</b> (der manuelle Re-Pin des Kunden),</li>
+     *   <li><b>die Bestands-Übernahme</b> - der Weg, der ihn wirklich verloren
+     *       hat: sie fand unter der NEUEN Kennung keine Zeile, die komponierte
+     *       war an eine andere gepinnt, und legte eine ZWEITE Komponente mit dem
+     *       vom Gerät gemeldeten Namen an. Jetzt übernimmt sie die verwaiste.</li>
+     * </ol>
+     */
+    @Test
+    void theCustomerNameSurvivesEveryRepairPathAndTheTakeoverNeverDuplicates() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Alias-Anlage");
+        try {
+            UUID device = claim(customer, site, "edge-alias-1");
+            saveBattery(customer, site);
+            setAuthority(site, ComponentAuthority.BOX);
+            heartbeat(site, device, fullReport());
+            assertThat(adoptAsTenant(site).adopted()).isTrue();
+
+            String wr1 = componentIdOfSource(site, customer, "src-fronius-1");
+            String wr2 = componentIdOfSource(site, customer, "src-fronius-2");
+            BigDecimal kwpNachUebernahme = plantKwp(site);
+
+            // --- Der Kunde gibt seinen Komponenten EIGENE Namen -------------
+            rename(site, customer, wr1, "Fronius Anlage WR1");
+            rename(site, customer, wr2, "Dach Nord");
+            assertThat(labelOf(site, customer, wr1)).isEqualTo("Fronius Anlage WR1");
+
+            // --- (b) AUTO-REBIND: der Riss heilt sich, der Name bleibt ------
+            heartbeat(site, device, reportWithRenamedSourceIds());
+            assertThat(runner.heal().rebound()).isEqualTo(2);
+            assertThat(labelOf(site, customer, wr1))
+                    .as("der Auto-Rebind fasst den Namen nicht an")
+                    .isEqualTo("Fronius Anlage WR1");
+            assertThat(labelOf(site, customer, wr2)).isEqualTo("Dach Nord");
+
+            // --- (a) „WIEDER VERBINDEN": der manuelle Re-Pin ----------------
+            // Ein Riss, den die Regel NICHT entscheiden kann (beide Fronius auf
+            // derselben Unit-Id) - genau dann bleibt nur der Klick des Kunden.
+            heartbeat(site, device, reportWithRenamedSourceIds()
+                    .replace("src-tdaejmjs", "src-hand-1")
+                    .replace("src-67w4nbhh", "src-hand-2")
+                    .replace("\"unit_id\":2", "\"unit_id\":1"));
+            assertThat(runner.heal().rebound())
+                    .as("mehrdeutig - die Automatik entscheidet nichts").isZero();
+
+            ResponseEntity<String> repinned = post(
+                    "/api/v1/sites/" + site + "/v2-entities/" + wr1 + "/edge-source", customer,
+                    Map.of("sourceId", "src-hand-1"));
+            assertThat(repinned.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(json.readTree(repinned.getBody()).get("label").asText())
+                    .as("Wieder verbinden gibt den Namen unverändert zurück")
+                    .isEqualTo("Fronius Anlage WR1");
+            assertThat(labelOf(site, customer, wr1)).isEqualTo("Fronius Anlage WR1");
+
+            // --- (c) DIE BESTANDS-ÜBERNAHME --------------------------------
+            // Dieselbe Anlage, wieder box-verwaltet, und die Box meldet erneut
+            // NEUE Kennungen. Vor dem Fix entstanden hier zwei namenlose
+            // Parallel-Komponenten; jetzt wird die verwaiste übernommen.
+            setAuthority(site, ComponentAuthority.BOX);
+            heartbeat(site, device, fullReport()
+                    .replace("src-fronius-1", "src-uebernahme-1")
+                    .replace("src-fronius-2", "src-uebernahme-2"));
+            assertThat(adoptAsTenant(site).adopted()).isTrue();
+
+            assertThat(producerIds(site, customer))
+                    .as("KEINE Parallel-Komponente - es bleiben genau die zwei")
+                    .containsExactlyInAnyOrder(wr1, wr2);
+            assertThat(labelOf(site, customer, wr1))
+                    .as("die Übernahme meldet Fronius 1 - der KUNDENNAME gewinnt")
+                    .isEqualTo("Fronius Anlage WR1");
+            assertThat(labelOf(site, customer, wr2)).isEqualTo("Dach Nord");
+            assertThat(componentIdOfSource(site, customer, "src-uebernahme-1")).isEqualTo(wr1);
+            assertThat(componentIdOfSource(site, customer, "src-uebernahme-2")).isEqualTo(wr2);
+            assertThat(plantKwp(site))
+                    .as("und die kWp der Anlage zählen nicht doppelt")
+                    .isEqualByComparingTo(kwpNachUebernahme);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Der DRITTE Weg desselben Lochs: „Komponente hinzufügen" im Anlege-Weg.
+     *
+     * <p>Er legte bisher IMMER eine neue Erzeuger-Zeile an - auch wenn genau
+     * dieses Gerät daneben verwaist lag. Jetzt übernimmt er sie, und der
+     * VORSCHLAG dafür ist vor dem Klick abrufbar ({@code /component-match}), so
+     * dass der Assistent sagen kann, was gleich passiert.
+     */
+    @Test
+    void theAssistantTakesOverTheOrphanedComponentInsteadOfMintingAParallelOne() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Assistent-Alias-Anlage");
+        try {
+            UUID device = claim(customer, site, "edge-alias-2");
+            saveBattery(customer, site);
+            setAuthority(site, ComponentAuthority.BOX);
+            heartbeat(site, device, singleFroniusReport());
+            assertThat(adoptAsTenant(site).adopted()).isTrue();
+
+            String wr = componentIdOfSource(site, customer, "src-fronius-1");
+            rename(site, customer, wr, "Dach Süd");
+            BigDecimal kwpVorher = plantKwp(site);
+
+            // Der Riss: die Box meldet dasselbe Gerät unter neuer Kennung, und
+            // die Anlage ist portal-verwaltet (der Assistent ist der Weg).
+            heartbeat(site, device, singleFroniusReport()
+                    .replace("src-fronius-1", "src-neu-1"));
+            assertThat(orphanedSourceIds(site, customer)).containsExactly("src-fronius-1");
+
+            Map<String, Object> conn = froniusConnection();
+
+            // Der VORSCHLAG vor dem Klick nennt die vorhandene Komponente.
+            ResponseEntity<String> match = post("/api/v1/sites/" + site + "/component-match",
+                    customer, Map.of("templateRef", FRONIUS_TEMPLATE, "role", "pv-generation",
+                            "connection", conn));
+            assertThat(match.getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode hit = json.readTree(match.getBody());
+            assertThat(hit.get("entityId").asText()).isEqualTo(wr);
+            assertThat(hit.get("label").asText()).isEqualTo("Dach Süd");
+            assertThat(hit.get("orphaned").asBoolean()).isTrue();
+
+            // Und das Speichern tut genau das - OHNE Namensfeld, wie der
+            // Assistent es seit dem Fix schickt.
+            receipts.record(site, FRONIUS_TEMPLATE, conn);
+            ResponseEntity<String> created = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(FRONIUS_TEMPLATE, "pv-generation", conn, null));
+            assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+            assertThat(producerIds(site, customer))
+                    .as("keine zweite Zeile - die verwaiste wurde übernommen")
+                    .containsExactly(wr);
+            assertThat(labelOf(site, customer, wr))
+                    .as("und sie behält ihren Namen")
+                    .isEqualTo("Dach Süd");
+            assertThat(plantKwp(site)).isEqualByComparingTo(kwpVorher);
+
+            // Ein AUSDRÜCKLICH getippter Name gewinnt weiterhin.
+            receipts.record(site, FRONIUS_TEMPLATE, conn);
+            assertThat(post("/api/v1/sites/" + site + "/components", customer,
+                    saveBody(FRONIUS_TEMPLATE, "pv-generation", conn, "Dach Süd-West"))
+                    .getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(labelOf(site, customer, wr)).isEqualTo("Dach Süd-West");
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * DIE HEILUNG des schon eingetretenen Schadens (Anlage Pilsting/Herzogau,
+     * 20.08.2026): der Kunde hat nach dem Riss eine PARALLELE Komponente
+     * angelegt, sein Name steht seither auf der verwaisten daneben.
+     *
+     * <p>Der Befund, den der PR-Rumpf trägt: <b>der Name ist NICHT verloren</b> -
+     * er liegt auf der alten Zeile. Dieser Test fährt beide Reparatur-Wege und
+     * beweist, dass sie ihn zurückholen, ohne dass jemand etwas abtippt:
+     *
+     * <ol>
+     *   <li>Doppelte LÖSCHEN → der getaktete Abgleich verbindet die verwaiste
+     *       Komponente von selbst wieder (kein Klick).</li>
+     *   <li>TAUSCHEN („Zuordnung ändern") → der Name steht sofort wieder am
+     *       richtigen Gerät.</li>
+     * </ol>
+     *
+     * <p><b>⚠ Die REIHENFOLGE ist heute nicht frei, und dieser Test hält das
+     * fest statt es zu verschweigen:</b> nach einem Tausch trägt die
+     * freigegebene Doppelte KEINEN Pin mehr, und der Grundausstattungs-Zaun des
+     * Kunden-Löschens (`SiteEntityAdoptController.delete`) verweigert dann das
+     * Entfernen - sie bleibt als namenlose Zeile stehen. Wer aufräumen will,
+     * löscht ZUERST (Weg 1). Den Zaun auf die plattform-komponierten Zeilen zu
+     * verengen wäre ein Einzeiler, ändert aber eine ausdrücklich geprüfte Regel
+     * eines Nachbar-Features
+     * ({@code PortalApiTest.customerSwapsCrossedAssignmentsAndDeletesTheGhostComponent})
+     * - das ist ein Captain-Entscheid, kein Implementierungsdetail.
+     */
+    @Test
+    void theStrandedCustomerNameComesBackOnBothRepairPathsWithoutRetyping() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Herzogau-Heilung");
+        try {
+            UUID device = claim(customer, site, "edge-alias-3");
+            saveBattery(customer, site);
+            setAuthority(site, ComponentAuthority.BOX);
+            heartbeat(site, device, fullReport());
+            assertThat(adoptAsTenant(site).adopted()).isTrue();
+
+            String wr1 = componentIdOfSource(site, customer, "src-fronius-1");
+            String wr2 = componentIdOfSource(site, customer, "src-fronius-2");
+            rename(site, customer, wr1, "Fronius Anlage WR1");
+            rename(site, customer, wr2, "Dach Nord");
+
+            // Der Riss - und der Schaden, wie er entstanden IST: der Kunde legt
+            // die gemeldeten Geräte als NEUE Komponenten an.
+            heartbeat(site, device, reportWithRenamedSourceIds());
+            String dup1 = adoptAsNew(site, customer, "src-tdaejmjs", "Fronius 1");
+            String dup2 = adoptAsNew(site, customer, "src-67w4nbhh", "Fronius 2");
+            assertThat(producerIds(site, customer))
+                    .as("der Schaden: vier Erzeuger statt zwei")
+                    .containsExactlyInAnyOrder(wr1, wr2, dup1, dup2);
+            assertThat(labelOf(site, customer, wr1))
+                    .as("der Kundenname ist NICHT verloren - er steht auf der verwaisten Zeile")
+                    .isEqualTo("Fronius Anlage WR1");
+
+            // --- Weg 1: Doppelte löschen, der Takt heilt den Rest ------------
+            assertThat(deleteComponent(site, customer, dup1).getStatusCode())
+                    .isEqualTo(HttpStatus.NO_CONTENT);
+            assertThat(runner.heal().rebound())
+                    .as("die freigewordene Kennung findet ihre Komponente von selbst")
+                    .isEqualTo(1);
+            assertThat(componentIdOfSource(site, customer, "src-tdaejmjs")).isEqualTo(wr1);
+            assertThat(labelOf(site, customer, wr1)).isEqualTo("Fronius Anlage WR1");
+
+            // --- Weg 2: TAUSCHEN - der Name steht sofort wieder am Gerät ------
+            ResponseEntity<String> swapped = post(
+                    "/api/v1/sites/" + site + "/v2-entities/" + wr2 + "/edge-source", customer,
+                    Map.of("sourceId", "src-67w4nbhh", "swap", true));
+            assertThat(swapped.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(componentIdOfSource(site, customer, "src-67w4nbhh")).isEqualTo(wr2);
+            assertThat(labelOf(site, customer, wr2)).isEqualTo("Dach Nord");
+
+            // ⚠ Und die bekannte Grenze, festgehalten statt verschwiegen: die
+            // freigegebene Doppelte lässt sich DANACH nicht mehr entfernen.
+            assertThat(deleteComponent(site, customer, dup2).getStatusCode())
+                    .as("ohne Pin greift der Grundausstattungs-Zaun - erst löschen, dann tauschen")
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(labelOf(site, customer, wr1))
+                    .as("beide Kundennamen sind zurück")
+                    .isEqualTo("Fronius Anlage WR1");
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /** Legt eine gemeldete Quelle als NEUE Komponente an (der Schadens-Weg). */
+    private String adoptAsNew(UUID site, String token, String sourceId, String label)
+            throws Exception {
+        ResponseEntity<String> res = post("/api/v1/sites/" + site + "/v2-entities/adopt", token,
+                Map.of("sourceId", sourceId, "entityType", "producer", "label", label));
+        assertThat(res.getStatusCode()).as("übernehmen").isEqualTo(HttpStatus.OK);
+        return json.readTree(res.getBody()).get("id").asText();
+    }
+
+    private ResponseEntity<String> deleteComponent(UUID site, String token, String entityId) {
+        return rest.exchange(url("/api/v1/sites/" + site + "/v2-entities/" + entityId),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(token)), String.class);
+    }
+
+    /** Der Kunde benennt eine Komponente um (die Alias-Route). */
+    private void rename(UUID site, String token, String entityId, String label) {
+        ResponseEntity<String> res = rest.exchange(
+                url("/api/v1/sites/" + site + "/v2-entities/" + entityId + "/label"),
+                HttpMethod.PUT, new HttpEntity<>(Map.of("label", label), bearer(token)),
+                String.class);
+        assertThat(res.getStatusCode()).as("umbenennen").isEqualTo(HttpStatus.OK);
+    }
+
+    /** Der Name, den eine Komponente GERADE trägt. */
+    private String labelOf(UUID site, String token, String entityId) throws Exception {
+        for (JsonNode row : getJson("/api/v1/sites/" + site + "/components", token)
+                .get("components")) {
+            if (entityId.equals(row.get("id").asText())) {
+                return row.path("label").asText(null);
+            }
+        }
+        return null;
+    }
+
+    /** Die Erzeuger-Komponenten der Anlage. */
+    private List<String> producerIds(UUID site, String token) throws Exception {
+        List<String> out = new java.util.ArrayList<>();
+        for (JsonNode row : getJson("/api/v1/sites/" + site + "/components", token)
+                .get("components")) {
+            if ("pv-generation".equals(row.path("role").asText(null))) {
+                out.add(row.get("id").asText());
+            }
+        }
+        return out;
+    }
+
+    /** Die Gesamt-kWp der Anlage (das Aggregat, das der Optimierer liest). */
+    private BigDecimal plantKwp(UUID site) throws SQLException {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            var rs = st.executeQuery("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + site
+                    + "' AND type = 'pv' AND is_primary");
+            return rs.next() ? rs.getBigDecimal(1) : null;
+        }
+    }
+
+    private ResponseEntity<String> post(String path, String token, Object body) {
+        return rest.exchange(url(path), HttpMethod.POST,
+                new HttpEntity<>(body, bearer(token)), String.class);
+    }
+
+    /** Die Vorlage, die der {@link #fullReport()} meldet. */
+    private static final String FRONIUS_TEMPLATE =
+            "builtin:fronius_sunspec:fronius-eco-27-3-s";
+
+    /** Die Verbindung des einen Fronius aus {@link #singleFroniusReport()}. */
+    private static Map<String, Object> froniusConnection() {
+        Map<String, Object> conn = new java.util.LinkedHashMap<>();
+        conn.put("ip", "192.168.210.40");
+        conn.put("port", 502);
+        conn.put("unit_id", 1);
+        return conn;
+    }
+
+    private static Map<String, Object> saveBody(String templateRef, String role,
+            Map<String, Object> connection, String label) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("templateRef", templateRef);
+        body.put("role", role);
+        body.put("connection", connection);
+        if (label != null) {
+            body.put("label", label);
+        }
+        return body;
+    }
+
+    /** Wie {@link #fullReport()}, aber mit genau EINEM Fronius. */
+    private static String singleFroniusReport() {
+        return """
+                [{"id":"inverter","kind":"inverter","brand":"deye","model":"sun-30k-sg01hp3",
+                  "label":"Deye SUN-30K","family":"hybrid_3p","communication":"solarman_v5",
+                  "connection":{"ip":"192.168.0.28","port":8899,"serial":"2985159064",
+                                "mb_slave_id":1,"power_scale":10,"invert_batt_sign":true}},
+                 {"id":"src-fronius-1","kind":"source","role":"pv-generation",
+                  "brand":"fronius_sunspec","model":"fronius-eco-27-3-s","label":"Fronius 1",
+                  "family":"sunspec_live","communication":"fronius_sunspec",
+                  "connection":{"ip":"192.168.210.40","port":502,"unit_id":1},
+                  "interval_s":30,"capacity_kwp":27,"registry_unit_id":"SEE966831669441"}]""";
     }
 
     /** Die Komponente, die an diese Quellen-Kennung gepinnt ist. */

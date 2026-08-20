@@ -58,26 +58,43 @@ public class ComponentDefinitionRepository {
     }
 
     /**
+     * Was nach einem {@link #applyDefinition} gilt: die neue Fassungsnummer und
+     * der NAME, den die Komponente danach trägt. Der Name kommt aus der
+     * Datenbank zurück, damit die Historie exakt das festhält, was gespeichert
+     * wurde - eine zweite Ableitung im Aufrufer wäre eine zweite Wahrheit.
+     */
+    public record Applied(int version, String label) {}
+
+    /**
      * Schreibt die geltende Anbindung auf den Messpunkt und hebt seine Fassung.
      * Der {@code site_id}-Vergleich ist kein Mandanten-Zaun (den macht RLS) -
      * er verhindert, dass eine Komponente einer ANDEREN Anlage desselben Kunden
      * getroffen wird.
      *
-     * @return die neue Fassungsnummer, oder 0 wenn die Komponente nicht existiert
+     * <p><b>⚠ Der NAME wird nur GEFÜLLT, nie überschrieben</b> (Alias-Kontinuität,
+     * Live-Fall Herzogau 20.08.2026: „beim neu hinzufügen sind die Aliase jetzt
+     * weg"). Seit der Label-Hygiene (V20260812000000) heißt {@code label != NULL}
+     * „von einem Menschen vergeben" - ein abgeleiteter Name (das Modell aus der
+     * Vorlage, der von der Box gemeldete Quellenname) darf einen solchen niemals
+     * ersetzen. {@code null}/leer behält den gespeicherten Namen; gelöscht wird
+     * ein Name ausschließlich über die Umbenennen-Route des Kunden.
+     *
+     * @return {@link Applied}, oder {@code null} wenn die Komponente nicht existiert
      */
-    public int applyDefinition(UUID siteId, UUID entityId, String label, String brand, String model,
-            String family, String communication, String connectionJson, String sourceKind,
-            String templateRef, Integer templateVersion) {
-        List<Integer> rows = jdbc.query(
-                "UPDATE measurement_point SET label = ?, brand = ?, model = ?, family = ?, "
+    public Applied applyDefinition(UUID siteId, UUID entityId, String label, String brand,
+            String model, String family, String communication, String connectionJson,
+            String sourceKind, String templateRef, Integer templateVersion) {
+        List<Applied> rows = jdbc.query(
+                "UPDATE measurement_point SET label = COALESCE(NULLIF(?::text, \'\'), label), "
+                        + "brand = ?, model = ?, family = ?, "
                         + "communication = ?, connection_json = ?::jsonb, source_kind = ?, "
                         + "template_ref = ?, template_version = ?, "
                         + "definition_version = definition_version + 1 "
-                        + "WHERE id = ? AND site_id = ? RETURNING definition_version",
-                (rs, n) -> rs.getInt(1),
+                        + "WHERE id = ? AND site_id = ? RETURNING definition_version, label",
+                (rs, n) -> new Applied(rs.getInt(1), rs.getString(2)),
                 label, brand, model, family, communication, connectionJson, sourceKind,
                 templateRef, templateVersion, entityId, siteId);
-        return rows.isEmpty() ? 0 : rows.get(0);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     /** Legt die Fassung in der Historie ab. */
