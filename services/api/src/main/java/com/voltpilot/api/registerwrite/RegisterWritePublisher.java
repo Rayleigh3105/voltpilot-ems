@@ -108,8 +108,17 @@ public class RegisterWritePublisher {
         // Probe-Regel): sie ist Netz-Topologie und erscheint auf diesem Pfad in
         // keiner anderen Zeile. Register und Modus schon - sie sind die
         // Betriebs-Tatsache, um die es hier geht.
-        log.info("register write {} ({}) auf Register {} veröffentlicht (NICHT retained)",
-                requestId, order.mode(), RegisterKnowledge.hex(order.address()));
+        // ⚠ DAS GERÄT GEHÖRT IN DIESE ZEILE (Produktionsvorfall 20.08.2026): ohne
+        // es sagt das Protokoll „veröffentlicht", aber nicht WOHIN - und genau
+        // die Frage „auf welchem Geräte-Pfad lag der Auftrag?" war danach aus
+        // dem Protokoll allein nicht mehr zu beantworten. Es ist keine
+        // Kunden-Information, sondern die Kennung, die ohnehin in jeder zweiten
+        // Zeile dieses Pfades steht; die LAN-Adresse bleibt draußen (die
+        // Probe-Regel).
+        log.info("register write {} ({}) an Gerät {} auf Register {} veröffentlicht "
+                + "(NICHT retained, Lane {})",
+                requestId, order.mode(), deviceId, RegisterKnowledge.hex(order.address()),
+                order.lane());
     }
 
     static byte[] envelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,

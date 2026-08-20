@@ -351,4 +351,30 @@ describe('Stufe 3: der Verantwortungs-Satz steht in der Rückfrage', () => {
       deviceId: 'd-2', lane: 'lan', host: '192.168.0.44', port: 502, unitId: 3,
     });
   });
+
+  /**
+   * ⚠ Eine Lesung darf bis zu einer halben Minute dauern (die Box wartet hinter
+   * ihrer EINEN Warteschlange auf den laufenden Poll). Ein bloß ausgegrauter
+   * Knopf liest sich über diese Zeit als Defekt - genau der Eindruck, der beim
+   * Produktionsvorfall entstand, während der Vorgang in Wahrheit lief.
+   */
+  it('sagt an, dass die Lesung dauert - statt nur den Knopf auszugrauen', async () => {
+    registerWriteTargets.mockResolvedValue([target()]);
+    let aufloesen: (o: RegisterWriteOutcome) => void = () => {};
+    registerWritePreview.mockImplementation(
+      () => new Promise<RegisterWriteOutcome>((res) => { aufloesen = res; }),
+    );
+    mount();
+    await zielWaehlen();
+    fireEvent.click(screen.getByText('Ist-Wert lesen'));
+
+    const hinweis = await screen.findByTestId('regwrite-lesedauer');
+    expect(hinweis.textContent).toContain('halben Minute');
+    expect(screen.getByTestId('regwrite-lesen').textContent).toContain('Wird gelesen');
+
+    aufloesen(outcome());
+    await waitFor(() =>
+      expect(screen.queryByTestId('regwrite-lesedauer')).not.toBeInTheDocument());
+    expect(screen.getByTestId('regwrite-lesen').textContent).toContain('Ist-Wert lesen');
+  });
 });

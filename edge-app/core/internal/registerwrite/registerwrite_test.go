@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -366,5 +367,66 @@ func TestTheLimiterBoundsWritesTighterThanReads(t *testing.T) {
 	var none *Limiter
 	if !none.Allow(now) {
 		t.Fatal("ohne Limiter wird nichts abgelehnt")
+	}
+}
+
+// ⚠ Answerable ist der Zaun um die zwei NEUEN Antworten (Form + Ablauf): sie
+// duerfen nur dorthin, wo die Cloud sie auch einordnen KANN. Jede der drei
+// Bedingungen ist eine eigene Hausregel, deshalb faellt jede einzeln durch.
+func TestAnswerableGuardsEveryConditionOnItsOwn(t *testing.T) {
+	id := Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
+	ok := Request{TenantID: "t", SiteID: "s", DeviceID: "d",
+		RequestID: "0123456789abcdef", Mode: ModeRead}
+	if !ok.Answerable(id) {
+		t.Fatal("ein zuordenbarer Auftrag muss beantwortbar sein")
+	}
+	cases := map[string]Request{
+		"fremdes Geraet":       {TenantID: "t", SiteID: "s", DeviceID: "x", RequestID: "0123456789abcdef", Mode: ModeRead},
+		"fremder Mandant":      {TenantID: "x", SiteID: "s", DeviceID: "d", RequestID: "0123456789abcdef", Mode: ModeRead},
+		"Kennung zu kurz":      {TenantID: "t", SiteID: "s", DeviceID: "d", RequestID: "abc", Mode: ModeRead},
+		"Kennung kein Hex":     {TenantID: "t", SiteID: "s", DeviceID: "d", RequestID: "zzzzzzzzzzzzzzzz", Mode: ModeRead},
+		"unbekannter Modus":    {TenantID: "t", SiteID: "s", DeviceID: "d", RequestID: "0123456789abcdef", Mode: "malen"},
+		"gar keine Identitaet": {RequestID: "0123456789abcdef", Mode: ModeRead},
+	}
+	for name, r := range cases {
+		if r.Answerable(id) {
+			t.Fatalf("%s darf NICHT beantwortet werden", name)
+		}
+	}
+	// Und ohne eigene Identitaet beantwortet die Box gar nichts - eine Box, die
+	// ihre Cloud-Identitaet noch nicht kennt, kann fuer niemanden sprechen.
+	if ok.Answerable(Identity{}) {
+		t.Fatal("ohne eigene Identitaet darf nichts beantwortet werden")
+	}
+}
+
+// Der Ablauf-Satz ist das EINZIGE Signal, an dem eine auseinandergelaufene Uhr
+// von einer nachgelieferten Nachricht zu unterscheiden ist - also muss er BEIDE
+// Uhren nennen.
+func TestExpiredMessageNamesBothClocks(t *testing.T) {
+	req := Request{RequestedAt: "2026-08-20T07:11:02Z"}
+	now := time.Date(2026, 8, 20, 7, 14, 31, 0, time.UTC)
+	msg := ExpiredMessage(req, now, DefaultWindow)
+	for _, want := range []string{"2026-08-20T07:11:02Z", "2026-08-20T07:14:31Z", "Uhren"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("der Satz nennt %q nicht: %q", want, msg)
+		}
+	}
+}
+
+// Der Grund des Parsers reist WOERTLICH mit - er ist das Genaueste, was
+// irgendwer ueber diesen Auftrag weiss.
+func TestInvalidRequestMessageCarriesTheParsersOwnReason(t *testing.T) {
+	_, err := Parse([]byte(`{"schema_version":"1.0","type":"register_write_request",` +
+		`"request_id":"0123456789abcdef","mode":"schreiben",` +
+		`"target":{"kind":"primary"},"register":{"kind":"holding","address":231}}`))
+	if err == nil {
+		t.Fatal("ein Schreib-Auftrag ohne Wert muss die Form-Pruefung nicht bestehen")
+	}
+	if msg := MsgInvalidRequest(err); !strings.Contains(msg, err.Error()) {
+		t.Fatalf("der Grund fehlt: %q", msg)
+	}
+	if msg := MsgInvalidRequest(nil); msg == "" {
+		t.Fatal("auch ohne Grund muss ein Satz herauskommen")
 	}
 }

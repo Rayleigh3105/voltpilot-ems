@@ -62,27 +62,51 @@ var registerWriteWindow = registerwrite.DefaultWindow
 // goroutine at all.
 func (a *Agent) onRegisterWrite(payload []byte) {
 	now := time.Now()
-	req, err := registerwrite.Parse(payload)
-	if err != nil {
-		slog.Warn("Register-Schreiben: Auftrag verworfen", "grund", err.Error())
-		return
-	}
-
+	// Die eigene Identitaet ZUERST: sie entscheidet, ob eine Ablehnung
+	// ueberhaupt beantwortet werden darf (siehe Request.Answerable).
 	a.entMu.Lock()
 	ident := a.entIdentity
 	a.entMu.Unlock()
 	id := registerwrite.Identity{
 		TenantID: ident.TenantID, SiteID: ident.SiteID, DeviceID: ident.DeviceID,
 	}
+
+	req, err := registerwrite.Parse(payload)
+	if err != nil {
+		slog.Warn("Register-Schreiben: Auftrag verworfen", "grund", err.Error())
+		// ⚠ EINE FORM-ABLEHNUNG WIRD BEANTWORTET, WO SIE ZUORDENBAR IST.
+		// Vorher war sie stumm, und aus der Cloud ist Stille ununterscheidbar
+		// von „die Box hat den Auftrag nie bekommen" - genau diese
+		// Mehrdeutigkeit hat am 20.08.2026 eine ganze Untersuchungsrunde
+		// gekostet. Antwortbar ist nur, was die Cloud auch einordnen KANN
+		// (eigene Identitaet, gueltige Kennung, bekannter Modus).
+		if req.Answerable(id) {
+			go a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
+				registerwrite.ErrInvalidRequest, registerwrite.MsgInvalidRequest(err)))
+		}
+		return
+	}
 	if !req.Matches(id) {
 		// Bewusst OHNE die gemeldete Kennung im Klartext: das Geraet nennt nur,
-		// DASS es nicht passt.
+		// DASS es nicht passt. Die EINE Ablehnung, die stumm bleibt - eine
+		// Antwort bestaetigte einem falsch adressierten Absender, dass es
+		// dieses Geraet gibt.
 		slog.Warn("Register-Schreiben: Auftrag meint ein anderes Geraet - verworfen")
 		return
 	}
 	if req.Expired(now, registerWriteWindow) {
-		slog.Warn("Register-Schreiben: verfallener Auftrag verworfen (nachgeliefert?)",
-			"request_id", req.RequestID, "requested_at", req.RequestedAt)
+		// ⚠ NICHT AUSGEFUEHRT, ABER BEANTWORTET. Die Ausfuehrung bleibt
+		// gesperrt (eine nachgelieferte QoS1-Nachricht darf keinen zweiten
+		// EEPROM-Zyklus kosten) - aber die ANTWORT kostet nichts und ist das
+		// einzige Signal, an dem sich eine auseinandergelaufene Uhr ueberhaupt
+		// erkennen laesst. Frueher verschwand dieser Fall spurlos: die Cloud
+		// sah dasselbe wie bei einem toten Geraet.
+		slog.Warn("Register-Schreiben: verfallener Auftrag NICHT ausgefuehrt (nachgeliefert "+
+			"oder Uhren-Abweichung?)",
+			"request_id", req.RequestID, "requested_at", req.RequestedAt, "jetzt", now.UTC())
+		go a.publishRegisterWriteResult(registerwrite.Refused(req, id, time.Now(),
+			registerwrite.ErrInvalidRequest,
+			registerwrite.ExpiredMessage(req, now, registerWriteWindow)))
 		return
 	}
 	// ⚠ Die Einmaligkeit ist die dritte Sicherung neben „nicht retained" und

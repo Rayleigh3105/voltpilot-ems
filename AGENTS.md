@@ -2028,6 +2028,62 @@ besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`, erster Trigger: die lo
   bleibt** (siehe den Stufe-3-Abschnitt).
   Publisher/Zuhörer reiten auf `voltpilot.provisioning.*` (derselbe Broker wie Probe/Provisionierung/
   OTA) — kein weiteres Transport-Flag. Fristen: `voltpilot.register-write.{read,write}-timeout`.
+- **⚠ DIE ZEITFENSTER-INVARIANTE: das Warte-Budget der CLOUD muss GRÖSSER sein als die Schranke, mit
+  der die BOX ihre eigene Runde begrenzt (Produktionsvorfall 20.08.2026, Pilsting/Herzogau).** Die
+  Box bindet EINEN Bus-Rundlauf an `installerWriteTimeout = 30 s`
+  (`edge-app/core/internal/agent/installerwrite.go`) — so lange DARF ein Lesen dauern, weil der
+  Node-RED-Knoten hinter der EINEN Warteschlange je (Host, Port) erst den laufenden Poll abwarten
+  muss. Die Vorschau wartete aber **20 s**: auf jeder Anlage, deren Wechselrichter-Bus gerade belegt
+  war, gab die api auf, BEVOR das Gerät antworten konnte — die Box antwortete nachweislich korrekt
+  (lokal nachgestellt: 22 s, Ist-Wert 3300 = 33,0 kW), die Korrelation war da längst vergessen, und
+  die Oberfläche BESCHULDIGTE die Anlage („hat den Ist-Wert nicht rechtzeitig gemeldet"), obwohl
+  genau sie geliefert hatte. Der lokale `:8484`-Knopf funktionierte durchgehend, weil sein
+  HTTP-Handler die vollen 30 s abwartet — dieser Widerspruch (lokal geht es, aus dem Portal nie) war
+  der eigentliche Hinweis und blieb zwei Runden lang ungedeutet. Vorgaben seither **PT40S / PT60S**, in
+  `application.yml` mit `VOLTPILOT_REGISTER_WRITE_{READ,WRITE}_TIMEOUT` überschreibbar (vorher stand
+  die Zahl NUR als `@Value`-Default im Code — ein Operator konnte sie ohne Redeploy nicht einmal
+  sehen). **Wer eine der beiden Zahlen anfasst, fasst beide an**; `RegisterWriteService.BOX_ROUND_TRIP`
+  ist die notierte Geräte-Schranke, `RegisterWriteBudgetTest` nagelt sie an der AUSGELIEFERTEN Datei
+  fest (mutationsgeprüft: mit PT20S fällt er um), `RegisterWriteReasonWiringTest` beweist
+  container-frei, dass der Dienst danach den RICHTIGEN der drei Sätze wählt, und der Dienst WARNT
+  beim Start, wenn ein konfiguriertes Budget darunter liegt. Ein zu kleines Budget ist nicht „etwas ungeduldig", sondern
+  ein Feature, das auf einer belegten Anlage NIE funktioniert — und weil eine schnelle Test-Attrappe
+  immer in Millisekunden antwortet, fällt es in keinem Testlauf auf.
+- **⚠ SCHWEIGEN HAT DREI URSACHEN, UND SIE DÜRFEN NIE DENSELBEN SATZ TRAGEN** (derselbe Vorfall,
+  Auftrag 3). Vorher trug jeder Ausgang „Die Anlage hat den Ist-Wert nicht rechtzeitig gemeldet" —
+  in zwei von drei Fällen eine Falschaussage. Die reine, Docker-frei geprüfte
+  `registerwrite/RegisterWriteSilence` (das `Tagesprotokoll`/`FleetPflege`-Muster) trennt sie:
+  **(a)** der Auftrag ging gar nicht hinaus → 503 mit „das liegt an VoltPilot, nicht an Ihrer
+  Anlage"; **(b)** das Gerät meldet sich nicht (nie gesehen bzw. `lastSeenAt` älter als das
+  5-Minuten-Fenster) → es wird benannt, samt Dauer; **(c)** das Gerät hat geantwortet, nur ZU SPÄT →
+  „die vorige Anfrage traf X Sekunden zu spät ein … erneut versuchen". **⚠ Die Reihenfolge ist eine
+  Aussage:** eine verspätete Antwort SCHLÄGT die Telemetrie-Frische — sie kommt aus genau diesem
+  Pfad, während `lastSeenAt` eine ganz andere Kette misst, und ein Gerät, das nachweislich
+  geantwortet hat, darf nie „meldet sich nicht" heißen. Getragen wird (c) von
+  `RegisterWriteRegistry`, das eine aufgegebene Anfrage nicht mehr VERGISST, sondern als AUFGEGEBEN
+  markiert (3 min) und eine später eintreffende Quittung als `Delivery.LATE` erkennt.
+- **⚠ Der Quittungs-Zuhörer protokolliert den AUSGANG der Korrelation** (`LATE`/`UNKNOWN` laut,
+  `DELIVERED` still) und der Publisher nennt das GERÄT samt Lane. Beides fehlte, und genau deshalb
+  war der Prod-Log mehrdeutig: er zeigte fünf „veröffentlicht"-Zeilen und danach nichts — aus dieser
+  Stille war „nie geantwortet" von „zu spät geantwortet" nicht zu unterscheiden, und auf welchem
+  Geräte-Pfad der Auftrag lag, stand nirgends. Wer einen Antwort-Pfad baut, protokolliert seinen
+  Ausgang; Stille ist kein Beleg.
+- **⚠ Auf der BOX ist nur noch EINE Ablehnung stumm: eine fremde Identität.** Ein VERFALLENER
+  Auftrag wird weiterhin NICHT AUSGEFÜHRT (das schützt das EEPROM vor einer nachgelieferten
+  QoS1-Nachricht), aber seit dem 20.08.2026 BEANTWORTET (`invalid_request`, die Nachricht nennt
+  BEIDE Uhren) — eine Antwort kostet keinen Schreibzyklus, und aus der Cloud ist Stille
+  ununterscheidbar von einem toten Gerät, womit eine auseinandergelaufene Uhr strukturell unsichtbar
+  war. Dasselbe für eine kaputte FORM, dort aber nur, wo die Cloud die Antwort überhaupt einordnen
+  KANN (`registerwrite.Request.Answerable`: eigene Identität + gültige Kennung + bekannter Modus).
+  Kontrakt-Wortlaut in `docs/contracts/mqtt-register-write.schema.json` (`x-semantics.expiry`,
+  `x-meanings.invalid_request`) mitgezogen.
+- Beweise dieser Runde: rein `RegisterWriteSilenceTest` (8) · `RegisterWriteRegistryTest` (5) ·
+  `RegisterWriteReasonWiringTest` (4, die WAHL des Grundes im Dienst) · `RegisterWriteBudgetTest`
+  (1, mutationsgeprüft) ; Testcontainers `RegisterWriteApiTest.aLateAnswerIsRecognisedAndTheNext
+  AttemptSaysSoInsteadOfBlamingThePlant` (echtes EMQX: erster Anlauf nennt das stumme Gerät, die
+  verspätete Quittung wird erkannt, der zweite Anlauf sagt „zu spät" — und eine Vorschau bleibt
+  auch dann spurlos) ; Go `internal/registerwrite` (+3) + `agent/register_write_test.go` (+1) ;
+  portal `RegisterWriteDrawer.test.tsx` (+1).
 - **Der BOX-KONSUMENT ist der zweite ADAPTER, kein zweiter Pfad.** `edge-app/core/internal/registerwrite`
   (rein: Parsen, Identität, Verfall, Lane, Rate, Selbstkonflikt — das
   `internal/probe`-Muster) + `agent/register_write.go` (nur Verdrahtung) reichen an GENAU die zwei

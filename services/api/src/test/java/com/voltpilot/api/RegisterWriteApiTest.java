@@ -17,7 +17,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
@@ -346,6 +348,93 @@ class RegisterWriteApiTest {
             assertThat(folded.get("adopted")).isEqualTo(true);
             assertThat(folded.get("afterRaw")).isEqualTo(7000);
             assertThat(folded.get("requestId")).isEqualTo(requestId);
+        }
+    }
+
+    /**
+     * ⚠ DER PRODUKTIONSVORFALL VOM 20.08.2026, als Test: das Gerät antwortet -
+     * nur LANGSAMER als das Budget der Cloud.
+     *
+     * <p>Die Ursache war Arithmetik: die Box bindet EINEN Bus-Rundlauf an 30 s
+     * (sie muss hinter der EINEN Warteschlange je Ziel erst den laufenden Poll
+     * abwarten), die Vorschau wartete aber nur 20 s. Auf einer belegten Anlage
+     * kam die api damit strukturell zu spät - und weil beide Ausgänge DENSELBEN
+     * Satz trugen, war „hat nie geantwortet" von „hat zu spät geantwortet" nicht
+     * zu unterscheiden. Hier ist beides getrennt: der erste Anlauf nennt das
+     * stumme Gerät, der zweite nennt die Verspätung - und nur beim zweiten hilft
+     * „erneut versuchen".
+     */
+    @Test
+    void aLateAnswerIsRecognisedAndTheNextAttemptSaysSoInsteadOfBlamingThePlant()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Langsame Register-Anlage");
+        UUID device = claim(customer, site, "edge-regwrite-e2e-late");
+
+        try (DeviceStub stub = new DeviceStub()) {
+            AtomicInteger seen = new AtomicInteger();
+            CountDownLatch answered = new CountDownLatch(1);
+            stub.answerWith(req -> {
+                if (seen.incrementAndGet() > 1) {
+                    return null; // der zweite Anlauf bleibt stumm
+                }
+                String topic = stub.lastTopic;
+                String rid = req.get("request_id").asText();
+                // NACH dem Budget (PT3S) - auf einem eigenen Faden, damit der
+                // Stellvertreter weiter zustellen kann.
+                Thread t = new Thread(() -> {
+                    try {
+                        Thread.sleep(4500);
+                        stub.publish(topic + "-result",
+                                "{\"schema_version\":\"1.0\""
+                                        + ",\"type\":\"register_write_result\""
+                                        + ",\"tenant_id\":\"" + TENANT_A + "\""
+                                        + ",\"site_id\":\"" + site + "\""
+                                        + ",\"device_id\":\"" + device + "\""
+                                        + ",\"request_id\":\"" + rid + "\""
+                                        + ",\"answered_at\":\"2026-08-20T07:35:05Z\""
+                                        + ",\"mode\":\"lesen\",\"ok\":true"
+                                        + ",\"before_raw\":3300}");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        answered.countDown();
+                    }
+                });
+                t.setDaemon(true);
+                t.start();
+                return null;
+            });
+
+            ResponseEntity<Map<String, Object>> first = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x00E7"));
+            assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(first.getBody().get("errorCode")).isEqualTo("timeout");
+            // Erster Anlauf: noch KEIN Beleg für eine Verspätung - also wird auch
+            // keine behauptet.
+            assertThat(first.getBody().get("message").toString())
+                    .doesNotContain("zu spät");
+
+            assertThat(answered.await(15, TimeUnit.SECONDS))
+                    .as("die verspätete Antwort wurde abgeschickt").isTrue();
+            Thread.sleep(500); // der Zuhörer darf sie noch einordnen
+
+            ResponseEntity<Map<String, Object>> second = post(
+                    "/api/v1/sites/" + site + "/register-write/preview", customer,
+                    Map.of("deviceId", device.toString(), "address", "0x00E7"));
+            assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(second.getBody().get("errorCode")).isEqualTo("timeout");
+            assertThat(second.getBody().get("message").toString())
+                    .as("die verspätete Antwort ist der Grund, und sie wird genannt")
+                    .contains("zu spät")
+                    .contains("erneut versuchen");
+            // ⚠ Und die Anlage wird NICHT beschuldigt, sich nicht zu melden.
+            assertThat(second.getBody().get("message").toString())
+                    .doesNotContain("noch nie bei VoltPilot gemeldet");
+
+            // Eine Vorschau bleibt spurlos - auch die verspätete Antwort auf eine.
+            assertThat(history(customer, site)).isEmpty();
         }
     }
 

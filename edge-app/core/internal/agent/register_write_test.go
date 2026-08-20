@@ -160,11 +160,15 @@ func TestThePortalTriggerPreviewsThenWritesOnceThroughTheSharedCore(t *testing.T
 	}
 }
 
-// Zwei Ablehnungen sind STUMM: eine fremde Identitaet (eine Antwort bestaetigte
-// einem falsch adressierten Absender die Existenz dieses Geraets) und ein
-// verfallener Auftrag (die Portal-Route hat laengst aufgegeben, und eine
-// nachgelieferte QoS1-Nachricht wuerde sonst einen EEPROM-Zyklus kosten).
-func TestAForeignOrAnExpiredOrderIsDiscardedSilentlyAndNeverReachesTheDevice(t *testing.T) {
+// GENAU EINE Ablehnung ist STUMM: eine fremde Identitaet (eine Antwort
+// bestaetigte einem falsch adressierten Absender die Existenz dieses Geraets).
+//
+// ⚠ Ein VERFALLENER Auftrag ist seit dem 20.08.2026 nicht mehr stumm: er wird
+// weiterhin NICHT AUSGEFUEHRT (das schuetzt das EEPROM vor einer nachgelieferten
+// QoS1-Nachricht), aber er wird BEANTWORTET - die Antwort kostet nichts, und
+// aus der Cloud ist Stille ununterscheidbar von einem toten Geraet. Genau diese
+// Mehrdeutigkeit hat den Produktionsvorfall verlaengert.
+func TestAForeignOrderIsSilentWhileAnExpiredOneIsAnsweredButNeverExecuted(t *testing.T) {
 	box := startPortalBox(t)
 	seen := make(chan installerBusRequest, 4)
 	installerStub(t, box.addr, seen, nil)
@@ -175,7 +179,21 @@ func TestAForeignOrAnExpiredOrderIsDiscardedSilentlyAndNeverReachesTheDevice(t *
 
 	box.a.onRegisterWrite(box.order(t, "schreiben", "9f2c41ab77d05e22", map[string]any{
 		"requested_at": time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339)}))
-	box.silent(t, "verfallener Auftrag")
+	res := box.await(t)
+	if res.OK || res.ErrorCode != registerwrite.ErrInvalidRequest {
+		t.Fatalf("ein verfallener Auftrag wird als invalid_request beantwortet: %+v", res)
+	}
+	if res.RequestID != "9f2c41ab77d05e22" {
+		t.Fatalf("die Quittung muss korrelierbar sein: %+v", res)
+	}
+	// ⚠ Der Satz muss BEIDE Uhren nennen - er ist das einzige Signal, an dem
+	// eine auseinandergelaufene Uhr ueberhaupt erkennbar ist.
+	if !strings.Contains(res.Message, "abgelaufen") || !strings.Contains(res.Message, "Uhren") {
+		t.Fatalf("der Grund nennt weder den Ablauf noch die Uhren: %q", res.Message)
+	}
+	if res.BeforeRaw != nil || res.AfterRaw != nil {
+		t.Fatalf("eine Ablehnung traegt nie einen Wert: %+v", res)
+	}
 
 	select {
 	case got := <-seen:
@@ -183,7 +201,49 @@ func TestAForeignOrAnExpiredOrderIsDiscardedSilentlyAndNeverReachesTheDevice(t *
 	case <-time.After(300 * time.Millisecond):
 	}
 	if n := len(box.a.installerLog.List()); n != 0 {
-		t.Fatalf("eine verworfene Anfrage hinterlaesst keine Zeile: %d", n)
+		t.Fatalf("eine nicht ausgefuehrte Anfrage hinterlaesst keine Zeile: %d", n)
+	}
+}
+
+// Eine kaputte FORM wird beantwortet, wo die Cloud die Antwort einordnen kann -
+// und bleibt stumm, wo sie es nicht koennte. Vorher war jede Form-Ablehnung
+// stumm, also von „die Box hat nie etwas bekommen" nicht zu unterscheiden.
+func TestAMalformedOrderIsAnsweredWheneverTheCloudCouldUnderstandTheAnswer(t *testing.T) {
+	box := startPortalBox(t)
+	seen := make(chan installerBusRequest, 4)
+	installerStub(t, box.addr, seen, nil)
+
+	// Zuordenbar: eigene Identitaet, gueltige Kennung, bekannter Modus - nur
+	// der Wert fehlt.
+	box.a.onRegisterWrite(box.order(t, "schreiben", "9f2c41ab77d05e31", map[string]any{
+		"value": nil}))
+	res := box.await(t)
+	if res.OK || res.ErrorCode != registerwrite.ErrInvalidRequest {
+		t.Fatalf("eine kaputte Form wird als invalid_request beantwortet: %+v", res)
+	}
+	if !strings.Contains(res.Message, "nicht ausführbar") {
+		t.Fatalf("der Grund des Parsers muss mitreisen: %q", res.Message)
+	}
+
+	// NICHT zuordenbar - die Cloud verwirft eine Quittung mit unbekanntem Modus
+	// ohnehin, eine Antwort waere Rauschen.
+	box.a.onRegisterWrite(box.order(t, "malen", "9f2c41ab77d05e32", nil))
+	box.silent(t, "unbekannter Modus")
+
+	// NICHT zuordenbar - ohne gueltige Kennung kann niemand die Antwort einer
+	// Anfrage zuordnen.
+	box.a.onRegisterWrite(box.order(t, "lesen", "kurz", nil))
+	box.silent(t, "unbrauchbare Kennung")
+
+	// Und eine kaputte Form eines FREMDEN Geraets bleibt stumm wie eh und je.
+	box.a.onRegisterWrite(box.order(t, "schreiben", "9f2c41ab77d05e33", map[string]any{
+		"device_id": "00000000-0000-0000-0000-0000000000ff", "value": nil}))
+	box.silent(t, "fremde Identitaet mit kaputter Form")
+
+	select {
+	case got := <-seen:
+		t.Fatalf("das Geraet wurde trotzdem erreicht: %+v", got)
+	case <-time.After(300 * time.Millisecond):
 	}
 }
 

@@ -2752,12 +2752,29 @@ das Portal, Stufe 1". Was HIER gelten muss:
   sonst und hat ausschliesslich unexportierte Felder - kein Adapter kann den
   Mechanismus auf ein Register seiner Wahl richten. Wer hier einen eigenen
   Schreibpfad einzieht, muss jedes Tor ein zweites Mal absichern.
-- **⚠ Genau ZWEI Ablehnungen sind STUMM** (fremde Identität, verfallener
-  Auftrag) - alles andere wird BEANTWORTET. Eine Ablehnung, die niemand sieht,
-  ist ein Rätsel (die Canary-Soak-Lehre): eine nicht ausgeführte Lane antwortet
+- **⚠ Nur noch EINE Ablehnung ist STUMM: eine fremde Identität** (eine Antwort
+  bestätigte einem falsch adressierten Absender die Existenz dieses Geräts).
+  Alles andere wird BEANTWORTET - eine Ablehnung, die niemand sieht, ist ein
+  Rätsel (die Canary-Soak-Lehre): eine nicht ausgeführte Lane antwortet
   `not_supported`, die Politik `refused_policy` mit dem deutschen Satz VERBATIM
   aus `Admit`. (`gate_disabled` gibt es seit dem Wegfall des Flags nur noch im
   Kontrakt - siehe oben.)
+- **⚠ Ein VERFALLENER Auftrag wird seit dem 20.08.2026 BEANTWORTET, aber
+  weiterhin NICHT AUSGEFÜHRT.** Die Ausführungssperre ist der EEPROM-Schutz
+  gegen eine nachgelieferte QoS1-Nachricht; die frühere STILLE schützte nichts
+  und versteckte die eine Ursache, die von der Cloud aus gar nicht sichtbar ist
+  - zwei auseinandergelaufene Uhren. Die Antwort (`invalid_request`) nennt
+  deshalb BEIDE Uhren (`registerwrite.ExpiredMessage`). Dieselbe Regel für eine
+  kaputte FORM, dort aber nur, wo die Cloud die Antwort einordnen KANN
+  (`Request.Answerable`: eigene Identität + gültige Kennung + bekannter Modus) -
+  sonst wäre die Antwort Rauschen, das die Cloud ohnehin verwirft.
+- **⚠ `installerWriteTimeout = 30 s` ist eine VERTRAGSGRÖSSE, keine interne
+  Zahl** (`agent/installerwrite.go`). Die Cloud MUSS länger warten als die Box
+  sich selbst gibt; sie tat es nicht (20 s), und damit lief das Portal-Lesen auf
+  jeder Anlage ins Leere, deren Modbus-Warteschlange gerade belegt war - die
+  Box antwortete korrekt, nur zu spät für die Cloud. Wer die 30 s ändert, ändert
+  `voltpilot.register-write.{read,write}-timeout` mit (root `AGENTS.md`
+  „Zeitfenster-Invariante", `RegisterWriteBudgetTest`).
 - **Drei Sicherungen gegen ein Replay**, nicht eine: nicht-retained (Vertrag),
   das `requested_at`-Fenster (60 s, ab dem Stempel des Umschlags - nicht ab dem
   Empfang) und der `request_id`-Merker (gegen eine Doppelzustellung INNERHALB
@@ -2779,10 +2796,13 @@ das Portal, Stufe 1". Was HIER gelten muss:
   niemand in der Cloud sieht. Der Herzschlag trägt das Buch additiv
   (`registerWritesSummary`, höchstens 5 Einträge des letzten Tages), eine Box
   ohne Schreibvorgang sendet GAR KEINEN Block.
-- Beweise: `internal/registerwrite` (11, inkl. der Kontrakt-Fixtures per PFAD) ·
-  `agent/register_write_test.go` (7, darunter „der Pfad braucht keinen
-  Armierungs-Schritt" samt Struktur-Wächter gegen ein wieder eingeführtes
-  Konfigurations-Feld) · `internal/cloud/status_test.go`.
+- Beweise: `internal/registerwrite` (14, inkl. der Kontrakt-Fixtures per PFAD
+  und der drei Bedingungen von `Answerable`) · `agent/register_write_test.go`
+  (8, darunter „der Pfad braucht keinen Armierungs-Schritt" samt Struktur-
+  Wächter gegen ein wieder eingeführtes Konfigurations-Feld, „fremd bleibt
+  stumm, verfallen wird beantwortet aber nie ausgeführt" und „eine kaputte Form
+  wird beantwortet, wo die Cloud sie versteht") ·
+  `internal/cloud/status_test.go`.
 
 ## Stufe 2 „Freie Register": die Allowlist wird durch LANE-Regeln abgeloest
 

@@ -220,7 +220,24 @@ public class RegisterWriteResultListener {
                 text(json, "message", MAX_MESSAGE), answeredAt(json));
 
         persist(tenantId, siteId, deviceId, result);
-        registry.complete(deviceId, requestId, result);
+        // ⚠ DER AUSGANG DER KORRELATION WIRD PROTOKOLLIERT (Produktionsvorfall
+        // 20.08.2026). Vorher schwieg dieser Pfad vollständig: eine Quittung,
+        // die zu spät oder zu einer vergessenen Kennung eintraf, verschwand
+        // spurlos - im api-Protokoll war „das Gerät hat nie geantwortet" von
+        // „das Gerät hat zu spät geantwortet" nicht zu unterscheiden, obwohl
+        // genau das die Diagnose war. Eine ZUGESTELLTE Quittung bleibt still
+        // (der Aufruf selbst ist die Spur); die zwei anderen Ausgänge sind laut.
+        RegisterWriteRegistry.Delivery delivery = registry.complete(deviceId, requestId, result);
+        switch (delivery) {
+            case LATE -> log.warn("register write result {} von Gerät {} kam ZU SPÄT - der "
+                    + "Aufruf hatte das Warten schon aufgegeben (mode={}, ok={}). Das Budget "
+                    + "voltpilot.register-write.*-timeout ist für diese Anlage zu knapp.",
+                    requestId, deviceId, mode, ok);
+            case UNKNOWN -> log.warn("register write result {} von Gerät {} ließ sich keiner "
+                    + "wartenden Anfrage zuordnen (mode={}) - unbekannte Kennung, fremdes Gerät "
+                    + "oder längst verfallen.", requestId, deviceId, mode);
+            default -> { }
+        }
     }
 
     /**
