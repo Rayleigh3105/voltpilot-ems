@@ -1,7 +1,7 @@
 // AE7 Nutzungsprofil (usage profile) - the SECOND adaptation axis
 // (adaptive-ems-ui-v1-spec.md §2/§3, contract docs/contracts/v2/usage-profile.md).
 //
-// The usage profile (arbitrage | peak | private) steers the portal/edge EMPHASIS
+// The usage profile (arbitrage | peak | laden | private) steers the portal/edge EMPHASIS
 // (money-/peak-/flow-centric). It is DERIVED from the site's strategy nodes +
 // entity mix + money master data, explicitly overridable - ONE truth, not a
 // competing concept.
@@ -10,7 +10,7 @@
 // are pinned by docs/contracts/v2/usage-profile-vectors.json. Change the rules on
 // both sides + the vectors together.
 
-export type UsageProfile = 'arbitrage' | 'peak' | 'private';
+export type UsageProfile = 'arbitrage' | 'peak' | 'laden' | 'private';
 export type EmphasisLevel = 'prominent' | 'secondary' | 'minimal' | 'hidden';
 
 export const NODE_MARKET = 'vp.strategy.market';
@@ -21,6 +21,11 @@ export interface ProfileSignals {
   hasStorage: boolean;
   hasPv: boolean;
   hasControllableConsumer: boolean;
+  /**
+   * Die Anlage hat mindestens einen Ladepunkt (Lastmanagement Stufe 3).
+   * Absent = false, damit ein älterer Aufrufer zeichengleich weiterrechnet.
+   */
+  hasChargePoint?: boolean;
   activeStrategyNodeTypes: string[];
   plantKind: string | null;
   hasLeistungspreis: boolean;
@@ -36,10 +41,10 @@ export interface Emphasis {
 }
 
 /**
- * Whether `value` is a SETTABLE usage-profile override. `private` is deliberately
- * NOT settable (it is the derived household default, report vp-nacht-bezug-e7
- * §3.3); only `arbitrage` and `peak` may be chosen, so a stored/legacy `private`
- * override falls through to the derivation.
+ * Whether `value` is a SETTABLE usage-profile override. `private` and `laden`
+ * are deliberately NOT settable (they are DERIVED: the household default and
+ * the charging park); only `arbitrage` and `peak` may be chosen, so a stored/
+ * legacy value of either falls through to the derivation.
  */
 export function isUsageProfile(
   value: string | null | undefined,
@@ -57,6 +62,11 @@ export function deriveDefault(s: ProfileSignals): UsageProfile {
   if (peak) return 'peak';
   const arbitrage = types.includes(NODE_MARKET) || s.plantKind === 'direktvermarktung';
   if (arbitrage) return 'arbitrage';
+  // Der LADEPARK: Ladepunkte, aber kein Speicher und keine PV. Seine Frage ist
+  // eindimensional (Bezug gegen Anschlussgrenze), und er verdient kein Geld -
+  // ein Energiefluss-Held und eine Geld-Zone wären beide gelogen. Die Regel ist
+  // strikt ADDITIV: sie greift nur dort, wo bisher `private` herauskam.
+  if ((s.hasChargePoint ?? false) && !s.hasStorage && !s.hasPv) return 'laden';
   return 'private';
 }
 
@@ -72,6 +82,14 @@ export function emphasisFor(profile: string | null | undefined): Emphasis {
       return { money: 'prominent', peak: 'hidden', flow: 'secondary', devices: 'secondary' };
     case 'peak':
       return { money: 'secondary', peak: 'prominent', flow: 'secondary', devices: 'secondary' };
+    // ⚠ `laden` ist das EINZIGE Profil mit money: 'hidden' - und genau deshalb
+    // ist es ein eigenes: ein Ladepark erzeugt nichts und rechnet nichts ab
+    // (Scope-Zaun E4, Mockups §2 Entscheidung 2: kein einziger Euro auf der
+    // ganzen Fläche, „Erlöse" fehlt auch in der Navigation). Der Held ist das
+    // Budget-Band, also `peak: 'prominent'`; der Energiefluss hätte auf einer
+    // Anlage ohne Erzeugung nichts zu zeigen.
+    case 'laden':
+      return { money: 'hidden', peak: 'prominent', flow: 'minimal', devices: 'prominent' };
     case 'private':
     default:
       return { money: 'minimal', peak: 'hidden', flow: 'prominent', devices: 'prominent' };

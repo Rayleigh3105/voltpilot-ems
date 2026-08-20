@@ -44,6 +44,7 @@ type Link struct {
 	onRegisterWrite   func(payload []byte)
 	onDesiredDownlink func(payload []byte)
 	onControlCert     func(payload []byte)
+	onChargingConfig  func(payload []byte)
 	onConnect         func(connected bool)
 }
 
@@ -95,6 +96,18 @@ type Options struct {
 	// a write. The DEVICE decides by comparing the register against its own
 	// inverter selection, and every guard binds unchanged afterwards.
 	OnControlCert func(payload []byte)
+	// OnChargingConfig receives the RETAINED load-management configuration on
+	// .../v2/charging-config (contract
+	// docs/contracts/mqtt-charging-config.schema.json, Lastmanagement Stufe 3).
+	// An EMPTY payload IS forwarded - it withdraws the document
+	// (retained-clear, e.g. on unclaim). nil = the portal config path is not
+	// wired, and the box keeps whatever :8484 maintains.
+	//
+	// It carries a WISH (the connection limit the customer maintains in the
+	// portal, and which stations have priority); the distribution itself stays
+	// on the box - the connection limit is a PHYSICAL limit, so its watchdog
+	// must not hang off the WAN.
+	OnChargingConfig func(payload []byte)
 	// OnApplyRequest receives the NON-RETAINED one-shot apply approval on
 	// .../v2/apply (docs/contracts/mqtt-ota-apply.schema.json, „Portal-Apply").
 	// nil = the portal-apply downlink is not wired.
@@ -162,8 +175,9 @@ func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, version: o.Version, onSchedule: o.OnSchedule,
 		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
-		onControlCert:  o.OnControlCert,
-		onApplyRequest: o.OnApplyRequest, onProbeRequest: o.OnProbeRequest,
+		onControlCert:    o.OnControlCert,
+		onChargingConfig: o.OnChargingConfig,
+		onApplyRequest:   o.OnApplyRequest, onProbeRequest: o.OnProbeRequest,
 		onRegisterWrite:   o.OnRegisterWrite,
 		onDesiredDownlink: o.OnDesiredDownlink,
 		onConnect:         o.OnConnect}
@@ -271,6 +285,19 @@ func New(o Options) (*Link, error) {
 				l.onControlCert(msg.Payload())
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 control-certification subscribe failed", "topic", certTopic, "err", tok.Error())
+			}
+		}
+		// Die retained Lastmanagement-Konfiguration, im selben v2/#-Teilbaum
+		// (D-2, keine Broker-Aenderung). Retained ist wieder der ganze
+		// Mechanismus: eine Box, die beim Speichern offline war, holt ihre
+		// Anschlussgrenze beim naechsten Verbindungsaufbau selbst ab. Eine
+		// leere Nutzlast WIRD weitergereicht - sie nimmt das Dokument zurueck.
+		if l.onChargingConfig != nil {
+			cfgTopic := l.topic("v2/charging-config")
+			if tok := c.Subscribe(cfgTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				l.onChargingConfig(msg.Payload())
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 charging-config subscribe failed", "topic", cfgTopic, "err", tok.Error())
 			}
 		}
 		// Die NICHT-retained Einmal-Freigabe (Portal-Apply). Sie liegt

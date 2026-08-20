@@ -20,6 +20,11 @@ public final class UsageProfileDeriver {
 
     public static final String ARBITRAGE = "arbitrage";
     public static final String PEAK = "peak";
+    /**
+     * Der LADEPARK (Lastmanagement Stufe 3): Ladepunkte, aber kein Speicher und
+     * keine PV. Abgeleitet, nie wählbar - wie {@code PRIVATE}.
+     */
+    public static final String LADEN = "laden";
     public static final String PRIVATE = "private";
 
     /** Strategy node types that mark a peak/grid-contract use (spec §3). */
@@ -34,12 +39,23 @@ public final class UsageProfileDeriver {
      * explicit {@code site.usage_profile_override} (null = derive).
      */
     public record Signals(boolean hasStorage, boolean hasPv, boolean hasControllableConsumer,
-            Set<String> activeStrategyNodeTypes, String plantKind, boolean hasLeistungspreis,
-            String override) {
+            boolean hasChargePoint, Set<String> activeStrategyNodeTypes, String plantKind,
+            boolean hasLeistungspreis, String override) {
 
         public Signals {
             activeStrategyNodeTypes =
                     activeStrategyNodeTypes == null ? Set.of() : Set.copyOf(activeStrategyNodeTypes);
+        }
+
+        /**
+         * Die Form VOR Lastmanagement Stufe 3 (ohne Ladepunkt-Signal) - damit
+         * ein bestehender Aufrufer zeichengleich weiterrechnet.
+         */
+        public Signals(boolean hasStorage, boolean hasPv, boolean hasControllableConsumer,
+                Set<String> activeStrategyNodeTypes, String plantKind, boolean hasLeistungspreis,
+                String override) {
+            this(hasStorage, hasPv, hasControllableConsumer, false, activeStrategyNodeTypes,
+                    plantKind, hasLeistungspreis, override);
         }
     }
 
@@ -59,14 +75,22 @@ public final class UsageProfileDeriver {
         if (arbitrage) {
             return ARBITRAGE;
         }
+        // Der LADEPARK: seine Frage ist eindimensional (Bezug gegen
+        // Anschlussgrenze), und er verdient nichts - ein Energiefluss-Held und
+        // eine Geld-Zone wären beide gelogen. Die Regel ist strikt ADDITIV: sie
+        // greift nur dort, wo bisher PRIVATE herauskam.
+        if (s.hasChargePoint() && !s.hasStorage() && !s.hasPv()) {
+            return LADEN;
+        }
         return PRIVATE;
     }
 
     /**
      * The effective profile: a valid SETTABLE override wins, else the derived
-     * default. {@code private} is derived-only (a household default), never a
-     * settable override, so {@link #isProfile} rejects it and a stored/legacy
-     * {@code private} override falls through to {@link #deriveDefault}.
+     * default. {@code private} and {@code laden} are derived-only (the
+     * household default and the charging park), never settable overrides, so
+     * {@link #isProfile} rejects them and a stored/legacy value of either falls
+     * through to {@link #deriveDefault}.
      */
     public static String effectiveProfile(Signals s) {
         return isProfile(s.override()) ? s.override() : deriveDefault(s);
@@ -79,6 +103,14 @@ public final class UsageProfileDeriver {
                 return new Emphasis("prominent", "hidden", "secondary", "secondary");
             case PEAK:
                 return new Emphasis("secondary", "prominent", "secondary", "secondary");
+            // ⚠ LADEN ist das EINZIGE Profil mit money "hidden" - und genau
+            // deshalb ist es ein eigenes: ein Ladepark erzeugt nichts und
+            // rechnet nichts ab (Scope-Zaun E4, Mockups §2 Entscheidung 2:
+            // kein einziger Euro auf der ganzen Fläche). Der Held ist das
+            // Budget-Band, also peak "prominent"; ein Energiefluss hätte auf
+            // einer Anlage ohne Erzeugung nichts zu zeigen.
+            case LADEN:
+                return new Emphasis("hidden", "prominent", "minimal", "prominent");
             case PRIVATE:
             default:
                 return new Emphasis("minimal", "hidden", "prominent", "prominent");
@@ -86,8 +118,9 @@ public final class UsageProfileDeriver {
     }
 
     /**
-     * Whether {@code value} is a SETTABLE usage-profile override. {@code private}
-     * is deliberately NOT settable (it is the derived household default); only
+     * Whether {@code value} is a SETTABLE usage-profile override.
+     * {@code private} and {@code laden} are deliberately NOT settable (they are
+     * DERIVED: the household default and the charging park); only
      * {@code arbitrage} and {@code peak} may be chosen.
      */
     public static boolean isProfile(String value) {

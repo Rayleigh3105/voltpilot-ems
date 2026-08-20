@@ -3317,6 +3317,38 @@ Einrichtungs-Schritte wie vorher.
   sich KEIN Wort").
 - **⚠ `static/*` ist `//go:embed`-t — nach jeder Änderung den Core neu bauen.**
 
+## Stufe 3: die Anschlussgrenze kann aus dem PORTAL kommen (`internal/chargingcfg`)
+
+Der Konsument des retained Dokuments `ems/{t}/{s}/{d}/v2/charging-config`
+(Kontrakt `docs/contracts/mqtt-charging-config.schema.json`). Additiv: eine Box,
+der niemand ein Dokument schickt, verhält sich zeichengleich wie vorher.
+
+- **Es kommt eine EINSTELLUNG an, nie eine Grenze.** Der Verteiler rechnet
+  danach wie immer in `internal/lastmgmt` — die Anschlussgrenze ist eine
+  physische Grenze, ihr Wächter darf nicht am WAN hängen (E1). `agent/
+  charging_config.go` ist reine Verdrahtung: jede Regel liegt im reinen
+  `internal/chargingcfg` (Parsen + Plausibilität) bzw. in `lastmgmt`.
+- **⚠ PATCH-Semantik: ein ABWESENDES Feld behält den Wert der Box.** Das Portal
+  besitzt heute nur die Anschlussgrenze und die Vorrang-Wahl; Sicherheitsabstand,
+  Mindestleistung und die höchste bekannte Gebäudelast bleiben `:8484`-
+  Einstellungen. Eine LEERE Vorrang-Liste ist dagegen eine AUSSAGE („keine Säule
+  hat Vorrang") und wird angewandt — sonst wäre „niemand mehr" unaussprechbar.
+- **Eine Grenze ≤ 0 wird ABGELEHNT, nicht angewandt:** ohne Grenze ist das
+  Budget 0 und es lädt nichts, und das käme dann aus einem Tippfehler. Ebenso
+  fail-closed: eine fremde Vertragsversion, unlesbare Bytes, eine fremde
+  Identität (Topic == Payload, die Regel jedes Downlinks; stumm zum Broker,
+  laut im Protokoll).
+- **Die RÜCKNAHME (leere retained Nachricht) lässt die übernommenen Werte
+  STEHEN.** Sie zurückzusetzen wäre eine Änderung an einer laufenden Anlage, die
+  niemand angeordnet hat — und die Box wüsste auch nicht, worauf. Von da an gilt
+  wieder allein, was auf `:8484` gepflegt wird.
+- **Bekannte Grenze:** `:8484` bleibt editierbar, es gilt also last-writer-wins,
+  und ein retained Dokument setzt sich beim nächsten Verbindungsaufbau wieder
+  durch. Ein Nur-Lese-Spiegel wie bei der Komponenten-Autorität ist Folgearbeit.
+- Beweise: `internal/chargingcfg` (7, inkl. der Kontrakt-Fixtures per PFAD) ·
+  `agent/charging_config_test.go` (3: die PATCH-Wirkung samt Vorrang-Rücknahme,
+  fremdes/kaputtes Dokument ändert NICHTS, eine Box ohne OCPP überlebt es).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

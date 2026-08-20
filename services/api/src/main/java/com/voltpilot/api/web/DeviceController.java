@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.control.ControlCertificationService;
 import com.voltpilot.api.enrollment.EnrollmentService;
+import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.ota.RolloutService;
@@ -63,6 +64,7 @@ public class DeviceController {
     private final ObjectProvider<RolloutService> rollouts;
     private final EntityAutoComposer autoCompose;
     private final ControlCertificationService controlCertification;
+    private final ObjectProvider<ChargingConfigPublisher> chargingConfig;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, AssetRepository assets,
@@ -73,7 +75,8 @@ public class DeviceController {
             ObjectProvider<EntityRegistryPublisher> entityRegistry,
             ObjectProvider<RolloutService> rollouts,
             EntityAutoComposer autoCompose,
-            ControlCertificationService controlCertification) {
+            ControlCertificationService controlCertification,
+            ObjectProvider<ChargingConfigPublisher> chargingConfig) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
@@ -86,6 +89,7 @@ public class DeviceController {
         this.rollouts = rollouts;
         this.autoCompose = autoCompose;
         this.controlCertification = controlCertification;
+        this.chargingConfig = chargingConfig;
     }
 
     @GetMapping
@@ -253,6 +257,13 @@ public class DeviceController {
         // retained Zertifizierungs-Dokument auf dem Broker liegen lassen -
         // dieselbe Hygiene wie eine Zeile darüber, best-effort.
         controlCertification.onDeviceUnclaimed(tenantId, device.siteId(), device.id());
+        // Lastmanagement Stufe 3: dieselbe Hygiene für die Ladepunkt-Konfiguration.
+        // Nur der retained Slot wird geleert, KEINE Zeile gelöscht - dieser
+        // Aufruf läuft in der Transaktion des Unclaim auf dem @Primary-Pfad, und
+        // ein Löschen von der BYPASSRLS-Verbindung aus liefe in genau die
+        // Selbst-Blockade, die bei der Steuerungs-Freigabe dokumentiert ist.
+        chargingConfig.ifAvailable(p ->
+                p.clear(tenantId, device.siteId(), device.id()));
         return ResponseEntity.noContent().build();
     }
 

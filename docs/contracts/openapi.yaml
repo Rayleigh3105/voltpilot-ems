@@ -847,6 +847,71 @@ paths:
                 items: { $ref: "#/components/schemas/SiteSource" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/charging-config:
+    get:
+      tags: [sites]
+      summary: Die im Portal gepflegte Lastmanagement-Konfiguration.
+      description: >
+        Die Anschlussgrenze der Anlage und die Vorrang-Wahl je Ladesäule
+        (Lastmanagement Stufe 3). `gridLimitKw: null` heißt „noch nicht
+        gepflegt" - und dann gibt die Box keine Ladeleistung frei; das ist der
+        ehrliche Zustand einer Anlage, die niemand eingerichtet hat, nie eine
+        erfundene Grenze. RLS-gefenced (fremde Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Die gepflegte Konfiguration (leer, solange nichts gepflegt ist).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    put:
+      tags: [sites]
+      summary: Anschlussgrenze und Vorrang speichern (PATCH-Semantik).
+      description: >
+        Speichert, was der Kunde über SEINEN Anschluss entscheidet, und schickt
+        es als retained Dokument an die Box (Kontrakt
+        `mqtt-charging-config.schema.json`). GERECHNET und DURCHGESETZT wird
+        dort - die Anschlussgrenze ist eine physische Grenze, ihr Wächter darf
+        nicht am WAN hängen; es entsteht kein zweiter Verteiler und kein
+        Schreibpfad auf eine Ladesäule.
+
+
+        PATCH-Semantik: ein ABWESENDES Feld behält den gespeicherten Wert (ein
+        Dialog, der nur den Vorrang stellt, darf die Anschlussgrenze nicht
+        löschen); eine LEERE Vorrang-Liste ist dagegen eine Aussage („keine
+        Säule hat Vorrang"). Eine Grenze ≤ 0 und eine unbekannte ChargePointId
+        sind 400 mit deutschem Grund - beides würde sonst still zu einer
+        Einstellung, die niemand wollte.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gridLimitKw:
+                  type: number
+                  nullable: true
+                  description: "Die Anschlussgrenze in kW (> 0). Abwesend = unverändert."
+                priorityChargePointIds:
+                  type: array
+                  nullable: true
+                  description: "Die Vorrang-Säulen. Abwesend = unverändert, leer = ausdrücklich keine."
+                  items: { type: string }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "400": { description: Unplausible Grenze oder unbekannte Ladesäule (deutscher Grund im Körper). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/chargers:
     get:
       tags: [sites]
@@ -8651,6 +8716,18 @@ components:
         health: { type: string, enum: [ok, stale, never] }
         readAt: { type: string, format: date-time, nullable: true }
         reportedAt: { type: string, format: date-time }
+    ChargingConfig:
+      type: object
+      description: >
+        Die im Portal gepflegte Lastmanagement-Konfiguration einer Anlage.
+      properties:
+        gridLimitKw: { type: number, nullable: true, description: "Die Anschlussgrenze in kW; null = noch nicht gepflegt (dann lädt nichts)." }
+        priorityChargePointIds:
+          type: array
+          description: "Die Vorrang-Säulen; leer = keine."
+          items: { type: string }
+        updatedAt: { type: string, format: date-time, nullable: true }
+        updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
     SiteCharging:
       type: object
       description: >
