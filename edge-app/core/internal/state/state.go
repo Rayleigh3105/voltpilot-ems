@@ -597,6 +597,13 @@ type OcppInfo struct {
 	// a limit of zero. Grid14aBinds says whether it is what caps the site.
 	Grid14aKw    *float64 `json:"grid_14a_kw,omitempty"`
 	Grid14aBinds bool     `json:"grid_14a_binds,omitempty"`
+	// PlanLimitKw is what the FAHRPLAN leaves the vehicles in the running
+	// quarter hour (the cloud's peak target, projected); nil = kein
+	// Fahrplan-Deckel - kein Plan, ein veralteter Plan, kein Ziel oder keine
+	// Messung, und dann gilt die lokale Logik unverändert (fail-open).
+	// PlanLimitBinds says whether it is what caps the vehicles.
+	PlanLimitKw    *float64 `json:"plan_limit_kw,omitempty"`
+	PlanLimitBinds bool     `json:"plan_limit_binds,omitempty"`
 	// SiteLoadKw is the rest of the site (everything but the charge points) the
 	// budget was computed from; SiteGridKw the newest measured grid power
 	// (+ import). Both nil while the budget is static or blind - never a

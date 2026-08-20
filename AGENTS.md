@@ -3021,6 +3021,26 @@ ERTEILT die Einmal-Freigabe.
   L8 dieselbe Sonne, umgelegte Priorität, 80 → 120 kW AN DEN SÄULEN · L9 die
   Übersteuerung gilt GENAU EINEM Ladevorgang, der Anschluss hält, die Rücknahme
   stellt die Priorität wieder her.
+- **Die OPTIMIERER-Kopplung ist „Weg A" (Captain-Entscheid 20.08.2026): der Plan
+  reicht eine OBERGRENZE herunter, nie einen Sollwert.** Getragen wird genau
+  EINE Größe — das Lastspitzen-ZIEL, das die Box allein nicht kennen kann
+  (`grid_import_limit_kw`, seit PS-3 im mqtt-schedule-Kontrakt; **keine
+  Vertrags- und keine Optimierer-Änderung**). Anschlussgrenze und §14a-Hülle
+  hat die Box längst selbst, die Einspeisegrenze ist eine Export-Schranke und
+  kann das Laden nicht begrenzen. Ohne diese Bahn konnte der Ladepark genau die
+  Spitze sprengen, die die Batterie daneben teuer hält. **Strikt fail-open:**
+  kein Plan, ein VERALTETER Plan, kein Ziel oder keine Messung ⇒ die lokale
+  Logik gilt unverändert — ein Fahrzeug bleibt NIE wegen eines fehlenden Plans
+  stehen. Edge-Details + die bewusste Frische-Abweichung zum Batterie-Wächter:
+  `edge-app/AGENTS.md` „Stufe 4: die FAHRPLAN-Bahn".
+- **⚠ ABGEGRENZT und im Backlog, NICHT gebaut: „Weg B" — eine echte
+  Lade-Anforderung je Säule** („bis 06:00 mindestens X kWh") mit Kundenfläche
+  und Datenmodell. Erst sie macht aus dem Ladepark einen echten
+  `ControllableLoadEntity` im Consumer-Dispatch; ohne Anforderung plant der
+  Solver ihn per Konstruktion in JEDEM Slot auf AUS (`entities.py`: „ein
+  Verbraucher läuft NUR für seine Anforderungen"), und ein daraus abgeleitetes
+  Slot-Budget wäre flächendeckend 0. Das ist der Grund, warum Stufe 4 die
+  Obergrenze und nicht den Dispatch trägt.
 - **Beweise:** `ChargingConfigPublisherTest` (+1: die Wahl reist, Abwesenheit ist
   nicht `schnell`) · `ChargingBoostPublisherTest` (5: die Draht-Form gegen die
   Kontrakt-Fixtures, nicht-retained, der Stempel) · `ChargerStatusListenerTest`

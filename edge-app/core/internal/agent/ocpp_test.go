@@ -9,6 +9,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ocppsim"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -29,7 +30,10 @@ func ocppAgent(t *testing.T, tune func(*config.Config)) *Agent {
 	if tune != nil {
 		tune(&cfg)
 	}
-	a := &Agent{Cfg: cfg, State: state.New("rig-ref", "test")}
+	// Der Lastspitzen-Zähler gehört zur Ausstattung des echten Agenten und
+	// speist seit Stufe 4 die FAHRPLAN-Bahn des Ladebudgets; ohne ihn wäre
+	// diese Attrappe an genau der Stelle unrealistisch.
+	a := &Agent{Cfg: cfg, State: state.New("rig-ref", "test"), peak: guards.NewPeakTracker()}
 	if err := a.startOcpp(context.Background()); err != nil {
 		t.Fatalf("startOcpp: %v", err)
 	}

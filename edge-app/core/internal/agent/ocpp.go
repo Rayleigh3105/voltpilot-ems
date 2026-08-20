@@ -259,12 +259,70 @@ func (a *Agent) ocppStep(ctx context.Context) {
 // its draw can still rise, which the very next sample contracts the budget for,
 // and the engineering margin covers the gap. Every blind stage gets it back.
 func (a *Agent) ocppBudget(now time.Time, set lastmgmt.Settings, snap csms.Snapshot, safe lastmgmt.SafeDefault) (lastmgmt.BudgetVerdict, float64) {
+	a.ocppFeedPlanLimit(now)
 	verdict := a.ocpp.budget.Budget(now, set)
 	reserved := 0.0
 	if safe.Computable && !verdict.Measured() {
 		reserved = safe.PerConnectorKw * float64(ocppUnreachableConnectors(snap))
 	}
 	return verdict, reserved
+}
+
+// ocppFeedPlanLimit is the FAHRPLAN lane of the charging budget (Stufe 4,
+// Captain-Entscheid 20.08.2026 „Weg A"): the plan hands the box a CEILING, and
+// the box works out what is left for the vehicles.
+//
+// What the cloud contributes here is exactly ONE thing the box cannot know on
+// its own: the billing-period PEAK TARGET. The connection limit and the §14a
+// envelope are already the box's (settings + the observed envelope), and the
+// feed-in limit is an export constraint that cannot bound charging - so the
+// only thing worth carrying down is the target the battery guard is already
+// defending (PS-3). Composed most-restrictive-wins, it stops the charge park
+// from blowing the very peak the battery is paying to hold.
+//
+// ⚠ STRIKT FAIL-OPEN, und das ist die tragende Zusage: kein Plan, ein
+// VERALTETER Plan, kein Ziel im Plan oder keine Messung am Netzanschluss ⇒ die
+// Bahn wird ABGERÄUMT und die lokale Logik gilt unverändert. Ein Fahrzeug darf
+// NIE wegen eines fehlenden Plans stehen bleiben; im Zweifel lädt es.
+//
+// ⚠ Die Frische-Regel weicht BEWUSST von der des Batterie-Wächters ab: dort ist
+// plan.PeakImportLimit staleness-UNABHÄNGIG, weil das Verteidigen eines alten
+// Ziels dort nichts kostet (es verschiebt nur Batterieleistung). Hier könnte
+// dasselbe alte Ziel ein Auto stehen lassen - also gilt es nur, solange der
+// Plan frisch ist.
+//
+// ⚠ Das v2-Plan-Ziel (peakTargetV2) ist hier bewusst NICHT dabei: die
+// v2-Planung ist ein Schattenlauf ohne eine einzige geflaggte Anlage, und der
+// Batterie-Wächter verteidigt es ohnehin. Wer sie scharfschaltet, nimmt sie
+// hier mit auf - mit ihrer EIGENEN Frische, nie mit der des v1-Plans.
+func (a *Agent) ocppFeedPlanLimit(now time.Time) {
+	rt := a.ocpp
+	if rt == nil {
+		return
+	}
+	a.mu.Lock()
+	p := a.currentPlan
+	a.mu.Unlock()
+
+	// Ohne Lastspitzen-Zähler gibt es keine Projektion - und damit keine Bahn.
+	if a.peak == nil || !p.Fresh(now) {
+		rt.budget.ClearPlanLimit()
+		return
+	}
+	target := p.PeakImportLimit()
+	if target == nil {
+		rt.budget.ClearPlanLimit()
+		return
+	}
+	// The tracker turns the quarter-hour MEAN target into what the site may
+	// still average over the REST of this quarter - the same projection the
+	// battery's peak guard uses, so the two instruments defend one number.
+	allowed, ok := a.peak.AllowedImport(now, *target)
+	if !ok {
+		rt.budget.ClearPlanLimit()
+		return
+	}
+	rt.budget.ObservePlanLimit(now, allowed)
 }
 
 // ocppAllocatable is what is left to hand out.
@@ -628,15 +686,17 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		ConnectorCount: snap.ConnectorCount(),
 		SafeDefaultKw:  safe.PerConnectorKw, SafeDefaultNote: safe.Reason,
 		SafeDefaultHolds: safe.Holds, SafeWorstCaseKw: safe.WorstCaseKw,
-		StaticBudget: set.StaticBudget,
-		BudgetMode:   string(verdict.Mode),
-		BudgetNote:   verdict.Reason,
-		BudgetBlind:  verdict.Blind,
-		EffLimitKw:   verdict.LimitKw,
-		Grid14aKw:    verdict.Section14aKw,
-		Grid14aBinds: verdict.Section14aBinds,
-		SiteLoadKw:   verdict.SiteLoadKw,
-		SiteGridKw:   verdict.GridKw,
+		StaticBudget:   set.StaticBudget,
+		BudgetMode:     string(verdict.Mode),
+		BudgetNote:     verdict.Reason,
+		BudgetBlind:    verdict.Blind,
+		EffLimitKw:     verdict.LimitKw,
+		Grid14aKw:      verdict.Section14aKw,
+		Grid14aBinds:   verdict.Section14aBinds,
+		PlanLimitKw:    verdict.PlanLimitKw,
+		PlanLimitBinds: verdict.PlanLimitBinds,
+		SiteLoadKw:     verdict.SiteLoadKw,
+		SiteGridKw:     verdict.GridKw,
 
 		SurplusPolicy:    string(set.SurplusPolicy),
 		StoragePriority:  string(set.StoragePriority),
