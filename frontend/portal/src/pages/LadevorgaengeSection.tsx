@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
+import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { api, ApiError, type Site } from '../api';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LadeBudgetBand } from '../components/LadeBudgetBand';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { fmtNum } from '../format';
@@ -9,13 +11,20 @@ import {
   ANBINDEN_ALLOWLIST,
   ANBINDEN_SCHRITTE,
   ausfallSchutz,
+  BOOST_INTRO,
+  boostbar,
+  boostFolgen,
   budgetBand,
   chargerName,
   chargerView,
   connectorName,
   idleLine,
+  kombinationsStreifen,
   ladevorgangRows,
+  sonnenDeckung,
+  surplusLine,
   type ChargePoint,
+  type LadevorgangRow,
   type SiteCharging,
 } from '../ladepunkte';
 import './Ladevorgaenge.css';
@@ -34,6 +43,11 @@ import './Ladevorgaenge.css';
 export function LadevorgaengeSection({ site }: { site: Site }) {
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // „Jetzt voll laden": die EINE Aktion dieser Seite. Sie setzt keine Grenze -
+  // sie nimmt EINEN Ladevorgang von der Quellen-Politik aus.
+  const [dialog, setDialog] = useState<LadevorgangRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -53,6 +67,24 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
     };
   }, [site.id]);
 
+  async function boost(row: LadevorgangRow, cancel: boolean) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.chargingBoost(site.id, {
+        chargePointId: row.chargePointId,
+        connectorId: row.connectorId,
+        cancel,
+      });
+      setCharging(await api.siteChargers(site.id));
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Das hat gerade nicht geklappt.');
+    } finally {
+      setBusy(false);
+      setDialog(null);
+    }
+  }
+
   if (error) return <ErrorState message={error} />;
   if (!charging) return <Skeleton height={160} />;
 
@@ -60,6 +92,9 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
   const rows = ladevorgangRows(charging.chargers);
   const idle = idleLine(charging);
   const steps = ausfallSchutz(charging.budget);
+  const quelle = surplusLine(charging.budget);
+  const kombi = kombinationsStreifen(charging.budget);
+  const sonne = sonnenDeckung(charging.budget);
 
   return (
     <div className="vp-lade-page">
@@ -67,6 +102,12 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
         <Card>
           <h2 className="vp-lade-h2">Ladeleistung</h2>
           <LadeBudgetBand band={band} />
+          {/* BEIDE Wahrheiten: was die Sonne erlaubt und was der Anschluss
+              erlaubt. Ohne beide läse eine Drosselung an einem freien Anschluss
+              wie ein Defekt (Mockups §1a). */}
+          {sonne && <p className="vp-lade-note">Laden · {sonne}.</p>}
+          {quelle && <p className="vp-lade-note">{quelle}</p>}
+          {kombi && <p className="vp-lade-note">{kombi}</p>}
           {charging.budget && !charging.budget.controlEnabled && charging.budget.controlNote && (
             <p className="vp-lade-note">{charging.budget.controlNote}</p>
           )}
@@ -76,6 +117,7 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
       <Card>
         <h2 className="vp-lade-h2">Ladevorgänge</h2>
         {idle && <p className="vp-lade-idle">{idle}</p>}
+        {actionError && <p className="vp-lade-note">{actionError}</p>}
         {rows.length > 0 && (
           <ul className="vp-lade-rows">
             {rows.map((r) => (
@@ -102,6 +144,28 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
                   <span className="vp-lade-row-reason">
                     {[r.reason, r.nextTurn].filter(Boolean).join(' · ')}
                   </span>
+                )}
+                {/* ⚠ Der Knopf wird nur angeboten, wo er etwas ändern KANN. Ein
+                    Knopf, der strukturell nichts bewirkt, ist Lärm. */}
+                {boostbar(charging.budget, r) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setDialog(r)}
+                  >
+                    Jetzt voll laden
+                  </Button>
+                )}
+                {r.boost && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void boost(r, true)}
+                  >
+                    Wieder Ihre Priorität
+                  </Button>
                 )}
               </li>
             ))}
@@ -146,6 +210,18 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
         </ol>
         <p className="vp-lade-note">{ANBINDEN_ALLOWLIST}</p>
       </Card>
+
+      {/* Der Haus-Dialog mit der Folgenliste - sie sagt auch, was GLEICH bleibt. */}
+      <ConfirmDialog
+        open={dialog != null}
+        title="Jetzt voll laden"
+        intro={BOOST_INTRO}
+        consequences={boostFolgen()}
+        confirmLabel="Jetzt voll laden"
+        busy={busy}
+        onConfirm={() => dialog && void boost(dialog, false)}
+        onCancel={() => setDialog(null)}
+      />
     </div>
   );
 }

@@ -45,6 +45,7 @@ type Link struct {
 	onDesiredDownlink func(payload []byte)
 	onControlCert     func(payload []byte)
 	onChargingConfig  func(payload []byte)
+	onChargingBoost   func(payload []byte)
 	onConnect         func(connected bool)
 }
 
@@ -119,6 +120,16 @@ type Options struct {
 	// late, and that is intended: a consent from three hours ago is not a
 	// consent for now.
 	OnApplyRequest func(payload []byte)
+	// OnChargingBoost receives the NON-RETAINED one-shot override „Jetzt voll
+	// laden" on .../v2/charging-boost (contract
+	// docs/contracts/mqtt-charging-boost.schema.json, Lastmanagement Stufe 4).
+	// nil = the portal override path is not wired.
+	//
+	// ⚠ NON-retained for the same reason as the apply approval: a retained
+	// one-shot is not a one-shot - it would put a vehicle back on grid power
+	// at every reconnect. An offline box therefore never gets a missed
+	// override delivered late, and that is intended.
+	OnChargingBoost func(payload []byte)
 	// OnProbeRequest receives the NON-RETAINED one-shot probe on .../v2/probe
 	// (docs/contracts/mqtt-probe.schema.json, Einheitsmodell Stufe 0b). nil =
 	// the probe channel is not wired.
@@ -177,6 +188,7 @@ func New(o Options) (*Link, error) {
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:    o.OnControlCert,
 		onChargingConfig: o.OnChargingConfig,
+		onChargingBoost:  o.OnChargingBoost,
 		onApplyRequest:   o.OnApplyRequest, onProbeRequest: o.OnProbeRequest,
 		onRegisterWrite:   o.OnRegisterWrite,
 		onDesiredDownlink: o.OnDesiredDownlink,
@@ -310,6 +322,19 @@ func New(o Options) (*Link, error) {
 				l.onApplyRequest(msg.Payload())
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 apply subscribe failed", "topic", applyTopic, "err", tok.Error())
+			}
+		}
+		// Die NICHT-retained Einmal-Uebersteuerung „Jetzt voll laden". Aus
+		// demselben Grund wie die Freigabe NICHT retained: sonst saesse ein
+		// Fahrzeug bei jedem Reconnect wieder auf Netzstrom.
+		if l.onChargingBoost != nil {
+			boostTopic := l.topic("v2/charging-boost")
+			if tok := c.Subscribe(boostTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				if len(msg.Payload()) > 0 {
+					l.onChargingBoost(msg.Payload())
+				}
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 charging-boost subscribe failed", "topic", boostTopic, "err", tok.Error())
 			}
 		}
 		// Die NICHT-retained Einmal-Anfrage des Probe-Kanals. Aus demselben
@@ -683,6 +708,38 @@ type ChargersSummary struct {
 	MaxHouseLoadKw   float64 `json:"max_house_load_kw,omitempty"`
 	ConnectorCount   int     `json:"connector_count"`
 
+	// --- Stufe 4: the SOURCE lane (PV-Überschussladen) ---
+	//
+	// It is the customer's ECONOMIC choice ("woher kommt der Strom?") and it
+	// can only ever NARROW what the connection allows. Both figures travel so
+	// a portal can show them TOGETHER: a plant throttled at a free connection
+	// would otherwise read like a defect.
+
+	// SurplusPolicy / StoragePriority echo the choice in force
+	// (nur_sonne | sonne_zuerst | schnell / speicher_vor_auto |
+	// auto_vor_speicher). Empty = an older edge that has no source lane.
+	SurplusPolicy   string `json:"surplus_policy,omitempty"`
+	StoragePriority string `json:"storage_priority,omitempty"`
+	// SurplusActive is false when there is NO source cap at all.
+	SurplusActive bool `json:"surplus_active,omitempty"`
+	// SurplusKw is the cap in force; nil while inactive - never a 0 that would
+	// read as "the sun offers nothing".
+	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+	// SurplusMode / SurplusNote are the machine word (aus | gemessen |
+	// nicht_belegbar) and the German sentence, written ONCE on the box.
+	SurplusMode  string `json:"surplus_mode,omitempty"`
+	SurplusNote  string `json:"surplus_note,omitempty"`
+	SurplusBlind bool   `json:"surplus_blind,omitempty"`
+	// SurplusTotalKw is the WHOLE measured surplus before anybody took it,
+	// SurplusBatteryKw what the storage is measured taking. nil without a
+	// fresh measurement.
+	SurplusTotalKw   *float64 `json:"surplus_total_kw,omitempty"`
+	SurplusBatteryKw *float64 `json:"surplus_battery_kw,omitempty"`
+	// SourceAllocatedKw is how much of the allocation the sun is covering - a
+	// STANDORT statement, never a per-vehicle solar quota (electricity is not
+	// labelled at the hub).
+	SourceAllocatedKw float64 `json:"source_allocated_kw,omitempty"`
+
 	// Chargers are the registered charge points, id-sorted. Never nil when the
 	// block is present.
 	Chargers []ChargerEntry `json:"chargers"`
@@ -748,6 +805,11 @@ type ChargerConnectorEntry struct {
 	// SessionSince is when the running transaction started (RFC 3339); empty =
 	// no session on this plug.
 	SessionSince string `json:"session_since,omitempty"`
+	// Boost is true while this plug's „Jetzt voll laden" is running: the value
+	// was formed WITHOUT the source cap and may contain grid power. The cloud
+	// SAYS so - a full charge nobody asked for would be a silent break of the
+	// customer's own priority.
+	Boost bool `json:"boost,omitempty"`
 }
 
 // ConsumersSummary is the additive status-heartbeat block reporting the edge

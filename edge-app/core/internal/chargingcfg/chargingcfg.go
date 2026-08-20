@@ -56,17 +56,28 @@ type Config struct {
 	DeviceID    string
 	GridLimitKw *float64
 	Priorities  []string
+	// SurplusPolicy / StoragePriority are the Stufe-4 SOURCE choice of the
+	// customer. nil = the portal says nothing and the box keeps its own.
+	//
+	// ⚠ ABSENT is NOT `schnell`. „Schnell laden" is a customer's own statement
+	// ("keine Quellen-Politik"); absent means "das Portal äußert sich nicht" —
+	// collapsing the two would let an older cloud silently drop a customer's
+	// „Nur Sonnenstrom".
+	SurplusPolicy   *string
+	StoragePriority *string
 }
 
 // wire is the on-the-wire shape. Pointers where absence differs from a value.
 type wire struct {
-	SchemaVersion string    `json:"schema_version"`
-	TenantID      string    `json:"tenant_id"`
-	SiteID        string    `json:"site_id"`
-	DeviceID      string    `json:"device_id"`
-	GridLimitKw   *float64  `json:"grid_limit_kw"`
-	Priorities    *[]string `json:"priority_charge_point_ids"`
-	PublishedAt   string    `json:"published_at"`
+	SchemaVersion   string    `json:"schema_version"`
+	TenantID        string    `json:"tenant_id"`
+	SiteID          string    `json:"site_id"`
+	DeviceID        string    `json:"device_id"`
+	GridLimitKw     *float64  `json:"grid_limit_kw"`
+	Priorities      *[]string `json:"priority_charge_point_ids"`
+	SurplusPolicy   *string   `json:"surplus_policy"`
+	StoragePriority *string   `json:"storage_priority"`
+	PublishedAt     string    `json:"published_at"`
 }
 
 // Parse reads one retained payload. An EMPTY payload returns ErrEmpty (the
@@ -114,7 +125,36 @@ func Parse(payload []byte) (Config, error) {
 		}
 		cfg.Priorities = out
 	}
+	// ⚠ An unknown WORD is refused, not normalized: the box's own read path
+	// tolerates a corrupt file (never strand a fleet), but a document from the
+	// portal is a deliberate statement - silently turning it into something
+	// else would leave a customer believing they set what they did not.
+	if w.SurplusPolicy != nil {
+		v := strings.TrimSpace(*w.SurplusPolicy)
+		if !validPolicy(v) {
+			return Config{}, fmt.Errorf("unbekannte Überschuss-Priorität %q - das Dokument wird verworfen", v)
+		}
+		cfg.SurplusPolicy = &v
+	}
+	if w.StoragePriority != nil {
+		v := strings.TrimSpace(*w.StoragePriority)
+		if !validStorage(v) {
+			return Config{}, fmt.Errorf("unbekannte Speicher-Priorität %q - das Dokument wird verworfen", v)
+		}
+		cfg.StoragePriority = &v
+	}
 	return cfg, nil
+}
+
+// The two vocabularies of the contract. They are repeated here rather than
+// imported from internal/lastmgmt so this package stays what it is: a PARSER
+// of a document, with no opinion about what a setting means.
+func validPolicy(v string) bool {
+	return v == "nur_sonne" || v == "sonne_zuerst" || v == "schnell"
+}
+
+func validStorage(v string) bool {
+	return v == "speicher_vor_auto" || v == "auto_vor_speicher"
 }
 
 // MatchesIdentity reports whether the document addresses THIS device. The rule

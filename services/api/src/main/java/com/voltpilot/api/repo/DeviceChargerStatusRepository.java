@@ -39,7 +39,10 @@ public class DeviceChargerStatusRepository {
             Double siteGridKw, String budgetMode, String budgetNote, boolean budgetBlind,
             Double effLimitKw, Double safeDefaultKw, String safeDefaultNote,
             Boolean safeDefaultHolds, Double safeWorstCaseKw, Double maxHouseLoadKw,
-            int connectorCount) {}
+            int connectorCount, String surplusPolicy, String storagePriority,
+            boolean surplusActive, Double surplusKw, String surplusMode, String surplusNote,
+            boolean surplusBlind, Double surplusTotalKw, Double surplusBatteryKw,
+            Double sourceAllocatedKw) {}
 
     /** Eine gemeldete Ladesäule. */
     public record ChargePointRow(String chargePointId, String label, boolean priority,
@@ -50,7 +53,7 @@ public class DeviceChargerStatusRepository {
     public record ConnectorRow(int connectorId, String status, boolean charging, Double allocatedKw,
             String reason, String reasonText, Instant nextTurn, Double powerKw, Double energyKwh,
             Double socPct, String commandStatus, String readback, String readbackNote,
-            Instant sessionSince) {}
+            Instant sessionSince, boolean boost) {}
 
     private final JdbcTemplate jdbc;
 
@@ -76,16 +79,23 @@ public class DeviceChargerStatusRepository {
                         + "budget_kw, allocated_kw, reserved_kw, measured_kw, site_load_kw, "
                         + "site_grid_kw, budget_mode, budget_note, budget_blind, eff_limit_kw, "
                         + "safe_default_kw, safe_default_note, safe_default_holds, "
-                        + "safe_worst_case_kw, max_house_load_kw, connector_count, reported_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        + "?, ?, ?, ?, ?)",
+                        + "safe_worst_case_kw, max_house_load_kw, connector_count, "
+                        + "surplus_policy, storage_priority, surplus_active, surplus_kw, "
+                        + "surplus_mode, surplus_note, surplus_blind, surplus_total_kw, "
+                        + "surplus_battery_kw, source_allocated_kw, reported_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 deviceId, tenantId, siteId, budget.enabled(), budget.controlEnabled(),
                 budget.controlNote(), budget.gridLimitKw(), budget.marginPct(), budget.minPowerKw(),
                 budget.budgetKw(), budget.allocatedKw(), budget.reservedKw(), budget.measuredKw(),
                 budget.siteLoadKw(), budget.siteGridKw(), budget.budgetMode(), budget.budgetNote(),
                 budget.budgetBlind(), budget.effLimitKw(), budget.safeDefaultKw(),
                 budget.safeDefaultNote(), budget.safeDefaultHolds(), budget.safeWorstCaseKw(),
-                budget.maxHouseLoadKw(), budget.connectorCount(), Timestamp.from(reportedAt));
+                budget.maxHouseLoadKw(), budget.connectorCount(), budget.surplusPolicy(),
+                budget.storagePriority(), budget.surplusActive(), budget.surplusKw(),
+                budget.surplusMode(), budget.surplusNote(), budget.surplusBlind(),
+                budget.surplusTotalKw(), budget.surplusBatteryKw(), budget.sourceAllocatedKw(),
+                Timestamp.from(reportedAt));
         for (ChargePointRow c : chargers) {
             jdbc.update(
                     "INSERT INTO device_charge_point (device_id, charge_point_id, tenant_id, "
@@ -101,13 +111,14 @@ public class DeviceChargerStatusRepository {
                                 + "connector_id, tenant_id, site_id, status, charging, "
                                 + "allocated_kw, reason, reason_text, next_turn, power_kw, "
                                 + "energy_kwh, soc_pct, command_status, readback, readback_note, "
-                                + "session_since, reported_at) "
-                                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                + "session_since, boost, reported_at) "
+                                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                                + "?, ?, ?, ?, ?, ?)",
                         deviceId, c.chargePointId(), con.connectorId(), tenantId, siteId,
                         con.status(), con.charging(), con.allocatedKw(), con.reason(),
                         con.reasonText(), ts(con.nextTurn()), con.powerKw(), con.energyKwh(),
                         con.socPct(), con.commandStatus(), con.readback(), con.readbackNote(),
-                        ts(con.sessionSince()), Timestamp.from(reportedAt));
+                        ts(con.sessionSince()), con.boost(), Timestamp.from(reportedAt));
             }
         }
     }
@@ -152,7 +163,7 @@ public class DeviceChargerStatusRepository {
         Map<String, List<ChargeConnectorDto>> byPoint = new LinkedHashMap<>();
         jdbc.query("SELECT device_id, charge_point_id, connector_id, status, charging, "
                 + "allocated_kw, reason, reason_text, next_turn, power_kw, energy_kwh, soc_pct, "
-                + "command_status, readback, readback_note, session_since "
+                + "command_status, readback, readback_note, session_since, boost "
                 + "FROM device_charge_connector WHERE site_id = ? "
                 + "ORDER BY device_id, charge_point_id, connector_id", rs -> {
                     byPoint.computeIfAbsent(key(rs.getObject("device_id", UUID.class),
@@ -191,7 +202,8 @@ public class DeviceChargerStatusRepository {
                 instant(rs.getTimestamp("next_turn")), (Double) rs.getObject("power_kw"),
                 (Double) rs.getObject("energy_kwh"), (Double) rs.getObject("soc_pct"),
                 rs.getString("command_status"), rs.getString("readback"),
-                rs.getString("readback_note"), instant(rs.getTimestamp("session_since")));
+                rs.getString("readback_note"), instant(rs.getTimestamp("session_since")),
+                rs.getBoolean("boost"));
     }
 
     private static ChargingBudgetDto mapBudget(ResultSet rs, int rowNum) throws SQLException {
@@ -208,6 +220,12 @@ public class DeviceChargerStatusRepository {
                 (Boolean) rs.getObject("safe_default_holds"),
                 (Double) rs.getObject("safe_worst_case_kw"),
                 (Double) rs.getObject("max_house_load_kw"), rs.getInt("connector_count"),
+                rs.getString("surplus_policy"), rs.getString("storage_priority"),
+                rs.getBoolean("surplus_active"), (Double) rs.getObject("surplus_kw"),
+                rs.getString("surplus_mode"), rs.getString("surplus_note"),
+                rs.getBoolean("surplus_blind"), (Double) rs.getObject("surplus_total_kw"),
+                (Double) rs.getObject("surplus_battery_kw"),
+                (Double) rs.getObject("source_allocated_kw"),
                 instant(rs.getTimestamp("reported_at")));
     }
 

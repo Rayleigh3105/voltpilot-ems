@@ -3417,6 +3417,40 @@ der niemand ein Dokument schickt, verhält sich zeichengleich wie vorher.
 - Beweise: `internal/chargingcfg` (7, inkl. der Kontrakt-Fixtures per PFAD) ·
   `agent/charging_config_test.go` (3: die PATCH-Wirkung samt Vorrang-Rücknahme,
   fremdes/kaputtes Dokument ändert NICHTS, eine Box ohne OCPP überlebt es).
+- **Seit Stufe 4 trägt dasselbe Dokument die QUELLEN-Wahl** (`surplus_policy`
+  / `storage_priority`, beide additiv und OPTIONAL). **⚠ `nil` heißt „das Portal
+  sagt dazu nichts" und ist NIE `schnell`** — sonst nähme das erste gespeicherte
+  Dokument einer Box still ihre auf `:8484` gepflegte Politik weg; ein
+  unbekanntes Wort lehnt dagegen das GANZE Dokument ab (fail-closed wie jede
+  andere Form-Verletzung). Angewandt wird beides über EINEN
+  `OcppSaveSettings`-Aufruf zusammen mit der Grenze — zwei Aufrufe wären zwei
+  Zwischenzustände.
+
+## Stufe 4: „Jetzt voll laden" kommt als EINMAL-Freigabe aus dem Portal (`internal/chargingboost`)
+
+Der Konsument von `ems/{t}/{s}/{d}/v2/charging-boost` (Kontrakt
+`docs/contracts/mqtt-charging-boost.schema.json`). Er fügt **keinen neuen
+Mechanismus** hinzu: er ruft `Agent.OcppBoost` — genau das, was die
+`:8484`-Taste ruft.
+
+- **⚠ NICHT-RETAINED, und `requested_at` ist die zweite Hälfte.** Eine retained
+  Übersteuerung würde bei JEDEM Verbindungsaufbau erneut zugestellt und wäre
+  keine Einmal-Freigabe; weil die Box eine DAUERHAFTE Sitzung hält, darf der
+  Broker sie zusätzlich nachliefern — also übernimmt die Box den Stempel als
+  Beginn ihres Fensters (`chargingboost.Window`, 2 min) statt des
+  Empfangs-Zeitpunkts. Eine nachgelieferte Freigabe ist bei der Ankunft
+  ABGELAUFEN und wird abgelehnt statt ausgeführt (das OTA-Apply-Muster).
+- **Vier Ablehnungen, alle stumm zum Broker und laut im Protokoll:** fremde
+  Identität (Topic == Payload), abgelaufenes Fenster, fremde Vertragsversion,
+  unlesbare Bytes. `ExpiredMessage` nennt BEIDE Uhren — eine auseinander
+  gelaufene Uhr ist sonst strukturell unsichtbar.
+- **Die POLITIK bleibt auf der Box:** ob es diesen Stecker gibt, ob dort eine
+  Sitzung läuft und wie lange die Freigabe höchstens gilt
+  (`lastmgmt.BoostMaxDuration`, 4 h), entscheidet `Agent.OcppBoost` — die Cloud
+  nennt nur Stecker, Wunsch und Dauer. `cancel: true` nimmt sie zurück.
+- Beweise: `internal/chargingboost` (7, inkl. der Kontrakt-Fixtures per PFAD) ·
+  `agent/charging_boost_test.go` (5: der Durchlauf durch den GETEILTEN Kern,
+  die vier Ablehnungen, die Rücknahme).
 
 ## Maintaining this file
 

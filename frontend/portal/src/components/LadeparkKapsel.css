@@ -57,3 +57,42 @@
   border-color: var(--vp-flow-load, #8b5cf6);
   color: #fff;
 }
+
+/* --- Stufe 4: die QUELLEN-Wahl in der Überschuss-Karte ---------------------
+   Zwei Radio-Gruppen, bewusst schlicht: die Karte trägt schon ihren Ton, dieser
+   Block gruppiert nur, damit zwei Fragen als zwei Fragen lesbar sind. */
+.vp-ladepark-choice {
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 10px 14px 4px;
+  margin: 12px 0 4px;
+  min-width: 0;
+}
+.vp-ladepark-choice > legend {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 6px;
+}
+.vp-ladepark-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13.5px;
+  line-height: 1.45;
+  margin: 8px 0 10px;
+}
+.vp-ladepark-radio input {
+  margin-top: 3px;
+  flex: none;
+}
+/* Der Kombinations-Streifen: wie die zwei Bahnen ineinandergreifen. */
+.vp-ladepark-kombi {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--vp-surface-2, #f8fafc);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--vp-muted, #64748b);
+}

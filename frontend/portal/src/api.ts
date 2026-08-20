@@ -1,8 +1,20 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { ProfileState, SiteProfiles } from './profiles';
-import type { ChargingConfig, SiteCharging } from './ladepunkte';
-export type { ChargingConfig, SiteCharging } from './ladepunkte';
+import type {
+  ChargingBoostResult,
+  ChargingConfig,
+  SiteCharging,
+  StoragePriority,
+  SurplusPolicy,
+} from './ladepunkte';
+export type {
+  ChargingBoostResult,
+  ChargingConfig,
+  SiteCharging,
+  StoragePriority,
+  SurplusPolicy,
+} from './ladepunkte';
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
@@ -2423,10 +2435,34 @@ export const api = {
    */
   saveChargingConfig: (
     siteId: string,
-    body: { gridLimitKw?: number; priorityChargePointIds?: string[] },
+    body: {
+      gridLimitKw?: number;
+      priorityChargePointIds?: string[];
+      // Die QUELLEN-Wahl (Stufe 4). Sie ändert KEINE Grenze - die zwei Bahnen
+      // komponieren most-restrictive-wins. Nicht übergeben = unverändert, was
+      // NICHT dasselbe ist wie `schnell` (eine eigene Aussage des Kunden).
+      surplusPolicy?: SurplusPolicy;
+      storagePriority?: StoragePriority;
+    },
   ) =>
     request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config`, {
       method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /**
+   * „Jetzt voll laden": nimmt EINEN laufenden Ladevorgang von der
+   * Überschuss-Priorität aus, damit er auch Netzstrom ziehen darf.
+   *
+   * ⚠ Es ist KEINE Grenze: Anschlussgrenze, Sicherheitsabstand, §14a und der
+   * Ausfall-Schutz binden ihn unverändert, und die Priorität aller ANDEREN
+   * Ladevorgänge bleibt, wie sie ist.
+   */
+  chargingBoost: (
+    siteId: string,
+    body: { chargePointId: string; connectorId: number; minutes?: number; cancel?: boolean },
+  ) =>
+    request<ChargingBoostResult>(`/api/v1/sites/${siteId}/charging-boost`, {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
   /**

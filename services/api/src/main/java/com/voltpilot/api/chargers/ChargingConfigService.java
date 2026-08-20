@@ -51,6 +51,15 @@ public class ChargingConfigService {
      */
     private static final double MAX_GRID_LIMIT_KW = 100_000;
 
+    /**
+     * Das Vokabular des Kontrakts. Es steht hier ein zweites Mal, weil eine
+     * Ablehnung den ERLAUBTEN Satz nennen muss - „ungültig" ist auf einer
+     * Kundenfläche keine Antwort.
+     */
+    private static final Set<String> POLICIES = Set.of("nur_sonne", "sonne_zuerst", "schnell");
+
+    private static final Set<String> STORAGE = Set.of("speicher_vor_auto", "auto_vor_speicher");
+
     private final SiteRepository sites;
     private final ChargingConfigRepository configs;
     private final DeviceChargerStatusRepository chargers;
@@ -80,7 +89,7 @@ public class ChargingConfigService {
      */
     @Transactional
     public ChargingConfigDto save(UUID siteId, Double gridLimitKw, List<String> priorities,
-            String actor) {
+            String surplusPolicy, String storagePriority, String actor) {
         requireSite(siteId);
         UUID tenantId = TenantContext.get();
         if (gridLimitKw != null) {
@@ -89,6 +98,23 @@ public class ChargingConfigService {
                         "Die Anschlussgrenze muss eine Leistung größer 0 kW sein.");
             }
             configs.saveGridLimit(tenantId, siteId, gridLimitKw, actor);
+        }
+        // ⚠ Ein unbekanntes Wort wird BENANNT abgelehnt, nie still auf eine
+        // Vorgabe gedreht: hier entscheidet ein Kunde über seine eigene Anlage,
+        // und ein stiller Rückfall ließe ihn glauben, er hätte etwas gesetzt,
+        // was er nicht gesetzt hat.
+        if (surplusPolicy != null && !POLICIES.contains(surplusPolicy)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannte Überschuss-Priorität. Möglich sind „Nur Sonnenstrom\", "
+                            + "„Sonne zuerst\" und „Schnell laden\".");
+        }
+        if (storagePriority != null && !STORAGE.contains(storagePriority)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannte Speicher-Priorität. Möglich sind „Speicher vor Auto\" und "
+                            + "„Auto vor Speicher\".");
+        }
+        if (surplusPolicy != null || storagePriority != null) {
+            configs.saveSourceChoice(tenantId, siteId, surplusPolicy, storagePriority, actor);
         }
         List<String> cleaned = priorities == null ? null : clean(siteId, priorities);
         if (cleaned != null) {
@@ -117,7 +143,8 @@ public class ChargingConfigService {
         Instant now = Instant.now();
         for (UUID deviceId : configs.deviceIds(siteId)) {
             pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
-                    config.priorityChargePointIds(), now);
+                    config.priorityChargePointIds(), config.surplusPolicy(),
+                    config.storagePriority(), now);
         }
     }
 

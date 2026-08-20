@@ -274,6 +274,119 @@ class ChargerApiTest {
         }
     }
 
+    /**
+     * Stufe 4: die QUELLEN-Wahl ist eine Kunden-Entscheidung, die Übersteuerung
+     * eine Kunden-Aktion - und beide fassen KEINE Grenze an.
+     */
+    @Test
+    void theSourceChoiceIsSavedAndJetztVollLadenOverridesExactlyOneSession() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Ueberschuss");
+        try {
+            UUID device = claim(customer, site, "edge-ladepark-4");
+            heartbeat(site, device, surplusStations());
+
+            // 0 · Ohne Wahl behauptet das Portal NICHTS - die Box behält ihre
+            //     eigene Einstellung (abwesend ist NICHT „schnell").
+            JsonNode empty = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            assertThat(empty.get("surplusPolicy").isNull()).isTrue();
+            assertThat(empty.get("storagePriority").isNull()).isTrue();
+
+            // 1 · Der Kunde wählt - und die Anschlussgrenze bleibt unangetastet
+            //     (PATCH, dieselbe Regel wie überall auf diesem Pfad).
+            putJson("/api/v1/sites/" + site + "/charging-config", customer,
+                    Map.of("gridLimitKw", 277));
+            JsonNode chosen = putJson("/api/v1/sites/" + site + "/charging-config", customer,
+                    Map.of("surplusPolicy", "nur_sonne", "storagePriority", "auto_vor_speicher"));
+            assertThat(chosen.get("surplusPolicy").asText()).isEqualTo("nur_sonne");
+            assertThat(chosen.get("storagePriority").asText()).isEqualTo("auto_vor_speicher");
+            assertThat(chosen.get("gridLimitKw").asDouble())
+                    .as("eine Quellen-Wahl ändert keine Grenze").isEqualTo(277.0);
+
+            // 2 · Ein unbekanntes Wort wird BENANNT abgelehnt und ändert nichts.
+            ResponseEntity<String> garbage = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config"), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("surplusPolicy", "hoffentlich"), bearer(customer)),
+                    String.class);
+            assertThat(garbage.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(garbage.getBody()).contains("Nur Sonnenstrom");
+            assertThat(getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .get("surplusPolicy").asText()).isEqualTo("nur_sonne");
+
+            // 3 · Die Box meldet, was sie WIRKLICH fährt - samt der laufenden
+            //     Übersteuerung an genau einem Stecker.
+            JsonNode charging = getJson("/api/v1/sites/" + site + "/chargers", customer);
+            JsonNode budget = charging.get("budget");
+            assertThat(budget.get("surplusPolicy").asText()).isEqualTo("nur_sonne");
+            assertThat(budget.get("surplusActive").asBoolean()).isTrue();
+            assertThat(budget.get("surplusKw").asDouble()).isEqualTo(65.0);
+            // ⚠ Der deutsche Satz kommt aus der BOX und wird nur durchgereicht.
+            assertThat(budget.get("surplusNote").asText()).contains("Nur Sonnenstrom");
+            JsonNode connectors = charging.get("chargers").get(0).get("connectors");
+            assertThat(connectors.get(0).get("boost").asBoolean()).isTrue();
+            assertThat(connectors.get(1).get("boost").asBoolean()).isFalse();
+
+            // 4 · „Jetzt voll laden" für einen Stecker OHNE Ladevorgang ist 409 -
+            //     eine Zusage über ein Fahrzeug, das nicht da ist, wäre erfunden.
+            ResponseEntity<String> idle = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 2),
+                            bearer(customer)),
+                    String.class);
+            assertThat(idle.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(idle.getBody()).contains("kein Ladevorgang");
+
+            // 5 · Eine unbekannte Säule und ein unbekannter Stecker sind 404.
+            ResponseEntity<String> unknown = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "gibt-es-nicht", "connectorId", 1),
+                            bearer(customer)),
+                    String.class);
+            assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+            // 6 · Ohne Broker gibt es KEINE Freigabe - und die Antwort sagt das,
+            //     statt eine zu behaupten, die nie hinausging (die Nachricht IST
+            //     die Freigabe).
+            ResponseEntity<String> noBroker = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 1),
+                            bearer(customer)),
+                    String.class);
+            assertThat(noBroker.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+            assertThat(noBroker.getBody()).contains("nicht erreichen");
+
+            // 7 · Der Mandanten-Zaun gilt auch hier.
+            ResponseEntity<String> foreign = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 1),
+                            bearer(token("demo2", "demo2"))),
+                    String.class);
+            assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /** Eine Anlage mit laufender Quellen-Bahn und EINER Übersteuerung. */
+    private static String surplusStations() {
+        return """
+                {"reported_at":"2026-08-20T13:24:00Z","enabled":true,"control_enabled":true,
+                 "grid_limit_kw":277,"margin_pct":10,"min_power_kw":30,"budget_kw":197,
+                 "allocated_kw":110,"measured_kw":110,"connector_count":2,
+                 "surplus_policy":"nur_sonne","storage_priority":"auto_vor_speicher",
+                 "surplus_active":true,"surplus_kw":65,"surplus_mode":"gemessen",
+                 "surplus_note":"Ihre Priorität: Nur Sonnenstrom. Für die Fahrzeuge stehen gerade 65,0 kW Sonnenüberschuss zur Verfügung.",
+                 "surplus_total_kw":85,"surplus_battery_kw":20,"source_allocated_kw":65,
+                 "chargers":[
+                   {"id":"saeule-1","label":"Hof Nord","connected":true,"ready":true,
+                    "last_seen":"2026-08-20T13:23:55Z",
+                    "connectors":[
+                      {"id":1,"status":"Charging","charging":true,"allocated_kw":45,
+                       "reason":"laedt","reason_text":"lädt","power_kw":45,"boost":true,
+                       "session_since":"2026-08-20T12:41:00Z"},
+                      {"id":2,"status":"Available","charging":false}]}]}""";
+    }
+
     /** Die „lastmanagement"-Karte des Regals. */
     private JsonNode profileCard(String token, UUID site) throws Exception {
         JsonNode shelf = getJson("/api/v1/sites/" + site + "/profiles", token);

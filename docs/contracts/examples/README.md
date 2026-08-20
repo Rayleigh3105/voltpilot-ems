@@ -118,3 +118,24 @@ eigene Zahl behält. `mqtt-charging-config.invalid.grenze-null.json` ist eine
 Grenze von 0: ohne Grenze ist das Budget der Box 0 und es lädt nichts, also wäre
 das eine Aussage, die niemand treffen wollte — abwesend heißt „dazu sagt das
 Portal nichts", nie „keine Grenze".
+
+Seit Stufe 4 trägt dasselbe Dokument additiv die zwei QUELLEN-Wahlen des Kunden
+(`mqtt-charging-config.valid.ueberschuss-prioritaet.json`): sie sagen, WOHER der
+Ladestrom kommen soll, und ändern keine einzige Grenze — die niedrigere der
+beiden Bahnen gewinnt, und keine kann die andere aufweichen. Auch hier ist
+abwesend ≠ `schnell`: das eine heißt „das Portal äußert sich nicht", das andere
+ist die eigene Aussage „keine Quellen-Politik".
+
+## `mqtt-charging-boost` (Lastmanagement Stufe 4)
+
+Die Einmal-Übersteuerung „Jetzt voll laden" für GENAU EINEN laufenden
+Ladevorgang — dieselbe Freigabe, die die `:8484`-Taste erteilt, mit anderem
+Transport. Sie ist NICHT-retained (eine Einmal-Freigabe, die bei jedem Reconnect
+wieder erschiene, wäre keine) und trägt deshalb `requested_at`: das Gerät nimmt
+diesen Stempel als Beginn seines Fensters, also ist eine nachgelieferte
+QoS1-Nachricht bei der Ankunft schon abgelaufen — die Regel der
+OTA-Einmal-Freigabe, wörtlich. `…valid.jetzt-voll-laden.json` ist die Erteilung,
+`…valid.zuruecknehmen.json` die sofortige Rücknahme (`cancel`, idempotent), und
+`…invalid.stecker-null.json` ist der Stecker 0: ein Stecker ist ein Fahrzeug und
+wird ab 1 gezählt — eine Übersteuerung ohne Ladevorgang wäre eine Zusage über
+ein Auto, das nicht da ist.

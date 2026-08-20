@@ -31,21 +31,23 @@ public class ChargingConfigRepository {
     /** Die gepflegte Konfiguration; leere Felder = noch nichts gepflegt. */
     public ChargingConfigDto forSite(UUID siteId) {
         List<Object[]> head = jdbc.query(
-                "SELECT grid_limit_kw, updated_at, updated_by FROM site_charging_config "
-                        + "WHERE site_id = ?",
+                "SELECT grid_limit_kw, surplus_policy, storage_priority, updated_at, updated_by "
+                        + "FROM site_charging_config WHERE site_id = ?",
                 (rs, n) -> new Object[] {rs.getObject("grid_limit_kw"),
-                        rs.getTimestamp("updated_at"), rs.getString("updated_by")},
+                        rs.getTimestamp("updated_at"), rs.getString("updated_by"),
+                        rs.getString("surplus_policy"), rs.getString("storage_priority")},
                 siteId);
         List<String> priorities = jdbc.query(
                 "SELECT charge_point_id FROM site_charge_point_priority WHERE site_id = ? "
                         + "ORDER BY charge_point_id",
                 (rs, n) -> rs.getString("charge_point_id"), siteId);
         if (head.isEmpty()) {
-            return new ChargingConfigDto(null, List.copyOf(priorities), null, null);
+            return new ChargingConfigDto(null, List.copyOf(priorities), null, null, null, null);
         }
         Object[] row = head.get(0);
         Timestamp at = (Timestamp) row[1];
         return new ChargingConfigDto((Double) row[0], List.copyOf(priorities),
+                (String) row[3], (String) row[4],
                 at == null ? null : at.toInstant(), (String) row[2]);
     }
 
@@ -57,6 +59,24 @@ public class ChargingConfigRepository {
                 + "ON CONFLICT (site_id) DO UPDATE SET grid_limit_kw = EXCLUDED.grid_limit_kw, "
                 + "updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by",
                 siteId, tenantId, gridLimitKw, Timestamp.from(Instant.now()), actor);
+    }
+
+    /**
+     * Setzt die QUELLEN-Wahl (Stufe 4). Beide Felder sind einzeln optional:
+     * null heißt „dazu sagt der Kunde nichts" und der gespeicherte Wert bleibt
+     * stehen - dieselbe PATCH-Semantik wie überall auf diesem Pfad.
+     */
+    @Transactional
+    public void saveSourceChoice(UUID tenantId, UUID siteId, String surplusPolicy,
+            String storagePriority, String actor) {
+        jdbc.update("INSERT INTO site_charging_config (site_id, tenant_id, surplus_policy, "
+                + "storage_priority, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT (site_id) DO UPDATE SET "
+                + "surplus_policy = COALESCE(EXCLUDED.surplus_policy, site_charging_config.surplus_policy), "
+                + "storage_priority = COALESCE(EXCLUDED.storage_priority, site_charging_config.storage_priority), "
+                + "updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by",
+                siteId, tenantId, surplusPolicy, storagePriority, Timestamp.from(Instant.now()),
+                actor);
     }
 
     /** Ersetzt die Vorrang-Menge (leer = ausdrücklich keine Vorrang-Säule). */

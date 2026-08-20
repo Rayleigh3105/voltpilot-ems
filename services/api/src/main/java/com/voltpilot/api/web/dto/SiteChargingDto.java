@@ -29,7 +29,17 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
             Double siteLoadKw, Double siteGridKw, String budgetMode, String budgetNote,
             boolean budgetBlind, Double effLimitKw, Double safeDefaultKw, String safeDefaultNote,
             Boolean safeDefaultHolds, Double safeWorstCaseKw, Double maxHouseLoadKw,
-            int connectorCount, Instant reportedAt) {}
+            int connectorCount,
+            // --- Stufe 4: die QUELLEN-Bahn (PV-Überschussladen) ---
+            //
+            // Sie ist die WIRTSCHAFTLICHE Wahl des Kunden und kann nur
+            // VERENGEN, was der Anschluss ohnehin erlaubt. Beide Zahlen reisen,
+            // damit eine Fläche sie ZUSAMMEN zeigen kann: eine Drosselung an
+            // einem freien Anschluss läse sich sonst wie ein Defekt.
+            String surplusPolicy, String storagePriority, boolean surplusActive,
+            Double surplusKw, String surplusMode, String surplusNote, boolean surplusBlind,
+            Double surplusTotalKw, Double surplusBatteryKw, Double sourceAllocatedKw,
+            Instant reportedAt) {}
 
     /**
      * Eine Ladesäule. {@code entityId} ist die Komponente, die die Plattform für
@@ -45,5 +55,13 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
     public record ChargeConnectorDto(int connectorId, String status, boolean charging,
             Double allocatedKw, String reason, String reasonText, Instant nextTurn, Double powerKw,
             Double energyKwh, Double socPct, String commandStatus, String readback,
-            String readbackNote, Instant sessionSince) {}
+            String readbackNote, Instant sessionSince,
+            /*
+             * boost = an diesem Stecker läuft „Jetzt voll laden". Der Wert kam
+             * damit OHNE die Quellen-Bahn zustande und darf Netzstrom
+             * enthalten; die Fläche SAGT das - eine volle Ladung, die niemand
+             * angefordert hat, wäre ein stiller Bruch der eigenen Priorität
+             * des Kunden.
+             */
+            boolean boost) {}
 }

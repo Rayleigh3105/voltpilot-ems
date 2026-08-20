@@ -63,11 +63,22 @@ func (a *Agent) onChargingConfig(payload []byte) {
 		slog.Info("charging config received but OCPP is off on this box - nothing applied")
 		return
 	}
-	if cfg.GridLimitKw != nil {
-		if _, err := a.OcppSaveSettings(lastmgmt.SettingsRequest{GridLimitKw: cfg.GridLimitKw}); err != nil {
-			slog.Warn("charging config: connection limit not applied", "err", err)
+	// ⚠ ONE Apply for every field the document carries: Settings.Apply is
+	// PATCH, so a second call would be pointless churn - and splitting them
+	// could leave the box half-configured if one refused.
+	if cfg.GridLimitKw != nil || cfg.SurplusPolicy != nil || cfg.StoragePriority != nil {
+		req := lastmgmt.SettingsRequest{
+			GridLimitKw:     cfg.GridLimitKw,
+			SurplusPolicy:   cfg.SurplusPolicy,
+			StoragePriority: cfg.StoragePriority,
+		}
+		if _, err := a.OcppSaveSettings(req); err != nil {
+			slog.Warn("charging config: settings not applied", "err", err)
 		} else {
-			slog.Info("charging config applied", "grid_limit_kw", *cfg.GridLimitKw)
+			slog.Info("charging config applied",
+				"grid_limit_kw", cfg.GridLimitKw,
+				"surplus_policy", cfg.SurplusPolicy,
+				"storage_priority", cfg.StoragePriority)
 		}
 	}
 	if cfg.Priorities != nil {

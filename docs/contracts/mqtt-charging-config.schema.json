@@ -2,17 +2,29 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/mqtt-charging-config.schema.json",
   "title": "Cloud -> Edge Lastmanagement-Konfiguration (Anschlussgrenze + Vorrang)",
-  "description": "RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/charging-config. Lastmanagement Stufe 3, Konzept `vp-ocpp-lastmgmt-konzept-w4` §5 / PR 12.\n\nDAS DOKUMENT IST EIN WUNSCH, KEINE VERTEILUNG. Es traegt genau das, was der Kunde im Portal ueber SEINEN Anschluss entscheidet: die Anschlussgrenze und welche Saeulen Vorrang haben. GERECHNET und DURCHGESETZT wird weiter auf der Box (internal/lastmgmt) - die Anschlussgrenze ist eine physische Grenze, ihr Waechter darf nicht am WAN haengen (E1). Die Cloud kann damit einen Ladepark einrichten, ohne dass jemand im LAN am Geraet steht; sie kann ihn nicht steuern.\n\nRETAINED ist der ganze Mechanismus: eine Box, die beim Speichern offline war, holt ihre Einstellung beim naechsten Verbindungsaufbau selbst ab - genau wie bei Provisionierung, Zuweisung und Steuerungs-Zertifizierung. Das Topic liegt im `v2/#`-Teilbaum, den die per-Geraet-ACL laengst abdeckt (D-2): KEINE Broker-Aenderung.\n\nPATCH-SEMANTIK, und sie ist tragend: ein ABWESENDES Feld BEHAELT den Wert der Box. Das Portal besitzt heute nur die Anschlussgrenze und die Vorrang-Wahl; Sicherheitsabstand, Mindestleistung und die hoechste Gebaeudelast bleiben Einstellungen der Box (`:8484`), und ein Dokument, das sie stillschweigend auf eine Vorgabe zuruecksetzte, waere ein Datenverlust ohne Absicht.\n\nEine LEERE retained Nachricht nimmt das Dokument zurueck (Unclaim) - danach gilt wieder allein, was auf der Box gepflegt ist.",
+  "description": "RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/charging-config. Lastmanagement Stufe 3, Konzept `vp-ocpp-lastmgmt-konzept-w4` §5 / PR 12.\n\nDAS DOKUMENT IST EIN WUNSCH, KEINE VERTEILUNG. Es traegt genau das, was der Kunde im Portal ueber SEINEN Anschluss entscheidet: die Anschlussgrenze und welche Saeulen Vorrang haben. GERECHNET und DURCHGESETZT wird weiter auf der Box (internal/lastmgmt) - die Anschlussgrenze ist eine physische Grenze, ihr Waechter darf nicht am WAN haengen (E1). Die Cloud kann damit einen Ladepark einrichten, ohne dass jemand im LAN am Geraet steht; sie kann ihn nicht steuern.\n\nRETAINED ist der ganze Mechanismus: eine Box, die beim Speichern offline war, holt ihre Einstellung beim naechsten Verbindungsaufbau selbst ab - genau wie bei Provisionierung, Zuweisung und Steuerungs-Zertifizierung. Das Topic liegt im `v2/#`-Teilbaum, den die per-Geraet-ACL laengst abdeckt (D-2): KEINE Broker-Aenderung.\n\nPATCH-SEMANTIK, und sie ist tragend: ein ABWESENDES Feld BEHAELT den Wert der Box. Das Portal besitzt heute nur die Anschlussgrenze und die Vorrang-Wahl; Sicherheitsabstand, Mindestleistung und die hoechste Gebaeudelast bleiben Einstellungen der Box (`:8484`), und ein Dokument, das sie stillschweigend auf eine Vorgabe zuruecksetzte, waere ein Datenverlust ohne Absicht.\n\nEine LEERE retained Nachricht nimmt das Dokument zurueck (Unclaim) - danach gilt wieder allein, was auf der Box gepflegt ist.\n\nSTUFE 4 (additiv): das Dokument traegt zusaetzlich die zwei QUELLEN-Wahlen des Kunden (`surplus_policy`, `storage_priority`). Sie aendern nichts an der Verteil-Mechanik und keine Grenze - sie sagen, WOHER der Ladestrom kommen soll. Ein aelteres Geraet ignoriert die zwei Felder und verhaelt sich zeichengleich; eine aeltere Cloud sendet sie nicht und die Box behaelt ihre eigene Wahl (PATCH).",
   "type": "object",
-  "required": ["schema_version", "tenant_id", "site_id", "device_id", "published_at"],
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "site_id",
+    "device_id",
+    "published_at"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
       "const": "1.0",
       "description": "Vertragsversion; ein Geraet, das sie nicht kennt, VERWIRFT das Dokument (fail-closed) und behaelt seine eigenen Einstellungen."
     },
-    "tenant_id": { "type": "string", "format": "uuid" },
-    "site_id": { "type": "string", "format": "uuid" },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid"
+    },
     "device_id": {
       "type": "string",
       "format": "uuid",
@@ -28,8 +40,30 @@
       "type": "array",
       "description": "Die OCPP-ChargePointIds der VORRANG-Saeulen (z. B. fuer Einsatz- oder Dienstfahrzeuge). Vorrang ist ein RANG, kein Freibrief: die Gruppe wird zuerst und auf ihre volle Nachfrage bedient, der Rest teilt fair - aber sie wird selbst vom Budget gedeckelt und kann den Anschluss so wenig ueberschreiten wie jede andere.\n\nEine LEERE Liste ist eine gueltige AUSSAGE ('keine Saeule hat Vorrang') und wird angewandt; ABWESEND heisst dagegen 'das Portal aeussert sich nicht' und die Box behaelt ihre Wahl.",
       "maxItems": 64,
-      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
     },
-    "published_at": { "type": "string", "format": "date-time" }
+    "published_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "surplus_policy": {
+      "enum": [
+        "nur_sonne",
+        "sonne_zuerst",
+        "schnell"
+      ],
+      "description": "Die UEBERSCHUSS-PRIORITAET des Kunden (Stufe 4, PV-Ueberschussladen): woher der Ladestrom kommen soll.\n\n`nur_sonne` = geladen wird ausschliesslich der gemessene Ueberschuss (zieht eine Wolke auf, pausiert das Laden); `sonne_zuerst` = der Ueberschuss zuerst, Netzstrom nur so viel, dass ein laufendes Fahrzeug nicht stehen bleibt; `schnell` = keine Quellen-Politik, volle verfuegbare Leistung.\n\nSIE IST DIE OEKONOMISCHE BAHN, NIE EINE GRENZE: die Anschlussgrenze, der Sicherheitsabstand, die Paragraf-14a-Huelle und das Ausfall-Profil binden unveraendert. Die niedrigere der beiden Bahnen gewinnt, und keine kann die andere aufweichen.\n\nABWESEND heisst 'das Portal aeussert sich nicht' und die Box behaelt ihre Wahl - es heisst NIE 'keine Politik' (das waere `schnell`, eine eigene Aussage)."
+    },
+    "storage_priority": {
+      "enum": [
+        "speicher_vor_auto",
+        "auto_vor_speicher"
+      ],
+      "description": "Wer den Sonnenueberschuss ZUERST bekommt (Stufe 4). `speicher_vor_auto` ist der gemessene Status quo: der Speicher folgt seinem Fahrplan, die Fahrzeuge bekommen, was uebrig bleibt. `auto_vor_speicher` gibt den Fahrzeugen den ganzen Ueberschuss - und die Box KLEMMT dafuer die Ladung des Speichers auf den Rest, sonst waere die Wahl nur ein Wunsch und die Anlage kaufte die Differenz.\n\nABWESEND = die Box behaelt ihre Wahl."
+    }
   }
 }

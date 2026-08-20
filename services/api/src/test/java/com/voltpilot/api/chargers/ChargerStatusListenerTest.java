@@ -250,4 +250,58 @@ class ChargerStatusListenerTest {
         assertThat(c.chargers()).hasSize(1);
         assertThat(c.chargers().get(0).chargePointId()).isEqualTo("saeule-1");
     }
+
+    /**
+     * Stufe 4: die QUELLEN-Bahn wird aufbewahrt - MIT der Regel, dass ein Wort
+     * ausserhalb des Vokabulars VERWORFEN und nicht gespeichert wird.
+     */
+    @Test
+    void theSourceLaneIsStoredAndAnUnknownWordIsDiscarded() {
+        Captured c = ingest("\"chargers\":{\"reported_at\":\"2026-08-20T13:24:00Z\","
+                + "\"enabled\":true,\"surplus_policy\":\"nur_sonne\","
+                + "\"storage_priority\":\"auto_vor_speicher\",\"surplus_active\":true,"
+                + "\"surplus_kw\":65,\"surplus_mode\":\"gemessen\","
+                + "\"surplus_note\":\"Ihre Priorität: Nur Sonnenstrom.\","
+                + "\"surplus_total_kw\":85,\"surplus_battery_kw\":20,"
+                + "\"source_allocated_kw\":60,\"connector_count\":1,"
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true,\"connectors\":["
+                + "{\"id\":1,\"charging\":true,\"allocated_kw\":65,\"boost\":true}]}]}");
+        assertThat(c.budget().surplusPolicy()).isEqualTo("nur_sonne");
+        assertThat(c.budget().storagePriority()).isEqualTo("auto_vor_speicher");
+        assertThat(c.budget().surplusActive()).isTrue();
+        assertThat(c.budget().surplusKw()).isEqualTo(65);
+        assertThat(c.budget().surplusTotalKw()).isEqualTo(85);
+        assertThat(c.budget().surplusBatteryKw()).isEqualTo(20);
+        assertThat(c.budget().sourceAllocatedKw()).isEqualTo(60);
+        // ⚠ Der deutsche Satz wird DURCHGEREICHT, nie neu formuliert.
+        assertThat(c.budget().surplusNote()).isEqualTo("Ihre Priorität: Nur Sonnenstrom.");
+        // Und eine laufende Übersteuerung ist sichtbar - eine volle Ladung, die
+        // niemand angefordert hat, wäre ein stiller Bruch der Kunden-Priorität.
+        assertThat(c.chargers().get(0).connectors().get(0).boost()).isTrue();
+    }
+
+    /** Ein Wort ausserhalb des Vokabulars wird VERWORFEN, nie gespeichert. */
+    @Test
+    void anUnknownSourceWordIsDiscardedInsteadOfStored() {
+        Captured garbage = ingest("\"chargers\":{\"reported_at\":\"2026-08-20T13:24:00Z\","
+                + "\"enabled\":true,\"surplus_policy\":\"hoffentlich\","
+                + "\"storage_priority\":\"irgendwas\",\"surplus_mode\":\"traumhaft\","
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true}]}");
+        assertThat(garbage.budget().surplusPolicy()).isNull();
+        assertThat(garbage.budget().storagePriority()).isNull();
+        assertThat(garbage.budget().surplusMode()).isNull();
+    }
+
+    /**
+     * Eine ÄLTERE Box sendet den Block gar nicht - dann wird nichts behauptet,
+     * und die Anlage sieht aus wie vor Stufe 4.
+     */
+    @Test
+    void anOlderBoxReportsNoSourceLaneAtAll() {
+        Captured c = ingest(mockupBlock());
+        assertThat(c.budget().surplusPolicy()).isNull();
+        assertThat(c.budget().surplusActive()).isFalse();
+        assertThat(c.budget().surplusKw()).as("kein Messwert ist NIE eine 0").isNull();
+        assertThat(c.chargers().get(0).connectors().get(0).boost()).isFalse();
+    }
 }

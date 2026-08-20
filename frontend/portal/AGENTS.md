@@ -977,7 +977,33 @@ je Ebene einen Test).
   OHNE eigenen Messwert („—"); seine Live-Zahlen stehen auf der
   Ladevorgänge-Seite. Grund: die Säulen melden über den Herzschlag, nicht über
   Entitäts-Telemetrie (`telemetry_v2`) — Stufe-4-Folgearbeit.
-- Beweise: `ladepunkte.test.ts` (20) · `LadevorgaengeSection.test.tsx` (3) ·
+- **Stufe 4 · PV-Überschussladen + „Jetzt voll laden".** Die Strategie-Karte
+  „PV-Überschussladen" steht neben dem Lastmanagement in derselben Kapsel: drei
+  Prioritäts-Radios (`POLICY_LABEL`/`POLICY_HELP`), die Speicher-Frage und der
+  Satz der BOX (`surplusLine`) — **die Speicher-Radios erscheinen nur, wo der
+  Speicher wirklich gemessen wird**, sonst wäre die Frage „wer bekommt ihn
+  zuerst?" über einer Anlage ohne Speicher eine Behauptung. Darunter der
+  Kombinations-Streifen (`kombinationsStreifen`): er nennt BEIDE Grenzen —
+  „WIE VIEL" (physisch) neben „WOHER" (Politik) —, weil eine Drosselung an einem
+  freien Anschluss sonst wie ein Defekt läse.
+- **⚠ Der Knopf „Jetzt voll laden" wird NUR angeboten, wo er etwas ändern KANN**
+  (`boostbar`): ohne Quellen-Bahn gibt es nichts zu übersteuern, und ein schon
+  übersteuerter Ladevorgang bekommt den anderen Knopf („Wieder Ihre Priorität").
+  **Geprüft wird das MASCHINEN-Wort `reasonCode`, nie der deutsche Satz** — der
+  trägt bei „kein Überschuss" zusätzlich die gewählte Priorität und passte auf
+  keinen Vergleich (die Zeile war dadurch tot; im Browser gefunden).
+- **⚠ Eine übersteuerte Ladung sagt „lädt" nicht zweimal.** Der Verteiler kennt
+  die Übersteuerung nicht und meldet für dieselbe Sekunde weiter seinen eigenen
+  Grund; `rowFor` vergleicht deshalb auch gegen das BASIS-Wort, sonst stünde
+  „lädt" unter „lädt voll auf Ihren Wunsch" (ebenfalls im Browser gefunden — die
+  Haus-Regel „ein Grund, der den Zustand nur wiederholt, wird nicht zweimal
+  gesagt").
+- Der Klick geht durch den Haus-`ConfirmDialog`; `boostFolgen()` nennt WÖRTLICH
+  auch, was GLEICH bleibt (die Priorität der anderen Ladevorgänge, Anschluss-
+  grenze/Sicherheitsabstand/Ausfall-Schutz, das 4-Stunden-Ende). Ein Fehlschlag
+  räumt das Ergebnis NICHT weg: die Zeilen bleiben stehen und die Fläche sagt
+  den deutschen Grund des Servers.
+- Beweise: `ladepunkte.test.ts` (31) · `LadevorgaengeSection.test.tsx` (3) ·
   `LadeparkKapsel.test.tsx` (5) · `surface.test.ts` (+5) · `leadSlot.test.ts`
   (+1). Im echten Chrome bei 1440 und 375 durchgespielt (Bühne, Zeilen,
   Ausfall-Rechnung, Kapsel samt Dialog-Rundlauf): 0 px horizontaler Überlauf,

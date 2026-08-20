@@ -903,6 +903,23 @@ paths:
                   nullable: true
                   description: "Die Vorrang-Säulen. Abwesend = unverändert, leer = ausdrücklich keine."
                   items: { type: string }
+                surplusPolicy:
+                  type: string
+                  nullable: true
+                  enum: [nur_sonne, sonne_zuerst, schnell]
+                  description: >
+                    Die Überschuss-Priorität (Stufe 4): woher der Ladestrom
+                    kommen soll. Sie ändert KEINE Grenze - die zwei Bahnen
+                    komponieren most-restrictive-wins. Abwesend = unverändert;
+                    das ist NICHT dasselbe wie `schnell` (eine eigene Aussage).
+                storagePriority:
+                  type: string
+                  nullable: true
+                  enum: [speicher_vor_auto, auto_vor_speicher]
+                  description: >
+                    Wer den Sonnenüberschuss zuerst bekommt. `auto_vor_speicher`
+                    klemmt dafür auf der Box die Ladung des Speichers auf den
+                    Rest - sonst wäre die Wahl nur ein Wunsch.
       responses:
         "200":
           description: Die gespeicherte Konfiguration.
@@ -912,6 +929,62 @@ paths:
         "400": { description: Unplausible Grenze oder unbekannte Ladesäule (deutscher Grund im Körper). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/charging-boost:
+    post:
+      tags: [sites]
+      summary: „Jetzt voll laden" - EINEN Ladevorgang von der Quellen-Politik ausnehmen.
+      description: >
+        Die Übersteuerung der Überschuss-Priorität für GENAU EINEN laufenden
+        Ladevorgang (Lastmanagement Stufe 4). Sie geht als NICHT-retained
+        Einmal-Nachricht an die Box (Kontrakt
+        `mqtt-charging-boost.schema.json`) und mündet dort in denselben Kern wie
+        die `:8484`-Taste - es gibt keinen zweiten Weg zu übersteuern.
+
+
+        SIE IST KEINE GRENZE: sie erlaubt diesem einen Ladevorgang, auch
+        Netzstrom zu ziehen. Anschlussgrenze, Sicherheitsabstand, §14a,
+        Mindestleistung, Vorrang und das in der Säule hinterlegte Ausfall-Profil
+        binden ihn unverändert, und die Priorität ALLER ANDEREN Ladevorgänge
+        bleibt, wie sie ist. Sie gilt bis das Fahrzeug voll ist, längstens 4
+        Stunden, und endet mit der Sitzung.
+
+
+        `cancel: true` nimmt sie sofort zurück. Ein Stecker ohne laufenden
+        Ladevorgang ist 409 - eine Zusage über ein Fahrzeug, das nicht da ist,
+        wäre erfunden. Ein nicht erreichbarer Broker ist 503, und dann entsteht
+        AUCH KEIN Beleg: die Nachricht IST die Freigabe. RLS-gefenced (fremde
+        Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chargePointId, connectorId]
+              properties:
+                chargePointId: { type: string, description: "Die OCPP-ChargePointId der Säule." }
+                connectorId: { type: integer, minimum: 1, description: "Der Stecker (ab 1)." }
+                minutes: { type: integer, minimum: 1, maximum: 240, nullable: true, description: "Dauer; abwesend = der 4-Stunden-Deckel. Ein größerer Wert wird geklemmt." }
+                cancel: { type: boolean, description: "true nimmt eine laufende Übersteuerung zurück." }
+      responses:
+        "200":
+          description: Die erteilte (oder zurückgenommene) Übersteuerung, mit ihrem deutschen Satz.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chargePointId: { type: string }
+                  connectorId: { type: integer }
+                  active: { type: boolean }
+                  requestedAt: { type: string, format: date-time }
+                  note: { type: string, description: "Was jetzt gilt - und was unverändert bleibt." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage, Säule oder Stecker unbekannt (deutscher Grund im Körper). }
+        "409": { description: An diesem Stecker läuft gerade kein Ladevorgang. }
+        "503": { description: Die Box war nicht erreichbar - es entstand keine Freigabe. }
   /api/v1/sites/{siteId}/chargers:
     get:
       tags: [sites]
@@ -8726,6 +8799,8 @@ components:
           type: array
           description: "Die Vorrang-Säulen; leer = keine."
           items: { type: string }
+        surplusPolicy: { type: string, nullable: true, enum: [nur_sonne, sonne_zuerst, schnell], description: "Die Überschuss-Priorität; null = nicht gewählt (die Box behält ihre eigene)." }
+        storagePriority: { type: string, nullable: true, enum: [speicher_vor_auto, auto_vor_speicher], description: "Wer den Überschuss zuerst bekommt; null = nicht gewählt." }
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
     SiteCharging:

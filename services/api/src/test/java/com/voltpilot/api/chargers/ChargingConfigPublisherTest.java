@@ -33,9 +33,13 @@ class ChargingConfigPublisherTest {
     private final ObjectMapper json = new ObjectMapper();
 
     private JsonNode doc(Double gridLimitKw, List<String> priorities) throws Exception {
-        return json.readTree(new String(
-                ChargingConfigPublisher.document(TENANT, SITE, DEVICE, gridLimitKw, priorities, AT),
-                StandardCharsets.UTF_8));
+        return doc(gridLimitKw, priorities, null, null);
+    }
+
+    private JsonNode doc(Double gridLimitKw, List<String> priorities, String policy,
+            String storage) throws Exception {
+        return json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE,
+                gridLimitKw, priorities, policy, storage, AT), StandardCharsets.UTF_8));
     }
 
     @Test
@@ -75,7 +79,7 @@ class ChargingConfigPublisherTest {
         // Ganze Zahlen bleiben ganz: 277, nicht 277.0 - das Dokument wird auch
         // von Menschen gelesen.
         assertThat(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE, 277.0, null,
-                AT), StandardCharsets.UTF_8)).contains("\"grid_limit_kw\":277,");
+                null, null, AT), StandardCharsets.UTF_8)).contains("\"grid_limit_kw\":277,");
     }
 
     /** Eine ChargePointId ist Fremdtext - sie darf den JSON-Rahmen nie sprengen. */
@@ -92,5 +96,29 @@ class ChargingConfigPublisherTest {
                 "mqtt-charging-config.valid.grenze-und-vorrang.json");
         JsonNode expected = json.readTree(Files.readString(fixture));
         assertThat(doc(277.0, List.of("saeule-1"))).isEqualTo(expected);
+    }
+
+    /**
+     * Stufe 4: die QUELLEN-Wahl reist mit - und ABWESEND ist NICHT „schnell".
+     *
+     * <p>Das eine heißt „das Portal äußert sich nicht" und die Box behält ihre
+     * Wahl; das andere ist eine eigene Aussage des Kunden („keine
+     * Quellen-Politik"). Die beiden zu verschmelzen ließe eine ältere Cloud ein
+     * „Nur Sonnenstrom" still fallen lassen.
+     */
+    @Test
+    void theSourceChoiceTravelsAndAbsenceIsNotSchnell() throws Exception {
+        JsonNode d = doc(null, null, "nur_sonne", "auto_vor_speicher");
+        assertThat(d.get("surplus_policy").asText()).isEqualTo("nur_sonne");
+        assertThat(d.get("storage_priority").asText()).isEqualTo("auto_vor_speicher");
+
+        JsonNode silent = doc(277.0, null);
+        assertThat(silent.has("surplus_policy"))
+                .as("eine abwesende Wahl darf die der Box nicht überschreiben").isFalse();
+        assertThat(silent.has("storage_priority")).isFalse();
+
+        // Und „schnell" ist eine AUSSAGE, also reist es.
+        assertThat(doc(null, null, "schnell", null).get("surplus_policy").asText())
+                .isEqualTo("schnell");
     }
 }

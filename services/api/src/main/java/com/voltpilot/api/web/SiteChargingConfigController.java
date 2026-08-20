@@ -45,7 +45,13 @@ public class SiteChargingConfigController {
 
     /** Der Rumpf: beide Felder OPTIONAL (PATCH-Semantik). */
     public record SaveChargingConfigRequest(Double gridLimitKw,
-            @Size(max = 64) List<@Size(max = 64) String> priorityChargePointIds) {}
+            @Size(max = 64) List<@Size(max = 64) String> priorityChargePointIds,
+            /*
+             * Stufe 4: die QUELLEN-Wahl. Beide optional wie alles hier - ein
+             * abwesendes Feld behält den gespeicherten Wert, und ein Dialog,
+             * der nur die Priorität stellt, darf die Grenze nicht löschen.
+             */
+            @Size(max = 32) String surplusPolicy, @Size(max = 32) String storagePriority) {}
 
     private final ChargingConfigService service;
 
@@ -63,6 +69,7 @@ public class SiteChargingConfigController {
             @Valid @RequestBody SaveChargingConfigRequest req,
             @AuthenticationPrincipal Jwt caller) {
         return service.save(siteId, req.gridLimitKw(), req.priorityChargePointIds(),
+                req.surplusPolicy(), req.storagePriority(),
                 caller == null ? "unbekannt" : caller.getSubject());
     }
 
