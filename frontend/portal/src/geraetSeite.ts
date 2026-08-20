@@ -182,7 +182,7 @@ const HEALTH_TON: Record<ComponentHealth, GeraetTon> = {
 };
 
 /** Die Art in Kundenworten - was oben unter dem Titel steht. */
-const ART_WORT: Record<GeraetArt, string> = {
+export const ART_WORT: Record<GeraetArt, string> = {
   box: 'Ihre Verbindung zu VoltPilot',
   hauptgeraet: 'Wechselrichter',
   quelle: 'Gerät an Ihrer Box',
@@ -190,7 +190,7 @@ const ART_WORT: Record<GeraetArt, string> = {
 };
 
 /** Die Rollen-Wörter der gemeldeten Quellen (`localSetup.role`). */
-const ROLLEN_WORT: Record<string, string> = {
+export const ROLLEN_WORT: Record<string, string> = {
   'pv-generation': 'PV-Wechselrichter',
   'grid-meter': 'Zähler',
   consumer: 'Verbraucher',
@@ -245,6 +245,27 @@ export function boxRefOf(devices: Device[] | null | undefined, siteId: string): 
  */
 export function geraetAdressierbar(deviceId: string): boolean {
   return !deviceId.startsWith('dev:');
+}
+
+/**
+ * Die ART eines Geräts in Kundenworten - „Hybrid-Wechselrichter · Hauptgerät",
+ * „PV-Wechselrichter", „Ladesäule".
+ *
+ * Sie lebt hier und wird von der Geräte-KARTE der Zentrale mitbenutzt: die
+ * Karte und die Seite, auf die sie führt, dürfen dasselbe Gerät nie
+ * verschieden benennen.
+ */
+export function geraeteArtWort(
+  art: GeraetArt,
+  rolle: string | null,
+  komponenten: PlantComponent[],
+): string {
+  if (art === 'hauptgeraet') {
+    const hatSpeicher = komponenten.some((c) => c.role === 'storage');
+    return `${hatSpeicher ? 'Hybrid-Wechselrichter' : ART_WORT.hauptgeraet} · Hauptgerät`;
+  }
+  if (art === 'quelle') return ROLLEN_WORT[rolle ?? ''] ?? ART_WORT.quelle;
+  return ART_WORT[art];
 }
 
 /** Die Kennung einer OCPP-Säule im Pfad: `cp-<ChargePointId>`. */
@@ -479,13 +500,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
             model: setup?.model ?? null,
           }) ?? 'Gerät');
 
-  const hatSpeicher = komponenten.some((c) => c.role === 'storage');
-  const artWort =
-    art === 'hauptgeraet'
-      ? `${hatSpeicher ? 'Hybrid-Wechselrichter' : ART_WORT.hauptgeraet} · Hauptgerät`
-      : art === 'quelle'
-        ? (ROLLEN_WORT[setup?.role ?? ''] ?? ART_WORT.quelle)
-        : ART_WORT[art];
+  const artWort = geraeteArtWort(art, setup?.role ?? null, komponenten);
   const unterzeile =
     art === 'box'
       ? `${ART_WORT.box} · Anlage ${input.siteName}`
@@ -513,10 +528,18 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   const kopf: GeraetKopf = {
     titel,
     unterzeile,
-    kennung: input.geraetId ?? input.ref,
+    // ⚠ Ein Ladepunkt nennt seine OCPP-Kennung, nicht unser `cp-`-Präfix: die
+    // steht am Gerät und im Anbinden-Dialog, das Präfix ist ein reiner
+    // Adress-Schlüssel dieser Seite.
+    kennung: charger ? charger.chargePointId : (input.geraetId ?? input.ref),
     zustand,
     steuerAbzeichen,
-    pflegeOrt: art === 'box' ? null : pflegeOrtWort(input.components?.componentAuthority),
+    // Die Pflege-Herkunft beschreibt die KOMPONENTEN-Konfiguration; ein
+    // Ladepunkt hat keine, also behauptet die Seite dort auch keine.
+    pflegeOrt:
+      art === 'box' || art === 'ladepunkt'
+        ? null
+        : pflegeOrtWort(input.components?.componentAuthority),
   };
 
   // ------------------------------------------------------------------
