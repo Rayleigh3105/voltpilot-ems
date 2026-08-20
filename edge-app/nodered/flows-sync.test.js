@@ -23,6 +23,7 @@ const modbusTcp = require('./modbus-tcp');
 const deyeDecode = require('./deye/deye-decode');
 const froniusSolarApi = require('./fronius/solar-api');
 const sourcesRouting = require('./sources-routing');
+const bus = require('./bus-arbitration');
 
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
@@ -1386,8 +1387,98 @@ test('flow installer-write node pins the register-word bound and the socket lock
   assert.strictEqual(controlRouting.INSTALLER_WRITE_MAX_RAW, 7000);
   // It must share the ONE socket lock of this tab - a second lock would be a
   // second TCP client on a logger that serves exactly one.
-  assert.ok(src.includes("'sv5_busy:'") && src.includes("'sv5_write_want:'"),
+  assert.ok(src.includes("'sv5_busy:'"),
     'the installer write must use the SAME per-(host,port) lock as poll + control');
+  // ⚠ AND IT MUST NOT TOUCH THE CONTROL EXECUTOR'S INTENT FLAG. Sharing
+  // `sv5_write_want:` was Befund 1 of the Pilsting incident (20.08.2026): the
+  // control executor clears that flag at the end of EVERY round, so a waiting
+  // one-shot order lost its announced intent and the read poll stopped standing
+  // down for it. Each writer owns its own key now.
+  assert.ok(!src.includes("'sv5_write_want:'"),
+    'the one-shot order must never write the control executor\'s intent flag');
+  assert.ok(src.includes("'" + bus.KEY_ONESHOT('') + "'") && src.includes("'" + bus.KEY_GRANT('') + "'"),
+    'the one-shot order reserves the bus and can be handed the socket');
   // The node must live in the SAME tab as the poll (flow context is per tab).
   assert.strictEqual(byId['auto-installer-exec'].z, byId['auto-solarman'].z);
+});
+
+// --- die WARTESCHLANGE des einen Sockets (bus-arbitration.js) ----------------
+//
+// Diese drei Tests sind die Wächter über der Ursache des Produktionsvorfalls
+// vom 20.08.2026 (Box edge-45gz7da): ein Einmal-Lesebefehl aus dem Portal
+// verhungerte am Wechselrichter-Bus, und der Kern meldete nach 30 s `timeout`.
+
+test('die drei Knoten teilen GENAU EINE Warteschlangen-Sprache', () => {
+  const one = byId['auto-installer-exec'].func;
+  const ctrl = byId['auto-control-exec-deye'].func;
+  const read = byId['auto-solarman'].func;
+  for (const [name, src] of [['Einmal-Auftrag', one], ['Steuerung', ctrl], ['Lese-Poll', read]]) {
+    assert.ok(src.includes("'" + bus.KEY_ONESHOT('') + "'"), name + ' kennt die Reservierung');
+    assert.ok(src.includes("'" + bus.KEY_GRANT('') + "'"), name + ' kennt die Uebergabe');
+    assert.ok(src.includes('RESERVE_TTL_MS = ' + bus.ONESHOT_RESERVE_TTL_MS),
+      name + ' traegt die Reservierungs-Frist des Moduls');
+    assert.ok(src.includes('GRANT_TTL_MS = ' + bus.ONESHOT_GRANT_TTL_MS),
+      name + ' traegt die Uebergabe-Frist des Moduls');
+  }
+  // Nur wer den Socket HAELT, uebergibt ihn - der Lese-Poll und der Steuer-
+  // Executor tun es, der Einmal-Auftrag reicht ihn an niemanden weiter.
+  assert.ok(/flow\.set\(grantKey, \{ id: res\.id/.test(read), 'der Lese-Poll uebergibt beim Freigeben');
+  assert.ok(/flow\.set\(grantKey, \{ id: r\.id/.test(ctrl), 'die Steuerung uebergibt beim Freigeben');
+  // Und der Steuer-Executor faellt NICHT ueber eine laufende Uebergabe her.
+  assert.ok(/gLive && \(!bs \|\| tn - bs >= STALE_MS\)/.test(ctrl),
+    'die Steuerung wartet eine laufende Uebergabe ab, statt sie zu ueberholen');
+});
+
+test('die ZEITFENSTER-KETTE haelt: der Knoten kann den Kern nicht ueberleben', () => {
+  // ⚠ DER BEFUND, DER DEN `timeout` ERZEUGT HAT. Der Einmal-Knoten durfte 12 s
+  // auf den Socket warten UND danach 25 s am Socket verbringen - zusammen 37 s,
+  // waehrend der Kern ihn nach 30 s aufgibt. Auf einer belegten Anlage meldete
+  // die Cloud deshalb `timeout`, obwohl der Knoten Sekunden spaeter korrekt
+  // geantwortet haette - in einen laengst vergessenen Wartenden hinein.
+  const src = byId['auto-installer-exec'].func;
+  const num = (re, what) => {
+    const m = src.match(re);
+    assert.ok(m, 'nicht gefunden im Knoten: ' + what);
+    return Number(m[1]);
+  };
+  const acquire = num(/Number\(flow\.get\('sv5_acquire_ms'\)\) : (\d+);/, 'Warte-Budget');
+  const socket = num(/finish\(new Error\('Zeitueberschreitung'\)\), (\d+)\)/, 'Socket-Budget');
+  assert.strictEqual(acquire, bus.ONESHOT_ACQUIRE_MS, 'das Warte-Budget des Moduls');
+  assert.strictEqual(socket, bus.ONESHOT_SOCKET_MS, 'das Socket-Budget des Moduls');
+
+  // Die Schranke des KERNS, aus der ausgelieferten Go-Datei gelesen - die
+  // beiden Haelften der Kette duerfen nicht getrennt wandern.
+  const go = fs.readFileSync(
+    path.join(__dirname, '..', 'core', 'internal', 'agent', 'installerwrite.go'), 'utf8');
+  const m = go.match(/installerWriteTimeout = (\d+) \* time\.Second/);
+  assert.ok(m, 'installerWriteTimeout in installerwrite.go');
+  const coreMs = Number(m[1]) * 1000;
+  assert.strictEqual(coreMs, bus.BOX_ROUND_TRIP_MS, 'das Modul kennt die Schranke des Kerns');
+  assert.ok(acquire + socket <= coreMs,
+    'Warten (' + acquire + ' ms) + Arbeiten (' + socket + ' ms) muss UNTER der Schranke des '
+      + 'Kerns (' + coreMs + ' ms) bleiben - sonst meldet die Cloud `timeout`, waehrend das '
+      + 'Geraet noch arbeitet');
+  assert.ok(bus.chainOK(), 'die Kette des Moduls ist in sich stimmig');
+
+  // Und das Warte-Budget muss EINE volle Socket-Runde eines anderen Halters
+  // ueberdauern - sonst gibt der Auftrag genau dann auf, wenn die Uebergabe
+  // gleich kaeme.
+  const ctrlSocket = Number(byId['auto-control-exec-deye'].func.match(/finish\(new Error\('Timeout'\)\), (\d+)\)/)[1]);
+  assert.strictEqual(ctrlSocket, bus.CONTROL_SOCKET_MS, 'der Steuer-Executor deckelt sich wie notiert');
+  assert.ok(acquire > ctrlSocket, 'das Warte-Budget ueberdauert eine ganze Steuerrunde');
+});
+
+test('der Lese-Poll tritt fuer eine Reservierung zurueck - aber nur GEBUNDEN', () => {
+  const src = byId['auto-solarman'].func;
+  assert.ok(src.includes('ONESHOT_YIELD_TICKS = ' + bus.ONESHOT_READ_YIELD_TICKS),
+    'die Schranke des Moduls steht im Knoten');
+  // 6 Takte x 5 s decken den ganzen Worst Case eines Einmal-Auftrags ab, also
+  // wird nie mitten in einem legitimen Auftrag erzwungen - und die Schranke
+  // bleibt trotzdem da, damit eine haengende Reservierung die Telemetrie nicht
+  // aushungern kann.
+  const pollSeconds = Number(byId['auto-poll'].repeat);
+  assert.ok(bus.ONESHOT_READ_YIELD_TICKS * pollSeconds * 1000
+    >= bus.ONESHOT_ACQUIRE_MS + bus.ONESHOT_SOCKET_MS,
+    'der Rueckzug deckt den ganzen Worst Case des Einmal-Auftrags ab');
+  assert.ok(/erzwungen/.test(src), 'das Erzwingen bleibt hoerbar');
 });

@@ -721,3 +721,101 @@ func TestTheSelfConflictLockIsScopedToTheControlledDevice(t *testing.T) {
 func regReqID(i int) string {
 	return fmt.Sprintf("abcdef0123456%03d", i)
 }
+
+// --- DIE QUITTUNGS-GARANTIE -------------------------------------------------
+//
+// Produktionsvorfall 20.08.2026: fuer einen angenommenen Auftrag (491de871…,
+// 20:08:55Z) stand im Protokoll der Box eine „Auftrag angenommen"-Zeile und
+// danach NICHTS - kein Ergebnis, keine Ablehnung. Aus der Cloud ist das
+// ununterscheidbar von „die Box hat den Auftrag nie bekommen".
+//
+// `runRegisterWrite` ist seither eine HUELLE, die genau ein Ergebnis
+// garantiert. Diese drei Tests fahren sie ueber die Test-Naht `registerExecute`
+// gegen die zwei Faelle, die ein neuer Zweig sonst still wieder aufreissen
+// koennte - und gegen einen doppelten Antwortversuch.
+
+func swapRegisterExecute(t *testing.T,
+	fn func(*Agent, registerwrite.Request, registerwrite.Identity, func(registerwrite.Result))) {
+	t.Helper()
+	prev := registerExecute
+	registerExecute = fn
+	t.Cleanup(func() { registerExecute = prev })
+}
+
+func TestAnAcceptedOrderAlwaysEndsWithExactlyOneReceipt(t *testing.T) {
+	t.Run("ein Zweig, der ohne Antwort zurueckkehrt", func(t *testing.T) {
+		box := startPortalBox(t)
+		swapRegisterExecute(t, func(*Agent, registerwrite.Request, registerwrite.Identity,
+			func(registerwrite.Result)) {
+			// genau der Defekt: angenommen, ausgefuehrt, nichts gesagt
+		})
+		box.a.onRegisterWrite(box.order(t, "lesen", "aaaaaaaaaaaaaaaa", nil))
+		res := box.await(t)
+		if res.OK || res.ErrorCode != registerwrite.ErrInvalidResponse {
+			t.Fatalf("es muss eine ehrliche Ablehnung kommen, nicht Stille: %+v", res)
+		}
+		if res.RequestID != "aaaaaaaaaaaaaaaa" || res.Message != registerwrite.MsgNoOutcome {
+			t.Fatalf("die Quittung muss zuordenbar sein und ihren Grund nennen: %+v", res)
+		}
+		box.silent(t, "und GENAU EINE")
+	})
+
+	t.Run("ein Absturz reisst weder die Box noch die Antwort mit", func(t *testing.T) {
+		box := startPortalBox(t)
+		swapRegisterExecute(t, func(*Agent, registerwrite.Request, registerwrite.Identity,
+			func(registerwrite.Result)) {
+			panic("kaputte Registry")
+		})
+		box.a.onRegisterWrite(box.order(t, "lesen", "bbbbbbbbbbbbbbbb", nil))
+		res := box.await(t)
+		if res.OK || res.ErrorCode != registerwrite.ErrInvalidResponse ||
+			res.Message != registerwrite.MsgCrashed {
+			t.Fatalf("ein Absturz wird ehrlich quittiert: %+v", res)
+		}
+		box.silent(t, "und GENAU EINE")
+		// Die Box lebt: der naechste Auftrag laeuft wieder durch den ECHTEN
+		// Ausfuehrungspfad (hier eine Lane-Ablehnung, die kein Geraet braucht).
+		swapRegisterExecute(t, func(a *Agent, req registerwrite.Request,
+			id registerwrite.Identity, answer func(registerwrite.Result)) {
+			a.executeRegisterWrite(req, id, answer)
+		})
+		box.a.onRegisterWrite(box.order(t, "lesen", "cccccccccccccccc", map[string]any{
+			"register": map[string]any{"kind": "coil", "address": 231},
+		}))
+		got := box.await(t)
+		if got.RequestID != "cccccccccccccccc" || got.ErrorCode != registerwrite.ErrNotSupported {
+			t.Fatalf("die Box muss danach normal weiterarbeiten: %+v", got)
+		}
+	})
+
+	t.Run("ein zweiter Antwortversuch wird verschluckt", func(t *testing.T) {
+		// Der Kontrakt kennt GENAU EIN Ergebnis je request_id - eine zweite
+		// Quittung waere fuer die Cloud ein zweiter Vorgang.
+		box := startPortalBox(t)
+		swapRegisterExecute(t, func(_ *Agent, req registerwrite.Request,
+			id registerwrite.Identity, answer func(registerwrite.Result)) {
+			answer(registerwrite.Refused(req, id, time.Now(), registerwrite.ErrBusy, "eins"))
+			answer(registerwrite.Refused(req, id, time.Now(), registerwrite.ErrTimeout, "zwei"))
+		})
+		box.a.onRegisterWrite(box.order(t, "lesen", "dddddddddddddddd", nil))
+		if res := box.await(t); res.ErrorCode != registerwrite.ErrBusy {
+			t.Fatalf("die ERSTE Antwort gilt: %+v", res)
+		}
+		box.silent(t, "die zweite darf die Cloud nie erreichen")
+	})
+}
+
+// Die Kette der Zeitfenster, von der Go-Seite aus gelesen: der Kern muss dem
+// Knoten mehr Zeit geben, als der sich selbst nimmt - sonst meldet die Cloud
+// `timeout`, waehrend das Geraet noch arbeitet (der Befund vom 20.08.2026).
+// Die Zahlen des Knotens stehen in edge-app/nodered/bus-arbitration.js und
+// werden dort von flows-sync.test.js gegen den ausgelieferten Flow geprueft.
+func TestTheCoreOutwaitsTheNodesOwnBudget(t *testing.T) {
+	const nodeAcquireMs, nodeSocketMs = 15000, 12000 // bus-arbitration.js
+	worst := time.Duration(nodeAcquireMs+nodeSocketMs) * time.Millisecond
+	if installerWriteTimeout < worst {
+		t.Fatalf("der Kern gibt nach %s auf, der Knoten darf aber bis zu %s brauchen - "+
+			"eine belegte Anlage meldet dann `timeout`, obwohl sie gleich antwortet",
+			installerWriteTimeout, worst)
+	}
+}

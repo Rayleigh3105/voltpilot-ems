@@ -2161,6 +2161,27 @@ besitzt (Politik `Admit` + Mechanismus `Agent.WriteOnce`, erster Trigger: die lo
   KANN (`registerwrite.Request.Answerable`: eigene Identität + gültige Kennung + bekannter Modus).
   Kontrakt-Wortlaut in `docs/contracts/mqtt-register-write.schema.json` (`x-semantics.expiry`,
   `x-meanings.invalid_request`) mitgezogen.
+- **⚠ DAS LETZTE GLIED WAR DIE SLOT-VERGABE AUF DER BOX — und die Kette der Zeitfenster war
+  GERISSEN (Produktionsvorfall 20.08.2026, 20:08-20:10Z, Box edge-45gz7da; Fix im PR
+  `fm/vp-regread-slot-p9`).** Nach dem Adress-Fix nahm die Box den Auftrag an („lesen, lane primary,
+  register 231") und meldete 30 s später `timeout` — auf einer kerngesunden Anlage. Zwei Ursachen,
+  beide reproduziert: (1) am Wechselrichter-Bus gab es KEINE Warteschlange — der Einmal-Auftrag
+  und der Steuer-Executor teilten sich EINE Absichts-Fahne, die der Steuer-Executor am Ende jeder
+  Runde löschte, und wer den Socket freigab, entließ ihn ins Rennen statt ihn zu übergeben; (2)
+  **der Knoten durfte länger arbeiten als der Kern wartete** (12 s Warten + 25 s Socket = 37 s
+  gegen `installerWriteTimeout` = 30 s), seine spätere korrekte Antwort fiel also in einen längst
+  vergessenen Wartenden. Die Box-Hälfte (Reservierung + Übergabe, Steuer-Vorrang unangetastet,
+  die neuen Zahlen) steht in `edge-app/AGENTS.md` „Der EINE Wechselrichter-Socket hat seit dem
+  20.08.2026 eine WARTESCHLANGE"; **cloud-seitig ändert sich NICHTS** — PT40S/PT60S bleiben, und
+  `RegisterWriteBudgetTest` pinnt weiterhin die obere Hälfte der Kette
+  (`Knoten 15 s + 12 s ≤ Kern 30 s < Cloud PT40S`). **Der Vormittag war nur deshalb schnell, weil
+  die Anlage damals nicht steuerte — der Unterschied war die LAST, nie der Auslöser.**
+- **⚠ Ein ANGENOMMENER Auftrag endet seither IMMER mit genau EINEM Ergebnis** (derselbe PR): für
+  einen der beiden Aufträge stand im Box-Protokoll gar keine Ergebnis-Zeile, und aus der Cloud ist
+  das ununterscheidbar von „nie angekommen". `agent.runRegisterWrite` ist jetzt eine Hülle
+  (`answer`-Closure + `defer` mit `recover`), die einen antwortlosen Zweig, eine doppelte Antwort
+  und einen PANIC abfängt und ehrlich quittiert — „jeder Zweig antwortet" ist damit eine
+  Eigenschaft des CODES statt einer, die man sich Zeile für Zeile erlesen muss.
 - Beweise dieser Runde: rein `RegisterWriteSilenceTest` (8) · `RegisterWriteRegistryTest` (5) ·
   `RegisterWriteReasonWiringTest` (4, die WAHL des Grundes im Dienst) · `RegisterWriteBudgetTest`
   (1, mutationsgeprüft) ; Testcontainers `RegisterWriteApiTest.aLateAnswerIsRecognisedAndTheNext

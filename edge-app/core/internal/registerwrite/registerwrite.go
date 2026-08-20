@@ -149,6 +149,17 @@ const (
 	MsgControlOwned = "Dieses Register gehört gerade der laufenden Steuerung; Ihr Wert würde " +
 		"binnen Sekunden überschrieben bzw. beim Zurückgeben zurückgedreht."
 	MsgReplayed = "Diese Anfrage wurde bereits ausgeführt."
+	// MsgNoOutcome/MsgCrashed sind die Quittungen der RECEIPT-GARANTIE
+	// (agent.runRegisterWrite): ein angenommener Auftrag endet IMMER mit genau
+	// einem Ergebnis - auch wenn die Ausführung auf dem Gerät ohne Antwort
+	// zurückkehrt oder abstürzt. Beide beschreiben einen Fehler UNSERES Codes,
+	// nie einen Zustand der Anlage, und sagen das auch.
+	MsgNoOutcome = "Der Auftrag wurde angenommen, die Ausführung ist auf dem Gerät " +
+		"aber ohne Ergebnis geendet. Es ist nicht sicher, ob etwas geschrieben wurde - " +
+		"bitte den Ist-Wert mit einer Vorschau erneut lesen."
+	MsgCrashed = "Bei der Ausführung ist auf dem Gerät ein unerwarteter Fehler " +
+		"aufgetreten. Es ist nicht sicher, ob etwas geschrieben wurde - bitte den " +
+		"Ist-Wert mit einer Vorschau erneut lesen."
 )
 
 // MsgInvalidRequest turns a FORM error into the sentence the portal shows.
