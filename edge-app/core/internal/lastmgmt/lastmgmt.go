@@ -50,6 +50,11 @@ const (
 	// the building has eaten it). Named separately because the operator lever
 	// is a different one.
 	ReasonNoBudget = "kein_budget"
+	// ReasonNoSurplus: the PHYSICAL budget would serve this session - the
+	// SOURCE lane does not (Stufe 4). Named separately from ReasonBudget
+	// because the lever is a different one: this is the customer's own
+	// Ueberschuss-Priorität, not a full connection.
+	ReasonNoSurplus = "kein_ueberschuss"
 	// ReasonBelowMinimum: even the WHOLE budget is below this session's own
 	// minimum useful power. Not a queue problem — the site is too small for
 	// this charge point, and saying "wait" would be a promise nobody can keep.
@@ -66,10 +71,25 @@ func Text(reason string) string {
 		return "wartet — Budget vergeben"
 	case ReasonNoBudget:
 		return "wartet — zurzeit steht keine Ladeleistung zur Verfügung"
+	case ReasonNoSurplus:
+		return "wartet — kein Überschuss"
 	case ReasonBelowMinimum:
 		return "wartet — die verfügbare Leistung reicht für diesen Ladepunkt nicht aus"
 	}
 	return ""
+}
+
+// TextFor is Text with the customer's SOURCE choice named where the sentence
+// is ABOUT that choice (Mockups §2b: „wartet — kein Überschuss (Ihre
+// Priorität: Nur Sonnenstrom)"). Naming the lever in the sentence that blocks
+// is the same discipline as otaapply's Blocker/reason pair: a waiting vehicle
+// whose owner cannot see WHICH of their own settings holds it is a riddle.
+func TextFor(reason string, policy SurplusPolicy) string {
+	base := Text(reason)
+	if base == "" || reason != ReasonNoSurplus {
+		return base
+	}
+	return base + " (Ihre Priorität: " + PolicyText(policy) + ")"
 }
 
 // Session is ONE claimant on the budget: one connector with a live
@@ -88,6 +108,21 @@ type Session struct {
 	// Since is when this session became a claimant. It is the fairness anchor:
 	// the queue order is by arrival, then rotated.
 	Since time.Time
+	// BoostUntil is the „Jetzt voll laden"-Übersteuerung (Stufe 4, Mockups
+	// §2b): while it lies in the future this session is EXEMPT FROM THE SOURCE
+	// CAP and may draw grid power.
+	//
+	// ⚠ It exempts from the ECONOMY, never from the PHYSICS. It changes
+	// neither the Vorrang rank nor any budget: the connection limit, the
+	// engineering margin, §14a and the failsafe bind a boosted session exactly
+	// like every other one - which is what the dialog's fourth consequence
+	// promises. The zero value = no override.
+	BoostUntil time.Time
+}
+
+// boosted reports whether this session's „Jetzt voll laden" is still running.
+func (s Session) boosted(now time.Time) bool {
+	return !s.BoostUntil.IsZero() && s.BoostUntil.After(now)
 }
 
 // Settings are the operator-maintained facts of the site. In Stufe 0+1 they
@@ -117,6 +152,12 @@ type Settings struct {
 	// budget then comes from HouseReserveKw alone, whatever the connection
 	// point measures.
 	//
+	// SurplusPolicy / StoragePriority are the Stufe-4 SOURCE choice of the
+	// customer (see surplus.go). Their zero values are the intended defaults
+	// ("Sonne zuerst" / "Speicher vor Auto"), so a site that never chose
+	// behaves exactly as it did before Stufe 4.
+	SurplusPolicy   SurplusPolicy
+	StoragePriority StoragePriority
 	// ⚠ The flag is deliberately NEGATIVE so its zero value is the intended
 	// default ("use the measurement when there is one"). It needs no pointer
 	// and no WithDefaults entry, so an operator's explicit "off" can never be
@@ -149,6 +190,8 @@ func (s Settings) WithDefaults() Settings {
 	if s.MinPowerKw < 0 {
 		s.MinPowerKw = 0
 	}
+	s.SurplusPolicy = NormalizePolicy(s.SurplusPolicy)
+	s.StoragePriority = NormalizeStorage(s.StoragePriority)
 	return s
 }
 
@@ -177,6 +220,11 @@ type Allocation struct {
 	// computed from the rotation cadence and the current queue. Zero = not
 	// computable (the queue would have to change first) — never a made-up time.
 	NextTurnAt time.Time `json:"next_turn_at,omitzero"`
+	// Boost is true while this session's „Jetzt voll laden" is running: the
+	// value was formed WITHOUT the source cap and may therefore contain grid
+	// power. The surface says so - a full charge nobody asked for would be a
+	// silent break of the customer's own priority.
+	Boost bool `json:"boost,omitempty"`
 	// ChangedAt is when this VALUE last changed. It carries the pacing across
 	// decisions; the executor refreshes the profile on its own cadence
 	// regardless (the dead-man's switch needs the refresh).
@@ -187,10 +235,19 @@ type Allocation struct {
 type Plan struct {
 	// BudgetKw is the usable budget the decision worked with.
 	BudgetKw float64 `json:"budget_kw"`
+	// SourceBudgetKw is the ECONOMIC cap the decision worked with (Stufe 4:
+	// the surplus lane). nil = no source cap - either „Schnell laden" or a
+	// site without the measurement to prove one.
+	SourceBudgetKw *float64 `json:"source_budget_kw,omitempty"`
 	// AllocatedKw is the sum of the allocations. It is <= BudgetKw by
 	// construction; the difference is head room, not an error.
-	AllocatedKw float64      `json:"allocated_kw"`
-	Allocations []Allocation `json:"allocations"`
+	AllocatedKw float64 `json:"allocated_kw"`
+	// SourceAllocatedKw is the part of AllocatedKw that came OUT of the source
+	// lane - i.e. what the sun is covering right now. It is a STANDORT
+	// statement, never a per-vehicle solar quota (Mockups §1a: electricity is
+	// not labelled at the hub). 0 without a source lane.
+	SourceAllocatedKw float64      `json:"source_allocated_kw,omitempty"`
+	Allocations       []Allocation `json:"allocations"`
 }
 
 // Get returns the allocation for a key.
@@ -235,7 +292,24 @@ type Input struct {
 	// subtracts the share it holds back for stations it cannot reach. nil =
 	// derive it from the settings, which is exactly Stufe 1.
 	BudgetKw *float64
-	Now      time.Time
+	// SourceBudgetKw is the ECONOMIC cap of the SOURCE lane (Stufe 4,
+	// surplus.go): how many of the budget's kilowatts may come from the
+	// customer's chosen source. nil = no source cap, and then this whole file
+	// behaves byte-for-byte as it did in Stufe 1-3.
+	//
+	// ⚠ The two caps COMPOSE most-restrictive-wins and neither can widen the
+	// other: BudgetKw protects the connection, SourceBudgetKw honours the
+	// customer's priority.
+	SourceBudgetKw *float64
+	// SourceAllowsMinimum is the „Sonne zuerst"-concession: a session whose
+	// MINIMUM does not fit into the source lane is still admitted at that
+	// minimum, covered from the physical budget. „Nur Sonnenstrom" leaves it
+	// false and the session waits instead.
+	SourceAllowsMinimum bool
+	// Policy is the customer's source choice, carried only so a paused
+	// session's German sentence can NAME it.
+	Policy SurplusPolicy
+	Now    time.Time
 }
 
 // Decide is THE allocation. Deterministic: the same input yields the same plan,
@@ -248,7 +322,16 @@ func Decide(in Input) Plan {
 		budget = round3(math.Max(0, *in.BudgetKw))
 	}
 
+	// The SOURCE lane (Stufe 4). nil = no economic cap at all, and then every
+	// line below behaves byte-for-byte as it did in Stufe 1-3.
+	var srcBudget float64
+	srcActive := in.SourceBudgetKw != nil
 	plan := Plan{BudgetKw: budget, Allocations: []Allocation{}}
+	if srcActive {
+		srcBudget = round3(math.Max(0, *in.SourceBudgetKw))
+		v := srcBudget
+		plan.SourceBudgetKw = &v
+	}
 	if len(in.Sessions) == 0 {
 		return plan
 	}
@@ -291,16 +374,33 @@ func Decide(in Input) Plan {
 	//    the budget, so a Vorrang station can no more overshoot the connection
 	//    than any other. The consequence — a big Vorrang station makes the
 	//    others wait longer — is real, and the surface is required to say so.
+	//
+	//    ⚠ Stufe 4 splits each rank ONCE MORE, into BOOSTED and BOUND. A
+	//    boosted session ("Jetzt voll laden") is exempt from the SOURCE cap,
+	//    so it does not compete for the same pool at all - and serving it
+	//    first is exactly the "wirkt wie temporärer Vorrang mit Quelle-egal"
+	//    the mockups promise (§2a), WITHOUT touching the Vorrang rank itself.
+	//    With no source lane the two sub-groups draw from one pool and the
+	//    split is a no-op.
 	prioQ, tailQ := queue[:prio], queue[prio:]
+	prioBoost, prioBound := splitBoost(prioQ, in.Now)
+	tailBoost, tailBound := splitBoost(tailQ, in.Now)
 
 	give := map[string]float64{}
 	pausedReason := map[string]string{}
-	rest := budget
+	boost := map[string]bool{}
+	rest, srcRest := budget, srcBudget
 
-	admit := func(group []Session, avail float64) ([]Session, float64) {
+	// admit hands each session in a group its MINIMUM, or names why not.
+	// exempt=true draws from the physical pool alone.
+	admit := func(group []Session, exempt bool) []Session {
 		var adm []Session
 		for _, s := range group {
 			minKw := effectiveMin(s, set)
+			avail := rest
+			if !exempt && srcActive && srcRest < avail {
+				avail = srcRest
+			}
 			switch {
 			case budget <= 0:
 				pausedReason[s.Key] = ReasonNoBudget
@@ -310,30 +410,86 @@ func Decide(in Input) Plan {
 				// never comes.
 				pausedReason[s.Key] = ReasonBelowMinimum
 			case avail+1e-9 < minKw:
+				// ⚠ The "Sonne zuerst"-concession: the SOURCE is short but the
+				// connection is not, and the customer's policy allows a
+				// running vehicle to keep its minimum from the grid rather
+				// than stand still. It consumes the whole remaining source
+				// lane and takes the rest from the physical budget.
+				if !exempt && srcActive && in.SourceAllowsMinimum && rest+1e-9 >= minKw {
+					srcRest = math.Max(0, srcRest-minKw)
+					rest -= minKw
+					give[s.Key] = minKw
+					adm = append(adm, s)
+					continue
+				}
+				if !exempt && srcActive && rest+1e-9 >= minKw {
+					// The connection would serve this vehicle; the customer's
+					// own source priority does not. A different lever, so a
+					// different word.
+					pausedReason[s.Key] = ReasonNoSurplus
+					continue
+				}
 				pausedReason[s.Key] = ReasonBudget
 			default:
-				avail -= minKw
+				rest -= minKw
+				if !exempt && srcActive {
+					srcRest -= minKw
+				}
 				give[s.Key] = minKw
 				adm = append(adm, s)
 				continue
 			}
 		}
-		return adm, avail
+		return adm
 	}
 
-	admPrio, rest := admit(prioQ, rest)
-	rest = waterFill(admPrio, give, rest)
-	admTail, rest := admit(tailQ, rest)
-	rest = waterFill(admTail, give, rest)
-	_ = rest
+	fill := func(adm []Session, exempt bool) {
+		if len(adm) == 0 {
+			return
+		}
+		spare := rest
+		if !exempt && srcActive && srcRest < spare {
+			spare = srcRest
+		}
+		left := waterFill(adm, give, spare)
+		moved := spare - left
+		rest -= moved
+		if !exempt && srcActive {
+			srcRest -= moved
+		}
+	}
+
+	// The order is the whole rule: within each rank the exempt group first
+	// (it draws from a different pool), then the source-bound one.
+	for _, g := range []struct {
+		group  []Session
+		exempt bool
+	}{
+		{prioBoost, true}, {prioBound, false},
+		{tailBoost, true}, {tailBound, false},
+	} {
+		fill(admit(g.group, g.exempt), g.exempt)
+		for _, s := range g.group {
+			if g.exempt {
+				boost[s.Key] = true
+			}
+		}
+	}
+	admittedTail := 0
+	for _, s := range append(append([]Session(nil), tailBoost...), tailBound...) {
+		if _, ok := give[s.Key]; ok {
+			admittedTail++
+		}
+	}
 
 	// 5) Pacing: hold a value that only moved a little, unless enough time has
 	//    passed. A DECREASE is never paced — it protects the connection, and a
 	//    protection you postpone is not one. A pause/resume is a decrease or
 	//    the thing the customer is waiting for; both go through at once.
 	total := 0.0
+	sourceTotal := 0.0
 	for _, s := range queue {
-		a := Allocation{Key: s.Key}
+		a := Allocation{Key: s.Key, Boost: boost[s.Key]}
 		if kw, ok := give[s.Key]; ok {
 			a.Kw = round3(kw)
 			a.Reason = ReasonCharging
@@ -345,16 +501,38 @@ func Decide(in Input) Plan {
 				a.Reason = ReasonBudget
 			}
 			if a.Reason == ReasonBudget {
-				a.NextTurnAt = nextTurn(s.Key, tailQ, len(admTail), in.Now, set.RotationPeriod)
+				a.NextTurnAt = nextTurn(s.Key, tailQ, admittedTail, in.Now, set.RotationPeriod)
 			}
 		}
 		a = pace(a, in.Previous, pacing, in.Now)
 		total += a.Kw
+		if !a.Boost {
+			sourceTotal += a.Kw
+		}
 		plan.Allocations = append(plan.Allocations, a)
 	}
 	sort.Slice(plan.Allocations, func(i, j int) bool { return plan.Allocations[i].Key < plan.Allocations[j].Key })
 	plan.AllocatedKw = round3(total)
+	if srcActive {
+		// What the SOURCE lane is covering right now. It is a STANDORT figure
+		// (Mockups §1a: electricity is not labelled at the hub), never a
+		// per-vehicle solar quota, and it can never exceed the lane itself.
+		plan.SourceAllocatedKw = round3(math.Min(sourceTotal, srcBudget))
+	}
 	return plan
+}
+
+// splitBoost separates the sessions whose „Jetzt voll laden" is running from
+// the rest, preserving the group's order in both halves.
+func splitBoost(group []Session, now time.Time) (boosted, bound []Session) {
+	for _, s := range group {
+		if s.boosted(now) {
+			boosted = append(boosted, s)
+			continue
+		}
+		bound = append(bound, s)
+	}
+	return boosted, bound
 }
 
 // effectiveMin is the session's own minimum, defaulting to the site-wide one

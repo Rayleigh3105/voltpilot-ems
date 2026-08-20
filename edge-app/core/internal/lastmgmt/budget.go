@@ -182,6 +182,11 @@ type BudgetTracker struct {
 	at         time.Time
 	gridKw     float64
 	chargingKw float64
+	// battKw is the power the site's battery was last MEASURED taking (>= 0;
+	// a discharge is 0 here). haveBatt distinguishes "never reported" from
+	// "reported as zero" - the guards.Reading footgun, one more time.
+	battKw   float64
+	haveBatt bool
 	// incompleteAt is when a sample was last DISCARDED because a charging
 	// connector reported no measurement. It is remembered so a blind stage can
 	// name the real cause instead of blaming the telemetry path.
@@ -224,6 +229,12 @@ func urgentDropKw(marginKw float64) float64 {
 type restSample struct {
 	at   time.Time
 	rest float64
+	// restNoBatt is `rest` with the battery's MEASURED charge taken back out,
+	// i.e. the site's net position without the charge points AND without the
+	// battery. It is what the Stufe-4 surplus lane divides (surplus.go); it
+	// equals `rest` on a site with no battery measurement, so a plant without
+	// one behaves exactly as before.
+	restNoBatt float64
 }
 
 // NewBudgetTracker returns an idle tracker: no measurement, no budget, which
@@ -250,12 +261,46 @@ func NewBudgetTracker() *BudgetTracker { return &BudgetTracker{} }
 // out its tick — that is what turns "a machine switched on in the building"
 // into a reaction within one measurement cycle.
 func (t *BudgetTracker) Observe(ts time.Time, gridKw, chargingKw float64, complete bool) (urgent bool) {
+	return t.ObserveM(ts, Measurement{GridKw: gridKw, ChargingKw: chargingKw, Complete: complete})
+}
+
+// Measurement is ONE paired look at the connection point. It exists so the
+// third channel (the battery, Stufe 4) could be added WITHOUT a five-argument
+// signature and without letting a caller pair two moments by accident - the
+// pairing is the whole stability argument of this file.
+type Measurement struct {
+	// GridKw is the signed site grid power (+ import / - export).
+	GridKw float64
+	// ChargingKw is the power the charge points are MEASURED drawing.
+	ChargingKw float64
+	// BatteryChargeKw is the power the site's battery is MEASURED taking. It
+	// is only read when HaveBattery is true; a DISCHARGE belongs here as 0,
+	// never as a negative number (it is not a surplus the cars could claim).
+	BatteryChargeKw float64
+	HaveBattery     bool
+	// Complete is false when a connector that currently claims budget reports
+	// no fresh measurement of its own.
+	Complete bool
+}
+
+// ObserveM is Observe with the full measurement (see Measurement).
+func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
+	gridKw, chargingKw := m.GridKw, m.ChargingKw
 	if !budgetFinite(gridKw) || !budgetFinite(chargingKw) {
 		return false
 	}
+	batt := 0.0
+	haveBatt := false
+	if m.HaveBattery && budgetFinite(m.BatteryChargeKw) && m.BatteryChargeKw > 0 {
+		batt, haveBatt = m.BatteryChargeKw, true
+	} else if m.HaveBattery && budgetFinite(m.BatteryChargeKw) {
+		// A reported discharge (or a flat zero) IS a measurement - it says the
+		// battery is taking nothing, which the cars-first lane needs to know.
+		haveBatt = true
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if !complete {
+	if !m.Complete {
 		if ts.After(t.incompleteAt) {
 			t.incompleteAt = ts
 		}
@@ -266,7 +311,9 @@ func (t *BudgetTracker) Observe(ts time.Time, gridKw, chargingKw float64, comple
 		return false
 	}
 	t.seen, t.at, t.gridKw, t.chargingKw = true, ts, gridKw, chargingKw
-	t.samples = append(t.samples, restSample{at: ts, rest: gridKw - chargingKw})
+	t.battKw, t.haveBatt = batt, haveBatt
+	rest := gridKw - chargingKw
+	t.samples = append(t.samples, restSample{at: ts, rest: rest, restNoBatt: rest - batt})
 	t.pruneLocked(ts)
 
 	if !t.planableValid || !t.curValid {
@@ -439,6 +486,23 @@ func (t *BudgetTracker) restHoldLocked() float64 {
 	}
 	if math.IsInf(rest, -1) {
 		return t.gridKw - t.chargingKw
+	}
+	return round3(rest)
+}
+
+// restNoBattHoldLocked is the same trailing MAXIMUM over the battery-free rest
+// - the quantity the Stufe-4 surplus lane divides. Taking the maximum of the
+// rest is taking the MINIMUM of the surplus, so the one window is conservative
+// for both jobs. Caller holds t.mu.
+func (t *BudgetTracker) restNoBattHoldLocked() float64 {
+	rest := math.Inf(-1)
+	for _, s := range t.samples {
+		if s.restNoBatt > rest {
+			rest = s.restNoBatt
+		}
+	}
+	if math.IsInf(rest, -1) {
+		return t.gridKw - t.chargingKw - t.battKw
 	}
 	return round3(rest)
 }

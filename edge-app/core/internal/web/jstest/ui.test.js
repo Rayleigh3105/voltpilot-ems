@@ -1662,6 +1662,96 @@ test("removing a charge point names what STAYS, not only what goes", () => {
   assert.match(msg, /nicht beendet/);
 });
 
+/* ====== ocpp.js Stufe 4: PV-Überschussladen + „Jetzt voll laden“ ====== */
+
+test("die Überschuss-Zeile WIEDERHOLT den Satz der Box, sie formuliert ihn nie neu", () => {
+  const O = ocppMod();
+  // ⚠ Derselbe Grund wie beim Budget: der deutsche Satz entsteht EINMAL, in
+  // internal/lastmgmt/surplus.go, und nur die Box kennt die Zahlen dahinter.
+  const note = "Ihre Priorität: Nur Sonnenstrom. Für die Fahrzeuge stehen gerade 65,0 kW Sonnenüberschuss zur Verfügung.";
+  assert.strictEqual(
+    O.surplusLine({ enabled: true, listening: true, surplus_note: note }), note);
+  assert.strictEqual(O.surplusLine({ enabled: true, listening: true }), "");
+  assert.strictEqual(O.surplusLine({ enabled: false, surplus_note: note }), "");
+  assert.strictEqual(O.surplusLine(null), "");
+});
+
+test("eine unbelegbare Quelle warnt NUR, wo sie wirklich ein Fahrzeug aufhält", () => {
+  const O = ocppMod();
+  assert.strictEqual(O.surplusTone({ enabled: true, surplus_mode: "gemessen" }), "ok");
+  // „Nur Sonnenstrom" ohne Messung PAUSIERT - das ist eine Warnung.
+  assert.strictEqual(
+    O.surplusTone({ enabled: true, surplus_mode: "nicht_belegbar", surplus_active: true }), "warn");
+  // „Sonne zuerst" ohne Messung lädt weiter - ehrlich, kein Alarm.
+  assert.strictEqual(
+    O.surplusTone({ enabled: true, surplus_mode: "nicht_belegbar", surplus_active: false }), "off");
+  // „Schnell laden" ist gar keine Quelle-Aussage.
+  assert.strictEqual(O.surplusTone({ enabled: true, surplus_mode: "aus" }), "off");
+  assert.strictEqual(O.surplusTone(null), "off");
+});
+
+test("die Ladebudget-Zeile zeigt BEIDE Wahrheiten - sonst liest die Drosselung wie ein Defekt", () => {
+  const O = ocppMod();
+  const line = O.sourceCapLine({
+    surplus_active: true, surplus_kw: 110, budget_kw: 197, source_allocated_kw: 89,
+  });
+  assert.match(line, /110 kW aus Sonnenüberschuss/);
+  assert.match(line, /physisch möglich 197 kW/);
+  assert.match(line, /89 kW Ihre Sonne/);
+  // Ohne Quelle-Bahn gibt es nichts zu sagen - und nie eine erfundene 0.
+  assert.strictEqual(O.sourceCapLine({ surplus_active: false, budget_kw: 197 }), "");
+  assert.strictEqual(O.sourceCapLine({ surplus_active: true, budget_kw: 197 }), "");
+  assert.strictEqual(O.sourceCapLine(null), "");
+});
+
+test("„Jetzt voll laden“ wird nur angeboten, wo es etwas ändern KANN", () => {
+  const O = ocppMod();
+  const on = { surplus_active: true };
+  assert.strictEqual(O.boostable(on, { charging: true }), true);
+  // Kein Ladevorgang -> kein Knopf: eine Zusage über ein Fahrzeug, das nicht
+  // da ist, wäre erfunden.
+  assert.strictEqual(O.boostable(on, { charging: false }), false);
+  // Schon übersteuert -> der Knopf sagt jetzt das Gegenteil (siehe Render).
+  assert.strictEqual(O.boostable(on, { charging: true, boost: true }), false);
+  // Ohne Quelle-Bahn gibt es nichts zu übersteuern.
+  assert.strictEqual(O.boostable({ surplus_active: false }, { charging: true }), false);
+  assert.strictEqual(O.boostable(null, { charging: true }), false);
+});
+
+test("die Übersteuerungs-Rückfrage sagt auch, was GLEICH bleibt", () => {
+  const O = ocppMod();
+  const msg = O.boostConsequences("Säule 1 · Stecker A");
+  assert.match(msg, /Säule 1 · Stecker A/);
+  assert.match(msg, /auch mit Netzstrom/);
+  // Die zwei Punkte, die eine Übersteuerung ehrlich machen.
+  assert.match(msg, /für alle anderen Ladevorgänge unverändert/);
+  assert.match(msg, /Anschlussgrenze[\s\S]*gelten weiter/);
+  assert.match(msg, /längstens 4 Stunden/);
+});
+
+test("ein übersteuerter Ladevorgang SAGT es in seiner Zeile", () => {
+  const O = ocppMod();
+  const now = Date.UTC(2026, 7, 20, 13, 24);
+  const line = O.connectorLine({ charging: true, reason: "laedt", allocated_kw: 50, boost: true }, now);
+  // Eine volle Ladung, die niemand angefordert hat, wäre ein stiller Bruch der
+  // eigenen Priorität des Kunden.
+  assert.match(line, /voll auf Ihren Wunsch/);
+  assert.match(O.connectorLine({ charging: true, reason: "laedt", allocated_kw: 50 }, now), /^lädt \(zugeteilt/);
+});
+
+/* ====== control.js: die „Auto vor Speicher“-Klemme wird BENANNT ====== */
+
+test("eine Klemme aus „Auto vor Speicher“ nennt die Wahl, die sie verursacht hat", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveCarsFirst({ cars_first_cap_kw: 20 });
+  assert.ok(d, "die Klemme muss eine Zeile bekommen");
+  assert.match(d.text, /20,0 kW/);
+  assert.match(d.text, /Auto vor Speicher/);
+  // Ohne Klemme wird NICHTS behauptet.
+  assert.strictEqual(C.deriveCarsFirst({}), null);
+  assert.strictEqual(C.deriveCarsFirst(null), null);
+});
+
 /* ====== commissioning.js: der Ladepark hat keinen Wechselrichter ====== */
 
 test("commissioning: eine Anlage NUR aus Ladepunkten wird trotzdem geführt", () => {

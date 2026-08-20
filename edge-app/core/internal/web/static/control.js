@@ -351,6 +351,26 @@
   }
 
   /* ------------------------------------------------------------------
+     deriveCarsFirst - „Auto vor Speicher" (OCPP-Lastmanagement Stufe 4).
+
+     The customer decided their VEHICLES get the PV surplus before the battery
+     does, so while cars are drawing the battery may only charge what is left
+     of the measured surplus. A battery that suddenly charges far below the
+     Fahrplan value with no reason next to it reads as a defect - so the card
+     names the choice that caused it. It is restrict-only and charge-only:
+     nothing here can raise a setpoint or touch a discharge.
+     ------------------------------------------------------------------ */
+  function deriveCarsFirst(s) {
+    var cap = s && s.cars_first_cap_kw;
+    if (cap === null || cap === undefined) return null;
+    return {
+      text: "Die Ladung ist auf " + nf1.format(cap) + " kW begrenzt: Ihre Fahrzeuge " +
+        "bekommen den Sonnenüberschuss zuerst (Ihre Wahl „Auto vor Speicher“). " +
+        "Der Speicher lädt, was davon übrig bleibt.",
+    };
+  }
+
+  /* ------------------------------------------------------------------
      trackStateSince - the stable "seit <Uhrzeit>" behind the card's ONE truth.
 
      The underlying readback re-fires every ~10 s tick, so any timestamp taken
@@ -781,8 +801,12 @@
     if (reasonEl) {
       // Order mirrors the setpoint chain, last correction first: the
       // absorption runs last, so where it bit its value is the published one.
+      // Order mirrors the setpoint chain, last correction first. The
+      // cars-first cap runs AFTER the absorption (with cars-first that surplus
+      // is not the battery's to take), so where it bit its value is the
+      // published one and it speaks first.
       var reason = d.showNow
-        ? (deriveAbsorb(s) || deriveTrim(s) || deriveFollow(s))
+        ? (deriveCarsFirst(s) || deriveAbsorb(s) || deriveTrim(s) || deriveFollow(s))
         : null;
       show(reasonEl, !!reason);
       if (reason) reasonEl.textContent = reason.text;
@@ -806,6 +830,7 @@
     deriveTrim: deriveTrim,
     deriveFollow: deriveFollow,
     deriveAbsorb: deriveAbsorb,
+    deriveCarsFirst: deriveCarsFirst,
     deriveCurtail: deriveCurtail,
     deriveExportGuard: deriveExportGuard,
     deriveDeviceExportLimit: deriveDeviceExportLimit,

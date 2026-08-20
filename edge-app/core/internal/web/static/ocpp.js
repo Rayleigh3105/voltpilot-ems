@@ -113,7 +113,9 @@
       return con.status === "Available" || !con.status ? "frei" : (con.status || "frei");
     }
     if (con.reason === "laedt" || (con.allocated_kw > 0)) {
-      var s = "lädt";
+      // A boosted charge SAYS so: a full charge nobody asked for would be a
+      // silent break of the customer's own source priority.
+      var s = con.boost ? "lädt voll auf Ihren Wunsch" : "lädt";
       if (con.power_kw !== null && con.power_kw !== undefined) s += " · " + fmt1(con.power_kw) + " kW";
       if (con.allocated_kw !== null && con.allocated_kw !== undefined) {
         s += " (zugeteilt " + fmt1(con.allocated_kw) + " kW)";
@@ -150,6 +152,79 @@
     return o.control_note || "Die Verteilung ist an dieser Box nicht freigegeben.";
   }
 
+  // ---------------------------------------------------------------------
+  // Stufe 4: PV-Überschussladen (the SOURCE lane) - Mockups §2b
+  // ---------------------------------------------------------------------
+
+  // POLICY_TEXT is the customer's own wording of their three options. It lives
+  // ONCE (mirrored by lastmgmt.PolicyText for the sentences the box writes),
+  // so the radio label and a paused vehicle's reason can never disagree.
+  var POLICY_TEXT = {
+    nur_sonne: "Nur Sonnenstrom",
+    sonne_zuerst: "Sonne zuerst, Netz wenn günstig",
+    schnell: "Schnell laden",
+  };
+
+  var POLICY_HELP = {
+    nur_sonne:
+      "Geladen wird ausschließlich Ihr Überschuss. Zieht eine Wolke auf, pausiert das Laden, statt Netzstrom zu kaufen.",
+    sonne_zuerst:
+      "Der Überschuss wird immer zuerst genutzt. Netzstrom kommt nur dazu, wenn ein Fahrzeug sonst stehen bliebe - so werden Fahrzeuge planbar voll.",
+    schnell:
+      "Volle verfügbare Leistung, Quelle egal. Die Anschlussgrenze gilt natürlich weiter.",
+  };
+
+  // surplusLine is the ONE sentence about the source lane. It REPEATS the
+  // box's own sentence (written once in internal/lastmgmt/surplus.go) and adds
+  // nothing - only the box knows the numbers behind it.
+  function surplusLine(o) {
+    if (!o || !o.enabled || !o.listening) return "";
+    return o.surplus_note || "";
+  }
+
+  // surplusTone: an unprovable lane is a WARNING only where it actually holds
+  // a vehicle back ("Nur Sonnenstrom"); where it fails open it is honest and
+  // no alarm.
+  function surplusTone(o) {
+    if (!o || !o.enabled) return "off";
+    if (o.surplus_mode === "gemessen") return "ok";
+    if (o.surplus_mode === "nicht_belegbar") return o.surplus_active ? "warn" : "off";
+    return "off";
+  }
+
+  // sourceCapLine shows BOTH truths side by side (Mockups §1a): what the sun
+  // allows and what the connection allows. Without both, a plant throttled at
+  // a free connection reads like a defect.
+  function sourceCapLine(o) {
+    if (!o || !o.surplus_active) return "";
+    if (o.surplus_kw === null || o.surplus_kw === undefined) return "";
+    var line = "Ladebudget " + fmt1(o.surplus_kw) + " kW aus Sonnenüberschuss";
+    if (o.budget_kw > 0) line += " · physisch möglich " + fmt1(o.budget_kw) + " kW";
+    if (o.source_allocated_kw > 0) {
+      line += " · davon deckt gerade " + fmt1(o.source_allocated_kw) + " kW Ihre Sonne";
+    }
+    return line + ".";
+  }
+
+  // boostConsequences is the Haus-Folgenliste of „Jetzt voll laden" - the four
+  // points of the approved dialog, WORD FOR WORD, including the one that says
+  // what does NOT change.
+  function boostConsequences(title) {
+    return "„Jetzt voll laden\" für " + (title || "diesen Ladevorgang") + "?\n\n" +
+      "· Dieser Ladevorgang lädt ab sofort mit voller verfügbarer Leistung - auch mit Netzstrom.\n" +
+      "· Ihre Überschuss-Priorität bleibt für alle anderen Ladevorgänge unverändert.\n" +
+      "· Anschlussgrenze, Sicherheitsabstand und Ausfall-Schutz gelten weiter - daran ändert dieser Knopf nichts.\n" +
+      "· Gilt, bis das Fahrzeug voll ist, längstens 4 Stunden - danach gilt wieder Ihre Priorität.";
+  }
+
+  // boostable reports whether the button may be OFFERED at all: only a running
+  // charge can be overridden, and only where a SOURCE lane is actually holding
+  // something back. A button that can change nothing is noise.
+  function boostable(o, con) {
+    if (!o || !o.surplus_active || !con || !con.charging) return false;
+    return !con.boost;
+  }
+
   // removalConsequences is what an operator is told BEFORE a station is
   // revoked. It names what STAYS as well as what goes: a removed station is
   // not a stopped one - it keeps its safe profile and charges slowly on, and
@@ -163,6 +238,13 @@
 
   global.VPOcpp = {
     endpointFor: endpointFor,
+    POLICY_TEXT: POLICY_TEXT,
+    POLICY_HELP: POLICY_HELP,
+    surplusLine: surplusLine,
+    surplusTone: surplusTone,
+    sourceCapLine: sourceCapLine,
+    boostConsequences: boostConsequences,
+    boostable: boostable,
     budgetSourceLine: budgetSourceLine,
     budgetSourceTone: budgetSourceTone,
     removalConsequences: removalConsequences,
@@ -259,7 +341,29 @@
       setVal("ocppMaxHouse", data.settings.max_house_load_kw);
       var sw = $("ocppStaticBudget");
       if (sw) sw.checked = !!data.settings.static_budget;
+      setRadio("ocppPolicy", data.settings.surplus_policy || "schnell");
+      setRadio("ocppStorage", data.settings.storage_priority || "speicher_vor_auto");
     }
+    var sl = D.surplusLine(o);
+    txt("ocppSurplusText", sl);
+    show("ocppSurplus", !!sl);
+    var sdot = $("ocppSurplusDot");
+    if (sdot) sdot.className = "row-dot " + D.surplusTone(o);
+    // The storage choice only means something on a plant that HAS a storage -
+    // and only the box knows whether one reports. Without a measured battery
+    // the row would be a question about a device that is not there.
+    show("ocppStorageRow", o.surplus_battery_kw !== null && o.surplus_battery_kw !== undefined);
+  }
+
+  function setRadio(name, value) {
+    var list = document.getElementsByName(name);
+    for (var i = 0; i < list.length; i++) list[i].checked = list[i].value === value;
+  }
+
+  function radioVal(name) {
+    var list = document.getElementsByName(name);
+    for (var i = 0; i < list.length; i++) if (list[i].checked) return list[i].value;
+    return null;
     // ⚠ The LIVE budget, not the one these settings alone would yield: since
     // Stufe 2 the two differ whenever the box measures its connection point,
     // and a setup page showing a different number than the operating card
@@ -297,6 +401,12 @@
     var src = D.budgetSourceLine(o);
     txt("ocppOpSource", src);
     show("ocppOpSource", !!src);
+    // BOTH truths, side by side (Mockups §1a): what the sun allows and what
+    // the connection allows. Without both, a plant throttled at a free
+    // connection reads like a defect.
+    var cap = D.sourceCapLine(o);
+    txt("ocppOpSurplus", cap);
+    show("ocppOpSurplus", !!cap);
     var note = D.controlNote(o);
     txt("ocppOpNote", note);
     show("ocppOpNote", !!note);
@@ -325,10 +435,35 @@
         meta.textContent = D.connectorLine(con, now);
         main.appendChild(meta);
         li.appendChild(main);
+        // „Jetzt voll laden" - offered ONLY where it can change something
+        // (a running charge that the source lane is actually holding back).
+        if (D.boostable(o, con)) {
+          li.appendChild(boostButton(c, con, false));
+        } else if (con.boost) {
+          li.appendChild(boostButton(c, con, true));
+        }
         rows.appendChild(li);
       });
     });
     show("ocppOpIdle", !any);
+  }
+
+  // boostButton is the one customer action of this card. Its consequence list
+  // is the Haus-Folgenliste (it also says what does NOT change), and it goes
+  // through the same confirm the rest of the page uses.
+  function boostButton(c, con, running) {
+    var title = (c.label || c.id) + " · Stecker " + con.id;
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn-inline";
+    b.textContent = running ? "Wieder Ihre Priorität" : "Jetzt voll laden";
+    b.addEventListener("click", function () {
+      if (!running && !window.confirm(D.boostConsequences(title))) return;
+      post("/api/ocpp/boost", {
+        charge_point_id: c.id, connector_id: con.id, cancel: !!running,
+      }, "ocppOpError", function () { load(); });
+    });
+    return b;
   }
 
   function load() {
@@ -382,6 +517,10 @@
           max_house_load_kw: numVal("ocppMaxHouse"),
           static_budget: !!(($("ocppStaticBudget") || {}).checked),
         };
+        var pol = radioVal("ocppPolicy");
+        if (pol) body.surplus_policy = pol;
+        var sto = radioVal("ocppStorage");
+        if (sto) body.storage_priority = sto;
         post("/api/ocpp/settings", body, "ocppSettingsError", function () {
           lastSettings = null;
           load();

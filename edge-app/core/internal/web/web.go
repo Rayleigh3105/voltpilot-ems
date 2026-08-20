@@ -385,6 +385,10 @@ type OcppController interface {
 	OcppUpdateCharger(id string, req csms.UpdateRequest) (csms.Charger, error)
 	OcppRemoveCharger(id string) error
 	OcppSaveSettings(lastmgmt.SettingsRequest) (lastmgmt.Settings, error)
+	// OcppBoost is „Jetzt voll laden" for ONE running charge (Stufe 4). It
+	// overrides the customer's own SOURCE priority for that one session and
+	// nothing else - no limit, no guard and no other vehicle's priority moves.
+	OcppBoost(lastmgmt.BoostRequest) (lastmgmt.BoostResult, error)
 }
 
 // Handler builds the HTTP mux: the single-page UI, the state JSON it polls, the
@@ -1208,6 +1212,25 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		w.WriteHeader(http.StatusNoContent)
 	})
 
+	// „Jetzt voll laden" - the ONE customer action of this surface that
+	// changes an allocation. It is deliberately NOT a limit: it exempts one
+	// running session from the ECONOMIC source cap, and every physical guard
+	// (connection limit, margin, §14a, the stations' own failsafe) is
+	// untouched - which is exactly what the dialog promises.
+	mux.HandleFunc("POST /api/ocpp/boost", func(w http.ResponseWriter, r *http.Request) {
+		var req lastmgmt.BoostRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "ungültige Anfrage", http.StatusBadRequest)
+			return
+		}
+		res, err := ocpp.OcppBoost(req)
+		if err != nil {
+			ocppError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
+	})
+
 	mux.HandleFunc("POST /api/ocpp/settings", func(w http.ResponseWriter, r *http.Request) {
 		var req lastmgmt.SettingsRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1302,5 +1325,7 @@ func ocppSettingsView(set lastmgmt.Settings) map[string]any {
 		"max_house_load_kw": set.MaxHouseLoadKw,
 		"static_budget":     set.StaticBudget,
 		"budget_kw":         set.BudgetKw(),
+		"surplus_policy":    string(set.SurplusPolicy),
+		"storage_priority":  string(set.StoragePriority),
 	}
 }

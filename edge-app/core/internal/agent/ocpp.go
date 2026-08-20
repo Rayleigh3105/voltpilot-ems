@@ -66,6 +66,9 @@ type ocppRuntime struct {
 	// that never measures anything it hands back exactly the static Stufe-1
 	// budget, so it is on the path unconditionally.
 	budget *lastmgmt.BudgetTracker
+	// boosts holds the running „Jetzt voll laden"-Übersteuerungen (Stufe 4,
+	// ocpp_surplus.go). Deliberately in memory only - see the boost doc.
+	boosts *boostStore
 	// wake carries an out-of-band "re-decide now" from the telemetry path, so
 	// a building load step does not have to wait out a full tick.
 	wake chan struct{}
@@ -114,6 +117,7 @@ func (a *Agent) startOcpp(ctx context.Context) error {
 	rt := &ocppRuntime{
 		srv: srv, store: store, settings: set,
 		budget:       lastmgmt.NewBudgetTracker(),
+		boosts:       newBoostStore(),
 		wake:         make(chan struct{}, 1),
 		commissioned: map[string]string{},
 		lastReadback: map[string]time.Time{},
@@ -215,10 +219,19 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	// ⚠ …EXCEPT while the budget is MEASURED — see ocppBudget.
 	allocKw := ocppAllocatable(verdict, reserved)
 
+	// THE SOURCE LANE (Stufe 4). It is the customer's ECONOMIC choice and can
+	// only ever narrow what the physical budget above already allows - the two
+	// compose most-restrictive-wins, and neither widens the other.
+	surplus := a.ocppSurplus(now, set)
+
 	sessions, byKey := ocppSessions(snap, allocKw)
+	ocppApplyBoosts(rt, sessions, byKey, now)
 	plan := lastmgmt.Decide(lastmgmt.Input{
 		Settings: set, Sessions: sessions, BudgetKw: &allocKw,
-		Previous: rt.previousPlan(), Now: now,
+		SourceBudgetKw:      ocppSourceBudget(surplus, allocKw),
+		SourceAllowsMinimum: surplus.AllowMinimum,
+		Policy:              set.SurplusPolicy,
+		Previous:            rt.previousPlan(), Now: now,
 	})
 	rt.setPlan(&plan)
 
@@ -420,7 +433,21 @@ func (a *Agent) ocppObserve(ts time.Time, measurements map[string]float64) {
 		return
 	}
 	charging, complete := rt.srv.Snapshot().ChargingTotal(ts, ocppMeterMaxAge)
-	if rt.budget.Observe(ts, grid, charging, complete) {
+	m := lastmgmt.Measurement{GridKw: grid, ChargingKw: charging, Complete: complete}
+	// ⚠ The battery's MEASURED charge is the third channel of the Stufe-4
+	// surplus split (surplus.go): it is already inside `grid`, so handing it
+	// to the cars means taking it back out. A DISCHARGE is not a surplus the
+	// cars could claim and enters as 0 - but it still counts as a MEASUREMENT
+	// ("the battery is taking nothing"), which is what cars-first needs to
+	// know. A site whose flows never publish the channel reports nothing and
+	// both priorities collapse into the measured status quo.
+	if b, ok := measurements["battery_power_kw"]; ok {
+		m.HaveBattery = true
+		if b > 0 {
+			m.BatteryChargeKw = b
+		}
+	}
+	if rt.budget.ObserveM(ts, m) {
 		rt.nudge()
 	}
 }
@@ -575,7 +602,13 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 	plan := rt.previousPlan()
 	allowed, note := a.ocppControlAllowed()
 	safe := lastmgmt.DeriveSafeDefault(set.GridLimitKw, effectiveMaxHouseLoad(set), snap.ConnectorCount())
-	verdict, reserved := a.ocppBudget(time.Now().UTC(), set, snap, safe)
+	now := time.Now().UTC()
+	verdict, reserved := a.ocppBudget(now, set, snap, safe)
+	surplus := a.ocppSurplus(now, set)
+	boosted := map[string]bool{}
+	for _, k := range rt.boostKeys(now) {
+		boosted[k] = true
+	}
 
 	info := &state.OcppInfo{
 		Enabled: snap.Enabled, Listening: snap.Listening, Error: snap.Error,
@@ -598,13 +631,28 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 		Grid14aBinds: verdict.Section14aBinds,
 		SiteLoadKw:   verdict.SiteLoadKw,
 		SiteGridKw:   verdict.GridKw,
-		Chargers:     []state.OcppCharger{},
+
+		SurplusPolicy:    string(set.SurplusPolicy),
+		StoragePriority:  string(set.StoragePriority),
+		SurplusActive:    surplus.Active,
+		SurplusMode:      string(surplus.Mode),
+		SurplusNote:      surplus.Reason,
+		SurplusBlind:     surplus.Blind,
+		SurplusTotalKw:   surplus.TotalKw,
+		SurplusBatteryKw: surplus.BatteryKw,
+
+		Chargers: []state.OcppCharger{},
+	}
+	if surplus.Active {
+		kw := surplus.Kw
+		info.SurplusKw = &kw
 	}
 	if verdict.MeasurementAge > 0 {
 		info.MeasurementAgeS = int(verdict.MeasurementAge / time.Second)
 	}
 	if plan != nil {
 		info.AllocatedKw = plan.AllocatedKw
+		info.SourceAllocatedKw = plan.SourceAllocatedKw
 	}
 
 	var measured float64
@@ -639,12 +687,17 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 				measured += *con.PowerKw
 				haveMeasured = true
 			}
+			ocn.Boost = boosted[c.ID+"#"+fmt.Sprint(con.ID)]
 			if plan != nil {
 				if alloc, ok := plan.Get(c.ID + "#" + fmt.Sprint(con.ID)); ok {
 					kw := alloc.Kw
 					ocn.AllocatedKw = &kw
 					ocn.Reason = alloc.Reason
-					ocn.ReasonText = lastmgmt.Text(alloc.Reason)
+					// TextFor names the customer's own priority where the
+					// sentence is ABOUT that priority - a waiting vehicle
+					// whose owner cannot see WHICH setting holds it is a riddle.
+					ocn.ReasonText = lastmgmt.TextFor(alloc.Reason, set.SurplusPolicy)
+					ocn.Boost = alloc.Boost
 					if !alloc.NextTurnAt.IsZero() {
 						ocn.NextTurnMs = alloc.NextTurnAt.UnixMilli()
 					}

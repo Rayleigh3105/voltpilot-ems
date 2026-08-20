@@ -153,6 +153,15 @@ type Snapshot struct {
 	// feature existed).
 	Ocpp *OcppInfo `json:"ocpp,omitempty"`
 
+	// CarsFirstCapKw is the „Auto vor Speicher"-Klemme currently limiting the
+	// battery's CHARGE (OCPP-Lastmanagement Stufe 4): the customer decided
+	// their vehicles get the PV surplus first, so the storage may only take
+	// what is left of it. nil = the cap is not biting (no such choice, no
+	// vehicle drawing, no fresh measurement, or the command was already below
+	// it) - and then nothing on the control card claims one. A named
+	// limitation is the whole point: an unnamed one reads as a defect.
+	CarsFirstCapKw *float64 `json:"cars_first_cap_kw,omitempty"`
+
 	// DataPurge tracks a data purge ("Datenaufzeichnungen löschen") triggered
 	// on this device: nil when none is in flight or everything is confirmed.
 	DataPurge *DataPurgeInfo `json:"data_purge,omitempty"`
@@ -597,6 +606,36 @@ type OcppInfo struct {
 	// MeasurementAgeS is how old the newest usable measurement is (seconds).
 	MeasurementAgeS int `json:"measurement_age_s,omitempty"`
 
+	// --- Stufe 4: the SOURCE lane (internal/lastmgmt/surplus.go) ---
+	//
+	// It is the customer's ECONOMIC choice ("woher kommt der Strom?"), and it
+	// can only ever NARROW what the connection above already allows. The two
+	// numbers are shown TOGETHER on purpose (Mockups §1a): a plant throttled
+	// while its connection is free would otherwise read like a defect.
+
+	// SurplusPolicy / StoragePriority echo the customer's own choice.
+	SurplusPolicy   string `json:"surplus_policy,omitempty"`
+	StoragePriority string `json:"storage_priority,omitempty"`
+	// SurplusActive is false when there is NO source cap at all (either
+	// „Schnell laden", or a lane that cannot be proven and fails open).
+	SurplusActive bool `json:"surplus_active"`
+	// SurplusKw is the source cap in force; nil while inactive - never a 0
+	// that would read as "the sun offers nothing".
+	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+	// SurplusMode / SurplusNote are the machine word and the German sentence,
+	// written ONCE in the tracker.
+	SurplusMode  string `json:"surplus_mode,omitempty"`
+	SurplusNote  string `json:"surplus_note,omitempty"`
+	SurplusBlind bool   `json:"surplus_blind,omitempty"`
+	// SurplusTotalKw is the WHOLE measured surplus before anybody took it;
+	// SurplusBatteryKw what the storage is measured taking. Both nil without a
+	// fresh measurement.
+	SurplusTotalKw   *float64 `json:"surplus_total_kw,omitempty"`
+	SurplusBatteryKw *float64 `json:"surplus_battery_kw,omitempty"`
+	// SourceAllocatedKw is how much of the allocation the source lane is
+	// covering - a STANDORT statement, never a per-vehicle solar quota.
+	SourceAllocatedKw float64 `json:"source_allocated_kw,omitempty"`
+
 	Chargers []OcppCharger `json:"chargers"`
 }
 
@@ -668,4 +707,9 @@ type OcppConnector struct {
 	Readback      string `json:"readback,omitempty"`
 	ReadbackNote  string `json:"readback_note,omitempty"`
 	SessionSince  int64  `json:"session_since_ms,omitempty"`
+	// Boost is true while this plug's „Jetzt voll laden" is running: the value
+	// was formed WITHOUT the source cap and may contain grid power. The
+	// surface SAYS so - a full charge nobody asked for would be a silent
+	// break of the customer's own priority.
+	Boost bool `json:"boost,omitempty"`
 }
