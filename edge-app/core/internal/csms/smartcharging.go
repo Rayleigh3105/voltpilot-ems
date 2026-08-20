@@ -234,3 +234,30 @@ func (s *Server) liveTransport(chargerID string) (*transport, error) {
 	}
 	return t, nil
 }
+
+// ClearLimit removes the live TxProfile of one connector.
+//
+// ⚠ It is called when a SESSION ENDS, and it matters more than the spec
+// suggests: OCPP says a station discards a TxProfile with its transaction,
+// but a firmware that keeps it would let the NEXT vehicle on that plug
+// silently inherit the previous one's limit. Clearing costs one message and
+// removes a whole class of "why is this car slow" from the field.
+func (s *Server) ClearLimit(ctx context.Context, chargerID string, connectorID int) error {
+	t, err := s.liveTransport(chargerID)
+	if err != nil {
+		return err
+	}
+	_, err = t.clearChargingProfile(ctx, chargerID, TxProfileID(connectorID))
+	s.mu.Lock()
+	if c, ok := s.chargers[chargerID]; ok {
+		if con := c.ConnectorByID(connectorID); con != nil {
+			con.CommandedKw = nil
+			con.CommandStatus = ""
+			con.Readback = ""
+			con.ReadbackKw = nil
+			con.ReadbackNote = ""
+		}
+	}
+	s.mu.Unlock()
+	return err
+}

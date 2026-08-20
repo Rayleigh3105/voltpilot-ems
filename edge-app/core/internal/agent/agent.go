@@ -188,6 +188,11 @@ type Agent struct {
 	neutralCal      *neutralcal.Session
 	neutralWatchdog *time.Timer
 
+	// OCPP charge points (agent/ocpp.go). nil while VP_OCPP_ENABLED is off,
+	// which is the default - the box then behaves byte-for-byte as it did
+	// before the feature existed.
+	ocpp *ocppRuntime
+
 	// Per-node live flow state (Portal v3 M5 Part C), recorded from the local
 	// bus and folded into the heartbeat ONLY when the feature flag is on.
 	flowNodeMu     sync.Mutex
@@ -780,6 +785,12 @@ func (a *Agent) Start(ctx context.Context) error {
 	// (Node-RED has no shelly reader). Independent of the control flags, like
 	// every other source read path; idles cheaply without shelly sources.
 	a.startShellySourcePoll(ctx)
+	// OCPP charge points: the CSMS the stations dial + the load-management
+	// executor. A no-op while VP_OCPP_ENABLED is off (the default), so a box
+	// without charge points pays nothing for it.
+	if err := a.startOcpp(ctx); err != nil {
+		return err
+	}
 	// E2 flow deployment: reconcile the persisted set at boot (self-heal from
 	// truth) and keep reconciling periodically.
 	a.flowDep.Reconcile()
@@ -3696,6 +3707,7 @@ func (a *Agent) Stop() {
 		a.link.Close()
 	}
 	a.linkMu.Unlock()
+	a.stopOcpp()
 	if a.Bus != nil {
 		_ = a.Bus.Close()
 	}

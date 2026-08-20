@@ -58,6 +58,19 @@ services:
       # Anlage nach dem Runbook (docs/verbrauchssteuerung-betrieb.md)
       # eingeschaltet wird. VP_CONTROL_ENABLED bleibt der globale Stopp.
       VP_CONSUMER_CONTROL_ENABLED: ${VP_CONSUMER_CONTROL_ENABLED:-false}
+      # OCPP-Ladepunkte (Lastmanagement). Vorgabe AUS: ohne diesen Schalter
+      # bindet die Box keinen Websocket-Server und verhaelt sich zeichengleich
+      # wie vor dem Feature. Der eigentliche Zugangs-Zaun ist die Freigabeliste
+      # der Charge-Point-Kennungen (chargers.json) - eine nicht eingetragene
+      # Saeule wird schon beim Verbindungsaufbau abgewiesen. Die LEBENDE
+      # Zuteilung braucht zusaetzlich VP_CONTROL_ENABLED und
+      # VP_CONSUMER_CONTROL_ENABLED; ohne sie halten die Saeulen ihr
+      # hinterlegtes Sicherheitsprofil (sicher, nur nicht optimiert).
+      VP_OCPP_ENABLED: ${VP_OCPP_ENABLED:-false}
+      # LAN-Port, auf dem die Ladesaeulen die Box anwaehlen. Muss mit dem
+      # Port-Mapping unten uebereinstimmen (die Box nennt die Adresse in der
+      # Weboberflaeche).
+      VP_OCPP_PORT: ${VP_OCPP_PORT:-8887}
       # Host-Port des Modbus-Datenspiegels (NUR fuer die Anzeige der Adresse
       # in der Weboberflaeche; das Port-Mapping unten muss denselben Wert
       # nutzen). Der Spiegel selbst ist standardmaessig AUS (mirror.json).
@@ -80,6 +93,11 @@ services:
       # statt am Ein-Client-Solarman-Logger. Container-Port fest 1502; ohne
       # aktivierten Spiegel lauscht nichts (Verbindung wird abgewiesen).
       - "${VP_MIRROR_PORT:-502}:1502"
+      # OCPP: die Ladesaeulen waehlen die Box hier an
+      # (ws://<box>:8887/ocpp/<Kennung>). LAN-only wie :8484 und der
+      # Node-RED-Editor - nie oeffentlich erreichbar machen. Ohne
+      # VP_OCPP_ENABLED lauscht nichts (Verbindung wird abgewiesen).
+      - "${VP_OCPP_PORT:-8887}:8887"
 
   nodered:
     build:
