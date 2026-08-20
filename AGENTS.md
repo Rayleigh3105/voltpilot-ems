@@ -2951,6 +2951,14 @@ zur Box kommt (Konzept §5.2, PR 11/12). Alles additiv.
   last-writer-wins, und ein retained Dokument setzt sich beim nächsten
   Verbindungsaufbau wieder durch. Ein `portal_managed`-Spiegel wie beim
   Einheitsmodell Stufe 2 ist Folgearbeit.
+- **Der Kommando-Verlauf hat einen fünften Strom `ladepunkt`** (Migration
+  `V20260830000000` weitet nur den CHECK — es entsteht KEINE Tabelle, dieselbe
+  Form wie die `consumer_audit_event`-Erweiterung): je SÄULE eine laufende
+  Periode über die Grenze, die die Box ihr hinterlegt hat. **Je Säule, nicht je
+  Stecker** — der Schlüssel der Tabelle ist eine Komponenten-Id, und eine Zeile
+  je Stecker vervielfachte den Verlauf, ohne eine Frage zu beantworten, die die
+  Ladevorgangs-Liste nicht schon beantwortet. Eine Säule OHNE Komponente wird
+  ausgelassen statt mit einer erfundenen Id geführt.
 - **Beweise:** `ChargingConfigPublisherTest` (6, rein: die Draht-Form, abwesend
   vs. leer, die Kontrakt-Fixture) · `ChargerApiTest` (+1: der Dialog speichert,
   PATCH lässt die Grenze stehen, unbekannte Säule + Grenze 0 sind 400 OHNE

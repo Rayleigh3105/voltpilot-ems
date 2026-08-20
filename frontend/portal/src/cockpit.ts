@@ -100,6 +100,7 @@ export const TELEMETRIE_HISTORIE: BlockDrillIn = {
 /** Die Drill-ins je Block (§2.2) — die Tiefen-Sichten der abgelösten Tab-Leiste. */
 const BLOCK_DRILL_INS: Partial<Record<CockpitBlockId, BlockDrillIn[]>> = {
   'peak-band': [{ sub: 'lastspitzen', label: 'Lastspitzen im Detail' }],
+  'lade-budget': [{ sub: 'ladevorgaenge', label: 'Ladevorgänge' }],
   'erloes-komposition': [
     {
       sub: 'erloese',

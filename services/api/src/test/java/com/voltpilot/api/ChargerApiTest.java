@@ -110,6 +110,9 @@ class ChargerApiTest {
     @Autowired
     ChargerComponentComposer composer;
 
+    @Autowired
+    com.voltpilot.api.command.CommandLogWriter commandLog;
+
     private final ObjectMapper json = new ObjectMapper();
 
     @Test
@@ -308,8 +311,12 @@ class ChargerApiTest {
         ObjectProvider<ChargerComponentComposer> provider =
                 org.mockito.Mockito.mock(ObjectProvider.class);
         org.mockito.Mockito.when(provider.getIfAvailable()).thenReturn(composer);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<com.voltpilot.api.command.CommandLogWriter> logProvider =
+                org.mockito.Mockito.mock(ObjectProvider.class);
+        org.mockito.Mockito.when(logProvider.getIfAvailable()).thenReturn(commandLog);
         ChargerStatusListener listener = new ChargerStatusListener("tcp://unused", "", "", devices,
-                chargerStatus, provider);
+                chargerStatus, provider, logProvider);
         String payload = """
                 {"schema_version":"1.0","tenant_id":"%s","site_id":"%s","device_id":"%s",
                  "online":true,"chargers":%s}"""

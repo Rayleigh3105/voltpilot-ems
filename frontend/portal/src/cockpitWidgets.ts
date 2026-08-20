@@ -60,6 +60,7 @@ import { eurAmount, fmtNum } from './format';
 import type { PeakBandView } from './peakBand';
 import { planSentence, type PlanWordingKind } from './schedule';
 import type { ActiveMode, CockpitBlock, CockpitBlockId, MoneyStream } from './surface';
+import { budgetBand, type SiteCharging } from './ladepunkte';
 import { widgetTarget, type WidgetTarget } from './verlaufTarget';
 
 // ---------------------------------------------------------------------------
@@ -69,6 +70,7 @@ import { widgetTarget, type WidgetTarget } from './verlaufTarget';
 /** Die Kacheln des Cockpits — deterministisch, nie erfunden. Die vier
  *  Fluss-Kacheln sind seit dem Cockpit+Live-Merge (R2) kein Teil davon. */
 export type WidgetId =
+  | 'ladebudget'
   | 'lastspitze'
   | 'erloes'
   | 'handel'
@@ -123,6 +125,8 @@ export interface CockpitWidgetsInput {
   plantKind?: PlanWordingKind;
   /** Die fertige Peak-Band-Sicht; null = kein Peak-Modul / keine Daten. */
   peak?: PeakBandView | null;
+  /** Die Ladepunkt-Sicht der Anlage; null = keine Ladesäulen / nichts geladen. */
+  charging?: SiteCharging | null;
   /** Wetter am Standort; null = nichts geladen. */
   weather?: { nextHourTempC: number | null; why: string | null } | null;
 }
@@ -146,6 +150,9 @@ export function cockpitWidgets(input: CockpitWidgetsInput): WidgetDef[] {
 
   for (const b of blocks) {
     switch (b.id) {
+      case 'lade-budget':
+        push(out, ladebudgetWidget(input), b.id === lead);
+        break;
       case 'peak-band':
         push(out, lastspitzeWidget(input), b.id === lead);
         break;
@@ -183,6 +190,27 @@ function push(out: Omit<WidgetDef, 'target'>[], w: WidgetBase | null, lead: bool
 }
 
 // --- Modus-Kacheln ----------------------------------------------------------
+
+/**
+ * Die Wächter-Kachel des Ladebudgets. Auf der reinen Ladepark-Anlage FÜHRT sie
+ * (dort gibt es keinen Energiefluss-Block); auf einer Misch-Anlage ist sie die
+ * ruhige Kachel neben dem Fluss (Mockups §2 Entscheidung 1 / Reiter 6).
+ *
+ * Ohne gemeldetes Budget gibt es KEINE Kachel - eine „0 kW"-Kachel wäre eine
+ * Behauptung über eine Anlage, die gerade nichts gemeldet hat.
+ */
+function ladebudgetWidget(input: CockpitWidgetsInput): WidgetBase | null {
+  const band = budgetBand(input.charging?.budget ?? null);
+  if (!band || band.headline == null) return null;
+  return {
+    id: 'ladebudget',
+    label: 'Netzanschluss',
+    value: band.headline,
+    sub: band.sourceLine ?? band.line,
+    // Ladepunkte sind die Verbraucher-Rolle des Hauses.
+    accent: 'load',
+  };
+}
 
 function lastspitzeWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const peak = input.peak;

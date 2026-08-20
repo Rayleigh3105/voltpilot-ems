@@ -1,0 +1,78 @@
+/* Die Ladevorgänge-Seite (Lastmanagement Stufe 3). */
+.vp-lade-page { display: grid; gap: 16px; }
+.vp-lade-h2 { margin: 0 0 12px; font-size: 1.05rem; color: var(--vp-navy, #1a365d); }
+.vp-lade-note { margin: 8px 0 0; font-size: 0.9rem; color: var(--vp-muted, #64748b); }
+.vp-lade-idle { margin: 0; color: var(--vp-muted, #64748b); }
+
+.vp-lade-rows,
+.vp-lade-stations,
+.vp-lade-plugs { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+
+.vp-lade-row {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 10px;
+}
+.vp-lade-row-title { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.vp-lade-row-word { grid-column: 2; font-size: 0.85rem; color: var(--vp-muted, #64748b); }
+.vp-lade-row-values {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.vp-lade-row-alloc,
+.vp-lade-row-soc,
+.vp-lade-row-since { font-size: 0.8rem; color: var(--vp-muted, #64748b); }
+.vp-lade-row-reason {
+  grid-column: 2 / span 2;
+  font-size: 0.85rem;
+  color: var(--vp-muted, #64748b);
+}
+
+/* Zustands-Farben tragen IMMER auch ihr Wort - die Farbe allein sagt nichts. */
+.vp-lade-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--vp-muted, #94a3b8);
+}
+.tone-laedt > .vp-lade-dot,
+.tone-laedt .vp-lade-dot { background: var(--vp-ok, #16a34a); }
+.tone-stoerung > .vp-lade-dot,
+.tone-stoerung .vp-lade-dot { background: var(--vp-warn, #f59e0b); }
+
+.vp-lade-station {
+  padding: 12px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 10px;
+}
+.vp-lade-station-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vp-lade-station-word { font-size: 0.85rem; color: var(--vp-muted, #64748b); }
+.vp-lade-details { margin-top: 8px; }
+.vp-lade-details summary { cursor: pointer; font-size: 0.9rem; color: var(--vp-muted, #64748b); }
+.vp-lade-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+.vp-lade-dl dt { color: var(--vp-muted, #64748b); }
+.vp-lade-dl dd { margin: 0; overflow-wrap: anywhere; }
+.vp-lade-plugs { gap: 4px; font-size: 0.9rem; color: var(--vp-muted, #64748b); }
+
+.vp-lade-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.vp-lade-always { margin: 8px 0 0; font-size: 0.9rem; color: var(--vp-ok-ink, #166534); }
+
+@media (max-width: 720px) {
+  .vp-lade-row { grid-template-columns: 12px 1fr; }
+  .vp-lade-row-values { grid-column: 1 / span 2; grid-row: auto; justify-items: start; }
+  .vp-lade-row-reason { grid-column: 1 / span 2; }
+}

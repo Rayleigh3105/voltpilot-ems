@@ -130,6 +130,51 @@ public class CommandLogWriter {
         });
     }
 
+    /**
+     * Der Ladepunkt-Schreibweg (Lastmanagement Stufe 3): je SÄULE eine laufende
+     * Periode über die Grenze, die die Box ihr hinterlegt hat.
+     *
+     * <p><b>⚠ Je Säule, nicht je Stecker.</b> Der Verlauf soll die Geschichte
+     * der ZUTEILUNG erzählen; eine Zeile je Stecker vervielfachte sie, ohne
+     * eine Frage zu beantworten, die die Ladevorgangs-Liste nicht schon
+     * beantwortet - und die Perioden-Tabelle kennt als Schlüssel ohnehin nur
+     * eine Komponente (die Entität der Säule).
+     *
+     * <p>Eine Säule OHNE Komponente wird ausgelassen: der Schlüssel dieser
+     * Tabelle ist eine Entitäts-Id, und eine erfundene wäre eine zweite
+     * Identität für dasselbe Gerät. Beim nächsten Herzschlag hat die
+     * Komposition sie ohnehin (sie läuft im selben Zuhörer).
+     *
+     * <p>Eine Säule, die dieser Herzschlag nicht mehr trägt, wird an ihrem
+     * letzten belegten Zeitpunkt geschlossen - OHNE Ereignis: Verschwinden ist
+     * kein Stopp (die Verbraucher-Regel, wörtlich).
+     */
+    public void ingestChargers(UUID siteId, UUID deviceId, List<ChargerFacts> rows, Instant at) {
+        run(siteId, at, () -> {
+            Set<UUID> seen = new HashSet<>();
+            for (ChargerFacts row : rows) {
+                if (row.entityId() == null) {
+                    continue;
+                }
+                seen.add(row.entityId());
+                Observation obs = new Observation(CommandLog.STREAM_LADEPUNKT, row.entityId(),
+                        row.charging() ? "laedt" : "frei", null, null, null, row.allocatedKw(),
+                        CommandLog.consumerVerdict(row.confirmed()), row.controlEnabled(), null,
+                        null, new Detail(null, null, null, null, null, row.reason()));
+                apply(siteId, deviceId, obs, true, at);
+            }
+            store.closeOpenExcept(deviceId, CommandLog.STREAM_LADEPUNKT, seen);
+        });
+    }
+
+    /**
+     * Die Fakten EINER Ladesäule für den Verlauf. {@code confirmed} ist
+     * DREIWERTIG: null = die Säule hat sich zum Rücklesen nicht geäussert, und
+     * das bleibt eine Lücke, nie ein Widerspruch.
+     */
+    public record ChargerFacts(UUID entityId, boolean charging, Double allocatedKw, String reason,
+            Boolean confirmed, Boolean controlEnabled) {}
+
     // -- Der gemeinsame Kern --------------------------------------------------
 
     private void run(UUID siteId, Instant at, Runnable body) {

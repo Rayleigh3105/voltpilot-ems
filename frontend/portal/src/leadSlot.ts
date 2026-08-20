@@ -30,6 +30,11 @@ export const LEAD_CANDIDATES: CockpitBlockId[] = [
   'peak-band',
   'erloes-komposition',
   'energiefluss',
+  // Das Ladebudget führt NUR, wenn es sonst nichts zu führen gibt - also auf
+  // der reinen Ladepark-Anlage, die gar keinen Energiefluss-Block bekommt
+  // (`surface.ts` isLadeparkOnly). Auf einer Misch-Anlage bleibt der Fluss der
+  // Held und das Band wird zur Wächter-Kachel (Mockups §2 Entscheidung 1).
+  'lade-budget',
 ];
 
 /**

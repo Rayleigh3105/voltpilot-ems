@@ -57,6 +57,7 @@ import {
   isLeistungspreisActive,
   marktoptimierungLine,
 } from './moduleSurface';
+import { EV_CHARGER, LADEPARK_LINE, LADEPARK_SUBLINE } from './ladepunkte';
 import { defaultRole } from './topology';
 import { NODE_ATYPICAL_GRID, NODE_MARKET, NODE_PEAKSHAVING } from './usageProfile';
 
@@ -74,6 +75,7 @@ export type ModeKind =
   | 'marktvermarktung'
   | 'lastspitzenkappung'
   | 'atypische-netznutzung'
+  | 'lastmanagement'
   | 'automation';
 
 /**
@@ -85,6 +87,7 @@ export type ModeOrigin = 'masterdata' | 'flow';
 
 /** Welches konkrete Signal den Modus aktiviert hat (nachvollziehbar + testbar). */
 export type ModeSignal =
+  | 'charge-point'
   | 'storage-and-pv'
   | 'plant-kind-direktvermarktung'
   | 'netzladen-and-dynamic-tariff'
@@ -95,6 +98,7 @@ export type ModeSignal =
 /** Cockpit-Blöcke in deterministischer Reihenfolge (report §1.3). */
 export type CockpitBlockId =
   | 'status'
+  | 'lade-budget'
   | 'peak-band'
   | 'erloes-komposition'
   | 'energiefluss'
@@ -105,6 +109,7 @@ export type CockpitBlockId =
 
 /** Tiefen-Ansichten, die base bzw. ein Modus beisteuert. */
 export type DeepViewId =
+  | 'ladevorgaenge'
   | 'live'
   | 'geraete'
   | 'telemetrie-historie'
@@ -339,6 +344,7 @@ export const MODE_LABELS: Record<Exclude<ModeKind, 'automation'>, string> = {
   lastspitzenkappung: 'Lastspitzenkappung',
   'atypische-netznutzung': 'Atypische Netznutzung',
   marktvermarktung: 'Marktvermarktung',
+  lastmanagement: 'Ladepark-Lastmanagement',
 };
 
 /**
@@ -347,6 +353,9 @@ export const MODE_LABELS: Record<Exclude<ModeKind, 'automation'>, string> = {
  * erst-aktiver-gewinnt-Dedupe wiederverwendet (das `moneyStreams()`-Muster).
  */
 export const MODE_RANK: Record<ModeKind, number> = {
+  // Das Lastmanagement führt: auf einer Ladepark-Anlage ist es die einzige
+  // Frage, und auf jeder anderen steht es neben den vorhandenen Modi.
+  lastmanagement: 5,
   lastspitzenkappung: 10,
   'atypische-netznutzung': 20,
   marktvermarktung: 30,
@@ -356,6 +365,9 @@ export const MODE_RANK: Record<ModeKind, number> = {
 /** Deterministischer Rang der Cockpit-Blöcke (report §1.3). */
 const BLOCK_ORDER: Record<CockpitBlockId, number> = {
   status: 0,
+  // Das Budget-Band führt vor dem Peak-Band: auf einer Nur-Ladepunkte-Anlage
+  // ist es der Held der Fläche (Mockups §2 Entscheidung 1).
+  'lade-budget': 5,
   'peak-band': 10,
   'erloes-komposition': 20,
   energiefluss: 30,
@@ -379,6 +391,7 @@ const DEEP_VIEW_ORDER: DeepViewId[] = [
 ];
 
 const SIGNAL_ORDER: ModeSignal[] = [
+  'charge-point',
   'storage-and-pv',
   'plant-kind-direktvermarktung',
   'netzladen-and-dynamic-tariff',
@@ -437,6 +450,28 @@ function hasStorage(site: AnlageSurfaceInput): boolean {
 }
 
 /**
+ * Die Anlage besteht NUR aus Ladepunkten (plus dem, was jede Anlage ohnehin
+ * komponiert): kein Speicher, keine PV.
+ *
+ * ⚠ Sie bekommt deshalb KEINEN Energiefluss-Block. Ein Fluss-Diagramm über eine
+ * Anlage, die nichts erzeugt und nichts speichert, zeigt zwei Knoten und
+ * erklärt nichts; ihre Frage ist eindimensional (Bezug gegen Anschlussgrenze),
+ * und die beantwortet das Budget-Band ehrlicher (Mockups §2 Entscheidung 1).
+ * Damit führt auf einer Ladepark-Anlage das Band, auf einer Misch-Anlage
+ * weiterhin der Fluss - ohne eine zweite Vorrang-Regel.
+ */
+function isLadeparkOnly(input: AnlageSurfaceInput): boolean {
+  return hasChargePoint(input) && !hasStorage(input) && !hasPvEntity(input);
+}
+
+function hasPvEntity(site: AnlageSurfaceInput): boolean {
+  if (site.signals?.hasPv === true) return true;
+  return (site.entities ?? []).some((e) =>
+    (e?.capabilities?.measure ?? []).some((m) => defaultRole('', m?.channel ?? '') === 'pv'),
+  );
+}
+
+/**
  * `base(entities)` (report §1.1 + feedback.md Punkt 2): Status-Kopf,
  * Energiefluss-Hub, Geräte, **Telemetrie-Historie** und Live — modus-unabhängig,
  * in JEDEM Modus verfügbar. Ohne Entitäten gibt es davon NICHTS (kein
@@ -488,7 +523,7 @@ export function baseSurface(site: AnlageSurfaceInput): BaseSurface {
     hasEntities: true,
     blocks: [
       block('status', 'Status', null),
-      block('energiefluss', 'Energiefluss', null),
+      ...(isLadeparkOnly(input) ? [] : [block('energiefluss', 'Energiefluss', null)]),
       block('toolbox-pointer', 'Modus hinzufügen', null),
     ],
     deepViews: sortDeepViews(deepViews),
@@ -567,6 +602,11 @@ function isDirektvermarktung(input: AnlageSurfaceInput): boolean {
   );
 }
 
+/** Die Anlage trägt mindestens einen Ladepunkt (Katalog-Typ `ev-charger`). */
+function hasChargePoint(input: AnlageSurfaceInput): boolean {
+  return (input.entities ?? []).some((e) => e.entityType === EV_CHARGER);
+}
+
 function hasLeistungspreis(input: AnlageSurfaceInput): boolean {
   return (
     isLeistungspreisActive(input.config?.leistungspreisEurKw) ||
@@ -593,6 +633,23 @@ export function activeModes(site: AnlageSurfaceInput): ActiveMode[] {
   const input = site ?? {};
   const index = indexFlows(input);
   const modes: ActiveMode[] = [];
+
+  // --- Ladepark-Lastmanagement -------------------------------------------
+  // Es hat KEINEN Strategie-Knoten (Lastmanagement ist Schutz, keine
+  // Marktteilnahme): das Signal ist die Anlage selbst - ein Ladepunkt ist da,
+  // also verteilt die Box das Budget. Eine Anlage, die Autos lädt, deren Karte
+  // aber "aus" sagt, wäre eine Falschaussage über eine laufende Anlage.
+  if (hasChargePoint(input)) {
+    modes.push(
+      makeMode({
+        kind: 'lastmanagement',
+        key: 'lastmanagement',
+        label: MODE_LABELS.lastmanagement,
+        signals: ['charge-point'],
+        flowRef: null,
+      }),
+    );
+  }
 
   // --- Lastspitzenkappung -------------------------------------------------
   {
@@ -740,6 +797,27 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
         deepViews: ['lastspitzen', 'erloes-historie'],
         // §2: die drei Read-only-Ids (von VoltPilot eingerichtet).
         settings: ['leistungspreis', 'abrechnung-leistung', 'lastspitzen-reserve'],
+      };
+    case 'lastmanagement':
+      return {
+        cockpitBlock: block('lade-budget', 'Ladeleistung', seed.label),
+        // ⚠ KEIN Geld-Strom, und das ist der Scope-Zaun E4, nicht eine Lücke:
+        // Sitzungen sind BETRIEBS-, keine Abrechnungsdaten. Auf einer
+        // Nur-Ladepunkte-Anlage fehlt "Erlöse" deshalb auch in der Navigation.
+        moneyStreams: [],
+        steuerungCard: {
+          title: seed.label,
+          line: LADEPARK_LINE,
+          subLine: LADEPARK_SUBLINE,
+          // Der Verteiler selbst ist fest eingebaut (er läuft auf der Box und
+          // schützt den Anschluss); einstellbar sind Anschlussgrenze und
+          // Vorrang - die Karte führt zu ihnen, nicht zu einem Flow-Editor.
+          managed: true,
+          action: 'none',
+          preview: false,
+        },
+        deepViews: ['ladevorgaenge'],
+        settings: [],
       };
     case 'atypische-netznutzung':
       return {

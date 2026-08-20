@@ -67,6 +67,13 @@ public final class CommandLog {
     public static final String STREAM_ABREGELUNG = "abregelung";
     /** Steuerbare Verbraucher (Wallbox, Heizstab, Schalter). */
     public static final String STREAM_VERBRAUCHER = "verbraucher";
+    /**
+     * Das OCPP-Ladeprofil, das die Box einer Ladesäule hinterlegt
+     * (Lastmanagement Stufe 3). Eine Periode je SÄULE - der Verlauf ist die
+     * Geschichte der zugeteilten Grenze, nicht die der 30-Sekunden-
+     * Auffrischungen (die bleiben draussen, wie überall hier).
+     */
+    public static final String STREAM_LADEPUNKT = "ladepunkt";
 
     // -- Die Zeilenarten ------------------------------------------------------
 

@@ -933,6 +933,56 @@ Anlagen-Modells (`pages/AnlagenModellSection.tsx` `RegisterExperte`).
   `AnlagenModellSection.test.tsx` (der KUNDE ohne Admin-Rolle bekommt ihn; ohne
   Gerät steht dort der Grund).
 
+## Ladepark-Lastmanagement: die Ladepunkt-Flächen (Lastmanagement Stufe 3)
+
+Die abgenommenen Mockups (`data/vp-ocpp-mockups-r5`) als Portal-Fläche. **Alles
+ist additiv: eine Anlage ohne Ladepunkt sieht kein Wort davon** (dafür gibt es
+je Ebene einen Test).
+
+- **EINE reine Schicht `src/ladepunkte.ts`** trägt jede Ableitung UND jeden
+  Satz; die Flächen rendern nur. Die Erklärtexte aus §2b des Mockup-Reports
+  stehen dort WÖRTLICH — sie sind die Bau-Vorlage.
+- **⚠ Der deutsche Satz der BOX wird DURCHGEREICHT, nie neu formuliert**
+  (`budget_note`, `reason_text`, `safe_default_note`): er entsteht einmal in
+  `internal/lastmgmt`, und nur die Box kennt die Zahlen dahinter.
+- **⚠ Der Grund wird weggelassen, wenn er dasselbe sagt wie das Zustands-Wort.**
+  Der Verteiler nennt einen ladenden Stecker selbst „lädt"; zweimal dasselbe in
+  einer Zeile ist Rauschen, kein Beleg (im Browser aufgefallen, nicht im Test).
+- **Der Modus heißt `lastmanagement`** (`surface.ts`): er hat als EINZIGER
+  keinen Strategie-Knoten und keinen Geld-Strom — ein Ladepark rechnet nichts
+  ab (Scope-Zaun E4: „Erlöse" fehlt dort auch in der Navigation). Sein Signal
+  ist die Anlage selbst (ein `ev-charger` ist da).
+- **⚠ Die reine Ladepark-Anlage bekommt KEINEN Energiefluss-Block**
+  (`isLadeparkOnly`): ein Fluss über eine Anlage, die nichts erzeugt und nichts
+  speichert, zeigt zwei Knoten und erklärt nichts. Genau deshalb steht
+  `lade-budget` ZULETZT in `LEAD_CANDIDATES` und führt trotzdem dort — und auf
+  einer Misch-Anlage bleibt der Fluss der Held, das Band wird zur Kachel. Zwei
+  Regeln, EINE Vorrang-Liste.
+- **Die Farben tragen ihre Wörter** (K10): Ladepunkte sind die
+  Verbraucher-Rolle (`--vp-flow-load`), der Sicherheitsabstand ist schraffiert
+  UND beschriftet, und ROT ist ausschließlich die Grenz-Linie — eine Warnfarbe
+  wird nie zur Serienfarbe. Es pulsiert nichts: Warten ist kein Fehler.
+- **Die Ladepark-Kapsel sitzt in der STEUERUNG** (Captain-Entscheid): zwei
+  Strategie-Karten (die zweite ohne PV sichtbar AUSGEGRAUT mit Grund, nie
+  versteckt), die Anschlussgrenze hinter dem Haus-`ConfirmDialog` mit
+  Folgenliste, die Verteilung als „fest eingebaut" und die Vorrang-Chips als
+  „Ihre Wahl". Ohne Auswahl nennt der Hinweis die FOLGE für die Wartezeit der
+  anderen.
+- **⚠ Das Portal behauptet KEINE Box-Adresse.** Die Box kennt ihren LAN-Namen
+  nicht (`ocppHost()` ist leer, und ein erfundener Hostname auf einem
+  Kopier-Feld ist schlimmer als keiner) — die Anbinden-Fläche nennt deshalb den
+  WEG (die Geräteseite zeigt Adresse + Kennung). Gepinnt: kein `ws://` in der
+  Fläche.
+- **Bekannte Grenze:** ein Ladepunkt erscheint im Anlagen-Modell als Komponente
+  OHNE eigenen Messwert („—"); seine Live-Zahlen stehen auf der
+  Ladevorgänge-Seite. Grund: die Säulen melden über den Herzschlag, nicht über
+  Entitäts-Telemetrie (`telemetry_v2`) — Stufe-4-Folgearbeit.
+- Beweise: `ladepunkte.test.ts` (20) · `LadevorgaengeSection.test.tsx` (3) ·
+  `LadeparkKapsel.test.tsx` (5) · `surface.test.ts` (+5) · `leadSlot.test.ts`
+  (+1). Im echten Chrome bei 1440 und 375 durchgespielt (Bühne, Zeilen,
+  Ausfall-Rechnung, Kapsel samt Dialog-Rundlauf): 0 px horizontaler Überlauf,
+  keine Konsolenfehler aus diesen Flächen.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

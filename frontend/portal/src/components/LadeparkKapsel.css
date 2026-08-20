@@ -1,0 +1,59 @@
+/* Die Ladepark-Kapsel im Bereich Steuerung (Lastmanagement Stufe 3). */
+.vp-ladepark { display: grid; gap: 12px; }
+.vp-ladepark-cards {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.vp-ladepark-card {
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 10px;
+  padding: 12px;
+}
+/* Nicht verfügbar heisst ausgegraut MIT Grund - nie versteckt. */
+.vp-ladepark-card.off { background: var(--vp-surface-2, #f8fafc); }
+.vp-ladepark-card.off p { color: var(--vp-muted, #64748b); }
+.vp-ladepark-card-head { display: flex; align-items: center; gap: 8px; }
+.vp-ladepark-card h3 { margin: 0; font-size: 1rem; flex: 1 1 auto; }
+.vp-ladepark-card p { margin: 8px 0 0; }
+.vp-ladepark-reason { font-size: 0.9rem; }
+
+.vp-ladepark-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+.vp-ladepark-row h4 { margin: 0 0 4px; font-size: 0.95rem; color: var(--vp-navy, #1a365d); }
+.vp-ladepark-managed { margin: 0; color: var(--vp-muted, #64748b); max-width: 62ch; }
+.vp-ladepark-hint { margin: 8px 0 0; font-size: 0.9rem; color: var(--vp-muted, #64748b); max-width: 62ch; }
+.vp-ladepark-error { margin: 8px 0 0; color: var(--vp-danger, #dc2626); }
+
+.vp-ladepark-edit { display: flex; align-items: center; gap: 8px; }
+.vp-ladepark-edit input {
+  width: 8ch;
+  padding: 6px 8px;
+  border: 1px solid var(--vp-border, #cbd5e1);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.vp-ladepark-chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 8px 0 0; padding: 0; }
+.vp-ladepark-chip {
+  border: 1px solid var(--vp-border, #cbd5e1);
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  cursor: pointer;
+  min-height: 32px;
+}
+.vp-ladepark-chip.on {
+  background: var(--vp-flow-load, #8b5cf6);
+  border-color: var(--vp-flow-load, #8b5cf6);
+  color: #fff;
+}

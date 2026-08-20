@@ -24,9 +24,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { ApiError, api, type EarningsSite, type Site, type SiteAsset } from '../api';
+import {
+  ApiError,
+  api,
+  type EarningsSite,
+  type Site,
+  type SiteAsset,
+  type SiteCharging,
+} from '../api';
 import { ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
+import { LadeparkKapsel } from '../components/LadeparkKapsel';
 import { RegelnKapsel } from '../components/RegelnKapsel';
 import { CoOptimizationStrip, PartHead } from '../components/SteuerungParts';
 import { ModusContainer } from '../components/ModusContainer';
@@ -110,6 +118,9 @@ export function SteuerungSection({
   const [earnings, setEarnings] = useState<EarningsSite | null>(null);
   const [profiles, setProfiles] = useState<SiteProfiles | null>(null);
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
+  // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft: ein älteres Backend
+  // kennt die Route nicht, dann gibt es die Ladepark-Kapsel schlicht nicht.
+  const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [reservation, setReservation] = useState<ReservationInput | null>(null);
   const [listState, setListState] = useState<'idle' | 'loading' | 'error'>('loading');
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -165,8 +176,11 @@ export function SteuerungSection({
       // Der Speicher-Asset speist die Speicherschonungs-Einstellung im Container
       // (v3.1-M3); fail-soft wie der Rest.
       api.siteAssets(site.id).catch(() => null),
+      // Lastmanagement Stufe 3: ohne Ladesäulen kommt eine leere Antwort und
+      // die Ladepark-Kapsel entfällt - kein Sonderfall, nur nichts zu zeigen.
+      api.siteChargers(site.id).catch(() => null),
     ])
-      .then(([list, entityList, gov, profile, money, shelf, config, siteAssets]) => {
+      .then(([list, entityList, gov, profile, money, shelf, config, siteAssets, chargePoints]) => {
         setFlows(list);
         setEntities(entityList);
         setGovernance(gov);
@@ -174,6 +188,7 @@ export function SteuerungSection({
         setEarnings(money?.sites.find((s) => s.id === site.id) ?? null);
         setProfiles(shelf);
         setAssets(siteAssets);
+        setCharging(chargePoints);
         setReservation({
           socMinPct: config?.effective.socMinPct ?? null,
           socMaxPct: config?.effective.socMaxPct ?? null,
@@ -464,6 +479,15 @@ export function SteuerungSection({
               )}
             </Card>
           </section>
+
+          {/* --- Ladepark (nur mit Ladesäulen) ----------------------------- */}
+          {charging && charging.chargers.length > 0 && (
+            <LadeparkKapsel
+              site={siteState}
+              charging={charging}
+              hasPv={signals?.hasPv === true}
+            />
+          )}
 
           {/* --- Kapsel 2 · Regeln (Naming Set A) -------------------------- */}
           <RegelnKapsel

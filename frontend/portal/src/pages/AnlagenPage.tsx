@@ -8,6 +8,7 @@ import {
   api,
   type ControlStatus,
   type CurtailmentStatus,
+  type SiteCharging,
   type Device,
   type EarningsRange,
   type History,
@@ -98,6 +99,9 @@ const ErloeseSection = lazy(() =>
 );
 const AnlagenModellSection = lazy(() =>
   import('./AnlagenModellSection').then((m) => ({ default: m.AnlagenModellSection })),
+);
+const LadevorgaengeSection = lazy(() =>
+  import('./LadevorgaengeSection').then((m) => ({ default: m.LadevorgaengeSection })),
 );
 const LastspitzenSection = lazy(() =>
   import('./LastspitzenSection').then((m) => ({ default: m.LastspitzenSection })),
@@ -458,6 +462,7 @@ function AnlagenSubPage({
           <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
+        {sub === 'ladevorgaenge' && <LadevorgaengeSection site={site} />}
         {/* Die BEFEHLE-Seite gehört einer KOMPONENTE - sie kommt als
             Hash-Parameter, damit jedes Lesezeichen dieselbe wieder öffnet. */}
         {sub === 'befehle' && (
@@ -528,6 +533,10 @@ export function AnlageSeite({
   // wirklich um? Eigener Abruf (der Herzschlag-Block kommt unabhängig vom
   // Rücklese-Block), fail-soft - null = kein Beleg = Plan-Wortlaut.
   const [curtailStatus, setCurtailStatus] = useState<CurtailmentStatus | null>(null);
+  // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft wie jeder additive
+  // Abruf hier: ein älteres Backend kennt die Route nicht, dann gibt es die
+  // Kachel schlicht nicht.
+  const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [planFailed, setPlanFailed] = useState(false);
@@ -627,6 +636,14 @@ export function AnlageSeite({
       },
       () => {
         if (active) setCurtailStatus(null);
+      },
+    );
+    api.siteChargers(site.id).then(
+      (c) => {
+        if (active) setCharging(c);
+      },
+      () => {
+        if (active) setCharging(null);
       },
     );
     return () => {
@@ -1087,6 +1104,7 @@ export function AnlageSeite({
     slotMinutes: plan?.slotMinutes ?? 15,
     plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
     peak: peakView,
+    charging,
     weather: { nextHourTempC, why: weatherWhyText },
   });
   // Mobil-Umbau Stufe 2 (`<= 720px`): dieselben Kacheln minus die, deren

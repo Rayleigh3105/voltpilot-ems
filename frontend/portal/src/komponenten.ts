@@ -395,7 +395,18 @@ export function componentLabel(
 }
 
 /** One plain-German line describing a component's function. */
-function componentSummary(role: ComponentRole, control: boolean, primary: boolean): string {
+function componentSummary(
+  role: ComponentRole,
+  control: boolean,
+  primary: boolean,
+  entityType?: string | null,
+): string {
+  // Ein Ladepunkt ist zwar ein Verbraucher, aber „Schaltbar per Regel" wäre
+  // über ihn eine Falschaussage: seine Leistung verteilt das Lastmanagement
+  // auf der Box, nicht eine Regel (Lastmanagement Stufe 3).
+  if (entityType === 'ev-charger') {
+    return 'Ladepunkt — die Ladeleistung verteilt das Lastmanagement';
+  }
   switch (role) {
     case 'pv':
       return 'Erzeugt Solarstrom';
@@ -1096,7 +1107,7 @@ export function plantModel(
       derivedLabel: componentLabel(null, role, e.typeLabel),
       renameable: true,
       role,
-      summary: componentSummary(role, control, primary),
+      summary: componentSummary(role, control, primary, e.entityType),
       deviceIds: [],
       provenance: null,
       reading: orphaned
