@@ -83,7 +83,8 @@ class ComponentAdoptionWiringTest {
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
             .withUserConfiguration(Nachbarn.class, ComponentAdoptionService.class,
-                    ComponentAdoptionRunner.class, ComponentsSchedulingConfig.class);
+                    ComponentRebindService.class, ComponentAdoptionRunner.class,
+                    ComponentsSchedulingConfig.class);
 
     /**
      * Fällt gegen ein fehlendes {@code @Autowired} an einem der beiden
@@ -96,6 +97,7 @@ class ComponentAdoptionWiringTest {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(ComponentAdoptionService.class);
+                    assertThat(context).hasSingleBean(ComponentRebindService.class);
                     assertThat(context).hasSingleBean(ComponentAdoptionRunner.class);
                     assertThat(context).hasSingleBean(ComponentsSchedulingConfig.class);
                 });

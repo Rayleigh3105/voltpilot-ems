@@ -396,6 +396,136 @@ class ComponentAdoptionApiTest {
      * Fronius hinter EINER IP (Unit 1 und 2), Netzmessung über den CT des Deye
      * (also KEIN eigener Netz-Zähler).
      */
+    /**
+     * DIE HEILUNG (Anlage Pilsting/Herzogau, Update edge-2026.08.5 -&gt; .10):
+     * dieselben Wechselrichter melden sich unter neuen Quellen-Kennungen, beide
+     * Komponenten sind „nicht mehr mit einem gemeldeten Gerät verbunden" - und
+     * der nächste Takt verbindet sie wieder, ohne einen Klick und ohne dass
+     * jemand raten muss, welcher Fronius welcher ist.
+     */
+    @Test
+    void aBrokenBindingHealsItselfOnTheNextHeartbeatWithoutGuessing() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Herzogau-Anlage");
+        try {
+            UUID device = claim(customer, site, "edge-herzogau-1");
+            saveBattery(customer, site);
+            setAuthority(site, ComponentAuthority.BOX);
+            heartbeat(site, device, fullReport());
+            assertThat(adoptAsTenant(site).adopted()).isTrue();
+
+            String wr1 = componentIdOfSource(site, customer, "src-fronius-1");
+            String wr2 = componentIdOfSource(site, customer, "src-fronius-2");
+
+            // Das Update: dieselben Geräte, neue Kennungen.
+            heartbeat(site, device, reportWithRenamedSourceIds());
+
+            // Der Riss ist echt: beide Pins zeigen ins Leere.
+            assertThat(orphanedSourceIds(site, customer))
+                    .as("beide Komponenten haben ihre Bindung verloren")
+                    .containsExactlyInAnyOrder("src-fronius-1", "src-fronius-2");
+
+            // Der getaktete Abgleich heilt sie.
+            ComponentAdoptionRunner.RebindSummary healed = runner.heal();
+            assertThat(healed.rebound()).isEqualTo(2);
+            assertThat(healed.failed()).isZero();
+
+            // Und zwar JEDE an IHR eigenes Gerät: die zwei Einheiten hinter
+            // derselben IP werden über die Unit-Id auseinandergehalten.
+            assertThat(componentIdOfSource(site, customer, "src-tdaejmjs")).isEqualTo(wr1);
+            assertThat(componentIdOfSource(site, customer, "src-67w4nbhh")).isEqualTo(wr2);
+            assertThat(orphanedSourceIds(site, customer))
+                    .as("keine verwaiste Bindung mehr").isEmpty();
+
+            // Kein zweiter Lauf tut noch etwas - eine lebende Bindung wird nie
+            // angefasst.
+            assertThat(runner.heal().rebound()).isZero();
+
+            // Und der Pin reist im Push mit, damit auch die Box wieder richtig
+            // zuordnet.
+            JsonNode push = pushJson(site);
+            assertThat(edgeSourceIdsOfPush(push))
+                    .contains("src-tdaejmjs", "src-67w4nbhh");
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Was NICHT entschieden werden kann, wird nicht entschieden: melden sich
+     * zwei ununterscheidbare Geräte unter neuen Kennungen, bleibt die Zuordnung
+     * verwaist und sichtbar - lieber der manuelle Weg als ein Geister-Erzeuger.
+     */
+    @Test
+    void anAmbiguousRenameIsLeftToTheOperator() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Mehrdeutig-Anlage");
+        try {
+            UUID device = claim(customer, site, "edge-herzogau-2");
+            saveBattery(customer, site);
+            setAuthority(site, ComponentAuthority.BOX);
+            heartbeat(site, device, fullReport());
+            assertThat(adoptAsTenant(site).adopted()).isTrue();
+
+            // Beide Fronius melden sich neu - und beide auf DERSELBEN Unit-Id.
+            heartbeat(site, device, reportWithRenamedSourceIds()
+                    .replace("\"unit_id\":2", "\"unit_id\":1"));
+
+            assertThat(runner.heal().rebound())
+                    .as("eine unentscheidbare Zuordnung wird nie geraten").isZero();
+            assertThat(orphanedSourceIds(site, customer))
+                    .containsExactlyInAnyOrder("src-fronius-1", "src-fronius-2");
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /** Die Komponente, die an diese Quellen-Kennung gepinnt ist. */
+    private String componentIdOfSource(UUID site, String token, String edgeSourceId)
+            throws Exception {
+        for (JsonNode row : getJson("/api/v1/sites/" + site + "/components", token)
+                .get("components")) {
+            if (edgeSourceId.equals(row.path("edgeSourceId").asText(null))) {
+                return row.get("id").asText();
+            }
+        }
+        return null;
+    }
+
+    /** Die Pins, zu denen die Box KEIN Gerät (mehr) meldet. */
+    private List<String> orphanedSourceIds(UUID site, String token) throws Exception {
+        java.util.Set<String> reported = new java.util.LinkedHashSet<>();
+        TenantContext.set(UUID.fromString(TENANT_A));
+        try {
+            for (var row : observed.forSite(site)) {
+                if ("local".equals(row.source()) && row.entityId() != null) {
+                    reported.add(row.entityId().replaceFirst("^local:", ""));
+                }
+            }
+        } finally {
+            TenantContext.clear();
+        }
+        List<String> orphans = new java.util.ArrayList<>();
+        for (JsonNode row : getJson("/api/v1/sites/" + site + "/components", token)
+                .get("components")) {
+            String pin = row.path("edgeSourceId").asText(null);
+            if (pin != null && !pin.isBlank() && !reported.contains(pin)) {
+                orphans.add(pin);
+            }
+        }
+        return orphans;
+    }
+
+    private static List<String> edgeSourceIdsOfPush(JsonNode push) {
+        List<String> out = new java.util.ArrayList<>();
+        for (JsonNode e : push.get("entities")) {
+            if (e.hasNonNull("edge_source_id")) {
+                out.add(e.get("edge_source_id").asText());
+            }
+        }
+        return out;
+    }
+
     private static String fullReport() {
         return """
                 [{"id":"inverter","kind":"inverter","brand":"deye","model":"sun-30k-sg01hp3",
@@ -412,6 +542,18 @@ class ComponentAdoptionApiTest {
                   "family":"sunspec_live","communication":"fronius_sunspec",
                   "connection":{"ip":"192.168.210.40","port":502,"unit_id":2},
                   "interval_s":30,"capacity_kwp":27,"registry_unit_id":"SEE966831669442"}]""";
+    }
+
+    /**
+     * DERSELBE Bericht, aber die beiden Fronius melden sich unter NEUEN
+     * Quellen-Kennungen - der Live-Fall Pilsting/Herzogau nach dem Update
+     * edge-2026.08.5 -&gt; .10: dieselben Wechselrichter, dieselbe IP, dieselben
+     * Unit-Ids, nur die Kennung wurde neu vergeben.
+     */
+    private static String reportWithRenamedSourceIds() {
+        return fullReport()
+                .replace("src-fronius-1", "src-tdaejmjs")
+                .replace("src-fronius-2", "src-67w4nbhh");
     }
 
     /**

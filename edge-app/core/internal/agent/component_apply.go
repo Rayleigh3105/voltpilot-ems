@@ -110,7 +110,16 @@ func (a *Agent) applyComponentsFromRegistry(reg entities.Registry) {
 		return
 	}
 
-	plan, err := componentapply.Derive(reg, a.invCat, time.Now())
+	// Die aktuell laufende Geräteliste reist MIT in die Ableitung: ein Gerät,
+	// das diese Box schon fährt, behält seine lokale Kennung, statt eine neue
+	// zu bekommen (componentapply, vierte Regel). Ohne das riss eine Übernahme
+	// die Portal-Pins jeder Anlage auf, deren Quellen vor den deterministischen
+	// Kennungen entstanden sind.
+	a.srcMu.Lock()
+	running := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+
+	plan, err := componentapply.Derive(reg, a.invCat, running, time.Now())
 	if err != nil {
 		if errors.Is(err, componentapply.ErrNoConfiguration) {
 			// The plant is portal-managed but the portal has not described a

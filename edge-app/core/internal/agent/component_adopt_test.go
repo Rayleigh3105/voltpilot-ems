@@ -163,7 +163,7 @@ func TestTakeoverOfARunningPlantChangesNothing(t *testing.T) {
 	push := cloudPushFromReport(report)
 
 	// 3 · Was die Box daraus ableitet.
-	plan, err := componentapply.Derive(push, inverter.DefaultCatalog(), time.Now())
+	plan, err := componentapply.Derive(push, inverter.DefaultCatalog(), a.ListSources(), time.Now())
 	if err != nil {
 		t.Fatalf("das übernommene Soll ist auf der Box nicht anwendbar: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestTakeoverKeepsEveryFieldOfTheRunningConfiguration(t *testing.T) {
 	istSources := a.ListSources()
 
 	plan, err := componentapply.Derive(cloudPushFromReport(a.localSetupSummary()),
-		inverter.DefaultCatalog(), time.Now())
+		inverter.DefaultCatalog(), a.ListSources(), time.Now())
 	if err != nil {
 		t.Fatalf("Derive: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestTakeoverKeepsTwoInvertersBehindOneAddressApart(t *testing.T) {
 		t.Fatal("Aufbau: beide Fronius haben dieselbe Kennung")
 	}
 	plan, err := componentapply.Derive(cloudPushFromReport(a.localSetupSummary()),
-		inverter.DefaultCatalog(), time.Now())
+		inverter.DefaultCatalog(), a.ListSources(), time.Now())
 	if err != nil {
 		t.Fatalf("Derive: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestTakeoverInventsNoGridMeter(t *testing.T) {
 		}
 	}
 	plan, err := componentapply.Derive(cloudPushFromReport(a.localSetupSummary()),
-		inverter.DefaultCatalog(), time.Now())
+		inverter.DefaultCatalog(), a.ListSources(), time.Now())
 	if err != nil {
 		t.Fatalf("Derive: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestAnOlderReportCarriesNoConnectionAndIsRecognisable(t *testing.T) {
 	// Applier gar kein Gerät - das ist die Sicherung, falls die Cloud-Regel je
 	// versagt.
 	push := cloudPushFromReport(older)
-	if _, err := componentapply.Derive(push, inverter.DefaultCatalog(), time.Now()); err == nil {
+	if _, err := componentapply.Derive(push, inverter.DefaultCatalog(), a.ListSources(), time.Now()); err == nil {
 		t.Fatal("ein Soll ohne jede Verbindung muss abgelehnt werden, nicht angewandt")
 	}
 }
