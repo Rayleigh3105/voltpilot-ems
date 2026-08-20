@@ -234,7 +234,7 @@ func TestMirrorServesBusFedDataAndTogglesViaAPI(t *testing.T) {
 
 	// --- toggle off via the REAL /api/mirror endpoint: listener closes; the
 	// retained want set clears (the poll drops learned blocks).
-	srv := httptest.NewServer(web.Handler(a.State, a, a, a, a.History(), a, a, a, a, a, a, a, a))
+	srv := httptest.NewServer(web.Handler(a.State, a, a, a, a.History(), a, a, a, a, a, a, a, a, a))
 	defer srv.Close()
 	resp, err := http.Post(srv.URL+"/api/mirror", "application/json", strings.NewReader(`{"enabled":false}`))
 	if err != nil {

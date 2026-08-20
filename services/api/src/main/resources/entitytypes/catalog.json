@@ -137,6 +137,37 @@
       ]
     },
     {
+      "type": "ev-charger",
+      "certification_status": "simulator_only",
+      "certified_at": null,
+      "certification_notes": "Nur am OCPP-Simulator nachgewiesen (internal/ocppsim + das Rig): Budget wird an den simulierten Zaehlerwerten gehalten, der Ausfall faellt auf das hinterlegte Sicherheitsprofil zurueck. Der Flip auf zertifiziert braucht EINE beaufsichtigte Bench-Session je Saeulen-TYP (CONTROL-BENCH.md, die Deye-/go-e-Disziplin): nimmt die Firmware Profile an UND um, wirkt der duration-Ablauf, ueberlebt das Profil einen Neustart, akzeptiert sie Grenzen in Watt.",
+      "label": "Ladepunkt",
+      "category": "consumer",
+      "controllable": true,
+      "composed": false,
+      "default_failsafe": "release",
+      "default_measure": [
+        {
+          "channel": "power_kw",
+          "unit": "kW"
+        },
+        {
+          "channel": "energy_kwh",
+          "unit": "kWh"
+        },
+        {
+          "channel": "soc_pct",
+          "unit": "%"
+        }
+      ],
+      "default_actuate": [
+        {
+          "command": "limit_kw",
+          "min": 0
+        }
+      ]
+    },
+    {
       "type": "heating-rod",
       "certification_status": "simulator_only",
       "certified_at": null,

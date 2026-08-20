@@ -2932,6 +2932,32 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   erfundenes „Invalid" hielte ein Kundenauto aus einem Grund an, den wir
   erfunden haben. Sitzungen sind BETRIEBS-, keine Abrechnungsdaten.
 
+## Die `:8484`-Ladepunkt-Flaeche ist die EINZIGE bedingte Accordion-Gruppe
+
+- **⚠ Die Gruppe „Ladepunkte" wird `hidden` AUSGELIEFERT und von `ocpp.js`
+  eingeblendet**, sobald die Box wirklich Ladepunkte annimmt. Die VIER festen
+  Gruppen sind die Zusage der Seite („eine fertig eingerichtete gesunde Anlage
+  zeigt vier ruhige Zeilen") — eine fuenfte Zeile auf jeder Anlage OHNE
+  Ladesaeulen waere genau das Rauschen, das der Umbau beseitigt hat.
+  `TestEinrichtenAccordionIsFourClosedGroups` zaehlt sie deshalb heraus und
+  nagelt zugleich fest, dass sie versteckt ausgeliefert wird.
+- **⚠ Der Host im Kopier-Feld kommt aus der ADRESSZEILE des Browsers, der Port
+  von der Box.** Die Box weiss nicht, unter welchem Namen das LAN sie
+  erreicht; ein erfundener Hostname auf einem Kopier-Feld ist schlimmer als
+  keiner. Der Port ist dagegen die eigene Einstellung der Box.
+  (`VPOcpp.endpointFor`, rein + getestet.)
+- **READ + SETUP, kein Befehlspfad.** Es gibt bewusst KEINE Route, die eine
+  Ladegrenze setzt — Grenzen kommen allein aus dem Lastmanagement, damit diese
+  Flaeche nie ein zweiter, unarbitrierter Schreiber auf eine Kundenanlage wird.
+  `TestThereIsNoRouteThatCommandsAChargingLimit` ist der strukturelle Waechter.
+- Jede Ableitung liegt rein in `window.VPOcpp` (`jstest/ui.test.js`): die
+  Budget-Zeile behauptet nie einen Messwert, den niemand gemeldet hat; die
+  Ausfall-Zeile zeigt die RECHNUNG statt einer nackten Zahl und wiederholt
+  ohne berechenbaren Wert den GRUND; eine getrennte Saeule nennt die FOLGE
+  („behaelt ihr Sicherheitsprofil"), nicht nur die Tatsache; und das
+  Entfernen sagt vorher, was BLEIBT.
+- **⚠ `static/*` ist `//go:embed`-t — nach jeder Aenderung den Core neu bauen.**
+
 ## OCPP-Executor: ZWEI Tore, und das eine schuetzt ohne das andere (`agent/ocpp.go`)
 
 Die Verdrahtung zwischen der reinen Verteilung (`internal/lastmgmt`) und den

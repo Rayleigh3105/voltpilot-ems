@@ -564,3 +564,105 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 // the address the browser reached it on - inventing a hostname here would put
 // a wrong string on a copy field.
 func (a *Agent) ocppHost() string { return "" }
+
+// --- web.OcppController: the :8484 "Ladepunkte" surface ---
+//
+// READ + SETUP only. There is deliberately no method here that commands a
+// charging limit: limits come from the load management alone, so the surface
+// can never become a second, unarbitrated writer to a customer's charge point.
+
+// OcppView is everything the page renders (nil = the feature is off).
+func (a *Agent) OcppView() *state.OcppInfo { return a.ocppInfo() }
+
+// OcppChargers is the persisted allowlist.
+func (a *Agent) OcppChargers() []csms.Charger {
+	if a.ocpp == nil {
+		return []csms.Charger{}
+	}
+	return a.ocpp.srv.List()
+}
+
+// OcppSettings is the site's load-management configuration.
+func (a *Agent) OcppSettings() lastmgmt.Settings {
+	if a.ocpp == nil {
+		return lastmgmt.Settings{}.WithDefaults()
+	}
+	return a.ocpp.currentSettings()
+}
+
+// OcppAddCharger registers a ChargePointId so a station carrying it is
+// admitted (the "Säule anbinden" step).
+func (a *Agent) OcppAddCharger(req csms.AddRequest) (csms.Charger, error) {
+	if a.ocpp == nil {
+		return csms.Charger{}, csms.ErrDisabled
+	}
+	c, err := a.ocpp.srv.Add(req)
+	if err == nil {
+		a.publishOcppState()
+	}
+	return c, err
+}
+
+// OcppUpdateCharger edits the operator-editable fields (PATCH semantics).
+func (a *Agent) OcppUpdateCharger(id string, req csms.UpdateRequest) (csms.Charger, error) {
+	if a.ocpp == nil {
+		return csms.Charger{}, csms.ErrDisabled
+	}
+	c, err := a.ocpp.srv.Update(id, req)
+	if err == nil {
+		a.ocppForget(id)
+		a.publishOcppState()
+	}
+	return c, err
+}
+
+// OcppRemoveCharger revokes a station: it is dropped from the allowlist and
+// disconnected, and a reconnect is refused.
+func (a *Agent) OcppRemoveCharger(id string) error {
+	if a.ocpp == nil {
+		return csms.ErrDisabled
+	}
+	err := a.ocpp.srv.Remove(id)
+	if err == nil {
+		a.ocppForget(id)
+		a.publishOcppState()
+	}
+	return err
+}
+
+// OcppSaveSettings stores the site's load-management configuration.
+//
+// ⚠ It FORGETS every commissioning fingerprint: the site limits feed the two
+// permanent profiles, so a changed connection limit must be re-deposited at
+// every station rather than waiting for the next reconnect. A safety default
+// nobody refreshed is a stale promise.
+func (a *Agent) OcppSaveSettings(req lastmgmt.SettingsRequest) (lastmgmt.Settings, error) {
+	if a.ocpp == nil {
+		return lastmgmt.Settings{}, csms.ErrDisabled
+	}
+	rt := a.ocpp
+	rt.mu.Lock()
+	next, err := rt.settings.Apply(req)
+	if err != nil {
+		rt.mu.Unlock()
+		return lastmgmt.Settings{}, err
+	}
+	rt.settings = next
+	rt.commissioned = map[string]string{}
+	rt.mu.Unlock()
+
+	if err := rt.store.Save(next); err != nil {
+		return lastmgmt.Settings{}, err
+	}
+	a.publishOcppState()
+	return next, nil
+}
+
+// ocppForget drops a station's commissioning fingerprint so the next pass
+// sets it up again with the current numbers.
+func (a *Agent) ocppForget(id string) {
+	rt := a.ocpp
+	rt.mu.Lock()
+	delete(rt.commissioned, id)
+	rt.mu.Unlock()
+}
