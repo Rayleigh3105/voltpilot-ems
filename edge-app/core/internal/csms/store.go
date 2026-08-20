@@ -116,10 +116,20 @@ func (s *Store) Save(list []Charger, nextTransactionID int) error {
 // endpoint + the Kennung, the operator configures it on the station, the
 // station then announces itself).
 type AddRequest struct {
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-	Priority bool   `json:"priority"`
+	ID         string  `json:"id"`
+	Label      string  `json:"label"`
+	Priority   bool    `json:"priority"`
+	RatedKw    float64 `json:"rated_kw,omitempty"`
+	MinKw      float64 `json:"min_kw,omitempty"`
+	Connectors int     `json:"connectors,omitempty"`
 }
+
+// maxRatedKw bounds an operator-declared station rating. 1000 kW per connector
+// is well beyond any charge point that exists; the bound only catches a typo.
+const maxRatedKw = 1000
+
+// maxConnectors bounds the declared plug count of ONE station.
+const maxConnectors = 32
 
 // NormalizeAdd validates + normalises an add request against the existing
 // list. It never mutates; the caller stores the returned Charger.
@@ -146,7 +156,23 @@ func NormalizeAdd(req AddRequest, existing []Charger, now time.Time) (Charger, e
 	if len([]rune(label)) > 120 {
 		return Charger{}, invalid("Der Name der Ladesäule ist zu lang (höchstens 120 Zeichen).")
 	}
-	return Charger{ID: id, Label: label, Priority: req.Priority, AddedAt: now.UTC()}, nil
+	if req.RatedKw < 0 || req.RatedKw > maxRatedKw || req.RatedKw != req.RatedKw {
+		return Charger{}, invalid("Die Nennleistung je Stecker muss zwischen 0 und %d kW liegen.", maxRatedKw)
+	}
+	if req.MinKw < 0 || req.MinKw > maxRatedKw || req.MinKw != req.MinKw {
+		return Charger{}, invalid("Die Mindestleistung muss zwischen 0 und %d kW liegen.", maxRatedKw)
+	}
+	if req.RatedKw > 0 && req.MinKw > req.RatedKw {
+		return Charger{}, invalid("Die Mindestleistung (%g kW) ist größer als die Nennleistung je Stecker (%g kW).", req.MinKw, req.RatedKw)
+	}
+	if req.Connectors < 0 || req.Connectors > maxConnectors {
+		return Charger{}, invalid("Die Zahl der Stecker muss zwischen 0 und %d liegen (0 = von der Ladesäule übernehmen).", maxConnectors)
+	}
+	return Charger{
+		ID: id, Label: label, Priority: req.Priority,
+		RatedKw: req.RatedKw, MinKw: req.MinKw, Connectors: req.Connectors,
+		AddedAt: now.UTC(),
+	}, nil
 }
 
 // SortChargers orders an allowlist deterministically by id.
