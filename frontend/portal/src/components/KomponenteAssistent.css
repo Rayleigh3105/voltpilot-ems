@@ -684,3 +684,71 @@
   border-radius: 3px;
   padding: 0 1px;
 }
+
+/* --- Die HEBEL des Verbindungstests (NACHTRAG 2) --------------------------
+ *
+ * Sie stehen unter dem Ergebnis und sind bewusst RUHIG gesetzt: sie schlagen
+ * einen naechsten Versuch vor, sie melden keinen zweiten Fehler.
+ */
+
+.vp-assist-hebel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  background: rgba(148, 163, 184, 0.08);
+  min-width: 0;
+}
+
+.vp-assist-hebel-intro {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.vp-assist-hebel ul {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-assist-hebel li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  min-width: 0;
+}
+
+.vp-assist-hebel li > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  /* Der Text darf schrumpfen, der Knopf nicht - sonst schiebt eine lange
+     Begruendung ihn am Telefon ueber den Rand. */
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.vp-assist-hebel li strong {
+  font-size: 0.88rem;
+}
+
+.vp-assist-hebel li span {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
+.vp-assist-hebel-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}

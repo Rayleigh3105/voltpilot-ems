@@ -313,6 +313,17 @@ export type TestErgebnis = {
   text: string;
   messwerte: TestMesswert[];
   /**
+   * Die BELEGE, aus denen die Hebel entstehen (`testHebel.ts`) - maschinenlesbar
+   * durchgereicht, nie neu abgeleitet.
+   *
+   * ⚠ Sie stehen NEBEN `text`/`regelText`, weil eine Fläche niemals einen
+   * deutschen Satz nach Stichworten durchsuchen soll (die Haus-Regel, an der
+   * schon `target_verdict` neben `state` hängt). Beide sind absent, wo der
+   * Server nichts gesagt hat - dann gibt es auch keinen Hebel.
+   */
+  errorCode?: string | null;
+  befund?: ProbeBefund | null;
+  /**
    * Die verletzte Regel im Klartext - nur bei einem Fehlschlag, dessen Befund
    * einen Kanal NENNT. Ohne Befund steht hier nichts: eine erfundene Erklärung
    * wäre schlimmer als keine.
@@ -404,6 +415,7 @@ export function testErgebnis(antwort: ProbeAntwort | null | undefined): TestErge
       zustand: 'fehlgeschlagen',
       text: testFehlerText(antwort.errorCode, antwort.message),
       messwerte: [],
+      errorCode: antwort.errorCode,
     };
   }
   const line = antwort.results?.[0];
@@ -418,6 +430,8 @@ export function testErgebnis(antwort: ProbeAntwort | null | undefined): TestErge
       zustand: 'fehlgeschlagen',
       text: testFehlerText(line?.errorCode, line?.message ?? antwort.message),
       messwerte: rows,
+      errorCode: line?.errorCode ?? null,
+      befund,
       regelText: befund ? regelText(befund, rows.length > 0) : undefined,
       override: befund ? overrideFuer(befund) : undefined,
     };

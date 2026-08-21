@@ -14,6 +14,7 @@ import {
 import { ConfirmDialog } from './ConfirmDialog';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
+import { HEBEL_HINWEIS, HEBEL_INTRO, SKALIERUNG_X10, hebel } from '../testHebel';
 // Der Assistent bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
 // auf den Import des Wirts zu verlassen liefert einem zweiten Wirt einen
 // ungestylten Assistenten - Türen als nackte Knöpfe, die Schritte als <ol>.
@@ -142,6 +143,10 @@ export function KomponenteHinzufuegenDrawer({
   const suche = useMemo(() => modellSuche(tuerTemplates, suchtext), [tuerTemplates, suchtext]);
   const models = brands.find((b) => b.brand === brand)?.models ?? [];
   const fields = felder(template);
+  // ⚠ Die HEBEL entstehen aus BELEGEN (Server-Fehlerklasse + Befund) und aus
+  // dem, was die Vorlage strukturell hergibt - nie aus einer eigenen Diagnose
+  // der gelesenen Zahlen. Die ganze Regel liegt rein in `testHebel.ts`.
+  const hebelListe = hebel({ ergebnis: testText, template, templates, verbindung });
   const fehlend = fehlendeFelder(template, verbindung);
 
   function waehleTemplate(t: ComponentTemplate) {
@@ -157,6 +162,35 @@ export function KomponenteHinzufuegenDrawer({
     setTestText(null);
     setOhneKanal(null);
     setSchritt(2);
+  }
+
+  /**
+   * Ein Hebel-Klick. ⚠ Er ÄNDERT so wenig wie möglich: die Adress-Hebel
+   * springen ihr Feld nur AN (der Mensch weiß, was dort stehen muss, VoltPilot
+   * nicht), und nur die Skalierung setzt wirklich einen Wert - sie hat genau
+   * eine sinnvolle Alternative.
+   */
+  function hebelKlick(h: { id: string; feld: string | null }) {
+    if (h.id === 'modell') {
+      // Zurück zur Modellwahl, mit der Marke schon gewählt - die Alternativen
+      // stehen damit sofort da.
+      setBrand(template?.brand ?? null);
+      setSchritt(1);
+      return;
+    }
+    if (!h.feld) return;
+    if (h.id === 'skalierung') {
+      const f = fields.find((x) => x.key === h.feld);
+      if (f) setzeFeld(f, SKALIERUNG_X10);
+    }
+    // Anspringen: das Feld bekommt den Fokus, der Mensch sieht sofort, wo er ist.
+    window.setTimeout(() => {
+      const el = document.getElementById(`assist-${h.feld}`);
+      if (el instanceof HTMLElement) {
+        el.scrollIntoView({ block: 'center' });
+        el.focus();
+      }
+    }, 0);
   }
 
   function setzeFeld(field: TemplateField, value: unknown) {
@@ -497,6 +531,34 @@ export function KomponenteHinzufuegenDrawer({
                           ))}
                         </ul>
                       )}
+                    </div>
+                  )}
+                  {/* Die HEBEL (NACHTRAG 2): konkrete Wege statt eines
+                      Fließtexts. Sie erscheinen auch neben einem BESTANDENEN
+                      Test - der Faktor-10-Fall verletzt keine
+                      Plausibilitätsregel und käme sonst nie zur Sprache. */}
+                  {hebelListe.length > 0 && (
+                    <div className="vp-assist-hebel" data-testid="test-hebel">
+                      <p className="vp-assist-hebel-intro">{HEBEL_INTRO}</p>
+                      <ul>
+                        {hebelListe.map((h) => (
+                          <li key={h.id}>
+                            <div>
+                              <strong>{h.titel}</strong>
+                              <span>{h.satz}</span>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              data-testid={`hebel-${h.id}`}
+                              onClick={() => hebelKlick(h)}
+                            >
+                              {h.aktion}
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="vp-assist-hebel-note">{HEBEL_HINWEIS}</p>
                     </div>
                   )}
                   {/* Der Ausweg - NUR wenn der Server ihn als solchen ausweist.

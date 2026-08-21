@@ -22,6 +22,26 @@ const template = {
   ],
 };
 
+/** Dieselbe Marke MIT Skalierungs-Feld - der Hebel gibt es nur, wo es sie gibt. */
+const templateMitSkala = {
+  ...template,
+  transportSchema: [
+    ...template.transportSchema,
+    {
+      key: 'power_scale', label: 'Leistungsskalierung', type: 'select', default: 0,
+      options: [{ value: 0, label: 'Automatisch' }, { value: 10, label: 'Dekawatt (×10)' }],
+    },
+  ],
+};
+
+/** Das Geschwister-Modell, das den Modell-Hebel überhaupt erst möglich macht. */
+const geschwisterTemplate = {
+  ...template,
+  templateRef: 'builtin:deye:sun-25k-sg02hp3-eu-am3',
+  model: 'sun-25k-sg02hp3-eu-am3',
+  modelLabel: 'SUN-25K-SG02HP3-EU-AM3',
+};
+
 const componentTemplates = vi.fn();
 const siteComponents = vi.fn();
 const testComponentConnection = vi.fn();
@@ -561,5 +581,81 @@ describe('die Modell-Suche im Assistenten', () => {
     expect(screen.queryByTestId('suche-treffer')).toBeNull();
     expect(screen.queryByTestId('suche-zaehler')).toBeNull();
     expect(screen.queryByTestId('suche-leer')).toBeNull();
+  });
+});
+
+/*
+  NACHTRAG 2 (Captain-Befund 21.08.2026): konkrete HEBEL statt eines
+  Fließtexts. Sie entstehen aus Belegen und aus dem, was die Vorlage hergibt.
+*/
+describe('die Hebel des Verbindungstests', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    componentTemplates.mockResolvedValue([templateMitSkala, geschwisterTemplate]);
+    chargingConfig.mockResolvedValue({
+      gridLimitKw: null, priorityChargePointIds: [], chargePoints: [],
+    });
+    siteChargers.mockResolvedValue({ budget: null, chargers: [] });
+    siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    matchComponent.mockResolvedValue(undefined);
+  });
+
+  it('bietet beim unmöglichen Messwert den MODELL-Wechsel und führt dorthin zurück', async () => {
+    testComponentConnection.mockResolvedValue({
+      results: [{
+        id: 'verbindung', ok: false, errorCode: 'implausible',
+        reading: { pvKw: 6.1 },
+        finding: { channel: 'soc_pct', rule: 'out_of_range', raw: 12700, value: 1270 },
+      }],
+    });
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByText('Verbindung testen'));
+
+    const knopf = await screen.findByTestId('hebel-modell');
+    fireEvent.click(knopf);
+    // Zurück in der Modellwahl - MIT gewählter Marke, die Alternativen stehen da.
+    const modell = await screen.findByLabelText('Modell');
+    expect([...(modell as HTMLSelectElement).options].map((o) => o.textContent))
+      .toContain('SUN-25K-SG02HP3-EU-AM3');
+  });
+
+  it('springt bei „nichts antwortet" die Seriennummer an, ohne sie zu ändern', async () => {
+    testComponentConnection.mockResolvedValue({ errorCode: 'unreachable' });
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByText('Verbindung testen'));
+
+    fireEvent.click(await screen.findByTestId('hebel-logger'));
+    await waitFor(() =>
+      expect((screen.getByLabelText(/Seriennummer/) as HTMLInputElement).value)
+        .toBe('2985159064'));
+  });
+
+  it('bietet die Skalierung auch bei einem BESTANDENEN Test - und stellt sie', async () => {
+    testComponentConnection.mockResolvedValue({
+      results: [{ id: 'verbindung', ok: true, reading: { pvKw: 300, socPct: 87 } }],
+    });
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByText('Verbindung testen'));
+
+    fireEvent.click(await screen.findByTestId('hebel-skalierung'));
+    expect((screen.getByLabelText('Leistungsskalierung') as HTMLSelectElement).value).toBe('10');
+    // ⚠ Und der Beleg ist damit entwertet: „Weiter" ist wieder zu, bis erneut
+    // getestet wurde - genau das sagt der Hinweis unter den Hebeln.
+    expect((screen.getByText('Weiter').closest('button') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('bietet GAR KEINEN Hebel, wo es keinen belegten gibt', async () => {
+    testComponentConnection.mockResolvedValue({
+      results: [{ id: 'verbindung', ok: true, reading: { pvKw: 12.4, socPct: 87 } }],
+    });
+    componentTemplates.mockResolvedValue([template]);
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByText('Verbindung testen'));
+    await screen.findByText(/Das Gerät antwortet/);
+    expect(screen.queryByTestId('test-hebel')).toBeNull();
   });
 });
