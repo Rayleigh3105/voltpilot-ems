@@ -337,7 +337,9 @@ describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
 
     const row = screen.getByText('Stromtarif').closest('li') as HTMLElement;
     fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
-    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
+    // Seit dem Picker-System ist die Tarifart der Haus-Picker, kein `<select>`.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Stromtarif' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Fest (ct/kWh)' }));
     fireEvent.change(screen.getByLabelText('Arbeitspreis (all-in, brutto) (ct/kWh)'), { target: { value: '32,5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
 
@@ -400,7 +402,9 @@ describe('Einstellungen · Strompreis & Vergütung (E1)', () => {
     fireEvent.click(within(row).getByRole('button', { name: /Bearbeiten/ }));
     expect(screen.getByLabelText('Aufschlag auf den Börsenpreis (gesamt, ct/kWh)')).toHaveValue('18');
 
-    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
+    // Seit dem Picker-System ist die Tarifart der Haus-Picker, kein `<select>`.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Stromtarif' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Fest (ct/kWh)' }));
     // Vor E2 stand hier „18" unter dem Namen des Arbeitspreises - der Bezugspreis,
     // mit dem der Optimierer PLANT, wäre damit still verstellt worden.
     expect(screen.getByLabelText('Arbeitspreis (all-in, brutto) (ct/kWh)')).toHaveValue('');

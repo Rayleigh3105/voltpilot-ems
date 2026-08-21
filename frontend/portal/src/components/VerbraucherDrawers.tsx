@@ -22,6 +22,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { VpPicker } from './VpPicker';
+import { VpTimePicker } from './VpTimePicker';
 import type { EntityStrategy, Site } from '../api';
 import { ApiError } from '../api';
 import { consumersApi, type CreateConsumerBody } from '../consumers/consumersApi';
@@ -125,39 +127,36 @@ export function VerbraucherAnlegenDrawer({
         </div>
       ) : (
         <div className="vp-vb-step">
-          <div className="vp-vb-field">
-            <label htmlFor="vb-source">Verbindung</label>
-            <select
-              id="vb-source"
-              value={edgeSourceId}
-              onChange={(e) => setEdgeSourceId(e.target.value)}
-            >
-              <option value="">Jetzt noch nicht verbinden (Entwurf)</option>
-              {options.reportedSources.map((s) => (
-                <option key={s.sourceId} value={s.sourceId}>
-                  {s.label ?? s.sourceId}
-                  {s.brand ? ` · ${s.brand}` : ''}
-                  {s.measuresPower === true ? ' · misst Leistung' : ''}
-                  {s.measuresPower === false
-                    ? ' · ohne Leistungsmessung (Energie wird angenommen)' : ''}
-                </option>
-              ))}
-            </select>
-            <span className="vp-vb-hint">
-              Ein gefundenes Gerät auswählen oder ohne Verbindung als Entwurf anlegen.
-            </span>
-          </div>
+          <VpPicker
+            id="vb-source"
+            className="vp-vb-field"
+            label="Verbindung"
+            options={[
+              { value: '', label: 'Jetzt noch nicht verbinden (Entwurf)' },
+              ...options.reportedSources.map((s) => ({
+                value: s.sourceId,
+                label: s.label ?? s.sourceId,
+                sub: [
+                  s.brand,
+                  s.measuresPower === true ? 'misst Leistung' : null,
+                  s.measuresPower === false
+                    ? 'ohne Leistungsmessung (Energie wird angenommen)' : null,
+                ].filter(Boolean).join(' · ') || undefined,
+              })),
+            ]}
+            value={edgeSourceId}
+            onChange={setEdgeSourceId}
+            hint="Ein gefundenes Gerät auswählen oder ohne Verbindung als Entwurf anlegen."
+          />
 
-          <div className="vp-vb-field">
-            <label htmlFor="vb-type">Was ist das?</label>
-            <select id="vb-type" value={type} onChange={(e) => setType(e.target.value)}>
-              {options.types.map((t) => (
-                <option key={t.type} value={t.type}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <VpPicker
+            id="vb-type"
+            className="vp-vb-field"
+            label="Was ist das?"
+            options={options.types.map((t) => ({ value: t.type, label: t.label }))}
+            value={type}
+            onChange={setType}
+          />
 
           <Input
             label="Name"
@@ -639,26 +638,22 @@ function ConditionsEditor({
         return (
           <div className="vp-vb-cond-row" key={i}>
             <div className="vp-vb-cond-line">
-              <label className="vp-vb-field">
-                <span>Signal</span>
-                <select
-                  value={c.signal}
-                  onChange={(e) => {
-                    const next = signals.find((s) => s.name === e.target.value);
-                    setRow(i, {
-                      signal: e.target.value,
-                      value: next?.valueType === 'boolean' ? true : 0,
-                      operator: next?.valueType === 'boolean' ? 'eq' : c.operator,
-                      resetValue: undefined,
-                      maxAgeS: undefined,
-                    });
-                  }}
-                >
-                  {signals.map((s) => (
-                    <option key={s.name} value={s.name}>{s.label}</option>
-                  ))}
-                </select>
-              </label>
+              <VpPicker
+                className="vp-vb-field"
+                label="Signal"
+                options={signals.map((s) => ({ value: s.name, label: s.label }))}
+                value={c.signal}
+                onChange={(v) => {
+                  const next = signals.find((s) => s.name === v);
+                  setRow(i, {
+                    signal: v,
+                    value: next?.valueType === 'boolean' ? true : 0,
+                    operator: next?.valueType === 'boolean' ? 'eq' : c.operator,
+                    resetValue: undefined,
+                    maxAgeS: undefined,
+                  });
+                }}
+              />
               {boolean ? (
                 <label className="vp-vb-choice">
                   <input
@@ -670,15 +665,18 @@ function ConditionsEditor({
                 </label>
               ) : (
                 <>
-                  <label className="vp-vb-field">
-                    <span>Vergleich</span>
-                    <select value={c.operator} onChange={(e) => setRow(i, { operator: e.target.value as ConditionDraft['operator'] })}>
-                      <option value="lt">unter</option>
-                      <option value="lte">höchstens</option>
-                      <option value="gt">über</option>
-                      <option value="gte">mindestens</option>
-                    </select>
-                  </label>
+                  <VpPicker
+                    className="vp-vb-field"
+                    label="Vergleich"
+                    options={[
+                      { value: 'lt', label: 'unter' },
+                      { value: 'lte', label: 'höchstens' },
+                      { value: 'gt', label: 'über' },
+                      { value: 'gte', label: 'mindestens' },
+                    ]}
+                    value={c.operator}
+                    onChange={(v) => setRow(i, { operator: v as ConditionDraft['operator'] })}
+                  />
                   <NumberField
                     label="Wert"
                     value={typeof c.value === 'number' ? c.value : 0}
@@ -761,22 +759,29 @@ function RecurrenceEditor({
     <div className="vp-vb-field">
       <label>{label}</label>
       <div className="vp-vb-row">
-        <label className="vp-vb-field">
-          <span>Tage</span>
-          <select value={rec.days} onChange={(e) => set({ days: e.target.value as ConsumerDraft['recurrence']['days'] })}>
-            <option value="daily">Täglich</option>
-            <option value="weekdays">Werktags</option>
-            <option value="weekend">Am Wochenende</option>
-          </select>
-        </label>
-        <label className="vp-vb-field">
-          <span>Von</span>
-          <input type="time" value={rec.from} onChange={(e) => set({ from: e.target.value })} />
-        </label>
-        <label className="vp-vb-field">
-          <span>Bis</span>
-          <input type="time" value={rec.to === '24:00' ? '00:00' : rec.to} onChange={(e) => set({ to: e.target.value })} />
-        </label>
+        <VpPicker
+          className="vp-vb-field"
+          label="Tage"
+          options={[
+            { value: 'daily', label: 'Täglich' },
+            { value: 'weekdays', label: 'Werktags' },
+            { value: 'weekend', label: 'Am Wochenende' },
+          ]}
+          value={rec.days}
+          onChange={(v) => set({ days: v as ConsumerDraft['recurrence']['days'] })}
+        />
+        <VpTimePicker
+          className="vp-vb-field"
+          label="Von"
+          value={rec.from}
+          onChange={(v) => set({ from: v })}
+        />
+        <VpTimePicker
+          className="vp-vb-field"
+          label="Bis"
+          value={rec.to === '24:00' ? '00:00' : rec.to}
+          onChange={(v) => set({ to: v })}
+        />
       </div>
     </div>
   );

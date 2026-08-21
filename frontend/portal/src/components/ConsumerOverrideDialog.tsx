@@ -8,6 +8,7 @@
  */
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
+import { VpPicker } from './VpPicker';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import {
   OVERRIDE_DURATIONS,
@@ -55,18 +56,17 @@ export function ConsumerOverrideDialog({
           ))}
         </ul>
         {needsDuration && (
-          <label className="vp-vb-duration">
-            <span>Wie lange?</span>
-            <select
-              value={minutes}
-              onChange={(e) => setMinutes(Number(e.target.value))}
-              aria-label="Dauer des Eingriffs"
-            >
-              {OVERRIDE_DURATIONS.map((d) => (
-                <option key={d.minutes} value={d.minutes}>{d.label}</option>
-              ))}
-            </select>
-          </label>
+          <VpPicker
+            className="vp-vb-duration"
+            label="Wie lange?"
+            ariaLabel="Dauer des Eingriffs"
+            options={OVERRIDE_DURATIONS.map((d) => ({
+              value: String(d.minutes),
+              label: d.label,
+            }))}
+            value={String(minutes)}
+            onChange={(v) => setMinutes(Number(v))}
+          />
         )}
         <div className="vp-vb-dialog-actions">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>Abbrechen</Button>

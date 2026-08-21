@@ -8,6 +8,7 @@ import { ApiError, type CreateSiteInput, type PlantKind, type Site, type TarifAr
 import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
 import { parsePremiumInput } from '../fleet';
 import { LocationMap } from './LocationMap';
+import { VpPicker } from './VpPicker';
 import { TariffFields } from './TariffFields';
 
 /**
@@ -129,34 +130,31 @@ export function CreateSiteDrawer({
           value={name}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
         />
+        <VpPicker
+          id="site-zone"
+          label="Gebotszone"
+          options={[
+            { value: 'DE-LU', label: 'DE-LU (Deutschland/Luxemburg)' },
+            { value: 'AT', label: 'AT (Österreich)' },
+            { value: 'CH', label: 'CH (Schweiz)' },
+          ]}
+          value={biddingZone}
+          onChange={setBiddingZone}
+        />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="site-zone" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Gebotszone
-          </label>
-          <select
-            id="site-zone"
-            className="vp-select"
-            value={biddingZone}
-            onChange={(e) => setBiddingZone(e.target.value)}
-          >
-            <option value="DE-LU">DE-LU (Deutschland/Luxemburg)</option>
-            <option value="AT">AT (Österreich)</option>
-            <option value="CH">CH (Schweiz)</option>
-          </select>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="site-plant-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            {VERAEUSSERUNGSFORM_LABEL}
-          </label>
-          <select
+          <VpPicker
             id="site-plant-kind"
-            className="vp-select"
+            label={VERAEUSSERUNGSFORM_LABEL}
+            options={[
+              { value: 'eigenverbrauch', label: 'Eigenverbrauch (Haushalt/Gewerbe)' },
+              {
+                value: 'direktvermarktung',
+                label: 'Direktvermarktung (Einspeisung am Markt)',
+              },
+            ]}
             value={plantKind}
-            onChange={(e) => setPlantKind(e.target.value as PlantKind)}
-          >
-            <option value="eigenverbrauch">Eigenverbrauch (Haushalt/Gewerbe)</option>
-            <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
-          </select>
+            onChange={(v) => setPlantKind(v as PlantKind)}
+          />
           <p className="vp-note" style={{ margin: 0 }}>
             {VERAEUSSERUNGSFORM_FRAGE} Sie bestimmt auch, wie Ihr Vorteil erzählt wird:
             „gespart" beim Eigenverbrauch, „mehr verdient" bei der Direktvermarktung.
@@ -187,18 +185,16 @@ export function CreateSiteDrawer({
           idPrefix="create-site"
         />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Netzladen des Speichers
-          </label>
-          <select
+          <VpPicker
             id="site-netzladen"
-            className="vp-select"
+            label="Netzladen des Speichers"
+            options={[
+              { value: 'verboten', label: 'Verboten - EEG-Anlage (nur Solarladen)' },
+              { value: 'erlaubt', label: 'Erlaubt - Speicher darf aus dem Netz laden' },
+            ]}
             value={netzladen ? 'erlaubt' : 'verboten'}
-            onChange={(e) => setNetzladen(e.target.value === 'erlaubt')}
-          >
-            <option value="verboten">Verboten - EEG-Anlage (nur Solarladen)</option>
-            <option value="erlaubt">Erlaubt - Speicher darf aus dem Netz laden</option>
-          </select>
+            onChange={(v) => setNetzladen(v === 'erlaubt')}
+          />
           <p className="vp-note" style={{ margin: 0 }}>
             EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
             (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine

@@ -317,14 +317,17 @@
   gap: 6px;
   font-weight: 600;
 }
-.vp-vb-duration select {
-  padding: 8px 10px;
-  border: 1px solid var(--vp-border, #d7dde5);
-  border-radius: var(--vp-radius-md, 10px);
-  font: inherit;
-}
+
 .vp-vb-dialog-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* Die Picker der Bedingungs- und Zeitplan-Zeilen sind FELDER in einer
+   Flex-Zeile, keine Blöcke - sie teilen sich den Platz wie die Zahlenfelder
+   daneben (das `.vp-guided-pick`-Muster). */
+.vp-vb-row > .vp-picker,
+.vp-vb-cond-line > .vp-picker {
+  flex: 1 1 150px;
 }

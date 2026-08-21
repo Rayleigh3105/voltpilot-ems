@@ -216,6 +216,7 @@ export function VpTimePicker({
           liefert nur Panel, Verankerung und Sheet. */}
       <VpPanel
         basisId={`${basisId}-anker`}
+        labelFor={basisId}
         listeId={listeId}
         label={label}
         ariaLabel={ariaLabel}

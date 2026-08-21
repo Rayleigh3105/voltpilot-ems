@@ -262,6 +262,23 @@ describe('VpTimePicker: getippt wird FREI, das Raster ist nur der schnelle Weg',
   nehmen, ein sieben-spaltiges GITTER nicht - dort wird aus dem Datumsblock
   eine Tapete, in der keine Woche mehr als Zeile lesbar ist.
 */
+describe('VpTimePicker: die Beschriftung zeigt auf das ECHTE Feld', () => {
+  it('⚠ ein Klick auf „Von" fokussiert die Eingabe (kein Label ins Leere)', () => {
+    // In der Feld-Fassung umschliesst der Auslöser das `<input>` nur - der
+    // Rahmen (`span`) trägt keine `id`. Zeigte `htmlFor` weiter auf ihn, meldete
+    // Chrome „Incorrect use of `<label for=…>`" und ein Klick auf die
+    // Beschriftung fokussierte NICHTS (im Browser aufgefallen, W2).
+    const { container } = render(
+      <VpTimePicker label="Von" value="06:00" onChange={() => {}} />,
+    );
+    const label = container.querySelector('label.vp-picker-label') as HTMLLabelElement;
+    expect(label.textContent).toBe('Von');
+    expect(document.getElementById(label.htmlFor)).toBe(
+      container.querySelector('input.vp-picker-zeitfeld'),
+    );
+  });
+});
+
 describe('platziere: der Kalender bleibt so breit, wie ein Kalender ist', () => {
   const feldMit = (breite: number) =>
     ({
