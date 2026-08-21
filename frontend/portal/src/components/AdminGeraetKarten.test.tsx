@@ -1,10 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { GeraetSeite } from './GeraetSeite';
-import { geraetView, type GeraetInput } from '../../adminGeraet';
-import type { AdminDeviceRow, ControlCandidate } from '../../admin/adminApi';
-import type { AdminFleetSite } from '../../admin/fleetApi';
-import type { EdgeUpdatesRelease } from '../../adminEdgeUpdates';
+import { AdminGeraetKarten } from './AdminGeraetKarten';
+import { geraetView, type GeraetInput } from '../adminGeraet';
+import type { AdminDeviceRow, ControlCandidate } from '../admin/adminApi';
+import type { AdminFleetSite } from '../admin/fleetApi';
+import type { EdgeUpdatesRelease } from '../adminEdgeUpdates';
 
 const NOW = new Date('2026-08-18T10:00:00Z');
 
@@ -142,32 +142,33 @@ function view(over: Partial<GeraetInput> = {}) {
 
 const base = {
   busy: false,
-  onZurueck: vi.fn(),
-  onJumpToTenant: vi.fn(),
   onNavigateSteuerung: vi.fn(),
 };
 
-describe('GeraetSeite - die Vollansicht EINES Geräts (Admin-Umbau Stufe 2)', () => {
-  it('rendert alle sieben Sektionen an EINEM Ort', () => {
-    render(<GeraetSeite {...base} view={view()} />);
-    expect(screen.getByRole('heading', { name: 'Wechselrichter Scheune' })).toBeInTheDocument();
+/**
+ * Anlagen-Zentrale Stufe 3 (PR 3b): die Plattform-Sicht hat seit PR 1f ZWEI
+ * Wirte gehabt (die Admin-Vollansicht und die Kunden-Geräteseite); mit dem
+ * Rückbau ist nur noch die Geräteseite übrig. Diese Suite ist die UMGEZOGENE
+ * Abdeckung der entfallenen `GeraetSeite.test.tsx` - sie prüft jetzt den
+ * BLOCK selbst, also unabhängig davon, wer ihn hostet.
+ */
+describe('AdminGeraetKarten - die Plattform-Sicht EINES Geräts', () => {
+  it('rendert alle sechs Sektionen an EINEM Ort', () => {
+    render(<AdminGeraetKarten {...base} view={view()!} />);
     for (const titel of [
       'Software',
       'Vertrauen',
       'Steuerung',
       'Grenzen & Wächter',
-      'Register \\(Experte\\)',
       'Verbindung & Onboarding',
       'Verlauf',
     ]) {
       expect(screen.getByRole('heading', { name: new RegExp(titel) })).toBeInTheDocument();
     }
-    // Der Kontext steht am Kopf, nicht als Überschrift.
-    expect(screen.getByText(/Auernheim · Maximilian Wüstholz/)).toBeInTheDocument();
   });
 
   it('reicht die Sätze der Box DURCH, statt sie neu zu formulieren', () => {
-    render(<GeraetSeite {...base} view={view()} />);
+    render(<AdminGeraetKarten {...base} view={view()!} />);
     expect(screen.getByTestId('geraet-guard')).toHaveTextContent(
       'Die Einspeisung liegt unter der Grenze.',
     );
@@ -179,16 +180,48 @@ describe('GeraetSeite - die Vollansicht EINES Geräts (Admin-Umbau Stufe 2)', ()
     );
   });
 
-  it('springt in die Mandanten-Ansicht und auf die Befehle DERSELBEN Anlage', () => {
-    const onJumpToTenant = vi.fn();
-    render(<GeraetSeite {...base} view={view()} onJumpToTenant={onJumpToTenant} />);
-    fireEvent.click(screen.getByRole('button', { name: /Zur Anlage/ }));
-    expect(onJumpToTenant).toHaveBeenCalledWith('t1', 's1');
-    fireEvent.click(screen.getByRole('button', { name: /Befehle ansehen/ }));
-    expect(onJumpToTenant).toHaveBeenCalledWith('t1', 's1', 'befehle');
+  it('weist ein Release zu und nimmt die Zuweisung zurück', () => {
+    const onAssign = vi.fn().mockResolvedValue(undefined);
+    const onRevert = vi.fn().mockResolvedValue(undefined);
+    render(<AdminGeraetKarten {...base} view={view()!} onAssign={onAssign} onRevert={onRevert} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Release zuweisen' }));
+    expect(onAssign).toHaveBeenCalledWith(14, 'stable', false);
+    fireEvent.click(screen.getByRole('button', { name: 'Zuweisung zurücknehmen' }));
+    expect(onRevert).toHaveBeenCalled();
   });
 
-  it('bietet einen Sprung, der nirgends hinführt, gar nicht erst an', () => {
+  it('nennt VOR dem Anwenden, was es verhindern wird', () => {
+    const blockiert: AdminDeviceRow = {
+      ...BOX,
+      state: 'blockiert',
+      blocker: 'neutralzeit',
+      reason: 'Autonomie blockiert: die Neutral-Zeit ist nicht belegt.',
+    };
+    render(
+      <AdminGeraetKarten {...base} view={view({ devices: [blockiert] })!} onApply={vi.fn()} />,
+    );
+    // Der Satz steht GENAU EINMAL - dort, wo gleich geklickt wird.
+    expect(screen.getByTestId('geraet-apply')).toHaveTextContent('Achtung:');
+    expect(screen.queryByTestId('geraet-hebel')).toBeNull();
+  });
+
+  it('behält den Hebel, wo es gar keinen Anwenden-Knopf gibt', () => {
+    const blockiert: AdminDeviceRow = {
+      ...BOX,
+      state: 'blockiert',
+      blocker: 'neutralzeit',
+      reason: 'Autonomie blockiert: die Neutral-Zeit ist nicht belegt.',
+    };
+    render(<AdminGeraetKarten {...base} view={view({ devices: [blockiert] })!} />);
+    expect(screen.getByTestId('geraet-hebel')).toHaveTextContent('Hebel:');
+  });
+
+  it('bietet den Anwenden-Knopf nicht an, wenn der Wirt ihn nicht ausführen kann', () => {
+    render(<AdminGeraetKarten {...base} view={view()!} />);
+    expect(screen.queryByTestId('geraet-apply')).toBeNull();
+  });
+
+  it('bietet einer gedruckten ID keine Zuweisung an - und sagt an JEDER Sektion warum', () => {
     const gedruckt: AdminDeviceRow = {
       ...BOX,
       deviceId: null,
@@ -205,91 +238,20 @@ describe('GeraetSeite - die Vollansicht EINES Geräts (Admin-Umbau Stufe 2)', ()
       trust: null,
     };
     render(
-      <GeraetSeite
+      <AdminGeraetKarten
         {...base}
-        view={view({ ref: 'VP-DEMO-0002', devices: [gedruckt] })}
+        view={view({ ref: 'VP-DEMO-0002', devices: [gedruckt] })!}
         onAssign={vi.fn()}
       />,
     );
-    expect(screen.queryByRole('button', { name: /Zur Anlage/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Release zuweisen' })).toBeNull();
-    // Der Grund steht an JEDER Sektion, die deswegen nichts zeigen kann -
-    // nie ein stilles Nichts.
+    // Nie ein stilles Nichts.
     expect(screen.getAllByText(/mit keinem Kundenkonto verbunden/).length).toBeGreaterThan(1);
   });
 
-  it('sagt bei einer unbekannten Referenz, dass es sie nicht gibt', () => {
-    render(<GeraetSeite {...base} view={null} />);
-    expect(screen.getByText(/keinen Eintrag/)).toBeInTheDocument();
-    // Und bietet den Rückweg an - nie eine Sackgasse.
-    expect(screen.getAllByRole('button', { name: /Alle Geräte|Geräte-Liste/ }).length)
-      .toBeGreaterThan(0);
-  });
-
-  it('weist ein Release zu und nimmt die Zuweisung zurück', async () => {
-    const onAssign = vi.fn().mockResolvedValue(undefined);
-    const onRevert = vi.fn().mockResolvedValue(undefined);
-    render(<GeraetSeite {...base} view={view()} onAssign={onAssign} onRevert={onRevert} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Release zuweisen' }));
-    expect(onAssign).toHaveBeenCalledWith(14, 'stable', false);
-    fireEvent.click(screen.getByRole('button', { name: 'Zuweisung zurücknehmen' }));
-    expect(onRevert).toHaveBeenCalled();
-  });
-
-  it('nennt VOR dem Anwenden, was es verhindern wird', () => {
-    const blockiert: AdminDeviceRow = {
-      ...BOX,
-      state: 'blockiert',
-      blocker: 'neutralzeit',
-      reason: 'Autonomie blockiert: die Neutral-Zeit ist nicht belegt.',
-    };
-    render(
-      <GeraetSeite {...base} view={view({ devices: [blockiert] })} onApply={vi.fn()} />,
-    );
-    // Der Satz steht GENAU EINMAL - dort, wo gleich geklickt wird.
-    expect(screen.getByTestId('geraet-apply')).toHaveTextContent('Achtung:');
-    expect(screen.queryByTestId('geraet-hebel')).toBeNull();
-  });
-
-  it('behält den Hebel, wo es gar keinen Anwenden-Knopf gibt', () => {
-    const blockiert: AdminDeviceRow = {
-      ...BOX,
-      state: 'blockiert',
-      blocker: 'neutralzeit',
-      reason: 'Autonomie blockiert: die Neutral-Zeit ist nicht belegt.',
-    };
-    render(<GeraetSeite {...base} view={view({ devices: [blockiert] })} />);
-    expect(screen.getByTestId('geraet-hebel')).toHaveTextContent('Hebel:');
-  });
-
-  it('bietet den Anwenden-Knopf nicht an, wenn der Wirt ihn nicht ausführen kann', () => {
-    render(<GeraetSeite {...base} view={view()} />);
-    expect(screen.queryByTestId('geraet-apply')).toBeNull();
-  });
-
   it('nennt den Grund, wo eine Sektion nichts zu zeigen hat', () => {
-    render(<GeraetSeite {...base} view={view({ sites: null, candidates: null })} />);
-    // Nie ein stilles Nichts: beide Sektionen sagen, warum sie leer sind.
+    render(<AdminGeraetKarten {...base} view={view({ sites: null, candidates: null })!} />);
     expect(screen.getByText(/noch nicht gemeldet/)).toBeInTheDocument();
     expect(screen.getByText(/weder einen Einspeisewächter/)).toBeInTheDocument();
-  });
-
-  it('bietet die Register-Strecke an - und nur, wo sie etwas bewirken kann', () => {
-    render(<GeraetSeite {...base} view={view()} />);
-    expect(screen.getByTestId('geraet-regwrite')).toBeInTheDocument();
-    expect(screen.queryByTestId('geraet-regwrite-grund')).toBeNull();
-  });
-
-  it('nennt statt eines wirkungslosen Knopfes den Grund', () => {
-    // Eine gedruckte, noch nicht verbundene Aufkleber-ID hat kein Geraet, an das
-    // ein Auftrag gehen koennte.
-    const gedruckt: AdminDeviceRow = {
-      ...BOX, deviceId: null as unknown as string, siteId: null as unknown as string,
-      tenantId: null as unknown as string, provisioned: true,
-    };
-    render(<GeraetSeite {...base} view={view({ devices: [gedruckt] })} />);
-    expect(screen.queryByTestId('geraet-regwrite')).toBeNull();
-    expect(screen.getByTestId('geraet-regwrite-grund'))
-      .toHaveTextContent(/noch mit keinem Gerät verbunden/);
   });
 });

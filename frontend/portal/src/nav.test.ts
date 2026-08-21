@@ -8,7 +8,6 @@ import {
   parseBefehleKomponente,
   canonicalAnlageHash,
   hashForRoute,
-  geraetHash,
   geraetSeiteHash,
   isBootHash,
   pageLabel,
@@ -478,31 +477,38 @@ describe('isBootHash', () => {
 });
 
 /**
- * Die GERÄTE-DETAILSEITE (Stufe 2, F2). Sie ist ein HASH-PARAMETER auf der
- * Geräte-Route - der Router bleibt unangetastet, und die Referenz als
- * Schlüssel überlebt Unclaim/Re-Claim.
+ * Der DEEP-LINK-VERTRAG der abgelösten Plattform-Vollansicht (Anlagen-Zentrale
+ * Stufe 3, PR 3b). Geschrieben wird die Adresse nirgends mehr - GELESEN muss
+ * sie für immer werden, damit kein altes Lesezeichen bricht.
  */
-describe('geraetHash / parseGeraetRef', () => {
-  it('schreibt und liest dieselbe Referenz zurück', () => {
-    expect(parseGeraetRef(geraetHash('edge-k2m4pqj'))).toBe('edge-k2m4pqj');
-    expect(parseGeraetRef(geraetHash('VP-DEMO-0001'))).toBe('VP-DEMO-0001');
+describe('parseGeraetRef (der Deep-Link-Vertrag)', () => {
+  it('liest die Referenz aus einer alten Adresse', () => {
+    expect(parseGeraetRef('#/geraete-registry?geraet=edge-k2m4pqj')).toBe('edge-k2m4pqj');
+    expect(parseGeraetRef('#/geraete-registry?geraet=VP-DEMO-0001')).toBe('VP-DEMO-0001');
   });
 
   it('lässt die Route dabei die Geräte-Seite bleiben', () => {
-    expect(parseRoute(geraetHash('edge-k2m4pqj'))).toEqual(route('geraete-registry'));
+    expect(parseRoute('#/geraete-registry?geraet=edge-k2m4pqj')).toEqual(
+      route('geraete-registry'),
+    );
   });
 
-  it('räumt den Parameter, wenn nichts geöffnet ist', () => {
-    expect(geraetHash(null)).toBe('#/geraete-registry');
-    expect(geraetHash('   ')).toBe('#/geraete-registry');
+  it('ist null, wo kein Gerät genannt ist', () => {
     expect(parseGeraetRef('#/geraete-registry')).toBeNull();
     expect(parseGeraetRef('')).toBeNull();
+    expect(parseGeraetRef('#/geraete-registry?geraet=   ')).toBeNull();
   });
 
-  it('kodiert eine Referenz, die Sonderzeichen trägt', () => {
-    const ref = 'edge-a b';
-    expect(geraetHash(ref)).toContain('edge-a%20b');
-    expect(parseGeraetRef(geraetHash(ref))).toBe(ref);
+  it('dekodiert eine Referenz, die Sonderzeichen trägt', () => {
+    expect(parseGeraetRef('#/geraete-registry?geraet=edge-a%20b')).toBe('edge-a b');
+  });
+
+  // ⚠ Der No-Orphan-Wächter: der frühere SCHREIBER ist ersatzlos entfallen.
+  // Käme er zurück, erzeugte er wieder Adressen auf eine Fläche, die es nicht
+  // mehr gibt.
+  it('hat keinen Schreiber mehr (geraetHash ist entfallen)', async () => {
+    const nav = await import('./nav');
+    expect('geraetHash' in nav).toBe(false);
   });
 });
 

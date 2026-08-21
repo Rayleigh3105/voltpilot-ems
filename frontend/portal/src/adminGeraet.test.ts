@@ -9,6 +9,10 @@ import {
   verlauf,
   VERLAUF_MAX,
   type GeraetInput,
+  geraetLinkAusgang,
+  NOCH_KEIN_GERAET,
+  NICHT_GEFUNDEN,
+  OHNE_ANLAGE,
 } from './adminGeraet';
 import type { AdminDeviceRow, ControlCandidate } from './admin/adminApi';
 import type { AdminFleetSite } from './admin/fleetApi';
@@ -407,5 +411,44 @@ describe('kundenGeraetZiel', () => {
     expect(kundenGeraetZiel({ ...BOX, tenantId: null })).toBeNull();
     expect(kundenGeraetZiel({ ...BOX, siteId: null })).toBeNull();
     expect(kundenGeraetZiel(null)).toBeNull();
+  });
+});
+
+/*
+  Anlagen-Zentrale Stufe 3 (PR 3b): eine `?geraet=`-Adresse hat GENAU ZWEI
+  Ausgänge - weiterleiten oder einen ehrlichen Satz. Die dritte Möglichkeit
+  (eine zweite Vollansicht desselben Geräts) ist entfallen.
+*/
+describe('geraetLinkAusgang - der Deep-Link-Vertrag der abgelösten Vollansicht', () => {
+  it('leitet ein verbundenes Gerät auf seine Geräteseite weiter', () => {
+    expect(geraetLinkAusgang([BOX], 'edge-k2m4pqj')).toEqual({
+      kind: 'weiterleiten',
+      tenantId: 't1',
+      siteId: 's1',
+      ref: 'edge-k2m4pqj',
+    });
+  });
+
+  it('nennt bei einer gedruckten ID, dass es noch KEIN Gerät gibt', () => {
+    const a = geraetLinkAusgang([GEDRUCKT], GEDRUCKT.externalRef);
+    expect(a.kind).toBe('hinweis');
+    expect(a.kind === 'hinweis' && a.text).toBe(NOCH_KEIN_GERAET);
+  });
+
+  it('nennt bei einer unbekannten Referenz, dass es sie nicht gibt', () => {
+    const a = geraetLinkAusgang([BOX], 'VP-GIBT-ES-NICHT');
+    expect(a.kind === 'hinweis' && a.text).toBe(NICHT_GEFUNDEN);
+  });
+
+  it('schweigt nicht, wenn ein verbundenes Gerät keine Anlage nennt', () => {
+    // Der Fall ist selten, aber eine tote Adresse wäre schlimmer als ein Satz.
+    const a = geraetLinkAusgang([{ ...BOX, siteId: null }], 'edge-k2m4pqj');
+    expect(a.kind === 'hinweis' && a.text).toBe(OHNE_ANLAGE);
+  });
+
+  it('urteilt ohne Inventar gar nicht über die Referenz - aber nie „weiterleiten"', () => {
+    // Der Wirt rendert den Hinweis erst, wenn das Inventar da ist; hier zählt
+    // nur, dass niemals eine Weiterleitung erfunden wird.
+    expect(geraetLinkAusgang(null, 'edge-k2m4pqj').kind).toBe('hinweis');
   });
 });

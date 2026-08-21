@@ -445,6 +445,35 @@ describe('Beobachten: die Vier-Klassen-Grammatik auf der Seite', () => {
     expect(screen.getAllByTestId('state-blocked').length).toBeGreaterThan(0);
   });
 
+  /*
+    Anlagen-Zentrale Stufe 3 (PR 3b): der Drawer bleibt der Schnellblick - sein
+    Weg in die Vollansicht zielt seither auf die EINE Geräteseite in der
+    Mandanten-Ansicht (vorher auf die abgelöste Plattform-Vollansicht).
+  */
+  it('führt aus dem Drawer auf die EINE Geräteseite - mit gesetztem Mandanten', async () => {
+    const jump = vi.fn();
+    render(<EdgeUpdatesPage onJumpToTenant={jump} />);
+    await screen.findByText('Aktiver Rollout');
+    fireEvent.click(document.querySelectorAll('.vp-wave-device.vp-row-click')[0]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Geräteseite öffnen/ }));
+    expect(jump).toHaveBeenCalledWith('t1', {
+      page: 'anlagen',
+      siteId: 's1',
+      sub: 'geraet',
+      // Die REFERENZ ist der Schlüssel, nie die Geräte-UUID.
+      geraet: { ref: 'edge-a1', geraetId: null },
+    });
+  });
+
+  it('bietet den Weg gar nicht an, wenn der Wirt nicht umschalten kann', async () => {
+    render(<EdgeUpdatesPage />);
+    await screen.findByText('Aktiver Rollout');
+    fireEvent.click(document.querySelectorAll('.vp-wave-device.vp-row-click')[0]);
+    await screen.findByText('Identität');
+    expect(screen.queryByRole('button', { name: /Geräteseite öffnen/ })).toBeNull();
+  });
+
   it('rendert in der Wellen-Liste NIE eine UUID', async () => {
     const d = data();
     d.activeRollout!.waves[0].devices[0] = {

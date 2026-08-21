@@ -113,7 +113,7 @@ export interface Route {
  *
  * **Der Schlüssel ist die Referenz, nicht die Geräte-UUID** - sie überlebt
  * Unclaim/Re-Claim (der dokumentierte Identitäts-Drift), also überlebt auch
- * jedes Lesezeichen darauf (die `geraetHash`-Disziplin).
+ * jedes Lesezeichen darauf (die Referenz-statt-UUID-Disziplin).
  */
 export interface GeraetTarget {
   ref: string;
@@ -433,7 +433,7 @@ export function canonicalPlatformHash(hash: string): string | null {
 
 /**
  * Die Adresse einer SEKTION einer Plattform-Seite (`?sektion=<id>`) - das
- * Hash-Parameter-Muster von {@link befehleHash}/{@link geraetHash}:
+ * Hash-Parameter-Muster von {@link befehleHash}/{@link parseGeraetRef}:
  * `parseRoute` schneidet den Query-Teil ohnehin ab, die Route bleibt also die
  * Seite, und ein Lesezeichen öffnet exakt dieselbe Sektion wieder.
  */
@@ -658,22 +658,23 @@ export function parseZentraleAnsicht(hash: string): ZentraleAnsicht {
 }
 
 /**
- * Die Adresse der GERÄTE-DETAILSEITE (Admin-Umbau Stufe 2, Captain-Entscheid
- * F2): `#/geraete-registry?geraet=<referenz>`.
+ * Die Geräte-Referenz aus einem `?geraet=`-Hash, oder null.
  *
- * Das Muster ist das von {@link befehleHash} - ein HASH-PARAMETER, keine
- * eigene `PageId`: `parseRoute` schneidet den Query-Teil ohnehin ab, die Route
- * bleibt also die Geräte-Seite, und ein Lesezeichen öffnet exakt dasselbe
- * Gerät wieder. **Der Schlüssel ist die REFERENZ, nicht die Geräte-UUID** -
- * sie überlebt Unclaim/Re-Claim (der dokumentierte Identitäts-Drift), also
- * überlebt auch das Lesezeichen.
+ * ⚠ **Diese Adresse wird seit der Anlagen-Zentrale Stufe 3 (PR 3b) nur noch
+ * GELESEN, nie mehr geschrieben.** `#/geraete-registry?geraet=<referenz>` war
+ * die Adresse der zweiten, plattform-seitigen Vollansicht desselben Geräts;
+ * die ist entfallen, ein verbundenes Gerät hat genau EINEN Ort
+ * ({@link geraetSeiteHash}). Der Parameter bleibt der Deep-Link-VERTRAG:
+ * jedes alte Lesezeichen leitet auf die Geräteseite weiter, und was nicht
+ * weiterleitbar ist, bekommt einen ehrlichen Satz statt einer leeren Seite
+ * (`adminGeraet.geraetLinkAusgang`). Der frühere Schreiber `geraetHash` ist
+ * deshalb ERSATZLOS entfallen - eine Funktion, die eine Adresse erzeugt, auf
+ * der nichts mehr wohnt, wäre eine Einladung, sie wieder zu benutzen.
+ *
+ * **Der Schlüssel ist die REFERENZ, nicht die Geräte-UUID** - sie überlebt
+ * Unclaim/Re-Claim (der dokumentierte Identitäts-Drift), also überlebt auch
+ * das Lesezeichen.
  */
-export function geraetHash(ref?: string | null): string {
-  const base = '#/geraete-registry';
-  return ref && ref.trim() ? `${base}?geraet=${encodeURIComponent(ref.trim())}` : base;
-}
-
-/** Die Geräte-Referenz aus einem `?geraet=`-Hash, oder null. */
 export function parseGeraetRef(hash: string): string | null {
   const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
   if (rest.length === 0) return null;
@@ -686,8 +687,8 @@ export function parseGeraetRef(hash: string): string | null {
  * `vp-anlagen-zentrale-konzept-h6` §7.1): `#/anlage/{siteId}/geraet/{ref}` für
  * die VoltPilot-Box, `…/{geraetId}` für ein Gerät DAHINTER.
  *
- * Anders als {@link geraetHash} (die Plattform-Geräteseite, ein
- * Hash-Parameter) sind Referenz und Gerät hier echte Pfad-Abschnitte: die
+ * Anders als der frühere `geraetHash` (die abgelöste Plattform-Vollansicht,
+ * ein Hash-Parameter) sind Referenz und Gerät hier echte Pfad-Abschnitte: die
  * Seite gehört zur ANLAGE, also gehört sie in ihren Pfad. Beide Werte werden
  * kodiert - eine Referenz ist per Kontrakt topic-sicher, eine Säulen-Kennung
  * (`cp-<ChargePointId>`) muss es nicht sein.

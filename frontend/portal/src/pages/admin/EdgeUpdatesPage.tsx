@@ -86,9 +86,16 @@ function StateChip({ state }: { state: string }) {
  */
 export function EdgeUpdatesPage({
   onNavigate,
+  onJumpToTenant,
   tabs,
 }: {
   onNavigate?: (target: Route) => void;
+  /**
+   * Der Weg auf die EINE Geräteseite (Stufe 3, PR 3b): sie liegt hinter dem
+   * RLS-Zaun, also muss der Mandant gesetzt sein, bevor die Adresse gilt.
+   * Ohne diesen Rückruf bietet der Drawer den Weg gar nicht erst an.
+   */
+  onJumpToTenant?: (tenantId: string, target: Route) => void;
   /**
    * Die Tab-Leiste des Geräte-Bereichs (Stufe 3). Sie kommt vom Wirt
    * `GeraeteBereich` und wird hier nur PLATZIERT - ohne sie (Direktaufruf,
@@ -600,6 +607,19 @@ export function EdgeUpdatesPage({
               setDeviceFor(null);
             }}
             onApply={async () => setApplyFor(row.deviceId)}
+            onOpenGeraetseite={
+              onJumpToTenant
+                ? () => {
+                    setDeviceFor(null);
+                    onJumpToTenant(row.tenantId, {
+                      page: 'anlagen',
+                      siteId: row.siteId,
+                      sub: 'geraet',
+                      geraet: { ref: row.externalRef, geraetId: null },
+                    });
+                  }
+                : undefined
+            }
           />
         );
       })()}

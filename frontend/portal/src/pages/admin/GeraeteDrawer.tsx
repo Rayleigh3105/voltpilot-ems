@@ -4,7 +4,6 @@ import { Button } from '../../../designsystem/components/core/Button';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { deviceKindLabel, fmtRelative } from '../../format';
 import { REGISTRY_AUFKLEBER, REGISTRY_SELBST } from '../../adminGeraet';
-import { geraetHash } from '../../nav';
 import { versionLabel } from '../../onboardingFunnel';
 import {
   actorLabel,
@@ -81,6 +80,7 @@ export function GeraeteDrawer({
   onAssign,
   onRevert,
   onApply,
+  onOpenGeraetseite,
 }: {
   device: DrawerDevice;
   releases: EdgeUpdatesRelease[];
@@ -95,6 +95,14 @@ export function GeraeteDrawer({
    * nicht ausführen kann, ist eine Attrappe.
    */
   onApply?: () => Promise<void>;
+  /**
+   * Der Weg auf die EINE Geräteseite (Anlagen-Zentrale Stufe 3, PR 3b). Sie
+   * liegt hinter dem RLS-Zaun in der Mandanten-Ansicht, der Drawer kann sie
+   * also nicht selbst adressieren - der Wirt kennt Mandant und Anlage und
+   * schaltet um. Ohne Aufrufer (gedruckte ID ohne Gerät) wird der Weg gar
+   * nicht angeboten, statt ins Leere zu führen.
+   */
+  onOpenGeraetseite?: () => void;
 }) {
   const signed = releases.filter((r) => r.signed);
   const [seq, setSeq] = useState<number | null>(device.sollSeq ?? signed[0]?.releaseSeq ?? null);
@@ -114,15 +122,17 @@ export function GeraeteDrawer({
         {[device.tenantName, device.externalRef].filter(Boolean).join(' · ')}
       </p>
 
-      {/* Admin-Umbau Stufe 2: der Drawer bleibt der SCHNELLBLICK (mitten im
-          Rollout will niemand die Fläche verlieren) - die Vollansicht mit
-          Steuerung, Grenzen, Quellen und Anlagen-Kontext ist einen Klick
-          entfernt und adressierbar. */}
-      <p className="vp-text-sm">
-        <a className="vp-linklike" href={geraetHash(device.externalRef)}>
-          Geräteseite öffnen →
-        </a>
-      </p>
+      {/* Der Drawer bleibt der SCHNELLBLICK (mitten im Rollout will niemand
+          die Fläche verlieren) - die Vollansicht mit Steuerung, Grenzen,
+          Quellen und Anlagen-Kontext ist einen Klick entfernt. Seit Stufe 3
+          zielt er auf die EINE Geräteseite in der Mandanten-Ansicht. */}
+      {onOpenGeraetseite && (
+        <p className="vp-text-sm">
+          <button type="button" className="vp-linklike" onClick={onOpenGeraetseite}>
+            Geräteseite öffnen →
+          </button>
+        </p>
+      )}
 
       <h4>Identität</h4>
       <dl className="vp-kv-list">

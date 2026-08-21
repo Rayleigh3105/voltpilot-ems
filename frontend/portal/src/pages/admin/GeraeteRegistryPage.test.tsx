@@ -157,52 +157,38 @@ describe('Geräte: EINE Tabelle über den ganzen Lebenszyklus (P2 · E1/E4)', ()
     expect(table).not.toHaveTextContent('9b37439a02c1');
   });
 
-  it('öffnet die GERÄTE-DETAILSEITE aus der Zeile - adressierbar', async () => {
-    // Admin-Umbau Stufe 2: die Zeile führt auf die Vollansicht, nicht mehr in
-    // den Drawer (der bleibt der Schnellblick am Wellen-Board).
-    render(<GeraeteRegistryPage />);
+  it('führt aus der Zeile auf die EINE Geräteseite - nie in eine zweite Ansicht', async () => {
+    // Anlagen-Zentrale Stufe 3 (PR 3b): die Zeile ist der EINSTIEG, nicht der
+    // Ort. Klick und Lesezeichen laufen durch dieselbe Stelle, also kann die
+    // Liste nie eine zweite Vollansicht desselben Geräts danebenstellen.
+    const jump = vi.fn();
+    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
     const table = await screen.findByTestId('devices');
     fireEvent.click(within(table).getByText('Auernheim'));
 
-    expect(await screen.findByRole('heading', { name: 'edge-k2m4pqj' })).toBeInTheDocument();
-    // Die REFERENZ steht in der Adresse - ein Lesezeichen darauf überlebt
-    // Unclaim/Re-Claim, eine Geräte-UUID täte das nicht.
-    expect(window.location.hash).toContain('geraet=edge-k2m4pqj');
-    // Die Sektionen, die es im Drawer nie gab.
-    expect(screen.getByRole('heading', { name: /Grenzen & Wächter/ })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Steuerung/ })).toBeInTheDocument();
-    // Zuweisen kann sie wie der Drawer.
-    expect(screen.getByRole('button', { name: 'Release zuweisen' })).toBeInTheDocument();
-    // Und zurück in die Liste.
-    fireEvent.click(screen.getByRole('button', { name: /Alle Geräte/ }));
-    expect(await screen.findByTestId('devices')).toBeInTheDocument();
-    expect(window.location.hash).not.toContain('geraet=');
+    await waitFor(() => expect(jump).toHaveBeenCalled());
+    expect(jump.mock.calls[0][1]).toEqual({
+      page: 'anlagen',
+      siteId: 's1',
+      sub: 'geraet',
+      geraet: { ref: 'edge-k2m4pqj', geraetId: null },
+    });
+    // Die Liste bleibt stehen - sie ist der Einstieg, nicht der Ort.
+    expect(screen.getByTestId('devices')).toBeInTheDocument();
   });
 
-  it('öffnet ein Lesezeichen direkt auf der Detailseite', async () => {
-    window.location.hash = '#/geraete-registry?geraet=edge-k2m4pqj';
-    render(<GeraeteRegistryPage />);
-    expect(await screen.findByRole('heading', { name: 'edge-k2m4pqj' })).toBeInTheDocument();
-    expect(screen.queryByTestId('devices')).toBeNull();
-  });
-
-  it('zeigt die Bereichs-Tabs über der Liste, aber NICHT über einem Gerät', async () => {
-    // Stufe 3: die Leiste gehört dem Bereich. Die Detailseite ist eine Ebene
-    // TIEFER und hat ihren eigenen Zurück-Weg - ein Bereichs-Umschalter über
-    // einem einzelnen Gerät läse sich, als wechselte er dessen Ansicht.
+  it('zeigt die Bereichs-Tabs über der Liste', async () => {
     render(<GeraeteRegistryPage tabs={<div data-testid="tabs">Tabs</div>} />);
-    const table = await screen.findByTestId('devices');
+    await screen.findByTestId('devices');
     expect(screen.getByTestId('tabs')).toBeInTheDocument();
-
-    fireEvent.click(within(table).getByText('Auernheim'));
-    expect(await screen.findByRole('heading', { name: 'edge-k2m4pqj' })).toBeInTheDocument();
-    expect(screen.queryByTestId('tabs')).toBeNull();
   });
 
   it('sagt bei einer unbekannten Referenz, dass es sie nicht gibt', async () => {
     window.location.hash = '#/geraete-registry?geraet=VP-GIBT-ES-NICHT';
     render(<GeraeteRegistryPage />);
     expect(await screen.findByText(/keinen Eintrag/)).toBeInTheDocument();
+    // …und die Liste steht darunter weiter.
+    expect(screen.getByTestId('devices')).toBeInTheDocument();
   });
 
   it('bietet der noch unverbundenen ID keine Zuweisung an', async () => {
@@ -269,9 +255,29 @@ describe('GeraeteRegistryPage · Weg in die Geräteseite', () => {
     window.location.hash = '#/geraete-registry?geraet=VP-DEMO-0002';
     render(<GeraeteRegistryPage onJumpToTenant={jump} />);
 
-    // Ihre Plattform-Vollansicht steht (es gibt kein Gerät, in das man springen
-    // könnte) - und es wird kein Mandant umgeschaltet.
-    expect(await screen.findByRole('heading', { name: 'VP-DEMO-0002' })).toBeInTheDocument();
+    // Es gibt kein Gerät, in das man springen könnte - also wird kein Mandant
+    // umgeschaltet, und die Adresse sagt WARUM, statt eine leere Seite zu
+    // zeigen (Stufe 3, PR 3b).
+    const hinweis = await screen.findByTestId('geraet-hinweis');
+    expect(hinweis).toHaveTextContent(/noch mit keinem Kundenkonto verbunden/);
     expect(jump).not.toHaveBeenCalled();
+    expect(screen.getByTestId('devices')).toBeInTheDocument();
+    // Und der Hinweis räumt sich weg.
+    fireEvent.click(within(hinweis).getByRole('button', { name: 'Zur Geräte-Liste' }));
+    await waitFor(() => expect(screen.queryByTestId('geraet-hinweis')).toBeNull());
+    expect(window.location.hash).not.toContain('geraet=');
+  });
+
+  // Der Rückbau-Wächter (PR 3b): die zweite Vollansicht ist WEG. Käme sie
+  // zurück, hätte ein Gerät wieder zwei Orte - genau der Befund, den die
+  // Konsolidierung behebt.
+  it('hat keine zweite Vollansicht mehr - die Liste bleibt IMMER stehen', async () => {
+    const jump = vi.fn();
+    window.location.hash = '#/geraete-registry?geraet=edge-k2m4pqj';
+    render(<GeraeteRegistryPage onJumpToTenant={jump} />);
+    await waitFor(() => expect(jump).toHaveBeenCalled());
+    expect(screen.getByTestId('devices')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Alle Geräte$/ })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /Grenzen & Wächter/ })).toBeNull();
   });
 });
