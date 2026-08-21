@@ -45,7 +45,26 @@ import java.util.UUID;
  */
 public record CommandHistoryDto(Instant recordingSince, int accuracySeconds, Instant from,
         Instant to, UUID entityId, String entityLabel, String deviceRef, Boolean deviceIsBox,
-        boolean writes, boolean truncated, List<CommandEntryDto> entries, ControlStatusDto control,
+        boolean writes, boolean truncated,
+        /*
+         * Der TREFFER-ZÄHLER der Befehls-Suche (Geräteseiten Revision B §6):
+         * `total` sind die Zeilen dieses Zeitraums OHNE Filter, `matched` die
+         * mit ihm - „14 von 212 Zeilen".
+         *
+         * ⚠ Ohne beide Zahlen wäre ein scharfer Filter von einem leeren
+         * Zeitraum nicht zu unterscheiden, und die Fläche behauptete „in dieser
+         * Woche wurde nichts geschickt", wo in Wahrheit 212 Zeilen liegen. Der
+         * FREITEXT ist darin nicht enthalten - er läuft im Portal über die
+         * gezeigten Sätze und schrumpft nur, was hier schon steht.
+         */
+        int total, int matched,
+        /*
+         * Der Seiten-Cursor nach HINTEN: der Beginn der ältesten mitgelieferten
+         * Zeile, oder null, wenn das Fenster vollständig gezeigt ist. Eine
+         * Fläche darf „mehr laden" nie anbieten, wo es nichts mehr gibt.
+         */
+        Instant nextBefore,
+        List<CommandEntryDto> entries, ControlStatusDto control,
         CurtailmentStatusDto curtailment) {
 
     /**

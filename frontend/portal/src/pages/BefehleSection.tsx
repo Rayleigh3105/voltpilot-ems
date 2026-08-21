@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type CommandHistory, type Site } from '../api';
@@ -13,7 +13,20 @@ import {
   kopfSatz,
   leerSatz,
   NUR_LESEN,
+  type BefehlZeile,
 } from '../befehle';
+import {
+  abfrage,
+  ausUrl,
+  inUrl,
+  leerMitFilter,
+  mehrMoeglich,
+  suche,
+  sucheHinweis,
+  trefferSatz,
+  type BefehlFilter,
+} from '../befehleFilter';
+import { BefehleFilterLeiste } from '../components/BefehleFilterLeiste';
 import { technicalDeviceName } from '../entityLabel';
 import { ControlStrip } from '../components/ControlStrip';
 import { ErrorState, Skeleton } from '../components/States';
@@ -32,9 +45,15 @@ import './Befehle.css';
  * „Aufzeichnung seit") → „Gerade jetzt" → „Grenzen &amp; Wächter" → der
  * Tages-Film → die Fußnote der Ehrlichkeit.
  *
- * <b>Sie beobachtet nur.</b> Es gibt hier kein Bedienelement außer Zeitraum
- * und Tiefe; Wünsche → Arbitrierung → Schutzgrenzen → Executor bleiben
- * unangetastet.
+ * <b>Sie beobachtet nur.</b> Es gibt hier kein Bedienelement, das etwas an der
+ * Anlage ändert - nur Zeitraum, Filter und Suche; Wünsche → Arbitrierung →
+ * Schutzgrenzen → Executor bleiben unangetastet.
+ *
+ * <b>Die SUCHE (Geräteseiten Revision B §6, Captain-Punkt 4)</b> teilt sich
+ * sauber: STRUKTUR (Zeitraum · Befehlsart · Herkunft · Ergebnis) entscheidet der
+ * Server, der FREITEXT läuft hier über die ANGEZEIGTEN Sätze - eine
+ * Server-Suche fände nur Rohfelder und widerspräche dem, was der Kunde liest.
+ * Der Zustand lebt in der URL, ein Support-Link trägt ihn also mit.
  *
  * <b>Sie erfindet keinen Satz.</b> Die Live-Zeile ist wörtlich dieselbe
  * `controlStrip()`-Ableitung wie im Cockpit, das Wächter-Panel wörtlich
@@ -57,8 +76,13 @@ export function BefehleSection({
    */
   geraetRef?: string | null;
 }) {
-  const [range, setRange] = useState<'day' | 'week'>('day');
+  // Der Filter lebt in der URL (§6: „ein Support-Link trägt den Filter") - hier
+  // steht nur seine gelesene Form. `replaceState` schreibt ihn zurück, damit ein
+  // Klick keinen Verlauf-Eintrag erzeugt (das `?ansicht=`-Muster).
+  const [filter, setFilterState] = useState<BefehlFilter>(() => ausUrl(window.location.hash));
   const [history, setHistory] = useState<CommandHistory | null>(null);
+  const [mehr, setMehr] = useState<CommandHistory[]>([]);
+  const [laedtMehr, setLaedtMehr] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -96,11 +120,34 @@ export function BefehleSection({
     };
   }, [site.id, geraet]);
 
+  // Der laufende Berliner Kalendertag - der Bezug, gegen den „gestern"
+  // gerechnet wird. Er wandert mit `now`, damit ein über Mitternacht offener
+  // Tab nicht auf dem gestrigen Anker sitzen bleibt.
+  const heute = useMemo(
+    () => new Date(now).toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }),
+    [now],
+  );
+  const q = useMemo(() => abfrage(filter, heute), [filter, heute]);
+  // Die Abfrage als stabiler Schlüssel: sie ist der EINE Auslöser des Ladens.
+  const qKey = JSON.stringify(q);
+
+  const setFilter = useCallback(
+    (f: BefehlFilter) => {
+      setFilterState(f);
+      const ziel = inUrl(window.location.hash, f);
+      if (ziel !== window.location.hash) {
+        window.history.replaceState(null, '', ziel);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     let active = true;
     setHistory(null);
+    setMehr([]);
     setError(null);
-    api.commandHistory(site.id, { entity: entityId, device: geraet, range }).then(
+    api.commandHistory(site.id, { entity: entityId, device: geraet, ...q }).then(
       (h) => {
         if (!active) return;
         setHistory(h);
@@ -111,13 +158,34 @@ export function BefehleSection({
     return () => {
       active = false;
     };
-  }, [site.id, entityId, geraet, range, reloadKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [site.id, entityId, geraet, qKey, reloadKey]);
+
+  /**
+   * „Ältere laden": eine Seite weiter zurück.
+   *
+   * ⚠ Der Server vergleicht `<=`, die Grenzzeile kommt also ZWEIMAL - lieber
+   * doppelt als lautlos verloren. Gemischt wird deshalb über die `id`.
+   */
+  const ladeMehr = useCallback(() => {
+    const cursor = (mehr.length > 0 ? mehr[mehr.length - 1] : history)?.nextBefore;
+    if (!cursor || laedtMehr) return;
+    setLaedtMehr(true);
+    api
+      .commandHistory(site.id, { entity: entityId, device: geraet, ...q, before: cursor })
+      .then(
+        (h) => setMehr((prev) => [...prev, h]),
+        () => {},
+      )
+      .finally(() => setLaedtMehr(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [site.id, entityId, geraet, qKey, history, mehr, laedtMehr]);
 
   // Der Verlauf altert: der stille Takt holt ihn nach, und der Zustand wird
   // ZUSAMMEN mit seiner Bezugszeit gesetzt (die `liveness.ts`-Lehre) - ein
   // Fehlschlag lässt beides unberührt stehen.
   useFreshnessPoll(() => {
-    api.commandHistory(site.id, { entity: entityId, device: geraet, range }).then(
+    api.commandHistory(site.id, { entity: entityId, device: geraet, ...q }).then(
       (h) => {
         setHistory(h);
         setNow(Date.now());
@@ -126,7 +194,22 @@ export function BefehleSection({
     );
   }, 30_000);
 
-  const zeilen = useMemo(() => film(history, now), [history, now]);
+  // Die geladenen Seiten als EINE Zeitachse: ältere Seiten kommen davor, und
+  // eine Zeile, die an der Seitengrenze doppelt kam, gewinnt genau einmal.
+  const alleZeilen = useMemo(() => {
+    const gesehen = new Set<number>();
+    const out: BefehlZeile[] = [];
+    [...[...mehr].reverse(), ...(history ? [history] : [])].forEach((h) => {
+      film(h, now).forEach((z) => {
+        if (gesehen.has(z.id)) return;
+        gesehen.add(z.id);
+        out.push(z);
+      });
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, mehr, now]);
+  const zeilen = useMemo(() => suche(alleZeilen, filter.q), [alleZeilen, filter.q]);
   // Die zwei Live-Ableitungen nehmen ein Date - dieselben, die das Cockpit
   // benutzt, damit hier keine zweite Wahrheit entsteht.
   const jetzt = useMemo(() => new Date(now), [now]);
@@ -181,32 +264,27 @@ export function BefehleSection({
       <Card padding="lg" radius="lg">
         <div className="vp-befehle-head">
           <span className="vp-card-label">Was geschickt wurde</span>
-          <div className="vp-seg vp-seg-compact" role="tablist" aria-label="Zeitraum">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={range === 'day'}
-              className={range === 'day' ? 'active' : ''}
-              onClick={() => setRange('day')}
-            >
-              Heute
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={range === 'week'}
-              className={range === 'week' ? 'active' : ''}
-              onClick={() => setRange('week')}
-            >
-              Diese Woche
-            </button>
-          </div>
         </div>
+
+        {/* Die Suche (Geräteseiten Revision B §6): Struktur filtert der Server,
+            der Freitext läuft über die ANGEZEIGTEN Sätze - und die Leiste sagt,
+            worin sie sucht. */}
+        <BefehleFilterLeiste
+          filter={filter}
+          onChange={setFilter}
+          hinweis={sucheHinweis(history, alleZeilen.length)}
+          treffer={trefferSatz(history, filter, zeilen.length)}
+        />
 
         {error && <ErrorState message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
         {!error && !history && <Skeleton height={120} />}
         {!error && history && zeilen.length === 0 && (
-          <p className="vp-muted">{leerSatz(history, entityId != null || geraet != null)}</p>
+          <p className="vp-muted">
+            {/* Ein Filter, der nichts trifft, ist NICHT dasselbe wie ein leerer
+                Zeitraum - und der Satz sagt, wie viele Zeilen daneben liegen. */}
+            {leerMitFilter(history, filter)
+              ?? leerSatz(history, entityId != null || geraet != null)}
+          </p>
         )}
         {!error && history && zeilen.length > 0 && (
           <ol className="vp-befehle-film">
@@ -244,6 +322,15 @@ export function BefehleSection({
               </li>
             ))}
           </ol>
+        )}
+        {/* „Mehr laden" wird NIE angeboten, wo es nichts mehr gibt - der
+            Server sagt mit `nextBefore`, ob eine Seite dahinter liegt. */}
+        {!error && mehrMoeglich(mehr.length > 0 ? mehr[mehr.length - 1] : history) && (
+          <button type="button" className="vp-befehle-mehr" onClick={ladeMehr}
+              disabled={laedtMehr}>
+            <Icon name="chevron-down" size={14} />
+            {laedtMehr ? 'Wird geladen …' : 'Ältere laden'}
+          </button>
         )}
         {deckelSatz(history) && <p className="vp-note">{deckelSatz(history)}</p>}
       </Card>

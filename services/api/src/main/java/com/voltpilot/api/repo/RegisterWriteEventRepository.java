@@ -1,5 +1,7 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.command.CommandFilter;
+import com.voltpilot.api.registerwrite.RegisterWriteResult;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -184,12 +186,77 @@ public class RegisterWriteEventRepository {
 
     private List<Entry> query(UUID siteId, UUID deviceId, List<UUID> entityIds, Instant from,
             Instant to, int limit, boolean withoutEntity) {
+        return query(siteId, deviceId, entityIds, from, to, limit, withoutEntity,
+                CommandFilter.Filter.NONE, null);
+    }
+
+    /**
+     * Dieselben Vorgänge mit den STRUKTUR-Filtern der Befehls-Suche
+     * (Geräteseiten Revision B §6) und dem Seiten-Cursor.
+     *
+     * <p>Gefiltert wird auf dem GEFALTETEN Vorgang, nicht auf einer seiner zwei
+     * Zeilen: das Ergebnis steht auf der Quittung, die Herkunft auf der
+     * Anforderung - ein Prädikat auf einer einzelnen Zeile beantwortete jeweils
+     * nur die halbe Frage. Deshalb reisen beide als {@code HAVING} über die
+     * Gruppe.
+     */
+    public List<Entry> filtered(UUID siteId, UUID deviceId, List<UUID> entityIds, Instant from,
+            Instant to, int limit, boolean withoutEntity, CommandFilter.Filter filter,
+            Instant before) {
+        return query(siteId, deviceId, entityIds, from, to, limit, withoutEntity, filter, before);
+    }
+
+    /**
+     * Wie viele VORGÄNGE das Fenster trägt - die Register-Hälfte des
+     * Treffer-Zählers („14 von 212 Zeilen").
+     */
+    public int count(UUID siteId, UUID deviceId, List<UUID> entityIds, Instant from, Instant to,
+            boolean withoutEntity, CommandFilter.Filter filter) {
+        List<Object> args = new ArrayList<>();
+        String inner = grouped(siteId, deviceId, entityIds, from, to, withoutEntity, filter, null,
+                args);
+        Integer n = jdbc.queryForObject("SELECT count(*) FROM (" + inner + ") x", Integer.class,
+                args.toArray());
+        return n == null ? 0 : n;
+    }
+
+    private List<Entry> query(UUID siteId, UUID deviceId, List<UUID> entityIds, Instant from,
+            Instant to, int limit, boolean withoutEntity, CommandFilter.Filter filter,
+            Instant before) {
         // Das Limit greift auf VORGÄNGEN, nicht auf Zeilen: ein Vorgang mit
         // Quittung darf nicht seinen Kopf verlieren, nur weil die Grenze mitten
         // zwischen seinen zwei Zeilen lag.
+        List<Object> args = new ArrayList<>();
+        StringBuilder inner = new StringBuilder(grouped(siteId, deviceId, entityIds, from, to,
+                withoutEntity, filter, before, args));
+        inner.append(" ORDER BY max(id) DESC LIMIT ?");
+        args.add(limit);
+
+        String sql = "SELECT * FROM register_write_event WHERE request_id IN (" + inner
+                + ") AND site_id = ? ORDER BY id ASC";
+        args.add(siteId);
+
+        Map<String, Entry> folded = new LinkedHashMap<>();
+        jdbc.query(sql, rs -> {
+            String requestId = rs.getString("request_id");
+            folded.put(requestId, merge(folded.get(requestId), rs));
+        }, args.toArray());
+        List<Entry> out = new ArrayList<>(folded.values());
+        // Die Anzeige will die jüngsten zuerst; gelesen wurde aufsteigend, damit
+        // die Anforderungs-Zeile immer VOR ihrer Quittung gefaltet wird.
+        out.sort((a, b) -> Long.compare(b.id(), a.id()));
+        return out;
+    }
+
+    /**
+     * Die GRUPPIERTE Auswahl der Vorgänge im Fenster - der gemeinsame Kern von
+     * Liste und Zähler. Sie liefert Kennungen, keine Zeilen.
+     */
+    private static String grouped(UUID siteId, UUID deviceId, List<UUID> entityIds, Instant from,
+            Instant to, boolean withoutEntity, CommandFilter.Filter filter, Instant before,
+            List<Object> args) {
         StringBuilder inner = new StringBuilder(
                 "SELECT request_id FROM register_write_event WHERE site_id = ?");
-        List<Object> args = new ArrayList<>();
         args.add(siteId);
         if (deviceId != null) {
             inner.append(" AND device_id = ?");
@@ -210,23 +277,59 @@ public class RegisterWriteEventRepository {
             inner.append(" AND requested_at < ?");
             args.add(Timestamp.from(to));
         }
-        inner.append(" GROUP BY request_id ORDER BY max(id) DESC LIMIT ?");
-        args.add(limit);
+        if (before != null) {
+            // ⚠ `<=`, nie `<`: zwei Vorgänge dürfen denselben Zeitpunkt tragen,
+            // und ein striktes Kleiner verlöre den zweiten an der Seitengrenze.
+            inner.append(" AND requested_at <= ?");
+            args.add(Timestamp.from(before));
+        }
+        inner.append(" GROUP BY request_id");
+        having(inner, args, filter);
+        return inner.toString();
+    }
 
-        String sql = "SELECT * FROM register_write_event WHERE request_id IN (" + inner
-                + ") AND site_id = ? ORDER BY id ASC";
-        args.add(siteId);
-
-        Map<String, Entry> folded = new LinkedHashMap<>();
-        jdbc.query(sql, rs -> {
-            String requestId = rs.getString("request_id");
-            folded.put(requestId, merge(folded.get(requestId), rs));
-        }, args.toArray());
-        List<Entry> out = new ArrayList<>(folded.values());
-        // Die Anzeige will die jüngsten zuerst; gelesen wurde aufsteigend, damit
-        // die Anforderungs-Zeile immer VOR ihrer Quittung gefaltet wird.
-        out.sort((a, b) -> Long.compare(b.id(), a.id()));
-        return out;
+    /**
+     * Herkunft und Ergebnis als {@code HAVING} über den GEFALTETEN Vorgang.
+     *
+     * <p>⚠ Die drei Ergebnis-Wörter sind eine ABBILDUNG, keine Spalte: das
+     * Journal kennt sechs Ausgänge ({@code uebernommen}, {@code nicht_uebernommen},
+     * {@code abgelehnt}, {@code fehler}, {@code unbekannt}, {@code gelesen}),
+     * und ein Kunde fragt nach dreien. „Nicht übernommen" bündelt deshalb den
+     * belegten Widerspruch mit der Ablehnung und dem Fehler - alle drei sagen
+     * „der Wert steht nicht im Gerät". „Keine Quittung" ist ausdrücklich das
+     * SCHWEIGEN (gar kein Ausgang oder {@code unbekannt}) und nie dasselbe:
+     * die PR-280-Lehre, hier auf dem Register-Pfad.
+     */
+    private static void having(StringBuilder inner, List<Object> args,
+            CommandFilter.Filter filter) {
+        if (filter == null || filter.isEmpty()) {
+            return;
+        }
+        List<String> parts = new ArrayList<>();
+        if (!filter.sources().isEmpty()) {
+            parts.add("bool_or(source = ANY(?::text[]))");
+            args.add(CommandLogRepository.textArray(filter.sources()));
+        }
+        var results = filter.registerResults();
+        if (!results.isEmpty()) {
+            List<String> or = new ArrayList<>();
+            if (results.contains(CommandFilter.RESULT_UEBERNOMMEN)) {
+                or.add("bool_or(outcome = '" + RegisterWriteResult.OUTCOME_ADOPTED + "')");
+            }
+            if (results.contains(CommandFilter.RESULT_NICHT_UEBERNOMMEN)) {
+                or.add("bool_or(outcome IN ('" + RegisterWriteResult.OUTCOME_NOT_ADOPTED + "','"
+                        + RegisterWriteResult.OUTCOME_REFUSED + "','"
+                        + RegisterWriteResult.OUTCOME_ERROR + "'))");
+            }
+            if (results.contains(CommandFilter.RESULT_KEINE_QUITTUNG)) {
+                or.add("NOT bool_or(outcome IS NOT NULL AND outcome <> '"
+                        + RegisterWriteResult.OUTCOME_UNKNOWN + "')");
+            }
+            parts.add("(" + String.join(" OR ", or) + ")");
+        }
+        if (!parts.isEmpty()) {
+            inner.append(" HAVING ").append(String.join(" AND ", parts));
+        }
     }
 
     private static Entry merge(Entry current, ResultSet rs) throws SQLException {

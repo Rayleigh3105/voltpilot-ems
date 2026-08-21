@@ -93,34 +93,62 @@ public class CommandLogReader {
      */
     public CommandHistoryDto forSite(UUID siteId, UUID entityId, DeviceScopes.Scope scope,
             Instant from, Instant to) {
+        return forSite(siteId, entityId, scope, from, to, CommandFilter.Filter.NONE, to,
+                MAX_ENTRIES);
+    }
+
+    /**
+     * Derselbe Verlauf mit den drei STRUKTUR-Filtern, dem Seiten-Cursor und dem
+     * Treffer-Zähler (Geräteseiten Revision B §6, Captain-Punkt 4).
+     *
+     * <p><b>Der Zähler ist die Ehrlichkeit dieser Stufe:</b> {@code total} sind
+     * die Zeilen des Zeitraums OHNE Filter, {@code matched} die mit ihm. Ein
+     * Zähler, der nur die gezeigten nennt, verwechselte einen scharfen Filter
+     * mit einem leeren Zeitraum - und ein Kunde läse „in dieser Woche wurde
+     * nichts geschickt", wo in Wahrheit 212 Zeilen liegen.
+     *
+     * @param before der Seiten-Cursor („bis zu diesem Zeitpunkt", {@code <=})
+     * @param limit  wie viele Zeilen je Speicher höchstens mitkommen
+     */
+    public CommandHistoryDto forSite(UUID siteId, UUID entityId, DeviceScopes.Scope scope,
+            Instant from, Instant to, CommandFilter.Filter filter, Instant before, int limit) {
         EntityRow entity = entityId == null ? null : entities.entityForSite(siteId, entityId);
         UUID deviceId = entity == null ? null : entity.deviceId();
-        List<CommandLogRepository.Row> rows = scope == null
-                ? store.entries(siteId, entityId, deviceId, from, to, MAX_ENTRIES + 1)
-                : store.entriesForDevice(siteId, scope.deviceId(), scope.entityIds(), from, to,
-                        MAX_ENTRIES + 1);
-        boolean truncated = rows.size() > MAX_ENTRIES;
+        boolean byDevice = scope != null;
+        List<UUID> scopeEntities = byDevice ? scope.entityIds() : null;
+        UUID scopeDevice = byDevice ? scope.deviceId() : null;
+
+        List<CommandLogRepository.Row> rows = List.of();
+        if (filter.includesLog()) {
+            rows = byDevice
+                    ? store.entriesForDevice(siteId, scopeDevice, scopeEntities, from, to,
+                            limit + 1, filter, before)
+                    : store.entries(siteId, entityId, deviceId, from, to, limit + 1, filter,
+                            before);
+        }
+        boolean truncated = rows.size() > limit;
         if (truncated) {
             // Gekappt wird am ÄLTESTEN Ende: die Liste kommt aufsteigend an, die
             // jüngsten Zeilen sind die, die niemand verlieren will.
-            rows = rows.subList(rows.size() - MAX_ENTRIES, rows.size());
+            rows = rows.subList(rows.size() - limit, rows.size());
         }
         // Der vierte Strom hat seinen EIGENEN Deckel, damit eine gespraechige
         // Halteperioden-Liste die wenigen Register-Zeilen nie verdraengt - und
         // greift er, sagt dieselbe `truncated`-Fahne es.
-        List<RegisterWriteEventRepository.Entry> writes = scope == null
-                ? registerWrites.between(siteId, deviceId, from, to, MAX_REGISTER_ENTRIES + 1)
-                : scope.box()
-                        // Die BOX trägt ihre ANLAGENWEITEN Vorgänge (primäre
-                        // Lane, freie Adresse); ein Vorgang MIT Komponente steht
-                        // auf der Seite ihres Geräts (Ziel-Attribution).
-                        ? registerWrites.betweenForBox(siteId, scope.deviceId(), from, to,
-                                MAX_REGISTER_ENTRIES + 1)
-                        : registerWrites.betweenForEntities(siteId, scope.entityIds(), from, to,
-                                MAX_REGISTER_ENTRIES + 1);
-        if (writes.size() > MAX_REGISTER_ENTRIES) {
+        int registerLimit = Math.min(limit, MAX_REGISTER_ENTRIES);
+        List<RegisterWriteEventRepository.Entry> writes = List.of();
+        if (filter.includesRegister()) {
+            // Die BOX trägt ihre ANLAGENWEITEN Vorgänge (primäre Lane, freie
+            // Adresse); ein Vorgang MIT Komponente steht auf der Seite ihres
+            // Geräts (Ziel-Attribution).
+            writes = registerWrites.filtered(siteId,
+                    byDevice ? (scope.box() ? scopeDevice : null) : deviceId,
+                    byDevice && !scope.box() ? scopeEntities : null, from, to,
+                    registerLimit + 1, byDevice && scope.box(), filter, before);
+        }
+        if (writes.size() > registerLimit) {
             // Gekappt wird am AELTESTEN Ende (die Liste kommt neueste-zuerst).
-            writes = writes.subList(0, MAX_REGISTER_ENTRIES);
+            writes = writes.subList(0, registerLimit);
             truncated = true;
         }
         List<CommandEntryDto> entries = new ArrayList<>(
@@ -130,14 +158,40 @@ public class CommandLogReader {
         // (den es hier nicht geben kann) sortiert ans Ende statt zu werfen.
         entries.sort(Comparator.comparing(CommandEntryDto::startedAt,
                 Comparator.nullsLast(Comparator.naturalOrder())));
+        int total = count(siteId, entityId, deviceId, scope, from, to, CommandFilter.Filter.NONE);
+        int matched = filter.isEmpty() ? total
+                : count(siteId, entityId, deviceId, scope, from, to, filter);
+        // Der Cursor nach HINTEN: der Beginn der ältesten gezeigten Zeile. Er
+        // ist null, sobald das Fenster vollständig gezeigt ist - eine Fläche
+        // darf „mehr laden" nie anbieten, wo es nichts mehr gibt.
+        Instant next = truncated && !entries.isEmpty() ? entries.get(0).startedAt() : null;
         return new CommandHistoryDto(store.recordingSince(siteId).orElse(null),
                 CommandLog.ACCURACY_SECONDS, from, to, entityId,
                 entity == null ? null : entity.label(), scope == null ? null : scope.ref(),
                 scope == null ? null : scope.box(),
                 scope != null ? scope.writes() : writes(entity), truncated,
+                total, matched, next,
                 entries,
                 controlStatus.latestForSite(siteId).orElse(null),
                 curtailmentStatus.latestForSite(siteId).orElse(null));
+    }
+
+    /** Die Zeilen des Fensters über BEIDE Speicher - mit oder ohne Filter. */
+    private int count(UUID siteId, UUID entityId, UUID deviceId, DeviceScopes.Scope scope,
+            Instant from, Instant to, CommandFilter.Filter filter) {
+        boolean byDevice = scope != null;
+        int n = 0;
+        if (filter.includesLog()) {
+            n += store.count(siteId, entityId, byDevice ? scope.deviceId() : deviceId,
+                    byDevice ? scope.entityIds() : null, byDevice, from, to, filter);
+        }
+        if (filter.includesRegister()) {
+            n += registerWrites.count(siteId,
+                    byDevice ? (scope.box() ? scope.deviceId() : null) : deviceId,
+                    byDevice && !scope.box() ? scope.entityIds() : null, from, to,
+                    byDevice && scope.box(), filter);
+        }
+        return n;
     }
 
     /** Ob es die Komponente in dieser Anlage überhaupt gibt (sonst 404). */

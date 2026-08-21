@@ -207,3 +207,248 @@
   font-size: 0.74rem;
   color: var(--vp-text-muted, #4a5568);
 }
+
+/* ---------------------------------------------------------------------------
+   Die FILTER-LEISTE (Geräteseiten Revision B §6, Captain-Punkt 4).
+
+   Die drei SCHNELL-CHIPS bleiben auf jedem Gerät sichtbar - sie sind die drei
+   Fragen der Support-Fälle. Alles Weitere klappt auf; auf dem Telefon wird
+   daraus ein Sheet, damit die Liste darunter nicht wegrutscht.
+--------------------------------------------------------------------------- */
+
+.vp-bf {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.vp-bf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.vp-bf-chip,
+.vp-bf-more,
+.vp-bf-clear {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+/* Der Chip bleibt kompakt (drei nebeneinander müssen auf 375 px passen), seine
+   TREFFERFLÄCHE ist 44 px - das `.vp-switch`-Muster des Hauses. Ein 44-px-Kasten
+   zöge die Chip-Reihe auseinander, statt sie bedienbar zu machen. */
+.vp-bf-chip::before,
+.vp-bf-more::before,
+.vp-bf-clear::before {
+  content: '';
+  position: absolute;
+  inset: -5px 0;
+}
+
+.vp-bf-chip:hover,
+.vp-bf-more:hover,
+.vp-bf-clear:hover {
+  border-color: var(--vp-brand, #6b8afd);
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-bf-chip.is-an,
+.vp-bf-more.is-an {
+  border-color: var(--vp-brand, #6b8afd);
+  background: var(--vp-brand-soft, #eef2ff);
+  color: var(--vp-brand-deep, #3a4fb5);
+  font-weight: 600;
+}
+
+.vp-bf-clear {
+  border-style: dashed;
+}
+
+.vp-bf-backdrop {
+  display: none;
+}
+
+.vp-bf-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-2, #f7fafc);
+}
+
+.vp-bf-panel-head {
+  display: none;
+}
+
+.vp-bf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-bf-field select,
+.vp-bf-field input {
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 8px);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text, #1a202c);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.vp-bf-range {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vp-bf-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-bf-group legend {
+  padding: 0 0 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-bf-group label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted, #4a5568);
+  cursor: pointer;
+}
+
+.vp-bf-group input {
+  margin-top: 2px;
+  accent-color: var(--vp-brand, #6b8afd);
+}
+
+.vp-bf-search {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vp-bf-searchbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 8px);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-bf-searchbox input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--vp-text, #1a202c);
+  font: inherit;
+  outline: none;
+}
+
+.vp-bf-treffer {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vp-text, #1a202c);
+}
+
+.vp-befehle-mehr {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  margin-top: 10px;
+  padding: 8px 14px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-sm, 8px);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text, #1a202c);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  /* Telefon: das Panel wird ein Sheet - die Liste darunter bleibt stehen,
+     statt bei jedem Filter-Klick wegzurutschen. */
+  .vp-bf-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(15, 23, 42, 0.45);
+  }
+
+  .vp-bf-panel {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 61;
+    display: flex;
+    flex-direction: column;
+    max-height: 82vh;
+    overflow-y: auto;
+    border: 0;
+    border-radius: 16px 16px 0 0;
+    background: var(--vp-surface, #fff);
+    box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.2);
+  }
+
+  .vp-bf-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    color: var(--vp-text, #1a202c);
+  }
+
+  .vp-bf-panel-head button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    border: 0;
+    background: transparent;
+    color: var(--vp-text-muted, #4a5568);
+    cursor: pointer;
+  }
+}
+
+/* Die zwei Schnell-Chips am MINI-Film der Geräteseite: sie filtern die schon
+   geladenen Zeilen und tragen ihren Zustand in den „Alle anzeigen"-Link. */
+.vp-geraet-befehl-chips {
+  margin-bottom: 10px;
+}

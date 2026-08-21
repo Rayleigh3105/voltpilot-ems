@@ -433,6 +433,11 @@ describe('GeraetSeiteSection', () => {
     expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'inverter' });
     const alle = screen.getByRole('link', { name: /Alle anzeigen/ });
     expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle?geraet=inverter');
+    // Der Schnell-Chip filtert den MINI-Film clientseitig UND reist im Link
+    // mit - der Zustand geht am Sprung nicht verloren (Revision B §6).
+    fireEvent.click(screen.getByRole('button', { name: 'Nur Abweichungen' }));
+    expect(screen.getByRole('link', { name: /Alle anzeigen/ }).getAttribute('href'))
+      .toContain('ergebnis=abweichend');
     // Und die Grenze wird ERKLÄRT: die anlagenweiten Befehle gehören der Box.
     expect(screen.getByText(/Anlagenweite Befehle/)).toBeInTheDocument();
   });

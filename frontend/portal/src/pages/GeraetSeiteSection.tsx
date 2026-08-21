@@ -38,6 +38,7 @@ import {
   type HeldKachel,
   type SektionId,
 } from '../geraetGesicht';
+import { inUrl, LEER, type BefehlFilter } from '../befehleFilter';
 import { plantModel, type PlantComponent } from '../komponenten';
 import { fmtNum } from '../format';
 import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment';
@@ -1106,9 +1107,44 @@ function BefehleSektion({
   history: CommandHistory | null;
   now: number;
 }) {
-  const ausschnitt = geraeteAusschnitt(history, now, 5);
+  // Der Schnell-Chip (Geräteseiten Revision B §6): er filtert den MINI-Film
+  // clientseitig - die Zeilen sind schon da, ein zweiter Abruf wäre Aufwand
+  // ohne Gewinn - und reist im „Alle anzeigen"-Link als Filter mit, damit der
+  // Zustand nicht am Sprung verloren geht.
+  //
+  // ⚠ Der zweite Chip der Spezifikation („Heute") fehlt hier BEWUSST: dieser
+  // Ausschnitt IST der Tag (der Abruf oben nimmt den Vorgabe-Zeitraum), ein
+  // Chip könnte also nichts ändern. Ein Bedienelement, das nichts bewirken
+  // kann, wird nicht angeboten - dieselbe Regel wie beim Anwenden-Knopf.
+  const [nurAbweichungen, setNurAbweichungen] = useState(false);
+  const gefiltert = useMemo(
+    () => ({
+      ...history,
+      entries: (history?.entries ?? []).filter(
+        (e) => !nurAbweichungen || e.verdict === 'abweichend' || e.foreignInfluence === true,
+      ),
+    } as CommandHistory | null),
+    [history, nurAbweichungen],
+  );
+  const ausschnitt = geraeteAusschnitt(history ? gefiltert : null, now, 5);
+  const chipFilter: BefehlFilter = {
+    ...LEER,
+    ergebnis: nurAbweichungen ? ['abweichend'] : [],
+  };
   return (
     <Sektion titel={BEFEHLE_LABEL} icon="activity" breit>
+      {/* EIN Chip, mehr nicht: alles Weitere beantwortet die Befehle-Seite,
+          und der Zustand reist über die Adresse mit. */}
+      <div className="vp-bf-chips vp-geraet-befehl-chips">
+        <button
+          type="button"
+          className={`vp-bf-chip${nurAbweichungen ? ' is-an' : ''}`}
+          aria-pressed={nurAbweichungen}
+          onClick={() => setNurAbweichungen((v) => !v)}
+        >
+          Nur Abweichungen
+        </button>
+      </div>
       {/* Die F4-Antwort: an dieses Gerät geht gar kein Befehl. Sie steht VOR
           der Liste, damit ein leerer Verlauf nicht als Zufall gelesen wird. */}
       {history && !history.writes && (
@@ -1147,11 +1183,12 @@ function BefehleSektion({
           engerer Ausschnitt - sonst führte der Weg zurück auf dieselbe Liste. */}
       <a
         className="vp-geraet-komp-link"
-        href={
+        href={inUrl(
           history?.deviceIsBox === true
             ? hashForRoute(anlageRoute(siteId, 'befehle'))
-            : befehleGeraetHash(siteId, geraetRef)
-        }
+            : befehleGeraetHash(siteId, geraetRef),
+          chipFilter,
+        )}
       >
         {history?.deviceIsBox === true
           ? 'Alle Befehle dieser Anlage'
