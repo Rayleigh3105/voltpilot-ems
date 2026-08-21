@@ -8,6 +8,7 @@ package agent
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,10 +185,109 @@ func TestCurtailReadbackRoutesToPerUnitStateAndHeartbeatCapability(t *testing.T)
 		t.Fatalf("applied cap = 8.2 + 9.8 = 18, got %+v", sum.AppliedCapKw)
 	}
 
+	// Die ADDITIVE Einheiten-Liste (R4a / Captain-Entscheid E2): sie sagt, WELCHE
+	// Einheit was hält - bis dahin konnte die Cloud nur zählen. Die Freigabe kommt
+	// dabei aus dem KERN, nicht aus dem `certified`-Stempel des Rücklesens: hier
+	// hält der Kern KEINE, also ist die Liste unfreigegeben, obwohl die Nutzlast
+	// oben `"certified": true` sagt - genau die Trennung, die auch CertifiedUnits
+	// bei 0 hält.
+	if len(sum.PerUnit) != 2 {
+		t.Fatalf("zwei Einheiten erwartet: %+v", sum.PerUnit)
+	}
+	if sum.PerUnit[0].SourceID != fr1.ID || sum.PerUnit[1].SourceID != fr2.ID {
+		t.Fatalf("source_id ist der Join-Schlüssel und muss stimmen: %+v", sum.PerUnit)
+	}
+	for _, u := range sum.PerUnit {
+		if u.Certified {
+			t.Fatalf("die Freigabe kommt aus dem KERN, nicht aus dem Rücklesen: %+v", u)
+		}
+		if u.Match == nil || !*u.Match {
+			t.Fatalf("das Rücklese-Urteil reist je Einheit: %+v", u)
+		}
+	}
+	if sum.PerUnit[0].AppliedCapKw == nil || *sum.PerUnit[0].AppliedCapKw != cap1 {
+		t.Fatalf("je Einheit ihre EIGENE Kappe: %+v", sum.PerUnit[0])
+	}
+	if sum.PerUnit[1].AppliedCapKw == nil || *sum.PerUnit[1].AppliedCapKw != cap2 {
+		t.Fatalf("je Einheit ihre EIGENE Kappe: %+v", sum.PerUnit[1])
+	}
+	// Und die Summe der Einzelkappen IST die Aggregat-Kappe - beide entstehen aus
+	// derselben Bedingung, sie können also nicht auseinanderlaufen.
+	if got := *sum.PerUnit[0].AppliedCapKw + *sum.PerUnit[1].AppliedCapKw; got != *sum.AppliedCapKw {
+		t.Fatalf("Einzelkappen %v ≠ Aggregat %v", got, *sum.AppliedCapKw)
+	}
+
+	// Eine FREIGEGEBENE Einheit erscheint auch als freigegeben - dieselbe Quelle
+	// wie der Zähler daneben.
+	a.curtailMu.Lock()
+	a.curtailCert[curtailUnitKey(fr1.Connection)] = true
+	a.curtailMu.Unlock()
+	sum = a.curtailmentSummary()
+	if sum.CertifiedUnits != 1 || !sum.PerUnit[0].Certified || sum.PerUnit[1].Certified {
+		t.Fatalf("Zähler und Liste lesen dieselbe Freigabe: %d %+v", sum.CertifiedUnits, sum.PerUnit)
+	}
+
 	// A site with no units yields NO block (an older portal sees nothing new).
 	b, _ := New(config.Config{DataDir: t.TempDir(), LocalMQTTAddr: "127.0.0.1:0"})
 	if b.curtailmentSummary() != nil {
 		t.Fatal("no units -> nil curtailment block")
+	}
+}
+
+// Eine RELEASE-Einheit (Grenze aufgehoben) trägt KEINE Kappe, und ein
+// Rücklesen ohne Befehl trägt KEIN Urteil - „nichts angewandt" darf nie als
+// „das Rücklesen widersprach" gelesen werden.
+func TestCurtailPerUnitOmitsWhatWasNeverCommanded(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.ControlEnabled = true
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr := addFronius(t, a, 1, 25)
+
+	raw, _ := json.Marshal(map[string]any{
+		"ts": time.Now().UTC().Format(time.RFC3339Nano), "curtail": true,
+		"source_id": fr.ID, "unit_key": "192.168.210.40:502#1", "family": "fronius_sunspec",
+		"control_enabled": true, "certified": false, "mode": "release", "applied": true,
+		"rated_kw": 25.0,
+	})
+	a.onControlReadback("", raw)
+
+	sum := a.curtailmentSummary()
+	if len(sum.PerUnit) != 1 {
+		t.Fatalf("eine Einheit erwartet: %+v", sum.PerUnit)
+	}
+	u := sum.PerUnit[0]
+	if u.AppliedCapKw != nil {
+		t.Fatalf("eine aufgehobene Grenze hat KEINE Kappe: %+v", u)
+	}
+	if u.Match != nil {
+		t.Fatalf("ohne Befehl gibt es kein Rücklese-Urteil: %+v", u)
+	}
+	if sum.Active {
+		t.Fatalf("release ist nicht aktiv: %+v", sum)
+	}
+	// Und der Draht lässt beides WEG statt eine 0 bzw. ein false zu behaupten.
+	wire, _ := json.Marshal(sum)
+	for _, forbidden := range []string{"applied_cap_kw", `"match"`} {
+		if strings.Contains(string(wire), forbidden) {
+			t.Fatalf("%s darf im Draht fehlen, nicht erfunden werden: %s", forbidden, wire)
+		}
+	}
+
+	// Eine Einheit OHNE source_id ist nicht zuordenbar und wird ausgelassen -
+	// die Liste ist dann kürzer als der Zähler, der Zähler bleibt die Zahl.
+	a.curtailMu.Lock()
+	for k, v := range a.curtailUnits {
+		v.SourceID = ""
+		a.curtailUnits[k] = v
+	}
+	a.curtailMu.Unlock()
+	sum = a.curtailmentSummary()
+	if len(sum.PerUnit) != 0 || sum.Units != 1 {
+		t.Fatalf("ohne Join-Schlüssel keine Zeile, Zähler bleibt: %d %+v", sum.Units, sum.PerUnit)
 	}
 }
 

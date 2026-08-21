@@ -1339,6 +1339,49 @@ type CurtailmentSummary struct {
 	DeviceExportLimitRegister string `json:"device_export_limit_register,omitempty"`
 	// DeviceExportLimitReadAt is its OWN freshness anchor (RFC3339).
 	DeviceExportLimitReadAt string `json:"device_export_limit_read_at,omitempty"`
+
+	// PerUnit is the ADDITIVE per-unit breakdown (Geräteseiten Stufe 1, scout
+	// vp-geraeteseite-rev-b8 R4a, Captain-Entscheid E2). Until it rolls out the
+	// cloud can only count ("2 von 2 freigegeben") and therefore has to say
+	// "an alle freigegebenen Wechselrichter"; only the BOX knows WHICH unit it
+	// wrote to and what came back, so anything the cloud derived instead would
+	// be exactly the fabricated attribution ANLAGENWEITE_BEFEHLE avoids.
+	//
+	// ⚠ It is `per_unit`, NOT `units`: that key is the COUNT and has been on
+	// the wire since this block was built. Renaming it would break every
+	// deployed cloud reader for a purely cosmetic gain.
+	//
+	// ⚠ The list may be SHORTER than Units - an entry without a source_id
+	// carries no join key to the reported sources, so the cloud drops it rather
+	// than attribute it to nothing. Consumers must therefore NEVER derive the
+	// count from the list length; Units stays the count.
+	PerUnit []CurtailmentUnit `json:"per_unit,omitempty"`
+}
+
+// CurtailmentUnit is one curtailment-capable unit as the box sees it: the join
+// key to the reported sources, its First-Light release, what cap it currently
+// applies and whether the readback confirmed it.
+//
+// Deliberately MINIMAL. The unit's label, its registers and its enforcement
+// verdict stay LOCAL (the :8484 card) - the cloud names a device through its
+// ONE name builder from the reported sources (entityLabel.deviceName), and a
+// second name arriving over the wire would be a second naming truth.
+type CurtailmentUnit struct {
+	// SourceID joins to the reported source (`/sources`.sourceId) - the key the
+	// cloud already uses to turn a unit into a device name.
+	SourceID string `json:"source_id"`
+	// Certified: this unit carries a persisted per-unit First-Light release.
+	// Without it the write gate holds and the unit is observed-only.
+	Certified bool `json:"certified"`
+	// AppliedCapKw is the cap THIS unit currently applies, under exactly the
+	// condition the aggregate uses for Active/AppliedCapKw - so the per-unit
+	// list and the totals beside it can never disagree. Absent on a release
+	// (the limit was lifted) - never a fabricated 0.
+	AppliedCapKw *float64 `json:"applied_cap_kw,omitempty"`
+	// Match is the unit's readback verdict. Absent (nil) for an observed-only
+	// readback where nothing was commanded - "nothing applied" must not read as
+	// "the readback disagreed".
+	Match *bool `json:"match,omitempty"`
 }
 
 // ExportGuardSummary is the heartbeat half of the dynamic feed-in limitation.

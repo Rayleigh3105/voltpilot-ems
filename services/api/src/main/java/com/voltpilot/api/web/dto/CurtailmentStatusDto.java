@@ -1,6 +1,7 @@
 package com.voltpilot.api.web.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -45,7 +46,22 @@ import java.util.UUID;
  *       from its own register at most once a day. Null = not reported. It has
  *       its OWN read timestamp because it ages on a completely different clock
  *       than {@code checkedAt}.
+ *   <li>{@code perUnit} - the ADDITIVE per-unit breakdown (R4a / E2): WHICH
+ *       unit is released, holds which cap, confirmed by which readback. It
+ *       ages on {@code checkedAt} like everything else in this block - a
+ *       second freshness stamp for the same observation would be a second
+ *       answer to the same question. See the tri-state below.
  * </ul>
+ *
+ * <p><b>⚠ {@code perUnit} is THREE-valued, and the two empty cases are
+ * different statements.</b> {@code null} = not loaded on this path (the fleet
+ * aggregate reads the row without its units - the fleet view is per SITE and
+ * renders no per-unit list, so loading it would be work nobody reads).
+ * {@code []} = the device reported none (an older edge that predates the list,
+ * or units without a join key). Only a non-empty list is an attribution.
+ * <b>And the list may be SHORTER than {@code units}</b> - an entry without a
+ * source id is dropped at ingest rather than attributed to nothing, so
+ * {@code units} stays THE count and must never be derived from the list.
  *
  * <p>No row at all (204) = an older edge or a plant without a curtailment
  * actor. Every consumer keeps its pre-PR-3 PLAN wording then, never a
@@ -54,5 +70,26 @@ import java.util.UUID;
 public record CurtailmentStatusDto(UUID deviceId, int units, int certifiedUnits,
         boolean controlEnabled, boolean active, Double appliedCapKw, Boolean allMatch,
         boolean possibleOverride, Instant checkedAt, ExportGuardDto exportGuard,
-        DeviceExportLimitDto deviceExportLimit) {
+        DeviceExportLimitDto deviceExportLimit, List<CurtailmentUnitDto> perUnit) {
+
+    /**
+     * The pre-R4a shape: everything but the per-unit list, which stays
+     * {@code null} = "not loaded here". Kept so every existing caller (the
+     * listener's parse, the fleet aggregate's row mapper, tests) is unchanged -
+     * a 12-argument copy at each of them would be a place to forget a field.
+     */
+    public CurtailmentStatusDto(UUID deviceId, int units, int certifiedUnits,
+            boolean controlEnabled, boolean active, Double appliedCapKw, Boolean allMatch,
+            boolean possibleOverride, Instant checkedAt, ExportGuardDto exportGuard,
+            DeviceExportLimitDto deviceExportLimit) {
+        this(deviceId, units, certifiedUnits, controlEnabled, active, appliedCapKw, allMatch,
+                possibleOverride, checkedAt, exportGuard, deviceExportLimit, null);
+    }
+
+    /** The same row with its per-unit list attached (the read path). */
+    public CurtailmentStatusDto withPerUnit(List<CurtailmentUnitDto> units) {
+        return new CurtailmentStatusDto(deviceId, this.units, certifiedUnits, controlEnabled,
+                active, appliedCapKw, allMatch, possibleOverride, checkedAt, exportGuard,
+                deviceExportLimit, units);
+    }
 }

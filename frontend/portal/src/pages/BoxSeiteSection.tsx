@@ -190,6 +190,7 @@ export function BoxSeiteSection({
       control,
       curtailment,
       geraete: boxGeraeteListe(data.localSetup, sources, charging?.chargers ?? null, now),
+      localSetup: data.localSetup,
       now,
     });
   }, [

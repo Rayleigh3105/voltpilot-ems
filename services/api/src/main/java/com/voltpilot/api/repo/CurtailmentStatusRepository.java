@@ -1,12 +1,14 @@
 package com.voltpilot.api.repo;
 
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
+import com.voltpilot.api.web.dto.CurtailmentUnitDto;
 import com.voltpilot.api.web.dto.DeviceExportLimitDto;
 import com.voltpilot.api.web.dto.ExportGuardDto;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -103,12 +105,57 @@ public class CurtailmentStatusRepository {
                 d == null ? null : Timestamp.from(d.readAt()));
     }
 
-    /** The newest curtailment truth for a site (across its devices), or empty. */
+    /**
+     * Replace a device's per-unit curtailment breakdown (R4a / E2). The
+     * heartbeat carries the COMPLETE list, so the set is replaced wholesale -
+     * exactly like {@code device_source_status}: a unit that disappeared must
+     * not linger as a ghost.
+     *
+     * <p>An EMPTY list therefore deletes: an older edge reports none, and the
+     * consumer's honest reading of "no rows" is "not reported", never
+     * "no units" (the count lives in {@code device_curtailment_status.units}).
+     */
+    public void replaceUnits(UUID siteId, UUID deviceId, List<CurtailmentUnitDto> units) {
+        jdbc.update("DELETE FROM device_curtailment_unit WHERE device_id = ?", deviceId);
+        for (CurtailmentUnitDto u : units) {
+            jdbc.update(
+                    "INSERT INTO device_curtailment_unit (device_id, source_id, tenant_id, "
+                            + "site_id, certified, applied_cap_kw, match) VALUES (?, ?, "
+                            + "NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?)",
+                    deviceId, u.sourceId(), siteId, u.certified(), u.appliedCapKw(), u.match());
+        }
+    }
+
+    /**
+     * The newest curtailment truth for a site (across its devices), or empty -
+     * WITH the reporting device's per-unit list attached.
+     *
+     * <p>The units are a SECOND query on purpose: they belong to the one device
+     * this row came from, and folding them into the aggregate row's SELECT
+     * would either duplicate the row per unit or need a join the fleet
+     * aggregate (which shares {@link #COLUMNS}) must not pay for.
+     */
     public Optional<CurtailmentStatusDto> latestForSite(UUID siteId) {
-        return jdbc.query(
+        Optional<CurtailmentStatusDto> row = jdbc.query(
                 "SELECT " + COLUMNS + " FROM device_curtailment_status WHERE site_id = ? "
                         + "ORDER BY checked_at DESC LIMIT 1",
                 (rs, i) -> map(rs), siteId).stream().findFirst();
+        return row.map(r -> r.withPerUnit(unitsForDevice(r.deviceId())));
+    }
+
+    /** One device's per-unit breakdown, ordered by its join key (stable). */
+    public List<CurtailmentUnitDto> unitsForDevice(UUID deviceId) {
+        return jdbc.query(
+                "SELECT source_id, certified, applied_cap_kw, match FROM device_curtailment_unit "
+                        + "WHERE device_id = ? ORDER BY source_id",
+                (rs, i) -> new CurtailmentUnitDto(
+                        rs.getString("source_id"),
+                        rs.getBoolean("certified"),
+                        (Double) rs.getObject("applied_cap_kw"),
+                        // Nullable on purpose: "nothing commanded" must not read
+                        // as "the readback disagreed" (getBoolean would say false).
+                        rs.getObject("match", Boolean.class)),
+                deviceId);
     }
 
     /** One {@link #COLUMNS} row -> the DTO. Package-visible: see {@link #COLUMNS}. */

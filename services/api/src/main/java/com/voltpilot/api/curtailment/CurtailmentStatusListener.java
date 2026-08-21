@@ -7,12 +7,16 @@ import com.voltpilot.api.repo.CurtailmentStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
+import com.voltpilot.api.web.dto.CurtailmentUnitDto;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.DeviceExportLimitDto;
 import com.voltpilot.api.web.dto.ExportGuardDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -252,6 +256,10 @@ public class CurtailmentStatusListener {
                     exportGuard(curtail.get("export_guard")),
                     deviceExportLimit(curtail));
             curtailmentStatus.upsert(siteId, row);
+            // Die Einheiten-Liste (R4a / E2) wird GANZ ersetzt: der Herzschlag
+            // trägt die vollständige Menge, eine verschwundene Einheit darf
+            // nicht als Geist stehen bleiben (das device_source_status-Muster).
+            curtailmentStatus.replaceUnits(siteId, deviceId, perUnit(curtail));
             // Und den VERLAUF fortschreiben (Kommando-Transparenz V1): der
             // Abregel-Schreibweg ist ein EIGENER Strom neben dem Batterie-
             // Sollwert - die zwei beschreiben verschiedene Geraete-Register.
@@ -259,6 +267,46 @@ public class CurtailmentStatusListener {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * The per-unit curtailment breakdown (R4a / Captain-Entscheid E2), or an
+     * empty list when the device did not report one (an older edge - the block
+     * predates the list).
+     *
+     * <p><b>⚠ An entry without a {@code source_id} is DROPPED, not stored.</b>
+     * That id is the only join key to the reported sources, so a unit without
+     * it cannot become a device name - and attributing it to nothing would be
+     * exactly the fabricated attribution E2 rejected. The list is then SHORTER
+     * than {@code units}, which is why {@code units} stays THE count.
+     *
+     * <p>Duplicates on one source id are dropped too (the table is keyed on
+     * {@code (device_id, source_id)}, so a second row would collide): the FIRST
+     * wins, deterministically, rather than letting the insert order decide.
+     */
+    private static List<CurtailmentUnitDto> perUnit(JsonNode curtail) {
+        JsonNode list = curtail.get("per_unit");
+        if (list == null || !list.isArray()) {
+            return List.of();
+        }
+        List<CurtailmentUnitDto> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (JsonNode u : list) {
+            if (!u.isObject()) {
+                continue;
+            }
+            String sourceId = u.path("source_id").asText("").trim();
+            if (sourceId.isEmpty() || !seen.add(sourceId)) {
+                continue;
+            }
+            Double cap = optDouble(u, "applied_cap_kw");
+            if (cap != null && !plausibleKw(cap)) {
+                cap = null; // an implausible cap is no cap - never a claimed number
+            }
+            out.add(new CurtailmentUnitDto(sourceId, u.path("certified").asBoolean(false), cap,
+                    optBoolean(u, "match")));
+        }
+        return List.copyOf(out);
     }
 
     /**

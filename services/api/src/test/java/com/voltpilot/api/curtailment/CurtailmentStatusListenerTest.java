@@ -11,11 +11,13 @@ import static org.mockito.Mockito.when;
 import com.voltpilot.api.repo.CurtailmentStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
+import com.voltpilot.api.web.dto.CurtailmentUnitDto;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.DeviceExportLimitDto;
 import com.voltpilot.api.web.dto.ExportGuardDto;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -361,5 +363,91 @@ class CurtailmentStatusListenerTest {
         String payload = "{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE + "\","
                 + "\"device_id\":\"" + DEVICE + "\",\"curtailment\":" + block + "}";
         listener.handle(TOPIC, payload.getBytes(StandardCharsets.UTF_8));
+    }
+
+    // ── Die Einheiten-Liste (R4a / Captain-Entscheid E2) ─────────────────────
+
+    /** One heartbeat in; the captured per-unit list out. */
+    private List<CurtailmentUnitDto> ingestUnits(String block) {
+        ingestRaw(block);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<CurtailmentUnitDto>> units = ArgumentCaptor.forClass(List.class);
+        verify(store).replaceUnits(eq(SITE), eq(DEVICE), units.capture());
+        return units.getValue();
+    }
+
+    /**
+     * The list is what turns "0 von 2 freigegeben" into an attribution: WHICH
+     * unit is released, holds which cap, confirmed by which readback.
+     */
+    @Test
+    void thePerUnitListIsIngestedFieldForField() {
+        List<CurtailmentUnitDto> units = ingestUnits("{\"units\":2,\"certified_units\":1,"
+                + "\"control_enabled\":true,\"active\":true,\"checked_at\":\"2026-08-02T10:41:07Z\","
+                + "\"per_unit\":["
+                + "{\"source_id\":\"src-a\",\"certified\":true,\"applied_cap_kw\":8.2,\"match\":true},"
+                + "{\"source_id\":\"src-b\",\"certified\":false}]}");
+
+        assertThat(units).hasSize(2);
+        assertThat(units.get(0)).isEqualTo(new CurtailmentUnitDto("src-a", true, 8.2, true));
+        // Die zweite Einheit hat nichts angewandt: KEINE Kappe, KEIN Urteil -
+        // „nichts angewandt" darf nie als „das Rücklesen widersprach" gelesen
+        // werden (die Dreiwertigkeit des ganzen Blocks).
+        assertThat(units.get(1)).isEqualTo(new CurtailmentUnitDto("src-b", false, null, null));
+    }
+
+    /**
+     * ⚠ Eine Einheit OHNE source_id ist nicht zuordenbar - sie wird VERWORFEN,
+     * nicht mit einem leeren Schlüssel gespeichert. Genau das ist die erfundene
+     * Zuordnung, die E2 abgelehnt hat; die Liste ist dann kürzer als `units`,
+     * und `units` bleibt DIE Zahl.
+     */
+    @Test
+    void aUnitWithoutItsJoinKeyIsDroppedRatherThanAttributedToNothing() {
+        List<CurtailmentUnitDto> units = ingestUnits("{\"units\":2,\"certified_units\":1,"
+                + "\"control_enabled\":true,\"active\":true,"
+                + "\"per_unit\":[{\"certified\":true},{\"source_id\":\"  \"},"
+                + "{\"source_id\":\"src-a\",\"certified\":true}]}");
+
+        assertThat(units).extracting(CurtailmentUnitDto::sourceId).containsExactly("src-a");
+    }
+
+    /** Zwei Zeilen auf demselben Schlüssel kollidierten im Speicher - die ERSTE gewinnt. */
+    @Test
+    void aDuplicateSourceIdKeepsTheFirstDeterministically() {
+        List<CurtailmentUnitDto> units = ingestUnits("{\"units\":1,\"certified_units\":1,"
+                + "\"control_enabled\":true,\"active\":true,\"per_unit\":["
+                + "{\"source_id\":\"src-a\",\"certified\":true,\"applied_cap_kw\":8.2},"
+                + "{\"source_id\":\"src-a\",\"certified\":false}]}");
+
+        assertThat(units).hasSize(1);
+        assertThat(units.get(0).certified()).isTrue();
+    }
+
+    /** Eine unplausible Kappe ist KEINE Kappe - nie eine behauptete Zahl. */
+    @Test
+    void anImplausibleCapIsDroppedAloneWhileTheUnitStands() {
+        List<CurtailmentUnitDto> units = ingestUnits("{\"units\":1,\"certified_units\":1,"
+                + "\"control_enabled\":true,\"active\":true,\"per_unit\":["
+                + "{\"source_id\":\"src-a\",\"certified\":true,\"applied_cap_kw\":9000000}]}");
+
+        assertThat(units).hasSize(1);
+        assertThat(units.get(0).appliedCapKw()).isNull();
+        assertThat(units.get(0).certified()).isTrue();
+    }
+
+    /**
+     * ⚠ Ein ÄLTERER Edge-Stand sendet die Liste gar nicht - dann wird der Satz
+     * LEER ersetzt, nicht ausgelassen: der Herzschlag trägt die vollständige
+     * Menge, eine verschwundene Einheit darf nicht als Geist stehen bleiben.
+     * Der Konsument liest „keine Zeilen" als „nicht gemeldet", nie als
+     * „keine Einheiten" (die Zahl steht daneben).
+     */
+    @Test
+    void anOlderEdgeWithoutTheListReplacesItWithAnEmptySet() {
+        List<CurtailmentUnitDto> units = ingestUnits("{\"units\":2,\"certified_units\":0,"
+                + "\"control_enabled\":true,\"active\":false}");
+
+        assertThat(units).isEmpty();
     }
 }

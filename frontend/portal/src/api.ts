@@ -1643,6 +1643,42 @@ export interface CurtailmentStatus {
    * gelesen) — nie eine erfundene 0.
    */
   deviceExportLimit: DeviceExportLimit | null;
+  /**
+   * Die Abregelung JE EINHEIT (R4a / Captain-Entscheid E2). **Dreiwertig, und
+   * die zwei leeren Fälle sagen Verschiedenes:** `null`/fehlend = auf diesem
+   * Pfad nicht geladen bzw. älteres Backend, `[]` = die Box hat keine gemeldet
+   * (ältere Edge — der Block ist älter als die Liste). Nur eine nicht-leere
+   * Liste ist eine Zuordnung.
+   *
+   * ⚠ Sie kann KÜRZER sein als `units`: eine Einheit ohne Join-Schlüssel wird
+   * beim Ingest verworfen, statt sie niemandem zuzuordnen. `units` bleibt DIE
+   * Zahl — nie aus der Länge dieser Liste ableiten.
+   */
+  perUnit?: CurtailmentUnit[] | null;
+}
+
+/**
+ * Eine abregel-fähige Einheit, wie die BOX sie meldet. Bis dahin konnte die
+ * Cloud nur zählen („0 von 2 Wechselrichtern freigegeben") — WELCHER der zwei
+ * gemeint ist, wusste sie nicht, und eine Ableitung im Portal wäre genau die
+ * erfundene Zuordnung, die `ANLAGENWEITE_BEFEHLE` vermeidet (E2).
+ */
+export interface CurtailmentUnit {
+  /**
+   * Der Join-Schlüssel auf die gemeldete Quelle (`/sources.sourceId`) — so wird
+   * aus einer Einheit ein GERÄTENAME, gebildet vom EINEN Namensbildner des
+   * Portals. Ein Name reist bewusst nicht über den Draht.
+   */
+  sourceId: string;
+  /** Diese Einheit trägt eine First-Light-Freigabe (aus dem KERN der Box). */
+  certified: boolean;
+  /** Die Begrenzung, die DIESE Einheit hält; null = keine (nie eine erfundene 0). */
+  appliedCapKw: number | null;
+  /**
+   * Ihr Rücklese-Urteil; `null` = nichts befohlen (nur beobachtet). Nur `true`
+   * ist eine Bestätigung — `null` darf nie als Widerspruch gelesen werden.
+   */
+  match: boolean | null;
 }
 
 /**

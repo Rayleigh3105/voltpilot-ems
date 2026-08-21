@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CurtailmentStatus, ExportGuard } from './api';
 import {
+  abregelZiel,
   CURTAIL_PLAN,
   CURTAIL_STALE_MS,
   curtailActionPhrase,
@@ -429,5 +430,66 @@ describe('exportGuardView · der Einspeisewächter („Grenzen & Wächter" Stufe
     );
 
     expect(v!.deviceLimitLine).toContain(`0,0${NBSP}kW`);
+  });
+});
+
+// ── Die Abregelung sagt, WOHIN sie geht (R4a / Captain-Entscheid E2) ─────────
+
+describe('abregelZiel', () => {
+  const namen: Record<string, string> = { 'src-a': 'Fronius Eco 27.0-3', 'src-b': 'Fronius WR 2' };
+  const nameOf = (id: string) => namen[id] ?? null;
+  const unit = (sourceId: string, certified = true) => ({
+    sourceId, certified, appliedCapKw: 8.2, match: true,
+  });
+
+  it('nennt die freigegebenen Einheiten BEIM NAMEN, sobald die Box sie meldet', () => {
+    const z = abregelZiel(status({ perUnit: [unit('src-a'), unit('src-b')] }), nameOf);
+    expect(z?.satz).toBe('Geht an Fronius Eco 27.0-3 und Fronius WR 2.');
+    expect(z?.ton).toBe('ok');
+  });
+
+  it('nennt eine einzelne Einheit ohne Aufzählungs-Grammatik', () => {
+    const z = abregelZiel(status({ units: 1, certifiedUnits: 1, perUnit: [unit('src-a')] }), nameOf);
+    expect(z?.satz).toBe('Geht an Fronius Eco 27.0-3.');
+  });
+
+  it('faellt auf die ZAHL zurueck, solange die Box keine Einheiten meldet', () => {
+    // Der Normalfall bis zum Edge-Release: ein aelterer Stand sendet die Liste
+    // gar nicht - dann wird nichts geraten, sondern gezaehlt.
+    const z = abregelZiel(status({ perUnit: null }), nameOf);
+    expect(z?.satz).toBe('Geht an alle freigegebenen Wechselrichter (2 von 2 Wechselrichtern freigegeben).');
+    expect(z?.ton).toBe('ok');
+  });
+
+  it('nennt NIEMANDEN halb: ein unaufloesbarer Name faellt ganz auf die Zahl zurueck', () => {
+    // Eine Liste, die zwei von drei Wechselrichtern nennt, liest sich als
+    // Vollstaendigkeit - deshalb gibt es hier nur ganz oder gar nicht.
+    const z = abregelZiel(status({ perUnit: [unit('src-a'), unit('src-unbekannt')] }), nameOf);
+    expect(z?.satz).toContain('alle freigegebenen Wechselrichter');
+    expect(z?.satz).not.toContain('Fronius Eco');
+  });
+
+  it('behauptet ohne Freigabe KEIN Ziel, sondern nennt den Grund', () => {
+    const z = abregelZiel(status({ certifiedUnits: 0, perUnit: [unit('src-a', false)] }), nameOf);
+    expect(z?.satz).toBe('Geht an keinen Wechselrichter — 0 von 2 Wechselrichtern freigegeben.');
+    expect(z?.ton).toBe('warn');
+  });
+
+  it('warnt, solange nicht jede Einheit freigegeben ist', () => {
+    const z = abregelZiel(status({ certifiedUnits: 1, perUnit: null }), nameOf);
+    expect(z?.ton).toBe('warn');
+  });
+
+  it('nennt NUR die freigegebenen Einheiten - eine gesperrte ist kein Ziel', () => {
+    const z = abregelZiel(
+      status({ certifiedUnits: 1, perUnit: [unit('src-a'), unit('src-b', false)] }),
+      nameOf,
+    );
+    expect(z?.satz).toBe('Geht an Fronius Eco 27.0-3.');
+  });
+
+  it('sagt ohne Einheit GAR NICHTS', () => {
+    expect(abregelZiel(status({ units: 0, certifiedUnits: 0 }), nameOf)).toBeNull();
+    expect(abregelZiel(null, nameOf)).toBeNull();
   });
 });
