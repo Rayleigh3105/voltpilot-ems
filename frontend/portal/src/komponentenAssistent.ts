@@ -17,6 +17,14 @@
  */
 
 /** Ein Feld des `transport_schema` einer Vorlage (das Formular-Vokabular). */
+import {
+  hervorheben as hervorhebenIntern,
+  normalisiereSuche as normalisiereSucheIntern,
+  passt,
+  suchBegriffe as suchBegriffeIntern,
+  type TextTeil,
+} from './picker/suche';
+
 export type TemplateField = {
   key: string;
   label: string;
@@ -745,12 +753,6 @@ export function ablehnungText(
  * Stöber-Alternative erhalten: wer seine Marke kennt, klickt weiter.
  */
 
-/** Ein Stück Text eines Treffers - `treffer` markiert die Fundstelle. */
-export interface TextTeil {
-  text: string;
-  treffer: boolean;
-}
-
 export interface ModellTreffer {
   template: ComponentTemplate;
   /** Der Marken-Name, mit hervorgehobenen Fundstellen. */
@@ -779,80 +781,14 @@ export interface ModellSuche {
 export const MAX_TREFFER = 12;
 
 /**
- * ⚠ Die Schreibweise darf nicht entscheiden, ob jemand sein Gerät findet.
- * Ein Typenschild trennt mit Bindestrichen, ein Mensch tippt Leerzeichen, ein
- * Datenblatt schreibt zusammen - normalisiert wird deshalb auf BEIDEN Seiten:
- * klein, ohne Trennzeichen, ohne Umlaut-Eigenheiten.
+ * Die tolerante Suche wohnt seit dem VpPicker-System in `picker/suche.ts` -
+ * EINE Implementierung für die ganze Plattform (die Modell-Suche war ihr
+ * Vorbild und ist ihr erster Abnehmer geblieben). Sie wird hier
+ * DURCHGEREICHT, damit jeder bestehende Aufrufer und jeder bestehende Test
+ * unverändert gültig bleibt.
  */
-export function normalisiereSuche(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/ß/g, 'ss')
-    .replace(/[\s\-_./]/g, '');
-}
-
-/** Die Suchbegriffe - jeder muss vorkommen (UND, nie ODER). */
-export function suchBegriffe(query: string): string[] {
-  return query
-    .trim()
-    .split(/\s+/)
-    .map((t) => normalisiereSuche(t))
-    .filter((t) => t !== '');
-}
-
-/**
- * Die Fundstellen eines Begriffs IM ORIGINALTEXT.
- *
- * ⚠ Gesucht wird auf der normalisierten Fassung, hervorgehoben im ORIGINAL -
- * die zwei haben verschiedene Längen (aus „SUN-30K" wird „sun30k"), deshalb
- * trägt jede Original-Position ihren Index in der normalisierten Fassung.
- */
-export function hervorheben(text: string, begriffe: string[]): TextTeil[] {
-  if (begriffe.length === 0 || text === '') return [{ text, treffer: false }];
-  // Position je Zeichen der NORMALISIERTEN Fassung → Position im Original.
-  const norm: string[] = [];
-  const pos: number[] = [];
-  for (let i = 0; i < text.length; i += 1) {
-    const n = normalisiereSuche(text[i]);
-    for (let k = 0; k < n.length; k += 1) {
-      norm.push(n[k]);
-      pos.push(i);
-    }
-  }
-  const flach = norm.join('');
-  const markiert = new Array<boolean>(text.length).fill(false);
-  for (const b of begriffe) {
-    let from = 0;
-    for (;;) {
-      const at = flach.indexOf(b, from);
-      if (at === -1) break;
-      for (let k = at; k < at + b.length; k += 1) markiert[pos[k]] = true;
-      from = at + b.length;
-    }
-  }
-  // ⚠ Ein Trennzeichen INNERHALB einer Fundstelle wird mit markiert: es kommt
-  // in der normalisierten Fassung gar nicht vor, bliebe also unmarkiert und
-  // risse „SUN-30K" optisch in zwei Treffer auseinander.
-  for (let i = 1; i < text.length - 1; i += 1) {
-    if (markiert[i] || normalisiereSuche(text[i]) !== '') continue;
-    let links = i - 1;
-    while (links >= 0 && normalisiereSuche(text[links]) === '') links -= 1;
-    let rechts = i + 1;
-    while (rechts < text.length && normalisiereSuche(text[rechts]) === '') rechts += 1;
-    if (links >= 0 && rechts < text.length && markiert[links] && markiert[rechts]) {
-      markiert[i] = true;
-    }
-  }
-  const out: TextTeil[] = [];
-  for (let i = 0; i < text.length; i += 1) {
-    const letzte = out[out.length - 1];
-    if (letzte && letzte.treffer === markiert[i]) letzte.text += text[i];
-    else out.push({ text: text[i], treffer: markiert[i] });
-  }
-  return out;
-}
+export { hervorheben, normalisiereSuche, suchBegriffe } from './picker/suche';
+export type { TextTeil } from './picker/suche';
 
 /**
  * Die Zusatz-Angaben eines Treffers (Captain: „kW, Phasen, HV/LV").
@@ -875,7 +811,7 @@ export function modellZusatz(t: ComponentTemplate): string {
 
 /** Was durchsucht wird - alles, was auf einem Typenschild stehen kann. */
 function heuhaufen(t: ComponentTemplate): string {
-  return normalisiereSuche([
+  return normalisiereSucheIntern([
     t.brandLabel, t.brand, t.modelLabel, t.model,
     t.familyLabel ?? '', t.family ?? '', t.communicationLabel ?? '',
   ].join(' '));
@@ -889,8 +825,8 @@ function heuhaufen(t: ComponentTemplate): string {
  * Fundstelle mitten im Namen.
  */
 function rang(t: ComponentTemplate, begriffe: string[]): number {
-  const modell = normalisiereSuche(`${t.modelLabel} ${t.model}`);
-  const marke = normalisiereSuche(`${t.brandLabel} ${t.brand}`);
+  const modell = normalisiereSucheIntern(`${t.modelLabel} ${t.model}`);
+  const marke = normalisiereSucheIntern(`${t.brandLabel} ${t.brand}`);
   if (begriffe.some((b) => modell.startsWith(b))) return 0;
   if (begriffe.some((b) => modell.includes(b))) return 1;
   if (begriffe.some((b) => marke.startsWith(b))) return 2;
@@ -904,13 +840,12 @@ function rang(t: ComponentTemplate, begriffe: string[]): number {
  * nicht auf, das Stufenmenü daneben bleibt der ruhige Weg.
  */
 export function modellSuche(templates: ComponentTemplate[], query: string): ModellSuche {
-  const begriffe = suchBegriffe(query);
+  const begriffe = suchBegriffeIntern(query);
   if (begriffe.length === 0) {
     return { treffer: [], gesamt: templates.length, leer: null, zaehler: null };
   }
   const passend = templates.filter((t) => {
-    const hay = heuhaufen(t);
-    return begriffe.every((b) => hay.includes(b));
+    return passt(heuhaufen(t), begriffe);
   });
   if (passend.length === 0) {
     return {
@@ -929,8 +864,8 @@ export function modellSuche(templates: ComponentTemplate[], query: string): Mode
   });
   const treffer = sortiert.slice(0, MAX_TREFFER).map((t) => ({
     template: t,
-    marke: hervorheben(t.brandLabel, begriffe),
-    modell: hervorheben(t.modelLabel, begriffe),
+    marke: hervorhebenIntern(t.brandLabel, begriffe),
+    modell: hervorhebenIntern(t.modelLabel, begriffe),
     zusatz: modellZusatz(t),
   }));
   return {
