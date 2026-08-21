@@ -289,14 +289,111 @@ export type ProbeAntwort = {
     errorCode?: string | null;
     message?: string | null;
     reading?: Record<string, unknown> | null;
+    finding?: ProbeBefund | null;
   }[];
+};
+
+/**
+ * Der Befund einer verletzten Plausibilitätsregel (Vertrag
+ * `mqtt-probe.schema.json` `op_result.finding`): WELCHER Kanal und WARUM.
+ *
+ * Maschinenlesbar, damit diese Datei keinen deutschen Satz nach Stichworten
+ * durchsuchen muss. Ein Wort, das die Tabellen unten nicht kennen, führt zu
+ * KEINER Aussage - nie zu einer erfundenen.
+ */
+export type ProbeBefund = {
+  channel: string;
+  rule: string;
+  raw?: number | null;
+  value?: number | null;
 };
 
 export type TestErgebnis = {
   zustand: 'bestanden' | 'fehlgeschlagen';
   text: string;
   messwerte: TestMesswert[];
+  /**
+   * Die verletzte Regel im Klartext - nur bei einem Fehlschlag, dessen Befund
+   * einen Kanal NENNT. Ohne Befund steht hier nichts: eine erfundene Erklärung
+   * wäre schlimmer als keine.
+   */
+  regelText?: string;
+  /**
+   * Der Ausweg, wenn dieser Kanal fehlen DARF. `null`/absent = es gibt keinen -
+   * ein kaputter Rahmen und die Leerantwort des Loggers sind keine Fälle, die
+   * ein Mensch übergehen darf.
+   */
+  override?: TestOverride;
 };
+
+/**
+ * „Trotzdem fortfahren (nur Lesen)": der Weg aus der Sackgasse, wenn das Gerät
+ * geantwortet hat und nachweislich nur EIN Kanal fehlt.
+ *
+ * Er entsteht ausschließlich aus dem Befund des Servers - die Fläche leitet
+ * nie selbst ab, ob eine Verletzung übergehbar ist.
+ */
+export type TestOverride = {
+  /** Der Kanal, den der Kunde abnickt - er reist so zum Server zurück. */
+  channel: string;
+  /** Die Beschriftung des Knopfs. */
+  label: string;
+  /** Was er bewirkt - und was er ausdrücklich NICHT bewirkt. */
+  folgen: string[];
+};
+
+/**
+ * Die verletzten Regeln in Klartext, je (Kanal, Regel). Sie sagen, was GEMESSEN
+ * wurde und was daraus folgt - nie nur „unplausibel".
+ */
+function regelText(befund: ProbeBefund, hatWerte: boolean): string | undefined {
+  if (befund.channel !== 'soc_pct') return undefined;
+  const rest = hatWerte
+    ? ' Spannung, Strom und Leistung sind lesbar.'
+    : '';
+  switch (befund.rule) {
+    case 'missing':
+      return (
+        'Der Ladestand liest 0 % - bei einer Eigenbau- oder nicht gekoppelten Batterie heißt das: ' +
+        'das BMS liefert keine Daten an den Wechselrichter.' + rest
+      );
+    case 'out_of_range':
+      return (
+        `Der Ladestand liest ${fmtProzent(befund.value)} - das kann kein Ladestand sein ` +
+        '(gültig sind 1 bis 100 %). Meist passt die Modellauswahl nicht zum Gerät.'
+      );
+    case 'no_answer':
+      return (
+        'Das Gerät hat geantwortet, aber alle Register standen auf 0 - so antwortet der ' +
+        'Datenlogger, wenn er den Wechselrichter selbst nicht erreicht.'
+      );
+    default:
+      return undefined;
+  }
+}
+
+function fmtProzent(v: number | null | undefined): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return 'einen unmöglichen Wert';
+  return `${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+}
+
+/**
+ * Der Ausweg - AUSSCHLIESSLICH für die eine Regel, die ein Gerätezustand ist
+ * und kein Lesefehler.
+ */
+function overrideFuer(befund: ProbeBefund): TestOverride | undefined {
+  if (befund.channel !== 'soc_pct' || befund.rule !== 'missing') return undefined;
+  return {
+    channel: befund.channel,
+    label: 'Trotzdem fortfahren (nur Lesen)',
+    folgen: [
+      'Solarleistung, Verbrauch und Netz werden ganz normal aufgezeichnet.',
+      'Der Ladestand bleibt leer - wir zeigen nie eine erfundene 0.',
+      'Die Steuerung des Speichers bleibt aus: ohne Ladestand kann VoltPilot ihn nicht schützen.',
+      'Sobald das BMS gekoppelt ist, hier erneut „Verbindung testen" - dann fällt die Ausnahme weg.',
+    ],
+  };
+}
 
 export function testErgebnis(antwort: ProbeAntwort | null | undefined): TestErgebnis {
   if (!antwort) {
@@ -311,10 +408,18 @@ export function testErgebnis(antwort: ProbeAntwort | null | undefined): TestErge
   }
   const line = antwort.results?.[0];
   if (!line || !line.ok) {
+    // ⚠ Ein Fehlschlag ZEIGT, was ankam - wenn ein Befund den einen
+    // verletzenden Kanal nennt. Vorher stand hier ein nacktes „die Messwerte
+    // sind unplausibel" ohne eine einzige Zahl, und an genau diesem Rätsel ist
+    // eine reale Neuanlage hängengeblieben (Mühlfeldweg 2, 21.08.2026).
+    const befund = line?.finding ?? null;
+    const rows = befund ? messwerte(line?.reading) : [];
     return {
       zustand: 'fehlgeschlagen',
       text: testFehlerText(line?.errorCode, line?.message ?? antwort.message),
-      messwerte: [],
+      messwerte: rows,
+      regelText: befund ? regelText(befund, rows.length > 0) : undefined,
+      override: befund ? overrideFuer(befund) : undefined,
     };
   }
   const rows = messwerte(line.reading);
@@ -326,6 +431,39 @@ export function testErgebnis(antwort: ProbeAntwort | null | undefined): TestErge
         : 'Das Gerät antwortet.',
     messwerte: rows,
   };
+}
+
+/**
+ * Der Satz an der fertigen Komponente, wenn sie ausdrücklich ohne einen
+ * Messkanal betrieben wird - der DAUERHAFTE Ausweis des Klicks, nicht nur eine
+ * Meldung im Assistenten.
+ *
+ * Er liest die Anbindung, die der Server gespeichert hat (`reading_override`),
+ * und behauptet nichts, was dort nicht steht: ohne Datum kein Datum.
+ */
+export function ohneMesswertHinweis(
+  connection: Record<string, unknown> | null | undefined,
+): { badge: string; satz: string } | null {
+  const o = connection?.['reading_override'];
+  if (!o || typeof o !== 'object') return null;
+  const rec = o as Record<string, unknown>;
+  if (rec['channel'] !== 'soc_pct') return null;
+  const at = typeof rec['accepted_at'] === 'string' ? rec['accepted_at'] : null;
+  const wann = at ? datumText(at) : null;
+  return {
+    badge: 'ohne Ladestand',
+    satz:
+      'Diese Komponente wurde mit unplausiblen Testwerten angelegt' +
+      (wann ? ` am ${wann}` : '') +
+      ': das BMS meldet keinen Ladestand. Alle anderen Messwerte laufen normal; ' +
+      'die Steuerung des Speichers bleibt deshalb aus.',
+  };
+}
+
+function datumText(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 /**

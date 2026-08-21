@@ -85,6 +85,7 @@ import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
 import {
   ablehnungText,
+  ohneMesswertHinweis,
   sollIstText,
   sollIstTon,
   verwaltungsHinweis,
@@ -448,6 +449,19 @@ export function AnlagenModellSection({
     : null;
   const ablehnung = ablehnungText(components?.refusedRevision, components?.refusedReason);
   /*
+    Die DAUERHAFTE Ausnahme je Komponente (Live-Fall Muehlfeldweg 2): sie steht
+    in der gespeicherten Anbindung, die der Server zurückgibt - hier wird nichts
+    abgeleitet, nur gelesen. Ohne Beleg ist die Karte byte-identisch wie vorher.
+  */
+  const ohneMesswertById = useMemo(() => {
+    const out = new Map<string, { badge: string; satz: string }>();
+    for (const row of components?.components ?? []) {
+      const hinweis = ohneMesswertHinweis(row.connection);
+      if (hinweis) out.set(row.id, hinweis);
+    }
+    return out;
+  }, [components]);
+  /*
     Einheitsmodell Stufe 2: EIN Satz, der sagt, wo gepflegt wird. Er erscheint
     nur, wenn es etwas zu erklären gibt - eine Anlage, die immer schon im Portal
     entstanden ist, schweigt.
@@ -592,6 +606,7 @@ export function AnlagenModellSection({
                       data?.entities.find((e) => e.id === c.entityId),
                     )
                   }
+                  ohneMesswertFor={(c) => ohneMesswertById.get(c.entityId ?? '') ?? null}
                   onRepin={setRepin}
                   onRemove={setRemove}
                   sofortFor={(c) =>
@@ -817,6 +832,7 @@ function GeraeteKarteView({
   sofortFor,
   onSofort,
   technik,
+  ohneMesswertFor,
 }: {
   karte: GeraeteKarte;
   siteId: string;
@@ -830,6 +846,8 @@ function GeraeteKarteView({
   sofortFor: (c: PlantComponent) => Consumer | null;
   onSofort: (consumer: Consumer, action: SofortAktion) => void;
   technik: TechnikSicht | null;
+  /** Die dauerhafte Ausnahme je Komponente (siehe {@link ComponentRow}). */
+  ohneMesswertFor: (c: PlantComponent) => { badge: string; satz: string } | null;
 }) {
   const k = karte;
   return (
@@ -891,6 +909,7 @@ function GeraeteKarteView({
               sofort={sofortFor(c)}
               onSofort={onSofort}
               technik={technik}
+              ohneMesswert={ohneMesswertFor(c)}
             />
           ))}
         </div>
@@ -917,6 +936,7 @@ function ComponentRow({
   sofort,
   onSofort,
   technik,
+  ohneMesswert,
 }: {
   component: PlantComponent;
   /** Für den Absprung in den Befehls-Verlauf DIESER Komponente. */
@@ -931,6 +951,12 @@ function ComponentRow({
   sofort: Consumer | null;
   onSofort: (consumer: Consumer, action: SofortAktion) => void;
   technik: TechnikSicht | null;
+  /**
+   * Die DAUERHAFTE Ausnahme dieser Komponente („mit unplausiblen Testwerten
+   * angelegt am …"). Sie kommt aus der gespeicherten Anbindung des Servers -
+   * sie wird hier nie abgeleitet, und ohne Beleg steht sie nicht da.
+   */
+  ohneMesswert?: { badge: string; satz: string } | null;
 }) {
   const c = component;
   // Die PV-Aspekt-Zeile hat keine eigene Entität - sie hat damit auch keine
@@ -980,8 +1006,18 @@ function ComponentRow({
               </span>
             );
           })()}
+          {/* Die AUSNAHME dieser Komponente - dauerhaft sichtbar, nicht nur im
+              Assistenten (Anforderung 4): sie erklärt, warum ein Messwert fehlt
+              UND warum die Steuerung aus bleibt. */}
+          {ohneMesswert && (
+            <span className="vp-am-ohne" title={ohneMesswert.satz}>
+              <Icon name="alert-triangle" size={12} />
+              {ohneMesswert.badge}
+            </span>
+          )}
           <span>{c.summary}</span>
         </span>
+        {ohneMesswert && <span className="vp-am-ohne-satz">{ohneMesswert.satz}</span>}
         {/* Identity churn (vp-vier-erzeuger-p9): the pinned device vanished from
             the report — honest amber state plus the way back into the existing
             „Wieder verbinden"-Fluss, instead of a silent duplicate. */}

@@ -115,8 +115,19 @@ public class ControlStatusRepository {
                 "SELECT device_id, commanded_kw, confirmed_kw, all_match, control_enabled, certified, "
                         + "mismatch_roles, slot_start, checked_at, control_source, execution_mode, "
                         + "execution_direction, execution_planned_kw, execution_target_kw, cert_source, "
-                        + "platform_cert_verdict, platform_cert_model, platform_cert_reason "
-                        + "FROM device_control_status WHERE site_id = ? ORDER BY checked_at DESC LIMIT 1",
+                        + "platform_cert_verdict, platform_cert_model, platform_cert_reason, "
+                        // Die Ausnahme dieser ANLAGE (nicht des Geräts): sie steht in der
+                        // gespeicherten Anbindung einer Komponente und beantwortet genau die
+                        // Frage, die diese Zeile sonst falsch beantwortet - „warum steuert
+                        // die Anlage nicht?". Ein Unterausdruck statt eines JOINs, damit die
+                        // eine Zeile eine Zeile bleibt.
+                        + "(SELECT mp.connection_json -> 'reading_override' ->> 'channel' "
+                        + "   FROM measurement_point mp "
+                        + "  WHERE mp.site_id = s.site_id "
+                        + "    AND mp.connection_json -> 'reading_override' ->> 'channel' IS NOT NULL "
+                        + "  LIMIT 1) AS missing_reading_channel "
+                        + "FROM device_control_status s WHERE s.site_id = ? "
+                        + "ORDER BY s.checked_at DESC LIMIT 1",
                 (rs, i) -> new ControlStatusDto(
                         rs.getObject("device_id", UUID.class),
                         (Double) rs.getObject("commanded_kw"),
@@ -135,7 +146,8 @@ public class ControlStatusRepository {
                         rs.getString("cert_source"),
                         rs.getString("platform_cert_verdict"),
                         rs.getString("platform_cert_model"),
-                        rs.getString("platform_cert_reason")),
+                        rs.getString("platform_cert_reason"),
+                        rs.getString("missing_reading_channel")),
                 siteId).stream().findFirst();
     }
 }

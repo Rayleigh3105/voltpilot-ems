@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlStatus } from './api';
 import {
+  OHNE_LADESTAND_SATZ,
   PV_CLARIFICATION,
   batteryDirection,
   controlReasonSlot,
@@ -581,5 +582,61 @@ describe('controlStrip · die Abregel-Wahrheit (PR 3)', () => {
   it('bleibt in der Kundensprache (kein Register-/Modbus-Vokabular)', () => {
     const v = controlStrip(status({}), NOW, false, null, truth())!;
     expect(v.curtailment!).not.toMatch(/register|modbus|setpoint|guard|sunspec|curtail/i);
+  });
+});
+
+// --- Die Anlage OHNE Ladestand (Live-Fall Mühlfeldweg 2, 21.08.2026) --------
+
+describe('controlStrip: eine Anlage ohne Ladestand sagt es beim Namen', () => {
+  const basis = {
+    deviceId: 'd1',
+    commandedKw: null,
+    confirmedKw: null,
+    allMatch: false,
+    controlEnabled: true,
+    certified: false,
+    mismatchRoles: null,
+    slotStart: null,
+    checkedAt: new Date('2026-08-21T12:00:00Z').toISOString(),
+  };
+  const jetzt = new Date('2026-08-21T12:00:10Z');
+
+  it('nennt den fehlenden Ladestand statt „VoltPilot prüft es am Prüfstand"', () => {
+    const v = controlStrip(
+      { ...basis, platformCertVerdict: 'not_covered' },
+      jetzt,
+      true,
+      null,
+      undefined,
+      null,
+      false,
+      true,
+    );
+    expect(v?.state).toBe('pending');
+    expect(v?.sentence).toBe(OHNE_LADESTAND_SATZ);
+    expect(v?.sentence).toContain('Sobald das BMS gekoppelt ist');
+    expect(v?.sentence).not.toContain('Prüfstand');
+  });
+
+  it('sagt ohne die Ausnahme byte-gleich dasselbe wie vorher', () => {
+    const status = { ...basis, platformCertVerdict: 'not_covered' };
+    expect(controlStrip(status, jetzt, true, null, undefined, null, false, false)).toEqual(
+      controlStrip(status, jetzt, true),
+    );
+  });
+
+  it('behauptet auf einer TROTZDEM steuernden Anlage nichts - sie läuft ja', () => {
+    const v = controlStrip(
+      { ...basis, certified: true, allMatch: true, commandedKw: -4, confirmedKw: -4 },
+      jetzt,
+      true,
+      null,
+      undefined,
+      null,
+      false,
+      true,
+    );
+    expect(v?.state).toBe('healthy');
+    expect(v?.sentence).not.toContain('nicht möglich');
   });
 });

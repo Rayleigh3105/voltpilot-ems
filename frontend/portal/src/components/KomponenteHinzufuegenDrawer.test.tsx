@@ -350,3 +350,98 @@ describe('der EINE Anlege-Assistent', () => {
     await screen.findByText('Prüfen & anlegen');
   });
 });
+
+describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
+  const unplausibel = {
+    results: [
+      {
+        id: 'verbindung',
+        ok: false,
+        errorCode: 'implausible',
+        reading: { pvKw: 6.1, loadKw: 4.3, gridKw: 1.2 },
+        finding: { channel: 'soc_pct', rule: 'missing', raw: 0, value: 0 },
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    componentTemplates.mockResolvedValue([template]);
+    siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    createComponent.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    matchComponent.mockResolvedValue(undefined);
+    testComponentConnection.mockResolvedValue(unplausibel);
+  });
+
+  it('zeigt die gelesenen Werte und die verletzte Regel statt eines nackten „unplausibel"', async () => {
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByText('Verbindung testen'));
+    await screen.findByText(/Ladestand liest 0 %/);
+    expect(screen.getByText('6,1 kW')).toBeTruthy();
+    expect(screen.getByText('4,3 kW')).toBeTruthy();
+    // Der Ladestand selbst wird NIE als Wert gezeigt - er ist ja der Befund.
+    expect(screen.queryByText('Ladestand')).toBeNull();
+  });
+
+  it('führt über die Rückfrage bis zum Speichern - MIT der genannten Zustimmung', async () => {
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByText('Verbindung testen'));
+    const knopf = await screen.findByTestId('override-anbieten');
+
+    // Ohne den Klick bleibt „Weiter" zu - die Pflicht gilt unverändert.
+    expect((screen.getByText('Weiter').closest('button') as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(knopf);
+    // Die Rückfrage nennt die Folgen, inklusive dem, was AUS bleibt.
+    await screen.findByText('Ohne Ladestand fortfahren?');
+    expect(screen.getByText(/Steuerung des Speichers bleibt aus/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Trotzdem fortfahren'));
+
+    await screen.findByTestId('override-aktiv');
+    fireEvent.click(screen.getByText('Weiter'));
+    fireEvent.click(await screen.findByText('Wechselrichter / Speicher'));
+    fireEvent.click(screen.getByText('Weiter'));
+    fireEvent.click(await screen.findByText('Komponente anlegen'));
+
+    await waitFor(() => expect(createComponent).toHaveBeenCalled());
+    expect(createComponent.mock.calls[0][1]).toMatchObject({
+      role: 'inverter',
+      acceptMissingChannel: 'soc_pct',
+    });
+  });
+
+  it('entwertet die Zustimmung, sobald ein Verbindungsfeld sich ändert', async () => {
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByText('Verbindung testen'));
+    fireEvent.click(await screen.findByTestId('override-anbieten'));
+    fireEvent.click(await screen.findByText('Trotzdem fortfahren'));
+    await screen.findByTestId('override-aktiv');
+
+    fireEvent.change(screen.getByLabelText(/IP-Adresse/), { target: { value: '192.168.0.29' } });
+    expect(screen.queryByTestId('override-aktiv')).toBeNull();
+    expect((screen.getByText('Weiter').closest('button') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('bietet bei einem kaputten Rahmen KEINEN Ausweg an', async () => {
+    testComponentConnection.mockResolvedValue({
+      results: [
+        {
+          id: 'verbindung',
+          ok: false,
+          errorCode: 'implausible',
+          reading: { pvKw: 6.1 },
+          finding: { channel: 'soc_pct', rule: 'out_of_range', raw: 1250, value: 1250 },
+        },
+      ],
+    });
+    await bisZurVerbindung();
+    fuelleFormular();
+    fireEvent.click(screen.getByText('Verbindung testen'));
+    await screen.findByText(/Modellauswahl/);
+    expect(screen.queryByTestId('override-anbieten')).toBeNull();
+    expect((screen.getByText('Weiter').closest('button') as HTMLButtonElement).disabled).toBe(true);
+  });
+});

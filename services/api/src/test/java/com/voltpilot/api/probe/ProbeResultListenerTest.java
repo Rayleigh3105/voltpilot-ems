@@ -230,4 +230,83 @@ class ProbeResultListenerTest {
         assertThat(line.ok()).isTrue();
         assertThat(line.registers()).isNull();
     }
+
+    /**
+     * Der EHRLICHE Fehlschlag (Live-Fall Muehlfeldweg 2, 21.08.2026): die Box
+     * hat wirklich gelesen, drei Kanaele sind sauber dekodiert, und NUR der
+     * Ladestand hat die Plausibilitaetsregel verletzt. Dann reisen die Werte MIT
+     * dem benannten Befund durch - vorher kam eine Ablehnung ohne eine einzige
+     * Zahl an, und genau daran ist eine reale Neuanlage haengengeblieben.
+     */
+    @Test
+    void aRefusalWithANamedFindingCarriesTheValuesItDidRead() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":false,\"error_code\":\"implausible\""
+                        + ",\"reading\":{\"pv_kw\":6.1,\"load_kw\":4.3,\"grid_kw\":1.2}"
+                        + ",\"finding\":{\"channel\":\"soc_pct\",\"rule\":\"missing\""
+                        + ",\"raw\":0,\"value\":0}}")));
+
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isFalse();
+        assertThat(line.errorCode()).isEqualTo("implausible");
+        assertThat(line.reading().pvKw()).isEqualTo(6.1);
+        assertThat(line.reading().socPct()).isNull();
+        assertThat(line.finding().channel()).isEqualTo("soc_pct");
+        assertThat(line.finding().rule()).isEqualTo("missing");
+        assertThat(line.finding().overridable()).isTrue();
+        // Raw/Value der ZEILE gehoeren einer Register-Lesung, nie einem Test.
+        assertThat(line.raw()).isNull();
+        assertThat(line.value()).isNull();
+    }
+
+    /**
+     * Ein Wort ausserhalb des Vokabulars wird VERWORFEN - und mit ihm die Werte:
+     * ohne benannte Ursache waeren es Zahlen, von denen niemand sagen kann, ob
+     * man ihnen trauen darf. Hier entscheidet das zusaetzlich, ob dem Kunden ein
+     * Ausnahmeweg ANGEBOTEN wird, also darf nichts geraten werden.
+     */
+    @Test
+    void anUnknownFindingWordIsDroppedTogetherWithItsValues() {
+        for (String finding : List.of(
+                "{\"channel\":\"temperatur\",\"rule\":\"missing\"}",
+                "{\"channel\":\"soc_pct\",\"rule\":\"gefaellt_uns_nicht\"}")) {
+            CompletableFuture<ProbeResult> f = arm();
+            listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                    "{\"id\":\"verbindung\",\"ok\":false,\"error_code\":\"implausible\""
+                            + ",\"reading\":{\"pv_kw\":6.1}"
+                            + ",\"finding\":" + finding + "}")));
+            ProbeResult.OpResult line = get(f).results().get(0);
+            assertThat(line.finding()).isNull();
+            assertThat(line.reading()).isNull();
+        }
+    }
+
+    /**
+     * Die drei Regeln sind NICHT austauschbar: nur „missing" beschreibt einen
+     * Geraetezustand, den ein Betreiber bewusst hinnehmen darf.
+     */
+    @Test
+    void onlyTheMissingRuleIsEverOverridable() {
+        assertThat(new ProbeResult.Finding("soc_pct", "missing", 0.0, 0.0).overridable()).isTrue();
+        assertThat(new ProbeResult.Finding("soc_pct", "out_of_range", 1250.0, 1250.0)
+                .overridable()).isFalse();
+        assertThat(new ProbeResult.Finding("soc_pct", "no_answer", null, null)
+                .overridable()).isFalse();
+        assertThat(new ProbeResult.Finding("temperatur", "missing", 0.0, 0.0)
+                .overridable()).isFalse();
+    }
+
+    /** Ein bestandener Test bleibt byte-fuer-byte wie vorher: kein Befund. */
+    @Test
+    void aPassingTestCarriesNoFinding() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":true"
+                        + ",\"reading\":{\"pv_kw\":12.4,\"soc_pct\":87}}")));
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isTrue();
+        assertThat(line.finding()).isNull();
+        assertThat(line.reading().socPct()).isEqualTo(87.0);
+    }
 }

@@ -10,6 +10,7 @@ import {
   type SiteComponents,
   type SiteComponentTemplate,
 } from '../api';
+import { ConfirmDialog } from './ConfirmDialog';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
 import { ANBINDEN_ALLOWLIST, ANBINDEN_SCHRITTE } from '../ladepunkte';
 // Der Assistent bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
@@ -35,6 +36,7 @@ import {
   type KomponentenRolle,
   type TemplateField,
   type TestErgebnis,
+  type TestOverride,
   type TestZustand,
   type TuerId,
 } from '../komponentenAssistent';
@@ -81,6 +83,13 @@ export function KomponenteHinzufuegenDrawer({
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>({});
   const [testZustand, setTestZustand] = useState<TestZustand>('ungeprueft');
   const [testText, setTestText] = useState<TestErgebnis | null>(null);
+  /**
+   * Der abgenickte Kanal („Trotzdem fortfahren (nur Lesen)"). Er reist beim
+   * Speichern mit und NENNT den Kanal - der Server prüft, dass genau dieser
+   * auch der fehlende war.
+   */
+  const [ohneKanal, setOhneKanal] = useState<TestOverride | null>(null);
+  const [fragOhneKanal, setFragOhneKanal] = useState(false);
   const [rolle, setRolle] = useState<KomponentenRolle | null>(null);
   const [name, setName] = useState('');
   const [kwp, setKwp] = useState('');
@@ -133,6 +142,7 @@ export function KomponenteHinzufuegenDrawer({
     setUebernahme(null);
     setTestZustand('ungeprueft');
     setTestText(null);
+    setOhneKanal(null);
     setSchritt(2);
   }
 
@@ -141,6 +151,8 @@ export function KomponenteHinzufuegenDrawer({
     // Jede Änderung entwertet den Beleg - genau das ist der Sinn der Pflicht.
     setTestZustand('ungeprueft');
     setTestText(null);
+    // ... und damit auch die Ausnahme: sie galt GENAU dieser Verbindung.
+    setOhneKanal(null);
     // ⚠ Und sie entwertet den ÜBERNAHME-Vorschlag: er gilt GENAU dieser
     // Verbindung. Eine andere Adresse ist ein anderes Gerät - ein
     // stehengebliebener Vorschlag würde eine Komponente ankündigen, die der
@@ -152,6 +164,10 @@ export function KomponenteHinzufuegenDrawer({
     if (!template) return;
     setTestZustand('laeuft');
     setTestText(null);
+    // Ein neuer Lauf beantwortet die Frage neu - eine Ausnahme aus dem vorigen
+    // gilt nicht weiter. (Genau so verschwindet sie, sobald das BMS gekoppelt
+    // ist und der Test wieder vollständig besteht.)
+    setOhneKanal(null);
     try {
       const antwort = await api.testComponentConnection(siteId, {
         templateRef: template.templateRef,
@@ -182,6 +198,7 @@ export function KomponenteHinzufuegenDrawer({
         role: rolle,
         connection: verbindung,
         capacityKwp: rolle === 'pv-generation' && kwp.trim() !== '' ? Number(kwp) : undefined,
+        acceptMissingChannel: ohneKanal?.channel,
       });
       setFertig(true);
       onSaved(result);
@@ -399,6 +416,13 @@ export function KomponenteHinzufuegenDrawer({
                       role="status"
                     >
                       <p>{testText.text}</p>
+                      {/* Die VERLETZTE REGEL im Klartext - direkt über den
+                          Werten, die wirklich ankamen. Ein Fehlschlag ohne eine
+                          einzige Zahl war ein Rätsel; hier steht, was gemessen
+                          wurde und was daraus folgt. */}
+                      {testText.regelText && (
+                        <p className="vp-assist-regel">{testText.regelText}</p>
+                      )}
                       {testText.messwerte.length > 0 && (
                         <ul className="vp-assist-readings">
                           {testText.messwerte.map((m) => (
@@ -411,13 +435,34 @@ export function KomponenteHinzufuegenDrawer({
                       )}
                     </div>
                   )}
+                  {/* Der Ausweg - NUR wenn der Server ihn als solchen ausweist.
+                      Er wird nie hier abgeleitet: ob eine Verletzung übergehbar
+                      ist, weiß allein die Box, die gelesen hat. */}
+                  {testZustand === 'fehlgeschlagen' && testText?.override && !ohneKanal && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setFragOhneKanal(true)}
+                      data-testid="override-anbieten"
+                    >
+                      {testText.override.label}
+                    </Button>
+                  )}
+                  {ohneKanal && (
+                    <p className="vp-assist-uebernahme" data-testid="override-aktiv">
+                      Sie fahren fort, ohne dass diese Komponente einen Ladestand meldet. Alle
+                      anderen Messwerte laufen normal; die Steuerung des Speichers bleibt aus.
+                    </p>
+                  )}
                 </div>
 
                 <div className="vp-assist-nav">
                   <Button variant="ghost" onClick={() => setSchritt(1)}>
                     Zurück
                   </Button>
-                  <Button onClick={() => setSchritt(3)} disabled={testZustand !== 'bestanden'}>
+                  <Button
+                    onClick={() => setSchritt(3)}
+                    disabled={testZustand !== 'bestanden' && !ohneKanal}
+                  >
                     Weiter
                   </Button>
                 </div>
@@ -514,6 +559,24 @@ export function KomponenteHinzufuegenDrawer({
           </>
         )}
       </div>
+      {/* Die Rückfrage im HAUS-MUSTER (Folgenliste statt window.confirm): sie
+          nennt ausdrücklich auch, was GLEICH bleibt - sonst liest sich der
+          Klick wie ein Lockern der Regeln. */}
+      <ConfirmDialog
+        open={fragOhneKanal && !!testText?.override}
+        title="Ohne Ladestand fortfahren?"
+        intro={
+          'Ihr Gerät antwortet, meldet aber keinen Ladestand. Diese Komponente wird dann nur ' +
+          'ausgelesen.'
+        }
+        consequences={testText?.override?.folgen ?? []}
+        confirmLabel="Trotzdem fortfahren"
+        onCancel={() => setFragOhneKanal(false)}
+        onConfirm={() => {
+          setOhneKanal(testText?.override ?? null);
+          setFragOhneKanal(false);
+        }}
+      />
     </Drawer>
   );
 }

@@ -28,18 +28,32 @@ public record ProbeResult(String requestId, String errorCode, String message,
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record OpResult(String id, boolean ok, Double raw, List<Integer> registers,
-            Double value, String errorCode, String message, Reading reading, Switched switched) {
+            Double value, String errorCode, String message, Reading reading, Switched switched,
+            Finding finding) {
 
         /** The register-read shape (no {@code reading}, no {@code switched}). */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
                 Double value, String errorCode, String message) {
-            this(id, ok, raw, registers, value, errorCode, message, null, null);
+            this(id, ok, raw, registers, value, errorCode, message, null, null, null);
         }
 
         /** The connection-test shape. */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
                 Double value, String errorCode, String message, Reading reading) {
-            this(id, ok, raw, registers, value, errorCode, message, reading, null);
+            this(id, ok, raw, registers, value, errorCode, message, reading, null, null);
+        }
+
+        /** The connection-test shape with a plausibility finding. */
+        public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
+                Double value, String errorCode, String message, Reading reading, Finding finding) {
+            this(id, ok, raw, registers, value, errorCode, message, reading, null, finding);
+        }
+
+        /** The switch shape. */
+        public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
+                Double value, String errorCode, String message, Reading reading,
+                Switched switched) {
+            this(id, ok, raw, registers, value, errorCode, message, reading, switched, null);
         }
     }
 
@@ -71,6 +85,39 @@ public record ProbeResult(String requestId, String errorCode, String message,
         /** Whether the device reported anything at all. */
         public boolean any() {
             return pvKw != null || loadKw != null || gridKw != null || socPct != null;
+        }
+    }
+
+    /**
+     * WHICH channel of a {@code test_connection} read violated WHICH
+     * plausibility rule (contract {@code op_result.finding}).
+     *
+     * <p>It exists so no surface has to search a German sentence for keywords -
+     * the house rule that put {@code target_verdict} NEXT TO {@code state}. The
+     * sentence belongs to the portal; the fact belongs here.
+     *
+     * <p>The rules are deliberately three, not one, because they demand
+     * different actions: {@link #RULE_MISSING} is a demonstrably LIVE register
+     * block whose channel reads an exact 0 - a battery whose BMS is not coupled
+     * to the inverter, and the ONLY case an operator may knowingly run a plant
+     * with. {@link #RULE_OUT_OF_RANGE} (a broken/shifted frame) and
+     * {@link #RULE_NO_ANSWER} (the logger's all-zero empty answer) are evidence
+     * that the READ is untrustworthy and may never be waved through.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Finding(String channel, String rule, Double raw, Double value) {
+
+        public static final String CHANNEL_SOC = "soc_pct";
+        public static final String RULE_MISSING = "missing";
+        public static final String RULE_OUT_OF_RANGE = "out_of_range";
+        public static final String RULE_NO_ANSWER = "no_answer";
+
+        /**
+         * Whether this finding describes a channel a plant may knowingly run
+         * WITHOUT. Everything else - an unknown word included - is a no.
+         */
+        public boolean overridable() {
+            return CHANNEL_SOC.equals(channel) && RULE_MISSING.equals(rule);
         }
     }
 }

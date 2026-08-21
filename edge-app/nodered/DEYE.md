@@ -183,7 +183,7 @@ Die **fünf** ha-solarman-Deye-Definitionen fallen auf **vier** unterschiedliche
 | **String / netzgekoppelt**, 1-2 MPPT, ohne Speicher: `SUN-4/5/6/8/10/12K-G03`, 3-phasige `-G04`-String | `deye_string.yaml` | **`string`** | `pv_power_kw` (= AC-Ausgang) |
 | **Mikrowechselrichter** (Deye/Bosswerk): `SUN600/800/1000/1300/1600G3` (2 MPPT), `SUN2000G3` (4 MPPT), Bosswerk MI300-MI2000 | `deye_2mppt.yaml`, `deye_4mppt.yaml` | **`micro`** | `pv_power_kw` (= AC-Ausgang) |
 | **1-phasige Hybride** (low map): `SUN-5/6/8/10/12K-SG03LP1` | `deye_hybrid.yaml` | **`hybrid_1p`** | `soc_pct`, `pv_power_kw`, `load_kw`, `power_kw`, `batt`\* |
-| **3-phasige Hybride** (high map): LV `SUN-5..12K-SG04LP3` (2 MPPT), HV `SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4` (3-4 MPPT) | `deye_sg04lp3.yaml` | **`hybrid_3p`** | `soc_pct`, `pv_power_kw`, `load_kw`, `power_kw`, `batt`\* |
+| **3-phasige Hybride** (high map): LV `SUN-5..12K-SG04LP3` (2 MPPT), HV `SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4` (3-4 MPPT) und HV neue Generation `SUN-25/29.9/30K-SG02HP3-EU-AM3` (3 MPPT) | `deye_sg04lp3.yaml` | **`hybrid_3p`** | `soc_pct`, `pv_power_kw`, `load_kw`, `power_kw`, `batt`\* |
 
 \* `batt` (Batterieleistung) ist **kein** Cloud-Telemetriefeld - nur Kalibrier-/Statushilfe (siehe Ende von [Abschnitt 2](#micro---deyebosswerk-mikrowechselrichter)).
 
@@ -227,6 +227,7 @@ Ein Leseblock: `-xmb 00A90016` (0xA9..0xBE, 22 Register).
 Deckt zwei Baureihen mit **derselben** high-map ab:
 - **SG04LP3** (LV-Batterie): `SUN-5..12K-SG04LP3`, 2 MPPT.
 - **SG01HP3** (HV-Batterie): `SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4`, 3-4 MPPT. **Das bestätigte Captain-Gerät** (WR-Serial `2407224048`, Logger `2985159064` @ `192.168.0.28`).
+- **SG02HP3-EU-AM3** (HV-Batterie, neue Generation): `SUN-25/29.9/30K-SG02HP3-EU-AM3`, 3 MPPT. Gleiche Registerkarte: ha-solarmans `deye_p3.yaml` matcht `SG0*HP3` (Referenz-Doku ist die AM2-Generation, MODBUS RTU V104.3/V105.1); am Live-Geraet "Muehlfeldweg 2" dekodiert der Batterieblock `0x024A..0x0250` konsistent (636 V, -0,21 A, -120 W, 25 Grad C). SoC-Hinweis: eine BMS-lose/ungekoppelte Batterie meldet in `0x024C` dauerhaft exakt 0 - das ist ein Geraetezustand, keine Kartenabweichung.
 
 | Feld | Register (dez.) | Breite | Skala | Quelle |
 |---|---|---|---|---|

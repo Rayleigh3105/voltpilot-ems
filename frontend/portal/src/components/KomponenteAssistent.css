@@ -186,6 +186,20 @@
   color: #b91c1c;
 }
 
+/* Die VERLETZTE REGEL im Klartext (Live-Fall Muehlfeldweg 2, 21.08.2026). Sie
+   steht ueber den Werten, die wirklich ankamen, und ist bewusst RUHIG gesetzt:
+   sie erklaert einen Geraetezustand, sie meldet keinen Defekt. */
+.vp-assist-regel {
+  margin: 0.45rem 0 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--vp-radius-md, 12px);
+  border-left: 3px solid currentColor;
+  background: rgba(185, 28, 28, 0.07);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .vp-assist-readings {
   display: grid;
   gap: 0.2rem;

@@ -321,6 +321,11 @@ func (s Source) busEntry() map[string]any {
 		conn["serial"] = s.Connection.Serial
 		conn["mb_slave_id"] = s.Connection.MbSlaveID
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		// The narrow "the BMS reports no SoC" opt-in. A battery-family Deye is
+		// normally the PRIMARY inverter, but it can sit here too (a second hybrid
+		// as an Erzeuger source), and the same decode gate applies - so the flag
+		// travels with the device wherever it is configured. Absent = false.
+		conn["allow_missing_soc"] = s.Connection.AllowMissingSoc
 		conn["power_scale"] = s.Connection.PowerScale
 	case inverter.CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID

@@ -376,18 +376,27 @@ func (a *Agent) runProbeTestConnection(op probe.Op) probe.OpResult {
 		if msg == "" {
 			msg = probeTestMessage(code)
 		}
+		// A refusal that KNOWS what it read says so: the box answered, the other
+		// channels decoded, and one channel broke its plausibility rule. Without
+		// this the portal saw a bare "unplausibel" and no numbers at all - the
+		// dead end a real new plant got stuck in (Muehlfeldweg 2, 21.08.2026).
+		if res.Finding != nil {
+			return probe.FailedReading(op.ID, code, msg, probeReading(res.Reading),
+				&probe.Finding{Channel: res.Finding.Channel, Rule: res.Finding.Rule,
+					Raw: res.Finding.Raw, Value: res.Finding.Value})
+		}
 		return probe.Failed(op.ID, code, msg)
 	}
-	var reading *probe.Reading
-	if res.Reading != nil {
-		reading = &probe.Reading{
-			PvKw:   res.Reading.PvKw,
-			LoadKw: res.Reading.LoadKw,
-			GridKw: res.Reading.GridKw,
-			SocPct: res.Reading.SocPct,
-		}
+	return probe.SucceededReading(op.ID, probeReading(res.Reading))
+}
+
+// probeReading maps the box's own reading onto the contract shape. Every field
+// stays a pointer, so a channel the device does not report is ABSENT.
+func probeReading(r *testconn.Reading) *probe.Reading {
+	if r == nil {
+		return nil
 	}
-	return probe.SucceededReading(op.ID, reading)
+	return &probe.Reading{PvKw: r.PvKw, LoadKw: r.LoadKw, GridKw: r.GridKw, SocPct: r.SocPct}
 }
 
 // probeTestMessage is the fallback German sentence per class, used only when

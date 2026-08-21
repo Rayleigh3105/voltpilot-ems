@@ -387,6 +387,57 @@ test('flow Deye decoder DROPS an out-of-range SoC hybrid_3p read, like the modul
   assert.strictEqual(deyeDecode.decode(blocks, cfg), null);
 });
 
+// The narrow "battery without a coupled BMS" opt-in (live case Muehlfeldweg 2):
+// the inline copy must agree with the module on ALL THREE cases, or an opted-in
+// plant would still deliver nothing while the wizard says it will.
+function muehlfeldwegBlocks() {
+  const regs = new Array(0x79).fill(0);
+  const put = (addr, val) => { regs[addr - 0x024c] = val & 0xffff; };
+  put(0x024c, 0);        // SoC: the BMS reports nothing
+  put(0x024e, 0xfff4);   // battery -0,012 kW - the block is demonstrably ALIVE
+  put(0x028d, 4300);     // load 4,3 kW
+  put(0x02a0, 6100);     // pv 6,1 kW
+  put(0x026b, 1200);     // grid 1,2 kW
+  return [{ start: 0x024c, regs }];
+}
+
+test('flow Deye decoder keeps a live SoC-0 read WITHOUT soc_pct when opted in, like the module', () => {
+  const cfg = { family: 'hybrid_3p', power_scale: 1, allow_missing_soc: true };
+  const blocks = muehlfeldwegBlocks();
+  const { ret } = runDeyeDecode(cfg, blocks);
+  assert.ok(ret, 'the flow publishes the sample');
+  const flowReading = ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  const expected = deyeDecode.decode(blocks, cfg);
+  assert.deepStrictEqual(flowReading, expected.reading);
+  assert.ok(!('soc_pct' in flowReading), 'never a fabricated 0');
+});
+
+test('flow Deye decoder still DROPS the same read without the opt-in, like the module', () => {
+  const cfg = { family: 'hybrid_3p', power_scale: 1 };
+  const blocks = muehlfeldwegBlocks();
+  assert.strictEqual(runDeyeDecode(cfg, blocks).ret, null);
+  assert.strictEqual(deyeDecode.decode(blocks, cfg), null);
+});
+
+test('flow Deye decoder DROPS the loggers all-zero answer EVEN opted in, like the module', () => {
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true };
+  const blocks = [{ start: 0x024c, regs: new Array(0x79).fill(0) }];
+  assert.strictEqual(runDeyeDecode(cfg, blocks).ret, null, 'the July stub rule holds');
+  assert.strictEqual(deyeDecode.decode(blocks, cfg), null);
+});
+
+test('flow Deye decoder DROPS an out-of-range SoC EVEN opted in, like the module', () => {
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true };
+  const regs = new Array(0x79).fill(0);
+  regs[0] = 1250;
+  regs[0x028d - 0x024c] = 3000;
+  const blocks = [{ start: 0x024c, regs }];
+  assert.strictEqual(runDeyeDecode(cfg, blocks).ret, null);
+  assert.strictEqual(deyeDecode.decode(blocks, cfg), null);
+});
+
 // The "Steuerung / Schreibplan" node (auto-control-plan) carries a synced COPY
 // of inverter-control-routing.controlRoute(). These assert the inline body's
 // write plan matches the module byte-for-byte (JSON-compared) - the safety-

@@ -1035,6 +1035,38 @@ export interface SaveComponentBody {
   capacityKwp?: number;
   intervalS?: number;
   note?: string;
+  /**
+   * Die ausdrückliche Zustimmung, diese Komponente OHNE einen Messkanal zu
+   * betreiben („Trotzdem fortfahren (nur Lesen)"). Sie NENNT den Kanal - der
+   * Server akzeptiert sie nur, wenn sein Testergebnis genau diesen Kanal als
+   * fehlend ausgewiesen hat.
+   */
+  acceptMissingChannel?: string;
+}
+
+/**
+ * Der Befund einer Plausibilitätsregel: WELCHER Kanal sie verletzt hat und
+ * WARUM (Vertrag `mqtt-probe.schema.json` `op_result.finding`).
+ *
+ * Er ist maschinenlesbar, damit die Fläche keinen deutschen Satz nach
+ * Stichworten durchsuchen muss - die Haus-Regel „`target_verdict` NEBEN
+ * `state`". Der Satz gehört dem Portal, die Tatsache dem Gerät.
+ */
+export interface ProbeBefund {
+  /** Heute genau einer: `soc_pct`. */
+  channel: string;
+  /**
+   * `missing` = der Registerblock LEBT und nur dieser Kanal liest exakt 0 (eine
+   * Batterie, deren BMS nicht am Wechselrichter hängt) - der EINZIGE Fall, den
+   * ein Betreiber bewusst übergehen darf. `out_of_range` (kaputter Rahmen) und
+   * `no_answer` (Leerantwort des Loggers) sagen, dass der Lesung selbst nicht
+   * zu trauen ist.
+   */
+  rule: string;
+  /** Das rohe Registerwort. */
+  raw?: number | null;
+  /** Der dekodierte Wert, der die Regel verletzt hat. */
+  value?: number | null;
 }
 
 /** Die Antwort des Probe-Kanals auf einen Verbindungstest. */
@@ -1047,7 +1079,13 @@ export interface ProbeAntwort {
     ok?: boolean;
     errorCode?: string | null;
     message?: string | null;
+    /**
+     * Die dekodierten Messwerte. Sie stehen AUCH bei `ok: false`, wenn ein
+     * `finding` den einen verletzenden Kanal benennt - dann hat die Box wirklich
+     * gelesen und die übrigen Kanäle sind angekommen.
+     */
     reading?: Record<string, unknown> | null;
+    finding?: ProbeBefund | null;
   }[];
 }
 
@@ -1501,6 +1539,14 @@ export interface ControlStatus {
    * freigegeben oder ältere Edge-Version — eine Abwesenheit ist also nie eine
    * Aussage über die Quelle.
    */
+  /**
+   * Der Messkanal, ohne den diese ANLAGE ausdrücklich eingerichtet wurde
+   * (heute `soc_pct`: eine Batterie ohne gekoppeltes BMS). Als einziges Feld
+   * dieser Zeile eine PORTAL-Tatsache, keine Meldung des Geräts - sie steht in
+   * der gespeicherten Anbindung der Wechselrichter-Komponente. `null`/absent =
+   * keine solche Ausnahme (oder ein älterer Backend-Stand).
+   */
+  missingReadingChannel?: string | null;
   certSource?: CertSource | null;
   /**
    * Was das PLATTFORM-Register über das AUSGEWÄHLTE Modell dieses Geräts sagt.

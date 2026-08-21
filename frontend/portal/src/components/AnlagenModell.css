@@ -472,6 +472,30 @@
 
 /* --- Orphaned pin: honest state + the way back into "Wieder verbinden" ------ */
 
+/* Die DAUERHAFTE Ausnahme einer Komponente („ohne Ladestand", Live-Fall
+   Muehlfeldweg 2, 21.08.2026). Ruhiger Warnton, kein Alarm: es ist ein
+   bewusst gewaehlter Zustand, kein Defekt - aber er darf nie unsichtbar sein,
+   weil an ihm haengt, warum ein Messwert fehlt UND warum die Steuerung aus
+   bleibt. */
+.vp-am-ohne {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-warn, #c77700);
+  min-width: 0;
+}
+
+.vp-am-ohne-satz {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
 .vp-am-orphan {
   display: flex;
   align-items: center;

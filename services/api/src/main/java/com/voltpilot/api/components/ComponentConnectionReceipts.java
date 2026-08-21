@@ -60,11 +60,20 @@ public class ComponentConnectionReceipts {
     private static final int MAX_ENTRIES = 5000;
 
     /**
-     * Ein Beleg: WANN er entstand und - seit Einheitsmodell Stufe 4 - die
-     * server-seitig ermittelte EVIDENZ des Tests. Sie ist optional, weil der
-     * Verbindungstest (Stufe 1) keine hat: dort IST der Messwert die Antwort.
+     * Ein Beleg: WANN er entstand, die server-seitig ermittelte EVIDENZ des Tests
+     * (Einheitsmodell Stufe 4; optional, weil der Verbindungstest der Stufe 1
+     * keine hat - dort IST der Messwert die Antwort) und, seit 21.08.2026, der
+     * KANAL, den das Gerät nicht liefern konnte.
+     *
+     * <p>{@code overrideChannel} ist der Unterschied zwischen „das Gerät hat
+     * geantwortet" und „das Gerät hat vollständig geantwortet". Er ist gesetzt,
+     * wenn der Test zwar wirklich gelesen hat, ein einzelner Kanal aber
+     * nachweislich fehlt (heute: der Ladestand einer Batterie ohne gekoppeltes
+     * BMS). Ein solcher Beleg gibt das Speichern NUR frei, wenn der Kunde genau
+     * diesen Kanal ausdrücklich abgenickt hat - siehe
+     * {@code ComponentService.requireTestedConnection}.
      */
-    record Receipt(Instant at, String evidence) {
+    record Receipt(Instant at, String evidence, String overrideChannel) {
     }
 
     private final Map<String, Receipt> issued = new ConcurrentHashMap<>();
@@ -101,7 +110,46 @@ public class ComponentConnectionReceipts {
     public void record(UUID siteId, String templateRef, Map<String, Object> connection,
             String evidence) {
         prune();
-        issued.put(key(siteId, templateRef, connection), new Receipt(clock.instant(), evidence));
+        issued.put(key(siteId, templateRef, connection),
+                new Receipt(clock.instant(), evidence, null));
+    }
+
+    /**
+     * Hinterlegt den Beleg eines Tests, bei dem das Gerät ANTWORTETE, aber EIN
+     * Kanal nachweislich fehlt (live: eine Batterie ohne gekoppeltes BMS meldet
+     * dauerhaft SoC 0).
+     *
+     * <p><b>Warum das überhaupt ein Beleg ist.</b> Die Pflicht existiert gegen
+     * das Blind-Soll - gegen den Tippfehler in der IP, der eine Anlage stumm
+     * macht. Genau DAS hat dieser Test beantwortet: das Gerät ist erreichbar,
+     * die Vorlage passt, die übrigen Messwerte kommen an. Er ist deshalb ein
+     * halber Beleg mit Namen, kein Freibrief: {@link #overrideChannel} nennt den
+     * fehlenden Kanal, und ohne die ausdrückliche Zustimmung des Kunden zu
+     * GENAU diesem Kanal speichert nichts.
+     *
+     * <p>Der Kanal kommt aus dem Testergebnis, nie aus dem Aufruf des Clients -
+     * dieselbe Regel wie bei der Evidenz: ein Nachweis, den der Client behaupten
+     * darf, ist keiner.
+     */
+    public void recordOverridable(UUID siteId, String templateRef,
+            Map<String, Object> connection, String channel) {
+        prune();
+        issued.put(key(siteId, templateRef, connection),
+                new Receipt(clock.instant(), null, channel));
+    }
+
+    /**
+     * Der Kanal, den der gültige Beleg als FEHLEND ausweist - oder {@code null}
+     * bei einem vollständigen Test (bzw. ohne gültigen Beleg). Er folgt derselben
+     * Verfalls-Regel wie {@link #has}.
+     */
+    public String overrideChannel(UUID siteId, String templateRef,
+            Map<String, Object> connection) {
+        if (!has(siteId, templateRef, connection)) {
+            return null;
+        }
+        Receipt r = issued.get(key(siteId, templateRef, connection));
+        return r == null ? null : r.overrideChannel();
     }
 
     /**

@@ -66,6 +66,18 @@ public class ProbeResultListener {
     /** A bound on the German sentence a device may hand to a customer. */
     private static final int MAX_MESSAGE = 400;
 
+    /**
+     * The finding's closed vocabulary. An unknown channel or rule is DROPPED
+     * (the sibling listeners' rule: a word we do not understand must not become
+     * a sentence) - and here it additionally decides whether a customer is
+     * OFFERED the "run this plant without that channel" override, so guessing
+     * would be a policy decision made by a device.
+     */
+    private static final Set<String> FINDING_CHANNELS = Set.of(ProbeResult.Finding.CHANNEL_SOC);
+    private static final Set<String> FINDING_RULES = Set.of(
+            ProbeResult.Finding.RULE_MISSING, ProbeResult.Finding.RULE_OUT_OF_RANGE,
+            ProbeResult.Finding.RULE_NO_ANSWER);
+
     private final String brokerUrl;
     private final String username;
     private final String password;
@@ -214,9 +226,16 @@ public class ProbeResultListener {
                             optDouble(readingNode, "pv_kw"), optDouble(readingNode, "load_kw"),
                             optDouble(readingNode, "grid_kw"), optDouble(readingNode, "soc_pct"));
                     boolean any = reading.any();
+                    // A REFUSAL may carry the reading too, but only alongside a
+                    // finding that names the one violating channel (21.08.2026):
+                    // values without a named cause would be numbers nobody can say
+                    // whether to trust. Both travel together or neither does.
+                    ProbeResult.Finding finding = finding(line);
+                    boolean evidence = !ok && finding != null && any;
                     results.add(new ProbeResult.OpResult(id, ok && any, null, null, null,
                             ok && any ? null : code(line), ok && any ? null : text(line),
-                            any ? reading : null));
+                            ok && any || evidence ? reading : null,
+                            ok ? null : finding));
                     continue;
                 }
                 JsonNode switchedNode = line.get("switched");
@@ -290,6 +309,23 @@ public class ProbeResultListener {
     }
 
     /** A known error class, or null - an invented word never reaches a customer. */
+    /**
+     * Parses the plausibility finding, or {@code null} when it is absent or
+     * carries a word outside the contract's vocabulary.
+     */
+    private static ProbeResult.Finding finding(JsonNode line) {
+        JsonNode n = line.get("finding");
+        if (n == null || !n.isObject()) {
+            return null;
+        }
+        String channel = n.path("channel").asText("");
+        String rule = n.path("rule").asText("");
+        if (!FINDING_CHANNELS.contains(channel) || !FINDING_RULES.contains(rule)) {
+            return null;
+        }
+        return new ProbeResult.Finding(channel, rule, optDouble(n, "raw"), optDouble(n, "value"));
+    }
+
     private static String code(JsonNode node) {
         String c = node.path("error_code").asText("");
         return ERROR_CODES.contains(c) ? c : null;
