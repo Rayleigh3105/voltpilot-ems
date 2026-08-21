@@ -869,3 +869,52 @@ describe('AnlagenModellSection — der Reiter „Schaltbild" (Stufe 2)', () => {
     expect(document.querySelector('[data-komponente]')).toBeTruthy();
   });
 });
+
+describe('die Ausnahme „ohne Ladestand" bleibt an der Komponente sichtbar', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('nennt Zustand und Grund - inklusive dem, was dadurch AUS bleibt', async () => {
+    stub();
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [
+        {
+          id: 'batt',
+          definitionVersion: 2,
+          syncStatus: 'in_sync',
+          connection: {
+            ip: '192.168.0.28',
+            allow_missing_soc: true,
+            reading_override: {
+              channel: 'soc_pct',
+              accepted_at: '2026-08-21T13:41:07Z',
+              accepted_by: 'sub-1',
+              origin: 'kunde',
+            },
+          },
+        },
+      ],
+    });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    expect((await screen.findAllByText('ohne Ladestand')).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/mit unplausiblen Testwerten angelegt am 21\.08\.2026/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Steuerung des Speichers bleibt deshalb aus/).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('schweigt ohne Beleg - eine gewöhnliche Anlage sieht unverändert aus', async () => {
+    stub();
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [
+        { id: 'batt', definitionVersion: 2, syncStatus: 'in_sync', connection: { ip: '192.168.0.28' } },
+      ],
+    });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByText(/Box verbunden/);
+    expect(screen.queryByText('ohne Ladestand')).toBeNull();
+  });
+});

@@ -221,6 +221,58 @@ function socPlausible(pct) {
   return typeof pct === 'number' && isFinite(pct) && pct > SOC_PCT_MIN && pct <= SOC_PCT_MAX;
 }
 
+// --- WHY the SoC failed: three cases, and only ONE of them is over-ridable ----
+// Live case Muehlfeldweg 2 (21.08.2026, scout `vp-am3-registerkarte-v2`): a Deye
+// hybrid with a SELF-BUILT battery whose BMS is not coupled to the inverter. The
+// inverter measures the battery at its own terminals (voltage/current/power/
+// temperature all read fine) but the SoC register - the ONLY BMS-fed value -
+// reads a permanent, perfectly stable 0. The gate above then dropped EVERY
+// sample, so the plant could not even be added, let alone deliver telemetry.
+//
+// The July rule is NOT loosened; it is made PRECISE about which evidence it
+// saw, so a caller can tell the three apart:
+//
+//   'no_answer'    - the whole measurement block is zeros. That is the logger's
+//                    documented empty-answer signature (it could not reach the
+//                    inverter, typically at night) and stays a HARD drop, opt-in
+//                    or not: it is the case the July fix was built for.
+//   'missing'      - the block is demonstrably ALIVE (some other register moved)
+//                    and only the SoC is an exact 0 -> the BMS reports nothing.
+//                    This is the ONLY case `allow_missing_soc` may keep, and it
+//                    keeps it WITHOUT soc_pct - never a fabricated 0, so the
+//                    SoC axis-spike symptom stays structurally impossible.
+//   'out_of_range' - a value outside (0,100]. Evidence that the FRAME is wrong,
+//                    not that a BMS is missing; turning a frame-alignment bug
+//                    into published pv/load/grid numbers is exactly what the
+//                    July rule prevents. Hard drop, opt-in or not.
+const SOC_DROP_NO_ANSWER = 'no_answer';
+const SOC_DROP_MISSING = 'missing';
+const SOC_DROP_OUT_OF_RANGE = 'out_of_range';
+
+/**
+ * blockAlive - does this read show any life at all, or is it the logger's
+ * all-zero empty answer? Judged over the family's OWN measurement fields (never
+ * over the device-identity register, which a logger can answer from cache while
+ * the measurement block is dead). A genuinely idle plant whose every channel is
+ * exactly 0 is conservatively treated as no answer: dropping that one sample
+ * gaps the chart, which is this house's rule when it does not know.
+ */
+function blockAlive(blocks, fam) {
+  const f = fam.fields;
+  for (const key of Object.keys(f)) {
+    if (key === 'soc') continue;
+    const spec = f[key];
+    const addrs = spec.addrs
+      ? spec.addrs.slice()
+      : spec.bits === 32 ? [spec.addr, spec.addr + 1] : [spec.addr];
+    for (const a of addrs) {
+      const v = readReg(blocks, a);
+      if (v !== undefined && (v & 0xffff) !== 0) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * parseOk - extract the register array from a `deye -xmb` response string.
  * Returns an array of unsigned 16-bit register words (index 0 = first register
@@ -318,6 +370,32 @@ function scaleClass(blocks, fam) {
  *      1 - never fabricating a class.
  */
 function decode(blocks, config) {
+  const out = decodeVerbose(blocks, config);
+  if (!out) return null;
+  if (!out.drop) return { reading: out.reading, batt_kw: out.batt_kw };
+  // The July rule, unchanged by default: an implausible SoC means the whole
+  // read is untrustworthy. Only the narrow opt-in above, and only on the
+  // exact-0 "BMS reports nothing" signature, keeps the other channels.
+  const optIn = !!(config && config.allow_missing_soc);
+  if (optIn && out.drop.rule === SOC_DROP_MISSING) {
+    return { reading: out.reading, batt_kw: out.batt_kw };
+  }
+  return null;
+}
+
+/**
+ * decodeVerbose - decode() that SAYS what it dropped instead of only returning
+ * null. Same register maps, same scaling, same gate; the difference is that the
+ * caller can show the customer WHICH channel violated WHICH rule and with what
+ * value - the connection test used to answer a permanent-0 SoC with a bare
+ * "unplausibel" and no numbers at all, which is a riddle, not a diagnosis.
+ *
+ * Returns { reading, batt_kw, drop? } where `reading` NEVER carries the dropped
+ * channel and `drop` = { channel, rule, raw, value } names it (rule = which of
+ * the three cases above, raw = the 16-bit register word, value = the decoded
+ * percentage). null only when the family itself is unknown.
+ */
+function decodeVerbose(blocks, config) {
   const fam = FAMILIES[config && config.family];
   if (!fam) return null;
   const f = fam.fields;
@@ -346,13 +424,23 @@ function decode(blocks, config) {
   let batt_kw;
 
   // Battery-family SoC plausibility gate FIRST: an unreadable or out-of-band SoC
-  // marks a degraded/unanswered logger read, so drop the entire sample rather
-  // than fabricate a 0/garbage value (see socPlausible above).
+  // marks a degraded/unanswered logger read (see socPlausible above). It is
+  // never DECODED into the reading - what happens to the rest of the sample is
+  // decide() 's call, from the `drop` this records.
   let socPct;
+  let drop;
   if (fam.hasBattery && f.soc) {
     const s = fieldValue(blocks, f.soc);
-    if (!socPlausible(s)) return null;
-    socPct = round1(s);
+    if (socPlausible(s)) {
+      socPct = round1(s);
+    } else {
+      const value = typeof s === 'number' && isFinite(s) ? round1(s) : undefined;
+      let rule = SOC_DROP_OUT_OF_RANGE;
+      if (value === 0) {
+        rule = blockAlive(blocks, fam) ? SOC_DROP_MISSING : SOC_DROP_NO_ANSWER;
+      }
+      drop = { channel: 'soc_pct', rule, raw: readReg(blocks, f.soc.addr), value };
+    }
   }
 
   if (f.pv) {
@@ -376,7 +464,7 @@ function decode(blocks, config) {
     const kw = toKw(f.batt, config.invert_batt_sign);
     if (kw !== undefined) batt_kw = kw;
   }
-  return { reading, batt_kw };
+  return drop ? { reading, batt_kw, drop } : { reading, batt_kw };
 }
 
 /** planReads - the { start, count } blocks a family needs per poll. */
@@ -438,6 +526,11 @@ module.exports = {
   powerLimitCmd,
   detectHybridFamily,
   socPlausible,
+  decodeVerbose,
+  blockAlive,
+  SOC_DROP_NO_ANSWER,
+  SOC_DROP_MISSING,
+  SOC_DROP_OUT_OF_RANGE,
   // low-level helpers exported for the tests
   _helpers: { u16, s16, round3, round1, h4 },
 };

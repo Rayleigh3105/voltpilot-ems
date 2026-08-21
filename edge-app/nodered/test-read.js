@@ -209,16 +209,28 @@ function makeReadOnce(deps) {
         blocks.push(block);
         idx += 1;
         if (idx < plan.reads.length) { sendNext(); return; }
-        const out = deye.decode(blocks, {
+        const out = deye.decodeVerbose(blocks, {
           family: plan.family, invert_grid_sign: plan.invert_grid_sign,
           invert_batt_sign: plan.invert_batt_sign, power_scale: plan.power_scale,
         });
         if (!out || !out.reading) {
-          // A battery family that decoded to nothing is almost always an
-          // implausible SoC (the decode's drop-don't-fabricate gate); anything
-          // else is a wrong family / malformed block.
-          const battery = /^hybrid/.test(plan.family || '');
-          return ok({ ok: false, error_code: battery ? ERR_IMPLAUSIBLE : ERR_INVALID_RESPONSE });
+          // decodeVerbose returns null only for an unknown family - a wrong
+          // family / malformed block, never a plausibility verdict.
+          return ok({ ok: false, error_code: ERR_INVALID_RESPONSE });
+        }
+        if (out.drop) {
+          // The plausibility gate bit. It used to answer with a bare
+          // "implausible" and NOTHING else, so the customer saw a dead end with
+          // no evidence (live case Muehlfeldweg 2, 21.08.2026). The refusal now
+          // carries WHAT was read (the other channels decoded fine) and WHICH
+          // channel violated the rule with which raw/decoded value - the same
+          // raw-next-to-decoded discipline the register probe has.
+          return ok({
+            ok: false,
+            error_code: ERR_IMPLAUSIBLE,
+            reading: toReading(out.reading, role),
+            finding: out.drop,
+          });
         }
         ok({ ok: true, reading: toReading(out.reading, role) });
       };

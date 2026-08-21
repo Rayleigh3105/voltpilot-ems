@@ -1022,6 +1022,9 @@ export function AnlageSeite({
     controlCurtail,
     controlOutlook,
     surplusReason != null,
+    // Die Anlage wurde ausdrücklich OHNE Ladestand eingerichtet - dann ist
+    // „VoltPilot prüft das Modell am Prüfstand" die falsche Auskunft.
+    controlStatus?.missingReadingChannel === 'soc_pct',
   );
   // Der EINSPEISEWÄCHTER („Grenzen & Wächter" Stufe 0): eine STEHENDE Aussage
   // über die Anlage - welche Einspeisegrenze gilt, wirkt sie überhaupt, und

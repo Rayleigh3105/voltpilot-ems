@@ -575,6 +575,40 @@ func TestTheTestConnectionContractFixturesParseAndAdmit(t *testing.T) {
 	if strings.Contains(string(out), "load_kw") {
 		t.Fatalf("ein nicht gemeldeter Kanal darf nicht in den Draht: %s", out)
 	}
+
+	// Die EHRLICHE Ablehnung (Live-Fall Muehlfeldweg 2, 21.08.2026): die Box hat
+	// wirklich gelesen, drei Kanaele sind sauber dekodiert, und NUR der Ladestand
+	// hat die Plausibilitaetsregel verletzt. Dann traegt die Ablehnung beides -
+	// die Werte, die ankamen, und den benannten Befund. Ohne das war sie ein
+	// Raetsel, an dem eine reale Neuanlage haengengeblieben ist.
+	raw, err = os.ReadFile(contractPath("mqtt-probe.valid.test-connection-implausible.json"))
+	if err != nil {
+		t.Fatalf("Befund-Fixture: %v", err)
+	}
+	var bad Result
+	if err := json.Unmarshal(raw, &bad); err != nil {
+		t.Fatalf("Befund-Ergebnis unlesbar: %v", err)
+	}
+	l := bad.Results[0]
+	if l.OK || l.ErrorCode != ErrImplausible {
+		t.Fatalf("die Zeile muss eine benannte Ablehnung sein: %+v", l)
+	}
+	if l.Reading == nil || l.Reading.PvKw == nil || *l.Reading.PvKw != 6.1 {
+		t.Fatalf("die gelesenen Werte muessen mitreisen: %+v", l.Reading)
+	}
+	if l.Reading.SocPct != nil {
+		t.Fatalf("der verletzende Kanal darf NIE im reading stehen: %+v", l.Reading)
+	}
+	if l.Finding == nil || l.Finding.Channel != "soc_pct" || l.Finding.Rule != "missing" {
+		t.Fatalf("der Befund muss Kanal UND Regel benennen: %+v", l.Finding)
+	}
+	if l.Finding.Value == nil || *l.Finding.Value != 0 {
+		t.Fatalf("der verletzende Wert gehoert in den Befund: %+v", l.Finding)
+	}
+	// Raw/Value der ZEILE bleiben weg - die gehoeren einer Register-Lesung.
+	if l.Raw != nil || l.Value != nil {
+		t.Fatalf("eine Ablehnung traegt nie raw/value: %+v", l)
+	}
 }
 
 // TestSwitchAdmissionCarriesEveryReadRuleAndItsOwn is the safety heart of the

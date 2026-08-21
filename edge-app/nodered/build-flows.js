@@ -102,6 +102,10 @@ const routerFunc = [
   "    family: sel.family,",
   "    invert_grid_sign: !!conn.invert_grid_sign,",
   "    invert_batt_sign: !!conn.invert_batt_sign,",
+  // The narrow "battery without a coupled BMS" opt-in (deye-decode
+  // socMissingSignature): it must reach the DECODER, or an opted-in plant would
+  // still drop every sample and deliver nothing.
+  "    allow_missing_soc: !!conn.allow_missing_soc,",
   // power_scale is now a MANUAL OVERRIDE / fallback (0 = auto-detect from 0x0000);
   // pass it through unchanged so the decoder resolves the LV/HV scale.
   "    power_scale: num(conn.power_scale, 0)",
@@ -1658,7 +1662,7 @@ const sourcesStoreFunc = [
   "    const serial = conn.serial;",
   "    if (serial === undefined || serial === null || serial === '' || !(Number(serial) > 0)) { notes.push({ warn: true, t: 'Quelle ' + id + ' NICHT VERDRAHTET: Datenlogger-Seriennummer fehlt (solarman_v5)' }); return; }",
   "    const port = num(conn.port, 8899);",
-  "    plans.push({ id: s.id, role: s.role, adapter: 'solarman_v5', family: s.family, conn: { ip, port, serial, mb_slave_id: num(conn.mb_slave_id, 1), invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign, power_scale: num(conn.power_scale, 0) } });",
+  "    plans.push({ id: s.id, role: s.role, adapter: 'solarman_v5', family: s.family, conn: { ip, port, serial, mb_slave_id: num(conn.mb_slave_id, 1), invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign, allow_missing_soc: !!conn.allow_missing_soc, power_scale: num(conn.power_scale, 0) } });",
   "    notes.push({ t: 'Quelle ' + id + ' (' + s.role + '): solarman_v5 ' + ip + ':' + port + ' -> Leseplan (Deye-Familie ' + s.family + ')' });",
   "  } else if (s.communication === 'fronius_solar_api') {",
   "    const insecure = !!conn.insecure_tls;",
@@ -1842,7 +1846,7 @@ const sourcesReadFunc = [
   "      blocks.push(block); idx += 1;",
   "      if (idx < reads.length) { sendNext(); return; }",
   "      clearTimeout(t);",
-  "      let out; try { out = __DEYE.decode(blocks, { family: plan.family, invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign, power_scale: conn.power_scale || 0 }); } catch (e) { return finish(null); }",
+  "      let out; try { out = __DEYE.decode(blocks, { family: plan.family, invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign, allow_missing_soc: !!conn.allow_missing_soc, power_scale: conn.power_scale || 0 }); } catch (e) { return finish(null); }",
   "      finish(out && out.reading ? out : null);",
   "    });",
   "    sendNext();",

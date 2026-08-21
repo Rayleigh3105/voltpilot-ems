@@ -10,6 +10,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/probe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
 
@@ -54,6 +55,7 @@ func nodeRedStub(t *testing.T, busAddr string, answer func(reqID string, probe b
 			ErrorCode  string            `json:"error_code,omitempty"`
 			Message    string            `json:"message,omitempty"`
 			Reading    *testconn.Reading `json:"reading,omitempty"`
+			Finding    *testconn.Finding `json:"finding,omitempty"`
 			FoundUnits []int             `json:"found_units,omitempty"`
 		}
 		out.RequestID = req.RequestID
@@ -61,6 +63,7 @@ func nodeRedStub(t *testing.T, busAddr string, answer func(reqID string, probe b
 		out.ErrorCode = res.ErrorCode
 		out.Message = res.Message
 		out.Reading = res.Reading
+		out.Finding = res.Finding
 		out.FoundUnits = res.FoundUnits
 		raw, _ := json.Marshal(out)
 		client.Publish(localbus.TopicTestReadResult, 1, false, raw)
@@ -104,6 +107,85 @@ func TestTestConnectionPassesThroughClassifiedError(t *testing.T) {
 	})
 	if res.OK || res.ErrorCode != testconn.ErrUnreachable {
 		t.Fatalf("expected unreachable, got %+v", res)
+	}
+}
+
+// Der EHRLICHE Fehlschlag (Live-Fall Muehlfeldweg 2, 21.08.2026): eine
+// Eigenbau-Batterie ohne gekoppeltes BMS meldet einen dauerhaften SoC 0. Der
+// Flow lehnt richtig ab - aber er hat WIRKLICH gelesen, und die drei anderen
+// Kanaele sind sauber dekodiert. Beides muss durch den Kern bis in den
+// Probe-Kanal reisen, sonst ist die Ablehnung ein Raetsel ohne eine einzige
+// Zahl, und genau daran ist eine reale Neuanlage haengengeblieben.
+func TestAnImplausibleReadCarriesItsValuesAndItsNamedFinding(t *testing.T) {
+	a, addr := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
+	pv, load, grid, zero := 6.1, 4.3, 1.2, 0.0
+	nodeRedStub(t, addr, func(reqID string, _ bool) testconn.Result {
+		return testconn.Result{
+			OK: false, ErrorCode: testconn.ErrImplausible,
+			Reading: &testconn.Reading{PvKw: &pv, LoadKw: &load, GridKw: &grid},
+			Finding: &testconn.Finding{Channel: "soc_pct",
+				Rule: testconn.FindingRuleMissing, Raw: &zero, Value: &zero},
+		}
+	})
+
+	res := a.TestConnection(testconn.Request{
+		Brand: "deye", Model: "sun-30k-sg02hp3",
+		Connection: testconn.Connection{
+			"ip": "192.168.0.28", "serial": "2985159064", "mb_slave_id": 1},
+	})
+	if res.OK || res.ErrorCode != testconn.ErrImplausible {
+		t.Fatalf("die Klasse muss durchgereicht werden: %+v", res)
+	}
+	if res.Reading == nil || res.Reading.PvKw == nil || *res.Reading.PvKw != 6.1 {
+		t.Fatalf("die gelesenen Werte gehen verloren: %+v", res.Reading)
+	}
+	if res.Reading.SocPct != nil {
+		t.Fatalf("der verletzende Kanal darf NIE als Wert erscheinen: %+v", res.Reading)
+	}
+	if res.Finding == nil || res.Finding.Channel != "soc_pct" ||
+		res.Finding.Rule != testconn.FindingRuleMissing {
+		t.Fatalf("der Befund muss Kanal UND Regel nennen: %+v", res.Finding)
+	}
+
+	// ... und derselbe Befund erreicht den Probe-Kanal in Vertrags-Form.
+	line := a.runProbeTestConnection(probe.Op{
+		Op: probe.OpTestConnection, ID: "verbindung", Brand: "deye",
+		Model: "sun-30k-sg02hp3",
+		Connection: []byte(
+			`{"ip":"192.168.0.28","port":8899,"serial":"2985159064","mb_slave_id":1}`),
+	})
+	if line.OK || line.ErrorCode != probe.ErrImplausible {
+		t.Fatalf("op_result = %+v", line)
+	}
+	if line.Reading == nil || line.Reading.PvKw == nil || *line.Reading.PvKw != 6.1 {
+		t.Fatalf("das reading fehlt in der Vertrags-Zeile: %+v", line.Reading)
+	}
+	if line.Finding == nil || line.Finding.Rule != "missing" || line.Finding.Value == nil ||
+		*line.Finding.Value != 0 {
+		t.Fatalf("der Befund fehlt in der Vertrags-Zeile: %+v", line.Finding)
+	}
+	if line.Raw != nil || line.Value != nil {
+		t.Fatalf("eine Ablehnung traegt nie raw/value: %+v", line)
+	}
+}
+
+// Ein Fehlschlag OHNE Befund bleibt byte-fuer-byte wie bisher: keine Werte.
+func TestAFailureWithoutAFindingStillCarriesNoValues(t *testing.T) {
+	a, addr := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
+	pv := 4.8
+	nodeRedStub(t, addr, func(reqID string, _ bool) testconn.Result {
+		// Ein (theoretischer) Fehlschlag mit Reading, aber ohne Befund - die
+		// Werte duerfen dann NICHT durchgereicht werden: ohne benannten Kanal
+		// waere unklar, welchem Wert man trauen darf.
+		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidResponse,
+			Reading: &testconn.Reading{PvKw: &pv}}
+	})
+	line := a.runProbeTestConnection(probe.Op{
+		Op: probe.OpTestConnection, ID: "verbindung", Brand: "generic_modbus",
+		Model: "sunspec", Connection: []byte(`{"ip":"192.168.0.70"}`),
+	})
+	if line.OK || line.Reading != nil || line.Finding != nil {
+		t.Fatalf("ohne Befund traegt eine Ablehnung nichts: %+v", line)
 	}
 }
 

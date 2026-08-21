@@ -968,6 +968,42 @@ Ehrlichkeitsregel (`channels`/`writes` sind `null`, nie `[]`, weil die Kanäle i
 Decode-Profil und der Schreibweg im Steuer-Adapter wohnen) stehen in der
 Wurzel-`AGENTS.md` unter „Einheitsmodell Stufe 0a".
 
+## Eine Batterie OHNE gekoppeltes BMS: das SoC-Gate wird PRÄZISE, nicht weich
+
+Live-Fall Mühlfeldweg 2 (21.08.2026): ein Deye-Hybrid mit Eigenbau-Batterie, deren
+BMS nicht am Wechselrichter hängt. `0x024C` liest dauerhaft exakt 0, alles andere
+(Spannung/Strom/Leistung/Temperatur) einwandfrei — `deye-decode.decode()` verwarf
+damit JEDE Lesung, die Anlage blieb für immer stumm und war nicht anlegbar.
+
+- **`decodeVerbose()` sagt jetzt, WAS es verworfen hat** (`drop = {channel, rule,
+  raw, value}`), und `decode()` ist seine dünne Hülle. Die drei Regeln:
+  **`no_answer`** (der ganze Messblock 0 = die dokumentierte Leerantwort des
+  Loggers, der Juli-2026-Fall) · **`out_of_range`** (Wert ausserhalb (0,100] = ein
+  kaputter/verschobener Rahmen) · **`missing`** (`blockAlive()`: irgendein
+  Nicht-SoC-Register des Familien-Maps ist ungleich 0, UND der Ladestand liest
+  exakt 0 = das BMS meldet nichts).
+- **Nur `missing` ist übergehbar**, und nur mit dem Opt-in
+  `connection.allow_missing_soc` — die Lesung wird dann OHNE `soc_pct` behalten,
+  nie mit einer erfundenen 0, also bleibt der SoC-Achsen-Spike strukturell
+  unmöglich. Die anderen zwei verwerfen weiterhin alles, **auch mit Opt-in**.
+- **⚠ `blockAlive` urteilt NIE über das Identitäts-Register `0x0000`** — ein
+  Logger kann es aus dem Cache beantworten, während der Messblock tot ist.
+- **Der Weg des Flags** (ohne ihn wäre das Opt-in wirkungslos, weil das Gate im
+  DECODER sitzt): Portal → `driver.connection` im Registry-Push →
+  `inverter.Connection.AllowMissingSoc` → `Selection.BusPayload()` bzw.
+  `sources.busEntry()` → `edge/inverter/config` → Router (`inverter-routing.js`,
+  `build-flows.js`) → Decode-Config. `Normalize` LÖSCHT es für jeden anderen
+  Transport an EINER Stelle (neben der `Channel`-Regel) — jeder andere Decoder
+  lässt einen unplausiblen Kanal ohnehin weg, statt die Lesung zu verwerfen.
+- **Der Verbindungstest wird ehrlich, nicht nachsichtig:** `test-read.js` gibt bei
+  einem Drop `reading` (die übrigen Kanäle) UND `finding` zurück; der Kern reicht
+  beides über `testconn.Result.Finding` in den Probe-Kanal
+  (`probe.FailedReading`). Der TEST selbst setzt das Opt-in NIE — er sagt immer
+  die Wahrheit, und ob sie hinnehmbar ist, entscheidet der Mensch im Portal.
+- **Beweise:** `deye/deye-decode.test.js` · `flows-sync.test.js` (die INLINE-Kopie
+  im Flow stimmt in allen drei Fällen mit dem Modul überein) ·
+  `internal/probe` (Kontrakt-Fixture per PFAD) · `agent/testconn_test.go`.
+
 ## Der Build-Stempel reist IMMER mit (OTA Stufe 0 „Sehen")
 
 Bis dahin ritt `core_version` NUR im `flows`-Ack-Block — und den baut der Deployer

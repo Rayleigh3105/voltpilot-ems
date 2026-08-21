@@ -317,7 +317,7 @@ const (
 // deyeFamilies is the register-map reference list (what each Model decodes with).
 func deyeFamilies() []Family {
 	return []Family{
-		{ID: FamHybrid3p, Label: "Hybrid, 3-phasig", Note: "SUN-*-SG04LP3 (LV) oder SG01HP3 (HV)"},
+		{ID: FamHybrid3p, Label: "Hybrid, 3-phasig", Note: "SUN-*-SG04LP3 (LV) oder SG01HP3/SG02HP3 (HV)"},
 		{ID: FamHybrid1p, Label: "Hybrid, 1-phasig", Note: "SUN-*-SG03LP1"},
 		{ID: FamString, Label: "String-Wechselrichter", Note: "SUN-*-G03/G04 (nur Erzeugung)"},
 		{ID: FamMicro, Label: "Micro-Wechselrichter", Note: "SUN600..2000G3 (nur Erzeugung)"},
@@ -346,6 +346,10 @@ func deyeModels() []Model {
 		m("sun-35k-sg01hp3", "SUN-35K-SG01HP3-EU", FamHybrid3p, 35, "35 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
 		m("sun-40k-sg01hp3", "SUN-40K-SG01HP3-EU", FamHybrid3p, 40, "40 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
 		m("sun-50k-sg01hp3", "SUN-50K-SG01HP3-EU", FamHybrid3p, 50, "50 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		// --- 3-phase hybrid, HIGH-VOLTAGE battery, new generation (SG02HP3-EU-AM3, 3 MPPT) ---
+		m("sun-25k-sg02hp3", "SUN-25K-SG02HP3-EU-AM3", FamHybrid3p, 25, "25 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) · neue Generation"),
+		m("sun-29.9k-sg02hp3", "SUN-29.9K-SG02HP3-EU-AM3", FamHybrid3p, 29.9, "29,9 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) · neue Generation"),
+		m("sun-30k-sg02hp3", "SUN-30K-SG02HP3-EU-AM3", FamHybrid3p, 30, "30 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) · neue Generation"),
 		// --- single-phase hybrid (SG03LP1) -------------------------------------
 		m("sun-3.6k-sg03lp1", "SUN-3.6K-SG03LP1-EU", FamHybrid1p, 3.6, "3,6 kW · Hybrid · 1-phasig"),
 		m("sun-5k-sg03lp1", "SUN-5K-SG03LP1-EU", FamHybrid1p, 5, "5 kW · Hybrid · 1-phasig"),
@@ -834,6 +838,29 @@ type Connection struct {
 	// (Deye) only - the other transports have no hybrid battery register here.
 	InvertBattSign bool `json:"invert_batt_sign,omitempty"`
 
+	// AllowMissingSoc is the NARROW operator opt-in for a battery whose BMS is not
+	// coupled to the inverter: the SoC register then reads a permanent, perfectly
+	// stable 0 while voltage/current/power are all readable, and the decoder's
+	// documented drop-don't-fabricate gate (deye/deye-decode.js socPlausible)
+	// discards EVERY sample - so such a plant delivers nothing at all and cannot
+	// even be added (live case Muehlfeldweg 2, 21.08.2026).
+	//
+	// With the opt-in the decoder keeps the reading WITHOUT its soc_pct - never a
+	// fabricated 0, so no SoC sample is ever published and the July-2026
+	// axis-spike symptom stays structurally impossible - and ONLY for the exact-0
+	// value on a demonstrably ALIVE register block. The logger's all-zero empty
+	// answer and an out-of-range value still drop the whole read, opt-in or not.
+	//
+	// It is set by the PORTAL wizard's "Trotzdem fortfahren (nur Lesen)" and
+	// travels in the component's connection; there is deliberately no :8484 form
+	// field for it (an operator hatch that reads like a normal setting invites
+	// switching it on where it does not belong). Solarman-V5 (Deye) only - the
+	// other decoders already omit an implausible SoC instead of dropping the read.
+	//
+	// A plant carrying it is NOT controllable: without a SoC the guards.Clamp SoC
+	// window would be blind, so the platform refuses to arm control for it.
+	AllowMissingSoc bool `json:"allow_missing_soc,omitempty"`
+
 	// modbus_tcp
 	UnitID  int    `json:"unit_id,omitempty"`
 	Profile string `json:"profile,omitempty"`
@@ -968,6 +995,14 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	// once instead of per-case; the shelly case validates it below).
 	if b.Communication != CommShellyHTTP {
 		conn.Channel = 0
+	}
+
+	// The Deye SoC-gate opt-in belongs to the Solarman read path and nowhere else:
+	// only deye-decode drops a WHOLE reading over an implausible SoC, every other
+	// decoder simply omits the channel. Cleared here once (the Channel pattern
+	// above) so a transport added later cannot silently inherit it.
+	if b.Communication != CommSolarmanV5 {
+		conn.AllowMissingSoc = false
 	}
 
 	switch b.Communication {
@@ -1228,6 +1263,11 @@ func (s Selection) BusPayload() []byte {
 		// used the raw register sign, inverted on the captain's HV firmware). Absent
 		// = false.
 		conn["invert_batt_sign"] = s.Connection.InvertBattSign
+		// allow_missing_soc is the narrow "the BMS reports no SoC" opt-in. It must
+		// reach the DECODER (that is where the plausibility gate lives), so it rides
+		// the retained config into the self-wiring reader exactly like
+		// invert_batt_sign. Absent = false = the unchanged drop rule.
+		conn["allow_missing_soc"] = s.Connection.AllowMissingSoc
 		conn["power_scale"] = s.Connection.PowerScale
 		// invert_control_sign is the WRITE-path sign the calibration step proves; the
 		// Deye control adapter reads it. Absent = false (no inversion).

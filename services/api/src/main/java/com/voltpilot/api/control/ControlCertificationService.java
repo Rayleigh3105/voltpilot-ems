@@ -143,9 +143,33 @@ public class ControlCertificationService {
     public void activate(UUID deviceId, String actor, String note) {
         DeviceIdentity id = repo.claimedDevice(deviceId)
                 .orElseThrow(() -> new Refused("Unbekanntes Gerät.", false));
+        // ⚠ Ohne LADESTAND ist die SoC-Klemme von guards.Clamp blind: sie ist die
+        // Regel, die eine Batterie vor Tief- und Überladung schützt, und sie kann
+        // ohne den Wert weder das eine noch das andere. Eine Anlage, deren
+        // Wechselrichter-Komponente ausdrücklich OHNE diesen Kanal betrieben wird
+        // (der Kunde hat im Assistenten „Trotzdem fortfahren (nur Lesen)"
+        // gewählt), wird deshalb gar nicht erst scharfgeschaltet - und die
+        // Ablehnung nennt den fehlenden Wert und den Weg zurück.
+        //
+        // Sie hängt am BELEG, nicht an einer Vermutung: der Stempel entsteht nur
+        // aus einem Testergebnis der Box und verschwindet, sobald die Komponente
+        // nach einem vollständigen Test neu gespeichert wird.
+        String missing = repo.missingReadingChannel(id.siteId());
+        if (missing != null) {
+            throw new Refused("Steuerung nicht möglich - " + missingLabel(missing)
+                    + " fehlt. Diese Anlage wurde ausdrücklich ohne diesen Wert eingerichtet. "
+                    + "Sobald das BMS gekoppelt ist und der Ladestand erscheint, lässt sie sich "
+                    + "aktivieren: dafür im Portal die Verbindung des Wechselrichters erneut "
+                    + "prüfen und speichern.", true);
+        }
         repo.activate(deviceId, actor, trimToNull(note));
         log.warn("Steuerungs-Freigabe: Gerät {} SCHARFGESCHALTET durch {}", deviceId, actor);
         publishFor(new DeviceIdentity(id.deviceId(), id.tenantId(), id.siteId(), true), register());
+    }
+
+    /** Der fehlende Kanal in Kundensprache. Ein unbekannter wird NIE erfunden. */
+    private static String missingLabel(String channel) {
+        return "soc_pct".equals(channel) ? "der Ladestand vom BMS" : "ein nötiger Messwert";
     }
 
     /** Nimmt die Scharfschaltung zurück - das Gerät fällt sofort auf Nur-Lesen. */

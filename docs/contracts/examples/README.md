@@ -106,6 +106,16 @@ would make a fixture invalid for the wrong reason):
   one document: a successful line carries raw AND decoded value side by side, a
   failed one carries a named class and NO value; a switch answer carries its own
   `switched` block instead, because a switch result is not a measurement.
+  `mqtt-probe.valid.test-connection-implausible.json` is the one deliberate
+  exception, and it is the live Muehlfeldweg-2 case (21.08.2026): the box really
+  READ the device, three channels decoded fine, and only the SoC violated the
+  plausibility rule - so the refusal carries the `reading` it got plus a
+  `finding` naming the channel, the rule (`missing` = a live register block whose
+  SoC is an exact 0, i.e. a battery whose BMS is not coupled) and the raw/decoded
+  value. `raw`/`value` at the LINE level stay absent, because those belong to a
+  register read; what is added is evidence that was measured, never invented -
+  a bare "unplausibel" with not a single number is a riddle, and a real new
+  plant got stuck on it.
 
 ## `mqtt-charging-config` (Lastmanagement Stufe 3)
 

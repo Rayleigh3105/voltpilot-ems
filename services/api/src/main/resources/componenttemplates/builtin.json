@@ -1443,6 +1443,438 @@
       "note": "50 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) Deye-Wechselrichter werden über ihren WiFi-Datenlogger ausgelesen. Wählen Sie Ihr genaues Modell."
     },
     {
+      "template_ref": "builtin:deye:sun-25k-sg02hp3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "deye",
+      "brand_label": "Deye",
+      "model": "sun-25k-sg02hp3",
+      "model_label": "SUN-25K-SG02HP3-EU-AM3",
+      "family": "hybrid_3p",
+      "family_label": "Hybrid, 3-phasig",
+      "communication": "solarman_v5",
+      "communication_label": "Solarman-V5 (WiFi-Datenlogger, TCP 8899)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Datenloggers",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WiFi-Sticks (LSW3) im lokalen Netz, z. B. 192.168.0.28."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8899,
+          "help": "Solarman-V5-Port, üblicherweise 8899."
+        },
+        {
+          "key": "serial",
+          "label": "Datenlogger-Seriennummer",
+          "type": "text",
+          "required": true,
+          "help": "Die Seriennummer des Datenloggers (nicht des Wechselrichters!) - z. B. aus dem WLAN-Namen AP_\u003cSeriennummer\u003e oder der Logger-Statusseite."
+        },
+        {
+          "key": "mb_slave_id",
+          "label": "Modbus-Slave-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Meist 1."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein. Zeigt die Kalibrierung/das Cockpit die Batterie beim Laden negativ, hier setzen (firmwareabhängig, z. B. bei manchen SG01HP3-HV-Geräten)."
+        },
+        {
+          "key": "power_scale",
+          "label": "Leistungsskalierung",
+          "type": "select",
+          "default": 0,
+          "help": "Wird bei 3-phasigen Hybriden (SG04LP3/SG01HP3) automatisch aus dem Gerät erkannt (Niedervolt = Watt, Hochvolt = Dekawatt ×10). Nur als manuelle Übersteuerung ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": 1,
+              "label": "Watt (×1)"
+            },
+            {
+              "value": 10,
+              "label": "Dekawatt (×10)"
+            }
+          ]
+        },
+        {
+          "key": "control_write_fc",
+          "label": "Schreib-Funktionscode (Steuerung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für Steuerungs-Schreibbefehle. Viele Deye-Hybride nehmen einen Einzelregister-Schreibbefehl (FC6) zwar an, der Wechselrichter antwortet aber nicht und übernimmt den Wert nicht - deshalb ist FC16 (mehrere Register) die Voreinstellung, wie sie die funktionierenden Deye-Integrationen nutzen. Nur auf FC6 zurückstellen, wenn eine abweichende Firmware ausschließlich FC6 beantwortet.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelnes Register (0x06)"
+            }
+          ]
+        },
+        {
+          "key": "remote_mode",
+          "label": "Fernsteuerung (Remote Mode)",
+          "type": "select",
+          "default": "auto",
+          "help": "Neuere Deye-Firmware (Protokoll V105.1+) bietet eine echte Fernsteuerung: ein vorzeichenbehafteter Leistungssollwert für die Batterie, abgesichert durch einen Totmannschalter im Wechselrichter. VoltPilot erkennt automatisch, ob Ihr Gerät sie hat, und nutzt sonst die Zeitfenster-Steuerung. Nur auf \"Aus\" stellen, wenn die Fernsteuerung auf Ihrem Gerät Probleme macht.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch erkennen (empfohlen)"
+            },
+            {
+              "value": "off",
+              "label": "Aus – immer Zeitfenster-Steuerung"
+            }
+          ]
+        },
+        {
+          "key": "remote_watchdog_s",
+          "label": "Totmannschalter der Fernsteuerung (Sekunden)",
+          "type": "number",
+          "default": 0,
+          "help": "Wie lange der Wechselrichter einen Sollwert ohne neue Nachricht von VoltPilot hält, bevor er die Fernsteuerung von selbst verlässt und normal weiterläuft. Leer/0 = 60 Sekunden (empfohlen, ca. 6 Sollwert-Takte Reserve). Erlaubt sind 10 bis 18000 Sekunden."
+        },
+        {
+          "key": "remote_battery_strategy",
+          "label": "Batterie-Strategie der Fernsteuerung",
+          "type": "select",
+          "default": 0,
+          "help": "Standard: „Nur Leistung\" - der Wechselrichter bekommt ausschließlich den Leistungssollwert, ohne SoC-Ziel im Gerät. Bei „Leistung + SoC-Grenze\" wird zusätzlich eine SoC-Grenze im Gerät gesetzt; auf manchen Firmwares (z. B. SUN-30K-SG01HP3-EU) wurde diese Grenze aber als ZIEL statt als Grenze ausgelegt, sodass die Batterie ein Vielfaches der befohlenen Leistung lieferte. Nur zum Nachtesten umstellen. Die SoC-Grenzen von VoltPilot greifen in beiden Fällen (guards.Clamp).",
+          "options": [
+            {
+              "value": 0,
+              "label": "Nur Leistung (empfohlen)"
+            },
+            {
+              "value": 5,
+              "label": "Leistung + SoC-Grenze (nur zum Test)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 25,
+      "control_tier": 3,
+      "certification_status": "builtin",
+      "note": "25 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) · neue Generation Deye-Wechselrichter werden über ihren WiFi-Datenlogger ausgelesen. Wählen Sie Ihr genaues Modell."
+    },
+    {
+      "template_ref": "builtin:deye:sun-29.9k-sg02hp3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "deye",
+      "brand_label": "Deye",
+      "model": "sun-29.9k-sg02hp3",
+      "model_label": "SUN-29.9K-SG02HP3-EU-AM3",
+      "family": "hybrid_3p",
+      "family_label": "Hybrid, 3-phasig",
+      "communication": "solarman_v5",
+      "communication_label": "Solarman-V5 (WiFi-Datenlogger, TCP 8899)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Datenloggers",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WiFi-Sticks (LSW3) im lokalen Netz, z. B. 192.168.0.28."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8899,
+          "help": "Solarman-V5-Port, üblicherweise 8899."
+        },
+        {
+          "key": "serial",
+          "label": "Datenlogger-Seriennummer",
+          "type": "text",
+          "required": true,
+          "help": "Die Seriennummer des Datenloggers (nicht des Wechselrichters!) - z. B. aus dem WLAN-Namen AP_\u003cSeriennummer\u003e oder der Logger-Statusseite."
+        },
+        {
+          "key": "mb_slave_id",
+          "label": "Modbus-Slave-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Meist 1."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein. Zeigt die Kalibrierung/das Cockpit die Batterie beim Laden negativ, hier setzen (firmwareabhängig, z. B. bei manchen SG01HP3-HV-Geräten)."
+        },
+        {
+          "key": "power_scale",
+          "label": "Leistungsskalierung",
+          "type": "select",
+          "default": 0,
+          "help": "Wird bei 3-phasigen Hybriden (SG04LP3/SG01HP3) automatisch aus dem Gerät erkannt (Niedervolt = Watt, Hochvolt = Dekawatt ×10). Nur als manuelle Übersteuerung ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": 1,
+              "label": "Watt (×1)"
+            },
+            {
+              "value": 10,
+              "label": "Dekawatt (×10)"
+            }
+          ]
+        },
+        {
+          "key": "control_write_fc",
+          "label": "Schreib-Funktionscode (Steuerung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für Steuerungs-Schreibbefehle. Viele Deye-Hybride nehmen einen Einzelregister-Schreibbefehl (FC6) zwar an, der Wechselrichter antwortet aber nicht und übernimmt den Wert nicht - deshalb ist FC16 (mehrere Register) die Voreinstellung, wie sie die funktionierenden Deye-Integrationen nutzen. Nur auf FC6 zurückstellen, wenn eine abweichende Firmware ausschließlich FC6 beantwortet.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelnes Register (0x06)"
+            }
+          ]
+        },
+        {
+          "key": "remote_mode",
+          "label": "Fernsteuerung (Remote Mode)",
+          "type": "select",
+          "default": "auto",
+          "help": "Neuere Deye-Firmware (Protokoll V105.1+) bietet eine echte Fernsteuerung: ein vorzeichenbehafteter Leistungssollwert für die Batterie, abgesichert durch einen Totmannschalter im Wechselrichter. VoltPilot erkennt automatisch, ob Ihr Gerät sie hat, und nutzt sonst die Zeitfenster-Steuerung. Nur auf \"Aus\" stellen, wenn die Fernsteuerung auf Ihrem Gerät Probleme macht.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch erkennen (empfohlen)"
+            },
+            {
+              "value": "off",
+              "label": "Aus – immer Zeitfenster-Steuerung"
+            }
+          ]
+        },
+        {
+          "key": "remote_watchdog_s",
+          "label": "Totmannschalter der Fernsteuerung (Sekunden)",
+          "type": "number",
+          "default": 0,
+          "help": "Wie lange der Wechselrichter einen Sollwert ohne neue Nachricht von VoltPilot hält, bevor er die Fernsteuerung von selbst verlässt und normal weiterläuft. Leer/0 = 60 Sekunden (empfohlen, ca. 6 Sollwert-Takte Reserve). Erlaubt sind 10 bis 18000 Sekunden."
+        },
+        {
+          "key": "remote_battery_strategy",
+          "label": "Batterie-Strategie der Fernsteuerung",
+          "type": "select",
+          "default": 0,
+          "help": "Standard: „Nur Leistung\" - der Wechselrichter bekommt ausschließlich den Leistungssollwert, ohne SoC-Ziel im Gerät. Bei „Leistung + SoC-Grenze\" wird zusätzlich eine SoC-Grenze im Gerät gesetzt; auf manchen Firmwares (z. B. SUN-30K-SG01HP3-EU) wurde diese Grenze aber als ZIEL statt als Grenze ausgelegt, sodass die Batterie ein Vielfaches der befohlenen Leistung lieferte. Nur zum Nachtesten umstellen. Die SoC-Grenzen von VoltPilot greifen in beiden Fällen (guards.Clamp).",
+          "options": [
+            {
+              "value": 0,
+              "label": "Nur Leistung (empfohlen)"
+            },
+            {
+              "value": 5,
+              "label": "Leistung + SoC-Grenze (nur zum Test)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 29.9,
+      "control_tier": 3,
+      "certification_status": "builtin",
+      "note": "29,9 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) · neue Generation Deye-Wechselrichter werden über ihren WiFi-Datenlogger ausgelesen. Wählen Sie Ihr genaues Modell."
+    },
+    {
+      "template_ref": "builtin:deye:sun-30k-sg02hp3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "deye",
+      "brand_label": "Deye",
+      "model": "sun-30k-sg02hp3",
+      "model_label": "SUN-30K-SG02HP3-EU-AM3",
+      "family": "hybrid_3p",
+      "family_label": "Hybrid, 3-phasig",
+      "communication": "solarman_v5",
+      "communication_label": "Solarman-V5 (WiFi-Datenlogger, TCP 8899)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Datenloggers",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WiFi-Sticks (LSW3) im lokalen Netz, z. B. 192.168.0.28."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8899,
+          "help": "Solarman-V5-Port, üblicherweise 8899."
+        },
+        {
+          "key": "serial",
+          "label": "Datenlogger-Seriennummer",
+          "type": "text",
+          "required": true,
+          "help": "Die Seriennummer des Datenloggers (nicht des Wechselrichters!) - z. B. aus dem WLAN-Namen AP_\u003cSeriennummer\u003e oder der Logger-Statusseite."
+        },
+        {
+          "key": "mb_slave_id",
+          "label": "Modbus-Slave-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Meist 1."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein. Zeigt die Kalibrierung/das Cockpit die Batterie beim Laden negativ, hier setzen (firmwareabhängig, z. B. bei manchen SG01HP3-HV-Geräten)."
+        },
+        {
+          "key": "power_scale",
+          "label": "Leistungsskalierung",
+          "type": "select",
+          "default": 0,
+          "help": "Wird bei 3-phasigen Hybriden (SG04LP3/SG01HP3) automatisch aus dem Gerät erkannt (Niedervolt = Watt, Hochvolt = Dekawatt ×10). Nur als manuelle Übersteuerung ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": 1,
+              "label": "Watt (×1)"
+            },
+            {
+              "value": 10,
+              "label": "Dekawatt (×10)"
+            }
+          ]
+        },
+        {
+          "key": "control_write_fc",
+          "label": "Schreib-Funktionscode (Steuerung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für Steuerungs-Schreibbefehle. Viele Deye-Hybride nehmen einen Einzelregister-Schreibbefehl (FC6) zwar an, der Wechselrichter antwortet aber nicht und übernimmt den Wert nicht - deshalb ist FC16 (mehrere Register) die Voreinstellung, wie sie die funktionierenden Deye-Integrationen nutzen. Nur auf FC6 zurückstellen, wenn eine abweichende Firmware ausschließlich FC6 beantwortet.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelnes Register (0x06)"
+            }
+          ]
+        },
+        {
+          "key": "remote_mode",
+          "label": "Fernsteuerung (Remote Mode)",
+          "type": "select",
+          "default": "auto",
+          "help": "Neuere Deye-Firmware (Protokoll V105.1+) bietet eine echte Fernsteuerung: ein vorzeichenbehafteter Leistungssollwert für die Batterie, abgesichert durch einen Totmannschalter im Wechselrichter. VoltPilot erkennt automatisch, ob Ihr Gerät sie hat, und nutzt sonst die Zeitfenster-Steuerung. Nur auf \"Aus\" stellen, wenn die Fernsteuerung auf Ihrem Gerät Probleme macht.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch erkennen (empfohlen)"
+            },
+            {
+              "value": "off",
+              "label": "Aus – immer Zeitfenster-Steuerung"
+            }
+          ]
+        },
+        {
+          "key": "remote_watchdog_s",
+          "label": "Totmannschalter der Fernsteuerung (Sekunden)",
+          "type": "number",
+          "default": 0,
+          "help": "Wie lange der Wechselrichter einen Sollwert ohne neue Nachricht von VoltPilot hält, bevor er die Fernsteuerung von selbst verlässt und normal weiterläuft. Leer/0 = 60 Sekunden (empfohlen, ca. 6 Sollwert-Takte Reserve). Erlaubt sind 10 bis 18000 Sekunden."
+        },
+        {
+          "key": "remote_battery_strategy",
+          "label": "Batterie-Strategie der Fernsteuerung",
+          "type": "select",
+          "default": 0,
+          "help": "Standard: „Nur Leistung\" - der Wechselrichter bekommt ausschließlich den Leistungssollwert, ohne SoC-Ziel im Gerät. Bei „Leistung + SoC-Grenze\" wird zusätzlich eine SoC-Grenze im Gerät gesetzt; auf manchen Firmwares (z. B. SUN-30K-SG01HP3-EU) wurde diese Grenze aber als ZIEL statt als Grenze ausgelegt, sodass die Batterie ein Vielfaches der befohlenen Leistung lieferte. Nur zum Nachtesten umstellen. Die SoC-Grenzen von VoltPilot greifen in beiden Fällen (guards.Clamp).",
+          "options": [
+            {
+              "value": 0,
+              "label": "Nur Leistung (empfohlen)"
+            },
+            {
+              "value": 5,
+              "label": "Leistung + SoC-Grenze (nur zum Test)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 30,
+      "control_tier": 3,
+      "certification_status": "builtin",
+      "note": "30 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV) · neue Generation Deye-Wechselrichter werden über ihren WiFi-Datenlogger ausgelesen. Wählen Sie Ihr genaues Modell."
+    },
+    {
       "template_ref": "builtin:deye:sun-3.6k-sg03lp1",
       "kind": "builtin",
       "version": 1,

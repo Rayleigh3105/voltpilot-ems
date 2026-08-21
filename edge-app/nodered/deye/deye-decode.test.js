@@ -375,6 +375,82 @@ test('hybrid_3p: a full-battery 100 % SoC is kept (inclusive upper bound)', () =
   assert.strictEqual(reading.soc_pct, 100);
 });
 
+// --- the NARROW opt-in: a battery whose BMS reports no SoC at all ------------
+// Live case Muehlfeldweg 2 (21.08.2026, scout `vp-am3-registerkarte-v2`): a Deye
+// hybrid with a self-built battery whose BMS is not coupled, so the SoC register
+// reads a permanent, perfectly stable 0 while voltage/current/power/temperature
+// are readable. Without the opt-in the gate above drops EVERY sample and the
+// plant delivers nothing at all.
+
+// The Muehlfeldweg fixture: SoC 0 on a demonstrably LIVE block.
+const MUEHLFELDWEG = { 0x024c: 0, 0x024e: 0xfff4, 0x028d: 4300, 0x02a0: 6100, 0x026b: 1200 };
+
+test('decodeVerbose NAMES the dropped channel, its rule and its raw + decoded value', () => {
+  const b = block(0x024c, 0x79, MUEHLFELDWEG);
+  const out = D.decodeVerbose([b], { family: 'hybrid_3p', power_scale: 1 });
+  assert.deepStrictEqual(out.drop, {
+    channel: 'soc_pct', rule: D.SOC_DROP_MISSING, raw: 0, value: 0,
+  });
+  // The OTHER channels decoded fine - that is exactly what makes the refusal
+  // actionable instead of a riddle.
+  assert.strictEqual(out.reading.load_kw, 4.3);
+  assert.strictEqual(out.reading.pv_power_kw, 6.1);
+  assert.strictEqual(out.reading.power_kw, 1.2);
+  assert.ok(!('soc_pct' in out.reading), 'the dropped channel is NEVER in the reading');
+});
+
+test('an ALL-ZERO block is the loggers empty answer, not a missing BMS - and the opt-in does NOT rescue it', () => {
+  const b = block(0x024c, 0x79, {});
+  const cfg = { family: 'hybrid_3p' };
+  assert.strictEqual(D.decodeVerbose([b], cfg).drop.rule, D.SOC_DROP_NO_ANSWER);
+  assert.strictEqual(D.decode([b], cfg), null);
+  assert.strictEqual(D.decode([b], { ...cfg, allow_missing_soc: true }), null,
+    'the July stub rule stays intact even for an opted-in plant');
+});
+
+test('an OUT-OF-RANGE SoC is reported with its value, and the opt-in does NOT rescue it either', () => {
+  const b = block(0x024c, 0x79, { 0x024c: 1250, 0x028d: 3000 });
+  const cfg = { family: 'hybrid_3p' };
+  assert.deepStrictEqual(D.decodeVerbose([b], cfg).drop, {
+    channel: 'soc_pct', rule: D.SOC_DROP_OUT_OF_RANGE, raw: 1250, value: 1250,
+  });
+  assert.strictEqual(D.decode([b], cfg), null);
+  assert.strictEqual(D.decode([b], { ...cfg, allow_missing_soc: true }), null,
+    'an out-of-range value is a broken frame, never a missing BMS');
+});
+
+test('allow_missing_soc keeps the other channels of a live SoC-0 read, never a fabricated 0', () => {
+  const b = block(0x024c, 0x79, MUEHLFELDWEG);
+  const cfg = { family: 'hybrid_3p', power_scale: 1, allow_missing_soc: true };
+  const out = D.decode([b], cfg);
+  assert.ok(out, 'the sample is published');
+  assert.ok(!('soc_pct' in out.reading), 'no SoC sample - the July axis-spike stays impossible');
+  assert.deepStrictEqual(out.reading, { pv_power_kw: 6.1, load_kw: 4.3, power_kw: 1.2 });
+  assert.strictEqual(out.batt_kw, -0.012, 'the calibration channel survives too');
+});
+
+test('allow_missing_soc changes NOTHING for a plant whose SoC is fine', () => {
+  const b = block(0x024c, 0x79, { 0x024c: 57, 0x028d: 2400 });
+  const cfg = { family: 'hybrid_3p', power_scale: 1 };
+  assert.deepStrictEqual(
+    D.decode([b], { ...cfg, allow_missing_soc: true }),
+    D.decode([b], cfg),
+  );
+});
+
+test('without the opt-in a permanent-0 SoC is byte-for-byte the old behaviour (drop)', () => {
+  const b = block(0x024c, 0x79, MUEHLFELDWEG);
+  assert.strictEqual(D.decode([b], { family: 'hybrid_3p' }), null);
+});
+
+test('blockAlive never judges by the device-identity register (a logger can cache it)', () => {
+  // Identity block answers, measurement block is dead -> still no answer.
+  const blocks = [{ start: 0x0000, regs: [0x0008] }, block(0x024c, 0x79, {})];
+  assert.strictEqual(D.blockAlive(blocks, D.FAMILIES.hybrid_3p), false);
+  assert.strictEqual(D.decodeVerbose(blocks, { family: 'hybrid_3p' }).drop.rule,
+    D.SOC_DROP_NO_ANSWER);
+});
+
 test('string/micro: a 0-generation (night) reading is NOT dropped - no battery, no SoC gate', () => {
   const s = block(0x0050, 0x0002, {}); // string AC output 0
   assert.deepStrictEqual(D.decode([s], { family: 'string' }).reading, { pv_power_kw: 0 });

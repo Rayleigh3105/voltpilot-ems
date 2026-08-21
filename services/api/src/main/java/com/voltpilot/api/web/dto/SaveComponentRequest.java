@@ -24,6 +24,13 @@ import java.util.Map;
  *                    (IP/Port/Serial/Unit-ID …), unverändert durchgereicht
  * @param capacityKwp nur für einen Erzeuger; sonst ignoriert
  * @param intervalS   optionaler Lese-Abstand; leer = die Vorgabe der Box
+ * @param acceptMissingChannel die AUSDRÜCKLICHE Zustimmung des Kunden, diese
+ *     Komponente OHNE einen Messkanal zu betreiben („Trotzdem fortfahren (nur
+ *     Lesen)"). Sie nennt den Kanal, damit sie nicht pauschal gilt: der Server
+ *     akzeptiert sie nur, wenn der Verbindungstest GENAU DIESEN Kanal als
+ *     fehlend ausgewiesen hat - ein Client kann damit keine Zustimmung zu einem
+ *     Kanal behaupten, der nie das Problem war. Absent = die unveränderte
+ *     Pflicht „nur ein vollständiger Test speichert".
  */
 public record SaveComponentRequest(
         @NotBlank @Size(max = 200) String templateRef,
@@ -32,4 +39,13 @@ public record SaveComponentRequest(
         Map<String, Object> connection,
         @Positive BigDecimal capacityKwp,
         Integer intervalS,
-        @Size(max = 200) String note) {}
+        @Size(max = 200) String note,
+        @Size(max = 40) String acceptMissingChannel) {
+
+    /** Der Bequemlichkeits-Konstruktor der Aufrufer VOR dem Override-Weg. */
+    public SaveComponentRequest(String templateRef, String label, String role,
+            Map<String, Object> connection, BigDecimal capacityKwp, Integer intervalS,
+            String note) {
+        this(templateRef, label, role, connection, capacityKwp, intervalS, note, null);
+    }
+}

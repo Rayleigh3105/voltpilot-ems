@@ -11,6 +11,7 @@ import {
   messwerte,
   nameHilfe,
   nameVorschau,
+  ohneMesswertHinweis,
   pruefen,
   rolleVerfuegbar,
   sollIstText,
@@ -373,5 +374,135 @@ describe('Übernahme statt Verdopplung', () => {
     const ohne = pruefen(fronius, 'pv-generation', '', {});
     expect(ohne.some((r) => r.label === 'Komponente')).toBe(false);
     expect(ohne.find((r) => r.label === 'Name')?.wert).toBe(fronius.modelLabel);
+  });
+});
+
+// --- Der EHRLICHE Fehlschlag + der Ausweg (Live-Fall Mühlfeldweg 2) ---------
+// Eine Eigenbau-Batterie ohne gekoppeltes BMS meldet dauerhaft SoC 0. Vorher
+// endete der Assistent hier in einer Sackgasse: „die Messwerte sind
+// unplausibel", keine Zahl, „Weiter" tot.
+
+const MUEHLFELDWEG = {
+  results: [
+    {
+      ok: false,
+      errorCode: 'implausible',
+      reading: { pvKw: 6.1, loadKw: 4.3, gridKw: 1.2 },
+      finding: { channel: 'soc_pct', rule: 'missing', raw: 0, value: 0 },
+    },
+  ],
+};
+
+describe('testErgebnis: ein Fehlschlag ZEIGT, was ankam', () => {
+  it('nennt die verletzte Regel im Klartext und listet die gelesenen Werte', () => {
+    const e = testErgebnis(MUEHLFELDWEG);
+    expect(e.zustand).toBe('fehlgeschlagen');
+    expect(e.regelText).toContain('Ladestand liest 0 %');
+    expect(e.regelText).toContain('BMS');
+    expect(e.messwerte.map((m) => m.label)).toEqual(['Solarleistung', 'Verbrauch', 'Netz']);
+    expect(e.messwerte[0].wert).toBe('6,1 kW');
+  });
+
+  it('bietet den Ausweg an - mit einer Folgenliste, die auch nennt, was AUS bleibt', () => {
+    const e = testErgebnis(MUEHLFELDWEG);
+    expect(e.override?.channel).toBe('soc_pct');
+    expect(e.override?.label).toBe('Trotzdem fortfahren (nur Lesen)');
+    expect(e.override?.folgen.join(' ')).toContain('Steuerung des Speichers bleibt aus');
+    expect(e.override?.folgen.join(' ')).toContain('nie eine erfundene 0');
+  });
+
+  it('bietet KEINEN Ausweg bei einem kaputten Rahmen - da ist der Lesung nicht zu trauen', () => {
+    const e = testErgebnis({
+      results: [
+        {
+          ok: false,
+          errorCode: 'implausible',
+          reading: { pvKw: 3 },
+          finding: { channel: 'soc_pct', rule: 'out_of_range', raw: 1250, value: 1250 },
+        },
+      ],
+    });
+    expect(e.override).toBeUndefined();
+    expect(e.regelText).toContain('1.250 %');
+    expect(e.regelText).toContain('Modellauswahl');
+  });
+
+  it('bietet KEINEN Ausweg bei der Leerantwort des Loggers', () => {
+    const e = testErgebnis({
+      results: [
+        {
+          ok: false,
+          errorCode: 'implausible',
+          reading: {},
+          finding: { channel: 'soc_pct', rule: 'no_answer' },
+        },
+      ],
+    });
+    expect(e.override).toBeUndefined();
+    expect(e.regelText).toContain('alle Register standen auf 0');
+  });
+
+  it('behauptet ohne Befund GAR NICHTS - keine Regel, keine Werte, kein Ausweg', () => {
+    const e = testErgebnis({ results: [{ ok: false, errorCode: 'unreachable' }] });
+    expect(e.regelText).toBeUndefined();
+    expect(e.override).toBeUndefined();
+    expect(e.messwerte).toEqual([]);
+    expect(e.text).toContain('antwortet nichts');
+  });
+
+  it('erfindet zu einem unbekannten Kanal oder einer unbekannten Regel nichts', () => {
+    const e = testErgebnis({
+      results: [
+        {
+          ok: false,
+          errorCode: 'implausible',
+          reading: { pvKw: 1 },
+          finding: { channel: 'temperatur', rule: 'missing' },
+        },
+      ],
+    });
+    expect(e.regelText).toBeUndefined();
+    expect(e.override).toBeUndefined();
+  });
+
+  it('lässt einen bestandenen Test byte-gleich wie vorher', () => {
+    const e = testErgebnis({ results: [{ ok: true, reading: { pvKw: 12.4, socPct: 87 } }] });
+    expect(e).toEqual({
+      zustand: 'bestanden',
+      text: 'Das Gerät antwortet. Diese Messwerte kommen gerade an:',
+      messwerte: [
+        { label: 'Solarleistung', wert: '12,4 kW' },
+        { label: 'Ladestand', wert: '87 %' },
+      ],
+    });
+  });
+});
+
+describe('ohneMesswertHinweis: die Ausnahme bleibt an der Komponente sichtbar', () => {
+  it('nennt Zustand, Datum und die Folge für die Steuerung', () => {
+    const h = ohneMesswertHinweis({
+      ip: '192.168.0.28',
+      allow_missing_soc: true,
+      reading_override: {
+        channel: 'soc_pct',
+        accepted_at: '2026-08-21T13:41:07Z',
+        accepted_by: 'sub-1',
+        origin: 'kunde',
+      },
+    });
+    expect(h?.badge).toBe('ohne Ladestand');
+    expect(h?.satz).toContain('mit unplausiblen Testwerten angelegt am 21.08.2026');
+    expect(h?.satz).toContain('Steuerung des Speichers bleibt deshalb aus');
+  });
+
+  it('behauptet ohne Datum kein Datum', () => {
+    const h = ohneMesswertHinweis({ reading_override: { channel: 'soc_pct' } });
+    expect(h?.satz).not.toContain(' am ');
+  });
+
+  it('schweigt ohne Beleg und bei einem unbekannten Kanal', () => {
+    expect(ohneMesswertHinweis(null)).toBeNull();
+    expect(ohneMesswertHinweis({ ip: '10.0.0.1' })).toBeNull();
+    expect(ohneMesswertHinweis({ reading_override: { channel: 'temperatur' } })).toBeNull();
   });
 });

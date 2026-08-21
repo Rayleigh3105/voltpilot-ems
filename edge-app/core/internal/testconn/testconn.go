@@ -48,8 +48,18 @@ type Result struct {
 	// (e.g. "Datenlogger-Seriennummer fehlt"), so the UI can show exactly which
 	// field is wrong instead of a generic string. Other error codes map to fixed
 	// copy in the UI.
-	Message string   `json:"message,omitempty"`
+	Message string `json:"message,omitempty"`
+	// Reading is what the device REALLY answered. It normally rides a success -
+	// but since 21.08.2026 it also rides an `implausible` refusal whose Finding
+	// names a single violating channel: the other channels decoded fine, and
+	// showing them is what turns a dead end into a diagnosis (live case
+	// Muehlfeldweg 2). It never carries the violating channel itself.
 	Reading *Reading `json:"reading,omitempty"`
+	// Finding names WHICH channel violated WHICH plausibility rule, machine
+	// readable, so no surface has to search a German sentence for keywords (the
+	// house rule "target_verdict NEXT TO state"). Only set alongside
+	// ErrorCode "implausible".
+	Finding *Finding `json:"finding,omitempty"`
 	// FoundUnits is set only by the multi-inverter unit-ID probe (POST
 	// /api/probe-units, fronius_sunspec only): every Modbus unit id at the
 	// probed address that presented a SunSpec device (a Fronius Datamanager
@@ -61,6 +71,30 @@ type Result struct {
 	// OK - the READ succeeded; the check reports its own honest outcome.
 	ControlCheck *ControlCheck `json:"control_check,omitempty"`
 }
+
+// Finding is the plausibility verdict about ONE channel of an otherwise
+// successful read (contract mqtt-probe.schema.json op_result.finding).
+//
+// Rule is the WHY, and the three cases are deliberately not one word:
+// "missing" (a demonstrably LIVE register block whose channel reads exactly 0 -
+// a battery whose BMS is not coupled to the inverter) is the only one an
+// operator may knowingly run a plant with; "no_answer" (the logger's all-zero
+// empty answer) and "out_of_range" (a broken/shifted frame) are evidence that
+// the READ is untrustworthy and may never be waved through.
+type Finding struct {
+	Channel string   `json:"channel"`
+	Rule    string   `json:"rule"`
+	Raw     *float64 `json:"raw,omitempty"`
+	Value   *float64 `json:"value,omitempty"`
+}
+
+// The Finding rule vocabulary. Closed on purpose: a word we do not understand
+// must not become a sentence in front of a customer.
+const (
+	FindingRuleMissing    = "missing"
+	FindingRuleOutOfRange = "out_of_range"
+	FindingRuleNoAnswer   = "no_answer"
+)
 
 // ControlCheck is the non-disruptive write short-test verdict: a
 // value-identical write was executed and read back (go-e: the current amp

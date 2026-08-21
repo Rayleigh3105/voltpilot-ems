@@ -277,6 +277,19 @@ function num(v: number | null | undefined): number | null {
  * ⚠ `null`/`unknown` darf nie wie `not_covered` klingen: das schickte einen
  * Kunden zu einem Prüfstand, den er nicht braucht.
  */
+/**
+ * Der Satz für eine Anlage, die AUSDRÜCKLICH ohne Ladestand eingerichtet wurde
+ * („Trotzdem fortfahren (nur Lesen)", Live-Fall Mühlfeldweg 2, 21.08.2026).
+ *
+ * Er steht VOR jedem Freigabe-Satz, weil er den konkreten, behebbaren Grund
+ * nennt: ohne Ladestand ist die SoC-Klemme blind, die den Speicher vor Tief-
+ * und Überladung schützt - ein Prüfstandslauf ändert daran nichts. Und er nennt
+ * den Weg zurück, statt eine Sackgasse zu behaupten.
+ */
+export const OHNE_LADESTAND_SATZ =
+  'Steuerung nicht möglich - kein Ladestand vom BMS. Sobald das BMS gekoppelt ist und der '
+  + 'Ladestand erscheint, lässt sie sich aktivieren.';
+
 function pendingSentence(status: ControlStatus): string {
   const base = 'Die Steuerung ist für dieses Modell noch nicht freigegeben - die Anlage wird nur ausgelesen.';
   switch (status.platformCertVerdict) {
@@ -321,6 +334,12 @@ export function controlStrip(
   curtail: CurtailTruth = CURTAIL_PLAN,
   outlook: string | null = null,
   surplusActive = false,
+  /**
+   * Diese Anlage wurde ausdrücklich OHNE Ladestand eingerichtet (der Beleg
+   * `reading_override` an ihrer Wechselrichter-Komponente). Der Aufrufer liest
+   * die Tatsache; hier wird sie nie geraten.
+   */
+  ohneLadestand = false,
 ): ControlStripView | null {
   if (!status) {
     if (!expectControl) return null;
@@ -341,11 +360,17 @@ export function controlStrip(
   // Until the platform register existed, this one sentence swallowed three
   // different situations, and the customer could not tell "a bench run is
   // needed" from "one click is missing" from "we do not know yet".
+  //
+  // ⚠ Der fehlende Ladestand steht VOR allen dreien: er ist der konkrete,
+  // behebbare Grund, und „VoltPilot prüft es am Prüfstand" wäre daneben eine
+  // Falschaussage (ein Prüfstandslauf bringt kein BMS ans Laufen). Wo die
+  // Anlage TROTZDEM steuert (certified), wird nichts behauptet - dann läuft sie
+  // ja, und ein „nicht möglich" wäre die nächste Falschaussage.
   if (!status.certified) {
     return {
       state: 'pending',
       tone: 'off',
-      sentence: pendingSentence(status),
+      sentence: ohneLadestand ? OHNE_LADESTAND_SATZ : pendingSentence(status),
       agoNote: '',
       reason: null,
       execution: null,

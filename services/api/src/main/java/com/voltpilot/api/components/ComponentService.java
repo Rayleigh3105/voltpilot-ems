@@ -6,8 +6,10 @@ import com.voltpilot.api.entities.EntityObservedRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
+import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
+import com.voltpilot.api.repo.RegisterWriteEventRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.templates.BuiltinComponentTemplates;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
@@ -18,6 +20,7 @@ import com.voltpilot.api.web.dto.ComponentTemplateDto;
 import com.voltpilot.api.web.dto.SaveComponentRequest;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +28,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -156,11 +161,11 @@ public class ComponentService {
         requirePortalManaged(siteId);
         String role = requireRole(req.role());
         ComponentTemplateDto template = requireTemplate(req.templateRef());
-        Map<String, Object> connection = requireTestedConnection(siteId, req, template);
+        TestedConnection tested = requireTestedConnection(siteId, req, template);
 
         UUID tenantId = TenantContext.get();
         UUID entityId = resolveOrCreatePoint(siteId, tenantId, role, req, template);
-        writeDefinition(siteId, tenantId, entityId, role, req, template, connection, subject,
+        writeDefinition(siteId, tenantId, entityId, role, req, template, tested, subject,
                 "Angelegt");
         entityRegistry.pushRegistryBestEffort(siteId);
         return list(siteId);
@@ -179,7 +184,7 @@ public class ComponentService {
         requirePortalManaged(siteId);
         EntityRow existing = requireComponent(siteId, entityId);
         String role = requireRole(req.role());
-        if (!role.equals(roleOf(existing))) {
+        if (!sameRole(role, existing)) {
             // Die Rolle einer Komponente zu wechseln hieße, sie in einen anderen
             // Teil der Energiebilanz zu verschieben - das ist ein Löschen plus
             // ein Anlegen, kein Bearbeiten, und darf nicht als eine Fassung
@@ -188,9 +193,9 @@ public class ComponentService {
                     "Die Art dieser Komponente lässt sich nicht ändern. Bitte legen Sie sie neu an.");
         }
         ComponentTemplateDto template = requireTemplate(req.templateRef());
-        Map<String, Object> connection = requireTestedConnection(siteId, req, template);
+        TestedConnection tested = requireTestedConnection(siteId, req, template);
 
-        writeDefinition(siteId, TenantContext.get(), entityId, role, req, template, connection,
+        writeDefinition(siteId, TenantContext.get(), entityId, role, req, template, tested,
                 subject, "Verbindung geändert");
         entityRegistry.pushRegistryBestEffort(siteId);
         return list(siteId);
@@ -272,10 +277,33 @@ public class ComponentService {
     }
 
     /**
+     * Die geprüfte Verbindung: die Felder, die gespeichert werden, plus - wenn
+     * der Test einen Kanal als fehlend ausgewiesen UND der Kunde ihn abgenickt
+     * hat - dieser Kanal. {@code null} = ein vollständiger Test.
+     */
+    private record TestedConnection(Map<String, Object> fields, String missingChannel) {
+    }
+
+    /**
      * Die Verbindungstest-Pflicht. Ohne einen gültigen Beleg für GENAU diese
      * Anlage, Vorlage und Verbindung wird nichts gespeichert.
+     *
+     * <p><b>Der eine Ausnahmeweg, und warum er die Pflicht nicht aufweicht</b>
+     * (Live-Fall Mühlfeldweg 2, 21.08.2026): ein Gerät kann ANTWORTEN und
+     * trotzdem einen Kanal schuldig bleiben - eine Eigenbau-Batterie ohne
+     * gekoppeltes BMS meldet dauerhaft SoC 0. Die Pflicht existiert gegen das
+     * Blind-Soll, gegen den Tippfehler in der IP; genau das hat dieser Test
+     * beantwortet. Es wird also nichts geglaubt, was nicht gemessen wurde -
+     * gespeichert wird eine Anlage, von der wir WISSEN, dass sie erreichbar ist
+     * und welcher Kanal ihr fehlt.
+     *
+     * <p>Zwei Dinge müssen dafür zusammenkommen, und beide entscheidet der
+     * SERVER: der Beleg muss den Kanal als fehlend ausweisen (das kommt aus dem
+     * Testergebnis der Box), und der Kunde muss GENAU DIESEN Kanal abgenickt
+     * haben. Eine Zustimmung zu einem anderen Kanal gilt nicht, und eine
+     * Zustimmung ohne Befund erst recht nicht.
      */
-    private Map<String, Object> requireTestedConnection(UUID siteId, SaveComponentRequest req,
+    private TestedConnection requireTestedConnection(UUID siteId, SaveComponentRequest req,
             ComponentTemplateDto template) {
         Map<String, Object> connection =
                 req.connection() == null ? Map.of() : new LinkedHashMap<>(req.connection());
@@ -283,12 +311,41 @@ public class ComponentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Es fehlen die Verbindungsdaten des Geräts.");
         }
+        // ⚠ Ein Client darf die Server-Stempel NIE selbst mitschicken: sie sind
+        // der Beleg, nicht die Eingabe. Sie werden hier entfernt, bevor der
+        // Fingerabdruck gebildet wird - sonst hinge die Pflicht an einem Feld,
+        // das der Aufrufer frei erfindet.
+        SERVER_OWNED_CONNECTION_KEYS.forEach(connection::remove);
         if (!receipts.has(siteId, template.templateRef(), connection)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät - erst danach lässt "
                             + "sie sich speichern.");
         }
-        return connection;
+        String missing = receipts.overrideChannel(siteId, template.templateRef(), connection);
+        if (missing == null) {
+            return new TestedConnection(connection, null);
+        }
+        String accepted = req.acceptMissingChannel() == null ? "" : req.acceptMissingChannel().trim();
+        if (!missing.equals(accepted)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Der Verbindungstest war unvollständig: " + channelLabel(missing)
+                            + " fehlt. Bitte bestätigen Sie ausdrücklich, dass diese Komponente "
+                            + "ohne diesen Wert betrieben werden soll.");
+        }
+        return new TestedConnection(connection, missing);
+    }
+
+    /**
+     * Die Felder, die AUSSCHLIESSLICH der Server in die gespeicherte Verbindung
+     * schreibt: das Decoder-Opt-in und sein Beleg. Sie reisen zur Box mit, aber
+     * sie kommen nie aus einem Request-Körper.
+     */
+    private static final List<String> SERVER_OWNED_CONNECTION_KEYS =
+            List.of("allow_missing_soc", "reading_override");
+
+    /** Der Kanal in Kundensprache. Ein unbekannter Kanal wird NIE erfunden. */
+    private static String channelLabel(String channel) {
+        return ProbeResult.Finding.CHANNEL_SOC.equals(channel) ? "der Ladestand" : "ein Messwert";
     }
 
     private EntityRow requireComponent(UUID siteId, UUID entityId) {
@@ -471,8 +528,8 @@ public class ComponentService {
     /** Schreibt die geltende Anbindung + ihre Fassung in die Historie. */
     private void writeDefinition(UUID siteId, UUID tenantId, UUID entityId, String role,
             SaveComponentRequest req, ComponentTemplateDto template,
-            Map<String, Object> connection, String subject, String defaultNote) {
-        String connJson = writeJson(driverConnection(connection, req));
+            TestedConnection tested, String subject, String defaultNote) {
+        String connJson = writeJson(driverConnection(tested, req, subject));
         String sourceKind = SOURCE_KIND_CERTIFIED.equals(template.kind())
                 ? SOURCE_KIND_CERTIFIED : SOURCE_KIND_BUILTIN;
         EntityRow stored = entityRepo.entityForSite(siteId, entityId);
@@ -499,17 +556,68 @@ public class ComponentService {
      * daraus einen Quellen-Eintrag zu bauen, und sie stehen bewusst nicht in
      * einem zweiten Kanal.
      */
-    private Map<String, Object> driverConnection(Map<String, Object> connection,
-            SaveComponentRequest req) {
-        Map<String, Object> out = new LinkedHashMap<>(connection);
+    private Map<String, Object> driverConnection(TestedConnection tested,
+            SaveComponentRequest req, String subject) {
+        Map<String, Object> out = new LinkedHashMap<>(tested.fields());
         if (req.intervalS() != null && req.intervalS() > 0) {
             out.put("interval_s", req.intervalS());
+        }
+        if (tested.missingChannel() != null) {
+            // Das Opt-in, das die Box wirklich BRAUCHT: ohne es verwirft ihr
+            // Decoder jede Lesung dieser Anlage und die Komponente bliebe für
+            // immer „wartet auf erste Daten".
+            out.put("allow_missing_soc", true);
+            // Und der BELEG daneben - wer, wann, was fehlte. Er wohnt in der
+            // Definition (das `switch.freigabe`-Muster der Stufe 4), also trägt
+            // die Fassungs-Historie ihn ohne Zutun mit: „womit wurde diese
+            // Komponente angelegt" ist eine Frage an die Fassung.
+            Map<String, Object> proof = new LinkedHashMap<>();
+            proof.put("channel", tested.missingChannel());
+            proof.put("accepted_at", Instant.now().toString());
+            proof.put("accepted_by", subject == null ? "" : subject);
+            proof.put("origin", origin());
+            out.put("reading_override", proof);
         }
         return out;
     }
 
-    private static String roleOf(EntityRow row) {
-        return row.role();
+    /**
+     * Die HERKUNFT des Klicks, ausschließlich aus den validierten Realm-Rollen
+     * des Tokens - nie aus dem Rumpf (das {@code RegisterWriteService.Actor}
+     * -Muster). Ein Kunde kann keine VoltPilot-Herkunft behaupten und umgekehrt.
+     */
+    private static String origin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean admin = auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_platform-admin".equals(a.getAuthority()));
+        return admin ? RegisterWriteEventRepository.ORIGIN_VOLTPILOT
+                : RegisterWriteEventRepository.ORIGIN_CUSTOMER;
+    }
+
+    /**
+     * Ob die Rolle des Rumpfs DIESELBE Komponente meint wie die gespeicherte
+     * Zeile.
+     *
+     * <p>⚠ Ein reiner Zeichenvergleich reicht nicht, und das war ein echter
+     * Sackgassen-Defekt: der Assistent spricht die VIER Kunden-Rollen
+     * ({@code inverter} …), eine PLATTFORM-KOMPONIERTE Zeile trägt aber ihren
+     * Entitätstyp als Rolle ({@code battery-hybrid}). Ein Wechselrichter ließ
+     * sich damit nie bearbeiten - jedes {@code PUT} endete im 409 „die Art lässt
+     * sich nicht ändern", obwohl niemand etwas ändern wollte. Aufgefallen ist es
+     * am WEG ZURÜCK aus der „ohne Ladestand"-Ausnahme, der genau dieses PUT ist.
+     *
+     * <p>Der Zaun bleibt eng: verglichen wird gegen die gespeicherte Rolle ODER
+     * ihre EINE Übersetzung ({@code ROLE_ENTITY_TYPE}); eine echte Umwidmung
+     * (Erzeuger → Verbraucher) ist weiterhin ein Konflikt.
+     */
+    private static boolean sameRole(String role, EntityRow existing) {
+        String stored = existing.role();
+        if (role.equals(stored)) {
+            return true;
+        }
+        String entityType = ROLE_ENTITY_TYPE.get(role);
+        return entityType != null
+                && (entityType.equals(stored) || entityType.equals(existing.entityType()));
     }
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied) {

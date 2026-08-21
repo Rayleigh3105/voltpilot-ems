@@ -270,8 +270,49 @@ public class SiteComponentController {
                 subject(jwt));
         if (passed(result)) {
             receipts.record(siteId, template.templateRef(), connection);
+        } else {
+            // Der HALBE Beleg (Live-Fall Mühlfeldweg 2, 21.08.2026): das Gerät hat
+            // geantwortet, die übrigen Kanäle sind angekommen, und GENAU EINER
+            // fehlt nachweislich (heute: der Ladestand einer Batterie ohne
+            // gekoppeltes BMS). Das beantwortet die Frage, für die die
+            // Verbindungstest-Pflicht existiert - „ist dieses Gerät unter dieser
+            // Adresse erreichbar?" -, also wird der Beleg hinterlegt, aber MIT dem
+            // Namen des fehlenden Kanals. Er gibt das Speichern erst frei, wenn
+            // der Kunde genau diesen Kanal ausdrücklich abnickt
+            // ({@code ComponentService.requireTestedConnection}).
+            //
+            // Der Kanal kommt aus dem Ergebnis der BOX, nie aus dem Aufruf: der
+            // Client kann sich damit keinen Ausnahmeweg herbeireden.
+            String channel = overridableChannel(result);
+            if (channel != null) {
+                receipts.recordOverridable(siteId, template.templateRef(), connection, channel);
+            }
         }
         return result;
+    }
+
+    /**
+     * Der Kanal, den dieser Lauf als FEHLEND ausgewiesen hat - oder {@code null}.
+     *
+     * <p>Bewusst eng: die GANZE Anfrage muss durchgelaufen sein (keine
+     * Ratenbegrenzung, kein Timeout), es muss GENAU EINE Zeile geben, sie muss
+     * wirklich Messwerte gelesen haben, und ihr Befund muss einen Kanal nennen,
+     * ohne den eine Anlage überhaupt betrieben werden DARF. Ein kaputter Rahmen
+     * ({@code out_of_range}) und die Leerantwort des Loggers ({@code no_answer})
+     * sind ausdrücklich KEINE solchen Fälle - sie sagen, dass die Lesung selbst
+     * nicht zu trauen ist.
+     */
+    private static String overridableChannel(ProbeResult result) {
+        if (result == null || result.errorCode() != null || result.results() == null
+                || result.results().size() != 1) {
+            return null;
+        }
+        ProbeResult.OpResult line = result.results().get(0);
+        if (line.ok() || line.finding() == null || !line.finding().overridable()
+                || line.reading() == null || !line.reading().any()) {
+            return null;
+        }
+        return line.finding().channel();
     }
 
     /**

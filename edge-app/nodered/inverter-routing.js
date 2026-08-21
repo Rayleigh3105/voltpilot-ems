@@ -257,6 +257,11 @@ function route(sel) {
         mb_slave_id: num(conn.mb_slave_id, 1),
         invert_grid_sign: !!conn.invert_grid_sign,
         invert_batt_sign: !!conn.invert_batt_sign,
+        // The narrow "battery without a coupled BMS" opt-in (deye-decode
+        // socMissingSignature). It rides the connection into the DECODE config,
+        // because that is where the plausibility gate lives - a plant that opted
+        // in but whose decoder never learns it would still drop every sample.
+        allow_missing_soc: !!conn.allow_missing_soc,
         // Manual override / fallback (0 = auto-detect the LV/HV scale from 0x0000).
         power_scale: num(conn.power_scale, 0),
       },

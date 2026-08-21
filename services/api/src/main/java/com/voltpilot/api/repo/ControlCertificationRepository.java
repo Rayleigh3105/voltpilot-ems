@@ -229,6 +229,33 @@ public class ControlCertificationRepository {
                         rs.getBoolean("activated")), deviceId).stream().findFirst();
     }
 
+    /**
+     * Ob eine Komponente dieser Anlage ausdruecklich OHNE einen Messkanal
+     * betrieben wird - der Beleg, den der Anlege-Assistent stempelt, wenn der
+     * Kunde "Trotzdem fortfahren (nur Lesen)" gewaehlt hat.
+     *
+     * <p>Gefragt wird nach dem KANAL, nicht nach einem Flag: die Antwort ist die
+     * Grundlage einer Ablehnung, die den fehlenden Wert BEIM NAMEN nennen muss.
+     * {@code null} = keine Komponente dieser Anlage laeuft mit einer solchen
+     * Ausnahme.
+     *
+     * <p>Der Beleg wohnt in {@code measurement_point.connection_json} (das
+     * {@code switch.freigabe}-Muster), also verschwindet er von selbst, sobald
+     * die Komponente nach einem VOLLSTAENDIGEN Test neu gespeichert wird - genau
+     * dann wird die Anlage wieder scharfschaltbar, ohne dass jemand ein Flag
+     * zuruecksetzen muss.
+     */
+    public String missingReadingChannel(UUID siteId) {
+        return jdbc.query(SQL_MISSING_CHANNEL, (rs, i) -> rs.getString("channel"), siteId)
+                .stream().findFirst().orElse(null);
+    }
+
+    private static final String SQL_MISSING_CHANNEL =
+            "SELECT connection_json -> 'reading_override' ->> 'channel' AS channel "
+                    + "FROM measurement_point WHERE site_id = ? "
+                    + "AND connection_json -> 'reading_override' ->> 'channel' IS NOT NULL "
+                    + "LIMIT 1";
+
     private static Certification mapCert(ResultSet rs, int rowNum) throws SQLException {
         Boolean sign = rs.getObject("invert_control_sign") == null ? null
                 : rs.getBoolean("invert_control_sign");

@@ -229,7 +229,25 @@ type OpResult struct {
 	// Reading is the decoded snapshot of a test_connection op. Every field is a
 	// pointer so a channel this device does NOT report is ABSENT - never a
 	// fabricated 0 (the gap-not-zero rule the whole codebase runs on).
+	//
+	// It also rides an `implausible` REFUSAL whose Finding names one violating
+	// channel: the box really read the device, the other channels decoded fine,
+	// and hiding them turned a refusal into a riddle (live case Muehlfeldweg 2,
+	// 21.08.2026). Raw/Value stay absent there - those belong to a register read.
 	Reading *Reading `json:"reading,omitempty"`
+	// Finding names WHICH channel violated WHICH plausibility rule. Machine
+	// readable next to the German sentence, so no surface parses prose.
+	Finding *Finding `json:"finding,omitempty"`
+}
+
+// Finding is the plausibility verdict about one channel of a test_connection
+// read (contract op_result.finding). Raw is the register word, Value the
+// decoded number; both absent when the register was not readable at all.
+type Finding struct {
+	Channel string   `json:"channel"`
+	Rule    string   `json:"rule"`
+	Raw     *float64 `json:"raw,omitempty"`
+	Value   *float64 `json:"value,omitempty"`
 }
 
 // Switched reports what a write REALLY wrote and what stood in the register
@@ -594,6 +612,16 @@ func SucceededSwitch(id string, written int, offAfter *int, readback *int) OpRes
 // SucceededReading builds an answered test_connection line.
 func SucceededReading(id string, reading *Reading) OpResult {
 	return OpResult{ID: id, OK: true, Reading: reading}
+}
+
+// FailedReading builds a REFUSED test_connection line that still shows what the
+// box read. It exists for exactly one situation: the device answered, every
+// other channel decoded, and a single channel violated its plausibility rule -
+// then the refusal names the rule AND the evidence. Everything else keeps using
+// Failed, which carries no numbers at all.
+func FailedReading(id, code, message string, reading *Reading, finding *Finding) OpResult {
+	return OpResult{ID: id, OK: false, ErrorCode: code, Message: message,
+		Reading: reading, Finding: finding}
 }
 
 // EffectivePort returns the op's port with the contract default applied.

@@ -407,6 +407,112 @@ class ComponentApiTest {
         assertThat(list.get("refusedReason").asText()).contains("Unbekannte Marke");
     }
 
+    /**
+     * Der AUSWEG aus der Sackgasse (Live-Fall Muehlfeldweg 2, 21.08.2026): eine
+     * Deye-Anlage mit Eigenbau-Batterie, deren BMS nicht gekoppelt ist, meldet
+     * dauerhaft SoC 0. Der Verbindungstest lehnt richtig ab - aber das Geraet
+     * hat GEANTWORTET, und alles ausser dem Ladestand ist messbar.
+     *
+     * <p>Der Test faehrt die ganze Strecke serverseitig: ohne Zustimmung 422,
+     * mit einer Zustimmung zum FALSCHEN Kanal 422, mit der richtigen gespeichert
+     * - samt dem Opt-in, das die Box braucht, und dem Beleg, der dauerhaft an
+     * der Komponente steht. Und die Steuerung dieser Anlage bleibt aus.
+     */
+    @Test
+    void aPlantWhoseBmsReportsNoSocIsSavedOnlyWithAnExplicitAcceptanceAndStaysUncontrollable()
+            throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Muehlfeldweg 2");
+        try {
+            claim(customer, site, "edge-muehlfeld-01");
+            // Der Speicher-Stammsatz ist PFLICHT: aus ihm komponiert die
+            // Plattform die battery-hybrid-Zeile, in die der Assistent die
+            // Anbindung des Wechselrichters schreibt.
+            saveBattery(customer, site);
+            Map<String, Object> conn = deyeConnection();
+
+            // Der HALBE Beleg entsteht serverseitig aus dem Testergebnis der Box
+            // (hier direkt hinterlegt - der Probe-Kanal selbst hat seine eigenen
+            // Tests); der Client kann ihn nicht behaupten.
+            receipts.recordOverridable(site, DEYE, conn, "soc_pct");
+
+            // 1 · Ohne ausdrueckliche Zustimmung wird NICHTS gespeichert.
+            ResponseEntity<String> ohne = post("/api/v1/sites/" + site + "/components",
+                    customer, saveBody(DEYE, "inverter", conn));
+            assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(ohne.getBody()).contains("Ladestand");
+
+            // 2 · Eine Zustimmung zu einem ANDEREN Kanal gilt nicht - sonst waere
+            // sie ein Freibrief statt einer benannten Ausnahme.
+            Map<String, Object> falsch = saveBody(DEYE, "inverter", conn);
+            falsch.put("acceptMissingChannel", "pv_power_kw");
+            assertThat(post("/api/v1/sites/" + site + "/components", customer, falsch)
+                    .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+            // 3 · Mit der richtigen Zustimmung wird gespeichert.
+            Map<String, Object> ok = saveBody(DEYE, "inverter", conn);
+            ok.put("acceptMissingChannel", "soc_pct");
+            assertThat(post("/api/v1/sites/" + site + "/components", customer, ok)
+                    .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+            // Die komponierte Zeile behaelt ihre Rolle `battery-hybrid` - der
+            // Assistent FUELLT sie, er legt keine zweite an.
+            JsonNode row = byRole(getJson("/api/v1/sites/" + site + "/components", customer),
+                    "battery-hybrid");
+            JsonNode stored = row.get("connection");
+            // Das Opt-in, das die Box WIRKLICH braucht - ohne es verwirft ihr
+            // Decoder jede Lesung und die Anlage bliebe fuer immer stumm.
+            assertThat(stored.path("allow_missing_soc").asBoolean()).isTrue();
+            // ... und der BELEG daneben: wer, wann, welcher Kanal.
+            assertThat(stored.path("reading_override").path("channel").asText())
+                    .isEqualTo("soc_pct");
+            assertThat(stored.path("reading_override").path("origin").asText())
+                    .as("die Herkunft kommt aus den Realm-Rollen, nie aus dem Rumpf")
+                    .isEqualTo("kunde");
+            assertThat(stored.path("reading_override").path("accepted_at").asText()).isNotBlank();
+            assertThat(stored.path("reading_override").path("accepted_by").asText()).isNotBlank();
+
+            // Er reist mit zur Box: der Registry-Push traegt das Opt-in.
+            JsonNode push = pushJson(site);
+            boolean gefunden = false;
+            for (JsonNode e : push.path("entities")) {
+                JsonNode c = e.path("driver").path("connection");
+                if (c.path("allow_missing_soc").asBoolean()) {
+                    gefunden = true;
+                }
+            }
+            assertThat(gefunden).as("die Box muss das Opt-in bekommen").isTrue();
+
+            // 4 · Die STEUERUNG dieser Anlage bleibt aus - und sagt warum.
+            String admin = token("admin", "admin");
+            UUID device = anyDeviceOf(site);
+            ResponseEntity<String> arm = post(
+                    "/api/v1/admin/devices/" + device + "/control-activation", admin,
+                    Map.of("note", "Versuch"));
+            assertThat(arm.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(arm.getBody()).contains("Steuerung nicht möglich");
+            assertThat(arm.getBody()).contains("Ladestand");
+            assertThat(arm.getBody()).contains("Sobald das BMS gekoppelt ist");
+
+            // 5 · Der WEG ZURUECK: ein vollstaendiger Test loescht die Ausnahme -
+            // niemand muss ein Flag zuruecksetzen.
+            receipts.record(site, DEYE, conn);
+            assertThat(put("/api/v1/sites/" + site + "/components/" + row.get("id").asText(),
+                    customer, saveBody(DEYE, "inverter", conn))
+                    .getStatusCode()).isEqualTo(HttpStatus.OK);
+            JsonNode danach = byRole(getJson("/api/v1/sites/" + site + "/components", customer),
+                    "battery-hybrid");
+            assertThat(danach.get("connection").has("reading_override")).isFalse();
+            assertThat(danach.get("connection").has("allow_missing_soc")).isFalse();
+            assertThat(post("/api/v1/admin/devices/" + device + "/control-activation", admin,
+                    Map.of()).getStatusCode())
+                    .as("ohne die Ausnahme ist die Anlage wieder scharfschaltbar")
+                    .isIn(HttpStatus.OK, HttpStatus.NO_CONTENT);
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     // ---- Helfer ------------------------------------------------------------
 
     private static Map<String, Object> saveBody(String templateRef, String role,
@@ -464,6 +570,15 @@ class ComponentApiTest {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /** Die Eckdaten des Speichers - ohne sie gibt es keine battery-hybrid-Zeile. */
+    private void saveBattery(String customerToken, UUID siteId) {
+        ResponseEntity<String> res = rest.exchange(url("/api/v1/sites/" + siteId + "/battery"),
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("capacityKwh", 30, "maxChargeKw", 15,
+                        "maxDischargeKw", 15), bearer(customerToken)), String.class);
+        assertThat(res.getStatusCode()).as("Speicher speichern").isEqualTo(HttpStatus.OK);
     }
 
     private void claim(String customerToken, UUID siteId, String ref) {

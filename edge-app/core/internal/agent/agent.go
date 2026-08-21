@@ -3512,6 +3512,7 @@ func (a *Agent) onTestReadResult(_ string, payload []byte) {
 		ErrorCode  string            `json:"error_code"`
 		Message    string            `json:"message"`
 		Reading    *testconn.Reading `json:"reading"`
+		Finding    *testconn.Finding `json:"finding"`
 		FoundUnits []int             `json:"found_units"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil || m.RequestID == "" {
@@ -3525,7 +3526,10 @@ func (a *Agent) onTestReadResult(_ string, payload []byte) {
 		return // unknown / already-timed-out request
 	}
 	select {
-	case ch <- testconn.Result{OK: m.OK, ErrorCode: m.ErrorCode, Message: m.Message, Reading: m.Reading, FoundUnits: m.FoundUnits}:
+	// The reading rides a REFUSAL too when a Finding names the one violating
+	// channel: the flow really read the device and the other channels decoded.
+	case ch <- testconn.Result{OK: m.OK, ErrorCode: m.ErrorCode, Message: m.Message,
+		Reading: m.Reading, Finding: m.Finding, FoundUnits: m.FoundUnits}:
 	default:
 	}
 }

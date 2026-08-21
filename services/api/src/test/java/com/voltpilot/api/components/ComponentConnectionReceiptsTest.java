@@ -79,4 +79,37 @@ class ComponentConnectionReceiptsTest {
         assertThat(receipts.has(SITE, REF, other)).isFalse();
         assertThat(receipts.evidence(SITE, REF, other)).isNull();
     }
+
+    /**
+     * Der HALBE Beleg (Live-Fall Muehlfeldweg 2, 21.08.2026): das Geraet hat
+     * geantwortet, aber EIN Kanal fehlt nachweislich. Er nennt den Kanal - das
+     * ist der Unterschied zwischen einem Freibrief und einer benannten Ausnahme.
+     */
+    @Test
+    void anOverridableReceiptNamesTheMissingChannel() {
+        Tick tick = new Tick();
+        ComponentConnectionReceipts r = new ComponentConnectionReceipts(tick);
+        r.recordOverridable(SITE, REF, FIELDS, "soc_pct");
+
+        assertThat(r.has(SITE, REF, FIELDS)).isTrue();
+        assertThat(r.overrideChannel(SITE, REF, FIELDS)).isEqualTo("soc_pct");
+        // Ein VOLLSTAENDIGER Test nennt keinen - „nichts fehlt" ist die Antwort.
+        r.record(SITE, REF, FIELDS);
+        assertThat(r.overrideChannel(SITE, REF, FIELDS)).isNull();
+    }
+
+    /** Die Ausnahme gilt GENAU dieser Verbindung - und verfaellt wie jeder Beleg. */
+    @Test
+    void anOverridableReceiptIsBoundToItsConnectionAndExpires() {
+        Tick tick = new Tick();
+        ComponentConnectionReceipts r = new ComponentConnectionReceipts(tick);
+        r.recordOverridable(SITE, REF, FIELDS, "soc_pct");
+
+        Map<String, Object> andereAdresse = Map.of("host", "192.168.1.6", "address", 12);
+        assertThat(r.overrideChannel(SITE, REF, andereAdresse)).isNull();
+
+        tick.advance(ComponentConnectionReceipts.TTL.plusMinutes(1));
+        assertThat(r.has(SITE, REF, FIELDS)).isFalse();
+        assertThat(r.overrideChannel(SITE, REF, FIELDS)).isNull();
+    }
 }

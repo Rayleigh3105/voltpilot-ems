@@ -72,5 +72,37 @@ public record ControlStatusDto(UUID deviceId, Double commandedKw, Double confirm
         String controlSource, String executionMode, String executionDirection,
         Double executionPlannedKw, Double executionTargetKw,
         String certSource, String platformCertVerdict, String platformCertModel,
-        String platformCertReason) {
+        String platformCertReason,
+        /*
+         * Der Messkanal, ohne den diese Anlage AUSDRÜCKLICH eingerichtet wurde
+         * („Trotzdem fortfahren (nur Lesen)"; heute: {@code soc_pct}, eine
+         * Batterie ohne gekoppeltes BMS).
+         *
+         * ⚠ Das ist als einziges Feld dieser Zeile eine PORTAL-Tatsache, keine
+         * Meldung des Geräts: sie steht in der gespeicherten Anbindung der
+         * Wechselrichter-Komponente. Sie gehört hierher, weil sie genau EINE
+         * Frage beantwortet, die diese Fläche stellt - „warum steuert diese
+         * Anlage nicht?" -, und weil die Antwort sonst „VoltPilot prüft das
+         * Modell am Prüfstand" hieße, was schlicht falsch wäre: ein
+         * Prüfstandslauf bringt kein BMS ans Laufen.
+         *
+         * {@code null} = keine solche Ausnahme. Der Beleg verschwindet von
+         * selbst, sobald die Komponente nach einem vollständigen Test neu
+         * gespeichert wird.
+         */
+        String missingReadingChannel) {
+
+    /** Der Bequemlichkeits-Konstruktor der Aufrufer ohne diese Ausnahme. */
+    public ControlStatusDto(UUID deviceId, Double commandedKw, Double confirmedKw,
+            boolean allMatch, boolean controlEnabled, boolean certified,
+            String mismatchRoles, Instant slotStart, Instant checkedAt,
+            String controlSource, String executionMode, String executionDirection,
+            Double executionPlannedKw, Double executionTargetKw,
+            String certSource, String platformCertVerdict, String platformCertModel,
+            String platformCertReason) {
+        this(deviceId, commandedKw, confirmedKw, allMatch, controlEnabled, certified,
+                mismatchRoles, slotStart, checkedAt, controlSource, executionMode,
+                executionDirection, executionPlannedKw, executionTargetKw, certSource,
+                platformCertVerdict, platformCertModel, platformCertReason, null);
+    }
 }

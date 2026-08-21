@@ -12,7 +12,7 @@
     "expiry": "requested_at ist der Beginn des Fensters, NICHT der Empfangs-Zeitpunkt. Eine Anfrage, die aelter als das Fenster ist, wird verworfen - stumm zum Broker, laut im Protokoll. Ein unlesbarer Stempel gilt NICHT: im Zweifel wird nichts gelesen.",
     "rate-limit": "Die Box begrenzt, wie oft sie ueberhaupt anklopft. Ueberschreitung ist ein ANTWORTBARER Zustand (error_code rate_limited auf der ganzen Antwort), kein stilles Verschlucken - der Assistent muss sagen koennen, warum gerade nichts kommt.",
     "socket-discipline": "Die Lesung laeuft ueber die bestehende Verbindungs-Disziplin der Box: EIN Socket je (host, port) ueber ALLE Leser hinweg, feste Zeitkappen, dieselbe Warteschlange wie der laufende Poll. Eine Vorschau darf einem einsitzigen Modbus-Gateway nie den laufenden Poll wegnehmen.",
-    "honesty": "Ein Ergebnis traegt IMMER Roh- UND dekodierten Wert nebeneinander (genau der Moment, in dem ein Skalierungsfehler sichtbar wird). Ein Fehlschlag traegt NIE einen Wert - kein erfundener 0-Wert, sondern eine benannte Klasse.",
+    "honesty": "Ein Ergebnis traegt IMMER Roh- UND dekodierten Wert nebeneinander (genau der Moment, in dem ein Skalierungsfehler sichtbar wird). Ein Fehlschlag traegt NIE einen Messwert in raw/value - kein erfundener 0-Wert, sondern eine benannte Klasse. AUSNAHME MIT GRUND (21.08.2026): ein test_connection, das WIRKLICH gelesen hat und nur an EINEM Kanal die Plausibilitaetsregel verletzt, traegt zusaetzlich das 'reading' der uebrigen Kanaele und ein 'finding', das den verletzenden Kanal samt Regel und Roh-/Dekodiert-Wert nennt. Das ist keine Aufweichung: es wird nichts ERFUNDEN, es wird gezeigt, was tatsaechlich ankam - eine Ablehnung ohne einen einzigen Wert war ein Raetsel, an dem eine reale Neuanlage haengengeblieben ist.",
     "no-persistence": "Nichts an diesem Kanal wird gespeichert - weder in der Cloud noch auf der Box. Er beantwortet eine Frage von jetzt."
   },
   "oneOf": [
@@ -525,7 +525,7 @@
         "reading": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Nur bei op 'test_connection': die dekodierten Messwerte dieses Geraets. Ein Kanal, den das Geraet nicht meldet, FEHLT - er ist nie 0 (die Luecke-statt-Null-Regel).",
+          "description": "Nur bei op 'test_connection': die dekodierten Messwerte dieses Geraets. Ein Kanal, den das Geraet nicht meldet, FEHLT - er ist nie 0 (die Luecke-statt-Null-Regel). Er steht AUCH bei ok=false, wenn die Box wirklich gelesen hat und nur EIN Kanal die Plausibilitaetsregel verletzt hat (dann sagt 'finding', welcher): 'raw'/'value' sind fuer die Register-Lesung reserviert und bleiben bei einem Fehlschlag weg, aber die Frage 'welche Werte kamen denn an?' ist genau das, was eine Ablehnung handhabbar statt raetselhaft macht.",
           "properties": {
             "pv_kw": {
               "type": "number"
@@ -538,6 +538,39 @@
             },
             "soc_pct": {
               "type": "number"
+            }
+          }
+        },
+        "finding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "channel",
+            "rule"
+          ],
+          "description": "Nur bei op 'test_connection' mit error_code 'implausible': WELCHER Kanal die Plausibilitaetsregel verletzt hat und WARUM - maschinenlesbar, damit keine Oberflaeche einen deutschen Satz nach Stichworten durchsuchen muss (die Haus-Regel 'target_verdict NEBEN state'). Der deutsche Satz gehoert dem Portal; hier steht die Tatsache. Ein Wort ausserhalb des Vokabulars wird von der Cloud VERWORFEN statt weitergereicht.",
+          "properties": {
+            "channel": {
+              "enum": [
+                "soc_pct"
+              ],
+              "description": "Der betroffene Messkanal. Heute genau einer: der Ladestand ist der einzige Wert, dessen Plausibilitaet die Box gegen eine feste Regel (0 < soc <= 100) prueft."
+            },
+            "rule": {
+              "enum": [
+                "missing",
+                "out_of_range",
+                "no_answer"
+              ],
+              "description": "WARUM der Kanal verworfen wurde. 'missing' = der Registerblock LEBT (andere Register haben sich bewegt) und nur dieser Kanal liest exakt 0 - typisch eine Batterie, deren BMS nicht am Wechselrichter haengt; das ist der EINZIGE Fall, in dem ein Betreiber die Anlage bewusst ohne diesen Kanal betreiben darf. 'out_of_range' = ein Wert ausserhalb des gueltigen Bereichs, also ein kaputter/verschobener Rahmen. 'no_answer' = der ganze Block ist 0, die dokumentierte Leerantwort des Loggers. Die letzten beiden sind KEINE Aussage ueber ein fehlendes BMS und duerfen nie uebergangen werden."
+            },
+            "raw": {
+              "type": "number",
+              "description": "Das rohe 16-Bit-Registerwort - dieselbe raw-neben-dekodiert-Disziplin wie bei der Register-Lesung."
+            },
+            "value": {
+              "type": "number",
+              "description": "Der dekodierte Wert, der die Regel verletzt hat. Fehlt, wenn das Register gar nicht lesbar war."
             }
           }
         }
