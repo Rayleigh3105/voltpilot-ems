@@ -2,6 +2,16 @@
 .vp-lade-page { display: grid; gap: 16px; }
 .vp-lade-h2 { margin: 0 0 12px; font-size: 1.05rem; color: var(--vp-navy, #1a365d); }
 .vp-lade-note { margin: 8px 0 0; font-size: 0.9rem; color: var(--vp-muted, #64748b); }
+/* Der Einstieg in den Anbinde-Assistenten (E1): Knopf + Verweis in einer Zeile,
+   am Telefon untereinander - `flex-wrap` statt einer Medienabfrage. */
+.vp-lade-anbinden-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.vp-lade-anbinden-actions .vp-lade-note { margin: 0; }
 .vp-lade-idle { margin: 0; color: var(--vp-muted, #64748b); }
 
 .vp-lade-rows,

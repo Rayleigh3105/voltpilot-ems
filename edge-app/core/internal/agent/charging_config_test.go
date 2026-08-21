@@ -3,6 +3,7 @@ package agent
 import (
 	"testing"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/lastmgmt"
 )
@@ -156,4 +157,116 @@ func TestAnUnknownSourceWordChangesNOTHING(t *testing.T) {
 	if set.SurplusPolicy != lastmgmt.PolicyFast {
 		t.Fatalf("the box keeps its own choice: %q", set.SurplusPolicy)
 	}
+}
+
+// --- Der Anbinde-Assistent: die ALLOWLIST kommt aus dem Portal --------------
+
+// chargerOf liefert den Eintrag der Allowlist, oder ok=false.
+func chargerOf(a *Agent, id string) (csms.Charger, bool) {
+	for _, c := range a.OcppChargers() {
+		if c.ID == id {
+			return c, true
+		}
+	}
+	return csms.Charger{}, false
+}
+
+// ⚠ DIE Zusage dieser Stufe: die Liste FUEGT NUR HINZU. Sie ueberschreibt
+// keinen bestehenden Eintrag (Label und Vorrang koennen auf :8484 gepflegt
+// sein) und entfernt NIE einen - eine Kennung zu loeschen wirft eine Saeule
+// beim naechsten Verbindungsaufbau vom Broker und bleibt eine ausdrueckliche
+// Handlung am Geraet.
+func TestTheAllowlistOnlyAddsAndNeverOverwritesOrRemoves(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	if _, err := a.OcppAddCharger(csms.AddRequest{
+		ID: "saeule-1", Label: "Am Geraet gepflegt", Priority: true, Connectors: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-1","label":"Aus dem Portal"},
+	  {"id":"saeule-2","label":"Halle","rated_kw":22,"connectors":1}],
+	  "published_at":"2026-08-21T09:15:00Z"}`))
+
+	alt, ok := chargerOf(a, "saeule-1")
+	if !ok {
+		t.Fatal("der bestehende Eintrag darf nicht verschwinden")
+	}
+	if alt.Label != "Am Geraet gepflegt" || !alt.Priority {
+		t.Fatalf("ein bestehender Eintrag wird NICHT ueberschrieben: %+v", alt)
+	}
+	neu, ok := chargerOf(a, "saeule-2")
+	if !ok {
+		t.Fatal("die neue Kennung muss uebernommen werden")
+	}
+	if neu.Label != "Halle" || neu.RatedKw != 22 || neu.Connectors != 1 {
+		t.Fatalf("die Angaben des Betreibers reisen mit: %+v", neu)
+	}
+
+	// Ein spaeteres Dokument OHNE die Liste - und eines mit einer LEEREN -
+	// entfernt nichts: abwesend und leer sind hier dasselbe.
+	for _, payload := range []string{
+		`{"schema_version":"1.0","tenant_id":"t","site_id":"s","device_id":"d",
+		  "grid_limit_kw":300,"published_at":"2026-08-21T09:20:00Z"}`,
+		`{"schema_version":"1.0","tenant_id":"t","site_id":"s","device_id":"d",
+		  "charge_points":[],"published_at":"2026-08-21T09:25:00Z"}`,
+	} {
+		a.onChargingConfig([]byte(payload))
+		if _, ok := chargerOf(a, "saeule-1"); !ok {
+			t.Fatalf("payload %q hat einen Eintrag entfernt", payload)
+		}
+		if _, ok := chargerOf(a, "saeule-2"); !ok {
+			t.Fatalf("payload %q hat einen Eintrag entfernt", payload)
+		}
+	}
+}
+
+// ⚠ Die Allowlist wird ZUERST angewandt: eine gerade eingetragene Saeule soll
+// den Vorrang DESSELBEN Dokuments schon abbekommen, sonst zoege er erst beim
+// naechsten Speichern.
+func TestANewlyAdmittedStationGetsThePriorityOfTheSameDocument(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-neu"}],
+	  "priority_charge_point_ids":["saeule-neu"],
+	  "published_at":"2026-08-21T09:15:00Z"}`))
+
+	c, ok := chargerOf(a, "saeule-neu")
+	if !ok {
+		t.Fatal("die Saeule muss eingetragen sein")
+	}
+	if !c.Priority {
+		t.Fatal("und den Vorrang desselben Dokuments schon tragen")
+	}
+}
+
+// Ein Dokument, das wir nicht verstehen, traegt auch keine Allowlist ins Haus -
+// und eine Box ohne OCPP ueberlebt es.
+func TestARefusedOrOcppLessDocumentAdmitsNothing(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	a.onChargingConfig([]byte(`{"schema_version":"2.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-fremd"}],
+	  "published_at":"2026-08-21T09:15:00Z"}`))
+	if _, ok := chargerOf(a, "saeule-fremd"); ok {
+		t.Fatal("eine fremde Vertragsversion darf nichts eintragen")
+	}
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"fremd","charge_points":[{"id":"saeule-fremd"}],
+	  "published_at":"2026-08-21T09:15:00Z"}`))
+	if _, ok := chargerOf(a, "saeule-fremd"); ok {
+		t.Fatal("ein fremd adressiertes Dokument darf nichts eintragen")
+	}
+
+	ohne := &Agent{}
+	ohne.entMu.Lock()
+	ohne.entIdentity = entities.Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
+	ohne.entMu.Unlock()
+	ohne.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-1"}],
+	  "published_at":"2026-08-21T09:15:00Z"}`))
 }

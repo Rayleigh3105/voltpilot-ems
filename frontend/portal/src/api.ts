@@ -2638,6 +2638,27 @@ export const api = {
       body: JSON.stringify(body),
     }),
   /**
+   * Trägt EINE Ladesäule in die Allowlist ein (Anbinde-Assistent, Schritt 1).
+   *
+   * ⚠ Es ist ein POST, kein PUT, und das ist die Aussage: die Liste fügt nur
+   * hinzu. Einen Eintrag zu ENTFERNEN würfe die Säule beim nächsten
+   * Verbindungsaufbau vom Broker - das bleibt eine ausdrückliche Handlung am
+   * Gerät. Dieselbe Kennung erneut ist ein No-op, das nur auffrischt.
+   */
+  admitChargePoint: (
+    siteId: string,
+    body: {
+      chargePointId: string;
+      label?: string;
+      ratedKw?: number;
+      connectors?: number;
+    },
+  ) =>
+    request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config/charge-points`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /**
    * „Jetzt voll laden": nimmt EINEN laufenden Ladevorgang von der
    * Überschuss-Priorität aus, damit er auch Netzstrom ziehen darf.
    *

@@ -539,6 +539,13 @@ type OcppInfo struct {
 	// Endpoint is the BASE url an operator types into a station; the full one
 	// carries the station's own ChargePointId after it.
 	Endpoint string `json:"endpoint,omitempty"`
+	// Port / URLPath are the two halves of that endpoint the CLOUD needs to
+	// render it (it knows the box's LAN address since D5, but not what the box
+	// serves on). Port is 0 while the server is not listening - then there is
+	// nothing to dial, and a surface must say so rather than name a port
+	// nobody answers on.
+	Port    int    `json:"ocpp_port,omitempty"`
+	URLPath string `json:"url_path,omitempty"`
 
 	// ControlEnabled reports whether the LIVE allocation may be written.
 	//

@@ -1138,6 +1138,46 @@ je Ebene einen Test).
   - **⚠ Ein Filter-Chip ist 34 px sichtbar mit 44-px-Trefferfläche über `::before`** (das `.vp-switch`-Muster): drei Chips müssen bei 375 px nebeneinander passen, ein 44-px-KASTEN zöge die Reihe auseinander, statt sie bedienbar zu machen.
   - **Beweise:** `befehleFilter.test.ts` (27) · `pages/BefehleSection.test.tsx` (+5) · `pages/GeraetSeiteSection.test.tsx` (der Chip filtert und reist im Link mit). Im echten Chrome (`emulate`, Wegwerf-Harness) bei **1440** und **375** gemessen: 0 px horizontaler Überlauf, 0 überstehende Elemente, Sheet am Telefon randlos über die volle Breite, keine Konsolenmeldungen.
 
+## Der Anbinde-Assistent einer Ladesäule (Geräteseiten Stufe 3, E1)
+
+Aus drei erklärenden Sätzen ist ein geführter Weg geworden: Kennung festlegen →
+Adresse in der Säule eintragen → warten, bis sie sich meldet. Die Regeln und
+JEDER Satz liegen rein in `src/ladesaeuleAnbinden.ts`; die Flächen rendern nur.
+
+- **EIN Körper, ZWEI Wirte** (`components/LadesaeuleAnbinden.tsx`): der eigene
+  `LadesaeuleAnbindenDrawer` der Ladevorgänge-Seite und die Ladesäulen-TÜR des
+  Anlege-Assistenten (`KomponenteHinzufuegenDrawer`). Das
+  `AdminGeraetKarten`-Muster — eine zweite Kopie hieße, jeden Satz und jede
+  Regel zweimal zu pflegen. Der Wirt liefert die Box über den neuen
+  `geraetSeite.boxOf` (die Schwester von `boxRefOf`, damit „welche Box ist es
+  denn?" nur EINMAL beantwortet wird).
+- **⚠ Ein Bauteil mit zwei Wirten bringt seine GESTALT selbst mit.** Die erste
+  Fassung borgte sich `vp-assist-*` aus `KomponenteAssistent.css` — die wird nur
+  vom Anlege-Assistenten importiert, also rendete der Drawer-Weg die
+  Schrittliste ohne `list-style: none` und damit mit DOPPELTER Nummer („1.
+  1Kennung festlegen"). **Im Browser-Beweis gefunden, nicht im Test** (jsdom hat
+  keine Stylesheets). Seither eigene `vp-anbinden-*`-Klassen in
+  `components/LadesaeuleAnbinden.css`.
+- **Die drei Ehrlichkeitsregeln der Fläche** (jede als Test gepinnt): die
+  ALLOWLIST fügt nur hinzu (es gibt keinen Lösch-Knopf, und `KEIN_LOESCHEN`
+  ERKLÄRT das, statt die Lücke zu lassen); die ADRESSE wird nie erfunden (ohne
+  bewiesene LAN-Adresse oder ohne gemeldeten Anschluss steht der WEG da, nie ein
+  `ws://`); und EINGETRAGEN ≠ GEMELDET (der Abschluss liest ausschließlich die
+  vom Gerät gemeldeten Säulen).
+- **⚠ Die Kennung folgt dem Namen nur, solange NIEMAND sie angefasst hat** — ab
+  dem ersten Tastendruck gewinnt der Mensch. `kennungVorschlag` schlägt bei
+  einem Namen ohne erlaubte Zeichen GAR NICHTS vor; ein leeres Feld ist
+  ehrlicher als ein geratener Name. Das Vokabular (`[A-Za-z0-9._-]{1,64}`) ist
+  der Zwilling von `ChargingConfigService.CHARGE_POINT_ID` — der Server glaubt
+  der Fläche nichts.
+- **⚠ Der Assistent pollt mit 10 s statt der Haus-Kadenz 30 s** — hier wird
+  AKTIV gewartet (der Kunde steht an der Säule und tippt), und er lebt nur,
+  solange er offen ist.
+- **Die ZUSAGE lebt weiter in `ladepunkte.ANBINDEN_ALLOWLIST`**, der Einstiegs-
+  Satz in `ANBINDEN_EINSTIEG` (Nachfolger des entfallenen `ANBINDEN_SCHRITTE`):
+  beide stehen auf mehreren Flächen, und zwei Formulierungen derselben Zusage
+  wären zwei Wahrheiten.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

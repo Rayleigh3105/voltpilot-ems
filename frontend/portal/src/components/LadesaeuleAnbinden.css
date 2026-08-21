@@ -1,0 +1,227 @@
+/*
+ * Der Anbinde-Assistent einer Ladesäule (Geräteseiten Stufe 3, E1).
+ * Komponenten-lokal wie `KomponenteAssistent.css` - `index.css` bleibt
+ * unangetastet.
+ *
+ * ⚠ Jede Fläche hier trägt `min-width: 0` bzw. bricht um: der Assistent lebt in
+ * einem Drawer, der am Telefon ein Vollbild-Sheet ist, und die `ws://`-Adresse
+ * ist die längste unteilbare Zeichenkette des Portals - ein einziges `nowrap`
+ * schöbe sie über den Rand (die dokumentierte Klasse).
+ */
+
+.vp-anbinden {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.vp-anbinden-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.vp-anbinden-step + .vp-anbinden-step {
+  padding-top: 1rem;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-anbinden-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.vp-anbinden-note {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
+/* --- Die Adresse --------------------------------------------------------- */
+
+.vp-anbinden-url {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  background: rgba(148, 163, 184, 0.1);
+  min-width: 0;
+}
+
+.vp-anbinden-url code {
+  flex: 1 1 12rem;
+  font-size: 0.85rem;
+  /* Die Adresse ist die laengste unteilbare Zeichenkette der Flaeche - sie MUSS
+     umbrechen duerfen, sonst schiebt sie am Telefon den Drawer auf. */
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  min-width: 0;
+}
+
+.vp-anbinden-url.is-alt {
+  background: transparent;
+  border-style: dashed;
+}
+
+/* --- Der Zustand --------------------------------------------------------- */
+
+.vp-anbinden-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.vp-anbinden-status.is-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+.vp-anbinden-status.is-warten {
+  color: var(--vp-text-muted, #64748b);
+}
+
+/* --- Die Liste ----------------------------------------------------------- */
+
+.vp-anbinden-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-anbinden-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  min-width: 0;
+}
+
+.vp-anbinden-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.vp-anbinden-list code {
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.vp-anbinden-zustand {
+  margin-left: auto;
+  font-size: 0.78rem;
+}
+
+.vp-anbinden-zustand.is-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+.vp-anbinden-zustand.is-warten {
+  color: var(--vp-text-muted, #64748b);
+}
+
+/* --- Eigene Typografie ---------------------------------------------------
+ *
+ * ⚠ Diese Klassen wären als `vp-assist-*` aus `KomponenteAssistent.css` zu
+ * HABEN gewesen - und genau das war ein Fehler: jene Datei wird nur vom
+ * Anlege-Assistenten importiert, der Drawer der Ladevorgänge-Seite lädt sie
+ * nicht. Die Schrittliste rendert dann mit DOPPELTER Nummer („1. 1Kennung
+ * festlegen"), weil das `list-style: none` fehlt. Im Browser-Beweis gefunden.
+ * Ein Bauteil mit zwei Wirten bringt seine Gestalt selbst mit.
+ */
+
+.vp-anbinden-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-anbinden-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.vp-anbinden-steps li.is-active {
+  color: var(--vp-action, #2c5282);
+  font-weight: 600;
+}
+
+.vp-anbinden-step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.vp-anbinden-steps li.is-active .vp-anbinden-step-n {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-action, #2c5282);
+  color: #fff;
+}
+
+.vp-anbinden-steps li.is-done .vp-anbinden-step-n {
+  border-color: var(--vp-flow-batt, #2e9e5b);
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+.vp-anbinden-h {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.vp-anbinden-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted, #64748b);
+  overflow-wrap: anywhere;
+}
+
+.vp-anbinden-ok,
+.vp-anbinden-error {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-anbinden-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+.vp-anbinden-error {
+  color: #b91c1c;
+}

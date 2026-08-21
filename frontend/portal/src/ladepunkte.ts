@@ -100,6 +100,17 @@ export interface ChargingBudget {
   surplusTotalKw?: number | null;
   surplusBatteryKw?: number | null;
   sourceAllocatedKw?: number | null;
+  /**
+   * Port und Pfad, unter denen der OCPP-Server der Box lauscht - zusammen mit
+   * ihrer LAN-Adresse der Endpunkt, den eine Säule anwählt.
+   *
+   * ⚠ DREIWERTIG: `null`/abwesend heißt „eine ältere Box meldet es nicht" ODER
+   * „der Server lauscht gerade nicht" - nie Port 0. Eine Fläche, die einen
+   * Port nennt, auf dem niemand antwortet, ist schlechter als eine, die
+   * ehrlich nichts nennt.
+   */
+  ocppPort?: number | null;
+  ocppUrlPath?: string | null;
   reportedAt?: string | null;
 }
 
@@ -118,8 +129,30 @@ export interface ChargingConfig {
    */
   surplusPolicy?: SurplusPolicy | null;
   storagePriority?: StoragePriority | null;
+  /**
+   * Die ALLOWLIST: die Kennungen, unter denen die Box eine Säule überhaupt
+   * annimmt.
+   *
+   * ⚠ Sie FÜGT NUR HINZU. Eine leere Liste heißt hier „das Portal hat noch
+   * keine eingetragen" - anders als beim Vorrang ist sie KEINE Aussage „keine
+   * Säule". Löschen bleibt eine ausdrückliche Handlung am Gerät.
+   */
+  chargePoints?: AllowedChargePoint[];
   updatedAt?: string | null;
   updatedBy?: string | null;
+}
+
+/**
+ * Eine im Portal eingetragene Ladesäule. Alles außer der Kennung ist das, was
+ * der Betreiber zufällig schon weiß - `null` heißt „unbekannt", nie 0.
+ */
+export interface AllowedChargePoint {
+  chargePointId: string;
+  label?: string | null;
+  ratedKw?: number | null;
+  connectors?: number | null;
+  addedAt?: string | null;
+  addedBy?: string | null;
 }
 
 /** Die Antwort auf „Jetzt voll laden". */
@@ -582,18 +615,17 @@ export function failsafeSum(budget: ChargingBudget | null): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Der Assistent DREHT die gewohnte Richtung um, und der erste Satz sagt es.
+ * Der EINE Satz, der die gewohnte Richtung umdreht - er steht überall dort, wo
+ * eine Säule GESUCHT wird, und führt in den Assistenten.
  *
- * ⚠ Die Adresse zeigt das GERÄT, nicht das Portal: die Box weiß nicht, unter
- * welchem Namen ihr LAN sie erreicht, und eine erfundene Adresse auf einem
- * Kopier-Feld ist schlimmer als keine. Deshalb nennt diese Fläche den WEG statt
- * eine Adresse zu behaupten.
+ * ⚠ Seit Geräteseiten Stufe 3 (E1) sind aus den drei erklärenden Sätzen ein
+ * ASSISTENT geworden (`ladesaeuleAnbinden.ts`): er nennt die konkrete Adresse
+ * zum Kopieren, weil die Box ihre eigene seit D5 MELDET - vorher konnte diese
+ * Fläche nur den Weg beschreiben. Die Regel dahinter ist unverändert: eine
+ * Adresse wird nie erfunden, sondern nur weitergereicht.
  */
-export const ANBINDEN_SCHRITTE = [
-  'Ladesäulen verbinden sich selbst: Sie tragen in der Säule die Adresse Ihres VoltPilot-Geräts und eine Kennung ein - danach meldet sich die Säule von allein.',
-  'Adresse und Kennung zeigt Ihnen die Geräteseite von VoltPilot in Ihrem Netzwerk (Bereich „Ladepunkte").',
-  'Sobald sich die Säule gemeldet hat, erscheint sie hier automatisch - mit Modell und Steckern, die sie selbst mitbringt.',
-];
+export const ANBINDEN_EINSTIEG =
+  'Ladesäulen verbinden sich selbst: Sie tragen in der Säule die Adresse Ihres VoltPilot-Geräts und eine Kennung ein - danach meldet sich die Säule von allein.';
 
 /** Nur eine eingetragene Kennung wird zugelassen - die Zusage als Satz. */
 export const ANBINDEN_ALLOWLIST =

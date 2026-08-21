@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://voltpilot.de/contracts/mqtt-charging-config.schema.json",
   "title": "Cloud -> Edge Lastmanagement-Konfiguration (Anschlussgrenze + Vorrang)",
-  "description": "RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/charging-config. Lastmanagement Stufe 3, Konzept `vp-ocpp-lastmgmt-konzept-w4` §5 / PR 12.\n\nDAS DOKUMENT IST EIN WUNSCH, KEINE VERTEILUNG. Es traegt genau das, was der Kunde im Portal ueber SEINEN Anschluss entscheidet: die Anschlussgrenze und welche Saeulen Vorrang haben. GERECHNET und DURCHGESETZT wird weiter auf der Box (internal/lastmgmt) - die Anschlussgrenze ist eine physische Grenze, ihr Waechter darf nicht am WAN haengen (E1). Die Cloud kann damit einen Ladepark einrichten, ohne dass jemand im LAN am Geraet steht; sie kann ihn nicht steuern.\n\nRETAINED ist der ganze Mechanismus: eine Box, die beim Speichern offline war, holt ihre Einstellung beim naechsten Verbindungsaufbau selbst ab - genau wie bei Provisionierung, Zuweisung und Steuerungs-Zertifizierung. Das Topic liegt im `v2/#`-Teilbaum, den die per-Geraet-ACL laengst abdeckt (D-2): KEINE Broker-Aenderung.\n\nPATCH-SEMANTIK, und sie ist tragend: ein ABWESENDES Feld BEHAELT den Wert der Box. Das Portal besitzt heute nur die Anschlussgrenze und die Vorrang-Wahl; Sicherheitsabstand, Mindestleistung und die hoechste Gebaeudelast bleiben Einstellungen der Box (`:8484`), und ein Dokument, das sie stillschweigend auf eine Vorgabe zuruecksetzte, waere ein Datenverlust ohne Absicht.\n\nEine LEERE retained Nachricht nimmt das Dokument zurueck (Unclaim) - danach gilt wieder allein, was auf der Box gepflegt ist.\n\nSTUFE 4 (additiv): das Dokument traegt zusaetzlich die zwei QUELLEN-Wahlen des Kunden (`surplus_policy`, `storage_priority`). Sie aendern nichts an der Verteil-Mechanik und keine Grenze - sie sagen, WOHER der Ladestrom kommen soll. Ein aelteres Geraet ignoriert die zwei Felder und verhaelt sich zeichengleich; eine aeltere Cloud sendet sie nicht und die Box behaelt ihre eigene Wahl (PATCH).",
+  "description": "RETAINED (QoS1) auf ems/{tenant_id}/{site_id}/{device_id}/v2/charging-config. Lastmanagement Stufe 3, Konzept `vp-ocpp-lastmgmt-konzept-w4` §5 / PR 12.\n\nDAS DOKUMENT IST EIN WUNSCH, KEINE VERTEILUNG. Es traegt genau das, was der Kunde im Portal ueber SEINEN Anschluss entscheidet: die Anschlussgrenze und welche Saeulen Vorrang haben. GERECHNET und DURCHGESETZT wird weiter auf der Box (internal/lastmgmt) - die Anschlussgrenze ist eine physische Grenze, ihr Waechter darf nicht am WAN haengen (E1). Die Cloud kann damit einen Ladepark einrichten, ohne dass jemand im LAN am Geraet steht; sie kann ihn nicht steuern.\n\nRETAINED ist der ganze Mechanismus: eine Box, die beim Speichern offline war, holt ihre Einstellung beim naechsten Verbindungsaufbau selbst ab - genau wie bei Provisionierung, Zuweisung und Steuerungs-Zertifizierung. Das Topic liegt im `v2/#`-Teilbaum, den die per-Geraet-ACL laengst abdeckt (D-2): KEINE Broker-Aenderung.\n\nPATCH-SEMANTIK, und sie ist tragend: ein ABWESENDES Feld BEHAELT den Wert der Box. Das Portal besitzt heute nur die Anschlussgrenze und die Vorrang-Wahl; Sicherheitsabstand, Mindestleistung und die hoechste Gebaeudelast bleiben Einstellungen der Box (`:8484`), und ein Dokument, das sie stillschweigend auf eine Vorgabe zuruecksetzte, waere ein Datenverlust ohne Absicht.\n\nEine LEERE retained Nachricht nimmt das Dokument zurueck (Unclaim) - danach gilt wieder allein, was auf der Box gepflegt ist.\n\nSTUFE 4 (additiv): das Dokument traegt zusaetzlich die zwei QUELLEN-Wahlen des Kunden (`surplus_policy`, `storage_priority`). Sie aendern nichts an der Verteil-Mechanik und keine Grenze - sie sagen, WOHER der Ladestrom kommen soll. Ein aelteres Geraet ignoriert die zwei Felder und verhaelt sich zeichengleich; eine aeltere Cloud sendet sie nicht und die Box behaelt ihre eigene Wahl (PATCH).\n\nSTUFE 3 des Anbinde-Assistenten (additiv, Geraeteseiten Revision B §8 / Captain-Entscheid E1): das Dokument traegt zusaetzlich `charge_points[]` - die KENNUNGEN, unter denen die Box eine Saeule ueberhaupt annimmt (die Allowlist). Bisher liess sie sich nur an der Box selbst pflegen (`:8484`), also blieb der erste Schritt des Portal-Assistenten leer.\n\nDIE ALLOWLIST BLEIBT, NUR IHR PFLEGE-ORT WANDERT. Eine unbekannte Kennung wird weiterhin abgewiesen und protokolliert; es entsteht KEIN Anlern-Fenster, in dem eine fremde Saeule hereinkaeme.\n\nPATCH auch hier, und mit einer SCHAERFEREN Regel als bei der Vorrang-Liste: ein ABWESENDES `charge_points` heisst 'das Portal aeussert sich nicht', und eine LEERE Liste ist ausdruecklich KEINE Aussage 'keine Saeule' - die Box ENTFERNT nie einen Eintrag aus diesem Dokument. Eine Kennung zu loeschen ist eine Entscheidung mit Folgen fuer eine laufende Anlage (die Saeule fliegt beim naechsten Verbindungsaufbau raus) und bleibt deshalb bewusst lokal am Geraet.",
   "type": "object",
   "required": [
     "schema_version",
@@ -64,6 +64,47 @@
         "auto_vor_speicher"
       ],
       "description": "Wer den Sonnenueberschuss ZUERST bekommt (Stufe 4). `speicher_vor_auto` ist der gemessene Status quo: der Speicher folgt seinem Fahrplan, die Fahrzeuge bekommen, was uebrig bleibt. `auto_vor_speicher` gibt den Fahrzeugen den ganzen Ueberschuss - und die Box KLEMMT dafuer die Ladung des Speichers auf den Rest, sonst waere die Wahl nur ein Wunsch und die Anlage kaufte die Differenz.\n\nABWESEND = die Box behaelt ihre Wahl."
+    },
+    "charge_points": {
+      "type": "array",
+      "description": "Die Ladesaeulen, die diese Box annehmen soll. Die Box UEBERNIMMT jeden Eintrag, den sie noch nicht kennt, und ENTFERNT nie einen - Loeschen bleibt eine ausdrueckliche Handlung am Geraet.\n\nEin bereits eingetragener Eintrag wird NICHT ueberschrieben: `label`/`priority` sind Betreiber-Angaben, die an der Box gepflegt sein koennen, und ein Dokument, das sie stillschweigend zuruecksetzte, waere ein Datenverlust ohne Absicht (dieselbe Regel wie fuer die uebrigen Felder). Den VORRANG stellt weiterhin `priority_charge_point_ids` - das ist eine MENGE und damit die ganze Aussage.",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Die OCPP-ChargePointId, ZEICHENGLEICH wie sie in der Saeule eingetragen ist. Erlaubt sind Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich - dieselbe Pruefung, die die Box an ihrem eigenen Formular fuehrt."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Der Name, unter dem der Kunde die Saeule wiedererkennt. Fehlt er, nimmt die Box die Kennung."
+          },
+          "priority": {
+            "type": "boolean",
+            "description": "Vorrang beim ERSTEN Anlegen. Danach entscheidet allein `priority_charge_point_ids` - zwei Wahrheiten ueber denselben Rang waeren eine zu viel."
+          },
+          "rated_kw": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000,
+            "description": "Nennleistung je Stecker, sofern der Betreiber sie kennt. 0/absent = die Box entscheidet aus dem, was die Saeule meldet."
+          },
+          "connectors": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 32,
+            "description": "Erklaerte Steckerzahl. Sie zaehlt fuer das Ausfall-Profil, solange die Saeule sich nicht gemeldet hat - danach gewinnt die groessere der beiden Zahlen (unterzaehlen machte jedes Ausfall-Limit zu gross)."
+          }
+        }
+      }
     }
   }
 }

@@ -42,7 +42,12 @@ public class DeviceChargerStatusRepository {
             int connectorCount, String surplusPolicy, String storagePriority,
             boolean surplusActive, Double surplusKw, String surplusMode, String surplusNote,
             boolean surplusBlind, Double surplusTotalKw, Double surplusBatteryKw,
-            Double sourceAllocatedKw) {}
+            Double sourceAllocatedKw,
+            // ⚠ Port und Pfad des OCPP-Servers sind DREIWERTIG: null heisst
+            // "eine aeltere Box meldet es nicht" ODER "der Server lauscht gerade
+            // nicht" - nie Port 0. Eine Flaeche, die einen Port nennt, auf dem
+            // niemand antwortet, ist schlimmer als eine, die nichts nennt.
+            Integer ocppPort, String ocppUrlPath) {}
 
     /** Eine gemeldete Ladesäule. */
     public record ChargePointRow(String chargePointId, String label, boolean priority,
@@ -82,9 +87,10 @@ public class DeviceChargerStatusRepository {
                         + "safe_worst_case_kw, max_house_load_kw, connector_count, "
                         + "surplus_policy, storage_priority, surplus_active, surplus_kw, "
                         + "surplus_mode, surplus_note, surplus_blind, surplus_total_kw, "
-                        + "surplus_battery_kw, source_allocated_kw, reported_at) "
+                        + "surplus_battery_kw, source_allocated_kw, ocpp_port, ocpp_url_path, "
+                        + "reported_at) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 deviceId, tenantId, siteId, budget.enabled(), budget.controlEnabled(),
                 budget.controlNote(), budget.gridLimitKw(), budget.marginPct(), budget.minPowerKw(),
                 budget.budgetKw(), budget.allocatedKw(), budget.reservedKw(), budget.measuredKw(),
@@ -95,6 +101,7 @@ public class DeviceChargerStatusRepository {
                 budget.storagePriority(), budget.surplusActive(), budget.surplusKw(),
                 budget.surplusMode(), budget.surplusNote(), budget.surplusBlind(),
                 budget.surplusTotalKw(), budget.surplusBatteryKw(), budget.sourceAllocatedKw(),
+                budget.ocppPort(), budget.ocppUrlPath(),
                 Timestamp.from(reportedAt));
         for (ChargePointRow c : chargers) {
             jdbc.update(
@@ -226,6 +233,7 @@ public class DeviceChargerStatusRepository {
                 rs.getBoolean("surplus_blind"), (Double) rs.getObject("surplus_total_kw"),
                 (Double) rs.getObject("surplus_battery_kw"),
                 (Double) rs.getObject("source_allocated_kw"),
+                (Integer) rs.getObject("ocpp_port"), rs.getString("ocpp_url_path"),
                 instant(rs.getTimestamp("reported_at")));
     }
 

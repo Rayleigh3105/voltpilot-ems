@@ -9,7 +9,7 @@ import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { fmtNum } from '../format';
 import {
   ANBINDEN_ALLOWLIST,
-  ANBINDEN_SCHRITTE,
+  ANBINDEN_EINSTIEG,
   ausfallSchutz,
   BOOST_INTRO,
   boostbar,
@@ -27,7 +27,8 @@ import {
   type LadevorgangRow,
   type SiteCharging,
 } from '../ladepunkte';
-import { boxRefOf, chargerGeraetId } from '../geraetSeite';
+import { LadesaeuleAnbindenDrawer } from '../components/LadesaeuleAnbinden';
+import { boxOf, boxRefOf, chargerGeraetId } from '../geraetSeite';
 import { anlageRoute, geraetSeiteHash, hashForRoute } from '../nav';
 import { Icon } from '../../designsystem/components/core/Icon';
 import './Ladevorgaenge.css';
@@ -56,6 +57,9 @@ export function LadevorgaengeSection({
   devices?: Device[];
 }) {
   const boxRef = boxRefOf(devices, site.id);
+  // Die Box kennt ihre eigene Adresse (D5) - der Assistent baut daraus den
+  // `ws://`-Endpunkt. Ohne EINE eindeutige Box nennt er ehrlich den Weg.
+  const box = boxOf(devices, site.id);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [error, setError] = useState<string | null>(null);
   // „Jetzt voll laden": die EINE Aktion dieser Seite. Sie setzt keine Grenze -
@@ -63,6 +67,7 @@ export function LadevorgaengeSection({
   const [dialog, setDialog] = useState<LadevorgangRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [anbinden, setAnbinden] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -193,7 +198,7 @@ export function LadevorgaengeSection({
         {charging.chargers.length === 0 ? (
           <EmptyState
             title="Noch keine Ladesäule verbunden"
-            description={ANBINDEN_SCHRITTE[0]}
+            description={ANBINDEN_EINSTIEG}
           />
         ) : (
           <ul className="vp-lade-stations">
@@ -224,23 +229,30 @@ export function LadevorgaengeSection({
         </Card>
       )}
 
-      {/* Anlagen-Zentrale Stufe 3 (PR 3c, §13.4): der WEG wohnt jetzt als Tür
-          hinter „＋ Hinzufügen" im Anlagen-Modell - hier bleibt er als VERWEIS
-          samt der Schritte stehen, weil eine Säule hier gesucht wird. */}
+      {/* Geräteseiten Stufe 3 (E1): aus den drei Sätzen ist ein ASSISTENT
+          geworden - er trägt die konkrete Adresse zum Kopieren und wartet mit,
+          bis die Säule sich wirklich gemeldet hat. Die Tür im Anlagen-Modell
+          öffnet denselben Körper. */}
       <Card>
         <h2 className="vp-lade-h2">Weitere Säule anbinden</h2>
-        <ol className="vp-lade-steps">
-          {ANBINDEN_SCHRITTE.map((s, i) => (
-            <li key={i}>{s}</li>
-          ))}
-        </ol>
+        <p className="vp-lade-note">{ANBINDEN_EINSTIEG}</p>
         <p className="vp-lade-note">{ANBINDEN_ALLOWLIST}</p>
-        <p className="vp-lade-note">
-          <a href={hashForRoute(anlageRoute(site.id, 'modell'))}>
+        <div className="vp-lade-anbinden-actions">
+          <Button size="sm" onClick={() => setAnbinden(true)}>
+            Ladesäule anbinden
+          </Button>
+          <a className="vp-lade-note" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
             Alle Geräte dieser Anlage ansehen →
           </a>
-        </p>
+        </div>
       </Card>
+
+      <LadesaeuleAnbindenDrawer
+        open={anbinden}
+        siteId={site.id}
+        device={box ?? undefined}
+        onClose={() => setAnbinden(false)}
+      />
 
       {/* Der Haus-Dialog mit der Folgenliste - sie sagt auch, was GLEICH bleibt. */}
       <ConfirmDialog

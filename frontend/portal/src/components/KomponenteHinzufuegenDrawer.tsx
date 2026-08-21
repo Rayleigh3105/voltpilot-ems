@@ -7,12 +7,13 @@ import {
   api,
   ApiError,
   type ComponentTemplate,
+  type Device,
   type SiteComponents,
   type SiteComponentTemplate,
 } from '../api';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
-import { ANBINDEN_ALLOWLIST, ANBINDEN_SCHRITTE } from '../ladepunkte';
+import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
 // Der Assistent bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
 // auf den Import des Wirts zu verlassen liefert einem zweiten Wirt einen
 // ungestylten Assistenten - Türen als nackte Knöpfe, die Schritte als <ol>.
@@ -61,11 +62,18 @@ import {
  */
 export function KomponenteHinzufuegenDrawer({
   siteId,
+  box,
   onClose,
   onSaved,
   vorlage,
 }: {
   siteId: string;
+  /**
+   * Die Box dieser Anlage - nur die Ladesäulen-Tür braucht sie: sie kennt ihre
+   * eigene Adresse (D5), und daraus entsteht der `ws://`-Endpunkt. Ohne sie
+   * nennt der Assistent ehrlich den Weg statt eine Adresse zu behaupten.
+   */
+  box?: Device;
   onClose: () => void;
   onSaved: (result: SiteComponents) => void;
   /**
@@ -303,17 +311,15 @@ export function KomponenteHinzufuegenDrawer({
                   ))}
                 </div>
 
-                {/* Die Ladesäulen-Tür erklärt nur den Weg - sie legt nichts
-                    an (§13.4): die Säule verbindet sich selbst und erscheint
-                    danach von allein in der Liste. */}
+                {/* Die Ladesäulen-Tür legt weiterhin NICHTS an (§13.4) - die
+                    Säule verbindet sich selbst. Seit Geräteseiten Stufe 3 (E1)
+                    steht hier aber der ASSISTENT statt dreier Sätze: er trägt
+                    die Kennung ein und nennt die konkrete Adresse. Es ist
+                    derselbe Körper wie im Drawer der Ladevorgänge-Seite - eine
+                    zweite Kopie wären zwei Wahrheiten über denselben Weg. */}
                 {tuer === 'ladesaeule' && (
                   <div className="vp-assist-pick" data-testid="tuer-ladesaeule">
-                    <ol className="vp-assist-schritte">
-                      {ANBINDEN_SCHRITTE.map((t, i) => (
-                        <li key={i}>{t}</li>
-                      ))}
-                    </ol>
-                    <p className="vp-assist-note">{ANBINDEN_ALLOWLIST}</p>
+                    <LadesaeuleAnbinden siteId={siteId} device={box} />
                   </div>
                 )}
 

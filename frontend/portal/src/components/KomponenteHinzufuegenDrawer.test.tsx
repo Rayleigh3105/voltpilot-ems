@@ -29,6 +29,11 @@ const createComponent = vi.fn();
 const readCustomComponent = vi.fn();
 const createCustomComponent = vi.fn();
 const matchComponent = vi.fn();
+// Der Anbinde-Assistent hinter der Ladesäulen-Tür holt sich seine zwei Listen
+// selbst (Allowlist + gemeldete Säulen).
+const chargingConfig = vi.fn();
+const siteChargers = vi.fn();
+const admitChargePoint = vi.fn();
 
 vi.mock('../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../api');
@@ -38,6 +43,9 @@ vi.mock('../api', async () => {
       componentTemplates: () => componentTemplates(),
       siteComponents: () => siteComponents(),
       testComponentConnection: (...a: unknown[]) => testComponentConnection(...a),
+      chargingConfig: (...a: unknown[]) => chargingConfig(...a),
+      siteChargers: (...a: unknown[]) => siteChargers(...a),
+      admitChargePoint: (...a: unknown[]) => admitChargePoint(...a),
       createComponent: (...a: unknown[]) => createComponent(...a),
       readCustomComponent: (...a: unknown[]) => readCustomComponent(...a),
       createCustomComponent: (...a: unknown[]) => createCustomComponent(...a),
@@ -67,6 +75,10 @@ describe('der EINE Anlege-Assistent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     componentTemplates.mockResolvedValue([template]);
+    chargingConfig.mockResolvedValue({
+      gridLimitKw: null, priorityChargePointIds: [], chargePoints: [],
+    });
+    siteChargers.mockResolvedValue({ budget: null, chargers: [] });
     siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [] });
     testComponentConnection.mockResolvedValue({
       results: [{ id: 'verbindung', ok: true, reading: { pvKw: 12.4, socPct: 87 } }],
@@ -193,14 +205,18 @@ describe('der EINE Anlege-Assistent', () => {
     Anlagen-Zentrale Stufe 3 (PR 3c, §13.4): die vierte Tür erklärt den Weg zur
     Ladesäule - sie legt NICHTS an, weil eine Säule sich selbst verbindet.
   */
-  it('erklärt hinter der Ladesäulen-Tür den Weg, statt ein Formular zu zeigen', async () => {
+  it('führt hinter der Ladesäulen-Tür den ASSISTENTEN, statt ein Gerät anzulegen', async () => {
     render(<KomponenteHinzufuegenDrawer siteId="s1" onClose={() => {}} onSaved={() => {}} />);
     fireEvent.click(await screen.findByText('Ladesäule (OCPP)'));
 
     const block = await screen.findByTestId('tuer-ladesaeule');
     expect(block).toHaveTextContent(/verbinden sich selbst/);
     expect(block).toHaveTextContent(/ausschließlich Ladesäulen an, deren Kennung eingetragen ist/);
-    // Kein Formular, keine Marken-Auswahl - es gibt hier nichts einzutragen.
+    // ⚠ Es ist DERSELBE Körper wie im Drawer der Ladevorgänge-Seite (E1) - eine
+    // zweite Kopie wären zwei Wahrheiten über denselben Weg.
+    expect(await screen.findByTestId('ladesaeule-anbinden')).toBeTruthy();
+    expect(screen.getByLabelText('Kennung')).toBeTruthy();
+    // Weiterhin KEIN Gerät-Anlegen: keine Marke, kein Verbindungstest.
     expect(screen.queryByLabelText('Marke')).toBeNull();
     expect(screen.queryByText('Verbindung testen')).toBeNull();
   });
@@ -367,6 +383,10 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     componentTemplates.mockResolvedValue([template]);
+    chargingConfig.mockResolvedValue({
+      gridLimitKw: null, priorityChargePointIds: [], chargePoints: [],
+    });
+    siteChargers.mockResolvedValue({ budget: null, chargers: [] });
     siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [] });
     createComponent.mockResolvedValue({ componentAuthority: 'portal', components: [] });
     matchComponent.mockResolvedValue(undefined);

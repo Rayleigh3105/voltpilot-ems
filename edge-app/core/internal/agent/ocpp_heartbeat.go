@@ -30,6 +30,8 @@ func (a *Agent) chargersSummary() *cloud.ChargersSummary {
 		Enabled:          info.Enabled,
 		ControlEnabled:   info.ControlEnabled,
 		ControlNote:      info.ControlNote,
+		OcppPort:         info.Port,
+		URLPath:          info.URLPath,
 		GridLimitKw:      info.GridLimitKw,
 		MarginPct:        info.MarginPct,
 		MinPowerKw:       info.MinPowerKw,

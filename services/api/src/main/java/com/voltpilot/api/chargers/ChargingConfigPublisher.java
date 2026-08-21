@@ -1,6 +1,7 @@
 package com.voltpilot.api.chargers;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
+import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -80,21 +81,26 @@ public class ChargingConfigPublisher {
      * @param surplusPolicy die Überschuss-Priorität des Kunden, oder null =
      *                    keine Aussage (NIE dasselbe wie „schnell")
      * @param storagePriority wer den Überschuss zuerst bekommt, oder null
+     * @param chargePoints die ALLOWLIST - die Box übernimmt jeden Eintrag, den
+     *                    sie noch nicht kennt, und entfernt NIE einen
      * @return false, wenn der Broker nicht erreichbar war (best-effort)
      */
     public synchronized boolean publish(UUID tenantId, UUID siteId, UUID deviceId,
             Double gridLimitKw, List<String> priorities, String surplusPolicy,
-            String storagePriority, Instant publishedAt) {
+            String storagePriority, List<AllowedChargePointDto> chargePoints,
+            Instant publishedAt) {
         String topic = configTopic(tenantId, siteId, deviceId);
         byte[] payload = document(tenantId, siteId, deviceId, gridLimitKw, priorities,
-                surplusPolicy, storagePriority, publishedAt);
+                surplusPolicy, storagePriority, chargePoints, publishedAt);
         try {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
             message.setRetained(true);
             connected().publish(topic, message);
-            log.info("published charging config (grid_limit_kw={}, {} priority stations) retained to {}",
-                    gridLimitKw, priorities == null ? "-" : priorities.size(), topic);
+            log.info("published charging config (grid_limit_kw={}, {} priority stations, "
+                    + "{} admitted stations) retained to {}",
+                    gridLimitKw, priorities == null ? "-" : priorities.size(),
+                    chargePoints == null ? 0 : chargePoints.size(), topic);
             return true;
         } catch (Exception e) {
             log.warn("could not publish charging config to {}: {} (best-effort - the next save "
@@ -132,7 +138,7 @@ public class ChargingConfigPublisher {
      */
     static byte[] document(UUID tenantId, UUID siteId, UUID deviceId, Double gridLimitKw,
             List<String> priorities, String surplusPolicy, String storagePriority,
-            Instant publishedAt) {
+            List<AllowedChargePointDto> chargePoints, Instant publishedAt) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"schema_version\":\"1.0\"")
                 .append(",\"tenant_id\":\"").append(tenantId).append('"')
@@ -163,8 +169,41 @@ public class ChargingConfigPublisher {
         if (storagePriority != null && !storagePriority.isBlank()) {
             sb.append(",\"storage_priority\":\"").append(esc(storagePriority)).append('"');
         }
+        // ⚠ Die Allowlist wird WEGGELASSEN, solange sie leer ist. Abwesend und
+        // leer bedeuten der Box hier zwar dasselbe (die Liste fuegt nur hinzu),
+        // aber ein leeres Array im Dokument einer Anlage ohne Ladepark waere
+        // ein Feld, das eine Aussage vortaeuscht, die niemand getroffen hat.
+        if (chargePoints != null && !chargePoints.isEmpty()) {
+            sb.append(",\"charge_points\":[");
+            for (int i = 0; i < chargePoints.size(); i++) {
+                if (i > 0) {
+                    sb.append(',');
+                }
+                appendChargePoint(sb, chargePoints.get(i));
+            }
+            sb.append(']');
+        }
         sb.append(",\"published_at\":\"").append(publishedAt).append("\"}");
         return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Eine Zeile der Allowlist. Nur die Kennung ist Pflicht; jedes andere Feld
+     * reist NUR mit, wenn der Betreiber es wirklich weiss - eine erfundene 0
+     * waere hier eine Aussage ueber ein Geraet, das niemand gemessen hat.
+     */
+    private static void appendChargePoint(StringBuilder sb, AllowedChargePointDto cp) {
+        sb.append("{\"id\":\"").append(esc(cp.chargePointId())).append('"');
+        if (cp.label() != null && !cp.label().isBlank()) {
+            sb.append(",\"label\":\"").append(esc(cp.label())).append('"');
+        }
+        if (cp.ratedKw() != null) {
+            sb.append(",\"rated_kw\":").append(trim(cp.ratedKw()));
+        }
+        if (cp.connectors() != null) {
+            sb.append(",\"connectors\":").append(cp.connectors().intValue());
+        }
+        sb.append('}');
     }
 
     /** Ganze Zahlen ohne Nachkomma - 277 statt 277.0 im Kunden-Dokument. */

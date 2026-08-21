@@ -700,6 +700,17 @@ type ChargersSummary struct {
 	ControlEnabled bool   `json:"control_enabled"`
 	ControlNote    string `json:"control_note,omitempty"`
 
+	// OcppPort / URLPath are what a station dials: ws://<box>:<port><path>/<id>.
+	// The cloud has known the box's LAN address since D5 but not these two, so
+	// its "Säule anbinden" assistant had to spell out a default instead of the
+	// real endpoint.
+	//
+	// ⚠ Both are OMITTED while the server is not listening. There is nothing to
+	// dial then, and naming a port nobody answers on is worse than naming none -
+	// the surface falls back to its honest default sentence.
+	OcppPort int    `json:"ocpp_port,omitempty"`
+	URLPath  string `json:"url_path,omitempty"`
+
 	// GridLimitKw is the maintained Anschlussgrenze, MarginPct the safety
 	// margin taken FROM it, MinPowerKw the allocation floor below which nothing
 	// is granted (pausing beats starving).

@@ -933,6 +933,59 @@ paths:
         "400": { description: Unplausible Grenze oder unbekannte Ladesäule (deutscher Grund im Körper). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/charging-config/charge-points:
+    post:
+      tags: [sites]
+      summary: Eine Ladesäule eintragen (Anbinde-Assistent, Schritt 1).
+      description: >
+        Trägt EINE ChargePointId in die Allowlist der Anlage ein und schickt sie
+        als retained Dokument an die Box (Kontrakt
+        `mqtt-charging-config.schema.json`). Bis hierher liess sich die
+        Allowlist nur am Gerät selbst pflegen (`:8484`), also musste jemand im
+        LAN am Gerät stehen, um eine Säule anzubinden.
+
+
+        DIE ALLOWLIST BLEIBT, NUR IHR PFLEGE-ORT WANDERT. Eine unbekannte
+        Kennung wird von der Box weiterhin abgewiesen und protokolliert; es
+        entsteht KEIN Anlern-Fenster, in dem eine fremde Säule hereinkäme.
+
+
+        Es ist ein POST, kein PUT, und das ist die Aussage: die Liste fügt nur
+        hinzu. Ein PUT lüde dazu ein, sie als Ganzes zu setzen - und damit einen
+        Eintrag zu ENTFERNEN, was die Säule beim nächsten Verbindungsaufbau vom
+        Broker würfe. Löschen bleibt eine ausdrückliche Handlung am Gerät.
+        Dieselbe Kennung erneut einzutragen ist ein No-op, das nur die
+        Betreiber-Angaben auffrischt. RLS-gefenced (fremde Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chargePointId]
+              properties:
+                chargePointId:
+                  type: string
+                  maxLength: 64
+                  description: >
+                    Die OCPP-ChargePointId, zeichengleich wie sie in der Säule
+                    eingetragen ist. Erlaubt sind Buchstaben, Ziffern, Punkt,
+                    Bindestrich und Unterstrich - dieselbe Prüfung, die die Box
+                    an ihrem eigenen Formular führt.
+                label: { type: string, nullable: true, maxLength: 120, description: "Der Name für den Kunden; abwesend = die Box nimmt die Kennung." }
+                ratedKw: { type: number, nullable: true, description: "Nennleistung je Stecker, sofern bekannt. Abwesend = unbekannt, nie 0." }
+                connectors: { type: integer, nullable: true, description: "Steckerzahl, sofern bekannt. Abwesend = die Box lernt sie von der Säule." }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration inklusive der Allowlist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "400": { description: Unzulässige Kennung, unplausible Angabe oder Deckel erreicht (deutscher Grund im Körper). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/charging-boost:
     post:
       tags: [sites]
@@ -9057,8 +9110,32 @@ components:
           items: { type: string }
         surplusPolicy: { type: string, nullable: true, enum: [nur_sonne, sonne_zuerst, schnell], description: "Die Überschuss-Priorität; null = nicht gewählt (die Box behält ihre eigene)." }
         storagePriority: { type: string, nullable: true, enum: [speicher_vor_auto, auto_vor_speicher], description: "Wer den Überschuss zuerst bekommt; null = nicht gewählt." }
+        chargePoints:
+          type: array
+          description: >
+            Die ALLOWLIST: die Kennungen, unter denen die Box eine Säule
+            überhaupt annimmt. Sie FÜGT NUR HINZU - die Box übernimmt jeden
+            Eintrag, den sie noch nicht kennt, überschreibt keinen bestehenden
+            und entfernt NIE einen; eine Kennung zu löschen wirft die Säule beim
+            nächsten Verbindungsaufbau vom Broker und bleibt eine ausdrückliche
+            Handlung am Gerät. Eine leere Liste ist hier deshalb - anders als
+            beim Vorrang - keine Aussage „keine Säule".
+          items: { $ref: "#/components/schemas/AllowedChargePoint" }
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
+    AllowedChargePoint:
+      type: object
+      description: >
+        Eine im Portal eingetragene Ladesäule. Alles außer der Kennung ist das,
+        was der Betreiber zufällig schon weiß - null heißt „unbekannt", nie 0:
+        die Box entscheidet dann aus dem, was die Säule selbst meldet.
+      properties:
+        chargePointId: { type: string, description: "Die OCPP-ChargePointId, zeichengleich wie in der Säule eingetragen." }
+        label: { type: string, nullable: true, description: "Der Name, unter dem der Kunde sie wiedererkennt; null = die Box nimmt die Kennung." }
+        ratedKw: { type: number, nullable: true, description: "Nennleistung je Stecker; null = unbekannt." }
+        connectors: { type: integer, nullable: true, description: "Erklärte Steckerzahl; null = unbekannt." }
+        addedAt: { type: string, format: date-time, nullable: true }
+        addedBy: { type: string, nullable: true, description: "Wer sie eingetragen hat (JWT-Subject)." }
     SiteCharging:
       type: object
       description: >
@@ -9097,6 +9174,16 @@ components:
         safeWorstCaseKw: { type: number, nullable: true }
         maxHouseLoadKw: { type: number, nullable: true }
         connectorCount: { type: integer }
+        ocppPort:
+          type: integer
+          nullable: true
+          description: >
+            Der Port, unter dem der OCPP-Server der Box lauscht - zusammen mit
+            der LAN-Adresse des Geräts der Endpunkt, den eine Säule anwählt.
+            null heißt „eine ältere Box meldet es nicht" ODER „der Server
+            lauscht gerade nicht", nie Port 0: eine Adresse, auf der niemand
+            antwortet, ist die schlechtere Auskunft als gar keine.
+        ocppUrlPath: { type: string, nullable: true, description: "Der Pfad des OCPP-Servers (z. B. `/ocpp`); null wie oben." }
         reportedAt: { type: string, format: date-time }
     ChargePoint:
       type: object

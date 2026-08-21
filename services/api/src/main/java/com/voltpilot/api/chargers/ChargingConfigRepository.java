@@ -1,6 +1,7 @@
 package com.voltpilot.api.chargers;
 
 import com.voltpilot.api.web.dto.ChargingConfigDto;
+import com.voltpilot.api.web.dto.ChargingConfigDto.AllowedChargePointDto;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -41,14 +42,53 @@ public class ChargingConfigRepository {
                 "SELECT charge_point_id FROM site_charge_point_priority WHERE site_id = ? "
                         + "ORDER BY charge_point_id",
                 (rs, n) -> rs.getString("charge_point_id"), siteId);
+        List<AllowedChargePointDto> allowed = allowlist(siteId);
         if (head.isEmpty()) {
-            return new ChargingConfigDto(null, List.copyOf(priorities), null, null, null, null);
+            return new ChargingConfigDto(null, List.copyOf(priorities), null, null, allowed,
+                    null, null);
         }
         Object[] row = head.get(0);
         Timestamp at = (Timestamp) row[1];
         return new ChargingConfigDto((Double) row[0], List.copyOf(priorities),
-                (String) row[3], (String) row[4],
+                (String) row[3], (String) row[4], allowed,
                 at == null ? null : at.toInstant(), (String) row[2]);
+    }
+
+    /** Die eingetragenen Kennungen dieser Anlage (aelteste zuerst). */
+    public List<AllowedChargePointDto> allowlist(UUID siteId) {
+        return List.copyOf(jdbc.query(
+                "SELECT charge_point_id, label, rated_kw, connectors, added_at, added_by "
+                        + "FROM site_charge_point_allowlist WHERE site_id = ? "
+                        + "ORDER BY added_at, charge_point_id",
+                (rs, n) -> new AllowedChargePointDto(rs.getString("charge_point_id"),
+                        rs.getString("label"), (Double) rs.getObject("rated_kw"),
+                        (Integer) rs.getObject("connectors"),
+                        rs.getTimestamp("added_at") == null ? null
+                                : rs.getTimestamp("added_at").toInstant(),
+                        rs.getString("added_by")),
+                siteId));
+    }
+
+    /**
+     * Traegt eine Kennung ein bzw. frischt ihre Angaben auf.
+     *
+     * <p>⚠ Es gibt hier bewusst KEIN Loeschen. Eine Kennung zu entfernen wirft
+     * die Saeule beim naechsten Verbindungsaufbau vom Broker - eine Entscheidung
+     * mit Folgen fuer eine laufende Anlage, und die bleibt eine ausdrueckliche
+     * Handlung am Geraet (dieselbe Regel, die auch die Box selbst fuehrt).
+     */
+    @Transactional
+    public void admitChargePoint(UUID tenantId, UUID siteId, String chargePointId, String label,
+            Double ratedKw, Integer connectors, String actor) {
+        jdbc.update("INSERT INTO site_charge_point_allowlist (site_id, charge_point_id, tenant_id, "
+                + "label, rated_kw, connectors, added_at, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                + "ON CONFLICT (site_id, charge_point_id) DO UPDATE SET "
+                + "label = COALESCE(EXCLUDED.label, site_charge_point_allowlist.label), "
+                + "rated_kw = COALESCE(EXCLUDED.rated_kw, site_charge_point_allowlist.rated_kw), "
+                + "connectors = COALESCE(EXCLUDED.connectors, "
+                + "site_charge_point_allowlist.connectors)",
+                siteId, chargePointId, tenantId, label, ratedKw, connectors,
+                Timestamp.from(Instant.now()), actor);
     }
 
     /** Setzt die Anschlussgrenze (Upsert, mit Papier-Spur wer und wann). */

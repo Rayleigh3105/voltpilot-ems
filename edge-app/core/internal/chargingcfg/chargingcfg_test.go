@@ -109,6 +109,85 @@ func TestThePriorityListIsCleanedNotRejected(t *testing.T) {
 	}
 }
 
+// Die Allowlist FUEGT NUR HINZU, und deshalb sind abwesend und leer hier
+// dasselbe - anders als bei der Vorrang-Liste. Eine Kennung zu entfernen wirft
+// eine Saeule beim naechsten Verbindungsaufbau vom Broker; das bleibt eine
+// ausdrueckliche Handlung am Geraet.
+func TestTheAllowlistOnlyEverAddsSoAbsentAndEmptyAreTheSame(t *testing.T) {
+	absent, err := Parse(doc(`,"grid_limit_kw":277`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(absent.ChargePoints) != 0 {
+		t.Fatalf("abwesend = nichts hinzuzufuegen: %+v", absent.ChargePoints)
+	}
+
+	empty, err := Parse(doc(`,"charge_points":[]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty.ChargePoints) != 0 {
+		t.Fatalf("eine leere Liste ist hier KEINE Aussage 'keine Saeule': %+v", empty.ChargePoints)
+	}
+}
+
+// Die Felder reisen vollstaendig durch - was der Betreiber im Portal weiss,
+// soll die Box beim ERSTEN Anlegen uebernehmen koennen.
+func TestAChargePointCarriesEverythingTheOperatorKnows(t *testing.T) {
+	cfg, err := Parse(doc(`,"charge_points":[{"id":" saeule-1 ","label":" Hof Nord ",` +
+		`"priority":true,"rated_kw":22,"connectors":2}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.ChargePoints) != 1 {
+		t.Fatalf("charge points = %+v", cfg.ChargePoints)
+	}
+	cp := cfg.ChargePoints[0]
+	if cp.ID != "saeule-1" || cp.Label != "Hof Nord" || !cp.Priority ||
+		cp.RatedKw != 22 || cp.Connectors != 2 {
+		t.Fatalf("charge point = %+v", cp)
+	}
+}
+
+// ⚠ Eine unbrauchbare Kennung wird UEBERSPRUNGEN, nicht zum Abbruch: das ganze
+// Dokument daran scheitern zu lassen kostete die Anschlussgrenze mit - und die
+// ist die Groesse, ohne die nichts laedt.
+func TestAnUnusableIdentifierIsSkippedNeverTakingTheLimitWithIt(t *testing.T) {
+	cfg, err := Parse(doc(`,"grid_limit_kw":277,"charge_points":[{"id":"  "},` +
+		`{"id":"saeule-1"},{"id":"saeule-1","label":"zweite Zeile"}]`))
+	if err != nil {
+		t.Fatalf("eine kaputte Zeile darf das Dokument nicht versenken: %v", err)
+	}
+	if cfg.GridLimitKw == nil || *cfg.GridLimitKw != 277 {
+		t.Fatal("die Anschlussgrenze muss ueberleben")
+	}
+	if len(cfg.ChargePoints) != 1 || cfg.ChargePoints[0].ID != "saeule-1" {
+		t.Fatalf("charge points = %+v", cfg.ChargePoints)
+	}
+	if cfg.ChargePoints[0].Label != "" {
+		t.Fatal("die erste Nennung gewinnt - eine doppelte Zeile ist keine zweite Saeule")
+	}
+}
+
+// Der Deckel des Vertrags ist eine Ablehnung, nie eine stille Kappung.
+func TestTooManyChargePointsAreRefused(t *testing.T) {
+	var sb []byte
+	sb = append(sb, `,"charge_points":[`...)
+	for i := 0; i <= MaxChargePoints; i++ {
+		if i > 0 {
+			sb = append(sb, ',')
+		}
+		sb = append(sb, `{"id":"s`...)
+		sb = append(sb, []byte(string(rune('a'+i%26)))...)
+		sb = append(sb, []byte(string(rune('0'+i/26)))...)
+		sb = append(sb, `"}`...)
+	}
+	sb = append(sb, ']')
+	if _, err := Parse(doc(string(sb))); err == nil {
+		t.Fatalf("mehr als %d Saeulen muessen abgelehnt werden", MaxChargePoints)
+	}
+}
+
 // Die eingecheckten Kontrakt-Beispiele werden PER PFAD gelesen: wer eine
 // Fixture verschiebt, bricht diesen Test absichtlich.
 func TestTheContractFixturesParseExactlyAsSpecified(t *testing.T) {
@@ -134,6 +213,24 @@ func TestTheContractFixturesParseExactlyAsSpecified(t *testing.T) {
 	}
 	if cfg2.Priorities == nil || len(cfg2.Priorities) != 0 {
 		t.Fatalf("sie nimmt den Vorrang ausdruecklich zurueck: %v", cfg2.Priorities)
+	}
+
+	allow := mustRead(t, filepath.Join(dir, "mqtt-charging-config.valid.saeulen-eintragen.json"))
+	cfg3, err := Parse(allow)
+	if err != nil {
+		t.Fatalf("die Allowlist-Fixture muss parsen: %v", err)
+	}
+	if len(cfg3.ChargePoints) != 2 {
+		t.Fatalf("allowlist = %+v", cfg3.ChargePoints)
+	}
+	if cfg3.ChargePoints[0].Label != "Hof Nord" || cfg3.ChargePoints[0].RatedKw != 22 {
+		t.Fatalf("erste Saeule = %+v", cfg3.ChargePoints[0])
+	}
+	// Die zweite Zeile nennt NUR ihre Kennung - alles Weitere ist das, was der
+	// Betreiber zufaellig schon weiss.
+	if cfg3.ChargePoints[1].ID != "saeule-halle" || cfg3.ChargePoints[1].Label != "" ||
+		cfg3.ChargePoints[1].Connectors != 0 {
+		t.Fatalf("zweite Saeule = %+v", cfg3.ChargePoints[1])
 	}
 
 	invalid := mustRead(t, filepath.Join(dir, "mqtt-charging-config.invalid.grenze-null.json"))

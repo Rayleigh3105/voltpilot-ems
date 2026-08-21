@@ -28,7 +28,7 @@ import {
   type PlantComponent,
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
-import { boxRefOf } from '../geraetSeite';
+import { boxOf, boxRefOf } from '../geraetSeite';
 import {
   HINZUFUEGEN_LABEL,
   LISTE_TITEL,
@@ -689,6 +689,7 @@ export function AnlagenModellSection({
       {(addOpen || vorlage) && (
         <KomponenteHinzufuegenDrawer
           siteId={site.id}
+          box={boxOf(devices, site.id) ?? undefined}
           vorlage={vorlage}
           onClose={() => {
             setAddOpen(false);
