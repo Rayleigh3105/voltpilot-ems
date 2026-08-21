@@ -57,7 +57,7 @@ import {
 } from './geraetSeite';
 import type { ComponentHealth, ComponentRole, PlantComponent, PlantModel } from './komponenten';
 import { chargerName, type ChargePoint, type SiteCharging } from './ladepunkte';
-import { geraetSeiteHash } from './nav';
+import { boxSeiteHash, geraetSeiteHash } from './nav';
 import { capTextLength } from './svgText';
 
 // ---------------------------------------------------------------------------
@@ -741,7 +741,7 @@ export function schaltbild(input: SchaltbildInput): Schaltbild {
     abzeichen: null,
     ton: boxTon,
     gestrichelt: false,
-    href: boxRef ? geraetSeiteHash(siteId, boxRef) : null,
+    href: boxRef ? boxSeiteHash(siteId, boxRef) : null,
     komponenteId: null,
     x: SPALTE.box.x,
     y: mitteY - boxH / 2,
@@ -825,7 +825,7 @@ export function schaltbild(input: SchaltbildInput): Schaltbild {
     abzeichen: null,
     ton: 'ok',
     gestrichelt: false,
-    href: boxRef ? geraetSeiteHash(siteId, boxRef) : null,
+    href: boxRef ? boxSeiteHash(siteId, boxRef) : null,
     komponenteId: null,
     x: SPALTE.netz.x,
     y: netzY,

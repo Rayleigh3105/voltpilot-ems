@@ -1472,6 +1472,19 @@ export interface EdgeVersion {
   coreVersion: string | null;
   paletteVersion: string | null;
   reportedAt: string;
+  /**
+   * Der Soll-Stand aus dem Release-Register (Geräteseiten Stufe 1 R2a);
+   * `null` = leeres Register, also KEIN Maßstab. Optional, weil ein älteres
+   * Backend das Urteil nicht bildet.
+   */
+  newestRelease?: string | null;
+  /**
+   * ⚠ DREIWERTIG: true = die Box fährt den neuesten registrierten Stand,
+   * false = veraltet, `null`/absent = NICHT bewertbar (nichts gemeldet, oder
+   * der Stand steht nicht im Register - eine Lücke im REGISTER, nie eine
+   * Alters-Aussage über die Box).
+   */
+  upToDate?: boolean | null;
 }
 
 // ---- Inverter control confirmation (GET /api/v1/sites/{id}/control-status) --

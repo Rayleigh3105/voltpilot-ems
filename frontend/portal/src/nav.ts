@@ -47,11 +47,12 @@ export type AnlagenSub =
   | 'lastspitzen'
   | 'ladevorgaenge'
   | 'befehle'
-  | 'geraet';
+  | 'geraet'
+  | 'box';
 
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'wetter', 'technik', 'modell',
-  'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle', 'geraet',
+  'steuerung', 'lastspitzen', 'ladevorgaenge', 'befehle', 'geraet', 'box',
 ]);
 
 /**
@@ -498,11 +499,36 @@ export function parseRoute(hash: string): Route {
     if (sub === 'geraet') {
       const ref = segments[3];
       if (!ref) return { page: 'anlagen', siteId: segments[1], sub: 'modell' };
+      // ⚠ Die BOX ist ein TOR, kein Gerät (E3): `…/geraet/{ref}` OHNE Gerät
+      // dahinter MEINT die Box und wird auf `…/box/{ref}` kanonisiert - die
+      // Adresse sagt damit dasselbe wie die Seite. Die Referenz reist mit,
+      // also ist die Weiterleitung verlustfrei (siehe canonicalAnlageHash).
+      if (!segments[4]) {
+        return {
+          page: 'anlagen',
+          siteId: segments[1],
+          sub: 'box',
+          geraet: { ref: decodeURIComponent(ref), geraetId: null },
+        };
+      }
       return {
         page: 'anlagen',
         siteId: segments[1],
         sub: 'geraet',
-        geraet: { ref: decodeURIComponent(ref), geraetId: segments[4] ? decodeURIComponent(segments[4]) : null },
+        geraet: { ref: decodeURIComponent(ref), geraetId: decodeURIComponent(segments[4]) },
+      };
+    }
+    // Die BOX-Seite: `#/anlage/{id}/box[/{ref}]`. Die Referenz ist OPTIONAL -
+    // eine Anlage hat genau EINE Box, die Fläche löst sie selbst auf; ein
+    // Lesezeichen aus der Zeit der Geräte-Adresse trägt sie trotzdem mit,
+    // damit die Weiterleitung nichts verliert.
+    if (sub === 'box') {
+      const ref = segments[3];
+      return {
+        page: 'anlagen',
+        siteId: segments[1],
+        sub: 'box',
+        geraet: ref ? { ref: decodeURIComponent(ref), geraetId: null } : undefined,
       };
     }
     return { page: 'anlagen', siteId: segments[1], sub };
@@ -551,6 +577,13 @@ export function canonicalAnlageHash(hash: string): string | null {
   const segments = pathPart.split('/').filter((s) => s.length > 0);
   if (segments[0] !== 'anlage' || !segments[1]) return null;
   const raw = segments[2];
+  // ⚠ Die BOX-Weiterleitung ist eine SHAPE-Regel, keine Namens-Regel (E3):
+  // `…/geraet/{ref}` OHNE Gerät dahinter meint die Box. `LEGACY_SUBS` kann das
+  // nicht ausdrücken - `geraet` bleibt MIT Gerät gültig. Die Referenz reist
+  // mit, die Weiterleitung ist also verlustfrei.
+  if (raw === 'geraet' && segments[3] && !segments[4]) {
+    return `${boxSeiteHash(segments[1], decodeURIComponent(segments[3]))}${query}`;
+  }
   if (!raw || !(raw in LEGACY_SUBS)) return null;
   const sub = LEGACY_SUBS[raw];
   const path = sub ? `#/anlage/${segments[1]}/${sub}` : `#/anlage/${segments[1]}`;
@@ -562,6 +595,9 @@ export function hashForRoute(route: Route): string {
   if (route.page === 'anlagen' && route.siteId) {
     if (route.sub === 'geraet' && route.geraet) {
       return geraetSeiteHash(route.siteId, route.geraet.ref, route.geraet.geraetId);
+    }
+    if (route.sub === 'box') {
+      return boxSeiteHash(route.siteId, route.geraet?.ref ?? null);
     }
     return route.sub
       ? `#/anlage/${route.siteId}/${route.sub}`
@@ -715,6 +751,24 @@ export function parseGeraetRef(hash: string): string | null {
  * Seite gehört zur ANLAGE, also gehört sie in ihren Pfad. Beide Werte werden
  * kodiert - eine Referenz ist per Kontrakt topic-sicher, eine Säulen-Kennung
  * (`cp-<ChargePointId>`) muss es nicht sein.
+ */
+/**
+ * Die Adresse der BOX-Seite (`#/anlage/{siteId}/box[/{ref}]`, Scout
+ * `vp-geraeteseite-rev-b8` E3).
+ *
+ * Die Box ist ein TOR, kein Gerät - das sagt seit Stufe 1 auch die Adresse.
+ * Die Referenz ist OPTIONAL: eine Anlage hat genau EINE Box, die Fläche löst
+ * sie über `boxRefOf` auf. Sie wird trotzdem GESCHRIEBEN, wo sie bekannt ist,
+ * damit die Weiterleitung aus `…/geraet/{ref}` verlustfrei bleibt (eine Anlage
+ * mit mehreren beanspruchten Geräten könnte sie sonst nicht mehr auflösen).
+ */
+export function boxSeiteHash(siteId: string, ref?: string | null): string {
+  const base = `#/anlage/${siteId}/box`;
+  return ref && ref.trim() ? `${base}/${encodeURIComponent(ref.trim())}` : base;
+}
+
+/**
+ * Die Adresse der GERÄTE-Detailseite (siehe {@link boxSeiteHash} für die Box).
  */
 export function geraetSeiteHash(
   siteId: string,

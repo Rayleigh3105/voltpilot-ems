@@ -20,5 +20,17 @@ import java.util.UUID;
  * Veraltet-Aussage machen.
  */
 public record EdgeVersionDto(UUID deviceId, UUID siteId, String coreVersion,
-        String paletteVersion, Instant reportedAt) {
+        String paletteVersion, Instant reportedAt,
+        // Geräteseiten Stufe 1 (R2a): das URTEIL gegen das Release-Register,
+        // additiv. `newestRelease` ist der Soll-Stand (null = leeres Register,
+        // also kein Maßstab), `upToDate` DREIWERTIG - null heißt „nicht
+        // bewertbar" (nichts gemeldet ODER nicht registriert), NIE „veraltet".
+        // Es reist das Urteil, nie das Register (EdgeStandVerdict).
+        String newestRelease, Boolean upToDate) {
+
+    /** Die Vor-R2a-Form - ohne Urteil, für Aufrufer, die keines bilden. */
+    public EdgeVersionDto(UUID deviceId, UUID siteId, String coreVersion, String paletteVersion,
+            Instant reportedAt) {
+        this(deviceId, siteId, coreVersion, paletteVersion, reportedAt, null, null);
+    }
 }

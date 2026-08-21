@@ -105,6 +105,9 @@ const AnlagenModellSection = lazy(() =>
 const GeraetSeiteSection = lazy(() =>
   import('./GeraetSeiteSection').then((m) => ({ default: m.GeraetSeiteSection })),
 );
+const BoxSeiteSection = lazy(() =>
+  import('./BoxSeiteSection').then((m) => ({ default: m.BoxSeiteSection })),
+);
 const LadevorgaengeSection = lazy(() =>
   import('./LadevorgaengeSection').then((m) => ({ default: m.LadevorgaengeSection })),
 );
@@ -470,6 +473,21 @@ function AnlagenSubPage({
         {sub === 'modell' && (
           <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
         )}
+        {/* Die BOX ist ein TOR, kein Gerät (E3) - eigene Adresse, eigene
+            Gattung. Die Referenz ist optional: eine Anlage hat genau EINE Box,
+            die Fläche löst sie selbst auf. */}
+        {sub === 'box' && (
+          <BoxSeiteSection
+            site={site}
+            boxRef={geraet?.ref ?? null}
+            devices={devices}
+            devicesFetchedAt={devicesFetchedAt}
+            onDeviceRemoved={() => {
+              onOpenSub('modell');
+              onReload(site.id);
+            }}
+          />
+        )}
         {sub === 'geraet' && geraet && (
           <GeraetSeiteSection
             site={site}
@@ -477,10 +495,6 @@ function AnlagenSubPage({
             geraetId={geraet.geraetId}
             devices={devices}
             devicesFetchedAt={devicesFetchedAt}
-            onDeviceRemoved={() => {
-              onOpenSub('modell');
-              onReload(site.id);
-            }}
           />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}

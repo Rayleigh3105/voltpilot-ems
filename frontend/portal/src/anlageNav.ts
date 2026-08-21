@@ -577,12 +577,13 @@ export function fleetSheetGroups(
 export function activeAreaKey(sub: AnlagenSub | null): string {
   if (sub == null) return 'cockpit';
   if (sub === 'modell') return 'anlagen-modell';
-  // Die GERÄTE-DETAILSEITE ist eine Ebene UNTER dem Anlagen-Modell (sie braucht
-  // eine Geräte-Referenz, hat also keinen eigenen Navigationspunkt und kann
-  // auch keinen haben). Sie hebt deshalb ihren Wirt hervor - sonst stünde die
-  // Navigation ohne Markierung da, während der Kunde offensichtlich IN der
-  // Zentrale ist (die `GERAETE_BEREICH`-Disziplin der Plattform-Tabs).
-  if (sub === 'geraet') return 'anlagen-modell';
+  // Die GERÄTE-DETAILSEITE und die BOX-Seite sind eine Ebene UNTER dem
+  // Anlagen-Modell (die eine braucht eine Geräte-Referenz, die andere IST das
+  // Tor der Zentrale) - beide haben keinen eigenen Navigationspunkt und heben
+  // deshalb ihren Wirt hervor; sonst stünde die Navigation ohne Markierung da,
+  // während der Kunde offensichtlich IN der Zentrale ist (die
+  // `GERAETE_BEREICH`-Disziplin der Plattform-Tabs).
+  if (sub === 'geraet' || sub === 'box') return 'anlagen-modell';
   return sub;
 }
 

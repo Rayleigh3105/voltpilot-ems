@@ -23,17 +23,14 @@ import {
 import type { SiteCharging } from '../ladepunkte';
 import {
   geraetSeite,
-  type BoxGeraet,
   type GeraetSeiteView,
   type Zeile,
 } from '../geraetSeite';
 import { plantModel, type PlantComponent } from '../komponenten';
 import { COMPONENT_ROLE_ICONS } from '../komponenten';
 import type { IconName } from '../../designsystem/components/core/Icon';
-import { unclaimConsequences } from '../components/DeviceDrawers';
-import { DangerZone } from '../components/DangerZone';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, befehleGeraetHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
+import { anlageRoute, befehleGeraetHash, hashForRoute, pageRoute } from '../nav';
 import {
   QUELLE_WORT,
   registerSicht,
@@ -92,7 +89,6 @@ export function GeraetSeiteSection({
   geraetId,
   devices,
   devicesFetchedAt = null,
-  onDeviceRemoved,
 }: {
   site: Site;
   /**
@@ -106,8 +102,6 @@ export function GeraetSeiteSection({
   devices?: Device[];
   /** Bezugszeit der Geräteliste - die Box altert dagegen (`liveness.ts`). */
   devicesFetchedAt?: number | null;
-  /** Nach einem Unclaim: die Schale lädt neu und verlässt die Seite. */
-  onDeviceRemoved?: () => void;
 }) {
   // Die BOX dieser Adresse - der Schlüssel, unter dem jedes Journal dieses
   // Geräts liegt (geschrieben wird immer über sie). Früh abgeleitet, weil die
@@ -354,50 +348,35 @@ export function GeraetSeiteSection({
               <ZeilenListe zeilen={view.verbindung} />
             </Sektion>
 
-            {view.art === 'box' ? (
-              <Sektion titel="Geräte an dieser Box" icon="cpu">
-                {view.liveLeer && <p className="vp-note">{view.liveLeer}</p>}
-                {view.boxGeraete.length > 0 && (
-                  <ul className="vp-geraet-liste">
-                    {view.boxGeraete.map((g) => (
-                      <BoxGeraetZeile key={g.geraetId} geraet={g} siteId={site.id} ref_={geraeteRef} />
-                    ))}
-                  </ul>
-                )}
-              </Sektion>
-            ) : (
-              <Sektion
-                titel="Live-Werte vom Gerät"
-                icon="activity"
-                zusatz={view.liveStand ? `Stand ${view.liveStand}` : null}
-              >
-                {view.liveLeer && <p className="vp-note">{view.liveLeer}</p>}
-                {view.live.length > 0 && (
-                  <div className="vp-geraet-kacheln">
-                    {view.live.map((k) => (
-                      <div className="vp-geraet-kachel" key={k.label}>
-                        <span className="l">{k.label}</span>
-                        <span className="v">{k.wert}</span>
-                        {k.wort && <span className="w">{k.wort}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Sektion>
-            )}
+            <Sektion
+              titel="Live-Werte vom Gerät"
+              icon="activity"
+              zusatz={view.liveStand ? `Stand ${view.liveStand}` : null}
+            >
+              {view.liveLeer && <p className="vp-note">{view.liveLeer}</p>}
+              {view.live.length > 0 && (
+                <div className="vp-geraet-kacheln">
+                  {view.live.map((k) => (
+                    <div className="vp-geraet-kachel" key={k.label}>
+                      <span className="l">{k.label}</span>
+                      <span className="v">{k.wert}</span>
+                      {k.wort && <span className="w">{k.wort}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Sektion>
 
-            {view.art !== 'box' && (
-              <Sektion titel="Misst & steuert" icon="layers" breit>
-                {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
-                {view.komponenten.length > 0 && (
-                  <ul className="vp-geraet-komps">
-                    {view.komponenten.map((c) => (
-                      <KomponentenZeile key={c.id} komponente={c} siteId={site.id} />
-                    ))}
-                  </ul>
-                )}
-              </Sektion>
-            )}
+            <Sektion titel="Misst & steuert" icon="layers" breit>
+              {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
+              {view.komponenten.length > 0 && (
+                <ul className="vp-geraet-komps">
+                  {view.komponenten.map((c) => (
+                    <KomponentenZeile key={c.id} komponente={c} siteId={site.id} />
+                  ))}
+                </ul>
+              )}
+            </Sektion>
 
             <GeleseneRegisterSektion
               art={view.art}
@@ -418,7 +397,7 @@ export function GeraetSeiteSection({
               siteId={site.id}
               boxDeviceId={box?.id ?? null}
               geraetName={view.kopf.titel}
-              box={view.art === 'box'}
+              box={false}
               entityIds={view.komponenten.map((c) => c.entityId)}
               targets={targets}
             />
@@ -489,12 +468,6 @@ export function GeraetSeiteSection({
             </details>
           )}
 
-          {view.gefahrenzone && box && (
-            <Card padding="lg" radius="lg">
-              <span className="vp-card-label">Unumkehrbar</span>
-              <GefahrenZone device={box} onRemoved={onDeviceRemoved} />
-            </Card>
-          )}
         </>
       )}
     </div>
@@ -533,7 +506,7 @@ function GeleseneRegisterSektion({
     exportLimit,
     // Dieselbe Grenze wie beim Kommando-Verlauf: die Box hat jeden Vorgang,
     // ein Gerät dahinter nur die seiner Komponenten.
-    writes: geraeteVerlauf(writes ?? [], { box: art === 'box', entityIds }),
+    writes: geraeteVerlauf(writes ?? [], { box: false, entityIds }),
     source,
     familie,
     knowledge,
@@ -781,29 +754,6 @@ function ZeilenListe({ zeilen }: { zeilen: Zeile[] }) {
   );
 }
 
-/** Ein Gerät AN der Box - eine Zeile mit dem Weg auf seine eigene Seite. */
-function BoxGeraetZeile({
-  geraet,
-  siteId,
-  ref_,
-}: {
-  geraet: BoxGeraet;
-  siteId: string;
-  ref_: string;
-}) {
-  return (
-    <li>
-      <a className="vp-geraet-zeile" href={geraetSeiteHash(siteId, ref_, geraet.geraetId)}>
-        <span className={`vp-health-dot vp-health-${geraet.ton}`} />
-        <span className="nm">{geraet.name}</span>
-        <span className="ty">{geraet.art}</span>
-        <span className="st">{geraet.zustand}</span>
-        <Icon name="chevron-right" size={16} />
-      </a>
-    </li>
-  );
-}
-
 /**
  * Eine Komponente dieses Geräts - WÖRTLICH die Zeile aus dem Anlagen-Modell,
  * nur ohne ihr Menü: die Handlungen (Umbenennen, Zuordnung, Löschen) wohnen
@@ -847,87 +797,3 @@ function KomponentenZeile({
   );
 }
 
-/**
- * Die Gefahrenzone der BOX - Datenaufzeichnungen löschen und Gerät entfernen.
- * Beide Folgenlisten sind die BESTEHENDEN (`unclaimConsequences` + die Purge-
- * Liste des Geräte-Einschubs), damit die zwei Wege nie Verschiedenes
- * versprechen (die E3-Nebenwirkungs-Regel).
- */
-function GefahrenZone({
-  device,
-  onRemoved,
-}: {
-  device: Device;
-  onRemoved?: () => void;
-}) {
-  const [purgeBusy, setPurgeBusy] = useState(false);
-  const [purgeError, setPurgeError] = useState<string | null>(null);
-  const [purgeDone, setPurgeDone] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const name = device.name || device.externalRef;
-
-  return (
-    <>
-      {purgeDone ? (
-        <div className="vp-alert vp-alert-ok">
-          <b>Datenaufzeichnungen gelöscht.</b> Neue Messwerte werden ab jetzt wieder normal
-          aufgezeichnet.
-        </div>
-      ) : (
-        <DangerZone
-          actionLabel="Datenaufzeichnungen löschen"
-          description="Löscht alle bisher aufgezeichneten Messdaten dieses Geräts unwiderruflich. Das Gerät bleibt verbunden und zeichnet ab sofort wieder neu auf."
-          consequences={[
-            `Alle Messdaten von „${name}" werden endgültig gelöscht - auch aus Verlauf, Historie und Statistiken`,
-            'Auch der lokale Zwischenspeicher auf dem Gerät wird geleert; ist das Gerät gerade offline, passiert das automatisch beim nächsten Verbinden',
-            'Das Gerät selbst bleibt verbunden und funktioniert unverändert weiter - neue Messwerte laufen normal ein',
-          ]}
-          confirmLabel="Datenaufzeichnungen endgültig löschen"
-          typeToConfirm={name}
-          busy={purgeBusy}
-          error={purgeError}
-          onConfirm={() => {
-            setPurgeBusy(true);
-            setPurgeError(null);
-            api.purgeDeviceData(device.id).then(
-              () => {
-                setPurgeDone(true);
-                setPurgeBusy(false);
-              },
-              () => {
-                setPurgeError(
-                  'Die Datenaufzeichnungen konnten nicht gelöscht werden. Bitte versuchen Sie es erneut.',
-                );
-                setPurgeBusy(false);
-              },
-            );
-          }}
-        />
-      )}
-
-      <DangerZone
-        actionLabel="Gerät entfernen"
-        description="Falsches Gerät verbunden? Entfernen macht die Geräte-ID wieder frei - sie kann danach erneut (auch von einem anderen Konto) verbunden werden."
-        consequences={unclaimConsequences(device)}
-        confirmLabel="Gerät endgültig entfernen"
-        busy={deleteBusy}
-        error={deleteError}
-        onConfirm={() => {
-          setDeleteBusy(true);
-          setDeleteError(null);
-          api.deleteDevice(device.id).then(
-            () => {
-              setDeleteBusy(false);
-              onRemoved?.();
-            },
-            () => {
-              setDeleteError('Das Gerät konnte nicht entfernt werden. Bitte versuchen Sie es erneut.');
-              setDeleteBusy(false);
-            },
-          );
-        }}
-      />
-    </>
-  );
-}

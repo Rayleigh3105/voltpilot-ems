@@ -5459,6 +5459,34 @@ class PortalApiTest {
         Map<String, Object> after = (Map<String, Object>) updated.getBody().get(0);
         assertThat(after.get("coreVersion")).isEqualTo("1.5.0");
         assertThat(after.get("paletteVersion")).isNull();
+
+        // Geräteseiten Stufe 1 (R2a): der Kunde bekommt zusätzlich das URTEIL
+        // gegen das Release-Register - hier ist es LEER, also wird ehrlich
+        // nichts behauptet (kein Maßstab ⇒ beide Felder null).
+        assertThat(after.get("newestRelease")).isNull();
+        assertThat(after.get("upToDate")).isNull();
+
+        // Mit Register: der gemeldete Stand ist nicht eingetragen - das ist eine
+        // Lücke im REGISTER, keine Alters-Aussage. Der Soll steht trotzdem.
+        exec("INSERT INTO edge_release (release_seq, version, target_commit, created_by) "
+                + "VALUES (4200, 'edge-2099.01.1', 'deadbeef', 'test')");
+        try {
+            Map<String, Object> judged = (Map<String, Object>) rest
+                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody().get(0);
+            assertThat(judged.get("newestRelease")).isEqualTo("edge-2099.01.1");
+            assertThat(judged.get("upToDate")).as("nicht registriert ist NIE veraltet").isNull();
+
+            // Und der Normalfall: die Box fährt den Soll-Stand, mit dem
+            // Tag-Lauf-Stempel `<tag>-<kurzsha>` (die PRÄFIX-Regel).
+            listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:45:00Z\","
+                    + "\"flows\":{\"core_version\":\"edge-2099.01.1-9b37439a02c1\","
+                    + "\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
+            Map<String, Object> current = (Map<String, Object>) rest
+                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody().get(0);
+            assertThat(current.get("upToDate")).isEqualTo(Boolean.TRUE);
+        } finally {
+            exec("DELETE FROM edge_release WHERE release_seq = 4200");
+        }
     }
 
     /**

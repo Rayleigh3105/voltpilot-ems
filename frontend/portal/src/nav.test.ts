@@ -29,6 +29,7 @@ import {
   type Route,
   komponenteHash,
   parseKomponente,
+  boxSeiteHash,
 } from './nav';
 import { anlageSidebar, moreSheetItems } from './anlageNav';
 import { anlageSurface } from './surface';
@@ -43,6 +44,8 @@ const ALL_SUBS: AnlagenSub[] = [
   'modell',
   'steuerung',
   'lastspitzen',
+  // ⚠ `geraet`/`box` stehen bewusst NICHT hier: beide sind eine Ebene UNTER
+  // dem Anlagen-Modell und haben keinen eigenen Navigationspunkt.
 ];
 
 /**
@@ -207,10 +210,13 @@ describe('M1: no route breaks when the tab bar is retired', () => {
    * Abschnitte, ADDITIV - jede bestehende Adresse ist unverändert gültig.
    */
   it('liest die zwei zusätzlichen Abschnitte der Geräteseite', () => {
+    // ⚠ OHNE Gerät dahinter meint die Adresse die BOX (E3) - sie ist ein TOR,
+    // kein Gerät, und das sagt seit Geräteseiten Stufe 1 auch die Adresse. Die
+    // Referenz reist mit, die Weiterleitung ist also verlustfrei.
     expect(parseRoute('#/anlage/s-1/geraet/edge-45gz7da')).toEqual({
       page: 'anlagen',
       siteId: 's-1',
-      sub: 'geraet',
+      sub: 'box',
       geraet: { ref: 'edge-45gz7da', geraetId: null },
     });
     expect(parseRoute('#/anlage/s-1/geraet/edge-45gz7da/inverter')).toEqual({
@@ -234,12 +240,52 @@ describe('M1: no route breaks when the tab bar is retired', () => {
     });
   });
 
+  /**
+   * Die BOX-Seite (`#/anlage/{id}/box[/{ref}]`, E3): das Tor bekommt eine
+   * eigene Adresse, und JEDES Lesezeichen der alten bleibt gültig - die
+   * Weiterleitung trägt die Referenz mit, damit auch eine Anlage mit mehreren
+   * beanspruchten Geräten sie noch auflösen kann.
+   */
+  it('gibt der BOX eine eigene Adresse und leitet die alte verlustfrei um', () => {
+    expect(parseRoute('#/anlage/s-1/box')).toEqual({
+      page: 'anlagen',
+      siteId: 's-1',
+      sub: 'box',
+      geraet: undefined,
+    });
+    expect(parseRoute('#/anlage/s-1/box/edge-45gz7da')).toEqual({
+      page: 'anlagen',
+      siteId: 's-1',
+      sub: 'box',
+      geraet: { ref: 'edge-45gz7da', geraetId: null },
+    });
+    // Rundlauf über den Schreiber, mit und ohne Referenz.
+    expect(boxSeiteHash('s-1')).toBe('#/anlage/s-1/box');
+    expect(parseRoute(boxSeiteHash('s-1', 'edge-45gz7da')).geraet)
+      .toEqual({ ref: 'edge-45gz7da', geraetId: null });
+    // Und die kanonische Umschreibung der ALTEN Adresse - sie behält die
+    // Referenz UND die Parameter (die `canonicalAnlageHash`-Zusage).
+    expect(canonicalAnlageHash('#/anlage/s-1/geraet/edge-45gz7da'))
+      .toBe('#/anlage/s-1/box/edge-45gz7da');
+    expect(canonicalAnlageHash('#/anlage/s-1/geraet/edge-45gz7da?ansicht=schaltbild'))
+      .toBe('#/anlage/s-1/box/edge-45gz7da?ansicht=schaltbild');
+    // Eine Adresse MIT Gerät bleibt unangetastet - `geraet` ist nicht
+    // stillgelegt, nur seine geräteLOSE Form.
+    expect(canonicalAnlageHash('#/anlage/s-1/geraet/edge-45gz7da/inverter')).toBeNull();
+  });
+
   it('schreibt die Geräteseite als Hash zurück (Rundlauf)', () => {
-    for (const geraetId of [null, 'inverter', 'cp-CARPORT 1']) {
+    for (const geraetId of ['inverter', 'cp-CARPORT 1']) {
       const hash = geraetSeiteHash('s-1', 'edge-45gz7da', geraetId);
       expect(parseRoute(hash).geraet).toEqual({ ref: 'edge-45gz7da', geraetId });
       expect(hashForRoute(parseRoute(hash))).toBe(hash);
     }
+    // ⚠ Die geräteLOSE Form ist die AUSNAHME: sie meint die Box, wird also
+    // beim Zurückschreiben auf deren Adresse kanonisiert (E3) - genau das ist
+    // die Weiterleitung, und ihr Ziel behält die Referenz.
+    const boxAlt = geraetSeiteHash('s-1', 'edge-45gz7da', null);
+    expect(parseRoute(boxAlt).geraet).toEqual({ ref: 'edge-45gz7da', geraetId: null });
+    expect(hashForRoute(parseRoute(boxAlt))).toBe('#/anlage/s-1/box/edge-45gz7da');
   });
 
   it('trägt das Geräte-Feld NUR auf der Geräteseite', () => {
