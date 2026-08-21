@@ -29,6 +29,8 @@ import {
   type SidebarItem,
 } from '../anlageNav';
 import type { HealthBadge } from '../health';
+import { VpPicker } from '../components/VpPicker';
+import type { VpOption } from '../picker/optionen';
 import type { AnlagenSub } from '../nav';
 import { HealthBadgeButton } from './HealthBadgeButton';
 import './Shell.css';
@@ -48,6 +50,16 @@ export interface AnlageNav {
   siteName: string;
   /** All Anlagen of the tenant; 2+ turn the label into a real switcher. */
   sites: { id: string; name: string }[];
+  /**
+   * Die ANGEREICHERTEN Zeilen des Anlagen-Pickers (`anlagenWahl.anlagenOptionen`):
+   * je Anlage Gesundheits-Punkt + Nebenzeile, plus „Alle Anlagen" ganz oben.
+   *
+   * ⚠ Sie kommen FERTIG von aussen - die Schale rechnet keine Gesundheit. Eine
+   * zweite Ableitung liesse Kopfzeile und Liste über dieselbe Anlage
+   * Verschiedenes behaupten. Fehlen sie (älterer Aufrufer), fällt der Picker
+   * auf blosse Namen zurück.
+   */
+  siteOptions?: VpOption[];
   onSelectSite: (siteId: string) => void;
   /** The grouped sidebar model (`anlageSidebar`), never re-derived here. */
   sidebar: AnlageSidebar;
@@ -61,7 +73,10 @@ export interface AnlageNav {
   health: HealthBadge | null;
 }
 
-/** The value the Anlage switcher uses for its "Alle Anlagen" option. */
+/**
+ * The value the Anlage switcher uses for its "Alle Anlagen" option - wortgleich
+ * mit `anlagenWahl.ALLE_ANLAGEN` (die Zeilen kommen von dort).
+ */
 const ALL_SITES = '__all__';
 
 /**
@@ -226,6 +241,27 @@ export function AppShell({
   );
 
   /**
+   * Die Zeilen des Anlagen-Pickers. Kommen sie fertig von aussen
+   * (`anlagenWahl.anlagenOptionen`), tragen sie Punkt und Nebenzeile; sonst
+   * bleibt es beim blossen Namen - nie eine hier erfundene Gesundheit.
+   */
+  const anlagenZeilen: VpOption[] = anlage
+    ? anlage.siteOptions
+      ?? [
+        ...anlage.sites.map((s) => ({ value: s.id, label: s.name })),
+        ...(anlage.onOpenFleet
+          ? [{ value: ALL_SITES, label: 'Alle Anlagen', sub: 'Zurück zur Übersicht' }]
+          : []),
+      ]
+    : [];
+
+  /** Der EINE Ort, an dem ein Anlagen-Wechsel entschieden wird. */
+  const waehleAnlage = (wert: string) => {
+    if (wert === ALL_SITES) anlage?.onOpenFleet?.();
+    else anlage?.onSelectSite(wert);
+  };
+
+  /**
    * The Anlage context card: which plant am I looking at, and is it healthy.
    * A fleet gets a real switcher (plus "Alle Anlagen" back to the fleet
    * landing); a single-Anlage customer a calm static label.
@@ -234,24 +270,21 @@ export function AppShell({
     <div className="vp-anlagenav">
       <div className="vp-anlagenav-ctx">
         {anlage.sites.length > 1 || anlage.onOpenFleet ? (
-          <span className="vp-anlagenav-switch" title="Anlage wechseln">
+          // DER VORZEIGE-PICKER (Konzept `vp-picker-system`, Entscheid 4):
+          // durchsuchbar, je Anlage ein Gesundheits-Punkt und eine Nebenzeile.
+          // Der Zustands-Streifen darunter bleibt - er gilt der GEÖFFNETEN
+          // Anlage und beantwortet damit eine andere Frage als die Liste.
+          <span className="vp-anlagenav-switch">
             <Icon name="sun" size={16} className="vp-anlagenav-ic" />
             <span className="vp-anlagenav-body">
-              <select
-                aria-label="Anlage wählen"
+              <VpPicker
+                ariaLabel="Anlage wählen"
+                className="vp-anlagenav-picker"
+                options={anlagenZeilen}
                 value={anlage.siteId}
-                onChange={(e) => {
-                  if (e.target.value === ALL_SITES) anlage.onOpenFleet?.();
-                  else anlage.onSelectSite(e.target.value);
-                }}
-              >
-                {anlage.sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-                {anlage.onOpenFleet && <option value={ALL_SITES}>Alle Anlagen</option>}
-              </select>
+                onChange={waehleAnlage}
+                searchPlaceholder="Anlage suchen …"
+              />
               {anlage.health && (
                 <span className={`vp-anlagenav-health state-${anlage.health.state}`}>
                   <span className="vp-health-dot" aria-hidden="true" />
@@ -259,7 +292,6 @@ export function AppShell({
                 </span>
               )}
             </span>
-            <Icon name="chevron-down" size={16} className="vp-anlagenav-caret" />
           </span>
         ) : (
           <span className="vp-anlagenav-label">
@@ -415,25 +447,20 @@ export function AppShell({
                 {canSwitchAnlage && (
                   <>
                     <Icon name="chevron-down" size={16} className="vp-tb-caret" />
-                    {/* Phone-only (CSS): the native picker is the best plant
-                        switcher a thumb can get, and it covers the whole block
-                        so the tap target is the full top-bar height. */}
-                    <select
-                      className="vp-tb-switch"
-                      aria-label="Anlage wechseln"
+                    {/* Phone-only (CSS): der Auslöser ist eine UNSICHTBARE
+                        Fläche über dem ganzen Block, damit die Trefferfläche
+                        die volle Kopfzeilen-Höhe ist. Angetippt öffnet er das
+                        Bottom-Sheet - dieselben Zeilen wie in der
+                        Seitenleiste, samt Punkt und Nebenzeile. */}
+                    <VpPicker
+                      className="vp-tb-switchwrap"
+                      triggerClassName="vp-tb-switch"
+                      ariaLabel="Anlage wechseln"
+                      options={anlagenZeilen}
                       value={anlage.siteId}
-                      onChange={(e) => {
-                        if (e.target.value === ALL_SITES) anlage.onOpenFleet?.();
-                        else anlage.onSelectSite(e.target.value);
-                      }}
-                    >
-                      {anlage.sites.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                      {anlage.onOpenFleet && <option value={ALL_SITES}>Alle Anlagen</option>}
-                    </select>
+                      onChange={waehleAnlage}
+                      searchPlaceholder="Anlage suchen …"
+                    />
                   </>
                 )}
               </div>

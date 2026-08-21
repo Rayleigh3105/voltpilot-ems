@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { AppShell } from './AppShell';
@@ -249,11 +251,13 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
       onSelectSite,
       onOpenFleet,
     });
-    const select = screen.getByLabelText('Anlage wählen');
-    expect(select.querySelector('option[value="s-2"]')?.textContent).toBe('Halle Nord');
-    fireEvent.change(select, { target: { value: 's-2' } });
+    // Seit dem Picker-System ist der Wechsler ein VpPicker, kein `<select>`:
+    // aufklappen, Zeile antippen. Der Wert ist derselbe.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Anlage wählen' }));
+    fireEvent.click(screen.getByRole('option', { name: /Halle Nord/ }));
     expect(onSelectSite).toHaveBeenCalledWith('s-2');
-    fireEvent.change(select, { target: { value: '__all__' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Anlage wählen' }));
+    fireEvent.click(screen.getByRole('option', { name: /Alle Anlagen/ }));
     expect(onOpenFleet).toHaveBeenCalledTimes(1);
   });
 
@@ -342,8 +346,10 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     // Name + Zustands-Unterzeile leben in EINEM Block (am Telefon gestapelt).
     expect(block.querySelector('.here')?.textContent).toBe('Hof Lindenberg');
     expect(block.querySelector('.vp-healthbadge')).not.toBeNull();
-    const switcher = within(block).getByLabelText('Anlage wechseln');
-    fireEvent.change(switcher, { target: { value: 's-2' } });
+    // Der Wechsler ist seit dem Picker-System eine unsichtbare Fläche über dem
+    // ganzen Block, die das Sheet öffnet - kein natives `<select>` mehr.
+    fireEvent.click(within(block).getByRole('combobox', { name: 'Anlage wechseln' }));
+    fireEvent.click(screen.getByRole('option', { name: /Halle Nord/ }));
     expect(onSelectSite).toHaveBeenCalledWith('s-2');
 
     // Ein Kunde mit genau EINER Anlage bekommt keinen Wechsler vorgegaukelt.
@@ -352,6 +358,15 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(
       single.container.querySelector('.vp-topbar-anlage .vp-tb-switch'),
     ).toBeNull();
+  });
+
+  it('⚠ versteckt den Telefon-Wechsler mit einem Spezifitäts-SCHRITT', () => {
+    // Im Browser gemessen: `.vp-picker` setzt `display: flex` aus einem
+    // komponenten-lokalen Stylesheet - bei gleicher Spezifität entschiede die
+    // Bündel-Reihenfolge, und der Wechsler stand bei 1440 px in der Kopfzeile.
+    const css = readFileSync(join(process.cwd(), 'src/shell/Shell.css'), 'utf8');
+    expect(css).toContain('.vp-app .vp-tb-switchwrap,');
+    expect(css).toMatch(/\.vp-app \.vp-tb-switchwrap \{\s*display: block;/);
   });
 
   it('faltet „＋ Anlage" und „Abmelden" ins Blatt (sie verlassen die Kopfzeile am Telefon)', () => {
