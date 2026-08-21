@@ -711,3 +711,223 @@ export function ablehnungText(
   const kopf = 'Ihre VoltPilot-Box konnte die letzte Änderung nicht übernehmen; es läuft weiter der vorherige Stand.';
   return grund ? `${kopf} Grund: ${grund}` : kopf;
 }
+
+// ─── Modell-SUCHE (Captain 21.08.2026, Scout `vp-geraeteseite-rev-b8` NACHTRAG 5)
+
+/**
+ * „Bitte bei den Modellen eine Suche einbauen. Das ist ziemlich schwierig ein
+ * Modell zu finden." - der Captain-Befund beim Anlegen eines
+ * SUN-30K-SG02HP3-EU-AM3.
+ *
+ * Der behobene Schmerz ist das STUFENMENÜ: wer sein Modell nicht schon einer
+ * Marke zuordnen kann, muss sieben Marken durchklicken, um 47 Vorlagen zu
+ * sehen - und wer den Namen vom Typenschild abtippt („SUN 30K"), findet in
+ * einem `<select>` gar nichts, weil ein natives Auswahlfeld nur auf den
+ * Zeilenanfang springt.
+ *
+ * **⚠ DIE SUCHE ERFINDET KEINE VORLAGE.** Sie filtert genau die Liste, die das
+ * Stufenmenü daneben zeigt (`templatesFuerTuer`) - dieselbe Quelle, dasselbe
+ * Ergebnis, nur ein anderer Weg dorthin. Das Stufenmenü bleibt als
+ * Stöber-Alternative erhalten: wer seine Marke kennt, klickt weiter.
+ */
+
+/** Ein Stück Text eines Treffers - `treffer` markiert die Fundstelle. */
+export interface TextTeil {
+  text: string;
+  treffer: boolean;
+}
+
+export interface ModellTreffer {
+  template: ComponentTemplate;
+  /** Der Marken-Name, mit hervorgehobenen Fundstellen. */
+  marke: TextTeil[];
+  /** Der Modell-Name, mit hervorgehobenen Fundstellen. */
+  modell: TextTeil[];
+  /** „30 kW · Hybrid, 3-phasig · Solarman-Logger" - was davon bekannt ist. */
+  zusatz: string;
+}
+
+export interface ModellSuche {
+  /** Die Treffer, beste zuerst - gedeckelt auf {@link MAX_TREFFER}. */
+  treffer: ModellTreffer[];
+  /** Wie viele es INSGESAMT gibt (der Deckel wird nie verschwiegen). */
+  gesamt: number;
+  /** Der Satz, wenn nichts passt - nie ein stiller leerer Bereich. */
+  leer: string | null;
+  /** Die Zeile über der Liste („12 von 47 Vorlagen"), oder null ohne Suche. */
+  zaehler: string | null;
+}
+
+/**
+ * Wie viele Treffer die Liste zeigt. Mehr wäre wieder eine Liste zum
+ * Durchscrollen - und genau die ist der Grund für die Suche.
+ */
+export const MAX_TREFFER = 12;
+
+/**
+ * ⚠ Die Schreibweise darf nicht entscheiden, ob jemand sein Gerät findet.
+ * Ein Typenschild trennt mit Bindestrichen, ein Mensch tippt Leerzeichen, ein
+ * Datenblatt schreibt zusammen - normalisiert wird deshalb auf BEIDEN Seiten:
+ * klein, ohne Trennzeichen, ohne Umlaut-Eigenheiten.
+ */
+export function normalisiereSuche(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ß/g, 'ss')
+    .replace(/[\s\-_./]/g, '');
+}
+
+/** Die Suchbegriffe - jeder muss vorkommen (UND, nie ODER). */
+export function suchBegriffe(query: string): string[] {
+  return query
+    .trim()
+    .split(/\s+/)
+    .map((t) => normalisiereSuche(t))
+    .filter((t) => t !== '');
+}
+
+/**
+ * Die Fundstellen eines Begriffs IM ORIGINALTEXT.
+ *
+ * ⚠ Gesucht wird auf der normalisierten Fassung, hervorgehoben im ORIGINAL -
+ * die zwei haben verschiedene Längen (aus „SUN-30K" wird „sun30k"), deshalb
+ * trägt jede Original-Position ihren Index in der normalisierten Fassung.
+ */
+export function hervorheben(text: string, begriffe: string[]): TextTeil[] {
+  if (begriffe.length === 0 || text === '') return [{ text, treffer: false }];
+  // Position je Zeichen der NORMALISIERTEN Fassung → Position im Original.
+  const norm: string[] = [];
+  const pos: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const n = normalisiereSuche(text[i]);
+    for (let k = 0; k < n.length; k += 1) {
+      norm.push(n[k]);
+      pos.push(i);
+    }
+  }
+  const flach = norm.join('');
+  const markiert = new Array<boolean>(text.length).fill(false);
+  for (const b of begriffe) {
+    let from = 0;
+    for (;;) {
+      const at = flach.indexOf(b, from);
+      if (at === -1) break;
+      for (let k = at; k < at + b.length; k += 1) markiert[pos[k]] = true;
+      from = at + b.length;
+    }
+  }
+  // ⚠ Ein Trennzeichen INNERHALB einer Fundstelle wird mit markiert: es kommt
+  // in der normalisierten Fassung gar nicht vor, bliebe also unmarkiert und
+  // risse „SUN-30K" optisch in zwei Treffer auseinander.
+  for (let i = 1; i < text.length - 1; i += 1) {
+    if (markiert[i] || normalisiereSuche(text[i]) !== '') continue;
+    let links = i - 1;
+    while (links >= 0 && normalisiereSuche(text[links]) === '') links -= 1;
+    let rechts = i + 1;
+    while (rechts < text.length && normalisiereSuche(text[rechts]) === '') rechts += 1;
+    if (links >= 0 && rechts < text.length && markiert[links] && markiert[rechts]) {
+      markiert[i] = true;
+    }
+  }
+  const out: TextTeil[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const letzte = out[out.length - 1];
+    if (letzte && letzte.treffer === markiert[i]) letzte.text += text[i];
+    else out.push({ text: text[i], treffer: markiert[i] });
+  }
+  return out;
+}
+
+/**
+ * Die Zusatz-Angaben eines Treffers (Captain: „kW, Phasen, HV/LV").
+ *
+ * ⚠ Sie werden GELESEN, nie geraten: die Nennleistung steht in der Vorlage,
+ * die Phasen/Spannungslage stecken im Familien-Namen des Katalogs
+ * („Hybrid, 3-phasig"). Fehlt eines, fehlt es - nie eine erfundene 0 kW.
+ */
+export function modellZusatz(t: ComponentTemplate): string {
+  const teile: string[] = [];
+  if (typeof t.ratedKw === 'number' && Number.isFinite(t.ratedKw) && t.ratedKw > 0) {
+    teile.push(`${t.ratedKw.toLocaleString('de-DE')} kW`);
+  }
+  const familie = (t.familyLabel ?? '').trim();
+  if (familie !== '') teile.push(familie);
+  const comm = (t.communicationLabel ?? '').trim();
+  if (comm !== '') teile.push(comm);
+  return teile.join(' · ');
+}
+
+/** Was durchsucht wird - alles, was auf einem Typenschild stehen kann. */
+function heuhaufen(t: ComponentTemplate): string {
+  return normalisiereSuche([
+    t.brandLabel, t.brand, t.modelLabel, t.model,
+    t.familyLabel ?? '', t.family ?? '', t.communicationLabel ?? '',
+  ].join(' '));
+}
+
+/**
+ * Der Rang eines Treffers: was mit der Eingabe BEGINNT, steht oben.
+ *
+ * Wer „SG02" tippt, meint fast immer ein Modell und nicht eine Marke - deshalb
+ * schlägt ein Modell-Treffer einen Marken-Treffer, und ein Präfix schlägt eine
+ * Fundstelle mitten im Namen.
+ */
+function rang(t: ComponentTemplate, begriffe: string[]): number {
+  const modell = normalisiereSuche(`${t.modelLabel} ${t.model}`);
+  const marke = normalisiereSuche(`${t.brandLabel} ${t.brand}`);
+  if (begriffe.some((b) => modell.startsWith(b))) return 0;
+  if (begriffe.some((b) => modell.includes(b))) return 1;
+  if (begriffe.some((b) => marke.startsWith(b))) return 2;
+  return 3;
+}
+
+/**
+ * Die Suche über ALLE Marken und Modelle einer Tür.
+ *
+ * Ohne Eingabe gibt es KEINE Treffer und keinen Zähler - die Suche drängt sich
+ * nicht auf, das Stufenmenü daneben bleibt der ruhige Weg.
+ */
+export function modellSuche(templates: ComponentTemplate[], query: string): ModellSuche {
+  const begriffe = suchBegriffe(query);
+  if (begriffe.length === 0) {
+    return { treffer: [], gesamt: templates.length, leer: null, zaehler: null };
+  }
+  const passend = templates.filter((t) => {
+    const hay = heuhaufen(t);
+    return begriffe.every((b) => hay.includes(b));
+  });
+  if (passend.length === 0) {
+    return {
+      treffer: [],
+      gesamt: 0,
+      leer: `Keine Vorlage passt zu „${query.trim()}“. Oft reicht ein Teil des Namens, `
+        + 'zum Beispiel nur „30K“ - sonst hilft die Marken-Auswahl darunter.',
+      zaehler: null,
+    };
+  }
+  const sortiert = [...passend].sort((a, b) => {
+    const d = rang(a, begriffe) - rang(b, begriffe);
+    if (d !== 0) return d;
+    const m = a.modelLabel.localeCompare(b.modelLabel, 'de');
+    return m !== 0 ? m : a.brandLabel.localeCompare(b.brandLabel, 'de');
+  });
+  const treffer = sortiert.slice(0, MAX_TREFFER).map((t) => ({
+    template: t,
+    marke: hervorheben(t.brandLabel, begriffe),
+    modell: hervorheben(t.modelLabel, begriffe),
+    zusatz: modellZusatz(t),
+  }));
+  return {
+    treffer,
+    gesamt: passend.length,
+    leer: null,
+    // ⚠ Der Deckel wird NIE verschwiegen - eine Liste, die zwölf von dreissig
+    // zeigt und dreissig behauptet, lässt jemanden vergeblich scrollen.
+    zaehler: passend.length > MAX_TREFFER
+      ? `${treffer.length} von ${passend.length} Treffern - Suche verfeinern zeigt die übrigen.`
+      // „Treffer" ist im Deutschen im Singular wie im Plural gleich.
+      : `${passend.length} Treffer`,
+  };
+}

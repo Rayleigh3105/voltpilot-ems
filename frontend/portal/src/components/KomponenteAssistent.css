@@ -618,3 +618,69 @@
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+
+/* --- Modell-SUCHE (Captain 21.08.2026, NACHTRAG 5) ------------------------
+   Sie steht ÜBER dem Stufenmenü: sie ist der primäre Weg, das Menü der
+   Stöber-Weg. Beide schöpfen aus derselben Liste. */
+
+.vp-assist-suche {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+  font: inherit;
+}
+
+.vp-assist-treffer {
+  list-style: none;
+  margin: 8px 0 4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vp-assist-treffer > li > button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+  cursor: pointer;
+  font: inherit;
+}
+
+.vp-assist-treffer > li > button:hover,
+.vp-assist-treffer > li > button:focus-visible {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-surface-2, #f7fafc);
+}
+
+.vp-assist-treffer strong {
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-assist-treffer-marke,
+.vp-assist-treffer-zusatz {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+/* Die Fundstelle wird betont, nicht eingefärbt - der Text bleibt lesbar. */
+.vp-assist-treffer mark {
+  background: var(--vp-flow-pv-soft, #fef3c7);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}

@@ -445,3 +445,101 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
     expect((screen.getByText('Weiter').closest('button') as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+/**
+ * Die Modell-SUCHE (NACHTRAG 5, Captain 21.08.2026).
+ *
+ * Sie ist der PRIMÄRE Weg über alle Marken; das Stufenmenü bleibt daneben
+ * stehen. Beide schöpfen aus derselben Liste - hier wird geprüft, dass ein
+ * Treffer wirklich dieselbe Vorlage wählt wie das Menü.
+ */
+describe('die Modell-Suche im Assistenten', () => {
+  // Der Katalog-Eintrag der Vorlage trägt die Nennleistung - der Zusatz
+  // beantwortet „ist das meins?" ohne Klick.
+  const deye = { ...template, ratedKw: 30 };
+  const fronius = {
+    ...template,
+    templateRef: 'builtin:fronius:symo-15',
+    brand: 'fronius',
+    brandLabel: 'Fronius',
+    model: 'symo-15',
+    modelLabel: 'Symo 15.0-3-M',
+    family: 'sunspec_live',
+    familyLabel: 'SunSpec',
+    communication: 'fronius_sunspec',
+    communicationLabel: 'SunSpec Modbus TCP',
+    ratedKw: 15,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    componentTemplates.mockResolvedValue([deye, fronius]);
+    siteComponents.mockResolvedValue({ componentAuthority: 'portal', components: [] });
+    matchComponent.mockResolvedValue(undefined);
+  });
+
+  async function bisZurTuer() {
+    render(<KomponenteHinzufuegenDrawer siteId="s1" onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByText('Gerät aus dem VoltPilot-Katalog'));
+    return screen.findByLabelText('Modell suchen');
+  }
+
+  it('führt ohne Marken-Auswahl direkt zum Modell - tolerant gegen Schreibweisen', async () => {
+    const feld = await bisZurTuer();
+    // Ohne jeden Bindestrich getippt - genau die Schreibweise, die das
+    // Stufenmenü nie gefunden hätte.
+    fireEvent.change(feld, { target: { value: 'sun30k' } });
+
+    const treffer = await screen.findByTestId('suche-treffer');
+    // Genau die eine Deye - die Fronius ist kein Treffer.
+    expect(treffer.querySelectorAll('li').length).toBe(1);
+    expect(treffer.textContent).toContain('SUN-30K-SG01HP3-EU');
+    expect(treffer.textContent).toContain('Deye');
+    // Der Zusatz beantwortet „ist das meins?" ohne Klick.
+    expect(treffer.textContent).toContain('30 kW');
+    expect(treffer.textContent).toContain('Hybrid, 3-phasig');
+  });
+
+  it('wählt über den Treffer DIESELBE Vorlage wie das Stufenmenü', async () => {
+    const feld = await bisZurTuer();
+    fireEvent.change(feld, { target: { value: 'symo' } });
+
+    // Der Name ist durch die Hervorhebung in Stücke geteilt - geklickt wird
+    // die Trefferzeile, nicht ein Textknoten.
+    const treffer = await screen.findByTestId('suche-treffer');
+    const zeile = treffer.querySelector('button') as HTMLButtonElement;
+    expect(zeile.textContent).toContain('Symo 15.0-3-M');
+    fireEvent.click(zeile);
+
+    // Schritt 2 mit den Feldern GENAU dieser Vorlage.
+    await screen.findByText('Verbindung zu Symo 15.0-3-M');
+    // Und die Marke ist MITGEWANDERT, damit der Rückweg über das Stufenmenü
+    // beim gefundenen Modell steht statt bei der Marke davor.
+    fireEvent.click(screen.getByText('Zurück'));
+    const marke = (await screen.findByLabelText('Marke')) as HTMLSelectElement;
+    expect(marke.value).toBe('fronius');
+  });
+
+  it('sagt bei einem Tippfehler den WEG, statt still leer zu bleiben', async () => {
+    const feld = await bisZurTuer();
+    fireEvent.change(feld, { target: { value: 'huawei' } });
+
+    const leer = await screen.findByTestId('suche-leer');
+    expect(leer.textContent).toContain('Keine Vorlage passt');
+    expect(leer.textContent).toContain('Marken-Auswahl');
+    expect(screen.queryByTestId('suche-treffer')).toBeNull();
+  });
+
+  it('lässt das Stufenmenü daneben stehen', async () => {
+    await bisZurTuer();
+    // Der Stöber-Weg bleibt der Rückfall - er darf nie verschwinden.
+    expect(screen.getByLabelText('Marke')).toBeTruthy();
+  });
+
+  it('zeigt ohne Eingabe weder Treffer noch Zähler', async () => {
+    await bisZurTuer();
+    expect(screen.queryByTestId('suche-treffer')).toBeNull();
+    expect(screen.queryByTestId('suche-zaehler')).toBeNull();
+    expect(screen.queryByTestId('suche-leer')).toBeNull();
+  });
+});

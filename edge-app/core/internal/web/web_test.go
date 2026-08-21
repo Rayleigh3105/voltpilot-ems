@@ -1128,6 +1128,10 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		// The "Verbindung testen" buttons + result panels (inverter form + drawer).
 		`id="invTestBtn"`, `id="invVerify"`, `id="srcTestBtn"`, `id="srcVerify"`,
 		`href="dashboard.css"`, `href="inverter.css"`, `src="verify.js"`, `src="inverter.js"`,
+		// Die Modell-SUCHE ist der primäre Weg zum Modell und läuft über ALLE
+		// Marken; ihre reinen Regeln liegen in modellsuche.js. Ohne das Skript
+		// wäre der Picker still kaputt (window.VPModellSuche fehlte).
+		`src="modellsuche.js"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("einrichten.html: missing %s", want)
@@ -1135,6 +1139,14 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	}
 	if strings.Contains(page, "app.css") {
 		t.Error("einrichten.html: still references the retired app.css")
+	}
+
+	// Die Suche wird AUSGELIEFERT und hängt an window - inverter.js ruft sie so.
+	suche := get("/modellsuche.js")
+	for _, want := range []string{"VPModellSuche", "hervorheben", "suche"} {
+		if !strings.Contains(suche, want) {
+			t.Errorf("modellsuche.js: missing %s", want)
+		}
 	}
 
 	css := get("/inverter.css")
