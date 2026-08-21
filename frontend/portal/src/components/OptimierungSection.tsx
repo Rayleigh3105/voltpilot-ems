@@ -5,6 +5,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpPicker } from './VpPicker';
 import { api, ApiError, type PeakShaving, type Site, type SiteAsset } from '../api';
 import {
   AUTOMATIC_MODULES,
@@ -389,20 +390,16 @@ function LastspitzenAdminEditor({
           value={leistungspreis}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLeistungspreis(e.target.value)}
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="lsk-abrechnung" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Abrechnung
-          </label>
-          <select
-            id="lsk-abrechnung"
-            className="vp-select"
-            value={abrechnung}
-            onChange={(e) => setAbrechnung(e.target.value as LeistungspreisAbrechnung)}
-          >
-            <option value="jahr">Jahresleistungspreis</option>
-            <option value="monat">Monatsleistungspreis</option>
-          </select>
-        </div>
+        <VpPicker
+          id="lsk-abrechnung"
+          label="Abrechnung"
+          options={[
+            { value: 'jahr', label: 'Jahresleistungspreis' },
+            { value: 'monat', label: 'Monatsleistungspreis' },
+          ]}
+          value={abrechnung}
+          onChange={(v) => setAbrechnung(v as LeistungspreisAbrechnung)}
+        />
         <Input
           label="Reserve (kW)"
           placeholder="optional"

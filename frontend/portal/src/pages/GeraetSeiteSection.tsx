@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { VpPicker } from '../components/VpPicker';
 import {
   api,
   ApiError,
@@ -1020,18 +1021,18 @@ function RegisterSektion({
               aria-label="Adresse des Registers, das jetzt gelesen wird"
             />
           </label>
-          <label>
-            <span>Art</span>
-            <select
-              value={leseArt}
-              onChange={(e) => setLeseArt(e.target.value as 'holding' | 'input' | 'coil')}
-              aria-label="Registerart"
-            >
-              <option value="holding">Holding-Register</option>
-              <option value="input">Input-Register</option>
-              <option value="coil">Spule</option>
-            </select>
-          </label>
+          <VpPicker
+            className="vp-geraet-lesen-art"
+            label="Art"
+            ariaLabel="Registerart"
+            options={[
+              { value: 'holding', label: 'Holding-Register' },
+              { value: 'input', label: 'Input-Register' },
+              { value: 'coil', label: 'Spule' },
+            ]}
+            value={leseArt}
+            onChange={(v) => setLeseArt(v as 'holding' | 'input' | 'coil')}
+          />
           <button
             type="button"
             className="vp-geraet-btn"

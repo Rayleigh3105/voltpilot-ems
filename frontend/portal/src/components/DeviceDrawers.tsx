@@ -16,6 +16,7 @@ import {
 } from '../api';
 import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
+import { VpPicker } from './VpPicker';
 import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
@@ -210,23 +211,14 @@ export function AddDeviceDrawer({
               onBlur={() => setRefTouched(true)}
               error={refTouched && !externalRef.trim() ? 'Bitte geben Sie die Geräte-ID ein.' : null}
             />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <label htmlFor="claim-site" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                Anlage
-              </label>
-              <select
-                id="claim-site"
-                className="vp-select"
-                value={siteId}
-                onChange={(e) => setSiteId(e.target.value)}
-              >
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <VpPicker
+              id="claim-site"
+              label="Anlage"
+              options={sites.map((s) => ({ value: s.id, label: s.name }))}
+              value={siteId}
+              onChange={setSiteId}
+              searchPlaceholder="Anlage suchen …"
+            />
           </div>
           {sites.length === 0 && (
             <div className="vp-alert vp-alert-info">
@@ -522,21 +514,17 @@ function DeviceEditForm({
           value={name}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="edit-device-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Typ
-          </label>
-          <select
-            id="edit-device-kind"
-            className="vp-select"
-            value={kind}
-            onChange={(e) => setKind(e.target.value)}
-          >
-            <option value="inverter">Wechselrichter</option>
-            <option value="battery">Batteriespeicher</option>
-            <option value="meter">Zähler</option>
-          </select>
-        </div>
+        <VpPicker
+          id="edit-device-kind"
+          label="Typ"
+          options={[
+            { value: 'inverter', label: 'Wechselrichter' },
+            { value: 'battery', label: 'Batteriespeicher' },
+            { value: 'meter', label: 'Zähler' },
+          ]}
+          value={kind}
+          onChange={setKind}
+        />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
       <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>

@@ -4,6 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { VpPicker } from './VpPicker';
 import { api, ApiError } from '../api';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
@@ -256,20 +257,14 @@ export function SchaltFreigabeDrawer({
                   </div>
 
                   <div className="vp-sb-pair">
-                    <div className="vp-assist-field">
-                      <label htmlFor="fg-kind">Registerart</label>
-                      <select
-                        id="fg-kind"
-                        value={form.registerArt}
-                        onChange={(e) => setzeForm({ registerArt: e.target.value })}
-                      >
-                        {REGISTER_ARTEN.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <VpPicker
+                      id="fg-kind"
+                      className="vp-assist-field"
+                      label="Registerart"
+                      options={REGISTER_ARTEN.map((r) => ({ value: r.id, label: r.label }))}
+                      value={form.registerArt}
+                      onChange={(v) => setzeForm({ registerArt: v })}
+                    />
                     <div className="vp-assist-field">
                       <label htmlFor="fg-addr">Adresse</label>
                       <Input
@@ -283,18 +278,16 @@ export function SchaltFreigabeDrawer({
 
                   {form.registerArt !== 'coil' && (
                     <div className="vp-assist-field">
-                      <label htmlFor="fg-fc">Schreibbefehl</label>
-                      <select
+                      <VpPicker
                         id="fg-fc"
+                        label="Schreibbefehl"
+                        options={REGISTER_FCS.map((f) => ({
+                          value: String(f.id),
+                          label: f.label,
+                        }))}
                         value={form.fc}
-                        onChange={(e) => setzeForm({ fc: e.target.value })}
-                      >
-                        {REGISTER_FCS.map((f) => (
-                          <option key={f.id} value={String(f.id)}>
-                            {f.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => setzeForm({ fc: v })}
+                      />
                       <p className="vp-assist-help">
                         {REGISTER_FCS.find((f) => f.id === effektiverFc(form))?.hint}
                       </p>
@@ -355,20 +348,14 @@ export function SchaltFreigabeDrawer({
                             abbricht.
                           </p>
                         </div>
-                        <div className="vp-assist-field">
-                          <label htmlFor="fg-unit">Einheit</label>
-                          <select
-                            id="fg-unit"
-                            value={form.einheit}
-                            onChange={(e) => setzeForm({ einheit: e.target.value })}
-                          >
-                            {EINHEITEN.map((u) => (
-                              <option key={u} value={u}>
-                                {u}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <VpPicker
+                          id="fg-unit"
+                          className="vp-assist-field"
+                          label="Einheit"
+                          options={EINHEITEN.map((u) => ({ value: u, label: u }))}
+                          value={form.einheit}
+                          onChange={(v) => setzeForm({ einheit: v })}
+                        />
                       </div>
                       <div className="vp-assist-field">
                         <label htmlFor="fg-scale">Skalierung</label>

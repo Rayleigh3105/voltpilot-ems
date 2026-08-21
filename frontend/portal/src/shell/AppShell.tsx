@@ -506,19 +506,17 @@ export function AppShell({
             // Customers get no chip: their tenant is fixed by the login.
             <span className="vp-context" title="Mandanten-Umschalter">
               <Icon name="building" size={16} className="vp-context-ic" />
-              <select
-                aria-label="Mandanten-Umschalter"
+              <VpPicker
+                className="vp-context-picker"
+                ariaLabel="Mandanten-Umschalter"
+                options={[
+                  { value: '', label: 'Alle Mandanten' },
+                  ...tenants.map((t) => ({ value: t.id, label: t.name })),
+                ]}
                 value={tenantOverride ?? ''}
-                onChange={(e) => onTenantChange(e.target.value || null)}
-              >
-                <option value="">Alle Mandanten</option>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <Icon name="chevron-down" size={16} className="vp-context-caret" />
+                onChange={(v) => onTenantChange(v || null)}
+                searchPlaceholder="Mandant suchen …"
+              />
             </span>
           )}
 

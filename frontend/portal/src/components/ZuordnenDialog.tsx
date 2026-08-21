@@ -3,6 +3,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpPicker } from './VpPicker';
 import { api, ApiError, type TopologyRoleAssignment } from '../api';
 import { entitiesApi } from '../entitiesApi';
 import { deviceName } from '../entityLabel';
@@ -203,18 +204,13 @@ export function ZuordnenDialog({
               </span>
             </label>
             {mode === 'reconnect' && candidates.length > 1 && (
-              <select
+              <VpPicker
                 className="vp-reconnect-select"
-                aria-label="Komponente wählen"
+                ariaLabel="Komponente wählen"
+                options={candidates.map((c) => ({ value: c.entityId, label: c.label }))}
                 value={candidateId}
-                onChange={(e) => setCandidateId(e.target.value)}
-              >
-                {candidates.map((c) => (
-                  <option key={c.entityId} value={c.entityId}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+                onChange={setCandidateId}
+              />
             )}
             <label className="vp-reconnect-opt">
               <input

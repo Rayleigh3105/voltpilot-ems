@@ -105,21 +105,29 @@
   border-color: transparent;
   color: var(--vp-primary-deep);
 }
-/* Admin variant: the chip wraps a real <select> (keyboard-accessible). The
-   native caret is hidden in favour of the trailing Icon caret above. */
-.vp-context select {
-  border: none;
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  outline: none;
-  cursor: pointer;
+/* Admin variant: the chip wraps the house picker (`vp-picker-system`) - it
+   brings its own caret and panel, so the pill only supplies the frame. */
+.vp-context .vp-context-picker {
   min-width: 0;
   flex: 1 1 auto;
   max-width: 210px;
-  text-overflow: ellipsis;
-  appearance: none;
-  -webkit-appearance: none;
+}
+.vp-context .vp-picker-ausloeser {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  min-height: 0;
+  gap: var(--vp-space-2);
+}
+.vp-context .vp-picker-ausloeser:hover,
+.vp-context .vp-picker-ausloeser[aria-expanded='true'] {
+  border-color: transparent;
+  box-shadow: none;
+}
+.vp-context .vp-picker-caret {
+  color: var(--vp-text-gray);
 }
 
 /* ---------- Drawer (right side panel: add / detail) ----------

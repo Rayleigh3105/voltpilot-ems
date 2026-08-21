@@ -715,7 +715,10 @@
   min-width: 0;
 }
 
-.vp-geraet-lesen label {
+/* ⚠ Nur die DIREKTEN Feld-Huellen der Zeile - der Haus-Picker bringt sein
+   eigenes `<label>` mit, und ein `flex: 1 1 150px` darauf machte in seiner
+   Spalte eine 150 px hohe Beschriftung (im Browser gemessen). */
+.vp-geraet-lesen > label {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -723,13 +726,12 @@
   flex: 1 1 150px;
 }
 
-.vp-geraet-lesen label > span {
+.vp-geraet-lesen > label > span {
   color: var(--vp-text-muted, #4a5568);
   font-size: 0.78rem;
 }
 
-.vp-geraet-lesen input,
-.vp-geraet-lesen select {
+.vp-geraet-lesen input {
   min-width: 0;
   width: 100%;
   min-height: 44px;
@@ -746,11 +748,25 @@
   margin: 0;
 }
 
-/* Am Telefon bekommt jedes Bedienelement seine eigene Zeile - ein Auswahlfeld,
-   das seinen längsten Eintrag abschneidet („Holding-Registe"), ist keine
+/* Der Haus-Picker ist ein FELD dieser Zeile, kein Block - er teilt sich den
+   Platz wie die Adress-Eingabe daneben (Beschriftung + Rahmen bringt er
+   selbst mit). */
+.vp-geraet-lesen-art {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.vp-geraet-lesen-art .vp-picker-label {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.78rem;
+  font-weight: inherit;
+}
+
+/* Am Telefon bekommt jedes Bedienelement seine eigene Zeile - eine Auswahl,
+   die ihren längsten Eintrag abschneidet („Holding-Registe"), ist keine
    Auskunft (bei 375 px gemessen). */
 @media (max-width: 520px) {
-  .vp-geraet-lesen label,
+  .vp-geraet-lesen > label,
+  .vp-geraet-lesen-art,
   .vp-geraet-lesen > button {
     flex: 1 1 100%;
   }

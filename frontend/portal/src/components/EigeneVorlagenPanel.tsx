@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpPicker } from './VpPicker';
 import { ApiError, api, type SiteComponentTemplate, type SiteComponents } from '../api';
 import {
   KEINE_ADRESSE,
@@ -146,23 +147,16 @@ export function EigeneVorlagenPanel({
 
       {dupOpen && (
         <div className="vp-ev-edit vp-ev-dup">
-          <label className="vp-field">
-            <span className="vp-field-label">Gerät</span>
-            <select
-              value={dupId}
-              onChange={(e) => {
-                setDupId(e.target.value);
-                const q = quellen.find((x) => x.id === e.target.value);
-                if (q) setDupName(vorschlagsName(q.label));
-              }}
-            >
-              {quellen.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <VpPicker
+            label="Gerät"
+            options={quellen.map((q) => ({ value: q.id, label: q.label }))}
+            value={dupId}
+            onChange={(v) => {
+              setDupId(v);
+              const q = quellen.find((x) => x.id === v);
+              if (q) setDupName(vorschlagsName(q.label));
+            }}
+          />
           <Input
             label="Name der Vorlage"
             value={dupName}

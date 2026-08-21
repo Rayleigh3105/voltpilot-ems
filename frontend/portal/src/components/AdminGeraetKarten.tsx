@@ -3,6 +3,7 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { VpPicker } from './VpPicker';
 import { actorLabel, eventLabel, type EdgeUpdatesRelease } from '../adminEdgeUpdates';
 import type { GeraetView, Zeile } from '../adminGeraet';
 import type { Tone } from '../adminFleet';
@@ -321,23 +322,21 @@ function ZuweisungsForm({
   return (
     <>
       <h3>Release zuweisen</h3>
-      <label className="vp-field-row">
-        <span>Release</span>
-        <select value={seq ?? ''} onChange={(e) => setSeq(Number(e.target.value))} aria-label="Release">
-          {releases.map((r) => (
-            <option key={r.releaseSeq} value={r.releaseSeq}>
-              {r.version}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="vp-field-row">
-        <span>Kanal</span>
-        <select value={channel} onChange={(e) => setChannel(e.target.value)} aria-label="Kanal">
-          <option value="stable">stable</option>
-          <option value="canary">canary</option>
-        </select>
-      </label>
+      <VpPicker
+        label="Release"
+        options={releases.map((r) => ({ value: String(r.releaseSeq), label: r.version }))}
+        value={seq == null ? '' : String(seq)}
+        onChange={(v) => setSeq(Number(v))}
+      />
+      <VpPicker
+        label="Kanal"
+        options={[
+          { value: 'stable', label: 'stable' },
+          { value: 'canary', label: 'canary' },
+        ]}
+        value={channel}
+        onChange={setChannel}
+      />
       <label className="vp-check-row">
         <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} />{' '}
         Festnageln – ein Rollout überschreibt dieses Gerät dann nicht, sondern überspringt es

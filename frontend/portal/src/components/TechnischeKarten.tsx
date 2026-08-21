@@ -5,6 +5,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpPicker } from './VpPicker';
 import {
   api,
   ApiError,
@@ -573,20 +574,12 @@ export function EntityDrawer({
     >
       <div className="vp-form-stack">
         {!editing && (
-          <label className="vp-field">
-            <span>Typ</span>
-            <select
-              className="vp-select"
-              value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
-            >
-              {creatable.map((t) => (
-                <option key={t.type} value={t.type}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <VpPicker
+            label="Typ"
+            options={creatable.map((t) => ({ value: t.type, label: t.label }))}
+            value={entityType}
+            onChange={setEntityType}
+          />
         )}
         {editing && (
           <p className="vp-note" style={{ marginTop: 0 }}>
@@ -732,20 +725,12 @@ export function AdoptDrawer({
         <p className="vp-note" style={{ marginTop: 0 }}>
           Ihr Gerät meldet: <strong>{source.summary}</strong> ({source.roleLabel}).
         </p>
-        <label className="vp-field">
-          <span>Als Typ übernehmen</span>
-          <select
-            className="vp-select"
-            value={entityType}
-            onChange={(e) => setEntityType(e.target.value)}
-          >
-            {adoptable.map((t) => (
-              <option key={t.type} value={t.type}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <VpPicker
+          label="Als Typ übernehmen"
+          options={adoptable.map((t) => ({ value: t.type, label: t.label }))}
+          value={entityType}
+          onChange={setEntityType}
+        />
         <Input
           label="Bezeichnung"
           value={label}

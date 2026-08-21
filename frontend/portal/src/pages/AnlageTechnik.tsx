@@ -4,6 +4,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpPicker } from '../components/VpPicker';
 import {
   api,
   ApiError,
@@ -1037,34 +1038,31 @@ export function StammdatenEditForm({
           autoFocus
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
         />
+        <VpPicker
+          id="edit-site-zone"
+          label="Gebotszone"
+          options={[
+            { value: 'DE-LU', label: 'DE-LU (Deutschland/Luxemburg)' },
+            { value: 'AT', label: 'AT (Österreich)' },
+            { value: 'CH', label: 'CH (Schweiz)' },
+          ]}
+          value={biddingZone}
+          onChange={setBiddingZone}
+        />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="edit-site-zone" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Gebotszone
-          </label>
-          <select
-            id="edit-site-zone"
-            className="vp-select"
-            value={biddingZone}
-            onChange={(e) => setBiddingZone(e.target.value)}
-          >
-            <option value="DE-LU">DE-LU (Deutschland/Luxemburg)</option>
-            <option value="AT">AT (Österreich)</option>
-            <option value="CH">CH (Schweiz)</option>
-          </select>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="edit-site-plant-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            {VERAEUSSERUNGSFORM_LABEL}
-          </label>
-          <select
+          <VpPicker
             id="edit-site-plant-kind"
-            className="vp-select"
+            label={VERAEUSSERUNGSFORM_LABEL}
+            options={[
+              { value: 'eigenverbrauch', label: 'Eigenverbrauch (Haushalt/Gewerbe)' },
+              {
+                value: 'direktvermarktung',
+                label: 'Direktvermarktung (Einspeisung am Markt)',
+              },
+            ]}
             value={plantKind}
-            onChange={(e) => setPlantKind(e.target.value as PlantKind)}
-          >
-            <option value="eigenverbrauch">Eigenverbrauch (Haushalt/Gewerbe)</option>
-            <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
-          </select>
+            onChange={(v) => setPlantKind(v as PlantKind)}
+          />
           <p className="vp-note" style={{ margin: 0 }}>
             {VERAEUSSERUNGSFORM_FRAGE} {VERAEUSSERUNGSFORM_TIP}
           </p>
@@ -1352,22 +1350,16 @@ function BatteryEditForm({
           hint="Round-Trip-Wirkungsgrad. Leer lassen für den Standardwert (92 %)."
         />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="battery-device" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Steuerndes Gerät
-          </label>
-          <select
+          <VpPicker
             id="battery-device"
-            className="vp-select"
+            label="Steuerndes Gerät"
+            options={[
+              { value: '', label: 'Automatisch (einziges Gerät der Anlage)' },
+              ...devices.map((d) => ({ value: d.id, label: d.name || d.externalRef })),
+            ]}
             value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
-          >
-            <option value="">Automatisch (einziges Gerät der Anlage)</option>
-            {devices.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name || d.externalRef}
-              </option>
-            ))}
-          </select>
+            onChange={setDeviceId}
+          />
           <p className="vp-note" style={{ margin: 0 }}>
             Der Wechselrichter, der den Speicher steuert und den Fahrplan ausführt.
             Bei nur einem Gerät genügt „Automatisch“.
