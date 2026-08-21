@@ -543,3 +543,13 @@
 .vp-picker-panel.is-sheet .vp-kal-tag {
   min-height: 44px;
 }
+
+/* Die kompakte Fassung der Datenseiten: so breit wie ihr Inhalt, kleinere
+   Schrift - sie steht in einer Werkzeugleiste, nicht in einem Formular. */
+.vp-sitepicker .vp-picker-ausloeser {
+  width: auto;
+  min-width: 12rem;
+  padding: 0.45rem 0.75rem;
+  font-size: var(--vp-text-sm);
+  min-height: 40px;
+}

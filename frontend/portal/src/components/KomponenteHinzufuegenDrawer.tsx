@@ -3,6 +3,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpPicker } from './VpPicker';
+import type { VpOption } from '../picker/optionen';
 import {
   api,
   ApiError,
@@ -27,7 +29,7 @@ import {
   felder,
   initialeVerbindung,
   marken,
-  modellSuche,
+  modellZusatz,
   nameHilfe,
   pruefen,
   rolleVerfuegbar,
@@ -88,8 +90,6 @@ export function KomponenteHinzufuegenDrawer({
   const [ladeFehler, setLadeFehler] = useState<string | null>(null);
   const [schritt, setSchritt] = useState<1 | 2 | 3 | 4>(vorlage ? 2 : 1);
   const [tuer, setTuer] = useState<TuerId | null>(vorlage ? 'selbstbau' : null);
-  const [brand, setBrand] = useState<string | null>(null);
-  const [suchtext, setSuchtext] = useState('');
   const [template, setTemplate] = useState<ComponentTemplate | null>(null);
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>({});
   const [testZustand, setTestZustand] = useState<TestZustand>('ungeprueft');
@@ -140,8 +140,27 @@ export function KomponenteHinzufuegenDrawer({
   const brands = useMemo(() => marken(tuerTemplates), [tuerTemplates]);
   // Die SUCHE läuft über ALLE Marken dieser Tür - dieselbe Liste, aus der auch
   // das Stufenmenü darunter schöpft (es entsteht keine zweite Quelle).
-  const suche = useMemo(() => modellSuche(tuerTemplates, suchtext), [tuerTemplates, suchtext]);
-  const models = brands.find((b) => b.brand === brand)?.models ?? [];
+  /**
+   * Die Picker-Zeilen: EINE Zeile je Modell, gruppiert nach Marke. Die
+   * Nebenzeile ist derselbe `modellZusatz` wie zuvor, und Familie/Modellcode
+   * reisen als unsichtbare Stichwörter mit - so findet die Suche „SG02" auch
+   * dort, wo es im Namen gar nicht steht.
+   */
+  const modellOptionen = useMemo<VpOption[]>(
+    () =>
+      tuerTemplates.map((t) => ({
+        value: t.templateRef,
+        label: t.modelLabel,
+        sub: modellZusatz(t) || null,
+        group: t.brand,
+        keywords: [t.model, t.family ?? '', t.familyLabel ?? '', t.communicationLabel ?? ''].join(' '),
+      })),
+    [tuerTemplates],
+  );
+  const modellGruppen = useMemo(
+    () => brands.map((b) => ({ key: b.brand, label: b.brandLabel })),
+    [brands],
+  );
   const fields = felder(template);
   // ⚠ Die HEBEL entstehen aus BELEGEN (Server-Fehlerklasse + Befund) und aus
   // dem, was die Vorlage strukturell hergibt - nie aus einer eigenen Diagnose
@@ -172,9 +191,9 @@ export function KomponenteHinzufuegenDrawer({
    */
   function hebelKlick(h: { id: string; feld: string | null }) {
     if (h.id === 'modell') {
-      // Zurück zur Modellwahl, mit der Marke schon gewählt - die Alternativen
-      // stehen damit sofort da.
-      setBrand(template?.brand ?? null);
+      // Zurück zur Modellwahl. Der Picker öffnet auf dem GEWÄHLTEN Modell,
+      // seine Marken-Gruppe steht damit im Bild - die Alternativen sind einen
+      // Klick entfernt, ohne dass die Fläche eine zweite Auswahl-Stufe braucht.
       setSchritt(1);
       return;
     }
@@ -332,7 +351,6 @@ export function KomponenteHinzufuegenDrawer({
                       aria-disabled={!d.verfuegbar}
                       onClick={() => {
                         setTuer(d.id);
-                        setBrand(null);
                         // Die Selbstbau-Tür hat keine Vorlagen-Auswahl - sie
                         // fragt sofort nach dem Gerät.
                         if (d.id === 'selbstbau') setSchritt(2);
@@ -359,92 +377,33 @@ export function KomponenteHinzufuegenDrawer({
 
                 {tuer && tuer !== 'selbstbau' && tuer !== 'ladesaeule' && brands.length > 0 && (
                   <div className="vp-assist-pick">
-                    {/* Die SUCHE ist der primäre Weg (Captain 21.08.2026): wer
-                        sein Modell nicht schon einer Marke zuordnen kann,
-                        klickt sich sonst durch sieben Marken - und wer den
-                        Namen vom Typenschild abtippt, trifft die Schreibweise
-                        selten exakt. Das Stufenmenü darunter BLEIBT als
-                        Stöber-Weg. */}
-                    <label htmlFor="assist-suche">Modell suchen</label>
-                    <input
-                      id="assist-suche"
-                      type="search"
-                      className="vp-assist-suche"
-                      value={suchtext}
-                      onChange={(e) => setSuchtext(e.target.value)}
-                      placeholder="z. B. SUN-30K, SG02 oder Fronius"
-                      autoComplete="off"
+                    {/* EIN Picker statt Suchfeld + zwei Auswahllisten
+                        (Picker-System, Welle 1). Die Suche ist DIESELBE
+                        tolerante wie zuvor - sie wohnt jetzt in der Basis und
+                        gilt damit für jede Auswahlliste des Portals -, die
+                        Marken sind die GRUPPEN, und wer stöbern will, klappt
+                        auf und scrollt. Der frühere Stufen-Weg (erst Marke,
+                        dann Modell) ist damit KEIN zweiter Pfad mehr, sondern
+                        eine Bewegung in derselben Liste. */}
+                    <VpPicker
+                      id="assist-modell"
+                      label="Gerät"
+                      options={modellOptionen}
+                      groups={modellGruppen}
+                      value={template?.templateRef ?? null}
+                      onChange={(ref) => {
+                        const t = tuerTemplates.find((x) => x.templateRef === ref);
+                        if (t) waehleTemplate(t);
+                      }}
+                      placeholder="Marke und Modell wählen …"
+                      searchPlaceholder="z. B. SUN-30K, SG02 oder Fronius"
+                      search="immer"
+                      emptyText={(q) =>
+                        `Keine Vorlage passt zu „${q}“. Oft reicht ein Teil des Namens, `
+                        + 'zum Beispiel nur „30K“.'
+                      }
+                      hint="Der Name steht auf dem Typenschild - Marke oder Modell genügt."
                     />
-                    {suche.zaehler && (
-                      <p className="vp-assist-note" data-testid="suche-zaehler">{suche.zaehler}</p>
-                    )}
-                    {suche.leer && (
-                      <p className="vp-assist-note" data-testid="suche-leer">{suche.leer}</p>
-                    )}
-                    {suche.treffer.length > 0 && (
-                      <ul className="vp-assist-treffer" data-testid="suche-treffer">
-                        {suche.treffer.map((tr) => (
-                          <li key={tr.template.templateRef}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBrand(tr.template.brand);
-                                waehleTemplate(tr.template);
-                              }}
-                            >
-                              <strong>
-                                {tr.modell.map((teil, i) => (
-                                  teil.treffer
-                                    ? <mark key={i}>{teil.text}</mark>
-                                    : <span key={i}>{teil.text}</span>
-                                ))}
-                              </strong>
-                              <span className="vp-assist-treffer-marke">
-                                {tr.marke.map((teil, i) => (
-                                  teil.treffer
-                                    ? <mark key={i}>{teil.text}</mark>
-                                    : <span key={i}>{teil.text}</span>
-                                ))}
-                              </span>
-                              {tr.zusatz && <span className="vp-assist-treffer-zusatz">{tr.zusatz}</span>}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <label htmlFor="assist-brand">Marke</label>
-                    <select
-                      id="assist-brand"
-                      value={brand ?? ''}
-                      onChange={(e) => setBrand(e.target.value || null)}
-                    >
-                      <option value="">Bitte wählen …</option>
-                      {brands.map((b) => (
-                        <option key={b.brand} value={b.brand}>
-                          {b.brandLabel}
-                        </option>
-                      ))}
-                    </select>
-                    {brand && (
-                      <>
-                        <label htmlFor="assist-model">Modell</label>
-                        <select
-                          id="assist-model"
-                          value={template?.templateRef ?? ''}
-                          onChange={(e) => {
-                            const t = models.find((m) => m.templateRef === e.target.value);
-                            if (t) waehleTemplate(t);
-                          }}
-                        >
-                          <option value="">Bitte wählen …</option>
-                          {models.map((m) => (
-                            <option key={m.templateRef} value={m.templateRef}>
-                              {m.modelLabel}
-                            </option>
-                          ))}
-                        </select>
-                      </>
-                    )}
                   </div>
                 )}
               </section>

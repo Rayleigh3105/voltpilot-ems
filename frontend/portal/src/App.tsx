@@ -42,6 +42,7 @@ import { showAddAnlageButton } from './addAnlage';
 import { activeAreaKey, activeKeyForPage, anlageSidebar, resolveAnlage } from './anlageNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
 import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
+import { anlagenOptionen } from './anlagenWahl';
 import { useFreshnessPoll } from './useFreshnessPoll';
 import { useDeployWatch } from './deployWatch';
 import { useAnlageSurface } from './useAnlageSurface';
@@ -764,6 +765,16 @@ function UnifiedPortal() {
         siteId: shellSite.id,
         siteName: shellSite.name,
         sites: sites.map((s) => ({ id: s.id, name: s.name })),
+        // Die angereicherten Zeilen des Vorzeige-Pickers: je Anlage
+        // Gesundheits-Punkt + Nebenzeile. Sie entstehen HIER, weil hier beides
+        // liegt (Anlagen UND die Geräteliste samt Bezugszeit) - die Schale
+        // rechnet keine Gesundheit, sonst könnten Kopfzeile und Liste über
+        // dieselbe Anlage Verschiedenes behaupten.
+        siteOptions: anlagenOptionen({
+          sites,
+          devices: { devices, fetchedAt: devicesAt },
+          mitFlotte: sites.length > 1,
+        }),
         onSelectSite: (id: string) => navigate(anlageRoute(id)),
         sidebar: anlageSidebar(surface, surface?.modes.length ?? null),
         // A mode page keeps the Anlage nav and highlights ITS entry inside the

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpPicker } from './VpPicker';
 import { api, ApiError, type SiteComponents, type SiteComponentTemplate } from '../api';
 import { prefill } from '../eigeneVorlagen';
 import {
@@ -247,18 +248,17 @@ export function SelbstbauAssistent({
                 </div>
                 <div className="vp-sb-pair">
                   <div className="vp-assist-field">
-                    <label htmlFor={`sb-unit-${z.key}`}>Einheit</label>
-                    <select
+                    <VpPicker
                       id={`sb-unit-${z.key}`}
+                      label="Einheit"
+                      options={UNITS.map((u) => ({
+                        value: u,
+                        label: u === '' ? 'ohne Einheit' : u,
+                      }))}
                       value={z.unit}
-                      onChange={(e) => setzeZeile(z.key, { unit: e.target.value })}
-                    >
-                      {UNITS.map((u) => (
-                        <option key={u || 'ohne'} value={u}>
-                          {u === '' ? 'ohne Einheit' : u}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setzeZeile(z.key, { unit: v })}
+                      searchPlaceholder="Einheit suchen …"
+                    />
                   </div>
                   <div className="vp-assist-field">
                     <label htmlFor={`sb-iv-${z.key}`}>Mindestabstand (s)</label>
@@ -275,18 +275,13 @@ export function SelbstbauAssistent({
                   <summary>Profi-Angaben aus dem Handbuch</summary>
                   <div className="vp-sb-pair">
                     <div className="vp-assist-field">
-                      <label htmlFor={`sb-kind-${z.key}`}>Registerart</label>
-                      <select
+                      <VpPicker
                         id={`sb-kind-${z.key}`}
+                        label="Registerart"
+                        options={REGISTER_KINDS.map((r) => ({ value: r.value, label: r.label }))}
                         value={z.registerKind}
-                        onChange={(e) => setzeZeile(z.key, { registerKind: e.target.value })}
-                      >
-                        {REGISTER_KINDS.map((r) => (
-                          <option key={r.value} value={r.value}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => setzeZeile(z.key, { registerKind: v })}
+                      />
                     </div>
                     <div className="vp-assist-field">
                       <label htmlFor={`sb-addr-${z.key}`}>Adresse</label>
@@ -301,35 +296,25 @@ export function SelbstbauAssistent({
                   </div>
                   <div className="vp-sb-pair">
                     <div className="vp-assist-field">
-                      <label htmlFor={`sb-type-${z.key}`}>Datentyp</label>
-                      <select
+                      <VpPicker
                         id={`sb-type-${z.key}`}
+                        label="Datentyp"
+                        options={DATA_TYPES.map((d) => ({ value: d.value, label: d.label }))}
                         value={z.dataType}
-                        onChange={(e) => setzeZeile(z.key, { dataType: e.target.value })}
-                      >
-                        {DATA_TYPES.map((d) => (
-                          <option key={d.value} value={d.value}>
-                            {d.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => setzeZeile(z.key, { dataType: v })}
+                      />
                     </div>
                     {/* Die Wortreihenfolge gibt es nur bei 32 Bit - ein Feld,
                         das nichts bedeutet, ist eine Frage zu viel. */}
                     {istBreit(z.dataType) && (
                       <div className="vp-assist-field">
-                        <label htmlFor={`sb-order-${z.key}`}>Wortreihenfolge</label>
-                        <select
+                        <VpPicker
                           id={`sb-order-${z.key}`}
+                          label="Wortreihenfolge"
+                          options={WORD_ORDERS.map((w) => ({ value: w.value, label: w.label }))}
                           value={z.wordOrder}
-                          onChange={(e) => setzeZeile(z.key, { wordOrder: e.target.value })}
-                        >
-                          {WORD_ORDERS.map((w) => (
-                            <option key={w.value} value={w.value}>
-                              {w.label}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(v) => setzeZeile(z.key, { wordOrder: v })}
+                        />
                       </div>
                     )}
                   </div>

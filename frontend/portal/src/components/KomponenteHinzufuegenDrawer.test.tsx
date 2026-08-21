@@ -74,15 +74,16 @@ vi.mock('../api', async () => {
   };
 });
 
-/** Bis zur Verbindungs-Maske: Tür → Marke → Modell. */
-async function bisZurVerbindung() {
+/**
+ * Bis zur Verbindungs-Maske: Tür → Gerät (EIN Picker, Marken als Gruppen).
+ * Seit dem Picker-System gibt es keine zwei Auswahl-Stufen mehr.
+ */
+async function bisZurVerbindung(modell = template.modelLabel) {
   render(<KomponenteHinzufuegenDrawer siteId="s1" onClose={() => {}} onSaved={() => {}} />);
   await screen.findByText('Gerät aus dem VoltPilot-Katalog');
   fireEvent.click(screen.getByText('Gerät aus dem VoltPilot-Katalog'));
-  fireEvent.change(await screen.findByLabelText('Marke'), { target: { value: 'deye' } });
-  fireEvent.change(await screen.findByLabelText('Modell'), {
-    target: { value: template.templateRef },
-  });
+  fireEvent.click(await screen.findByRole('combobox', { name: 'Gerät' }));
+  fireEvent.click(screen.getByRole('option', { name: new RegExp(modell) }));
   await screen.findByLabelText(/IP-Adresse/);
 }
 
@@ -518,69 +519,59 @@ describe('die Modell-Suche im Assistenten', () => {
     matchComponent.mockResolvedValue(undefined);
   });
 
+  /** Tür öffnen und den EINEN Picker aufklappen; liefert sein Suchfeld. */
   async function bisZurTuer() {
     render(<KomponenteHinzufuegenDrawer siteId="s1" onClose={() => {}} onSaved={() => {}} />);
     fireEvent.click(await screen.findByText('Gerät aus dem VoltPilot-Katalog'));
-    return screen.findByLabelText('Modell suchen');
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Gerät' }));
+    return screen.getByRole('combobox', { name: /durchsuchen/ });
   }
 
   it('führt ohne Marken-Auswahl direkt zum Modell - tolerant gegen Schreibweisen', async () => {
     const feld = await bisZurTuer();
-    // Ohne jeden Bindestrich getippt - genau die Schreibweise, die das
+    // Ohne jeden Bindestrich getippt - genau die Schreibweise, die ein
     // Stufenmenü nie gefunden hätte.
     fireEvent.change(feld, { target: { value: 'sun30k' } });
 
-    const treffer = await screen.findByTestId('suche-treffer');
+    const treffer = screen.getAllByRole('option');
     // Genau die eine Deye - die Fronius ist kein Treffer.
-    expect(treffer.querySelectorAll('li').length).toBe(1);
-    expect(treffer.textContent).toContain('SUN-30K-SG01HP3-EU');
-    expect(treffer.textContent).toContain('Deye');
-    // Der Zusatz beantwortet „ist das meins?" ohne Klick.
-    expect(treffer.textContent).toContain('30 kW');
-    expect(treffer.textContent).toContain('Hybrid, 3-phasig');
+    expect(treffer).toHaveLength(1);
+    expect(treffer[0].textContent).toContain('SUN-30K-SG01HP3-EU');
+    // Die Marken-Gruppe steht als Überschrift darüber.
+    expect(screen.getByText('Deye')).toBeTruthy();
+    // Die Nebenzeile beantwortet „ist das meins?" ohne Klick.
+    expect(treffer[0].textContent).toContain('30 kW');
+    expect(treffer[0].textContent).toContain('Hybrid, 3-phasig');
   });
 
-  it('wählt über den Treffer DIESELBE Vorlage wie das Stufenmenü', async () => {
+  it('wählt über den Treffer DIESELBE Vorlage wie das Stufenmenü zuvor', async () => {
     const feld = await bisZurTuer();
     fireEvent.change(feld, { target: { value: 'symo' } });
-
-    // Der Name ist durch die Hervorhebung in Stücke geteilt - geklickt wird
-    // die Trefferzeile, nicht ein Textknoten.
-    const treffer = await screen.findByTestId('suche-treffer');
-    const zeile = treffer.querySelector('button') as HTMLButtonElement;
-    expect(zeile.textContent).toContain('Symo 15.0-3-M');
-    fireEvent.click(zeile);
+    fireEvent.click(screen.getByRole('option', { name: /Symo 15\.0-3-M/ }));
 
     // Schritt 2 mit den Feldern GENAU dieser Vorlage.
     await screen.findByText('Verbindung zu Symo 15.0-3-M');
-    // Und die Marke ist MITGEWANDERT, damit der Rückweg über das Stufenmenü
-    // beim gefundenen Modell steht statt bei der Marke davor.
+    // Und der Rückweg steht auf dem gefundenen Modell, nicht auf einer
+    // Marke davor - der Picker öffnet auf dem gewählten Wert.
     fireEvent.click(screen.getByText('Zurück'));
-    const marke = (await screen.findByLabelText('Marke')) as HTMLSelectElement;
-    expect(marke.value).toBe('fronius');
+    expect((await screen.findByRole('combobox', { name: 'Gerät' })).textContent)
+      .toContain('Symo 15.0-3-M');
   });
 
   it('sagt bei einem Tippfehler den WEG, statt still leer zu bleiben', async () => {
     const feld = await bisZurTuer();
     fireEvent.change(feld, { target: { value: 'huawei' } });
 
-    const leer = await screen.findByTestId('suche-leer');
-    expect(leer.textContent).toContain('Keine Vorlage passt');
-    expect(leer.textContent).toContain('Marken-Auswahl');
-    expect(screen.queryByTestId('suche-treffer')).toBeNull();
+    expect(screen.getByText(/Keine Vorlage passt/).textContent).toContain('huawei');
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
   });
 
-  it('lässt das Stufenmenü daneben stehen', async () => {
+  it('zeigt ohne Eingabe ALLE Vorlagen, nach Marken gruppiert', async () => {
     await bisZurTuer();
-    // Der Stöber-Weg bleibt der Rückfall - er darf nie verschwinden.
-    expect(screen.getByLabelText('Marke')).toBeTruthy();
-  });
-
-  it('zeigt ohne Eingabe weder Treffer noch Zähler', async () => {
-    await bisZurTuer();
-    expect(screen.queryByTestId('suche-treffer')).toBeNull();
-    expect(screen.queryByTestId('suche-zaehler')).toBeNull();
-    expect(screen.queryByTestId('suche-leer')).toBeNull();
+    // Der Stöber-Weg ist kein zweites Menü mehr, sondern dieselbe Liste.
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect(screen.getByText('Deye')).toBeTruthy();
+    expect(screen.getByText('Fronius')).toBeTruthy();
   });
 });
 
@@ -614,9 +605,12 @@ describe('die Hebel des Verbindungstests', () => {
 
     const knopf = await screen.findByTestId('hebel-modell');
     fireEvent.click(knopf);
-    // Zurück in der Modellwahl - MIT gewählter Marke, die Alternativen stehen da.
-    const modell = await screen.findByLabelText('Modell');
-    expect([...(modell as HTMLSelectElement).options].map((o) => o.textContent))
+    // Zurück in der Modellwahl. Der Picker steht auf dem gewählten Modell -
+    // die Alternativen sind ein Klick entfernt, in derselben Marken-Gruppe.
+    const picker = await screen.findByRole('combobox', { name: 'Gerät' });
+    expect(picker.textContent).toContain('SUN-30K-SG01HP3-EU');
+    fireEvent.click(picker);
+    expect(screen.getAllByRole('option').map((o) => o.textContent).join(' '))
       .toContain('SUN-25K-SG02HP3-EU-AM3');
   });
 

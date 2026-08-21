@@ -1,6 +1,16 @@
+import { VpPicker } from './VpPicker';
 import type { Site } from '../api';
 
-/** Compact site selector used by the site-scoped data pages/widgets. */
+/**
+ * Die kompakte Anlagen-Auswahl der anlagen-gebundenen Datenseiten.
+ *
+ * Sie rendert seit dem Picker-System (`vp-picker-system`) denselben
+ * {@link VpPicker} wie die Kopfzeile - vorher war sie ein natives `<select>`,
+ * das auf jedem Betriebssystem anders aussah und in dem man nicht suchen
+ * konnte. Eine ANGEREICHERTE Zeile (Punkt + Nebenzeile) gibt es hier bewusst
+ * nicht: diese Flächen kennen die Geräteliste nicht, und eine Gesundheit zu
+ * behaupten, die niemand gemessen hat, ist genau das, was das Haus nicht tut.
+ */
 export function SitePicker({
   sites,
   value,
@@ -14,19 +24,14 @@ export function SitePicker({
 }) {
   if (sites.length <= 1) return null;
   return (
-    <select
+    <VpPicker
       id={id}
-      aria-label="Anlage wählen"
-      className="vp-select"
-      style={{ width: 'auto', padding: '0.45rem 0.75rem', fontSize: 'var(--vp-text-sm)' }}
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {sites.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.name}
-        </option>
-      ))}
-    </select>
+      ariaLabel="Anlage wählen"
+      className="vp-sitepicker"
+      options={sites.map((s) => ({ value: s.id, label: s.name }))}
+      value={value}
+      onChange={onChange}
+      searchPlaceholder="Anlage suchen …"
+    />
   );
 }

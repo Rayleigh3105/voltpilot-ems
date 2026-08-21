@@ -67,18 +67,28 @@
   flex: 1 1 auto;
   min-width: 0;
 }
-.vp-anlagenav-switch select {
-  border: none;
+/* Der Anlagen-Picker sitzt IN der Kontext-Karte: sie trägt Rahmen, Tönung und
+   Fokusring, der Auslöser bringt nur Text und Chevron mit. Ohne diese Zeilen
+   stünde ein zweites Feld im Feld. */
+.vp-anlagenav-picker {
+  min-width: 0;
+}
+.vp-anlagenav-switch .vp-picker-ausloeser {
+  border: 0;
   background: transparent;
   font: inherit;
   color: inherit;
-  outline: none;
-  cursor: pointer;
-  width: 100%;
-  min-width: 0;
-  text-overflow: ellipsis;
-  appearance: none;
-  -webkit-appearance: none;
+  padding: 0;
+  min-height: 0;
+  gap: var(--vp-space-2);
+}
+.vp-anlagenav-switch .vp-picker-ausloeser:hover,
+.vp-anlagenav-switch .vp-picker-ausloeser[aria-expanded='true'] {
+  border-color: transparent;
+  box-shadow: none;
+}
+.vp-anlagenav-switch .vp-picker-caret {
+  color: var(--vp-text-gray);
 }
 .vp-anlagenav-label .t {
   min-width: 0;
@@ -362,10 +372,15 @@
   gap: var(--vp-space-4);
   min-width: 0;
 }
-/* Der Wechsler ist AUSSCHLIESSLICH die Telefon-Geste. Ohne diese zwei Zeilen
-   stünde das `<select>` oberhalb von 720px ungestylt in der Kopfzeile und
-   fräße dem Anlagen-Namen die Breite weg (im Browser bei 1440/768 gemessen). */
-.vp-tb-switch,
+/* Der Wechsler ist AUSSCHLIESSLICH die Telefon-Geste. Ohne diese Zeilen stünde
+   der Auslöser oberhalb von 720px in der Kopfzeile und fräße dem Anlagen-Namen
+   die Breite weg (im Browser bei 1440/768 gemessen).
+   ⚠ Die Wrapper-Regel steht einen Spezifitäts-Schritt höher (`.vp-app`), weil
+   `.vp-picker` (in `components/VpPicker.css`, komponenten-lokal) `display: flex`
+   setzt: gleiche Spezifität, also entschiede sonst die Bündel-Reihenfolge — und
+   die stand beim Bau auf „Picker gewinnt", der Wechsler war bei 1440 sichtbar
+   (im Browser gemessen). Dieselbe Klippe wie die Tablet-Schiene weiter unten. */
+.vp-app .vp-tb-switchwrap,
 .vp-tb-caret {
   display: none;
 }
@@ -410,20 +425,33 @@
   }
   /* The native picker is the best plant switcher a thumb can get. It covers
      the WHOLE block, so the tap target is the full 68px top-bar height. */
-  .vp-tb-switch {
+  /* Spiegelbildlich einen Schritt höher, damit sie die Basis-Regel oben
+     wieder gewinnt. */
+  .vp-app .vp-tb-switchwrap {
+    display: block;
+    position: absolute;
+    inset: 0;
+  }
+  .vp-tb-switchwrap .vp-picker-anker {
+    height: 100%;
+  }
+  /* ⚠ `opacity: 0` statt `visibility: hidden`: der Auslöser muss anklickbar
+     UND fokussierbar bleiben - er IST die Trefferfläche. */
+  .vp-app .vp-tb-switch {
     display: block;
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
+    min-height: 0;
     margin: 0;
     padding: 0;
     border: 0;
+    background: transparent;
+    box-shadow: none;
     opacity: 0;
     font: inherit;
     cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
   }
   /* The state is the sub-line, not a pill: dot + word + cause, no chrome. It
      keeps its own hit area (and stays ABOVE the switcher overlay), so the
