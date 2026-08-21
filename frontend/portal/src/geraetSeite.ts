@@ -47,6 +47,7 @@ import type {
 import { deviceLiveStatus } from './api';
 import { deviceName, technicalDeviceName } from './entityLabel';
 import { fmtNum, fmtRelative } from './format';
+import { WAECHTER_LABEL } from './curtailment';
 import { chargerName, type SiteCharging } from './ladepunkte';
 import { NO_DATA } from './nodata';
 import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten';
@@ -560,27 +561,21 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   // ------------------------------------------------------------------
   // Die Komponenten DIESES Geräts - aus `plantModel`, nie neu abgeleitet.
   // ------------------------------------------------------------------
-  const modelDevice = input.geraetId
-    ? (model?.devices.find((d) => d.id === input.geraetId) ??
-      (charger
-        ? model?.devices.find((d) =>
-            d.componentIds.some(
-              (cid) =>
-                model?.components.find((c) => c.id === cid)?.entityId === charger.entityId,
-            ),
-          )
-        : undefined))
-    : undefined;
-  const komponenten: PlantComponent[] = input.geraetId
-    ? (modelDevice?.componentIds
-        .map((cid) => model?.components.find((c) => c.id === cid))
-        .filter((c): c is PlantComponent => c != null) ?? [])
-    : [];
-  // Eine Säule ohne gemeldete Quelle hängt an ihrer Ladepunkt-Komponente.
-  if (charger?.entityId && komponenten.length === 0) {
-    const own = model?.components.filter((c) => c.entityId === charger.entityId) ?? [];
-    komponenten.push(...own);
-  }
+  // ⚠ EINE SÄULE HAT GENAU IHRE EIGENE KOMPONENTE - nie die des Geräts, an
+  // dessen Box sie hängt. Die Ladepunkt-Komponente wird an der BOX komponiert,
+  // also trägt deren Modell-Gerät auch Speicher/Netz/Haus; über den Umweg „ein
+  // Gerät, das irgendeine Komponente dieser Entität hält" landete die Säule
+  // damit bei der ganzen Grundausstattung des Wechselrichters (im Browser
+  // aufgefallen: „Misst & steuert: Speicher · Solarmodule · Hausverbrauch").
+  const komponenten: PlantComponent[] = charger
+    ? (charger.entityId
+        ? (model?.components.filter((c) => c.entityId === charger.entityId) ?? [])
+        : [])
+    : (input.geraetId
+        ? (model?.devices.find((d) => d.id === input.geraetId)?.componentIds
+            .map((cid) => model?.components.find((c) => c.id === cid))
+            .filter((c): c is PlantComponent => c != null) ?? [])
+        : []);
   const entityIds = new Set(komponenten.map((c) => c.entityId));
 
   // Der gemeldete Ist-Zustand dieses Geräts (`/sources`).
@@ -774,7 +769,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       steuerung.push({ label: 'Regeln, die dieses Gerät nutzen', wert: regeln.join(', ') });
     }
     const waechter = waechterSatz(input.curtailment, komponenten);
-    if (waechter) steuerung.push({ label: 'Einspeise-Wächter', wert: waechter });
+    if (waechter) steuerung.push({ label: WAECHTER_LABEL, wert: waechter });
   }
 
   // ------------------------------------------------------------------

@@ -340,6 +340,13 @@ export function curtailChipLabel(truth: CurtailTruth): string {
 //      sein könnte (siehe `deviceLimitLine`).
 
 /** Die Zeilen des Wächters — abgeleitet, nie roh weitergereicht. */
+/**
+ * Die Beschriftung der Wächter-Zeile - sie lebt EINMAL, weil zwei Flächen sie
+ * lesen: `geraetSeite` schreibt sie, und die Geräteseite lässt sie weg, wo die
+ * Gattung den Wächter selbst führt (Geräteseiten Stufe 2).
+ */
+export const WAECHTER_LABEL = 'Einspeise-Wächter';
+
 export interface ExportGuardView {
   /** Die ruhige Hauptzeile („Einspeisegrenze 70,0 kW. …"). */
   line: string;

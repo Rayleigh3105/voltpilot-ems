@@ -1,33 +1,43 @@
-Der Wechselrichter empfahl, den Wechselrichter zu wählen: die Lane verschwindet für den Benutzer
+Jeder Gerätetyp bekommt sein eigenes GESICHT — die Seite beantwortet zuerst die Frage, die IHR Typ stellt
 
-**Was der Captain am 21.08. sah** (Punkt 5 des Reviews, Scout `vp-geraeteseite-rev-b8` §2.5): auf der Seite des Deye stand statt des Register-Knopfs der Satz
+**Was der Captain am 21.08. sah** (Punkt 2 des Reviews, Scout `vp-geraeteseite-rev-b8` §2.2/§4): jede Geräteseite begann mit derselben Karte — „Verbindung & Gesundheit: Anbindung Solarman-Logger · Adresse · Lesetakt" —, egal ob dahinter ein Hybrid-Wechselrichter, ein PV-Melder, ein Zähler, ein Heizstab oder eine Ladesäule stand. Fünf grundverschiedene Fragen, EINE Sektionsliste in EINER Reihenfolge.
 
-> „Dieses Gerät wird über den Solarman-Logger gelesen - bitte den primären Wechselrichter als Ziel wählen."
+Der Befund ist ZUSCHNITT, nicht Gestaltung — deshalb ist die Antwort auch keine neue Farbe, sondern eine Ableitung.
 
-Der Deye **IST** der primäre Wechselrichter. Die Seite schickte einen Menschen dorthin, wo er schon stand — und der Knopf, der dort fehlte, funktionierte ausgerechnet auf der Box-Seite und schrieb von dort an genau dieses Gerät.
+## `src/geraetGesicht.ts` entscheidet, WAS oben steht — und mehr nicht
 
-Dieser PR baut den Captain-Entscheid **E4** (Abnahme 21.08.: „transparent per Server-Alias"). Er lockert **keine einzige Regel**: die Box bekommt weiterhin einen Auftrag auf der primären Lane, `Admit`/`WriteOnce`, die Selbstkonflikt-Sperre, die Notiz-Pflicht und der Verantwortungs-Satz sind unberührt.
+| Gattung | Erste Frage | Held |
+|---|---|---|
+| **B** Wechselrichter mit Speicher | Was macht mein Speicher, folgt er dem Fahrplan? | Live-Bild + der **wörtliche** `controlStrip`-Satz |
+| **B'** ohne Speicher | Wie viel erzeugt er? | Live-Bild + „VoltPilot liest dieses Gerät nur." |
+| **C** PV-Melder | Wie viel erzeugt er, wird er gedrosselt? | Erzeugung · kWp · Auslastungs-Balken |
+| **D** Zähler | Bezug oder Einspeisung — und ist er der maßgebliche? | die Richtung als **WORT** + „maßgeblich für die Bilanz" |
+| **E** Verbraucher | Läuft es, und warum? | Leistung + Zustand + die belegte Regel |
+| **F** Ladepunkt | Welcher Stecker lädt, wer wartet? | Stecker-Kacheln + der Satz der Box |
 
-## Die zwei Hälften
+Die Sektions-BAUTEILE bleiben geteilt (Zeilen-Liste, Komponenten-Zeile, Befehls-Film, Register-Tabelle, Drawer) — sechs Gesichter sind sechs Stellen, an denen eine Regel vergessen werden kann, deshalb liegt die Auswahl in **EINER reinen Datei mit einem Test je Gattung**.
 
-**1 · Der Server BILDET AB, statt abzulehnen** (`RegisterWriteTargets.componentTarget`). Eine Komponente am Solarman-Logger wird ein Ziel mit `lane: primary` + `primaryAlias: true` — **die `entityId` bleibt gesetzt**, damit der Vorgang der KOMPONENTE gehört (Journal, Geräte-Verlauf). Auf dem Draht ändert sich **nichts**: der Umschlag der primären Lane trägt per Konstruktion gar kein `entity_id` (`RegisterWritePublisher:138`), die Box bekommt also zeichengleich, was sie immer bekam.
+## Die Ehrlichkeitsregeln, die das Ganze tragen
 
-**⚠ Eine gemeldete QUELLE am eigenen Logger bleibt eine echte Ablehnung** — dort meint die primäre Lane den Wechselrichter, den die Box selbst eingerichtet hat; ein Alias schickte den Auftrag an ein ANDERES Gerät. Ihr Satz nennt jetzt den Weg („Richten Sie es zuerst als Komponente ein") statt eines Transports.
+- **Die Gattung wird BELEGT, nie geraten.** Zuerst die vom Gerät GEMELDETE Rolle, dann die Komponenten — und die **nur, wenn sie eindeutig sind**. Alles andere ist die ehrliche Rückfall-Gattung mit der Sektions-Folge von vorher.
+- **⚠ Eine Sektion, die nur ihre Nicht-Zuständigkeit erklärt, ENTFÄLLT** — die Box-Lehre der Stufe 1, verallgemeinert. Ein Shelly bekommt keine Register-Sektion, ein Zähler keinen leeren Befehls-Kasten. **Der Grund verschwindet dabei nicht: er wandert in den Technik-Aufklapper.**
+- **Der eine Satz oben wird nie erfunden.** Gattung B nimmt WÖRTLICH `controlStrip` (dieselbe Ableitung wie Cockpit und Steuerungs-Karte — drei Flächen, ein Satz), die Säule reicht den Satz der Box durch. **Trägt keine Kachel einen Wert, steht der GRUND da** — eine Reihe von „—" ist keine Auskunft. Und der Auslastungs-Balken entsteht nur mit gepflegter kWp: ein Balken ohne Maßstab wäre eine erfundene Aussage.
+- **⚠ Die Abregelung behauptet ohne Einheiten-Eintrag NICHTS über DIESES Gerät.** Die Zähler sind eine Aussage über die ANLAGE; sie einem von mehreren Wechselrichtern anzulasten wäre genau die erfundene Zuordnung, die `ANLAGENWEITE_BEFEHLE` vermeidet. Erst die Einheiten-Liste aus **Stufe 1 (PR 458)** macht „Begrenzt gerade auf 8,0 kW · vom Gerät bestätigt" möglich.
 
-**2 · Die Seite kennt ihr EINES Ziel** (`geraetRegisterZugang`). Sie bekommt die Gattung: ein **Hauptgerät** wählt die primäre Lane seiner Box vor (es ist sie), ein Gerät dahinter seine Komponente — und ein Alias zählt dabei wie jede andere Komponente. Der Picker zeigt „Speicher · **Komponente**", nie ein Lane- oder Logger-Wort (`ziele()` überschreibt das Lane-Wort für Aliase).
+## Zwei Sachen, die dabei mit erledigt sind
 
-## Nebenbei ehrlicher geworden
-
-- Der HTTP-Fall war dreimal verschieden formuliert („spricht kein Modbus" / „wird nicht über Modbus gelesen"). Er steht jetzt EINMAL, in Kundenworten: **„Dieses Gerät wird über seine Web-Schnittstelle gelesen - Modbus-Register gibt es dort nicht."**
-- Ein Gerät, das die Box zwar MELDET, das aber noch keine Komponente ist, bekommt seinen **Weg** statt nur des Fehlens (`ERST_ALS_KOMPONENTE` + Link ins Anlagen-Modell). Eine Vorwahl auf seine freie Adresse gibt es weiterhin nicht — dass dort GENAU dieses Gerät antwortet, weiß nur die Box.
+- **Lesen und Schreiben sind EINE Sektion „Register"** (§4.2 Punkt 5) — inklusive **„Register jetzt lesen"** über die Vorschau-Route (der h6-§7.3-Knopf). Sie schreibt nichts und wird nie journalisiert, **also lebt die Zeile nur in dieser Sitzung — und der Satz daneben sagt das.** So sieht man den Ist-Wert, BEVOR man schreibt. Die Zeile „Ihr Wechselrichter begrenzt auf 33,0 kW — hinterlegt sind 70,0 kW" steht damit endlich direkt über dem Werkzeug, das sie motiviert.
+- **⚠ Eine SÄULE hat GENAU IHRE eigene Komponente.** Ihre Ladepunkt-Komponente wird an der BOX komponiert; über den früheren Umweg landete die Säule bei der ganzen Grundausstattung des Wechselrichters („Misst & steuert: Speicher · Solarmodule · Hausverbrauch"). Im Browser aufgefallen.
 
 ## Beweise
 
-- api rein `RegisterWriteTargetsTest` (10, davon 2 neu): die Solarman-Komponente wird abgebildet statt abgelehnt und steht **neben** dem Wechselrichter-Ziel (wer „Speicher" sucht, findet ihn weiterhin); die Quelle am eigenen Logger nennt den Weg und kein Transport-Wort.
-- Portal `registerWrite.test.ts` (44, davon 3 neu) + `GeraetSeiteSection.test.tsx` (19, davon 1 neu): der Captain-Fall als Test — auf der Deye-Seite steht der Knopf, vorgewählt ist das Gerät selbst, und **nirgends** ein „Solarman"/„primären Wechselrichter als Ziel". **Mutationsgeprüft** (ohne die Hauptgerät-Regel fällt er um).
-- Ganze Portal-Suite grün (3997), `tsc` sauber.
-- Im echten Chrome bei **1440 und 375** gegen einen Wegwerf-Harness mit der Pilsting-Lage (Deye am Logger + Fronius + Zähler + Shelly + Säule): 0 px horizontaler Überlauf, 0 überstehende Elemente, keine Konsolenfehler. Der Picker zeigt den Deye vorgewählt, „Speicher · Komponente" wählbar und die ehrliche Web-Schnittstellen-Absage am Shelly.
+- **Rein:** `geraetGesicht.test.ts` (18) — jede Gattung, die Eindeutigkeits-Regel, die entfallenden Sektionen, „ohne Messwert steht der Grund da", die vier Abregel-Fälle.
+- **Render:** `GeraetSeiteSection.test.tsx` (21, davon 2 neu): der PV-Melder führt mit „Erzeugung" und bekommt die Einspeise-Begrenzung, der Zähler bekommt KEINEN Befehls-Kasten. **Mutationsgeprüft** — ohne die Rolle-führt-Regel fallen beide.
+- Ganze Portal-Suite grün (4017), `tsc` sauber.
+- **Im echten Chrome bei 1440 UND 375, je Gattung** (Wegwerf-Harness mit der Pilsting-Lage: Deye am Logger + Fronius + Zähler + Shelly + Säule + ein noch nicht übernommenes Gerät): **0 px horizontaler Überlauf, 0 überstehende Elemente, keine Konsolenmeldungen**. Die „Jetzt lesen"-Strecke ist dort durchgespielt (0x00E7 → Zeile „330 · 33,0 kW · Auf Abruf gelesen" plus der Nicht-gespeichert-Satz).
+
+Dabei aufgefallen und behoben: dieselbe Aussage stand zweimal auf einem Bildschirm (die Drosselung im Held UND in ihrer Sektion; der Einspeise-Wächter in den Steuerungs-Bezügen UND in der Gattungs-Sektion), und die Grenzen-Sektion listete die Guard-Bänder eines Hybriden doppelt (die PV-Aspekt-Zeile teilt sich ihre Entität mit dem Speicher).
 
 ## Was NICHT drin ist
 
-Die Geräte-GESICHTER (§4) und die Modell-Suche (NACHTRAG 5) folgen in denselben Stufe-2-Runden; der Register-LESEN-Knopf (§7 zweiter Absatz) gehört zur Gattung B und kommt mit ihr.
+Die Modell-Suche im Assistenten (NACHTRAG 5) folgt als eigener PR. Die Box-Seite ist unangetastet — sie hat seit Stufe 1 (PR 457) ihre eigene Gattung.
