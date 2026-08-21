@@ -241,6 +241,54 @@ describe('K1 + K8 · der Kernaussage-Kopf', () => {
     expect(k.wert).toBeNull();
   });
 
+  it('sagt „bisher", solange der Tag noch LÄUFT - und trägt die Bestandszeile', () => {
+    const k = tagesbildKern({
+      geld: {
+        savedEur: -4.69,
+        baselineEur: 9.16,
+        actualEur: 4.47,
+        speicherDeltaKwh: 44.2,
+        speicherWertCtKwh: 18.9,
+        speicherWertEur: 8.3538,
+        speicherWertBasis: 'plan',
+        to: '2026-08-22T00:00:00Z',
+        range: 'day',
+      },
+      buckets: tag,
+      plantKind: 'eigenverbrauch',
+      now: new Date('2026-08-21T10:19:00Z'),
+    })!;
+    // Ohne das Wort läse sich die Kasse bis JETZT als Tagesergebnis.
+    expect(k.satz).toContain('an diesem Tag bisher gebracht');
+    // Die zweite Wahrheit steht DANEBEN, nie in der Zahl.
+    expect(k.wert).toBe(`-4,69${NBSP}€`);
+    expect(k.bestand?.text).toContain('im Speicher für später');
+    expect(k.bestand?.badge).toBe('Geplant');
+  });
+
+  it('sagt am ABGESCHLOSSENEN Tag wieder „an diesem Tag"', () => {
+    const k = tagesbildKern({
+      geld: { savedEur: 2.73, baselineEur: 3.1, actualEur: 0.37, to: '2026-08-11T00:00:00Z' },
+      buckets: tag,
+      plantKind: 'eigenverbrauch',
+      now: new Date('2026-08-12T09:00:00Z'),
+    })!;
+    expect(k.satz).toContain('hat die Steuerung an diesem Tag gebracht');
+    expect(k.satz).not.toContain('bisher');
+  });
+
+  it('bleibt ohne die Bestandsfelder zeichengleich zu vorher (älteres Backend)', () => {
+    const k = tagesbildKern({
+      geld: { savedEur: 2.73, baselineEur: 3.1, actualEur: 0.37 },
+      buckets: tag,
+      plantKind: 'eigenverbrauch',
+      now: new Date('2026-08-21T10:19:00Z'),
+    })!;
+    expect(k.bestand).toBeNull();
+    // Ohne Fensterende wird nicht behauptet, der Tag laufe noch.
+    expect(k.satz).not.toContain('bisher');
+  });
+
   it('rendert GAR NICHTS, solange das Geld noch nicht geladen ist', () => {
     expect(tagesbildKern({ geld: null, buckets: tag, plantKind: 'eigenverbrauch' })).toBeNull();
   });

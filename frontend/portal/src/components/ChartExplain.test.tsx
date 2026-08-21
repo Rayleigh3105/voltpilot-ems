@@ -26,6 +26,41 @@ describe('ChartHeadline (K1/M11)', () => {
     expect(screen.getByText('Ohne Speicher wären es 3,10 €.')).toBeInTheDocument();
   });
 
+  // Diagnose vp-tagesbild-minus-f3 §6.2: der Bestand steht NEBEN der Kasse,
+  // nie darin - die Zahl ist gemessen, dieser Betrag ist nach dem Plan bewertet.
+  it('zeigt die Bestandszeile unter der Zahl - mit ihrem Abzeichen', () => {
+    render(
+      <ChartHeadline
+        kern={{
+          wert: '-4,69 €',
+          satz: 'hat die Steuerung an diesem Tag bisher gebracht.',
+          grund: null,
+          ton: 'calm',
+          bestand: {
+            text: 'dazu 44,2 kWh im Speicher für später — nach dem Plan ≈ +8,35 €',
+            badge: 'Geplant',
+            titel: 'Bewertet mit dem Speicherwert dieser Viertelstunde.',
+          },
+        }}
+      />,
+    );
+    const satz = screen.getByText(/44,2 kWh im Speicher/);
+    expect(satz.closest('p')).toHaveTextContent('Geplant');
+    expect(satz.closest('p')).toHaveAttribute(
+      'title',
+      'Bewertet mit dem Speicherwert dieser Viertelstunde.',
+    );
+    // Die Kasse bleibt die Kasse.
+    expect(screen.getByText('-4,69 €')).toBeInTheDocument();
+  });
+
+  it('rendert ohne Bestand nichts Zusätzliches', () => {
+    const { container } = render(
+      <ChartHeadline kern={{ wert: '2,73 €', satz: 'Ein Satz.', grund: null, ton: 'ok' }} />,
+    );
+    expect(container.querySelector('.vp-chart-kern-bestand')).toBeNull();
+  });
+
   it('sagt ohne Satz den GRUND - und nennt dabei keine Zahl', () => {
     render(
       <ChartHeadline

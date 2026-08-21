@@ -57,6 +57,7 @@ import {
   type SlotRole,
   type WhySlot,
 } from './fahrplanWhy';
+import { bestandZeile } from './erloesKomposition';
 import { lageView, speicherHalbsatz, type LageSlot } from './fahrplanLage';
 import { grenzenView, gruende, leitgrund } from './grenzenWarum';
 import { planInsightParts, planSentence, type PlanSlotLike } from './schedule';
@@ -414,5 +415,35 @@ describe('Warum-Wächter: die Stufe-3-Grenzen hängen an ihren Gates', () => {
     // Geformt, aber ohne belegten Grund UND ohne Geräte-Grenze: nichts zu sagen.
     expect(grenzenView({ ...abregeln, slotFlags: ['curtailing'] })).toBeNull();
     expect(grenzenView({ ...abregeln, slotFlags: ['feed_in_cap'] })).not.toBeNull();
+  });
+});
+
+describe('Warum-Wächter: die Bestandszeile behauptet KEINE Ursache', () => {
+  /**
+   * Sie ist der Gegenpol zu genau der Falle, aus der die Regel entstand: sie
+   * ERKLÄRT nicht, warum der Speicher voll ist - sie sagt, dass er es ist, und
+   * was der Plan das wert findet (Diagnose vp-tagesbild-minus-f3 §6.2).
+   */
+  const bestand = {
+    speicherDeltaKwh: 44.2,
+    speicherWertCtKwh: 18.9,
+    speicherWertEur: 8.3538,
+    speicherWertBasis: 'plan',
+    to: '2026-08-22T00:00:00Z',
+    range: 'day',
+  };
+  const NOW = new Date('2026-08-21T10:19:00Z');
+
+  it('nennt nur den Bestand und seine Plan-Bewertung, nie einen Grund', () => {
+    const z = bestandZeile(bestand, NOW)!;
+    expect(kausaleVokabeln(z.text)).toEqual([]);
+    expect(kausaleVokabeln(z.titel ?? '')).toEqual([]);
+  });
+
+  it('behauptet ohne Bewertung erst recht nichts', () => {
+    const z = bestandZeile({ ...bestand, speicherWertEur: null, speicherWertCtKwh: null }, NOW)!;
+    expect(kausaleVokabeln(z.text)).toEqual([]);
+    // Die kWh sind gemessen, der Euro ist Plan - ohne ihn wird er nicht erfunden.
+    expect(z.wertEur).toBeNull();
   });
 });

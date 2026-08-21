@@ -61,6 +61,20 @@ import java.util.UUID;
  *     coming horizon) - range-independent, null without forward PV/price
  *     coverage; {@code expectedMarketValueFrom}/{@code ...To} bound and
  *     {@code expectedMarketValueSlots} counts the covered forward slots
+ * @param speicherDeltaKwh das BESTANDSKONTO des Zeitraums: wie viel Energie am
+ *     Ende MEHR (+) oder weniger (−) im Speicher steckt als am Anfang. Es ist
+ *     der GEMESSENE Gegenpol zu {@code savedEur}, das als reine Zahlungsbilanz
+ *     eine eingelagerte kWh nur als entgangenen Einspeise-Erlös kennt
+ *     (Diagnose vp-tagesbild-minus-f3 §6.1) - null ohne Speicher oder ohne
+ *     gemessenen Ladestand, nie eine erfundene 0
+ * @param speicherWertCtKwh womit dieser Bestand bewertet ist: λ, der vom
+ *     Optimierer selbst persistierte Wert einer gespeicherten kWh
+ * @param speicherWertEur {@code speicherDeltaKwh × speicherWertCtKwh / 100} -
+ *     ausdrücklich KEIN Summand von {@code savedEur}, sondern der zweite, als
+ *     „nach dem Plan bewertet" beschriftete Posten daneben
+ * @param speicherWertBasis {@code plan} (λ des Slots) oder {@code terminal}
+ *     (der Terminalwert des Laufs, der FK2-Rückfall) - damit die Fläche sagen
+ *     kann, WOMIT bewertet wurde
  * @param series the money per Berlin bucket (hour for a day, day for week and
  *     month, month for year/all) - the stacked bars + the cumulative line
  */
@@ -101,6 +115,10 @@ public record SiteEarningsDto(
         Instant expectedMarketValueFrom,
         Instant expectedMarketValueTo,
         Long expectedMarketValueSlots,
+        BigDecimal speicherDeltaKwh,
+        BigDecimal speicherWertCtKwh,
+        BigDecimal speicherWertEur,
+        String speicherWertBasis,
         List<SiteEarningsBucketDto> series,
         PeakShavingDto peakShaving) {
 

@@ -8112,6 +8112,38 @@ components:
           format: int64
           nullable: true
           description: Covered forward slot count behind expectedMarketValueSolarCtKwh.
+        speicherDeltaKwh:
+          type: number
+          nullable: true
+          description: >
+            Das BESTANDSKONTO des Zeitraums: wie viel Energie am Ende MEHR (+)
+            oder weniger (-) im Speicher steckt als am Anfang (Delta-Ladestand x
+            Kapazitaet). Der gemessene Gegenpol zu savedEur, das als reine
+            Zahlungsbilanz eine eingelagerte kWh nur als entgangenen
+            Einspeise-Erloes kennt (Diagnose vp-tagesbild-minus-f3). Null ohne
+            primaeren Speicher oder ohne gemessenen Ladestand - nie eine 0.
+        speicherWertCtKwh:
+          type: number
+          nullable: true
+          description: >
+            Lambda - der vom Optimierer persistierte Wert einer GESPEICHERTEN
+            kWh (Verluste und Verschleiss sind darin enthalten), womit
+            speicherDeltaKwh bewertet wird.
+        speicherWertEur:
+          type: number
+          nullable: true
+          description: >
+            speicherDeltaKwh x speicherWertCtKwh / 100. Ausdruecklich KEIN
+            Summand von savedEur, sondern der zweite, als "nach dem Plan
+            bewertet" beschriftete Posten daneben; beide Vorzeichen sind
+            legitim (+ in den Folgetag gespeichert, - aus dem Vortag entnommen).
+        speicherWertBasis:
+          type: string
+          nullable: true
+          enum: [plan, terminal]
+          description: >
+            Womit bewertet wurde: "plan" = Lambda des massgeblichen Slots,
+            "terminal" = der Terminalwert des Laufs (der FK2-Rueckfall).
         series:
           type: array
           description: >

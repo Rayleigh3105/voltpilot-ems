@@ -36,6 +36,25 @@ export interface Kernaussage {
   ton: KernTon;
   /** K8: der Vergleichsanker („ohne Speicher wären es 3,10 €"). Optional. */
   anker?: string | null;
+  /**
+   * Das BESTANDSKONTO daneben (Diagnose `vp-tagesbild-minus-f3` §6): was am
+   * Ende MEHR im Speicher steckt als am Anfang, und was der Plan es wert
+   * findet. Es steht NEBEN der Zahl, nie darin — die Zahl bleibt die gemessene
+   * Kasse. Optional; `null` = nichts zu sagen.
+   *
+   * Strukturell getippt (nicht importiert), damit `erloesKomposition` und
+   * dieser Slot sich nicht gegenseitig importieren müssen.
+   */
+  bestand?: KernBestand | null;
+}
+
+/** Die drei Teile, die der Kopf von einer Bestandszeile rendert. */
+export interface KernBestand {
+  text: string;
+  /** Das Etikett, das die Zahl als PLAN kennzeichnet; null ohne Bewertung. */
+  badge: string | null;
+  /** Womit bewertet wurde (Titel-Text); null ohne Bewertung. */
+  titel: string | null;
 }
 
 /**
@@ -53,12 +72,17 @@ export interface KopfView {
   wert: string | null;
   text: string | null;
   anker: string | null;
+  /** Die Bestandszeile — nur im Modus `aussage`, wie der Anker. */
+  bestand: KernBestand | null;
   ton: KernTon;
 }
 
 /** Die eine Entscheidung, wie ein Kernaussage-Kopf aussieht. */
 export function kopfView(k: Kernaussage | null | undefined): KopfView {
-  if (!k) return { modus: 'nichts', wert: null, text: null, anker: null, ton: 'calm' };
+  const leer: KopfView = {
+    modus: 'nichts', wert: null, text: null, anker: null, bestand: null, ton: 'calm',
+  };
+  if (!k) return leer;
   const satz = trimOrNull(k.satz);
   if (satz) {
     return {
@@ -66,16 +90,18 @@ export function kopfView(k: Kernaussage | null | undefined): KopfView {
       wert: trimOrNull(k.wert),
       text: satz,
       anker: trimOrNull(k.anker ?? null),
+      bestand: k.bestand ?? null,
       ton: k.ton,
     };
   }
   const grund = trimOrNull(k.grund);
   if (grund) {
     // Ohne Satz gibt es auch keine Zahl zu betonen: eine Zahl neben einem
-    // Grund läse sich, als belege sie ihn.
-    return { modus: 'grund', wert: null, text: grund, anker: null, ton: 'calm' };
+    // Grund läse sich, als belege sie ihn — und ein Bestand ohne Kasse
+    // daneben wäre eine Aussage ohne ihren Bezug.
+    return { ...leer, modus: 'grund', text: grund };
   }
-  return { modus: 'nichts', wert: null, text: null, anker: null, ton: 'calm' };
+  return leer;
 }
 
 function trimOrNull(v: string | null | undefined): string | null {

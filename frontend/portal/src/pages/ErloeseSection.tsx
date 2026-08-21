@@ -334,6 +334,14 @@ export function ErloeseSection({
         savedEur: money.savedEur,
         baselineEur: money.baselineEur,
         actualEur: money.actualEur,
+        // Das Bestandskonto reist mit, damit der Kopf des Tagesbilds und die
+        // Ergebnis-Karte darüber DIESELBE Bestandszeile ableiten.
+        speicherDeltaKwh: money.speicherDeltaKwh,
+        speicherWertCtKwh: money.speicherWertCtKwh,
+        speicherWertEur: money.speicherWertEur,
+        speicherWertBasis: money.speicherWertBasis,
+        to: money.to,
+        range: money.range,
         series: money.series,
       }
     : null;
@@ -368,6 +376,22 @@ export function ErloeseSection({
     <p className="vp-erg-steering" title={ergebnis.steeringTitel ?? undefined}>
       <Icon name="zap" size={14} aria-hidden="true" />
       {ergebnis.steering}
+    </p>
+  ) : null;
+  // Das BESTANDSKONTO steht NEBEN der Zurechnung, nie in der grossen Zahl:
+  // die gemessene Kasse kennt eingelagerte Energie nur als entgangenen Erlös
+  // (Diagnose vp-tagesbild-minus-f3). Eigene Zeile, eigenes Etikett.
+  const bestandZeileEl = ergebnis.bestand ? (
+    <p className="vp-erg-bestand" title={ergebnis.bestand.titel ?? undefined}>
+      {/* Icon UND Satz sind EIN Flex-Kind: sonst rutscht das Symbol am Telefon
+          allein in eine eigene Zeile (bei 375 px gemessen). */}
+      <span className="vp-erg-bestand-satz">
+        <Icon name="battery" size={14} aria-hidden="true" />
+        {ergebnis.bestand.text}
+      </span>
+      {ergebnis.bestand.badge && (
+        <span className="vp-erg-bestand-badge">{ergebnis.bestand.badge}</span>
+      )}
     </p>
   ) : null;
   const vergleichsZeilen = (
@@ -454,6 +478,7 @@ export function ErloeseSection({
                         danach. Am Schreibtisch bleibt die gewachsene Ordnung —
                         dort steht ohnehin alles gemeinsam im Bild. */}
                     {!isPhone && steeringZeile}
+                    {!isPhone && bestandZeileEl}
                     {!isPhone && vergleichsZeilen}
                     {/* Die Herkunft der großen Zahl - nur, wenn es eine gibt;
                         eine Liste aus lauter „—" erklärt nichts. */}
@@ -467,6 +492,7 @@ export function ErloeseSection({
                       ))}
                     </ul>
                     {isPhone && steeringZeile}
+                    {isPhone && bestandZeileEl}
                     {isPhone && vergleichsZeilen}
                     {ergebnis.periodNote && <p className="vp-note">{ergebnis.periodNote}</p>}
                     {ergebnis.footnote && <p className="vp-note">{ergebnis.footnote}</p>}

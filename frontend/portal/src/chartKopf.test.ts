@@ -28,8 +28,23 @@ describe('kopfView (K1/M11 · der Kernaussage-Kopf)', () => {
       wert: '9,84 €',
       text: 'Mittags laden, abends verkaufen (17–20 Uhr).',
       anker: 'Ohne Speicher wären es 3,10 €.',
+      // Das BESTANDSKONTO ist optional: ohne Angabe wird nichts behauptet.
+      bestand: null,
       ton: 'ok',
     });
+  });
+
+  it('reicht die Bestandszeile durch — aber nur, wo es auch einen Satz gibt', () => {
+    const bestand = {
+      text: 'dazu 44,2 kWh im Speicher für später — nach dem Plan ≈ +8,35 €',
+      badge: 'Geplant',
+      titel: 'Bewertet mit dem Speicherwert dieser Viertelstunde.',
+    };
+    expect(kopfView({ ...voll, bestand }).bestand).toEqual(bestand);
+    // Ohne Kasse daneben wäre ein Bestand eine Aussage ohne ihren Bezug.
+    expect(
+      kopfView({ ...voll, satz: null, grund: 'Noch nicht berechenbar.', bestand }).bestand,
+    ).toBeNull();
   });
 
   it('sagt ohne Satz den GRUND - und lässt die Zahl dann weg', () => {

@@ -56,6 +56,41 @@
   flex: 0 0 auto;
 }
 
+/* Das BESTANDSKONTO neben der Zurechnung (Diagnose vp-tagesbild-minus-f3 §6).
+   Bewusst RUHIG: die Zahl daneben ist gemessen, dieser Betrag ist nach dem
+   Plan bewertet - er darf sich nie wie ein zweiter Erlös anfühlen. */
+.vp-erg-bestand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--vp-text-muted, #5b6472);
+  min-width: 0;
+}
+
+.vp-erg-bestand-satz {
+  min-width: 0;
+}
+
+.vp-erg-bestand-satz svg {
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+
+.vp-erg-bestand-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-neutral-soft, #eef1f5);
+  color: #4b5563;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 /* Die geplante Ersparnis - ruhiger als das Ergebnis, eigenes Abzeichen. */
 .vp-erg-plan {
   margin: 0;

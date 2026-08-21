@@ -40,6 +40,7 @@
 import type { HistoryBucket, PlantKind, SiteEarningsBucket } from './api';
 import { eurAmount, fmtNum } from './format';
 import { proofAnchor } from './fleet';
+import { bestandZeile, type BestandEingabe, type BestandZeile } from './erloesKomposition';
 import { PANELS3 } from './chartStyle';
 import type { Kernaussage } from './chartKopf';
 
@@ -329,8 +330,13 @@ export function ertragKumuliert(
  * `actualEur`) — dieselbe Ableitung, mit der der Geld-Held rechnet.
  * ------------------------------------------------------------------------- */
 
-/** Was der Kopf aus dem gemessenen Geld dieses Tages braucht. */
-export interface TagesbildGeld {
+/**
+ * Was der Kopf aus dem gemessenen Geld dieses Tages braucht — plus das
+ * BESTANDSKONTO, das daneben steht (`BestandEingabe`, Diagnose
+ * `vp-tagesbild-minus-f3` §6). Die Bestandsfelder sind OPTIONAL: ein älteres
+ * Backend sendet sie nicht, und dann rendert der Kopf exakt wie vorher.
+ */
+export interface TagesbildGeld extends BestandEingabe {
   savedEur: number | null;
   baselineEur: number | null;
   actualEur: number | null;
@@ -393,24 +399,51 @@ export function tagesbildKern(input: {
   geld: TagesbildGeld | null | undefined;
   buckets: readonly HistoryBucket[];
   plantKind: PlantKind;
+  /** „Jetzt" — entscheidet über „bisher" und über die Bestandszeile. */
+  now?: Date;
 }): Kernaussage | null {
   const { geld, buckets, plantKind } = input;
   if (!geld) return null;
+  const now = input.now ?? new Date();
   const satzTeil = speicherTagSatz(buckets);
   const saved = geld.savedEur;
   if (saved == null || !Number.isFinite(saved)) {
     return { wert: null, satz: null, grund: KEIN_GELD_GRUND, ton: 'calm' };
   }
   const zaehlt = Math.abs(saved) >= EUR_TOTBAND;
+  // „bisher", solange der Tag läuft: die Zahl ist die Kasse bis JETZT, und ohne
+  // dieses Wort liest sie sich als Tagesergebnis (Diagnose §6.2).
+  const wann = tagLaeuft(geld, now) ? 'an diesem Tag bisher' : 'an diesem Tag';
   return {
     wert: zaehlt ? eurAmount(saved) : null,
     satz: satzTeil
-      ? `hat die Steuerung an diesem Tag gebracht — ${satzTeil}`
-      : 'hat die Steuerung an diesem Tag gebracht.',
+      ? `hat die Steuerung ${wann} gebracht — ${satzTeil}`
+      : `hat die Steuerung ${wann} gebracht.`,
     grund: null,
     ton: zaehlt && saved > 0 ? 'ok' : 'calm',
     anker: zaehlt ? ohneSpeicherAnker(geld, plantKind) : null,
+    // Das BESTANDSKONTO neben der Kasse - die eine Ableitung teilt sich diese
+    // Fläche mit der Ergebnis-Karte darüber (Diagnose vp-tagesbild-minus-f3 §6).
+    bestand: tagesbildBestand(geld, now),
   };
+}
+
+/** Ob der gezeigte Zeitraum noch LÄUFT (sein Ende liegt in der Zukunft). */
+export function tagLaeuft(geld: TagesbildGeld | null | undefined, now: Date): boolean {
+  const bis = geld?.to ? new Date(geld.to).getTime() : NaN;
+  return Number.isFinite(bis) && bis > now.getTime();
+}
+
+/**
+ * Die Bestandszeile des Tagesbilds - dieselbe Ableitung wie in der
+ * Ergebnis-Karte, damit beide Flächen über denselben Speicherstand nie
+ * Verschiedenes behaupten können.
+ */
+export function tagesbildBestand(
+  geld: TagesbildGeld | null | undefined,
+  now: Date,
+): BestandZeile | null {
+  return bestandZeile(geld, now);
 }
 
 /* ---------------------------------------------------------------------------

@@ -5837,6 +5837,158 @@ class PortalApiTest {
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * Das BESTANDSKONTO des gemessenen Tages (Diagnose vp-tagesbild-minus-f3 §6).
+     *
+     * <p>Der Live-Fall vom 21.08.2026 in Zahlen: Ladestand 24 % → 92 % an einem
+     * 65-kWh-Speicher, λ 18,9 ct/kWh ⇒ 44,2 kWh ⇒ ≈ +8,35 €. Ohne diese
+     * Gutschrift stand über einem ökonomisch einwandfreien Plan „−4,69 €",
+     * weil {@code savedEur} eine reine Zahlungsbilanz ohne Bestandskonto ist.
+     *
+     * <p>Mitgeprüft: die drei Auswahlregeln für λ (jüngster Slot, jüngster Lauf,
+     * kein Lauf von NACH dem bewerteten Moment), der FK2-Rückfall auf den
+     * Terminalwert samt NEGATIVEM Vorzeichen (die Bank des Vortags wird
+     * verbraucht), der Vorrang des ROHEN Samples am laufenden Tag und die
+     * ehrliche Null ohne Speicher.
+     */
+    @Test
+    void siteEarningsCarryTheStorageBankOfTheMeasuredDay() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        java.time.ZoneId berlin = java.time.ZoneId.of("Europe/Berlin");
+
+        String site = createSiteWithTarif(demo, "Bestandskonto", "CH", "eigenverbrauch",
+                "fest", "21");
+        String ohneSpeicher = createSite(demo, "Bestandskonto ohne Speicher", "CH",
+                "eigenverbrauch");
+        saveBattery(demo, site, Map.of("capacityKwh", 65, "maxChargeKw", 30,
+                "maxDischargeKw", 30));
+
+        java.time.LocalDate tag = java.time.LocalDate.now(berlin).minusDays(1);
+        java.time.LocalDate vortag = tag.minusDays(1);
+        String tagStart = ts(tag.atStartOfDay(berlin).toInstant());
+        String vorFenster = ts(vortag.atTime(23, 45).atZone(berlin).toInstant());
+        String vorVortag = ts(vortag.minusDays(1).atTime(23, 45).atZone(berlin).toInstant());
+        String mittag = ts(tag.atTime(12, 0).atZone(berlin).toInstant());
+        String spaet = ts(tag.atTime(23, 30).atZone(berlin).toInstant());
+        String letzter = ts(tag.atTime(23, 45).atZone(berlin).toInstant());
+        String naechsterTag = ts(tag.plusDays(1).atStartOfDay(berlin).toInstant());
+
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh,"
+                + " currency, source) VALUES "
+                + "(" + mittag + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "(" + letzter + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') "
+                + "ON CONFLICT DO NOTHING");
+        // Die Ladestands-Kette: 50 % vor dem Vortag → 24 % zu Tagesbeginn →
+        // 92 % zu Tagesende. Der Eimer VOR dem Fenster ist der Anfangsbestand.
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
+                + " grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh,"
+                + " soc_last_pct, n_samples) VALUES "
+                + "(" + vorVortag + ", '" + tenantA + "', '" + site + "',"
+                + " NULL, NULL, NULL, NULL, NULL, NULL, 50.00, 90), "
+                + "(" + vorFenster + ", '" + tenantA + "', '" + site + "',"
+                + " NULL, NULL, NULL, NULL, NULL, NULL, 24.00, 90), "
+                + "(" + mittag + ", '" + tenantA + "', '" + site + "',"
+                + " 5.0, 0.5, 0.0, 0.5, 4.0, 0.0, 60.00, 90), "
+                + "(" + letzter + ", '" + tenantA + "', '" + site + "',"
+                + " 0.0, 1.5, 1.0, 0.0, 0.0, 0.5, 92.00, 90) "
+                + "ON CONFLICT DO NOTHING");
+        // λ-Auswahl: der jüngste Slot (23:45), darin der jüngste Lauf. Drei
+        // Lockvögel: ein älterer SLOT, ein älterer LAUF und ein Slot NACH dem
+        // bewerteten Moment.
+        String plan = "'11111111-1111-1111-1111-111111111111'";
+        exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at,"
+                + " battery_kw, stored_value_ct_kwh, terminal_value_eur_per_kwh) VALUES "
+                + "(" + spaet + ", '" + tenantA + "', '" + site + "', " + plan + ", "
+                + spaet + ", -3.0, 15.0000, 0.150000), "
+                + "(" + letzter + ", '" + tenantA + "', '" + site + "', " + plan + ", "
+                + spaet + ", -3.0, 5.0000, 0.150000), "
+                + "(" + letzter + ", '" + tenantA + "', '" + site + "', " + plan + ", "
+                + letzter + ", -3.0, 18.9000, 0.150000), "
+                + "(" + naechsterTag + ", '" + tenantA + "', '" + site + "', " + plan + ", "
+                + letzter + ", -3.0, 99.0000, 0.990000) "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + site + "/earnings?range=day&at=" + tag),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-6);
+
+        assertThat(num(body, "speicherDeltaKwh")).isCloseTo(44.2, eps);
+        assertThat(num(body, "speicherWertCtKwh")).isCloseTo(18.9, eps);
+        assertThat(num(body, "speicherWertEur")).isCloseTo(8.3538, org.assertj.core.data.Offset.offset(5e-4));
+        assertThat(body).containsEntry("speicherWertBasis", "plan");
+        // Der Posten steht NEBEN der Kasse, nie darin - und genau deshalb braucht
+        // die Fläche die zweite Zeile: die gemessene Zahlungsbilanz dieses Tages
+        // ist NEGATIV (−0,295 €, die Mittagsladung als entgangener Einspeise-
+        // Erlös), während 44,2 kWh im Speicher liegen. Erst beide zusammen
+        // ergeben die ehrliche Tageszahl.
+        assertThat(num(body, "savedEur")).isCloseTo(-0.295, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(body, "savedEur") + num(body, "speicherWertEur"))
+                .isCloseTo(8.06, org.assertj.core.data.Offset.offset(0.01));
+
+        // FK2-Rückfall + negatives Vorzeichen: der Vortag verbraucht die Bank
+        // (50 % → 24 %) und wird mit dem Terminalwert des Laufs bewertet.
+        exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at,"
+                + " battery_kw, stored_value_ct_kwh, terminal_value_eur_per_kwh) VALUES "
+                + "(" + vorFenster + ", '" + tenantA + "', '" + site + "', " + plan + ", "
+                + vorFenster + ", -3.0, NULL, 0.155000) ON CONFLICT DO NOTHING");
+        Map<String, Object> gestern = rest.exchange(
+                url("/api/v1/sites/" + site + "/earnings?range=day&at=" + vortag),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        assertThat(num(gestern, "speicherDeltaKwh")).isCloseTo(-16.9, eps);
+        assertThat(num(gestern, "speicherWertCtKwh")).isCloseTo(15.5, eps);
+        assertThat(num(gestern, "speicherWertEur")).isCloseTo(-2.6195, org.assertj.core.data.Offset.offset(5e-4));
+        assertThat(gestern).containsEntry("speicherWertBasis", "terminal");
+
+        // Am LAUFENDEN Tag gewinnt das rohe Sample über den Rollup-Stand - sonst
+        // hinkte die Bestandszeile dem kWh-Satz daneben 15 Minuten hinterher.
+        java.time.Instant jetzt = java.time.Instant.now();
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct,"
+                + " n_samples) VALUES (" + ts(jetzt.minusSeconds(1800)) + ", '" + tenantA
+                + "', '" + site + "', 20.00, 90) ON CONFLICT DO NOTHING");
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, soc_pct) VALUES ("
+                + ts(jetzt.minusSeconds(60)) + ", '" + tenantA + "', '" + site + "',"
+                + " '22222222-2222-2222-2222-222222222222', 40.00)");
+        exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at,"
+                + " battery_kw, stored_value_ct_kwh) VALUES (" + ts(jetzt.minusSeconds(600))
+                + ", '" + tenantA + "', '" + site + "', " + plan + ", "
+                + ts(jetzt.minusSeconds(600)) + ", -3.0, 20.0000) ON CONFLICT DO NOTHING");
+        Map<String, Object> heute = rest.exchange(
+                url("/api/v1/sites/" + site + "/earnings?range=day"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        // 40 % (roh) gegen 92 % zu Mitternacht - NICHT die 20 % des Rollups.
+        assertThat(num(heute, "speicherDeltaKwh")).isCloseTo(-33.8, eps);
+        assertThat(num(heute, "speicherWertCtKwh")).isCloseTo(20.0, eps);
+
+        // Ohne primären Speicher wird NICHTS behauptet - vier ehrliche Nullen.
+        Map<String, Object> ohne = rest.exchange(
+                url("/api/v1/sites/" + ohneSpeicher + "/earnings?range=day&at=" + tag),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        assertThat(ohne).containsEntry("speicherDeltaKwh", null)
+                .containsEntry("speicherWertCtKwh", null)
+                .containsEntry("speicherWertEur", null)
+                .containsEntry("speicherWertBasis", null);
+
+        // Aufräumen: die Anlage teilt sich den Mandanten mit den handgerechneten
+        // Flotten-/Erlös-Tests - ein liegengebliebener Tag verschöbe ihre Zahlen.
+        exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + site + "'");
+        exec("DELETE FROM telemetry WHERE site_id = '" + site + "'");
+        exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+    }
+
+    /** Ein Instant als SQL-Literal (UTC) - die Seed-Schreibweise dieser Suite. */
+    private static String ts(java.time.Instant instant) {
+        return "timestamptz '" + instant.atZone(java.time.ZoneOffset.UTC)
+                .toLocalDateTime().toString().replace('T', ' ') + "+00'";
+    }
+
     private String url(String path) {
         return "http://localhost:" + port + path;
     }

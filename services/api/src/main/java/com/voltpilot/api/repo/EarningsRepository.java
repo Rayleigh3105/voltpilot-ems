@@ -4,6 +4,7 @@ import com.voltpilot.api.optimizer.OptimizerProperties;
 import com.voltpilot.api.optimizer.SlotEconomics;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -867,5 +868,143 @@ public class EarningsRepository {
                 },
                 args(from, to, site));
         return result;
+    }
+
+    /* -----------------------------------------------------------------------
+     * Das BESTANDSKONTO des Zeitraums (Diagnose vp-tagesbild-minus-f3 §6.1)
+     * --------------------------------------------------------------------- */
+
+    /**
+     * Wie weit zurück ein Ladestand VOR dem Fenster gesucht wird. Ohne Grenze
+     * müsste ein Rückwärts-Lauf über den ganzen Hypertable laufen, sobald eine
+     * Anlage davor nie gemessen hat; nach einer Woche Stille wird über den
+     * Anfangsbestand ohnehin nichts mehr behauptet.
+     */
+    private static final Duration SOC_START_LOOKBACK = Duration.ofDays(7);
+
+    /**
+     * Wie frisch ein ROHES Telemetrie-Sample sein muss, um den Bestand des
+     * laufenden Zeitraums zu tragen. Ein Gerät, das seit Stunden schweigt,
+     * belegt keinen Ladestand von jetzt - dann greift der Rollup-Stand, und
+     * fehlt auch der, wird nichts behauptet.
+     */
+    private static final Duration SOC_LIVE_LOOKBACK = Duration.ofHours(2);
+
+    /**
+     * Wie alt die Plan-Bewertung λ höchstens sein darf. Ein λ von gestern
+     * bewertete den Bestand von heute mit dem Preisbild von gestern; die Grenze
+     * hält die Abfrage außerdem klein (der Optimierer plant alle 15 min neu).
+     */
+    private static final Duration LAMBDA_LOOKBACK = Duration.ofHours(6);
+
+    /**
+     * Der Speicher-Bestand des Fensters {@code [from, to)} - die FK2-Gutschrift
+     * für den GEMESSENEN Zeitraum: {@code ΔLadestand × Kapazität}, bewertet mit
+     * dem λ, das der Optimierer selbst persistiert hat. Regeln, Vorzeichen und
+     * Begründung stehen in {@link SpeicherBank}; hier stehen nur die drei
+     * schmalen Abfragen dahinter.
+     *
+     * <p>Vier Dinge, die man kennen muss:
+     * <ul>
+     *   <li><b>Ohne primären Speicher gibt es nichts zu sagen</b> - dann läuft
+     *       keine weitere Abfrage.</li>
+     *   <li><b>Der Anker ist {@code min(to, jetzt)}</b>: solange der Zeitraum
+     *       läuft, ist der Bestand der von JETZT (sonst hinkte die Zeile dem
+     *       Bild hinterher); ein abgeschlossener Zeitraum endet an seiner
+     *       letzten Viertelstunde.</li>
+     *   <li><b>Am laufenden Zeitraum gewinnt das ROHE Sample</b> (§7.1: die
+     *       Bestandszeile nimmt dieselbe Quelle wie der kWh-Satz daneben) -
+     *       der Rollup-Stand hinkt bis zu 15 Minuten hinterher und ist nur der
+     *       Rückfall.</li>
+     *   <li><b>Der Anfangsbestand ist der letzte Eimer VOR dem Fenster</b>, nie
+     *       der erste darin: der erste im Fenster steht schon eine
+     *       Viertelstunde nach Beginn und trüge die erste Ladung bereits in
+     *       sich.</li>
+     * </ul>
+     */
+    public SpeicherBank.Bestand storageBank(UUID site, Instant from, Instant to, Instant now) {
+        if (site == null || from == null || to == null || now == null) {
+            return SpeicherBank.Bestand.NONE;
+        }
+        BigDecimal capacity = batteryCapacityKwh(site);
+        if (capacity == null || capacity.signum() <= 0) {
+            return SpeicherBank.Bestand.NONE;
+        }
+        boolean laufend = to.isAfter(now);
+        Instant anchor = laufend ? now : to.minusMillis(1);
+        if (!anchor.isAfter(from)) {
+            // Der Zeitraum hat noch gar nicht begonnen.
+            return SpeicherBank.Bestand.NONE;
+        }
+        BigDecimal socEnd = laufend ? rawSocAt(site, anchor) : null;
+        if (socEnd == null) {
+            socEnd = rollupSocLast(site, from, laufend ? now : to);
+        }
+        BigDecimal socStart = rollupSocLast(site, from.minus(SOC_START_LOOKBACK), from);
+        Lambda lambda = lambdaAt(site, anchor);
+        return SpeicherBank.of(socEnd, socStart, capacity,
+                lambda == null ? null : lambda.storedValueCtKwh(),
+                lambda == null ? null : lambda.terminalValueEurKwh());
+    }
+
+    /** Die Nennkapazität des PRIMÄREN Speichers (das {@code is_primary}-Muster). */
+    private BigDecimal batteryCapacityKwh(UUID site) {
+        return jdbc.query(
+                "SELECT capacity_kwh FROM asset "
+                        + "WHERE site_id = ? AND type = 'battery' AND is_primary",
+                rs -> rs.next() ? rs.getBigDecimal("capacity_kwh") : null,
+                site);
+    }
+
+    /** Der jüngste ROHE Ladestand bis {@code anchor} - null, wenn er zu alt ist. */
+    private BigDecimal rawSocAt(UUID site, Instant anchor) {
+        return jdbc.query(
+                "SELECT soc_pct FROM telemetry "
+                        + "WHERE site_id = ? AND time <= ? AND time > ? AND soc_pct IS NOT NULL "
+                        + "ORDER BY time DESC LIMIT 1",
+                rs -> rs.next() ? rs.getBigDecimal("soc_pct") : null,
+                site, Timestamp.from(anchor),
+                Timestamp.from(anchor.minus(SOC_LIVE_LOOKBACK)));
+    }
+
+    /**
+     * Der Ladestand am Ende des letzten Rollup-Eimers in {@code [von, bis)} -
+     * Eimer OHNE Ladestand werden übersprungen statt die Zeile zu töten.
+     */
+    private BigDecimal rollupSocLast(UUID site, Instant von, Instant bis) {
+        if (!bis.isAfter(von)) {
+            return null;
+        }
+        return jdbc.query(
+                "SELECT soc_last_pct FROM telemetry_rollup_15m "
+                        + "WHERE site_id = ? AND bucket >= ? AND bucket < ? "
+                        + "  AND soc_last_pct IS NOT NULL "
+                        + "ORDER BY bucket DESC LIMIT 1",
+                rs -> rs.next() ? rs.getBigDecimal("soc_last_pct") : null,
+                site, Timestamp.from(von), Timestamp.from(bis));
+    }
+
+    /** Die zwei Bewertungs-Zahlen eines Plan-Slots (beide dürfen fehlen). */
+    private record Lambda(BigDecimal storedValueCtKwh, BigDecimal terminalValueEurKwh) {
+    }
+
+    /**
+     * Die Plan-Bewertung im maßgeblichen Slot: der jüngste Slot bis
+     * {@code anchor} und dafür der jüngste Lauf, der ihn geplant hat.
+     * {@code generated_at <= anchor} sagt ausdrücklich, dass kein Lauf von NACH
+     * dem bewerteten Moment einfließt.
+     */
+    private Lambda lambdaAt(UUID site, Instant anchor) {
+        Timestamp a = Timestamp.from(anchor);
+        return jdbc.query(
+                "SELECT s.stored_value_ct_kwh, s.terminal_value_eur_per_kwh FROM schedule s "
+                        + "WHERE s.site_id = ? AND s.time <= ? AND s.time > ? "
+                        + "  AND s.generated_at <= ? "
+                        + "ORDER BY s.time DESC, s.generated_at DESC LIMIT 1",
+                rs -> rs.next()
+                        ? new Lambda(rs.getBigDecimal("stored_value_ct_kwh"),
+                                rs.getBigDecimal("terminal_value_eur_per_kwh"))
+                        : null,
+                site, a, Timestamp.from(anchor.minus(LAMBDA_LOOKBACK)), a);
     }
 }

@@ -434,6 +434,41 @@ describe('Welt B · Erlöse', () => {
     expect(komposition).not.toHaveTextContent('161,44');
   });
 
+  // Diagnose vp-tagesbild-minus-f3: die gemessene Kasse kennt eingelagerte
+  // Energie nur als entgangenen Erlös. Ohne den zweiten Posten stand über
+  // einem einwandfreien Plan „−4,69 €".
+  it('stellt das BESTANDSKONTO neben die Kasse - und nie in die grosse Zahl', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    stubMoney({
+      ...moneyWithData,
+      savedEur: -4.69,
+      speicherDeltaKwh: 44.2,
+      speicherWertCtKwh: 18.9,
+      speicherWertEur: 8.3538,
+      speicherWertBasis: 'plan',
+    });
+    render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+
+    const satz = await screen.findByText(/44,2 kWh/);
+    expect(satz).toHaveTextContent('in den Folgetag gespeichert');
+    expect(satz).toHaveTextContent('+8,35 €');
+    // Der Betrag ist nach dem PLAN bewertet und sagt das selbst.
+    expect(satz.closest('p')).toHaveTextContent('Geplant');
+    // Die grosse Zahl bleibt die gemessene Kasse.
+    expect(screen.getByText('+ 999,26 €')).toBeInTheDocument();
+    const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    expect(komposition).not.toHaveTextContent('8,35');
+  });
+
+  it('bleibt ohne die Bestandsfelder zeichengleich zu vorher', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    stubMoney();
+    render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    expect(screen.queryByText(/im Speicher/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Folgetag gespeichert/)).not.toBeInTheDocument();
+  });
+
   it('zeigt Geld im Verlauf und die Preise dahinter - für JEDEN Zeitraum', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
     stubMoney({ ...moneyWithData, range: 'month' });
