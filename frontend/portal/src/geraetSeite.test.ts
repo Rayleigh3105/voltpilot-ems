@@ -85,6 +85,15 @@ const LOCAL_SETUP: EntityLocalSetup[] = [
     label: null,
     reportedAt: FRISCH,
     adoptedEntityId: null,
+    // Die sechs Verbindungsfelder (Stufe 2, PR 2b) - beim Deye der
+    // Solarman-Weg samt Logger-Nummer.
+    communication: 'solarman_v5',
+    family: 'hybrid_3p',
+    host: '192.168.254.210',
+    port: 8899,
+    unitId: 1,
+    serial: '2985159064',
+    intervalS: 5,
   },
   {
     id: 'src-7c1e9a2b',
@@ -95,6 +104,13 @@ const LOCAL_SETUP: EntityLocalSetup[] = [
     label: null,
     reportedAt: FRISCH,
     adoptedEntityId: 'ent-pv',
+    communication: 'fronius_sunspec',
+    family: 'sunspec_live',
+    host: '192.168.210.40',
+    port: 502,
+    unitId: 1,
+    serial: null,
+    intervalS: 5,
   },
 ];
 
@@ -289,8 +305,42 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
     expect(v.verbindungLeer).toBeNull();
   });
 
-  it('NENNT den Grund, wenn ein Gerät keine Verbindungsdaten meldet', () => {
+  it('beschriftet ein box-verwaltetes Gerät aus dem GEMELDETEN Weg (PR 2b)', () => {
+    // Der Deye hat keine gespeicherte Definition (`/components` kennt nur den
+    // Fronius) - bis Stufe 2 stand hier deshalb „meldet keine
+    // Verbindungsdaten", obwohl die Box ihre Adresse in jedem Herzschlag
+    // meldet. Jetzt reist sie auf `/entities.localSetup` mit.
     const v = geraetSeite(input({ geraetId: 'inverter' }));
+    expect(v.verbindungLeer).toBeNull();
+    expect(zeile(v.verbindung, 'Anbindung')?.wert).toBe('Solarman-Logger (WLAN-Stick)');
+    expect(zeile(v.verbindung, 'Adresse')?.wert).toBe('192.168.254.210 : 8899');
+    expect(zeile(v.verbindung, 'Adresse')?.detail).toBe('Logger-Nr. 2985159064');
+    expect(zeile(v.verbindung, 'Lesetakt')?.wert).toBe('alle 5 s');
+  });
+
+  it('lässt das gespeicherte SOLL führen, wo es vorliegt', () => {
+    // Der Fronius meldet 192.168.210.40, gepflegt ist 192.168.254.30 - die
+    // Seite zeigt die gepflegte Wahrheit, nicht zwei Adressen nebeneinander.
+    const v = geraetSeite(input({ geraetId: 'src-7c1e9a2b' }));
+    expect(zeile(v.verbindung, 'Adresse')?.wert).toBe('192.168.254.30 : 502');
+  });
+
+  it('NENNT den Grund, wenn ein älterer Box-Stand keine Verbindungsdaten meldet', () => {
+    const alt = LOCAL_SETUP.map((l) =>
+      l.id === 'inverter'
+        ? {
+            ...l,
+            communication: null,
+            family: null,
+            host: null,
+            port: null,
+            unitId: null,
+            serial: null,
+            intervalS: null,
+          }
+        : l,
+    );
+    const v = geraetSeite(input({ geraetId: 'inverter', localSetup: alt }));
     expect(v.verbindungLeer).toMatch(/meldet keine Verbindungsdaten/);
     // aber der Zustand steht trotzdem da - eine leere Sektion gibt es nicht.
     expect(zeile(v.verbindung, 'Zustand')).toBeTruthy();

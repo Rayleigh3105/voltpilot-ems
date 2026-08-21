@@ -2223,6 +2223,95 @@ class PortalApiTest {
                 .containsEntry("observed", null);
     }
 
+    /**
+     * Anlagen-Zentrale Stufe 2 (PR 2b): die sechs VERBINDUNGSFELDER reisen
+     * additiv auf {@code /entities.localSetup}.
+     *
+     * <p>Sie liegen seit {@code V20260819000000} in
+     * {@code entity_observed_state.edge_*} und wurden bis hierher nur von der
+     * Bestands-Übernahme gelesen - die Flächen mussten ihre Adressen aus einem
+     * ANDEREN Pfad zusammensuchen. Jetzt beschriften das Struktur-Schaltbild
+     * UND die Geräteseite ihre Kanten aus DIESEM einen, also können sie
+     * dieselbe Adresse nie verschieden nennen.
+     *
+     * <p>Geprüft wird beides: der volle Bericht reist Feld für Feld durch (samt
+     * der EINEN Modbus-Adresse, die der Solarman-Weg {@code mb_slave_id} und
+     * jeder andere {@code unit_id} nennt), und ein ÄLTERER Box-Stand ohne die
+     * Felder liefert überall {@code null} - „diese Box meldet keine
+     * Verbindungen", nie eine erfundene Adresse.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void localSetupCarriesTheReportedConnectionAndAnOlderBoxStandStaysNull() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Schaltbild-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String deviceId = claimDeviceInto(demo, siteId, "edge-schaltbild-01");
+
+        var listener = new com.voltpilot.api.entities.EntityStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo, componentApplyRepo);
+        String topic = "ems/" + tenantA + "/" + siteId + "/" + deviceId + "/status";
+        java.util.function.Consumer<String> report = localSetupJson -> listener.handle(topic,
+                ("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantA + "\",\"site_id\":\""
+                        + siteId + "\",\"device_id\":\"" + deviceId + "\",\"online\":true,"
+                        + "\"entities\":{\"revision\":\"r1\",\"local_setup\":" + localSetupJson
+                        + "}}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        java.util.function.Function<String, Map<String, Object>> setupById = id -> {
+            ResponseEntity<Map<String, Object>> res = rest.exchange(
+                    url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+            return ((List<Map<String, Object>>) res.getBody().get("localSetup")).stream()
+                    .filter(e -> id.equals(e.get("id"))).findFirst().orElseThrow();
+        };
+
+        // Der volle Bericht: der Deye über seinen Solarman-Logger (Modbus-Adresse
+        // heißt dort `mb_slave_id`), der Fronius über Modbus-TCP (`unit_id`).
+        report.accept("[{\"id\":\"inverter\",\"kind\":\"inverter\",\"brand\":\"deye\","
+                + "\"model\":\"SUN-30K-SG01HP3-EU\",\"family\":\"hybrid_3p\","
+                + "\"communication\":\"solarman_v5\",\"interval_s\":5,"
+                + "\"connection\":{\"ip\":\"192.168.254.210\",\"port\":8899,"
+                + "\"serial\":\"2985159064\",\"mb_slave_id\":1}},"
+                + "{\"id\":\"src-fronius\",\"kind\":\"source\",\"role\":\"pv-generation\","
+                + "\"brand\":\"fronius_sunspec\",\"model\":\"fronius-eco-27-3-s\","
+                + "\"family\":\"sunspec_live\",\"communication\":\"fronius_sunspec\","
+                + "\"interval_s\":5,"
+                + "\"connection\":{\"ip\":\"192.168.210.40\",\"port\":502,\"unit_id\":2}}]");
+
+        Map<String, Object> deye = setupById.apply("inverter");
+        assertThat(deye).containsEntry("communication", "solarman_v5")
+                .containsEntry("family", "hybrid_3p")
+                .containsEntry("host", "192.168.254.210")
+                .containsEntry("port", 8899)
+                .containsEntry("serial", "2985159064")
+                .containsEntry("intervalS", 5);
+        assertThat(deye.get("unitId")).as("mb_slave_id ist dieselbe Sache wie unit_id")
+                .isEqualTo(1);
+
+        Map<String, Object> fronius = setupById.apply("src-fronius");
+        assertThat(fronius).containsEntry("communication", "fronius_sunspec")
+                .containsEntry("host", "192.168.210.40")
+                .containsEntry("port", 502)
+                .containsEntry("unitId", 2)
+                .containsEntry("serial", null);
+
+        // Ein ÄLTERER Box-Stand meldet die Felder gar nicht: dann ist ALLES
+        // null - „meldet keine Verbindungen", nie eine halbe Adresse.
+        report.accept("[{\"id\":\"inverter\",\"kind\":\"inverter\",\"brand\":\"deye\","
+                + "\"model\":\"SUN-30K-SG01HP3-EU\"}]");
+        Map<String, Object> alt = setupById.apply("inverter");
+        assertThat(alt).containsEntry("communication", null).containsEntry("family", null)
+                .containsEntry("host", null).containsEntry("port", null)
+                .containsEntry("unitId", null).containsEntry("serial", null)
+                .containsEntry("intervalS", null);
+        // ... und die übrigen Felder sind davon unberührt.
+        assertThat(alt).containsEntry("brand", "deye").containsEntry("kind", "inverter");
+    }
+
     /** The day-range channel map of one entity (helper for the splice test). */
     @SuppressWarnings("unchecked")
     private Map<String, Object> entityDayChannels(String token, String siteId, String entityId,

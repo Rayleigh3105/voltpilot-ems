@@ -7243,6 +7243,33 @@ components:
                 description: The operator-given name only - never a brand/model/role concatenation.
               reportedAt: { type: string, format: date-time }
               adoptedEntityId: { type: string, nullable: true }
+              communication:
+                type: string
+                nullable: true
+                example: solarman_v5
+                description: >
+                  WIE die Box dieses Gerät erreicht (Anlagen-Zentrale Stufe 2).
+                  null = diese Box meldet (noch) keine Verbindungen - NIE
+                  "dieses Gerät hat keine"; ein älterer Box-Stand lässt die
+                  Felder weg, und daraus darf nur "Weg unbekannt" folgen.
+              family: { type: string, nullable: true, example: hybrid_3p }
+              host: { type: string, nullable: true, example: 192.168.254.210 }
+              port: { type: integer, nullable: true, example: 8899 }
+              unitId:
+                type: integer
+                nullable: true
+                description: >
+                  Die Modbus-Adresse, wie der jeweilige Transport sie nennt
+                  (unit_id bzw. beim Solarman-Weg mb_slave_id) - EIN Feld, weil
+                  es dieselbe Sache ist.
+              serial:
+                type: string
+                nullable: true
+                example: "2985159064"
+                description: >
+                  Die Logger-Nummer des Solarman-Wegs; auf einer box-verwalteten
+                  Anlage liegt sie nirgendwo sonst vor.
+              intervalS: { type: integer, nullable: true, example: 5 }
         staleOnDevice:
           type: array
           items: { type: string }

@@ -378,6 +378,53 @@ function lesetakt(connection: Record<string, unknown> | null | undefined): strin
   return s == null ? null : `alle ${s} s`;
 }
 
+/**
+ * WIE dieses Gerät erreicht wird - aus dem gespeicherten SOLL, sonst aus dem
+ * gemeldeten IST (Anlagen-Zentrale Stufe 2, PR 2b).
+ *
+ * Bis zu dieser Stufe kannte die Seite nur das Soll (`/components`), das es auf
+ * einer BOX-verwalteten Bestandsanlage gar nicht gibt: dort stand darum immer
+ * „Dieses Gerät meldet keine Verbindungsdaten", obwohl die Box ihre Adresse
+ * längst in jedem Herzschlag meldet. Sie reist jetzt additiv auf
+ * `/entities.localSetup` mit - **derselbe Lesepfad, aus dem auch das
+ * Struktur-Schaltbild seine Kanten beschriftet**, damit die beiden dieselbe
+ * Adresse nie verschieden nennen können.
+ *
+ * Das Soll führt, wo es vorliegt: auf einer portal-verwalteten Anlage ist es
+ * das, was gepflegt wurde, und die Seite soll die gepflegte Wahrheit zeigen.
+ * Fehlt es, wird das Gemeldete genommen - und fehlt beides, wird nichts
+ * behauptet (die Regel „unbekannt ist nie nein").
+ */
+function verbindungsWeg(
+  row: SiteComponentRow | null,
+  setup: EntityLocalSetup | undefined,
+): { anbindung: string | null; adresse: string | null; zusatz: string | null; takt: string | null } {
+  const sollAdresse = adresse(row?.connection);
+  if (row?.communication || sollAdresse) {
+    return {
+      anbindung: COMM_WORT[row?.communication ?? ''] ?? null,
+      adresse: sollAdresse,
+      zusatz: adressZusatz(row?.connection),
+      takt: lesetakt(row?.connection),
+    };
+  }
+  const host = str(setup?.host);
+  const port = num(setup?.port);
+  const serial = str(setup?.serial);
+  const unit = num(setup?.unitId);
+  const takt = num(setup?.intervalS);
+  return {
+    anbindung: COMM_WORT[setup?.communication ?? ''] ?? null,
+    adresse: host == null ? null : port == null ? host : `${host} : ${port}`,
+    zusatz: serial
+      ? `Logger-Nr. ${serial}`
+      : unit == null
+        ? null
+        : `Modbus-Adresse ${unit}`,
+    takt: takt == null ? null : `alle ${takt} s`,
+  };
+}
+
 /** Die Zeile „Einrichtung" - WO gepflegt wird (Einheitsmodell Stufe 1/2). */
 function pflegeOrtWort(authority: string | null | undefined): string | null {
   if (authority === 'portal') return 'Einrichtung: im Portal';
@@ -594,20 +641,18 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     });
   } else {
     const row = componentRowOf(input.components, entityIds, input.geraetId);
-    const comm = COMM_WORT[row?.communication ?? ''] ?? null;
-    const addr = adresse(row?.connection);
-    if (comm || addr) {
-      if (comm) verbindung.push({ label: 'Anbindung', wert: comm });
-      if (addr) {
+    const weg = verbindungsWeg(row, setup);
+    if (weg.anbindung || weg.adresse) {
+      if (weg.anbindung) verbindung.push({ label: 'Anbindung', wert: weg.anbindung });
+      if (weg.adresse) {
         verbindung.push({
           label: 'Adresse',
-          wert: addr,
-          detail: adressZusatz(row?.connection),
+          wert: weg.adresse,
+          detail: weg.zusatz,
           mono: true,
         });
       }
-      const takt = lesetakt(row?.connection);
-      if (takt) verbindung.push({ label: 'Lesetakt', wert: takt });
+      if (weg.takt) verbindung.push({ label: 'Lesetakt', wert: weg.takt });
     } else {
       verbindungLeer =
         'Dieses Gerät meldet keine Verbindungsdaten — dafür braucht Ihre Box einen neueren Stand.';

@@ -931,6 +931,24 @@ export interface EntityLocalSetup {
   reportedAt: string;
   /** Non-null when a v2 entity was already adopted from this source. */
   adoptedEntityId: string | null;
+  /**
+   * WIE die Box dieses Gerät erreicht (Anlagen-Zentrale Stufe 2, PR 2b) - aus
+   * `entity_observed_state.edge_*`, also aus DEMSELBEN Lesepfad, aus dem die
+   * Zentrale ohnehin ihre Geräte-Karten baut.
+   *
+   * **`null` heißt „diese Box meldet (noch) keine Verbindungen" - NIE „dieses
+   * Gerät hat keine".** Ein älterer Box-Stand lässt die Felder weg, und daraus
+   * darf nur „Weg unbekannt" folgen, nie eine erfundene Adresse.
+   */
+  communication?: string | null;
+  family?: string | null;
+  host?: string | null;
+  port?: number | null;
+  /** Die Modbus-Adresse (`unit_id` bzw. beim Solarman-Weg `mb_slave_id`). */
+  unitId?: number | null;
+  /** Die Logger-Nummer des Solarman-Wegs. */
+  serial?: string | null;
+  intervalS?: number | null;
 }
 
 /** The whole "Geräte & Entitäten" surface for a site. */
