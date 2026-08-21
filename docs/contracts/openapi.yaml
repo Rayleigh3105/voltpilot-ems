@@ -8878,6 +8878,31 @@ components:
         checkedAt: { type: string, format: date-time, description: "Newest per-unit readback timestamp - the freshness anchor. A stale block is NO evidence; the portal falls back to its plan wording." }
         exportGuard: { allOf: [{ $ref: "#/components/schemas/ExportGuard" }], nullable: true, description: "„Grenzen & Wächter\" Stufe 0: the live feed-in watchdog. null = not reported (older edge, or no feed-in limit configured) - never a fabricated \"no limit\"." }
         deviceExportLimit: { allOf: [{ $ref: "#/components/schemas/DeviceExportLimit" }], nullable: true, description: "The feed-in limit the INVERTER ITSELF holds. null = not reported (older edge, a family without a trustworthy register, or not read yet)." }
+        perUnit:
+          type: array
+          nullable: true
+          items: { $ref: "#/components/schemas/CurtailmentUnit" }
+          description: >
+            The per-unit breakdown (Geräteseiten Stufe 1 / R4a, Captain-Entscheid
+            E2). THREE-valued, and the two empty cases say different things:
+            null/absent = not loaded on this path (an older backend, or the fleet
+            aggregate which renders no per-unit list), [] = the device reported
+            none (an older edge - the block predates the list). Only a non-empty
+            list is an attribution. It may be SHORTER than `units`: an entry
+            without a source id is dropped at ingest rather than attributed to
+            nothing, so `units` stays THE count and must never be derived from
+            this list's length.
+    CurtailmentUnit:
+      type: object
+      description: >
+        One curtailment-capable unit as the BOX reported it. Deriving this in
+        the cloud was rejected (E2): only the box knows which unit it wrote to
+        and what came back, so a heuristic would be a fabricated attribution.
+      properties:
+        sourceId: { type: string, description: "The JOIN KEY to the reported sources (/sources.sourceId) - how a unit becomes a device NAME. No name travels over the wire; the portal names devices through its one name builder." }
+        certified: { type: boolean, description: "This unit carries a persisted per-unit First-Light release. The edge sources it from its CORE, never from the readback's own stamp, so it can never disagree with certifiedUnits." }
+        appliedCapKw: { type: number, nullable: true, description: "The cap THIS unit applies; null = none applied (a release lifted the limit) - never a fabricated 0." }
+        match: { type: boolean, nullable: true, description: "This unit's readback verdict; null = observed-only, nothing was commanded. Only true is a confirmation - \"nothing applied\" must never read as \"the readback disagreed\"." }
     ExportGuard:
       type: object
       description: >

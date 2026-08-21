@@ -755,10 +755,18 @@ func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 		Units:          len(list),
 		ControlEnabled: a.Cfg.ControlEnabled,
 	}
+	// ⚠ The First-Light release is a CORE fact, never the readback's own
+	// `certified` stamp (the split this block learned the hard way: a readback
+	// stamp is a Layer-1 observation, never a gate authority). The per-unit
+	// list below therefore reads the SAME map the count comes from - otherwise
+	// the list could claim a release while the count beside it says 0.
+	granted := make(map[string]bool, len(list))
 	a.curtailMu.Lock()
 	for _, s := range list {
-		if a.curtailCert[curtailUnitKey(s.Connection)] {
+		key := curtailUnitKey(s.Connection)
+		if a.curtailCert[key] {
 			sum.CertifiedUnits++
+			granted[key] = true
 		}
 	}
 	units := a.renderCurtailUnitsLocked()
@@ -776,7 +784,8 @@ func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 		if u.PossibleOverride {
 			sum.PossibleOverride = true
 		}
-		if u.Applied && u.Mode == "apply" {
+		applying := u.Applied && u.Mode == "apply"
+		if applying {
 			sum.Active = true
 			haveApplied = true
 			if u.AllMatch != nil && !*u.AllMatch {
@@ -787,6 +796,27 @@ func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 				haveCap = true
 			}
 		}
+		// The ADDITIVE per-unit breakdown (R4a / Captain-Entscheid E2), built
+		// from the SAME slice the aggregates above fold - so "2 von 2
+		// freigegeben" and the list beneath it can never disagree.
+		//
+		// A unit without a source_id is SKIPPED: that id is the cloud's only
+		// join key to the reported sources, and an entry it cannot attribute
+		// would be noise at best and a wrong name at worst. The list is then
+		// shorter than Units - which is why Units stays the count.
+		if u.SourceID == "" {
+			continue
+		}
+		entry := cloud.CurtailmentUnit{SourceID: u.SourceID, Certified: granted[u.UnitKey]}
+		if applying && u.CapKw != nil {
+			v := *u.CapKw
+			entry.AppliedCapKw = &v
+		}
+		if u.AllMatch != nil {
+			v := *u.AllMatch
+			entry.Match = &v
+		}
+		sum.PerUnit = append(sum.PerUnit, entry)
 	}
 	if haveApplied {
 		v := allMatch

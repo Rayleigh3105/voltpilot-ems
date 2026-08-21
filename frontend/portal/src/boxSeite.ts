@@ -43,6 +43,7 @@ import {
   quellenZustand,
 } from './geraetSeite';
 import { technicalDeviceName } from './entityLabel';
+import { abregelZiel, releaseNote } from './curtailment';
 import { chargerName, type ChargePoint } from './ladepunkte';
 
 /** Eine der drei Kacheln des Kopfes. */
@@ -94,6 +95,11 @@ export interface BoxSeiteInput {
   curtailment: CurtailmentStatus | null;
   /** Die Geräte AN der Box, schon abgeleitet (dieselbe Liste wie bisher). */
   geraete: BoxGeraet[];
+  /**
+   * Der gemeldete Einrichtungs-Stand - hier NUR als Namensbildner für die
+   * Abregel-Ziele (R4a). Die Geräte-Liste selbst kommt fertig als `geraete`.
+   */
+  localSetup?: EntityLocalSetup[] | null;
   now?: number;
 }
 
@@ -239,6 +245,7 @@ export function grenzenZeilen(
   control: ControlStatus | null,
   curtailment: CurtailmentStatus | null,
   boxDeviceId: string | null,
+  localSetup: EntityLocalSetup[] | null = null,
 ): Zeile[] {
   const out: Zeile[] = [];
   const guard = curtailment?.exportGuard;
@@ -257,6 +264,22 @@ export function grenzenZeilen(
       wert: `${limit.limitKw.toLocaleString('de-DE', { maximumFractionDigits: 1 })} kW`,
       detail: `Register ${limit.register}, zuletzt gelesen ${uhr(limit.readAt)}`,
       mono: false,
+    });
+  }
+  // Die ABREGELUNG ist ein anlagenweiter Befehl und wohnt deshalb hier (die
+  // Ziel-Attribution der Stufe 1). Seit R4a sagt sie, an WEN sie geht - der
+  // Name kommt dabei aus dem EINEN Namensbildner, nie über den Draht; meldet
+  // die Box ihre Einheiten (noch) nicht, bleibt es beim ehrlichen Sammel-Satz.
+  const ziel = abregelZiel(curtailment, (sourceId) => {
+    const l = (localSetup ?? []).find((x) => x.id === sourceId);
+    return l ? technicalDeviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) : null;
+  });
+  if (ziel) {
+    out.push({
+      label: 'Abregelung',
+      wert: releaseNote(curtailment!.certifiedUnits, curtailment!.units),
+      detail: ziel.satz,
+      ton: ziel.ton,
     });
   }
   // ⚠ Der Beleg gehört dem Gerät, das ihn GEMELDET hat (die `eigenerBeleg`-Regel).
@@ -357,7 +380,7 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
   // wäre dieselbe Aussage zweimal auf einer Seite (die Haus-Regel), ohne eine
   // zweite Lesehöhe zu sein.
 
-  const grenzen = grenzenZeilen(input.control, input.curtailment, box.id);
+  const grenzen = grenzenZeilen(input.control, input.curtailment, box.id, input.localSetup);
   return {
     gefunden: true,
     grund: null,

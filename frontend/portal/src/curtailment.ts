@@ -73,6 +73,55 @@ export function releaseNote(certifiedUnits: number, units: number): string {
 }
 
 /**
+ * WOHIN die Abregelung geht (R4a / Captain-Entscheid E2).
+ *
+ * Bis die Box ihre Einheiten meldet, kann die Cloud nur ZÄHLEN — deshalb steht
+ * dort der ehrliche Sammel-Satz „an alle freigegebenen Wechselrichter (N von
+ * M)". Meldet sie sie, werden sie BEIM NAMEN genannt; der Name kommt dabei aus
+ * dem EINEN Namensbildner des Portals (`nameOf` über die gemeldete Quelle),
+ * nie über den Draht.
+ *
+ * Drei Ehrlichkeitsregeln, alle einzeln geprüft:
+ * - **Ohne Einheit gibt es nichts zu sagen** (`units <= 0` ⇒ null) — dieselbe
+ *   Regel, mit der der Ingest einen Block ohne Einheiten verwirft.
+ * - **Ist KEINE freigegeben, wird kein Ziel behauptet**, sondern der nennbare
+ *   Grund gesagt (der Fall, den `releaseNote` seit je trägt).
+ * - **Halb benannt wird nicht.** Trägt auch nur eine freigegebene Einheit
+ *   keinen auflösbaren Namen, fällt der ganze Satz auf die Zahl zurück — eine
+ *   Liste, die zwei von drei Wechselrichtern nennt, liest sich als
+ *   Vollständigkeit.
+ */
+export function abregelZiel(
+  status: CurtailmentStatus | null | undefined,
+  nameOf: (sourceId: string) => string | null,
+): { satz: string; ton: 'ok' | 'warn' } | null {
+  if (!status || status.units <= 0) return null;
+  if (status.certifiedUnits <= 0) {
+    return {
+      satz: `Geht an keinen Wechselrichter — ${releaseNote(0, status.units)}.`,
+      ton: 'warn',
+    };
+  }
+  const freigegeben = (status.perUnit ?? []).filter((u) => u.certified);
+  if (freigegeben.length > 0) {
+    const namen = freigegeben.map((u) => nameOf(u.sourceId)).filter((n): n is string => !!n);
+    if (namen.length === freigegeben.length) {
+      return { satz: `Geht an ${aufzaehlung(namen)}.`, ton: 'ok' };
+    }
+  }
+  return {
+    satz: `Geht an alle freigegebenen Wechselrichter (${releaseNote(status.certifiedUnits, status.units)}).`,
+    ton: status.certifiedUnits < status.units ? 'warn' : 'ok',
+  };
+}
+
+/** „A", „A und B", „A, B und C" — deutsche Aufzählung, nie ein nacktes Komma. */
+function aufzaehlung(namen: string[]): string {
+  if (namen.length === 1) return namen[0];
+  return `${namen.slice(0, -1).join(', ')} und ${namen[namen.length - 1]}`;
+}
+
+/**
  * Die Beleg-Lage aus dem gemeldeten Block. Die Reihenfolge der Prüfungen ist
  * die Aussagekraft: erst was die Ausführung ganz verhindert (Not-Aus, fehlende
  * Freigabe, nichts angewandt), dann die Übersteuerung (die schärfste, weil

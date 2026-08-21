@@ -434,4 +434,47 @@ describe('boxSeite · Schutz & Grenzen', () => {
     expect(z.detail).toMatch(/erreicht gerade kein Gerät/);
     expect(z.ton).toBe('warn');
   });
+
+  // ── Die ABREGELUNG ist ein anlagenweiter Befehl und wohnt deshalb hier ────
+
+  // Zwei abregel-fähige Fronius an DERSELBEN Box - die Pilsting/Herzogau-Form.
+  const FRONIUS_2: EntityLocalSetup = {
+    ...LOCAL_SETUP[1], id: 'src-fronius-2', label: 'Fronius WR 2', adoptedEntityId: null,
+  };
+  const SETUP: EntityLocalSetup[] = [...LOCAL_SETUP, FRONIUS_2];
+
+  const CURTAIL = {
+    deviceId: 'dev-box', units: 2, certifiedUnits: 2, controlEnabled: true, active: true,
+    appliedCapKw: 16.4, allMatch: true, possibleOverride: false, checkedAt: FRISCH,
+    exportGuard: null, deviceExportLimit: null,
+  } as unknown as CurtailmentStatus;
+
+  it('nennt die Abregel-Ziele beim NAMEN, sobald die Box ihre Einheiten meldet', () => {
+    const mitListe = {
+      ...CURTAIL,
+      perUnit: [
+        { sourceId: 'src-7c1e9a2b', certified: true, appliedCapKw: 8.2, match: true },
+        { sourceId: 'src-fronius-2', certified: true, appliedCapKw: 8.2, match: true },
+      ],
+    } as unknown as CurtailmentStatus;
+    const rows = grenzenZeilen(CONTROL, mitListe, 'dev-box', SETUP);
+    const z = zeile(rows, 'Abregelung')!;
+    expect(z.wert).toBe('2 von 2 Wechselrichtern freigegeben');
+    expect(z.detail).toBe('Geht an Fronius Eco 27.0-3 und Fronius WR 2.');
+    expect(z.ton).toBe('ok');
+  });
+
+  it('sagt ohne gemeldete Einheiten ehrlich „an alle freigegebenen"', () => {
+    // Der Zustand bis zum Edge-Release: die Zahl steht, ein Name wird nicht
+    // geraten (E2 - nur die Box weiß, welche Einheit sie beschrieben hat).
+    const z = zeile(grenzenZeilen(CONTROL, CURTAIL, 'dev-box', SETUP), 'Abregelung')!;
+    expect(z.detail).toBe(
+      'Geht an alle freigegebenen Wechselrichter (2 von 2 Wechselrichtern freigegeben).',
+    );
+  });
+
+  it('behauptet ohne abregel-fähige Einheit GAR KEINE Abregel-Zeile', () => {
+    const ohne = { ...CURTAIL, units: 0, certifiedUnits: 0 } as unknown as CurtailmentStatus;
+    expect(zeile(grenzenZeilen(CONTROL, ohne, 'dev-box', SETUP), 'Abregelung')).toBeUndefined();
+  });
 });

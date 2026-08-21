@@ -5280,6 +5280,84 @@ class PortalApiTest {
     }
 
     /**
+     * Die Abregelung JE EINHEIT (Geräteseiten Stufe 1, R4a / Captain-Entscheid
+     * E2): bis hierher konnte die Cloud nur ZÄHLEN, also musste jede Fläche „an
+     * alle freigegebenen Wechselrichter" sagen. Jetzt meldet die Box, WELCHE
+     * Einheit freigegeben ist, welche Kappe sie hält und ob ihr Rücklesen
+     * bestätigt hat - und die Cloud reicht es durch, statt es abzuleiten
+     * (E2 hat die Portal-Heuristik ausdrücklich verworfen).
+     */
+    @Test
+    void theCurtailmentUnitsAreIngestedPerHeartbeatAndReplacedWholesale() {
+        var listener = new com.voltpilot.api.curtailment.CurtailmentStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, curtailmentStatusRepo, commandLogWriter);
+        String topic = "ems/00000000-0000-0000-0000-000000000001/"
+                + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
+        String head = "{\"schema_version\":\"1.0\","
+                + "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\",\"online\":true,";
+        String curtailUrl = url("/api/v1/sites/" + BERLIN_SITE + "/curtailment-status");
+        HttpEntity<Void> demo = new HttpEntity<>(bearer(token("demo", "demo")));
+        // Die Zeile gehört der ANLAGE, und diese Klasse teilt sich die Berliner.
+        exec("DELETE FROM device_curtailment_status WHERE site_id = '" + BERLIN_SITE + "'");
+
+        // 1. Ein ÄLTERER Edge-Stand: der Block ohne Liste. Die Zahl steht, die
+        //    Liste ist LEER - „nicht gemeldet", nie „keine Einheiten".
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":1,"
+                + "\"control_enabled\":true,\"active\":true,\"applied_cap_kw\":8.2,"
+                + "\"all_match\":true,\"checked_at\":\"2026-08-21T10:00:00Z\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> alt = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        assertThat(alt.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(alt.getBody().get("units")).isEqualTo(2);
+        assertThat((List<?>) alt.getBody().get("perUnit")).isEmpty();
+
+        // 2. Mit Liste: Feld für Feld, und die zweite Einheit hat NICHTS
+        //    angewandt - keine Kappe, kein Urteil.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":1,"
+                + "\"control_enabled\":true,\"active\":true,\"applied_cap_kw\":8.2,"
+                + "\"all_match\":true,\"checked_at\":\"2026-08-21T10:05:00Z\","
+                + "\"per_unit\":[{\"source_id\":\"src-fronius-1\",\"certified\":true,"
+                + "\"applied_cap_kw\":8.2,\"match\":true},"
+                + "{\"source_id\":\"src-fronius-2\",\"certified\":false}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> mit = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        List<Map<String, Object>> units = (List<Map<String, Object>>) mit.getBody().get("perUnit");
+        assertThat(units).hasSize(2);
+        assertThat(units.get(0).get("sourceId")).isEqualTo("src-fronius-1");
+        assertThat(units.get(0).get("certified")).isEqualTo(true);
+        assertThat(((Number) units.get(0).get("appliedCapKw")).doubleValue()).isEqualTo(8.2);
+        assertThat(units.get(0).get("match")).isEqualTo(true);
+        assertThat(units.get(1).get("sourceId")).isEqualTo("src-fronius-2");
+        assertThat(units.get(1).get("certified")).isEqualTo(false);
+        // ⚠ Beides NULL, nie 0/false: „nichts angewandt" ist kein widersprechendes
+        // Rücklesen, und eine Kappe von 0 wäre eine behauptete Zahl.
+        assertThat(units.get(1).get("appliedCapKw")).isNull();
+        assertThat(units.get(1).get("match")).isNull();
+
+        // 3. Der Satz wird GANZ ersetzt: eine verschwundene Einheit bleibt nicht
+        //    als Geist stehen, und eine ohne Join-Schlüssel wird verworfen (die
+        //    Liste ist dann kürzer als `units` - die Zahl bleibt die Zahl).
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":2,"
+                + "\"control_enabled\":true,\"active\":true,\"applied_cap_kw\":16.4,"
+                + "\"all_match\":true,\"checked_at\":\"2026-08-21T10:10:00Z\","
+                + "\"per_unit\":[{\"source_id\":\"src-fronius-2\",\"certified\":true,"
+                + "\"applied_cap_kw\":16.4,\"match\":true},{\"certified\":true}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> ersetzt = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        List<Map<String, Object>> nach = (List<Map<String, Object>>) ersetzt.getBody().get("perUnit");
+        assertThat(nach).hasSize(1);
+        assertThat(nach.get(0).get("sourceId")).isEqualTo("src-fronius-2");
+        assertThat(ersetzt.getBody().get("units")).isEqualTo(2);
+
+        // 4. Der Mandanten-Zaun gilt unverändert.
+        assertThat(rest.exchange(curtailUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * „Grenzen &amp; Wächter" Stufe 0: der EINSPEISEWÄCHTER und die Grenze IM
      * GERÄT reisen im SELBEN Block und werden cloud-seitig endlich gelesen.
      *
