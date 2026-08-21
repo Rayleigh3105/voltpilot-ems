@@ -191,6 +191,30 @@ describe('BefehleSection', () => {
     expect(screen.getByText(/Anlagenweite Befehle/)).toBeInTheDocument();
   });
 
+  /**
+   * Die Gegenrichtung auf der BOX (Ziel-Attribution, Konzept
+   * `vp-geraeteseite-rev-b8` §5): sie ÜBERBRINGT, ausgeführt wird am Gerät -
+   * und dort steht der Befehl seither auch.
+   */
+  it('sagt auf der BOX, dass Geräte-Befehle auf der Geräteseite stehen', async () => {
+    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({
+      entityId: null,
+      entityLabel: null,
+      deviceRef: 'edge-45gz7da',
+      deviceIsBox: true,
+      entries: [periode()],
+    }));
+
+    render(<BefehleSection site={site} entityId={null} geraetRef="edge-45gz7da" />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/die anlagenweiten Befehle, die Ihre Box überbringt/))
+        .toBeInTheDocument());
+    expect(screen.getByText(/stehen auf der\s+Seite dieses Geräts/)).toBeInTheDocument();
+    // Der Grenz-Satz der Gegenrichtung gehört ihr NICHT.
+    expect(screen.queryByText(/Anlagenweite Befehle -/)).not.toBeInTheDocument();
+  });
+
   it('lässt die Komponente gewinnen - zwei Fragen, nie beide zugleich', async () => {
     vi.spyOn(api, 'commandHistory').mockResolvedValue(history());
     render(<BefehleSection site={site} entityId="e1" geraetRef="src-7c1e9a2b" />);

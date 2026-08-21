@@ -405,10 +405,14 @@ describe('GeraetSeiteSection', () => {
     // Der Server entscheidet, was zu diesem Gerät gehört - die Fläche fragt ihn
     // mit der Adresse, unter der die Seite geöffnet wurde.
     expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'edge-45gz7da' });
-    const alle = screen.getByRole('link', { name: /Alle anzeigen/ });
-    expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle?geraet=edge-45gz7da');
-    // Die Box trägt jede Zeile - der Grenz-Satz gehört ihr nicht.
+    // ⚠ „Alles" ist auf der Box die ganze ANLAGE, nicht ihr eigener, engerer
+    // Ausschnitt - sonst führte der Weg zurück auf dieselbe Liste.
+    const alle = screen.getByRole('link', { name: /Alle Befehle dieser Anlage/ });
+    expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle');
+    // Die Box ÜBERBRINGT: der Grenz-Satz gehört ihr nicht, ihre Gegenrichtung
+    // schon - sie weist auf die Geräteseiten.
     expect(screen.queryByText(/Anlagenweite Befehle/)).not.toBeInTheDocument();
+    expect(screen.getByText(/stehen auf der\s+Seite dieses Geräts/)).toBeInTheDocument();
   });
 
   it('erklärt an einem Gerät HINTER der Box, wo die anlagenweiten Befehle stehen', async () => {

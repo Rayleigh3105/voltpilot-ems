@@ -45,10 +45,12 @@ public class DeviceScopes {
      *
      * @param deviceId  das beanspruchte Gerät (die Box), an dem die Zeilen
      *                  hängen - immer gesetzt.
-     * @param entityIds {@code null} = die BOX SELBST (alle ihre Zeilen, auch die
-     *                  gerätebezogenen); sonst die Komponenten des Geräts hinter
-     *                  der Box. Eine LEERE Liste ist gültig und heißt „dieses
-     *                  Gerät hat noch keine Komponente" - nie „alles".
+     * @param entityIds {@code null} = die BOX SELBST - und das heißt seit der
+     *                  Ziel-Attribution AUSDRÜCKLICH: ihre ANLAGENWEITEN Zeilen
+     *                  (die ohne Komponente), nicht mehr alles. Sonst die
+     *                  Komponenten des Geräts hinter der Box; eine LEERE Liste
+     *                  ist gültig und heißt „dieses Gerät hat noch keine
+     *                  Komponente" - nie „alles".
      * @param writes    ob VoltPilot an dieses Gerät überhaupt schreibt (die
      *                  F4-Tatsache). {@code false} = es wird nur gelesen.
      */
@@ -94,8 +96,12 @@ public class DeviceScopes {
         List<EntityRow> components = entities.entitiesForSite(siteId);
         UUID box = boxOf(siteId, key);
         if (box != null) {
-            // Die Box: KEINE Entitäts-Einschränkung - jede Zeile ihres Geräts
-            // gehört ihr, auch die gerätebezogenen ohne Komponente.
+            // Die BOX ist ein TOR, kein Gerät (Konzept vp-geraeteseite-rev-b8
+            // §4.1): sie zeigt, was sie ÜBERBRINGT - die anlagenweiten Zeilen
+            // ohne Komponente (Abregelung, Wächter, Not-Aus, Lücke). Alles, was
+            // eine Komponente trägt, hat seit der Ziel-Attribution ein eigenes
+            // Gerät, auf dessen Seite es steht; die ganze Anlage auf einmal
+            // zeigt weiterhin die Befehle-Seite ohne Filter.
             return new Scope(key, box, null, writesAnyOf(components.stream()
                     .filter(e -> box.equals(e.deviceId())).toList()));
         }
@@ -107,17 +113,22 @@ public class DeviceScopes {
         List<EntityRow> pinned = components.stream()
                 .filter(e -> key.equals(e.edgeSourceId()))
                 .toList();
-        if (!pinned.isEmpty()) {
-            return new Scope(key, pinned.get(0).deviceId(),
-                    pinned.stream().map(EntityRow::id).toList(), writesAnyOf(pinned));
-        }
         SiteSourceDto source = sources.forSite(siteId).stream()
                 .filter(s -> key.equals(s.sourceId()))
                 .findFirst().orElse(null);
-        if (source != null) {
+        UUID behind = !pinned.isEmpty() ? pinned.get(0).deviceId()
+                : source != null ? source.deviceId() : null;
+        if (!pinned.isEmpty() || source != null) {
+            // ⚠ Die Zuordnung entscheidet EINE Regel (DeviceAttribution),
+            // wörtlich die des Portals - sonst behauptet dieselbe Seite oben
+            // „⚡ VoltPilot steuert den Speicher" und darunter „VoltPilot
+            // sendet an dieses Gerät keine Befehle".
+            List<EntityRow> own = DeviceAttribution.componentsOf(components, key, behind,
+                    isPrimaryInverter(source));
             // Gemeldet, aber noch keiner Komponente zugeordnet: ehrlich LEER -
             // nie zu „alle Zeilen der Anlage" aufgeweitet.
-            return new Scope(key, source.deviceId(), List.of(), false);
+            return new Scope(key, behind, own.stream().map(EntityRow::id).toList(),
+                    writesAnyOf(own));
         }
         ChargePointDto charger = charger(siteId, key);
         if (charger != null) {
@@ -145,6 +156,20 @@ public class DeviceScopes {
         return devices.findById(asUuid)
                 .filter(d -> siteId.equals(d.siteId()))
                 .map(d -> d.id()).orElse(null);
+    }
+
+    /**
+     * Nennt diese gemeldete Quelle den PRIMÄREN Wechselrichter der Box?
+     *
+     * <p>Die Box meldet ihn als einzige Quelle mit {@code kind = "primary"}
+     * (Kennung {@code inverter}) - dieselbe Bedingung, unter der der
+     * {@code local_setup}-Block seinen Wechselrichter-Eintrag baut, an dem das
+     * Portal seine Regel 2 festmacht. Ohne gemeldete Quelle wird NICHTS
+     * angenommen: ein Gerät, das nur über einen Pin bekannt ist, erbt kein
+     * Komponiertes.
+     */
+    private static boolean isPrimaryInverter(SiteSourceDto source) {
+        return source != null && "primary".equalsIgnoreCase(source.kind());
     }
 
     private ChargePointDto charger(UUID siteId, String key) {

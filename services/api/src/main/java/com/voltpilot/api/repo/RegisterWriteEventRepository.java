@@ -146,6 +146,21 @@ public class RegisterWriteEventRepository {
     }
 
     /**
+     * Die Vorgänge, die der BOX gehören: die ihres Geräts OHNE Komponente - also
+     * die primäre Lane und eine frei getippte Adresse (Ziel-Attribution, Konzept
+     * {@code vp-geraeteseite-rev-b8} §5).
+     *
+     * <p>Ein Vorgang auf der Lane „komponente" trägt seine Komponente und steht
+     * damit auf der Seite des Geräts, das sie besitzt; ihn hier zusätzlich zu
+     * zeigen hiesse, denselben Schreibvorgang an zwei Orten zu behaupten. Die
+     * ganze Anlage auf einmal zeigt weiterhin die Befehle-Seite ohne Filter.
+     */
+    public List<Entry> betweenForBox(UUID siteId, UUID deviceId, Instant from, Instant to,
+            int limit) {
+        return query(siteId, deviceId, null, from, to, limit, true);
+    }
+
+    /**
      * Dieselben Vorgänge, aber auf die KOMPONENTEN eines Geräts hinter der Box
      * eingegrenzt (Anlagen-Zentrale Stufe 1).
      *
@@ -164,6 +179,11 @@ public class RegisterWriteEventRepository {
 
     private List<Entry> query(UUID siteId, UUID deviceId, List<UUID> entityIds, Instant from,
             Instant to, int limit) {
+        return query(siteId, deviceId, entityIds, from, to, limit, false);
+    }
+
+    private List<Entry> query(UUID siteId, UUID deviceId, List<UUID> entityIds, Instant from,
+            Instant to, int limit, boolean withoutEntity) {
         // Das Limit greift auf VORGÄNGEN, nicht auf Zeilen: ein Vorgang mit
         // Quittung darf nicht seinen Kopf verlieren, nur weil die Grenze mitten
         // zwischen seinen zwei Zeilen lag.
@@ -178,6 +198,9 @@ public class RegisterWriteEventRepository {
         if (entityIds != null) {
             inner.append(" AND entity_id = ANY(?::uuid[])");
             args.add(CommandLogRepository.uuidArray(entityIds));
+        }
+        if (withoutEntity) {
+            inner.append(" AND entity_id IS NULL");
         }
         if (from != null) {
             inner.append(" AND requested_at >= ?");

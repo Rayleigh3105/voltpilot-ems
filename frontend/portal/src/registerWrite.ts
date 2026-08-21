@@ -702,11 +702,13 @@ export function geraetRegisterZugang(
 /**
  * Der VERLAUF dieses Geräts aus dem Journal der Anlage.
  *
- * ⚠ Die Grenze ist wörtlich die des Kommando-Verlaufs (PR 1b): die **BOX** hat
- * jeden Vorgang ihres Geräts - sie IST der Schreibweg -, ein Gerät **dahinter**
- * nur die Vorgänge SEINER Komponenten. Ein Vorgang auf der primären Lane oder
- * auf einer frei getippten Adresse trägt keine Komponente; ihn einem einzelnen
- * Gerät anzulasten wäre eine erfundene Zuordnung.
+ * ⚠ Die Grenze ist wörtlich die des Kommando-Verlaufs und seit der
+ * Ziel-Attribution (Konzept `vp-geraeteseite-rev-b8` §5) auf BEIDEN Seiten
+ * dieselbe: die **BOX** trägt die ANLAGENWEITEN Vorgänge - die ohne Komponente,
+ * also die primäre Lane und eine frei getippte Adresse -, ein Gerät
+ * **dahinter** die Vorgänge SEINER Komponenten. Denselben Schreibvorgang an
+ * zwei Orten zu zeigen wäre eine zweite Wahrheit; ihn einem einzelnen Gerät
+ * anzulasten, dem er nicht gehört, eine erfundene Zuordnung.
  *
  * <p>Gefiltert wird hier, weil die Route je GERÄT liefert (die Box) - und die
  * Box ist bei einem Gerät dahinter genau die richtige Abfrage.
@@ -715,7 +717,7 @@ export function geraeteVerlauf(
   rows: RegisterWriteEvent[],
   opts: { box: boolean; entityIds: string[] },
 ): RegisterWriteEvent[] {
-  if (opts.box) return rows;
+  if (opts.box) return rows.filter((r) => !r.entityId);
   return rows.filter((r) => !!r.entityId && opts.entityIds.includes(r.entityId));
 }
 

@@ -111,7 +111,10 @@ public class CommandLogReader {
         List<RegisterWriteEventRepository.Entry> writes = scope == null
                 ? registerWrites.between(siteId, deviceId, from, to, MAX_REGISTER_ENTRIES + 1)
                 : scope.box()
-                        ? registerWrites.between(siteId, scope.deviceId(), from, to,
+                        // Die BOX trägt ihre ANLAGENWEITEN Vorgänge (primäre
+                        // Lane, freie Adresse); ein Vorgang MIT Komponente steht
+                        // auf der Seite ihres Geräts (Ziel-Attribution).
+                        ? registerWrites.betweenForBox(siteId, scope.deviceId(), from, to,
                                 MAX_REGISTER_ENTRIES + 1)
                         : registerWrites.betweenForEntities(siteId, scope.entityIds(), from, to,
                                 MAX_REGISTER_ENTRIES + 1);
