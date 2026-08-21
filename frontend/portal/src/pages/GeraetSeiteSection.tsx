@@ -23,6 +23,7 @@ import {
 import type { SiteCharging } from '../ladepunkte';
 import {
   geraetSeite,
+  type GeraetArt,
   type GeraetSeiteView,
   type Zeile,
 } from '../geraetSeite';
@@ -397,7 +398,7 @@ export function GeraetSeiteSection({
               siteId={site.id}
               boxDeviceId={box?.id ?? null}
               geraetName={view.kopf.titel}
-              box={false}
+              art={view.art}
               entityIds={view.komponenten.map((c) => c.entityId)}
               targets={targets}
             />
@@ -570,14 +571,15 @@ function RegisterSektion({
   siteId,
   boxDeviceId,
   geraetName,
-  box,
+  art,
   entityIds,
   targets,
 }: {
   siteId: string;
   boxDeviceId: string | null;
   geraetName: string;
-  box: boolean;
+  /** Die Gattung entscheidet das Ziel - das Hauptgerät IST die primäre Lane. */
+  art: GeraetArt;
   entityIds: string[];
   targets: RegisterWriteTarget[] | null;
 }) {
@@ -587,14 +589,14 @@ function RegisterSektion({
   const zugang: GeraetRegisterZugang = targets == null
     // Noch nicht geladen: es wird NICHTS behauptet - weder ein Weg noch sein
     // Fehlen.
-    ? { moeglich: false, grund: null, vorwahl: null }
+    ? { moeglich: false, grund: null, vorwahl: null, weg: null }
     : boxDeviceId
-      ? geraetRegisterZugang(targets, { box, deviceId: box ? boxDeviceId : null, entityIds })
+      ? geraetRegisterZugang(targets, { art, deviceId: boxDeviceId, entityIds })
       // Ohne beanspruchte Box gibt es kein Gerät, über das geschrieben würde.
-      : { moeglich: false, grund: KEIN_SCHREIBWEG, vorwahl: null };
+      : { moeglich: false, grund: KEIN_SCHREIBWEG, vorwahl: null, weg: null };
   const verlaufFilter = useMemo(
-    () => (rows: RegisterWriteEvent[]) => geraeteVerlauf(rows, { box, entityIds }),
-    [box, entityIds.join('|')],
+    () => (rows: RegisterWriteEvent[]) => geraeteVerlauf(rows, { box: false, entityIds }),
+    [entityIds.join('|')],
   );
 
   return (
@@ -612,6 +614,14 @@ function RegisterSektion({
       ) : (
         <p className="vp-muted vp-text-sm" data-testid="geraet-regwrite-grund">
           {zugang.grund ?? 'Die Ziele dieses Geräts werden geladen …'}
+          {/* Ein Grund, der einen WEG nennt, führt auch hin - ein benannter
+              Weg ohne Klick wäre eine Aufgabe ohne Ort (§7). */}
+          {zugang.weg === 'anlagen-modell' && (
+            <>
+              {' '}
+              <a href={hashForRoute(anlageRoute(siteId, 'modell'))}>Zum Anlagen-Modell →</a>
+            </>
+          )}
         </p>
       )}
       {offen && boxDeviceId && (

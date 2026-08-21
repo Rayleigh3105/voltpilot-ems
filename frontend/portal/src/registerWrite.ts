@@ -477,6 +477,10 @@ export function laneWort(lane: string): string {
 
 /** Der Schlüssel eines Ziels - stabil über einen Neu-Abruf hinweg. */
 export function zielKey(t: RegisterWriteTarget): string {
+  // ⚠ Ein Alias hat einen EIGENEN Schlüssel, obwohl es auf die primäre Lane
+  // zeigt: sonst fiele es mit dem Wechselrichter-Ziel derselben Box zusammen,
+  // und der Picker verlöre die Komponente, nach der ein Mensch sucht.
+  if (t.primaryAlias && t.entityId) return `alias:${t.entityId}`;
   if (t.lane === 'entity' && t.entityId) return `entity:${t.entityId}`;
   if (t.lane === 'lan') return `lan:${t.host ?? ''}:${t.port ?? 502}#${t.unitId ?? 1}`;
   return `primary:${t.deviceId}`;
@@ -496,7 +500,10 @@ export function ziele(targets: RegisterWriteTarget[]): ZielSicht[] {
     key: zielKey(t),
     titel: t.label,
     unterzeile: zielUnterzeile(t),
-    laneWort: laneWort(t.lane),
+    // ⚠ Der Benutzer sieht KEINE Lane (E4): ein Alias ist für ihn die
+    // Komponente, die er angeklickt hat - dass sie über den Wechselrichter
+    // erreicht wird, ist eine Tatsache unserer Box.
+    laneWort: t.primaryAlias ? laneWort('entity') : laneWort(t.lane),
     waehlbar: t.writable,
     grund: t.writable ? null : t.reason,
     kenntRegister: !!t.family,
@@ -544,6 +551,13 @@ export function zielInput(t: RegisterWriteTarget | null): {
 } {
   if (!t) return {};
   const geraet = t.deviceId ? { deviceId: t.deviceId } : {};
+  if (t.primaryAlias && t.entityId) {
+    // ⚠ Die Komponente reist MIT, obwohl der Auftrag primär ist: der Umschlag
+    // der primären Lane trägt gar kein `entity_id` (die Box bekommt also
+    // zeichengleich, was sie immer bekam), das JOURNAL aber schon - und nur so
+    // gehört der Vorgang der Komponente, auf deren Seite er ausgelöst wurde.
+    return { ...geraet, lane: 'primary', entityId: t.entityId };
+  }
   if (t.lane === 'entity' && t.entityId) {
     return { ...geraet, lane: 'entity', entityId: t.entityId };
   }
@@ -646,15 +660,23 @@ export const EXPERTE_INTRO =
 // ── Anlagen-Zentrale Stufe 1: das Register auf der GERÄTESEITE ───────────────
 
 /**
- * Der Zugang der GERÄTESEITE (Konzept `vp-anlagen-zentrale-konzept-h6` §7.5):
+ * Der Zugang der GERÄTESEITE (Konzept `vp-anlagen-zentrale-konzept-h6` §7.5,
+ * geschärft von `vp-geraeteseite-rev-b8` §7 / Captain-Entscheid E4):
  * hat GENAU DIESES Gerät einen Schreibweg - und welches Ziel ist dann
  * vorgewählt?
  *
  * ⚠ Die Vorwahl ist der ganze Zweck: auf einer Anlage mit mehreren Geräten
  * ist „Register schreiben" ohne sie eine Einladung, das falsche zu treffen.
  * Vorgewählt wird nur, was BELEGT zu diesem Gerät gehört - die primäre Lane
- * auf der Box, die Komponente eines Geräts dahinter. **Geraten wird nie:** ohne
- * passendes Ziel gibt es keine Vorwahl (der Picker öffnet dann wie bisher).
+ * auf dem HAUPTGERÄT, die Komponente eines Geräts dahinter. **Geraten wird
+ * nie:** ohne passendes Ziel gibt es keine Vorwahl.
+ *
+ * ⚠ **DER BENUTZER SIEHT KEINE LANE (E4).** Das Hauptgerät IST die primäre
+ * Lane dieser Box - vorher wurde ihm die Komponenten-Lane vorgewählt, und weil
+ * die Komponenten eines Solarman-Wechselrichters dort nicht schreibbar sind,
+ * empfahl seine eigene Seite ihm, „den primären Wechselrichter als Ziel zu
+ * wählen". Ein Hinweis, der auf dieselbe Seite führt, erklärt einen Begriff,
+ * den ein Kunde nie braucht.
  *
  * ⚠ Und ein Knopf, der strukturell nichts bewirken kann, wird NICHT angeboten
  * (die `applyView`-Regel des Hauses) - er trägt stattdessen den Grund, den der
@@ -666,6 +688,11 @@ export interface GeraetRegisterZugang {
   grund: string | null;
   /** Der Schlüssel des vorgewählten Ziels, oder null. */
   vorwahl: string | null;
+  /**
+   * Der WEG, den der Grund nennt - die Fläche verlinkt ihn. `null` = der Grund
+   * nennt keinen (dann gibt es auch keinen Knopf ins Leere).
+   */
+  weg: 'anlagen-modell' | null;
 }
 
 /** Der Satz, wenn zu diesem Gerät gar kein Ziel bekannt ist. */
@@ -673,30 +700,59 @@ export const KEIN_SCHREIBWEG =
   'Für dieses Gerät kennt VoltPilot keinen Schreibweg. Register lassen sich nur '
   + 'an Geräten schreiben, deren Anbindung die Anlage kennt.';
 
+/**
+ * Der Satz für ein Gerät, das die Box zwar MELDET, das aber noch keine
+ * Komponente ist (§7): er nennt den WEG statt nur des Fehlens.
+ *
+ * ⚠ Eine Vorwahl auf die freie Adresse dieses Geräts wäre eine Behauptung -
+ * dass unter dieser Adresse GENAU dieses Gerät antwortet, weiß nur die Box.
+ * Deshalb der Weg über die Übernahme, nach der die Anlage die Anbindung kennt.
+ */
+export const ERST_ALS_KOMPONENTE =
+  'Dieses Gerät ist noch keine Komponente Ihrer Anlage - deshalb kennt VoltPilot '
+  + 'seinen Schreibweg nicht. Übernehmen Sie es im Anlagen-Modell, danach lassen '
+  + 'sich seine Register lesen und schreiben.';
+
 export function geraetRegisterZugang(
   targets: RegisterWriteTarget[],
-  opts: { box: boolean; deviceId: string | null; entityIds: string[] },
+  opts: { art: 'hauptgeraet' | 'quelle' | 'ladepunkt'; deviceId: string | null;
+    entityIds: string[] },
 ): GeraetRegisterZugang {
-  const passend = opts.box
-    // Die BOX schreibt über ihre primäre Lane - das Gerät, das die Anlage
-    // selbst kennt.
-    ? targets.filter((t) => t.lane === 'primary'
+  // Die Komponenten DIESES Geräts - egal, über welchen Weg die Box sie
+  // erreicht: eine Lane ist eine Transport-Tatsache, keine Zugehörigkeit.
+  const eigene = targets.filter((t) => t.entityId && opts.entityIds.includes(t.entityId)
+    && (t.lane === 'entity' || t.primaryAlias === true));
+  // Das HAUPTGERÄT ist die primäre Lane seiner Box - sie führt vor jeder
+  // Komponente, denn sie meint genau dieses Gerät.
+  const primaer = opts.art === 'hauptgeraet'
+    ? targets.filter((t) => t.lane === 'primary' && !t.primaryAlias
         && (!opts.deviceId || t.deviceId === opts.deviceId))
-    // Ein Gerät DAHINTER über die Komponente, die auf ihm gepinnt ist. Die
-    // freie LAN-Adresse ist bewusst KEINE Vorwahl: dass ein Ziel unter dieser
-    // Adresse dieses Gerät IST, weiß nur die Box.
-    : targets.filter((t) => t.lane === 'entity' && t.entityId
-        && opts.entityIds.includes(t.entityId));
+    : [];
+  const passend = [...primaer, ...eigene];
   if (passend.length === 0) {
-    return { moeglich: false, grund: KEIN_SCHREIBWEG, vorwahl: null };
+    // Ohne eine einzige Komponente ist dieses Gerät noch nicht übernommen -
+    // der Grund nennt den Weg dorthin statt nur sein eigenes Fehlen.
+    const grund = opts.entityIds.length === 0 && opts.art === 'quelle'
+      ? ERST_ALS_KOMPONENTE : KEIN_SCHREIBWEG;
+    return {
+      moeglich: false,
+      grund,
+      vorwahl: null,
+      weg: grund === ERST_ALS_KOMPONENTE ? 'anlagen-modell' : null,
+    };
   }
   const schreibbar = passend.find((t) => t.writable);
   if (!schreibbar) {
     // Der Server sagt, warum - und nur er. Ein selbst formulierter Grund wäre
     // eine zweite Wahrheit über eine Fähigkeit, die die Box meldet.
-    return { moeglich: false, grund: passend[0].reason ?? KEIN_SCHREIBWEG, vorwahl: null };
+    return {
+      moeglich: false,
+      grund: passend[0].reason ?? KEIN_SCHREIBWEG,
+      vorwahl: null,
+      weg: null,
+    };
   }
-  return { moeglich: true, grund: null, vorwahl: zielKey(schreibbar) };
+  return { moeglich: true, grund: null, vorwahl: zielKey(schreibbar), weg: null };
 }
 
 /**

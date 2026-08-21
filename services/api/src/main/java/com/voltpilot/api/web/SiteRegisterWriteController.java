@@ -112,7 +112,7 @@ public class SiteRegisterWriteController {
         return targets.forSite(siteId).stream()
                 .map(t -> new RegisterWriteTargetDto(t.lane(), t.deviceId(), t.entityId(),
                         t.label(), t.brand(), t.model(), t.family(), t.communication(), t.host(),
-                        t.port(), t.unitId(), t.writable(), t.reason()))
+                        t.port(), t.unitId(), t.writable(), t.reason(), t.primaryAlias()))
                 .toList();
     }
 

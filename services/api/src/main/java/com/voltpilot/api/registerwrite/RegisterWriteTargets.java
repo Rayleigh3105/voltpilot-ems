@@ -60,6 +60,18 @@ public class RegisterWriteTargets {
     private static final String ROLE_INVERTER = "inverter";
 
     /**
+     * Die ECHTE Ablehnung in Kundenworten - ein Gerät, das kein Modbus spricht,
+     * hat keine Register, und das bleibt wahr, egal wie die Fläche heißt.
+     *
+     * <p>Sie steht bewusst EINMAL: derselbe Fall trat an drei Stellen auf
+     * (primärer Wechselrichter, Komponente, gemeldete Quelle) und wurde dreimal
+     * verschieden formuliert.
+     */
+    static final String HTTP_KEIN_MODBUS =
+            "Dieses Gerät wird über seine Web-Schnittstelle gelesen - Modbus-Register gibt es "
+            + "dort nicht.";
+
+    /**
      * Ein Ziel des Pickers.
      *
      * @param writable ob die Plattform einen Schreibweg SIEHT. {@code false}
@@ -69,10 +81,26 @@ public class RegisterWriteTargets {
      *                 {@code null} = die Box hat sie (noch) nicht gemeldet, und
      *                 dann bleibt JEDES Register „unbekannt" statt mit einer
      *                 fremden Bedeutung beschriftet zu werden.
+     * @param primaryAlias ⚠ das Ziel NENNT eine Komponente, wird aber über die
+     *                 PRIMÄRE Lane erreicht (Geräteseiten Stufe 2, Captain-
+     *                 Entscheid E4). Die {@code entityId} bleibt gesetzt, damit
+     *                 der Vorgang der KOMPONENTE gehört (Journal, Geräte-
+     *                 Verlauf); auf dem Draht reist er als primärer Auftrag -
+     *                 der Umschlag der primären Lane trägt gar kein
+     *                 {@code entity_id}, es ändert sich also NICHTS an dem, was
+     *                 die Box bekommt oder prüft.
      */
     public record Target(String lane, UUID deviceId, UUID entityId, String label, String brand,
             String model, String family, String communication, String host, Integer port,
-            Integer unitId, boolean writable, String reason) {
+            Integer unitId, boolean writable, String reason, boolean primaryAlias) {
+
+        /** Ein gewöhnliches Ziel - kein Alias (der Normalfall). */
+        public Target(String lane, UUID deviceId, UUID entityId, String label, String brand,
+                String model, String family, String communication, String host, Integer port,
+                Integer unitId, boolean writable, String reason) {
+            this(lane, deviceId, entityId, label, brand, model, family, communication, host, port,
+                    unitId, writable, reason, false);
+        }
     }
 
     private final DeviceRepository devices;
@@ -153,13 +181,17 @@ public class RegisterWriteTargets {
         boolean writable = true;
         String reason = null;
         if (SOLARMAN.equals(communication)) {
+            // ⚠ HIER ist es eine ECHTE Ablehnung, kein Alias: dieses Gerät hängt
+            // an einem EIGENEN Logger, die primäre Lane meint aber den
+            // Wechselrichter, den die Box selbst eingerichtet hat - ein Alias
+            // schickte den Auftrag an ein ANDERES Gerät. Der Satz nennt deshalb
+            // den Weg statt eines Transports, den niemand kennen muss.
             writable = false;
-            reason = "Dieses Gerät wird über den Solarman-Logger gelesen - bitte den primären "
-                    + "Wechselrichter als Ziel wählen.";
+            reason = "Dieses Gerät hängt an einem eigenen Logger. Richten Sie es zuerst als "
+                    + "Komponente ein - dann kennt VoltPilot seinen Schreibweg.";
         } else if (communication != null && HTTP_TRANSPORTS.contains(communication)) {
             writable = false;
-            reason = "Dieses Gerät spricht kein Modbus - Register lassen sich dort nicht "
-                    + "schreiben.";
+            reason = HTTP_KEIN_MODBUS;
         }
         // ⚠ Die FAMILIE der Quelle wird NICHT übernommen: die freie Lane nennt
         // einen Endpunkt, kein eingerichtetes Gerät, und die Box kann dort nicht
@@ -246,8 +278,7 @@ public class RegisterWriteTargets {
         boolean writable = true;
         if (communication != null && HTTP_TRANSPORTS.contains(communication)) {
             writable = false;
-            reason = "Dieser Wechselrichter wird nicht über Modbus gelesen - Register lassen "
-                    + "sich dort nicht schreiben.";
+            reason = HTTP_KEIN_MODBUS;
         }
         return new Target(LANE_PRIMARY, device.id(), null, label, inv.edgeBrand(), inv.edgeModel(),
                 link == null ? null : link.family(), communication,
@@ -267,15 +298,22 @@ public class RegisterWriteTargets {
         boolean writable = true;
         String reason = null;
         if (SOLARMAN.equals(communication)) {
-            // WÖRTLICH die Aussage des Geräts: dieser Socket gehört dem
-            // Wechselrichter-Tab, und der wird über die primäre Lane erreicht.
+            // ⚠ DAS IST EINE ABBILDUNG, KEINE ABLEHNUNG (Captain-Entscheid E4).
+            // Die Transport-Tatsache bleibt wahr - dieser Socket gehört dem
+            // Wechselrichter-Tab, und der wird über die primäre Lane erreicht -,
+            // aber sie ist unsere, nicht die des Kunden: der frühere Satz
+            // („bitte den primären Wechselrichter als Ziel wählen") erschien
+            // ausgerechnet auf der Seite DIESES Wechselrichters und schickte
+            // einen Menschen dorthin, wo er schon stand. Die Box bekommt
+            // weiterhin einen Auftrag auf der primären Lane, ihre Politik
+            // (Admit/WriteOnce, Selbstkonflikt-Sperre) ist unberührt.
+            return Optional.of(new Target(LANE_PRIMARY, e.deviceId(), e.id(), label, e.brand(),
+                    e.model(), e.family(), communication, host, integer(conn, "port"), unit(conn),
+                    true, null, true));
+        }
+        if (communication != null && HTTP_TRANSPORTS.contains(communication)) {
             writable = false;
-            reason = "Dieses Gerät wird über den Solarman-Logger gelesen - bitte den primären "
-                    + "Wechselrichter als Ziel wählen.";
-        } else if (communication != null && HTTP_TRANSPORTS.contains(communication)) {
-            writable = false;
-            reason = "Dieses Gerät spricht kein Modbus - Register lassen sich dort nicht "
-                    + "schreiben.";
+            reason = HTTP_KEIN_MODBUS;
         } else if (host == null) {
             writable = false;
             reason = "Für dieses Gerät ist keine IP-Adresse hinterlegt.";

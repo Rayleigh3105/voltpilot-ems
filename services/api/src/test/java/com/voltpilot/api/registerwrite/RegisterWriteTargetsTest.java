@@ -128,11 +128,75 @@ class RegisterWriteTargetsTest {
                 assertThat(t.reason()).as("jede Verweigerung nennt ihren Grund").isNotBlank();
             }
         });
-        assertThat(out.stream().filter(t -> !t.writable())).hasSize(4);
-        assertThat(reason(out, wallbox)).contains("kein Modbus");
-        // WÖRTLICH die Aussage des Geräts: dieser Socket gehört der primären Lane.
-        assertThat(reason(out, onTheLogger)).contains("primären Wechselrichter");
+        // ⚠ DREI echte Verweigerungen - die Solarman-Komponente ist seit E4
+        // KEINE mehr, sondern eine Abbildung auf die primäre Lane.
+        assertThat(out.stream().filter(t -> !t.writable())).hasSize(3);
+        assertThat(reason(out, wallbox)).contains("Web-Schnittstelle");
         assertThat(reason(out, noIp)).contains("keine IP-Adresse");
+        RegisterWriteTargets.Target alias = out.stream()
+                .filter(t -> onTheLogger.equals(t.entityId())).findFirst().orElseThrow();
+        assertThat(alias.writable()).isTrue();
+        assertThat(alias.reason()).isNull();
+        assertThat(alias.primaryAlias()).isTrue();
+        assertThat(alias.lane()).isEqualTo(RegisterWriteTargets.LANE_PRIMARY);
+        assertThat(alias.entityId()).as("die Komponente bleibt der Besitzer des Vorgangs")
+                .isEqualTo(onTheLogger);
+    }
+
+    /**
+     * ⚠ DER CAPTAIN-BEFUND ALS TEST (Geräteseiten Stufe 2, E4): eine Komponente
+     * am Solarman-Logger wird ABGEBILDET, nicht abgelehnt.
+     *
+     * <p>Der frühere Satz („bitte den primären Wechselrichter als Ziel wählen")
+     * erschien ausgerechnet auf der Seite genau dieses Wechselrichters. Die
+     * Transport-Tatsache bleibt wahr - der Auftrag reist auf der primären Lane -,
+     * nur muss sie kein Mensch mehr kennen.
+     */
+    @Test
+    void aComponentOnTheLoggerIsMappedToThePrimaryLaneInsteadOfBeingRefused() {
+        device();
+        when(observed.forSite(SITE)).thenReturn(List.of(local("inverter", "solarman_v5",
+                "hybrid_3p", "{\"ip\":\"192.168.0.28\",\"port\":8899}", "deye", "SUN-30K")));
+        UUID speicher = UUID.randomUUID();
+        when(registry.entitiesForSite(SITE)).thenReturn(List.of(
+                entity(speicher, "Speicher", "solarman_v5",
+                        "{\"ip\":\"192.168.0.28\",\"port\":8899}", "hybrid_3p")));
+
+        List<RegisterWriteTargets.Target> out = targets.forSite(SITE);
+
+        assertThat(out).hasSize(2);
+        assertThat(out).noneMatch(t -> t.reason() != null && t.reason().contains("Solarman"));
+        assertThat(out).allMatch(RegisterWriteTargets.Target::writable);
+        // Das Alias steht NEBEN dem Wechselrichter-Ziel, nicht an seiner Stelle:
+        // ein Mensch, der „Speicher" sucht, findet ihn weiterhin.
+        assertThat(out.stream().filter(t -> !t.primaryAlias())).hasSize(1);
+        assertThat(out.stream().filter(RegisterWriteTargets.Target::primaryAlias)).hasSize(1);
+    }
+
+    /**
+     * ⚠ EINE GEMELDETE QUELLE AN EINEM EIGENEN LOGGER IST KEIN ALIAS: die
+     * primäre Lane meint den Wechselrichter, den die BOX eingerichtet hat - ein
+     * Alias schickte den Auftrag an ein ANDERES Gerät. Der Satz nennt deshalb
+     * den Weg, nicht einen Transport.
+     */
+    @Test
+    void aReportedSourceOnItsOwnLoggerNamesTheWayInsteadOfATransport() {
+        device();
+        when(observed.forSite(SITE)).thenReturn(List.of(
+                local("inverter", "fronius_sunspec", "sunspec_live",
+                        "{\"ip\":\"192.168.0.40\"}", "fronius_sunspec", "eco-27"),
+                local("pv-generation", "solarman_v5", "hybrid_3p",
+                        "{\"ip\":\"192.168.0.28\",\"port\":8899}", "deye", "SUN-12K")));
+        when(registry.entitiesForSite(SITE)).thenReturn(List.of());
+
+        RegisterWriteTargets.Target source = targets.forSite(SITE).stream()
+                .filter(t -> RegisterWriteTargets.LANE_LAN.equals(t.lane()))
+                .findFirst().orElseThrow();
+
+        assertThat(source.writable()).isFalse();
+        assertThat(source.primaryAlias()).isFalse();
+        assertThat(source.reason()).contains("als Komponente");
+        assertThat(source.reason()).doesNotContain("Lane");
     }
 
     /** Eine komponierte Zeile ohne jede Anbindung ist kein Gerät im LAN. */
