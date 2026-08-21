@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.chargers.ChargingConfigService;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
@@ -13,6 +14,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,6 +55,13 @@ public class SiteChargingConfigController {
              */
             @Size(max = 32) String surplusPolicy, @Size(max = 32) String storagePriority) {}
 
+    /**
+     * Der Rumpf des Anbinde-Assistenten: nur die Kennung ist Pflicht, alles
+     * Weitere ist das, was der Betreiber zufällig schon weiß.
+     */
+    public record AdmitChargePointRequest(@NotBlank @Size(max = 64) String chargePointId,
+            @Size(max = 120) String label, Double ratedKw, Integer connectors) {}
+
     private final ChargingConfigService service;
 
     public SiteChargingConfigController(ChargingConfigService service) {
@@ -71,6 +80,23 @@ public class SiteChargingConfigController {
         return service.save(siteId, req.gridLimitKw(), req.priorityChargePointIds(),
                 req.surplusPolicy(), req.storagePriority(),
                 caller == null ? "unbekannt" : caller.getSubject());
+    }
+
+    /**
+     * Trägt EINE Ladesäule in die Allowlist ein (Anbinde-Assistent, Schritt 1).
+     *
+     * <p><b>Es ist ein POST, kein PUT</b>, und das ist die Aussage: die Liste
+     * fügt nur hinzu. Ein PUT lüde dazu ein, sie als Ganzes zu setzen - und
+     * damit einen Eintrag zu ENTFERNEN, was eine Säule beim nächsten
+     * Verbindungsaufbau vom Broker würfe. Löschen bleibt eine ausdrückliche
+     * Handlung am Gerät.
+     */
+    @PostMapping("/charging-config/charge-points")
+    public ChargingConfigDto admit(@PathVariable UUID siteId,
+            @Valid @RequestBody AdmitChargePointRequest req,
+            @AuthenticationPrincipal Jwt caller) {
+        return service.admit(siteId, req.chargePointId(), req.label(), req.ratedKw(),
+                req.connectors(), caller == null ? "unbekannt" : caller.getSubject());
     }
 
     /** Jede Ablehnung erreicht die Oberfläche als deutscher {@code {message}}-Körper. */

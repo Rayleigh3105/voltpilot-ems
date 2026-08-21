@@ -21,6 +21,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -278,6 +280,49 @@ class ChargerStatusListenerTest {
         // Und eine laufende Übersteuerung ist sichtbar - eine volle Ladung, die
         // niemand angefordert hat, wäre ein stiller Bruch der Kunden-Priorität.
         assertThat(c.chargers().get(0).connectors().get(0).boost()).isTrue();
+    }
+
+    /**
+     * Der Anbinde-Assistent braucht den ECHTEN Endpunkt, unter dem eine Saeule
+     * die Box anwaehlt - die Adresse kennt das Portal seit D5, Port und Pfad
+     * fehlten.
+     */
+    @Test
+    void theOcppEndpointIsStored() {
+        Captured c = ingest("\"chargers\":{\"reported_at\":\"2026-08-21T09:15:00Z\","
+                + "\"enabled\":true,\"ocpp_port\":8887,\"url_path\":\"/ocpp\","
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true}]}");
+        assertThat(c.budget().ocppPort()).isEqualTo(8887);
+        assertThat(c.budget().ocppUrlPath()).isEqualTo("/ocpp");
+    }
+
+    /**
+     * ⚠ DREIWERTIG: null heisst „eine aeltere Box meldet es nicht" ODER „der
+     * Server lauscht gerade nicht" - nie Port 0. Die Box laesst beides weg,
+     * solange sie nicht lauscht, und die Flaeche faellt dann auf ihren
+     * ehrlichen Vorgabe-Satz zurueck.
+     */
+    @Test
+    void aBoxThatIsNotListeningReportsNoEndpointAtAll() {
+        Captured silent = ingest("\"chargers\":{\"reported_at\":\"2026-08-21T09:15:00Z\","
+                + "\"enabled\":true,"
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true}]}");
+        assertThat(silent.budget().ocppPort()).isNull();
+        assertThat(silent.budget().ocppUrlPath()).isNull();
+    }
+
+    /**
+     * Ein Port, den keine Saeule anwaehlen kann, wird VERWORFEN statt
+     * gespeichert - eine Adresse, auf der niemand antwortet, ist die
+     * schlechtere Auskunft als gar keine.
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, 70000})
+    void anImpossibleOcppPortIsDiscarded(int port) {
+        Captured bad = ingest("\"chargers\":{\"reported_at\":\"2026-08-21T09:15:00Z\","
+                + "\"enabled\":true,\"ocpp_port\":" + port + ","
+                + "\"chargers\":[{\"id\":\"saeule-1\",\"connected\":true}]}");
+        assertThat(bad.budget().ocppPort()).isNull();
     }
 
     /** Ein Wort ausserhalb des Vokabulars wird VERWORFEN, nie gespeichert. */

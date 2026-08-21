@@ -136,6 +136,16 @@ beiden Bahnen gewinnt, und keine kann die andere aufweichen. Auch hier ist
 abwesend ≠ `schnell`: das eine heißt „das Portal äußert sich nicht", das andere
 ist die eigene Aussage „keine Quellen-Politik".
 
+Seit dem Anbinde-Assistenten trägt es zusätzlich die ALLOWLIST
+(`mqtt-charging-config.valid.saeulen-eintragen.json`): die Kennungen, unter denen
+die Box eine Säule überhaupt annimmt. Ihre PATCH-Regel ist SCHÄRFER als die der
+Vorrang-Liste — abwesend UND leer heißen hier dasselbe, denn diese Liste fügt nur
+hinzu: die Box übernimmt jeden Eintrag, den sie noch nicht kennt, überschreibt
+keinen bestehenden und ENTFERNT nie einen. Eine Kennung zu löschen wirft eine
+Säule beim nächsten Verbindungsaufbau vom Broker und bleibt deshalb bewusst eine
+ausdrückliche Handlung am Gerät. Die zweite Zeile der Fixture nennt nur ihre `id`
+— alles Weitere ist das, was der Betreiber zufällig schon weiß.
+
 ## `mqtt-charging-boost` (Lastmanagement Stufe 4)
 
 Die Einmal-Übersteuerung „Jetzt voll laden" für GENAU EINEN laufenden

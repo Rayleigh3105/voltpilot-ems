@@ -39,6 +39,17 @@ public record SiteChargingDto(ChargingBudgetDto budget, List<ChargePointDto> cha
             String surplusPolicy, String storagePriority, boolean surplusActive,
             Double surplusKw, String surplusMode, String surplusNote, boolean surplusBlind,
             Double surplusTotalKw, Double surplusBatteryKw, Double sourceAllocatedKw,
+            // --- Wo eine Saeule die Box anwaehlt ------------------------------
+            //
+            // Port und Pfad des OCPP-Servers. Die Adresse selbst kennt das
+            // Portal seit D5 aus der Geraete-Zeile; diese zwei fehlten, also
+            // musste der Anbinde-Assistent eine Vorgabe hinschreiben statt den
+            // echten Endpunkt zu zeigen.
+            //
+            // ⚠ DREIWERTIG: null heisst "eine aeltere Box meldet es nicht" ODER
+            // "der Server lauscht gerade nicht" - nie Port 0. Die Flaeche faellt
+            // dann auf ihren ehrlichen Vorgabe-Satz zurueck.
+            Integer ocppPort, String ocppUrlPath,
             Instant reportedAt) {}
 
     /**

@@ -21,4 +21,24 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
          * Einstellung. Es heißt NIE „schnell": das wäre eine eigene Aussage.
          */
         String surplusPolicy, String storagePriority,
-        Instant updatedAt, String updatedBy) {}
+        /*
+         * Die ALLOWLIST: die Kennungen, unter denen die Box eine Säule
+         * überhaupt annimmt.
+         *
+         * ⚠ Sie FÜGT NUR HINZU. Ein Eintrag hier lässt eine Säule herein; einen
+         * zu ENTFERNEN wirft sie beim nächsten Verbindungsaufbau vom Broker und
+         * bleibt deshalb bewusst eine ausdrückliche Handlung am Gerät. Eine
+         * leere Liste ist hier - anders als beim Vorrang - keine Aussage
+         * „keine Säule", sondern nur „das Portal hat noch keine eingetragen".
+         */
+        List<AllowedChargePointDto> chargePoints,
+        Instant updatedAt, String updatedBy) {
+
+    /**
+     * Eine im Portal eingetragene Ladesäule. Alles außer der Kennung ist das,
+     * was der Betreiber zufällig schon weiß - {@code null} heißt „unbekannt",
+     * nie 0: die Box entscheidet dann aus dem, was die Säule selbst meldet.
+     */
+    public record AllowedChargePointDto(String chargePointId, String label, Double ratedKw,
+            Integer connectors, Instant addedAt, String addedBy) {}
+}

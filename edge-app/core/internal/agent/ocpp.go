@@ -676,7 +676,8 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 
 	info := &state.OcppInfo{
 		Enabled: snap.Enabled, Listening: snap.Listening, Error: snap.Error,
-		Endpoint:       rt.srv.Endpoint(a.ocppHost()),
+		Endpoint: rt.srv.Endpoint(a.ocppHost()),
+		Port:     snap.Port, URLPath: snap.URLPath,
 		ControlEnabled: allowed, ControlNote: note,
 		GridLimitKw: set.GridLimitKw, HouseReserveKw: set.HouseReserveKw,
 		MarginPct: set.MarginPct, MinPowerKw: set.MinPowerKw,

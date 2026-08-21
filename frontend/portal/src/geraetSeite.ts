@@ -279,8 +279,19 @@ function str(v: unknown): string | null {
  * die falsche Box meint, ist schlechter als kein Weg.
  */
 export function boxRefOf(devices: Device[] | null | undefined, siteId: string): string | null {
+  return boxOf(devices, siteId)?.externalRef ?? null;
+}
+
+/**
+ * Dieselbe Regel, aber das ganze Gerät - für alles, was mehr braucht als die
+ * Referenz (etwa die gemeldete LAN-Adresse, D5).
+ *
+ * ⚠ Sie lebt EINMAL: zwei Stellen, die „welche Box ist es denn?" verschieden
+ * beantworten, wären zwei Wahrheiten über dieselbe Anlage.
+ */
+export function boxOf(devices: Device[] | null | undefined, siteId: string): Device | null {
   const eigene = (devices ?? []).filter((d) => d.siteId === siteId);
-  return eigene.length === 1 ? eigene[0].externalRef : null;
+  return eigene.length === 1 ? eigene[0] : null;
 }
 
 /**

@@ -328,7 +328,22 @@ public class ChargerStatusListener {
                 b.path("surplus_active").asBoolean(false), optDouble(b, "surplus_kw"),
                 vocabulary(b, "surplus_mode", SURPLUS_MODES), textOrNull(b, "surplus_note"),
                 b.path("surplus_blind").asBoolean(false), optDouble(b, "surplus_total_kw"),
-                optDouble(b, "surplus_battery_kw"), optDouble(b, "source_allocated_kw"));
+                optDouble(b, "surplus_battery_kw"), optDouble(b, "source_allocated_kw"),
+                // ⚠ Ein Port ausserhalb des gueltigen Bereichs (und die 0, mit
+                // der eine Box sagt "ich lausche nicht") wird VERWORFEN statt
+                // gespeichert - eine Adresse, auf der niemand antwortet, waere
+                // die schlechtere Auskunft als gar keine.
+                optPort(b, "ocpp_port"), textOrNull(b, "url_path"));
+    }
+
+    /** Ein Port, den eine Saeule wirklich anwaehlen kann - sonst nichts. */
+    private static Integer optPort(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        if (v == null || !v.isNumber()) {
+            return null;
+        }
+        int port = v.asInt();
+        return port > 0 && port <= 65535 ? port : null;
     }
 
     private static List<ConnectorRow> connectors(JsonNode list) {

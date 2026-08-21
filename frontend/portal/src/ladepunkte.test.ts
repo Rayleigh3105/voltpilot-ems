@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ANBINDEN_SCHRITTE,
+  ANBINDEN_EINSTIEG,
   aktivierenFolgen,
   ausfallSchutz,
   budgetBand,
@@ -242,12 +242,13 @@ describe('Aktivieren-Dialog', () => {
 });
 
 describe('Anbinden', () => {
-  it('dreht die Richtung im ERSTEN Satz um und behauptet keine Adresse', () => {
-    expect(ANBINDEN_SCHRITTE[0]).toContain('verbinden sich selbst');
-    // ⚠ Die Box kennt ihren LAN-Namen nicht - das Portal nennt den WEG, nie
-    // eine erfundene Adresse auf einem Kopier-Feld.
-    expect(ANBINDEN_SCHRITTE.join(' ')).not.toMatch(/ws:\/\//);
-    expect(ANBINDEN_SCHRITTE[1]).toContain('Geräteseite');
+  it('dreht die Richtung im ERSTEN Satz um', () => {
+    expect(ANBINDEN_EINSTIEG).toContain('verbinden sich selbst');
+    // ⚠ Der EINSTIEG behauptet weiterhin keine Adresse - er FÜHRT nur in den
+    // Assistenten. Dass die Adresse dort nur aus GEMELDETEN Angaben entsteht,
+    // ist die Sache von `ladesaeuleAnbinden.test.ts`; hier wäre ein `ws://`
+    // eine Behauptung ohne jeden Bezug zu einer Box.
+    expect(ANBINDEN_EINSTIEG).not.toMatch(/ws:\/\//);
   });
 
   it('graut die Überschuss-Karte MIT Grund aus, statt sie zu verstecken', () => {

@@ -81,8 +81,49 @@ func (a *Agent) onChargingConfig(payload []byte) {
 				"storage_priority", cfg.StoragePriority)
 		}
 	}
+	// ⚠ Die Allowlist ZUERST: eine gerade eingetragene Säule soll den Vorrang
+	// desselben Dokuments schon abbekommen, sonst zöge er erst beim nächsten
+	// Speichern.
+	if len(cfg.ChargePoints) > 0 {
+		a.applyChargePoints(cfg.ChargePoints)
+	}
 	if cfg.Priorities != nil {
 		a.applyChargingPriorities(cfg.Priorities)
+	}
+}
+
+// applyChargePoints ADMITS every station identifier the portal listed that this
+// box does not know yet.
+//
+// ⚠ Es wird NIE einer entfernt und NIE einer überschrieben. Die Allowlist bleibt
+// die Allowlist - eine unbekannte Kennung wird weiterhin abgewiesen und
+// protokolliert, es entsteht kein Anlern-Fenster; es wandert nur ihr PFLEGE-Ort
+// ins Portal. Ein Eintrag zu ENTFERNEN wirft eine Säule beim nächsten
+// Verbindungsaufbau vom Broker - eine Entscheidung mit Folgen für eine laufende
+// Anlage, und die bleibt bewusst eine ausdrückliche Handlung am Gerät. Ein
+// BESTEHENDER Eintrag wird nicht angefasst, weil `label`/`priority` dort auf
+// :8484 gepflegt sein können (dieselbe PATCH-Regel wie für jedes andere Feld).
+func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
+	known := map[string]bool{}
+	for _, c := range a.OcppChargers() {
+		known[c.ID] = true
+	}
+	for _, cp := range wanted {
+		if known[cp.ID] {
+			continue
+		}
+		if _, err := a.OcppAddCharger(csms.AddRequest{
+			ID:         cp.ID,
+			Label:      cp.Label,
+			Priority:   cp.Priority,
+			RatedKw:    cp.RatedKw,
+			Connectors: cp.Connectors,
+		}); err != nil {
+			slog.Warn("charging config: charge point not admitted",
+				"charge_point", cp.ID, "err", err)
+			continue
+		}
+		slog.Info("charging config: charge point admitted", "charge_point", cp.ID)
 	}
 }
 

@@ -40,6 +40,9 @@ const MaxGridLimitKw = 100000
 // MaxPriorities mirrors the contract's cap on the priority list.
 const MaxPriorities = 64
 
+// MaxChargePoints mirrors the contract's cap on the allowlist.
+const MaxChargePoints = 64
+
 // ErrEmpty is the withdrawal: an empty retained payload takes the document
 // back, and afterwards only what is maintained on the box applies.
 var ErrEmpty = errors.New("das Konfigurations-Dokument wurde zurückgenommen")
@@ -65,6 +68,25 @@ type Config struct {
 	// „Nur Sonnenstrom".
 	SurplusPolicy   *string
 	StoragePriority *string
+
+	// ChargePoints are the station identifiers the portal wants ADMITTED.
+	//
+	// ⚠ nil and an EMPTY list mean the same thing here, and that is deliberate:
+	// this list only ever ADDS. Removing an identifier throws a station off the
+	// broker on its next connect - a decision with consequences for a running
+	// plant - so it stays an explicit act at the device. An empty list is
+	// therefore not the assertion "no station" the priority set is.
+	ChargePoints []ChargePoint
+}
+
+// ChargePoint is one entry of the allowlist. Only `ID` is required; the rest is
+// what the operator happens to know when they add it in the portal.
+type ChargePoint struct {
+	ID         string
+	Label      string
+	Priority   bool
+	RatedKw    float64
+	Connectors int
 }
 
 // wire is the on-the-wire shape. Pointers where absence differs from a value.
@@ -77,7 +99,16 @@ type wire struct {
 	Priorities      *[]string `json:"priority_charge_point_ids"`
 	SurplusPolicy   *string   `json:"surplus_policy"`
 	StoragePriority *string   `json:"storage_priority"`
+	ChargePoints    []wireCP  `json:"charge_points"`
 	PublishedAt     string    `json:"published_at"`
+}
+
+type wireCP struct {
+	ID         string  `json:"id"`
+	Label      string  `json:"label"`
+	Priority   bool    `json:"priority"`
+	RatedKw    float64 `json:"rated_kw"`
+	Connectors int     `json:"connectors"`
 }
 
 // Parse reads one retained payload. An EMPTY payload returns ErrEmpty (the
@@ -143,7 +174,34 @@ func Parse(payload []byte) (Config, error) {
 		}
 		cfg.StoragePriority = &v
 	}
+	if len(w.ChargePoints) > MaxChargePoints {
+		return Config{}, fmt.Errorf("das Dokument nennt %d Ladesäulen - höchstens %d sind erlaubt",
+			len(w.ChargePoints), MaxChargePoints)
+	}
+	for _, cp := range w.ChargePoints {
+		id := strings.TrimSpace(cp.ID)
+		// ⚠ Eine unbrauchbare Kennung wird ÜBERSPRUNGEN, nicht zum Abbruch: die
+		// Liste fügt nur hinzu, ein Eintrag mehr oder weniger nimmt der Box
+		// nichts. Das GANZE Dokument daran scheitern zu lassen kostete die
+		// Anschlussgrenze mit - und die ist die Größe, ohne die nichts lädt.
+		if id == "" || alreadyListed(cfg.ChargePoints, id) {
+			continue
+		}
+		cfg.ChargePoints = append(cfg.ChargePoints, ChargePoint{
+			ID: id, Label: strings.TrimSpace(cp.Label), Priority: cp.Priority,
+			RatedKw: cp.RatedKw, Connectors: cp.Connectors,
+		})
+	}
 	return cfg, nil
+}
+
+func alreadyListed(list []ChargePoint, id string) bool {
+	for _, c := range list {
+		if c.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // The two vocabularies of the contract. They are repeated here rather than

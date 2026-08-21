@@ -3607,6 +3607,29 @@ der niemand ein Dokument schickt, verhält sich zeichengleich wie vorher.
   andere Form-Verletzung). Angewandt wird beides über EINEN
   `OcppSaveSettings`-Aufruf zusammen mit der Grenze — zwei Aufrufe wären zwei
   Zwischenzustände.
+- **Seit Geräteseiten Stufe 3 (E1) trägt dasselbe Dokument die ALLOWLIST**
+  (`charge_points[]`, additiv und OPTIONAL): das Portal ist damit ein zweiter
+  PFLEGE-Ort für die Kennungen, unter denen `internal/csms` eine Säule überhaupt
+  annimmt. **Es ist KEIN Anlern-Fenster** — eine unbekannte Kennung wird
+  weiterhin abgewiesen und protokolliert.
+  - **⚠ `applyChargePoints` FÜGT NUR HINZU** (`agent/charging_config.go`): keine
+    bekannte Kennung wird überschrieben, und es wird NIE eine entfernt. Ein
+    Eintrag weniger würfe die Säule beim nächsten Verbindungsaufbau vom Broker —
+    eine Folge für eine laufende Anlage, die eine ausdrückliche Handlung am
+    Gerät bleibt. Ein abgewiesener Eintrag (Rate, Form) wird protokolliert und
+    übersprungen, nie stillschweigend verschluckt.
+  - **⚠ Die Allowlist wird VOR dem Vorrang angewandt**, sonst bekäme eine gerade
+    eingetragene Säule den Vorrang DESSELBEN Dokuments erst beim nächsten
+    Speichern. Deshalb trägt der Umschlag auch kein `priority` je Zeile: die
+    Vorrang-MENGE ist die ganze Aussage, zwei Wahrheiten über denselben Rang
+    wären eine zu viel.
+  - **Eine LEERE Liste ist hier KEINE Aussage** (anders als beim Vorrang, der
+    eine Menge ERSETZT) — sie wird deshalb gar nicht erst gesendet.
+- **Der Herzschlag nennt seit E1 den EIGENEN Anschluss** (`ocpp_port`/`url_path`
+  im `chargers`-Block, aus `csms.Snapshot`): daraus baut das Portal die
+  `ws://`-Adresse zum Kopieren. **⚠ Beide werden WEGGELASSEN, solange der Server
+  nicht lauscht** — ein Anschluss, unter dem niemand antwortet, wäre schlimmer
+  als gar keiner.
 
 ## Stufe 4: die FAHRPLAN-Bahn — der Plan reicht eine OBERGRENZE herunter
 

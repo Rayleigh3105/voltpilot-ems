@@ -367,6 +367,103 @@ class ChargerApiTest {
         }
     }
 
+    /**
+     * Der ANBINDE-ASSISTENT: eine Säule wird im Portal eingetragen, und die
+     * Fläche bekommt den ECHTEN Endpunkt, unter dem die Säule anwählt.
+     *
+     * <p><b>⚠ Die Allowlist FÜGT NUR HINZU.</b> Es gibt hier keinen Lösch-Weg:
+     * eine Kennung zu entfernen wirft die Säule beim nächsten
+     * Verbindungsaufbau vom Broker - eine Entscheidung mit Folgen für eine
+     * laufende Anlage, und die bleibt eine ausdrückliche Handlung am Gerät.
+     */
+    @Test
+    void aChargePointIsAdmittedFromThePortalAndTheEndpointComesFromTheBox() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Anbinden");
+        try {
+            UUID device = claim(customer, site, "edge-ladepark-5");
+
+            // 0 · Ohne Eintrag ist die Liste ehrlich leer - und das heisst hier
+            //     „das Portal hat noch keine eingetragen", nicht „keine Säule".
+            JsonNode empty = getJson("/api/v1/sites/" + site + "/charging-config", customer);
+            assertThat(empty.get("chargePoints")).isEmpty();
+
+            // 1 · Der Assistent trägt eine Kennung ein - nur sie ist Pflicht.
+            JsonNode saved = postJson("/api/v1/sites/" + site + "/charging-config/charge-points",
+                    customer, Map.of("chargePointId", "saeule-hof-nord", "label", "Hof Nord",
+                            "ratedKw", 22, "connectors", 2));
+            assertThat(saved.get("chargePoints")).hasSize(1);
+            JsonNode first = saved.get("chargePoints").get(0);
+            assertThat(first.get("chargePointId").asText()).isEqualTo("saeule-hof-nord");
+            assertThat(first.get("label").asText()).isEqualTo("Hof Nord");
+            assertThat(first.get("ratedKw").asDouble()).isEqualTo(22.0);
+            assertThat(first.hasNonNull("addedBy")).as("die Papier-Spur steht").isTrue();
+
+            // 2 · Eine zweite nennt NUR ihre Kennung - was der Betreiber nicht
+            //     weiss, bleibt „unbekannt", nie 0.
+            JsonNode two = postJson("/api/v1/sites/" + site + "/charging-config/charge-points",
+                    customer, Map.of("chargePointId", "saeule-halle"));
+            assertThat(two.get("chargePoints")).hasSize(2);
+            JsonNode bare = two.get("chargePoints").get(1);
+            assertThat(bare.get("label").isNull()).isTrue();
+            assertThat(bare.get("ratedKw").isNull()).isTrue();
+            assertThat(bare.get("connectors").isNull()).isTrue();
+
+            // 3 · Dieselbe Kennung erneut ist ein No-op, das nur auffrischt -
+            //     nie eine zweite Zeile, und die Anschlussgrenze bleibt (PATCH).
+            putJson("/api/v1/sites/" + site + "/charging-config", customer,
+                    Map.of("gridLimitKw", 277));
+            JsonNode again = postJson("/api/v1/sites/" + site + "/charging-config/charge-points",
+                    customer, Map.of("chargePointId", "saeule-halle", "label", "Halle"));
+            assertThat(again.get("chargePoints")).hasSize(2);
+            assertThat(again.get("chargePoints").get(1).get("label").asText()).isEqualTo("Halle");
+            assertThat(again.get("gridLimitKw").asDouble()).isEqualTo(277.0);
+
+            // 4 · Eine Kennung, die kein Topic-Segment sein kann, wird BENANNT
+            //     abgelehnt - sie erreichte die Säule nie, und die Ablehnung
+            //     nennt den erlaubten Zeichensatz.
+            ResponseEntity<String> bad = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config/charge-points"),
+                    HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "sae ule/1"), bearer(customer)),
+                    String.class);
+            assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(bad.getBody()).contains("Bindestrich");
+            // ... und sie hat NICHTS verändert.
+            assertThat(getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .get("chargePoints")).hasSize(2);
+
+            // 5 · Die Box meldet den Endpunkt - ohne ihn könnte die Fläche
+            //     nur eine Vorgabe hinschreiben statt der echten Adresse.
+            heartbeat(site, device, endpointStations());
+            JsonNode budget = getJson("/api/v1/sites/" + site + "/chargers", customer).get("budget");
+            assertThat(budget.get("ocppPort").asInt()).isEqualTo(8887);
+            assertThat(budget.get("ocppUrlPath").asText()).isEqualTo("/ocpp");
+
+            // 6 · Der Mandanten-Zaun gilt auch auf dieser Route.
+            ResponseEntity<String> foreign = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config/charge-points"),
+                    HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-fremd"),
+                            bearer(token("demo2", "demo2"))),
+                    String.class);
+            assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /** Eine Box, die ihren OCPP-Endpunkt meldet. */
+    private static String endpointStations() {
+        return """
+                {"reported_at":"2026-08-21T09:15:00Z","enabled":true,"control_enabled":true,
+                 "ocpp_port":8887,"url_path":"/ocpp",
+                 "grid_limit_kw":277,"budget_kw":197,"connector_count":1,
+                 "chargers":[
+                   {"id":"saeule-hof-nord","label":"Hof Nord","connected":true,"ready":true,
+                    "connectors":[{"id":1,"status":"Available","charging":false}]}]}""";
+    }
+
     /** Eine Anlage mit laufender Quellen-Bahn und EINER Übersteuerung. */
     private static String surplusStations() {
         return """
@@ -396,6 +493,15 @@ class ChargerApiTest {
             }
         }
         throw new AssertionError("das Regal kennt kein Lastmanagement-Profil: " + shelf);
+    }
+
+    private JsonNode postJson(String path, String token, Map<String, Object> body)
+            throws Exception {
+        ResponseEntity<String> res = rest.exchange(url(path), HttpMethod.POST,
+                new HttpEntity<>(body, bearer(token)), String.class);
+        assertThat(res.getStatusCode()).as("POST %s -> %s", path, res.getBody())
+                .isEqualTo(HttpStatus.OK);
+        return json.readTree(res.getBody());
     }
 
     private JsonNode putJson(String path, String token, Map<String, Object> body) throws Exception {

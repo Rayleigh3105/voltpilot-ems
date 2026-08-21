@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -59,6 +60,20 @@ public class ChargingConfigService {
     private static final Set<String> POLICIES = Set.of("nur_sonne", "sonne_zuerst", "schnell");
 
     private static final Set<String> STORAGE = Set.of("speicher_vor_auto", "auto_vor_speicher");
+
+    /**
+     * Das Zeichen-Vokabular einer ChargePointId, wie der Kontrakt es führt (und
+     * die Box an ihrem eigenen Formular prüft). Es ist zugleich das eines
+     * MQTT-Topic-Segments.
+     */
+    private static final Pattern CHARGE_POINT_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
+
+    /** Die Deckel des Kontrakts - hier ein zweites Mal, damit die Ablehnung sie NENNT. */
+    private static final int MAX_CHARGE_POINTS = 64;
+
+    private static final double MAX_RATED_KW = 1000;
+
+    private static final int MAX_CONNECTORS = 32;
 
     private final SiteRepository sites;
     private final ChargingConfigRepository configs;
@@ -144,8 +159,65 @@ public class ChargingConfigService {
         for (UUID deviceId : configs.deviceIds(siteId)) {
             pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
                     config.priorityChargePointIds(), config.surplusPolicy(),
-                    config.storagePriority(), now);
+                    config.storagePriority(), config.chargePoints(), now);
         }
+    }
+
+    /**
+     * Trägt EINE Ladesäule in die Allowlist ein - der erste Schritt des
+     * Anbinde-Assistenten.
+     *
+     * <p><b>⚠ Es wird nur HINZUGEFÜGT.</b> Die Box übernimmt jeden Eintrag, den
+     * sie noch nicht kennt, überschreibt keinen bestehenden und ENTFERNT nie
+     * einen; es gibt hier deshalb bewusst keinen Lösch-Weg. Eine Kennung zu
+     * entfernen wirft die Säule beim nächsten Verbindungsaufbau vom Broker -
+     * eine Entscheidung mit Folgen für eine laufende Anlage, und die bleibt
+     * eine ausdrückliche Handlung am Gerät.
+     *
+     * <p><b>Die Allowlist bleibt die Allowlist</b>: eine unbekannte Kennung
+     * wird von der Box weiterhin abgewiesen und protokolliert. Es wandert nur
+     * ihr Pflege-Ort ins Portal, es entsteht kein Anlern-Fenster.
+     */
+    @Transactional
+    public ChargingConfigDto admit(UUID siteId, String chargePointId, String label,
+            Double ratedKw, Integer connectors, String actor) {
+        requireSite(siteId);
+        UUID tenantId = TenantContext.get();
+        String id = chargePointId == null ? "" : chargePointId.trim();
+        // ⚠ Das Zeichen-Vokabular ist das des KONTRAKTS (und damit das der Box):
+        // eine Kennung, die kein MQTT-Topic-Segment sein kann, erreichte die
+        // Säule nie - und die Ablehnung nennt den erlaubten Satz, weil
+        // „ungültig" auf einer Kundenfläche keine Antwort ist.
+        if (!CHARGE_POINT_ID.matcher(id).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Die Ladepunkt-Kennung darf nur Buchstaben, Ziffern, Punkt, Bindestrich "
+                            + "und Unterstrich enthalten (höchstens 64 Zeichen) - tragen Sie sie "
+                            + "zeichengleich so ein, wie sie in der Säule steht.");
+        }
+        if (ratedKw != null && (ratedKw.isNaN() || ratedKw < 0 || ratedKw > MAX_RATED_KW)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Die Nennleistung je Stecker muss zwischen 0 und " + (long) MAX_RATED_KW
+                            + " kW liegen.");
+        }
+        if (connectors != null && (connectors < 0 || connectors > MAX_CONNECTORS)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Eine Säule hat höchstens " + MAX_CONNECTORS + " Stecker.");
+        }
+        // ⚠ Der Deckel ist eine ABLEHNUNG, nie eine stille Kappung: der Kontrakt
+        // trägt höchstens so viele Zeilen, und was hier still wegfiele, käme bei
+        // der Box nie an, während das Portal es anzeigte.
+        List<ChargingConfigDto.AllowedChargePointDto> existing = configs.allowlist(siteId);
+        boolean known = existing.stream().anyMatch(c -> c.chargePointId().equals(id));
+        if (!known && existing.size() >= MAX_CHARGE_POINTS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Diese Anlage führt bereits " + MAX_CHARGE_POINTS + " Ladesäulen - mehr "
+                            + "trägt das Konfigurations-Dokument nicht.");
+        }
+        String name = label == null || label.isBlank() ? null : label.trim();
+        configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, actor);
+        ChargingConfigDto saved = configs.forSite(siteId);
+        push(tenantId, siteId, saved);
+        return saved;
     }
 
     /**
