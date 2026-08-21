@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { GeraetSeiteSection } from './GeraetSeiteSection';
+import { BoxSeiteSection } from './BoxSeiteSection';
 import * as auth from '../auth';
 import { adminApi } from '../admin/adminApi';
 import { fleetApi } from '../admin/fleetApi';
@@ -205,10 +205,7 @@ function commands(over: Partial<CommandHistory> = {}): CommandHistory {
   };
 }
 
-/**
- * Die Ziele des Register-Werkzeugs: die primäre Lane der Box und die Komponente
- * hinter ihr (die Fronius-Quelle).
- */
+/** UNGENUTZT auf der Box: sie hat kein Register-Werkzeug (das wohnt am Gerät). */
 function targets(over: Partial<RegisterWriteTarget>[] = []): RegisterWriteTarget[] {
   const basis: RegisterWriteTarget[] = [
     {
@@ -277,220 +274,123 @@ function stub(over: {
   ]);
 }
 
-describe('GeraetSeiteSection', () => {
+
+describe('BoxSeiteSection', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('führt ein GERÄT unter seinem technischen Namen samt Live-Werten', async () => {
+  /**
+   * Der HELD: die drei Fragen, die eine Box beantwortet - verbunden? welche
+   * Software? unter welcher Adresse? Und darunter die GERÄTE, die die Seite
+   * ausmachen.
+   */
+  it('führt mit den drei Kacheln und den Geräten AN der Box', async () => {
     stub();
-    render(
-      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
-    );
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
 
-    expect(await screen.findByRole('heading', { name: 'Deye SUN-30K' })).toBeInTheDocument();
-    // Der KUNDENname lebt an der Komponente, nie am Gerät.
-    expect(screen.getByRole('heading', { name: 'Deye SUN-30K' }).textContent).not.toContain('Scheune');
-    expect(screen.getByText('Live-Werte vom Gerät')).toBeInTheDocument();
-    expect(screen.getByText('Solarstrom')).toBeInTheDocument();
-    // Die Richtung ist ein WORT, nie ein Minus.
-    expect(screen.getByText('Einspeisung')).toBeInTheDocument();
-    // Keine Gefahrenzone an einem Gerät HINTER der Box.
-    expect(screen.queryByRole('button', { name: /Gerät entfernen/ })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'VoltPilot-Box Pilsting' }))
+      .toBeInTheDocument();
+    const kacheln = screen.getByTestId('box-kacheln');
+    expect(within(kacheln).getByText('Verbindung')).toBeInTheDocument();
+    expect(within(kacheln).getByText('Software')).toBeInTheDocument();
+    expect(within(kacheln).getByText('Im Netzwerk')).toBeInTheDocument();
+
+    expect(screen.getByText('Geräte an dieser Box')).toBeInTheDocument();
+    // Beide gemeldeten Geräte führen auf ihre EIGENE Seite.
+    const links = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
+    expect(links).toContain('#/anlage/s-1/geraet/edge-45gz7da/inverter');
+    expect(links).toContain('#/anlage/s-1/geraet/edge-45gz7da/src-7c1e9a2b');
+    // Die Gefahrenzone gibt es NUR auf der Box.
+    expect(screen.getByRole('button', { name: /Gerät entfernen/ })).toBeInTheDocument();
   });
 
-  it('listet die Komponenten dieses Geräts mit dem Weg in die Zentrale', async () => {
+  /**
+   * ⚠ Was hier bewusst FEHLT, weil es die Box nie betraf: Register, Live-Werte,
+   * „Misst & steuert". Die drei Sektionen standen bis Stufe 1 nur da, um ihre
+   * Nicht-Zuständigkeit zu erklären.
+   */
+  it('zeigt KEINE Register-, Live- und Komponenten-Sektion', async () => {
     stub();
-    render(
-      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
-    );
-    expect(await screen.findByText('Misst & steuert')).toBeInTheDocument();
-    // Der Träger UND seine PV-Aspekt-Zeile („Solarmodule am …") - die
-    // Aspekt-Zeile FOLGT dem Alias ihres Trägers, deshalb steht der Name
-    // zweimal da (`komponenten.ts`).
-    expect(screen.getAllByText(/Wechselrichter Scheune/).length).toBeGreaterThanOrEqual(2);
-    const zentrale = screen.getAllByRole('link', { name: /In der Zentrale/ });
-    expect(zentrale[0].getAttribute('href')).toBe('#/anlage/s-1/modell');
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    await screen.findByRole('heading', { level: 1 });
+    expect(screen.queryByText('Gelesene Register')).toBeNull();
+    expect(screen.queryByText('Register schreiben')).toBeNull();
+    expect(screen.queryByText(/kein Modbus-Gerät/)).toBeNull();
+    expect(screen.queryByText('Live-Werte vom Gerät')).toBeNull();
+    expect(screen.queryByText('Misst & steuert')).toBeNull();
   });
 
-  it('zeigt die gespeicherte Anbindung eines Geräts', async () => {
+  /** D5: die eigene Adresse - und der Weg dorthin NUR, wenn er belegt ist. */
+  it('sagt ehrlich, dass die Box ihre eigene Adresse noch nicht meldet', async () => {
+    stub();
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    await screen.findByRole('heading', { level: 1 });
+    expect(screen.getByText(/meldet Ihre Box noch nicht/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Lokale Oberfläche/ })).toBeNull();
+  });
+
+  it('bietet die lokale Oberfläche an, sobald die Adresse BEWIESEN ist', async () => {
     stub();
     render(
-      <GeraetSeiteSection
+      <BoxSeiteSection
         site={site}
         boxRef="edge-45gz7da"
-        geraetId="src-7c1e9a2b"
-        devices={[box]}
+        devices={[{ ...box, lanHost: '192.168.20.14', lanSource: 'erreicht', lanSeenAt: FRISCH }]}
       />,
     );
-    expect(await screen.findByText('192.168.254.30 : 502')).toBeInTheDocument();
-    expect(screen.getByText('Modbus-Adresse 1')).toBeInTheDocument();
-    expect(screen.getByText('wird im Portal gepflegt (Fassung 3)')).toBeInTheDocument();
+    await screen.findByRole('heading', { level: 1 });
+    const link = screen.getByRole('link', { name: /Lokale Oberfläche/ });
+    expect(link.getAttribute('href')).toBe('http://192.168.20.14');
   });
 
-  it('nennt den GRUND, wenn die Adresse kein Gerät meint - nie eine leere Seite', async () => {
+  /**
+   * Was die Box ÜBERBRINGT: die anlagenweiten Befehle - und der Weg zu allem
+   * anderen führt auf die UNGEFILTERTE Befehle-Seite (Ziel-Attribution).
+   */
+  it('zeigt, was die Box überbringt, und führt auf die ganze Anlage', async () => {
     stub();
-    render(
-      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-weg" devices={[box]} />,
-    );
-    expect(await screen.findByText(/nicht \(mehr\) zu finden/)).toBeInTheDocument();
-    expect(screen.getByText(/meldet sich an Ihrer Box gerade nicht/)).toBeInTheDocument();
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    expect(await screen.findByText('Was Ihre Box überbringt')).toBeInTheDocument();
+    expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'edge-45gz7da' });
+    expect(screen.getByText(/stehen auf der\s+Seite dieses Geräts/)).toBeInTheDocument();
+    const alle = screen.getByRole('link', { name: /Alle Befehle dieser Anlage/ });
+    expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle');
   });
 
-  it('bleibt bedienbar, wenn ein NEBENabruf ausfällt', async () => {
+  it('löst die EINE Box der Anlage auch ohne Referenz auf', async () => {
     stub();
-    vi.spyOn(api, 'siteSources').mockRejectedValue(new Error('down'));
-    vi.spyOn(api, 'siteComponents').mockRejectedValue(new Error('down'));
-    vi.spyOn(api, 'topology').mockRejectedValue(new Error('down'));
-    render(
-      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
-    );
-    expect(await screen.findByRole('heading', { name: 'Deye SUN-30K' })).toBeInTheDocument();
-    // Die zwei Sektionen sagen WARUM sie leer sind, statt still zu bleiben.
-    await waitFor(() =>
-      expect(screen.getByText(/meldet keine Verbindungsdaten/)).toBeInTheDocument(),
-    );
-    expect(screen.getByText(/noch keine Messwerte geliefert/)).toBeInTheDocument();
+    render(<BoxSeiteSection site={site} boxRef={null} devices={[box]} />);
+    expect(await screen.findByRole('heading', { name: 'VoltPilot-Box Pilsting' }))
+      .toBeInTheDocument();
+  });
+
+  it('nennt den GRUND, wenn die Adresse keine Box dieser Anlage nennt', async () => {
+    stub();
+    render(<BoxSeiteSection site={site} boxRef="edge-gibt-es-nicht" devices={[box]} />);
+    expect(await screen.findByText(/nennt keine VoltPilot-Box dieser Anlage/))
+      .toBeInTheDocument();
   });
 
   it('zeigt einen Fehlerzustand mit Wiederholen, wenn der TRAGENDE Abruf ausfällt', async () => {
     stub({ entities: () => Promise.reject(new Error('down')) });
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     expect(await screen.findByText(/konnte nicht geladen werden/)).toBeInTheDocument();
-  });
-
-  /*
-    Anlagen-Zentrale Stufe 3 (PR 3c, §13.3): der Wohnort der Regeln BLEIBT die
-    Steuerung. Die Geräteseite sagt nur, WELCHE dieses Gerät nutzen, und führt
-    dorthin - ein zweiter Regel-Ort wäre die Doppelung, die die Stufe abräumt.
-  */
-  it('führt von den Steuerungs-Bezügen in die Steuerung dieser Anlage', async () => {
-    stub();
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    const link = await screen.findByRole('link', { name: /Regeln und Modus dieser Anlage/ });
-    expect(link.getAttribute('href')).toBe('#/anlage/s-1/steuerung');
+    expect(screen.getByRole('button', { name: /Erneut/ })).toBeInTheDocument();
   });
 
   it('führt zurück ins Anlagen-Modell', async () => {
     stub();
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     const back = await screen.findByRole('link', { name: /Zurück zum Anlagen-Modell/ });
     expect(back.getAttribute('href')).toBe('#/anlage/s-1/modell');
   });
-
-  it('zeigt die Befehle DIESES Geräts und führt auf die volle Liste', async () => {
-    // Der Wechselrichter trägt seit der Ziel-Attribution seinen Speicher-Strom
-    // (`deviceIsBox: false`) - die Seite fragt den Server mit SEINER Kennung.
-    stub({ commands: commands({ deviceIsBox: false, deviceRef: 'inverter' }) });
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-
-    expect(await screen.findByText('Befehle an dieses Gerät')).toBeInTheDocument();
-    // Der Server entscheidet, was zu diesem Gerät gehört - die Fläche fragt ihn
-    // mit der Adresse, unter der die Seite geöffnet wurde.
-    expect(api.commandHistory).toHaveBeenCalledWith('s-1', { device: 'inverter' });
-    const alle = screen.getByRole('link', { name: /Alle anzeigen/ });
-    expect(alle.getAttribute('href')).toBe('#/anlage/s-1/befehle?geraet=inverter');
-    // Und die Grenze wird ERKLÄRT: die anlagenweiten Befehle gehören der Box.
-    expect(screen.getByText(/Anlagenweite Befehle/)).toBeInTheDocument();
-  });
-
-  it('erklärt an einem Gerät HINTER der Box, wo die anlagenweiten Befehle stehen', async () => {
-    stub({ commands: commands({ deviceIsBox: false, deviceRef: 'src-7c1e9a2b', entries: [] }) });
-    render(
-      <GeraetSeiteSection
-        site={site}
-        boxRef="edge-45gz7da"
-        geraetId="src-7c1e9a2b"
-        devices={[box]}
-      />,
-    );
-    expect(await screen.findByText(/Anlagenweite Befehle/)).toBeInTheDocument();
-    // Ohne Zeile steht der GRUND da, nie ein leerer Kasten.
-    expect(screen.getByText(/kein Befehl geschickt/)).toBeInTheDocument();
-  });
-
-  it('sagt die F4-Antwort, wenn an dieses Gerät gar nicht geschrieben wird', async () => {
-    stub({ commands: commands({ writes: false, entries: [] }) });
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    expect(await screen.findByText(/nur gelesen/)).toBeInTheDocument();
-  });
-
-  it('bleibt bedienbar, wenn der Verlauf ausfällt', async () => {
-    stub();
-    vi.spyOn(api, 'commandHistory').mockRejectedValue(new Error('down'));
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    // Die Sektion bleibt - sie sagt, dass noch nicht aufgezeichnet wurde,
-    // statt eine leere Behauptung zu machen.
-    expect(await screen.findByText('Befehle an dieses Gerät')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getByText(/Aufzeichnung hat noch nicht begonnen/)).toBeInTheDocument(),
-    );
-  });
-
-  /**
-   * E · Register schreiben: die Strecke ist NICHT verschwunden, sie wohnt jetzt
-   * am Gerät - mit VORGEWÄHLTEM Ziel, und für den KUNDEN (ohne Admin-Rolle).
-   */
-  it('bietet dem Kunden das Register-Werkzeug mit vorgewähltem Ziel', async () => {
-    stub();
-    render(
-      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
-    );
-
-    fireEvent.click(await screen.findByTestId('geraet-regwrite'));
-    // Es ist DERSELBE Drawer wie überall - eine zweite Strecke könnte über
-    // denselben Vorgang etwas anderes behaupten.
-    const drawer = await screen.findByTestId('regwrite');
-    // Vorgewählt ist die Komponente DIESES Geräts, nicht die Box.
-    await waitFor(() =>
-      expect((within(drawer).getByLabelText(/Dach Süd/) as HTMLInputElement).checked).toBe(true),
-    );
-  });
-
-  it('nennt den Grund, wenn dieses Gerät keinen Schreibweg hat', async () => {
-    stub({ targets: [targets()[0]] });
-    render(
-      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
-    );
-    // Ein Knopf, der strukturell nichts bewirken kann, wird nicht angeboten.
-    expect(await screen.findByTestId('geraet-regwrite-grund')).toBeInTheDocument();
-    expect(screen.queryByTestId('geraet-regwrite')).toBeNull();
-  });
-
-  /**
-   * D · Gelesene Register: die Sicht entsteht aus dem BESTAND - und die
-   * Roh-Spalte bleibt ehrlich leer, wo kein Wort über die Leitung kam.
-   */
-  it('zeigt die gelesenen Register mit ihrer Frische - und sagt die Grenze', async () => {
-    stub({
-      commands: commands({ deviceIsBox: false }),
-      writes: [{
-        id: 7, requestId: 'r-7', source: 'portal', deviceId: 'gw', deviceRef: 'edge-45gz7da',
-        lane: 'entity', entityId: 'fr1', targetLabel: 'Dach Süd', registerKind: 'holding',
-        address: 231, addressHex: '0x00E7', addressInput: '0x00E7', valueInput: '7000',
-        note: null, valueRaw: 7000, expectedBefore: 3300, registerLabel: 'Einspeisegrenze',
-        registerClass: 'netz_compliance', scaleNote: 'Rohwert × 0.01 = 70,0 kW', origin: 'kunde',
-        actorName: 'demo', actorRole: null, viaTenantSwitcher: false,
-        requestedAt: FRISCH, beforeRaw: 3300, afterRaw: 7000, adopted: true,
-        outcome: 'ok', reason: null, answeredAt: FRISCH,
-      }],
-    });
-    render(
-      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
-    );
-
-    expect(await screen.findByText('Gelesene Register')).toBeInTheDocument();
-    // Das Rohwort des Schreibvorgangs - das einzige, das es heute gibt.
-    await waitFor(() => expect(screen.getByText('7000')).toBeInTheDocument());
-    // Die Warnklasse trägt ihr WORT, nie nur eine Farbe.
-    expect(screen.getByText('Netz-Anmeldung')).toBeInTheDocument();
-  });
-
 });
 
 // ---------------------------------------------------------------------------
-// PR 1f: die PLATTFORM-Sicht auf DERSELBEN Seite (M7-Rollen-Tor)
+// Die PLATTFORM-Sicht auf DERSELBEN Seite (M7-Rollen-Tor) - sie zog mit der
+// Box-Gattung mit, statt ein zweites Mal zu entstehen.
 // ---------------------------------------------------------------------------
 
-describe('GeraetSeiteSection · Plattform-Sicht', () => {
+describe('BoxSeiteSection · Plattform-Sicht', () => {
   afterEach(() => vi.restoreAllMocks());
 
   function stubAdmin() {
@@ -539,9 +439,9 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
     stubAdmin();
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
-    expect(screen.queryByTestId('geraet-admin')).toBeNull();
+    expect(screen.queryByTestId('box-admin')).toBeNull();
     // Und die Admin-Reads werden gar nicht erst geholt.
     expect(adminApi.listDevices).not.toHaveBeenCalled();
   });
@@ -550,10 +450,9 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
     stub();
     stubAdmin();
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    const block = await screen.findByTestId('geraet-admin');
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
+    const block = await screen.findByTestId('box-admin');
     expect(within(block).getByText(/Plattform-Sicht/)).toBeTruthy();
-    // Die Kunden-Sektionen bleiben unverändert daneben stehen.
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
   });
 
@@ -562,9 +461,9 @@ describe('GeraetSeiteSection · Plattform-Sicht', () => {
     stub();
     vi.spyOn(adminApi, 'listDevices').mockRejectedValue(new Error('down'));
     vi.spyOn(fleetApi, 'fleet').mockRejectedValue(new Error('down'));
-    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+    render(<BoxSeiteSection site={site} boxRef="edge-45gz7da" devices={[box]} />);
     await screen.findByRole('heading', { level: 1 });
     await waitFor(() => expect(adminApi.listDevices).toHaveBeenCalled());
-    expect(screen.queryByTestId('geraet-admin')).toBeNull();
+    expect(screen.queryByTestId('box-admin')).toBeNull();
   });
 });

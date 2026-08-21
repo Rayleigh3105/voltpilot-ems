@@ -224,7 +224,9 @@ function input(over: Partial<GeraetSeiteInput> = {}): GeraetSeiteInput {
   const topology = 'model' in over ? null : TOPOLOGY;
   return {
     ref: 'edge-45gz7da',
-    geraetId: null,
+    // ⚠ Vorgabe ist seit Geräteseiten Stufe 1 das HAUPTGERÄT: die Box hat ihre
+    // eigene Gattung (`boxSeite.ts`), diese Fläche zeigt nur Geräte DAHINTER.
+    geraetId: 'inverter',
     siteName: 'Pilsting',
     devices: [BOX],
     devicesFetchedAt: NOW,
@@ -247,15 +249,6 @@ const zeile = (rows: { label: string; wert: string; detail?: string | null }[], 
   rows.find((r) => r.label === label);
 
 describe('geraetSeite · Identität und Titel', () => {
-  it('nennt die Box beim Namen und markiert sie als Box', () => {
-    const v = geraetSeite(input());
-    expect(v.gefunden).toBe(true);
-    expect(v.art).toBe('box');
-    expect(v.kopf.titel).toBe('VoltPilot-Box Pilsting');
-    expect(v.kopf.kennung).toBe('edge-45gz7da');
-    expect(v.gefahrenzone).toBe(true);
-  });
-
   it('trägt als Seitentitel den TECHNISCHEN Gerätenamen, nie den Kundennamen', () => {
     // Die Komponente heißt „Wechselrichter Scheune"; das GERÄT bleibt Marke + Modell
     // (w7 R6 - ein Gerät wird nie umbenannt, nur seine Komponenten).
@@ -263,7 +256,6 @@ describe('geraetSeite · Identität und Titel', () => {
     expect(v.kopf.titel).toBe('Deye SUN-30K');
     expect(v.kopf.titel).not.toContain('Scheune');
     expect(v.art).toBe('hauptgeraet');
-    expect(v.gefahrenzone).toBe(false);
   });
 
   it('nennt einen Hybrid einen Hybrid, weil ein Speicher an ihm hängt', () => {
@@ -288,11 +280,6 @@ describe('geraetSeite · Identität und Titel', () => {
     expect(v.verbindung).toEqual([]);
   });
 
-  it('nennt den GRUND, wenn die Referenz keine Box dieser Anlage ist', () => {
-    const v = geraetSeite(input({ ref: 'edge-fremd' }));
-    expect(v.gefunden).toBe(false);
-    expect(v.grund).toMatch(/keine VoltPilot-Box/);
-  });
 });
 
 describe('geraetSeite · A Verbindung & Gesundheit', () => {
@@ -346,43 +333,6 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
     expect(zeile(v.verbindung, 'Zustand')).toBeTruthy();
   });
 
-  it('sagt bei der Box ehrlich, dass sie ihre LAN-Adresse noch nicht meldet', () => {
-    const v = geraetSeite(input());
-    expect(zeile(v.verbindung, 'Eigene Adresse im Netzwerk')?.wert).toBe(LAN_UNBEKANNT);
-  });
-
-  it('nennt die BEWIESENE Adresse der Box, sobald sie eine meldet (D5)', () => {
-    const v = geraetSeite(
-      input({
-        devices: [
-          {
-            ...BOX,
-            lanHost: '192.168.254.51:8484',
-            lanSeenAt: new Date(NOW - 60_000).toISOString(),
-            lanSource: 'erreicht',
-          },
-        ],
-      }),
-    );
-    const z = zeile(v.verbindung, 'Eigene Adresse im Netzwerk')!;
-    expect(z.wert).toBe('192.168.254.51:8484');
-    expect(z.detail).toMatch(/zuletzt erreicht/);
-    expect(z.ton).toBe('ok');
-  });
-
-  it('unterscheidet die SCHWÄCHERE Schnittstellen-Adresse vom bewiesenen Weg', () => {
-    const v = geraetSeite(
-      input({
-        devices: [{ ...BOX, lanHost: '192.168.0.31', lanSeenAt: FRISCH, lanSource: 'schnittstelle' }],
-      }),
-    );
-    const z = zeile(v.verbindung, 'Eigene Adresse im Netzwerk')!;
-    expect(z.wert).toBe('192.168.0.31');
-    // Sie sagt, WO die Box steckt - nicht, dass dort etwas antwortet.
-    expect(z.detail).toMatch(/sagt erst ein Aufruf/);
-    expect(z.ton).toBeNull();
-  });
-
   it('erfindet keinen Verbindungs-Verlauf', () => {
     const v = geraetSeite(input({ geraetId: 'inverter' }));
     expect(zeile(v.verbindung, 'Zustand')?.detail).toBe(KEIN_VERBINDUNGS_VERLAUF);
@@ -406,12 +356,6 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
 });
 
 describe('geraetSeite · Zustand und Frische-Anker', () => {
-  it('misst die BOX gegen ihre Telemetrie', () => {
-    const v = geraetSeite(input());
-    expect(v.kopf.zustand.wort).toBe('verbunden');
-    expect(v.kopf.zustand.ton).toBe('ok');
-  });
-
   it('misst ein GERÄT gegen seinen eigenen Lesezeitpunkt', () => {
     const stale = SOURCES.map((s) =>
       s.sourceId === 'src-7c1e9a2b'
@@ -456,14 +400,6 @@ describe('geraetSeite · B Live-Werte', () => {
     expect(v.liveLeer).toMatch(/noch keine Messwerte geliefert/);
   });
 
-  it('listet auf der Box-Seite die Geräte AN ihr statt Live-Kacheln', () => {
-    const v = geraetSeite(input());
-    expect(v.live).toEqual([]);
-    expect(v.boxGeraete.map((g) => g.geraetId)).toEqual(['inverter', 'src-7c1e9a2b']);
-    expect(v.boxGeraete[0].name).toBe('Deye SUN-30K');
-    expect(v.boxGeraete[0].art).toBe('Hauptgerät');
-    expect(v.boxGeraete[1].art).toBe('PV-Wechselrichter');
-  });
 });
 
 describe('geraetSeite · C Misst & steuert', () => {
@@ -576,20 +512,9 @@ describe('geraetSeite · G Steuerungs-Bezüge', () => {
 });
 
 describe('geraetSeite · H Software und I Diagnose', () => {
-  it('zeigt den Software-Stand der Box, ohne ihn zu bewerten', () => {
-    const v = geraetSeite(input());
-    expect(zeile(v.software, 'Software Ihrer Box')?.wert).toBe('edge-2026.08.10');
-  });
-
   it('sagt ehrlich, dass ein Modbus-Gerät seine Firmware nicht meldet', () => {
     const v = geraetSeite(input({ geraetId: 'inverter' }));
     expect(zeile(v.software, 'Firmware des Geräts')?.wert).toBe('liest Ihre Box nicht aus');
-  });
-
-  it('sagt „meldet keinen Stand" statt eine Version zu erfinden', () => {
-    const v = geraetSeite(input({ edgeVersions: [] }));
-    expect(zeile(v.software, 'Software Ihrer Box')?.wert).toBe('meldet keinen Stand');
-    expect(zeile(v.software, 'Software Ihrer Box')?.ton).toBe('off');
   });
 
   it('führt in der Diagnose die Rohkanäle und die Kennung auf der Box', () => {
@@ -649,8 +574,4 @@ describe('geraetSeite · die Ladesäule', () => {
     expect(v.kopf.pflegeOrt).toBeNull();
   });
 
-  it('reiht die Säule in die Geräte-Liste der Box ein', () => {
-    const v = geraetSeite(input({ charging }));
-    expect(v.boxGeraete.map((g) => g.geraetId)).toContain('cp-CARPORT-1');
-  });
 });

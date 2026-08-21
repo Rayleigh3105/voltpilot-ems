@@ -53,7 +53,15 @@ import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten'
 import { deviceState } from './komponenten';
 
 /** Welche ART von Gerät die Seite zeigt. */
-export type GeraetArt = 'box' | 'hauptgeraet' | 'quelle' | 'ladepunkt';
+/**
+ * Welche ART von Gerät die Seite zeigt.
+ *
+ * ⚠ Die BOX steht hier bewusst NICHT mehr (Geräteseiten Stufe 1, Gattung A):
+ * sie ist ein TOR, kein Gerät, und lief bis dahin als vierte Art durch dieselbe
+ * Sektions-Schablone - inklusive dreier Sektionen, die nur dastanden, um ihre
+ * Nicht-Zuständigkeit zu erklären. Ihre Fläche ist `boxSeite.ts`.
+ */
+export type GeraetArt = 'hauptgeraet' | 'quelle' | 'ladepunkt';
 
 /** Ton einer Zeile/eines Zustands - dieselben drei Töne wie überall. */
 export type GeraetTon = 'ok' | 'warn' | 'off';
@@ -116,11 +124,10 @@ export interface GeraetSeiteView {
   /** A · Verbindung & Gesundheit. */
   verbindung: Zeile[];
   verbindungLeer: string | null;
-  /** B · Live-Werte (Gerät) bzw. die Geräte AN der Box. */
+  /** B · Live-Werte des Geräts. */
   live: LiveKachel[];
   liveStand: string | null;
   liveLeer: string | null;
-  boxGeraete: BoxGeraet[];
   /** C · Misst & steuert. */
   komponenten: PlantComponent[];
   komponentenLeer: string | null;
@@ -130,8 +137,6 @@ export interface GeraetSeiteView {
   software: Zeile[];
   /** I · Diagnose (Aufklapper). */
   diagnose: Zeile[];
-  /** J · Gefahrenzone - ausschließlich auf der Box-Seite. */
-  gefahrenzone: boolean;
 }
 
 /**
@@ -217,8 +222,15 @@ const HEALTH_TON: Record<ComponentHealth, GeraetTon> = {
   unknown: 'off',
 };
 
-/** Die Art in Kundenworten - was oben unter dem Titel steht. */
-export const ART_WORT: Record<GeraetArt, string> = {
+/**
+ * Die Art in Kundenworten - was oben unter dem Titel steht.
+ *
+ * Die BOX steht hier als eigener Schlüssel, obwohl sie keine {@link GeraetArt}
+ * mehr ist: die Zentrale-Liste und das Schaltbild benennen sie weiterhin (die
+ * Rolle des Tors ist auch dort dieselbe), ihre SEITE hat aber eine eigene
+ * Gattung. Der Satz lebt deshalb einmal - `boxSeite.BOX_ROLLE` liest ihn.
+ */
+export const ART_WORT: Record<GeraetArt | 'box', string> = {
   box: 'Ihre Verbindung zu VoltPilot',
   hauptgeraet: 'Wechselrichter',
   quelle: 'Gerät an Ihrer Box',
@@ -337,8 +349,13 @@ function uhrzeit(iso: string | null | undefined): string | null {
   return t.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-/** Die Zustands-Pill eines GERÄTS hinter der Box (Anker: `sources.readAt`). */
-function quellenZustand(
+/**
+ * Die Zustands-Pill eines GERÄTS hinter der Box (Anker: `sources.readAt`).
+ *
+ * Exportiert, weil die BOX-Seite ihre Geräte-Liste damit beschriftet - zwei
+ * Ableitungen desselben Zustands wären zwei Wahrheiten über dasselbe Gerät.
+ */
+export function quellenZustand(
   src: SiteSource | undefined,
   now: number,
 ): { wort: string; ton: GeraetTon; detail: string | null } {
@@ -355,8 +372,13 @@ function quellenZustand(
   return { wort: 'noch keine Daten', ton: 'off', detail: null };
 }
 
-/** Die Zustands-Pill der BOX (Anker: Telemetrie-`lastSeenAt`). */
-function boxZustand(
+/**
+ * Die Zustands-Pill der BOX (Anker: Telemetrie-`lastSeenAt`).
+ *
+ * Exportiert, weil die BOX-Seite (`boxSeite.ts`) sie teilt - zwei Ableitungen
+ * desselben Zustands wären zwei Wahrheiten über dieselbe Box.
+ */
+export function boxZustand(
   device: Device | undefined,
   fetchedAt: number | null | undefined,
   now: number,
@@ -481,7 +503,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   const chargers = input.charging?.chargers ?? [];
   const model = input.model;
 
-  const leer = (grund: string, art: GeraetArt = 'box'): GeraetSeiteView => ({
+  const leer = (grund: string, art: GeraetArt = 'quelle'): GeraetSeiteView => ({
     gefunden: false,
     grund,
     art,
@@ -498,13 +520,11 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     live: [],
     liveStand: null,
     liveLeer: null,
-    boxGeraete: [],
     komponenten: [],
     komponentenLeer: null,
     steuerung: [],
     software: [],
     diagnose: [],
-    gefahrenzone: false,
   });
 
   // ------------------------------------------------------------------
@@ -516,26 +536,26 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     : undefined;
   const setup = input.geraetId ? localSetup.find((l) => l.id === input.geraetId) : undefined;
 
-  if (input.geraetId == null && !box) {
+  // ⚠ Ohne Gerät hinter der Box ist diese Fläche nicht zuständig: die BOX hat
+  // seit Geräteseiten Stufe 1 ihre EIGENE Gattung und Adresse (`boxSeite.ts`,
+  // `#/anlage/{id}/box`). Die Adresse leitet dorthin um, dieser Zweig ist also
+  // die defensive Antwort - und er nennt den Weg, statt ins Leere zu zeigen.
+  if (input.geraetId == null) {
     return leer(
-      'Diese Adresse nennt keine VoltPilot-Box dieser Anlage. Vielleicht wurde sie entfernt.',
+      'Diese Adresse nennt kein Gerät an Ihrer Box. Ihre Box selbst hat eine eigene Seite.',
     );
   }
-  if (input.geraetId != null && !setup && !charger) {
+  if (!setup && !charger) {
     return leer(
       'Dieses Gerät meldet sich an Ihrer Box gerade nicht. Sobald es wieder Daten liefert, erscheint hier seine Seite.',
-      'quelle',
     );
   }
 
-  const art: GeraetArt =
-    input.geraetId == null
-      ? 'box'
-      : charger
-        ? 'ladepunkt'
-        : setup?.kind === 'inverter'
-          ? 'hauptgeraet'
-          : 'quelle';
+  const art: GeraetArt = charger
+    ? 'ladepunkt'
+    : setup?.kind === 'inverter'
+      ? 'hauptgeraet'
+      : 'quelle';
 
   // ------------------------------------------------------------------
   // Die Komponenten DIESES Geräts - aus `plantModel`, nie neu abgeleitet.
@@ -572,33 +592,24 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   // Kopf
   // ------------------------------------------------------------------
   const boxLabel = box ? deviceName({ storedLabel: box.name }) || box.externalRef : input.ref;
-  const titel =
-    art === 'box'
-      ? `VoltPilot-Box ${boxLabel}`
-      : charger
-        ? chargerName(charger)
-        : (technicalDeviceName({
-            edgeLabel: setup?.label ?? null,
-            brand: setup?.brand ?? null,
-            model: setup?.model ?? null,
-          }) ?? 'Gerät');
+  const titel = charger
+    ? chargerName(charger)
+    : (technicalDeviceName({
+        edgeLabel: setup?.label ?? null,
+        brand: setup?.brand ?? null,
+        model: setup?.model ?? null,
+      }) ?? 'Gerät');
 
   const artWort = geraeteArtWort(art, setup?.role ?? null, komponenten);
-  const unterzeile =
-    art === 'box'
-      ? `${ART_WORT.box} · Anlage ${input.siteName}`
-      : `${artWort} an Ihrer VoltPilot-Box ${boxLabel}`;
+  const unterzeile = `${artWort} an Ihrer VoltPilot-Box ${boxLabel}`;
 
-  const zustand =
-    art === 'box'
-      ? boxZustand(box, input.devicesFetchedAt, now)
-      : charger
-        ? {
-            wort: charger.connected ? 'verbunden' : 'getrennt',
-            ton: (charger.connected ? 'ok' : 'warn') as GeraetTon,
-            detail: alter(charger.lastSeen, now),
-          }
-        : quellenZustand(src, now);
+  const zustand = charger
+    ? {
+        wort: charger.connected ? 'verbunden' : 'getrennt',
+        ton: (charger.connected ? 'ok' : 'warn') as GeraetTon,
+        detail: alter(charger.lastSeen, now),
+      }
+    : quellenZustand(src, now);
 
   const gesteuert = komponenten.filter((c) => c.control);
   const steuerAbzeichen =
@@ -614,15 +625,13 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     // ⚠ Ein Ladepunkt nennt seine OCPP-Kennung, nicht unser `cp-`-Präfix: die
     // steht am Gerät und im Anbinden-Dialog, das Präfix ist ein reiner
     // Adress-Schlüssel dieser Seite.
-    kennung: charger ? charger.chargePointId : (input.geraetId ?? input.ref),
+    kennung: charger ? charger.chargePointId : input.geraetId,
     zustand,
     steuerAbzeichen,
     // Die Pflege-Herkunft beschreibt die KOMPONENTEN-Konfiguration; ein
     // Ladepunkt hat keine, also behauptet die Seite dort auch keine.
     pflegeOrt:
-      art === 'box' || art === 'ladepunkt'
-        ? null
-        : pflegeOrtWort(input.components?.componentAuthority),
+      art === 'ladepunkt' ? null : pflegeOrtWort(input.components?.componentAuthority),
   };
 
   // ------------------------------------------------------------------
@@ -631,27 +640,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   const verbindung: Zeile[] = [];
   let verbindungLeer: string | null = null;
 
-  if (art === 'box') {
-    verbindung.push({
-      label: 'Anbindung',
-      wert: 'gesicherte Verbindung zu VoltPilot',
-      detail: 'Ihre Box wählt VoltPilot selbst an — von außen ist sie nicht erreichbar.',
-    });
-    verbindung.push({ label: 'Kennung', wert: input.ref, mono: true });
-    verbindung.push({
-      label: 'Letzte Meldung',
-      wert: uhrzeit(box?.lastSeenAt) ?? NO_DATA,
-      detail: zustand.detail,
-      ton: zustand.ton,
-    });
-    verbindung.push(lanZeile(box, now));
-    verbindung.push({
-      label: 'Zustand',
-      wert: zustand.wort,
-      detail: KEIN_VERBINDUNGS_VERLAUF,
-      ton: zustand.ton,
-    });
-  } else if (charger) {
+  if (charger) {
     verbindung.push({
       label: 'Anbindung',
       wert: COMM_WORT.ocpp,
@@ -705,38 +694,12 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   }
 
   // ------------------------------------------------------------------
-  // B · Live-Werte bzw. die Geräte AN der Box
+  // B · Live-Werte des Geräts
   // ------------------------------------------------------------------
   const live: LiveKachel[] = [];
   let liveLeer: string | null = null;
-  const boxGeraete: BoxGeraet[] = [];
 
-  if (art === 'box') {
-    for (const l of localSetup) {
-      const s = sources.find((x) => x.sourceId === l.id);
-      const z = quellenZustand(s, now);
-      boxGeraete.push({
-        geraetId: l.id,
-        name:
-          technicalDeviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) ?? 'Gerät',
-        art: l.kind === 'inverter' ? 'Hauptgerät' : (ROLLEN_WORT[l.role ?? ''] ?? 'Gerät'),
-        zustand: z.detail ? `${z.wort} · ${z.detail}` : z.wort,
-        ton: z.ton,
-      });
-    }
-    for (const c of chargers) {
-      boxGeraete.push({
-        geraetId: chargerGeraetId(c.chargePointId),
-        name: chargerName(c),
-        art: 'Ladesäule',
-        zustand: c.connected ? 'verbunden' : 'getrennt',
-        ton: c.connected ? 'ok' : 'warn',
-      });
-    }
-    if (boxGeraete.length === 0) {
-      liveLeer = 'An dieser Box meldet sich noch kein Gerät.';
-    }
-  } else if (charger) {
+  if (charger) {
     for (const k of charger.connectors ?? []) {
       const p = num(k.powerKw);
       live.push({
@@ -772,23 +735,21 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       liveLeer = 'Dieses Gerät hat noch keine Messwerte geliefert.';
     }
   }
-  const liveStand = art === 'box' ? null : (uhrzeit(charger ? charger.reportedAt : src?.readAt) ?? null);
+  const liveStand = uhrzeit(charger ? charger.reportedAt : src?.readAt) ?? null;
 
   // ------------------------------------------------------------------
   // C · Misst & steuert
   // ------------------------------------------------------------------
   const komponentenLeer =
-    art === 'box'
-      ? null
-      : komponenten.length === 0
-        ? 'Dieses Gerät misst noch nichts — übernehmen Sie es im Anlagen-Modell als Komponente.'
-        : null;
+    komponenten.length === 0
+      ? 'Dieses Gerät misst noch nichts — übernehmen Sie es im Anlagen-Modell als Komponente.'
+      : null;
 
   // ------------------------------------------------------------------
   // G · Steuerungs-Bezüge
   // ------------------------------------------------------------------
   const steuerung: Zeile[] = [];
-  if (art !== 'box') {
+  {
     if (gesteuert.length === 0) {
       steuerung.push({ label: 'Steuerung', wert: NUR_GELESEN, ton: 'off' });
     } else {
@@ -814,15 +775,6 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     }
     const waechter = waechterSatz(input.curtailment, komponenten);
     if (waechter) steuerung.push({ label: 'Einspeise-Wächter', wert: waechter });
-  } else {
-    steuerung.push({
-      label: 'Steuerung',
-      wert:
-        input.control?.controlEnabled === false
-          ? 'Not-Aus an — VoltPilot steuert gerade nichts'
-          : 'Ihre Box führt den Fahrplan aus und hält dabei ihre Schutzgrenzen ein.',
-      ton: input.control?.controlEnabled === false ? 'warn' : 'ok',
-    });
   }
 
   // ------------------------------------------------------------------
@@ -830,18 +782,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   // ------------------------------------------------------------------
   const software: Zeile[] = [];
   const edge = input.edgeVersions?.find((v) => v.deviceId === box?.id);
-  if (art === 'box') {
-    software.push({
-      label: 'Software Ihrer Box',
-      wert: text(edge?.coreVersion) ?? 'meldet keinen Stand',
-      detail:
-        edge?.coreVersion == null
-          ? 'Ihre Box meldet ihren Software-Stand erst, sobald sie eine Automatisierung ausgerollt hat.'
-          : null,
-      ton: edge?.coreVersion == null ? 'off' : 'ok',
-      mono: edge?.coreVersion != null,
-    });
-  } else if (charger) {
+  if (charger) {
     software.push({
       label: 'Firmware der Säule',
       wert: text(charger.firmware) ?? 'meldet keine Firmware',
@@ -873,8 +814,8 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
   if (kanaele.length > 0) {
     diagnose.push({ label: 'Rohkanäle', wert: kanaele.join(' · '), mono: true });
   }
-  diagnose.push({ label: 'Kennung auf der Box', wert: input.geraetId ?? input.ref, mono: true });
-  if (art !== 'box' && !charger) {
+  diagnose.push({ label: 'Kennung auf der Box', wert: input.geraetId, mono: true });
+  if (!charger) {
     const row = componentRowOf(input.components, entityIds, input.geraetId);
     const familie = text(row?.family);
     if (familie) diagnose.push({ label: 'Familie', wert: familie, mono: true });
@@ -890,9 +831,6 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       });
     }
   }
-  if (art === 'box' && text(edge?.paletteVersion)) {
-    diagnose.push({ label: 'Bausteine', wert: edge?.paletteVersion as string, mono: true });
-  }
 
   return {
     gefunden: true,
@@ -904,13 +842,11 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     live,
     liveStand,
     liveLeer,
-    boxGeraete,
     komponenten,
     komponentenLeer,
     steuerung,
     software,
     diagnose,
-    gefahrenzone: art === 'box',
   };
 }
 

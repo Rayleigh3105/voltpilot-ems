@@ -232,7 +232,8 @@ describe('zentraleListe · die Reihenfolge und die Karten-Arten', () => {
     expect(box.titel).toBe('VoltPilot-Box Pilsting');
     expect(box.zustand).toMatch(/^verbunden · vor/);
     expect(box.zusatz).toMatch(/2 Geräte angebunden/);
-    expect(box.href).toBe('#/anlage/s-1/geraet/edge-45gz7da');
+    // Die BOX führt auf ihre EIGENE Seite (E3) - sie ist ein Tor, kein Gerät.
+    expect(box.href).toBe('#/anlage/s-1/box/edge-45gz7da');
   });
 
   it('trägt an der KARTE den technischen Namen - der Kundenname lebt an der ZEILE', () => {

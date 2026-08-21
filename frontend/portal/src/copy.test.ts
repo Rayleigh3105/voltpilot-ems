@@ -185,7 +185,13 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
     // damit die Ausnahme kein Loch wird, wird das Tor GEPRÜFT statt geglaubt.
     const GATE = 'showTechnicalLayer(';
     const ADMIN_BLOCK = 'components/AdminGeraetKarten.tsx';
-    const rollenGehostet = [ADMIN_BLOCK, 'pages/GeraetSeiteSection.tsx'];
+    const rollenGehostet = [
+      ADMIN_BLOCK,
+      'pages/GeraetSeiteSection.tsx',
+      // Geräteseiten Stufe 1: die BOX hat ihre eigene Gattung - und trägt die
+      // Plattform-Sicht nach demselben Muster (dasselbe Tor, derselbe Block).
+      'pages/BoxSeiteSection.tsx',
+    ];
     const offenders: string[] = [];
     for (const file of walk(SRC)) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');

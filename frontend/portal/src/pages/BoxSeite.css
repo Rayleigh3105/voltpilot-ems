@@ -1,0 +1,87 @@
+/*
+ * Die BOX-Seite (Geräteseiten Stufe 1, Gattung A).
+ *
+ * Sie teilt sich das Sektions-Kleid mit der Geräteseite (`GeraetSeite.css`);
+ * eigen ist nur der HELD - die drei Kacheln, die die drei Fragen einer Box
+ * beantworten. Sie sind bewusst grösser als die Live-Kacheln eines Geräts:
+ * hier gibt es keine Zahlenreihe, sondern drei Aussagen.
+ */
+
+.vp-box-kacheln {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: var(--vp-space-3, 12px);
+}
+
+.vp-box-kachel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  /* Der Ton trägt eine schmale Kante - die AUSSAGE steht im Wort daneben. */
+  border-left: 3px solid var(--vp-border, #e5e7eb);
+}
+
+.vp-box-kachel.is-ok {
+  border-left-color: var(--vp-flow-batt, #16a34a);
+}
+
+.vp-box-kachel.is-warn {
+  border-left-color: var(--vp-chart-price, #d97706);
+}
+
+.vp-box-kachel .l {
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #6b7280);
+}
+
+.vp-box-kachel .v {
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.2;
+  color: var(--vp-stat-ink, #111827);
+  /* Eine Adresse oder ein Versions-Stempel darf umbrechen, nie überlaufen. */
+  overflow-wrap: anywhere;
+}
+
+.vp-box-kachel .s,
+.vp-box-kachel .z {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--vp-text-muted, #6b7280);
+}
+
+.vp-box-oberflaeche {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-link, #2c5282);
+  text-decoration: none;
+  position: relative;
+}
+
+/* ≥44 px Trefferfläche, ohne die Zeile auseinanderzuziehen (das
+   `.vp-switch::before`-Muster des Hauses). */
+.vp-box-oberflaeche::before {
+  content: '';
+  position: absolute;
+  inset: -12px -8px;
+}
+
+.vp-box-oberflaeche:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 720px) {
+  .vp-box-kacheln {
+    grid-template-columns: 1fr;
+  }
+}

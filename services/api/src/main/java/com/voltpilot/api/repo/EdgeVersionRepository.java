@@ -57,6 +57,33 @@ public class EdgeVersionRepository {
                 deviceId, siteId, coreVersion, paletteVersion, Timestamp.from(reportedAt));
     }
 
+    /**
+     * Ein Eintrag des Release-Registers, auf die zwei Felder reduziert, die der
+     * Kunden-Lesepfad braucht: den NAMEN und die ORDNUNG.
+     */
+    public record RegisterEntry(String version, long releaseSeq) {
+    }
+
+    /**
+     * Das Release-Register, neueste zuerst - der MASSSTAB, ohne den „veraltet"
+     * keine Aussage ist (OTA Stufe 0).
+     *
+     * <p><b>Bewusst auf der App-Rolle</b> und nicht über
+     * {@link EdgeReleaseRepository} (BYPASSRLS): {@code edge_release} ist
+     * mandantenfrei und die App-Rolle darf es LESEN (Migration
+     * V20260803020000 {@code GRANT SELECT}) - die BYPASSRLS-Rolle ist dort die
+     * SCHREIB-Berechtigung, und die bleibt hinter {@code /api/v1/admin/**}.
+     *
+     * <p>Gelesen werden nur Name und Sequenz; das Register selbst verlässt das
+     * Haus nie über diesen Pfad (die Kunden-Antwort trägt ausschließlich das
+     * URTEIL und den Namen des Soll-Stands).
+     */
+    public List<RegisterEntry> releases() {
+        return jdbc.query("SELECT version, release_seq FROM edge_release "
+                        + "ORDER BY release_seq DESC",
+                (rs, n) -> new RegisterEntry(rs.getString("version"), rs.getLong("release_seq")));
+    }
+
     /** Jeder gemeldete Gerätestand des aufrufenden Mandanten (RLS-gefenced). */
     public List<EdgeVersion> findAll() {
         return jdbc.query(

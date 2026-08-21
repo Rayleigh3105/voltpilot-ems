@@ -39,7 +39,7 @@ import {
 } from './geraetSeite';
 import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten';
 import { chargerName, type ChargePoint, type SiteCharging } from './ladepunkte';
-import { geraetSeiteHash } from './nav';
+import { boxSeiteHash, geraetSeiteHash } from './nav';
 import type { AdoptableSource } from './rollen';
 
 /** Welche ART von Karte die Liste zeigt. */
@@ -174,7 +174,7 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
       untertitel: ART_WORT.box,
       zustand: mitZeit(boxWort(health), alter(box.lastSeenAt, now)),
       ton: HEALTH_TON[health],
-      href: boxRef ? geraetSeiteHash(siteId, boxRef) : null,
+      href: boxRef ? boxSeiteHash(siteId, boxRef) : null,
       komponenten: [],
       zusatz:
         n === 0

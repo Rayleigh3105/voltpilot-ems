@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.ota.EdgeStandVerdict;
 import com.voltpilot.api.repo.EdgeVersionRepository;
 import com.voltpilot.api.web.dto.EdgeVersionDto;
 import java.util.List;
@@ -22,6 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>Eine leere Liste heißt „kein Gerät hat je eine Version gemeldet", nicht
  * „alle aktuell" - die Oberfläche muss das als „unbekannt" zeigen.
+ *
+ * <p><b>Seit Geräteseiten Stufe 1 (R2a) trägt jede Zeile zusätzlich das
+ * URTEIL</b> gegen das Release-Register ({@code newestRelease}/{@code upToDate},
+ * gebildet von {@link EdgeStandVerdict}) - der Maßstab erreichte den Kunden bis
+ * dahin überhaupt nicht, seine Box zeigte also eine Version, die niemand
+ * einordnen konnte. Es reist das Urteil, NIE das Register.
  */
 @RestController
 @RequestMapping("/api/v1/edge-versions")
@@ -35,9 +42,17 @@ public class EdgeVersionController {
 
     @GetMapping
     public List<EdgeVersionDto> list() {
+        // EINMAL gelesen, N-mal befragt: das Register ist für alle Geräte
+        // dasselbe, und der Kunden-Lesepfad soll es nicht je Zeile holen.
+        List<EdgeVersionRepository.RegisterEntry> register = edgeVersions.releases();
         return edgeVersions.findAll().stream()
-                .map(v -> new EdgeVersionDto(v.deviceId(), v.siteId(), v.coreVersion(),
-                        v.paletteVersion(), v.reportedAt()))
+                .map(v -> {
+                    EdgeStandVerdict.Verdict urteil =
+                            EdgeStandVerdict.of(v.coreVersion(), register);
+                    return new EdgeVersionDto(v.deviceId(), v.siteId(), v.coreVersion(),
+                            v.paletteVersion(), v.reportedAt(), urteil.newestRelease(),
+                            urteil.upToDate());
+                })
                 .toList();
     }
 }

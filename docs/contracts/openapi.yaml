@@ -357,7 +357,11 @@ paths:
         X-Tenant-Id switcher). A device is ABSENT until it reports: the edge
         only builds the `flows` block once it has seen a flow deployment set, so
         a device without a rolled-out automation reports no version at all.
-        Absent therefore means "unknown", never "outdated".
+        Absent therefore means "unknown", never "outdated". Since Geräteseiten
+        Stufe 1 (R2a) each row additionally carries the JUDGEMENT against the
+        release register (`newestRelease`/`upToDate`) - the yardstick never
+        reached the customer before, so their box showed a version nobody could
+        place. The judgement travels, NEVER the register.
       responses:
         "200":
           description: One entry per device that reported a version.
@@ -7712,6 +7716,23 @@ components:
           nullable: true
           description: The installed @voltpilot/node-red-vp-palette version.
         reportedAt: { type: string, format: date-time }
+        newestRelease:
+          type: string
+          nullable: true
+          description: >
+            The release register's newest entry - the SOLL this device should
+            run (Geräteseiten Stufe 1 R2a). null = the register is empty, i.e.
+            there is no yardstick at all. Only the judgement travels; the
+            register itself stays behind /api/v1/admin/**.
+        upToDate:
+          type: boolean
+          nullable: true
+          description: >
+            THREE-VALUED: true = the device runs the newest registered release
+            (matched by the house prefix rule, so a tag build's
+            `<tag>-<shortsha>` counts), false = outdated, null = NOT judgeable
+            (nothing reported, or the reported stamp is not in the register - a
+            gap in the REGISTER, never an age claim about the device).
     OverviewRoleCounts:
       type: object
       description: >

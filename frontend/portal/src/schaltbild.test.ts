@@ -535,9 +535,10 @@ describe('schaltbild · Lücken werden BENANNT, nie gefüllt', () => {
 });
 
 describe('schaltbild · Klickziele', () => {
-  it('führt Box, Gerät, Einheit und Säule auf ihre Geräteseite', () => {
+  it('führt Box, Gerät, Einheit und Säule auf ihre Seite', () => {
     const b = schaltbild(input());
-    expect(knoten(b, 'box')?.href).toBe('#/anlage/site-1/geraet/edge-45gz7da');
+    // Die BOX ist ein TOR, kein Gerät: sie hat eine eigene Adresse (E3).
+    expect(knoten(b, 'box')?.href).toBe('#/anlage/site-1/box/edge-45gz7da');
     expect(knoten(b, 'inverter')?.href).toBe('#/anlage/site-1/geraet/edge-45gz7da/inverter');
     expect(knoten(b, 'src-fronius-2')?.href).toBe(
       '#/anlage/site-1/geraet/edge-45gz7da/src-fronius-2',
