@@ -42,6 +42,18 @@ export interface PanelPlatz {
 /** Schmaler wird das Panel nie - darunter passt keine Nebenzeile mehr. */
 export const MIN_PANEL_PX = 240;
 
+/**
+ * Die NATÜRLICHE Breite eines Kalenders bzw. eines Zeit-Rasters.
+ *
+ * ⚠ Eine AUSWAHL-Liste nimmt die Breite ihres Feldes - ihre Zeilen sind Text
+ * und lesen sich in einem breiten Feld genauso gut. Ein KALENDER ist dagegen
+ * ein Gitter mit sieben Spalten: über ein sehr breites Feld gezogen wird aus
+ * dem Datumsblock eine Tapete, in der niemand mehr eine Woche als Zeile sieht
+ * (im Browser an einem 1136 px breiten Feld gemessen). Er bekommt deshalb eine
+ * Obergrenze und bleibt sonst linksbündig unter seinem Feld.
+ */
+export const MAX_KALENDER_PX = 320;
+
 /** Ab wie vielen Pixeln ein Zug am Sheet-Griff wirklich schliesst. */
 export const WISCH_ZU_PX = 90;
 
@@ -49,14 +61,19 @@ export const WISCH_ZU_PX = 90;
  * KOLLISIONS-UMSCHLAG: unter dem Feld, sonst darüber - und immer waagerecht in
  * den sichtbaren Bereich geklemmt.
  */
-export function platziere(feld: HTMLElement, panel: HTMLElement): PanelPlatz {
+export function platziere(
+  feld: HTMLElement,
+  panel: HTMLElement,
+  maxPx?: number,
+): PanelPlatz {
   const r = feld.getBoundingClientRect();
   const ph = panel.offsetHeight;
   const rand = 12;
   const luft = 4;
   const vw = document.documentElement.clientWidth;
   const vh = document.documentElement.clientHeight;
-  const width = Math.max(r.width, MIN_PANEL_PX);
+  const roh = Math.max(r.width, MIN_PANEL_PX);
+  const width = maxPx ? Math.min(roh, Math.max(maxPx, MIN_PANEL_PX)) : roh;
   const left = Math.max(rand, Math.min(r.left, Math.max(rand, vw - width - rand)));
   let top = r.bottom + luft;
   let oben = false;
@@ -103,6 +120,7 @@ export function VpPanel({
   /** Wie sich das Panel anmeldet: `listbox` (Auswahl) oder `dialog` (Kalender). */
   haspopup = 'listbox',
   triggerAsField = false,
+  maxPanelPx,
 }: {
   basisId: string;
   label?: ReactNode;
@@ -135,6 +153,8 @@ export function VpPanel({
    * Rahmen drumherum und überlässt Rolle, Fokus und Tastatur dem Inhalt.
    */
   triggerAsField?: boolean;
+  /** Obergrenze der Panel-Breite - siehe {@link MAX_KALENDER_PX}. */
+  maxPanelPx?: number;
 }) {
   const [platz, setPlatz] = useState<PanelPlatz | null>(null);
   const [wisch, setWisch] = useState(0);
@@ -146,8 +166,8 @@ export function VpPanel({
     const feld = ausloeserRef.current;
     const panel = panelRef.current;
     if (!feld || !panel) return;
-    setPlatz(platziere(feld, panel));
-  }, []);
+    setPlatz(platziere(feld, panel, maxPanelPx));
+  }, [maxPanelPx]);
 
   useLayoutEffect(() => {
     if (!offen || isPhone) {

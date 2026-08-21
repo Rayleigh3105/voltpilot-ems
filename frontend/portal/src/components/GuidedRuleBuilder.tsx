@@ -20,6 +20,8 @@
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { VpPicker } from './VpPicker';
+import { VpTimePicker } from './VpTimePicker';
 import { anlageRoute, hashForRoute } from '../nav';
 import {
   actionTargets,
@@ -308,60 +310,65 @@ export function GuidedRuleBuilder({
             </div>
           )}
           <div className="vp-guided-row">
-            <select
-              className="vp-select"
-              aria-label="Art der Bedingung"
+            <VpPicker
+              className="vp-guided-pick"
+              ariaLabel="Art der Bedingung"
+              options={[
+                { value: 'entity', label: 'Messwert eines Geräts' },
+                {
+                  value: 'price',
+                  label: 'Börsenpreis',
+                  disabled: lockedKinds.includes('price'),
+                  // Eine gesperrte Zeile bleibt SICHTBAR und nennt ihren Grund
+                  // - sie ist die Antwort auf „warum kann ich das nicht?".
+                  disabledHint: lockedKinds.includes('price')
+                    ? 'Noch nicht freigeschaltet'
+                    : null,
+                },
+                { value: 'schedule', label: 'Zeitfenster' },
+              ]}
               value={f.kind}
-              onChange={(e) => setCond(i, { kind: e.target.value as CondKind })}
-            >
-              <option value="entity">Messwert eines Geräts</option>
-              <option value="price" disabled={lockedKinds.includes('price')}>
-                {lockedKinds.includes('price')
-                  ? 'Börsenpreis (noch nicht freigeschaltet)'
-                  : 'Börsenpreis'}
-              </option>
-              <option value="schedule">Zeitfenster</option>
-            </select>
+              onChange={(v) => setCond(i, { kind: v as CondKind })}
+            />
 
             {f.kind === 'entity' && (
               <>
-                <select
-                  className="vp-select"
-                  aria-label="Gerät"
+                <VpPicker
+                  className="vp-guided-pick"
+                  ariaLabel="Gerät"
+                  options={readable.map((ent) => ({ value: ent.id, label: ent.label }))}
                   value={f.entityId}
-                  onChange={(e) => {
-                    const ent = readable.find((x) => x.id === e.target.value);
-                    setCond(i, { entityId: e.target.value, channel: ent?.measure[0] ?? '' });
+                  onChange={(v) => {
+                    const ent = readable.find((x) => x.id === v);
+                    setCond(i, { entityId: v, channel: ent?.measure[0] ?? '' });
                   }}
-                >
-                  {readable.map((ent) => (
-                    <option key={ent.id} value={ent.id}>{ent.label}</option>
-                  ))}
-                </select>
-                <select
-                  className="vp-select"
-                  aria-label="Messkanal"
+                  searchPlaceholder="Gerät suchen …"
+                />
+                <VpPicker
+                  className="vp-guided-pick"
+                  ariaLabel="Messkanal"
+                  options={(readable.find((x) => x.id === f.entityId)?.measure ?? []).map((ch) => ({
+                    value: ch,
+                    label: ch,
+                  }))}
                   value={f.channel}
-                  onChange={(e) => setCond(i, { channel: e.target.value })}
-                >
-                  {(readable.find((x) => x.id === f.entityId)?.measure ?? []).map((ch) => (
-                    <option key={ch} value={ch}>{ch}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setCond(i, { channel: v })}
+                />
               </>
             )}
 
             {(f.kind === 'entity' || f.kind === 'price') && (
               <>
-                <select
-                  className="vp-select"
-                  aria-label="Richtung"
+                <VpPicker
+                  className="vp-guided-pick"
+                  ariaLabel="Richtung"
+                  options={[
+                    { value: 'above', label: 'über' },
+                    { value: 'below', label: 'unter' },
+                  ]}
                   value={f.direction}
-                  onChange={(e) => setCond(i, { direction: e.target.value as Direction })}
-                >
-                  <option value="above">über</option>
-                  <option value="below">unter</option>
-                </select>
+                  onChange={(v) => setCond(i, { direction: v as Direction })}
+                />
                 <input
                   className="vp-select vp-guided-num"
                   aria-label="Schwelle"
@@ -375,30 +382,29 @@ export function GuidedRuleBuilder({
 
             {f.kind === 'schedule' && (
               <>
-                <input
-                  className="vp-select"
-                  type="time"
-                  aria-label="Von"
+                <VpTimePicker
+                  className="vp-guided-pick"
+                  ariaLabel="Von"
                   value={f.from}
-                  onChange={(e) => setCond(i, { from: e.target.value })}
+                  onChange={(v) => setCond(i, { from: v })}
                 />
-                <input
-                  className="vp-select"
-                  type="time"
-                  aria-label="Bis"
+                <VpTimePicker
+                  className="vp-guided-pick"
+                  ariaLabel="Bis"
                   value={f.to}
-                  onChange={(e) => setCond(i, { to: e.target.value })}
+                  onChange={(v) => setCond(i, { to: v })}
                 />
-                <select
-                  className="vp-select"
-                  aria-label="Tage"
+                <VpPicker
+                  className="vp-guided-pick"
+                  ariaLabel="Tage"
+                  options={[
+                    { value: 'alle', label: 'alle Tage' },
+                    { value: 'werktage', label: 'Werktage' },
+                    { value: 'wochenende', label: 'Wochenende' },
+                  ]}
                   value={f.days}
-                  onChange={(e) => setCond(i, { days: e.target.value as ScheduleDays })}
-                >
-                  <option value="alle">alle Tage</option>
-                  <option value="werktage">Werktage</option>
-                  <option value="wochenende">Wochenende</option>
-                </select>
+                  onChange={(v) => setCond(i, { days: v as ScheduleDays })}
+                />
               </>
             )}
 
@@ -436,32 +442,34 @@ export function GuidedRuleBuilder({
 
       <h4 className="vp-guided-head">DANN</h4>
       <div className="vp-guided-row">
-        <select
-          className="vp-select"
-          aria-label="Aktion"
+        <VpPicker
+          className="vp-guided-pick"
+          ariaLabel="Aktion"
+          options={[
+            { value: 'onoff', label: 'Gerät ein/aus' },
+            { value: 'setpoint', label: 'Sollwert setzen' },
+            // N-1: the notification has no delivery channel - offered only in
+            // the technical layer, and labelled for what it is.
+            ...(allowDiagnosticActions
+              ? [{ value: 'notify', label: 'Benachrichtigung (nur Diagnose)' }]
+              : []),
+          ]}
           value={actionKind}
-          onChange={(e) => setActionKind(e.target.value as ActionKind)}
-        >
-          <option value="onoff">Gerät ein/aus</option>
-          <option value="setpoint">Sollwert setzen</option>
-          {/* N-1: the notification has no delivery channel - offered only in
-              the technical layer, and labelled for what it is. */}
-          {allowDiagnosticActions && (
-            <option value="notify">Benachrichtigung (nur Diagnose)</option>
-          )}
-        </select>
+          onChange={(v) => setActionKind(v as ActionKind)}
+        />
         {actionKind !== 'notify' && (
-          <select
-            className="vp-select"
-            aria-label="Zielgerät"
+          <VpPicker
+            className="vp-guided-pick"
+            ariaLabel="Zielgerät"
+            options={targets.map((ent) => ({ value: ent.id, label: ent.label }))}
             value={actionEntity}
-            onChange={(e) => setActionEntity(e.target.value)}
-          >
-            {targets.length === 0 && <option value="">– kein steuerbares Gerät –</option>}
-            {targets.map((ent) => (
-              <option key={ent.id} value={ent.id}>{ent.label}</option>
-            ))}
-          </select>
+            onChange={setActionEntity}
+            // Ohne steuerbares Gerät gibt es nichts zu waehlen - das SAGT der
+            // Picker, statt eine Pseudo-Zeile anzubieten.
+            placeholder="– kein steuerbares Gerät –"
+            emptyText={() => 'Diese Anlage hat kein steuerbares Gerät.'}
+            searchPlaceholder="Gerät suchen …"
+          />
         )}
         {actionKind === 'setpoint' && (
           <input

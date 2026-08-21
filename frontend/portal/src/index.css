@@ -4602,6 +4602,13 @@ button.vp-tech-card-h.toggle {
 .vp-guided-cond { margin-bottom: 8px; }
 .vp-guided-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; }
 .vp-guided-row .vp-select { flex: 1 1 130px; min-width: 0; }
+/* Die Picker der Regel-Zeile sind FELDER in einer Flex-Zeile, keine Bloecke -
+   sie teilen sich den Platz wie die Zahlenfelder daneben. */
+.vp-guided-row .vp-guided-pick { flex: 1 1 130px; min-width: 0; }
+.vp-guided-row .vp-guided-pick .vp-picker-ausloeser {
+  padding: 0.55rem 0.75rem;
+  min-height: 42px;
+}
 .vp-guided-num { flex: 0 1 110px !important; }
 .vp-guided-comb { display: inline-flex; gap: 4px; margin-bottom: 6px; }
 .vp-guided-comb button {

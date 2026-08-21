@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { useIsPhone } from '../useIsPhone';
-import { VpPanel } from './VpPanel';
+import { MAX_KALENDER_PX, VpPanel } from './VpPanel';
 import {
   anzeige,
   blaettern,
@@ -298,6 +298,7 @@ export function VpDatePicker({
       icon="calendar"
       haspopup="dialog"
       isPhone={isPhone}
+      maxPanelPx={MAX_KALENDER_PX}
       onOpened={() => gitterRef.current?.focus()}
     >
       {panel}

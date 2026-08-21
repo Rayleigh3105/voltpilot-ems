@@ -305,3 +305,50 @@ describe('BefehleSection', () => {
     );
   });
 });
+
+/*
+  Picker-System Welle 1: Zeitraum und die zwei Datumsfelder sind Haus-Picker.
+  Die WERTE bleiben byte-gleich - genau das prüfen diese zwei Fälle.
+*/
+describe('die Filter-Leiste nach der Picker-Umstellung', () => {
+  it('schickt denselben Zeitraum-Wert wie das abgelöste `<select>`', async () => {
+    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({ entries: [periode()] }));
+    render(<BefehleSection site={site} />);
+    await screen.findByRole('button', { name: /Filter/ });
+
+    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Zeitraum' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Diese Woche' }));
+
+    await waitFor(() =>
+      expect(api.commandHistory).toHaveBeenCalledWith(
+        's1',
+        expect.objectContaining({ range: 'week' }),
+      ));
+  });
+
+  it('gibt aus dem Kalender ein ISO-Datum ab - wie das native Feld zuvor', async () => {
+    vi.spyOn(api, 'commandHistory').mockResolvedValue(history({ entries: [periode()] }));
+    render(<BefehleSection site={site} />);
+    await screen.findByRole('button', { name: /Filter/ });
+
+    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Zeitraum' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Zeitraum wählen' }));
+
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Von' }));
+    fireEvent.click(screen.getAllByRole('gridcell', { name: '15' })[0]);
+    fireEvent.click(await screen.findByRole('combobox', { name: 'Bis' }));
+    fireEvent.click(screen.getAllByRole('gridcell', { name: '20' })[0]);
+
+    // Ein halber eigener Zeitraum wird nicht geschickt - erst mit BEIDEN Tagen.
+    await waitFor(() =>
+      expect(api.commandHistory).toHaveBeenCalledWith(
+        's1',
+        expect.objectContaining({
+          from: expect.stringMatching(/^\d{4}-\d{2}-15$/),
+          to: expect.stringMatching(/^\d{4}-\d{2}-20$/),
+        }),
+      ));
+  });
+});

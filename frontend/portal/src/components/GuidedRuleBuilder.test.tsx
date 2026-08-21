@@ -29,8 +29,10 @@ describe('GuidedRuleBuilder', () => {
   it('reports an honest error when a price condition has no threshold', () => {
     const onBuild = vi.fn();
     render(<GuidedRuleBuilder entities={ENTITIES} onCancel={() => {}} onBuild={onBuild} siteId="s1" />);
-    // Switch the single condition to a price condition (leaves the threshold empty).
-    fireEvent.change(screen.getByLabelText('Art der Bedingung'), { target: { value: 'price' } });
+    // Switch the single condition to a price condition (leaves the threshold
+    // empty). Seit dem Picker-System ist es der Haus-Picker, kein `<select>`.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Art der Bedingung' }));
+    fireEvent.click(screen.getByRole('option', { name: /Börsenpreis/ }));
     fireEvent.click(screen.getByRole('button', { name: /Weiter zur Prüfung/ }));
     expect(onBuild).not.toHaveBeenCalled();
     expect(screen.getByRole('status').textContent).toMatch(/vollständig ausfüllen/);
@@ -68,10 +70,11 @@ describe('GuidedRuleBuilder · audit fixes', () => {
 
   it('N-1: never offers the notification to a customer surface', () => {
     render(<GuidedRuleBuilder entities={ENTITIES} onCancel={() => {}} onBuild={() => {}} siteId="s1" />);
-    const action = screen.getByLabelText('Aktion') as HTMLSelectElement;
-    const values = Array.from(action.options).map((o) => o.value);
-    expect(values).toEqual(['onoff', 'setpoint']);
-    expect(action.textContent ?? '').not.toContain('Benachrichtigung');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Aktion' }));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Gerät ein/aus',
+      'Sollwert setzen',
+    ]);
   });
 
   it('N-1: the technical layer keeps it, labelled as diagnosis only', () => {
@@ -84,9 +87,8 @@ describe('GuidedRuleBuilder · audit fixes', () => {
         allowDiagnosticActions
       />,
     );
-    const action = screen.getByLabelText('Aktion') as HTMLSelectElement;
-    expect(Array.from(action.options).map((o) => o.value)).toContain('notify');
-    fireEvent.change(action, { target: { value: 'notify' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Aktion' }));
+    fireEvent.click(screen.getByRole('option', { name: /Benachrichtigung/ }));
     // A-3: a real label, not a placeholder that vanishes while typing.
     expect(screen.getByLabelText('Nachricht')).toBeInTheDocument();
     // ...and the honest note that nothing is delivered yet.
@@ -117,10 +119,47 @@ describe('GuidedRuleBuilder · audit fixes', () => {
       />,
     );
     // The action that needs no device is PRE-SELECTED - no dead end here.
-    expect((screen.getByLabelText('Aktion') as HTMLSelectElement).value).toBe('notify');
+    expect(screen.getByRole('combobox', { name: 'Aktion' }))
+      .toHaveTextContent('Benachrichtigung (nur Diagnose)');
     fireEvent.change(screen.getByLabelText('Nachricht'), { target: { value: 'Test' } });
     fireEvent.click(screen.getByRole('button', { name: /Weiter zur Prüfung/ }));
     expect(onBuild).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠ eine GESPERRTE Bedingung bleibt sichtbar und nennt ihren Grund', () => {
+    // Das native `<option disabled>` konnte den Grund nur in den Text der
+    // Zeile pressen; der Picker trägt ihn als eigene Zeile - und wählen lässt
+    // sie sich weiterhin nicht.
+    const onBuild = vi.fn();
+    render(
+      <GuidedRuleBuilder
+        entities={ENTITIES}
+        onCancel={() => {}}
+        onBuild={onBuild}
+        siteId="s1"
+        lockedKinds={['price']}
+      />,
+    );
+    fireEvent.click(screen.getByRole('combobox', { name: 'Art der Bedingung' }));
+    const zeile = screen.getByRole('option', { name: /Börsenpreis/ });
+    expect(zeile).toHaveTextContent('Noch nicht freigeschaltet');
+    fireEvent.click(zeile);
+    // Nicht gewählt: die Bedingung bleibt die vorgewählte (das Zeitfenster).
+    expect(screen.getByRole('combobox', { name: 'Art der Bedingung' }))
+      .toHaveTextContent('Zeitfenster');
+  });
+
+  it('⚠ ein Zeitfenster nimmt eine FREI getippte Uhrzeit an', () => {
+    // Das Raster ist ein Vorschlag - eine Regel, die heute 06:07 erlaubt, darf
+    // das durch die Umstellung nicht verlieren.
+    const onBuild = vi.fn<(name: string, doc: FlowDocument) => void>();
+    render(<GuidedRuleBuilder entities={ENTITIES} onCancel={() => {}} onBuild={onBuild} siteId="s1" />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Art der Bedingung' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Zeitfenster' }));
+    const von = screen.getByRole('combobox', { name: 'Von' });
+    fireEvent.change(von, { target: { value: '607' } });
+    fireEvent.blur(von);
+    expect((von as HTMLInputElement).value).toBe('06:07');
   });
 
   it('B-2: says why the price condition is locked and by whom', () => {

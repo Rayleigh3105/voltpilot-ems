@@ -15,6 +15,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
+import { VpDatePicker } from './VpDatePicker';
+import { VpPicker } from './VpPicker';
 import type { HistoryCoverage, HistoryRange } from '../api';
 import { vergleichName } from '../chartCopy';
 import { useIsPhone } from '../useIsPhone';
@@ -190,9 +192,19 @@ export function WeltKopf({
 }
 
 /**
- * Das Sprungfeld der Zeit-Leiste (F2): ein NATIVES Datums-/Wochen-/Monatsfeld
- * bzw. eine Jahresauswahl — der Browser bringt seinen Kalender mit, und am
- * Telefon ist der des Systems jedem selbstgebauten überlegen.
+ * Das Sprungfeld der Zeit-Leiste (F2): der Haus-Picker in seiner Datums- bzw.
+ * Jahres-Fassung.
+ *
+ * ⚠ Es war ein NATIVES Feld, mit der Begründung „der Browser bringt seinen
+ * Kalender mit". Seit dem Picker-System (`vp-picker-system`, Captain-Entscheid
+ * 1) gilt das Gegenteil: der System-Kalender sieht auf jedem Betriebssystem
+ * anders aus als der Rest der Seite, und er beginnt auf einem englisch
+ * eingestellten Rechner am SONNTAG — was eine Kalenderwochen-Auswahl
+ * unbrauchbar macht. Der Haus-Kalender beginnt immer am Montag und trägt seine
+ * KW-Spalte.
+ *
+ * Der WERT bleibt unverändert ISO (`JJJJ-MM-TT` / `JJJJ-Www` / `JJJJ-MM` /
+ * `JJJJ`), `ankerAusWert` liest ihn also weiter unverändert.
  *
  * Grenzen kommen aus der Datenlage: nie in die Zukunft, nie vor die erste
  * gemessene Viertelstunde (`historieZeit.sprungGrenzen`).
@@ -214,48 +226,38 @@ function Sprungfeld({
   const label = sprungLabel(range);
   const wert = sprungWert(anchor, range);
 
+  const uebernehmen = (v: string) => {
+    const d = ankerAusWert(v, range);
+    if (d) onAnchor(d);
+  };
+
   if (feld === 'year') {
+    // Ein Jahr ist eine Liste, kein Kalender - dafür gibt es kein Datumsfeld.
     return (
-      <label className="vp-zl-jump">
-        <span className="vp-visually-hidden">{label}</span>
-        <Icon name="calendar" size={16} aria-hidden="true" />
-        <select
-          aria-label={label}
-          title={label}
-          value={wert}
-          onChange={(e) => {
-            const d = ankerAusWert(e.target.value, range);
-            if (d) onAnchor(d);
-          }}
-        >
-          {sprungJahre(anchor, now, coverage).map((j) => (
-            <option key={j} value={String(j)}>
-              {j}
-            </option>
-          ))}
-        </select>
-      </label>
+      <VpPicker
+        className="vp-zl-jump"
+        ariaLabel={label}
+        options={sprungJahre(anchor, now, coverage).map((j) => ({
+          value: String(j),
+          label: String(j),
+        }))}
+        value={wert}
+        onChange={uebernehmen}
+      />
     );
   }
 
   const grenzen = sprungGrenzen(range, now, coverage);
   return (
-    <label className="vp-zl-jump">
-      <span className="vp-visually-hidden">{label}</span>
-      <Icon name="calendar" size={16} aria-hidden="true" />
-      <input
-        type={feld}
-        aria-label={label}
-        title={label}
-        value={wert}
-        min={grenzen.min}
-        max={grenzen.max}
-        onChange={(e) => {
-          const d = ankerAusWert(e.target.value, range);
-          if (d) onAnchor(d);
-        }}
-      />
-    </label>
+    <VpDatePicker
+      className="vp-zl-jump"
+      ariaLabel={label}
+      art={feld === 'week' ? 'woche' : feld === 'month' ? 'monat' : 'tag'}
+      value={wert}
+      onChange={uebernehmen}
+      min={grenzen.min}
+      max={grenzen.max}
+    />
   );
 }
 

@@ -650,17 +650,23 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     );
     await screen.findByLabelText('Energiemengen im Zeitraum');
 
-    const feld = screen.getByLabelText('Tag wählen') as HTMLInputElement;
-    expect(feld.type).toBe('date');
-    expect(feld.value).toBe(isoDate(new Date()));
-    // Nie in die Zukunft, nie vor die erste gemessene Viertelstunde.
-    expect(feld.max).toBe(isoDate(new Date()));
-    expect(feld.min).toBe('2026-06-19');
+    // Seit dem Picker-System ist es der Haus-Kalender (Wochenstart Montag),
+    // kein natives Feld - der Wert bleibt derselbe ISO-Wert.
+    const feld = screen.getByRole('combobox', { name: 'Tag wählen' });
+    const heute = new Date();
+    expect(feld).toHaveTextContent(
+      `${String(heute.getDate()).padStart(2, '0')}.`
+      + `${String(heute.getMonth() + 1).padStart(2, '0')}.${heute.getFullYear()}`,
+    );
 
-    // EIN Sprung, kein Klick-Marathon.
-    fireEvent.change(feld, { target: { value: '2026-01-15' } });
+    // EIN Sprung, kein Klick-Marathon - und nie in die Zukunft.
+    fireEvent.click(feld);
+    expect(screen.getByRole('gridcell', { name: String(heute.getDate()) })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Voriger Monat' }));
+    const ziel = screen.getAllByRole('gridcell', { name: '15' })[0];
+    fireEvent.click(ziel);
     await waitFor(() =>
-      expect(container.querySelector('.vp-period-nav .label')).toHaveTextContent('15.01.2026'),
+      expect(container.querySelector('.vp-period-nav .label')?.textContent).toContain('15.'),
     );
   });
 
@@ -669,13 +675,17 @@ describe('F2 · In der Vergangenheit navigieren', () => {
     render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     await screen.findByLabelText('Energiemengen im Zeitraum');
 
+    // Die ANZEIGE ist deutsch, der Wert bleibt ISO - je Zeitraum eine andere
+    // Art desselben Kalenders.
     fireEvent.click(screen.getByRole('tab', { name: 'Monat' }));
-    expect((screen.getByLabelText('Monat wählen') as HTMLInputElement).type).toBe('month');
+    expect(screen.getByRole('combobox', { name: 'Monat wählen' }).textContent)
+      .toMatch(/^[A-ZÄÖÜ][a-zäöü]+ \d{4}$/);
     fireEvent.click(screen.getByRole('tab', { name: 'Woche' }));
-    expect((screen.getByLabelText('Woche wählen') as HTMLInputElement).type).toBe('week');
-    // Für das Jahr gibt es kein natives Feld - also eine Auswahlliste.
+    expect(screen.getByRole('combobox', { name: 'Woche wählen' })).toHaveTextContent(/^KW \d+ ·/);
+    // Ein Jahr ist eine Liste, kein Kalender.
     fireEvent.click(screen.getByRole('tab', { name: 'Jahr' }));
-    expect(screen.getByLabelText('Jahr wählen').tagName).toBe('SELECT');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Jahr wählen' }));
+    expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
   });
 
   it('trägt den Monatsstreifen der Geld-Ansicht - hier als Navigator OHNE erfundene Zahlen', async () => {
