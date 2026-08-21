@@ -1210,6 +1210,78 @@ ab, der Anlege-Assistent rendert sie unter dem Ergebnis.
   Feldänderung entwertet den Beleg (`setzeFeld`), also schliesst sich die
   Hebel-Liste und „Weiter" ist wieder zu: genau das sagt `HEBEL_HINWEIS`.
 
+## VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr
+
+Konzept `data/vp-picker-system` (Captain-genehmigt 21.08.2026, woertlich: „alle
+Picker … eigene Komponenten erstellen wo man drin suchen kann. Ich will nichts
+Browser-Standard-Zeug."). Welle 1 = Basis + Datum/Zeit + die Vorzeige-/
+Schmerzflaechen; Welle 2 tauscht die restlichen Selects durch, Welle 3 die
+Edge-`:8484`-Fassung.
+
+- **Die Anatomie liegt in `components/VpPanel.tsx`** (Ausloeser in Feld-Optik +
+  Panel: Verankerung, Kollisions-Umschlag, Bottom-Sheet, Fokus-Falle, Escape,
+  Klick-daneben, Wisch-Schliessen). DREI Inhalte teilen sie sich:
+  `VpPicker` (Auswahl) · `VpDatePicker` (Tag/Woche/Monat) · `VpTimePicker`.
+  Eine vierte Variante haengt sich HIER ein, nie als eigene Schale - sonst
+  laufen vier Panels mit der Zeit auseinander.
+- **Die REGELN sind rein und Docker-frei geprueft: `src/picker/`** - `suche.ts`
+  (Toleranz), `optionen.ts` (Filtern/Gruppieren/Tastatur-Arithmetik/Ansagen),
+  `datum.ts` (Kalendergitter, deutsche Formate), `zeit.ts` (Raster + tolerantes
+  Lesen). Das ist der Grund, warum der Picker in `src/components/` wohnt und
+  nicht in `designsystem/`: der Ordner traegt `.jsx` + handgeschriebene `.d.ts`
+  und wird vom `tsc`-Lauf gar nicht erfasst (`tsconfig.json` `include: ["src"]`).
+  Die OPTIK kommt unveraendert aus den Designsystem-Tokens.
+- **⚠ Die tolerante Suche gibt es GENAU EINMAL** (`picker/suche.ts`). Sie kam
+  aus der Modell-Suche (PR 461); `komponentenAssistent.ts` REICHT sie durch
+  (`export { … } from './picker/suche'`), damit jeder alte Aufrufer gilt. Wer
+  eine zweite Normalisierung baut, laesst dieselbe Eingabe auf zwei Flaechen
+  Verschiedenes finden.
+- **⚠ KEIN verstecktes natives Element als Kruecke.** Ein `<select hidden>`
+  daneben waere eine zweite Wahrheit ueber denselben Wert, und Vorlesesoftware
+  faende beide. Wer den Wert in einem `<form>` braucht, nimmt `name` - der
+  Picker haengt dann einen reinen `<input type="hidden">` DANEBEN (nicht ins
+  Panel: das rendert nur im offenen Zustand).
+- **⚠ Das Panel haengt an `document.body`** mit festen Koordinaten, nie
+  `absolute` im Feld - die Wirte (`Card`, Tabellen, Seitenleiste) tragen
+  `overflow: hidden` (der `RowMenu`-Praezedenzfall).
+- **⚠ DER FUND, DEN NUR DER BROWSER ZEIGT: `element.focus()` unter
+  `visibility: hidden` ist ein NO-OP.** Das unvermessene Panel stand genau so
+  da, das Suchfeld bekam den Fokus nie und die Tastatur-Bedienung war auf dem
+  Desktop TOT - waehrend jeder jsdom-Test gruen blieb (jsdom kennt keine
+  Sichtbarkeit). Zwei Riegel: der unvermessene Zustand ist `opacity: 0` +
+  `pointer-events: none`, und der Fokus WARTET auf die Verankerung
+  (`VpPanel.bereit`). Waechter: „das unvermessene Panel bleibt FOKUSSIERBAR" in
+  `VpPicker.test.tsx`. **Dieselbe Falle trifft jedes kuenftige Panel.**
+- **⚠ Ein Feld oeffnet nicht auf blossen FOKUS.** Der Zeit-Picker tat es und
+  riss sich damit selbst wieder auf (Schliessen fokussiert das Feld zurueck) -
+  eine Auswahl liess sich gar nicht abschliessen. Geoeffnet wird auf Klick und
+  Pfeil-ab; wer mit Tab durch ein Formular geht, will kein Panel je Halt.
+- **⚠ Das Zeit-RASTER ist ein VORSCHLAG, keine Validierung.** Getippt wird frei
+  (`zeitLesen`: `1830`/`18.30`/`18` → `18:30`/`18:00`), der Wert bleibt
+  `HH:MM`. Ein Raster als einzige Eingabe wuerde aendern, WELCHE Werte ein
+  Formular annimmt - die Zusage der Umstellung ist das Gegenteil.
+- **Die WERTE bleiben ueberall byte-gleich mit dem abgeloesten nativen Feld**
+  (`JJJJ-MM-TT` / `JJJJ-Www` / `JJJJ-MM` / `HH:MM`). Deutsch ist nur die
+  ANZEIGE. Die Woche beginnt am MONTAG und traegt ihre Kalenderwoche - der
+  Browser-Kalender richtet sich nach der System-Sprache und beginnt auf einem
+  englischen Rechner am Sonntag.
+- **A11y ist Testgegenstand, nicht Beiwerk:** `combobox`/`listbox`,
+  `aria-activedescendant`, Pfeile/Pos1/Ende/Bild-auf-ab, Enter, Escape,
+  Tippen-zum-Springen, Fokus-Falle, `aria-live`-Trefferzahl. Der komplette
+  Durchstich ohne Maus steht als eigener `describe`-Block in
+  `VpPicker.test.tsx` und `VpDatePicker.test.tsx`.
+- **Ehrlichkeit wie ueberall im Haus:** eine GESPERRTE Zeile bleibt sichtbar und
+  nennt ihren Grund (`disabledHint`); Laden/Leer/Fehler werden BENANNT, nie als
+  leere Liste gezeigt; die Suche blendet sich unter `SUCHE_AB` (8) Zeilen selbst
+  aus; ohne Eingabe bleibt die Reihenfolge des Aufrufers unangetastet.
+- **Beweise:** `picker/optionen.test.ts` (33) · `picker/datum.test.ts` (26) ·
+  `picker/zeit.test.ts` (15) · `components/VpPicker.test.tsx` (28) ·
+  `components/VpDatePicker.test.tsx` (21). Im echten Chrome bei **1440** und
+  **375** durchgespielt (Wegwerf-Harness): 0 px horizontaler Ueberlauf, 0
+  ueberstehende Elemente, Kollisions-Umschlag am unteren Rand, Sheet am Boden
+  mit 62-px-Zeilen und 44-px-Kalendertagen, Wisch-Schliessen, und der
+  Tastatur-Durchstich Feld → Suche → Treffer → Enter → Fokus zurueck.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

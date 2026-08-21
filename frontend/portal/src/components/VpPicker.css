@@ -1,0 +1,545 @@
+/* ===========================================================================
+   VpPicker - DER Picker des Portals (Konzept `vp-picker-system`).
+   Eine Anatomie, drei Inhalte: Auswahl, Kalender, Uhrzeit.
+
+   ⚠ Alle Farben und Radien kommen aus den Designsystem-Tokens - der Picker
+   löst das native `<select>` ab, das auf jedem Betriebssystem anders aussah,
+   und darf deshalb selbst keine neue Sonderfarbe einführen.
+
+   ⚠ Das Panel hängt an `document.body` (siehe `VpPanel.tsx`), seine Regeln
+   dürfen also nicht von einem Wirt-Selektor abhängen.
+   =========================================================================== */
+
+.vp-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.vp-picker-label {
+  font-family: var(--vp-font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-text-dark);
+}
+
+.vp-picker-anker {
+  position: relative;
+  min-width: 0;
+}
+
+/* --- Der Auslöser: Feld-Optik, damit er neben `Input` nicht auffällt. ----- */
+.vp-picker-ausloeser {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-family: var(--vp-font-body);
+  font-size: 1rem;
+  text-align: left;
+  color: var(--vp-text-dark);
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: var(--vp-transition-fast);
+  /* ⚠ Mindestens 44 px hoch: der Picker ist am Telefon ein Daumen-Ziel, und
+     das ist der Grund, aus dem er das native Feld ablöst. */
+  min-height: 44px;
+}
+.vp-picker-ausloeser:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--vp-action) 45%, var(--vp-border));
+}
+.vp-picker-ausloeser:focus-visible {
+  outline: none;
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-picker-ausloeser[aria-expanded='true'] {
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-picker-ausloeser:disabled,
+.vp-picker-ausloeser.is-gesperrt {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.vp-picker.is-fehler .vp-picker-ausloeser {
+  border-color: var(--vp-industry);
+}
+.vp-picker-wert {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Der Platzhalter ist gedämpft - „nichts gewählt" darf nicht wie ein Wert
+   aussehen. */
+.vp-picker-ausloeser.is-leer .vp-picker-wert {
+  color: var(--vp-text-gray);
+}
+.vp-picker-ic {
+  flex: 0 0 auto;
+  color: var(--vp-text-gray);
+}
+.vp-picker-caret {
+  flex: 0 0 auto;
+  color: var(--vp-text-gray);
+  transition: transform 0.16s ease;
+}
+.vp-picker-ausloeser[aria-expanded='true'] .vp-picker-caret {
+  transform: rotate(180deg);
+}
+
+/* Zeit-Variante: der Auslöser IST das Feld (siehe `triggerAsField`). */
+.vp-picker-ausloeser.is-feld {
+  cursor: text;
+  padding-right: 0.35rem;
+}
+.vp-picker-ausloeser.is-feld:focus-within {
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-picker-zeitfeld {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+.vp-picker-caretbtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--vp-radius-sm);
+  cursor: pointer;
+  color: var(--vp-text-gray);
+}
+
+.vp-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  white-space: normal;
+}
+.vp-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--vp-radius-pill);
+  background: color-mix(in srgb, var(--vp-action) 10%, transparent);
+  color: var(--vp-action);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.vp-picker-hint {
+  font-family: var(--vp-font-body);
+  font-size: 0.82rem;
+  color: var(--vp-text-gray);
+}
+.vp-picker-hint.is-fehler {
+  color: var(--vp-industry);
+}
+
+/* --- Das Panel (Desktop: verankert, an `body` mit festen Koordinaten). ---- */
+.vp-picker-panel {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, 26rem);
+  box-sizing: border-box;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  box-shadow: var(--vp-shadow-md);
+  overflow: hidden;
+}
+.vp-picker-inhalt {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vp-picker-suche {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--vp-border);
+  color: var(--vp-text-gray);
+  flex: 0 0 auto;
+}
+.vp-picker-suche input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: var(--vp-font-body);
+  font-size: 0.95rem;
+  color: var(--vp-text-dark);
+}
+.vp-picker-zu {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--vp-radius-sm);
+  color: var(--vp-text-gray);
+  cursor: pointer;
+}
+
+.vp-picker-liste {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.3rem;
+  outline: none;
+}
+.vp-picker-liste:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--vp-focus-ring-color);
+  border-radius: var(--vp-radius-sm);
+}
+
+.vp-picker-gruppe {
+  padding: 0.5rem 0.6rem 0.25rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-text-gray);
+}
+
+.vp-picker-zeile {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--vp-radius-sm);
+  cursor: pointer;
+  /* ⚠ 44 px: dieselbe Trefferfläche wie der Auslöser - die Liste ist am
+     Telefon die eigentliche Bedienfläche. */
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.vp-picker-zeile.is-aktiv {
+  background: color-mix(in srgb, var(--vp-action) 9%, transparent);
+}
+.vp-picker-zeile.is-gewaehlt .vp-picker-haupt {
+  font-weight: 700;
+}
+.vp-picker-zeile.is-gesperrt {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.vp-picker-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.vp-picker-haupt {
+  font-size: 0.95rem;
+  color: var(--vp-text-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-picker-neben {
+  font-size: 0.8rem;
+  color: var(--vp-text-gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* ⚠ Der Grund einer Sperre steht IN der Zeile - eine Sperre ohne Grund ist
+   ein Rätsel (Haus-Regel). */
+.vp-picker-sperrgrund {
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--vp-text-gray);
+  white-space: normal;
+}
+.vp-picker-haken {
+  flex: 0 0 auto;
+  color: var(--vp-action);
+}
+.vp-picker-liste mark {
+  background: color-mix(in srgb, var(--vp-flow-pv, #f59e0b) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* Der Zustands-Punkt vor der Zeile - dieselben Töne wie die Kopfzeile. */
+.vp-picker-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vp-gray, #ced4da);
+}
+.vp-picker-dot.state-ok {
+  background: var(--vp-flow-batt, #16a34a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-flow-batt, #16a34a) 22%, transparent);
+}
+.vp-picker-dot.state-warn {
+  background: var(--vp-flow-pv, #f59e0b);
+}
+.vp-picker-dot.state-off {
+  background: var(--vp-gray, #ced4da);
+}
+.vp-picker-dot.state-info {
+  background: var(--vp-action);
+}
+
+.vp-picker-status {
+  margin: 0;
+  padding: 0.9rem 0.75rem;
+  font-size: 0.88rem;
+  color: var(--vp-text-gray);
+}
+.vp-picker-status.is-fehler {
+  color: var(--vp-industry);
+}
+.vp-picker-retry {
+  margin-top: 0.4rem;
+  border: 1px solid var(--vp-border);
+  background: var(--vp-surface);
+  border-radius: var(--vp-radius-sm);
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.vp-picker-neu {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--vp-border);
+  background: var(--vp-surface);
+  padding: 0.75rem 0.9rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-action);
+  cursor: pointer;
+  text-align: left;
+  min-height: 44px;
+}
+.vp-picker-neu:hover {
+  background: color-mix(in srgb, var(--vp-action) 6%, transparent);
+}
+
+/* --- Kalender ------------------------------------------------------------ */
+.vp-picker-kalender {
+  padding: 0.6rem;
+  min-width: 19rem;
+}
+.vp-kal-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.15rem 0.5rem;
+}
+.vp-kal-kopf span {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.vp-kal-kopf button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  cursor: pointer;
+}
+.vp-kal-gitter {
+  outline: none;
+}
+.vp-kal-gitter:focus-visible {
+  box-shadow: 0 0 0 2px var(--vp-focus-ring-color);
+  border-radius: var(--vp-radius-sm);
+}
+.vp-kal-zeile {
+  display: grid;
+  grid-template-columns: 1.9rem repeat(7, 1fr);
+  gap: 2px;
+  align-items: center;
+  border-radius: var(--vp-radius-sm);
+}
+.vp-kal-namen span {
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--vp-text-gray);
+  padding: 0.3rem 0;
+}
+.vp-kal-kw {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--vp-text-gray);
+}
+.vp-kal-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Ein Kalendertag ist im Gitter kleiner als 44 px - er kann es gar nicht
+     sein, sieben nebeneinander bei 375 px sind 44 px breit und rund 36 hoch.
+     Die Zeile bleibt dafür berührbar hoch. */
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--vp-radius-sm);
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--vp-text-dark);
+  cursor: pointer;
+}
+.vp-kal-tag.is-rand {
+  color: var(--vp-text-gray);
+  opacity: 0.6;
+}
+.vp-kal-tag:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+.vp-kal-tag.is-fokus {
+  box-shadow: inset 0 0 0 2px var(--vp-focus-ring-color);
+}
+.vp-kal-tag.is-heute {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.vp-kal-tag.is-gewaehlt,
+.vp-kal-zeile.is-gewaehlt .vp-kal-tag:not(:disabled) {
+  background: var(--vp-action);
+  color: #fff;
+}
+.vp-kal-zeile.is-gewaehlt .vp-kal-kw {
+  font-weight: 700;
+  color: var(--vp-action);
+}
+/* Monats-Auswahl: die ganze Zeile ist kein Ziel, aber jeder Tag DES Monats. */
+.vp-kal-gitter.art-monat .vp-kal-tag.is-rand.is-gewaehlt {
+  background: color-mix(in srgb, var(--vp-action) 55%, transparent);
+}
+.vp-kal-fuss {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 0.5rem;
+}
+.vp-kal-heute {
+  border: 1px solid var(--vp-border);
+  background: var(--vp-surface);
+  border-radius: var(--vp-radius-sm);
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  min-height: 36px;
+}
+.vp-kal-heute:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vp-picker-zeitliste {
+  max-height: min(50vh, 20rem);
+}
+
+/* --- Telefon: BOTTOM-SHEET (Captain-Entscheid 2). ------------------------- */
+.vp-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1190;
+  background: rgba(15, 23, 42, 0.42);
+}
+.vp-picker-panel.is-sheet {
+  position: fixed;
+  inset: auto 0 0 0;
+  width: auto;
+  max-height: 86vh;
+  border-radius: var(--vp-radius-lg) var(--vp-radius-lg) 0 0;
+  border-bottom: 0;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.22);
+  /* Die Fingerleiste des Systems darf das letzte Element nicht verdecken. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  animation: vp-picker-hoch 0.18s ease-out;
+}
+@keyframes vp-picker-hoch {
+  from {
+    transform: translateY(14%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-picker-panel.is-sheet {
+    animation: none;
+  }
+  .vp-picker-caret {
+    transition: none;
+  }
+}
+.vp-picker-griff {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: 0.6rem 0 0.35rem;
+  touch-action: none;
+  cursor: grab;
+}
+.vp-picker-griff span {
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--vp-border);
+}
+.vp-picker-panel.is-sheet .vp-picker-zeile,
+.vp-picker-panel.is-sheet .vp-picker-neu {
+  min-height: 52px;
+}
+.vp-picker-panel.is-sheet .vp-picker-liste {
+  max-height: 62vh;
+}
+.vp-picker-panel.is-sheet .vp-picker-kalender {
+  min-width: 0;
+}
+.vp-picker-panel.is-sheet .vp-kal-tag {
+  min-height: 44px;
+}
