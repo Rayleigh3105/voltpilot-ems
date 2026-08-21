@@ -201,6 +201,132 @@ export function steeringAttributionNote(savedEur: number | null | undefined): st
     : `VoltPilots Steuerung: ${eurAmount(eur)} in diesem Zeitraum`;
 }
 
+/* ---------------------------------------------------------------------------
+ * Das BESTANDSKONTO — die zweite Zeile unter der Steuerungs-Zurechnung
+ *
+ * ⚠ DER BEFUND, DER SIE NÖTIG MACHT (Diagnose `vp-tagesbild-minus-f3`):
+ * `savedEur` ist eine ZAHLUNGSBILANZ ohne Bestandskonto. Sie bewertet jede
+ * Viertelstunde nur nach dem, was über den Netzanschluss GEFLOSSEN ist —
+ * Energie, die in den Speicher wandert, zählt darin als entgangener
+ * Einspeise-Erlös (Minus), und ihr Gegenwert (der Abend) existiert mittags noch
+ * nicht. Am 21.08.2026 stand deshalb um 12:19 „−4,69 €" über einem
+ * ökonomisch einwandfreien Plan, während ≈ 44 kWh im Speicher lagen.
+ *
+ * ⚠ SIE WIRD NIE IN `savedEur` EINGERECHNET. Die gemessene Kasse bleibt die
+ * gemessene Kasse; der Bestand steht DANEBEN und sagt selbst, dass er nach dem
+ * Plan bewertet ist. Alles andere wären zwei Geldwahrheiten über dieselbe Zahl
+ * (dieselbe Falle, die `tagesbild.ts` bei der Geisterkurve schon einmal
+ * ausdrücklich vermieden hat).
+ *
+ * Beide Vorzeichen werden gezeigt (der FK2-Wortlaut der Fahrplan-Seite): ein
+ * Zeitraum, der die Bank des Vortags VERBRAUCHT, überclaimt sonst.
+ * ------------------------------------------------------------------------- */
+
+/** Unter dieser Menge ist eine Bestandsänderung Messrauschen, keine Aussage. */
+export const BESTAND_KWH_TOTBAND = 0.5;
+
+/** Unter diesem Betrag ist die Bewertung Rundung, keine Aussage. */
+export const BESTAND_EUR_TOTBAND = 0.005;
+
+/** Die render-fertige Bestandszeile. */
+export interface BestandZeile {
+  /** Der ganze Satz („dazu 44,2 kWh im Speicher für später — nach dem Plan ≈ +8,35 €"). */
+  text: string;
+  /** Das Etikett, das die Zahl als PLAN kennzeichnet; null ohne Bewertung. */
+  badge: string | null;
+  /** Womit bewertet wurde — der Titel-Text dahinter; null ohne Bewertung. */
+  titel: string | null;
+  /** Die gemessene Bestandsänderung in kWh (+ eingelagert / − entnommen). */
+  deltaKwh: number;
+  /** Ihr Plan-Wert in EUR; null, solange es keine Bewertung gibt. */
+  wertEur: number | null;
+}
+
+/** Das Etikett über jeder plan-bewerteten Zahl (K4: die Herkunft steht dran). */
+export const BESTAND_BADGE = 'Geplant';
+
+/** Was der Bestand aus der Endpunkt-Antwort braucht (ein ÄLTERER Stand: nichts). */
+export interface BestandEingabe {
+  speicherDeltaKwh?: number | null;
+  speicherWertCtKwh?: number | null;
+  speicherWertEur?: number | null;
+  speicherWertBasis?: string | null;
+  /** Fensterende des Zeitraums (ISO) — entscheidet über „läuft noch". */
+  to?: string | null;
+  /** Die Perioden-Art — nur der TAG kennt „Folgetag"/„Vortag". */
+  range?: string | null;
+}
+
+/**
+ * Die eine Ableitung der Bestandszeile — von der Tagesbild-Überschrift UND von
+ * der Ergebnis-Karte gelesen, damit beide Flächen über denselben Bestand nie
+ * Verschiedenes behaupten können.
+ *
+ * `null` heißt: es gibt nichts zu sagen — kein Speicher, kein gemessener
+ * Ladestand, ein älteres Backend, oder eine Bestandsänderung im Rauschen.
+ */
+export function bestandZeile(
+  m: BestandEingabe | null | undefined,
+  now: Date,
+): BestandZeile | null {
+  if (!m) return null;
+  const delta = num(m.speicherDeltaKwh ?? null);
+  if (delta == null || Math.abs(delta) < BESTAND_KWH_TOTBAND) return null;
+
+  const bis = m.to ? new Date(m.to).getTime() : NaN;
+  const laeuft = Number.isFinite(bis) && bis > now.getTime();
+  const menge = fmtNum(Math.abs(delta), 'kWh');
+  const satz = laeuft
+    ? delta > 0
+      ? `dazu ${menge} im Speicher für später`
+      : `${menge} weniger im Speicher als zu Beginn`
+    : m.range === 'day'
+      ? delta > 0
+        ? `davon ${menge} in den Folgetag gespeichert`
+        : `${menge} aus dem Vortag entnommen`
+      : delta > 0
+        ? `am Ende lagen ${menge} mehr im Speicher als zu Beginn`
+        : `am Ende lagen ${menge} weniger im Speicher als zu Beginn`;
+
+  const wert = num(m.speicherWertEur ?? null);
+  // Die kWh sind GEMESSEN, der Euro ist PLAN: ohne Bewertung bleibt die
+  // gemessene Menge stehen und sagt selbst, dass sie noch nicht zu Geld wurde.
+  if (wert == null || Math.abs(wert) < BESTAND_EUR_TOTBAND) {
+    return {
+      text: `${satz} — noch nicht abgerechnet`,
+      badge: null,
+      titel: null,
+      deltaKwh: delta,
+      wertEur: wert,
+    };
+  }
+  const betrag = wert > 0 ? `+${eurAmount(wert)}` : `−${eurAmount(-wert)}`;
+  return {
+    text: `${satz} — nach dem Plan ≈ ${betrag}`,
+    badge: BESTAND_BADGE,
+    titel: bestandTitel(m.speicherWertBasis ?? null, num(m.speicherWertCtKwh ?? null)),
+    deltaKwh: delta,
+    wertEur: wert,
+  };
+}
+
+/**
+ * Womit bewertet wurde, in Kundendeutsch. Der Server sagt es maschinenlesbar
+ * (`plan` = der Speicherwert dieser Viertelstunde, `terminal` = der am Ende des
+ * Fahrplans); ein Wort, das wir nicht kennen, wird NICHT übersetzt.
+ */
+function bestandTitel(basis: string | null, ctKwh: number | null): string | null {
+  const quelle =
+    basis === 'plan'
+      ? 'dem Speicherwert dieser Viertelstunde'
+      : basis === 'terminal'
+        ? 'dem Speicherwert am Ende des Fahrplans'
+        : null;
+  if (!quelle) return null;
+  const preis = ctKwh == null ? '' : ` (${fmtNum(ctKwh, 'ct/kWh')})`;
+  return `Bewertet mit ${quelle}${preis}. Die Kilowattstunden sind gemessen, der Betrag ist geplant.`;
+}
+
 function resolve(stream: MoneyStream, money: CockpitMoney | null): Resolved {
   if (!money) return { eur: null, note: null };
   switch (stream.id) {
@@ -405,6 +531,13 @@ export interface ErloesErgebnisView {
   steering: string | null;
   /** Der Titel-Text dazu: wogegen die Zurechnung gemessen ist. */
   steeringTitel: string | null;
+  /**
+   * Das BESTANDSKONTO daneben („dazu 44,2 kWh im Speicher für später — nach dem
+   * Plan ≈ +8,35 €"). Es steht NEBEN der Zurechnung, nie in der großen Zahl:
+   * die gemessene Kasse kennt eingelagerte Energie nur als entgangenen Erlös
+   * (Diagnose vp-tagesbild-minus-f3). `null` = nichts zu sagen.
+   */
+  bestand: BestandZeile | null;
   rows: ErgebnisZeile[];
   /**
    * Ob der Stapel überhaupt mehrere Perioden mischt. Nur dann trägt jede Zeile
@@ -461,6 +594,8 @@ export interface ErloesErgebnisInput {
    * Zeitraum unmittelbar darüber, und der Satz unter der Zahl nennt ihn erneut.
    */
   kurzerTitel?: boolean;
+  /** „Jetzt" — entscheidet, ob der Zeitraum noch LÄUFT (Bestandszeile). */
+  now?: Date;
 }
 
 /**
@@ -550,6 +685,7 @@ export function erloesErgebnis(input: ErloesErgebnisInput): ErloesErgebnisView {
     nettoSatz: nettoSatz(netto, rangeLabel),
     steering: steeringAttributionNote(money?.savedEur),
     steeringTitel: steeringTitel(money),
+    bestand: bestandZeile(money, input.now ?? new Date()),
     rows,
     mehrerePerioden,
     periodNote: mehrerePerioden

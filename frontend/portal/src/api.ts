@@ -2227,6 +2227,23 @@ export interface SiteEarnings extends CockpitMoney {
   expectedMarketValueFrom: string | null;
   expectedMarketValueTo: string | null;
   expectedMarketValueSlots: number | null;
+  /**
+   * Das BESTANDSKONTO des Zeitraums (Diagnose `vp-tagesbild-minus-f3` §6):
+   * wie viel Energie am Ende MEHR (+) oder weniger (−) im Speicher steckt als
+   * am Anfang, und was der Fahrplan sie wert findet.
+   *
+   * ⚠ `speicherWertEur` ist ausdrücklich KEIN Summand von `savedEur` — das
+   * bleibt die GEMESSENE Kasse. Der Bestand ist der zweite, als „nach dem Plan
+   * bewertet" beschriftete Posten daneben; ihn hineinzurechnen ergäbe zwei
+   * Geldwahrheiten über dieselbe Kasse.
+   *
+   * OPTIONAL, weil ein ÄLTERES Backend sie nicht sendet — dann rendert die
+   * Fläche exakt wie vor dem Fix (die Haus-Regel „absent = älterer Stand").
+   */
+  speicherDeltaKwh?: number | null;
+  speicherWertCtKwh?: number | null;
+  speicherWertEur?: number | null;
+  speicherWertBasis?: 'plan' | 'terminal' | null;
   series: SiteEarningsBucket[];
   peakShaving?: PeakShaving | null;
 }

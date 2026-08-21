@@ -1366,6 +1366,36 @@ button.vp-cl-item.is-off .vp-cl-label {
   display: block;
   color: var(--vp-text-muted);
 }
+/* Das BESTANDSKONTO (Diagnose vp-tagesbild-minus-f3 §6): eine RUHIGE Zeile
+   unter der Kasse - sie ist nach dem Plan bewertet, nie gemessen, also trägt
+   sie nie den Ton der Zahl darüber. */
+.vp-chart-kern-bestand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-1) var(--vp-space-2);
+  margin: calc(-1 * var(--vp-space-2)) 0 var(--vp-space-3);
+  font-size: var(--vp-text-meta);
+  line-height: 1.5;
+  color: var(--vp-text-muted);
+  min-width: 0;
+}
+/* Der Satz WÄCHST NICHT: das Abzeichen gehört unmittelbar an ihn, nicht an den
+   rechten Bildrand (bei 1440 px lagen 990 px dazwischen - im Browser gemessen). */
+.vp-chart-kern-bestand > span:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.vp-chart-kern-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-neutral-soft, #eef1f5);
+  color: #4b5563;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
 
 /* ---------------------------------------------------------------------------
    K3/M13 · „Mehr anzeigen ▾" - der Umschalter der Detailtiefe.

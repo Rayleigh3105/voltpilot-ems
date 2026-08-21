@@ -76,11 +76,24 @@ export function ChartHeadline({ kern }: { kern: Kernaussage | null | undefined }
     );
   }
   return (
-    <p className={`vp-chart-kern is-${v.ton}`}>
-      {v.wert && <strong className="vp-chart-kern-wert">{v.wert}</strong>}
-      <span className="vp-chart-kern-satz">{v.text}</span>
-      {v.anker && <span className="vp-chart-kern-anker">{v.anker}</span>}
-    </p>
+    <>
+      <p className={`vp-chart-kern is-${v.ton}`}>
+        {v.wert && <strong className="vp-chart-kern-wert">{v.wert}</strong>}
+        <span className="vp-chart-kern-satz">{v.text}</span>
+        {v.anker && <span className="vp-chart-kern-anker">{v.anker}</span>}
+      </p>
+      {/* Das BESTANDSKONTO steht NEBEN der Zahl, nie darin: die Zahl ist die
+          gemessene Kasse, der Bestand ist nach dem Plan bewertet und sagt das
+          selbst (Diagnose vp-tagesbild-minus-f3 §6). */}
+      {v.bestand && (
+        <p className="vp-chart-kern-bestand" title={v.bestand.titel ?? undefined}>
+          <span>{v.bestand.text}</span>
+          {v.bestand.badge && (
+            <span className="vp-chart-kern-badge">{v.bestand.badge}</span>
+          )}
+        </p>
+      )}
+    </>
   );
 }
 

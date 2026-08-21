@@ -4,6 +4,7 @@ import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EarningsRepository;
 import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.repo.SpeicherBank;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.SiteEarningsDto;
 import com.voltpilot.api.web.dto.SiteEarningsDto.SiteEarningsBucketDto;
@@ -42,6 +43,12 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code all} spans everything up to the end of today - its {@code from} then
  * reports the site's FIRST covered day, never the epoch. Unlike the fleet
  * endpoint, {@code week} is offered here (the Historie has always had it).
+ *
+ * <p><b>Das Bestandskonto</b> (Diagnose {@code vp-tagesbild-minus-f3} §6) ist
+ * der einzige Posten hier, der NICHT gemessenes Geld ist: {@code speicher*}
+ * bewertet die Energie, die im Zeitraum netto in den Speicher gewandert ist,
+ * mit dem λ des Optimierers. Er steht NEBEN {@code savedEur} und geht nie
+ * darin auf - sonst gäbe es zwei Geldwahrheiten über dieselbe Kasse.
  *
  * <p><b>Tenancy</b> is the usual one: the site is resolved through the
  * RLS-scoped repository, so a foreign site is a 404 and never a 403; admins
@@ -154,6 +161,14 @@ public class SiteEarningsController {
                         : HistoryRange.DAY.window(today).from())
                 : from;
 
+        // Das BESTANDSKONTO des Zeitraums (Diagnose vp-tagesbild-minus-f3 §6).
+        // Es steht NEBEN savedEur, nie darin: savedEur bleibt die gemessene
+        // Kasse, der Speicherstand ist der zweite, „nach dem Plan bewertet"
+        // beschriftete Posten. Bewusst UNABHÄNGIG von `computable` - ein
+        // Speicherstand hängt nicht an der Preisabdeckung, und ohne primären
+        // Speicher kostet der Aufruf genau eine Abfrage.
+        SpeicherBank.Bestand bank = earnings.storageBank(siteId, from, to, Instant.now());
+
         // The peak-shaving proof is range-INDEPENDENT (always the running
         // billing period) and only exists for a module-active site, so the
         // query only runs when the module flag is set.
@@ -198,6 +213,10 @@ public class SiteEarningsController {
                 expected == null ? null : expected.from(),
                 expected == null ? null : expected.to(),
                 expected == null ? null : expected.slots(),
+                bank.deltaKwh(),
+                bank.wertCtKwh(),
+                bank.wertEur(),
+                bank.basis(),
                 series,
                 EarningsController.peakShaving(site, today, peakRows));
     }
