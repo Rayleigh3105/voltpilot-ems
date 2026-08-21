@@ -3,7 +3,7 @@
  *
  * Diese Datei rechnet und formuliert; sie rendert nichts und ruft nichts ab.
  *
- * ⚠ DER WERT BLEIBT `HH:MM` - byte-gleich mit dem, was `<input type="time">`
+ * ⚠ DER WERT BLEIBT `HH:MM` - byte-gleich mit dem, was das native Zeitfeld (`input type=time`)
  * geliefert hat, das der Picker ablöst.
  *
  * ⚠ UND DAS RASTER IST EIN VORSCHLAG, KEINE VALIDIERUNG. Ein Viertelstunden-

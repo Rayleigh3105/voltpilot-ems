@@ -9,6 +9,8 @@ import { fmtNum, plantKindLabel } from '../../format';
 import { ChartInsight } from '../../components/ChartExplain';
 import { InfoTip } from '../../components/InfoTip';
 import { ChartCardSkeleton, EmptyState, ErrorState, TextSkeleton } from '../../components/States';
+import { VpDatePicker } from '../../components/VpDatePicker';
+import { VpPicker } from '../../components/VpPicker';
 import { AdminPageHead } from './AdminPageHead';
 import {
   optimizerApi,
@@ -159,82 +161,64 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
 
       {/* ---- picker row -------------------------------------------------------- */}
       <Card className="vp-optim-pickers" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <div className="vp-optim-picker">
-          <label htmlFor="optim-tenant">Mandant</label>
-          <select
-            id="optim-tenant"
-            className="vp-select"
-            value={tenantId ?? ''}
-            onChange={(e) => {
-              setTenantId(e.target.value || null);
-              setSiteId(null);
-              setDiag(null);
-              setConfig(null);
-            }}
-          >
-            <option value="">Mandant wählen…</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <VpPicker
+          id="optim-tenant"
+          className="vp-optim-picker"
+          label="Mandant"
+          options={[
+            { value: '', label: 'Mandant wählen…' },
+            ...tenants.map((t) => ({ value: t.id, label: t.name })),
+          ]}
+          value={tenantId ?? ''}
+          onChange={(v) => {
+            setTenantId(v || null);
+            setSiteId(null);
+            setDiag(null);
+            setConfig(null);
+          }}
+          searchPlaceholder="Mandant suchen …"
+        />
 
-        <div className="vp-optim-picker">
-          <label htmlFor="optim-site">Anlage</label>
-          <select
-            id="optim-site"
-            className="vp-select"
-            value={siteId ?? ''}
-            disabled={!tenantId || sitesState === 'loading'}
-            onChange={(e) => setSiteId(e.target.value || null)}
-          >
-            <option value="">{sitesState === 'loading' ? 'Lädt…' : 'Anlage wählen…'}</option>
-            {sites.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <VpPicker
+          id="optim-site"
+          className="vp-optim-picker"
+          label="Anlage"
+          options={[
+            { value: '', label: sitesState === 'loading' ? 'Lädt…' : 'Anlage wählen…' },
+            ...sites.map((s) => ({ value: s.id, label: s.name })),
+          ]}
+          value={siteId ?? ''}
+          disabled={!tenantId || sitesState === 'loading'}
+          onChange={(v) => setSiteId(v || null)}
+          searchPlaceholder="Anlage suchen …"
+        />
 
         {diag && diag.lastRunDate != null && (
           <>
-            <div className="vp-optim-picker">
-              <label htmlFor="optim-run-date">Tag</label>
-              <input
-                id="optim-run-date"
-                type="date"
-                className="vp-select"
-                value={runDate ?? ''}
-                min={diag.firstRunDate ?? undefined}
-                max={diag.lastRunDate ?? undefined}
-                onChange={(e) => {
-                  if (e.target.value) loadDiagnostics(null, e.target.value);
-                }}
-              />
-            </div>
-            <div className="vp-optim-picker">
-              <label htmlFor="optim-run">Lauf</label>
-              <select
-                id="optim-run"
-                className="vp-select"
-                value={runAt ?? ''}
-                disabled={diag.availableRuns.length === 0}
-                onChange={(e) => loadDiagnostics(e.target.value || null, runDate)}
-              >
-                {diag.availableRuns.length === 0 ? (
-                  <option value="">Keine Läufe an diesem Tag</option>
-                ) : (
-                  diag.availableRuns.map((r) => (
-                    <option key={r} value={r}>
-                      {runLabel(r)}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+            <VpDatePicker
+              id="optim-run-date"
+              className="vp-optim-picker"
+              label="Tag"
+              value={runDate ?? ''}
+              min={diag.firstRunDate}
+              max={diag.lastRunDate}
+              onChange={(v) => {
+                if (v) loadDiagnostics(null, v);
+              }}
+            />
+            <VpPicker
+              id="optim-run"
+              className="vp-optim-picker"
+              label="Lauf"
+              options={
+                diag.availableRuns.length === 0
+                  ? [{ value: '', label: 'Keine Läufe an diesem Tag' }]
+                  : diag.availableRuns.map((r) => ({ value: r, label: runLabel(r) }))
+              }
+              value={runAt ?? ''}
+              disabled={diag.availableRuns.length === 0}
+              onChange={(v) => loadDiagnostics(v || null, runDate)}
+            />
           </>
         )}
 
@@ -565,18 +549,17 @@ function ExplainSlot({
                 Erster Netzbezug
               </button>
             )}
-            <select
-              className="vp-select vp-optim-slotselect"
-              aria-label="Slot wählen"
-              value={selectedSlot}
-              onChange={(e) => onSelectSlot(Number(e.target.value))}
-            >
-              {slots.map((s, i) => (
-                <option key={s.time} value={i}>
-                  {slotTimeLabel(s.time)} · {decisionLabelText(s.decisionLabel)}
-                </option>
-              ))}
-            </select>
+            <VpPicker
+              className="vp-optim-slotselect"
+              ariaLabel="Slot wählen"
+              options={slots.map((s, i) => ({
+                value: String(i),
+                label: `${slotTimeLabel(s.time)} · ${decisionLabelText(s.decisionLabel)}`,
+              }))}
+              value={String(selectedSlot)}
+              onChange={(v) => onSelectSlot(Number(v))}
+              searchPlaceholder="Uhrzeit suchen …"
+            />
           </div>
 
           {slot ? (
@@ -1133,18 +1116,18 @@ function WhatIfPanel({
                 onChange={set('socMaxPct')}
               />
               <div className="vp-optim-knob">
-                <label htmlFor="whatif-netzladen">Netzladen</label>
-                <select
+                <VpPicker
                   id="whatif-netzladen"
-                  className="vp-select"
-                  aria-label="Vorschau: Netzladen"
+                  label="Netzladen"
+                  ariaLabel="Vorschau: Netzladen"
+                  options={[
+                    { value: '', label: 'unverändert' },
+                    { value: 'ja', label: 'erlaubt (Merchant)' },
+                    { value: 'nein', label: 'gesperrt (EEG)' },
+                  ]}
                   value={form.netzladen}
-                  onChange={(e) => set('netzladen')(e.target.value)}
-                >
-                  <option value="">unverändert</option>
-                  <option value="ja">erlaubt (Merchant)</option>
-                  <option value="nein">gesperrt (EEG)</option>
-                </select>
+                  onChange={set('netzladen')}
+                />
                 <span className="hint">
                   aktuell {config?.site.netzladenErlaubt ? 'erlaubt' : 'gesperrt (EEG)'}
                 </span>

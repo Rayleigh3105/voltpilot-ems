@@ -27,6 +27,7 @@ import { Card } from '../../../designsystem/components/core/Card';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
+import { VpPicker } from '../../components/VpPicker';
 import {
   adminApi,
   type ControlCandidate,
@@ -396,22 +397,26 @@ function CertifyForm({
               placeholder="hybrid_3p"
             />
           </label>
-          <label>
-            Steuerpfad
-            <select value={path} onChange={(e) => setPath(e.target.value as typeof path)}>
-              <option value="">keine Angabe</option>
-              <option value="remote">Remote-Register</option>
-              <option value="tou">Time-of-Use</option>
-            </select>
-          </label>
-          <label>
-            Schreib-Vorzeichen
-            <select value={sign} onChange={(e) => setSign(e.target.value as typeof sign)}>
-              <option value="">keine Angabe (nicht geprüft)</option>
-              <option value="false">nicht umgekehrt</option>
-              <option value="true">umgekehrt</option>
-            </select>
-          </label>
+          <VpPicker
+            label="Steuerpfad"
+            options={[
+              { value: '', label: 'keine Angabe' },
+              { value: 'remote', label: 'Remote-Register' },
+              { value: 'tou', label: 'Time-of-Use' },
+            ]}
+            value={path}
+            onChange={(v) => setPath(v as typeof path)}
+          />
+          <VpPicker
+            label="Schreib-Vorzeichen"
+            options={[
+              { value: '', label: 'keine Angabe (nicht geprüft)' },
+              { value: 'false', label: 'nicht umgekehrt' },
+              { value: 'true', label: 'umgekehrt' },
+            ]}
+            value={sign}
+            onChange={(v) => setSign(v as typeof sign)}
+          />
           <label>
             Firmware (Klartext)
             <Input

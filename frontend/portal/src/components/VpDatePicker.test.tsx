@@ -51,7 +51,7 @@ describe('VpDatePicker: die ANZEIGE ist deutsch, der WERT bleibt ISO', () => {
     const { container } = render(
       <VpDatePicker ariaLabel="Tag" name="von" value="2026-08-21" onChange={() => {}} />,
     );
-    expect(container.querySelector('input[type="date"]')).toBeNull();
+    expect(container.querySelector('input[type=date]')).toBeNull();
     // Der Formular-Träger liegt im Panel des Kalenders - er existiert, sobald
     // die Fläche ihn braucht; sichtbar ist ausschliesslich der deutsche Text.
     expect(feld('Tag')).toHaveTextContent('21.08.2026');

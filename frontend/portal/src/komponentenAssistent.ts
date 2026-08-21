@@ -744,7 +744,7 @@ export function ablehnungText(
  * Der behobene Schmerz ist das STUFENMENÜ: wer sein Modell nicht schon einer
  * Marke zuordnen kann, muss sieben Marken durchklicken, um 47 Vorlagen zu
  * sehen - und wer den Namen vom Typenschild abtippt („SUN 30K"), findet in
- * einem `<select>` gar nichts, weil ein natives Auswahlfeld nur auf den
+ * einem `select` gar nichts, weil ein natives Auswahlfeld nur auf den
  * Zeilenanfang springt.
  *
  * **⚠ DIE SUCHE ERFINDET KEINE VORLAGE.** Sie filtert genau die Liste, die das

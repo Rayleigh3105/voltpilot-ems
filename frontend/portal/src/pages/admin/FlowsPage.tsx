@@ -15,6 +15,7 @@ import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError, type Site } from '../../api';
 import { adminApi, type Tenant } from '../../admin/adminApi';
 import { EmptyState, ErrorState, TextSkeleton } from '../../components/States';
+import { VpPicker } from '../../components/VpPicker';
 import { adminFlowApi, flowsApi, type FlowSummary } from '../../flows/flowsApi';
 import { lifecycleLabel, type EditorEntity } from '../../flows/model';
 import {
@@ -146,39 +147,35 @@ export function FlowsPage({ tenants }: { tenants: Tenant[] }) {
       />
 
       <Card className="vp-optim-pickers" style={{ marginBottom: 'var(--vp-space-4)' }}>
-        <div className="vp-optim-picker">
-          <label htmlFor="flows-tenant">Mandant</label>
-          <select
-            id="flows-tenant"
-            className="vp-select"
-            value={tenantId ?? ''}
-            onChange={(e) => {
-              setTenantId(e.target.value || null);
-              setSiteId(null);
-              setFlows(null);
-            }}
-          >
-            <option value="">– Mandant wählen –</option>
-            {tenants.map((tenant) => (
-              <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
-            ))}
-          </select>
-        </div>
-        <div className="vp-optim-picker">
-          <label htmlFor="flows-site">Anlage</label>
-          <select
-            id="flows-site"
-            className="vp-select"
-            value={siteId ?? ''}
-            onChange={(e) => setSiteId(e.target.value || null)}
-            disabled={!tenantId}
-          >
-            <option value="">– Anlage wählen –</option>
-            {sites.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
+        <VpPicker
+          id="flows-tenant"
+          className="vp-optim-picker"
+          label="Mandant"
+          options={[
+            { value: '', label: '– Mandant wählen –' },
+            ...tenants.map((tenant) => ({ value: tenant.id, label: tenant.name })),
+          ]}
+          value={tenantId ?? ''}
+          onChange={(v) => {
+            setTenantId(v || null);
+            setSiteId(null);
+            setFlows(null);
+          }}
+          searchPlaceholder="Mandant suchen …"
+        />
+        <VpPicker
+          id="flows-site"
+          className="vp-optim-picker"
+          label="Anlage"
+          options={[
+            { value: '', label: '– Anlage wählen –' },
+            ...sites.map((s) => ({ value: s.id, label: s.name })),
+          ]}
+          value={siteId ?? ''}
+          onChange={(v) => setSiteId(v || null)}
+          disabled={!tenantId}
+          searchPlaceholder="Anlage suchen …"
+        />
       </Card>
 
       {!tenantId && (
@@ -354,20 +351,22 @@ export function FlowsPage({ tenants }: { tenants: Tenant[] }) {
             onChange={(e) => setCreateName(e.target.value)}
           />
         </div>
-        <div className="vp-flowed-fld">
-          <label htmlFor="flow-create-template">Vorlage</label>
-          <select
-            id="flow-create-template"
-            className="vp-select"
-            value={createTemplate}
-            onChange={(e) => setCreateTemplate(e.target.value as 'pilot' | 'leer')}
-          >
-            <option value="pilot" disabled={!battery}>
-              Marktoptimierung (Pilot{battery ? '' : ' - braucht Speicher-Entität'})
-            </option>
-            <option value="leer">Leerer Flow</option>
-          </select>
-        </div>
+        <VpPicker
+          id="flow-create-template"
+          className="vp-flowed-fld"
+          label="Vorlage"
+          options={[
+            {
+              value: 'pilot',
+              label: 'Marktoptimierung (Pilot)',
+              disabled: !battery,
+              disabledHint: battery ? undefined : 'Braucht eine Speicher-Entität',
+            },
+            { value: 'leer', label: 'Leerer Flow' },
+          ]}
+          value={createTemplate}
+          onChange={(v) => setCreateTemplate(v as 'pilot' | 'leer')}
+        />
         {createError && <p className="vp-flowed-notice error">{createError}</p>}
       </Drawer>
     </>

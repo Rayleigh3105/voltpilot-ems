@@ -22,6 +22,7 @@ import {
   useSimulationJob,
 } from '../../components/SimulationView';
 import { ErrorState, TextSkeleton } from '../../components/States';
+import { VpPicker } from '../../components/VpPicker';
 import {
   FlowCanvas,
   type CanvasSelection,
@@ -1059,20 +1060,16 @@ function ParamField({
       : entities;
     return (
       <div className="vp-flowed-fld">
-        <label htmlFor={id}>{label}</label>
-        <select
+        <VpPicker
           id={id}
-          className="vp-select"
+          label={label}
+          options={[
+            { value: '', label: '– wählen –' },
+            ...options.map((entity) => ({ value: entity.id, label: entity.label })),
+          ]}
           value={String(value ?? '')}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          <option value="">– wählen –</option>
-          {options.map((entity) => (
-            <option key={entity.id} value={entity.id}>
-              {entity.label}
-            </option>
-          ))}
-        </select>
+          onChange={onChange}
+        />
         {entities.length === 0 && (
           <p className="vp-flowed-help">
             Keine v2-Entitäten - bitte zuerst das Entitäten-Bootstrap dieser Anlage ausführen.
@@ -1087,42 +1084,35 @@ function ParamField({
       (e) => e.id === String(node.parameters?.[entityParam?.name ?? 'entity_id'] ?? ''),
     );
     return (
-      <div className="vp-flowed-fld">
-        <label htmlFor={id}>{label}</label>
-        <select
-          id={id}
-          className="vp-select"
-          value={String(value ?? '')}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          <option value="">– wählen –</option>
-          {(entity?.measure ?? []).map((channel) => (
-            <option key={channel} value={channel}>
-              {channel}
-            </option>
-          ))}
-        </select>
-      </div>
+      <VpPicker
+        id={id}
+        className="vp-flowed-fld"
+        label={label}
+        options={[
+          { value: '', label: '– wählen –' },
+          ...(entity?.measure ?? []).map((channel) => ({ value: channel, label: channel })),
+        ]}
+        value={String(value ?? '')}
+        onChange={onChange}
+      />
     );
   }
   if (param.kind === 'enum') {
     return (
-      <div className="vp-flowed-fld">
-        <label htmlFor={id}>{label}</label>
-        <select
-          id={id}
-          className="vp-select"
-          value={String(value ?? '')}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          {!param.required && <option value="">– Standard –</option>}
-          {(param.options ?? []).map((option) => (
-            <option key={option} value={option}>
-              {param.optionLabels?.[option] ?? option}
-            </option>
-          ))}
-        </select>
-      </div>
+      <VpPicker
+        id={id}
+        className="vp-flowed-fld"
+        label={label}
+        options={[
+          ...(param.required ? [] : [{ value: '', label: '– Standard –' }]),
+          ...(param.options ?? []).map((option) => ({
+            value: option,
+            label: param.optionLabels?.[option] ?? option,
+          })),
+        ]}
+        value={String(value ?? '')}
+        onChange={onChange}
+      />
     );
   }
   if (param.kind === 'number') {

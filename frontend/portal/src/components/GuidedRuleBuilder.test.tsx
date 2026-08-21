@@ -30,7 +30,7 @@ describe('GuidedRuleBuilder', () => {
     const onBuild = vi.fn();
     render(<GuidedRuleBuilder entities={ENTITIES} onCancel={() => {}} onBuild={onBuild} siteId="s1" />);
     // Switch the single condition to a price condition (leaves the threshold
-    // empty). Seit dem Picker-System ist es der Haus-Picker, kein `<select>`.
+    // empty). Seit dem Picker-System ist es der Haus-Picker, kein `select`.
     fireEvent.click(screen.getByRole('combobox', { name: 'Art der Bedingung' }));
     fireEvent.click(screen.getByRole('option', { name: /Börsenpreis/ }));
     fireEvent.click(screen.getByRole('button', { name: /Weiter zur Prüfung/ }));

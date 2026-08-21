@@ -311,7 +311,7 @@ describe('BefehleSection', () => {
   Die WERTE bleiben byte-gleich - genau das prüfen diese zwei Fälle.
 */
 describe('die Filter-Leiste nach der Picker-Umstellung', () => {
-  it('schickt denselben Zeitraum-Wert wie das abgelöste `<select>`', async () => {
+  it('schickt denselben Zeitraum-Wert wie das abgelöste Browser-Auswahlfeld', async () => {
     vi.spyOn(api, 'commandHistory').mockResolvedValue(history({ entries: [periode()] }));
     render(<BefehleSection site={site} />);
     await screen.findByRole('button', { name: /Filter/ });

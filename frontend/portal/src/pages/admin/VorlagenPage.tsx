@@ -22,6 +22,7 @@ import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { VpPicker } from '../../components/VpPicker';
 import { ApiError } from '../../api';
 import { adminApi, type SaveComponentTemplateInput } from '../../admin/adminApi';
 import {
@@ -459,28 +460,23 @@ function VorlageDrawer({
           value={modelLabel}
           onChange={(e) => setModelLabel(e.target.value)}
         />
-        <label className="vp-field">
-          <span className="vp-field-label">Anbindung</span>
-          <select value={communication} onChange={(e) => setCommunication(e.target.value)}>
-            {COMMUNICATIONS.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="vp-field">
-          <span className="vp-field-label">Prüf-Zustand</span>
-          <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="in_certification">Prüfung läuft</option>
-            <option value="certified">Geprüft</option>
-            <option value="not_certified">Ungeprüft</option>
-          </select>
-          <span className="vp-field-help">
-            Nur eine geprüfte Vorlage darf eine Schreib-Definition tragen — ohne Prüfung
-            steht die Plattform nicht für den Schreibweg ein.
-          </span>
-        </label>
+        <VpPicker
+          label="Anbindung"
+          options={COMMUNICATIONS.map((c) => ({ value: c.value, label: c.label }))}
+          value={communication}
+          onChange={setCommunication}
+        />
+        <VpPicker
+          label="Prüf-Zustand"
+          options={[
+            { value: 'in_certification', label: 'Prüfung läuft' },
+            { value: 'certified', label: 'Geprüft' },
+            { value: 'not_certified', label: 'Ungeprüft' },
+          ]}
+          value={status}
+          onChange={setStatus}
+          hint="Nur eine geprüfte Vorlage darf eine Schreib-Definition tragen — ohne Prüfung steht die Plattform nicht für den Schreibweg ein."
+        />
         <Input
           label="Prüf-Notiz"
           value={note}
