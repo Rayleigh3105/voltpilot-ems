@@ -583,6 +583,48 @@ export function verlauf(device: AdminDeviceRow, journal: JournalEntry[]): Journa
 // ---------------------------------------------------------------------------
 
 /**
+ * Der AUSGANG einer `?geraet=<referenz>`-Adresse (Anlagen-Zentrale Stufe 3,
+ * PR 3b). Die Plattform-Liste hat seit Stufe 1 keine zweite Vollansicht mehr;
+ * eine solche Adresse tut deshalb genau eines von zwei Dingen:
+ *
+ * - **weiterleiten** auf die EINE Geräteseite in der Mandanten-Ansicht, wenn
+ *   die Referenz wirklich ein verbundenes Gerät ist ({@link kundenGeraetZiel});
+ * - **einen Hinweis nennen**, sonst. Es gibt bewusst KEINEN dritten Ausgang:
+ *   eine Seite voller „—" über einer gedruckten ID war genau die Vollansicht,
+ *   die diese Stufe abräumt.
+ *
+ * Die drei Hinweis-Fälle sind verschieden und werden deshalb verschieden
+ * gesagt: unbekannt · gedruckt, aber noch nicht verbunden · verbunden, aber
+ * ohne Anlage/Mandant (dann ist die Adresse nicht auflösbar, und das zu
+ * verschweigen hieße, den Leser in eine tote Adresse zu schicken).
+ */
+export type GeraetLinkAusgang =
+  | { kind: 'weiterleiten'; tenantId: string; siteId: string; ref: string }
+  | { kind: 'hinweis'; text: string };
+
+/** Der Satz für eine gedruckte, noch nicht verbundene Aufkleber-ID. */
+export const NOCH_KEIN_GERAET =
+  'Diese Geräte-ID ist registriert, aber noch mit keinem Kundenkonto verbunden - '
+  + 'es gibt also noch kein Gerät, über das etwas zu sagen wäre. Sie steht unten '
+  + 'in der Liste.';
+
+/** Der Satz, wenn ein verbundenes Gerät keine auflösbare Anlage nennt. */
+export const OHNE_ANLAGE =
+  'Dieses Gerät nennt keine Anlage - seine Geräteseite ist deshalb nicht '
+  + 'adressierbar. Bitte prüfen Sie die Zuordnung im Mandanten.';
+
+export function geraetLinkAusgang(
+  devices: AdminDeviceRow[] | null,
+  ref: string,
+): GeraetLinkAusgang {
+  const device = findeGeraet(devices, ref);
+  if (!device) return { kind: 'hinweis', text: NICHT_GEFUNDEN };
+  const ziel = kundenGeraetZiel(device);
+  if (ziel) return { kind: 'weiterleiten', ...ziel };
+  return { kind: 'hinweis', text: device.deviceId ? OHNE_ANLAGE : NOCH_KEIN_GERAET };
+}
+
+/**
  * Wohin ein Klick auf ein Gerät der Plattform-Liste führt (Anlagen-Zentrale
  * Stufe 1 PR 1f).
  *

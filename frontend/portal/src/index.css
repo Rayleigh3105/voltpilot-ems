@@ -5563,71 +5563,14 @@ button.vp-tech-card-h.toggle {
 }
 
 /* ============================================================================
-   GERÄTE-DETAILSEITE (Admin-Umbau Stufe 2 „Der Anker", pages/admin/GeraetSeite)
-   Die Vollansicht EINES Geräts: Kopf plus sechs Sektionen in einem
-   auto-fit-Raster, damit die Seite von 375 bis 1440 px ohne Sonderfall
-   umbricht. Tokens only; jede Karte `min-width: 0`, sonst sprengt eine lange
-   Referenz oder ein Vertrauens-Set die Spur.
+   Die PLATTFORM-SICHT eines Geräts (components/AdminGeraetKarten)
+   Die Sektionen dieses Blocks. Das RASTER darum (`.vp-geraet-grid`) gehört
+   seit dem Rückbau der zweiten Vollansicht (Zentrale Stufe 3) allein der
+   Geräteseite und wohnt in `pages/GeraetSeite.css` - zwei Definitionen
+   derselben Klasse in zwei Stylesheets waren genau die Doppeldeutigkeit, die
+   diese Stufe abräumt. Tokens only; jede Karte `min-width: 0`, sonst sprengt
+   eine lange Referenz oder ein Vertrauens-Set die Spur.
    ============================================================================ */
-.vp-geraet-back {
-  display: inline-block;
-  margin-bottom: var(--vp-space-3);
-  font-size: var(--vp-text-sm);
-  /* ≥44 px Trefferfläche, ohne die Zeile auseinanderzuziehen (das
-     `.vp-switch`-Muster: der Kasten wächst über ::before, nicht das Element). */
-  position: relative;
-}
-.vp-geraet-back::before {
-  content: '';
-  position: absolute;
-  inset: -12px -8px;
-}
-
-.vp-geraet-kopf {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--vp-space-4);
-  margin-bottom: var(--vp-space-5);
-}
-.vp-geraet-ident {
-  flex: 1 1 320px;
-  min-width: 0;
-}
-.vp-geraet-ident h1 {
-  margin: 0 0 var(--vp-space-1);
-  /* ⚠ `--vp-text-h2` sind 2,5 rem - ein Geräte-Name bricht damit am Telefon
-     über zwei Zeilen und schreit. Er ist eine Identität, keine Marketing-
-     Überschrift, also skaliert er mit der Breite. */
-  font-size: clamp(1.25rem, 4.5vw, 1.6rem);
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-.vp-geraet-ident p {
-  margin: 0 0 var(--vp-space-2);
-  overflow-wrap: anywhere;
-}
-.vp-geraet-live {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--vp-space-2);
-  margin: 0 !important;
-}
-.vp-geraet-aktionen {
-  flex: 0 1 auto;
-  flex-wrap: wrap;
-}
-
-.vp-geraet-grid {
-  display: grid;
-  gap: var(--vp-space-4);
-  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
-  /* Jede Karte ist so hoch wie ihr Inhalt - ohne das zieht die längste Karte
-     einer Reihe die kurzen auf ihre Höhe und lässt sie leer wirken. */
-  align-items: start;
-}
 .vp-geraet-sek {
   min-width: 0;
 }

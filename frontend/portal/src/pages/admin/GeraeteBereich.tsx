@@ -40,9 +40,9 @@ export function GeraeteBereich({
   );
 
   return page === 'edge-updates' ? (
-    <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} tabs={tabs} />
+    <EdgeUpdatesPage onNavigate={(r) => onNavigate(r)} onJumpToTenant={onJumpToTenant} tabs={tabs} />
   ) : (
-    <GeraeteRegistryPage onJumpToTenant={onJumpToTenant} onNavigate={onNavigate} tabs={tabs} />
+    <GeraeteRegistryPage onJumpToTenant={onJumpToTenant} tabs={tabs} />
   );
 }
 

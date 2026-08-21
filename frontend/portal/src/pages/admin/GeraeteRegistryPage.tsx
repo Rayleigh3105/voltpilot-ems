@@ -11,11 +11,9 @@ import { ApiError } from '../../api';
 import {
   adminApi,
   type AdminDeviceRow,
-  type ControlCandidate,
   type PendingEnrollment,
   type ProvisionedDevice,
 } from '../../admin/adminApi';
-import { fleetApi, type AdminFleetSite } from '../../admin/fleetApi';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { AdminPageHead } from './AdminPageHead';
@@ -23,15 +21,12 @@ import { normalizeDeviceIdInput } from '../../anlageFlow';
 import { fmtRelative } from '../../format';
 import { deviceRows, funnelStages, pendingRows, versionLabel } from '../../onboardingFunnel';
 import {
-  applyView,
   crossoverState,
   stateLabel,
   type EdgeUpdates,
 } from '../../adminEdgeUpdates';
-import { geraetView, kundenGeraetZiel } from '../../adminGeraet';
-import { anlageRoute, geraetHash, parseGeraetRef, pageRoute, type PageId, type Route }
-  from '../../nav';
-import { GeraetSeite } from './GeraetSeite';
+import { geraetLinkAusgang } from '../../adminGeraet';
+import { parseGeraetRef, type Route } from '../../nav';
 
 /**
  * Plattform → **Geräte**: das INVENTAR über den ganzen Lebenszyklus (UX-Konzept
@@ -56,44 +51,25 @@ import { GeraetSeite } from './GeraetSeite';
  */
 export function GeraeteRegistryPage({
   onJumpToTenant,
-  onNavigate,
   tabs,
 }: {
   /** Sprung in die Mandanten-Ansicht der Anlage (bzw. auf ihre Befehle). */
   onJumpToTenant?: (tenantId: string, target: Route) => void;
-  onNavigate?: (target: Route | PageId) => void;
-  /**
-   * Die Tab-Leiste des Geräte-Bereichs (Stufe 3), vom Wirt `GeraeteBereich`.
-   * Sie erscheint NUR über der Liste: die Geräte-Detailseite ist eine Ebene
-   * TIEFER und hat ihren eigenen Zurück-Weg - ein Bereichs-Umschalter über
-   * einem einzelnen Gerät läse sich, als wechselte er dessen Ansicht.
-   */
+  /** Die Tab-Leiste des Geräte-Bereichs, vom Wirt `GeraeteBereich`. */
   tabs?: ReactNode;
 } = {}) {
   const [devices, setDevices] = useState<ProvisionedDevice[] | null>(null);
   const [fleet, setFleet] = useState<AdminDeviceRow[] | null>(null);
-  // Admin-Umbau Stufe 2: die GERÄTE-DETAILSEITE als Vollansicht derselben
-  // Route (`?geraet=<referenz>`). Der Parameter ist der Zustand - ein
-  // Lesezeichen darauf öffnet exakt dieses Gerät wieder.
+  // Die Deep-Link-Referenz (`?geraet=<referenz>`). Sie ist der Zustand: ein
+  // Lesezeichen darauf führt exakt dorthin, wohin es immer geführt hat - seit
+  // Stufe 3 auf die EINE Geräteseite, statt auf eine zweite Vollansicht.
   const [geraetRef, setGeraetRef] = useState<string | null>(() =>
     parseGeraetRef(window.location.hash),
   );
-  // Die zwei ZUSÄTZLICHEN Reads der Detailseite - erst geladen, wenn wirklich
-  // ein Gerät geöffnet wird; die Liste soll sie nicht bezahlen. Beide
-  // FAIL-SOFT in EIGENEN Zuständen: ihr Ausfall lässt die Sektionen ehrlich
-  // leer, statt die ganze Seite unbenutzbar zu machen.
-  const [sites, setSites] = useState<AdminFleetSite[] | null>(null);
-  const [candidates, setCandidates] = useState<ControlCandidate[] | null>(null);
-  const [detailGeladen, setDetailGeladen] = useState(false);
-  // Die Bezugszeit der gezeigten Belege. Zustand und Bezugszeit werden
-  // GEMEINSAM gesetzt (`liveness.ts`) - sonst verfällt ein stehender
-  // Schnappschuss gegen eine weiterlaufende Uhr zu „meldet sich nicht".
-  const [fetchedAt, setFetchedAt] = useState<number>(() => Date.now());
-  // Releases + Journal für den geteilten Drawer (Zuweisung + Historie). FAIL-
-  // SOFT in einem EIGENEN Zustand: fällt der Abruf aus, bleibt das Inventar
-  // benutzbar, der Drawer zeigt dann eben keine Zuweisung.
+  // Releases für die Spalte „Edge-Stand" (Tag + Build statt Roh-Stempel).
+  // FAIL-SOFT in einem EIGENEN Zustand: fällt der Abruf aus, bleibt das
+  // Inventar benutzbar, die Spalte zeigt dann eben den Roh-Stempel.
   const [updates, setUpdates] = useState<EdgeUpdates | null>(null);
-  const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingEnrollment[] | null>(null);
   // Getrennt von `pending === null` (= lädt noch), damit ein Fehlschlag als
   // Fehlschlag steht und nie als "niemand wartet" gelesen wird.
@@ -104,8 +80,6 @@ export function GeraeteRegistryPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
-  // Die Referenz des Geräts, für das gerade eine Anwendung freigegeben wird.
-  const [applying, setApplying] = useState<string | null>(null);
 
   // Der Sprung-Rückruf, stabil gehalten für den Weiterleitungs-Effekt unten.
   const jumpRef = useRef(onJumpToTenant);
@@ -114,7 +88,6 @@ export function GeraeteRegistryPage({
   async function reload() {
     setError(null);
     setLoadError(null);
-    setFetchedAt(Date.now());
     try {
       setDevices(await adminApi.listProvisionedDevices());
     } catch (e) {
@@ -177,80 +150,19 @@ export function GeraeteRegistryPage({
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  // Die zwei Detail-Reads GENAU EINMAL, sobald wirklich ein Gerät geöffnet
-  // wird - und beide einzeln fail-soft.
-  useEffect(() => {
-    if (!geraetRef || detailGeladen) return;
-    setDetailGeladen(true);
-    void (async () => {
-      try {
-        setSites((await fleetApi.fleet()).sites);
-      } catch {
-        setSites(null);
-      }
-      try {
-        setCandidates(await adminApi.controlCandidates());
-      } catch {
-        setCandidates(null);
-      }
-    })();
-  }, [geraetRef, detailGeladen]);
-
-  /** Ein Gerät öffnen bzw. schließen - `replaceState`, damit die Adresse
-   *  Lesezeichen-fähig bleibt, ohne einen Verlaufseintrag je Zeilenklick zu
-   *  erzeugen (die Explorer-Disziplin des `?m=`-Parameters). */
+  /**
+   * Eine Zeile öffnet ihr Gerät - und zwar an seinem EINEN Ort, der
+   * Geräteseite in der Mandanten-Ansicht (Stufe 3, PR 3b). Sie setzt dafür
+   * denselben Zustand, den ein Lesezeichen setzt, damit Klick und Deep-Link
+   * durch GENAU DIESELBE Stelle laufen und nie auseinanderdriften können.
+   */
   function oeffneGeraet(ref: string | null) {
-    window.history.replaceState(null, '', geraetHash(ref));
     setGeraetRef(ref);
-    window.scrollTo({ top: 0 });
-  }
-
-  /** Die Freigabe-Rückfrage - von der LISTE und von der Detailseite geteilt,
-   *  damit beide Wege dieselbe Folgenliste zeigen. */
-  function applyDialog() {
-    if (!applying) return null;
-
-    const row = (fleet ?? []).find((d) => d.externalRef === applying);
-    if (!row || !row.deviceId) return null;
-    const view = applyView(row);
-    return (
-      <ConfirmDialog
-        open
-        title="Release jetzt auf dem Gerät anwenden?"
-        intro={`${row.siteName ?? row.externalRef}: `
-          + `${row.soll ?? 'das zugewiesene Release'} wird angewandt.`}
-        consequences={[
-          'Das Gerät startet seine Dienste neu - die Anlage ist dabei kurz ohne '
-            + 'VoltPilot-Steuerung und fällt in ihr eigenes Verhalten zurück.',
-          'Es ist GENAU EINE Freigabe für GENAU DIESES Release: sie gilt 15 Minuten und '
-            + 'wird danach nicht nachgeliefert.',
-          'Das Gerät prüft die Signatur weiterhin selbst und wendet nur an, wenn alle '
-            + 'seine Bedingungen erfüllt sind - Selbsttest und automatische Rücknahme '
-            + 'inklusive.',
-          'Automatische Updates werden dadurch NICHT eingeschaltet.',
-          ...(view.warn ? [`Achtung: ${view.warn}`] : []),
-        ]}
-        confirmLabel="Jetzt freigeben"
-        busy={busy}
-        onCancel={() => setApplying(null)}
-        onConfirm={() => {
-          const id = row.deviceId as string;
-          setApplying(null);
-          setBusy(true);
-          void (async () => {
-            try {
-              await adminApi.requestApply(id);
-              await reload();
-            } catch (e) {
-              setError(e instanceof ApiError ? e.message
-                : 'Die Freigabe ist fehlgeschlagen.');
-            } finally {
-              setBusy(false);
-            }
-          })();
-        }}
-      />
-    );
+    if (ref == null) {
+      // Nur den Parameter abräumen - ein Verlaufseintrag je Klick wäre die
+      // Zurück-Taste voller Zwischenschritte (die `?m=`-Disziplin).
+      window.history.replaceState(null, '', '#/geraete-registry');
+    }
   }
 
   const registerButton = (
@@ -259,30 +171,20 @@ export function GeraeteRegistryPage({
     </Button>
   );
 
-  // Admin-Umbau Stufe 2: eine geöffnete Referenz ERSETZT die Liste durch die
-  // Vollansicht - dieselbe Route, ein Parameter mehr. Der Drawer bleibt der
-  // Schnellblick am Wellen-Board der Update-Seite; hier führt die Zeile direkt
-  // auf die Detailseite, weil das ihr natürlicher Vollblick ist.
-  const detail = geraetRef
-    ? geraetView(
-        {
-          ref: geraetRef,
-          devices: fleet,
-          sites,
-          candidates,
-          releases: updates?.releases ?? [],
-          journal: updates?.journal ?? [],
-        },
-        new Date(fetchedAt),
-      )
-    : null;
-
-  // Anlagen-Zentrale Stufe 1 (PR 1f): ein VERBUNDENES Gerät hat seit dieser
-  // Stufe genau EINEN Ort - seine Geräteseite in der Mandanten-Ansicht. Die
-  // Plattform-Liste bleibt der Einstieg und FÜHRT dorthin, statt eine zweite
-  // Vollansicht desselben Geräts danebenzustellen. Eine gedruckte, noch nicht
-  // verbundene Aufkleber-ID hat keine Geräteseite und behält ihre eigene.
-  const ziel = kundenGeraetZiel(detail?.device);
+  /**
+   * Anlagen-Zentrale Stufe 3 (PR 3b): ein VERBUNDENES Gerät hat GENAU EINEN
+   * Ort - seine Geräteseite in der Mandanten-Ansicht. Die Plattform-Liste ist
+   * der Einstieg und FÜHRT dorthin; die frühere zweite Vollansicht desselben
+   * Geräts ist entfallen. Eine gedruckte, noch nicht verbundene Aufkleber-ID
+   * hat keine Geräteseite (sie ist noch kein Gerät) und bleibt Zeile mit
+   * einem ehrlichen Satz darüber.
+   */
+  const ausgang = geraetRef ? geraetLinkAusgang(fleet, geraetRef) : null;
+  const ziel = ausgang?.kind === 'weiterleiten' ? ausgang : null;
+  // ⚠ Solange das Inventar noch lädt (`fleet == null`), wird NICHT geurteilt:
+  // eine Referenz „nicht gefunden" zu nennen, bevor irgendetwas geladen ist,
+  // wäre eine Behauptung über Daten, die niemand gesehen hat.
+  const hinweis = fleet != null && ausgang?.kind === 'hinweis' ? ausgang.text : null;
   useEffect(() => {
     if (!ziel) return;
     jumpRef.current?.(ziel.tenantId, {
@@ -294,49 +196,6 @@ export function GeraeteRegistryPage({
     // Der Sprung-Rückruf liegt in einer Ref: ein Wirt, der ihn inline erzeugt,
     // würde den Effekt sonst bei JEDEM Render neu auslösen.
   }, [ziel?.tenantId, ziel?.siteId, ziel?.ref]);
-
-  if (geraetRef) {
-    const row = detail?.device ?? null;
-    return (
-      <>
-        {error && <div className="vp-alert vp-alert-err">{error}</div>}
-        <GeraetSeite
-          view={detail}
-          busy={busy}
-          onZurueck={() => oeffneGeraet(null)}
-          onJumpToTenant={(tenantId, siteId, sub) =>
-            onJumpToTenant?.(tenantId, anlageRoute(siteId, sub ?? null))
-          }
-          onNavigateSteuerung={() => onNavigate?.(pageRoute('steuerungs-freigabe'))}
-          onAssign={row?.deviceId ? async (releaseSeq, channel, pinned) => {
-            setBusy(true);
-            try {
-              await adminApi.setUpdateTarget(row.deviceId as string,
-                { releaseSeq, channel, pinned });
-              await reload();
-            } catch (e) {
-              setError(e instanceof ApiError ? e.message : 'Die Zuweisung ist fehlgeschlagen.');
-            } finally {
-              setBusy(false);
-            }
-          } : undefined}
-          onRevert={row?.deviceId && row.soll ? async () => {
-            setBusy(true);
-            try {
-              await adminApi.revertUpdateTarget(row.deviceId as string);
-              await reload();
-            } catch (e) {
-              setError(e instanceof ApiError ? e.message : 'Die Rücknahme ist fehlgeschlagen.');
-            } finally {
-              setBusy(false);
-            }
-          } : undefined}
-          onApply={row?.deviceId && row.soll ? () => setApplying(row.externalRef) : undefined}
-        />
-        {applyDialog()}
-      </>
-    );
-  }
 
   return (
     <>
@@ -350,6 +209,17 @@ export function GeraeteRegistryPage({
       />
 
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
+
+      {/* Eine `?geraet=`-Adresse, die zu keiner Geräteseite führt, sagt WARUM -
+          statt eine Seite voller „—" zu zeigen (Stufe 3, PR 3b). */}
+      {hinweis && (
+        <div className="vp-alert" role="status" data-testid="geraet-hinweis">
+          {hinweis}{' '}
+          <button type="button" className="vp-linklike" onClick={() => oeffneGeraet(null)}>
+            Zur Geräte-Liste
+          </button>
+        </div>
+      )}
 
       <FunnelStrip
         devices={devices ?? []}
@@ -375,8 +245,6 @@ export function GeraeteRegistryPage({
           registerButton={registerButton}
         />
       )}
-
-      {applyDialog()}
 
       {removing && (
         <ConfirmDialog
