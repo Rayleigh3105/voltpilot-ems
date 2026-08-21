@@ -4625,30 +4625,6 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-text-muted, #667);
   font-size: 0.9rem;
 }
-.vp-entity-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--vp-space-4);
-  margin-top: var(--vp-space-4);
-}
-.vp-entity-card {
-  min-width: 0;
-  border: 1px solid var(--vp-border, #e3e8ef);
-  border-radius: var(--vp-radius-md, 12px);
-  padding: var(--vp-space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-3);
-}
-.vp-entity-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--vp-space-2);
-}
-.vp-entity-title { display: flex; gap: var(--vp-space-2); align-items: center; min-width: 0; }
-.vp-entity-name { font-weight: 600; overflow-wrap: anywhere; }
-.vp-entity-sub { font-size: 0.82rem; color: var(--vp-text-muted, #667); }
 .vp-entity-control { color: var(--vp-action, #2C5282); }
 /* R2 on the installer surface: when the top line is the CUSTOMER's own name,
    the line below says so and keeps the technical identity next to it - the
@@ -4690,25 +4666,6 @@ button.vp-tech-card-h.toggle {
   gap: var(--vp-space-2);
   margin-top: auto;
   padding-top: var(--vp-space-2);
-}
-.vp-entity-subhead {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.95rem;
-  margin: var(--vp-space-5) 0 var(--vp-space-2);
-}
-.vp-local-setup-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.vp-local-setup-list li {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-2);
-  font-size: 0.88rem;
-}
-.vp-local-setup-list li .vp-muted { margin-left: auto; font-size: 0.8rem; }
-
-@media (max-width: 720px) {
-  .vp-entity-cards { grid-template-columns: 1fr; }
 }
 
 /* ============================================================================
@@ -4831,25 +4788,8 @@ button.vp-tech-card-h.toggle {
 }
 .vp-role-picker-item:hover { background: var(--vp-surface-2, #f1f5f9); }
 
-/* Vom Gerät gemeldet (adoption bridge) */
-.vp-gemeldet-item {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-2);
-  padding: var(--vp-space-3) 0;
-  border-top: 1px solid var(--vp-border, #eef2f7);
-}
-.vp-gemeldet-main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
-.vp-gemeldet-name { font-weight: 600; overflow-wrap: anywhere; }
-.vp-gemeldet-main .vp-muted { font-size: 0.8rem; }
-.vp-gemeldet-new .vp-gemeldet-name { color: #92590a; }
-.vp-gemeldet-hint { font-size: 0.8rem; color: var(--vp-text-muted, #667); white-space: nowrap; }
-.vp-gemeldet-note { margin: var(--vp-space-3) 0 0; }
-.vp-plumbing code { font-family: var(--vp-font-mono, ui-monospace, monospace); font-size: 0.85em; }
-
 @media (max-width: 720px) {
   .vp-role-boxes { grid-template-columns: 1fr; }
-  .vp-gemeldet-item { flex-wrap: wrap; }
 }
 
 /* ============================================================================
@@ -5221,9 +5161,6 @@ button.vp-tech-card-h.toggle {
 
 /* G9 · Geräte-Karten wachsen mit ihrem Inhalt statt auf gleiche Höhe gestreckt
    zu werden (bei sehr unterschiedlichem Inhalt blieben halbe Karten leer). */
-.vp-entity-cards {
-  align-items: start;
-}
 
 /* G5 · Die Messgröße unterscheidet zwei Zeilen desselben Geräts in einer
    Rolle (Ladestand vs. Batterieleistung). */

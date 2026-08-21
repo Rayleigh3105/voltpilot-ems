@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { SiteEntities, SiteEntity } from './api';
+import type { SiteEntity } from './api';
 import {
   actuateCommands,
-  entitiesSummary,
   failsafeLabel,
   guardRows,
   hasDrift,
   healthLabel,
-  healthTone,
-  isEmpty,
   measureChannels,
   parseChannelList,
   syncVerdict,
@@ -67,16 +64,13 @@ describe('hasDrift', () => {
 });
 
 describe('health', () => {
-  it('labels + tones ok/stale/never and null', () => {
+  it('labels ok/stale/never and null', () => {
     expect(healthLabel(entity().observed)).toBe('Liefert Daten');
-    expect(healthTone(entity().observed)).toBe('ok');
     expect(healthLabel(null)).toBe('Noch keine Daten');
-    expect(healthTone(null)).toBe('off');
     const stale = entity({ observed: { ...entity().observed!, health: 'stale' } }).observed;
     expect(healthLabel(stale)).toBe('Keine aktuellen Daten');
-    expect(healthTone(stale)).toBe('warn');
     const never = entity({ observed: { ...entity().observed!, health: 'never' } }).observed;
-    expect(healthTone(never)).toBe('off');
+    expect(healthLabel(never)).toBe('Noch keine Daten');
   });
 });
 
@@ -116,40 +110,6 @@ describe('capabilities + guards', () => {
     expect(failsafeLabel('measure-only')).toBe('Nur messen');
     expect(failsafeLabel('off')).toBe('Aus');
     expect(failsafeLabel('unknown-x')).toBe('unknown-x');
-  });
-});
-
-describe('summary + empty', () => {
-  it('empty when no entities and no local setup', () => {
-    const data: SiteEntities = { registry: null, entities: [], localSetup: [], staleOnDevice: [] };
-    expect(isEmpty(data)).toBe(true);
-    expect(entitiesSummary(data)).toBeNull();
-  });
-
-  it('summarizes count, live and drifting', () => {
-    const data: SiteEntities = {
-      registry: null,
-      entities: [
-        entity(),
-        entity({ id: 'e2', syncStatus: 'pending', observed: null }),
-      ],
-      localSetup: [],
-      staleOnDevice: [],
-    };
-    const s = entitiesSummary(data)!;
-    expect(s).toContain('2 Entitäten');
-    expect(s).toContain('1 liefern Daten');
-    expect(s).toContain('1 wird noch übernommen');
-  });
-
-  it('not empty when only local setup exists', () => {
-    const data: SiteEntities = {
-      registry: null,
-      entities: [],
-      localSetup: [{ id: 'inverter', kind: 'inverter', label: 'deye', reportedAt: 'x' }],
-      staleOnDevice: [],
-    };
-    expect(isEmpty(data)).toBe(false);
   });
 });
 

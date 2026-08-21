@@ -171,13 +171,33 @@ function stub() {
   vi.spyOn(api, 'siteEntities').mockResolvedValue(entities);
   vi.spyOn(api, 'topology').mockResolvedValue(topology);
   vi.spyOn(api, 'siteSources').mockResolvedValue(sources);
-  // The installer panel (EntitaetenSection) also reads these — fail-soft, but
-  // stub them so an admin render is quiet.
+  // Die aufgelöste Installateur-Ansicht (Stufe 3) liest diese zwei zusätzlich -
+  // fail-soft, aber gestubbt, damit ein Admin-Render ruhig ist.
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   // Die Säulen der vereinten Liste (§13 R7) - fail-soft, aber gestubbt, damit
   // ein Render nicht auf einen echten Abruf wartet.
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
-  vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue({ catalog_version: '1.0.0', types: [] });
+  vi.spyOn(entitiesApi, 'typeCatalog').mockResolvedValue({
+    catalog_version: '1.0.0',
+    types: [
+      {
+        type: 'wallbox',
+        label: 'Wallbox',
+        category: 'consumer',
+        controllable: true,
+        composed: false,
+        default_failsafe: 'release',
+      },
+      {
+        type: 'grid-meter',
+        label: 'Netzanschlusszähler',
+        category: 'meter',
+        controllable: false,
+        composed: true,
+        default_failsafe: 'measure-only',
+      },
+    ],
+  });
 }
 
 const FORBIDDEN = /Entität|Messpunkt|Quelle|Mess-Einheit|Kanal/;
@@ -499,9 +519,115 @@ describe('AnlagenModellSection — Variante A', () => {
 
     // The customer picture is still there…
     await screen.findByRole('region', { name: 'Ihre Geräte' });
-    // …plus the installer panel added on top.
-    expect(screen.getByText(/Installateur-Ansicht/)).toBeInTheDocument();
+    // …plus the technical layer added on top - seit Stufe 3 IN der Liste
+    // statt in einem eigenen `<details>`-Block darunter.
     expect(await screen.findByText('Rollen & Zuordnung')).toBeInTheDocument();
+    expect(screen.queryByText(/Installateur-Ansicht/)).toBeNull();
+  });
+});
+
+/*
+  Anlagen-Zentrale Stufe 3 (PR 3a): die Installateur-Ansicht ist AUFGELÖST -
+  ihre drei Fähigkeiten wohnen jetzt IN der Liste. Diese Suite ist der
+  Kein-Verlust-Beweis: jede Fähigkeit des alten Orts hat hier ihren neuen.
+*/
+describe('Die aufgelöste Installateur-Ansicht (Stufe 3)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  async function adminRender() {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
+  }
+
+  it('trägt den technischen Rumpf AN der Komponente - Typ, Soll/Ist, Rollen, Guards', async () => {
+    await adminRender();
+    const zeilen = await screen.findAllByTestId('tech-zeile');
+    expect(zeilen.length).toBeGreaterThan(0);
+    // Der TYP steht dort, wo er hingehört: an der Komponente, nicht in einer
+    // zweiten Karte weiter unten.
+    const alle = zeilen.map((z) => z.textContent ?? '').join(' ');
+    expect(alle).toContain('Netzanschluss');
+    // Der Soll/Ist-Stand der Entität (`in_sync` → „Aktiv").
+    expect(alle).toContain('Aktiv');
+    // Und die zwei Handlungen des alten Orts.
+    expect(screen.getAllByRole('button', { name: /Technisch bearbeiten/ }).length)
+      .toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /Entfernen/ }).length).toBeGreaterThan(0);
+  });
+
+  it('öffnet „Technisch bearbeiten" mit dem Typ der Komponente', async () => {
+    await adminRender();
+    fireEvent.click((await screen.findAllByRole('button', { name: /Technisch bearbeiten/ }))[0]);
+    expect(await screen.findByText('Entität bearbeiten')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bezeichnung')).toBeInTheDocument();
+  });
+
+  it('entfernt technisch - mit der Folgenliste UND dem Messpunkt-Häkchen', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
+    stub();
+    // ⚠ Die kWp-Folge (der k3-Bereinigungs-Hebel) hängt an der
+    // MESSPUNKT-Rolle - nur eine komponierte Zeile trägt das Häkchen.
+    vi.spyOn(api, 'siteEntities').mockResolvedValue({
+      ...entities,
+      entities: entities.entities.map((e) =>
+        e.id === 'grid' ? { ...e, role: 'grid-meter' } : e,
+      ),
+    });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
+
+    const remove = vi.spyOn(entitiesApi, 'remove').mockResolvedValue(undefined as never);
+    const zeilen = await screen.findAllByTestId('tech-zeile');
+    const netz = zeilen.find((z) => (z.textContent ?? '').includes('Netzanschluss'));
+    fireEvent.click(within(netz as HTMLElement).getByRole('button', { name: /Entfernen/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Komponente entfernen?')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('checkbox'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Entfernen' }));
+    await waitFor(() =>
+      expect(remove).toHaveBeenCalledWith('s-1', 'grid', { purgePoint: true }),
+    );
+  });
+
+  it('bietet die TECHNISCHE Übernahme neben der geführten - nie statt ihr', async () => {
+    await adminRender();
+    // Die geführte Übernahme des Kunden…
+    expect(screen.getByRole('button', { name: /^Übernehmen/ })).toBeInTheDocument();
+    // …und die technische daneben.
+    fireEvent.click(screen.getByRole('button', { name: /^technisch/ }));
+    expect(await screen.findByText('Gerät übernehmen')).toBeInTheDocument();
+    expect(screen.getByLabelText('Als Typ übernehmen')).toBeInTheDocument();
+  });
+
+  it('legt eine Komponente technisch an - auch ohne den Kunden-Assistenten', async () => {
+    await adminRender();
+    fireEvent.click(screen.getByRole('button', { name: /Komponente anlegen \(technisch\)/ }));
+    expect(await screen.findByText('Entität anlegen')).toBeInTheDocument();
+    // Nur NICHT-komponierte Typen sind anlegbar (ein Netzanschluss entsteht
+    // aus den Stammdaten, nie von Hand).
+    const typ = screen.getByLabelText('Typ') as HTMLSelectElement;
+    expect([...typ.options].map((o) => o.value)).toEqual(['wallbox']);
+  });
+
+  it('zeigt den Registry-Stand - eine ANDERE Tatsache als die Komponenten-Fassung', async () => {
+    await adminRender();
+    expect(
+      await screen.findByText('Diese Anlage wurde noch nicht an das Gerät übertragen.'),
+    ).toBeInTheDocument();
+  });
+
+  it('hält ALLES davon hinter dem EINEN Tor - ein Kunde sieht nichts davon', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
+    expect(screen.queryAllByTestId('tech-zeile')).toHaveLength(0);
+    expect(screen.queryByText('Rollen & Zuordnung')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Technisch bearbeiten/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Komponente anlegen \(technisch\)/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^technisch/ })).toBeNull();
   });
 });
 

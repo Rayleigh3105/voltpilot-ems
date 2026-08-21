@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -9,23 +9,19 @@ import {
   api,
   ApiError,
   type EntityStrategy,
-  type Site,
   type SiteEntities,
   type SiteEntity,
   type SiteTopology,
 } from '../api';
-import { channelLabel, commandLabel } from '../channels';
+import { commandLabel } from '../channels';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { deviceName } from '../entityLabel';
 import {
   actuateCommands,
-  entitiesSummary,
   guardRows,
   hasDrift,
   healthLabel,
-  healthTone,
-  isEmpty,
   measureChannels,
   parseChannelList,
   syncVerdict,
@@ -35,229 +31,44 @@ import {
   type Role,
   type RoleBox,
   ROLE_LABELS,
-  adoptableSources,
-  adoptedSources,
   assignToRole,
   assignableCapabilities,
-  inverterSetup,
   isAutoAssigned,
   resetAssignments,
   roleBoxes,
   rolePillsFor,
   setPrimaryAssignment,
-  showTechnicalLayer,
-  sourceRoleLabel,
   suggestEntityType,
 } from '../rollen';
-import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { fmtNum } from '../format';
 
 /**
- * The U2 "Geräte" area (design data/vp-ems-ui-overhaul/report.md §3) - the
- * first-class per-Anlage entity screen, promoted into the tab bar (U1). Three
- * sections, top to bottom:
- *   1. Ihre Geräte - the entity cards + their assigned role pills (topology) +
- *      strategy chips (which active flows touch each entity).
- *   2. Rollen & Zuordnung - the AE0-mockup role boxes over the AE1 backend:
- *      one box per role with member chips, Σ aggregate, maßgeblich ✓ on the
- *      primary, and "＋ zuordnen". Customers write via the RLS-fenced
- *      /sites/{id}/topology-roles (a role never widens control).
- *   3. Vom Gerät gemeldet - the adoption bridge: edge-reported sources with no
- *      entity yet, adoptable in one click (admin-only first increment).
- * Plus the honest plumbing links + the edge-local commissioning view.
+ * Anlagen-Zentrale Stufe 3 (PR 3a) — die AUFGELÖSTE Installateur-Ansicht.
  *
- * All copy/verdicts are the pure src/rollen.ts + src/entities.ts.
+ * Bis hierher lag die technische Sicht als eigener `<details>`-Block
+ * („Installateur-Ansicht (technisch)") UNTER der Zentrale und zeigte dieselben
+ * Dinge ein zweites Mal: jede Komponente einmal als Kunden-Zeile in ihrer
+ * Geräte-Karte und einmal als Entitäts-Karte darunter. Die Konsolidierungs-
+ * Landkarte (§9) löst sie in DREI Wohnorte auf, und dieses Bauteil trägt sie:
  *
- * This whole section is the technical/installer panel (M7). It renders only
- * behind `showTechnicalLayer()`, and its admin-only affordances (create/edit/
- * adopt) gate on the SAME helper — so `isAdmin` defaults to it and a page never
- * needs a second role check. Tests may still pass the flag explicitly.
+ * 1. {@link TechnischeZeile} — der technische Rumpf der Entitäts-Karte, jetzt
+ *    IN der Komponenten-Zeile ihrer Geräte-Karte (Typ, Soll/Ist, Rollen,
+ *    Regeln, „Steuert", Guards) samt „Technisch bearbeiten"/„Entfernen".
+ * 2. {@link RollenZuordnung} — die Karte „Rollen &amp; Zuordnung", unverändert,
+ *    unter der Liste.
+ * 3. {@link AdoptDrawer} — die technische Übernahme, jetzt an der Karte
+ *    „Neues Gerät gefunden"; {@link EntityDrawer} ist die Admin-Tür von
+ *    „＋ Hinzufügen".
+ *
+ * ⚠ Es gibt KEINEN zweiten Gate-Ort: der Wirt (`AnlagenModellSection`) prüft
+ * `rollen.showTechnicalLayer()` EINMAL und rendert nichts hiervon ohne ihn
+ * (M7 — eine künftige Installateur-Rolle steckt dort ein und nirgends sonst).
+ * Alle Ableitungen bleiben die reinen `entities.ts` / `rollen.ts`.
  */
-export function EntitaetenSection({
-  site,
-  isAdmin = showTechnicalLayer(),
-}: {
-  site: Site;
-  isAdmin?: boolean;
-}) {
-  const [data, setData] = useState<SiteEntities | null>(null);
-  const [topology, setTopology] = useState<SiteTopology | null>(null);
-  const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]>>({});
-  const [error, setError] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [catalog, setCatalog] = useState<EntityTypeDef[] | null>(null);
-  const [drawer, setDrawer] = useState<{ mode: 'create' } | { mode: 'edit'; entity: SiteEntity } | null>(
-    null,
-  );
-  const [adopt, setAdopt] = useState<AdoptableSource | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    setData(null);
-    setError(false);
-    api.siteEntities(site.id).then(
-      (d) => active && setData(d),
-      () => active && setError(true),
-    );
-    // Topology + strategies fail soft (a v1/un-migrated site simply lacks them).
-    api.topology(site.id).then(
-      (t) => active && setTopology(t),
-      () => active && setTopology(null),
-    );
-    api.entityStrategies(site.id).then(
-      (s) => active && setStrategies(s ?? {}),
-      () => active && setStrategies({}),
-    );
-    return () => {
-      active = false;
-    };
-  }, [site.id, reloadKey]);
-
-  // Admin only: the type catalog for the create/adopt palette (fail-soft).
-  useEffect(() => {
-    if (!isAdmin) return;
-    let active = true;
-    entitiesApi.typeCatalog().then(
-      (c) => active && setCatalog(c.types),
-      () => active && setCatalog(null),
-    );
-    return () => {
-      active = false;
-    };
-  }, [isAdmin, reloadKey]);
-
-  const reload = () => setReloadKey((k) => k + 1);
-
-  const localSetup = data?.localSetup ?? [];
-  const reported = adoptableSources(localSetup);
-  const alreadyAdopted = adoptedSources(localSetup);
-  const inverters = inverterSetup(localSetup);
-  const hasGemeldet = reported.length > 0 || alreadyAdopted.length > 0 || inverters.length > 0;
-
-  return (
-    <div className="vp-entities">
-      {/* Section 1 — Ihre Geräte */}
-      <Card>
-        <div className="vp-entities-head">
-          <div>
-            <h2 style={{ margin: 0 }}>Ihre Geräte</h2>
-            <p className="vp-note" style={{ marginTop: 'var(--vp-space-1)' }}>
-              Alle Mess- und Steuer-Einheiten dieser Anlage - was sie können, welche Rolle sie
-              spielen und welche Steuerung auf sie wirkt.
-            </p>
-          </div>
-          {isAdmin && (
-            <Button variant="outline" onClick={() => setDrawer({ mode: 'create' })}>
-              <Icon name="plus" size={16} /> Entität anlegen
-            </Button>
-          )}
-        </div>
-
-        {!data && !error && <TextSkeleton lines={4} />}
-        {error && (
-          <ErrorState message="Die Entitäten konnten nicht geladen werden." onRetry={reload} />
-        )}
-        {data && isEmpty(data) && (
-          <EmptyState
-            icon="cpu"
-            category="primary"
-            title="Noch keine Geräte"
-            description={
-              isAdmin
-                ? // Die Komposition aus den Stammdaten läuft automatisch, sobald
-                  // die Anlage ein eindeutiges Gerät hat - es gibt hier keinen
-                  // Bootstrap-Knopf mehr zu drücken (und vorher gab es ihn nie).
-                  'Die Komponenten aus den Stammdaten entstehen automatisch, sobald ein Gerät verbunden ist. Hier können Sie zusätzlich eine Entität anlegen oder ein vom Gerät gemeldetes Gerät übernehmen.'
-                : 'Für diese Anlage sind noch keine Geräte eingerichtet. Sobald Ihr Gerät sich meldet, erscheinen sie hier.'
-            }
-          />
-        )}
-
-        {data && !isEmpty(data) && (
-          <>
-            {entitiesSummary(data) && (
-              <p className="vp-entities-summary">{entitiesSummary(data)}</p>
-            )}
-            <RegistryDrift data={data} />
-            <div className="vp-entity-cards">
-              {data.entities.map((e) => (
-                <EntityCard
-                  key={e.id}
-                  entity={e}
-                  isAdmin={isAdmin}
-                  topology={topology}
-                  strategies={strategies[e.id] ?? []}
-                  siteId={site.id}
-                  onEdit={() => setDrawer({ mode: 'edit', entity: e })}
-                  onDeleted={reload}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </Card>
-
-      {/* Section 2 — Rollen & Zuordnung */}
-      <RollenZuordnung
-        siteId={site.id}
-        topology={topology}
-        onChanged={setTopology}
-      />
-
-      {/* Section 3 — Vom Gerät gemeldet (adoption bridge) */}
-      {hasGemeldet && (
-        <VomGeraetGemeldet
-          reported={reported}
-          adopted={alreadyAdopted}
-          inverters={inverters}
-          isAdmin={isAdmin}
-          onAdopt={setAdopt}
-        />
-      )}
-
-      {/* Bottom — honest plumbing links */}
-      <Card className="vp-plumbing">
-        <h3 className="vp-entity-subhead" style={{ marginTop: 0 }}>
-          Physische Verbindung
-        </h3>
-        <p className="vp-note" style={{ marginTop: 0 }}>
-          Wechselrichter, Zähler und weitere Quellen werden direkt am Gerät eingerichtet - über die
-          Geräteseite <strong>„Meine Anlage"</strong> (Adresse <code>:8484</code> im lokalen Netz).
-          VoltPilot übernimmt die dort gemeldeten Geräte oben unter „Vom Gerät gemeldet".
-        </p>
-      </Card>
-
-      {isAdmin && drawer && (
-        <EntityDrawer
-          siteId={site.id}
-          catalog={catalog ?? []}
-          state={drawer}
-          onClose={() => setDrawer(null)}
-          onSaved={() => {
-            setDrawer(null);
-            reload();
-          }}
-        />
-      )}
-      {isAdmin && adopt && (
-        <AdoptDrawer
-          siteId={site.id}
-          source={adopt}
-          catalog={catalog ?? []}
-          onClose={() => setAdopt(null)}
-          onAdopted={() => {
-            setAdopt(null);
-            reload();
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-/** The registry drift banner: pending changes + entities not yet on the device. */
-function RegistryDrift({ data }: { data: SiteEntities }) {
+/** Der Soll/Ist-Stand der ENTITÄTS-Registry (nicht der Komponenten-Fassung). */
+export function RegistryDrift({ data }: { data: SiteEntities }) {
   const drifting = data.entities.filter((e) => hasDrift(e.syncStatus));
   const stale = data.staleOnDevice;
   if (data.registry == null) {
@@ -288,22 +99,28 @@ function RegistryDrift({ data }: { data: SiteEntities }) {
   );
 }
 
-function EntityCard({
+/**
+ * Der technische Rumpf EINER Komponente, in ihrer eigenen Zeile.
+ *
+ * ⚠ Bewusst NICHT wiederholt: der Kunden-Name, der Zustandspunkt und die
+ * „Misst"-Kanäle — die stehen längst in der Zeile darüber (`ComponentRow`), und
+ * dieselbe Tatsache zweimal auf derselben Zeile war genau die Doppelung, die
+ * diese Stufe beseitigt. Hier steht nur, was der Kunden-Blick NICHT trägt.
+ */
+export function TechnischeZeile({
   entity,
-  isAdmin,
-  topology,
-  strategies,
   siteId,
+  strategies,
+  topology,
   onEdit,
-  onDeleted,
+  onChanged,
 }: {
   entity: SiteEntity;
-  isAdmin: boolean;
-  topology: SiteTopology | null;
-  strategies: EntityStrategy[];
   siteId: string;
+  strategies: EntityStrategy[];
+  topology: SiteTopology | null;
   onEdit: () => void;
-  onDeleted: () => void;
+  onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   // ⚠ Einheitsmodell Stufe 6: EIN Haus-Dialog statt zweier nativer Rückfragen
@@ -312,7 +129,6 @@ function EntityCard({
   const [ask, setAsk] = useState(false);
   const [purge, setPurge] = useState(false);
   const verdict = syncVerdict(entity.syncStatus);
-  const measures = measureChannels(entity);
   const actuates = actuateCommands(entity);
   const guards = guardRows(entity);
   const pills = topology ? rolePillsFor(entity.id, topology) : [];
@@ -328,31 +144,25 @@ function EntityCard({
     setBusy(true);
     try {
       await entitiesApi.remove(siteId, entity.id, { purgePoint: composedPoint && purge });
-      onDeleted();
+      onChanged();
     } catch {
       setBusy(false);
     }
   }
 
   return (
-    <div className="vp-entity-card">
-      <div className="vp-entity-card-head">
-        <div className="vp-entity-title">
-          <span className={`vp-health-dot vp-health-${healthTone(entity.observed)}`} />
-          <div>
-            <div className="vp-entity-name">{entity.label ?? entity.typeLabel}</div>
-            {/* R2 on the technical surface: never the alias ALONE. When the
-                customer gave the component a name it is what the top line
-                says, so the line below states that it IS a customer name and
-                keeps the technical identity next to it - otherwise an operator
-                reading a support ticket cannot tell "Dach Süd" from a type. */}
-            <div className="vp-entity-sub">
-              {entity.label && <span className="vp-entity-alias">Eigener Name · </span>}
-              {entity.typeLabel}
-              {entity.control && <span className="vp-entity-control"> · steuerbar</span>}
-            </div>
-          </div>
-        </div>
+    <div className="vp-tech-zeile" data-testid="tech-zeile">
+      <div className="vp-tech-kopf">
+        {/* R2 auf der technischen Fläche: nie der Alias ALLEIN. Trägt die
+            Komponente einen Kunden-Namen, sagt diese Zeile, dass es einer IST,
+            und stellt die technische Identität daneben - sonst kann ein
+            Betreiber im Support-Ticket „Dach Süd" nicht von einem Typ
+            unterscheiden. */}
+        <span className="vp-tech-typ">
+          {entity.label && <span className="vp-entity-alias">Eigener Name · </span>}
+          {entity.typeLabel}
+          {entity.control && <span className="vp-entity-control"> · steuerbar</span>}
+        </span>
         <Badge variant={verdict.tone === 'pending' ? 'tint' : verdict.tone} dot title={verdict.detail}>
           {verdict.label}
         </Badge>
@@ -380,6 +190,8 @@ function EntityCard({
         </div>
       )}
 
+      {/* Der Frische-Beleg gehört zur technischen Sicht: die Kunden-Zeile sagt
+          den Zustand als Punkt, hier steht der Zeitpunkt. */}
       <div className="vp-entity-health">
         {healthLabel(entity.observed)}
         {entity.observed?.lastTelemetryAt && entity.observed.health !== 'ok' && (
@@ -390,19 +202,6 @@ function EntityCard({
         )}
       </div>
 
-      {/* Plain-German capability names; the raw channel/command identifier is
-          kept as the chip's title (support/debug) but never in the copy. An
-          unknown channel falls back to its raw name (channels.ts). */}
-      {measures.length > 0 && (
-        <div className="vp-entity-caps">
-          <span className="vp-entity-caps-label">Misst</span>
-          {measures.map((c) => (
-            <span key={c} className="vp-chip-static" title={c}>
-              {channelLabel(c)}
-            </span>
-          ))}
-        </div>
-      )}
       {actuates.length > 0 && (
         <div className="vp-entity-caps">
           <span className="vp-entity-caps-label">Steuert</span>
@@ -425,24 +224,22 @@ function EntityCard({
         </dl>
       )}
 
-      {isAdmin && (
-        <div className="vp-entity-actions">
-          <Button variant="ghost" onClick={onEdit}>
-            <Icon name="pencil" size={14} /> Bearbeiten
-          </Button>
-          <Button
-            variant="ghost"
-            className="vp-btn-danger"
-            onClick={() => {
-              setPurge(false);
-              setAsk(true);
-            }}
-            disabled={busy}
-          >
-            <Icon name="trash" size={14} /> Entfernen
-          </Button>
-        </div>
-      )}
+      <div className="vp-entity-actions">
+        <Button variant="ghost" onClick={onEdit}>
+          <Icon name="pencil" size={14} /> Technisch bearbeiten
+        </Button>
+        <Button
+          variant="ghost"
+          className="vp-btn-danger"
+          onClick={() => {
+            setPurge(false);
+            setAsk(true);
+          }}
+          disabled={busy}
+        >
+          <Icon name="trash" size={14} /> Entfernen
+        </Button>
+      </div>
 
       <ConfirmDialog
         open={ask}
@@ -492,7 +289,7 @@ function memberValue(value: number | null, unit: string | null, isSoc: boolean):
  * the RLS-fenced customer endpoint; the recomputed read-model is lifted back up
  * (onChanged) so the whole area stays in sync.
  */
-function RollenZuordnung({
+export function RollenZuordnung({
   siteId,
   topology,
   onChanged,
@@ -676,85 +473,10 @@ function RoleBoxCard({
   );
 }
 
-/**
- * Section 3: the adoption bridge. Edge-reported sources with no entity yet are
- * adoptable in one click (admin-only first increment - VoltPilot richtet ein);
- * customers see the honest read-only hint.
- */
-function VomGeraetGemeldet({
-  reported,
-  adopted,
-  inverters,
-  isAdmin,
-  onAdopt,
-}: {
-  reported: AdoptableSource[];
-  adopted: SiteEntities['localSetup'];
-  inverters: SiteEntities['localSetup'];
-  isAdmin: boolean;
-  onAdopt: (s: AdoptableSource) => void;
-}) {
-  return (
-    <Card className="vp-gemeldet">
-      <h2 style={{ margin: 0 }}>Vom Gerät gemeldet</h2>
-      <p className="vp-note" style={{ marginTop: 'var(--vp-space-1)' }}>
-        Was Ihr Gerät vor Ort erkannt hat. VoltPilot zeigt es zum Abgleich und übernimmt es nur auf
-        Wunsch - nie automatisch.
-      </p>
-
-      {inverters.map((i) => (
-        <div key={i.id} className="vp-gemeldet-item vp-gemeldet-inverter">
-          <Icon name="cpu" size={16} />
-          <span className="vp-gemeldet-main">
-            <span className="vp-gemeldet-name">{i.label ?? i.brand ?? 'Wechselrichter'}</span>
-            <span className="vp-muted">Wechselrichter · vor Ort eingerichtet</span>
-          </span>
-        </div>
-      ))}
-
-      {adopted.map((a) => (
-        <div key={a.id} className="vp-gemeldet-item">
-          <Icon name={a.role === 'consumer' ? 'zap' : 'sun'} size={16} />
-          <span className="vp-gemeldet-main">
-            <span className="vp-gemeldet-name">{a.label ?? sourceRoleLabel(a.role)}</span>
-            <span className="vp-muted">{sourceRoleLabel(a.role)} · übernommen</span>
-          </span>
-          <Badge variant="ok" dot>
-            Übernommen
-          </Badge>
-        </div>
-      ))}
-
-      {reported.map((s) => (
-        <div key={s.id} className="vp-gemeldet-item vp-gemeldet-new">
-          <Icon name={s.role === 'consumer' ? 'zap' : 'sun'} size={16} />
-          <span className="vp-gemeldet-main">
-            <span className="vp-gemeldet-name">{s.summary}</span>
-            <span className="vp-muted">{s.roleLabel} · noch nicht übernommen</span>
-          </span>
-          {isAdmin ? (
-            <Button variant="outline" size="sm" onClick={() => onAdopt(s)}>
-              Als Entität übernehmen
-            </Button>
-          ) : (
-            <span className="vp-gemeldet-hint">VoltPilot richtet ein</span>
-          )}
-        </div>
-      ))}
-
-      {!isAdmin && reported.length > 0 && (
-        <p className="vp-note vp-gemeldet-note">
-          Ein neu erkanntes Gerät wird von VoltPilot als Entität übernommen - sprechen Sie uns an.
-        </p>
-      )}
-    </Card>
-  );
-}
-
-type DrawerState = { mode: 'create' } | { mode: 'edit'; entity: SiteEntity };
+export type DrawerState = { mode: 'create' } | { mode: 'edit'; entity: SiteEntity };
 
 /** Admin create/edit drawer incl. guard config (the registry Soll). */
-function EntityDrawer({
+export function EntityDrawer({
   siteId,
   catalog,
   state,
@@ -923,7 +645,7 @@ function EntityDrawer({
  * Consumers ask a rated power; producers ask kWp + the MaStR SEE # (the master
  * data only the customer knows - the ErzeugerSourcesPanel job moves here).
  */
-function AdoptDrawer({
+export function AdoptDrawer({
   siteId,
   source,
   catalog,
