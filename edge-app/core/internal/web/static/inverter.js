@@ -12,8 +12,14 @@
 // pattern): type-to-filter with match highlighting, arrow-key navigation with
 // Enter/Escape, grouped by the brand's register-map families (labels straight
 // from the catalog's brand.families - still fully data-driven), an explicit
-// selected state and an empty state. A brand with a handful of models skips
-// the search row entirely.
+// selected state and an empty state.
+//
+// DIE SUCHE IST DER PRIMÄRE WEG und läuft über ALLE Marken (Captain 21.08.2026):
+// wer den Namen vom Typenschild abtippt, kennt seine Marke oft nicht als
+// Katalog-Eintrag - die frühere Suche filterte nur INNERHALB der schon
+// gewählten Marke und war zudem gegen Schreibweisen (Bindestriche,
+// Leerzeichen) blind. Das Marken-Stufenmenü darüber bleibt der Stöber-Weg;
+// die Regeln der Suche liegen rein in modellsuche.js (window.VPModellSuche).
 (function () {
   "use strict";
 
@@ -32,11 +38,9 @@
 
   var chosenModel = null;  // picked model id for the current brand (or null)
   var visible = [];        // models currently rendered, in list order (keyboard nav)
+  var visibleBrand = [];   // die Marke je Eintrag - bei einer marken-übergreifenden
+                           // Suche gehört ein Treffer nicht zur gewählten Marke.
   var activeIdx = -1;      // keyboard cursor into `visible`
-
-  // Brands with at most this many models get no search row - a filter over a
-  // three-entry list is noise, not help.
-  var SEARCH_THRESHOLD = 6;
 
   function brandById(id) {
     if (!catalog) return null;
@@ -72,51 +76,32 @@
 
   function optId(modelId) { return "mopt-" + modelId; }
 
-  // tokens splits the search query into lowercase terms; a model matches when
-  // EVERY term occurs somewhere in its label, note or id.
-  function tokens(q) {
-    return q.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  }
+  // Die Zerlegung und der Vergleich kommen aus der reinen Schicht - Suche im
+  // Portal und Suche hier sollen dieselbe Schreibweise finden.
+  function tokens(q) { return window.VPModellSuche.begriffe(q); }
 
   function matches(m, terms) {
-    var hay = (m.label + " " + (m.note || "") + " " + m.id).toLowerCase();
+    var hay = window.VPModellSuche.normalisiere(
+      [m.label, m.note, m.id, m.family].filter(Boolean).join(" "));
     for (var i = 0; i < terms.length; i++) {
       if (hay.indexOf(terms[i]) === -1) return false;
     }
     return true;
   }
 
-  // markText renders `text` with every occurrence of every term wrapped in
-  // <mark>. Ranges are collected first and merged so overlapping terms never
-  // produce nested or broken tags.
+  // markText malt `text` mit den Fundstellen als <mark>. Die STELLEN kommen aus
+  // der reinen Schicht (sie kennt die Rückbildung normalisiert -> Original),
+  // hier wird nur noch gezeichnet.
   function markText(node, text, terms) {
-    var ranges = [];
-    var low = text.toLowerCase();
-    terms.forEach(function (t) {
-      var from = 0, at;
-      while ((at = low.indexOf(t, from)) !== -1) {
-        ranges.push([at, at + t.length]);
-        from = at + t.length;
-      }
+    node.textContent = "";
+    window.VPModellSuche.hervorheben(text, terms).forEach(function (teil) {
+      if (!teil.text) return;
+      if (teil.treffer) node.appendChild(el("mark", null, teil.text));
+      else node.appendChild(document.createTextNode(teil.text));
     });
-    if (!ranges.length) { node.textContent = text; return; }
-    ranges.sort(function (a, b) { return a[0] - b[0]; });
-    var merged = [ranges[0]];
-    for (var i = 1; i < ranges.length; i++) {
-      var last = merged[merged.length - 1];
-      if (ranges[i][0] <= last[1]) { last[1] = Math.max(last[1], ranges[i][1]); }
-      else { merged.push(ranges[i]); }
-    }
-    var pos = 0;
-    merged.forEach(function (r) {
-      if (r[0] > pos) node.appendChild(document.createTextNode(text.slice(pos, r[0])));
-      node.appendChild(el("mark", null, text.slice(r[0], r[1])));
-      pos = r[1];
-    });
-    if (pos < text.length) node.appendChild(document.createTextNode(text.slice(pos)));
   }
 
-  function buildOption(m, terms) {
+  function buildOption(m, terms, brandId, zusatz) {
     var li = el("li", {
       id: optId(m.id),
       class: "picker-opt",
@@ -124,6 +109,7 @@
       "aria-selected": m.id === chosenModel ? "true" : "false"
     });
     li.dataset.model = m.id;
+    if (brandId) li.dataset.brand = brandId;
 
     var check = el("span", { class: "picker-opt-check", "aria-hidden": "true" });
     check.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"' +
@@ -134,14 +120,21 @@
     var label = el("span", { class: "picker-opt-label" });
     markText(label, m.label, terms);
     text.appendChild(label);
-    if (m.note) {
+    // Der Zusatz beantwortet „ist das meins?" ohne Klick (Leistung, Bauart,
+    // Anbindung) - bei einer Suche über alle Marken ist er die einzige Stelle,
+    // an der Bauart und Anbindung überhaupt stehen.
+    var untertext = zusatz || m.note;
+    if (untertext) {
       var note = el("span", { class: "picker-opt-note" });
-      markText(note, m.note, terms);
+      markText(note, untertext, terms);
       text.appendChild(note);
     }
     li.appendChild(text);
 
-    li.addEventListener("click", function () { chooseModel(m.id); });
+    li.addEventListener("click", function () {
+      if (brandId && brandId !== $("brand").value) waehleUeberMarken(brandId, m.id);
+      else chooseModel(m.id);
+    });
     return li;
   }
 
@@ -152,39 +145,13 @@
     var list = $("modelList");
     var q = $("modelSearch").value || "";
     var terms = tokens(q);
-    var models = brand.models || [];
 
     list.innerHTML = "";
     visible = [];
+    visibleBrand = [];
 
-    // Family id -> label, in catalog order; used as group headers only when
-    // the brand's models actually span more than one family.
-    var families = brand.families || [];
-    var famOf = {};
-    models.forEach(function (m) { famOf[m.family || ""] = true; });
-    var grouped = Object.keys(famOf).length > 1;
-
-    var appendModel = function (m) {
-      list.appendChild(buildOption(m, terms));
-      visible.push(m);
-    };
-
-    if (grouped) {
-      var seen = {};
-      families.forEach(function (f) {
-        var members = models.filter(function (m) { return m.family === f.id && matches(m, terms); });
-        if (!members.length) return;
-        seen[f.id] = true;
-        list.appendChild(el("li", { class: "picker-group", role: "presentation" }, f.label));
-        members.forEach(appendModel);
-      });
-      // Models whose family has no catalog entry still render (trailing, ungrouped).
-      models.forEach(function (m) {
-        if (!seen[m.family] && matches(m, terms)) appendModel(m);
-      });
-    } else {
-      models.filter(function (m) { return matches(m, terms); }).forEach(appendModel);
-    }
+    if (terms.length) renderSuche(q);
+    else renderMarke(brand);
 
     // Empty state + count
     var empty = $("modelEmpty");
@@ -195,14 +162,88 @@
         "Keine Übereinstimmung für „" + q.trim() + "“. " +
         "Oft reicht ein Teil des Namens, z. B. nur „12K“.";
     }
-    $("modelCount").textContent = terms.length
-      ? visible.length + " von " + models.length + (models.length === 1 ? " Modell" : " Modellen")
-      : models.length + (models.length === 1 ? " Modell" : " Modelle");
 
     // Keyboard cursor: while filtering start on the first match, otherwise none.
     setActive(terms.length && visible.length ? 0 : -1, false);
 
     renderChosen(brand);
+  }
+
+  // renderSuche zeigt die Treffer über ALLE Marken, nach Marke gruppiert - der
+  // Kopf ist Teil der Aussage: welche Marke man wählt, entscheidet den
+  // Registersatz, und ein nackter Modellname sagt das nicht.
+  function renderSuche(q) {
+    var res = window.VPModellSuche.suche(catalog, q, function (id) {
+      var b = brandById(id);
+      return b ? (b.comm_label || commLabel(b.communication)) : "";
+    });
+    var terms = tokens(q);
+    var list = $("modelList");
+    var letzteMarke = null;
+
+    res.treffer.forEach(function (t) {
+      if (t.brand !== letzteMarke) {
+        list.appendChild(el("li", { class: "picker-group", role: "presentation" }, t.brandLabel));
+        letzteMarke = t.brand;
+      }
+      list.appendChild(buildOption(t.model, terms, t.brand, t.zusatz));
+      visible.push(t.model);
+      visibleBrand.push(t.brand);
+    });
+
+    // Eine Kappung wird GESAGT, nie verschwiegen.
+    $("modelCount").textContent = res.zaehler || "";
+    if (!res.treffer.length && res.leer) $("modelEmptyHint").textContent = res.leer;
+  }
+
+  // renderMarke ist der Stöber-Weg: die Modelle der gewählten Marke, nach ihren
+  // Registersatz-Familien gruppiert (Labels aus dem Katalog).
+  function renderMarke(brand) {
+    var list = $("modelList");
+    var models = brand.models || [];
+    var families = brand.families || [];
+    var famOf = {};
+    models.forEach(function (m) { famOf[m.family || ""] = true; });
+    var grouped = Object.keys(famOf).length > 1;
+
+    var appendModel = function (m) {
+      list.appendChild(buildOption(m, []));
+      visible.push(m);
+      visibleBrand.push(brand.id);
+    };
+
+    if (grouped) {
+      var seen = {};
+      families.forEach(function (f) {
+        var members = models.filter(function (m) { return m.family === f.id; });
+        if (!members.length) return;
+        seen[f.id] = true;
+        list.appendChild(el("li", { class: "picker-group", role: "presentation" }, f.label));
+        members.forEach(appendModel);
+      });
+      // Models whose family has no catalog entry still render (trailing, ungrouped).
+      models.forEach(function (m) { if (!seen[m.family]) appendModel(m); });
+    } else {
+      models.forEach(appendModel);
+    }
+
+    $("modelCount").textContent =
+      models.length + (models.length === 1 ? " Modell" : " Modelle");
+  }
+
+  // waehleUeberMarken übernimmt einen Treffer einer ANDEREN Marke: erst die
+  // Marke umstellen (sie entscheidet Anbindung und Verbindungsfelder), dann das
+  // Modell setzen. Ohne den ersten Schritt stünde unter dem gewählten Modell
+  // das Formular der vorigen Marke.
+  function waehleUeberMarken(brandId, modelId) {
+    var sel = $("brand");
+    if (sel.value !== brandId) {
+      sel.value = brandId;
+      onBrandChange();
+    }
+    chooseModel(modelId);
+    var brand = brandById(brandId);
+    if (brand) { renderModels(brand); scrollChosenIntoView(); }
   }
 
   // renderChosen paints the persistent "which model is picked" summary in the
@@ -267,8 +308,9 @@
     } else if (e.key === "Enter") {
       // Enter picks, never submits the form from inside the search box.
       e.preventDefault();
-      if (activeIdx >= 0 && activeIdx < visible.length) chooseModel(visible[activeIdx].id);
-      else if (visible.length === 1) chooseModel(visible[0].id);
+      var idx = (activeIdx >= 0 && activeIdx < visible.length) ? activeIdx
+        : (visible.length === 1 ? 0 : -1);
+      if (idx >= 0) waehleUeberMarken(visibleBrand[idx], visible[idx].id);
     } else if (e.key === "Escape") {
       var input = $("modelSearch");
       if (input.value) {
@@ -352,7 +394,7 @@
     }
     if (!chosenModel && models.length === 1) chosenModel = models[0].id;
 
-    $("pickerSearch").hidden = models.length <= SEARCH_THRESHOLD;
+    // Die Suchzeile bleibt IMMER sichtbar - sie ist der primäre Weg zum Modell.
     $("modelSearch").value = "";
     $("modelClear").hidden = true;
     $("picker").classList.remove("invalid");

@@ -569,6 +569,25 @@ up, one job on one page). There is no third page: `inverter.html` and
   Go page-structure tests pin the //go:embed contract, the retired-URL
   redirects, and that a `reason`-carrying refusal renders outside any
   `.tech-only` block.
+- **Die MODELL-SUCHE ist der PRIMÄRE Weg zum Wechselrichter** (Geräteseiten
+  Stufe 2, Scout `data/vp-geraeteseite-rev-b8` NACHTRAG 5; die Regeln stehen in
+  der Root-`AGENTS.md`). Ihre reine Hälfte ist `static/modellsuche.js`
+  (`window.VPModellSuche`, das `VPControl`/`VPStatus`-Muster), `inverter.js`
+  zeichnet nur.
+  - **Sie sucht über ALLE Marken** und gruppiert nach Marke — wer den Namen vom
+    Typenschild abtippt, muss die Katalog-Marke nicht raten („Fronius" oder
+    „Fronius (Modbus / SunSpec)"?). Das Marken-Stufenmenü darüber BLEIBT der
+    Stöber-Weg, und beide schöpfen aus demselben `GET /api/inverter`-Katalog.
+  - **⚠ Ein Treffer einer ANDEREN Marke stellt erst die MARKE um, dann das
+    Modell** (`waehleUeberMarken`): die Marke entscheidet Anbindung und
+    Verbindungsfelder — ohne den ersten Schritt stünde unter dem gewählten
+    Modell das Formular der vorigen Marke.
+  - **⚠ Der frühere `SEARCH_THRESHOLD` ist ERSATZLOS entfallen** (Suchzeile erst
+    ab 7 Modellen EINER Marke). Sie ist der primäre Weg, nicht die Hilfe für
+    lange Listen; die Zeile steht immer.
+  - **⚠ Verglichen wird normalisiert, hervorgehoben im ORIGINAL.** Der alte
+    Filter verglich ROH und fand „sun 30k"/„sun30k" nicht, obwohl das Gerät im
+    Katalog stand.
 - `static/*` is `//go:embed`-ed — **rebuild the core binary after any edit**.
 
 ## AE6 :8484 adaptive energy picture (edge half of AE2/AE3)

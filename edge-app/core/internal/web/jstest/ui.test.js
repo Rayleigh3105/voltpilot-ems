@@ -1838,3 +1838,106 @@ test("commissioning: ohne Ladepunkte ändert sich KEIN Wort", () => {
   }, 2);
   assert.strictEqual(both.steps[0].title, "Wechselrichter verbinden");
 });
+
+/* ==================== modellsuche.js: die MODELL-SUCHE ==================== */
+//
+// Sie ist der PRIMÄRE Weg zum Modell (Captain 21.08.2026) und läuft über ALLE
+// Marken. Die zwei Regeln, die hier hängen: schreibweisen-tolerant vergleichen,
+// aber im ORIGINAL hervorheben.
+
+const KATALOG = {
+  brands: [
+    {
+      id: "deye", label: "Deye", communication: "solarman_v5",
+      families: [{ id: "hybrid_3p", label: "Hybrid, 3-phasig" }],
+      models: [
+        { id: "sun-30k-sg01hp3", label: "SUN-30K-SG01HP3-EU", family: "hybrid_3p", rated_kw: 30 },
+        { id: "sun-12k-sg04lp3", label: "SUN-12K-SG04LP3-EU", family: "hybrid_3p", rated_kw: 12 }
+      ]
+    },
+    {
+      id: "fronius_sunspec", label: "Fronius (Modbus / SunSpec)", communication: "fronius_sunspec",
+      families: [], models: [{ id: "eco-27", label: "Eco 27.0-3-S", rated_kw: 27 }]
+    }
+  ]
+};
+
+const suche = (q) => load(["modellsuche.js"]).VPModellSuche.suche(KATALOG, q);
+
+test("Modell-Suche: findet über ALLE Marken - ohne dass eine Marke gewählt ist", () => {
+  // Der Kunde tippt, was auf dem Typenschild steht; welche Katalog-Marke das
+  // ist, muss er nicht wissen.
+  const r = suche("eco 27");
+  assert.strictEqual(r.treffer.length, 1);
+  assert.strictEqual(r.treffer[0].brand, "fronius_sunspec");
+  assert.strictEqual(r.treffer[0].model.id, "eco-27");
+});
+
+test("Modell-Suche: ist tolerant gegen Bindestriche, Leerzeichen und Groß/klein", () => {
+  // Genau die Schreibweisen, an denen die frühere rohe Suche scheiterte.
+  for (const q of ["SUN-30K", "sun 30k", "sun30k", "SUN30k", "sUn-30 K"]) {
+    // VM-REALM: die Liste kommt aus dem vm-Kontext - erst spreaden, dann vergleichen.
+    const ids = [...suche(q).treffer].map((t) => t.model.id);
+    assert.deepStrictEqual(ids, ["sun-30k-sg01hp3"], "fand nichts für: " + q);
+  }
+});
+
+test("Modell-Suche: jeder Begriff muss vorkommen (UND, nicht ODER)", () => {
+  assert.strictEqual(suche("deye 12k").treffer.length, 1);
+  // "deye eco" gibt es nicht - eine ODER-Suche fände hier drei Geräte.
+  assert.strictEqual(suche("deye eco").treffer.length, 0);
+});
+
+test('Modell-Suche: der Zusatz beantwortet „ist das meins?“ ohne Klick', () => {
+  const t = suche("sg01hp3").treffer[0];
+  assert.match(t.zusatz, /30 kW/);
+  assert.match(t.zusatz, /Hybrid, 3-phasig/);
+});
+
+test("Modell-Suche: eine unbekannte Nennleistung wird WEGGELASSEN, nie als 0 kW erfunden", () => {
+  const ohne = {
+    brands: [{ id: "x", label: "X", families: [], models: [{ id: "m", label: "Modell M" }] }]
+  };
+  const t = load(["modellsuche.js"]).VPModellSuche.suche(ohne, "modell").treffer[0];
+  assert.ok(!/kW/.test(t.zusatz), "erfand eine Leistung: " + t.zusatz);
+});
+
+test("Modell-Suche: ohne Treffer steht der WEG da, nicht nur Leere", () => {
+  const r = suche("huawei");
+  assert.strictEqual(r.treffer.length, 0);
+  assert.match(r.leer, /huawei/);
+  assert.match(r.leer, /Marken-Auswahl/);
+});
+
+test("Modell-Suche: eine leere Eingabe behauptet NICHTS", () => {
+  for (const q of ["", "   "]) {
+    const r = suche(q);
+    assert.strictEqual(r.treffer.length, 0);
+    assert.strictEqual(r.leer, null, "eine leere Eingabe ist kein Fehlschlag");
+    assert.strictEqual(r.zaehler, null);
+  }
+});
+
+test("Modell-Suche: hebt im ORIGINAL hervor - quer über den Bindestrich", () => {
+  const S = load(["modellsuche.js"]).VPModellSuche;
+  // Die Fundstelle liegt in der normalisierten Fassung ("sun30k"); markiert
+  // werden muss der Text, den der Kunde liest.
+  const teile = JSON.parse(JSON.stringify(S.hervorheben("SUN-30K-SG01HP3", ["sun30k"])));
+  assert.deepStrictEqual(teile, [
+    { text: "SUN-30K", treffer: true },
+    { text: "-SG01HP3", treffer: false }
+  ]);
+});
+
+test("Modell-Suche: eine Kappung wird GESAGT, nie verschwiegen", () => {
+  const S = load(["modellsuche.js"]).VPModellSuche;
+  const viele = {
+    brands: [{
+      id: "x", label: "X", families: [],
+      models: Array.from({ length: S.MAX_TREFFER + 3 }, (_, i) => ({ id: "m" + i, label: "Modell " + i }))
+    }]
+  };
+  const r = S.suche(viele, "modell");
+  assert.strictEqual(r.treffer.length, S.MAX_TREFFER);
+  assert.match(r.zaehler, new RegExp(String(S.MAX_TREFFER + 3)));
+});

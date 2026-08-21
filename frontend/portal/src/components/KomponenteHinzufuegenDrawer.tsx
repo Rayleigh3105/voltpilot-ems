@@ -25,6 +25,7 @@ import {
   felder,
   initialeVerbindung,
   marken,
+  modellSuche,
   nameHilfe,
   pruefen,
   rolleVerfuegbar,
@@ -79,6 +80,7 @@ export function KomponenteHinzufuegenDrawer({
   const [schritt, setSchritt] = useState<1 | 2 | 3 | 4>(vorlage ? 2 : 1);
   const [tuer, setTuer] = useState<TuerId | null>(vorlage ? 'selbstbau' : null);
   const [brand, setBrand] = useState<string | null>(null);
+  const [suchtext, setSuchtext] = useState('');
   const [template, setTemplate] = useState<ComponentTemplate | null>(null);
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>({});
   const [testZustand, setTestZustand] = useState<TestZustand>('ungeprueft');
@@ -127,6 +129,9 @@ export function KomponenteHinzufuegenDrawer({
     [alle, tuer],
   );
   const brands = useMemo(() => marken(tuerTemplates), [tuerTemplates]);
+  // Die SUCHE läuft über ALLE Marken dieser Tür - dieselbe Liste, aus der auch
+  // das Stufenmenü darunter schöpft (es entsteht keine zweite Quelle).
+  const suche = useMemo(() => modellSuche(tuerTemplates, suchtext), [tuerTemplates, suchtext]);
   const models = brands.find((b) => b.brand === brand)?.models ?? [];
   const fields = felder(template);
   const fehlend = fehlendeFelder(template, verbindung);
@@ -314,6 +319,59 @@ export function KomponenteHinzufuegenDrawer({
 
                 {tuer && tuer !== 'selbstbau' && tuer !== 'ladesaeule' && brands.length > 0 && (
                   <div className="vp-assist-pick">
+                    {/* Die SUCHE ist der primäre Weg (Captain 21.08.2026): wer
+                        sein Modell nicht schon einer Marke zuordnen kann,
+                        klickt sich sonst durch sieben Marken - und wer den
+                        Namen vom Typenschild abtippt, trifft die Schreibweise
+                        selten exakt. Das Stufenmenü darunter BLEIBT als
+                        Stöber-Weg. */}
+                    <label htmlFor="assist-suche">Modell suchen</label>
+                    <input
+                      id="assist-suche"
+                      type="search"
+                      className="vp-assist-suche"
+                      value={suchtext}
+                      onChange={(e) => setSuchtext(e.target.value)}
+                      placeholder="z. B. SUN-30K, SG02 oder Fronius"
+                      autoComplete="off"
+                    />
+                    {suche.zaehler && (
+                      <p className="vp-assist-note" data-testid="suche-zaehler">{suche.zaehler}</p>
+                    )}
+                    {suche.leer && (
+                      <p className="vp-assist-note" data-testid="suche-leer">{suche.leer}</p>
+                    )}
+                    {suche.treffer.length > 0 && (
+                      <ul className="vp-assist-treffer" data-testid="suche-treffer">
+                        {suche.treffer.map((tr) => (
+                          <li key={tr.template.templateRef}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBrand(tr.template.brand);
+                                waehleTemplate(tr.template);
+                              }}
+                            >
+                              <strong>
+                                {tr.modell.map((teil, i) => (
+                                  teil.treffer
+                                    ? <mark key={i}>{teil.text}</mark>
+                                    : <span key={i}>{teil.text}</span>
+                                ))}
+                              </strong>
+                              <span className="vp-assist-treffer-marke">
+                                {tr.marke.map((teil, i) => (
+                                  teil.treffer
+                                    ? <mark key={i}>{teil.text}</mark>
+                                    : <span key={i}>{teil.text}</span>
+                                ))}
+                              </span>
+                              {tr.zusatz && <span className="vp-assist-treffer-zusatz">{tr.zusatz}</span>}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <label htmlFor="assist-brand">Marke</label>
                     <select
                       id="assist-brand"
