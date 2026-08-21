@@ -6,6 +6,7 @@ import {
   adresseEcho,
   geraeteVerlauf,
   geraetRegisterZugang,
+  ERST_ALS_KOMPONENTE,
   KEIN_SCHREIBWEG,
   REGISTER_AUF_DER_GERAETESEITE,
   zielKey,
@@ -425,34 +426,62 @@ describe('der Register-Weg der Geräteseite', () => {
   const fronius = t({ lane: 'entity', entityId: 'e-1', label: 'Dach Süd', family: null,
     communication: 'fronius_sunspec', host: '192.168.254.30', port: 502 });
 
-  it('wählt auf der BOX die primäre Lane vor', () => {
+  it('⚠ wählt auf dem HAUPTGERÄT die primäre Lane vor - es IST sie (E4)', () => {
+    // Der behobene Befund: vorher wurde ihm die Komponenten-Lane vorgewählt,
+    // und weil eine Solarman-Komponente dort nicht schreibbar ist, empfahl die
+    // Seite des Wechselrichters, „den primären Wechselrichter zu wählen".
     const z = geraetRegisterZugang([primary, fronius],
-      { box: true, deviceId: 'd-1', entityIds: [] });
+      { art: 'hauptgeraet', deviceId: 'd-1', entityIds: ['e-9'] });
     expect(z.moeglich).toBe(true);
     expect(z.vorwahl).toBe(zielKey(primary));
   });
 
   it('wählt an einem Gerät DAHINTER seine Komponente vor - nie die Box', () => {
     const z = geraetRegisterZugang([primary, fronius],
-      { box: false, deviceId: null, entityIds: ['e-1'] });
+      { art: 'quelle', deviceId: 'd-1', entityIds: ['e-1'] });
     expect(z.vorwahl).toBe(zielKey(fronius));
   });
 
+  it('⚠ ein ALIAS gehört seinem Gerät wie jede andere Komponente (E4)', () => {
+    // Der Server bildet eine Solarman-Komponente auf die primäre Lane ab. Für
+    // die Seite ist sie trotzdem die Komponente DIESES Geräts - eine Lane ist
+    // eine Transport-Tatsache unserer Box, keine Zugehörigkeit.
+    const speicher = t({ lane: 'primary', entityId: 'e-batt', label: 'Speicher',
+      primaryAlias: true });
+    const z = geraetRegisterZugang([primary, speicher],
+      { art: 'quelle', deviceId: 'd-1', entityIds: ['e-batt'] });
+    expect(z.moeglich).toBe(true);
+    expect(z.vorwahl).toBe(zielKey(speicher));
+    expect(z.vorwahl).not.toBe(zielKey(primary));
+  });
+
   it('nennt den Grund statt eines wirkungslosen Knopfes', () => {
-    // Gar kein Ziel zu diesem Gerät.
+    // Gar kein Ziel zu diesem Gerät - aber die Komponente EXISTIERT.
     const ohne = geraetRegisterZugang([primary],
-      { box: false, deviceId: null, entityIds: ['e-1'] });
+      { art: 'quelle', deviceId: 'd-1', entityIds: ['e-1'] });
     expect(ohne.moeglich).toBe(false);
     expect(ohne.grund).toBe(KEIN_SCHREIBWEG);
     expect(ohne.vorwahl).toBeNull();
+    expect(ohne.weg).toBeNull();
 
     // Ein Ziel, aber ohne Schreibweg: der Grund kommt vom SERVER, nie von uns.
     const gesperrt = geraetRegisterZugang(
       [primary, { ...fronius, writable: false, reason: 'Dieses Gerät spricht kein Modbus.' }],
-      { box: false, deviceId: null, entityIds: ['e-1'] },
+      { art: 'quelle', deviceId: 'd-1', entityIds: ['e-1'] },
     );
     expect(gesperrt.moeglich).toBe(false);
     expect(gesperrt.grund).toBe('Dieses Gerät spricht kein Modbus.');
+  });
+
+  it('⚠ ein noch nicht übernommenes Gerät bekommt den WEG, nicht nur das Fehlen', () => {
+    const z = geraetRegisterZugang([primary],
+      { art: 'quelle', deviceId: 'd-1', entityIds: [] });
+    expect(z.moeglich).toBe(false);
+    expect(z.grund).toBe(ERST_ALS_KOMPONENTE);
+    expect(z.weg).toBe('anlagen-modell');
+    // Keine Vorwahl auf die freie Adresse: dass dort GENAU dieses Gerät
+    // antwortet, weiß nur die Box.
+    expect(z.vorwahl).toBeNull();
   });
 
   it('grenzt den Verlauf wie den Kommando-Verlauf ein', () => {

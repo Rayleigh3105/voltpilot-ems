@@ -445,6 +445,39 @@ describe('GeraetSeiteSection', () => {
     );
   });
 
+  /**
+   * ⚠ DER BEFUND DES CAPTAIN-REVIEWS, als Test (Geräteseiten Stufe 2, E4): die
+   * Seite des Deye empfahl, „den primären Wechselrichter als Ziel zu wählen" -
+   * also sich selbst. Sie IST die primäre Lane; der Knopf steht jetzt dort.
+   */
+  it('⚠ das HAUPTGERÄT bekommt seinen Knopf, nicht die Empfehlung, sich selbst zu wählen',
+    async () => {
+      // Genau die Live-Lage: die Speicher-Komponente des Deye hängt am
+      // Solarman-Logger, der Server bildet sie deshalb auf die primäre Lane ab.
+      stub({ targets: [
+        targets()[0],
+        {
+          lane: 'primary', deviceId: 'gw', entityId: 'batt', label: 'Speicher',
+          brand: 'deye', model: 'SUN-30K-SG01HP3-EU', family: 'hybrid_3p',
+          communication: 'solarman_v5', host: '192.168.0.28', port: 8899, unitId: 1,
+          writable: true, reason: null, primaryAlias: true,
+        },
+      ] });
+      render(
+        <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+      );
+
+      fireEvent.click(await screen.findByTestId('geraet-regwrite'));
+      const drawer = await screen.findByTestId('regwrite');
+      // Vorgewählt ist das Gerät selbst - und NIRGENDS steht ein Transport-Wort.
+      await waitFor(() =>
+        expect((within(drawer).getByLabelText(/Deye SUN-30K/) as HTMLInputElement).checked)
+          .toBe(true),
+      );
+      expect(document.body.textContent).not.toMatch(/Solarman/i);
+      expect(document.body.textContent).not.toMatch(/primären Wechselrichter als Ziel/i);
+    });
+
   it('nennt den Grund, wenn dieses Gerät keinen Schreibweg hat', async () => {
     stub({ targets: [targets()[0]] });
     render(

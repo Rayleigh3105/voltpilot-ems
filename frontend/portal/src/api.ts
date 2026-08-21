@@ -1898,6 +1898,13 @@ export interface RegisterWriteTarget {
   /** ANZEIGE-Hilfe, keine Zusage - die Box entscheidet. */
   writable: boolean;
   reason: string | null;
+  /**
+   * ⚠ Dieses Ziel NENNT eine Komponente, wird aber über die primäre Lane
+   * erreicht (Geräteseiten Stufe 2, E4). Absent = ein gewöhnliches Ziel -
+   * ein älteres Backend kennt das Feld nicht, und „unbekannt" heißt hier wie
+   * überall „nein", nie eine erfundene Abbildung.
+   */
+  primaryAlias?: boolean;
 }
 
 /** Eine Register-Familie des kuratierten Verzeichnisses (reine Anzeige). */
