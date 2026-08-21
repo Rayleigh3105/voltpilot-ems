@@ -225,7 +225,18 @@ public class UpdateStatusListener {
         String version = text(json.get("version"));
         JsonNode update = json.get("update");
         boolean hasUpdate = update != null && update.isObject();
-        if (version == null && !hasUpdate) {
+        // Die eigene Erreichbarkeit der Box (Anlagen-Zentrale Stufe 2, D5) ist
+        // wie `version` ein TOP-LEVEL-Feld und wird deshalb HIER gelesen: dies
+        // ist der eine Zuhörer, der ohne Unterblock nicht früh zurückkehrt -
+        // genau die Eigenschaft, für die er in OTA Stufe 0 entstanden ist. Ein
+        // eigener Geschwister-Zuhörer wäre eine zweite Broker-Verbindung, eine
+        // zweite Identitätsprüfung für dieselben Bytes UND ein neues, per
+        // Vorgabe ausgeschaltetes Flag, das im gitops-Repo nachgezogen werden
+        // müsste (die dokumentierte Falle). Er SCHREIBT dafür in ein anderes
+        // Repository - ein Zuhörer ist ein Transportweg, keine Tabelle.
+        JsonNode network = json.get("network");
+        boolean hasNetwork = network != null && network.isObject();
+        if (version == null && !hasUpdate && !hasNetwork) {
             return; // an older edge: nothing reported, nothing claimed
         }
         String[] parts = topic.split("/");
@@ -256,6 +267,12 @@ public class UpdateStatusListener {
                 log.warn("update status for unknown device {} (tenant {}) skipped", deviceId,
                         tenantId);
                 return;
+            }
+            if (hasNetwork) {
+                storeLanAddress(deviceId, network);
+            }
+            if (version == null && !hasUpdate) {
+                return; // NUR die Adresse gemeldet - nichts über den Stand zu sagen
             }
             JsonNode trust = hasUpdate ? update.get("trust") : null;
             boolean hasTrust = trust != null && trust.isObject();
@@ -293,6 +310,40 @@ public class UpdateStatusListener {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * Speichert die eigene Erreichbarkeit der Box - und NUR die stärkere der
+     * zwei möglichen Aussagen.
+     *
+     * <p><b>{@code host} schlägt {@code ip}, und das ist der ganze Punkt:</b>
+     * {@code host} ist eine Adresse, unter der ein Browser die lokale
+     * Oberfläche NACHWEISLICH erreicht hat, {@code ip} nur die eigene
+     * Netzwerk-Adresse (die die Box laut Vertrag ohnehin nur ohne Container
+     * meldet). Meldet sie beides, ist die bewiesene die Antwort auf „wie
+     * erreiche ich meine Box".
+     *
+     * <p>Ohne verwertbares Feld wird NICHTS geschrieben - eine gespeicherte
+     * Adresse überlebt damit einen Herzschlag, der sie nicht trägt, statt zu
+     * verschwinden; und {@code null} heißt weiterhin „meldet die Box nicht",
+     * nie „nicht erreichbar".
+     */
+    private void storeLanAddress(UUID deviceId, JsonNode network) {
+        String host = text(network.get("host"));
+        String source = "erreicht";
+        Instant seenAt = optInstant(network, "seen_at");
+        if (host == null) {
+            host = text(network.get("ip"));
+            source = "schnittstelle";
+            seenAt = optInstant(network, "reported_at");
+        }
+        if (host == null || host.length() > 255) {
+            return;
+        }
+        if (seenAt == null) {
+            seenAt = Instant.now();
+        }
+        devices.setLanAddress(deviceId, host, seenAt, source);
     }
 
     /**

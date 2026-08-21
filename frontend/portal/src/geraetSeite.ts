@@ -164,8 +164,44 @@ export interface GeraetSeiteInput {
   now?: number;
 }
 
-/** Der Satz, den eine Box ohne gemeldete LAN-Adresse trägt (bis D5 ausgerollt). */
+/** Der Satz, den eine Box ohne gemeldete LAN-Adresse trägt. */
 export const LAN_UNBEKANNT = 'meldet Ihre Box noch nicht';
+
+/**
+ * Die eigene Erreichbarkeit der Box als ZEILE (Anlagen-Zentrale Stufe 2, D5).
+ *
+ * **⚠ Die zwei Belege dürfen nie unter einem Wort verschwinden:** `erreicht`
+ * heißt, dass ein Browser die lokale Oberfläche unter dieser Adresse
+ * NACHWEISLICH geöffnet hat - das ist der stärkste mögliche Nachweis und
+ * zugleich genau die Adresse, die ein Mensch wieder eintippt. `schnittstelle`
+ * ist nur die eigene Netzwerk-Adresse der Box; sie sagt, wo sie steckt, nicht
+ * dass dort etwas antwortet.
+ *
+ * Ohne gemeldete Adresse bleibt es beim ehrlichen {@link LAN_UNBEKANNT} - eine
+ * erfundene Adresse schickte einen Menschen auf eine Seite, die nicht antwortet.
+ */
+export function lanZeile(device: Device | undefined, now: number): Zeile {
+  const host = (device?.lanHost ?? '').trim();
+  if (!host) {
+    return {
+      label: 'Eigene Adresse im Netzwerk',
+      wert: LAN_UNBEKANNT,
+      detail: 'Der Weg zur lokalen Oberfläche steht in Ihrer Einrichtungs-Anleitung.',
+      ton: 'off',
+    };
+  }
+  const rel = alter(device?.lanSeenAt, now);
+  const erreicht = device?.lanSource === 'erreicht';
+  return {
+    label: 'Eigene Adresse im Netzwerk',
+    wert: host,
+    mono: true,
+    detail: erreicht
+      ? `So wurde Ihre Box zuletzt erreicht${rel ? ` (${rel})` : ''} — dort erreichen Sie ihre Oberfläche.`
+      : `So meldet sich Ihre Box im Netzwerk${rel ? ` (${rel})` : ''}. Ob sie darunter antwortet, sagt erst ein Aufruf.`,
+    ton: erreicht ? 'ok' : null,
+  };
+}
 
 /** Der Satz, der die fehlende Verbindungs-Historie ehrlich benennt. */
 export const KEIN_VERBINDUNGS_VERLAUF =
@@ -608,12 +644,7 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       detail: zustand.detail,
       ton: zustand.ton,
     });
-    verbindung.push({
-      label: 'Eigene Adresse im Netzwerk',
-      wert: LAN_UNBEKANNT,
-      detail: 'Der Weg zur lokalen Oberfläche steht in Ihrer Einrichtungs-Anleitung.',
-      ton: 'off',
-    });
+    verbindung.push(lanZeile(box, now));
     verbindung.push({
       label: 'Zustand',
       wert: zustand.wort,

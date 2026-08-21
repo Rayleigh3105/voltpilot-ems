@@ -3106,6 +3106,75 @@ ausschließlich Lesepfade, die es längst gibt (`/devices` · `/entities` ·
 - Fläche, Regeln und Fallstricke: `frontend/portal/AGENTS.md` „Die
   GERÄTE-DETAILSEITE".
 
+## D5: die Box meldet ihre EIGENE Adresse — und nur, was sie beweisen kann
+
+Anlagen-Zentrale Stufe 2 PR 2c (Konzept `data/vp-anlagen-zentrale-konzept-h6`
+§8.3 + Captain-Entscheid **D5: ja, additives Feld, NUR Anzeige**). Additiv auf
+allen drei Ebenen; eine ältere Box und ein älteres Portal verhalten sich
+zeichengleich wie vorher.
+
+- **Die Lücke war belegt und hat zwei Support-Runden gekostet:** das Portal
+  zeigt JEDE Geräte-Adresse (die Box speichert sie), aber nicht die eigene — und
+  für den Kunden ist sie der Weg zur lokalen Oberfläche, für den Support die
+  erste Frage am Telefon. Es gab dafür kein Feld und keinen Uplink.
+- **⚠ DIE INTERFACE-ADRESSE IST NICHT DIE ANTWORT.** Der Core läuft in einem
+  bridge-vernetzten Container mit veröffentlichten Ports, `net.Interfaces()`
+  meldet also die DOCKER-Bridge-Adresse (172.x). Sie ist eine wahre Aussage über
+  den Container und eine NUTZLOSE für den Kunden — wer sie eintippt, erreicht
+  nichts. Sie als „die Adresse Ihrer Box" auszugeben wäre genau die erfundene
+  Antwort, gegen die dieses Feature gebaut ist.
+- **Beweisbar ist der HTTP-`Host`-Kopf.** Dockers DNAT schreibt die Ziel-IP des
+  Pakets um, aber NIE diesen Kopf — der Browser schreibt ihn, wie der Kunde ihn
+  GETIPPT hat. Eine Anfrage an `:8484` trägt damit exakt die Adresse, die
+  funktioniert hat, samt Port. Stärker geht es nicht, und es ist zugleich genau
+  die URL, die ein Mensch wieder braucht. `internal/netinfo` ist die Regel
+  (rein, nimmt sein `now`), `agent.WebObserver` die Verdrahtung — ein WRAPPER um
+  den Handler, kein fünfzehnter Parameter von `web.Handler`: die Tatsache gehört
+  dem HTTP-Transport, nicht einer Fläche.
+- **Die Interface-Adresse reist NUR ohne Container** (`/.dockerenv` bzw.
+  cgroup), damit sie nie mit einer erreichbaren verwechselt werden kann; bei
+  mehreren Kandidaten wird GAR KEINE gemeldet statt einer geratenen. Eine
+  Adresse älter als 14 Tage gilt nicht mehr — eine falsche Adresse ist schlimmer
+  als keine.
+- **Draht:** additiver Top-Level-Block `network` im Herzschlag
+  (`cloud.NetworkSummary`, gespeist über `Options.NetworkFn` — er hängt am LINK
+  wie `version`, damit kein künftiger Aufrufer ihn vergessen kann, und weil die
+  Antwort sich ändert). **Eine Box, die nichts weiß, sendet GAR KEINEN Block** —
+  der Herzschlag bleibt byte-gleich und das Portal behält seinen ehrlichen Satz.
+- **⚠ Der Ingest hängt am `UpdateStatusListener`, NICHT an einem eigenen
+  Geschwister.** `network` ist ein TOP-LEVEL-Block wie `version`, und dies ist
+  der eine Zuhörer, der ohne Unterblock nicht früh zurückkehrt — genau die
+  Eigenschaft, für die er in OTA Stufe 0 entstanden ist. Ein eigener wäre eine
+  zweite Broker-Verbindung, eine zweite Identitätsprüfung für dieselben Bytes
+  UND ein neues, per Vorgabe ausgeschaltetes Flag, das im gitops-Repo
+  nachgezogen werden müsste (die dokumentierte Falle). Er schreibt dafür in ein
+  ANDERES Repository — ein Zuhörer ist ein Transportweg, keine Tabelle.
+- **Speicher: drei additive Spalten auf `device`** (Migration
+  `V20260832000000`), nicht eine — `lan_source` unterscheidet den BEWIESENEN Weg
+  (`erreicht`) von der schwächeren Schnittstellen-Aussage (`schnittstelle`), und
+  die zwei dürfen nie unter einem Wort verschwinden; `lan_seen_at` ist ihr
+  eigener Frische-Anker. Beides-oder-keines als CHECK. Sie reisen auf
+  `DeviceDto` → `GET /devices`, also **ohne neuen Endpunkt und ohne zusätzlichen
+  Abruf** — Zentrale, Geräteseite und Schaltbild laden die Geräteliste ohnehin.
+  `DeviceDto` behält dafür einen 8-stelligen Bequemlichkeits-Konstruktor (jede
+  Test-Attrappe bleibt unverändert, und `null` ist dort die ehrliche Antwort).
+- **⚠ Ein Herzschlag OHNE den Block schreibt GAR NICHTS** — eine gespeicherte
+  Adresse überlebt damit eine stille Strecke, statt zu verschwinden.
+- **Bewusst NICHT gebaut:** die `:8484`-Fläche zeigt die Adresse nicht (wer dort
+  ist, hat sie gerade benutzt). Die naheliegende Folgearbeit ist der
+  OCPP-Anbinden-Dialog, dessen `ws://<box>:8887/…` bis heute die Adresse NICHT
+  nennen kann („Das Portal behauptet KEINE Box-Adresse") — mit einer bewiesenen
+  Adresse könnte er es.
+- **Beweise:** Go `internal/netinfo` (Host-Whitelist, Neustart, Verfall,
+  Loopback, Container-Regel) · `agent/network_test.go` (der Beobachter ändert
+  keine Antwort, der Installer-Healthcheck wird nie zur Box-Adresse, ohne Wissen
+  KEIN Block, Neustart) · `cloud/status_test.go` (die Draht-Form gegen einen
+  echten In-Process-Broker, und der weggelassene Block) · api
+  `UpdateStatusListenerTest` (+6: bewiesen schlägt Schnittstelle, das schwächere
+  Wort, ohne Block kein Schreiben, leerer Block, gefälschte Identität, nur-Adresse)
+  · `PortalApiTest.theBoxOwnReachabilityIsIngestedAndTenantScoped` (echte DB,
+  echter Zuhörer, RLS) · Portal `geraetSeite.test.ts`/`schaltbild.test.ts`.
+
 ## Anlagen-Zentrale Stufe 2: das STRUKTUR-SCHALTBILD
 
 Der zweite Reiter der Zentrale (Konzept `data/vp-anlagen-zentrale-konzept-h6` §8,

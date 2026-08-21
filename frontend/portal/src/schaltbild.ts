@@ -243,7 +243,7 @@ const WEG_WORT: Record<string, string> = {
 /** Der Satz, der einen Weg benennt, den die Box (noch) nicht meldet. */
 export const WEG_UNBEKANNT = 'Weg unbekannt';
 
-/** Die Lücke, die bis D5 bleibt: die Box kennt ihre eigene Adresse nicht. */
+/** Die Lücke, solange die Box ihre eigene Adresse nicht meldet. */
 export const LUECKE_LAN =
   'Die eigene LAN-Adresse Ihrer Box meldet sie noch nicht — die lokale Oberfläche erreichen Sie über die Adresse aus Ihrer Einrichtungs-Anleitung (Port 8484).';
 
@@ -710,8 +710,22 @@ export function schaltbild(input: SchaltbildInput): Schaltbild {
   } else {
     boxZeilen.push(zeile('noch keine Box verbunden', SPALTE.box.w, 'off'));
   }
-  boxZeilen.push(zeile('LAN-Adresse: meldet Ihre Box noch nicht', SPALTE.box.w, 'warn'));
-  luecken.push(LUECKE_LAN);
+  // Die eigene Erreichbarkeit der Box (D5). Meldet sie eine, steht sie IM Bild -
+  // sonst bleibt es bei der benannten Lücke; erfunden wird nie eine.
+  const lanHost = (box?.lanHost ?? '').trim();
+  if (lanHost) {
+    const erreicht = box?.lanSource === 'erreicht';
+    boxZeilen.push(
+      zeile(
+        `${erreicht ? 'erreichbar über' : 'im Netzwerk als'} ${lanHost}`,
+        SPALTE.box.w,
+        erreicht ? 'ok' : null,
+      ),
+    );
+  } else {
+    boxZeilen.push(zeile('LAN-Adresse: meldet Ihre Box noch nicht', SPALTE.box.w, 'warn'));
+    luecken.push(LUECKE_LAN);
+  }
 
   const boxH = hoehe(boxZeilen.length);
   const boxTitel = box

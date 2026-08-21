@@ -3645,6 +3645,44 @@ Mechanismus** hinzu: er ruft `Agent.OcppBoost` — genau das, was die
   `agent/charging_boost_test.go` (5: der Durchlauf durch den GETEILTEN Kern,
   die vier Ablehnungen, die Rücknahme).
 
+## Die Box lernt ihre EIGENE Adresse — aus der Anfrage, die sie erreicht hat
+
+`internal/netinfo` + `agent/network.go` (Konzept `data/vp-anlagen-zentrale-konzept-h6`
+D5). Sie beantwortet die eine Frage, die die Box über sich selbst nie sagen
+konnte: unter welcher Adresse ist sie im Kundennetz erreichbar? **Reine
+ANZEIGE — es entsteht kein Schreibweg und keine Entscheidung.**
+
+- **⚠ `net.Interfaces()` ist hier die FALSCHE Antwort.** Der Core läuft in einem
+  bridge-vernetzten Container mit veröffentlichten Ports, seine Schnittstelle
+  trägt also die Docker-Bridge-Adresse (172.x) — wahr über den Container,
+  nutzlos für den Kunden. Sie als „Adresse Ihrer Box" zu melden wäre eine
+  erfundene Antwort. Gemeldet wird sie deshalb NUR, wenn der Prozess NICHT in
+  einem Container läuft (`/.dockerenv` bzw. cgroup), und bei mehreren
+  Kandidaten GAR KEINE.
+- **Beweisbar ist der HTTP-`Host`-Kopf:** Dockers DNAT schreibt die Ziel-IP um,
+  aber nie diesen Kopf — der Browser schreibt ihn, wie der Kunde ihn GETIPPT
+  hat. `agent.WebObserver` liest ihn aus JEDER Anfrage an `:8484`, ändert an
+  keiner Antwort etwas und ist bewusst ein WRAPPER, kein fünfzehnter Parameter
+  von `web.Handler`: die Tatsache gehört dem Transport, nicht einer Fläche.
+- **Verworfen wird, was kein Zweiter tippen kann:** Loopback und `localhost`
+  (genau das schickt der Installer-Selbsttest bei jedem Start), ein leerer Wert
+  und ein PUNKTLOSER Hostname (`voltpilot` — er löst nur in fremden Suchdomänen
+  auf). Alles andere reist VERBATIM inklusive Port.
+- **`<data>/network.json` (tmp+rename, EIN Schreiber)** lässt die Adresse einen
+  Neustart überleben — sonst wäre sie nach jedem Update genau dann unbekannt,
+  wenn jemand sie sucht. Älter als 14 Tage gilt sie nicht mehr: eine falsche
+  Adresse schickt einen Menschen auf eine Seite, die nicht antwortet.
+- **Der Block hängt am LINK, nicht an einem Aufruf-Argument** (`cloud.Options.NetworkFn`,
+  das `Version`-Muster) — kein künftiger Aufrufer kann ihn vergessen, und die
+  Antwort ändert sich (DHCP, oder der erste Aufruf der lokalen Oberfläche).
+  **Weiß die Box nichts, wird GAR KEIN Block gesendet** und der Herzschlag
+  bleibt byte-gleich zu vorher.
+- **Bewusst NICHT gebaut:** die `:8484`-Fläche zeigt die Adresse nicht (wer dort
+  ist, hat sie gerade benutzt). Die naheliegende Folgearbeit ist der
+  OCPP-Anbinden-Dialog, der bis heute keine Box-Adresse nennen kann.
+- Beweise: `internal/netinfo/netinfo_test.go` · `agent/network_test.go` ·
+  `cloud/status_test.go` (die Draht-Form gegen einen echten In-Process-Broker).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

@@ -351,6 +351,38 @@ describe('geraetSeite · A Verbindung & Gesundheit', () => {
     expect(zeile(v.verbindung, 'Eigene Adresse im Netzwerk')?.wert).toBe(LAN_UNBEKANNT);
   });
 
+  it('nennt die BEWIESENE Adresse der Box, sobald sie eine meldet (D5)', () => {
+    const v = geraetSeite(
+      input({
+        devices: [
+          {
+            ...BOX,
+            lanHost: '192.168.254.51:8484',
+            lanSeenAt: new Date(NOW - 60_000).toISOString(),
+            lanSource: 'erreicht',
+          },
+        ],
+      }),
+    );
+    const z = zeile(v.verbindung, 'Eigene Adresse im Netzwerk')!;
+    expect(z.wert).toBe('192.168.254.51:8484');
+    expect(z.detail).toMatch(/zuletzt erreicht/);
+    expect(z.ton).toBe('ok');
+  });
+
+  it('unterscheidet die SCHWÄCHERE Schnittstellen-Adresse vom bewiesenen Weg', () => {
+    const v = geraetSeite(
+      input({
+        devices: [{ ...BOX, lanHost: '192.168.0.31', lanSeenAt: FRISCH, lanSource: 'schnittstelle' }],
+      }),
+    );
+    const z = zeile(v.verbindung, 'Eigene Adresse im Netzwerk')!;
+    expect(z.wert).toBe('192.168.0.31');
+    // Sie sagt, WO die Box steckt - nicht, dass dort etwas antwortet.
+    expect(z.detail).toMatch(/sagt erst ein Aufruf/);
+    expect(z.ton).toBeNull();
+  });
+
   it('erfindet keinen Verbindungs-Verlauf', () => {
     const v = geraetSeite(input({ geraetId: 'inverter' }));
     expect(zeile(v.verbindung, 'Zustand')?.detail).toBe(KEIN_VERBINDUNGS_VERLAUF);

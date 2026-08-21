@@ -365,4 +365,102 @@ class UpdateStatusListenerTest {
                 "{\"version\":\"x\"}".getBytes(StandardCharsets.UTF_8));
         assertNothingStored();
     }
+
+    // -----------------------------------------------------------------
+    // Die eigene Erreichbarkeit der Box (Anlagen-Zentrale Stufe 2, D5)
+    // -----------------------------------------------------------------
+
+    /**
+     * Der BEWIESENE Weg gewinnt: {@code host} ist eine Adresse, unter der ein
+     * Browser die lokale Oberfläche wirklich erreicht hat - {@code ip} nur die
+     * eigene Netzwerk-Adresse. Meldet die Box beides, ist die bewiesene die
+     * Antwort auf „wie erreiche ich meine Box".
+     */
+    @Test
+    void theProvenAddressWinsOverTheOwnInterfaceAddress() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-2026.08.10\","
+                + "\"network\":{\"reported_at\":\"2026-08-21T09:12:00Z\","
+                + "\"host\":\"192.168.254.51:8484\",\"seen_at\":\"2026-08-21T09:11:44Z\","
+                + "\"ip\":\"172.18.0.4\",\"iface\":\"eth0\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices).setLanAddress(eq(DEVICE), eq("192.168.254.51:8484"),
+                eq(Instant.parse("2026-08-21T09:11:44Z")), eq("erreicht"));
+    }
+
+    /** Ohne bewiesene Adresse ist die eigene Schnittstelle die schwächere, aber
+     *  ehrliche Aussage - und sie wird als solche BENANNT. */
+    @Test
+    void theInterfaceAddressIsStoredWithItsOwnWeakerLabel() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-2026.08.10\","
+                + "\"network\":{\"reported_at\":\"2026-08-21T09:12:00Z\","
+                + "\"ip\":\"192.168.0.31\",\"iface\":\"eth0\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices).setLanAddress(eq(DEVICE), eq("192.168.0.31"),
+                eq(Instant.parse("2026-08-21T09:12:00Z")), eq("schnittstelle"));
+    }
+
+    /**
+     * ⚠ Ein Herzschlag OHNE den Block schreibt GAR NICHTS - eine gespeicherte
+     * Adresse überlebt damit eine stille Strecke, statt zu verschwinden, und
+     * ein älterer Edge-Stand kann nie „nicht erreichbar" bedeuten.
+     */
+    @Test
+    void aHeartbeatWithoutTheBlockNeverTouchesTheStoredAddress() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-2026.08.10\"}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices, never()).setLanAddress(any(), any(), any(), any());
+        // … und der Stand wird trotzdem ganz normal fortgeschrieben.
+        verify(store).upsert(eq(DEVICE), eq(SITE), eq("edge-2026.08.10"), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any());
+    }
+
+    /** Ein leerer Block behauptet nichts - nie eine Adresse aus dem Nichts. */
+    @Test
+    void anEmptyBlockClaimsNoAddress() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\",\"version\":\"edge-2026.08.10\","
+                + "\"network\":{\"reported_at\":\"2026-08-21T09:12:00Z\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices, never()).setLanAddress(any(), any(), any(), any());
+    }
+
+    /** Eine gefälschte Identität schreibt keine Adresse - dieselbe Haltung wie
+     *  für jede andere Zeile dieses Zuhörers. */
+    @Test
+    void aSpoofedIdentityStoresNoAddress() {
+        UUID fremd = UUID.fromString("00000000-0000-0000-0000-0000000000ff");
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + fremd + "\","
+                + "\"network\":{\"host\":\"192.168.254.51:8484\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices, never()).setLanAddress(any(), any(), any(), any());
+    }
+
+    /**
+     * Ein Herzschlag, der NUR die Adresse trägt (ein Gerät ohne Stand-Meldung),
+     * speichert sie - und behauptet dabei KEINEN Software-Stand.
+     */
+    @Test
+    void anAddressOnlyHeartbeatStoresItWithoutClaimingAVersion() {
+        listener.handle(TOPIC, ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE
+                + "\",\"device_id\":\"" + DEVICE + "\","
+                + "\"network\":{\"host\":\"192.168.254.51:8484\","
+                + "\"seen_at\":\"2026-08-21T09:11:44Z\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        verify(devices).setLanAddress(eq(DEVICE), eq("192.168.254.51:8484"),
+                eq(Instant.parse("2026-08-21T09:11:44Z")), eq("erreicht"));
+        verify(store, never()).upsert(any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                any(), any());
+    }
 }

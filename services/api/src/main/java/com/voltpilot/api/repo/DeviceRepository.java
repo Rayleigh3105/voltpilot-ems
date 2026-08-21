@@ -25,6 +25,7 @@ public class DeviceRepository {
         // until the first sample arrives.
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
                         + "FROM device d ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
@@ -34,6 +35,7 @@ public class DeviceRepository {
     public Optional<DeviceDto> findById(UUID deviceId) {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
                         + "FROM device d WHERE d.id = ?",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
@@ -46,7 +48,8 @@ public class DeviceRepository {
      */
     public Optional<DeviceDto> findByExternalRef(String externalRef) {
         return jdbc.query(
-                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, t.last_seen "
+                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
+                        + "d.lan_host, d.lan_seen_at, d.lan_source, t.last_seen "
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT received_at AS last_seen FROM telemetry "
                         + "  WHERE device_id = d.id ORDER BY received_at DESC LIMIT 1) t ON true "
@@ -66,6 +69,7 @@ public class DeviceRepository {
                 "INSERT INTO device (tenant_id, site_id, external_ref, kind, status) "
                         + "VALUES (?, ?, ?, ?, 'claimed') "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
+                        + "lan_host, lan_seen_at, lan_source, "
                         + "NULL::timestamptz AS last_seen",
                 DeviceRepository::mapDevice,
                 tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind);
@@ -80,6 +84,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "UPDATE device SET kind = ?, name = ? WHERE id = ? "
                         + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
+                        + "lan_host, lan_seen_at, lan_source, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = device.id) AS last_seen",
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
@@ -104,6 +109,23 @@ public class DeviceRepository {
     }
 
     /** Devices at a site (for the site-delete guard/preview), RLS-scoped. */
+    /**
+     * Records the box's OWN reachability (Anlagen-Zentrale Stufe 2, D5) - the
+     * one fact the box reports about ITSELF. Replaced on every heartbeat that
+     * carries it; a heartbeat WITHOUT the block never reaches this method, so
+     * a stored address survives a silent stretch instead of vanishing.
+     *
+     * <p>RLS-scoped like every other write here - the listener sets the topic's
+     * tenant first, so a fabricated identity updates zero rows.
+     */
+    public boolean setLanAddress(UUID deviceId, String host, java.time.Instant seenAt,
+            String source) {
+        return jdbc.update(
+                "UPDATE device SET lan_host = ?, lan_seen_at = ?, lan_source = ? WHERE id = ?",
+                host, seenAt == null ? null : java.sql.Timestamp.from(seenAt), source,
+                deviceId) > 0;
+    }
+
     public int countForSite(UUID siteId) {
         Integer count = jdbc.queryForObject(
                 "SELECT count(*) FROM device WHERE site_id = ?", Integer.class, siteId);
@@ -113,6 +135,7 @@ public class DeviceRepository {
     private static DeviceDto mapDevice(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         java.sql.Timestamp lastSeen = rs.getTimestamp("last_seen");
         java.sql.Timestamp createdAt = rs.getTimestamp("created_at");
+        java.sql.Timestamp lanSeen = rs.getTimestamp("lan_seen_at");
         return new DeviceDto(
                 rs.getObject("id", UUID.class),
                 rs.getObject("site_id", UUID.class),
@@ -121,6 +144,9 @@ public class DeviceRepository {
                 rs.getString("name"),
                 rs.getString("status"),
                 lastSeen == null ? null : lastSeen.toInstant(),
-                createdAt == null ? null : createdAt.toInstant());
+                createdAt == null ? null : createdAt.toInstant(),
+                rs.getString("lan_host"),
+                lanSeen == null ? null : lanSeen.toInstant(),
+                rs.getString("lan_source"));
     }
 }
