@@ -125,6 +125,22 @@ function makeConfig(over: Partial<OptimizerConfig> = {}): OptimizerConfig {
   };
 }
 
+/**
+ * Seit dem Picker-System (`vp-picker-system`) sind Mandant/Anlage/Lauf der
+ * Haus-Picker, kein Browser-Auswahlfeld: geöffnet wird der Auslöser, gewählt
+ * wird die Zeile. Der Tag ist der Haus-Kalender (Wochenstart Montag).
+ */
+function waehle(name: string, option: string | RegExp): void {
+  fireEvent.click(screen.getByRole('combobox', { name }));
+  fireEvent.click(screen.getByRole('option', { name: option }));
+}
+
+/** Öffnet den Tages-Kalender und klickt den Tag des Monats an. */
+function waehleTag(tag: number): void {
+  fireEvent.click(screen.getByRole('combobox', { name: 'Tag' }));
+  fireEvent.click(screen.getAllByRole('gridcell', { name: String(tag) })[0]);
+}
+
 beforeEach(() => {
   listSites.mockReset();
   diagnostics.mockReset();
@@ -143,7 +159,7 @@ describe('OptimizerPage - picker gating', () => {
   it('loads sites after a Mandant is chosen', async () => {
     listSites.mockResolvedValue(sites);
     render(<OptimizerPage tenants={tenants} />);
-    fireEvent.change(screen.getByLabelText('Mandant'), { target: { value: 't-1' } });
+    waehle('Mandant', 'Demo GmbH');
     await waitFor(() => expect(listSites).toHaveBeenCalledWith('t-1'));
     expect(await screen.findByText(/Wählen Sie eine Anlage/)).toBeInTheDocument();
   });
@@ -155,9 +171,9 @@ describe('OptimizerPage - diagnostics rendering', () => {
     diagnostics.mockResolvedValue(diag);
     config.mockResolvedValue(cfg);
     render(<OptimizerPage tenants={tenants} />);
-    fireEvent.change(screen.getByLabelText('Mandant'), { target: { value: 't-1' } });
-    await screen.findByRole('option', { name: 'Hof Lindenberg' });
-    fireEvent.change(screen.getByLabelText('Anlage'), { target: { value: 's-1' } });
+    waehle('Mandant', 'Demo GmbH');
+    await waitFor(() => expect(listSites).toHaveBeenCalledWith('t-1'));
+    waehle('Anlage', 'Hof Lindenberg');
     await waitFor(() => expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, null));
   }
 
@@ -206,18 +222,21 @@ describe('OptimizerPage - date-navigable run picker', () => {
     diagnostics.mockResolvedValue(diag);
     config.mockResolvedValue(makeConfig());
     render(<OptimizerPage tenants={tenants} />);
-    fireEvent.change(screen.getByLabelText('Mandant'), { target: { value: 't-1' } });
-    await screen.findByRole('option', { name: 'Hof Lindenberg' });
-    fireEvent.change(screen.getByLabelText('Anlage'), { target: { value: 's-1' } });
+    waehle('Mandant', 'Demo GmbH');
+    await waitFor(() => expect(listSites).toHaveBeenCalledWith('t-1'));
+    waehle('Anlage', 'Hof Lindenberg');
     await waitFor(() => expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, null));
   }
 
   it('bounds the Tag picker by the run-date range and loads the picked day', async () => {
     await openSite(makeDiag());
-    const dayInput = (await screen.findByLabelText('Tag')) as HTMLInputElement;
-    expect(dayInput.value).toBe('2026-06-12');
-    expect(dayInput.min).toBe('2026-06-10');
-    expect(dayInput.max).toBe('2026-06-12');
+    expect(await screen.findByRole('combobox', { name: 'Tag' }))
+      .toHaveTextContent('12.06.2026');
+    // Nie ausserhalb des Lauf-Fensters: der 09.06. ist gesperrt, der 10.06. nicht.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Tag' }));
+    expect(screen.getAllByRole('gridcell', { name: '9' })[0]).toBeDisabled();
+    expect(screen.getAllByRole('gridcell', { name: '10' })[0]).not.toBeDisabled();
+    fireEvent.keyDown(screen.getByRole('grid'), { key: 'Escape' });
 
     // Picking an older day fetches THAT day's newest run + run list.
     diagnostics.mockResolvedValue(
@@ -227,16 +246,18 @@ describe('OptimizerPage - date-navigable run picker', () => {
         availableRunsDate: '2026-06-10',
       }),
     );
-    fireEvent.change(dayInput, { target: { value: '2026-06-10' } });
+    waehleTag(10);
     await waitFor(() =>
       expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, '2026-06-10'),
     );
-    const runSelect = (await screen.findByLabelText('Lauf')) as HTMLSelectElement;
-    await waitFor(() => expect(runSelect.options).toHaveLength(2));
-    expect(runSelect.value).toBe('2026-06-10T10:00:00Z');
+    const runTrigger = await screen.findByRole('combobox', { name: 'Lauf' });
+    await waitFor(() => expect(runTrigger.textContent).toMatch(/10\.06\./));
 
     // Picking one of the day's runs keeps the day scope.
-    fireEvent.change(runSelect, { target: { value: '2026-06-10T09:45:00Z' } });
+    fireEvent.click(runTrigger);
+    const zeilen = screen.getAllByRole('option');
+    expect(zeilen).toHaveLength(2);
+    fireEvent.click(zeilen[1]);
     await waitFor(() =>
       expect(diagnostics).toHaveBeenCalledWith(
         't-1',
@@ -258,16 +279,16 @@ describe('OptimizerPage - date-navigable run picker', () => {
         availableRunsDate: '2026-06-11',
       }),
     );
-    fireEvent.change(screen.getByLabelText('Tag'), { target: { value: '2026-06-11' } });
-    // Both the EmptyState heading and the disabled select's placeholder
-    // option carry the phrase - target the heading.
+    waehleTag(11);
+    // Both the EmptyState heading and the disabled picker's placeholder row
+    // carry the phrase - target the heading.
     expect(
       await screen.findByRole('heading', { name: 'Keine Läufe an diesem Tag' }),
     ).toBeInTheDocument();
     expect(screen.getByText(/zwischen dem 10\.06\.2026 und dem 12\.06\.2026/)).toBeInTheDocument();
     // The date picker stays rendered so the admin can navigate away.
-    expect(screen.getByLabelText('Tag')).toBeInTheDocument();
-    expect(screen.getByLabelText('Lauf')).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Tag' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Lauf' })).toBeDisabled();
   });
 });
 
@@ -277,9 +298,9 @@ describe('OptimizerPage - config PUT round-trip', () => {
     diagnostics.mockResolvedValue(makeDiag());
     config.mockResolvedValue(cfg);
     render(<OptimizerPage tenants={tenants} />);
-    fireEvent.change(screen.getByLabelText('Mandant'), { target: { value: 't-1' } });
-    await screen.findByRole('option', { name: 'Hof Lindenberg' });
-    fireEvent.change(screen.getByLabelText('Anlage'), { target: { value: 's-1' } });
+    waehle('Mandant', 'Demo GmbH');
+    await waitFor(() => expect(listSites).toHaveBeenCalledWith('t-1'));
+    waehle('Anlage', 'Hof Lindenberg');
     await screen.findByText('Optimizer konfigurieren');
   }
 
@@ -379,9 +400,9 @@ describe('OptimizerPage - what-if re-optimize', () => {
     diagnostics.mockResolvedValue(makeDiag());
     config.mockResolvedValue(makeConfig());
     render(<OptimizerPage tenants={tenants} />);
-    fireEvent.change(screen.getByLabelText('Mandant'), { target: { value: 't-1' } });
-    await screen.findByRole('option', { name: 'Hof Lindenberg' });
-    fireEvent.change(screen.getByLabelText('Anlage'), { target: { value: 's-1' } });
+    waehle('Mandant', 'Demo GmbH');
+    await waitFor(() => expect(listSites).toHaveBeenCalledWith('t-1'));
+    waehle('Anlage', 'Hof Lindenberg');
     await waitFor(() => expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, null));
   }
 

@@ -70,7 +70,7 @@ describe('CreateSiteDrawer (netzladen switch, captain revision 2026-07-07)', () 
       <CreateSiteDrawer open onClose={() => {}} onCreate={onCreate} onCreated={() => {}} />,
     );
     fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'Werk Nord' } });
-    // Seit dem Picker-System ist der Schalter der Haus-Picker, kein `<select>`.
+    // Seit dem Picker-System ist der Schalter der Haus-Picker, kein `select`.
     fireEvent.click(screen.getByRole('combobox', { name: 'Netzladen des Speichers' }));
     fireEvent.click(screen.getByRole('option', { name: /Erlaubt/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));

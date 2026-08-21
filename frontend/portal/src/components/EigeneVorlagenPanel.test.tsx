@@ -124,7 +124,7 @@ describe('EigeneVorlagenPanel', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Aus einem Gerät/ }));
 
     // Nur SELBST gebaute Geräte stehen zur Wahl (seit dem Picker-System der
-    // Haus-Picker, kein `<select>`).
+    // Haus-Picker, kein `select`).
     fireEvent.click(screen.getByRole('combobox', { name: 'Gerät' }));
     expect(screen.getAllByRole('option')).toHaveLength(1);
     fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });

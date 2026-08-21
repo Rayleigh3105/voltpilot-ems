@@ -7,6 +7,7 @@ import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { VpPicker } from '../../components/VpPicker';
 import { ApiError, type Site } from '../../api';
 import { fmtCoords, fmtNum } from '../../format';
 import { tenantPulse } from '../../adminPulse';
@@ -247,20 +248,16 @@ function CreateTenantDrawer({
           value={name}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="tenant-segment" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Segment
-          </label>
-          <select
-            id="tenant-segment"
-            className="vp-select"
-            value={segment}
-            onChange={(e) => setSegment(e.target.value)}
-          >
-            <option value="CI">CI (Gewerbe/Industrie)</option>
-            <option value="B2C">B2C (Privat)</option>
-          </select>
-        </div>
+        <VpPicker
+          id="tenant-segment"
+          label="Segment"
+          options={[
+            { value: 'CI', label: 'CI (Gewerbe/Industrie)' },
+            { value: 'B2C', label: 'B2C (Privat)' },
+          ]}
+          value={segment}
+          onChange={setSegment}
+        />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
     </Drawer>
@@ -740,34 +737,28 @@ function TenantEditForm({
           value={name}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
         />
+        <VpPicker
+          id="edit-tenant-segment"
+          label="Segment"
+          options={[
+            { value: 'CI', label: 'CI (Gewerbe/Industrie)' },
+            { value: 'B2C', label: 'B2C (Privat)' },
+          ]}
+          value={segment}
+          onChange={setSegment}
+        />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="edit-tenant-segment" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Segment
-          </label>
-          <select
-            id="edit-tenant-segment"
-            className="vp-select"
-            value={segment}
-            onChange={(e) => setSegment(e.target.value)}
-          >
-            <option value="CI">CI (Gewerbe/Industrie)</option>
-            <option value="B2C">B2C (Privat)</option>
-          </select>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="edit-tenant-betriebsart" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Betriebsart (Navigation des Kunden)
-          </label>
-          <select
+          <VpPicker
             id="edit-tenant-betriebsart"
-            className="vp-select"
+            label="Betriebsart (Navigation des Kunden)"
+            options={[
+              { value: '', label: 'Automatisch (nach Anzahl Anlagen)' },
+              { value: 'endkunde', label: 'Endkunde (Cockpit für die eigene Anlage)' },
+              { value: 'betreiber', label: 'Betreiber (Flotten-/Portfolio-Ansicht)' },
+            ]}
             value={betriebsart}
-            onChange={(e) => setBetriebsart(e.target.value)}
-          >
-            <option value="">Automatisch (nach Anzahl Anlagen)</option>
-            <option value="endkunde">Endkunde (Cockpit für die eigene Anlage)</option>
-            <option value="betreiber">Betreiber (Flotten-/Portfolio-Ansicht)</option>
-          </select>
+            onChange={setBetriebsart}
+          />
           <p className="vp-muted" style={{ margin: 0, fontSize: '0.85rem' }}>
             Bestimmt die Navigation des Kundenportals. Automatisch heißt: ab
             zwei Anlagen die Flotten-Ansicht, sonst das Cockpit - das Segment

@@ -157,11 +157,13 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
   it('beschreibt „Automatisch" so, wie die Schale wirklich entscheidet (F7)', async () => {
     openDetail();
     fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }));
-    const feld = await screen.findByLabelText(/Betriebsart/);
+    // Seit dem Picker-System ist die Betriebsart der Haus-Picker, kein
+    // Browser-Auswahlfeld: geöffnet wird der Auslöser, gelesen wird die Zeile.
+    fireEvent.click(await screen.findByRole('combobox', { name: /Betriebsart/ }));
     // Die Vorgabe wird NICHT aus dem Segment abgeleitet (Audit HIGH-1: das
     // segment steht per Vorgabe auf CI und hätte jeden Bestandskunden in die
     // Betreiber-Schale gekippt) - die Schale zählt die Anlagen.
-    expect(within(feld).getByRole('option', { name: /Automatisch/ }).textContent)
+    expect(screen.getByRole('option', { name: /Automatisch/ }).textContent)
       .toContain('nach Anzahl Anlagen');
     expect(document.body.textContent).not.toContain('aus Segment abgeleitet');
     expect(document.body.textContent).not.toContain('B2C → Endkunde');

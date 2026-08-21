@@ -5554,14 +5554,11 @@ button.vp-tech-card-h.toggle {
   font-size: 0.85rem;
   font-weight: 600;
 }
-.vp-cert-grid select {
-  padding: 8px 10px;
-  border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 8px);
-  background: #fff;
-  font: inherit;
-  font-weight: 400;
-  min-width: 0;
+/* Der Haus-Picker bringt Rahmen und Polster selbst mit - hier zaehlt nur,
+   dass seine Beschriftung die Schrift der Nachbarfelder traegt. */
+.vp-cert-grid .vp-picker-label {
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 .vp-cert-wide {
   grid-column: 1 / -1;

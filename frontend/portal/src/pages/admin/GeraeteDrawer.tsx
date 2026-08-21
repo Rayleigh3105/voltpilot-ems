@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
+import { VpPicker } from '../../components/VpPicker';
 import { deviceKindLabel, fmtRelative } from '../../format';
 import { REGISTRY_AUFKLEBER, REGISTRY_SELBST } from '../../adminGeraet';
 import { versionLabel } from '../../onboardingFunnel';
@@ -278,31 +279,24 @@ export function GeraeteDrawer({
         ) : (
           <>
             <h4>Release zuweisen</h4>
-            <label className="vp-field-row">
-              <span>Release</span>
-              <select
-                value={seq ?? ''}
-                onChange={(e) => setSeq(Number(e.target.value))}
-                aria-label="Release"
-              >
-                {signed.map((r) => (
-                  <option key={r.releaseSeq} value={r.releaseSeq}>
-                    {r.version}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="vp-field-row">
-              <span>Kanal</span>
-              <select
-                value={channel}
-                onChange={(e) => setChannel(e.target.value)}
-                aria-label="Kanal"
-              >
-                <option value="stable">stable</option>
-                <option value="canary">canary</option>
-              </select>
-            </label>
+            <VpPicker
+              label="Release"
+              options={signed.map((r) => ({
+                value: String(r.releaseSeq),
+                label: r.version,
+              }))}
+              value={seq == null ? '' : String(seq)}
+              onChange={(v) => setSeq(Number(v))}
+            />
+            <VpPicker
+              label="Kanal"
+              options={[
+                { value: 'stable', label: 'stable' },
+                { value: 'canary', label: 'canary' },
+              ]}
+              value={channel}
+              onChange={setChannel}
+            />
             <label className="vp-check-row">
               <input
                 type="checkbox"

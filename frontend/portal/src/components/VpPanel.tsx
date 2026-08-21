@@ -27,7 +27,7 @@ import './VpPicker.css';
  * positioniertes Panel wäre dort abgeschnitten und seine unteren Zeilen
  * unklickbar (der `RowMenu`-Präzedenzfall).
  *
- * <b>⚠ Kein verstecktes natives Element als Krücke.</b> Ein `<select hidden>`
+ * <b>⚠ Kein verstecktes natives Element als Krücke.</b> Ein verstecktes `select`
  * daneben wäre eine zweite Wahrheit über denselben Wert - und Vorlesesoftware
  * fände beide.
  */

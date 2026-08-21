@@ -35,7 +35,7 @@ import type { TextTeil } from '../picker/suche';
  * Captain-genehmigt 21.08.2026: „alle Picker … eigene Komponenten erstellen wo
  * man drin suchen kann. Ich will nichts Browser-Standard-Zeug.").
  *
- * <b>Warum überhaupt.</b> Ein natives `<select>` kann drei Dinge nicht, die
+ * <b>Warum überhaupt.</b> Ein natives Auswahlfeld (`select`) kann drei Dinge nicht, die
  * dieses Portal überall braucht: darin SUCHEN, je Zeile eine NEBENZEILE (Ort,
  * „30 kW · Hybrid", eine Kennung) zeigen und am Telefon eine Fläche sein, die
  * ein Daumen trifft. Es sieht ausserdem auf jedem Betriebssystem anders aus als

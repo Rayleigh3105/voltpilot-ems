@@ -7,6 +7,7 @@ import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
+import { VpPicker } from '../../components/VpPicker';
 import { ApiError } from '../../api';
 import {
   adminApi,
@@ -654,21 +655,17 @@ function ProvisionDeviceDrawer({
             setExternalRef(normalizeDeviceIdInput(e.target.value))
           }
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="provision-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Typ
-          </label>
-          <select
-            id="provision-kind"
-            className="vp-select"
-            value={kind}
-            onChange={(e) => setKind(e.target.value)}
-          >
-            <option value="inverter">Wechselrichter</option>
-            <option value="battery">Batteriespeicher</option>
-            <option value="meter">Zähler</option>
-          </select>
-        </div>
+        <VpPicker
+          id="provision-kind"
+          label="Typ"
+          options={[
+            { value: 'inverter', label: 'Wechselrichter' },
+            { value: 'battery', label: 'Batteriespeicher' },
+            { value: 'meter', label: 'Zähler' },
+          ]}
+          value={kind}
+          onChange={setKind}
+        />
         <Input
           label="Notiz"
           placeholder="z. B. Charge 2026-07"

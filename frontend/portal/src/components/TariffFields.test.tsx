@@ -52,7 +52,7 @@ const FESTPREIS = 'Arbeitspreis (all-in, brutto) (ct/kWh)';
 
 /**
  * Seit dem Picker-System ist der Stromtarif der Haus-{@link VpPicker}, kein
- * `<select>`: geöffnet wird der Auslöser, gewählt wird die Zeile.
+ * `select`: geöffnet wird der Auslöser, gewählt wird die Zeile.
  */
 function waehleTarif(label: string): void {
   fireEvent.click(screen.getByRole('combobox', { name: 'Stromtarif' }));

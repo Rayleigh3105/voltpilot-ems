@@ -14,7 +14,7 @@ import { anzeige, imBereich, naechsteZeile, raster, RASTER_MIN, zeitLesen } from
 
 /**
  * `VpTimePicker` - die ZEIT-Variante derselben Anatomie. Sie löst
- * `<input type="time">` ab (Konzept `vp-picker-system`, Captain-Entscheid 1).
+ * das native Zeitfeld (`input type=time`) ab (Konzept `vp-picker-system`, Captain-Entscheid 1).
  *
  * <b>⚠ DAS RASTER IST EIN VORSCHLAG, KEINE VALIDIERUNG.</b> Die Liste zeigt
  * Viertelstunden, weil das die Zeiten sind, die in diesem Portal wirklich

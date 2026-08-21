@@ -76,7 +76,7 @@ describe('der Auslöser trägt volle Feld-Semantik', () => {
     const { container } = render(
       <VpPicker ariaLabel="Anlage" name="site" options={ANLAGEN} value="c" onChange={() => {}} />,
     );
-    // ⚠ Kein verstecktes `<select>` als Krücke - das wäre eine zweite Wahrheit
+    // ⚠ Kein verstecktes `select` als Krücke - das wäre eine zweite Wahrheit
     // über denselben Wert, und Vorlesesoftware fände beide.
     expect(container.querySelector('select')).toBeNull();
     expect(container.querySelector('input[name="site"]')).toHaveValue('c');

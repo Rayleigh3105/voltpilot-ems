@@ -5,7 +5,7 @@ import type { Site } from '../api';
  * Die kompakte Anlagen-Auswahl der anlagen-gebundenen Datenseiten.
  *
  * Sie rendert seit dem Picker-System (`vp-picker-system`) denselben
- * {@link VpPicker} wie die Kopfzeile - vorher war sie ein natives `<select>`,
+ * {@link VpPicker} wie die Kopfzeile - vorher war sie ein natives Auswahlfeld,
  * das auf jedem Betriebssystem anders aussah und in dem man nicht suchen
  * konnte. Eine ANGEREICHERTE Zeile (Punkt + Nebenzeile) gibt es hier bewusst
  * nicht: diese Flächen kennen die Geräteliste nicht, und eine Gesundheit zu

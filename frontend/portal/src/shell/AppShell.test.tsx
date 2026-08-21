@@ -68,7 +68,7 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    // Seit dem Picker-System ist der Umschalter der Haus-Picker, kein `<select>`.
+    // Seit dem Picker-System ist der Umschalter der Haus-Picker, kein `select`.
     const trigger = screen.getByRole('combobox', { name: 'Mandanten-Umschalter' });
     expect(trigger).toHaveTextContent('Alle Mandanten');
     fireEvent.click(trigger);
@@ -252,7 +252,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
       onSelectSite,
       onOpenFleet,
     });
-    // Seit dem Picker-System ist der Wechsler ein VpPicker, kein `<select>`:
+    // Seit dem Picker-System ist der Wechsler ein VpPicker, kein `select`:
     // aufklappen, Zeile antippen. Der Wert ist derselbe.
     fireEvent.click(screen.getByRole('combobox', { name: 'Anlage wählen' }));
     fireEvent.click(screen.getByRole('option', { name: /Halle Nord/ }));
@@ -348,7 +348,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(block.querySelector('.here')?.textContent).toBe('Hof Lindenberg');
     expect(block.querySelector('.vp-healthbadge')).not.toBeNull();
     // Der Wechsler ist seit dem Picker-System eine unsichtbare Fläche über dem
-    // ganzen Block, die das Sheet öffnet - kein natives `<select>` mehr.
+    // ganzen Block, die das Sheet öffnet - kein natives Auswahlfeld mehr.
     fireEvent.click(within(block).getByRole('combobox', { name: 'Anlage wechseln' }));
     fireEvent.click(screen.getByRole('option', { name: /Halle Nord/ }));
     expect(onSelectSite).toHaveBeenCalledWith('s-2');
