@@ -635,7 +635,10 @@ describe('die Hebel des Verbindungstests', () => {
     fireEvent.click(screen.getByText('Verbindung testen'));
 
     fireEvent.click(await screen.findByTestId('hebel-skalierung'));
-    expect((screen.getByLabelText('Leistungsskalierung') as HTMLSelectElement).value).toBe('10');
+    // Seit dem Picker-System ist das Feld der Haus-Picker: sein Wert steht
+    // als TEXT am Auslöser, nicht in einer `value`-Eigenschaft.
+    expect(screen.getByRole('combobox', { name: 'Leistungsskalierung' }))
+      .toHaveTextContent('10');
     // ⚠ Und der Beleg ist damit entwertet: „Weiter" ist wieder zu, bis erneut
     // getestet wurde - genau das sagt der Hinweis unter den Hebeln.
     expect((screen.getByText('Weiter').closest('button') as HTMLButtonElement).disabled).toBe(true);

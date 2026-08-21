@@ -165,8 +165,10 @@ export function VpPicker({
   const zeilen: VpZeile[] = s.zeilen;
   const mitSuche = sucheSichtbar(options.length, search);
 
+  // ⚠ `value === ''` ist eine gültige Wahl, wenn die Liste sie führt (das
+  // native `<option value="">`) - `value ? …` verlöre den Haken darauf.
   const gewaehlt = useMemo(
-    () => new Set(mehrfach ? values ?? [] : value ? [value] : []),
+    () => new Set(mehrfach ? values ?? [] : value != null ? [value] : []),
     [mehrfach, values, value],
   );
 
@@ -276,7 +278,11 @@ export function VpPicker({
   };
 
   const text = ausloeserText(options, mehrfach ? values ?? [] : value, placeholder);
-  const leer = mehrfach ? (values ?? []).length === 0 : !value;
+  // „Leer" heisst: der Auslöser zeigt den PLATZHALTER - nicht „der Wert ist
+  // eine leere Zeichenkette" (die kann eine echte Zeile sein, s. o.).
+  const leer = mehrfach
+    ? (values ?? []).length === 0
+    : !options.some((o) => o.value === value);
   const chips = mehrfach
     ? (values ?? [])
         .map((v) => options.find((o) => o.value === v))

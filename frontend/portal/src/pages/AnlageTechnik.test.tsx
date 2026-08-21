@@ -191,7 +191,9 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
     expect(screen.queryByRole('radio', { name: /Ausgewogen/ })).toBeNull();
     // German comma decimal is accepted.
     fireEvent.change(screen.getByLabelText('Kapazität (kWh) *'), { target: { value: '12,5' } });
-    fireEvent.change(screen.getByLabelText('Steuerndes Gerät'), { target: { value: 'd-2' } });
+    // Seit dem Picker-System ist die Geräte-Wahl der Haus-Picker.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Steuerndes Gerät' }));
+    fireEvent.click(screen.getByRole('option', { name: 'WR Süd' }));
     fireEvent.click(screen.getByRole('button', { name: 'Speicher speichern' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     // No speicherschonung sent - a param edit keeps the customer's stored preset.

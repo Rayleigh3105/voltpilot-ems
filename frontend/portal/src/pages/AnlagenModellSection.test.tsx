@@ -658,8 +658,9 @@ describe('Die aufgelöste Installateur-Ansicht (Stufe 3)', () => {
     expect(await screen.findByText('Entität anlegen')).toBeInTheDocument();
     // Nur NICHT-komponierte Typen sind anlegbar (ein Netzanschluss entsteht
     // aus den Stammdaten, nie von Hand).
-    const typ = screen.getByLabelText('Typ') as HTMLSelectElement;
-    expect([...typ.options].map((o) => o.value)).toEqual(['wallbox']);
+    // Seit dem Picker-System ist der Typ der Haus-Picker, kein `<select>`.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Typ' }));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Wallbox']);
   });
 
   it('zeigt den Registry-Stand - eine ANDERE Tatsache als die Komponenten-Fassung', async () => {

@@ -623,11 +623,9 @@
 }
 .vp-reconnect-opt input { margin-top: 3px; flex: none; }
 .vp-reconnect-hint { display: block; margin-top: 2px; }
+/* Der Picker steht eingerueckt unter seiner Radiozeile - Rahmen und Polster
+   bringt er selbst mit. */
 .vp-reconnect-select {
-  font: inherit;
-  padding: 6px 10px;
-  border: 1px solid var(--vp-border);
-  border-radius: var(--vp-radius-md);
   margin-left: 26px;
   max-width: 100%;
 }

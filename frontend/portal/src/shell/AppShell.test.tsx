@@ -68,11 +68,12 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    const select = screen.getByLabelText('Mandanten-Umschalter');
-    expect(select).toBeInTheDocument();
+    // Seit dem Picker-System ist der Umschalter der Haus-Picker, kein `<select>`.
+    const trigger = screen.getByRole('combobox', { name: 'Mandanten-Umschalter' });
+    expect(trigger).toHaveTextContent('Alle Mandanten');
+    fireEvent.click(trigger);
     expect(screen.getByRole('option', { name: 'Alle Mandanten' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Stadtwerke Musterstadt' })).toBeInTheDocument();
-    fireEvent.change(select, { target: { value: 't-2' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Familie Kaiser' }));
     expect(onTenantChange).toHaveBeenCalledWith('t-2');
   });
 
@@ -82,7 +83,7 @@ describe('AppShell admin tenant switcher', () => {
         <div>content</div>
       </AppShell>,
     );
-    expect(screen.queryByLabelText('Mandanten-Umschalter')).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Mandanten-Umschalter' })).toBeNull();
   });
 });
 

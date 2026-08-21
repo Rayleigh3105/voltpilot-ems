@@ -276,7 +276,11 @@ export function ausloeserText(
       .filter((l): l is string => !!l);
     return labels.length > 0 ? labels.join(', ') : platzhalter;
   }
-  if (wert == null || wert === '') return platzhalter;
+  // ⚠ Der LEERE String ist eine gültige Wahl, wenn die Liste ihn führt
+  // („Alle Mandanten", „Automatisch", „Jetzt noch nicht verbinden") - genau
+  // wie im nativen `<option value="">`. Nur ein Wert, den die Liste NICHT
+  // kennt, fällt auf den Platzhalter zurück.
+  if (wert == null) return platzhalter;
   return optionen.find((o) => o.value === wert)?.label ?? platzhalter;
 }
 

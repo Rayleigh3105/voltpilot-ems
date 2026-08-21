@@ -142,16 +142,6 @@
   font-weight: 600;
 }
 
-.vp-assist-pick select,
-.vp-assist-field select {
-  padding: 0.5rem 0.6rem;
-  border: 1px solid var(--vp-border, #e2e8f0);
-  border-radius: var(--vp-radius-md, 12px);
-  background: var(--vp-surface, #fff);
-  font: inherit;
-  min-width: 0;
-}
-
 .vp-assist-help {
   margin: 0;
   font-size: 0.78rem;

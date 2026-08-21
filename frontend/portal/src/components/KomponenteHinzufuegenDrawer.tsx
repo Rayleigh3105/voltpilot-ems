@@ -427,17 +427,16 @@ export function KomponenteHinzufuegenDrawer({
                         onChange={(e) => setzeFeld(f, e.target.checked)}
                       />
                     ) : f.options ? (
-                      <select
+                      <VpPicker
                         id={`assist-${f.key}`}
+                        ariaLabel={f.label}
+                        options={f.options.map((o) => ({
+                          value: String(o.value),
+                          label: o.label,
+                        }))}
                         value={String(verbindung[f.key] ?? '')}
-                        onChange={(e) => setzeFeld(f, e.target.value)}
-                      >
-                        {f.options.map((o) => (
-                          <option key={String(o.value)} value={String(o.value)}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => setzeFeld(f, v)}
+                      />
                     ) : (
                       <Input
                         id={`assist-${f.key}`}

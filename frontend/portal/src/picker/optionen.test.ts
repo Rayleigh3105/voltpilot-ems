@@ -225,6 +225,16 @@ describe('der Auslöser-Text', () => {
     expect(ausloeserText(ANLAGEN, 'weg', 'Bitte wählen')).toBe('Bitte wählen');
   });
 
+  it('⚠ der LEERE String ist eine Zeile, wenn die Liste ihn führt', () => {
+    // Das native `<option value="">` („Alle Mandanten", „Automatisch",
+    // „Jetzt noch nicht verbinden") ist eine echte Wahl, kein „nichts
+    // gewählt" - sie darf nicht als Platzhalter erscheinen.
+    const mitAlle = [{ value: '', label: 'Alle Mandanten' }, ...ANLAGEN];
+    expect(ausloeserText(mitAlle, '', 'Bitte wählen')).toBe('Alle Mandanten');
+    // Führt die Liste ihn NICHT, bleibt es beim Platzhalter.
+    expect(ausloeserText(ANLAGEN, '', 'Bitte wählen')).toBe('Bitte wählen');
+  });
+
   it('reiht die Mehrfachauswahl auf', () => {
     expect(ausloeserText(ANLAGEN, ['a', 'c'], '–')).toBe('Auernheim, Solarpark Dachau');
     expect(ausloeserText(ANLAGEN, [], '–')).toBe('–');

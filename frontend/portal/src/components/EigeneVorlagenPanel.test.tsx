@@ -123,9 +123,11 @@ describe('EigeneVorlagenPanel', () => {
     render(<EigeneVorlagenPanel siteId="s1" />);
     fireEvent.click(await screen.findByRole('button', { name: /Aus einem Gerät/ }));
 
-    // Nur SELBST gebaute Geräte stehen zur Wahl.
-    const wahl = screen.getByLabelText('Gerät') as HTMLSelectElement;
-    expect(wahl.options).toHaveLength(1);
+    // Nur SELBST gebaute Geräte stehen zur Wahl (seit dem Picker-System der
+    // Haus-Picker, kein `<select>`).
+    fireEvent.click(screen.getByRole('combobox', { name: 'Gerät' }));
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
     expect(screen.getByLabelText('Name der Vorlage')).toHaveValue('Wärmepumpe (Vorlage)');
 
     fireEvent.click(screen.getByRole('button', { name: 'Vorlage anlegen' }));

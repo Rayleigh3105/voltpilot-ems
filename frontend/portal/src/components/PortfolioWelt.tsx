@@ -35,6 +35,8 @@ import type { PortfolioAbdeckung, PortfolioWelt } from '../portfolioHistorie';
 import { portfolioRanges } from '../portfolioHistorie';
 import { MonthStrip } from './MoneyView';
 import { ProvBadge } from './HistorieWelt';
+import { VpDatePicker } from './VpDatePicker';
+import { VpPicker } from './VpPicker';
 
 import './Historie.css';
 import './PortfolioWelt.css';
@@ -118,7 +120,12 @@ export function PortfolioWeltKopf({
   );
 }
 
-/** Das native Sprungfeld je Zeitraum (F2) — der Browser bringt den Kalender mit. */
+/**
+ * Das Sprungfeld je Zeitraum (F2) - der Zwilling der Anlagen-Welt, seit dem
+ * Picker-System ebenfalls der Haus-Picker statt eines nativen Felds (der
+ * System-Kalender beginnt auf einem englisch eingestellten Rechner am SONNTAG).
+ * Der WERT bleibt ISO, `ankerAusWert` liest ihn unveraendert.
+ */
 function Sprungfeld({
   range,
   anchor,
@@ -134,27 +141,23 @@ function Sprungfeld({
   const label = sprungLabel(range);
   const wert = sprungWert(anchor, range);
 
+  const uebernehmen = (v: string) => {
+    const d = ankerAusWert(v, range);
+    if (d) onAnchor(d);
+  };
+
   if (feld === 'year') {
     return (
-      <label className="vp-zl-jump">
-        <span className="vp-visually-hidden">{label}</span>
-        <Icon name="calendar" size={16} aria-hidden="true" />
-        <select
-          aria-label={label}
-          title={label}
-          value={wert}
-          onChange={(e) => {
-            const d = ankerAusWert(e.target.value, range);
-            if (d) onAnchor(d);
-          }}
-        >
-          {sprungJahre(anchor, now).map((j) => (
-            <option key={j} value={String(j)}>
-              {j}
-            </option>
-          ))}
-        </select>
-      </label>
+      <VpPicker
+        className="vp-zl-jump"
+        ariaLabel={label}
+        options={sprungJahre(anchor, now).map((j) => ({
+          value: String(j),
+          label: String(j),
+        }))}
+        value={wert}
+        onChange={uebernehmen}
+      />
     );
   }
 
@@ -162,22 +165,15 @@ function Sprungfeld({
   // geratenes Startdatum über eine ganze Flotte wäre eine Behauptung.
   const grenzen = sprungGrenzen(range, now, null);
   return (
-    <label className="vp-zl-jump">
-      <span className="vp-visually-hidden">{label}</span>
-      <Icon name="calendar" size={16} aria-hidden="true" />
-      <input
-        type={feld}
-        aria-label={label}
-        title={label}
-        value={wert}
-        min={grenzen.min}
-        max={grenzen.max}
-        onChange={(e) => {
-          const d = ankerAusWert(e.target.value, range);
-          if (d) onAnchor(d);
-        }}
-      />
-    </label>
+    <VpDatePicker
+      className="vp-zl-jump"
+      ariaLabel={label}
+      art={feld === 'week' ? 'woche' : feld === 'month' ? 'monat' : 'tag'}
+      value={wert}
+      onChange={uebernehmen}
+      min={grenzen.min}
+      max={grenzen.max}
+    />
   );
 }
 
