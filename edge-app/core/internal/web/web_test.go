@@ -1132,6 +1132,12 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		// Marken; ihre reinen Regeln liegen in modellsuche.js. Ohne das Skript
 		// wäre der Picker still kaputt (window.VPModellSuche fehlte).
 		`src="modellsuche.js"`,
+		// Welle 3 des Picker-Systems: Marke, Quellen-Marke und Quellen-Modell
+		// sind MONTAGEPUNKTE - ihre Auslöser entstehen erst im Browser
+		// (vppicker.js). Ohne Punkt, Skript oder Stil bliebe die Auswahl leer.
+		`id="brandPicker"`, `id="brandLabel"`,
+		`id="srcBrandPicker"`, `id="srcModelPicker"`,
+		`src="pickerregeln.js"`, `src="vppicker.js"`, `href="vppicker.css"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("einrichten.html: missing %s", want)
@@ -1146,6 +1152,31 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	for _, want := range []string{"VPModellSuche", "hervorheben", "suche"} {
 		if !strings.Contains(suche, want) {
 			t.Errorf("modellsuche.js: missing %s", want)
+		}
+	}
+
+	// Der Picker der Box: die REGELN und die FLÄCHE hängen beide an window, und
+	// die Regeln holen ihre Such-Toleranz aus modellsuche.js - eine zweite
+	// Toleranz auf derselben Seite fände dieselbe Eingabe anders.
+	regeln := get("/pickerregeln.js")
+	for _, want := range []string{"VPPickerRegeln", "VPModellSuche", "tippSprung", "naechster", "SUCHE_AB"} {
+		if !strings.Contains(regeln, want) {
+			t.Errorf("pickerregeln.js: missing %s", want)
+		}
+	}
+	pickerJs := get("/vppicker.js")
+	for _, want := range []string{
+		"VPPicker", "VPPickerRegeln", "listbox", "combobox", "aria-activedescendant",
+		"aria-expanded", "is-sheet", "Escape",
+	} {
+		if !strings.Contains(pickerJs, want) {
+			t.Errorf("vppicker.js: missing %s", want)
+		}
+	}
+	pickerCss := get("/vppicker.css")
+	for _, want := range []string{".vpp-ausloeser", ".vpp-panel", ".vpp-zeile", ".vpp-panel.is-sheet"} {
+		if !strings.Contains(pickerCss, want) {
+			t.Errorf("vppicker.css: missing %s", want)
 		}
 	}
 
@@ -1218,7 +1249,10 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 	page := get("/einrichten.html")
 	for _, want := range []string{
 		`id="calCard"`, `id="calState"`, `id="calUnavail"`, `id="calBody"`,
-		`id="calLive"`, `id="calArm"`, `id="calTestStep"`, `id="calMag"`,
+		// ⚠ Die Testleistung ist seit Welle 3 ein VpPicker (vppicker.js) - im
+		// Markup steht sein MONTAGEPUNKT, der Auslöser mit `id="calMag"`
+		// entsteht erst im Browser. Ohne den Punkt bliebe die Stufenwahl leer.
+		`id="calLive"`, `id="calArm"`, `id="calTestStep"`, `id="calMagPicker"`, `id="calMagLabel"`,
 		`id="calCharge"`, `id="calDischarge"`, `id="calAbort"`, `id="calVerdict"`,
 		`id="calCorrect"`, `id="calInvert"`, `id="calBattInvert"`, `id="calScale"`, `id="calSign"`,
 		`id="calConfirm"`, `id="calCertify"`, `id="calDecertify"`, `src="calibration.js"`,

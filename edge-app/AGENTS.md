@@ -569,6 +569,53 @@ up, one job on one page). There is no third page: `inverter.html` and
   Go page-structure tests pin the //go:embed contract, the retired-URL
   redirects, and that a `reason`-carrying refusal renders outside any
   `.tech-only` block.
+- **DER PICKER DER BOX: `static/vppicker.js` + `pickerregeln.js` + `vppicker.css`**
+  (Welle 3 des Konzepts `data/vp-picker-system`, Captain: „alle Picker … eigene
+  Komponenten erstellen wo man drin suchen kann. Ich will nichts
+  Browser-Standard-Zeug."). Die leichtgewichtige Zwillings-Fassung des
+  Portal-VpPicker: **kein React, keine Abhängigkeit** — die Box liefert
+  `static/*` direkt aus `//go:embed` und hat keine Bau-Kette.
+  - **Seit Welle 3 trägt KEINE `:8484`-Seite ein natives `<select>`** und kein
+    Skript baut eines zur Laufzeit; der Wächter dafür ist der Testfall „Die
+    Einrichten-Seite trägt KEIN natives Auswahlfeld mehr" in `jstest/ui.test.js`
+    (mutationsgeprüft in beide Richtungen). Ersetzt sind: Marke
+    (Wechselrichter-Formular), Marke + Modell (Quellen-Drawer), Testleistung
+    (Kalibrierung) und JEDES Verbindungsfeld vom Katalog-Typ `select`.
+  - **⚠ Die REGELN wohnen rein in `pickerregeln.js`** (`window.VPPickerRegeln`,
+    das `VPModellSuche`/`VPControl`-Muster): Filtern, Gruppieren, die
+    Tastatur-Arithmetik (`naechster`/`ersteAktive`/`tippSprung`) und die
+    Ansage. „Der Eigenbau darf dem nativen Select in NICHTS nachstehen" ist nur
+    prüfbar, wenn die Bewegung eine FUNKTION ist — deshalb ohne DOM.
+  - **⚠ Die SUCH-TOLERANZ kommt aus `modellsuche.js`, nie ein zweites Mal.**
+    Zwei Toleranzen auf einer Seite fänden dieselbe Eingabe verschieden. Die
+    Suche blendet sich unter `SUCHE_AB` (8) Zeilen von selbst aus — darunter ist
+    sie Ballast; darüber (die 47 Deye-Modelle) ist sie der Weg.
+  - **⚠ Das Panel hängt an `document.body` mit FESTEN Koordinaten** (Kollisions-
+    Umschlag nach oben, waagerecht geklemmt, `MIN_PANEL_PX` 240) — nie
+    `absolute` im Feld: `.card`, `.drawer-body` und die Gruppen tragen Scroll-
+    und Überlauf-Grenzen, dort wäre es abgeschnitten. `platziere` ist nach
+    aussen gelegt, damit die Geometrie ohne Browser prüfbar ist.
+  - **Am Telefon (≤ 640 px) ist es ein BOTTOM-SHEET** mit Verdunkelung, Griff
+    und Wisch-Schliessen (`WISCH_ZU_PX` 90 — ein kurzer Zupfer schliesst NICHT,
+    sonst fiele es bei jedem Scroll-Versuch zu), 52-px-Zeilen und 16-px-Suchfeld
+    (kein iOS-Zoom).
+  - **⚠ KEIN verstecktes natives Element als Krücke.** Der Wert wohnt im Griff
+    (`.wert()`) und — für die Formular-Sammlung der Verbindungsfelder — im
+    `data-value` des Wirts; `collect()` liest ihn dort statt aus `.value`.
+  - **⚠ Ohne gesetzten Wert steht die ERSTE Zeile** (`ohneVorwahl: true` ist das
+    ausdrückliche Opt-out): genau das tut ein `<select>`, sobald es seine
+    Optionen bekommt, und `onBrandChange` fände sonst gar keine Marke.
+  - **⚠ Die Beschriftung wird ERST beim Montieren verknüpft** (`labelEl` bzw.
+    `labelledBy` → `label.htmlFor`). Ein `for` im Markup zeigte bis dahin ins
+    Leere (Chrome: „Incorrect use of `<label for=…>`", Klick fokussiert nichts —
+    dieselbe Falle wie im Portal-`VpPanel`), und die Beschriftung eines dynamisch
+    gebauten Feldes hängt beim Montieren noch gar nicht im Dokument. Aus dem
+    zweiten Grund werden die zwei Drawer-Picker SCHON BEIM LADEN gebaut, nicht
+    erst beim Öffnen.
+  - **⚠ Nicht zu verwechseln mit der always-open Modell-Liste** (`.picker*` in
+    `inverter.css`, siehe den nächsten Punkt): die bleibt, was sie ist — der
+    dauerhaft offene primäre Weg zum Modell. Beide teilen Tokens und Optik,
+    nicht die Klassen (`.vpp*` gegen `.picker*`).
 - **Die MODELL-SUCHE ist der PRIMÄRE Weg zum Wechselrichter** (Geräteseiten
   Stufe 2, Scout `data/vp-geraeteseite-rev-b8` NACHTRAG 5; die Regeln stehen in
   der Root-`AGENTS.md`). Ihre reine Hälfte ist `static/modellsuche.js`
