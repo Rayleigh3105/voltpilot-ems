@@ -49,7 +49,11 @@ const EXCLUDED = [
   '/adminVorlagen.ts',
   '/adminKomponentenFlotte.ts',
   '/adminGeraet.ts',
-  '/pages/EntitaetenSection.',
+  // Anlagen-Zentrale Stufe 3 (PR 3a): der Nachfolger der aufgelösten
+  // Installateur-Ansicht. Er spricht legitim Betreiber-Vokabular („Entität",
+  // „Messpunkt") und wird - wie die Plattform-Sicht - NUR hinter dem EINEN Tor
+  // gerendert; der Test unten prüft dieses Tor, statt es zu glauben.
+  '/components/TechnischeKarten.tsx',
   '/entities.ts',
   '/entitiesApi.ts',
   '/channels.ts',
@@ -203,6 +207,12 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       // Und wer die Plattform-Sicht RENDERT, muss das Tor tragen.
       if (/from '[^']*\bAdminGeraetKarten'/.test(code) && !gated) {
         offenders.push(`${rel} rendert die Plattform-Sicht OHNE ${GATE})`);
+      }
+      // Dasselbe für die aufgelöste Installateur-Ansicht (Stufe 3): sie ist
+      // vom Copy-Wächter ausgenommen, also darf sie nur hinter dem Tor
+      // gerendert werden - sonst wäre die Ausnahme still ein Loch.
+      if (/from '[^']*\bTechnischeKarten'/.test(code) && !gated) {
+        offenders.push(`${rel} rendert die technische Sicht OHNE ${GATE})`);
       }
     }
     expect(offenders, offenders.join('\n')).toEqual([]);

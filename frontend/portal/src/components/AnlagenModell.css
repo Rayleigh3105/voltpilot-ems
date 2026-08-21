@@ -519,32 +519,54 @@
   font-weight: 600;
 }
 
-/* --- The admin/installer disclosure (unchanged behaviour) ------------------- */
+/* --- Die AUFGELÖSTE Installateur-Ansicht (Zentrale Stufe 3, PR 3a) ---------
 
-.vp-modell-installer {
-  border: 1px solid var(--vp-border, #e5e7eb);
-  border-radius: var(--vp-radius-md, 12px);
-  background: #fff;
-  padding: 0;
+   Der frühere `<details>`-Block „Installateur-Ansicht (technisch)" ist
+   entfallen: sein Inhalt wohnt jetzt AN der Komponente (`.vp-tech-zeile`), als
+   Karte „Rollen & Zuordnung" unter der Liste und als zweite Tür an „Neues
+   Gerät gefunden". Der technische Rumpf ist ABGESETZT - er soll als Zusatz
+   lesbar sein, nie als zweite Kunden-Aussage. */
+
+.vp-tech-zeile {
+  grid-column: 1 / -1;
+  margin-top: var(--vp-space-2);
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-left: 3px solid var(--vp-brand-200, #c3d5f0);
+  border-radius: 0 var(--vp-radius-sm, 8px) var(--vp-radius-sm, 8px) 0;
+  background: var(--vp-brand-25, #f6f9fe);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
 }
 
-.vp-modell-installer > summary {
+.vp-tech-kopf {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: var(--vp-space-3);
-  cursor: pointer;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  flex-wrap: wrap;
+}
+
+.vp-tech-typ {
+  font-size: 0.78rem;
   font-weight: 600;
-  list-style: none;
+  color: var(--vp-text-gray, #6b7280);
+  overflow-wrap: anywhere;
 }
 
-.vp-modell-installer > summary::-webkit-details-marker {
-  display: none;
+/* Die zweite, TECHNISCHE Tür - bewusst leiser als die geführte daneben, damit
+   sie nie wie der Hauptweg aussieht. Sie bekommt eine eigene Trefferfläche
+   statt des ::before-Overlays: zwei überlappende Overlays nebeneinander
+   fingen sich gegenseitig die Klicks ab. */
+.vp-am-karte-go.is-technisch,
+.vp-am-add.is-technisch {
+  color: var(--vp-text-gray, #6b7280);
+  font-weight: 500;
+  padding: 6px 8px;
 }
 
-.vp-modell-installer[open] > summary {
-  border-bottom: 1px solid var(--vp-border, #e5e7eb);
-  margin-bottom: var(--vp-space-3);
+.vp-am-karte-go.is-technisch::before {
+  content: none;
 }
 
 .vp-zuordnen-what {

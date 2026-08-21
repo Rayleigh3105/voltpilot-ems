@@ -7,7 +7,6 @@
 import type {
   EntityObserved,
   EntitySyncStatus,
-  SiteEntities,
   SiteEntity,
 } from './api';
 
@@ -77,12 +76,6 @@ export function healthLabel(observed: EntityObserved | null): string {
     default:
       return 'Noch keine Daten';
   }
-}
-
-/** Health dot tone for the entity card. */
-export function healthTone(observed: EntityObserved | null): 'ok' | 'warn' | 'off' {
-  if (!observed || observed.health === 'never') return 'off';
-  return observed.health === 'ok' ? 'ok' : 'warn';
 }
 
 /** The measure channels declared for an entity (for the read-only card). */
@@ -163,24 +156,10 @@ export function failsafeLabel(behavior: string): string {
   return FAILSAFE_LABELS[behavior] ?? behavior;
 }
 
-/** True when NO entities exist yet (drives the empty state). */
-export function isEmpty(data: SiteEntities): boolean {
-  return data.entities.length === 0 && data.localSetup.length === 0;
-}
-
-/**
- * The one-line fleet-style summary for the section header: how many entities,
- * how many are live, and whether any drift is pending. Null = empty (the
- * caller shows an empty state instead).
- */
-export function entitiesSummary(data: SiteEntities): string | null {
-  if (data.entities.length === 0) return null;
-  const live = data.entities.filter((e) => e.observed?.health === 'ok').length;
-  const drifting = data.entities.filter((e) => hasDrift(e.syncStatus)).length;
-  const parts = [`${data.entities.length} ${data.entities.length === 1 ? 'Entität' : 'Entitäten'}`];
-  parts.push(`${live} liefern Daten`);
-  if (drifting > 0) {
-    parts.push(`${drifting} wird noch übernommen`);
-  }
-  return parts.join(' · ');
-}
+/*
+  ⚠ `isEmpty` und `entitiesSummary` sind mit der Installateur-Ansicht
+  entfallen (Anlagen-Zentrale Stufe 3): den Leer-Zustand und den Kopfsatz
+  besitzt seither die Zentrale (`zentraleSatz`), und zwei Sätze über dieselbe
+  Anlage wären zwei Wahrheiten. Ihr `healthTone` ebenso - die Zeile der
+  Zentrale bildet den Zustandspunkt über ihre eigene `HEALTH_TONE`-Tabelle.
+*/

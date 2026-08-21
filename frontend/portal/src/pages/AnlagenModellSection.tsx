@@ -4,6 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
   type ControlStatus,
+  type EntityStrategy,
   type CurtailmentStatus,
   type Device,
   type EdgeVersion,
@@ -11,6 +12,7 @@ import {
   type SiteComponents,
   type SiteComponentTemplate,
   type SiteEntities,
+  type SiteEntity,
   type SiteSource,
   type SiteTopology,
 } from '../api';
@@ -69,7 +71,15 @@ import {
 import { useIsDesktop } from '../useIsPhone';
 import { schaltbild, SCHALTBILD_HINWEIS } from '../schaltbild';
 import { Schaltbild } from '../components/Schaltbild';
-import { EntitaetenSection } from './EntitaetenSection';
+import {
+  AdoptDrawer,
+  EntityDrawer,
+  RegistryDrift,
+  RollenZuordnung,
+  TechnischeZeile,
+  type DrawerState,
+} from '../components/TechnischeKarten';
+import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
 import {
@@ -173,6 +183,16 @@ export function AnlagenModellSection({
   // Einheitsmodell Stufe 6: aus einer EIGENEN Vorlage ein Gerät machen - der
   // Assistent öffnet dann direkt in der Selbstbau-Tür, vorbefüllt.
   const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
+  /*
+    Anlagen-Zentrale Stufe 3 (PR 3a): die zwei Lesepfade der aufgelösten
+    Installateur-Ansicht. Sie werden NUR hinter dem EINEN Tor geholt - ein
+    Kunde soll nicht zwei Abrufe bezahlen, die er nie sieht -, und beide
+    fail-soft: ohne sie fehlt genau ihre Zeile, nie die Liste.
+  */
+  const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]>>({});
+  const [catalog, setCatalog] = useState<EntityTypeDef[] | null>(null);
+  const [technikDrawer, setTechnikDrawer] = useState<DrawerState | null>(null);
+  const [technikAdopt, setTechnikAdopt] = useState<AdoptableSource | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -212,6 +232,26 @@ export function AnlagenModellSection({
       active = false;
     };
   }, [site.id, reloadKey]);
+
+  /*
+    Die zwei ZUSÄTZLICHEN Lesepfade der technischen Sicht - nur hinter dem
+    EINEN Tor (M7), beide fail-soft.
+  */
+  useEffect(() => {
+    if (!showTechnical) return;
+    let active = true;
+    api.entityStrategies(site.id).then(
+      (m) => active && setStrategies(m),
+      () => active && setStrategies({}),
+    );
+    entitiesApi.typeCatalog().then(
+      (c) => active && setCatalog(c.types),
+      () => active && setCatalog(null),
+    );
+    return () => {
+      active = false;
+    };
+  }, [showTechnical, site.id, reloadKey]);
 
   /**
    * Die Ansicht folgt dem Hash (Lesezeichen + Zurück-Taste), und ein Wechsel
@@ -410,6 +450,21 @@ export function AnlagenModellSection({
                   <Icon name="plus" size={14} /> {HINZUFUEGEN_LABEL}
                 </button>
               )}
+              {/* Anlagen-Zentrale Stufe 3 (§6.4): die ADMIN-Tür desselben
+                  Knopfs. Sie steht bewusst NEBEN dem Assistenten und nicht
+                  darin: der Assistent legt Gerät UND Komponente in einem Zug
+                  an, diese Tür legt eine Entität OHNE Gerät an - und sie gilt
+                  auch auf einer box-verwalteten Anlage, wo es den Assistenten
+                  gar nicht gibt. */}
+              {showTechnical && (
+                <button
+                  type="button"
+                  className="vp-am-add is-technisch"
+                  onClick={() => setTechnikDrawer({ mode: 'create' })}
+                >
+                  <Icon name="cpu" size={14} /> Komponente anlegen (technisch)
+                </button>
+              )}
             </div>
 
             {/* 2 · Der Schalter „Geräte | Schaltbild" (§13.2) - NUR auf dem
@@ -475,6 +530,12 @@ export function AnlagenModellSection({
                 <p className={`vp-am-stand is-${komponentenStand.ton}`}>{komponentenStand.text}</p>
               )}
               {ablehnung && <p className="vp-am-stand is-warn">{ablehnung}</p>}
+              {/* Der Soll/Ist-Stand der ENTITÄTS-Registry - eine ANDERE
+                  Tatsache als die Komponenten-Fassung darüber (die eine ist
+                  die v2-Registry auf dem Gerät, die andere die gespeicherte
+                  Definition). Sie zusammenzulegen hieße, zwei Antworten unter
+                  eine Frage zu stellen. */}
+              {showTechnical && data && <RegistryDrift data={data} />}
 
               {karten.map((k) => (
                 <GeraeteKarteView
@@ -500,6 +561,18 @@ export function AnlagenModellSection({
                     null
                   }
                   onSofort={(consumer, action) => setSofort({ consumer, action })}
+                  technik={
+                    showTechnical
+                      ? {
+                          entityFor: (id) => data?.entities.find((e) => e.id === id) ?? null,
+                          strategiesFor: (id) => strategies[id] ?? [],
+                          topology,
+                          onEdit: (entity) => setTechnikDrawer({ mode: 'edit', entity }),
+                          onAdopt: setTechnikAdopt,
+                          onChanged: reload,
+                        }
+                      : null
+                  }
                 />
               ))}
 
@@ -529,17 +602,13 @@ export function AnlagenModellSection({
         )}
       </Card>
 
-      {/* The technical/installer view (entity types, raw channels, guard bands,
-          Soll/Ist sync, registry) is gated behind the ONE showTechnicalLayer()
-          helper (M7). Nothing was deleted; it just no longer frames the
-          customer, and only a platform-admin ever sees it. */}
+      {/* Der zweite Wohnort der aufgelösten Installateur-Ansicht (§6.4): die
+          Karte „Rollen & Zuordnung" UNTER der Liste. Sie beantwortet eine
+          andere Frage als die Liste („welche Messung zählt wozu") und ist
+          deshalb eine eigene Karte geblieben - nur ihr Rahmen, der
+          `<details>`-Block „Installateur-Ansicht", ist entfallen. */}
       {showTechnical && (
-        <details className="vp-modell-installer">
-          <summary>
-            <Icon name="settings" size={16} /> Installateur-Ansicht (technisch)
-          </summary>
-          <EntitaetenSection site={site} isAdmin={showTechnical} />
-        </details>
+        <RollenZuordnung siteId={site.id} topology={topology} onChanged={setTopology} />
       )}
 
       <ConsumerOverrideDialog
@@ -623,6 +692,35 @@ export function AnlagenModellSection({
         />
       )}
 
+      {/* Die zwei technischen Drawer - EIN Bauteil, EIN Wirt (die Landkarte).
+          Ohne Katalog wird gar nichts geöffnet: eine Typ-Auswahl ohne Typen
+          wäre ein Formular, das nichts anlegen kann. */}
+      {technikDrawer && catalog && (
+        <EntityDrawer
+          siteId={site.id}
+          catalog={catalog}
+          state={technikDrawer}
+          onClose={() => setTechnikDrawer(null)}
+          onSaved={() => {
+            setTechnikDrawer(null);
+            reload();
+          }}
+        />
+      )}
+
+      {technikAdopt && catalog && (
+        <AdoptDrawer
+          siteId={site.id}
+          source={technikAdopt}
+          catalog={catalog}
+          onClose={() => setTechnikAdopt(null)}
+          onAdopted={() => {
+            setTechnikAdopt(null);
+            reload();
+          }}
+        />
+      )}
+
       {remove && data && (
         <KomponenteLoeschenDialog
           siteId={site.id}
@@ -638,6 +736,20 @@ export function AnlagenModellSection({
       )}
     </div>
   );
+}
+
+/**
+ * Die technische Sicht als EIN Bündel (Stufe 3, PR 3a). `null` = das EINE Tor
+ * ist zu (M7) - dann rendert nichts davon, und der Wirt holt seine zwei
+ * Lesepfade gar nicht erst.
+ */
+interface TechnikSicht {
+  entityFor: (entityId: string) => SiteEntity | null;
+  strategiesFor: (entityId: string) => EntityStrategy[];
+  topology: SiteTopology | null;
+  onEdit: (entity: SiteEntity) => void;
+  onAdopt: (source: AdoptableSource) => void;
+  onChanged: () => void;
 }
 
 const HEALTH_TONE: Record<ComponentHealth, 'ok' | 'warn' | 'off'> = {
@@ -666,6 +778,7 @@ function GeraeteKarteView({
   onRemove,
   sofortFor,
   onSofort,
+  technik,
 }: {
   karte: GeraeteKarte;
   siteId: string;
@@ -678,6 +791,7 @@ function GeraeteKarteView({
   onRemove: (c: PlantComponent) => void;
   sofortFor: (c: PlantComponent) => Consumer | null;
   onSofort: (consumer: Consumer, action: SofortAktion) => void;
+  technik: TechnikSicht | null;
 }) {
   const k = karte;
   return (
@@ -708,6 +822,19 @@ function GeraeteKarteView({
             Übernehmen <Icon name="chevron-right" size={14} />
           </button>
         )}
+        {/* Der dritte Wohnort (§6.4): die TECHNISCHE Übernahme. Sie steht NEBEN
+            der geführten - die eine legt in einem Zug an, was der Kunde sieht,
+            die andere wählt Typ, Nennleistung, kWp und MaStR-Nummer von Hand.
+            Beide führen auf dieselbe Route; keine ersetzt die andere. */}
+        {k.art === 'neu' && k.quelle && technik && (
+          <button
+            type="button"
+            className="vp-am-karte-go is-technisch"
+            onClick={() => technik.onAdopt(k.quelle as AdoptableSource)}
+          >
+            technisch <Icon name="chevron-right" size={14} />
+          </button>
+        )}
       </div>
       {k.zusatz && <p className="vp-am-karte-sub">{k.zusatz}</p>}
       {k.komponenten.length > 0 && (
@@ -725,6 +852,7 @@ function GeraeteKarteView({
               onRemove={onRemove}
               sofort={sofortFor(c)}
               onSofort={onSofort}
+              technik={technik}
             />
           ))}
         </div>
@@ -750,6 +878,7 @@ function ComponentRow({
   onRemove,
   sofort,
   onSofort,
+  technik,
 }: {
   component: PlantComponent;
   /** Für den Absprung in den Befehls-Verlauf DIESER Komponente. */
@@ -763,8 +892,13 @@ function ComponentRow({
   onRemove: (c: PlantComponent) => void;
   sofort: Consumer | null;
   onSofort: (consumer: Consumer, action: SofortAktion) => void;
+  technik: TechnikSicht | null;
 }) {
   const c = component;
+  // Die PV-Aspekt-Zeile hat keine eigene Entität - sie hat damit auch keine
+  // technische Sicht, und eine erfundene wäre eine Aussage über etwas, das es
+  // nicht gibt.
+  const entity = technik && c.entityId ? technik.entityFor(c.entityId) : null;
   return (
     // `data-komponente` ist das Sprungziel des Schaltbilds (§13.2: ein Klick auf
     // eine Komponente führt zu IHRER Zeile) - die Zeile trägt die Handlungen,
@@ -862,7 +996,7 @@ function ComponentRow({
 
       {/* Die Bereinigung wohnt hier: an einer gesunden Komponente ruhig im
           Details-Bereich, an einer verwaisten prominent neben der Warnung. */}
-      {(c.channels.length > 0 || sofort != null || c.entityId != null
+      {(c.channels.length > 0 || sofort != null || c.entityId != null || entity != null
         || (c.freigabeFaehig && onFreigabe != null)
         || (!c.orphaned && (actions.canRepin || actions.canDelete))) && (
         <details className="vp-am-details">
@@ -953,6 +1087,19 @@ function ComponentRow({
                 </button>
               )}
             </span>
+          )}
+          {/* Der ERSTE Wohnort der aufgelösten Installateur-Ansicht (§6.4):
+              Typ, Soll/Ist, Rollen, Regeln, „Steuert" und Guards - an der
+              Komponente selbst statt in einer zweiten Karte weiter unten. */}
+          {technik && entity && (
+            <TechnischeZeile
+              entity={entity}
+              siteId={siteId}
+              strategies={technik.strategiesFor(entity.id)}
+              topology={technik.topology}
+              onEdit={() => technik.onEdit(entity)}
+              onChanged={technik.onChanged}
+            />
           )}
         </details>
       )}
