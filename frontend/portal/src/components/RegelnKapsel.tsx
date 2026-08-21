@@ -507,6 +507,7 @@ export function RegelnKapsel({
               <RegelKarteView
                 key={k.key}
                 karte={k}
+                siteId={site.id}
                 busy={busy}
                 onToggle={(karte, an) => void toggle(karte, an)}
                 onOpen={(karte) => setOffen(karte.key)}

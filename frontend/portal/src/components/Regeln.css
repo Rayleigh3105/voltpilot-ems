@@ -386,3 +386,16 @@
 .vp-regel-protokoll-list > li.ton-warn > span {
   color: var(--vp-warn-ink, #92400e);
 }
+
+/* Der Chip als WEG zurück auf die Komponente (Zentrale Stufe 3, PR 3c). Er
+   bleibt ein Chip - nur die Farbe sagt, dass er führt; ein unterstrichener Link
+   in einer Chip-Reihe läse sich wie ein Fremdkörper. */
+.vp-regel-chip.is-link {
+  color: var(--vp-link, #2c5282);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vp-regel-chip.is-link:hover {
+  border-color: var(--vp-link, #2c5282);
+}

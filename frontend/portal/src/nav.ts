@@ -658,6 +658,29 @@ export function parseZentraleAnsicht(hash: string): ZentraleAnsicht {
 }
 
 /**
+ * Der Weg ZURÜCK auf EINE Komponente (Anlagen-Zentrale Stufe 3, PR 3c):
+ * `…/modell?komponente=<entityId>`.
+ *
+ * Er ist die Gegenrichtung jedes Drill-ins der Landkarte - Cockpit, Regel-Karte
+ * und Schaltbild fragen alle dasselbe („wo kommt das her?"), und die Antwort
+ * ist IMMER die Zeile der Komponente IN ihrer Geräte-Karte. Von dort führt der
+ * Kartenkopf mit „Geräteseite ›" weiter; ein zweiter Weg direkt auf die
+ * Geräteseite würde die Zeile überspringen, an der die Handlungen hängen.
+ *
+ * Wie {@link zentraleAnsichtHash} ein HASH-PARAMETER, keine eigene Unterseite -
+ * die Route bleibt die Zentrale, und ein Lesezeichen öffnet exakt dieselbe
+ * Komponente wieder.
+ */
+export function komponenteHash(siteId: string, entityId: string): string {
+  return `#/anlage/${siteId}/modell?komponente=${encodeURIComponent(entityId)}`;
+}
+
+/** Die gemeinte Komponente aus einem `?komponente=`-Hash, oder null. */
+export function parseKomponente(hash: string): string | null {
+  return befehleParam(hash, 'komponente');
+}
+
+/**
  * Die Geräte-Referenz aus einem `?geraet=`-Hash, oder null.
  *
  * ⚠ **Diese Adresse wird seit der Anlagen-Zentrale Stufe 3 (PR 3b) nur noch

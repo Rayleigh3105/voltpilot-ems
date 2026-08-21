@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
-import { api, ApiError, type Site } from '../api';
+import { api, ApiError, type Device, type Site } from '../api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LadeBudgetBand } from '../components/LadeBudgetBand';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
@@ -27,6 +27,9 @@ import {
   type LadevorgangRow,
   type SiteCharging,
 } from '../ladepunkte';
+import { boxRefOf, chargerGeraetId } from '../geraetSeite';
+import { anlageRoute, geraetSeiteHash, hashForRoute } from '../nav';
+import { Icon } from '../../designsystem/components/core/Icon';
 import './Ladevorgaenge.css';
 
 /**
@@ -40,7 +43,19 @@ import './Ladevorgaenge.css';
  * bewusst keinen Knopf, der eine Ladegrenze setzt - Grenzen entstehen allein im
  * Lastmanagement der Box.
  */
-export function LadevorgaengeSection({ site }: { site: Site }) {
+export function LadevorgaengeSection({
+  site,
+  devices,
+}: {
+  site: Site;
+  /**
+   * Für den Weg auf die Geräteseite der Säule (`cp-…`, Zentrale Stufe 3, PR 3c).
+   * Ohne EINE eindeutige Box gibt es keinen Schlüssel - dann wird der Weg gar
+   * nicht angeboten, statt einen zu raten (`boxRefOf`).
+   */
+  devices?: Device[];
+}) {
+  const boxRef = boxRefOf(devices, site.id);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
   const [error, setError] = useState<string | null>(null);
   // „Jetzt voll laden": die EINE Aktion dieser Seite. Sie setzt keine Grenze -
@@ -183,7 +198,15 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
         ) : (
           <ul className="vp-lade-stations">
             {charging.chargers.map((c) => (
-              <StationCard key={c.chargePointId} charger={c} />
+              <StationCard
+                key={c.chargePointId}
+                charger={c}
+                href={
+                  boxRef
+                    ? geraetSeiteHash(site.id, boxRef, chargerGeraetId(c.chargePointId))
+                    : null
+                }
+              />
             ))}
           </ul>
         )}
@@ -201,6 +224,9 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
         </Card>
       )}
 
+      {/* Anlagen-Zentrale Stufe 3 (PR 3c, §13.4): der WEG wohnt jetzt als Tür
+          hinter „＋ Hinzufügen" im Anlagen-Modell - hier bleibt er als VERWEIS
+          samt der Schritte stehen, weil eine Säule hier gesucht wird. */}
       <Card>
         <h2 className="vp-lade-h2">Weitere Säule anbinden</h2>
         <ol className="vp-lade-steps">
@@ -209,6 +235,11 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
           ))}
         </ol>
         <p className="vp-lade-note">{ANBINDEN_ALLOWLIST}</p>
+        <p className="vp-lade-note">
+          <a href={hashForRoute(anlageRoute(site.id, 'modell'))}>
+            Alle Geräte dieser Anlage ansehen →
+          </a>
+        </p>
       </Card>
 
       {/* Der Haus-Dialog mit der Folgenliste - sie sagt auch, was GLEICH bleibt. */}
@@ -226,10 +257,51 @@ export function LadevorgaengeSection({ site }: { site: Site }) {
   );
 }
 
-/** Eine Säule mit ihrem Zustand, ihrer Selbstauskunft und ihren Steckern. */
-function StationCard({ charger }: { charger: ChargePoint }) {
+/**
+ * Eine Säule mit ihrem Zustand, ihrer Selbstauskunft und ihren Steckern.
+ *
+ * ⚠ Anlagen-Zentrale Stufe 3 (PR 3c, §13.4): der frühere Aufklapper
+ * „Technische Angaben" ist die GERÄTESEITE der Säule (`cp-…`) geworden - ein
+ * Ladepunkt hat damit denselben EINEN Ort wie jedes andere Gerät, statt eines
+ * vierten Einzelorts. Diese Seite bleibt die VORGANGS-Sicht (wie die
+ * Befehle-Seite); sie zeigt weiterhin, was man ohne Klick wissen muss, und
+ * führt für den Rest dorthin. Ohne eindeutige Box (`href == null`) bleibt der
+ * Aufklapper - ein Weg, der nirgends hinführt, wird nie angeboten.
+ */
+function StationCard({ charger, href }: { charger: ChargePoint; href: string | null }) {
   const view = chargerView(charger);
   const self = [charger.vendor, charger.model].filter(Boolean).join(' ');
+  const angaben = (
+    <>
+      <dl className="vp-lade-dl">
+        <dt>Kennung</dt>
+        <dd>{charger.chargePointId}</dd>
+        <dt>Verbindung</dt>
+        <dd>OCPP 1.6J - die Säule wählt VoltPilot an</dd>
+        {self && (
+          <>
+            <dt>Angabe der Säule</dt>
+            <dd>{self}</dd>
+          </>
+        )}
+        {charger.firmware && (
+          <>
+            <dt>Firmware</dt>
+            <dd>{charger.firmware}</dd>
+          </>
+        )}
+      </dl>
+      <ul className="vp-lade-plugs">
+        {(charger.connectors ?? []).map((con) => (
+          <li key={con.connectorId}>
+            {connectorName(con.connectorId)}
+            {con.status ? ` · ${con.status}` : ''}
+            {con.readback === 'abweichend' && ' · Grenze nicht bestätigt'}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
   return (
     <li className={`vp-lade-station tone-${view.tone}`}>
       <div className="vp-lade-station-head">
@@ -237,38 +309,24 @@ function StationCard({ charger }: { charger: ChargePoint }) {
         <strong>{chargerName(charger)}</strong>
         <span className="vp-lade-station-word">{view.word}</span>
         {charger.priority && <Badge variant="tint">Vorrang</Badge>}
+        {href && (
+          <a className="vp-lade-station-go" href={href}>
+            Geräteseite <Icon name="chevron-right" size={14} />
+          </a>
+        )}
       </div>
       <p className="vp-lade-note">{view.detail}</p>
-      <details className="vp-lade-details">
-        <summary>Technische Angaben</summary>
-        <dl className="vp-lade-dl">
-          <dt>Kennung</dt>
-          <dd>{charger.chargePointId}</dd>
-          <dt>Verbindung</dt>
-          <dd>OCPP 1.6J - die Säule wählt VoltPilot an</dd>
-          {self && (
-            <>
-              <dt>Angabe der Säule</dt>
-              <dd>{self}</dd>
-            </>
-          )}
-          {charger.firmware && (
-            <>
-              <dt>Firmware</dt>
-              <dd>{charger.firmware}</dd>
-            </>
-          )}
-        </dl>
-        <ul className="vp-lade-plugs">
-          {(charger.connectors ?? []).map((con) => (
-            <li key={con.connectorId}>
-              {connectorName(con.connectorId)}
-              {con.status ? ` · ${con.status}` : ''}
-              {con.readback === 'abweichend' && ' · Grenze nicht bestätigt'}
-            </li>
-          ))}
-        </ul>
-      </details>
+      {href ? (
+        <p className="vp-lade-note">
+          Kennung <span className="vp-mono">{charger.chargePointId}</span>
+          {self && <> · {self}</>}
+        </p>
+      ) : (
+        <details className="vp-lade-details">
+          <summary>Technische Angaben</summary>
+          {angaben}
+        </details>
+      )}
     </li>
   );
 }

@@ -69,7 +69,7 @@ const fronius: ComponentTemplate = {
 
 const geprueft: ComponentTemplate = { ...fronius, templateRef: 'certified:x:y', kind: 'certified' };
 
-describe('die drei Türen', () => {
+describe('die vier Türen', () => {
   it('öffnet die Selbstbau-Tür - seit Stufe 3 ist sie begehbar', () => {
     const t = tueren([deye]);
     const selbstbau = t.find((d) => d.id === 'selbstbau')!;
@@ -80,6 +80,22 @@ describe('die drei Türen', () => {
     expect(selbstbau.label).toContain('Eigenes Gerät');
     // Sie hängt an KEINER Vorlage - genau deshalb gibt es sie.
     expect(tueren([]).find((d) => d.id === 'selbstbau')!.verfuegbar).toBe(true);
+  });
+
+  /*
+    Anlagen-Zentrale Stufe 3 (PR 3c, §13.4): „Weitere Säule anbinden" ist eine
+    Tür dieses Knopfs geworden - sie erklärt den Weg, sie legt nichts an.
+  */
+  it('trägt die Ladesäulen-Tür - unabhängig von jeder Vorlage', () => {
+    const t = tueren([]).find((d) => d.id === 'ladesaeule')!;
+    expect(t.verfuegbar).toBe(true);
+    expect(t.label).toContain('Ladesäule');
+    // Eine Säule verbindet sich SELBST - der Hinweis sagt das, statt ein
+    // Formular zu versprechen, das es nicht gibt.
+    expect(t.hint).toContain('selbst an');
+    expect(t.bald).toBeUndefined();
+    // Und sie hängt an KEINER Vorlage.
+    expect(templatesFuerTuer([deye, geprueft], 'ladesaeule')).toEqual([]);
   });
 
   it('sagt bei leerer Vorlagen-Liste ehrlich, dass sie leer IST', () => {

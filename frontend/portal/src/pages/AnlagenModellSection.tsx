@@ -64,6 +64,7 @@ import {
   anlageRoute,
   befehleHash,
   hashForRoute,
+  parseKomponente,
   parseZentraleAnsicht,
   zentraleAnsichtHash,
   type ZentraleAnsicht,
@@ -348,6 +349,43 @@ export function AnlagenModellSection({
     [model, site.id, devices, devicesFetchedAt, boxRef, data, sources, charging],
   );
   const satz = useMemo(() => zentraleSatz(karten), [karten]);
+
+  /*
+    Anlagen-Zentrale Stufe 3 (PR 3c): der Weg ZURÜCK auf eine Komponente. Cockpit
+    und Regel-Karte fragen dasselbe wie ein Klick im Schaltbild („wo kommt das
+    her?"), also führen sie an DIESELBE Stelle - die Zeile in ihrer
+    Geräte-Karte, an der auch die Handlungen hängen.
+
+    ⚠ Der Sprung wartet auf die LISTE: vor `karten` gibt es die Zeile noch gar
+    nicht, ein `scrollIntoView` liefe dann ins Leere. Und er läuft GENAU EINMAL
+    je Adresse - sonst risse jeder Re-Render den Leser wieder nach oben.
+  */
+  const [gesprungen, setGesprungen] = useState<string | null>(null);
+  const [sprungZiel, setSprungZiel] = useState<string | null>(() =>
+    parseKomponente(typeof window === 'undefined' ? '' : window.location.hash),
+  );
+  // ⚠ Der Sprung folgt dem HASH, nicht nur dem Mounten: sonst führte ein
+  // zweiter Weg auf eine andere Komponente - während die Zentrale schon offen
+  // ist - nirgendwohin.
+  useEffect(() => {
+    const onHash = () => setSprungZiel(parseKomponente(window.location.hash));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  useEffect(() => {
+    if (karten.length === 0) return;
+    const ziel = sprungZiel;
+    if (!ziel || ziel === gesprungen) return;
+    setGesprungen(ziel);
+    const el = document.querySelector(`[data-komponente="${CSS.escape(ziel)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    // Die Hervorhebung ist eine ANTWORT auf den Sprung, kein Zustand: sie
+    // verblasst von selbst, damit die Zeile danach aussieht wie jede andere.
+    el.classList.add('is-angesprungen');
+    const t = window.setTimeout(() => el.classList.remove('is-angesprungen'), 2400);
+    return () => window.clearTimeout(t);
+  }, [karten.length, gesprungen, sprungZiel]);
 
   /** Das Struktur-Schaltbild - dieselbe Eingabe, andere Sicht (§8.2). */
   const bild = useMemo(

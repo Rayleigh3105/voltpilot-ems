@@ -48,3 +48,10 @@
 .vp-verlauf-toggle:hover {
   text-decoration: underline;
 }
+
+/* Der Weg auf die Komponenten-Karte (Zentrale Stufe 3, PR 3c) - EINE ruhige
+   Zeile unter dem Board, nie ein zweites Klickziel in der Zeile selbst. */
+.vp-komp-modell {
+  margin: var(--vp-space-3) 0 0;
+  font-size: 0.8rem;
+}

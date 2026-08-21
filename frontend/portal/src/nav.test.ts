@@ -27,6 +27,8 @@ import {
   parseSektion,
   type AnlagenSub,
   type Route,
+  komponenteHash,
+  parseKomponente,
 } from './nav';
 import { anlageSidebar, moreSheetItems } from './anlageNav';
 import { anlageSurface } from './surface';
@@ -554,5 +556,31 @@ describe('zentraleAnsichtHash / parseZentraleAnsicht', () => {
     expect(zentraleAnsichtHash('s-1', 'geraete')).toBe('#/anlage/s-1/modell');
     expect(parseZentraleAnsicht('#/anlage/s-1/modell')).toBe('geraete');
     expect(parseZentraleAnsicht('#/anlage/s-1/modell?ansicht=phantasie')).toBe('geraete');
+  });
+});
+
+/**
+ * Der Weg ZURÜCK auf EINE Komponente (Anlagen-Zentrale Stufe 3, PR 3c): die
+ * Gegenrichtung jedes Drill-ins - Cockpit, Regel-Karte und Schaltbild führen
+ * alle an dieselbe Zeile.
+ */
+describe('komponenteHash / parseKomponente', () => {
+  it('trägt die Komponente als Hash-Parameter und lässt die Route unberührt', () => {
+    const h = komponenteHash('s-1', 'batt');
+    expect(h).toBe('#/anlage/s-1/modell?komponente=batt');
+    expect(parseRoute(h)).toEqual({ page: 'anlagen', siteId: 's-1', sub: 'modell' });
+    expect(parseKomponente(h)).toBe('batt');
+  });
+
+  it('kodiert eine Kennung mit Sonderzeichen und liest sie zurück', () => {
+    const id = 'cp/1 a';
+    expect(komponenteHash('s-1', id)).toContain('cp%2F1%20a');
+    expect(parseKomponente(komponenteHash('s-1', id))).toBe(id);
+  });
+
+  it('ist null, wo keine Komponente genannt ist', () => {
+    expect(parseKomponente('#/anlage/s-1/modell')).toBeNull();
+    expect(parseKomponente('#/anlage/s-1/modell?ansicht=schaltbild')).toBeNull();
+    expect(parseKomponente('')).toBeNull();
   });
 });

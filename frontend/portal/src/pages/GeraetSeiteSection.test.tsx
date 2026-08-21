@@ -378,6 +378,18 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByText(/konnte nicht geladen werden/)).toBeInTheDocument();
   });
 
+  /*
+    Anlagen-Zentrale Stufe 3 (PR 3c, §13.3): der Wohnort der Regeln BLEIBT die
+    Steuerung. Die Geräteseite sagt nur, WELCHE dieses Gerät nutzen, und führt
+    dorthin - ein zweiter Regel-Ort wäre die Doppelung, die die Stufe abräumt.
+  */
+  it('führt von den Steuerungs-Bezügen in die Steuerung dieser Anlage', async () => {
+    stub();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);
+    const link = await screen.findByRole('link', { name: /Regeln und Modus dieser Anlage/ });
+    expect(link.getAttribute('href')).toBe('#/anlage/s-1/steuerung');
+  });
+
   it('führt zurück ins Anlagen-Modell', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={null} devices={[box]} />);

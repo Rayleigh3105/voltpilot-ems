@@ -11,6 +11,7 @@ import {
   type SiteComponentTemplate,
 } from '../api';
 import { SelbstbauAssistent } from './SelbstbauAssistent';
+import { ANBINDEN_ALLOWLIST, ANBINDEN_SCHRITTE } from '../ladepunkte';
 // Der Assistent bringt sein Stylesheet SELBST mit (die RegelKarten-Lehre): sich
 // auf den Import des Wirts zu verlassen liefert einem zweiten Wirt einen
 // ungestylten Assistenten - Türen als nackte Knöpfe, die Schritte als <ol>.
@@ -280,7 +281,21 @@ export function KomponenteHinzufuegenDrawer({
                   ))}
                 </div>
 
-                {tuer && tuer !== 'selbstbau' && brands.length > 0 && (
+                {/* Die Ladesäulen-Tür erklärt nur den Weg - sie legt nichts
+                    an (§13.4): die Säule verbindet sich selbst und erscheint
+                    danach von allein in der Liste. */}
+                {tuer === 'ladesaeule' && (
+                  <div className="vp-assist-pick" data-testid="tuer-ladesaeule">
+                    <ol className="vp-assist-schritte">
+                      {ANBINDEN_SCHRITTE.map((t, i) => (
+                        <li key={i}>{t}</li>
+                      ))}
+                    </ol>
+                    <p className="vp-assist-note">{ANBINDEN_ALLOWLIST}</p>
+                  </div>
+                )}
+
+                {tuer && tuer !== 'selbstbau' && tuer !== 'ladesaeule' && brands.length > 0 && (
                   <div className="vp-assist-pick">
                     <label htmlFor="assist-brand">Marke</label>
                     <select

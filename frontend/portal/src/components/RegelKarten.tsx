@@ -13,6 +13,7 @@
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { RegelKarte } from '../regeln/zustand';
+import { komponenteHash } from '../nav';
 // Der Schnellschalter ist der Haus-Schalter aus M3 (samt seiner >= 44-px-
 // Trefferfläche über `::before`). Die Datei wird hier MITgeladen, damit die
 // Karte nicht darauf angewiesen ist, dass ein Geschwister sie importiert.
@@ -21,11 +22,18 @@ import './Regeln.css';
 
 export function RegelKarteView({
   karte,
+  siteId,
   busy,
   onToggle,
   onOpen,
 }: {
   karte: RegelKarte;
+  /**
+   * Anlagen-Zentrale Stufe 3 (PR 3c): der Weg ZURÜCK auf die Komponente. Ohne
+   * Anlage (Test, Vorschau) bleiben die Chips reiner Text - ein Link, der
+   * nirgends hinführt, wird gar nicht erst angeboten.
+   */
+  siteId?: string;
   busy: boolean;
   onToggle: (karte: RegelKarte, an: boolean) => void;
   onOpen: (karte: RegelKarte) => void;
@@ -44,9 +52,24 @@ export function RegelKarteView({
         {karte.hinweis && <p className="vp-regel-hinweis">{karte.hinweis}</p>}
         {karte.chips.length > 0 && (
           <span className="vp-regel-chips">
-            {karte.chips.map((c) => (
-              <span key={c.key} className={`vp-regel-chip ton-${c.ton}`}>{c.label}</span>
-            ))}
+            {karte.chips.map((c) =>
+              // ⚠ Nur ein Chip, der eine LEBENDE Komponente benennt, führt
+              // irgendwohin: eine entfernte („warn") hat keine Zeile mehr, und
+              // ein Nachweis-Chip benennt gar keine Komponente. Ein Link ins
+              // Leere wäre schlimmer als kein Link.
+              siteId && c.ton === 'plain' && !c.key.includes(':') ? (
+                <a
+                  key={c.key}
+                  className={`vp-regel-chip ton-${c.ton} is-link`}
+                  href={komponenteHash(siteId, c.key)}
+                  title={`„${c.label}" im Anlagen-Modell zeigen`}
+                >
+                  {c.label}
+                </a>
+              ) : (
+                <span key={c.key} className={`vp-regel-chip ton-${c.ton}`}>{c.label}</span>
+              ),
+            )}
           </span>
         )}
       </div>

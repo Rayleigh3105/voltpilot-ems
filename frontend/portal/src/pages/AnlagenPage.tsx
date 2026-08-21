@@ -484,7 +484,7 @@ function AnlagenSubPage({
           />
         )}
         {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
-        {sub === 'ladevorgaenge' && <LadevorgaengeSection site={site} />}
+        {sub === 'ladevorgaenge' && <LadevorgaengeSection site={site} devices={devices} />}
         {/* Die BEFEHLE-Seite gehört einer KOMPONENTE - sie kommt als
             Hash-Parameter, damit jedes Lesezeichen dieselbe wieder öffnet. */}
         {sub === 'befehle' && (

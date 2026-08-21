@@ -527,6 +527,57 @@ describe('AnlagenModellSection — Variante A', () => {
 });
 
 /*
+  Anlagen-Zentrale Stufe 3 (PR 3c): der Weg ZURÜCK auf eine Komponente. Cockpit,
+  Regel-Karte und Schaltbild fragen alle dasselbe - und landen an DERSELBEN
+  Stelle: der Zeile in ihrer Geräte-Karte.
+*/
+describe('Der Sprung auf EINE Komponente (Stufe 3, PR 3c)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.location.hash = '';
+  });
+
+  it('springt auf die genannte Komponente und hebt sie kurz hervor', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    window.location.hash = '#/anlage/s-1/modell?komponente=grid';
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
+
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(document.querySelector('[data-komponente="grid"]')?.className)
+        .toContain('is-angesprungen'),
+    );
+  });
+
+  it('reißt niemanden nach oben, wenn keine Komponente genannt ist', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    window.location.hash = '#/anlage/s-1/modell';
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it('behauptet nichts über eine Komponente, die es nicht gibt', async () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    stub();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    window.location.hash = '#/anlage/s-1/modell?komponente=gibt-es-nicht';
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Ihre Geräte' });
+    expect(scroll).not.toHaveBeenCalled();
+    expect(document.querySelector('.is-angesprungen')).toBeNull();
+  });
+});
+
+/*
   Anlagen-Zentrale Stufe 3 (PR 3a): die Installateur-Ansicht ist AUFGELÖST -
   ihre drei Fähigkeiten wohnen jetzt IN der Liste. Diese Suite ist der
   Kein-Verlust-Beweis: jede Fähigkeit des alten Orts hat hier ihren neuen.

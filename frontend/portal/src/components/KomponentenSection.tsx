@@ -31,6 +31,7 @@ const TelemetryChart = lazy(() =>
 );
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { verlaufHash } from '../verlauf';
+import { anlageRoute, hashForRoute } from '../nav';
 import { verlaufRangeForCockpit } from '../verlaufTarget';
 import './KomponentenSection.css';
 
@@ -230,6 +231,24 @@ export function KomponentenSection({
           <LivePuls rows={rows} onOpenVerlauf={openVerlauf} />
         )}
       </div>
+
+      {/*
+        Anlagen-Zentrale Stufe 3 (PR 3c): der Weg vom Cockpit auf die
+        Komponenten-Karte.
+
+        ⚠ Bewusst EINE Zeile unter dem Board und kein zweites Ziel je Zeile:
+        die Zeile hat schon eine Bedeutung („Verlauf dieser Komponente"), und
+        zwei Klickziele in einer Zeile sind genau die Doppeldeutigkeit, die das
+        Haus verbietet. Wo eine Komponente GENANNT wird, ohne schon ein Ziel zu
+        haben - an den Regel-Karten -, führt der Weg direkt auf ihre Zeile.
+      */}
+      {!showEmpty && !failed && (
+        <p className="vp-komp-modell">
+          <a href={hashForRoute(anlageRoute(site.id, 'modell'))}>
+            Woher kommt jede Zahl? → Ihre Geräte
+          </a>
+        </p>
+      )}
 
       {/* Q2 · the compact Verlauf chart behind the disclosure. The window seg
           stays GLUED to the chart (R3: two time controls, two meanings). */}
