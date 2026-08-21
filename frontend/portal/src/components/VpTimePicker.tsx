@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useIsPhone } from '../useIsPhone';
-import { VpPanel } from './VpPanel';
+import { MAX_KALENDER_PX, VpPanel } from './VpPanel';
 import { anzeige, imBereich, naechsteZeile, raster, RASTER_MIN, zeitLesen } from '../picker/zeit';
 
 /**
@@ -229,6 +229,7 @@ export function VpTimePicker({
         error={error ?? fehler}
         icon="history"
         isPhone={isPhone}
+        maxPanelPx={MAX_KALENDER_PX}
         onOpened={() => feldRef.current?.focus()}
         ausloeserInhalt={feld}
         triggerAsField

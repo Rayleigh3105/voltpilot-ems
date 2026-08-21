@@ -1,5 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { VpDatePicker } from './VpDatePicker';
+import { VpPicker } from './VpPicker';
 import {
   aktiv,
   CHIPS,
@@ -111,40 +113,33 @@ export function BefehleFilterLeiste({
               </button>
             </div>
 
-            <label className="vp-bf-field">
-              <span>Zeitraum</span>
-              <select
-                name="befehle-zeitraum"
-                value={filter.zeitraum}
-                onChange={(e) => setze({ zeitraum: e.target.value as BefehlZeitraum })}
-              >
-                {(Object.keys(ZEITRAUM_LABEL) as BefehlZeitraum[]).map((z) => (
-                  <option key={z} value={z}>
-                    {ZEITRAUM_LABEL[z]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <VpPicker
+              className="vp-bf-field"
+              label="Zeitraum"
+              name="befehle-zeitraum"
+              options={(Object.keys(ZEITRAUM_LABEL) as BefehlZeitraum[]).map((z) => ({
+                value: z,
+                label: ZEITRAUM_LABEL[z],
+              }))}
+              value={filter.zeitraum}
+              onChange={(v) => setze({ zeitraum: v as BefehlZeitraum })}
+            />
             {filter.zeitraum === 'eigen' && (
               <div className="vp-bf-range">
-                <label className="vp-bf-field">
-                  <span>Von</span>
-                  <input
-                    type="date"
-                    name="befehle-von"
-                    value={filter.von ?? ''}
-                    onChange={(e) => setze({ von: e.target.value || null })}
-                  />
-                </label>
-                <label className="vp-bf-field">
-                  <span>Bis</span>
-                  <input
-                    type="date"
-                    name="befehle-bis"
-                    value={filter.bis ?? ''}
-                    onChange={(e) => setze({ bis: e.target.value || null })}
-                  />
-                </label>
+                <VpDatePicker
+                  className="vp-bf-field"
+                  label="Von"
+                  name="befehle-von"
+                  value={filter.von}
+                  onChange={(v) => setze({ von: v || null })}
+                />
+                <VpDatePicker
+                  className="vp-bf-field"
+                  label="Bis"
+                  name="befehle-bis"
+                  value={filter.bis}
+                  onChange={(v) => setze({ bis: v || null })}
+                />
                 {/* Die Aufbewahrung IST die Grenze - sie steht hier, damit sie
                     niemand erst als Server-Ablehnung erfährt. */}
                 <p className="vp-note">Der Verlauf wird 90 Tage aufbewahrt.</p>

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VpDatePicker } from './VpDatePicker';
 import { VpTimePicker } from './VpTimePicker';
+import { MAX_KALENDER_PX, MIN_PANEL_PX, platziere } from './VpPanel';
 
 function phone(an: boolean) {
   Object.defineProperty(window, 'matchMedia', {
@@ -252,5 +253,37 @@ describe('VpTimePicker: getippt wird FREI, das Raster ist nur der schnelle Weg',
     fireEvent.change(f, { target: { value: '' } });
     fireEvent.blur(f);
     expect(onChange).toHaveBeenCalledWith('');
+  });
+});
+
+/*
+  Die NATÜRLICHE Breite des Kalenders (im echten Chrome an einem 1136 px
+  breiten Feld gemessen): eine Auswahl-LISTE darf die Breite ihres Feldes
+  nehmen, ein sieben-spaltiges GITTER nicht - dort wird aus dem Datumsblock
+  eine Tapete, in der keine Woche mehr als Zeile lesbar ist.
+*/
+describe('platziere: der Kalender bleibt so breit, wie ein Kalender ist', () => {
+  const feldMit = (breite: number) =>
+    ({
+      getBoundingClientRect: () => ({
+        width: breite,
+        left: 20,
+        right: 20 + breite,
+        top: 100,
+        bottom: 140,
+      }),
+    }) as unknown as HTMLElement;
+  const panel = { offsetHeight: 300 } as unknown as HTMLElement;
+
+  it('deckelt ein sehr breites Feld auf die Kalenderbreite', () => {
+    expect(platziere(feldMit(1136), panel, MAX_KALENDER_PX).width).toBe(MAX_KALENDER_PX);
+  });
+
+  it('lässt eine Auswahl-Liste OHNE Deckel weiterhin ihrem Feld folgen', () => {
+    expect(platziere(feldMit(1136), panel).width).toBe(1136);
+  });
+
+  it('unterschreitet die Mindestbreite auch mit Deckel nie', () => {
+    expect(platziere(feldMit(90), panel, 100).width).toBe(MIN_PANEL_PX);
   });
 });
