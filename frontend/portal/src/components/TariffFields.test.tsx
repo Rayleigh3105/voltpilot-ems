@@ -50,12 +50,21 @@ function Host({
 const AUFSCHLAG = 'Aufschlag auf den Börsenpreis (gesamt, ct/kWh)';
 const FESTPREIS = 'Arbeitspreis (all-in, brutto) (ct/kWh)';
 
+/**
+ * Seit dem Picker-System ist der Stromtarif der Haus-{@link VpPicker}, kein
+ * `<select>`: geöffnet wird der Auslöser, gewählt wird die Zeile.
+ */
+function waehleTarif(label: string): void {
+  fireEvent.click(screen.getByRole('combobox', { name: 'Stromtarif' }));
+  fireEvent.click(screen.getByRole('option', { name: label }));
+}
+
 describe('TariffFields · ein Wert je Tarifart (E2, Wunde 1)', () => {
   it('DIE Falle ist zu: der Aufschlag 18 steht nach dem Wechsel NICHT als Strompreis da', () => {
     render(<Host art="dynamisch" param="18" />);
     expect(screen.getByLabelText(AUFSCHLAG)).toHaveValue('18');
 
-    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
+    waehleTarif('Fest (ct/kWh)');
 
     // Das Feld heißt jetzt anders UND ist leer - keine stille Umdeutung.
     const festpreis = screen.getByLabelText(FESTPREIS) as HTMLInputElement;
@@ -67,15 +76,15 @@ describe('TariffFields · ein Wert je Tarifart (E2, Wunde 1)', () => {
 
   it('fest → dynamisch → fest: die Zahl kehrt zu IHRER Bedeutung zurück, nie zur fremden', () => {
     render(<Host art="fest" param="32,5" />);
-    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'dynamisch' } });
+    waehleTarif('Dynamisch (Börsenpreis-gekoppelt)');
     expect((screen.getByLabelText(AUFSCHLAG) as HTMLInputElement).value).toBe('');
 
     fireEvent.change(screen.getByLabelText(AUFSCHLAG), { target: { value: '18' } });
-    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
+    waehleTarif('Fest (ct/kWh)');
     expect((screen.getByLabelText(FESTPREIS) as HTMLInputElement).value).toBe('32,5');
     expect(screen.getByRole('status').textContent).toContain('wieder im Feld');
 
-    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'dynamisch' } });
+    waehleTarif('Dynamisch (Börsenpreis-gekoppelt)');
     expect((screen.getByLabelText(AUFSCHLAG) as HTMLInputElement).value).toBe('18');
   });
 
@@ -114,7 +123,7 @@ describe('TariffFields · die ausdrückliche Wahl Schnell / Genau (D3)', () => {
   it('die Wechsel-Ansage steht nie ohne das Feld, auf das sie zeigt', () => {
     render(<Host art="fest" param="32,5" withSupply />);
     // fest -> dynamisch: das Feld ist da, die Ansage auch.
-    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'dynamisch' } });
+    waehleTarif('Dynamisch (Börsenpreis-gekoppelt)');
     expect(screen.getByRole('status').textContent).toContain('Andere Bedeutung');
     // „Genau" blendet das Feld aus - dann darf „bitte neu eintragen" nicht
     // über einem Preisblatt stehen bleiben.
@@ -124,7 +133,7 @@ describe('TariffFields · die ausdrückliche Wahl Schnell / Genau (D3)', () => {
 
   it('wer tippt, hat die Ansage gelesen - sie räumt sich weg', () => {
     render(<Host art="dynamisch" param="18" />);
-    fireEvent.change(screen.getByLabelText('Stromtarif'), { target: { value: 'fest' } });
+    waehleTarif('Fest (ct/kWh)');
     expect(screen.getByRole('status')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(FESTPREIS), { target: { value: '32,5' } });
     expect(screen.queryByRole('status')).toBeNull();

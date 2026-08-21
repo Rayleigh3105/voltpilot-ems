@@ -120,6 +120,7 @@ export function VpPanel({
   /** Wie sich das Panel anmeldet: `listbox` (Auswahl) oder `dialog` (Kalender). */
   haspopup = 'listbox',
   triggerAsField = false,
+  labelFor,
   maxPanelPx,
 }: {
   basisId: string;
@@ -153,6 +154,14 @@ export function VpPanel({
    * Rahmen drumherum und überlässt Rolle, Fokus und Tastatur dem Inhalt.
    */
   triggerAsField?: boolean;
+  /**
+   * ⚠ Das Ziel der Beschriftung, wenn der Auslöser das Feld nur UMSCHLIESST.
+   * In {@link triggerAsField}-Fassung traegt der Rahmen (`span`) keine `id`,
+   * `htmlFor={basisId}` zeigte also ins Leere - Chrome meldet das als
+   * „Incorrect use of `<label for=…>`", und ein Klick auf die Beschriftung
+   * fokussierte nichts. Der Inhalt nennt hier die `id` seines echten Felds.
+   */
+  labelFor?: string;
   /** Obergrenze der Panel-Breite - siehe {@link MAX_KALENDER_PX}. */
   maxPanelPx?: number;
 }) {
@@ -308,7 +317,7 @@ export function VpPanel({
   return (
     <div className={`vp-picker${className ? ` ${className}` : ''}${error ? ' is-fehler' : ''}`}>
       {label && (
-        <label className="vp-picker-label" htmlFor={basisId}>
+        <label className="vp-picker-label" htmlFor={labelFor ?? basisId}>
           {label}
         </label>
       )}

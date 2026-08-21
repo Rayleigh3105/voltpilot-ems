@@ -1,4 +1,5 @@
 import { Input } from '../../designsystem/components/forms/Input';
+import { VpDatePicker } from './VpDatePicker';
 import type { TarifArt } from '../api';
 import {
   SUPPLY_PRICE_FEST_HINT,
@@ -81,15 +82,12 @@ export function SupplyPriceFields({
         value={values.ustPct}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange('ustPct', e.target.value)}
       />
-      <Input
+      <VpDatePicker
         id={`${idPrefix}-komponentenStand`}
         label="Preisblatt gültig ab (optional)"
         hint="Datum Ihres Netzbetreiber-Preisblatts."
-        type="date"
         value={values.komponentenStand}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-          onChange('komponentenStand', e.target.value)
-        }
+        onChange={(v) => onChange('komponentenStand', v)}
       />
       <p className="vp-note" style={{ margin: 0 }}>
         Summe der Komponenten:{' '}

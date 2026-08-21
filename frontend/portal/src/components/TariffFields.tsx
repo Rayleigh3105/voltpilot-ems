@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Input } from '../../designsystem/components/forms/Input';
 import type { TarifArt } from '../api';
 import { SupplyPriceFields } from './SupplyPriceFields';
+import { VpPicker } from './VpPicker';
 import { showSupplyPriceFields, type SupplyPriceFormValues } from '../supplyPrice';
 import {
   initialDrafts,
@@ -111,19 +112,17 @@ export function TariffFields({
   return (
     <>
       <div className="vp-tarif-field">
-        <label htmlFor={`${idPrefix}-tarifart`} className="vp-tarif-label">
-          Stromtarif
-        </label>
-        <select
+        <VpPicker
           id={`${idPrefix}-tarifart`}
-          className="vp-select"
+          label="Stromtarif"
+          options={[
+            { value: 'dynamisch', label: 'Dynamisch (Börsenpreis-gekoppelt)' },
+            { value: 'fest', label: 'Fest (ct/kWh)' },
+            { value: 'ohne', label: 'Ohne Angabe' },
+          ]}
           value={tarifArt}
-          onChange={(e) => changeArt(e.target.value as TarifArt)}
-        >
-          <option value="dynamisch">Dynamisch (Börsenpreis-gekoppelt)</option>
-          <option value="fest">Fest (ct/kWh)</option>
-          <option value="ohne">Ohne Angabe</option>
-        </select>
+          onChange={(v) => changeArt(v as TarifArt)}
+        />
         <p className="vp-note" style={{ margin: 0 }}>
           Für den Wert Ihres Eigenverbrauchs. Bei „Ohne Angabe" zeigen wir den
           Eigenverbrauch nur in kWh, nie einen erfundenen Euro-Wert.

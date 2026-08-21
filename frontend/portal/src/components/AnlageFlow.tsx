@@ -56,6 +56,7 @@ import { parseFeedInCapInput, parsePremiumInput } from '../fleet';
 import { SETUP_NEXT_HINT } from '../setupPath';
 import { fmtNum } from '../format';
 import { LocationMap } from './LocationMap';
+import { VpPicker } from './VpPicker';
 import { TariffFields } from './TariffFields';
 import {
   buildSupplyPricePatch,
@@ -523,18 +524,19 @@ function AnlageStep({
           }}
         />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="flow-plant-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            {VERAEUSSERUNGSFORM_LABEL}
-          </label>
-          <select
+          <VpPicker
             id="flow-plant-kind"
-            className="vp-select"
+            label={VERAEUSSERUNGSFORM_LABEL}
+            options={[
+              { value: 'eigenverbrauch', label: 'Eigenverbrauch (Haushalt/Gewerbe)' },
+              {
+                value: 'direktvermarktung',
+                label: 'Direktvermarktung (Einspeisung am Markt)',
+              },
+            ]}
             value={plantKind}
-            onChange={(e) => setPlantKind(e.target.value as PlantKind)}
-          >
-            <option value="eigenverbrauch">Eigenverbrauch (Haushalt/Gewerbe)</option>
-            <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
-          </select>
+            onChange={(v) => setPlantKind(v as PlantKind)}
+          />
           <p className="vp-note" style={{ margin: 0 }}>
             {VERAEUSSERUNGSFORM_FRAGE} Sie bestimmt auch, wie Ihr Vorteil erzählt wird:
             „gespart" beim Eigenverbrauch, „mehr verdient" bei der Direktvermarktung.
@@ -596,18 +598,16 @@ function AnlageStep({
               onPriceMode={setPriceMode}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <label htmlFor="flow-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                Netzladen des Speichers
-              </label>
-              <select
+              <VpPicker
                 id="flow-netzladen"
-                className="vp-select"
+                label="Netzladen des Speichers"
+                options={[
+                  { value: 'verboten', label: 'Verboten - EEG-Anlage (nur Solarladen)' },
+                  { value: 'erlaubt', label: 'Erlaubt - Speicher darf aus dem Netz laden' },
+                ]}
                 value={netzladen ? 'erlaubt' : 'verboten'}
-                onChange={(e) => setNetzladen(e.target.value === 'erlaubt')}
-              >
-                <option value="verboten">Verboten - EEG-Anlage (nur Solarladen)</option>
-                <option value="erlaubt">Erlaubt - Speicher darf aus dem Netz laden</option>
-              </select>
+                onChange={(v) => setNetzladen(v === 'erlaubt')}
+              />
               <p className="vp-note" style={{ margin: 0 }}>
                 EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
                 (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
@@ -1373,23 +1373,13 @@ function ConsumerAddRow({
 
   return (
     <div className="vp-onb-add">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-        <label htmlFor="onb-consumer-type" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-          Verbraucher-Typ
-        </label>
-        <select
-          id="onb-consumer-type"
-          className="vp-select"
-          value={entityType}
-          onChange={(e) => setEntityType(e.target.value)}
-        >
-          {types.map((t) => (
-            <option key={t.type} value={t.type}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <VpPicker
+        id="onb-consumer-type"
+        label="Verbraucher-Typ"
+        options={types.map((t) => ({ value: t.type, label: t.label }))}
+        value={entityType}
+        onChange={setEntityType}
+      />
       <Input
         label="Bezeichnung (optional)"
         placeholder="z. B. Wallbox Carport"
@@ -1483,26 +1473,17 @@ function GeraetStep({
       </p>
       <div style={{ display: 'grid', gap: 16 }}>
         {multiSite && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label htmlFor="flow-site" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              Anlage
-            </label>
-            <select
-              id="flow-site"
-              className="vp-select"
-              value={site.id}
-              onChange={(e) => {
-                const next = sites.find((s) => s.id === e.target.value);
-                if (next) onSiteChange(next);
-              }}
-            >
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <VpPicker
+            id="flow-site"
+            label="Anlage"
+            options={sites.map((s) => ({ value: s.id, label: s.name }))}
+            value={site.id}
+            onChange={(v) => {
+              const next = sites.find((s) => s.id === v);
+              if (next) onSiteChange(next);
+            }}
+            searchPlaceholder="Anlage suchen …"
+          />
         )}
         <Input
           ref={inputRef}
