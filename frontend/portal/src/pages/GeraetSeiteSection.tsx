@@ -17,24 +17,42 @@ import {
   type Site,
   type SiteComponents,
   type SiteEntities,
+  type SiteEntity,
   type SiteSource,
   type SiteTopology,
 } from '../api';
-import type { SiteCharging } from '../ladepunkte';
+import { ausfallSchutz, type SiteCharging } from '../ladepunkte';
 import {
+  chargePointIdOf,
   geraetSeite,
   type GeraetArt,
   type GeraetSeiteView,
   type Zeile,
 } from '../geraetSeite';
+import {
+  abregelungDiesesGeraets,
+  gesicht,
+  OHNE_REGISTER_SATZ,
+  type Gesicht,
+  type Held,
+  type HeldKachel,
+  type SektionId,
+} from '../geraetGesicht';
 import { plantModel, type PlantComponent } from '../komponenten';
+import { fmtNum } from '../format';
+import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment';
 import { COMPONENT_ROLE_ICONS } from '../komponenten';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, befehleGeraetHash, hashForRoute, pageRoute } from '../nav';
 import {
+  ABRUF_HINWEIS,
+  abrufZeile,
+  KEINE_REGISTER,
+  LESE_FEHLGESCHLAGEN,
   QUELLE_WORT,
   registerSicht,
+  type RegisterZeile,
 } from '../geraetRegister';
 import { klasseTon, klasseWort } from '../registerWrite';
 import {
@@ -42,6 +60,11 @@ import {
   geraeteVerlauf,
   KEIN_SCHREIBWEG,
   geraetRegisterZugang,
+  LESE_DAUER_HINWEIS,
+  LESE_LAEUFT,
+  vorschau,
+  zielInput,
+  zielKey,
   type GeraetRegisterZugang,
 } from '../registerWrite';
 import { RegisterWriteDrawer } from '../components/RegisterWriteDrawer';
@@ -286,6 +309,65 @@ export function GeraetSeiteSection({
 
   const box = boxDevice;
 
+  // ------------------------------------------------------------------
+  // Das GESICHT dieser Seite - was oben steht und welche Sektionen folgen.
+  // Es entscheidet NUR die Auswahl; jede Sektion bleibt das geteilte Bauteil.
+  // ------------------------------------------------------------------
+  const gesichtView: Gesicht | null = useMemo(() => {
+    if (!view || !view.gefunden) return null;
+    const setup = (data?.localSetup ?? []).find((l) => l.id === geraetId);
+    const row = (components?.components ?? []).find(
+      (r) => r.edgeSourceId === geraetId
+        || view.komponenten.some((c) => c.entityId === r.id),
+    );
+    return gesicht({
+      art: view.art,
+      geraetId: geraetId ?? geraeteRef,
+      rolle: setup?.role ?? null,
+      // Das gepflegte SOLL führt, sonst das gemeldete Ist - dieselbe Reihenfolge
+      // wie `geraetSeite.verbindungsWeg`, damit die zwei nichts Verschiedenes
+      // über denselben Weg annehmen.
+      communication: row?.communication ?? setup?.communication ?? null,
+      komponenten: view.komponenten,
+      entities: data?.entities ?? null,
+      src: (sources ?? []).find((s) => s.sourceId === geraetId) ?? null,
+      charger: chargePointIdOf(geraetId)
+        ? (charging?.chargers ?? []).find(
+            (c) => c.chargePointId === chargePointIdOf(geraetId),
+          ) ?? null
+        : null,
+      // ⚠ Die `eigenerBeleg`-Regel: ein Steuerungs-Beleg gehört dem Gerät, das
+      // ihn GEMELDET hat - sonst wäre die Zuschreibung erfunden.
+      control: control && box?.id && control.deviceId === box.id ? control : null,
+      curtailment,
+      regeln: regelNamenOf(strategies, view.komponenten),
+      now,
+    });
+  }, [view, data, components, sources, charging, control, curtailment, strategies,
+    geraetId, geraeteRef, box?.id, now]);
+
+  // Die drei Gattungs-eigenen Sektionen - abgeleitet aus dem, was schon
+  // geladen ist; jede Zeile nennt ihren Grund, keine wird erfunden.
+  const grenzen: Zeile[] = useMemo(
+    () => grenzenZeilen(view, curtailment, data?.entities ?? null),
+    [view, curtailment, data],
+  );
+  const einspeiseZeilen: Zeile[] = useMemo(
+    () => einspeiseSektion(curtailment, geraetId, now),
+    [curtailment, geraetId, now],
+  );
+  const ausfallschutz: Zeile[] = useMemo(
+    () => ausfallschutzZeilen(charging),
+    [charging],
+  );
+  const ladepark: Zeile[] = useMemo(
+    () => ladeparkZeilen(charging, geraetId),
+    [charging, geraetId],
+  );
+  const ohneRegisterSatz = gesichtView && !gesichtView.sektionen.includes('register')
+    ? (gesichtView.gattung === 'ladepunkt' ? KEINE_REGISTER.ladepunkt : OHNE_REGISTER_SATZ)
+    : null;
+
   return (
     <div className="vp-geraet">
       <a className="vp-geraet-back" href={hashForRoute(anlageRoute(site.id, 'modell'))}>
@@ -343,96 +425,138 @@ export function GeraetSeiteSection({
             </div>
           </Card>
 
+          {/* Der HELD: die Frage, die DIESE Gattung zuerst beantwortet. Er
+              steht über dem Raster, weil er die ganze Breite trägt. */}
+          {gesichtView?.sektionen.includes('jetzt') && (
+            <HeldKarte held={gesichtView.held} stand={view.liveStand} />
+          )}
+
           <div className="vp-geraet-grid">
-            <Sektion titel="Verbindung & Gesundheit" icon="wifi">
-              {view.verbindungLeer && <p className="vp-note">{view.verbindungLeer}</p>}
-              <ZeilenListe zeilen={view.verbindung} />
-            </Sektion>
+            {(gesichtView?.sektionen ?? []).map((id: SektionId) => {
+              switch (id) {
+                case 'jetzt':
+                  return null; // steht über dem Raster
+                case 'befehle':
+                  return (
+                    <BefehleSektion
+                      key={id}
+                      siteId={site.id}
+                      geraetRef={geraetId ?? geraeteRef}
+                      history={commands}
+                      now={now}
+                    />
+                  );
+                case 'komponenten':
+                  return (
+                    <Sektion key={id} titel="Misst & steuert" icon="layers" breit>
+                      {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
+                      {view.komponenten.length > 0 && (
+                        <ul className="vp-geraet-komps">
+                          {view.komponenten.map((c) => (
+                            <KomponentenZeile key={c.id} komponente={c} siteId={site.id} />
+                          ))}
+                        </ul>
+                      )}
+                    </Sektion>
+                  );
+                case 'grenzen':
+                  return (
+                    <Sektion key={id} titel="Grenzen dieses Geräts" icon="shield" breit>
+                      <ZeilenListe zeilen={grenzen} />
+                    </Sektion>
+                  );
+                case 'einspeise':
+                  return (
+                    <Sektion key={id} titel="Einspeise-Begrenzung" icon="shield" breit>
+                      <ZeilenListe zeilen={einspeiseZeilen} />
+                    </Sektion>
+                  );
+                case 'ausfallschutz':
+                  return (
+                    <Sektion key={id} titel="Ausfall-Schutz" icon="shield">
+                      <ZeilenListe zeilen={ausfallschutz} />
+                    </Sektion>
+                  );
+                case 'register':
+                  return (
+                    <RegisterSektion
+                      key={id}
+                      siteId={site.id}
+                      boxDeviceId={box?.id ?? null}
+                      geraetName={view.kopf.titel}
+                      art={view.art}
+                      entityIds={view.komponenten.map((c) => c.entityId)}
+                      targets={targets}
+                      exportLimit={view.art === 'hauptgeraet'
+                        ? curtailment?.deviceExportLimit ?? null
+                        : null}
+                      writes={writes}
+                      source={(sources ?? []).find((s) => s.sourceId === geraetId) ?? null}
+                      familie={(targets ?? []).find((t) => (geraetId
+                        ? t.entityId != null
+                          && view.komponenten.some((c) => c.entityId === t.entityId)
+                        : t.lane === 'primary'))?.family ?? null}
+                      knowledge={knowledge}
+                      now={now}
+                    />
+                  );
+                case 'verbindung':
+                  return (
+                    <Sektion key={id} titel="Verbindung & Gesundheit" icon="wifi">
+                      {view.verbindungLeer && <p className="vp-note">{view.verbindungLeer}</p>}
+                      <ZeilenListe zeilen={view.verbindung} />
+                    </Sektion>
+                  );
+                case 'ladepark':
+                  return (
+                    <Sektion key={id} titel="Diese Säule im Ladepark" icon="zap">
+                      <ZeilenListe zeilen={ladepark} />
+                      <p className="vp-geraet-sec-sub">
+                        <a href={hashForRoute(anlageRoute(site.id, 'ladevorgaenge'))}>
+                          Ladevorgänge dieser Anlage ansehen →
+                        </a>
+                      </p>
+                    </Sektion>
+                  );
+                case 'software':
+                  return (
+                    <Sektion key={id} titel="Software" icon="settings">
+                      <ZeilenListe zeilen={view.software} />
+                      {(view.diagnose.length > 0 || ohneRegisterSatz) && (
+                        <details className="vp-geraet-diagnose">
+                          <summary>
+                            <Icon name="chevron-right" size={12} /> Diagnose (technisch)
+                          </summary>
+                          {/* Die entfallene Register-Sektion VERSCHWINDET nicht,
+                              ihr Grund zieht hierher (die Box-Lehre der Stufe 1). */}
+                          {ohneRegisterSatz && <p className="vp-note">{ohneRegisterSatz}</p>}
+                          <ZeilenListe zeilen={view.diagnose} />
+                        </details>
+                      )}
+                    </Sektion>
+                  );
+                default:
+                  return null;
+              }
+            })}
+          </div>
 
-            <Sektion
-              titel="Live-Werte vom Gerät"
-              icon="activity"
-              zusatz={view.liveStand ? `Stand ${view.liveStand}` : null}
-            >
-              {view.liveLeer && <p className="vp-note">{view.liveLeer}</p>}
-              {view.live.length > 0 && (
-                <div className="vp-geraet-kacheln">
-                  {view.live.map((k) => (
-                    <div className="vp-geraet-kachel" key={k.label}>
-                      <span className="l">{k.label}</span>
-                      <span className="v">{k.wert}</span>
-                      {k.wort && <span className="w">{k.wort}</span>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Sektion>
-
-            <Sektion titel="Misst & steuert" icon="layers" breit>
-              {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
-              {view.komponenten.length > 0 && (
-                <ul className="vp-geraet-komps">
-                  {view.komponenten.map((c) => (
-                    <KomponentenZeile key={c.id} komponente={c} siteId={site.id} />
-                  ))}
-                </ul>
-              )}
-            </Sektion>
-
-            <GeleseneRegisterSektion
-              art={view.art}
-              exportLimit={view.art === 'hauptgeraet'
-                ? curtailment?.deviceExportLimit ?? null
-                : null}
-              writes={writes}
-              source={(sources ?? []).find((s) => s.sourceId === geraetId) ?? null}
-              familie={(targets ?? []).find((t) => (geraetId
-                ? t.entityId != null && view.komponenten.some((c) => c.entityId === t.entityId)
-                : t.lane === 'primary'))?.family ?? null}
-              knowledge={knowledge}
-              entityIds={view.komponenten.map((c) => c.entityId)}
-              now={now}
-            />
-
-            <RegisterSektion
-              siteId={site.id}
-              boxDeviceId={box?.id ?? null}
-              geraetName={view.kopf.titel}
-              art={view.art}
-              entityIds={view.komponenten.map((c) => c.entityId)}
-              targets={targets}
-            />
-
-            <BefehleSektion
-              siteId={site.id}
-              geraetRef={geraetId ?? geraeteRef}
-              history={commands}
-              now={now}
-            />
-
+          {/* Die Steuerungs-Bezüge stehen NACH den Gattungs-Sektionen: sie sind
+              in jeder Gattung dieselbe Auskunft, und der Wohnort der REGELN
+              bleibt die Steuerung (Anlagen-Zentrale Stufe 3, §13.3). */}
+          <div className="vp-geraet-grid">
             <Sektion titel="Steuerungs-Bezüge" icon="shield">
-              <ZeilenListe zeilen={view.steuerung} />
-              {/* Anlagen-Zentrale Stufe 3 (PR 3c, §13.3): der Wohnort der
-                  Regeln BLEIBT die Steuerung - die Geräteseite sagt nur, WELCHE
-                  dieses Gerät nutzen, und führt dorthin. Ein zweiter Regel-Ort
-                  wäre genau die Doppelung, die diese Stufe abräumt. */}
+              {/* ⚠ Der Einspeise-Wächter steht dort, wo die Gattung ihn führt -
+                  nie zweimal auf einem Bildschirm (im Browser aufgefallen). */}
+              <ZeilenListe zeilen={view.steuerung.filter(
+                (z) => !(gesichtView?.sektionen.includes('einspeise')
+                  && z.label === WAECHTER_LABEL),
+              )} />
               <p className="vp-geraet-sec-sub">
                 <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>
                   Regeln und Modus dieser Anlage ansehen →
                 </a>
               </p>
-            </Sektion>
-
-            <Sektion titel="Software" icon="settings">
-              <ZeilenListe zeilen={view.software} />
-              {view.diagnose.length > 0 && (
-                <details className="vp-geraet-diagnose">
-                  <summary>
-                    <Icon name="chevron-right" size={12} /> Diagnose (technisch)
-                  </summary>
-                  <ZeilenListe zeilen={view.diagnose} />
-                </details>
-              )}
             </Sektion>
           </div>
 
@@ -476,6 +600,214 @@ export function GeraetSeiteSection({
 }
 
 /**
+ * Der HELD einer Gattung - das Erste, was die Seite zeigt.
+ *
+ * <p>Er RENDERT nur: Kacheln, Satz, Hinweis und der ruhige Auslastungs-Balken
+ * kommen aus `geraetGesicht.ts`. Ohne Kachel UND ohne Satz entsteht gar keine
+ * Karte - ein leerer Held wäre die Box-Lehre in klein.
+ */
+function HeldKarte({ held, stand }: { held: Held; stand: string | null }) {
+  if (held.kacheln.length === 0 && !held.satz) return null;
+  return (
+    <Card padding="lg" radius="lg" className="vp-geraet-held" data-testid="geraet-held">
+      <div className="vp-geraet-held-kopf">
+        <h2>
+          <Icon name="activity" size={16} /> {held.titel}
+        </h2>
+        {stand && <span className="vp-muted vp-text-sm">Stand {stand}</span>}
+      </div>
+      {held.kacheln.length > 0 && (
+        <div className="vp-geraet-heldkacheln">
+          {held.kacheln.map((k: HeldKachel) => (
+            <div
+              className={`vp-geraet-kachel${k.gross ? ' is-gross' : ''}${
+                k.ton ? ` is-${k.ton}` : ''}`}
+              key={k.label}
+            >
+              <span className="l">{k.label}</span>
+              <span className="v">{k.wert}</span>
+              {k.wort && <span className="w">{k.wort}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {held.balken && (
+        <div className="vp-geraet-balken" title={`${held.balken.label} ${Math.round(held.balken.pct)} %`}>
+          <span className="l">{held.balken.label}</span>
+          <span className="bar">
+            <i style={{ width: `${held.balken.pct}%` }} />
+          </span>
+          <span className="v">{Math.round(held.balken.pct)} %</span>
+        </div>
+      )}
+      {held.satz && (
+        <p className={`vp-geraet-heldsatz is-${held.satzTon}`} data-testid="geraet-heldsatz">
+          {held.satz}
+        </p>
+      )}
+      {held.hinweis && <p className="vp-note">{held.hinweis}</p>}
+    </Card>
+  );
+}
+
+/** Die Namen der Regeln, die eine Komponente dieses Geräts anfassen. */
+function regelNamenOf(
+  strategies: Record<string, EntityStrategy[]> | null,
+  komponenten: PlantComponent[],
+): string[] {
+  if (!strategies) return [];
+  const out = new Set<string>();
+  for (const c of komponenten) {
+    for (const st of strategies[c.entityId] ?? []) {
+      if (st.flowName?.trim()) out.add(st.flowName.trim());
+    }
+  }
+  return Array.from(out);
+}
+
+/**
+ * „Grenzen dieses Geräts" (Gattung B/B', Konzept §4.2 Punkt 4).
+ *
+ * <p>Die Zeile, die einen Register-Schreibvorgang MOTIVIERT (die Grenze IM
+ * Gerät gegen die hinterlegte), steht damit direkt über dem Werkzeug. Sie wird
+ * WÖRTLICH durchgereicht (`deviceLimitLine`) - der Satz entsteht an genau einer
+ * Stelle und lastet dem Gerät nie unsere eigene Kappe an.
+ */
+function grenzenZeilen(
+  view: GeraetSeiteView | null,
+  cu: CurtailmentStatus | null,
+  entities: SiteEntity[] | null,
+): Zeile[] {
+  if (!view) return [];
+  const out: Zeile[] = [];
+  const limit = cu?.deviceExportLimit;
+  if (limit) {
+    out.push({
+      label: 'Einspeisegrenze im Gerät',
+      wert: fmtNum(limit.limitKw, 'kW'),
+      detail: [limit.register ? `Register ${limit.register}` : null,
+        limit.readAt ? `zuletzt gelesen ${new Date(limit.readAt)
+          .toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}` : null]
+        .filter(Boolean).join(' · ') || null,
+      mono: true,
+    });
+  }
+  const abweichung = deviceLimitLine(cu);
+  if (abweichung) out.push({ label: 'Hinterlegte Grenze', wert: abweichung, ton: 'warn' });
+  // ⚠ Je ENTITÄT höchstens einmal: die PV-ASPEKT-Zeile eines Hybriden teilt
+  // sich ihre Entität mit dem Speicher, ihre Grenzen stünden sonst zweimal
+  // untereinander (im Browser aufgefallen).
+  const gesehen = new Set<string>();
+  for (const c of view.komponenten) {
+    if (gesehen.has(c.entityId)) continue;
+    gesehen.add(c.entityId);
+    // ⚠ Die Guard-Grenzen wohnen an der ENTITÄT (die Komponenten-Zeile trägt
+    // sie nicht) - sie werden gelesen, nie aus einem Messwert geschlossen.
+    const g = (entities ?? []).find((e) => e.id === c.entityId)?.guards?.limits as
+      Record<string, unknown> | undefined;
+    if (!g) continue;
+    const band = [g.max_charge_kw, g.max_discharge_kw]
+      .map((v) => (typeof v === 'number' && Number.isFinite(v) ? fmtNum(v, 'kW') : null));
+    if (band[0] || band[1]) {
+      out.push({
+        label: `Leistungsband ${c.label}`,
+        wert: `${band[0] ?? NO_DATA} laden · ${band[1] ?? NO_DATA} abgeben`,
+      });
+    }
+    const soc = [g.soc_min_pct, g.soc_max_pct]
+      .map((v) => (typeof v === 'number' && Number.isFinite(v) ? `${v} %` : null));
+    if (soc[0] || soc[1]) {
+      out.push({
+        label: `Ladestand-Fenster ${c.label}`,
+        wert: `${soc[0] ?? NO_DATA} bis ${soc[1] ?? NO_DATA}`,
+      });
+    }
+    const rated = g.max_consumption_kw ?? g.max_generation_kw;
+    if (typeof rated === 'number' && Number.isFinite(rated)) {
+      out.push({ label: `Nennleistung ${c.label}`, wert: fmtNum(rated, 'kW') });
+    }
+  }
+  if (out.length === 0) {
+    out.push({
+      label: 'Grenzen',
+      wert: 'Für dieses Gerät sind keine Grenzen hinterlegt.',
+      ton: 'off',
+    });
+  }
+  return out;
+}
+
+/**
+ * „Einspeise-Begrenzung" AUS SICHT DIESES GERÄTS (Gattung C, Konzept §4.3).
+ *
+ * <p>Erst die Einheiten-Liste des Herzschlags (Geräteseiten Stufe 1) macht die
+ * Aussage möglich; ohne sie steht dort die ehrliche anlagenweite Zahl - nie ein
+ * geratener Name.
+ */
+function einspeiseSektion(
+  cu: CurtailmentStatus | null,
+  geraetId: string | null,
+  now: number,
+): Zeile[] {
+  const eigen = abregelungDiesesGeraets(cu, geraetId ?? '');
+  if (!eigen) {
+    return [{
+      label: 'Einspeise-Begrenzung',
+      wert: 'Für dieses Gerät meldet Ihre Box keine Begrenzung.',
+      ton: 'off',
+    }];
+  }
+  const out: Zeile[] = [{ label: 'Dieses Gerät', wert: eigen.satz, ton: eigen.ton }];
+  // ⚠ Der Wächter-Satz entsteht an GENAU EINER Stelle (`exportGuardView`) und
+  // wird durchgereicht - zwei Formulierungen wären zwei Urteile.
+  const guard = exportGuardView(cu, new Date(now));
+  if (guard) {
+    out.push({
+      label: 'Am Netzanschluss',
+      wert: guard.line,
+      detail: guard.agoNote || null,
+      ton: guard.tone,
+    });
+  }
+  return out;
+}
+
+/**
+ * „Ausfall-Schutz" einer Ladesäule (Gattung F, Konzept §4.6 Punkt 3).
+ *
+ * ⚠ Es wird NICHTS neu formuliert: die drei Schritte sind die bestehende
+ * `ladepunkte.ausfallSchutz` - dieselbe Ableitung, die die Ladepark-Kapsel
+ * rendert. Zwei Formulierungen über denselben Schutz wären zwei Zusagen.
+ */
+function ausfallschutzZeilen(charging: SiteCharging | null): Zeile[] {
+  return ausfallSchutz(charging?.budget ?? null).map((satz, i) => ({
+    label: `Schritt ${i + 1}`,
+    wert: satz,
+  }));
+}
+
+/** „Diese Säule im Ladepark" (Gattung F, Konzept §4.6 Punkt 5). */
+function ladeparkZeilen(charging: SiteCharging | null, geraetId: string | null): Zeile[] {
+  const id = chargePointIdOf(geraetId);
+  const c = id ? (charging?.chargers ?? []).find((x) => x.chargePointId === id) : undefined;
+  if (!c) return [];
+  const out: Zeile[] = [{
+    label: 'Vorrang',
+    wert: c.priority ? 'hat Vorrang vor den anderen Säulen' : 'kein Vorrang',
+  }];
+  const budget = charging?.budget;
+  if (budget) {
+    if (typeof budget.gridLimitKw === 'number') {
+      out.push({ label: 'Anschlussgrenze', wert: fmtNum(budget.gridLimitKw, 'kW') });
+    }
+    if (budget.budgetNote?.trim()) {
+      out.push({ label: 'Verteilung', wert: budget.budgetNote.trim() });
+    }
+  }
+  return out;
+}
+
+/**
  * D · Gelesene Register (Anlagen-Zentrale Stufe 1, Konzept §7.3).
  *
  * <p>Sie zeigt, was die Box von DIESEM Gerät liest - roh und dekodiert, jeder
@@ -483,7 +815,7 @@ export function GeraetSeiteSection({
  * Einspeisegrenze, laufende Messungen); jede Ehrlichkeitsregel steckt in der
  * reinen `geraetRegister.ts`, hier wird nur gerendert.
  */
-function GeleseneRegisterSektion({
+function GeleseneRegisterTabelle({
   art,
   exportLimit,
   writes,
@@ -491,6 +823,7 @@ function GeleseneRegisterSektion({
   familie,
   knowledge,
   entityIds,
+  abruf,
   now,
 }: {
   art: string;
@@ -500,6 +833,8 @@ function GeleseneRegisterSektion({
   familie: string | null;
   knowledge: RegisterKnowledgeFamily[] | null;
   entityIds: string[];
+  /** Die auf ABRUF gelesenen Zeilen dieser Sitzung - sie werden nie gespeichert. */
+  abruf: RegisterZeile[];
   now: number;
 }) {
   const sicht = registerSicht({
@@ -513,9 +848,11 @@ function GeleseneRegisterSektion({
     knowledge,
     now,
   });
+  // Auf Abruf Gelesenes führt: es ist die frischeste Auskunft der Seite.
+  const zeilen = [...abruf, ...sicht.zeilen];
   return (
-    <Sektion titel="Gelesene Register" icon="list" breit>
-      {sicht.zeilen.length > 0 && (
+    <>
+      {zeilen.length > 0 && (
         <table className="vp-table responsive vp-geraet-register">
           <thead>
             <tr>
@@ -528,7 +865,7 @@ function GeleseneRegisterSektion({
             </tr>
           </thead>
           <tbody>
-            {sicht.zeilen.map((z) => (
+            {zeilen.map((z) => (
               <tr key={z.key}>
                 <td data-label="Register">{z.register ?? NO_DATA}</td>
                 <td data-label="Bedeutung">
@@ -549,9 +886,9 @@ function GeleseneRegisterSektion({
           </tbody>
         </table>
       )}
-      {sicht.leer && <p className="vp-note">{sicht.leer}</p>}
+      {zeilen.length === 0 && sicht.leer && <p className="vp-note">{sicht.leer}</p>}
       {sicht.hinweis && <p className="vp-note">{sicht.hinweis}</p>}
-    </Sektion>
+    </>
   );
 }
 
@@ -574,6 +911,12 @@ function RegisterSektion({
   art,
   entityIds,
   targets,
+  exportLimit,
+  writes,
+  source,
+  familie,
+  knowledge,
+  now,
 }: {
   siteId: string;
   boxDeviceId: string | null;
@@ -582,8 +925,19 @@ function RegisterSektion({
   art: GeraetArt;
   entityIds: string[];
   targets: RegisterWriteTarget[] | null;
+  exportLimit: DeviceExportLimit | null;
+  writes: RegisterWriteEvent[] | null;
+  source: SiteSource | null;
+  familie: string | null;
+  knowledge: RegisterKnowledgeFamily[] | null;
+  now: number;
 }) {
   const [offen, setOffen] = useState(false);
+  const [leseAdresse, setLeseAdresse] = useState('');
+  const [leseArt, setLeseArt] = useState<'holding' | 'input' | 'coil'>('holding');
+  const [liest, setLiest] = useState(false);
+  const [leseFehler, setLeseFehler] = useState<string | null>(null);
+  const [abruf, setAbruf] = useState<RegisterZeile[]>([]);
   // ⚠ Geschrieben wird IMMER über die Box - sie hält die Verbindung zum Gerät.
   // Ohne sie gibt es kein Ziel und damit keinen Knopf.
   const zugang: GeraetRegisterZugang = targets == null
@@ -599,8 +953,98 @@ function RegisterSektion({
     [entityIds.join('|')],
   );
 
+  const ziel = (targets ?? []).find((t) => zielKey(t) === zugang.vorwahl) ?? null;
+
+  /**
+   * „Register jetzt lesen" - die VORSCHAU-Route, Schritt 1 der bekannten
+   * Zwei-Schritt-Strecke (Konzept `vp-anlagen-zentrale-konzept-h6` §7.3).
+   *
+   * ⚠ Sie schreibt NICHTS und wird NICHT journalisiert (die Vorschau-Regel).
+   * Die Zeile lebt deshalb nur in dieser Sitzung - ein Neuladen räumt sie ab,
+   * und genau das sagt die Fläche auch.
+   */
+  async function jetztLesen() {
+    const adresse = leseAdresse.trim();
+    if (!adresse || !boxDeviceId || !ziel) return;
+    setLiest(true);
+    setLeseFehler(null);
+    try {
+      const out = await api.registerWritePreview(siteId, {
+        ...zielInput(ziel),
+        deviceId: boxDeviceId,
+        address: adresse,
+        registerKind: leseArt,
+      });
+      const sicht = vorschau(out);
+      if (!sicht.gelesen) {
+        setLeseFehler(sicht.satz);
+        return;
+      }
+      setAbruf((bisher) => [
+        abrufZeile(adresse, out, new Date()),
+        // Dieselbe Adresse zweimal zu lesen ersetzt die Zeile, statt sie zu
+        // verdoppeln - zwei Stände desselben Registers wären zwei Wahrheiten.
+        ...bisher.filter((z) => z.key !== `abruf:${adresse.toLowerCase()}`),
+      ]);
+      setLeseFehler(null);
+    } catch (e) {
+      setLeseFehler(e instanceof ApiError ? e.message : LESE_FEHLGESCHLAGEN);
+    } finally {
+      setLiest(false);
+    }
+  }
+
   return (
-    <Sektion titel="Register schreiben" icon="pencil" breit>
+    <Sektion titel="Register" icon="list" breit>
+      <GeleseneRegisterTabelle
+        art={art}
+        exportLimit={exportLimit}
+        writes={writes}
+        source={source}
+        familie={familie}
+        knowledge={knowledge}
+        entityIds={entityIds}
+        abruf={abruf}
+        now={now}
+      />
+      {zugang.moeglich && (
+        <div className="vp-geraet-lesen">
+          <label>
+            <span>Register jetzt lesen</span>
+            <input
+              value={leseAdresse}
+              onChange={(e) => setLeseAdresse(e.target.value)}
+              placeholder="z. B. 0x00E7"
+              inputMode="text"
+              aria-label="Adresse des Registers, das jetzt gelesen wird"
+            />
+          </label>
+          <label>
+            <span>Art</span>
+            <select
+              value={leseArt}
+              onChange={(e) => setLeseArt(e.target.value as 'holding' | 'input' | 'coil')}
+              aria-label="Registerart"
+            >
+              <option value="holding">Holding-Register</option>
+              <option value="input">Input-Register</option>
+              <option value="coil">Spule</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="vp-geraet-btn"
+            onClick={() => void jetztLesen()}
+            disabled={liest || !leseAdresse.trim()}
+            data-testid="geraet-regread"
+          >
+            <Icon name="search" size={13} /> {liest ? LESE_LAEUFT : 'Jetzt lesen'}
+          </button>
+          {liest && <p className="vp-note">{LESE_DAUER_HINWEIS}</p>}
+          {leseFehler && <p className="vp-alert vp-alert-warn">{leseFehler}</p>}
+          {abruf.length > 0 && <p className="vp-note">{ABRUF_HINWEIS}</p>}
+        </div>
+      )}
       <p className="vp-text-sm">{EXPERTE_INTRO}</p>
       {zugang.moeglich ? (
         <button

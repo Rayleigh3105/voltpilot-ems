@@ -289,12 +289,55 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByRole('heading', { name: 'Deye SUN-30K' })).toBeInTheDocument();
     // Der KUNDENname lebt an der Komponente, nie am Gerät.
     expect(screen.getByRole('heading', { name: 'Deye SUN-30K' }).textContent).not.toContain('Scheune');
-    expect(screen.getByText('Live-Werte vom Gerät')).toBeInTheDocument();
+    // Geräteseiten Stufe 2: der HELD führt, und er trägt das Live-Bild.
+    expect(screen.getByTestId('geraet-held')).toBeInTheDocument();
     expect(screen.getByText('Solarstrom')).toBeInTheDocument();
     // Die Richtung ist ein WORT, nie ein Minus.
     expect(screen.getByText('Einspeisung')).toBeInTheDocument();
     // Keine Gefahrenzone an einem Gerät HINTER der Box.
     expect(screen.queryByRole('button', { name: /Gerät entfernen/ })).not.toBeInTheDocument();
+  });
+
+  /**
+   * ⚠ Der Captain-Punkt 2 als Test (Geräteseiten Stufe 2): dieselbe Seite
+   * beantwortet je Gerätetyp eine ANDERE erste Frage - vorher lief jeder Typ
+   * durch dieselbe Sektionsliste in derselben Reihenfolge.
+   */
+  it('⚠ gibt einem PV-MELDER ein anderes Gesicht als dem Hauptgerät', async () => {
+    stub();
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+
+    // Er führt mit seiner Erzeugung, nicht mit der Verbindungs-Karte.
+    const held = await screen.findByTestId('geraet-held');
+    expect(within(held).getByText('Erzeugung')).toBeInTheDocument();
+    expect(within(held).getByText('Erzeugung jetzt')).toBeInTheDocument();
+    // Und er bekommt die Einspeise-Begrenzung, die ein Speicher-Gerät nicht hat.
+    expect(screen.getByRole('heading', { name: 'Einspeise-Begrenzung' }))
+      .toBeInTheDocument();
+    expect(screen.queryByText('Grenzen dieses Geräts')).toBeNull();
+  });
+
+  it('⚠ an einen ZÄHLER geht kein Befehl - also gibt es dort keinen leeren Kasten', async () => {
+    stub({
+      entities: () => Promise.resolve({
+        ...entities,
+        localSetup: [
+          entities.localSetup[0],
+          { ...entities.localSetup[1], role: 'grid-meter' },
+        ],
+      }),
+    });
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
+    );
+
+    const held = await screen.findByTestId('geraet-held');
+    expect(within(held).getByText('Bezug & Einspeisung')).toBeInTheDocument();
+    // Die Box-Lehre: eine Sektion, die nur ihre Nicht-Zuständigkeit erklärt,
+    // entfällt - sie stand vorher an JEDEM Gerät.
+    expect(screen.queryByText('Befehle an dieses Gerät')).toBeNull();
   });
 
   it('listet die Komponenten dieses Geräts mit dem Weg in die Zentrale', async () => {
@@ -348,6 +391,8 @@ describe('GeraetSeiteSection', () => {
     await waitFor(() =>
       expect(screen.getByText(/meldet keine Verbindungsdaten/)).toBeInTheDocument(),
     );
+    // Der HELD nennt seinen Grund genauso - eine Reihe von „—" ist keine
+    // Auskunft (Geräteseiten Stufe 2).
     expect(screen.getByText(/noch keine Messwerte geliefert/)).toBeInTheDocument();
   });
 
@@ -510,7 +555,8 @@ describe('GeraetSeiteSection', () => {
       <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />,
     );
 
-    expect(await screen.findByText('Gelesene Register')).toBeInTheDocument();
+    // Seit Stufe 2 sind Lesen und Schreiben EINE Sektion „Register" (§4.2).
+    expect(await screen.findByRole('heading', { name: 'Register' })).toBeInTheDocument();
     // Das Rohwort des Schreibvorgangs - das einzige, das es heute gibt.
     await waitFor(() => expect(screen.getByText('7000')).toBeInTheDocument());
     // Die Warnklasse trägt ihr WORT, nie nur eine Farbe.

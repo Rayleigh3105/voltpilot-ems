@@ -602,3 +602,156 @@
 .vp-geraet-admin > .vp-alert {
   margin: 0 var(--vp-space-3) var(--vp-space-3);
 }
+
+/* ==========================================================================
+   GERÄTETYP-GESICHTER (Geräteseiten Stufe 2, Konzept `vp-geraeteseite-rev-b8`
+   §4) - der HELD über dem Sektions-Raster.
+
+   ⚠ Die Kacheln teilen sich `.vp-geraet-kachel` mit den früheren Live-Werten:
+   ein zweiter Kachel-Stil wäre genau die Uneinheitlichkeit, gegen die die
+   Gattungen gebaut sind. Neu ist nur die FÜHRENDE Kachel (`is-gross`) - die
+   Gattung entscheidet, welche Zahl die Seite trägt.
+   ========================================================================== */
+
+.vp-geraet-held {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+  margin-bottom: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-geraet-held-kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-2, 8px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vp-geraet-held-kopf h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.vp-geraet-heldkacheln {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.vp-geraet-heldkacheln .vp-geraet-kachel.is-gross .v {
+  font-size: 1.6rem;
+  line-height: 1.15;
+}
+
+.vp-geraet-heldkacheln .vp-geraet-kachel.is-ok .w {
+  color: var(--vp-flow-batt-ink, #166534);
+  font-weight: 600;
+}
+
+/* Der ruhige Auslastungs-Balken - er entsteht NUR mit belegtem Bezug. */
+.vp-geraet-balken {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.vp-geraet-balken .l,
+.vp-geraet-balken .v {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.vp-geraet-balken .bar {
+  flex: 1 1 120px;
+  min-width: 0;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f7fafc);
+  overflow: hidden;
+}
+
+.vp-geraet-balken .bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--vp-flow-pv, #f59e0b);
+}
+
+/* Die 1-Satz-Aussage der Gattung - Ton als WORT, Farbe nur als Zusatz. */
+.vp-geraet-heldsatz {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.vp-geraet-heldsatz.is-warn {
+  color: var(--vp-warn-ink, #92400e);
+}
+
+.vp-geraet-heldsatz.is-off {
+  color: var(--vp-text-muted, #4a5568);
+}
+
+/* --- „Register jetzt lesen" (Konzept §7, zweiter Absatz) ------------------ */
+
+.vp-geraet-lesen {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2, 8px);
+  margin: var(--vp-space-3, 12px) 0;
+  min-width: 0;
+}
+
+.vp-geraet-lesen label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 150px;
+}
+
+.vp-geraet-lesen label > span {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.78rem;
+}
+
+.vp-geraet-lesen input,
+.vp-geraet-lesen select {
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+  font: inherit;
+}
+
+/* Ein Hinweis unter der Zeile nimmt die volle Breite - er ist ein SATZ. */
+.vp-geraet-lesen > p {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+/* Am Telefon bekommt jedes Bedienelement seine eigene Zeile - ein Auswahlfeld,
+   das seinen längsten Eintrag abschneidet („Holding-Registe"), ist keine
+   Auskunft (bei 375 px gemessen). */
+@media (max-width: 520px) {
+  .vp-geraet-lesen label,
+  .vp-geraet-lesen > button {
+    flex: 1 1 100%;
+  }
+}

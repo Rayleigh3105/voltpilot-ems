@@ -41,12 +41,13 @@ import { fmtNum, fmtRelative } from './format';
 import { NO_DATA } from './nodata';
 
 /** Woher eine Zeile kommt - das Wort steht an der Zeile, nie nur die Farbe. */
-export type RegisterQuelle = 'taeglich' | 'schreibvorgang' | 'telemetrie';
+export type RegisterQuelle = 'taeglich' | 'schreibvorgang' | 'telemetrie' | 'abruf';
 
 export const QUELLE_WORT: Record<RegisterQuelle, string> = {
   taeglich: 'Täglich gelesen',
   schreibvorgang: 'Beim Schreibvorgang gelesen',
   telemetrie: 'Laufende Messung',
+  abruf: 'Auf Abruf gelesen',
 };
 
 export interface RegisterZeile {
@@ -89,6 +90,60 @@ export const KEINE_REGISTER: Record<string, string> = {
 export const ROH_HINWEIS =
   'Rohwörter zeigt VoltPilot heute nur zu einem Schreibvorgang an - die '
   + 'laufenden Messungen kommen bereits umgerechnet an.';
+
+/**
+ * Der Satz zur auf ABRUF gelesenen Zeile (Geräteseiten Stufe 2, Konzept §7).
+ *
+ * ⚠ Eine Vorschau wird NIE journalisiert - die Zeile lebt deshalb nur in dieser
+ * Sitzung, und das darf die Fläche nicht verschweigen: ein Wert, der beim
+ * nächsten Laden verschwindet, ohne dass jemand es angekündigt hat, liest sich
+ * als Fehler.
+ */
+export const ABRUF_HINWEIS =
+  'Auf Abruf gelesene Werte werden nicht gespeichert - beim nächsten Laden der '
+  + 'Seite sind sie wieder weg.';
+
+/** Der Satz, wenn der Abruf selbst nicht durchkam (nie ein roher Status). */
+export const LESE_FEHLGESCHLAGEN =
+  'Der Wert konnte nicht gelesen werden. Bitte später erneut versuchen.';
+
+/**
+ * Eine auf ABRUF gelesene Zeile aus dem Ergebnis der Vorschau-Route.
+ *
+ * ⚠ Sie erfindet NICHTS: Rohwort und dekodierter Wert kommen aus der Antwort
+ * (`beforeRaw`/`beforeScaled`/`scaleUnit`), der Name aus dem Register-Wissen
+ * des Servers. Ohne bekannte Skala bleibt es beim Rohwort ohne Einheit - die
+ * Regel der ganzen Tabelle, hier wie überall.
+ */
+export function abrufZeile(
+  adresse: string,
+  out: {
+    beforeRaw?: number | null;
+    beforeScaled?: number | null;
+    scaleUnit?: string | null;
+    registerLabel?: string | null;
+    registerClass?: string | null;
+  },
+  gelesenAm: Date,
+): RegisterZeile {
+  const raw = typeof out.beforeRaw === 'number' ? out.beforeRaw : null;
+  const scaled = typeof out.beforeScaled === 'number' ? out.beforeScaled : null;
+  const einheit = out.scaleUnit ?? null;
+  return {
+    key: `abruf:${adresse.trim().toLowerCase()}`,
+    register: adresse.trim(),
+    bedeutung: out.registerLabel?.trim() || 'Register',
+    klasse: out.registerClass ?? null,
+    roh: raw == null ? NO_DATA : String(raw),
+    dekodiert: scaled == null || !einheit
+      ? NO_DATA
+      : `${scaled.toLocaleString('de-DE', {
+        minimumFractionDigits: 1, maximumFractionDigits: 1,
+      })} ${einheit}`,
+    gelesen: gelesenAm.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
+    quelle: 'abruf',
+  };
+}
 
 export interface RegisterSichtInput {
   /** `box` · `hauptgeraet` · `quelle` · `ladepunkt`. */
