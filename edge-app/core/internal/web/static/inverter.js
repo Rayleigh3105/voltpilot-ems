@@ -36,6 +36,12 @@
   // an existing Steuerungs-Freigabe (E3). Best-effort: null = say nothing.
   var lastCal = null;
 
+  // Der Marken-Picker (VpPicker der Box, vppicker.js). Er ERSETZT das frühere
+  // native Auswahlfeld: gleiche Werte, gleicher `onBrandChange`-Ablauf, nur
+  // eine andere Präsentation - dafür mit Tastatur, Nebenzeile und einer
+  // Bedienfläche, die am Telefon ein Daumen trifft.
+  var brandPicker = null;
+
   var chosenModel = null;  // picked model id for the current brand (or null)
   var visible = [];        // models currently rendered, in list order (keyboard nav)
   var visibleBrand = [];   // die Marke je Eintrag - bei einer marken-übergreifenden
@@ -63,12 +69,31 @@
     return e;
   }
 
-  // renderBrands fills the brand dropdown once the catalog is loaded.
+  // brandValue: die aktuell gewählte Marke. EINE Stelle, an der die Auswahl
+  // gelesen wird - vor dem Picker war das `$("brand").value` an zehn Stellen.
+  function brandValue() { return brandPicker ? brandPicker.wert() : null; }
+
+  // renderBrands baut den Marken-Picker, sobald der Katalog geladen ist. Die
+  // Nebenzeile beantwortet „ist das meins?" ohne Klick (Anbindungsart), die
+  // Stichwörter machen die Suche tolerant, ohne die Zeile zu füllen.
   function renderBrands() {
-    var sel = $("brand");
-    sel.innerHTML = "";
-    catalog.brands.forEach(function (b) {
-      sel.appendChild(el("option", { value: b.id }, b.label));
+    var optionen = catalog.brands.map(function (b) {
+      return {
+        value: b.id,
+        label: b.label,
+        sub: b.comm_label || commLabel(b.communication),
+        keywords: [b.id, b.communication].join(" ")
+      };
+    });
+    if (brandPicker) { brandPicker.setOptionen(optionen); return; }
+    brandPicker = window.VPPicker.montiere($("brandPicker"), {
+      id: "brand",
+      optionen: optionen,
+      labelledBy: "brandLabel",
+      ariaLabel: "Marke",
+      platzhalter: "Marke wählen …",
+      suchPlatzhalter: "Marke suchen …",
+      onChange: function () { onBrandChange(); }
     });
   }
 
@@ -132,7 +157,7 @@
     li.appendChild(text);
 
     li.addEventListener("click", function () {
-      if (brandId && brandId !== $("brand").value) waehleUeberMarken(brandId, m.id);
+      if (brandId && brandId !== brandValue()) waehleUeberMarken(brandId, m.id);
       else chooseModel(m.id);
     });
     return li;
@@ -236,9 +261,8 @@
   // Modell setzen. Ohne den ersten Schritt stünde unter dem gewählten Modell
   // das Formular der vorigen Marke.
   function waehleUeberMarken(brandId, modelId) {
-    var sel = $("brand");
-    if (sel.value !== brandId) {
-      sel.value = brandId;
+    if (brandValue() !== brandId) {
+      brandPicker.setWert(brandId);
       onBrandChange();
     }
     chooseModel(modelId);
@@ -281,7 +305,7 @@
     list.querySelectorAll(".picker-opt").forEach(function (li) {
       li.setAttribute("aria-selected", li.dataset.model === id ? "true" : "false");
     });
-    var brand = brandById($("brand").value);
+    var brand = brandById(brandValue());
     if (brand) renderChosen(brand);
   }
 
@@ -323,7 +347,7 @@
   function clearSearch() {
     $("modelSearch").value = "";
     $("modelClear").hidden = true;
-    var brand = brandById($("brand").value);
+    var brand = brandById(brandValue());
     if (brand) renderModels(brand);
     $("modelSearch").focus();
   }
@@ -351,16 +375,21 @@
         cbWrap.appendChild(el("span", null, f.label));
         row.appendChild(cbWrap);
       } else {
-        row.appendChild(el("label", { for: inputId }, f.label + (f.required ? " *" : "")));
+        // Ein Auswahl-Feld bekommt sein `for` vom Picker selbst (er kennt die
+        // id seines Auslösers erst, wenn er ihn gebaut hat) - siehe vppicker.js.
+        var lblAttrs = { id: inputId + "-lbl" };
+        if (f.type !== "select") lblAttrs["for"] = inputId;
+        var lblEl = el("label", lblAttrs, f.label + (f.required ? " *" : ""));
+        row.appendChild(lblEl);
         var input;
         if (f.type === "select") {
-          input = el("select", { id: inputId });
-          (f.options || []).forEach(function (o) {
-            var opt = el("option", { value: String(o.value) }, o.label);
-            input.appendChild(opt);
-          });
+          // Auch ein Verbindungsfeld mit Auswahl bekommt den Haus-Picker - ein
+          // einzelnes natives Feld zwischen lauter Pickern sähe aus wie ein
+          // Fremdkörper und verhielte sich am Telefon anders als alles daneben.
+          // Der WERT wohnt in `dataset.value`; `collect()` liest ihn dort.
+          input = el("div", { id: inputId });
           var cur = (conn[f.key] != null) ? conn[f.key] : f.default;
-          if (cur != null) input.value = String(cur);
+          montiereFeldPicker(input, f, cur, inputId, lblEl);
         } else {
           input = el("input", { type: f.type === "number" ? "number" : "text", id: inputId });
           if (f.required) input.required = true;
@@ -377,9 +406,27 @@
     });
   }
 
+  // montiereFeldPicker baut den Picker eines Verbindungsfeldes vom Typ
+  // „Auswahl". Ausgelagert, weil das Wechselrichter-Formular und der
+  // Quellen-Drawer dieselben Katalog-Felder rendern - zwei Fassungen desselben
+  // Feldes wären zwei Wahrheiten über dieselbe Angabe.
+  function montiereFeldPicker(host, f, cur, inputId, lblEl) {
+    var optionen = (f.options || []).map(function (o) {
+      return { value: String(o.value), label: o.label };
+    });
+    window.VPPicker.montiere(host, {
+      id: inputId + "-p",
+      optionen: optionen,
+      wert: cur != null ? String(cur) : (optionen.length ? optionen[0].value : null),
+      labelledBy: inputId + "-lbl",
+      labelEl: lblEl,
+      ariaLabel: f.label
+    });
+  }
+
   // onBrandChange re-renders the model list/comm/fields when the brand changes.
   function onBrandChange() {
-    var brand = brandById($("brand").value);
+    var brand = brandById(brandValue());
     if (!brand) return;
     $("brandHelp").textContent = brand.note || "";
     $("comm").textContent = brand.comm_label || commLabel(brand.communication);
@@ -412,7 +459,9 @@
       if (ftype === "checkbox") {
         conn[key] = input.checked;
       } else if (ftype === "number" || ftype === "select") {
-        var raw = input.value;
+        // ⚠ Ein Auswahl-Feld ist kein natives Element mehr: sein Wert wohnt im
+        // `data-value` des Picker-Wirts (vppicker.js), nicht in `.value`.
+        var raw = ftype === "select" ? (input.dataset.value || "") : input.value;
         if (raw === "") return;
         var n = Number(raw);
         conn[key] = isNaN(n) ? raw : n;
@@ -420,7 +469,7 @@
         if (input.value.trim() !== "") conn[key] = input.value.trim();
       }
     });
-    return { brand: $("brand").value, model: chosenModel, connection: conn };
+    return { brand: brandValue(), model: chosenModel, connection: conn };
   }
 
   // renderSummary paints the "Wechselrichter / Speicher" group row (or the empty
@@ -486,7 +535,7 @@
   // for the current selection/catalog. It does NOT show the form.
   function buildForm() {
     renderBrands();
-    if (selection) { $("brand").value = selection.brand; }
+    if (selection) brandPicker.setWert(selection.brand);
     onBrandChange();
   }
 
@@ -632,10 +681,11 @@
       });
   }
 
-  $("brand").addEventListener("change", function () { onBrandChange(); });
+  // Der Marken-Picker meldet seine Wahl über `onChange` (siehe renderBrands) -
+  // ein `change`-Ereignis gibt es nicht mehr, weil es kein natives Feld mehr gibt.
   $("modelSearch").addEventListener("input", function () {
     $("modelClear").hidden = $("modelSearch").value === "";
-    var brand = brandById($("brand").value);
+    var brand = brandById(brandValue());
     if (brand) renderModels(brand);
   });
   $("modelSearch").addEventListener("keydown", onSearchKeydown);

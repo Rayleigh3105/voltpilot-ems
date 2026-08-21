@@ -1941,3 +1941,284 @@ test("Modell-Suche: eine Kappung wird GESAGT, nie verschwiegen", () => {
   assert.strictEqual(r.treffer.length, S.MAX_TREFFER);
   assert.match(r.zaehler, new RegExp(String(S.MAX_TREFFER + 3)));
 });
+
+/* ============ pickerregeln.js: DIE REGELN DES VpPicker DER BOX ============ */
+//
+// Der Picker der Box ist die vanilla-Zwillings-Fassung des Portal-VpPicker
+// (Konzept `vp-picker-system`, Welle 3). Die TASTATUR ist hier ein
+// Rechen-Gegenstand, kein Nebeneffekt: „der Eigenbau darf dem nativen Select in
+// NICHTS nachstehen" ist nur prüfbar, wenn die Bewegung eine Funktion ist.
+//
+// Geladen wird IMMER zusammen mit modellsuche.js - die Regeln holen ihre
+// Such-Toleranz von dort, damit auf einer Seite nicht zwei Toleranzen wohnen.
+
+const P = () => load(["modellsuche.js", "pickerregeln.js"]).VPPickerRegeln;
+
+const MARKEN = [
+  { value: "deye", label: "Deye", sub: "Solarman-V5" },
+  { value: "generic_modbus", label: "Anderer Hersteller (Modbus / SunSpec)", sub: "Modbus TCP" },
+  { value: "fronius", label: "Fronius", sub: "Solar API" },
+  { value: "kostal", label: "Kostal", sub: "Modbus TCP" }
+];
+
+// Ein Katalog mit Gruppen, wie ihn der Quellen-Drawer für die Deye-Modelle baut.
+const MODELLE = [
+  { value: "sun-30k", label: "SUN-30K-SG01HP3-EU", sub: "30 kW · Hybrid 3-phasig", group: "hybrid_3p", keywords: "hybrid_3p" },
+  { value: "sun-12k", label: "SUN-12K-SG04LP3-EU", sub: "12 kW · Hybrid 3-phasig", group: "hybrid_3p" },
+  { value: "sun-5k", label: "SUN-5K-SG03LP1-EU", sub: "5 kW · Hybrid 1-phasig", group: "hybrid_1p" }
+];
+const MODELL_GRUPPEN = [{ key: "hybrid_3p", label: "Hybrid, 3-phasig" }, { key: "hybrid_1p", label: "Hybrid, 1-phasig" }];
+
+test("Picker: die Suche erscheint erst, wenn eine Liste sie braucht", () => {
+  const R = P();
+  // Sieben Zeilen liest man schneller, als man tippt - ein leeres Suchfeld
+  // darüber sähe aus, als fehlte etwas.
+  assert.strictEqual(R.sucheSichtbar(4), false);
+  assert.strictEqual(R.sucheSichtbar(R.SUCHE_AB - 1), false);
+  assert.strictEqual(R.sucheSichtbar(R.SUCHE_AB), true);
+  // Der Aufrufer darf beides erzwingen.
+  assert.strictEqual(R.sucheSichtbar(2, "immer"), true);
+  assert.strictEqual(R.sucheSichtbar(99, "nie"), false);
+});
+
+test("Picker: ohne Eingabe bleibt die Reihenfolge des Aufrufers unangetastet", () => {
+  // Eine Liste, die sich beim Öffnen umsortiert, nimmt jedem seine Ortskenntnis.
+  const zeilen = P().suche(MARKEN, "", []).zeilen;
+  assert.deepStrictEqual([...zeilen.map((z) => z.key)], ["deye", "generic_modbus", "fronius", "kostal"]);
+});
+
+test("Picker: die Suche ist schreibweisen-tolerant (dieselbe wie die Modell-Suche)", () => {
+  const R = P();
+  for (const q of ["sun 30k", "SUN30K", "sun-30k"]) {
+    const treffer = R.suche(MODELLE, q, MODELL_GRUPPEN).zeilen.filter((z) => z.art === "option");
+    assert.strictEqual(treffer.length, 1, q + " fand " + treffer.length);
+    assert.strictEqual(treffer[0].key, "sun-30k");
+  }
+});
+
+test("Picker: durchsucht wird AUCH die Nebenzeile, die Gruppe und die Stichwörter", () => {
+  const R = P();
+  // Nebenzeile ("Modbus TCP") - zwei Marken teilen sie.
+  assert.strictEqual(R.suche(MARKEN, "modbus", []).anzahl, 2);
+  // Gruppen-Beschriftung: „1-phasig" steht nur in der Gruppe bzw. Nebenzeile.
+  assert.strictEqual(R.suche(MODELLE, "1-phasig", MODELL_GRUPPEN).anzahl, 1);
+  // Stichwort: `hybrid_3p` steht in KEINER sichtbaren Zeile des ersten Modells,
+  // nur in `keywords` - es macht die Suche tolerant, ohne die Zeile zu füllen.
+  assert.strictEqual(R.suche([MODELLE[0]], "hybrid_3p", []).anzahl, 1);
+});
+
+test("Picker: was mit der Eingabe BEGINNT, steht oben", () => {
+  const R = P();
+  // „fronius" trifft die Marke Fronius (Anfang) und - über die Nebenzeile -
+  // nichts sonst; „modbus" trifft zwei Nebenzeilen, „kostal" den Namen.
+  const zeilen = R.suche(
+    [{ value: "a", label: "Zweitgerät", sub: "Deye Solarman" },
+     { value: "b", label: "Deye SUN-30K", sub: "Hybrid" }],
+    "deye", []
+  ).zeilen;
+  assert.deepStrictEqual([...zeilen.map((z) => z.key)], ["b", "a"], "Namens-Treffer muss oben stehen");
+});
+
+test("Picker: Gruppen werden gebündelt und tragen ihre Überschrift", () => {
+  const zeilen = P().suche(MODELLE, "", MODELL_GRUPPEN).zeilen;
+  assert.deepStrictEqual(
+    [...zeilen.map((z) => (z.art === "gruppe" ? "#" + z.label : z.key))],
+    ["#Hybrid, 3-phasig", "sun-30k", "sun-12k", "#Hybrid, 1-phasig", "sun-5k"]
+  );
+});
+
+test("Picker: eine GESPERRTE Zeile bleibt sichtbar und nennt ihren Grund", () => {
+  const R = P();
+  const mit = [
+    { value: "erz", label: "Erzeuger" },
+    { value: "netz", label: "Netz-Zähler", disabled: true, disabledHint: "Bereits eingerichtet" }
+  ];
+  const s = R.suche(mit, "", []);
+  // Sie ist die Antwort auf „warum kann ich das nicht wählen?" - sie darf nicht
+  // verschwinden ...
+  assert.strictEqual(s.anzahl, 2);
+  assert.strictEqual(s.zeilen[1].option.disabledHint, "Bereits eingerichtet");
+  // ... aber die Tastatur springt NIE auf sie.
+  assert.deepStrictEqual([...R.waehlbare(s.zeilen)], [0]);
+  assert.strictEqual(R.naechster(s.zeilen, 0, 1), 0, "darf nicht auf die Gesperrte wandern");
+});
+
+test("Picker: ohne Treffer steht ein Satz da, nie ein stiller leerer Bereich", () => {
+  const R = P();
+  const s = R.suche(MARKEN, "huawei", []);
+  assert.strictEqual(s.anzahl, 0);
+  assert.match(s.leer, /huawei/);
+  // Der Aufrufer darf den Satz überschreiben (jede Fläche kennt ihren Weg).
+  assert.strictEqual(R.suche(MARKEN, "huawei", [], () => "Nichts da.").leer, "Nichts da.");
+  // Und eine wirklich leere Liste sagt das ehrlich statt „nichts gefunden".
+  assert.match(R.suche([], "", []).leer, /noch nichts zur Auswahl/);
+});
+
+test("Picker: die Pfeiltasten laufen NICHT um - wie das native Select", () => {
+  const R = P();
+  const zeilen = R.suche(MODELLE, "", MODELL_GRUPPEN).zeilen;   // 0=Gruppe,1,2,3=Gruppe,4
+  const ziele = R.waehlbare(zeilen);
+  assert.deepStrictEqual([...ziele], [1, 2, 4]);
+  // Aus dem Nichts: abwärts an den Anfang, aufwärts ans Ende.
+  assert.strictEqual(R.naechster(zeilen, -1, 1), 1);
+  assert.strictEqual(R.naechster(zeilen, -1, -1), 4);
+  // Über die Gruppen-Überschrift hinweg.
+  assert.strictEqual(R.naechster(zeilen, 2, 1), 4);
+  // Am Ende bleibt es stehen, statt an den Anfang zu springen.
+  assert.strictEqual(R.naechster(zeilen, 4, 1), 4);
+  assert.strictEqual(R.naechster(zeilen, 1, -1), 1);
+  // Bild-ab/-auf springen weit, aber nie über den Rand.
+  assert.strictEqual(R.naechster(zeilen, 1, 10), 4);
+  assert.strictEqual(R.naechster(zeilen, 4, -10), 1);
+  // Ein Anker AUF der Überschrift wandert in die Richtung weiter.
+  assert.strictEqual(R.naechster(zeilen, 3, 1), 4);
+  assert.strictEqual(R.naechster(zeilen, 3, -1), 2);
+});
+
+test("Picker: beim Öffnen steht der Anker auf dem GEWÄHLTEN Wert", () => {
+  const R = P();
+  const zeilen = R.suche(MODELLE, "", MODELL_GRUPPEN).zeilen;
+  assert.strictEqual(R.ersteAktive(zeilen, "sun-5k"), 4);
+  // Ohne Wert (oder wenn er herausgefiltert ist): die erste wählbare Zeile.
+  assert.strictEqual(R.ersteAktive(zeilen, null), 1);
+  assert.strictEqual(R.ersteAktive(zeilen, "gibtsnicht"), 1);
+  assert.strictEqual(R.ersteAktive([], null), -1);
+});
+
+test("Picker: Tippen-zum-Springen tut, was das native Select tut", () => {
+  const R = P();
+  const zeilen = R.suche(MARKEN, "", []).zeilen;
+  // Es springt auf den ANFANG der Hauptzeile ...
+  assert.strictEqual(R.tippSprung(zeilen, "fr", -1), 2);
+  assert.strictEqual(R.tippSprung(zeilen, "k", -1), 3);
+  // ... ab der aktuellen Position, danach von vorn.
+  assert.strictEqual(R.tippSprung(zeilen, "d", 2), 0);
+  // Ein wiederholter gleicher Buchstabe bleibt stehen, statt zu wandern.
+  assert.strictEqual(R.tippSprung(zeilen, "dd", 0), -1);
+  assert.strictEqual(R.tippSprung(zeilen, "deye", 0), 0);
+  // Und es ist genauso schreibweisen-tolerant wie die Suche.
+  assert.strictEqual(R.tippSprung(zeilen, "andererhersteller", -1), 1);
+});
+
+test("Picker: der Auslöser zeigt den Wert - und der LEERE String ist ein Wert", () => {
+  const R = P();
+  assert.strictEqual(R.ausloeserText(MARKEN, "fronius", "Bitte wählen"), "Fronius");
+  // Ein Wert, den die Liste NICHT kennt, fällt auf den Platzhalter zurück.
+  assert.strictEqual(R.ausloeserText(MARKEN, "huawei", "Bitte wählen"), "Bitte wählen");
+  assert.strictEqual(R.ausloeserText(MARKEN, null, "Bitte wählen"), "Bitte wählen");
+  // ⚠ `""` ist eine gültige Wahl, wenn die Liste sie führt - genau wie im
+  // nativen `<option value="">`.
+  const mitLeer = [{ value: "", label: "Automatisch" }].concat(MARKEN);
+  assert.strictEqual(R.ausloeserText(mitLeer, "", "Bitte wählen"), "Automatisch");
+});
+
+test("Picker: die Ansage behauptet nur, was gezählt wurde", () => {
+  const R = P();
+  // Ohne Suche steht die Liste vollständig da - eine Trefferzahl wäre Lärm.
+  assert.strictEqual(R.ansage(R.suche(MARKEN, "", []), ""), "");
+  assert.strictEqual(R.ansage(R.suche(MARKEN, "modbus", []), "modbus"), "2 Treffer");
+  assert.strictEqual(R.ansage(R.suche(MARKEN, "fronius", []), "fronius"), "1 Treffer");
+  // Ohne Treffer wird der GRUND angesagt, nie eine Null.
+  assert.match(R.ansage(R.suche(MARKEN, "huawei", []), "huawei"), /huawei/);
+});
+
+test("Picker: die Fundstellen werden im ORIGINAL hervorgehoben", () => {
+  const R = P();
+  const zeile = R.suche(MODELLE, "sun30k", MODELL_GRUPPEN).zeilen.find((z) => z.art === "option");
+  const teile = JSON.parse(JSON.stringify(zeile.label));
+  assert.deepStrictEqual(teile, [
+    { text: "SUN-30K", treffer: true },
+    { text: "-SG01HP3-EU", treffer: false }
+  ]);
+  // Eine Zeile ohne Nebenzeile behauptet keine.
+  assert.strictEqual(R.suche(MARKEN, "deye", []).zeilen[0].sub !== null, true);
+  assert.strictEqual(R.suche([{ value: "x", label: "X" }], "x", []).zeilen[0].sub, null);
+});
+
+/* --- vppicker.js: die VERANKERUNG (die eine Geometrie-Regel der Fläche) --- */
+//
+// Der Rest von vppicker.js ist DOM und gehört in den Browser-Beweis; `platziere`
+// ist reine Arithmetik und deshalb hier prüfbar. Sie ist der Grund, aus dem das
+// Panel an `document.body` hängt statt im Feld: die Wirte dieser Seite tragen
+// Scroll- und Überlauf-Grenzen.
+
+function feld(r) {
+  return { getBoundingClientRect: () => r };
+}
+
+test("Picker-Panel: es klappt nach OBEN, wenn unten kein Platz ist", () => {
+  const V = load(["modellsuche.js", "pickerregeln.js", "vppicker.js"]).VPPicker;
+  const sicht = { w: 1440, h: 800 };
+  const panel = { offsetHeight: 300 };
+
+  // Genug Luft darunter: normal, unter dem Feld.
+  const unten = V.platziere(feld({ top: 100, bottom: 146, left: 200, width: 320 }), panel, sicht);
+  assert.strictEqual(unten.oben, false);
+  assert.strictEqual(unten.top, 150);
+  assert.strictEqual(unten.left, 200);
+
+  // Feld weit unten: der Umschlag greift, das Panel steht ÜBER dem Feld.
+  const oben = V.platziere(feld({ top: 700, bottom: 746, left: 200, width: 320 }), panel, sicht);
+  assert.strictEqual(oben.oben, true);
+  assert.strictEqual(oben.top, 700 - 4 - 300);
+});
+
+test("Picker-Panel: es wird waagerecht in den sichtbaren Bereich geklemmt", () => {
+  const V = load(["modellsuche.js", "pickerregeln.js", "vppicker.js"]).VPPicker;
+  const sicht = { w: 375, h: 812 };   // Telefon-Breite als Rechenfall
+  const p = V.platziere(feld({ top: 40, bottom: 86, left: 300, width: 320 }), { offsetHeight: 200 }, sicht);
+  // 300 + 320 liefe rechts hinaus - also links geklemmt, mit 12 px Rand.
+  assert.strictEqual(p.left, 375 - 320 - 12);
+  assert.ok(p.left + p.width <= 375 - 12);
+});
+
+test("Picker-Panel: schmaler als die Mindestbreite wird es nie", () => {
+  const V = load(["modellsuche.js", "pickerregeln.js", "vppicker.js"]).VPPicker;
+  // Darunter passt keine Nebenzeile mehr - ein 140 px breites Feld (die
+  // Testleistung der Kalibrierung) bekommt trotzdem ein lesbares Panel.
+  const p = V.platziere(feld({ top: 40, bottom: 80, left: 20, width: 140 }), { offsetHeight: 120 }, { w: 1440, h: 800 });
+  assert.strictEqual(p.width, V.MIN_PANEL_PX);
+});
+
+test("Picker: die Vorwahl ist die des nativen Select - erste Zeile, wenn nichts gesetzt ist", () => {
+  // ⚠ `onBrandChange` fände sonst gar keine Marke: ein `<select>` steht ab dem
+  // Moment, in dem es seine Optionen bekommt, auf seiner ersten Zeile. Nur ein
+  // ausdrückliches `ohneVorwahl` lässt den Platzhalter stehen.
+  const R = P();
+  assert.strictEqual(R.ausloeserText(MARKEN, MARKEN[0].value, "Bitte wählen"), "Deye");
+  // Die Regel selbst wohnt in vppicker.js; hier steht sie als AUSSAGE, damit
+  // ein späterer Umbau sie nicht unbemerkt umdreht.
+  const quelle = fs.readFileSync(path.join(STATIC, "vppicker.js"), "utf8");
+  assert.match(quelle, /ohneVorwahl/, "das ausdrückliche Opt-out muss es geben");
+  assert.match(quelle, /optionen\[0\]\.value/, "ohne Wert steht die erste Zeile");
+});
+
+test("Picker: die Beschriftung wird ERST beim Montieren verknüpft", () => {
+  // Im Browser gefunden: ein `for` im Markup zeigt bis zum Montieren ins Leere
+  // (Chrome: „Incorrect use of <label for=…>"), und die Beschriftung eines
+  // dynamisch gebauten Feldes hängt beim Montieren noch gar nicht im Dokument -
+  // deshalb reicht der Aufrufer sie als ELEMENT durch (`labelEl`).
+  const quelle = fs.readFileSync(path.join(STATIC, "vppicker.js"), "utf8");
+  assert.match(quelle, /opts\.labelEl \|\| doc\.getElementById\(opts\.labelledBy\)/);
+  assert.match(quelle, /lbl\.htmlFor = basisId/);
+  // Und das Markup trägt deshalb KEIN `for` auf den vier Picker-Beschriftungen.
+  const html = fs.readFileSync(path.join(STATIC, "einrichten.html"), "utf8");
+  for (const id of ["brandLabel", "calMagLabel", "srcBrandLabel", "srcModelLabel"]) {
+    assert.match(html, new RegExp('<label id="' + id + '">'),
+      id + ' darf im Markup kein for tragen');
+  }
+});
+
+test("Die Einrichten-Seite trägt KEIN natives Auswahlfeld mehr (Welle 3)", () => {
+  // Der Beweis der Welle: `grep '<select'` über die ausgelieferten Seiten = 0.
+  for (const datei of ["einrichten.html", "index.html", "einstellungen.html", "inverter.html"]) {
+    const html = fs.readFileSync(path.join(STATIC, datei), "utf8");
+    assert.ok(!/<select/i.test(html), datei + " trägt noch ein natives Auswahlfeld");
+  }
+  // Auch nicht nachträglich gebaut: kein Skript erzeugt eines.
+  for (const datei of fs.readdirSync(STATIC).filter((f) => f.endsWith(".js"))) {
+    const js = fs.readFileSync(path.join(STATIC, datei), "utf8");
+    assert.ok(!/createElement\((["'])select\1\)/.test(js) && !/\bel\((["'])select\1/.test(js),
+      datei + " erzeugt ein natives Auswahlfeld zur Laufzeit");
+  }
+});

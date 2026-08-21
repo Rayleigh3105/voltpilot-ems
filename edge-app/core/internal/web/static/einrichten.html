@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="dashboard.css">
   <link rel="stylesheet" href="inverter.css">
+  <link rel="stylesheet" href="vppicker.css">
   <link rel="stylesheet" href="einstellungen.css">
   <link rel="stylesheet" href="shell.css">
 </head>
@@ -178,8 +179,11 @@
 
             <form id="form" class="inv-edit-form" novalidate hidden>
               <div class="field">
-                <label for="brand">Marke</label>
-                <select id="brand" required></select>
+                <label id="brandLabel">Marke</label>
+                <!-- VpPicker statt eines nativen Auswahlfelds: gleiche Optik wie die Felder
+                     daneben, Tastatur wie nativ, am Telefon ein Bottom-Sheet.
+                     Die Zeilen baut inverter.js aus dem Katalog. -->
+                <div id="brandPicker"></div>
                 <p class="field-help" id="brandHelp"></p>
               </div>
 
@@ -405,8 +409,8 @@
 
             <div class="cal-step" id="calTestStep" hidden>
               <div class="cal-mag">
-                <label for="calMag">Testleistung</label>
-                <select id="calMag"></select>
+                <label id="calMagLabel">Testleistung</label>
+                <div id="calMagPicker"></div>
               </div>
               <p class="cal-hint" id="calRatedNote" hidden></p>
               <div class="cal-test-btns">
@@ -908,12 +912,14 @@
             <input id="srcLabel" type="text" autocomplete="off" placeholder="z. B. PV Dach Süd">
           </div>
           <div class="field">
-            <label for="srcBrand">Marke</label>
-            <select id="srcBrand" required></select>
+            <label id="srcBrandLabel">Marke</label>
+            <div id="srcBrandPicker"></div>
           </div>
           <div class="field">
-            <label for="srcModel">Modell</label>
-            <select id="srcModel" required></select>
+            <label id="srcModelLabel">Modell</label>
+            <!-- Der Deye-Katalog trägt 47 Modelle: hier blendet der Picker
+                 seine Suche von selbst ein (pickerregeln.js SUCHE_AB). -->
+            <div id="srcModelPicker"></div>
           </div>
           <div class="field">
             <label>Kommunikationsmethode</label>
@@ -955,6 +961,10 @@
   <script src="consequences.js"></script>
   <script src="verify.js"></script>
   <script src="modellsuche.js"></script>
+  <!-- Der Picker der Box: erst die reinen Regeln, dann die Fläche.
+       pickerregeln.js holt seine Such-Toleranz aus modellsuche.js. -->
+  <script src="pickerregeln.js"></script>
+  <script src="vppicker.js"></script>
   <script src="inverter.js"></script>
   <script src="sources.js"></script>
   <script src="einstellungen.js"></script>

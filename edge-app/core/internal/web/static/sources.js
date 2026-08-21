@@ -32,6 +32,17 @@
   var currentRole = ROLE_ERZEUGER;
   var currentList = [];    // the sources as last loaded (for the unit-id offer)
 
+  // Die zwei Picker des Drawers (VpPicker der Box, vppicker.js). Sie ERSETZEN
+  // die früheren nativen Auswahlfelder: gleiche Werte in `collect()`, gleicher
+  // `onBrandChange`-Ablauf - nur Tastatur, Nebenzeile und eine Bedienfläche,
+  // die am Telefon ein Daumen trifft. Der MODELL-Picker trägt zusätzlich die
+  // Suche: der Deye-Katalog hat 47 Modelle (pickerregeln.js SUCHE_AB).
+  var brandPicker = null;
+  var modelPicker = null;
+
+  function brandValue() { return brandPicker ? brandPicker.wert() : null; }
+  function modelValue() { return modelPicker ? modelPicker.wert() : null; }
+
   function brandById(id) {
     if (!catalog) return null;
     for (var i = 0; i < catalog.brands.length; i++) {
@@ -258,22 +269,76 @@
   }
 
   function populateBrands() {
-    var sel = $("srcBrand");
-    sel.innerHTML = "";
-    brandsForRole(currentRole).forEach(function (b) {
-      sel.appendChild(el("option", { value: b.id }, b.label));
+    var optionen = brandsForRole(currentRole).map(function (b) {
+      return {
+        value: b.id,
+        label: b.label,
+        sub: b.comm_label || commLabel(b.communication),
+        keywords: [b.id, b.communication].join(" ")
+      };
+    });
+    if (brandPicker) brandPicker.setOptionen(optionen);
+    else brandPicker = window.VPPicker.montiere($("srcBrandPicker"), {
+      id: "srcBrand",
+      optionen: optionen,
+      labelledBy: "srcBrandLabel",
+      ariaLabel: "Marke",
+      platzhalter: "Marke wählen …",
+      suchPlatzhalter: "Marke suchen …",
+      onChange: onBrandChange
     });
     onBrandChange();
   }
 
+  // Die Modell-Zeilen einer Marke: gruppiert nach ihren Register-Familien (die
+  // Beschriftung kommt aus dem Katalog - weiterhin vollständig datengetrieben).
+  //
+  // ⚠ Die Nebenzeile ist die NOTIZ des Katalogs, nicht eine daraus gebaute
+  // Aufzählung: sie trägt Nennleistung, Bauart und Speicherklasse längst in
+  // einem Satz („5 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"). Die
+  // Familie steht als GRUPPEN-Überschrift darüber - sie ein zweites Mal in die
+  // Zeile zu schreiben las sich als „5 kW · Hybrid, 3-phasig · 5 kW · …".
+  // Was der Katalog nicht kennt, steht NICHT da (nie eine erfundene 0 kW).
+  function modelOptionen(brand) {
+    var famLabel = {};
+    (brand.families || []).forEach(function (f) { famLabel[f.id] = f.label; });
+    var mehrfachFamilie = (brand.families || []).length > 1;
+    return (brand.models || []).map(function (m) {
+      var neben = m.note || null;
+      if (!neben && typeof m.rated_kw === "number" && m.rated_kw > 0) {
+        neben = (Math.round(m.rated_kw * 10) / 10).toLocaleString("de-DE") + " kW";
+      }
+      return {
+        value: m.id,
+        label: m.label,
+        sub: neben,
+        group: mehrfachFamilie && famLabel[m.family] ? m.family : null,
+        // Durchsucht, aber nicht angezeigt: die Kennung und die Familie - so
+        // findet „hybrid 3" sein Gerät auch bei einer Marke ohne Gruppen.
+        keywords: [m.id, m.family, famLabel[m.family]].filter(Boolean).join(" ")
+      };
+    });
+  }
+
+  function modelGruppen(brand) {
+    if ((brand.families || []).length < 2) return [];
+    return (brand.families || []).map(function (f) { return { key: f.id, label: f.label }; });
+  }
+
   function onBrandChange() {
-    var brand = brandById($("srcBrand").value);
+    var brand = brandById(brandValue());
     if (!brand) return;
     $("srcComm").textContent = brand.comm_label || commLabel(brand.communication);
-    var msel = $("srcModel");
-    msel.innerHTML = "";
-    (brand.models || []).forEach(function (m) {
-      msel.appendChild(el("option", { value: m.id }, m.label));
+    var optionen = modelOptionen(brand), gruppen = modelGruppen(brand);
+    if (modelPicker) modelPicker.setOptionen(optionen, gruppen);
+    else modelPicker = window.VPPicker.montiere($("srcModelPicker"), {
+      id: "srcModel",
+      optionen: optionen,
+      gruppen: gruppen,
+      labelledBy: "srcModelLabel",
+      ariaLabel: "Modell",
+      platzhalter: "Modell wählen …",
+      suchPlatzhalter: "Modell suchen, z. B. SUN-30K"
     });
     renderFields(brand);
   }
@@ -293,14 +358,29 @@
         cbWrap.appendChild(el("span", null, f.label));
         row.appendChild(cbWrap);
       } else {
-        row.appendChild(el("label", { for: inputId }, f.label + (f.required ? " *" : "")));
+        // Ein Auswahl-Feld bekommt sein `for` vom Picker selbst (er kennt die
+        // id seines Auslösers erst, wenn er ihn gebaut hat) - siehe vppicker.js.
+        var lblAttrs = { id: inputId + "-lbl" };
+        if (f.type !== "select") lblAttrs["for"] = inputId;
+        var lblEl = el("label", lblAttrs, f.label + (f.required ? " *" : ""));
+        row.appendChild(lblEl);
         var input;
         if (f.type === "select") {
-          input = el("select", { id: inputId });
-          (f.options || []).forEach(function (o) {
-            input.appendChild(el("option", { value: String(o.value) }, o.label));
+          // Auch hier der Haus-Picker statt eines nativen Feldes - ein
+          // einzelnes Browser-Element zwischen lauter Pickern verhielte sich am
+          // Telefon anders als alles daneben. Der WERT wohnt in `dataset.value`.
+          input = el("div", { id: inputId });
+          window.VPPicker.montiere(input, {
+            id: inputId + "-p",
+            optionen: (f.options || []).map(function (o) {
+              return { value: String(o.value), label: o.label };
+            }),
+            wert: f.default != null ? String(f.default)
+              : ((f.options || []).length ? String(f.options[0].value) : null),
+            labelledBy: inputId + "-lbl",
+            labelEl: lblEl,
+            ariaLabel: f.label
           });
-          if (f.default != null) input.value = String(f.default);
         } else {
           input = el("input", { type: f.type === "number" ? "number" : "text", id: inputId });
           if (f.required) input.required = true;
@@ -353,7 +433,9 @@
       if (ftype === "checkbox") {
         conn[key] = input.checked;
       } else if (ftype === "number" || ftype === "select") {
-        var raw = input.value;
+        // ⚠ Ein Auswahl-Feld ist kein natives Element mehr: sein Wert wohnt im
+        // `data-value` des Picker-Wirts (vppicker.js), nicht in `.value`.
+        var raw = ftype === "select" ? (input.dataset.value || "") : input.value;
         if (raw === "") return;
         var n = Number(raw);
         conn[key] = isNaN(n) ? raw : n;
@@ -363,8 +445,8 @@
     });
     var req = {
       role: currentRole,
-      brand: $("srcBrand").value,
-      model: $("srcModel").value,
+      brand: brandValue(),
+      model: modelValue(),
       connection: conn,
       label: $("srcLabel").value.trim(),
     };
@@ -400,7 +482,7 @@
     $("roleNetz").classList.toggle("locked", hasNetz);
     $("netzLockedNote").hidden = !hasNetz;
     setRole(role === ROLE_NETZ || role === ROLE_CONSUMER ? role : ROLE_ERZEUGER);
-    if ($("srcBrand").options.length === 0 && catalog) populateBrands();
+    if (!brandPicker && catalog) populateBrands();
     else onBrandChange();
     $("srcDrawerBackdrop").hidden = false;
     document.body.classList.add("drawer-open");
@@ -537,6 +619,13 @@
       serverNowMs = data.server_now_ms || 0;
       if (data.balance) balance = data.balance;
       renderGroups(data.sources || []);
+      // ⚠ Die zwei Picker des Drawers entstehen SCHON HIER, nicht erst beim
+      // Öffnen. Erst das Montieren verknüpft die Beschriftung mit dem Auslöser
+      // (vppicker.js setzt `label.htmlFor`) - bis dahin steht über dem Feld eine
+      // Beschriftung, die auf nichts zeigt und beim Klick nichts fokussiert.
+      // Das frühere native Feld stand von Anfang an da; das hier ist der
+      // Ersatz für diese Selbstverständlichkeit.
+      if (!brandPicker) populateBrands();
       // NACH renderGroups: die Zeilen-Knöpfe (Umbenennen/Entfernen) entstehen
       // dort erst, also muss die Sperre danach über die frische Karte laufen.
       window.VP.setPortalManaged($("anlageCard"), !!data.portal_managed,
@@ -564,7 +653,6 @@
     $("roleErz").addEventListener("click", function () { setRole(ROLE_ERZEUGER); });
     $("roleNetz").addEventListener("click", function () { setRole(ROLE_NETZ); });
     $("roleVerbraucher").addEventListener("click", function () { setRole(ROLE_CONSUMER); });
-    $("srcBrand").addEventListener("change", onBrandChange);
     $("srcForm").addEventListener("submit", addSource);
     $("primGridToggle").addEventListener("change", saveBalance);
     $("srcTestBtn").addEventListener("click", function () {

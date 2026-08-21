@@ -87,25 +87,36 @@
       .catch(swallow);
   }
 
+  // Der Picker der Teststufen (VpPicker der Box, vppicker.js) - siehe populateMag.
+  var magPicker = null;
+
   // The test-power ladder, provided by the server derived from the inverter's rated
   // power (Defect 2), so the smallest rung actually moves the battery on a big unit. The
   // server already caps every rung to the hard envelope max_kw.
   function populateMag(cal) {
-    var sel = $("calMag");
-    if (!sel) return;
+    var host = $("calMagPicker");
+    if (!host) return;
     var steps = (cal.test_steps && cal.test_steps.length) ? cal.test_steps.slice()
       : [0.2, 0.3, 0.5, 1.0].filter(function (v) { return v <= (cal.max_kw || 1) + 1e-9; });
     var key = steps.join(",");
-    if (sel.dataset.steps !== key) {
-      sel.dataset.steps = key;
-      sel.innerHTML = "";
-      steps.forEach(function (v) {
-        var o = document.createElement("option");
-        o.value = String(v);
-        o.textContent = nf1.format(v) + " kW";
-        sel.appendChild(o);
+    if (host.dataset.steps !== key) {
+      host.dataset.steps = key;
+      var optionen = steps.map(function (v) {
+        return { value: String(v), label: nf1.format(v) + " kW" };
       });
-      sel.value = String(steps[Math.min(1, steps.length - 1)]); // default ~3 % rung
+      var vorgabe = String(steps[Math.min(1, steps.length - 1)]); // ~3 %-Stufe
+      // Der VpPicker der Box statt eines nativen Auswahlfeldes - vier Stufen
+      // brauchen keine Suche (pickerregeln.js blendet sie unter acht Zeilen von
+      // selbst aus), aber dieselbe Optik und dieselbe Tastatur wie überall.
+      if (magPicker) { magPicker.setOptionen(optionen); magPicker.setWert(vorgabe); }
+      else magPicker = window.VPPicker.montiere(host, {
+        id: "calMag",
+        klasse: "is-schmal",
+        optionen: optionen,
+        wert: vorgabe,
+        labelledBy: "calMagLabel",
+        ariaLabel: "Testleistung"
+      });
     }
     // Defect 3: if rated power is unknown the ladder is a generic fallback - say why,
     // rather than silently offering steps that may not fit the plant size.
@@ -316,7 +327,7 @@
   }
 
   function startTest(dir) {
-    var kw = Number($("calMag").value) || 0.3;
+    var kw = Number(magPicker ? magPicker.wert() : null) || 0.3;
     showErr("");
     post("/api/calibration/test", { direction: dir, magnitude_kw: kw }).then(applyResp).catch(swallow);
   }
