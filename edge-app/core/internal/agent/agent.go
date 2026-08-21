@@ -39,6 +39,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/netinfo"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/neutralcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
@@ -75,6 +76,12 @@ type Agent struct {
 	currentPlan *plan.Plan
 	lastReading guards.Reading
 	lastRawSoc  *float64
+
+	// net answers "under which address is my box reachable" - the ONE fact the
+	// box could never say about itself (D5). It records the Host header of
+	// every request that reaches the local web app (see internal/netinfo) and
+	// rides the heartbeat; it is DISPLAY ONLY and reaches no decision.
+	net *netinfo.Store
 
 	despiker *guards.Despiker
 	envelope *guards.Envelope
@@ -500,6 +507,7 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	ns := netinfo.NewStore(cfg.DataDir)
 	ms, err := mirror.NewStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -539,6 +547,7 @@ func New(cfg config.Config) (*Agent, error) {
 		srcStore:     ss,
 		balStore:     bs,
 		mirStore:     ms,
+		net:          ns,
 		installerLog: iwl,
 		srcReadings:  map[string]sourceReading{},
 		entReadings:  map[string]entReading{},
@@ -1118,6 +1127,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		// The build stamp rides EVERY heartbeat as the top-level `version`
 		// (OTA Stufe 0) - see cloud.Options.Version.
 		Version:    Version,
+		NetworkFn:  a.networkSummary,
 		OnSchedule: a.onSchedule,
 		OnCommand:  a.onPurgeCommand,
 		OnEntities: a.onEntityRegistryPush,

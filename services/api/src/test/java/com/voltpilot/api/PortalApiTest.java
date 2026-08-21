@@ -131,6 +131,9 @@ class PortalApiTest {
     com.voltpilot.api.repo.EdgeVersionRepository edgeVersionRepo;
 
     @Autowired
+    com.voltpilot.api.repo.UpdateStatusRepository updateStatusRepo;
+
+    @Autowired
     com.voltpilot.api.rules.RuleEventWriter ruleEventWriter;
 
     // ---- token validation ---------------------------------------------------
@@ -2310,6 +2313,83 @@ class PortalApiTest {
                 .containsEntry("intervalS", null);
         // ... und die übrigen Felder sind davon unberührt.
         assertThat(alt).containsEntry("brand", "deye").containsEntry("kind", "inverter");
+    }
+
+    /**
+     * Anlagen-Zentrale Stufe 2 (PR 2c, Captain-Entscheid D5): die Box meldet
+     * ihre EIGENE Erreichbarkeit, und der Kunde liest sie auf demselben
+     * Lesepfad, den jede Fläche ohnehin lädt.
+     *
+     * <p>Die Lücke war belegt und hat zwei Support-Runden gekostet: das Portal
+     * zeigt jede GERÄTE-Adresse, aber nicht die der Box - und genau die ist der
+     * Weg zur lokalen Oberfläche.
+     *
+     * <p>Gefahren wird der ECHTE Zuhörer, also die Form, die auf dem Draht
+     * liegt. Geprüft werden die drei Zustände, die nie zusammenfallen dürfen:
+     * die BEWIESENE Adresse, die schwächere Schnittstellen-Adresse (mit ihrem
+     * eigenen Wort), und „gar nichts gemeldet" - das bleibt null, NIE „nicht
+     * erreichbar".
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void theBoxOwnReachabilityIsIngestedAndTenantScoped() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "LAN-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String deviceId = claimDeviceInto(demo, siteId, "edge-lan-01");
+
+        java.util.function.Function<String, Map<String, Object>> device = id -> {
+            ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                    url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+            return res.getBody().stream().filter(d -> id.equals(d.get("id"))).findFirst()
+                    .orElseThrow();
+        };
+
+        // Vor jeder Meldung wird NICHTS behauptet.
+        assertThat(device.apply(deviceId)).containsEntry("lanHost", null)
+                .containsEntry("lanSource", null).containsEntry("lanSeenAt", null);
+
+        var listener = new com.voltpilot.api.ota.UpdateStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, updateStatusRepo);
+        String topic = "ems/" + tenantA + "/" + siteId + "/" + deviceId + "/status";
+        java.util.function.Consumer<String> heartbeat = network -> listener.handle(topic,
+                ("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantA + "\",\"site_id\":\""
+                        + siteId + "\",\"device_id\":\"" + deviceId + "\",\"online\":true,"
+                        + "\"version\":\"edge-2026.08.10\",\"network\":" + network + "}")
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        // Die BEWIESENE Adresse - so, wie ein Browser sie wirklich erreicht hat.
+        heartbeat.accept("{\"reported_at\":\"2026-08-21T09:12:00Z\","
+                + "\"host\":\"192.168.254.51:8484\",\"seen_at\":\"2026-08-21T09:11:44Z\"}");
+        Map<String, Object> nachher = device.apply(deviceId);
+        assertThat(nachher).containsEntry("lanHost", "192.168.254.51:8484")
+                .containsEntry("lanSource", "erreicht");
+        assertThat((String) nachher.get("lanSeenAt")).startsWith("2026-08-21T09:11:44");
+
+        // Ein Herzschlag OHNE den Block lässt sie stehen (Schweigen ist keine
+        // Aussage über die Erreichbarkeit).
+        listener.handle(topic, ("{\"tenant_id\":\"" + tenantA + "\",\"site_id\":\"" + siteId
+                + "\",\"device_id\":\"" + deviceId + "\",\"version\":\"edge-2026.08.11\"}")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(device.apply(deviceId)).containsEntry("lanHost", "192.168.254.51:8484");
+
+        // Die schwächere Aussage trägt ihr eigenes Wort.
+        heartbeat.accept("{\"reported_at\":\"2026-08-21T10:00:00Z\","
+                + "\"ip\":\"192.168.0.31\",\"iface\":\"eth0\"}");
+        assertThat(device.apply(deviceId)).containsEntry("lanHost", "192.168.0.31")
+                .containsEntry("lanSource", "schnittstelle");
+
+        // Ein fremder Mandant sieht das Gerät gar nicht (RLS).
+        ResponseEntity<List<Map<String, Object>>> fremd = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(fremd.getBody()).noneMatch(d -> deviceId.equals(d.get("id")));
     }
 
     /** The day-range channel map of one entity (helper for the splice test). */

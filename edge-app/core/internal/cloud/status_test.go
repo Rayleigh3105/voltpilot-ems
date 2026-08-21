@@ -104,6 +104,12 @@ func freeTestPort(t *testing.T) int {
 // connectedLink builds a link against the sink over the dev (plain MQTT) path
 // and waits for the connection.
 func connectedLink(t *testing.T, s *statusSink, version string) *Link {
+	return connectedLinkWith(t, s, version, nil)
+}
+
+func connectedLinkWith(
+	t *testing.T, s *statusSink, version string, network func() *NetworkSummary,
+) *Link {
 	t.Helper()
 	l, err := New(Options{
 		Identity: enroll.Identity{
@@ -112,6 +118,7 @@ func connectedLink(t *testing.T, s *statusSink, version string) *Link {
 		DevURL:      "tcp://" + s.addr,
 		DevClientID: "vp-status-test-" + version,
 		Version:     version,
+		NetworkFn:   network,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -307,5 +314,52 @@ func TestHeartbeatCarriesTheRegisterWriteAuditOnlyWhenThereIsOne(t *testing.T) {
 	}
 	if e["source"] != "wartungszugang" {
 		t.Fatalf("die Herkunft muss den Trigger nennen: %v", e["source"])
+	}
+}
+
+// Die eigene Adresse der Box (Anlagen-Zentrale Stufe 2, D5) reist als eigener
+// Block - und zwar NUR, wenn die Box wirklich etwas weiss.
+func TestHeartbeatCarriesTheBoxNetworkBlockOnlyWhenItKnowsSomething(t *testing.T) {
+	sink := startStatusSink(t)
+	link := connectedLinkWith(t, sink, "edge-2026.08.10", func() *NetworkSummary {
+		return &NetworkSummary{
+			ReportedAt: "2026-08-21T09:12:00Z",
+			Host:       "192.168.254.51:8484",
+			SeenAt:     "2026-08-21T09:11:44Z",
+		}
+	})
+	if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	net, ok := sink.last(t)["network"].(map[string]any)
+	if !ok {
+		t.Fatalf("network block missing: %v", sink.last(t)["network"])
+	}
+	if net["host"] != "192.168.254.51:8484" || net["seen_at"] != "2026-08-21T09:11:44Z" {
+		t.Fatalf("network block = %v, want the PROVEN address with its stamp", net)
+	}
+	// Was die Box nicht weiss, steht nicht drin - in einem Container ist die
+	// Schnittstellen-Adresse die Bridge-Adresse und damit keine Antwort.
+	for _, absent := range []string{"ip", "iface"} {
+		if _, ok := net[absent]; ok {
+			t.Fatalf("network.%s must be omitted here, got %v", absent, net[absent])
+		}
+	}
+}
+
+// Ohne Wissen KEIN Block: der Herzschlag bleibt byte-gleich zu vor D5, und das
+// Portal behaelt seinen ehrlichen Satz statt einer leeren Behauptung.
+func TestHeartbeatOmitsTheNetworkBlockWhenTheBoxKnowsNothing(t *testing.T) {
+	sink := startStatusSink(t)
+	for _, fn := range []func() *NetworkSummary{nil, func() *NetworkSummary { return nil }} {
+		link := connectedLinkWith(t, sink, "edge-2026.08.10", fn)
+		if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
+			nil, nil, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := sink.last(t)["network"]; ok {
+			t.Fatal("a box that knows nothing must send NO network block")
+		}
 	}
 }

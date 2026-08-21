@@ -8377,6 +8377,29 @@ components:
             When the device was claimed. The portal escalates the "wartet auf
             erste Daten" copy to troubleshooting guidance once the wait since
             claiming exceeds a threshold.
+        lanHost:
+          type: string
+          nullable: true
+          example: "192.168.254.51:8484"
+          description: >
+            Die eigene Erreichbarkeit der Box im Kundennetz (Anlagen-Zentrale
+            Stufe 2, D5) - NUR Anzeige, verbatim inklusive Port. null = die Box
+            meldet sie (noch) nicht; NIE "nicht erreichbar".
+        lanSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Der Frische-Anker dieser Aussage; er reist immer MIT lanHost.
+        lanSource:
+          type: string
+          nullable: true
+          enum: [erreicht, schnittstelle]
+          description: >
+            Wie stark der Beleg ist - `erreicht` = ein Browser hat die lokale
+            Oberfläche unter dieser Adresse NACHWEISLICH geöffnet (der stärkste
+            mögliche Nachweis), `schnittstelle` = die eigene Netzwerk-Adresse
+            der Box auf einer Installation ohne Container. Die zwei dürfen nie
+            unter einem Wort verschwinden.
     DevicePurgeResult:
       type: object
       properties:

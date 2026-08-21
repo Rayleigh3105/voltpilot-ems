@@ -43,8 +43,11 @@ func main() {
 	}
 
 	httpSrv := &http.Server{
-		Addr:              cfg.HTTPAddr,
-		Handler:           web.Handler(a.State, a, a, a, a.History(), a, a, a, a, a, a, a, a, a),
+		Addr: cfg.HTTPAddr,
+		// Der Beobachter lernt aus JEDER Anfrage die Adresse, unter der die Box
+		// wirklich erreicht wurde - die eine Tatsache, die sie ueber sich
+		// selbst nicht sagen konnte (D5). Er aendert an keiner Antwort etwas.
+		Handler:           a.WebObserver(web.Handler(a.State, a, a, a, a.History(), a, a, a, a, a, a, a, a, a)),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

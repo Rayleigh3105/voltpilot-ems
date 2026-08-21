@@ -731,6 +731,23 @@ export interface Device {
   lastSeenAt: string | null;
   /** When the device was claimed; drives the waiting-too-long escalation. */
   createdAt: string | null;
+  /**
+   * Die EIGENE Erreichbarkeit der Box im Kundennetz (Anlagen-Zentrale Stufe 2,
+   * D5) - NUR Anzeige, verbatim inklusive Port.
+   *
+   * **`null` heißt „die Box meldet sie (noch) nicht" - NIE „nicht
+   * erreichbar".** Ein älterer Edge-Stand sendet den Block gar nicht.
+   */
+  lanHost?: string | null;
+  /** Der Frische-Anker DIESER Aussage; er reist immer MIT `lanHost`. */
+  lanSeenAt?: string | null;
+  /**
+   * Wie stark der Beleg ist: `erreicht` = ein Browser hat die lokale Oberfläche
+   * unter dieser Adresse NACHWEISLICH geöffnet, `schnittstelle` = die eigene
+   * Netzwerk-Adresse der Box (nur ohne Container gemeldet). Die zwei dürfen nie
+   * unter einem Wort verschwinden.
+   */
+  lanSource?: 'erreicht' | 'schnittstelle' | null;
 }
 
 /** Only type + label are editable; the externalRef is the device's identity. */

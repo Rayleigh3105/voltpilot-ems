@@ -462,6 +462,21 @@ describe('schaltbild · Lücken werden BENANNT, nie gefüllt', () => {
     expect(box.zeilen.some((z) => z.text.includes('LAN-Adresse'))).toBe(true);
   });
 
+  it('zeigt die Adresse IM Bild, sobald die Box eine meldet - und die Lücke ist weg (D5)', () => {
+    const b = schaltbild(
+      input({
+        devices: [
+          { ...BOX, lanHost: '192.168.254.51:8484', lanSeenAt: FRISCH, lanSource: 'erreicht' },
+        ],
+      }),
+    );
+    const box = knoten(b, 'box')!;
+    expect(box.zeilen.some((z) => z.text === 'erreichbar über 192.168.254.51:8484')).toBe(true);
+    expect(b.luecken).not.toContain(LUECKE_LAN);
+    // Der Einbauort des Zählers bleibt eine Lücke - er ist nirgends erfasst.
+    expect(b.luecken).toContain(LUECKE_CT);
+  });
+
   it('markiert ein Gerät ohne gemeldeten Weg als unbekannt, statt einen zu erfinden', () => {
     const local = LOCAL_SETUP.map((l) =>
       l.id === 'inverter'

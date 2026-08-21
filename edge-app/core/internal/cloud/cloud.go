@@ -32,6 +32,8 @@ type Link struct {
 	// heartbeat, so it must not be a per-call argument a future caller could
 	// forget or condition on something.
 	version string
+	// networkFn is the link-level reachability source (see Options.NetworkFn).
+	networkFn func() *NetworkSummary
 
 	onSchedule        func(payload []byte)
 	onCommand         func(payload []byte)
@@ -172,6 +174,15 @@ type Options struct {
 	// has seen a flow deployment. Empty = omit the field (never a fabricated
 	// empty version).
 	Version string
+	// NetworkFn is asked at PUBLISH time for the box's own reachability
+	// (Anlagen-Zentrale Stufe 2, D5). It hangs on the LINK, not on a call
+	// argument - like Version - so no future caller can forget it, and because
+	// the answer changes over time (a DHCP lease, or the first time a customer
+	// opens the local surface). nil (or a nil result) = omit the block.
+	//
+	// It reports ONLY what the box can PROVE (see internal/netinfo); the cloud
+	// never invents a box address.
+	NetworkFn func() *NetworkSummary
 }
 
 func (o Options) brokerURL() string {
@@ -183,7 +194,8 @@ func (o Options) brokerURL() string {
 
 // New builds (but does not connect) the link.
 func New(o Options) (*Link, error) {
-	l := &Link{identity: o.Identity, version: o.Version, onSchedule: o.OnSchedule,
+	l := &Link{identity: o.Identity, version: o.Version, networkFn: o.NetworkFn,
+		onSchedule: o.OnSchedule,
 		onCommand: o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:    o.OnControlCert,
@@ -583,6 +595,33 @@ type LocalSetupEntry struct {
 	IntervalS      int     `json:"interval_s,omitempty"`
 	CapacityKwp    float64 `json:"capacity_kwp,omitempty"`
 	RegistryUnitID string  `json:"registry_unit_id,omitempty"`
+}
+
+// NetworkSummary is the additive status-heartbeat block answering the ONE
+// question the box could never answer about itself: under which address is it
+// reachable in the customer's network (Anlagen-Zentrale Stufe 2, Captain-Entscheid
+// D5 - "ja, additives Feld, NUR Anzeige")?
+//
+// ⚠ It reports what is PROVEN, not what is convenient. `Host` is an address a
+// browser demonstrably reached the local web app on (the HTTP Host header,
+// which Docker's DNAT cannot rewrite); `IP`/`Iface` are the box's own
+// interface address and are present ONLY on a non-containerized install -
+// inside the container that address is the bridge address, useless to a
+// customer and therefore a fabricated answer. See internal/netinfo.
+//
+// A box that knows nothing sends NO block at all, so the portal keeps its
+// honest "your box does not report this yet" instead of an empty claim.
+type NetworkSummary struct {
+	// ReportedAt is when the edge assembled this view (RFC 3339).
+	ReportedAt string `json:"reported_at"`
+	// Host is the proven address VERBATIM, port included (the port is part of
+	// what a human types). Empty = never observed.
+	Host string `json:"host,omitempty"`
+	// SeenAt is when that address last worked (RFC 3339); it travels WITH Host.
+	SeenAt string `json:"seen_at,omitempty"`
+	// IP / Iface: the own interface address, non-containerized installs only.
+	IP    string `json:"ip,omitempty"`
+	Iface string `json:"iface,omitempty"`
 }
 
 // SourcesSummary is the additive status-heartbeat block reporting the
@@ -1360,6 +1399,11 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if l.version != "" {
 		payload["version"] = l.version
+	}
+	if l.networkFn != nil {
+		if n := l.networkFn(); n != nil {
+			payload["network"] = n
+		}
 	}
 	if update != nil {
 		payload["update"] = update
