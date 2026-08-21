@@ -431,6 +431,15 @@ export function GeraetSeiteSection({
 
             <Sektion titel="Steuerungs-Bezüge" icon="shield">
               <ZeilenListe zeilen={view.steuerung} />
+              {/* Anlagen-Zentrale Stufe 3 (PR 3c, §13.3): der Wohnort der
+                  Regeln BLEIBT die Steuerung - die Geräteseite sagt nur, WELCHE
+                  dieses Gerät nutzen, und führt dorthin. Ein zweiter Regel-Ort
+                  wäre genau die Doppelung, die diese Stufe abräumt. */}
+              <p className="vp-geraet-sec-sub">
+                <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>
+                  Regeln und Modus dieser Anlage ansehen →
+                </a>
+              </p>
             </Sektion>
 
             <Sektion titel="Software" icon="settings">

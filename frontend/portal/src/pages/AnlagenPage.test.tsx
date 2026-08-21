@@ -617,6 +617,24 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     ).toBeTruthy();
   });
 
+  /*
+    Anlagen-Zentrale Stufe 3 (PR 3c): der Weg vom Cockpit auf die
+    Komponenten-Karte. Bewusst EINE Zeile unter dem Board und kein zweites Ziel
+    je Zeile - die Zeile hat schon eine Bedeutung („Verlauf").
+  */
+  it('führt vom Komponenten-Board in die Zentrale - genau EINMAL', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-komponenten')).toBeTruthy());
+    const komponenten = container.querySelector('.vp-komponenten') as HTMLElement;
+    const links = [...komponenten.querySelectorAll('a')].filter((a) =>
+      (a.getAttribute('href') ?? '').includes('/modell'),
+    );
+    expect(links).toHaveLength(1);
+    expect(links[0].textContent).toContain('Woher kommt jede Zahl?');
+  });
+
   it('der Nicht-zugeordnet-Zustand kennt keinen Börsenpreis-Streifen — und ruft die Preise gar nicht ab', async () => {
     mockAdaptive(false);
     mockSurface(LEER);

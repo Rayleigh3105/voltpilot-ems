@@ -189,6 +189,22 @@ describe('der EINE Anlege-Assistent', () => {
     expect(screen.getByText('Messwerte')).toBeInTheDocument();
   });
 
+  /*
+    Anlagen-Zentrale Stufe 3 (PR 3c, §13.4): die vierte Tür erklärt den Weg zur
+    Ladesäule - sie legt NICHTS an, weil eine Säule sich selbst verbindet.
+  */
+  it('erklärt hinter der Ladesäulen-Tür den Weg, statt ein Formular zu zeigen', async () => {
+    render(<KomponenteHinzufuegenDrawer siteId="s1" onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.click(await screen.findByText('Ladesäule (OCPP)'));
+
+    const block = await screen.findByTestId('tuer-ladesaeule');
+    expect(block).toHaveTextContent(/verbinden sich selbst/);
+    expect(block).toHaveTextContent(/ausschließlich Ladesäulen an, deren Kennung eingetragen ist/);
+    // Kein Formular, keine Marken-Auswahl - es gibt hier nichts einzutragen.
+    expect(screen.queryByLabelText('Marke')).toBeNull();
+    expect(screen.queryByText('Verbindung testen')).toBeNull();
+  });
+
   /**
    * Die ganze Reise der Selbstbau-Tür: ein öffentliches Ziel kommt gar nicht
    * erst zur Box, ein privates schon - und ohne gelesenen Messwert bleibt der

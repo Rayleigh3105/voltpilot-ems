@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LadevorgaengeSection } from './LadevorgaengeSection';
-import { api, type Site } from '../api';
+import { api, type Device, type Site } from '../api';
 import type { SiteCharging } from '../ladepunkte';
 
 const site: Site = {
@@ -125,6 +125,44 @@ describe('LadevorgaengeSection', () => {
     });
     render(<LadevorgaengeSection site={site} />);
     expect(await screen.findByText('Gerade lädt niemand - alle 6 Stecker sind frei.')).toBeTruthy();
+  });
+
+  /*
+    Anlagen-Zentrale Stufe 3 (PR 3c, §13.4): der Aufklapper „Technische
+    Angaben" ist die GERÄTESEITE der Säule geworden - ein Ladepunkt hat damit
+    denselben EINEN Ort wie jedes andere Gerät.
+  */
+  it('führt von der Säule auf ihre Geräteseite - Kennung bleibt sichtbar', async () => {
+    vi.spyOn(api, 'siteChargers').mockResolvedValue(charging);
+    const box: Device = {
+      id: 'd-1', siteId: 's-lade', externalRef: 'edge-abc123', kind: 'inverter',
+      name: null, status: 'active', lastSeenAt: null, createdAt: null,
+    };
+    render(<LadevorgaengeSection site={site} devices={[box]} />);
+
+    const links = await screen.findAllByRole('link', { name: /Geräteseite/ });
+    expect(links.map((l) => l.getAttribute('href'))).toContain(
+      '#/anlage/s-lade/geraet/edge-abc123/cp-saeule-1',
+    );
+    // Ohne Klick bleibt sichtbar, was man ohne Klick braucht…
+    expect(screen.getByText('saeule-1')).toBeTruthy();
+    // …und der Aufklapper ist weg (ein Ort, nicht zwei).
+    expect(screen.queryByText('Technische Angaben')).toBeNull();
+  });
+
+  it('bietet ohne eindeutige Box KEINEN Weg an - und behält den Aufklapper', async () => {
+    vi.spyOn(api, 'siteChargers').mockResolvedValue(charging);
+    render(<LadevorgaengeSection site={site} />);
+    await screen.findByText('Hof Nord · Stecker A');
+    expect(screen.queryByRole('link', { name: /Geräteseite/ })).toBeNull();
+    expect(screen.getAllByText('Technische Angaben').length).toBeGreaterThan(0);
+  });
+
+  it('verweist vom Anbinden-Kasten in die Zentrale (dort wohnt der Weg)', async () => {
+    vi.spyOn(api, 'siteChargers').mockResolvedValue(charging);
+    render(<LadevorgaengeSection site={site} />);
+    const link = await screen.findByRole('link', { name: /Alle Geräte dieser Anlage/ });
+    expect(link.getAttribute('href')).toBe('#/anlage/s-lade/modell');
   });
 
   it('nennt ohne Ladesäule den WEG, nie eine erfundene Adresse', async () => {

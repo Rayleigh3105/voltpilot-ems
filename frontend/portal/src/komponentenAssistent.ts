@@ -93,7 +93,7 @@ export const ROLLEN: RolleOption[] = [
  * und in einen Ablauf zu pressen, was verschiedene Fragen stellt, wäre genau
  * die Verschmelzung, die dieses Konzept vermeidet.
  */
-export type TuerId = 'katalog' | 'vorlage' | 'selbstbau';
+export type TuerId = 'katalog' | 'vorlage' | 'selbstbau' | 'ladesaeule';
 
 export type Tuer = {
   id: TuerId;
@@ -129,14 +129,37 @@ export function tueren(templates: ComponentTemplate[]): Tuer[] {
       hint: 'Ein Gerät selbst beschreiben: Adresse, Register, Messwerte - mit Live-Vorschau.',
       verfuegbar: true,
     },
+    /*
+      Anlagen-Zentrale Stufe 3 (PR 3c, §13.4): „Weitere Säule anbinden" ist eine
+      TÜR dieses Knopfs geworden, statt ein eigener Ort am Ende der
+      Ladevorgänge-Seite.
+
+      ⚠ Sie legt bewusst NICHTS an: eine Ladesäule verbindet sich SELBST (sie
+      wählt VoltPilot an) - hier gibt es also nichts einzutragen, nur den Weg zu
+      erklären. Ein Formular an dieser Stelle würde eine Handlung versprechen,
+      die es nicht gibt.
+    */
+    {
+      id: 'ladesaeule',
+      label: 'Ladesäule (OCPP)',
+      hint: 'Die Säule wählt VoltPilot selbst an - so tragen Sie sie dort ein.',
+      verfuegbar: true,
+    },
   ];
 }
 
-/** Die Vorlagen einer Tür. */
+/**
+ * Die Vorlagen einer Tür.
+ *
+ * ⚠ Die Türen `selbstbau` und `ladesaeule` haben KEINE: die eine beschreibt das
+ * Gerät selbst, die andere erklärt nur den Weg (eine Ladesäule verbindet sich
+ * selbst). Eine Marken-Auswahl an ihnen wäre ein Formular ohne Wirkung.
+ */
 export function templatesFuerTuer(
   templates: ComponentTemplate[],
   tuer: TuerId,
 ): ComponentTemplate[] {
+  if (tuer === 'selbstbau' || tuer === 'ladesaeule') return [];
   const kind = tuer === 'vorlage' ? 'certified' : 'builtin';
   return templates.filter((t) => t.kind === kind);
 }

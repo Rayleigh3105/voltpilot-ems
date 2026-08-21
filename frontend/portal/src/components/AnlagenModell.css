@@ -1009,3 +1009,18 @@
     flex-basis: 100%;
   }
 }
+
+/* Der Sprung auf EINE Komponente (Zentrale Stufe 3, PR 3c): eine kurze
+   Hervorhebung als ANTWORT auf den Klick, kein Zustand - sie verblasst von
+   selbst, damit die Zeile danach aussieht wie jede andere. */
+.vp-am-comp.is-angesprungen {
+  border-radius: var(--vp-radius-sm, 8px);
+  box-shadow: 0 0 0 2px var(--vp-brand-300, #93b4e6);
+  transition: box-shadow 0.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-am-comp.is-angesprungen {
+    transition: none;
+  }
+}
