@@ -635,6 +635,147 @@ class CommandHistoryApiTest {
      * Eine Halteperiode direkt setzen (Mandanten-Kontext ist Pflicht - ohne
      * {@code app.tenant_id} verweigert die RLS-Policy das INSERT).
      */
+    /**
+     * Die SUCHE (Geräteseiten Revision B §6, Captain-Punkt 4): Struktur wird
+     * serverseitig gefiltert, der Zähler nennt BEIDE Zahlen, und ein
+     * unbekanntes Wort ist eine benannte Ablehnung.
+     *
+     * <p>Der Zähler ist die Ehrlichkeit dieser Stufe: ohne {@code total} wäre
+     * ein scharfer Filter von einem leeren Zeitraum nicht zu unterscheiden.
+     */
+    @Test
+    void dieSucheFiltertStrukturServerseitigUndNenntBeideZahlen() {
+        ControlStatusListener control = controlListener();
+        CurtailmentStatusListener curtail = curtailListener();
+        // Zwei Speicher-Perioden: die zweite weicht ab.
+        control.handle(TOPIC, control("2026-08-16T10:00:00Z", -4.0, true, true, true, "plan",
+                -4.0, "[]"));
+        control.handle(TOPIC, control("2026-08-16T11:00:00Z", -6.0, false, true, true, "plan",
+                -6.0, "[\"battery_power\"]"));
+        control.handle(TOPIC, control("2026-08-16T11:00:15Z", -6.0, false, true, true, "plan",
+                -6.0, "[\"battery_power\"]"));
+        control.handle(TOPIC, control("2026-08-16T11:00:30Z", -6.0, false, true, true, "plan",
+                -6.0, "[\"battery_power\"]"));
+        // Eine Abregel-Periode daneben - sie ist ein anderer Strom.
+        curtail.handle(TOPIC, curtail("2026-08-16T12:00:00Z", 2, 2, true, 17.6, Boolean.TRUE));
+
+        Map<String, Object> alle = readFiltered("");
+        int total = (Integer) alle.get("total");
+        assertThat(total).as("die Zeilen des Tages").isGreaterThanOrEqualTo(3);
+        assertThat(alle.get("matched")).isEqualTo(total);
+
+        // Nur der Speicher-Strom: der Zähler nennt weiterhin die 212 daneben.
+        Map<String, Object> nurSpeicher = readFiltered("&streams=batterie");
+        assertThat(streams(nurSpeicher)).containsExactly(CommandLog.STREAM_BATTERIE);
+        assertThat(nurSpeicher.get("total")).isEqualTo(total);
+        assertThat((Integer) nurSpeicher.get("matched")).isLessThan(total);
+        assertThat(entries(nurSpeicher)).hasSize((Integer) nurSpeicher.get("matched"));
+
+        // Nur Abweichungen - der Schnell-Chip der Support-Fälle.
+        Map<String, Object> abweichend = readFiltered("&verdicts=abweichend");
+        assertThat(entries(abweichend)).isNotEmpty();
+        assertThat(entries(abweichend)).allSatisfy(e ->
+                assertThat(e.get("verdict")).isEqualTo(CommandLog.VERDICT_ABWEICHEND));
+        assertThat(abweichend.get("total")).isEqualTo(total);
+
+        // Die Herkunft: alles hier ist aus dem Gerätestatus abgeleitet, ein
+        // Portal-Filter trifft also ehrlich NICHTS - und sagt es mit `matched`.
+        Map<String, Object> portal = readFiltered("&sources=portal");
+        assertThat(entries(portal)).isEmpty();
+        assertThat(portal.get("matched")).isEqualTo(0);
+        assertThat(portal.get("total")).isEqualTo(total);
+
+        // ⚠ Ein unbekanntes Wort ist eine BENANNTE Ablehnung, kein stiller
+        // Rückfall auf „alles": der zeigte MEHR Zeilen als verlangt.
+        ResponseEntity<Map<String, Object>> boese = exchange(HttpMethod.GET,
+                "/api/v1/sites/" + BERLIN_SITE + "/command-history?range=day&at=2026-08-16"
+                        + "&streams=speicher", token("demo", "demo"), null);
+        assertThat(boese.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) boese.getBody().get("message")).contains("batterie");
+    }
+
+    /**
+     * Der Zeitraum: {@code month} ist dazugekommen, ein eigener Zeitraum reist
+     * als {@code from}/{@code to} - und weiter zurück als die Aufbewahrung wird
+     * ABGELEHNT statt still gekappt (dort läge nichts mehr, und ein leeres
+     * Fenster läse sich als „damals wurde nichts geschickt").
+     */
+    @Test
+    void derZeitraumReichtBisZumMonatUndNieUeberDieAufbewahrungHinaus() {
+        String tok = token("demo", "demo");
+        asTenantA(() -> {
+            seedPeriod("2026-08-16T09:00:00Z", "2026-08-16T09:30:00Z", -3.0);
+            jdbc.update("INSERT INTO device_command_recording (site_id, tenant_id, started_at) "
+                    + "VALUES (?::uuid, NULLIF(current_setting('app.tenant_id', true), '')::uuid, "
+                    + "?::timestamptz) ON CONFLICT (site_id) DO NOTHING",
+                    BERLIN_SITE, "2026-08-01T00:00:00Z");
+        });
+        String base = "/api/v1/sites/" + BERLIN_SITE + "/command-history";
+        assertThat(exchange(HttpMethod.GET, base + "?range=month&at=2026-08-16", tok, null)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        // Ein eigener Zeitraum schliesst den BIS-Tag ein.
+        Map<String, Object> eigen = exchange(HttpMethod.GET,
+                base + "?from=2026-08-16&to=2026-08-16", tok, null).getBody();
+        assertThat(entries(eigen)).isNotEmpty();
+        // Ein Jahr gibt es nicht - es überschritte die Aufbewahrung.
+        assertThat(exchange(HttpMethod.GET, base + "?range=year", tok, null).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        // Und weiter zurück als 90 Tage wird benannt abgelehnt.
+        ResponseEntity<Map<String, Object>> alt = exchange(HttpMethod.GET,
+                base + "?range=day&at=" + java.time.LocalDate.now(java.time.ZoneId
+                        .of("Europe/Berlin")).minusDays(120), tok, null);
+        assertThat(alt.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat((String) alt.getBody().get("message")).contains("90 Tage");
+    }
+
+    /**
+     * Die Paginierung: der Deckel wird GESAGT, und der Cursor führt nach hinten.
+     *
+     * <p>⚠ Er vergleicht {@code <=}: zwei Zeilen dürfen denselben Beginn tragen,
+     * und ein striktes Kleiner verlöre die zweite lautlos an der Seitengrenze.
+     * Die Fläche mischt die Seiten deshalb über die {@code id}.
+     */
+    @Test
+    void derDeckelWirdGesagtUndDerCursorFuehrtNachHinten() {
+        asTenantA(() -> {
+            for (int i = 0; i < 6; i++) {
+                seedPeriod(String.format("2026-08-16T%02d:00:00Z", 8 + i),
+                        String.format("2026-08-16T%02d:30:00Z", 8 + i), -1.0 - i);
+            }
+        });
+        Map<String, Object> seite1 = readFiltered("&limit=4");
+        assertThat(entries(seite1)).hasSize(4);
+        assertThat(seite1.get("truncated")).isEqualTo(true);
+        assertThat(seite1.get("total")).isEqualTo(6);
+        assertThat(seite1.get("matched")).isEqualTo(6);
+        String cursor = (String) seite1.get("nextBefore");
+        assertThat(cursor).as("der Cursor nach hinten").isNotNull();
+        // Die ÄLTESTE gezeigte Zeile IST der Cursor - die Seite zeigt die
+        // jüngsten vier, und weiter geht es rückwärts.
+        assertThat(entries(seite1).get(0).get("startedAt")).isEqualTo(cursor);
+
+        Map<String, Object> seite2 = readFiltered("&limit=4&before=" + cursor);
+        assertThat(entries(seite2)).isNotEmpty();
+        assertThat(seite2.get("truncated")).isEqualTo(false);
+        assertThat(seite2.get("nextBefore")).isNull();
+        // Die Grenzzeile kommt ZWEIMAL - lieber doppelt als lautlos verloren.
+        java.util.Set<Object> ids = new java.util.HashSet<>();
+        entries(seite1).forEach(e -> ids.add(e.get("id")));
+        entries(seite2).forEach(e -> ids.add(e.get("id")));
+        assertThat(ids).hasSize(6);
+    }
+
+    /** Der Tages-Verlauf mit Filter-Zusatz. */
+    private Map<String, Object> readFiltered(String extra) {
+        String path = "/api/v1/sites/" + BERLIN_SITE + "/command-history?range=day&at=2026-08-16"
+                + extra;
+        ResponseEntity<Map<String, Object>> res = rest.exchange(url(path), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
     private void seedPeriod(String startedAt, String endedAt, double commandedKw) {
         jdbc.update("INSERT INTO device_command_log (tenant_id, site_id, device_id, stream, kind, "
                 + "started_at, ended_at, last_seen_at, mode, commanded_kw_first, source) VALUES ("

@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.command.CommandFilter;
 import com.voltpilot.api.command.CommandLog;
 import com.voltpilot.api.command.CommandLog.Detail;
 import com.voltpilot.api.command.CommandLog.OpenPeriod;
@@ -267,17 +268,24 @@ public class CommandLogRepository {
      */
     public List<Row> entries(UUID siteId, UUID entityId, UUID deviceId, Instant from, Instant to,
             int limit) {
+        return entries(siteId, entityId, deviceId, from, to, limit, CommandFilter.Filter.NONE, to);
+    }
+
+    /**
+     * Derselbe Ausschnitt mit den drei STRUKTUR-Filtern und dem Seiten-Cursor
+     * (Geräteseiten Revision B §6).
+     *
+     * @param before der Cursor: nur Zeilen, die BIS zu diesem Zeitpunkt begannen
+     *               (siehe {@link CommandFilter#before} - {@code <=}, damit an
+     *               der Seitengrenze nichts lautlos verloren geht)
+     */
+    public List<Row> entries(UUID siteId, UUID entityId, UUID deviceId, Instant from, Instant to,
+            int limit, CommandFilter.Filter filter, Instant before) {
         StringBuilder sql = window(siteId, from, to);
         List<Object> args = windowArgs(siteId, from, to);
-        if (entityId != null) {
-            sql.append(" AND (entity_id = ?");
-            args.add(entityId);
-            if (deviceId != null) {
-                sql.append(" OR (entity_id IS NULL AND device_id = ?)");
-                args.add(deviceId);
-            }
-            sql.append(')');
-        }
+        scopeEntity(sql, args, entityId, deviceId);
+        applyFilter(sql, args, filter);
+        applyBefore(sql, args, before);
         return finish(sql, args, limit);
     }
 
@@ -310,8 +318,61 @@ public class CommandLogRepository {
      */
     public List<Row> entriesForDevice(UUID siteId, UUID deviceId, List<UUID> entityIds,
             Instant from, Instant to, int limit) {
+        return entriesForDevice(siteId, deviceId, entityIds, from, to, limit,
+                CommandFilter.Filter.NONE, to);
+    }
+
+    /** Derselbe Geräte-Ausschnitt mit Filter und Seiten-Cursor. */
+    public List<Row> entriesForDevice(UUID siteId, UUID deviceId, List<UUID> entityIds,
+            Instant from, Instant to, int limit, CommandFilter.Filter filter, Instant before) {
         StringBuilder sql = window(siteId, from, to);
         List<Object> args = windowArgs(siteId, from, to);
+        scopeDevice(sql, args, deviceId, entityIds);
+        applyFilter(sql, args, filter);
+        applyBefore(sql, args, before);
+        return finish(sql, args, limit);
+    }
+
+    /**
+     * Wie viele Zeilen das Fenster trägt - mit oder ohne Filter.
+     *
+     * <p>Sie ist die Grundlage des Treffer-Zählers („14 von 212 Zeilen"), und
+     * genau dafür wird sie ZWEIMAL gerufen: einmal ohne Filter (die 212) und
+     * einmal mit (die 14). Ein Zähler, der nur die gezeigten Zeilen nennt,
+     * verwechselte einen leeren Filter mit einem leeren Zeitraum.
+     */
+    public int count(UUID siteId, UUID entityId, UUID deviceId, List<UUID> entityIds,
+            boolean byDevice, Instant from, Instant to, CommandFilter.Filter filter) {
+        StringBuilder sql = new StringBuilder("SELECT count(*) FROM device_command_log "
+                + "WHERE site_id = ? AND started_at < ? "
+                + "AND (started_at >= ? OR ended_at IS NULL OR ended_at > ?)");
+        List<Object> args = windowArgs(siteId, from, to);
+        if (byDevice) {
+            scopeDevice(sql, args, deviceId, entityIds);
+        } else {
+            scopeEntity(sql, args, entityId, deviceId);
+        }
+        applyFilter(sql, args, filter);
+        Integer n = jdbc.queryForObject(sql.toString(), Integer.class, args.toArray());
+        return n == null ? 0 : n;
+    }
+
+    private static void scopeEntity(StringBuilder sql, List<Object> args, UUID entityId,
+            UUID deviceId) {
+        if (entityId == null) {
+            return;
+        }
+        sql.append(" AND (entity_id = ?");
+        args.add(entityId);
+        if (deviceId != null) {
+            sql.append(" OR (entity_id IS NULL AND device_id = ?)");
+            args.add(deviceId);
+        }
+        sql.append(')');
+    }
+
+    private static void scopeDevice(StringBuilder sql, List<Object> args, UUID deviceId,
+            List<UUID> entityIds) {
         if (entityIds == null) {
             sql.append(" AND device_id = ? AND entity_id IS NULL");
             args.add(deviceId);
@@ -319,7 +380,62 @@ public class CommandLogRepository {
             sql.append(" AND entity_id = ANY(?::uuid[])");
             args.add(uuidArray(entityIds));
         }
-        return finish(sql, args, limit);
+    }
+
+    /**
+     * Die drei STRUKTUR-Filter als Prädikat (Geräteseiten Revision B §6).
+     *
+     * <p>Der Ergebnis-Filter ist ein ODER über drei verschiedene Spalten, weil
+     * er drei verschiedene Fragen bündelt: das Rücklese-URTEIL, der
+     * FREMDEINFLUSS (die schärfere Aussage daneben) und der NOT-AUS (ein
+     * Zustand, kein Urteil). Sie in eine Spalte zu pressen hätte eine der drei
+     * unsichtbar gemacht.
+     */
+    private static void applyFilter(StringBuilder sql, List<Object> args,
+            CommandFilter.Filter filter) {
+        if (filter == null || filter.isEmpty()) {
+            return;
+        }
+        Collection<String> streams = filter.logStreams();
+        if (!streams.isEmpty()) {
+            sql.append(" AND stream = ANY(?::text[])");
+            args.add(textArray(streams));
+        }
+        if (!filter.sources().isEmpty()) {
+            sql.append(" AND source = ANY(?::text[])");
+            args.add(textArray(filter.sources()));
+        }
+        Collection<String> results = filter.logResults();
+        if (!results.isEmpty()) {
+            List<String> verdicts = results.stream()
+                    .filter(CommandFilter.VERDICT_WORDS::contains).toList();
+            StringBuilder or = new StringBuilder();
+            if (!verdicts.isEmpty()) {
+                or.append("verdict = ANY(?::text[])");
+                args.add(textArray(verdicts));
+            }
+            if (results.contains(CommandFilter.RESULT_FREMDEINFLUSS)) {
+                or.append(or.isEmpty() ? "" : " OR ").append("foreign_influence IS TRUE");
+            }
+            if (results.contains(CommandFilter.RESULT_NOTAUS)) {
+                or.append(or.isEmpty() ? "" : " OR ").append("control_enabled IS FALSE");
+            }
+            sql.append(" AND (").append(or).append(')');
+        }
+    }
+
+    private static void applyBefore(StringBuilder sql, List<Object> args, Instant before) {
+        if (before == null) {
+            return;
+        }
+        sql.append(" AND started_at <= ?");
+        args.add(Timestamp.from(before));
+    }
+
+    /** Wie {@link #uuidArray} - der Treiber müsste den Elementtyp sonst raten. */
+    static String textArray(Collection<String> values) {
+        return "{" + values.stream().map(v -> '"' + v.replace("\\", "\\\\").replace("\"", "\\\"")
+                + '"').collect(java.util.stream.Collectors.joining(",")) + "}";
     }
 
     /**

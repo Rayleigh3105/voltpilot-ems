@@ -5378,20 +5378,88 @@ paths:
         - name: range
           in: query
           required: false
-          description: Tag oder Woche (Europe/Berlin-Kalender). Vorgabe `day`.
-          schema: { type: string, enum: [day, week], default: day }
+          description: >
+            Tag, Woche oder Monat (Europe/Berlin-Kalender). Vorgabe `day`.
+            Ein JAHR gibt es bewusst nicht - es ueberschritte die Aufbewahrung
+            und waere damit ein Fenster, das per Konstruktion unvollstaendig
+            antwortet.
+          schema: { type: string, enum: [day, week, month], default: day }
         - name: at
           in: query
           required: false
           description: Anker-Datum des Zeitraums (Vorgabe heute).
           schema: { type: string, format: date }
+        - name: from
+          in: query
+          required: false
+          description: >
+            Ein eigener Zeitraum, erster Kalendertag (nur zusammen mit `to`;
+            schliesst `range`/`at` aus). Weiter zurueck als die Aufbewahrung
+            (90 Tage) wird ABGELEHNT statt still gekappt: dort laege nichts
+            mehr, und ein leeres Fenster laese sich als "damals wurde nichts
+            geschickt" - eine entlastende Aussage ueber eine geloeschte Zeit.
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: >
+            Letzter Kalendertag des eigenen Zeitraums, EINSCHLIESSLICH - ein
+            Fenster, das um 00:00 dieses Tages endete, liesse den ganzen
+            gewaehlten Tag aussen vor.
+          schema: { type: string, format: date }
+        - name: streams
+          in: query
+          required: false
+          description: >
+            Befehlsart(en), komma-getrennt: `batterie` `abregelung`
+            `verbraucher` `ladepunkt` `register`. Fehlt der Parameter, gilt
+            keine Einschraenkung. Ein Wort ausserhalb des Vokabulars ist ein
+            BENANNTER 400 (nie ein stiller Rueckfall auf "alles" - der zeigte
+            MEHR Zeilen als verlangt).
+          schema: { type: string }
+        - name: sources
+          in: query
+          required: false
+          description: >
+            Herkunft/Herkuenfte, komma-getrennt: `cloud_abgeleitet` `geraet`
+            `portal`.
+          schema: { type: string }
+        - name: verdicts
+          in: query
+          required: false
+          description: >
+            Ergebnis(se), komma-getrennt. Halteperioden: `bestaetigt`
+            `abweichend` `keine_antwort` `prueft` `unbestaetigt` plus
+            `fremdeinfluss` und `notaus` (beides KEINE Ruecklese-Urteile - sie
+            leben in eigenen Spalten, weil sie andere Fragen beantworten).
+            Register-Vorgaenge: `uebernommen` `nicht_uebernommen`
+            `keine_quittung`. Ein Filter, der nur Woerter EINES Vokabulars
+            nennt, schliesst den anderen Speicher aus - eine Zeile ohne dieses
+            Ergebnis ist kein Treffer.
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: Zeilen je Speicher (1..2000). Vorgabe 500.
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 500 }
+        - name: before
+          in: query
+          required: false
+          description: >
+            Der Seiten-Cursor nach hinten (`nextBefore` der vorigen Antwort):
+            nur Zeilen, die BIS zu diesem Zeitpunkt begannen.
+            Verglichen wird `<=`, nicht `<` - zwei Zeilen duerfen denselben
+            Beginn tragen, und ein striktes Kleiner verloere die zweite lautlos
+            an der Seitengrenze. Die Grenzzeile kommt deshalb ZWEIMAL; die
+            Flaeche mischt die Seiten ueber die `id`.
+          schema: { type: string, format: date-time }
       responses:
         "200":
           description: Der Verlauf (leer, solange nichts aufgezeichnet wurde).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CommandHistory" }
-        "400": { description: Unbekannter Zeitraum. }
+        "400": { description: Unbekannter Zeitraum oder unbekanntes Filter-Wort. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage oder Komponente nicht gefunden. }
   /api/v1/sites/{siteId}/register-write/preview:
@@ -6491,6 +6559,27 @@ components:
         truncated:
           type: boolean
           description: Der Deckel hat gegriffen - aeltere Zeilen fehlen.
+        total:
+          type: integer
+          description: >
+            Die Zeilen dieses Zeitraums OHNE Strukturfilter. Zusammen mit
+            `matched` ist das der Treffer-Zaehler ("14 von 212 Zeilen"): ohne
+            beide Zahlen waere ein scharfer Filter von einem leeren Zeitraum
+            nicht zu unterscheiden.
+        matched:
+          type: integer
+          description: >
+            Die Zeilen dieses Zeitraums MIT den Strukturfiltern. Der FREITEXT
+            ist darin nicht enthalten - er laeuft im Portal ueber die gezeigten
+            Saetze und schrumpft nur, was hier schon steht.
+        nextBefore:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Der Seiten-Cursor nach hinten (der Beginn der aeltesten gelieferten
+            Zeile), oder null, wenn das Fenster vollstaendig gezeigt ist - eine
+            Flaeche darf "mehr laden" nie anbieten, wo es nichts mehr gibt.
         entries:
           type: array
           items: { $ref: "#/components/schemas/CommandEntry" }

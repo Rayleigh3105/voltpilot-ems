@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.command.CommandFilter;
 import com.voltpilot.api.command.CommandLogReader;
 import com.voltpilot.api.command.DeviceScopes;
 import com.voltpilot.api.history.HistoryRange;
@@ -7,10 +8,11 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.CommandHistoryDto;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,17 +40,23 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>Eine Anlage ohne eine einzige aufgezeichnete Zeile bekommt eine
  * wohlgeformte LEERE Antwort ({@code entries} leer, {@code recordingSince} ggf.
  * null) - das ist der Normalzustand am Tag der Auslieferung und kein Fehler.
+ *
+ * <p><b>Die SUCHE (Geräteseiten Revision B §6, Captain-Punkt 4)</b> ist additiv:
+ * ohne einen einzigen der neuen Parameter antwortet die Route zeichengleich wie
+ * vorher. Struktur wird HIER gefiltert ({@code streams} · {@code sources} ·
+ * {@code verdicts}), der FREITEXT bleibt bewusst im Portal - die deutschen
+ * Sätze entstehen dort, und eine Server-Suche fände nur Rohfelder und
+ * widerspräche damit dem, was der Kunde liest.
+ *
+ * <p>{@code range} kennt seit dieser Stufe zusätzlich {@code month}; ein
+ * eigener Zeitraum reist als {@code from}/{@code to} (Kalendertage). Weiter als
+ * die Aufbewahrung zurück wird ABGELEHNT statt still gekappt: ein Fenster, das
+ * dahinter greift, fände nichts und läse sich als „damals wurde nichts
+ * geschickt".
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteCommandHistoryController {
-
-    /**
-     * Nur Tag und Woche. Ein Monat wäre bei ~130 Zeilen je Gerät und Tag ein
-     * Fenster, das der Deckel ohnehin kappt - lieber gar nicht anbieten als eine
-     * Antwort, die still unvollständig ist.
-     */
-    private static final Set<HistoryRange> RANGES = Set.of(HistoryRange.DAY, HistoryRange.WEEK);
 
     private final SiteRepository sites;
     private final CommandLogReader reader;
@@ -67,14 +75,23 @@ public class SiteCommandHistoryController {
             @RequestParam(name = "device", required = false) String device,
             @RequestParam(name = "range", defaultValue = "day") String range,
             @RequestParam(name = "at", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at) {
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at,
+            @RequestParam(name = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(name = "streams", required = false) String streams,
+            @RequestParam(name = "sources", required = false) String sources,
+            @RequestParam(name = "verdicts", required = false) String verdicts,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            @RequestParam(name = "before", required = false) Instant before) {
         if (!sites.existsForCurrentTenant(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
         HistoryRange parsed = HistoryRange.parse(range);
-        if (parsed == null || !RANGES.contains(parsed)) {
+        if (parsed == null || !CommandFilter.RANGES.contains(parsed)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Unbekannter Zeitraum - erlaubt sind 'day' und 'week'.");
+                    "Unbekannter Zeitraum - erlaubt sind 'day', 'week' und 'month'.");
         }
         if (entityId != null && device != null) {
             // Zwei verschiedene Fragen - „was ging an DIESE Komponente" und „was
@@ -90,9 +107,38 @@ public class SiteCommandHistoryController {
         if (device != null && scope == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
         }
-        LocalDate anchor = at != null ? at : LocalDate.now(HistoryRange.ZONE);
-        HistoryRange.Window window = parsed.window(anchor);
-        return reader.forSite(siteId, entityId, scope, window.from(), clampToNow(window.to()));
+        // ⚠ Jede Ablehnung nennt ihren Grund auf Deutsch: die Filter-Leiste ist
+        // eine KUNDEN-Fläche, und ein nacktes 400 wäre dort keine Auskunft. Die
+        // Regeln selbst leben rein in `CommandFilter` (Docker-frei prüfbar).
+        CommandFilter.Filter filter;
+        HistoryRange.Window window;
+        int max;
+        try {
+            filter = CommandFilter.parse(streams, sources, verdicts);
+            window = CommandFilter.window(parsed, at, from, to,
+                    LocalDate.now(HistoryRange.ZONE));
+            max = CommandFilter.limit(limit);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        Instant end = clampToNow(window.to());
+        return reader.forSite(siteId, entityId, scope, window.from(), end, filter,
+                CommandFilter.before(before, end), max);
+    }
+
+    /**
+     * Jede Ablehnung erreicht die Oberfläche als deutscher {@code {message}}-Körper
+     * (das {@code SiteChargingConfigController}-Muster).
+     *
+     * <p>Seit der Filter-Leiste ist das keine Kür mehr: sie ist eine
+     * KUNDEN-Fläche, und ein nacktes 400 ohne Grund wäre dort keine Auskunft -
+     * der Kunde sähe nur, dass „etwas nicht geht".
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<Object> handle(ResponseStatusException e) {
+        HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
+        String message = e.getReason() == null ? status.getReasonPhrase() : e.getReason();
+        return ResponseEntity.status(status).body(java.util.Map.of("message", message));
     }
 
     /**

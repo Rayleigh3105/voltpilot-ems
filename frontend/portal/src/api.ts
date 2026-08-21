@@ -1768,6 +1768,23 @@ export interface CommandHistory {
   writes: boolean;
   /** Der Deckel hat gegriffen - ältere Zeilen fehlen. */
   truncated: boolean;
+  /**
+   * Der TREFFER-ZÄHLER der Suche (Geräteseiten Revision B §6): `total` sind die
+   * Zeilen dieses Zeitraums OHNE Filter, `matched` die mit ihm - „14 von 212".
+   *
+   * ⚠ Ein ÄLTERES Backend meldet beide nicht; dann sagt die Fläche nichts,
+   * statt eine Bilanz zu erfinden.
+   */
+  total?: number;
+  matched?: number;
+  /**
+   * Der Seiten-Cursor nach hinten (der Beginn der ältesten gelieferten Zeile),
+   * oder null/absent, wenn das Fenster vollständig gezeigt ist.
+   *
+   * ⚠ Er vergleicht serverseitig `<=`, damit an der Seitengrenze keine Zeile
+   * lautlos verloren geht - die Fläche mischt die Seiten deshalb über die `id`.
+   */
+  nextBefore?: string | null;
   /** Älteste zuerst (der Tages-Film läuft vorwärts). */
   entries: CommandEntry[];
   control: ControlStatus | null;
@@ -2668,14 +2685,39 @@ export const api = {
        * `entity` aus - der Server antwortet auf beides mit 400.
        */
       device?: string | null;
-      range?: 'day' | 'week';
+      range?: 'day' | 'week' | 'month';
       at?: string | null;
+      /** Ein eigener Zeitraum (Kalendertage) - schliesst `range`/`at` aus. */
+      from?: string | null;
+      to?: string | null;
+      /**
+       * Die drei STRUKTUR-Filter (Geräteseiten Revision B §6), komma-getrennt.
+       * Ein Wort ausserhalb des Server-Vokabulars ist eine benannte 400 - das
+       * Portal schickt deshalb nur, was `befehleFilter.ts` kennt.
+       */
+      streams?: string | null;
+      sources?: string | null;
+      verdicts?: string | null;
+      limit?: number | null;
+      /** Der Seiten-Cursor: „bis zu diesem Zeitpunkt" (ISO). */
+      before?: string | null;
     } = {},
   ) => {
-    const q = new URLSearchParams({ range: opts.range ?? 'day' });
+    const q = new URLSearchParams();
+    if (opts.from && opts.to) {
+      q.set('from', opts.from);
+      q.set('to', opts.to);
+    } else {
+      q.set('range', opts.range ?? 'day');
+      if (opts.at) q.set('at', opts.at);
+    }
     if (opts.entity) q.set('entity', opts.entity);
     else if (opts.device) q.set('device', opts.device);
-    if (opts.at) q.set('at', opts.at);
+    if (opts.streams) q.set('streams', opts.streams);
+    if (opts.sources) q.set('sources', opts.sources);
+    if (opts.verdicts) q.set('verdicts', opts.verdicts);
+    if (opts.limit) q.set('limit', String(opts.limit));
+    if (opts.before) q.set('before', opts.before);
     return request<CommandHistory>(`/api/v1/sites/${siteId}/command-history?${q}`);
   },
   /**
