@@ -3,7 +3,10 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
   api,
+  type ControlStatus,
+  type CurtailmentStatus,
   type Device,
+  type EdgeVersion,
   type Site,
   type SiteComponents,
   type SiteComponentTemplate,
@@ -55,7 +58,17 @@ import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { fmtNum } from '../format';
 import { NO_DATA } from '../nodata';
 import { BEFEHLE_LABEL } from '../befehle';
-import { anlageRoute, befehleHash, hashForRoute } from '../nav';
+import {
+  anlageRoute,
+  befehleHash,
+  hashForRoute,
+  parseZentraleAnsicht,
+  zentraleAnsichtHash,
+  type ZentraleAnsicht,
+} from '../nav';
+import { useIsDesktop } from '../useIsPhone';
+import { schaltbild, SCHALTBILD_HINWEIS } from '../schaltbild';
+import { Schaltbild } from '../components/Schaltbild';
 import { EntitaetenSection } from './EntitaetenSection';
 import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
 import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
@@ -138,6 +151,25 @@ export function AnlagenModellSection({
    */
   const [components, setComponents] = useState<SiteComponents | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  /**
+   * Anlagen-Zentrale Stufe 2: die Ansicht („Ihre Geräte" | „Schaltbild"). Sie
+   * lebt im Hash (`?ansicht=schaltbild`), damit ein Lesezeichen genau das
+   * wieder öffnet - die Vorgabe bleibt die ruhige Liste.
+   */
+  const isDesktop = useIsDesktop();
+  const [ansicht, setAnsicht] = useState<ZentraleAnsicht>(() =>
+    parseZentraleAnsicht(typeof window === 'undefined' ? '' : window.location.hash),
+  );
+  /**
+   * Die drei Lesepfade, die NUR das Schaltbild braucht (Steuer- und
+   * Abregel-Freigabe, der Software-Stand der Box). Sie werden erst geholt,
+   * wenn der Reiter wirklich offen ist - der Einstieg soll nicht drei
+   * Abrufe teurer werden, die er nicht rendert. Alle drei fail-soft: ohne sie
+   * fehlt genau ihre Zeile, nie das Bild.
+   */
+  const [control, setControl] = useState<ControlStatus | null>(null);
+  const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
+  const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   // Einheitsmodell Stufe 6: aus einer EIGENEN Vorlage ein Gerät machen - der
   // Assistent öffnet dann direkt in der Selbstbau-Tür, vorbefüllt.
   const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
@@ -180,6 +212,53 @@ export function AnlagenModellSection({
       active = false;
     };
   }, [site.id, reloadKey]);
+
+  /**
+   * Die Ansicht folgt dem Hash (Lesezeichen + Zurück-Taste), und ein Wechsel
+   * schreibt ihn - über `replaceState`, damit nicht jeder Reiter-Klick einen
+   * Verlaufs-Eintrag erzeugt (das `VerlaufExplorer`-Muster).
+   */
+  useEffect(() => {
+    const onHash = () => setAnsicht(parseZentraleAnsicht(window.location.hash));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  const zeigeAnsicht = (naechste: ZentraleAnsicht) => {
+    setAnsicht(naechste);
+    const ziel = zentraleAnsichtHash(site.id, naechste);
+    if (typeof window !== 'undefined' && window.location.hash !== ziel) {
+      window.history.replaceState(null, '', ziel);
+    }
+  };
+
+  /*
+    Die drei Lesepfade des Schaltbilds - erst holen, wenn der Reiter wirklich
+    offen ist. Der Einstieg soll nicht drei Abrufe teurer werden, die er nicht
+    rendert; und weil sie fail-soft sind, fehlt bei einem Ausfall genau ihre
+    Zeile, nie das Bild.
+  */
+  useEffect(() => {
+    if (ansicht !== 'schaltbild') return;
+    let active = true;
+    api.controlStatus(site.id).then(
+      (c) => active && setControl(c),
+      () => active && setControl(null),
+    );
+    api.curtailmentStatus(site.id).then(
+      (c) => active && setCurtailment(c),
+      () => active && setCurtailment(null),
+    );
+    // `/edge-versions` ist mandantenweit (RLS-gefenced) - gefiltert wird auf
+    // die Box dieser Anlage erst in der Ableitung.
+    api.edgeVersions().then(
+      (v) => active && setEdgeVersions(v),
+      () => active && setEdgeVersions(null),
+    );
+    return () => {
+      active = false;
+    };
+  }, [ansicht, site.id, reloadKey]);
 
   const runSofort = async (durationMinutes?: number) => {
     if (!sofort) return;
@@ -229,6 +308,43 @@ export function AnlagenModellSection({
     [model, site.id, devices, devicesFetchedAt, boxRef, data, sources, charging],
   );
   const satz = useMemo(() => zentraleSatz(karten), [karten]);
+
+  /** Das Struktur-Schaltbild - dieselbe Eingabe, andere Sicht (§8.2). */
+  const bild = useMemo(
+    () =>
+      model
+        ? schaltbild({
+            siteId: site.id,
+            siteName: site.name,
+            model,
+            devices: (devices ?? []).filter((d) => d.siteId === site.id),
+            devicesFetchedAt,
+            boxRef,
+            localSetup: data?.localSetup ?? null,
+            sources,
+            charging,
+            control,
+            curtailment,
+            edgeVersions,
+            maxFeedInKw: site.maxFeedInKw ?? null,
+          })
+        : null,
+    [
+      model,
+      site.id,
+      site.name,
+      site.maxFeedInKw,
+      devices,
+      devicesFetchedAt,
+      boxRef,
+      data,
+      sources,
+      charging,
+      control,
+      curtailment,
+      edgeVersions,
+    ],
+  );
 
   const isEmpty =
     model != null &&
@@ -296,11 +412,63 @@ export function AnlagenModellSection({
               )}
             </div>
 
-            {/* 2 · EINE Liste: je Gerät eine Karte, je Komponente eine Zeile
+            {/* 2 · Der Schalter „Geräte | Schaltbild" (§13.2) - NUR auf dem
+                Rechner. Am Telefon IST die Liste die Struktur (M5-Lehre:
+                Telefon = Liste, nie Mini-Canvas), dort gibt es ihn nicht. */}
+            {isDesktop && (
+              <div className="vp-am-ansicht">
+                <div className="vp-seg vp-seg-compact" role="tablist" aria-label="Ansicht">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={ansicht === 'geraete'}
+                    className={ansicht === 'geraete' ? 'on' : undefined}
+                    onClick={() => zeigeAnsicht('geraete')}
+                  >
+                    {LISTE_TITEL}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={ansicht === 'schaltbild'}
+                    className={ansicht === 'schaltbild' ? 'on' : undefined}
+                    onClick={() => zeigeAnsicht('schaltbild')}
+                  >
+                    Schaltbild
+                  </button>
+                </div>
+                {ansicht === 'schaltbild' && (
+                  <span className="vp-am-ansicht-hint">{SCHALTBILD_HINWEIS}</span>
+                )}
+              </div>
+            )}
+
+            {isDesktop && ansicht === 'schaltbild' && bild && (
+              <Schaltbild
+                bild={bild}
+                onKomponente={(id) => {
+                  // Ein Klick auf eine Komponente springt zu IHRER Zeile in der
+                  // Liste - das Schaltbild erklärt die Struktur, die Zeile trägt
+                  // die Handlungen (§13.2).
+                  zeigeAnsicht('geraete');
+                  window.setTimeout(() => {
+                    document
+                      .querySelector(`[data-komponente="${CSS.escape(id)}"]`)
+                      ?.scrollIntoView({ block: 'center' });
+                  }, 0);
+                }}
+              />
+            )}
+
+            {/* 3 · EINE Liste: je Gerät eine Karte, je Komponente eine Zeile
                 darin (§13 R1/R2). Die frühere Doppelung - dasselbe Ding einmal
                 als Geräte-Kachel und einmal als Komponenten-Zeile - ist damit
                 strukturell aufgelöst. */}
-            <section aria-label={LISTE_TITEL} className="vp-am-liste">
+            <section
+              aria-label={LISTE_TITEL}
+              className="vp-am-liste"
+              hidden={isDesktop && ansicht === 'schaltbild'}
+            >
               <p className="vp-am-box-hint">{EDGE_BOX_HINT}</p>
               {verwaltung && <p className="vp-am-stand is-unbekannt">{verwaltung}</p>}
               {komponentenStand && (
@@ -598,7 +766,10 @@ function ComponentRow({
 }) {
   const c = component;
   return (
-    <div className="vp-am-comp">
+    // `data-komponente` ist das Sprungziel des Schaltbilds (§13.2: ein Klick auf
+    // eine Komponente führt zu IHRER Zeile) - die Zeile trägt die Handlungen,
+    // das Bild erklärt nur die Struktur.
+    <div className="vp-am-comp" data-komponente={c.id}>
       <div className="vp-am-comp-main">
         <span className="vp-am-comp-name">
           {/* Seit der vereinten Liste (§13) ist der Name reiner TEXT: das

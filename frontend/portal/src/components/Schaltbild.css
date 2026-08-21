@@ -1,0 +1,148 @@
+/* ---------------------------------------------------------------------------
+   Das STRUKTUR-SCHALTBILD der Anlagen-Zentrale (Konzept
+   `data/vp-anlagen-zentrale-konzept-h6` §8).
+
+   Farben sind ausschliesslich die Rollen-Token des Hauses (`--vp-flow-*`) -
+   das Schaltbild darf dieselbe Rolle nie anders faerben als der Energiefluss
+   im Cockpit. Jede Linien-ART traegt zusaetzlich ihr WORT in der Legende; die
+   Strichart (durchgezogen = Weg bzw. Steuerung, gestrichelt = Messbezug) ist
+   die zweite, farbunabhaengige Unterscheidung.
+   --------------------------------------------------------------------------- */
+.vp-sb { display: flex; flex-direction: column; gap: 12px; }
+
+.vp-sb-leer {
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+  color: var(--vp-text-muted, #667);
+}
+
+/* Das Bild skaliert auf die Seitenbreite; bei sehr schmalen Fenstern scrollt
+   es waagerecht IN SEINEM Rahmen (die Haus-Regel: die Seite selbst scrollt
+   nie waagerecht). */
+.vp-sb-canvas {
+  overflow-x: auto;
+  border: 1px solid var(--vp-border, #e9ecef);
+  border-radius: 16px;
+  background: #fff;
+  padding: 4px;
+}
+.vp-sb-svg { display: block; min-width: 900px; }
+
+.vp-sb-spalte {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  fill: #9aa7b8;
+}
+
+/* --- Kaesten ------------------------------------------------------------- */
+.vp-sb-box {
+  fill: #fff;
+  stroke: #cfd7e2;
+  stroke-width: 1.5;
+}
+.vp-sb-box.gestrichelt { stroke-dasharray: 6 4; }
+.vp-sb-knoten.art-cloud .vp-sb-box { fill: #eef3ff; stroke: var(--vp-brand, #5a8de8); }
+.vp-sb-knoten.art-box .vp-sb-box { stroke: var(--vp-brand, #5a8de8); stroke-width: 2.5; }
+.vp-sb-knoten.art-gateway .vp-sb-box { fill: #f8fafc; stroke-dasharray: 5 4; }
+.vp-sb-knoten.art-neu .vp-sb-box { fill: #fffaf2; stroke: #f0a13d; }
+.vp-sb-knoten.art-einheit .vp-sb-box { stroke: #cfd7e2; stroke-width: 1; }
+
+.vp-sb-knoten.rolle-pv .vp-sb-box { fill: var(--vp-flow-pv-soft); stroke: var(--vp-flow-pv); }
+.vp-sb-knoten.rolle-storage .vp-sb-box { fill: var(--vp-flow-batt-soft); stroke: var(--vp-flow-batt); }
+.vp-sb-knoten.rolle-grid .vp-sb-box { fill: var(--vp-flow-grid-soft); stroke: var(--vp-flow-grid); }
+.vp-sb-knoten.rolle-house .vp-sb-box,
+.vp-sb-knoten.rolle-consumer .vp-sb-box { fill: var(--vp-flow-load-soft); stroke: var(--vp-flow-load); }
+.vp-sb-knoten.rolle-pv.art-komponente .vp-sb-box.gestrichelt,
+.vp-sb-knoten.art-komponente .vp-sb-box.gestrichelt { fill: #fff; stroke: #cfd7e2; }
+
+.vp-sb-titel { font-size: 12.5px; font-weight: 800; fill: #16202f; }
+.vp-sb-knoten.art-box .vp-sb-titel { font-size: 13px; }
+.vp-sb-knoten.art-einheit .vp-sb-titel { font-size: 11px; font-weight: 700; }
+.vp-sb-zeile { font-size: 10.5px; fill: #5b6b85; }
+.vp-sb-zeile.ton-ok { fill: var(--vp-flow-batt-ink, #166534); }
+.vp-sb-zeile.ton-warn { fill: #b45309; }
+.vp-sb-zeile.ton-off { fill: #8a96a8; }
+.vp-sb-abzeichen { font-size: 9.5px; font-weight: 700; fill: var(--vp-flow-batt-ink, #166534); }
+
+.vp-sb-knoten.rolle-pv .vp-sb-zeile { fill: #9a5b00; }
+.vp-sb-knoten.rolle-storage .vp-sb-zeile { fill: var(--vp-flow-batt-ink, #166534); }
+.vp-sb-knoten.rolle-grid .vp-sb-zeile { fill: #0b6b6a; }
+.vp-sb-knoten.rolle-house .vp-sb-zeile,
+.vp-sb-knoten.rolle-consumer .vp-sb-zeile { fill: #5b3ab5; }
+
+/* --- Linien -------------------------------------------------------------- */
+.vp-sb-kante { stroke: #9aa7b8; stroke-width: 2; fill: none; }
+.vp-sb-kante.art-uplink { stroke: #9aa7b8; }
+.vp-sb-kante.art-ocpp { stroke: #2f6bd6; stroke-dasharray: 2 4; }
+.vp-sb-kante.art-unbekannt,
+.vp-sb-kante.art-neu { stroke: #f0a13d; stroke-dasharray: 6 4; }
+.vp-sb-kante.art-misst { stroke-dasharray: 6 4; }
+.vp-sb-kante.art-steuert { stroke-width: 3.5; }
+.vp-sb-kante.art-netz { stroke: var(--vp-flow-grid); stroke-dasharray: 6 4; }
+.vp-sb-kante.rolle-pv { stroke: var(--vp-flow-pv); }
+.vp-sb-kante.rolle-storage { stroke: var(--vp-flow-batt); }
+.vp-sb-kante.rolle-grid { stroke: var(--vp-flow-grid); }
+.vp-sb-kante.rolle-house,
+.vp-sb-kante.rolle-consumer { stroke: var(--vp-flow-load); }
+.vp-sb-pfeil { fill: #9aa7b8; }
+
+.vp-sb-labelbox { fill: #fff; stroke: #e9ecef; }
+.vp-sb-label { font-size: 10px; font-weight: 700; fill: #5b6b85; }
+.vp-sb-label.art-ocpp { fill: #2f6bd6; }
+.vp-sb-label.art-unbekannt,
+.vp-sb-label.art-neu { fill: #b45309; }
+
+/* --- Klickziele ---------------------------------------------------------- */
+.vp-sb-link, .vp-sb-klick { cursor: pointer; }
+.vp-sb-link:hover .vp-sb-box,
+.vp-sb-klick:hover .vp-sb-box { filter: brightness(0.97); }
+.vp-sb-link:focus-visible .vp-sb-box,
+.vp-sb-klick:focus-visible .vp-sb-box {
+  outline: none;
+  stroke: var(--vp-brand, #5a8de8);
+  stroke-width: 3;
+}
+
+/* --- Legende + Luecken --------------------------------------------------- */
+.vp-sb-legende {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #667);
+}
+.vp-sb-legende li { display: flex; align-items: center; gap: 7px; }
+
+.vp-sb-luecken {
+  list-style: none;
+  margin: 0;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-radius: 12px;
+  background: #fffaf2;
+  border: 1px solid #f6dcb4;
+  font-size: 0.85rem;
+  color: #8a5108;
+}
+.vp-sb-luecken li { position: relative; padding-left: 16px; }
+.vp-sb-luecken li::before { content: '·'; position: absolute; left: 6px; font-weight: 800; }
+
+/* --- Der Reiter „Geraete | Schaltbild" ----------------------------------- */
+.vp-am-ansicht {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.vp-am-ansicht-hint { color: var(--vp-text-muted, #667); font-size: 0.85rem; }
+/* Unter 1024 px gibt es den Reiter NICHT - dort IST die Liste die Struktur
+   (M5-Lehre: Telefon = Liste, nie Mini-Canvas). */
+@media (max-width: 1023px) { .vp-am-ansicht { display: none; } }

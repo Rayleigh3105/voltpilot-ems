@@ -15,6 +15,8 @@ import {
   pageRoute,
   parseGeraetRef,
   parseRoute,
+  parseZentraleAnsicht,
+  zentraleAnsichtHash,
   PLATFORM_GROUPS,
   PLATFORM_PAGES,
   PLATFORM_TAB_PAGES,
@@ -531,5 +533,20 @@ describe('befehleGeraetHash - das Gerät als Hash-Parameter', () => {
     expect(parseBefehleKomponente(befehleGeraetHash('s-1', 'inverter'))).toBeNull();
     expect(parseBefehleGeraet('#/anlage/s-1/befehle')).toBeNull();
     expect(parseBefehleGeraet('#/anlage/s-1/befehle?geraet=%20%20')).toBeNull();
+  });
+});
+
+describe('zentraleAnsichtHash / parseZentraleAnsicht', () => {
+  it('trägt die Ansicht als Hash-Parameter und lässt die Route unberührt', () => {
+    const h = zentraleAnsichtHash('s-1', 'schaltbild');
+    expect(h).toBe('#/anlage/s-1/modell?ansicht=schaltbild');
+    expect(parseRoute(h)).toEqual({ page: 'anlagen', siteId: 's-1', sub: 'modell' });
+    expect(parseZentraleAnsicht(h)).toBe('schaltbild');
+  });
+
+  it('schreibt für die VORGABE keinen Parameter - der Einstieg bleibt die Liste', () => {
+    expect(zentraleAnsichtHash('s-1', 'geraete')).toBe('#/anlage/s-1/modell');
+    expect(parseZentraleAnsicht('#/anlage/s-1/modell')).toBe('geraete');
+    expect(parseZentraleAnsicht('#/anlage/s-1/modell?ansicht=phantasie')).toBe('geraete');
   });
 });

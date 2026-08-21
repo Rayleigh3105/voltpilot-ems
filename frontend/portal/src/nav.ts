@@ -632,6 +632,32 @@ function befehleParam(hash: string, name: string): string | null {
 }
 
 /**
+ * Welche ANSICHT der Anlagen-Zentrale gemeint ist (Anlagen-Zentrale Stufe 2,
+ * Konzept `data/vp-anlagen-zentrale-konzept-h6` §13.2): die Liste „Ihre
+ * Geräte" oder das Struktur-Schaltbild.
+ */
+export type ZentraleAnsicht = 'geraete' | 'schaltbild';
+
+/**
+ * Die Adresse einer ANSICHT der Zentrale (`…/modell?ansicht=schaltbild`).
+ *
+ * Das Muster ist das von {@link befehleHash} - ein HASH-PARAMETER, keine
+ * eigene Unterseite: `parseRoute` schneidet den Query-Teil ohnehin ab, die
+ * Route bleibt also die Zentrale, und ein Lesezeichen öffnet exakt dieselbe
+ * Ansicht wieder. Die Vorgabe („Ihre Geräte") trägt bewusst KEINEN Parameter -
+ * der Einstieg bleibt die ruhige Liste.
+ */
+export function zentraleAnsichtHash(siteId: string, ansicht: ZentraleAnsicht): string {
+  const base = `#/anlage/${siteId}/modell`;
+  return ansicht === 'schaltbild' ? `${base}?ansicht=schaltbild` : base;
+}
+
+/** Die Ansicht aus einem `?ansicht=`-Hash; alles Unbekannte ist die Liste. */
+export function parseZentraleAnsicht(hash: string): ZentraleAnsicht {
+  return befehleParam(hash, 'ansicht') === 'schaltbild' ? 'schaltbild' : 'geraete';
+}
+
+/**
  * Die Adresse der GERÄTE-DETAILSEITE (Admin-Umbau Stufe 2, Captain-Entscheid
  * F2): `#/geraete-registry?geraet=<referenz>`.
  *

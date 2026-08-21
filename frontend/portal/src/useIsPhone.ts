@@ -46,3 +46,44 @@ export function useIsPhone(): boolean {
   }, []);
   return isPhone;
 }
+
+/**
+ * Die ZWEITE Breiten-Grenze des Portals: ab hier ist die Schale eine
+ * Desktop-Schale (die Seitenleiste klappt unter 1024 px zu einer Schublade).
+ *
+ * Sie steht hier neben der Telefon-Grenze, weil zwei Definitionen derselben
+ * Grenze irgendwann auseinanderlaufen - und dann widersprechen sich zwei
+ * Flächen über dieselbe Fensterbreite.
+ *
+ * Gebraucht wird sie vom Struktur-Schaltbild der Anlagen-Zentrale: den Reiter
+ * „Geräte | Schaltbild" gibt es ausdrücklich NUR auf dem Desktop; darunter IST
+ * die Geräte-Liste die Struktur (M5-Lehre: Telefon = Liste, nie Mini-Canvas).
+ *
+ * **Ohne `matchMedia` (jsdom, Server-Rendern) ist das Ergebnis `true`** - also
+ * die Desktop-Fassung, genau wie {@link useIsPhone} dort `false` liefert. Eine
+ * Umgebung, die die Breite nicht kennen kann, behauptet nie ein schmales
+ * Fenster; ein Test der schmalen Fassung stubbt `matchMedia` ausdrücklich.
+ */
+export const DESKTOP_MIN_PX = 1024;
+
+/** Dieselbe Grenze als Medienabfrage — wortgleich mit dem CSS-`@media`. */
+export const DESKTOP_QUERY = `(min-width: ${DESKTOP_MIN_PX}px)`;
+
+function desktopMatches(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia(DESKTOP_QUERY).matches
+    : true;
+}
+
+export function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(desktopMatches);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    const onChange = () => setIsDesktop(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return isDesktop;
+}
