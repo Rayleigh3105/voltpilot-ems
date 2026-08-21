@@ -376,12 +376,18 @@ class CommandHistoryApiTest {
         curtailListener().handle(TOPIC, curtail("2026-08-16T10:00:00Z", 2, 2, true, 30.0, true));
         curtailListener().handle(TOPIC, curtail("2026-08-16T10:00:15Z", 2, 2, true, 30.0, true));
 
-        // 1. Die BOX unter ihrer Referenz: BEIDE Ströme.
+        // 1. Die BOX unter ihrer Referenz: NUR die anlagenweite Abregelung -
+        //    sie ist das TOR, nicht das Gerät (Ziel-Attribution). Der
+        //    Verbraucher-Strom trägt seine Komponente und steht seither auf der
+        //    Seite des Geräts, das ihn ausführt.
         Map<String, Object> box = readDevice("demo-inverter-01");
         assertThat(box.get("deviceRef")).isEqualTo("demo-inverter-01");
         // Box oder Gerät dahinter ist ein SERVER-Fakt - die Fläche rät ihn nie.
         assertThat(box.get("deviceIsBox")).isEqualTo(Boolean.TRUE);
-        assertThat(streams(box)).contains(CommandLog.STREAM_VERBRAUCHER,
+        assertThat(streams(box)).containsExactly(CommandLog.STREAM_ABREGELUNG);
+        // Verloren geht dabei nichts: die ganze Anlage zeigt weiterhin die
+        // Befehle-Seite OHNE Filter.
+        assertThat(streams(read(null, "2026-08-16"))).contains(CommandLog.STREAM_VERBRAUCHER,
                 CommandLog.STREAM_ABREGELUNG);
 
         // 2. Das Gerät HINTER der Box: nur seine Komponente - die anlagenweite
@@ -412,6 +418,79 @@ class CommandHistoryApiTest {
                         + "/command-history?device=demo-inverter-01"),
                 HttpMethod.GET, new HttpEntity<>(bearer(tok)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Die ZIEL-ATTRIBUTION (Konzept {@code vp-geraeteseite-rev-b8} §5): der
+     * Speicher-Sollwert steht auf der Seite des WECHSELRICHTERS, der ihn
+     * ausführt - nicht nur auf der der Box.
+     *
+     * <p>Der belegte Befund war eine zweite Wahrheit: der Sollwert wird an die
+     * KOMPONIERTE Speicher-Komponente journalisiert, die per Konstruktion
+     * keinen {@code edge_source_id}-Pin trägt - der Server fand für das
+     * gemeldete Gerät {@code inverter} deshalb nichts und antwortete
+     * „VoltPilot sendet an dieses Gerät keine Befehle", während dieselbe Seite
+     * oben „⚡ VoltPilot steuert den Speicher" schrieb.
+     */
+    @Test
+    void derSpeicherSollwertStehtAufDerSeiteDesWechselrichtersDerIhnAusfuehrt() {
+        // Die Auto-Komposition hat die Steuer-Komponente angelegt; ohne sie
+        // trüge die Batterie-Zeile gar keine Komponente und der Test wäre leer.
+        java.util.UUID controlPoint = asTenantAQuery();
+        assertThat(controlPoint).as("komponierte Steuer-Komponente der Anlage").isNotNull();
+        clearHistory();
+
+        // Die Box meldet ihren PRIMÄREN Wechselrichter - genau die Bedingung,
+        // unter der das Portal ihm die komponierten Zeilen zuordnet.
+        asTenantA(() -> sourceStatusRepo.replaceForDevice(java.util.UUID.fromString(DEVICE),
+                java.util.UUID.fromString(TENANT_A), java.util.UUID.fromString(BERLIN_SITE),
+                java.time.Instant.parse("2026-08-16T10:00:00Z"),
+                List.of(new com.voltpilot.api.repo.DeviceSourceStatusRepository.SourceRow(
+                                "inverter", "primary", null, null, "deye", "SUN-30K-SG01HP3",
+                                23.9, 3.4, 7.6, "ok",
+                                java.time.Instant.parse("2026-08-16T10:00:00Z")),
+                        new com.voltpilot.api.repo.DeviceSourceStatusRepository.SourceRow(
+                                "src-fronius-1", "source", "pv-generation", null,
+                                "fronius_sunspec", "Eco 27.0-3-S", 21.2, null, null, "ok",
+                                java.time.Instant.parse("2026-08-16T10:00:00Z")))));
+
+        ControlStatusListener control = controlListener();
+        control.handle(TOPIC, control("2026-08-16T10:00:00Z", 11.1, true, true, true, "plan", 11.1,
+                "[]"));
+        control.handle(TOPIC, control("2026-08-16T10:00:15Z", -6.6, true, true, true, "plan", -6.6,
+                "[]"));
+        curtailListener().handle(TOPIC, curtail("2026-08-16T10:00:00Z", 2, 2, true, 30.0, true));
+        curtailListener().handle(TOPIC, curtail("2026-08-16T10:00:15Z", 2, 2, true, 30.0, true));
+
+        // 1. Der WECHSELRICHTER trägt seinen Speicher-Strom - und `writes` ist
+        //    wahr, die falsche Leermeldung ist damit weg.
+        Map<String, Object> wr = readDevice("inverter");
+        assertThat(wr.get("deviceIsBox")).isEqualTo(Boolean.FALSE);
+        assertThat(wr.get("writes")).isEqualTo(Boolean.TRUE);
+        assertThat(streams(wr)).containsExactly(CommandLog.STREAM_BATTERIE);
+        assertThat(entries(wr)).allMatch(e -> controlPoint.toString().equals(e.get("entityId")));
+
+        // 2. Ein ANDERES gemeldetes Gerät erbt nichts - eine komponierte Zeile
+        //    einem beliebigen Gerät zuzuschreiben wäre eine erfundene Zuordnung.
+        Map<String, Object> fronius = readDevice("src-fronius-1");
+        assertThat(entries(fronius)).isEmpty();
+        assertThat(fronius.get("writes")).isEqualTo(Boolean.FALSE);
+
+        // 3. Die BOX zeigt, was sie ÜBERBRINGT: die anlagenweite Abregelung,
+        //    nicht den Speicher-Sollwert.
+        Map<String, Object> box = readDevice("demo-inverter-01");
+        assertThat(streams(box)).containsExactly(CommandLog.STREAM_ABREGELUNG);
+    }
+
+    /** Die komponierte Steuer-Komponente der Anlage (oder null). */
+    private java.util.UUID asTenantAQuery() {
+        java.util.concurrent.atomic.AtomicReference<java.util.UUID> out =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        asTenantA(() -> out.set(jdbc.query(
+                "SELECT id FROM measurement_point WHERE device_id = ?::uuid AND control "
+                        + "AND edge_source_id IS NULL",
+                rs -> rs.next() ? rs.getObject("id", java.util.UUID.class) : null, DEVICE)));
+        return out.get();
     }
 
     /**

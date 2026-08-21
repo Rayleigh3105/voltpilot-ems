@@ -288,9 +288,14 @@ public class CommandLogRepository {
      * <p>Zwei Fälle, und ihr Unterschied ist eine AUSSAGE, keine Bequemlichkeit:
      *
      * <ul>
-     *   <li><b>Die BOX</b> ({@code entityIds == null}): sie IST der Schreibweg
-     *       dieser Anlage - jede Zeile ihres Geräts gehört ihr, auch die
-     *       gerätebezogenen ohne Komponente (die Abregelung).</li>
+     *   <li><b>Die BOX</b> ({@code entityIds == null}): sie ist das TOR, nicht
+     *       das Gerät - sie trägt die ANLAGENWEITEN Zeilen ihres Geräts, also
+     *       genau die ohne Komponente (Abregelung, Wächter, Not-Aus, Lücke).
+     *       Eine Zeile MIT Komponente hat seit der Ziel-Attribution ein
+     *       eigenes Gerät, auf dessen Seite sie steht; sie hier zusätzlich zu
+     *       zeigen hiesse, denselben Befehl an zwei Orten zu behaupten. Die
+     *       ganze Anlage auf einmal zeigt weiterhin die Befehle-Seite ohne
+     *       Filter - es geht nichts verloren, es wandert.</li>
      *   <li><b>Ein Gerät HINTER der Box</b> ({@code entityIds != null}): nur die
      *       Zeilen SEINER Komponenten. Eine gerätebezogene Zeile beschreibt den
      *       Schreibweg der ganzen Box (die Abregelung liest EIN Rücklesen über
@@ -308,7 +313,7 @@ public class CommandLogRepository {
         StringBuilder sql = window(siteId, from, to);
         List<Object> args = windowArgs(siteId, from, to);
         if (entityIds == null) {
-            sql.append(" AND device_id = ?");
+            sql.append(" AND device_id = ? AND entity_id IS NULL");
             args.add(deviceId);
         } else {
             sql.append(" AND entity_id = ANY(?::uuid[])");

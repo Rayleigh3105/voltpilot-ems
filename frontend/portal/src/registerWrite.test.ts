@@ -467,8 +467,11 @@ describe('der Register-Weg der Geräteseite', () => {
       answeredAt: '2026-08-20T10:00:05Z',
     });
     const rows = [e(1, null), e(2, 'e-1'), e(3, 'e-2')];
-    // Die BOX hat jeden Vorgang ihres Geräts - sie IST der Schreibweg.
-    expect(geraeteVerlauf(rows, { box: true, entityIds: ['e-1'] })).toHaveLength(3);
+    // Die BOX trägt die ANLAGENWEITEN Vorgänge (primäre Lane, freie Adresse) -
+    // ein Vorgang MIT Komponente steht seit der Ziel-Attribution auf der Seite
+    // ihres Geräts; ihn hier zusätzlich zu zeigen wäre eine zweite Wahrheit.
+    expect(geraeteVerlauf(rows, { box: true, entityIds: ['e-1'] }).map((r) => r.id))
+      .toEqual([1]);
     // Ein Gerät dahinter nur die Vorgänge SEINER Komponenten; die primäre Lane
     // gehört der Box, ihm zugeschrieben wäre sie eine erfundene Zuordnung.
     expect(geraeteVerlauf(rows, { box: false, entityIds: ['e-1'] }).map((r) => r.id))

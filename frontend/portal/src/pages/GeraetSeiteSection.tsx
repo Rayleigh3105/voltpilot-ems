@@ -50,6 +50,7 @@ import { RegisterWriteDrawer } from '../components/RegisterWriteDrawer';
 import {
   ANLAGENWEITE_BEFEHLE,
   aufzeichnungSeit,
+  GERAETE_BEFEHLE,
   BEFEHLE_LABEL,
   genauigkeitsSatz,
   geraeteAusschnitt,
@@ -712,8 +713,24 @@ function BefehleSektion({
           Abregelung liest EIN Rücklesen über ALLE Einheiten zurück - sie einem
           von mehreren Geräten zuzuschreiben wäre eine erfundene Zuordnung. */}
       {history?.deviceIsBox === false && <p className="vp-note">{ANLAGENWEITE_BEFEHLE}</p>}
-      <a className="vp-geraet-komp-link" href={befehleGeraetHash(siteId, geraetRef)}>
-        {ausschnitt.weitere > 0 ? `Alle anzeigen (${ausschnitt.weitere} weitere)` : 'Alle anzeigen'}
+      {/* Die Gegenrichtung auf der Box: sie zeigt, was sie ÜBERBRINGT - was ein
+          Gerät AUSFÜHRT, steht auf dessen Seite (Ziel-Attribution). */}
+      {history?.deviceIsBox === true && <p className="vp-note">{GERAETE_BEFEHLE}</p>}
+      {/* ⚠ „Alles" ist auf der Box die ganze ANLAGE, nicht ihr eigener,
+          engerer Ausschnitt - sonst führte der Weg zurück auf dieselbe Liste. */}
+      <a
+        className="vp-geraet-komp-link"
+        href={
+          history?.deviceIsBox === true
+            ? hashForRoute(anlageRoute(siteId, 'befehle'))
+            : befehleGeraetHash(siteId, geraetRef)
+        }
+      >
+        {history?.deviceIsBox === true
+          ? 'Alle Befehle dieser Anlage'
+          : ausschnitt.weitere > 0
+            ? `Alle anzeigen (${ausschnitt.weitere} weitere)`
+            : 'Alle anzeigen'}
         <Icon name="chevron-right" size={14} />
       </a>
     </Sektion>

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CommandEntry, CommandHistory } from './api';
 import {
   ANLAGENWEITE_BEFEHLE,
+  GERAETE_BEFEHLE,
   aufzeichnungSeit,
   BEFEHLE_LABEL,
   deckelSatz,
@@ -434,9 +435,10 @@ describe('der VIERTE Strom `register`', () => {
 
 describe('die GERÄTE-Sicht (Anlagen-Zentrale Stufe 1)', () => {
   it('unterscheidet die Box vom Gerät dahinter - das ist eine Aussage', () => {
-    // Die Box IST der Schreibweg der Anlage: jede Zeile gehört ihr.
+    // Die Box ist das TOR: sie ÜBERBRINGT die anlagenweiten Befehle - was ein
+    // Gerät AUSFÜHRT, steht seit der Ziel-Attribution auf dessen Seite.
     expect(geraetKopfSatz({ geraet: 'VoltPilot-Box Pilsting', box: true, pfad: 'remote' }))
-      .toBe('VoltPilot-Box Pilsting · alle Befehle dieser Anlage.');
+      .toBe('VoltPilot-Box Pilsting · die anlagenweiten Befehle, die Ihre Box überbringt.');
     // Ein Gerät dahinter trägt nur SEINE - und sagt das.
     expect(geraetKopfSatz({ geraet: 'Deye SUN-30K', box: false, pfad: null }))
       .toBe('Deye SUN-30K · nur die Befehle an dieses Gerät.');
@@ -452,10 +454,14 @@ describe('die GERÄTE-Sicht (Anlagen-Zentrale Stufe 1)', () => {
       .toBe('Dieses Gerät · nur die Befehle an dieses Gerät.');
   });
 
-  it('erklärt die Grenze, statt sie nur zu ziehen', () => {
+  it('erklärt die Grenze in BEIDE Richtungen, statt sie nur zu ziehen', () => {
     // Eine anlagenweite Abregelung gehört der Box - der Satz sagt, WO sie steht.
     expect(ANLAGENWEITE_BEFEHLE).toContain('Abregelung');
     expect(ANLAGENWEITE_BEFEHLE).toContain('Box');
+    // Und auf der Box die Gegenrichtung: ausgeführt wird am GERÄT, dort steht
+    // der Befehl seit der Ziel-Attribution auch.
+    expect(GERAETE_BEFEHLE).toContain('Gerät');
+    expect(GERAETE_BEFEHLE).not.toContain('Box');
   });
 
   it('kappt den Ausschnitt am ÄLTESTEN Ende und SAGT, dass gekappt wurde', () => {

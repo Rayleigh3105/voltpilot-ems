@@ -4,6 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type CommandHistory, type Site } from '../api';
 import {
   ANLAGENWEITE_BEFEHLE,
+  GERAETE_BEFEHLE,
   aufzeichnungSeit,
   deckelSatz,
   film,
@@ -163,6 +164,9 @@ export function BefehleSection({
         {history?.deviceIsBox === false && (
           <p className="vp-note">{ANLAGENWEITE_BEFEHLE}</p>
         )}
+        {/* Und die Gegenrichtung auf der Box: sie ÜBERBRINGT, ausgeführt wird
+            am Gerät - dort steht der Befehl seit der Ziel-Attribution auch. */}
+        {history?.deviceIsBox === true && <p className="vp-note">{GERAETE_BEFEHLE}</p>}
         {history && (entityId || geraet) && !history.writes && (
           <p className="vp-befehle-readonly">
             <Icon name="shield" size={15} /> {NUR_LESEN}

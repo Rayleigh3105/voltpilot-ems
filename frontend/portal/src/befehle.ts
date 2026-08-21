@@ -232,11 +232,17 @@ export function kopfSatz(input: {
  * Gerät und - nur bei einem Gerät hinter der Box - dass hier ausschliesslich
  * SEINE Befehle stehen.
  *
- * ⚠ Der Unterschied zwischen Box und Gerät ist eine AUSSAGE: die Box IST der
- * Schreibweg der Anlage (jede Zeile gehört ihr, auch die anlagenweite
- * Abregelung), ein Gerät dahinter trägt nur die Zeilen seiner Komponenten. Wer
- * das gleich formuliert, behauptet an einem von drei Wechselrichtern eine
- * Abregelung, die der ganzen Anlage gilt.
+ * ⚠ Der Unterschied zwischen Box und Gerät ist eine AUSSAGE: die Box ist das
+ * TOR - sie ÜBERBRINGT, was für die ganze Anlage gilt (allen voran die
+ * Abregelung, die EIN Rücklesen über ALLE Einheiten zurückliest) -, ein Gerät
+ * dahinter trägt die Befehle, die es AUSFÜHRT. Wer das gleich formuliert,
+ * behauptet an einem von drei Wechselrichtern eine Abregelung, die der ganzen
+ * Anlage gilt.
+ *
+ * ⚠ Seit der Ziel-Attribution (Konzept `vp-geraeteseite-rev-b8` §5) sagt der
+ * Box-Satz ausdrücklich NICHT mehr „alle Befehle dieser Anlage": ein Befehl mit
+ * Komponente steht seither auf der Seite des Geräts, das ihn ausführt. Die
+ * ganze Anlage auf einmal zeigt weiterhin die Befehle-Seite ohne Filter.
  */
 export function geraetKopfSatz(input: {
   geraet: string | null;
@@ -245,7 +251,7 @@ export function geraetKopfSatz(input: {
 }): string {
   const name = input.geraet ?? 'Dieses Gerät';
   if (input.box) {
-    return `${name} · alle Befehle dieser Anlage.`;
+    return `${name} · die anlagenweiten Befehle, die Ihre Box überbringt.`;
   }
   const pfad = pfadWort(input.pfad);
   return pfad ? `${name} · ${pfad}.` : `${name} · nur die Befehle an dieses Gerät.`;
@@ -258,6 +264,19 @@ export function geraetKopfSatz(input: {
  */
 export const ANLAGENWEITE_BEFEHLE =
   'Anlagenweite Befehle - zum Beispiel die Abregelung - stehen auf der Seite Ihrer VoltPilot-Box.';
+
+/**
+ * Die GEGENRICHTUNG desselben Satzes, auf der Box (Ziel-Attribution, Konzept
+ * `vp-geraeteseite-rev-b8` §4.1/§5): sie ist der Überbringer, ausgeführt wird
+ * ein Befehl vom GERÄT - und dort steht er seither auch.
+ *
+ * Ohne diesen Satz läse sich die kürzere Box-Liste als Verlust; mit ihm ist sie
+ * ein Wegweiser. Die Geräte stehen direkt darüber in der Liste „Geräte an
+ * dieser Box".
+ */
+export const GERAETE_BEFEHLE =
+  'Befehle an ein einzelnes Gerät - zum Beispiel der Speicher-Sollwert - stehen auf der '
+  + 'Seite dieses Geräts.';
 
 /**
  * Der AUSSCHNITT für die Geräteseite (§7.4): die jüngsten Zeilen des Zeitraums
