@@ -6236,6 +6236,1266 @@
       "note": "Weiteres Modell der Baureihe, auch G2 (Nennleistung unbekannt) KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein."
     },
     {
+      "template_ref": "builtin:kaco:bp-hybrid-6.0-nh3-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-hybrid-6.0-nh3-m2",
+      "model_label": "blueplanet hybrid 6.0 NH3 M2",
+      "device_type": "inverter",
+      "family": "kaco_http_hybrid",
+      "family_label": "KACO hybrid NH3 (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 6,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "6 kW · Hybrid · 3-phasig · Hochvolt-Speicher (BYD HVS/HVM, Pylontech Force H1) · 2 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-hybrid-8.0-nh3-m3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-hybrid-8.0-nh3-m3",
+      "model_label": "blueplanet hybrid 8.0 NH3 M3",
+      "device_type": "inverter",
+      "family": "kaco_http_hybrid",
+      "family_label": "KACO hybrid NH3 (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 8,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "8 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-hybrid-10.0-nh3-m3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-hybrid-10.0-nh3-m3",
+      "model_label": "blueplanet hybrid 10.0 NH3 M3",
+      "device_type": "inverter",
+      "family": "kaco_http_hybrid",
+      "family_label": "KACO hybrid NH3 (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 10,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "10 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-hybrid-12.0-nh3-m3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-hybrid-12.0-nh3-m3",
+      "model_label": "blueplanet hybrid 12.0 NH3 M3",
+      "device_type": "inverter",
+      "family": "kaco_http_hybrid",
+      "family_label": "KACO hybrid NH3 (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 12,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "12 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-3.0-nx1-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-3.0-nx1-m2",
+      "model_label": "blueplanet 3.0 NX1 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 3,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "3 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-3.7-nx1-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-3.7-nx1-m2",
+      "model_label": "blueplanet 3.7 NX1 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 3.7,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "3,7 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-4.0-nx1-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-4.0-nx1-m2",
+      "model_label": "blueplanet 4.0 NX1 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 4,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "4 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-5.0-nx1-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-5.0-nx1-m2",
+      "model_label": "blueplanet 5.0 NX1 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 5,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "5 kW · String · 1-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-3.0-nx3-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-3.0-nx3-m2",
+      "model_label": "blueplanet 3.0 NX3 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 3,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "3 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-5.0-nx3-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-5.0-nx3-m2",
+      "model_label": "blueplanet 5.0 NX3 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 5,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "5 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-8.0-nx3-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-8.0-nx3-m2",
+      "model_label": "blueplanet 8.0 NX3 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 8,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "8 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-10.0-nx3-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-10.0-nx3-m2",
+      "model_label": "blueplanet 10.0 NX3 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 10,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "10 kW · String · 3-phasig · 2 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-12.0-nx3-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-12.0-nx3-m2",
+      "model_label": "blueplanet 12.0 NX3 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 12,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "12 kW · String · 3-phasig · nur Erzeugung · Regionalvariante (nicht im deutschen Portfolio) · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-15.0-nx3-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-15.0-nx3-m2",
+      "model_label": "blueplanet 15.0 NX3 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 15,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "15 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-20.0-nx3-m2",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-20.0-nx3-m2",
+      "model_label": "blueplanet 20.0 NX3 M2",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 20,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "20 kW · String · 3-phasig · 4 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-25.0-nx3-m3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-25.0-nx3-m3",
+      "model_label": "blueplanet 25.0 NX3 M3",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 25,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "25 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-30.0-nx3-m3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-30.0-nx3-m3",
+      "model_label": "blueplanet 30.0 NX3 M3",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 30,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "30 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-33.0-nx3-m3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-33.0-nx3-m3",
+      "model_label": "blueplanet 33.0 NX3 M3",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 33,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "33 kW · String · 3-phasig · 3 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-50.0-nx3-m5",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-50.0-nx3-m5",
+      "model_label": "blueplanet 50.0 NX3 M5",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 50,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "50 kW · String · 3-phasig · 5 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-60.0-nx3-m5",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-60.0-nx3-m5",
+      "model_label": "blueplanet 60.0 NX3 M5",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 60,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "60 kW · String · 3-phasig · 5 MPPT · nur Erzeugung · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:kaco-nx-generic",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "kaco-nx-generic",
+      "model_label": "Anderes KACO-NX-Modell",
+      "device_type": "inverter",
+      "family": "kaco_http",
+      "family_label": "KACO NX (App-Schnittstelle)",
+      "communication": "kaco_http",
+      "communication_label": "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse der Kommunikationseinheit",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 8484,
+          "help": "Port der lokalen Schnittstelle, üblicherweise 8484."
+        },
+        {
+          "key": "serial",
+          "label": "Seriennummer des Wechselrichters",
+          "type": "text",
+          "help": "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."
+        },
+        {
+          "key": "insecure_tls",
+          "label": "Selbstsigniertes Zertifikat akzeptieren (HTTPS)",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."
+        },
+        {
+          "key": "invert_batt_sign",
+          "label": "Batterie-Vorzeichen invertieren (Messung)",
+          "type": "checkbox",
+          "help": "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "Weiteres NX1-/NX3-Modell hinter der Kommunikationseinheit, Nennleistung unbekannt · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
       "template_ref": "builtin:kaco:bp-3.0-tl3",
       "kind": "builtin",
       "version": 1,

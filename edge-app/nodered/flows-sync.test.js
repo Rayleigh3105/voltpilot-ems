@@ -141,14 +141,52 @@ test('flow router matches inverter-routing.route() for fronius_sunspec', () => {
   assert.strictEqual(ret[4], null);
 });
 
-test('flow router routes to idle (output 6) with no selection', () => {
+test('flow router routes to idle (the LAST output) with no selection', () => {
   const { ret } = runFunctionNode(byId['auto-router'].func, { flow: {} });
-  assert.strictEqual(ret[0], null);
-  assert.strictEqual(ret[1], null);
-  assert.strictEqual(ret[2], null);
-  assert.strictEqual(ret[3], null);
-  assert.strictEqual(ret[4], null);
-  assert.ok(ret[5] && ret[5].idle);
+  // Der Idle-Ausgang ist immer der LETZTE; jeder Lese-Ausgang bleibt null.
+  for (let i = 0; i < ret.length - 1; i++) {
+    assert.strictEqual(ret[i], null, 'Ausgang ' + i);
+  }
+  assert.ok(ret[ret.length - 1] && ret[ret.length - 1].idle);
+});
+
+test('flow router matches inverter-routing.route() for kaco_http (App-Schnittstelle)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', label: 'KACO · blueplanet hybrid 10.0 NH3 M3',
+    family: 'kaco_http_hybrid', communication: 'kaco_http',
+    connection: { ip: '192.168.0.30', port: 8484, serial: 'B1234567890', insecure_tls: false, invert_grid_sign: false, invert_batt_sign: true },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.kaco);
+  assert.ok(outMsg, 'der KACO-HTTP-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(JSON.stringify(sel)));
+  assert.strictEqual(outMsg.kaco.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.kaco.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.kaco.conn.serial, expected.connection.serial);
+  assert.strictEqual(outMsg.kaco.conn.scheme, expected.scheme);
+  assert.strictEqual(outMsg.kaco.conn.invert_batt_sign, expected.connection.invert_batt_sign);
+  assert.strictEqual(outMsg.kaco.family, expected.family);
+  // Die HYBRID-Familie fragt den Speicher ab, die String-Familie nicht.
+  assert.strictEqual(outMsg.kaco.has_battery, expected.has_battery);
+  assert.strictEqual(outMsg.kaco.has_battery, true);
+});
+
+test('flow router matches inverter-routing.route() for kaco_modbus (NH3-Registerkarte)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', label: 'KACO · blueplanet hybrid 10.0 NH3 M3',
+    family: 'kaco_nh3', communication: 'kaco_modbus',
+    connection: { ip: '192.168.0.31', port: 502, unit_id: 1, invert_grid_sign: false, invert_batt_sign: false },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret.find((r) => r && r.aiswei);
+  assert.ok(outMsg, 'der NH3-Ausgang traegt die Nachricht');
+  const expected = routing.route(routing.parseConfig(JSON.stringify(sel)));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(outMsg.aiswei.reads)),
+    JSON.parse(JSON.stringify(expected.reads)));
+  // ⚠ Der FUNKTIONSCODE je Block ist die Aussage: die Karte mischt Input (FC4)
+  // und Holding (FC3). Ein Plan ohne fc laese die falsche Tabelle.
+  assert.deepStrictEqual(outMsg.aiswei.reads.map((r) => r.fc), [4, 4, 3]);
+  assert.strictEqual(outMsg.aiswei.conn.unit_id, expected.connection.unit_id);
 });
 
 test('flow router matches inverter-routing.route() for kostal_modbus', () => {

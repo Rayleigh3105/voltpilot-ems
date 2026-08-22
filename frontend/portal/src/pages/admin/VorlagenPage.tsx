@@ -517,6 +517,8 @@ const COMMUNICATIONS = [
   { value: 'fronius_solar_api', label: 'Fronius Solar API' },
   { value: 'fronius_sunspec', label: 'Fronius SunSpec' },
   { value: 'sunspec_tcp', label: 'SunSpec Modbus TCP' },
+  { value: 'kaco_http', label: 'KACO App-Schnittstelle (HTTP 8484)' },
+  { value: 'kaco_modbus', label: 'KACO NH3 Registerkarte' },
   { value: 'goe_http_api', label: 'go-e HTTP-API' },
   { value: 'shelly_http', label: 'Shelly HTTP' },
 ];

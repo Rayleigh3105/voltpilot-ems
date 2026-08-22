@@ -94,6 +94,8 @@
     // Beide Kennungen desselben Wegs (fronius_sunspec = persistiert,
     // sunspec_tcp = marken-neutral) - siehe inverter.IsSunSpecTCP.
     if (c === "fronius_sunspec" || c === "sunspec_tcp") return "SunSpec (Modbus TCP)";
+    if (c === "kaco_http") return "KACO App-Schnittstelle (HTTP)";
+    if (c === "kaco_modbus") return "KACO NH3 (Registerkarte)";
     return "Modbus TCP";
   }
 

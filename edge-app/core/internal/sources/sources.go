@@ -274,8 +274,14 @@ func TransportIdentity(s Source) string {
 	case inverter.CommSolarmanV5:
 		parts = append(parts, strings.TrimSpace(s.Connection.Serial),
 			strconv.Itoa(s.Connection.MbSlaveID))
-	case inverter.CommModbusTCP, inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP:
+	case inverter.CommModbusTCP, inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP,
+		inverter.CommKacoModbus:
 		parts = append(parts, strconv.Itoa(s.Connection.UnitID))
+	case inverter.CommKacoHTTP:
+		// Die Seriennummer adressiert EINEN Wechselrichter hinter der
+		// Kommunikationseinheit - zwei Geraete an EINEM Stick sind zwei
+		// Messpunkte unter derselben IP.
+		parts = append(parts, strings.TrimSpace(s.Connection.Serial))
 	case inverter.CommShellyHTTP:
 		// A multi-channel Shelly (2PM) is one box with two independent relays:
 		// each channel is its own physical measurement point.
@@ -336,6 +342,20 @@ func (s Source) busEntry() map[string]any {
 		// a GEN24's insecure_tls redirect and the grid-sign escape hatch are lost.
 		conn["insecure_tls"] = s.Connection.InsecureTLS
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+	case inverter.CommKacoHTTP:
+		// KACO/AISWEI-App-Schnittstelle (spiegelt inverter.Selection.BusPayload):
+		// ohne die Seriennummer beantwortet der Stick keinen Messwert-Abruf, und
+		// ohne die zwei Vorzeichen-Klappen waere der Ausweg der Kalibrierung
+		// unerreichbar (die BusPayload-Lehre aus fm/vp-deye-sign-fix-v6).
+		conn["serial"] = s.Connection.Serial
+		conn["insecure_tls"] = s.Connection.InsecureTLS
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
+	case inverter.CommKacoModbus:
+		// KACO hybrid NH3 ueber seinen eigenen Ethernet-Port.
+		conn["unit_id"] = s.Connection.UnitID
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
 	case inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP:
 		// SunSpec-live over Modbus TCP (mirrors inverter.Selection.BusPayload);
 		// `sunspec_tcp` is the SAME way under a brand-neutral id (IsSunSpecTCP).

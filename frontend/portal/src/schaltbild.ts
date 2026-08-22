@@ -234,6 +234,8 @@ const WEG_WORT: Record<string, string> = {
   modbus_tcp: 'Modbus TCP',
   fronius_sunspec: 'SunSpec Modbus',
   sunspec_tcp: 'SunSpec Modbus',
+  kaco_http: 'KACO App-Schnittstelle',
+  kaco_modbus: 'Modbus TCP',
   kostal_modbus: 'Modbus TCP',
   fronius_solar_api: 'Solar-API',
   goe_http_api: 'go-e HTTP',
