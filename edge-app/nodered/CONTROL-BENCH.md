@@ -705,6 +705,93 @@ flottenweite Aufnahme von `kostal_plenticore` in
 Modellklasse belegt ist — bis dahin bleibt die Familie ABSICHTLICH draußen
 (der Code shippt schreibfähig, aber stumm).
 
+## Checkliste KACO — VORBEREITET und GESPERRT, nichts ist gemessen
+
+KACO ist der Fall, in dem die Register-Lage **dokumentiert** ist und trotzdem
+nichts freigegeben werden darf: an keinem KACO hat jemand von uns je etwas
+gemessen. Palette + Lesepfade: [`KACO.md`](KACO.md); Analyse: firstmate
+`data/vp-kaco-palette-y6`.
+
+⚠ **Die Sperre ist härter als bei jeder anderen Marke.** Bei Fronius oder Deye
+öffnet eine First-Light-Freigabe am Gerät den Schreibweg. Bei KACO bleibt
+`writes` leer **unabhängig von der Freigabe** — sie fällt erst, wenn die
+Adapter-Zeilen bewusst geändert werden. Ein Test nagelt das fest. **Ohne dieses
+Programm gibt es also gar keine Möglichkeit, versehentlich zu schreiben.**
+
+### Vorbereitung
+
+1. **Die Kunden-Termin-Checkliste** aus `KACO.md` §12 abarbeiten — sie klärt
+   Plattform, Firmware, Unit-ID, Modell-Liste, Vorzeichen und ob die
+   App-Schnittstelle oder Modbus der Weg ist. Ohne sie fehlt jede Grundlage.
+2. **Firmware-Stufe feststellen** (SunSpec Modell 1 `Version`). Für die
+   KACO-eigene Linie ist **V4.00** die Untergrenze: darunter gibt es den
+   Menüpunkt „Schreibzugriff erlauben" gar nicht, und Model 123 ist lesbar,
+   aber nicht schreibbar.
+3. **Nur EIN Modbus-Client** am Gerät (die Ein-Verbindungs-Regel, `KACO.md` §2).
+4. **Discovery-Dump** vorliegen haben: ohne die entdeckten Model-123-Adressen
+   plant der Adapter bewusst gar nichts.
+
+### Messprogramm, KACO-eigene Linie (Wirkleistungsbegrenzung, Model 123)
+
+1. **Nur lesen.** Model 120 `WRtg` (Nennleistung) und Model 121 `WMax` (die vom
+   Installateur gesetzte Obergrenze) gegen das Typenschild bzw. die
+   Weboberfläche prüfen. Steht in Model 123 schon eine Fremdbegrenzung?
+2. **Schreibzugriff am Gerät einschalten** (eigener Menüpunkt, danach WIEDER
+   ausschalten, wenn das Programm abgebrochen wird).
+3. **⚠ Die Schreib-Form klären — der Hauptzweck des Termins.** KACOs eigenes
+   Beispiel schreibt `WMaxLimPct` (40295) und `WMaxLim_Ena` (40299) **einzeln
+   per FC6**; Fronius nimmt nur den geschlossenen **FC16**-Block. Beides
+   probieren und **zurücklesen**: nimmt das Gerät den Block? Nimmt es FC6? Das
+   Ergebnis entscheidet die Vorgabe des Felds „Schreib-Funktionscode".
+   *Die Fronius-Lehre vom 09.08.2026: ein Register kann den Wert ANNEHMEN und
+   die Begrenzung trotzdem nie aktivieren — Rücklesen allein genügt nicht, die
+   AC-Leistung muss wirklich fallen.*
+4. **Wirkung messen.** Bei Einstrahlung auf 50 % begrenzen und die AC-Leistung
+   beobachten. `St` sollte auf `THROTTLED` gehen.
+5. **Der Rückfall-Timer** (`WMaxLimPct_RvrtTms`): Schreiben einstellen und mit
+   der Stoppuhr messen, wann die Begrenzung von selbst fällt. Diese Zahl ist die
+   Sicherheit des ganzen Pfads.
+6. **Rücknahme**: `WMaxLim_Ena` = 0 ⇒ volle Leistung, sofort.
+
+### Messprogramm, hybrid NH3 (Batterie-Sollwert, AISWEI-Registerkarte)
+
+⚠ **Höheres Risiko als die Abregelung**: ein falsches Vorzeichen oder eine
+falsche Skala bewegt eine echte Batterie.
+
+1. **Nur lesen.** 31619 (Batterieleistung) und 31622 (SoC) gegen die KACO-App
+   prüfen; **Vorzeichen kalibrieren**: Ladung ⇒ 31619 negativ ⇒ VoltPilot
+   `battery_power_kw` **positiv**.
+2. **Istwert von 41104 notieren** (Betriebsmodus vor dem Eingriff), damit die
+   Rücknahme belegbar ist.
+3. **Kleiner Sollwert in BEIDE Richtungen** (±0,5–1 kW) aus ruhiger Baseline:
+   41104 = 4, 41152 = Flag, 41153 = ±W. Zurücklesen **und** 31619 muss sich in
+   Befehlsrichtung bewegen. Größenordnung prüfen — das Register IST Watt.
+4. **⚠ DIE WICHTIGSTE MESSUNG: die Rücknahme.** In der AISWEI-Doku ist **kein
+   Totmann-Register** dokumentiert. Also:
+   - Sollwert setzen, dann **aufhören zu schreiben**. Passiert von selbst etwas?
+     (Erwartung: **nein** — der Sollwert bleibt stehen.)
+   - Dann 41104 = **2** (Eigenverbrauch) schreiben: fällt die Anlage
+     zurück? Wie schnell? **Diese Zahl ist der Failsafe.**
+   - Erst wenn sie belegt ist, darf über eine Freigabe gesprochen werden.
+5. **SoC-Fenster.** Entladebefehl an der Untergrenze ⇒ `guards.Clamp` liefert 0
+   ⇒ Gerät verharrt; Ladebefehl an der Obergrenze analog.
+6. **Notstrom (EPS)** nicht anfassen. 24-h-Soak erst lesend, dann gesteuert.
+
+### Freigabe
+
+Zwei Schritte, in dieser Reihenfolge:
+
+1. **Die Adapter-Sperre lösen** (`inverter-control-routing.js`, KACO-Abschnitt):
+   `writes` darf erst dann dem üblichen Freigabe-Tor folgen. Das ist eine
+   bewusste Code-Änderung mit Review, kein Klick.
+2. Danach Freigabe **pro Gerät** über die First-Light-Karte. Die flottenweite
+   Aufnahme in `VP_CONTROL_CERTIFIED_FAMILIES` /
+   `CERTIFIED_CONTROL_FAMILIES` erst, wenn die Modellklasse belegt ist.
+
+**gridsave ist NICHT Teil dieses Programms.** Ein gridsave braucht ein externes
+EMS über die Vendor-Modelle 64201-64204 (Zustandsmaschine, Lade-/Entladekennlinie,
+Pflicht-Watchdog 60 s) — ein eigener Bau mit eigener Untersuchung.
+
 ## OCPP-Ladepunkt (Ladesäule) — SIMULATOR-BEWIESEN, Bench steht aus
 
 Die Software-Seite ist vollständig und am Simulator bewiesen

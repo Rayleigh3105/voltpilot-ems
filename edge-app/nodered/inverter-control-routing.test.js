@@ -1974,3 +1974,131 @@ test('installer write: every refusal names a reason, and the route is a PURE pla
   assert.strictEqual(C.INSTALLER_WRITE_MAX_RAW, 7000);
   assert.strictEqual(C.REGISTER_WORD_MAX, 0xffff);
 });
+
+// --- KACO: VORBEREITET und GESPERRT ------------------------------------------
+//
+// Die Register-Lage ist fuer einmal DOKUMENTIERT (KACO beschreibt die
+// Wirkleistungsbegrenzung ueber SunSpec Model 123 selbst; der NH3-Batterieweg
+// ist durch evcc belegt) - gemessen hat sie an einem KACO aber niemand von uns.
+// Deshalb ist die Sperre HAERTER als die Freigabeliste: `writes` bleibt leer,
+// UNABHAENGIG von `certified`.
+
+const KACO_SUNSPEC_SEL = {
+  schema_version: '1.0', brand: 'kaco', family: 'sunspec_live',
+  communication: 'sunspec_tcp', control_tier: 1,
+  connection: { ip: '192.168.0.9', port: 502, unit_id: 1 },
+};
+const KACO_NH3_SEL = {
+  schema_version: '1.0', brand: 'kaco', family: 'kaco_nh3',
+  communication: 'kaco_modbus', control_tier: 1,
+  connection: { ip: '192.168.0.31', port: 502, unit_id: 1 },
+};
+const KACO_SP = {
+  battery_setpoint_kw: -3, pv_limit_kw: 6, control_enabled: true,
+  soc_min_pct: 10, soc_max_pct: 90,
+};
+
+test('KACO SunSpec plant Model 123 an den ENTDECKTEN Adressen - und schreibt nichts', () => {
+  const out = C.controlRoute(KACO_SUNSPEC_SEL, KACO_SP, { sunspec: froniusDiscovery(false) });
+  assert.strictEqual(out.adapter, 'kaco_sunspec');
+  assert.deepStrictEqual(out.writes, []);
+  assert.deepStrictEqual(out.readbacks, []);
+  assert.ok(out.planned.length > 0, 'der Plan ist das Bench-Artefakt');
+  for (const w of out.planned) assert.strictEqual(w.bench_pending, true);
+  // Es ist DERSELBE Model-123-Plan wie bei Fronius - geteilt, nicht nachgebaut:
+  // EIN geschlossener FC16-Block ueber WMaxLimPct .. WMaxLim_Ena.
+  const block = out.planned.find((w) => w.role === 'pv_limit_block');
+  assert.ok(block, 'der Model-123-Block: ' + out.planned.map((w) => w.role).join(','));
+  const parts = block.parts.map((p) => p.role);
+  assert.ok(parts.includes('pv_limit_pct'), 'WMaxLimPct: ' + parts.join(','));
+  assert.ok(parts.includes('pv_limit_enable'), 'WMaxLim_Ena: ' + parts.join(','));
+  // 6 kW auf einer 12-kW-Nennleistung = 50 % bei Skalenfaktor -2.
+  assert.strictEqual(block.parts[0].value, 5000);
+  // ⚠ Und die Adressen sind ENTDECKT, nicht konstant: der Block liegt dort, wo
+  // das Geraet sein Model 123 gemeldet hat.
+  const m123 = C.controlRoute(KACO_SUNSPEC_SEL, KACO_SP, { sunspec: froniusDiscovery(false) });
+  assert.strictEqual(m123.planned[0].addr, block.addr);
+  assert.ok(block.addr > 40000, 'aus dem Walk, nicht aus einer Konstante');
+});
+
+test('KACO SunSpec erfindet OHNE Discovery keine einzige Adresse', () => {
+  const out = C.controlRoute(KACO_SUNSPEC_SEL, KACO_SP, {});
+  assert.deepStrictEqual(out.planned, []);
+  assert.deepStrictEqual(out.writes, []);
+  assert.match(out.reason, /nicht freigegeben/);
+});
+
+test('KACO SunSpec reicht den Schreib-Funktionscode durch (KACOs Beispiel schreibt FC6 einzeln)', () => {
+  const sel = { ...KACO_SUNSPEC_SEL, connection: { ...KACO_SUNSPEC_SEL.connection, curtail_write_fc: 6 } };
+  const out = C.controlRoute(sel, KACO_SP, { sunspec: froniusDiscovery(false) });
+  assert.strictEqual(out.connection.curtail_write_fc, 6);
+});
+
+test('KACO NH3 plant den belegten Batterie-Sollwert - mit UMGEKEHRTEM Vorzeichen', () => {
+  // VoltPilot: -3 kW = entladen. AISWEI: + = entladen -> +3000 W.
+  const out = C.controlRoute(KACO_NH3_SEL, KACO_SP, {});
+  assert.strictEqual(out.adapter, 'kaco_nh3');
+  assert.deepStrictEqual(out.writes, []);
+  assert.deepStrictEqual(out.readbacks, []);
+  const by = Object.fromEntries(out.planned.map((w) => [w.role, w]));
+  assert.strictEqual(by.work_mode.addr, C.KACO_NH3_CONTROL_REG.MODE);
+  assert.strictEqual(by.work_mode.value, C.KACO_NH3_CONTROL_REG.MODE_CUSTOMER);
+  assert.strictEqual(by.battery_power.addr, C.KACO_NH3_CONTROL_REG.POWER_W);
+  assert.strictEqual(by.battery_power.value, 3000);
+  assert.strictEqual(by.battery_flag.value, C.KACO_NH3_CONTROL_REG.FLAG_DISCHARGE);
+  assert.strictEqual(by.battery_soc_min.value, 1000); // 10,00 % x 100
+  assert.strictEqual(by.battery_soc_max.value, 9000);
+  for (const w of out.planned) assert.strictEqual(w.bench_pending, true);
+});
+
+test('KACO NH3: laden ist das andere Vorzeichen und das andere Flag', () => {
+  const out = C.controlRoute(KACO_NH3_SEL, { ...KACO_SP, battery_setpoint_kw: 4 }, {});
+  const by = Object.fromEntries(out.planned.map((w) => [w.role, w]));
+  assert.strictEqual(by.battery_power.value, -4000); // AISWEI: - = laden
+  assert.strictEqual(by.battery_flag.value, C.KACO_NH3_CONTROL_REG.FLAG_CHARGE);
+});
+
+test('KACO NH3: die RUECKNAHME ist der ganze Failsafe (es gibt kein Totmann-Register)', () => {
+  const rel = C.controlRelease(KACO_NH3_SEL, {});
+  assert.strictEqual(rel.adapter, 'kaco_nh3');
+  assert.deepStrictEqual(rel.writes, []);
+  const by = Object.fromEntries(rel.planned.map((w) => [w.role, w]));
+  // Zurueck auf Eigenverbrauch - NICHT nur Sollwert 0: in Modus 4 bliebe die
+  // Anlage unter Fremdsteuerung stehen.
+  assert.strictEqual(by.work_mode.value, C.KACO_NH3_CONTROL_REG.MODE_SELF_CONSUMPTION);
+  assert.strictEqual(by.battery_power.value, 0);
+  assert.strictEqual(by.battery_flag.value, C.KACO_NH3_CONTROL_REG.FLAG_STOP);
+});
+
+test('⚠ DIE SPERRE HAENGT NICHT AN DER FREIGABELISTE: auch ein Geraete-Grant schreibt nichts', () => {
+  // deviceGrant() oeffnet bei Fronius/Deye den Schreibweg. Bei KACO NICHT -
+  // an keinem Geraet wurde je etwas gemessen.
+  const granted = {
+    ...KACO_SP,
+    device_certified: true,
+    certified: true,
+    calibration: true,
+  };
+  for (const sel of [KACO_SUNSPEC_SEL, KACO_NH3_SEL]) {
+    const out = C.controlRoute(sel, granted, { sunspec: froniusDiscovery(true) });
+    assert.deepStrictEqual(out.writes, [], sel.communication + ': kein Schreibbefehl');
+    assert.deepStrictEqual(out.readbacks, [], sel.communication + ': kein Rueckleseregister');
+  }
+});
+
+test('KACO App-Schnittstelle: kein Steuerweg, und das wird GESAGT statt geraten', () => {
+  const sel = { ...KACO_SUNSPEC_SEL, family: 'kaco_http_hybrid', communication: 'kaco_http' };
+  const out = C.controlRoute(sel, KACO_SP, {});
+  assert.strictEqual(out.adapter, 'idle');
+  assert.deepStrictEqual(out.writes, []);
+  assert.match(out.reason, /kein Steuerweg/);
+  const rel = C.controlRelease(sel, {});
+  assert.strictEqual(rel.adapter, 'idle');
+  assert.match(rel.reason, /kein Steuerweg/);
+});
+
+test('KACO steht in KEINER Freigabeliste', () => {
+  for (const fam of ['sunspec_live', 'kaco_http', 'kaco_http_hybrid', 'kaco_nh3']) {
+    assert.strictEqual(C.CERTIFIED_CONTROL_FAMILIES.has(fam), false, fam);
+  }
+});
