@@ -410,6 +410,12 @@ func TestControlTierPerBrand(t *testing.T) {
 		// primitive. Until the Tier-2 adapter ships, controlRoute's stub refuses
 		// honestly - the tier is a dispatch fact, never an authorisation.
 		BrandKostal: ControlTierVendorEMS,
+		// KACO dokumentiert die Wirkleistungsbegrenzung selbst ueber SunSpec
+		// Model 123 - dasselbe Primitiv wie Fronius. Der Tier ist ein
+		// DISPATCH-Fakt: die Familie `sunspec_live` steht nicht in
+		// CERTIFIED_CONTROL_FAMILIES, also plant der Adapter hoechstens und
+		// schreibt nie (bench_pending, CONTROL-BENCH.md).
+		BrandKaco: ControlTierSunSpec,
 	}
 	for _, b := range cat.Brands {
 		w, ok := want[b.ID]

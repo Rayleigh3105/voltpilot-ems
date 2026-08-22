@@ -55,6 +55,13 @@ const COMM_GOE = 'goe_http_api';
 // (sunspec/sunspec-live.js), NOT the fake fixed-block modbus_tcp `sunspec`
 // profile. Read-only; control (Model 123) is a separate bench-gated increment.
 const COMM_FRONIUS_SUNSPEC = 'fronius_sunspec';
+// The BRAND-NEUTRAL id of the very same SunSpec-live read path. `fronius_sunspec`
+// is a PERSISTED id (the two Fronius Eco of Anlage Herzogau carry it), so it
+// stays byte-identical; every brand added to this path AFTER Fronius - KACO is
+// the first - carries `sunspec_tcp`, so no operator surface has to call a KACO a
+// "Fronius SunSpec". The two are ONE way everywhere: ask isSunSpecTcp(), never
+// compare the string twice. Cross-side twin of inverter.IsSunSpecTCP (Go).
+const COMM_SUNSPEC_TCP = 'sunspec_tcp';
 // KOSTAL PLENTICORE BI over the vendor's own Modbus-TCP server (TCP 1502,
 // Unit-ID 71 - factory defaults, hence its own communication): fixed official
 // register map, battery power + SoC + (via KSEM) grid power. Read-only; the
@@ -74,6 +81,11 @@ const DEFAULT_KOSTAL_UNIT_ID = kostalDecode.DEFAULT_UNIT_ID; // 71
 // Deye family / Modbus profile names the decode). Discovery is dynamic, so there
 // is no fixed register block - the profile just names the adapter.
 const SUNSPEC_LIVE_PROFILE = 'sunspec_live';
+
+/** Both ids of the SunSpec-live read path (see COMM_SUNSPEC_TCP). */
+function isSunSpecTcp(comm) {
+  return comm === COMM_FRONIUS_SUNSPEC || comm === COMM_SUNSPEC_TCP;
+}
 
 // Deye register families that carry measurement registers (the ones the read
 // plan can serve). Mirrors deye-decode.FAMILIES keys.
@@ -119,7 +131,7 @@ function parseConfig(input) {
 
   const communication = typeof obj.communication === 'string' ? obj.communication : '';
   if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS &&
-      communication !== COMM_FRONIUS && communication !== COMM_FRONIUS_SUNSPEC &&
+      communication !== COMM_FRONIUS && !isSunSpecTcp(communication) &&
       communication !== COMM_GOE && communication !== COMM_KOSTAL) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
@@ -318,7 +330,7 @@ function route(sel) {
     };
   }
 
-  if (sel.communication === COMM_FRONIUS_SUNSPEC) {
+  if (isSunSpecTcp(sel.communication)) {
     // Real SunSpec discovery over Modbus TCP. There is no fixed register block
     // (addresses are discovered live per device/firmware, report §2.1), so the
     // plan carries the connection + an optional model-type hint; the reader runs
@@ -403,6 +415,8 @@ module.exports = {
   COMM_MODBUS,
   COMM_FRONIUS,
   COMM_FRONIUS_SUNSPEC,
+  COMM_SUNSPEC_TCP,
+  isSunSpecTcp,
   COMM_GOE,
   COMM_KOSTAL,
   SUNSPEC_LIVE_PROFILE,

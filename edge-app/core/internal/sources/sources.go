@@ -274,7 +274,7 @@ func TransportIdentity(s Source) string {
 	case inverter.CommSolarmanV5:
 		parts = append(parts, strings.TrimSpace(s.Connection.Serial),
 			strconv.Itoa(s.Connection.MbSlaveID))
-	case inverter.CommModbusTCP, inverter.CommFroniusSunSpec:
+	case inverter.CommModbusTCP, inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP:
 		parts = append(parts, strconv.Itoa(s.Connection.UnitID))
 	case inverter.CommShellyHTTP:
 		// A multi-channel Shelly (2PM) is one box with two independent relays:
@@ -336,8 +336,9 @@ func (s Source) busEntry() map[string]any {
 		// a GEN24's insecure_tls redirect and the grid-sign escape hatch are lost.
 		conn["insecure_tls"] = s.Connection.InsecureTLS
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
-	case inverter.CommFroniusSunSpec:
-		// SunSpec-live over Modbus TCP (mirrors inverter.Selection.BusPayload):
+	case inverter.CommFroniusSunSpec, inverter.CommSunSpecTCP:
+		// SunSpec-live over Modbus TCP (mirrors inverter.Selection.BusPayload);
+		// `sunspec_tcp` is the SAME way under a brand-neutral id (IsSunSpecTCP).
 		// without these, Node-RED's per-source SunSpec reader falls back to
 		// unit 1 / model_type auto and loses the grid-sign escape hatch.
 		conn["unit_id"] = s.Connection.UnitID

@@ -60,7 +60,26 @@ const (
 	// data/vp-kostal-plenticore-s5. Read-only in this increment; the control path
 	// (external battery management, Tier 2) is a separate gated increment.
 	CommKostalModbus = "kostal_modbus"
+	// CommSunSpecTCP is the NEUTRAL name of the real SunSpec-live read path over
+	// Modbus TCP (dynamic model discovery, port 502) - the same adapter
+	// CommFroniusSunSpec runs, under an id that does not name a brand.
+	//
+	// ⚠ WARUM EINE ZWEITE KENNUNG UND KEIN UMBENENNEN: `fronius_sunspec` ist eine
+	// PERSISTIERTE Kennung (Selection, Quellen-Config, Vorlagen-Schluessel, die
+	// zwei Fronius Eco der Anlage Herzogau). Sie bleibt BYTE-GLEICH; jeder
+	// Konsument akzeptiert beide Werte als denselben Weg (die Alias-Regel der
+	// Katalog-Neustruktur, PR 473). Neue Marken auf diesem Weg - KACO ist die
+	// erste - tragen die neutrale Kennung, damit auf einer Betreiber-Flaeche
+	// nie „Fronius SunSpec" ueber einem KACO steht.
+	CommSunSpecTCP = "sunspec_tcp"
 )
+
+// IsSunSpecTCP reports whether a communication id names the SunSpec-live read
+// path over Modbus TCP. It is the ONE place that knows the two ids are the same
+// way - every consumer asks here instead of comparing strings twice.
+func IsSunSpecTCP(comm string) bool {
+	return comm == CommFroniusSunSpec || comm == CommSunSpecTCP
+}
 
 // Brand ids.
 const (
@@ -88,6 +107,14 @@ const (
 	// NOT offered yet (its PV DC registers are not decoded, and a battery-only
 	// read of a PV-carrying hybrid would understate the house balance).
 	BrandKostal = "kostal"
+	// BrandKaco is KACO new energy (Neckarsulm; official short brand form
+	// "KACO", the product lines are written lowercase - "blueplanet"). The
+	// brand spans TWO device platforms, which is why its models carry their own
+	// transports: the KACO-OWN line (blueplanet TL1/TL3, Powador TL3 with
+	// Ethernet, NX3 M8/M10, gridsave) speaks real SunSpec Modbus TCP on port
+	// 502, while the NX1/NX3 M2/M3/M5 and hybrid NH3 lines are an AISWEI/
+	// Solplanet OEM behind a communication stick. See nodered/KACO.md.
+	BrandKaco = "kaco"
 )
 
 // Default ports per communication.
@@ -100,6 +127,7 @@ const (
 	defaultShellyPort         = 80   // Shelly local HTTP API (both generations)
 	defaultKostalPort         = 1502 // KOSTAL PLENTICORE Modbus-TCP server
 	defaultKostalUnitID       = 71   // KOSTAL default Modbus Unit-ID (changeable on the device)
+	defaultSunSpecTCPPort     = 502  // neutral SunSpec Modbus TCP (KACO and every later SunSpec brand)
 )
 
 // Control tiers - the battery-control PRIMITIVE a brand exposes, decoupled from
@@ -702,6 +730,177 @@ func kostalModels() []Model {
 	}
 }
 
+// --- KACO new energy ----------------------------------------------------------
+//
+// Zwei Plattformen unter einer Marke (Scout data/vp-kaco-palette-y6 §0/§2):
+//
+//   1. Die KACO-EIGENE Linie (blueplanet TL1/TL3, Powador TL3 mit Ethernet,
+//      NX3 M8/M10, gridsave) spricht echtes SunSpec Modbus TCP auf Port 502 mit
+//      Basisadresse 40001 - also GENAU den Lesepfad, den `sunspec_live` schon
+//      faehrt (nodered/sunspec/sunspec-live.js). Es entsteht dafuer KEIN neuer
+//      Decoder, nur eine neue Marke im Katalog.
+//   2. Die AISWEI/Solplanet-OEM-Linie (NX1/NX3 M2, NX3 M3/M5, hybrid NH3) haengt
+//      hinter einer Kommunikationseinheit und wird ueber deren HTTP-JSON-API
+//      bzw. die AISWEI-eigene Registerkarte gelesen - siehe KACO.md; sie kommt
+//      in einer eigenen Stufe dazu.
+//
+// ⚠ BELEGTER FALLSTRICK, der die ganze TL1-Reihe betrifft: die EINPHASIGEN TL1
+// melden das SunSpec-Modell **102 (Split-Phase)**, nicht 101. Das ist KACOs
+// eigene Wahl (App Note „Tx1 and Tx3 Series" listet 001/102/103) und kein
+// Defekt; evcc fiel genau daran („sunspec model not found: 101/111/103/113").
+// Unser Walker kennt 102 - `sunspec-live.js` decodiert es mit demselben
+// Punkt-Layout wie 101/103, weshalb die TL1 ohne Sonderfall liest. Die
+// Klassifikation `phases: 'split'` beschreibt das MODELL, nie das Geraet: ein
+// TL1 ist und bleibt ein Einphaser.
+//
+// ⚠ AKTIVIERUNG AM GERAET ist Pflicht und hat ZWEI Schalter: „Netzwerk - Modbus
+// TCP - Betriebsmodus" (lesen) und getrennt davon „Schreibzugriff erlauben"
+// (Vorgabe AUS, bei Firmware < V4.00 gar nicht vorhanden). Ohne den ersten
+// antwortet das Geraet gar nicht; der zweite ist fuer den reinen Lesebetrieb
+// NICHT noetig - und VoltPilot verlangt ihn auch nicht (die Steuerung bleibt
+// gesperrt, siehe CONTROL-BENCH.md).
+
+// kacoSunspecFields beschreibt die SunSpec-Modbus-TCP-Verbindung der
+// KACO-eigenen Linie. Gleiche Form wie bei Fronius (der Walker ist derselbe),
+// aber mit KACOs eigenen Hinweisen: Aktivierungs-Menue, die Unit-ID-Konvention
+// und der Schreib-Funktionscode, weil KACOs offizielles Model-123-Beispiel
+// EINZELNE FC6-Schreibbefehle zeigt, waehrend Fronius den FC16-Block braucht.
+func kacoSunspecFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Wechselrichters", Type: "text", Required: true,
+			Help: "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultSunSpecTCPPort,
+			Help: "Modbus-TCP-Port, üblicherweise 502."},
+		{Key: "unit_id", Label: "Modbus-Unit-ID", Type: "number", Default: 1,
+			Help: "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."},
+		{Key: "model_type", Label: "SunSpec-Modelltyp", Type: "select", Default: "auto",
+			Help: "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+			Options: []Opt{
+				{Value: "auto", Label: "Automatisch (empfohlen)"},
+				{Value: "float", Label: "Float (111/112/113)"},
+				{Value: "int_sf", Label: "Integer + Skalierung (101/102/103)"},
+			}},
+		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
+			Help: "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."},
+		{Key: "curtail_write_fc", Label: "Schreib-Funktionscode (Abregelung)", Type: "select", Default: 0,
+			Help: "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+			Options: []Opt{
+				{Value: 0, Label: "Automatisch (FC16, empfohlen)"},
+				{Value: 16, Label: "FC16 – mehrere Register (0x10)"},
+				{Value: 6, Label: "FC6 – einzelne Register (0x06)"},
+			}},
+	}
+}
+
+// kacoFamilies ist die Registerkarten-Referenz der Marke. Auf der KACO-eigenen
+// Linie gibt es genau EINE: die Adressen werden je Geraet entdeckt, es gibt also
+// keine Karte je Modell (dieselbe Lage wie bei Fronius SunSpec).
+func kacoFamilies() []Family {
+	return []Family{
+		{ID: FamSunSpecLive, Label: "SunSpec über Modbus",
+			Note: "Dynamische SunSpec-Modellerkennung über Modbus TCP (Port 502, Basisadresse 40001)"},
+	}
+}
+
+// kacoTransports sind die Verbindungswege der Marke. Heute genau einer; die
+// AISWEI-Wege (HTTP 8484, AISWEI-Registerkarte) kommen additiv dazu.
+func kacoTransports() []Transport {
+	return []Transport{
+		{Communication: CommSunSpecTCP, Label: "SunSpec Modbus TCP (TCP 502)", Family: FamSunSpecLive,
+			Note:   "Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\").",
+			Fields: kacoSunspecFields()},
+	}
+}
+
+// kacoModels ist die Modell-Liste der KACO-EIGENEN Linie, in Deye-Dichte: jedes
+// Modell einzeln waehlbar, mit offizieller Schreibweise, Nennleistung, Phasen
+// und der ehrlichen Angabe, ob es einen Speicher gibt.
+//
+// ⚠ `RatedKw` ist die AC-NENNLEISTUNG. Bei den Powador-TL3-Geraeten weicht sie
+// von der Produktzahl ab (die nennt die DC-Seite): ein „Powador 20.0 TL3" hat
+// 17 kW AC laut KACOs eigener Typtabelle. Die Zahl ist die physikalische
+// Schranke, aus der `guards.Envelope` sein Plausibilitaets-Fenster ableitet -
+// eine zu grosse Zahl macht den Waechter blind.
+//
+// ⚠ NICHT gelistet, mit Begruendung (Scout §2.9): blueplanet hybrid 10.0 TL3
+// (proprietaeres EDCOM-Protokoll mit Partner-Identkey, kein Modbus, kein
+// Webinterface), die Powador-Legacy-Reihen xi/supreme/2002 und Powador TR3
+// (RS232/RS485 mit KACO-ASCII-Protokoll, kein Modbus), Nordamerika-Varianten,
+// blueplanet 360 NX3 (Utility-Park, Transport unbelegt) und die Powador
+// 30.0-40.0 TL3 ERSTgeneration (laut KACOs Schnittstellen-Uebersicht nur
+// RS232/RS485 - erst mit Nachweis eines Ethernet-Ports listen).
+func kacoModels() []Model {
+	m := func(id, label string, kw float64, note string) Model {
+		return Model{ID: id, Label: label, Family: FamSunSpecLive, RatedKw: kw, Note: note}
+	}
+	return []Model{
+		// --- blueplanet TL3 (KACO-eigen, Ethernet + Webserver) ------------------
+		m("bp-3.0-tl3", "blueplanet 3.0 TL3", 3, "3 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("bp-4.0-tl3", "blueplanet 4.0 TL3", 4, "4 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("bp-5.0-tl3", "blueplanet 5.0 TL3", 5, "5 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("bp-6.5-tl3", "blueplanet 6.5 TL3", 6.5, "6,5 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("bp-7.5-tl3", "blueplanet 7.5 TL3", 7.5, "7,5 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("bp-8.6-tl3", "blueplanet 8.6 TL3", 8.6, "8,6 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("bp-9.0-tl3", "blueplanet 9.0 TL3", 9, "9 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("bp-10.0-tl3", "blueplanet 10.0 TL3", 10, "10 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("bp-15.0-tl3", "blueplanet 15.0 TL3", 15, "15 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-20.0-tl3", "blueplanet 20.0 TL3", 20, "20 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-29.0-tl3", "blueplanet 29.0 TL3", 29, "29 kW · String · 3-phasig · nur Erzeugung · Weboberfläche (M1)"),
+		m("bp-50.0-tl3", "blueplanet 50.0 TL3", 50, "50 kW · String · 3-phasig · nur Erzeugung · Varianten M1/M3/S/RPonly"),
+		m("bp-60.0-tl3", "blueplanet 60.0 TL3", 60, "60 kW · String · 3-phasig · nur Erzeugung · Varianten M1/M3"),
+		m("bp-87.0-tl3", "blueplanet 87.0 TL3", 87, "87 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-92.0-tl3", "blueplanet 92.0 TL3", 92, "92 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-100-tl3", "blueplanet 100 TL3", 100, "100 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-105-tl3", "blueplanet 105 TL3", 105, "105 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-110-tl3", "blueplanet 110 TL3", 110, "110 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-125-tl3", "blueplanet 125 TL3", 125, "125 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-137-tl3", "blueplanet 137 TL3", 137, "137 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-150-tl3", "blueplanet 150 TL3", 150, "150 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-155-tl3", "blueplanet 155 TL3", 155, "155 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		m("bp-165-tl3", "blueplanet 165 TL3", 165, "165 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet"),
+		// --- blueplanet TL1 (einphasig; meldet SunSpec-Modell 102) --------------
+		m("bp-2.0-tl1", "blueplanet 2.0 TL1", 2.0, "2 kW · String · 1-phasig · nur Erzeugung · Ethernet"),
+		m("bp-2.6-tl1", "blueplanet 2.6 TL1", 2.0, "2,6 kW (AC-Nennleistung 2,0 kW) · String · 1-phasig · nur Erzeugung · Ethernet"),
+		m("bp-3.0-tl1", "blueplanet 3.0 TL1", 3.0, "3 kW · String · 1-phasig · nur Erzeugung · Ethernet (M1/M2)"),
+		m("bp-3.5-tl1", "blueplanet 3.5 TL1", 3.5, "3,5 kW · String · 1-phasig · nur Erzeugung · Ethernet"),
+		m("bp-3.7-tl1", "blueplanet 3.7 TL1", 3.68, "3,7 kW (AC-Nennleistung 3,68 kW) · String · 1-phasig · nur Erzeugung · Ethernet"),
+		m("bp-4.0-tl1", "blueplanet 4.0 TL1", 4.0, "4 kW · String · 1-phasig · nur Erzeugung · Ethernet"),
+		m("bp-4.6-tl1", "blueplanet 4.6 TL1", 4.6, "4,6 kW · String · 1-phasig · nur Erzeugung · Ethernet"),
+		m("bp-5.0-tl1", "blueplanet 5.0 TL1", 5.0, "5 kW · String · 1-phasig · nur Erzeugung · Ethernet"),
+		// --- blueplanet NX3 M8 / M10 (C&I, eigene Weboberflaeche) ---------------
+		m("bp-100-nx3-m8", "blueplanet 100 NX3 M8", 100, "100 kW · String · 3-phasig · 8 MPPT · nur Erzeugung · Weboberfläche"),
+		m("bp-125-nx3-m10", "blueplanet 125 NX3 M10", 125, "125 kW · String · 3-phasig · 10 MPPT · nur Erzeugung · Weboberfläche"),
+		// --- Powador TL3, Ethernet-Generation -----------------------------------
+		m("powador-10.0-tl3", "Powador 10.0 TL3", 10, "10 kW · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("powador-12.0-tl3", "Powador 12.0 TL3", 10, "12 kW (AC-Nennleistung 10 kW) · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("powador-14.0-tl3", "Powador 14.0 TL3", 12, "14 kW (AC-Nennleistung 12 kW) · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("powador-18.0-tl3", "Powador 18.0 TL3", 15, "18 kW (AC-Nennleistung 15 kW) · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("powador-20.0-tl3", "Powador 20.0 TL3", 17, "20 kW (AC-Nennleistung 17 kW) · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("powador-30.0-tl3-m1", "Powador 30.0 TL3 M1", 25, "30 kW (AC-Nennleistung 25 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision)"),
+		m("powador-36.0-tl3-m1", "Powador 36.0 TL3 M1", 30, "36 kW (AC-Nennleistung 30 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision)"),
+		m("powador-39.0-tl3-m1", "Powador 39.0 TL3 M1", 33.3, "39 kW (AC-Nennleistung 33,3 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision)"),
+		m("powador-48.0-tl3", "Powador 48.0 TL3", 40, "48 kW (AC-Nennleistung 40 kW) · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("powador-60.0-tl3", "Powador 60.0 TL3", 49.9, "60 kW (AC-Nennleistung 49,9 kW) · String · 3-phasig · nur Erzeugung · Ethernet"),
+		m("powador-72.0-tl3", "Powador 72.0 TL3", 60, "72 kW (AC-Nennleistung 60 kW) · String · 3-phasig · nur Erzeugung · Ethernet"),
+		// --- blueplanet gridsave (Batterie-Wechselrichter, NUR LESEND) ----------
+		//
+		// ⚠ Ein gridsave ist ein reiner BATTERIE-Wechselrichter ohne PV und
+		// braucht zwingend ein externes EMS. VoltPilot liest ihn hier ueber die
+		// AC-Leistung des SunSpec-Modells 103 - der SPEICHERSTAND kommt darueber
+		// NICHT (er steht im KACO-Vendor-Modell 64203, das das EMS selbst
+		// beschreibt). Der EMS-Steuer-Adapter (Vendor 64201-64204 mit
+		// Zustandsmaschine und Pflicht-Watchdog) ist bewusst spaeter; deshalb
+		// steht „nur lesen" in jeder Zeile.
+		m("bp-gridsave-50.0-tl3-s", "blueplanet gridsave 50.0 TL3-S", 50, "50 kW · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg)"),
+		m("bp-gridsave-92.0-tl3-s", "blueplanet gridsave 92.0 TL3-S", 92, "92 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg)"),
+		m("bp-gridsave-110-tl3-s", "blueplanet gridsave 110 TL3-S", 110, "110 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg)"),
+		m("bp-gridsave-137-tl3-s", "blueplanet gridsave 137 TL3-S", 137, "137 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg)"),
+		// --- Auffang-Eintrag ----------------------------------------------------
+		{ID: "kaco-sunspec-generic", Label: "Anderes KACO-Modell (SunSpec)", Family: FamSunSpecLive,
+			Note: "Weiteres KACO-Gerät mit SunSpec Modbus TCP, Nennleistung unbekannt"},
+	}
+}
+
 // DefaultCatalog returns the built-in option tree.
 //
 // Der Baum hat seit der Katalog-Neustruktur (Konzept
@@ -817,6 +1016,24 @@ func DefaultCatalog() Catalog {
 				// stub honestly refuses, and certification stays per-device/First-Light
 				// regardless.
 				ControlTier: ControlTierVendorEMS,
+			},
+			{
+				ID:         BrandKaco,
+				Label:      "KACO",
+				DeviceType: DeviceTypeInverter,
+				Note:       "KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\").",
+				Models:     kacoModels(),
+				Families:   kacoFamilies(),
+				Transports: kacoTransports(),
+				// Tier 1: KACO dokumentiert die Wirkleistungsbegrenzung SELBST ueber
+				// SunSpec Model 123 (`WMaxLimPct` + `WMaxLim_Ena`, offizielles
+				// Beispiel 40295/40299) - dasselbe Primitiv, das der Fronius-Adapter
+				// faehrt. Der Tier ist ein DISPATCH-Fakt und autorisiert nichts: die
+				// Familie `sunspec_live` steht NICHT in CERTIFIED_CONTROL_FAMILIES,
+				// also plant der Adapter hoechstens (`planned`, bench_pending) und
+				// schreibt nie - genau wie bei Fronius heute. Scharf wird es erst
+				// nach einem Bench-Lauf am echten Geraet (CONTROL-BENCH.md).
+				ControlTier: ControlTierSunSpec,
 			},
 			{
 				ID:         BrandGoe,
@@ -1447,7 +1664,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 		conn.ByteOrder = ""
-	case CommFroniusSunSpec:
+	case CommFroniusSunSpec, CommSunSpecTCP:
 		// Real SunSpec over Modbus TCP: host + unit id + an optional model-type
 		// hint + the grid-sign escape hatch. The register-map profile is the single
 		// sunspec_live family (discovery is dynamic). model_type "auto" (default)
@@ -1655,12 +1872,22 @@ func (s Selection) BusPayload() []byte {
 	case CommFroniusSolarAPI:
 		conn["insecure_tls"] = s.Connection.InsecureTLS
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
-	case CommFroniusSunSpec:
+	case CommFroniusSunSpec, CommSunSpecTCP:
+		// ⚠ ALIAS: `sunspec_tcp` ist derselbe Weg wie `fronius_sunspec` (siehe
+		// IsSunSpecTCP) - dieselben Felder, derselbe Adapter. Zwei Kennungen
+		// existieren nur, damit die persistierte Fronius-Kennung unangetastet
+		// bleibt und eine neue Marke nicht „Fronius" heissen muss.
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile
 		conn["model_type"] = s.Connection.ModelType
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 		conn["invert_control_sign"] = s.Connection.InvertControlSign
+		// curtail_write_fc: die Schreib-FORM der Abregelung. KACOs offizielles
+		// Model-123-Beispiel schreibt einzeln (FC6), Fronius verlangt den
+		// FC16-Block - ohne dieses Feld waere der Ausweg auf dem PRIMAER-Geraet
+		// unerreichbar (die BusPayload-Lehre aus fm/vp-deye-sign-fix-v6: eine
+		// Klappe, die nicht veroeffentlicht wird, erreicht den Leser nie).
+		conn["curtail_write_fc"] = s.Connection.CurtailWriteFc
 	case CommKostalModbus:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile

@@ -91,7 +91,9 @@
     if (c === "goe_http_api") return "go-e HTTP-API";
     if (c === "shelly_http") return "Shelly HTTP-API";
     if (c === "fronius_solar_api") return "Fronius Solar-API";
-    if (c === "fronius_sunspec") return "SunSpec (Modbus TCP)";
+    // Beide Kennungen desselben Wegs (fronius_sunspec = persistiert,
+    // sunspec_tcp = marken-neutral) - siehe inverter.IsSunSpecTCP.
+    if (c === "fronius_sunspec" || c === "sunspec_tcp") return "SunSpec (Modbus TCP)";
     return "Modbus TCP";
   }
 
@@ -581,10 +583,11 @@
   function isSunspecSource(payload) {
     var b = brandById(payload && payload.brand);
     if (!b) return false;
+    var isSs = function (c) { return c === "fronius_sunspec" || c === "sunspec_tcp"; };
     if (payload.connection && payload.connection.transport) {
-      return payload.connection.transport === "fronius_sunspec";
+      return isSs(payload.connection.transport);
     }
-    return W().wege(b, modelById(b, payload.model))[0] === "fronius_sunspec";
+    return isSs(W().wege(b, modelById(b, payload.model))[0]);
   }
 
   // isConsumerBrand: the consumer drivers (go-e wallbox, Shelly relay) get the

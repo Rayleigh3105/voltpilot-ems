@@ -12,8 +12,12 @@ package inverter
 //     behaelt Verhalten UND Identitaet (das Muster aus PR 425).
 
 import (
+	"encoding/json"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // --- 1. Geraetetyp-Dimension ------------------------------------------------
@@ -311,4 +315,155 @@ func TestEveryHiddenBrandModelHasASuccessor(t *testing.T) {
 			}
 		}
 	}
+}
+
+// --- KACO ---------------------------------------------------------------------
+
+// TestKacoReadsOverTheSharedSunSpecPath pins the whole point of the KACO catalog
+// entry: the KACO-OWN line adds NO decoder. Every model resolves to the existing
+// `sunspec_live` decode profile over the SunSpec-TCP way, so a KACO is read by
+// exactly the walker a Fronius Eco is read by.
+func TestKacoReadsOverTheSharedSunSpecPath(t *testing.T) {
+	cat := DefaultCatalog()
+	b, ok := cat.brand(BrandKaco)
+	if !ok {
+		t.Fatal("KACO is not in the catalog")
+	}
+	if b.DeviceType != DeviceTypeInverter {
+		t.Errorf("KACO device type = %q, want %q", b.DeviceType, DeviceTypeInverter)
+	}
+	if b.Communication != CommSunSpecTCP {
+		t.Errorf("KACO default communication = %q, want %q", b.Communication, CommSunSpecTCP)
+	}
+	if len(b.Models) < 40 {
+		t.Errorf("KACO offers only %d models - the palette should be Deye-dense", len(b.Models))
+	}
+	for _, m := range b.Models {
+		if m.Family != FamSunSpecLive {
+			t.Errorf("model %q family = %q, want %q", m.ID, m.Family, FamSunSpecLive)
+		}
+		if got := b.TransportsFor(m); len(got) != 1 || got[0] != CommSunSpecTCP {
+			t.Errorf("model %q transports = %v, want exactly [%s]", m.ID, got, CommSunSpecTCP)
+		}
+		sel, err := cat.Normalize(SelectionRequest{
+			Brand: BrandKaco, Model: m.ID,
+			Connection: Connection{IP: "192.168.0.9"},
+		}, time.Now())
+		if err != nil {
+			t.Fatalf("model %q does not normalize: %v", m.ID, err)
+		}
+		if sel.Communication != CommSunSpecTCP || sel.Family != FamSunSpecLive {
+			t.Errorf("model %q -> comm %q / family %q", m.ID, sel.Communication, sel.Family)
+		}
+		if sel.Connection.Port != 502 || sel.Connection.UnitID != 1 || sel.Connection.ModelType != "auto" {
+			t.Errorf("model %q defaults: port=%d unit=%d model_type=%q",
+				m.ID, sel.Connection.Port, sel.Connection.UnitID, sel.Connection.ModelType)
+		}
+	}
+}
+
+// TestKacoRatedPowerIsTheAcNameplate pins the honest reading of the catalog's
+// kW: it is the AC nameplate, which on the Powador TL3 line differs from the
+// PRODUCT number (that one names the DC side). Too big a number blinds
+// guards.Envelope, so this is a safety fact, not cosmetics.
+func TestKacoRatedPowerIsTheAcNameplate(t *testing.T) {
+	cat := DefaultCatalog()
+	for _, tc := range []struct {
+		model string
+		want  float64
+	}{
+		{"powador-20.0-tl3", 17},      // product 20.0, AC 17 kW (KACO type table)
+		{"powador-60.0-tl3", 49.9},    // product 60.0, AC 49,9 kW
+		{"powador-39.0-tl3-m1", 33.3}, // product 39.0, AC 33,3 kW
+		{"bp-2.6-tl1", 2.0},           // product 2.6, AC 2,0 kW
+		{"bp-4.6-tl1", 4.6},           // here product == AC
+		{"bp-165-tl3", 165},
+		{"bp-gridsave-92.0-tl3-s", 92},
+	} {
+		got, ok := cat.RatedKw(BrandKaco, tc.model)
+		if !ok || got != tc.want {
+			t.Errorf("RatedKw(%q) = %v (ok=%v), want %v", tc.model, got, ok, tc.want)
+		}
+	}
+	// The catch-all entry has NO rating - an invented one would be a claim about
+	// a device nobody measured.
+	if _, ok := cat.RatedKw(BrandKaco, "kaco-sunspec-generic"); ok {
+		t.Error("the generic KACO entry must carry no nameplate")
+	}
+}
+
+// TestKacoExcludesTheDevicesWithoutALocalInterface keeps the scout's exclusions
+// (§2.9) honest: listing a device we cannot reach would promise an anbindung
+// that does not exist. The hybrid 10.0 TL3 speaks the proprietary EDCOM
+// protocol (partner identkey, no Modbus, no web interface); the Powador
+// xi/supreme/2002 and TR3 lines speak KACO's RS232/RS485 ASCII protocol.
+func TestKacoExcludesTheDevicesWithoutALocalInterface(t *testing.T) {
+	cat := DefaultCatalog()
+	b, _ := cat.brand(BrandKaco)
+	for _, m := range b.Models {
+		l := strings.ToLower(m.Label)
+		if strings.Contains(l, "hybrid") {
+			t.Errorf("model %q: the hybrid 10.0 TL3 has no local interface (EDCOM) and the NH3 line is not part of this increment", m.Label)
+		}
+		for _, banned := range []string{"xi", "supreme", "tr3"} {
+			if strings.Contains(l, " "+banned) || strings.HasSuffix(l, banned) {
+				t.Errorf("model %q: %s devices speak the KACO ASCII protocol, not Modbus", m.Label, banned)
+			}
+		}
+	}
+}
+
+// TestTheSunSpecTcpAliasIsOneWay pins the alias rule: `sunspec_tcp` and
+// `fronius_sunspec` are the SAME read path under two ids. The Fronius id stays
+// persisted and BYTE-IDENTICAL (the two Fronius Eco of Anlage Herzogau carry
+// it); every brand added to the path afterwards carries the neutral one, so no
+// operator surface has to call a KACO a "Fronius SunSpec".
+func TestTheSunSpecTcpAliasIsOneWay(t *testing.T) {
+	if !IsSunSpecTCP(CommFroniusSunSpec) || !IsSunSpecTCP(CommSunSpecTCP) {
+		t.Fatal("both ids must name the SunSpec-live path")
+	}
+	if IsSunSpecTCP(CommModbusTCP) || IsSunSpecTCP(CommKostalModbus) || IsSunSpecTCP("") {
+		t.Fatal("no other communication may pass as SunSpec-TCP")
+	}
+	cat := DefaultCatalog()
+	// A Fronius Eco keeps its stored communication unchanged.
+	fro, err := cat.Normalize(SelectionRequest{
+		Brand: BrandFronius, Model: "fronius-eco-27-3-s",
+		Connection: Connection{IP: "192.168.210.40"},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("fronius eco: %v", err)
+	}
+	if fro.Communication != CommFroniusSunSpec {
+		t.Errorf("the Fronius id must not move: got %q", fro.Communication)
+	}
+	// Both ways publish the SAME connection keys, so Layer 1 sees one shape.
+	kac, err := cat.Normalize(SelectionRequest{
+		Brand: BrandKaco, Model: "bp-4.6-tl1",
+		Connection: Connection{IP: "192.168.0.9"},
+	}, time.Now())
+	if err != nil {
+		t.Fatalf("kaco tl1: %v", err)
+	}
+	var froPayload, kacPayload map[string]any
+	if err := json.Unmarshal(fro.BusPayload(), &froPayload); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(kac.BusPayload(), &kacPayload); err != nil {
+		t.Fatal(err)
+	}
+	froKeys := sortedKeys(froPayload["connection"].(map[string]any))
+	kacKeys := sortedKeys(kacPayload["connection"].(map[string]any))
+	if !reflect.DeepEqual(froKeys, kacKeys) {
+		t.Errorf("connection keys differ between the two ids:\n fronius %v\n kaco    %v", froKeys, kacKeys)
+	}
+}
+
+func sortedKeys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

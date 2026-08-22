@@ -116,7 +116,9 @@ function makeReadOnce(deps) {
       const port = num(conn.port, 80);
       return { adapter: 'fronius_solar_api', ip, port, scheme, insecure_tls: insecure, invert_grid_sign: !!conn.invert_grid_sign, url: fronius.powerFlowUrl(scheme, ip, port) };
     }
-    if (sel.communication === 'fronius_sunspec') {
+    // Both ids of the SunSpec-live path (`fronius_sunspec` is the persisted one,
+    // `sunspec_tcp` the brand-neutral one every later SunSpec brand carries).
+    if (sel.communication === 'fronius_sunspec' || sel.communication === 'sunspec_tcp') {
       return {
         adapter: 'sunspec_live', ip, port: num(conn.port, 502), unitId: num(conn.unit_id, 1),
         invert_grid_sign: !!conn.invert_grid_sign,
@@ -416,7 +418,7 @@ function makeProbeUnits(deps) {
     const sel = selection || {};
     const conn = sel.connection || {};
     const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';
-    if (sel.communication !== 'fronius_sunspec') {
+    if (sel.communication !== 'fronius_sunspec' && sel.communication !== 'sunspec_tcp') {
       return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: 'Die Suche nach weiteren Wechselrichtern gibt es nur für SunSpec (Modbus TCP).' });
     }
     if (!ip) return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: 'keine IP-Adresse' });

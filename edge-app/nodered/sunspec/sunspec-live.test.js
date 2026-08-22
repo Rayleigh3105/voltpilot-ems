@@ -435,3 +435,40 @@ test('makeSunspecReader returns null against a non-SunSpec server', async () => 
     server.close();
   }
 });
+
+// --- KACO blueplanet TL1: model 102 on a SINGLE-PHASE device ------------------
+//
+// ⚠ DER BELEGTE FALLSTRICK DER TL1-REIHE (Scout data/vp-kaco-palette-y6
+// §0.6/§2.6): KACOs einphasige blueplanet TL1 melden das SunSpec-Modell **102
+// (Split-Phase)** statt 101 - so listet es KACOs eigene App Note fuer die
+// Tx1/Tx3-Serie („001, 102, 103"). evcc kannte 102 nicht und scheiterte an
+// genau diesen Geraeten („sunspec model not found: 101/111/103/113").
+//
+// Zwei Aussagen werden hier festgenagelt:
+//   1. 102 wird VOLLSTAENDIG decodiert - dasselbe Punkt-Layout wie 101/103,
+//      inklusive Skalierungsfaktor. Kein Sonderfall, kein Ausfall.
+//   2. `phases: 'split'` beschreibt das MODELL, NIE das Geraet. Ein TL1 ist ein
+//      Einphaser; wer die Klassifikation als Phasenzahl liest, erfindet eine
+//      Aussage ueber eine Kundenanlage.
+test('decodeInverter (int+SF 102) decodes a KACO TL1 exactly like 101/103', () => {
+  // blueplanet 4.6 TL1: W_raw 460, W_SF 1 -> 4600 W = 4,6 kW.
+  const { disc, readBlock } = discoverImage(buildImage(D.DEFAULT_BASE, [
+    { id: D.MODEL.COMMON, body: commonBody() },
+    { id: 102, body: invIntBody({ wRaw: 460, wSf: 1 }) },
+  ]));
+  assert.strictEqual(disc.inverter.id, 102);
+  assert.strictEqual(disc.inverter.type, 'int_sf');
+  const inv = L.decodeInverter({ discovery: disc, readBlock });
+  assert.strictEqual(inv.pv_power_kw, 4.6);
+  assert.strictEqual(inv.hybrid, false); // no Model 124 -> batteryless string inverter
+  assert.strictEqual(inv.pvSource, 'ac'); // its AC output IS its PV
+});
+
+test('the 102 classification is a MODEL fact, not a phase count (KACO TL1 is one-phase)', () => {
+  // The table maps the SunSpec model id to the model's own phase WORDING.
+  // A KACO TL1 reports 102 and is nevertheless a single-phase device, so no
+  // consumer may turn 'split' into "two phases".
+  assert.strictEqual(L.INVERTER_INT_SF[101], 'single');
+  assert.strictEqual(L.INVERTER_INT_SF[102], 'split');
+  assert.strictEqual(L.INVERTER_INT_SF[103], 'three');
+});
