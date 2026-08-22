@@ -101,6 +101,66 @@ class BuiltinComponentTemplatesTest {
         }
     }
 
+    /**
+     * Die Katalog-Neustruktur (Konzept data/vp-anlegen-rework/konzept.md):
+     * jede Vorlage nennt ihren GERÄTETYP, und der frühere zweite Fronius-Eintrag
+     * ist eine ABGELÖSTE Vorlage - auflösbar, aber nicht mehr angeboten.
+     */
+    @Test
+    void everyTemplateDeclaresItsDeviceTypeAndTheLegacyFroniusIsSuperseded() {
+        Set<String> known = Set.of("inverter", "wallbox", "switch", "meter",
+                "charge_point", "custom");
+        for (BuiltinTemplate t : builtin.all()) {
+            assertThat(t.deviceType()).as("%s: Gerätetyp", t.templateRef()).isIn(known);
+        }
+        assertThat(find("builtin:go-e:goe_http_api").deviceType()).isEqualTo("wallbox");
+        assertThat(find("builtin:shelly:shelly_http").deviceType()).isEqualTo("switch");
+        assertThat(find("builtin:deye:sun-30k-sg01hp3").deviceType()).isEqualTo("inverter");
+
+        // Die aktive Fronius-Zeile gilt; die abgelöste nennt ihre Nachfolgerin -
+        // und die muss es wirklich geben, sonst wäre sie eine Sackgasse.
+        assertThat(find("builtin:fronius:fronius-eco-27-3-s").supersededBy()).isNull();
+        BuiltinTemplate alt = find("builtin:fronius_sunspec:fronius-eco-27-3-s");
+        assertThat(alt.supersededBy()).isEqualTo("builtin:fronius:fronius-eco-27-3-s");
+        assertThat(builtin.all().stream().map(BuiltinTemplate::templateRef))
+                .contains(alt.supersededBy());
+        for (BuiltinTemplate t : builtin.all()) {
+            if (t.supersededBy() != null) {
+                assertThat(t.brand()).as("nur die Alias-Marke ist abgelöst")
+                        .isEqualTo("fronius_sunspec");
+            }
+        }
+    }
+
+    /**
+     * Captain-Entscheid 4: die Marke heisst, wie sie auf dem Typenschild steht -
+     * ALLE Technik-Zusätze sind aus den MARKENNAMEN heraus (sie stehen in der
+     * Beschreibungszeile). Ein Klammer-Zusatz im Markennamen war zugleich das
+     * Symptom, an dem der doppelte Fronius hing.
+     */
+    @Test
+    void noBrandLabelCarriesATechnicalParenthesis() {
+        for (BuiltinTemplate t : builtin.all()) {
+            assertThat(t.brandLabel()).as("Markenname %s", t.brandLabel())
+                    .doesNotContain("(").doesNotContain(")").doesNotContain("/");
+        }
+        assertThat(find("builtin:go-e:goe_http_api").brandLabel()).isEqualTo("go-e");
+        assertThat(find("builtin:shelly:shelly_http").brandLabel()).isEqualTo("Shelly");
+        assertThat(find("builtin:fronius_sunspec:fronius-eco-27-3-s").brandLabel())
+                .isEqualTo("Fronius");
+    }
+
+    /**
+     * Der Duplikat-Befund des Konzepts: Modell und Familie des generischen
+     * Eintrags hiessen beide „SunSpec (Standard)" und standen damit zweimal
+     * gleich im Baum.
+     */
+    @Test
+    void theGenericEntryNoLongerNamesItsModelLikeItsFamily() {
+        BuiltinTemplate generic = find("builtin:generic_modbus:sunspec");
+        assertThat(generic.modelLabel()).isNotEqualTo(generic.familyLabel());
+    }
+
     /** Die Decode-Profil-Referenz ist die Brücke zum Code, der die Vorlage ausführt. */
     @Test
     void theDecodeProfileAndTransportFieldsComeFromTheCatalogVerbatim() {

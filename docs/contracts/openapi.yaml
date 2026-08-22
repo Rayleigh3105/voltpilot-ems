@@ -6346,6 +6346,25 @@ components:
         brandLabel: { type: string, example: Deye }
         model: { type: string, example: sun-30k-sg01hp3 }
         modelLabel: { type: string, example: SUN-30K-SG01HP3-EU }
+        deviceType:
+          type: string
+          nullable: true
+          enum: [inverter, wallbox, switch, meter, charge_point, custom]
+          example: inverter
+          description: >
+            The device-type dimension of the catalog - what KIND of device the
+            template describes. It replaced the technical parentheses in brand
+            names ("go-e (Wallbox)"). null = the template does not say; never a
+            guessed type.
+        supersededBy:
+          type: string
+          nullable: true
+          example: "builtin:fronius:fronius-eco-27-3-s"
+          description: >
+            The templateRef that replaced THIS one. null = the template applies.
+            A superseded template stays RESOLVABLE (an existing plant references
+            its key, and the takeover looks it up by brand+model) but is no
+            longer OFFERED - the customer list omits it, a lookup still finds it.
         family:
           type: string
           nullable: true

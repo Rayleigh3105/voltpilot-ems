@@ -134,6 +134,20 @@ type Template struct {
 	BrandLabel string `json:"brand_label"`
 	Model      string `json:"model"`
 	ModelLabel string `json:"model_label"`
+	// DeviceType ist die Geraetetyp-Dimension des Katalogs (siehe
+	// inverter.DeviceType*): was fuer ein Geraet die Vorlage beschreibt. Sie
+	// traegt die Typ-Karten des Anlege-Wegs; frueher steckte diese Aussage im
+	// Markennamen („go-e (Wallbox)").
+	DeviceType string `json:"device_type,omitempty"`
+	// SupersededBy nennt die Vorlage, die DIESE abgeloest hat
+	// (`builtin:<marke>:<modell>`) - leer, solange die Vorlage selbst gilt.
+	//
+	// ⚠ Sie ist die ALIAS-EBENE der Katalog-Neustruktur: eine abgeloeste Vorlage
+	// bleibt vollstaendig AUFLOESBAR (eine Bestandsanlage referenziert ihren
+	// Schluessel, und die Bestands-Uebernahme sucht ueber Marke+Modell), wird aber
+	// nicht mehr ANGEBOTEN. Eine Oberflaeche blendet sie aus; ein Nachschlagen
+	// findet sie weiterhin.
+	SupersededBy string `json:"superseded_by,omitempty"`
 	// Family ist die Decode-Profil-Referenz (der interne Registerkarten-Name,
 	// mit dem Layer 1 self-wired). Sie ist die Bruecke zwischen der DATEN-Vorlage
 	// und dem CODE, der sie ausfuehrt.
@@ -213,14 +227,32 @@ func BuiltinTemplates() []Template {
 	out := make([]Template, 0, 64)
 	for _, b := range cat.Brands {
 		for _, m := range b.Models {
+			// Der VORGABE-Weg des Modells bestimmt Anbindung, Formular und - wo das
+			// Modell keine eigene Registerkarte nennt - das Decode-Profil.
+			//
+			// ⚠ Exportiert wird GENAU EINE Zeile je Marke+Modell, auf dem
+			// Vorgabeweg. Das Experten-Auswahlfeld „Verbindungsweg" bleibt bewusst
+			// DRAUSSEN: die Cloud speichert je Vorlage EINE `communication` und EINE
+			// `family` - ein Feld anzubieten, das dort nichts aendern kann, waere die
+			// Sorte Behauptung, die dieses Haus nicht macht. Der cloud-seitige
+			// Ausweg ist der ehrliche Modell-Eintrag („Anderes Fronius-Modell").
+			transport, _ := b.resolveTransport(m, "")
+			family := m.Family
+			if family == "" {
+				family = transport.Family
+			}
 			famLabel := ""
-			if f, ok := b.family(m.Family); ok {
+			if f, ok := b.family(family); ok {
 				famLabel = f.Label
 			}
 			var rated *float64
 			if m.RatedKw > 0 {
 				v := m.RatedKw
 				rated = &v
+			}
+			superseded := ""
+			if b.Hidden && b.SupersededBy != "" {
+				superseded = BuiltinTemplateRef(b.SupersededBy, m.ID)
 			}
 			out = append(out, Template{
 				TemplateRef:        BuiltinTemplateRef(b.ID, m.ID),
@@ -230,11 +262,13 @@ func BuiltinTemplates() []Template {
 				BrandLabel:         b.Label,
 				Model:              m.ID,
 				ModelLabel:         m.Label,
-				Family:             m.Family,
+				DeviceType:         b.DeviceTypeOf(m),
+				SupersededBy:       superseded,
+				Family:             family,
 				FamilyLabel:        famLabel,
-				Communication:      b.Communication,
-				CommunicationLabel: b.CommLabel,
-				TransportSchema:    b.Fields,
+				Communication:      transport.Communication,
+				CommunicationLabel: transport.Label,
+				TransportSchema:    transport.Fields,
 				// Siehe die Feld-Kommentare: null, nicht [].
 				Channels:            nil,
 				Writes:              nil,

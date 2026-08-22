@@ -55,8 +55,8 @@ class ComponentAdoptionTest {
 
     private static ComponentTemplateDto template(String brand, String model) {
         return new ComponentTemplateDto("builtin:" + brand + ":" + model, "builtin", 1, brand,
-                brand, model, model, "fam", "fam", "comm", "comm", "{}", null, null, null, 0,
-                "builtin", null, null, null, Instant.EPOCH);
+                brand, model, model, "inverter", null, "fam", "fam", "comm", "comm", "{}", null,
+                null, null, 0, "builtin", null, null, null, Instant.EPOCH);
     }
 
     @Test

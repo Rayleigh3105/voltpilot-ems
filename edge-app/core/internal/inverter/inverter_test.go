@@ -148,15 +148,33 @@ func TestEveryModelResolvesToAKnownRegisterFamily(t *testing.T) {
 		}
 		seen := map[string]bool{}
 		for _, m := range b.Models {
-			if m.ID == "" || m.Label == "" || m.Family == "" {
-				t.Errorf("brand %s model %+v has an empty id/label/family", b.ID, m)
+			if m.ID == "" || m.Label == "" {
+				t.Errorf("brand %s model %+v has an empty id/label", b.ID, m)
 			}
 			if seen[m.ID] {
 				t.Errorf("brand %s has a duplicate model id %q", b.ID, m.ID)
 			}
 			seen[m.ID] = true
-			if _, ok := b.family(m.Family); !ok {
-				t.Errorf("brand %s model %q maps to unknown register family %q", b.ID, m.ID, m.Family)
+			// Die Familie folgt bei mehreren Wegen dem TRANSPORT (Fronius), sonst
+			// dem Modell (Deye/KOSTAL) - beweisbar ist die AUFGELOESTE Familie je
+			// zulaessigem Weg, und die muss der Marke bekannt sein.
+			for _, comm := range b.TransportsFor(m) {
+				tr, err := b.resolveTransport(m, comm)
+				if err != nil {
+					t.Errorf("brand %s model %q: transport %q unresolvable: %v", b.ID, m.ID, comm, err)
+					continue
+				}
+				fam := m.Family
+				if fam == "" {
+					fam = tr.Family
+				}
+				if fam == "" {
+					t.Errorf("brand %s model %q on %q resolves to no register family", b.ID, m.ID, comm)
+					continue
+				}
+				if _, ok := b.family(fam); !ok {
+					t.Errorf("brand %s model %q on %q maps to unknown register family %q", b.ID, m.ID, comm, fam)
+				}
 			}
 		}
 	}
@@ -490,14 +508,23 @@ func TestFroniusBrandInCatalog(t *testing.T) {
 		t.Fatal("Fronius brand missing from catalog")
 	}
 	if b.Communication != CommFroniusSolarAPI {
-		t.Errorf("fronius communication: %q", b.Communication)
+		t.Errorf("fronius default transport: %q", b.Communication)
 	}
-	if len(b.Models) != 1 || b.Models[0].Family != FamFroniusSolarAPI {
-		t.Errorf("fronius models: %+v", b.Models)
+	// EINE Marke, vier Modelle - und der GEN24-Eintrag traegt die Solar API als
+	// Vorgabeweg (die Eco-Modelle SunSpec, siehe TestFroniusTransportPerModel).
+	if len(b.Models) != 4 {
+		t.Errorf("fronius models: %d", len(b.Models))
+	}
+	gen24, ok := b.model(FamFroniusSolarAPI)
+	if !ok || b.TransportsFor(gen24)[0] != CommFroniusSolarAPI {
+		t.Errorf("GEN24 entry must default to the Solar API: %+v", gen24)
 	}
 	// froniusFields: host required, port default 80, insecure_tls checkbox, no serial/unit_id/auth.
 	keys := map[string]Field{}
-	for _, f := range b.Fields {
+	for _, f := range b.FieldsFor(gen24, CommFroniusSolarAPI) {
+		if f.Key == "transport" {
+			continue // das Experten-Auswahlfeld, siehe TestFroniusTransportPerModel
+		}
 		keys[f.Key] = f
 	}
 	if f, ok := keys["ip"]; !ok || !f.Required {
@@ -563,7 +590,7 @@ func TestNormalizeFroniusSunSpec(t *testing.T) {
 	if sel.Family != FamSunSpecLive {
 		t.Errorf("family must be the sunspec_live profile: %q", sel.Family)
 	}
-	if sel.Label != "Fronius (Modbus / SunSpec) · Fronius Eco 27.0-3-S" {
+	if sel.Label != "Fronius · Fronius Eco 27.0-3-S" {
 		t.Errorf("label should name the concrete model: %q", sel.Label)
 	}
 	if sel.Connection.Port != defaultFroniusSunSpecPort {

@@ -10,6 +10,7 @@
       "brand_label": "Deye",
       "model": "sun-5k-sg04lp3",
       "model_label": "SUN-5K-SG04LP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -154,6 +155,7 @@
       "brand_label": "Deye",
       "model": "sun-6k-sg04lp3",
       "model_label": "SUN-6K-SG04LP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -298,6 +300,7 @@
       "brand_label": "Deye",
       "model": "sun-8k-sg04lp3",
       "model_label": "SUN-8K-SG04LP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -442,6 +445,7 @@
       "brand_label": "Deye",
       "model": "sun-10k-sg04lp3",
       "model_label": "SUN-10K-SG04LP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -586,6 +590,7 @@
       "brand_label": "Deye",
       "model": "sun-12k-sg04lp3",
       "model_label": "SUN-12K-SG04LP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -730,6 +735,7 @@
       "brand_label": "Deye",
       "model": "sun-29.9k-sg01hp3",
       "model_label": "SUN-29.9K-SG01HP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -874,6 +880,7 @@
       "brand_label": "Deye",
       "model": "sun-30k-sg01hp3",
       "model_label": "SUN-30K-SG01HP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -1018,6 +1025,7 @@
       "brand_label": "Deye",
       "model": "sun-35k-sg01hp3",
       "model_label": "SUN-35K-SG01HP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -1162,6 +1170,7 @@
       "brand_label": "Deye",
       "model": "sun-40k-sg01hp3",
       "model_label": "SUN-40K-SG01HP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -1306,6 +1315,7 @@
       "brand_label": "Deye",
       "model": "sun-50k-sg01hp3",
       "model_label": "SUN-50K-SG01HP3-EU",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -1450,6 +1460,7 @@
       "brand_label": "Deye",
       "model": "sun-25k-sg02hp3",
       "model_label": "SUN-25K-SG02HP3-EU-AM3",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -1594,6 +1605,7 @@
       "brand_label": "Deye",
       "model": "sun-29.9k-sg02hp3",
       "model_label": "SUN-29.9K-SG02HP3-EU-AM3",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -1738,6 +1750,7 @@
       "brand_label": "Deye",
       "model": "sun-30k-sg02hp3",
       "model_label": "SUN-30K-SG02HP3-EU-AM3",
+      "device_type": "inverter",
       "family": "hybrid_3p",
       "family_label": "Hybrid, 3-phasig",
       "communication": "solarman_v5",
@@ -1882,6 +1895,7 @@
       "brand_label": "Deye",
       "model": "sun-3.6k-sg03lp1",
       "model_label": "SUN-3.6K-SG03LP1-EU",
+      "device_type": "inverter",
       "family": "hybrid_1p",
       "family_label": "Hybrid, 1-phasig",
       "communication": "solarman_v5",
@@ -2026,6 +2040,7 @@
       "brand_label": "Deye",
       "model": "sun-5k-sg03lp1",
       "model_label": "SUN-5K-SG03LP1-EU",
+      "device_type": "inverter",
       "family": "hybrid_1p",
       "family_label": "Hybrid, 1-phasig",
       "communication": "solarman_v5",
@@ -2170,6 +2185,7 @@
       "brand_label": "Deye",
       "model": "sun-6k-sg03lp1",
       "model_label": "SUN-6K-SG03LP1-EU",
+      "device_type": "inverter",
       "family": "hybrid_1p",
       "family_label": "Hybrid, 1-phasig",
       "communication": "solarman_v5",
@@ -2314,6 +2330,7 @@
       "brand_label": "Deye",
       "model": "sun-7.6k-sg03lp1",
       "model_label": "SUN-7.6K-SG03LP1-EU",
+      "device_type": "inverter",
       "family": "hybrid_1p",
       "family_label": "Hybrid, 1-phasig",
       "communication": "solarman_v5",
@@ -2458,6 +2475,7 @@
       "brand_label": "Deye",
       "model": "sun-8k-sg03lp1",
       "model_label": "SUN-8K-SG03LP1-EU",
+      "device_type": "inverter",
       "family": "hybrid_1p",
       "family_label": "Hybrid, 1-phasig",
       "communication": "solarman_v5",
@@ -2602,6 +2620,7 @@
       "brand_label": "Deye",
       "model": "sun-4k-g03",
       "model_label": "SUN-4K-G03",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -2746,6 +2765,7 @@
       "brand_label": "Deye",
       "model": "sun-5k-g03",
       "model_label": "SUN-5K-G03",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -2890,6 +2910,7 @@
       "brand_label": "Deye",
       "model": "sun-6k-g03",
       "model_label": "SUN-6K-G03",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -3034,6 +3055,7 @@
       "brand_label": "Deye",
       "model": "sun-7k-g03",
       "model_label": "SUN-7K-G03",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -3178,6 +3200,7 @@
       "brand_label": "Deye",
       "model": "sun-8k-g03",
       "model_label": "SUN-8K-G03",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -3322,6 +3345,7 @@
       "brand_label": "Deye",
       "model": "sun-10k-g03",
       "model_label": "SUN-10K-G03",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -3466,6 +3490,7 @@
       "brand_label": "Deye",
       "model": "sun-12k-g03",
       "model_label": "SUN-12K-G03",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -3610,6 +3635,7 @@
       "brand_label": "Deye",
       "model": "sun-15k-g04",
       "model_label": "SUN-15K-G04",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -3754,6 +3780,7 @@
       "brand_label": "Deye",
       "model": "sun-20k-g04",
       "model_label": "SUN-20K-G04",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -3898,6 +3925,7 @@
       "brand_label": "Deye",
       "model": "sun-25k-g04",
       "model_label": "SUN-25K-G04",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -4042,6 +4070,7 @@
       "brand_label": "Deye",
       "model": "sun-30k-g04",
       "model_label": "SUN-30K-G04",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -4186,6 +4215,7 @@
       "brand_label": "Deye",
       "model": "sun-33k-g04",
       "model_label": "SUN-33K-G04",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -4330,6 +4360,7 @@
       "brand_label": "Deye",
       "model": "sun-50k-g04",
       "model_label": "SUN-50K-G04",
+      "device_type": "inverter",
       "family": "string",
       "family_label": "String-Wechselrichter",
       "communication": "solarman_v5",
@@ -4474,6 +4505,7 @@
       "brand_label": "Deye",
       "model": "sun600g3",
       "model_label": "SUN600G3-EU-230",
+      "device_type": "inverter",
       "family": "micro",
       "family_label": "Micro-Wechselrichter",
       "communication": "solarman_v5",
@@ -4618,6 +4650,7 @@
       "brand_label": "Deye",
       "model": "sun800g3",
       "model_label": "SUN800G3-EU-230",
+      "device_type": "inverter",
       "family": "micro",
       "family_label": "Micro-Wechselrichter",
       "communication": "solarman_v5",
@@ -4762,6 +4795,7 @@
       "brand_label": "Deye",
       "model": "sun1000g3",
       "model_label": "SUN1000G3-EU-230",
+      "device_type": "inverter",
       "family": "micro",
       "family_label": "Micro-Wechselrichter",
       "communication": "solarman_v5",
@@ -4906,6 +4940,7 @@
       "brand_label": "Deye",
       "model": "sun1300g3",
       "model_label": "SUN1300G3-EU-230",
+      "device_type": "inverter",
       "family": "micro",
       "family_label": "Micro-Wechselrichter",
       "communication": "solarman_v5",
@@ -5050,6 +5085,7 @@
       "brand_label": "Deye",
       "model": "sun1600g3",
       "model_label": "SUN1600G3-EU-230",
+      "device_type": "inverter",
       "family": "micro",
       "family_label": "Micro-Wechselrichter",
       "communication": "solarman_v5",
@@ -5194,6 +5230,7 @@
       "brand_label": "Deye",
       "model": "sun2000g3",
       "model_label": "SUN2000G3-EU-230",
+      "device_type": "inverter",
       "family": "micro",
       "family_label": "Micro-Wechselrichter",
       "communication": "solarman_v5",
@@ -5335,11 +5372,12 @@
       "kind": "builtin",
       "version": 1,
       "brand": "generic_modbus",
-      "brand_label": "Anderer Hersteller (Modbus / SunSpec)",
+      "brand_label": "Anderes Modell",
       "model": "sunspec",
-      "model_label": "SunSpec (Standard)",
+      "model_label": "SunSpec-kompatibler Wechselrichter",
+      "device_type": "inverter",
       "family": "sunspec",
-      "family_label": "SunSpec (Standard)",
+      "family_label": "SunSpec-Registermodell",
       "communication": "modbus_tcp",
       "communication_label": "Modbus TCP (TCP 502)",
       "transport_schema": [
@@ -5370,7 +5408,7 @@
       "rated_kw": null,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "SunSpec-konformes Modbus-Registermodell Für alle Wechselrichter mit SunSpec-/Modbus-TCP-Schnittstelle."
+      "note": "Für jeden Wechselrichter mit SunSpec-Registermodell Für jeden Wechselrichter mit SunSpec-/Modbus-TCP-Schnittstelle, dessen Hersteller hier nicht steht."
     },
     {
       "template_ref": "builtin:fronius:fronius_solar_api",
@@ -5379,11 +5417,12 @@
       "brand": "fronius",
       "brand_label": "Fronius",
       "model": "fronius_solar_api",
-      "model_label": "Fronius (Solar API)",
+      "model_label": "Fronius GEN24 / Symo / Primo",
+      "device_type": "inverter",
       "family": "fronius_solar_api",
       "family_label": "Fronius Solar API",
       "communication": "fronius_solar_api",
-      "communication_label": "Fronius Solar API (HTTP/JSON)",
+      "communication_label": "Solar API (HTTP)",
       "transport_schema": [
         {
           "key": "ip",
@@ -5417,16 +5456,291 @@
       "rated_kw": null,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "GEN24, Symo, Primo, Symo Hybrid u. a. über die lokale Solar API Fronius-Wechselrichter (GEN24, Symo, Primo, Symo Hybrid u. a.) werden über die lokale Solar API ausgelesen. Aktivieren Sie die Solar API in der Weboberfläche des Wechselrichters."
+      "note": "GEN24, Symo, Primo, Symo Hybrid u. a. Fronius-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell; unter „Verbindungsweg\" lässt er sich im Ausnahmefall umstellen."
+    },
+    {
+      "template_ref": "builtin:fronius:fronius-eco-27-3-s",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "fronius",
+      "brand_label": "Fronius",
+      "model": "fronius-eco-27-3-s",
+      "model_label": "Fronius Eco 27.0-3-S",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "fronius_sunspec",
+      "communication_label": "SunSpec über Modbus TCP",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des Fronius-Wechselrichters bzw. Datamanagers im lokalen Netz (z. B. 192.168.210.40). Modbus TCP muss in der Weboberfläche des Wechselrichters aktiviert sein (\"Wechselrichter-Steuerung über Modbus\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Wechselrichters, per TCP meist 1."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt. Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. Der Datamanager übernimmt die Begrenzung nur als geschlossenen Satz: einzelne FC6-Schreibbefehle landen zwar im Register, werden aber nie zum aktiven Befehl (am 09.08.2026 an einer echten Anlage gemessen). Deshalb ist FC16 (mehrere Register in einem Vorgang) die Voreinstellung - so beschreibt es auch das Fronius-Handbuch und so macht es die erprobte Victron-Umsetzung. Nur auf FC6 zurückstellen, wenn eine abweichende Firmware ausschließlich FC6 beantwortet.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 27,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "27 kW · 3-phasig · String (nur Erzeugung) Fronius-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell; unter „Verbindungsweg\" lässt er sich im Ausnahmefall umstellen."
+    },
+    {
+      "template_ref": "builtin:fronius:fronius-eco-25-3-s",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "fronius",
+      "brand_label": "Fronius",
+      "model": "fronius-eco-25-3-s",
+      "model_label": "Fronius Eco 25.0-3-S",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "fronius_sunspec",
+      "communication_label": "SunSpec über Modbus TCP",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des Fronius-Wechselrichters bzw. Datamanagers im lokalen Netz (z. B. 192.168.210.40). Modbus TCP muss in der Weboberfläche des Wechselrichters aktiviert sein (\"Wechselrichter-Steuerung über Modbus\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Wechselrichters, per TCP meist 1."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt. Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. Der Datamanager übernimmt die Begrenzung nur als geschlossenen Satz: einzelne FC6-Schreibbefehle landen zwar im Register, werden aber nie zum aktiven Befehl (am 09.08.2026 an einer echten Anlage gemessen). Deshalb ist FC16 (mehrere Register in einem Vorgang) die Voreinstellung - so beschreibt es auch das Fronius-Handbuch und so macht es die erprobte Victron-Umsetzung. Nur auf FC6 zurückstellen, wenn eine abweichende Firmware ausschließlich FC6 beantwortet.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 25,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "25 kW · 3-phasig · String (nur Erzeugung) Fronius-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell; unter „Verbindungsweg\" lässt er sich im Ausnahmefall umstellen."
+    },
+    {
+      "template_ref": "builtin:fronius:sunspec_live",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "fronius",
+      "brand_label": "Fronius",
+      "model": "sunspec_live",
+      "model_label": "Anderes Fronius-Modell",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "fronius_sunspec",
+      "communication_label": "SunSpec über Modbus TCP",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des Fronius-Wechselrichters bzw. Datamanagers im lokalen Netz (z. B. 192.168.210.40). Modbus TCP muss in der Weboberfläche des Wechselrichters aktiviert sein (\"Wechselrichter-Steuerung über Modbus\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Wechselrichters, per TCP meist 1."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt. Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. Der Datamanager übernimmt die Begrenzung nur als geschlossenen Satz: einzelne FC6-Schreibbefehle landen zwar im Register, werden aber nie zum aktiven Befehl (am 09.08.2026 an einer echten Anlage gemessen). Deshalb ist FC16 (mehrere Register in einem Vorgang) die Voreinstellung - so beschreibt es auch das Fronius-Handbuch und so macht es die erprobte Victron-Umsetzung. Nur auf FC6 zurückstellen, wenn eine abweichende Firmware ausschließlich FC6 beantwortet.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "Weiteres Fronius-Modell, Nennleistung unbekannt Fronius-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell; unter „Verbindungsweg\" lässt er sich im Ausnahmefall umstellen."
     },
     {
       "template_ref": "builtin:fronius_sunspec:fronius-eco-27-3-s",
       "kind": "builtin",
       "version": 1,
       "brand": "fronius_sunspec",
-      "brand_label": "Fronius (Modbus / SunSpec)",
+      "brand_label": "Fronius",
       "model": "fronius-eco-27-3-s",
       "model_label": "Fronius Eco 27.0-3-S",
+      "device_type": "inverter",
+      "superseded_by": "builtin:fronius:fronius-eco-27-3-s",
       "family": "sunspec_live",
       "family_label": "SunSpec (Live-Messwerte)",
       "communication": "fronius_sunspec",
@@ -5507,16 +5821,18 @@
       "rated_kw": 27,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "27 kW · 3-phasig · String (nur Erzeugung) · SunSpec Modbus TCP Für Fronius-Wechselrichter, deren Solar API nicht funktioniert (z. B. Eco 27.0-3-S): Auslesen über SunSpec Modbus TCP. Modbus muss in der Weboberfläche des Wechselrichters aktiviert sein."
+      "note": "27 kW · 3-phasig · String (nur Erzeugung) · SunSpec Modbus TCP Frühere zweite Fronius-Zeile (Auslesen über SunSpec Modbus TCP). Wird nicht mehr angeboten - bestehende Geräte behalten sie unverändert."
     },
     {
       "template_ref": "builtin:fronius_sunspec:fronius-eco-25-3-s",
       "kind": "builtin",
       "version": 1,
       "brand": "fronius_sunspec",
-      "brand_label": "Fronius (Modbus / SunSpec)",
+      "brand_label": "Fronius",
       "model": "fronius-eco-25-3-s",
       "model_label": "Fronius Eco 25.0-3-S",
+      "device_type": "inverter",
+      "superseded_by": "builtin:fronius:fronius-eco-25-3-s",
       "family": "sunspec_live",
       "family_label": "SunSpec (Live-Messwerte)",
       "communication": "fronius_sunspec",
@@ -5597,16 +5913,18 @@
       "rated_kw": 25,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "25 kW · 3-phasig · String (nur Erzeugung) · SunSpec Modbus TCP Für Fronius-Wechselrichter, deren Solar API nicht funktioniert (z. B. Eco 27.0-3-S): Auslesen über SunSpec Modbus TCP. Modbus muss in der Weboberfläche des Wechselrichters aktiviert sein."
+      "note": "25 kW · 3-phasig · String (nur Erzeugung) · SunSpec Modbus TCP Frühere zweite Fronius-Zeile (Auslesen über SunSpec Modbus TCP). Wird nicht mehr angeboten - bestehende Geräte behalten sie unverändert."
     },
     {
       "template_ref": "builtin:fronius_sunspec:sunspec_live",
       "kind": "builtin",
       "version": 1,
       "brand": "fronius_sunspec",
-      "brand_label": "Fronius (Modbus / SunSpec)",
+      "brand_label": "Fronius",
       "model": "sunspec_live",
       "model_label": "Fronius (SunSpec, generisch)",
+      "device_type": "inverter",
+      "superseded_by": "builtin:fronius:sunspec_live",
       "family": "sunspec_live",
       "family_label": "SunSpec (Live-Messwerte)",
       "communication": "fronius_sunspec",
@@ -5687,7 +6005,7 @@
       "rated_kw": null,
       "control_tier": 1,
       "certification_status": "builtin",
-      "note": "Anderes SunSpec-fähiges Fronius-Modell (Nennleistung unbekannt) Für Fronius-Wechselrichter, deren Solar API nicht funktioniert (z. B. Eco 27.0-3-S): Auslesen über SunSpec Modbus TCP. Modbus muss in der Weboberfläche des Wechselrichters aktiviert sein."
+      "note": "Anderes SunSpec-fähiges Fronius-Modell (Nennleistung unbekannt) Frühere zweite Fronius-Zeile (Auslesen über SunSpec Modbus TCP). Wird nicht mehr angeboten - bestehende Geräte behalten sie unverändert."
     },
     {
       "template_ref": "builtin:kostal:plenticore-bi-10-26",
@@ -5697,6 +6015,7 @@
       "brand_label": "KOSTAL",
       "model": "plenticore-bi-10-26",
       "model_label": "PLENTICORE BI 10/26",
+      "device_type": "inverter",
       "family": "kostal_plenticore",
       "family_label": "PLENTICORE BI (Batterie-Wechselrichter)",
       "communication": "kostal_modbus",
@@ -5762,7 +6081,7 @@
       "rated_kw": 10,
       "control_tier": 2,
       "certification_status": "builtin",
-      "note": "10 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 26 A) KOSTAL PLENTICORE BI (Batterie-Wechselrichter) über die eingebaute Modbus-TCP-Schnittstelle. Modbus muss im Webserver des Wechselrichters aktiviert sein."
+      "note": "10 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 26 A) KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein."
     },
     {
       "template_ref": "builtin:kostal:plenticore-bi-5.5-13",
@@ -5772,6 +6091,7 @@
       "brand_label": "KOSTAL",
       "model": "plenticore-bi-5.5-13",
       "model_label": "PLENTICORE BI 5.5/13",
+      "device_type": "inverter",
       "family": "kostal_plenticore",
       "family_label": "PLENTICORE BI (Batterie-Wechselrichter)",
       "communication": "kostal_modbus",
@@ -5837,7 +6157,7 @@
       "rated_kw": 5.5,
       "control_tier": 2,
       "certification_status": "builtin",
-      "note": "5,5 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 13 A) KOSTAL PLENTICORE BI (Batterie-Wechselrichter) über die eingebaute Modbus-TCP-Schnittstelle. Modbus muss im Webserver des Wechselrichters aktiviert sein."
+      "note": "5,5 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 13 A) KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein."
     },
     {
       "template_ref": "builtin:kostal:kostal-plenticore-bi-generic",
@@ -5846,7 +6166,8 @@
       "brand": "kostal",
       "brand_label": "KOSTAL",
       "model": "kostal-plenticore-bi-generic",
-      "model_label": "PLENTICORE BI (weitere/G2)",
+      "model_label": "Anderes PLENTICORE-BI-Modell",
+      "device_type": "inverter",
       "family": "kostal_plenticore",
       "family_label": "PLENTICORE BI (Batterie-Wechselrichter)",
       "communication": "kostal_modbus",
@@ -5912,16 +6233,17 @@
       "rated_kw": null,
       "control_tier": 2,
       "certification_status": "builtin",
-      "note": "Anderes PLENTICORE-BI-Modell (Nennleistung unbekannt) KOSTAL PLENTICORE BI (Batterie-Wechselrichter) über die eingebaute Modbus-TCP-Schnittstelle. Modbus muss im Webserver des Wechselrichters aktiviert sein."
+      "note": "Weiteres Modell der Baureihe, auch G2 (Nennleistung unbekannt) KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein."
     },
     {
       "template_ref": "builtin:go-e:goe_http_api",
       "kind": "builtin",
       "version": 1,
       "brand": "go-e",
-      "brand_label": "go-e (Wallbox)",
+      "brand_label": "go-e",
       "model": "goe_http_api",
-      "model_label": "go-e Charger (HTTP API v2)",
+      "model_label": "go-e Charger",
+      "device_type": "wallbox",
       "family": "goe_http_api",
       "family_label": "go-e HTTP API (v2)",
       "communication": "goe_http_api",
@@ -5947,16 +6269,17 @@
       "rated_kw": null,
       "control_tier": 0,
       "certification_status": "builtin",
-      "note": "go-e Charger HOME/HOMEfix/Gemini u. a. über die lokale HTTP-API (nur lesen) go-e-Wallbox (Ladepunkt/Verbraucher) - wird über die lokale HTTP-API ausgelesen. Als zusätzliche Energiequelle mit der Rolle \"Verbraucher\" hinzufügen. Nur lesen."
+      "note": "HOME, HOMEfix, Gemini u. a. - nur lesen go-e-Wallbox - wird über ihre lokale HTTP-API ausgelesen (nur lesen). Die API muss in der go-e-App aktiviert sein."
     },
     {
       "template_ref": "builtin:shelly:shelly_http",
       "kind": "builtin",
       "version": 1,
       "brand": "shelly",
-      "brand_label": "Shelly (Relais/Schaltaktor)",
+      "brand_label": "Shelly",
       "model": "shelly_http",
-      "model_label": "Shelly Relais/Schaltaktor (alle Generationen)",
+      "model_label": "Shelly Relais / Schaltaktor",
+      "device_type": "switch",
       "family": "shelly_http",
       "family_label": "Shelly HTTP API",
       "communication": "shelly_http",
@@ -5989,7 +6312,7 @@
       "rated_kw": null,
       "control_tier": 0,
       "certification_status": "builtin",
-      "note": "Shelly 1/1PM, Plus 1/1PM, Plug S u. a. - Generation und Leistungsmessung werden automatisch erkannt Shelly-Relais vor einem Verbraucher (z. B. Heizstab) - Generation und Leistungsmessung werden automatisch erkannt. Als zusätzliche Energiequelle mit der Rolle \"Verbraucher\" hinzufügen."
+      "note": "Shelly 1/1PM, Plus 1/1PM, Plug S u. a., alle Generationen · Generation und Leistungsmessung werden automatisch erkannt Shelly-Relais vor einem Verbraucher (z. B. Heizstab). Generation und Leistungsmessung werden automatisch erkannt."
     }
   ]
 }

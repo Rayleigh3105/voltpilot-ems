@@ -115,6 +115,9 @@ class ComponentTemplateApiTest {
     ComponentTemplateSeeder seeder;
 
     @Autowired
+    com.voltpilot.api.templates.ComponentTemplateRepository templates;
+
+    @Autowired
     DataSource dataSource;
 
     private final ObjectMapper json = new ObjectMapper();
@@ -129,9 +132,15 @@ class ComponentTemplateApiTest {
 
         List<String> served = new ArrayList<>();
         list.forEach(t -> served.add(t.get("templateRef").asText()));
-        List<String> expected = builtin.all().stream().map(BuiltinTemplate::templateRef).toList();
+        // ⚠ GENAU die exportierten Vorlagen OHNE die abgelösten: die
+        // Katalog-Neustruktur hat den zweiten Fronius-Eintrag zu einer
+        // Alias-Zeile gemacht - sie bleibt auflösbar, wird aber nicht mehr
+        // angeboten (der eigene Test dazu ist unten).
+        List<String> expected = builtin.all().stream()
+                .filter(t -> t.supersededBy() == null)
+                .map(BuiltinTemplate::templateRef).toList();
         assertThat(served)
-                .as("die Lese-Route liefert GENAU die exportierten Vorlagen")
+                .as("die Lese-Route liefert GENAU die geltenden exportierten Vorlagen")
                 .containsExactlyInAnyOrderElementsOf(expected);
         assertThat(served).hasSize(expected.size());
 
@@ -175,6 +184,62 @@ class ComponentTemplateApiTest {
         assertThat(rest.exchange(url("/api/v1/component-templates/builtin:deye:gibtsnicht"),
                 HttpMethod.GET, new HttpEntity<>(bearer(customer)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * DIE ALIAS-EBENE der harten Kompatibilitäts-Regel (Katalog-Neustruktur,
+     * Konzept data/vp-anlegen-rework/konzept.md).
+     *
+     * <p>Die frühere zweite Fronius-Zeile (`fronius_sunspec`) wird NICHT mehr
+     * ANGEBOTEN - sonst stünde „Fronius" zweimal im Assistenten. Sie bleibt aber
+     * vollständig AUFLÖSBAR, und daran hängt eine laufende Kundenanlage: die
+     * zwei Fronius Eco der Anlage Herzogau tragen ihren `template_ref` in
+     * {@code component_definition}, und die Bestands-Übernahme sucht die Vorlage
+     * über Marke+Modell. Verschwände die Zeile, verlöre die Anlage ihre Vorlage.
+     */
+    @Test
+    void thesupersededFroniusTemplateIsNoLongerOfferedButStaysResolvable() throws Exception {
+        String customer = token("demo", "demo");
+        String alt = "builtin:fronius_sunspec:fronius-eco-27-3-s";
+        String neu = "builtin:fronius:fronius-eco-27-3-s";
+
+        JsonNode list = getJson("/api/v1/component-templates", customer);
+        List<String> served = new ArrayList<>();
+        list.forEach(t -> served.add(t.get("templateRef").asText()));
+        assertThat(served).as("die abgelöste Zeile wird nicht angeboten").doesNotContain(alt);
+        assertThat(served).as("ihre Nachfolgerin schon").contains(neu);
+
+        // Genau EINE Fronius-Marke wird angeboten - der Befund, mit dem alles anfing.
+        List<String> froniusBrands = new ArrayList<>();
+        list.forEach(t -> {
+            if ("Fronius".equals(t.get("brandLabel").asText())) {
+                froniusBrands.add(t.get("brand").asText());
+            }
+        });
+        assertThat(froniusBrands).as("nur noch EINE Fronius-Marken-Kennung sichtbar")
+                .isNotEmpty().containsOnly("fronius");
+
+        // ⚠ Und sie ist weiterhin NACHSCHLAGBAR - über ihren Schlüssel wie über
+        // Marke+Modell (der Weg der Bestands-Übernahme).
+        JsonNode single = getJson("/api/v1/component-templates/" + alt, customer);
+        assertThat(single.get("templateRef").asText()).isEqualTo(alt);
+        assertThat(single.get("supersededBy").asText()).isEqualTo(neu);
+        assertThat(single.get("communication").asText()).isEqualTo("fronius_sunspec");
+        assertThat(single.get("family").asText()).isEqualTo("sunspec_live");
+        assertThat(single.get("ratedKw").asDouble()).isEqualTo(27.0);
+        assertThat(templates.findNewestByBrandModel(BuiltinComponentTemplates.PUBLIC_KINDS,
+                        "fronius_sunspec", "fronius-eco-27-3-s"))
+                .as("die Bestands-Übernahme findet sie über Marke+Modell").isPresent();
+
+        // Die Gerätetyp-Dimension reist mit - sie ersetzt die Klammer im Markennamen.
+        JsonNode wallbox = one(list, "builtin:go-e:goe_http_api");
+        assertThat(wallbox.get("deviceType").asText()).isEqualTo("wallbox");
+        assertThat(wallbox.get("brandLabel").asText()).isEqualTo("go-e");
+        assertThat(one(list, "builtin:shelly:shelly_http").get("deviceType").asText())
+                .isEqualTo("switch");
+        assertThat(one(list, neu).get("deviceType").asText()).isEqualTo("inverter");
+        assertThat(one(list, neu).get("supersededBy").isNull())
+                .as("eine geltende Vorlage nennt keinen Nachfolger").isTrue();
     }
 
     /**

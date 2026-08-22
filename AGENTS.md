@@ -456,6 +456,69 @@ Das Fundament des EINEN Anlege-Assistenten (Scout `data/vp-komponenten-einheit-h
 - **Lese-Route `GET /api/v1/component-templates[/{ref}]`** (`ComponentTemplateController`, in `openapi.yaml`, tag `templates`): authentifiziert, NICHT admin-gegated (die Geräte-Auswahl ist keine Interna) und mandanten-agnostisch. Unbekannt und nicht-öffentlich antworten identisch mit 404 (die Enrollment-Disziplin „pending == unknown"). Eine leere Liste heißt „das Register ist leer", nicht „es gibt keine Geräte". **Schreiben/Verwalten gibt es in dieser Stufe gar nicht** (Stufe 6).
 - **Zwei additive Spalten an `measurement_point`:** `source_kind` (`builtin|certified|custom|composed`) + `template_ref`/`template_version` (beide nullbar, CHECK „beides oder keines", **kein Fremdschlüssel** — die Fassung ist ein Schnappschuss wie `rollout_device.device_ref`: eine zurückgezogene Vorlage darf die Historie einer Komponente nicht löschen und ihr Löschen nicht blockieren). **Gestempelt wird NUR, wo die Auto-Komposition (#385) eine Zeile ANLEGT** (`EntityRegistryRepository.createBatteryHybridPoint`/`createComposedPoint` → `SOURCE_KIND_COMPOSED`); eine ältere komponierte Zeile bleibt ehrlich NULL („unbekannt") und wird bewusst nicht aus dem Auffrisch-Pfad nachgestempelt — der frischt auch ADOPTIERTE Erzeuger-Zeilen auf, die nicht komponiert sind, ein pauschaler Stempel würde sie falsch etikettieren. Ein Backfill ist eine bewusste Handlung der Stufe, die das Feld wirklich braucht.
 - **Beweise:** Go `internal/inverter/templates_test.go` (6: Byte-Drift-Wächter, Vollständigkeit je Modell, Katalog-Fakten wörtlich, `null`-statt-`[]` **auch in den JSON-Bytes**, `rated_kw` null statt 0, Slug-Sicherheit, Determinismus) · api `BuiltinComponentTemplatesTest` (7, rein/ohne Docker) · Testcontainers `ComponentTemplateApiTest` (6: die Tabelle IST der Export, Ehrlichkeit in der Antwort, zweiter Abgleich schreibt NICHTS, geänderter Katalog frischt in place auf statt eine Fassung anzulegen, `custom` nie ausgeliefert + 401 anonym, App-Rolle liest aber schreibt nie, Bestandsneutralität + `composed`-Stempel nur auf frisch komponierten Zeilen).
+## Katalog-Neustruktur (Anlegen-Rework Stufe 1): Gerätetyp · Marke · Modell — und der WEG gehört dem Modell
+
+Konzept `data/vp-anlegen-rework/konzept.md` (Captain-Entscheide 22.08.2026, alle
+vier angenommen). **Sie ist eine PRÄSENTATIONS-Neuordnung: kein Bestandsgerät
+ändert Verhalten oder Identität** — der Beweis ist ein Kontinuitäts-Test nach dem
+Muster aus PR 425. Der neue Anlege-Fluss selbst ist Stufe 2; der bestehende
+Drawer läuft mit diesem Baum unverändert weiter.
+
+- **⚠ DER VERBINDUNGSWEG IST EINE EIGENSCHAFT DES MODELLS, NIE DES MARKENNAMENS.**
+  Der Katalog (`edge-app/core/internal/inverter` `DefaultCatalog()`) kennt seit
+  dieser Stufe `Brand.Transports` (die Wege einer Marke) und `Model.Transports`
+  (die eines Geräts, erster = Vorgabe). Das löste die zweite „Marke" *Fronius
+  (Modbus / SunSpec)* auf: ein Eco 27 spricht SunSpec Modbus, ein GEN24 die Solar
+  API, und beide sind ein Fronius. **Die Familie folgt dabei dem WEG**, wo das
+  Modell keine eigene nennt (Fronius/generisch: ein Decode-Profil je Weg); bei
+  Deye/KOSTAL gehört die Registerkarte dem PRODUKT und `Model.Family` trägt sie
+  weiter.
+- **Der Experten-Ausweg** („die Solar API dieses GEN24 antwortet nicht") ist das
+  Auswahlfeld „Verbindungsweg" → `Connection.Transport`, ein reines
+  ANFRAGE-Feld: `Normalize` löst es zu `Selection.Communication` auf und LÖSCHT
+  es. Es wird nie persistiert und steht in keinem `BusPayload` — der Weg IST
+  `communication`, zwei Wahrheiten darüber wären eine zu viel. **Cloud-seitig
+  gibt es ihn bewusst NICHT:** eine Vorlage speichert EINE `communication` und
+  EINE `family`, ein Feld anzubieten, das dort nichts ändern kann, wäre die
+  Sorte Behauptung, die dieses Haus nicht macht — der Ausweg im Portal ist der
+  ehrliche Modell-Eintrag „Anderes Fronius-Modell".
+- **⚠ DIE ALIAS-EBENE trägt die harte Kompatibilitäts-Regel, auf BEIDEN Seiten.**
+  Edge: `Brand.Hidden` + `Brand.SupersededBy` — die Marke `fronius_sunspec` ist
+  VERSTECKT und inhaltlich EINGEFROREN, beantwortet aber jede Nachfrage
+  unverändert (`Normalize`/`Backfill`/`RatedKw`). Cloud: die zwei additiven
+  nullbaren Spalten `component_template.device_type` + `superseded_by`
+  (Migration `V20260835000000`); **`superseded_by IS NULL` filtert NUR in
+  `findNewest`** (die Kunden-Liste) — `findNewestByRef` und
+  `findNewestByBrandModel` finden die abgelöste Zeile weiterhin, und genau daran
+  hängen die zwei Fronius Eco der Anlage Herzogau (ihr `template_ref` in
+  `component_definition` und der Marke+Modell-Weg der Bestands-Übernahme).
+- **`device_type`** (inverter · wallbox · switch, plus das reservierte Vokabular
+  meter/charge_point/custom) ersetzt die Klammer-Kategorien in den Markennamen.
+  **⚠ `NULL` heißt „die Vorlage sagt es nicht", nie ein geratener Typ** — deshalb
+  nullbar ohne Default. Ein Typ ohne Katalog-Eintrag ist kein Versäumnis: eine
+  OCPP-Ladesäule verbindet sich SELBST (`internal/csms`), für einen reinen
+  Zähler bringt die Box kein Decode-Profil mit, und der Selbstbau definiert seine
+  Kanäle selbst (`site_component_template`).
+- **Offizielle Schreibweisen, Technik raus aus den MARKENnamen** (Captain 4):
+  Deye · Fronius · KOSTAL · go-e · Shelly · „Anderes Modell". Der frühere
+  Duplikat-Befund ist behoben — Modell und Familie des generischen Eintrags
+  hießen beide „SunSpec (Standard)".
+- **Zwei Zwillinge, die zusammen wandern:** die Transport-/Feld-Auflösung liegt
+  kanonisch in `inverter.go` (`TransportsFor`/`FieldsFor`/`resolveTransport`) und
+  als Anzeige-Hälfte in `edge-app/core/internal/web/static/inverter.js` UND
+  `sources.js`. `sources.js brandsForRole` filtert seither am GERÄTETYP, nicht an
+  der Anbindung (an der Marke gemessen fiele ein Fronius Eco heraus).
+- **Beweise:** Go `internal/inverter/catalog_struct_test.go` (Typ-Dimension,
+  EIN Fronius, Ausweg wirkt und wird sonst abgelehnt, kein Auswahlfeld ohne
+  Wahl, Duplikat-Fix, **Update-Kontinuität über 11 Bestands-Vektoren**,
+  Alias-Ebene, jeder Alias hat einen Nachfolger) · `templates_test.go`
+  (Byte-Drift-Wächter) · api `BuiltinComponentTemplatesTest` (+3) +
+  `ComponentTemplateApiTest.thesupersededFroniusTemplateIsNoLongerOfferedButStaysResolvable`
+  (echte DB: nicht angeboten, aber über Schlüssel UND Marke+Modell auflösbar) ·
+  `web/jstest/ui.test.js` (die versteckte Marke taucht in der Suche nie auf).
+- **Edge-Anteil reist mit dem nächsten Edge-Release** (eine laufende Box behält
+  ihr Image); der Cloud-Katalog gilt sofort.
+
 ## Probe-Kanal: die Einmal-Anfrage Cloud→Box (Einheitsmodell Stufe 0b)
 
 Der Unterbau, aus dem später jede Live-Vorschau und jeder Verbindungstest des Anlege-Assistenten lebt (Konzepte `vp-komponenten-einheit-h2` §8 Stufe 0b, `vp-modbus-baukasten-k6` §2.5/§2.6): das Portal bittet die Box, ein Gerät im KUNDEN-LAN einmal zu lesen, und bekommt Roh- UND dekodierten Wert zurück. Reiner Unterbau — **es gibt noch keine Kundenfläche**, und der Kanal hat KEINEN Schreibpfad.
