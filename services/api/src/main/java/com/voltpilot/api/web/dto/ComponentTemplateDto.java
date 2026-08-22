@@ -26,6 +26,13 @@ import java.time.Instant;
  * @param kind                Herkunft: builtin | certified (custom liefert die
  *                            Kunden-Route bis Stufe 3 nicht aus)
  * @param version             Definitions-Fassung; eingebaute bleiben auf 1
+ * @param deviceType          Gerätetyp-Dimension des Katalogs (inverter | wallbox |
+ *                            switch | meter | charge_point | custom); {@code null} =
+ *                            die Vorlage sagt es nicht - nie ein geratener Typ
+ * @param supersededBy        die Vorlage, die DIESE abgelöst hat; {@code null} =
+ *                            sie gilt. Eine abgelöste Vorlage bleibt auflösbar
+ *                            (Bestandsanlagen, Bestands-Übernahme), wird aber
+ *                            nicht mehr angeboten
  * @param family              die Decode-Profil-Referenz (der Code, der sie ausführt)
  * @param transportSchema     das Formular je Anbindung (Feld-Vokabular), roh
  * @param controlTier         das deklarierte Steuer-PRIMITIV - autorisiert NICHTS
@@ -39,6 +46,8 @@ public record ComponentTemplateDto(
         String brandLabel,
         String model,
         String modelLabel,
+        String deviceType,
+        String supersededBy,
         String family,
         String familyLabel,
         String communication,

@@ -1138,6 +1138,11 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		`id="brandPicker"`, `id="brandLabel"`,
 		`id="srcBrandPicker"`, `id="srcModelPicker"`,
 		`src="pickerregeln.js"`, `src="vppicker.js"`, `href="vppicker.css"`,
+		// Katalog-Neustruktur: der Verbindungsweg haengt am MODELL, und seine
+		// REGELN wohnen rein in katalogwege.js - beide Formulare (Wechselrichter
+		// und Quellen-Drawer) rufen sie. Ohne das Skript blieben die
+		// Verbindungsfelder leer.
+		`src="katalogwege.js"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("einrichten.html: missing %s", want)
@@ -1145,6 +1150,21 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	}
 	if strings.Contains(page, "app.css") {
 		t.Error("einrichten.html: still references the retired app.css")
+	}
+
+	// Die Wege-Schicht wird AUSGELIEFERT und hängt an window - beide Formulare
+	// rufen sie so, und sie muss VOR ihnen geladen werden.
+	wege := get("/katalogwege.js")
+	for _, want := range []string{"VPKatalogWege", "gewaehlterWeg", "ohneVorgaben", "sichtbar"} {
+		if !strings.Contains(wege, want) {
+			t.Errorf("katalogwege.js: missing %s", want)
+		}
+	}
+	if i, j := strings.Index(page, `src="katalogwege.js"`), strings.Index(page, `src="inverter.js"`); i < 0 || j < 0 || i > j {
+		t.Error("einrichten.html: katalogwege.js muss VOR inverter.js geladen werden")
+	}
+	if i, j := strings.Index(page, `src="katalogwege.js"`), strings.Index(page, `src="sources.js"`); i < 0 || j < 0 || i > j {
+		t.Error("einrichten.html: katalogwege.js muss VOR sources.js geladen werden")
 	}
 
 	// Die Suche wird AUSGELIEFERT und hängt an window - inverter.js ruft sie so.

@@ -1839,6 +1839,131 @@ test("commissioning: ohne Ladepunkte ändert sich KEIN Wort", () => {
   assert.strictEqual(both.steps[0].title, "Wechselrichter verbinden");
 });
 
+/* ============ katalogwege.js: der Verbindungsweg gehört dem MODELL ============ */
+//
+// Katalog-Neustruktur (Konzept data/vp-anlegen-rework/konzept.md, Stufe 1):
+// ein Fronius Eco spricht SunSpec Modbus, ein GEN24 die Solar API - und beide
+// sind ein Fronius. Die Regeln sind die Anzeige-Hälfte von
+// Brand.TransportsFor/FieldsFor/resolveTransport in inverter.go.
+
+const WEG_MARKE = {
+  id: "fronius", label: "Fronius", device_type: "inverter",
+  communication: "fronius_solar_api",
+  fields: [{ key: "ip" }, { key: "port", default: 80 }],
+  transports: [
+    { communication: "fronius_solar_api", label: "Solar API (HTTP)",
+      family: "fronius_solar_api",
+      fields: [{ key: "ip" }, { key: "port", default: 80 }, { key: "insecure_tls" }] },
+    { communication: "fronius_sunspec", label: "SunSpec über Modbus TCP",
+      family: "sunspec_live",
+      fields: [{ key: "ip" }, { key: "port", default: 502 }, { key: "unit_id", default: 1 }] }
+  ],
+  models: [
+    { id: "gen24", label: "Fronius GEN24 / Symo / Primo",
+      transports: ["fronius_solar_api", "fronius_sunspec"],
+      fields: [{ key: "transport", default: "fronius_solar_api",
+                 options: [{ value: "fronius_solar_api" }, { value: "fronius_sunspec" }] },
+               { key: "ip" }, { key: "port", default: 80 }, { key: "insecure_tls" }] },
+    { id: "eco-27", label: "Fronius Eco 27.0-3-S",
+      transports: ["fronius_sunspec", "fronius_solar_api"],
+      fields: [{ key: "transport", default: "fronius_sunspec",
+                 options: [{ value: "fronius_sunspec" }, { value: "fronius_solar_api" }] },
+               { key: "ip" }, { key: "port", default: 502 }, { key: "unit_id", default: 1 }] }
+  ]
+};
+
+// Eine Marke mit GENAU EINEM Weg - der Normalfall (Deye/KOSTAL/go-e/Shelly):
+// das Modell trägt seine Registerkarte selbst.
+const EIN_WEG = {
+  id: "deye", label: "Deye", device_type: "inverter", communication: "solarman_v5",
+  fields: [{ key: "ip" }, { key: "port", default: 8899 }, { key: "serial" }],
+  transports: [{ communication: "solarman_v5", label: "Solarman-V5",
+                 fields: [{ key: "ip" }, { key: "port", default: 8899 }, { key: "serial" }] }],
+  models: [{ id: "sun-30k", label: "SUN-30K-SG01HP3-EU", family: "hybrid_3p" }]
+};
+
+const KW = () => load(["katalogwege.js"]).VPKatalogWege;
+const modell = (b, id) => b.models.find((m) => m.id === id);
+
+test("Wege: das MODELL nennt seinen Weg, ein Modell ohne Angabe erbt den der Marke", () => {
+  const K = KW();
+  assert.deepStrictEqual(K.wege(WEG_MARKE, modell(WEG_MARKE, "eco-27")),
+    ["fronius_sunspec", "fronius_solar_api"], "der Eco liest SunSpec zuerst");
+  assert.deepStrictEqual(K.wege(WEG_MARKE, modell(WEG_MARKE, "gen24")),
+    ["fronius_solar_api", "fronius_sunspec"], "das GEN24 die Solar API");
+  assert.deepStrictEqual(K.wege(EIN_WEG, modell(EIN_WEG, "sun-30k")), ["solarman_v5"]);
+});
+
+test("Wege: die Familie folgt dem WEG - ausser das Modell nennt eine eigene", () => {
+  const K = KW();
+  const eco = modell(WEG_MARKE, "eco-27");
+  assert.strictEqual(K.familie(WEG_MARKE, eco), "sunspec_live", "Vorgabeweg des Eco");
+  assert.strictEqual(K.familie(WEG_MARKE, eco, "fronius_solar_api"), "fronius_solar_api",
+    "auf dem Ausweg gilt dessen Profil - sonst wäre die Umstellung wirkungslos");
+  // Deye: die Registerkarte gehört dem PRODUKT, der Weg trägt keine.
+  assert.strictEqual(K.familie(EIN_WEG, modell(EIN_WEG, "sun-30k")), "hybrid_3p");
+});
+
+test("Wege: OHNE gewähltes Modell gibt es kein Auswahlfeld - und mit einem Weg auch nicht", () => {
+  const K = KW();
+  assert.deepStrictEqual(K.felder(WEG_MARKE, null).map((f) => f.key), ["ip", "port"],
+    "ohne Modell entscheidet die Marke - eine Frage zu einem unbenannten Gerät wäre sinnlos");
+  assert.deepStrictEqual(K.felder(EIN_WEG, modell(EIN_WEG, "sun-30k")).map((f) => f.key),
+    ["ip", "port", "serial"], "ein Weg = nichts zu wählen");
+  assert.deepStrictEqual(K.felder(WEG_MARKE, modell(WEG_MARKE, "eco-27")).map((f) => f.key),
+    ["transport", "ip", "port", "unit_id"], "mehrere Wege: das Auswahlfeld steht voran");
+  assert.deepStrictEqual(
+    K.felder(WEG_MARKE, modell(WEG_MARKE, "eco-27"), "fronius_solar_api").map((f) => f.key),
+    ["transport", "ip", "port", "insecure_tls"], "der Ausweg zeigt SEINE Felder");
+});
+
+test("Wege: ein MODELLWECHSEL setzt auf den Vorgabeweg des NEUEN Modells zurück", () => {
+  const K = KW();
+  const eco = modell(WEG_MARKE, "eco-27");
+  const gen24 = modell(WEG_MARKE, "gen24");
+  // Derselbe Stand: die getroffene Wahl bleibt stehen.
+  assert.strictEqual(
+    K.gewaehlterWeg(WEG_MARKE, eco, { modell: "eco-27", feldWert: "fronius_solar_api" }),
+    "fronius_solar_api", "eine ausdrückliche Wahl überlebt ein Neuzeichnen");
+  // Anderes Modell: der Weg des Vorgängers wäre eine Übersteuerung, die
+  // niemand gewählt hat.
+  assert.strictEqual(
+    K.gewaehlterWeg(WEG_MARKE, gen24, { modell: "eco-27", feldWert: "fronius_sunspec" }),
+    "fronius_solar_api");
+  // Ein Weg, den das Modell gar nicht kennt, zählt nie.
+  assert.strictEqual(
+    K.gewaehlterWeg(EIN_WEG, modell(EIN_WEG, "sun-30k"),
+      { modell: "sun-30k", feldWert: "fronius_sunspec" }), "solarman_v5");
+  // Eine GESPEICHERTE Auswahl trägt ihren Weg als `communication`.
+  assert.strictEqual(
+    K.gewaehlterWeg(WEG_MARKE, gen24, { gespeichert: "fronius_sunspec" }), "fronius_sunspec");
+});
+
+test("Wege: beim Wechsel überlebt nur, was WIRKLICH eingetippt wurde", () => {
+  const K = KW();
+  const eco = modell(WEG_MARKE, "eco-27");
+  // ⚠ vm-Realm: ein im Kontext gebautes Objekt trägt dessen eigene Prototypen -
+  // vor dem Vergleich einmal durch JSON (die dokumentierte Regel).
+  const rein = (o) => JSON.parse(JSON.stringify(o));
+  const alt = K.vorgaben(K.felder(WEG_MARKE, eco, "fronius_sunspec"));
+  assert.deepStrictEqual(rein(alt), { transport: "fronius_sunspec", port: 502, unit_id: 1 });
+  const behalten = K.ohneVorgaben(
+    { transport: "fronius_solar_api", ip: "192.168.210.40", port: 502, unit_id: 1 }, alt);
+  assert.deepStrictEqual(rein(behalten),
+    { transport: "fronius_solar_api", ip: "192.168.210.40" },
+    "der vorbelegte Port 502 wäre auf der Solar API falsch");
+  const getippt = K.ohneVorgaben({ ip: "192.168.210.40", port: 8080 }, alt);
+  assert.strictEqual(getippt.port, 8080, "ein wirklich eingetippter Port bleibt stehen");
+});
+
+test("Wege: eine VERSTECKTE Alias-Marke wird nie angeboten", () => {
+  const K = KW();
+  const sichtbar = K.sichtbar([
+    { id: "fronius" }, { id: "fronius_sunspec", hidden: true }, { id: "deye" }
+  ]).map((b) => b.id);
+  assert.deepStrictEqual(sichtbar, ["fronius", "deye"]);
+});
+
 /* ==================== modellsuche.js: die MODELL-SUCHE ==================== */
 //
 // Sie ist der PRIMÄRE Weg zum Modell (Captain 21.08.2026) und läuft über ALLE
@@ -1863,6 +1988,50 @@ const KATALOG = {
 };
 
 const suche = (q) => load(["modellsuche.js"]).VPModellSuche.suche(KATALOG, q);
+
+test("Modell-Suche: die Anbindung der Zeile ist die des MODELLS, nicht die der Marke", () => {
+  // Seit der Katalog-Neustruktur haengt der Verbindungsweg am Geraet: die
+  // Eco-Zeile darf nicht die Anbindung des GEN24 tragen.
+  const zwei = {
+    brands: [{
+      id: "fronius", label: "Fronius", communication: "fronius_solar_api",
+      families: [],
+      models: [
+        { id: "gen24", label: "Fronius GEN24", transports: ["fronius_solar_api"] },
+        { id: "eco-27", label: "Fronius Eco 27.0-3-S", transports: ["fronius_sunspec"] }
+      ]
+    }]
+  };
+  const r = load(["modellsuche.js"]).VPModellSuche.suche(
+    zwei, "fronius", (brand, m) => (m.transports[0] === "fronius_sunspec"
+      ? "SunSpec über Modbus TCP" : "Solar API (HTTP)"));
+  const byId = Object.fromEntries(r.treffer.map((t) => [t.model.id, t.zusatz]));
+  assert.match(byId["eco-27"], /SunSpec/);
+  assert.match(byId["gen24"], /Solar API/);
+});
+
+test("Modell-Suche: eine VERSTECKTE Alias-Marke taucht NIE als Treffer auf", () => {
+  // Die Katalog-Neustruktur laesst abgeloeste Marken-Kennungen aufloesbar
+  // (eine Bestandsanlage traegt sie), aber nicht mehr anbieten - sonst stuende
+  // dasselbe Geraet zweimal in der Liste und der Kunde muesste raten.
+  const mitAlias = {
+    brands: [
+      KATALOG.brands[0],
+      {
+        id: "fronius", label: "Fronius", communication: "fronius_solar_api",
+        families: [], models: [{ id: "eco-27", label: "Fronius Eco 27.0-3-S", rated_kw: 27 }]
+      },
+      {
+        id: "fronius_sunspec", label: "Fronius", hidden: true,
+        superseded_by: "fronius", communication: "fronius_sunspec",
+        families: [], models: [{ id: "eco-27", label: "Fronius Eco 27.0-3-S", rated_kw: 27 }]
+      }
+    ]
+  };
+  const r = load(["modellsuche.js"]).VPModellSuche.suche(mitAlias, "eco 27");
+  assert.strictEqual(r.treffer.length, 1, "genau ein Treffer, nicht zwei gleiche");
+  assert.strictEqual(r.treffer[0].brand, "fronius");
+});
 
 test("Modell-Suche: findet über ALLE Marken - ohne dass eine Marke gewählt ist", () => {
   // Der Kunde tippt, was auf dem Typenschild steht; welche Katalog-Marke das

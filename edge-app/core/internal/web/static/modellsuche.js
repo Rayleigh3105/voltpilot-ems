@@ -124,10 +124,16 @@
 
   // eintraege plattet den Katalog zu einer Liste {brand, brandLabel, model,
   // familyLabel} - die Suche kennt keine Marken-Grenze.
+  //
+  // ⚠ VERSTECKTE Marken (die Alias-Ebene der Katalog-Neustruktur: eine
+  // abgeloeste Kennung, die aufloesbar bleibt) tauchen NIE als Treffer auf -
+  // sonst stuende dieselbe „Fronius Eco 27.0-3-S" zweimal in der Liste, und der
+  // Kunde muesste raten, welche der beiden seine ist.
   function eintraege(catalog) {
     var out = [];
     if (!catalog || !catalog.brands) return out;
     catalog.brands.forEach(function (b) {
+      if (b.hidden) return;
       var famLabel = {};
       (b.families || []).forEach(function (f) { famLabel[f.id] = f.label; });
       (b.models || []).forEach(function (m) {
@@ -195,7 +201,11 @@
           model: e.model,
           marke: hervorheben(e.brandLabel, terme),
           modell: hervorheben(e.model.label || e.model.id, terme),
-          zusatz: zusatz(e, commLabelFn ? commLabelFn(e.brand) : "")
+          // ⚠ Die Anbindung wird JE MODELL erfragt, nicht je Marke: seit der
+          // Katalog-Neustruktur haengt der Verbindungsweg am Geraet (ein
+          // Fronius Eco liest SunSpec, ein GEN24 die Solar API). Je Marke
+          // gefragt stuende an der Eco-Zeile die Anbindung des GEN24.
+          zusatz: zusatz(e, commLabelFn ? commLabelFn(e.brand, e.model) : "")
         };
       })
     };

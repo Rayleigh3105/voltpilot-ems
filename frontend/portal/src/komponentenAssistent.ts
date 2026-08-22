@@ -45,6 +45,19 @@ export type ComponentTemplate = {
   brandLabel: string;
   model: string;
   modelLabel: string;
+  /**
+   * Die Gerätetyp-Dimension des Katalogs (`inverter` | `wallbox` | `switch` |
+   * `meter` | `charge_point` | `custom`). Sie trägt die Typ-Karten des neuen
+   * Anlege-Wegs; `null`/absent heißt „die Vorlage sagt es nicht", nie ein
+   * geratener Typ. Ein älterer Backend-Stand liefert sie gar nicht.
+   */
+  deviceType?: string | null;
+  /**
+   * Die Vorlage, die DIESE abgelöst hat - `null` = sie gilt. Der Lesepfad des
+   * Assistenten liefert abgelöste Vorlagen ausdrücklich NICHT aus (sie bleiben
+   * nur nachschlagbar), das Feld ist hier also die Erklärung, kein Filter.
+   */
+  supersededBy?: string | null;
   family?: string | null;
   familyLabel?: string | null;
   communication: string;

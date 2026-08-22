@@ -62,6 +62,38 @@
       : id;
   }
 
+  /* ---------------- Verbindungsweg je Modell ----------------
+     Seit der Katalog-Neustruktur hängt der Verbindungsweg am GERÄT, nicht am
+     Markennamen. Die REGELN dazu wohnen rein in katalogwege.js
+     (`window.VPKatalogWege`) - dieselbe Schicht, die auch der Quellen-Drawer
+     benutzt; hier steht nur die Verdrahtung. */
+
+  var W = function () { return window.VPKatalogWege; };
+
+  // ⚠ Der Stand des Formulars: WELCHES Modell es zeigt und auf WELCHEM Weg.
+  // Daran erkennt `gewaehlterWeg` einen Modellwechsel (er setzt dann auf den
+  // Vorgabeweg des neuen Modells zurück), und ein Wechsel des Wegs weiß, WESSEN
+  // Vorgaben er gerade verlässt.
+  var aktuellerWeg = null;
+  var aktuellesModell = null;
+
+  function modelById(brand, id) {
+    var found = null;
+    (brand.models || []).forEach(function (m) { if (m.id === id) found = m; });
+    return found;
+  }
+
+  // Der Weg, den das Formular gerade zeigt.
+  function weg(brand, model) {
+    var host = $("f_transport");
+    return W().gewaehlterWeg(brand, model, {
+      modell: aktuellesModell,
+      feldWert: host && host.dataset ? host.dataset.value : null,
+      gespeichert: (selection && selection.brand === brand.id && model
+        && selection.model === model.id) ? selection.communication : null
+    });
+  }
+
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
     if (attrs) { for (var k in attrs) { if (attrs.hasOwnProperty(k)) e.setAttribute(k, attrs[k]); } }
@@ -77,7 +109,10 @@
   // Nebenzeile beantwortet „ist das meins?" ohne Klick (Anbindungsart), die
   // Stichwörter machen die Suche tolerant, ohne die Zeile zu füllen.
   function renderBrands() {
-    var optionen = catalog.brands.map(function (b) {
+    // ⚠ Eine ALIAS-Marke bleibt auflösbar (eine Bestandsanlage trägt ihre
+    // Kennung), wird aber nicht mehr angeboten - sonst stünde „Fronius" zweimal
+    // in der Liste.
+    var optionen = W().sichtbar(catalog.brands).map(function (b) {
       return {
         value: b.id,
         label: b.label,
@@ -198,9 +233,13 @@
   // Kopf ist Teil der Aussage: welche Marke man wählt, entscheidet den
   // Registersatz, und ein nackter Modellname sagt das nicht.
   function renderSuche(q) {
-    var res = window.VPModellSuche.suche(catalog, q, function (id) {
+    var res = window.VPModellSuche.suche(catalog, q, function (id, m) {
       var b = brandById(id);
-      return b ? (b.comm_label || commLabel(b.communication)) : "";
+      if (!b) return "";
+      // Die Anbindung DIESES Modells auf seinem Vorgabeweg - nicht die der
+      // Marke: an der Marke gemessen stünde an der Eco-Zeile der Weg des GEN24.
+      var t = W().weg(b, W().wege(b, m)[0]);
+      return t ? t.label : (b.comm_label || commLabel(b.communication));
     });
     var terms = tokens(q);
     var list = $("modelList");
@@ -228,7 +267,7 @@
     var models = brand.models || [];
     var families = brand.families || [];
     var famOf = {};
-    models.forEach(function (m) { famOf[m.family || ""] = true; });
+    models.forEach(function (m) { famOf[W().familie(brand, m) || ""] = true; });
     var grouped = Object.keys(famOf).length > 1;
 
     var appendModel = function (m) {
@@ -240,14 +279,14 @@
     if (grouped) {
       var seen = {};
       families.forEach(function (f) {
-        var members = models.filter(function (m) { return m.family === f.id; });
+        var members = models.filter(function (m) { return W().familie(brand, m) === f.id; });
         if (!members.length) return;
         seen[f.id] = true;
         list.appendChild(el("li", { class: "picker-group", role: "presentation" }, f.label));
         members.forEach(appendModel);
       });
       // Models whose family has no catalog entry still render (trailing, ungrouped).
-      models.forEach(function (m) { if (!seen[m.family]) appendModel(m); });
+      models.forEach(function (m) { if (!seen[W().familie(brand, m)]) appendModel(m); });
     } else {
       models.forEach(appendModel);
     }
@@ -299,6 +338,7 @@
   }
 
   function chooseModel(id) {
+    var vorher = chosenModel;
     chosenModel = id;
     $("picker").classList.remove("invalid");
     var list = $("modelList");
@@ -306,7 +346,11 @@
       li.setAttribute("aria-selected", li.dataset.model === id ? "true" : "false");
     });
     var brand = brandById(brandValue());
-    if (brand) renderChosen(brand);
+    if (!brand) return;
+    renderChosen(brand);
+    // Der Verbindungsweg - und damit die Feldmenge - hängt am MODELL. Ohne das
+    // stünde unter einem Fronius Eco das Solar-API-Formular des GEN24.
+    if (vorher !== id) renderFields(brand);
   }
 
   // scrollChosenIntoView centers the picked row after a (re)render, so an
@@ -356,12 +400,29 @@
 
   // renderFields builds the connection inputs for the chosen brand, prefilled
   // from the current selection (or the field defaults) where available.
-  function renderFields(brand) {
+  //
+  // Bei einem Modell mit mehreren Verbindungswegen hängen die Felder AM WEG
+  // (Port 80 gegen 502, Unit-Id gegen keine) - ein Wechsel zeichnet das
+  // Formular deshalb neu, statt eine Feldmenge zu zeigen, die zum gewählten Weg
+  // nicht passt. `keep` trägt die schon EINGETIPPTEN Werte hinüber.
+  function renderFields(brand, comm, keep) {
     var wrap = $("fields");
+    var model = modelById(brand, chosenModel);
+    var gewaehlt = comm || weg(brand, model);
+    aktuellerWeg = gewaehlt;
+    aktuellesModell = model ? model.id : null;
     wrap.innerHTML = "";
-    var conn = (selection && selection.brand === brand.id && selection.connection) ? selection.connection : {};
+    var conn = keep || ((selection && selection.brand === brand.id && selection.connection)
+      ? selection.connection : {});
+    conn = Object.assign({}, conn, { transport: gewaehlt });
+    // Die Anbindungs-Zeile nennt den WIRKLICH gewählten Weg, nicht den
+    // Vorgabeweg der Marke - sonst stünde „Solar API" über einem
+    // SunSpec-Formular.
+    var aktiv = W().weg(brand, gewaehlt);
+    $("comm").textContent = aktiv ? aktiv.label
+      : (brand.comm_label || commLabel(brand.communication));
 
-    brand.fields.forEach(function (f) {
+    W().felder(brand, model, gewaehlt).forEach(function (f) {
       var row = el("div", { class: "field" });
       var inputId = "f_" + f.key;
 
@@ -406,6 +467,17 @@
     });
   }
 
+  // onTransportChange: der Kunde hat den Verbindungsweg umgestellt - das
+  // Formular des NEUEN Wegs zeichnen, mit den schon EINGETIPPTEN Werten.
+  function onTransportChange() {
+    var brand = brandById(brandValue());
+    if (!brand) return;
+    var model = modelById(brand, chosenModel);
+    var alt = W().vorgaben(W().felder(brand, model, aktuellerWeg));
+    var eingetragen = W().ohneVorgaben(collect().connection, alt);
+    renderFields(brand, eingetragen.transport, eingetragen);
+  }
+
   // montiereFeldPicker baut den Picker eines Verbindungsfeldes vom Typ
   // „Auswahl". Ausgelagert, weil das Wechselrichter-Formular und der
   // Quellen-Drawer dieselben Katalog-Felder rendern - zwei Fassungen desselben
@@ -420,7 +492,10 @@
       wert: cur != null ? String(cur) : (optionen.length ? optionen[0].value : null),
       labelledBy: inputId + "-lbl",
       labelEl: lblEl,
-      ariaLabel: f.label
+      ariaLabel: f.label,
+      // Nur der Verbindungsweg zeichnet das Formular neu - er entscheidet,
+      // WELCHE Felder überhaupt gelten.
+      onChange: f.key === W().UEBERSTEUERUNG ? onTransportChange : null
     });
   }
 
@@ -429,7 +504,6 @@
     var brand = brandById(brandValue());
     if (!brand) return;
     $("brandHelp").textContent = brand.note || "";
-    $("comm").textContent = brand.comm_label || commLabel(brand.communication);
 
     var models = brand.models || [];
     // Preselect the persisted choice for this brand; a single-model brand

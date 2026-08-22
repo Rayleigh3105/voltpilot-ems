@@ -47,7 +47,8 @@ public class ComponentTemplateRepository {
      * (ein vergessenes Feld würde sonst nie aufgefrischt).
      */
     private static final List<String> CONTENT_COLUMNS = List.of(
-            "brand", "brand_label", "model", "model_label", "family", "family_label",
+            "brand", "brand_label", "model", "model_label", "device_type", "superseded_by",
+            "family", "family_label",
             "communication", "communication_label", "transport_schema", "channels", "writes",
             "rated_kw", "control_tier", "certification_status", "note");
 
@@ -56,7 +57,8 @@ public class ComponentTemplateRepository {
             List.of("transport_schema", "channels", "writes");
 
     private static final String READ_COLUMNS =
-            "template_ref, kind, version, brand, brand_label, model, model_label, family, "
+            "template_ref, kind, version, brand, brand_label, model, model_label, device_type, "
+                    + "superseded_by, family, "
                     + "family_label, communication, communication_label, transport_schema, "
                     + "channels, writes, rated_kw, control_tier, certification_status, "
                     + "certified_at, certification_note, note, updated_at";
@@ -96,9 +98,17 @@ public class ComponentTemplateRepository {
     /**
      * Alle Vorlagen der übergebenen Herkunftsarten, neueste Fassung je
      * Schlüssel, sortiert wie der Assistent sie gruppiert (Marke, dann Modell).
+     *
+     * <p><b>⚠ ABGELÖSTE Vorlagen fehlen hier - und NUR hier.</b> Die
+     * Katalog-Neustruktur hat den zweiten Fronius-Eintrag zu einer Alias-Zeile
+     * gemacht: sie bleibt vollständig nachschlagbar (siehe
+     * {@link #findNewestByRef} und {@link #findNewestByBrandModel} - eine
+     * Bestandsanlage referenziert ihren Schlüssel, und die Bestands-Übernahme
+     * sucht über Marke+Modell), wird aber nicht mehr ANGEBOTEN. Stünde der
+     * Filter auch dort, verlöre die Anlage Herzogau ihre Vorlage.
      */
     public List<ComponentTemplateDto> findNewest(Collection<String> kinds) {
-        return read.query(SELECT_NEWEST + "ORDER BY brand, model",
+        return read.query(SELECT_NEWEST + "WHERE superseded_by IS NULL ORDER BY brand, model",
                 ps -> ps.setArray(1, ps.getConnection()
                         .createArrayOf("text", kinds.toArray(String[]::new))),
                 ComponentTemplateRepository::map);
@@ -167,7 +177,8 @@ public class ComponentTemplateRepository {
      */
     public boolean upsertBuiltin(BuiltinTemplate t, String actor) {
         Object[] content = {
-            t.brand(), t.brandLabel(), t.model(), t.modelLabel(), t.family(), t.familyLabel(),
+            t.brand(), t.brandLabel(), t.model(), t.modelLabel(), t.deviceType(), t.supersededBy(),
+            t.family(), t.familyLabel(),
             t.communication(), t.communicationLabel(), t.transportSchemaJson(), t.channelsJson(),
             t.writesJson(), t.ratedKw(), t.controlTier(), t.certificationStatus(), t.note()
         };
@@ -215,6 +226,8 @@ public class ComponentTemplateRepository {
                 rs.getString("brand_label"),
                 rs.getString("model"),
                 rs.getString("model_label"),
+                rs.getString("device_type"),
+                rs.getString("superseded_by"),
                 rs.getString("family"),
                 rs.getString("family_label"),
                 rs.getString("communication"),

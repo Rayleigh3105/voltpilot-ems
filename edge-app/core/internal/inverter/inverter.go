@@ -117,6 +117,53 @@ const (
 	ControlTierToU       = 3 // vendor Time-of-Use window (EEPROM) - Deye/Sunsynk
 )
 
+// Geraetetypen - die DIMENSION, mit der der Anlege-Weg beginnt („Was moechten
+// Sie anbinden?", Konzept data/vp-anlegen-rework/konzept.md, Captain-Entscheid 2).
+//
+// Sie ist eine Eigenschaft des GERAETS, nie des Verbindungswegs: eine go-e ist
+// eine Wallbox, egal ob sie per HTTP oder spaeter anders gelesen wird, und ein
+// Deye bleibt ein Wechselrichter. Vor dieser Dimension ordneten sich go-e und
+// Shelly als Pseudo-MARKEN in die Herstellerliste ein („go-e (Wallbox)"), was
+// eine Kategorie in eine Marke verwandelte und den Klammer-Zusatz im Namen
+// erzwang.
+//
+// Das Vokabular ist VOLLSTAENDIG, auch wenn der eingebaute Katalog heute nur
+// drei davon belegt - dieselbe Disziplin wie beim `kind`-Vokabular der
+// Vorlagen-Tabelle. Ein Typ ohne Eintrag ist kein Versaeumnis, sondern die
+// ehrliche Aussage „dafuer bringt die Box (noch) kein Lese-Profil mit":
+//   - DeviceTypeChargePoint: eine OCPP-Ladesaeule verbindet sich SELBST zur Box
+//     (internal/csms); sie wird nie aus diesem Katalog gewaehlt.
+//   - DeviceTypeMeter: fuer einen reinen Zaehler gibt es kein eigenes
+//     Decode-Profil - ein generischer Eintrag waere eine unbelegte Behauptung.
+//   - DeviceTypeCustom: der Selbstbau-Baukasten definiert seine Kanaele selbst
+//     (Cloud-Tabelle site_component_template), er hat keine Katalog-Vorlage.
+const (
+	DeviceTypeInverter    = "inverter"     // Wechselrichter / Speicher
+	DeviceTypeWallbox     = "wallbox"      // Wallbox mit eigener lokaler Schnittstelle
+	DeviceTypeSwitch      = "switch"       // schaltbarer Verbraucher (Relais/Schaltaktor)
+	DeviceTypeMeter       = "meter"        // Zaehler (reserviert, siehe oben)
+	DeviceTypeChargePoint = "charge_point" // OCPP-Ladesaeule (reserviert, siehe oben)
+	DeviceTypeCustom      = "custom"       // Eigenbau/Baukasten (reserviert, siehe oben)
+)
+
+// Transport ist EIN Verbindungsweg, ueber den die Geraete einer Marke gelesen
+// werden. Er ist eine Eigenschaft des GERAETS, nie des Markennamens - die Regel,
+// die den zweiten Fronius-Eintrag („Fronius (Modbus / SunSpec)") aufgeloest hat:
+// ein Fronius Eco 27 spricht SunSpec Modbus, ein GEN24 die Solar API, und beide
+// sind ein Fronius.
+//
+// Family ist das Decode-Profil DIESES Wegs. Es gilt nur dort, wo das MODELL
+// keine eigene Registerkarte deklariert (Fronius/generisch: ein Profil je Weg);
+// bei Deye/KOSTAL gehoert die Familie dem Modell (SG04LP3 != SG01HP3) und der
+// Weg traegt keine.
+type Transport struct {
+	Communication string  `json:"communication"`
+	Label         string  `json:"label"`
+	Family        string  `json:"family,omitempty"`
+	Note          string  `json:"note,omitempty"`
+	Fields        []Field `json:"fields"`
+}
+
 // ValidationError carries a customer-facing German message; the web layer maps
 // it to HTTP 400 (a bad request), everything else to 500.
 type ValidationError struct{ Msg string }
@@ -177,20 +224,63 @@ type Model struct {
 	// are inverter-bounded; pure grid import follows the house connection, not the
 	// inverter (see guards.Envelope).
 	RatedKw float64 `json:"rated_kw,omitempty"`
+
+	// DeviceType uebersteuert den Geraetetyp der Marke fuer DIESES Modell (leer =
+	// der der Marke). Vorgesehen fuer eine Marke, die mehrere Typen baut; heute
+	// nutzt es kein eingebautes Modell.
+	DeviceType string `json:"device_type,omitempty"`
+
+	// Transports sind die Verbindungswege, ueber die DIESES Modell gelesen werden
+	// kann - der ERSTE ist der Vorgabeweg. Leer = der einzige Weg der Marke.
+	//
+	// ⚠ Der Vorgabeweg ist die Aussage; die weiteren sind der Experten-Ausweg
+	// („die Solar API dieses GEN24 antwortet nicht"). Er wird NIE geraten: hat ein
+	// Modell nur einen Weg, gibt es kein Auswahlfeld und nichts zu uebersteuern.
+	Transports []string `json:"transports,omitempty"`
+
+	// Fields sind die AUFGELOESTEN Formularfelder dieses Modells auf seinem
+	// Vorgabeweg, samt dem Auswahlfeld „Verbindungsweg" davor. Gesetzt NUR bei
+	// mehreren Wegen (sonst gelten die Felder der Marke) - siehe resolveCatalog.
+	Fields []Field `json:"fields,omitempty"`
 }
 
 // Brand groups a manufacturer with its fixed communication method, the concrete
 // models it offers (the UI selection unit), the register-map families those
 // models resolve to, and the connection fields that method needs.
 type Brand struct {
-	ID            string   `json:"id"`
-	Label         string   `json:"label"`
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	// DeviceType ist die Typ-Dimension (siehe DeviceType*): was fuer ein Geraet
+	// die Marke baut. Sie steuert, unter welcher Typ-Karte die Marke im
+	// Anlege-Weg erscheint - und ersetzt damit die frueheren Klammer-Zusaetze im
+	// Markennamen („go-e (Wallbox)").
+	DeviceType string `json:"device_type"`
+	// Communication/CommLabel/Fields SPIEGELN den VORGABE-Transport (Transports[0]).
+	// Sie bleiben, weil aeltere Abnehmer sie lesen und weil eine Marke mit genau
+	// einem Weg dadurch unveraendert aussieht; die Wahrheit steht in Transports.
 	Communication string   `json:"communication"`
 	CommLabel     string   `json:"comm_label"`
 	Note          string   `json:"note,omitempty"`
 	Models        []Model  `json:"models"`
 	Families      []Family `json:"families"`
 	Fields        []Field  `json:"fields"`
+	// Transports sind ALLE Verbindungswege dieser Marke, der erste ist die
+	// Vorgabe. Genau ein Eintrag = das bisherige Verhalten.
+	Transports []Transport `json:"transports"`
+	// Hidden markiert eine ALIAS-Marke: sie bleibt vollstaendig aufloesbar (eine
+	// Bestandsanlage referenziert ihre Kennung), wird aber NICHT mehr angeboten.
+	//
+	// ⚠ Das ist die Alias-Ebene der harten Kompatibilitaets-Regel: eine
+	// Praesentations-Neuordnung darf keine gespeicherte Kennung entwerten. Eine
+	// versteckte Marke behaelt ihren Inhalt BYTE-GLEICH - Modelle, Familien,
+	// Felder, Transport - damit `Normalize`/`Backfill`/`RatedKw` und die
+	// cloud-seitige Vorlagen-Aufloesung (brand+model) unveraendert antworten.
+	Hidden bool `json:"hidden,omitempty"`
+	// SupersededBy nennt die SICHTBARE Marke, die diese abgeloest hat (leer, wenn
+	// die Marke selbst sichtbar ist). Sie ist die Bruecke fuer jede Oberflaeche,
+	// die einen Nachfolger zeigen will - nie ein Grund, die alte Kennung
+	// umzuschreiben.
+	SupersededBy string `json:"superseded_by,omitempty"`
 	// ControlTier is the battery-control PRIMITIVE the brand exposes (see the
 	// ControlTier* constants). It is decoupled from Communication on purpose: a
 	// future Tier-2 vendor (Sungrow/SolarEdge) reads over modbus_tcp yet must
@@ -380,23 +470,55 @@ func deyeModels() []Model {
 	}
 }
 
-// froniusFamilies is the register-map reference list for Fronius. The Solar API
-// is self-describing, so there is exactly one decode profile.
+// froniusFamilies is the register-map reference list for Fronius. Since the
+// brand became ONE entry it lists BOTH decode profiles - which one a model reads
+// with follows its TRANSPORT (see froniusTransports), not its name.
 func froniusFamilies() []Family {
 	return []Family{
 		{ID: FamFroniusSolarAPI, Label: "Fronius Solar API", Note: "Lokale HTTP/JSON-Schnittstelle (GetPowerFlowRealtimeData, v1)"},
+		{ID: FamSunSpecLive, Label: "SunSpec über Modbus", Note: "Dynamische SunSpec-Modellerkennung über Modbus TCP"},
 	}
 }
 
-// froniusModels offers one generic Fronius entry (mirroring the generic-Modbus
-// single-entry pattern): the Solar API delivers the same PowerFlow shape across
-// the GEN24 / Symo / Primo / Symo Hybrid lines, so no per-model register map is
-// needed. No RatedKw is set (like the generic SunSpec entry), so the physical-
-// envelope guard stays inactive for Fronius until a rating is ever modelled.
+// froniusTransports sind die ZWEI Verbindungswege der Marke Fronius. Die
+// Reihenfolge ist die Vorgabe-Reihenfolge der Marke; welcher Weg fuer EIN Modell
+// gilt, sagt `Model.Transports` (erster Eintrag = Vorgabe).
+func froniusTransports() []Transport {
+	return []Transport{
+		{Communication: CommFroniusSolarAPI, Label: "Solar API (HTTP)", Family: FamFroniusSolarAPI,
+			Note:   "Die lokale Solar API des Wechselrichters muss in seiner Weboberfläche aktiviert sein.",
+			Fields: froniusFields()},
+		{Communication: CommFroniusSunSpec, Label: "SunSpec über Modbus TCP", Family: FamSunSpecLive,
+			Note:   "Modbus TCP muss in der Weboberfläche des Wechselrichters aktiviert sein (\"Wechselrichter-Steuerung über Modbus\").",
+			Fields: froniusSunspecFields()},
+	}
+}
+
+// froniusModels ist die EINE Modell-Liste der Marke. Jedes Modell nennt seine
+// Verbindungswege selbst - Eco liest ueber SunSpec, GEN24/Symo/Primo ueber die
+// Solar API -, und der jeweils zweite Eintrag ist der Experten-Ausweg fuer den
+// Fall, dass der uebliche Weg auf diesem Geraet nicht antwortet.
+//
+// ⚠ KEIN Modell setzt hier `Family`: bei Fronius folgt das Decode-Profil dem
+// WEG (Solar API -> fronius_solar_api, SunSpec -> sunspec_live), nicht dem
+// Produkt. Ein gesetztes `Family` wuerde den Ausweg still wirkungslos machen.
+//
+// ⚠ Die Kennungen `fronius_solar_api` und `sunspec_live` sind PERSISTIERTE
+// Modell-Kennungen (sie stammen aus der Zeit, als die Familie als Modell-Id
+// diente) - sie bleiben, damit jede Bestandsanlage und jeder Vorlagen-Schluessel
+// weiter aufloest.
 func froniusModels() []Model {
+	solarFirst := []string{CommFroniusSolarAPI, CommFroniusSunSpec}
+	sunspecFirst := []string{CommFroniusSunSpec, CommFroniusSolarAPI}
 	return []Model{
-		{ID: FamFroniusSolarAPI, Label: "Fronius (Solar API)", Family: FamFroniusSolarAPI,
-			Note: "GEN24, Symo, Primo, Symo Hybrid u. a. über die lokale Solar API"},
+		{ID: FamFroniusSolarAPI, Label: "Fronius GEN24 / Symo / Primo", Transports: solarFirst,
+			Note: "GEN24, Symo, Primo, Symo Hybrid u. a."},
+		{ID: "fronius-eco-27-3-s", Label: "Fronius Eco 27.0-3-S", Transports: sunspecFirst, RatedKw: 27,
+			Note: "27 kW · 3-phasig · String (nur Erzeugung)"},
+		{ID: "fronius-eco-25-3-s", Label: "Fronius Eco 25.0-3-S", Transports: sunspecFirst, RatedKw: 25,
+			Note: "25 kW · 3-phasig · String (nur Erzeugung)"},
+		{ID: FamSunSpecLive, Label: "Anderes Fronius-Modell", Transports: sunspecFirst,
+			Note: "Weiteres Fronius-Modell, Nennleistung unbekannt"},
 	}
 }
 
@@ -434,6 +556,15 @@ func froniusSunspecFields() []Field {
 }
 
 // froniusSunspecFamilies is the single decode profile (discovery is dynamic).
+//
+// ⚠ ALIAS-EBENE, EINGEFROREN. Diese drei Funktionen beschreiben die frueher
+// eigenstaendige Marke „Fronius (Modbus / SunSpec)". Sie ist seit der
+// Katalog-Neustruktur VERSTECKT (Brand.Hidden) und bleibt inhaltlich
+// unveraendert, damit jede Bestandsanlage - allen voran die zwei Fronius Eco der
+// Anlage Herzogau - ihre gespeicherte Marken-/Modell-Kennung, ihren
+// Vorlagen-Schluessel (`builtin:fronius_sunspec:…`) und ihr Verhalten BEHAELT.
+// Hier nichts „aufraeumen": jede Aenderung hier ist eine Aenderung an einer
+// laufenden Kundenanlage.
 func froniusSunspecFamilies() []Family {
 	return []Family{
 		{ID: FamSunSpecLive, Label: "SunSpec (Live-Messwerte)", Note: "Dynamische SunSpec-Modellerkennung über Modbus TCP"},
@@ -443,6 +574,7 @@ func froniusSunspecFamilies() []Family {
 // froniusSunspecModels offers the concrete Fronius Modbus/SunSpec inverters. The
 // Eco 27.0-3-S carries RatedKw=27 so the physical-envelope guard engages; a
 // generic entry (no rating) covers other SunSpec-conformant Fronius inverters.
+// Siehe froniusSunspecFamilies: EINGEFROREN.
 func froniusSunspecModels() []Model {
 	return []Model{
 		{ID: "fronius-eco-27-3-s", Label: "Fronius Eco 27.0-3-S", Family: FamSunSpecLive, RatedKw: 27,
@@ -481,8 +613,8 @@ func goeFamilies() []Family {
 // guard stays inactive (a wallbox's load has no fixed nameplate ceiling here).
 func goeModels() []Model {
 	return []Model{
-		{ID: FamGoeHTTP, Label: "go-e Charger (HTTP API v2)", Family: FamGoeHTTP,
-			Note: "go-e Charger HOME/HOMEfix/Gemini u. a. über die lokale HTTP-API (nur lesen)"},
+		{ID: FamGoeHTTP, Label: "go-e Charger", Family: FamGoeHTTP,
+			Note: "HOME, HOMEfix, Gemini u. a. - nur lesen"},
 	}
 }
 
@@ -513,8 +645,8 @@ func shellyFamilies() []Family {
 // RatedKw (the consumer's Nennleistung lives in the cloud consumer profile).
 func shellyModels() []Model {
 	return []Model{
-		{ID: FamShellyHTTP, Label: "Shelly Relais/Schaltaktor (alle Generationen)", Family: FamShellyHTTP,
-			Note: "Shelly 1/1PM, Plus 1/1PM, Plug S u. a. - Generation und Leistungsmessung werden automatisch erkannt"},
+		{ID: FamShellyHTTP, Label: "Shelly Relais / Schaltaktor", Family: FamShellyHTTP,
+			Note: "Shelly 1/1PM, Plus 1/1PM, Plug S u. a., alle Generationen · Generation und Leistungsmessung werden automatisch erkannt"},
 	}
 }
 
@@ -565,84 +697,118 @@ func kostalModels() []Model {
 			Note: "10 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 26 A)"},
 		{ID: "plenticore-bi-5.5-13", Label: "PLENTICORE BI 5.5/13", Family: FamKostalPlenticore, RatedKw: 5.5,
 			Note: "5,5 kVA · Batterie-Wechselrichter (AC-gekoppelt, Hochvolt-Batterie, 13 A)"},
-		{ID: "kostal-plenticore-bi-generic", Label: "PLENTICORE BI (weitere/G2)", Family: FamKostalPlenticore,
-			Note: "Anderes PLENTICORE-BI-Modell (Nennleistung unbekannt)"},
+		{ID: "kostal-plenticore-bi-generic", Label: "Anderes PLENTICORE-BI-Modell", Family: FamKostalPlenticore,
+			Note: "Weiteres Modell der Baureihe, auch G2 (Nennleistung unbekannt)"},
 	}
 }
 
 // DefaultCatalog returns the built-in option tree.
+//
+// Der Baum hat seit der Katalog-Neustruktur (Konzept
+// data/vp-anlegen-rework/konzept.md, Captain-Entscheide 22.08.2026) DREI
+// Dimensionen: GERAETETYP (was fuer ein Geraet), MARKE (Hersteller, exakt in
+// seiner offiziellen Schreibweise) und MODELL (das Produkt vom Typenschild).
+// Der VERBINDUNGSWEG ist eine Eigenschaft des Modells (`Model.Transports`), nie
+// ein Bestandteil des Markennamens - deshalb gibt es genau EINEN Fronius, und
+// deshalb steht in keinem Label mehr ein Technik-Zusatz in Klammern (die Technik
+// wohnt in `Note` und in `Transport.Label`).
 func DefaultCatalog() Catalog {
-	return Catalog{
+	cat := Catalog{
 		SchemaVersion: SchemaVersion,
 		Brands: []Brand{
 			{
-				ID:            BrandDeye,
-				Label:         "Deye",
-				Communication: CommSolarmanV5,
-				CommLabel:     "Solarman-V5 (WiFi-Datenlogger, TCP 8899)",
-				Note:          "Deye-Wechselrichter werden über ihren WiFi-Datenlogger ausgelesen. Wählen Sie Ihr genaues Modell.",
-				Models:        deyeModels(),
-				Families:      deyeFamilies(),
-				Fields:        solarmanFields(),
+				ID:         BrandDeye,
+				Label:      "Deye",
+				DeviceType: DeviceTypeInverter,
+				Note:       "Deye-Wechselrichter werden über ihren WiFi-Datenlogger ausgelesen. Wählen Sie Ihr genaues Modell.",
+				Models:     deyeModels(),
+				Families:   deyeFamilies(),
+				Transports: []Transport{{
+					Communication: CommSolarmanV5,
+					Label:         "Solarman-V5 (WiFi-Datenlogger, TCP 8899)",
+					Fields:        solarmanFields(),
+				}},
 				// Tier 3: Deye's only control lever is the Time-of-Use window in EEPROM
 				// (write-on-change). The register map is bench-pending, so an actual
 				// live write is still blocked by the certification allowlist.
 				ControlTier: ControlTierToU,
 			},
 			{
-				ID:            BrandGenericModbus,
-				Label:         "Anderer Hersteller (Modbus / SunSpec)",
-				Communication: CommModbusTCP,
-				CommLabel:     "Modbus TCP (TCP 502)",
-				Note:          "Für alle Wechselrichter mit SunSpec-/Modbus-TCP-Schnittstelle.",
+				ID:    BrandGenericModbus,
+				Label: "Anderes Modell",
+				// Frueher „Anderer Hersteller (Modbus / SunSpec)" - eine PSEUDO-MARKE,
+				// die in der Herstellerliste stand, als waere sie ein Fabrikat. Sie ist
+				// jetzt der ehrliche Auffang-Eintrag ihres Typs; die Kennung bleibt,
+				// weil Bestandsanlagen sie tragen.
+				DeviceType: DeviceTypeInverter,
+				Note:       "Für jeden Wechselrichter mit SunSpec-/Modbus-TCP-Schnittstelle, dessen Hersteller hier nicht steht.",
 				Models: []Model{
-					{ID: FamSunSpec, Label: "SunSpec (Standard)", Family: FamSunSpec, Note: "SunSpec-konformes Modbus-Registermodell"},
+					// ⚠ Modell- und Familien-Bezeichnung sind bewusst VERSCHIEDEN: sie
+					// hiessen beide „SunSpec (Standard)" und standen damit zweimal
+					// gleich im Baum (der Duplikat-Befund des Konzepts). Die Kennung
+					// `sunspec` bleibt - sie ist persistiert.
+					{ID: FamSunSpec, Label: "SunSpec-kompatibler Wechselrichter", Family: FamSunSpec,
+						Note: "Für jeden Wechselrichter mit SunSpec-Registermodell"},
 				},
 				Families: []Family{
-					{ID: FamSunSpec, Label: "SunSpec (Standard)", Note: "SunSpec-konformes Modbus-Registermodell"},
+					{ID: FamSunSpec, Label: "SunSpec-Registermodell", Note: "SunSpec-konformes Modbus-Registermodell"},
 				},
-				Fields: modbusFields(),
+				Transports: []Transport{{
+					Communication: CommModbusTCP,
+					Label:         "Modbus TCP (TCP 502)",
+					Fields:        modbusFields(),
+				}},
 				// Tier 1: SunSpec Model 124 / Immediate Controls. The generic SunSpec
 				// family is the ONE certified control path (proven against edge/sim).
 				ControlTier: ControlTierSunSpec,
 			},
 			{
-				ID:            BrandFronius,
-				Label:         "Fronius",
-				Communication: CommFroniusSolarAPI,
-				CommLabel:     "Fronius Solar API (HTTP/JSON)",
-				Note:          "Fronius-Wechselrichter (GEN24, Symo, Primo, Symo Hybrid u. a.) werden über die lokale Solar API ausgelesen. Aktivieren Sie die Solar API in der Weboberfläche des Wechselrichters.",
-				Models:        froniusModels(),
-				Families:      froniusFamilies(),
-				Fields:        froniusFields(),
+				ID:         BrandFronius,
+				Label:      "Fronius",
+				DeviceType: DeviceTypeInverter,
+				Note:       "Fronius-Wechselrichter. Der Verbindungsweg ergibt sich aus dem Modell; unter „Verbindungsweg\" lässt er sich im Ausnahmefall umstellen.",
+				Models:     froniusModels(),
+				Families:   froniusFamilies(),
+				Transports: froniusTransports(),
 				// Tier 1: Fronius battery/curtailment control is SunSpec Model 123/124.
 				// Uncertified (planned-only until a bench pass); the control adapter is
 				// wired via this brand's selection (report §7.9 / froniusControl).
 				ControlTier: ControlTierSunSpec,
 			},
 			{
-				ID:            BrandFroniusSunSpec,
-				Label:         "Fronius (Modbus / SunSpec)",
-				Communication: CommFroniusSunSpec,
-				CommLabel:     "SunSpec Modbus TCP (TCP 502)",
-				Note:          "Für Fronius-Wechselrichter, deren Solar API nicht funktioniert (z. B. Eco 27.0-3-S): Auslesen über SunSpec Modbus TCP. Modbus muss in der Weboberfläche des Wechselrichters aktiviert sein.",
-				Models:        froniusSunspecModels(),
-				Families:      froniusSunspecFamilies(),
-				Fields:        froniusSunspecFields(),
+				ID:    BrandFroniusSunSpec,
+				Label: "Fronius",
+				// ⚠ VERSTECKTE ALIAS-MARKE (die frueher zweite Fronius-Zeile). Sie wird
+				// nicht mehr angeboten, bleibt aber vollstaendig aufloesbar - siehe
+				// Brand.Hidden. Inhalt EINGEFROREN.
+				Hidden:       true,
+				SupersededBy: BrandFronius,
+				DeviceType:   DeviceTypeInverter,
+				Note:         "Frühere zweite Fronius-Zeile (Auslesen über SunSpec Modbus TCP). Wird nicht mehr angeboten - bestehende Geräte behalten sie unverändert.",
+				Models:       froniusSunspecModels(),
+				Families:     froniusSunspecFamilies(),
+				Transports: []Transport{{
+					Communication: CommFroniusSunSpec,
+					Label:         "SunSpec Modbus TCP (TCP 502)",
+					Fields:        froniusSunspecFields(),
+				}},
 				// Tier 1: also a SunSpec control surface. Control via this read-brand is
 				// not wired in controlRoute today (it routes Fronius control through the
 				// Solar-API brand's selection); this read-only brand idles there.
 				ControlTier: ControlTierSunSpec,
 			},
 			{
-				ID:            BrandKostal,
-				Label:         "KOSTAL",
-				Communication: CommKostalModbus,
-				CommLabel:     "Modbus TCP (TCP 1502, Unit-ID 71)",
-				Note:          "KOSTAL PLENTICORE BI (Batterie-Wechselrichter) über die eingebaute Modbus-TCP-Schnittstelle. Modbus muss im Webserver des Wechselrichters aktiviert sein.",
-				Models:        kostalModels(),
-				Families:      kostalFamilies(),
-				Fields:        kostalFields(),
+				ID:         BrandKostal,
+				Label:      "KOSTAL",
+				DeviceType: DeviceTypeInverter,
+				Note:       "KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein.",
+				Models:     kostalModels(),
+				Families:   kostalFamilies(),
+				Transports: []Transport{{
+					Communication: CommKostalModbus,
+					Label:         "Modbus TCP (TCP 1502, Unit-ID 71)",
+					Fields:        kostalFields(),
+				}},
 				// Tier 2: the PLENTICORE's external battery management is a true
 				// forced-watts RAM setpoint (register 1034) behind the inverter's own
 				// configurable watchdog - the vendor external-EMS primitive. The Tier-2
@@ -653,34 +819,97 @@ func DefaultCatalog() Catalog {
 				ControlTier: ControlTierVendorEMS,
 			},
 			{
-				ID:            BrandGoe,
-				Label:         "go-e (Wallbox)",
-				Communication: CommGoeHTTP,
-				CommLabel:     "go-e HTTP API v2 (HTTP/JSON)",
-				Note:          "go-e-Wallbox (Ladepunkt/Verbraucher) - wird über die lokale HTTP-API ausgelesen. Als zusätzliche Energiequelle mit der Rolle \"Verbraucher\" hinzufügen. Nur lesen.",
-				Models:        goeModels(),
-				Families:      goeFamilies(),
-				Fields:        goeFields(),
+				ID:         BrandGoe,
+				Label:      "go-e",
+				DeviceType: DeviceTypeWallbox,
+				Note:       "go-e-Wallbox - wird über ihre lokale HTTP-API ausgelesen (nur lesen). Die API muss in der go-e-App aktiviert sein.",
+				Models:     goeModels(),
+				Families:   goeFamilies(),
+				Transports: []Transport{{
+					Communication: CommGoeHTTP,
+					Label:         "go-e HTTP API v2 (HTTP/JSON)",
+					Fields:        goeFields(),
+				}},
 				// Tier 0 for the inverter control-path: a go-e wallbox is a CONSUMER,
 				// controlled by the certified Go core executor (internal/goe), not the
 				// Node-RED battery controlRoute.
 				ControlTier: ControlTierReadOnly,
 			},
 			{
-				ID:            BrandShelly,
-				Label:         "Shelly (Relais/Schaltaktor)",
-				Communication: CommShellyHTTP,
-				CommLabel:     "Shelly HTTP API (lokal)",
-				Note:          "Shelly-Relais vor einem Verbraucher (z. B. Heizstab) - Generation und Leistungsmessung werden automatisch erkannt. Als zusätzliche Energiequelle mit der Rolle \"Verbraucher\" hinzufügen.",
-				Models:        shellyModels(),
-				Families:      shellyFamilies(),
-				Fields:        shellyFields(),
+				ID:         BrandShelly,
+				Label:      "Shelly",
+				DeviceType: DeviceTypeSwitch,
+				Note:       "Shelly-Relais vor einem Verbraucher (z. B. Heizstab). Generation und Leistungsmessung werden automatisch erkannt.",
+				Models:     shellyModels(),
+				Families:   shellyFamilies(),
+				Transports: []Transport{{
+					Communication: CommShellyHTTP,
+					Label:         "Shelly HTTP API (lokal)",
+					Fields:        shellyFields(),
+				}},
 				// Tier 0 for the inverter control-path: a Shelly switches a
 				// CONSUMER, driven by the core executor (internal/shelly), not
 				// the Node-RED battery controlRoute.
 				ControlTier: ControlTierReadOnly,
 			},
 		},
+	}
+	return resolveCatalog(cat)
+}
+
+// resolveCatalog fuellt die ABGELEITETEN Felder des Baums, damit jeder Abnehmer
+// (die `:8484`-Seite, der Vorlagen-Export, die Cloud) DENSELBEN aufgeloesten
+// Baum sieht statt die Ableitung je Seite nachzubauen:
+//
+//   - Brand.Communication/CommLabel/Fields spiegeln den VORGABE-Transport
+//     (Transports[0]) - die Rueckwaerts-kompatible Sicht einer Marke mit genau
+//     einem Weg.
+//   - Model.Fields wird NUR bei mehreren Wegen gesetzt (sonst waere es eine
+//     Kopie der Marken-Felder je Modell und blaehte den Baum um ein Vielfaches
+//     auf): der Vorgabeweg + das Auswahlfeld „Verbindungsweg" davor.
+func resolveCatalog(cat Catalog) Catalog {
+	for i := range cat.Brands {
+		b := &cat.Brands[i]
+		if len(b.Transports) == 0 {
+			continue
+		}
+		def := b.Transports[0]
+		b.Communication, b.CommLabel, b.Fields = def.Communication, def.Label, def.Fields
+		for j := range b.Models {
+			m := &b.Models[j]
+			if len(m.Transports) < 2 {
+				continue
+			}
+			t, ok := b.transport(m.Transports[0])
+			if !ok {
+				continue
+			}
+			m.Fields = append([]Field{transportField(*b, *m)}, t.Fields...)
+		}
+	}
+	return cat
+}
+
+// transportField baut das Experten-Auswahlfeld „Verbindungsweg" eines Modells
+// mit mehreren Wegen. Es traegt die Beschriftungen der Marke, ist also weiterhin
+// vollstaendig datengetrieben - die Oberflaeche kennt keine Marke.
+func transportField(b Brand, m Model) Field {
+	opts := make([]Opt, 0, len(m.Transports))
+	for k, comm := range m.Transports {
+		t, ok := b.transport(comm)
+		if !ok {
+			continue
+		}
+		label := t.Label
+		if k == 0 {
+			label += " – üblich für dieses Modell"
+		}
+		opts = append(opts, Opt{Value: comm, Label: label})
+	}
+	return Field{
+		Key: "transport", Label: "Verbindungsweg", Type: "select", Default: m.Transports[0],
+		Help:    "Wird automatisch aus dem Modell abgeleitet. Nur ändern, wenn der übliche Weg auf Ihrem Gerät nicht funktioniert - zum Beispiel bei abgeschalteter Solar API.",
+		Options: opts,
 	}
 }
 
@@ -709,6 +938,91 @@ func (b Brand) model(id string) (Model, bool) {
 		}
 	}
 	return Model{}, false
+}
+
+// transport findet einen Verbindungsweg der Marke.
+func (b Brand) transport(comm string) (Transport, bool) {
+	for _, t := range b.Transports {
+		if t.Communication == comm {
+			return t, true
+		}
+	}
+	return Transport{}, false
+}
+
+// TransportsFor nennt die Verbindungswege EINES Modells, erster = Vorgabe. Ein
+// Modell ohne eigene Angabe erbt die der Marke (der Normalfall: genau einer).
+func (b Brand) TransportsFor(m Model) []string {
+	if len(m.Transports) > 0 {
+		return m.Transports
+	}
+	out := make([]string, 0, len(b.Transports))
+	for _, t := range b.Transports {
+		out = append(out, t.Communication)
+	}
+	return out
+}
+
+// DeviceTypeOf ist der Geraetetyp eines Modells: seine eigene Angabe, sonst die
+// der Marke.
+func (b Brand) DeviceTypeOf(m Model) string {
+	if t := strings.TrimSpace(m.DeviceType); t != "" {
+		return t
+	}
+	return b.DeviceType
+}
+
+// resolveTransport waehlt den Verbindungsweg eines Modells: den ausdruecklich
+// gewuenschten (nur aus der Liste DIESES Modells - ein Weg, den das Modell nicht
+// nennt, ist keine Auswahl, sondern ein Fehler) oder den Vorgabeweg.
+func (b Brand) resolveTransport(m Model, want string) (Transport, error) {
+	allowed := b.TransportsFor(m)
+	if len(allowed) == 0 {
+		return Transport{}, invalid("Für %s ist kein Verbindungsweg hinterlegt.", b.Label)
+	}
+	pick := allowed[0]
+	if want = strings.TrimSpace(want); want != "" {
+		found := false
+		for _, c := range allowed {
+			if c == want {
+				found, pick = true, c
+				break
+			}
+		}
+		if !found {
+			return Transport{}, invalid("Dieser Verbindungsweg steht für %s nicht zur Verfügung.", m.Label)
+		}
+	}
+	t, ok := b.transport(pick)
+	if !ok {
+		return Transport{}, invalid("Für %s ist kein Verbindungsweg hinterlegt.", b.Label)
+	}
+	return t, nil
+}
+
+// FieldsFor sind die Formularfelder EINES Modells auf EINEM Weg - genau das, was
+// die Oberflaeche rendert, wenn der Kunde den Verbindungsweg umstellt.
+func (b Brand) FieldsFor(m Model, comm string) []Field {
+	t, err := b.resolveTransport(m, comm)
+	if err != nil {
+		return b.Fields
+	}
+	if len(b.TransportsFor(m)) < 2 {
+		return t.Fields
+	}
+	return append([]Field{transportField(b, m)}, t.Fields...)
+}
+
+// VisibleBrands sind die Marken, die eine Oberflaeche anbieten darf - die
+// versteckten Alias-Marken bleiben aufloesbar, aber unsichtbar.
+func (c Catalog) VisibleBrands() []Brand {
+	out := make([]Brand, 0, len(c.Brands))
+	for _, b := range c.Brands {
+		if !b.Hidden {
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 // RatedKw returns the nameplate AC power (kW) of the given brand+model, ok=false
@@ -889,6 +1203,18 @@ type Connection struct {
 	// resolveCurtailWriteFc).
 	CurtailWriteFc int `json:"curtail_write_fc,omitempty"`
 
+	// Transport ist der EXPERTEN-AUSWEG: der Verbindungsweg, den der Kunde
+	// ABWEICHEND vom Vorgabeweg seines Modells waehlt (Captain-Entscheid 3 des
+	// Anlegen-Reworks: „Transport automatisch je Modell + Experten-Override").
+	//
+	// ⚠ Er ist ein reines ANFRAGE-Feld: `Normalize` loest ihn zu
+	// `Selection.Communication` auf und LOESCHT ihn danach (die `Channel`-Regel an
+	// derselben Stelle). Er wird nie persistiert, nie veroeffentlicht und steht in
+	// keinem `BusPayload` - der Verbindungsweg IST `communication`, und zwei
+	// Wahrheiten ueber dieselbe Angabe waeren eine zu viel. Beim Wiederanzeigen
+	// leitet die Oberflaeche ihn aus `Selection.Communication` ab.
+	Transport string `json:"transport,omitempty"`
+
 	// kostal_modbus (reuses IP/Port/UnitID/InvertGridSign/InvertBattSign).
 	// ByteOrder is the float word order of the PLENTICORE's two-word registers
 	// (device register 5): "auto" (default - read live from the device each
@@ -944,17 +1270,33 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		return Selection{}, invalid("Unbekannte Marke.")
 	}
 
-	// Resolve the concrete model -> its register-map family + label. Model is the
-	// primary selector; a bare Family is accepted for backward compatibility.
+	// Resolve the concrete model -> its TRANSPORT + register-map family + label.
+	// Model is the primary selector; a bare Family is accepted for backward
+	// compatibility.
+	//
+	// ⚠ Die Familie folgt bei mehreren Wegen dem WEG, nicht dem Produkt: ein
+	// Modell ohne eigenes `Family` erbt das Decode-Profil seines Transports
+	// (Fronius/generisch), ein Modell MIT `Family` behaelt seine Registerkarte
+	// (Deye/KOSTAL - dort ist sie eine Produkt-Eigenschaft).
 	var modelID, registerFamily, typeLabel string
 	var ratedKw float64
+	transport := Transport{}
+	wantTransport := strings.TrimSpace(req.Connection.Transport)
 	if m := strings.TrimSpace(req.Model); m != "" {
 		mod, ok := b.model(m)
 		if !ok {
 			return Selection{}, invalid("Bitte wählen Sie ein gültiges Modell für %s.", b.Label)
 		}
+		t, err := b.resolveTransport(mod, wantTransport)
+		if err != nil {
+			return Selection{}, err
+		}
+		transport = t
 		modelID = mod.ID
 		registerFamily = mod.Family
+		if registerFamily == "" {
+			registerFamily = t.Family
+		}
 		typeLabel = mod.Label
 		ratedKw = mod.RatedKw
 	} else if fID := strings.TrimSpace(req.Family); fID != "" {
@@ -964,8 +1306,20 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		}
 		registerFamily = fam.ID
 		typeLabel = fam.Label
+		// Eine reine Familien-Anfrage (aelterer Client / Integration) waehlt den
+		// Weg, dessen Decode-Profil sie nennt - sonst den Vorgabeweg der Marke.
+		transport = b.Transports[0]
+		for _, t := range b.Transports {
+			if t.Family == fam.ID {
+				transport = t
+				break
+			}
+		}
 	} else {
 		return Selection{}, invalid("Bitte wählen Sie ein Modell für %s.", b.Label)
+	}
+	if registerFamily == "" {
+		return Selection{}, invalid("Für %s ist kein Registerprofil hinterlegt.", b.Label)
 	}
 
 	conn := req.Connection
@@ -985,15 +1339,19 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		Label:         b.Label + " · " + typeLabel,
 		Model:         modelID,
 		Family:        registerFamily,
-		Communication: b.Communication,
+		Communication: transport.Communication,
 		UpdatedAt:     now.UTC(),
 		ControlTier:   b.ControlTier,
 		RatedKw:       ratedKw,
 	}
 
+	// Der gewaehlte Weg IST `sel.Communication` - das Anfrage-Feld hat seine
+	// Aufgabe erfuellt und wird hier geloescht (siehe Connection.Transport).
+	conn.Transport = ""
+
 	// The Shelly switch channel belongs to shelly_http only (cleared here
 	// once instead of per-case; the shelly case validates it below).
-	if b.Communication != CommShellyHTTP {
+	if transport.Communication != CommShellyHTTP {
 		conn.Channel = 0
 	}
 
@@ -1001,11 +1359,11 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	// only deye-decode drops a WHOLE reading over an implausible SoC, every other
 	// decoder simply omits the channel. Cleared here once (the Channel pattern
 	// above) so a transport added later cannot silently inherit it.
-	if b.Communication != CommSolarmanV5 {
+	if transport.Communication != CommSolarmanV5 {
 		conn.AllowMissingSoc = false
 	}
 
-	switch b.Communication {
+	switch transport.Communication {
 	case CommSolarmanV5:
 		conn.Serial = strings.TrimSpace(conn.Serial)
 		if conn.Serial == "" {

@@ -15,11 +15,46 @@
   var ROLE_ERZEUGER = "pv-generation";
   var ROLE_NETZ = "grid-meter";
   var ROLE_CONSUMER = "consumer";
-  // Communications of the consumer-only drivers (go-e wallbox, Shelly relay).
-  // Used to filter the brand list per role: a consumer picks a consumer brand,
-  // an Erzeuger/Netz picks a generation/meter brand - never mixed.
+  // Die GERÄTETYPEN, die als Verbraucher zählen (Wallbox, schaltbarer
+  // Verbraucher). Sie filtern die Markenliste je Rolle: ein Verbraucher wählt
+  // einen Verbraucher-Typ, ein Erzeuger/Netz alles andere - nie gemischt.
+  //
+  // ⚠ Seit der Katalog-Neustruktur ist das der GERÄTETYP der Marke, nicht mehr
+  // ihre Anbindung: der Verbindungsweg ist eine Eigenschaft des MODELLS (ein
+  // Fronius spricht je nach Modell Solar API ODER SunSpec), an der Marke
+  // gemessen fiele ein Fronius Eco hier heraus.
+  var CONSUMER_TYPES = ["wallbox", "switch"];
+  // Rückfall für einen älteren Katalog ohne Typ-Dimension.
   var CONSUMER_COMMS = ["goe_http_api", "shelly_http"];
   function isConsumerComm(c) { return CONSUMER_COMMS.indexOf(c) !== -1; }
+  function isConsumerBrandObj(b) {
+    return !!(b && (b.device_type ? CONSUMER_TYPES.indexOf(b.device_type) !== -1
+      : isConsumerComm(b.communication)));
+  }
+
+  /* ---------------- Verbindungsweg je Modell ----------------
+     Die REGELN wohnen rein in katalogwege.js (`window.VPKatalogWege`) - dieselbe
+     Schicht, die auch das Wechselrichter-Formular benutzt. */
+
+  var W = function () { return window.VPKatalogWege; };
+
+  // Der Stand des Drawer-Formulars (siehe inverter.js).
+  var aktuellerWeg = null;
+  var aktuellesModell = null;
+
+  function modelById(brand, id) {
+    var found = null;
+    ((brand && brand.models) || []).forEach(function (m) { if (m.id === id) found = m; });
+    return found;
+  }
+
+  function weg(brand, model) {
+    var host = $("sf_transport");
+    return W().gewaehlterWeg(brand, model, {
+      modell: aktuellesModell,
+      feldWert: host && host.dataset ? host.dataset.value : null
+    });
+  }
 
   function $(id) { return document.getElementById(id); }
   var el = window.VP.el;
@@ -262,8 +297,9 @@
   // picks a generation/meter driver (everything else) - so an inverter brand is
   // never offered for a wallbox, nor go-e for a PV source.
   function brandsForRole(role) {
-    return (catalog.brands || []).filter(function (b) {
-      var consumerBrand = isConsumerComm(b.communication);
+    // Eine ALIAS-Marke bleibt auflösbar, wird aber nicht mehr angeboten.
+    return W().sichtbar(catalog.brands).filter(function (b) {
+      var consumerBrand = isConsumerBrandObj(b);
       return role === ROLE_CONSUMER ? consumerBrand : !consumerBrand;
     });
   }
@@ -308,14 +344,16 @@
       if (!neben && typeof m.rated_kw === "number" && m.rated_kw > 0) {
         neben = (Math.round(m.rated_kw * 10) / 10).toLocaleString("de-DE") + " kW";
       }
+      // Die Familie folgt bei mehreren Wegen dem Verbindungsweg des Modells.
+      var fam = W().familie(brand, m);
       return {
         value: m.id,
         label: m.label,
         sub: neben,
-        group: mehrfachFamilie && famLabel[m.family] ? m.family : null,
+        group: mehrfachFamilie && famLabel[fam] ? fam : null,
         // Durchsucht, aber nicht angezeigt: die Kennung und die Familie - so
         // findet „hybrid 3" sein Gerät auch bei einer Marke ohne Gruppen.
-        keywords: [m.id, m.family, famLabel[m.family]].filter(Boolean).join(" ")
+        keywords: [m.id, fam, famLabel[fam]].filter(Boolean).join(" ")
       };
     });
   }
@@ -328,7 +366,6 @@
   function onBrandChange() {
     var brand = brandById(brandValue());
     if (!brand) return;
-    $("srcComm").textContent = brand.comm_label || commLabel(brand.communication);
     var optionen = modelOptionen(brand), gruppen = modelGruppen(brand);
     if (modelPicker) modelPicker.setOptionen(optionen, gruppen);
     else modelPicker = window.VPPicker.montiere($("srcModelPicker"), {
@@ -338,15 +375,45 @@
       labelledBy: "srcModelLabel",
       ariaLabel: "Modell",
       platzhalter: "Modell wählen …",
-      suchPlatzhalter: "Modell suchen, z. B. SUN-30K"
+      suchPlatzhalter: "Modell suchen, z. B. SUN-30K",
+      // Der Verbindungsweg - und damit die Feldmenge - hängt am MODELL.
+      //
+      // ⚠ Die Marke wird hier FRISCH gelesen, nie aus dem Abschluss geerbt: der
+      // Picker wird EINMAL montiert und danach nur noch mit `setOptionen`
+      // gefüttert, ein hier eingefangenes `brand` bliebe also für immer die
+      // Marke des ersten Aufrufs - und ein Modellwechsel zeichnete danach die
+      // Felder der FALSCHEN Marke (im Browser gefunden).
+      onChange: function () {
+        var b = brandById(brandValue());
+        if (b) renderFields(b);
+      }
     });
     renderFields(brand);
   }
 
-  function renderFields(brand) {
+  // onTransportChange zeichnet das Formular des NEU gewählten Verbindungswegs,
+  // mit den schon EINGETIPPTEN Werten (siehe inverter.js).
+  function onTransportChange() {
+    var brand = brandById(brandValue());
+    if (!brand) return;
+    var model = modelById(brand, modelPicker ? modelPicker.wert() : null);
+    var alt = W().vorgaben(W().felder(brand, model, aktuellerWeg));
+    var eingetragen = W().ohneVorgaben(collectConnection(), alt);
+    renderFields(brand, eingetragen.transport, eingetragen);
+  }
+
+  function renderFields(brand, comm, keep) {
     var wrap = $("srcFields");
+    var model = modelById(brand, modelPicker ? modelPicker.wert() : null);
+    var gewaehlt = comm || weg(brand, model);
+    aktuellerWeg = gewaehlt;
+    aktuellesModell = model ? model.id : null;
     wrap.innerHTML = "";
-    (brand.fields || []).forEach(function (f) {
+    var aktiv = W().weg(brand, gewaehlt);
+    $("srcComm").textContent = aktiv ? aktiv.label
+      : (brand.comm_label || commLabel(brand.communication));
+    var vor = Object.assign({}, keep || {}, { transport: gewaehlt });
+    W().felder(brand, model, gewaehlt).forEach(function (f) {
       var row = el("div", { class: "field" });
       var inputId = "sf_" + f.key;
       if (f.type === "checkbox") {
@@ -365,6 +432,7 @@
         var lblEl = el("label", lblAttrs, f.label + (f.required ? " *" : ""));
         row.appendChild(lblEl);
         var input;
+        var cur = (vor[f.key] != null && vor[f.key] !== "") ? vor[f.key] : f.default;
         if (f.type === "select") {
           // Auch hier der Haus-Picker statt eines nativen Feldes - ein
           // einzelnes Browser-Element zwischen lauter Pickern verhielte sich am
@@ -375,16 +443,18 @@
             optionen: (f.options || []).map(function (o) {
               return { value: String(o.value), label: o.label };
             }),
-            wert: f.default != null ? String(f.default)
+            wert: cur != null ? String(cur)
               : ((f.options || []).length ? String(f.options[0].value) : null),
             labelledBy: inputId + "-lbl",
             labelEl: lblEl,
-            ariaLabel: f.label
+            ariaLabel: f.label,
+            // Nur der Verbindungsweg zeichnet das Formular neu.
+            onChange: f.key === W().UEBERSTEUERUNG ? onTransportChange : null
           });
         } else {
           input = el("input", { type: f.type === "number" ? "number" : "text", id: inputId });
           if (f.required) input.required = true;
-          if (f.default != null) input.value = String(f.default);
+          if (cur != null) input.value = String(cur);
         }
         input.dataset.key = f.key;
         input.dataset.ftype = f.type;
@@ -426,7 +496,9 @@
 
   function isConsumerRole(role) { return role === ROLE_CONSUMER; }
 
-  function collect() {
+  // collectConnection liest NUR die Verbindungsfelder - geteilt von `collect()`
+  // und dem Neuzeichnen nach einem Wechsel des Verbindungswegs.
+  function collectConnection() {
     var conn = {};
     $("srcFields").querySelectorAll("[data-key]").forEach(function (input) {
       var key = input.dataset.key, ftype = input.dataset.ftype;
@@ -443,6 +515,11 @@
         conn[key] = input.value.trim();
       }
     });
+    return conn;
+  }
+
+  function collect() {
+    var conn = collectConnection();
     var req = {
       role: currentRole,
       brand: brandValue(),
@@ -494,11 +571,20 @@
     document.body.classList.remove("drawer-open");
   }
 
-  // isSunspecBrand: only fronius_sunspec sources have a unit-id fan-out worth
-  // probing (a Datamanager exposes one Modbus unit id per inverter).
-  function isSunspecBrand(brandId) {
-    var b = brandById(brandId);
-    return !!(b && b.communication === "fronius_sunspec");
+  // isSunspecSource: nur eine über SunSpec Modbus gelesene Fronius-Quelle hat
+  // eine Unit-Id-Fächerung, die sich zu suchen lohnt (ein Datamanager stellt je
+  // Wechselrichter eine Modbus-Unit-Id bereit).
+  //
+  // ⚠ Sie fragt den WEG DIESER QUELLE, nicht die Marke: seit der
+  // Katalog-Neustruktur ist Fronius EINE Marke, deren Vorgabeweg die Solar API
+  // ist - an der Marke gemessen verlöre ein Fronius Eco seine Geschwister-Suche.
+  function isSunspecSource(payload) {
+    var b = brandById(payload && payload.brand);
+    if (!b) return false;
+    if (payload.connection && payload.connection.transport) {
+      return payload.connection.transport === "fronius_sunspec";
+    }
+    return W().wege(b, modelById(b, payload.model))[0] === "fronius_sunspec";
   }
 
   // isConsumerBrand: the consumer drivers (go-e wallbox, Shelly relay) get the
@@ -507,8 +593,7 @@
   // value-identical amp re-write; shelly: an off-write only while the relay
   // is already off).
   function isConsumerBrand(brandId) {
-    var b = brandById(brandId);
-    return !!(b && isConsumerComm(b.communication));
+    return isConsumerBrandObj(brandById(brandId));
   }
 
   /* ---- multi-inverter auto-detection (Fronius Datamanager) ----
@@ -530,7 +615,7 @@
   }
 
   function offerFurtherUnits(req) {
-    if (req.role !== ROLE_ERZEUGER || !isSunspecBrand(req.brand)) return;
+    if (req.role !== ROLE_ERZEUGER || !isSunspecSource(req)) return;
     var ip = req.connection && req.connection.ip;
     if (!ip) return;
     window.VP.probeUnits(req).then(function (found) {
@@ -668,7 +753,7 @@
         // Multi-inverter hint: a successful SunSpec test also scans the address
         // for further inverter unit ids ("An dieser Adresse wurden N
         // Wechselrichter gefunden ...").
-        probePayload: isSunspecBrand(payload.brand) ? payload : null,
+        probePayload: isSunspecSource(payload) ? payload : null,
       });
     });
     load();
