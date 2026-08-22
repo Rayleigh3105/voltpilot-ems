@@ -332,18 +332,18 @@ func TestKacoReadsOverTheSharedSunSpecPath(t *testing.T) {
 	if b.DeviceType != DeviceTypeInverter {
 		t.Errorf("KACO device type = %q, want %q", b.DeviceType, DeviceTypeInverter)
 	}
-	if b.Communication != CommSunSpecTCP {
-		t.Errorf("KACO default communication = %q, want %q", b.Communication, CommSunSpecTCP)
-	}
-	if len(b.Models) < 40 {
+	if len(b.Models) < 60 {
 		t.Errorf("KACO offers only %d models - the palette should be Deye-dense", len(b.Models))
 	}
+	own := 0
 	for _, m := range b.Models {
+		ways := b.TransportsFor(m)
+		if len(ways) != 1 || ways[0] != CommSunSpecTCP {
+			continue // AISWEI-Plattform, eigener Test
+		}
+		own++
 		if m.Family != FamSunSpecLive {
 			t.Errorf("model %q family = %q, want %q", m.ID, m.Family, FamSunSpecLive)
-		}
-		if got := b.TransportsFor(m); len(got) != 1 || got[0] != CommSunSpecTCP {
-			t.Errorf("model %q transports = %v, want exactly [%s]", m.ID, got, CommSunSpecTCP)
 		}
 		sel, err := cat.Normalize(SelectionRequest{
 			Brand: BrandKaco, Model: m.ID,
@@ -359,6 +359,92 @@ func TestKacoReadsOverTheSharedSunSpecPath(t *testing.T) {
 			t.Errorf("model %q defaults: port=%d unit=%d model_type=%q",
 				m.ID, sel.Connection.Port, sel.Connection.UnitID, sel.Connection.ModelType)
 		}
+	}
+	if own < 40 {
+		t.Errorf("nur %d Modelle der KACO-eigenen Linie", own)
+	}
+}
+
+// TestKacoAisweiDefaultsToTheAppInterface pins the load-bearing decision of the
+// AISWEI platform: the DEFAULT way is the communication unit's HTTP API, because
+// it runs ALONGSIDE the KACO app and the SmartCloud. The stick's SunSpec mode is
+// exclusive to the cloud, so it is the EXPERT way out - and every model says so
+// in its own note, so nobody is surprised after switching.
+func TestKacoAisweiDefaultsToTheAppInterface(t *testing.T) {
+	cat := DefaultCatalog()
+	b, _ := cat.brand(BrandKaco)
+	aiswei := 0
+	for _, m := range b.Models {
+		ways := b.TransportsFor(m)
+		if len(ways) < 2 {
+			continue
+		}
+		aiswei++
+		if ways[0] != CommKacoHTTP {
+			t.Errorf("model %q default way = %q, want %q", m.ID, ways[0], CommKacoHTTP)
+		}
+		if ways[len(ways)-1] != CommSunSpecTCP {
+			t.Errorf("model %q: the SunSpec way out must stay last, got %v", m.ID, ways)
+		}
+		if !strings.Contains(m.Note, "KACO-App/Cloud ab") {
+			t.Errorf("model %q: the note must say what the SunSpec way out costs", m.ID)
+		}
+		sel, err := cat.Normalize(SelectionRequest{
+			Brand: BrandKaco, Model: m.ID, Connection: Connection{IP: "192.168.0.30"},
+		}, time.Now())
+		if err != nil {
+			t.Fatalf("model %q does not normalize: %v", m.ID, err)
+		}
+		if sel.Communication != CommKacoHTTP || sel.Connection.Port != defaultKacoHTTPPort {
+			t.Errorf("model %q -> comm %q port %d", m.ID, sel.Communication, sel.Connection.Port)
+		}
+	}
+	if aiswei < 20 {
+		t.Errorf("nur %d Modelle der AISWEI-Plattform", aiswei)
+	}
+}
+
+// TestTheNh3CarriesADifferentProfileOnTheSameHttpWay is the whole reason
+// Model.FamilyPerTransport exists: the hybrid NH3 is read over the SAME HTTP
+// interface as its string siblings, but its AC power is PV + discharge - charge,
+// so it needs the DC-sourced profile. And the expert ways must STILL switch the
+// profile - the trap a plain Model.Family would have walked into.
+func TestTheNh3CarriesADifferentProfileOnTheSameHttpWay(t *testing.T) {
+	cat := DefaultCatalog()
+	for _, tc := range []struct {
+		model, want, wantFamily string
+	}{
+		{"bp-hybrid-10.0-nh3-m3", CommKacoHTTP, FamKacoHTTPHybrid},
+		{"bp-hybrid-10.0-nh3-m3", CommKacoModbus, FamKacoNH3},
+		{"bp-hybrid-10.0-nh3-m3", CommSunSpecTCP, FamSunSpecLive},
+		// Ein String-Geraet derselben Plattform bleibt auf dem NICHT-hybriden Profil.
+		{"bp-10.0-nx3-m2", CommKacoHTTP, FamKacoHTTP},
+		{"bp-10.0-nx3-m2", CommSunSpecTCP, FamSunSpecLive},
+	} {
+		sel, err := cat.Normalize(SelectionRequest{
+			Brand: BrandKaco, Model: tc.model,
+			Connection: Connection{IP: "192.168.0.30", Transport: tc.want},
+		}, time.Now())
+		if err != nil {
+			t.Fatalf("%s over %s: %v", tc.model, tc.want, err)
+		}
+		if sel.Communication != tc.want || sel.Family != tc.wantFamily {
+			t.Errorf("%s over %s -> comm %q family %q, want family %q",
+				tc.model, tc.want, sel.Communication, sel.Family, tc.wantFamily)
+		}
+	}
+	// Und die Batterie-Frage wird je Profil ehrlich beantwortet.
+	if !FamilyHasBattery(FamKacoHTTPHybrid) || !FamilyHasBattery(FamKacoNH3) {
+		t.Error("die NH3-Profile fuehren einen Speicher")
+	}
+	if FamilyHasBattery(FamKacoHTTP) {
+		t.Error("ein NX-String-Geraet hat keinen Speicher")
+	}
+	// Ein String-Geraet ist NICHT „beweisbar batterielos" auf dem HTTP-Weg:
+	// die API traegt keinen Beleg dafuer, und eine fehlende Batterie-Antwort
+	// darf nie als physische 0 gelesen werden.
+	if FamilyBatteryless(FamKacoHTTP) || FamilyBatteryless(FamKacoHTTPHybrid) {
+		t.Error("die HTTP-Profile duerfen nicht als beweisbar batterielos gelten")
 	}
 }
 
@@ -402,8 +488,10 @@ func TestKacoExcludesTheDevicesWithoutALocalInterface(t *testing.T) {
 	b, _ := cat.brand(BrandKaco)
 	for _, m := range b.Models {
 		l := strings.ToLower(m.Label)
-		if strings.Contains(l, "hybrid") {
-			t.Errorf("model %q: the hybrid 10.0 TL3 has no local interface (EDCOM) and the NH3 line is not part of this increment", m.Label)
+		// Der hybrid 10.0 TL3 - der EINZIGE „hybrid ... TL3" - spricht EDCOM.
+		// Der hybride NH3 ist eine andere Plattform und wird gelistet.
+		if strings.Contains(l, "hybrid") && strings.Contains(l, "tl3") {
+			t.Errorf("model %q: der hybrid 10.0 TL3 hat keine lokale Schnittstelle (EDCOM mit Partner-Identkey)", m.Label)
 		}
 		for _, banned := range []string{"xi", "supreme", "tr3"} {
 			if strings.Contains(l, " "+banned) || strings.HasSuffix(l, banned) {

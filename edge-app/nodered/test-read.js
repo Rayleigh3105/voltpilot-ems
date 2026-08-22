@@ -77,6 +77,8 @@ function makeReadOnce(deps) {
   const discovery = deps.discovery;
   const goe = deps.goe;
   const kostal = deps.kostal;
+  const kaco = deps.kaco;
+  const aiswei = deps.aiswei;
   const net = deps.net;
   const http = deps.http;
   const https = deps.https;
@@ -134,6 +136,24 @@ function makeReadOnce(deps) {
         adapter: 'kostal_modbus', ip, port: num(conn.port, 1502), unitId: num(conn.unit_id, 71),
         invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
         byte_order: conn.byte_order === 'little' || conn.byte_order === 'big' ? conn.byte_order : 'auto',
+      };
+    }
+    if (sel.communication === 'kaco_http') {
+      const port = num(conn.port, 8484);
+      const insecure = !!conn.insecure_tls;
+      const family = sel.family === 'kaco_http_hybrid' ? 'kaco_http_hybrid' : 'kaco_http';
+      return {
+        adapter: 'kaco_http', ip, port, family,
+        scheme: insecure ? 'https' : 'http', insecure_tls: insecure,
+        serial: typeof conn.serial === 'string' ? conn.serial.trim() : '',
+        has_battery: family === 'kaco_http_hybrid',
+        invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
+      };
+    }
+    if (sel.communication === 'kaco_modbus') {
+      return {
+        adapter: 'kaco_modbus', ip, port: num(conn.port, 502), unitId: num(conn.unit_id, 1),
+        invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
       };
     }
     return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
@@ -365,6 +385,54 @@ function makeReadOnce(deps) {
     });
   }
 
+  // readKaco runs ONE cycle over the KACO/AISWEI HTTP interface (embedded
+  // kaco/kaco-http.js): inventory (when no serial is given - it is NEVER
+  // guessed), then inverter / meter / battery. Classifies: connect/transport
+  // failure or nothing decodable -> invalid_response; the module itself turns
+  // every transport failure into null, so a dead stick reads as invalid_response
+  // rather than throwing.
+  //
+  // ⚠ Der Verbindungstest gibt die GEFUNDENE Seriennummer zurueck: das Formular
+  // fuellt sie damit selbst, statt sie abtippen zu lassen.
+  function readKaco(plan, role) {
+    const read = kaco.makeKacoHttpReader({ http, https, timeoutMs: HTTP_TIMEOUT_MS });
+    return read({
+      ip: plan.ip, port: plan.port, scheme: plan.scheme, insecureTls: plan.insecure_tls,
+      serial: plan.serial, family: plan.family, hasBattery: plan.has_battery,
+      invertGridSign: plan.invert_grid_sign, invertBattSign: plan.invert_batt_sign,
+    }).then((out) => {
+      if (!out || !out.reading) return { ok: false, error_code: ERR_INVALID_RESPONSE };
+      const res = { ok: true, reading: toReading(out.reading, role) };
+      if (out.serial) res.serial = out.serial;
+      return res;
+    }).catch(() => ({ ok: false, error_code: ERR_INVALID_RESPONSE }));
+  }
+
+  // readAiswei probes the socket first (so a refused connect classifies as
+  // unreachable, like every other Modbus path) and then runs the NH3 register
+  // card (embedded kaco/aiswei-decode.js).
+  function readAiswei(plan, role) {
+    return new Promise((resolve) => {
+      const probe = new net.Socket();
+      probe.setNoDelay(true);
+      let settled = false;
+      const done = (res) => { if (settled) return; settled = true; try { probe.destroy(); } catch (e) { /* ignore */ } resolve(res); };
+      const t = setTimeout(() => done({ ok: false, error_code: ERR_UNREACHABLE }), CONNECT_TIMEOUT_MS);
+      probe.once('error', () => { clearTimeout(t); done({ ok: false, error_code: ERR_UNREACHABLE }); });
+      probe.connect(plan.port, plan.ip, () => {
+        clearTimeout(t);
+        try { probe.destroy(); } catch (e) { /* ignore */ }
+        const read = aiswei.makeAisweiReader({ net, connectTimeoutMs: CONNECT_TIMEOUT_MS, readTimeoutMs: READ_TIMEOUT_MS });
+        read({ ip: plan.ip, port: plan.port, unitId: plan.unitId, invertGridSign: plan.invert_grid_sign, invertBattSign: plan.invert_batt_sign })
+          .then((out) => {
+            if (out && out.reading) return done({ ok: true, reading: toReading(out.reading, role) });
+            done({ ok: false, error_code: ERR_INVALID_RESPONSE });
+          })
+          .catch(() => done({ ok: false, error_code: ERR_INVALID_RESPONSE }));
+      });
+    });
+  }
+
   return function readOnce(selection, role) {
     const plan = planFor(selection);
     if (plan.adapter === 'idle') return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: plan.reason });
@@ -374,6 +442,8 @@ function makeReadOnce(deps) {
     if (plan.adapter === 'sunspec_live') return readSunSpec(plan, role);
     if (plan.adapter === 'goe_http_api') return readGoe(plan, role);
     if (plan.adapter === 'kostal_modbus') return readKostal(plan, role);
+    if (plan.adapter === 'kaco_http') return readKaco(plan, role);
+    if (plan.adapter === 'kaco_modbus') return readAiswei(plan, role);
     return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST });
   };
 }

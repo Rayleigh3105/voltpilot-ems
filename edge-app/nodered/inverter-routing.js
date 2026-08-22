@@ -38,6 +38,8 @@ const modbusTcp = require('./modbus-tcp');
 const froniusSolarApi = require('./fronius/solar-api');
 const goeApi = require('./goe/goe-api');
 const kostalDecode = require('./kostal/kostal-decode');
+const kacoHttp = require('./kaco/kaco-http');
+const aisweiDecode = require('./kaco/aiswei-decode');
 
 const SCHEMA_VERSION = '1.0';
 
@@ -68,6 +70,15 @@ const COMM_SUNSPEC_TCP = 'sunspec_tcp';
 // Tier-2 control path (external battery management) is a separate gated
 // increment. See kostal/kostal-decode.js.
 const COMM_KOSTAL = 'kostal_modbus';
+// KACO/AISWEI communication unit, local HTTP-JSON on port 8484 (getdevdata.cgi
+// device=2 inverter / 3 meter / 4 battery). The DEFAULT way of that platform,
+// because it runs ALONGSIDE the KACO app + SmartCloud, while the stick's SunSpec
+// mode is exclusive to the cloud. See kaco/kaco-http.js.
+const COMM_KACO_HTTP = 'kaco_http';
+// KACO hybrid NH3 over the AISWEI-native register map on the inverter's OWN
+// Ethernet port (TCP 502, unit 1). Mixes INPUT (FC4) and HOLDING (FC3) blocks -
+// the read plan carries the function code per block. See kaco/aiswei-decode.js.
+const COMM_KACO_MODBUS = 'kaco_modbus';
 
 const DEFAULT_SOLARMAN_PORT = 8899;
 const DEFAULT_MODBUS_PORT = 502;
@@ -76,6 +87,9 @@ const DEFAULT_FRONIUS_SUNSPEC_PORT = 502;
 const DEFAULT_GOE_PORT = 80;
 const DEFAULT_KOSTAL_PORT = kostalDecode.DEFAULT_PORT; // 1502
 const DEFAULT_KOSTAL_UNIT_ID = kostalDecode.DEFAULT_UNIT_ID; // 71
+const DEFAULT_KACO_HTTP_PORT = kacoHttp.DEFAULT_PORT; // 8484
+const DEFAULT_KACO_MODBUS_PORT = aisweiDecode.DEFAULT_PORT; // 502
+const DEFAULT_KACO_MODBUS_UNIT_ID = aisweiDecode.DEFAULT_UNIT_ID; // 1
 
 // The one register-profile id the SunSpec-live read path uses (mirrors how the
 // Deye family / Modbus profile names the decode). Discovery is dynamic, so there
@@ -99,6 +113,11 @@ const GOE_FAMILIES = Object.keys(goeApi.FAMILIES);
 
 // The KOSTAL register-family set (one entry - the official map covers the BI line).
 const KOSTAL_FAMILIES = Object.keys(kostalDecode.FAMILIES);
+
+// The two KACO/AISWEI HTTP profiles (string vs hybrid - they differ in the PV
+// SOURCE, see kaco/kaco-http.js FAMILIES) and the NH3 register card.
+const KACO_HTTP_FAMILIES = Object.keys(kacoHttp.FAMILIES);
+const KACO_MODBUS_FAMILIES = Object.keys(aisweiDecode.FAMILIES);
 
 function isObject(v) {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -132,7 +151,8 @@ function parseConfig(input) {
   const communication = typeof obj.communication === 'string' ? obj.communication : '';
   if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS &&
       communication !== COMM_FRONIUS && !isSunSpecTcp(communication) &&
-      communication !== COMM_GOE && communication !== COMM_KOSTAL) return null;
+      communication !== COMM_GOE && communication !== COMM_KOSTAL &&
+      communication !== COMM_KACO_HTTP && communication !== COMM_KACO_MODBUS) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
   if (!family) return null;
@@ -389,6 +409,69 @@ function route(sel) {
     };
   }
 
+  if (sel.communication === COMM_KACO_HTTP) {
+    // The AISWEI communication unit: THREE GETs per cycle (inverter / meter /
+    // battery). Gate on the known family set - an unknown family stays
+    // idle-safe and never fabricates.
+    if (!KACO_HTTP_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte KACO-Familie: ' + sel.family };
+    }
+    const port = num(conn.port, DEFAULT_KACO_HTTP_PORT);
+    const insecure = !!conn.insecure_tls;
+    const scheme = insecure ? 'https' : 'http';
+    const serial = typeof conn.serial === 'string' ? conn.serial.trim() : '';
+    return {
+      adapter: COMM_KACO_HTTP,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: {
+        ip,
+        port,
+        // The serial is the KEY of every measurement call. It may legitimately
+        // be EMPTY here: the reader then asks the inventory endpoint for it
+        // (getdev.cgi?device=2) instead of guessing. Never fabricate one.
+        serial,
+        insecure_tls: insecure,
+        invert_grid_sign: !!conn.invert_grid_sign,
+        invert_batt_sign: !!conn.invert_batt_sign,
+      },
+      scheme,
+      // The inventory URL is always usable; the three data URLs need the serial,
+      // so they are built by the reader once it knows it.
+      inventory_url: kacoHttp.inventoryUrl(scheme, ip, port),
+      // hasBattery decides whether the battery endpoint is polled at all - a
+      // string inverter has none, and asking would only cost a timeout.
+      has_battery: !!(kacoHttp.FAMILIES[sel.family] || {}).hasBattery,
+    };
+  }
+
+  if (sel.communication === COMM_KACO_MODBUS) {
+    // KACO hybrid NH3, AISWEI register card over its own Ethernet port. Fixed
+    // blocks (no discovery walk); each block carries its FUNCTION CODE because
+    // the card mixes input (FC4) and holding (FC3) registers.
+    if (!KACO_MODBUS_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte KACO-Familie: ' + sel.family };
+    }
+    const reads = aisweiDecode.planReads({ family: sel.family });
+    if (!reads.length) {
+      return { adapter: 'idle', reason: sel.family + ': keine Messwert-Register' };
+    }
+    const port = num(conn.port, DEFAULT_KACO_MODBUS_PORT);
+    return {
+      adapter: COMM_KACO_MODBUS,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: {
+        ip,
+        port,
+        unit_id: num(conn.unit_id, DEFAULT_KACO_MODBUS_UNIT_ID),
+        invert_grid_sign: !!conn.invert_grid_sign,
+        invert_batt_sign: !!conn.invert_batt_sign,
+      },
+      reads,
+    };
+  }
+
   if (sel.communication === COMM_GOE) {
     // go-e Charger local HTTP API v2: ONE HTTP GET to /api/status returns the
     // charging power. Self-describing (one family), so gate on the known set for
@@ -416,6 +499,8 @@ module.exports = {
   COMM_FRONIUS,
   COMM_FRONIUS_SUNSPEC,
   COMM_SUNSPEC_TCP,
+  COMM_KACO_HTTP,
+  COMM_KACO_MODBUS,
   isSunSpecTcp,
   COMM_GOE,
   COMM_KOSTAL,
@@ -427,6 +512,9 @@ module.exports = {
   DEFAULT_GOE_PORT,
   DEFAULT_KOSTAL_PORT,
   DEFAULT_KOSTAL_UNIT_ID,
+  DEFAULT_KACO_HTTP_PORT,
+  DEFAULT_KACO_MODBUS_PORT,
+  DEFAULT_KACO_MODBUS_UNIT_ID,
   DEYE_EXPORT_LIMIT,
   EXPORT_LIMIT_INTERVAL_MS,
   exportLimitRegister,

@@ -237,10 +237,7 @@ func BuiltinTemplates() []Template {
 			// Sorte Behauptung, die dieses Haus nicht macht. Der cloud-seitige
 			// Ausweg ist der ehrliche Modell-Eintrag („Anderes Fronius-Modell").
 			transport, _ := b.resolveTransport(m, "")
-			family := m.Family
-			if family == "" {
-				family = transport.Family
-			}
+			family := familyFor(m, transport)
 			famLabel := ""
 			if f, ok := b.family(family); ok {
 				famLabel = f.Label

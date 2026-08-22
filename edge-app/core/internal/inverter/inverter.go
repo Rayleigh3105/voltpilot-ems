@@ -72,6 +72,21 @@ const (
 	// erste - tragen die neutrale Kennung, damit auf einer Betreiber-Flaeche
 	// nie „Fronius SunSpec" ueber einem KACO steht.
 	CommSunSpecTCP = "sunspec_tcp"
+	// CommKacoHTTP reads the AISWEI/Solplanet platform KACO sells as blueplanet
+	// NX1/NX3 and hybrid NH3 over the local HTTP-JSON API on port 8484 of its
+	// communication unit (`getdevdata.cgi?device=2|3|4`).
+	//
+	// ⚠ WARUM DAS DER VORGABE-WEG DIESER PLATTFORM IST: der Stick kennt die
+	// Modi „Datenupload/SmartCloud" ODER „Modbus TCP IP Server", NIE beides -
+	// wer Modbus einschaltet, nimmt dem Kunden seine KACO-App. Die 8484-API
+	// laeuft PARALLEL zur Cloud. Siehe nodered/kaco/kaco-http.js.
+	CommKacoHTTP = "kaco_http"
+	// CommKacoModbus reads a KACO hybrid NH3 over the AISWEI-NATIVE register map
+	// on the inverter's OWN Ethernet port (TCP 502, Unit-ID 1) - the expert way
+	// out for a device whose communication unit does not serve the 8484 API. It
+	// bypasses the stick, so it costs no cloud connection either.
+	// See nodered/kaco/aiswei-decode.js.
+	CommKacoModbus = "kaco_modbus"
 )
 
 // IsSunSpecTCP reports whether a communication id names the SunSpec-live read
@@ -128,6 +143,9 @@ const (
 	defaultKostalPort         = 1502 // KOSTAL PLENTICORE Modbus-TCP server
 	defaultKostalUnitID       = 71   // KOSTAL default Modbus Unit-ID (changeable on the device)
 	defaultSunSpecTCPPort     = 502  // neutral SunSpec Modbus TCP (KACO and every later SunSpec brand)
+	defaultKacoHTTPPort       = 8484 // KACO/AISWEI communication unit, local HTTP-JSON API
+	defaultKacoNH3Port        = 502  // KACO hybrid NH3, own Ethernet port (AISWEI register map)
+	defaultKacoNH3UnitID      = 1    // evcc `solplanet-modbus` reads the NH3 at unit 1
 )
 
 // Control tiers - the battery-control PRIMITIVE a brand exposes, decoupled from
@@ -270,6 +288,36 @@ type Model struct {
 	// Vorgabeweg, samt dem Auswahlfeld „Verbindungsweg" davor. Gesetzt NUR bei
 	// mehreren Wegen (sonst gelten die Felder der Marke) - siehe resolveCatalog.
 	Fields []Field `json:"fields,omitempty"`
+
+	// FamilyPerTransport nennt die Registerkarte DIESES Modells auf EINEM
+	// bestimmten Weg - der Fall, den weder `Family` (Produkt-Eigenschaft) noch
+	// `Transport.Family` (Weg-Eigenschaft) allein ausdruecken kann.
+	//
+	// ⚠ WOFUER ES EXISTIERT (und warum nicht `Family`): der hybride KACO NH3
+	// wird ueber DENSELBEN HTTP-Weg gelesen wie die String-Geraete derselben
+	// Plattform, braucht dort aber ein anderes Decode-Profil, weil seine
+	// AC-Leistung PV + Entladung - Ladung ist (siehe FamKacoHTTPHybrid). Ein
+	// gesetztes `Family` haette dagegen den Experten-Ausweg still wirkungslos
+	// gemacht - die Warnung, die schon an froniusModels steht.
+	//
+	// Aufloesungs-Reihenfolge in Normalize: FamilyPerTransport[Weg] > Family >
+	// Transport.Family. Leer = das bisherige Verhalten, Zeichen fuer Zeichen.
+	FamilyPerTransport map[string]string `json:"family_per_transport,omitempty"`
+}
+
+// familyFor ist die EINE Aufloesung der Registerkarte eines Modells auf einem
+// Weg. Jeder Abnehmer (Normalize, der Vorlagen-Export) fragt hier, damit die
+// Reihenfolge nicht zweimal geschrieben steht.
+func familyFor(m Model, t Transport) string {
+	if m.FamilyPerTransport != nil {
+		if f, ok := m.FamilyPerTransport[t.Communication]; ok && f != "" {
+			return f
+		}
+	}
+	if m.Family != "" {
+		return m.Family
+	}
+	return t.Family
 }
 
 // Brand groups a manufacturer with its fixed communication method, the concrete
@@ -430,6 +478,24 @@ const (
 	// battery-inverter line (official Modbus map, G1/G2 identical for the read
 	// registers used) - nodered/kostal/kostal-decode.js owns the map + decode.
 	FamKostalPlenticore = "kostal_plenticore"
+	// FamKacoHTTP / FamKacoHTTPHybrid sind die ZWEI Decode-Profile der
+	// KACO/AISWEI-HTTP-Schnittstelle. Sie unterscheiden sich in genau EINER,
+	// aber tragenden Frage - der PV-QUELLE:
+	//
+	//   - FamKacoHTTP (NX1/NX3, String): keine Batterie, die AC-Ausgangsleistung
+	//     `pac` IST die Erzeugung.
+	//   - FamKacoHTTPHybrid (NH3): `pac` = PV + Entladung - Ladung. Die PV kommt
+	//     deshalb aus der DC-Seite (Summe der Strings); `pac` als PV zu
+	//     veroeffentlichen bliese die Erzeugung um die Entladung auf.
+	//
+	// Es ist woertlich die Regel, die `sunspec-live.js` fuer Fronius-Hybride
+	// aufgeschrieben hat. Sie ist der Grund, warum die NH3-Modelle eine
+	// Registerkarte JE WEG deklarieren (siehe Model.FamilyPerTransport).
+	FamKacoHTTP       = "kaco_http"
+	FamKacoHTTPHybrid = "kaco_http_hybrid"
+	// FamKacoNH3 ist die AISWEI-NATIVE Registerkarte des hybriden NH3
+	// (Input 31xxx / Holding 4xxxx) - nodered/kaco/aiswei-decode.js.
+	FamKacoNH3 = "kaco_nh3"
 )
 
 // deyeFamilies is the register-map reference list (what each Model decodes with).
@@ -799,6 +865,12 @@ func kacoFamilies() []Family {
 	return []Family{
 		{ID: FamSunSpecLive, Label: "SunSpec über Modbus",
 			Note: "Dynamische SunSpec-Modellerkennung über Modbus TCP (Port 502, Basisadresse 40001)"},
+		{ID: FamKacoHTTP, Label: "KACO NX (App-Schnittstelle)",
+			Note: "Lokale HTTP/JSON-Schnittstelle der Kommunikationseinheit (Port 8484)"},
+		{ID: FamKacoHTTPHybrid, Label: "KACO hybrid NH3 (App-Schnittstelle)",
+			Note: "Wie oben, aber mit Speicher: die Erzeugung kommt von der DC-Seite, weil die AC-Leistung eines Hybriden die Entladung enthält"},
+		{ID: FamKacoNH3, Label: "KACO hybrid NH3 (Registerkarte)",
+			Note: "AISWEI-eigene Modbus-Registerkarte über den Ethernet-Port des Wechselrichters"},
 	}
 }
 
@@ -806,9 +878,56 @@ func kacoFamilies() []Family {
 // AISWEI-Wege (HTTP 8484, AISWEI-Registerkarte) kommen additiv dazu.
 func kacoTransports() []Transport {
 	return []Transport{
+		{Communication: CommKacoHTTP, Label: "App-Schnittstelle der Kommunikationseinheit (HTTP 8484)", Family: FamKacoHTTP,
+			Note:   "Läuft parallel zur KACO-App und zur SmartCloud - es muss am Gerät nichts umgestellt werden.",
+			Fields: kacoHTTPFields()},
 		{Communication: CommSunSpecTCP, Label: "SunSpec Modbus TCP (TCP 502)", Family: FamSunSpecLive,
 			Note:   "Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\").",
 			Fields: kacoSunspecFields()},
+		{Communication: CommKacoModbus, Label: "Registerkarte über den Ethernet-Port (TCP 502)", Family: FamKacoNH3,
+			Note:   "Nur beim hybriden NH3: der Wechselrichter selbst hat einen Ethernet-Anschluss.",
+			Fields: kacoNH3Fields()},
+	}
+}
+
+// kacoHTTPFields beschreibt die lokale HTTP-Schnittstelle der
+// Kommunikationseinheit (Port 8484) - der VORGABE-Weg der AISWEI-Plattform.
+//
+// ⚠ Die Seriennummer ist OPTIONAL und wird vom Verbindungstest gefuellt: sie
+// ist zwar Pflicht-Parameter jedes Messwert-Abrufs, steht aber im Inventar
+// (`getdev.cgi?device=2`) und muss deshalb nie abgetippt werden - Abtippen ist
+// die haeufigste Fehlerquelle dieser Plattform.
+func kacoHTTPFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse der Kommunikationseinheit", Type: "text", Required: true,
+			Help: "Die IP des WLAN-/LAN-Sticks am Wechselrichter (nicht die des Wechselrichters selbst). Feste IP bzw. DHCP-Reservierung empfohlen."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultKacoHTTPPort,
+			Help: "Port der lokalen Schnittstelle, üblicherweise 8484."},
+		{Key: "serial", Label: "Seriennummer des Wechselrichters", Type: "text",
+			Help: "Wird beim Verbindungstest automatisch ermittelt - nur ausfüllen, wenn an der Kommunikationseinheit mehrere Wechselrichter hängen und Sie einen bestimmten meinen."},
+		{Key: "insecure_tls", Label: "Selbstsigniertes Zertifikat akzeptieren (HTTPS)", Type: "checkbox",
+			Help: "Nur setzen, wenn Ihre Kommunikationseinheit auf HTTPS umleitet (neuere Dongle-Generationen)."},
+		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
+			Help: "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."},
+		{Key: "invert_batt_sign", Label: "Batterie-Vorzeichen invertieren (Messung)", Type: "checkbox",
+			Help: "Nur beim Hybriden relevant und nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."},
+	}
+}
+
+// kacoNH3Fields beschreibt den AISWEI-nativen Modbus-Weg ueber den EIGENEN
+// Ethernet-Port des hybriden NH3 (TCP 502, Unit-ID 1 laut evcc).
+func kacoNH3Fields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Wechselrichters", Type: "text", Required: true,
+			Help: "Die IP des NH3 im lokalen Netz - der Ethernet-Anschluss AM WECHSELRICHTER (nicht die Kommunikationseinheit)."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultKacoNH3Port,
+			Help: "Modbus-TCP-Port, üblicherweise 502."},
+		{Key: "unit_id", Label: "Modbus-Unit-ID", Type: "number", Default: defaultKacoNH3UnitID,
+			Help: "Die Modbus-Adresse. Über den eigenen Ethernet-Port antwortet der NH3 auf 1; die am Display gepflegte „Modbus-Adresse\" (Vorgabe 3) gilt für den RS485-Bus."},
+		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
+			Help: "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."},
+		{Key: "invert_batt_sign", Label: "Batterie-Vorzeichen invertieren (Messung)", Type: "checkbox",
+			Help: "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein."},
 	}
 }
 
@@ -830,8 +949,12 @@ func kacoTransports() []Transport {
 // 30.0-40.0 TL3 ERSTgeneration (laut KACOs Schnittstellen-Uebersicht nur
 // RS232/RS485 - erst mit Nachweis eines Ethernet-Ports listen).
 func kacoModels() []Model {
+	// ⚠ Jedes Modell der KACO-EIGENEN Linie nennt seinen Weg AUSDRUECKLICH.
+	// Ohne diese Angabe erbte es die Wege der MARKE - und deren Vorgabe ist die
+	// App-Schnittstelle der AISWEI-Plattform, die ein TL3 gar nicht hat.
+	sun := []string{CommSunSpecTCP}
 	m := func(id, label string, kw float64, note string) Model {
-		return Model{ID: id, Label: label, Family: FamSunSpecLive, RatedKw: kw, Note: note}
+		return Model{ID: id, Label: label, Family: FamSunSpecLive, Transports: sun, RatedKw: kw, Note: note}
 	}
 	return []Model{
 		// --- blueplanet TL3 (KACO-eigen, Ethernet + Webserver) ------------------
@@ -897,7 +1020,65 @@ func kacoModels() []Model {
 		m("bp-gridsave-137-tl3-s", "blueplanet gridsave 137 TL3-S", 137, "137 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg)"),
 		// --- Auffang-Eintrag ----------------------------------------------------
 		{ID: "kaco-sunspec-generic", Label: "Anderes KACO-Modell (SunSpec)", Family: FamSunSpecLive,
-			Note: "Weiteres KACO-Gerät mit SunSpec Modbus TCP, Nennleistung unbekannt"},
+			Transports: sun,
+			Note:       "Weiteres KACO-Gerät mit SunSpec Modbus TCP, Nennleistung unbekannt"},
+	}
+}
+
+// kacoAisweiModels ist die Modell-Liste der AISWEI/Solplanet-Plattform, die
+// KACO als blueplanet NX1/NX3 und hybrid NH3 verkauft.
+//
+// ⚠ DIE REIHENFOLGE DER WEGE IST DIE AUSSAGE (Report §0.3): der VORGABE-Weg ist
+// die App-Schnittstelle auf Port 8484, weil sie PARALLEL zur KACO-App und zur
+// SmartCloud laeuft. Der Stick kennt „Datenupload/SmartCloud" ODER „Modbus TCP
+// IP Server" - NIE beides -, also nimmt der SunSpec-Ausweg dem Kunden seine
+// App. Das steht deshalb woertlich in der Notiz jedes betroffenen Modells: der
+// Experten-Ausweg soll niemanden ueberraschen.
+//
+// ⚠ Der NH3 traegt zusaetzlich `FamilyPerTransport`, weil sein HTTP-Profil ein
+// anderes ist als das der String-Geraete auf demselben Weg (die PV kommt bei
+// ihm von der DC-Seite - siehe FamKacoHTTPHybrid).
+func kacoAisweiModels() []Model {
+	// Der Ausweg ueber den Stick kostet die Cloud - deshalb steht er in der Notiz.
+	const stickNote = " · Ausweg SunSpec Modbus: nur, wenn die App-Schnittstelle nicht antwortet - er schaltet die KACO-App/Cloud ab"
+	nx := []string{CommKacoHTTP, CommSunSpecTCP}
+	nh3 := []string{CommKacoHTTP, CommKacoModbus, CommSunSpecTCP}
+	nh3Fam := map[string]string{CommKacoHTTP: FamKacoHTTPHybrid}
+	m := func(id, label string, kw float64, note string) Model {
+		return Model{ID: id, Label: label, Transports: nx, RatedKw: kw, Note: note + stickNote}
+	}
+	h := func(id, label string, kw float64, note string) Model {
+		return Model{ID: id, Label: label, Transports: nh3, FamilyPerTransport: nh3Fam,
+			RatedKw: kw, Note: note + stickNote}
+	}
+	return []Model{
+		// --- hybrid NH3 (2025, Hochvolt-Speicher, Notstrom) ---------------------
+		h("bp-hybrid-6.0-nh3-m2", "blueplanet hybrid 6.0 NH3 M2", 6, "6 kW · Hybrid · 3-phasig · Hochvolt-Speicher (BYD HVS/HVM, Pylontech Force H1) · 2 MPPT · Notstrom"),
+		h("bp-hybrid-8.0-nh3-m3", "blueplanet hybrid 8.0 NH3 M3", 8, "8 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom"),
+		h("bp-hybrid-10.0-nh3-m3", "blueplanet hybrid 10.0 NH3 M3", 10, "10 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom"),
+		h("bp-hybrid-12.0-nh3-m3", "blueplanet hybrid 12.0 NH3 M3", 12, "12 kW · Hybrid · 3-phasig · Hochvolt-Speicher · 3 MPPT · Notstrom"),
+		// --- NX1 M2 (1-phasig, Kommunikationseinheit) ---------------------------
+		m("bp-3.0-nx1-m2", "blueplanet 3.0 NX1 M2", 3.0, "3 kW · String · 1-phasig · 2 MPPT · nur Erzeugung"),
+		m("bp-3.7-nx1-m2", "blueplanet 3.7 NX1 M2", 3.7, "3,7 kW · String · 1-phasig · 2 MPPT · nur Erzeugung"),
+		m("bp-4.0-nx1-m2", "blueplanet 4.0 NX1 M2", 4.0, "4 kW · String · 1-phasig · 2 MPPT · nur Erzeugung"),
+		m("bp-5.0-nx1-m2", "blueplanet 5.0 NX1 M2", 5.0, "5 kW · String · 1-phasig · 2 MPPT · nur Erzeugung"),
+		// --- NX3 M2 (3-phasig, kein Ethernet am Geraet) -------------------------
+		m("bp-3.0-nx3-m2", "blueplanet 3.0 NX3 M2", 3, "3 kW · String · 3-phasig · 2 MPPT · nur Erzeugung"),
+		m("bp-5.0-nx3-m2", "blueplanet 5.0 NX3 M2", 5, "5 kW · String · 3-phasig · 2 MPPT · nur Erzeugung"),
+		m("bp-8.0-nx3-m2", "blueplanet 8.0 NX3 M2", 8, "8 kW · String · 3-phasig · 2 MPPT · nur Erzeugung"),
+		m("bp-10.0-nx3-m2", "blueplanet 10.0 NX3 M2", 10, "10 kW · String · 3-phasig · 2 MPPT · nur Erzeugung"),
+		m("bp-12.0-nx3-m2", "blueplanet 12.0 NX3 M2", 12, "12 kW · String · 3-phasig · nur Erzeugung · Regionalvariante (nicht im deutschen Portfolio)"),
+		m("bp-15.0-nx3-m2", "blueplanet 15.0 NX3 M2", 15, "15 kW · String · 3-phasig · 3 MPPT · nur Erzeugung"),
+		m("bp-20.0-nx3-m2", "blueplanet 20.0 NX3 M2", 20, "20 kW · String · 3-phasig · 4 MPPT · nur Erzeugung"),
+		// --- NX3 M3 / M5 (C&I, LAN/WLAN/RS485) ----------------------------------
+		m("bp-25.0-nx3-m3", "blueplanet 25.0 NX3 M3", 25, "25 kW · String · 3-phasig · 3 MPPT · nur Erzeugung"),
+		m("bp-30.0-nx3-m3", "blueplanet 30.0 NX3 M3", 30, "30 kW · String · 3-phasig · 3 MPPT · nur Erzeugung"),
+		m("bp-33.0-nx3-m3", "blueplanet 33.0 NX3 M3", 33, "33 kW · String · 3-phasig · 3 MPPT · nur Erzeugung"),
+		m("bp-50.0-nx3-m5", "blueplanet 50.0 NX3 M5", 50, "50 kW · String · 3-phasig · 5 MPPT · nur Erzeugung"),
+		m("bp-60.0-nx3-m5", "blueplanet 60.0 NX3 M5", 60, "60 kW · String · 3-phasig · 5 MPPT · nur Erzeugung"),
+		// --- Auffang-Eintrag ----------------------------------------------------
+		{ID: "kaco-nx-generic", Label: "Anderes KACO-NX-Modell", Transports: nx,
+			Note: "Weiteres NX1-/NX3-Modell hinter der Kommunikationseinheit, Nennleistung unbekannt" + stickNote},
 	}
 }
 
@@ -1022,7 +1203,7 @@ func DefaultCatalog() Catalog {
 				Label:      "KACO",
 				DeviceType: DeviceTypeInverter,
 				Note:       "KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\").",
-				Models:     kacoModels(),
+				Models:     append(kacoAisweiModels(), kacoModels()...),
 				Families:   kacoFamilies(),
 				Transports: kacoTransports(),
 				// Tier 1: KACO dokumentiert die Wirkleistungsbegrenzung SELBST ueber
@@ -1264,7 +1445,7 @@ func (c Catalog) RatedKw(brandID, modelID string) (float64, bool) {
 // derived-battery consistency check applies to them alone.
 func FamilyHasBattery(family string) bool {
 	switch family {
-	case FamHybrid1p, FamHybrid3p, FamKostalPlenticore:
+	case FamHybrid1p, FamHybrid3p, FamKostalPlenticore, FamKacoHTTPHybrid, FamKacoNH3:
 		return true
 	default:
 		return false
@@ -1510,10 +1691,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		}
 		transport = t
 		modelID = mod.ID
-		registerFamily = mod.Family
-		if registerFamily == "" {
-			registerFamily = t.Family
-		}
+		registerFamily = familyFor(mod, t)
 		typeLabel = mod.Label
 		ratedKw = mod.RatedKw
 	} else if fID := strings.TrimSpace(req.Family); fID != "" {
@@ -1727,6 +1905,42 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.ControlWriteFc = 0
 		conn.CurtailWriteFc = 0 // the Fronius curtailment write-FC is not part of this transport
 		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+	case CommKacoHTTP:
+		// KACO/AISWEI communication unit, local HTTP-JSON on 8484. Host + port,
+		// the OPTIONAL inverter serial (the connection test fills it from
+		// `getdev.cgi?device=2` - it is never typed) and the two sign hatches;
+		// insecure_tls covers the newer dongles that redirect to HTTPS.
+		if conn.Port == 0 {
+			conn.Port = defaultKacoHTTPPort
+		}
+		conn.Serial = strings.TrimSpace(conn.Serial)
+		conn.Profile = registerFamily // kaco_http | kaco_http_hybrid
+		// fields of the other transports are not part of this one.
+		conn.MbSlaveID, conn.PowerScale, conn.ModelType = 0, 0, ""
+		conn.UnitID = 0
+		conn.InvertControlSign = false
+		conn.ControlWriteFc, conn.CurtailWriteFc = 0, 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
+	case CommKacoModbus:
+		// KACO hybrid NH3 over its OWN Ethernet port with the AISWEI-native
+		// register map (TCP 502, unit 1 per evcc). Host + unit id + both sign
+		// hatches; no serial, no model type (the map is fixed, not discovered).
+		if conn.Port == 0 {
+			conn.Port = defaultKacoNH3Port
+		}
+		if conn.UnitID == 0 {
+			conn.UnitID = defaultKacoNH3UnitID
+		}
+		if conn.UnitID < 1 || conn.UnitID > 247 {
+			return Selection{}, invalid("Die Modbus-Unit-ID muss zwischen 1 und 247 liegen.")
+		}
+		conn.Profile = registerFamily // kaco_nh3
+		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, 0, false, ""
+		conn.InvertControlSign = false
+		conn.ControlWriteFc, conn.CurtailWriteFc = 0, 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
+		conn.ByteOrder = ""
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
 		// escape hatch (charging power is unsigned load).
@@ -1888,6 +2102,19 @@ func (s Selection) BusPayload() []byte {
 		// unerreichbar (die BusPayload-Lehre aus fm/vp-deye-sign-fix-v6: eine
 		// Klappe, die nicht veroeffentlicht wird, erreicht den Leser nie).
 		conn["curtail_write_fc"] = s.Connection.CurtailWriteFc
+	case CommKacoHTTP:
+		// The serial is the KEY of every measurement call - without it the stick
+		// answers nothing, so it must ride the retained config into the reader.
+		conn["serial"] = s.Connection.Serial
+		conn["profile"] = s.Connection.Profile
+		conn["insecure_tls"] = s.Connection.InsecureTLS
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
+	case CommKacoModbus:
+		conn["unit_id"] = s.Connection.UnitID
+		conn["profile"] = s.Connection.Profile
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
 	case CommKostalModbus:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile

@@ -48,20 +48,33 @@ class BuiltinComponentTemplatesTest {
         assertThat(all.stream().filter(t -> "deye".equals(t.brand())).count())
                 .as("Deye-Modelle").isGreaterThanOrEqualTo(30);
 
-        // KACO ist die zweite Marke in Deye-Dichte (blueplanet TL1/TL3, Powador
-        // TL3, NX3 M8/M10, gridsave). Sie liest über den BESTEHENDEN
-        // SunSpec-Live-Pfad - deshalb trägt jede ihrer Zeilen die neutrale
-        // Anbindung `sunspec_tcp` und das Profil `sunspec_live`, und keine
-        // einzige nennt „Fronius".
+        // KACO ist die zweite Marke in Deye-Dichte und spannt ZWEI Plattformen:
+        // die KACO-eigene Linie (blueplanet TL1/TL3, Powador TL3, NX3 M8/M10,
+        // gridsave) liest über den BESTEHENDEN SunSpec-Live-Pfad, die
+        // AISWEI/Solplanet-Linie (NX1/NX3 M2/M3/M5, hybrid NH3) über die
+        // App-Schnittstelle ihrer Kommunikationseinheit.
+        //
+        // ⚠ Der VORGABE-Weg der AISWEI-Plattform ist die App-Schnittstelle,
+        // weil sie parallel zur KACO-Cloud läuft - der Stick kann Modbus ODER
+        // Cloud, nie beides. Der Vorlagen-Export trägt genau diesen Vorgabe-Weg.
         List<BuiltinTemplate> kaco = all.stream()
                 .filter(t -> "kaco".equals(t.brand())).toList();
-        assertThat(kaco).as("KACO-Modelle").hasSizeGreaterThanOrEqualTo(40);
+        assertThat(kaco).as("KACO-Modelle").hasSizeGreaterThanOrEqualTo(60);
         for (BuiltinTemplate t : kaco) {
-            assertThat(t.communication()).isEqualTo("sunspec_tcp");
-            assertThat(t.family()).isEqualTo("sunspec_live");
+            assertThat(t.communication()).isIn("sunspec_tcp", "kaco_http");
+            assertThat(t.family()).isIn("sunspec_live", "kaco_http", "kaco_http_hybrid");
             assertThat(t.brandLabel()).isEqualTo("KACO");
+            // Keine einzige KACO-Zeile darf „Fronius" nennen - der ganze Grund
+            // für die brand-neutrale Kennung `sunspec_tcp`.
             assertThat(t.modelLabel().toLowerCase()).doesNotContain("fronius");
+            assertThat(t.communicationLabel().toLowerCase()).doesNotContain("fronius");
         }
+        // Der hybride NH3 trägt auf demselben HTTP-Weg ein ANDERES Profil als
+        // seine String-Geschwister: seine AC-Leistung wäre PV + Entladung.
+        assertThat(find("builtin:kaco:bp-hybrid-10.0-nh3-m3").family())
+                .isEqualTo("kaco_http_hybrid");
+        assertThat(find("builtin:kaco:bp-10.0-nx3-m2").family()).isEqualTo("kaco_http");
+        assertThat(find("builtin:kaco:bp-4.6-tl1").family()).isEqualTo("sunspec_live");
     }
 
     @Test
