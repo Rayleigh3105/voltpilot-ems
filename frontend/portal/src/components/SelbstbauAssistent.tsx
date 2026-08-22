@@ -33,14 +33,16 @@ import {
 } from '../selbstbau';
 
 /**
- * Die SELBSTBAU-TÜR des Anlege-Assistenten (Einheitsmodell Stufe 3, Konzept
+ * Der EIGENBAU-Weg des Anlege-Flusses (Einheitsmodell Stufe 3, Konzept
  * `vp-modbus-baukasten-k6` §2.3): der Kunde beschreibt sein eigenes
  * Modbus-Gerät und SIEHT dabei echte Werte.
  *
- * Vier Schritte: **Gerät** (Adresse + „Verbindung testen") → **Messwerte** (je
- * Zeile Klartext-Name, Register, Skalierung - und „Jetzt lesen" mit Roh- UND
- * skaliertem Wert) → **Was ist das Gerät?** (in dieser Stufe „Nur messen") →
- * **Prüfen & anlegen**.
+ * Vier Fragen - **Adresse** → **Messwerte** (je Zeile Klartext-Name, Register,
+ * Skalierung, und „Jetzt lesen" mit Roh- UND skaliertem Wert) → **Was ist
+ * das Gerät?** → **Prüfen & anlegen** -, die seit dem Anlegen-Rework (Stufe 2)
+ * die Schritte 2-5 des EINEN Flusses SIND: der Wirt {@link AnlegenFlow}
+ * zeichnet Schrittleiste, Fußzeile und den gemeinsamen „Fertig"-Schritt, dieser
+ * hier bleibt der EINE Ort, an dem die Selbstbau-Fragen stehen.
  *
  * Diese Datei RENDERT nur; jede Regel - was fehlt, was das Lesen ergab, wie
  * viel Leselast entsteht, ob eine Adresse im eigenen Netz liegt - kommt aus dem
@@ -50,9 +52,8 @@ export function SelbstbauAssistent({
   siteId,
   onBack,
   onSaved,
-  onDone,
   vorlage,
-  schritt: schrittVonAussen,
+  schritt,
   onSchritt,
   navPortal,
 }: {
@@ -60,30 +61,22 @@ export function SelbstbauAssistent({
   onBack: () => void;
   onSaved: (result: SiteComponents) => void;
   /**
-   * Der Abschluss-Bildschirm dieses Assistenten. Ohne ihn (der Anlege-Fluss der
-   * Stufe 2) rendert er KEINEN eigenen - der Wirt hat einen gemeinsamen
-   * „Fertig"-Schritt fuer alle Wege, und zwei Abschluesse hintereinander waeren
-   * zwei Antworten auf dieselbe Frage.
+   * Der Schritt von AUSSEN (1..4). Er macht den Assistenten zum KOERPER des
+   * Anlege-Flusses: der Wirt zeichnet die Schrittleiste und den gemeinsamen
+   * „Fertig"-Schritt, dieser hier bleibt der EINE Ort, an dem die
+   * Selbstbau-Fragen stehen.
    */
-  onDone?: () => void;
-  /**
-   * Der Schritt von AUSSEN (1..4). Er macht den Assistenten zum Koerper eines
-   * fremden Schritt-Dialogs: der Wirt zeichnet die Schrittleiste, dieser hier
-   * bleibt der EINE Ort, an dem die Selbstbau-Fragen stehen. Ohne ihn fuehrt
-   * der Assistent seine Schritte weiterhin selbst (unveraendert).
-   */
-  schritt?: 1 | 2 | 3 | 4;
-  /** Der Schrittwechsel nach aussen - nur zusammen mit `schritt` sinnvoll. */
-  onSchritt?: (schritt: 1 | 2 | 3 | 4) => void;
+  schritt: 1 | 2 | 3 | 4;
+  onSchritt: (schritt: 1 | 2 | 3 | 4) => void;
   /**
    * Wohin die Bedienzeile („Zurueck"/„Weiter") gerendert wird.
    *
    * ⚠ Der Assistent BEHAELT sie - er reicht sie nur woanders hin. Sie gehoert
    * ihm, weil nur er weiss, wann „Weiter" freigibt; sie im Wirt nachzubauen
-   * waere ein Zwilling derselben Regel. Ohne das Ziel steht sie wie bisher am
-   * Ende des Rumpfs.
+   * waere ein Zwilling derselben Regel. `null` (noch nicht gemessen) laesst sie
+   * wie bisher am Ende des Rumpfs stehen.
    */
-  navPortal?: HTMLElement | null;
+  navPortal: HTMLElement | null;
   /**
    * Einheitsmodell Stufe 6: eine EIGENE Vorlage befüllt Anschluss und
    * Messwerte vor.
@@ -96,12 +89,7 @@ export function SelbstbauAssistent({
   vorlage?: SiteComponentTemplate | null;
 }) {
   const start = vorlage ? prefill(vorlage) : null;
-  const [eigenerSchritt, setEigenerSchritt] = useState<1 | 2 | 3 | 4>(1);
-  const schritt = schrittVonAussen ?? eigenerSchritt;
-  const setSchritt = (s: 1 | 2 | 3 | 4) => {
-    setEigenerSchritt(s);
-    onSchritt?.(s);
-  };
+  const setSchritt = onSchritt;
   const [verbindung, setVerbindung] = useState<VerbindungForm>(
     start ? { host: '', port: start.port, unitId: start.unitId } : neueVerbindung(),
   );
@@ -117,7 +105,6 @@ export function SelbstbauAssistent({
   const [name, setName] = useState(start?.label ?? '');
   const [speichern, setSpeichern] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
-  const [fertig, setFertig] = useState(false);
 
   /** Die Bedienzeile - im Wirt-Fuss, wo es einen gibt, sonst hier. */
   const Nav = ({ children }: { children: ReactNode }) =>
@@ -172,25 +159,14 @@ export function SelbstbauAssistent({
         siteId,
         speicherRumpf(name, verbindung, zeilen),
       );
-      setFertig(true);
+      // Den Abschluss zeigt der WIRT - dieser Assistent ist der Koerper seiner
+      // Schritte 2-5, nicht ein eigener Ablauf mit eigenem Ende.
       onSaved(result);
     } catch (e) {
       setFehler(e instanceof ApiError ? e.message : 'Speichern ist fehlgeschlagen.');
     } finally {
       setSpeichern(false);
     }
-  }
-
-  if (fertig && onDone) {
-    return (
-      <div className="vp-assist-done">
-        <p className="vp-assist-ok">
-          <Icon name="check" /> Gespeichert. Ihre VoltPilot-Box beginnt zu lesen, sobald sie das
-          nächste Mal verbunden ist - der Stand steht an der Komponente.
-        </p>
-        <Button onClick={onDone}>Schließen</Button>
-      </div>
-    );
   }
 
   return (

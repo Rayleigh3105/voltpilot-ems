@@ -423,6 +423,44 @@ describe('die anderen Türen desselben Flusses', () => {
     expect(screen.queryByText('Verbindung testen')).toBeNull();
   });
 
+  /*
+    Einheitsmodell Stufe 6: „Gerät daraus anlegen" an einer EIGENEN Vorlage.
+    Die Typ-Frage ist damit schon beantwortet - der Fluss startet vorbefüllt im
+    Eigenbau-Weg, und „Zurück" schließt, statt in eine Frage zu führen, die es
+    hier nicht gibt.
+  */
+  it('startet mit einer eigenen Vorlage direkt im Eigenbau-Weg, vorbefüllt', async () => {
+    const onClose = vi.fn();
+    render(
+      <AnlegenFlow
+        siteId="s1"
+        onClose={onClose}
+        onSaved={() => {}}
+        vorlage={{
+          templateRef: 'custom:s1:waermepumpe',
+          label: 'Wärmepumpe Keller',
+          version: 1,
+          connection: { port: 5020, unit_id: 3 },
+          channels: [
+            {
+              label: 'Vorlauf',
+              unit: '°C',
+              register: { kind: 'holding', address: 100, data_type: 'u16' },
+              scale: 0.1,
+            },
+          ],
+        } as never}
+      />,
+    );
+    await screen.findByText('Wo steht das Gerät?');
+    expect((screen.getByLabelText('Port') as HTMLInputElement).value).toBe('5020');
+    // ⚠ Die ADRESSE bleibt leer - eine Vorlage beschreibt einen Gerätetyp,
+    // kein Exemplar.
+    expect((screen.getByLabelText('Adresse im Netzwerk') as HTMLInputElement).value).toBe('');
+    fireEvent.click(knopf('Zurück'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it('führt die Eigenbau-Schritte IM selben Fluss bis zum Anlegen', async () => {
     readCustomComponent.mockResolvedValue({
       ok: true,

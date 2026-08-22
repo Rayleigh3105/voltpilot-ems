@@ -82,7 +82,7 @@ import {
 } from '../components/TechnischeKarten';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { EigeneVorlagenPanel } from '../components/EigeneVorlagenPanel';
-import { KomponenteHinzufuegenDrawer } from '../components/KomponenteHinzufuegenDrawer';
+import { AnlegenFlow } from '../components/AnlegenFlow';
 import {
   ablehnungText,
   ohneMesswertHinweis,
@@ -687,7 +687,7 @@ export function AnlagenModellSection({
       )}
 
       {(addOpen || vorlage) && (
-        <KomponenteHinzufuegenDrawer
+        <AnlegenFlow
           siteId={site.id}
           box={boxOf(devices, site.id) ?? undefined}
           vorlage={vorlage}

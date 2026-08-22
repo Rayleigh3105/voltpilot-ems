@@ -919,3 +919,41 @@ describe('die Ausnahme „ohne Ladestand" bleibt an der Komponente sichtbar', ()
     expect(screen.queryByText('ohne Ladestand')).toBeNull();
   });
 });
+
+/*
+  Anlegen-Rework Stufe 2: der EINE Einstieg fuehrt in den neuen Schritt-Dialog.
+  Der frühere Seiten-Drawer ist ERSATZLOS entfallen - er fragte zuerst nach der
+  HERKUNFT der Vorlage („Gerät aus dem VoltPilot-Katalog"), eine Auskunft, die
+  ein Kunde über sein Gerät gar nicht hat.
+*/
+describe('der Anlege-Einstieg', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('öffnet den Schritt-Dialog, der ZUERST nach dem Gerätetyp fragt', async () => {
+    stub();
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{ id: 'batt', definitionVersion: 2, syncStatus: 'in_sync' }],
+    });
+    vi.spyOn(api, 'componentTemplates').mockResolvedValue([]);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Hinzufügen/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Gerät anbinden' });
+    expect(within(dialog).getByText('Was möchten Sie anbinden?')).toBeInTheDocument();
+    expect(within(dialog).getByTestId('typ-wechselrichter')).toBeInTheDocument();
+    // ⚠ Die alte Frage nach der Vorlagen-HERKUNFT gibt es nirgends mehr.
+    expect(screen.queryByText('Gerät aus dem VoltPilot-Katalog')).toBeNull();
+  });
+
+  it('bleibt auf einer box-verwalteten Anlage ehrlich abwesend', async () => {
+    stub();
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'box',
+      components: [{ id: 'batt', definitionVersion: 1, syncStatus: 'in_sync' }],
+    });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByText(/Box verbunden/);
+    expect(screen.queryByRole('button', { name: /Hinzufügen/ })).toBeNull();
+  });
+});
