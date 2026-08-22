@@ -518,6 +518,18 @@ Drawer läuft mit diesem Baum unverändert weiter.
   `web/jstest/ui.test.js` (die versteckte Marke taucht in der Suche nie auf).
 - **Edge-Anteil reist mit dem nächsten Edge-Release** (eine laufende Box behält
   ihr Image); der Cloud-Katalog gilt sofort.
+- **Stufe 2 KONSUMIERT die Typ-Dimension: der neue Anlege-Fluss im Portal**
+  (`frontend/portal/src/anlegenFlow.ts` + `components/AnlegenDialog.tsx` +
+  `components/AnlegenFlow.tsx`, Details in `frontend/portal/AGENTS.md`). Fünf
+  Schritte im zentrierten Dialog bzw. als Vollbild-Schrittfolge am Telefon; der
+  frühere Seiten-Drawer ist ERSATZLOS entfallen. **Die Anlege-Semantik ist
+  unverändert** - dieselben Routen mit denselben Rümpfen, dieselbe
+  Verbindungstest-Pflicht, dieselbe Übernahme-Entscheidung auf dem SERVER; nur
+  die Reihenfolge der Fragen ändert sich (Gerätetyp statt Vorlagen-Herkunft
+  zuerst). **⚠ Der Typ ist dort ein FILTER, kein Zaun:** wo der Katalog nichts
+  Eigenes hat (bis heute: `meter`), weitet sich die Liste SICHTBAR auf alle
+  Vorlagen - der alte Weg „irgendeine Vorlage + Rolle Netz-Zähler" bleibt damit
+  offen, was diese Stufe ausdrücklich nicht brechen darf.
 
 ## Probe-Kanal: die Einmal-Anfrage Cloud→Box (Einheitsmodell Stufe 0b)
 
@@ -654,7 +666,7 @@ Anlage ändert dadurch ihr Verhalten NICHT** (siehe die Autoritäts-Regel; der B
   leeres Soll löscht nichts, Neustart, lokale Bearbeitung auf einer portal-verwalteten Anlage abgelehnt) ·
   api `ComponentApiTest` (6, echte DB + Keycloak: die Reise Vorlage→Test→Anlegen mit Fassung 1, ohne Beleg 422,
   zweiter Netz-Zähler 409, Rollback schreibt eine neue Fassung, RLS 404) · Portal `komponentenAssistent.test.ts` (26)
-  + `KomponenteHinzufuegenDrawer.test.tsx` (9). Portal-Seite in `frontend/portal/AGENTS.md`.
+  + `AnlegenFlow.test.tsx` (9). Portal-Seite in `frontend/portal/AGENTS.md`.
 - **NICHT in dieser Stufe:** Selbstbau-Kanäle (Stufe 3) · Schreiben/Schalten und Freigabe (Stufe 4) ·
   Vorlagen-Verwaltung (Stufe 6). Bestands-Übernahme + `:8484`-Ablösung sind Stufe 2 (nächster Abschnitt).
 
@@ -694,7 +706,7 @@ beide Seiten ohnehin laden (`GET /api/v1/component-templates` bzw. `GET /api/inv
   frühere `SEARCH_THRESHOLD` (Suchzeile erst ab 7 Modellen EINER Marke) ist ersatzlos entfallen: die
   Suche ist der primäre Weg, nicht die Hilfe für lange Listen. **`static/*` ist `//go:embed`-t — nach
   einer Änderung das Core-Binär neu bauen** (`go test ./internal/web` bettet neu ein).
-- **Beweise:** Portal `komponentenAssistentSuche.test.ts` (13) + `KomponenteHinzufuegenDrawer.test.tsx`
+- **Beweise:** Portal `komponentenAssistentSuche.test.ts` (13) + `AnlegenFlow.test.tsx`
   (+5, mutationsgeprüft: ohne die Normalisierung fällt der Tolerenz-Fall) · Edge
   `jstest/ui.test.js` (+9) + `web_test.go` (die ausgelieferte `modellsuche.js` und ihr Skript-Tag
   sind gepinnt — ohne das Tag wäre der Picker still kaputt; mutationsgeprüft). Im echten Chrome bei
@@ -793,7 +805,7 @@ anlegbar. **Alles ist ADDITIV: ohne den Klick verhält sich jede Anlage zeicheng
   `ComponentConnectionReceiptsTest` (+2) + `ComponentApiTest` (7, echte DB + Keycloak: ohne
   Zustimmung 422, falscher Kanal 422, gespeichert mit Opt-in + Beleg im Push, Scharfschalten 409 mit
   Grund, und der selbstheilende Rückweg) · Portal `komponentenAssistent.test.ts` (+9),
-  `KomponenteHinzufuegenDrawer.test.tsx` (+4), `control.test.ts` (+3),
+  `AnlegenFlow.test.tsx` (+4), `control.test.ts` (+3),
   `AnlagenModellSection.test.tsx` (+2). Im echten Chrome bei 1440 und 375 durchgespielt: 0 px
   horizontaler Überlauf, 0 überstehende Elemente, keine Konsolenfehler.
 
@@ -1119,7 +1131,7 @@ eine Anlage ohne selbst gebautes Gerät verhält sich zeichengleich wie vorher.
   Grund, eine Anlage OHNE verbundenes Gerät wird beim Namen genannt und schreibt nichts,
   RLS 404 auf jeder Route) · Go `componentapply` (der Skip + „nur Selbstbau ⇒
   ErrNoConfiguration") · Portal `selbstbau.test.ts` (20) + `selbstbauBruecke.test.ts` (11) +
-  `KomponenteHinzufuegenDrawer.test.tsx`. Portal-Seite in `frontend/portal/AGENTS.md`.
+  `AnlegenFlow.test.tsx`. Portal-Seite in `frontend/portal/AGENTS.md`.
 - **NICHT in dieser Stufe:** Schalten/Sollwert + Freigabe-Test (Stufe 4) · weitere Anbindungs-Arten
   HTTP/MQTT (Stufe 3b) · Vorlagen-Verwaltung (Stufe 6) · Bilanz-Rollen aus dem Baukasten.
 
@@ -3945,7 +3957,7 @@ Endpunkt, keine Migration, kein Feld auf dem Draht.**
   käme sonst nie zur Sprache, während „Weiter" offen steht. Sein Titel ist
   deshalb eine FRAGE: es gibt dafür keinen Beleg vom Server.
 - **Regeln + Beweise:** `frontend/portal/src/testHebel.ts` (rein) mit
-  `testHebel.test.ts` (16) + `KomponenteHinzufuegenDrawer.test.tsx` (+4,
+  `testHebel.test.ts` (16) + `AnlegenFlow.test.tsx` (+4,
   mutationsgeprüft: ohne die Ableitung fallen 10 Fälle). Im echten Chrome bei
   1440 und 375 durchgespielt: 0 px horizontaler Überlauf, 0 überstehende
   Elemente. Fläche + die Reihenfolge-Regel in `frontend/portal/AGENTS.md`.
