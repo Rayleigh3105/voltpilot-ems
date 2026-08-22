@@ -64,6 +64,15 @@ const COMM_FRONIUS = 'fronius_solar_api';
 // 71) - the first REALIZED Tier-2 (vendor external-EMS) control surface. See
 // kostalControl below + the scout report data/vp-kostal-plenticore-s5.
 const COMM_KOSTAL = 'kostal_modbus';
+// KACO: die drei Wege der Marke. `sunspec_tcp` ist die brand-neutrale Kennung
+// desselben SunSpec-Modbus-Pfads, den Fronius unter `fronius_sunspec` faehrt -
+// hier fuehrt sie zur Wirkleistungsbegrenzung ueber Model 123. `kaco_modbus`
+// ist die AISWEI-Registerkarte des hybriden NH3 (Batterie-Sollwert),
+// `kaco_http` die App-Schnittstelle - dort gibt es keinen Steuerweg.
+// ALLE DREI sind VORBEREITET und GESPERRT (siehe die KACO-Adapter unten).
+const COMM_SUNSPEC_TCP = 'sunspec_tcp';
+const COMM_KACO_MODBUS = 'kaco_modbus';
+const COMM_KACO_HTTP = 'kaco_http';
 
 // Control tiers - the battery-control PRIMITIVE, decoupled from the read transport
 // (design data/vp-battery-control-deepdive/report.md §1). Mirrors the Go
@@ -378,6 +387,20 @@ function controlRoute(selection, setpoint, opts = {}) {
     }
     if (comm === COMM_FRONIUS) {
       return froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
+    }
+    // KACO: innerhalb desselben Tiers waehlt die KOMMUNIKATION die Register-
+    // FLAECHE (die Regel, die schon fuer generic/Fronius gilt). Beide Adapter
+    // sind vorbereitet und GESPERRT - `writes` bleibt leer.
+    if (comm === COMM_SUNSPEC_TCP) {
+      return kacoSunspecControl({ conn, ip, family, certified, controlEnabled, pvLimitKw, opts });
+    }
+    if (comm === COMM_KACO_MODBUS) {
+      return kacoNh3Control({ conn, ip, family, certified, controlEnabled, kw, setpoint });
+    }
+    if (comm === COMM_KACO_HTTP) {
+      // Ehrlich: ueber die App-Schnittstelle gibt es keinen dokumentierten
+      // Steuerweg. Kein Plan, keine erfundene Adresse - nur der Grund.
+      return idle('KACO App-Schnittstelle: kein Steuerweg (nur lesen)');
     }
   }
   return idle('unbekannte Kommunikationsmethode');
@@ -752,6 +775,40 @@ function controlRelease(selection, opts = {}) {
     };
   }
 
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_SUNSPEC_TCP) {
+    // Ruecknahme der Wirkleistungsbegrenzung: `WMaxLim_Ena` = 0 an den
+    // ENTDECKTEN Adressen (dieselbe geteilte Planung wie bei Fronius).
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+    const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
+    const plan = sunspec.planCurtailment({ discovery: opts.sunspec || null, pvLimitKw: null });
+    const planned = plan.ok ? plan.writes.map((w) => ({ ...w, bench_pending: true })) : [];
+    return {
+      adapter: 'kaco_sunspec', family, tier, certified, controlEnabled, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
+      writes: [], readbacks: [], planned,
+      reason: planned.length > 0 ? 'KACO SunSpec: Steuerung nicht freigegeben'
+        : 'KACO SunSpec: ' + plan.reason + ' (Steuerung nicht freigegeben)',
+    };
+  }
+
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_KACO_MODBUS) {
+    // ⚠ DIE RUECKNAHME IST HIER DER GANZE FAILSAFE: der NH3 hat kein
+    // dokumentiertes Totmann-Register, ein gesetzter Sollwert bliebe also
+    // stehen. Zurueck auf Eigenverbrauch (41104 = 2) und Sollwert 0.
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+    const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
+    return {
+      adapter: 'kaco_nh3', family, tier, certified, controlEnabled, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
+      writes: [], readbacks: [], planned: kacoNh3ReleasePlan(),
+      reason: 'KACO NH3: Steuerung nicht freigegeben',
+    };
+  }
+
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_KACO_HTTP) {
+    return { ...idle('KACO App-Schnittstelle: kein Steuerweg (nur lesen)'), mode: 'release', tier, planned: [] };
+  }
+
   return idle('unbekannte Kommunikationsmethode');
 }
 
@@ -974,6 +1031,152 @@ function froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLim
     planned,
     reason,
   };
+}
+
+// --- KACO control adapters (UNCERTIFIED - PREPARED and LOCKED) ---------------
+//
+// SAFETY (der ganze Punkt dieser Stufe): KACO steht in KEINER der beiden
+// Freigabelisten. Diese Adapter geben NIEMALS einen ausfuehrbaren Schreibbefehl
+// heraus (`writes: []`) und erfinden NIEMALS ein Rueckleseregister
+// (`readbacks: []`). Was sie liefern, ist der `planned`-Satz - das konkrete
+// Artefakt, das eine Bench-Sitzung am echten Geraet prueft (CONTROL-BENCH.md).
+//
+// ⚠ SIE SIND HAERTER GESPERRT ALS DIE FREIGABELISTE: `writes` bleibt leer
+// UNABHAENGIG von `certified`. Ein First-Light-Grant am Geraet - der bei Fronius
+// den Schreibweg oeffnet - reicht hier NICHT, weil an keinem KACO je etwas
+// gemessen wurde. Die Sperre faellt erst, wenn diese Zeilen bewusst geaendert
+// werden, nicht durch einen Klick.
+
+const KACO_NOT_CERTIFIED_REASON = 'Steuerung für dieses Modell noch nicht freigegeben (Prüfstand ausstehend)';
+
+// kacoSunspecControl - die WIRKLEISTUNGSBEGRENZUNG der KACO-eigenen Linie
+// (blueplanet TL1/TL3, Powador TL3, NX3 M8/M10) ueber SunSpec **Model 123**.
+//
+// QUELLE (Fakten, kein Code): KACO dokumentiert das SELBST - App Note
+// „blueplanet 100-125 NX3" §2.3.1 mit dem Beispiel 40295 (`WMaxLimPct`) / 40299
+// (`WMaxLim_Ena`), und das Handbuch 87.0 TL3 §10.4.1 sagt: „P-Limit ist nur
+// ueber das MODBUS/SunSpec-Wechselrichtermodell 123 WMaxLimPct und per
+// RS485-Kommunikation verfuegbar." Das ist dasselbe Primitiv, das der
+// Fronius-Adapter faehrt - deshalb wird `sunspec.planCurtailment` GETEILT statt
+// nachgebaut, und die Adressen kommen aus dem LIVE-Discovery-Walk, nie aus einer
+// erfundenen Konstante.
+//
+// ⚠ ZWEI KACO-EIGENE VORBEHALTE, die die Bench klaeren muss:
+//   1. **Die Schreib-FORM.** KACOs Beispiel schreibt die zwei Register EINZELN
+//      (FC6); Fronius verlangt den geschlossenen FC16-Block (an einer echten
+//      Anlage am 09.08.2026 gemessen). Der Ausweg dafuer existiert schon als
+//      Verbindungsfeld `curtail_write_fc` - er wird hier durchgereicht.
+//   2. **Die Firmware.** Der Schreibzugriff ist ein EIGENER Menuepunkt am Geraet
+//      und existiert erst ab Paket V4.00; ein Geraet mit V3.x liest Model 123,
+//      nimmt aber keinen Schreibbefehl an. Ohne die Modell-1-`Version` des
+//      Geraets ist das nicht entscheidbar - also wird es NICHT entschieden.
+function kacoSunspecControl({ conn, ip, family, certified, controlEnabled, pvLimitKw, opts }) {
+  const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+  const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
+  const discovery = (opts && opts.sunspec) || null;
+  const plan = sunspec.planCurtailment({
+    discovery,
+    pvLimitKw,
+    nameplateKw: opts && opts.nameplateKw,
+    wMaxLimPctSf: opts && opts.wMaxLimPctSf,
+    rvrtTms: opts && opts.rvrtTms,
+  });
+  const planned = plan.ok ? plan.writes.map((w) => ({ ...w, bench_pending: true })) : [];
+  return {
+    adapter: 'kaco_sunspec', family, tier: CONTROL_TIER.SUNSPEC,
+    target: ip + ':' + port,
+    connection: { ip, port, unit_id: unitId, curtail_write_fc: Number(conn.curtail_write_fc) || 0 },
+    certified,
+    controlEnabled,
+    writes: [], // gesperrt - siehe der Kopf dieses Abschnitts
+    readbacks: [],
+    planned,
+    reason: planned.length > 0
+      ? KACO_NOT_CERTIFIED_REASON
+      : 'KACO SunSpec: ' + plan.reason + ' (Steuerung nicht freigegeben)',
+  };
+}
+
+// KACO_NH3_CONTROL_REG - die BATTERIE-Steuerregister des hybriden NH3, aus der
+// AISWEI-Registerkarte `MB001_ASW GEN-Modbus` §3.3 (Holding, Doku-Nummern).
+//
+// QUELLE (Fakten, kein Code): dieselbe OEM-Doku, aus der der Lesepfad kommt,
+// und evccs produktives `solplanet-modbus`-Template, das fuer die ASW-TH-Serie
+// und ausdruecklich „KACO Blueplanet Hybrid NH3" die Faehigkeit
+// `battery-control` fuehrt. Die Adressen sind belegt, an EINEM KACO gemessen
+// hat sie niemand von uns.
+const KACO_NH3_CONTROL_REG = {
+  // 41104: Betriebsmodus. 1 = Aus, 2 = Eigenverbrauch, 3 = Backup,
+  // 4 = „Customer defined" - nur in 4 gilt der Sollwert unten.
+  MODE: 41104,
+  MODE_SELF_CONSUMPTION: 2,
+  MODE_CUSTOMER: 4,
+  // 41152: Lade-/Entlade-Flag (1 Stop, 2 Laden, 3 Entladen).
+  FLAG: 41152,
+  FLAG_STOP: 1,
+  FLAG_CHARGE: 2,
+  FLAG_DISCHARGE: 3,
+  // 41153: Lade-/Entladeleistung, S16 in W. ⚠ AISWEI-Vorzeichen:
+  // **- laden / + entladen** - die UMKEHRUNG von VoltPilots Konvention.
+  POWER_W: 41153,
+  // 41154/41155: SoC-Ober-/Untergrenze (x 0,01 %).
+  SOC_MAX: 41154,
+  SOC_MIN: 41155,
+};
+
+// kacoNh3Control - der vorbereitete, GESPERRTE Batterie-Schreibweg des NH3.
+//
+// ⚠ ES GIBT KEIN TOTMANN-REGISTER. In MB001 ist keines dokumentiert - anders
+// als bei Deyes Fernsteuerung (1101) oder KOSTALs eigenem Watchdog. Ein
+// Sollwert, den wir setzen, bleibt also stehen, bis ihn jemand aendert. Der
+// Failsafe muss deshalb UNSER Failsafe sein: laufend re-assertieren und bei
+// Stille 41104 aktiv auf 2 (Eigenverbrauch) zuruecksetzen - genau das Muster,
+// das der Shelly- und der go-e-Executor fahren. Das ist eine BENCH-PFLICHT,
+// keine Annahme: bevor hier je ein Schreibbefehl herausgeht, muss am Geraet
+// bewiesen sein, dass die Ruecknahme wirkt.
+function kacoNh3Control({ conn, ip, family, certified, controlEnabled, kw, setpoint }) {
+  const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+  const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
+  const invert = conn.invert_control_sign === true;
+  const battKw = isFiniteNum(kw) ? (invert ? -kw : kw) : 0;
+  // VoltPilot: + = laden. AISWEI: - = laden. Also NEGIEREN.
+  const watts = Math.round(-battKw * 1000);
+  const flag = battKw > 0 ? KACO_NH3_CONTROL_REG.FLAG_CHARGE
+    : (battKw < 0 ? KACO_NH3_CONTROL_REG.FLAG_DISCHARGE : KACO_NH3_CONTROL_REG.FLAG_STOP);
+  const sp = setpoint || {};
+  const socMin = isFiniteNum(sp.soc_min_pct) ? sp.soc_min_pct : 5;
+  const socMax = isFiniteNum(sp.soc_max_pct) ? sp.soc_max_pct : 95;
+
+  const planned = [
+    { role: 'work_mode', fc: 6, addr: KACO_NH3_CONTROL_REG.MODE, value: KACO_NH3_CONTROL_REG.MODE_CUSTOMER, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'battery_flag', fc: 6, addr: KACO_NH3_CONTROL_REG.FLAG, value: flag, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'battery_power', fc: 6, addr: KACO_NH3_CONTROL_REG.POWER_W, value: watts, encode: { kind: 'watts_s16_inverted', kw: battKw }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'battery_soc_max', fc: 6, addr: KACO_NH3_CONTROL_REG.SOC_MAX, value: Math.round(socMax * 100), encode: { kind: 'pct_x100' }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'battery_soc_min', fc: 6, addr: KACO_NH3_CONTROL_REG.SOC_MIN, value: Math.round(socMin * 100), encode: { kind: 'pct_x100' }, dwell_s: 0, min_change: 0, bench_pending: true },
+  ];
+
+  return {
+    adapter: 'kaco_nh3', family, tier: CONTROL_TIER.SUNSPEC,
+    target: ip + ':' + port,
+    connection: { ip, port, unit_id: unitId },
+    certified,
+    controlEnabled,
+    writes: [], // gesperrt - siehe der Kopf dieses Abschnitts
+    readbacks: [],
+    planned,
+    reason: KACO_NOT_CERTIFIED_REASON,
+  };
+}
+
+// kacoNh3Release - die Ruecknahme: zurueck auf Eigenverbrauch (41104 = 2) und
+// den Sollwert auf 0. Sie ist der Failsafe, den es ohne Totmann-Register am
+// Geraet braucht - und deshalb steht sie hier, obwohl noch nichts schreibt.
+function kacoNh3ReleasePlan() {
+  return [
+    { role: 'work_mode', fc: 6, addr: KACO_NH3_CONTROL_REG.MODE, value: KACO_NH3_CONTROL_REG.MODE_SELF_CONSUMPTION, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'battery_flag', fc: 6, addr: KACO_NH3_CONTROL_REG.FLAG, value: KACO_NH3_CONTROL_REG.FLAG_STOP, encode: { kind: 'enum' }, dwell_s: 0, min_change: 0, bench_pending: true },
+    { role: 'battery_power', fc: 6, addr: KACO_NH3_CONTROL_REG.POWER_W, value: 0, encode: { kind: 'watts_s16_inverted', kw: 0 }, dwell_s: 0, min_change: 0, bench_pending: true },
+  ];
 }
 
 // --- deye / hybrid control adapter (UNCERTIFIED - read-only until bench) ------
@@ -2061,6 +2264,12 @@ module.exports = {
   COMM_MODBUS,
   COMM_FRONIUS,
   COMM_KOSTAL,
+  COMM_SUNSPEC_TCP,
+  COMM_KACO_MODBUS,
+  COMM_KACO_HTTP,
+  // KACO: vorbereitet + GESPERRT (writes bleibt leer, unabhaengig von certified)
+  KACO_NH3_CONTROL_REG,
+  KACO_NOT_CERTIFIED_REASON,
   // KOSTAL PLENTICORE Tier-2 (external battery management)
   KOSTAL_REG,
   KOSTAL_MGMT_EXTERNAL_MODBUS,

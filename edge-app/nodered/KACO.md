@@ -83,15 +83,12 @@ KACO-Vendor-Modell 64203, in das das EMS ihn selbst hineinschreibt. Der
 EMS-Pfad (Vendor-Modelle 64201-64204 mit Zustandsmaschine und Pflicht-Watchdog)
 ist bewusst ein eigener, späterer Schritt.
 
-## 5. Steuerung: derzeit KEINE
+## 5. Steuerung: VORBEREITET und GESPERRT
 
-KACO dokumentiert die Wirkleistungsbegrenzung selbst über **SunSpec Model 123**
-(`WMaxLimPct` + `WMaxLim_Ena`; das offizielle Beispiel schreibt 40295/40299) -
-also genau das Primitiv, das unser Fronius-Adapter fährt. **Gebaut ist davon in
-dieser Stufe nichts**, und es ist an keinem Gerät geprüft. Eine KACO-Anlage wird
-von VoltPilot ausschließlich **gelesen**.
+**Eine KACO-Anlage wird von VoltPilot ausschließlich gelesen.** Der Steuerpfad
+ist gebaut, aber er gibt keinen einzigen Schreibbefehl heraus - siehe §11.
 
-Der Schalter „Schreibzugriff erlauben" bleibt deshalb aus (§1).
+Der Schalter „Schreibzugriff erlauben" am Gerät bleibt deshalb **aus** (§1).
 
 ## 6. Bewusst NICHT anbindbar
 
@@ -212,6 +209,119 @@ Kundengerät gehören diese Punkte auf die Liste:
    plausibel (gleiche Plattform). Neuere Dongles leiten auf **HTTPS** um - dafür
    gibt es den Haken „Selbstsigniertes Zertifikat akzeptieren".
 
+## 11. Der vorbereitete, gesperrte Steuerpfad
+
+Für einmal ist die Register-Lage **dokumentiert** - anders als bei Deye, wo sie
+mühsam aus einer Fremdintegration rekonstruiert werden musste. Gemessen hat sie
+an einem KACO trotzdem niemand von uns. Deshalb ist alles gebaut und **gesperrt**.
+
+### 11.1 Was gesperrt heißt
+
+| | |
+|---|---|
+| ausgehende Schreibbefehle | **keine** (`writes: []`) |
+| erfundene Rückleseregister | **keine** (`readbacks: []`) |
+| was der Adapter liefert | der **Plan** (`planned`, jeder Eintrag `bench_pending`) - das Artefakt, das eine Prüfstand-Sitzung abarbeitet |
+
+⚠ **Die Sperre ist härter als die übliche Freigabeliste.** Bei Fronius oder Deye
+öffnet eine First-Light-Freigabe am Gerät den Schreibweg. Bei KACO **nicht**:
+`writes` bleibt leer **unabhängig von der Freigabe**. Sie fällt erst, wenn diese
+Zeilen bewusst geändert werden - nicht durch einen Klick. Ein Test nagelt genau
+das fest.
+
+### 11.2 KACO-eigene Linie: Wirkleistungsbegrenzung über SunSpec Model 123
+
+KACO beschreibt sie selbst: App Note „blueplanet 100-125 NX3" §2.3.1 mit dem
+Beispiel **40295** (`WMaxLimPct`) / **40299** (`WMaxLim_Ena`), und das Handbuch
+87.0 TL3 §10.4.1: *„P-Limit ist nur über das MODBUS/SunSpec-Wechselrichtermodell
+123 WMaxLimPct und per RS485-Kommunikation verfügbar."*
+
+Das ist **dasselbe Primitiv, das der Fronius-Adapter fährt**, also wird seine
+Planung geteilt statt nachgebaut - und die Adressen kommen aus dem
+Discovery-Walk am Gerät, nie aus einer Konstante. Ohne Walk gibt es **keinen
+Plan**, nie eine erfundene Adresse.
+
+Zwei KACO-eigene Vorbehalte für den Prüfstand:
+1. **Die Schreib-Form.** KACOs Beispiel schreibt die zwei Register **einzeln
+   (FC6)**; Fronius verlangt den geschlossenen **FC16**-Block (am 09.08.2026 an
+   einer echten Anlage gemessen). Der Ausweg ist das Verbindungsfeld
+   „Schreib-Funktionscode (Abregelung)".
+2. **Die Firmware.** Der Schreibzugriff ist ein eigener Menüpunkt und existiert
+   erst ab Paket **V4.00**. Ein Gerät mit V3.x liest Model 123, nimmt aber keinen
+   Schreibbefehl an. Ohne die Modell-1-`Version` des Geräts ist das nicht
+   entscheidbar - also wird es nicht entschieden.
+
+### 11.3 hybrid NH3: Batterie-Sollwert über die AISWEI-Registerkarte
+
+Belegt durch die OEM-Doku und evccs produktives `solplanet-modbus`-Template, das
+für „KACO Blueplanet Hybrid NH3" die Fähigkeit `battery-control` führt.
+
+| Register | Bedeutung |
+|---|---|
+| **41104** | Betriebsmodus: 1 Aus · 2 Eigenverbrauch · 3 Backup · **4 „Customer defined"** (nur dort gilt der Sollwert) |
+| **41152** | Lade-/Entlade-Flag: 1 Stop · 2 Laden · 3 Entladen |
+| **41153** | Lade-/Entladeleistung, S16 in W. ⚠ **AISWEI-Vorzeichen: − laden / + entladen** - die Umkehrung unserer Konvention, der Plan negiert deshalb |
+| **41154 / 41155** | SoC-Ober-/Untergrenze (× 0,01 %) |
+
+⚠ **Es gibt kein Totmann-Register.** In der AISWEI-Doku ist keines dokumentiert -
+anders als bei Deyes Fernsteuerung (1101) oder KOSTALs eigenem Watchdog. Ein
+gesetzter Sollwert bliebe also stehen, bis ihn jemand ändert. **Der Failsafe muss
+deshalb unserer sein:** laufend re-assertieren und bei Stille 41104 aktiv auf
+**2 (Eigenverbrauch)** zurücksetzen - genau das Muster, das der Shelly- und der
+go-e-Executor fahren. Die Rücknahme ist als Plan gebaut; **dass sie am Gerät
+wirkt, ist Prüfstand-Pflicht, bevor je etwas geschrieben wird.**
+
+### 11.4 App-Schnittstelle: gar kein Steuerweg
+
+Über HTTP 8484 gibt es keinen dokumentierten Steuerweg. Der Adapter sagt das
+(„kein Steuerweg (nur lesen)") statt eine Adresse zu raten.
+
+### 11.5 gridsave: ein eigenes Kapitel, nicht dieses
+
+Ein gridsave braucht ein externes EMS und spricht dafür die KACO-Vendor-Modelle
+**64201-64204** - mit Zustandsmaschine, Lade-/Entladekennlinie und einem
+**Pflicht-Watchdog** (60 s, alle 10 s getriggert). VoltPilot *könnte* dieses EMS
+sein; das ist ein eigener Bau mit eigener Untersuchung, kein Nebenprodukt dieser
+Stufe.
+
+## 12. Kunden-Termin-Checkliste
+
+Was **nur am echten Gerät** geht. Abzuarbeiten, bevor irgendeine Steuerung je
+scharf geschaltet wird.
+
+1. **Typenschild fotografieren**: exakter Modellname (z. B.
+   `blueplanet hybrid 10.0 NH3 M3 WM OD IIG0`), Seriennummer, Baujahr.
+2. **Plattform erkennen**: WLAN-Stick (SSID `B0…`, Typ `KNE-NX3-RCN-G1` /
+   Connect-GEN2 / Connect-NH) = AISWEI-Plattform; Ethernet-Buchse mit
+   Display/Webserver = KACO-eigene Linie.
+3. **Firmware** notieren (Webserver/App oder SunSpec Modell 1 `Version`).
+   TL/Powador: **≥ V4.00** wäre Voraussetzung für Schreibzugriff.
+4. **Betriebsmodus der Kommunikationseinheit** notieren (SmartCloud /
+   Modbus TCP IP Server / App local) - **und ob der Kunde seine KACO-App behalten
+   will** (dann bleibt es beim HTTP-8484-Weg).
+5. **Modbus TCP aktivieren** (TL/Powador: „Netzwerk – Modbus TCP –
+   Betriebsmodus"), **Unit-ID ablesen**.
+6. **Discovery-Dump ziehen**: die vollständige SunSpec-Modell-Liste mit Längen.
+   Das klärt 101/102/103 vs. 111/112/113, ob ein Speichermodell (124/802)
+   existiert, 160 und die Vendor-Modelle 64xxx.
+7. **Batterie (NH3)**: AISWEI-Register 31619/31622 gegen die HTTP-Werte
+   `pb`/`soc` vergleichen; **Vorzeichen** und SoC-Skalierung (× 0,01)
+   verifizieren; `41104`-Istwert notieren; BMS1/BMS2.
+8. **Netzzähler**: SDM630 angeschlossen? `device=3` / 46434 / SunSpec-Modell 2xx
+   prüfen; Vorzeichen (+ = Bezug) kalibrieren.
+9. **HTTP 8484 testen**: `curl http://<stick>:8484/getdev.cgi?device=2`
+   (liefert `isn`, `add`, `rate`), dann `getdevdata.cgi?device=2|3|4&sn=<isn>`.
+   Bei neuem Dongle **HTTPS/443** probieren.
+10. **Schreibzugriff**: ist das Menü überhaupt vorhanden? **NICHT aktivieren** -
+    nur feststellen. Die Steuerung bleibt gesperrt.
+11. **Einzelverbindungs-Regel**: sicherstellen, dass kein anderer Modbus-Client
+    (Solar-Log, HEMS, evcc) dieselbe Verbindung hält.
+12. **Bei Dunkelheit**: ist das SunSpec-Common-Modell lesbar, steht die
+    Verbindung - die Messwerte kommen mit der ersten Einstrahlung.
+
+Erst danach - und erst nach einer beaufsichtigten Prüfstand-Sitzung nach
+`CONTROL-BENCH.md` - darf über eine Freigabe überhaupt gesprochen werden.
+
 ## Siehe auch
 
 - `nodered/sunspec/sunspec-live.js` - der Walker + die Decodierung (geteilt mit Fronius)
@@ -219,3 +329,4 @@ Kundengerät gehören diese Punkte auf die Liste:
 - `nodered/kaco/aiswei-decode.js` - die AISWEI-Registerkarte des NH3
 - `FRONIUS.md` §5b - derselbe Lesepfad aus der Fronius-Sicht
 - `edge-app/INVERTER-CONFIG.md` - der Vertrag der retained `edge/inverter/config`
+- `CONTROL-BENCH.md` → KACO - die Prüfstand-Checkliste

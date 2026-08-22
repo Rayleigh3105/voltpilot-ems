@@ -523,6 +523,52 @@ test('flow control planner keeps Deye read-only (uncertified) like the module', 
   assert.strictEqual(flowPlan.certified, false);
 });
 
+// --- KACO: die INLINE-Kopie ist mit dem Adapter identisch, und beide schweigen -
+//
+// Der wichtigste Vergleich ist der leere: NIRGENDS ein Schreibbefehl. Eine
+// Divergenz hier koennte einen gesperrten Schreibweg still wieder oeffnen.
+test('flow control planner: KACO NH3 plant genau den Satz des Adapters - und schreibt nichts', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', family: 'kaco_nh3', communication: 'kaco_modbus',
+    control_tier: 1, connection: { ip: '192.168.0.31', port: 502, unit_id: 1 },
+  };
+  const sp = { battery_setpoint_kw: -3, source: 'schedule', control_enabled: true, soc_min_pct: 10, soc_max_pct: 90 };
+  const flowPlan = runControlPlan(sel, sp);
+  assert.deepStrictEqual(flowPlan, JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, {}))));
+  assert.deepStrictEqual(flowPlan.writes, [], 'KACO gibt nie einen Schreibbefehl heraus');
+  assert.deepStrictEqual(flowPlan.readbacks, []);
+  assert.strictEqual(flowPlan.planned.length, 5, 'der Plan ist das Bench-Artefakt');
+});
+
+test('flow control planner: die KACO-eigene Linie plant ohne Discovery KEINE Adresse', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', family: 'sunspec_live', communication: 'sunspec_tcp',
+    control_tier: 1, connection: { ip: '192.168.0.9', port: 502, unit_id: 1 },
+  };
+  const sp = { battery_setpoint_kw: 0, pv_limit_kw: 6, source: 'schedule', control_enabled: true };
+  const flowPlan = runControlPlan(sel, sp);
+  assert.deepStrictEqual(flowPlan, JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, {}))));
+  assert.deepStrictEqual(flowPlan.writes, []);
+  assert.deepStrictEqual(flowPlan.planned, [], 'nie eine erfundene Adresse');
+});
+
+test('flow control planner: die KACO App-Schnittstelle sagt „kein Steuerweg" statt „unbekannt"', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'kaco', family: 'kaco_http_hybrid', communication: 'kaco_http',
+    control_tier: 1, connection: { ip: '192.168.0.30', port: 8484 },
+  };
+  const sp = { battery_setpoint_kw: -3, source: 'schedule', control_enabled: true };
+  // Ein idle-Plan setzt msg.control bewusst NICHT (der Knoten zeigt nur einen
+  // Status) - genau wie bei jedem anderen unsteuerbaren Weg.
+  assert.strictEqual(runControlPlan(sel, sp), undefined);
+  // Der Grund ist die Aussage: nicht „unbekannte Kommunikationsmethode",
+  // sondern der ehrliche Satz, dass es dort keinen Steuerweg gibt.
+  const mod = controlRouting.controlRoute(sel, sp, {});
+  assert.strictEqual(mod.adapter, 'idle');
+  assert.match(mod.reason, /kein Steuerweg/);
+  assert.deepStrictEqual(mod.writes, []);
+});
+
 test('flow control planner keeps Fronius planned-only (uncertified) like the module', () => {
   const sel = {
     schema_version: '1.0', brand: 'fronius', family: 'fronius_solar_api',
