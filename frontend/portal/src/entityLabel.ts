@@ -78,6 +78,7 @@ export function shortModel(model: string): string {
 const BRAND_DISPLAY: Record<string, string> = {
   fronius_sunspec: 'Fronius',
   generic_modbus: 'Modbus-Gerät',
+  kaco: 'KACO',
   'go-e': 'go-e',
 };
 

@@ -790,7 +790,7 @@
       // Multi-inverter hint (Fronius Datamanager): a successful SunSpec test
       // also scans the address for further inverter unit ids - the further
       // devices belong on the "Meine Anlage" card as eigene Erzeuger-Quellen.
-      probePayload: b && b.communication === "fronius_sunspec" ? payload : null,
+      probePayload: b && (b.communication === "fronius_sunspec" || b.communication === "sunspec_tcp") ? payload : null,
     });
   });
 

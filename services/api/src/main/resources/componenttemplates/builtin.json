@@ -6236,6 +6236,4465 @@
       "note": "Weiteres Modell der Baureihe, auch G2 (Nennleistung unbekannt) KOSTAL PLENTICORE BI (Batterie-Wechselrichter). Modbus muss im Webserver des Wechselrichters aktiviert sein."
     },
     {
+      "template_ref": "builtin:kaco:bp-3.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-3.0-tl3",
+      "model_label": "blueplanet 3.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 3,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "3 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-4.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-4.0-tl3",
+      "model_label": "blueplanet 4.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 4,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "4 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-5.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-5.0-tl3",
+      "model_label": "blueplanet 5.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 5,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-6.5-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-6.5-tl3",
+      "model_label": "blueplanet 6.5 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 6.5,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "6,5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-7.5-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-7.5-tl3",
+      "model_label": "blueplanet 7.5 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 7.5,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "7,5 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-8.6-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-8.6-tl3",
+      "model_label": "blueplanet 8.6 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 8.6,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "8,6 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-9.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-9.0-tl3",
+      "model_label": "blueplanet 9.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 9,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "9 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-10.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-10.0-tl3",
+      "model_label": "blueplanet 10.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 10,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "10 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-15.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-15.0-tl3",
+      "model_label": "blueplanet 15.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 15,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "15 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-20.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-20.0-tl3",
+      "model_label": "blueplanet 20.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 20,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "20 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-29.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-29.0-tl3",
+      "model_label": "blueplanet 29.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 29,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "29 kW · String · 3-phasig · nur Erzeugung · Weboberfläche (M1) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-50.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-50.0-tl3",
+      "model_label": "blueplanet 50.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 50,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "50 kW · String · 3-phasig · nur Erzeugung · Varianten M1/M3/S/RPonly KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-60.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-60.0-tl3",
+      "model_label": "blueplanet 60.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 60,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "60 kW · String · 3-phasig · nur Erzeugung · Varianten M1/M3 KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-87.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-87.0-tl3",
+      "model_label": "blueplanet 87.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 87,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "87 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-92.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-92.0-tl3",
+      "model_label": "blueplanet 92.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 92,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "92 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-100-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-100-tl3",
+      "model_label": "blueplanet 100 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 100,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "100 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-105-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-105-tl3",
+      "model_label": "blueplanet 105 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 105,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "105 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-110-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-110-tl3",
+      "model_label": "blueplanet 110 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 110,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "110 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-125-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-125-tl3",
+      "model_label": "blueplanet 125 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 125,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "125 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-137-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-137-tl3",
+      "model_label": "blueplanet 137 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 137,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "137 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-150-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-150-tl3",
+      "model_label": "blueplanet 150 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 150,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "150 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-155-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-155-tl3",
+      "model_label": "blueplanet 155 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 155,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "155 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-165-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-165-tl3",
+      "model_label": "blueplanet 165 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 165,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "165 kW · String · 3-phasig · nur Erzeugung · 2× Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-2.0-tl1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-2.0-tl1",
+      "model_label": "blueplanet 2.0 TL1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 2,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "2 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-2.6-tl1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-2.6-tl1",
+      "model_label": "blueplanet 2.6 TL1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 2,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "2,6 kW (AC-Nennleistung 2,0 kW) · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-3.0-tl1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-3.0-tl1",
+      "model_label": "blueplanet 3.0 TL1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 3,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "3 kW · String · 1-phasig · nur Erzeugung · Ethernet (M1/M2) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-3.5-tl1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-3.5-tl1",
+      "model_label": "blueplanet 3.5 TL1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 3.5,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "3,5 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-3.7-tl1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-3.7-tl1",
+      "model_label": "blueplanet 3.7 TL1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 3.68,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "3,7 kW (AC-Nennleistung 3,68 kW) · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-4.0-tl1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-4.0-tl1",
+      "model_label": "blueplanet 4.0 TL1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 4,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "4 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-4.6-tl1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-4.6-tl1",
+      "model_label": "blueplanet 4.6 TL1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 4.6,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "4,6 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-5.0-tl1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-5.0-tl1",
+      "model_label": "blueplanet 5.0 TL1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 5,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "5 kW · String · 1-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-100-nx3-m8",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-100-nx3-m8",
+      "model_label": "blueplanet 100 NX3 M8",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 100,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "100 kW · String · 3-phasig · 8 MPPT · nur Erzeugung · Weboberfläche KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-125-nx3-m10",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-125-nx3-m10",
+      "model_label": "blueplanet 125 NX3 M10",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 125,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "125 kW · String · 3-phasig · 10 MPPT · nur Erzeugung · Weboberfläche KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-10.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-10.0-tl3",
+      "model_label": "Powador 10.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 10,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "10 kW · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-12.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-12.0-tl3",
+      "model_label": "Powador 12.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 10,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "12 kW (AC-Nennleistung 10 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-14.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-14.0-tl3",
+      "model_label": "Powador 14.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 12,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "14 kW (AC-Nennleistung 12 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-18.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-18.0-tl3",
+      "model_label": "Powador 18.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 15,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "18 kW (AC-Nennleistung 15 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-20.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-20.0-tl3",
+      "model_label": "Powador 20.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 17,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "20 kW (AC-Nennleistung 17 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-30.0-tl3-m1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-30.0-tl3-m1",
+      "model_label": "Powador 30.0 TL3 M1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 25,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "30 kW (AC-Nennleistung 25 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-36.0-tl3-m1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-36.0-tl3-m1",
+      "model_label": "Powador 36.0 TL3 M1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 30,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "36 kW (AC-Nennleistung 30 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-39.0-tl3-m1",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-39.0-tl3-m1",
+      "model_label": "Powador 39.0 TL3 M1",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 33.3,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "39 kW (AC-Nennleistung 33,3 kW) · String · 3-phasig · nur Erzeugung · Ethernet (M1-Revision) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-48.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-48.0-tl3",
+      "model_label": "Powador 48.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 40,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "48 kW (AC-Nennleistung 40 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-60.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-60.0-tl3",
+      "model_label": "Powador 60.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 49.9,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "60 kW (AC-Nennleistung 49,9 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:powador-72.0-tl3",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "powador-72.0-tl3",
+      "model_label": "Powador 72.0 TL3",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 60,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "72 kW (AC-Nennleistung 60 kW) · String · 3-phasig · nur Erzeugung · Ethernet KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-gridsave-50.0-tl3-s",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-gridsave-50.0-tl3-s",
+      "model_label": "blueplanet gridsave 50.0 TL3-S",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 50,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "50 kW · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-gridsave-92.0-tl3-s",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-gridsave-92.0-tl3-s",
+      "model_label": "blueplanet gridsave 92.0 TL3-S",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 92,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "92 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-gridsave-110-tl3-s",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-gridsave-110-tl3-s",
+      "model_label": "blueplanet gridsave 110 TL3-S",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 110,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "110 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:bp-gridsave-137-tl3-s",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "bp-gridsave-137-tl3-s",
+      "model_label": "blueplanet gridsave 137 TL3-S",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": 137,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "137 kVA · Batterie-Wechselrichter (kein PV) · 3-phasig · nur lesen (Ladestand und Steuerung brauchen den EMS-Weg) KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
+      "template_ref": "builtin:kaco:kaco-sunspec-generic",
+      "kind": "builtin",
+      "version": 1,
+      "brand": "kaco",
+      "brand_label": "KACO",
+      "model": "kaco-sunspec-generic",
+      "model_label": "Anderes KACO-Modell (SunSpec)",
+      "device_type": "inverter",
+      "family": "sunspec_live",
+      "family_label": "SunSpec über Modbus",
+      "communication": "sunspec_tcp",
+      "communication_label": "SunSpec Modbus TCP (TCP 502)",
+      "transport_schema": [
+        {
+          "key": "ip",
+          "label": "IP-Adresse des Wechselrichters",
+          "type": "text",
+          "required": true,
+          "help": "Die IP des KACO-Wechselrichters im lokalen Netz. Modbus TCP muss am Gerät bzw. in seiner Weboberfläche eingeschaltet sein: „Netzwerk – Modbus TCP – Betriebsmodus\" (bei manchen Baureihen „Netzwerkdienste – Modbus TCP\")."
+        },
+        {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "default": 502,
+          "help": "Modbus-TCP-Port, üblicherweise 502."
+        },
+        {
+          "key": "unit_id",
+          "label": "Modbus-Unit-ID",
+          "type": "number",
+          "default": 1,
+          "help": "Die Modbus-Adresse des Geräts. Bei den älteren blueplanet-TL- und Powador-TL3-Geräten wird sie über TCP ignoriert – 1 passt immer. Steht Ihr Gerät hinter einer Kommunikationseinheit (WLAN-/LAN-Stick), ist die Vorgabe des Herstellers 3."
+        },
+        {
+          "key": "model_type",
+          "label": "SunSpec-Modelltyp",
+          "type": "select",
+          "default": "auto",
+          "help": "Wird normalerweise automatisch erkannt (KACO liefert je nach Firmware die Integer-Modelle 102/103 oder zusätzlich die Float-Modelle 112/113). Nur ändern, wenn die automatische Erkennung nicht greift.",
+          "options": [
+            {
+              "value": "auto",
+              "label": "Automatisch (empfohlen)"
+            },
+            {
+              "value": "float",
+              "label": "Float (111/112/113)"
+            },
+            {
+              "value": "int_sf",
+              "label": "Integer + Skalierung (101/102/103)"
+            }
+          ]
+        },
+        {
+          "key": "invert_grid_sign",
+          "label": "Netz-Vorzeichen invertieren",
+          "type": "checkbox",
+          "help": "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."
+        },
+        {
+          "key": "curtail_write_fc",
+          "label": "Schreib-Funktionscode (Abregelung)",
+          "type": "select",
+          "default": 0,
+          "help": "Modbus-Funktion für die Einspeise-Begrenzung. KACOs eigenes Beispiel zur Wirkleistungsbegrenzung schreibt die Register 40295/40299 EINZELN (FC6), Fronius verlangt dagegen den geschlossenen FC16-Block. Voreinstellung bleibt FC16; auf FC6 stellen, wenn Ihr KACO den Block nicht übernimmt. Die Abregelung ist derzeit ohnehin gesperrt (nicht freigegeben) – die Einstellung wird erst mit der Freigabe wirksam.",
+          "options": [
+            {
+              "value": 0,
+              "label": "Automatisch (FC16, empfohlen)"
+            },
+            {
+              "value": 16,
+              "label": "FC16 – mehrere Register (0x10)"
+            },
+            {
+              "value": 6,
+              "label": "FC6 – einzelne Register (0x06)"
+            }
+          ]
+        }
+      ],
+      "channels": null,
+      "writes": null,
+      "rated_kw": null,
+      "control_tier": 1,
+      "certification_status": "builtin",
+      "note": "Weiteres KACO-Gerät mit SunSpec Modbus TCP, Nennleistung unbekannt KACO-Wechselrichter. Modbus TCP muss am Gerät eingeschaltet sein („Netzwerk – Modbus TCP – Betriebsmodus\")."
+    },
+    {
       "template_ref": "builtin:go-e:goe_http_api",
       "kind": "builtin",
       "version": 1,

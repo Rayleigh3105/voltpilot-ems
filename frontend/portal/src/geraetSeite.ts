@@ -250,6 +250,7 @@ const COMM_WORT: Record<string, string> = {
   solarman_v5: 'Solarman-Logger (WLAN-Stick)',
   modbus_tcp: 'Modbus über das Netzwerk',
   fronius_sunspec: 'SunSpec über das Netzwerk',
+  sunspec_tcp: 'SunSpec über das Netzwerk',
   kostal_modbus: 'Modbus über das Netzwerk',
   fronius_solar_api: 'Solar-API über das Netzwerk',
   goe_http_api: 'go-e über das Netzwerk',

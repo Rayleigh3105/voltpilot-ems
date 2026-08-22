@@ -36,17 +36,32 @@ class BuiltinComponentTemplatesTest {
         List<BuiltinTemplate> all = builtin.all();
         assertThat(all).as("die Ressource ist nicht leer").isNotEmpty();
 
-        // Die sieben Marken des Geräte-Katalogs (inverter.go DefaultCatalog).
+        // Die acht Marken des Geräte-Katalogs (inverter.go DefaultCatalog).
         // Fällt eine weg, hat jemand den Katalog beschnitten, ohne es zu merken -
         // der Kunde bekäme im Assistenten weniger Geräte, als seine Box lesen kann.
         Set<String> brands = all.stream().map(BuiltinTemplate::brand).collect(Collectors.toSet());
         assertThat(brands).containsExactlyInAnyOrder("deye", "generic_modbus", "fronius",
-                "fronius_sunspec", "kostal", "go-e", "shelly");
+                "fronius_sunspec", "kostal", "kaco", "go-e", "shelly");
 
         // Die Deye-Modellreihe ist die grösste und der Grund, warum die Vorlage
         // je MODELL geschlüsselt ist (ein Registerprofil deckt mehrere Baureihen ab).
         assertThat(all.stream().filter(t -> "deye".equals(t.brand())).count())
                 .as("Deye-Modelle").isGreaterThanOrEqualTo(30);
+
+        // KACO ist die zweite Marke in Deye-Dichte (blueplanet TL1/TL3, Powador
+        // TL3, NX3 M8/M10, gridsave). Sie liest über den BESTEHENDEN
+        // SunSpec-Live-Pfad - deshalb trägt jede ihrer Zeilen die neutrale
+        // Anbindung `sunspec_tcp` und das Profil `sunspec_live`, und keine
+        // einzige nennt „Fronius".
+        List<BuiltinTemplate> kaco = all.stream()
+                .filter(t -> "kaco".equals(t.brand())).toList();
+        assertThat(kaco).as("KACO-Modelle").hasSizeGreaterThanOrEqualTo(40);
+        for (BuiltinTemplate t : kaco) {
+            assertThat(t.communication()).isEqualTo("sunspec_tcp");
+            assertThat(t.family()).isEqualTo("sunspec_live");
+            assertThat(t.brandLabel()).isEqualTo("KACO");
+            assertThat(t.modelLabel().toLowerCase()).doesNotContain("fronius");
+        }
     }
 
     @Test

@@ -361,3 +361,41 @@ test('shouldReadExportLimit liest höchstens einmal am Tag - und beim Start', ()
   // Eine Familie ohne belastbares Register wird nie gelesen, egal wie alt.
   assert.strictEqual(routing.shouldReadExportLimit('hybrid_1p', undefined, now), false);
 });
+
+// --- the brand-neutral SunSpec id --------------------------------------------
+//
+// `sunspec_tcp` is the SAME read path as `fronius_sunspec` under an id that does
+// not name a brand (the first user is KACO). The Fronius id is PERSISTED and must
+// keep behaving byte-identically; the neutral one must reach the same adapter.
+test('sunspec_tcp routes to the SunSpec-live adapter exactly like fronius_sunspec', () => {
+  const conn = { ip: '192.168.0.9', port: 502, unit_id: 1, model_type: 'auto' };
+  const kaco = routing.route(routing.parseConfig(JSON.stringify({
+    schema_version: '1.0', brand: 'kaco', label: 'KACO · blueplanet 4.6 TL1',
+    model: 'bp-4.6-tl1', family: 'sunspec_live', communication: 'sunspec_tcp',
+    connection: conn,
+  })));
+  const fronius = routing.route(routing.parseConfig(JSON.stringify({
+    schema_version: '1.0', brand: 'fronius', label: 'Fronius · Eco 27.0-3-S',
+    model: 'fronius-eco-27-3-s', family: 'sunspec_live', communication: 'fronius_sunspec',
+    connection: conn,
+  })));
+  assert.strictEqual(kaco.adapter, 'sunspec_live');
+  assert.strictEqual(kaco.profile, routing.SUNSPEC_LIVE_PROFILE);
+  // Same connection shape - Layer 1 sees ONE plan form for both ids.
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(kaco)), JSON.parse(JSON.stringify(fronius)));
+});
+
+test('isSunSpecTcp names both ids and nothing else', () => {
+  assert.strictEqual(routing.isSunSpecTcp('fronius_sunspec'), true);
+  assert.strictEqual(routing.isSunSpecTcp('sunspec_tcp'), true);
+  assert.strictEqual(routing.isSunSpecTcp('modbus_tcp'), false);
+  assert.strictEqual(routing.isSunSpecTcp('kostal_modbus'), false);
+  assert.strictEqual(routing.isSunSpecTcp(''), false);
+});
+
+test('an unknown communication is still refused (the alias widens nothing)', () => {
+  assert.strictEqual(routing.parseConfig(JSON.stringify({
+    schema_version: '1.0', family: 'sunspec_live', communication: 'sunspec_udp',
+    connection: { ip: '192.168.0.9' },
+  })), null);
+});

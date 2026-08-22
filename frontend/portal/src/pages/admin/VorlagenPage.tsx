@@ -516,6 +516,7 @@ const COMMUNICATIONS = [
   { value: 'solarman_v5', label: 'Solarman V5 (WLAN-Stick)' },
   { value: 'fronius_solar_api', label: 'Fronius Solar API' },
   { value: 'fronius_sunspec', label: 'Fronius SunSpec' },
+  { value: 'sunspec_tcp', label: 'SunSpec Modbus TCP' },
   { value: 'goe_http_api', label: 'go-e HTTP-API' },
   { value: 'shelly_http', label: 'Shelly HTTP' },
 ];

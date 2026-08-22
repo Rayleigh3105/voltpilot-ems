@@ -3453,7 +3453,7 @@ func (a *Agent) ProbeUnits(req testconn.Request) testconn.Result {
 		}
 		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest, Message: msg}
 	}
-	if sel.Communication != inverter.CommFroniusSunSpec {
+	if !inverter.IsSunSpecTCP(sel.Communication) {
 		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest,
 			Message: "Die Suche nach weiteren Wechselrichtern gibt es nur für SunSpec (Modbus TCP)."}
 	}

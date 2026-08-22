@@ -25,7 +25,7 @@
  *
  * SCOPE: the flow read EXECUTOR wired in build-flows.js reads EVERY read
  * transport in EVERY source slot - `modbus_tcp` (the compact sim profile the e2e
- * uses), `fronius_sunspec` / `sunspec_live` (real SunSpec model discovery over
+ * uses), `fronius_sunspec` / `sunspec_tcp` -> `sunspec_live` (real SunSpec model discovery over
  * Modbus TCP - e.g. a Fronius Eco as an Erzeuger), `goe_http_api` (a go-e wallbox
  * as a Consumer), `solarman_v5` (a Deye over its Solarman-V5 logger) and
  * `fronius_solar_api` (a Fronius over its Solar API v1). See report §4 Phase 1.
