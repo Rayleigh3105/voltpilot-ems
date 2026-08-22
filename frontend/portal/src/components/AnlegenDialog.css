@@ -1,0 +1,242 @@
+/*
+ * Der Anlege-Fluss (Anlegen-Rework Stufe 2): zentrierter Schritt-Dialog auf dem
+ * Rechner, Vollbild-Schrittfolge am Telefon. Komponenten-lokal - `index.css`
+ * bleibt unangetastet (das `CockpitBlocks.css`/`KomponenteAssistent.css`-Muster).
+ *
+ * Jede Fläche hier trägt `min-width: 0` bzw. bricht um: ein einziges
+ * `nowrap`-Kind schöbe den Inhalt bei 375 px über den Rand (die dokumentierte
+ * Klasse).
+ */
+
+.vp-anlegen-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 58, 95, 0.4);
+  z-index: 60;
+}
+
+.vp-anlegen-dialog {
+  outline: none; /* nimmt den Fokus programmatisch beim Öffnen */
+  position: fixed;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text, #1e293b);
+  /* ~2/3 Bildschirm (Captain-Entscheidung 1), aber nie über den Rand: der
+     Kontext soll dahinter SICHTBAR bleiben. */
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(66vw, 960px);
+  min-width: min(100vw - 3rem, 560px);
+  max-width: calc(100vw - 3rem);
+  max-height: min(88vh, 900px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 14px);
+  box-shadow: var(--vp-shadow-lg, 0 24px 60px rgba(15, 23, 42, 0.24));
+}
+
+/* --- Telefon: EIN Schritt je Bild, Vollbild ------------------------------ */
+
+.vp-anlegen-dialog.is-vollbild {
+  left: 0;
+  top: 0;
+  transform: none;
+  width: 100vw;
+  min-width: 0;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh; /* mobile Browser: ohne die dynamische Adressleiste */
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  /* Als installierte Web-App säße der Fuß sonst im Home-Indicator. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* --- Kopf ---------------------------------------------------------------- */
+
+.vp-anlegen-kopf {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 0.75rem);
+  padding: var(--vp-space-5, 1.25rem) var(--vp-space-6, 1.5rem);
+  border-bottom: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-anlegen-titel {
+  flex: 1;
+  min-width: 0;
+}
+
+.vp-anlegen-titel h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vp-anlegen-zaehler {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-anlegen-x,
+.vp-anlegen-zurueck {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Die 44-px-Regel des Hauses - eine Daumenfläche, kein 20-px-Kreuz. */
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--vp-radius-sm, 8px);
+  color: var(--vp-text-muted, #64748b);
+  cursor: pointer;
+}
+
+.vp-anlegen-x:hover,
+.vp-anlegen-zurueck:hover {
+  background: var(--vp-surface-alt, #f1f5f9);
+  color: var(--vp-text, #1e293b);
+}
+
+/* --- Schritt-Leiste (Rechner) -------------------------------------------- */
+
+.vp-anlegen-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin: 0;
+  padding: var(--vp-space-4, 1rem) var(--vp-space-6, 1.5rem);
+  list-style: none;
+  border-bottom: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface-alt, #f8fafc);
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-anlegen-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.vp-anlegen-steps li + li::before {
+  content: '';
+  display: inline-block;
+  width: 1.2rem;
+  height: 1px;
+  margin-right: 0.35rem;
+  background: var(--vp-border, #e2e8f0);
+}
+
+.vp-anlegen-step-l {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vp-anlegen-steps li.is-active {
+  color: var(--vp-action, #2c5282);
+  font-weight: 600;
+}
+
+.vp-anlegen-step-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface, #fff);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.vp-anlegen-steps li.is-active .vp-anlegen-step-n {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-action, #2c5282);
+  color: #fff;
+}
+
+.vp-anlegen-steps li.is-done .vp-anlegen-step-n {
+  border-color: var(--vp-flow-batt, #2e9e5b);
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+/* --- Fortschrittsbalken (Telefon) ---------------------------------------- */
+
+.vp-anlegen-balken {
+  height: 3px;
+  background: var(--vp-border, #e2e8f0);
+}
+
+.vp-anlegen-balken span {
+  display: block;
+  height: 100%;
+  background: var(--vp-action, #2c5282);
+  transition: width 0.2s ease;
+}
+
+/* Nur fuer Vorlesesoftware - die Schritt-Ansage bei einem Wechsel. Bewusst
+   HIER und nicht aus `index.css` geliehen: ein Bauteil bringt sein Stylesheet
+   selbst mit. */
+.vp-anlegen-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Rumpf + Fuß --------------------------------------------------------- */
+
+.vp-anlegen-rumpf {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--vp-space-6, 1.5rem);
+}
+
+.vp-anlegen-fuss {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 0.75rem);
+  padding: var(--vp-space-4, 1rem) var(--vp-space-6, 1.5rem);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  background: var(--vp-surface, #fff);
+}
+
+.vp-anlegen-fuss > * {
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .vp-anlegen-kopf,
+  .vp-anlegen-rumpf,
+  .vp-anlegen-fuss {
+    padding-left: var(--vp-space-4, 1rem);
+    padding-right: var(--vp-space-4, 1rem);
+  }
+  .vp-anlegen-fuss button {
+    flex: 1;
+  }
+}

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -51,11 +52,38 @@ export function SelbstbauAssistent({
   onSaved,
   onDone,
   vorlage,
+  schritt: schrittVonAussen,
+  onSchritt,
+  navPortal,
 }: {
   siteId: string;
   onBack: () => void;
   onSaved: (result: SiteComponents) => void;
-  onDone: () => void;
+  /**
+   * Der Abschluss-Bildschirm dieses Assistenten. Ohne ihn (der Anlege-Fluss der
+   * Stufe 2) rendert er KEINEN eigenen - der Wirt hat einen gemeinsamen
+   * „Fertig"-Schritt fuer alle Wege, und zwei Abschluesse hintereinander waeren
+   * zwei Antworten auf dieselbe Frage.
+   */
+  onDone?: () => void;
+  /**
+   * Der Schritt von AUSSEN (1..4). Er macht den Assistenten zum Koerper eines
+   * fremden Schritt-Dialogs: der Wirt zeichnet die Schrittleiste, dieser hier
+   * bleibt der EINE Ort, an dem die Selbstbau-Fragen stehen. Ohne ihn fuehrt
+   * der Assistent seine Schritte weiterhin selbst (unveraendert).
+   */
+  schritt?: 1 | 2 | 3 | 4;
+  /** Der Schrittwechsel nach aussen - nur zusammen mit `schritt` sinnvoll. */
+  onSchritt?: (schritt: 1 | 2 | 3 | 4) => void;
+  /**
+   * Wohin die Bedienzeile („Zurueck"/„Weiter") gerendert wird.
+   *
+   * ⚠ Der Assistent BEHAELT sie - er reicht sie nur woanders hin. Sie gehoert
+   * ihm, weil nur er weiss, wann „Weiter" freigibt; sie im Wirt nachzubauen
+   * waere ein Zwilling derselben Regel. Ohne das Ziel steht sie wie bisher am
+   * Ende des Rumpfs.
+   */
+  navPortal?: HTMLElement | null;
   /**
    * Einheitsmodell Stufe 6: eine EIGENE Vorlage befüllt Anschluss und
    * Messwerte vor.
@@ -68,7 +96,12 @@ export function SelbstbauAssistent({
   vorlage?: SiteComponentTemplate | null;
 }) {
   const start = vorlage ? prefill(vorlage) : null;
-  const [schritt, setSchritt] = useState<1 | 2 | 3 | 4>(1);
+  const [eigenerSchritt, setEigenerSchritt] = useState<1 | 2 | 3 | 4>(1);
+  const schritt = schrittVonAussen ?? eigenerSchritt;
+  const setSchritt = (s: 1 | 2 | 3 | 4) => {
+    setEigenerSchritt(s);
+    onSchritt?.(s);
+  };
   const [verbindung, setVerbindung] = useState<VerbindungForm>(
     start ? { host: '', port: start.port, unitId: start.unitId } : neueVerbindung(),
   );
@@ -85,6 +118,14 @@ export function SelbstbauAssistent({
   const [speichern, setSpeichern] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [fertig, setFertig] = useState(false);
+
+  /** Die Bedienzeile - im Wirt-Fuss, wo es einen gibt, sonst hier. */
+  const Nav = ({ children }: { children: ReactNode }) =>
+    navPortal ? (
+      createPortal(children, navPortal)
+    ) : (
+      <div className="vp-assist-nav">{children}</div>
+    );
 
   const geraetMangel = geraetFehler(verbindung);
   const listenMangel = messwerteFehler(zeilen);
@@ -140,7 +181,7 @@ export function SelbstbauAssistent({
     }
   }
 
-  if (fertig) {
+  if (fertig && onDone) {
     return (
       <div className="vp-assist-done">
         <p className="vp-assist-ok">
@@ -200,14 +241,14 @@ export function SelbstbauAssistent({
           <p className="vp-assist-help">
             Im nächsten Schritt lesen Sie den ersten Messwert - damit ist die Verbindung geprüft.
           </p>
-          <div className="vp-assist-nav">
+          <Nav>
             <Button variant="ghost" onClick={onBack}>
               Zurück
             </Button>
             <Button onClick={() => setSchritt(2)} disabled={geraetMangel.length > 0}>
               Weiter
             </Button>
-          </div>
+          </Nav>
         </>
       )}
 
@@ -396,7 +437,7 @@ export function SelbstbauAssistent({
             </p>
           )}
 
-          <div className="vp-assist-nav">
+          <Nav>
             <Button variant="ghost" onClick={() => setSchritt(1)}>
               Zurück
             </Button>
@@ -406,7 +447,7 @@ export function SelbstbauAssistent({
             >
               Weiter
             </Button>
-          </div>
+          </Nav>
         </>
       )}
 
@@ -442,12 +483,12 @@ export function SelbstbauAssistent({
             />
             <p className="vp-assist-help">So heißt die Komponente in Ihrer Anlage.</p>
           </div>
-          <div className="vp-assist-nav">
+          <Nav>
             <Button variant="ghost" onClick={() => setSchritt(2)}>
               Zurück
             </Button>
             <Button onClick={() => setSchritt(4)}>Weiter</Button>
-          </div>
+          </Nav>
         </>
       )}
 
@@ -465,14 +506,14 @@ export function SelbstbauAssistent({
           <p className="vp-assist-balance">{BILANZ_HINWEIS}</p>
           {last && <p className="vp-assist-help">{last}</p>}
           {fehler && <p className="vp-assist-error">{fehler}</p>}
-          <div className="vp-assist-nav">
+          <Nav>
             <Button variant="ghost" onClick={() => setSchritt(3)}>
               Zurück
             </Button>
             <Button onClick={anlegen} disabled={speichern}>
               {speichern ? 'Speichere …' : 'Komponente anlegen'}
             </Button>
-          </div>
+          </Nav>
         </>
       )}
     </section>

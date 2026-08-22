@@ -1,0 +1,155 @@
+/*
+ * Der Inhalt des Anlege-Flusses (Anlegen-Rework Stufe 2) - die SCHALE steht in
+ * `AnlegenDialog.css`, die geteilten Feld-/Test-/Hebel-Flächen in
+ * `KomponenteAssistent.css`. Komponenten-lokal: `index.css` bleibt unangetastet.
+ */
+
+/* --- Schritt 1: die Typ-Karten ------------------------------------------- */
+
+.vp-anlegen-typen {
+  display: grid;
+  /* Am Telefon EINE Spalte - eine Karte, die ein Daumen trifft; darüber so
+     viele, wie ohne Quetschen passen. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--vp-space-3, 0.75rem);
+  margin-top: var(--vp-space-4, 1rem);
+}
+
+.vp-anlegen-typ {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'icon name' 'icon hint';
+  align-items: start;
+  gap: 0.15rem 0.75rem;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--vp-space-4, 1rem);
+  text-align: left;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+  color: inherit;
+  cursor: pointer;
+}
+
+.vp-anlegen-typ:hover,
+.vp-anlegen-typ:focus-visible {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-surface-alt, #f8fafc);
+}
+
+.vp-anlegen-typ-i {
+  grid-area: icon;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--vp-radius-sm, 8px);
+  background: var(--vp-surface-alt, #f1f5f9);
+  color: var(--vp-action, #2c5282);
+}
+
+.vp-anlegen-typ strong {
+  grid-area: name;
+  min-width: 0;
+  font-size: 0.95rem;
+}
+
+.vp-anlegen-typ-h {
+  grid-area: hint;
+  min-width: 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #64748b);
+}
+
+/* --- Schritt 2: die getroffene Wahl -------------------------------------- */
+
+.vp-anlegen-gewaehlt {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: var(--vp-space-3, 0.75rem) 0 0;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--vp-flow-batt-ink, #166534);
+}
+
+/* --- Schritt 3: die Experten-Angaben ------------------------------------- */
+
+.vp-anlegen-erweitert {
+  margin-top: var(--vp-space-3, 0.75rem);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  padding: 0 var(--vp-space-4, 1rem);
+}
+
+.vp-anlegen-erweitert > summary {
+  /* 44 px Trefferfläche - die Haus-Regel gilt auch für einen Aufklapper. */
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+}
+
+.vp-anlegen-erweitert[open] {
+  padding-bottom: var(--vp-space-3, 0.75rem);
+}
+
+/* --- Schritt 4: was gleich entsteht -------------------------------------- */
+
+.vp-anlegen-fertigmachen {
+  margin-top: var(--vp-space-5, 1.25rem);
+  padding-top: var(--vp-space-4, 1rem);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+/* Der Fuss-Platz des Selbstbau-Wegs: er nimmt die ganze Zeile ein, damit die
+   Knoepfe darin genauso stehen wie die des Katalog-Wegs. */
+.vp-anlegen-navslot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 0.75rem);
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .vp-anlegen-navslot button {
+    flex: 1;
+  }
+}
+
+/* --- Schritt 5: fertig ---------------------------------------------------- */
+
+.vp-anlegen-fertig {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 0.5rem);
+  min-width: 0;
+}
+
+/* --- Schritt 4: der zweite Anlauf ---------------------------------------- */
+
+/*
+ * ⚠ „Erneut testen" darf nicht so breit sein wie die Hauptsache: die
+ * `.vp-assist-test`-Fläche ist eine Spalte mit `stretch`, ein Knopf darin
+ * nimmt sonst die volle Breite und konkurriert mit „Komponente anlegen".
+ */
+.vp-anlegen-nochmal {
+  align-self: flex-start;
+}
+
+@media (max-width: 720px) {
+  /* Die 44-px-Regel des Hauses gilt auch fuer den kleinen Hebel-Knopf - am
+     Telefon ist er eine Daumenflaeche, nicht eine Zeile Text. */
+  .vp-anlegen-dialog .vp-assist-hebel button {
+    min-height: 44px;
+  }
+}
