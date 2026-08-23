@@ -1,551 +1,913 @@
-/*
- * VoltPilot Login-Theme - die geteilte Marken-Ansicht (Captain-Redesign).
- *
- * Layout kommt aus dem template.ftl-Override: links die pure Marke auf dem
- * --vp-grad-hero-Verlauf mit der ORIGINAL-voltpilot.de-Orbit-Animation und
- * dem Logo auf einer mattierten GLAS-Plakette, rechts das ruhige Formular
- * (die geerbte keycloak.v2/PatternFly-v5-Struktur, hier umgefaerbt).
- * Alle Flows (Fehler, OTP, ...) rendern ihre Karte in der rechten Spalte.
- *
- * Verbindliche Werte aus dem Portal-Design-System
- * (frontend/portal/designsystem/tokens/*.css) - das Theme hat keine
- * Token-Dateien, deshalb stehen die Hex-Werte hier mit Token-Kommentar:
- *   primary       #95B9FF   primary-dark #7BA3F7   primary-deep #5A8DE8
- *   primary-light #B8D4FF   navy #1E3A5F           action/navy-2 #2C5282
- *   text-dark     #1A1A1A   text-gray    #6C757D
- *   bg-light      #F8F9FA   surface      #FFFFFF
- *   border        #E9ECEF   gray (input) #CED4DA
- *   danger        #C62828
- *   radius-sm 10px  radius-btn 12px  radius-md 16px
- *   grad-hero     linear-gradient(135deg, #95B9FF 0%, #7BA3F7 50%, #5A8DE8 100%)
- *   shadow-btn    0 4px 20px rgba(149, 185, 255, 0.4)
- *   focus-ring    rgba(149, 185, 255, 0.15)
- *   Kategorien:   solar #FF9800  battery #9C27B0  ev #4CAF50
- *                 home #2196F3   industry #F44336  grid #607D8B
- *
- * Die SPA-Seiten (Boot/Registrierung, frontend/portal src/index.css
- * ".vp-auth"-Block) tragen dieselbe Buehne - beide zusammen aendern.
- */
+/* ===========================================================================
+   VoltPilot Login-Theme (Stufe 1) - Konzept data/vp-login-screen-k3 §3/§4.
 
-/* Portal-Schriften (tokens/fonts.css laedt dieselben Schnitte von Google Fonts). */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap');
+   Die Login-Komponente `.vpl`. Der Login ist die ERSTE SEITE DES PORTALS:
+   dieselbe Aufteilung wie die App (links Marke auf Weiss, rechts die helle
+   Arbeitsflaeche), dieselbe Karte, dieselben Felder, derselbe Knopf, dieselbe
+   Schrift.
 
-/*
- * Licht erzwingen: Keycloak 26.0.x kennt das theme.properties-Flag darkMode
- * noch nicht (erst ~26.2) und haengt bei OS-Dunkelmodus IMMER die Klasse
- * pf-v5-theme-dark an <html>. Das VoltPilot-Design-System ist hell-only, also
- * neutralisieren wir die Klasse: color-scheme zurueck auf light (sonst rendern
- * NATIVE Controls wie die Sprachauswahl dunkel) und die PF-Dark-Tokens werden
- * unten durch die :root,-html.pf-v5-theme-dark-Doppelselektoren ueberdeckt.
- */
-html.login-pf,
-html.login-pf.pf-v5-theme-dark {
-  color-scheme: light;
+   ⚠ DIE TOKEN-WERTE SIND KOPIEN. Keycloak kann die Portal-Token-Dateien
+   (frontend/portal/designsystem/tokens/*.css, src/index.css) nicht laden, also
+   stehen sie hier als `--vpl-*` mit dem Token-Namen im Kommentar. Wer eine
+   Portal-Farbe retuned, zieht sie hier nach - das ist die eine Doppelung, die
+   dieses Theme nicht loswerden kann, und deshalb steht sie als Block ganz oben
+   statt verstreut im Blatt.
+
+   FEST HELL: das Portal ist hell, also bleibt der Login hell. Die
+   `pf-v5-theme-dark`-Logik des keycloak.v2-Templates ist entfallen (sie war die
+   Ursache der 2,1:1-Alerts auf allen Flow-Seiten), `color-scheme: light` sagt
+   es dem Browser zusaetzlich.
+
+   Das Layout schaltet ueber CONTAINER QUERIES (`@container stage`), nicht ueber
+   Viewport-Media-Queries: `.vpl` ist der Container, also gilt die Regel fuer
+   die Komponente statt fuer das Fenster.
+   =========================================================================== */
+
+/* --- Schriften: gebuendelt, kein Aufruf an einen Dritt-Host (siehe
+       ../fonts/README.md). Beides VARIABLE Schriften - eine Datei je Familie
+       deckt 400-800 ab. --------------------------------------------------- */
+@font-face {
+  font-family: 'Inter';
+  src: url('../fonts/inter-latin.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('../fonts/inter-tight-latin.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* --- PatternFly-Global-Tokens umfaerben: eine Akzentfarbe (VoltPilot-Blau) --- */
-:root,
-html.pf-v5-theme-dark {
-  --pf-v5-global--primary-color--100: #5a8de8; /* primary-deep - Links, Fokus */
-  --pf-v5-global--primary-color--200: #7ba3f7; /* primary-dark - Hover */
-  --pf-v5-global--link--Color: #5a8de8;
-  --pf-v5-global--link--Color--hover: #7ba3f7;
-  --pf-v5-global--active-color--100: #5a8de8;
-  --pf-v5-global--BorderColor--100: #ced4da; /* gray - Feldraender */
-  --pf-v5-global--BackgroundColor--100: #ffffff;
-  --pf-v5-global--danger-color--100: #c62828;
-  --pf-v5-global--FontFamily--text:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --pf-v5-global--FontFamily--heading:
-    'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-/* --- Schrift & Seitenhintergrund --------------------------------------------- */
-html.login-pf,
+/* --- Die Seite selbst: PatternFly bringt eigene Hintergruende und Abstaende
+       mit (Stufe 1 laesst es geladen). Hier wird die Flaeche zurueckgesetzt,
+       damit `.vpl` wirklich die ganze Seite ist. --------------------------- */
+html,
 body#keycloak-bg {
-  font-family:
-    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color-scheme: light;
   margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: #f8f9fa; /* --vp-bg-light */
+  color-scheme: light;
 }
-
+/* ⚠ DER CONTAINER IST DER BODY, NICHT `.vpl`. Ein Element kann nicht von
+   seiner EIGENEN Container-Query gestylt werden - `@container` gilt nur fuer
+   NACHFAHREN. Stuende `container-type` auf `.vpl`, waere die Desktop-Regel
+   `.vpl { flex-direction: row }` wirkungslos und die Karte landete unter der
+   Markenflaeche statt daneben (genau so beim Bau passiert). */
 body#keycloak-bg {
-  background: #ffffff; /* surface - die rechte Formularseite */
-  color: #1a1a1a; /* text-dark */
+  container-type: inline-size;
+  container-name: stage;
+}
+body#keycloak-bg::before,
+body#keycloak-bg::after {
+  content: none;
 }
 
-/* keycloak.v2 setzt teils ein Hintergrundbild/Verlauf - neutralisieren. */
-.pf-v5-c-login,
-.pf-v5-c-background-image,
-#keycloak-bg::before {
-  background-image: none !important;
-}
+.vpl {
+  --vpl-primary: #95b9ff; /* --vp-primary */
+  --vpl-primary-light: #b8d4ff; /* --vp-primary-light */
+  --vpl-primary-deep: #5a8de8; /* --vp-primary-deep */
+  --vpl-navy: #1e3a5f; /* --vp-navy */
+  --vpl-action: #2c5282; /* --vp-action: Knopf, Link, Fokus */
+  --vpl-text: #1a1a1a; /* --vp-text-dark */
+  --vpl-text-gray: #6c757d; /* --vp-text-gray */
+  --vpl-bg: #f8f9fa; /* --vp-bg-light */
+  --vpl-surface: #ffffff; /* --vp-surface */
+  --vpl-border: #e9ecef; /* --vp-border */
+  --vpl-gray: #ced4da; /* --vp-gray */
+  --vpl-tint: rgba(149, 185, 255, 0.12); /* --vp-tint */
+  --vpl-focus-ring: rgba(149, 185, 255, 0.15); /* --vp-focus-ring */
+  --vpl-focus-color: #2c5282; /* --vp-focus-ring-color */
+  --vpl-danger: #c62828; /* Danger-Ink des Portals */
+  --vpl-danger-soft: #fdecea; /* .vp-alert-err Flaeche */
+  --vpl-warn-ink: #8a5300; /* .vp-alert-warn Ink */
+  --vpl-warn-soft: #fff4e5;
+  --vpl-info-ink: #2c5282;
+  --vpl-info-soft: #f0f4ff; /* --vp-paleblue-start */
+  --vpl-ok-ink: #2e7d32; /* --vp-ok-ink */
+  --vpl-ok-soft: #e8f5e9;
+  --vpl-flow-pv: #f59e0b; /* --vp-flow-pv */
+  --vpl-flow-pv-soft: #fef3e2;
+  --vpl-flow-load: #8b5cf6; /* --vp-flow-load */
+  --vpl-flow-load-soft: #f1ecfd;
+  --vpl-flow-grid: #0ea5a3; /* --vp-flow-grid */
+  --vpl-flow-grid-soft: #e2f6f5;
+  --vpl-flow-batt: #16a34a; /* --vp-flow-batt */
+  --vpl-flow-batt-soft: #e7f6ec;
+  --vpl-grad-hero: linear-gradient(135deg, #95b9ff 0%, #7ba3f7 50%, #5a8de8 100%); /* --vp-grad-hero */
+  --vpl-r-sm: 10px; /* --vp-radius-sm */
+  --vpl-r-btn: 12px; /* --vp-radius-btn: Knopf UND Feld */
+  --vpl-r-lg: 24px; /* --vp-radius-lg: Karte */
+  --vpl-sh-sm: 0 2px 8px rgba(0, 0, 0, 0.04); /* --vp-shadow-sm */
+  --vpl-sh-md: 0 4px 20px rgba(0, 0, 0, 0.08); /* --vp-shadow-md */
+  --vpl-sh-btn: 0 4px 20px rgba(149, 185, 255, 0.4); /* --vp-shadow-btn */
+  --vpl-sh-hover: 0 12px 48px rgba(149, 185, 255, 0.25); /* --vp-shadow-hover */
+  --vpl-ease: cubic-bezier(0.4, 0, 0.2, 1); /* --vp-ease */
+  --vpl-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; /* --vp-font-body */
+  --vpl-font-h: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; /* --vp-font-heading */
+  /* Feldrand: --vp-field-border des Design-Systems. --vp-border (1,19:1) und
+     --vp-gray (1,49:1) reissen die 3:1-Grenze fuer Nicht-Text-Kontrast
+     (WCAG 1.4.11); der Rand ist die einzige Angabe, wo das Feld anfaengt. */
+  --vpl-field-border: color-mix(in srgb, #6c757d 80%, #ffffff); /* ~#899197, 3,21:1 */
 
-/* ============================================================================
-   Die geteilte Ansicht (vp-split aus template.ftl)
-   ============================================================================ */
-.vp-split {
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  grid-template-columns: 1.08fr 1fr;
-}
-
-/* --- Links: pure Marke auf dem Hero-Verlauf ---------------------------------- */
-.vp-brand {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 44px 46px;
-  /* Dezente Echo-Kreise + weiches Licht oben links ueber dem grad-hero. */
-  background:
-    radial-gradient(
-      circle at 82% 88%,
-      rgba(255, 255, 255, 0) 90px,
-      rgba(255, 255, 255, 0.28) 91px,
-      rgba(255, 255, 255, 0) 93px
-    ),
-    radial-gradient(
-      circle at 82% 88%,
-      rgba(255, 255, 255, 0) 130px,
-      rgba(255, 255, 255, 0.2) 131px,
-      rgba(255, 255, 255, 0) 133px
-    ),
-    radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.18), transparent 240px),
-    linear-gradient(135deg, #95b9ff 0%, #7ba3f7 50%, #5a8de8 100%); /* grad-hero */
-}
-.vp-brandstage {
+  font-family: var(--vpl-font);
+  color: var(--vpl-text);
+  background: var(--vpl-bg);
+  color-scheme: light;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 30px;
-  min-width: 0;
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  position: relative;
+  text-align: left;
+  line-height: 1.5;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+.vpl *,
+.vpl *::before,
+.vpl *::after {
+  box-sizing: border-box;
 }
 
-/* --- Orbit (Original voltpilot.de): 3 Ringe, 6 Kategorie-Knoten, Energie-Kern */
-.vp-orbit-shell {
-  width: 380px;
-  height: 380px;
-  max-width: 100%;
-  display: grid;
-  place-items: center;
-}
-.vp-orbit {
-  position: relative;
-  width: 380px;
-  height: 380px;
+/* Der EINE Gradient-Akzent (sonst nur noch die Hub-Kachel des Motivs). */
+.vpl-strip {
+  height: 3px;
+  background: var(--vpl-grad-hero);
   flex: none;
 }
-.vp-orbit-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100px;
-  height: 100px;
-  background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%); /* navy -> navy-2 */
-  border-radius: 50%;
+
+/* --- Marke: am Telefon die 56-px-Kopfzeile wie die Portal-Topbar ---------- */
+.vpl-brand {
+  background: var(--vpl-surface);
+  border-bottom: 1px solid var(--vpl-border);
+  flex: none;
+}
+.vpl-brandhead {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
-  z-index: 10;
+  min-height: 56px;
+  padding: 10px 20px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
 }
-.vp-orbit-center-inner {
-  width: 70px;
-  height: 70px;
-  background: linear-gradient(135deg, #b8d4ff 0%, #95b9ff 100%); /* primary-light -> primary */
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 20px rgba(149, 185, 255, 0.5);
-}
-.vp-orbit-center-inner svg {
-  width: 30px;
+.vpl-wordmark {
+  display: block;
   height: 30px;
-  stroke: #fff;
-  stroke-width: 2;
-  fill: #fff;
-  stroke-linejoin: round;
-}
-.vp-orbit-ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-radius: 50%;
-}
-.vp-orbit-ring-1 {
-  width: 180px;
-  height: 180px;
-  margin: -90px 0 0 -90px;
-  animation: vp-orbit-rotate 15s linear infinite;
-}
-.vp-orbit-ring-2 {
-  width: 260px;
-  height: 260px;
-  margin: -130px 0 0 -130px;
-  animation: vp-orbit-rotate 20s linear infinite reverse;
-}
-.vp-orbit-ring-3 {
-  width: 320px;
-  height: 320px;
-  margin: -160px 0 0 -160px;
-  border-style: dashed;
-  animation: vp-orbit-rotate 25s linear infinite;
-}
-.vp-orbit-node {
-  position: absolute;
-  width: 44px;
-  height: 44px;
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-  /* Gegenrotation haelt die Icons aufrecht; die Dauer MUSS zum tragenden
-     Ring passen (Ring 2 laeuft rueckwaerts). */
-  animation: vp-orbit-counter 15s linear infinite;
-}
-.vp-orbit-node svg {
-  width: 20px;
-  height: 20px;
-  stroke-width: 2;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.vp-orbit-node.n-top { top: -22px; left: 50%; margin-left: -22px; }
-.vp-orbit-node.n-bot { bottom: -22px; left: 50%; margin-left: -22px; }
-.vp-orbit-node.n-left { left: -22px; top: 50%; margin-top: -22px; }
-.vp-orbit-node.n-right { right: -22px; top: 50%; margin-top: -22px; }
-.vp-orbit-node.ring2 {
-  animation-duration: 20s;
-  animation-direction: reverse;
-}
-.vp-orbit-node.ring3 {
-  animation-duration: 25s;
-}
-/* Kategorie-Farben (voltpilot.de-Kategorie-Tokens). */
-.vp-orbit-node.pv svg { stroke: #ff9800; } /* solar */
-.vp-orbit-node.battery svg { stroke: #9c27b0; } /* battery */
-.vp-orbit-node.car svg { stroke: #4caf50; } /* ev */
-.vp-orbit-node.home svg { stroke: #2196f3; } /* home */
-.vp-orbit-node.industry svg { stroke: #f44336; } /* industry */
-.vp-orbit-node.grid svg { stroke: #607d8b; } /* grid */
-@keyframes vp-orbit-rotate {
-  from { transform: rotate(0); }
-  to { transform: rotate(360deg); }
-}
-@keyframes vp-orbit-counter {
-  from { transform: rotate(0); }
-  to { transform: rotate(-360deg); }
-}
-
-/* --- Logo auf der mattierten Glas-Plakette (Captain-Update: Glas, keine
-       weisse Karte). backdrop-filter braucht das -webkit-Prefix (Safari). --- */
-.vp-brand-glass {
-  background: rgba(255, 255, 255, 0.3);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: 20px;
-  padding: 18px 30px;
-  box-shadow:
-    0 16px 44px rgba(20, 40, 70, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-.vp-brand-logo {
-  display: block;
-  height: 48px;
   width: auto;
+  max-width: 100%;
+}
+.vpl-stage {
+  display: none;
+}
+.vpl-brandfoot {
+  display: none;
 }
 
-/* --- Rechts: das ruhige Formular --------------------------------------------- */
-.vp-formside {
+/* --- Formular-Flaeche ---------------------------------------------------- */
+.vpl-panel {
+  flex: 1 1 auto;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 44px 48px;
+  flex-direction: column;
   min-width: 0;
-  background: #ffffff; /* surface */
+  padding: 16px 16px 20px;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  gap: 12px;
 }
-/* Die geerbte PatternFly-Login-Huelle wird zur schlichten Spalte: kein
-   eigener Viewport-Grid, keine Karte - die rechte Seite IST die Flaeche. */
-.vp-formside .pf-v5-c-login {
-  display: block;
-  width: 100%;
-  min-height: 0;
-  padding: 0;
-  background: none;
-}
-.vp-formside .pf-v5-c-login__container {
-  display: block;
-  width: 100%;
-  max-width: 400px;
-  margin: 0 auto;
-  padding: 0;
-}
-.vp-formside .pf-v5-c-login__main {
-  background: none;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+.vpl-card {
+  background: var(--vpl-surface);
+  border: 1px solid var(--vpl-border);
+  border-radius: var(--vpl-r-lg);
+  box-shadow: var(--vpl-sh-sm);
+  padding: 22px 20px 18px;
   margin: 0;
-  padding: 0;
+  min-width: 0;
 }
-.vp-formside .pf-v5-c-login__main-header,
-.vp-formside .pf-v5-c-login__main-body,
-.vp-formside .pf-v5-c-login__main-footer {
-  padding-left: 0;
-  padding-right: 0;
-}
-.vp-formside .pf-v5-c-login__main-header {
-  border-top: 0;
-}
-
-/* Marke/Realm-Name: die Identitaet steckt links im Verlauf; der geerbte
-   Header bleibt fuer Screenreader erhalten, verschwindet aber visuell. */
-#kc-header {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* --- Seitentitel (h1): "Willkommen zurueck", Inter Tight ---------------------- */
-#kc-page-title {
-  font-family:
-    'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    sans-serif;
+.vpl-title {
+  font-family: var(--vpl-font-h);
   font-size: 1.55rem;
   font-weight: 700;
-  letter-spacing: -0.4px; /* tracking-tight */
-  color: #1a1a1a;
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+  margin: 0 0 4px;
+  color: var(--vpl-text);
+}
+.vpl-hint {
+  font-size: 0.95rem;
+  color: var(--vpl-text-gray);
+  margin: 0 0 18px;
+}
+
+.vpl-form {
   margin: 0;
 }
-/* Hinweiszeile unter dem Titel (login.ftl). */
-.vp-login-hint {
-  color: #6c757d; /* text-gray */
-  font-size: 0.95rem;
-  margin: 4px 0 22px;
+
+.vpl-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border-radius: var(--vpl-r-sm);
+  padding: 11px 13px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  margin: 0 0 16px;
+}
+.vpl-alert[hidden] {
+  display: none;
+}
+.vpl-alert svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 1px;
+}
+.vpl-alert.is-info {
+  background: var(--vpl-info-soft);
+  color: var(--vpl-info-ink);
+}
+.vpl-alert.is-warn {
+  background: var(--vpl-warn-soft);
+  color: var(--vpl-warn-ink);
+}
+.vpl-alert.is-err {
+  background: var(--vpl-danger-soft);
+  color: var(--vpl-danger);
+}
+.vpl-alert.is-ok {
+  background: var(--vpl-ok-soft);
+  color: var(--vpl-ok-ink);
 }
 
-/* --- Labels ------------------------------------------------------------------ */
-.pf-v5-c-form__label,
-.pf-v5-c-form__label-text,
-#kc-form label {
-  color: #1a1a1a;
-  font-size: 13px;
+.vpl-field {
+  margin: 0 0 14px;
+}
+.vpl-label {
+  display: block;
+  font-size: 0.9rem;
   font-weight: 600;
+  color: var(--vpl-text);
+  margin: 0 0 6px;
 }
-
-/* --- Eingabefelder: gray-Rand, radius-sm (10px), >=44px Touch-Ziel ------------ */
-.pf-v5-c-form-control,
-.pf-v5-c-form-control > input,
-input.pf-v5-c-form-control,
-#kc-form input[type='text'],
-#kc-form input[type='password'],
-#kc-form input[type='email'] {
-  border: 1px solid #ced4da; /* gray */
-  border-radius: 10px; /* radius-sm (Inputs) */
-  background: #ffffff;
-  color: #1a1a1a;
+/* ⚠ TAB-REIHENFOLGE: Der Umschalter steht im DOM NACH dem Feld und wird hier
+   per Grid optisch in die Label-Zeile gehoben. So laeuft Tab
+   Benutzername -> Passwort -> Anzeigen -> Anmelden. Steht er im Markup VOR
+   dem Feld (die naheliegende Label-Zeile), springt Tab vom Benutzernamen auf
+   "Anzeigen" und erst dann ins Passwort - genau das hat der Entwurf als
+   Baustellen-Hinweis vermerkt, und genau so ist es beim Bau passiert. */
+.vpl-field.has-toggle {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+}
+.vpl-field.has-toggle > .vpl-label {
+  grid-row: 1;
+  grid-column: 1;
+  margin-bottom: 6px;
+}
+.vpl-field.has-toggle > .vpl-toggle {
+  grid-row: 1;
+  grid-column: 2;
+  justify-self: end;
+}
+.vpl-field.has-toggle > .vpl-input,
+.vpl-field.has-toggle > .vpl-error,
+.vpl-field.has-toggle > .vpl-helper {
+  grid-column: 1 / -1;
+}
+.vpl-toggle {
+  grid-row: 1;
+  grid-column: 2;
+}
+.vpl-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+}
+.vpl-field > .vpl-label,
+.vpl-toggle {
+  appearance: none;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vpl-action);
+  cursor: pointer;
+  padding: 10px 6px;
+  margin: -10px -6px -6px;
+  border-radius: var(--vpl-r-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
   min-height: 44px;
 }
-::placeholder {
-  color: #6c757d; /* text-gray */
+.vpl-toggle:hover {
+  color: var(--vpl-navy);
 }
-
-/* Fokus: Brand-Rand + weicher Fokus-Ring (--vp-focus-ring), wie die
-   Portal-Inputs. Fokus niemals unsichtbar machen. */
-#kc-form input:focus,
-#kc-form input:focus-visible,
-.pf-v5-c-form-control:focus-within {
+.vpl-input {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  font: inherit;
+  font-size: 16px; /* kein iOS-Autozoom */
+  color: var(--vpl-text);
+  background: var(--vpl-surface);
+  border: 1px solid var(--vpl-field-border);
+  border-radius: var(--vpl-r-btn);
+  padding: 0 14px;
   outline: none;
-  border-color: #5a8de8; /* primary-deep */
-  box-shadow: 0 0 0 3px rgb(149 185 255 / 0.15); /* focus-ring */
+  transition:
+    border-color 0.2s var(--vpl-ease),
+    box-shadow 0.2s var(--vpl-ease);
 }
-.pf-v5-c-button:focus-visible,
-a:focus-visible,
-select:focus-visible {
-  outline: 2px solid #5a8de8;
-  outline-offset: 2px;
+.vpl-input::placeholder {
+  color: var(--vpl-text-gray);
+}
+.vpl-input:focus {
+  border-color: var(--vpl-primary-deep);
+  box-shadow: 0 0 0 3px var(--vpl-focus-ring);
+}
+.vpl-input[aria-invalid='true'] {
+  border-color: var(--vpl-danger);
+}
+.vpl-input[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
+}
+.vpl-input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+}
+.vpl-error {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 0.86rem;
+  color: var(--vpl-danger);
+  margin: 7px 0 0;
+  line-height: 1.4;
+}
+.vpl-error svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+}
+.vpl-helper {
+  font-size: 0.82rem;
+  color: var(--vpl-text-gray);
+  margin: 6px 0 0;
+}
+.vpl-req {
+  color: var(--vpl-danger);
 }
 
-/* --- Primaerbutton: action-Navy, weiss, radius-btn, shadow-btn ---------------- */
-.pf-v5-c-button.pf-m-primary,
-#kc-login {
-  background: #2c5282; /* action (= Portal-Primary-Button) */
-  color: #ffffff;
-  border: 0;
-  border-radius: 12px; /* radius-btn */
+/* Erneut anmelden: das Konto steht fest, gefragt wird nur das Passwort. */
+.vpl-user-fixed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 12px;
+  border: 1px solid var(--vpl-border);
+  border-radius: var(--vpl-r-btn);
+  background: var(--vpl-bg);
+}
+.vpl-user-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.vpl-user-fixed .vpl-link {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  padding: 12px 4px;
+}
+
+.vpl-submit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 8px;
+  font-family: var(--vpl-font-h);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #fff;
+  background: var(--vpl-action);
+  border: 2px solid transparent;
+  border-radius: var(--vpl-r-btn);
+  box-shadow: var(--vpl-sh-btn);
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    transform 0.2s var(--vpl-ease),
+    box-shadow 0.2s var(--vpl-ease),
+    background 0.2s var(--vpl-ease);
+}
+.vpl-submit:hover {
+  background: var(--vpl-navy);
+  color: #fff;
+  box-shadow: var(--vpl-sh-hover);
+  transform: translateY(-2px);
+  text-decoration: none;
+}
+.vpl-submit:active {
+  transform: translateY(0);
+}
+.vpl-submit[disabled],
+.vpl-submit.is-busy {
+  cursor: progress;
+  opacity: 0.9;
+  transform: none;
+  box-shadow: none;
+}
+.vpl-spin {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2.5px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: vpl-spin 0.9s linear infinite;
+  flex: none;
+}
+.vpl-spin[hidden] {
+  display: none;
+}
+@keyframes vpl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vpl-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  font-family: var(--vpl-font-h);
   font-weight: 700;
   font-size: 1rem;
-  min-height: 46px;
-  box-shadow: 0 4px 20px rgb(149 185 255 / 0.4); /* shadow-btn */
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--vpl-action);
+  background: transparent;
+  border: 2px solid var(--vpl-action);
+  border-radius: var(--vpl-r-btn);
+  cursor: pointer;
+  text-decoration: none;
 }
-.pf-v5-c-button.pf-m-primary:hover,
-#kc-login:hover {
-  background: #1e3a5f; /* navy - eine Stufe tiefer */
-  color: #ffffff;
-  box-shadow: 0 12px 48px rgba(149, 185, 255, 0.25); /* shadow-hover */
-}
-
-/* Sekundaer-/Control-Buttons (Passwort-Sichtbarkeit) und die Sprachauswahl
-   (natives <select> ohne Klasse) explizit hell stylen - sie erben sonst
-   UA-Defaults statt der Design-System-Flaechen. Die html-Prefix-Varianten
-   schlagen die pf-v5-theme-dark-scoped Regeln aus keycloak.v2 (Spezifitaet). */
-.pf-v5-c-button.pf-m-control,
-html .pf-v5-c-button.pf-m-control,
-select#login-select-toggle,
-html select#login-select-toggle {
-  background: #ffffff;
-  color: #1a1a1a;
-  border: 1px solid #ced4da;
-  border-radius: 10px;
-}
-.pf-v5-c-button.pf-m-control:hover,
-html .pf-v5-c-button.pf-m-control:hover {
-  background: #f8f9fa; /* bg-light */
-  color: #1a1a1a;
-}
-
-/* --- Links -------------------------------------------------------------------- */
-a,
-#kc-form a {
-  color: #2c5282; /* link = action (AA auf weiss) */
-}
-a:hover {
-  color: #1e3a5f; /* navy */
-}
-
-/* --- Fehler/Validierung ------------------------------------------------------- */
-#input-error,
-.kc-feedback-text,
-.pf-m-error,
-.pf-v5-c-form-control.pf-m-error,
-.pf-v5-c-helper-text__item.pf-m-error .pf-v5-c-helper-text__item-text {
-  color: #c62828;
-}
-.pf-v5-c-form-control.pf-m-error,
-input.pf-m-error {
-  border-color: #c62828;
-}
-.pf-v5-c-alert.pf-m-danger {
-  --pf-v5-c-alert--m-danger__icon--Color: #c62828;
-}
-
-/* --- "Konto erstellen"-Link (js/register-link.js haengt ihn unter das Formular;
-       die Registrierung ist ein PORTAL-Formular, Route #register) ------------- */
-#vp-register-link {
-  margin-top: 20px;
-  text-align: center;
-  font-size: 0.9rem;
-  color: #6c757d; /* text-gray */
-}
-#vp-register-link a {
-  font-weight: 600;
+.vpl-secondary:hover {
+  background: var(--vpl-tint);
+  color: var(--vpl-action);
   text-decoration: none;
 }
 
-/* --- Passwort-vergessen-Hinweis (kein SMTP -> Support setzt zurueck) ---------- */
-.vp-forgot-note {
-  margin-top: 14px;
+.vpl-note {
   text-align: center;
-  font-size: 0.8rem;
-  color: #6c757d; /* text-gray */
+  font-size: 0.9rem;
+  color: var(--vpl-text-gray);
+  margin: 14px 0 0;
+}
+.vpl-note-muted {
+  font-size: 0.85rem;
+  margin-top: 6px;
+}
+.vpl-link {
+  color: var(--vpl-action);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 6px;
+}
+.vpl-link:hover {
+  color: var(--vpl-navy);
+}
+.vpl-note .vpl-link {
+  display: inline-block;
+  padding: 12px 6px;
+  margin: -12px -6px;
+}
+/* Der EINE Fokusring (Haus-Ring des Portals). */
+.vpl a:focus-visible,
+.vpl button:focus-visible,
+.vpl input:focus-visible,
+.vpl [tabindex]:focus-visible {
+  outline: 2px solid var(--vpl-focus-color);
+  outline-offset: 2px;
+}
+.vpl-input:focus-visible {
+  outline: none;
 }
 
-/* --- Vertrauenszeile ---------------------------------------------------------- */
-.vp-trust {
-  margin-top: 26px;
-  padding-top: 18px;
-  border-top: 1px solid #e9ecef; /* border */
+.vpl-check {
   display: flex;
-  gap: 16px;
-  justify-content: center;
-  flex-wrap: wrap;
-  font-size: 0.72rem;
-  color: #6c757d; /* text-gray */
+  align-items: center;
+  gap: 10px;
+  font-size: 0.92rem;
+  margin: 2px 0 14px;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--vpl-text);
 }
-.vp-trust span {
+.vpl-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--vpl-action);
+  margin: 0;
+  flex: none;
+}
+
+.vpl-otp {
+  letter-spacing: 0.35em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.35rem;
+  text-align: center;
+}
+.vpl-otp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vpl-otp-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border: 1px solid var(--vpl-border);
+  border-radius: var(--vpl-r-sm);
+  cursor: pointer;
+}
+.vpl-otp-item input {
+  accent-color: var(--vpl-action);
+}
+
+.vpl-trust {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--vpl-border);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  font-size: 0.8rem;
+  color: var(--vpl-text-gray);
+}
+.vpl-trust li {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   white-space: nowrap;
 }
-.vp-trust svg {
-  width: 12px;
-  height: 12px;
+.vpl-trust svg {
+  width: 13px;
+  height: 13px;
 }
 
-/* ============================================================================
-   Handy (<= 799px): der Verlauf wird zum kompakten Kopfband mit Mini-Orbit
-   und kleiner Glas-Plakette, das Formular folgt darunter. Der Anmelden-Knopf
-   bleibt ueber der Tastatur, weil das Band kurz ist und die Seite normal
-   scrollt; alle Ziele >= 44px.
-   ============================================================================ */
-@media (max-width: 799px) {
-  .vp-split {
-    grid-template-columns: 1fr;
-    align-content: start;
-  }
-  .vp-brand {
-    padding: 26px 16px 20px;
-  }
-  .vp-brandstage {
-    gap: 12px;
-  }
-  /* Mini-Orbit: explizite Groessen (die Handy-Variante des Mockups) - eine
-     transform-Skalierung behielte die 380px-Layoutbox und verschoebe das Band. */
-  .vp-orbit-shell,
-  .vp-orbit {
-    width: 150px;
-    height: 150px;
-  }
-  .vp-orbit-ring-1 { width: 76px; height: 76px; margin: -38px 0 0 -38px; }
-  .vp-orbit-ring-2 { width: 112px; height: 112px; margin: -56px 0 0 -56px; }
-  .vp-orbit-ring-3 { width: 146px; height: 146px; margin: -73px 0 0 -73px; }
-  .vp-orbit-center { width: 44px; height: 44px; }
-  .vp-orbit-center-inner { width: 30px; height: 30px; }
-  .vp-orbit-center-inner svg { width: 14px; height: 14px; }
-  .vp-orbit-node { width: 22px; height: 22px; }
-  .vp-orbit-node svg { width: 11px; height: 11px; }
-  .vp-orbit-node.n-top { top: -11px; margin-left: -11px; }
-  .vp-orbit-node.n-bot { bottom: -11px; margin-left: -11px; }
-  .vp-orbit-node.n-left { left: -11px; margin-top: -11px; }
-  .vp-orbit-node.n-right { right: -11px; margin-top: -11px; }
-  .vp-brand-glass {
-    padding: 10px 18px;
-    border-radius: 16px;
-  }
-  .vp-brand-logo {
-    height: 26px;
-  }
-  .vp-formside {
-    padding: 24px 18px 32px;
-    align-items: flex-start;
-  }
-  .vp-login-hint {
-    margin-bottom: 16px;
-  }
+.vpl-info {
+  margin-top: 14px;
+  font-size: 0.9rem;
+  color: var(--vpl-text-gray);
+  text-align: center;
+}
+.vpl-social:empty {
+  display: none;
 }
 
-/* Reduzierte Bewegung: Ringe und Knoten stehen still (statische Ringe). */
+.vpl-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 44px;
+  padding: 0 6px;
+  margin-top: auto;
+  font-size: 0.85rem;
+  color: var(--vpl-text-gray);
+}
+.vpl-lang {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.vpl-lang [aria-current='true'] {
+  font-weight: 700;
+  color: var(--vpl-text);
+  padding: 10px 6px;
+}
+.vpl-lang a {
+  color: var(--vpl-action);
+  font-weight: 600;
+  text-decoration: none;
+  padding: 12px 6px;
+  border-radius: 6px;
+}
+.vpl-lang a:hover {
+  text-decoration: underline;
+}
+.vpl-lang .sep {
+  color: var(--vpl-gray);
+}
+
+/* Die Telefon-Fassung des Motivs: eine ruhige Chip-Reihe unter der Karte. */
+.vpl-quartet-line {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px;
+  display: none;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  font-size: 0.8rem;
+  color: var(--vpl-text-gray);
+}
+.vpl-quartet-line li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vpl-quartet-line i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* --- Energiefluss-Motiv (nur Desktop-Markenflaeche) ---------------------- */
+.vpl-flow {
+  width: 100%;
+  max-width: 380px;
+  height: auto;
+  display: block;
+  margin: 10px 0 2px;
+}
+.vpl-flow .spoke {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 6 9;
+  animation: vpl-flow 1.4s linear infinite;
+}
+.vpl-flow .spoke.rev {
+  animation-direction: reverse;
+}
+@keyframes vpl-flow {
+  to {
+    stroke-dashoffset: -30;
+  }
+}
+.vpl-flow .node-label {
+  font-family: var(--vpl-font-h);
+  font-weight: 700;
+  font-size: 14px;
+  fill: var(--vpl-text);
+}
+.vpl-flow .node-sub {
+  font-family: var(--vpl-font);
+  font-weight: 500;
+  font-size: 12px;
+  fill: var(--vpl-text-gray);
+}
 @media (prefers-reduced-motion: reduce) {
-  .vp-orbit-ring,
-  .vp-orbit-node {
+  .vpl-flow .spoke {
     animation: none;
   }
+  .vpl-spin {
+    animation-duration: 2s;
+  }
+  .vpl-submit {
+    transition: none;
+  }
+}
+
+/* ===========================================================================
+   DESKTOP (Container >= 900 px): links die weisse Markenflaeche wie die
+   Portal-Seitenleiste, rechts die Portal-Flaeche mit der Karte.
+   =========================================================================== */
+@container stage (min-width: 900px) {
+  .vpl {
+    flex-direction: row;
+  }
+  .vpl-strip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+  }
+  .vpl-brand {
+    width: 46%;
+    max-width: 680px;
+    min-width: 420px;
+    border-bottom: 0;
+    border-right: 1px solid var(--vpl-border);
+    display: flex;
+    flex-direction: column;
+    padding: 36px 44px 28px;
+  }
+  .vpl-brandhead {
+    justify-content: flex-start;
+    min-height: 0;
+    padding: 0;
+  }
+  .vpl-wordmark {
+    height: 44px;
+  }
+  .vpl-stage {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    flex: 1 1 auto;
+    padding: 24px 0;
+    max-width: 520px;
+  }
+  .vpl-kicker {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--vpl-action);
+    margin: 0 0 10px;
+  }
+  .vpl-claim {
+    font-family: var(--vpl-font-h);
+    font-size: 2.1rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1.12;
+    margin: 0 0 10px;
+    color: var(--vpl-text);
+  }
+  .vpl-claim-sub {
+    font-size: 1.05rem;
+    color: var(--vpl-text-gray);
+    margin: 0 0 10px;
+    max-width: 40ch;
+    line-height: 1.55;
+  }
+  .vpl-quartet {
+    list-style: none;
+    margin: 18px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 14px;
+  }
+  .vpl-quartet li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 0.9rem;
+    color: var(--vpl-text-gray);
+    line-height: 1.35;
+    min-width: 0;
+  }
+  .vpl-quartet li b {
+    display: block;
+    color: var(--vpl-text);
+    font-weight: 700;
+  }
+  .vpl-quartet .q-ic {
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border-radius: 10px;
+    background: var(--vpl-tint);
+    color: var(--vpl-action);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vpl-quartet .q-ic svg {
+    width: 18px;
+    height: 18px;
+  }
+  .vpl-brandfoot {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--vpl-text-gray);
+    margin: 0;
+  }
+  .vpl-panel {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 48px 40px 28px;
+    gap: 18px;
+  }
+  .vpl-card {
+    width: 100%;
+    max-width: 440px;
+    padding: 34px 36px 26px;
+    box-shadow: var(--vpl-sh-md);
+    margin: auto 0;
+  }
+  .vpl-title {
+    font-size: 1.7rem;
+  }
+  .vpl-foot {
+    width: 100%;
+    max-width: 440px;
+    margin-top: 0;
+  }
+}
+
+@container stage (max-width: 899px) {
+  .vpl-quartet-line {
+    display: flex;
+  }
+  .vpl-quartet {
+    display: none;
+  }
+}
+
+/* ===========================================================================
+   GEERBTE Flow-Seiten (register, terms, webauthn, select-authenticator, ...).
+   Stufe 1 laesst PatternFly geladen, diese Seiten rendern also ihre eigenen
+   Klassen INNERHALB unserer Karte. Die folgenden Regeln geben ihnen die
+   Haus-Optik, ohne sie zu ueberschreiben - sie sind bewusst schmal gehalten:
+   Stufe 2 loest PatternFly ganz ab, dann faellt dieser Block weg.
+   =========================================================================== */
+.vpl-card .pf-v5-c-form-control,
+.vpl-card input[type='text'],
+.vpl-card input[type='email'],
+.vpl-card input[type='password'],
+.vpl-card input[type='number'],
+.vpl-card select,
+.vpl-card textarea {
+  width: 100%;
+  min-height: 48px;
+  font-family: var(--vpl-font);
+  font-size: 16px;
+  color: var(--vpl-text);
+  background: var(--vpl-surface);
+  border: 1px solid var(--vpl-field-border);
+  border-radius: var(--vpl-r-btn);
+  padding: 0 14px;
+}
+.vpl-card textarea {
+  padding: 10px 14px;
+}
+.vpl-card .pf-v5-c-form__label,
+.vpl-card label {
+  font-family: var(--vpl-font);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vpl-text);
+}
+.vpl-card .pf-v5-c-form__group {
+  margin-bottom: 14px;
+}
+.vpl-card .pf-v5-c-button.pf-m-primary,
+.vpl-card input[type='submit'] {
+  width: 100%;
+  min-height: 48px;
+  font-family: var(--vpl-font-h);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #fff;
+  background: var(--vpl-action);
+  border: 2px solid transparent;
+  border-radius: var(--vpl-r-btn);
+  box-shadow: var(--vpl-sh-btn);
+  cursor: pointer;
+}
+.vpl-card .pf-v5-c-button.pf-m-secondary,
+.vpl-card .pf-v5-c-button.pf-m-link {
+  color: var(--vpl-action);
+  font-family: var(--vpl-font);
+  font-weight: 600;
+}
+.vpl-card .pf-v5-c-alert {
+  border-radius: var(--vpl-r-sm);
+}
+.vpl-card a {
+  color: var(--vpl-action);
+}
+/* Die Kopfzeile des geerbten Templates ist bei uns die Markenflaeche. */
+.vpl #kc-header,
+.vpl #kc-header-wrapper,
+.vpl .pf-v5-c-login__main-header {
+  display: none;
 }

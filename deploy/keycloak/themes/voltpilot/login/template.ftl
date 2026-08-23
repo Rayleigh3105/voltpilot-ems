@@ -1,40 +1,48 @@
 <#--
-  VoltPilot login-theme template override (captain-approved login redesign).
+  VoltPilot login-theme template (Login-Screen Stufe 1, Konzept
+  data/vp-login-screen-k3 §3/§7; Captain-Entscheide A/B/C vom 23.08.2026).
 
-  Faithful copy of keycloak.v2's template.ftl (Keycloak 26.0.5 - the head,
-  scripts, macros and the whole .pf-v5-c-login structure are byte-compatible,
-  so every inherited flow page keeps working), plus ONE structural change:
-  the page body is wrapped in the split view - left the pure brand stage on
-  the --vp-grad-hero gradient (the ORIGINAL voltpilot.de orbit animation +
-  the logo on a frosted glass plaque), right the original login container.
-  Every flow (login, error, OTP, reset, ...) renders its card in the right
-  pane; the login page itself is fully styled by css/voltpilot.css.
+  Die Zweiteilung ist DIE Leitidee: der Login ist die erste Seite des PORTALS,
+  keine Marketing-Buehne davor. Links die weisse Markenflaeche wie die
+  Portal-Seitenleiste (Wortmarke auf WEISS - die Glas-Plakette und die
+  Orbit-Animation sind ersatzlos entfallen, siehe unten), rechts die helle
+  Flaeche mit EINER Karte aus denselben Tokens wie jede Portal-Karte. Am
+  Telefon bleibt davon eine 56-px-Kopfzeile und die Karte.
 
-  When upgrading Keycloak, re-diff this file against the new keycloak.v2
-  template.ftl (themes/src/main/resources/theme/keycloak.v2/login/) - only
-  the vp-split wrapper and the vp-brand aside are ours.
+  Vier Dinge, die man beim Anfassen wissen muss:
+
+  1. DER DUNKELMODUS-BLOCK IST WEG. Das keycloak.v2-Original haengt bei
+     `prefers-color-scheme: dark` die Klasse `pf-v5-theme-dark` an <html>; das
+     eigene CSS deckte nur login.ftl ab, also kippten alle uebrigen
+     Flow-Seiten in eine dunkle PatternFly-Palette (gemessen 2,1:1 und 1,3:1).
+     Das Portal ist hell, der Login bleibt hell - `color-scheme: light` in
+     css/voltpilot.css sagt es dem Browser zusaetzlich.
+
+  2. DIE KARTE GEHOERT DEM TEMPLATE, nicht der einzelnen Seite. Jede geerbte
+     Flow-Seite (register, terms, webauthn, select-authenticator, ...) rendert
+     ihren Inhalt damit automatisch im richtigen Kleid, ohne dass wir sie
+     ueberschreiben muessen.
+
+  3. DIE SPRACHWAHL steht in der FUSSZEILE, nicht als <select> ueber dem
+     Formular. Im Original war sie das ERSTE Bedienelement der Seite - mit
+     offener Tastatur sah der Kunde "Deutsch" statt seines Formulars.
+
+  4. `#kc-form-login` (in login.ftl) und `#kc-page-title` bleiben - an der
+     ersten haengt js/register-link.js seinen "Konto erstellen"-Link.
+
+  Beim Keycloak-Upgrade gegen das neue keycloak.v2-template.ftl re-diffen:
+  Kopf, Skripte und die <#nested>-Abschnitte sind uebernommen, der Rumpf ist
+  bewusst unser eigener.
 -->
 <#import "field.ftl" as field>
-<#import "footer.ftl" as loginFooter>
 <#macro username>
-  <#assign label>
-    <#if !realm.loginWithEmailAllowed>${msg("username")}<#elseif !realm.registrationEmailAsUsername>${msg("usernameOrEmail")}<#else>${msg("email")}</#if>
-  </#assign>
-  <@field.group name="username" label=label>
-    <div class="${properties.kcInputGroup}">
-      <div class="${properties.kcInputGroupItemClass} ${properties.kcFill}">
-        <span class="${properties.kcInputClass} ${properties.kcFormReadOnlyClass}">
-          <input id="kc-attempted-username" value="${auth.attemptedUsername}" readonly>
-        </span>
-      </div>
-      <div class="${properties.kcInputGroupItemClass}">
-        <button id="reset-login" class="${properties.kcFormPasswordVisibilityButtonClass} kc-login-tooltip" type="button"
-              aria-label="${msg('restartLoginTooltip')}" onclick="location.href='${url.loginRestartFlowUrl}'">
-            <i class="fa-sync-alt fas" aria-hidden="true"></i>
-            <span class="kc-tooltip-text">${msg("restartLoginTooltip")}</span>
-        </button>
-      </div>
-    </@field.group>
+  <div class="vpl-field">
+    <span class="vpl-label">${msg("vpAccountLabel")}</span>
+    <div class="vpl-user-fixed">
+      <span class="vpl-user-name" id="kc-attempted-username">${auth.attemptedUsername}</span>
+      <a id="reset-login" class="vpl-link" href="${url.loginRestartFlowUrl}">${msg("vpOtherAccount")}</a>
+    </div>
+  </div>
 </#macro>
 
 <#macro registrationLayout bodyClass="" displayInfo=false displayMessage=true displayRequiredFields=false>
@@ -45,7 +53,9 @@
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="robots" content="noindex, nofollow">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <#-- viewport-fit=cover ist die Voraussetzung dafuer, dass env(safe-area-inset-*)
+         ueberhaupt einen Wert liefert (dieselbe Zeile traegt frontend/portal/index.html). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
     <#if properties.meta?has_content>
         <#list properties.meta?split(' ') as meta>
@@ -83,186 +93,156 @@
     </#if>
     <script type="module" src="${url.resourcesPath}/js/passwordVisibility.js"></script>
     <script type="module">
-        import { checkCookiesAndSetTimer } from "${url.resourcesPath}/js/authChecker.js";
+        import { checkCookiesAndSetTimer } from "${url.resourcesCommonPath}/js/authChecker.js";
 
         checkCookiesAndSetTimer(
             "${url.ssoLoginInOtherTabsUrl?no_esc}"
         );
-
-        const DARK_MODE_CLASS = "pf-v5-theme-dark";
-        const mediaQuery =window.matchMedia("(prefers-color-scheme: dark)");
-        updateDarkMode(mediaQuery.matches);
-        mediaQuery.addEventListener("change", (event) =>
-          updateDarkMode(event.matches),
-        );
-        function updateDarkMode(isEnabled) {
-          const { classList } = document.documentElement;
-          if (isEnabled) {
-            classList.add(DARK_MODE_CLASS);
-          } else {
-            classList.remove(DARK_MODE_CLASS);
-          }
-        }
     </script>
 </head>
 
 <body id="keycloak-bg" class="${properties.kcBodyClass!}">
 
-<div class="vp-split">
-  <#-- Brand stage: pure brand on the hero gradient - the voltpilot.de orbit
-       (three rotating rings, category nodes counter-rotating so the icons
-       stay upright, navy energy core) + the logo on a frosted glass plaque.
-       Decorative for screen readers; the page identity stays in #kc-header
-       (visually hidden by the stylesheet). -->
-  <aside class="vp-brand" aria-hidden="true">
-    <div class="vp-brandstage">
-      <div class="vp-orbit-shell">
-        <div class="vp-orbit">
-          <div class="vp-orbit-ring vp-orbit-ring-1">
-            <div class="vp-orbit-node n-top pv"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></div>
-            <div class="vp-orbit-node n-bot battery"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></svg></div>
-          </div>
-          <div class="vp-orbit-ring vp-orbit-ring-2">
-            <div class="vp-orbit-node ring2 n-left home"><svg viewBox="0 0 24 24"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/></svg></div>
-            <div class="vp-orbit-node ring2 n-right car"><svg viewBox="0 0 24 24"><path d="M5 16l2-6h10l2 6"/><rect x="4" y="16" width="16" height="4" rx="1"/><circle cx="7.5" cy="20" r="1"/><circle cx="16.5" cy="20" r="1"/></svg></div>
-          </div>
-          <div class="vp-orbit-ring vp-orbit-ring-3">
-            <div class="vp-orbit-node ring3 n-top industry"><svg viewBox="0 0 24 24"><path d="M3 21V9l6 4V9l6 4V5h6v16z"/></svg></div>
-            <div class="vp-orbit-node ring3 n-bot grid"><svg viewBox="0 0 24 24"><path d="M6 21V8l6-5 6 5v13M9 21v-6h6v6"/></svg></div>
-          </div>
-          <div class="vp-orbit-center"><div class="vp-orbit-center-inner"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></div></div>
-        </div>
-      </div>
-      <div class="vp-brand-glass">
-        <img class="vp-brand-logo" src="${url.resourcesPath}/img/voltpilot-logo.png" alt="">
-      </div>
+<div class="vpl">
+  <div class="vpl-strip" aria-hidden="true"></div>
+
+  <#-- Markenflaeche: Wortmarke auf WEISS wie die Portal-Seitenleiste. Der
+       --vp-grad-hero-Verlauf bleibt als AKZENT (der 3-px-Streifen oben und die
+       Hub-Kachel des Motivs) - genau die Rolle, die er auch im Favicon hat.
+       Das Motiv ist das Energiefluss-Diagramm des Cockpits in den
+       --vp-flow-*-Rollenfarben: das Bild, das der Kunde gleich bedient. -->
+  <aside class="vpl-brand">
+    <div class="vpl-brandhead">
+      <img class="vpl-wordmark" src="${url.resourcesPath}/img/voltpilot-wordmark.png"
+           alt="VoltPilot" width="640" height="152">
     </div>
+    <div class="vpl-stage" aria-hidden="true">
+      <p class="vpl-kicker">${msg("vpKicker")}</p>
+      <h2 class="vpl-claim">${msg("vpClaim")}</h2>
+      <p class="vpl-claim-sub">${msg("vpClaimSub")}</p>
+      <svg class="vpl-flow" viewBox="0 0 420 372" role="img" aria-label="${msg("vpFlowAlt")}" focusable="false">
+        <defs>
+          <linearGradient id="vplHub" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#B8D4FF"/><stop offset=".5" stop-color="#7BA3F7"/><stop offset="1" stop-color="#5A8DE8"/>
+          </linearGradient>
+        </defs>
+        <path class="spoke" d="M210 96 V146" stroke="var(--vpl-flow-pv)"/>
+        <path class="spoke rev" d="M176 186 H112" stroke="var(--vpl-flow-batt)"/>
+        <path class="spoke" d="M244 186 H308" stroke="var(--vpl-flow-load)"/>
+        <path class="spoke" d="M210 226 V276" stroke="var(--vpl-flow-grid)"/>
+        <rect x="176" y="152" width="68" height="68" rx="16" fill="url(#vplHub)"/>
+        <path d="M215 160 L197 189 h11 l-2 21 l18 -29 h-11 z" fill="#fff"/>
+        <circle cx="210" cy="62" r="30" fill="var(--vpl-flow-pv-soft)" stroke="var(--vpl-flow-pv)" stroke-width="2"/>
+        <g stroke="var(--vpl-flow-pv)" stroke-width="2.2" stroke-linecap="round" fill="none"><circle cx="210" cy="62" r="6"/><path d="M210 48v4M210 72v4M196 62h4M220 62h4M200 52l2.8 2.8M217.2 69.2 220 72M220 52l-2.8 2.8M202.8 69.2 200 72"/></g>
+        <text class="node-label" x="210" y="18" text-anchor="middle">${msg("vpNodeSolar")}</text>
+        <text class="node-sub" x="210" y="33" text-anchor="middle">${msg("vpNodeSolarSub")}</text>
+        <circle cx="78" cy="186" r="30" fill="var(--vpl-flow-batt-soft)" stroke="var(--vpl-flow-batt)" stroke-width="2"/>
+        <g stroke="var(--vpl-flow-batt)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><rect x="64" y="179" width="24" height="14" rx="3"/><path d="M91 183v6"/><path d="M69 183v6h6v-6" fill="var(--vpl-flow-batt)" stroke="none"/></g>
+        <text class="node-label" x="78" y="236" text-anchor="middle">${msg("vpNodeStorage")}</text>
+        <text class="node-sub" x="78" y="251" text-anchor="middle">${msg("vpNodeStorageSub")}</text>
+        <circle cx="342" cy="186" r="30" fill="var(--vpl-flow-load-soft)" stroke="var(--vpl-flow-load)" stroke-width="2"/>
+        <g stroke="var(--vpl-flow-load)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M330 186l12-11 12 11"/><path d="M333 184v12h18v-12"/><path d="M339 196v-6h6v6"/></g>
+        <text class="node-label" x="342" y="236" text-anchor="middle">${msg("vpNodeHouse")}</text>
+        <text class="node-sub" x="342" y="251" text-anchor="middle">${msg("vpNodeHouseSub")}</text>
+        <circle cx="210" cy="310" r="30" fill="var(--vpl-flow-grid-soft)" stroke="var(--vpl-flow-grid)" stroke-width="2"/>
+        <g stroke="var(--vpl-flow-grid)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M202 322l8-24 8 24"/><path d="M199 309h22M201 316h18M205 303h10"/></g>
+        <text class="node-label" x="210" y="357" text-anchor="middle">${msg("vpNodeGrid")}</text>
+        <text class="node-sub" x="210" y="370" text-anchor="middle" font-size="11">${msg("vpNodeGridSub")}</text>
+      </svg>
+      <#-- Das Quartett ist die Inhaltsangabe der App, kein Marketing-Claim:
+           die vier taeglichen Fragen in der Reihenfolge der Telefon-Leiste
+           (anlageNav.BOTTOM_PRIORITY). -->
+      <ul class="vpl-quartet">
+        <li><span class="q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span><b>${msg("vpQCockpit")}</b>${msg("vpQCockpitSub")}</span></li>
+        <li><span class="q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><span><b>${msg("vpQPlan")}</b>${msg("vpQPlanSub")}</span></li>
+        <li><span class="q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><span><b>${msg("vpQMeasure")}</b>${msg("vpQMeasureSub")}</span></li>
+        <li><span class="q-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6.5A6 6 0 0 0 8 8H5m0 4h3m-3 4h3a6 6 0 0 0 9 1.5"/><path d="M5 12h9"/></svg></span><span><b>${msg("vpQRevenue")}</b>${msg("vpQRevenueSub")}</span></li>
+      </ul>
+    </div>
+    <p class="vpl-brandfoot">${msg("vpBrandFoot")}</p>
   </aside>
 
-  <div class="vp-formside">
-    <div class="${properties.kcLogin!}">
-      <div class="${properties.kcLoginContainer!}">
-        <header id="kc-header" class="pf-v5-c-login__header">
-          <div id="kc-header-wrapper"
-                  class="pf-v5-c-brand">${kcSanitize(msg("loginTitleHtml",(realm.displayNameHtml!'')))?no_esc}</div>
-        </header>
-        <main class="${properties.kcLoginMain!}">
-          <div class="${properties.kcLoginMainHeader!}">
-            <h1 class="${properties.kcLoginMainTitle!}" id="kc-page-title"><#nested "header"></h1>
-            <#if realm.internationalizationEnabled  && locale.supported?size gt 1>
-            <div class="${properties.kcLoginMainHeaderUtilities!}">
-              <div class="${properties.kcInputClass!}">
-                <select
-                  aria-label="${msg("languages")}"
-                  id="login-select-toggle"
-                  onchange="if (this.value) window.location.href=this.value"
-                >
-                  <#list locale.supported?sort_by("label") as l>
-                    <option
-                      value="${l.url}"
-                      ${(l.languageTag == locale.currentLanguageTag)?then('selected','')}
-                    >
-                      ${l.label}
-                    </option>
-                  </#list>
-                </select>
-                <span class="${properties.kcFormControlUtilClass}">
-                  <span class="${properties.kcFormControlToggleIcon!}">
-                    <svg
-                      class="pf-v5-svg"
-                      viewBox="0 0 320 512"
-                      fill="currentColor"
-                      aria-hidden="true"
-                      role="img"
-                      width="1em"
-                      height="1em"
-                    >
-                      <path
-                        d="M31.3 192h257.3c17.8 0 26.7 21.5 14.1 34.1L174.1 354.8c-7.8 7.8-20.5 7.8-28.3 0L17.2 226.1C4.6 213.5 13.5 192 31.3 192z"
-                      >
-                      </path>
-                    </svg>
-                  </span>
-                </span>
-              </div>
-            </div>
-            </#if>
+  <main class="vpl-panel">
+    <div class="vpl-card">
+      <#-- Die globale Meldung steht UEBER dem Titel: sie ist der Grund, warum
+           diese Seite gerade so aussieht. Eine FELD-Meldung wird hier nicht
+           gezeigt - login.ftl setzt displayMessage=false und haengt sie inline
+           ans betroffene Feld (per aria-describedby). -->
+      <#if displayMessage && message?has_content && (message.type != 'warning' || !isAppInitiatedAction??)>
+          <div class="vpl-alert is-${(message.type = 'error')?then('err', (message.type = 'success')?then('ok', (message.type = 'warning')?then('warn','info')))}"
+               role="${(message.type = 'error')?then('alert','status')}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+              <span class="kc-feedback-text">${kcSanitize(message.summary)?no_esc}</span>
           </div>
-          <div class="${properties.kcLoginMainBody!}">
-            <#if !(auth?has_content && auth.showUsername() && !auth.showResetCredentials())>
-                <#if displayRequiredFields>
-                    <div class="${properties.kcContentWrapperClass!}">
-                        <div class="${properties.kcLabelWrapperClass!} subtitle">
-                            <span class="${properties.kcInputHelperTextItemTextClass!}">
-                              <span class="${properties.kcInputRequiredClass!}">*</span> ${msg("requiredFields")}
-                            </span>
-                        </div>
-                    </div>
-                </#if>
-            <#else>
-                <#if displayRequiredFields>
-                    <div class="${properties.kcContentWrapperClass!}">
-                        <div class="${properties.kcLabelWrapperClass!} subtitle">
-                            <span class="${properties.kcInputHelperTextItemTextClass!}">
-                              <span class="${properties.kcInputRequiredClass!}">*</span> ${msg("requiredFields")}
-                            </span>
-                        </div>
-                        <div class="${properties.kcFormClass} ${properties.kcContentWrapperClass}">
-                            <#nested "show-username">
-                            <@username />
-                        </div>
-                    </div>
-                <#else>
-                    <div class="${properties.kcFormClass} ${properties.kcContentWrapperClass}">
-                      <#nested "show-username">
-                      <@username />
-                    </div>
-                </#if>
-            </#if>
+      </#if>
 
-            <#-- App-initiated actions should not see warning messages about the need to complete the action -->
-            <#-- during login.                                                                               -->
-            <#if displayMessage && message?has_content && (message.type != 'warning' || !isAppInitiatedAction??)>
-                <div class="${properties.kcAlertClass!} pf-m-${(message.type = 'error')?then('danger', message.type)}">
-                    <div class="${properties.kcAlertIconClass!}">
-                        <#if message.type = 'success'><span class="${properties.kcFeedbackSuccessIcon!}"></span></#if>
-                        <#if message.type = 'warning'><span class="${properties.kcFeedbackWarningIcon!}"></span></#if>
-                        <#if message.type = 'error'><span class="${properties.kcFeedbackErrorIcon!}"></span></#if>
-                        <#if message.type = 'info'><span class="${properties.kcFeedbackInfoIcon!}"></span></#if>
-                    </div>
-                    <span class="${properties.kcAlertTitleClass!} kc-feedback-text">${kcSanitize(message.summary)?no_esc}</span>
-                </div>
-            </#if>
+      <h1 class="vpl-title" id="kc-page-title"><#nested "header"></h1>
 
-            <#nested "form">
+      <#-- Der Untertitel ist ein EIGENER Abschnitt, damit er direkt unter dem
+           Titel steht - auch auf der Re-Auth-Seite, wo zwischen Titel und
+           Formular die feste Konto-Zeile liegt. Als erstes Element von "form"
+           haette er dort UNTER dem Konto gestanden (im Browser aufgefallen).
+           Die Seite liefert den ganzen <p class="vpl-hint">-Absatz, nicht nur
+           den Text: eine hier gewickelte Huelle waere bei einer Seite OHNE
+           Abschnitt ein leerer Absatz, und ihn per <#assign> abzufangen geht
+           nicht - bei aktivem Output-Format ist das Ergebnis Markup, das
+           ?trim nicht annimmt (500 beim Bau). -->
+      <#nested "hint">
 
-            <#if auth?has_content && auth.showTryAnotherWayLink()>
-              <form id="kc-select-try-another-way-form" action="${url.loginAction}" method="post" novalidate="novalidate">
-                  <input type="hidden" name="tryAnotherWay" value="on"/>
-                  <a id="try-another-way" href="javascript:document.forms['kc-select-try-another-way-form'].submit()"
-                      class="${properties.kcButtonSecondaryClass} ${properties.kcButtonBlockClass} ${properties.kcMarginTopClass}">
-                        ${kcSanitize(msg("doTryAnotherWay"))?no_esc}
-                  </a>
-              </form>
-            </#if>
+      <#if displayRequiredFields>
+          <p class="vpl-helper"><span class="vpl-req">*</span> ${msg("requiredFields")}</p>
+      </#if>
 
-            <#if displayInfo>
-              <div id="kc-info" class="${properties.kcSignUpClass!}">
-                  <div id="kc-info-wrapper" class="${properties.kcInfoAreaWrapperClass!}">
-                      <#nested "info">
-                  </div>
-              </div>
-            </#if>
-          </div>
-          <div class="pf-v5-c-login__main-footer">
-            <#nested "socialProviders">
-          </div>
-        </main>
+      <#if auth?has_content && auth.showUsername() && !auth.showResetCredentials()>
+          <#nested "show-username">
+          <@username />
+      </#if>
 
-        <@loginFooter.content/>
-      </div>
+      <#nested "form">
+
+      <#if auth?has_content && auth.showTryAnotherWayLink()>
+        <form id="kc-select-try-another-way-form" action="${url.loginAction}" method="post" novalidate="novalidate">
+            <input type="hidden" name="tryAnotherWay" value="on"/>
+            <a id="try-another-way" class="vpl-secondary" href="javascript:document.forms['kc-select-try-another-way-form'].submit()">
+              ${kcSanitize(msg("doTryAnotherWay"))?no_esc}
+            </a>
+        </form>
+      </#if>
+
+      <#if displayInfo>
+        <div id="kc-info" class="vpl-info">
+            <div id="kc-info-wrapper"><#nested "info"></div>
+        </div>
+      </#if>
+
+      <div class="vpl-social"><#nested "socialProviders"></div>
     </div>
-  </div>
+
+    <ul class="vpl-quartet-line" aria-label="${msg("vpAfterLogin")}">
+      <li><i style="background:var(--vpl-flow-pv)"></i>${msg("vpQCockpit")}</li>
+      <li><i style="background:var(--vpl-flow-batt)"></i>${msg("vpQPlan")}</li>
+      <li><i style="background:var(--vpl-flow-load)"></i>${msg("vpQMeasure")}</li>
+      <li><i style="background:var(--vpl-flow-grid)"></i>${msg("vpQRevenue")}</li>
+    </ul>
+
+    <footer class="vpl-foot">
+      <#if realm.internationalizationEnabled && locale.supported?size gt 1>
+        <span class="vpl-lang">
+          <#list locale.supported?sort_by("label") as l>
+            <#if l.languageTag == locale.currentLanguageTag>
+              <span aria-current="true">${l.label}</span>
+            <#else>
+              <a href="${l.url}" hreflang="${l.languageTag}" lang="${l.languageTag}">${l.label}</a>
+            </#if>
+            <#sep><span class="sep" aria-hidden="true">·</span></#sep>
+          </#list>
+        </span>
+      <#else>
+        <span></span>
+      </#if>
+      <span class="vpl-foot-brand">${msg("vpBrandFoot")}</span>
+    </footer>
+  </main>
 </div>
 </body>
 </html>

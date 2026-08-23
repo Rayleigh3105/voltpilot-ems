@@ -181,8 +181,28 @@ function LoginScreen({
       </AuthScreen>
     );
   }
+  // Ein Hinweis gehoert VOR die Handlung, nicht darunter - sonst steht der
+  // Grund unter dem Knopf, den er erklaert. Es wird IMMER hoechstens einer
+  // gezeigt (die Sperre ist die schaerfere Aussage als ein Timeout, und ein
+  // nicht erreichbarer Dienst schlaegt alles - er erklaert auch die anderen).
+  const banner = authError
+    ? 'Der Anmeldedienst ist zurzeit nicht erreichbar. Bitte versuchen Sie es in wenigen Minuten erneut.'
+    : view !== 'login'
+      ? null
+      : rateLimited
+        ? 'Zu viele Anmeldeversuche. Bitte versuchen Sie es in ein paar Minuten erneut.'
+        : authTimeout
+          ? 'Die Anmeldung dauert ungewöhnlich lange. Bitte versuchen Sie es erneut.'
+          : sessionExpired
+            ? 'Ihre Sitzung ist abgelaufen, bitte erneut anmelden.'
+            : null;
   return (
     <AuthScreen>
+      {banner && (
+        <div className="vp-alert vp-alert-err" role="alert">
+          {banner}
+        </div>
+      )}
       {view === 'login' ? (
         <>
           <h1>Willkommen zurück</h1>
@@ -224,28 +244,6 @@ function LoginScreen({
         // "Zur Anmeldung" goes straight to the Keycloak login (there is no
         // in-portal login pre-step anymore).
         <RegisterForm onBack={() => login()} />
-      )}
-      {rateLimited && !authError && view === 'login' && (
-        <div className="vp-alert vp-alert-err">
-          Zu viele Anmeldeversuche. Bitte versuchen Sie es in ein paar Minuten
-          erneut.
-        </div>
-      )}
-      {authTimeout && !rateLimited && !authError && view === 'login' && (
-        <div className="vp-alert vp-alert-err">
-          Die Anmeldung dauert ungewöhnlich lange. Bitte versuchen Sie es erneut.
-        </div>
-      )}
-      {sessionExpired && !rateLimited && !authTimeout && !authError && view === 'login' && (
-        <div className="vp-alert vp-alert-err">
-          Ihre Sitzung ist abgelaufen, bitte erneut anmelden.
-        </div>
-      )}
-      {authError && (
-        <div className="vp-alert vp-alert-err">
-          Der Anmeldedienst ist zurzeit nicht erreichbar. Bitte versuchen Sie es in
-          wenigen Minuten erneut.
-        </div>
       )}
       {view === 'login' && <TrustRow />}
     </AuthScreen>
