@@ -50,8 +50,12 @@
 
     var p = document.createElement('p');
     p.id = 'vp-register-link';
+    // Haus-Klassen, damit die eingehaengte Zeile aussieht wie jede andere
+    // Notiz der Karte (Abstand, Zentrierung, Trefferflaeche des Links).
+    p.className = 'vpl-note';
     p.appendChild(document.createTextNode(texts.lead));
     var a = document.createElement('a');
+    a.className = 'vpl-link';
     a.href = origin + '/#register';
     a.textContent = texts.link;
     p.appendChild(a);

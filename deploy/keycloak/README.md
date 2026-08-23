@@ -15,7 +15,7 @@ Compose bindet beide Artefakte heute als Volumes ein (`docker-compose.prod.yml`,
 | Produktions-Realm | `infra/prod/keycloak/voltpilot-realm.json` | `/opt/keycloak/data/import/voltpilot-realm.json` |
 | Login-Theme | `deploy/keycloak/themes/voltpilot/` | `/opt/keycloak/themes/voltpilot/` |
 
-Im Kubernetes-Cluster geht das so nicht: das Theme sind acht Dateien über verschachtelte Verzeichnisse (eine ConfigMap ist dafür das falsche Werkzeug), und weil es die kundensichtbare Anmeldeseite ist, ist „ohne Theme" keine Option. Das k8s-Deployment zieht deshalb dieses Image — siehe `apps/voltpilot/base/keycloak/deployment.yaml` im GitOps-Repo.
+Im Kubernetes-Cluster geht das so nicht: das Theme sind 21 Dateien über verschachtelte Verzeichnisse (Templates, CSS, JS, zwei Sprachdateien, die gebündelten Inter-Schriften und die Wortmarke — eine ConfigMap ist dafür das falsche Werkzeug), und weil es die kundensichtbare Anmeldeseite ist, ist „ohne Theme" keine Option. Das k8s-Deployment zieht deshalb dieses Image — siehe `apps/voltpilot/base/keycloak/deployment.yaml` im GitOps-Repo.
 
 Nebeneffekt, der einen echten Betriebs-Hack beseitigt: im `start`-Modus legt Keycloak beim Boot einen Theme- **und** einen Gzip-Cache auf dem Container-Dateisystem an, der einen einfachen `restart` ÜBERLEBT — ein geändertes Bind-Mount-Theme lieferte gzip-fähigen Browsern also weiterhin das alte CSS. Genau dagegen steht das `up -d --force-recreate keycloak` im Deploy-Workflow. Ein unveränderliches Image wird ersetzt statt an Ort und Stelle neu gestartet, der Cache kann gegen sein eigenes Theme also gar nicht mehr veralten.
 

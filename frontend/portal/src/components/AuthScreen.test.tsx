@@ -2,51 +2,76 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AuthScreen, BrandStage, TrustRow } from './AuthScreen';
 
-describe('BrandStage (the voltpilot.de orbit on the auth gradient)', () => {
-  it('renders the three rings with their six category nodes and the energy core', () => {
+describe('BrandStage (Wortmarke auf Weiss + Energiefluss-Motiv)', () => {
+  it('zeigt die Wortmarke als Bild, nicht als Text auf einem Verlauf', () => {
     const { container } = render(<BrandStage />);
-    expect(container.querySelectorAll('.vp-orbit-ring')).toHaveLength(3);
-    // Ring 3 is the dashed outer ring.
-    expect(container.querySelector('.vp-orbit-ring-3')).not.toBeNull();
-    const nodes = container.querySelectorAll('.vp-orbit-node');
-    expect(nodes).toHaveLength(6);
-    // The six voltpilot.de categories, each as its own node.
-    for (const cat of ['pv', 'battery', 'home', 'car', 'industry', 'grid']) {
-      expect(container.querySelector(`.vp-orbit-node.${cat}`)).not.toBeNull();
-    }
-    // Ring-2/3 nodes carry the matching counter-rotation duration classes.
-    expect(container.querySelectorAll('.vp-orbit-node.ring2')).toHaveLength(2);
-    expect(container.querySelectorAll('.vp-orbit-node.ring3')).toHaveLength(2);
-    expect(container.querySelector('.vp-orbit-center-inner svg')).not.toBeNull();
+    const logo = screen.getByAltText('VoltPilot');
+    expect(logo.tagName).toBe('IMG');
+    expect(logo).toHaveClass('vp-auth-wordmark');
+    // Der frühere Orbit samt Glas-Plakette ist ersatzlos entfallen.
+    expect(container.querySelector('.vp-orbit, .vp-brand-glass')).toBeNull();
   });
 
-  it('shows the logo on the frosted glass plaque, not a bare image', () => {
+  it('traegt das Energiefluss-Motiv in den Rollenfarben des Cockpits', () => {
     const { container } = render(<BrandStage />);
-    const glass = container.querySelector('.vp-brand-glass');
-    expect(glass).not.toBeNull();
-    expect(glass!.querySelector('img[alt="VoltPilot"]')).not.toBeNull();
+    const flow = container.querySelector('.vp-auth-flow');
+    expect(flow).not.toBeNull();
+    // Vier Speichen in den vier --vp-flow-*-Rollenfarben.
+    const spokes = [...container.querySelectorAll('.vp-auth-flow .spoke')];
+    expect(spokes).toHaveLength(4);
+    expect(spokes.map((s) => s.getAttribute('stroke'))).toEqual([
+      'var(--vp-flow-pv)',
+      'var(--vp-flow-batt)',
+      'var(--vp-flow-load)',
+      'var(--vp-flow-grid)',
+    ]);
   });
 
-  it('keeps the orbit decorative for screen readers (aria-hidden shell)', () => {
+  it('haelt das Motiv dekorativ - die Aussage tragen die Texte daneben', () => {
     const { container } = render(<BrandStage />);
-    expect(
-      container.querySelector('.vp-orbit-shell')?.getAttribute('aria-hidden'),
-    ).toBe('true');
+    expect(container.querySelector('.vp-auth-stage')?.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByText('Ihre Anlage, auf einen Blick.')).toBeInTheDocument();
+  });
+
+  it('nennt die vier taeglichen Fragen in der Reihenfolge der Telefon-Leiste', () => {
+    const { container } = render(<BrandStage />);
+    const titles = [...container.querySelectorAll('.vp-auth-quartet b')].map((b) => b.textContent);
+    expect(titles).toEqual(['Cockpit', 'Fahrplan', 'Messwerte', 'Erlöse']);
   });
 });
 
-describe('AuthScreen (split view shell)', () => {
-  it('renders brand stage left and the panel content right', () => {
+describe('AuthScreen (die Buehne)', () => {
+  it('rendert Markenflaeche, Karte und den Marken-Verlauf als 3-px-Akzent', () => {
     const { container } = render(
       <AuthScreen>
         <h1>Willkommen zurück</h1>
       </AuthScreen>,
     );
-    expect(container.querySelector('.vp-auth-brand .vp-orbit')).not.toBeNull();
-    expect(container.querySelector('.vp-auth-panel')).not.toBeNull();
+    expect(container.querySelector('.vp-auth-strip')).not.toBeNull();
+    expect(container.querySelector('.vp-auth-brand .vp-auth-wordmark')).not.toBeNull();
+    expect(container.querySelector('.vp-auth-panel .vp-auth-card')).not.toBeNull();
     expect(screen.getByText('Willkommen zurück')).toBeInTheDocument();
-    // The brand logo stays accessible (it is the page's VoltPilot identity).
-    expect(screen.getByAltText('VoltPilot')).toBeInTheDocument();
+  });
+
+  it('macht `.vp-auth` zum Container - das Raster liegt eine Ebene tiefer', () => {
+    // Ein Element kann nicht von seiner EIGENEN Container-Query gestylt werden;
+    // liegen beide auf demselben Knoten, greift die breite Fassung nie.
+    const { container } = render(<AuthScreen>x</AuthScreen>);
+    const auth = container.querySelector('.vp-auth');
+    expect(auth).not.toBeNull();
+    expect(auth!.querySelector(':scope > .vp-auth-split')).not.toBeNull();
+  });
+
+  it('haelt die Quartett-Zeile der schmalen Fassung dekorativ', () => {
+    const { container } = render(<AuthScreen>x</AuthScreen>);
+    const line = container.querySelector('.vp-auth-quartet-line');
+    expect(line?.getAttribute('aria-hidden')).toBe('true');
+    expect([...line!.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'Cockpit',
+      'Fahrplan',
+      'Messwerte',
+      'Erlöse',
+    ]);
   });
 });
 

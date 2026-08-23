@@ -21,66 +21,71 @@
 
       Regeln (bitte einhalten):
       - Nur INLINE: kein externes Asset, keine Schrift-Datei, kein Bild. Damit
-        bleibt index.html no-cache-tauglich und braucht keinen Hash.
+        bleibt index.html no-cache-tauglich und braucht keinen Hash. Die echte
+        Buehne zeigt die Wortmarke als PNG - hier steht ihre Textfassung
+        (Blitz in --vp-primary #95B9FF + schwarzer Schriftzug, die zwei Farben
+        der Datei), weil ein Bild-Request genau den Roundtrip kostete, den das
+        Skelett vermeidet.
       - Farben sind aus designsystem/tokens/colors.css HART einkopiert
-        (--vp-grad-hero, --vp-surface, --vp-border, --vp-action) - die Tokens
-        selbst kommen erst mit dem Stylesheet.
+        (--vp-grad-hero, --vp-surface, --vp-border, --vp-action, --vp-primary) -
+        die Tokens selbst kommen erst mit dem Stylesheet.
       - Es liegt als position:fixed-Overlay ueber #root, kann also nie einen
         Layout-Sprung ausloesen; BootErrorBoundary.componentDidMount entfernt es
         in DEMSELBEN Commit, in dem React das erste Bild schreibt (kein Flackern).
-      - Optisch die Vorwegnahme von <BootSplash>/<AuthScreen>: links Marken-
-        flaeche mit Glas-Plakette, rechts helle Flaeche mit Spinner.
+      - Optisch die Vorwegnahme von <BootSplash>/<AuthScreen> in ihrer NEUEN
+        Fassung: Wortmarke auf WEISS, der Marken-Verlauf nur als 3-px-Streifen
+        oben, rechts die helle Formularseite mit Spinner. Die Umschaltbreite
+        900 px ist dieselbe wie die Container-Query von `.vp-auth` - wer eine
+        aendert, aendert beide (sonst blitzt beim Start die falsche Aufteilung).
     -->
     <style>
       #vp-boot-skeleton {
         position: fixed;
         inset: 0;
         z-index: 2147483000;
-        display: grid;
-        grid-template-columns: 1.08fr 1fr;
+        display: flex;
+        flex-direction: column;
         background: #ffffff;
+      }
+      #vp-boot-skeleton .vp-bs-strip {
+        height: 3px;
+        flex: none;
+        background: linear-gradient(135deg, #95b9ff 0%, #7ba3f7 50%, #5a8de8 100%);
+      }
+      #vp-boot-skeleton .vp-bs-split {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
       }
       #vp-boot-skeleton .vp-bs-brand {
         display: flex;
         align-items: center;
-        justify-content: center;
-        padding: 44px 46px;
-        background:
-          radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.18), transparent 240px),
-          linear-gradient(135deg, #95b9ff 0%, #7ba3f7 50%, #5a8de8 100%);
+        gap: 10px;
+        padding: 20px 20px 0;
       }
-      #vp-boot-skeleton .vp-bs-glass {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 18px 30px;
-        border-radius: 20px;
-        background: rgba(255, 255, 255, 0.3);
-        border: 1px solid rgba(255, 255, 255, 0.55);
-        box-shadow:
-          0 16px 44px rgba(20, 40, 70, 0.28),
-          inset 0 1px 0 rgba(255, 255, 255, 0.6);
-      }
-      #vp-boot-skeleton .vp-bs-glass svg {
+      #vp-boot-skeleton .vp-bs-brand svg {
         display: block;
-        width: 26px;
-        height: 26px;
+        width: 22px;
+        height: 22px;
+        flex: none;
       }
       #vp-boot-skeleton .vp-bs-word {
         font-family:
           'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
           sans-serif;
-        font-size: 26px;
+        font-size: 22px;
         font-weight: 700;
         letter-spacing: -0.01em;
         line-height: 1;
-        color: #ffffff;
+        color: #000000;
       }
       #vp-boot-skeleton .vp-bs-panel {
+        flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 44px 48px;
+        padding: 24px 20px 28px;
       }
       #vp-boot-skeleton .vp-bs-spinner {
         width: 28px;
@@ -95,30 +100,28 @@
           transform: rotate(360deg);
         }
       }
-      /* Phone: dieselbe Kopfband-Aufteilung wie .vp-auth (max-width 799px). */
-      @media (max-width: 799px) {
-        #vp-boot-skeleton {
-          grid-template-columns: 1fr;
-          grid-template-rows: auto 1fr;
-          align-content: start;
+      /* Breite Fassung: Marke links, Formularseite rechts - wie `.vp-auth`. */
+      @media (min-width: 900px) {
+        #vp-boot-skeleton .vp-bs-split {
+          flex-direction: row;
+          align-items: stretch;
         }
         #vp-boot-skeleton .vp-bs-brand {
-          padding: 26px 16px 20px;
+          flex: 0 0 46%;
+          max-width: 620px;
+          align-items: flex-start;
+          padding: 40px 44px;
+          border-right: 1px solid #e9ecef;
         }
-        #vp-boot-skeleton .vp-bs-glass {
-          padding: 10px 18px;
-          border-radius: 16px;
-        }
-        #vp-boot-skeleton .vp-bs-glass svg {
-          width: 20px;
-          height: 20px;
+        #vp-boot-skeleton .vp-bs-brand svg {
+          width: 28px;
+          height: 28px;
         }
         #vp-boot-skeleton .vp-bs-word {
-          font-size: 20px;
+          font-size: 28px;
         }
         #vp-boot-skeleton .vp-bs-panel {
-          padding: 40px 18px;
-          align-items: start;
+          padding: 40px 44px;
         }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -131,21 +134,22 @@
   <body>
     <div id="root"></div>
     <div id="vp-boot-skeleton" aria-hidden="true">
-      <div class="vp-bs-brand">
-        <div class="vp-bs-glass">
+      <div class="vp-bs-strip"></div>
+      <div class="vp-bs-split">
+        <div class="vp-bs-brand">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path
               d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"
-              fill="#fff"
-              stroke="#fff"
+              fill="#95b9ff"
+              stroke="#95b9ff"
               stroke-width="2"
               stroke-linejoin="round"
             />
           </svg>
           <span class="vp-bs-word">VoltPilot</span>
         </div>
+        <div class="vp-bs-panel"><div class="vp-bs-spinner"></div></div>
       </div>
-      <div class="vp-bs-panel"><div class="vp-bs-spinner"></div></div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

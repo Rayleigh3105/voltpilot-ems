@@ -636,57 +636,95 @@ svg [tabindex]:focus-visible {
 }
 
 /* ============================================================
-   Auth screens (login / register / boot / lockout / expired):
-   the captain-approved split view. Left = pure brand on the hero
-   gradient with the ORIGINAL voltpilot.de orbit animation and the
-   logo on a frosted glass plaque; right = the calm form panel.
-   The Keycloak login theme (deploy/keycloak/themes/voltpilot)
-   carries the same stage for the direct-to-Keycloak flow - keep
-   the two in sync when retuning the orbit or the glass plaque.
+   Auth screens (Login / Registrierung / Boot / Sperre / Fehler).
+   Die Buehne des NEUEN Anmeldebilds (Login-Screen Stufe 1):
+   Wortmarke auf WEISS, der Marken-Verlauf nur noch als 3-px-Akzent
+   und als Hub-Kachel des Energiefluss-Motivs. Orbit-Ringe und
+   Glas-Plakette sind ersatzlos entfallen.
+
+   ⚠ DER CONTAINER IST `.vp-auth`, DAS RASTER LIEGT AUF `.vp-auth-split`.
+   Ein Element kann NICHT von seiner EIGENEN Container-Query gestylt
+   werden - `@container` gilt nur fuer NACHFAHREN. Wer das Raster auf
+   den Container selbst legt, bekommt lautlos immer die schmale Fassung.
+
+   Das Keycloak-Theme (deploy/keycloak/themes/voltpilot/login/
+   resources/css/voltpilot.css) traegt dieselbe Buehne mit `--vpl-*`-
+   Kopien dieser Token - beim Umtoenen BEIDE anfassen.
    ============================================================ */
 .vp-auth {
   min-height: 100vh;
+  min-height: 100svh;
   min-height: 100dvh;
-  display: grid;
-  grid-template-columns: 1.08fr 1fr;
+  display: flex;
+  flex-direction: column;
   background: var(--vp-surface);
+  container-type: inline-size;
+  container-name: vpauth;
 }
+/* Der Marken-Verlauf als Akzent - dieselbe Rolle wie im Favicon. */
+.vp-auth-strip {
+  height: 3px;
+  flex: none;
+  background: var(--vp-grad-hero);
+}
+.vp-auth-split {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* --- Markenflaeche ------------------------------------------------------ */
 .vp-auth-brand {
-  position: relative;
-  overflow: hidden;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 44px 46px;
-  /* Subtle echo circles + a soft light from the top-left over the hero
-     gradient (lifted from the reviewed mockup). */
-  background:
-    radial-gradient(
-      circle at 82% 88%,
-      rgba(255, 255, 255, 0) 90px,
-      rgba(255, 255, 255, 0.28) 91px,
-      rgba(255, 255, 255, 0) 93px
-    ),
-    radial-gradient(
-      circle at 82% 88%,
-      rgba(255, 255, 255, 0) 130px,
-      rgba(255, 255, 255, 0.2) 131px,
-      rgba(255, 255, 255, 0) 133px
-    ),
-    radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.18), transparent 240px),
-    var(--vp-grad-hero);
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px 20px 0;
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
 }
-.vp-auth-panel {
+.vp-auth-brandhead {
   display: flex;
   align-items: center;
+}
+.vp-auth-wordmark {
+  height: 26px;
+  width: auto;
+  display: block;
+}
+/* Motiv + Quartett tragen die Buehne nur in der breiten Fassung. */
+.vp-auth-stage {
+  display: none;
+}
+.vp-auth-brandfoot {
+  display: none;
+}
+
+/* --- Formularseite ------------------------------------------------------ */
+.vp-auth-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   justify-content: center;
-  padding: 44px 48px;
+  min-width: 0;
+  padding: 24px 20px 28px;
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+.vp-auth-card {
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
   min-width: 0;
 }
 .vp-auth-body {
-  width: 100%;
-  max-width: 400px;
   min-width: 0;
+}
+/* Ein Hinweis steht VOR der Handlung - dort braucht er keinen Kopfabstand. */
+.vp-auth-body > .vp-alert:first-child {
+  margin-top: 0;
+  margin-bottom: var(--vp-space-4);
 }
 .vp-auth-body h1 {
   font-family: var(--vp-font-heading);
@@ -723,273 +761,166 @@ svg [tabindex]:focus-visible {
   gap: 4px;
   white-space: nowrap;
 }
-
-/* --- Brand stage: orbit + glass logo plaque ------------------------------ */
-.vp-brandstage {
+/* Die vier taeglichen Fragen als eine ruhige Zeile - der Ersatz fuer die
+   Buehne, solange sie nicht daneben passt. */
+.vp-auth-quartet-line {
+  list-style: none;
+  margin: 26px auto 0;
+  padding: 0;
+  max-width: 440px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 30px;
-  min-width: 0;
-}
-/* Fixed-size window the (scalable) orbit is centered in - the phone band
-   shrinks the window and scales the orbit down inside it. */
-.vp-orbit-shell {
-  width: 380px;
-  height: 380px;
-  max-width: 100%;
-  display: grid;
-  place-items: center;
-}
-.vp-orbit {
-  position: relative;
-  width: 380px;
-  height: 380px;
-  flex: none;
-}
-.vp-orbit-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100px;
-  height: 100px;
-  background: linear-gradient(135deg, var(--vp-navy) 0%, var(--vp-navy-2) 100%);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   justify-content: center;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
-  z-index: 10;
+  gap: 6px 14px;
+  font-size: 0.74rem;
+  color: var(--vp-text-muted);
 }
-.vp-orbit-center-inner {
-  width: 70px;
-  height: 70px;
-  background: linear-gradient(135deg, var(--vp-primary-light) 0%, var(--vp-primary) 100%);
-  border-radius: 50%;
-  display: flex;
+.vp-auth-quartet-line li {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 20px rgba(149, 185, 255, 0.5);
+  gap: 6px;
+  white-space: nowrap;
 }
-.vp-orbit-center-inner svg {
-  width: 30px;
-  height: 30px;
-}
-.vp-orbit-ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
+.vp-auth-quartet-line li::before {
+  content: '';
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
+  background: var(--vp-primary);
 }
-.vp-orbit-ring-1 {
-  width: 180px;
-  height: 180px;
-  margin: -90px 0 0 -90px;
-  animation: vp-orbit-rotate 15s linear infinite;
-}
-.vp-orbit-ring-2 {
-  width: 260px;
-  height: 260px;
-  margin: -130px 0 0 -130px;
-  animation: vp-orbit-rotate 20s linear infinite reverse;
-}
-.vp-orbit-ring-3 {
-  width: 320px;
-  height: 320px;
-  margin: -160px 0 0 -160px;
-  border-style: dashed;
-  animation: vp-orbit-rotate 25s linear infinite;
-}
-.vp-orbit-node {
-  position: absolute;
-  width: 44px;
-  height: 44px;
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-  /* Counter-rotation keeps the icons upright; duration must match the
-     carrying ring (ring2 nodes also reverse). */
-  animation: vp-orbit-counter 15s linear infinite;
-}
-.vp-orbit-node svg {
-  width: 20px;
-  height: 20px;
-  stroke-width: 2;
-}
-.vp-orbit-node.n-top {
-  top: -22px;
-  left: 50%;
-  margin-left: -22px;
-}
-.vp-orbit-node.n-bot {
-  bottom: -22px;
-  left: 50%;
-  margin-left: -22px;
-}
-.vp-orbit-node.n-left {
-  left: -22px;
-  top: 50%;
-  margin-top: -22px;
-}
-.vp-orbit-node.n-right {
-  right: -22px;
-  top: 50%;
-  margin-top: -22px;
-}
-.vp-orbit-node.ring2 {
-  animation-duration: 20s;
-  animation-direction: reverse;
-}
-.vp-orbit-node.ring3 {
-  animation-duration: 25s;
-}
-/* Category-colored stroke icons (the voltpilot.de category tokens). */
-.vp-orbit-node.pv svg {
-  stroke: var(--vp-solar);
-}
-.vp-orbit-node.battery svg {
-  stroke: var(--vp-battery);
-}
-.vp-orbit-node.car svg {
-  stroke: var(--vp-ev);
-}
-.vp-orbit-node.home svg {
-  stroke: var(--vp-home);
-}
-.vp-orbit-node.industry svg {
-  stroke: var(--vp-industry);
-}
-.vp-orbit-node.grid svg {
-  stroke: var(--vp-grid);
-}
-@keyframes vp-orbit-rotate {
-  from {
-    transform: rotate(0);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-@keyframes vp-orbit-counter {
-  from {
-    transform: rotate(0);
-  }
-  to {
-    transform: rotate(-360deg);
-  }
-}
-/* Logo on the matte glass plaque (captain design update: frosted glass,
-   never a solid white card). backdrop-filter needs the -webkit prefix on
-   Safari. */
-.vp-brand-glass {
-  background: rgba(255, 255, 255, 0.3);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: 20px;
-  padding: 18px 30px;
-  box-shadow:
-    0 16px 44px rgba(20, 40, 70, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-.vp-brand-logo {
-  display: block;
-  height: 48px;
-  width: auto;
+.vp-auth-foot {
+  margin: 18px auto 0;
+  max-width: 440px;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--vp-text-muted);
 }
 
-/* Phone: the gradient becomes a compact head band (mini orbit + smaller
-   glass plaque), the form follows below - submit stays reachable above the
-   keyboard because the band is short and the page scrolls normally. */
-@media (max-width: 799px) {
-  .vp-auth {
-    grid-template-columns: 1fr;
-    min-height: 100vh;
-    min-height: 100dvh;
-    align-content: start;
+/* --- Breite Fassung: Marke links, Karte rechts -------------------------- */
+@container vpauth (min-width: 900px) {
+  .vp-auth-split {
+    flex-direction: row;
+    align-items: stretch;
   }
   .vp-auth-brand {
-    padding: 26px 16px 20px;
+    flex: 0 0 46%;
+    max-width: 620px;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 40px 44px;
+    border-right: 1px solid var(--vp-border);
   }
-  .vp-brandstage {
-    gap: 12px;
+  .vp-auth-wordmark {
+    height: 34px;
   }
-  /* Mini orbit: explicit sizes (the mockup's phone variant) - a transform
-     scale would keep the 380px layout box and mis-center the band. */
-  .vp-orbit-shell,
-  .vp-orbit {
-    width: 150px;
-    height: 150px;
+  .vp-auth-stage {
+    display: block;
+    min-width: 0;
   }
-  .vp-orbit-ring-1 {
-    width: 76px;
-    height: 76px;
-    margin: -38px 0 0 -38px;
+  .vp-auth-kicker {
+    margin: 0 0 6px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--vp-action);
   }
-  .vp-orbit-ring-2 {
-    width: 112px;
-    height: 112px;
-    margin: -56px 0 0 -56px;
+  .vp-auth-claim {
+    font-family: var(--vp-font-heading);
+    font-size: clamp(1.5rem, 2.4cqw + 0.9rem, 2rem);
+    line-height: 1.2;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--vp-text-dark);
   }
-  .vp-orbit-ring-3 {
-    width: 146px;
-    height: 146px;
-    margin: -73px 0 0 -73px;
+  .vp-auth-claim-sub {
+    margin: 0;
+    max-width: 34em;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    color: var(--vp-text-muted);
   }
-  .vp-orbit-center {
-    width: 44px;
-    height: 44px;
+  .vp-auth-flow {
+    display: block;
+    width: 100%;
+    max-width: 380px;
+    height: auto;
+    margin: 14px 0 6px;
   }
-  .vp-orbit-center-inner {
+  .vp-auth-flow .spoke {
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-dasharray: 6 7;
+    animation: vp-auth-flow 1.6s linear infinite;
+  }
+  .vp-auth-flow .spoke.rev {
+    animation-direction: reverse;
+  }
+  .vp-auth-flow .node-label {
+    font-family: var(--vp-font-body);
+    font-size: 13px;
+    font-weight: 600;
+    fill: var(--vp-text-dark);
+  }
+  .vp-auth-flow .node-sub {
+    font-family: var(--vp-font-body);
+    font-size: 11.5px;
+    fill: var(--vp-text-muted);
+  }
+  .vp-auth-quartet {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 18px;
+  }
+  .vp-auth-quartet li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    font-size: 0.84rem;
+    line-height: 1.35;
+    color: var(--vp-text-muted);
+  }
+  .vp-auth-quartet b {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--vp-text-dark);
+  }
+  .vp-auth-q-ic {
+    flex: none;
     width: 30px;
     height: 30px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: var(--vp-bg-light);
+    color: var(--vp-action);
   }
-  .vp-orbit-center-inner svg {
-    width: 14px;
-    height: 14px;
+  .vp-auth-q-ic svg {
+    width: 16px;
+    height: 16px;
   }
-  .vp-orbit-node {
-    width: 22px;
-    height: 22px;
-  }
-  .vp-orbit-node svg {
-    width: 11px;
-    height: 11px;
-  }
-  .vp-orbit-node.n-top {
-    top: -11px;
-    margin-left: -11px;
-  }
-  .vp-orbit-node.n-bot {
-    bottom: -11px;
-    margin-left: -11px;
-  }
-  .vp-orbit-node.n-left {
-    left: -11px;
-    margin-top: -11px;
-  }
-  .vp-orbit-node.n-right {
-    right: -11px;
-    margin-top: -11px;
-  }
-  .vp-brand-glass {
-    padding: 10px 18px;
-    border-radius: 16px;
-  }
-  .vp-brand-logo {
-    height: 26px;
+  .vp-auth-brandfoot {
+    display: block;
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--vp-text-muted);
   }
   .vp-auth-panel {
-    padding: 24px 18px 32px;
-    align-items: start;
+    padding: 40px 44px;
   }
-  .vp-auth-hint {
-    margin-bottom: 18px;
+  /* Die Zeile ist der ERSATZ fuer die Buehne - daneben waere sie doppelt. */
+  .vp-auth-quartet-line {
+    display: none;
+  }
+}
+@keyframes vp-auth-flow {
+  to {
+    stroke-dashoffset: -26;
   }
 }
 
@@ -1008,11 +939,10 @@ svg [tabindex]:focus-visible {
     transform: rotate(360deg);
   }
 }
-/* Reduced motion: rings and nodes stand still (static rings), spinner too. */
+/* Reduzierte Bewegung: der Spinner und die Laufpunkte des Motivs stehen still. */
 @media (prefers-reduced-motion: reduce) {
   .vp-boot-spinner,
-  .vp-orbit-ring,
-  .vp-orbit-node {
+  .vp-auth-flow .spoke {
     animation: none;
   }
 }
