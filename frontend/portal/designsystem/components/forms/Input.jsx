@@ -1,8 +1,15 @@
 import React from 'react';
 
 /**
- * VoltPilot Input — white field, soft border, brand focus ring.
+ * VoltPilot Input — white field, --vp-field-border, brand focus ring.
  * Forwards its ref to the native <input> so callers can focus fields.
+ *
+ * Der RUHENDE Rand ist --vp-field-border (3,2:1), nicht --vp-border (1,19:1):
+ * der Rand ist die einzige Angabe, wo das Feld anfaengt (WCAG 1.4.11). Der
+ * FOKUS-Rand ist --vp-primary-deep (3,28:1) statt --vp-primary (1,97:1) —
+ * sonst wuerde das Feld beim Fokussieren HELLER umrandet als im Ruhezustand.
+ * Der VpPicker-Ausloeser (src/components/VpPicker.css) traegt dieselbe
+ * Feld-Optik und wandert mit; beide zusammen aendern.
  */
 export const Input = React.forwardRef(function Input({
   label = null,
@@ -40,7 +47,7 @@ export const Input = React.forwardRef(function Input({
           fontSize: '1rem',
           color: 'var(--vp-text-dark)',
           background: 'var(--vp-surface)',
-          border: `1px solid ${error ? 'var(--vp-industry)' : focused ? 'var(--vp-primary)' : 'var(--vp-border)'}`,
+          border: `1px solid ${error ? 'var(--vp-industry)' : focused ? 'var(--vp-primary-deep)' : 'var(--vp-field-border)'}`,
           borderRadius: 'var(--vp-radius-btn)',
           padding: '0.75rem 1rem',
           outline: 'none',
