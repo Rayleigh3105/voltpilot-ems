@@ -28,6 +28,18 @@
   --vp-border:         #E9ECEF;  /* card/input borders, dividers */
   --vp-gray:           #CED4DA;  /* secondary borders/buttons */
 
+  /* Rand von EINGABEFELDERN (Input, VpPicker-Ausloeser). Eigenes Token, weil
+     --vp-border (1,19:1) und --vp-gray (1,49:1) die 3:1-Grenze fuer
+     Nicht-Text-Kontrast (WCAG 1.4.11 „User Interface Components") reissen:
+     auf einer Formular-Seite im Freien ist der Feldrand die EINZIGE Angabe,
+     wo das Feld anfaengt und aufhoert.
+     Abgeleitet aus --vp-text-gray, kein neuer Farbwert (das Haus nutzt
+     color-mix bereits fuer --vp-tech-hair).
+     ACHTUNG, gemessen: der 75-%-Mix aus dem Login-Konzept ist #91989E =
+     2,94:1 und bleibt damit UNTER 3:1 - 80 % ist der kleinste Anteil, der
+     die Grenze wirklich haelt. Beim Nachjustieren nachrechnen, nicht raten. */
+  --vp-field-border:   color-mix(in srgb, var(--vp-text-gray) 80%, var(--vp-surface));  /* ~#899197, 3,21:1 auf Weiss */
+
   /* --- Category accents (gradient start -> end) --- */
   --vp-solar:    #FF9800; --vp-solar-end:    #F57C00; /* Solar / PV */
   --vp-battery:  #9C27B0; --vp-battery-end:  #7B1FA2; /* Battery / Storage */

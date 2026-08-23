@@ -29,7 +29,10 @@
   min-width: 0;
 }
 
-/* --- Der Auslöser: Feld-Optik, damit er neben `Input` nicht auffällt. ----- */
+/* --- Der Auslöser: Feld-Optik, damit er neben `Input` nicht auffällt. -----
+   ⚠ Rand und Fokus-Rand sind DIESELBEN Token wie in `Input` (--vp-field-border
+   / --vp-primary-deep). Genau das ist der Punkt dieses Blocks: laufen die zwei
+   auseinander, faellt der Ausloeser neben einem echten Feld auf. */
 .vp-picker-ausloeser {
   display: flex;
   align-items: center;
@@ -42,7 +45,7 @@
   text-align: left;
   color: var(--vp-text-dark);
   background: var(--vp-surface);
-  border: 1px solid var(--vp-border);
+  border: 1px solid var(--vp-field-border);
   border-radius: var(--vp-radius-btn);
   padding: 0.75rem 1rem;
   cursor: pointer;
@@ -52,7 +55,7 @@
   min-height: 44px;
 }
 .vp-picker-ausloeser:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--vp-action) 45%, var(--vp-border));
+  border-color: color-mix(in srgb, var(--vp-action) 45%, var(--vp-field-border));
 }
 .vp-picker-ausloeser:focus-visible {
   outline: none;
