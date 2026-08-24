@@ -48,6 +48,17 @@ import java.util.UUID;
  * {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS}), or {@code spot} (bare spot - the
  * un-maintained default the report warns about). Site-level, so it is present
  * even on a run-less site.
+ *
+ * <p>{@code pvAnchorRatio} (Morgenprognose, {@code schedule.pv_anchor_ratio})
+ * is the PV nowcast anchor the RUN corrected its near-horizon PV forecast by -
+ * measured over predicted on the last completed slots, {@code > 1} = the active
+ * model was too low (the east-heavy-morning case), {@code < 1} = too high. It
+ * belongs next to {@code activePvModel}: the model says WHAT forecast the run
+ * used, this says how far reality had already drifted from it. Null = no anchor
+ * established (too little evidence, the optimizer's
+ * {@code OPTIMIZER_PV_ANCHOR_ENABLED} kill switch off, or a run predating the
+ * column) - the UI then says nothing rather than a misleading "1,0", which is
+ * itself a real, established statement.
  */
 public record OptimizerDiagnosticsDto(
         UUID siteId,
@@ -69,6 +80,7 @@ public record OptimizerDiagnosticsDto(
         String activePvModel,
         String priceSource,
         boolean storedEnergyValueIsApproximation,
+        BigDecimal pvAnchorRatio,
         List<OptimizerDiagnosticsSlotDto> slots) {
 
     /**

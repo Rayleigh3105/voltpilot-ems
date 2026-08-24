@@ -32,6 +32,7 @@ import {
   objectiveTotals,
   overrideChips,
   presetForWear,
+  pvAnchorCard,
   runDateLabel,
   runLabel,
   slotTimeLabel,
@@ -331,6 +332,7 @@ function VerdictBanner({ diag, siteName }: { diag: OptimizerDiagnostics; siteNam
 function InputsAtAGlance({ diag }: { diag: OptimizerDiagnostics }) {
   const startSoc = diag.slots.find((s) => s.socPct != null)?.socPct ?? null;
   const b = diag.battery;
+  const anchor = pvAnchorCard(diag.pvAnchorRatio);
   return (
     <section className="vp-optim-section">
       <h2>Eingaben auf einen Blick</h2>
@@ -363,6 +365,11 @@ function InputsAtAGlance({ diag }: { diag: OptimizerDiagnostics }) {
           label="Aktive Modelle"
           value={diag.activePvModel}
           note={`Last: ${diag.activeLoadModel}`}
+        />
+        <GlanceCard
+          label="PV-Anker (Messung)"
+          value={anchor.value}
+          note={anchor.note}
         />
         <GlanceCard
           label="Bezugspreis-Quelle"

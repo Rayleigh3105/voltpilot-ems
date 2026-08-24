@@ -30,6 +30,7 @@ collector); psycopg is a lazy import behind the optional ``db`` extra.
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -40,6 +41,11 @@ from voltpilot_optimization.config import (
     PEAK_SPIKE_FACTOR,
     default_wear_cost_ct_per_kwh,
     grid_limit_max_age,
+    pv_anchor_decay_slots,
+    pv_anchor_enabled,
+    pv_anchor_lookback,
+    pv_anchor_max_ratio,
+    pv_anchor_min_slots,
     soc_max_age,
     terminal_value_override_eur_per_kwh,
 )
@@ -55,6 +61,7 @@ from voltpilot_optimization.domain import (
     horizon_slot_starts,
 )
 from voltpilot_optimization.fallback import night_floor_pv, persistence_forecast
+from voltpilot_optimization.nowcast import AnchorEvidence, NO_EVIDENCE, anchor_evidence, apply_anchor
 from voltpilot_optimization.pricing import (
     SiteTariff,
     SupplyPriceComponents,
@@ -456,6 +463,12 @@ def gather_inputs(
     pv_kw, pv_used_fallback = _forecast_or_fallback(
         dsn, site, "pv", "pv_power_kw", slot_starts, now, site_choices
     )
+    # The run's OWN recent error, carried into the near horizon (Morgenprognose
+    # 2026-08-24 - see :mod:`voltpilot_optimization.nowcast`). Runs BEFORE the
+    # night floor so that stays the last defensive gate on the PV input.
+    pv_kw, pv_anchor = _anchor_pv_input(
+        dsn, site, slot_starts, pv_kw, now, site_choices
+    )
     pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
 
     # Both live readings sit behind a freshness window (F4/P4): a stale
@@ -519,6 +532,10 @@ def gather_inputs(
         terminal_value_eur_per_kwh=terminal_value_override_eur_per_kwh(),
         leistungspreis_eur_kw=site.leistungspreis_eur_kw,
         peak_so_far_kw=peak_so_far,
+        # Diagnostics only (persisted per run, shown in the admin optimizer
+        # readout): the correction ALREADY sits in pv_kw above.
+        pv_anchor_ratio=pv_anchor.ratio,
+        pv_anchor_slots=pv_anchor.slots_used,
     )
 
 
@@ -713,6 +730,201 @@ def _forecast_or_fallback(
         },
     )
     return persistence_forecast(history, slot_starts), True
+
+
+def _anchor_pv_input(
+    dsn: str,
+    site: BatterySite,
+    slot_starts: list[datetime],
+    pv_kw: list[float],
+    now: datetime,
+    site_choices: dict | None,
+) -> tuple[list[float], AnchorEvidence]:
+    """Correct the PV series by the active model's OWN recent bias.
+
+    Two narrow reads over the last completed slots - what the model PREDICTED
+    for them (ex ante) and what the site MEASURED - feed the pure
+    :mod:`voltpilot_optimization.nowcast` rule; the returned series is the
+    anchored one. Fail-soft on purpose (the explain-layer discipline): any
+    failure here - a bad env value, an unreachable read - logs and returns the
+    UNCHANGED forecast, because a missing correction is a worse plan while a
+    raised exception is no plan at all.
+
+    ``site_choices`` picks the same active model the forecast itself came from,
+    so the evidence compares like with like; promoting a challenger moves both
+    sides together.
+    """
+    try:
+        if not pv_anchor_enabled():
+            return pv_kw, NO_EVIDENCE
+        lookback_slots = _lookback_slot_starts(slot_starts, pv_anchor_lookback())
+        if not lookback_slots:
+            return pv_kw, NO_EVIDENCE
+        model = active_model("pv", choices=site_choices)
+        measured = _measured_slot_means(
+            dsn, site.site_id, "pv_power_kw", lookback_slots
+        )
+        predicted = _past_predictions(dsn, site.site_id, "pv", model, lookback_slots)
+        evidence = anchor_evidence(
+            [measured.get(s) for s in lookback_slots],
+            [predicted.get(s) for s in lookback_slots],
+            min_slots=pv_anchor_min_slots(),
+            max_ratio=pv_anchor_max_ratio(),
+        )
+        anchored, factors = apply_anchor(
+            pv_kw,
+            evidence,
+            decay_slots=pv_anchor_decay_slots(),
+            capacity_kwp=site.tariff.pv_capacity_kwp,
+        )
+    except Exception:  # noqa: BLE001 - never sink a plan over a correction
+        logger.warning(
+            "forecast.pv_anchor.failed",
+            exc_info=True,
+            extra={"context": {"site_id": str(site.site_id), "kind": "pv"}},
+        )
+        return pv_kw, NO_EVIDENCE
+
+    if not evidence.established:
+        logger.info(
+            "forecast.pv_anchor.no_evidence",
+            extra={
+                "context": {
+                    "site_id": str(site.site_id),
+                    "kind": "pv",
+                    "reason": evidence.reason,
+                    "lookback_slots": len(lookback_slots),
+                    "slots_used": evidence.slots_used,
+                }
+            },
+        )
+        return pv_kw, evidence
+
+    logger.info(
+        "forecast.pv_anchor.applied",
+        extra={
+            "context": {
+                "site_id": str(site.site_id),
+                "kind": "pv",
+                "model": model,
+                "ratio": round(evidence.ratio, 3),
+                "raw_ratio": (
+                    round(evidence.raw_ratio, 3)
+                    if math.isfinite(evidence.raw_ratio)
+                    else "inf"
+                ),
+                "slots_used": evidence.slots_used,
+                "measured_mean_kw": round(
+                    evidence.measured_kwh / evidence.slots_used, 3
+                ),
+                "predicted_mean_kw": round(
+                    evidence.predicted_kwh / evidence.slots_used, 3
+                ),
+                "first_slot_kw_before": round(pv_kw[0], 3),
+                "first_slot_kw_after": round(anchored[0], 3),
+                "decay_slots": pv_anchor_decay_slots(),
+                "capacity_kwp": site.tariff.pv_capacity_kwp,
+                "factors_head": [round(f, 3) for f in factors[:4]],
+            }
+        },
+    )
+    return anchored, evidence
+
+
+def _lookback_slot_starts(
+    slot_starts: list[datetime], lookback: timedelta
+) -> list[datetime]:
+    """The already-COMPLETED slots the evidence window covers, ascending.
+
+    Completed only: the horizon's first slot is IN PROGRESS (B1), so its
+    measured mean would be a partial one whose sample count nobody here can
+    check - and the ratio (unlike raw power) barely moves over a quarter hour,
+    so waiting one slot costs the anchor nothing.
+    """
+    if not slot_starts:
+        return []
+    minutes = _slot_minutes(slot_starts)
+    step = timedelta(minutes=minutes)
+    count = int(lookback.total_seconds() // (minutes * 60))
+    first_open = slot_starts[0]
+    return [first_open - step * (i + 1) for i in reversed(range(count))]
+
+
+def _slot_minutes(slot_starts: list[datetime]) -> int:
+    if len(slot_starts) < 2:
+        return SLOT_MINUTES
+    return int((slot_starts[1] - slot_starts[0]).total_seconds() // 60)
+
+
+def _measured_slot_means(
+    dsn: str, site_id: UUID, column: str, slot_starts: list[datetime]
+) -> dict[datetime, float]:
+    """Measured slot MEANS over the evidence window (never a single sample).
+
+    The house rule for anything compared against a forecast slot: a slot's
+    value is the mean power over it (``voltpilot_forecast.domain.slot_means``),
+    because telemetry arrives every ~5-10 s and one sample is a random draw
+    from inside the quarter hour. Aggregated in Python, not in SQL, exactly
+    like the two other telemetry-vs-forecast paths - the slot width belongs to
+    the horizon, not to a query.
+    """
+    # Fixed set, never user input - a hard raise (not assert, which is
+    # stripped under python -O) keeps the f-string interpolation safe (S15).
+    if column not in ("load_kw", "pv_power_kw"):
+        raise ValueError(f"unsupported telemetry column: {column}")
+    if not slot_starts:
+        return {}
+    import psycopg  # lazy: optional [db] extra
+
+    from voltpilot_forecast.domain import Observation, slot_means
+
+    minutes = _slot_minutes(slot_starts)
+    window_end = slot_starts[-1] + timedelta(minutes=minutes)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT time, {column} FROM telemetry
+            WHERE site_id = %s AND {column} IS NOT NULL
+              AND time >= %s AND time < %s
+            ORDER BY time
+            """,
+            (site_id, slot_starts[0], window_end),
+        )
+        samples = [
+            Observation(ensure_utc(ts), float(v)) for ts, v in cur.fetchall()
+        ]
+    return slot_means(samples, minutes)
+
+
+def _past_predictions(
+    dsn: str, site_id: UUID, kind: str, model: str, slot_starts: list[datetime]
+) -> dict[datetime, float]:
+    """What the ACTIVE model said EX ANTE about the evidence window's slots.
+
+    ``run_at < time`` makes the ex-ante property a property of the QUERY rather
+    than an assumption about the collector: the horizon a run publishes starts
+    strictly after its own ``run_at`` today, but an anchor that quietly compared
+    a hindsight-updated value against reality would measure nothing at all.
+    Freshest-run-per-slot otherwise, the evaluation's rule and
+    :func:`_load_forecast`'s.
+    """
+    if not slot_starts:
+        return {}
+    import psycopg  # lazy: optional [db] extra
+
+    minutes = _slot_minutes(slot_starts)
+    window_end = slot_starts[-1] + timedelta(minutes=minutes)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT ON (time) time, value_kw FROM forecast
+            WHERE site_id = %s AND kind = %s AND model = %s
+              AND time >= %s AND time < %s AND run_at < time
+            ORDER BY time, run_at DESC
+            """,
+            (site_id, kind, model, slot_starts[0], window_end),
+        )
+        return {ensure_utc(ts): float(v) for ts, v in cur.fetchall()}
 
 
 def _night_floor_pv_input(

@@ -10,6 +10,7 @@ import {
   notableSlots,
   objectiveTotals,
   parseField,
+  pvAnchorCard,
   slotWaterfall,
   verdict,
 } from './optimizer';
@@ -300,5 +301,30 @@ describe('config form <-> request round-trip (null clears override)', () => {
     expect(r.ok).toBe(true);
     expect(r.body?.socMinPct).toBe(10);
     expect(r.body?.socMaxPct).toBeNull();
+  });
+});
+
+describe('pvAnchorCard (Morgenprognose)', () => {
+  it('says NOTHING when the run established no anchor', () => {
+    // The honesty rule: "kein Anker belegt" must never render as "×1,00" -
+    // an established 1,0 is a different, stronger statement.
+    for (const v of [null, undefined, 0, Number.NaN]) {
+      expect(pvAnchorCard(v as number | null).value).toBe('kein Anker');
+    }
+  });
+
+  it('names the direction the run corrected in', () => {
+    const up = pvAnchorCard(2.4);
+    expect(up.value).toBe('×2,40');
+    expect(up.note).toContain('zu NIEDRIG');
+    const down = pvAnchorCard(0.5);
+    expect(down.value).toBe('×0,50');
+    expect(down.note).toContain('zu HOCH');
+  });
+
+  it('reads an established 1,0 as agreement, not as an absent anchor', () => {
+    const same = pvAnchorCard(1.0);
+    expect(same.value).toBe('×1,00');
+    expect(same.note).toContain('deckt sich');
   });
 });

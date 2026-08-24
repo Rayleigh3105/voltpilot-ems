@@ -65,9 +65,10 @@ INSERT INTO schedule
      peak_pressure_eur_kw, fallback_14a,
      cover_load_from_battery, charge_from_surplus_only,
      why_terminal_anchor, why_refill_free_pct,
-     why_next_best, why_next_best_margin_ct)
+     why_next_best, why_next_best_margin_ct,
+     pv_anchor_ratio)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -95,7 +96,8 @@ DO UPDATE SET
     why_terminal_anchor = EXCLUDED.why_terminal_anchor,
     why_refill_free_pct = EXCLUDED.why_refill_free_pct,
     why_next_best = EXCLUDED.why_next_best,
-    why_next_best_margin_ct = EXCLUDED.why_next_best_margin_ct;
+    why_next_best_margin_ct = EXCLUDED.why_next_best_margin_ct,
+    pv_anchor_ratio   = EXCLUDED.pv_anchor_ratio;
 """
 
 
@@ -136,6 +138,12 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
     slot. NULL everywhere means the explain layer was off or the run predates
     the columns - the surfaces then stay observational, which is exactly the
     Stufe-0 behaviour, never a fabricated cause.
+
+    ``pv_anchor_ratio`` (Morgenprognose, api migration V20260836000000) is
+    RUN-level too: the measured-over-predicted ratio the run corrected its
+    near-horizon PV forecast by (:mod:`voltpilot_optimization.nowcast`). NULL =
+    no anchor established, the kill switch is off, or the run predates the
+    column - the readout then says nothing instead of a misleading "1,0".
     """
     return [
         (
@@ -169,6 +177,7 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             plan.why_refill_free_pct,
             slot.why_next_best,
             slot.why_next_best_margin_ct,
+            plan.pv_anchor_ratio,
         )
         for slot in plan.slots
     ]

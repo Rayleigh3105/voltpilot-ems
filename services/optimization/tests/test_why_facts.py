@@ -521,12 +521,30 @@ def test_persistence_carries_the_run_facts_on_every_row_and_the_slot_facts_per_s
     # rests with a charged battery since the Jetzt-Vorzug.
     plan = solve(truebe_nacht_mit_abendspitze())
     rows = plan_rows(plan)
-    # The four new columns are the last four of the tuple, in the INSERT's
-    # order: anchor, refill share, next best, margin.
-    assert all(r[-4] == plan.why_terminal_anchor for r in rows)
-    assert all(r[-3] == plan.why_refill_free_pct for r in rows)
-    assert [r[-2] for r in rows] == [s.why_next_best for s in plan.slots]
-    assert [r[-1] for r in rows] == [s.why_next_best_margin_ct for s in plan.slots]
+    # Positions are read from the INSERT's own column list, not counted from
+    # the end of the tuple: a later column (pv_anchor_ratio) must not silently
+    # re-point these assertions at the wrong field.
+    anchor = _column_index("why_terminal_anchor")
+    refill = _column_index("why_refill_free_pct")
+    next_best = _column_index("why_next_best")
+    margin = _column_index("why_next_best_margin_ct")
+    assert all(r[anchor] == plan.why_terminal_anchor for r in rows)
+    assert all(r[refill] == plan.why_refill_free_pct for r in rows)
+    assert [r[next_best] for r in rows] == [s.why_next_best for s in plan.slots]
+    assert [r[margin] for r in rows] == [
+        s.why_next_best_margin_ct for s in plan.slots
+    ]
     # A resting slot carries its margin, an active one carries nothing.
-    assert any(r[-2] is not None for r in rows)
-    assert any(r[-2] is None for r in rows)
+    assert any(r[next_best] is not None for r in rows)
+    assert any(r[next_best] is None for r in rows)
+
+
+def _column_index(column: str) -> int:
+    """Position of ``column`` in the persistence INSERT's column list."""
+    from voltpilot_optimization.persistence import _UPSERT_SQL
+
+    columns = [
+        c.strip()
+        for c in _UPSERT_SQL.split("(", 1)[1].split(")", 1)[0].split(",")
+    ]
+    return columns.index(column)

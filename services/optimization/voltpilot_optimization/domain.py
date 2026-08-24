@@ -408,6 +408,14 @@ class OptimizationInput:
     grid import measured SO FAR (computed fresh per cycle by
     ``inputs._peak_so_far_kw``; 0 at period start) - the anchor the epigraph
     term charges the Leistungspreis above (see solver.py).
+
+    **PV nowcast anchor (Morgenprognose, 2026-08-24):** ``pv_anchor_ratio`` /
+    ``pv_anchor_slots`` are DIAGNOSTICS - the measured-over-predicted ratio the
+    site's own recent slots established and how many slots it rests on
+    (:mod:`voltpilot_optimization.nowcast`). The correction itself is ALREADY
+    inside ``pv_kw``; these two only travel so the persisted run and the admin
+    optimizer readout can say what was corrected. ``None`` = no anchor was
+    established (too little evidence, or the kill switch is off).
     """
 
     tenant_id: UUID
@@ -428,6 +436,8 @@ class OptimizationInput:
     terminal_value_eur_per_kwh: float | None = None
     leistungspreis_eur_kw: float | None = None
     peak_so_far_kw: float = 0.0
+    pv_anchor_ratio: float | None = None
+    pv_anchor_slots: int = 0
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -460,6 +470,10 @@ class OptimizationInput:
             raise ValueError("leistungspreis_eur_kw must be finite and >= 0 when set")
         if not (math.isfinite(self.peak_so_far_kw) and self.peak_so_far_kw >= 0.0):
             raise ValueError("peak_so_far_kw must be finite and >= 0")
+        if self.pv_anchor_ratio is not None and not (
+            math.isfinite(self.pv_anchor_ratio) and self.pv_anchor_ratio > 0.0
+        ):
+            raise ValueError("pv_anchor_ratio must be finite and > 0 when set")
 
     @property
     def slots(self) -> int:
@@ -701,6 +715,15 @@ class SchedulePlan:
     # not evaluable - the surfaces then stay observational.
     why_terminal_anchor: str | None = None
     why_refill_free_pct: float | None = None
+    # PV nowcast anchor (Morgenprognose 2026-08-24), a RUN-level fact repeated
+    # per slot row in persistence like terminal_value_eur_per_kwh: the
+    # measured-over-predicted ratio the run corrected its near-horizon PV
+    # forecast by (:mod:`voltpilot_optimization.nowcast`). Pure pass-through of
+    # an INPUT fact - never a solved value - so the admin optimizer readout can
+    # name the correction next to the active model that needed it. None = no
+    # anchor established (too little evidence / kill switch off / pre-feature
+    # plan); the readout then says nothing rather than "1,0".
+    pv_anchor_ratio: float | None = None
 
     @property
     def cost_eur(self) -> float:

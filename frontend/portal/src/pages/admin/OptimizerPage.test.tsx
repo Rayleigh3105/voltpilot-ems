@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { OptimizerPage } from './OptimizerPage';
 import type { Tenant } from '../../admin/adminApi';
 import type { OptimizerConfig, OptimizerDiagnostics } from '../../optimizerApi';
@@ -188,6 +188,19 @@ describe('OptimizerPage - diagnostics rendering', () => {
     expect(screen.getByText(/Entlädt in den Abendverbrauch/)).toBeInTheDocument();
     // Objective breakdown labels present.
     expect(screen.getByText(/Netto-Ersparnis \(real\)/)).toBeInTheDocument();
+  });
+
+  it('names the run\'s PV anchor next to the model, and says nothing without one', async () => {
+    // Morgenprognose: the anchor belongs beside "Aktive Modelle" - the model
+    // says WHAT forecast the run used, the anchor how far reality had drifted.
+    await openSite(makeDiag({ pvAnchorRatio: 2.4 }));
+    expect(await screen.findByText('×2,40')).toBeInTheDocument();
+    expect(screen.getByText(/zu NIEDRIG/)).toBeInTheDocument();
+    // An older backend / a run without evidence claims NOTHING - never "1,0".
+    cleanup();
+    await openSite(makeDiag());
+    expect(await screen.findByText('kein Anker')).toBeInTheDocument();
+    expect(screen.queryByText('×1,00')).not.toBeInTheDocument();
   });
 
   it('honours null discipline: no wear persisted shows "—", never 0', async () => {
