@@ -1654,6 +1654,152 @@ paths:
         "400": { description: "Unknown application, an always-on BASIS application, or an unknown state." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/cockpit-layout:
+    get:
+      tags: [profile]
+      summary: The stored cockpit layout of one Anlage (Anwendungs-Programm Stufe 3).
+      description: >
+        Returns ALL layers SEPARATELY plus the Baustein catalog - never the
+        resolved surface. The resolution (catalog -> preset -> Vorgabe -> Eigen)
+        is a pure function in the portal (`cockpitLayout.ts layoutResolve`); the
+        server holds catalog + intent, and there is deliberately no
+        `GET /surface` (BUILD.md section 4.1). They must stay separate so the UI
+        can say WHAT a "Zuruecksetzen" falls back to ("the Vorgabe of your
+        operator" vs "the VoltPilot standard") - Captain decision E2.
+        A site with no row answers with empty layers, i.e. the deterministic
+        catalog default = the behaviour before this stage.
+        RLS-scoped (foreign site 404, never 403; admins via the `X-Tenant-Id`
+        switcher).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The layers + the Baustein catalog.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CockpitLayout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    put:
+      tags: [profile]
+      summary: Store one layer of the cockpit layout.
+      description: >
+        `layer=eigen` (default) is the CUSTOMER's arrangement and WINS over any
+        Vorgabe; `layer=vorgabe` is the operator's default and may only be
+        written by a platform-admin (403 otherwise) - a method check, not a
+        second data path, so a future operator role plugs in at one place.
+        The body stores INTENT only: `order` names Bausteine in their order
+        (unnamed ones keep their canonical position, which is how a newly
+        activated application appears where it belongs), `hidden`/`shown` are
+        explicit statements (`shown` takes back a LOWER layer's `hidden`), and
+        `lead` is the highlighted block.
+        Form validation: an unknown Baustein, a Baustein of another surface, a
+        MANDATORY Baustein in `hidden` (Status, Zustand - a catalog property, not
+        an admin's will), a duplicate in `order` and a non-lead-capable `lead`
+        are each a 400 with a German reason and write nothing. A Baustein this
+        plant does not currently have is deliberately NOT refused - the
+        preference has to survive switching an application off and on again.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: layer
+          in: query
+          required: false
+          schema: { type: string, enum: [eigen, vorgabe], default: eigen }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CockpitLayoutDocument" }
+      responses:
+        "200":
+          description: The recomputed layers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CockpitLayout" }
+        "400": { description: "Unknown Baustein, mandatory Baustein hidden, invalid lead, or unknown layer." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Only a platform-admin may write the `vorgabe` layer. }
+        "404": { description: Site not found for this tenant. }
+    delete:
+      tags: [profile]
+      summary: Reset one layer - it falls back to the layer beneath.
+      description: >
+        The reset IS a delete of exactly that row, which is why the button can
+        honestly announce its target. Deleting a layer that never existed is a
+        harmless no-op, not a 404.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: layer
+          in: query
+          required: false
+          schema: { type: string, enum: [eigen, vorgabe], default: eigen }
+      responses:
+        "200":
+          description: The recomputed layers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CockpitLayout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Only a platform-admin may reset the `vorgabe` layer. }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/tenant/cockpit-layout:
+    get:
+      tags: [profile]
+      summary: The customer-wide cockpit Vorgabe ("for all my plants", Captain decision E1).
+      description: >
+        Same store, `scope_kind=tenant`: an operator with 20 plants maintains ONE
+        Vorgabe instead of 20 layouts. A per-plant Vorgabe BEATS it, and the
+        customer beats both. The tenant comes from the validated token / the
+        `X-Tenant-Id` switcher, never from the path - a platform-admin without a
+        selected customer gets 404.
+      responses:
+        "200":
+          description: The layers + the Baustein catalog.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CockpitLayout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: No tenant selected. }
+    put:
+      tags: [profile]
+      summary: Store the customer-wide Vorgabe.
+      parameters:
+        - name: layer
+          in: query
+          required: false
+          schema: { type: string, enum: [eigen, vorgabe], default: vorgabe }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CockpitLayoutDocument" }
+      responses:
+        "200":
+          description: The recomputed layers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CockpitLayout" }
+        "400": { description: "Unknown Baustein, mandatory Baustein hidden, invalid lead, or unknown layer." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Only a platform-admin may write the `vorgabe` layer. }
+        "404": { description: No tenant selected. }
+    delete:
+      tags: [profile]
+      summary: Remove the customer-wide Vorgabe.
+      parameters:
+        - name: layer
+          in: query
+          required: false
+          schema: { type: string, enum: [eigen, vorgabe], default: vorgabe }
+      responses:
+        "200":
+          description: The recomputed layers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CockpitLayout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Only a platform-admin may reset the `vorgabe` layer. }
+        "404": { description: No tenant selected. }
   /api/v1/sites/{siteId}/flows/auto-start:
     post:
       tags: [flows]
@@ -9425,6 +9571,96 @@ components:
               items: { type: string, example: vp.strategy.market }
             plantKind: { type: string, nullable: true }
             hasLeistungspreis: { type: boolean }
+    CockpitLayoutDocument:
+      type: object
+      description: >
+        A layout document - INTENT only, never the rendered surface. Which
+        Bausteine a plant actually has stays applications x capabilities and is
+        derived on every render, which is why a document may name a Baustein
+        that is currently absent: it is skipped silently and the preference
+        survives switching the application back on.
+      properties:
+        version: { type: integer, example: 1 }
+        order:
+          type: array
+          items: { type: string }
+          description: >
+            Bausteine in their order. UNNAMED Bausteine keep their CANONICAL
+            position (not appended) - that is how a newly activated
+            application's Baustein appears where it belongs.
+        hidden:
+          type: array
+          items: { type: string }
+          description: >
+            Explicitly hidden. MANDATORY Bausteine (Status, Zustand) ignore it -
+            a catalog property, not an admin's will (E2).
+        shown:
+          type: array
+          items: { type: string }
+          description: >
+            Explicitly shown - takes back a LOWER layer's `hidden`, which is why
+            it is not the same as "absent from hidden". Without it a customer
+            could never undo their operator's Vorgabe.
+        lead:
+          type: string
+          nullable: true
+          description: The highlighted CockpitBlockId (peak-band, erloes-komposition, energiefluss, lade-budget).
+    CockpitLayout:
+      type: object
+      description: >
+        All layers separately + the Baustein catalog. The resolution
+        (catalog -> preset -> Vorgabe -> Eigen) is a pure portal function.
+      properties:
+        surface: { type: string, enum: [cockpit, portfolio] }
+        profil:
+          type: string
+          nullable: true
+          enum: [privat, gewerbe]
+          description: The plant's application preset - the base of the preset layer.
+        presetLayout:
+          allOf: [{ $ref: "#/components/schemas/CockpitLayoutDocument" }]
+          nullable: true
+          description: The preset layer straight from the catalog (never null in practice, possibly empty).
+        tenantVorgabe:
+          allOf: [{ $ref: "#/components/schemas/CockpitLayoutLayer" }]
+          nullable: true
+          description: The customer-wide Vorgabe (E1); a per-plant Vorgabe beats it.
+        siteVorgabe:
+          allOf: [{ $ref: "#/components/schemas/CockpitLayoutLayer" }]
+          nullable: true
+        eigen:
+          allOf: [{ $ref: "#/components/schemas/CockpitLayoutLayer" }]
+          nullable: true
+          description: The customer's own arrangement - it WINS (E2).
+        darfVorgabe:
+          type: boolean
+          description: True = this caller may write the `vorgabe` layer (platform-admin).
+        bausteine:
+          type: array
+          description: The Baustein catalog of this surface - labels, the mandatory rule, lead capability.
+          items:
+            type: object
+            properties:
+              id: { type: string, example: kacheln }
+              label: { type: string, example: Kennzahlen }
+              pflicht: { type: boolean, description: "True = never hideable (Status, Zustand)." }
+              beweglich: { type: boolean, description: "False = stays at its canonical position (head, stage)." }
+              leadBlock:
+                type: string
+                nullable: true
+                description: The block this Baustein's star sets as lead; null = no star.
+              beigesteuertVon:
+                type: array
+                items: { type: string }
+                description: >
+                  The applications contributing this Baustein - DERIVED from the
+                  catalog, never a second list. Empty = base equipment.
+    CockpitLayoutLayer:
+      type: object
+      properties:
+        document: { $ref: "#/components/schemas/CockpitLayoutDocument" }
+        updatedBy: { type: string, nullable: true, description: The writer's JWT subject (the paper trail). }
+        updatedAt: { type: string, format: date-time, nullable: true }
     SiteProfiles:
       type: object
       properties:

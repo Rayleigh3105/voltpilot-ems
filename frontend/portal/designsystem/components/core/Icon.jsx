@@ -176,6 +176,27 @@ const PATHS = {
       <path d="M8 16H3v5" />
     </>
   ),
+  // Anwendungs-Programm Stufe 3 (Anpassen-Modus): Auge = ein-/ausblenden,
+  // Stern = hervorheben. Beide sind die Lucide-Pfade der Haus-Strichstärke -
+  // der Anpassen-Modus darf so wenig wie jede andere Fläche Unicode-Glyphen
+  // benutzen (sie rendern je Plattform anders).
+  eye: (
+    <>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  'eye-off': (
+    <>
+      <path d="M10.7 5.1A10.9 10.9 0 0 1 12 5c6.4 0 10 7 10 7a18.5 18.5 0 0 1-2.4 3.4" />
+      <path d="M6.6 6.6A18.6 18.6 0 0 0 2 12s3.6 7 10 7a10.9 10.9 0 0 0 5.4-1.4" />
+      <path d="M14.1 14.1a3 3 0 1 1-4.2-4.2" />
+      <line x1="2" x2="22" y1="2" y2="22" />
+    </>
+  ),
+  star: (
+    <path d="m12 3 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.8l6.5-.9Z" />
+  ),
   'chevron-left': <path d="m15 18-6-6 6-6" />,
   'chevron-right': <path d="m9 18 6-6-6-6" />,
   'chevron-down': <path d="m6 9 6 6 6-6" />,

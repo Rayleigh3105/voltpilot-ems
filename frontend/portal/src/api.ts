@@ -1,6 +1,11 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { ProfileState, SiteProfiles } from './profiles';
+import type {
+  CockpitLayoutDocument,
+  CockpitLayoutLayer,
+  CockpitLayoutResponse,
+} from './cockpitLayout';
 import type { Profil } from './anwendungen';
 import type {
   ChargingBoostResult,
@@ -2539,6 +2544,11 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
 }
 
 export type { ProfileState, SiteProfile, SiteProfiles } from './profiles';
+export type {
+  CockpitLayoutDocument,
+  CockpitLayoutLayer,
+  CockpitLayoutResponse,
+} from './cockpitLayout';
 
 /**
  * Ein aufgezeichneter Wechsel aus dem Regel-Protokoll (Stufe 5b). Die Wörter
@@ -3114,6 +3124,41 @@ export const api = {
     request<SiteProfiles>(`/api/v1/sites/${siteId}/profiles`, {
       method: 'PUT',
       body: JSON.stringify({ profile, state }),
+    }),
+  /**
+   * Das gespeicherte COCKPIT-LAYOUT einer Anlage (Anwendungs-Programm Stufe 3):
+   * alle Schichten GETRENNT plus den Baustein-Katalog — nie das aufgelöste
+   * Ergebnis. Die Auflösung ist eine reine Funktion (`cockpitLayout.ts`), und
+   * getrennt müssen die Schichten sein, damit die Fläche sagen kann, worauf
+   * ein „Zurücksetzen" fällt (E2).
+   */
+  cockpitLayout: (siteId: string) =>
+    request<CockpitLayoutResponse>(`/api/v1/sites/${siteId}/cockpit-layout`),
+  /**
+   * Speichert eine Schicht. `eigen` schreibt der Kunde (sie gewinnt),
+   * `vorgabe` nur ein Portal-Admin über den Mandanten-Umschalter — die
+   * Rechte-Prüfung sitzt am Server, hier wird nur gefragt.
+   */
+  saveCockpitLayout: (siteId: string, layer: CockpitLayoutLayer, document: CockpitLayoutDocument) =>
+    request<CockpitLayoutResponse>(
+      `/api/v1/sites/${siteId}/cockpit-layout?layer=${layer}`,
+      { method: 'PUT', body: JSON.stringify(document) },
+    ),
+  /** Der RESET einer Schicht — sie fällt damit auf die darunter (E2). */
+  resetCockpitLayout: (siteId: string, layer: CockpitLayoutLayer) =>
+    request<CockpitLayoutResponse>(`/api/v1/sites/${siteId}/cockpit-layout?layer=${layer}`, {
+      method: 'DELETE',
+    }),
+  /** Die kunden-weite Vorgabe „für alle meine Anlagen" (E1). */
+  tenantCockpitLayout: () => request<CockpitLayoutResponse>('/api/v1/tenant/cockpit-layout'),
+  saveTenantCockpitLayout: (layer: CockpitLayoutLayer, document: CockpitLayoutDocument) =>
+    request<CockpitLayoutResponse>(`/api/v1/tenant/cockpit-layout?layer=${layer}`, {
+      method: 'PUT',
+      body: JSON.stringify(document),
+    }),
+  resetTenantCockpitLayout: (layer: CockpitLayoutLayer) =>
+    request<CockpitLayoutResponse>(`/api/v1/tenant/cockpit-layout?layer=${layer}`, {
+      method: 'DELETE',
     }),
   /** Seed this site's starter flow DRAFT (customer twin, idempotent). */
   autoStart: (siteId: string) =>

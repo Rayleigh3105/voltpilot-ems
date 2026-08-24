@@ -62,6 +62,44 @@
     "und koennte davon abdriften; sie wird abgeleitet (jede sichtbare,",
     "abschaltbare Anwendung mit preset[profil] == 'an').",
     "",
+    "DER BAUSTEIN-KATALOG ('bausteine', Stufe 3) ist die Vereinigung dessen,",
+    "was das Cockpit als eigenstaendiges Element rendert - er ist die Sprache,",
+    "in der 'anordnen' und 'ausblenden' ueberhaupt formulierbar sind. Er wohnt",
+    "in DIESER Datei und ist keine zweite Ressource (§3.2 C: 'abgeleitet aus A,",
+    "keine zweite Datei'); welche Anwendung einen Baustein BEISTEUERT, wird",
+    "ueber 'bloecke' x anwendungen[].bausteine.cockpit abgeleitet, nie noch",
+    "einmal aufgeschrieben.",
+    "",
+    "  pflicht    - kann NIE ausgeblendet werden (Status-Kopf und Zustand,",
+    "               Captain-Entscheid E2). Das ist eine KATALOG-Eigenschaft,",
+    "               kein Admin-Wille: eine Vorgabe kann in V1 keinen einzelnen",
+    "               Baustein sperren.",
+    "  beweglich  - false = der Baustein bleibt an seiner kanonischen Stelle.",
+    "               Der Status-Kopf ist der Kopf; die BUEHNE (Energiefluss) samt",
+    "               den zwei Dingen, die am Rechner IN ihr wohnen (Geld-Leiste,",
+    "               Steuerungs-Fuss), darf nicht zerlegt werden - das ist die",
+    "               Auflage des Stufenplans zum Lead-Wechsel.",
+    "  lead_block - die CockpitBlockId, die der Stern dieses Bausteins als",
+    "               Lead setzt; null = kein Stern. Der Lead ist eine EIGENE",
+    "               Achse (leadSlot.ts LEAD_CANDIDATES), deshalb ein eigenes",
+    "               Feld und keine Position in 'order'.",
+    "  flaeche    - 'cockpit' heute; 'portfolio' ist fuer Stufe 4 reserviert,",
+    "               damit der Layout-Speicher scope-generisch bleibt.",
+    "",
+    "DIE KANONISCHE REIHENFOLGE STEHT HIER BEWUSST NICHT: sie ist je",
+    "Bildschirmbreite verschieden (am Telefon fuehren Fahrplan und Preis als",
+    "Zeilen, am Rechner die Kacheln - eine abgenommene Entscheidung), und der",
+    "gespeicherte Wille nennt nur RELATIVE Reihenfolge. Die zwei kanonischen",
+    "Listen leben deshalb im Portal (cockpitLayout.ts), das sie rendert; der",
+    "Server braucht sie nicht, um einen Schluessel zu pruefen.",
+    "",
+    "'presets[].layout' ist die zweite Schicht der Aufloesung (Katalog ->",
+    "Preset -> Vorgabe -> Eigen). Sie ist bewusst MINIMAL: 'privat' setzt den",
+    "Lead auf den Energiefluss (ein Haushalt liest seinen Fluss, nicht seine",
+    "Lastspitze), 'gewerbe' aendert NICHTS und laesst damit die M0-Regel",
+    "peak -> Geld -> Fluss stehen. Ein Preset, das viel umstellt, macht den",
+    "Reset-Knopf zu einer Ueberraschung.",
+    "",
     "DAS PROFIL IST NIE EIN SIGNAL DER ABLEITUNG (Captain-Entscheid E3): es",
     "ist Vorauswahl + Tonalitaet + Reset-Basis, mehr nicht. Die Wahrheit",
     "darueber, was auf einer Anlage laeuft, bleibt Anwendungen x Faehigkeiten;",
@@ -73,18 +111,110 @@
   "preset_werte": ["an", "angeboten", "verborgen", "abgeleitet"],
   "profile": ["privat", "gewerbe"],
   "tonalitaeten": ["sparen", "verdienen"],
+  "baustein_flaechen": ["cockpit", "portfolio"],
+  "bausteine": [
+    {
+      "id": "status",
+      "label": "Status & Warnungen",
+      "flaeche": "cockpit",
+      "pflicht": true,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": ["status"]
+    },
+    {
+      "id": "energiefluss",
+      "label": "Energiefluss",
+      "flaeche": "cockpit",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": "energiefluss",
+      "bloecke": ["energiefluss"]
+    },
+    {
+      "id": "geld",
+      "label": "Erlöse",
+      "flaeche": "cockpit",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": "erloes-komposition",
+      "bloecke": ["erloes-komposition"]
+    },
+    {
+      "id": "steuerung",
+      "label": "Steuerung",
+      "flaeche": "cockpit",
+      "pflicht": false,
+      "beweglich": false,
+      "lead_block": null,
+      "bloecke": []
+    },
+    {
+      "id": "fahrplan",
+      "label": "Speicher-Fahrplan",
+      "flaeche": "cockpit",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": []
+    },
+    {
+      "id": "strompreis",
+      "label": "Börsenpreise",
+      "flaeche": "cockpit",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": []
+    },
+    {
+      "id": "kacheln",
+      "label": "Kennzahlen",
+      "flaeche": "cockpit",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": [
+        "lade-budget",
+        "peak-band",
+        "handel",
+        "eigenverbrauch",
+        "geraete-automatik"
+      ]
+    },
+    {
+      "id": "komponenten",
+      "label": "Komponenten",
+      "flaeche": "cockpit",
+      "pflicht": false,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": []
+    },
+    {
+      "id": "zustand",
+      "label": "Zustand",
+      "flaeche": "cockpit",
+      "pflicht": true,
+      "beweglich": true,
+      "lead_block": null,
+      "bloecke": []
+    }
+  ],
   "presets": [
     {
       "id": "privat",
       "label": "Privat",
       "satz": "Ein Haushalt mit eigener Erzeugung - wir starten damit, Ihren eigenen Strom im Haus zu halten und Ihre Geraete danach laufen zu lassen.",
-      "tonalitaet": "sparen"
+      "tonalitaet": "sparen",
+      "layout": { "order": [], "hidden": [], "shown": [], "lead": "energiefluss" }
     },
     {
       "id": "gewerbe",
       "label": "Gewerbe",
       "satz": "Ein Betrieb mit Leistungsmessung oder Vermarktung - wir starten mit dem, was am Netzanschluss und am Markt Geld bringt.",
-      "tonalitaet": "verdienen"
+      "tonalitaet": "verdienen",
+      "layout": { "order": [], "hidden": [], "shown": [], "lead": null }
     }
   ],
   "anwendungen": [

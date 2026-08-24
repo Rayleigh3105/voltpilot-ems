@@ -20,6 +20,13 @@ import { fleetKind, fleetTonalitaet, siteTonalitaet } from './fleet';
 import { profileStatesFrom } from './profiles';
 import { profileRows } from './steuerungArea';
 import { showTechnicalLayer } from './rollen';
+import {
+  BAUSTEINE,
+  CANONICAL_DESKTOP,
+  CANONICAL_PHONE,
+  layoutResolve,
+  presetLayout,
+} from './cockpitLayout';
 import { MODE_RANK, anlageSurface, type AnlageSurfaceInput } from './surface';
 import type { OverviewSite } from './api';
 
@@ -544,5 +551,77 @@ describe('Abbau-Invarianten (M6)', () => {
       'components/AnlageFlow.tsx',
       'pages/AnlageTechnik.tsx',
     ]);
+  });
+});
+
+describe('Anwendungs-Programm Stufe 3 — das Cockpit-Layout einer Bestandsanlage', () => {
+  /**
+   * Die tragende Invariante der Stufe: `cockpit_layout` ist für JEDE
+   * Bestandsanlage leer, und `site.profil` ist NULL. Ohne beides muss die
+   * Auflösung Zeichen für Zeichen die kanonische Reihenfolge liefern — die
+   * DOM-Hälfte des Beweises steht in `pages/AnlagenPage.test.tsx` („rendert
+   * OHNE gespeicherte Zeile Zeichen für Zeichen dasselbe wie ohne die Route").
+   */
+  const ALLE = [...CANONICAL_DESKTOP];
+
+  it('ohne Zeile und ohne Profil ist die Auflösung der Katalog-Standard', () => {
+    for (const canonical of [CANONICAL_DESKTOP, CANONICAL_PHONE]) {
+      const r = layoutResolve({ canonical, verfuegbar: ALLE });
+      expect(r.order).toEqual(canonical);
+      expect(r.hidden).toEqual([]);
+      expect(r.quelle).toBe('katalog');
+    }
+  });
+
+  it('eine Anlage ohne Profil bekommt keine Preset-Schicht', () => {
+    expect(presetLayout(null)).toBeNull();
+    expect(presetLayout(undefined)).toBeNull();
+  });
+
+  it('die kanonischen Listen führen dieselben Bausteine wie der Katalog', () => {
+    const katalog = BAUSTEINE.map((b) => b.id).sort();
+    expect([...CANONICAL_DESKTOP].sort()).toEqual(katalog);
+    expect([...CANONICAL_PHONE].sort()).toEqual(katalog);
+  });
+
+  it('die Rechner-Reihenfolge ist die frühere hart codierte Folge des Stapels', () => {
+    // Vor Stufe 3 stand sie als JSX-Folge in `pages/AnlagenPage.tsx`: Bühne
+    // (mit Geld-Leiste und Steuerungs-Fuß in ihr) → Kacheln → Börsenpreis →
+    // Fahrplan → Komponenten → Zustand. Wer sie ändert, ändert das Cockpit
+    // JEDER Bestandsanlage — deshalb steht sie hier als Wächter.
+    expect(CANONICAL_DESKTOP).toEqual([
+      'status',
+      'energiefluss',
+      'geld',
+      'steuerung',
+      'kacheln',
+      'strompreis',
+      'fahrplan',
+      'komponenten',
+      'zustand',
+    ]);
+    // Am Telefon führen die zwei täglichen Fragen als Zeilen (Mobil-Umbau).
+    expect(CANONICAL_PHONE).toEqual([
+      'status',
+      'energiefluss',
+      'geld',
+      'fahrplan',
+      'steuerung',
+      'strompreis',
+      'kacheln',
+      'komponenten',
+      'zustand',
+    ]);
+  });
+
+  it('das Layout ist server-seitig — im Portal gibt es dafür KEIN localStorage', () => {
+    // Hausregel (§2.4): Layout-Präferenzen liegen nie im Browser; der Admin
+    // gestaltet für den Kunden, also muss der Speicher RLS-gefenced sein.
+    const layoutCode = readFileSync(join(SRC, 'cockpitLayout.ts'), 'utf8');
+    const hookCode = readFileSync(join(SRC, 'useCockpitLayout.ts'), 'utf8');
+    for (const code of [layoutCode, hookCode]) {
+      expect(ohneKommentare(code)).not.toContain('localStorage');
+      expect(ohneKommentare(code)).not.toContain('sessionStorage');
+    }
   });
 });

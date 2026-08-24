@@ -1157,3 +1157,260 @@ describe('B1 · Welle 3 faltet in Welle 2', () => {
     expect(readFace('s-1')).toEqual({ stack: false, peak: false });
   });
 });
+
+describe('Anwendungs-Programm Stufe 3 · das anpassbare Cockpit', () => {
+  /** Wartet, bis das Cockpit wirklich ausgeschwungen ist (fail-soft-Abrufe). */
+  async function ausgeschwungen(container: HTMLElement): Promise<string> {
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    let prev = '';
+    for (let i = 0; i < 25; i += 1) {
+      await new Promise((r) => setTimeout(r, 10));
+      const now = container.innerHTML;
+      if (now === prev) return now;
+      prev = now;
+    }
+    return prev;
+  }
+
+  /** Alle Schichten leer — der Zustand JEDER Bestandsanlage. */
+  function stubLayout(response: Record<string, unknown> | null = null) {
+    vi.spyOn(api, 'cockpitLayout').mockResolvedValue(
+      (response ?? {
+        surface: 'cockpit',
+        profil: null,
+        presetLayout: null,
+        tenantVorgabe: null,
+        siteVorgabe: null,
+        eigen: null,
+        bausteine: [],
+        darfVorgabe: false,
+      }) as never,
+    );
+  }
+
+  it('rendert OHNE gespeicherte Zeile Zeichen für Zeichen dasselbe wie ohne die Route', async () => {
+    // Der Bestands-Beweis am echten DOM: ein Backend, das die Route gar nicht
+    // kennt (Abruf schlägt fehl), und eines, das leere Schichten liefert, führen
+    // zum IDENTISCHEN Cockpit.
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    vi.spyOn(api, 'cockpitLayout').mockRejectedValue(new Error('gibts nicht'));
+    const alt = renderSeite();
+    const ohneRoute = await ausgeschwungen(alt.container);
+    alt.unmount();
+
+    vi.restoreAllMocks();
+    stubApi();
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubLayout();
+    const neu = renderSeite();
+    expect(await ausgeschwungen(neu.container)).toBe(ohneRoute);
+  });
+
+  it('die Geld-Fläche bleibt auch OHNE Erlös-Komposition — nur ihr Zeitraum-Segment hängt daran', async () => {
+    // Eine reine Regel-Anlage (Wallbox + eine Automation, kein Speicher, kein
+    // Geld-Modus) hat KEINEN `erloes-komposition`-Block. Vor Stufe 3 rendert
+    // das Telefon die Geld-Karte trotzdem und ließ nur das Segment weg; der
+    // Layout-Speicher darf daran nichts ändern.
+    const OHNE_GELD: AnlageSurfaceInput = {
+      signals: {
+        hasStorage: false,
+        hasPv: false,
+        hasControllableConsumer: true,
+        activeStrategyNodeTypes: [],
+        plantKind: 'eigenverbrauch',
+        hasLeistungspreis: false,
+      },
+      config: { plantKind: 'eigenverbrauch', tarifArt: 'ohne' },
+      flows: [
+        {
+          flowId: 'f-reg',
+          name: 'Wallbox-Regel',
+          activeVersion: 1,
+          latestLifecycle: 'active',
+          latestDocument: {
+            schema_version: '1.0',
+            name: 'Wallbox-Regel',
+            runtime: 'edge',
+            nodes: [
+              { id: 'n1', type: 'vp.entity.read', type_version: '1.0.0' },
+              { id: 'n2', type: 'vp.entity.control', type_version: '1.0.0' },
+            ],
+            edges: [],
+            triggers: [],
+          },
+        },
+      ],
+      entities: [entity('e-wb', 'wallbox', ['power_kw'])],
+    };
+    (window as unknown as { matchMedia: unknown }).matchMedia = (query: string) => ({
+      matches: query.includes('720px'),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    });
+    mockAdaptive(true, TOPO);
+    mockSurface(OHNE_GELD);
+    stubLayout();
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    expect(container.querySelector('.vp-mob-money')).toBeTruthy();
+    // ... und ohne den Block gibt es dort kein Zeitraum-Segment.
+    expect(container.querySelector('.vp-mob-money .vp-seg')).toBeNull();
+    delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+  });
+
+  it('bietet „Cockpit anpassen" erst, wenn es einen Stapel zum Anordnen gibt', async () => {
+    mockAdaptive(false);
+    mockSurface(LEER);
+    stubLayout();
+    const leer = renderSeite();
+    await waitFor(() => expect(leer.container.querySelector('.vp-anlage-unassigned')).toBeTruthy());
+    expect(leer.container.querySelector('[aria-label="Cockpit anpassen"]')).toBeNull();
+    leer.unmount();
+
+    vi.restoreAllMocks();
+    stubApi();
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubLayout();
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    expect(container.querySelector('[aria-label="Cockpit anpassen"]')).toBeTruthy();
+  });
+
+  it('blendet einen Baustein aus, lässt ihn erreichbar und speichert die Absicht', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubLayout();
+    const save = vi.spyOn(api, 'saveCockpitLayout').mockResolvedValue({
+      surface: 'cockpit',
+      profil: null,
+      presetLayout: null,
+      tenantVorgabe: null,
+      siteVorgabe: null,
+      eigen: null,
+      bausteine: [],
+      darfVorgabe: false,
+    } as never);
+    const { container, getByLabelText } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+
+    fireEvent.click(getByLabelText('Cockpit anpassen'));
+    await waitFor(() => expect(container.querySelector('.vp-anpassen-bar')).toBeTruthy());
+    // Das Komponenten-Board ist da — und wird ausgeblendet.
+    expect(container.querySelector('.vp-komponenten')).toBeTruthy();
+    fireEvent.click(getByLabelText('Komponenten ausblenden'));
+    await waitFor(() => expect(container.querySelector('.vp-komponenten')).toBeNull());
+    // ... bleibt aber in der Reihe „Ausgeblendet (n)" erreichbar.
+    expect(container.querySelector('.vp-anpassen-versteckt')?.textContent).toContain(
+      'Ausgeblendet (1)',
+    );
+
+    fireEvent.click(container.querySelector('.vp-anpassen-btn.is-primary') as Element);
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const [, layer, doc] = save.mock.calls[0] as unknown as [
+      string,
+      string,
+      { order: string[]; hidden: string[]; lead: string | null },
+    ];
+    // Der Kunde schreibt SEINE Schicht — nie die Vorgabe.
+    expect(layer).toBe('eigen');
+    expect(doc.hidden).toEqual(['komponenten']);
+    // Das Dokument nennt die volle Reihenfolge, inklusive des Ausgeblendeten.
+    expect(doc.order).toContain('komponenten');
+  });
+
+  it('ein Pflicht-Baustein bekommt gar keinen Auge-Knopf, sondern die ehrliche Zeile', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubLayout();
+    const { container, getByLabelText } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    fireEvent.click(getByLabelText('Cockpit anpassen'));
+    await waitFor(() => expect(container.querySelector('.vp-anpassen-bar')).toBeTruthy());
+    expect(container.querySelector('[aria-label="Zustand ausblenden"]')).toBeNull();
+    expect(container.textContent).toContain('immer sichtbar');
+  });
+
+  it('ordnet mit den Tastatur-Knöpfen um — ohne Maus und ohne Drag-and-Drop', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubLayout();
+    const { container, getByLabelText } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    fireEvent.click(getByLabelText('Cockpit anpassen'));
+    await waitFor(() => expect(container.querySelector('.vp-anpassen-bar')).toBeTruthy());
+
+    const namen = () =>
+      [...container.querySelectorAll('.vp-anpassen-huelle > .vp-anpassen-ctrl > .vp-anpassen-name')]
+        .map((n) => n.textContent);
+    const vorher = namen();
+    expect(vorher).toContain('Komponenten');
+    fireEvent.click(getByLabelText('Komponenten nach oben'));
+    await waitFor(() => expect(namen()).not.toEqual(vorher));
+    const nachher = namen();
+    expect(nachher.indexOf('Komponenten')).toBeLessThan(vorher.indexOf('Komponenten'));
+    // Kopf und Bühne bleiben oben — sie sind unbeweglich, damit ein
+    // Lead-Wechsel oder eine Umsortierung sie nie zerlegt.
+    expect(nachher.slice(0, 2)).toEqual(['Status & Warnungen', 'Energiefluss']);
+    // Ein Baustein, der am Rechner IN der Bühne wohnt, bekommt trotzdem seine
+    // Zeile — sonst wäre er dort der einzige, den man nicht anfassen kann.
+    expect(container.textContent).toContain('Wird am Rechner in der Bühne angezeigt.');
+  });
+
+  it('sagt beim Zurücksetzen, WORAUF es fällt — und nennt die Vorgabe, wenn es eine gibt', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubLayout({
+      surface: 'cockpit',
+      profil: null,
+      presetLayout: null,
+      tenantVorgabe: null,
+      siteVorgabe: {
+        document: { version: 1, order: [], hidden: ['strompreis'], shown: [], lead: null },
+        updatedBy: 'admin',
+        updatedAt: null,
+      },
+      eigen: null,
+      bausteine: [],
+      darfVorgabe: false,
+    });
+    const { container, getByLabelText } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    fireEvent.click(getByLabelText('Cockpit anpassen'));
+    await waitFor(() => expect(container.querySelector('.vp-anpassen-bar')).toBeTruthy());
+    expect(container.querySelector('.vp-anpassen-bar')?.textContent).toContain(
+      'Vorgabe Ihres Betreibers',
+    );
+  });
+
+  it('ein Admin bekommt den sichtbaren Schalter „als Vorgabe speichern" samt Band', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubLayout({
+      surface: 'cockpit',
+      profil: null,
+      presetLayout: null,
+      tenantVorgabe: null,
+      siteVorgabe: null,
+      eigen: null,
+      bausteine: [],
+      darfVorgabe: true,
+    });
+    const { container, getByLabelText } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    fireEvent.click(getByLabelText('Cockpit anpassen'));
+    await waitFor(() => expect(container.querySelector('.vp-anpassen-toggle')).toBeTruthy());
+    // Er handelt als Betreiber: der Schalter ist VORGEWÄHLT, das Band sagt es.
+    expect(
+      (container.querySelector('.vp-anpassen-toggle input') as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(container.querySelector('.vp-anpassen-band')?.textContent).toContain('Vorgabe');
+  });
+});

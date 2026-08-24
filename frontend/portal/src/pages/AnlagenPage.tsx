@@ -1,4 +1,5 @@
-import { lazy, useEffect, useRef, useState } from 'react';
+import { Fragment, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -53,6 +54,14 @@ import { useAdaptiveLive } from '../useAdaptiveLive';
 import { liveState, type LiveState } from '../adaptiveLive';
 import { flowHasValues, headSentenceVisible, liveChip } from '../liveDetail';
 import { leadBlock } from '../leadSlot';
+import { useCockpitLayout } from '../useCockpitLayout';
+import { ortsHinweis, type BausteinId } from '../cockpitLayout';
+import {
+  AnpassenHuelle,
+  AnpassenLeiste,
+  AnpassenListe,
+  AusgeblendetZeile,
+} from '../components/CockpitAnpassen';
 import { useAnlageSurface } from '../useAnlageSurface';
 import type { AnlageSurface } from '../surface';
 import { anlageDecision, hasBlock } from '../cockpit';
@@ -62,6 +71,7 @@ import {
   historyRangeForCockpit,
   mobileWidgets,
   stickyHead,
+  type CockpitWidgetsInput,
   type WidgetDef,
 } from '../cockpitWidgets';
 import { CockpitHero } from '../components/CockpitHero';
@@ -1177,7 +1187,7 @@ export function AnlageSeite({
   // `cockpitWidgets` is safe to call unconditionally: `blocks`/`modes` are
   // already the correctly-empty read-model of a non-stack Anlage, so it
   // returns `[]` on its own - no separate gate needed here.
-  const widgets = cockpitWidgets({
+  const widgetInput: CockpitWidgetsInput = {
     blocks,
     modes,
     lead,
@@ -1193,7 +1203,8 @@ export function AnlageSeite({
     peak: peakView,
     charging,
     weather: { nextHourTempC, why: weatherWhyText },
-  });
+  };
+  const widgets = cockpitWidgets(widgetInput);
   // Mobil-Umbau Stufe 2 (`<= 720px`): dieselben Kacheln minus die, deren
   // Aussage auf demselben Telefon-Bildschirm schon steht. Die Regel ist rein
   // (`mobileWidgets`), hier wird nur gewählt.
@@ -1279,6 +1290,157 @@ export function AnlageSeite({
     ? stickyHead({ money: heroView.money, status: showSetup ? null : (sentence ?? null) })
     : null;
 
+  // --- Anwendungs-Programm Stufe 3 · das anpassbare Cockpit ------------------
+  // Welche BAUSTEINE diese Anlage GERADE hat: dieselbe Ehrlichkeit wie bisher -
+  // was keine Quelle hat, ist gar nicht erst verfügbar (und lässt sich damit
+  // auch nicht anordnen oder ausblenden). Der Status-Kopf, die Bühne und das
+  // Komponenten-Board gehören zu jedem Cockpit, das überhaupt rendert.
+  const verfuegbar = useMemo<BausteinId[]>(() => {
+    // `geld` ist IMMER dabei: die Geld-Fläche (Rechner-Leiste bzw. Telefon-
+    // Karte) rendert auch ohne Erlös-Komposition ehrlich - nur ihr
+    // Zeitraum-Segment hängt an dem Block, genau wie vor dieser Stufe.
+    const out: BausteinId[] = ['status', 'energiefluss', 'geld'];
+    if (controlView || guardView) out.push('steuerung');
+    if (fahrplanRow) out.push('fahrplan');
+    if (strompreisRow) out.push('strompreis');
+    if (shownWidgets.length > 0) out.push('kacheln');
+    out.push('komponenten');
+    if (ovSite != null && health.length > 0) out.push('zustand');
+    return out;
+  }, [blocks, controlView, guardView, fahrplanRow, strompreisRow, shownWidgets, ovSite, health]);
+  const layout = useCockpitLayout({
+    siteId: site.id,
+    verfuegbar,
+    blocks,
+    isPhone,
+  });
+  // Der Lead kommt seit dieser Stufe aus der AUFLÖSUNG (Katalog -> Preset ->
+  // Vorgabe -> Eigen); ohne gespeicherte Zeile ist das exakt die M0-Regel
+  // peak -> Geld -> Fluss, die `leadBlock` oben schon liefert.
+  const effektiverLead = layout.resolved.lead;
+  const widgetsMitLead = ((): WidgetDef[] => {
+    if (effektiverLead === lead) return shownWidgets;
+    // Der Lead markiert nur EINE Kachel; die Menge bleibt dieselbe. Deshalb
+    // wird die Kachel-Ableitung mit dem wirksamen Lead erneut gefahren und
+    // danach DIESELBE Telefon-Dedupe angewandt - nie eine zweite Regel.
+    const neu = cockpitWidgets({ ...widgetInput, lead: effektiverLead });
+    return isPhone ? mobileWidgets(neu, { hasRings: heroView.rings.length > 0 }) : neu;
+  })();
+  const zeigt = (id: BausteinId) => layout.resolved.order.includes(id);
+  // Die Bausteine als Knoten unter ihrer Baustein-Id: der Stapel entsteht
+  // danach aus der AUFGELÖSTEN Reihenfolge, nicht mehr aus einer hart
+  // codierten Folge von JSX-Zeilen. Ohne gespeicherte Zeile kommt Zeichen für
+  // Zeichen dieselbe Folge heraus (`migration.test.ts` / `AnlagenPage`-Tests).
+  const bausteinNodes: Partial<Record<BausteinId, ReactNode>> = {
+    energiefluss:
+      ovSite == null ? (
+        <Skeleton height={320} radius="var(--vp-radius-lg)" />
+      ) : (
+        <CockpitHero
+          view={heroView}
+          topology={adaptiveLive.topology}
+          snapshot={siteSnapshot(ovSite.live)}
+          stale={heroStale}
+          sources={sources}
+          pins={siteEntityPins}
+          consumers={consumersView}
+          onOpenConsumers={() => onOpenSub('steuerung')}
+          onOpenSub={onOpenSub}
+          /* Der Zeitraum steht in der Bilanz-Leiste, direkt über den
+             Zahlen, die er regiert (Konzept §6.3) - nicht mehr als volle
+             Seitenzeile für vier Knöpfe. Ohne Geld-Modus gibt es keinen
+             Zeitraum zu wählen.
+             Am Telefon (Stufe 2) trägt die EINE Geld-Karte darunter das
+             Segment - dort gibt es keine Leiste. */
+          periodSeg={
+            !isPhone && zeigt('geld') && hasBlock(blocks, 'erloes-komposition') ? (
+              <PeriodTabs range={range} onRange={switchRange} variant="seg" />
+            ) : null
+          }
+          showRail={!isPhone && zeigt('geld')}
+          /* Der Stift in der PV-Zusammensetzung — die Abkürzung zum
+             Umbenennen dort, wo der Wunsch entsteht. Nach dem Speichern
+             dieselbe Auffrischung wie jeder „Erneut versuchen"-Klick, damit
+             der neue Name sofort überall steht. */
+          rename={{ siteId: site.id, onRenamed: () => setReloadKey((k) => k + 1) }}
+          /* Die Bestätigung ist AM Diagramm ablesbar (Speicher-Knoten),
+             der Bühnenfuß liefert Satz und Grund. Ein Flusskonflikt
+             (register-bestätigt, aber nicht fließend) entzieht den Haken -
+             er wäre sonst genau die „lädt 3,3 kW ✓"-Lüge aus Pilsting. */
+          controlConfirmed={
+            controlView?.state === 'healthy' && cockpitFlow?.severity !== 'warn'
+          }
+          /* Am Telefon steht die Geld-Karte „direkt unterm Fluss"
+             (Konzept) — der Bühnenfuß wandert deshalb unter die
+             Fahrplan-Zeile, deren Aussage er fortsetzt (was ist geplant →
+             was bestätigt der Wechselrichter). Er entfällt NICHT: er ist
+             die einzige Fläche, die einen abweichenden Sollwert meldet. */
+          footer={
+            !isPhone && zeigt('steuerung') && (controlView || guardView) ? (
+              <ControlStrip view={controlView} variant="bare" guard={guardView} />
+            ) : null
+          }
+        />
+      ),
+    /* Mobil-Umbau Stufe 2: die EINE Geld-Karte direkt unter dem Fluss —
+       Zahl, Zurechnung, Zeitraum-Segment und die Ringe als Chips. Sie
+       ersetzt am Telefon die Bilanz-Leiste UND die zwei Geld-Kacheln
+       (dieselbe Aussage stand dort bis zu viermal auf 550 px). Am Rechner
+       wohnt sie IN der Bühne (`showRail`), deshalb hier nur am Telefon. */
+    geld: isPhone ? (
+      <div ref={moneyRef}>
+        <MobileMoneyCard
+          view={heroView}
+          periodSeg={
+            hasBlock(blocks, 'erloes-komposition') ? (
+              <PeriodTabs range={range} onRange={switchRange} variant="seg" />
+            ) : null
+          }
+        />
+      </div>
+    ) : null,
+    fahrplan: fahrplanRow,
+    steuerung:
+      isPhone && (controlView || guardView) ? (
+        <ControlStrip view={controlView} variant="card" guard={guardView} />
+      ) : null,
+    strompreis: strompreisRow,
+    /* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
+       Ziel der Kachel - kein Modal mehr. */
+    kacheln: <WidgetGrid widgets={widgetsMitLead} onSelect={jumpToWidget} />,
+    /* Merge Option A · Stratum 3: Komponenten im Detail — das Board
+       (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die
+       Abrufe starten erst nahe dem Viewport (lazy-mount). */
+    komponenten: (
+      <KomponentenSection
+        site={site}
+        topology={adaptiveLive.topology}
+        adaptive={adaptiveLive.adaptive}
+        stale={heroStale}
+        range={range}
+        at={at}
+        dayTotals={dayTotalsEffective}
+      />
+    ),
+    /* Zustand (vp-cockpit-unten-ux-n3 PR 3): leise, wenn gesund — EINE
+       Zeile; laut nur mit Befund (Ursache + Hebel je Zeile). Der
+       Modus-Fuß wohnt IN der Fläche (D6) — der Stack endet mit einer
+       Karte statt mit einem baumelnden Absatz. Gated auf die geladene
+       Übersicht: vor der ersten Antwort gäbe es nur erfundene
+       „noch nicht verbunden"-Befunde. id="zustand" bleibt das
+       Sprungziel des Schalen-Abzeichens. */
+    zustand:
+      ovSite != null && health.length > 0 ? (
+        <div className="vp-cockpit-health" id="zustand">
+          <ZustandCard
+            items={health}
+            onOpenSub={onOpenSub}
+            onOpenModus={() => onOpenSub('steuerung')}
+          />
+        </div>
+      ) : null,
+  };
+
   return (
     <>
       {onBackToList && (
@@ -1330,6 +1492,21 @@ export function AnlageSeite({
               Tagesfrage — am Telefon wohnen sie in den Einstellungen. */}
           {!isPhone && <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>}
           {!isPhone && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
+          {/* Anwendungs-Programm Stufe 3 (E4): der Einstieg in den
+              Anpassen-Modus wohnt in der Cockpit-Kopfzeile - dort, wo der
+              Kunde auf das Cockpit schaut, das er anordnen will. Er erscheint
+              nur, wenn es einen Stapel zum Anordnen gibt. */}
+          {showStack && !layout.anpassen && (
+            <button
+              type="button"
+              className="vp-gear-btn"
+              onClick={layout.start}
+              aria-label="Cockpit anpassen"
+              title="Cockpit anpassen"
+            >
+              <Icon name="sliders" size={18} />
+            </button>
+          )}
           <button
             type="button"
             className="vp-gear-btn"
@@ -1394,123 +1571,80 @@ export function AnlageSeite({
            also standen Kacheln, Boersenpreis und Fahrplan mit 0 px
            aneinander. */
         <div className="vp-cockpit-stack">
-          {sticky && <MobileStickyHead head={sticky} shown={scrolledPastMoney} />}
+          {sticky && !layout.anpassen && (
+            <MobileStickyHead head={sticky} shown={scrolledPastMoney} />
+          )}
 
-          {ovSite == null ? (
-            <Skeleton height={320} radius="var(--vp-radius-lg)" />
-          ) : (
-            <CockpitHero
-              view={heroView}
-              topology={adaptiveLive.topology}
-              snapshot={siteSnapshot(ovSite.live)}
-              stale={heroStale}
-              sources={sources}
-              pins={siteEntityPins}
-              consumers={consumersView}
-              onOpenConsumers={() => onOpenSub('steuerung')}
-              onOpenSub={onOpenSub}
-              /* Der Zeitraum steht in der Bilanz-Leiste, direkt über den
-                 Zahlen, die er regiert (Konzept §6.3) - nicht mehr als volle
-                 Seitenzeile für vier Knöpfe. Ohne Geld-Modus gibt es keinen
-                 Zeitraum zu wählen.
-                 Am Telefon (Stufe 2) trägt die EINE Geld-Karte darunter das
-                 Segment - dort gibt es keine Leiste. */
-              periodSeg={
-                !isPhone && hasBlock(blocks, 'erloes-komposition') ? (
-                  <PeriodTabs range={range} onRange={switchRange} variant="seg" />
-                ) : null
-              }
-              showRail={!isPhone}
-              /* Der Stift in der PV-Zusammensetzung — die Abkürzung zum
-                 Umbenennen dort, wo der Wunsch entsteht. Nach dem Speichern
-                 dieselbe Auffrischung wie jeder „Erneut versuchen"-Klick, damit
-                 der neue Name sofort überall steht. */
-              rename={{ siteId: site.id, onRenamed: () => setReloadKey((k) => k + 1) }}
-              /* Die Bestätigung ist AM Diagramm ablesbar (Speicher-Knoten),
-                 der Bühnenfuß liefert Satz und Grund. Ein Flusskonflikt
-                 (register-bestätigt, aber nicht fließend) entzieht den Haken -
-                 er wäre sonst genau die „lädt 3,3 kW ✓"-Lüge aus Pilsting. */
-              controlConfirmed={
-                controlView?.state === 'healthy' && cockpitFlow?.severity !== 'warn'
-              }
-              /* Am Telefon steht die Geld-Karte „direkt unterm Fluss"
-                 (Konzept) — der Bühnenfuß wandert deshalb unter die
-                 Fahrplan-Zeile, deren Aussage er fortsetzt (was ist geplant →
-                 was bestätigt der Wechselrichter). Er entfällt NICHT: er ist
-                 die einzige Fläche, die einen abweichenden Sollwert meldet. */
-              footer={
-                !isPhone && (controlView || guardView) ? (
-                  <ControlStrip view={controlView} variant="bare" guard={guardView} />
-                ) : null
-              }
+          {/* Anwendungs-Programm Stufe 3 · der ANPASSEN-Modus (E4). Er liegt
+              INLINE über dem echten Cockpit: der Kunde sieht beim Anordnen,
+              was er anordnet. Am Telefon ist es dieselbe Baustein-Menge als
+              Liste - auf 375 px ist ein Overlay über einem Diagramm nicht
+              bedienbar. */}
+          {layout.anpassen && (
+            <AnpassenLeiste
+              quelle={layout.resolved.quelle}
+              resetSatz={layout.resetSatz}
+              dirty={layout.dirty}
+              saving={layout.saving}
+              fehler={layout.fehler}
+              band={layout.band}
+              alsVorgabe={layout.alsVorgabe}
+              onAlsVorgabe={layout.setAlsVorgabe}
+              onFertig={layout.fertig}
+              onAbbrechen={layout.abbrechen}
+              onZuruecksetzen={layout.zuruecksetzen}
+            />
+          )}
+          {layout.anpassen && isPhone && (
+            <AnpassenListe
+              zeilen={layout.zeilen}
+              onVerschieben={layout.verschieben}
+              onSichtbar={layout.setSichtbar}
+              onLead={layout.setLead}
             />
           )}
 
-          {/* Mobil-Umbau Stufe 2: die EINE Geld-Karte direkt unter dem Fluss —
-              Zahl, Zurechnung, Zeitraum-Segment und die Ringe als Chips. Sie
-              ersetzt am Telefon die Bilanz-Leiste UND die zwei Geld-Kacheln
-              (dieselbe Aussage stand dort bis zu viermal auf 550 px). */}
-          {isPhone && (
-            <div ref={moneyRef}>
-              <MobileMoneyCard
-                view={heroView}
-                periodSeg={
-                  hasBlock(blocks, 'erloes-komposition') ? (
-                    <PeriodTabs range={range} onRange={switchRange} variant="seg" />
-                  ) : null
-                }
-              />
-            </div>
-          )}
+          {/* Der Stapel entsteht aus der AUFGELÖSTEN Reihenfolge (Katalog ->
+              Preset -> Vorgabe -> Eigen). Ohne gespeicherte Zeile ist das
+              Zeichen für Zeichen die frühere hart codierte Folge. */}
+          {layout.resolved.order.map((id) => {
+            const node = bausteinNodes[id];
+            const zeile = layout.anpassen && !isPhone
+              ? layout.zeilen.find((z) => z.id === id)
+              : undefined;
+            if (zeile) {
+              return (
+                <AnpassenHuelle
+                  key={id}
+                  zeile={zeile}
+                  /* Am Rechner wohnen Geld-Leiste und Steuerungs-Fuß IN der
+                     Bühne und haben deshalb keinen eigenen Knoten. Ihre ZEILE
+                     erscheint trotzdem - sonst wären sie die einzigen zwei
+                     Bausteine, die man am Rechner nicht ausblenden oder
+                     hervorheben könnte. */
+                  note={node == null ? ortsHinweis(id) : null}
+                  onVerschieben={layout.verschieben}
+                  onSichtbar={layout.setSichtbar}
+                  onLead={layout.setLead}
+                >
+                  {node ?? undefined}
+                </AnpassenHuelle>
+              );
+            }
+            if (node == null) return null;
+            return <Fragment key={id}>{node}</Fragment>;
+          })}
 
-          {/* Am Telefon führen die zwei täglichen Fragen als ZEILEN (Fahrplan
-              zuerst, dann der Preis, der ihn erklärt); die Kacheln folgen
-              darunter. Am Rechner bleibt die Reihenfolge der Bühne. */}
-          {isPhone && fahrplanRow}
-          {isPhone && (controlView || guardView) && (
-            <ControlStrip view={controlView} variant="card" guard={guardView} />
-          )}
-          {isPhone && strompreisRow}
-
-          {/* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
-              Ziel der Kachel - kein Modal mehr. */}
-          <WidgetGrid widgets={shownWidgets} onSelect={jumpToWidget} />
-
-          {/* Markt & Tag (vp-cockpit-unten-ux-n3, PR 1): der Börsenpreis-
-              Streifen führt die untere Hälfte an — er erklärt, warum der
-              Fahrplan gerade tut, was er tut. Am Telefon stehen beide weiter
-              oben (siehe dort) und je als EINE Zeile. */}
-          {!isPhone && strompreisRow}
-          {!isPhone && fahrplanRow}
-
-          {/* Merge Option A · Stratum 3: Komponenten im Detail — das Board
-              (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die
-              Abrufe starten erst nahe dem Viewport (lazy-mount). */}
-          <KomponentenSection
-            site={site}
-            topology={adaptiveLive.topology}
-            adaptive={adaptiveLive.adaptive}
-            stale={heroStale}
-            range={range}
-            at={at}
-            dayTotals={dayTotalsEffective}
-          />
-
-          {/* Zustand (vp-cockpit-unten-ux-n3 PR 3): leise, wenn gesund — EINE
-              Zeile; laut nur mit Befund (Ursache + Hebel je Zeile). Der
-              Modus-Fuß wohnt IN der Fläche (D6) — der Stack endet mit einer
-              Karte statt mit einem baumelnden Absatz. Gated auf die geladene
-              Übersicht: vor der ersten Antwort gäbe es nur erfundene
-              „noch nicht verbunden"-Befunde. id="zustand" bleibt das
-              Sprungziel des Schalen-Abzeichens. */}
-          {ovSite != null && health.length > 0 && (
-            <div className="vp-cockpit-health" id="zustand">
-              <ZustandCard
-                items={health}
-                onOpenSub={onOpenSub}
-                onOpenModus={() => onOpenSub('steuerung')}
-              />
-            </div>
+          {/* „Ausgeblendet (n)" bleibt erreichbar (§3.4) - ausblenden darf
+              kein Weg ohne Rückweg sein. Am Telefon steht die Reihe schon in
+              der Liste oben. */}
+          {layout.anpassen && !isPhone && (
+            <AusgeblendetZeile
+              zeilen={layout.zeilen.filter((z) => !z.sichtbar)}
+              onVerschieben={layout.verschieben}
+              onSichtbar={layout.setSichtbar}
+              onLead={layout.setLead}
+            />
           )}
         </div>
       ) : (

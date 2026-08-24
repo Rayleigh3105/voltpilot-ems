@@ -9,6 +9,7 @@ import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
 import com.voltpilot.api.repo.PriceRepository;
+import com.voltpilot.api.repo.CockpitLayoutRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
 import com.voltpilot.api.repo.CurtailmentStatusRepository;
 import com.voltpilot.api.repo.ScheduleRepository;
@@ -81,6 +82,7 @@ public class SiteController {
     private final DeviceSourceStatusRepository sourceStatus;
     private final SchedulePricingService schedulePricing;
     private final ForecastModelService forecastModels;
+    private final CockpitLayoutRepository cockpitLayouts;
 
     public SiteController(
             SiteRepository sites,
@@ -96,7 +98,8 @@ public class SiteController {
             CurtailmentStatusRepository curtailmentStatus,
             DeviceSourceStatusRepository sourceStatus,
             SchedulePricingService schedulePricing,
-            ForecastModelService forecastModels) {
+            ForecastModelService forecastModels,
+            CockpitLayoutRepository cockpitLayouts) {
         this.sites = sites;
         this.devices = devices;
         this.series = series;
@@ -111,6 +114,7 @@ public class SiteController {
         this.sourceStatus = sourceStatus;
         this.schedulePricing = schedulePricing;
         this.forecastModels = forecastModels;
+        this.cockpitLayouts = cockpitLayouts;
     }
 
     @GetMapping
@@ -194,6 +198,11 @@ public class SiteController {
                             + "Bitte entfernen Sie zuerst alle Geräte dieses Standorts.");
         }
         series.deleteForSite(siteId);
+        // Das Cockpit-Layout haengt bewusst OHNE Fremdschluessel an der Anlage
+        // (die Spalte scope_id zeigt je nach scope_kind auf zwei verschiedene
+        // Tabellen), also raeumt es niemand von selbst ab - dieselbe Hygiene
+        // wie die Serien-Zeilen darueber.
+        cockpitLayouts.deleteForScope(CockpitLayoutRepository.SCOPE_SITE, siteId);
         if (!sites.delete(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }

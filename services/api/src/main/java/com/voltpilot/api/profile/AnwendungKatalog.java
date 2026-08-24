@@ -121,6 +121,55 @@ public class AnwendungKatalog {
     public record Profil(String id, String label, String satz, String tonalitaet) {}
 
     /**
+     * Ein BAUSTEIN des Cockpits (Stufe 3): ein eigenständig gerendertes
+     * Element der Fläche — die Sprache, in der „anordnen" und „ausblenden"
+     * überhaupt formulierbar sind.
+     *
+     * <p>Er wohnt in DERSELBEN Ressource wie die Anwendungen (§3.2 C
+     * „abgeleitet aus A, keine zweite Datei"); wer ihn BEISTEUERT, wird über
+     * {@link AnwendungKatalog#beigesteuertVon} aus {@code bloecke} × den Cockpit-Bausteinen
+     * der Anwendungen abgeleitet, nie ein zweites Mal aufgeschrieben.
+     *
+     * @param id        der Baustein-Schlüssel (das Vokabular des Dokuments)
+     * @param label     der kundenseitige deutsche Name
+     * @param flaeche   {@code cockpit} heute; {@code portfolio} ist Stufe 4
+     * @param pflicht   true = kann NIE ausgeblendet werden (E2: Katalog-
+     *                  Eigenschaft, kein Admin-Wille)
+     * @param beweglich false = bleibt an seiner kanonischen Stelle (der
+     *                  Status-Kopf, und die BÜHNE samt dem, was am Rechner in
+     *                  ihr wohnt — der Lead-Wechsel darf sie nicht zerlegen)
+     * @param leadBlock die {@code CockpitBlockId}, die sein Stern als Lead
+     *                  setzt; null = kein Stern
+     * @param bloecke   die {@code CockpitBlockId}s, die er rendert
+     */
+    public record Baustein(String id, String label, String flaeche, boolean pflicht,
+            boolean beweglich, String leadBlock, List<String> bloecke) {}
+
+    /**
+     * Ein Layout-Dokument: der gespeicherte WILLE, nie die abgeleitete Fläche.
+     *
+     * <p>{@code order} nennt Bausteine in ihrer Reihenfolge (ungenannte
+     * bleiben an ihrer kanonischen Stelle), {@code hidden}/{@code shown} sind
+     * ausdrückliche Aussagen — {@code shown} nimmt einer TIEFEREN Schicht ihr
+     * {@code hidden} zurück, weshalb es nicht dasselbe ist wie „steht nicht in
+     * hidden". {@code lead} ist eine eigene Achse (die lead-fähigen Blöcke),
+     * deshalb ein eigenes Feld und keine Position in {@code order}.
+     */
+    public record LayoutDoc(List<String> order, List<String> hidden, List<String> shown,
+            String lead) {
+
+        /** Das leere Dokument — es sagt über nichts etwas aus. */
+        public static LayoutDoc leer() {
+            return new LayoutDoc(List.of(), List.of(), List.of(), null);
+        }
+
+        /** true = dieses Dokument trifft keine einzige Aussage. */
+        public boolean istLeer() {
+            return order.isEmpty() && hidden.isEmpty() && shown.isEmpty() && lead == null;
+        }
+    }
+
+    /**
      * Ein Katalog-Eintrag.
      *
      * @param id                  die Anwendungs-Id (zugleich die M0-{@code ModeKind}
@@ -165,6 +214,8 @@ public class AnwendungKatalog {
     private final Map<String, Anwendung> byId = new LinkedHashMap<>();
     private final List<Anwendung> sichtbare = new ArrayList<>();
     private final Map<String, Profil> profileById = new LinkedHashMap<>();
+    private final Map<String, LayoutDoc> presetLayoutById = new LinkedHashMap<>();
+    private final Map<String, Baustein> bausteinById = new LinkedHashMap<>();
 
     public AnwendungKatalog(ObjectMapper mapper) {
         try (InputStream in = getClass().getResourceAsStream("/anwendungen/catalog.json")) {
@@ -197,6 +248,16 @@ public class AnwendungKatalog {
             if (profileById.put(profil.id(), profil) != null) {
                 throw new IllegalStateException("duplicate preset id: " + profil.id());
             }
+            presetLayoutById.put(profil.id(), parseLayout(p.path("layout")));
+        }
+        for (JsonNode b : raw.path("bausteine")) {
+            Baustein baustein = new Baustein(b.path("id").asText(), b.path("label").asText(),
+                    b.path("flaeche").asText(), b.path("pflicht").asBoolean(false),
+                    b.path("beweglich").asBoolean(false), text(b, "lead_block"),
+                    strings(b.path("bloecke")));
+            if (bausteinById.put(baustein.id(), baustein) != null) {
+                throw new IllegalStateException("duplicate baustein id: " + baustein.id());
+            }
         }
     }
 
@@ -219,6 +280,14 @@ public class AnwendungKatalog {
                 text(a, "leer_zustand"), bausteine, strings(a.path("unlock_chips")),
                 strings(a.path("einstellungen")), text(a, "einstellungen_verweis"),
                 new Preset(text(p, "privat"), text(p, "gewerbe")));
+    }
+
+    private static LayoutDoc parseLayout(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return LayoutDoc.leer();
+        }
+        return new LayoutDoc(strings(node.path("order")), strings(node.path("hidden")),
+                strings(node.path("shown")), text(node, "lead"));
     }
 
     private static String text(JsonNode node, String field) {
@@ -304,6 +373,61 @@ public class AnwendungKatalog {
      * halten kann. Ein Schalter, den der KUNDE selbst kippt, darf das sehr
      * wohl (Owner-Entscheid M3).
      */
+    /**
+     * Alle Bausteine EINER Fläche in Katalog-Reihenfolge. Die Reihenfolge hier
+     * ist die Reihenfolge der Ressource — sie ist NICHT die kanonische
+     * Render-Reihenfolge (die ist je Bildschirmbreite verschieden und wohnt im
+     * Portal, das rendert).
+     */
+    public List<Baustein> bausteine(String flaeche) {
+        List<Baustein> out = new ArrayList<>();
+        for (Baustein b : bausteinById.values()) {
+            if (flaeche == null || flaeche.equals(b.flaeche())) {
+                out.add(b);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /** Der Baustein mit dieser Id, oder null (auch für ein unbekanntes Wort). */
+    public Baustein baustein(String id) {
+        return id == null ? null : bausteinById.get(id);
+    }
+
+    /**
+     * Die Anwendungen, die diesen Baustein BEISTEUERN — abgeleitet aus
+     * {@code bloecke} × {@code anwendungen[].bausteine.cockpit}, nie aus einer
+     * zweiten Liste. Ein Baustein ohne Blöcke (Fahrplan, Steuerung, Preis,
+     * Komponenten, Zustand) ist Grundausstattung und hat keine Beisteuerer.
+     */
+    public List<String> beigesteuertVon(String bausteinId) {
+        Baustein b = baustein(bausteinId);
+        if (b == null || b.bloecke().isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Anwendung a : byId.values()) {
+            for (String block : a.bausteine().cockpit()) {
+                if (b.bloecke().contains(block)) {
+                    out.add(a.id());
+                    break;
+                }
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Das Layout-Dokument eines Profil-PRESETS — die zweite Schicht der
+     * Auflösung (Katalog → Preset → Vorgabe → Eigen). Ohne Profil oder ohne
+     * Eintrag ist es das leere Dokument: ein Preset, das nichts sagt, ändert
+     * auch nichts.
+     */
+    public LayoutDoc presetLayout(String profil) {
+        LayoutDoc doc = profil == null ? null : presetLayoutById.get(profil);
+        return doc == null ? LayoutDoc.leer() : doc;
+    }
+
     public List<String> vorauswahl(String profil) {
         List<String> ids = new ArrayList<>();
         for (Anwendung a : sichtbare) {

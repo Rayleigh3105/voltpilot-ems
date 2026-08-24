@@ -1,0 +1,225 @@
+/* Der ANPASSEN-MODUS des Cockpits (Anwendungs-Programm Stufe 3, E4).
+   Er liegt ÜBER dem echten Cockpit, verändert aber dessen Bausteine nicht:
+   jede Hülle bekommt eine Steuerzeile, der Inhalt bleibt derselbe. So sieht
+   der Kunde beim Anordnen, WAS er anordnet - der Grund, warum E4 den Inline-
+   Modus einer eigenen Einstellungs-Seite vorzieht. */
+
+.vp-anpassen-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  border: 1px solid var(--vp-action, #2C5282);
+  border-radius: var(--vp-radius-lg);
+  background: var(--vp-surface, #fff);
+  box-shadow: var(--vp-shadow-md, 0 4px 16px rgb(0 0 0 / 12%));
+}
+
+.vp-anpassen-band {
+  margin: 0;
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-radius: var(--vp-radius-md);
+  background: rgb(44 82 130 / 8%);
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+}
+
+.vp-anpassen-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+}
+
+.vp-anpassen-hint,
+.vp-anpassen-reset-note {
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 240px;
+  color: var(--vp-text-gray, #6c757d);
+  font-size: var(--vp-text-sm);
+}
+
+.vp-anpassen-reset-note {
+  flex: 1 1 100%;
+}
+
+.vp-anpassen-fehler {
+  margin: 0;
+  color: var(--vp-warn-ink, #b45309);
+  font-size: var(--vp-text-sm);
+}
+
+.vp-anpassen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+
+.vp-anpassen-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-1);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray, #6c757d);
+}
+
+.vp-anpassen-btn {
+  min-height: 44px;
+  padding: 0 var(--vp-space-4);
+  border: 1px solid var(--vp-border, #e9ecef);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vp-anpassen-btn.is-primary {
+  border-color: var(--vp-action, #2C5282);
+  background: var(--vp-action, #2C5282);
+  color: #fff;
+  box-shadow: var(--vp-shadow-btn, 0 2px 6px rgb(44 82 130 / 25%));
+}
+
+.vp-anpassen-btn:focus-visible,
+.vp-anpassen-icon:focus-visible {
+  outline: var(--vp-focus-ring, 2px solid);
+  outline-color: var(--vp-focus-ring-color, #2C5282);
+  outline-offset: 2px;
+}
+
+.vp-anpassen-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Eine Baustein-Hülle: Steuerzeile oben, echter Baustein darunter. */
+.vp-anpassen-huelle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-2);
+  border: 1px dashed var(--vp-action, #2C5282);
+  border-radius: var(--vp-radius-lg);
+}
+
+/* Ein Baustein, der am Rechner IN der Bühne wohnt: nur seine Zeile. */
+.vp-anpassen-huelle.is-zeile {
+  border-style: solid;
+  border-color: var(--vp-border, #e9ecef);
+}
+
+.vp-anpassen-note {
+  margin: 0;
+  color: var(--vp-text-gray, #6c757d);
+  font-size: 0.78rem;
+}
+
+.vp-anpassen-inhalt {
+  min-width: 0;
+}
+
+.vp-anpassen-ctrl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-anpassen-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+}
+
+.vp-anpassen-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid var(--vp-border, #e9ecef);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface, #fff);
+  color: inherit;
+  cursor: pointer;
+}
+
+.vp-anpassen-icon.is-on {
+  border-color: var(--vp-action, #2C5282);
+  background: rgb(44 82 130 / 10%);
+  color: var(--vp-action, #2C5282);
+}
+
+.vp-anpassen-icon:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* „fest" / „immer sichtbar": eine ruhige Erklaerung, kein Knopf - deshalb als
+   Chip mit eigener Flaeche, damit zwei davon nicht zu einem Wort verschmelzen. */
+.vp-anpassen-fest {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-bg-light, #f8f9fa);
+  color: var(--vp-text-gray, #6c757d);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* Die Telefon-Fassung: dieselben Bausteine als Liste (E4). */
+.vp-anpassen-liste ul,
+.vp-anpassen-versteckt ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+
+.vp-anpassen-liste > ul > li,
+.vp-anpassen-versteckt li {
+  padding: var(--vp-space-2);
+  border: 1px solid var(--vp-border, #e9ecef);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface, #fff);
+}
+
+.vp-anpassen-versteckt {
+  margin-top: var(--vp-space-3);
+}
+
+.vp-anpassen-versteckt > summary {
+  cursor: pointer;
+  padding: var(--vp-space-2) 0;
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-gray, #6c757d);
+}
+
+@media (max-width: 720px) {
+  .vp-anpassen-bar {
+    position: static;
+  }
+
+  .vp-anpassen-actions {
+    width: 100%;
+  }
+
+  .vp-anpassen-btn {
+    flex: 1 1 auto;
+  }
+}
