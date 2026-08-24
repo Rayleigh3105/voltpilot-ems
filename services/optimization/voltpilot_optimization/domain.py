@@ -210,6 +210,7 @@ def derive_terminal_value(
     one_way_efficiency: float,
     wear_eur_per_kwh_each_way: float,
     grid_charge_allowed: bool,
+    max_feed_in_kw: float | None = None,
     env=None,
 ) -> TerminalValue:
     """The P3 terminal energy value per STORED kWh, derived from the horizon.
@@ -259,6 +260,19 @@ def derive_terminal_value(
        (import == export == spot, the ``ohne`` model) every branch coincides,
        so this is a no-op - the change bites precisely where import and export
        diverge, which is where the old formula was wrong.
+
+       **Feed-in-cap awareness** (scout ``vp-verkauf-praemisse-s8`` §1.4, the
+       Pilsting 10.08. plant): with a maintained ``max_feed_in_kw`` a surplus
+       slot can only feed in up to the cap - surplus BEYOND it is not
+       exportable at all, so the marginal refill there costs nothing (it would
+       be curtailed otherwise). A beyond-cap surplus slot's entry is therefore
+       ``min(export_t, 0)`` in EEG mode (at negative prices absorbing the
+       below-cap export is still a gain, unchanged) and gains the free ``0``
+       channel in the merchant ``min`` too. The solver's ``feed_in_cap``
+       constraint already made lambda/explain cap-honest automatically; this
+       makes the terminal anchor tell the same story instead of pricing a
+       refill against feed-in the connection point cannot carry. Without a cap
+       (``max_feed_in_kw is None``) every branch is byte-identical to before.
     2. **Free-PV refill cap.** Surplus generation in slots whose export value
        is <= 0 costs the plant NOTHING to store (feeding it in earns nothing or
        less). Energy the battery could actually absorb from such slots is
@@ -267,6 +281,11 @@ def derive_terminal_value(
        value at all and ``V_end`` scales to 0. This is the "tomorrow's PV
        refills it for free" truth a 70 kWp plant in July needs, and it is why a
        full battery must not sit on its charge through an evening peak.
+
+       With a maintained feed-in cap the beyond-cap share of a surplus slot is
+       equally free to store at POSITIVE prices (it cannot be fed in, so
+       storing it forgoes nothing) and counts toward ``free_kwh`` too - only
+       the beyond-cap PORTION, the below-cap share still earns its feed-in.
     3. **Strict-dispersion guard.** ``V_end`` is finally held strictly below
        ``eta * (best in-horizon use value - wear - margin)``, so the plan can
        ALWAYS realize stored energy in at least its single best slot: the
@@ -290,9 +309,22 @@ def derive_terminal_value(
     eta = one_way_efficiency
     wear = wear_eur_per_kwh_each_way  # EUR per AC kWh
 
+    def beyond_cap(t: int) -> bool:
+        """Does slot ``t``'s surplus exceed the connection-point feed-in cap?
+
+        The marginal kWh of such a slot cannot be exported (the pipe is full
+        before the battery does anything), so its refill via the forgone-
+        feed-in channel is FREE. Always false without a maintained cap."""
+        return max_feed_in_kw is not None and pv_kw[t] - load_kw[t] > max_feed_in_kw
+
     # 1. Charge-side (replacement) anchor.
     if grid_charge_allowed:
-        refill_eur_mwh = [min(imp, exp) for imp, exp in zip(import_prices, export_values)]
+        refill_eur_mwh = [
+            # Beyond-cap surplus adds the free refill channel to the merchant
+            # min (store what the connection point cannot carry, cost 0).
+            min(imp, exp, 0.0) if beyond_cap(t) else min(imp, exp)
+            for t, (imp, exp) in enumerate(zip(import_prices, export_values))
+        ]
         # The refill channel is the market either way (buy, or forgo selling) -
         # ONE customer statement, so the per-slot split below is not made here.
         anchor_kinds = [ANCHOR_MARKTPREIS] * n
@@ -306,8 +338,11 @@ def derive_terminal_value(
         # Discount only where der Bezug wirklich teurer ist als der
         # Einspeisewert (die Tie-Klasse); bei imp <= exp (symmetrisches
         # `ohne`) bleibt der Branch ein exaktes No-op wie vor S2 dokumentiert.
+        # Beyond-cap surplus slot: the marginal kWh cannot be fed in, so the
+        # forgone feed-in is 0 - min(exp, 0) keeps the negative-price case
+        # (absorbing the below-cap export remains a gain) byte-identical.
         refill_eur_mwh = [
-            exp
+            (min(exp, 0.0) if beyond_cap(t) else exp)
             if pv_kw[t] > load_kw[t]
             else (
                 imp - TERMINAL_VALUE_COVER_NOW_DISCOUNT_EUR_MWH
@@ -332,14 +367,21 @@ def derive_terminal_value(
     v_end = max(0.0, eta * (anchor / 1000.0 - wear))
 
     # 2. Free-PV refill cap: surplus the battery could absorb in slots where
-    #    feeding in earns nothing (or costs money), so storing it is free.
+    #    feeding in earns nothing (or costs money), so storing it is free. With
+    #    a maintained feed-in cap, the beyond-cap PORTION of a surplus slot is
+    #    free at positive prices too - it cannot be exported either way.
     refill_free_pct: float | None = None
     if usable_band_kwh > 0.0:
-        free_kwh = sum(
-            min(max(pv_kw[t] - load_kw[t], 0.0), max_charge_kw) * slot_hours
-            for t in range(n)
-            if export_values[t] <= 0.0
-        )
+        free_kwh = 0.0
+        for t in range(n):
+            surplus_kw = max(pv_kw[t] - load_kw[t], 0.0)
+            if export_values[t] <= 0.0:
+                free_surplus_kw = surplus_kw
+            elif max_feed_in_kw is not None:
+                free_surplus_kw = max(surplus_kw - max_feed_in_kw, 0.0)
+            else:
+                free_surplus_kw = 0.0
+            free_kwh += min(free_surplus_kw, max_charge_kw) * slot_hours
         free_share = min(1.0, free_kwh / usable_band_kwh)
         refill_free_pct = 100.0 * free_share
         v_end *= 1.0 - free_share
@@ -535,6 +577,7 @@ class OptimizationInput:
             one_way_efficiency=p.one_way_efficiency,
             wear_eur_per_kwh_each_way=p.wear_cost_eur_per_kwh_each_way,
             grid_charge_allowed=self.netzladen_erlaubt,
+            max_feed_in_kw=self.max_feed_in_kw,
             env=env,
         )
 
