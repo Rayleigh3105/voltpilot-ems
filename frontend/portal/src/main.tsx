@@ -17,7 +17,17 @@ import './index.css';
 import { initAuth, keycloak, login, wasRateLimited, wasSessionExpired } from './auth';
 import { BOOT_TIMEOUT_MS, BootTimeoutError, bootOutcome, withTimeout } from './boot';
 import { BootErrorBoundary, BootSplash } from './components/Boot';
+import { initInstallApp } from './installApp';
 import { isRegisterRoute } from './nav';
+import { registerServiceWorker } from './serviceWorker';
+
+// App-Hülle. Beides läuft VOR dem Auth-Bootstrap, weil beides von ihm
+// unabhängig ist: `beforeinstallprompt` feuert kurz nach dem Laden und wird
+// nicht wiederholt (wer erst beim Öffnen der Einstellungen zuhört, hat es
+// verpasst), und die Registrierung wartet ohnehin selbst auf `load`, damit sie
+// nie mit dem ersten Bild um Bandbreite konkurriert.
+initInstallApp(window);
+registerServiceWorker();
 
 // Keep the access token fresh in the background.
 keycloak.onTokenExpired = () => {

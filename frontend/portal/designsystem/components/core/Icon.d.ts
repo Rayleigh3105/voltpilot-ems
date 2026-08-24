@@ -44,6 +44,7 @@ export type IconName =
   | 'help-circle'
   | 'layers'
   | 'sliders'
+  | 'smartphone'
   | 'code';
 
 export interface IconProps extends React.SVGAttributes<SVGSVGElement> {

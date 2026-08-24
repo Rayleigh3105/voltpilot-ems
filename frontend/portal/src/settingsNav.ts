@@ -16,7 +16,14 @@
 import type { ModeSettingId } from './surface';
 
 /** Die anspringbaren Gruppen der Einstellungs-Seite. */
-export type SettingsGroupId = 'anlage' | 'geld' | 'geraet' | 'speicher' | 'registrierung' | 'loeschen';
+export type SettingsGroupId =
+  | 'anlage'
+  | 'geld'
+  | 'geraet'
+  | 'speicher'
+  | 'registrierung'
+  | 'app'
+  | 'loeschen';
 
 /** Der Parametername im Hash. */
 const PARAM = 'abschnitt';
@@ -27,6 +34,7 @@ const GROUPS = new Set<string>([
   'geraet',
   'speicher',
   'registrierung',
+  'app',
   'loeschen',
 ]);
 

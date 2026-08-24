@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { initInstallApp, resetInstallApp, type InstallEnv } from '../installApp';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
 import { api, type Device, type Site, type SiteAsset, type SupplyPrice } from '../api';
 
@@ -738,6 +739,95 @@ describe('Einstellungen · E7 · die Grenze zur Box (D5)', () => {
     expect(box.textContent).toContain('8484');
     // Kein erfundener Link ins Heimnetz des Kunden.
     expect(box.querySelector('a')).toBeNull();
+    restore();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Als App auf dem Handy (PWA-Hülle)                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Ein `window`-Stellvertreter für den Einrichten-Zustand dieses Geräts. */
+function installEnv(opts: { standalone?: boolean; ua?: string } = {}) {
+  const handlers = new Map<string, Array<(e: Event) => void>>();
+  const env: InstallEnv & { fire(type: string, e?: Partial<Event>): void } = {
+    addEventListener(type, cb) {
+      handlers.set(type, [...(handlers.get(type) ?? []), cb]);
+    },
+    removeEventListener(type, cb) {
+      const list = handlers.get(type) ?? [];
+      const i = list.indexOf(cb);
+      if (i >= 0) list.splice(i, 1);
+    },
+    matchMedia: () => ({ matches: opts.standalone === true }),
+    navigator: { userAgent: opts.ua ?? 'Mozilla/5.0 (Linux; Android 14) Chrome/151' },
+    fire(type, e) {
+      for (const cb of handlers.get(type) ?? []) cb({ ...e, type } as Event);
+    },
+  };
+  return env;
+}
+
+describe('Einstellungen · Als App auf dem Handy (PWA-Hülle)', () => {
+  it('steht als eigener Abschnitt und nennt ohne Angebot den GRUND statt eines toten Knopfes', async () => {
+    resetInstallApp();
+    initInstallApp(installEnv());
+    const { restore } = await renderEinstellungen();
+
+    const app = document.getElementById('technik-app') as HTMLElement;
+    expect(app).not.toBeNull();
+    expect(within(app).getByText('Als App auf dem Handy')).toBeInTheDocument();
+    expect(within(app).getByText(/bietet das Einrichten hier nicht an/)).toBeInTheDocument();
+    expect(within(app).queryByRole('button', { name: 'App installieren' })).toBeNull();
+    restore();
+  });
+
+  it('zeigt den Knopf, sobald der Browser sein Angebot macht - auch NACH dem Rendern', async () => {
+    resetInstallApp();
+    const env = installEnv();
+    initInstallApp(env);
+    const { restore } = await renderEinstellungen();
+    const app = document.getElementById('technik-app') as HTMLElement;
+    expect(within(app).queryByRole('button', { name: 'App installieren' })).toBeNull();
+
+    const prompt = vi.fn(() => Promise.resolve());
+    act(() => {
+      env.fire('beforeinstallprompt', {
+        preventDefault: vi.fn(),
+        prompt,
+        userChoice: Promise.resolve({ outcome: 'accepted' }),
+      } as never);
+    });
+
+    const btn = within(app).getByRole('button', { name: 'App installieren' });
+    fireEvent.click(btn);
+    await waitFor(() => expect(prompt).toHaveBeenCalled());
+    restore();
+  });
+
+  it('zeigt der installierten App KEINEN Hinweis mehr, nur einen ruhigen Satz', async () => {
+    resetInstallApp();
+    initInstallApp(installEnv({ standalone: true }));
+    const { restore } = await renderEinstellungen();
+
+    const app = document.getElementById('technik-app') as HTMLElement;
+    expect(within(app).getByText('Sie nutzen VoltPilot bereits als App.')).toBeInTheDocument();
+    expect(within(app).queryByRole('button', { name: 'App installieren' })).toBeNull();
+    expect(within(app).queryByRole('list')).toBeNull();
+    restore();
+  });
+
+  it('führt auf dem iPhone in zwei Schritten statt einen Dialog zu versprechen', async () => {
+    resetInstallApp();
+    initInstallApp(installEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari' }));
+    const { restore } = await renderEinstellungen();
+
+    const app = document.getElementById('technik-app') as HTMLElement;
+    const steps = within(app).getAllByRole('listitem');
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toHaveTextContent(/Teilen/);
+    expect(steps[1]).toHaveTextContent(/Home-Bildschirm/);
+    expect(within(app).queryByRole('button', { name: 'App installieren' })).toBeNull();
     restore();
   });
 });

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Keine Verbindung · VoltPilot</title>
+    <!--
+      Die Seite, die die App zeigt, wenn beim Aufrufen einer Ansicht kein Netz da
+      ist. Sie ist die EINZIGE Datei, die der Service Worker im Vorrat haelt und
+      wirklich ausliefert.
+
+      Regeln (bitte einhalten, sie sind dieselben wie beim Boot-Skelett in
+      index.html):
+      - Vollstaendig SELBSTTRAGEND: kein externes Bild, keine Schriftdatei, kein
+        Bundle. Was hier nicht inline steht, waere offline schlicht nicht da.
+      - KEIN inline <script>: die Produktions-CSP ist `script-src 'self'` OHNE
+        'unsafe-inline' (der Login-Ausfall vom 17.07.2026). Der Knopf ist deshalb
+        ein echter Link auf "/" - kein `onclick`, kein `location.reload()`.
+        Inline <style> ist erlaubt (`style-src ... 'unsafe-inline'`).
+      - Farben sind aus designsystem/tokens/colors.css HART einkopiert
+        (--vp-grad-hero, --vp-surface, --vp-text-dark, --vp-text-gray,
+        --vp-border, --vp-action) - die Tokens selbst kommen erst mit dem
+        Stylesheet der App, das hier fehlt.
+      - Die Copy ist EHRLICH: die Anlage laeuft weiter, nur die Anzeige braucht
+        Netz. Nichts wird versprochen, was offline nicht geht.
+
+      Wer diese Datei aendert, hebt SW_VERSION in public/sw.js - sonst behaelt
+      ein Geraet die alte Fassung aus dem Vorrat.
+    -->
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        background: #ffffff;
+        color: #1a1a1a;
+        font-family:
+          'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .vp-strip {
+        height: 3px;
+        flex: none;
+        background: linear-gradient(135deg, #95b9ff 0%, #7ba3f7 50%, #5a8de8 100%);
+      }
+      .vp-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 20px max(20px, env(safe-area-inset-left)) 0
+          max(20px, env(safe-area-inset-right));
+        flex: none;
+      }
+      .vp-brand svg {
+        display: block;
+        width: 22px;
+        height: 22px;
+        flex: none;
+      }
+      .vp-word {
+        font-family:
+          'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        line-height: 1;
+        color: #000000;
+      }
+      main {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px max(20px, env(safe-area-inset-left))
+          max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-right));
+      }
+      .vp-card {
+        width: 100%;
+        max-width: 420px;
+        border: 1px solid #e9ecef;
+        border-radius: 16px;
+        padding: 28px 24px;
+        text-align: center;
+      }
+      .vp-ico {
+        width: 44px;
+        height: 44px;
+        margin: 0 auto 16px;
+        color: #6c757d;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-family:
+          'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          sans-serif;
+        font-size: 1.4rem;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0 0 8px;
+        font-size: 0.95rem;
+        line-height: 1.55;
+        color: #6c757d;
+      }
+      p.last {
+        margin-bottom: 22px;
+      }
+      .vp-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0 22px;
+        border-radius: 10px;
+        background: #2c5282;
+        color: #ffffff;
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .vp-btn:active {
+        opacity: 0.85;
+      }
+      .vp-btn:focus-visible {
+        outline: 3px solid #95b9ff;
+        outline-offset: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="vp-strip"></div>
+    <div class="vp-brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"
+          fill="#95b9ff"
+          stroke="#95b9ff"
+          stroke-width="2"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <span class="vp-word">VoltPilot</span>
+    </div>
+    <main>
+      <div class="vp-card">
+        <svg class="vp-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 2 22 22" />
+          <path d="M8.5 16.5a5 5 0 0 1 7 0" />
+          <path d="M2 8.82a15 15 0 0 1 4.17-2.65" />
+          <path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76" />
+          <path d="M16.85 11.25a10 10 0 0 1 2.22 1.68" />
+          <path d="M5 13a10 10 0 0 1 5.24-2.76" />
+          <path d="M12 20h.01" />
+        </svg>
+        <h1>Keine Verbindung</h1>
+        <p>
+          VoltPilot braucht Internet, um Ihnen die aktuellen Daten Ihrer Anlage zu
+          zeigen.
+        </p>
+        <p class="last">
+          Ihre Anlage arbeitet unabhängig davon weiter – sobald die Verbindung
+          zurück ist, sind Sie wieder im Bilde.
+        </p>
+        <a class="vp-btn" href="/">Erneut versuchen</a>
+      </div>
+    </main>
+  </body>
+</html>

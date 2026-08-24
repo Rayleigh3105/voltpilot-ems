@@ -10,6 +10,33 @@
     -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      App-Huelle (PWA). Mehr braucht es nicht, damit das Portal auf dem
+      Startbildschirm landet und dort im Vollbild startet:
+
+      - `manifest` traegt Name, Icons, `display: standalone` und `start_url: /`.
+      - `apple-touch-icon` ist der einzige Weg, dem iPhone ein Icon zu nennen -
+        es liest das Manifest dafuer nicht.
+      - `theme-color` faerbt die System-Leiste. #FFFFFF ist KEINE Willkuer: die
+        Kopfzeile der App ist `--vp-surface` (weiss), eine andere Farbe hier
+        erzeugte eine sichtbare Kante ueber ihr.
+      - `apple-mobile-web-app-status-bar-style: default` (schwarze Schrift auf
+        hellem Grund) ist die einzige richtige Wahl, solange NIRGENDS im CSS ein
+        `env(safe-area-inset-top)` steht: `black-translucent` schoebe den Inhalt
+        unter die Statusleiste, und die 68-px-Kopfzeile hat dafuer kein Polster.
+        Wer eines einbaut, darf diese Zeile neu bewerten.
+
+      Die Icons entstehen aus `public/favicon.svg` ueber `tools/gen-icons.mjs` -
+      wer die Marke aendert, fuehrt das Skript aus und hebt `SW_VERSION` in
+      `public/sw.js`.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="VoltPilot" />
     <title>VoltPilot EMS</title>
     <!--
       Sofort-Skelett gegen Chromes Paint-Holding (2026-08-01).

@@ -66,6 +66,7 @@ export const GROUP_LABEL: Record<SettingsGroupId, string> = {
   geraet: 'Mein Gerät',
   speicher: 'Mein Speicher',
   registrierung: 'Registrierung',
+  app: 'Als App auf dem Handy',
   loeschen: 'Anlage löschen',
 };
 
@@ -214,6 +215,23 @@ export const GLOSSAR: GlossarEntry[] = [
     group: 'registrierung',
     fachwort: 'Marktstammdatenregister (MaStR)',
     synonyms: ['mastr', 'marktstammdaten', 'register', 'see-nummer', 'registrierung', 'bnetza', 'kwp'],
+  },
+  {
+    id: 'app',
+    label: 'Als App auf dem Handy',
+    group: 'app',
+    synonyms: [
+      'app',
+      'installieren',
+      'startbildschirm',
+      'homescreen',
+      'handy',
+      'iphone',
+      'android',
+      'vollbild',
+      'symbol',
+      'verknuepfung',
+    ],
   },
   {
     id: 'loeschen',
