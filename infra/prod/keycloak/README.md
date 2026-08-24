@@ -16,6 +16,10 @@ Key points:
 - `voltpilot-frontend` has `directAccessGrantsEnabled=true` (same as dev): the portal's seamless post-registration auto-login mints tokens via the password grant on this public client.
 - `bruteForceProtected` is on (temporary lockout: 10 failures -> 60 s wait escalating to 15 min, never permanent) to bound password guessing at the token endpoint; support lifts a lock via the admin console's "Passwort zurücksetzen" (which also sets a new password).
   Like every realm change, these reach an EXISTING Keycloak volume only after a fresh import.
+- **Dauer-Login (Sitzungsdauern + Remember-Me).** `rememberMe: true` plus die vier Sitzungswerte: `ssoSessionIdleTimeout` 43200 (12 h) / `ssoSessionMaxLifespan` 86400 (24 h) und, sobald der Kunde "Angemeldet bleiben" anhakt, `ssoSessionIdleTimeoutRememberMe` 7776000 (90 Tage) / `ssoSessionMaxLifespanRememberMe` 15552000 (180 Tage).
+  `accessTokenLifespan` bleibt bei 900 s - die SSO-Sitzung ist das, was lange lebt, nicht das Zugriffs-Token (der Portal-Store erneuert es ohnehin per Refresh-Grant).
+  Das Häkchen auf der Anmeldeseite ist beim ersten Aufruf VORAB gesetzt; die Regel und ihre zwei Fallen stehen am Kästchen in `deploy/keycloak/themes/voltpilot/login/login.ftl`.
+  **⚠ Der LIVE-Realm wurde am 2026-08-24 von Hand in der Admin-Konsole nachgezogen, weil `start --import-realm` einen EXISTIERENDEN Realm NICHT überschreibt.** Diese Datei ist damit die Wahrheit für jeden FRISCHEN Import (neues Volume, CI/Testcontainers, ein weiterer Standort) - sie kann eine laufende Instanz weder ändern noch zurückdrehen.
 - The `realm-management` roles on the `voltpilot-api` service account and the declarative user profile (`tenant_id`, `ADMIN_EDIT`) are required for Portal-Admin user provisioning - same as dev.
   Keycloak 26 silently drops unmanaged attributes without the profile ("Account is not fully set up" on login).
 - **`edge-release-publisher` + the `voltpilot-release-publisher` client ship DISABLED.**

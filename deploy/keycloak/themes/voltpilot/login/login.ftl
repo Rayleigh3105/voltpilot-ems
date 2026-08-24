@@ -1,7 +1,7 @@
 <#--
   VoltPilot login page (Login-Screen Stufe 1, Konzept data/vp-login-screen-k3).
 
-  Die Karte selbst kommt aus template.ftl; hier steht nur ihr Inhalt. Vier
+  Die Karte selbst kommt aus template.ftl; hier steht nur ihr Inhalt. Fuenf
   Entscheidungen, die man beim Anfassen kennen muss:
 
   1. DIE FEHLERMELDUNG HAENGT AM PASSWORTFELD. `displayMessage` ist bei einem
@@ -27,6 +27,10 @@
   4. `usernameHidden` = Re-Authentifizierung. Das Konto steht dann fest (die
      Zeile dazu rendert template.ftl), gefragt wird nur das Passwort - also
      traegt die Karte auch einen anderen Titel.
+
+  5. "ANGEMELDET BLEIBEN" IST VORAB GESETZT, eine Abwahl ueberlebt aber den
+     Fehlversuch. Die Regel und die zwei Fallen, in die man dabei laeuft,
+     stehen am Kaestchen selbst.
 -->
 <#import "template.ftl" as layout>
 <@layout.registrationLayout displayMessage=!messagesPerField.existsError('username','password') displayInfo=false; section>
@@ -77,9 +81,26 @@
                 </#if>
             </div>
 
+            <#-- ⚠ DAS HAEKCHEN IST BEIM ERSTEN AUFRUF GESETZT, EINE ABWAHL UEBERLEBT
+                 ABER DEN FEHLVERSUCH. Die Regel ist `login.rememberMe?? || !hasError`:
+                 ohne Feldfehler ist die Seite FRISCH (Vorgabe an), mit Feldfehler ist
+                 sie ein Re-Render und spiegelt GENAU das, was abgeschickt wurde.
+                 `login.rememberMe` existiert naemlich nur, wenn das Kaestchen angehakt
+                 mitgesendet wurde - ein nacktes `<#if login.rememberMe??>` liesse das
+                 Haekchen also nie vorab gesetzt sein, und ein naives
+                 "checked, solange nichts uebernommen wurde" hakte eine ausdrueckliche
+                 Abwahl beim naechsten Fehlversuch still wieder an.
+                 ⚠ NICHT auf `login.username` umstellen: wer OHNE Benutzernamen
+                 abschickt, bekommt einen Feldfehler mit LEEREM `login.username` - die
+                 Seite laese sich als frisch und haette die Abwahl wieder kassiert.
+                 Umgekehrt fuellt Keycloak `login.username` auch bei einem `login_hint`
+                 auf einer wirklich frischen Seite (die Registrierungs-Rueckfallstrecke
+                 des Portals nutzt ihn), die Seite laese sich dann faelschlich als
+                 Re-Render. Ein bestehendes Remember-Me-COOKIE ist unberuehrt: Keycloak
+                 sendet dafuer selbst `rememberMe=on` mit, das Haekchen bleibt gesetzt. -->
             <#if realm.rememberMe && !usernameHidden??>
                 <label class="vpl-check">
-                    <input id="rememberMe" name="rememberMe" type="checkbox" <#if login.rememberMe??>checked</#if>>
+                    <input id="rememberMe" name="rememberMe" type="checkbox" <#if login.rememberMe?? || !hasError>checked</#if>>
                     ${msg("rememberMe")}
                 </label>
             </#if>
