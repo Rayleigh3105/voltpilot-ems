@@ -29,6 +29,15 @@
 #      live-measured 2026-08-04) and poisons the URL for hours - and the 404
 #      must never carry the immutable policy, or a deploy race (new index.html,
 #      old pod) would pin the miss for a year.
+#   9. the App-Huelle (PWA): /manifest.webmanifest, /sw.js, /offline.html and the
+#      icons -> no-cache + the security headers, exactly like the other unhashed
+#      files. A cached sw.js would pin the whole shell (the browser only updates
+#      a worker when its BYTES change), and an immutable manifest/icon would
+#      outlive a rebrand.
+#  10. the manifest carries `application/manifest+json` AND a hashed .css still
+#      carries text/css. nginx's `types` REPLACES the inherited map when it is
+#      declared on an inner level; the config adds the one mapping at the http
+#      level so it only ACCUMULATES - this check is the guard for that trap.
 #
 # Usage: test/cache-smoke.sh [image]
 #   Without an image argument, builds the portal Dockerfile first.
@@ -99,12 +108,48 @@ assert_no_cache "/anlage/00000000-0000-0000-0000-000000000000/steuerung"
 assert_no_cache "/favicon.svg"
 assert_no_cache "/silent-check-sso.js"
 
+# Check 9: the App-Huelle. Same policy as every other unhashed file - a cached
+# sw.js would pin the whole shell until its bytes change.
+for f in /manifest.webmanifest /sw.js /offline.html \
+         /icons/icon-192.png /icons/icon-512.png /icons/icon-maskable-512.png \
+         /icons/apple-touch-icon-180.png; do
+  assert_no_cache "$f"
+done
+
+# Check 10: the MIME trap. The manifest needs its own type, and adding it must
+# NOT have replaced the inherited mime.types map for everything else.
+MANIFEST_TYPE="$(header_of content-type "$(hdrs /manifest.webmanifest)")"
+case "$MANIFEST_TYPE" in
+  application/manifest+json*) pass "/manifest.webmanifest -> Content-Type: $MANIFEST_TYPE" ;;
+  *) fail "/manifest.webmanifest: expected application/manifest+json, got '${MANIFEST_TYPE:-<none>}'" ;;
+esac
+
 # Take the hashed bundles from the served index.html - never hardcode a hash.
 INDEX="$(req -fsS "$BASE/")"
 ASSETS="$(printf '%s' "$INDEX" | grep -oE '/assets/[A-Za-z0-9._-]+' | sort -u)"
 [ -n "$ASSETS" ] || fail "index.html references no /assets/* bundle - did the Vite output dir change?"
 for a in $ASSETS; do
   assert_immutable "$a"
+done
+
+# The other half of check 10: the shipped mime.types map is still intact. An
+# inner `types` block would have stripped these down to octet-stream.
+for a in $ASSETS; do
+  ATYPE="$(header_of content-type "$(hdrs "$a")")"
+  case "$a" in
+    *.css)
+      case "$ATYPE" in
+        text/css*) pass "$a -> Content-Type: $ATYPE" ;;
+        *) fail "$a: expected text/css, got '${ATYPE:-<none>}' - did a 'types' block replace mime.types?" ;;
+      esac
+      ;;
+    *.js)
+      case "$ATYPE" in
+        */javascript*) pass "$a -> Content-Type: $ATYPE" ;;
+        *) fail "$a: expected a javascript type, got '${ATYPE:-<none>}' - did a 'types' block replace mime.types?" ;;
+      esac
+      ;;
+  esac
 done
 
 # A vanished hashed bundle is a hard 404 (check 8). hdrs() cannot be reused

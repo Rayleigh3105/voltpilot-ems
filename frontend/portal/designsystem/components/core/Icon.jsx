@@ -295,6 +295,13 @@ const PATHS = {
       <circle cx="14" cy="18" r="2" />
     </>
   ),
+  // PWA-Huelle: die Gruppe "Als App auf dem Handy" (Lucide "smartphone").
+  smartphone: (
+    <>
+      <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+      <path d="M12 18h.01" />
+    </>
+  ),
   // Portal v3 M5: the code node in the flow palette (Lucide "code").
   code: (
     <>

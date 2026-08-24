@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -48,12 +48,19 @@ import {
   VERAEUSSERUNGSFORM_LABEL,
   VERAEUSSERUNGSFORM_TIP,
 } from '../glossar';
+import {
+  APP_GROUP_EXPLAIN,
+  APP_GROUP_SUMMARY,
+  installSnapshot,
+  subscribeInstallApp,
+} from '../installApp';
 import { protectionItems } from '../steuerungArea';
 import { LocationMap } from '../components/LocationMap';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
 import { InfoTip } from '../components/InfoTip';
+import { InstallAppPanel } from '../components/InstallAppPanel';
 import { MastrDrawer } from '../components/MastrDrawer';
 import { SettingRow } from '../components/SettingEditors';
 import { SettingsSearch } from '../components/SettingsSearch';
@@ -63,7 +70,7 @@ import './Einstellungen.css';
 /**
  * "Einstellungen" (Captain-Entscheid D2) - the gear subpage of the Anlage, the
  * calm, editorial page of what the plant *is* and how it should behave: a slim
- * left jump-navigation and six explained sections on the right. Four principles
+ * left jump-navigation and the explained sections on the right. Four principles
  * drive it: group by meaning (not DB table), read first + edit on demand,
  * collapse the installer jargon behind "Technische Details", and explain every
  * section in plain German with an info-tooltip per Fachbegriff.
@@ -99,13 +106,14 @@ import './Einstellungen.css';
  * Alle Regeln liegen rein in `settingsSurface.ts` + `glossar.ts`.
  */
 
-/** The six sections, in the concept's order; ids double as scroll anchors. */
+/** The sections, in the concept's order; ids double as scroll anchors. */
 const SECTIONS = [
   { key: 'anlage', icon: 'home' as IconName, label: 'Meine Anlage' },
   { key: 'geld', icon: 'euro' as IconName, label: 'Strompreis & Vergütung' },
   { key: 'geraet', icon: 'cpu' as IconName, label: 'Mein Gerät' },
   { key: 'speicher', icon: 'battery' as IconName, label: 'Mein Speicher' },
   { key: 'registrierung', icon: 'file-text' as IconName, label: 'Registrierung' },
+  { key: 'app', icon: 'smartphone' as IconName, label: 'Als App auf dem Handy' },
   { key: 'loeschen', icon: 'trash' as IconName, label: 'Anlage löschen', danger: true },
 ] as const;
 
@@ -336,6 +344,10 @@ export function TechnikSection({
   const [addDeviceOpen, setAddDeviceOpen] = useState(false);
 
   const isPhone = useIsPhone();
+  // Der Zustand der App-Einrichtung DIESES Geräts (PWA-Hülle). Er hängt am
+  // selben Speicher wie `InstallAppPanel` darin, damit die zugeklappte
+  // Telefon-Karte nie etwas anderes zusammenfasst als ihr Inhalt.
+  const installState = useSyncExternalStore(subscribeInstallApp, installSnapshot);
   const activeSection = useScrollSpy(
     SECTIONS.map((s) => s.key),
     !isPhone,
@@ -879,6 +891,24 @@ export function TechnikSection({
     </TechCard>
   );
 
+  // --- Section: Als App auf dem Handy (PWA-Hülle) --------------------------
+  // Die Gruppe steht auf JEDER Anlage, weil die Einrichtung dem GERÄT gilt und
+  // nicht der Anlage; die Einstellungs-Seite ist ihr natürlicher Ort. Der
+  // Zustand kommt aus demselben Speicher wie die Fläche darin - die
+  // zugeklappte Telefon-Karte darf nichts anderes zusammenfassen, als sie
+  // aufgeklappt zeigt.
+  const appCard = (
+    <TechCard
+      key="app"
+      section={sectionOf('app')}
+      deepLinked={opened('app')}
+      explain={APP_GROUP_EXPLAIN}
+      summary={APP_GROUP_SUMMARY[installState]}
+    >
+      <InstallAppPanel />
+    </TechCard>
+  );
+
   // --- Section: Anlage löschen --------------------------------------------
   const loeschenCard = (
     <TechCard
@@ -927,6 +957,7 @@ export function TechnikSection({
         {geraetCard}
         {speicherCard}
         {registrierungCard}
+        {appCard}
         {loeschenCard}
         {/* E4 · Stufe ③: was ganz ohne Einstellung mitläuft. Derselbe
             Schutz-Streifen wie auf der Steuerung, aus derselben einen
