@@ -390,12 +390,13 @@ services:
       # 'false' (getrennt vom Wechselrichter-Not-Aus). Siehe Runbook
       # docs/verbrauchssteuerung-betrieb.md.
       VP_CONSUMER_CONTROL_ENABLED: \${VP_CONSUMER_CONTROL_ENABLED:-false}
-      # OCPP-Ladepunkte (Lastmanagement). Vorgabe AUS: ohne diesen Schalter
-      # bindet die Box keinen Websocket-Server und verhaelt sich zeichengleich
-      # wie vor dem Feature. Der Zugangs-Zaun ist die Freigabeliste der
-      # Charge-Point-Kennungen; die LEBENDE Zuteilung braucht zusaetzlich
+      # OCPP-Ladepunkte (Lastmanagement). Vorgabe AN (seit 24.08.2026): eine
+      # Ladesaeule anzubinden soll keinen .env-Schritt am Geraet kosten. Es
+      # bleibt ein OPT-OUT ('false' schaltet den Server ab). Der Zugangs-Zaun
+      # ist die Freigabeliste der Charge-Point-Kennungen - eine frische Box hat
+      # eine LEERE Liste; die LEBENDE Zuteilung braucht zusaetzlich
       # VP_CONTROL_ENABLED und VP_CONSUMER_CONTROL_ENABLED.
-      VP_OCPP_ENABLED: \${VP_OCPP_ENABLED:-false}
+      VP_OCPP_ENABLED: \${VP_OCPP_ENABLED:-true}
       # LAN-Port, auf dem die Ladesaeulen die Box anwaehlen (muss mit dem
       # Port-Mapping unten uebereinstimmen).
       VP_OCPP_PORT: \${VP_OCPP_PORT:-8887}
@@ -423,7 +424,8 @@ services:
       - "\${VP_MIRROR_PORT:-502}:1502"
       # OCPP: die Ladesaeulen waehlen die Box hier an
       # (ws://<box>:8887/ocpp/<Kennung>). LAN-only wie :8484 - nie oeffentlich
-      # erreichbar machen. Ohne VP_OCPP_ENABLED lauscht nichts.
+      # erreichbar machen. Der Server laeuft per Vorgabe; wer sich verbinden
+      # darf, entscheidet die Freigabeliste.
       - "\${VP_OCPP_PORT:-8887}:8887"
 
   nodered:

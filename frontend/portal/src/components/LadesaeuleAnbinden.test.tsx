@@ -7,6 +7,7 @@ import { LadesaeuleAnbinden } from './LadesaeuleAnbinden';
 const chargingConfig = vi.fn();
 const siteChargers = vi.fn();
 const admitChargePoint = vi.fn();
+const removeChargePoint = vi.fn();
 
 vi.mock('../api', async () => {
   const actual = await vi.importActual<typeof import('../api')>('../api');
@@ -16,6 +17,7 @@ vi.mock('../api', async () => {
       chargingConfig: (...a: unknown[]) => chargingConfig(...a),
       siteChargers: (...a: unknown[]) => siteChargers(...a),
       admitChargePoint: (...a: unknown[]) => admitChargePoint(...a),
+      removeChargePoint: (...a: unknown[]) => removeChargePoint(...a),
     },
   };
 });
@@ -46,6 +48,7 @@ beforeEach(() => {
     ...LEER,
     chargePoints: [{ chargePointId: 'hof-nord', label: 'Hof Nord' }],
   });
+  removeChargePoint.mockResolvedValue({ ...LEER, removedChargePointIds: ['halle'] });
 });
 
 function mount(device: Device | undefined = BOX) {
@@ -135,9 +138,9 @@ describe('LadesaeuleAnbinden', () => {
     expect(await screen.findAllByText('Verbunden')).toHaveLength(2);
   });
 
-  it('erklärt die fehlende Lösch-Tür', async () => {
+  it('sagt, ab wann eine Rücknahme wirkt', async () => {
     mount();
-    expect(await screen.findByText(/nicht wieder entfernt/)).toBeTruthy();
+    expect(await screen.findByText(/das nächste Mal verbunden/)).toBeTruthy();
   });
 
   it('zeigt die schon eingetragenen Kennungen mit ihrem Zustand', async () => {
@@ -149,5 +152,35 @@ describe('LadesaeuleAnbinden', () => {
     expect(await screen.findByText('Halle')).toBeTruthy();
     expect(screen.getByText('halle')).toBeTruthy();
     expect(screen.getAllByText('Wartet auf die Säule').length).toBeGreaterThan(0);
+  });
+
+  it('entfernt eine Kennung erst NACH der Rückfrage - und nennt vorher die Folgen', async () => {
+    chargingConfig.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'halle', label: 'Halle' }],
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Halle.*entfernen/ }));
+
+    // ⚠ Der erste Klick entfernt NICHTS - er fragt.
+    expect(removeChargePoint).not.toHaveBeenCalled();
+    expect(screen.getByText(/endet dadurch NICHT/)).toBeTruthy();
+    expect(screen.getByText(/jederzeit wieder eintragen/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kennung entfernen' }));
+    await waitFor(() => expect(removeChargePoint).toHaveBeenCalledWith('s1', 'halle'));
+    await waitFor(() => expect(screen.queryByText('Halle')).toBeNull());
+  });
+
+  it('lässt Abbrechen wirklich abbrechen', async () => {
+    chargingConfig.mockResolvedValue({
+      ...LEER,
+      chargePoints: [{ chargePointId: 'halle', label: 'Halle' }],
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Halle.*entfernen/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    expect(removeChargePoint).not.toHaveBeenCalled();
+    expect(screen.getByText('Halle')).toBeTruthy();
   });
 });

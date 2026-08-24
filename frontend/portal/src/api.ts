@@ -2659,6 +2659,21 @@ export const api = {
       body: JSON.stringify(body),
     }),
   /**
+   * Nimmt EINE eingetragene Ladepunkt-Kennung zurück.
+   *
+   * ⚠ Es ist ein DELETE auf GENAU EINE Kennung, nie ein Setzen der ganzen
+   * Liste: die Rücknahme hat Folgen für eine laufende Anlage (die Säule wird
+   * getrennt und ein Wiederverbinden abgewiesen), und die soll niemand als
+   * Nebenwirkung eines Speicherns auslösen können. Sie reist als GRABSTEIN in
+   * jedem folgenden Dokument an die Box mit, bis die Kennung wieder eingetragen
+   * wird - ein blosses Weglassen wäre kein Löschen.
+   */
+  removeChargePoint: (siteId: string, chargePointId: string) =>
+    request<ChargingConfig>(
+      `/api/v1/sites/${siteId}/charging-config/charge-points/${encodeURIComponent(chargePointId)}`,
+      { method: 'DELETE' },
+    ),
+  /**
    * „Jetzt voll laden": nimmt EINEN laufenden Ladevorgang von der
    * Überschuss-Priorität aus, damit er auch Netzstrom ziehen darf.
    *

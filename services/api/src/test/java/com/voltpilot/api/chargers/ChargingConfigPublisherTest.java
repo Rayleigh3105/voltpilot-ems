@@ -44,8 +44,14 @@ class ChargingConfigPublisherTest {
 
     private JsonNode doc(Double gridLimitKw, List<String> priorities, String policy,
             String storage, List<AllowedChargePointDto> chargePoints) throws Exception {
+        return doc(gridLimitKw, priorities, policy, storage, chargePoints, null);
+    }
+
+    private JsonNode doc(Double gridLimitKw, List<String> priorities, String policy,
+            String storage, List<AllowedChargePointDto> chargePoints, List<String> removed)
+            throws Exception {
         return json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE,
-                gridLimitKw, priorities, policy, storage, chargePoints, AT),
+                gridLimitKw, priorities, policy, storage, chargePoints, removed, AT),
                 StandardCharsets.UTF_8));
     }
 
@@ -92,7 +98,7 @@ class ChargingConfigPublisherTest {
         // Ganze Zahlen bleiben ganz: 277, nicht 277.0 - das Dokument wird auch
         // von Menschen gelesen.
         assertThat(new String(ChargingConfigPublisher.document(TENANT, SITE, DEVICE, 277.0, null,
-                null, null, null, AT), StandardCharsets.UTF_8))
+                null, null, null, null, AT), StandardCharsets.UTF_8))
                 .contains("\"grid_limit_kw\":277,");
     }
 
@@ -189,7 +195,7 @@ class ChargingConfigPublisherTest {
                 DEVICE, 277.0, null, null, null,
                 List.of(cp("saeule-hof-nord", "Hof Nord", 22.0, 2), cp("saeule-halle", null, null,
                         null)),
-                Instant.parse("2026-08-21T09:15:00Z")), StandardCharsets.UTF_8));
+                null, Instant.parse("2026-08-21T09:15:00Z")), StandardCharsets.UTF_8));
         assertThat(actual).isEqualTo(expected);
         // ⚠ Das Dokument nennt KEIN `priority` - der Vorrang wird allein ueber
         // `priority_charge_point_ids` gestellt (das ist eine MENGE und damit die
@@ -198,5 +204,47 @@ class ChargingConfigPublisherTest {
         // an, also traegt eine gerade eingetragene Saeule den Vorrang desselben
         // Dokuments schon.
         assertThat(actual.get("charge_points").get(0).has("priority")).isFalse();
+    }
+
+    /**
+     * ⚠ Die GRABSTEIN-Liste ist die einzige Art, ein Löschen auszudrücken - eine
+     * Kennung in {@code charge_points} wegzulassen ist keines. Abwesend/leer
+     * wird deshalb WEGGELASSEN (ein leeres Array behauptete eine Rücknahme, die
+     * niemand ausgesprochen hat), und eine echte Rücknahme reist mit.
+     */
+    @Test
+    void aRemovalIsSaidExplicitlyAndAnEmptyOneIsOmitted() throws Exception {
+        assertThat(doc(277.0, null, null, null, null, null).has("removed_charge_point_ids"))
+                .as("abwesend heißt „das Portal äußert sich nicht\"").isFalse();
+        assertThat(doc(277.0, null, null, null, null, List.of())
+                .has("removed_charge_point_ids"))
+                .as("eine leere Liste behauptete eine Rücknahme, die es nicht gab").isFalse();
+
+        JsonNode d = doc(277.0, null, null, null, List.of(cp("saeule-1", null, null, null)),
+                List.of("saeule-2"));
+        assertThat(d.get("removed_charge_point_ids")).hasSize(1);
+        assertThat(d.get("removed_charge_point_ids").get(0).asText()).isEqualTo("saeule-2");
+        // Beide Listen stehen nebeneinander, und keine Kennung ist in beiden.
+        assertThat(d.get("charge_points").get(0).get("id").asText()).isEqualTo("saeule-1");
+    }
+
+    /** Auch eine zurückgenommene Kennung ist Fremdtext - der Rahmen hält. */
+    @Test
+    void aRemovedChargePointIdCannotBreakOutOfTheDocument() throws Exception {
+        JsonNode d = doc(null, null, null, null, null, List.of("sae\"ule\n1"));
+        assertThat(d.get("removed_charge_point_ids").get(0).asText()).isEqualTo("sae\"ule\n1");
+    }
+
+    /** Die dritte eingecheckte Fixture, Feld für Feld - per PFAD gelesen. */
+    @Test
+    void theRemovalDocumentMatchesTheContractFixture() throws Exception {
+        Path fixture = Path.of("..", "..", "docs", "contracts", "examples",
+                "mqtt-charging-config.valid.saeule-entfernen.json");
+        JsonNode expected = json.readTree(Files.readString(fixture));
+        JsonNode actual = json.readTree(new String(ChargingConfigPublisher.document(TENANT, SITE,
+                DEVICE, 277.0, null, null, null,
+                List.of(cp("saeule-hof-nord", "Hof Nord", null, null)), List.of("saeule-halle"),
+                Instant.parse("2026-08-24T10:05:00Z")), StandardCharsets.UTF_8));
+        assertThat(actual).isEqualTo(expected);
     }
 }

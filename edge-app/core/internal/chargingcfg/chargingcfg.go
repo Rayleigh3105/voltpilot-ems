@@ -72,11 +72,28 @@ type Config struct {
 	// ChargePoints are the station identifiers the portal wants ADMITTED.
 	//
 	// ⚠ nil and an EMPTY list mean the same thing here, and that is deliberate:
-	// this list only ever ADDS. Removing an identifier throws a station off the
-	// broker on its next connect - a decision with consequences for a running
-	// plant - so it stays an explicit act at the device. An empty list is
-	// therefore not the assertion "no station" the priority set is.
+	// this list only ever ADDS. LEAVING AN ID OUT IS NOT A REMOVAL - a removal
+	// is said explicitly, in RemovedChargePoints below.
 	ChargePoints []ChargePoint
+
+	// RemovedChargePoints are the identifiers the portal wants taken OUT of the
+	// allowlist (Captain-Order 24.08.2026: "Ebenso will ich die moeglichkeit
+	// haben eingebene kennungen zu loeschen").
+	//
+	// ⚠ It is a SEPARATE list, not a flag inside ChargePoints, and that is what
+	// keeps an OLDER box honest: it does not know this field, overreads it and
+	// KEEPS the station - the previous state, never a wrong action. A `removed`
+	// flag inside a ChargePoint entry would have made an older box ADMIT the
+	// very id the customer just deleted.
+	//
+	// ⚠ It is a TOMBSTONE list and travels in EVERY following document, not
+	// once: the retained payload is replaced wholesale, so a removal named a
+	// single time would never reach a box that happened to be offline.
+	//
+	// An id the box does not (or no longer) know is a silent no-op. An id in
+	// BOTH lists is a contradiction the document should never carry; if it does,
+	// the REMOVAL wins - the direction that admits less.
+	RemovedChargePoints []string
 }
 
 // ChargePoint is one entry of the allowlist. Only `ID` is required; the rest is
@@ -100,6 +117,7 @@ type wire struct {
 	SurplusPolicy   *string   `json:"surplus_policy"`
 	StoragePriority *string   `json:"storage_priority"`
 	ChargePoints    []wireCP  `json:"charge_points"`
+	Removed         []string  `json:"removed_charge_point_ids"`
 	PublishedAt     string    `json:"published_at"`
 }
 
@@ -191,6 +209,35 @@ func Parse(payload []byte) (Config, error) {
 			ID: id, Label: strings.TrimSpace(cp.Label), Priority: cp.Priority,
 			RatedKw: cp.RatedKw, Connectors: cp.Connectors,
 		})
+	}
+	if len(w.Removed) > MaxChargePoints {
+		return Config{}, fmt.Errorf("das Dokument nennt %d zu entfernende Ladesäulen - höchstens %d sind erlaubt",
+			len(w.Removed), MaxChargePoints)
+	}
+	for _, raw := range w.Removed {
+		// Dieselbe Nachsicht wie oben: eine unbrauchbare Zeile wird
+		// ÜBERSPRUNGEN, nicht zum Abbruch - das ganze Dokument daran scheitern
+		// zu lassen kostete die Anschlussgrenze mit.
+		id := strings.TrimSpace(raw)
+		if id == "" || contains(cfg.RemovedChargePoints, id) {
+			continue
+		}
+		cfg.RemovedChargePoints = append(cfg.RemovedChargePoints, id)
+	}
+	// ⚠ Der Widerspruch wird HIER aufgelöst, nicht beim Anwender: eine Kennung,
+	// die zugleich zugelassen und entfernt werden soll, fällt aus der
+	// Zulassungs-Liste. Die Löschung gewinnt - die Richtung, die weniger
+	// zulässt. Das Portal sendet den Fall nie; ein Dokument aus einer anderen
+	// Quelle darf ihn nicht in eine Zulassung drehen.
+	if len(cfg.RemovedChargePoints) > 0 && len(cfg.ChargePoints) > 0 {
+		kept := cfg.ChargePoints[:0]
+		for _, cp := range cfg.ChargePoints {
+			if contains(cfg.RemovedChargePoints, cp.ID) {
+				continue
+			}
+			kept = append(kept, cp)
+		}
+		cfg.ChargePoints = kept
 	}
 	return cfg, nil
 }

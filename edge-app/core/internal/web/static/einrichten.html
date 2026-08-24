@@ -508,15 +508,21 @@
          Die Richtung ist umgedreht und der erste Satz sagt es: die Ladesäule
          wählt die BOX an. Deshalb zeigt die Box hier eine Adresse und eine
          Kennung zum Kopieren - und trägt die Kennung vorher ein, damit eine
-         fremde Säule gar nicht erst hereinkommt. Ohne VP_OCPP_ENABLED
-         erscheint die Gruppe GAR NICHT.
+         fremde Säule gar nicht erst hereinkommt.
 
          ⚠ Sie ist die einzige BEDINGTE Gruppe der Seite und wird deshalb
          `hidden` ausgeliefert: die vier festen Gruppen sind die Zusage der
          Seite ("eine fertig eingerichtete gesunde Anlage zeigt vier ruhige
          Zeilen"), und eine fünfte Zeile auf jeder Anlage OHNE Ladesäulen wäre
-         genau das Rauschen, das der Umbau beseitigt hat. ocpp.js blendet sie
-         ein, sobald die Box wirklich Ladepunkte annimmt. -->
+         genau das Rauschen, das der Umbau beseitigt hat.
+
+         ⚠ Seit VP_OCPP_ENABLED per Vorgabe AN ist (24.08.2026) ist "der
+         Server läuft" KEIN Signal mehr - es gilt auf jeder Box. Eingeblendet
+         wird sie von ocpp.js erst, wenn es wirklich Ladepunkte GIBT (eine
+         eingetragene Kennung oder eine gemeldete Säule) - oder wenn der
+         Deep-Link #ladepunkte ausdrücklich hierher zeigt, denn sonst gäbe es
+         lokal keinen Weg zur ersten Säule. Die Regel steht in
+         VPOcpp.zeigeGruppe und ist ohne Browser prüfbar. -->
     <div class="acc-group" id="ladepunkte" data-group="ladepunkte" hidden>
       <h2 class="acc-h">
         <button type="button" class="card acc-head" aria-expanded="false" aria-controls="ladepunkteBody">

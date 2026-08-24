@@ -110,9 +110,8 @@ func TestThePriorityListIsCleanedNotRejected(t *testing.T) {
 }
 
 // Die Allowlist FUEGT NUR HINZU, und deshalb sind abwesend und leer hier
-// dasselbe - anders als bei der Vorrang-Liste. Eine Kennung zu entfernen wirft
-// eine Saeule beim naechsten Verbindungsaufbau vom Broker; das bleibt eine
-// ausdrueckliche Handlung am Geraet.
+// dasselbe - anders als bei der Vorrang-Liste. Ein WEGLASSEN ist kein Loeschen;
+// wer loeschen will, sagt es in removed_charge_point_ids.
 func TestTheAllowlistOnlyEverAddsSoAbsentAndEmptyAreTheSame(t *testing.T) {
 	absent, err := Parse(doc(`,"grid_limit_kw":277`))
 	if err != nil {
@@ -233,6 +232,20 @@ func TestTheContractFixturesParseExactlyAsSpecified(t *testing.T) {
 		t.Fatalf("zweite Saeule = %+v", cfg3.ChargePoints[1])
 	}
 
+	remove := mustRead(t, filepath.Join(dir, "mqtt-charging-config.valid.saeule-entfernen.json"))
+	cfg4, err := Parse(remove)
+	if err != nil {
+		t.Fatalf("die Loesch-Fixture muss parsen: %v", err)
+	}
+	if len(cfg4.RemovedChargePoints) != 1 || cfg4.RemovedChargePoints[0] != "saeule-halle" {
+		t.Fatalf("removed = %v", cfg4.RemovedChargePoints)
+	}
+	// Sie zeigt beides nebeneinander: die eine bleibt zugelassen, die andere
+	// geht - und keine Kennung steht je in beiden Listen.
+	if len(cfg4.ChargePoints) != 1 || cfg4.ChargePoints[0].ID != "saeule-hof-nord" {
+		t.Fatalf("allowlist = %+v", cfg4.ChargePoints)
+	}
+
 	invalid := mustRead(t, filepath.Join(dir, "mqtt-charging-config.invalid.grenze-null.json"))
 	if _, err := Parse(invalid); err == nil {
 		t.Fatal("die ungueltige Fixture muss abgelehnt werden")
@@ -252,4 +265,66 @@ func mustRead(t *testing.T, path string) []byte {
 		t.Fatalf("Fixture %s: %v", path, err)
 	}
 	return b
+}
+
+// Das Loeschen ist eine EIGENE, ausdrueckliche Aussage - genau deshalb kann ein
+// Weglassen in charge_points keine Saeule vom Broker werfen.
+func TestARemovalIsSaidExplicitlyAndAnAbsentListSaysNothing(t *testing.T) {
+	absent, err := Parse(doc(`,"charge_points":[{"id":"saeule-1"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if absent.RemovedChargePoints != nil {
+		t.Fatalf("ohne das Feld wird nichts entfernt: %v", absent.RemovedChargePoints)
+	}
+
+	cfg, err := Parse(doc(`,"charge_points":[{"id":"saeule-1"}]` +
+		`,"removed_charge_point_ids":[" saeule-2 ","saeule-2",""]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.RemovedChargePoints) != 1 || cfg.RemovedChargePoints[0] != "saeule-2" {
+		t.Fatalf("removed = %v (getrimmt, ohne Duplikate, ohne Leerzeilen)", cfg.RemovedChargePoints)
+	}
+	if len(cfg.ChargePoints) != 1 || cfg.ChargePoints[0].ID != "saeule-1" {
+		t.Fatalf("die Zulassung darf davon unberuehrt bleiben: %+v", cfg.ChargePoints)
+	}
+}
+
+// ⚠ Eine Kennung in BEIDEN Listen ist ein Widerspruch, den das Portal nie
+// sendet. Trifft die Box ihn doch, GEWINNT DIE LOESCHUNG - die Richtung, die
+// weniger zulaesst. Aufgeloest wird er HIER, nicht beim Anwender.
+func TestOnAContradictionTheRemovalWins(t *testing.T) {
+	cfg, err := Parse(doc(`,"charge_points":[{"id":"saeule-1"},{"id":"saeule-2"}]` +
+		`,"removed_charge_point_ids":["saeule-2"]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.ChargePoints) != 1 || cfg.ChargePoints[0].ID != "saeule-1" {
+		t.Fatalf("die widersprochene Kennung darf nicht zugelassen werden: %+v", cfg.ChargePoints)
+	}
+	if len(cfg.RemovedChargePoints) != 1 || cfg.RemovedChargePoints[0] != "saeule-2" {
+		t.Fatalf("removed = %v", cfg.RemovedChargePoints)
+	}
+}
+
+// Der Deckel ist auch hier eine Ablehnung, nie eine stille Kappung: was hier
+// wegfiele, bliebe auf der Box zugelassen, waehrend das Portal es als geloescht
+// zeigte.
+func TestTooManyRemovalsAreRefused(t *testing.T) {
+	var sb []byte
+	sb = append(sb, `,"removed_charge_point_ids":[`...)
+	for i := 0; i <= MaxChargePoints; i++ {
+		if i > 0 {
+			sb = append(sb, ',')
+		}
+		sb = append(sb, `"s`...)
+		sb = append(sb, []byte(string(rune('a'+i%26)))...)
+		sb = append(sb, []byte(string(rune('0'+i/26)))...)
+		sb = append(sb, '"')
+	}
+	sb = append(sb, ']')
+	if _, err := Parse(doc(string(sb))); err == nil {
+		t.Fatalf("mehr als %d Loeschungen muessen abgelehnt werden", MaxChargePoints)
+	}
 }

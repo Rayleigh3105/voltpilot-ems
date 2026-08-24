@@ -952,10 +952,11 @@ paths:
 
         Es ist ein POST, kein PUT, und das ist die Aussage: die Liste fügt nur
         hinzu. Ein PUT lüde dazu ein, sie als Ganzes zu setzen - und damit einen
-        Eintrag zu ENTFERNEN, was die Säule beim nächsten Verbindungsaufbau vom
-        Broker würfe. Löschen bleibt eine ausdrückliche Handlung am Gerät.
+        Eintrag durch WEGLASSEN zu entfernen. Eine Kennung zurückzunehmen ist
+        eine eigene, ausdrückliche Handlung (DELETE auf genau diese Kennung).
         Dieselbe Kennung erneut einzutragen ist ein No-op, das nur die
-        Betreiber-Angaben auffrischt. RLS-gefenced (fremde Anlage 404).
+        Betreiber-Angaben auffrischt - und eine zurückgenommene Kennung wird
+        dadurch WIEDER eingetragen. RLS-gefenced (fremde Anlage 404).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -986,6 +987,42 @@ paths:
         "400": { description: Unzulässige Kennung, unplausible Angabe oder Deckel erreicht (deutscher Grund im Körper). }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/charging-config/charge-points/{chargePointId}:
+    delete:
+      tags: [sites]
+      summary: Eine eingetragene Ladepunkt-Kennung zurücknehmen.
+      description: >
+        Nimmt GENAU EINE ChargePointId aus der Allowlist der Anlage und schickt
+        die Rücknahme als retained Dokument an die Box (Feld
+        `removed_charge_point_ids` im Kontrakt
+        `mqtt-charging-config.schema.json`).
+
+
+        DIE FOLGE AM GERÄT: die Säule wird getrennt und ein Wiederverbinden
+        abgewiesen. Ihr zuletzt hinterlegtes Sicherheitsprofil behält sie - es
+        liegt IN der Säule -, ein laufender Ladevorgang endet dadurch also
+        nicht, er fällt auf dieses Profil zurück.
+
+
+        SIE IST EIN GRABSTEIN, KEIN LÖSCHEN: das retained Dokument wird als
+        Ganzes ersetzt, also würde eine Kennung nur wegzulassen von einer Box,
+        die gerade offline war, nie gesehen (`charge_points` fügt nur hinzu).
+        Die Rücknahme wird deshalb dauerhaft geführt und in JEDEM folgenden
+        Dokument genannt, bis die Kennung wieder eingetragen wird. Eine ÄLTERE
+        Box kennt das Feld nicht und behält die Kennung - der Vorzustand, nie
+        eine falsche Handlung; die Rücknahme wirkt dort erst nach dem nächsten
+        Edge-Release. RLS-gefenced (fremde Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: chargePointId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration ohne diese Kennung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage unbekannt, oder diese Kennung ist hier nicht eingetragen (deutscher Grund im Körper). }
   /api/v1/sites/{siteId}/charging-boost:
     post:
       tags: [sites]
@@ -9134,12 +9171,22 @@ components:
           description: >
             Die ALLOWLIST: die Kennungen, unter denen die Box eine Säule
             überhaupt annimmt. Sie FÜGT NUR HINZU - die Box übernimmt jeden
-            Eintrag, den sie noch nicht kennt, überschreibt keinen bestehenden
-            und entfernt NIE einen; eine Kennung zu löschen wirft die Säule beim
-            nächsten Verbindungsaufbau vom Broker und bleibt eine ausdrückliche
-            Handlung am Gerät. Eine leere Liste ist hier deshalb - anders als
-            beim Vorrang - keine Aussage „keine Säule".
+            Eintrag, den sie noch nicht kennt, und überschreibt keinen
+            bestehenden; eine Kennung hier WEGZULASSEN ist kein Löschen (das
+            sagt `removedChargePointIds` ausdrücklich). Eine leere Liste ist
+            hier deshalb - anders als beim Vorrang - keine Aussage „keine
+            Säule".
           items: { $ref: "#/components/schemas/AllowedChargePoint" }
+        removedChargePointIds:
+          type: array
+          description: >
+            Die ZURÜCKGENOMMENEN Kennungen - die GRABSTEIN-Liste. Sie reist in
+            JEDEM folgenden Dokument an die Box mit, nicht einmal: das retained
+            Dokument wird als Ganzes ersetzt, also hätte eine nur einmal
+            genannte Löschung eine gerade offline gewesene Box nie erreicht.
+            Eine Kennung steht nie zugleich in `chargePoints` - ein erneutes
+            Eintragen belebt sie wieder und nimmt sie hier heraus.
+          items: { type: string }
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
     AllowedChargePoint:

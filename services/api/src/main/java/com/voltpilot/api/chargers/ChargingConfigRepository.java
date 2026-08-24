@@ -23,6 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class ChargingConfigRepository {
 
+    /** Der Deckel des Kontrakts fuer die Grabstein-Liste. */
+    private static final int MAX_REMOVED = 64;
+
     private final JdbcTemplate jdbc;
 
     public ChargingConfigRepository(JdbcTemplate jdbc) {
@@ -43,14 +46,15 @@ public class ChargingConfigRepository {
                         + "ORDER BY charge_point_id",
                 (rs, n) -> rs.getString("charge_point_id"), siteId);
         List<AllowedChargePointDto> allowed = allowlist(siteId);
+        List<String> removed = removedChargePointIds(siteId);
         if (head.isEmpty()) {
             return new ChargingConfigDto(null, List.copyOf(priorities), null, null, allowed,
-                    null, null);
+                    removed, null, null);
         }
         Object[] row = head.get(0);
         Timestamp at = (Timestamp) row[1];
         return new ChargingConfigDto((Double) row[0], List.copyOf(priorities),
-                (String) row[3], (String) row[4], allowed,
+                (String) row[3], (String) row[4], allowed, removed,
                 at == null ? null : at.toInstant(), (String) row[2]);
     }
 
@@ -59,7 +63,7 @@ public class ChargingConfigRepository {
         return List.copyOf(jdbc.query(
                 "SELECT charge_point_id, label, rated_kw, connectors, added_at, added_by "
                         + "FROM site_charge_point_allowlist WHERE site_id = ? "
-                        + "ORDER BY added_at, charge_point_id",
+                        + "AND removed_at IS NULL ORDER BY added_at, charge_point_id",
                 (rs, n) -> new AllowedChargePointDto(rs.getString("charge_point_id"),
                         rs.getString("label"), (Double) rs.getObject("rated_kw"),
                         (Integer) rs.getObject("connectors"),
@@ -70,12 +74,29 @@ public class ChargingConfigRepository {
     }
 
     /**
+     * Die zurueckgenommenen Kennungen dieser Anlage - die GRABSTEIN-Liste, die
+     * in jedem folgenden Dokument mitreist (neueste zuerst).
+     *
+     * <p>⚠ Sie ist gedeckelt wie die Allowlist selbst: der Kontrakt traegt
+     * hoechstens so viele Zeilen, und was hier still wegfiele, kaeme bei der Box
+     * nie an. Gekappt wird deshalb die AELTESTE Ruecknahme - eine Loeschung, die
+     * so lange her ist, hat jede lebende Box laengst gesehen.
+     */
+    public List<String> removedChargePointIds(UUID siteId) {
+        return List.copyOf(jdbc.query(
+                "SELECT charge_point_id FROM site_charge_point_allowlist WHERE site_id = ? "
+                        + "AND removed_at IS NOT NULL ORDER BY removed_at DESC, charge_point_id "
+                        + "LIMIT " + MAX_REMOVED,
+                (rs, n) -> rs.getString("charge_point_id"), siteId));
+    }
+
+    /**
      * Traegt eine Kennung ein bzw. frischt ihre Angaben auf.
      *
-     * <p>⚠ Es gibt hier bewusst KEIN Loeschen. Eine Kennung zu entfernen wirft
-     * die Saeule beim naechsten Verbindungsaufbau vom Broker - eine Entscheidung
-     * mit Folgen fuer eine laufende Anlage, und die bleibt eine ausdrueckliche
-     * Handlung am Geraet (dieselbe Regel, die auch die Box selbst fuehrt).
+     * <p>⚠ Ein erneutes Eintragen BELEBT eine zurueckgenommene Zeile wieder
+     * ({@code removed_at = NULL}) - sie verschwindet damit aus der
+     * Grabstein-Liste und steht wieder in {@code charge_points}. Eine Kennung
+     * steht deshalb nie in beiden Listen.
      */
     @Transactional
     public void admitChargePoint(UUID tenantId, UUID siteId, String chargePointId, String label,
@@ -86,9 +107,31 @@ public class ChargingConfigRepository {
                 + "label = COALESCE(EXCLUDED.label, site_charge_point_allowlist.label), "
                 + "rated_kw = COALESCE(EXCLUDED.rated_kw, site_charge_point_allowlist.rated_kw), "
                 + "connectors = COALESCE(EXCLUDED.connectors, "
-                + "site_charge_point_allowlist.connectors)",
+                + "site_charge_point_allowlist.connectors), "
+                + "removed_at = NULL, removed_by = NULL",
                 siteId, chargePointId, tenantId, label, ratedKw, connectors,
                 Timestamp.from(Instant.now()), actor);
+    }
+
+    /**
+     * Nimmt eine Kennung zurueck - als GRABSTEIN, nicht als Loeschung.
+     *
+     * <p>⚠ Die Zeile BLEIBT stehen. Das retained Dokument wird als Ganzes
+     * ersetzt, also wuerde eine Kennung nur wegzulassen von einer Box, die
+     * gerade offline war, nie gesehen ({@code charge_points} fuegt nur hinzu).
+     * Die Ruecknahme muss deshalb dauerhaft gefuehrt und in jedem folgenden
+     * Dokument genannt werden.
+     *
+     * <p>Idempotent: eine schon zurueckgenommene Kennung behaelt ihren ersten
+     * Stempel (die Papier-Spur nennt, wer sie WIRKLICH entfernt hat).
+     *
+     * @return true, wenn diese Kennung eingetragen WAR
+     */
+    @Transactional
+    public boolean removeChargePoint(UUID siteId, String chargePointId, String actor) {
+        return jdbc.update("UPDATE site_charge_point_allowlist SET removed_at = ?, removed_by = ? "
+                + "WHERE site_id = ? AND charge_point_id = ? AND removed_at IS NULL",
+                Timestamp.from(Instant.now()), actor, siteId, chargePointId) > 0;
     }
 
     /** Setzt die Anschlussgrenze (Upsert, mit Papier-Spur wer und wann). */

@@ -141,10 +141,19 @@ Seit dem Anbinde-Assistenten trägt es zusätzlich die ALLOWLIST
 die Box eine Säule überhaupt annimmt. Ihre PATCH-Regel ist SCHÄRFER als die der
 Vorrang-Liste — abwesend UND leer heißen hier dasselbe, denn diese Liste fügt nur
 hinzu: die Box übernimmt jeden Eintrag, den sie noch nicht kennt, überschreibt
-keinen bestehenden und ENTFERNT nie einen. Eine Kennung zu löschen wirft eine
-Säule beim nächsten Verbindungsaufbau vom Broker und bleibt deshalb bewusst eine
-ausdrückliche Handlung am Gerät. Die zweite Zeile der Fixture nennt nur ihre `id`
-— alles Weitere ist das, was der Betreiber zufällig schon weiß.
+keinen bestehenden und ENTFERNT nie einen. Die zweite Zeile der Fixture nennt nur
+ihre `id` — alles Weitere ist das, was der Betreiber zufällig schon weiß.
+
+Seit dem 24.08.2026 kann das Portal eine Kennung auch wieder LÖSCHEN
+(`mqtt-charging-config.valid.saeule-entfernen.json`), und weil `charge_points`
+nur hinzufügt, braucht das ein EIGENES Feld: `removed_charge_point_ids`. Eine
+Kennung dort wegzulassen ist kein Löschen — nur diese Liste ist eines. Sie ist
+eine GRABSTEIN-Liste und reist in JEDEM folgenden Dokument mit: das retained
+Dokument wird als Ganzes ersetzt, also hätte eine nur einmal genannte Löschung
+eine gerade offline gewesene Box nie erreicht. Eine ältere Box überliest das Feld
+und behält die Kennung — der Vorzustand, nie eine falsche Handlung. Die Fixture
+zeigt beides nebeneinander: `saeule-hof-nord` bleibt zugelassen, `saeule-halle`
+wird entfernt, und keine Kennung steht je in beiden Listen.
 
 ## `mqtt-charging-boost` (Lastmanagement Stufe 4)
 

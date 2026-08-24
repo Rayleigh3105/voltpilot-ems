@@ -82,25 +82,29 @@ public class ChargingConfigPublisher {
      *                    keine Aussage (NIE dasselbe wie „schnell")
      * @param storagePriority wer den Überschuss zuerst bekommt, oder null
      * @param chargePoints die ALLOWLIST - die Box übernimmt jeden Eintrag, den
-     *                    sie noch nicht kennt, und entfernt NIE einen
+     *                    sie noch nicht kennt, und ein WEGLASSEN ist kein Löschen
+     * @param removedChargePointIds die GRABSTEIN-Liste: die Kennungen, die die
+     *                    Box aus ihrer Freigabeliste nehmen soll. Sie reist in
+     *                    JEDEM folgenden Dokument mit, nicht einmal
      * @return false, wenn der Broker nicht erreichbar war (best-effort)
      */
     public synchronized boolean publish(UUID tenantId, UUID siteId, UUID deviceId,
             Double gridLimitKw, List<String> priorities, String surplusPolicy,
             String storagePriority, List<AllowedChargePointDto> chargePoints,
-            Instant publishedAt) {
+            List<String> removedChargePointIds, Instant publishedAt) {
         String topic = configTopic(tenantId, siteId, deviceId);
         byte[] payload = document(tenantId, siteId, deviceId, gridLimitKw, priorities,
-                surplusPolicy, storagePriority, chargePoints, publishedAt);
+                surplusPolicy, storagePriority, chargePoints, removedChargePointIds, publishedAt);
         try {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
             message.setRetained(true);
             connected().publish(topic, message);
             log.info("published charging config (grid_limit_kw={}, {} priority stations, "
-                    + "{} admitted stations) retained to {}",
+                    + "{} admitted stations, {} withdrawn) retained to {}",
                     gridLimitKw, priorities == null ? "-" : priorities.size(),
-                    chargePoints == null ? 0 : chargePoints.size(), topic);
+                    chargePoints == null ? 0 : chargePoints.size(),
+                    removedChargePointIds == null ? 0 : removedChargePointIds.size(), topic);
             return true;
         } catch (Exception e) {
             log.warn("could not publish charging config to {}: {} (best-effort - the next save "
@@ -138,7 +142,8 @@ public class ChargingConfigPublisher {
      */
     static byte[] document(UUID tenantId, UUID siteId, UUID deviceId, Double gridLimitKw,
             List<String> priorities, String surplusPolicy, String storagePriority,
-            List<AllowedChargePointDto> chargePoints, Instant publishedAt) {
+            List<AllowedChargePointDto> chargePoints, List<String> removedChargePointIds,
+            Instant publishedAt) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"schema_version\":\"1.0\"")
                 .append(",\"tenant_id\":\"").append(tenantId).append('"')
@@ -180,6 +185,21 @@ public class ChargingConfigPublisher {
                     sb.append(',');
                 }
                 appendChargePoint(sb, chargePoints.get(i));
+            }
+            sb.append(']');
+        }
+        // ⚠ Die Grabstein-Liste wird ebenso WEGGELASSEN, solange sie leer ist -
+        // ein leeres Array behauptete eine Rücknahme, die niemand ausgesprochen
+        // hat. Sie reist dafür in JEDEM Dokument mit, solange es sie gibt: das
+        // retained Dokument wird als Ganzes ersetzt, also hätte eine nur einmal
+        // genannte Löschung eine gerade offline gewesene Box nie erreicht.
+        if (removedChargePointIds != null && !removedChargePointIds.isEmpty()) {
+            sb.append(",\"removed_charge_point_ids\":[");
+            for (int i = 0; i < removedChargePointIds.size(); i++) {
+                if (i > 0) {
+                    sb.append(',');
+                }
+                sb.append('"').append(esc(removedChargePointIds.get(i))).append('"');
             }
             sb.append(']');
         }

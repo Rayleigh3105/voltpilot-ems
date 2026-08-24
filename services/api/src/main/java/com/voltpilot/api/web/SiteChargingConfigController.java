@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -87,9 +88,8 @@ public class SiteChargingConfigController {
      *
      * <p><b>Es ist ein POST, kein PUT</b>, und das ist die Aussage: die Liste
      * fügt nur hinzu. Ein PUT lüde dazu ein, sie als Ganzes zu setzen - und
-     * damit einen Eintrag zu ENTFERNEN, was eine Säule beim nächsten
-     * Verbindungsaufbau vom Broker würfe. Löschen bleibt eine ausdrückliche
-     * Handlung am Gerät.
+     * damit einen Eintrag durch WEGLASSEN zu entfernen. Eine Kennung
+     * zurückzunehmen ist eine eigene, ausdrückliche Handlung (DELETE unten).
      */
     @PostMapping("/charging-config/charge-points")
     public ChargingConfigDto admit(@PathVariable UUID siteId,
@@ -97,6 +97,24 @@ public class SiteChargingConfigController {
             @AuthenticationPrincipal Jwt caller) {
         return service.admit(siteId, req.chargePointId(), req.label(), req.ratedKw(),
                 req.connectors(), caller == null ? "unbekannt" : caller.getSubject());
+    }
+
+    /**
+     * Nimmt EINE Ladepunkt-Kennung zurück (Captain-Order 24.08.2026).
+     *
+     * <p><b>Es ist ein DELETE auf GENAU EINE Kennung</b>, nie ein Setzen der
+     * ganzen Liste: eine Rücknahme hat Folgen für eine laufende Anlage (die
+     * Säule wird getrennt und ein Wiederverbinden abgewiesen), und die soll
+     * niemand als Nebenwirkung eines Speicherns auslösen können.
+     *
+     * <p>Eine Kennung, die diese Anlage nicht (mehr) führt, ist ein 404 - nie
+     * ein stiller Erfolg über etwas, das es nicht gab.
+     */
+    @DeleteMapping("/charging-config/charge-points/{chargePointId}")
+    public ChargingConfigDto remove(@PathVariable UUID siteId,
+            @PathVariable String chargePointId, @AuthenticationPrincipal Jwt caller) {
+        return service.remove(siteId, chargePointId,
+                caller == null ? "unbekannt" : caller.getSubject());
     }
 
     /** Jede Ablehnung erreicht die Oberfläche als deutscher {@code {message}}-Körper. */

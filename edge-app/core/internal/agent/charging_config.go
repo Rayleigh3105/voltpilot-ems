@@ -87,6 +87,12 @@ func (a *Agent) onChargingConfig(payload []byte) {
 	if len(cfg.ChargePoints) > 0 {
 		a.applyChargePoints(cfg.ChargePoints)
 	}
+	// ⚠ Und die LÖSCHUNGEN danach: der Parser hält beide Listen schon
+	// überschneidungsfrei, aber die Reihenfolge macht die Regel „die Löschung
+	// gewinnt" auch dann wahr, wenn jemand später am Parser dreht.
+	if len(cfg.RemovedChargePoints) > 0 {
+		a.applyChargePointRemovals(cfg.RemovedChargePoints)
+	}
 	if cfg.Priorities != nil {
 		a.applyChargingPriorities(cfg.Priorities)
 	}
@@ -95,12 +101,12 @@ func (a *Agent) onChargingConfig(payload []byte) {
 // applyChargePoints ADMITS every station identifier the portal listed that this
 // box does not know yet.
 //
-// ⚠ Es wird NIE einer entfernt und NIE einer überschrieben. Die Allowlist bleibt
-// die Allowlist - eine unbekannte Kennung wird weiterhin abgewiesen und
+// ⚠ DIESE Liste entfernt NIE einen und überschreibt NIE einen. Die Allowlist
+// bleibt die Allowlist - eine unbekannte Kennung wird weiterhin abgewiesen und
 // protokolliert, es entsteht kein Anlern-Fenster; es wandert nur ihr PFLEGE-Ort
-// ins Portal. Ein Eintrag zu ENTFERNEN wirft eine Säule beim nächsten
-// Verbindungsaufbau vom Broker - eine Entscheidung mit Folgen für eine laufende
-// Anlage, und die bleibt bewusst eine ausdrückliche Handlung am Gerät. Ein
+// ins Portal. Eine Kennung zu ENTFERNEN ist eine eigene, AUSDRÜCKLICHE Aussage
+// des Dokuments (`removed_charge_point_ids`, siehe applyChargePointRemovals) -
+// sie hier hineinzulesen hieße, ein Weglassen als Löschung zu deuten. Ein
 // BESTEHENDER Eintrag wird nicht angefasst, weil `label`/`priority` dort auf
 // :8484 gepflegt sein können (dieselbe PATCH-Regel wie für jedes andere Feld).
 func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
@@ -124,6 +130,38 @@ func (a *Agent) applyChargePoints(wanted []chargingcfg.ChargePoint) {
 			continue
 		}
 		slog.Info("charging config: charge point admitted", "charge_point", cp.ID)
+	}
+}
+
+// applyChargePointRemovals nimmt jede vom Portal genannte Kennung aus der
+// Freigabeliste (Captain-Order 24.08.2026: „Ebenso will ich die möglichkeit
+// haben eingebene kennungen zu löschen").
+//
+// ⚠ Die Folge am Gerät steht in csms.Remove: die Säule wird getrennt und ein
+// Wiederverbinden abgewiesen. Ihr zuletzt hinterlegtes Sicherheitsprofil behält
+// sie - es liegt IN der Säule -, ein laufender Ladevorgang endet dadurch also
+// nicht, er fällt auf dieses Profil zurück. Genau so sagt es auch der
+// :8484-Rückfrage-Dialog (VPOcpp.removalConsequences); zwei Formulierungen
+// derselben Folge wären zwei Wahrheiten.
+//
+// ⚠ Eine Kennung, die diese Box nicht (mehr) kennt, ist ein GERÄUSCHLOSER
+// No-op: die Grabstein-Liste reist in jedem folgenden Dokument mit, also ist
+// „schon entfernt" der Normalfall und kein Fehler.
+func (a *Agent) applyChargePointRemovals(ids []string) {
+	known := map[string]bool{}
+	for _, c := range a.OcppChargers() {
+		known[c.ID] = true
+	}
+	for _, id := range ids {
+		if !known[id] {
+			continue
+		}
+		if err := a.OcppRemoveCharger(id); err != nil {
+			slog.Warn("charging config: charge point not removed",
+				"charge_point", id, "err", err)
+			continue
+		}
+		slog.Info("charging config: charge point removed", "charge_point", id)
 	}
 }
 

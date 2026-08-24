@@ -13,17 +13,20 @@ import {
 } from '../ladepunkte';
 import {
   ENDPUNKT_ZWEI_FORMEN,
+  ENTFERNEN_HINWEIS,
   KEINE_EINGETRAGEN,
-  KEIN_LOESCHEN,
   KENNUNG_HILFE,
   abschluss,
   eingetrageneZeilen,
   endpunkt,
+  entfernenFolgen,
+  entfernenFrage,
   kennungFehler,
   kennungVorschlag,
   meldung,
   schritte,
 } from '../ladesaeuleAnbinden';
+import { ConfirmDialog } from './ConfirmDialog';
 import './LadesaeuleAnbinden.css';
 
 /**
@@ -59,6 +62,11 @@ export function LadesaeuleAnbinden({
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [kopiert, setKopiert] = useState<string | null>(null);
+  // Die Kennung, deren Rücknahme gerade zur Rückfrage steht (null = keine).
+  const [entfernenZiel, setEntfernenZiel] = useState<{ kennung: string; name: string } | null>(
+    null,
+  );
+  const [entfernenBusy, setEntfernenBusy] = useState(false);
 
   useEffect(() => {
     let aktiv = true;
@@ -120,6 +128,25 @@ export function LadesaeuleAnbinden({
       setFehler(e instanceof ApiError ? e.message : 'Die Kennung konnte nicht eingetragen werden.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function entfernen() {
+    if (!entfernenZiel) return;
+    setEntfernenBusy(true);
+    setFehler(null);
+    try {
+      const c = await api.removeChargePoint(siteId, entfernenZiel.kennung);
+      setConfig(c);
+      setEntfernenZiel(null);
+      onChanged?.();
+    } catch (e) {
+      setFehler(
+        e instanceof ApiError ? e.message : 'Die Kennung konnte nicht entfernt werden.',
+      );
+      setEntfernenZiel(null);
+    } finally {
+      setEntfernenBusy(false);
     }
   }
 
@@ -243,12 +270,35 @@ export function LadesaeuleAnbinden({
                 <span className="vp-anbinden-name">{z.name}</span>
                 <code>{z.kennung}</code>
                 <span className={`vp-anbinden-zustand is-${z.ton}`}>{z.zustand}</span>
+                {/* Die Rücknahme ist eine ausdrückliche Handlung mit Folgen -
+                    deshalb der Haus-Dialog, nie ein Klick, der sofort wirkt. */}
+                <button
+                  type="button"
+                  className="vp-anbinden-remove"
+                  aria-label={`Ladesäule „${z.name}" entfernen`}
+                  disabled={busy || entfernenBusy}
+                  onClick={() => setEntfernenZiel({ kennung: z.kennung, name: z.name })}
+                >
+                  <Icon name="trash" size={16} />
+                </button>
               </li>
             ))}
           </ul>
         )}
-        <p className="vp-anbinden-note">{KEIN_LOESCHEN}</p>
+        <p className="vp-anbinden-note">{ENTFERNEN_HINWEIS}</p>
       </div>
+
+      <ConfirmDialog
+        open={!!entfernenZiel}
+        title="Ladesäule entfernen"
+        intro={entfernenZiel ? entfernenFrage(entfernenZiel.name) : ''}
+        consequences={entfernenZiel ? entfernenFolgen(entfernenZiel.name) : []}
+        confirmLabel="Kennung entfernen"
+        tone="danger"
+        busy={entfernenBusy}
+        onConfirm={() => void entfernen()}
+        onCancel={() => setEntfernenZiel(null)}
+      />
     </section>
   );
 }

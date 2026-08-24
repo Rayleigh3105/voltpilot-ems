@@ -159,7 +159,8 @@ public class ChargingConfigService {
         for (UUID deviceId : configs.deviceIds(siteId)) {
             pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
                     config.priorityChargePointIds(), config.surplusPolicy(),
-                    config.storagePriority(), config.chargePoints(), now);
+                    config.storagePriority(), config.chargePoints(),
+                    config.removedChargePointIds(), now);
         }
     }
 
@@ -167,16 +168,18 @@ public class ChargingConfigService {
      * Trägt EINE Ladesäule in die Allowlist ein - der erste Schritt des
      * Anbinde-Assistenten.
      *
-     * <p><b>⚠ Es wird nur HINZUGEFÜGT.</b> Die Box übernimmt jeden Eintrag, den
-     * sie noch nicht kennt, überschreibt keinen bestehenden und ENTFERNT nie
-     * einen; es gibt hier deshalb bewusst keinen Lösch-Weg. Eine Kennung zu
-     * entfernen wirft die Säule beim nächsten Verbindungsaufbau vom Broker -
-     * eine Entscheidung mit Folgen für eine laufende Anlage, und die bleibt
-     * eine ausdrückliche Handlung am Gerät.
+     * <p><b>⚠ Diese Route fügt nur HINZU.</b> Die Box übernimmt jeden Eintrag,
+     * den sie noch nicht kennt, und überschreibt keinen bestehenden. Eine
+     * Kennung zurückzunehmen ist eine eigene, AUSDRÜCKLICHE Handlung
+     * ({@link #remove}) - ein Weglassen ist kein Löschen.
      *
      * <p><b>Die Allowlist bleibt die Allowlist</b>: eine unbekannte Kennung
      * wird von der Box weiterhin abgewiesen und protokolliert. Es wandert nur
      * ihr Pflege-Ort ins Portal, es entsteht kein Anlern-Fenster.
+     *
+     * <p>Ein erneutes Eintragen einer zurückgenommenen Kennung BELEBT sie
+     * wieder - sie verschwindet aus der Grabstein-Liste und steht wieder in
+     * {@code charge_points}.
      */
     @Transactional
     public ChargingConfigDto admit(UUID siteId, String chargePointId, String label,
@@ -215,6 +218,39 @@ public class ChargingConfigService {
         }
         String name = label == null || label.isBlank() ? null : label.trim();
         configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, actor);
+        ChargingConfigDto saved = configs.forSite(siteId);
+        push(tenantId, siteId, saved);
+        return saved;
+    }
+
+    /**
+     * Nimmt EINE Ladesäule aus der Allowlist (Captain-Order 24.08.2026:
+     * „Ebenso will ich die möglichkeit haben eingebene kennungen zu löschen").
+     *
+     * <p><b>⚠ Die Rücknahme ist ein GRABSTEIN, kein Löschen.</b> Das retained
+     * Dokument wird als Ganzes ersetzt, also würde eine Kennung nur wegzulassen
+     * von einer Box, die gerade offline war, nie gesehen ({@code charge_points}
+     * fügt nur hinzu). Sie wird deshalb dauerhaft geführt und in JEDEM folgenden
+     * Dokument genannt, bis sie wieder eingetragen wird.
+     *
+     * <p><b>Die Folge am Gerät</b>, und sie steht wörtlich so im
+     * Rückfrage-Dialog beider Flächen: die Säule wird getrennt und ein
+     * Wiederverbinden abgewiesen. Ihr zuletzt hinterlegtes Sicherheitsprofil
+     * behält sie - es liegt IN der Säule -, ein laufender Ladevorgang endet
+     * dadurch also nicht, er fällt auf dieses Profil zurück.
+     *
+     * <p>Eine Kennung, die diese Anlage nicht (mehr) führt, ist ein 404 - nie
+     * ein stiller Erfolg über etwas, das es nicht gab.
+     */
+    @Transactional
+    public ChargingConfigDto remove(UUID siteId, String chargePointId, String actor) {
+        requireSite(siteId);
+        UUID tenantId = TenantContext.get();
+        String id = chargePointId == null ? "" : chargePointId.trim();
+        if (!configs.removeChargePoint(siteId, id, actor)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Diese Anlage führt keine eingetragene Ladepunkt-Kennung \"" + id + "\".");
+        }
         ChargingConfigDto saved = configs.forSite(siteId);
         push(tenantId, siteId, saved);
         return saved;

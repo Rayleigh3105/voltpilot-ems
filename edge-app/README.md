@@ -102,11 +102,13 @@ The structure is always the same: selection → self-wired read → `vp-telemetr
 
 ## OCPP-Ladepunkte (Lastmanagement)
 
-Die Box kann das **Central System** sein, das Ladesäulen anwählen
+Die Box **ist** das **Central System**, das Ladesäulen anwählen
 (`ws://<box>:8887/ocpp/<Kennung>`), und verteilt das Ladebudget des
-Netzanschlusses dynamisch und fair auf die ladenden Fahrzeuge. Einschalten mit
-`VP_OCPP_ENABLED=true`; eingerichtet wird alles auf `:8484` → **Einrichten →
-Ladepunkte** (Adresse + Kennung kopieren, Anschlussgrenze pflegen).
+Netzanschlusses dynamisch und fair auf die ladenden Fahrzeuge. Der Server läuft
+**ohne jeden .env-Schritt** (`VP_OCPP_ENABLED` ist ein Opt-out, Vorgabe `true`).
+Eingerichtet wird eine Säule im **Portal** (Ladesäule anbinden — es nennt die
+`ws://`-Adresse zum Kopieren) oder lokal auf `:8484` → **Einrichten →
+Ladepunkte**.
 
 Drei Dinge, die man wissen sollte:
 

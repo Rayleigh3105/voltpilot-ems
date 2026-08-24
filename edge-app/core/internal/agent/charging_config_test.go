@@ -173,9 +173,8 @@ func chargerOf(a *Agent, id string) (csms.Charger, bool) {
 
 // ⚠ DIE Zusage dieser Stufe: die Liste FUEGT NUR HINZU. Sie ueberschreibt
 // keinen bestehenden Eintrag (Label und Vorrang koennen auf :8484 gepflegt
-// sein) und entfernt NIE einen - eine Kennung zu loeschen wirft eine Saeule
-// beim naechsten Verbindungsaufbau vom Broker und bleibt eine ausdrueckliche
-// Handlung am Geraet.
+// sein) und entfernt NIE einen - ein WEGLASSEN ist kein Loeschen. Wer loeschen
+// will, sagt es in removed_charge_point_ids (siehe die Tests darunter).
 func TestTheAllowlistOnlyAddsAndNeverOverwritesOrRemoves(t *testing.T) {
 	a := chargingCfgAgent(t)
 	ocppSite(t, a, 0)
@@ -269,4 +268,89 @@ func TestARefusedOrOcppLessDocumentAdmitsNothing(t *testing.T) {
 	ohne.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
 	  "device_id":"d","charge_points":[{"id":"saeule-1"}],
 	  "published_at":"2026-08-21T09:15:00Z"}`))
+}
+
+// --- Das LOESCHEN: eine eigene, ausdrueckliche Aussage ---------------------
+
+// Die Captain-Order vom 24.08.2026 („Ebenso will ich die moeglichkeit haben
+// eingebene kennungen zu loeschen"): das Portal nennt die Kennung AUSDRUECKLICH,
+// und die Box nimmt sie aus der Freigabeliste.
+func TestAnExplicitRemovalTakesTheStationOutOfTheAllowlist(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-1"},{"id":"saeule-2"}],
+	  "published_at":"2026-08-24T09:15:00Z"}`))
+	if _, ok := chargerOf(a, "saeule-2"); !ok {
+		t.Fatal("Vorbedingung: beide Kennungen sind eingetragen")
+	}
+
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-1"}],
+	  "removed_charge_point_ids":["saeule-2"],
+	  "published_at":"2026-08-24T10:05:00Z"}`))
+
+	if _, ok := chargerOf(a, "saeule-2"); ok {
+		t.Fatal("die genannte Kennung muss aus der Freigabeliste sein")
+	}
+	if _, ok := chargerOf(a, "saeule-1"); !ok {
+		t.Fatal("und die andere darf davon unberuehrt bleiben")
+	}
+
+	// ⚠ Die Grabstein-Liste reist in JEDEM folgenden Dokument mit, „schon
+	// entfernt" ist also der Normalfall - und ein geraeuschloser No-op.
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-1"}],
+	  "removed_charge_point_ids":["saeule-2","nie-gekannt"],
+	  "published_at":"2026-08-24T10:10:00Z"}`))
+	if _, ok := chargerOf(a, "saeule-1"); !ok {
+		t.Fatal("eine wiederholte Loeschung darf nichts anderes anfassen")
+	}
+}
+
+// ⚠ Steht eine Kennung im SELBEN Dokument in beiden Listen, gewinnt die
+// LOESCHUNG - die Richtung, die weniger zulaesst. Das Portal sendet den Fall
+// nie; ein Dokument aus einer anderen Quelle darf ihn nicht in eine Zulassung
+// drehen.
+func TestOnAContradictionTheStationIsNotAdmitted(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	a.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","charge_points":[{"id":"saeule-widerspruch"}],
+	  "removed_charge_point_ids":["saeule-widerspruch"],
+	  "published_at":"2026-08-24T10:05:00Z"}`))
+	if _, ok := chargerOf(a, "saeule-widerspruch"); ok {
+		t.Fatal("eine widersprochene Kennung darf nicht hereinkommen")
+	}
+}
+
+// Ein Dokument, das wir nicht verstehen oder das uns nicht meint, entfernt
+// genauso wenig, wie es eintraegt - und eine Box ohne OCPP ueberlebt es.
+func TestARefusedOrForeignDocumentRemovesNothing(t *testing.T) {
+	a := chargingCfgAgent(t)
+	ocppSite(t, a, 0)
+	if _, err := a.OcppAddCharger(csms.AddRequest{ID: "saeule-1"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, payload := range []string{
+		`{"schema_version":"2.0","tenant_id":"t","site_id":"s","device_id":"d",
+		  "removed_charge_point_ids":["saeule-1"],"published_at":"2026-08-24T10:05:00Z"}`,
+		`{"schema_version":"1.0","tenant_id":"t","site_id":"s","device_id":"fremd",
+		  "removed_charge_point_ids":["saeule-1"],"published_at":"2026-08-24T10:05:00Z"}`,
+		// Die Ruecknahme des ganzen Dokuments raeumt die Freigabeliste NICHT ab.
+		``,
+	} {
+		a.onChargingConfig([]byte(payload))
+		if _, ok := chargerOf(a, "saeule-1"); !ok {
+			t.Fatalf("payload %q hat eine Kennung entfernt", payload)
+		}
+	}
+
+	ohne := &Agent{}
+	ohne.entMu.Lock()
+	ohne.entIdentity = entities.Identity{TenantID: "t", SiteID: "s", DeviceID: "d"}
+	ohne.entMu.Unlock()
+	ohne.onChargingConfig([]byte(`{"schema_version":"1.0","tenant_id":"t","site_id":"s",
+	  "device_id":"d","removed_charge_point_ids":["saeule-1"],
+	  "published_at":"2026-08-24T10:05:00Z"}`))
 }

@@ -19,6 +19,7 @@ func clearEnv(t *testing.T) {
 		"VP_CONTROL_ENABLED", "VP_GRID_CHARGE_ALLOWED", "VP_CONTROL_CERTIFIED_FAMILIES",
 		"VP_RECONCILE_INTERVAL_SECONDS", "VP_UNCLAIM_CONFIRM_MINUTES", "VP_UNCLAIM_CONFIRM_POLLS",
 		"VP_CALIBRATION_MAX_KW", "VP_CALIBRATION_TTL_SECONDS",
+		"VP_OCPP_ENABLED", "VP_OCPP_PORT",
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -285,5 +286,43 @@ func TestTheOneShotWritePathHasNoEnvironmentSwitchLeft(t *testing.T) {
 		if !reflect.DeepEqual(cfg, bare) {
 			t.Fatalf("%q must change nothing, got a different config", v)
 		}
+	}
+}
+
+// Der Ladepunkt-Server ist seit dem 24.08.2026 per Vorgabe AN (Captain-Order:
+// "Ich will das auf der Box OCPP immer angeschalten ist automatisch, ohne .env
+// brauch ich nicht") - und er bleibt ein OPT-OUT, kein Zwang: ein Betreiber
+// muss ihn abschalten koennen.
+//
+// ⚠ Der Zugangs-Zaun war nie dieser Schalter, sondern die FREIGABELISTE: eine
+// nicht eingetragene Kennung wird schon beim Websocket-Upgrade abgewiesen, und
+// eine frische Box hat eine LEERE Liste. Die LEBENDE Zuteilung braucht
+// weiterhin zusaetzlich VP_CONTROL_ENABLED und VP_CONSUMER_CONTROL_ENABLED -
+// daran aendert die Vorgabe nichts, und genau das nagelt dieser Test fest.
+func TestOcppDefaultsOnAndStaysAnOptOut(t *testing.T) {
+	clearEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.OcppEnabled {
+		t.Fatal("der Ladepunkt-Server muss ohne jede .env laufen")
+	}
+	if cfg.OcppPort != 8887 {
+		t.Fatalf("ocpp port default: %d", cfg.OcppPort)
+	}
+	// Die zwei Tore der LEBENDEN Zuteilung sind unberuehrt: der
+	// Verbraucher-Schalter bleibt per Vorgabe AUS.
+	if cfg.ConsumerControlEnabled {
+		t.Fatal("die lebende Zuteilung darf durch die OCPP-Vorgabe nicht scharf werden")
+	}
+
+	t.Setenv("VP_OCPP_ENABLED", "false")
+	off, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off.OcppEnabled {
+		t.Fatal("ein ausdrueckliches false muss gewinnen - sonst waere es kein Opt-out")
 	}
 }

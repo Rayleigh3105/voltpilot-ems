@@ -3,10 +3,12 @@ import type { Device } from './api';
 import type { ChargePoint, SiteCharging } from './ladepunkte';
 import {
   ENDPUNKT_ZWEI_FORMEN,
-  KEIN_LOESCHEN,
+  ENTFERNEN_HINWEIS,
   abschluss,
   eingetrageneZeilen,
   endpunkt,
+  entfernenFolgen,
+  entfernenFrage,
   kennungFehler,
   kennungVorschlag,
   meldung,
@@ -113,6 +115,14 @@ describe('Endpunkt', () => {
     expect(lauschtNicht.url).toBeNull();
     expect(lauschtNicht.grund).toBe('lauscht-nicht');
 
+    // ⚠ „Noch nichts gemeldet" ist NICHT „lauscht nicht": vor der ersten
+    // eingetragenen Kennung meldet die Box gar keine Ladepunkt-Lage, und
+    // „es kann sich keine Säule verbinden" wäre dort schlicht falsch.
+    const nochNichts = endpunkt(BOX, { budget: null, chargers: [] } as unknown as SiteCharging, 'x');
+    expect(nochNichts.url).toBeNull();
+    expect(nochNichts.grund).toBe('noch-nicht-gemeldet');
+    expect(nochNichts.satz).toContain('Sobald die Kennung eingetragen ist');
+
     expect(endpunkt(undefined, laden(), 'x').url).toBeNull();
     expect(endpunkt(BOX, null, 'x').url).toBeNull();
   });
@@ -202,9 +212,36 @@ describe('Ablauf', () => {
     expect(abschluss(true)).toContain('Anschlussgrenze');
   });
 
-  it('erklärt die fehlende Lösch-Tür, statt sie zu verschweigen', () => {
-    expect(KEIN_LOESCHEN).toContain('nicht wieder entfernt');
-    expect(KEIN_LOESCHEN).toContain('Verbindungsaufbau');
+});
+
+describe('Eine Kennung wieder entfernen', () => {
+  it('fragt nach der SÄULE, nicht nach der Kennung', () => {
+    expect(entfernenFrage('Hof Nord')).toContain('Hof Nord');
+    expect(entfernenFrage('Hof Nord')).toContain('nicht mehr annehmen');
+  });
+
+  it('sagt die WAHRHEIT über den laufenden Ladevorgang - er endet NICHT', () => {
+    const folgen = entfernenFolgen('Hof Nord');
+    const alles = folgen.join(' ');
+    // ⚠ Die Box trennt die Verbindung, aber das Sicherheitsprofil liegt IN der
+    // Säule (OCPP-eigener Totmann) - sie lädt damit weiter. Ein „der
+    // Ladevorgang endet" wäre eine Falschaussage über eine Kundenanlage.
+    expect(alles).toContain('endet dadurch NICHT');
+    expect(alles).toContain('Sicherheitsprofil');
+    expect(alles).toMatch(/Verbindung .*getrennt/);
+  });
+
+  it('nennt ausdrücklich, was GLEICH bleibt, und dass der Weg zurück offen ist', () => {
+    const alles = entfernenFolgen('Hof Nord').join(' ');
+    expect(alles).toContain('Anschlussgrenze');
+    expect(alles).toContain('unverändert');
+    expect(alles).toContain('jederzeit wieder eintragen');
+  });
+
+  it('behauptet keine sofortige Wirkung am Gerät', () => {
+    // Das Dokument reist retained - wann die Box es abholt, entscheidet sie.
+    expect(ENTFERNEN_HINWEIS).toContain('das nächste Mal verbunden');
+    expect(ENTFERNEN_HINWEIS).toContain('Bis dahin');
   });
 });
 

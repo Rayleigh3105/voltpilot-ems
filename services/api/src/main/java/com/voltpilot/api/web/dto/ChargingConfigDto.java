@@ -25,13 +25,24 @@ public record ChargingConfigDto(Double gridLimitKw, List<String> priorityChargeP
          * Die ALLOWLIST: die Kennungen, unter denen die Box eine Säule
          * überhaupt annimmt.
          *
-         * ⚠ Sie FÜGT NUR HINZU. Ein Eintrag hier lässt eine Säule herein; einen
-         * zu ENTFERNEN wirft sie beim nächsten Verbindungsaufbau vom Broker und
-         * bleibt deshalb bewusst eine ausdrückliche Handlung am Gerät. Eine
-         * leere Liste ist hier - anders als beim Vorrang - keine Aussage
-         * „keine Säule", sondern nur „das Portal hat noch keine eingetragen".
+         * ⚠ Sie FÜGT NUR HINZU. Ein Eintrag hier lässt eine Säule herein; eine
+         * Kennung hier WEGZULASSEN ist kein Löschen - das sagt
+         * {@code removedChargePointIds} ausdrücklich. Eine leere Liste ist hier
+         * - anders als beim Vorrang - keine Aussage „keine Säule", sondern nur
+         * „das Portal hat noch keine eingetragen".
          */
         List<AllowedChargePointDto> chargePoints,
+        /*
+         * Die ZURÜCKGENOMMENEN Kennungen - die GRABSTEIN-Liste (Captain-Order
+         * 24.08.2026).
+         *
+         * ⚠ Sie reist in JEDEM folgenden Dokument mit, nicht einmal: das
+         * retained Dokument wird als Ganzes ersetzt, also hätte eine nur einmal
+         * genannte Löschung eine gerade offline gewesene Box nie erreicht. Eine
+         * Kennung steht deshalb nie zugleich in {@code chargePoints} - ein
+         * erneutes Eintragen belebt sie wieder und nimmt sie hier heraus.
+         */
+        List<String> removedChargePointIds,
         Instant updatedAt, String updatedBy) {
 
     /**
