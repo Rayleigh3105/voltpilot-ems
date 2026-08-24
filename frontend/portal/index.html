@@ -9,7 +9,14 @@
       Polster im CSS laengst steht.
     -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!--
+      Favicon: die gelieferten Marken-Originale, byte-genau eingecheckt (nicht
+      generiert). Moderne Browser nehmen das SVG, aeltere die 96er-PNG, und
+      `/favicon.ico` bedient jedes Tool, das die Wurzel blind abfragt.
+    -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
     <!--
       App-Huelle (PWA). Mehr braucht es nicht, damit das Portal auf dem
       Startbildschirm landet und dort im Vollbild startet:
@@ -26,9 +33,10 @@
         unter die Statusleiste, und die 68-px-Kopfzeile hat dafuer kein Polster.
         Wer eines einbaut, darf diese Zeile neu bewerten.
 
-      Die Icons entstehen aus `public/favicon.svg` ueber `tools/gen-icons.mjs` -
-      wer die Marke aendert, fuehrt das Skript aus und hebt `SW_VERSION` in
-      `public/sw.js`.
+      Die Icons sind die gelieferten Marken-Originale (favicon.svg/.ico,
+      favicon-96x96.png, icons/*.png) - byte-genau eingecheckt, nicht generiert.
+      Wer die Marke aendert, ersetzt diese Dateien und hebt `SW_VERSION` in
+      `public/sw.js` (die Icons liegen im Vorrat des Service Workers).
     -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />

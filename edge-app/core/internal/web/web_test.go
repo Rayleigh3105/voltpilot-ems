@@ -4115,3 +4115,51 @@ func TestTheGateGeneralisationChangesNothingWithoutChargePoints(t *testing.T) {
 		t.Fatalf("inverter plant: %+v", b)
 	}
 }
+
+// The delivered VoltPilot favicon ships with the binary (//go:embed contract:
+// static/ is embedded wholesale) and BOTH pages link it - a static/ edit that
+// forgets the rebuild, or a dropped favicon file, fails here instead of leaving
+// the browser tab (and every tool that blindly requests /favicon.ico) blank.
+func TestFaviconShipsAndBothPagesLinkIt(t *testing.T) {
+	srv, _ := newServer(t)
+
+	getBytes := func(path string) []byte {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+
+	for _, page := range []string{"/index.html", "/einrichten.html"} {
+		markup := string(getBytes(page))
+		for _, want := range []string{
+			`rel="icon" type="image/svg+xml" href="favicon.svg"`,
+			`rel="shortcut icon" href="favicon.ico"`,
+		} {
+			if !strings.Contains(markup, want) {
+				t.Errorf("%s: missing favicon link %q", page, want)
+			}
+		}
+	}
+
+	// The SVG is the delivered brand original (an SVG root, non-empty).
+	if svg := getBytes("/favicon.svg"); !bytes.Contains(svg, []byte("<svg")) {
+		t.Error("favicon.svg does not look like an SVG")
+	}
+	// The ICO ships and carries the real icon magic (00 00 01 00) - not an
+	// HTML SPA-fallback body under the .ico URL.
+	ico := getBytes("/favicon.ico")
+	if len(ico) < 4 || ico[0] != 0x00 || ico[1] != 0x00 || ico[2] != 0x01 || ico[3] != 0x00 {
+		t.Errorf("favicon.ico is not a real ICO (got %d bytes, magic %x)", len(ico), ico[:min(4, len(ico))])
+	}
+}
