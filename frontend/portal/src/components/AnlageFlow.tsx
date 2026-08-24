@@ -12,25 +12,30 @@ import {
   type Site,
   type SiteAsset,
   type SiteEntity,
-  type SiteUsageProfile,
   type SupplyPriceUpdate,
   type TarifArt,
 } from '../api';
 import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
 import { isPlatformAdmin } from '../auth';
-import { entitiesApi, type AutoStartOutcome, type EntityTypeDef } from '../entitiesApi';
+import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import {
-  PROFILE_OPTIONS,
-  autoStartSummary,
   creatableConsumerTypes,
   entitiesRecognisedSummary,
   entityGroupLabel,
-  initialProfileChoice,
-  overrideForChoice,
-  profileChoiceChanged,
-  profileLabel,
-  type ProfileChoice,
 } from '../adaptiveOnboarding';
+import {
+  PRESETS,
+  istAbschaltbar,
+  presetSchaltplan,
+  presetVorschlag,
+  regalFuerProfil,
+  type Profil,
+  type Zurueckgestellt,
+} from '../anwendungen';
+import { anwendungenSatz } from '../anwendungen';
+import type { SiteProfile } from '../profiles';
+import './Profile.css';
+import './AnwendungenStep.css';
 import {
   SPEICHERSCHONUNG_OPTIONS,
   presetOf,
@@ -254,8 +259,8 @@ export function AnlageFlow({
   const [pvApplied, setPvApplied] = useState<MastrPreview | null>(null);
   const [storageApplied, setStorageApplied] = useState<MastrPreview | null>(null);
   const [manualBatterySaved, setManualBatterySaved] = useState(false);
-  // What the AE7 auto-start seeded (shown on the summary; null = none/skipped).
-  const [autoStart, setAutoStart] = useState<AutoStartOutcome | null>(null);
+  // Welche Anwendungen der Assistent eingeschaltet hat (für die Zusammenfassung).
+  const [eingeschaltet, setEingeschaltet] = useState<string[]>([]);
   const [step, setStep] = useState<number>(initialFlowStep(sites.length > 0));
 
   const locationSites = existingSites ?? sites;
@@ -303,10 +308,10 @@ export function AnlageFlow({
         />
       )}
       {step === 4 && site && (
-        <NutzungStep
+        <AnwendungenStep
           site={site}
-          onNext={(outcome) => {
-            setAutoStart(outcome);
+          onNext={(ids) => {
+            setEingeschaltet(ids);
             setStep(5);
           }}
         />
@@ -322,7 +327,7 @@ export function AnlageFlow({
             pvApplied={pvApplied}
             storageApplied={storageApplied}
             manualBatterySaved={manualBatterySaved}
-            autoStart={autoStart}
+            eingeschaltet={eingeschaltet}
             onDone={onDone}
           />
         ))}
@@ -1042,46 +1047,61 @@ function ManualBatteryStep({
 }
 
 /**
- * Step 4 · Nutzung: the ADAPTIVE step (AE5, spec §2/§3/§10). Three parts, all
- * optional and skippable:
+ * Schritt 4 · **Anwendungen** (Anwendungs-Programm Stufe 2, Konzept
+ * `data/vp-portal-zielbild-anwendungen` §3.4). Vier Blöcke, alle überspringbar:
  *
- *  - Ihre Geräte: the entities of the Anlage. They are composed from the
- *    Register/Gerät master data BY THE SERVER, automatically, the moment the
- *    Gerät step claims the device - for every customer, with no admin and no
- *    button (the former `if (admin)` bootstrap call is gone). A platform-admin
- *    can additionally add controllable Verbraucher (Wallbox/Heizstab/…) here;
- *    a customer sees the recognised devices read-only (the permanent editing
- *    home is the "Geräte & Entitäten" surface).
- *  - Womit sollen wir starten: the auto-start TEMPLATE chooser. Since M1/M6
- *    (F5, report §6.5) this is the ONLY surviving use of
- *    `usage_profile_override` in the portal - it picks which starter flow
- *    `POST .../flows/auto-start` seeds, and it steers NOTHING about the
- *    Anlagen-Seite (that is the projection of the ACTIVE MODES, `surface.ts`).
- *    The column stays in the DB; there is no profile "face" any more.
- *  - Umgang mit dem Speicher: Speicherschonung preset (battery master data).
+ *  - **Ihre Geräte** — was der SERVER aus den Stammdaten komponiert hat, sobald
+ *    Schritt „Gerät" das Gerät beansprucht hat. Read-only für den Kunden.
+ *  - **Wofür ist diese Anlage?** — die zwei PRESET-Karten (Privat · Gewerbe)
+ *    plus „Später entscheiden". Die Wahl schreibt `site.profil` und ist damit
+ *    Vorauswahl + Tonalität + Reset-Basis; sie ist NIE ein Signal der
+ *    Ableitung (Captain-Entscheid E3).
+ *  - **Das Regal** — dieselben Schalter wie später unter „Steuerung", vom
+ *    Preset vorbelegt. Ein Schalter ist ein `PUT /profiles`, also öffnet der
+ *    SERVER das Tor und sät den Starter — **für jeden Kunden**, nicht mehr nur
+ *    für einen Admin (das war die stille Lücke: `entitiesApi.autoStart` lief
+ *    hinter einem `if (admin)`, ein Kunde bekam also nie einen Start-Flow).
+ *  - **Umgang mit dem Speicher** — die Speicherschonung, unverändert.
  *
- * On finish the profile override is written (only on a change), the
- * Speicherschonung saved, and - for an admin onboarding - the profile's
- * auto-start starter flow is seeded (`POST .../flows/auto-start`), so the
- * customer never faces an empty flow. All decision logic lives in
- * ../adaptiveOnboarding; this component only wires + renders it.
+ * ⚠ Der frühere AE7-Vorwahl-Block („Womit sollen wir starten?") ist ERSATZLOS
+ * entfallen: er schrieb `usage_profile_override`, eine Spalte, die seit F5
+ * keine Kundenfläche mehr liest — für einen Kunden war die Wahl damit fast
+ * wirkungslos. Die Spalte bleibt lesbar, das Portal schreibt sie nicht mehr
+ * (`migration.test.ts` wacht darüber).
+ *
+ * Alle Regeln liegen rein in `../anwendungen`; diese Komponente verdrahtet und
+ * rendert nur.
  */
-function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStartOutcome | null) => void }) {
+function AnwendungenStep({
+  site,
+  onNext,
+}: {
+  site: Site;
+  onNext: (eingeschaltet: string[]) => void;
+}) {
   const [battery, setBattery] = useState<SiteAsset | null>(null);
   const [schonung, setSchonung] = useState<SpeicherschonungPreset>('ausgewogen');
   const [entities, setEntities] = useState<SiteEntity[]>([]);
-  const [profile, setProfile] = useState<SiteUsageProfile | null>(null);
-  const [choice, setChoice] = useState<ProfileChoice>('auto');
   const [catalog, setCatalog] = useState<EntityTypeDef[]>([]);
+  /** Das Regal, wie der Server es sieht; null = noch nicht geladen. */
+  const [karten, setKarten] = useState<SiteProfile[] | null>(null);
+  const [profil, setProfil] = useState<Profil | null>(site.profil ?? null);
+  const [getickt, setGetickt] = useState<ReadonlySet<string>>(new Set());
+  // Was der Kunde AUSDRÜCKLICH will (Preset-Vorauswahl + jeder von Hand
+  // eingeschaltete Schalter). Nur das wird geschrieben - wer den Schritt bloß
+  // durchklickt, pinnt keine Absicht, die er nie geäußert hat.
+  const [gewollt, setGewollt] = useState<ReadonlySet<string>>(new Set());
+  const [zurueckgestellt, setZurueckgestellt] = useState<Zurueckgestellt[]>([]);
+  const [weitereOffen, setWeitereOffen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // Once the customer picks a profile, a late-arriving profile load must not
-  // clobber their selection back to the derived default.
-  const choiceTouched = useRef(false);
+  // Hat der Kunde ein Preset angefasst? Nur dann wird `site.profil` geschrieben
+  // - „Später entscheiden" ist eine Wahl, ein unberührter Schritt nicht.
+  const profilBeruehrt = useRef(false);
 
   const admin = isPlatformAdmin();
 
-  // The battery the Register/manual step just created (or none). Fail-soft.
+  // Die Batterie, die Register-/Handeingabe gerade angelegt hat (oder keine).
   useEffect(() => {
     let active = true;
     api.siteAssets(site.id).then(
@@ -1100,17 +1120,6 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
     };
   }, [site.id]);
 
-  // Load the entity list + derived usage profile (+ the type catalog for the
-  // admin add). A customer just reads what exists; nothing here blocks the step.
-  //
-  // Der frühere `if (admin)`-Bootstrap-Aufruf ist ERSATZLOS entfallen: der
-  // SERVER komponiert seit dem Auto-Trigger selbst, sobald die Anlage ihr Gerät
-  // hat (Geräte-Claim in Schritt „Gerät", das direkt vor diesem liegt). Ihn für
-  // Admins „als Sofort-Refresh" stehen zu lassen wäre ein zweiter Weg zu
-  // derselben Wirkung - genau die Doppelung, wegen der ein KUNDE bis hierher
-  // nie eine Komposition bekam: was nur ein Admin auslöst, passiert für den
-  // Kunden eben nicht. Eine Anlage ohne Gerät (Schritt übersprungen) bleibt
-  // ehrlich leer, statt dass der Admin heimlich eine andere Anlage sieht.
   const loadEntities = () =>
     api.siteEntities(site.id).then(
       (d) => setEntities(d.entities),
@@ -1120,14 +1129,16 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
   useEffect(() => {
     let active = true;
     async function run() {
-      const [d, prof] = await Promise.all([
+      const [d, regal] = await Promise.all([
         api.siteEntities(site.id).then((x) => x.entities).catch(() => [] as SiteEntity[]),
-        api.usageProfile(site.id).then((p) => p).catch(() => null),
+        api.siteProfiles(site.id).then((r) => r.profiles).catch(() => null),
       ]);
       if (!active) return;
       setEntities(d);
-      setProfile(prof);
-      if (!choiceTouched.current) setChoice(initialProfileChoice(prof));
+      setKarten(regal);
+      // Der Ausgangszustand ist die SERVER-Wahrheit, nie eine Vorbelegung:
+      // was schon läuft, bleibt an, alles andere aus.
+      if (regal) setGetickt(new Set(aktiveIds(regal)));
       if (admin) {
         entitiesApi.typeCatalog().then(
           (c) => active && setCatalog(c.types),
@@ -1146,15 +1157,49 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
     battery.capacityKwh != null &&
     battery.maxChargeKw != null &&
     battery.maxDischargeKw != null;
-  const derivedLabel = profileLabel(profile?.derivedProfile);
+
+  /** Die schon laufenden, SCHALTBAREN Anwendungen - sie bleiben immer getickt. */
+  function aktiveIds(regal: SiteProfile[]): string[] {
+    return regal.filter((k) => k.active && istAbschaltbar(k.id)).map((k) => k.id);
+  }
+
+  function waehleProfil(p: Profil | null) {
+    profilBeruehrt.current = true;
+    setProfil(p);
+    if (!p || !karten) {
+      setZurueckgestellt([]);
+      return;
+    }
+    const vorschlag = presetVorschlag(p, karten);
+    // Die Vorauswahl WÄHLT AUS, sie schaltet nichts ab: was schon läuft, bleibt.
+    setGetickt(new Set([...aktiveIds(karten), ...vorschlag.ticken]));
+    setGewollt(new Set(vorschlag.ticken));
+    setZurueckgestellt(vorschlag.zurueckgestellt);
+  }
+
+  function toggle(id: string) {
+    const an = !getickt.has(id);
+    setGetickt((vorher) => {
+      const next = new Set(vorher);
+      if (an) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    setGewollt((vorher) => {
+      const next = new Set(vorher);
+      if (an) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
 
   async function next() {
     if (busy) return;
     setBusy(true);
     setErr(null);
     try {
-      // Speicherschonung: an untouched Ausgewogen equals the stored effective
-      // preset - only a real change writes (never pins the default).
+      // Speicherschonung: ein unberührtes „Ausgewogen" entspricht dem
+      // gespeicherten Effektivwert - nur eine echte Änderung schreibt.
       if (batteryEditable && battery && schonung !== presetOf(battery.speicherschonung)) {
         await api.saveBattery(site.id, {
           capacityKwh: battery.capacityKwh as number,
@@ -1165,19 +1210,19 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
           speicherschonung: schonung,
         });
       }
-      // The template choice rides the (kept) usage_profile_override column -
-      // it decides WHICH starter flow auto-start seeds, nothing else. Written
-      // only on a real change (null re-enables the automatic suggestion).
-      if (profileChoiceChanged(choice, profile)) {
-        await api.setUsageProfileOverride(site.id, overrideForChoice(choice));
+      // Das PRESET ist Vorauswahl + Tonalität; es schaltet selbst NICHTS.
+      if (profilBeruehrt.current && profil !== (site.profil ?? null)) {
+        await api.setAnwendungsPreset(site.id, profil);
       }
-      // Auto-start the profile's starter flow (admin onboarding; fail-soft,
-      // idempotent - a site with a flow / no battery is skipped, not an error).
-      let outcome: AutoStartOutcome | null = null;
-      if (admin) {
-        outcome = await entitiesApi.autoStart(site.id).catch(() => null);
+      // ... die Schalter tun das - über GENAU den Weg, den auch das Regal unter
+      // „Steuerung" geht, mit denselben Server-Wirkungen (Tor öffnen, Starter
+      // säen). Nacheinander, weil jeder Aufruf das Regal serverseitig neu
+      // rechnet.
+      const plan = karten ? presetSchaltplan([...gewollt], [...getickt], karten) : [];
+      for (const schritt of plan) {
+        await api.setSiteProfile(site.id, schritt.id, schritt.state);
       }
-      onNext(outcome);
+      onNext(plan.filter((p) => p.state === 'an').map((p) => p.id));
     } catch {
       setErr('Die Auswahl konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.');
     } finally {
@@ -1186,12 +1231,45 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
   }
 
   const summary = entitiesRecognisedSummary(entities);
+  const kartenById = new Map((karten ?? []).map((k) => [k.id, k] as const));
+  const sichtbar = [...new Set([...getickt, ...aktiveIds(karten ?? [])])];
+  const { vorne, weitere } = regalFuerProfil(profil, sichtbar);
+
+  const zeile = (def: (typeof vorne)[number]) => {
+    const karte = kartenById.get(def.id);
+    // Ein Katalog-Eintrag, den DIESER Server nicht kennt, wird nicht gezeigt -
+    // ein Schalter ohne Gegenstück wäre eine Zusage, die niemand einlöst.
+    if (!karte) return null;
+    const an = getickt.has(def.id);
+    return (
+      <li key={def.id} className="vp-anw-row">
+        <span className="vp-anw-main">
+          <span className="vp-anw-label">{def.label}</span>
+          <span className="vp-anw-benefit">{def.nutzen}</span>
+        </span>
+        {def.abschaltbar ? (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={an}
+            aria-label={`${def.label} ${an ? 'ausschalten' : 'einschalten'}`}
+            className={`vp-switch${an ? ' on' : ''}`}
+            onClick={() => toggle(def.id)}
+          >
+            <span className="vp-switch-knob" aria-hidden="true" />
+          </button>
+        ) : (
+          <span className="vp-anw-immer">immer an</span>
+        )}
+      </li>
+    );
+  };
 
   return (
     <div className="vp-onboarding-step">
-      <h3>Wie nutzen Sie Ihre Anlage?</h3>
+      <h3>Wofür ist diese Anlage?</h3>
       <p className="vp-muted">
-        Daraus richten wir Ihre Steuerung ein. Sie können alles später jederzeit auf der
+        Daraus schlagen wir Ihre Anwendungen vor. Sie können alles später jederzeit auf der
         Anlagen-Seite ändern.
       </p>
 
@@ -1222,40 +1300,72 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
       </section>
 
       <section className="vp-onb-block">
-        <h4 className="vp-onb-block-title">Womit sollen wir starten?</h4>
-        <p className="vp-note" style={{ marginTop: 0 }}>
-          Bestimmt, welche Steuerung wir für Sie einrichten. Sie können jederzeit
-          weitere Anwendungen hinzufügen oder wieder abschalten.
-          {choice === 'auto' && ` Vorschlag für Ihre Anlage: ${derivedLabel}.`}
-        </p>
+        <h4 className="vp-onb-block-title">Profil</h4>
         <fieldset className="vp-schonung">
-          <legend className="vp-visually-hidden">Start-Steuerung</legend>
-          {PROFILE_OPTIONS.map((o) => (
+          <legend className="vp-visually-hidden">Profil dieser Anlage</legend>
+          {PRESETS.map((o) => (
             <label
-              key={o.value}
-              className={'vp-schonung-opt' + (choice === o.value ? ' selected' : '')}
+              key={o.id}
+              className={'vp-schonung-opt' + (profil === o.id ? ' selected' : '')}
             >
               <input
                 type="radio"
-                name="nutzung-profil"
-                value={o.value}
-                checked={choice === o.value}
-                onChange={() => {
-                  choiceTouched.current = true;
-                  setChoice(o.value);
-                }}
+                name="anwendungen-profil"
+                value={o.id}
+                checked={profil === o.id}
+                onChange={() => waehleProfil(o.id)}
               />
               <span className="vp-schonung-main">
-                <span className="vp-schonung-label">
-                  {o.label}
-                  {o.value === 'auto' ? ` (${derivedLabel})` : ''}
-                </span>
-                <span className="vp-schonung-sentence">{o.sentence}</span>
+                <span className="vp-schonung-label">{o.label}</span>
+                <span className="vp-schonung-sentence">{o.satz}</span>
               </span>
             </label>
           ))}
+          <label className={'vp-schonung-opt' + (profil === null ? ' selected' : '')}>
+            <input
+              type="radio"
+              name="anwendungen-profil"
+              value=""
+              checked={profil === null}
+              onChange={() => waehleProfil(null)}
+            />
+            <span className="vp-schonung-main">
+              <span className="vp-schonung-label">Später entscheiden</span>
+              <span className="vp-schonung-sentence">
+                Wir schlagen dann nichts vor - Sie schalten Anwendungen selbst zu.
+              </span>
+            </span>
+          </label>
         </fieldset>
       </section>
+
+      {karten && karten.length > 0 && (
+        <section className="vp-onb-block">
+          <h4 className="vp-onb-block-title">Ihre Anwendungen</h4>
+          <ul className="vp-anw-list">{vorne.map(zeile)}</ul>
+          {zurueckgestellt.length > 0 && (
+            <p className="vp-note vp-anw-zurueck">
+              {zurueckgestellt
+                .map((z) => `${z.label} schlagen wir noch nicht vor: ${z.fehlend.join(' und ')} fehlt.`)
+                .join(' ')}
+            </p>
+          )}
+          {weitere.length > 0 &&
+            (weitereOffen ? (
+              <ul className="vp-anw-list">{weitere.map(zeile)}</ul>
+            ) : (
+              <p className="vp-note" style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="vp-linklike"
+                  onClick={() => setWeitereOffen(true)}
+                >
+                  Weitere Anwendungen anzeigen ({weitere.length})
+                </button>
+              </p>
+            ))}
+        </section>
+      )}
 
       {batteryEditable && (
         <section className="vp-onb-block">
@@ -1298,7 +1408,7 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
         {busy ? 'Speichere…' : 'Weiter'}
       </Button>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
-        <button type="button" className="vp-linklike" onClick={() => onNext(null)}>
+        <button type="button" className="vp-linklike" onClick={() => onNext([])}>
           Überspringen - später festlegen
         </button>
       </p>
@@ -1609,7 +1719,7 @@ function SummaryStep({
   pvApplied,
   storageApplied,
   manualBatterySaved,
-  autoStart,
+  eingeschaltet,
   onDone,
 }: {
   site: Site;
@@ -1617,11 +1727,11 @@ function SummaryStep({
   pvApplied: MastrPreview | null;
   storageApplied: MastrPreview | null;
   manualBatterySaved: boolean;
-  autoStart: AutoStartOutcome | null;
+  eingeschaltet: string[];
   onDone: () => void;
 }) {
   const fromRegistry = pvApplied != null || storageApplied != null;
-  const autoStartLine = autoStartSummary(autoStart);
+  const anwendungenLine = anwendungenSatz(eingeschaltet);
   return (
     <div className="vp-onboarding-step" style={{ textAlign: 'center' }}>
       <div className="vp-success-mark" aria-hidden="true">
@@ -1638,9 +1748,9 @@ function SummaryStep({
         <SummaryRow k="Gerät" v={claimed ? claimed.externalRef : 'später verbinden'} />
         {fromRegistry && <SummaryRow k="Quelle" v="Marktstammdaten" />}
       </dl>
-      {autoStartLine && (
+      {anwendungenLine && (
         <p className="vp-note" style={{ marginTop: 12 }}>
-          {autoStartLine}
+          {anwendungenLine}
         </p>
       )}
       {!claimed && (

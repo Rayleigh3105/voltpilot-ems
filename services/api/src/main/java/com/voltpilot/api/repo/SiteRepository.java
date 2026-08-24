@@ -19,7 +19,7 @@ public class SiteRepository {
             "id, name, bidding_zone, latitude, longitude, plant_kind, anzulegender_wert_ct_kwh,"
                     + " marktpraemie_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt,"
                     + " max_feed_in_kw, leistungspreis_eur_kw, abrechnung_leistung,"
-                    + " peak_reserve_soc_pct, usage_profile_override";
+                    + " peak_reserve_soc_pct, usage_profile_override, profil";
 
     private final JdbcTemplate jdbc;
 
@@ -129,7 +129,23 @@ public class SiteRepository {
                 rs.getString("abrechnung_leistung"),
                 rs.getBigDecimal("peak_reserve_soc_pct"),
                 // AE7 Nutzungsprofil override (V20260719050000).
-                rs.getString("usage_profile_override"));
+                rs.getString("usage_profile_override"),
+                // Anwendungs-Preset (V20260838000000): privat | gewerbe | null.
+                rs.getString("profil"));
+    }
+
+    /**
+     * Set the site's application PRESET (Anwendungs-Programm Stufe 2):
+     * {@code privat} | {@code gewerbe}, or {@code null} to go back to "none
+     * chosen". Full-set semantics like {@link #setUsageProfileOverride} - the
+     * preset is ONE value the customer picks, not a form field that could be
+     * omitted by accident, so there is no COALESCE-keep here.
+     *
+     * <p>RLS scopes the write to the caller's tenant (a foreign site updates 0
+     * rows =&gt; the controller answers 404).
+     */
+    public boolean setProfil(UUID siteId, String profil) {
+        return jdbc.update("UPDATE site SET profil = ? WHERE id = ?", profil, siteId) > 0;
     }
 
     /**

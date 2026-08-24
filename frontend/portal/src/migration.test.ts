@@ -7,7 +7,16 @@ import { anlageDecision, cockpitStack, projectionActive } from './cockpit';
 import { cockpitWidgets } from './cockpitWidgets';
 import { hasTopology } from './adaptiveLive';
 import { modeChips } from './portfolio';
-import { ANWENDUNGEN, REGAL, derivedAnwendungen } from './anwendungen';
+import {
+  ANWENDUNGEN,
+  REGAL,
+  derivedAnwendungen,
+  presetSchaltplan,
+  presetVorschlag,
+  regalFuerProfil,
+  vorauswahl,
+} from './anwendungen';
+import { fleetKind, fleetTonalitaet, siteTonalitaet } from './fleet';
 import { profileStatesFrom } from './profiles';
 import { profileRows } from './steuerungArea';
 import { showTechnicalLayer } from './rollen';
@@ -34,6 +43,15 @@ import type { OverviewSite } from './api';
 
 /** Das Portal-Quellverzeichnis (vitest läuft im `frontend/portal`-Root). */
 const SRC = join(process.cwd(), 'src') + '/';
+
+/**
+ * Kommentare weg (das `copy.test.ts`-Muster): ein Abbau-Wächter prüft, was der
+ * Code TUT, nicht was eine Grabstein-Notiz über einen entfernten Namen sagt.
+ * Über-Strippen kann höchstens einen Verstoß verstecken, nie einen erfinden.
+ */
+function ohneKommentare(code: string): string {
+  return code.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
 
 /** Alle Portal-Quelldateien (ohne Tests) — für die Abbau-Invarianten. */
 function sourceFiles(dir = SRC): string[] {
@@ -441,6 +459,55 @@ describe('Abbau-Invarianten (M6)', () => {
     expect(REGAL.map((a) => a.id)).not.toContain('eigene-auswertung');
   });
 
+  it('Anwendungs-Preset Stufe 2: eine Anlage OHNE Profil rendert exakt wie vorher', () => {
+    // `site.profil` ist bei JEDER Bestandsanlage null (die Migration setzt
+    // keinen Default). Daraus folgen drei Byte-Identitäten:
+    //  1. die Tonalität fällt auf die bisherige plant_kind-Regel zurück,
+    expect(siteTonalitaet({ plantKind: 'eigenverbrauch' })).toBe('eigenverbrauch');
+    expect(siteTonalitaet({ profil: null, plantKind: 'direktvermarktung' })).toBe(
+      'direktvermarktung',
+    );
+    expect(
+      fleetTonalitaet([
+        { plantKind: 'direktvermarktung' },
+        { plantKind: 'eigenverbrauch' },
+      ]),
+    ).toBe(fleetKind(['direktvermarktung', 'eigenverbrauch']));
+    //  2. das Regal wird nicht umsortiert und nichts eingeklappt,
+    const regal = regalFuerProfil(null);
+    expect(regal.vorne).toEqual(REGAL);
+    expect(regal.weitere).toEqual([]);
+    //  3. und der Assistent schlägt NICHTS vor, schaltet also auch nichts.
+    expect(vorauswahl(null)).toEqual([]);
+    const karten = [
+      { id: 'marktvermarktung', label: 'Marktoptimierung', state: null, active: true, requirements: [] },
+    ];
+    expect(presetVorschlag(null, karten)).toEqual({ ticken: [], zurueckgestellt: [] });
+    expect(presetSchaltplan([], ['marktvermarktung'], karten)).toEqual([]);
+  });
+
+  it('Anwendungs-Preset Stufe 2: das Profil ist NIE ein Signal der Ableitung', () => {
+    // Captain-Entscheid E3. Die Ableitung kennt das Feld gar nicht - ihre
+    // Eingabe (`AnwendungSignals`) hat keinen Platz dafür, und genau das ist
+    // der Beweis: was auf einer Anlage läuft, bleibt Anwendungen x Fähigkeiten.
+    const signals = {
+      hasStorage: false,
+      hasPv: false,
+      hasControllableConsumer: false,
+      hasChargePoint: false,
+      hasMeasurement: false,
+      hasLeistungspreis: false,
+      hasGridLimit: false,
+      activeNodeTypes: [],
+      hasCustomerRule: false,
+      plantKind: 'eigenverbrauch',
+      tarifArt: 'ohne',
+      netzladenErlaubt: false,
+    };
+    expect(Object.keys(signals)).not.toContain('profil');
+    expect(derivedAnwendungen(signals)).toEqual(['monitoring']);
+  });
+
   it('M7: die technische Schicht ist standardmäßig zu (ohne Admin-Token)', () => {
     // Ohne Plattform-Admin-Token (der Kundenfall UND ein älteres Backend / ein
     // Ladefehler) bleibt die Installateur-Ansicht geschlossen - eine Bestands-
@@ -449,18 +516,33 @@ describe('Abbau-Invarianten (M6)', () => {
     expect(showTechnicalLayer()).toBe(false);
   });
 
-  it('`usage_profile_override` lebt nur noch als Auto-Start-Template-Wähler', () => {
-    const users = sourceFiles().filter((f) =>
-      /setUsageProfileOverride|overrideForChoice/.test(readFileSync(f, 'utf8')),
+  it('`usage_profile_override` wird NIRGENDS mehr geschrieben (Anwendungs-Programm Stufe 2)', () => {
+    // Stufe 2 hat den letzten Schreibpfad entfernt (der Wizard-Vorwahl-Block).
+    // Die DB-SPALTE bleibt lesbar und das Backend ist unangetastet - das
+    // Portal schreibt sie nur nicht mehr. Geprüft wird auf dem KOMMENTAR-freien
+    // Text: die Grabstein-Notizen in `adaptiveOnboarding.ts`/`AnlageFlow.tsx`
+    // nennen die entfernten Namen absichtlich, und ein Wächter, der daran
+    // scheitert, verböte seine eigene Dokumentation.
+    const schreiber = sourceFiles().filter((f) =>
+      /setUsageProfileOverride|overrideForChoice/.test(ohneKommentare(readFileSync(f, 'utf8'))),
     );
-    const names = users.map((f) => f.slice(SRC.length));
-    // api.ts = der Endpunkt selbst (die DB-Spalte bleibt, das Backend ist
-    // unangetastet), adaptiveOnboarding.ts = die reine Wahl-Logik,
-    // AnlageFlow.tsx = der EINE Schreibpfad (der Wizard-Template-Wähler).
-    expect(names.sort()).toEqual([
-      'adaptiveOnboarding.ts',
+    expect(schreiber.map((f) => f.slice(SRC.length))).toEqual([]);
+  });
+
+  it('Stufe 2: das PRESET wird über die schmale Route geschrieben, nie über updateSite', () => {
+    // Der EINE Schreibpfad ist `api.setAnwendungsPreset` (die schmale Route);
+    // ein voll-repräsentatives `updateSite` aus dem Assistenten heraus wäre ein
+    // Überschreib-Risiko für die Tarif-/Vergütungsfelder, die der Schritt nie
+    // geladen hat.
+    const schreiber = sourceFiles().filter((f) =>
+      /setAnwendungsPreset/.test(ohneKommentare(readFileSync(f, 'utf8'))),
+    );
+    // api.ts = die Route selbst, AnlageFlow.tsx = der Assistent,
+    // AnlageTechnik.tsx = „Profil ändern" in den Einstellungen.
+    expect(schreiber.map((f) => f.slice(SRC.length)).sort()).toEqual([
       'api.ts',
       'components/AnlageFlow.tsx',
+      'pages/AnlageTechnik.tsx',
     ]);
   });
 });

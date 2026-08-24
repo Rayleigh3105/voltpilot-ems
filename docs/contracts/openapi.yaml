@@ -1532,6 +1532,50 @@ paths:
         "400": { description: Override is not one of arbitrage, peak, private. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/anwendungs-preset:
+    put:
+      tags: [profile]
+      summary: Set the site's application PRESET (Privat | Gewerbe).
+      description: >
+        The PROFILE of a plant (Anwendungs-Programm Stufe 2, Captain-Entscheid
+        E3): preset + tonality + reset base, never a signal of the activation
+        derivation. It changes NO switch - which applications run stays the
+        Regal's business (PUT .../profiles), so a later "Profil aendern" can
+        never rewrite the customer's own switches. The assistant flips the
+        proposed switches individually through that same route, with the same
+        server effects (open the gate, seed the starter).
+        An absent/blank `profil` clears it back to "none chosen"; an unknown
+        word is a 400 with a German reason, never a silent fallback to one of
+        the two. Deliberately a narrow route rather than a field of the site
+        master-data form: the assistant writes it from a step that never loaded
+        the tariff/remuneration fields, and a full-representation
+        PUT /api/v1/sites/{id} from there would be a clobber risk. The path is
+        deliberately NOT `/profil` - that would sit ONE character next to the
+        existing `/profile` (the AE7 usage profile).
+        RLS-scoped (foreign site 404; admins via the `X-Tenant-Id` switcher).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profil:
+                  type: string
+                  nullable: true
+                  enum: [privat, gewerbe]
+                  description: The preset, or null/absent to clear it.
+      responses:
+        "200":
+          description: The updated site (its `profil` echoes the stored value).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+        "400": { description: Unknown profil (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/profiles:
     get:
       tags: [profile]
@@ -7311,6 +7355,22 @@ components:
             auto-derive. Set via PUT /api/v1/sites/{id}/profile; the effective +
             derived profile and the emphasis map are served by
             GET /api/v1/sites/{id}/profile (see docs/contracts/v2/usage-profile.md).
+        profil:
+          type: string
+          nullable: true
+          enum: [privat, gewerbe]
+          description: >
+            The site's application PRESET (Anwendungs-Programm Stufe 2,
+            migration V20260838000000); null = none chosen, the state of every
+            pre-Stufe-2 site. It has exactly three effects and none of them is a
+            branch in the data truth: the pre-selection in the Anwendungs-Regal
+            (which applications the assistant proposes - the list itself lives
+            per application in `anwendungen/catalog.json` as `preset`), the
+            TONALITY of the money wording (privat spart, gewerbe verdient;
+            without it the wording falls back byte-identically to the plant_kind
+            rule) and the reset base for the cockpit layout. It is NEVER a
+            signal of the activation derivation. Written exclusively by
+            PUT /api/v1/sites/{siteId}/anwendungs-preset.
     SiteAsset:
       type: object
       description: One asset row incl. registry provenance; null = not set.

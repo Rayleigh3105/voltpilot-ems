@@ -322,10 +322,89 @@ class SiteProfileApiTest {
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
+    /**
+     * Anwendungs-Programm Stufe 2: das PRESET der Anlage.
+     *
+     * <p>Die Zusagen, die hier hängen: es ist NULL auf jeder Bestandsanlage, es
+     * wird über eine SCHMALE Route geschrieben, ein unbekanntes Wort ist eine
+     * benannte Ablehnung statt eines stillen Rückfalls — und vor allem: <b>es
+     * schaltet keine einzige Anwendung</b> (Captain-Entscheid E3), damit ein
+     * späteres „Profil ändern" nie die Schalter des Kunden überschreibt.
+     */
+    @Test
+    void theApplicationPresetIsStoredWithoutTouchingASingleSwitch() {
+        String demo = token("demo", "demo");
+        String pfad = "/api/v1/sites/" + BERLIN_SITE + "/anwendungs-preset";
+
+        // 1) Der Zustand JEDER Bestandsanlage: kein Profil.
+        assertThat(site(demo).path("profil").isNull()).as("Bestand ist NULL").isTrue();
+
+        // Der Zustand des Regals VOR der Wahl - er darf sich nicht ändern.
+        Map<String, String> vorher = states(customer(profilesPath(), HttpMethod.GET, demo, null)
+                .getBody());
+
+        // 2) Das Preset wird gespeichert und auf der Anlage zurückgemeldet.
+        ResponseEntity<JsonNode> gesetzt = customer(pfad, HttpMethod.PUT, demo,
+                Map.of("profil", "gewerbe"));
+        assertThat(gesetzt.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(gesetzt.getBody().path("profil").asText()).isEqualTo("gewerbe");
+        assertThat(site(demo).path("profil").asText()).isEqualTo("gewerbe");
+
+        // 3) ... und es hat KEINEN Schalter angefasst.
+        assertThat(states(customer(profilesPath(), HttpMethod.GET, demo, null).getBody()))
+                .as("das Profil schaltet nichts").isEqualTo(vorher);
+
+        // 4) Umschalten und wieder löschen sind derselbe Weg.
+        assertThat(customer(pfad, HttpMethod.PUT, demo, Map.of("profil", "privat")).getBody()
+                .path("profil").asText()).isEqualTo("privat");
+        Map<String, Object> leer = new HashMap<>();
+        leer.put("profil", null);
+        assertThat(customer(pfad, HttpMethod.PUT, demo, leer).getBody().path("profil").isNull())
+                .as("null löscht es wieder").isTrue();
+
+        // 5) Ein unbekanntes Wort wird BENANNT abgelehnt, nie still auf eines
+        //    der zwei zurückgefallen - das behauptete eine Wahl, die niemand traf.
+        ResponseEntity<JsonNode> quatsch = customer(pfad, HttpMethod.PUT, demo,
+                Map.of("profil", "betreiber"));
+        assertThat(quatsch.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(quatsch.getBody().path("message").asText()).contains("Unbekanntes Profil");
+        assertThat(site(demo).path("profil").isNull()).as("nichts geschrieben").isTrue();
+
+        // 6) RLS ist der Zaun - eine fremde Anlage ist 404, nie 403.
+        assertThat(customer(pfad, HttpMethod.PUT, token("demo2", "demo2"),
+                Map.of("profil", "privat")).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // 7) Ein Admin erreicht dieselbe Route über den Mandanten-Umschalter.
+        assertThat(exchange(pfad, HttpMethod.PUT, token("admin", "admin"), TENANT_A,
+                Map.of("profil", "gewerbe")).getStatusCode()).isEqualTo(HttpStatus.OK);
+        customer(pfad, HttpMethod.PUT, demo, leer);
+    }
+
     // ---- helpers -------------------------------------------------------------
 
     private static String profilesPath() {
         return "/api/v1/sites/" + BERLIN_SITE + "/profiles";
+    }
+
+    /** Die Demo-Anlage, wie der Kunde sie sieht. */
+    private JsonNode site(String token) {
+        for (JsonNode candidate : customer("/api/v1/sites", HttpMethod.GET, token, null)
+                .getBody()) {
+            if (BERLIN_SITE.equals(candidate.path("id").asText())) {
+                return candidate;
+            }
+        }
+        throw new AssertionError("die Demo-Anlage fehlt");
+    }
+
+    /** Anwendung -> gespeicherter Wille (`an`/`aus`/`-`) - der Regal-Zustand. */
+    private static Map<String, String> states(JsonNode shelf) {
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (JsonNode card : shelf.path("profiles")) {
+            out.put(card.path("id").asText(),
+                    card.path("state").isNull() ? "-" : card.path("state").asText());
+        }
+        return out;
     }
 
     private JsonNode toggle(String token, String profile, String state) {

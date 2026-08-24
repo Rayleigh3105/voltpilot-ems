@@ -53,12 +53,40 @@
     "gerendert wird davon in Stufe 1 nichts neu (Stufe 3 loest das Layout",
     "daraus auf).",
     "",
-    "'preset' ist die Vorauswahl je Profil (Stufe 2): an | angeboten |",
-    "verborgen | abgeleitet. Sie wird in Stufe 1 nur GETRAGEN, nie gelesen."
+    "'preset' ist die Vorauswahl je Profil: an | angeboten | verborgen |",
+    "abgeleitet. SEIT STUFE 2 wird sie GELESEN - sie ist die einzige Quelle",
+    "dafuer, was ein Profil einschaltet. Der Block 'presets' daneben traegt",
+    "NUR das Profil-eigene: Label, den 'wir starten mit ...'-Satz und die",
+    "TONALITAET. Die LISTE der einzuschaltenden Anwendungen steht dort",
+    "bewusst NICHT - sie waere eine zweite Wahrheit neben dem 'preset'-Feld",
+    "und koennte davon abdriften; sie wird abgeleitet (jede sichtbare,",
+    "abschaltbare Anwendung mit preset[profil] == 'an').",
+    "",
+    "DAS PROFIL IST NIE EIN SIGNAL DER ABLEITUNG (Captain-Entscheid E3): es",
+    "ist Vorauswahl + Tonalitaet + Reset-Basis, mehr nicht. Die Wahrheit",
+    "darueber, was auf einer Anlage laeuft, bleibt Anwendungen x Faehigkeiten;",
+    "eine Anlage ohne gespeichertes Profil (jede Bestandsanlage) verhaelt sich",
+    "zeichengleich wie vor Stufe 2."
   ],
   "klassen": ["basis", "regel", "geschaeft", "reserviert"],
   "kategorien": ["basis", "steuerung", "geschaeft", "auswertung"],
   "preset_werte": ["an", "angeboten", "verborgen", "abgeleitet"],
+  "profile": ["privat", "gewerbe"],
+  "tonalitaeten": ["sparen", "verdienen"],
+  "presets": [
+    {
+      "id": "privat",
+      "label": "Privat",
+      "satz": "Ein Haushalt mit eigener Erzeugung - wir starten damit, Ihren eigenen Strom im Haus zu halten und Ihre Geraete danach laufen zu lassen.",
+      "tonalitaet": "sparen"
+    },
+    {
+      "id": "gewerbe",
+      "label": "Gewerbe",
+      "satz": "Ein Betrieb mit Leistungsmessung oder Vermarktung - wir starten mit dem, was am Netzanschluss und am Markt Geld bringt.",
+      "tonalitaet": "verdienen"
+    }
+  ],
   "anwendungen": [
     {
       "id": "monitoring",

@@ -59,7 +59,15 @@ import { LocationMap } from '../components/LocationMap';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfoTip } from '../components/InfoTip';
+import {
+  PRESETS,
+  PROFIL_UNGESETZT,
+  profilAenderungsFolgen,
+  profilLabel,
+  type Profil,
+} from '../anwendungen';
 import { InstallAppPanel } from '../components/InstallAppPanel';
 import { MastrDrawer } from '../components/MastrDrawer';
 import { SettingRow } from '../components/SettingEditors';
@@ -515,6 +523,23 @@ export function TechnikSection({
                 <small className="vp-note">{VERAEUSSERUNGSFORM_FRAGE}</small>
               </dt>
               <dd className="vp-kv-v">{plantKindLabel(site.plantKind)}</dd>
+            </div>
+            {/* Anwendungs-Programm Stufe 2: das PRESET der Anlage. Es steht
+                bewusst NEBEN der Veräußerungsform, nicht darin - das eine sagt,
+                WIE der Strom vergütet wird, das andere, WER die Anlage
+                betreibt; die Tonalität folgt seit Stufe 2 dem zweiten. */}
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">
+                Profil
+                <InfoTip title="Profil dieser Anlage">
+                  Privat oder Gewerbe. Es entscheidet, welche Anwendungen wir Ihnen
+                  vorschlagen und in welchen Worten wir über Geld sprechen -
+                  eingeschaltet oder abgeschaltet wird dadurch nichts.
+                </InfoTip>
+              </dt>
+              <dd className="vp-kv-v">
+                <ProfilZeile site={site} onSaved={onSiteSaved} />
+              </dd>
             </div>
             <div className="vp-kv-row">
               <dt className="vp-kv-k">
@@ -1009,6 +1034,85 @@ export function TechnikSection({
  * `buildSitePayload` (full-representation), so a focused save here never blanks
  * a field a mode container owns.
  */
+/**
+ * „Profil ändern" (Anwendungs-Programm Stufe 2).
+ *
+ * ⚠ Es ändert AUSDRÜCKLICH keinen Schalter — das Profil ist Vorauswahl +
+ * Tonalität + Reset-Basis (Captain-Entscheid E3), und der Dialog SAGT das in
+ * seiner Folgenliste. Ein „Anwendungen auf das Preset zurücksetzen" wäre eine
+ * zweite, rückwirkende Wirkung auf Schalter, die der Kunde selbst gestellt hat;
+ * wer sie ändern will, tut das im Regal unter „Steuerung", wo jede Zeile ihren
+ * Zustand und ihren Grund trägt.
+ *
+ * Geschrieben wird über die schmale Route (`api.setAnwendungsPreset`), nicht
+ * über das Stammdaten-Formular daneben: ein voll-repräsentatives `updateSite`
+ * für EIN Feld wäre ein Überschreib-Risiko für alles andere in diesem Kasten.
+ */
+function ProfilZeile({ site, onSaved }: { site: Site; onSaved: (s: Site) => void }) {
+  const [offen, setOffen] = useState(false);
+  const [wahl, setWahl] = useState<Profil | null>(site.profil ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function speichern() {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      onSaved(await api.setAnwendungsPreset(site.id, wahl));
+      setOffen(false);
+    } catch {
+      setErr('Das Profil konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <span>{profilLabel(site.profil)}</span>{' '}
+      <button
+        type="button"
+        className="vp-linklike"
+        onClick={() => {
+          setWahl(site.profil ?? null);
+          setErr(null);
+          setOffen(true);
+        }}
+      >
+        Ändern
+      </button>
+      {err && (
+        <div className="vp-alert vp-alert-err" style={{ marginTop: 8 }}>
+          {err}
+        </div>
+      )}
+      <ConfirmDialog
+        open={offen}
+        title="Profil ändern"
+        intro="Wofür wird diese Anlage betrieben?"
+        consequences={profilAenderungsFolgen(wahl)}
+        confirmLabel={busy ? 'Speichere…' : 'Profil speichern'}
+        busy={busy}
+        onConfirm={speichern}
+        onCancel={() => setOffen(false)}
+        extra={
+          <VpPicker
+            id="profil-wahl"
+            label="Profil"
+            options={[
+              ...PRESETS.map((p) => ({ value: p.id, label: p.label, sub: p.satz })),
+              { value: '', label: PROFIL_UNGESETZT, sub: 'Wir schlagen dann nichts vor.' },
+            ]}
+            value={wahl ?? ''}
+            onChange={(v) => setWahl(v === '' ? null : (v as Profil))}
+          />
+        }
+      />
+    </>
+  );
+}
+
 export function StammdatenEditForm({
   site,
   onCancel,

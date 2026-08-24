@@ -15,12 +15,22 @@
  * concrete, never alarm-red.
  */
 import type { EarningsDaily, EarningsRange, EarningsReason, EarningsSite, OverviewLive, OverviewSite, PlantKind, TarifArt } from './api';
+import { tonalitaetVon } from './anwendungen';
 import { ONLINE_WINDOW_MS } from './api';
 import { eurAmount, fmtNum } from './format';
 import { composeStatusSentence, DEADBAND_KW, deriveBatteryKw, type LiveSnapshot } from './live';
 import { sanitizeSoc } from './plausible';
 
-/** The fleet's overall plant-kind composition. */
+/**
+ * Der TON, in dem über Geld gesprochen wird.
+ *
+ * ⚠ `FleetKind` ist seit je das TON-Vokabular DIESER Datei — es lesen genau
+ * `fleetHeadline`, `realizedSubline` und `proofLine`, sonst niemand. Es ist
+ * NICHT die Veräußerungsform der Anlage: seit Stufe 2 darf ein Gewerbe-Profil
+ * hier `direktvermarktung` ergeben, ohne eine Direktvermarktung zu behaupten
+ * (siehe {@link siteTonalitaet}). Wer das Vokabular umbenennt, fasst die drei
+ * Leser mit an.
+ */
 export type FleetKind = PlantKind | 'gemischt';
 
 export function fleetKind(kinds: PlantKind[]): FleetKind {
@@ -29,6 +39,40 @@ export function fleetKind(kinds: PlantKind[]): FleetKind {
   if (hasDv && !hasEv) return 'direktvermarktung';
   if (hasEv && !hasDv) return 'eigenverbrauch';
   return 'gemischt';
+}
+
+/**
+ * Die TONALITÄT EINER Anlage (Anwendungs-Programm Stufe 2): **`site.profil`
+ * führt, `plant_kind` ist der Rückfall.**
+ *
+ * Vor Stufe 2 hing der Ton allein an der Veräußerungsform — also daran, WIE der
+ * Strom vergütet wird, nicht daran, WER die Anlage betreibt: ein Gewerbebetrieb
+ * im Eigenverbrauch las „gespart" wie ein Privathaushalt. Das Profil ist die
+ * Zielgruppen-Achse und gewinnt deshalb, wo es gesetzt ist; `privat` spart,
+ * `gewerbe` verdient.
+ *
+ * ⚠ **Ohne Profil (jede Bestandsanlage) ist das Ergebnis byte-identisch zu
+ * vorher** — genau das ist die Migrations-Zusage der Stufe.
+ */
+export function siteTonalitaet(site: {
+  profil?: string | null;
+  plantKind: PlantKind;
+}): PlantKind {
+  const ton = tonalitaetVon(site.profil);
+  if (ton === 'verdienen') return 'direktvermarktung';
+  if (ton === 'sparen') return 'eigenverbrauch';
+  return site.plantKind;
+}
+
+/**
+ * Die Tonalität einer FLOTTE: je Anlage ihr Ton, dann die bestehende
+ * Misch-Regel. Eine Flotte ohne ein einziges gesetztes Profil ergibt exakt
+ * {@link fleetKind} über den rohen `plant_kind`.
+ */
+export function fleetTonalitaet(
+  sites: { profil?: string | null; plantKind: PlantKind }[],
+): FleetKind {
+  return fleetKind(sites.map(siteTonalitaet));
 }
 
 /** Hero headline per fleet composition. */

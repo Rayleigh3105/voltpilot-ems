@@ -549,6 +549,56 @@ const peakSite: Partial<Site> = {
   peakReserveSocPct: 25,
 };
 
+describe('Einstellungen · Profil ändern (Anwendungs-Programm Stufe 2)', () => {
+  it('sagt ehrlich, wenn noch keins gewählt ist', async () => {
+    const { restore } = await renderEinstellungen();
+    const zeile = screen.getByText('Profil').closest('.vp-kv-row') as HTMLElement;
+    expect(within(zeile).getByText('noch nicht festgelegt')).toBeInTheDocument();
+    restore();
+  });
+
+  it('schreibt das Profil über die SCHMALE Route - und nennt vorher die Folgen', async () => {
+    const preset = vi
+      .spyOn(api, 'setAnwendungsPreset')
+      .mockResolvedValue({ ...eegSite, profil: 'gewerbe' });
+    const updateSite = vi.spyOn(api, 'updateSite');
+    const { onSiteSaved, restore } = await renderEinstellungen({ profil: 'privat' });
+
+    const zeile = screen.getByText('Profil').closest('.vp-kv-row') as HTMLElement;
+    expect(within(zeile).getByText('Privat')).toBeInTheDocument();
+    fireEvent.click(within(zeile).getByRole('button', { name: 'Ändern' }));
+
+    // Die Folgenliste steht VOR dem Klick - und sie sagt, was GLEICH bleibt.
+    expect(
+      screen.getByText(/Ihre eingeschalteten Anwendungen bleiben unverändert/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Profil' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Gewerbe/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Profil speichern' }));
+
+    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));
+    await waitFor(() => expect(onSiteSaved).toHaveBeenCalled());
+    // Ein voll-repräsentatives updateSite für EIN Feld wäre ein
+    // Überschreib-Risiko für alles andere in diesem Kasten.
+    expect(updateSite).not.toHaveBeenCalled();
+    preset.mockRestore();
+    updateSite.mockRestore();
+    restore();
+  });
+
+  it('Abbrechen ändert nichts', async () => {
+    const preset = vi.spyOn(api, 'setAnwendungsPreset');
+    const { restore } = await renderEinstellungen({ profil: 'privat' });
+    const zeile = screen.getByText('Profil').closest('.vp-kv-row') as HTMLElement;
+    fireEvent.click(within(zeile).getByRole('button', { name: 'Ändern' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    expect(preset).not.toHaveBeenCalled();
+    preset.mockRestore();
+    restore();
+  });
+});
+
 describe('Einstellungen · E4 · die drei Autoritäts-Stufen sind sichtbar', () => {
   it('jede Kunden-Zeile trägt das Abzeichen ① und ihren Bearbeiten-Knopf', async () => {
     const { restore } = await renderEinstellungen();

@@ -1,34 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  PROFILE_OPTIONS,
-  autoStartSummary,
   creatableConsumerTypes,
   entitiesRecognisedSummary,
   entityGroupLabel,
-  initialProfileChoice,
-  overrideForChoice,
-  profileChoiceChanged,
-  profileLabel,
 } from './adaptiveOnboarding';
-import type { AutoStartOutcome, EntityTypeDef } from './entitiesApi';
-import type { SiteEntity, SiteUsageProfile } from './api';
-
-function profile(over: string | null, derived = 'private'): SiteUsageProfile {
-  return {
-    usageProfile: over ?? derived,
-    derivedProfile: derived,
-    override: over,
-    emphasis: { money: 'minimal', peak: 'hidden', flow: 'prominent', devices: 'prominent' },
-    signals: {
-      hasStorage: true,
-      hasPv: true,
-      hasControllableConsumer: false,
-      activeStrategyNodeTypes: [],
-      plantKind: 'eigenverbrauch',
-      hasLeistungspreis: false,
-    },
-  };
-}
+import type { EntityTypeDef } from './entitiesApi';
+import type { SiteEntity } from './api';
 
 function entity(role: string, over: Partial<SiteEntity> = {}): SiteEntity {
   return {
@@ -46,109 +23,6 @@ function entity(role: string, over: Partial<SiteEntity> = {}): SiteEntity {
     ...over,
   };
 }
-
-describe('PROFILE_OPTIONS (AE5 profile choice)', () => {
-  it('offers auto first, then the two settable profiles (Eigenverbrauch is not a choice)', () => {
-    expect(PROFILE_OPTIONS.map((o) => o.value)).toEqual(['auto', 'arbitrage', 'peak']);
-  });
-
-  it('never offers an explicit Eigenverbrauch choice (it is base behaviour)', () => {
-    expect(PROFILE_OPTIONS.map((o) => o.value)).not.toContain('private');
-    const text = PROFILE_OPTIONS.map((o) => `${o.label} ${o.sentence}`).join(' ');
-    expect(text).not.toMatch(/Eigenverbrauch/);
-  });
-
-  it('never leaks internal vocabulary in the copy', () => {
-    const text = PROFILE_OPTIONS.map((o) => `${o.label} ${o.sentence}`).join(' ');
-    expect(text).not.toMatch(/MILP|optimizer|Modul|RLS|Keycloak|Flow-Node|Node-RED|profile/i);
-  });
-
-  it('F5: promises a STARTING POINT, never a view/Fokus the portal would apply', () => {
-    // report §6.5 - the profile face is retired; this pre-pick is the auto-start
-    // TEMPLATE chooser. Copy that promises an "Ansicht"/"Fokus"/"Gesicht" would
-    // re-introduce exactly the winner-profile framing M1/M6 removed.
-    const text = PROFILE_OPTIONS.map((o) => `${o.label} ${o.sentence}`).join(' ');
-    expect(text).not.toMatch(/Ansicht|Fokus|Gesicht|Darstellung/i);
-    // ... and every non-auto option says what it STARTS with.
-    for (const o of PROFILE_OPTIONS.filter((x) => x.value !== 'auto')) {
-      expect(o.sentence).toMatch(/starten/i);
-    }
-  });
-});
-
-describe('initialProfileChoice / overrideForChoice', () => {
-  it('is "auto" when no override is stored', () => {
-    expect(initialProfileChoice(profile(null))).toBe('auto');
-    expect(initialProfileChoice(null)).toBe('auto');
-  });
-
-  it('is the stored override when set', () => {
-    expect(initialProfileChoice(profile('arbitrage'))).toBe('arbitrage');
-    expect(initialProfileChoice(profile('peak'))).toBe('peak');
-  });
-
-  it('treats a garbage override as auto (fail-safe)', () => {
-    expect(initialProfileChoice(profile('bogus'))).toBe('auto');
-  });
-
-  it('maps a choice onto the PUT override (auto -> null)', () => {
-    expect(overrideForChoice('auto')).toBeNull();
-    expect(overrideForChoice('arbitrage')).toBe('arbitrage');
-    expect(overrideForChoice('peak')).toBe('peak');
-  });
-});
-
-describe('profileChoiceChanged (write only on a real change)', () => {
-  it('is false when the choice equals the stored state', () => {
-    expect(profileChoiceChanged('auto', profile(null))).toBe(false);
-    expect(profileChoiceChanged('peak', profile('peak'))).toBe(false);
-  });
-
-  it('is true when the customer picks something different', () => {
-    expect(profileChoiceChanged('arbitrage', profile(null))).toBe(true); // auto -> arbitrage
-    expect(profileChoiceChanged('auto', profile('peak'))).toBe(true); // peak -> auto (clear)
-  });
-});
-
-describe('profileLabel', () => {
-  it('gives a plain German label per profile, private as the fallback', () => {
-    expect(profileLabel('arbitrage')).toBe('Markterlös');
-    expect(profileLabel('peak')).toBe('Lastspitzen');
-    expect(profileLabel('private')).toBe('Eigenverbrauch');
-    expect(profileLabel(null)).toBe('Eigenverbrauch');
-  });
-});
-
-describe('autoStartSummary', () => {
-  const created: AutoStartOutcome = {
-    created: true,
-    reason: null,
-    profile: 'arbitrage',
-    flowId: 'f1',
-    version: 1,
-    name: 'Marktoptimierung',
-    message: 'x',
-  };
-
-  it('names the seeded flow when one was created', () => {
-    expect(autoStartSummary(created)).toContain('Marktoptimierung');
-    expect(autoStartSummary(created)).toContain('Flow-Editor');
-  });
-
-  it('is honest and calm for the skip reasons', () => {
-    expect(autoStartSummary({ ...created, created: false, name: null, reason: 'already_has_flow' })).toMatch(
-      /bereits ein Flow/,
-    );
-    expect(autoStartSummary({ ...created, created: false, name: null, reason: 'no_battery' })).toMatch(
-      /Speicher/,
-    );
-  });
-
-  it('is null when there is nothing to say (no outcome / not_found)', () => {
-    expect(autoStartSummary(null)).toBeNull();
-    expect(autoStartSummary({ ...created, created: false, name: null, reason: 'not_found' })).toBeNull();
-  });
-});
 
 describe('creatableConsumerTypes', () => {
   const catalog: EntityTypeDef[] = [

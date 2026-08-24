@@ -16,7 +16,7 @@ import {
 import { DEFAULT_EARNINGS_RANGE } from '../anlage';
 import { currentUser } from '../auth';
 import { isFleetShell } from '../betriebsart';
-import { fleetDailySaved, fleetKind, premiumDetail, premiumIncluded } from '../fleet';
+import { fleetDailySaved, fleetTonalitaet, premiumDetail, premiumIncluded } from '../fleet';
 import { anlageRoute, type Route } from '../nav';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
@@ -216,6 +216,7 @@ function FleetUebersicht({
   }, []);
 
   const earningsBySite = new Map((earnings?.sites ?? []).map((s) => [s.id, s]));
+  const profilById = new Map(sites.map((s) => [s.id, s.profil ?? null] as const));
 
   /*
    * Feinschliff (Mobil-Umbau Stufe 4): die zwei Aktions-Knoepfe standen VOR dem
@@ -274,7 +275,18 @@ function FleetUebersicht({
               <Skeleton height={300} radius="var(--vp-radius-lg)" />
             ) : (
               <EarningsHero
-                kind={fleetKind(overview.sites.map((s) => s.plantKind))}
+                kind={fleetTonalitaet(
+                  overview.sites.map((s) => ({
+                    // Der TON folgt dem Profil der Anlage; `plantKind` bleibt
+                    // der Rückfall, also ist eine Flotte ohne gesetztes Profil
+                    // byte-identisch zu vor Stufe 2. Das Profil kommt aus der
+                    // schon geladenen Anlagen-Liste (`SiteDto`) - die
+                    // Übersichts-Zeile trägt es nicht, und ein zusätzlicher
+                    // Abruf wäre für ein Wort zu teuer.
+                    profil: profilById.get(s.id) ?? null,
+                    plantKind: s.plantKind,
+                  })),
+                )}
                 money={earnings ? earnings.totals : null}
                 dailySaved={earnings ? fleetDailySaved(earnings.sites) : []}
                 range={range}

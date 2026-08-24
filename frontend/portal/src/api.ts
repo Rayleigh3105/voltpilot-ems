@@ -1,6 +1,7 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { ProfileState, SiteProfiles } from './profiles';
+import type { Profil } from './anwendungen';
 import type {
   ChargingBoostResult,
   ChargingConfig,
@@ -126,6 +127,20 @@ export interface Site {
    * SoC reservation stack (M2) simply omits that layer instead of inventing it.
    */
   peakReserveSocPct?: number | null;
+  /**
+   * Das ANWENDUNGS-PRESET der Anlage (Stufe 2, `site.profil`): `privat` |
+   * `gewerbe`, oder null = noch keins gewählt (der Zustand JEDER Bestandsanlage).
+   *
+   * Es hat GENAU DREI Wirkungen und ist NIE ein Signal der Ableitung
+   * (Captain-Entscheid E3): die Vorauswahl im Anwendungs-Regal (welche
+   * Anwendungen der Assistent vorschlägt — die Liste steht je Anwendung im
+   * Katalog), die TONALITÄT der Geld-Sprache (`fleet.ts siteTonalitaet`; ohne
+   * Profil fällt sie byte-identisch auf die `plantKind`-Regel zurück) und die
+   * Reset-Basis des Cockpit-Layouts (Stufe 3). Geschrieben ausschließlich über
+   * `api.setAnwendungsPreset` — DEFENSIV OPTIONAL, ein älteres Backend liefert
+   * das Feld gar nicht.
+   */
+  profil?: Profil | null;
 }
 
 /**
@@ -3065,10 +3080,21 @@ export const api = {
    * "Kunde/Admin kann explizit überschreiben"). Customer- or admin-scoped like
    * the GET; returns the recomputed read-model. Null re-enables auto-derivation.
    */
-  setUsageProfileOverride: (siteId: string, override: string | null) =>
-    request<SiteUsageProfile>(`/api/v1/sites/${siteId}/profile`, {
+  /**
+   * Set the site's application PRESET (Anwendungs-Programm Stufe 2):
+   * `privat` | `gewerbe`, or null to clear it. Returns the updated site.
+   *
+   * It changes NO switch — which applications run stays the shelf's business
+   * (`setSiteProfile`), so a later "Profil ändern" can never rewrite the
+   * customer's own switches. Deliberately a narrow route rather than a field of
+   * the site master-data form: the assistant writes it from a step that never
+   * loaded the tariff/remuneration fields, and a full-representation
+   * `updateSite` from there would be a clobber risk.
+   */
+  setAnwendungsPreset: (siteId: string, profil: Profil | null) =>
+    request<Site>(`/api/v1/sites/${siteId}/anwendungs-preset`, {
       method: 'PUT',
-      body: JSON.stringify({ override }),
+      body: JSON.stringify({ profil }),
     }),
   /**
    * Portal v3 M3: the „Anwendungen" shelf of the Anlage (the route + payload

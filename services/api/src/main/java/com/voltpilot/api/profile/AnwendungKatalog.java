@@ -34,6 +34,13 @@ import org.springframework.stereotype.Component;
  * {@code docs/contracts/v2/anwendung-vectors.json} gepinnt — das
  * {@code usage-profile-vectors.json}-Muster.
  *
+ * <p><b>Die PRESETS (Stufe 2)</b> leben ebenfalls hier: {@link Profil} trägt
+ * Label, den „wir starten mit …"-Satz und die Tonalität eines Profils, die
+ * LISTE seiner Anwendungen wird aus dem {@code preset}-Feld je Anwendung
+ * abgeleitet ({@link #vorauswahl}) — nie aus einer zweiten Liste, die davon
+ * abdriften könnte. Ein Profil ist Vorauswahl + Tonalität + Reset-Basis und
+ * <b>nie ein Signal der Ableitung</b> (Captain-Entscheid E3).
+ *
  * <p><b>Die gated Knotentypen einer Anwendung bleiben ABGELEITET</b>
  * ({@link #gatedNodeTypes}), nie eine Hand-Liste: eine Anwendung öffnet genau
  * den Knotentyp, aus dem IHRE Strategie besteht, und auch den nur, wenn der
@@ -64,6 +71,14 @@ public class AnwendungKatalog {
     /** Erweiterungspunkt: nicht sichtbar, nicht schaltbar. */
     public static final String KLASSE_RESERVIERT = "reserviert";
 
+    /** Das Preset eines Haushalts. */
+    public static final String PROFIL_PRIVAT = "privat";
+    /** Das Preset eines Betriebs. */
+    public static final String PROFIL_GEWERBE = "gewerbe";
+
+    /** Diese Anwendung gehoert zur Vorauswahl des Profils. */
+    public static final String PRESET_AN = "an";
+
     /** Eine Voraussetzung: der Chip, plus der Satz für genau ihr Fehlen. */
     public record Voraussetzung(String id, String label, String blockedReason) {}
 
@@ -71,8 +86,39 @@ public class AnwendungKatalog {
     public record Bausteine(List<String> cockpit, List<String> ansichten, String geldstrom,
             boolean steuerungskarte, boolean navGruppe) {}
 
-    /** Die Vorauswahl je Profil (Stufe 2 liest sie; Stufe 1 trägt sie nur). */
-    public record Preset(String privat, String gewerbe) {}
+    /**
+     * Die Vorauswahl je Profil: {@code an} | {@code angeboten} |
+     * {@code verborgen} | {@code abgeleitet}. Sie ist die EINZIGE Quelle
+     * dafür, was ein Profil einschaltet — der {@link Profil}-Block daneben
+     * trägt nur Label, Satz und Tonalität, nie eine zweite Liste.
+     */
+    public record Preset(String privat, String gewerbe) {
+
+        /** Der Preset-Wert für dieses Profil; ein unbekanntes Profil hat keinen. */
+        public String fuer(String profil) {
+            if (PROFIL_PRIVAT.equals(profil)) {
+                return privat;
+            }
+            if (PROFIL_GEWERBE.equals(profil)) {
+                return gewerbe;
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Ein Profil-Preset: was der Kunde im Assistenten wählt.
+     *
+     * <p>Es trägt bewusst KEINE Liste von Anwendungen — die steht je Anwendung
+     * im Feld {@code preset} und wird daraus abgeleitet ({@link #vorauswahl}).
+     * Zwei Listen über dieselbe Sache wären zwei Wahrheiten, die abdriften.
+     *
+     * @param id         {@code privat} | {@code gewerbe}
+     * @param label      der kundenseitige Name der Karte
+     * @param satz       EIN Satz „wir starten mit …"
+     * @param tonalitaet {@code sparen} | {@code verdienen} — die Geld-Sprache
+     */
+    public record Profil(String id, String label, String satz, String tonalitaet) {}
 
     /**
      * Ein Katalog-Eintrag.
@@ -118,6 +164,7 @@ public class AnwendungKatalog {
     private final JsonNode raw;
     private final Map<String, Anwendung> byId = new LinkedHashMap<>();
     private final List<Anwendung> sichtbare = new ArrayList<>();
+    private final Map<String, Profil> profileById = new LinkedHashMap<>();
 
     public AnwendungKatalog(ObjectMapper mapper) {
         try (InputStream in = getClass().getResourceAsStream("/anwendungen/catalog.json")) {
@@ -142,6 +189,13 @@ public class AnwendungKatalog {
             }
             if (a.sichtbar()) {
                 sichtbare.add(a);
+            }
+        }
+        for (JsonNode p : raw.path("presets")) {
+            Profil profil = new Profil(p.path("id").asText(), p.path("label").asText(),
+                    text(p, "satz"), text(p, "tonalitaet"));
+            if (profileById.put(profil.id(), profil) != null) {
+                throw new IllegalStateException("duplicate preset id: " + profil.id());
             }
         }
     }
@@ -215,5 +269,48 @@ public class AnwendungKatalog {
             types.add(anwendung.strategieKnoten());
         }
         return types;
+    }
+
+    /** Die Profil-Presets in Katalog-Reihenfolge (Privat, Gewerbe). */
+    public List<Profil> presets() {
+        return List.copyOf(profileById.values());
+    }
+
+    /** Das Preset mit dieser Id, oder null (auch für ein unbekanntes Wort). */
+    public Profil profil(String id) {
+        return id == null ? null : profileById.get(id);
+    }
+
+    /** Ist das ein Profil, das dieser Katalog kennt? */
+    public boolean isProfil(String id) {
+        return profil(id) != null;
+    }
+
+    /**
+     * Die VORAUSWAHL eines Profils: die Anwendungen, die sein Preset auf
+     * {@code an} setzt — sichtbar und abschaltbar, in kanonischer Reihenfolge.
+     *
+     * <p>Sie wird aus dem {@code preset}-Feld JE ANWENDUNG abgeleitet, nie aus
+     * einer zweiten Liste am Profil. Eine BASIS-Anwendung steht nie darin: sie
+     * ist ohnehin an und hat gar keinen Schalter (ein Schaltversuch ist ein
+     * 400) — sie hier zu nennen hieße, eine Handlung vorzuschlagen, die der
+     * Server ablehnt.
+     *
+     * <p><b>Ob eine vorgeschlagene Anwendung wirklich eingeschaltet wird,
+     * entscheidet sie NICHT</b> — das tut die Fläche anhand der
+     * Voraussetzungs-Chips derselben Antwort (§4.2 „bei Marktzugang" / „bei
+     * Leistungspreis"): eine Vorauswahl, die der Kunde nie angefasst hat und
+     * die dann „läuft noch nicht" sagt, wäre eine Zusage, die die Anlage nicht
+     * halten kann. Ein Schalter, den der KUNDE selbst kippt, darf das sehr
+     * wohl (Owner-Entscheid M3).
+     */
+    public List<String> vorauswahl(String profil) {
+        List<String> ids = new ArrayList<>();
+        for (Anwendung a : sichtbare) {
+            if (a.abschaltbar() && PRESET_AN.equals(a.preset().fuer(profil))) {
+                ids.add(a.id());
+            }
+        }
+        return List.copyOf(ids);
     }
 }

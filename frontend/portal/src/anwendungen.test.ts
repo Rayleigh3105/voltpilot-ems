@@ -21,8 +21,23 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ANWENDUNGEN,
+  PRESETS,
+  PROFIL_UNGESETZT,
   REGAL,
   anwendung,
+  anwendungLabel,
+  anwendungenSatz,
+  istProfil,
+  preset,
+  presetSchaltplan,
+  presetVorschlag,
+  presetWert,
+  profilAenderungsFolgen,
+  profilLabel,
+  regalFuerProfil,
+  tonalitaetVon,
+  vorauswahl,
+  type RegalKarte,
   anwendungLabel,
   anwendungenFuerEinstellung,
   derivedActive,
@@ -344,3 +359,210 @@ function erzeugeFuer(kind: Exclude<ModeKind, 'automation'>): VectorInput {
       return { ...base, has_charge_point: true };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Die PRESETS (Stufe 2)
+// ---------------------------------------------------------------------------
+
+/** Eine Regal-Karte, wie der Server sie liefert. */
+function karte(id: string, over: Partial<RegalKarte> = {}): RegalKarte {
+  return { id, label: anwendungLabel(id), state: null, active: false, requirements: [], ...over };
+}
+
+describe('Presets: Vokabular und Datenlage', () => {
+  it('kennt GENAU die zwei Profile des Konzepts, jedes mit Satz und Tonalität', () => {
+    expect(PRESETS.map((p) => p.id)).toEqual(['privat', 'gewerbe']);
+    for (const p of PRESETS) {
+      expect(p.label.length).toBeGreaterThan(0);
+      expect(p.satz.length).toBeGreaterThan(20);
+      expect(['sparen', 'verdienen']).toContain(p.tonalitaet);
+    }
+  });
+
+  it('erkennt nur bekannte Profile - ein unbekanntes Wort gilt NIE', () => {
+    expect(istProfil('privat')).toBe(true);
+    expect(istProfil('gewerbe')).toBe(true);
+    expect(istProfil('betreiber')).toBe(false);
+    expect(istProfil(null)).toBe(false);
+    expect(istProfil(42)).toBe(false);
+    expect(preset('quatsch')).toBeNull();
+  });
+
+  it('die Tonalität ist null, solange kein Profil gewählt ist (der Rückfall)', () => {
+    // Genau dieses `null` ist die Migrations-Zusage: ohne Profil gilt weiter
+    // die plant_kind-Regel, byte-identisch zu vor Stufe 2.
+    expect(tonalitaetVon(null)).toBeNull();
+    expect(tonalitaetVon('quatsch')).toBeNull();
+    expect(tonalitaetVon('privat')).toBe('sparen');
+    expect(tonalitaetVon('gewerbe')).toBe('verdienen');
+  });
+
+  it('jede sichtbare Anwendung trägt für BEIDE Profile einen Preset-Wert', () => {
+    for (const a of ANWENDUNGEN) {
+      expect(presetWert(a.id, 'privat')).not.toBeNull();
+      expect(presetWert(a.id, 'gewerbe')).not.toBeNull();
+    }
+    expect(presetWert('marktvermarktung', null)).toBeNull();
+  });
+});
+
+describe('vorauswahl: was ein Profil vorschlägt', () => {
+  it('folgt dem Katalog - Privat die Steuerung, Gewerbe das Geschäft', () => {
+    expect(vorauswahl('privat')).toEqual(['ueberschuss', 'verbraucher']);
+    expect(vorauswahl('gewerbe')).toEqual(['marktvermarktung', 'lastspitzenkappung']);
+    expect(vorauswahl(null)).toEqual([]);
+  });
+
+  it('nennt NIE eine Basis-Anwendung - sie hat gar keinen Schalter', () => {
+    for (const profil of ['privat', 'gewerbe'] as const) {
+      for (const id of vorauswahl(profil)) {
+        expect(istBasis(id)).toBe(false);
+        expect(istAbschaltbar(id)).toBe(true);
+      }
+    }
+    // Beide Basis-Anwendungen stehen im Katalog auf `an` - und trotzdem nicht
+    // in der Vorauswahl: sie laufen ohnehin.
+    expect(presetWert('monitoring', 'privat')).toBe('an');
+    expect(vorauswahl('privat')).not.toContain('monitoring');
+  });
+});
+
+describe('regalFuerProfil: ordnen, nie ausblenden', () => {
+  it('ohne Profil ist alles gleichrangig', () => {
+    const { vorne, weitere } = regalFuerProfil(null);
+    expect(vorne).toEqual(REGAL);
+    expect(weitere).toEqual([]);
+  });
+
+  it('klappt weg, was zu diesem Profil nicht passt - aber nichts Laufendes', () => {
+    const ohne = regalFuerProfil('privat');
+    expect(ohne.vorne.map((a) => a.id)).toContain('ueberschuss');
+    expect(ohne.weitere.map((a) => a.id)).toContain('lastspitzenkappung');
+
+    // Läuft die Lastspitzenkappung wirklich, steht sie VORNE - ihren
+    // Funktionsumfang vor dem Kunden zu verstecken wäre keine Ordnung.
+    const mit = regalFuerProfil('privat', ['lastspitzenkappung']);
+    expect(mit.vorne.map((a) => a.id)).toContain('lastspitzenkappung');
+    expect(mit.weitere.map((a) => a.id)).not.toContain('lastspitzenkappung');
+  });
+
+  it('verliert keine Anwendung: vorne ∪ weitere ist immer das ganze Regal', () => {
+    for (const profil of [null, 'privat', 'gewerbe']) {
+      const { vorne, weitere } = regalFuerProfil(profil);
+      expect([...vorne, ...weitere].map((a) => a.id).sort()).toEqual(
+        REGAL.map((a) => a.id).sort(),
+      );
+    }
+  });
+});
+
+describe('presetVorschlag: voraussetzungs-bewusst, und Zurückgestelltes wird GENANNT', () => {
+  const gewerbe = [
+    karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
+    karte('lastspitzenkappung', {
+      requirements: [{ label: 'Leistungspreis hinterlegt', met: false }],
+    }),
+  ];
+
+  it('hakt nur an, was laufen KANN', () => {
+    const { ticken } = presetVorschlag('gewerbe', gewerbe);
+    expect(ticken).toEqual(['marktvermarktung']);
+  });
+
+  it('verschweigt das Zurückgestellte nicht - es nennt, was fehlt', () => {
+    const { zurueckgestellt } = presetVorschlag('gewerbe', gewerbe);
+    expect(zurueckgestellt).toEqual([
+      {
+        id: 'lastspitzenkappung',
+        label: 'Lastspitzenkappung',
+        fehlend: ['Leistungspreis hinterlegt'],
+      },
+    ]);
+  });
+
+  it('schlägt ohne Profil GAR nichts vor', () => {
+    expect(presetVorschlag(null, gewerbe)).toEqual({ ticken: [], zurueckgestellt: [] });
+  });
+
+  it('fasst eine Anwendung nicht an, die das Profil nicht vorschlägt', () => {
+    const { ticken, zurueckgestellt } = presetVorschlag('privat', gewerbe);
+    expect(ticken).toEqual([]);
+    expect(zurueckgestellt).toEqual([]);
+  });
+});
+
+describe('presetSchaltplan: nur der Wille wird geschrieben', () => {
+  it('schreibt `an` auch für eine SCHON abgeleitet aktive Anwendung', () => {
+    // Der tragende Fall: eine Direktvermarktungs-Anlage hat die
+    // Marktoptimierung abgeleitet an, aber ohne gespeichertes `an` öffnet der
+    // Server nie das Tor und sät nie den Starter.
+    const karten = [karte('marktvermarktung', { active: true })];
+    expect(presetSchaltplan(['marktvermarktung'], ['marktvermarktung'], karten)).toEqual([
+      { id: 'marktvermarktung', state: 'an' },
+    ]);
+  });
+
+  it('schreibt NICHTS, wenn der Kunde nichts wollte (durchgeklickt)', () => {
+    const karten = [karte('lastmanagement', { active: true })];
+    expect(presetSchaltplan([], ['lastmanagement'], karten)).toEqual([]);
+  });
+
+  it('schreibt kein zweites `an` auf eine schon gespeicherte Absicht', () => {
+    const karten = [karte('marktvermarktung', { state: 'an', active: true })];
+    expect(presetSchaltplan(['marktvermarktung'], ['marktvermarktung'], karten)).toEqual([]);
+  });
+
+  it('schaltet nur AB, was wirklich an ist', () => {
+    const an = [karte('marktvermarktung', { active: true })];
+    expect(presetSchaltplan([], [], an)).toEqual([{ id: 'marktvermarktung', state: 'aus' }]);
+    const stumm = [karte('marktvermarktung')];
+    expect(presetSchaltplan([], [], stumm)).toEqual([]);
+  });
+
+  it('lässt eine BASIS-Anwendung nie in den Plan (der Server lehnt sie ab)', () => {
+    const karten = [karte('monitoring', { active: true }), karte('speicher-fahrplan', { active: true })];
+    expect(presetSchaltplan(['monitoring'], [], karten)).toEqual([]);
+    expect(presetSchaltplan([], [], karten)).toEqual([]);
+  });
+
+  it('ordnet den Plan kanonisch (die Wirkung bleibt reproduzierbar)', () => {
+    const karten = [
+      karte('lastspitzenkappung'),
+      karte('ueberschuss'),
+      karte('marktvermarktung'),
+    ];
+    const ids = ['lastspitzenkappung', 'ueberschuss', 'marktvermarktung'];
+    expect(presetSchaltplan(ids, ids, karten).map((p) => p.id)).toEqual([
+      'ueberschuss',
+      'marktvermarktung',
+      'lastspitzenkappung',
+    ]);
+  });
+});
+
+describe('Copy der Abschluss- und Einstellungs-Fläche', () => {
+  it('nennt die eingeschalteten Anwendungen - und behauptet ohne sie nichts', () => {
+    expect(anwendungenSatz(['ueberschuss', 'verbraucher'])).toBe(
+      'Eingeschaltet: Überschuss nutzen, Verbraucher steuern.',
+    );
+    expect(anwendungenSatz([])).toBeNull();
+    expect(anwendungenSatz(['gibt-es-nicht'])).toBeNull();
+  });
+
+  it('profilLabel sagt ehrlich, wenn keins gewählt ist', () => {
+    expect(profilLabel('privat')).toBe('Privat');
+    expect(profilLabel(null)).toBe(PROFIL_UNGESETZT);
+    expect(profilLabel('quatsch')).toBe(PROFIL_UNGESETZT);
+  });
+
+  it('die Folgenliste sagt AUCH, was gleich bleibt - und verspricht keinen Schaltvorgang', () => {
+    for (const neu of ['privat', 'gewerbe', null] as const) {
+      const folgen = profilAenderungsFolgen(neu);
+      expect(folgen.some((f) => /bleiben unverändert/.test(f))).toBe(true);
+      expect(folgen.some((f) => /jederzeit wieder ändern/.test(f))).toBe(true);
+      expect(folgen.join(' ')).not.toMatch(/schalten wir (ein|ab)/);
+    }
+    expect(profilAenderungsFolgen('gewerbe').join(' ')).toMatch(/verdient/);
+    expect(profilAenderungsFolgen('privat').join(' ')).toMatch(/gespart/);
+  });
+});

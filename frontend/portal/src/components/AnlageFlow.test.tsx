@@ -9,8 +9,9 @@ import {
   type Site,
   type SiteAsset,
   type SiteEntities,
-  type SiteUsageProfile,
 } from '../api';
+import type { SiteProfile } from '../profiles';
+import { anwendungLabel } from '../anwendungen';
 
 // The adaptive Nutzung step reads isPlatformAdmin() (admin: bootstrap +
 // auto-start + entity add). The flow tests exercise the CUSTOMER path - keycloak
@@ -152,30 +153,37 @@ const emptyEntities: SiteEntities = {
   staleOnDevice: [],
 };
 
-function usageProfile(override: string | null = null, derived = 'private'): SiteUsageProfile {
+/**
+ * Eine Regal-Karte, wie der Server sie liefert (Anwendungs-Programm Stufe 2).
+ * `requirements` entscheidet, ob die Preset-Vorauswahl sie wirklich anhakt.
+ */
+function karte(id: string, over: Partial<SiteProfile> = {}): SiteProfile {
   return {
-    usageProfile: override ?? derived,
-    derivedProfile: derived,
-    override,
-    emphasis: { money: 'minimal', peak: 'hidden', flow: 'prominent', devices: 'prominent' },
-    signals: {
-      hasStorage: true,
-      hasPv: true,
-      hasControllableConsumer: false,
-      activeStrategyNodeTypes: [],
-      plantKind: 'eigenverbrauch',
-      hasLeistungspreis: false,
-    },
+    id,
+    // Der Server schickt das Label aus DERSELBEN Katalog-Datei - eine
+    // erfundene Beschriftung würde etwas prüfen, das es nie gibt.
+    label: anwendungLabel(id),
+    state: null,
+    derivedActive: false,
+    active: false,
+    unlocks: { views: [], widgets: [], moneyStream: null },
+    requirements: [],
+    blockedReason: null,
+    origin: null,
+    flowRef: null,
+    gatedNodeTypes: [],
+    gatedNodesEnabled: true,
+    ...over,
   };
 }
 
-/** The reads the adaptive Nutzung step makes on mount (customer path). */
-function mockAdaptiveReads(profile: SiteUsageProfile = usageProfile()) {
+/** Die Abrufe, die der Anwendungen-Schritt beim Mounten macht (Kundenpfad). */
+function mockAdaptiveReads(profiles: SiteProfile[] = []) {
   vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
-  vi.spyOn(api, 'usageProfile').mockResolvedValue(profile);
+  vi.spyOn(api, 'siteProfiles').mockResolvedValue({ profiles });
 }
 
-/** Pass the adaptive Nutzung step without changing anything. */
+/** Pass the adaptive Anwendungen step without changing anything. */
 async function skipNutzung() {
   fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später festlegen' }));
 }
@@ -185,7 +193,7 @@ beforeEach(() => {
 });
 
 describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => {
-  it('walks Anlage -> Register (PV + linked Speicher) -> Gerät -> Nutzung and finishes on the summary', async () => {
+  it('walks Anlage -> Register (PV + linked Speicher) -> Gerät -> Anwendungen and finishes on the summary', async () => {
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const mastrLookup = vi
       .spyOn(api, 'mastrLookup')
@@ -228,10 +236,11 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledWith('s-1', 'VP-DEMO-0001'));
 
-    // Step 4: Nutzung - the adaptive step (Geräte + Nutzungsprofil + Speicher).
-    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
-    // M1/F5: the pre-pick is the auto-start TEMPLATE chooser, not a face switch.
-    expect(screen.getByRole('heading', { name: 'Womit sollen wir starten?' })).toBeInTheDocument();
+    // Schritt 4: Anwendungen - Geräte + Profil-Preset + Regal + Speicher.
+    expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
+    // Stufe 2: die Preset-Karten stehen statt des früheren AE7-Vorwahl-Blocks.
+    expect(screen.getByRole('heading', { name: 'Profil' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Privat/ })).toBeInTheDocument();
     await skipNutzung();
 
     // Fertig: the summary names PV, Speicher, Gerät and the source.
@@ -389,26 +398,111 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
   });
 });
 
-describe('NutzungStep - the AE5 adaptive step (entities + usage profile + Speicher)', () => {
-  it('shows the derived usage profile and writes the override only when changed', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads(usageProfile(null, 'private'));
-    const setOverride = vi.spyOn(api, 'setUsageProfileOverride').mockResolvedValue(usageProfile('arbitrage'));
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-
-    // Resume at Register, skip through Gerät into Nutzung.
+describe('AnwendungenStep - Preset + Regal (Anwendungs-Programm Stufe 2)', () => {
+  /** Bis zum vierten Schritt durchklicken (Register + Gerät überspringen). */
+  async function bisZumSchritt() {
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
-    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
+    expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
+  }
 
-    // The suggested starting point (Eigenverbrauch) is surfaced.
-    expect(await screen.findByText(/Vorschlag für Ihre Anlage: Eigenverbrauch/)).toBeInTheDocument();
+  it('schreibt das Profil UND schaltet die vorgeschlagenen Anwendungen über das Regal ein', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    // Ein Haushalt mit steuerbarem Gerät: das Privat-Preset schlägt Überschuss
+    // + Verbraucher vor, und BEIDE Voraussetzungen sind erfüllt.
+    mockAdaptiveReads([
+      karte('monitoring', { active: true }),
+      karte('ueberschuss', {
+        requirements: [
+          { label: 'PV-Erzeugung', met: true },
+          { label: 'Steuerbares Gerät', met: true },
+        ],
+      }),
+      karte('verbraucher', { requirements: [{ label: 'Steuerbares Gerät', met: true }] }),
+      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
+    ]);
+    const preset = vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
 
-    // Override to Markterlös (arbitrage).
-    fireEvent.click(await screen.findByRole('radio', { name: /Markterlös/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: /Privat/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() => expect(setOverride).toHaveBeenCalledWith('s-1', 'arbitrage'));
+
+    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'privat'));
+    // Genau die zwei Vorschläge des Privat-Presets - und NICHT die
+    // Marktoptimierung, die dort nur „angeboten" ist.
+    await waitFor(() =>
+      expect(toggle.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+        ['ueberschuss', 'an'],
+        ['verbraucher', 'an'],
+      ]),
+    );
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
+    // Die Zusammenfassung NENNT, was eingeschaltet wurde.
+    expect(screen.getByText(/Eingeschaltet: Überschuss nutzen, Verbraucher steuern\./)).toBeInTheDocument();
+  });
+
+  it('hakt eine vorgeschlagene Anwendung mit fehlender Voraussetzung NICHT an und sagt warum', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    // Gewerbe schlägt Markt + Lastspitze vor - hier fehlt beiden ihre
+    // Voraussetzung, also wird NICHTS geschaltet und die Fläche nennt sie.
+    mockAdaptiveReads([
+      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: false }] }),
+      karte('lastspitzenkappung', {
+        requirements: [{ label: 'Leistungspreis hinterlegt', met: false }],
+      }),
+    ]);
+    const preset = vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
+    expect(
+      await screen.findByText(/Marktoptimierung schlagen wir noch nicht vor: Marktzugang fehlt\./),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it('schaltet eine schon LAUFENDE Anwendung nie ab und zeigt sie immer', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    // Ein Ladepark auf einer Privat-Anlage: abgeleitet aktiv, vom Privat-Preset
+    // „verborgen" - er darf weder eingeklappt noch abgeschaltet werden.
+    mockAdaptiveReads([
+      karte('lastmanagement', { derivedActive: true, active: true }),
+      karte('ueberschuss', { requirements: [{ label: 'PV-Erzeugung', met: false }] }),
+    ]);
+    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
+    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+
+    fireEvent.click(await screen.findByRole('radio', { name: /Privat/ }));
+    expect(
+      screen.getByRole('switch', { name: /Ladepark-Lastmanagement ausschalten/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());
+    // Kein `aus` auf etwas, das läuft - und kein `an` auf etwas, das schon an ist.
+    expect(toggle).not.toHaveBeenCalled();
+  });
+
+  it('eine BASIS-Anwendung hat keinen Schalter und landet nie im Plan', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    mockAdaptiveReads([karte('monitoring', { derivedActive: true, active: true })]);
+    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+
+    expect(screen.getByText('immer an')).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: /Anlage beobachten/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());
+    expect(toggle).not.toHaveBeenCalled();
   });
 
   it('saves a changed Speicherschonung preset carrying the battery master data through', async () => {
@@ -416,10 +510,7 @@ describe('NutzungStep - the AE5 adaptive step (entities + usage profile + Speich
     mockAdaptiveReads();
     const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
     render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
-    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
+    await bisZumSchritt();
 
     // The battery exists, so the Umgang choice is offered; pick Schonend.
     fireEvent.click(await screen.findByRole('radio', { name: /Schonend/ }));
@@ -440,28 +531,41 @@ describe('NutzungStep - the AE5 adaptive step (entities + usage profile + Speich
 
   it('writes nothing when untouched', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads();
+    mockAdaptiveReads([karte('marktvermarktung')]);
     const saveBattery = vi.spyOn(api, 'saveBattery');
-    const setOverride = vi.spyOn(api, 'setUsageProfileOverride');
+    const preset = vi.spyOn(api, 'setAnwendungsPreset');
+    const toggle = vi.spyOn(api, 'setSiteProfile');
     render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
-    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
+    await bisZumSchritt();
 
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
     expect(saveBattery).not.toHaveBeenCalled();
-    expect(setOverride).not.toHaveBeenCalled();
+    expect(preset).not.toHaveBeenCalled();
+    expect(toggle).not.toHaveBeenCalled();
   });
 
   it('hides the Umgang choice when the Anlage has no battery', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     mockAdaptiveReads();
     render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
-    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
+    await bisZumSchritt();
     expect(screen.queryByText('Umgang mit dem Speicher')).not.toBeInTheDocument();
+  });
+
+  it('bleibt ohne Regal-Antwort bedienbar (älteres Backend / Ladefehler)', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
+    vi.spyOn(api, 'siteProfiles').mockRejectedValue(new Error('down'));
+    const toggle = vi.spyOn(api, 'setSiteProfile');
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    await bisZumSchritt();
+
+    // Kein Regal, aber die Profil-Wahl und der Weg nach vorn stehen.
+    expect(screen.getByRole('radio', { name: /Privat/ })).toBeInTheDocument();
+    expect(screen.queryByText('Ihre Anwendungen')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
+    expect(toggle).not.toHaveBeenCalled();
   });
 });

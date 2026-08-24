@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { EarningsSite, OverviewSite } from './api';
+import type { EarningsSite, OverviewSite, PlantKind } from './api';
 import {
   arbitrageLine,
   BATTERY_NO_DEVICE_SHORT,
@@ -30,6 +30,8 @@ import {
   siteSnapshot,
   sparkDays,
   tarifArtLabel,
+  siteTonalitaet,
+  fleetTonalitaet,
 } from './fleet';
 
 const NOW = new Date('2026-07-06T12:00:00Z');
@@ -788,5 +790,61 @@ describe('composeSiteSentence (single-site Übersicht)', () => {
     const s = composeSiteSentence(site({ deviceCount: 0, onlineCount: 0, worstStatus: null, live: null }), NOW);
     expect(s.tone).toBe('off');
     expect(s.text).toBe('Hier ist noch kein Gerät verbunden.');
+  });
+});
+
+describe('Tonalität: das Profil führt, plant_kind ist der Rückfall (Stufe 2)', () => {
+  it('ohne Profil ist der Ton EXAKT der von vor Stufe 2', () => {
+    // Die Migrations-Zusage: eine Bestandsanlage (profil === null bzw. das Feld
+    // fehlt ganz, weil ein älteres Backend antwortet) rechnet unverändert.
+    expect(siteTonalitaet({ plantKind: 'eigenverbrauch' })).toBe('eigenverbrauch');
+    expect(siteTonalitaet({ profil: null, plantKind: 'direktvermarktung' })).toBe(
+      'direktvermarktung',
+    );
+    const kinds: PlantKind[] = ['direktvermarktung', 'eigenverbrauch'];
+    expect(fleetTonalitaet(kinds.map((plantKind) => ({ plantKind })))).toBe(fleetKind(kinds));
+  });
+
+  it('ein Gewerbe-Profil verdient, ein Privat-Profil spart - unabhängig von der Veräußerungsform', () => {
+    // Der behobene Fehler: ein Gewerbebetrieb im Eigenverbrauch las „gespart"
+    // wie ein Privathaushalt, weil der Ton an der Veräußerungsform hing.
+    expect(siteTonalitaet({ profil: 'gewerbe', plantKind: 'eigenverbrauch' })).toBe(
+      'direktvermarktung',
+    );
+    expect(siteTonalitaet({ profil: 'privat', plantKind: 'direktvermarktung' })).toBe(
+      'eigenverbrauch',
+    );
+  });
+
+  it('ein unbekanntes Wort im Feld ändert nichts (ein neuerer Server)', () => {
+    expect(siteTonalitaet({ profil: 'betreiber', plantKind: 'eigenverbrauch' })).toBe(
+      'eigenverbrauch',
+    );
+  });
+
+  it('die Flotte mischt die TÖNE, nicht die rohen Veräußerungsformen', () => {
+    // Zwei Eigenverbrauchs-Anlagen, eine davon Gewerbe: die Flotte ist gemischt,
+    // obwohl beide `plant_kind` gleich sind.
+    expect(
+      fleetTonalitaet([
+        { profil: 'gewerbe', plantKind: 'eigenverbrauch' },
+        { profil: 'privat', plantKind: 'eigenverbrauch' },
+      ]),
+    ).toBe('gemischt');
+    // Und umgekehrt: zwei verschiedene Veräußerungsformen unter EINEM Profil
+    // sprechen mit EINER Stimme.
+    expect(
+      fleetTonalitaet([
+        { profil: 'privat', plantKind: 'eigenverbrauch' },
+        { profil: 'privat', plantKind: 'direktvermarktung' },
+      ]),
+    ).toBe('eigenverbrauch');
+  });
+
+  it('führt in die bestehende Wortwahl, ohne sie zu ändern', () => {
+    const gewerbe = fleetTonalitaet([{ profil: 'gewerbe', plantKind: 'eigenverbrauch' }]);
+    expect(fleetHeadline(gewerbe)).toBe('Ihr VoltPilot-Mehrerlös');
+    const privat = fleetTonalitaet([{ profil: 'privat', plantKind: 'direktvermarktung' }]);
+    expect(fleetHeadline(privat)).toBe('Ihr VoltPilot-Vorteil');
   });
 });

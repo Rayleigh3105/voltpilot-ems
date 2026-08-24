@@ -1,0 +1,65 @@
+/*
+ * Der Regal-Block des Anlege-Assistenten (Anwendungs-Programm Stufe 2).
+ *
+ * Bewusst komponenten-lokal: `index.css` traegt den AE5-Onboarding-Block
+ * (`.vp-onb-*`), den diese Fläche weiter benutzt - die NEUEN Zeilen gehören
+ * dorthin, wo sie gerendert werden. Der Schalter selbst ist der HAUS-Schalter
+ * aus `Profile.css` (52x30 sichtbar, >=44px Trefferfläche über `::before`);
+ * `AnlageFlow.tsx` importiert ihn SELBST - sich auf den Import eines
+ * Geschwisters zu verlassen ergibt einen ungestylten Stummel (die
+ * `RegelKarten`-Lehre).
+ */
+
+.vp-anw-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+}
+
+.vp-anw-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+  padding: var(--vp-space-3, 12px);
+  border: 1px solid var(--vp-border, #d0d5dd);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface, #fff);
+}
+
+.vp-anw-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Ohne das quetscht der Schalter den Text auf Null (die nowrap-Falle). */
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.vp-anw-label {
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.vp-anw-benefit {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--vp-text-muted, #667085);
+}
+
+/* „immer an": eine ruhige Zeile, kein Schalter - eine Basis-Anwendung hat
+   keinen, und der Server lehnt einen Schaltversuch mit 400 ab. */
+.vp-anw-immer {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted, #667085);
+  white-space: nowrap;
+}
+
+.vp-anw-zurueck {
+  margin-top: var(--vp-space-2, 8px);
+}

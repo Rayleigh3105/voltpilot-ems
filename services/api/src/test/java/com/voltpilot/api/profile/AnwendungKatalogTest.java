@@ -165,4 +165,71 @@ class AnwendungKatalogTest {
             }
         }
     }
+
+    // -- Die PRESETS (Anwendungs-Programm Stufe 2) --------------------------
+
+    @Test
+    void thereAreExactlyTheTwoProfilesEachWithSentenceAndTonality() {
+        assertThat(katalog.presets().stream().map(AnwendungKatalog.Profil::id))
+                .containsExactly(AnwendungKatalog.PROFIL_PRIVAT, AnwendungKatalog.PROFIL_GEWERBE);
+        for (AnwendungKatalog.Profil p : katalog.presets()) {
+            assertThat(p.label()).as(p.id()).isNotBlank();
+            // Der „wir starten mit …"-Satz ist die ganze Erklärung der Karte -
+            // ein leeres Feld wäre eine Karte ohne Aussage.
+            assertThat(p.satz()).as(p.id()).isNotBlank();
+            assertThat(p.tonalitaet()).as(p.id()).isIn("sparen", "verdienen");
+        }
+        assertThat(katalog.isProfil("privat")).isTrue();
+        assertThat(katalog.isProfil("betreiber")).isFalse();
+        assertThat(katalog.isProfil(null)).isFalse();
+        assertThat(katalog.profil("quatsch")).isNull();
+    }
+
+    @Test
+    void everyEntryCarriesAPresetValueForBothProfilesFromTheClosedVocabulary() {
+        Set<String> werte = Set.of("an", "angeboten", "verborgen", "abgeleitet");
+        for (Anwendung a : katalog.alle()) {
+            assertThat(a.preset().privat()).as(a.id()).isIn(werte);
+            assertThat(a.preset().gewerbe()).as(a.id()).isIn(werte);
+            assertThat(a.preset().fuer(AnwendungKatalog.PROFIL_PRIVAT))
+                    .as(a.id()).isEqualTo(a.preset().privat());
+            assertThat(a.preset().fuer(AnwendungKatalog.PROFIL_GEWERBE))
+                    .as(a.id()).isEqualTo(a.preset().gewerbe());
+            // Ein unbekanntes Profil hat keinen Wert - es wird nie geraten.
+            assertThat(a.preset().fuer("betreiber")).as(a.id()).isNull();
+        }
+    }
+
+    @Test
+    void thePreselectionIsDerivedFromTheEntriesAndNeverNamesABasicApplication() {
+        assertThat(katalog.vorauswahl(AnwendungKatalog.PROFIL_PRIVAT))
+                .containsExactly(AnwendungKatalog.UEBERSCHUSS, AnwendungKatalog.VERBRAUCHER);
+        assertThat(katalog.vorauswahl(AnwendungKatalog.PROFIL_GEWERBE))
+                .containsExactly(AnwendungKatalog.MARKTVERMARKTUNG,
+                        AnwendungKatalog.LASTSPITZENKAPPUNG);
+        assertThat(katalog.vorauswahl(null)).isEmpty();
+        assertThat(katalog.vorauswahl("betreiber")).isEmpty();
+        // Die zwei Basis-Anwendungen stehen im Katalog auf „an" - und trotzdem
+        // NICHT in der Vorauswahl: sie laufen ohnehin und haben gar keinen
+        // Schalter, ein Vorschlag wäre eine Handlung, die der Server ablehnt.
+        assertThat(katalog.find(AnwendungKatalog.MONITORING).preset().privat()).isEqualTo("an");
+        for (String profil : List.of(AnwendungKatalog.PROFIL_PRIVAT,
+                AnwendungKatalog.PROFIL_GEWERBE)) {
+            for (String id : katalog.vorauswahl(profil)) {
+                assertThat(katalog.find(id).abschaltbar()).as(id).isTrue();
+                assertThat(katalog.find(id).sichtbar()).as(id).isTrue();
+                assertThat(katalog.find(id).istBasis()).as(id).isFalse();
+            }
+        }
+    }
+
+    @Test
+    void aReservedEntryIsNeverPreselected() {
+        // Ein Schalter, den es nicht gibt, kann auch nicht vorgeschlagen werden.
+        for (String profil : List.of(AnwendungKatalog.PROFIL_PRIVAT,
+                AnwendungKatalog.PROFIL_GEWERBE)) {
+            assertThat(katalog.vorauswahl(profil))
+                    .doesNotContain(AnwendungKatalog.EIGENE_AUSWERTUNG, AnwendungKatalog.BERICHTE);
+        }
+    }
 }

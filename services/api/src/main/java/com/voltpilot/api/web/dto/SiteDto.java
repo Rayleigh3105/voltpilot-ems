@@ -48,6 +48,11 @@ import java.util.UUID;
  * module-active flag; {@code abrechnungLeistung} is {@code jahr} |
  * {@code monat}; {@code peakReserveSocPct} is the hard SoC floor reserved
  * for out-of-horizon peaks (null = none).
+ * {@code profil} (migration V20260838000000, Anwendungs-Programm Stufe 2) is the
+ * site's application PRESET ({@code privat} | {@code gewerbe}; null = none
+ * chosen, the state of every pre-Stufe-2 site). It is preset + tonality +
+ * reset base ONLY - never a signal of the activation derivation - and is
+ * written exclusively by {@code PUT /api/v1/sites/{id}/anwendungs-preset}.
  */
 public record SiteDto(
         UUID id,
@@ -69,5 +74,8 @@ public record SiteDto(
         // profile override (arbitrage|peak|private) or null to auto-derive. Set
         // via PUT /api/v1/sites/{id}/profile; the effective+derived profile and
         // emphasis are served by GET /api/v1/sites/{id}/profile.
-        String usageProfileOverride) {
+        String usageProfileOverride,
+        // Anwendungs-Preset (migration V20260838000000): privat | gewerbe, or
+        // null when none was chosen. Written by PUT .../anwendungs-preset.
+        String profil) {
 }

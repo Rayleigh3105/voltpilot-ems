@@ -187,6 +187,35 @@ public class SiteProfileService {
         return shelf(siteId, site);
     }
 
+    /**
+     * Store the site's application PRESET (Anwendungs-Programm Stufe 2,
+     * Captain-Entscheid E3): {@code privat} | {@code gewerbe}, or {@code null}
+     * for „noch keins gewählt". Returns the updated site.
+     *
+     * <p><b>Es schaltet ABSICHTLICH keine Anwendung.</b> Das Profil ist
+     * Vorauswahl + Tonalität + Reset-Basis; WELCHE Anwendungen laufen, bleibt
+     * die Sache des Regals ({@link #setState}) — eine Profil-Wahl, die
+     * nebenbei Schalter umlegt, nähme dem Kunden genau die Entscheidung ab,
+     * die das Regal sichtbar macht, und ein späteres „Profil ändern" würde
+     * seine eigenen Schalter rückwirkend überschreiben. Der Assistent legt die
+     * vorgeschlagenen Schalter deshalb einzeln über {@link #setState} um —
+     * denselben Weg, den auch der Kunde später geht, mit denselben Wirkungen
+     * (Tor öffnen, Starter säen).
+     */
+    @Transactional
+    public SiteDto setProfil(UUID siteId, String profil) {
+        SiteDto site = sites.findById(siteId);
+        if (site == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        }
+        if (profil != null && !anwendungen.isProfil(profil)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekanntes Profil: " + profil + ".");
+        }
+        sites.setProfil(siteId, profil);
+        return sites.findById(siteId);
+    }
+
     private void switchOn(UUID siteId, UUID tenantId, Anwendung anwendung, SiteDto site) {
         if (anwendung.istRegel()) {
             // Eine REGEL-Anwendung hat keine freien Knoten zu öffnen und keinen

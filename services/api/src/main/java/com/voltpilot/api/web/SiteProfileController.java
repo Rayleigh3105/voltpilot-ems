@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.profile.SiteProfileService;
+import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.SiteProfilesDto;
 import java.util.Map;
 import java.util.UUID;
@@ -26,13 +27,25 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>Every profile is a direct customer toggle; the two states are {@code an}
  * and {@code aus} (there is no "angefragt"). The transition's server-side
  * effects live in {@link SiteProfileService}.
+ *
+ * <p>Seit dem Anwendungs-Programm Stufe 2 hängt daneben das PRESET der Anlage
+ * ({@code PUT .../anwendungs-preset}). Es ist bewusst eine EIGENE, schmale
+ * Route und nicht ein Feld des Stammdaten-Formulars: der Assistent schreibt
+ * das Profil aus einem Schritt heraus, der die Tarif-/Vergütungsfelder nie
+ * geladen hat — ein voll-repräsentatives {@code PUT /sites/{id}} von dort wäre
+ * ein Überschreib-Risiko. Der Name ist ausdrücklich nicht {@code /profil}: das
+ * läge EIN Zeichen neben dem bestehenden {@code /profile} (dem AE7-Nutzungs-
+ * profil) und wäre eine Falle für jeden späteren Leser.
  */
 @RestController
-@RequestMapping("/api/v1/sites/{siteId}/profiles")
+@RequestMapping("/api/v1/sites/{siteId}")
 public class SiteProfileController {
 
     /** Body of a toggle: which profile, and the state it should have. */
     public record ProfileStateRequest(String profile, String state) {}
+
+    /** Body of a preset choice: {@code privat} | {@code gewerbe} | null. */
+    public record AnwendungsPresetRequest(String profil) {}
 
     private final SiteProfileService profiles;
 
@@ -40,7 +53,7 @@ public class SiteProfileController {
         this.profiles = profiles;
     }
 
-    @GetMapping
+    @GetMapping("/profiles")
     public SiteProfilesDto get(@PathVariable UUID siteId) {
         SiteProfilesDto dto = profiles.profiles(siteId);
         if (dto == null) {
@@ -49,13 +62,28 @@ public class SiteProfileController {
         return dto;
     }
 
-    @PutMapping
+    @PutMapping("/profiles")
     public SiteProfilesDto set(@PathVariable UUID siteId,
             @RequestBody ProfileStateRequest request) {
         if (request == null || request.profile() == null || request.profile().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "profile fehlt.");
         }
         return profiles.setState(siteId, request.profile().trim(), request.state());
+    }
+
+    /**
+     * Set the site's application PRESET. An absent/blank {@code profil} clears
+     * it (back to „noch keins gewählt"), an unknown word is a 400 with a German
+     * reason — never a silent fallback to one of the two, which would claim a
+     * choice the customer never made. It changes NO switch (see
+     * {@link SiteProfileService#setProfil}).
+     */
+    @PutMapping("/anwendungs-preset")
+    public SiteDto setAnwendungsPreset(@PathVariable UUID siteId,
+            @RequestBody(required = false) AnwendungsPresetRequest request) {
+        String profil = request == null || request.profil() == null ? null
+                : request.profil().trim();
+        return profiles.setProfil(siteId, profil == null || profil.isEmpty() ? null : profil);
     }
 
     /** German reasons reach the portal as {"message": ...} (MastrController pattern). */
