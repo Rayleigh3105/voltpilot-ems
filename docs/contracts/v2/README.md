@@ -15,6 +15,7 @@ platform (E0 "Contract-Artefakte"). Everything under `docs/contracts/` (the 1.0 
 | [`mqtt-telemetry-2.0.md`](./mqtt-telemetry-2.0.md) + [`mqtt-telemetry-2.0.schema.json`](./mqtt-telemetry-2.0.schema.json) | Multi-entity telemetry Edge → Cloud on `ems/{t}/{s}/{d}/v2/telemetry` (E1a): per-entity numeric channels; envelope-only cloud validation. |
 | [`edge-entity-config.md`](./edge-entity-config.md) + [`edge-entity.schema.json`](./edge-entity.schema.json) | The E1a half of the entity topic family: retained per-entity config, local per-entity telemetry, core-owned retained command, and the cloud → edge entity-registry push on `…/v2/entities`. |
 | [`telemetry-v2-raw.event.schema.json`](./telemetry-v2-raw.event.schema.json) | Redpanda `telemetry-v2.raw` event (Ingest → Writer, next to the untouched v1 `telemetry.raw`). |
+| [`anwendung-vectors.json`](./anwendung-vectors.json) | Geteilte Vektoren der ANWENDUNGS-Ableitung (Anwendungs-Programm Stufe 1): welche Anwendung eine Anlage von selbst aktiviert und welche Voraussetzung erfüllt ist. Kein Draht-Vertrag — sie pinnen die Zwillinge Java `profile/AnwendungDerivation` ⟷ TS `src/anwendungen.ts` (und, für die vier Modus-Arten, `surface.ts activeModes`) gegeneinander, das `usage-profile-vectors.json`-Muster. Der BESCHREIBENDE Teil einer Anwendung lebt im Katalog `anwendungen/catalog.json` (Server + byte-gleiche Portal-Kopie), nicht hier. |
 | [`examples/`](./examples/) | ajv-validated fixtures: ≥ 2 valid + 1 invalid per schema ([`examples/README.md`](./examples/README.md)). |
 
 ## v1 / v2 coexistence philosophy

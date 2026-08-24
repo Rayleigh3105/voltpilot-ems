@@ -188,7 +188,7 @@ describe('cockpitStack — die kanonische Reihenfolge (report §1.3)', () => {
     const s = anlageSurface(MULTI);
     const views = cockpitStack(s.cockpitBlocks, null);
     const byId = Object.fromEntries(views.map((v) => [v.id, v]));
-    expect(byId['handel'].fromTag).toBe('Marktvermarktung');
+    expect(byId['handel'].fromTag).toBe('Marktoptimierung');
     expect(byId['handel'].isBase).toBe(false);
     expect(byId['peak-band'].fromTag).toBe('Lastspitzenkappung');
     expect(byId['energiefluss'].fromTag).toBe('Komponenten');

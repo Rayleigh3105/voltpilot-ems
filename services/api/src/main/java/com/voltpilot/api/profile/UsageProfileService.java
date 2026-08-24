@@ -95,16 +95,36 @@ public class UsageProfileService {
      * consumer has.
      */
     Signals signals(UUID siteId, SiteDto site) {
+        return plantSignals(siteId, site).signals();
+    }
+
+    /**
+     * Die AE7-Signale PLUS {@code hasMeasurement} - in EINEM Durchlauf über die
+     * Entitäten. Der Anwendungs-Katalog braucht die Messwert-Tatsache für die
+     * Basis-Anwendung „Anlage beobachten"; sie in {@link Signals} aufzunehmen
+     * hätte den AE7-Vertrag samt seiner geteilten Vektoren geändert, ein
+     * zweiter Lesepfad wäre eine zweite Abfrage auf einem heißen Pfad.
+     *
+     * @param signals        die unveränderten AE7-Signale
+     * @param hasMeasurement ≥ 1 Entität deklariert einen Messkanal
+     */
+    record PlantSignals(Signals signals, boolean hasMeasurement) {}
+
+    PlantSignals plantSignals(UUID siteId, SiteDto site) {
         boolean hasStorage = false;
         boolean hasPv = false;
         boolean hasControllableConsumer = false;
         boolean hasChargePoint = false;
+        boolean hasMeasurement = false;
         for (EntityRegistryRepository.EntityRow row : entities.entitiesForSite(siteId)) {
             if (ChargerComponentComposer.TYPE_EV_CHARGER.equals(row.entityType())) {
                 hasChargePoint = true;
             }
             EntityTypeCatalog.EntityType type = catalog.find(row.entityType());
             String category = type == null ? "" : type.category();
+            if (capabilities(row.capabilitiesJson()).path("measure").size() > 0) {
+                hasMeasurement = true;
+            }
             for (String role : measuredRoles(category, row.capabilitiesJson())) {
                 if (TopologyDeriver.ROLE_PV.equals(role)) {
                     hasPv = true;
@@ -118,9 +138,9 @@ public class UsageProfileService {
                 hasControllableConsumer = true;
             }
         }
-        return new Signals(hasStorage, hasPv, hasControllableConsumer, hasChargePoint,
-                activeStrategyNodeTypes(siteId), site.plantKind(),
-                site.leistungspreisEurKw() != null, site.usageProfileOverride());
+        return new PlantSignals(new Signals(hasStorage, hasPv, hasControllableConsumer,
+                hasChargePoint, activeStrategyNodeTypes(siteId), site.plantKind(),
+                site.leistungspreisEurKw() != null, site.usageProfileOverride()), hasMeasurement);
     }
 
     /** The topology roles this entity's measure channels resolve to. */

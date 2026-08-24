@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.profile.UsageProfileDeriver;
@@ -190,6 +191,13 @@ public class OverviewController {
         boolean hasStorage = false;
         boolean hasPv = false;
         boolean hasControllableConsumer = false;
+        // Der Ladepunkt-Anteil ist die EINE Divergenz, die der 7-Arg-Konstruktor
+        // hinterlassen hat: er stempelte hasChargePoint auf false, also konnte
+        // das Overview NIE `laden` melden, während `GET /sites/{id}/profile` es
+        // sehr wohl tut - dieselbe Frage mit zwei Antworten. Die Regel ist die
+        // von UsageProfileService.signals: der Ladepunkt keyt auf den TYP.
+        boolean hasChargePoint =
+                typeCounts.containsKey(ChargerComponentComposer.TYPE_EV_CHARGER);
         for (String entityType : typeCounts.keySet()) {
             EntityTypeCatalog.EntityType type = catalog.find(entityType);
             String category = type == null ? "" : type.category();
@@ -205,7 +213,7 @@ public class OverviewController {
         // profile (deriveDefault); the entity signals are reported for parity
         // with the profile endpoint, never decisive here.
         return UsageProfileDeriver.effectiveProfile(new UsageProfileDeriver.Signals(
-                hasStorage, hasPv, hasControllableConsumer, strategyNodeTypes,
+                hasStorage, hasPv, hasControllableConsumer, hasChargePoint, strategyNodeTypes,
                 site.plantKind(), site.leistungspreisEurKw() != null, site.usageProfileOverride()));
     }
 

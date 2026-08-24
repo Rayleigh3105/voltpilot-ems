@@ -1,0 +1,442 @@
+{
+  "catalog_version": "1.0.0",
+  "_comment": [
+    "Der EINE Anwendungs-Katalog (Zielbild 'Portal fuer viele Kunden, viele",
+    "Anwendungen', Scout vp-portal-zielbild-anwendungen §3.2/§4.1, Stufe 1).",
+    "",
+    "Eine ANWENDUNG ist der Oberbegriff fuer alles, was VoltPilot auf einer",
+    "Anlage tun kann. Vor dieser Stufe lag derselbe Katalog an ACHT Stellen in",
+    "zwei Sprachen (§2.2) und zwei Zwillinge waren ungepinnt. Diese Ressource",
+    "ist seither die EINZIGE Wahrheit ueber Id, Label, Nutzen-Satz,",
+    "Voraussetzungen samt ihrer Sperr-Saetze, beigesteuerte Bausteine,",
+    "Einstellungen, Starter und Preset-Zugehoerigkeit. Die Portal-Kopie",
+    "frontend/portal/src/anwendungen/catalog.json ist BYTE-GLEICH gepinnt",
+    "(anwendungen.sync.test.ts, das flowcatalog-Muster) - beide zusammen aendern.",
+    "",
+    "WAS HIER BEWUSST NICHT STEHT: die Aktivierungs-LOGIK (welche Anwendung",
+    "eine Anlage von selbst aktiviert). Sie bleibt Code und wird beidseitig",
+    "ueber docs/contracts/v2/anwendung-vectors.json gepinnt - Java",
+    "profile/AnwendungDerivation, TS src/anwendungen.ts derivedAnwendungen",
+    "(das usage-profile-vectors.json-Muster).",
+    "",
+    "VIER KLASSEN (Feld 'klasse'), und sie bestimmen, was ein Schalter TUT:",
+    "  basis       - nicht abschaltbar. Die Anwendung laeuft, sobald ihre",
+    "                Faehigkeit da ist; das Regal zeigt eine ruhige Zeile",
+    "                'immer an'. (Captain 29.07.2026: Eigenverbrauch ist",
+    "                Grundverhalten, kein Modus - deshalb ist der",
+    "                Speicher-Fahrplan hier eine Basis-Anwendung.)",
+    "  regel       - abschaltbar. Der Schalter ist reine ABSICHT: er",
+    "                schaltet keinen Knoten frei und saet keinen Starter.",
+    "                'an' ohne passende Regel ist der ehrliche Leer-Zustand",
+    "                aus 'leer_zustand' mit dem Einstieg in Komponenten &",
+    "                Regeln - der Server erfindet keine Regel.",
+    "  geschaeft   - abschaltbar. Der Schalter oeffnet die gated Knotentypen",
+    "                DIESER Anwendung (abgeleitet aus dem Flow-Katalog, nie",
+    "                eine Hand-Liste) und saet ihren Starter, sofern sie",
+    "                beides hat (das Ladepark-Lastmanagement hat keines von",
+    "                beidem - es ist SCHUTZ, keine Marktteilnahme).",
+    "  reserviert  - Erweiterungspunkt. 'sichtbar': false, also kein Schalter",
+    "                und keine Regal-Zeile: ein Schalter, der nichts bewirken",
+    "                kann, waere eine Zusage, die niemand einloest.",
+    "",
+    "'voraussetzungen' sind {id, label, blocked_reason}: das LABEL ist der",
+    "Chip, der 'blocked_reason' der ehrliche deutsche Satz, wenn GENAU diese",
+    "Voraussetzung fehlt (die erste unerfuellte gewinnt - byte-gleich zur",
+    "frueheren Hand-Tabelle SiteProfileService.blockedReason). Die PRUEFUNG",
+    "einer Voraussetzungs-Id bleibt Code (AnwendungDerivation.requirementMet).",
+    "",
+    "'bausteine' nennt, was die Anwendung zur Oberflaeche beitraegt. Fuer die",
+    "vier Geschaefts-Anwendungen ist das gegen surface.ts manifestFor gepinnt",
+    "(anwendungen.test.ts) - ein Katalog-Eintrag ohne Manifest faellt auf.",
+    "Fuer Basis- und Regel-Anwendungen ist es die DOKUMENTATION dessen, was",
+    "die Fläche heute schon aus base(entities) bzw. den Automationen rendert;",
+    "gerendert wird davon in Stufe 1 nichts neu (Stufe 3 loest das Layout",
+    "daraus auf).",
+    "",
+    "'preset' ist die Vorauswahl je Profil (Stufe 2): an | angeboten |",
+    "verborgen | abgeleitet. Sie wird in Stufe 1 nur GETRAGEN, nie gelesen."
+  ],
+  "klassen": ["basis", "regel", "geschaeft", "reserviert"],
+  "kategorien": ["basis", "steuerung", "geschaeft", "auswertung"],
+  "preset_werte": ["an", "angeboten", "verborgen", "abgeleitet"],
+  "anwendungen": [
+    {
+      "id": "monitoring",
+      "label": "Anlage beobachten",
+      "kategorie": "basis",
+      "klasse": "basis",
+      "rang": 0,
+      "nutzen": "Sie sehen jederzeit, was Ihre Anlage erzeugt, verbraucht und einspeist — und ob alles läuft.",
+      "abschaltbar": false,
+      "sichtbar": true,
+      "strategie_knoten": null,
+      "starter": null,
+      "bedarf": {
+        "rollen": [],
+        "actuate": [],
+        "messung": ["mindestens ein Messwert"]
+      },
+      "voraussetzungen": [
+        {
+          "id": "messwert",
+          "label": "Messwerte kommen an",
+          "blocked_reason": "Ihre Anlage hat noch keinen Messwert gemeldet — sobald das erste Gerät liefert, sehen Sie hier Werte."
+        }
+      ],
+      "blocked_reason_immer": null,
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": ["status", "energiefluss", "toolbox-pointer"],
+        "ansichten": ["live", "geraete", "telemetrie-historie", "wetter"],
+        "geldstrom": null,
+        "steuerungskarte": false,
+        "nav_gruppe": false
+      },
+      "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": null,
+      "preset": { "privat": "an", "gewerbe": "an" }
+    },
+    {
+      "id": "speicher-fahrplan",
+      "label": "Speicher-Fahrplan",
+      "kategorie": "basis",
+      "klasse": "basis",
+      "rang": 5,
+      "nutzen": "VoltPilot plant Ihren Speicher alle 15 Minuten neu, damit möglichst viel von Ihrem eigenen Strom im Haus bleibt.",
+      "abschaltbar": false,
+      "sichtbar": true,
+      "strategie_knoten": null,
+      "starter": null,
+      "bedarf": {
+        "rollen": ["storage"],
+        "actuate": [],
+        "messung": ["soc_pct", "battery_power_kw"]
+      },
+      "voraussetzungen": [
+        {
+          "id": "speicher",
+          "label": "Speicher",
+          "blocked_reason": "Ohne Speicher gibt es keinen Fahrplan — VoltPilot plant nur, was es laden und entladen kann."
+        }
+      ],
+      "blocked_reason_immer": null,
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": [],
+        "ansichten": ["fahrplan", "prognosequalitaet"],
+        "geldstrom": null,
+        "steuerungskarte": false,
+        "nav_gruppe": false
+      },
+      "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": null,
+      "preset": { "privat": "an", "gewerbe": "an" }
+    },
+    {
+      "id": "ueberschuss",
+      "label": "Überschuss nutzen",
+      "kategorie": "steuerung",
+      "klasse": "regel",
+      "rang": 10,
+      "nutzen": "Ihre Geräte laufen dann, wenn mehr Solarstrom da ist, als das Haus gerade braucht.",
+      "abschaltbar": true,
+      "sichtbar": true,
+      "strategie_knoten": null,
+      "starter": null,
+      "bedarf": {
+        "rollen": ["pv"],
+        "actuate": ["on_off", "setpoint_kw"],
+        "messung": []
+      },
+      "voraussetzungen": [
+        {
+          "id": "pv",
+          "label": "PV-Erzeugung",
+          "blocked_reason": "Ohne eigene PV-Erzeugung gibt es keinen Überschuss, den ein Gerät nutzen könnte."
+        },
+        {
+          "id": "steuerbares-geraet",
+          "label": "Steuerbares Gerät",
+          "blocked_reason": "Es ist noch kein steuerbares Gerät angelegt — ohne eines gibt es nichts, was den Überschuss nutzen könnte."
+        }
+      ],
+      "blocked_reason_immer": null,
+      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter „Komponenten & Regeln“ eine Regel an, die ein Gerät bei Überschuss laufen lässt.",
+      "bausteine": {
+        "cockpit": ["geraete-automatik"],
+        "ansichten": ["flow-editor"],
+        "geldstrom": null,
+        "steuerungskarte": false,
+        "nav_gruppe": false
+      },
+      "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": "regeln",
+      "preset": { "privat": "an", "gewerbe": "angeboten" }
+    },
+    {
+      "id": "verbraucher",
+      "label": "Verbraucher steuern",
+      "kategorie": "steuerung",
+      "klasse": "regel",
+      "rang": 15,
+      "nutzen": "Sie legen fest, wann Ihre Geräte laufen sollen — VoltPilot schaltet sie zum passenden Zeitpunkt.",
+      "abschaltbar": true,
+      "sichtbar": true,
+      "strategie_knoten": null,
+      "starter": null,
+      "bedarf": {
+        "rollen": [],
+        "actuate": ["on_off", "setpoint_kw"],
+        "messung": []
+      },
+      "voraussetzungen": [
+        {
+          "id": "steuerbares-geraet",
+          "label": "Steuerbares Gerät",
+          "blocked_reason": "Es ist noch kein steuerbares Gerät angelegt — ohne eines gibt es nichts zu schalten."
+        }
+      ],
+      "blocked_reason_immer": null,
+      "leer_zustand": "Eingeschaltet, aber noch ohne Regel: Legen Sie unter „Komponenten & Regeln“ fest, wann Ihr Gerät laufen soll.",
+      "bausteine": {
+        "cockpit": ["geraete-automatik"],
+        "ansichten": ["flow-editor"],
+        "geldstrom": null,
+        "steuerungskarte": false,
+        "nav_gruppe": false
+      },
+      "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": "regeln",
+      "preset": { "privat": "an", "gewerbe": "angeboten" }
+    },
+    {
+      "id": "marktvermarktung",
+      "label": "Marktoptimierung",
+      "kategorie": "geschaeft",
+      "klasse": "geschaeft",
+      "rang": 30,
+      "nutzen": "VoltPilot lädt und entlädt Ihren Speicher nach den Börsenpreisen — teuer verkaufen, günstig laden.",
+      "abschaltbar": true,
+      "sichtbar": true,
+      "strategie_knoten": "vp.strategy.market",
+      "starter": "arbitrage",
+      "bedarf": {
+        "rollen": ["storage"],
+        "actuate": ["setpoint_kw"],
+        "messung": []
+      },
+      "voraussetzungen": [
+        {
+          "id": "marktzugang",
+          "label": "Dynamischer Tarif oder Direktvermarktung",
+          "blocked_reason": "Für den Handel fehlt der Marktzugang: Ihre Anlage hat weder einen dynamischen Stromtarif noch eine Direktvermarktung hinterlegt. Solange wird nichts am Markt gehandelt."
+        },
+        {
+          "id": "speicher",
+          "label": "Speicher",
+          "blocked_reason": "Ohne Speicher kann VoltPilot am Markt nichts verschieben."
+        }
+      ],
+      "blocked_reason_immer": null,
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": ["handel"],
+        "ansichten": ["fahrplan", "marktpreise", "prognosequalitaet", "erloes-historie"],
+        "geldstrom": "einspeisung",
+        "steuerungskarte": true,
+        "nav_gruppe": true
+      },
+      "unlock_chips": ["Marktpreise", "Prognosequalität", "Handels-Kachel", "Einspeise-Erlös"],
+      "einstellungen": ["speicherschonung", "netzladen", "anzulegender-wert", "stromtarif"],
+      "einstellungen_verweis": "einstellungen",
+      "preset": { "privat": "angeboten", "gewerbe": "an" }
+    },
+    {
+      "id": "lastspitzenkappung",
+      "label": "Lastspitzenkappung",
+      "kategorie": "geschaeft",
+      "klasse": "geschaeft",
+      "rang": 40,
+      "nutzen": "Ihre Batterie kappt die Bezugsspitze Ihres Netzanschlusses und senkt damit Ihren Leistungspreis.",
+      "abschaltbar": true,
+      "sichtbar": true,
+      "strategie_knoten": "vp.strategy.peakshaving",
+      "starter": "peak",
+      "bedarf": {
+        "rollen": ["storage", "grid"],
+        "actuate": ["setpoint_kw"],
+        "messung": ["power_kw"]
+      },
+      "voraussetzungen": [
+        {
+          "id": "leistungspreis",
+          "label": "Leistungspreis hinterlegt",
+          "blocked_reason": "Ihr Leistungspreis ist noch nicht hinterlegt — ohne ihn kann VoltPilot Ihre Lastspitze nicht bewerten und kappt sie noch nicht."
+        },
+        {
+          "id": "speicher",
+          "label": "Speicher",
+          "blocked_reason": "Ohne Speicher lässt sich Ihre Lastspitze nicht kappen."
+        }
+      ],
+      "blocked_reason_immer": null,
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": ["peak-band"],
+        "ansichten": ["lastspitzen", "erloes-historie"],
+        "geldstrom": "lastspitzen",
+        "steuerungskarte": true,
+        "nav_gruppe": true
+      },
+      "unlock_chips": ["Lastspitzen-Ansicht", "Lastspitzen-Kachel", "Vermiedene Leistungskosten"],
+      "einstellungen": ["leistungspreis", "abrechnung-leistung", "lastspitzen-reserve"],
+      "einstellungen_verweis": "modus",
+      "preset": { "privat": "verborgen", "gewerbe": "an" }
+    },
+    {
+      "id": "atypische-netznutzung",
+      "label": "Atypische Netznutzung",
+      "kategorie": "geschaeft",
+      "klasse": "geschaeft",
+      "rang": 50,
+      "nutzen": "Verlagert Verbrauch und Speicher aus den Hochlastzeitfenstern — für ein reduziertes Netzentgelt.",
+      "abschaltbar": true,
+      "sichtbar": true,
+      "strategie_knoten": "vp.strategy.atypical-grid",
+      "starter": null,
+      "bedarf": {
+        "rollen": ["storage", "grid"],
+        "actuate": ["setpoint_kw"],
+        "messung": ["power_kw"]
+      },
+      "voraussetzungen": [
+        {
+          "id": "leistungsmessung",
+          "label": "Leistungsmessung",
+          "blocked_reason": "Für dieses Profil fehlt noch eine Voraussetzung."
+        }
+      ],
+      "blocked_reason_immer": "VoltPilot berechnet die Netzentgelt-Ersparnis der atypischen Netznutzung für Ihre Anlage noch nicht - es wird dafür nichts gesteuert.",
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": [],
+        "ansichten": [],
+        "geldstrom": null,
+        "steuerungskarte": true,
+        "nav_gruppe": true
+      },
+      "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": null,
+      "preset": { "privat": "verborgen", "gewerbe": "angeboten" }
+    },
+    {
+      "id": "lastmanagement",
+      "label": "Ladepark-Lastmanagement",
+      "kategorie": "geschaeft",
+      "klasse": "geschaeft",
+      "rang": 60,
+      "nutzen": "Verteilt die verfügbare Leistung Ihres Netzanschlusses auf die ladenden Fahrzeuge — Ihr Anschluss bleibt geschützt.",
+      "abschaltbar": true,
+      "sichtbar": true,
+      "strategie_knoten": null,
+      "starter": null,
+      "bedarf": {
+        "rollen": ["consumer"],
+        "actuate": ["limit_kw"],
+        "messung": []
+      },
+      "voraussetzungen": [
+        {
+          "id": "ladepunkt",
+          "label": "Ladepunkt verbunden",
+          "blocked_reason": "Es hat sich noch keine Ladesäule gemeldet. Sobald eine verbunden ist, verteilt VoltPilot die verfügbare Leistung Ihres Netzanschlusses auf die ladenden Fahrzeuge."
+        },
+        {
+          "id": "anschlussgrenze",
+          "label": "Anschlussgrenze hinterlegt",
+          "blocked_reason": "Ihre Anschlussgrenze ist noch nicht hinterlegt - ohne sie gibt VoltPilot keine Ladeleistung frei. Sie steht in Ihrem Netzanschlussvertrag."
+        }
+      ],
+      "blocked_reason_immer": null,
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": ["lade-budget"],
+        "ansichten": ["ladevorgaenge"],
+        "geldstrom": null,
+        "steuerungskarte": true,
+        "nav_gruppe": true
+      },
+      "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": null,
+      "preset": { "privat": "abgeleitet", "gewerbe": "abgeleitet" }
+    },
+    {
+      "id": "eigene-auswertung",
+      "label": "Eigene Auswertung",
+      "kategorie": "auswertung",
+      "klasse": "reserviert",
+      "rang": 90,
+      "nutzen": "Sie stellen sich eigene Kennzahlen und Verläufe aus Ihren Messwerten zusammen.",
+      "abschaltbar": true,
+      "sichtbar": false,
+      "strategie_knoten": null,
+      "starter": null,
+      "bedarf": {
+        "rollen": [],
+        "actuate": [],
+        "messung": ["mindestens ein Messwert"]
+      },
+      "voraussetzungen": [],
+      "blocked_reason_immer": null,
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": [],
+        "ansichten": [],
+        "geldstrom": null,
+        "steuerungskarte": false,
+        "nav_gruppe": false
+      },
+      "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": null,
+      "preset": { "privat": "angeboten", "gewerbe": "angeboten" }
+    },
+    {
+      "id": "berichte",
+      "label": "Berichte",
+      "kategorie": "auswertung",
+      "klasse": "reserviert",
+      "rang": 95,
+      "nutzen": "Sie bekommen regelmäßig einen Bericht über Ihre Anlage.",
+      "abschaltbar": true,
+      "sichtbar": false,
+      "strategie_knoten": null,
+      "starter": null,
+      "bedarf": {
+        "rollen": [],
+        "actuate": [],
+        "messung": []
+      },
+      "voraussetzungen": [],
+      "blocked_reason_immer": null,
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": [],
+        "ansichten": [],
+        "geldstrom": null,
+        "steuerungskarte": false,
+        "nav_gruppe": false
+      },
+      "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": null,
+      "preset": { "privat": "verborgen", "gewerbe": "verborgen" }
+    }
+  ]
+}

@@ -3171,17 +3171,97 @@ The owner-approved UX/UI rework of the customer portal (one navigation, live coc
 
 ## Anwendungen (im Code: Modus-Profile): the per-Anlage profile state (Portal v3 M3)
 
-**⚠ The CUSTOMER word is „Anwendung" since 24.08.2026** (captain vocabulary, Stufe 0 of the Anwendungs-Programm — concept `data/vp-portal-zielbild-anwendungen` §2.7/§5): „Modus"/„Modus-Profil"/„Modi" appear in NO customer-facing string any more, and the portal's `copy.test.ts` guards that (its ONE documented exception is a DEVICE's operating mode, „auf Modus „eco““ — a different thing). **Every code id stays**: `ModeKind`, `ModusContainer`, `profiles.ts`, the route `/profiles`, the column `site_profile_state.profile`, `SiteProfileCatalog`/`SiteProfileService`, the `vp-modus-*` CSS classes. Renaming any of those would be an API/schema change, which Stufe 0 deliberately is not — so this section keeps its Java/SQL vocabulary and only the WORD on screen changed.
+**⚠ The CUSTOMER word is „Anwendung" since 24.08.2026** (captain vocabulary, Stufe 0 of the Anwendungs-Programm — concept `data/vp-portal-zielbild-anwendungen` §2.7/§5): „Modus"/„Modus-Profil"/„Modi" appear in NO customer-facing string any more, and the portal's `copy.test.ts` guards that (its ONE documented exception is a DEVICE's operating mode, „auf Modus „eco““ — a different thing). **Every code id stays**: `ModeKind`, `ModusContainer`, `profiles.ts`, the route `/profiles`, the column `site_profile_state.profile`, `SiteProfileService`, the `vp-modus-*` CSS classes. Renaming any of those would be an API/schema change, which Stufe 0 deliberately is not — so this section keeps its Java/SQL vocabulary and only the WORD on screen changed.
 
-The ONE backend piece of the portal-v3 overhaul (spec [`docs/portal-v3/M3-profile.md`](docs/portal-v3/M3-profile.md)): a plant's feature set is a **shelf with switches** the customer operates themselves. **Every profile is a DIRECT customer toggle** (owner decision) - there are exactly two states, `an` and `aus`, and no "angefragt" state anywhere in the UI, the API or the DB. Additive throughout: a plant with no rows behaves byte-identically to before M3. **The shelf carries three profiles — `marktvermarktung`, `lastspitzenkappung`, `atypische-netznutzung` (all gated); the `eigenverbrauch` card was REMOVED (report vp-nacht-bezug-e7 §3.3): self-consumption is base behaviour, not a selectable mode. Migration `V20260729010000` deletes any stored `eigenverbrauch` `site_profile_state` row + nulls any `private` override; a startup `SelfconsumptionFlowSweepRunner` retires existing `vp.strategy.selfconsumption` flows.**
+The ONE backend piece of the portal-v3 overhaul (spec [`docs/portal-v3/M3-profile.md`](docs/portal-v3/M3-profile.md)): a plant's feature set is a **shelf with switches** the customer operates themselves. **Every profile is a DIRECT customer toggle** (owner decision) - there are exactly two states, `an` and `aus`, and no "angefragt" state anywhere in the UI, the API or the DB. Additive throughout: a plant with no rows behaves byte-identically to before M3. **The shelf carries EIGHT Anwendungen since Stufe 1 (see the next section); the four GATED ones are `marktvermarktung`, `lastspitzenkappung`, `atypische-netznutzung` and `lastmanagement`. The `eigenverbrauch` card was REMOVED (report vp-nacht-bezug-e7 §3.3): self-consumption is base behaviour, not a selectable mode. Migration `V20260729010000` deletes any stored `eigenverbrauch` `site_profile_state` row + nulls any `private` override; a startup `SelfconsumptionFlowSweepRunner` retires existing `vp.strategy.selfconsumption` flows.**
 
 - **State = INTENT only, never the derived profile.** `site_profile_state (site_id, profile, state an|aus, tenant_id, updated_at)` (migration `V20260723000000`, RLS + FORCE like `flow_definition`; `SiteProfileStateRepository` on the RLS-scoped `@Primary` JdbcTemplate). No row = "derived default" - the derivation (`UsageProfileService` signals / the portal's `activeModes`) stays the single truth (the AE7 rule). `aus` is load-bearing: it SUPPRESSES a still-derived mode, so switching a profile off cannot be silently undone by a re-derived signal.
 - **`GET/PUT /api/v1/sites/{id}/profiles`** (`SiteProfileController`, NO `@PreAuthorize` - authentication + RLS are the fence, foreign site 404; admins via the `X-Tenant-Id` switcher). The shelf card carries `state`/`derivedActive`/`active`, `unlocks`, `requirements` (✓ / fehlt), `blockedReason`, `origin`, `flowRef`, `gatedNodeTypes`/`gatedNodesEnabled`.
-- **The transitions (`SiteProfileService`).** ON = (a) enable exactly THAT profile's gated node types (`SiteProfileCatalog.gatedNodeTypes` derives them from the flow catalog's `gated` flag - never a hand-kept list, so a market toggle can never hand out the atypical-grid strategy as a side effect), (b) `FlowTemplateService.autoStart(siteId, tenantId, usageProfile)` (a NEW overload seeding THAT profile's starter instead of the derived one; the 2-arg form is unchanged), (c) persist `an`. OFF = deactivate the site's ACTIVE flows carrying that profile's strategy node (`FlowService.deactivate`), disable the node types again, persist `aus`.
+- **The transitions (`SiteProfileService`).** ON = (a) enable exactly THAT profile's gated node types (`AnwendungKatalog.gatedNodeTypes` derives them from the flow catalog's `gated` flag - never a hand-kept list, so a market toggle can never hand out the atypical-grid strategy as a side effect), (b) `FlowTemplateService.autoStart(siteId, tenantId, starter)` (a NEW overload seeding THAT profile's starter instead of the derived one; the 2-arg form is unchanged), (c) persist `an`. OFF = deactivate the site's ACTIVE flows carrying that profile's strategy node (`FlowService.deactivate`), disable the node types again, persist `aus`.
 - **The gate is OPENED, never faked** (BUILD.md §4.9): the per-site enablement is an authorized, audited SERVER-side effect of an explicit customer toggle on their OWN site - written through the RLS-scoped app datasource. `FlowService.activate` still re-checks it (`gated_node_not_enabled`), the peak-shaving configuration gate still holds, and the edge guard chain / §14a / EEG protections are literally untouched. The admin governance PUT stays admin-only (a customer PUTting it is still 403); what changed is WHO may open the per-site entry, not what the gate checks.
 - **`// OPEN(O1)` - the market safety default (owner has not answered yet).** A bare toggle must not start UNCONTRACTED market participation, so **the toggle is INTENT and the market strategy is only really opened when the site HAS market access** - `tarif_art = 'dynamisch'` and/or `plant_kind = 'direktvermarktung'` (the same master data `surface.ts` reads and the optimizer's pricing layer needs). Without it the profile still switches on, the card names the missing prerequisite, and the gated node stays CLOSED + no starter is seeded, so nothing trades. The check lives in ONE place (`SiteProfileService.switchOn`, marked `// OPEN(O1)`), so a different owner answer (e.g. an explicit contract flag) is a one-line change. **A profile toggle NEVER writes money/contract master data** - a tariff or a DV contract is a real-world fact entered on the Vergütung form. Gewerbe behaves differently ON PURPOSE: its node IS enabled and the existing `peakshaving_not_configured` activation gate refuses later, surfaced as the card's honest reason.
 - **Customer `POST /api/v1/sites/{id}/flows/auto-start`** (the twin of the admin route, on `SiteFlowController`): seeding a DRAFT controls nothing, so it is customer-reachable; idempotent (`already_has_flow`/`no_battery`).
 - **Tests:** `SiteProfileApiTest` (Testcontainers, activation flag ON + fake flowc/simulation: no-rows default, free toggle touches no gated node, market-without-access flips-but-nothing-trades, market-with-access opens the node and the customer really ACTIVATES, toggle-off retires that flow + closes the node + `aus` suppresses the still-derived mode, Gewerbe honest reason, customer 403 on admin governance, RLS 404, unknown profile/state 400) + `CustomerFlowApiTest.customerAutoStartSeedsTheStarterFlowOnceAndIsIdempotent`. Portal side: `frontend/portal/AGENTS.md`.
+
+## Der EINE Anwendungs-Katalog (`anwendungen/catalog.json`, Anwendungs-Programm Stufe 1)
+
+Der beschreibende Teil einer Anwendung — Id, Label, Nutzen-Satz, Voraussetzungen samt ihren
+Sperr-Sätzen, beigesteuerte Bausteine, Einstellungen, Starter, Preset-Zugehörigkeit — lag an
+**ACHT Stellen in zwei Sprachen** (Konzept `data/vp-portal-zielbild-anwendungen` §2.2), und zwei
+Zwillinge waren ungepinnt. Seit dieser Stufe ist er EINE Ressource
+`services/api/src/main/resources/anwendungen/catalog.json` mit einer **byte-gleichen Portal-Kopie**
+`frontend/portal/src/anwendungen/catalog.json` (`anwendungen.sync.test.ts` + der Java-Zwilling
+`AnwendungKatalogTest.thePortalCopyIsByteIdentical` — **beide zusammen ändern**, das
+`flowcatalog`-Muster). Die Stufe ist ADDITIV: eine Bestandsanlage rendert byte-identisch
+(`frontend/portal/src/migration.test.ts` „Anwendungs-Katalog Stufe 1", drei Fälle).
+
+- **VIER KLASSEN (`klasse`), und sie bestimmen, was ein Schalter TUT.** `basis` = nicht
+  abschaltbar (Regal-Zeile „immer an"; ein Schaltversuch ist ein 400 mit deutschem Grund) ·
+  `regel` = der Schalter ist reine ABSICHT (kein Gate, kein Starter) · `geschaeft` = wie bisher
+  (eigene gated Knoten öffnen + eigenen Starter säen, sofern vorhanden) · `reserviert` =
+  `sichtbar: false`, also **keine Regal-Zeile und kein Schalter** — ein Schalter, der nichts
+  bewirken kann, wäre eine Zusage, die niemand einlöst. Das Regal führt seither ACHT Einträge:
+  `monitoring` · `speicher-fahrplan` (basis) · `ueberschuss` · `verbraucher` (regel) · die vier
+  bekannten Geschäfts-Anwendungen; `eigene-auswertung` und `berichte` liegen im Katalog, aber
+  nicht im Regal.
+- **⚠ Was NICHT in die Ressource wandert: die Aktivierungs-LOGIK.** Sie bleibt Code — rein in
+  `profile/AnwendungDerivation` (Docker-frei, ohne Uhr, das `Tagesprotokoll`/`FleetPflege`-Muster)
+  und `frontend/portal/src/anwendungen.ts` `derivedAnwendungen` — und ist beidseitig über
+  **`docs/contracts/v2/anwendung-vectors.json`** gepinnt (das `usage-profile-vectors.json`-Muster).
+  Der Portal-Test fährt zusätzlich den DRITTEN Zwilling `surface.ts activeModes` gegen dieselben
+  Vektoren und vergleicht ihn Fall für Fall mit `derivedAnwendungen` — genau die zwei Zwillinge,
+  die §2.2 als „ohne gemeinsame Vektor-Datei" gefunden hat. **Regeln und Vektoren zusammen ändern.**
+- **Zwei Ehrlichkeitsregeln der Ableitung, beide dokumentiert und gepinnt:** `verbraucher` gilt als
+  abgeleitet aktiv, sobald ein AKTIVER Flow den generierten Verbraucher-Executor
+  `vp.consumer.reactive` trägt (beweisbar); **`ueberschuss` wird NIE abgeleitet** — eine
+  Überschuss-Regel und eine Zeitplan-Regel entstehen beide im Verbraucher-Baukasten und sind
+  serverseitig nur an ihrem Bedingungsbaum zu unterscheiden, daraus einen Zustand zu behaupten wäre
+  eine Erfindung. Und der Leer-Zustand einer eingeschalteten Regel-Anwendung wird nur BELEGT
+  gesagt: erst wenn die Anlage **keinen einzigen** aktiven Flow ohne Strategie-Knoten trägt.
+- **`SiteProfileCatalog` ist ERSETZT durch `profile/AnwendungKatalog`** (eine `@Component` wie
+  `EntityTypeCatalog`/`FlowCatalog`; die Id-Konstanten sind mitgewandert). `SiteProfileService` hat
+  seither KEINE Hand-Tabelle mehr: `requirements`/`unlocks`/`blockedReason` kommen aus dem Katalog,
+  die Urteile aus `AnwendungDerivation`. `blockedReason` ist dabei byte-gleich zur früheren
+  Index-0-Kaskade: ein IMMER geltender Satz (nur die atypische Netznutzung) schlägt alles, sonst
+  gewinnt die ERSTE unerfüllte Voraussetzung mit ihrem eigenen Satz.
+- **Portal:** `src/anwendungen.ts` ist die typisierte Lese-Schicht; `surface.ts MODE_LABELS` +
+  `manifestFor(...).settings`, `profiles.ts` (Nutzen + Freischaltungs-Chips) und
+  `modeSettings.ts SETTING_DEFS.claimedBy` (die Umkehrung von `einstellungen`) lesen alle aus ihr.
+  **⚠ EINE bewusste Copy-Vereinheitlichung:** der Markt-Modus heißt seither überall
+  **„Marktoptimierung"** — der Server (und damit die Regal-Karte) sagte das schon immer, nur
+  `MODE_LABELS` sagte „Marktvermarktung"; zwei Namen für dieselbe Sache direkt nebeneinander waren
+  genau die Doppeldeutigkeit, gegen die der Katalog gebaut ist.
+- **⚠ `MODE_RANK` bleibt Code und wird NICHT katalog-gespeist.** Der Katalog-`rang` ordnet das
+  REGAL, `MODE_RANK` die aktiven Modi der Projektion (Cockpit-Blöcke, Nav-Gruppen) — sie zu
+  verschmelzen würde die Reihenfolge einer Bestandsanlage sichtbar ändern. Der Migrations-Wächter
+  nagelt beide Mengen fest.
+- **Ein Konsistenz-Test verhindert einen Katalog-Eintrag ohne Fläche** (`anwendungen.test.ts`): für
+  jede der vier Modus-Arten müssen `bausteine.cockpit`/`ansichten`/`geldstrom` und `einstellungen`
+  exakt dem entsprechen, was `surface.ts manifestFor` beisteuert, jede Baustein-Id muss ein
+  bekanntes Vokabular treffen, und `einstellungen_verweis` muss zur `home` ihrer Einstellungen
+  passen. Für Basis- und Regel-Anwendungen sind die `bausteine` DOKUMENTATION dessen, was die
+  Fläche schon heute rendert — **Stufe 1 ändert die Fläche nicht** (Stufe 3 löst das Layout daraus
+  auf).
+- **⚠ Der Kunden-Copy-Wächter liest den Katalog mit** (`frontend/portal/src/copy.test.ts`): er ist
+  ein KUNDEN-Textwohnort, liegt aber als JSON und würde vom Datei-Walker sonst nicht erfasst. Die
+  `_comment`-Blöcke sind ausdrücklich ausgenommen (Entwickler-Doku, kein Kundentext).
+- **`/overview` meldet endlich `laden`** (§2.7): `OverviewController.usageProfile` stempelte über
+  den 7-Arg-Konstruktor `hasChargePoint` auf `false`, konnte also NIE `laden` melden, während
+  `GET /sites/{id}/profile` es sehr wohl tut — dieselbe Frage mit zwei Antworten. Der Ladepunkt
+  keyt jetzt auf den TYP (`ChargerComponentComposer.TYPE_EV_CHARGER`), wie in
+  `UsageProfileService.signals`. Dafür trägt `UsageProfileService` das neue package-private
+  `plantSignals(siteId, site)` (AE7-Signale PLUS `hasMeasurement`, in EINEM Durchlauf) —
+  `Signals` selbst ist unverändert, sonst hätte sich der AE7-Vertrag samt seiner geteilten Vektoren
+  geändert.
+- **Beweise:** rein `AnwendungKatalogTest` (8) + `AnwendungDerivationTest` (31, die geteilten
+  Vektoren) · Testcontainers `SiteProfileApiTest` (das Regal führt acht Einträge, Basis ist immer
+  an und nicht abschaltbar, eine reservierte Anwendung ist von einer unbekannten nicht zu
+  unterscheiden, Regel-Anwendungen werden nie erfunden) +
+  `PortalApiTest.overviewReportsLadenForAChargePointOnlySiteLikeTheProfileEndpointDoes` · Portal
+  `anwendungen.test.ts` (58) + `anwendungen.sync.test.ts` + der erweiterte `migration.test.ts`.
+- **NICHT in dieser Stufe:** das Profil-Preset an der Anlage (Stufe 2 — die Katalog-Schnittstelle
+  trägt `preset` schon, ein Preset ist dort nur eine Liste von Katalog-Schlüsseln plus Tonalität) ·
+  der Layout-Speicher (Stufe 3) · das komponierte Portfolio (Stufe 4).
 
 ## Automationen / flow editor at Node-RED quality (Portal v3 M5)
 

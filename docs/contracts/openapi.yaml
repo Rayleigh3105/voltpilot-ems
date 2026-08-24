@@ -1535,11 +1535,18 @@ paths:
   /api/v1/sites/{siteId}/profiles:
     get:
       tags: [profile]
-      summary: Modus-Profile shelf of the Anlage (Portal v3 M3).
+      summary: Anwendungs-Regal of the Anlage (Portal v3 M3 + Anwendungs-Katalog Stufe 1).
       description: >
-        The plant's feature set as a shelf with switches: Eigenverbrauch,
-        Marktoptimierung, Gewerbe (Lastspitzenkappung), Atypische Netznutzung.
-        Every profile is a DIRECT customer toggle - there are exactly two states,
+        The plant's feature set as a shelf with switches, composed from the ONE
+        application catalog (`anwendungen/catalog.json`): the two BASIS entries
+        (Anlage beobachten, Speicher-Fahrplan - always on, `state` refused with
+        400), the two RULE applications (Ueberschuss nutzen, Verbraucher steuern
+        - the switch is pure intent: no gate is opened, no starter seeded) and
+        the four BUSINESS applications (Marktoptimierung, Lastspitzenkappung,
+        Atypische Netznutzung, Ladepark-Lastmanagement). Reserved catalog entries
+        are NOT served - a switch that cannot do anything would be a promise
+        nobody keeps.
+        Every switchable application is a DIRECT customer toggle - there are exactly two states,
         `an` and `aus`, and no "angefragt" state anywhere. `state` is the STORED
         intent (null = no row = derived default, i.e. the pre-M3 behaviour);
         `derivedActive` is what the derivation alone says, `active` the effective
@@ -1559,19 +1566,22 @@ paths:
         "404": { description: Site not found for this tenant. }
     put:
       tags: [profile]
-      summary: Switch one Modus-Profil on or off.
+      summary: Switch one Anwendung on or off.
       description: >
-        Switching a profile ON makes the SERVER enable exactly that profile's
-        gated node types for this site and seed its starter flow
-        (`FlowTemplateService.autoStart`); switching it OFF deactivates the
-        profile's flows, disables those node types again and persists `aus` (so a
-        re-derived signal cannot silently re-enable it). The gate is opened, never
-        faked - the activation path still re-checks it, and the peak-shaving
+        What switching ON does depends on the application's CLASS in the catalog:
+        a BUSINESS application enables exactly ITS gated node types for this site
+        and seeds its starter flow (`FlowTemplateService.autoStart`); a RULE
+        application stores the INTENT only - no gate is opened and no starter is
+        seeded, because its content are the rules the customer builds. Switching
+        OFF deactivates the application's flows (if it has a strategy node),
+        disables those node types again and persists `aus` (so a re-derived
+        signal cannot silently re-enable it). The gate is opened, never faked -
+        the activation path still re-checks it, and the peak-shaving
         configuration gate, the edge guard chain and the section 14a/EEG
         protections are untouched. Marktoptimierung additionally requires real
         market access on the site (a dynamic tariff and/or Direktvermarktung):
         without it the toggle still flips, but the gated node stays closed and
-        nothing trades. A profile toggle NEVER writes money/contract master data.
+        nothing trades. A toggle NEVER writes money/contract master data.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -1584,7 +1594,12 @@ paths:
               properties:
                 profile:
                   type: string
-                  enum: [eigenverbrauch, marktvermarktung, lastspitzenkappung, atypische-netznutzung]
+                  example: marktvermarktung
+                  description: >
+                    A visible, switchable application id from
+                    `anwendungen/catalog.json`. A BASIS application is always on
+                    and refuses with 400; a reserved entry is indistinguishable
+                    from an unknown one (it does not exist yet).
                 state: { type: string, enum: [an, aus] }
       responses:
         "200":
@@ -1592,7 +1607,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SiteProfiles" }
-        "400": { description: Unknown profile or state. }
+        "400": { description: "Unknown application, an always-on BASIS application, or an unknown state." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/flows/auto-start:
@@ -9360,7 +9375,16 @@ components:
             properties:
               id:
                 type: string
-                enum: [eigenverbrauch, marktvermarktung, lastspitzenkappung, atypische-netznutzung]
+                example: marktvermarktung
+                description: >
+                  The application id - an OPEN vocabulary whose truth is the
+                  data-driven catalog `anwendungen/catalog.json` (byte-identical
+                  in the portal), NOT this schema: adding an application is
+                  catalog data, never a contract release (the
+                  `entitytypes/catalog.json` precedent). Today's visible shelf is
+                  monitoring, speicher-fahrplan, ueberschuss, verbraucher,
+                  marktvermarktung, lastspitzenkappung, atypische-netznutzung,
+                  lastmanagement; reserved catalog entries are never served.
               label: { type: string, description: Customer-facing German name. }
               state:
                 type: string

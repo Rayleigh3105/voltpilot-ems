@@ -48,6 +48,7 @@
  * NICHTS rendert bisher hieraus — M1–M4 konsumieren dieses Read-Model.
  */
 
+import { anwendungLabel, einstellungenVon } from './anwendungen';
 import { applyProfileStates, type ProfileStates } from './profiles';
 import type { PlantKind, TarifArt } from './api';
 import { catalogType, type FlowDocument } from './flows/model';
@@ -340,11 +341,20 @@ export interface AnlageSurface {
 // Konstanten
 // ---------------------------------------------------------------------------
 
+/**
+ * Die Namen kommen aus dem EINEN Anwendungs-Katalog (`anwendungen.ts`), nicht
+ * mehr aus einer Hand-Tabelle — Server und Portal nennen dieselbe Anwendung
+ * damit garantiert gleich. ⚠ Der Markt-Modus heißt seither überall
+ * **Marktoptimierung**: der Server (und damit die Regal-Karte) sagte das schon
+ * immer, nur diese Tabelle sagte „Marktvermarktung" — zwei Namen für dieselbe
+ * Sache direkt nebeneinander waren genau die Doppeldeutigkeit, gegen die der
+ * Katalog gebaut ist.
+ */
 export const MODE_LABELS: Record<Exclude<ModeKind, 'automation'>, string> = {
-  lastspitzenkappung: 'Lastspitzenkappung',
-  'atypische-netznutzung': 'Atypische Netznutzung',
-  marktvermarktung: 'Marktvermarktung',
-  lastmanagement: 'Ladepark-Lastmanagement',
+  lastspitzenkappung: anwendungLabel('lastspitzenkappung'),
+  'atypische-netznutzung': anwendungLabel('atypische-netznutzung'),
+  marktvermarktung: anwendungLabel('marktvermarktung'),
+  lastmanagement: anwendungLabel('lastmanagement'),
 };
 
 /**
@@ -769,6 +779,15 @@ function makeMode(seed: ModeSeed): ActiveMode {
   return mode;
 }
 
+/**
+ * Die Einstellungs-Ansprüche einer Modus-Art — aus dem EINEN Anwendungs-Katalog.
+ * `modeSettings.ts` leitet sein `claimedBy` aus derselben Quelle ab, die zwei
+ * können also nicht mehr auseinanderlaufen.
+ */
+function settingsOf(kind: Exclude<ModeKind, 'automation'>): ModeSettingId[] {
+  return einstellungenVon(kind) as ModeSettingId[];
+}
+
 function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): ModeManifest {
   const managed = origin === 'masterdata';
   const action: SteuerungCard['action'] = seed.flowRef && !preview ? 'open-flow' : 'none';
@@ -795,8 +814,9 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
           preview,
         },
         deepViews: ['lastspitzen', 'erloes-historie'],
-        // §2: die drei Read-only-Ids (von VoltPilot eingerichtet).
-        settings: ['leistungspreis', 'abrechnung-leistung', 'lastspitzen-reserve'],
+        // §2: die drei Read-only-Ids (von VoltPilot eingerichtet) - aus dem
+        // Anwendungs-Katalog, nicht mehr aus einer zweiten Hand-Liste.
+        settings: settingsOf('lastspitzenkappung'),
       };
     case 'lastmanagement':
       return {
@@ -887,9 +907,9 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
         // OHNE Speicher (z. B. ein DV-Solarpark) oder mit festem Tarif behält
         // sie so trotzdem - Reichweite wird nie kleiner.
         deepViews: ['fahrplan', 'marktpreise', 'prognosequalitaet', 'erloes-historie'],
-        // §2: Speicherschonung + Netzladen + anzulegender Wert + Stromtarif
-        // (Zweit-Claim; Erst-Claim ist Eigenverbrauch). Dedupe: `settingsForMode`.
-        settings: ['speicherschonung', 'netzladen', 'anzulegender-wert', 'stromtarif'],
+        // §2: Speicherschonung + Netzladen + anzulegender Wert + Stromtarif -
+        // aus dem Anwendungs-Katalog. Dedupe: `settingsForMode`.
+        settings: settingsOf('marktvermarktung'),
       };
     case 'automation':
     default:

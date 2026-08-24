@@ -91,7 +91,7 @@ describe('Portfolio: die Anwendungs-Spalte (M6)', () => {
     expect(container.querySelector('.vp-profile-chip')).toBeNull();
 
     const chips = [...container.querySelectorAll('.vp-mode-chip')].map((n) => n.textContent);
-    expect(chips).toEqual(['Lastspitzenkappung', 'Marktvermarktung']);
+    expect(chips).toEqual(['Lastspitzenkappung', 'Marktoptimierung']);
   });
 
   it('lässt die Zelle einer nie migrierten Anlage leer („—"), statt eine Face zu erfinden', async () => {

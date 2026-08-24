@@ -62,10 +62,13 @@
  * Ein neuer Container (report §2/§7: „Fernzugriff" mit der Einstellung „VPN")
  * dockt OHNE Kern-Änderung an — drei additive Zeilen, alles andere rendert die
  * Container-UI (v3.1-M2/M3) datengetrieben:
- *   1. `surface.ts`: eine neue `ModeKind` + `ModeSettingId`, ein `manifestFor`-
- *      Zweig mit `settings: ['vpn']` und die Aktivierungsregel in `activeModes`.
- *   2. HIER: ein `SETTING_DEFS`-Eintrag `vpn` mit `claimedBy: ['fernzugriff']`
- *      und den zwei WICHTIGEN Weichen — `home` (wo der Wert WOHNT:
+ *   1. `anwendungen/catalog.json` (BEIDE Kopien): ein Eintrag `fernzugriff` mit
+ *      `einstellungen: ["vpn"]` — daraus liest `surface.ts manifestFor` seine
+ *      `settings` UND diese Datei ihr `claimedBy`; dazu in `surface.ts` eine
+ *      neue `ModeKind` + `ModeSettingId`, ein `manifestFor`-Zweig und die
+ *      Aktivierungsregel in `activeModes` (samt Vektoren).
+ *   2. HIER: ein `SETTING_DEFS`-Eintrag `vpn` (sein `claimedBy` kommt ABGELEITET
+ *      aus dem Katalog) mit den zwei WICHTIGEN Weichen — `home` (wo der Wert WOHNT:
  *      `'einstellungen'` für alles, was der Kunde selbst stellt, `'modus'` nur
  *      für einen Wert, der ohne seinen Modus sinnlos wäre) und `editability`
  *      (`'customer'` mit `editForm` ODER `'voltpilot'` mit `editForm: null` für
@@ -79,6 +82,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import { anwendungenFuerEinstellung } from './anwendungen';
 import { MODE_RANK, type ActiveMode, type ModeKind, type ModeSettingId } from './surface';
 
 /** Wer die Einstellung bearbeiten darf: der Kunde selbst oder nur VoltPilot. */
@@ -133,13 +137,25 @@ export interface ModeSettingDef {
  * Die Einstellungs-Registry, indiziert nach Id. Die Einfüge-Reihenfolge ist die
  * kanonische Reihenfolge für `orphanedSettings` (deterministisch).
  */
+/**
+ * Wer diese Einstellung beansprucht — aus dem EINEN Anwendungs-Katalog
+ * (`anwendungen.ts`), nie aus einer zweiten Hand-Tabelle. Der Katalog nennt je
+ * Anwendung ihre Einstellungen; hier steht die Umkehrung, damit
+ * `settingsForMode`/`orphanedSettings` unverändert weiterrechnen. `surface.ts`
+ * liest DENSELBEN Katalog für `manifestFor(...).settings` — die zwei können
+ * damit nicht auseinanderlaufen.
+ */
+function claimants(settingId: ModeSettingId): ModeKind[] {
+  return anwendungenFuerEinstellung(settingId) as ModeKind[];
+}
+
 export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
   speicherschonung: {
     id: 'speicherschonung',
     label: 'Umgang mit dem Speicher',
     // Eigenverbrauch ist kein Modus mehr (report §3.3); die Batterie-Einstellung
     // wird nur noch vom Markt-Modus beansprucht.
-    claimedBy: ['marktvermarktung'],
+    claimedBy: claimants('speicherschonung'),
     editability: 'customer',
     home: 'einstellungen',
     readView: 'speicherschonung',
@@ -148,7 +164,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
   netzladen: {
     id: 'netzladen',
     label: 'Netzladen des Speichers',
-    claimedBy: ['marktvermarktung'],
+    claimedBy: claimants('netzladen'),
     editability: 'customer',
     home: 'einstellungen',
     readView: 'netzladen',
@@ -157,7 +173,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
   'anzulegender-wert': {
     id: 'anzulegender-wert',
     label: 'Anzulegender Wert',
-    claimedBy: ['marktvermarktung'],
+    claimedBy: claimants('anzulegender-wert'),
     editability: 'customer',
     home: 'einstellungen',
     readView: 'anzulegender-wert',
@@ -169,7 +185,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
     // Der Stromtarif wird vom Markt-Modus beansprucht (Eigenverbrauch ist kein
     // Modus mehr, report §3.3) — seit E1 WOHNT er aber auf der Einstellungs-
     // Seite, sonst wäre er auf einer Eigenverbrauchs-Anlage unerreichbar.
-    claimedBy: ['marktvermarktung'],
+    claimedBy: claimants('stromtarif'),
     editability: 'customer',
     home: 'einstellungen',
     readView: 'stromtarif',
@@ -178,7 +194,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
   leistungspreis: {
     id: 'leistungspreis',
     label: 'Leistungspreis',
-    claimedBy: ['lastspitzenkappung'],
+    claimedBy: claimants('leistungspreis'),
     editability: 'voltpilot',
     home: 'modus',
     readView: 'leistungspreis',
@@ -187,7 +203,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
   'abrechnung-leistung': {
     id: 'abrechnung-leistung',
     label: 'Abrechnungsperiode',
-    claimedBy: ['lastspitzenkappung'],
+    claimedBy: claimants('abrechnung-leistung'),
     editability: 'voltpilot',
     home: 'modus',
     readView: 'abrechnung-leistung',
@@ -196,7 +212,7 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
   'lastspitzen-reserve': {
     id: 'lastspitzen-reserve',
     label: 'Lastspitzen-Reserve',
-    claimedBy: ['lastspitzenkappung'],
+    claimedBy: claimants('lastspitzen-reserve'),
     editability: 'voltpilot',
     home: 'modus',
     readView: 'lastspitzen-reserve',

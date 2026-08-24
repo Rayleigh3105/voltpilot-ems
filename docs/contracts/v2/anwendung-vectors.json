@@ -1,0 +1,321 @@
+{
+  "_comment": [
+    "Geteilte Vektoren der ANWENDUNGS-Ableitung (Zielbild vp-portal-zielbild-anwendungen",
+    "§2.2/§3.2, Stufe 1). Sie pinnen die ZWEI Zwillinge, die der Scout als 'ohne gemeinsame",
+    "Vektor-Datei' gefunden hat, gegeneinander:",
+    "  Java  services/api .../profile/AnwendungDerivation  (der Server: derivedActive der",
+    "        Regal-Karten, requirementMet der Voraussetzungs-Chips)",
+    "  TS    frontend/portal/src/anwendungen.ts derivedAnwendungen / requirementMet",
+    "und zusaetzlich, fuer die vier Geschaefts-Anwendungen, den DRITTEN Zwilling",
+    "  TS    frontend/portal/src/surface.ts activeModes  (die M0-Projektion)",
+    "der dieselben Signale liest und bisher nur zufaellig dasselbe sagte.",
+    "Regeln UND Vektoren zusammen aendern (das usage-profile-vectors.json-Muster).",
+    "",
+    "Der Katalog (services/api/src/main/resources/anwendungen/catalog.json + die",
+    "byte-gleiche Portal-Kopie) beschreibt, WAS eine Anwendung ist; hier steht,",
+    "WANN eine Anlage sie von selbst aktiviert. Der abgeleitete Wert wird nie",
+    "gespeichert - er wird bei jedem Lesen neu bestimmt (die AE7-Regel).",
+    "",
+    "REGELN, in der Reihenfolge des Katalogs:",
+    "  monitoring        - IMMER. Jede Anlage wird beobachtet; ob schon Werte",
+    "                      ankommen, sagt der Chip 'messwert', nicht der Zustand.",
+    "  speicher-fahrplan - has_storage. Der Optimierer plant fuer JEDE",
+    "                      Speicher-Anlage alle 15 Minuten (Captain 29.07.2026:",
+    "                      Eigenverbrauch ist Grundverhalten).",
+    "  ueberschuss       - NIE abgeleitet. Eine Ueberschuss-Regel und eine",
+    "                      Zeitplan-Regel entstehen beide im Verbraucher-Baukasten",
+    "                      und sind serverseitig nur an ihrem Bedingungsbaum zu",
+    "                      unterscheiden - daraus einen Zustand zu behaupten waere",
+    "                      eine Erfindung. Ihr Schalter ist reine Absicht.",
+    "  verbraucher       - ein AKTIVER Flow traegt vp.consumer.reactive (der",
+    "                      generierte Verbraucher-Executor, D-19) - beweisbar.",
+    "  marktvermarktung  - plant_kind=direktvermarktung ODER (netzladen_erlaubt UND",
+    "                      tarif_art=dynamisch) ODER vp.strategy.market aktiv.",
+    "  lastspitzenkappung- has_leistungspreis ODER vp.strategy.peakshaving aktiv.",
+    "  atypische-netznutzung - vp.strategy.atypical-grid aktiv.",
+    "  lastmanagement    - has_charge_point. Es gibt keinen Strategie-Knoten: der",
+    "                      Verteiler LAEUFT auf der Box, sobald eine Saeule da ist.",
+    "  eigene-auswertung / berichte - reserviert, nie abgeleitet (sichtbar: false).",
+    "",
+    "GRENZE, bewusst NICHT hier geglaettet: 'has_leistungspreis' ist ein SIGNAL,",
+    "kein Betrag. Der Server bildet es aus site.leistungspreis_eur_kw != null, das",
+    "Portal aus leistungspreisEurKw > 0 - bei einem gepflegten 0 gehen die beiden",
+    "auseinander. Das ist eine Eigenschaft der SIGNAL-Gewinnung (nicht dieser",
+    "Ableitung) und aendert Verhalten, deshalb bleibt es unangetastet; beide Seiten",
+    "konsumieren hier den fertigen Boolean.",
+    "",
+    "'expected_requirements' pinnt requirementMet je Voraussetzungs-Id - die Ids",
+    "sind global (dieselbe Voraussetzung heisst bei jeder Anwendung gleich), also",
+    "genuegt eine flache Karte je Vektor. Ein UNBEKANNTER Name gilt als NICHT",
+    "erfuellt: eine Voraussetzung, die niemand pruefen kann, darf nie als Haekchen",
+    "erscheinen."
+  ],
+  "anwendungen": [
+    "monitoring",
+    "speicher-fahrplan",
+    "ueberschuss",
+    "verbraucher",
+    "marktvermarktung",
+    "lastspitzenkappung",
+    "atypische-netznutzung",
+    "lastmanagement",
+    "eigene-auswertung",
+    "berichte"
+  ],
+  "requirement_ids": [
+    "messwert",
+    "speicher",
+    "pv",
+    "steuerbares-geraet",
+    "marktzugang",
+    "leistungspreis",
+    "leistungsmessung",
+    "ladepunkt",
+    "anschlussgrenze"
+  ],
+  "mode_kinds": [
+    "marktvermarktung",
+    "lastspitzenkappung",
+    "atypische-netznutzung",
+    "lastmanagement"
+  ],
+  "derivation": [
+    {
+      "name": "neue-anlage-ohne-alles",
+      "note": "Nur Monitoring - und selbst dort sagt der Chip, dass noch nichts ankommt.",
+      "input": {
+        "has_storage": false, "has_pv": false, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": false, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": [], "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "ohne", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring"],
+      "expected_requirements": {
+        "messwert": false, "speicher": false, "pv": false, "steuerbares-geraet": false,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "privat-pv-speicher-wallbox-fester-tarif",
+      "note": "Die typische Privat-Anlage: Basis laeuft, die zwei Regel-Anwendungen NICHT von selbst.",
+      "input": {
+        "has_storage": true, "has_pv": true, "has_controllable_consumer": true,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": [], "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "fest", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring", "speicher-fahrplan"],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": true, "steuerbares-geraet": true,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "privat-mit-verbraucherregel",
+      "note": "Der BEWEIS einer laufenden Verbraucher-Regel - und ueberschuss bleibt trotzdem aus.",
+      "input": {
+        "has_storage": true, "has_pv": true, "has_controllable_consumer": true,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": ["vp.consumer.reactive", "vp.entity.control"],
+        "has_customer_rule": true,
+        "plant_kind": "eigenverbrauch", "tarif_art": "fest", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring", "speicher-fahrplan", "verbraucher"],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": true, "steuerbares-geraet": true,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "kundenregel-ohne-verbraucher-executor",
+      "note": "Eine Wenn/Dann-Regel ohne Verbraucher-Politik belegt keine Verbrauchersteuerung.",
+      "input": {
+        "has_storage": false, "has_pv": true, "has_controllable_consumer": true,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": ["vp.entity.read", "vp.logic.threshold", "vp.entity.control"],
+        "has_customer_rule": true,
+        "plant_kind": "eigenverbrauch", "tarif_art": "ohne", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring"],
+      "expected_requirements": {
+        "messwert": true, "speicher": false, "pv": true, "steuerbares-geraet": true,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "gewerbe-direktvermarktung-mit-leistungspreis",
+      "note": "Mehrfachnutzung: Markt UND Lastspitze, beide aus Stammdaten.",
+      "input": {
+        "has_storage": true, "has_pv": true, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": true,
+        "has_grid_limit": false, "active_node_types": [], "has_customer_rule": false,
+        "plant_kind": "direktvermarktung", "tarif_art": "dynamisch", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": [
+        "monitoring", "speicher-fahrplan", "marktvermarktung", "lastspitzenkappung"
+      ],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": true, "steuerbares-geraet": false,
+        "marktzugang": true, "leistungspreis": true, "leistungsmessung": true,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "netzladen-auf-dynamischem-tarif-ist-arbitrage",
+      "note": "F4 ist entschieden: Netzladen auf Boersentarif IST de facto Arbitrage.",
+      "input": {
+        "has_storage": true, "has_pv": true, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": [], "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "dynamisch", "netzladen_erlaubt": true
+      },
+      "expected_derived_active": ["monitoring", "speicher-fahrplan", "marktvermarktung"],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": true, "steuerbares-geraet": false,
+        "marktzugang": true, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "netzladen-ohne-dynamischen-tarif",
+      "note": "Netzladen allein ist keine Arbitrage - der Boersentarif fehlt.",
+      "input": {
+        "has_storage": true, "has_pv": true, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": [], "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "fest", "netzladen_erlaubt": true
+      },
+      "expected_derived_active": ["monitoring", "speicher-fahrplan"],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": true, "steuerbares-geraet": false,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "dynamischer-tarif-ohne-netzladen",
+      "note": "Marktzugang JA (der Chip ist gruen), Markt-Anwendung NEIN - der Schalter fehlt.",
+      "input": {
+        "has_storage": true, "has_pv": true, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": [], "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "dynamisch", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring", "speicher-fahrplan"],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": true, "steuerbares-geraet": false,
+        "marktzugang": true, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "markt-ueber-strategie-knoten",
+      "note": "Ein aktiver Markt-Flow aktiviert die Anwendung auch ohne Stammdaten.",
+      "input": {
+        "has_storage": true, "has_pv": false, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": ["vp.strategy.market", "vp.entity.control"],
+        "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "ohne", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring", "speicher-fahrplan", "marktvermarktung"],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": false, "steuerbares-geraet": false,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "lastspitze-ueber-strategie-knoten-ohne-leistungspreis",
+      "input": {
+        "has_storage": true, "has_pv": false, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": ["vp.strategy.peakshaving"],
+        "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "fest", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring", "speicher-fahrplan", "lastspitzenkappung"],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": false, "steuerbares-geraet": false,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "atypische-netznutzung-ueber-knoten",
+      "input": {
+        "has_storage": true, "has_pv": false, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": ["vp.strategy.atypical-grid"],
+        "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "fest", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring", "speicher-fahrplan", "atypische-netznutzung"],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": false, "steuerbares-geraet": false,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "ladepark-nur-saeulen",
+      "note": "Kein Speicher, keine PV: Monitoring + Lastmanagement, sonst nichts.",
+      "input": {
+        "has_storage": false, "has_pv": false, "has_controllable_consumer": true,
+        "has_charge_point": true, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": true, "active_node_types": [], "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "ohne", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring", "lastmanagement"],
+      "expected_requirements": {
+        "messwert": true, "speicher": false, "pv": false, "steuerbares-geraet": true,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": true, "anschlussgrenze": true
+      }
+    },
+    {
+      "name": "ladepark-ohne-anschlussgrenze",
+      "note": "Die Saeule meldet sich, die Grenze fehlt - der zweite Chip bleibt rot.",
+      "input": {
+        "has_storage": false, "has_pv": false, "has_controllable_consumer": true,
+        "has_charge_point": true, "has_measurement": true, "has_leistungspreis": false,
+        "has_grid_limit": false, "active_node_types": [], "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "ohne", "netzladen_erlaubt": false
+      },
+      "expected_derived_active": ["monitoring", "lastmanagement"],
+      "expected_requirements": {
+        "messwert": true, "speicher": false, "pv": false, "steuerbares-geraet": true,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": true, "anschlussgrenze": false
+      }
+    },
+    {
+      "name": "alles-zusammen",
+      "note": "Die Vollausstattung - reserviert bleibt trotzdem aus, ueberschuss auch.",
+      "input": {
+        "has_storage": true, "has_pv": true, "has_controllable_consumer": true,
+        "has_charge_point": true, "has_measurement": true, "has_leistungspreis": true,
+        "has_grid_limit": true,
+        "active_node_types": [
+          "vp.strategy.market", "vp.strategy.peakshaving", "vp.strategy.atypical-grid",
+          "vp.consumer.reactive"
+        ],
+        "has_customer_rule": true,
+        "plant_kind": "direktvermarktung", "tarif_art": "dynamisch", "netzladen_erlaubt": true
+      },
+      "expected_derived_active": [
+        "monitoring", "speicher-fahrplan", "verbraucher", "marktvermarktung",
+        "lastspitzenkappung", "atypische-netznutzung", "lastmanagement"
+      ],
+      "expected_requirements": {
+        "messwert": true, "speicher": true, "pv": true, "steuerbares-geraet": true,
+        "marktzugang": true, "leistungspreis": true, "leistungsmessung": true,
+        "ladepunkt": true, "anschlussgrenze": true
+      }
+    }
+  ]
+}

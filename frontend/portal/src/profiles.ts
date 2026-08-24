@@ -26,6 +26,7 @@
  * ist die Wahrheit über Voraussetzungen und Sperrgründe — dieses Modul
  * formuliert nur.
  */
+import { anwendung } from './anwendungen';
 import type { ActiveMode } from './surface';
 
 // ---------------------------------------------------------------------------
@@ -77,50 +78,24 @@ export type ProfileStates = Record<string, ProfileState>;
 // Copy (alle deutschen Texte leben hier)
 // ---------------------------------------------------------------------------
 
-interface ProfileCopy {
-  /** EIN Satz: was die Anwendung für den Kunden tut. */
-  benefit: string;
-  /** Die Freischaltungen im Kundenwort. */
-  unlocks: string[];
-}
-
-const COPY: Record<string, ProfileCopy> = {
-  marktvermarktung: {
-    benefit:
-      'VoltPilot lädt und entlädt Ihren Speicher nach den Börsenpreisen — teuer verkaufen, günstig laden.',
-    // „Fahrplan" steht hier bewusst NICHT mehr (Captain-Hotfix 2026-07-29): der
-    // Fahrplan gehört zum Speicher und ist ohne jeden Modus erreichbar - ihn
-    // als Freischaltung dieses Profils zu nennen, wäre eine Falschaussage.
-    unlocks: ['Marktpreise', 'Prognosequalität', 'Handels-Kachel', 'Einspeise-Erlös'],
-  },
-  lastspitzenkappung: {
-    benefit:
-      'Ihre Batterie kappt die Bezugsspitze Ihres Netzanschlusses und senkt damit Ihren Leistungspreis.',
-    unlocks: ['Lastspitzen-Ansicht', 'Lastspitzen-Kachel', 'Vermiedene Leistungskosten'],
-  },
-  'atypische-netznutzung': {
-    benefit:
-      'Verlagert Verbrauch und Speicher aus den Hochlastzeitfenstern — für ein reduziertes Netzentgelt.',
-    unlocks: [],
-  },
-};
-
-const FALLBACK_COPY: ProfileCopy = {
-  benefit: 'Eine zusätzliche Betriebsart Ihrer Anlage.',
-  unlocks: [],
-};
+/**
+ * ⚠ Nutzen-Satz und Freischaltungs-Chips kommen seit Stufe 1 aus dem EINEN
+ * Anwendungs-Katalog (`anwendungen.ts` ⟷ die byte-gleiche Server-Ressource),
+ * nicht mehr aus einer Hand-Tabelle hier. Der Server sendet dieselben Labels
+ * aus derselben Datei — Karte, Nav-Gruppe und Server können damit nicht mehr
+ * verschiedene Worte für dieselbe Anwendung sagen.
+ */
+const FALLBACK_BENEFIT = 'Eine zusätzliche Betriebsart Ihrer Anlage.';
 
 /** Was eine Anwendung tut — EIN Satz, Ergebnis-Sprache, keine Interna. */
 export function benefitLine(profile: SiteProfile): string {
-  return (COPY[profile.id] ?? FALLBACK_COPY).benefit;
+  return anwendung(profile.id)?.nutzen ?? FALLBACK_BENEFIT;
 }
 
 /** Was die Anwendung freischaltet ("Schaltet frei"-Chips). */
 export function unlockChips(profile: SiteProfile): string[] {
-  const copy = COPY[profile.id];
-  if (copy && copy.unlocks.length > 0) return copy.unlocks;
   // Ohne kuratierte Worte lieber NICHTS behaupten als Feld-Ids zeigen.
-  return [];
+  return anwendung(profile.id)?.unlock_chips ?? [];
 }
 
 /** Die Voraussetzungs-Chips: „PV-Erzeugung ✓" bzw. „Leistungspreis fehlt". */

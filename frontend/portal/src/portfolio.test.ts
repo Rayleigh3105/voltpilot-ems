@@ -103,7 +103,7 @@ describe('modeChips (M6: the projection per portfolio row)', () => {
       { tarifArt: 'dynamisch', leistungspreisEurKw: 95 },
     );
     expect(chips.map((c) => c.kind)).toEqual(['lastspitzenkappung', 'marktvermarktung']);
-    expect(chips.map((c) => c.label)).toEqual(['Lastspitzenkappung', 'Marktvermarktung']);
+    expect(chips.map((c) => c.label)).toEqual(['Lastspitzenkappung', 'Marktoptimierung']);
     // The keys are the M0 mode keys (stable React keys).
     expect(chips.map((c) => c.key)).toEqual(['lastspitzenkappung', 'marktvermarktung']);
   });

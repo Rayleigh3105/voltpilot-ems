@@ -184,6 +184,38 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
   });
 
   /**
+   * ⚠ Der EINE Anwendungs-Katalog ist seit Stufe 1 ein KUNDEN-Textwohnort
+   * (Label, Nutzen-Satz, Voraussetzungs-Chips samt Sperr-Sätzen, Leer-Zustand,
+   * Freischaltungs-Chips) — er liegt aber als JSON und wird vom Datei-Walker
+   * oben nicht erfasst. Ohne diesen Fall wäre er ein stilles Loch im
+   * Wörterbuch. Die `_comment`-Blöcke sind ausdrücklich AUSGENOMMEN: sie sind
+   * Entwickler-Doku, kein Kundentext.
+   */
+  it('der Anwendungs-Katalog spricht dasselbe Kunden-Wörterbuch', () => {
+    const catalog = JSON.parse(
+      readFileSync(join(process.cwd(), 'src/anwendungen/catalog.json'), 'utf8'),
+    ) as { anwendungen: Record<string, unknown>[] };
+    expect(catalog.anwendungen.length).toBeGreaterThan(5);
+    const violations: string[] = [];
+    for (const a of catalog.anwendungen) {
+      const id = String(a.id);
+      const texte: string[] = [String(a.label), String(a.nutzen)];
+      for (const v of a.voraussetzungen as { label: string; blocked_reason: string | null }[]) {
+        texte.push(v.label, v.blocked_reason ?? '');
+      }
+      texte.push(String(a.blocked_reason_immer ?? ''), String(a.leer_zustand ?? ''));
+      texte.push(...(a.unlock_chips as string[]));
+      for (const t of texte) {
+        for (const { re, why } of FORBIDDEN) {
+          const m = re.exec(t.replace(GERAETE_MODUS, ' '));
+          if (m) violations.push(`anwendungen/catalog.json · ${id}: „${m[0]}" — ${why}`);
+        }
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  /**
    * Der Wächter über die AUSNAHME „Modus": sie darf nur die Geräte-Betriebsart
    * durchlassen. Träte sie eines Tages weiter auf, wäre der Wortwechsel still
    * wirkungslos geworden - genau das fällt hier auf, nicht erst im Portal.

@@ -243,7 +243,7 @@ describe('coOptimization', () => {
     const co = coOptimization(activeModes(MULTI))!;
     expect(co.count).toBe(2);
     expect(co.sentence).toBe('2 Anwendungen, ein Speicher — VoltPilot optimiert sie gemeinsam.');
-    expect(co.modeLabels).toEqual(['Lastspitzenkappung', 'Marktvermarktung']);
+    expect(co.modeLabels).toEqual(['Lastspitzenkappung', 'Marktoptimierung']);
   });
 
   it('does not count automations or "in Vorbereitung" modes toward the battery set', () => {

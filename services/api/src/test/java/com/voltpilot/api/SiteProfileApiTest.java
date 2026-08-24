@@ -173,11 +173,30 @@ class SiteProfileApiTest {
         JsonNode shelf = customer(profilesPath(), HttpMethod.GET, demo, null).getBody();
         // Eigenverbrauch is no longer a shelf profile (report vp-nacht-bezug-e7
         // §3.3) - it is base behaviour, not a selectable card.
-        // "lastmanagement" ist seit Lastmanagement Stufe 3 das vierte Regal-
-        // Profil (Konzept §5.2). Es hat KEINEN Strategie-Knoten - Lastmanagement
-        // ist Schutz, keine Marktteilnahme - und schaltet deshalb nichts frei.
-        assertThat(ids(shelf)).containsExactly("marktvermarktung",
-                "lastspitzenkappung", "atypische-netznutzung", "lastmanagement");
+        // "lastmanagement" ist seit Lastmanagement Stufe 3 ein Regal-Profil
+        // (Konzept §5.2). Es hat KEINEN Strategie-Knoten - Lastmanagement ist
+        // Schutz, keine Marktteilnahme - und schaltet deshalb nichts frei.
+        //
+        // Seit dem EINEN Anwendungs-Katalog (Zielbild-Stufe 1) fuehrt das Regal
+        // zusaetzlich die zwei BASIS-Anwendungen ("immer an", nicht schaltbar)
+        // und die zwei REGEL-Anwendungen (Schalter = reine Absicht). Die zwei
+        // RESERVIERTEN Eintraege (eigene-auswertung, berichte) stehen bewusst
+        // NICHT darin - ein Schalter, der nichts bewirken kann, waere eine
+        // Zusage, die niemand einloest.
+        assertThat(ids(shelf)).containsExactly("monitoring", "speicher-fahrplan", "ueberschuss",
+                "verbraucher", "marktvermarktung", "lastspitzenkappung", "atypische-netznutzung",
+                "lastmanagement");
+        // Monitoring laeuft immer - jede Anlage wird beobachtet; der
+        // Voraussetzungs-Chip sagt, ob schon Werte ankommen.
+        assertThat(card(shelf, "monitoring").path("derivedActive").asBoolean()).isTrue();
+        assertThat(card(shelf, "monitoring").path("active").asBoolean()).isTrue();
+        // Der Speicher-Fahrplan folgt dem Speicher (der Bootstrap oben hat eine
+        // battery-hybrid Entitaet komponiert).
+        assertThat(card(shelf, "speicher-fahrplan").path("derivedActive").asBoolean()).isTrue();
+        // Eine Regel-Anwendung wird NIE erfunden: ohne Verbraucher-Regel bleibt
+        // sie aus, und "ueberschuss" wird ueberhaupt nie abgeleitet.
+        assertThat(card(shelf, "verbraucher").path("derivedActive").asBoolean()).isFalse();
+        assertThat(card(shelf, "ueberschuss").path("derivedActive").asBoolean()).isFalse();
         for (JsonNode card : shelf.path("profiles")) {
             assertThat(card.path("state").isNull())
                     .as("no row => derived default, the pre-M3 behaviour").isTrue();
@@ -283,6 +302,20 @@ class SiteProfileApiTest {
                 Map.of("profile", "marktvermarktung", "state", "angefragt"));
         assertThat(badState.getStatusCode()).as("there is no third state").isEqualTo(
                 HttpStatus.BAD_REQUEST);
+
+        // Eine BASIS-Anwendung hat keinen Schalter - der Versuch ist ein
+        // ehrlicher 400, kein stiller Erfolg.
+        ResponseEntity<JsonNode> basis = customer(profilesPath(), HttpMethod.PUT, demo,
+                Map.of("profile", "monitoring", "state", "aus"));
+        assertThat(basis.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(basis.getBody().path("message").asText()).contains("immer an");
+
+        // Eine RESERVIERTE Anwendung wird gar nicht angeboten und ist von einer
+        // unbekannten nicht zu unterscheiden - es gibt sie noch nicht.
+        ResponseEntity<JsonNode> reserviert = customer(profilesPath(), HttpMethod.PUT, demo,
+                Map.of("profile", "berichte", "state", "an"));
+        assertThat(reserviert.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(reserviert.getBody().path("message").asText()).contains("Unbekanntes Profil");
 
         // An admin reaches the same shelf through the X-Tenant-Id switcher.
         assertThat(exchange(profilesPath(), HttpMethod.GET, token("admin", "admin"), TENANT_A, null)

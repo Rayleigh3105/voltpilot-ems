@@ -6,7 +6,8 @@ import com.voltpilot.api.chargers.ChargingConfigRepository;
 import com.voltpilot.api.flows.FlowCatalog;
 import com.voltpilot.api.flows.FlowService;
 import com.voltpilot.api.flows.FlowTemplateService;
-import com.voltpilot.api.profile.SiteProfileCatalog.Profile;
+import com.voltpilot.api.profile.AnwendungKatalog.Anwendung;
+import com.voltpilot.api.profile.AnwendungKatalog.Voraussetzung;
 import com.voltpilot.api.profile.UsageProfileDeriver.Signals;
 import com.voltpilot.api.repo.FlowGatedNodeRepository;
 import com.voltpilot.api.repo.FlowRepository;
@@ -18,6 +19,7 @@ import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.SiteProfilesDto;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,24 +32,44 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The Modus-Profile shelf service (Portal v3 M3, spec
- * {@code docs/portal-v3/M3-profile.md}): it merges the STORED customer intent
- * ({@link SiteProfileStateRepository}) with the derivation signals
- * ({@link UsageProfileService}) into the shelf read-model, and performs the two
- * transitions.
+ * Das ANWENDUNGS-Regal einer Anlage (Portal v3 M3, erweitert um den EINEN
+ * Anwendungs-Katalog, Zielbild {@code vp-portal-zielbild-anwendungen} Stufe 1):
+ * dieser Dienst verheiratet den GESPEICHERTEN Kundenwillen
+ * ({@link SiteProfileStateRepository}) mit den Ableitungs-Signalen
+ * ({@link UsageProfileService}) zum Regal-Read-Model und führt die zwei
+ * Übergänge aus.
  *
- * <p><b>Every profile is a direct customer toggle.</b> There is no "angefragt"
- * state and no VoltPilot-request wall (owner decision). Switching a profile ON
- * makes the SERVER (a) enable exactly that profile's gated node types for the
- * site, (b) seed its starter flow, (c) persist {@code an}. Switching it OFF
- * deactivates its flows, disables the node types again and persists {@code aus}
- * so a re-derived signal cannot silently re-enable it.
+ * <p><b>Alles Beschreibende kommt aus {@link AnwendungKatalog}</b> — Label,
+ * Nutzen, Voraussetzungen samt ihren Sperr-Sätzen, Bausteine, Einstellungen,
+ * Starter. Die REGELN (was aktiviert von selbst, welche Voraussetzung ist
+ * erfüllt) leben rein in {@link AnwendungDerivation} und sind gegen die
+ * Portal-Zwillinge über {@code docs/contracts/v2/anwendung-vectors.json}
+ * gepinnt. Es gibt keine Hand-Tabelle mehr in dieser Klasse.
  *
- * <p><b>The gate is opened, never faked</b> (BUILD.md §4.9): the enablement is
- * an authorized, audited server-side effect of an explicit customer action -
- * written through the RLS-scoped app datasource for the caller's own site. The
- * activation path still re-checks it, the peak-shaving configuration gate still
- * holds, and the edge guard chain / §14a / EEG protections are untouched.
+ * <p><b>Jede schaltbare Anwendung ist ein direkter Kundenschalter.</b> Es gibt
+ * keinen Zustand „angefragt" und keine VoltPilot-Anfragewand (Owner-Entscheid).
+ * Was ein Einschalten TUT, hängt an der KLASSE der Anwendung:
+ * <ul>
+ *   <li><b>basis</b> — nicht schaltbar. Ein Schaltversuch ist ein 400 mit
+ *       deutschem Grund; die Anwendung läuft ohnehin.</li>
+ *   <li><b>regel</b> — der Schalter speichert nur die ABSICHT: kein Gate wird
+ *       geöffnet, kein Starter gesät. Eingeschaltet ohne eine einzige
+ *       Kunden-Regel liest die Karte den ehrlichen Leer-Zustand des Katalogs
+ *       mit dem Einstieg in „Komponenten &amp; Regeln" — der Server erfindet
+ *       keine Regel.</li>
+ *   <li><b>geschaeft</b> — wie bisher: (a) genau die gated Knotentypen DIESER
+ *       Anwendung freischalten, (b) ihren Starter säen, (c) {@code an}
+ *       speichern. Ausschalten legt ihre Flows still, schließt die Knoten
+ *       wieder und speichert {@code aus}, damit ein erneut abgeleitetes Signal
+ *       sie nicht stillschweigend wiederbelebt.</li>
+ * </ul>
+ *
+ * <p><b>Das Tor wird geöffnet, nie vorgetäuscht</b> (BUILD.md §4.9): die
+ * Freischaltung ist eine autorisierte, protokollierte Server-Wirkung einer
+ * ausdrücklichen Kundenhandlung — geschrieben über den RLS-gefencten
+ * App-Datenpfad für die EIGENE Anlage des Aufrufers. Der Aktivierungspfad prüft
+ * sie weiterhin nach, das Lastspitzen-Konfigurations-Tor bindet unverändert,
+ * und die Schutzkette der Box / §14a / EEG bleibt unberührt.
  */
 @Service
 public class SiteProfileService {
@@ -65,13 +87,14 @@ public class SiteProfileService {
     private final FlowService flowService;
     private final FlowTemplateService templates;
     private final FlowCatalog catalog;
+    private final AnwendungKatalog anwendungen;
     private final ObjectMapper mapper;
     private final ChargingConfigRepository chargingConfigs;
 
     public SiteProfileService(SiteRepository sites, SiteProfileStateRepository states,
             UsageProfileService usageProfiles, FlowGatedNodeRepository gatedNodes,
             FlowRepository flows, FlowService flowService, FlowTemplateService templates,
-            FlowCatalog catalog, ObjectMapper mapper,
+            FlowCatalog catalog, AnwendungKatalog anwendungen, ObjectMapper mapper,
             ChargingConfigRepository chargingConfigs) {
         this.sites = sites;
         this.states = states;
@@ -81,6 +104,7 @@ public class SiteProfileService {
         this.flowService = flowService;
         this.templates = templates;
         this.catalog = catalog;
+        this.anwendungen = anwendungen;
         this.mapper = mapper;
         this.chargingConfigs = chargingConfigs;
     }
@@ -97,22 +121,23 @@ public class SiteProfileService {
     }
 
     private SiteProfilesDto shelf(UUID siteId, SiteDto site) {
-        Signals signals = usageProfiles.signals(siteId, site);
+        UsageProfileService.PlantSignals plant = usageProfiles.plantSignals(siteId, site);
         Map<String, String> stored = states.findBySite(siteId);
         Set<String> enabled = gatedNodes.enabledNodeTypes(siteId);
-        Map<String, FlowVersionRow> strategyFlows = activeStrategyFlows(siteId);
+        FlowIndex index = indexFlows(siteId);
+        AnwendungDerivation.Input in = derivationInput(site, plant, index);
 
         List<SiteProfilesDto.Profile> cards = new ArrayList<>();
-        for (Profile p : SiteProfileCatalog.profiles()) {
-            String state = stored.get(p.id());
-            boolean derived = derivedActive(p, site, signals, strategyFlows.keySet());
+        for (Anwendung a : anwendungen.regal()) {
+            String state = stored.get(a.id());
+            boolean derived = AnwendungDerivation.derivedActive(a.id(), in);
             boolean active = SiteProfileStateRepository.STATE_AUS.equals(state) ? false
                     : SiteProfileStateRepository.STATE_AN.equals(state) || derived;
-            List<SiteProfilesDto.Requirement> requirements = requirements(p, site, signals);
-            FlowVersionRow flow = strategyFlows.get(p.strategyType());
-            List<String> gated = List.copyOf(SiteProfileCatalog.gatedNodeTypes(p, catalog));
-            cards.add(new SiteProfilesDto.Profile(p.id(), p.label(), state, derived, active,
-                    unlocks(p), requirements, active ? blockedReason(p, requirements) : null,
+            List<SiteProfilesDto.Requirement> requirements = requirements(a, in);
+            FlowVersionRow flow = index.byNodeType.get(a.strategieKnoten());
+            List<String> gated = List.copyOf(AnwendungKatalog.gatedNodeTypes(a, catalog));
+            cards.add(new SiteProfilesDto.Profile(a.id(), a.label(), state, derived, active,
+                    unlocks(a), requirements, active ? blockedReason(a, requirements, in) : null,
                     active ? (flow != null ? ORIGIN_FLOW : ORIGIN_MASTERDATA) : null,
                     flow == null ? null
                             : new SiteProfilesDto.FlowRef(flow.flowId().toString(), flow.name()),
@@ -124,8 +149,9 @@ public class SiteProfileService {
     // -- write --------------------------------------------------------------
 
     /**
-     * Toggle one profile. Returns the recomputed shelf; a foreign/unknown site
-     * is a 404 through RLS, an unknown profile/state a 400.
+     * Toggle one application. Returns the recomputed shelf; a foreign/unknown
+     * site is a 404 through RLS, an unknown application/state a 400, and a
+     * BASIS application (which has no switch at all) an honest 400.
      */
     @Transactional
     public SiteProfilesDto setState(UUID siteId, String profileId, String state) {
@@ -133,10 +159,18 @@ public class SiteProfileService {
         if (site == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
         }
-        Profile profile = SiteProfileCatalog.find(profileId);
-        if (profile == null) {
+        Anwendung anwendung = anwendungen.find(profileId);
+        // Eine reservierte Anwendung wird gar nicht angeboten - sie ist für
+        // einen Aufrufer nicht von einer unbekannten zu unterscheiden, und das
+        // ist richtig so: es gibt sie noch nicht.
+        if (anwendung == null || !anwendung.sichtbar()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Unbekanntes Profil: " + profileId + ".");
+        }
+        if (!anwendung.abschaltbar()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "„" + anwendung.label() + "“ ist immer an und lässt sich nicht "
+                            + "abschalten.");
         }
         if (!SiteProfileStateRepository.STATE_AN.equals(state)
                 && !SiteProfileStateRepository.STATE_AUS.equals(state)) {
@@ -145,61 +179,71 @@ public class SiteProfileService {
         }
         UUID tenantId = TenantContext.get();
         if (SiteProfileStateRepository.STATE_AN.equals(state)) {
-            switchOn(siteId, tenantId, profile, site);
+            switchOn(siteId, tenantId, anwendung, site);
         } else {
-            switchOff(siteId, tenantId, profile);
+            switchOff(siteId, tenantId, anwendung);
         }
-        states.upsert(tenantId, siteId, profile.id(), state);
+        states.upsert(tenantId, siteId, anwendung.id(), state);
         return shelf(siteId, site);
     }
 
-    private void switchOn(UUID siteId, UUID tenantId, Profile profile, SiteDto site) {
+    private void switchOn(UUID siteId, UUID tenantId, Anwendung anwendung, SiteDto site) {
+        if (anwendung.istRegel()) {
+            // Eine REGEL-Anwendung hat keine freien Knoten zu öffnen und keinen
+            // Starter zu säen - ihr Inhalt sind die Regeln, die der Kunde selbst
+            // baut. Der Schalter ist reine Absicht; die Karte sagt danach
+            // ehrlich, dass noch keine Regel existiert (blockedReason).
+            return;
+        }
         // OPEN(O1, BUILD.md §8 / M3-profile.md): the toggle is INTENT. A bare
         // customer switch must not start UNCONTRACTED market participation, so
         // the market strategy is only really opened when the site actually has
         // market access - a dynamic tariff and/or Direktvermarktung, the same
         // master data the surface derivation and the optimizer's pricing layer
-        // read. Without it the profile still switches on (and says so honestly
-        // via blockedReason), but its gated node stays closed and no starter
-        // flow is seeded, so NOTHING trades. Toggling NEVER writes that master
-        // data - a tariff or a DV contract is a real-world fact, entered on the
-        // Vergütung form. If the owner answers O1 with "an explicit contract
-        // flag is required", this ONE condition changes.
-        if (SiteProfileCatalog.MARKTVERMARKTUNG.equals(profile.id()) && !hasMarketAccess(site)) {
+        // read. Without it the application still switches on (and says so
+        // honestly via blockedReason), but its gated node stays closed and no
+        // starter flow is seeded, so NOTHING trades. Toggling NEVER writes that
+        // master data - a tariff or a DV contract is a real-world fact, entered
+        // on the Vergütung form. If the owner answers O1 with "an explicit
+        // contract flag is required", this ONE condition changes.
+        if (AnwendungKatalog.MARKTVERMARKTUNG.equals(anwendung.id()) && !hasMarketAccess(site)) {
             log.info("Marktoptimierung switched on for site {} without market access - "
                     + "intent stored, gated node NOT opened, no starter flow seeded", siteId);
             return;
         }
-        for (String nodeType : SiteProfileCatalog.gatedNodeTypes(profile, catalog)) {
+        for (String nodeType : AnwendungKatalog.gatedNodeTypes(anwendung, catalog)) {
             gatedNodes.upsert(tenantId, siteId, nodeType, true);
         }
-        if (profile.usageProfile() != null) {
+        if (anwendung.starter() != null) {
             FlowTemplateService.AutoStartOutcome outcome =
-                    templates.autoStart(siteId, tenantId, profile.usageProfile());
+                    templates.autoStart(siteId, tenantId, anwendung.starter());
             if (!outcome.created()) {
                 // already_has_flow / no_battery are honest, expected outcomes -
                 // the card surfaces them, they never fail the toggle.
-                log.debug("auto-start for profile {} on site {} skipped: {}", profile.id(), siteId,
-                        outcome.reason());
+                log.debug("auto-start for anwendung {} on site {} skipped: {}", anwendung.id(),
+                        siteId, outcome.reason());
             }
         }
     }
 
-    private void switchOff(UUID siteId, UUID tenantId, Profile profile) {
-        if (profile.strategyType() == null) {
-            // Ein Profil OHNE Strategie-Knoten (Lastmanagement) hat keinen Flow,
-            // den man stilllegen könnte, und nichts freigeschaltetes, das man
-            // schließen müsste - der gespeicherte Zustand IST die ganze
-            // Abschaltung. Die SCHUTZ-Wirkung auf der Box bleibt: sie hört nicht
-            // auf, den Anschluss zu bewachen, weil eine Karte auf "aus" steht.
+    private void switchOff(UUID siteId, UUID tenantId, Anwendung anwendung) {
+        if (anwendung.strategieKnoten() == null) {
+            // Eine Anwendung OHNE Strategie-Knoten (Regel-Anwendungen,
+            // Lastmanagement) hat keinen Flow, den man stilllegen könnte, und
+            // nichts freigeschaltetes, das man schließen müsste - der
+            // gespeicherte Zustand IST die ganze Abschaltung. Beim
+            // Lastmanagement bleibt die SCHUTZ-Wirkung auf der Box: sie hört
+            // nicht auf, den Anschluss zu bewachen, weil eine Karte auf "aus"
+            // steht. Und eine Kunden-REGEL wird nie von einem Regal-Schalter
+            // stillgelegt - sie gehört dem Kunden, nicht der Anwendung.
             return;
         }
         for (FlowVersionRow row : flows.versionsForSite(siteId)) {
-            if ("active".equals(row.lifecycle()) && carries(row, profile.strategyType())) {
+            if ("active".equals(row.lifecycle()) && carries(row, anwendung.strategieKnoten())) {
                 flowService.deactivate(siteId, row.flowId());
             }
         }
-        for (String nodeType : SiteProfileCatalog.gatedNodeTypes(profile, catalog)) {
+        for (String nodeType : AnwendungKatalog.gatedNodeTypes(anwendung, catalog)) {
             gatedNodes.upsert(tenantId, siteId, nodeType, false);
         }
     }
@@ -207,156 +251,102 @@ public class SiteProfileService {
     // -- derivation ---------------------------------------------------------
 
     /**
-     * Whether the derivation alone activates this profile - the SAME signals
-     * the portal's {@code activeModes(site)} reads (M0 {@code surface.ts}); the
-     * derived value is never stored (the AE7 rule).
+     * Die Eingabe der reinen Ableitung — die Schnittmenge dessen, was Server
+     * und Portal beide besitzen. Genau diese Felder stehen in den geteilten
+     * Vektoren ({@code anwendung-vectors.json}).
      */
-    private boolean derivedActive(Profile profile, SiteDto site, Signals signals,
-            Set<String> activeStrategyTypes) {
-        // ⚠ Erst prüfen, DANN fragen: `Set.copyOf`/`Set.of` werfen bei
-        // `contains(null)` eine NullPointerException, und ein Profil OHNE
-        // Strategie-Knoten (Lastmanagement) hätte damit das ganze Regal in
-        // einen 500 gerissen - für JEDE Anlage, auch ohne Ladepunkt.
-        boolean strategyNode = profile.strategyType() != null
-                && (signals.activeStrategyNodeTypes().contains(profile.strategyType())
-                        || activeStrategyTypes.contains(profile.strategyType()));
-        switch (profile.id()) {
-            case SiteProfileCatalog.MARKTVERMARKTUNG:
-                return isDirektvermarktung(site)
-                        || (site.netzladenErlaubt() && "dynamisch".equals(site.tarifArt()))
-                        || strategyNode;
-            case SiteProfileCatalog.LASTSPITZENKAPPUNG:
-                return signals.hasLeistungspreis() || strategyNode;
-            case SiteProfileCatalog.LASTMANAGEMENT:
-                // Es gibt keinen Strategie-Knoten: der Verteiler LÄUFT auf der
-                // Box, sobald eine Säule da ist. Der Modus ist damit abgeleitet
-                // aktiv, sobald die Anlage einen Ladepunkt hat - eine Anlage,
-                // die Autos lädt, deren Karte aber "aus" sagt, wäre eine
-                // Falschaussage über eine laufende Anlage.
-                return signals.hasChargePoint();
-            default:
-                return strategyNode;
-        }
+    private AnwendungDerivation.Input derivationInput(SiteDto site,
+            UsageProfileService.PlantSignals plant, FlowIndex index) {
+        Signals signals = plant.signals();
+        Set<String> activeNodeTypes = new LinkedHashSet<>(signals.activeStrategyNodeTypes());
+        activeNodeTypes.addAll(index.nodeTypes);
+        return new AnwendungDerivation.Input(signals.hasStorage(), signals.hasPv(),
+                signals.hasControllableConsumer(), signals.hasChargePoint(), plant.hasMeasurement(),
+                signals.hasLeistungspreis(),
+                chargingConfigs.forSite(site.id()).gridLimitKw() != null, activeNodeTypes,
+                index.hasCustomerRule, site.plantKind(), site.tarifArt(), site.netzladenErlaubt());
     }
 
     /** Market access = a dynamic tariff and/or Direktvermarktung (see OPEN(O1)). */
     private boolean hasMarketAccess(SiteDto site) {
-        return "dynamisch".equals(site.tarifArt()) || isDirektvermarktung(site);
+        return "dynamisch".equals(site.tarifArt()) || "direktvermarktung".equals(site.plantKind());
     }
 
-    private boolean isDirektvermarktung(SiteDto site) {
-        return "direktvermarktung".equals(site.plantKind());
-    }
-
-    private List<SiteProfilesDto.Requirement> requirements(Profile profile, SiteDto site,
-            Signals signals) {
+    /** Die Voraussetzungs-Chips: Label aus dem Katalog, Urteil aus der Regel. */
+    private List<SiteProfilesDto.Requirement> requirements(Anwendung a,
+            AnwendungDerivation.Input in) {
         List<SiteProfilesDto.Requirement> chips = new ArrayList<>();
-        switch (profile.id()) {
-            case SiteProfileCatalog.MARKTVERMARKTUNG:
-                chips.add(new SiteProfilesDto.Requirement("Dynamischer Tarif oder "
-                        + "Direktvermarktung", hasMarketAccess(site)));
-                chips.add(new SiteProfilesDto.Requirement("Speicher", signals.hasStorage()));
-                break;
-            case SiteProfileCatalog.LASTSPITZENKAPPUNG:
-                chips.add(new SiteProfilesDto.Requirement("Leistungspreis hinterlegt",
-                        signals.hasLeistungspreis()));
-                chips.add(new SiteProfilesDto.Requirement("Speicher", signals.hasStorage()));
-                break;
-            case SiteProfileCatalog.LASTMANAGEMENT:
-                chips.add(new SiteProfilesDto.Requirement("Ladepunkt verbunden",
-                        signals.hasChargePoint()));
-                chips.add(new SiteProfilesDto.Requirement("Anschlussgrenze hinterlegt",
-                        chargingConfigs.forSite(site.id()).gridLimitKw() != null));
-                break;
-            default:
-                chips.add(new SiteProfilesDto.Requirement("Leistungsmessung",
-                        signals.hasLeistungspreis()));
-                break;
+        for (Voraussetzung v : a.voraussetzungen()) {
+            chips.add(new SiteProfilesDto.Requirement(v.label(),
+                    AnwendungDerivation.requirementMet(v.id(), in)));
         }
         return chips;
     }
 
     /**
-     * The honest German sentence for a profile that IS switched on but cannot
-     * fully run yet - specific about what is missing, never a request prompt.
+     * Der ehrliche deutsche Satz für eine EINGESCHALTETE Anwendung, die noch
+     * nicht voll läuft — konkret über das, was fehlt, nie eine Aufforderung.
+     * Reihenfolge: ein IMMER geltender Satz (Ökonomie nicht gebaut) schlägt
+     * alles; sonst gewinnt die ERSTE unerfüllte Voraussetzung mit ihrem eigenen
+     * Satz; sonst — nur bei einer Regel-Anwendung und nur BELEGT — der
+     * Leer-Zustand.
      */
-    private String blockedReason(Profile profile, List<SiteProfilesDto.Requirement> requirements) {
-        if (SiteProfileCatalog.ATYPISCHE_NETZNUTZUNG.equals(profile.id())) {
-            return "VoltPilot berechnet die Netzentgelt-Ersparnis der atypischen Netznutzung für "
-                    + "Ihre Anlage noch nicht - es wird dafür nichts gesteuert.";
+    private String blockedReason(Anwendung a, List<SiteProfilesDto.Requirement> requirements,
+            AnwendungDerivation.Input in) {
+        if (a.blockedReasonImmer() != null) {
+            return a.blockedReasonImmer();
         }
-        boolean allMet = requirements.stream().allMatch(SiteProfilesDto.Requirement::met);
-        if (allMet) {
-            return null;
+        for (int i = 0; i < requirements.size(); i++) {
+            if (!requirements.get(i).met()) {
+                String reason = a.voraussetzungen().get(i).blockedReason();
+                return reason != null ? reason : "Für diese Anwendung fehlt noch eine Voraussetzung.";
+            }
         }
-        switch (profile.id()) {
-            case SiteProfileCatalog.MARKTVERMARKTUNG:
-                if (!met(requirements, 0)) {
-                    return "Für den Handel fehlt der Marktzugang: Ihre Anlage hat weder einen "
-                            + "dynamischen Stromtarif noch eine Direktvermarktung hinterlegt. "
-                            + "Solange wird nichts am Markt gehandelt.";
-                }
-                return "Ohne Speicher kann VoltPilot am Markt nichts verschieben.";
-            case SiteProfileCatalog.LASTSPITZENKAPPUNG:
-                if (!met(requirements, 0)) {
-                    return "Ihr Leistungspreis ist noch nicht hinterlegt - ohne ihn kann VoltPilot "
-                            + "Ihre Lastspitze nicht bewerten und kappt sie noch nicht.";
-                }
-                return "Ohne Speicher lässt sich Ihre Lastspitze nicht kappen.";
-            case SiteProfileCatalog.LASTMANAGEMENT:
-                if (!met(requirements, 0)) {
-                    return "Es hat sich noch keine Ladesäule gemeldet. Sobald eine verbunden ist, "
-                            + "verteilt VoltPilot die verfügbare Leistung Ihres Netzanschlusses "
-                            + "auf die ladenden Fahrzeuge.";
-                }
-                return "Ihre Anschlussgrenze ist noch nicht hinterlegt - ohne sie gibt VoltPilot "
-                        + "keine Ladeleistung frei. Sie steht in Ihrem Netzanschlussvertrag.";
-            default:
-                // A generic honest fallback: every requirement chip is derived,
-                // so name the first unmet one.
-                if (!met(requirements, 0)) {
-                    return "Für dieses Profil fehlt noch eine Voraussetzung.";
-                }
-                return null;
+        // Nur wenn die Anlage NACHWEISLICH keine einzige Kunden-Regel trägt,
+        // darf der Leer-Zustand behauptet werden. Gibt es irgendeine, wissen
+        // wir nicht, ob sie zu DIESER Anwendung gehört - dann wird nichts
+        // behauptet (der Server erfindet nichts).
+        if (a.istRegel() && a.leerZustand() != null && !in.hasCustomerRule()) {
+            return a.leerZustand();
         }
+        return null;
     }
 
-    private boolean met(List<SiteProfilesDto.Requirement> requirements, int index) {
-        return index < requirements.size() && requirements.get(index).met();
+    /** What switching this application on adds to the surface (M0 manifests). */
+    private SiteProfilesDto.Unlocks unlocks(Anwendung a) {
+        return new SiteProfilesDto.Unlocks(a.bausteine().ansichten(), a.bausteine().cockpit(),
+                a.bausteine().geldstrom());
     }
 
-    /** What switching this profile on adds to the surface (M0 manifests). */
-    private SiteProfilesDto.Unlocks unlocks(Profile profile) {
-        switch (profile.id()) {
-            case SiteProfileCatalog.MARKTVERMARKTUNG:
-                return new SiteProfilesDto.Unlocks(
-                        List.of("fahrplan", "marktpreise", "prognosequalitaet", "erloes-historie"),
-                        List.of("handel"), "einspeisung");
-            case SiteProfileCatalog.LASTSPITZENKAPPUNG:
-                return new SiteProfilesDto.Unlocks(List.of("lastspitzen", "erloes-historie"),
-                        List.of("peak-band"), "lastspitzen");
-            case SiteProfileCatalog.LASTMANAGEMENT:
-                // KEIN Geld-Strom: ein Ladepark rechnet nichts ab (Scope-Zaun
-                // E4) - "Erlöse" fehlt auf dieser Anlage auch in der Navigation.
-                return new SiteProfilesDto.Unlocks(List.of("ladevorgaenge"),
-                        List.of("lade-budget"), null);
-            default:
-                return new SiteProfilesDto.Unlocks(List.of(), List.of(), null);
-        }
+    /** Was die AKTIVEN Flows dieser Anlage über sie verraten. */
+    private static final class FlowIndex {
+        /** Alle Knotentypen aktiver Flows. */
+        final Set<String> nodeTypes = new LinkedHashSet<>();
+        /** Erster aktiver Flow je Knotentyp (für die „Flow öffnen"-Affordanz). */
+        final Map<String, FlowVersionRow> byNodeType = new LinkedHashMap<>();
+        /** ≥ 1 aktiver Flow OHNE Strategie-Knoten = eine Kunden-Regel. */
+        boolean hasCustomerRule;
     }
 
-    /** The ACTIVE flow carrying each strategy node type (first wins). */
-    private Map<String, FlowVersionRow> activeStrategyFlows(UUID siteId) {
-        Map<String, FlowVersionRow> byType = new LinkedHashMap<>();
+    private FlowIndex indexFlows(UUID siteId) {
+        FlowIndex index = new FlowIndex();
         for (FlowVersionRow row : flows.versionsForSite(siteId)) {
             if (!"active".equals(row.lifecycle())) {
                 continue;
             }
+            boolean strategy = false;
             for (String type : nodeTypes(row)) {
-                byType.putIfAbsent(type, row);
+                index.nodeTypes.add(type);
+                index.byNodeType.putIfAbsent(type, row);
+                if (type != null && type.startsWith("vp.strategy.")) {
+                    strategy = true;
+                }
+            }
+            if (!strategy) {
+                index.hasCustomerRule = true;
             }
         }
-        return byType;
+        return index;
     }
 
     private boolean carries(FlowVersionRow row, String nodeType) {

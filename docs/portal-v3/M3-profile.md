@@ -2,7 +2,9 @@
 
 > **⚠ Vocabulary (Stufe 0, 24.08.2026):** the customer-facing word is **„Anwendung"**;
 > „Modus-Profil"/„Modus"/„Modi" survive only as CODE ids (`ModeKind`, the route
-> `/profiles`, the column `site_profile_state.profile`, `SiteProfileCatalog`).
+> `/profiles`, the column `site_profile_state.profile`). **Since Anwendungs-Programm
+> Stufe 1 the shelf itself is DATA** — `anwendungen/catalog.json` (+ the byte-identical
+> portal copy) replaced the former `SiteProfileCatalog`; see the root AGENTS.md.
 > This spec keeps the code vocabulary; the rendered copy says „Anwendungen".
 
 > Realizes report §4 **P3** · concept tab **4 · Modus-Profile** (now rendered as „Anwendungen").

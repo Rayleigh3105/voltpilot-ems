@@ -726,7 +726,10 @@ describe('Komposition', () => {
     const blocks = anlageSurface(MULTI).cockpitBlocks;
     const tagged = Object.fromEntries(blocks.map((b) => [b.id, b.from]));
     expect(tagged['peak-band']).toBe('Lastspitzenkappung');
-    expect(tagged['handel']).toBe('Marktvermarktung');
+    // Der Markt-Modus heisst seit dem EINEN Anwendungs-Katalog ueberall
+    // "Marktoptimierung" - der Server (und damit die Regal-Karte) sagte das
+    // schon immer, nur `MODE_LABELS` sagte "Marktvermarktung".
+    expect(tagged['handel']).toBe('Marktoptimierung');
     expect(tagged['geraete-automatik']).toBe('Wallbox nur bei PV-Überschuss');
     expect(tagged['energiefluss']).toBeNull();
     expect(tagged['status']).toBeNull();

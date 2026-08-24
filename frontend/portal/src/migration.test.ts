@@ -7,10 +7,11 @@ import { anlageDecision, cockpitStack, projectionActive } from './cockpit';
 import { cockpitWidgets } from './cockpitWidgets';
 import { hasTopology } from './adaptiveLive';
 import { modeChips } from './portfolio';
+import { ANWENDUNGEN, REGAL, derivedAnwendungen } from './anwendungen';
 import { profileStatesFrom } from './profiles';
 import { profileRows } from './steuerungArea';
 import { showTechnicalLayer } from './rollen';
-import { anlageSurface, type AnlageSurfaceInput } from './surface';
+import { MODE_RANK, anlageSurface, type AnlageSurfaceInput } from './surface';
 import type { OverviewSite } from './api';
 
 /**
@@ -355,6 +356,89 @@ describe('Abbau-Invarianten (M6)', () => {
     // Das Regal einer Anlage ohne Server-Antwort ist leer, nie erfunden.
     expect(profileRows(null, ohne.modes, null)).toEqual([]);
     expect(profileRows([], ohne.modes, null)).toEqual([]);
+  });
+
+  it('Anwendungs-Katalog Stufe 1: eine Bestandsanlage rendert exakt wie vorher', () => {
+    // Der EINE Anwendungs-Katalog bringt VIER neue Regal-Einträge mit
+    // (monitoring · speicher-fahrplan · ueberschuss · verbraucher). KEINER von
+    // ihnen ist eine M0-Modus-Art - die PROJEKTION (Cockpit-Blöcke, Nav-Gruppen,
+    // Manifeste) bleibt damit unberührt, und eine nie migrierte Anlage sieht
+    // zeichengleich aus wie vor der Stufe.
+    const ohne = anlageSurface(NIE_MIGRIERT);
+    expect(ohne.modes).toEqual([]);
+    expect(ohne.cockpitBlocks).toEqual([]);
+    expect(ohne.deepViews).toEqual([]);
+    expect(ohne.moneyStreams).toEqual([]);
+    // Die Projektions-Rangfolge ist NICHT katalog-gespeist (der Katalog-`rang`
+    // ordnet das REGAL, `MODE_RANK` die aktiven Modi) - sie steht unverändert.
+    expect(MODE_RANK).toEqual({
+      lastmanagement: 5,
+      lastspitzenkappung: 10,
+      'atypische-netznutzung': 20,
+      marktvermarktung: 30,
+      automation: 50,
+    });
+    // Es gibt genau die vier bekannten Modus-Arten; ein neuer Katalog-Eintrag
+    // darf sich NICHT in die Projektion schleichen.
+    expect(Object.keys(MODE_RANK).sort()).toEqual([
+      'atypische-netznutzung',
+      'automation',
+      'lastmanagement',
+      'lastspitzenkappung',
+      'marktvermarktung',
+    ]);
+  });
+
+  it('Anwendungs-Katalog Stufe 1: `site_profile_state` behält Schlüssel und Semantik', () => {
+    // Die gespeicherten Zeilen einer Bestandsanlage tragen die VIER alten
+    // Schlüssel - der Katalog hat keinen davon umbenannt (eine angewandte
+    // Migration ist unveränderlich, und das Regal ist der An/Aus-Ort derselben
+    // Ids).
+    for (const id of [
+      'marktvermarktung',
+      'lastspitzenkappung',
+      'atypische-netznutzung',
+      'lastmanagement',
+    ]) {
+      expect(REGAL.map((a) => a.id)).toContain(id);
+    }
+    // `aus` unterdrückt weiterhin einen abgeleiteten Modus, `an` erfindet keinen.
+    const dv: AnlageSurfaceInput = {
+      ...NIE_MIGRIERT,
+      config: { plantKind: 'direktvermarktung' },
+    };
+    expect(anlageSurface(dv).modes.map((m) => m.kind)).toEqual(['marktvermarktung']);
+    expect(
+      anlageSurface({ ...dv, profileStates: { marktvermarktung: 'aus' } }).modes,
+    ).toEqual([]);
+    expect(anlageSurface({ ...NIE_MIGRIERT, profileStates: { marktvermarktung: 'an' } }).modes)
+      .toEqual([]);
+  });
+
+  it('Anwendungs-Katalog Stufe 1: eine Anlage OHNE Fähigkeiten aktiviert nur Monitoring', () => {
+    // Der Server erfindet nichts: ohne Speicher, ohne Ladepunkt, ohne Flow und
+    // ohne Leistungspreis ist genau EINE Anwendung abgeleitet aktiv - die
+    // Beobachtung selbst; die zwei Regel-Anwendungen bleiben aus.
+    expect(
+      derivedAnwendungen({
+        hasStorage: false,
+        hasPv: false,
+        hasControllableConsumer: false,
+        hasChargePoint: false,
+        hasMeasurement: false,
+        hasLeistungspreis: false,
+        hasGridLimit: false,
+        activeNodeTypes: [],
+        hasCustomerRule: false,
+        plantKind: 'eigenverbrauch',
+        tarifArt: 'ohne',
+        netzladenErlaubt: false,
+      }),
+    ).toEqual(['monitoring']);
+    // Die zwei RESERVIERTEN Einträge stehen im Katalog, aber nie im Regal.
+    expect(ANWENDUNGEN.map((a) => a.id)).toContain('berichte');
+    expect(REGAL.map((a) => a.id)).not.toContain('berichte');
+    expect(REGAL.map((a) => a.id)).not.toContain('eigene-auswertung');
   });
 
   it('M7: die technische Schicht ist standardmäßig zu (ohne Admin-Token)', () => {

@@ -3301,6 +3301,39 @@ class PortalApiTest {
         assertThat(otherSites).extracting(x -> x.get("id")).doesNotContain(siteId, plainId);
     }
 
+    /**
+     * Die {@code laden}-Divergenz des Overviews (Zielbild-Stufe 1 §2.7): das
+     * Overview stempelte {@code hasChargePoint} ueber den 7-Arg-Konstruktor auf
+     * {@code false}, konnte also NIE {@code laden} melden - waehrend
+     * {@code GET /sites/&#123;id&#125;/profile} es sehr wohl tut. Dieselbe Frage
+     * mit zwei Antworten; die Regel ist die von
+     * {@code UsageProfileService.signals}: der Ladepunkt keyt auf den TYP.
+     */
+    @Test
+    void overviewReportsLadenForAChargePointOnlySiteLikeTheProfileEndpointDoes() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        // Eine reine Ladepark-Anlage: Ladepunkte, KEIN Speicher, KEINE PV.
+        String siteId = createSite(demo, "Overview Ladepark", "DE-LU", "eigenverbrauch");
+        exec("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type) VALUES "
+                + "('" + tenantA + "', '" + siteId + "', 'consumer', 'ev-charger')");
+
+        assertThat(overviewSite(demo, siteId))
+                .as("das Overview meldet jetzt dieselbe Wahrheit wie /sites/{id}/profile")
+                .containsEntry("usageProfile", "laden");
+
+        ResponseEntity<Map<String, Object>> profile = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/profile"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(profile.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(profile.getBody()).containsEntry("usageProfile", "laden");
+
+        // Eine Anlage OHNE Ladepunkt bleibt unveraendert - der Fix weitet nichts.
+        String haus = createSite(demo, "Overview Haus ohne Saeule", "DE-LU", "eigenverbrauch");
+        assertThat(overviewSite(demo, haus)).containsEntry("usageProfile", "private");
+    }
+
     /** plant_kind: defaults to eigenverbrauch, editable through the site paths. */
     @Test
     void sitePlantKindDefaultsAndIsEditableViaSitePaths() {
