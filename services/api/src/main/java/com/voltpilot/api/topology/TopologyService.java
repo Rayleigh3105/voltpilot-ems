@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -105,7 +106,7 @@ public class TopologyService {
 
     public TopologyResponse topology(UUID siteId) {
         List<EntityRow> rows = registry.entitiesForSite(siteId);
-        Map<String, LatestValue> latest = indexLatest(repo.latestValues(siteId));
+        Map<String, LatestValue> latest = indexLatest(repo.latestValues(siteId, channelKeys(rows)));
         Map<String, RoleOverride> overrides = indexOverrides(repo.overrides(siteId));
         Set<String> rolesWithExplicitPrimary = new HashSet<>();
         for (RoleOverride ov : overrides.values()) {
@@ -161,6 +162,29 @@ public class TopologyService {
 
         TopologyDeriver.Topology topo = TopologyDeriver.derive(new TopologyDeriver.Input(derivIn));
         return new TopologyResponse(TopologyDeriver.SCHEMA_VERSION, entities, topo);
+    }
+
+    /**
+     * The (entity, channel) pairs this read-model will actually read - the exact
+     * set the loop below looks up, so the repository can probe them one by one
+     * instead of scanning the site's whole telemetry_v2 history (see
+     * {@link TopologyRepository#latestValues(UUID, java.util.List)}). The channel
+     * filter MUST stay identical to the loop's ({@code null}/blank skipped),
+     * otherwise a channel would silently lose its value. Deduplicated: a
+     * capabilities document listing a channel twice must not double the probes.
+     */
+    private List<TopologyRepository.ChannelKey> channelKeys(List<EntityRow> rows) {
+        Set<TopologyRepository.ChannelKey> keys = new LinkedHashSet<>();
+        for (EntityRow row : rows) {
+            for (JsonNode m : measures(row.capabilitiesJson())) {
+                String channel = m.path("channel").asText(null);
+                if (channel == null || channel.isBlank()) {
+                    continue;
+                }
+                keys.add(new TopologyRepository.ChannelKey(row.id().toString(), channel));
+            }
+        }
+        return List.copyOf(keys);
     }
 
     private String categoryOf(String entityType) {
