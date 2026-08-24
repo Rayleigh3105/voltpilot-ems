@@ -1114,9 +1114,33 @@ damit JEDE Lesung, die Anlage blieb für immer stumm und war nicht anlegbar.
   beides über `testconn.Result.Finding` in den Probe-Kanal
   (`probe.FailedReading`). Der TEST selbst setzt das Opt-in NIE — er sagt immer
   die Wahrheit, und ob sie hinnehmbar ist, entscheidet der Mensch im Portal.
+- **⚠ Die BOX-OBERFLÄCHE zeigt den Befund seit dem 24.08.2026 auch** (Diagnose
+  `vp-wr-eigenbau-soc-d4`): sie BERECHNETE die ganze Diagnose und lieferte sie
+  über `POST /api/test-connection` aus — `verify.js` las im Fehlerzweig aber nur
+  `error_code`+`message` und warf `reading` UND `finding` weg, also stand vor dem
+  Installateur der feste, ursachenlose Zweizeiler „Verbindung ok, aber die Werte
+  ergeben keinen Sinn. Bitte Modell/Anschluss prüfen." — im `missing`-Fall
+  nachweislich FALSCH (Modell und Anschluss stimmen, das BMS fehlt). `verify.js`
+  hat dafür die reine `VP.fehlerAnsicht(res)`: gelesene Werte (`readingChips`,
+  dieselben Chips wie das Erfolgs-Panel) → benannter Befund (`befundText`) → der
+  Weg (`portalWegText`).
+- **⚠ ZWILLING: `verify.js befundText` ⟷ `frontend/portal/src/komponentenAssistent.ts
+  regelText`** — dieselben Sätze, zwei Laufzeiten, KEIN geteilter Code (derselbe
+  Mensch liest beide Flächen, derselbe Gerätezustand darf dort nicht anders
+  heißen). **Beide zusammen ändern**; die Vektoren sind beidseitig gepinnt
+  (`internal/web/jstest/ui.test.js` ⟷ `komponentenAssistent.test.ts`). Ein
+  unbekanntes (Kanal, Regel)-Paar erzeugt KEINEN Satz.
+- **⚠ Die Box VERWEIST, sie entscheidet nicht:** `portalWegText` gibt bei
+  `rule === 'missing'` genau einen Satz („… im VoltPilot-Portal anlegen — nur
+  lesend."), bei jeder anderen Regel NICHTS. Es gibt auf `:8484` weiterhin kein
+  „Trotzdem fortfahren" und kein Setzen von `allow_missing_soc` — die
+  Design-Grenze bleibt, nur ihre Unsichtbarkeit fällt weg.
 - **Beweise:** `deye/deye-decode.test.js` · `flows-sync.test.js` (die INLINE-Kopie
   im Flow stimmt in allen drei Fällen mit dem Modul überein) ·
-  `internal/probe` (Kontrakt-Fixture per PFAD) · `agent/testconn_test.go`.
+  `internal/probe` (Kontrakt-Fixture per PFAD) · `agent/testconn_test.go` ·
+  `internal/web/jstest/ui.test.js` (die sechs Fälle der Fläche, mutationsgeprüft)
+  · `internal/web/web_test.go` (//go:embed-Vertrag: die drei Anker reisen wirklich
+  mit dem Binär).
 
 ## Der Build-Stempel reist IMMER mit (OTA Stufe 0 „Sehen")
 

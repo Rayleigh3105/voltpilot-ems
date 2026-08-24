@@ -15,6 +15,11 @@
 //   VP.portalManagedNote(flag)     the ONE sentence a portal-managed plant shows
 //                                  instead of its edit buttons (null = editable)
 //   VP.setPortalManaged(root, flag) hide every edit affordance under root
+//   VP.readingChips(reading)       the reported values as display chips
+//   VP.befundText(finding, hatWerte)
+//                                  the named plausibility violation in plain German
+//   VP.portalWegText(finding)      the way forward, ONLY where one exists
+//   VP.fehlerAnsicht(res)          the PURE derivation of the failure panel
 (function () {
   "use strict";
 
@@ -74,10 +79,46 @@
     showPanel(panel, "loading", [el("span", { class: "spin" }), text]);
   }
 
-  function renderErr(panel, title, body) {
+  // readingChips turns what the device REALLY answered into display chips, in
+  // FIELDS order. Only the fields it actually reported appear (never a
+  // fabricated 0). PURE - it is the one place a reading becomes a chip, shared
+  // by the success panel AND the failure panel (a failed read that still
+  // decoded three of four channels is a diagnosis, not a dead end).
+  function readingChips(reading) {
+    var out = [];
+    if (!reading || typeof reading !== "object") return out;
+    FIELDS.forEach(function (f) {
+      var v = reading[f.key];
+      if (typeof v !== "number" || !isFinite(v)) return;
+      out.push({ key: f.key, color: f.color, text: f.label + " " + fmt(v, f.unit) });
+    });
+    return out;
+  }
+
+  function chipsEl(chips) {
+    var box = el("div", { class: "verify-readings" });
+    chips.forEach(function (c) {
+      var chip = el("span", { class: "vr-chip" });
+      chip.appendChild(el("span", { class: "sw", style: "background:" + c.color }));
+      chip.appendChild(document.createTextNode(c.text));
+      box.appendChild(chip);
+    });
+    return box;
+  }
+
+  function renderErr(panel, view) {
     var text = el("div");
-    text.appendChild(el("p", { class: "vp-title" }, title));
-    text.appendChild(el("p", { class: "vp-body" }, body));
+    text.appendChild(el("p", { class: "vp-title" }, view.title));
+    text.appendChild(el("p", { class: "vp-body" }, view.body));
+    // Everything below is present ONLY when the device supplied the fact for
+    // it - a failure with no reading and no finding renders exactly the two
+    // lines it always did.
+    if (view.werte.length) {
+      text.appendChild(el("p", { class: "vp-body vp-werte-intro" }, view.werteIntro));
+      text.appendChild(chipsEl(view.werte));
+    }
+    if (view.befund) text.appendChild(el("p", { class: "vp-body vp-befund" }, view.befund));
+    if (view.weg) text.appendChild(el("p", { class: "vp-body vp-weg" }, view.weg));
     showPanel(panel, "err", [el("span", { class: "verify-ico", html: SVG_WARN }), text]);
   }
 
@@ -85,18 +126,8 @@
     var text = el("div");
     text.appendChild(el("p", { class: "vp-title" }, "Verbindung erfolgreich geprüft"));
     text.appendChild(el("p", { class: "vp-body" }, "Diese Werte hat das Gerät gerade gemeldet:"));
-    var chips = el("div", { class: "verify-readings" });
-    var any = false;
-    FIELDS.forEach(function (f) {
-      var v = reading[f.key];
-      if (typeof v !== "number" || !isFinite(v)) return;
-      any = true;
-      var chip = el("span", { class: "vr-chip" });
-      chip.appendChild(el("span", { class: "sw", style: "background:" + f.color }));
-      chip.appendChild(document.createTextNode(f.label + " " + fmt(v, f.unit)));
-      chips.appendChild(chip);
-    });
-    if (any) text.appendChild(chips);
+    var chips = readingChips(reading);
+    if (chips.length) text.appendChild(chipsEl(chips));
     else text.appendChild(el("p", { class: "vp-body" }, "Das Gerät hat geantwortet, aber keine auswertbaren Messwerte geliefert."));
     showPanel(panel, "ok", [el("span", { class: "verify-ico", html: SVG_CHECK }), text]);
   }
@@ -135,6 +166,77 @@
       : "Dieses Shelly misst keine Leistung: die Laufzeit wird über das Relais bestätigt, die Energie wird als angenommen (Nennleistung × Zeit) gekennzeichnet.";
   }
 
+  /* ---- der BEFUND: WELCHER Kanal WELCHE Regel verletzt hat ----------------
+   *
+   * ⚠ ZWILLINGS-DISZIPLIN: diese Sätze leben ZWEIMAL - hier in Vanilla-JS
+   * (Box-Oberfläche :8484) und als `regelText()`/`overrideFuer()` in
+   * frontend/portal/src/komponentenAssistent.ts (Portal, TS). Verschiedene
+   * Laufzeiten, KEIN geteilter Code - aber DIESELBEN Sätze: derselbe Mensch
+   * liest beide Flächen, und derselbe Gerätezustand darf dort nicht anders
+   * heißen. WER EINE SEITE ÄNDERT, ÄNDERT BEIDE; die Vektoren sind beidseitig
+   * gepinnt (hier jstest/ui.test.js, dort komponentenAssistent.test.ts).
+   *
+   * Ein unbekanntes (Kanal, Regel)-Paar erzeugt KEINEN Satz - die Haus-Regel
+   * "ohne Fakt nur die Beobachtung": eine geratene Ursache ist schlimmer als
+   * gar keine. (Genau daran ist der alte Zweizeiler gescheitert: "Bitte
+   * Modell/Anschluss prüfen" ist eine Ursachen-BEHAUPTUNG, und im
+   * `missing`-Fall ist sie nachweislich falsch - Modell und Anschluss stimmen,
+   * das BMS fehlt.)
+   */
+  function fmtPct(v) {
+    if (typeof v !== "number" || !isFinite(v)) return "einen unmöglichen Wert";
+    return v.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " %";
+  }
+
+  function befundText(finding, hatWerte) {
+    if (!finding || finding.channel !== "soc_pct") return "";
+    var rest = hatWerte ? " Spannung, Strom und Leistung sind lesbar." : "";
+    if (finding.rule === "missing") {
+      return "Der Ladestand liest 0 % - bei einer Eigenbau- oder nicht gekoppelten Batterie "
+        + "heißt das: das BMS liefert keine Daten an den Wechselrichter." + rest;
+    }
+    if (finding.rule === "out_of_range") {
+      return "Der Ladestand liest " + fmtPct(finding.value) + " - das kann kein Ladestand sein "
+        + "(gültig sind 1 bis 100 %). Meist passt die Modellauswahl nicht zum Gerät.";
+    }
+    if (finding.rule === "no_answer") {
+      return "Das Gerät hat geantwortet, aber alle Register standen auf 0 - so antwortet der "
+        + "Datenlogger, wenn er den Wechselrichter selbst nicht erreicht.";
+    }
+    return "";
+  }
+
+  // ⚠ Die Box setzt das Opt-in NIE selbst: ob ein fehlender Ladestand
+  // hinnehmbar ist, entscheidet der Mensch im Portal. Sie DIAGNOSTIZIERT und
+  // VERWEIST - mehr nicht. Die Design-Grenze bleibt, nur ihre Unsichtbarkeit
+  // fällt weg. Deshalb genau EIN Satz, und nur für die eine Regel, die ein
+  // Gerätezustand ist statt eines Lesefehlers.
+  var PORTAL_WEG = "Ein Speicher ohne gekoppeltes BMS lässt sich im VoltPilot-Portal anlegen — nur lesend.";
+
+  function portalWegText(finding) {
+    if (!finding || finding.channel !== "soc_pct" || finding.rule !== "missing") return "";
+    return PORTAL_WEG;
+  }
+
+  // fehlerAnsicht ist die EINE reine Ableitung des Fehler-Panels: aus der
+  // Antwort der Box wird, was die Fläche zeichnet. Ohne `reading` und ohne
+  // `finding` (jede andere Fehlerklasse, jede ältere Box) kommt exakt der
+  // Zweizeiler heraus, den die Seite immer schon zeigte.
+  function fehlerAnsicht(res) {
+    var code = (res && res.error_code) || "timeout";
+    var m = MESSAGES[code] || MESSAGES.timeout;
+    var werte = readingChips(res && res.reading);
+    var finding = (res && res.finding) || null;
+    return {
+      title: m.title,
+      body: (res && res.message) ? res.message : m.body,
+      werte: werte,
+      werteIntro: werte.length ? "Das hat das Gerät trotzdem gemeldet:" : "",
+      befund: befundText(finding, werte.length > 0),
+      weg: portalWegText(finding),
+    };
+  }
+
   function renderResult(panel, res) {
     if (res && res.ok) {
       renderOk(panel, res.reading || {});
@@ -146,10 +248,7 @@
       if (cap) appendPanelNote(panel, cap);
       return;
     }
-    var code = (res && res.error_code) || "timeout";
-    var m = MESSAGES[code] || MESSAGES.timeout;
-    var body = (res && res.message) ? res.message : m.body;
-    renderErr(panel, m.title, body);
+    renderErr(panel, fehlerAnsicht(res));
   }
 
   /* ---- multi-inverter unit-ID probe (Fronius Datamanager) ---- */
@@ -303,6 +402,10 @@
     probeUnits: probeUnits,
     foundUnitsLine: foundUnitsLine,
     clearVerify: clearVerify,
+    readingChips: readingChips,
+    befundText: befundText,
+    portalWegText: portalWegText,
+    fehlerAnsicht: fehlerAnsicht,
     fmtVal: fmt,
     gridPart: gridPart,
     fmtAgo: fmtAgo,

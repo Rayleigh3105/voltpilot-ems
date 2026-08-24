@@ -1217,6 +1217,27 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	if !strings.Contains(verifyJs, "/api/test-connection") {
 		t.Error("verify.js: does not call the /api/test-connection endpoint")
 	}
+	// A FAILED test must still show what arrived: the core computes the whole
+	// diagnosis (Reading + Finding, see testconn.Result) and the surface used to
+	// throw both away. These three are the pieces that turn the dead end into a
+	// diagnosis - //go:embed contract, so a shipped binary really carries them.
+	for _, want := range []string{
+		// the reading really reaches the FAILURE panel
+		"readingChips(res && res.reading)",
+		// the finding is read, and the way forward hangs on the one rule that
+		// is a device state instead of a read error
+		`finding.rule === "missing"`,
+		"VoltPilot-Portal anlegen",
+	} {
+		if !strings.Contains(verifyJs, want) {
+			t.Errorf("verify.js: missing %q - a failed test would drop the finding again", want)
+		}
+	}
+	// The chips of a failure panel take the panel's own tone; without this the
+	// values would sit in the red panel wearing the success border.
+	if !strings.Contains(css, ".verify-panel.err .vr-chip") {
+		t.Error("inverter.css: failure-panel reading chips are unstyled")
+	}
 
 	// The Erzeuger + Netz-Zähler groups + the add drawer + its script must ship
 	// too (//go:embed rebuild contract), driven by sources.js against fixed ids

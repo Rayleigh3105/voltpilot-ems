@@ -1508,6 +1508,137 @@ test("S2: ohne Karte passiert nichts (die Seite ohne Anlage-Bereich darf nicht b
   VP.setPortalManaged(null, true, "n");
 });
 
+/* ---- Der EHRLICHE Fehlschlag auf der BOX (Live-Fall Mühlfeldweg 2) --------
+ *
+ * Eine Eigenbau-Batterie ohne gekoppeltes BMS meldet dauerhaft SoC 0. Die Box
+ * BERECHNET die vollständige Diagnose (reading + finding) und lieferte sie über
+ * POST /api/test-connection auch aus - ihre Oberfläche warf beides weg und
+ * zeigte den festen Zweizeiler "Verbindung ok, aber die Werte ergeben keinen
+ * Sinn. Bitte Modell/Anschluss prüfen."
+ *
+ * ⚠ ZWILLING: die Sätze hier sind wörtlich die von
+ * frontend/portal/src/komponentenAssistent.ts (regelText). Beide Seiten
+ * zusammen ändern - die Vektoren unten spiegeln
+ * komponentenAssistent.test.ts "ein Fehlschlag ZEIGT, was ankam".
+ */
+
+// Die echte Box-Antwort des Falls (repro-output.txt, Schritt 2).
+const MUEHLFELDWEG = {
+  ok: false,
+  error_code: "implausible",
+  reading: { pv_kw: 6.1, load_kw: 4.3, grid_kw: 1.2 },
+  finding: { channel: "soc_pct", rule: "missing", raw: 0, value: 0 }
+};
+
+test("Fehlschlag: die Box ZEIGT, was ankam - Werte, Befund und den Weg", () => {
+  const VP = vpHelpers();
+  const v = VP.fehlerAnsicht(MUEHLFELDWEG);
+
+  // 1. Die gelesenen Werte - das allein macht aus der Sackgasse eine Diagnose.
+  // (vm-Realm: über join vergleichen, nie deepStrictEqual - siehe Kopf.
+  //  Die Zahl trägt ein GESCHÜTZTES Leerzeichen vor der Einheit - VP.fmtVal
+  //  setzt es, damit "6,1 kW" nie umbricht.)
+  assert.strictEqual(v.werte.map((c) => c.text).join(" | "), "PV 6,1 kW | Last 4,3 kW | Netzbezug 1,2 kW");
+  assert.match(v.werteIntro, /gemeldet/);
+  // Der verletzende Kanal reitet NIE im reading - es gibt also keinen
+  // Speicher-Chip, der eine 0 behaupten würde.
+  assert.ok(v.werte.every((c) => c.key !== "soc_pct"), "kein erfundener Ladestand");
+
+  // 2. Der benannte Befund - er sagt, was GEMESSEN wurde und was daraus folgt.
+  assert.match(v.befund, /Ladestand liest 0 %/);
+  assert.match(v.befund, /BMS/);
+  assert.match(v.befund, /Spannung, Strom und Leistung sind lesbar/);
+
+  // 3. Der Weg nach vorn. Er VERWEIST ins Portal - die Box setzt das Opt-in nie.
+  assert.match(v.weg, /VoltPilot-Portal/);
+  assert.match(v.weg, /nur lesend/);
+  assert.doesNotMatch(v.weg, /fortfahren/i, "die Box bietet den Ausweg nicht selbst an");
+
+  // Der alte Zweizeiler steht weiterhin oben - er wird ERGÄNZT, nicht ersetzt.
+  assert.strictEqual(v.title, "Verbindung ok, aber die Werte ergeben keinen Sinn");
+});
+
+test("Fehlschlag: ohne Werte behauptet der Befund keine lesbaren Kanäle", () => {
+  const VP = vpHelpers();
+  // Die Leerantwort des Loggers: alle Register 0, also auch kein reading.
+  const v = VP.fehlerAnsicht({
+    ok: false, error_code: "implausible", reading: {},
+    finding: { channel: "soc_pct", rule: "no_answer" }
+  });
+  assert.strictEqual(v.werte.length, 0);
+  assert.strictEqual(v.werteIntro, "");
+  assert.match(v.befund, /alle Register standen auf 0/);
+  assert.doesNotMatch(v.befund, /Spannung, Strom und Leistung/);
+  // Und der missing-Satz behauptet lesbare Kanäle NUR, wenn welche ankamen -
+  // sonst wäre der Zusatz eine Aussage über Werte, die niemand gemeldet hat.
+  assert.doesNotMatch(VP.befundText({ channel: "soc_pct", rule: "missing" }, false),
+    /Spannung, Strom und Leistung/);
+  assert.match(VP.befundText({ channel: "soc_pct", rule: "missing" }, true),
+    /Spannung, Strom und Leistung/);
+  // Kein Weg: einer Lesung mit Leerantwort ist nicht zu trauen, sie darf
+  // niemand durchwinken.
+  assert.strictEqual(v.weg, "");
+});
+
+test("Fehlschlag: ein kaputter Rahmen nennt den unmöglichen Wert - und KEINEN Weg", () => {
+  const VP = vpHelpers();
+  const v = VP.fehlerAnsicht({
+    ok: false, error_code: "implausible", reading: { pv_kw: 3 },
+    finding: { channel: "soc_pct", rule: "out_of_range", raw: 1250, value: 1250 }
+  });
+  assert.match(v.befund, /1\.250 %/);
+  assert.match(v.befund, /Modellauswahl/);
+  assert.strictEqual(v.weg, "", "out_of_range ist ein Lesefehler, kein Gerätezustand");
+  // Und ohne belegbaren Wert wird keine Zahl erfunden.
+  assert.match(VP.befundText({ channel: "soc_pct", rule: "out_of_range" }, false), /unmöglichen Wert/);
+});
+
+test("Fehlschlag: zu einem unbekannten Kanal oder einer unbekannten Regel wird NICHTS gesagt", () => {
+  const VP = vpHelpers();
+  assert.strictEqual(VP.befundText({ channel: "temperatur", rule: "missing" }, true), "");
+  assert.strictEqual(VP.befundText({ channel: "soc_pct", rule: "wackelig" }, true), "");
+  assert.strictEqual(VP.befundText(null, true), "");
+  // Und der Weg hängt an BEIDEM - Kanal UND Regel.
+  assert.strictEqual(VP.portalWegText({ channel: "temperatur", rule: "missing" }), "");
+  assert.strictEqual(VP.portalWegText({ channel: "soc_pct", rule: "out_of_range" }), "");
+  assert.strictEqual(VP.portalWegText(null), "");
+});
+
+test("Fehlschlag: der generische Fall bleibt BYTE-GLEICH - kein Wert, kein Befund, kein Weg", () => {
+  const VP = vpHelpers();
+  const v = VP.fehlerAnsicht({ ok: false, error_code: "unreachable" });
+  assert.strictEqual(v.title, "Gerät nicht erreichbar");
+  assert.strictEqual(v.body, "IP-Adresse, Port und Netzwerk prüfen.");
+  assert.strictEqual(v.werte.length, 0);
+  assert.strictEqual(v.befund, "");
+  assert.strictEqual(v.weg, "");
+
+  // Auch eine ÄLTERE Box (implausible ganz ohne finding/reading) behauptet nichts.
+  const alt = VP.fehlerAnsicht({ ok: false, error_code: "implausible" });
+  assert.strictEqual(alt.body, "Bitte Modell/Anschluss prüfen.");
+  assert.strictEqual(alt.werte.length, 0);
+  assert.strictEqual(alt.befund, "");
+  assert.strictEqual(alt.weg, "");
+
+  // Und ein unbekannter Code / gar keine Antwort fällt weiterhin auf timeout.
+  assert.strictEqual(VP.fehlerAnsicht(null).title, "Keine Antwort erhalten");
+  assert.strictEqual(VP.fehlerAnsicht({ ok: false, error_code: "quatsch" }).title, "Keine Antwort erhalten");
+  // invalid_request behält seinen spezifischen Server-Hinweis.
+  assert.strictEqual(
+    VP.fehlerAnsicht({ ok: false, error_code: "invalid_request", message: "Seriennummer fehlt" }).body,
+    "Seriennummer fehlt");
+});
+
+test("readingChips zeigt nur, was das Gerät wirklich gemeldet hat - nie eine erfundene 0", () => {
+  const VP = vpHelpers();
+  assert.strictEqual(VP.readingChips({ pv_kw: 0, soc_pct: 87.4 }).map((c) => c.text).join(" | "),
+    "PV 0 kW | Speicher 87 %");
+  // Eine gemessene 0 ist ein Wert; ein fehlendes Feld ist keiner.
+  assert.strictEqual(VP.readingChips({ pv_kw: null, load_kw: undefined, grid_kw: NaN }).length, 0);
+  assert.strictEqual(VP.readingChips(null).length, 0);
+  assert.strictEqual(VP.readingChips("nope").length, 0);
+});
+
 /* ============================ Ladepunkte (OCPP) ============================ */
 
 function ocppMod() {
