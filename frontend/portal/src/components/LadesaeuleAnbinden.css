@@ -138,6 +138,46 @@
   color: var(--vp-text-muted, #64748b);
 }
 
+/* Die Rücknahme einer Kennung.
+ *
+ * ⚠ 26 px SICHTBAR mit einer >=44-px-Trefferfläche über `::before` (das
+ * `.vp-switch`-Muster): ein 44-px-KASTEN würde die 0,4 rem auseinanderliegenden
+ * Zeilen sichtbar auseinanderziehen.
+ */
+.vp-anbinden-remove {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vp-radius-sm, 8px);
+  background: transparent;
+  color: var(--vp-text-muted, #64748b);
+  cursor: pointer;
+  align-self: center;
+}
+
+.vp-anbinden-remove::before {
+  content: '';
+  position: absolute;
+  inset: -9px;
+}
+
+.vp-anbinden-remove:hover:not(:disabled),
+.vp-anbinden-remove:focus-visible {
+  color: var(--vp-danger, #b91c1c);
+  background: var(--vp-surface-2, #f1f5f9);
+}
+
+.vp-anbinden-remove:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* --- Eigene Typografie ---------------------------------------------------
  *
  * ⚠ Diese Klassen wären als `vp-assist-*` aus `KomponenteAssistent.css` zu

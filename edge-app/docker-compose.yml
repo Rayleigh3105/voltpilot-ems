@@ -58,15 +58,18 @@ services:
       # Anlage nach dem Runbook (docs/verbrauchssteuerung-betrieb.md)
       # eingeschaltet wird. VP_CONTROL_ENABLED bleibt der globale Stopp.
       VP_CONSUMER_CONTROL_ENABLED: ${VP_CONSUMER_CONTROL_ENABLED:-false}
-      # OCPP-Ladepunkte (Lastmanagement). Vorgabe AUS: ohne diesen Schalter
-      # bindet die Box keinen Websocket-Server und verhaelt sich zeichengleich
-      # wie vor dem Feature. Der eigentliche Zugangs-Zaun ist die Freigabeliste
-      # der Charge-Point-Kennungen (chargers.json) - eine nicht eingetragene
-      # Saeule wird schon beim Verbindungsaufbau abgewiesen. Die LEBENDE
-      # Zuteilung braucht zusaetzlich VP_CONTROL_ENABLED und
-      # VP_CONSUMER_CONTROL_ENABLED; ohne sie halten die Saeulen ihr
-      # hinterlegtes Sicherheitsprofil (sicher, nur nicht optimiert).
-      VP_OCPP_ENABLED: ${VP_OCPP_ENABLED:-false}
+      # OCPP-Ladepunkte (Lastmanagement). Vorgabe AN (seit 24.08.2026): eine
+      # Ladesaeule anzubinden soll keinen .env-Schritt am Geraet kosten. Es
+      # bleibt ein OPT-OUT - ein ausdrueckliches 'false' schaltet den Server ab
+      # und die Box verhaelt sich zeichengleich wie vor dem Feature.
+      # Der Zugangs-Zaun war nie dieser Schalter, sondern die Freigabeliste der
+      # Charge-Point-Kennungen (chargers.json) - eine nicht eingetragene Saeule
+      # wird schon beim Verbindungsaufbau abgewiesen und protokolliert, und eine
+      # frische Box hat eine LEERE Liste. Die LEBENDE Zuteilung braucht
+      # zusaetzlich VP_CONTROL_ENABLED und VP_CONSUMER_CONTROL_ENABLED; ohne sie
+      # halten die Saeulen ihr hinterlegtes Sicherheitsprofil (sicher, nur nicht
+      # optimiert).
+      VP_OCPP_ENABLED: ${VP_OCPP_ENABLED:-true}
       # LAN-Port, auf dem die Ladesaeulen die Box anwaehlen. Muss mit dem
       # Port-Mapping unten uebereinstimmen (die Box nennt die Adresse in der
       # Weboberflaeche).
@@ -95,8 +98,9 @@ services:
       - "${VP_MIRROR_PORT:-502}:1502"
       # OCPP: die Ladesaeulen waehlen die Box hier an
       # (ws://<box>:8887/ocpp/<Kennung>). LAN-only wie :8484 und der
-      # Node-RED-Editor - nie oeffentlich erreichbar machen. Ohne
-      # VP_OCPP_ENABLED lauscht nichts (Verbindung wird abgewiesen).
+      # Node-RED-Editor - nie oeffentlich erreichbar machen. Der Server laeuft
+      # per Vorgabe; wer sich verbinden darf, entscheidet die Freigabeliste
+      # (mit VP_OCPP_ENABLED=false lauscht gar nichts).
       - "${VP_OCPP_PORT:-8887}:8887"
 
   nodered:

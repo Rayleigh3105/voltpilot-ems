@@ -1180,11 +1180,35 @@ JEDER Satz liegen rein in `src/ladesaeuleAnbinden.ts`; die Flächen rendern nur.
   keine Stylesheets). Seither eigene `vp-anbinden-*`-Klassen in
   `components/LadesaeuleAnbinden.css`.
 - **Die drei Ehrlichkeitsregeln der Fläche** (jede als Test gepinnt): die
-  ALLOWLIST fügt nur hinzu (es gibt keinen Lösch-Knopf, und `KEIN_LOESCHEN`
-  ERKLÄRT das, statt die Lücke zu lassen); die ADRESSE wird nie erfunden (ohne
-  bewiesene LAN-Adresse oder ohne gemeldeten Anschluss steht der WEG da, nie ein
-  `ws://`); und EINGETRAGEN ≠ GEMELDET (der Abschluss liest ausschließlich die
-  vom Gerät gemeldeten Säulen).
+  ADRESSE wird nie erfunden (ohne bewiesene LAN-Adresse oder ohne gemeldeten
+  Anschluss steht der WEG da, nie ein `ws://`); EINGETRAGEN ≠ GEMELDET (der
+  Abschluss liest ausschließlich die vom Gerät gemeldeten Säulen); und ein
+  Zustand, den die Box noch gar nicht gemeldet HAT, wird nicht als Defekt
+  gelesen — vor der ersten Kennung meldet sie keine Ladepunkt-Lage, also steht
+  dort „sobald die Kennung eingetragen ist …" (`grund: 'noch-nicht-gemeldet'`)
+  statt „es kann sich keine Säule verbinden".
+- **⚠ Seit dem 24.08.2026 gibt es eine ENTFERNEN-Tür (Captain-Order) — der
+  frühere `KEIN_LOESCHEN`-Satz ist ERSATZLOS entfallen.** Je Zeile ein
+  Papierkorb, dahinter der Haus-`ConfirmDialog` mit `entfernenFrage` +
+  `entfernenFolgen`; der erste Klick entfernt NICHTS, er fragt. **Die ZUSAGE ist
+  dieselbe wie auf der `:8484`-Fläche** (`VPOcpp.removalConsequences`) — beide
+  Wege dürfen über dieselbe Handlung nichts Verschiedenes versprechen; das
+  Portal nennt zusätzlich, was gleich bleibt und dass der Weg zurück offen ist.
+  - **⚠ Die Folgenliste sagt die WAHRHEIT, nicht das Naheliegende: „Ein
+    laufender Ladevorgang endet dadurch NICHT."** OCPP kennt seinen eigenen
+    Totmann, das Sicherheitsprofil liegt IN der Säule, und sie lädt damit
+    weiter — langsam, aber sie lädt. „Der Ladevorgang endet" wäre eine
+    Falschaussage über eine Kundenanlage.
+  - Sie nennt ausdrücklich, was GLEICH bleibt (andere Säulen, Anschlussgrenze,
+    Ausfall-Schutz) und dass der Weg zurück offen ist — das Haus-Muster für
+    jede Umstellung.
+  - **`ENTFERNEN_HINWEIS` behauptet KEINE Zustellung** („sobald Ihre Box das
+    nächste Mal verbunden ist. Bis dahin gilt, was sie zuletzt übernommen
+    hat.") — das Dokument reist retained, und eine Box mit älterem Image kennt
+    das Feld noch gar nicht.
+  - Der Papierkorb ist 26 px SICHTBAR mit ≥44-px-Trefferfläche über `::before`
+    (das `.vp-switch`-Muster) — ein 44-px-KASTEN zöge die 0,4 rem
+    auseinanderliegenden Zeilen sichtbar auseinander.
 - **⚠ Die Kennung folgt dem Namen nur, solange NIEMAND sie angefasst hat** — ab
   dem ersten Tastendruck gewinnt der Mensch. `kennungVorschlag` schlägt bei
   einem Namen ohne erlaubte Zeichen GAR NICHTS vor; ein leeres Feld ist

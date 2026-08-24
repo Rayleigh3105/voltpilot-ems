@@ -135,9 +135,20 @@ export interface ChargingConfig {
    *
    * ⚠ Sie FÜGT NUR HINZU. Eine leere Liste heißt hier „das Portal hat noch
    * keine eingetragen" - anders als beim Vorrang ist sie KEINE Aussage „keine
-   * Säule". Löschen bleibt eine ausdrückliche Handlung am Gerät.
+   * Säule". Eine Kennung hier WEGZULASSEN ist kein Löschen; das sagt
+   * `removedChargePointIds` ausdrücklich.
    */
   chargePoints?: AllowedChargePoint[];
+  /**
+   * Die ZURÜCKGENOMMENEN Kennungen - die GRABSTEIN-Liste des Servers.
+   *
+   * ⚠ Sie reist in JEDEM folgenden Dokument an die Box mit, nicht einmal: das
+   * retained Dokument wird als Ganzes ersetzt, also hätte eine nur einmal
+   * genannte Löschung eine gerade offline gewesene Box nie erreicht. Eine
+   * Kennung steht nie zugleich in `chargePoints` - ein erneutes Eintragen
+   * belebt sie wieder. Ein ÄLTERES Backend sendet das Feld nicht.
+   */
+  removedChargePointIds?: string[];
   updatedAt?: string | null;
   updatedBy?: string | null;
 }

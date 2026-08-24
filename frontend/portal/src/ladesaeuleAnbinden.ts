@@ -11,10 +11,10 @@
  *
  * **⚠ 1. Die ALLOWLIST bleibt die Allowlist — es wandert nur ihr PFLEGE-Ort.**
  * Eine unbekannte Kennung weist die Box weiterhin ab und protokolliert sie; es
- * entsteht kein Anlern-Fenster und kein TOFU. Und die Liste FÜGT NUR HINZU:
- * einen Eintrag zu ENTFERNEN würfe die Säule beim nächsten Verbindungsaufbau vom
- * Broker, und das bleibt eine ausdrückliche Handlung am Gerät. Diese Fläche
- * bietet deshalb keinen Lösch-Weg an.
+ * entsteht kein Anlern-Fenster und kein TOFU. Seit der Captain-Order vom
+ * 24.08.2026 lässt sich eine eingetragene Kennung hier auch wieder ENTFERNEN —
+ * das ist eine eigene, ausdrückliche Handlung mit Rückfrage, nie die
+ * Nebenwirkung eines Speicherns, und die Folge wird VORHER genannt.
  *
  * **⚠ 2. Die ADRESSE wird nie erfunden.** Sie entsteht ausschließlich aus dem,
  * was das GERÄT meldet: seine LAN-Adresse (D5) und Port + Pfad seines
@@ -100,7 +100,7 @@ export interface EndpunktSicht {
   /** Der Satz daneben: was sie ist, bzw. warum es keine gibt. */
   satz: string;
   /** Warum die Adresse fehlt — nur gesetzt, wenn `url` null ist. */
-  grund: 'keine-adresse' | 'nicht-bewiesen' | 'lauscht-nicht' | null;
+  grund: 'keine-adresse' | 'nicht-bewiesen' | 'noch-nicht-gemeldet' | 'lauscht-nicht' | null;
 }
 
 /** Der Weg, der IMMER gilt — auch ohne bekannte Adresse. */
@@ -128,8 +128,12 @@ export const ENDPUNKT_ZWEI_FORMEN =
  *    Schnittstellen-Adresse sagt, wo die Box steckt, nicht dass dort etwas
  *    antwortet — und ein Kopierfeld verspricht genau das. Die Adresse wird
  *    trotzdem GENANNT, nur eben als Hinweis statt als Zusage.
- * 3. Der OCPP-Server muss LAUSCHEN (die Box meldet dann einen Anschluss).
- *    Meldet sie keinen, liefe die Säule ins Leere.
+ * 3. Die Box muss ihren Anschluss GEMELDET haben. Hier gibt es ZWEI Fälle, und
+ *    sie zu verwechseln wäre eine Falschaussage über eine gesunde Anlage: hat
+ *    sie zu ihren Ladepunkten noch gar nichts gemeldet (`budget == null`, der
+ *    Normalfall VOR der ersten eingetragenen Kennung), dann wissen wir es
+ *    schlicht noch nicht — der Server läuft trotzdem. Meldet sie einen Block
+ *    OHNE Anschluss, lauscht wirklich nichts.
  *
  * Die gemeldete LAN-Adresse trägt den Anschluss der lokalen Oberfläche
  * (`…:8484`) — der wird abgeschnitten, denn OCPP hat seinen eigenen.
@@ -158,6 +162,18 @@ export function endpunkt(
   }
   const port = anschluss(charging?.budget?.ocppPort);
   if (port == null) {
+    // ⚠ „Noch nichts gemeldet" ist NICHT „lauscht nicht": eine Box meldet ihre
+    // Ladepunkt-Lage erst, wenn es welche gibt. Vor der ersten eingetragenen
+    // Kennung ist das der Normalfall - „es kann sich keine Säule verbinden"
+    // wäre dort schlicht falsch.
+    if (!charging?.budget) {
+      return {
+        url: null,
+        basis: null,
+        satz: `Sobald die Kennung eingetragen ist, meldet Ihre Box ihren Anschluss — dann steht hier die Adresse zum Kopieren. ${ENDPUNKT_WEG}`,
+        grund: 'noch-nicht-gemeldet',
+      };
+    }
     return {
       url: null,
       basis: null,
@@ -311,12 +327,45 @@ export function abschluss(gemeldet: boolean): string {
     : 'Die Kennung ist eingetragen. Sobald Ihre Box das nächste Mal verbunden ist, übernimmt sie sie — danach lässt sie die Säule herein.';
 }
 
+// ---------------------------------------------------------------------------
+// Eine Kennung wieder entfernen
+// ---------------------------------------------------------------------------
+
 /**
- * ⚠ Der Satz, der die fehlende Lösch-Tür ERKLÄRT statt sie zu verschweigen.
- * Ohne ihn liest sich ihr Fehlen als Lücke.
+ * Die FOLGENLISTE der Rücknahme (Haus-`ConfirmDialog`).
+ *
+ * ⚠ Sie sagt die WAHRHEIT über das, was am Gerät passiert — und die ist nicht
+ * „der Ladevorgang endet": OCPP kennt einen eigenen Totmann, das
+ * Sicherheitsprofil liegt IN der Säule, und sie lädt damit weiter (langsam,
+ * aber sie lädt). Genau so sagt es auch der Dialog auf `:8484`
+ * (`VPOcpp.removalConsequences`); zwei Formulierungen derselben Folge wären
+ * zwei Wahrheiten über dieselbe Handlung.
+ *
+ * ⚠ Und sie nennt, was GLEICH bleibt (die anderen Säulen, die Anschlussgrenze)
+ * — sonst liest sich jede Rücknahme wie ein Lockern der Regeln.
  */
-export const KEIN_LOESCHEN =
-  'Eine eingetragene Kennung wird hier nicht wieder entfernt: das würfe die Säule beim nächsten Verbindungsaufbau ab. Wenn eine Säule wirklich weg soll, machen wir das gemeinsam am Gerät.';
+export function entfernenFolgen(name: string): string[] {
+  return [
+    `„${name}" wird nicht mehr angenommen: die Verbindung zur Säule wird getrennt, und ein Wiederverbinden weist VoltPilot ab.`,
+    'Ein laufender Ladevorgang endet dadurch NICHT. Die Säule behält ihr zuletzt hinterlegtes Sicherheitsprofil und lädt damit weiter — langsam, aber sie lädt.',
+    'Alle anderen Säulen, Ihre Anschlussgrenze und der Ausfall-Schutz bleiben unverändert.',
+    'Sie können dieselbe Kennung jederzeit wieder eintragen — dann lässt VoltPilot die Säule wieder herein.',
+  ];
+}
+
+/** Der eine Satz über der Folgenliste. */
+export function entfernenFrage(name: string): string {
+  return `Soll VoltPilot die Ladesäule „${name}" nicht mehr annehmen?`;
+}
+
+/**
+ * ⚠ Der Satz, der die Rücknahme EINORDNET statt sie zu verschweigen: sie wirkt
+ * nicht in dem Moment, in dem geklickt wird, sondern sobald die Box das nächste
+ * Mal verbunden ist. Eine Zustellung zu behaupten wäre eine Aussage über ein
+ * Gerät, das gerade offline sein kann.
+ */
+export const ENTFERNEN_HINWEIS =
+  'Eine hier entfernte Kennung wird nicht mehr angenommen, sobald Ihre Box das nächste Mal verbunden ist. Bis dahin gilt, was sie zuletzt übernommen hat.';
 
 // ---------------------------------------------------------------------------
 // Kleinkram

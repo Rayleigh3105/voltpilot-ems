@@ -3191,10 +3191,19 @@ hängen. Die Cloud bekommt (wie überall) Sichtbarkeit, nie Steuerung.
   `[0,100]`, nicht `(0,100]` wie beim Batterie-Wechselrichter** — ein Auto
   kommt legitim mit 0 % an, während dort die 0 „Logger erreicht das Gerät
   nicht" hieß.
-- **Flags:** `VP_OCPP_ENABLED` (Vorgabe AUS — eine Box ohne Ladepunkt zahlt
-  nichts) und `VP_OCPP_PORT` (8887). Bewusst UNABHÄNGIG von
+- **⚠ Flags: `VP_OCPP_ENABLED` ist seit dem 24.08.2026 ein OPT-OUT (Vorgabe AN,
+  Captain-Order „ich will das auf der Box OCPP immer angeschalten ist
+  automatisch, ohne .env brauch ich nicht"), `VP_OCPP_PORT` bleibt 8887.** Ein
+  ausdrückliches `false` gewinnt weiterhin (das `VP_OTA_PRUNE`-Muster). Die
+  frühere Begründung „eine Box ohne Ladepunkt zahlt nichts" war eine
+  RESSOURCEN-Aussage, keine Sicherheits-Aussage — der Preis ist ein
+  Websocket-Listener auf einer LAN-Schnittstelle, und das TOR war nie dieses
+  Flag, sondern die Freigabeliste (eine unbekannte Kennung wird beim
+  Verbindungsaufbau abgewiesen und protokolliert). Bewusst UNABHÄNGIG von
   `VP_CONTROL_ENABLED`/`VP_CONSUMER_CONTROL_ENABLED`: die zwei sperren SCHREIB-
-  Pfade auf ein Gerät, dieser einen SERVER, den Stationen anwählen.
+  Pfade auf ein Gerät, dieser einen SERVER, den Stationen anwählen — **und an
+  dieser Unabhängigkeit hat sich NICHTS geändert**, die lebende Zuteilung bleibt
+  hinter beiden.
 - **⚠ LAN-only ist Umgebung, nicht Code:** die Bibliothek bindet `:port` auf
   allen Schnittstellen (keine Bind-Adresse wählbar) — die Grenze sind
   Compose-Port-Mapping + Host-Firewall, genau wie bei `:8484` und dem
@@ -3287,12 +3296,20 @@ OCPP-Ladesaeulen (`cmd/vp-ocpp-sim`) ueber ECHTE Websockets.
 ## Die `:8484`-Ladepunkt-Flaeche ist die EINZIGE bedingte Accordion-Gruppe
 
 - **⚠ Die Gruppe „Ladepunkte" wird `hidden` AUSGELIEFERT und von `ocpp.js`
-  eingeblendet**, sobald die Box wirklich Ladepunkte annimmt. Die VIER festen
-  Gruppen sind die Zusage der Seite („eine fertig eingerichtete gesunde Anlage
-  zeigt vier ruhige Zeilen") — eine fuenfte Zeile auf jeder Anlage OHNE
-  Ladesaeulen waere genau das Rauschen, das der Umbau beseitigt hat.
-  `TestEinrichtenAccordionIsFourClosedGroups` zaehlt sie deshalb heraus und
-  nagelt zugleich fest, dass sie versteckt ausgeliefert wird.
+  eingeblendet.** Die VIER festen Gruppen sind die Zusage der Seite („eine
+  fertig eingerichtete gesunde Anlage zeigt vier ruhige Zeilen") — eine fuenfte
+  Zeile auf jeder Anlage OHNE Ladesaeulen waere genau das Rauschen, das der
+  Umbau beseitigt hat. `TestEinrichtenAccordionIsFourClosedGroups` zaehlt sie
+  deshalb heraus und nagelt zugleich fest, dass sie versteckt ausgeliefert wird.
+- **⚠ Das Einblende-SIGNAL ist seit dem 24.08.2026 ein anderes, und genau
+  deshalb haelt die Zusage weiter.** Vorher genuegte „der Server laeuft"
+  (`ocpp.enabled`) — mit `VP_OCPP_ENABLED` als Opt-out laeuft er auf JEDER Box,
+  die Gruppe waere also die staendige fuenfte Zeile geworden. `VPOcpp.zeigeGruppe`
+  fragt seither, ob es wirklich LADEPUNKTE gibt: eingetragene Kennungen ODER
+  gemeldete Saeulen — plus den Tiefenlink `#ladepunkte`, damit ein Verweis von
+  aussen nie ins Leere fuehrt. **Wer das Signal wieder auf `enabled` verkuerzt,
+  bricht die Vier-Gruppen-Zusage; wer die Deep-Link-Haelfte streicht, bricht den
+  Verweis.** Beides steht als eigener Fall in `jstest/ui.test.js`.
 - **⚠ Der Host im Kopier-Feld kommt aus der ADRESSZEILE des Browsers, der Port
   von der Box.** Die Box weiss nicht, unter welchem Namen das LAN sie
   erreicht; ein erfundener Hostname auf einem Kopier-Feld ist schlimmer als
@@ -3708,11 +3725,27 @@ der niemand ein Dokument schickt, verhält sich zeichengleich wie vorher.
   annimmt. **Es ist KEIN Anlern-Fenster** — eine unbekannte Kennung wird
   weiterhin abgewiesen und protokolliert.
   - **⚠ `applyChargePoints` FÜGT NUR HINZU** (`agent/charging_config.go`): keine
-    bekannte Kennung wird überschrieben, und es wird NIE eine entfernt. Ein
-    Eintrag weniger würfe die Säule beim nächsten Verbindungsaufbau vom Broker —
-    eine Folge für eine laufende Anlage, die eine ausdrückliche Handlung am
-    Gerät bleibt. Ein abgewiesener Eintrag (Rate, Form) wird protokolliert und
-    übersprungen, nie stillschweigend verschluckt.
+    bekannte Kennung wird überschrieben, und ein WEGGELASSENER Eintrag entfernt
+    nie etwas. Das ist der Grund, warum eine Rücknahme AUSDRÜCKLICH sein muss
+    (nächster Punkt): eine Box, die beim Speichern offline war, darf ihre
+    Kennungen nicht verlieren, weil ein späteres Dokument sie nicht aufzählt.
+    Ein abgewiesener Eintrag (Rate, Form) wird protokolliert und übersprungen,
+    nie stillschweigend verschluckt.
+  - **⚠ Die RÜCKNAHME ist eine eigene Liste — `removed_charge_point_ids`, seit
+    dem 24.08.2026** (Captain-Order; additiv, `schema_version` bleibt 1.0).
+    `applyChargePointRemovals` läuft NACH `applyChargePoints` und VOR dem
+    Vorrang, entfernt nur, was diese Box wirklich KENNT (`csms.Remove` trennt
+    die Verbindung, ein Wiederverbinden wird abgewiesen), protokolliert jede
+    Rücknahme und ist idempotent — der Grabstein reist in JEDEM folgenden
+    Dokument mit und darf nicht bei jedem Takt etwas tun.
+  - **⚠ Bei einem WIDERSPRUCH gewinnt die Rücknahme:** steht eine Kennung in
+    beiden Listen, streicht `chargingcfg.Parse` sie aus `ChargePoints`, BEVOR
+    irgendetwas zugelassen wird — ein Dokument, das eine gerade gelöschte
+    Kennung wieder einträgt, darf sie nicht durch die Hintertür zurückbringen.
+  - **Ein ÄLTERER Box-Stand tut nichts Falsches:** Gos `encoding/json` überliest
+    das unbekannte Feld, die Säule bleibt zugelassen — der vorige Zustand, nie
+    eine falsche Handlung. Die Rücknahme wirkt damit erst mit dem NÄCHSTEN
+    Edge-Release, und das Portal sagt das auch.
   - **⚠ Die Allowlist wird VOR dem Vorrang angewandt**, sonst bekäme eine gerade
     eingetragene Säule den Vorrang DESSELBEN Dokuments erst beim nächsten
     Speichern. Deshalb trägt der Umschlag auch kein `priority` je Zeile: die

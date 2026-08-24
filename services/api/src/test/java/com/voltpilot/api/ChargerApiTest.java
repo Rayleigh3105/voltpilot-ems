@@ -371,10 +371,8 @@ class ChargerApiTest {
      * Der ANBINDE-ASSISTENT: eine Säule wird im Portal eingetragen, und die
      * Fläche bekommt den ECHTEN Endpunkt, unter dem die Säule anwählt.
      *
-     * <p><b>⚠ Die Allowlist FÜGT NUR HINZU.</b> Es gibt hier keinen Lösch-Weg:
-     * eine Kennung zu entfernen wirft die Säule beim nächsten
-     * Verbindungsaufbau vom Broker - eine Entscheidung mit Folgen für eine
-     * laufende Anlage, und die bleibt eine ausdrückliche Handlung am Gerät.
+     * <p><b>⚠ Diese Route fügt nur HINZU.</b> Eine Kennung zurückzunehmen ist
+     * eine eigene, ausdrückliche Handlung (DELETE) - siehe den Test darunter.
      */
     @Test
     void aChargePointIsAdmittedFromThePortalAndTheEndpointComesFromTheBox() throws Exception {
@@ -453,6 +451,90 @@ class ChargerApiTest {
         }
     }
 
+    /**
+     * Das ZURÜCKNEHMEN einer eingetragenen Kennung (Captain-Order 24.08.2026:
+     * „Ebenso will ich die möglichkeit haben eingebene kennungen zu löschen").
+     *
+     * <p><b>⚠ Es ist ein GRABSTEIN, kein Löschen.</b> Das retained Dokument wird
+     * als Ganzes ersetzt, also würde eine Kennung nur wegzulassen von einer Box,
+     * die gerade offline war, nie gesehen ({@code charge_points} fügt nur
+     * hinzu). Die Rücknahme muss deshalb dauerhaft geführt und in JEDEM
+     * folgenden Dokument genannt werden - genau das prüft dieser Test an der
+     * gelesenen Konfiguration.
+     */
+    @Test
+    void anAdmittedChargePointIsWithdrawnAsATombstoneAndReAdmittingRevivesIt() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Loeschen");
+        try {
+            claim(customer, site, "edge-ladepark-6");
+            postJson("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "saeule-1", "label", "Hof Nord"));
+            postJson("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "saeule-2"));
+
+            // 1 · Die Rücknahme nimmt GENAU EINE Kennung - und nennt sie ab
+            //     jetzt als Grabstein, damit jede spätere Zustellung sie trägt.
+            JsonNode after = deleteJson(
+                    "/api/v1/sites/" + site + "/charging-config/charge-points/saeule-2", customer);
+            assertThat(after.get("chargePoints")).hasSize(1);
+            assertThat(after.get("chargePoints").get(0).get("chargePointId").asText())
+                    .isEqualTo("saeule-1");
+            assertThat(ids(after.get("removedChargePointIds"))).containsExactly("saeule-2");
+
+            // 2 · Und sie ist DAUERHAFT: ein späteres Speichern der Grenze trägt
+            //     sie unverändert mit - eine Box, die gerade offline war, sähe
+            //     sie sonst nie.
+            JsonNode later = putJson("/api/v1/sites/" + site + "/charging-config", customer,
+                    Map.of("gridLimitKw", 277));
+            assertThat(ids(later.get("removedChargePointIds"))).containsExactly("saeule-2");
+            assertThat(later.get("chargePoints")).hasSize(1);
+
+            // 3 · Erneutes Eintragen BELEBT die Kennung wieder - sie verschwindet
+            //     aus der Grabstein-Liste und steht wieder in der Allowlist.
+            //     Eine Kennung steht nie in beiden.
+            JsonNode revived = postJson(
+                    "/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "saeule-2", "label", "Halle"));
+            assertThat(revived.get("removedChargePointIds")).isEmpty();
+            assertThat(ids(revived.get("chargePoints").findValues("chargePointId")))
+                    .containsExactlyInAnyOrder("saeule-1", "saeule-2");
+
+            // 4 · Eine Kennung, die diese Anlage nicht führt, ist ein 404 - nie
+            //     ein stiller Erfolg über etwas, das es nicht gab. Und sie hat
+            //     NICHTS verändert.
+            ResponseEntity<String> unknown = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config/charge-points/gibt-es-nicht"),
+                    HttpMethod.DELETE, new HttpEntity<>(bearer(customer)), String.class);
+            assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .get("chargePoints")).hasSize(2);
+
+            // 5 · Der Mandanten-Zaun gilt auch hier.
+            ResponseEntity<String> foreign = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-config/charge-points/saeule-1"),
+                    HttpMethod.DELETE, new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                    String.class);
+            assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+            assertThat(getJson("/api/v1/sites/" + site + "/charging-config", customer)
+                    .get("chargePoints")).hasSize(2);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    private static java.util.List<String> ids(JsonNode array) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        array.forEach(n -> out.add(n.asText()));
+        return out;
+    }
+
+    private static java.util.List<String> ids(java.util.List<JsonNode> nodes) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        nodes.forEach(n -> out.add(n.asText()));
+        return out;
+    }
+
     /** Eine Box, die ihren OCPP-Endpunkt meldet. */
     private static String endpointStations() {
         return """
@@ -508,6 +590,14 @@ class ChargerApiTest {
         ResponseEntity<String> res = rest.exchange(url(path), HttpMethod.PUT,
                 new HttpEntity<>(body, bearer(token)), String.class);
         assertThat(res.getStatusCode()).as("PUT %s -> %s", path, res.getBody())
+                .isEqualTo(HttpStatus.OK);
+        return json.readTree(res.getBody());
+    }
+
+    private JsonNode deleteJson(String path, String token) throws Exception {
+        ResponseEntity<String> res = rest.exchange(url(path), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(token)), String.class);
+        assertThat(res.getStatusCode()).as("DELETE %s -> %s", path, res.getBody())
                 .isEqualTo(HttpStatus.OK);
         return json.readTree(res.getBody());
     }

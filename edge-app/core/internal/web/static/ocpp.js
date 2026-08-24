@@ -237,10 +237,37 @@
     return !con.boost;
   }
 
+  // zeigeGruppe entscheidet, ob die Einrichten-Seite ihre BEDINGTE
+  // Ladepunkte-Gruppe ueberhaupt zeigt.
+  //
+  // ⚠ Seit VP_OCPP_ENABLED per Vorgabe AN ist (24.08.2026), ist "der Server
+  // laeuft" KEIN Signal mehr dafuer, dass diese Anlage mit Ladepunkten zu tun
+  // hat - es gilt jetzt auf JEDER Box. Das Signal ist deshalb, ob es wirklich
+  // Ladepunkte GIBT: eine eingetragene Kennung oder eine Saeule, die sich
+  // gemeldet hat.
+  //
+  // Die vier festen Gruppen sind die Zusage der Seite ("eine fertig
+  // eingerichtete gesunde Anlage zeigt vier ruhige Zeilen"), und eine fuenfte
+  // Zeile auf jeder Anlage OHNE Ladesaeulen waere genau das Rauschen, das der
+  // Umbau beseitigt hat.
+  //
+  // ⚠ Der DEEP-LINK (#ladepunkte) blendet sie trotzdem ein - sonst gaebe es
+  // lokal keinen Weg zur ERSTEN Saeule, und die gefuehrte Einrichtung eines
+  // Ladeparks verlinkt genau dorthin.
+  function zeigeGruppe(o, eingetragen, hash) {
+    if (!o || !o.enabled) return false;
+    if ((eingetragen || []).length > 0) return true;
+    if ((o.chargers || []).length > 0) return true;
+    return String(hash || "").replace(/^#/, "") === "ladepunkte";
+  }
+
   // removalConsequences is what an operator is told BEFORE a station is
   // revoked. It names what STAYS as well as what goes: a removed station is
   // not a stopped one - it keeps its safe profile and charges slowly on, and
   // hiding that would make the next support call a mystery.
+  //
+  // ⚠ Das PORTAL sagt dasselbe (`ladesaeuleAnbinden.entfernenFolgen`) - beide
+  // Wege duerfen ueber dieselbe Handlung nichts Verschiedenes versprechen.
   function removalConsequences(label) {
     return "Ladepunkt „" + (label || "") + "“ entfernen?\n\n" +
       "· Die Ladesäule wird getrennt und kann sich nicht mehr verbinden.\n" +
@@ -261,6 +288,7 @@
     budgetSourceLine: budgetSourceLine,
     budgetSourceTone: budgetSourceTone,
     removalConsequences: removalConsequences,
+    zeigeGruppe: zeigeGruppe,
     budgetLine: budgetLine,
     failsafeLine: failsafeLine,
     connectorLine: connectorLine,
@@ -285,11 +313,22 @@
   function renderSetup(data) {
     var o = data.ocpp;
     if (!$("ocppCard")) return;
-    // ⚠ The Ladepunkte group is the page's only CONDITIONAL one: without the
-    // feature it does not appear at all. The four fixed groups are the page's
-    // promise, and a fifth row on every plant WITHOUT charge points would be
-    // exactly the noise the rework removed.
-    show("ladepunkte", !!(o && o.enabled));
+    // ⚠ Die einzige BEDINGTE Gruppe der Seite - die Regel steht in
+    // zeigeGruppe() und ist ohne Browser pruefbar. Sichtbar ist sie, sobald es
+    // wirklich Ladepunkte gibt (oder der Deep-Link ausdruecklich hierher
+    // zeigt), NICHT schon weil der Server laeuft: der laeuft seit der
+    // Vorgabe-Umstellung auf jeder Box.
+    var gruppe = $("ladepunkte");
+    var warVersteckt = !!(gruppe && gruppe.hidden);
+    show("ladepunkte", zeigeGruppe(o, data.chargers, location.hash));
+    // ⚠ Der Deep-Link kommt VOR den Daten an: einrichten.js hat sein
+    // revealHash() schon gefahren, als die Gruppe noch versteckt war. Sobald
+    // sie auftaucht, wird der Sprung deshalb einmal nachgeholt - ein Deep-Link,
+    // der auf einer unsichtbaren Gruppe landet, ist kein Deep-Link.
+    if (warVersteckt && gruppe && !gruppe.hidden
+        && (location.hash || "").replace(/^#/, "") === "ladepunkte") {
+      window.dispatchEvent(new Event("hashchange"));
+    }
     if (!o || !o.enabled) return;
     txt("ocppEndpoint", D.endpointFor(o.endpoint, location.host, ""));
     txt("ocppServerNote", o.listening ? "" : (o.error || "Der Server läuft nicht."));
@@ -570,6 +609,9 @@
       wire();
       load();
       setInterval(load, 5000);
+      // Ein von Hand eingegebener #ladepunkte soll nicht bis zum naechsten
+      // Takt warten, bis die bedingte Gruppe erscheint.
+      window.addEventListener("hashchange", function () { load(); });
     });
   }
 })();

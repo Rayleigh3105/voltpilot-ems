@@ -805,8 +805,10 @@ Sitzung da — je Säulen-TYP eine, wie bei Deye und go-e.
 
 ### Vorbereitung
 
-1. Box mit `VP_OCPP_ENABLED=true`, Ladepunkt-Kennung auf `:8484` eintragen und
-   an der Säule `ws://<box>:8887/ocpp/<Kennung>` konfigurieren.
+1. Ladepunkt-Kennung eintragen (auf `:8484` oder im Portal) und an der Säule
+   `ws://<box>:8887/ocpp/<Kennung>` konfigurieren. Der Ladepunkt-Server läuft
+   seit dem 24.08.2026 per Vorgabe (`VP_OCPP_ENABLED` ist ein Opt-out) — ein
+   `.env`-Schritt ist nur nötig, wenn er ausdrücklich AUS steht.
 2. Anschlussgrenze, höchste bekannte Gebäudelast und Mindestleistung pflegen;
    die vorgerechnete Ausfall-Zeile auf der Fläche prüfen (`n × X kW + Haus =
    Summe < Anschlussgrenze ✓`).

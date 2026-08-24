@@ -1514,6 +1514,37 @@ function ocppMod() {
   return load(["ocpp.js"]).VPOcpp;
 }
 
+// ⚠ Seit der Ladepunkt-Server per Vorgabe laeuft (24.08.2026), ist "enabled"
+// kein Signal mehr dafuer, dass diese Anlage mit Ladepunkten zu tun hat - es
+// gilt auf JEDER Box. Die Zusage der Seite ("vier ruhige Zeilen") haengt also
+// daran, dass die bedingte Gruppe an die TATSAECHLICHEN Ladepunkte gekoppelt
+// ist, nicht an den Schalter.
+test("die Ladepunkte-Gruppe erscheint erst, wenn es wirklich Ladepunkte gibt", () => {
+  const O = ocppMod();
+  const an = { enabled: true, listening: true, chargers: [] };
+
+  // Der Normalfall JEDER Anlage ohne Ladesaeule: Server laeuft, Gruppe bleibt weg.
+  assert.strictEqual(O.zeigeGruppe(an, [], ""), false);
+  assert.strictEqual(O.zeigeGruppe(an, null, "#anlage"), false);
+
+  // Eine eingetragene Kennung ist der Beleg - auch bevor sich die Saeule meldet.
+  assert.strictEqual(O.zeigeGruppe(an, [{ id: "saeule-1" }], ""), true);
+  // Und eine gemeldete Saeule ebenso (sie kaeme ohne Eintrag gar nicht herein,
+  // aber die Gruppe darf nie hinter der Wirklichkeit zurueckbleiben).
+  assert.strictEqual(
+    O.zeigeGruppe({ ...an, chargers: [{ id: "saeule-1" }] }, [], ""), true);
+
+  // ⚠ Der Deep-Link blendet sie ein - sonst gaebe es lokal keinen Weg zur
+  // ERSTEN Saeule.
+  assert.strictEqual(O.zeigeGruppe(an, [], "#ladepunkte"), true);
+  assert.strictEqual(O.zeigeGruppe(an, [], "ladepunkte"), true);
+
+  // Abgeschaltet bleibt abgeschaltet - auch mit Kennungen und Deep-Link.
+  assert.strictEqual(
+    O.zeigeGruppe({ enabled: false }, [{ id: "a" }], "#ladepunkte"), false);
+  assert.strictEqual(O.zeigeGruppe(null, [{ id: "a" }], "#ladepunkte"), false);
+});
+
 test("the endpoint copy field uses the address the BROWSER reached the box on", () => {
   const O = ocppMod();
   // The box does not know which name the LAN reaches it under, so the host
