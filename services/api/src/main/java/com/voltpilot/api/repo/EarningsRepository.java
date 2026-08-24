@@ -762,11 +762,19 @@ public class EarningsRepository {
         Map<UUID, ExpectedMarketValue> result = new HashMap<>();
         jdbc.query(
                 "WITH " + PriceSlots.forTenantZonesFrom()
+                        // ⚠ per-Anlage-LATERAL statt fleet-weitem GROUP BY
+                        // (gemessener Defekt 2026-08-24): `forecast` ist auf
+                        // `time` partitioniert, dieses CTE bindet `time` gar
+                        // nicht - ohne site_id-Gleichheit steigt es deshalb in
+                        // JEDEN Chunk ab. Prod-förmiger Klon (2,27 Mio Zeilen,
+                        // 28 Chunks): 161 ms -> 1,4 ms, PRÄDIKAT UNVERÄNDERT,
+                        // 0 Differenzen (HotReadRewriteEqualityTest). `site`
+                        // führt jetzt - dieselbe Fence wie der alte JOIN, denn
+                        // `forecast` trägt selbst keine RLS.
                         + ", latest_run AS ("
-                        + "  SELECT f.site_id, max(f.run_at) AS run_at"
-                        + "  FROM forecast f JOIN site s ON s.id = f.site_id"
-                        + "  WHERE f.kind = 'pv' AND f.model = ?"
-                        + "  GROUP BY f.site_id"
+                        + "  SELECT s.id AS site_id, x.run_at FROM site s"
+                        + "  JOIN LATERAL (SELECT max(f.run_at) AS run_at FROM forecast f"
+                        + "    WHERE f.site_id = s.id AND f.kind = 'pv' AND f.model = ?) x ON true"
                         + "), fc AS ("
                         + "  SELECT f.site_id, f.time, f.value_kw"
                         + "  FROM forecast f"

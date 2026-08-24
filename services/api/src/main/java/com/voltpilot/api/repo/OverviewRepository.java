@@ -189,16 +189,33 @@ public class OverviewRepository {
      * flottenweit sichtbar; der Optimierer plant alle 15 Minuten neu, ein Lauf
      * von vor Stunden ist also selbst die Aussage.
      *
-     * <p>Das Fenster ist BEWUSST begrenzt ({@code generated_at >= from}, die
-     * Aufrufer geben wenige Tage): ohne Untergrenze wäre es ein Scan über die
-     * ganze Historie des Hypertables. Eine Anlage ohne Lauf im Fenster ist
-     * ABWESEND - „kein aktueller Plan", nie ein erfundenes Alter.
+     * <p>Das Fenster {@code generated_at >= from} (die Aufrufer geben wenige
+     * Tage) begrenzt das ERGEBNIS - eine Anlage ohne Lauf im Fenster ist
+     * ABWESEND, „kein aktueller Plan", nie ein erfundenes Alter.
+     *
+     * <p><b>⚠ Es begrenzt aber NICHT die gelesenen Chunks, und darauf hat sich
+     * dieser Kommentar früher berufen (gemessener Defekt 2026-08-24):</b>
+     * {@code schedule} ist auf {@code time} partitioniert, nicht auf
+     * {@code generated_at}, ein Prädikat auf {@code generated_at} schliesst also
+     * KEINEN Chunk aus - und einen Index auf {@code generated_at} allein gibt es
+     * nicht ({@code idx_schedule_site_generated} führt mit {@code site_id}).
+     * Fleet-weit ohne {@code site_id}-Bindung las die Form deshalb die GANZE
+     * Plan-Historie: auf einem prod-förmigen Klon (1,68 Mio Zeilen, 28 Chunks)
+     * <b>335 ms, 75.362 Buffer</b> - der grösste Einzelposten von
+     * {@code /overview}. Die per-Anlage-LATERAL-Form gibt jeder Anlage ihre
+     * {@code site_id}-Gleichheit, damit {@code idx_schedule_site_generated}
+     * greift (B4-Muster, AGENTS.md „Portal-Performance-Welle"): <b>9,0 ms</b>,
+     * PRÄDIKAT UNVERÄNDERT, Ergebnis bewiesen gleich (0 Differenzen gegen die
+     * alte Form; {@code HotReadRewriteEqualityTest}). Die RLS-Fence wandert
+     * dabei von {@code schedule} auf {@code site} - beide tragen dieselbe
+     * Mandanten-Policy, also sieht der Aufrufer exakt dieselben Anlagen.
      */
     public Map<UUID, Instant> lastPlanPerSite(Instant from) {
         Map<UUID, Instant> runs = new HashMap<>();
         jdbc.query(
-                "SELECT site_id, max(generated_at) AS last_run FROM schedule "
-                        + "WHERE generated_at >= ? GROUP BY site_id",
+                "SELECT s.id AS site_id, x.last_run FROM site s "
+                        + "JOIN LATERAL (SELECT max(sc.generated_at) AS last_run FROM schedule sc "
+                        + "  WHERE sc.site_id = s.id AND sc.generated_at >= ?) x ON true",
                 rs -> {
                     Timestamp last = rs.getTimestamp("last_run");
                     if (last != null) {
