@@ -290,15 +290,6 @@ body#keycloak-bg::after {
   grid-column: 1 / -1;
 }
 .vpl-toggle {
-  grid-row: 1;
-  grid-column: 2;
-}
-.vpl-field {
-  display: grid;
-  grid-template-columns: 1fr auto;
-}
-.vpl-field > .vpl-label,
-.vpl-toggle {
   appearance: none;
   background: none;
   border: 0;
