@@ -2985,6 +2985,67 @@ class AdminApiTest {
                 .extracting(r -> r.get("name")).doesNotContain("Puls Nord", "Puls Sued");
     }
 
+    /**
+     * B4c: die Plausibilität der gepflegten Einspeisegrenze im Flotten-Endpunkt,
+     * mit den Pilsting-Zahlen als Abnahme-Anker.
+     *
+     * <p>Zwei Anlagen mit IDENTISCHER gemessener Export-Decke (~30 kW, an vielen
+     * Tagen), aber verschieden gepflegter Grenze: <b>Kappe</b> mit 75 kW (der
+     * reale Pilsting-Fehler - vermutlich Summe der Wechselrichter-Nennleistungen
+     * statt der 30-kW-Netzanschluss-Grenze) MUSS anschlagen, <b>Recht</b> mit
+     * korrekt gepflegten 30 kW bleibt still. So ist der Kontrast rein die
+     * Konfiguration, nicht die Messung.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void adminFleetFlagsAFeedInLimitTheAnlageClingsFarBelow() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Einspeise GmbH", "CI").get("id");
+
+        UUID kappe = UUID.randomUUID();
+        UUID recht = UUID.randomUUID();
+        seedSite(kappe, UUID.fromString(tenantId), "Kappe Pilsting");
+        seedSite(recht, UUID.fromString(tenantId), "Kappe Recht");
+        // Ein Stromtarif, damit kein zusätzlicher Pflege-Chip entsteht.
+        exec("UPDATE site SET tarif_art = 'fest', tarif_param_ct_kwh = 30 WHERE id IN ('"
+                + kappe + "', '" + recht + "')");
+        // Der Pilsting-Fehler vs. die korrekte Pflege.
+        exec("UPDATE site SET max_feed_in_kw = 75 WHERE id = '" + kappe + "'");
+        exec("UPDATE site SET max_feed_in_kw = 30 WHERE id = '" + recht + "'");
+
+        // Beide Anlagen kleben an EXAKT 30 kW Einspeisung: je Anlage 8 Tage à 48
+        // Viertelstunden (halber Tag ab Mitternacht, bleibt in EINEM Berliner Tag)
+        // mit 7,5 kWh Export je Viertelstunde = 30 kW Mittelleistung.
+        for (UUID s : new UUID[] {kappe, recht}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, grid_export_kwh, "
+                    + "n_samples) SELECT date_trunc('day', now()) - (d || ' days')::interval "
+                    + "+ (q * interval '15 minutes'), '" + tenantId + "', '" + s + "', 7.5, 90 "
+                    + "FROM generate_series(1, 8) d, generate_series(0, 47) q");
+        }
+
+        Map<String, Map<String, Object>> bySite = new java.util.HashMap<>();
+        for (Map<String, Object> row : fleet(admin)) {
+            bySite.put((String) row.get("siteName"), row);
+        }
+
+        // Der Pilsting-Fall schlägt an.
+        Map<String, Object> k = bySite.get("Kappe Pilsting");
+        Map<String, Object> feedIn = (Map<String, Object>) k.get("feedIn");
+        assertThat(feedIn).containsEntry("verdict", "zu_hoch");
+        assertThat((Number) feedIn.get("observedCeilingKw")).extracting(Number::doubleValue)
+                .isEqualTo(30.0);
+        assertThat((String) feedIn.get("reason")).contains("30,0 kW").contains("75,0 kW")
+                .contains("zu hoch");
+        assertThat((List<Map<String, Object>>) k.get("pflege")).extracting(f -> f.get("code"))
+                .contains("einspeisegrenze-unplausibel");
+
+        // Dieselbe Messung, plausibel gepflegte Grenze: still.
+        Map<String, Object> r = bySite.get("Kappe Recht");
+        assertThat((Map<String, Object>) r.get("feedIn")).containsEntry("verdict", "ok");
+        assertThat((List<Map<String, Object>>) r.get("pflege")).extracting(f -> f.get("code"))
+                .doesNotContain("einspeisegrenze-unplausibel");
+    }
+
     // ---- OTA Stufe 0 „Sehen" (Scout vp-ota-rollout-h4) ----------------------
 
     /**

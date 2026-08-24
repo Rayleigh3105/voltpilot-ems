@@ -2,8 +2,10 @@ package com.voltpilot.api.fleet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.voltpilot.api.repo.AdminFleetRepository.ExportCeiling;
 import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
 import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetFeedInDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetForecastDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetKwpDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.PflegeFlagDto;
@@ -35,7 +37,7 @@ class FleetPflegeTest {
         FleetKwpDto v = FleetPflege.kwp(new BigDecimal("30"), new PvPeak(new BigDecimal("420"), 2000));
         assertThat(v.verdict()).isEqualTo("zu_hoch");
         assertThat(v.reason()).contains("420,0 kW").contains("30,0 kWp").contains("Skalierungsfehler");
-        assertThat(FleetPflege.flags("dynamisch", false, v, List.of()))
+        assertThat(FleetPflege.flags("dynamisch", false, v, null, List.of()))
                 .extracting(PflegeFlagDto::code).containsExactly("kwp-unplausibel");
     }
 
@@ -44,7 +46,7 @@ class FleetPflegeTest {
         // 1,2x Nennleistung liegt unter der 1,25er Grenze - kein Urteil.
         FleetKwpDto v = FleetPflege.kwp(new BigDecimal("30"), new PvPeak(new BigDecimal("36"), 2000));
         assertThat(v.verdict()).isEqualTo("ok");
-        assertThat(FleetPflege.flags("fest", false, v, List.of())).isEmpty();
+        assertThat(FleetPflege.flags("fest", false, v, null, List.of())).isEmpty();
     }
 
     @Test
@@ -66,7 +68,7 @@ class FleetPflegeTest {
         FleetKwpDto v = FleetPflege.kwp(null, new PvPeak(new BigDecimal("99"), 5000));
         assertThat(v.verdict()).isEqualTo("unbekannt");
         assertThat(v.reason()).contains("Keine PV-Nennleistung gepflegt");
-        assertThat(FleetPflege.flags("dynamisch", false, v, List.of())).isEmpty();
+        assertThat(FleetPflege.flags("dynamisch", false, v, null, List.of())).isEmpty();
 
         FleetKwpDto zero = FleetPflege.kwp(BigDecimal.ZERO, new PvPeak(new BigDecimal("99"), 5000));
         assertThat(zero.verdict()).isEqualTo("unbekannt");
@@ -83,7 +85,108 @@ class FleetPflegeTest {
         FleetKwpDto fresh = FleetPflege.kwp(new BigDecimal("30"), new PvPeak(BigDecimal.ONE, 40));
         assertThat(fresh.verdict()).isEqualTo("unbekannt");
         assertThat(fresh.reason()).contains("40 Viertelstunden");
-        assertThat(FleetPflege.flags("dynamisch", false, fresh, List.of())).isEmpty();
+        assertThat(FleetPflege.flags("dynamisch", false, fresh, null, List.of())).isEmpty();
+    }
+
+    // ---- Einspeisegrenze-Plausibilität ---------------------------------------
+
+    @Test
+    void thePilstingFeedInDriftFires() {
+        // Der reale Präzedenzfall: Grenze mit 75 gepflegt, gemessen klebt die
+        // Anlage an ~30 kW - vermutlich Summe der Wechselrichter-Nennleistungen
+        // statt der Netzanschluss-Grenze.
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("75"),
+                new ExportCeiling(new BigDecimal("30"), 20, 18));
+        assertThat(v.verdict()).isEqualTo("zu_hoch");
+        assertThat(v.reason()).contains("30,0 kW").contains("75,0 kW")
+                .contains("18 Tagen").contains("zu hoch");
+        assertThat(FleetPflege.flags("dynamisch", false, null, v, List.of()))
+                .extracting(PflegeFlagDto::code).containsExactly("einspeisegrenze-unplausibel");
+    }
+
+    @Test
+    void aPlausiblyMaintainedLimitStaysSilentAtTheSameMeasurement() {
+        // Dieselbe gemessene 30-kW-Decke, aber die Grenze ist korrekt mit 30
+        // gepflegt: die Anlage klebt genau an ihrer Grenze, nichts zu melden.
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("30"),
+                new ExportCeiling(new BigDecimal("30"), 20, 18));
+        assertThat(v.verdict()).isEqualTo("ok");
+        assertThat(FleetPflege.flags("fest", false, null, v, List.of())).isEmpty();
+    }
+
+    @Test
+    void aSiteThatSimplyNeverReachesItsLimitDoesNotFire() {
+        // Kleine PV: die Anlage erreicht ihre 30-kW-Grenze nie und die
+        // Tages-Maxima klebn nicht an einer stabilen Decke (nur 2 Tage nahe der
+        // Decke). Kein Fehlalarm, obwohl die Decke rechnerisch weit unter der
+        // Grenze liegt.
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("30"),
+                new ExportCeiling(new BigDecimal("6"), 20, 2));
+        assertThat(v.verdict()).isEqualTo("ok");
+        assertThat(FleetPflege.flags("fest", false, null, v, List.of())).isEmpty();
+    }
+
+    @Test
+    void weakWeeksWithTooFewExportDaysAreNotJudged() {
+        // Nur 3 Tage überhaupt mit Einspeisung (Winter, schwache Wochen): darunter
+        // wird nicht geurteilt, auch wenn diese wenigen an derselben Decke klebn.
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("75"),
+                new ExportCeiling(new BigDecimal("30"), 3, 3));
+        assertThat(v.verdict()).isEqualTo("unbekannt");
+        assertThat(v.reason()).contains("3").contains("Export-Tage");
+        assertThat(FleetPflege.flags("dynamisch", false, null, v, List.of())).isEmpty();
+    }
+
+    @Test
+    void aLimitThatIsRepeatedlyExceededIsNotHeld() {
+        // Richtung 2: die robuste Decke (45 kW) liegt deutlich über der gepflegten
+        // Grenze (30 kW) - die Grenze wird nicht gehalten oder ist zu niedrig.
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("30"),
+                new ExportCeiling(new BigDecimal("45"), 20, 12));
+        assertThat(v.verdict()).isEqualTo("nicht_gehalten");
+        assertThat(v.reason()).contains("45,0 kW").contains("30,0 kW").contains("nicht gehalten");
+        assertThat(FleetPflege.flags("fest", false, null, v, List.of()))
+                .extracting(PflegeFlagDto::code).containsExactly("einspeisegrenze-unplausibel");
+    }
+
+    @Test
+    void justBelowTheLimitButNotDeeplyStaysSilent() {
+        // Klebt an 29 kW bei einer 30-kW-Grenze: unter der Grenze, aber NICHT
+        // deutlich (29 > 30 * 0,7 = 21). Korrekt gepflegt, kein Hinweis.
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("30"),
+                new ExportCeiling(new BigDecimal("29"), 20, 18));
+        assertThat(v.verdict()).isEqualTo("ok");
+        assertThat(FleetPflege.flags("fest", false, null, v, List.of())).isEmpty();
+    }
+
+    @Test
+    void aNonExportingSiteHasNoCeilingToClingTo() {
+        // Klebt rechnerisch an ~0 kW unter einer 75-kW-Grenze: die Anlage
+        // exportiert praktisch nicht, es gibt keine Decke - kein "zu_hoch".
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("75"),
+                new ExportCeiling(new BigDecimal("0.3"), 20, 20));
+        assertThat(v.verdict()).isEqualTo("ok");
+        assertThat(FleetPflege.flags("dynamisch", false, null, v, List.of())).isEmpty();
+    }
+
+    @Test
+    void withoutAMaintainedLimitNothingIsJudgedAndTheGapNamesItsReason() {
+        FleetFeedInDto v = FleetPflege.feedIn(null, new ExportCeiling(new BigDecimal("30"), 20, 18));
+        assertThat(v.verdict()).isEqualTo("unbekannt");
+        assertThat(v.reason()).contains("Keine Einspeisegrenze gepflegt");
+        assertThat(FleetPflege.flags("dynamisch", false, null, v, List.of())).isEmpty();
+
+        FleetFeedInDto zero = FleetPflege.feedIn(BigDecimal.ZERO,
+                new ExportCeiling(new BigDecimal("30"), 20, 18));
+        assertThat(zero.verdict()).isEqualTo("unbekannt");
+    }
+
+    @Test
+    void withoutAnyMeasurementNothingIsJudgedEither() {
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("75"), null);
+        assertThat(v.verdict()).isEqualTo("unbekannt");
+        assertThat(v.reason()).contains("0").contains("Export-Tage");
+        assertThat(FleetPflege.flags("dynamisch", false, null, v, List.of())).isEmpty();
     }
 
     // ---- Prognose-Ausreißer --------------------------------------------------
@@ -105,7 +208,7 @@ class FleetPflegeTest {
                     assertThat(f.reason()).contains("60 %").contains("Verbrauch").contains("13 %");
                 });
         assertThat(checks.get(A)).allSatisfy(f -> assertThat(f.outlier()).isFalse());
-        assertThat(FleetPflege.flags("fest", false, null, checks.get(D)))
+        assertThat(FleetPflege.flags("fest", false, null, null, checks.get(D)))
                 .extracting(PflegeFlagDto::code).containsExactly("prognose-ausreisser-load");
     }
 
@@ -133,7 +236,7 @@ class FleetPflegeTest {
             assertThat(f.fleetMedianPct()).isNull();
             assertThat(f.reason()).contains("Zu wenige bewertete Anlagen");
         });
-        assertThat(FleetPflege.flags("fest", false, null, checks.get(B))).isEmpty();
+        assertThat(FleetPflege.flags("fest", false, null, null, checks.get(B))).isEmpty();
     }
 
     @Test
@@ -163,7 +266,7 @@ class FleetPflegeTest {
         assertThat(checks.get(A)).extracting(FleetForecastDto::kind).containsExactly("load", "pv");
         assertThat(checks.get(A).get(0).outlier()).isFalse();
         assertThat(checks.get(A).get(1).outlier()).isTrue();
-        assertThat(FleetPflege.flags("fest", false, null, checks.get(A)))
+        assertThat(FleetPflege.flags("fest", false, null, null, checks.get(A)))
                 .extracting(PflegeFlagDto::code).containsExactly("prognose-ausreisser-pv");
     }
 
@@ -176,24 +279,27 @@ class FleetPflegeTest {
 
     @Test
     void theTwoExistenceChecksAreExactlyTheStufe1Rules() {
-        assertThat(FleetPflege.flags("ohne", false, null, List.of()))
+        assertThat(FleetPflege.flags("ohne", false, null, null, List.of()))
                 .extracting(PflegeFlagDto::label).containsExactly("Stromtarif fehlt");
-        assertThat(FleetPflege.flags("dynamisch", true, null, List.of()))
+        assertThat(FleetPflege.flags("dynamisch", true, null, null, List.of()))
                 .extracting(PflegeFlagDto::label).containsExactly("Speicher ohne Gerät");
-        assertThat(FleetPflege.flags("fest", false, null, List.of())).isEmpty();
-        assertThat(FleetPflege.flags(null, false, null, null)).isEmpty();
+        assertThat(FleetPflege.flags("fest", false, null, null, List.of())).isEmpty();
+        assertThat(FleetPflege.flags(null, false, null, null, null)).isEmpty();
     }
 
     @Test
-    void allFourFlagsComeInAFixedOrder() {
+    void allFiveFlagsComeInAFixedOrder() {
         FleetKwpDto kwp = FleetPflege.kwp(new BigDecimal("30"),
                 new PvPeak(new BigDecimal("420"), 2000));
+        // Pilsting: klebt an 15 Tagen bei 30 kW, Grenze mit 75 gepflegt.
+        FleetFeedInDto feedIn = FleetPflege.feedIn(new BigDecimal("75"),
+                new ExportCeiling(new BigDecimal("30"), 20, 15));
         List<FleetForecastDto> forecast = List.of(
                 new FleetForecastDto("pv", 80, 14, 12.0, true, "Ø Abweichung 80 %."));
-        assertThat(FleetPflege.flags("ohne", true, kwp, forecast))
+        assertThat(FleetPflege.flags("ohne", true, kwp, feedIn, forecast))
                 .extracting(PflegeFlagDto::code)
                 .containsExactly("tarif-fehlt", "speicher-ohne-geraet", "kwp-unplausibel",
-                        "prognose-ausreisser-pv");
+                        "einspeisegrenze-unplausibel", "prognose-ausreisser-pv");
     }
 
     @Test

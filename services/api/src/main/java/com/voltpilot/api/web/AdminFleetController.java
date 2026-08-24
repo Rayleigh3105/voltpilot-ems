@@ -8,6 +8,7 @@ import com.voltpilot.api.repo.AdminFleetRepository;
 import com.voltpilot.api.repo.AdminFleetRepository.DeviceStats;
 import com.voltpilot.api.repo.AdminFleetRepository.EdgeReleaseRow;
 import com.voltpilot.api.repo.AdminFleetRepository.EdgeVersionRow;
+import com.voltpilot.api.repo.AdminFleetRepository.ExportCeiling;
 import com.voltpilot.api.repo.AdminFleetRepository.FleetSiteRow;
 import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
 import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
@@ -15,6 +16,7 @@ import com.voltpilot.api.repo.AdminFleetRepository.SourceCounts;
 import com.voltpilot.api.repo.AdminFleetRepository.UpdateStatusRow;
 import com.voltpilot.api.web.dto.AdminFleetDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetEdgeDto;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetFeedInDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetForecastDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetKwpDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetSiteDto;
@@ -80,6 +82,14 @@ public class AdminFleetController {
     private static final Duration PV_PEAK_LOOKBACK = Duration.ofDays(30);
 
     /**
+     * Fenster der Einspeisegrenze-Plausibilität. Wie beim PV-Fenster: lang genug,
+     * dass die Anlage darin an mehreren sonnigen Tagen ihre Export-Decke erreicht
+     * hat (ein „klebt wiederholt" braucht Tage), kurz genug, dass eine gerade
+     * korrigierte Grenze nicht ewig nachhallt.
+     */
+    private static final Duration FEED_IN_LOOKBACK = Duration.ofDays(30);
+
+    /**
      * Fenster der Prognose-Bewertung. Die Auswertung läuft täglich; zwei Wochen
      * glätten Wetterlagen, ohne eine seit Tagen kaputte Prognose zu verstecken.
      */
@@ -110,6 +120,8 @@ public class AdminFleetController {
         Set<UUID> withBattery = fleet.sitesWithBattery();
         Map<UUID, BigDecimal> pvCapacity = fleet.pvCapacityPerSite();
         Map<UUID, PvPeak> pvPeak = fleet.pvPeakPerSite(now.minus(PV_PEAK_LOOKBACK));
+        Map<UUID, BigDecimal> maxFeedIn = fleet.maxFeedInPerSite();
+        Map<UUID, ExportCeiling> feedInCeiling = fleet.feedInCeilingPerSite(now.minus(FEED_IN_LOOKBACK));
 
         // Die UNTERSTE Präzedenz-Stufe (Umgebungs-Vorgabe, validiert - eine
         // krumme Env-Variable fällt auf das Basismodell zurück statt gar nichts
@@ -129,6 +141,7 @@ public class AdminFleetController {
             int waitingCount = stats == null ? 0 : stats.waitingCount();
 
             FleetKwpDto kwp = FleetPflege.kwp(pvCapacity.get(id), pvPeak.get(id));
+            FleetFeedInDto feedIn = FleetPflege.feedIn(maxFeedIn.get(id), feedInCeiling.get(id));
             List<FleetForecastDto> siteForecast = forecast.getOrDefault(id, List.of());
             boolean batteryWithoutDevice = unlinkedBattery.contains(id);
 
@@ -162,8 +175,10 @@ public class AdminFleetController {
                     control.get(id),
                     curtailment.get(id),
                     kwp,
+                    feedIn,
                     siteForecast,
-                    FleetPflege.flags(site.tarifArt(), batteryWithoutDevice, kwp, siteForecast)));
+                    FleetPflege.flags(site.tarifArt(), batteryWithoutDevice, kwp, feedIn,
+                            siteForecast)));
         }
         // Das Register reist als Ganzes mit (es ist klein und wird ohnehin je
         // Zeile GEBRAUCHT): der erste Eintrag ist der Soll-Stand, und ein

@@ -87,6 +87,17 @@ public class AdminFleetRepository {
     public record PvPeak(BigDecimal peakKw, long buckets) {
     }
 
+    /**
+     * Die gemessene Export-Decke einer Anlage im Nachschau-Fenster (B4c).
+     *
+     * <p>{@code ceilingKw} ist die ROBUSTE Decke = das 90.-Perzentil der
+     * Tages-Maxima der Netzeinspeisung; {@code exportDays} die Zahl der Tage mit
+     * messbarer Einspeisung; {@code clingDays} die Tage, deren Tages-Maximum
+     * innerhalb weniger Prozent DIESER Decke liegt („klebt an derselben Decke").
+     */
+    public record ExportCeiling(BigDecimal ceilingKw, int exportDays, int clingDays) {
+    }
+
     /** Ein Prognose-Messwert einer Anlage (je Prognoseart). */
     public record ForecastRow(UUID siteId, String kind, double nmaePct, int days) {
     }
@@ -367,6 +378,83 @@ public class AdminFleetRepository {
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class), new PvPeak(
                             rs.getBigDecimal("peak_kw"), rs.getLong("buckets")));
+                },
+                Timestamp.from(from));
+        return out;
+    }
+
+    /**
+     * Die gepflegte Einspeisegrenze je Anlage ({@code site.max_feed_in_kw}, die
+     * statische Kappe am Netzverknüpfungspunkt, FK1). {@code NULL} = nicht
+     * gepflegt (dann ist die gemessene Decke nicht einzuordnen).
+     */
+    public Map<UUID, BigDecimal> maxFeedInPerSite() {
+        Map<UUID, BigDecimal> out = new HashMap<>();
+        jdbc.query(
+                "SELECT id, max_feed_in_kw FROM site WHERE max_feed_in_kw IS NOT NULL",
+                rs -> {
+                    out.put(rs.getObject("id", UUID.class), rs.getBigDecimal("max_feed_in_kw"));
+                });
+        return out;
+    }
+
+    /**
+     * Die gemessene Export-Decke je Anlage aus den 15-Minuten-Rollups (B4c) -
+     * das Gegenstück zu {@link #pvPeakPerSite(Instant)}, nur robust gegen einzelne
+     * Sensor-Ausreißer und gegen wetterschwache Wochen.
+     *
+     * <p>Gerechnet in DREI Schritten: (1) je Anlage und Berliner Kalendertag das
+     * Tages-Maximum der Viertelstunden-Einspeiseleistung
+     * ({@code max(grid_export_kwh) * 4}); (2) daraus die robuste Decke = das
+     * 90.-Perzentil der Tages-Maxima (ein einzelner Freak-Tag zieht sie nicht
+     * hoch, eine Handvoll trüber Tage nicht runter - es ist der Wert, den die
+     * Anlage an ihren guten Tagen wirklich erreicht); (3) die Zahl der Tage,
+     * deren Tages-Maximum innerhalb weniger Prozent DIESER Decke liegt - „klebt
+     * an derselben Decke". Eine hart gekappte Anlage trifft dieselbe Decke Tag
+     * für Tag (viele {@code clingDays}); eine Anlage, deren Einspeisung schlicht
+     * mit dem Wetter schwankt, tut das nicht (wenige).
+     *
+     * <p>Ein „Export-Tag" braucht genug Messfenster ({@code >= 48}
+     * Viertelstunden - halbtags offline gewesen ist keine belastbare
+     * Tages-Aussage) UND eine wirklich messbare Einspeisung ({@code >= 1 kW}
+     * Tages-Maximum - ein reiner Verbrauchstag oder Mess-Rauschen charakterisiert
+     * keine Einspeise-Decke). Eine Anlage ohne genug Export-Tage ist ABWESEND;
+     * das Urteil darüber fällt die reine {@code FleetPflege}.
+     */
+    public Map<UUID, ExportCeiling> feedInCeilingPerSite(Instant from) {
+        Map<UUID, ExportCeiling> out = new HashMap<>();
+        jdbc.query(
+                "WITH day AS ("
+                        + "  SELECT site_id, (bucket AT TIME ZONE 'Europe/Berlin')::date AS d,"
+                        + "         max(grid_export_kwh) * 4 AS day_peak_kw,"
+                        + "         count(*) FILTER (WHERE grid_export_kwh IS NOT NULL) AS day_buckets"
+                        + "  FROM telemetry_rollup_15m WHERE bucket >= ?"
+                        + "  GROUP BY site_id, (bucket AT TIME ZONE 'Europe/Berlin')::date"
+                        + "),"
+                        // Ein Export-Tag ist ein Tag mit genug Messfenster UND messbarer
+                        // Einspeisung - sonst charakterisiert er keine Decke.
+                        + "export_day AS ("
+                        + "  SELECT site_id, day_peak_kw FROM day"
+                        + "  WHERE day_buckets >= 48 AND day_peak_kw >= 1.0"
+                        + "),"
+                        // Die robuste Decke: das 90.-Perzentil der Tages-Maxima.
+                        + "ceiling AS ("
+                        + "  SELECT site_id,"
+                        + "         percentile_cont(0.9) WITHIN GROUP (ORDER BY day_peak_kw::double precision)"
+                        + "           AS ceiling_kw,"
+                        + "         count(*) AS export_days"
+                        + "  FROM export_day GROUP BY site_id"
+                        + ") "
+                        + "SELECT c.site_id, c.ceiling_kw, c.export_days,"
+                        // Die Tage, deren Tages-Maximum innerhalb von 5 % der Decke liegt.
+                        + "       count(*) FILTER (WHERE e.day_peak_kw >= c.ceiling_kw * 0.95) AS cling_days "
+                        + "FROM ceiling c JOIN export_day e ON e.site_id = c.site_id "
+                        + "GROUP BY c.site_id, c.ceiling_kw, c.export_days",
+                rs -> {
+                    out.put(rs.getObject("site_id", UUID.class), new ExportCeiling(
+                            rs.getBigDecimal("ceiling_kw"),
+                            rs.getInt("export_days"),
+                            rs.getInt("cling_days")));
                 },
                 Timestamp.from(from));
         return out;

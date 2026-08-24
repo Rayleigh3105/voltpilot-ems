@@ -72,6 +72,7 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
             ControlStatusDto control,
             CurtailmentStatusDto curtailment,
             FleetKwpDto kwp,
+            FleetFeedInDto feedIn,
             List<FleetForecastDto> forecast,
             List<PflegeFlagDto> pflege) {
     }
@@ -132,6 +133,29 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
      */
     public record FleetKwpDto(BigDecimal configuredKwp, BigDecimal observedPeakKw, long buckets,
             String verdict, String reason) {
+    }
+
+    /**
+     * Die Plausibilität der gepflegten Einspeisegrenze (B4c): die über N Tage
+     * GEMESSENE Export-Decke gegen {@code site.max_feed_in_kw}.
+     *
+     * <p>Nach dem B4a-kWp-Muster - der reale Präzedenzfall ist Pilsting, wo die
+     * Grenze mit 75 statt 30 gepflegt war (vermutlich Summe der
+     * Wechselrichter-Nennleistungen statt der Netzanschluss-Grenze): der Fahrplan
+     * plant dann Verkaufs-Orders, die physisch nie fließen können, und der
+     * Einspeise-Wächter der Box regelt gegen die falsche Zahl.
+     *
+     * <p>{@code verdict} ist {@code ok} | {@code zu_hoch} (die Anlage klebt
+     * wiederholt deutlich UNTER der Grenze - vermutlich zu hoch gepflegt) |
+     * {@code nicht_gehalten} (die gemessene Einspeisung überschreitet die Grenze
+     * wiederholt) | {@code unbekannt}; {@code reason} sagt in einem Satz, WARUM -
+     * auch (und gerade) beim Urteil {@code unbekannt}. {@code observedCeilingKw}
+     * ist die robuste Decke (90.-Perzentil der Tages-Maxima), {@code exportDays}
+     * die Zahl bewerteter Export-Tage, {@code clingDays} die Tage, deren
+     * Tages-Maximum an derselben Decke klebt.
+     */
+    public record FleetFeedInDto(BigDecimal configuredKw, BigDecimal observedCeilingKw,
+            int exportDays, int clingDays, String verdict, String reason) {
     }
 
     /**
