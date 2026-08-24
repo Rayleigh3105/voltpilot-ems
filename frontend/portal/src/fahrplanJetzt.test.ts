@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { actionPhrase, jetztHeld, measurementChips, type JetztInput } from './fahrplanJetzt';
 import type { ControlStatus, CurtailmentStatus } from './api';
 import { curtailTruth } from './curtailment';
+import { FLOW_CONFLICT_MIN_STREAK } from './flowConflict';
 import type { LiveSnapshot } from './live';
 import type { WhySlot } from './fahrplanWhy';
 
@@ -616,6 +617,53 @@ describe('jetztHeld · Flussabgleich (bestätigt, aber fließt nicht)', () => {
     // Der Standard-Held: commanded −6,1, gemessen −6,1 (deckungsgleich).
     const v = jetztHeld(input({ conflictStreak: 3, maxFeedInKw: 30 }));
     expect(v.flowConflict).toBeNull();
+    expect(v.confirm).toContain('bestätigt');
+  });
+
+  // Der PAUSEN-Fall (Live-Lage Pilsting/Herzogau 24.08.2026): commanded ≈ 0,
+  // gemessen +10,0 kW LADEN an der vollen 30-kW-Grenze.
+  const pauseHeld = (over: Partial<JetztInput> = {}): JetztInput =>
+    input({
+      slot: slot({ slotRole: 'warten', batteryKw: 0, socPct: 55 }),
+      control: status({ commandedKw: 0, confirmedKw: 0, allMatch: true }),
+      snapshot: snap({ pvKw: 46.3, loadKw: 5.1, gridKw: -31.2, battKw: 10, socPct: 55 }),
+      maxFeedInKw: 30,
+      conflictStreak: FLOW_CONFLICT_MIN_STREAK,
+      ...over,
+    });
+
+  it('Pause + an der Kappe ladend → INFO: grün, Bestätigung BLEIBT, freundlicher Satz', () => {
+    const v = jetztHeld(pauseHeld());
+    expect(v.flowConflictSeverity).toBe('info');
+    expect(v.tone).toBe('ok');
+    expect(v.flowConflict).toContain(`nimmt aber gerade 10,0${NBSP}kW Überschuss auf`);
+    expect(v.flowConflict).toContain(`Einspeisegrenze (30${NBSP}kW)`);
+    expect(v.flowConflict).not.toContain('Bitte im Blick behalten');
+    expect(v.confirm).toContain('bestätigt');
+    expect(v.status).not.toContain('fließt gerade nicht');
+  });
+
+  it('Pause + ladend OHNE Grenze → WARN: bernstein, Bestätigung entfällt, Status „fließt nicht"', () => {
+    const v = jetztHeld(pauseHeld({ maxFeedInKw: null }));
+    expect(v.flowConflictSeverity).toBe('warn');
+    expect(v.tone).toBe('warn');
+    expect(v.flowConflict).toContain('Pause angewiesen');
+    expect(v.confirm).toBeNull();
+    expect(v.status).toContain('fließt gerade nicht');
+  });
+
+  it('Pause + ENTLADEN → WARN, auch mit gepflegter Grenze', () => {
+    const v = jetztHeld(pauseHeld({ snapshot: snap({ pvKw: 0, loadKw: 8, gridKw: 0 }) }));
+    expect(v.flowConflictSeverity).toBe('warn');
+    expect(v.tone).toBe('warn');
+    expect(v.flowConflict).toContain(`entlädt aber 8,0${NBSP}kW`);
+  });
+
+  it('Pause unter der Serien-Schwelle → grüne Ruhe, Bestätigung, kein Konflikt', () => {
+    const v = jetztHeld(pauseHeld({ conflictStreak: FLOW_CONFLICT_MIN_STREAK - 1 }));
+    expect(v.flowConflict).toBeNull();
+    expect(v.flowConflictSeverity).toBeNull();
+    expect(v.tone).toBe('ok');
     expect(v.confirm).toContain('bestätigt');
   });
 });

@@ -491,6 +491,124 @@ describe('surplusWhy (Teil 4b: Überschuss geht ins Netz statt in die Batterie)'
     // Charging (not at cap, not full) while exporting: no surplus reason.
     expect(surplusWhy({ ...exporting, batteryKw: 3, slotRole: 'pv_speichern' }, 'eigenverbrauch')).toBeNull();
   });
+
+  // Teil 2 (kappen-ehrlich) + Teil 3 (bezifferte Warte-Ökonomie), Pilsting.
+  describe('kappen-bewusst (Teil 2) und beziffert (Teil 3)', () => {
+    const at = (h: number, m: number) => new Date(2026, 6, 23, h, m).toISOString();
+    const chargeSlot = (h: number, m: number, exp: number, batt: number, soc: number | null = null): WhySlot => ({
+      start: at(h, m),
+      batteryKw: batt,
+      gridKw: 0,
+      priceEurMwh: 20,
+      costEur: null,
+      baselineCostEur: null,
+      slotRole: 'guenstig_laden',
+      slotFlags: null,
+      exportValueCtKwh: exp,
+      storedValueCtKwh: 20,
+      socPct: soc,
+    });
+    // Ein ruhender, einspeisender Slot JETZT (Einspeisewert 5,0), danach ein
+    // Ladefenster 13:15–14:00 mit fallender Einspeise-Vergütung (2–4 ct) und
+    // End-Ladestand 92 % → „voll wird der Speicher trotzdem".
+    const now: WhySlot = {
+      ...exporting,
+      start: at(13, 0),
+      exportValueCtKwh: 5.0,
+      gridKw: -31.2,
+      batteryKw: 0,
+      slotRole: 'warten',
+    };
+    const planSlots: WhySlot[] = [
+      now,
+      chargeSlot(13, 15, 2.0, 15),
+      chargeSlot(13, 30, 3.0, 15),
+      chargeSlot(13, 45, 4.0, 15),
+      chargeSlot(14, 0, 3.0, 15, 92),
+      chargeSlot(14, 15, 0, 0), // beendet das Ladefenster
+    ];
+    const nextCharge = at(13, 15);
+
+    it('c) beziffert die Warte-Ökonomie aus dem Plan (Teil 3)', () => {
+      expect(
+        surplusWhy(now, 'eigenverbrauch', nextCharge, {
+          slots: planSlots,
+          slotMinutes: 15,
+          maxFeedInKw: 30,
+          measuredExportKw: 31.2,
+        }),
+      ).toBe(
+        'Der Speicher wartet absichtlich: Einspeisen bringt jetzt 5,0 ct/kWh, ab 13:15 Uhr ' +
+          'kostet Laden nur 2,0–4,0 ct/kWh entgangene Vergütung. Voll wird der Speicher ' +
+          'trotzdem (geplant: rund 15 kWh bis 14:15 Uhr).',
+      );
+    });
+
+    it('c) der bezifferte Satz nennt KEINE Einspeisegrenze - die trägt der Flussabgleich', () => {
+      const s = surplusWhy(now, 'eigenverbrauch', nextCharge, {
+        slots: planSlots,
+        slotMinutes: 15,
+        maxFeedInKw: 30,
+        measuredExportKw: 31.2,
+      })!;
+      expect(s).not.toContain('Einspeisegrenze');
+    });
+
+    it('c) einheitliche Ladefenster-Vergütung → „rund X ct/kWh"', () => {
+      const flat = [now, chargeSlot(13, 15, 3, 15), chargeSlot(13, 30, 3, 15, 92), chargeSlot(13, 45, 0, 0)];
+      expect(surplusWhy(now, 'eigenverbrauch', nextCharge, { slots: flat, slotMinutes: 15 })).toContain(
+        'kostet Laden nur rund 3,0 ct/kWh entgangene Vergütung',
+      );
+    });
+
+    it('c) fällt auf den kappen-EHRLICHEN Satz zurück, wenn nicht beziffert werden kann (Teil 2)', () => {
+      // Kein Einspeisewert jetzt → keine Bezifferung; gemessene Einspeisung an der Grenze.
+      expect(
+        surplusWhy({ ...now, exportValueCtKwh: null }, 'eigenverbrauch', nextCharge, {
+          maxFeedInKw: 30,
+          measuredExportKw: 31.2,
+        }),
+      ).toBe(
+        'Der Speicher wartet absichtlich: Er lädt laut Fahrplan ab 13:15 Uhr, wenn Speichern am ' +
+          `wertvollsten ist. Ihr Überschuss wird bis zur Einspeisegrenze (30${NBSP}kW) eingespeist und ` +
+          'vergütet; was darüber liegt, lädt den Speicher.',
+      );
+    });
+
+    it('c) die Kappe greift auch PROGNOSTIZIERT (geplanter Export ≥ Grenze), ohne Messung', () => {
+      const s = surplusWhy({ ...now, exportValueCtKwh: null, gridKw: -31.2 }, 'eigenverbrauch', nextCharge, {
+        maxFeedInKw: 30,
+      })!;
+      expect(s).toContain(`bis zur Einspeisegrenze (30${NBSP}kW)`);
+    });
+
+    it('c) ohne Kappe der unveränderte „Bis dahin"-Satz aus Fix 1', () => {
+      expect(surplusWhy({ ...now, exportValueCtKwh: null }, 'eigenverbrauch', nextCharge)).toBe(
+        'Der Speicher wartet absichtlich: Er lädt laut Fahrplan ab 13:15 Uhr, wenn Speichern am ' +
+          'wertvollsten ist. Bis dahin wird Ihr Überschuss eingespeist und vergütet.',
+      );
+    });
+
+    it('c) beziffert NICHT, wenn das Ladefenster nicht günstiger ist (kein irreführender Satz)', () => {
+      const dearer = [now, chargeSlot(13, 15, 6, 15), chargeSlot(13, 30, 6, 15, 92), chargeSlot(13, 45, 0, 0)];
+      const s = surplusWhy(now, 'eigenverbrauch', nextCharge, { slots: dearer, slotMinutes: 15 })!;
+      expect(s).toContain('Er lädt laut Fahrplan ab');
+      expect(s).not.toContain('kostet Laden nur');
+    });
+
+    it('d) hängt bei erreichter Grenze den „darüber lädt der Speicher"-Zusatz an (Teil 2)', () => {
+      expect(
+        surplusWhy({ ...exporting, gridKw: -31.2 }, 'direktvermarktung', null, {
+          maxFeedInKw: 30,
+          measuredExportKw: 31.2,
+        }),
+      ).toBe(
+        'Ihr Solar-Überschuss wird gerade verkauft statt gespeichert: Die Einspeisung bringt jetzt ' +
+          '9,2 ct/kWh – mehr, als der Strom später aus dem Speicher wert wäre (≈ 7,8 ct/kWh nach ' +
+          `Verlusten und Verschleiß). Über die Einspeisegrenze (30${NBSP}kW) hinaus lädt der Speicher trotzdem.`,
+      );
+    });
+  });
 });
 
 describe('slotContextRows', () => {

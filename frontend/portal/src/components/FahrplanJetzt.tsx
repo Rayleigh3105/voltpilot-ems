@@ -62,15 +62,22 @@ export function JetztHeld({ view }: { view: JetztHeldView }) {
 
           {view.adjust && <p className="vp-jetzt-adjust">{view.adjust}</p>}
 
-          {/* Flussabgleich (bernstein, kein Gerätefehler): der Sollwert ist
-              register-bestätigt, aber die Physik fließt nicht - er ersetzt die
-              Bestätigungszeile. */}
-          {view.flowConflict && (
-            <p className="vp-jetzt-conflict">
-              <Icon name="alert-triangle" size={14} />
-              {view.flowConflict}
-            </p>
-          )}
+          {/* Flussabgleich: der Sollwert ist register-bestätigt, aber die Physik
+              fließt anders. `warn` (bernstein) ersetzt die Bestätigung; `info`
+              (grün) ist die gutartige Physik der vollen Einspeisegrenze und
+              steht ruhig NEBEN der Bestätigung. */}
+          {view.flowConflict &&
+            (view.flowConflictSeverity === 'info' ? (
+              <p className="vp-jetzt-confirm">
+                <Icon name="check" size={14} />
+                {view.flowConflict}
+              </p>
+            ) : (
+              <p className="vp-jetzt-conflict">
+                <Icon name="alert-triangle" size={14} />
+                {view.flowConflict}
+              </p>
+            ))}
 
           {/* Bernstein, nicht rot: die Anlage setzt die geplante Abregelung
               (noch) nicht um bzw. die Messung widerspricht ihr - das ist kein

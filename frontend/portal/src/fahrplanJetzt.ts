@@ -154,16 +154,21 @@ export interface JetztHeldView {
    */
   curtailment: string | null;
   /**
-   * Der FLUSSABGLEICH (bernstein, KEIN Fehler): der Batterie-Sollwert ist
-   * register-bestätigt, aber die Physik fließt nicht — z. B. „Entladung
-   * angewiesen (30,0 kW) - der Speicher entlädt aber nicht (Messung: lädt
-   * 3,3 kW). Bitte im Blick behalten." (Scout `vp-verkauf-praemisse-s8` §3, der
-   * Pilsting-Vorfall). Null, solange kein belegter, entprellter Widerspruch
-   * vorliegt — dann ist die Karte zeichengleich zur heutigen Anzeige. Im
-   * Konfliktfall ERSETZT er die Bestätigungszeile (`confirm` wird null) und der
-   * Zustand liest sich nicht mehr als „bestätigt/planmäßig".
+   * Der FLUSSABGLEICH: der Batterie-Sollwert ist register-bestätigt, aber die
+   * Physik fließt anders. Zwei Fälle (siehe {@link flowConflictSeverity}):
+   *   - `warn` (bernstein, KEIN Fehler) — z. B. „Entladung angewiesen (30,0 kW)
+   *     - der Speicher entlädt aber nicht (Messung: lädt 3,3 kW). Bitte im Blick
+   *     behalten." (Scout `vp-verkauf-praemisse-s8` §3) bzw. „Pause angewiesen –
+   *     der Speicher lädt aber 10,0 kW (Messung)." — ersetzt die Bestätigung.
+   *   - `info` (grün, gutartig) — „Der Speicher pausiert planmäßig – nimmt aber
+   *     gerade 10,0 kW Überschuss auf, weil Ihre Einspeisegrenze (30 kW)
+   *     erreicht ist. …" (Pilsting 24.08.2026): die Bestätigung bleibt.
+   * Null, solange kein belegter, entprellter Widerspruch vorliegt — dann ist die
+   * Karte zeichengleich zur heutigen Anzeige.
    */
   flowConflict: string | null;
+  /** Die Schwere des Flussabgleichs (steuert Ton + Icon); null = keiner. */
+  flowConflictSeverity: 'info' | 'warn' | null;
   /** Der Warum-Satz des laufenden Slots; null = kein Grund aufgezeichnet. */
   why: string | null;
   /** Die Mess-Wahrheit als Chips; leer, wenn nichts Frisches gemessen wurde. */
@@ -405,15 +410,17 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
     SHOWS_VALUE.has(state) && state !== 'abweichung'
       ? flowConflict(conflictInput, input.conflictStreak ?? 0)
       : null;
+  // Nur ein WARN-Befund kippt Ton, Status und Bestätigung; die gutartige Info
+  // (voller Netzanschluss nimmt Überschuss auf) bleibt grün und behält den Haken.
+  const flowWarn = flow?.severity === 'warn';
 
   return {
     state,
-    // Ein Flussabgleich darf nie mehr als „grün, planmäßig" tragen.
-    tone: flow ? 'warn' : tone,
+    tone: flowWarn ? 'warn' : tone,
     badge: measured ? PROVENIENZ.gemessen.label : PROVENIENZ.geplant.label,
     badgeArt: measured ? 'gemessen' : 'geplant',
     badgeNote: measured && status ? fmtRelative(status.checkedAt, now) : null,
-    status: flow
+    status: flowWarn
       ? 'Der angewiesene Wert fließt gerade nicht wie erwartet. Bitte im Blick behalten.'
       : statusLine(state, strip?.sentence ?? null, executedKw, confirmedKw),
     lead: leadLine(
@@ -429,14 +436,15 @@ export function jetztHeld(input: JetztInput): JetztHeldView {
       dir == null ? null : dir === 'laden' ? 'in den Speicher' : dir === 'entladen' ? 'aus dem Speicher' : 'der Speicher hält',
     valueMissing: showValue ? null : valueMissingReason(state),
     adjust: adjustLine(state, status, planKw),
-    // „vom Wechselrichter bestätigt" ENTFÄLLT im Flusskonflikt: es stimmt
-    // register-, aber nicht flussseitig - stattdessen trägt `flowConflict` die
-    // ehrliche Aussage.
+    // „vom Wechselrichter bestätigt" ENTFÄLLT nur im WARN-Fall: dort stimmt es
+    // register-, aber nicht flussseitig. Die gutartige Info (voller
+    // Netzanschluss) behält die Bestätigung - die Physik ist dort in Ordnung.
     confirm:
-      !flow && SHOWS_VALUE.has(state) && state !== 'abweichung' && status
+      !flowWarn && SHOWS_VALUE.has(state) && state !== 'abweichung' && status
         ? `vom Wechselrichter bestätigt · geprüft ${fmtRelative(status.checkedAt, now)}`
         : null,
     flowConflict: flow ? flow.text : null,
+    flowConflictSeverity: flow ? flow.severity : null,
     conflict: SHOWS_WHY.has(state)
       ? curtailConflictLine(role, input.snapshotFresh ? input.snapshot : null, curtail)
       : null,
