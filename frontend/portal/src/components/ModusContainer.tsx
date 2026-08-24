@@ -1,33 +1,36 @@
 /**
- * Der **Modus-Container** (report `data/vp-portal-v31-design/` §3).
+ * Der **Anwendungs-Container** (report `data/vp-portal-v31-design/` §3).
  *
- * v3.1 macht jeden Modus zu einem Container: einschalten heißt konfigurieren
- * dürfen, und die thematisch zugehörigen Einstellungen leben IM Modus. Diese
+ * Das Kundenwort ist seit dem 24.08.2026 **Anwendung** (Captain-Vokabular); die
+ * Code-Ids (`ModusContainer`, `ModeKind`, die `vp-modus-*`-Klassen) bleiben.
+ *
+ * v3.1 macht jede Anwendung zu einem Container: einschalten heißt konfigurieren
+ * dürfen, und die thematisch zugehörigen Einstellungen leben IN ihr. Diese
  * Detailseite wird aus der Steuerungs-Kapsel geöffnet (eine antippbare
  * Profil-Zeile). Sie zeigt, in Abschnitten:
  *
- *   Kopf (Farb-Punkt der Modus-Tönung · Titel · Status-Pill · Schalter)
+ *   Kopf (Farb-Punkt der Anwendungs-Tönung · Titel · Status-Pill · Schalter)
  *   → Nutzen-Satz + Beitrag (echte Zahlen aus `contributionRows`, sonst „—")
- *   → Einstellungen — NUR bei aktivem Modus, LESE-ZUERST-Zeilen (Owner-
- *      Korrektur: ein AUSGESCHALTETER Modus zeigt seine Einstellungen GAR NICHT
+ *   → Einstellungen — NUR bei aktiver Anwendung, LESE-ZUERST-Zeilen (Owner-
+ *      Korrektur: eine AUSGESCHALTETE Anwendung zeigt ihre Einstellungen GAR NICHT
  *      — kein gesperrter Teaser).
  *      **Seit E1 ist dieser Abschnitt ein SPIEGEL** (Captain-Entscheid D1 vom
  *      31.07.2026): die Werte, die der Kunde selbst stellt, WOHNEN auf der
  *      Einstellungs-Seite der Anlage (`modeSettings.home === 'einstellungen'`)
  *      und sind dort auf JEDER Anlage erreichbar — auch auf einer, auf der gar
- *      kein Modus läuft. Der Container zeigt sie weiterhin, weil sie erklären,
- *      WOMIT dieser Modus rechnet, aber read-only mit dem Deep-Link „In den
+ *      keine Anwendung läuft. Der Container zeigt sie weiterhin, weil sie
+ *      erklären, WOMIT diese Anwendung rechnet, aber read-only mit dem Deep-Link „In den
  *      Einstellungen ändern". Es gibt bewusst KEINE zweite Bearbeiten-Stelle:
  *      der frühere Zustand — Bearbeiten NUR hier — war die Sackgasse, die
  *      `data/vp-settings-ux-konzept/report.md` §3 belegt.
  *      Von-VoltPilot-Einstellungen bleiben read-only (v3.1-M4 trägt ihre Werte
- *      nach); sie wohnen weiter im Modus, weil sie ohne ihn sinnlos wären.
+ *      nach); sie wohnen weiter in der Anwendung, weil sie ohne sie sinnlos wären.
  *   → Voraussetzungen (`requirementChips`, M3-Copy wörtlich)
- *   → Ansichten dieses Modus (dieselben Einträge wie die Sidebar-Gruppe —
+ *   → Ansichten dieser Anwendung (dieselben Einträge wie die Sidebar-Gruppe —
  *      EINE Ableitung `manifest.deepViews` → `modeViewItems`; was das
  *      BASISSURFACE ohnehin trägt (Fahrplan bei Speicher, Marktpreise bei
  *      Börsentarif) wird abgezogen, sonst behauptete der Abschnitt „wird
- *      verfügbar, sobald Sie den Modus einschalten" über eine Ansicht, die
+ *      verfügbar, sobald Sie die Anwendung einschalten" über eine Ansicht, die
  *      längst in der Navigation steht)
  *   → Herkunft / „Flow öffnen" (`originLine`, „Flow öffnen" nur mit auflösbarem
  *      `flowRef` — §1.2-Ehrlichkeit).
@@ -61,7 +64,7 @@ import { canEditSetting, SettingRow } from './SettingEditors';
 import '../components/Profile.css';
 import './ModusContainer.css';
 
-/** Modus-Tönung des Farb-Punkts (dieselben Töne wie die Sidebar-Gruppen). */
+/** Anwendungs-Tönung des Farb-Punkts (dieselben Töne wie die Sidebar-Gruppen). */
 const TONE_BY_ID: Record<string, string> = {
   marktvermarktung: 'markt',
   lastspitzenkappung: 'peak',
@@ -74,15 +77,15 @@ const TONE_BY_ID: Record<string, string> = {
 export interface ModusContainerProps {
   /** Das Profil, dessen Container geöffnet ist. */
   profile: SiteProfile;
-  /** Der zugehörige AKTIVE Modus (null, wenn das Profil aus ist). */
+  /** Die zugehörige AKTIVE Anwendung (null, wenn sie aus ist). */
   mode: ActiveMode | null;
-  /** Alle aktiven Modi — für die erst-aktiver-gewinnt-Dedupe der Einstellungen. */
+  /** Alle aktiven Anwendungen — für die erst-aktiver-gewinnt-Dedupe der Einstellungen. */
   activeModes: ActiveMode[];
   /**
    * Die BASIS-Ansichten der Anlage (`surface.base.deepViews`). Sie werden von
-   * „Ansichten dieses Modus" abgezogen: der Fahrplan einer Speicher-Anlage ist
-   * modus-unabhängig erreichbar, also darf der Container ihn nicht als
-   * Freischaltung dieses Modus ausweisen. Fehlt die Angabe, wird nichts
+   * „Ansichten dieser Anwendung" abgezogen: der Fahrplan einer Speicher-Anlage
+   * ist anwendungs-unabhängig erreichbar, also darf der Container ihn nicht als
+   * Freischaltung dieser Anwendung ausweisen. Fehlt die Angabe, wird nichts
    * abgezogen (Verhalten wie vor dem Hotfix).
    */
   baseViews?: readonly DeepViewId[];
@@ -98,7 +101,7 @@ export interface ModusContainerProps {
   onToggle: (id: string, next: ProfileState) => void;
   /** Zurück zur Steuerung (die zwei Kapseln). */
   onBack: () => void;
-  /** Eine Ansicht dieses Modus öffnen (Sidebar-Ziel). */
+  /** Eine Ansicht dieser Anwendung öffnen (Sidebar-Ziel). */
   onNavigate: (target: NavTarget) => void;
   /** „Flow öffnen" — nur mit auflösbarem `flowRef`. */
   onOpenFlow: (flowRef: { flowId: string; name: string }) => void;
@@ -135,10 +138,10 @@ export function ModusContainer({
       ? { variant: 'warn', label: 'Läuft noch nicht' }
       : { variant: 'ok', label: 'Aktiv' };
 
-  // Der Beitrag (echte Zahlen) — nur bei aktivem Modus.
+  // Der Beitrag (echte Zahlen) — nur bei aktiver Anwendung.
   const contrib = on && mode ? contributionRows(mode, earnings) : [];
 
-  // Einstellungen — Owner-Korrektur: NUR bei AKTIVEM Modus, kein Teaser bei aus.
+  // Einstellungen — Owner-Korrektur: NUR bei AKTIVER Anwendung, kein Teaser bei aus.
   // Der Anlagen-Kontext filtert zusätzlich alles heraus, was für DIESE Anlage
   // wirkungslos wäre (der anzulegende Wert ist ein Direktvermarktungs-Fakt).
   // Seit E1 ist die Liste ein SPIEGEL: was der Kunde selbst stellt, wird hier
@@ -148,8 +151,8 @@ export function ModusContainer({
 
   const requirements = requirementChips(profile);
 
-  // Ansichten dieses Modus — dieselbe Ableitung wie die Sidebar-Gruppe. Bei
-  // ausgeschaltetem Modus gibt es kein ActiveMode-Objekt, also die Views je Art.
+  // Ansichten dieser Anwendung — dieselbe Ableitung wie die Sidebar-Gruppe. Bei
+  // ausgeschalteter Anwendung gibt es kein ActiveMode-Objekt, also die Views je Art.
   // Was die Basis ohnehin trägt (Fahrplan/Marktpreise), wird abgezogen.
   const deepViews = mode?.manifest.deepViews ?? modeDeepViews(profile.id as ModeKind);
   const views = modeViewItems(deepViews, baseViews);
@@ -255,10 +258,10 @@ export function ModusContainer({
           </section>
         ) : null}
 
-        {/* --- Ansichten dieses Modus --------------------------------------- */}
+        {/* --- Ansichten dieser Anwendung ------------------------------------ */}
         {views.length > 0 ? (
-          <section className="vp-modus-sect" aria-label="Ansichten dieses Modus">
-            <h3 className="vp-modus-secthead">Ansichten dieses Modus</h3>
+          <section className="vp-modus-sect" aria-label="Ansichten dieser Anwendung">
+            <h3 className="vp-modus-secthead">Ansichten dieser Anwendung</h3>
             <ul className="vp-modus-views">
               {views.map((v) =>
                 on ? (
@@ -283,7 +286,7 @@ export function ModusContainer({
             </ul>
             {!on ? (
               <p className="vp-modus-viewsnote">
-                Diese Ansichten werden verfügbar, sobald Sie den Modus einschalten.
+                Diese Ansichten werden verfügbar, sobald Sie die Anwendung einschalten.
               </p>
             ) : null}
           </section>

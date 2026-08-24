@@ -1225,7 +1225,7 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
         <h4 className="vp-onb-block-title">Womit sollen wir starten?</h4>
         <p className="vp-note" style={{ marginTop: 0 }}>
           Bestimmt, welche Steuerung wir für Sie einrichten. Sie können jederzeit
-          weitere Modi hinzufügen oder wieder abschalten.
+          weitere Anwendungen hinzufügen oder wieder abschalten.
           {choice === 'auto' && ` Vorschlag für Ihre Anlage: ${derivedLabel}.`}
         </p>
         <fieldset className="vp-schonung">

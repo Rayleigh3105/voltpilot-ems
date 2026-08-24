@@ -259,7 +259,7 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
           <thead>
             <tr>
               <th>Anlage</th>
-              <th>Modi</th>
+              <th>Anwendungen</th>
               <th>Komponenten</th>
               <th>Ladestand</th>
               <th>PV jetzt</th>
@@ -287,7 +287,7 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
                       )}
                     </div>
                   </td>
-                  <td data-label="Modi">
+                  <td data-label="Anwendungen">
                     <ModesCell chips={chips} />
                   </td>
                   <td data-label="Komponenten">

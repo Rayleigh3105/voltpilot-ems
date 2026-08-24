@@ -4,7 +4,7 @@
  * Die Fläche beantwortet EINE Frage — „Was darf VoltPilot, und was habe ich
  * selbst geregelt?" — mit genau ZWEI Kapseln und einer schmalen Schutz-Zeile:
  *
- *  1. **Modus-Profile** — kompakte, ANTIPPBARE Zeilen (Statuspunkt · ein Satz
+ *  1. **Anwendungen** — kompakte, ANTIPPBARE Zeilen (Statuspunkt · ein Satz
  *     mit echten Zahlen · Chevron · Schalter); ein Tipp auf die Zeile öffnet den
  *     Modus-Container (v3.1-M2, `ModusContainer`), darunter als Fußzeile der
  *     Ko-Optimierungs-Streifen mit dem SoC-Reservierungs-Stack.
@@ -346,7 +346,7 @@ export function SteuerungSection({
         fail(
           e instanceof ApiError && e.message
             ? e.message
-            : 'Das Profil konnte nicht umgeschaltet werden. Bitte später erneut versuchen.',
+            : 'Die Anwendung konnte nicht umgeschaltet werden. Bitte später erneut versuchen.',
         );
       } finally {
         setToggling(null);
@@ -453,7 +453,7 @@ export function SteuerungSection({
 
       {listState === 'idle' && flows && (
         <>
-          {/* --- Kapsel 1 · Modus-Profile --------------------------------- */}
+          {/* --- Kapsel 1 · Anwendungen ------------------------------------ */}
           <section className="vp-capsule" aria-label={PROFILE_CAPSULE_TITLE}>
             <PartHead title={PROFILE_CAPSULE_TITLE} intro={PROFILE_CAPSULE_INTRO} />
             <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>

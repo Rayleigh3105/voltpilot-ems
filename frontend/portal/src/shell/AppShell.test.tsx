@@ -276,7 +276,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     const onOpenPage = vi.fn();
     const second = renderShell({ sidebar: anlageSidebar(MARKT), onOpenPage });
     const sidebar = second.container.querySelector('.vp-sidebar') as HTMLElement;
-    expect(sidebar.textContent).toContain('Modus · Marktvermarktung');
+    expect(sidebar.textContent).toContain('Anwendung · Marktvermarktung');
     expect(sidebar.textContent).toContain('Fahrplan');
     fireEvent.click(within(sidebar).getByRole('button', { name: /Marktpreise/ }));
     expect(onOpenPage).toHaveBeenCalledWith('marktpreise');
@@ -289,7 +289,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
     // Der DV-Park trägt Fahrplan/Marktpreise/Prognose im Modus; der Fahrplan
     // zieht in die Leiste, der Rest bleibt farbig getaggt im Blatt.
-    expect(sheet.textContent).toContain('Modus · Marktvermarktung');
+    expect(sheet.textContent).toContain('Anwendung · Marktvermarktung');
     expect(sheet.textContent).toContain('Wetter');
     expect(sheet.textContent).toContain('Einstellungen');
     expect(sheet.textContent).toContain('Hilfe & Kontakt');

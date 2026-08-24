@@ -162,7 +162,7 @@ function baseItems(
 /**
  * Einstellungen · Hilfe & Kontakt — the sidebar foot.
  *
- * v3.1-M2 retired the standalone „Modus-Profile"-Regal: every mode is now a
+ * v3.1-M2 retired the standalone shelf page: every application is now a
  * CONTAINER opened from the Steuerung capsule, so the foot no longer carries a
  * `profile` entry. Steuerung remains the ONE door to the modes (base group).
  */
@@ -260,8 +260,8 @@ function viewItem(view: DeepViewId): SidebarItem {
 
 /**
  * The navigable sidebar entries a set of deep views contributes — the mode
- * group's items, and the SAME list the v3.1-M2 „Modus-Container" renders as its
- * „Ansichten dieses Modus" section. Only deep views that become their OWN nav
+ * group's items, and the SAME list the v3.1-M2 „Anwendungs-Container" renders as
+ * its „Ansichten dieser Anwendung" section. Only deep views that become their OWN nav
  * entry appear (see `VIEW_ITEMS`); base areas contribute none.
  *
  * `baseViews` (the M0 `surface.base.deepViews`) is subtracted: a view the base
@@ -296,9 +296,10 @@ function modeGroup(
   if (items.length === 0) return null;
   return {
     key: `mode:${mode.key}`,
-    // M3 gives the customer-facing profile its own name; until then the group
-    // carries the mode label straight from the M0 read-model.
-    label: `Modus · ${mode.label}`,
+    // M3 gives the customer-facing application its own name; until then the
+    // group carries the mode label straight from the M0 read-model. The WORD is
+    // „Anwendung" (Captain 24.08.2026); the code id `ModeKind` stays.
+    label: `Anwendung · ${mode.label}`,
     tone: MODE_TONES[mode.kind],
     items,
   };

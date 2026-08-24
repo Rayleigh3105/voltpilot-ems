@@ -6,7 +6,7 @@
  *
  *  - the "Optimierung" Anlage SUBPAGE (`#/anlage/{id}/optimierung`) with one
  *    card per value module + the "Automatisch aktiv" protections row;
- *  - the Anlage-anlegen wizard's "Nutzung" step ("Wie soll Ihr Speicher
+ *  - the Anlage-anlegen wizard's "Anwendungen" step ("Wie soll Ihr Speicher
  *    arbeiten?") where the usages are chosen at setup time - changeable later
  *    on the subpage.
  *
@@ -79,7 +79,7 @@ export function marktoptimierungCard(
   };
 }
 
-/** The Marktoptimierung outcome sentence alone (reused by the wizard's Nutzung step). */
+/** The Marktoptimierung outcome sentence alone (reused by the wizard's step). */
 export function marktoptimierungLine(plantKind: PlantKind, tarifArt: TarifArt): string {
   if (plantKind === 'direktvermarktung') {
     return 'Ihr Speicher handelt am Strommarkt: günstig laden, teuer verkaufen.';
@@ -249,9 +249,7 @@ export const AUTOMATIC_MODULES: AutomaticModuleRow[] = [
 export const OPTIMIERUNG_INTRO =
   'Diese Leistungen richtet VoltPilot für Sie ein – hier sehen Sie, was aktiv ist und was es bewirkt.';
 
-// --- The wizard's Nutzung step ("Wie soll Ihr Speicher arbeiten?") ----------
-
-export const NUTZUNG_QUESTION = 'Wie soll Ihr Speicher arbeiten?';
+// --- The wizard's Anwendungen step ------------------------------------------
 
 /** What a plain customer sees after selecting Lastspitzenkappung as intent. */
 export const LASTSPITZEN_CUSTOMER_INFO =

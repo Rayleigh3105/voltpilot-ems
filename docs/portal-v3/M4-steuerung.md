@@ -8,7 +8,7 @@
 The Steuerung answers exactly one question — **"Was darf VoltPilot, und was habe ich selbst
 geregelt?"** — with exactly **two capsules**:
 
-1. **Modus-Profile** — compact rows: status dot, one-sentence state **with real numbers**
+1. **Anwendungen** (code: Modus-Profile) — compact rows: status dot, one-sentence state **with real numbers**
    ("+2,41 € heute"), switch; "Profile verwalten →" opens M3's shelf.
 2. **Automationen** — rows with a live state ("Läuft · heute 3× geschaltet · zuletzt 14:02") and
    **ONE** button `＋ Neue Automation`, whose dialog offers the three ways in order:
@@ -42,7 +42,7 @@ Toolbox) collapses into these two; the active/offer mixing disappears (offers li
 | `frontend/portal/src/flows/templateFilter.ts` | **new** | Pure: `fitsPlant(template, entities/topology)`, `partition(templates, plant)` → `{fitting, notFitting, reason}`. Derives roles from the entity/topology model (`src/rollen.ts` / `src/topology.ts`), never from a hardcoded list. |
 | `frontend/portal/src/components/NeueAutomationDialog.tsx` | **new** | The ONE creation dialog: fitting templates → `GuidedRuleBuilder` → "Node-RED-Editor" (opens `FlowEditorPage` via `customerFlowApi`). Hosts the "trotzdem zeigen" disclosure. |
 | `frontend/portal/src/components/Steuerung.css` | edit | Two-capsule layout; component-local, `index.css` untouched. |
-| `frontend/portal/src/components/OptimierungSection.tsx` | leave | Not rendered here any more (already true since M2/Projektion); the file stays for other consumers. |
+| `frontend/portal/src/components/OptimierungSection.tsx` | leave | Not rendered here any more (already true since M2/Projektion). It never regained an importer and was DELETED in Stufe 0 of the Anwendungs-Programm; its pure copy layer `moduleSurface.ts` stays. |
 
 ## Acceptance criteria
 

@@ -218,7 +218,7 @@ export interface AnlageSurfaceInput {
   /** Die v2-Entitäten der Anlage; leer = "Neu / leer". */
   entities?: SurfaceEntity[] | null;
   /**
-   * M3-Overlay: der GESPEICHERTE Kundenwille je Modus-Profil (`an` | `aus`).
+   * M3-Overlay: der GESPEICHERTE Kundenwille je Anwendung (`an` | `aus`).
    * `aus` unterdrückt einen abgeleiteten Modus; absent/null = Verhalten wie vor
    * M3, byte-gleich. Die Ableitung selbst ändert sich nie (die AE7-Regel).
    */
@@ -524,7 +524,7 @@ export function baseSurface(site: AnlageSurfaceInput): BaseSurface {
     blocks: [
       block('status', 'Status', null),
       ...(isLadeparkOnly(input) ? [] : [block('energiefluss', 'Energiefluss', null)]),
-      block('toolbox-pointer', 'Modus hinzufügen', null),
+      block('toolbox-pointer', 'Anwendung hinzufügen', null),
     ],
     deepViews: sortDeepViews(deepViews),
     telemetryChannels: channels,

@@ -589,7 +589,7 @@ Hebel, der eine LAUFENDE Regel wirklich stoppt, ist `deactivate`. Beide Hebel ge
 Generalprobe (siehe `docs/portal-v3/BUILD.md` §6/§7), nicht in den Störfall.
 
 Zusätzlich pro Anlage: gated Strategie-Bausteine (Markt, Lastspitzenkappung, atyp. Netznutzung)
-bleiben freischaltpflichtig - der Kunde öffnet sie über den Modus-Profil-Schalter (M3), der
+bleiben freischaltpflichtig - der Kunde öffnet sie über den Anwendungs-Schalter (M3), der
 serverseitig genau die Bausteine dieses Profils freigibt; die Aktivierung prüft das erneut.
 
 ## Edge-Rollouts: Wellen-Vorschub + der optionale Audit-Spiegel

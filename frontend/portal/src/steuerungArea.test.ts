@@ -242,7 +242,7 @@ describe('coOptimization', () => {
   it('names the count once two modes share one battery', () => {
     const co = coOptimization(activeModes(MULTI))!;
     expect(co.count).toBe(2);
-    expect(co.sentence).toBe('2 Modi, ein Speicher — VoltPilot optimiert sie gemeinsam.');
+    expect(co.sentence).toBe('2 Anwendungen, ein Speicher — VoltPilot optimiert sie gemeinsam.');
     expect(co.modeLabels).toEqual(['Lastspitzenkappung', 'Marktvermarktung']);
   });
 

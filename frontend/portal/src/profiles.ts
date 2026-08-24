@@ -1,22 +1,30 @@
 /**
- * Portal v3 · M3 — die **Modus-Profile** als sichtbares Regal mit Schaltern.
+ * Portal v3 · M3 — die **Anwendungen** als sichtbares Regal mit Schaltern.
+ *
+ * Das Kundenwort ist seit dem 24.08.2026 **Anwendung** (Captain-Vokabular, Stufe
+ * 0 des Anwendungs-Programms); die Code-Ids bleiben unangetastet — `ModeKind`,
+ * die Route `/profiles`, die Spalte `profile` und jeder Bezeichner hier.
  *
  * Der Funktionsumfang einer Anlage ist keine Blackbox mehr: Eigenverbrauch ·
- * Marktoptimierung · Gewerbe (Lastspitzenkappung) · weitere Profile stehen als
- * Karten mit Schalter da — auf JEDER Anlage, auch einer einfachen v1-Anlage.
- * Jede Karte sagt in EINEM Satz, was das Profil tut, **was es freischaltet**
- * (Ansichten · Kacheln · Geld-Strom) und **was es voraussetzt** (✓ / fehlt).
+ * Marktoptimierung · Gewerbe (Lastspitzenkappung) · weitere Anwendungen stehen
+ * als Zeilen mit Schalter da — auf JEDER Anlage, auch einer einfachen v1-Anlage.
+ * Jede sagt in EINEM Satz, was sie tut, **was sie freischaltet** (Ansichten ·
+ * Kacheln · Geld-Strom) und **was sie voraussetzt** (✓ / fehlt).
  *
- * **Owner-Entscheidung: JEDES Profil ist ein direkter Kundenschalter.** Es gibt
+ * Das lebende Regal rendert `steuerungArea.profileRows`; dieses Modul liefert
+ * die Wortschicht (Nutzen · Freischaltungen · Voraussetzungen · Sperrgrund ·
+ * Herkunft) und die **Overlay-Regel** über die M0-Projektion.
+ *
+ * **Owner-Entscheidung: JEDE Anwendung ist ein direkter Kundenschalter.** Es gibt
  * keinen Zustand „Angefragt" und keine VoltPilot-Anfragewand — nur `an` und
  * `aus`, plus eine ehrliche Regel darüber: fehlt eine Voraussetzung, kippt der
- * Schalter trotzdem, die Karte benennt konkret was fehlt, und der Teil, der
+ * Schalter trotzdem, die Zeile benennt konkret was fehlt, und der Teil, der
  * wirklich nicht laufen kann, läuft nicht. Nie ein Schein-Erfolg.
  *
  * Reines Logikmodul (der `surface.ts`/`cockpit.ts`-Präzedenzfall): keine
  * React-Imports, kein Netzwerk. Die Server-Antwort (`GET /sites/{id}/profiles`)
- * ist die Wahrheit über Voraussetzungen und Sperrgründe — dieses Modul ordnet,
- * formuliert und legt die **Overlay-Regel** über die M0-Projektion.
+ * ist die Wahrheit über Voraussetzungen und Sperrgründe — dieses Modul
+ * formuliert nur.
  */
 import type { ActiveMode } from './surface';
 
@@ -38,7 +46,7 @@ export interface ProfileUnlocks {
   moneyStream: string | null;
 }
 
-/** Eine Profilkarte, wie der Server sie liefert. */
+/** Eine Anwendung, wie der Server sie liefert. */
 export interface SiteProfile {
   id: string;
   label: string;
@@ -50,7 +58,7 @@ export interface SiteProfile {
   active: boolean;
   unlocks: ProfileUnlocks;
   requirements: ProfileRequirement[];
-  /** Ehrlicher deutscher Satz, wenn ein EINGESCHALTETES Profil nicht voll läuft. */
+  /** Ehrlicher deutscher Satz, wenn eine EINGESCHALTETE Anwendung nicht voll läuft. */
   blockedReason: string | null;
   origin: 'masterdata' | 'flow' | null;
   flowRef: { flowId: string; name: string } | null;
@@ -62,7 +70,7 @@ export interface SiteProfiles {
   profiles: SiteProfile[];
 }
 
-/** Die Overlay-Eingabe: Profil-Id → gespeicherter Wille. */
+/** Die Overlay-Eingabe: Anwendungs-Id → gespeicherter Wille. */
 export type ProfileStates = Record<string, ProfileState>;
 
 // ---------------------------------------------------------------------------
@@ -70,7 +78,7 @@ export type ProfileStates = Record<string, ProfileState>;
 // ---------------------------------------------------------------------------
 
 interface ProfileCopy {
-  /** EIN Satz: was das Profil für den Kunden tut. */
+  /** EIN Satz: was die Anwendung für den Kunden tut. */
   benefit: string;
   /** Die Freischaltungen im Kundenwort. */
   unlocks: string[];
@@ -102,12 +110,12 @@ const FALLBACK_COPY: ProfileCopy = {
   unlocks: [],
 };
 
-/** Was ein Profil tut — EIN Satz, Ergebnis-Sprache, keine Interna. */
+/** Was eine Anwendung tut — EIN Satz, Ergebnis-Sprache, keine Interna. */
 export function benefitLine(profile: SiteProfile): string {
   return (COPY[profile.id] ?? FALLBACK_COPY).benefit;
 }
 
-/** Was das Profil freischaltet ("Schaltet frei"-Chips). */
+/** Was die Anwendung freischaltet ("Schaltet frei"-Chips). */
 export function unlockChips(profile: SiteProfile): string[] {
   const copy = COPY[profile.id];
   if (copy && copy.unlocks.length > 0) return copy.unlocks;
@@ -127,7 +135,7 @@ export function requirementChips(
 }
 
 /**
- * Der ehrliche „läuft noch nicht, weil …"-Satz eines EINGESCHALTETEN Profils.
+ * Der ehrliche „läuft noch nicht, weil …"-Satz einer EINGESCHALTETEN Anwendung.
  * Der Server entscheidet (eine Stelle: `SiteProfileService`); ohne Serversatz
  * wird aus den unerfüllten Voraussetzungen ein ebenso ehrlicher Satz gebaut.
  * Niemals eine Anfrage-Aufforderung.
@@ -140,7 +148,7 @@ export function blockedReason(profile: SiteProfile): string | null {
   return `Läuft noch nicht: ${missing.join(' und ')} fehlt.`;
 }
 
-/** Woher das Profil kommt — die Ehrlichkeitszeile für Stammdaten-Profile. */
+/** Woher die Anwendung kommt — die Ehrlichkeitszeile für Stammdaten-Anwendungen. */
 export const VOLTPILOT_MANAGED_LINE = 'Von VoltPilot eingerichtet.';
 
 export function originLine(profile: SiteProfile): string | null {
@@ -153,80 +161,10 @@ export function originLine(profile: SiteProfile): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Das Regal
-// ---------------------------------------------------------------------------
-
-/** Kanonische Reihenfolge innerhalb einer Gruppe (wie MODE_RANK in surface.ts). */
-const RANK: Record<string, number> = {
-  lastspitzenkappung: 10,
-  'atypische-netznutzung': 20,
-  marktvermarktung: 30,
-};
-
-export interface ShelfCard {
-  profile: SiteProfile;
-  benefit: string;
-  unlocks: string[];
-  requirements: { label: string; met: boolean; text: string }[];
-  blockedReason: string | null;
-  originLine: string | null;
-  /** true = unter „Weitere Profile" eingeklappt (strukturell nicht erreichbar). */
-  collapsed: boolean;
-}
-
-export interface ProfileShelf {
-  /** Aktive + erreichbare Profile, kanonisch sortiert. */
-  cards: ShelfCard[];
-  /** Strukturell (noch) unmögliche Profile — eingeklappt, NIE verschwunden. */
-  weitere: ShelfCard[];
-}
-
-/**
- * Ein Profil ist strukturell (noch) nicht erreichbar, wenn es nicht aktiv ist
- * und KEINE seiner Voraussetzungen erfüllt ist — dann klappt es unter „Weitere
- * Profile", verschwindet aber nie: das Regal ist auch der ehrliche Katalog.
- */
-function isCollapsed(profile: SiteProfile): boolean {
-  if (profile.active) return false;
-  const reqs = profile.requirements ?? [];
-  if (reqs.length === 0) return false;
-  return reqs.every((r) => !r.met);
-}
-
-function card(profile: SiteProfile): ShelfCard {
-  return {
-    profile,
-    benefit: benefitLine(profile),
-    unlocks: unlockChips(profile),
-    requirements: requirementChips(profile),
-    blockedReason: blockedReason(profile),
-    originLine: originLine(profile),
-    collapsed: isCollapsed(profile),
-  };
-}
-
-function order(a: ShelfCard, b: ShelfCard): number {
-  const activeDelta = Number(b.profile.active) - Number(a.profile.active);
-  if (activeDelta !== 0) return activeDelta;
-  const rankA = RANK[a.profile.id] ?? 90;
-  const rankB = RANK[b.profile.id] ?? 90;
-  return rankA - rankB || a.profile.id.localeCompare(b.profile.id);
-}
-
-/** Das Regal: aktive + erreichbare zuerst, unmögliche eingeklappt. */
-export function profileShelf(profiles: SiteProfiles | null | undefined): ProfileShelf {
-  const cards = (profiles?.profiles ?? []).map(card);
-  return {
-    cards: cards.filter((c) => !c.collapsed).sort(order),
-    weitere: cards.filter((c) => c.collapsed).sort(order),
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Das Overlay über die M0-Projektion
 // ---------------------------------------------------------------------------
 
-/** Profil-Id → gespeicherter Wille; ohne Antwort (älteres Backend) leer. */
+/** Anwendungs-Id → gespeicherter Wille; ohne Antwort (älteres Backend) leer. */
 export function profileStatesFrom(
   profiles: SiteProfiles | null | undefined,
 ): ProfileStates | null {
@@ -239,12 +177,12 @@ export function profileStatesFrom(
 }
 
 /**
- * **Das Overlay** (M3): `aus` entfernt einen abgeleiteten Modus — ein erneut
- * abgeleitetes Signal darf ein abgeschaltetes Profil nicht stillschweigend
- * wiederbeleben. `an` erfindet NIE einen Modus, den die Anlage strukturell
- * nicht haben kann (der Modus erscheint, sobald sein Flow wirklich läuft).
+ * **Das Overlay** (M3): `aus` entfernt eine abgeleitete Anwendung — ein erneut
+ * abgeleitetes Signal darf eine abgeschaltete Anwendung nicht stillschweigend
+ * wiederbeleben. `an` erfindet NIE eine Anwendung, die die Anlage strukturell
+ * nicht haben kann (sie erscheint, sobald ihr Flow wirklich läuft).
  *
- * Automationen (`kind: 'automation'`) sind keine Profile und bleiben unberührt.
+ * Regeln (`kind: 'automation'`) sind keine Anwendungen und bleiben unberührt.
  * Ohne Zustände (älteres Backend, Ladefehler) ist das Ergebnis **identisch**
  * zur Eingabe — byte-gleich zum Verhalten vor M3.
  */

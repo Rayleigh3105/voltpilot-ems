@@ -119,4 +119,4 @@ export const SETTINGS_DEEPLINK_LABEL = 'In den Einstellungen ändern';
  * einem Satz, WARUM hier nichts zu bearbeiten ist.
  */
 export const SETTINGS_MIRROR_NOTE =
-  'Diese Werte gelten für Ihre ganze Anlage und werden in den Einstellungen gepflegt - hier sehen Sie, womit dieser Modus rechnet.';
+  'Diese Werte gelten für Ihre ganze Anlage und werden in den Einstellungen gepflegt - hier sehen Sie, womit diese Anwendung rechnet.';

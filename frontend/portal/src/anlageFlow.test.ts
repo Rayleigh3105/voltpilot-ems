@@ -73,8 +73,8 @@ function storagePreview(overrides: Partial<MastrPreview> = {}): MastrPreview {
 }
 
 describe('the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => {
-  it('has exactly the four steps, Anlage -> Register -> Gerät -> Nutzung (AE5: device before the adaptive step)', () => {
-    expect(FLOW_STEPS).toEqual(['Anlage', 'Register', 'Gerät', 'Nutzung']);
+  it('has exactly the four steps, Anlage -> Register -> Gerät -> Anwendungen (AE5: device before the adaptive step)', () => {
+    expect(FLOW_STEPS).toEqual(['Anlage', 'Register', 'Gerät', 'Anwendungen']);
   });
 
   it('sagt die Schrittzahl ABGELEITET - die Copy kann nicht mehr veralten', () => {

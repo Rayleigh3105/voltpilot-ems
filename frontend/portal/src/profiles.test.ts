@@ -4,7 +4,6 @@ import {
   benefitLine,
   blockedReason,
   originLine,
-  profileShelf,
   profileStatesFrom,
   requirementChips,
   unlockChips,
@@ -74,26 +73,6 @@ const SHELF: SiteProfiles = {
   ],
 };
 
-describe('profileShelf - aktiv zuerst, Unmögliches eingeklappt', () => {
-  it('sorts active profiles first and collapses the structurally unreachable', () => {
-    const shelf = profileShelf(SHELF);
-    // Aktiv (kanonisch: Markt vor Eigenverbrauch), dann erreichbare.
-    expect(shelf.cards.map((c) => c.profile.id)).toEqual([
-      'marktvermarktung',
-      'eigenverbrauch',
-      'lastspitzenkappung',
-    ]);
-    // Kein Chip erfüllt -> unter "Weitere Profile", aber NIE verschwunden.
-    expect(shelf.weitere.map((c) => c.profile.id)).toEqual(['atypische-netznutzung']);
-    expect(shelf.cards.length + shelf.weitere.length).toBe(SHELF.profiles.length);
-  });
-
-  it('is empty-safe (older backend / not loaded)', () => {
-    expect(profileShelf(null)).toEqual({ cards: [], weitere: [] });
-    expect(profileShelf({ profiles: [] })).toEqual({ cards: [], weitere: [] });
-  });
-});
-
 describe('Karten-Copy - ehrlich, ohne Anfragewand', () => {
   it('names what is missing, never asks for a request', () => {
     const markt = SHELF.profiles[1];
@@ -129,9 +108,16 @@ describe('Karten-Copy - ehrlich, ohne Anfragewand', () => {
   });
 
   it('NEVER carries request-wall copy (no "Angefragt", no setup wall)', () => {
-    const copy = profileShelf(SHELF)
-      .cards.concat(profileShelf(SHELF).weitere)
-      .flatMap((c) => [c.benefit, c.blockedReason ?? '', ...c.unlocks, ...c.requirements.map((r) => r.text)])
+    // Seit Stufe 0 gibt es kein `profileShelf` mehr - das lebende Regal ist
+    // `steuerungArea.profileRows`. Der M3-Wächter prüft deshalb DIREKT die
+    // Wortschicht, die jede Fläche rendert.
+    const copy = SHELF.profiles
+      .flatMap((p) => [
+        benefitLine(p),
+        blockedReason(p) ?? '',
+        ...unlockChips(p),
+        ...requirementChips(p).map((r) => r.text),
+      ])
       .join(' | ')
       .toLowerCase();
     expect(copy).not.toContain('angefragt');

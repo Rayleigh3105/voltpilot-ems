@@ -410,7 +410,7 @@ describe('GeraetSeiteSection', () => {
   it('führt von den Steuerungs-Bezügen in die Steuerung dieser Anlage', async () => {
     stub();
     render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
-    const link = await screen.findByRole('link', { name: /Regeln und Modus dieser Anlage/ });
+    const link = await screen.findByRole('link', { name: /Regeln und Anwendungen dieser Anlage/ });
     expect(link.getAttribute('href')).toBe('#/anlage/s-1/steuerung');
   });
 

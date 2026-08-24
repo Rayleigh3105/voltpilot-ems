@@ -254,7 +254,7 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     const { container } = render(<SteuerungSection site={site} />);
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Modus-Profile' })).toBeInTheDocument());
+      expect(screen.getByRole('heading', { name: 'Anwendungen' })).toBeInTheDocument());
     // Naming Set A: die Kapsel heißt „Regeln", nicht mehr „Automationen".
     expect(screen.getByRole('heading', { name: 'Regeln' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Automationen' })).toBeNull();
@@ -262,7 +262,7 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
 
     // The retired four-part surface is gone - no toolbox, no active/offer mix.
     expect(screen.queryByRole('heading', { name: 'Aktive Modi' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: '＋ Modus hinzufügen' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '＋ Anwendung hinzufügen' })).toBeNull();
 
     // The narrow always-on protection line.
     expect(screen.getByText(/Läuft immer mit/)).toBeInTheDocument();
@@ -291,13 +291,13 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     setup();
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
-      expect(screen.getByText('2 Modi, ein Speicher — VoltPilot optimiert sie gemeinsam.'))
+      expect(screen.getByText('2 Anwendungen, ein Speicher — VoltPilot optimiert sie gemeinsam.'))
         .toBeInTheDocument());
     expect(screen.getByText(/Notstrom-Reserve/)).toBeInTheDocument();
     expect(screen.getByText(/Lastspitzen-Reserve/)).toBeInTheDocument();
   });
 
-  it('tapping a profile row opens its Modus-Container (v3.1-M2)', async () => {
+  it('tapping a profile row opens its Anwendungs-Container (v3.1-M2)', async () => {
     setup();
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
@@ -307,7 +307,7 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Lastspitzenkappung öffnen/ }));
 
     expect(await screen.findByRole('button', { name: /Zur Steuerung/ })).toBeInTheDocument();
-    expect(screen.getByText('Ansichten dieses Modus')).toBeInTheDocument();
+    expect(screen.getByText('Ansichten dieser Anwendung')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Regeln' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /Zur Steuerung/ }));
@@ -321,7 +321,7 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     render(<SteuerungSection site={site} />);
 
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Modus-Profile' })).toBeInTheDocument());
+      expect(screen.getByRole('heading', { name: 'Anwendungen' })).toBeInTheDocument());
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     expect(screen.getByText(/Lastspitzen-Reserve/)).toBeInTheDocument();
     expect(screen.queryByText(/Notstrom-Reserve/)).toBeNull();
@@ -332,8 +332,8 @@ describe('SteuerungSection (Portal v3 M4 + Einheitsmodell Stufe 5a)', () => {
     vi.spyOn(api, 'siteProfiles').mockRejectedValue(new Error('older backend'));
     render(<SteuerungSection site={site} />);
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'Modus-Profile' })).toBeInTheDocument());
-    expect(screen.getByText(/noch keine Profile hinterlegt/)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Anwendungen' })).toBeInTheDocument());
+    expect(screen.getByText(/noch keine Anwendungen hinterlegt/)).toBeInTheDocument();
   });
 });
 
@@ -456,14 +456,14 @@ describe('Die Regeln-Kapsel: Karten statt Zeilen', () => {
     cList.mockResolvedValue([{ ...CONSUMER, controlActivation: 'not_activated' }]);
     cActivatePolicy.mockResolvedValue({
       activated: false, reason: 'gated_node_not_enabled',
-      message: 'Dafür muss VoltPilot zuerst das passende Modus-Profil freischalten.',
+      message: 'Dafür muss VoltPilot zuerst die passende Anwendung freischalten.',
       published: false, policyVersion: null,
     });
     render(<SteuerungSection site={site} />);
 
     fireEvent.click(await screen.findByRole('switch', { name: /Wallbox Garage einschalten/ }));
     await waitFor(() => expect(cActivatePolicy).toHaveBeenCalled());
-    expect(await screen.findByText(/Modus-Profil freischalten/)).toBeInTheDocument();
+    expect(await screen.findByText(/Anwendung freischalten/)).toBeInTheDocument();
   });
 
   it('meldet ein Gerät seinen Zustand, trägt die Karte ihn — sonst behauptet sie nichts', async () => {
@@ -646,10 +646,10 @@ describe('Umstellung des Anlagentyps hinterlässt keinen kaputten Zwischenzustan
     return screen.findByRole('button', { name: /Zur Steuerung/ });
   }
 
-  it('weist keine Basis-Ansicht als Freischaltung des Markt-Modus aus', async () => {
+  it('weist keine Basis-Ansicht als Freischaltung der Markt-Anwendung aus', async () => {
     setup();
     await openMarkt(dv);
-    expect(screen.queryByLabelText('Ansichten dieses Modus')).toBeNull();
+    expect(screen.queryByLabelText('Ansichten dieser Anwendung')).toBeNull();
   });
 
   it('zeigt den anzulegenden Wert nur solange die Anlage direkt vermarktet', async () => {

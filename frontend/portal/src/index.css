@@ -5025,7 +5025,7 @@ button.vp-tech-card-h.toggle {
 }
 
 /* Schritt-Leiste des Anlege-Assistenten: vier Schritte mit Wort passten bei
-   375 px nicht nebeneinander - Schritt 4 („Nutzung") lief aus dem Drawer
+   375 px nicht nebeneinander - Schritt 4 („Anwendungen") lief aus dem Drawer
    heraus und war schlicht nicht sichtbar. Auf dem Telefon trägt nur der
    AKTIVE Schritt sein Wort, die Nummern bleiben alle sichtbar. */
 @media (max-width: 480px) {

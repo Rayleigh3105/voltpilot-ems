@@ -3,7 +3,6 @@ import {
   AUTOMATIC_MODULES,
   EINRICHTUNG_DURCH_VOLTPILOT,
   LASTSPITZEN_CUSTOMER_INFO,
-  NUTZUNG_QUESTION,
   OPTIMIERUNG_INTRO,
   abrechnungLabel,
   buildLastspitzenUpdate,
@@ -158,7 +157,6 @@ describe('wording discipline (outcome language, zero internals)', () => {
       JSON.stringify(marktoptimierungCard('eigenverbrauch', 'ohne', null, true)),
       JSON.stringify(AUTOMATIC_MODULES),
       OPTIMIERUNG_INTRO,
-      NUTZUNG_QUESTION,
       LASTSPITZEN_CUSTOMER_INFO,
       JSON.stringify(
         lastspitzenProof({

@@ -77,7 +77,7 @@ Design, animation, "—" discipline: unchanged; only size and placement change.
 |---|---|---|---|---|
 | **M1** | [`M1-shell.md`](./M1-shell.md) | 2 · Shell & Navigation | P1 — sidebar groups, Anlage context card, health badge, 5-slot bottom bar, tablet icon rail | medium |
 | **M2** | [`M2-cockpit.md`](./M2-cockpit.md) | 3 · Live-Cockpit | P2 — existing EnergyFlow as hero, Autarkie/EV rings, widget grid + widget modal | medium |
-| **M3** | [`M3-profile.md`](./M3-profile.md) | 4 · Modus-Profile | P3 — `site_profile_state` + `GET/PUT /sites/{id}/profiles` + surface overlay + customer `autoStart`; **every** profile is a direct customer toggle (no "Angefragt") | medium (the one backend piece) |
+| **M3** | [`M3-profile.md`](./M3-profile.md) | 4 · Anwendungen (code: Modus-Profile) | P3 — `site_profile_state` + `GET/PUT /sites/{id}/profiles` + surface overlay + customer `autoStart`; **every** profile is a direct customer toggle (no "Angefragt") | medium (the one backend piece) |
 | **M4** | [`M4-steuerung.md`](./M4-steuerung.md) | 5 · Steuerung | P4 — two capsules, ONE "＋", template filter `requires:[role]` | small |
 | **M5** | [`M5-automationen.md`](./M5-automationen.md) | 6 · Automationen | P5 — drag + persisted positions, live values, deployed-version view, `vp.logic.function`, phone step list, edge node-status; **plus the production go-live of flow activation** 🔴 | **large** |
 | **M6** | [`M6-komponenten.md`](./M6-komponenten.md) | 7 · Anlagen-Modell | P6 — three columns, adopt+role in one dialog, "Komponente" dictionary | medium |

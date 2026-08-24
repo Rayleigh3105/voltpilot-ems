@@ -47,7 +47,7 @@ export function CockpitBlock({
       <header className="vp-block-head">
         <h3 className="vp-block-title">{view.title}</h3>
         <span className={`vp-block-from${view.isBase ? ' is-base' : ''}`}>
-          {view.isBase ? view.fromTag : `Modus: ${view.fromTag}`}
+          {view.isBase ? view.fromTag : `Anwendung: ${view.fromTag}`}
         </span>
         {view.drillIns.length > 0 && (
           <span className="vp-block-drills">

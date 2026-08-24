@@ -556,14 +556,14 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     expect(labels).not.toContain('Eigenverbrauch');
   });
 
-  it('schließt mit der ruhigen Toolbox-Zeile, ohne einen Modus zu bewerben', async () => {
+  it('schließt mit der ruhigen Toolbox-Zeile, ohne eine Anwendung zu bewerben', async () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-toolbox-line')).toBeTruthy());
     const line = container.querySelector('.vp-toolbox-line')?.textContent ?? '';
     expect(line).toContain('Ihre Anlage kann mehr');
-    expect(line).toContain('Modus hinzufügen');
+    expect(line).toContain('Anwendung hinzufügen');
     expect(line).not.toMatch(/Lastspitzen|Marktvermarktung|Eigenverbrauch/);
   });
 

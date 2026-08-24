@@ -233,7 +233,7 @@ export function anlageDecision(input: AnlageDecisionInput): AnlageDecision {
 
 /** Die ruhige Toolbox-Zeile (§1.3) — nennt NIE einen bestimmten Modus. */
 export const TOOLBOX_POINTER = 'Ihre Anlage kann mehr';
-export const TOOLBOX_ACTION = 'Modus hinzufügen';
+export const TOOLBOX_ACTION = 'Anwendung hinzufügen';
 
 // ---------------------------------------------------------------------------
 // Handel-Block (iff Markt-Modus) — aus BESTEHENDEN Daten

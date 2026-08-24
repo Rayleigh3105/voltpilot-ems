@@ -50,8 +50,8 @@ export const ROLLOUT_REASONS: Record<string, string> = {
     'Diese Regel lässt sich so nicht auf Ihr Gerät übertragen. '
     + 'Bitte prüfen Sie die markierten Bausteine und versuchen Sie es erneut.',
   gated_node_not_enabled:
-    'Für diese Regel muss VoltPilot zuerst das passende Modus-Profil für Ihre Anlage '
-    + 'freischalten. Schalten Sie das Profil unter „Modus-Profile" ein oder sprechen Sie uns an.',
+    'Für diese Regel muss VoltPilot zuerst die passende Anwendung für Ihre Anlage '
+    + 'freischalten. Schalten Sie die Anwendung unter „Anwendungen" ein oder sprechen Sie uns an.',
   peakshaving_not_configured:
     'Für die Lastspitzenkappung fehlen noch Ihre Vertragsdaten (Leistungspreis). '
     + 'VoltPilot hinterlegt sie für Sie - sprechen Sie uns kurz an.',

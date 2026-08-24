@@ -243,7 +243,7 @@ describe('anlageSidebar - mode groups are a projection, never a hardcoded list',
   it('renders one labelled, colour-tagged group per active mode with own views', () => {
     const groups = anlageSidebar(PEAK).groups.slice(1);
     expect(groups).toHaveLength(1);
-    expect(groups[0].label).toBe('Modus · Lastspitzenkappung');
+    expect(groups[0].label).toBe('Anwendung · Lastspitzenkappung');
     expect(groups[0].tone).toBe('peak');
     expect(groups[0].items.map((i) => i.key)).toEqual(['lastspitzen']);
   });
@@ -296,7 +296,7 @@ describe('anlageSidebar - mode groups are a projection, never a hardcoded list',
 
   it('gives the peak mode its own group with Lastspitzen', () => {
     const groups = anlageSidebar(PEAK).groups.slice(1);
-    expect(groups.map((g) => g.label)).toEqual(['Modus · Lastspitzenkappung']);
+    expect(groups.map((g) => g.label)).toEqual(['Anwendung · Lastspitzenkappung']);
     expect(groups[0].tone).toBe('peak');
     expect(groups[0].items.map((i) => i.key)).toEqual(['lastspitzen']);
   });
@@ -410,7 +410,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
       'marktpreise',
       'prognose',
     ]);
-    expect(groups[1].label).toBe('Modus · Lastspitzenkappung');
+    expect(groups[1].label).toBe('Anwendung · Lastspitzenkappung');
     expect(groups[1].tone).toBe('peak');
     const last = groups[groups.length - 1];
     // Wetter + der Fuß (inkl. „Verbraucher") - und „Abmelden", das am Telefon
@@ -424,7 +424,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     ]);
   });
 
-  it('lässt eine Modus-Gruppe weg, deren einziger Eintrag in der Leiste steht', () => {
+  it('lässt eine Anwendungs-Gruppe weg, deren einziger Eintrag in der Leiste steht', () => {
     // Der DV-Park: sein Markt-Modus trägt Fahrplan + Marktpreise + Prognose, der
     // Fahrplan zieht in die Leiste - die Gruppe bleibt mit dem Rest bestehen.
     const park = anlageSurface({
@@ -432,7 +432,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
       config: { plantKind: 'direktvermarktung', tarifArt: 'fest' },
     });
     const modeGroups = moreSheetItems(anlageSidebar(park)).filter((g) =>
-      g.label.startsWith('Modus ·'),
+      g.label.startsWith('Anwendung ·'),
     );
     expect(modeGroups.flatMap((g) => g.items.map((i) => i.key))).toEqual([
       'marktpreise',
@@ -445,7 +445,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
         { key: 'base', label: BASE_GROUP_LABEL, tone: null, items: [] },
         {
           key: 'mode:x',
-          label: 'Modus · X',
+          label: 'Anwendung · X',
           tone: 'markt' as const,
           items: [
             {
@@ -460,7 +460,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
       ],
       foot: [],
     };
-    expect(moreSheetItems(nurFahrplan).some((g) => g.label === 'Modus · X')).toBe(false);
+    expect(moreSheetItems(nurFahrplan).some((g) => g.label === 'Anwendung · X')).toBe(false);
   });
 
   it('has no base group in the sheet when nothing was derived', () => {
@@ -733,8 +733,8 @@ describe('modeViewItems - the shared derivation for the sidebar group AND the co
   });
 
   it('subtracts what the BASE surface already carries (Hotfix 2026-07-29)', () => {
-    // Sonst behauptete der Modus-Container „wird verfügbar, sobald Sie den
-    // Modus einschalten" über eine Ansicht, die längst in der Navigation steht.
+    // Sonst behauptete der Anwendungs-Container „wird verfügbar, sobald Sie die
+    // Anwendung einschalten" über eine Ansicht, die längst in der Navigation steht.
     const markt = MARKT.modes.find((m) => m.kind === 'marktvermarktung');
     // Auf einer Speicher-Anlage mit Börsentarif trägt die BASIS inzwischen
     // alle drei Ansichten des Markt-Manifests - der Modus doppelt keine davon.

@@ -7,7 +7,7 @@ import { fmtNum } from './format';
  * enters their MaStR number(s) and VoltPilot pulls the data from the
  * Marktstammdatenregister. Steps: 1 · Anlage (Name + Standort) ->
  * 2 · Register (PV + Speicher aus dem Register, Vorschau, Übernehmen; manual
- * entry is the always-reachable fallback) -> 3 · Nutzung ("Wie soll Ihr
+ * entry is the always-reachable fallback) -> 3 · Anwendungen ("Wie soll Ihr
  * Speicher arbeiten?" - Speicherschonung + Optimierungs-Nutzungen, captain
  * design update 2026-07-16; changeable later on the Optimierung subpage) ->
  * 4 · Gerät (Geräte-ID verbinden) -> Fertig. Both hosts - the first-run
@@ -18,11 +18,14 @@ import { fmtNum } from './format';
 
 /**
  * The step rail of the flow, in order (register-first). AE5 (spec §3) moved the
- * device claim ("Gerät") ahead of the adaptive "Nutzung" step: the entity
- * bootstrap + usage-profile + auto-start seeding need the Anlage's master data
- * AND its gateway device in place, so Nutzung is now the last, adaptive step.
+ * device claim ("Gerät") ahead of the adaptive last step: the entity bootstrap +
+ * usage-profile + auto-start seeding need the Anlage's master data AND its
+ * gateway device in place, so it is the last, adaptive step.
+ *
+ * Its LABEL is „Anwendungen" since the 24.08.2026 vocabulary decision (it was
+ * „Nutzung"); the component id `NutzungStep` and every route stay.
  */
-export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Nutzung'] as const;
+export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Anwendungen'] as const;
 
 export type FlowStep = 1 | 2 | 3 | 4;
 
@@ -34,7 +37,7 @@ const ZAHLWORT = ['null', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'] as 
  * {@link FLOW_STEPS}, nicht getippt.
  *
  * Die Copy sagte „In drei Schritten" über VIER Schritt-Punkten: seit AE5 den
- * Gerät-Schritt vorzog und „Nutzung" ergänzte, war sie falsch, und niemand
+ * Gerät-Schritt vorzog und den vierten Schritt ergänzte, war sie falsch, und niemand
  * bemerkte es, weil Satz und Schrittleiste keine gemeinsame Quelle hatten.
  * Jetzt haben sie eine — ein fünfter Schritt korrigiert den Satz von selbst.
  */

@@ -112,7 +112,7 @@ describe('setupPath - die drei Schritte', () => {
     const after = setupPath({ deviceCount: 1, reported: [], adoptedCount: 1 });
     expect(after.steps.map((s) => s.state)).toEqual(['done', 'done', 'current']);
     expect(after.currentId).toBe('steuerung');
-    expect(after.steps[2].action).toEqual({ kind: 'toolbox', label: 'Modus wählen' });
+    expect(after.steps[2].action).toEqual({ kind: 'toolbox', label: 'Anwendung wählen' });
   });
 
   it('nennt genau drei Schritte in fester Reihenfolge', () => {

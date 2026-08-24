@@ -7,7 +7,8 @@ import { anlageDecision, cockpitStack, projectionActive } from './cockpit';
 import { cockpitWidgets } from './cockpitWidgets';
 import { hasTopology } from './adaptiveLive';
 import { modeChips } from './portfolio';
-import { profileShelf, profileStatesFrom } from './profiles';
+import { profileStatesFrom } from './profiles';
+import { profileRows } from './steuerungArea';
 import { showTechnicalLayer } from './rollen';
 import { anlageSurface, type AnlageSurfaceInput } from './surface';
 import type { OverviewSite } from './api';
@@ -352,7 +353,8 @@ describe('Abbau-Invarianten (M6)', () => {
     expect(ohne.modes).toEqual([]);
     expect(ohne.cockpitBlocks).toEqual([]);
     // Das Regal einer Anlage ohne Server-Antwort ist leer, nie erfunden.
-    expect(profileShelf(null)).toEqual({ cards: [], weitere: [] });
+    expect(profileRows(null, ohne.modes, null)).toEqual([]);
+    expect(profileRows([], ohne.modes, null)).toEqual([]);
   });
 
   it('M7: die technische Schicht ist standardmäßig zu (ohne Admin-Token)', () => {

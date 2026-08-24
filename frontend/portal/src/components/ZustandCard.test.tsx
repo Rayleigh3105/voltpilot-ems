@@ -75,7 +75,7 @@ describe('ZustandCard', () => {
       const foot = container.querySelector('.vp-zustand-foot .vp-toolbox-line');
       expect(foot).not.toBeNull();
       expect(foot?.textContent).toContain('Ihre Anlage kann mehr');
-      fireEvent.click(getByRole('button', { name: /Modus hinzufügen/ }));
+      fireEvent.click(getByRole('button', { name: /Anwendung hinzufügen/ }));
       expect(onOpenModus).toHaveBeenCalledTimes(1);
       unmount();
     }

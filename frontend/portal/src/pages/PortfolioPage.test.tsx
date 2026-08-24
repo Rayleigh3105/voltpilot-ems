@@ -80,12 +80,12 @@ function renderPage(onNavigate: (r: Route) => void = () => {}) {
   );
 }
 
-describe('Portfolio: die Modus-Spalte (M6)', () => {
-  it('nennt die aktiven Modi einer migrierten Anlage — mehrere, nicht ein Gesicht', async () => {
+describe('Portfolio: die Anwendungs-Spalte (M6)', () => {
+  it('nennt die aktiven Anwendungen einer migrierten Anlage — mehrere, nicht ein Gesicht', async () => {
     const { container } = renderPage();
     await waitFor(() => expect(screen.getByText('Werk Nord')).toBeInTheDocument());
 
-    expect(screen.getByRole('columnheader', { name: 'Modi' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Anwendungen' })).toBeInTheDocument();
     // Der abgelöste Profil-Chip ist weg.
     expect(screen.queryByRole('columnheader', { name: 'Profil' })).toBeNull();
     expect(container.querySelector('.vp-profile-chip')).toBeNull();
@@ -100,7 +100,7 @@ describe('Portfolio: die Modus-Spalte (M6)', () => {
     const rows = [...container.querySelectorAll('tbody tr')];
     const altRow = rows.find((r) => r.textContent?.includes('Bestandsanlage'));
     expect(altRow?.querySelector('.vp-mode-chip')).toBeNull();
-    expect(altRow?.querySelector('td[data-label="Modi"]')?.textContent).toBe('—');
+    expect(altRow?.querySelector('td[data-label="Anwendungen"]')?.textContent).toBe('—');
   });
 
   it('bleibt der Absprung in genau diese Anlage', async () => {

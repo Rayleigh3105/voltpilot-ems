@@ -6,7 +6,7 @@
  * beantwortet EINE Frage — „Was darf VoltPilot, und was habe ich selbst
  * geregelt?" — mit ZWEI Kapseln plus einer schmalen Schutz-Zeile:
  *
- *  1. **Modus-Profile** (`profileRows`) — kompakte, ANTIPPBARE Zeilen:
+ *  1. **Anwendungen** (`profileRows`) — kompakte, ANTIPPBARE Zeilen:
  *     Statuspunkt, EIN Satz mit echten Zahlen, Schalter. Antippen öffnet den
  *     Modus-Container (v3.1-M2), in dem Nutzen, Einstellungen, Voraussetzungen
  *     und Ansichten des Modus leben. Der Ko-Optimierungs-Streifen +
@@ -209,14 +209,14 @@ export interface CoOptimization {
   detail: string;
 }
 
-/** Null unter zwei Speicher-Modi — dann gibt es nichts zu ko-optimieren. */
+/** Null unter zwei Speicher-Anwendungen — dann gibt es nichts zu ko-optimieren. */
 export function coOptimization(modes: ActiveMode[]): CoOptimization | null {
   const battery = batteryModes(modes);
   if (battery.length < 2) return null;
   return {
     count: battery.length,
     modeLabels: battery.map((m) => m.label),
-    sentence: `${battery.length} Modi, ein Speicher — VoltPilot optimiert sie gemeinsam.`,
+    sentence: `${battery.length} Anwendungen, ein Speicher — VoltPilot optimiert sie gemeinsam.`,
     detail:
       'Alle 15 Minuten wird EIN gemeinsamer Fahrplan gerechnet, der alle Ziele zugleich ' +
       'verfolgt — die Reservierungen unten legen fest, wer welchen Teil des Speichers sicher hat.',
@@ -310,17 +310,17 @@ export function socReservationStack(input: ReservationInput | null | undefined):
   if (top > cursor) {
     layers.push({
       key: 'frei',
-      label: 'Frei für die Modi',
+      label: 'Frei für die Anwendungen',
       fromPct: cursor,
       toPct: top,
-      note: 'Dieser Teil wird von allen aktiven Modi gemeinsam genutzt.',
+      note: 'Dieser Teil wird von allen aktiven Anwendungen gemeinsam genutzt.',
     });
   }
   return layers;
 }
 
 // ---------------------------------------------------------------------------
-// M4 · Kapsel 1 — die Modus-Profil-Zeilen
+// M4 · Kapsel 1 — die Anwendungs-Zeilen
 // ---------------------------------------------------------------------------
 
 /**
@@ -382,13 +382,13 @@ export function profileRows(
   });
 }
 
-export const PROFILE_CAPSULE_TITLE = 'Modus-Profile';
+export const PROFILE_CAPSULE_TITLE = 'Anwendungen';
 
 export const PROFILE_CAPSULE_INTRO =
   'Was VoltPilot auf Ihrer Anlage tun darf — und was es Ihnen bringt.';
 
 export const PROFILE_CAPSULE_EMPTY =
-  'Für diese Anlage sind noch keine Profile hinterlegt.';
+  'Für diese Anlage sind noch keine Anwendungen hinterlegt.';
 
 // ---------------------------------------------------------------------------
 // M4 · Kapsel 2 — die Automations-Zeilen
@@ -523,4 +523,4 @@ export function protectionItems(site: { netzladenErlaubt?: boolean | null }): Pr
   return items;
 }
 
-export const PROTECTION_INTRO = 'Läuft immer mit, ganz ohne Profil:';
+export const PROTECTION_INTRO = 'Läuft immer mit, ganz ohne Anwendung:';

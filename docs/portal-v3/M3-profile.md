@@ -1,6 +1,11 @@
-# M3 · Modus-Profile (the one backend piece)
+# M3 · Anwendungen (im Code: Modus-Profile) — the one backend piece
 
-> Realizes report §4 **P3** · concept tab **4 · Modus-Profile**.
+> **⚠ Vocabulary (Stufe 0, 24.08.2026):** the customer-facing word is **„Anwendung"**;
+> „Modus-Profil"/„Modus"/„Modi" survive only as CODE ids (`ModeKind`, the route
+> `/profiles`, the column `site_profile_state.profile`, `SiteProfileCatalog`).
+> This spec keeps the code vocabulary; the rendered copy says „Anwendungen".
+
+> Realizes report §4 **P3** · concept tab **4 · Modus-Profile** (now rendered as „Anwendungen").
 > Read [`BUILD.md`](./BUILD.md) §4 and §5 first.
 
 ## Goal
@@ -87,7 +92,7 @@ new table stores only the customer's **intent**.
 
 | File | New? | What |
 |---|---|---|
-| `frontend/portal/src/profiles.ts` | **new** | Pure: `profileShelf(surface, states)` → the ordered cards (active + reachable first, structurally impossible collapsed under "Weitere Profile"), `requirementChips(signals)`, `blockedReason(profile, signals)` (the honest "läuft noch nicht, weil …" sentence — **no** request copy), and `applyProfileStates(modes, states)` — the **overlay**: `aus` removes a derived mode; `an` never invents one that the plant cannot structurally have. All German copy lives here. |
+| `frontend/portal/src/profiles.ts` | **new** | Pure: `profileShelf(surface, states)` → the ordered cards (active + reachable first, structurally impossible collapsed under "Weitere Profile"; **removed in Stufe 0** — the rendering shelf is `steuerungArea.profileRows`), `requirementChips(signals)`, `blockedReason(profile, signals)` (the honest "läuft noch nicht, weil …" sentence — **no** request copy), and `applyProfileStates(modes, states)` — the **overlay**: `aus` removes a derived mode; `an` never invents one that the plant cannot structurally have. All German copy lives here. |
 | `frontend/portal/src/surface.ts` | edit | `anlageSurface(input)` accepts an optional `profileStates` and applies `applyProfileStates` after `activeModes`. Absent/null = today's behaviour byte-for-byte. |
 | `frontend/portal/src/useAnlageSurface.ts` | edit | Additionally fetch `api.siteProfiles(siteId)` **fail-soft** (`.catch(() => null)`) and pass it through. |
 | `frontend/portal/src/pages/ProfileSection.tsx` | **new** | The shelf: profile cards with switch, one-sentence benefit, "Schaltet frei" chips, requirement chips, the co-optimisation line (reserve stack, reuse `steuerungArea.ts socReservationStack`), and the "Weitere Profile" fold. |

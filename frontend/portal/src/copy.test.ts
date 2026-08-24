@@ -95,7 +95,28 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
   // „Geräte-Automatik" (ein eigener Cockpit-Block, kein Regel-Wort) bleiben
   // unberührt.
   { re: /\bAutomation(en)?\b/, why: 'Set A: „Regel" statt „Automation"' },
+  // Anwendungs-Programm Stufe 0 (Captain-Vokabular 24.08.2026): das Kundenwort
+  // für eine Anwendung ist „Anwendung", nie „Modus" oder „Modus-Profil". Die
+  // CODE-Ids bleiben (`ModeKind`, `ModusContainer`, die Route `/profiles`, die
+  // Spalte `profile`, die `vp-modus-*`-Klassen) - sie sind kein Kundentext, und
+  // dieser Wächter liest nur SICHTBARE Zeichenketten.
+  { re: /Modus-Profil/, why: 'Stufe 0: „Anwendung" statt „Modus-Profil"' },
+  { re: /\bModi\b/, why: 'Stufe 0: „Anwendungen" statt „Modi"' },
+  { re: /\bModus\b/, why: 'Stufe 0: „Anwendung" statt „Modus" (Geräte-Betriebsart siehe GERAETE_MODUS)' },
 ];
+
+/**
+ * Die EINE dokumentierte Ausnahme zu „Modus": die BETRIEBSART EINES GERÄTS.
+ *
+ * Ein Verbraucher, den eine Regel „auf Modus „eco"" stellt, hat eine
+ * Betriebsart - das ist fachlich etwas ANDERES als eine Anwendung der Anlage,
+ * und der Kunde liest dort zu Recht das Wort des Geräts. Die Ausnahme ist
+ * bewusst an die PHRASE gebunden, nicht an eine Datei: ein neuer Satz, der
+ * „Modus" für unsere Anwendungen benutzt, fällt weiterhin durch.
+ *
+ * Sie wird VOR dem Scan entfernt; der Test darunter beweist, dass sie eng ist.
+ */
+const GERAETE_MODUS = /auf Modus [„"]/g;
 
 /** Every customer-facing portal source file (no tests, no excluded paths). */
 /** JEDE Quelldatei - der Wächter über die Ausnahme braucht auch die ausgenommenen. */
@@ -150,7 +171,7 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
   it('contains no forbidden vocabulary in any rendered string', () => {
     const violations: string[] = [];
     for (const file of customerFiles()) {
-      const visible = stripComments(readFileSync(file, 'utf8'));
+      const visible = stripComments(readFileSync(file, 'utf8')).replace(GERAETE_MODUS, ' ');
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
       for (const { re, why } of FORBIDDEN) {
         const m = re.exec(visible);
@@ -160,6 +181,29 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
     expect(violations, `Verbotenes Vokabular in der Kundensicht:\n${violations.join('\n')}`).toEqual(
       [],
     );
+  });
+
+  /**
+   * Der Wächter über die AUSNAHME „Modus": sie darf nur die Geräte-Betriebsart
+   * durchlassen. Träte sie eines Tages weiter auf, wäre der Wortwechsel still
+   * wirkungslos geworden - genau das fällt hier auf, nicht erst im Portal.
+   */
+  it('the device-mode carve-out for „Modus" is narrow', () => {
+    const scan = (code: string) =>
+      FORBIDDEN.filter(({ re }) => re.test(stripComments(code).replace(GERAETE_MODUS, ' ')))
+        .map(({ re }) => re.source);
+    // Durchgelassen: die Betriebsart EINES GERÄTS.
+    expect(scan('const s = `stellt VoltPilot ${n} auf Modus „eco“`;')).toEqual([]);
+    // Nicht durchgelassen: unser Anwendungs-Vokabular, in jeder Form.
+    expect(scan("const t = 'Modus-Profile';")).toContain('Modus-Profil');
+    expect(scan("const t = 'Modus hinzufügen';")).toContain('\\bModus\\b');
+    expect(scan("const t = 'Ansichten dieses Modus';")).toContain('\\bModus\\b');
+    expect(scan("const t = '2 Modi, ein Speicher';")).toContain('\\bModi\\b');
+    // Und Bezeichner bleiben unberührt (der Wächter liest nur sichtbaren Text,
+    // die Groß-/Kleinschreibung der Ids trifft die Wortgrenzen nicht).
+    expect(scan('const MODUS: Record<string, string> = {};')).toEqual([]);
+    expect(scan('const modus = e.mode;')).toEqual([]);
+    expect(scan('<div className="vp-modus-head" />')).toEqual([]);
   });
 
   /**

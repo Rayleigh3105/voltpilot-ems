@@ -3071,13 +3071,15 @@ export const api = {
       body: JSON.stringify({ override }),
     }),
   /**
-   * Portal v3 M3: the Modus-Profile shelf of the Anlage. Every profile is a
+   * Portal v3 M3: the „Anwendungen" shelf of the Anlage (the route + payload
+   * keep the `profile` vocabulary — only the customer WORD changed). Every one
+   * is a
    * DIRECT customer toggle (two states, `an`/`aus` - there is no "angefragt").
    */
   siteProfiles: (siteId: string) =>
     request<SiteProfiles>(`/api/v1/sites/${siteId}/profiles`),
   /**
-   * Switch one Modus-Profil on or off. Switching ON makes the SERVER enable
+   * Switch one Anwendung on or off. Switching ON makes the SERVER enable
    * exactly that profile's gated node types for the site and seed its starter
    * flow; switching OFF deactivates its flows and closes those nodes again.
    * Returns the recomputed shelf.

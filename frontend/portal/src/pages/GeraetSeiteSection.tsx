@@ -556,7 +556,7 @@ export function GeraetSeiteSection({
               )} />
               <p className="vp-geraet-sec-sub">
                 <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>
-                  Regeln und Modus dieser Anlage ansehen →
+                  Regeln und Anwendungen dieser Anlage ansehen →
                 </a>
               </p>
             </Sektion>

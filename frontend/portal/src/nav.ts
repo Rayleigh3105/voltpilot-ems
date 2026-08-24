@@ -61,7 +61,7 @@ const SUBS = new Set<string>([
  * - `optimierung` -> `steuerung` (U3: "Optimierung" merged into Steuerung).
  * - `entitaeten` -> `modell` (Portal v3 M6: the "Geräte & Entitäten" list
  *   became the Anlagen-Modell — Gerät/Komponente/Messwert).
- * - `profile` -> `steuerung` (v3.1-M2: the standalone Modus-Profile shelf became
+ * - `profile` -> `steuerung` (v3.1-M2: the standalone „Anwendungen" shelf became
  *   the per-mode container opened from the Steuerung capsule).
  * - `live` -> the cockpit itself (`null`) — the Cockpit + Live-Daten merge
  *   (Option A): the Komponenten-Board and the compact Verlauf chart live ON
