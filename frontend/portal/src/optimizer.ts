@@ -290,6 +290,40 @@ export function modeBadge(netzladenErlaubt: boolean): { text: string; tone: 'ok'
     : { text: 'EEG · Nur Solarladen', tone: 'off' };
 }
 
+/**
+ * The run's PV nowcast anchor as a card (Morgenprognose): value + note.
+ *
+ * Three honest states, and the middle one is the whole point of the null
+ * discipline: `null` means "kein Anker belegt" (too little evidence, kill
+ * switch off, or a run/backend older than the field) and must NOT render as
+ * "1,0" - an established 1,0 says something different and stronger, namely
+ * that the model's recent slots matched reality.
+ *
+ * A ratio above 1 means the ACTIVE PV model was too low over the last
+ * completed slots and the run scaled its near horizon up - the east-heavy
+ * morning of 23.08. would have shown ~x3 here, right next to the model that
+ * needed it.
+ */
+export function pvAnchorCard(ratio: number | null | undefined): {
+  value: string;
+  note: string;
+} {
+  if (ratio == null || !Number.isFinite(ratio) || ratio <= 0) {
+    return { value: 'kein Anker', note: 'zu wenig Beleg-Slots oder abgeschaltet' };
+  }
+  const factor = `×${ratio.toLocaleString('de-DE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+  if (ratio > 1.02) {
+    return { value: factor, note: 'Prognose lag zu NIEDRIG - nah korrigiert' };
+  }
+  if (ratio < 0.98) {
+    return { value: factor, note: 'Prognose lag zu HOCH - nah korrigiert' };
+  }
+  return { value: factor, note: 'Messung deckt sich mit der Prognose' };
+}
+
 // ---- config panel: form <-> request payload -----------------------------------
 
 /** Editable override fields as strings (form state). "" = cleared to default. */

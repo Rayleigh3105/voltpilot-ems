@@ -917,4 +917,8 @@ def _extract_plan(
         # planning against it. Pure pass-through of the master datum the solver
         # already constrained on - never a solved value.
         max_feed_in_kw=inp.max_feed_in_kw,
+        # Morgenprognose 2026-08-24: the PV nowcast anchor this run's input was
+        # corrected by (already inside inp.pv_kw) - carried so the persisted
+        # run and the admin readout can name it. Pass-through, like above.
+        pv_anchor_ratio=inp.pv_anchor_ratio,
     )

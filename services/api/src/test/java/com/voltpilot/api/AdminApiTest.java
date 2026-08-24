@@ -963,15 +963,17 @@ class AdminApiTest {
                 + "grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur) "
                 + "VALUES ('" + slot1 + "', '" + tenantId + "', '" + dvSite + "', "
                 + "'bbbbbbbb-0000-0000-0000-000000000001', '" + genOld + "', 0, 0, 50, 0, 0, 100, 0, 0)");
+        // The newer run also carries the Morgenprognose anchor (a RUN-level
+        // fact repeated per row); the older one predates the column.
         exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, battery_kw, "
                 + "grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur, "
-                + "curtail_kw, wear_cost_eur) VALUES "
+                + "curtail_kw, wear_cost_eur, pv_anchor_ratio) VALUES "
                 + "('" + slot1 + "', '" + tenantId + "', '" + dvSite + "', "
                 + "'bbbbbbbb-0000-0000-0000-000000000002', '" + genNew + "', "
-                + "4.0, 6.0, 55, 2.0, 0.0, 100, 0.15, 0.05, 0, 0.02), "
+                + "4.0, 6.0, 55, 2.0, 0.0, 100, 0.15, 0.05, 0, 0.02, 2.4), "
                 + "('" + slot2 + "', '" + tenantId + "', '" + dvSite + "', "
                 + "'bbbbbbbb-0000-0000-0000-000000000002', '" + genNew + "', "
-                + "-4.0, -2.0, 35, 2.0, 4.0, -40, -0.02, 0.01, 1.5, 0.02)");
+                + "-4.0, -2.0, 35, 2.0, 4.0, -40, -0.02, 0.01, 1.5, 0.02, 2.4)");
         // One EV run: a positive- and a negative-price slot.
         exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, battery_kw, "
                 + "grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur) VALUES "
@@ -996,6 +998,9 @@ class AdminApiTest {
         // Stufe 2 admin echo: dynamisch + Aufschlag, no sheet yet => Sammelaufschlag.
         assertThat(dvBody).containsEntry("priceSource", "sammelaufschlag");
         assertThat(dvBody).containsEntry("storedEnergyValueIsApproximation", true);
+        // Morgenprognose: the run names the PV nowcast anchor it corrected by,
+        // right next to the active model that needed it.
+        assertThat(num(dvBody, "pvAnchorRatio")).isEqualTo(2.4);
         @SuppressWarnings("unchecked")
         List<Object> availableRuns = (List<Object>) dvBody.get("availableRuns");
         assertThat(availableRuns).contains(genNew.toString(), genOld.toString());
@@ -1072,6 +1077,9 @@ class AdminApiTest {
         assertThat(old.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(old.getBody()).containsEntry("generatedAt", genOld.toString());
         assertThat((List<?>) old.getBody().get("slots")).hasSize(1);
+        // A run without an established anchor says NOTHING - never a
+        // misleading "1,0", which would itself be a real statement.
+        assertThat(old.getBody().get("pvAnchorRatio")).isNull();
         // ...and an unknown run is a 404, not silently the latest.
         assertThat(rest.exchange(
                 url("/api/v1/admin/sites/" + dvSite

@@ -111,7 +111,7 @@ public class OptimizerDiagnosticsService {
         }
         if (run == null) {
             return dto(site, null, null, day, firstRunDate, lastRunDate, availableRuns,
-                    priceSource, true, List.of());
+                    priceSource, true, null, List.of());
         }
         List<SlotRow> rows = repo.slots(site.siteId(), run);
         Map<LocalDate, MarketValue> marketValues = rows.isEmpty() ? Map.of()
@@ -173,7 +173,8 @@ public class OptimizerDiagnosticsService {
                     splitFlags(row.slotFlags())));
         }
         return dto(site, repo.planId(site.siteId(), run), run, day, firstRunDate, lastRunDate,
-                availableRuns, priceSource, anyApproximated, slots);
+                availableRuns, priceSource, anyApproximated,
+                repo.pvAnchorRatio(site.siteId(), run), slots);
     }
 
     /** The persisted binding CSV as a list (null stays null - pre-feature row). */
@@ -188,7 +189,7 @@ public class OptimizerDiagnosticsService {
     private OptimizerDiagnosticsDto dto(SiteContext site, UUID planId, Instant run,
             LocalDate availableRunsDate, LocalDate firstRunDate, LocalDate lastRunDate,
             List<Instant> availableRuns, String priceSource, boolean storedValueIsApproximation,
-            List<OptimizerDiagnosticsSlotDto> slots) {
+            BigDecimal pvAnchorRatio, List<OptimizerDiagnosticsSlotDto> slots) {
         return new OptimizerDiagnosticsDto(
                 site.siteId(),
                 planId,
@@ -209,6 +210,7 @@ public class OptimizerDiagnosticsService {
                 activePvModel,
                 priceSource,
                 storedValueIsApproximation,
+                pvAnchorRatio,
                 slots);
     }
 

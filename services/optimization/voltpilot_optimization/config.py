@@ -171,6 +171,8 @@ import os
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from voltpilot_optimization import nowcast
+
 #: Platform default battery wear cost in ct per kWh cycled (see module docstring).
 DEFAULT_WEAR_COST_CT_PER_KWH = 4.0
 WEAR_COST_ENV = "OPTIMIZER_WEAR_COST_CT_PER_KWH"
@@ -599,6 +601,99 @@ def soc_max_age(env=None) -> timedelta:
         env, SOC_MAX_AGE_ENV, DEFAULT_SOC_MAX_AGE_MINUTES, 0.0, allow_equal=False
     )
     return timedelta(minutes=minutes)
+
+
+# ---------------------------------------------------------------------------
+# PV nowcast anchor (Morgenprognose, 2026-08-24).
+#
+# The optimizer corrects the ACTIVE PV model's own recent bias into its near
+# horizon - see :mod:`voltpilot_optimization.nowcast` for the mechanism and the
+# Herzogau 23.08. case it was built for. Every knob here is a SAFETY bound, not
+# a tuning dial; the defaults are the ones the replay test pins.
+
+PV_ANCHOR_ENABLED_ENV = "OPTIMIZER_PV_ANCHOR_ENABLED"
+PV_ANCHOR_LOOKBACK_MINUTES_ENV = "OPTIMIZER_PV_ANCHOR_LOOKBACK_MINUTES"
+PV_ANCHOR_DECAY_SLOTS_ENV = "OPTIMIZER_PV_ANCHOR_DECAY_SLOTS"
+PV_ANCHOR_MIN_SLOTS_ENV = "OPTIMIZER_PV_ANCHOR_MIN_SLOTS"
+PV_ANCHOR_MAX_RATIO_ENV = "OPTIMIZER_PV_ANCHOR_MAX_RATIO"
+
+#: How far back the evidence window reaches (minutes of COMPLETED slots).
+#: Two hours: long enough that a single cloudy quarter hour cannot mint a
+#: ratio, short enough that the sun's own progression is not averaged away.
+DEFAULT_PV_ANCHOR_LOOKBACK_MINUTES = 120.0
+
+
+def pv_anchor_enabled(env=None) -> bool:
+    """Whether the PV nowcast anchor runs. Default ON - the kill switch.
+
+    Deliberately default-TRUE (the :func:`explain_enabled` discipline): a
+    default-OFF flag has to be pulled through the gitops repo to have any
+    effect in production, which is the documented way features silently never
+    run. Garbage values raise loudly; ``gather_inputs`` catches around the whole
+    anchor, so a bad value drops the correction with a warning instead of
+    sinking plans.
+    """
+    env = os.environ if env is None else env
+    raw = env.get(PV_ANCHOR_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{PV_ANCHOR_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
+def pv_anchor_lookback(env=None) -> timedelta:
+    """The evidence window of already-completed slots."""
+    env = os.environ if env is None else env
+    minutes = _float_env(
+        env,
+        PV_ANCHOR_LOOKBACK_MINUTES_ENV,
+        DEFAULT_PV_ANCHOR_LOOKBACK_MINUTES,
+        0.0,
+        allow_equal=False,
+    )
+    return timedelta(minutes=minutes)
+
+
+def pv_anchor_decay_slots(env=None) -> int:
+    """Slots over which the anchor decays back to the untouched forecast."""
+    env = os.environ if env is None else env
+    value = _float_env(
+        env,
+        PV_ANCHOR_DECAY_SLOTS_ENV,
+        float(nowcast.DEFAULT_DECAY_SLOTS),
+        1.0,
+        allow_equal=True,
+    )
+    return int(value)
+
+
+def pv_anchor_min_slots(env=None) -> int:
+    """Fewest usable evidence slots before any ratio is established."""
+    env = os.environ if env is None else env
+    value = _float_env(
+        env,
+        PV_ANCHOR_MIN_SLOTS_ENV,
+        float(nowcast.DEFAULT_MIN_SLOTS),
+        1.0,
+        allow_equal=True,
+    )
+    return int(value)
+
+
+def pv_anchor_max_ratio(env=None) -> float:
+    """Symmetric clamp on the measured-over-predicted ratio."""
+    env = os.environ if env is None else env
+    return _float_env(
+        env,
+        PV_ANCHOR_MAX_RATIO_ENV,
+        nowcast.DEFAULT_MAX_RATIO,
+        1.0,
+        allow_equal=False,
+    )
 
 
 # ---------------------------------------------------------------------------

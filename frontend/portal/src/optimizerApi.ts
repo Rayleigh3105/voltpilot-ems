@@ -92,6 +92,17 @@ export interface OptimizerDiagnostics {
    */
   priceSource: string;
   storedEnergyValueIsApproximation: boolean;
+  /**
+   * The PV nowcast anchor this RUN corrected its near-horizon PV forecast by -
+   * measured over predicted on the last completed slots
+   * (`schedule.pv_anchor_ratio`, Morgenprognose). `> 1` = the active model was
+   * too low (the east-heavy-morning case), `< 1` = too high; the factor decays
+   * back to the untouched forecast, so the number describes the FIRST slot.
+   * `null`/absent = no anchor was established (too little evidence, the
+   * optimizer kill switch off, or an older backend/run) - render nothing then,
+   * never "1,0": an established 1,0 is itself a real statement.
+   */
+  pvAnchorRatio?: number | null;
   slots: OptimizerSlot[];
 }
 

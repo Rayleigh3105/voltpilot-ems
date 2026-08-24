@@ -64,6 +64,60 @@ Stored in `forecast_accuracy`, one row per site x model x **Europe/Berlin day** 
 
 `plan_accuracy` extends the plan-vs-actual groundwork: per site x day, the optimizer's projected cost (freshest plan per slot, `generated_at <= time`) and its no-battery baseline vs the **realized** signed grid cost (telemetry x day-ahead price), summed over exactly the slots where plan, actual and price all exist.
 
+## The PV nowcast anchor (Morgenprognose, 2026-08-24)
+
+Between the stored forecast and the plan sits ONE more correction, and it is
+deliberately NOT a model: **the optimizer scales the ACTIVE PV model's near
+horizon by that model's own recent, measured error** (the classic clear-sky-index
+persistence nowcast, with the site's active model in the place of the clear-sky
+reference). Rule: `voltpilot_optimization/nowcast.py` (pure); wiring:
+`inputs._anchor_pv_input`, applied to the final PV series just before the night
+floor - the same "defensive correction on the PV input" slot as
+`fallback.night_floor_pv`.
+
+Why it lives in the OPTIMIZER and not here:
+
+* it depends on `now` and on telemetry fresher than the last collector run, so
+  it is a plan-time correction, not a stored forecast;
+* writing it back under `pv-physical` would corrupt this document's whole
+  evaluation contract - the model would be scored on a number it did not
+  produce, and the challenger's skill against it would stop meaning anything;
+* as a NEW model id it would need a per-site promotion, i.e. it would not reach
+  the fleet at all. In the optimizer it corrects **whichever model is active**,
+  so promoting `pv-residual-xgb` later composes with it rather than competing.
+
+The consequence to keep straight: `forecast_accuracy` measures the STORED model,
+not the anchored series the plan really used. That is correct and intended - the
+anchor is a nowcast that expires within a couple of hours, not a forecast - and
+the number the run corrected by is visible per run in the admin optimizer
+diagnostics (`schedule.pv_anchor_ratio` → `pvAnchorRatio`, "PV-Anker (Messung)").
+
+The case it exists for (scout report `vp-negativpreis-herzogau-g3` §5.1): the
+09:36 run of 23.08.2026 at Pilsting/Herzogau had the 09:30 measurement of ~38 kW
+in the database and still planned a 0,5 kW DISCHARGE for 09:30/09:45 - its PV
+forecast for those slots sat below the house load, during a negative-price
+window. Two independent causes, both closed by the same mechanism: **one array
+per site** (`forecast_collect.load_sites` reads a SINGLE `pv` asset row, so one
+`azimuth_deg`/`tilt_deg`, south/30° by default - an east-heavy roof is
+structurally low every morning) and **nothing looking at the live plant**.
+
+Knobs (all safety bounds, not tuning dials; defaults are what the replay test
+pins):
+
+| Env | Default | Meaning |
+|---|---|---|
+| `OPTIMIZER_PV_ANCHOR_ENABLED` | `true` | Kill switch. Default-ON deliberately - a default-OFF flag has to be pulled through gitops to have any effect. |
+| `OPTIMIZER_PV_ANCHOR_LOOKBACK_MINUTES` | `120` | Evidence window of COMPLETED slots. |
+| `OPTIMIZER_PV_ANCHOR_MIN_SLOTS` | `3` | Below this nothing is established and the forecast passes through unchanged. |
+| `OPTIMIZER_PV_ANCHOR_MAX_RATIO` | `5` | Symmetric clamp (`1/5 .. 5`). The hard physical bound is the plant nameplate. |
+| `OPTIMIZER_PV_ANCHOR_DECAY_SLOTS` | `8` (2 h) | Linear decay back to the untouched forecast. |
+
+Still open, and now less urgent: the STRUCTURAL fix of the same first cause -
+a PV forecast composed per Erzeuger source with its own orientation. The
+measurement-point model carries `capacity_kwp` and a MaStR reference per source
+but no azimuth/tilt, so it needs a data-model step. The anchor absorbs the
+orientation bias in the near horizon, which is where dispatch is decided.
+
 ## Promotion (and rollback)
 
 **Der Weg ist das Portal, und er gehört dem Kunden.** Prognosequalität → der Kandidat einer Prognoseart → „Kandidat übernehmen" (jeder, der die Anlage erreicht; die Bestätigung nennt die Folgen und sagt ausdrücklich, dass sie **nur für diese Anlage** gelten). Ab dem nächsten Planungslauf - spätestens 15 Minuten später - konsumiert der Optimierer die Prognosereihen des neuen Modells **für genau diese Anlage**; alle anderen bleiben unverändert, und das abgelöste Modell rechnet im Schatten weiter und wird weiter täglich bewertet. **Der Rückweg ist derselbe Knopf in die Gegenrichtung** - es geht keine Historie verloren, und ein zurückgetauschtes Modell hat sofort wieder seine Bewertung.

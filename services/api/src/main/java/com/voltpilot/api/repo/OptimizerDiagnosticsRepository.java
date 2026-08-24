@@ -195,6 +195,26 @@ public class OptimizerDiagnosticsRepository {
                 siteId, Timestamp.from(generatedAt));
     }
 
+    /**
+     * The run's PV nowcast anchor ratio (Morgenprognose, V20260836000000), or
+     * null when the run established none.
+     *
+     * <p>A RUN-level fact repeated on every slot row (the
+     * {@code terminal_value_eur_per_kwh} pattern), so the first row answers
+     * for the run. Null is a real state and must stay one: "kein Anker belegt"
+     * (too little evidence / the optimizer kill switch off / a run older than
+     * the column) is a different statement from an established 1,0 ("belegt,
+     * und das Modell lag richtig").
+     */
+    public BigDecimal pvAnchorRatio(UUID siteId, Instant generatedAt) {
+        List<BigDecimal> rows = jdbc.query(
+                "SELECT pv_anchor_ratio FROM schedule "
+                        + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
+                (rs, i) -> rs.getBigDecimal("pv_anchor_ratio"),
+                siteId, Timestamp.from(generatedAt));
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /** The plan_id of the run (first row's - constant per run). */
     public UUID planId(UUID siteId, Instant generatedAt) {
         List<UUID> ids = jdbc.query(

@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS schedule (
     why_refill_free_pct NUMERIC(5, 1),          -- run: free PV refill share of the usable band, 0-100 (V20260824000000)
     why_next_best     TEXT,                     -- resting slot: the best REJECTED action (V20260824000000)
     why_next_best_margin_ct NUMERIC(12, 4),     -- its disadvantage in ct/kWh, <= 0 (V20260824000000)
+    pv_anchor_ratio   NUMERIC(12, 4),           -- run: PV nowcast anchor ratio measured/predicted (V20260836000000)
     PRIMARY KEY (site_id, generated_at, time)
 );
 

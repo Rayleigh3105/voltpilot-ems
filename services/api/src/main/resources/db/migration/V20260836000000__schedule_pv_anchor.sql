@@ -1,0 +1,38 @@
+-- =============================================================================
+-- V20260836000000 - Morgenprognose: persist the PV NOWCAST ANCHOR of each run
+-- (Live-Fall Pilsting/Herzogau 23.08.2026, Scout `vp-negativpreis-herzogau-g3`
+-- §5.1; Captain-Order „Prognose fix" 24.08.2026).
+-- -----------------------------------------------------------------------------
+-- Der Befund: der Fahrplan-Lauf von 09:36 hatte die 09:30-MESSUNG (~38 kW) in
+-- der Datenbank und plante trotzdem eine 0,5-kW-ENTLADUNG, weil seine
+-- PV-Prognose für 09:30/09:45 unter dem Hausverbrauch lag. Zwei Glaswände: das
+-- Modell kennt je Anlage nur EINE Ausrichtung (forecast_collect.load_sites →
+-- eine PlantSpec, Süd/30° als Vorgabe - eine Ost+West+Deye-Dachlandschaft ist
+-- damit morgens strukturell zu niedrig), und NIEMAND schaute darauf, was die
+-- Anlage GERADE liefert. Der Optimierer korrigiert seither die Prognose des
+-- AKTIVEN Modells um dessen eigenen, an den letzten abgeschlossenen
+-- Viertelstunden GEMESSENEN Fehler (voltpilot_optimization.nowcast).
+--
+--   pv_anchor_ratio - RUN-Fakt, je Slot-Zeile wiederholt (das
+--                     terminal_value_eur_per_kwh-Muster; die schedule-Tabelle
+--                     hat kein Lauf-Geschwister und der bestehende Upsert
+--                     bleibt unverändert): das Verhältnis gemessen/prognostiziert
+--                     der Beleg-Slots, mit dem der Lauf seinen NAHEN Horizont
+--                     skaliert hat (>1 = das Modell war zu niedrig, <1 = zu
+--                     hoch). Symmetrisch geklemmt und über wenige Stunden auf
+--                     1,0 abklingend - die Zahl beschreibt den ERSTEN Slot.
+--
+-- NULLABLE ohne Default, und das ist die Ehrlichkeitsregel: NULL heißt „kein
+-- Anker belegt" (zu wenig Beleg-Slots, Not-Aus OPTIMIZER_PV_ANCHOR_ENABLED=false,
+-- oder ein Lauf vor dieser Spalte) - die Admin-Diagnose sagt dann NICHTS statt
+-- eines irreführenden „1,0". Ein Anker von genau 1,0 ist dagegen eine echte
+-- Aussage: „belegt, und das Modell lag richtig".
+--
+-- Kein RLS-Eingriff: die bestehenden schedule-Policies + der spaltenagnostische
+-- SELECT-Grant (V20260701020000) decken neue Spalten ab. Der eingefrorene
+-- MQTT-Fahrplan-Kontrakt ist UNBERÜHRT - die Korrektur steckt bereits in den
+-- veröffentlichten pv_kw-Werten, es reist kein neues Feld zum Gerät.
+-- Bootstrap-Spiegel: infra/local/timescale/04-schedule.sql (im Gleichschritt).
+-- =============================================================================
+
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS pv_anchor_ratio NUMERIC(12, 4);
