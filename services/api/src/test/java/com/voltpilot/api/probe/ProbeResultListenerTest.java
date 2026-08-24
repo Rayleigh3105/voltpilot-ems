@@ -283,6 +283,64 @@ class ProbeResultListenerTest {
     }
 
     /**
+     * Die SCHAETZUNG neben dem Befund (Ladestand aus der Batteriespannung): sie
+     * reist mit, damit der Assistent eine Zahl zeigen kann statt nur einer
+     * Ablehnung - und sie AENDERT DAS URTEIL NICHT. Der Test bleibt
+     * ok=false/„missing", die Anlage braucht also weiterhin die ausdrueckliche
+     * Zustimmung des Kunden und bleibt fuer die Batterie-Steuerung gesperrt.
+     */
+    @Test
+    void theVoltageEstimateRidesNextToTheFindingWithoutChangingTheVerdict() {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"verbindung\",\"ok\":false,\"error_code\":\"implausible\""
+                        + ",\"reading\":{\"pv_kw\":6.1,\"load_kw\":4.3,\"grid_kw\":1.2}"
+                        + ",\"finding\":{\"channel\":\"soc_pct\",\"rule\":\"missing\""
+                        + ",\"raw\":0,\"value\":0"
+                        + ",\"estimate\":{\"soc_pct\":36,\"voltage_v\":636.0}}}")));
+
+        ProbeResult.OpResult line = get(f).results().get(0);
+        assertThat(line.ok()).isFalse();
+        assertThat(line.finding().rule()).isEqualTo("missing");
+        assertThat(line.finding().overridable()).isTrue();
+        assertThat(line.finding().estimate().socPct()).isEqualTo(36.0);
+        assertThat(line.finding().estimate().voltageV()).isEqualTo(636.0);
+        // Der beanstandete Kanal steht NIE in der Lesung - auch nicht als Schaetzung.
+        assertThat(line.reading().socPct()).isNull();
+    }
+
+    /**
+     * Aus einer Lesung, der wir schon abgesprochen haben zu trauen, wird nichts
+     * geschaetzt: eine Leerantwort und ein kaputter Rahmen tragen keine Zahl -
+     * und eine unvollstaendige oder unmoegliche Schaetzung ebenso wenig. Die
+     * Spannung ist dabei PFLICHT: sie ist der Beleg, an dem ein Skalierungs-
+     * fehler sichtbar wird; ein Prozentwert ohne sie waere unpruefbar.
+     */
+    @Test
+    void anEstimateIsDroppedWhenItCouldNotBeTrusted() {
+        record Case(String rule, String estimate) {}
+        List<Case> cases = List.of(
+                new Case("no_answer", "{\"soc_pct\":36,\"voltage_v\":636.0}"),
+                new Case("out_of_range", "{\"soc_pct\":36,\"voltage_v\":636.0}"),
+                new Case("missing", "{\"soc_pct\":36}"),
+                new Case("missing", "{\"voltage_v\":636.0}"),
+                new Case("missing", "{\"soc_pct\":0,\"voltage_v\":636.0}"),
+                new Case("missing", "{\"soc_pct\":140,\"voltage_v\":636.0}"),
+                new Case("missing", "\"36 %\""));
+        for (Case c : cases) {
+            CompletableFuture<ProbeResult> f = arm();
+            listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                    "{\"id\":\"verbindung\",\"ok\":false,\"error_code\":\"implausible\""
+                            + ",\"reading\":{\"pv_kw\":6.1}"
+                            + ",\"finding\":{\"channel\":\"soc_pct\",\"rule\":\"" + c.rule()
+                            + "\",\"estimate\":" + c.estimate() + "}}")));
+            ProbeResult.OpResult line = get(f).results().get(0);
+            assertThat(line.finding()).as("finding for %s", c).isNotNull();
+            assertThat(line.finding().estimate()).as("estimate for %s", c).isNull();
+        }
+    }
+
+    /**
      * Die drei Regeln sind NICHT austauschbar: nur „missing" beschreibt einen
      * Geraetezustand, den ein Betreiber bewusst hinnehmen darf.
      */

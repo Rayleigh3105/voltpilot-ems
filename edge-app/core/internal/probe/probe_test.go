@@ -609,6 +609,42 @@ func TestTheTestConnectionContractFixturesParseAndAdmit(t *testing.T) {
 	if l.Raw != nil || l.Value != nil {
 		t.Fatalf("eine Ablehnung traegt nie raw/value: %+v", l)
 	}
+	// Die SCHAETZUNG neben dem Befund: sie fehlt hier, weil dieses Geraet keine
+	// Eckpunkte gepflegt hat - eine Schaetzung wird nie erfunden.
+	if l.Finding.Estimate != nil {
+		t.Fatalf("ohne gepflegte Eckpunkte gibt es keine Schaetzung: %+v", l.Finding.Estimate)
+	}
+
+	// ... und die Variante MIT Schaetzung (Batteriemodus "User defined": das BMS
+	// meldet nichts, die Klemmenspannung ist aber messbar). Sie aendert das
+	// URTEIL nicht - die Zeile bleibt eine benannte Ablehnung mit derselben
+	// Regel, damit die Anlage weiterhin die ausdrueckliche Zustimmung des
+	// Kunden braucht und fuer die Batterie-Steuerung gesperrt bleibt.
+	raw, err = os.ReadFile(contractPath("mqtt-probe.valid.test-connection-soc-estimate.json"))
+	if err != nil {
+		t.Fatalf("Schaetzungs-Fixture: %v", err)
+	}
+	var est Result
+	if err := json.Unmarshal(raw, &est); err != nil {
+		t.Fatalf("Schaetzungs-Ergebnis unlesbar: %v", err)
+	}
+	e := est.Results[0]
+	if e.OK || e.ErrorCode != ErrImplausible {
+		t.Fatalf("eine Schaetzung macht aus der Ablehnung KEIN Ja: %+v", e)
+	}
+	if e.Finding == nil || e.Finding.Rule != "missing" {
+		t.Fatalf("die Regel bleibt unveraendert: %+v", e.Finding)
+	}
+	if e.Finding.Estimate == nil {
+		t.Fatal("die Schaetzung muss neben dem Befund mitreisen")
+	}
+	if e.Finding.Estimate.SocPct != 36 || e.Finding.Estimate.VoltageV != 636 {
+		t.Fatalf("Prozent UND Spannung gehoeren dazu - ohne die Spannung waere die "+
+			"Zahl unpruefbar: %+v", e.Finding.Estimate)
+	}
+	if e.Reading == nil || e.Reading.SocPct != nil {
+		t.Fatalf("auch eine Schaetzung steht NIE im reading: %+v", e.Reading)
+	}
 }
 
 // TestSwitchAdmissionCarriesEveryReadRuleAndItsOwn is the safety heart of the

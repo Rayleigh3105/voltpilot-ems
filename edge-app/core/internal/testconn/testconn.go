@@ -86,6 +86,24 @@ type Finding struct {
 	Rule    string   `json:"rule"`
 	Raw     *float64 `json:"raw,omitempty"`
 	Value   *float64 `json:"value,omitempty"`
+
+	// Estimate is the SoC the box would estimate from the measured battery
+	// voltage, offered ONLY alongside FindingRuleMissing and only when the
+	// operator has stated the pack's two ends. It is an ESTIMATE, not a
+	// measurement, so it rides NEXT TO the finding and never inside Reading -
+	// and it deliberately does NOT change the verdict: the test still reports
+	// ok=false / rule "missing", so an estimating plant still needs the
+	// customer's explicit override and stays refused for battery control.
+	Estimate *SocEstimate `json:"estimate,omitempty"`
+}
+
+// SocEstimate carries the interpolated state of charge together with the
+// voltage it came from - the raw-next-to-decoded discipline of this whole
+// surface: the volts are the one number that makes a wrong scale or a
+// mis-stated pack end visible instead of a percentage nobody can check.
+type SocEstimate struct {
+	SocPct   float64 `json:"soc_pct"`
+	VoltageV float64 `json:"voltage_v"`
 }
 
 // The Finding rule vocabulary. Closed on purpose: a word we do not understand

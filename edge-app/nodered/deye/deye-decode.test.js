@@ -165,12 +165,14 @@ test('hybrid_3p decode: high-map registers, PV summed, SoC & signs', () => {
   assert.strictEqual(batt_kw, 0.5);
 });
 
-test('hybrid_3p read plan is [device 0x0000, measurement 0x024C..0x02C4]', () => {
+test('hybrid_3p read plan is [device 0x0000, measurement 0x024B..0x02C4]', () => {
   const reads = D.planReads({ family: 'hybrid_3p' });
   assert.strictEqual(reads.length, 2, 'device-identity block + measurement block');
   assert.deepStrictEqual(reads[0], { start: 0x0000, count: 0x0001 }, 'device register 0x0000');
   const m = reads[1];
-  assert.strictEqual(m.start, 0x024c);
+  // Widened DOWN by exactly one register for the Battery Voltage at 0x024B
+  // (the soc_from_voltage estimate); every other field keeps its address.
+  assert.strictEqual(m.start, 0x024b, 'must reach the Battery Voltage at 0x024B');
   assert.ok(m.count <= 125, 'must not exceed the Modbus fn-0x03 register limit');
   const last = m.start + m.count - 1;
   assert.ok(last >= 0x02a3, 'read block must reach PV4 at 0x02A3');
@@ -456,6 +458,175 @@ test('string/micro: a 0-generation (night) reading is NOT dropped - no battery, 
   assert.deepStrictEqual(D.decode([s], { family: 'string' }).reading, { pv_power_kw: 0 });
   const m = block(0x0056, 0x0002, {}); // micro AC output 0
   assert.deepStrictEqual(D.decode([m], { family: 'micro' }).reading, { pv_power_kw: 0 });
+});
+
+// --- SoC ESTIMATED from the battery voltage ---------------------------------
+// The way out of the Muehlfeldweg dead end: the operator states the pack's two
+// ends and the measured terminal voltage is interpolated between them. It
+// applies ONLY to the `missing` rule, never overwrites a real BMS SoC, is
+// clamped to [1,100] (0 is the empty-answer signature both gates key on) and
+// estimates NOTHING from an unreadable voltage.
+//
+// The fixture is the live Muehlfeldweg block plus its battery voltage: an
+// SG02HP3-EU-AM3 is HV (device code 0x0008), so the voltage register carries
+// scale 0.01 x hvScale 10 = 0.1 V/LSB -> raw 6360 = 636,0 V (the value DEYE.md
+// records from that device). Its 16s LiFePO4-ish pack: 600 V empty, 700 V full.
+const HV_ID = { start: 0x0000, regs: [0x0008] };
+const MW_VOLT = { ...MUEHLFELDWEG, 0x024b: 6360 };
+const VBOUNDS = { v_empty: 600, v_full: 700 };
+
+test('a missing BMS SoC is ESTIMATED from the measured battery voltage', () => {
+  const b = block(0x024b, 0x7a, MW_VOLT);
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true, soc_from_voltage: VBOUNDS };
+  const { reading } = D.decode([HV_ID, b], cfg);
+  // 636,0 V between 600 and 700 -> 36 %.
+  assert.strictEqual(reading.soc_pct, 36);
+  assert.strictEqual(reading.soc_source, 'voltage', 'the estimate is MARKED, never silent');
+  assert.strictEqual(reading.load_kw, 4.3, 'the other channels are untouched');
+});
+
+test('the connection test SAYS the estimate next to the finding, and still reports `missing`', () => {
+  const b = block(0x024b, 0x7a, MW_VOLT);
+  // decodeVerbose is what the connection test calls, and it NEVER sets the
+  // opt-in - so a plant with an estimate still gets the honest verdict, still
+  // needs the customer's explicit override, and therefore still keeps its
+  // reading_override stamp (which is what refuses battery CONTROL cloud-side).
+  const out = D.decodeVerbose([HV_ID, b], { family: 'hybrid_3p', soc_from_voltage: VBOUNDS });
+  assert.deepStrictEqual(out.drop, {
+    channel: 'soc_pct',
+    rule: D.SOC_DROP_MISSING,
+    raw: 0,
+    value: 0,
+    estimate: { soc_pct: 36, voltage_v: 636 },
+  });
+  assert.ok(!('soc_pct' in out.reading), 'the estimate is NEVER smuggled into the reading');
+});
+
+test('without soc_from_voltage the behaviour is byte-for-byte the bare opt-in', () => {
+  const b = block(0x024b, 0x7a, MW_VOLT);
+  const base = { family: 'hybrid_3p', allow_missing_soc: true };
+  const out = D.decode([HV_ID, b], base);
+  assert.ok(!('soc_pct' in out.reading), 'no bounds, no SoC - never a fabricated 0');
+  assert.ok(!('soc_source' in out.reading));
+  assert.strictEqual(D.decodeVerbose([HV_ID, b], base).drop.estimate, undefined);
+});
+
+test('the estimate rescues ONLY `missing` - no_answer and out_of_range stay hard drops', () => {
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true, soc_from_voltage: VBOUNDS };
+  // The logger's empty answer: everything 0 - INCLUDING the voltage, so there
+  // is nothing to estimate from either. Both halves must hold.
+  const empty = block(0x024b, 0x7a, {});
+  assert.strictEqual(D.decodeVerbose([HV_ID, empty], cfg).drop.rule, D.SOC_DROP_NO_ANSWER);
+  assert.strictEqual(D.decodeVerbose([HV_ID, empty], cfg).drop.estimate, undefined);
+  assert.strictEqual(D.decode([HV_ID, empty], cfg), null);
+  // A broken frame that HAPPENS to carry a readable-looking voltage: the read
+  // is untrustworthy as a whole, so no estimate is offered and nothing is kept.
+  const broken = block(0x024b, 0x7a, { ...MW_VOLT, 0x024c: 1250 });
+  assert.strictEqual(D.decodeVerbose([HV_ID, broken], cfg).drop.rule, D.SOC_DROP_OUT_OF_RANGE);
+  assert.strictEqual(D.decodeVerbose([HV_ID, broken], cfg).drop.estimate, undefined);
+  assert.strictEqual(D.decode([HV_ID, broken], cfg), null);
+});
+
+test('a REAL BMS SoC is never overwritten by the estimate', () => {
+  const b = block(0x024b, 0x7a, { ...MW_VOLT, 0x024c: 57 });
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true, soc_from_voltage: VBOUNDS };
+  const { reading } = D.decode([HV_ID, b], cfg);
+  assert.strictEqual(reading.soc_pct, 57, 'the measured value wins');
+  assert.ok(!('soc_source' in reading), 'a measured SoC is not marked as estimated');
+});
+
+test('the estimate is clamped to [1,100] - never the 0 that both plausibility gates drop', () => {
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true, soc_from_voltage: VBOUNDS };
+  // Below empty (590 V) would interpolate to -10 %.
+  const low = block(0x024b, 0x7a, { ...MW_VOLT, 0x024b: 5900 });
+  const lowOut = D.decode([HV_ID, low], cfg);
+  assert.strictEqual(lowOut.reading.soc_pct, D.SOC_ESTIMATE_MIN_PCT);
+  assert.strictEqual(D.socPlausible(lowOut.reading.soc_pct), true, 'must survive the gate');
+  // Above full (720 V) would interpolate to 120 %.
+  const high = block(0x024b, 0x7a, { ...MW_VOLT, 0x024b: 7200 });
+  const highOut = D.decode([HV_ID, high], cfg);
+  assert.strictEqual(highOut.reading.soc_pct, D.SOC_ESTIMATE_MAX_PCT);
+  assert.strictEqual(D.socPlausible(highOut.reading.soc_pct), true);
+});
+
+test('an unreadable or zero battery voltage estimates NOTHING', () => {
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true, soc_from_voltage: VBOUNDS };
+  // Voltage register reads 0 - the pack was not measured, so nothing is guessed.
+  const zero = block(0x024b, 0x7a, { ...MUEHLFELDWEG, 0x024b: 0 });
+  const zeroOut = D.decode([HV_ID, zero], cfg);
+  assert.ok(!('soc_pct' in zeroOut.reading), 'kept without SoC, exactly like the bare opt-in');
+  assert.strictEqual(zeroOut.reading.load_kw, 4.3);
+  // Register outside the read blocks (a narrower legacy read): unreadable.
+  const narrow = block(0x024c, 0x79, MUEHLFELDWEG);
+  assert.strictEqual(D.decodeVerbose([HV_ID, narrow], cfg).drop.estimate, undefined);
+  assert.ok(!('soc_pct' in D.decode([HV_ID, narrow], cfg).reading));
+});
+
+test('the LV/HV scale applies to the voltage too (raw 5320 = 53,2 V on an LV pack)', () => {
+  // An SG04LP3 is LV (device code 0x0005) -> voltage scale 0.01 V/LSB, so the
+  // SAME register word means a ~53 V 48-V-class pack. Getting this wrong would
+  // read 532 V on a 48 V battery.
+  const lvId = { start: 0x0000, regs: [0x0005] };
+  const b = block(0x024b, 0x7a, { ...MUEHLFELDWEG, 0x024b: 5320 });
+  const cfg = {
+    family: 'hybrid_3p',
+    allow_missing_soc: true,
+    soc_from_voltage: { v_empty: 48, v_full: 56 },
+  };
+  const out = D.decodeVerbose([lvId, b], cfg);
+  assert.strictEqual(out.drop.estimate.voltage_v, 53.2);
+  assert.strictEqual(out.drop.estimate.soc_pct, 65); // (53,2-48)/8 = 65 %
+});
+
+test('hybrid_1p estimates from its own voltage register, inside the EXISTING read block', () => {
+  // deye_hybrid.yaml reg 183 (0x00B7), scale 0.01 -> V, no LV/HV dual scale.
+  // It already sits inside 0x00A9..0x00BE, so this family needs no wider read.
+  const reads = D.planReads({ family: 'hybrid_1p' });
+  assert.strictEqual(reads.length, 1);
+  assert.ok(reads[0].start <= 0x00b7 && 0x00b7 < reads[0].start + reads[0].count,
+    'the battery voltage must already be covered');
+  const b = block(0x00a9, 0x16, { 0x00b7: 5200, 0x00b8: 0, 0x00b2: 900, 0x00ba: 1500 });
+  const cfg = {
+    family: 'hybrid_1p',
+    allow_missing_soc: true,
+    soc_from_voltage: { v_empty: 48, v_full: 56 },
+  };
+  const out = D.decodeVerbose([b], cfg);
+  assert.strictEqual(out.drop.rule, D.SOC_DROP_MISSING);
+  assert.strictEqual(out.drop.estimate.voltage_v, 52);
+  assert.strictEqual(out.drop.estimate.soc_pct, 50);
+  assert.strictEqual(D.decode([b], cfg).reading.soc_pct, 50);
+});
+
+test('a nonsensical or malformed bounds config estimates NOTHING and never throws', () => {
+  const b = block(0x024b, 0x7a, MW_VOLT);
+  const bad = [
+    undefined, null, 'x', 42, {},
+    { v_empty: 700, v_full: 600 },      // inverted
+    { v_empty: 600, v_full: 600 },      // zero span -> division by zero
+    { v_empty: 0, v_full: 700 },        // a 0 V "empty" is not a battery
+    { v_empty: -1, v_full: 700 },
+    { v_empty: 'a', v_full: 'b' },
+    { v_empty: NaN, v_full: 700 },
+    { v_empty: 600 },                   // half a pair
+  ];
+  for (const soc_from_voltage of bad) {
+    const cfg = { family: 'hybrid_3p', allow_missing_soc: true, soc_from_voltage };
+    const out = D.decode([HV_ID, b], cfg);
+    assert.ok(out, `kept for ${JSON.stringify(soc_from_voltage)}`);
+    assert.ok(!('soc_pct' in out.reading), `no estimate for ${JSON.stringify(soc_from_voltage)}`);
+  }
+});
+
+test('blockAlive still judges on the POWER channels only - the voltage is not a witness', () => {
+  // A pack that holds voltage while every power channel reads exactly 0 stays
+  // the logger's empty answer, exactly as before this feature. Widening the
+  // aliveness judgement would move the no_answer/missing boundary for EVERY
+  // plant, opted in or not.
+  const b = block(0x024b, 0x7a, { 0x024b: 6360 });
+  assert.strictEqual(D.blockAlive([b], D.FAMILIES.hybrid_3p), false);
+  assert.strictEqual(D.decodeVerbose([HV_ID, b], { family: 'hybrid_3p' }).drop.rule,
+    D.SOC_DROP_NO_ANSWER);
 });
 
 test('socPlausible accepts (0,100] and rejects 0, negatives, >100 and non-numbers', () => {

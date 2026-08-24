@@ -23,6 +23,7 @@ import { komponenteHash } from '../nav';
 // ungestylten Fluss.
 import './KomponenteAssistent.css';
 import './AnlegenFlow.css';
+import * as socSchaetzung from '../socSchaetzung';
 import {
   ABSCHLUSS_HINWEIS,
   bilanzHinweis,
@@ -114,6 +115,22 @@ export function AnlegenFlow({
    */
   const [ohneKanal, setOhneKanal] = useState<TestOverride | null>(null);
   const [fragOhneKanal, setFragOhneKanal] = useState(false);
+  /**
+   * Die zwei Eckpunkte des Speichers für die Ladestand-SCHÄTZUNG. Sie leben
+   * bewusst HIER - im Ausweg-Bereich, der nur bei „das BMS meldet nichts"
+   * erscheint - und nicht als reguläres Verbindungsfeld: eine Anlage mit
+   * funktionierendem BMS soll gar nicht erst auf die Idee kommen (dieselbe
+   * Zurückhaltung, aus der `allow_missing_soc` kein `:8484`-Feld hat).
+   */
+  const [socVolt, setSocVolt] = useState(socSchaetzung.leereEingabe());
+  /**
+   * ⚠ Ob die Schätzung ANGEBOTEN wird, hängt am Befund - und den entwertet jede
+   * Eingabe, denn die Eckpunkte gehören zur Verbindung. Ohne dieses eigene
+   * Merkmal verschwänden die Felder beim ersten Tastendruck. Es hält also die
+   * FRAGE fest („diese Anlage meldet keinen Ladestand"), nicht die Antwort -
+   * deshalb wird es nur mit dem Formular zurückgesetzt, nie durch einen Test.
+   */
+  const [socAngeboten, setSocAngeboten] = useState(false);
   const [name, setName] = useState('');
   const [kwp, setKwp] = useState('');
   const [speichern, setSpeichern] = useState(false);
@@ -221,11 +238,33 @@ export function AnlegenFlow({
     if (!t) return;
     setTemplate(t);
     setVerbindung(initialeVerbindung(t));
+    setSocVolt(socSchaetzung.leereEingabe());
+    setSocAngeboten(false);
     // ⚠ NICHT mit dem Modellnamen vorbefüllen (Alias-Kontinuität, Live-Fall
     // Herzogau 20.08.2026): ein vorbefülltes Feld wird mitgeschickt und
     // überschreibt beim Übernehmen den Namen, den der Kunde vergeben hat.
     setName('');
     setUebernahme(null);
+    setTestZustand('ungeprueft');
+    setTestText(null);
+    setOhneKanal(null);
+  }
+
+  /**
+   * Die Eckpunkte gehören IN die Verbindung: sie reisen zur Box, und der Beleg
+   * des Verbindungstests keyt auf die ganze Verbindung. Deshalb entwerten sie
+   * den Test wie jedes andere Feld - was hier kein Reibungspunkt ist, sondern
+   * der Weg: erst der erneute Test zeigt, was aus DIESEN Werten geschätzt wird.
+   */
+  function setzeSocVolt(next: socSchaetzung.SocVoltageEingabe) {
+    setSocVolt(next);
+    const wert = socSchaetzung.verbindungsWert(next);
+    setVerbindung((v) => {
+      const out = { ...v };
+      if (wert) out[socSchaetzung.SOC_VOLTAGE_KEY] = wert;
+      else delete out[socSchaetzung.SOC_VOLTAGE_KEY];
+      return out;
+    });
     setTestZustand('ungeprueft');
     setTestText(null);
     setOhneKanal(null);
@@ -290,6 +329,7 @@ export function AnlegenFlow({
       const ergebnis = testErgebnis(antwort);
       setTestText(ergebnis);
       setTestZustand(ergebnis.zustand);
+      if (ergebnis.override?.channel === 'soc_pct') setSocAngeboten(true);
       if (ergebnis.zustand === 'bestanden') void frageUebernahme();
     } catch (e) {
       setTestZustand('fehlgeschlagen');
@@ -356,6 +396,8 @@ export function AnlegenFlow({
     setRolle(null);
     setTemplate(null);
     setVerbindung({});
+    setSocVolt(socSchaetzung.leereEingabe());
+    setSocAngeboten(false);
     setErweitertOffen(false);
     setTestZustand('ungeprueft');
     setTestText(null);
@@ -678,6 +720,52 @@ export function AnlegenFlow({
                   ))}
                 </ul>
                 <p className="vp-assist-hebel-note">{HEBEL_HINWEIS}</p>
+              </div>
+            )}
+            {/* Der Ladestand aus der Batteriespannung - NUR im selben Fall, in
+                dem es überhaupt einen Ausweg gibt („das BMS meldet nichts").
+                Eine Anlage mit funktionierendem BMS sieht die Felder nie. */}
+            {socAngeboten && (
+              <div className="vp-assist-socvolt" data-testid="soc-schaetzung">
+                <strong>{socSchaetzung.SOC_VOLTAGE_TITEL}</strong>
+                <p className="vp-assist-help">{socSchaetzung.SOC_VOLTAGE_INTRO}</p>
+                {socSchaetzung.SOC_VOLTAGE_FELDER.map((f) => (
+                  <div className="vp-assist-field" key={f.id}>
+                    <label htmlFor={f.id}>{f.label}</label>
+                    <Input
+                      id={f.id}
+                      inputMode="decimal"
+                      value={socVolt[f.key]}
+                      placeholder={f.platzhalter}
+                      onChange={(e) => setzeSocVolt({ ...socVolt, [f.key]: e.target.value })}
+                    />
+                    <p className="vp-assist-help">{f.hilfe}</p>
+                  </div>
+                ))}
+                {socSchaetzung.fehler(socVolt) && (
+                  <p className="vp-assist-warn" data-testid="soc-schaetzung-fehler">
+                    {socSchaetzung.fehler(socVolt)}
+                  </p>
+                )}
+                {/* Der BELEG der Box - die Rückmeldung, an der der Kunde seine
+                    Angaben kalibriert. Ohne ihn wird nichts behauptet. */}
+                {socSchaetzung.schaetzungSatz(testText?.befund) && (
+                  <p className="vp-assist-uebernahme" data-testid="soc-schaetzung-beleg">
+                    {socSchaetzung.schaetzungSatz(testText?.befund)}
+                  </p>
+                )}
+                {!socSchaetzung.schaetzungSatz(testText?.befund)
+                  && !socSchaetzung.istLeer(socVolt)
+                  && !socSchaetzung.fehler(socVolt) && (
+                  <p className="vp-assist-help" data-testid="soc-schaetzung-erneut">
+                    {socSchaetzung.SOC_VOLTAGE_ERNEUT_TESTEN}
+                  </p>
+                )}
+                <ul className="vp-assist-folgen">
+                  {socSchaetzung.SOC_VOLTAGE_FOLGEN.map((z) => (
+                    <li key={z}>{z}</li>
+                  ))}
+                </ul>
               </div>
             )}
             {/* Der Ausweg - NUR wenn der Server ihn als solchen ausweist. */}

@@ -94,11 +94,13 @@ test('route: solarman_v5 -> Deye reader with family register plan', () => {
   assert.strictEqual(r.connection.mb_slave_id, 1);
   assert.strictEqual(r.connection.power_scale, 1);
   // hybrid_3p reads the device-identity register 0x0000 (LV/HV scale class) plus
-  // the 121-register measurement block starting at 0x024c (wide enough for the
-  // External-CT grid pair 0x026B/0x02C4 - the connection point).
+  // the 122-register measurement block starting at 0x024b - the Battery Voltage
+  // (the soc_from_voltage estimate) sits one address BELOW the SoC, and the
+  // block still reaches the External-CT grid pair 0x026B/0x02C4 (the connection
+  // point) while staying under the 125-register fn-0x03 limit.
   assert.deepStrictEqual(r.reads, [
     { start: 0x0000, count: 0x0001 },
-    { start: 0x024c, count: 0x0079 },
+    { start: 0x024b, count: 0x007a },
   ]);
 });
 

@@ -452,6 +452,113 @@ test('flow Deye decoder keeps a live SoC-0 read WITHOUT soc_pct when opted in, l
   assert.ok(!('soc_pct' in flowReading), 'never a fabricated 0');
 });
 
+// The SoC-from-voltage estimate. The blocks above all start at 0x024C and so
+// carry NO battery voltage - they can never exercise this path, which is
+// exactly why the flow copy could drift here unnoticed. These use the widened
+// 0x024B block the router now plans.
+function muehlfeldwegVoltageBlocks() {
+  const regs = new Array(0x7a).fill(0);
+  const put = (addr, val) => { regs[addr - 0x024b] = val & 0xffff; };
+  put(0x024b, 6360);     // battery voltage raw -> 636,0 V on an HV pack
+  put(0x024c, 0);        // SoC: the BMS reports nothing
+  put(0x024e, 0xfff4);
+  put(0x028d, 4300);
+  put(0x02a0, 6100);
+  put(0x026b, 1200);
+  return [{ start: 0x0000, regs: [0x0008] }, { start: 0x024b, regs }];
+}
+
+test('flow Deye decoder ESTIMATES the SoC from the battery voltage, like the module', () => {
+  const cfg = {
+    family: 'hybrid_3p',
+    allow_missing_soc: true,
+    soc_from_voltage: { v_empty: 600, v_full: 700 },
+  };
+  const blocks = muehlfeldwegVoltageBlocks();
+  const { ret } = runDeyeDecode(cfg, blocks);
+  assert.ok(ret, 'the flow publishes the sample');
+  const flowReading = ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  const expected = deyeDecode.decode(blocks, cfg);
+  assert.deepStrictEqual(flowReading, expected.reading);
+  assert.strictEqual(flowReading.soc_pct, 36);
+  assert.strictEqual(flowReading.soc_source, 'voltage');
+});
+
+test('flow Deye decoder keeps the read WITHOUT soc_pct when no bounds are set, like the module', () => {
+  const cfg = { family: 'hybrid_3p', allow_missing_soc: true };
+  const blocks = muehlfeldwegVoltageBlocks();
+  const { ret } = runDeyeDecode(cfg, blocks);
+  const flowReading = ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  assert.ok(!('soc_pct' in flowReading), 'no bounds, no SoC - never a fabricated 0');
+});
+
+test('flow Deye decoder never estimates for no_answer / out_of_range, like the module', () => {
+  const cfg = {
+    family: 'hybrid_3p',
+    allow_missing_soc: true,
+    soc_from_voltage: { v_empty: 600, v_full: 700 },
+  };
+  // Empty answer: everything 0, including the voltage.
+  const empty = [{ start: 0x0000, regs: [0x0008] }, { start: 0x024b, regs: new Array(0x7a).fill(0) }];
+  assert.strictEqual(runDeyeDecode(cfg, empty).ret, null);
+  assert.strictEqual(deyeDecode.decode(empty, cfg), null);
+  // Broken frame WITH a readable-looking voltage: still a hard drop.
+  const broken = muehlfeldwegVoltageBlocks();
+  broken[1].regs[0x024c - 0x024b] = 1250;
+  assert.strictEqual(runDeyeDecode(cfg, broken).ret, null);
+  assert.strictEqual(deyeDecode.decode(broken, cfg), null);
+});
+
+test('flow Deye decoder never overwrites a REAL SoC with the estimate, like the module', () => {
+  const cfg = {
+    family: 'hybrid_3p',
+    allow_missing_soc: true,
+    soc_from_voltage: { v_empty: 600, v_full: 700 },
+  };
+  const blocks = muehlfeldwegVoltageBlocks();
+  blocks[1].regs[0x024c - 0x024b] = 57;
+  const flowReading = runDeyeDecode(cfg, blocks).ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  assert.strictEqual(flowReading.soc_pct, 57);
+  assert.ok(!('soc_source' in flowReading));
+});
+
+test('flow Deye decoder clamps the estimate to [1,100] like the module (never the dropped 0)', () => {
+  const cfg = {
+    family: 'hybrid_3p',
+    allow_missing_soc: true,
+    soc_from_voltage: { v_empty: 600, v_full: 700 },
+  };
+  for (const [raw, want] of [[5900, 1], [7200, 100]]) {
+    const blocks = muehlfeldwegVoltageBlocks();
+    blocks[1].regs[0] = raw;
+    const flowReading = runDeyeDecode(cfg, blocks).ret[0].payload;
+    assert.strictEqual(flowReading.soc_pct, want);
+    assert.strictEqual(flowReading.soc_pct, deyeDecode.decode(blocks, cfg).reading.soc_pct);
+  }
+});
+
+test('flow Deye decoder ignores a nonsensical bounds pair like the module', () => {
+  const cfg = {
+    family: 'hybrid_3p',
+    allow_missing_soc: true,
+    soc_from_voltage: { v_empty: 700, v_full: 600 },
+  };
+  const blocks = muehlfeldwegVoltageBlocks();
+  const flowReading = runDeyeDecode(cfg, blocks).ret[0].payload;
+  delete flowReading.ts;
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  assert.ok(!('soc_pct' in flowReading));
+});
+
 test('flow Deye decoder still DROPS the same read without the opt-in, like the module', () => {
   const cfg = { family: 'hybrid_3p', power_scale: 1 };
   const blocks = muehlfeldwegBlocks();

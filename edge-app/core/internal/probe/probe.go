@@ -248,6 +248,21 @@ type Finding struct {
 	Rule    string   `json:"rule"`
 	Raw     *float64 `json:"raw,omitempty"`
 	Value   *float64 `json:"value,omitempty"`
+
+	// Estimate: what the box WOULD estimate this channel to be from a related
+	// measurement (today: the state of charge from the battery voltage). Only
+	// ever offered for the "missing" rule, and it does NOT change the verdict -
+	// the finding still says the channel is missing, so the customer still has
+	// to wave it through explicitly. Absent = nothing to offer.
+	Estimate *Estimate `json:"estimate,omitempty"`
+}
+
+// Estimate is a value the box DERIVED rather than measured, carried next to the
+// finding with the input it came from - the raw-next-to-decoded discipline that
+// makes a wrong scale or a mis-stated pack end visible.
+type Estimate struct {
+	SocPct   float64 `json:"soc_pct"`
+	VoltageV float64 `json:"voltage_v"`
 }
 
 // Switched reports what a write REALLY wrote and what stood in the register

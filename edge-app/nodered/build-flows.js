@@ -74,10 +74,11 @@ const routerFunc = [
   "  string:    [{ start: 0x0050, count: 0x0002 }],",
   "  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],",
   // hybrid_3p: device-identity register 0x0000 (LV/HV scale class) + the widened
-  // measurement block 0x024C..0x02C4 (121 regs) covering the External-CT grid
-  // pair 0x026B/0x02C4 (the connection point) plus the 32-bit alias/load words.
+  // measurement block 0x024B..0x02C4 (122 regs) covering the Battery Voltage at
+  // 0x024B (the soc_from_voltage estimate), the External-CT grid pair
+  // 0x026B/0x02C4 (the connection point) plus the 32-bit alias/load words.
   // Must equal deye-decode.planReads({family:'hybrid_3p'}) (flows-sync guard).
-  "  hybrid_3p: [{ start: 0x0000, count: 0x0001 }, { start: 0x024c, count: 0x0079 }],",
+  "  hybrid_3p: [{ start: 0x0000, count: 0x0001 }, { start: 0x024b, count: 0x007a }],",
   "  micro:     [{ start: 0x0056, count: 0x0002 }]",
   "};",
   "const MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };",
@@ -106,6 +107,9 @@ const routerFunc = [
   // socMissingSignature): it must reach the DECODER, or an opted-in plant would
   // still drop every sample and deliver nothing.
   "    allow_missing_soc: !!conn.allow_missing_soc,",
+  // The pack's two ends for the voltage-based SoC estimate (deye-decode
+  // socFromVoltageConfig validates it; a nonsensical pair estimates nothing).
+  "    soc_from_voltage: conn.soc_from_voltage,",
   // power_scale is now a MANUAL OVERRIDE / fallback (0 = auto-detect from 0x0000);
   // pass it through unchanged so the decoder resolves the LV/HV scale.
   "    power_scale: num(conn.power_scale, 0)",
@@ -1779,7 +1783,7 @@ const sourcesStoreFunc = [
   "    const serial = conn.serial;",
   "    if (serial === undefined || serial === null || serial === '' || !(Number(serial) > 0)) { notes.push({ warn: true, t: 'Quelle ' + id + ' NICHT VERDRAHTET: Datenlogger-Seriennummer fehlt (solarman_v5)' }); return; }",
   "    const port = num(conn.port, 8899);",
-  "    plans.push({ id: s.id, role: s.role, adapter: 'solarman_v5', family: s.family, conn: { ip, port, serial, mb_slave_id: num(conn.mb_slave_id, 1), invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign, allow_missing_soc: !!conn.allow_missing_soc, power_scale: num(conn.power_scale, 0) } });",
+  "    plans.push({ id: s.id, role: s.role, adapter: 'solarman_v5', family: s.family, conn: { ip, port, serial, mb_slave_id: num(conn.mb_slave_id, 1), invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign, allow_missing_soc: !!conn.allow_missing_soc, soc_from_voltage: conn.soc_from_voltage, power_scale: num(conn.power_scale, 0) } });",
   "    notes.push({ t: 'Quelle ' + id + ' (' + s.role + '): solarman_v5 ' + ip + ':' + port + ' -> Leseplan (Deye-Familie ' + s.family + ')' });",
   "  } else if (s.communication === 'fronius_solar_api') {",
   "    const insecure = !!conn.insecure_tls;",

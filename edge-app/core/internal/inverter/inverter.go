@@ -1573,6 +1573,28 @@ type Connection struct {
 	// window would be blind, so the platform refuses to arm control for it.
 	AllowMissingSoc bool `json:"allow_missing_soc,omitempty"`
 
+	// SocFromVoltage lets a plant that carries AllowMissingSoc show an ESTIMATED
+	// state of charge instead of none at all: the operator states the pack's two
+	// ends (from its datasheet) and the decoder interpolates the MEASURED
+	// terminal voltage between them (deye/deye-decode.js estimateSocFromVoltage).
+	//
+	// It is a companion of AllowMissingSoc, never a replacement: it applies ONLY
+	// to the "the BMS reports nothing" case, never rescues the logger's empty
+	// answer or a broken frame, and never overwrites a real BMS value.
+	//
+	// ⚠ It is an ESTIMATE, and on LiFePO4 a coarse one (the cell curve is nearly
+	// flat between ~20 % and ~90 %, and load shifts the terminal voltage further),
+	// so it stays a DISPLAY value: the connection test keeps reporting the missing
+	// channel, so the plant keeps its cloud-side reading_override stamp and stays
+	// refused for battery control - guards.Clamp is never armed on a guess.
+	//
+	// Like AllowMissingSoc there is deliberately NO :8484 form field for it (an
+	// operator hatch that looks like a normal setting invites switching it on
+	// where it does not belong); it is a portal-only setting. Solarman-V5 (Deye)
+	// only - the other decoders omit an implausible SoC instead of dropping the
+	// read, so there is nothing to rescue.
+	SocFromVoltage *SocFromVoltage `json:"soc_from_voltage,omitempty"`
+
 	// modbus_tcp
 	UnitID  int    `json:"unit_id,omitempty"`
 	Profile string `json:"profile,omitempty"`
@@ -1756,6 +1778,14 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	// above) so a transport added later cannot silently inherit it.
 	if transport.Communication != CommSolarmanV5 {
 		conn.AllowMissingSoc = false
+		conn.SocFromVoltage = nil
+	}
+	// The estimate is only meaningful together with the opt-in it complements:
+	// without AllowMissingSoc the decoder drops the whole read anyway, so bounds
+	// on their own would be a setting that looks active and changes nothing.
+	// Kept (not refused) so the two can be sent in any order by any caller.
+	if err := conn.SocFromVoltage.validate(); err != nil {
+		return Selection{}, invalid("%s", err.Error())
 	}
 
 	switch transport.Communication {
@@ -2057,6 +2087,15 @@ func (s Selection) BusPayload() []byte {
 		// the retained config into the self-wiring reader exactly like
 		// invert_batt_sign. Absent = false = the unchanged drop rule.
 		conn["allow_missing_soc"] = s.Connection.AllowMissingSoc
+		// The pack's two ends for the voltage-based SoC estimate. It must reach
+		// the DECODER (that is where the SoC gate lives), so it rides the retained
+		// config exactly like allow_missing_soc. Absent = no estimate.
+		if s.Connection.SocFromVoltage != nil {
+			conn["soc_from_voltage"] = map[string]any{
+				"v_empty": s.Connection.SocFromVoltage.VEmpty,
+				"v_full":  s.Connection.SocFromVoltage.VFull,
+			}
+		}
 		conn["power_scale"] = s.Connection.PowerScale
 		// invert_control_sign is the WRITE-path sign the calibration step proves; the
 		// Deye control adapter reads it. Absent = false (no inversion).

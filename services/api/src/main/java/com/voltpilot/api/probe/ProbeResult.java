@@ -105,7 +105,13 @@ public record ProbeResult(String requestId, String errorCode, String message,
      * that the READ is untrustworthy and may never be waved through.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record Finding(String channel, String rule, Double raw, Double value) {
+    public record Finding(String channel, String rule, Double raw, Double value,
+            Estimate estimate) {
+
+        /** Der Bequemlichkeits-Konstruktor der Aufrufer OHNE Schätzung. */
+        public Finding(String channel, String rule, Double raw, Double value) {
+            this(channel, rule, raw, value, null);
+        }
 
         public static final String CHANNEL_SOC = "soc_pct";
         public static final String RULE_MISSING = "missing";
@@ -119,5 +125,25 @@ public record ProbeResult(String requestId, String errorCode, String message,
         public boolean overridable() {
             return CHANNEL_SOC.equals(channel) && RULE_MISSING.equals(rule);
         }
+    }
+
+    /**
+     * Was die Box aus einem VERWANDTEN Messwert SCHÄTZEN würde - heute: der
+     * Ladestand aus der gemessenen Batteriespannung, wenn der Betreiber die
+     * zwei Eckpunkte des Speichers gepflegt hat.
+     *
+     * <p>Sie steht NEBEN dem Befund, nie in {@code reading}: der beanstandete
+     * Kanal ist dort per Vertrag nie enthalten, und diese Zahl ist eine
+     * SCHÄTZUNG, keine Messung.
+     *
+     * <p><b>Sie ändert das Urteil NICHT.</b> Der Test bleibt {@code ok=false}
+     * mit Regel {@code missing}, die Anlage braucht also weiterhin die
+     * ausdrückliche Zustimmung des Kunden - und behält damit ihren
+     * {@code reading_override}-Stempel, der sie für die Batterie-Steuerung
+     * sperrt ({@code ControlCertificationService}). Eine grobe Schätzung darf
+     * die SoC-Klemme von {@code guards.Clamp} nie scharfschalten.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record Estimate(Double socPct, Double voltageV) {
     }
 }

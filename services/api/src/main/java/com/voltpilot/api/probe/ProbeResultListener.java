@@ -323,7 +323,35 @@ public class ProbeResultListener {
         if (!FINDING_CHANNELS.contains(channel) || !FINDING_RULES.contains(rule)) {
             return null;
         }
-        return new ProbeResult.Finding(channel, rule, optDouble(n, "raw"), optDouble(n, "value"));
+        return new ProbeResult.Finding(channel, rule, optDouble(n, "raw"), optDouble(n, "value"),
+                estimate(n, rule));
+    }
+
+    /**
+     * Die Schätzung neben dem Befund, oder {@code null}.
+     *
+     * <p>Sie wird NUR zur Regel {@code missing} übernommen - die einzige, die
+     * ein Gerätezustand ist. Zu einer Leerantwort oder einem kaputten Rahmen
+     * eine Zahl weiterzureichen hiesse, aus einer Lesung zu schätzen, der wir
+     * schon abgesprochen haben zu trauen.
+     *
+     * <p>Und sie braucht BEIDE Zahlen: die Spannung ist der Beleg, an dem ein
+     * Skalierungsfehler oder eine falsch gepflegte Eckpunkt-Angabe sichtbar
+     * wird - ein Prozentwert ohne sie wäre eine Zahl, die niemand nachprüfen
+     * kann. Ausserhalb von (0,100] wird nichts übernommen: das ist genau die
+     * Bandbreite, die der Ladestand-Kanal überhaupt tragen darf.
+     */
+    private static ProbeResult.Estimate estimate(JsonNode finding, String rule) {
+        JsonNode n = finding.get("estimate");
+        if (n == null || !n.isObject() || !ProbeResult.Finding.RULE_MISSING.equals(rule)) {
+            return null;
+        }
+        Double soc = optDouble(n, "soc_pct");
+        Double volts = optDouble(n, "voltage_v");
+        if (soc == null || volts == null || soc <= 0 || soc > 100) {
+            return null;
+        }
+        return new ProbeResult.Estimate(soc, volts);
     }
 
     private static String code(JsonNode node) {

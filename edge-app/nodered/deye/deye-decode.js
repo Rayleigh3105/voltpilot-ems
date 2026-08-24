@@ -110,6 +110,12 @@ const FAMILIES = {
       grid: { addr: 0x00a9, bits: 16, signed: true, scale: 1 }, // reg 169, W (signed)
       load: { addr: 0x00b2, bits: 16, signed: false, scale: 1 }, // reg 178, W
       soc: { addr: 0x00b8, bits: 16, signed: false, scale: 1, kind: 'pct' }, // reg 184, %
+      // Battery Voltage (ha-solarman deye_hybrid.yaml "Battery Voltage",
+      // reg 183, scale 0.01 -> V). It sits ONE address below the SoC, exactly
+      // like the high map's 0x024B below 0x024C, and is ALREADY inside the
+      // 0x00A9..0x00BE block - no read widening for this family. Only used by
+      // the soc_from_voltage estimate; never published as a channel.
+      battVolt: { addr: 0x00b7, bits: 16, signed: false, scale: 0.01 }, // reg 183, V
       pv: { addrs: [0x00ba, 0x00bb], bits: 16, signed: false, scale: 1, sum: true }, // reg 186+187, W
       batt: { addr: 0x00be, bits: 16, signed: true, scale: 1 }, // reg 190, W (calibration only)
     },
@@ -151,14 +157,28 @@ const FAMILIES = {
     // the measurement block 0x024C..0x02C4 (121 regs, still under the 125-reg
     // fn-0x03 limit) - wide enough to include the External-CT high word at
     // 0x02C4 (and the alias high word 0x02B2 for the fallback).
+    // ⚠ The measurement block starts at 0x024B, not 0x024C: the Battery Voltage
+    // register the soc_from_voltage estimate needs sits ONE address BELOW the
+    // SoC. Widening down by one keeps every existing field at its address and
+    // lands at 122 registers - still under the 125-register fn-0x03 limit.
     reads: [
       { start: DEVICE_REG, count: 0x0001 },
-      { start: 0x024c, count: 0x0079 },
+      { start: 0x024b, count: 0x007a },
     ],
     // The register whose device-type code drives the LV/HV PV+battery scale.
     scaleReg: DEVICE_REG,
     fields: {
       soc: { addr: 0x024c, bits: 16, signed: false, scale: 1, kind: 'pct' }, // %
+      // Battery Voltage (ha-solarman deye_p3.yaml "Battery Voltage", 0x024B).
+      // It carries the SAME dual `scale: [0.01, 0.1]` as PV/battery power, so
+      // it rides the hvScale flag: LV -> 0.01 V/LSB, HV -> 0.1 V/LSB. The dual
+      // scale is a physical necessity, not a quirk - at 0.01 V/LSB a 16-bit
+      // register tops out at 655,35 V, which an HV pack (600-800 V) overflows.
+      // Cross-check on the live SG02HP3-EU-AM3 (Muehlfeldweg 2, DEYE.md §"HV
+      // neue Generation"): raw 6360 x 0.01 x 10 = 636,0 V, the value that
+      // device reported. Only used by the soc_from_voltage estimate below;
+      // never published as a channel.
+      battVolt: { addr: 0x024b, bits: 16, signed: false, scale: 0.01, hvScale: true }, // V
       // PV + battery carry the ha-solarman [1,10] LV/HV scale -> hvScale flag.
       batt: { addr: 0x024e, bits: 16, signed: true, hvScale: true }, // W (house-balance battery term + calibration)
       // Grid: External CT total = the connection point (+ import / - export).
@@ -249,6 +269,79 @@ const SOC_DROP_NO_ANSWER = 'no_answer';
 const SOC_DROP_MISSING = 'missing';
 const SOC_DROP_OUT_OF_RANGE = 'out_of_range';
 
+// --- SoC ESTIMATED from the battery voltage (the ONLY way out of `missing`) --
+// Live case Muehlfeldweg 2 (see the three-rules block above): the pack is fine,
+// the inverter measures its voltage/current/power/temperature - only the BMS
+// link is absent, so `allow_missing_soc` keeps the reading but the customer has
+// NO state of charge at all, and neither has anything SoC-dependent.
+//
+// The operator may therefore state the pack's two ends (`soc_from_voltage:
+// {v_empty, v_full}`, from the battery's own datasheet) and we LINEARLY
+// interpolate the measured terminal voltage between them. Four rules make this
+// honest rather than a fabrication:
+//
+//   1. It applies ONLY to the `missing` rule. `no_answer` (the logger's empty
+//      answer) and `out_of_range` (a broken frame) stay HARD drops with or
+//      without the option - the July-2026 rule is untouched. Estimating from a
+//      voltage register of a frame we already decided we cannot trust would be
+//      exactly the fabrication the gate exists to prevent.
+//   2. A REAL BMS SoC (> 0) is NEVER overwritten. The estimate exists only
+//      where the device reports nothing.
+//   3. It is CLAMPED to [1, 100] - deliberately NOT [0, 100]. An exact 0 is the
+//      empty-answer signature both plausibility gates key on (JS socPlausible
+//      here, its Go twin guards.SocPlausible at the core's telemetry ingest), so
+//      an estimated 0 would be DROPPED at the next choke point and the customer
+//      would be back to no SoC at all - with the added confusion of a value the
+//      decoder believed it had published. 1 % is the honest floor: "as empty as
+//      this estimate can say".
+//   4. An UNREADABLE or zero voltage estimates NOTHING (the reading is then
+//      kept without soc_pct, exactly as with the bare opt-in). A pack whose
+//      voltage register reads 0 has not been measured; guessing from it would
+//      be the fabrication rule 1 rejects.
+//
+// ⚠ It is an ESTIMATE, and a coarse one: a LiFePO4 cell holds ~3,2-3,35 V over
+// most of its usable range, so between roughly 20 % and 90 % the curve is
+// nearly flat and the interpolation is a rough indication, not a measurement.
+// Under load the terminal voltage additionally sags (discharge) or rises
+// (charge) by the pack's internal resistance times the current, which shifts
+// the estimate further. That is why the ESTIMATE is never treated as a BMS
+// truth: the connection test keeps reporting `missing`, so the plant keeps its
+// `reading_override` stamp and stays refused for battery control (the api's
+// ControlCertificationService) - guards.Clamp is never armed on a guess.
+const SOC_ESTIMATE_MIN_PCT = 1; // clamped floor: 0 IS the empty-answer signature
+const SOC_ESTIMATE_MAX_PCT = 100;
+
+/**
+ * socFromVoltageConfig - the validated {v_empty, v_full} pair, or null.
+ *
+ * Defensive by design: a decoder must never throw on a malformed config, and a
+ * nonsensical pair must produce NO estimate rather than a nonsense percentage.
+ * The authoritative validation (with a German message) lives cloud-side in
+ * ComponentService and on the box in inverter.Normalize; this is the last line.
+ */
+function socFromVoltageConfig(config) {
+  const raw = config && config.soc_from_voltage;
+  if (!raw || typeof raw !== 'object') return null;
+  const empty = Number(raw.v_empty);
+  const full = Number(raw.v_full);
+  if (!isFinite(empty) || !isFinite(full)) return null;
+  if (!(empty > 0) || !(full > empty)) return null;
+  return { v_empty: empty, v_full: full };
+}
+
+/**
+ * estimateSocFromVoltage - the linear interpolation, rounded to 0,1 % and
+ * clamped to [1, 100] (see rule 3 above). Returns undefined when the voltage is
+ * unusable - never a fabricated value.
+ */
+function estimateSocFromVoltage(volts, cfg) {
+  if (!cfg) return undefined;
+  if (typeof volts !== 'number' || !isFinite(volts) || volts <= 0) return undefined;
+  const pct = ((volts - cfg.v_empty) / (cfg.v_full - cfg.v_empty)) * 100;
+  if (!isFinite(pct)) return undefined;
+  return Math.max(SOC_ESTIMATE_MIN_PCT, Math.min(SOC_ESTIMATE_MAX_PCT, round1(pct)));
+}
+
 /**
  * blockAlive - does this read show any life at all, or is it the logger's
  * all-zero empty answer? Judged over the family's OWN measurement fields (never
@@ -260,7 +353,14 @@ const SOC_DROP_OUT_OF_RANGE = 'out_of_range';
 function blockAlive(blocks, fam) {
   const f = fam.fields;
   for (const key of Object.keys(f)) {
-    if (key === 'soc') continue;
+    // 'soc' is the channel under judgement. 'battVolt' is DELIBERATELY not a
+    // witness either: it exists only for the soc_from_voltage estimate, and
+    // letting it decide aliveness would move the no_answer/missing boundary for
+    // every plant (a night read whose power channels are all exactly 0 but
+    // whose pack still holds voltage would flip from "no answer" to "BMS
+    // missing"). This judgement stays exactly what it was: did the plant's
+    // POWER channels move?
+    if (key === 'soc' || key === 'battVolt') continue;
     const spec = f[key];
     const addrs = spec.addrs
       ? spec.addrs.slice()
@@ -378,6 +478,20 @@ function decode(blocks, config) {
   // exact-0 "BMS reports nothing" signature, keeps the other channels.
   const optIn = !!(config && config.allow_missing_soc);
   if (optIn && out.drop.rule === SOC_DROP_MISSING) {
+    // ...and if the operator stated the pack's two ends, the reading carries an
+    // ESTIMATED soc_pct instead of no SoC at all. `soc_source` marks it on the
+    // LOCAL bus so a technician reading `edge/telemetry` sees at once that this
+    // number is interpolated - the Go core ignores unknown fields, and the
+    // FROZEN cloud telemetry contract (additionalProperties:false) has no room
+    // for it, so the durable provenance for every cloud surface is the stored
+    // `connection.soc_from_voltage` itself, not a per-sample flag.
+    const est = out.drop.estimate;
+    if (est) {
+      return {
+        reading: { ...out.reading, soc_pct: est.soc_pct, soc_source: 'voltage' },
+        batt_kw: out.batt_kw,
+      };
+    }
     return { reading: out.reading, batt_kw: out.batt_kw };
   }
   return null;
@@ -419,6 +533,15 @@ function decodeVerbose(blocks, config) {
     if (invert) w = -w;
     return round3((w * (spec.hvScale ? hvScale : 1)) / 1000);
   };
+  // The same [1,10] LV/HV resolution WITHOUT the watt->kW division: the battery
+  // VOLTAGE carries the identical dual scale (deye_p3.yaml `scale: [0.01, 0.1]`)
+  // but is already a physical unit. Dividing it by 1000 would silently turn
+  // 636 V into 0,636 and the estimate would read 1 % on a full pack.
+  const scaled = (spec) => {
+    const v = fieldValue(blocks, spec);
+    if (v === undefined) return undefined;
+    return v * (spec.hvScale ? hvScale : 1);
+  };
 
   const reading = {};
   let batt_kw;
@@ -440,6 +563,20 @@ function decodeVerbose(blocks, config) {
         rule = blockAlive(blocks, fam) ? SOC_DROP_MISSING : SOC_DROP_NO_ANSWER;
       }
       drop = { channel: 'soc_pct', rule, raw: readReg(blocks, f.soc.addr), value };
+      // The way OUT of `missing` - and ONLY out of `missing`: a voltage-based
+      // estimate, computed here so the CONNECTION TEST can show it (the finding
+      // says what is wrong AND what we could do about it, inseparably). It rides
+      // NEXT TO the drop, never inside `reading` - that invariant ("the dropped
+      // channel is NEVER in the reading") is what lets every consumer trust the
+      // reading verbatim.
+      if (rule === SOC_DROP_MISSING && f.battVolt) {
+        const vcfg = socFromVoltageConfig(config);
+        const volts = vcfg ? scaled(f.battVolt) : undefined;
+        const est = estimateSocFromVoltage(volts, vcfg);
+        if (est !== undefined) {
+          drop.estimate = { soc_pct: est, voltage_v: round1(volts) };
+        }
+      }
     }
   }
 
@@ -528,6 +665,10 @@ module.exports = {
   socPlausible,
   decodeVerbose,
   blockAlive,
+  socFromVoltageConfig,
+  estimateSocFromVoltage,
+  SOC_ESTIMATE_MIN_PCT,
+  SOC_ESTIMATE_MAX_PCT,
   SOC_DROP_NO_ANSWER,
   SOC_DROP_MISSING,
   SOC_DROP_OUT_OF_RANGE,

@@ -332,6 +332,15 @@ func (s Source) busEntry() map[string]any {
 		// as an Erzeuger source), and the same decode gate applies - so the flag
 		// travels with the device wherever it is configured. Absent = false.
 		conn["allow_missing_soc"] = s.Connection.AllowMissingSoc
+		// Its companion, the voltage-based SoC estimate: same reasoning - a
+		// battery-family Deye can sit here too (a second hybrid as an Erzeuger
+		// source), and the SoC gate is in the same decoder.
+		if s.Connection.SocFromVoltage != nil {
+			conn["soc_from_voltage"] = map[string]any{
+				"v_empty": s.Connection.SocFromVoltage.VEmpty,
+				"v_full":  s.Connection.SocFromVoltage.VFull,
+			}
+		}
 		conn["power_scale"] = s.Connection.PowerScale
 	case inverter.CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID

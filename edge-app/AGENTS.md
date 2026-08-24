@@ -1100,6 +1100,33 @@ damit JEDE Lesung, die Anlage blieb für immer stumm und war nicht anlegbar.
   `connection.allow_missing_soc` — die Lesung wird dann OHNE `soc_pct` behalten,
   nie mit einer erfundenen 0, also bleibt der SoC-Achsen-Spike strukturell
   unmöglich. Die anderen zwei verwerfen weiterhin alles, **auch mit Opt-in**.
+- **Seit dem 24.08.2026 kann derselbe Fall den Ladestand aus der GEMESSENEN
+  Batteriespannung SCHÄTZEN** (`connection.soc_from_voltage = {v_empty, v_full}`,
+  die zwei Eckpunkte aus dem Datenblatt; Register `0x024B` hybrid_3p mit der
+  `[0,01/0,1]`-LV/HV-Skala, `0x00B7` hybrid_1p ×0,01 — der hybrid_3p-Leseblock ist
+  dafür um EINE Adresse nach unten auf `0x024B..0x02C4` (122 Register) geweitet).
+  Vier Regeln, alle mutationsgeprüft: nur bei `missing`, nie über einen echten
+  BMS-Wert, auf **`[1,100]` geklemmt** (die exakte 0 ist die Leerantwort-Signatur,
+  die beide Tore verwerfen — eine geschätzte 0 wäre unveröffentlichbar), und eine
+  unlesbare/0-Spannung schätzt NICHTS.
+  - **⚠ DIE SICHERHEITS-AUSSAGE: eine Schätzung schaltet NIE die Steuerung
+    scharf.** Der Verbindungstest setzt das Opt-in nie (`test-read.js`) und meldet
+    den fehlenden Kanal UNVERÄNDERT — er trägt die Schätzung nur additiv als
+    `finding.estimate` daneben (Vertrag `mqtt-probe.schema.json`). Die Komponente
+    braucht damit weiterhin die ausdrückliche Zustimmung, behält ihren
+    `reading_override`-Stempel, und `ControlCertificationService.activate` lehnt
+    unverändert ab: die SoC-Klemme von `guards.Clamp` läuft nie auf einer groben
+    Schätzung (bei LiFePO4 ist die Kennlinie im mittleren Bereich fast flach).
+  - **⚠ `blockAlive` urteilt bewusst NICHT über `battVolt`** — die
+    no_answer/missing-Grenze bleibt exakt, was sie war (ein Nachtblock, dessen
+    Leistungskanäle alle 0 sind, während der Pack Spannung hält, ist weiterhin die
+    Leerantwort). Widerum eine Regel, die man beim Aufräumen zerstören würde.
+  - **⚠ Die Zahlen-Grenzen leben DREIMAL** (api `SocFromVoltageBounds`, Box
+    `inverter.SocFromVoltage.validate`, Portal `src/socSchaetzung.ts`) — das
+    LAN-Regel-Muster. **Alle drei zusammen ändern.** Das Band ist bewusst weit
+    (10..1000 V), weil weder api noch Box die Bauart besser kennen als der Kunde.
+  - Eingetragen wird sie im PORTAL (Anlege-Assistent, im „Trotzdem
+    fortfahren"-Kasten); auf `:8484` gibt es bewusst KEIN Feld dafür.
 - **⚠ `blockAlive` urteilt NIE über das Identitäts-Register `0x0000`** — ein
   Logger kann es aus dem Cache beantworten, während der Messblock tot ist.
 - **Der Weg des Flags** (ohne ihn wäre das Opt-in wirkungslos, weil das Gate im
