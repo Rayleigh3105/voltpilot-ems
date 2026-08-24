@@ -106,12 +106,14 @@ assert_no_cache "/index.html"
 # The SPA fallback: an unknown route is answered with index.html via try_files.
 assert_no_cache "/anlage/00000000-0000-0000-0000-000000000000/steuerung"
 assert_no_cache "/favicon.svg"
+assert_no_cache "/favicon.ico"
+assert_no_cache "/favicon-96x96.png"
 assert_no_cache "/silent-check-sso.js"
 
 # Check 9: the App-Huelle. Same policy as every other unhashed file - a cached
 # sw.js would pin the whole shell until its bytes change.
 for f in /manifest.webmanifest /sw.js /offline.html \
-         /icons/icon-192.png /icons/icon-512.png /icons/icon-maskable-512.png \
+         /icons/icon-192.png /icons/icon-512.png \
          /icons/apple-touch-icon-180.png; do
   assert_no_cache "$f"
 done

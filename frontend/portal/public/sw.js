@@ -30,7 +30,7 @@
  * aendert, muss sie deshalb hochzaehlen, sonst behaelt ein Geraet die alte
  * Fassung.
  */
-const SW_VERSION = 'v1';
+const SW_VERSION = 'v2';
 const CACHE = `vp-shell-${SW_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -38,9 +38,11 @@ const OFFLINE_URL = '/offline.html';
 const PRECACHE = [
   OFFLINE_URL,
   '/manifest.webmanifest',
+  '/favicon.svg',
+  '/favicon.ico',
+  '/favicon-96x96.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon-180.png',
 ];
 
