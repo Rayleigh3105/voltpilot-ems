@@ -562,6 +562,75 @@ describe('der Ausweg aus der Sackgasse (Live-Fall Mühlfeldweg 2)', () => {
     });
   });
 
+  it('bietet die Ladestand-SCHÄTZUNG an - genau hier und nirgends sonst', async () => {
+    await bisZumTest();
+    const block = await screen.findByTestId('soc-schaetzung');
+    expect(within(block).getByLabelText(/Spannung bei 0 %/)).toBeTruthy();
+    expect(within(block).getByLabelText(/Spannung bei 100 %/)).toBeTruthy();
+    // Die Ehrlichkeit steht DABEI, nicht irgendwo im Kleingedruckten.
+    expect(within(block).getByText(/Gesteuert wird Ihr Speicher dadurch nicht/)).toBeTruthy();
+    expect(within(block).getByText(/LiFePO4/)).toBeTruthy();
+  });
+
+  it('schickt die Eckpunkte MIT der Verbindung - der Test bewertet genau sie', async () => {
+    await bisZumTest();
+    await screen.findByTestId('soc-schaetzung');
+    const rufeVorher = testComponentConnection.mock.calls.length;
+    fireEvent.change(screen.getByLabelText(/Spannung bei 0 %/), { target: { value: '600' } });
+    fireEvent.change(screen.getByLabelText(/Spannung bei 100 %/), { target: { value: '700' } });
+    // Die Eingabe ENTWERTET den Beleg - genau das ist die Verbindungstest-Pflicht.
+    expect(screen.queryByTestId('override-anbieten')).toBeNull();
+    // Und der erneute Test trägt sie zur Box.
+    fireEvent.click(knopf('Erneut testen'));
+    await waitFor(() =>
+      expect(testComponentConnection.mock.calls.length).toBeGreaterThan(rufeVorher));
+    const letzter = testComponentConnection.mock.calls.at(-1)[1];
+    expect(letzter.connection.soc_from_voltage).toEqual({ v_empty: 600, v_full: 700 });
+  });
+
+  it('zeigt den BELEG der Box - und ohne ihn keine erfundene Zahl', async () => {
+    // Zuerst ohne Schätzung: die Fläche behauptet nichts.
+    await bisZumTest();
+    await screen.findByTestId('soc-schaetzung');
+    expect(screen.queryByTestId('soc-schaetzung-beleg')).toBeNull();
+
+    // Jetzt antwortet die Box MIT einer Schätzung - unverändertes Urteil.
+    testComponentConnection.mockResolvedValue({
+      results: [
+        {
+          ...unplausibel.results[0],
+          finding: {
+            ...unplausibel.results[0].finding,
+            estimate: { socPct: 36, voltageV: 636 },
+          },
+        },
+      ],
+    });
+    fireEvent.change(screen.getByLabelText(/Spannung bei 0 %/), { target: { value: '600' } });
+    fireEvent.change(screen.getByLabelText(/Spannung bei 100 %/), { target: { value: '700' } });
+    fireEvent.click(knopf('Erneut testen'));
+
+    await screen.findByTestId('soc-schaetzung-beleg');
+    expect(screen.getByText(/636 V/)).toBeTruthy();
+    expect(screen.getByText(/36 % Ladestand/)).toBeTruthy();
+    // Der Ausweg bleibt NÖTIG: eine Schätzung ist keine Messung.
+    expect(await screen.findByTestId('override-anbieten')).toBeTruthy();
+    expect(knopf('Komponente anlegen')).toBeDisabled();
+  });
+
+  it('nennt eine unsinnige Eingabe beim Namen und speichert sie nie', async () => {
+    await bisZumTest();
+    await screen.findByTestId('soc-schaetzung');
+    fireEvent.change(screen.getByLabelText(/Spannung bei 0 %/), { target: { value: '700' } });
+    fireEvent.change(screen.getByLabelText(/Spannung bei 100 %/), { target: { value: '600' } });
+    expect(await screen.findByTestId('soc-schaetzung-fehler')).toBeTruthy();
+
+    fireEvent.click(knopf('Erneut testen'));
+    await waitFor(() => expect(testComponentConnection).toHaveBeenCalled());
+    const letzter = testComponentConnection.mock.calls.at(-1)[1];
+    expect(letzter.connection.soc_from_voltage).toBeUndefined();
+  });
+
   it('bietet bei einem kaputten Rahmen KEINEN Ausweg an', async () => {
     testComponentConnection.mockResolvedValue({
       results: [

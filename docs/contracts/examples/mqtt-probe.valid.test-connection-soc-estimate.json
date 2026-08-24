@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "7c31ab04e9f2551d",
+  "answered_at": "2026-08-24T09:12:44Z",
+  "results": [
+    {
+      "id": "wechselrichter",
+      "ok": false,
+      "error_code": "implausible",
+      "reading": {
+        "pv_kw": 6.1,
+        "load_kw": 4.3,
+        "grid_kw": 1.2
+      },
+      "finding": {
+        "channel": "soc_pct",
+        "rule": "missing",
+        "raw": 0,
+        "value": 0,
+        "estimate": {
+          "soc_pct": 36,
+          "voltage_v": 636.0
+        }
+      }
+    }
+  ]
+}

@@ -1067,6 +1067,18 @@ export interface ProbeBefund {
   raw?: number | null;
   /** Der dekodierte Wert, der die Regel verletzt hat. */
   value?: number | null;
+  /**
+   * Was die Box aus einem VERWANDTEN Messwert schätzen würde - heute der
+   * Ladestand aus der gemessenen Batteriespannung, wenn die zwei Eckpunkte des
+   * Speichers gepflegt sind.
+   *
+   * Sie steht NEBEN dem Befund, nie in `reading` (der beanstandete Kanal ist
+   * dort nie enthalten), und sie ÄNDERT DAS URTEIL NICHT: der Test bleibt
+   * fehlgeschlagen, die Komponente braucht weiterhin die ausdrückliche
+   * Zustimmung und bleibt für die Batterie-Steuerung gesperrt. Absent = die
+   * Box hat nichts anzubieten.
+   */
+  estimate?: { socPct?: number | null; voltageV?: number | null } | null;
 }
 
 /** Die Antwort des Probe-Kanals auf einen Verbindungstest. */

@@ -571,6 +571,27 @@
             "value": {
               "type": "number",
               "description": "Der dekodierte Wert, der die Regel verletzt hat. Fehlt, wenn das Register gar nicht lesbar war."
+            },
+            "estimate": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "soc_pct",
+                "voltage_v"
+              ],
+              "description": "NUR bei rule 'missing': der Ladestand, den die Box aus der GEMESSENEN Batteriespannung schaetzen wuerde, wenn der Betreiber die zwei Eckpunkte des Speichers gepflegt hat (connection.soc_from_voltage). Er steht NEBEN dem Befund, nie in 'reading' - der beanstandete Kanal ist dort niemals enthalten, und diese Zahl ist eine SCHAETZUNG, keine Messung. Er aendert das Urteil NICHT: der Test bleibt ok=false mit rule 'missing', die Anlage braucht also weiterhin die ausdrueckliche Zustimmung des Kunden und bleibt fuer die Batterie-Steuerung gesperrt. Fehlt, wenn keine Eckpunkte gepflegt sind oder die Spannung nicht lesbar war - nie eine erfundene Zahl.",
+              "properties": {
+                "soc_pct": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "Der geschaetzte Ladestand in Prozent, auf [1,100] geklemmt. Die exakte 0 ist die Signatur der Leerantwort, die beide Plausibilitaets-Tore verwerfen - eine geschaetzte 0 waere damit unveroeffentlichbar."
+                },
+                "voltage_v": {
+                  "type": "number",
+                  "description": "Die GEMESSENE Batteriespannung in Volt, aus der geschaetzt wurde - die eine Zahl, an der ein Skalierungsfehler oder eine falsch gepflegte Eckpunkt-Angabe sichtbar wird."
+                }
+              }
             }
           }
         }

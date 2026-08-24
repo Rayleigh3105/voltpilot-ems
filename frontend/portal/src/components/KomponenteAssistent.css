@@ -742,3 +742,43 @@
   color: var(--vp-text-muted, #64748b);
   overflow-wrap: anywhere;
 }
+
+/* --- Ladestand aus der Batteriespannung schätzen -------------------------
+   Sie erscheint NUR im „das BMS meldet nichts"-Fall, direkt über dem Ausweg,
+   den sie ergänzt. Ruhiger Ton wie der Hebel-Block daneben: es ist ein
+   Angebot, keine Warnung - die HONESTY steht in den Folgen darunter. */
+.vp-assist-socvolt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  background: rgba(148, 163, 184, 0.08);
+  min-width: 0;
+}
+
+.vp-assist-socvolt > strong {
+  font-size: var(--vp-text-sm, 0.875rem);
+}
+
+.vp-assist-socvolt .vp-assist-field {
+  margin: 0;
+}
+
+.vp-assist-warn {
+  margin: 0;
+  font-size: var(--vp-text-sm, 0.875rem);
+  color: var(--vp-danger, #b91c1c);
+}
+
+.vp-assist-folgen {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: var(--vp-text-sm, 0.875rem);
+  color: var(--vp-text-muted, #64748b);
+}

@@ -105,6 +105,11 @@ function makeReadOnce(deps) {
         serial, slaveId: num(conn.mb_slave_id, 1),
         invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
         power_scale: num(conn.power_scale, 0),
+        // The pack's two ends: with them the TEST can show the customer what
+        // the SoC would be estimated as ("636,0 V -> 36 %") instead of only
+        // naming the missing channel. It NEVER makes the test pass - see the
+        // decodeVerbose call below.
+        soc_from_voltage: conn.soc_from_voltage,
       };
     }
     if (sel.communication === 'modbus_tcp') {
@@ -231,9 +236,16 @@ function makeReadOnce(deps) {
         blocks.push(block);
         idx += 1;
         if (idx < plan.reads.length) { sendNext(); return; }
+        // ⚠ `allow_missing_soc` is DELIBERATELY not passed: the test always
+        // tells the truth, and whether that truth is acceptable is the human's
+        // call in the portal. `soc_from_voltage` IS passed - it only ever adds
+        // `drop.estimate` NEXT TO the finding, so the verdict is unchanged and
+        // an estimating plant still has to be waved through explicitly (which
+        // is what keeps battery control refused for it).
         const out = deye.decodeVerbose(blocks, {
           family: plan.family, invert_grid_sign: plan.invert_grid_sign,
           invert_batt_sign: plan.invert_batt_sign, power_scale: plan.power_scale,
+          soc_from_voltage: plan.soc_from_voltage,
         });
         if (!out || !out.reading) {
           // decodeVerbose returns null only for an unknown family - a wrong

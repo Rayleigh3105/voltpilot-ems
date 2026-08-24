@@ -155,7 +155,7 @@ test('learned blocks ride the poll AFTER the primary blocks, one per cycle round
     // Cycle 1: identity + measurement block, THEN learned block A.
     let out = await pollOnce(flowStore, port);
     assert.ok(out, 'poll cycle 1 completed');
-    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024c, 0x0060],
+    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024b, 0x0060],
       'learned block read LAST, after the primary blocks');
     const learned = out.deye.blocks[2];
     assert.strictEqual(learned.learned, true);
@@ -164,7 +164,7 @@ test('learned blocks ride the poll AFTER the primary blocks, one per cycle round
     // Cycle 2: the OTHER learned block (round-robin), still exactly one.
     reads.length = 0;
     out = await pollOnce(flowStore, port);
-    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024c, 0x0100]);
+    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024b, 0x0100]);
     assert.strictEqual(out.deye.blocks.length, 3);
   } finally {
     server.close();
@@ -179,12 +179,12 @@ test('a refused learned block becomes an error block and never aborts the primar
     assert.ok(out, 'poll survived the refused learned block');
     assert.strictEqual(out.deye.blocks.length, 3, 'primary blocks + the error block');
     assert.strictEqual(out.deye.blocks[0].regs.length, 1, 'identity block intact');
-    assert.strictEqual(out.deye.blocks[1].regs.length, 0x79, 'measurement block intact');
+    assert.strictEqual(out.deye.blocks[1].regs.length, 0x7a, 'measurement block intact');
     const failed = out.deye.blocks[2];
     assert.strictEqual(failed.learned, true);
     assert.deepStrictEqual(J(failed.regs), []);
     assert.match(failed.error, /Modbus-Ausnahme/, 'the refusal is NAMED so the core can reject the want');
-    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024c, 0x0f00]);
+    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024b, 0x0f00]);
 
     // The raw shaper forwards the error block for the core's learner.
     const shaped = await runNode(MIRROR_RAW, out, flowStore);
@@ -227,7 +227,7 @@ test('die Einspeisegrenze des Geraets wird taeglich mitgelesen - und nur taeglic
     // Primaerbloecken.
     let out = await pollOnce(flowStore, port);
     assert.ok(out, 'poll cycle 1 completed');
-    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024c, 0x00e7],
+    assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024b, 0x00e7],
       'die Grenze wird LETZTES gelesen, nach den Messwerten');
     assert.deepStrictEqual(reads[2], { addr: 0x00e7, count: 1 }, 'genau EIN Register');
 
@@ -246,7 +246,7 @@ test('die Einspeisegrenze des Geraets wird taeglich mitgelesen - und nur taeglic
     for (let i = 0; i < 3; i += 1) {
       reads.length = 0;
       out = await pollOnce(flowStore, port);
-      assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024c],
+      assert.deepStrictEqual(reads.map((r) => r.addr), [0x0000, 0x024b],
         'kein zweiter Umlauf am selben Tag');
     }
   } finally {

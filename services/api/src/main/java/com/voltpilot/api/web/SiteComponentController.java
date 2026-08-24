@@ -264,6 +264,10 @@ public class SiteComponentController {
                         "Dieses Gerät kennen wir nicht."));
         Map<String, Object> connection =
                 request.connection() == null ? Map.of() : new LinkedHashMap<>(request.connection());
+        // Dieselbe Regel wie beim Speichern, mit demselben Satz: der Test ist die
+        // Stelle, an der der Kunde die Eckpunkte AUSPROBIERT, und er soll dort
+        // dieselbe Auskunft bekommen wie beim Klick auf Speichern.
+        components.requireUsableVoltageBounds(connection);
 
         ProbeResult result = probes.testConnection(siteId, request.deviceId(), "verbindung",
                 template.brand(), template.model(), template.family(), request.role(), connection,

@@ -381,9 +381,15 @@ func (a *Agent) runProbeTestConnection(op probe.Op) probe.OpResult {
 		// this the portal saw a bare "unplausibel" and no numbers at all - the
 		// dead end a real new plant got stuck in (Muehlfeldweg 2, 21.08.2026).
 		if res.Finding != nil {
-			return probe.FailedReading(op.ID, code, msg, probeReading(res.Reading),
-				&probe.Finding{Channel: res.Finding.Channel, Rule: res.Finding.Rule,
-					Raw: res.Finding.Raw, Value: res.Finding.Value})
+			f := &probe.Finding{Channel: res.Finding.Channel, Rule: res.Finding.Rule,
+				Raw: res.Finding.Raw, Value: res.Finding.Value}
+			// ...and, where the box can offer one, what it WOULD estimate the
+			// channel to be. It rides along so the wizard can show the customer a
+			// number instead of only a refusal - it never changes the verdict.
+			if e := res.Finding.Estimate; e != nil {
+				f.Estimate = &probe.Estimate{SocPct: e.SocPct, VoltageV: e.VoltageV}
+			}
+			return probe.FailedReading(op.ID, code, msg, probeReading(res.Reading), f)
 		}
 		return probe.Failed(op.ID, code, msg)
 	}

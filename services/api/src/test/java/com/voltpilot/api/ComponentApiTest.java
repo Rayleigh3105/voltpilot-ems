@@ -513,6 +513,101 @@ class ComponentApiTest {
         }
     }
 
+    /**
+     * Die SCHAETZUNG (Ladestand aus der Batteriespannung) macht aus dem Ausweg
+     * eine brauchbare Anlage - und aendert an der SICHERHEIT nichts.
+     *
+     * <p>Das ist der eigentliche Punkt dieses Tests: die zwei Eckpunkte reisen
+     * zur Box, aber der Verbindungstest weist den fehlenden Kanal unveraendert
+     * aus - die Komponente braucht also weiterhin die ausdrueckliche Zustimmung,
+     * behaelt ihren {@code reading_override}-Stempel und die Anlage bleibt fuer
+     * die Batterie-Steuerung GESPERRT. Eine grobe Schaetzung darf die SoC-Klemme
+     * von {@code guards.Clamp} nie scharfschalten.
+     *
+     * <p>Und ein unsinniges Paar wird beim NAMEN genannt, bevor irgendetwas
+     * geschrieben wird.
+     */
+    @Test
+    void theVoltageEstimateReachesTheBoxButNeverUnlocksBatteryControl() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Muehlfeldweg 2 (Schaetzung)");
+        try {
+            claim(customer, site, "edge-muehlfeld-02");
+            saveBattery(customer, site);
+
+            // 1 · Ein Paar, das gar keine Batterie sein kann, wird VOR jedem
+            //     Schreibvorgang abgelehnt - und nennt den Grund, nicht das
+            //     Folgeproblem ("Bitte pruefen Sie zuerst die Verbindung").
+            Map<String, Object> kaputt = deyeConnection();
+            kaputt.put("soc_from_voltage", Map.of("v_empty", 700, "v_full", 600));
+            Map<String, Object> kaputtBody = saveBody(DEYE, "inverter", kaputt);
+            kaputtBody.put("acceptMissingChannel", "soc_pct");
+            ResponseEntity<String> abgelehnt =
+                    post("/api/v1/sites/" + site + "/components", customer, kaputtBody);
+            assertThat(abgelehnt.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(abgelehnt.getBody()).contains("100 %");
+            assertThat(getJson("/api/v1/sites/" + site + "/components", customer)
+                    .get("components"))
+                    .as("eine abgelehnte Eingabe schreibt NICHTS")
+                    .allSatisfy(row -> assertThat(row.path("connection").has("soc_from_voltage"))
+                            .isFalse());
+
+            // 2 · Mit brauchbaren Eckpunkten wird gespeichert - aber NUR mit
+            //     derselben ausdruecklichen Zustimmung wie ohne sie. Die
+            //     Schaetzung ersetzt die Ausnahme nicht, sie ergaenzt sie.
+            Map<String, Object> conn = deyeConnection();
+            conn.put("soc_from_voltage", Map.of("v_empty", 600, "v_full", 700));
+            receipts.recordOverridable(site, DEYE, conn, "soc_pct");
+            assertThat(post("/api/v1/sites/" + site + "/components", customer,
+                    saveBody(DEYE, "inverter", conn)).getStatusCode())
+                    .as("ohne Zustimmung wird auch mit Schaetzung nichts gespeichert")
+                    .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+            Map<String, Object> ok = saveBody(DEYE, "inverter", conn);
+            ok.put("acceptMissingChannel", "soc_pct");
+            assertThat(post("/api/v1/sites/" + site + "/components", customer, ok)
+                    .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+            // 3 · Die Eckpunkte stehen an der Komponente - und der Stempel, der
+            //     die Steuerung sperrt, steht UNVERAENDERT daneben.
+            JsonNode row = byRole(getJson("/api/v1/sites/" + site + "/components", customer),
+                    "battery-hybrid");
+            JsonNode stored = row.get("connection");
+            assertThat(stored.path("soc_from_voltage").path("v_empty").asDouble()).isEqualTo(600.0);
+            assertThat(stored.path("soc_from_voltage").path("v_full").asDouble()).isEqualTo(700.0);
+            assertThat(stored.path("allow_missing_soc").asBoolean()).isTrue();
+            assertThat(stored.path("reading_override").path("channel").asText())
+                    .isEqualTo("soc_pct");
+
+            // 4 · Sie reisen zur BOX - ohne diesen Weg waere die Einstellung
+            //     wirkungslos, denn das SoC-Tor sitzt im Decoder.
+            JsonNode push = pushJson(site);
+            boolean gefunden = false;
+            for (JsonNode e : push.path("entities")) {
+                JsonNode c = e.path("driver").path("connection");
+                if (c.path("soc_from_voltage").path("v_full").asDouble() == 700.0
+                        && c.path("allow_missing_soc").asBoolean()) {
+                    gefunden = true;
+                }
+            }
+            assertThat(gefunden).as("die Box muss die Eckpunkte bekommen").isTrue();
+
+            // 5 · DIE SICHERHEITS-AUSSAGE: die Steuerung bleibt gesperrt, und die
+            //     Ablehnung nennt weiterhin den fehlenden Wert.
+            String admin = token("admin", "admin");
+            UUID device = anyDeviceOf(site);
+            ResponseEntity<String> arm = post(
+                    "/api/v1/admin/devices/" + device + "/control-activation", admin,
+                    Map.of("note", "Versuch mit Schaetzung"));
+            assertThat(arm.getStatusCode())
+                    .as("eine Schaetzung darf die SoC-Klemme nie scharfschalten")
+                    .isEqualTo(HttpStatus.CONFLICT);
+            assertThat(arm.getBody()).contains("Ladestand");
+        } finally {
+            deleteSite(customer, site);
+        }
+    }
+
     // ---- Helfer ------------------------------------------------------------
 
     private static Map<String, Object> saveBody(String templateRef, String role,

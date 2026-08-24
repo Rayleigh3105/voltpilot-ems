@@ -327,6 +327,12 @@ export type ProbeBefund = {
   rule: string;
   raw?: number | null;
   value?: number | null;
+  /**
+   * Die SCHÄTZUNG neben dem Befund (Ladestand aus der Batteriespannung). Sie
+   * ändert das Urteil nicht - der Test bleibt fehlgeschlagen, die Ausnahme
+   * bleibt nötig; sie gibt dem Kunden nur eine Zahl statt nur einer Ablehnung.
+   */
+  estimate?: { socPct?: number | null; voltageV?: number | null } | null;
 };
 
 export type TestErgebnis = {

@@ -219,6 +219,7 @@ Adressen **exakt** aus ha-solarman `deye_hybrid.yaml` (alle × 1 → W bzw. %):
 | `power_kw` (Netz) | `0x00A9` (169) | 16-Bit, **vorzeichenbehaftet** |
 | `load_kw` | `0x00B2` (178) | 16-Bit |
 | `batt` (nur Kalibrierung) | `0x00BE` (190) | 16-Bit, **vorzeichenbehaftet** |
+| Batteriespannung (nur SoC-Schätzung) | `0x00B7` (183) | 16-Bit, ×0,01 → V |
 
 Ein Leseblock: `-xmb 00A90016` (0xA9..0xBE, 22 Register).
 
@@ -227,7 +228,7 @@ Ein Leseblock: `-xmb 00A90016` (0xA9..0xBE, 22 Register).
 Deckt zwei Baureihen mit **derselben** high-map ab:
 - **SG04LP3** (LV-Batterie): `SUN-5..12K-SG04LP3`, 2 MPPT.
 - **SG01HP3** (HV-Batterie): `SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4`, 3-4 MPPT. **Das bestätigte Captain-Gerät** (WR-Serial `2407224048`, Logger `2985159064` @ `192.168.0.28`).
-- **SG02HP3-EU-AM3** (HV-Batterie, neue Generation): `SUN-25/29.9/30K-SG02HP3-EU-AM3`, 3 MPPT. Gleiche Registerkarte: ha-solarmans `deye_p3.yaml` matcht `SG0*HP3` (Referenz-Doku ist die AM2-Generation, MODBUS RTU V104.3/V105.1); am Live-Geraet "Muehlfeldweg 2" dekodiert der Batterieblock `0x024A..0x0250` konsistent (636 V, -0,21 A, -120 W, 25 Grad C). SoC-Hinweis: eine BMS-lose/ungekoppelte Batterie meldet in `0x024C` dauerhaft exakt 0 - das ist ein Geraetezustand, keine Kartenabweichung.
+- **SG02HP3-EU-AM3** (HV-Batterie, neue Generation): `SUN-25/29.9/30K-SG02HP3-EU-AM3`, 3 MPPT. Gleiche Registerkarte: ha-solarmans `deye_p3.yaml` matcht `SG0*HP3` (Referenz-Doku ist die AM2-Generation, MODBUS RTU V104.3/V105.1); am Live-Geraet "Muehlfeldweg 2" dekodiert der Batterieblock `0x024A..0x0250` konsistent (636 V, -0,21 A, -120 W, 25 Grad C). SoC-Hinweis: eine BMS-lose/ungekoppelte Batterie (Batteriemodus "User defined"/"Use battery voltage") meldet in `0x024C` dauerhaft exakt 0 - das ist ein Geraetezustand, keine Kartenabweichung; der Ladestand laesst sich dort aus `0x024B` SCHAETZEN (siehe den Kasten "Ladestand aus der Batteriespannung SCHAETZEN").
 
 | Feld | Register (dez.) | Breite | Skala | Quelle |
 |---|---|---|---|---|
@@ -237,8 +238,9 @@ Deckt zwei Baureihen mit **derselben** high-map ab:
 | `power_kw` (Netz) | `0x026B` (619, low) + `0x02C4` (708, high) - **externer CT am Hausanschluss**; Rückfall `0x0271`/`0x02B2` (625/690) | **32-Bit**, vorzeichenbehaftet | 1 (immer W) | ha-solarman ("External Power" / "Grid Power", rule 4) |
 | `load_kw` | `0x028D` (653, low) + `0x0293` (659, high) | **32-Bit**, vorzeichenbehaftet | 1 (immer W) | ha-solarman ("Load Consumption Power", rule 4) |
 | `batt` (nur Kalibrierung) | `0x024E` (590) | 16-Bit, vorzeichenbehaftet | **`[1,10]` LV/HV** | ha-solarman ("Battery Power") |
+| Batteriespannung (nur SoC-Schätzung) | `0x024B` (587) | 16-Bit, ×0,01 → V | **`[0,01/0,1]` LV/HV** | ha-solarman ("Battery Voltage") |
 
-Zwei Leseblöcke: `-xmb 00000001` (Geräte-Kennung 0x0000) und `-xmb 024C0079` (0x024C..0x02C4, 121 Register - deckt SoC bis PV4, die 32-Bit-Last-Highwords **und** das externe CT-Paar `0x026B`/`0x02C4` ab, weiter unter dem 125-Register-Limit).
+Zwei Leseblöcke: `-xmb 00000001` (Geräte-Kennung 0x0000) und `-xmb 024B007A` (0x024B..0x02C4, 122 Register - deckt die **Batteriespannung 0x024B**, SoC bis PV4, die 32-Bit-Last-Highwords **und** das externe CT-Paar `0x026B`/`0x02C4` ab, weiter unter dem 125-Register-Limit).
 
 > **Warum der externe CT und nicht "Grid Power" (`0x0271`)?** `deye_p3.yaml` führt DREI Netz-Messungen: **Internal Power** `0x025F`/`0x02BF` (wechselrichterseitig), **External Power** `0x026B`/`0x02C4` (der externe CT am Netzverknüpfungspunkt) und **Grid Power** `0x0271`/`0x02B2` unter dem Kommentar *"The following three (four) registers change according to the built-in and external settings"* - ein **konfigurationsabhängiger Alias**. Live am Captain-`SUN-30K-SG01HP3` falsifiziert (2026-07-17): der Alias las **−23,7 kW** (exakt die eigene Deye-PV = der wechselrichterseitige Wert), während der wahre Export am Hausanschluss **54,2 kW** betrug (ganze Anlage inkl. ~49 kW AC-gekoppelter Fronius; das eigene Last-Register −30,5 = 23,7 − 54,2 beweist, dass der Deye intern selbst den externen CT nutzt). Der Decoder liest daher den externen CT als `power_kw`; der Alias bleibt **Rückfall** für Lesungen, die das externe Highword nicht abdecken (alter, schmalerer Block). **VERIFY-on-device bleibt:** eine Installation **ohne** externe CT-Klemmen liest hier 0 - Import/Export bei bekanntem Zustand prüfen (Vorzeichen-Kalibrierung wie gehabt).
 
@@ -256,6 +258,43 @@ Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein
 > - ein echtes BMS meldet nie exakt 0) **vollständig**: es wird **kein Sample**
 > veröffentlicht (nie eine 0), die Lücke zeigt der Chart als Unterbrechung.
 > String/Micro haben keinen SoC und sind nicht betroffen (0 kW nachts ist echt).
+
+> **Ladestand aus der Batteriespannung SCHÄTZEN** (Live-Fall Mühlfeldweg 2, ein
+> `SUN-30K-SG02HP3-EU-AM3` mit Eigenbau-Batterie im Batteriemodus **„User
+> defined"** / „Use battery voltage"). Dort hängt das BMS gar nicht am
+> Wechselrichter: Spannung, Strom, Leistung und Temperatur sind einwandfrei
+> lesbar, nur `0x024C` steht dauerhaft auf exakt 0. Mit dem Opt-in
+> `allow_missing_soc` läuft die Anlage - aber ganz **ohne** Ladestand.
+>
+> Trägt der Betreiber die zwei Eckpunkte des Speichers ein
+> (`connection.soc_from_voltage = {v_empty, v_full}`, aus dem Datenblatt), dann
+> interpoliert der Decoder die **gemessene** Klemmenspannung (`0x024B` bzw.
+> `0x00B7`) linear dazwischen. Vier Regeln machen das ehrlich statt erfunden:
+>
+> 1. Es greift **ausschließlich** im Fall `missing` (Block lebt, SoC exakt 0).
+>    `no_answer` (Leerantwort) und `out_of_range` (kaputter Rahmen) verwerfen die
+>    Lesung weiterhin **vollständig - auch mit Opt-in**.
+> 2. Ein **echter** BMS-Wert (> 0) wird nie überschrieben.
+> 3. Der Wert wird auf **`[1, 100]`** geklemmt - bewusst nicht `[0, 100]`: die
+>    exakte 0 ist die Signatur der Leerantwort, die beide Plausibilitäts-Tore
+>    (JS `socPlausible`, Go `guards.SocPlausible`) verwerfen; eine geschätzte 0
+>    wäre also unveröffentlichbar.
+> 4. Eine **unlesbare oder auf 0 stehende** Spannung schätzt **nichts** - die
+>    Lesung bleibt dann ohne `soc_pct`, genau wie mit dem nackten Opt-in.
+>
+> **⚠ Es bleibt eine SCHÄTZUNG.** Bei LiFePO4 ist die Zellkennlinie zwischen
+> etwa 20 % und 90 % nahezu flach, und unter Last verschiebt der Innenwiderstand
+> die Klemmenspannung zusätzlich. Deshalb ist sie ein **Anzeige-Wert**: der
+> Verbindungstest weist den fehlenden Kanal **unverändert** aus (er setzt das
+> Opt-in nie), die Komponente behält ihren `reading_override`-Beleg, und die
+> Batterie-**Steuerung** dieser Anlage bleibt server-seitig gesperrt - die
+> SoC-Klemme von `guards.Clamp` wird nie auf einer Schätzung scharfgeschaltet.
+> Der Test **zeigt** die Schätzung dafür (`finding.estimate`: „636,0 V → 36 %"),
+> damit der Betreiber seine Eingabe daran kalibrieren kann.
+>
+> Eingetragen wird sie im **Portal** (Anlege-Assistent, im selben Kasten wie
+> „Trotzdem fortfahren"); auf `:8484` gibt es dafür bewusst **kein** Formularfeld
+> - dieselbe Zurückhaltung wie bei `allow_missing_soc`.
 
 > **Adressen sind autoritativ** aus StephanJoubert/home_assistant_solarman (`deye_sg04lp3.yaml`, das die SG01HP3-Nutzer laut Repo-Issue #444 ebenfalls verwenden) plus dem Deye-Modbus-Manual für PV3/PV4 (674/675).
 >

@@ -316,6 +316,11 @@ public class ComponentService {
         // Fingerabdruck gebildet wird - sonst hinge die Pflicht an einem Feld,
         // das der Aufrufer frei erfindet.
         SERVER_OWNED_CONNECTION_KEYS.forEach(connection::remove);
+        // ⚠ VOR dem Fingerabdruck geprüft, damit ein unsinniges Paar nicht erst
+        // die Verbindungstest-Pflicht auslöst: die Ablehnung soll den echten
+        // Grund nennen („Die Spannungen müssen zwischen …"), nicht das
+        // Folgeproblem („Bitte prüfen Sie zuerst die Verbindung").
+        requireUsableVoltageBounds(connection);
         if (!receipts.has(siteId, template.templateRef(), connection)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Bitte prüfen Sie zuerst die Verbindung zu diesem Gerät - erst danach lässt "
@@ -333,6 +338,22 @@ public class ComponentService {
                             + "ohne diesen Wert betrieben werden soll.");
         }
         return new TestedConnection(connection, missing);
+    }
+
+    /**
+     * Die Spannungs-Eckpunkte der Ladestand-SCHÄTZUNG, falls welche mitkommen.
+     *
+     * <p>Geprüft VOR dem Fingerabdruck der Verbindungstest-Pflicht, damit eine
+     * Ablehnung den echten Grund nennt („Die Spannungen müssen zwischen …")
+     * statt des Folgeproblems („Bitte prüfen Sie zuerst die Verbindung"). Die
+     * Regel selbst steht in {@link SocFromVoltageBounds} - inklusive der
+     * Begründung, warum sie DREIMAL lebt.
+     */
+    public void requireUsableVoltageBounds(Map<String, Object> connection) {
+        String refusal = SocFromVoltageBounds.refusal(connection);
+        if (refusal != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, refusal);
+        }
     }
 
     /**

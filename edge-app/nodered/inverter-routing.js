@@ -294,6 +294,11 @@ function route(sel) {
         // because that is where the plausibility gate lives - a plant that opted
         // in but whose decoder never learns it would still drop every sample.
         allow_missing_soc: !!conn.allow_missing_soc,
+        // The pack's two ends for the voltage-based SoC estimate. Passed
+        // THROUGH unvalidated (deye-decode validates defensively and estimates
+        // nothing from a nonsensical pair) - a router that silently "fixed" a
+        // bad pair would produce a percentage nobody entered.
+        soc_from_voltage: conn.soc_from_voltage,
         // Manual override / fallback (0 = auto-detect the LV/HV scale from 0x0000).
         power_scale: num(conn.power_scale, 0),
       },
