@@ -78,6 +78,20 @@ export interface AdminFleetKwp {
   reason: string;
 }
 
+/**
+ * Die Plausibilität der gepflegten Einspeisegrenze (B4c) - gemessene Export-Decke
+ * gegen `max_feed_in_kw`. `unbekannt` ist ein vollwertiges Urteil; der offene
+ * Pflege-Punkt reist zusätzlich als Chip in `pflege`.
+ */
+export interface AdminFleetFeedIn {
+  configuredKw: number | null;
+  observedCeilingKw: number | null;
+  exportDays: number;
+  clingDays: number;
+  verdict: 'ok' | 'zu_hoch' | 'nicht_gehalten' | 'unbekannt';
+  reason: string;
+}
+
 /** Die Prognosequalität einer Anlage für EINE Prognoseart (B4b). */
 export interface AdminFleetForecast {
   kind: string;
@@ -119,6 +133,8 @@ export interface AdminFleetSite {
   control: ControlStatus | null;
   curtailment: CurtailmentStatus | null;
   kwp: AdminFleetKwp;
+  /** B4c - additiv; ältere Backends senden es nicht. Der Chip lebt in `pflege`. */
+  feedIn?: AdminFleetFeedIn;
   forecast: AdminFleetForecast[];
   pflege: AdminFleetPflege[];
 }

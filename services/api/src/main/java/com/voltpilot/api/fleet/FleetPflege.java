@@ -1,7 +1,9 @@
 package com.voltpilot.api.fleet;
 
+import com.voltpilot.api.repo.AdminFleetRepository.ExportCeiling;
 import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
 import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetFeedInDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetForecastDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetKwpDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.PflegeFlagDto;
@@ -23,7 +25,7 @@ import java.util.UUID;
  * Docker prüfbar ({@code FleetPflegeTest}), und der Controller bleibt reine
  * Verdrahtung.
  *
- * <p><b>Vier Regeln, jede mit ihrem eigenen Ehrlichkeits-Gewissen:</b>
+ * <p><b>Fünf Regeln, jede mit ihrem eigenen Ehrlichkeits-Gewissen:</b>
  *
  * <ol>
  *   <li><b>Stromtarif fehlt</b> - reiner EXISTENZ-Check auf {@code tarif_art =
@@ -33,6 +35,8 @@ import java.util.UUID;
  *       veröffentlicht.</li>
  *   <li><b>kWp unplausibel</b> - gemessene PV-Spitze gegen gepflegte
  *       Nennleistung, siehe {@link #kwp}.</li>
+ *   <li><b>Einspeisegrenze unplausibel</b> - gemessene Export-Decke gegen die
+ *       gepflegte {@code max_feed_in_kw}, siehe {@link #feedIn}.</li>
  *   <li><b>Prognose auffällig</b> - der normierte Prognosefehler dieser Anlage
  *       gegen den Flotten-MEDIAN, siehe {@link #forecastChecks}.</li>
  * </ol>
@@ -66,6 +70,52 @@ public final class FleetPflege {
      * die Grundlage - und das wird gesagt, statt geraten.
      */
     static final long KWP_MIN_BUCKETS = 96;
+
+    // ---- Einspeisegrenze-Plausibilität ---------------------------------------
+
+    /**
+     * So viele bewertete Export-Tage braucht eine Anlage mindestens, bevor über
+     * ihre Einspeisegrenze geurteilt wird. Darunter (frische Anlage, Winter mit
+     * kaum Einspeisung, eine wetterschwache Woche) fehlt die Grundlage - und das
+     * wird benannt, nie geraten. Fängt zugleich den Fehlalarm „kleine PV, schwache
+     * Wochen" ab: eine Anlage, die selten überhaupt einspeist, wird nie beurteilt.
+     */
+    static final int FEED_IN_MIN_EXPORT_DAYS = 5;
+
+    /**
+     * So viele Tage müssen an DERSELBEN Decke kleben, bevor „klebt wiederholt"
+     * behauptet werden darf. Das ist die eigentliche Fehlalarm-Bremse: eine hart
+     * gekappte Anlage trifft ihre Decke Tag für Tag am selben Wert; eine Anlage,
+     * deren Einspeisung schlicht mit dem Wetter schwankt, hat ihre Tages-Maxima
+     * über den Bereich verteilt und erreicht diese Zahl nie.
+     */
+    static final int FEED_IN_CLING_MIN_DAYS = 5;
+
+    /**
+     * Die Drift-Richtung 1 (der Pilsting-Fall): erst wenn die gemessene Decke
+     * unter {@value} × der gepflegten Grenze liegt, ist die Grenze DEUTLICH zu
+     * hoch. Pilsting: 30 gemessen ≤ 75 × 0,7 = 52,5 ⇒ schlägt an. Eine Anlage, die
+     * ihre korrekt gepflegte Grenze schlicht nicht ganz erreicht (Decke 29 bei
+     * Grenze 30), bleibt still.
+     */
+    static final double FEED_IN_DRIFT_FACTOR = 0.7;
+
+    /**
+     * Die Drift-Richtung 2: erst wenn die robuste Decke über {@value} × der
+     * Grenze liegt, wird die Grenze wiederholt und DEUTLICH überschritten - die
+     * Grenze wird nicht gehalten oder ist zu niedrig gepflegt. Weil die Decke das
+     * 90.-Perzentil der Tages-Maxima ist, bedeutet „darüber" schon an sich eine
+     * WIEDERHOLTE Überschreitung, kein einzelner Ausreißer.
+     */
+    static final double FEED_IN_OVERSHOOT_FACTOR = 1.1;
+
+    /**
+     * Unter {@value} kW exportiert eine Anlage praktisch nicht - es gibt keine
+     * Decke, an der sie „kleben" könnte, und ein Drift-Hinweis „klebt bei 0 kW
+     * unter 75 kW" wäre ein Fehlalarm. Darunter fällt das Urteil deshalb auf
+     * {@code ok} zurück (nichts zu pflegen), nie auf {@code zu_hoch}.
+     */
+    static final double FEED_IN_PLATEAU_MIN_KW = 1.0;
 
     // ---- Prognose-Ausreißer --------------------------------------------------
 
@@ -145,6 +195,64 @@ public final class FleetPflege {
     }
 
     /**
+     * Die Plausibilität der gepflegten Einspeisegrenze (B4c) - dem B4a-kWp-Muster
+     * folgend, nur für {@code max_feed_in_kw} statt der Nennleistung.
+     *
+     * <p>Vier Urteile, und drei davon sind ein ehrliches „ich weiß es nicht" mit
+     * Grund: ohne gepflegte Grenze, ohne genug Export-Tage bleibt es
+     * {@code unbekannt}. Liegt beides vor, prüft die Regel zwei Richtungen:
+     *
+     * <ul>
+     *   <li><b>{@code nicht_gehalten}</b> - die robuste Decke überschreitet die
+     *       Grenze wiederholt und deutlich (Richtung 2). Zuerst geprüft, weil eine
+     *       überschrittene Compliance-Grenze das dringendere Signal ist.</li>
+     *   <li><b>{@code zu_hoch}</b> - die Anlage KLEBT wiederholt (mindestens
+     *       {@link #FEED_IN_CLING_MIN_DAYS} Tage) an einer Decke, die DEUTLICH
+     *       unter der Grenze liegt (Richtung 1, der Pilsting-Fall). Beide
+     *       Bedingungen zusammen halten Fehlalarme fern: eine kleine PV / schwache
+     *       Wochen bilden keine stabile Decke, und eine korrekt (niedrig)
+     *       gepflegte Grenze liegt nicht deutlich über der Decke.</li>
+     * </ul>
+     *
+     * <p>Bewusste, ehrliche Grenze (im {@code reason} als „vermutlich" gehalten):
+     * eine kleine Anlage an einem großzügig dimensionierten Netzanschluss klebt
+     * an ihrer Wechselrichter-Decke unter der (korrekten) Anschlussgrenze und
+     * kann {@code zu_hoch} auslösen. Das ist ein HINWEIS zum Nachsehen, keine
+     * Behauptung - genau wie B4a die Frage „fehlt ein Erzeuger?" stellt.
+     */
+    public static FleetFeedInDto feedIn(BigDecimal configuredKw, ExportCeiling c) {
+        BigDecimal ceilingKw = c == null ? null : c.ceilingKw();
+        int exportDays = c == null ? 0 : c.exportDays();
+        int clingDays = c == null ? 0 : c.clingDays();
+        if (configuredKw == null || configuredKw.signum() <= 0) {
+            return new FleetFeedInDto(configuredKw, ceilingKw, exportDays, clingDays, "unbekannt",
+                    "Keine Einspeisegrenze gepflegt - ohne Grenze ist die gemessene Einspeisung nicht"
+                            + " einzuordnen.");
+        }
+        if (c == null || exportDays < FEED_IN_MIN_EXPORT_DAYS) {
+            return new FleetFeedInDto(configuredKw, ceilingKw, exportDays, clingDays, "unbekannt",
+                    "Noch zu wenige Export-Tage (" + exportDays + ") für ein Urteil.");
+        }
+        double limit = configuredKw.doubleValue();
+        double ceiling = ceilingKw == null ? 0.0 : ceilingKw.doubleValue();
+        if (ceiling >= limit * FEED_IN_OVERSHOOT_FACTOR) {
+            return new FleetFeedInDto(configuredKw, ceilingKw, exportDays, clingDays, "nicht_gehalten",
+                    "Gemessene Einspeisung erreicht wiederholt " + kw(ceiling) + " über der gepflegten"
+                            + " Grenze " + kw(limit) + " - die Grenze wird nicht gehalten oder ist zu"
+                            + " niedrig gepflegt.");
+        }
+        if (ceiling >= FEED_IN_PLATEAU_MIN_KW && clingDays >= FEED_IN_CLING_MIN_DAYS
+                && ceiling <= limit * FEED_IN_DRIFT_FACTOR) {
+            return new FleetFeedInDto(configuredKw, ceilingKw, exportDays, clingDays, "zu_hoch",
+                    "Die Anlage klebt an " + clingDays + " Tagen bei " + kw(ceiling) + ", die gepflegte"
+                            + " Einspeisegrenze " + kw(limit) + " liegt deutlich darüber - vermutlich zu"
+                            + " hoch gepflegt.");
+        }
+        return new FleetFeedInDto(configuredKw, ceilingKw, exportDays, clingDays, "ok",
+                "Gemessene Einspeise-Decke " + kw(ceiling) + " bei Grenze " + kw(limit) + ".");
+    }
+
+    /**
      * Die Prognose-Ausreißer über die ganze Flotte, je Anlage und Prognoseart.
      *
      * <p>Der Maßstab ist der MEDIAN der Flotte für DIESE Prognoseart (nie über
@@ -206,7 +314,7 @@ public final class FleetPflege {
      * {@code kwp.reason} bzw. im Prognose-Grund).
      */
     public static List<PflegeFlagDto> flags(String tarifArt, boolean batteryWithoutDevice,
-            FleetKwpDto kwp, List<FleetForecastDto> forecast) {
+            FleetKwpDto kwp, FleetFeedInDto feedIn, List<FleetForecastDto> forecast) {
         List<PflegeFlagDto> out = new ArrayList<>();
         if ("ohne".equals(tarifArt)) {
             out.add(new PflegeFlagDto("tarif-fehlt", "Stromtarif fehlt",
@@ -218,6 +326,11 @@ public final class FleetPflege {
         }
         if (kwp != null && ("zu_hoch".equals(kwp.verdict()) || "zu_niedrig".equals(kwp.verdict()))) {
             out.add(new PflegeFlagDto("kwp-unplausibel", "kWp unplausibel", kwp.reason()));
+        }
+        if (feedIn != null
+                && ("zu_hoch".equals(feedIn.verdict()) || "nicht_gehalten".equals(feedIn.verdict()))) {
+            out.add(new PflegeFlagDto("einspeisegrenze-unplausibel", "Einspeisegrenze unplausibel",
+                    feedIn.reason()));
         }
         for (FleetForecastDto f : forecast == null ? List.<FleetForecastDto>of() : forecast) {
             if (f.outlier()) {
