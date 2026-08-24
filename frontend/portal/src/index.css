@@ -127,9 +127,13 @@ svg [tabindex]:focus-visible {
   border-bottom: 1px solid var(--vp-border);
 }
 .vp-sidebar .brand img {
-  /* The source PNG has generous transparent space above and below the
-     wordmark. Size it from the available width so the visible logo uses the
-     complete brand area while keeping its original proportions. */
+  /* Die BESCHNITTENE Wortmarke (640x152) fuellt die Markenflaeche. Sie loeste
+     die 292-kB-Bestandsdatei ab (Perf-Review `vp-cockpit-perf-p7` §2 U3) und
+     ist optisch ein Drop-in: bei den 200 px der Seitenleiste misst die
+     SICHTBARE Marke vorher 195,5 x 45,2 px, nachher 198,8 x 45,6 px (Alpha-
+     Bounding-Box beider Dateien ausgemessen) - unter 2 % Unterschied. Was
+     wegfaellt, ist der transparente Rand: das Bild ist jetzt 47,5 statt 80 px
+     hoch und ragt damit nicht mehr ueber die 68-px-Leiste hinaus. */
   width: 100%;
   height: auto;
   max-width: 100%;

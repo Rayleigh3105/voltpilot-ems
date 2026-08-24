@@ -48,7 +48,25 @@ import { useDeployWatch } from './deployWatch';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawerLazy';
 import { LazyBoundary } from './components/Lazy';
-import { OnboardingWizard } from './Onboarding';
+// Der Anlege-Assistent des ERSTEN Besuchs - nachgeladen statt mitgeliefert
+// (Perf-Review `vp-cockpit-perf-p7` §2 U2). Er hängt über
+// `Onboarding.tsx → AnlageFlow.tsx → LocationMap` an **Leaflet** (146 kB) und
+// war damit der schwerste Rückfall der Lazy-Welle vom 06.08.: statisch
+// importiert lag er in JEDEM Cockpit-Aufruf, obwohl ihn ein Kunde höchstens
+// einmal sieht (`showOnboarding` = ein Konto OHNE Gerät). Gemessen:
+// Einstiegs-Bündel 249 → 187 kB gzip.
+//
+// **Ein blosses `lazy` genügt hier - anders als beim `AnlageAnlegenDrawerLazy`**
+// (dessen Aufrufer halten den Drawer DAUERHAFT montiert und steuern ihn über
+// `open`, ein direktes `lazy` lüde also sofort). Der Wizard rendert
+// ausschliesslich im Onboarding-Zweig, also lädt er auch nur dort.
+//
+// Der Suspense-Fallback ist bewusst `null`: das Boot-Skelett aus `index.html`
+// steht zu diesem Zeitpunkt ohnehin, ein Skelett darunter wäre ein zweiter
+// Ladezustand für dieselbe Sekunde.
+const OnboardingWizard = lazy(() =>
+  import('./Onboarding').then((m) => ({ default: m.OnboardingWizard })),
+);
 // Die Anlagen-Seite ist das Ziel fast jedes Besuchs und bleibt deshalb im
 // Einstiegs-Bündel. Jede ANDERE Seite wird lazy geladen: die Plattform-Seiten
 // sieht ein Kunde nie, Portfolio nur ein Betreiber, Marktpreise/Prognose nur
@@ -900,7 +918,9 @@ function UnifiedPortal() {
       ) : loadFailed ? (
         <LoadErrorNotice onRetry={() => void reload()} />
       ) : showOnboarding ? (
-        <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
+        <LazyBoundary fallback={null}>
+          <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
+        </LazyBoundary>
       ) : (
         <>
           {(page === 'uebersicht' || page === 'anlagen') &&

@@ -18,7 +18,12 @@
 #   3. /silent-check-sso.js is served and contains the postMessage.
 #   4. /auth/ (proxied Keycloak) does NOT carry our CSP - Keycloak's login
 #      pages govern their own headers; our header must stay scoped to the SPA.
-#   5. (real browser, when Chrome is found) a same-origin harness page iframes
+#   5. The CSP names NO third-party font host, and the two Inter woff2 really
+#      are served from OUR origin as hashed /assets. Both halves matter: the
+#      allowlist may only shrink once the fonts are self-hosted (perf review
+#      vp-cockpit-perf-p7 §2 U3), and a CSP without the hosts over a bundle
+#      that still @imports Google would be a silently unstyled portal.
+#   6. (real browser, when Chrome is found) a same-origin harness page iframes
 #      /silent-check-sso.html?state=x and must receive the postMessage within
 #      3 s under the real CSP. Skipped with a warning if no Chrome binary.
 #
@@ -119,7 +124,41 @@ printf '%s' "$AUTH_HDRS" | grep -qi '^content-security-policy:' \
   && fail "/auth/ response carries our CSP header - it must stay scoped to the SPA locations"
 pass "/auth/ carries no portal CSP header (Keycloak governs its own)"
 
-# 5. Real browser: the silent-SSO iframe must postMessage under the real CSP.
+# 5. Self-hosted fonts: the CSP must not name a third-party font host, and the
+#    woff2 must actually come from this origin. A slimmer allowlist is only
+#    honest if the bundle no longer reaches out - so both halves are asserted.
+printf '%s' "$CSP" | grep -qi 'fonts\.googleapis\.com' \
+  && fail "CSP still allows fonts.googleapis.com - the fonts are self-hosted, drop the host: $CSP"
+printf '%s' "$CSP" | grep -qi 'fonts\.gstatic\.com' \
+  && fail "CSP still allows fonts.gstatic.com - the fonts are self-hosted, drop the host: $CSP"
+FONT_SRC="$(printf '%s' "$CSP" | grep -oi "font-src [^;]*" || true)"
+printf '%s' "$FONT_SRC" | grep -q "'self'" || fail "font-src lacks 'self': $FONT_SRC"
+pass "CSP names no third-party font host (font-src: $FONT_SRC)"
+
+# The built CSS must reference the woff2 as same-origin hashed assets and must
+# NOT @import a foreign stylesheet - that @import was the render-blocking,
+# serial DNS+TLS hop this change removed.
+CSS_HREF="$(req -fsS "$BASE/" | tr '<' '\n' | grep -oE 'href="/assets/index-[^"]+\.css"' \
+            | head -1 | sed 's/^href="//; s/"$//' || true)"
+[ -n "$CSS_HREF" ] || fail "no /assets/index-*.css referenced by the served index.html"
+CSS_BODY="$(req -fsS "$BASE$CSS_HREF")"
+printf '%s' "$CSS_BODY" | grep -qi 'fonts\.googleapis\.com' \
+  && fail "$CSS_HREF still @imports fonts.googleapis.com"
+printf '%s' "$CSS_BODY" | grep -qi 'fonts\.gstatic\.com' \
+  && fail "$CSS_HREF still references fonts.gstatic.com"
+FONT_COUNT=0
+for f in $(printf '%s' "$CSS_BODY" | grep -oE '/assets/[A-Za-z0-9._-]+\.woff2' | sort -u); do
+  CT="$(req -fsS -D - -o /dev/null "$BASE$f" | tr -d '\r' \
+        | grep -i '^content-type:' | head -1 || true)"
+  printf '%s' "$CT" | grep -qi 'font/woff2' \
+    || fail "$f is not served as font/woff2 (got: ${CT:-nothing})"
+  FONT_COUNT=$((FONT_COUNT + 1))
+done
+[ "$FONT_COUNT" -ge 2 ] \
+  || fail "expected the two self-hosted Inter woff2 under /assets, found $FONT_COUNT"
+pass "$FONT_COUNT self-hosted woff2 served from this origin, no Google @import in $CSS_HREF"
+
+# 6. Real browser: the silent-SSO iframe must postMessage under the real CSP.
 CHROME=""
 for c in google-chrome google-chrome-stable chromium chromium-browser \
          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; do

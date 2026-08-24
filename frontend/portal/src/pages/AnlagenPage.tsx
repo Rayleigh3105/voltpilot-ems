@@ -45,6 +45,7 @@ import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
 import { resolveAnlage } from '../anlageNav';
+import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
 import { consumerStrip, type ConsumerStripView } from '../consumers/fulfillment';
 import { ControlStrip } from '../components/ControlStrip';
@@ -890,11 +891,38 @@ export function AnlageSeite({
   // zutrifft - sonst ist es der ehrliche „nicht zugeordnet"-Endzustand.
   const showStack = decided && !showSetup && decision === 'stack';
 
+  // B1 · Welle 3 startet MIT Welle 2 (Perf-Review `vp-cockpit-perf-p7` §3).
+  // `/history` und `/telemetry` hingen an `showStack`/`isPeakLead` und damit
+  // daran, dass `/entities` + `/topology` geantwortet haben - eine dritte
+  // serielle Etappe, gemessen ~0,5 s bei Prod-Latenz. Das GESICHT dieser Anlage
+  // aus der Tab-Sitzung laesst sie optimistisch sofort starten; faellt die
+  // Entscheidung anders aus, verwerfen die Effekte ihr Ergebnis in ihrem
+  // bestehenden `else`-Zweig. Es wandert NUR der Startzeitpunkt - gerendert
+  // wird weiterhin ausschliesslich nach `showStack`/`isPeakLead`, und
+  // `decision === 'pending'` zeigt unveraendert `AnlagePending`.
+  // ⚠ Die Erinnerung wird je Anlage GENAU EINMAL gelesen, und zwar in der
+  // RENDER-Phase (Reacts „Zustand an geaenderte Props anpassen"-Muster) - nicht
+  // in einem Effekt: `AnlageSeite` ist nicht je Anlage gekeyt, ein
+  // Anlagen-Wechsel montiert also nicht neu, und ein Effekt liefe erst NACH dem
+  // ersten Render der neuen Anlage - genau in dem er spekulieren muesste. Nach
+  // dem Lesen bleibt sie stehen, damit das `rememberFace` weiter unten die
+  // laufende Spekulation nicht mitten im Boot umwirft.
+  const [guess, setGuess] = useState(() => ({ site: site.id, face: readFace(site.id) }));
+  if (guess.site !== site.id) setGuess({ site: site.id, face: readFace(site.id) });
+  useEffect(() => {
+    if (!decided) return;
+    rememberFace(site.id, { stack: showStack, peak: isPeakLead });
+  }, [site.id, decided, showStack, isPeakLead]);
+  /** Das Gate der Historie-Abrufe: echte Entscheidung, sonst die Erinnerung. */
+  const fetchStack = fetchGate(showStack, decided, guess.face?.stack);
+  /** Dasselbe fuer das Telefon-Fenster des Peak-Bands. */
+  const fetchPeak = fetchGate(isPeakLead, decided, guess.face?.peak);
+
   // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
   // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
   // 20-min window always covers the running quarter; polled on the 30 s cadence.
   useEffect(() => {
-    if (!isPeakLead) {
+    if (!fetchPeak) {
       setPeakSamples([]);
       return;
     }
@@ -912,7 +940,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, isPeakLead, reloadKey, wake]);
+  }, [site.id, fetchPeak, reloadKey, wake]);
 
   // M3: the Eigenverbrauchs-Block's Autarkie / PV-Nutzung come from the EXISTING
   // Historie totals of today (server-computed) - fetched ONLY while the stack
@@ -929,7 +957,7 @@ export function AnlageSeite({
    *  derselbe ist. Nie ein anderer Wert, nur eine Anfrage weniger. */
   const dayTotalsEffective: HistoryTotals | null = dayIsRange ? rangeTotals : dayTotals;
   useEffect(() => {
-    if (!showStack || dayIsRange) {
+    if (!fetchStack || dayIsRange) {
       setDayTotals(null);
       return undefined;
     }
@@ -947,7 +975,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, showStack, dayIsRange, reloadKey, wake]);
+  }, [site.id, fetchStack, dayIsRange, reloadKey, wake]);
 
   // v3.2 M1: the hero rings follow the SELECTED period tab. They read
   // range-scoped Historie totals (Tag/Monat/Jahr) so "Autarkie · Monat" is
@@ -957,7 +985,7 @@ export function AnlageSeite({
   // (never a wrong-range value). Fail-soft; the energy flow is untouched.
   useEffect(() => {
     const hRange = historyRangeForCockpit(range);
-    if (!showStack || hRange == null) {
+    if (!fetchStack || hRange == null) {
       setRangeHistory(null);
       return undefined;
     }
@@ -976,7 +1004,7 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, showStack, range, at, reloadKey, wake]);
+  }, [site.id, fetchStack, range, at, reloadKey, wake]);
 
   // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
   // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
