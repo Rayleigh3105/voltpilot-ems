@@ -58,6 +58,7 @@ def make_input(
     soc0_kwh: float = 9.0,
     netzladen_erlaubt: bool = False,
     terminal_value_eur_per_kwh: float | None = None,
+    max_feed_in_kw: float | None = None,
 ) -> OptimizationInput:
     n = len(prices)
     return OptimizationInput(
@@ -72,6 +73,7 @@ def make_input(
         initial_soc_kwh=soc0_kwh,
         netzladen_erlaubt=netzladen_erlaubt,
         terminal_value_eur_per_kwh=terminal_value_eur_per_kwh,
+        max_feed_in_kw=max_feed_in_kw,
     )
 
 
@@ -453,6 +455,167 @@ def test_derived_value_never_goes_negative(monkeypatch):
     # An all-negative horizon values stored energy at nothing - never below.
     inp = make_input([-80.0] * 96, netzladen_erlaubt=True)
     assert inp.effective_terminal_value_eur_per_kwh() == 0.0
+
+
+# ---- FK1 feed-in-cap awareness (scout vp-verkauf-praemisse-s8 §1.4) ---------
+#
+# The solver's feed_in_cap constraint made lambda/explain cap-honest
+# automatically, but the terminal anchor kept pricing refills against feed-in
+# the connection point cannot carry. Pilsting-shaped numbers throughout:
+# cap 30 kW, midday surplus ~41 kW -> ~11 kW beyond the cap, POSITIVE prices.
+
+
+def replace_max_feed_in(inp: OptimizationInput, cap: float) -> OptimizationInput:
+    """The same input with a maintained connection-point cap."""
+    import dataclasses
+
+    return dataclasses.replace(inp, max_feed_in_kw=cap)
+
+
+def test_pilsting_beyond_cap_surplus_lowers_v_end_vs_cap_blind(monkeypatch):
+    """The Pilsting 10.08. shape: an EEG plant whose midday surplus (pv 48 -
+    load 7 = 41 kW) exceeds the 30-kW connection-point cap at a positive spot.
+    Cap-blind, every surplus slot priced the refill at the full feed-in value
+    87 although the marginal kWh cannot be exported at all; cap-aware both
+    corrections bite - the surplus entries drop to 0 (anchor) and the 11 kW
+    beyond the cap count as free refill (charge-limited to 5 kW x 8 slots =
+    10 kWh > the 9 kWh band), so V_end honestly reads 0: refilling after the
+    horizon costs this plant nothing."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    n = 16
+    pv = [48.0] * 8 + [0.0] * 8
+    day = _asymmetric_eeg_input(
+        spot=[87.0] * n,
+        import_eur_mwh=[300.0] * n,
+        export_eur_mwh=[87.0] * n,
+        pv_kw=pv,
+        load_kw=7.0,
+        soc0_kwh=9.0,
+    )
+    blind = day.effective_terminal_value()
+    # 30th percentile of [87 x8, (300 - discount) x8] -> index 4 -> 87.
+    assert blind.v_end == pytest.approx(ETA * (87.0 - WEAR_EUR_MWH) / 1000.0)
+    assert blind.refill_free_pct == 0.0
+
+    capped = replace_max_feed_in(day, 30.0).effective_terminal_value()
+    assert capped.v_end == 0.0
+    assert capped.v_end < blind.v_end
+    assert capped.refill_free_pct == 100.0
+    # The anchor entry is still the forgone feed-in - which the cap makes 0.
+    assert capped.anchor_kind == "einspeisewert"
+
+
+def test_free_kwh_counts_only_the_beyond_cap_portion_at_positive_prices(
+    monkeypatch,
+):
+    """Step 2 in isolation: the anchor comes from the deficit night (identical
+    with and without the cap), so the ONLY difference is the free-refill count.
+    8 surplus slots at pv 39 / load 7 (surplus 32, beyond-cap portion 2 kW)
+    against a 30-kW cap contribute 8 x 2 kW x 0.25 h = 4 kWh of the 9 kWh
+    usable band - the below-cap 30 kW still earn their feed-in and stay
+    excluded."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    n = 96
+    pv = [0.0] * 44 + [39.0] * 8 + [0.0] * 44
+    day = _asymmetric_eeg_input(
+        spot=[100.0] * n,
+        import_eur_mwh=[430.0] * n,
+        export_eur_mwh=[82.0] * n,
+        pv_kw=pv,
+        load_kw=7.0,
+        soc0_kwh=9.0,
+    )
+    blind = day.effective_terminal_value()
+    capped = replace_max_feed_in(day, 30.0).effective_terminal_value()
+    # Both anchors land on a deficit entry (the 8 surplus entries sort below
+    # the 30th-percentile index 28 either way).
+    assert blind.anchor_kind == "bezugspreis"
+    assert capped.anchor_kind == "bezugspreis"
+    assert blind.refill_free_pct == 0.0
+    assert capped.refill_free_pct == pytest.approx(100.0 * 4.0 / 9.0)
+    assert capped.v_end == pytest.approx(blind.v_end * (1.0 - 4.0 / 9.0), rel=1e-9)
+
+
+def test_cap_above_every_surplus_is_byte_identical(monkeypatch):
+    """A maintained cap the surplus never reaches changes NOTHING - the exact
+    Pilsting addendum state (cap wrongly kept at 75 while the plant peaks at
+    41 kW of surplus), and the invariance guarantee for every uncapped plant:
+    all new branches key on the cap actually binding."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    n = 16
+    pv = [48.0] * 8 + [0.0] * 8
+    day = _asymmetric_eeg_input(
+        spot=[87.0] * n,
+        import_eur_mwh=[300.0] * n,
+        export_eur_mwh=[87.0] * n,
+        pv_kw=pv,
+        load_kw=7.0,
+    )
+    assert (
+        replace_max_feed_in(day, 75.0).effective_terminal_value()
+        == day.effective_terminal_value()
+    )
+
+
+def test_beyond_cap_at_negative_prices_changes_nothing(monkeypatch):
+    """At export values <= 0 the whole surplus already counted as free and the
+    surplus entry already carried the (negative) feed-in value - min(exp, 0)
+    keeps it, so the cap adds nothing on a negative-price day."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    n = 8
+    day = _asymmetric_eeg_input(
+        spot=[-40.0] * n,
+        import_eur_mwh=[100.0] * n,
+        export_eur_mwh=[-40.0] * n,
+        pv_kw=[48.0] * n,
+        load_kw=7.0,
+    )
+    capped = replace_max_feed_in(day, 30.0).effective_terminal_value()
+    assert capped == day.effective_terminal_value()
+    assert capped.v_end == 0.0
+    assert capped.refill_free_pct == 100.0
+
+
+def test_merchant_beyond_cap_gains_the_free_refill_channel(monkeypatch):
+    """Merchant mode prices the refill min(buy, forgo-export); beyond the cap
+    the free channel joins the min - storing what the connection point cannot
+    carry costs nothing there either."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    n = 8
+    blind = make_input(
+        [87.0] * n, load=7.0, pv=48.0, netzladen_erlaubt=True
+    ).effective_terminal_value()
+    capped = make_input(
+        [87.0] * n, load=7.0, pv=48.0, netzladen_erlaubt=True, max_feed_in_kw=30.0
+    ).effective_terminal_value()
+    # The flat symmetric curve has zero dispersion, so the strict-dispersion
+    # guard holds the cap-blind value one margin below the anchor.
+    assert blind.v_end == pytest.approx(
+        ETA * ((87.0 - WEAR_EUR_MWH) / 1000.0 - TERMINAL_VALUE_MARGIN_EUR_PER_KWH)
+    )
+    assert capped.v_end == 0.0
+    assert capped.anchor_kind == "marktpreis"
+
+
+def test_cooptimizer_twin_shares_the_cap_aware_derivation(monkeypatch):
+    """The N=1 adapter must hand the cap to the shared derivation too, or the
+    golden lockstep silently diverges on capped plants."""
+    from voltpilot_optimization.entities import from_v1_input
+
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    day = _asymmetric_eeg_input(
+        spot=[87.0] * 16,
+        import_eur_mwh=[300.0] * 16,
+        export_eur_mwh=[87.0] * 16,
+        pv_kw=[48.0] * 8 + [0.0] * 8,
+        load_kw=7.0,
+    )
+    capped = replace_max_feed_in(day, 30.0)
+    co = from_v1_input(capped)
+    assert (
+        co.effective_terminal_value(co.storages[0])
+        == capped.effective_terminal_value()
+    )
 
 
 def test_explicit_field_wins_over_the_derivation():

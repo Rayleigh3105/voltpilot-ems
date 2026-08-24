@@ -548,6 +548,7 @@ class CoOptimizationInput:
             one_way_efficiency=p.one_way_efficiency,
             wear_eur_per_kwh_each_way=p.wear_cost_eur_per_kwh_each_way,
             grid_charge_allowed=self.grid_charge_allowed(storage),
+            max_feed_in_kw=self.max_feed_in_kw,
             env=env,
         )
 
