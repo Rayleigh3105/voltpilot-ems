@@ -3,7 +3,14 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { NavItem } from '../../designsystem/components/shell/NavItem';
-import logoUrl from '../../designsystem/assets/voltpilot-logo.png';
+// Die BESCHNITTENE Wortmarke (640x152, 9 kB), nicht die 292-kB-Bestandsdatei
+// (Perf-Review `vp-cockpit-perf-p7` §2 U3): die grosse Datei traegt einen
+// grosszuegigen transparenten Rand und lud KALT VOR der ersten API-Welle -
+// 292 kB, die auf Mobilfunk um Bandbreite und Verbindungsplaetze konkurrierten,
+// fuer ein Bild, dessen sichtbarer Teil ~40 % der Flaeche fuellt. Die
+// Wortmarke ist laut `designsystem/assets/README.md` genau dafuer angelegt
+// (und die Anmeldeseite benutzt sie seit dem 23.08. schon).
+import logoUrl from '../../designsystem/assets/voltpilot-wordmark.png';
 import { currentUser, logout } from '../auth';
 import type { Tenant } from '../admin/adminApi';
 import {

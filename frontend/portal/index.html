@@ -39,6 +39,29 @@
     <meta name="apple-mobile-web-app-title" content="VoltPilot" />
     <title>VoltPilot EMS</title>
     <!--
+      KEIN `<link rel="preconnect">` - und das ist eine gemessene Entscheidung,
+      kein Versaeumnis (Perf-Review `vp-cockpit-perf-p7` §3 A4).
+
+      Ein Preconnect kann nur eine FREMDE Origin frueher aufbauen. Auf dem
+      Boot-Pfad gibt es in der Produktion keine mehr:
+
+      - **API und Keycloak sind SAME-ORIGIN.** Der Bau setzt `VITE_API_BASE=""`
+        (also `/api/v1/...`) und `VITE_KEYCLOAK_URL=https://${DOMAIN}/auth`
+        (`docker-compose.prod.yml`); beide laufen ueber die nginx dieses Images.
+        Ein Preconnect auf die eigene Origin ist per Definition wirkungslos -
+        die Verbindung, die dieses Dokument geholt hat, ist dieselbe.
+      - **Die Schriften kommen seit dem Selbst-Hosten aus `/assets`**
+        (`designsystem/tokens/fonts.css`) - `fonts.googleapis.com` und
+        `fonts.gstatic.com` sind samt ihrer CSP-Eintraege entfallen.
+      - Alles Uebrige ist NICHT der Boot: die OSM-Kacheln haengen an Leaflet
+        (nachgeladen), die Adress-Suche `geocoding-api.open-meteo.com` am
+        Anlege-Assistenten.
+
+      Wer hier eine fremde Origin einfuehrt (ein CDN, ein Karten-Host, eine
+      getrennte Auth-Domain), traegt ihren Preconnect NACH - und erweitert im
+      selben Zug die CSP-Allowlist in `frontend/portal/nginx.conf`.
+    -->
+    <!--
       Sofort-Skelett gegen Chromes Paint-Holding (2026-08-01).
       Beim Reload haelt Chrome das ALTE Bild, bis das neue Dokument ERSTMALS
       zeichnet. Vorher zeichnete das Portal erst nach JS-Download + React-Mount

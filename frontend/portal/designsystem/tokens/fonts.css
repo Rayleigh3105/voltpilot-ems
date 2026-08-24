@@ -1,4 +1,68 @@
-/* VoltPilot webfonts — Inter (body) + Inter Tight (headings/display).
-   Loaded from Google Fonts. If you need self-hosted binaries, replace these
-   @import lines with @font-face rules pointing at local .woff2 files. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Inter+Tight:wght@300;400;500;600;700;800&display=swap');
+/* ============================================================
+   VoltPilot — Webfonts: Inter (Fliesstext) + Inter Tight (Ueberschriften)
+   ============================================================
+
+   SELBST GEHOSTET, nicht von Google geladen (Perf-Review
+   `vp-cockpit-perf-p7` §2 U3, 24.08.2026). Der frühere
+   `@import url('https://fonts.googleapis.com/css2?...')` stand am ANFANG des
+   gebündelten Stylesheets und ist damit render-BLOCKIEREND und SERIELL: erst
+   `index.css` laden, dann parsen, dann eine FREMDE Origin auflösen (DNS + TLS
+   zu Google), und erst danach darf gezeichnet werden. Das Boot-Skelett in
+   `index.html` — extra gegen Chromes Paint-Holding gebaut — wartete damit auf
+   Google mit. Gegenexperiment im Labor: `@import` entfernt ⇒ kalter FCP
+   828 → ~495 ms (Fast 4G, und dort ist Google „localhost-schnell"; real kommt
+   die TLS-Zeit dazu).
+
+   Drei Dinge, die daran hängen:
+
+   - **Die CSP wird SCHLANKER, nicht breiter**: `fonts.googleapis.com` in
+     `style-src` und `fonts.gstatic.com` in `font-src` sind mit dieser Datei
+     ERSATZLOS aus `frontend/portal/nginx.conf` entfallen. Wer den `@import`
+     zurückholt, holt beide Fremd-Origins zurück — `npm run test:csp` verweigert
+     das (Check 6).
+   - **Die Dateien sind gehashte Vite-Assets** (`url()` ⇒ `/assets/inter-*.woff2`
+     mit Inhalts-Hash), fallen also unter die `immutable`-Politik der nginx und
+     brauchen KEIN `SW_VERSION`-Anheben (der Service Worker cacht `/assets/*`
+     ohnehin nie).
+   - **Es ist DIESELBE Quelle wie im Keycloak-Login-Theme**
+     (`deploy/keycloak/themes/voltpilot/login/resources/fonts/`, dort seit
+     23.08.2026 aus demselben Grund gebündelt). Anmeldeseite und Portal zeigen
+     damit garantiert dieselbe Schrift; wer eine Fassung erneuert, tauscht
+     BEIDE (die Keycloak-Seite kann nicht in den Portal-Baum greifen).
+
+   **Zwei Dateien für sechs Schnitte:** beides sind VARIABLE Schriften
+   (`wght` 100–900) — Googles CSS lieferte für 300/400/500/600/700/800 dieselbe
+   Datei aus. Deshalb `font-weight: 100 900`; ein zusätzlicher Schnitt kostet
+   hier nichts. Untermenge `latin` (Umlaute und ß liegen darin); kommt eine
+   Sprache mit `latin-ext` dazu, kommt die passende Untermenge dazu — bis dahin
+   trägt der Fallback-Stack aus `typography.css`.
+
+   Lizenz: SIL Open Font License 1.1 — der volle Text liegt als
+   `../assets/fonts/OFL.txt` neben den Dateien (die OFL verlangt, dass er sie
+   begleitet).
+
+   `font-display: swap` bleibt die Zusage des alten `&display=swap`: der Text
+   ist ab dem ersten Bild lesbar, die Schrift tauscht sich nach.
+   ============================================================ */
+
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/inter-latin.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Inter Tight';
+  src: url('../assets/fonts/inter-tight-latin.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}

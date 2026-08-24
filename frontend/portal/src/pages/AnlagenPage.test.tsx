@@ -6,6 +6,7 @@ import * as adaptive from '../useAdaptiveLive';
 import * as surfaceHook from '../useAnlageSurface';
 import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from '../surface';
 import { periodLabel } from '../anlage';
+import { readFace, rememberFace } from '../anlageFace';
 
 /**
  * M3 (#531) — der Cockpit-Beweis, erweitert um die Captain-Nachtrag-Invarianten
@@ -268,6 +269,17 @@ function mockSurface(input: AnlageSurfaceInput | null) {
     profiles: null,
     entities: null,
     loading: false,
+    failed: false,
+  });
+}
+
+/** Die Entscheidungs-Eingaben laufen noch — `decision === 'pending'`. */
+function mockSurfaceLoading() {
+  vi.spyOn(surfaceHook, 'useAnlageSurface').mockReturnValue({
+    surface: null,
+    profiles: null,
+    entities: null,
+    loading: true,
     failed: false,
   });
 }
@@ -1072,5 +1084,76 @@ describe('Mobil-Umbau Stufe 2 · die Telefon-Fassung', () => {
     const head = container.querySelector('.vp-anlage-head') as HTMLElement;
     expect(head.className).not.toContain('is-phone');
     expect(head.querySelector('h1.vp-sr-only')).toBeNull();
+  });
+});
+
+/**
+ * B1 · Welle 3 startet MIT Welle 2 (Perf-Review `vp-cockpit-perf-p7` §3).
+ *
+ * Gemessen wurde ein reiner WELLENABSTAND: `/history` und `/telemetry` hingen
+ * an `showStack`/`isPeakLead` und damit daran, dass `/entities` + `/topology`
+ * geantwortet haben — bei Prod-Latenz ~0,5 s Warten. Hier wird der Umbau von
+ * beiden Seiten festgenagelt: mit Erinnerung startet der Abruf, BEVOR
+ * entschieden ist; ohne Erinnerung bleibt alles wie vor B1.
+ *
+ * Die Ehrlichkeitsregel wird MITgeprüft: gerendert wird währenddessen weiterhin
+ * `AnlagePending` — es wandert nur der Startzeitpunkt, nie eine Aussage.
+ */
+describe('B1 · Welle 3 faltet in Welle 2', () => {
+  it('startet /history schon WÄHREND die Entscheidung läuft, wenn die Anlage zuletzt den Stapel zeigte', async () => {
+    rememberFace('s-1', { stack: true, peak: false });
+    mockAdaptive(true, TOPO);
+    mockSurfaceLoading();
+    const { container } = renderSeite();
+    await waitFor(() => expect(api.history).toHaveBeenCalled());
+    // ... und die Fläche behauptet trotzdem NICHTS: der Zwischenzustand steht.
+    expect(container.querySelector('.vp-anlage-pending')).toBeTruthy();
+    expect(container.querySelector('.vp-cockpit-stack')).toBeNull();
+  });
+
+  it('startet /telemetry mit, wenn zuletzt das Peak-Band führte', async () => {
+    rememberFace('s-1', { stack: true, peak: true });
+    mockAdaptive(true, TOPO);
+    mockSurfaceLoading();
+    renderSeite();
+    await waitFor(() => expect(api.telemetry).toHaveBeenCalled());
+  });
+
+  it('spekuliert NICHT ohne Erinnerung — byte-gleich zu vor B1', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurfaceLoading();
+    renderSeite();
+    // Der Zwischenzustand steht; die Welle-3-Abrufe warten wie bisher.
+    await waitFor(() => expect(api.overview).toHaveBeenCalled());
+    expect(api.history).not.toHaveBeenCalled();
+    expect(api.telemetry).not.toHaveBeenCalled();
+  });
+
+  it('spekuliert NICHT auf /telemetry, wenn zuletzt kein Peak-Band führte', async () => {
+    rememberFace('s-1', { stack: true, peak: false });
+    mockAdaptive(true, TOPO);
+    mockSurfaceLoading();
+    renderSeite();
+    await waitFor(() => expect(api.history).toHaveBeenCalled());
+    expect(api.telemetry).not.toHaveBeenCalled();
+  });
+
+  it('merkt sich das Gesicht, sobald ENTSCHIEDEN ist', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-stack')).toBeTruthy());
+    expect(readFace('s-1')).toEqual({ stack: true, peak: true });
+  });
+
+  it('ein FALSCHER Tipp verwirft das Ergebnis: die Fläche zeigt den Endzustand, nie Stapel-Zahlen', async () => {
+    rememberFace('s-1', { stack: true, peak: true });
+    mockAdaptive(false);
+    mockSurface(LEER);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-anlage-unassigned')).toBeTruthy());
+    expect(container.querySelector('.vp-cockpit-stack')).toBeNull();
+    // ... und die Erinnerung ist auf den wahren Zustand nachgezogen.
+    expect(readFace('s-1')).toEqual({ stack: false, peak: false });
   });
 });
