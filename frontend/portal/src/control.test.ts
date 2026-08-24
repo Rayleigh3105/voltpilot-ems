@@ -640,3 +640,61 @@ describe('controlStrip: eine Anlage ohne Ladestand sagt es beim Namen', () => {
     expect(v?.sentence).not.toContain('nicht möglich');
   });
 });
+
+// --- Der Flussabgleich in der Steuerzeile (Pause, fließt aber; Pilsting) -----
+
+describe('controlStrip: der Flussabgleich versöhnt „pausiert" mit dem Flussbild', () => {
+  // Bestätigte Pause (commanded ≈ 0) - genau die Lage, in der die Steuerzeile
+  // „Der Speicher pausiert gerade" sagte, während das Flussbild „lädt 10,0 kW"
+  // zeigte.
+  const pause = status({ commandedKw: 0, confirmedKw: 0 });
+
+  it('info: ersetzt den gesunden Satz, bleibt GRÜN und behält den Grund', () => {
+    const v = controlStrip(pause, NOW, true, 'GRUND', CURTAIL_PLAN, null, true, false, {
+      severity: 'info',
+      text: 'INFO-TEXT',
+    })!;
+    expect(v.state).toBe('healthy');
+    expect(v.tone).toBe('ok');
+    expect(v.sentence).toBe('INFO-TEXT');
+    // surplusActive true → keine PV_CLARIFICATION angehängt, der Grund bleibt.
+    expect(v.reason).toBe('GRUND');
+  });
+
+  it('warn: bernstein, der Plan-Grund tritt zurück (er würde die Warnung überlagern)', () => {
+    const v = controlStrip(pause, NOW, true, 'GRUND', CURTAIL_PLAN, '→ AUSBLICK', true, false, {
+      severity: 'warn',
+      text: 'WARN-TEXT',
+    })!;
+    expect(v.state).toBe('healthy');
+    expect(v.tone).toBe('warn');
+    expect(v.sentence).toBe('WARN-TEXT');
+    expect(v.reason).toBeNull();
+    expect(v.execution).toBeNull();
+    expect(v.curtailment).toBeNull();
+    expect(v.outlook).toBeNull();
+  });
+
+  it('ohne Flussabgleich unverändert der gesunde Pausen-Satz', () => {
+    const v = controlStrip(pause, NOW)!;
+    expect(v.tone).toBe('ok');
+    expect(v.sentence).toContain('pausiert');
+    expect(v.sentence).not.toBe('WARN-TEXT');
+  });
+
+  it('greift nur im bestätigten Zustand - ein Not-Aus bleibt aus', () => {
+    const v = controlStrip(
+      status({ controlEnabled: false }),
+      NOW,
+      true,
+      null,
+      CURTAIL_PLAN,
+      null,
+      false,
+      false,
+      { severity: 'warn', text: 'WARN-TEXT' },
+    )!;
+    expect(v.state).toBe('off');
+    expect(v.sentence).not.toBe('WARN-TEXT');
+  });
+});

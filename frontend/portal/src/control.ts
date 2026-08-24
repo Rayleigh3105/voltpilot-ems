@@ -21,6 +21,21 @@ import { fmtNum, fmtRelative } from './format';
  */
 export type ControlState = 'healthy' | 'mismatch' | 'stale' | 'off' | 'pending' | 'preparing';
 
+/**
+ * Der Flussabgleich-Befund (aus `flowConflict.ts`), den die Steuerzeile im
+ * bestätigten Zustand konsumiert: der Batterie-Sollwert ist register-bestätigt,
+ * aber die Physik fließt anders. `info` = die gutartige Physik der vollen
+ * Einspeisegrenze (grün, Haken bleibt), `warn` = bernstein „bitte im Blick
+ * behalten" (Haken entfällt). Bewusst nur `{severity, text}` statt der ganzen
+ * `FlowConflictView` — so bleibt `control.ts` frei von einem Import aus
+ * `flowConflict.ts`, und die Steuerzeile bleibt die EINE Stelle, die Ton und
+ * Satz konsistent zusammensetzt.
+ */
+export interface FlowConflictNote {
+  severity: 'info' | 'warn';
+  text: string;
+}
+
 export interface ControlStripView {
   state: ControlState;
   /**
@@ -340,6 +355,14 @@ export function controlStrip(
    * die Tatsache; hier wird sie nie geraten.
    */
   ohneLadestand = false,
+  /**
+   * Der entprellte Flussabgleich (aus `flowConflict.ts`), falls im bestätigten
+   * Zustand die Physik anders fließt als der Sollwert lautet. Er ersetzt DANN
+   * den gesunden Satz: `info` grün (voller Netzanschluss nimmt Überschuss auf,
+   * Ton bleibt `ok`), `warn` bernstein („bitte im Blick behalten"). null = kein
+   * (belegter, entprellter) Widerspruch → die Zeile ist zeichengleich wie zuvor.
+   */
+  flow: FlowConflictNote | null = null,
 ): ControlStripView | null {
   if (!status) {
     if (!expectControl) return null;
@@ -442,6 +465,29 @@ export function controlStrip(
   const ruheReason =
     isRuhe && reason && !surplusActive ? `${reason} ${PV_CLARIFICATION}` : reason;
   const ruheOutlook = isRuhe && !surplusActive ? outlook : null;
+
+  // Der Flussabgleich versöhnt Register- und Physik-Wahrheit: der Sollwert
+  // ist bestätigt, aber die Batterie fließt anders (der Deye schiebt Überschuss
+  // jenseits der vollen Einspeisegrenze selbst in den Speicher). Der Befund
+  // ERSETZT den gesunden Satz - „Der Speicher pausiert gerade" neben einem
+  // Flussbild „lädt 10,0 kW" war der gemeldete Widerspruch.
+  //   - `info`: gutartige Physik, Ton bleibt `ok`, der Grund (Warte-Ökonomie)
+  //     bleibt daneben stehen.
+  //   - `warn`: bernstein; der Plan-Grund tritt zurück (er würde die Warnung
+  //     überlagern), die Aussage ist „bitte im Blick behalten".
+  if (flow) {
+    const warn = flow.severity === 'warn';
+    return {
+      state: 'healthy',
+      tone: warn ? 'warn' : 'ok',
+      sentence: flow.text,
+      agoNote: `geprüft ${ago}`,
+      reason: warn ? null : ruheReason,
+      execution: warn ? null : note,
+      curtailment: warn ? null : curtailNote,
+      outlook: warn ? null : ruheOutlook,
+    };
+  }
   return {
     state: 'healthy',
     tone: 'ok',

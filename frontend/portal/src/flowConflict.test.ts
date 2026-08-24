@@ -4,6 +4,7 @@ import type { LiveSnapshot } from './live';
 import {
   FLOW_CONFLICT_MIN_STREAK,
   feedInFullCause,
+  feedInLimitReached,
   flowConflict,
   flowConflictCandidate,
   flowConflictLine,
@@ -46,6 +47,21 @@ function pilsting(over: Partial<FlowConflictInput> = {}): FlowConflictInput {
     commandedKw: -30,
     // battery = grid − load + pv = −30 − 6,3 + 39,6 = +3,3 (laden); Einspeisung 30,0.
     snapshot: snap({ pvKw: 39.6, loadKw: 6.3, gridKw: -30, battKw: 3.3, socPct: 12 }),
+    ...over,
+  });
+}
+
+/**
+ * Der PAUSEN-Vektor (Live-Lage Pilsting/Herzogau 24.08.2026): commanded ≈ 0
+ * (Pause), gemessen +10,0 kW LADEN an der vollen 30-kW-Einspeisegrenze.
+ * PV 46,3 − Haus 5,1 − Netz 31,2 (Einspeisung) ⇒ Batterie +10,0.
+ */
+function pause(over: Partial<FlowConflictInput> = {}): FlowConflictInput {
+  return input({
+    commandedKw: 0,
+    // battery = grid − load + pv = −31,2 − 5,1 + 46,3 = +10,0 (laden).
+    snapshot: snap({ pvKw: 46.3, loadKw: 5.1, gridKw: -31.2, battKw: 10, socPct: 55 }),
+    maxFeedInKw: 30,
     ...over,
   });
 }
@@ -124,6 +140,110 @@ describe('flowConflictCandidate · Vorzeichen und die zwei Auslöser', () => {
     expect(flowConflictCandidate(pilsting({ snapshotFresh: false }))).toBeNull();
     expect(flowConflictCandidate(pilsting({ snapshot: null }))).toBeNull();
     expect(flowConflictCandidate(pilsting({ commandedKw: null }))).toBeNull();
+  });
+});
+
+describe('flowConflictCandidate · der PAUSEN-Fall (commanded ≈ 0, fließt aber)', () => {
+  it('erkennt Pause + deutliches Laden (commanded 0, gemessen +10,0)', () => {
+    const c = flowConflictCandidate(pause());
+    expect(c?.kind).toBe('pause');
+    expect(c?.commandedDir).toBe('pausieren');
+    expect(c?.measuredDir).toBe('laden');
+    expect(c?.measuredKw).toBeCloseTo(10, 5);
+  });
+
+  it('erkennt Pause + Entladen', () => {
+    // battery = 0 − 8 + 0 = −8 (entladen), commanded 0.
+    const c = flowConflictCandidate(pause({ snapshot: snap({ pvKw: 0, loadKw: 8, gridKw: 0 }) }));
+    expect(c?.kind).toBe('pause');
+    expect(c?.measuredDir).toBe('entladen');
+  });
+
+  it('schweigt bei kleinem Fluss unter 2 kW (Ausgleichs-Rauschen während der Pause)', () => {
+    // battery = 0 − 0 + 1,5 = +1,5 kW (< FLOW_CONFLICT_MIN_PAUSE_FLOW_KW).
+    expect(
+      flowConflictCandidate(pause({ snapshot: snap({ pvKw: 1.5, loadKw: 0, gridKw: 0 }) })),
+    ).toBeNull();
+  });
+
+  it('behandelt einen Sollwert zwischen 0,05 und 1 kW weder als Pause noch als Order', () => {
+    // commandedDir laden (> 0,05), aber |commanded| < 1 → Rauschen, kein Kandidat.
+    expect(flowConflictCandidate(pause({ commandedKw: 0.4 }))).toBeNull();
+  });
+
+  it('schweigt in einem NACHFÜHRUNGS-Modus auch bei Pause', () => {
+    for (const mode of ['follow', 'trim', 'absorb'] as const) {
+      expect(flowConflictCandidate(pause({ executionMode: mode as never }))).toBeNull();
+    }
+  });
+
+  it('vergleicht auch im Pausen-Fall NICHT bei fehlendem Kanal oder unfrischer Messung', () => {
+    expect(flowConflictCandidate(pause({ snapshot: snap({ pvKw: null }) }))).toBeNull();
+    expect(flowConflictCandidate(pause({ snapshotFresh: false }))).toBeNull();
+  });
+});
+
+describe('flowConflict · die drei Pilsting-Pausenlagen', () => {
+  it('Pause + an der Kappe ladend → INFO (grün), freundlicher Satz ohne „im Blick behalten"', () => {
+    const v = flowConflict(pause(), FLOW_CONFLICT_MIN_STREAK);
+    expect(v?.severity).toBe('info');
+    expect(v?.text).toBe(
+      `Der Speicher pausiert planmäßig – nimmt aber gerade 10,0${NBSP}kW Überschuss auf, ` +
+        `weil Ihre Einspeisegrenze (30${NBSP}kW) erreicht ist. Dieser Strom wäre sonst verloren.`,
+    );
+    expect(v?.text).not.toContain('Bitte im Blick behalten');
+  });
+
+  it('Pause + ladend OHNE gepflegte Grenze → WARN (bernstein), ursachenfrei', () => {
+    const v = flowConflict(pause({ maxFeedInKw: null }), FLOW_CONFLICT_MIN_STREAK);
+    expect(v?.severity).toBe('warn');
+    expect(v?.text).toBe(
+      `Pause angewiesen – der Speicher lädt aber 10,0${NBSP}kW (Messung). Bitte im Blick behalten.`,
+    );
+    expect(v?.text).not.toContain('Einspeisegrenze');
+  });
+
+  it('Pause + ladend, Grenze aber NICHT erreicht (75) → WARN', () => {
+    const v = flowConflict(pause({ maxFeedInKw: 75 }), FLOW_CONFLICT_MIN_STREAK);
+    expect(v?.severity).toBe('warn');
+    expect(v?.text).toContain('Pause angewiesen');
+  });
+
+  it('Pause + ENTLADEN → WARN, nie Info (auch MIT gepflegter Grenze)', () => {
+    const v = flowConflict(
+      pause({ snapshot: snap({ pvKw: 0, loadKw: 8, gridKw: 0 }), maxFeedInKw: 30 }),
+      FLOW_CONFLICT_MIN_STREAK,
+    );
+    expect(v?.severity).toBe('warn');
+    expect(v?.text).toBe(
+      `Pause angewiesen – der Speicher entlädt aber 8,0${NBSP}kW (Messung). Bitte im Blick behalten.`,
+    );
+  });
+
+  it('behauptet auch im Pausen-Fall NICHTS unter der Serien-Schwelle', () => {
+    expect(flowConflict(pause(), FLOW_CONFLICT_MIN_STREAK - 1)).toBeNull();
+  });
+
+  it('der ORDER-Widerspruch trägt severity warn (unverändert)', () => {
+    expect(flowConflict(pilsting({ maxFeedInKw: 30 }), FLOW_CONFLICT_MIN_STREAK)?.severity).toBe(
+      'warn',
+    );
+  });
+});
+
+describe('feedInLimitReached', () => {
+  it('liefert die Grenze, wenn die gemessene Einspeisung sie (nahezu) erreicht', () => {
+    expect(feedInLimitReached(snap({ gridKw: -31.2 }), 30)).toBe(30);
+    expect(feedInLimitReached(snap({ gridKw: -29 }), 30)).toBe(30); // genau an der 1-kW-Marge
+  });
+
+  it('null, wenn die Einspeisung deutlich darunter liegt', () => {
+    expect(feedInLimitReached(snap({ gridKw: -20 }), 30)).toBeNull();
+  });
+
+  it('null ohne gepflegte Grenze oder ohne Einspeisung', () => {
+    expect(feedInLimitReached(snap({ gridKw: -31.2 }), null)).toBeNull();
+    expect(feedInLimitReached(snap({ gridKw: 5 }), 30)).toBeNull();
   });
 });
 

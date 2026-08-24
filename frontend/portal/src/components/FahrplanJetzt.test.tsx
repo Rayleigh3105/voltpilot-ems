@@ -28,6 +28,7 @@ function held(over: Partial<JetztHeldView> = {}): JetztHeldView {
     conflict: null,
     curtailment: null,
     flowConflict: null,
+    flowConflictSeverity: null,
     why: 'Netzstrom kostet Sie jetzt 32,5 ct/kWh.',
     chips: [{ label: 'Haus', value: '7,1 kW' }],
     next: null,
@@ -93,12 +94,13 @@ describe('JetztHeld', () => {
     expect(container.querySelector('.vp-jetzt-status.is-warn')).toBeTruthy();
   });
 
-  it('zeigt im Flusskonflikt den bernstein Satz und lässt die Bestätigungszeile verschwinden', () => {
+  it('zeigt im WARN-Flusskonflikt den bernstein Satz und lässt die Bestätigungszeile verschwinden', () => {
     const { container } = render(
       <JetztHeld
         view={held({
           tone: 'warn',
           confirm: null,
+          flowConflictSeverity: 'warn',
           flowConflict:
             'Entladung angewiesen (30,0 kW) - der Speicher entlädt aber nicht (Messung: lädt 3,3 kW). Bitte im Blick behalten.',
         })}
@@ -106,8 +108,28 @@ describe('JetztHeld', () => {
     );
     expect(screen.getByText(/der Speicher entlädt aber nicht/)).toBeInTheDocument();
     expect(container.querySelector('.vp-jetzt-conflict')).toBeTruthy();
+    expect(container.querySelector('.vp-jetzt-confirm')).toBeFalsy();
     // Die „vom Wechselrichter bestätigt"-Zeile ist weg.
     expect(screen.queryByText(/vom Wechselrichter bestätigt/)).not.toBeInTheDocument();
+  });
+
+  it('zeigt den INFO-Flussabgleich RUHIG (grün) und behält die Bestätigungszeile', () => {
+    const { container } = render(
+      <JetztHeld
+        view={held({
+          tone: 'ok',
+          flowConflictSeverity: 'info',
+          flowConflict:
+            'Der Speicher pausiert planmäßig – nimmt aber gerade 10,0 kW Überschuss auf, weil Ihre Einspeisegrenze (30 kW) erreicht ist. Dieser Strom wäre sonst verloren.',
+        })}
+      />,
+    );
+    expect(screen.getByText(/nimmt aber gerade 10,0 kW Überschuss auf/)).toBeInTheDocument();
+    // Grün (bestätigt-Stil), NICHT der bernstein Konflikt-Stil.
+    expect(container.querySelector('.vp-jetzt-conflict')).toBeFalsy();
+    expect(container.querySelectorAll('.vp-jetzt-confirm').length).toBeGreaterThan(0);
+    // Die gutartige Info behält die Bestätigung daneben.
+    expect(screen.getByText(/vom Wechselrichter bestätigt/)).toBeInTheDocument();
   });
 });
 

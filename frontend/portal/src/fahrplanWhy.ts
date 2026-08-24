@@ -23,6 +23,7 @@ import {
   curtailRoleLabel,
   type CurtailTruth,
 } from './curtailment';
+import { FEED_IN_FULL_MARGIN_KW } from './flowConflict';
 import { eurAmount, fmtNum } from './format';
 import {
   leitgrund,
@@ -1036,6 +1037,125 @@ function slotTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Ab dieser Nähe zu 100 % ist „voll wird der Speicher trotzdem" belegt. */
+const FULL_SOC_PCT = 90;
+
+/** Optionaler Kontext für die kappen-bewusste + bezifferte Begründung. */
+export interface SurplusOpts {
+  /** Das PLAN-FENSTER, für die Ladefenster-Ökonomie (Teil 3). */
+  slots?: WhySlot[];
+  /** Slot-Länge in Minuten (kWh-Rechnung); Vorgabe 15. */
+  slotMinutes?: number;
+  /** Die gepflegte Einspeisegrenze am Netzanschluss (kW); null = keine. */
+  maxFeedInKw?: number | null;
+  /** Die GEMESSENE Einspeisung (kW, positiv); der „gemessen"-Teil von Teil 2. */
+  measuredExportKw?: number | null;
+}
+
+function numOr(v: number | null | undefined): number | null {
+  return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+}
+
+/**
+ * Die gepflegte Einspeisegrenze (kW), wenn der Überschuss sie erreicht - GEMESSEN
+ * (live) ODER PROGNOSTIZIERT (der geplante Export des Slots). Sonst null. Teilt
+ * sich die Marge {@link FEED_IN_FULL_MARGIN_KW} mit dem Flussabgleich, damit
+ * „voll" auf Steuerzeile und Fahrplan dieselbe Schwelle meint.
+ */
+function capReachedLimit(slot: WhySlot, opts?: SurplusOpts): number | null {
+  const limit = numOr(opts?.maxFeedInKw);
+  if (limit == null || limit <= 0) return null;
+  const measured = numOr(opts?.measuredExportKw);
+  const plannedExport = slot.gridKw != null && Number(slot.gridKw) < 0 ? -Number(slot.gridKw) : null;
+  const exp = measured ?? plannedExport;
+  if (exp == null) return null;
+  return exp >= limit - FEED_IN_FULL_MARGIN_KW ? limit : null;
+}
+
+/** „N kW" mit passender Genauigkeit (ganzzahlige Grenze ohne Nachkommastelle). */
+function limitKwFmt(limit: number): string {
+  return fmtNum(limit, 'kW', Number.isInteger(limit) ? 0 : 1);
+}
+
+/**
+ * Der „bis dahin eingespeist"-Satz des Warte-Falls (Fall c) — kappen-EHRLICH
+ * (Teil 2): erreicht der Überschuss die gepflegte Grenze, wird nicht ALLES
+ * eingespeist, der Teil DARÜBER lädt den ruhenden Speicher bereits jetzt (das
+ * war der gemeldete Widerspruch: „eingespeist" neben einem ladenden Speicher).
+ * Ohne erreichte Grenze der unveränderte Satz aus Fix 1.
+ */
+function fedInClause(slot: WhySlot, opts?: SurplusOpts): string {
+  const limit = capReachedLimit(slot, opts);
+  return limit == null
+    ? 'Bis dahin wird Ihr Überschuss eingespeist und vergütet.'
+    : `Ihr Überschuss wird bis zur Einspeisegrenze (${limitKwFmt(limit)}) eingespeist und vergütet; was darüber liegt, lädt den Speicher.`;
+}
+
+/** Zusammenfassung des geplanten Ladefensters ab `from` (Teil 3). */
+interface ChargeWindow {
+  endTime: string;
+  minExpCt: number | null;
+  maxExpCt: number | null;
+  kWh: number;
+  endSocPct: number | null;
+}
+
+/**
+ * Das zusammenhängende LADE-Fenster ab dem Slot `from` (ISO): solange der Plan
+ * lädt (`batteryKw` über dem Ruheband). Liefert die Einspeisewert-Spanne (die
+ * entgangene Vergütung des Wartens), die geplante Lademenge und das End-SoC.
+ * null, wenn `from` kein Slot des Fensters ist oder dort nicht geladen wird.
+ */
+function chargeWindow(
+  slots: WhySlot[],
+  from: string,
+  slotMinutes: number,
+): ChargeWindow | null {
+  const startIdx = slots.findIndex((s) => s.start === from);
+  if (startIdx < 0) return null;
+  let end = -1;
+  let kWh = 0;
+  let minExp: number | null = null;
+  let maxExp: number | null = null;
+  for (let i = startIdx; i < slots.length; i++) {
+    const b = slots[i].batteryKw == null ? null : Number(slots[i].batteryKw);
+    if (b == null || b <= SURPLUS_REST_DEADBAND_KW) break;
+    end = i;
+    kWh += b * (slotMinutes / 60);
+    const e = slots[i].exportValueCtKwh;
+    if (e != null && Number.isFinite(Number(e))) {
+      const ev = Number(e);
+      minExp = minExp == null ? ev : Math.min(minExp, ev);
+      maxExp = maxExp == null ? ev : Math.max(maxExp, ev);
+    }
+  }
+  if (end < 0) return null;
+  const last = slots[end];
+  return {
+    endTime: new Date(new Date(last.start).getTime() + slotMinutes * 60_000).toISOString(),
+    minExpCt: minExp,
+    maxExpCt: maxExp,
+    kWh,
+    endSocPct: last.socPct == null ? null : Number(last.socPct),
+  };
+}
+
+/** Die entgangene Vergütung im Ladefenster als „rund X ct/kWh" bzw. „X–Y ct/kWh". */
+function expRange(min: number | null, max: number | null): string | null {
+  if (min == null || max == null) return null;
+  if (Math.abs(max - min) < 0.5) return `rund ${ctFmt(round1((min + max) / 2))}`;
+  return `${numFmt(round1(min))}–${numFmt(round1(max))} ct/kWh`;
+}
+
+/** Die Zusicherung, dass der Speicher gefüllt wird — belegt aus dem Plan (Teil 3). */
+function fillClause(win: ChargeWindow): string | null {
+  if (win.kWh < 0.5) return null;
+  const menge = `rund ${Math.round(win.kWh)} kWh bis ${slotTime(win.endTime)} Uhr`;
+  return win.endSocPct != null && win.endSocPct >= FULL_SOC_PCT
+    ? `Voll wird der Speicher trotzdem (geplant: ${menge}).`
+    : `Der Speicher wird laut Fahrplan noch geladen (geplant: ${menge}).`;
+}
+
 /**
  * Warum wird der Solar-Überschuss GERADE eingespeist statt gespeichert? Fires
  * ONLY when the slot actually EXPORTS (`gridKw` < 0) and is not curtailed at a
@@ -1049,11 +1169,17 @@ function slotTime(iso: string): string {
  * falls back to the plain `slotWhy` reason (Null-Degradation bleibt Gesetz).
  * `nextChargeAt` (ISO) = start of the next charge phase, supplied by the caller
  * (`control.ts nextChargeStart`); absent → case c is skipped for case d.
+ *
+ * Cases a/b (full/maxed battery) can't absorb more, so their surplus IS fed in.
+ * Cases c/d (resting battery) get the cap-honest phrasing (Teil 2): with the
+ * feed-in limit reached, the excess above it charges the resting battery. Case c
+ * additionally quantifies the wait economics from the plan (Teil 3).
  */
 export function surplusWhy(
   slot: WhySlot,
   kind: PlanWordingKind,
   nextChargeAt?: string | null,
+  opts?: SurplusOpts,
 ): string | null {
   const grid = slot.gridKw == null ? null : Number(slot.gridKw);
   // Only when the slot really feeds surplus into the grid.
@@ -1064,11 +1190,12 @@ export function surplusWhy(
   const flags = slot.slotFlags ?? [];
   const batt = slot.batteryKw == null ? null : Number(slot.batteryKw);
 
-  // a) Charging at max power - what the PV delivers beyond that is fed in.
+  // a) Charging at max power - what the PV delivers beyond that is fed in. The
+  //    battery is already at max, so it CANNOT take the excess (no cap clause).
   if (flags.includes('charge_cap') && batt != null && batt > SURPLUS_REST_DEADBAND_KW) {
     return `Der Speicher lädt bereits mit seiner maximalen Leistung (${fmtNum(batt, 'kW', 1)}). Was Ihre PV darüber hinaus liefert, wird eingespeist und vergütet.`;
   }
-  // b) Full battery + surplus.
+  // b) Full battery + surplus - likewise cannot absorb more.
   if (flags.includes('soc_max')) {
     return 'Der Speicher ist voll – Ihr Überschuss wird eingespeist und vergütet. Er entlädt wieder, sobald es sich lohnt, meist am Abend.';
   }
@@ -1079,15 +1206,38 @@ export function surplusWhy(
 
   // c) Deliberately waiting to charge later, when storing is most valuable.
   if (nextChargeAt != null) {
-    return `Der Speicher wartet absichtlich: Er lädt laut Fahrplan ab ${slotTime(nextChargeAt)} Uhr, wenn Speichern am wertvollsten ist. Bis dahin wird Ihr Überschuss eingespeist und vergütet.`;
+    // Teil 3: die Warte-Ökonomie beziffern - Einspeisen JETZT gegen die
+    // (niedrigere) entgangene Vergütung im geplanten Ladefenster, plus die
+    // Zusicherung aus dem Plan, dass der Speicher trotzdem gefüllt wird. Der
+    // Kappen-Fakt (Überschuss über der Grenze lädt bereits jetzt) trägt auf der
+    // Steuerzeile der Flussabgleich-Info-Satz - hier steht nur die Ökonomie.
+    const expNow = numOr(slot.exportValueCtKwh);
+    const win = opts?.slots ? chargeWindow(opts.slots, nextChargeAt, opts.slotMinutes ?? 15) : null;
+    const range = win ? expRange(win.minExpCt, win.maxExpCt) : null;
+    // Nur enrichen, wenn die Ökonomie WIRKLICH so ist: das Ladefenster kostet
+    // weniger entgangene Vergütung als das Einspeisen jetzt (sonst wäre der
+    // bezifferte „darum wartet er"-Satz irreführend).
+    if (expNow != null && range != null && win!.maxExpCt != null && win!.maxExpCt <= expNow) {
+      const fill = fillClause(win!);
+      return `Der Speicher wartet absichtlich: Einspeisen bringt jetzt ${ctFmt(expNow)}, ab ${slotTime(nextChargeAt)} Uhr kostet Laden nur ${range} entgangene Vergütung.${fill ? ` ${fill}` : ''}`;
+    }
+    // Fallback ohne Bezifferung: kappen-ehrlicher „eingespeist"-Satz (Teil 2).
+    return `Der Speicher wartet absichtlich: Er lädt laut Fahrplan ab ${slotTime(nextChargeAt)} Uhr, wenn Speichern am wertvollsten ist. ${fedInClause(slot, opts)}`;
   }
   // d) Feeding in pays more than storing would be worth later.
-  const exp = slot.exportValueCtKwh == null ? null : Number(slot.exportValueCtKwh);
-  const lam = slot.storedValueCtKwh == null ? null : Number(slot.storedValueCtKwh);
+  const exp = numOr(slot.exportValueCtKwh);
+  const lam = numOr(slot.storedValueCtKwh);
   if (exp != null && lam != null && exp >= lam) {
+    // Teil 2: bei erreichter Grenze lädt der ruhende Speicher den Teil darüber
+    // trotzdem - „nur eingespeist" wäre dann eine halbe Wahrheit.
+    const capLimit = capReachedLimit(slot, opts);
+    const capTail =
+      capLimit == null
+        ? ''
+        : ` Über die Einspeisegrenze (${limitKwFmt(capLimit)}) hinaus lädt der Speicher trotzdem.`;
     return kind === 'direktvermarktung'
-      ? `Ihr Solar-Überschuss wird gerade verkauft statt gespeichert: Die Einspeisung bringt jetzt ${ctFmt(exp)} – mehr, als der Strom später aus dem Speicher wert wäre (≈ ${ctFmt(lam)} nach Verlusten und Verschleiß).`
-      : 'Ihr Solar-Überschuss wird gerade eingespeist statt gespeichert: Die Einspeisevergütung bringt jetzt mehr, als der Strom später einsparen würde.';
+      ? `Ihr Solar-Überschuss wird gerade verkauft statt gespeichert: Die Einspeisung bringt jetzt ${ctFmt(exp)} – mehr, als der Strom später aus dem Speicher wert wäre (≈ ${ctFmt(lam)} nach Verlusten und Verschleiß).${capTail}`
+      : `Ihr Solar-Überschuss wird gerade eingespeist statt gespeichert: Die Einspeisevergütung bringt jetzt mehr, als der Strom später einsparen würde.${capTail}`;
   }
   return null;
 }

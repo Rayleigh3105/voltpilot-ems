@@ -994,6 +994,35 @@ export function AnlageSeite({
   const planSlots = plan?.slots ?? [];
   const hasPlanToday = todaySlots(planSlots, now).length > 0;
   const batteryLinked = plan?.deviceId != null;
+
+  // Flussabgleich (Scout `vp-verkauf-praemisse-s8` §3, Pilsting/Herzogau): eine
+  // register-bestätigte, aber anders fließende Order versöhnt Steuerzeile und
+  // Flussbild - EINE Ableitung für den Satz der Steuerzeile (control.ts) UND den
+  // Speicherknoten-Haken. Entprellt über den Rücklese-Zeitpunkt des Geräts.
+  // Steht VOR `controlView`, weil dessen Satz den Befund konsumiert.
+  const cockpitSnap = siteSnapshot(ovSite?.live ?? null);
+  // Negativ = Einspeisung; die GEMESSENE Größe für den kappen-ehrlichen
+  // Fahrplan-Satz (Teil 2 „gemessen").
+  const measuredExportKw =
+    fresh && cockpitSnap.gridKw != null && cockpitSnap.gridKw < 0 ? -cockpitSnap.gridKw : null;
+  const cockpitFlowInput = {
+    commandedKw: controlStatus?.commandedKw,
+    snapshot: cockpitSnap,
+    snapshotFresh: fresh,
+    executionMode: controlStatus?.executionMode,
+    maxFeedInKw: site.maxFeedInKw,
+  };
+  const hasFlowConflictCandidate = flowConflictCandidate(cockpitFlowInput) != null;
+  const [flowConflictStreak, setFlowConflictStreak] = useState(0);
+  const flowCandRef = useRef(hasFlowConflictCandidate);
+  flowCandRef.current = hasFlowConflictCandidate;
+  const flowConflictObs = controlStatus?.checkedAt ?? null;
+  useEffect(() => {
+    if (flowConflictObs == null) return;
+    setFlowConflictStreak((s) => stepFlowConflict(s, flowCandRef.current));
+  }, [flowConflictObs]);
+  const cockpitFlow = flowConflict(cockpitFlowInput, flowConflictStreak);
+
   // WHY the current setpoint is what it is: the OPTIMIZER's own recorded reason
   // for the slot being executed (Fahrplan-Warum), never a second explanation
   // logic here. Null outside the horizon or on a plan from before the why-layer
@@ -1012,7 +1041,14 @@ export function AnlageSeite({
   // Batterie? Overrides the plain slot reason when the slot exports; null
   // otherwise, so the strip falls back to the base reason (Null-Degradation).
   const surplusReason = activePlanSlot
-    ? surplusWhy(activePlanSlot, planKind, nextChargeStart(planSlots, now))
+    ? surplusWhy(activePlanSlot, planKind, nextChargeStart(planSlots, now), {
+        // Teil 2/3: das Plan-Fenster für die Ladefenster-Ökonomie, die gepflegte
+        // Grenze + die gemessene Einspeisung für den kappen-ehrlichen Satz.
+        slots: planSlots,
+        slotMinutes: plan?.slotMinutes ?? 15,
+        maxFeedInKw: site.maxFeedInKw,
+        measuredExportKw,
+      })
     : null;
   const baseReason = activePlanSlot
     ? // Die LAUF-Fakten reisen mit (Erklärbarkeit Stufe 1): der Ruhe-Grund der
@@ -1039,6 +1075,9 @@ export function AnlageSeite({
     // Die Anlage wurde ausdrücklich OHNE Ladestand eingerichtet - dann ist
     // „VoltPilot prüft das Modell am Prüfstand" die falsche Auskunft.
     controlStatus?.missingReadingChannel === 'soc_pct',
+    // Der Flussabgleich: bei „pausiert, fließt aber" ersetzt sein Satz den
+    // gesunden - `info` grün (voller Netzanschluss), `warn` bernstein.
+    cockpitFlow ? { severity: cockpitFlow.severity, text: cockpitFlow.text } : null,
   );
   // Der EINSPEISEWÄCHTER („Grenzen & Wächter" Stufe 0): eine STEHENDE Aussage
   // über die Anlage - welche Einspeisegrenze gilt, wirkt sie überhaupt, und
@@ -1048,29 +1087,6 @@ export function AnlageSeite({
   // liefert keine Steuerzeile, hält aber sehr wohl eine Grenze - genau die
   // Konstellation, die in Herzogau zwei Untersuchungsrunden gekostet hat.
   const guardView = exportGuardView(curtailStatus, now);
-
-  // Flussabgleich (Scout `vp-verkauf-praemisse-s8` §3): der Speicherknoten-Haken
-  // hängt am `controlStrip`-healthy - aber eine register-bestätigte, nicht
-  // fließende Order darf keinen Haken tragen. Dieselbe reine Ableitung wie der
-  // Fahrplan-Held (eine Wahrheit, zwei Flächen), entprellt über den
-  // Rücklese-Zeitpunkt des Geräts.
-  const cockpitFlowInput = {
-    commandedKw: controlStatus?.commandedKw,
-    snapshot: siteSnapshot(ovSite?.live ?? null),
-    snapshotFresh: fresh,
-    executionMode: controlStatus?.executionMode,
-    maxFeedInKw: site.maxFeedInKw,
-  };
-  const hasFlowConflictCandidate = flowConflictCandidate(cockpitFlowInput) != null;
-  const [flowConflictStreak, setFlowConflictStreak] = useState(0);
-  const flowCandRef = useRef(hasFlowConflictCandidate);
-  flowCandRef.current = hasFlowConflictCandidate;
-  const flowConflictObs = controlStatus?.checkedAt ?? null;
-  useEffect(() => {
-    if (flowConflictObs == null) return;
-    setFlowConflictStreak((s) => stepFlowConflict(s, flowCandRef.current));
-  }, [flowConflictObs]);
-  const cockpitFlowConflict = flowConflict(cockpitFlowInput, flowConflictStreak) != null;
 
   // The Gesundheits-Checklist — rendered on BOTH cockpit paths (the projected
   // one lists it as its "Zustand" card, so a migrated plant has the surface the
@@ -1386,7 +1402,9 @@ export function AnlageSeite({
                  der Bühnenfuß liefert Satz und Grund. Ein Flusskonflikt
                  (register-bestätigt, aber nicht fließend) entzieht den Haken -
                  er wäre sonst genau die „lädt 3,3 kW ✓"-Lüge aus Pilsting. */
-              controlConfirmed={controlView?.state === 'healthy' && !cockpitFlowConflict}
+              controlConfirmed={
+                controlView?.state === 'healthy' && cockpitFlow?.severity !== 'warn'
+              }
               /* Am Telefon steht die Geld-Karte „direkt unterm Fluss"
                  (Konzept) — der Bühnenfuß wandert deshalb unter die
                  Fahrplan-Zeile, deren Aussage er fortsetzt (was ist geplant →

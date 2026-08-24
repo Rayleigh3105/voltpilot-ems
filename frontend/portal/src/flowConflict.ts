@@ -34,6 +34,19 @@
  *   - **Eine gemeldete Nachführung ist die REGEL, kein Widerspruch:** in den
  *     Ausführungs-Modi follow/trim/absorb folgt das Gerät bewusst dem
  *     gemessenen Wert — dort wird nichts behauptet.
+ *
+ * **Der PAUSEN-Fall** (Live-Vorfall Pilsting/Herzogau 24.08.2026): commanded
+ * ≈ 0 (Ruhe/Pause), aber die Physik lädt/entlädt deutlich. Der Deye schiebt den
+ * Überschuss JENSEITS der vollen Einspeisegrenze selbst in den Speicher, während
+ * die Steuerzeile „Der Speicher pausiert gerade — vom Wechselrichter bestätigt"
+ * sagt und das Flussbild „lädt 10,0 kW ✓" zeigt. Deshalb kennt dieses Modul
+ * seit 24.08. eine SCHWERE (`FlowConflictView.severity`):
+ *   - **`info`** (grün, kein Alarm): MIT gepflegter Grenze, gemessener
+ *     Einspeisung an der Grenze UND Fluss = LADEN — die gutartige Physik der
+ *     vollen Einspeisegrenze; die Aussage ist freundlich, der Haken bleibt.
+ *   - **`warn`** (bernstein): jeder ORDER-Widerspruch (bisher) UND der Pausen-
+ *     Fall OHNE erklärende Grenze bzw. mit Fluss = ENTLADEN. Bestätigung/Haken
+ *     entfallen wie gehabt.
  */
 
 import type { ExecutionMode } from './api';
@@ -50,6 +63,15 @@ export const FLOW_CONFLICT_MIN_COMMAND_KW = 1;
  * Totband: ein paar Zehntel Gegenrichtung sind Messversatz, kein Widerspruch.
  */
 export const FLOW_CONFLICT_MIN_FLOW_KW = 0.5;
+
+/**
+ * Im PAUSEN-Fall (commanded ≈ 0) zählt erst ein deutlich fließender Speicher
+ * als Widerspruch. Höher als {@link FLOW_CONFLICT_MIN_FLOW_KW}, weil ein
+ * pausierender Speicher im normalen Eigenverbrauchs-Ausgleich ohnehin ein paar
+ * Zehntel bis über ein kW wandert (Zähler-Versatz + Mikro-Regelung) — erst ab
+ * hier ist es ein echtes, erklärungsbedürftiges Fließen.
+ */
+export const FLOW_CONFLICT_MIN_PAUSE_FLOW_KW = 2;
 
 /** Ein FEHLBETRAG zählt ab dem GRÖSSEREN aus absolutem Boden und Anteil. */
 export const FLOW_CONFLICT_ABS_SHORTFALL_KW = 2;
@@ -76,17 +98,29 @@ const FOLLOWING_MODES: ReadonlySet<string> = new Set(['follow', 'trim', 'absorb'
 /** Der Trailing-Satz jeder Konflikt-Aussage: ein Hinweis, kein Alarm. */
 export const FLOW_CONFLICT_WATCH_SENTENCE = 'Bitte im Blick behalten.';
 
-/** Was den Konflikt ausmacht (für die Wortwahl der Zeile). */
-export type FlowConflictKind = 'direction' | 'shortfall';
+/**
+ * Was den Konflikt ausmacht (für die Wortwahl der Zeile):
+ *   - `direction`/`shortfall` — ein ORDER-Widerspruch (|commanded| ≥ 1);
+ *   - `pause` — commanded ≈ 0, aber die Physik fließt deutlich.
+ */
+export type FlowConflictKind = 'direction' | 'shortfall' | 'pause';
+
+/**
+ * Wie ernst der Befund ist:
+ *   - `info` — gutartige Physik (voller Netzanschluss nimmt Überschuss auf),
+ *     grün, der Haken bleibt;
+ *   - `warn` — bernstein, „bitte im Blick behalten", Haken/Bestätigung entfallen.
+ */
+export type FlowConflictSeverity = 'info' | 'warn';
 
 /** Der ROHE Befund einer einzelnen Beobachtung, vor der Entprellung. */
 export interface FlowConflictCandidate {
-  /** Der angewiesene Sollwert (+ laden / − entladen). */
+  /** Der angewiesene Sollwert (+ laden / − entladen / ≈ 0 pausieren). */
   commandedKw: number;
   /** Der gemessene, abgeleitete Batteriefluss (dieselbe Vorzeichen-Konvention). */
   measuredKw: number;
-  /** Richtung des Sollwerts als Wort — nie „pausieren" (|commanded| ≥ 1). */
-  commandedDir: 'laden' | 'entladen';
+  /** Richtung des Sollwerts als Wort. */
+  commandedDir: BatteryDir;
   /** Richtung des gemessenen Flusses. */
   measuredDir: BatteryDir;
   kind: FlowConflictKind;
@@ -94,6 +128,8 @@ export interface FlowConflictCandidate {
 
 /** Das entprellte Ergebnis, das die Flächen rendern. */
 export interface FlowConflictView {
+  /** Grün-Info (gutartige Physik) vs. bernstein Warnung — steuert Ton + Haken. */
+  severity: FlowConflictSeverity;
   /** Der Beobachtungs-Satz („Entladung angewiesen (30,0 kW) - …"). */
   observation: string;
   /** Der Ursachen-Satz, nur wenn belegbar; sonst null. */
@@ -136,8 +172,6 @@ export function flowConflictCandidate(input: FlowConflictInput): FlowConflictCan
   if (commanded == null) return null;
   // (v) Eine gemeldete Nachführung ist die Regel, kein Fehler.
   if (input.executionMode != null && FOLLOWING_MODES.has(input.executionMode)) return null;
-  // (ii) Winzige Sollwerte sind Rauschen.
-  if (Math.abs(commanded) < FLOW_CONFLICT_MIN_COMMAND_KW) return null;
   // Ohne frische Messung wird nichts behauptet.
   if (!input.snapshotFresh || input.snapshot == null) return null;
 
@@ -150,8 +184,19 @@ export function flowConflictCandidate(input: FlowConflictInput): FlowConflictCan
   );
   if (measured == null) return null;
 
-  const commandedDir = commanded > 0 ? 'laden' : 'entladen';
   const measuredDir = batteryDirection(measured);
+  const commandedDir = batteryDirection(commanded);
+
+  // PAUSEN-Fall: kein Sollwert angewiesen, aber die Physik fließt deutlich.
+  // Erst ab {@link FLOW_CONFLICT_MIN_PAUSE_FLOW_KW} — ein pausierender Speicher
+  // wandert im normalen Ausgleich ohnehin ein paar Zehntel.
+  if (commandedDir === 'pausieren') {
+    if (Math.abs(measured) < FLOW_CONFLICT_MIN_PAUSE_FLOW_KW) return null;
+    return { commandedKw: commanded, measuredKw: measured, commandedDir, measuredDir, kind: 'pause' };
+  }
+
+  // ORDER-Fall: (ii) winzige Sollwerte sind Rauschen.
+  if (Math.abs(commanded) < FLOW_CONFLICT_MIN_COMMAND_KW) return null;
 
   // (iii) Richtungswiderspruch: entgegengesetzte Vorzeichen, beide Beträge
   // deutlich. |commanded| ≥ 1 erfüllt seinen Boden bereits.
@@ -207,6 +252,31 @@ export function flowConflictLine(c: FlowConflictCandidate): string {
 }
 
 /**
+ * Die gepflegte Einspeisegrenze (kW), falls sie durch die GEMESSENE Einspeisung
+ * nahezu erreicht ist — sonst null. Die eine „ist der Netzanschluss voll?"-
+ * Regel; {@link feedInFullCause} und der Pausen-Info-Zweig lesen sie beide, und
+ * der kappen-bewusste Fahrplan-Satz (`fahrplanWhy.fedInClause`) teilt sich ihre
+ * Marge {@link FEED_IN_FULL_MARGIN_KW}.
+ */
+export function feedInLimitReached(
+  snapshot: LiveSnapshot | null,
+  maxFeedInKw: number | null | undefined,
+): number | null {
+  const limit = num(maxFeedInKw);
+  if (limit == null || limit <= 0) return null;
+  const grid = snapshot == null ? null : num(snapshot.gridKw);
+  // Negativ = Einspeisung (die `live.ts`-Konvention).
+  const exportKw = grid != null && grid < 0 ? -grid : null;
+  if (exportKw == null) return null;
+  return exportKw >= limit - FEED_IN_FULL_MARGIN_KW ? limit : null;
+}
+
+/** „N kW" mit passender Genauigkeit (ganzzahlige Grenze ohne Nachkommastelle). */
+function limitKw(limit: number): string {
+  return fmtNum(limit, 'kW', Number.isInteger(limit) ? 0 : 1);
+}
+
+/**
  * Der Ursachen-Satz „Ihr Netzanschluss ist voll (Einspeisegrenze N kW
  * erreicht)" — nur wenn er BELEGBAR ist: eine gepflegte Grenze UND eine
  * gemessene Einspeisung, die sie nahezu erreicht. Sonst null (die Cloud kann
@@ -216,15 +286,9 @@ export function feedInFullCause(
   snapshot: LiveSnapshot | null,
   maxFeedInKw: number | null | undefined,
 ): string | null {
-  const limit = num(maxFeedInKw);
-  if (limit == null || limit <= 0) return null;
-  const grid = snapshot == null ? null : num(snapshot.gridKw);
-  // Negativ = Einspeisung (die `live.ts`-Konvention).
-  const exportKw = grid != null && grid < 0 ? -grid : null;
-  if (exportKw == null) return null;
-  if (exportKw < limit - FEED_IN_FULL_MARGIN_KW) return null;
-  const digits = Number.isInteger(limit) ? 0 : 1;
-  return `Ihr Netzanschluss ist voll (Einspeisegrenze ${fmtNum(limit, 'kW', digits)} erreicht).`;
+  const limit = feedInLimitReached(snapshot, maxFeedInKw);
+  if (limit == null) return null;
+  return `Ihr Netzanschluss ist voll (Einspeisegrenze ${limitKw(limit)} erreicht).`;
 }
 
 /**
@@ -239,10 +303,38 @@ export function stepFlowConflict(prevStreak: number, hasCandidate: boolean): num
 }
 
 /**
+ * Der Pausen-Befund als Sicht: MIT gepflegter, erreichter Einspeisegrenze und
+ * Fluss = LADEN ist es die gutartige Physik der vollen Grenze (grün, `info`,
+ * der Haken bleibt); sonst — keine Grenze, Grenze nicht erreicht, oder Fluss =
+ * ENTLADEN — ein bernstein Hinweis ohne behauptete Ursache.
+ */
+function pauseView(candidate: FlowConflictCandidate, input: FlowConflictInput): FlowConflictView {
+  const flow = kw(candidate.measuredKw);
+  const limit =
+    candidate.measuredDir === 'laden'
+      ? feedInLimitReached(input.snapshot, input.maxFeedInKw)
+      : null;
+  if (limit != null) {
+    const observation = `Der Speicher pausiert planmäßig – nimmt aber gerade ${flow} Überschuss auf`;
+    const cause = `weil Ihre Einspeisegrenze (${limitKw(limit)}) erreicht ist. Dieser Strom wäre sonst verloren.`;
+    return { severity: 'info', observation, cause, text: `${observation}, ${cause}` };
+  }
+  const verb = candidate.measuredDir === 'laden' ? 'lädt' : 'entlädt';
+  const observation = `Pause angewiesen – der Speicher ${verb} aber ${flow} (Messung).`;
+  return {
+    severity: 'warn',
+    observation,
+    cause: null,
+    text: `${observation} ${FLOW_CONFLICT_WATCH_SENTENCE}`,
+  };
+}
+
+/**
  * Das entprellte Ergebnis. null, solange der aktuelle Befund fehlt (eine kurze
  * saubere Messung blendet den Konflikt SOFORT aus) ODER die Serie noch nicht
  * lang genug ist. Nur wenn beides zusammenkommt, entsteht der Text — mit der
- * belegbaren Ursache, wenn es sie gibt.
+ * belegbaren Ursache, wenn es sie gibt, und der {@link FlowConflictSeverity},
+ * die Ton und Haken der Flächen steuert.
  */
 export function flowConflictView(
   candidate: FlowConflictCandidate | null,
@@ -250,10 +342,12 @@ export function flowConflictView(
   input: FlowConflictInput,
 ): FlowConflictView | null {
   if (candidate == null || streak < FLOW_CONFLICT_MIN_STREAK) return null;
+  if (candidate.kind === 'pause') return pauseView(candidate, input);
+  // ORDER-Widerspruch: immer bernstein (bisheriges Verhalten).
   const observation = flowConflictLine(candidate);
   const cause = feedInFullCause(input.snapshot, input.maxFeedInKw);
   const text = [observation, cause, FLOW_CONFLICT_WATCH_SENTENCE].filter(Boolean).join(' ');
-  return { observation, cause, text };
+  return { severity: 'warn', observation, cause, text };
 }
 
 /**
