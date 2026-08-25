@@ -69,6 +69,10 @@ jobs:
           - name: frontend
             type: frontend
             path: frontend/portal
+          # Versionierter Messpunktkatalog: komplett offline aus vendorten,
+          # checksum-gepinnten Hersteller-Snapshots erzeugen und validieren.
+          - name: measurement-point-catalog
+            type: catalog
           # Der CI-Zielpfad prueft sich selbst: beide Docker-freien
           # Selbstchecks des gitops-Tag-Bumps (der Overlay-Edit gegen eine
           # Kopie des echten prod-Overlays, und der ECHTE Job-Schritt aus
@@ -115,6 +119,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install ${{ matrix.pip_install }}
           pytest ${{ matrix.pytest_args }}
+
+      - name: Measurement-point catalog checks
+        if: matrix.type == 'catalog'
+        run: |
+          python3 catalog/measurement-points/tools/update_deye_key_lock.py --check
+          python3 catalog/measurement-points/tools/extract_shelly.py --check
+          python3 catalog/measurement-points/tools/generate.py --check
+          python3 catalog/measurement-points/tools/validate.py
+          python3 -m unittest discover -s catalog/measurement-points/tests -p 'test_*.py'
 
       # ---- Frontend (tsc type-check + Vite build) --------------------------
       - name: Set up Node

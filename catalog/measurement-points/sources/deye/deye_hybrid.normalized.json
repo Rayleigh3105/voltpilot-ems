@@ -1,0 +1,3722 @@
+{
+  "document": {
+    "default": {
+      "digits": 6,
+      "update_interval": 5
+    },
+    "info": {
+      "manufacturer": "Deye",
+      "model": "SG0*LP1"
+    },
+    "parameters": [
+      {
+        "group": "Info",
+        "items": [
+          {
+            "attributes": [
+              "Device Modbus Address",
+              "Device Protocol Version",
+              "Device Serial Number",
+              "Device Rated Phase",
+              "Device Chip Type",
+              "Device Control Board Firmware Version",
+              "Device Communication Board Firmware Version",
+              "Device Rated Power",
+              "Device MPPTs",
+              "Device Phases"
+            ],
+            "class": "enum",
+            "icon": "mdi:information",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Unknown"
+              },
+              {
+                "key": [
+                  2,
+                  512
+                ],
+                "value": "String Inverter"
+              },
+              {
+                "key": [
+                  3,
+                  768
+                ],
+                "value": "Single-Phase Hybrid Inverter"
+              },
+              {
+                "key": [
+                  4,
+                  1024
+                ],
+                "value": "Microinverter"
+              },
+              {
+                "key": [
+                  5,
+                  1280
+                ],
+                "value": "LV 3-Phase Hybrid Inverter"
+              },
+              {
+                "key": 6,
+                "value": "HV 3-Phase Hybrid Inverter"
+              },
+              {
+                "key": [
+                  7,
+                  1536
+                ],
+                "value": "HV 3-Phase Inverter 6-15kw"
+              },
+              {
+                "key": [
+                  8,
+                  1537
+                ],
+                "value": "HV 3-Phase Inverter 20-50kw"
+              },
+              {
+                "key": 259,
+                "value": "Off-Grid Inverter"
+              },
+              {
+                "key": 260,
+                "value": "Energy Storage System"
+              }
+            ],
+            "name": "Device",
+            "registers": [
+              0
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "name": "Device Modbus Address",
+            "registers": [
+              1
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "name": "Device Protocol Version",
+            "registers": [
+              2
+            ],
+            "remove": "0.",
+            "rule": 7
+          },
+          {
+            "attribute": null,
+            "name": "Device Serial Number",
+            "registers": [
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "rule": 5
+          },
+          {
+            "attribute": null,
+            "class": "enum",
+            "lookup": [
+              {
+                "key": [
+                  0,
+                  1,
+                  2
+                ],
+                "value": "Single-Phase"
+              },
+              {
+                "key": 3,
+                "value": "Three-Phase"
+              },
+              {
+                "key": 8,
+                "value": "Single-Phase Storage"
+              }
+            ],
+            "name": "Device Rated Phase",
+            "registers": [
+              8
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "class": "enum",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "AT32F403A"
+              },
+              {
+                "key": 1,
+                "value": "SXX32F103"
+              },
+              {
+                "key": 2,
+                "value": "GD32F103"
+              },
+              {
+                "key": 3,
+                "value": "GD32F303"
+              }
+            ],
+            "name": "Device Chip Type",
+            "registers": [
+              9
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "delimiter": "",
+            "name": "Device Control Board Firmware Version",
+            "registers": [
+              13,
+              12,
+              11
+            ],
+            "rule": 7
+          },
+          {
+            "attribute": null,
+            "delimiter": "",
+            "hex": null,
+            "name": "Device Communication Board Firmware Version",
+            "registers": [
+              14,
+              10
+            ],
+            "rule": 7
+          },
+          {
+            "attribute": null,
+            "class": "power",
+            "name": "Device Rated Power",
+            "registers": [
+              16,
+              17
+            ],
+            "rule": 4,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "W",
+            "validation": {
+              "default": 18000,
+              "max": 18000,
+              "min": 1
+            }
+          },
+          {
+            "attribute": null,
+            "divide": 256,
+            "mask": 3840,
+            "name": "Device MPPTs",
+            "range": {
+              "min": 257
+            },
+            "registers": [
+              18
+            ],
+            "rule": 1,
+            "validation": {
+              "default": 2,
+              "max": 12
+            }
+          },
+          {
+            "attribute": null,
+            "mask": 15,
+            "name": "Device Phases",
+            "range": {
+              "min": 257
+            },
+            "registers": [
+              18
+            ],
+            "rule": 1,
+            "validation": {
+              "default": 3,
+              "max": 3
+            }
+          }
+        ],
+        "update_interval": 3600
+      },
+      {
+        "group": "Control",
+        "items": [
+          {
+            "name": "Self-check time",
+            "platform": "number",
+            "range": {
+              "default": 0,
+              "max": 1000,
+              "min": 0
+            },
+            "registers": [
+              21
+            ],
+            "rule": 1,
+            "uom": "s",
+            "update_interval": 300
+          },
+          {
+            "name": "Date & Time",
+            "platform": "datetime",
+            "registers": [
+              22,
+              23,
+              24
+            ],
+            "rule": 8,
+            "update_interval": 60
+          },
+          {
+            "name": "",
+            "platform": "switch",
+            "registers": [
+              43
+            ],
+            "rule": 1,
+            "update_interval": 30,
+            "value": {
+              "false": 2,
+              "true": 1
+            }
+          },
+          {
+            "class": "enum",
+            "icon": "mdi:state-machine",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Standby"
+              },
+              {
+                "key": 1,
+                "value": "Self-test"
+              },
+              {
+                "key": 2,
+                "value": "Normal"
+              },
+              {
+                "key": 3,
+                "value": "Alarm"
+              },
+              {
+                "key": 4,
+                "value": "Fault"
+              }
+            ],
+            "name": "Device State",
+            "range": {
+              "max": 5,
+              "min": 0
+            },
+            "registers": [
+              59
+            ],
+            "rule": 1,
+            "update_interval": 10
+          },
+          {
+            "class": "enum",
+            "icon": "mdi:alert-outline",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "OK"
+              },
+              {
+                "bit": 1,
+                "value": "Fan failure"
+              },
+              {
+                "bit": 2,
+                "value": "Grid phase failure"
+              },
+              {
+                "bit": 3,
+                "value": "Meter communication failure"
+              },
+              {
+                "bit": 30,
+                "value": "Battery loss"
+              },
+              {
+                "bit": 31,
+                "value": "Parallel communication quality"
+              },
+              {
+                "key": "default",
+                "value": "Problem"
+              }
+            ],
+            "name": "Device Alarm",
+            "registers": [
+              101,
+              102
+            ],
+            "rule": 3
+          },
+          {
+            "class": "enum",
+            "icon": "mdi:message-alert-outline",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "OK"
+              },
+              {
+                "bit": 6,
+                "value": "DC/DC Soft Start failure"
+              },
+              {
+                "bit": 9,
+                "value": "Auxiliary power supply failure"
+              },
+              {
+                "bit": 12,
+                "value": "Working mode changed"
+              },
+              {
+                "bit": 17,
+                "value": "AC Over-current failure"
+              },
+              {
+                "bit": 18,
+                "value": "Tz_Integ_Fault failure"
+              },
+              {
+                "bit": 19,
+                "value": "DC Over-current failure"
+              },
+              {
+                "bit": 22,
+                "value": "AC current leakage failure"
+              },
+              {
+                "bit": 63,
+                "value": "Temperature is too high"
+              },
+              {
+                "key": "default",
+                "value": "Problem"
+              }
+            ],
+            "name": "Device Fault",
+            "registers": [
+              103,
+              104,
+              105,
+              106
+            ],
+            "rule": 3
+          }
+        ],
+        "update_interval": 5
+      },
+      {
+        "group": "PV",
+        "items": [
+          {
+            "alt": "DC Power",
+            "class": "power",
+            "description": "Combined power of all inputs",
+            "digits": 0,
+            "icon": "mdi:solar-power-variant",
+            "mppt": 1,
+            "name": "PV Power",
+            "rule": 1,
+            "sensors": [
+              {
+                "registers": [
+                  186
+                ]
+              },
+              {
+                "registers": [
+                  187
+                ]
+              },
+              {
+                "registers": [
+                  188
+                ]
+              },
+              {
+                "registers": [
+                  189
+                ]
+              }
+            ],
+            "state_class": "measurement",
+            "uom": "W",
+            "validation": {
+              "invalidate_all": null,
+              "max": 36000,
+              "min": 0
+            }
+          },
+          {
+            "alt": "DC1 Voltage",
+            "class": "voltage",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 1,
+            "name": "PV1 Voltage",
+            "registers": [
+              109
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "alt": "DC1 Current",
+            "class": "current",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 1,
+            "name": "PV1 Current",
+            "registers": [
+              110
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "uom": "A"
+          },
+          {
+            "alt": "DC2 Voltage",
+            "class": "voltage",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 2,
+            "name": "PV2 Voltage",
+            "registers": [
+              111
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "alt": "DC2 Current",
+            "class": "current",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 2,
+            "name": "PV2 Current",
+            "registers": [
+              112
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "alt": "DC3 Voltage",
+            "class": "voltage",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 3,
+            "name": "PV3 Voltage",
+            "registers": [
+              113
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "alt": "DC3 Current",
+            "class": "current",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 3,
+            "name": "PV3 Current",
+            "registers": [
+              114
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "alt": "DC4 Voltage",
+            "class": "voltage",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 4,
+            "name": "PV4 Voltage",
+            "registers": [
+              115
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "alt": "DC4 Current",
+            "class": "current",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 4,
+            "name": "PV4 Current",
+            "registers": [
+              116
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "alt": "DC1 Power",
+            "class": "power",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 1,
+            "name": "PV1 Power",
+            "registers": [
+              186
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "alt": "DC2 Power",
+            "class": "power",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 2,
+            "name": "PV2 Power",
+            "registers": [
+              187
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "alt": "DC3 Power",
+            "class": "power",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 3,
+            "name": "PV3 Power",
+            "registers": [
+              188
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "alt": "DC4 Power",
+            "class": "power",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 4,
+            "name": "PV4 Power",
+            "registers": [
+              189
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          }
+        ],
+        "update_interval": 5
+      },
+      {
+        "group": "Meter",
+        "items": [
+          {
+            "alt": "Daily Energy",
+            "class": "energy",
+            "friendly_name": "Today's Energy",
+            "name": "Today Energy",
+            "registers": [
+              60
+            ],
+            "rule": 2,
+            "scale": 0.1,
+            "state_class": "total",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "name": "Total Energy",
+            "registers": [
+              63,
+              64
+            ],
+            "rule": 4,
+            "scale": 0.1,
+            "state_class": "total",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "friendly_name": "Today's Battery Charge",
+            "icon": "mdi:battery-plus",
+            "name": "Today Battery Charge",
+            "registers": [
+              70
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "friendly_name": "Today's Battery Discharge",
+            "icon": "mdi:battery-minus",
+            "name": "Today Battery Discharge",
+            "registers": [
+              71
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "icon": "mdi:battery-plus",
+            "name": "Total Battery Charge",
+            "registers": [
+              72,
+              73
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "class": "energy",
+            "icon": "mdi:battery-minus",
+            "name": "Total Battery Discharge",
+            "registers": [
+              74,
+              75
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "alt": "Today Energy Bought",
+            "class": "energy",
+            "friendly_name": "Today's Energy Import",
+            "icon": "mdi:transmission-tower-export",
+            "name": "Today Energy Import",
+            "registers": [
+              76
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "alt": "Today Energy Sold",
+            "class": "energy",
+            "friendly_name": "Today's Energy Export",
+            "icon": "mdi:transmission-tower-import",
+            "name": "Today Energy Export",
+            "registers": [
+              77
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "alt": "Total Energy Bought",
+            "class": "energy",
+            "icon": "mdi:transmission-tower-export",
+            "name": "Total Energy Import",
+            "registers": [
+              78,
+              80
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "alt": "Total Energy Sold",
+            "class": "energy",
+            "icon": "mdi:transmission-tower-import",
+            "name": "Total Energy Export",
+            "registers": [
+              81,
+              82
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "class": "energy",
+            "friendly_name": "Today's Load Consumption",
+            "name": "Today Load Consumption",
+            "registers": [
+              84
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "name": "Total Load Consumption",
+            "registers": [
+              85,
+              86
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "class": "energy",
+            "name": "Generator Energy - today",
+            "name_lookup": "io_mode_select",
+            "registers": [
+              62
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "name": "Generator Energy",
+            "name_lookup": "io_mode_select",
+            "registers": [
+              92,
+              95
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "class": "energy",
+            "friendly_name": "Today's Production",
+            "icon": "mdi:solar-power",
+            "name": "Today Production",
+            "registers": [
+              108
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "dev": 100,
+              "invalidate_all": null
+            }
+          },
+          {
+            "class": "energy",
+            "icon": "mdi:solar-power",
+            "name": "Total Production",
+            "registers": [
+              96,
+              97
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "dev": 100,
+              "invalidate_all": 2,
+              "min": 0.1
+            }
+          },
+          {
+            "alt": "Daily Losses",
+            "class": "energy",
+            "description": "Includes today's consumption of the inverter device itself as well AC/DC conversion losses",
+            "digits": 1,
+            "ensure_increasing": null,
+            "friendly_name": "Today's Losses",
+            "name": "Today Losses",
+            "rule": 1,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "registers": [
+                  76
+                ]
+              },
+              {
+                "registers": [
+                  108
+                ]
+              },
+              {
+                "enabled_lookup": {
+                  "io_mode_select": [
+                    "Generator",
+                    "Microinverter"
+                  ]
+                },
+                "registers": [
+                  62
+                ]
+              },
+              {
+                "registers": [
+                  71
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  77
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  70
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  84
+                ]
+              }
+            ],
+            "state_class": "total_increasing",
+            "uint": "enforce",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "description": "Includes total consumption of the inverter device itself as well AC/DC conversion losses",
+            "digits": 1,
+            "ensure_increasing": null,
+            "name": "Total Losses",
+            "rule": 3,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "registers": [
+                  78,
+                  80
+                ]
+              },
+              {
+                "registers": [
+                  96,
+                  97
+                ]
+              },
+              {
+                "enabled_lookup": {
+                  "io_mode_select": [
+                    "Generator",
+                    "Microinverter"
+                  ]
+                },
+                "registers": [
+                  92,
+                  95
+                ]
+              },
+              {
+                "registers": [
+                  74,
+                  75
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  81,
+                  82
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  72,
+                  73
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  85,
+                  86
+                ]
+              }
+            ],
+            "state_class": "total_increasing",
+            "uint": "enforce",
+            "uom": "kWh",
+            "validation": {
+              "min": 1
+            }
+          }
+        ],
+        "update_interval": 30
+      },
+      {
+        "group": "Battery",
+        "items": [
+          {
+            "class": "temperature",
+            "name": "Battery Temperature",
+            "offset": 1000,
+            "registers": [
+              182
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "°C"
+          },
+          {
+            "class": "voltage",
+            "name": "Battery Voltage",
+            "registers": [
+              183
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "attributes": [
+              "Battery BMS SOC",
+              "Battery BMS Current",
+              "Battery BMS Voltage",
+              "Battery BMS Other Symbol",
+              "Battery BMS Charging Voltage",
+              "Battery BMS Discharging Voltage",
+              "Battery BMS Charging Current",
+              "Battery BMS Discharging Current",
+              "Battery BMS Max Charging Current",
+              "Battery BMS Max Discharging Current"
+            ],
+            "class": "battery",
+            "name": "Battery",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              184
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%",
+            "validation": {
+              "max": 101,
+              "min": 0
+            }
+          },
+          {
+            "class": "enum",
+            "description": "Determines battery state from battery power by +-50 W",
+            "icon": "mdi:battery",
+            "name": "Battery State",
+            "options": [
+              "charging",
+              "idle",
+              "discharging"
+            ],
+            "rule": 0
+          },
+          {
+            "attributes": [
+              "inverse"
+            ],
+            "class": "power",
+            "name": "Battery Power",
+            "registers": [
+              190
+            ],
+            "rule": 2,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "current",
+            "icon": "mdi:current-dc",
+            "name": "Battery Current",
+            "registers": [
+              191
+            ],
+            "rule": 2,
+            "scale": [
+              0.01,
+              0.01,
+              0.1
+            ],
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "energy_storage",
+            "description": "Estimates capacity of the battery during (dis)charging",
+            "digits": 1,
+            "icon": "mdi:battery-check",
+            "name": "Battery Capacity",
+            "rule": 0,
+            "state_class": "measurement",
+            "uom": "kWh"
+          }
+        ]
+      },
+      {
+        "group": "Grid",
+        "items": [
+          {
+            "class": "frequency",
+            "l": 1,
+            "name": "Grid Frequency",
+            "registers": [
+              79
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "Hz"
+          },
+          {
+            "class": "voltage",
+            "icon": "mdi:transmission-tower",
+            "l": 1,
+            "name": "Grid L1 Voltage",
+            "registers": [
+              150
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "icon": "mdi:transmission-tower",
+            "l": 2,
+            "name": "Grid L2 Voltage",
+            "registers": [
+              151
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "icon": "mdi:transmission-tower",
+            "l": 2,
+            "name": "Grid Voltage",
+            "registers": [
+              152
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "current",
+            "icon": "mdi:transmission-tower",
+            "l": 1,
+            "name": "Grid L1 Current",
+            "registers": [
+              160
+            ],
+            "rule": 2,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "current",
+            "icon": "mdi:transmission-tower",
+            "l": 2,
+            "name": "Grid L2 Current",
+            "registers": [
+              161
+            ],
+            "rule": 2,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:transmission-tower",
+            "l": 1,
+            "name": "Grid L1 Power",
+            "registers": [
+              167
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:transmission-tower",
+            "l": 2,
+            "name": "Grid L2 Power",
+            "registers": [
+              168
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "attributes": [
+              "inverse"
+            ],
+            "class": "power",
+            "icon": "mdi:transmission-tower",
+            "l": 1,
+            "name": "Grid Power",
+            "registers": [
+              169
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "current",
+            "icon": "mdi:transmission-tower",
+            "l": 1,
+            "name": "External CT1 Current",
+            "registers": [
+              162
+            ],
+            "rule": 2,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "current",
+            "icon": "mdi:transmission-tower",
+            "l": 2,
+            "name": "External CT2 Current",
+            "registers": [
+              163
+            ],
+            "rule": 2,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:transmission-tower",
+            "l": 1,
+            "name": "External CT1 Power",
+            "registers": [
+              170
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:transmission-tower",
+            "l": 2,
+            "name": "External CT2 Power",
+            "registers": [
+              171
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:transmission-tower",
+            "l": 1,
+            "name": "External Power",
+            "registers": [
+              172
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          }
+        ]
+      },
+      {
+        "group": "Load",
+        "items": [
+          {
+            "class": "voltage",
+            "l": 1,
+            "name": "Load L1 Voltage",
+            "registers": [
+              157
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "l": 2,
+            "name": "Load L2 Voltage",
+            "registers": [
+              158
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "power",
+            "l": 1,
+            "name": "Load L1 Power",
+            "registers": [
+              176
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "l": 2,
+            "name": "Load L2 Power",
+            "registers": [
+              177
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "l": 1,
+            "name": "Load Power",
+            "registers": [
+              178
+            ],
+            "rule": 2,
+            "scale": [
+              1,
+              10,
+              10
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "current",
+            "l": 1,
+            "name": "Load L1 Current",
+            "registers": [
+              179
+            ],
+            "rule": 2,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "current",
+            "l": 2,
+            "name": "Load L2 Current",
+            "registers": [
+              180
+            ],
+            "rule": 2,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "l": 1,
+            "name": "Load Frequency",
+            "registers": [
+              192
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "Hz"
+          },
+          {
+            "bit": 8,
+            "description": "Generator ready",
+            "device_class": "power",
+            "name": "Generator",
+            "name_lookup": "io_mode_select",
+            "platform": "binary_sensor",
+            "registers": [
+              195
+            ],
+            "rule": 1,
+            "update_interval": 30
+          },
+          {
+            "l": 1,
+            "name": "Output Frequency",
+            "registers": [
+              193
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "Hz"
+          },
+          {
+            "class": "voltage",
+            "icon": "mdi:transmission-tower",
+            "l": 1,
+            "name": "Output L1 Voltage",
+            "registers": [
+              154
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "icon": "mdi:transmission-tower",
+            "l": 2,
+            "name": "Output L2 Voltage",
+            "registers": [
+              155
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "icon": "mdi:transmission-tower",
+            "l": 2,
+            "name": "Output Voltage",
+            "registers": [
+              156
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "current",
+            "l": 1,
+            "name": "Output L1 Current",
+            "registers": [
+              164
+            ],
+            "rule": 2,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "current",
+            "l": 2,
+            "name": "Output L2 Current",
+            "registers": [
+              165
+            ],
+            "rule": 2,
+            "scale": 0.01,
+            "uom": "A"
+          },
+          {
+            "class": "power",
+            "l": 1,
+            "name": "Output L1 Power",
+            "registers": [
+              173
+            ],
+            "rule": 2,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "l": 2,
+            "name": "Output L2 Power",
+            "registers": [
+              174
+            ],
+            "rule": 2,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "name": "Power",
+            "registers": [
+              175
+            ],
+            "rule": 2,
+            "state_class": "measurement",
+            "uom": "W",
+            "validation": {
+              "invalidate_all": null,
+              "lookup": "device_rated_power_sensor",
+              "scale": 1.1
+            }
+          },
+          {
+            "class": "power",
+            "description": "Includes consumption of the inverter device itself as well AC/DC conversion losses",
+            "digits": 0,
+            "name": "Power losses",
+            "rule": 1,
+            "sensors": [
+              {
+                "registers": [
+                  186
+                ]
+              },
+              {
+                "registers": [
+                  187
+                ]
+              },
+              {
+                "registers": [
+                  190
+                ],
+                "signed": null
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  175
+                ],
+                "signed": null
+              }
+            ],
+            "state_class": "measurement",
+            "uint": "enforce",
+            "uom": "W"
+          },
+          {
+            "class": "temperature",
+            "name": "DC Temperature",
+            "offset": 1000,
+            "registers": [
+              90
+            ],
+            "rule": 2,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "°C"
+          },
+          {
+            "class": "temperature",
+            "name": "Temperature",
+            "offset": 1000,
+            "registers": [
+              91
+            ],
+            "rule": 2,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "°C"
+          },
+          {
+            "device_class": "power",
+            "icon": "mdi:transmission-tower",
+            "name": "Grid",
+            "platform": "binary_sensor",
+            "registers": [
+              194
+            ],
+            "rule": 1,
+            "update_interval": 30
+          },
+          {
+            "class": "power",
+            "name": "Generator Power",
+            "name_lookup": "io_mode_select",
+            "registers": [
+              166
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "voltage",
+            "name": "Generator Voltage",
+            "name_lookup": "io_mode_select",
+            "registers": [
+              181
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "name": "Generator Frequency",
+            "name_lookup": "io_mode_select",
+            "registers": [
+              196
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "Hz"
+          }
+        ]
+      },
+      {
+        "group": "Settings",
+        "items": [
+          {
+            "icon": "mdi:battery",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Lead-Battery, four-stage charging method"
+              },
+              {
+                "key": 1,
+                "value": "Lithium"
+              }
+            ],
+            "name": "Battery Control Mode",
+            "platform": "select",
+            "registers": [
+              200
+            ],
+            "rule": 1
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Equalization",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 3800
+            },
+            "registers": [
+              201
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Absorption",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 3800
+            },
+            "registers": [
+              202
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Float",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 3800
+            },
+            "registers": [
+              203
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Capacity",
+            "platform": "number",
+            "range": {
+              "max": 2000,
+              "min": 0
+            },
+            "registers": [
+              204
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "Ah"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Empty",
+            "platform": "number",
+            "registers": [
+              205
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "power",
+            "configurable": {
+              "max": 500,
+              "min": -20
+            },
+            "icon": "mdi:transmission-tower",
+            "name": "Zero Export power",
+            "platform": "number",
+            "range": {
+              "max": 65535,
+              "min": 0
+            },
+            "registers": [
+              206
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "duration",
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Equalization Cycle",
+            "platform": "number",
+            "range": {
+              "max": 90,
+              "min": 0
+            },
+            "registers": [
+              207
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "d"
+          },
+          {
+            "class": "duration",
+            "configurable": {
+              "max": 10,
+              "min": 0,
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Equalization Time",
+            "platform": "number",
+            "range": {
+              "max": 20,
+              "min": 0
+            },
+            "registers": [
+              208
+            ],
+            "rule": 1,
+            "scale": 0.5,
+            "state_class": "measurement",
+            "uom": "h"
+          },
+          {
+            "configurable": {
+              "max": 50,
+              "min": 0,
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Temperature Compensation",
+            "platform": "number",
+            "range": {
+              "max": 50,
+              "min": 0
+            },
+            "registers": [
+              209
+            ],
+            "rule": 2,
+            "state_class": "measurement",
+            "uom": "mV/*C"
+          },
+          {
+            "class": "current",
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:current-dc",
+            "name": "Battery Max Charging Current",
+            "platform": "number",
+            "range": {
+              "max": 240,
+              "min": 0
+            },
+            "registers": [
+              210
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "current",
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:current-dc",
+            "name": "Battery Max Discharging Current",
+            "platform": "number",
+            "range": {
+              "max": 240,
+              "min": 0
+            },
+            "registers": [
+              211
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "icon": "mdi:battery",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Voltage"
+              },
+              {
+                "key": 1,
+                "value": "Capacity"
+              },
+              {
+                "key": 2,
+                "value": "No Battery"
+              }
+            ],
+            "name": "Battery Operation Mode",
+            "platform": "select",
+            "registers": [
+              213
+            ],
+            "rule": 1
+          },
+          {
+            "name": "Battery Wake Up",
+            "platform": "switch",
+            "registers": [
+              214
+            ],
+            "rule": 1
+          },
+          {
+            "icon": "mdi:battery",
+            "name": "Battery Resistance",
+            "platform": "number",
+            "range": {
+              "max": 6000,
+              "min": 0
+            },
+            "registers": [
+              215
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "mΩ"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Charging efficiency",
+            "platform": "number",
+            "range": {
+              "max": 1000,
+              "min": 0
+            },
+            "registers": [
+              216
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "%",
+            "validation": {
+              "max": 100,
+              "min": 0
+            }
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Shutdown SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              217
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Restart SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              218
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Low SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              219
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Shutdown Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 3800
+            },
+            "registers": [
+              220
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Restart Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 3800
+            },
+            "registers": [
+              221
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Low Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 3800
+            },
+            "registers": [
+              222
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "duration",
+            "configurable": {
+              "max": 24,
+              "min": 0,
+              "mode": "box"
+            },
+            "icon": "mdi:generator-stationary",
+            "name": "Generator Operating Time",
+            "platform": "number",
+            "range": {
+              "max": 240,
+              "min": 0
+            },
+            "registers": [
+              223
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "h"
+          },
+          {
+            "class": "duration",
+            "configurable": {
+              "max": 24,
+              "min": 0,
+              "mode": "box"
+            },
+            "icon": "mdi:generator-stationary",
+            "name": "Generator Cooling Time",
+            "platform": "number",
+            "range": {
+              "max": 240,
+              "min": 0
+            },
+            "registers": [
+              224
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "h"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 63,
+              "min": 0,
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Generator Charging Start Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6300,
+              "min": 0
+            },
+            "registers": [
+              225
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Generator Charging Start",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              226
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "class": "current",
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:current-dc",
+            "name": "Battery Generator Charging Current",
+            "platform": "number",
+            "range": {
+              "max": 240,
+              "min": 0
+            },
+            "registers": [
+              227
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 63,
+              "min": 0,
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Grid Charging Start Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6300,
+              "min": 0
+            },
+            "registers": [
+              228
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:battery",
+            "name": "Battery Grid Charging Start",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              229
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "class": "current",
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:current-dc",
+            "name": "Battery Grid Charging Current",
+            "platform": "number",
+            "range": {
+              "max": 240,
+              "min": 0
+            },
+            "registers": [
+              230
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "icon": "mdi:battery",
+            "name": "Battery Generator Charging",
+            "platform": "switch",
+            "registers": [
+              231
+            ],
+            "rule": 1
+          },
+          {
+            "icon": "mdi:battery",
+            "name": "Battery Grid Charging",
+            "platform": "switch",
+            "registers": [
+              232
+            ],
+            "rule": 1
+          },
+          {
+            "description": "Gen Force",
+            "name": "Generator",
+            "name_lookup": "io_mode_select",
+            "platform": "switch",
+            "registers": [
+              326
+            ],
+            "rule": 1,
+            "value": {
+              "bit": 13
+            }
+          },
+          {
+            "alt": "Generator input mode",
+            "description": "The Generator/SmartLoad/Microinverter input-output mode",
+            "icon": "mdi:lightning-bolt-circle",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Generator"
+              },
+              {
+                "key": 1,
+                "value": "SmartLoad"
+              },
+              {
+                "key": 2,
+                "value": "Microinverter"
+              }
+            ],
+            "name": "IO Mode",
+            "platform": "select",
+            "registers": [
+              235
+            ],
+            "rule": 1
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 63,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "SmartLoad Off Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6300,
+              "min": 3800
+            },
+            "registers": [
+              236
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:lightning-bolt-circle",
+            "name": "SmartLoad Off",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              237
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 63,
+              "min": 38,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:battery",
+            "name": "SmartLoad On Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6300,
+              "min": 3800
+            },
+            "registers": [
+              238
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:lightning-bolt-circle",
+            "name": "SmartLoad On",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              239
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          }
+        ],
+        "update_interval": 300
+      },
+      {
+        "group": "Parameters",
+        "items": [
+          {
+            "class": "power",
+            "enabled_lookup": {
+              "io_mode_select": [
+                "Generator",
+                "SmartLoad"
+              ]
+            },
+            "icon": "mdi:solar-power",
+            "name": "Generator Min PV Power",
+            "name_lookup": "io_mode_select",
+            "platform": "number",
+            "range": {
+              "max": 8000,
+              "min": 0
+            },
+            "registers": [
+              241
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Normal"
+              },
+              {
+                "key": 1,
+                "value": "Grid"
+              },
+              {
+                "key": 2,
+                "value": "Generator"
+              },
+              {
+                "key": 3,
+                "value": "Both"
+              }
+            ],
+            "name": "Charging Signal",
+            "platform": "select",
+            "registers": [
+              242
+            ],
+            "rule": 1
+          }
+        ],
+        "update_interval": 300
+      },
+      {
+        "group": "Work Mode",
+        "items": [
+          {
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Battery First"
+              },
+              {
+                "key": 1,
+                "value": "Load First"
+              }
+            ],
+            "name": "Energy Pattern",
+            "platform": "select",
+            "registers": [
+              243
+            ],
+            "rule": 1
+          },
+          {
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Export First"
+              },
+              {
+                "key": 1,
+                "value": "Zero Export To Load"
+              },
+              {
+                "key": 2,
+                "value": "Zero Export To CT"
+              }
+            ],
+            "name": "Work Mode",
+            "platform": "select",
+            "registers": [
+              244
+            ],
+            "rule": 1
+          },
+          {
+            "alt": "Max Sell Power",
+            "class": "power",
+            "name": "Export Surplus Power",
+            "platform": "number",
+            "range": {
+              "max": 12000,
+              "min": 0
+            },
+            "registers": [
+              245
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "alt": "Solar Sell",
+            "name": "Export Surplus",
+            "platform": "switch",
+            "registers": [
+              247
+            ],
+            "rule": 1
+          },
+          {
+            "alt": "Max Solar Power",
+            "class": "power",
+            "description": "Max PV power limiter",
+            "icon": "mdi:solar-power-variant",
+            "name": "PV Power",
+            "platform": "number",
+            "range": {
+              "max": 13000,
+              "min": 0
+            },
+            "registers": [
+              53
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Disabled"
+              },
+              {
+                "key": 3,
+                "value": "Monday"
+              },
+              {
+                "key": 5,
+                "value": "Tuesday"
+              },
+              {
+                "key": 9,
+                "value": "Wednesday"
+              },
+              {
+                "key": 17,
+                "value": "Thursday"
+              },
+              {
+                "key": 33,
+                "value": "Friday"
+              },
+              {
+                "key": 65,
+                "value": "Saturday"
+              },
+              {
+                "key": 129,
+                "value": "Sunday"
+              },
+              {
+                "key": 63,
+                "value": "Weekdays"
+              },
+              {
+                "key": 193,
+                "value": "Weekend"
+              },
+              {
+                "key": 253,
+                "value": "Week -Monday"
+              },
+              {
+                "key": 251,
+                "value": "Week -Tuesday"
+              },
+              {
+                "key": 247,
+                "value": "Week -Wednesday"
+              },
+              {
+                "key": 239,
+                "value": "Week -Thursday"
+              },
+              {
+                "key": 223,
+                "value": "Week -Friday"
+              },
+              {
+                "key": 191,
+                "value": "Week -Saturday"
+              },
+              {
+                "key": 127,
+                "value": "Week -Sunday"
+              },
+              {
+                "key": 255,
+                "value": "Week"
+              },
+              {
+                "bit": 0,
+                "mode": "|",
+                "value": "Enabled"
+              }
+            ],
+            "name": "Time of Use",
+            "platform": "select",
+            "registers": [
+              248
+            ],
+            "rule": 1
+          },
+          {
+            "icon": "mdi:sun-clock",
+            "name": "Program 1 Time",
+            "platform": "time",
+            "range": {
+              "max": 2359,
+              "min": 0
+            },
+            "registers": [
+              250
+            ],
+            "rule": 9,
+            "state_class": "measurement"
+          },
+          {
+            "icon": "mdi:sun-clock",
+            "name": "Program 2 Time",
+            "platform": "time",
+            "range": {
+              "max": 2359,
+              "min": 0
+            },
+            "registers": [
+              251
+            ],
+            "rule": 9,
+            "state_class": "measurement"
+          },
+          {
+            "icon": "mdi:sun-clock",
+            "name": "Program 3 Time",
+            "platform": "time",
+            "range": {
+              "max": 2359,
+              "min": 0
+            },
+            "registers": [
+              252
+            ],
+            "rule": 9,
+            "state_class": "measurement"
+          },
+          {
+            "icon": "mdi:sun-clock",
+            "name": "Program 4 Time",
+            "platform": "time",
+            "range": {
+              "max": 2359,
+              "min": 0
+            },
+            "registers": [
+              253
+            ],
+            "rule": 9,
+            "state_class": "measurement"
+          },
+          {
+            "icon": "mdi:sun-clock",
+            "name": "Program 5 Time",
+            "platform": "time",
+            "range": {
+              "max": 2359,
+              "min": 0
+            },
+            "registers": [
+              254
+            ],
+            "rule": 9,
+            "state_class": "measurement"
+          },
+          {
+            "icon": "mdi:sun-clock",
+            "name": "Program 6 Time",
+            "platform": "time",
+            "range": {
+              "max": 2359,
+              "min": 0
+            },
+            "registers": [
+              255
+            ],
+            "rule": 9,
+            "state_class": "measurement"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:sun-clock",
+            "name": "Program 1 Power",
+            "platform": "number",
+            "range": {
+              "max": 12000,
+              "min": 0
+            },
+            "registers": [
+              256
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:sun-clock",
+            "name": "Program 2 Power",
+            "platform": "number",
+            "range": {
+              "max": 12000,
+              "min": 0
+            },
+            "registers": [
+              257
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:sun-clock",
+            "name": "Program 3 Power",
+            "platform": "number",
+            "range": {
+              "max": 12000,
+              "min": 0
+            },
+            "registers": [
+              258
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:sun-clock",
+            "name": "Program 4 Power",
+            "platform": "number",
+            "range": {
+              "max": 12000,
+              "min": 0
+            },
+            "registers": [
+              259
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:sun-clock",
+            "name": "Program 5 Power",
+            "platform": "number",
+            "range": {
+              "max": 12000,
+              "min": 0
+            },
+            "registers": [
+              260
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:sun-clock",
+            "name": "Program 6 Power",
+            "platform": "number",
+            "range": {
+              "max": 12000,
+              "min": 0
+            },
+            "registers": [
+              261
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 0,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 1 Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 0
+            },
+            "registers": [
+              262
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 0,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 2 Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 0
+            },
+            "registers": [
+              263
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 0,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 3 Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 0
+            },
+            "registers": [
+              264
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 0,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 4 Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 0
+            },
+            "registers": [
+              265
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 0,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 5 Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 0
+            },
+            "registers": [
+              266
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "max": 61,
+              "min": 0,
+              "mode": "box",
+              "step": 0.1
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 6 Voltage",
+            "platform": "number",
+            "range": {
+              "max": 6100,
+              "min": 0
+            },
+            "registers": [
+              267
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 1 SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              268
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 2 SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              269
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 3 SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              270
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 4 SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              271
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 5 SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              272
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "configurable": {
+              "mode": "box"
+            },
+            "icon": "mdi:sun-clock",
+            "name": "Program 6 SOC",
+            "platform": "number",
+            "range": {
+              "max": 100,
+              "min": 0
+            },
+            "registers": [
+              273
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%"
+          },
+          {
+            "display": {
+              "mask": 3
+            },
+            "icon": "mdi:sun-clock",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Disabled"
+              },
+              {
+                "key": 1,
+                "value": "Grid"
+              },
+              {
+                "key": 2,
+                "value": "Generator"
+              },
+              {
+                "key": 3,
+                "value": "Both"
+              }
+            ],
+            "name": "Program 1 Charging",
+            "platform": "select",
+            "registers": [
+              274
+            ],
+            "rule": 1
+          },
+          {
+            "display": {
+              "mask": 3
+            },
+            "icon": "mdi:sun-clock",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Disabled"
+              },
+              {
+                "key": 1,
+                "value": "Grid"
+              },
+              {
+                "key": 2,
+                "value": "Generator"
+              },
+              {
+                "key": 3,
+                "value": "Both"
+              }
+            ],
+            "name": "Program 2 Charging",
+            "platform": "select",
+            "registers": [
+              275
+            ],
+            "rule": 1
+          },
+          {
+            "display": {
+              "mask": 3
+            },
+            "icon": "mdi:sun-clock",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Disabled"
+              },
+              {
+                "key": 1,
+                "value": "Grid"
+              },
+              {
+                "key": 2,
+                "value": "Generator"
+              },
+              {
+                "key": 3,
+                "value": "Both"
+              }
+            ],
+            "name": "Program 3 Charging",
+            "platform": "select",
+            "registers": [
+              276
+            ],
+            "rule": 1
+          },
+          {
+            "display": {
+              "mask": 3
+            },
+            "icon": "mdi:sun-clock",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Disabled"
+              },
+              {
+                "key": 1,
+                "value": "Grid"
+              },
+              {
+                "key": 2,
+                "value": "Generator"
+              },
+              {
+                "key": 3,
+                "value": "Both"
+              }
+            ],
+            "name": "Program 4 Charging",
+            "platform": "select",
+            "registers": [
+              277
+            ],
+            "rule": 1
+          },
+          {
+            "display": {
+              "mask": 3
+            },
+            "icon": "mdi:sun-clock",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Disabled"
+              },
+              {
+                "key": 1,
+                "value": "Grid"
+              },
+              {
+                "key": 2,
+                "value": "Generator"
+              },
+              {
+                "key": 3,
+                "value": "Both"
+              }
+            ],
+            "name": "Program 5 Charging",
+            "platform": "select",
+            "registers": [
+              278
+            ],
+            "rule": 1
+          },
+          {
+            "display": {
+              "mask": 3
+            },
+            "icon": "mdi:sun-clock",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Disabled"
+              },
+              {
+                "key": 1,
+                "value": "Grid"
+              },
+              {
+                "key": 2,
+                "value": "Generator"
+              },
+              {
+                "key": 3,
+                "value": "Both"
+              }
+            ],
+            "name": "Program 6 Charging",
+            "platform": "select",
+            "registers": [
+              279
+            ],
+            "rule": 1
+          },
+          {
+            "name": "Microinverter Export cut-off",
+            "platform": "switch",
+            "registers": [
+              280
+            ],
+            "rule": 1,
+            "value": {
+              "bit": 0
+            }
+          },
+          {
+            "name": "Generator Peak shaving",
+            "platform": "switch",
+            "registers": [
+              280
+            ],
+            "rule": 1,
+            "value": {
+              "bit": 4
+            }
+          },
+          {
+            "name": "Grid Peak shaving",
+            "platform": "switch",
+            "registers": [
+              280
+            ],
+            "rule": 1,
+            "value": {
+              "bit": 8
+            }
+          },
+          {
+            "description": "On Grid always on",
+            "enabled_lookup": {
+              "io_mode_select": [
+                "Generator",
+                "SmartLoad"
+              ]
+            },
+            "name": "Generator On-Grid",
+            "name_lookup": "io_mode_select",
+            "platform": "switch",
+            "registers": [
+              280
+            ],
+            "rule": 1,
+            "value": {
+              "bit": 12
+            }
+          },
+          {
+            "name": "Off Grid",
+            "platform": "switch",
+            "range": {
+              "max": 1,
+              "min": 0
+            },
+            "registers": [
+              281
+            ],
+            "rule": 1
+          },
+          {
+            "name": "Grid reconnection time",
+            "platform": "number",
+            "range": {
+              "max": 300,
+              "min": 1
+            },
+            "registers": [
+              282
+            ],
+            "rule": 1,
+            "uom": "s"
+          },
+          {
+            "lookup": [
+              {
+                "key": 0,
+                "value": "50 Hz"
+              },
+              {
+                "key": 1,
+                "value": "60 Hz"
+              }
+            ],
+            "name": "Grid frequency",
+            "platform": "select",
+            "registers": [
+              285
+            ],
+            "rule": 1
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "mode": "box"
+            },
+            "name": "Grid voltage protection - high",
+            "platform": "number",
+            "range": {
+              "max": 2900,
+              "min": 1000
+            },
+            "registers": [
+              287
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "configurable": {
+              "mode": "box"
+            },
+            "name": "Grid voltage protection - low",
+            "platform": "number",
+            "range": {
+              "max": 2900,
+              "min": 1000
+            },
+            "registers": [
+              288
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "uom": "V"
+          },
+          {
+            "class": "frequency",
+            "configurable": {
+              "mode": "box"
+            },
+            "name": "Grid frequency protection - high",
+            "platform": "number",
+            "range": {
+              "max": 6500,
+              "min": 4500
+            },
+            "registers": [
+              289
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "uom": "Hz"
+          },
+          {
+            "class": "frequency",
+            "configurable": {
+              "mode": "box"
+            },
+            "name": "Grid frequency protection - low",
+            "platform": "number",
+            "range": {
+              "max": 6500,
+              "min": 4500
+            },
+            "registers": [
+              290
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "uom": "Hz"
+          },
+          {
+            "description": "The generator is connected to the grid input",
+            "name": "Generator Grid side",
+            "platform": "switch",
+            "registers": [
+              291
+            ],
+            "rule": 1
+          },
+          {
+            "class": "power",
+            "icon": "mdi:generator-stationary",
+            "name": "Generator Peak shaving",
+            "platform": "number",
+            "range": {
+              "max": 22000,
+              "min": 0
+            },
+            "registers": [
+              292
+            ],
+            "rule": 1,
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "icon": "mdi:transmission-tower",
+            "name": "Grid Peak shaving",
+            "platform": "number",
+            "range": {
+              "max": 22000,
+              "min": 0
+            },
+            "registers": [
+              293
+            ],
+            "rule": 1,
+            "uom": "W"
+          },
+          {
+            "icon": "mdi:battery",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "PYLON"
+              },
+              {
+                "key": 1,
+                "value": "Tianbangda"
+              },
+              {
+                "key": 2,
+                "value": "KOK"
+              },
+              {
+                "key": 3,
+                "value": "Keith"
+              },
+              {
+                "key": 4,
+                "value": "Toppai"
+              },
+              {
+                "key": 5,
+                "value": "Peneng 485"
+              },
+              {
+                "key": 6,
+                "value": "Jeris 485"
+              },
+              {
+                "key": 7,
+                "value": "Sunwoda 485"
+              },
+              {
+                "key": 8,
+                "value": "Xinrui 485"
+              },
+              {
+                "key": 9,
+                "value": "Tianbangda 485"
+              },
+              {
+                "key": 10,
+                "value": "Shenggao Electric CAN"
+              }
+            ],
+            "name": "Battery BMS Type",
+            "platform": "select",
+            "registers": [
+              325
+            ],
+            "rule": 1
+          },
+          {
+            "description": "Ex_Meter For CT",
+            "name": "Meter",
+            "platform": "switch",
+            "registers": [
+              326
+            ],
+            "rule": 1
+          },
+          {
+            "description": "Couple inverters and batteries using AC lines",
+            "lookup": [
+              {
+                "bit": 0,
+                "mode": "|",
+                "value": "Disabled"
+              },
+              {
+                "bit": 6,
+                "mode": "|",
+                "value": "Grid"
+              },
+              {
+                "bit": 7,
+                "mode": "|",
+                "value": "Load"
+              }
+            ],
+            "name": "AC Coupling",
+            "platform": "select",
+            "registers": [
+              326
+            ],
+            "rule": 1
+          }
+        ],
+        "update_interval": 300
+      },
+      {
+        "group": "BMS",
+        "items": [
+          {
+            "attribute": null,
+            "class": "voltage",
+            "name": "Battery BMS Charging Voltage",
+            "registers": [
+              312
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "attribute": null,
+            "class": "voltage",
+            "name": "Battery BMS Discharging Voltage",
+            "registers": [
+              313
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "attribute": null,
+            "class": "current",
+            "icon": "mdi:current-dc",
+            "name": "Battery BMS Charging Current",
+            "registers": [
+              314
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "attribute": null,
+            "class": "current",
+            "icon": "mdi:current-dc",
+            "name": "Battery BMS Discharging Current",
+            "registers": [
+              315
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "attribute": null,
+            "icon": "mdi:battery",
+            "name": "Battery BMS SOC",
+            "registers": [
+              316
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "%",
+            "validation": {
+              "max": 101,
+              "min": 0
+            }
+          },
+          {
+            "attribute": null,
+            "class": "voltage",
+            "name": "Battery BMS Voltage",
+            "registers": [
+              317
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "attribute": null,
+            "class": "current",
+            "icon": "mdi:current-dc",
+            "name": "Battery BMS Current",
+            "registers": [
+              318
+            ],
+            "rule": 2,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "attribute": null,
+            "class": "current",
+            "icon": "mdi:current-dc",
+            "name": "Battery BMS Max Charging Current",
+            "registers": [
+              320
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "attribute": null,
+            "class": "current",
+            "icon": "mdi:current-dc",
+            "name": "Battery BMS Max Discharging Current",
+            "registers": [
+              321
+            ],
+            "rule": 1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "attributes": [
+              "value"
+            ],
+            "class": "problem",
+            "icon": "mdi:battery-alert",
+            "name": "Battery Alarm",
+            "platform": "binary_sensor",
+            "registers": [
+              322
+            ],
+            "rule": 1
+          },
+          {
+            "attributes": [
+              "value"
+            ],
+            "class": "problem",
+            "icon": "mdi:battery-alert-variant",
+            "name": "Battery Fault",
+            "platform": "binary_sensor",
+            "range": {
+              "max": 65535,
+              "min": 0
+            },
+            "registers": [
+              323
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "icon": "mdi:battery-unknown",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "OK"
+              },
+              {
+                "bit": 0,
+                "value": "Vacancy"
+              },
+              {
+                "bit": 1,
+                "value": "OCP"
+              }
+            ],
+            "name": "Battery BMS Other Symbol",
+            "range": {
+              "max": 65535,
+              "min": 0
+            },
+            "registers": [
+              324
+            ],
+            "rule": 1
+          }
+        ],
+        "update_interval": 60
+      }
+    ]
+  },
+  "normalizer_version": "1.0",
+  "raw_file": "deye_hybrid.yaml",
+  "raw_sha256": "5ec40445fdb66cc2389f92c190eec0be40a970ef3ac0acdfd651af207716a51b"
+}

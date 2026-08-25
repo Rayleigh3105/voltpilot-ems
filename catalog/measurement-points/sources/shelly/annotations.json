@@ -1,0 +1,939 @@
+{
+  "components": {
+    "shelly.gen1|device_info": {
+      "cadence_s": 3600,
+      "fields": {
+        "auth": {
+          "aggregation_kind": "state",
+          "label_de": "Authentifizierung aktiv"
+        },
+        "fw": {
+          "aggregation_kind": "text",
+          "label_de": "Firmware"
+        },
+        "longid": {
+          "aggregation_kind": "state",
+          "label_de": "Lange Gerätekennung"
+        },
+        "mac": {
+          "aggregation_kind": "text",
+          "label_de": "MAC-Adresse"
+        },
+        "type": {
+          "aggregation_kind": "text",
+          "label_de": "Gerätetyp"
+        }
+      }
+    },
+    "shelly.gen1|emeter[*]": {
+      "cadence_s": 30,
+      "fields": {
+        "emeters[*].current": {
+          "aggregation_kind": "gauge",
+          "label_de": "Strom"
+        },
+        "emeters[*].pf": {
+          "aggregation_kind": "gauge",
+          "label_de": "Leistungsfaktor"
+        },
+        "emeters[*].power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "emeters[*].total": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie"
+        },
+        "emeters[*].total_returned": {
+          "aggregation_kind": "counter",
+          "label_de": "Rückgespeiste Wirkenergie"
+        },
+        "emeters[*].voltage": {
+          "aggregation_kind": "gauge",
+          "label_de": "Spannung"
+        }
+      }
+    },
+    "shelly.gen1|external_sensor[*]": {
+      "cadence_s": 60,
+      "fields": {
+        "ext_humidity.*.hum": {
+          "aggregation_kind": "gauge",
+          "label_de": "Externe Luftfeuchte"
+        },
+        "ext_temperature.*.tC": {
+          "aggregation_kind": "gauge",
+          "label_de": "Externe Temperatur"
+        },
+        "ext_temperature.*.tF": {
+          "aggregation_kind": "gauge",
+          "label_de": "Externe Temperatur"
+        }
+      }
+    },
+    "shelly.gen1|input[*]": {
+      "cadence_s": 10,
+      "fields": {
+        "inputs[*].event": {
+          "aggregation_kind": "event",
+          "label_de": "Letztes Eingangsereignis"
+        },
+        "inputs[*].event_cnt": {
+          "aggregation_kind": "counter",
+          "label_de": "Ereigniszähler"
+        },
+        "inputs[*].input": {
+          "aggregation_kind": "state",
+          "label_de": "Eingangspegel"
+        }
+      }
+    },
+    "shelly.gen1|light_cover[*]": {
+      "cadence_s": 30,
+      "fields": {
+        "lights[*].brightness": {
+          "aggregation_kind": "gauge",
+          "label_de": "Helligkeit"
+        },
+        "lights[*].ison": {
+          "aggregation_kind": "state",
+          "label_de": "Licht eingeschaltet"
+        },
+        "lights[*].temp": {
+          "aggregation_kind": "gauge",
+          "label_de": "Farbtemperatur"
+        },
+        "lights[*].white": {
+          "aggregation_kind": "gauge",
+          "label_de": "Weißkanal"
+        },
+        "rollers[*].current_pos": {
+          "aggregation_kind": "gauge",
+          "label_de": "Aktuelle Position"
+        },
+        "rollers[*].power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "rollers[*].state": {
+          "aggregation_kind": "state",
+          "label_de": "Abdeckungszustand"
+        }
+      }
+    },
+    "shelly.gen1|meter[*]": {
+      "cadence_s": 30,
+      "fields": {
+        "meters[*].counters[*]": {
+          "aggregation_kind": "gauge",
+          "label_de": "Minutenwert"
+        },
+        "meters[*].is_valid": {
+          "aggregation_kind": "state",
+          "label_de": "Messwert gültig"
+        },
+        "meters[*].overpower": {
+          "aggregation_kind": "gauge",
+          "label_de": "Überleistung"
+        },
+        "meters[*].power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "meters[*].timestamp": {
+          "aggregation_kind": "gauge",
+          "label_de": "Messzeitpunkt"
+        },
+        "meters[*].total": {
+          "aggregation_kind": "counter",
+          "label_de": "Gesamtenergie"
+        }
+      }
+    },
+    "shelly.gen1|relay[*]": {
+      "cadence_s": 10,
+      "fields": {
+        "relays[*].has_timer": {
+          "aggregation_kind": "state",
+          "label_de": "Timer aktiv"
+        },
+        "relays[*].ison": {
+          "aggregation_kind": "state",
+          "label_de": "Schaltzustand"
+        },
+        "relays[*].overpower": {
+          "aggregation_kind": "state",
+          "label_de": "Überleistungszustand"
+        },
+        "relays[*].source": {
+          "aggregation_kind": "state",
+          "label_de": "Schaltquelle"
+        },
+        "relays[*].timer_duration": {
+          "aggregation_kind": "gauge",
+          "label_de": "Timerdauer"
+        },
+        "relays[*].timer_remaining": {
+          "aggregation_kind": "gauge",
+          "label_de": "Verbleibende Timerzeit"
+        },
+        "relays[*].timer_started": {
+          "aggregation_kind": "gauge",
+          "label_de": "Timer gestartet"
+        }
+      }
+    },
+    "shelly.gen1|services": {
+      "cadence_s": 60,
+      "fields": {
+        "cloud.connected": {
+          "aggregation_kind": "state",
+          "label_de": "Shelly Cloud verbunden"
+        },
+        "cloud.enabled": {
+          "aggregation_kind": "state",
+          "label_de": "Shelly Cloud aktiviert"
+        },
+        "mqtt.connected": {
+          "aggregation_kind": "state",
+          "label_de": "MQTT verbunden"
+        }
+      }
+    },
+    "shelly.gen1|system": {
+      "cadence_s": 300,
+      "fields": {
+        "actions_stats": {
+          "aggregation_kind": "none",
+          "label_de": "Aktionsstatistik"
+        },
+        "cfg_changed_cnt": {
+          "aggregation_kind": "counter",
+          "label_de": "Konfigurationsänderung"
+        },
+        "fs_free": {
+          "aggregation_kind": "gauge",
+          "label_de": "Flash frei"
+        },
+        "fs_size": {
+          "aggregation_kind": "gauge",
+          "label_de": "Flash gesamt"
+        },
+        "has_update": {
+          "aggregation_kind": "state",
+          "label_de": "Update verfügbar"
+        },
+        "mac": {
+          "aggregation_kind": "text",
+          "label_de": "MAC-Adresse"
+        },
+        "ram_free": {
+          "aggregation_kind": "gauge",
+          "label_de": "RAM frei"
+        },
+        "ram_total": {
+          "aggregation_kind": "gauge",
+          "label_de": "RAM gesamt"
+        },
+        "serial": {
+          "aggregation_kind": "counter",
+          "label_de": "Neustartzähler"
+        },
+        "time": {
+          "aggregation_kind": "text",
+          "label_de": "Lokale Uhrzeit"
+        },
+        "unixtime": {
+          "aggregation_kind": "gauge",
+          "label_de": "Unix-Zeit"
+        },
+        "uptime": {
+          "aggregation_kind": "gauge",
+          "label_de": "Laufzeit"
+        }
+      }
+    },
+    "shelly.gen1|thermal": {
+      "cadence_s": 60,
+      "fields": {
+        "overtemperature": {
+          "aggregation_kind": "event",
+          "label_de": "Übertemperatur"
+        },
+        "temperature": {
+          "aggregation_kind": "gauge",
+          "label_de": "Gerätetemperatur"
+        },
+        "temperature_status": {
+          "aggregation_kind": "state",
+          "label_de": "Temperaturzustand"
+        }
+      }
+    },
+    "shelly.gen1|wifi_sta": {
+      "cadence_s": 60,
+      "fields": {
+        "wifi_sta.connected": {
+          "aggregation_kind": "state",
+          "label_de": "WLAN verbunden"
+        },
+        "wifi_sta.ip": {
+          "aggregation_kind": "text",
+          "label_de": "IP-Adresse"
+        },
+        "wifi_sta.rssi": {
+          "aggregation_kind": "gauge",
+          "label_de": "WLAN-Signal"
+        },
+        "wifi_sta.ssid": {
+          "aggregation_kind": "text",
+          "label_de": "WLAN-Name"
+        }
+      }
+    },
+    "shelly.gen2plus|cloud": {
+      "cadence_s": 60,
+      "fields": {
+        "connected": {
+          "aggregation_kind": "state",
+          "label_de": "Shelly Cloud verbunden"
+        }
+      }
+    },
+    "shelly.gen2plus|cover[*]": {
+      "cadence_s": 30,
+      "fields": {
+        "aenergy.by_minute[*]": {
+          "aggregation_kind": "gauge",
+          "label_de": "Minutenenergie"
+        },
+        "aenergy.minute_ts": {
+          "aggregation_kind": "gauge",
+          "label_de": "Zeitpunkt der Minutenenergie"
+        },
+        "aenergy.total": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie"
+        },
+        "apower": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "current": {
+          "aggregation_kind": "gauge",
+          "label_de": "Strom"
+        },
+        "current_pos": {
+          "aggregation_kind": "gauge",
+          "label_de": "Aktuelle Position"
+        },
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Fehler"
+        },
+        "freq": {
+          "aggregation_kind": "gauge",
+          "label_de": "Frequenz"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Komponentenkennung"
+        },
+        "pf": {
+          "aggregation_kind": "gauge",
+          "label_de": "Leistungsfaktor"
+        },
+        "pos_control": {
+          "aggregation_kind": "state",
+          "label_de": "Positionssteuerung verfügbar"
+        },
+        "source": {
+          "aggregation_kind": "state",
+          "label_de": "Schaltquelle"
+        },
+        "state": {
+          "aggregation_kind": "state",
+          "label_de": "Abdeckungszustand"
+        },
+        "target_pos": {
+          "aggregation_kind": "gauge",
+          "label_de": "Zielposition"
+        },
+        "temperature.tC": {
+          "aggregation_kind": "gauge",
+          "label_de": "Temperatur"
+        },
+        "temperature.tF": {
+          "aggregation_kind": "gauge",
+          "label_de": "Temperatur"
+        },
+        "voltage": {
+          "aggregation_kind": "gauge",
+          "label_de": "Spannung"
+        }
+      }
+    },
+    "shelly.gen2plus|device_info": {
+      "cadence_s": 3600,
+      "fields": {
+        "app": {
+          "aggregation_kind": "text",
+          "label_de": "Anwendung"
+        },
+        "auth_domain": {
+          "aggregation_kind": "text",
+          "label_de": "Authentifizierungsbereich"
+        },
+        "auth_en": {
+          "aggregation_kind": "state",
+          "label_de": "Authentifizierung aktiv"
+        },
+        "fw_id": {
+          "aggregation_kind": "text",
+          "label_de": "Firmware-Kennung"
+        },
+        "gen": {
+          "aggregation_kind": "state",
+          "label_de": "API-Generation"
+        },
+        "id": {
+          "aggregation_kind": "text",
+          "label_de": "Gerätekennung"
+        },
+        "mac": {
+          "aggregation_kind": "text",
+          "label_de": "MAC-Adresse"
+        },
+        "model": {
+          "aggregation_kind": "text",
+          "label_de": "Modell"
+        },
+        "profile": {
+          "aggregation_kind": "state",
+          "label_de": "Geräteprofil"
+        },
+        "ver": {
+          "aggregation_kind": "text",
+          "label_de": "Firmware-Version"
+        }
+      }
+    },
+    "shelly.gen2plus|devicepower[*]": {
+      "cadence_s": 60,
+      "fields": {
+        "battery.V": {
+          "aggregation_kind": "gauge",
+          "label_de": "Batteriespannung"
+        },
+        "battery.percent": {
+          "aggregation_kind": "gauge",
+          "label_de": "Batterieladestand"
+        },
+        "external.present": {
+          "aggregation_kind": "state",
+          "label_de": "Externe Versorgung vorhanden"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Komponentenkennung"
+        }
+      }
+    },
+    "shelly.gen2plus|em1[*]": {
+      "cadence_s": 30,
+      "fields": {
+        "act_power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "aprt_power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Scheinleistung"
+        },
+        "current": {
+          "aggregation_kind": "gauge",
+          "label_de": "Strom"
+        },
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Fehler"
+        },
+        "freq": {
+          "aggregation_kind": "gauge",
+          "label_de": "Frequenz"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Komponentenkennung"
+        },
+        "pf": {
+          "aggregation_kind": "gauge",
+          "label_de": "Leistungsfaktor"
+        },
+        "voltage": {
+          "aggregation_kind": "gauge",
+          "label_de": "Spannung"
+        }
+      }
+    },
+    "shelly.gen2plus|em1data[*]": {
+      "cadence_s": 60,
+      "fields": {
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Fehler"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Komponentenkennung"
+        },
+        "total_act_energy": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie"
+        },
+        "total_act_ret_energy": {
+          "aggregation_kind": "counter",
+          "label_de": "Rückgespeiste Wirkenergie"
+        }
+      }
+    },
+    "shelly.gen2plus|em[*]": {
+      "cadence_s": 30,
+      "fields": {
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Fehler"
+        },
+        "total_act_power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Gesamtwirkleistung"
+        },
+        "total_aprt_power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Gesamtscheinleistung"
+        },
+        "total_current": {
+          "aggregation_kind": "gauge",
+          "label_de": "Gesamtstrom"
+        }
+      },
+      "phase_fields": {
+        "act_power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "aprt_power": {
+          "aggregation_kind": "gauge",
+          "label_de": "Scheinleistung"
+        },
+        "current": {
+          "aggregation_kind": "gauge",
+          "label_de": "Strom"
+        },
+        "freq": {
+          "aggregation_kind": "gauge",
+          "label_de": "Frequenz"
+        },
+        "pf": {
+          "aggregation_kind": "gauge",
+          "label_de": "Leistungsfaktor"
+        },
+        "voltage": {
+          "aggregation_kind": "gauge",
+          "label_de": "Spannung"
+        }
+      }
+    },
+    "shelly.gen2plus|emdata[*]": {
+      "cadence_s": 60,
+      "fields": {
+        "a_total_act_energy": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie Phase A"
+        },
+        "a_total_act_ret_energy": {
+          "aggregation_kind": "counter",
+          "label_de": "Rückgespeiste Wirkenergie Phase A"
+        },
+        "b_total_act_energy": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie Phase B"
+        },
+        "b_total_act_ret_energy": {
+          "aggregation_kind": "counter",
+          "label_de": "Rückgespeiste Wirkenergie Phase B"
+        },
+        "c_total_act_energy": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie Phase C"
+        },
+        "c_total_act_ret_energy": {
+          "aggregation_kind": "counter",
+          "label_de": "Rückgespeiste Wirkenergie Phase C"
+        },
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Fehler"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Komponentenkennung"
+        },
+        "total_act": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Gesamtwirkenergie"
+        },
+        "total_act_ret": {
+          "aggregation_kind": "counter",
+          "label_de": "Rückgespeiste Gesamtwirkenergie"
+        }
+      }
+    },
+    "shelly.gen2plus|humidity[*]": {
+      "cadence_s": 60,
+      "fields": {
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Feuchtefehler"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Feuchtesensorkennung"
+        },
+        "rh": {
+          "aggregation_kind": "gauge",
+          "label_de": "Relative Luftfeuchte"
+        }
+      }
+    },
+    "shelly.gen2plus|input[*]": {
+      "cadence_s": 60,
+      "fields": {
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Eingangskennung"
+        },
+        "state": {
+          "aggregation_kind": "state",
+          "label_de": "Eingangsstatus"
+        }
+      }
+    },
+    "shelly.gen2plus|light_rgb_rgbw[*]": {
+      "cadence_s": 30,
+      "fields": {
+        "aenergy.by_minute[*]": {
+          "aggregation_kind": "gauge",
+          "label_de": "Minutenenergie"
+        },
+        "aenergy.minute_ts": {
+          "aggregation_kind": "gauge",
+          "label_de": "Zeitpunkt der Minutenenergie"
+        },
+        "aenergy.total": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie"
+        },
+        "apower": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "brightness": {
+          "aggregation_kind": "gauge",
+          "label_de": "Helligkeit"
+        },
+        "current": {
+          "aggregation_kind": "gauge",
+          "label_de": "Strom"
+        },
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Fehler"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Komponentenkennung"
+        },
+        "output": {
+          "aggregation_kind": "state",
+          "label_de": "Schaltzustand"
+        },
+        "rgb": {
+          "aggregation_kind": "state",
+          "label_de": "RGB-Farbwert"
+        },
+        "source": {
+          "aggregation_kind": "state",
+          "label_de": "Schaltquelle"
+        },
+        "temperature.tC": {
+          "aggregation_kind": "gauge",
+          "label_de": "Temperatur"
+        },
+        "temperature.tF": {
+          "aggregation_kind": "gauge",
+          "label_de": "Temperatur"
+        },
+        "voltage": {
+          "aggregation_kind": "gauge",
+          "label_de": "Spannung"
+        },
+        "white": {
+          "aggregation_kind": "gauge",
+          "label_de": "Weißkanal"
+        }
+      }
+    },
+    "shelly.gen2plus|mqtt": {
+      "cadence_s": 60,
+      "fields": {
+        "connected": {
+          "aggregation_kind": "state",
+          "label_de": "MQTT verbunden"
+        }
+      }
+    },
+    "shelly.gen2plus|pm1[*]": {
+      "cadence_s": 30,
+      "fields": {
+        "aenergy.by_minute[*]": {
+          "aggregation_kind": "gauge",
+          "label_de": "Minutenenergie"
+        },
+        "aenergy.minute_ts": {
+          "aggregation_kind": "gauge",
+          "label_de": "Zeitpunkt der Minutenenergie"
+        },
+        "aenergy.total": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie"
+        },
+        "apower": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "aprtpower": {
+          "aggregation_kind": "gauge",
+          "label_de": "Scheinleistung"
+        },
+        "current": {
+          "aggregation_kind": "gauge",
+          "label_de": "Strom"
+        },
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Fehler"
+        },
+        "freq": {
+          "aggregation_kind": "gauge",
+          "label_de": "Frequenz"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Komponentenkennung"
+        },
+        "pf": {
+          "aggregation_kind": "gauge",
+          "label_de": "Leistungsfaktor"
+        },
+        "ret_aenergy.by_minute[*]": {
+          "aggregation_kind": "gauge",
+          "label_de": "Rückgespeiste Minutenenergie"
+        },
+        "ret_aenergy.minute_ts": {
+          "aggregation_kind": "gauge",
+          "label_de": "Zeitpunkt der Rückenergie"
+        },
+        "ret_aenergy.total": {
+          "aggregation_kind": "counter",
+          "label_de": "Rückgespeiste Wirkenergie"
+        },
+        "voltage": {
+          "aggregation_kind": "gauge",
+          "label_de": "Spannung"
+        }
+      }
+    },
+    "shelly.gen2plus|switch[*]": {
+      "cadence_s": 10,
+      "fields": {
+        "aenergy.by_minute[*]": {
+          "aggregation_kind": "gauge",
+          "label_de": "Minutenenergie"
+        },
+        "aenergy.minute_ts": {
+          "aggregation_kind": "gauge",
+          "label_de": "Zeitpunkt der Minutenenergie"
+        },
+        "aenergy.total": {
+          "aggregation_kind": "counter",
+          "label_de": "Bezogene Wirkenergie"
+        },
+        "apower": {
+          "aggregation_kind": "gauge",
+          "label_de": "Wirkleistung"
+        },
+        "current": {
+          "aggregation_kind": "gauge",
+          "label_de": "Strom"
+        },
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Fehler"
+        },
+        "freq": {
+          "aggregation_kind": "gauge",
+          "label_de": "Frequenz"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Komponentenkennung"
+        },
+        "output": {
+          "aggregation_kind": "state",
+          "label_de": "Schaltzustand"
+        },
+        "pf": {
+          "aggregation_kind": "gauge",
+          "label_de": "Leistungsfaktor"
+        },
+        "ret_aenergy.by_minute[*]": {
+          "aggregation_kind": "gauge",
+          "label_de": "Rückgespeiste Minutenenergie"
+        },
+        "ret_aenergy.minute_ts": {
+          "aggregation_kind": "gauge",
+          "label_de": "Zeitpunkt der Rückenergie"
+        },
+        "ret_aenergy.total": {
+          "aggregation_kind": "counter",
+          "label_de": "Rückgespeiste Wirkenergie"
+        },
+        "source": {
+          "aggregation_kind": "state",
+          "label_de": "Schaltquelle"
+        },
+        "temperature.tC": {
+          "aggregation_kind": "gauge",
+          "label_de": "Temperatur"
+        },
+        "temperature.tF": {
+          "aggregation_kind": "gauge",
+          "label_de": "Temperatur"
+        },
+        "voltage": {
+          "aggregation_kind": "gauge",
+          "label_de": "Spannung"
+        }
+      }
+    },
+    "shelly.gen2plus|sys": {
+      "cadence_s": 300,
+      "fields": {
+        "available_updates": {
+          "aggregation_kind": "none",
+          "label_de": "Verfügbare Updates"
+        },
+        "cfg_rev": {
+          "aggregation_kind": "counter",
+          "label_de": "Konfigurationsrevision"
+        },
+        "fs_free": {
+          "aggregation_kind": "gauge",
+          "label_de": "Flash frei"
+        },
+        "fs_size": {
+          "aggregation_kind": "gauge",
+          "label_de": "Flash gesamt"
+        },
+        "kvs_rev": {
+          "aggregation_kind": "counter",
+          "label_de": "KVS-Revision"
+        },
+        "mac": {
+          "aggregation_kind": "text",
+          "label_de": "MAC-Adresse"
+        },
+        "ram_free": {
+          "aggregation_kind": "gauge",
+          "label_de": "RAM frei"
+        },
+        "ram_size": {
+          "aggregation_kind": "gauge",
+          "label_de": "RAM gesamt"
+        },
+        "restart_required": {
+          "aggregation_kind": "state",
+          "label_de": "Neustart erforderlich"
+        },
+        "schedule_rev": {
+          "aggregation_kind": "counter",
+          "label_de": "Zeitplanrevision"
+        },
+        "time": {
+          "aggregation_kind": "text",
+          "label_de": "Lokale Uhrzeit"
+        },
+        "unixtime": {
+          "aggregation_kind": "gauge",
+          "label_de": "Unix-Zeit"
+        },
+        "uptime": {
+          "aggregation_kind": "gauge",
+          "label_de": "Laufzeit"
+        },
+        "webhook_rev": {
+          "aggregation_kind": "counter",
+          "label_de": "Webhook-Revision"
+        }
+      }
+    },
+    "shelly.gen2plus|temperature[*]": {
+      "cadence_s": 60,
+      "fields": {
+        "errors[*]": {
+          "aggregation_kind": "event",
+          "label_de": "Temperaturfehler"
+        },
+        "id": {
+          "aggregation_kind": "state",
+          "label_de": "Temperatursensorkennung"
+        },
+        "tC": {
+          "aggregation_kind": "gauge",
+          "label_de": "Temperatur"
+        },
+        "tF": {
+          "aggregation_kind": "gauge",
+          "label_de": "Temperatur"
+        }
+      }
+    },
+    "shelly.gen2plus|wifi": {
+      "cadence_s": 60,
+      "fields": {
+        "ap_client_count": {
+          "aggregation_kind": "gauge",
+          "label_de": "Verbundene AP-Clients"
+        },
+        "rssi": {
+          "aggregation_kind": "gauge",
+          "label_de": "WLAN-Signal"
+        },
+        "ssid": {
+          "aggregation_kind": "text",
+          "label_de": "WLAN-Name"
+        },
+        "sta_ip": {
+          "aggregation_kind": "text",
+          "label_de": "WLAN-IP-Adresse"
+        },
+        "status": {
+          "aggregation_kind": "state",
+          "label_de": "WLAN-Zustand"
+        }
+      }
+    }
+  },
+  "schema_version": "1.0"
+}

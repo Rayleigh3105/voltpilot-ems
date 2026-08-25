@@ -1,0 +1,1206 @@
+{
+  "document": {
+    "default": {
+      "digits": 6,
+      "update_interval": 5
+    },
+    "info": {
+      "manufacturer": "Deye",
+      "model": "G0*"
+    },
+    "parameters": [
+      {
+        "group": "Info",
+        "items": [
+          {
+            "attributes": [
+              "Device Modbus Address",
+              "Device Protocol Version",
+              "Device Serial Number",
+              "Device Rated Phase",
+              "Device Chip Type",
+              "Device Control Board Firmware Version",
+              "Device Communication Board Firmware Version",
+              "Device Rated Power",
+              "Device MPPTs",
+              "Device Phases"
+            ],
+            "class": "enum",
+            "icon": "mdi:information",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Unknown"
+              },
+              {
+                "key": [
+                  2,
+                  512
+                ],
+                "value": "String Inverter"
+              },
+              {
+                "key": [
+                  3,
+                  768
+                ],
+                "value": "Single-Phase Hybrid Inverter"
+              },
+              {
+                "key": [
+                  4,
+                  1024
+                ],
+                "value": "Microinverter"
+              },
+              {
+                "key": [
+                  5,
+                  1280
+                ],
+                "value": "LV 3-Phase Hybrid Inverter"
+              },
+              {
+                "key": 6,
+                "value": "HV 3-Phase Hybrid Inverter"
+              },
+              {
+                "key": [
+                  7,
+                  1536
+                ],
+                "value": "HV 3-Phase Inverter 6-15kw"
+              },
+              {
+                "key": [
+                  8,
+                  1537
+                ],
+                "value": "HV 3-Phase Inverter 20-50kw"
+              },
+              {
+                "key": 259,
+                "value": "Off-Grid Inverter"
+              },
+              {
+                "key": 260,
+                "value": "Energy Storage System"
+              }
+            ],
+            "name": "Device",
+            "registers": [
+              0
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "name": "Device Modbus Address",
+            "registers": [
+              1
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "name": "Device Protocol Version",
+            "registers": [
+              2
+            ],
+            "remove": "0.",
+            "rule": 7
+          },
+          {
+            "attribute": null,
+            "name": "Device Serial Number",
+            "registers": [
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "rule": 5
+          },
+          {
+            "attribute": null,
+            "class": "enum",
+            "lookup": [
+              {
+                "key": [
+                  0,
+                  1,
+                  2
+                ],
+                "value": "Single-Phase"
+              },
+              {
+                "key": 3,
+                "value": "Three-Phase"
+              },
+              {
+                "key": 8,
+                "value": "Single-Phase Storage"
+              }
+            ],
+            "name": "Device Rated Phase",
+            "registers": [
+              8
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "class": "enum",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "AT32F403A"
+              },
+              {
+                "key": 1,
+                "value": "SXX32F103"
+              },
+              {
+                "key": 2,
+                "value": "GD32F103"
+              },
+              {
+                "key": 3,
+                "value": "GD32F303"
+              }
+            ],
+            "name": "Device Chip Type",
+            "registers": [
+              9
+            ],
+            "rule": 1
+          },
+          {
+            "attribute": null,
+            "delimiter": "",
+            "name": "Device Control Board Firmware Version",
+            "registers": [
+              13,
+              12,
+              11
+            ],
+            "rule": 7
+          },
+          {
+            "attribute": null,
+            "delimiter": "",
+            "hex": null,
+            "name": "Device Communication Board Firmware Version",
+            "registers": [
+              14,
+              10
+            ],
+            "rule": 7
+          },
+          {
+            "attribute": null,
+            "class": "power",
+            "name": "Device Rated Power",
+            "registers": [
+              16,
+              17
+            ],
+            "rule": 4,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "W",
+            "validation": {
+              "default": 136000,
+              "max": 136000,
+              "min": 1
+            }
+          },
+          {
+            "attribute": null,
+            "divide": 256,
+            "mask": 3840,
+            "name": "Device MPPTs",
+            "range": {
+              "min": 257
+            },
+            "registers": [
+              18
+            ],
+            "rule": 1,
+            "validation": {
+              "default": 2,
+              "max": 12
+            }
+          },
+          {
+            "attribute": null,
+            "mask": 15,
+            "name": "Device Phases",
+            "range": {
+              "min": 257
+            },
+            "registers": [
+              18
+            ],
+            "rule": 1,
+            "validation": {
+              "default": 3,
+              "max": 3
+            }
+          }
+        ],
+        "update_interval": 3600
+      },
+      {
+        "group": "Control",
+        "items": [
+          {
+            "name": "Self-check time",
+            "platform": "number",
+            "range": {
+              "max": 1000,
+              "min": 0
+            },
+            "registers": [
+              21
+            ],
+            "rule": 1,
+            "uom": "s",
+            "update_interval": 300
+          },
+          {
+            "name": "Date & Time",
+            "platform": "datetime",
+            "registers": [
+              22,
+              23,
+              24
+            ],
+            "rule": 8,
+            "update_interval": 60
+          },
+          {
+            "name": "",
+            "platform": "switch",
+            "registers": [
+              43
+            ],
+            "rule": 1,
+            "update_interval": 30,
+            "value": {
+              "false": 2,
+              "true": 1
+            }
+          },
+          {
+            "class": "enum",
+            "icon": "mdi:state-machine",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "Standby"
+              },
+              {
+                "key": 1,
+                "value": "Self-test"
+              },
+              {
+                "key": 2,
+                "value": "Normal"
+              },
+              {
+                "key": 3,
+                "value": "Alarm"
+              },
+              {
+                "key": 4,
+                "value": "Fault"
+              }
+            ],
+            "name": "Device State",
+            "range": {
+              "max": 5,
+              "min": 0
+            },
+            "registers": [
+              59
+            ],
+            "rule": 1
+          },
+          {
+            "class": "enum",
+            "icon": "mdi:alert-outline",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "OK"
+              },
+              {
+                "bit": 1,
+                "value": "Fan failure"
+              },
+              {
+                "bit": 2,
+                "value": "Grid phase failure"
+              },
+              {
+                "bit": 3,
+                "value": "Meter communication failure"
+              },
+              {
+                "bit": 30,
+                "value": "Battery loss"
+              },
+              {
+                "bit": 31,
+                "value": "Parallel communication quality"
+              },
+              {
+                "key": "default",
+                "value": "Problem"
+              }
+            ],
+            "name": "Device Alarm",
+            "registers": [
+              101,
+              102
+            ],
+            "rule": 3
+          },
+          {
+            "class": "enum",
+            "icon": "mdi:message-alert-outline",
+            "lookup": [
+              {
+                "key": 0,
+                "value": "OK"
+              },
+              {
+                "bit": 6,
+                "value": "DC/DC Soft Start failure"
+              },
+              {
+                "bit": 9,
+                "value": "Auxiliary power supply failure"
+              },
+              {
+                "bit": 12,
+                "value": "Working mode changed"
+              },
+              {
+                "bit": 17,
+                "value": "AC Over-current failure"
+              },
+              {
+                "bit": 18,
+                "value": "Tz_Integ_Fault failure"
+              },
+              {
+                "bit": 19,
+                "value": "DC Over-current failure"
+              },
+              {
+                "bit": 22,
+                "value": "AC current leakage failure"
+              },
+              {
+                "bit": 63,
+                "value": "Temperature is too high"
+              },
+              {
+                "key": "default",
+                "value": "Problem"
+              }
+            ],
+            "name": "Device Fault",
+            "registers": [
+              103,
+              104,
+              105,
+              106
+            ],
+            "rule": 3
+          }
+        ]
+      },
+      {
+        "group": "PV",
+        "items": [
+          {
+            "alt": "DC Power",
+            "class": "power",
+            "description": "Combined power of all inputs",
+            "digits": 3,
+            "icon": "mdi:solar-power-variant",
+            "mppt": 1,
+            "name": "PV Power",
+            "rule": 1,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "multiply": {
+                  "registers": [
+                    110
+                  ]
+                },
+                "registers": [
+                  109
+                ]
+              },
+              {
+                "multiply": {
+                  "registers": [
+                    112
+                  ]
+                },
+                "registers": [
+                  111
+                ]
+              },
+              {
+                "multiply": {
+                  "registers": [
+                    114
+                  ]
+                },
+                "registers": [
+                  113
+                ]
+              },
+              {
+                "multiply": {
+                  "registers": [
+                    116
+                  ]
+                },
+                "registers": [
+                  115
+                ]
+              }
+            ],
+            "state_class": "measurement",
+            "uom": "W",
+            "validation": {
+              "invalidate_all": null,
+              "max": 204000,
+              "min": 0
+            }
+          },
+          {
+            "alt": "DC1 Power",
+            "class": "power",
+            "digits": 3,
+            "icon": "mdi:solar-power-variant",
+            "mppt": 1,
+            "name": "PV1 Power",
+            "rule": 1,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "multiply": {
+                  "registers": [
+                    110
+                  ]
+                },
+                "registers": [
+                  109
+                ]
+              }
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "alt": "DC1 Voltage",
+            "class": "voltage",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 1,
+            "name": "PV1 Voltage",
+            "registers": [
+              109
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "alt": "DC1 Current",
+            "class": "current",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 1,
+            "name": "PV1 Current",
+            "registers": [
+              110
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "alt": "DC2 Power",
+            "class": "power",
+            "digits": 3,
+            "icon": "mdi:solar-power-variant",
+            "mppt": 2,
+            "name": "PV2 Power",
+            "rule": 1,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "multiply": {
+                  "registers": [
+                    112
+                  ]
+                },
+                "registers": [
+                  111
+                ]
+              }
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "alt": "DC2 Voltage",
+            "class": "voltage",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 2,
+            "name": "PV2 Voltage",
+            "registers": [
+              111
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "alt": "DC2 Current",
+            "class": "current",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 2,
+            "name": "PV2 Current",
+            "registers": [
+              112
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "alt": "DC3 Power",
+            "class": "power",
+            "digits": 3,
+            "icon": "mdi:solar-power-variant",
+            "mppt": 3,
+            "name": "PV3 Power",
+            "rule": 1,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "multiply": {
+                  "registers": [
+                    114
+                  ]
+                },
+                "registers": [
+                  113
+                ]
+              }
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "alt": "DC3 Voltage",
+            "class": "voltage",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 3,
+            "name": "PV3 Voltage",
+            "registers": [
+              113
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "alt": "DC3 Current",
+            "class": "current",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 3,
+            "name": "PV3 Current",
+            "registers": [
+              114
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "alt": "DC4 Power",
+            "class": "power",
+            "digits": 3,
+            "icon": "mdi:solar-power-variant",
+            "mppt": 4,
+            "name": "PV4 Power",
+            "rule": 1,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "multiply": {
+                  "registers": [
+                    116
+                  ]
+                },
+                "registers": [
+                  115
+                ]
+              }
+            ],
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "alt": "DC4 Voltage",
+            "class": "voltage",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 4,
+            "name": "PV4 Voltage",
+            "registers": [
+              115
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "alt": "DC4 Current",
+            "class": "current",
+            "icon": "mdi:solar-power-variant",
+            "mppt": 4,
+            "name": "PV4 Current",
+            "registers": [
+              116
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          }
+        ]
+      },
+      {
+        "group": "Meter",
+        "items": [
+          {
+            "class": "energy",
+            "friendly_name": "Today's Production",
+            "icon": "mdi:solar-power",
+            "name": "Today Production",
+            "registers": [
+              60
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "dev": 100,
+              "invalidate_all": null
+            }
+          },
+          {
+            "class": "energy",
+            "icon": "mdi:solar-power",
+            "name": "Total Production",
+            "persistent": null,
+            "registers": [
+              63,
+              64
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "dev": 100,
+              "invalidate_all": 2,
+              "min": 0.1
+            }
+          },
+          {
+            "class": "energy",
+            "friendly_name": "Today's Load Consumption",
+            "name": "Today Load Consumption",
+            "registers": [
+              200
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "name": "Total Load Consumption",
+            "registers": [
+              201,
+              202
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "alt": "Today Energy Sold",
+            "class": "energy",
+            "friendly_name": "Today's Energy Export",
+            "icon": "mdi:transmission-tower-import",
+            "name": "Today Energy Export",
+            "registers": [
+              205
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "alt": "Total Energy Sold",
+            "class": "energy",
+            "icon": "mdi:transmission-tower-import",
+            "name": "Total Energy Export",
+            "registers": [
+              206,
+              207
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "alt": "Today Energy Bought",
+            "class": "energy",
+            "friendly_name": "Today's Energy Import",
+            "icon": "mdi:transmission-tower-export",
+            "name": "Today Energy Import",
+            "registers": [
+              208
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "total_increasing",
+            "uom": "kWh"
+          },
+          {
+            "alt": "Total Energy Bought",
+            "class": "energy",
+            "icon": "mdi:transmission-tower-export",
+            "name": "Total Energy Import",
+            "registers": [
+              209,
+              210
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "total_increasing",
+            "uom": "kWh",
+            "validation": {
+              "min": 0.1
+            }
+          },
+          {
+            "alt": "Daily Losses",
+            "class": "energy",
+            "description": "Includes today's consumption of the inverter device itself as well AC/DC conversion losses",
+            "digits": 1,
+            "ensure_increasing": null,
+            "friendly_name": "Today's Losses",
+            "name": "Today Losses",
+            "rule": 1,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "registers": [
+                  208
+                ]
+              },
+              {
+                "registers": [
+                  60
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  205
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  200
+                ]
+              }
+            ],
+            "state_class": "total_increasing",
+            "uint": "enforce",
+            "uom": "kWh"
+          },
+          {
+            "class": "energy",
+            "description": "Includes total consumption of the inverter device itself as well AC/DC conversion losses",
+            "digits": 1,
+            "ensure_increasing": null,
+            "name": "Total Losses",
+            "rule": 3,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "registers": [
+                  209,
+                  210
+                ]
+              },
+              {
+                "registers": [
+                  63,
+                  64
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  206,
+                  207
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  201,
+                  202
+                ]
+              }
+            ],
+            "state_class": "total_increasing",
+            "uint": "enforce",
+            "uom": "kWh",
+            "validation": {
+              "min": 1
+            }
+          }
+        ],
+        "update_interval": 30
+      },
+      {
+        "group": "Grid",
+        "items": [
+          {
+            "class": "voltage",
+            "l": 2,
+            "name": "Grid L12 Voltage",
+            "registers": [
+              70
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "l": 3,
+            "name": "Grid L23 Voltage",
+            "registers": [
+              71
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "l": 3,
+            "name": "Grid L31 Voltage",
+            "registers": [
+              72
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "l": 1,
+            "name": "Grid L1 Voltage",
+            "registers": [
+              73
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "l": 2,
+            "name": "Grid L2 Voltage",
+            "registers": [
+              74
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "voltage",
+            "l": 3,
+            "name": "Grid L3 Voltage",
+            "registers": [
+              75
+            ],
+            "rule": 1,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "V"
+          },
+          {
+            "class": "current",
+            "l": 1,
+            "name": "Grid L1 Current",
+            "registers": [
+              76
+            ],
+            "rule": 2,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "current",
+            "l": 2,
+            "name": "Grid L2 Current",
+            "registers": [
+              77
+            ],
+            "rule": 2,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "current",
+            "l": 3,
+            "name": "Grid L3 Current",
+            "registers": [
+              78
+            ],
+            "rule": 2,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "A"
+          },
+          {
+            "class": "frequency",
+            "l": 1,
+            "name": "Grid Frequency",
+            "registers": [
+              79
+            ],
+            "rule": 1,
+            "scale": 0.01,
+            "state_class": "measurement",
+            "uom": "Hz"
+          },
+          {
+            "class": "power",
+            "name": "Output AC Power",
+            "registers": [
+              80,
+              81
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "name": "Input Power",
+            "registers": [
+              82,
+              83
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "apparent_power",
+            "name": "Output Apparent Power",
+            "registers": [
+              84,
+              85
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "VA"
+          },
+          {
+            "class": "power",
+            "name": "Power",
+            "registers": [
+              86,
+              87
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "W",
+            "validation": {
+              "invalidate_all": null,
+              "lookup": "device_rated_power_sensor",
+              "scale": 1.1
+            }
+          },
+          {
+            "class": "power",
+            "description": "Includes consumption of the inverter device itself as well AC/DC conversion losses",
+            "digits": 3,
+            "name": "Power losses",
+            "rule": 1,
+            "scale": 0.1,
+            "sensors": [
+              {
+                "multiply": {
+                  "registers": [
+                    110
+                  ]
+                },
+                "registers": [
+                  109
+                ]
+              },
+              {
+                "multiply": {
+                  "registers": [
+                    112
+                  ]
+                },
+                "registers": [
+                  111
+                ]
+              },
+              {
+                "operator": "subtract",
+                "registers": [
+                  86,
+                  87
+                ]
+              }
+            ],
+            "state_class": "measurement",
+            "uint": "enforce",
+            "uom": "W"
+          },
+          {
+            "class": "reactive_power",
+            "name": "Output Reactive Power",
+            "registers": [
+              88,
+              89
+            ],
+            "rule": 3,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "var"
+          },
+          {
+            "class": "temperature",
+            "hidden": null,
+            "icon": "mdi:thermometer",
+            "name": "DC Temperature",
+            "offset": 1000,
+            "range": {
+              "max": 3000,
+              "min": 0
+            },
+            "registers": [
+              90
+            ],
+            "rule": 2,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "°C"
+          },
+          {
+            "class": "temperature",
+            "icon": "mdi:thermometer",
+            "name": "Temperature",
+            "offset": 1000,
+            "range": {
+              "max": 3000,
+              "min": 0
+            },
+            "registers": [
+              91
+            ],
+            "rule": 2,
+            "scale": 0.1,
+            "state_class": "measurement",
+            "uom": "°C"
+          },
+          {
+            "class": "power",
+            "l": 1,
+            "name": "Load Power",
+            "registers": [
+              198,
+              199
+            ],
+            "rule": 2,
+            "state_class": "measurement",
+            "uom": "W"
+          },
+          {
+            "class": "power",
+            "l": 1,
+            "name": "Grid Power",
+            "registers": [
+              203,
+              204
+            ],
+            "rule": 2,
+            "state_class": "measurement",
+            "uom": "W"
+          }
+        ]
+      }
+    ]
+  },
+  "normalizer_version": "1.0",
+  "raw_file": "deye_string.yaml",
+  "raw_sha256": "b9d37f508e0457e5f80855cfa84b446323104d5812788af0824520d0c75725ce"
+}
