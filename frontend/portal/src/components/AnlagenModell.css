@@ -1046,3 +1046,95 @@
     transition: none;
   }
 }
+
+/* ===========================================================================
+   Geräte-Erlebnis Slice 1 — Anlagenbild als Einstieg, Liste als Zweitsicht
+   ========================================================================== */
+
+.vp-am-ansicht {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2) var(--vp-space-3);
+  margin: 0 0 var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-am-ansicht .vp-seg.vp-seg-compact [role='tab'],
+.vp-am-global-add {
+  min-height: 44px;
+}
+
+.vp-am-global-add {
+  margin-left: auto;
+}
+
+.vp-am-ansicht-hint {
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-meta);
+  overflow-wrap: anywhere;
+}
+
+.vp-am-authority {
+  margin: calc(-1 * var(--vp-space-2)) 0 var(--vp-space-3);
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-left: 3px solid var(--vp-action);
+  border-radius: 0 var(--vp-radius-sm) var(--vp-radius-sm) 0;
+  background: var(--vp-tint);
+  color: var(--vp-text-gray);
+  font-size: var(--vp-text-meta);
+}
+
+.vp-am-empty-intro {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--vp-space-3);
+  margin-bottom: var(--vp-space-4);
+  padding: var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-bg-light);
+  color: var(--vp-action);
+  min-width: 0;
+}
+
+.vp-am-empty-intro > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vp-am-empty-intro strong { color: var(--vp-text-dark); }
+.vp-am-empty-intro span { color: var(--vp-text-gray); font-size: var(--vp-text-meta); }
+
+.vp-am-list-empty {
+  margin: 0;
+  padding: var(--vp-space-4);
+  border: 1px dashed var(--vp-field-border);
+  border-radius: var(--vp-radius-md);
+  color: var(--vp-text-gray);
+  text-align: center;
+}
+
+.vp-am-karte.is-selected {
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-tint);
+}
+.vp-am-karte.is-selected:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .vp-am-ansicht {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .vp-am-empty-intro {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .vp-am-empty-intro .vp-btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}

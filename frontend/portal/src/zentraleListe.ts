@@ -359,4 +359,4 @@ export const REGISTER_VERWEIS =
 
 /** Das Leitwort der Liste und ihres Knopfs (D6). */
 export const LISTE_TITEL = 'Ihre Geräte';
-export const HINZUFUEGEN_LABEL = 'Hinzufügen';
+export const HINZUFUEGEN_LABEL = 'Gerät hinzufügen';

@@ -168,6 +168,9 @@ const boxDevice: Device = {
 };
 
 function stub() {
+  // Die Bestands-Tests pruefen die unveraenderte Zweitsicht. Slice-1-Tests
+  // setzen danach bewusst den parameterlosen Anlagenbild-Einstieg.
+  window.history.replaceState(null, '', `#/anlage/${site.id}/modell?ansicht=geraete`);
   vi.spyOn(api, 'siteEntities').mockResolvedValue(entities);
   vi.spyOn(api, 'topology').mockResolvedValue(topology);
   vi.spyOn(api, 'siteSources').mockResolvedValue(sources);
@@ -558,7 +561,7 @@ describe('Der Sprung auf EINE Komponente (Stufe 3, PR 3c)', () => {
     stub();
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
-    window.location.hash = '#/anlage/s-1/modell';
+    window.location.hash = '#/anlage/s-1/modell?ansicht=geraete';
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
     await screen.findByRole('region', { name: 'Ihre Geräte' });
     expect(scroll).not.toHaveBeenCalled();
@@ -798,11 +801,8 @@ describe('Der Register-Weg wohnt seit der Geräteseite DORT (Zentrale Stufe 1, �
   });
 });
 
-/**
- * Anlagen-Zentrale Stufe 2: der Reiter „Schaltbild" — er ist eine ZWEITE
- * Sicht auf denselben Lesesatz, kein zweiter Einstieg.
- */
-describe('AnlagenModellSection — der Reiter „Schaltbild" (Stufe 2)', () => {
+/** Geräte-Erlebnis Slice 1: Anlagenbild führt, Liste bleibt synchron. */
+describe('AnlagenModellSection — elektrisches Anlagenbild', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     window.history.replaceState(null, '', '/');
@@ -822,52 +822,101 @@ describe('AnlagenModellSection — der Reiter „Schaltbild" (Stufe 2)', () => {
     }));
   }
 
-  it('zeigt den Reiter am Rechner und öffnet das Bild über denselben Lesesatz', async () => {
+  it('ist am Desktop der parameterlose Standardeinstieg mit fünf elektrischen Zonen', async () => {
     stub();
     alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    const reiter = await screen.findByRole('tab', { name: 'Schaltbild' });
-    fireEvent.click(reiter);
 
-    // Die Struktur ist da …
-    expect(await screen.findByLabelText('Struktur-Schaltbild Ihrer Anlage')).toBeInTheDocument();
-    expect(screen.getByText('KOMPONENTEN')).toBeInTheDocument();
-    // … und die Liste ist ausgeblendet, nicht entfernt (ein Reiter, zwei Sichten).
-    expect(screen.getByLabelText('Ihre Geräte')).toHaveAttribute('hidden');
-    // Ein Lesezeichen öffnet exakt diese Ansicht wieder.
-    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell?ansicht=schaltbild`);
+    expect(await screen.findByRole('tab', { name: 'Anlagenbild' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByTestId('anlagenbild-desktop')).toBeInTheDocument();
+    for (const zone of ['PV', 'Speicher', 'Hausverteilung', 'Netz', 'Verbraucher']) {
+      expect(screen.getAllByText(zone).length).toBeGreaterThan(0);
+    }
+    expect(screen.getByRole('button', { name: /Speicher hinzufügen.*Optional/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Ladesäule anbinden.*Optional/ })).toBeDisabled();
+    expect(document.getElementById('vp-anlagenliste')).toHaveAttribute('hidden');
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
   });
 
-  it('nennt eine LÜCKE im Bild, statt sie zu füllen', async () => {
+  it('öffnet per Geräteklick nur die Vorschau mit ehrlichem Zustand und ohne Mutation', async () => {
     stub();
     alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    const create = vi.spyOn(api, 'createComponent');
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    fireEvent.click(await screen.findByRole('tab', { name: 'Schaltbild' }));
-    expect(await screen.findByText(/LAN-Adresse Ihrer Box/)).toBeInTheDocument();
-    expect(screen.getByText(/Stromwandler am Netzanschluss/)).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Deye SUN-30K/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Deye SUN-30K' });
+    expect(within(dialog).getByText('Ungesteuert')).toBeInTheDocument();
+    expect(within(dialog).getByRole('link', { name: 'Gerät öffnen' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Bearbeiten' })).toBeDisabled();
+    expect(create).not.toHaveBeenCalled();
   });
 
-  it('gibt es am TELEFON gar nicht — dort IST die Liste die Struktur', async () => {
+  it('rendert am Telefon einen vertikalen Pfad statt eines Mini-Canvas', async () => {
     stub();
     alsDesktop(false);
-    window.history.replaceState(null, '', `#/anlage/${site.id}/modell?ansicht=schaltbild`);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    expect(await screen.findByLabelText('Ihre Geräte')).not.toHaveAttribute('hidden');
-    expect(screen.queryByRole('tab', { name: 'Schaltbild' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Struktur-Schaltbild Ihrer Anlage')).not.toBeInTheDocument();
+
+    expect(await screen.findByTestId('anlagenbild-mobil')).toBeInTheDocument();
+    expect(screen.queryByTestId('anlagenbild-desktop')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Liste' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Fronius Anlage/ }));
+    expect(await screen.findByRole('dialog', { name: 'Fronius Anlage' })).toBeInTheDocument();
   });
 
-  it('springt von einer Komponente im Bild zurück zu IHRER Zeile in der Liste', async () => {
+  it('behält Auswahl und Fokus beim Wechsel in die synchronisierte Liste', async () => {
     stub();
     alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    fireEvent.click(await screen.findByRole('tab', { name: 'Schaltbild' }));
-    const bild = await screen.findByLabelText('Struktur-Schaltbild Ihrer Anlage');
-    const knopf = within(bild).getAllByRole('button')[0];
-    fireEvent.click(knopf);
-    // Der Klick führt IN die Liste zurück (das Bild erklärt, die Zeile handelt).
-    await waitFor(() => expect(screen.getByLabelText('Ihre Geräte')).not.toHaveAttribute('hidden'));
-    expect(document.querySelector('[data-komponente]')).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Fronius Anlage/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Vorschau schließen' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Liste' }));
+    const karte = await screen.findByRole('region', { name: 'Fronius Anlage' });
+    expect(karte).toHaveClass('is-selected');
+    await waitFor(() => expect(document.activeElement).toBe(karte));
+  });
+
+  it('blendet Kommunikationsverbindungen nur auf Wunsch ein', async () => {
+    stub();
+    alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    const { container } = render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    const toggle = await screen.findByRole('button', { name: 'Verbindungen anzeigen' });
+    expect(container.querySelector('.vp-ab-wire.is-communication')).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(container.querySelectorAll('.vp-ab-wire.is-communication').length).toBeGreaterThan(0);
+    expect(container.querySelector('marker')).toBeNull();
+  });
+
+  it('bedient Ansichts-Tabs per Pfeiltaste und führt den Fokus nach der Vorschau zurück', async () => {
+    stub();
+    alsDesktop(true);
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const bildTab = await screen.findByRole('tab', { name: 'Anlagenbild' });
+    bildTab.focus();
+    fireEvent.keyDown(bildTab, { key: 'ArrowRight' });
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Liste' })).toHaveFocus());
+    expect(screen.getByRole('tab', { name: 'Liste' })).toHaveAttribute('tabindex', '0');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Anlagenbild' }));
+    const node = await screen.findByRole('button', { name: /Fronius Anlage/ });
+    node.focus();
+    fireEvent.click(node);
+    const dialog = await screen.findByRole('dialog', { name: 'Fronius Anlage' });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(node).toHaveFocus());
   });
 });
 
@@ -938,7 +987,7 @@ describe('der Anlege-Einstieg', () => {
     vi.spyOn(api, 'componentTemplates').mockResolvedValue([]);
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Hinzufügen/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerät hinzufügen' }));
     const dialog = await screen.findByRole('dialog', { name: 'Gerät anbinden' });
     expect(within(dialog).getByText('Was möchten Sie anbinden?')).toBeInTheDocument();
     expect(within(dialog).getByTestId('typ-wechselrichter')).toBeInTheDocument();
@@ -948,12 +997,74 @@ describe('der Anlege-Einstieg', () => {
 
   it('bleibt auf einer box-verwalteten Anlage ehrlich abwesend', async () => {
     stub();
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
     vi.spyOn(api, 'siteComponents').mockResolvedValue({
       componentAuthority: 'box',
       components: [{ id: 'batt', definitionVersion: 1, syncStatus: 'in_sync' }],
     });
     render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
-    await screen.findByText(/Box verbunden/);
-    expect(screen.queryByRole('button', { name: /Hinzufügen/ })).toBeNull();
+    expect(await screen.findByText(/Diese Anlage wird an Ihrer VoltPilot-Box verwaltet/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Gerät hinzufügen' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Speicher hinzufügen.*Optional/ })).toBeDisabled();
+  });
+
+  it('erfindet bei einer unbekannten Berechtigung keine Verwaltung durch die Box', async () => {
+    stub();
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'read-only',
+      components: [{ id: 'batt', definitionVersion: 1, syncStatus: 'in_sync' }],
+    });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    expect(
+      await screen.findByText(/keine Gerätebearbeitung im Portal freigegeben/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/wird an Ihrer VoltPilot-Box verwaltet/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Gerät hinzufügen' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Speicher hinzufügen.*Optional/ })).toBeDisabled();
+  });
+
+  it('fordert in der leeren portal-verwalteten Anlage aktiv zum ersten Gerät auf', async () => {
+    stub();
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    vi.mocked(api.siteEntities).mockResolvedValue({
+      registry: null,
+      entities: [],
+      localSetup: [],
+      staleOnDevice: [],
+    });
+    vi.mocked(api.siteSources).mockResolvedValue([]);
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [],
+    });
+    render(<AnlagenModellSection site={site} devices={[]} />);
+
+    expect(
+      await screen.findByText('Ihre Anlage wartet auf das erste Gerät.'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Gerät hinzufügen' })).toHaveLength(2);
+    expect(
+      await screen.findByRole('button', { name: /PV-Wechselrichter hinzufügen.*Optional/ }),
+    ).toBeEnabled();
+  });
+
+  it('öffnet einen freien Platz direkt im passenden bestehenden Anlegeweg', async () => {
+    stub();
+    window.history.replaceState(null, '', `#/anlage/${site.id}/modell`);
+    vi.spyOn(api, 'siteComponents').mockResolvedValue({
+      componentAuthority: 'portal',
+      components: [{ id: 'batt', definitionVersion: 2, syncStatus: 'in_sync' }],
+    });
+    vi.spyOn(api, 'componentTemplates').mockResolvedValue([]);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const slot = await screen.findByRole('button', { name: /Speicher hinzufügen.*Optional/ });
+    expect(slot).toBeEnabled();
+    fireEvent.click(slot);
+    const dialog = await screen.findByRole('dialog', { name: 'Gerät anbinden' });
+    expect(within(dialog).getByText('Welches Gerät ist es?')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Was möchten Sie anbinden?')).toBeNull();
   });
 });

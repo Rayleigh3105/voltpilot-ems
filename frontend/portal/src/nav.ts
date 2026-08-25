@@ -680,17 +680,22 @@ export type ZentraleAnsicht = 'geraete' | 'schaltbild';
  * Das Muster ist das von {@link befehleHash} - ein HASH-PARAMETER, keine
  * eigene Unterseite: `parseRoute` schneidet den Query-Teil ohnehin ab, die
  * Route bleibt also die Zentrale, und ein Lesezeichen öffnet exakt dieselbe
- * Ansicht wieder. Die Vorgabe („Ihre Geräte") trägt bewusst KEINEN Parameter -
- * der Einstieg bleibt die ruhige Liste.
+ * Ansicht wieder. Seit Geräte-Erlebnis Slice 1 trägt das ANLAGENBILD als
+ * Vorgabe keinen Parameter; die Liste ist die explizite Zweitsicht.
  */
 export function zentraleAnsichtHash(siteId: string, ansicht: ZentraleAnsicht): string {
   const base = `#/anlage/${siteId}/modell`;
-  return ansicht === 'schaltbild' ? `${base}?ansicht=schaltbild` : base;
+  return ansicht === 'geraete' ? `${base}?ansicht=geraete` : base;
 }
 
-/** Die Ansicht aus einem `?ansicht=`-Hash; alles Unbekannte ist die Liste. */
+/**
+ * Die Ansicht aus einem `?ansicht=`-Hash. Ein Komponenten-Deep-Link öffnet
+ * weiterhin die Liste, weil dort seine Pflegezeile wohnt; alles andere fällt
+ * auf den neuen Standardeinstieg Anlagenbild zurück.
+ */
 export function parseZentraleAnsicht(hash: string): ZentraleAnsicht {
-  return befehleParam(hash, 'ansicht') === 'schaltbild' ? 'schaltbild' : 'geraete';
+  if (befehleParam(hash, 'komponente')) return 'geraete';
+  return befehleParam(hash, 'ansicht') === 'geraete' ? 'geraete' : 'schaltbild';
 }
 
 /**

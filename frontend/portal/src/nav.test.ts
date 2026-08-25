@@ -591,17 +591,21 @@ describe('befehleGeraetHash - das Gerät als Hash-Parameter', () => {
 });
 
 describe('zentraleAnsichtHash / parseZentraleAnsicht', () => {
-  it('trägt die Ansicht als Hash-Parameter und lässt die Route unberührt', () => {
-    const h = zentraleAnsichtHash('s-1', 'schaltbild');
-    expect(h).toBe('#/anlage/s-1/modell?ansicht=schaltbild');
+  it('trägt die Listen-Zweitsicht als Hash-Parameter und lässt die Route unberührt', () => {
+    const h = zentraleAnsichtHash('s-1', 'geraete');
+    expect(h).toBe('#/anlage/s-1/modell?ansicht=geraete');
     expect(parseRoute(h)).toEqual({ page: 'anlagen', siteId: 's-1', sub: 'modell' });
-    expect(parseZentraleAnsicht(h)).toBe('schaltbild');
+    expect(parseZentraleAnsicht(h)).toBe('geraete');
   });
 
-  it('schreibt für die VORGABE keinen Parameter - der Einstieg bleibt die Liste', () => {
-    expect(zentraleAnsichtHash('s-1', 'geraete')).toBe('#/anlage/s-1/modell');
-    expect(parseZentraleAnsicht('#/anlage/s-1/modell')).toBe('geraete');
-    expect(parseZentraleAnsicht('#/anlage/s-1/modell?ansicht=phantasie')).toBe('geraete');
+  it('schreibt für die VORGABE keinen Parameter - der Einstieg ist das Anlagenbild', () => {
+    expect(zentraleAnsichtHash('s-1', 'schaltbild')).toBe('#/anlage/s-1/modell');
+    expect(parseZentraleAnsicht('#/anlage/s-1/modell')).toBe('schaltbild');
+    expect(parseZentraleAnsicht('#/anlage/s-1/modell?ansicht=phantasie')).toBe('schaltbild');
+  });
+
+  it('öffnet einen Komponenten-Deep-Link weiterhin in der Liste', () => {
+    expect(parseZentraleAnsicht('#/anlage/s-1/modell?komponente=grid')).toBe('geraete');
   });
 });
 
